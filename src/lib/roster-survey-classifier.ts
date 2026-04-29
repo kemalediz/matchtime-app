@@ -19,20 +19,26 @@ const SYSTEM_PROMPT = `You are classifying a player's WhatsApp DM reply to a "ro
 
 Classify their reply into ONE of:
 
-- "in": clearly committing to keep playing. Examples: "yes", "I'm in", "definitely", "still keen", "of course", "yeah why not", "100%", "always", "always in mate".
-- "maybe": tentative, conditional, ad-hoc. Examples: "depends", "sometimes", "if I'm free", "not every week", "ad hoc", "maybe", "occasionally", "when I can", "depends on knee", "I'll play if there's room".
-- "out": clearly stepping back, dropping out, or saying no. Examples: "not for now", "I'm done", "won't make it anymore", "step me back", "out", "I can't commit", "moving away", "too busy", "no thanks".
-- "unclear": ANYTHING else — questions, off-topic chatter, just emojis, ambiguous phrasing, replies that don't address the survey question at all. When in doubt, return "unclear" — we'd rather ask the player to clarify than misclassify them.
+- "in": clearly committing to keep playing every (or almost every) week. Examples: "yes", "I'm in", "definitely", "still keen", "of course", "yeah why not", "100%", "always", "always in mate".
 
-Be CONSERVATIVE. If you're not 80%+ certain, return "unclear". Examples of things that should be "unclear":
-- "what is this?"
-- "who is this?"
-- "🙂"
-- "we'll see"  (too vague — could be in/maybe/out — ask)
-- "ok"  (ambiguous; could mean "ok I'm in" or "ok received your message")
-- "thanks for letting me know"
-- jokes, banter, follow-up questions to the bot
-- empty or near-empty replies
+- "maybe": tentative, conditional, ad-hoc, OR ANY reply that hedges with future-positive intent (the player isn't committing now but isn't fully closing the door either). Examples:
+  • Pure tentative: "depends", "sometimes", "if I'm free", "not every week", "ad hoc", "maybe", "occasionally", "when I can", "depends on knee", "I'll play if there's room".
+  • Future-positive hedges (these are MAYBE, NOT out): "not for now but maybe later", "may come in the future", "I'll let you know", "not sure yet, possibly", "taking a break for a bit", "step me back for now but I might come back", "we'll see how it goes".
+
+- "out": ONLY when the player clearly and PERMANENTLY says no — no hedge, no future window. They're done. Examples: "I'm done", "won't be playing anymore", "stepping back permanently", "I'm out for good", "moving away", "no thanks, please take me off", "stopping football completely".
+
+- "unclear": questions, off-topic chatter, just emojis, ambiguous phrasing, replies that don't address the survey question at all. When in doubt, return "unclear" — we'd rather ask the player to clarify than misclassify them.
+
+CRITICAL RULES:
+1. If the reply contains ANY positive future-leaning word ("maybe", "later", "future", "might", "possibly", "we'll see", "for now", "at the moment", "currently"), default to "maybe" — NOT "out". The player is hedging, not leaving.
+2. "not for now" ALONE (with no further context) is ambiguous. It LEANS toward "maybe" because "for now" implies there's a future. Lean conservative — prefer "maybe" over "out" when there's any doubt. Removing a member is harsher than keeping them as casual.
+3. If you're not 80%+ certain, return "unclear". Examples of things that should be "unclear":
+   - "what is this?", "who is this?"
+   - just "🙂"
+   - "ok"  (ambiguous; could mean "ok I'm in" or "ok received your message")
+   - "thanks for letting me know"
+   - jokes, banter, follow-up questions to the bot
+   - empty or near-empty replies
 
 Output STRICT JSON only — no markdown, no fences:
 
