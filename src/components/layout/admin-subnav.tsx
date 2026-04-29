@@ -8,6 +8,7 @@ const TABS = [
   { label: "Activities", href: "/admin/activities" },
   { label: "Players", href: "/admin/players" },
   { label: "Stats", href: "/admin/stats" },
+  { label: "Roster check-in", href: "/admin/roster-survey" },
   { label: "Organisations", href: "/admin/organisations" },
   { label: "Settings", href: "/admin/settings" },
 ];
