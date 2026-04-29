@@ -61,7 +61,18 @@ export async function POST(request: Request) {
   let restoredMembership = 0;
 
   for (const p of body.participants) {
-    const phone = p.phone ? normalisePhone(p.phone) : null;
+    // Bot strips the leading "+" from JID-derived phones (e.g.
+    // "447989747424"); normalisePhone preserves no-+ input as-is,
+    // so prepend before normalising — matches the analyze-route
+    // pattern. Without this every WA-group participant came back
+    // as a NEW User because "447xxx" never matched stored
+    // "+447xxx" records.
+    const rawWithPlus = p.phone
+      ? p.phone.startsWith("+")
+        ? p.phone
+        : `+${p.phone}`
+      : null;
+    const phone = rawWithPlus ? normalisePhone(rawWithPlus) : null;
     if (!phone) {
       skippedNoPhone += 1;
       continue;
