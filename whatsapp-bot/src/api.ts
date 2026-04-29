@@ -162,6 +162,38 @@ export async function postPollVote(params: {
   }
 }
 
+export async function postSyncParticipants(params: {
+  groupId: string;
+  participants: Array<{
+    phone?: string | null;
+    lidId?: string | null;
+    pushname?: string | null;
+  }>;
+}): Promise<{
+  added?: number;
+  alreadyKnown?: number;
+  skippedNoPhone?: number;
+  restoredMembership?: number;
+  total?: number;
+} | null> {
+  const res = await fetch(`${config.apiUrl}/api/whatsapp/sync-participants`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    console.error("sync-participants post failed:", res.status, await res.text());
+    return null;
+  }
+  return res.json() as Promise<{
+    added?: number;
+    alreadyKnown?: number;
+    skippedNoPhone?: number;
+    restoredMembership?: number;
+    total?: number;
+  }>;
+}
+
 export async function postGroupJoin(params: {
   groupId: string;
   phones: string[]; // E.164 without the leading "+"

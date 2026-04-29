@@ -10,6 +10,7 @@ import {
   postGroupJoin,
   postGroupLeave,
   postDmReply,
+  postSyncParticipants,
 } from "./api.js";
 import {
   enqueueForAnalysis,
@@ -79,6 +80,68 @@ async function main() {
         client,
         orgConfigs.map((o: { groupId: string }) => o.groupId),
       );
+
+      // Backfill the "lurker gap": members who were in the WhatsApp
+      // group before the bot joined, who haven't typed since (so
+      // group_join + auto-provision never fired). Fire-and-forget on
+      // every startup; idempotent on the server side. Ignores @lid
+      // privacy participants — they're picked up by pushname-based
+      // resolution the moment they message.
+      for (const o of orgConfigs as { groupId: string; orgName: string }[]) {
+        try {
+          const chat = await client.getChatById(o.groupId);
+          // wweb.js types — GroupChat has participants[]; non-group
+          // chats don't.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const participants = (chat as any).participants ?? [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const selfId = client.info?.wid?._serialized;
+          const out: Array<{ phone?: string; lidId?: string; pushname?: string }> = [];
+          for (const p of participants as Array<{ id: { _serialized: string } }>) {
+            const id = p.id._serialized;
+            if (selfId && id === selfId) continue; // skip the bot itself
+            let phone: string | undefined;
+            let lidId: string | undefined;
+            if (id.endsWith("@c.us")) {
+              phone = id.replace("@c.us", "").replace(/^\+/, "");
+            } else if (id.endsWith("@lid")) {
+              lidId = id;
+              // wweb.js sometimes resolves the underlying phone via
+              // getContactById; try once, swallow any failure.
+              try {
+                const contact = await client.getContactById(id);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const num = (contact as any).number;
+                if (typeof num === "string" && num.length > 0) phone = num;
+              } catch {
+                /* ignore — server falls back to lurker-skipped */
+              }
+            }
+            let pushname: string | undefined;
+            try {
+              const contact = await client.getContactById(id);
+              pushname = contact.pushname || contact.name || undefined;
+            } catch {
+              /* non-fatal */
+            }
+            out.push({ phone, lidId, pushname });
+          }
+          const result = await postSyncParticipants({
+            groupId: o.groupId,
+            participants: out,
+          });
+          if (result) {
+            console.log(
+              `[sync-participants] ${o.orgName}: ${result.added ?? 0} added, ${result.alreadyKnown ?? 0} known, ${result.skippedNoPhone ?? 0} no-phone, ${result.restoredMembership ?? 0} restored, total=${result.total ?? 0}`,
+            );
+          }
+        } catch (err) {
+          console.error(
+            `[sync-participants] ${o.orgName} failed:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch org configs:", err);
     }
