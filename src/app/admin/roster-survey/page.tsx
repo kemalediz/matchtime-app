@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { getCurrentOrgId, requireOrgAdmin } from "@/lib/org";
+import { getUserOrg, requireOrgAdmin } from "@/lib/org";
 import Link from "next/link";
 import { Calendar, ChevronRight, ClipboardList } from "lucide-react";
 import { format } from "date-fns";
@@ -16,8 +16,13 @@ export default async function RosterSurveyListPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const orgId = await getCurrentOrgId();
-  if (!orgId) redirect("/admin/organisations");
+  // Use getUserOrg (DB lookup) rather than getCurrentOrgId (cookie) —
+  // the cookie isn't reliably set for everyone, and getUserOrg falls
+  // back to the user's first active membership which is what every
+  // other admin page does.
+  const membership = await getUserOrg(session.user.id);
+  if (!membership) redirect("/create-org");
+  const orgId = membership.orgId;
   await requireOrgAdmin(session.user.id, orgId);
 
   const surveys = await db.rosterSurvey.findMany({
