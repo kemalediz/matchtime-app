@@ -114,3 +114,9 @@ A condensed digest of what's been learned across many sessions. The detailed sou
 - Don't break the live org's data — schema changes are strictly additive (nullable, defaulted).
 - Don't run `prisma migrate` (history out of sync) or use the `aws-0` Supabase pooler.
 - Don't skip the Pi redeploy after a push, even for server-only changes.
+- Don't ship UI text with internal jargon ("regulars list", "pencil you in case-by-case") — write what the player needs to do next, in plain words.
+- Don't classify natural-language replies aggressively when intent is ambiguous. Future-positive language ("maybe", "later", "might", "for now") leans toward `maybe` — never `out`. Removing a member is harsher than keeping them as casual.
+- Don't build infrastructure for opt-in-only features (payment tracking, future tier system, etc.) without an org-level flag. Default OFF; orgs that want it flip the flag. Some clubs prefer offline tracking — respect that.
+- Don't pitch magic-link forms for "click to confirm" UX without considering trust. Players DM'd by a bot find clicks suspicious; replying-in-DM with LLM-classification feels natural and works.
+- Don't drop @lid privacy-mode senders. WhatsApp delivers some DMs with phone hidden in the JID. Always forward the pushname alongside any phone field so the server can fall back to name-based resolution scoped to the relevant context (e.g. open survey DMs).
+- Don't surface the bot's diagnostic console.logs as an afterthought — `[msg] from=... fromMe=... bodyLen=...` on every incoming message has earned its keep multiple times for "did the bot even see this?" debugging.

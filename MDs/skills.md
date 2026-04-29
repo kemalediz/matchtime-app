@@ -66,6 +66,9 @@ The 90+ scripts in `scripts/` follow a `peek-*`, `check-*`, `find-*`, `fix-*` na
 - `wipe-org.ts` — generic org delete (dry-run by default; `--apply`)
 - `record-score.ts` — manual score entry
 - `dbquery.ts` — read-only inspector
+- `peek-roster-survey.ts` — survey DMs + responses + recent BotJob DMs
+- `start-roster-survey.ts <slug> [--test-only-me] [--apply]` — kick off a survey (dry-run default; `--test-only-me` limits DM to Kemal for testing)
+- `send-magic-link-shaz.ts` — template for ad-hoc per-player magic-link sign-in DMs
 
 Pattern: peek before fixing, fix in a dedicated script when you can, never in a REPL.
 
@@ -172,6 +175,47 @@ Every bot post that's tied to creation-time of a row (rather than user action) n
 
 - `announce-match` — only fire `09:00 ≤ londonHour < 13:00`. The `generate-matches` cron creates next week's match nightly; the bot must NOT announce it at 01:20 BST.
 - `announce-match` also needs an "is this the soonest unplayed match in the activity?" check — when today's match is still UPCOMING/TEAMS_GENERATED/TEAMS_PUBLISHED, don't announce next week's. Once today's flips to COMPLETED, the next morning's tick picks up the future one.
+
+## DM-reply pipeline (roster surveys, future DM-driven features)
+
+Bot's `message` event handler treats anything not ending in `@g.us` as a 1-1 DM and forwards to `/api/whatsapp/dm-reply` with `{ phone, body, waMessageId, authorName? }`. `fromMe` and empty bodies filtered. Diagnostic `[msg] from=… fromMe=… bodyLen=…` log line on every incoming message — keep it; debugging "did the bot see this?" without it is painful.
+
+Server-side resolver order for inbound DMs:
+1. Phone match against `User.phoneNumber` (most accurate; usually @c.us senders).
+2. Fallback: pushname-based fuzzy match SCOPED to users with an open `RosterSurveyDM` (or whatever feature owns the active DM context). Never global-pushname-search — too ambiguous.
+3. Multiple matches return null (don't guess).
+
+The pushname forwarding is essential because @lid privacy-mode senders arrive with no phone in the JID. Without authorName, the server can't resolve them to a User.
+
+## Org-level feature flags
+
+Some features should be opt-in per org because admins have different workflows. Pattern:
+
+- Add `Organisation.<feature>Enabled Boolean @default(false)` (default OFF — opt-in).
+- Gate every server-side side-effect that depends on the feature with `if (!org.<feature>Enabled) return …`.
+- Keep the FACING surface (e.g. payment poll posting, survey DM delivery) ungated — those are user-visible and admins might want a half-on state.
+- Document the flag's reasoning and which org turned it on/off in the schema doc-comment.
+
+Live examples: `Organisation.paymentTrackingEnabled` (Sutton off, paymentChase + bulkCredit + poll-vote-paidAt all silent). Future `whatsappBotEnabled`, `aiClassificationEnabled`, etc.
+
+## Plain-English UI copy — never invent jargon
+
+The product is multi-tenant / commercialisable. Copy that uses internal terminology ("regulars list", "pencil you in case-by-case", "bench-thin", "@lid") confuses real users and reads like internal Slack chatter. Rule: every user-facing string should describe what the user can DO next, in words a non-technical player would understand on first read.
+
+Caught examples this session:
+- "we'll take you off the regulars list" → "The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏"
+- "we'll pencil you in case-by-case" → "just say IN in the group whenever you want to play that week, no need to confirm in advance"
+
+## LLM classification for natural-language replies
+
+When asking the LLM to bucket a free-text reply (in/maybe/out, intent classification, sentiment), bias toward the LESS DESTRUCTIVE bucket on ambiguity:
+
+- Future-positive hedges ("maybe", "later", "for now", "we'll see", "might") → `maybe` (or whatever the soft option is), NEVER the destructive one.
+- Hard `out` requires PERMANENT intent — no hedge, no future window.
+- Confidence < 0.7 on anything destructive → force `unclear` and route to clarification prompt.
+- If the user might re-engage based on the bot's reply, give them a path: "change your mind? just message back".
+
+Pattern lives in `src/lib/roster-survey-classifier.ts`; same applies to any future destructive-action classifiers.
 
 ## Tailscale SSH gotcha
 
