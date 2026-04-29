@@ -46,6 +46,7 @@ export type AnalysisIntent =
   | "score"
   | "generate_teams_request"
   | "bring_guests_vague"
+  | "bulk_payment_credit"
   | "noise"
   | "unclear";
 
@@ -88,6 +89,23 @@ export interface AnalysisVerdict {
    *  enum value, NOT the org's display label. Server resolves names
    *  to userIds and feeds the balancer a pinnedToTeam map. */
   teamOverrides: Array<{ name: string; team: "RED" | "YELLOW" }> | null;
+  /** Populated when intent = "bulk_payment_credit" — the message says
+   *  "X paid for N players" or names specific players X paid for.
+   *  Server only acts on this when the SENDER is OWNER/ADMIN of the
+   *  org (random group members can't credit payments).
+   *
+   *  - payerName: who collected/paid the venue.
+   *  - count: total fees being credited (use names.length if names
+   *    are listed; otherwise the explicit number from the message).
+   *  - coveredNames?: explicit list of players X paid for. When
+   *    present, server marks each Attendance.paidAt + paidViaUserId.
+   *    When absent, server creates an aggregate PaymentCredit row.
+   */
+  bulkPayment: {
+    payerName: string;
+    count: number;
+    coveredNames?: string[];
+  } | null;
   /** Third-party attendance registrations.
    *  Populated when the sender signs up / drops out OTHER people on their
    *  behalf ("my dad Najib is also in", "Ibrahim can't make it tonight",
@@ -123,6 +141,7 @@ Output schema:
       "scoreYellow": <number> | null,
       "includeNames": [<string>, ...] | null,
       "teamOverrides": [{"name": "<string>", "team": "RED" | "YELLOW"}, ...] | null,
+      "bulkPayment": {"payerName": "<string>", "count": <number>, "coveredNames": [<string>, ...] | null} | null,
       "registerFor": [{"name": "<string>", "action": "IN" | "OUT"}, ...] | null,
       "reasoning": "<short internal explanation>"
     }
@@ -165,6 +184,17 @@ Intent rules:
   → registerAttendance: null (can't register without names). registerFor: null. react: null. reply: short, warm question asking for the names so we can add them. Format the reply as: "thanks @<firstName>, could you share their names so I can add them to the list? 🙌". Ground the author's first name from the Match Context/sender. Use their display-name first token, no fabrication.
   → Example: Amir posts "Two of my guys can play next week. They played once here 2 weeks ago" → reply: "thanks @Amir, could you share their names so I can add them to the list? 🙌"
   → Only classify as this when count + no names. If they give names in the same message ("bringing Faris and Shaz"), use "in" with registerFor instead.
+- "bulk_payment_credit": Someone (only counts when they're OWNER/ADMIN of the org — server enforces, you classify either way) reports that one member paid match fees on behalf of one or more other players for the most recent completed match. Patterns: "Amir paid for 4", "Amir covered Faris and Adam's fees", "Sait paid for me and 3 others", "those guys paid through Amir", "Idris paid for himself + 2".
+  → registerAttendance: null. react: "👍". reply: null — server composes a confirmation reply with the new unpaid count.
+  → Populate bulkPayment: { payerName, count, coveredNames? }.
+    - payerName: the person who collected/paid (NOT the sender — extract the named collector). First-name only is fine.
+    - count: total fees credited. If coveredNames are listed, count = coveredNames.length. If only a number is given ("paid for 4"), count = that number.
+    - coveredNames: only when SPECIFIC player names are given. If just a count, leave null.
+  → Examples:
+     "Amir paid for 4 players"          → bulkPayment: { payerName: "Amir", count: 4 }
+     "Amir paid for Faris and Adam"     → bulkPayment: { payerName: "Amir", count: 2, coveredNames: ["Faris", "Adam"] }
+     "Sait covered me and 2 others"     → bulkPayment: { payerName: "Sait", count: 3 }   (sender's name is implied but not extracted — server falls through to count-aggregate when names aren't ALL listed)
+  → Only classify as this intent when the message clearly attributes a multi-person payment. A single "I paid" message is just noise/poll territory, not a credit.
 - "noise": Social chat, jokes, memes, photos, links, tangential banter, off-topic questions (recipe links, memes, sports trivia).
   → Everything null.
 - "unclear": Genuinely can't tell. Everything null — bot stays silent.
@@ -966,6 +996,7 @@ function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {
     scoreYellow: null,
     includeNames: null,
     teamOverrides: null,
+    bulkPayment: null,
     registerFor: null,
     reasoning: reason,
   };
@@ -1019,6 +1050,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     "score",
     "generate_teams_request",
     "bring_guests_vague",
+    "bulk_payment_credit",
     "noise",
     "unclear",
   ];
@@ -1074,6 +1106,24 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
         })
         .filter((e): e is { name: string; action: "IN" | "OUT" } => e !== null)
     : null;
+  let bulkPayment: AnalysisVerdict["bulkPayment"] = null;
+  if (raw.bulkPayment && typeof raw.bulkPayment === "object") {
+    const bp = raw.bulkPayment as Record<string, unknown>;
+    const payerName = typeof bp.payerName === "string" ? bp.payerName.trim() : "";
+    const count = typeof bp.count === "number" ? Math.round(bp.count) : 0;
+    if (payerName && count >= 1 && count <= 50) {
+      const coveredNames = Array.isArray(bp.coveredNames)
+        ? (bp.coveredNames as unknown[])
+            .filter((n): n is string => typeof n === "string" && n.trim().length > 0)
+            .map((n) => n.trim())
+        : undefined;
+      bulkPayment = {
+        payerName,
+        count,
+        coveredNames: coveredNames && coveredNames.length > 0 ? coveredNames : undefined,
+      };
+    }
+  }
   const reasoning = typeof raw.reasoning === "string" ? raw.reasoning : "";
 
   // Low-confidence downgrade: wipe all actions so the bot stays silent.
@@ -1089,6 +1139,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
       scoreYellow: null,
       includeNames: null,
       teamOverrides: null,
+      bulkPayment: null,
       registerFor: null,
       reasoning: `[low-confidence downgrade] ${reasoning}`,
     };
@@ -1105,6 +1156,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     scoreYellow,
     includeNames,
     teamOverrides: teamOverrides && teamOverrides.length > 0 ? teamOverrides : null,
+    bulkPayment,
     registerFor: registerFor && registerFor.length > 0 ? registerFor : null,
     reasoning,
   };

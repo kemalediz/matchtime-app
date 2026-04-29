@@ -249,6 +249,7 @@ model Match {
   sentNotifications      SentNotification[]
   benchConfirmations     PendingBenchConfirmation[]
   ratingAdjustments      RatingAdjustment[]
+  paymentCredits         PaymentCredit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -392,12 +393,44 @@ model Attendance {
   /// on the daily 17:00 squad nudge. Nullable = additive, zero impact
   /// on historical attendance rows.
   paidAt      DateTime?
+  /// When this attendance was paid for via someone else (bulk
+  /// payment by the same WhatsApp member who collected several
+  /// players' fees). Populated when an admin says e.g. "Amir paid
+  /// for Faris and Adam" — the bot resolves Amir → User and stores
+  /// his id here against Faris's and Adam's Attendance rows. Useful
+  /// for audit / undo. Nullable = additive.
+  paidViaUserId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([matchId, userId])
   @@index([matchId, status])
+}
+
+/**
+ * Bulk-payment credit recorded by an admin via natural-language WA
+ * message (e.g. "Amir paid for 4 players"). Used when individual
+ * names aren't given and we just have a count to credit against the
+ * match. Each row offsets the unpaid count for that match by `count`.
+ *
+ * If the admin DOES name specific players, the bot updates each
+ * Attendance.paidAt + paidViaUserId directly and does NOT create a
+ * PaymentCredit row — avoids double-counting.
+ *
+ * Authorisation: only OWNER/ADMIN of the org can create these.
+ */
+model PaymentCredit {
+  id            String   @id @default(cuid())
+  matchId       String
+  match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  payerUserId   String                                           // who collected/paid the venue
+  count         Int                                              // how many players' fees this covers
+  note          String?                                          // optional context
+  recordedById  String                                           // sender of the credit instruction (for audit)
+  recordedAt    DateTime @default(now())
+
+  @@index([matchId])
 }
 
 model TeamAssignment {

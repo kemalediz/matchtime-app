@@ -1077,6 +1077,156 @@ async function executeVerdict(args: {
     }
   }
 
+  // ── Bulk payment credit ─────────────────────────────────────────
+  //    Admin-only feature: when an OWNER/ADMIN of the org says
+  //    "Amir paid for 4 players" or "Amir paid for Faris and Adam",
+  //    credit the payment(s) against the most recent completed
+  //    match's unpaid count. Random group members triggering this
+  //    intent are silently ignored — saves the chase math from
+  //    being broken by a stray message.
+  //
+  //    Two paths depending on what the LLM extracted:
+  //      (a) coveredNames[] given → resolve each to an Attendance
+  //          row, mark paidAt + paidViaUserId per row. No
+  //          PaymentCredit row (avoids double-count).
+  //      (b) just count given → create a single PaymentCredit row
+  //          with the count.
+  if (verdict.intent === "bulk_payment_credit" && verdict.bulkPayment) {
+    try {
+      // Authorise: only OWNER/ADMIN of THIS org.
+      const role = user
+        ? (
+            await db.membership.findUnique({
+              where: { userId_orgId: { userId: user.id, orgId } },
+              select: { role: true, leftAt: true },
+            })
+          )
+        : null;
+      const isAdmin = role && role.leftAt === null && (role.role === "OWNER" || role.role === "ADMIN");
+      if (!isAdmin) {
+        // Silent — random group members can't credit payments.
+        finalReply = null;
+        finalReact = null;
+      } else {
+        const target = await db.match.findFirst({
+          where: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
+          orderBy: { date: "desc" },
+          include: {
+            activity: { select: { name: true } },
+            attendances: {
+              where: { status: "CONFIRMED" },
+              include: { user: { select: { id: true, name: true } } },
+            },
+          },
+        });
+        if (!target) {
+          finalReply = "No recent completed match to credit payments against.";
+          finalReact = "🤔";
+        } else {
+          const norm = (s: string) =>
+            s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          // Resolve payer to a member of the org. Match by name.
+          const orgMembers = await db.membership.findMany({
+            where: { orgId, leftAt: null },
+            include: { user: { select: { id: true, name: true } } },
+          });
+          const payerKey = norm(verdict.bulkPayment.payerName);
+          const payerCandidates = orgMembers.filter((m) => {
+            if (!m.user.name) return false;
+            const u = norm(m.user.name);
+            return (
+              u === payerKey ||
+              u.split(" ")[0] === payerKey.split(" ")[0] ||
+              u.startsWith(payerKey + " ") ||
+              payerKey.startsWith(u + " ")
+            );
+          });
+          if (payerCandidates.length !== 1) {
+            finalReply = `Couldn't tell who *${verdict.bulkPayment.payerName}* is for the payment credit. Try again with a clearer name.`;
+            finalReact = "🤔";
+          } else {
+            const payer = payerCandidates[0].user;
+
+            const coveredNames = verdict.bulkPayment.coveredNames ?? [];
+            const matchedNames: string[] = [];
+            const unmatchedNames: string[] = [];
+            if (coveredNames.length > 0) {
+              for (const rawName of coveredNames) {
+                const key = norm(rawName);
+                const SELF = new Set(["me", "myself", "i"]);
+                const lookupKey =
+                  SELF.has(key) && user?.name
+                    ? norm(user.name).split(" ")[0]
+                    : key;
+                const att = target.attendances.find((a) => {
+                  if (!a.user.name) return false;
+                  const u = norm(a.user.name);
+                  return (
+                    u === lookupKey ||
+                    u.split(" ")[0] === lookupKey ||
+                    u.startsWith(lookupKey + " ")
+                  );
+                });
+                if (!att) {
+                  unmatchedNames.push(rawName);
+                  continue;
+                }
+                if (!att.paidAt) {
+                  await db.attendance.update({
+                    where: { id: att.id },
+                    data: { paidAt: new Date(), paidViaUserId: payer.id },
+                  });
+                }
+                matchedNames.push(att.user.name ?? rawName);
+              }
+            } else {
+              // Aggregate credit, no specific names.
+              await db.paymentCredit.create({
+                data: {
+                  matchId: target.id,
+                  payerUserId: payer.id,
+                  count: verdict.bulkPayment.count,
+                  recordedById: user!.id,
+                  note: `Recorded via WhatsApp by ${user?.name ?? "admin"}`,
+                },
+              });
+            }
+
+            // Recompute unpaid for the confirmation reply.
+            const refreshed = await db.match.findUnique({
+              where: { id: target.id },
+              include: {
+                attendances: { where: { status: "CONFIRMED" } },
+                paymentCredits: true,
+              },
+            });
+            const confirmedCount = refreshed?.attendances.length ?? 0;
+            const pollPaid =
+              refreshed?.attendances.filter((a) => a.paidAt != null).length ?? 0;
+            const creditCount =
+              refreshed?.paymentCredits.reduce((s, c) => s + c.count, 0) ?? 0;
+            const unpaid = Math.max(0, confirmedCount - pollPaid - creditCount);
+
+            const creditedDescription =
+              matchedNames.length > 0
+                ? `${matchedNames.join(", ")}`
+                : `${verdict.bulkPayment.count} payment${verdict.bulkPayment.count === 1 ? "" : "s"}`;
+            const tail = unmatchedNames.length > 0
+              ? `\n\n_(couldn't find ${unmatchedNames.join(", ")} on the squad — those names ignored)_`
+              : "";
+            finalReply =
+              `💳 Got it — credited *${payer.name ?? verdict.bulkPayment.payerName}* with ${creditedDescription} for *${target.activity.name}*. ` +
+              `Unpaid: ${unpaid}/${confirmedCount}.${tail}`;
+            finalReact = "👍";
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[analyze] bulk_payment_credit failed:", err);
+      finalReply = null;
+    }
+  }
+
   return { react: finalReact, reply: finalReply };
 }
 

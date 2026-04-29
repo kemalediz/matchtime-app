@@ -235,6 +235,7 @@ async function buildUnpaidTail(
         where: { status: "CONFIRMED" },
         include: { user: { select: { id: true, name: true, phoneNumber: true } } },
       },
+      paymentCredits: { select: { count: true } },
     },
   });
   if (!lastCompleted) return null;
@@ -249,19 +250,28 @@ async function buildUnpaidTail(
     ? lastCompleted.attendances.filter((a) => a.userId !== payerId)
     : lastCompleted.attendances;
   const paid = confirmed.filter((a) => a.paidAt != null);
-  const unpaid = confirmed.filter((a) => a.paidAt == null);
+  // Subtract aggregate bulk-payment credits ("Amir paid for 4 players")
+  // from the unpaid count. These cover players whose specific Attendance
+  // rows aren't marked individually (the named-player path updates
+  // Attendance.paidAt directly and skips creating a credit row).
+  const creditCount = lastCompleted.paymentCredits.reduce(
+    (s, c) => s + c.count,
+    0,
+  );
+  const unpaidPeople = confirmed.filter((a) => a.paidAt == null).length;
+  const unpaid = Math.max(0, unpaidPeople - creditCount);
   // Don't chase when we have no signal — false precision is worse than silence.
-  if (paid.length === 0) return null;
-  if (unpaid.length === 0) return null;
+  if (paid.length === 0 && creditCount === 0) return null;
+  if (unpaid === 0) return null;
 
   // Poll-only format per Sait's suggestion (2026-04-25). No naming,
   // no shaming — point everyone at the original payment poll. Anyone
   // who's already paid clears themselves by ticking their team. The
   // poll-vote → paidAt wiring takes care of the rest.
   const text =
-    unpaid.length === 1
+    unpaid === 1
       ? `💳 1 payment still pending for last week's match — if you've already paid, tick your team in the poll above to clear it 🙏`
-      : `💳 *${unpaid.length}* payments still pending for last week's match — if you've already paid, just tick your team in the poll above to clear it 🙏`;
+      : `💳 *${unpaid}* payments still pending for last week's match — if you've already paid, just tick your team in the poll above to clear it 🙏`;
   // No mentions needed — we don't tag anyone in the poll-only style.
   const mentions: string[] = [];
   return { text, mentions };
