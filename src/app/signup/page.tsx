@@ -49,12 +49,21 @@ export default function SignupPage() {
         toast.error(res.error);
         return;
       }
-      // Bounce through the magic-link lander to get a session established.
+      // Bounce through the magic-link lander to get a session
+      // established. Then route based on whether they're an existing
+      // player (→ dashboard) or brand-new (→ /onboarding wizard for
+      // new club). The action returns isExistingPlayer; we honour
+      // that here instead of hard-coding /onboarding.
       await signIn("magic-link", {
         token: res.magicLinkToken,
         redirect: false,
       });
-      router.push("/onboarding");
+      if (res.isExistingPlayer) {
+        toast.success("Welcome back!");
+        router.push("/");
+      } else {
+        router.push("/onboarding");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {

@@ -96,7 +96,7 @@ export async function verifyPhoneSignup(args: {
   code: string;
   name: string;
 }): Promise<
-  | { ok: true; magicLinkToken: string }
+  | { ok: true; magicLinkToken: string; isExistingPlayer: boolean }
   | { ok: false; error: string }
 > {
   const phone = normalisePhone(args.phone);
@@ -128,6 +128,7 @@ export async function verifyPhoneSignup(args: {
   await db.phoneOtp.update({ where: { id: otp.id }, data: { usedAt: new Date() } });
 
   let user = await db.user.findUnique({ where: { phoneNumber: phone } });
+  let createdNew = false;
   if (!user) {
     // Synthetic email keeps User.email unique. They can claim a real
     // email later via profile settings if they want Google login too.
@@ -140,23 +141,48 @@ export async function verifyPhoneSignup(args: {
         name: name || null,
         phoneNumber: phone,
         email: `phone+${slug}-${Date.now().toString(36)}@matchtime.local`,
-        onboarded: false,
+        // Phone is verified — that's a complete handshake. Mark them
+        // onboarded so /page.tsx doesn't bounce them through /welcome
+        // (which is the "give us your name + phone" form they just
+        // effectively completed).
+        onboarded: true,
         isActive: true,
       },
     });
-  } else if (name && !user.name) {
-    await db.user.update({ where: { id: user.id }, data: { name } });
+    createdNew = true;
+  } else {
+    // Existing User found via phone — likely a player added through
+    // a club's WhatsApp group. Ensure name is set if they provided
+    // one + flip onboarded so the redirect logic doesn't push them
+    // through /welcome.
+    const patch: { name?: string; onboarded?: boolean } = {};
+    if (name && !user.name) patch.name = name;
+    if (!user.onboarded) patch.onboarded = true;
+    if (Object.keys(patch).length > 0) {
+      user = await db.user.update({ where: { id: user.id }, data: patch });
+    }
   }
 
+  // Where they go next depends on whether they're already a member of
+  // some org or not:
+  //   - existing player (memberships > 0) → land on dashboard so
+  //     they see their stats. Don't push them through /onboarding —
+  //     they're not starting a new club.
+  //   - brand-new (no memberships) → /onboarding wizard for new club.
+  const memberships = await db.membership.count({
+    where: { userId: user.id, leftAt: null },
+  });
+  const nextPath = memberships > 0 ? "/" : "/onboarding";
+
   // Issue a short-lived magic-link token — the client redirects to
-  // /r/<token>, the existing magic-link credentials provider signs them
-  // in, and deep-links them into /onboarding if they have no org yet.
+  // /r/<token>, the existing magic-link credentials provider signs
+  // them in, and deep-links them to nextPath.
   const token = signMagicLinkToken({
     userId: user.id,
     purpose: "sign-in",
-    nextPath: "/onboarding",
+    nextPath,
     ttlSeconds: 300, // 5 minutes — plenty to bounce through /r/*
   });
 
-  return { ok: true, magicLinkToken: token };
+  return { ok: true, magicLinkToken: token, isExistingPlayer: !createdNew && memberships > 0 };
 }

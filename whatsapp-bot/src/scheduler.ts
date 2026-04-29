@@ -29,14 +29,17 @@ export function initScheduler(waClient: Client, orgConfigs: Org[]) {
   client = waClient;
   orgs = orgConfigs;
 
-  // Poll every 5 minutes. Server handles the timing precision.
-  const intervalMs = (config.schedulerIntervalMinutes ?? 5) * 60 * 1000;
+  // Poll cadence comes from config (env-driven). Server handles all
+  // timing precision; the poll just decides "how stale can a queued
+  // instruction get before it lands". Defaults to 30s — fast enough
+  // that OTP DMs feel real-time without flooding the API.
+  const intervalMs = config.schedulerIntervalMs;
   intervalId = setInterval(tick, intervalMs);
   // Kick off immediately so startup picks up any overdue instructions.
   tick().catch((err) => console.error("Initial scheduler tick failed:", err));
 
   console.log(
-    `Scheduler started: polling due-posts every ${config.schedulerIntervalMinutes ?? 5}min for ${orgs.length} org(s)`,
+    `Scheduler started: polling due-posts every ${intervalMs / 1000}s for ${orgs.length} org(s)`,
   );
 }
 
