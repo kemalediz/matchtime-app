@@ -93,28 +93,45 @@ async function main() {
   // (react, reply) for the bot to perform.
   client.on("message", async (msg) => {
     try {
-      // 1-1 DMs (msg.from = "<phone>@c.us"): forward to the server's
-      // dm-reply endpoint. Server decides what to do — currently
-      // routing replies to roster check-in surveys and silently
-      // ignoring everything else. Skip our own outbound DMs.
+      // Diagnostic — log every incoming message's headline metadata
+      // so we can debug the DM-reply path without re-deploying.
+      // Trim if too noisy in production.
+      console.log(
+        `[msg] from=${msg.from} fromMe=${msg.fromMe} bodyLen=${(msg.body ?? "").length}`,
+      );
+
       if (msg.fromMe) return;
-      if (msg.from?.endsWith("@c.us")) {
-        const phone = msg.from.replace("@c.us", "").replace(/^\+/, "");
+
+      // 1-1 DM detection: anything that's NOT a group (@g.us) is
+      // treated as a DM. Sender JID can be @c.us (phone-keyed) or
+      // @lid (privacy-mode, opaque). For @c.us we extract the phone.
+      // For @lid we still forward — the server tries pushname-based
+      // resolution when phone is missing/unresolvable.
+      const isGroup = msg.from?.endsWith("@g.us");
+      if (!isGroup) {
         const text = (msg.body ?? "").trim();
         if (text.length === 0) return;
+        let phone = "";
+        if (msg.from?.endsWith("@c.us")) {
+          phone = msg.from.replace("@c.us", "").replace(/^\+/, "");
+        } else if (msg.from?.endsWith("@lid")) {
+          // No phone available; server attempts pushname fallback.
+          phone = "";
+        }
         try {
           await postDmReply({
             phone,
             body: text,
             waMessageId: msg.id?._serialized ?? "",
           });
+          console.log(`[dm] forwarded reply from=${msg.from}`);
         } catch (err) {
           console.error("dm-reply forward failed:", err);
         }
         return;
       }
-      if (!msg.from?.endsWith("@g.us")) return;
-      if (!isMonitoredGroup(msg.from)) return;
+
+      if (!isMonitoredGroup(msg.from!)) return;
 
       // WhatsApp pushname — the sender's self-set profile name. Used
       // for auto-enrolment on new phones and for name-based fallback
