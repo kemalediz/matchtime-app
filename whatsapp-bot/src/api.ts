@@ -113,6 +113,21 @@ export async function ackInstruction(ack: {
   }
 }
 
+export async function postDmReply(params: {
+  phone: string;
+  body: string;
+  waMessageId: string;
+}): Promise<void> {
+  const res = await fetch(`${config.apiUrl}/api/whatsapp/dm-reply`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    console.error("dm-reply post failed:", res.status, await res.text());
+  }
+}
+
 export async function postReaction(params: {
   waMessageId: string;
   emoji: string;

@@ -96,6 +96,8 @@ model User {
   activityPositions PlayerActivityPosition[]
   ratingAdjustments RatingAdjustment[]
   aliases           UserAlias[]
+  rosterSurveyDMs   RosterSurveyDM[]
+  rosterSurveyResponses RosterSurveyResponse[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -134,10 +136,11 @@ model Organisation {
   /// and prefers tracking offline.
   paymentTrackingEnabled Boolean @default(false)
 
-  memberships Membership[]
-  activities  Activity[]
-  sports      Sport[]
-  userAliases UserAlias[]
+  memberships    Membership[]
+  activities     Activity[]
+  sports         Sport[]
+  userAliases    UserAlias[]
+  rosterSurveys  RosterSurvey[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -318,6 +321,74 @@ model PhoneOtp {
   createdAt DateTime @default(now())
 
   @@index([phone, createdAt])
+}
+
+/**
+ * Roster check-in survey. An admin triggers one when attendance has
+ * been thin and they want to know who's still committed. The bot
+ * DMs every active member; replies are LLM-classified into
+ * in/maybe/out/unclear; admins read raw replies + override on the
+ * dashboard.
+ *
+ * Lifecycle: status="open" while DMs are out and replies trickle in.
+ * Once admin closes it (or after a manual cleanup pass), status="closed"
+ * — daily group updates stop, no more replies are accepted.
+ */
+model RosterSurvey {
+  id           String  @id @default(cuid())
+  orgId        String
+  org          Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sentByUserId String                                               // admin who triggered
+  status       String  @default("open")                             // "open" | "closed"
+  closedAt     DateTime?
+  closedById   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  dms       RosterSurveyDM[]
+  responses RosterSurveyResponse[]
+
+  @@index([orgId, status])
+}
+
+/// One row per surveyed member — tracks the outbound DM. `sentAt`
+/// fills in when the bot ACKs delivery; `failedReason` populated if
+/// WhatsApp rejected the DM (e.g. number blocked the bot or doesn't
+/// have an account). Admin dashboard uses this to show "pending"
+/// (no Response yet) vs "delivery failed".
+model RosterSurveyDM {
+  id           String  @id @default(cuid())
+  surveyId     String
+  survey       RosterSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User    @relation(fields: [userId], references: [id])
+  botJobId     String?
+  sentAt       DateTime?
+  failedReason String?
+  createdAt    DateTime @default(now())
+
+  @@unique([surveyId, userId])
+  @@index([surveyId])
+}
+
+/// One row per (survey, user) — latest reply wins (upsert on each
+/// new DM from the same user). `rawReply` is the verbatim text the
+/// user sent so the admin can read it on the dashboard. `response`
+/// is the LLM's classification; `adminOverride=true` means an admin
+/// changed it manually and the LLM shouldn't re-flip it.
+model RosterSurveyResponse {
+  id            String   @id @default(cuid())
+  surveyId      String
+  survey        RosterSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  response      String                                              // "in" | "maybe" | "out" | "unclear"
+  rawReply      String   @db.Text
+  classifiedAt  DateTime @default(now())
+  adminOverride Boolean  @default(false)
+
+  @@unique([surveyId, userId])
+  @@index([surveyId])
 }
 
 model BotJob {

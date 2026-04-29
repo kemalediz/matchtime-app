@@ -9,6 +9,7 @@ import {
   postPollVote,
   postGroupJoin,
   postGroupLeave,
+  postDmReply,
 } from "./api.js";
 import {
   enqueueForAnalysis,
@@ -92,6 +93,26 @@ async function main() {
   // (react, reply) for the bot to perform.
   client.on("message", async (msg) => {
     try {
+      // 1-1 DMs (msg.from = "<phone>@c.us"): forward to the server's
+      // dm-reply endpoint. Server decides what to do — currently
+      // routing replies to roster check-in surveys and silently
+      // ignoring everything else. Skip our own outbound DMs.
+      if (msg.fromMe) return;
+      if (msg.from?.endsWith("@c.us")) {
+        const phone = msg.from.replace("@c.us", "").replace(/^\+/, "");
+        const text = (msg.body ?? "").trim();
+        if (text.length === 0) return;
+        try {
+          await postDmReply({
+            phone,
+            body: text,
+            waMessageId: msg.id?._serialized ?? "",
+          });
+        } catch (err) {
+          console.error("dm-reply forward failed:", err);
+        }
+        return;
+      }
       if (!msg.from?.endsWith("@g.us")) return;
       if (!isMonitoredGroup(msg.from)) return;
 
