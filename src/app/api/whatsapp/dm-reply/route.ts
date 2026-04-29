@@ -206,7 +206,7 @@ export async function POST(request: Request) {
     confirmation = `Got it ${firstName}, marked you as maybe — we'll pencil you in case-by-case 👍`;
   } else {
     // "out"
-    confirmation = `No worries ${firstName}, marked you as stepping back. Thanks for letting us know — we'll take you off the regulars list. If you ever change your mind, message any of the admins and they'll add you back in 🙏`;
+    confirmation = `No worries ${firstName}, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏`;
   }
   if (phoneNoPlus) {
     await db.botJob.create({
