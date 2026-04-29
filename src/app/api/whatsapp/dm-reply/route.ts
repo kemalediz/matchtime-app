@@ -203,7 +203,7 @@ export async function POST(request: Request) {
   if (classification.category === "in") {
     confirmation = `Got it ${firstName}, marked you as in 👍 — thanks!`;
   } else if (classification.category === "maybe") {
-    confirmation = `Got it ${firstName}, marked you as maybe — we'll pencil you in case-by-case 👍`;
+    confirmation = `Got it ${firstName}, marked you as maybe 👍 — just say *IN* in the group whenever you want to play that week, no need to confirm in advance.`;
   } else {
     // "out"
     confirmation = `No worries ${firstName}, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏`;
