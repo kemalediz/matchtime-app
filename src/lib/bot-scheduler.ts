@@ -228,7 +228,9 @@ async function buildUnpaidTail(
       activity: {
         select: {
           orgId: true,
-          org: { select: { paymentHolderId: true } },
+          org: {
+            select: { paymentHolderId: true, paymentTrackingEnabled: true },
+          },
         },
       },
       attendances: {
@@ -239,6 +241,11 @@ async function buildUnpaidTail(
     },
   });
   if (!lastCompleted) return null;
+  // Org-level kill switch — skip the unpaid tail entirely when the
+  // org has opted out of payment tracking. Poll still posts at
+  // match-end (gated separately by Match.postMatchEndFlow); only
+  // the chase + tracking side-effects go silent.
+  if (!lastCompleted.activity.org.paymentTrackingEnabled) return null;
 
   // Exclude the payment holder — they're the one collecting fees from
   // others, including them in the unpaid chase would be embarrassing.

@@ -120,6 +120,20 @@ model Organisation {
   /// exclusion if we can't determine.
   paymentHolderId String?
 
+  /// Per-org flag: should the bot track who has paid and chase
+  /// outstanding payments? When `true`, the daily 17:00 update
+  /// includes the "💳 N payments still pending" tail, the LLM
+  /// processes "X paid for N players" admin messages into
+  /// PaymentCredit rows / Attendance.paidAt updates, and ticking
+  /// the WA payment poll writes paidAt on the voter's Attendance.
+  /// When `false`, the payment poll still posts at match-end (it's
+  /// gated separately by Match.postMatchEndFlow) — but every other
+  /// payment-tracking side-effect goes silent. Default OFF: orgs
+  /// opt in to tracking. Sutton FC opted out 2026-04-29 because
+  /// Elvin (the money taker) finds the chase overhead unnecessary
+  /// and prefers tracking offline.
+  paymentTrackingEnabled Boolean @default(false)
+
   memberships Membership[]
   activities  Activity[]
   sports      Sport[]

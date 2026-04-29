@@ -1093,6 +1093,18 @@ async function executeVerdict(args: {
   //          with the count.
   if (verdict.intent === "bulk_payment_credit" && verdict.bulkPayment) {
     try {
+      // Org-level kill switch: when payment tracking is off for this
+      // org, silently ignore the credit attempt. Bot stays silent —
+      // the admin's message gets a noise-classification trail in
+      // AnalyzedMessage and that's it.
+      const orgFlag = await db.organisation.findUnique({
+        where: { id: orgId },
+        select: { paymentTrackingEnabled: true },
+      });
+      if (!orgFlag?.paymentTrackingEnabled) {
+        finalReply = null;
+        finalReact = null;
+      } else {
       // Authorise: only OWNER/ADMIN of THIS org.
       const role = user
         ? (
@@ -1221,6 +1233,7 @@ async function executeVerdict(args: {
           }
         }
       }
+      } // end paymentTrackingEnabled gate
     } catch (err) {
       console.error("[analyze] bulk_payment_credit failed:", err);
       finalReply = null;

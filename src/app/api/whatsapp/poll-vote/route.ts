@@ -106,6 +106,19 @@ export async function POST(request: Request) {
   // Payment poll — any non-null option (either team) means "paid".
   // Un-vote clears the flag.
   if (isPaymentPoll) {
+    // Org-level kill switch: when payment tracking is off, the poll
+    // is still posted by the bot at match-end so people can see it
+    // and Elvin (or whoever collects) can eyeball who ticked. We
+    // just don't write paidAt server-side. ACK with a clear marker
+    // so the bot logs aren't noisy.
+    const orgRow = await db.match.findUnique({
+      where: { id: matchId },
+      select: { activity: { select: { org: { select: { paymentTrackingEnabled: true } } } } },
+    });
+    if (!orgRow?.activity.org.paymentTrackingEnabled) {
+      return NextResponse.json({ ok: true, ignored: "payment-tracking-disabled" });
+    }
+
     const existing = await db.attendance.findUnique({
       where: { matchId_userId: { matchId, userId: voter.id } },
     });
