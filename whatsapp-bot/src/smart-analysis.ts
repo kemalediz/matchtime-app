@@ -25,6 +25,12 @@ import {
 } from "./api.js";
 
 const HISTORY_PER_GROUP = 15;
+// Ten-minute batches keep Claude cost ~£2/month at Sutton's volume
+// (cache hit on system + match context, only the new messages cost
+// fresh tokens). A regex fast-path in handlers.ts catches obvious
+// IN/OUT/score messages BEFORE they queue here, so they react
+// near-instantly without burning an LLM call. Anything ambiguous
+// still waits for the 10-min batch.
 const FLUSH_INTERVAL_MS = 10 * 60 * 1000;
 const URGENCY_WINDOW_MS = 60 * 60 * 1000; // within 1h of kickoff → flush immediately
 

@@ -14,6 +14,7 @@ import { balanceTeams, type BalancingStrategy } from "./team-balancer";
 import type { PlayerWithRating } from "@/types";
 import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
+import { computePlayerRating } from "./player-rating";
 
 export type GenerateTeamsResult =
   | { ok: true; groupPost: string; matchId: string }
@@ -62,16 +63,20 @@ export async function generateTeamsForMatch(
         orderBy: { createdAt: "desc" },
         take: 60,
       });
-      const avgRating =
-        ratings.length >= 3
-          ? ratings.reduce((s, r) => s + r.score, 0) / ratings.length
-          : a.user.seedRating ?? 5.0;
+      // Bayesian blend: seed acts as a prior with weight 3, smoothly
+      // dominated by peer ratings as more arrive. Replaces the old
+      // step function (which jumped from pure-seed → pure-peer at
+      // exactly 3 ratings).
+      const { rating } = computePlayerRating({
+        seedRating: a.user.seedRating ?? null,
+        peerRatings: ratings.map((r) => r.score),
+      });
       const pap = a.user.activityPositions.find((p) => p.activityId === match.activityId);
       return {
         id: a.userId,
         name: a.user.name ?? "Unknown",
         positions: pap?.positions ?? [],
-        rating: avgRating,
+        rating,
         image: a.user.image,
       };
     }),

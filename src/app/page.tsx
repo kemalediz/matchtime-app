@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { LandingPage } from "@/components/landing/landing-page";
 import { getMomSummaries } from "@/lib/mom";
+import { computePlayerRating } from "@/lib/player-rating";
 
 function getGreeting(hour: number): string {
   if (hour < 5) return "Good night";
@@ -105,6 +106,23 @@ export default async function DashboardPage() {
       match: { status: "COMPLETED", isHistorical: false },
     },
   });
+
+  // Display rating — same Bayesian blend the team balancer uses
+  // (computePlayerRating). Seed acts as a prior with weight 3, so
+  // ratings move smoothly from the first peer rating instead of
+  // jumping at a threshold. The user.seedRating tile that was here
+  // before never moved despite weeks of peer ratings flowing in.
+  const myRatings = await db.rating.findMany({
+    where: { playerId: session.user.id },
+    orderBy: { createdAt: "desc" },
+    take: 60,
+    select: { score: true },
+  });
+  const { rating: displayRating, source: ratingSource, peerCount: myPeerCount } =
+    computePlayerRating({
+      seedRating: user.seedRating ?? null,
+      peerRatings: myRatings.map((r) => r.score),
+    });
   // "MoM wins" = matches where this user had the highest vote count
   // (ties count as a shared win for everyone tied at the top). Plain
   // count-of-matches-with-any-vote was misleading — a single sympathy
@@ -204,8 +222,13 @@ export default async function DashboardPage() {
             <Users className="w-4 h-4" />
             <p className="text-xs font-medium uppercase tracking-wider">Rating</p>
           </div>
-          <p className="text-3xl font-bold mt-2">
-            {user.seedRating != null ? user.seedRating.toFixed(1) : "—"}
+          <p className="text-3xl font-bold mt-2">{displayRating.toFixed(1)}</p>
+          <p className="text-[11px] opacity-70 mt-0.5">
+            {ratingSource === "peer"
+              ? `${myPeerCount} peer rating${myPeerCount === 1 ? "" : "s"}`
+              : ratingSource === "blended"
+              ? `blended (${myPeerCount} peer + seed)`
+              : "seed · waiting for peer ratings"}
           </p>
         </div>
       </div>

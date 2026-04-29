@@ -67,7 +67,10 @@ export default function RatePlayersPage() {
       });
       if (momPick) await submitMoMVote(matchId, { playerId: momPick });
       toast.success("Ratings submitted! Thanks for voting.");
-      router.push(`/matches/${matchId}`);
+      // Land them on their dashboard — magic-link sign-in is already
+      // active, so they see their stats (rating, MoM count, recent
+      // results) without another click.
+      router.push("/");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit");
     } finally {
