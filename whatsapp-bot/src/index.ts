@@ -105,8 +105,8 @@ async function main() {
       // 1-1 DM detection: anything that's NOT a group (@g.us) is
       // treated as a DM. Sender JID can be @c.us (phone-keyed) or
       // @lid (privacy-mode, opaque). For @c.us we extract the phone.
-      // For @lid we still forward — the server tries pushname-based
-      // resolution when phone is missing/unresolvable.
+      // For @lid we forward an empty phone + the sender's pushname,
+      // and let the server resolve by name against open survey DMs.
       const isGroup = msg.from?.endsWith("@g.us");
       if (!isGroup) {
         const text = (msg.body ?? "").trim();
@@ -114,17 +114,33 @@ async function main() {
         let phone = "";
         if (msg.from?.endsWith("@c.us")) {
           phone = msg.from.replace("@c.us", "").replace(/^\+/, "");
-        } else if (msg.from?.endsWith("@lid")) {
-          // No phone available; server attempts pushname fallback.
-          phone = "";
+        }
+        // Pushname / contact name — used as fallback when phone is
+        // hidden by @lid privacy.
+        let authorName: string | undefined;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rawNotify = (msg as any)._data?.notifyName;
+        if (typeof rawNotify === "string" && rawNotify.trim()) {
+          authorName = rawNotify.trim();
+        } else {
+          try {
+            const contact = await msg.getContact();
+            const pn = contact.pushname || contact.name;
+            if (pn && pn.trim()) authorName = pn.trim();
+          } catch {
+            /* non-fatal */
+          }
         }
         try {
           await postDmReply({
             phone,
+            authorName,
             body: text,
             waMessageId: msg.id?._serialized ?? "",
           });
-          console.log(`[dm] forwarded reply from=${msg.from}`);
+          console.log(
+            `[dm] forwarded reply from=${msg.from} authorName=${authorName ?? "?"}`,
+          );
         } catch (err) {
           console.error("dm-reply forward failed:", err);
         }

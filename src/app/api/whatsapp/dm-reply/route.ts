@@ -34,23 +34,71 @@ export async function POST(request: Request) {
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
-  const { phone, body: text, waMessageId } = body as {
+  const { phone, body: text, waMessageId, authorName } = body as {
     phone?: string;
     body?: string;
     waMessageId?: string;
+    authorName?: string;
   };
-  if (!phone || !text || !waMessageId) {
-    return NextResponse.json({ error: "phone, body, waMessageId required" }, { status: 400 });
+  if (!text || !waMessageId) {
+    return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
   }
 
-  const normalised = normalisePhone(phone);
-  if (!normalised) {
-    return NextResponse.json({ ok: true, ignored: "bad-phone" });
+  // Try phone first (most accurate). Falls through to pushname-based
+  // resolution when phone is empty or doesn't match any User —
+  // happens when WhatsApp's @lid privacy mode hides the sender's
+  // real phone from the chat ID.
+  let user: {
+    id: string;
+    name: string | null;
+    memberships: { orgId: string }[];
+  } | null = null;
+
+  if (phone && phone.trim().length > 0) {
+    const normalised = normalisePhone(phone);
+    if (normalised) {
+      user = await db.user.findUnique({
+        where: { phoneNumber: normalised },
+        select: { id: true, name: true, memberships: { select: { orgId: true } } },
+      });
+    }
   }
-  const user = await db.user.findUnique({
-    where: { phoneNumber: normalised },
-    select: { id: true, name: true, memberships: { select: { orgId: true } } },
-  });
+
+  if (!user && authorName && authorName.trim().length >= 2) {
+    // Pushname-based fallback. Scope to users who currently have an
+    // OPEN RosterSurveyDM so we're not guessing across the whole
+    // user base. Match first-name fuzzy with relaxed prefix —
+    // identical heuristic to the analyze-route resolver.
+    const norm = (s: string) =>
+      s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const pushFirst = norm(authorName).split(/\s+/).filter(Boolean)[0] ?? "";
+
+    const candidates = await db.rosterSurveyDM.findMany({
+      where: { survey: { status: "open" } },
+      include: { user: { select: { id: true, name: true, memberships: { select: { orgId: true } } } } },
+    });
+
+    const equals = candidates.filter(
+      (c) => c.user.name && norm(c.user.name) === norm(authorName),
+    );
+    let pick = equals.length === 1 ? equals[0] : null;
+    if (!pick) {
+      const byFirst = candidates.filter((c) => {
+        if (!c.user.name) return false;
+        const dbFirst = norm(c.user.name).split(/\s+/).filter(Boolean)[0] ?? "";
+        return (
+          dbFirst === pushFirst ||
+          (dbFirst.length >= 3 && pushFirst.length >= 2 && dbFirst.startsWith(pushFirst)) ||
+          (pushFirst.length >= 3 && dbFirst.length >= 2 && pushFirst.startsWith(dbFirst))
+        );
+      });
+      if (byFirst.length === 1) pick = byFirst[0];
+    }
+    if (pick) {
+      user = pick.user;
+    }
+  }
+
   if (!user) {
     return NextResponse.json({ ok: true, ignored: "unknown-sender" });
   }
@@ -78,7 +126,16 @@ export async function POST(request: Request) {
   });
 
   const firstName = user.name?.split(/\s+/)[0] ?? "mate";
-  const phoneNoPlus = normalised.replace(/^\+/, "");
+  // Resolve a phone for the outbound confirmation/clarification DM.
+  // Prefer the User's stored phoneNumber (canonical) over whatever
+  // came in on the request — the request may have been an @lid DM
+  // with no phone at all. If the user has no phone on file we just
+  // can't DM them back; we still save the response and return.
+  const userPhone = await db.user.findUnique({
+    where: { id: user.id },
+    select: { phoneNumber: true },
+  });
+  const phoneNoPlus = userPhone?.phoneNumber?.replace(/^\+/, "") ?? null;
 
   if (classification.category === "unclear") {
     // Don't save a response yet — re-ask politely with the original
@@ -93,14 +150,20 @@ export async function POST(request: Request) {
       ``,
       `Quick word back is enough 🙏`,
     ].join("\n");
-    await db.botJob.create({
-      data: {
-        orgId: dm.survey.org.id,
-        kind: "dm",
-        phone: phoneNoPlus,
-        text: clarification,
-      },
-    });
+    if (phoneNoPlus) {
+      await db.botJob.create({
+        data: {
+          orgId: dm.survey.org.id,
+          kind: "dm",
+          phone: phoneNoPlus,
+          text: clarification,
+        },
+      });
+    } else {
+      console.warn(
+        `[dm-reply] no phone on file for user ${user.id}; clarification not sent`,
+      );
+    }
     return NextResponse.json({
       ok: true,
       action: "clarification-sent",
@@ -145,14 +208,20 @@ export async function POST(request: Request) {
     // "out"
     confirmation = `No worries ${firstName}, marked you as stepping back. Thanks for letting us know — we'll take you off the regulars list. If you ever change your mind, message any of the admins and they'll add you back in 🙏`;
   }
-  await db.botJob.create({
-    data: {
-      orgId: dm.survey.org.id,
-      kind: "dm",
-      phone: phoneNoPlus,
-      text: confirmation,
-    },
-  });
+  if (phoneNoPlus) {
+    await db.botJob.create({
+      data: {
+        orgId: dm.survey.org.id,
+        kind: "dm",
+        phone: phoneNoPlus,
+        text: confirmation,
+      },
+    });
+  } else {
+    console.warn(
+      `[dm-reply] no phone on file for user ${user.id}; confirmation not sent (response saved)`,
+    );
+  }
 
   return NextResponse.json({
     ok: true,

@@ -117,6 +117,7 @@ export async function postDmReply(params: {
   phone: string;
   body: string;
   waMessageId: string;
+  authorName?: string; // pushname — server uses for @lid fallback
 }): Promise<void> {
   const res = await fetch(`${config.apiUrl}/api/whatsapp/dm-reply`, {
     method: "POST",
