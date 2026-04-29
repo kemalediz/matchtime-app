@@ -112,6 +112,11 @@ export async function POST(request: Request) {
     // (leftAt set) but is now visible in the WhatsApp group again,
     // restore them — same restoreMembership semantics the analyze
     // route uses for re-engaging members.
+    //
+    // Always stamp lastSeenInGroupAt — that's how DM-blast features
+    // (roster check-in survey) scope to members currently in the
+    // WhatsApp group rather than the whole DB roster.
+    const now = new Date();
     const existing = await db.membership.findUnique({
       where: { userId_orgId: { userId: user.id, orgId: org.id } },
     });
@@ -121,14 +126,18 @@ export async function POST(request: Request) {
           userId: user.id,
           orgId: org.id,
           role: "PLAYER",
+          lastSeenInGroupAt: now,
         },
       });
-    } else if (existing.leftAt !== null) {
+    } else {
       await db.membership.update({
         where: { id: existing.id },
-        data: { leftAt: null },
+        data: {
+          lastSeenInGroupAt: now,
+          ...(existing.leftAt !== null ? { leftAt: null } : {}),
+        },
       });
-      restoredMembership += 1;
+      if (existing.leftAt !== null) restoredMembership += 1;
     }
   }
 

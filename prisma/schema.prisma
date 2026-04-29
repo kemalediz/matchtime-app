@@ -189,6 +189,14 @@ model Membership {
   /// Cleared once an admin edits the player (confirming they're real).
   provisionallyAddedAt DateTime?
 
+  /// Last time the bot saw this user in the org's WhatsApp group
+  /// participant list (via /api/whatsapp/sync-participants on bot
+  /// startup). Used to scope DM-blast features (roster check-in
+  /// survey) to only members currently in the group, per Kemal's
+  /// "don't message people who already left" rule. Null = never seen
+  /// in a sync (could be pre-sync legacy member, or genuinely gone).
+  lastSeenInGroupAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@unique([userId, orgId])

@@ -12,6 +12,10 @@
  * Skips:
  *   - Members with no phone on file (we can't DM them).
  *   - Soft-removed memberships (leftAt != null).
+ *   - Members not seen in the latest WhatsApp group sync — Kemal's
+ *     "don't message people who already left the WA group" rule. We
+ *     trust Membership.lastSeenInGroupAt set by the bot's startup
+ *     sync; require it to be within the last 7 days.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
@@ -48,6 +52,7 @@ async function main() {
     process.exit(1);
   }
 
+  const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const members = await db.membership.findMany({
     where: {
       orgId: org.id,
@@ -60,15 +65,27 @@ async function main() {
     },
   });
 
+  let skippedNotInGroup = 0;
   const eligible = members.filter((m) => {
     if (!m.user.phoneNumber) return false;
     if (testOnlyMe) return m.user.phoneNumber === TEST_PHONE_E164;
+    // Must have been seen in the WA group sync within the last 7 days.
+    // Members predating sync (lastSeenInGroupAt = null) are excluded
+    // until the bot's startup sync sees them.
+    if (!m.lastSeenInGroupAt || m.lastSeenInGroupAt < SEVEN_DAYS_AGO) {
+      skippedNotInGroup += 1;
+      return false;
+    }
     return true;
   });
 
   console.log(`Org: ${org.name}`);
   console.log(`Mode: ${testOnlyMe ? "TEST (Kemal only)" : "REAL (all eligible members)"}`);
-  console.log(`Eligible: ${eligible.length} member(s) with phone numbers.\n`);
+  console.log(`Eligible: ${eligible.length} member(s) with phone numbers + seen in WA group sync.`);
+  if (!testOnlyMe && skippedNotInGroup > 0) {
+    console.log(`  (skipped ${skippedNotInGroup} active members NOT in the latest WA group sync)`);
+  }
+  console.log("");
 
   if (eligible.length === 0) {
     console.log("Nobody to DM. Aborting.");
