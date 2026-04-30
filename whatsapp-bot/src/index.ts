@@ -156,11 +156,27 @@ async function main() {
   // (react, reply) for the bot to perform.
   client.on("message", async (msg) => {
     try {
+      // whatsapp-web.js gotcha: for messages from chats the bot
+      // hasn't fully synced yet, msg.body is sometimes empty but the
+      // raw payload still carries the text in msg._data.body. Fall
+      // back to it before deciding the message is empty/media.
+      // Discovered when the morning roster-survey DMs landed: 50+
+      // inbound replies all logged as bodyLen=0 even though Kemal
+      // could see them as plain text in WhatsApp.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawBody = (msg as any)._data?.body;
+      const effectiveBody =
+        typeof msg.body === "string" && msg.body.length > 0
+          ? msg.body
+          : typeof rawBody === "string"
+            ? rawBody
+            : "";
+
       // Diagnostic — log every incoming message's headline metadata
       // so we can debug the DM-reply path without re-deploying.
       // Trim if too noisy in production.
       console.log(
-        `[msg] from=${msg.from} fromMe=${msg.fromMe} type=${msg.type} bodyLen=${(msg.body ?? "").length} hasMedia=${msg.hasMedia ?? false}`,
+        `[msg] from=${msg.from} fromMe=${msg.fromMe} type=${msg.type} bodyLen=${(msg.body ?? "").length} dataBodyLen=${typeof rawBody === "string" ? rawBody.length : "?"} hasMedia=${msg.hasMedia ?? false}`,
       );
 
       if (msg.fromMe) return;
@@ -172,7 +188,7 @@ async function main() {
       // and let the server resolve by name against open survey DMs.
       const isGroup = msg.from?.endsWith("@g.us");
       if (!isGroup) {
-        const text = (msg.body ?? "").trim();
+        const text = effectiveBody.trim();
 
         // Non-text replies (voice notes, images, stickers, audio,
         // video) come in with empty msg.body. The roster-survey
@@ -260,7 +276,7 @@ async function main() {
       // Context buffer the analyser reads for nuanced classification.
       recordHistory(msg.from, {
         authorName: authorName ?? null,
-        body: msg.body ?? "",
+        body: effectiveBody,
         timestamp: new Date((msg.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
       });
 
