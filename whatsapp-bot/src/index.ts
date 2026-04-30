@@ -160,7 +160,7 @@ async function main() {
       // so we can debug the DM-reply path without re-deploying.
       // Trim if too noisy in production.
       console.log(
-        `[msg] from=${msg.from} fromMe=${msg.fromMe} bodyLen=${(msg.body ?? "").length}`,
+        `[msg] from=${msg.from} fromMe=${msg.fromMe} type=${msg.type} bodyLen=${(msg.body ?? "").length} hasMedia=${msg.hasMedia ?? false}`,
       );
 
       if (msg.fromMe) return;
@@ -173,7 +173,34 @@ async function main() {
       const isGroup = msg.from?.endsWith("@g.us");
       if (!isGroup) {
         const text = (msg.body ?? "").trim();
-        if (text.length === 0) return;
+
+        // Non-text replies (voice notes, images, stickers, audio,
+        // video) come in with empty msg.body. The roster-survey
+        // classifier only handles text — nudge the sender to retype
+        // in words. Reply at most once per inbound non-text DM so we
+        // don't spam reactions/system events; the server side gates
+        // on the user's open-survey state too.
+        if (text.length === 0) {
+          const isMediaReply =
+            msg.hasMedia === true ||
+            ["audio", "ptt", "image", "video", "sticker", "document"].includes(
+              String(msg.type),
+            );
+          if (isMediaReply) {
+            try {
+              await msg.reply(
+                "Hey 👋 I can only read text replies for the check-in. Could you type a quick word or two?\n\n" +
+                  "• \"yes\" / \"I'm in\" — keep me on the roster\n" +
+                  "• \"maybe\" / \"depends\"\n" +
+                  "• \"not for now\" / \"out\"",
+              );
+              console.log(`[dm] nudged non-text reply from=${msg.from} type=${msg.type}`);
+            } catch (err) {
+              console.error("dm nudge reply failed:", err);
+            }
+          }
+          return;
+        }
         let phone = "";
         if (msg.from?.endsWith("@c.us")) {
           phone = msg.from.replace("@c.us", "").replace(/^\+/, "");
