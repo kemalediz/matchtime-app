@@ -65,13 +65,39 @@ export async function POST(request: Request) {
   }
 
   if (!user && authorName && authorName.trim().length >= 2) {
+    // Pushname can sometimes be the user's WhatsApp-display phone
+    // ("+44 7887 275188") rather than a real name. If it parses as
+    // a phone, try the phone path before falling through to name
+    // fuzzy-matching.
+    const digitsOnly = authorName.replace(/[^\d]/g, "");
+    if (digitsOnly.length >= 10) {
+      const normalised = normalisePhone(`+${digitsOnly}`);
+      if (normalised) {
+        const phoneUser = await db.user.findUnique({
+          where: { phoneNumber: normalised },
+          select: { id: true, name: true, memberships: { select: { orgId: true } } },
+        });
+        if (phoneUser) user = phoneUser;
+      }
+    }
+  }
+
+  if (!user && authorName && authorName.trim().length >= 2) {
     // Pushname-based fallback. Scope to users who currently have an
     // OPEN RosterSurveyDM so we're not guessing across the whole
-    // user base. Match first-name fuzzy with relaxed prefix —
-    // identical heuristic to the analyze-route resolver.
+    // user base. Three layered strategies, each decisive only when
+    // exactly one candidate matches:
+    //   1. Exact normalized equality
+    //   2. Substring containment in either direction (so "Mehmet Unal
+    //      Sutton Football" pushname resolves to DB "Mehmet Unal", and
+    //      DB "Aykut Arsoy" resolves to pushname "Aykut Arsoy Sutton
+    //      Football"). Requires ≥ 2 tokens on the matching side so
+    //      one-word names don't latch onto every pushname.
+    //   3. First-name fuzzy with relaxed prefix.
     const norm = (s: string) =>
       s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const pushFirst = norm(authorName).split(/\s+/).filter(Boolean)[0] ?? "";
+    const pushNorm = norm(authorName);
+    const pushFirst = pushNorm.split(/\s+/).filter(Boolean)[0] ?? "";
 
     const candidates = await db.rosterSurveyDM.findMany({
       where: { survey: { status: "open" } },
@@ -79,9 +105,21 @@ export async function POST(request: Request) {
     });
 
     const equals = candidates.filter(
-      (c) => c.user.name && norm(c.user.name) === norm(authorName),
+      (c) => c.user.name && norm(c.user.name) === pushNorm,
     );
     let pick = equals.length === 1 ? equals[0] : null;
+    if (!pick) {
+      const bySubstring = candidates.filter((c) => {
+        if (!c.user.name) return false;
+        const dbNorm = norm(c.user.name);
+        const dbTokens = dbNorm.split(/\s+/).filter(Boolean).length;
+        const pushTokens = pushNorm.split(/\s+/).filter(Boolean).length;
+        if (dbTokens >= 2 && pushNorm.includes(dbNorm)) return true;
+        if (pushTokens >= 2 && dbNorm.includes(pushNorm)) return true;
+        return false;
+      });
+      if (bySubstring.length === 1) pick = bySubstring[0];
+    }
     if (!pick) {
       const byFirst = candidates.filter((c) => {
         if (!c.user.name) return false;
@@ -183,6 +221,14 @@ export async function POST(request: Request) {
       classification,
     });
   }
+  // Idempotency gate for the confirmation DM: only queue an outbound
+  // DM if this is a NEW response or if the classification CHANGED
+  // since last time. Re-replays of an already-recorded reply (e.g.
+  // the recovery walk re-forwarding the same message) shouldn't
+  // double-DM the player.
+  const isNewOrChanged =
+    !existing || existing.response !== classification.category;
+
   await db.rosterSurveyResponse.upsert({
     where: { surveyId_userId: { surveyId: dm.surveyId, userId: user.id } },
     create: {
@@ -207,6 +253,14 @@ export async function POST(request: Request) {
   } else {
     // "out"
     confirmation = `No worries ${firstName}, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏`;
+  }
+  if (!isNewOrChanged) {
+    return NextResponse.json({
+      ok: true,
+      action: "recorded-no-redm",
+      category: classification.category,
+      confidence: classification.confidence,
+    });
   }
   if (phoneNoPlus) {
     await db.botJob.create({
