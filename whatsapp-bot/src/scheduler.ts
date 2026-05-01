@@ -25,6 +25,17 @@ let client: Client | null = null;
 let orgs: Org[] = [];
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
+// Outbound DM rate-limit. WhatsApp imposed a 21h spam restriction on
+// the MatchTime account on 2026-04-30 after the bot fired ~56 survey
+// DMs in quick succession. To stay under the radar going forward we
+// hold to ≤ 1 DM per DM_GAP_MS window. DMs whose turn hasn't come yet
+// are not acked — the server re-emits them on the next poll, and we
+// release them when the gap elapses. Group messages, polls, bench
+// prompts and reactions are unaffected (they fire inside an existing
+// chat and don't trigger anti-spam).
+const DM_GAP_MS = 60_000;
+let lastDmAtMs = 0;
+
 export function initScheduler(waClient: Client, orgConfigs: Org[]) {
   client = waClient;
   orgs = orgConfigs;
@@ -58,7 +69,20 @@ async function tick(): Promise<void> {
       if (!result || result.instructions.length === 0) continue;
       console.log(`[${org.orgName}] ${result.instructions.length} due instruction(s)`);
       for (const instr of result.instructions) {
+        if (instr.kind === "dm") {
+          const sinceLast = Date.now() - lastDmAtMs;
+          if (sinceLast < DM_GAP_MS) {
+            const remainingS = Math.ceil((DM_GAP_MS - sinceLast) / 1000);
+            console.log(
+              `[rate-limit] DM ${instr.key} held — ${remainingS}s until next DM allowed`,
+            );
+            continue; // not acked → server re-emits next tick
+          }
+        }
         await executeInstruction(instr, org.groupId);
+        if (instr.kind === "dm") {
+          lastDmAtMs = Date.now();
+        }
       }
     } catch (err) {
       console.error(`[${org.orgName}] scheduler tick failed:`, err);

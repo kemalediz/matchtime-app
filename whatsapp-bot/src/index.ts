@@ -148,87 +148,80 @@ async function main() {
 
     // One-shot recovery: if BOT_RECOVER_DM_REPLIES=1, walk every
     // non-group chat, pick up the most recent inbound text message
-    // from the last 18h, and replay it through the dm-reply pipe.
-    // Used after the survey rollout where msg.body came through
-    // empty for many DMs (whatsapp-web.js sync gap) and the replies
-    // were lost. Idempotent: dm-reply is upsert-by-(survey, user).
+    // from the last 48h, and replay it through the dm-reply pipe.
+    // Uses chat.lastMessage (already cached on the chat object) so
+    // we don't have to fetch history per chat — fetchMessages() was
+    // failing with whatsapp-web.js "waitForChatLoading" errors for
+    // chats not yet opened in the headless WA Web session.
+    // Idempotent: dm-reply is upsert-by-(survey, user).
     if (process.env.BOT_RECOVER_DM_REPLIES === "1") {
       try {
         console.log("[recover] BOT_RECOVER_DM_REPLIES=1 — replaying recent DM replies");
         const allChats = await client.getChats();
         const dms = allChats.filter((c) => !c.isGroup);
-        const cutoffSec = Math.floor(Date.now() / 1000) - 18 * 60 * 60;
+        const cutoffSec = Math.floor(Date.now() / 1000) - 48 * 60 * 60;
         let replayed = 0;
-        let skipped = 0;
+        let skippedNoLast = 0;
+        let skippedFromMe = 0;
+        let skippedOldOrEmpty = 0;
+        let errored = 0;
         for (const chat of dms) {
           try {
-            const msgs = await chat.fetchMessages({ limit: 5 });
-            // Find latest non-fromMe message in window with non-empty
-            // text (use either body or _data.body).
-            const inbound = msgs
-              .filter((m) => !m.fromMe)
-              .filter((m) => (m.timestamp ?? 0) >= cutoffSec)
-              .reverse(); // newest first
-            let candidate: (typeof inbound)[number] | null = null;
-            for (const m of inbound) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const dataBody = (m as any)._data?.body;
-              const t = (m.body && m.body.length > 0
-                ? m.body
-                : typeof dataBody === "string"
-                  ? dataBody
-                  : ""
-              ).trim();
-              if (t.length > 0) {
-                candidate = m;
-                break;
-              }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const lm = (chat as any).lastMessage;
+            if (!lm) {
+              skippedNoLast += 1;
+              continue;
             }
-            if (!candidate) {
-              skipped += 1;
+            if (lm.fromMe) {
+              skippedFromMe += 1;
+              continue;
+            }
+            if ((lm.timestamp ?? 0) < cutoffSec) {
+              skippedOldOrEmpty += 1;
               continue;
             }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const dataBody = (candidate as any)._data?.body;
-            const text =
-              candidate.body && candidate.body.length > 0
-                ? candidate.body
+            const dataBody = (lm as any)._data?.body;
+            const text = (
+              typeof lm.body === "string" && lm.body.length > 0
+                ? lm.body
                 : typeof dataBody === "string"
                   ? dataBody
-                  : "";
+                  : ""
+            ).trim();
+            if (text.length === 0) {
+              skippedOldOrEmpty += 1;
+              continue;
+            }
 
-            const fromId = candidate.from ?? "";
+            const fromId = (lm.from as string | undefined) ?? "";
             let phone = "";
             if (fromId.endsWith("@c.us")) {
               phone = fromId.replace("@c.us", "").replace(/^\+/, "");
             }
             let authorName: string | undefined;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const rawNotify = (candidate as any)._data?.notifyName;
+            const rawNotify = (lm as any)._data?.notifyName;
             if (typeof rawNotify === "string" && rawNotify.trim()) {
               authorName = rawNotify.trim();
-            } else {
-              try {
-                const contact = await candidate.getContact();
-                const pn = contact.pushname || contact.name;
-                if (pn && pn.trim()) authorName = pn.trim();
-              } catch {
-                /* non-fatal */
-              }
+            } else if (chat.name && chat.name.trim()) {
+              authorName = chat.name.trim();
             }
+
             await postDmReply({
               phone,
               authorName,
-              body: text.trim(),
-              waMessageId: candidate.id?._serialized ?? "",
+              body: text,
+              waMessageId: lm.id?._serialized ?? "",
             });
             replayed += 1;
             console.log(
-              `[recover] replayed from=${fromId} authorName=${authorName ?? "?"} text=${JSON.stringify(text.slice(0, 40))}`,
+              `[recover] replayed from=${fromId} authorName=${authorName ?? "?"} text=${JSON.stringify(text.slice(0, 50))}`,
             );
-            // gentle pacing so we don't hammer the server
             await new Promise((r) => setTimeout(r, 250));
           } catch (innerErr) {
+            errored += 1;
             console.error(
               "[recover] chat replay failed for",
               chat.id?._serialized,
@@ -236,7 +229,9 @@ async function main() {
             );
           }
         }
-        console.log(`[recover] done: replayed=${replayed} skipped=${skipped}`);
+        console.log(
+          `[recover] done: replayed=${replayed} noLast=${skippedNoLast} fromMe=${skippedFromMe} oldOrEmpty=${skippedOldOrEmpty} errored=${errored}`,
+        );
       } catch (err) {
         console.error(
           "[recover] failed:",
