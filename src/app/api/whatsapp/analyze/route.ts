@@ -784,8 +784,13 @@ async function executeVerdict(args: {
         }
       }
       try {
-        if (verdict.registerAttendance === "IN") {
-          const result = await registerAttendance(user.id, matchForOrg.id);
+        if (
+          verdict.registerAttendance === "IN" ||
+          verdict.registerAttendance === "BENCH"
+        ) {
+          const result = await registerAttendance(user.id, matchForOrg.id, {
+            forceBench: verdict.registerAttendance === "BENCH",
+          });
           // `registerAttendance` returns { status, position } but position
           // is the raw 1-based index of the insertion. Re-derive the slot
           // within the bucket so the emoji matches what the player sees

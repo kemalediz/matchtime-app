@@ -71,7 +71,12 @@ export interface AnalysisVerdict {
   confidence: number;
   react: string | null;
   reply: string | null;
-  registerAttendance: "IN" | "OUT" | null;
+  /** "IN" = take a confirmed slot if available, else bench. "BENCH" =
+   *  player explicitly self-declared for bench ("for bench", "I'll
+   *  bench", "happy to sit on bench") — server forces BENCH regardless
+   *  of squad capacity, so they're not promoted to a confirmed slot
+   *  they didn't ask for. */
+  registerAttendance: "IN" | "OUT" | "BENCH" | null;
   /** Populated when intent = "score". `scoreRed` + `scoreYellow` correspond
    *  to the two team labels of the match's sport (usually Red/Yellow). */
   scoreRed: number | null;
@@ -136,7 +141,7 @@ Output schema:
       "confidence": 0..1,
       "react": "<emoji>" | null,
       "reply": "<text>" | null,
-      "registerAttendance": "IN" | "OUT" | null,
+      "registerAttendance": "IN" | "OUT" | "BENCH" | null,
       "scoreRed": <number> | null,
       "scoreYellow": <number> | null,
       "includeNames": [<string>, ...] | null,
@@ -151,8 +156,11 @@ Output schema:
 Intent rules:
 - "in": Clearly joining the match — either confirmed slot or bench standby. Patterns:
   • Direct IN: "IN", "I'm in", "count me in", "I'll play", "yes playing", "add me", "put me down".
-  • Bench self-declaration (sender knows squad is full and offers to stand by): "Bench: <their-own-name>", "I'll bench tonight", "happy to bench", "put me on bench", "I'll be on the bench", "add me to the bench", "stick me on bench". These are still IN — the server's capacity logic decides confirmed vs bench based on current squad count, so always emit registerAttendance:"IN". The "Bench:" prefix specifically followed by the sender's own first/display name is the bot's reply format, but a player echoing it back is offering themselves; treat it as IN.
-  → registerAttendance: "IN". react: "👍" — ALWAYS the literal thumbs-up, never a slot-number keycap. The SERVER computes the correct slot emoji (1️⃣–🔟 / ✅ / 🪑) after writing attendance and overrides your react. Do NOT try to count slots yourself — you'll be wrong about who's already counted.
+  • Plain IN (no bench preference): "IN", "I'm in", "count me in", "I'll play", "yes playing", "add me", "put me down". Server decides confirmed vs bench based on capacity.
+  → registerAttendance: "IN". react: "👍".
+  • Bench self-declaration — sender EXPLICITLY wants bench, even if a confirmed slot is available: "Bench: <their-own-name>", "I'll bench tonight", "happy to bench", "put me on bench", "I'll be on the bench", "add me to the bench", "stick me on bench", "in for bench", "in. for bench", "in but on bench", "yes but bench", "I'll stand by on bench". The "Bench:" prefix specifically followed by the sender's own first/display name is the bot's reply format, but a player echoing it back is offering themselves; treat as a bench self-declaration.
+  → registerAttendance: "BENCH". react: "👍". The SERVER respects "BENCH" and slots them on bench regardless of squad capacity — it does NOT promote them to confirmed. Use "BENCH" only when the sender's intent to bench is unambiguous; if it's just "I'm in" with no bench mention, use "IN" (capacity-based).
+  Capacity emoji caveat (applies to both IN and BENCH): ALWAYS use the literal 👍, never a slot-number keycap. The SERVER computes the correct slot emoji (1️⃣–🔟 / ✅ / 🪑) after writing attendance and overrides your react. Do NOT try to count slots yourself — you'll be wrong about who's already counted.
 - "out": Dropping out without asking for cover ("OUT", "can't make it", "not playing tonight", "sorry guys, work").
   → registerAttendance: "OUT". react: "👋".
 - "replacement_request": Player asks the group to find cover because they're unwell, running late, or otherwise compromised. Two flavours:
@@ -1065,7 +1073,9 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
   const reply =
     typeof raw.reply === "string" && raw.reply.trim().length > 0 ? raw.reply.trim() : null;
   const registerAttendance =
-    raw.registerAttendance === "IN" || raw.registerAttendance === "OUT"
+    raw.registerAttendance === "IN" ||
+    raw.registerAttendance === "OUT" ||
+    raw.registerAttendance === "BENCH"
       ? raw.registerAttendance
       : null;
   const scoreRed =
@@ -1172,7 +1182,7 @@ export interface AnalysisResult {
   confidence: number;
   react: string | null;
   reply: string | null;
-  registerAttendance: "IN" | "OUT" | null;
+  registerAttendance: "IN" | "OUT" | "BENCH" | null;
   scoreRed: number | null;
   scoreYellow: number | null;
   includeNames: string[] | null;

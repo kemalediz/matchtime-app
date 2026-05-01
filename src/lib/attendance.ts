@@ -1,7 +1,17 @@
 import { db } from "./db";
 import { requestBenchConfirmationOnDrop, queueSlotEmojiRefresh } from "./bot-scheduler";
 
-export async function registerAttendance(userId: string, matchId: string) {
+export async function registerAttendance(
+  userId: string,
+  matchId: string,
+  options: {
+    /** When true, force BENCH regardless of squad capacity. Used when a
+     *  player explicitly self-declares "for bench" / "I'll bench" — we
+     *  respect their stated intent rather than letting capacity logic
+     *  promote them to a confirmed slot they didn't ask for. */
+    forceBench?: boolean;
+  } = {},
+) {
   const match = await db.match.findUnique({ where: { id: matchId } });
   if (!match) throw new Error("Match not found");
 
@@ -10,31 +20,34 @@ export async function registerAttendance(userId: string, matchId: string) {
   }
 
   // Idempotency: if the user is already CONFIRMED or BENCH for this
-  // match, don't touch position/status. Without this guard, calling
-  // registerAttendance twice (e.g. manual add followed by a matching
-  // WhatsApp message) would bump the user's position to maxPos+1,
-  // leaving a gap in the slot numbering.
+  // match, don't touch position/status — UNLESS the new request is an
+  // explicit forceBench AND they're currently CONFIRMED. That means
+  // they retroactively want bench (e.g. "actually put me on bench").
   const existing = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
   });
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {
-    const all = await db.attendance.findMany({
-      where: { matchId, status: { in: ["CONFIRMED", "BENCH"] } },
-      orderBy: { position: "asc" },
-    });
-    const confirmed = all.filter((a) => a.status === "CONFIRMED");
-    const bench = all.filter((a) => a.status === "BENCH");
-    const slot =
-      existing.status === "CONFIRMED"
-        ? confirmed.findIndex((a) => a.userId === userId) + 1
-        : bench.findIndex((a) => a.userId === userId) + 1;
-    return {
-      status: existing.status,
-      position: existing.position,
-      slot,
-      confirmedCount: confirmed.length,
-      maxPlayers: match.maxPlayers,
-    };
+    const wantsBenchDowngrade =
+      options.forceBench === true && existing.status === "CONFIRMED";
+    if (!wantsBenchDowngrade) {
+      const all = await db.attendance.findMany({
+        where: { matchId, status: { in: ["CONFIRMED", "BENCH"] } },
+        orderBy: { position: "asc" },
+      });
+      const confirmed = all.filter((a) => a.status === "CONFIRMED");
+      const bench = all.filter((a) => a.status === "BENCH");
+      const slot =
+        existing.status === "CONFIRMED"
+          ? confirmed.findIndex((a) => a.userId === userId) + 1
+          : bench.findIndex((a) => a.userId === userId) + 1;
+      return {
+        status: existing.status,
+        position: existing.position,
+        slot,
+        confirmedCount: confirmed.length,
+        maxPlayers: match.maxPlayers,
+      };
+    }
   }
 
   const maxPos = await db.attendance.aggregate({
@@ -50,12 +63,23 @@ export async function registerAttendance(userId: string, matchId: string) {
     where: { matchId, status: "BENCH" },
   });
 
-  const status = confirmedCount < match.maxPlayers ? "CONFIRMED" : "BENCH";
+  const status = options.forceBench
+    ? "BENCH"
+    : confirmedCount < match.maxPlayers
+      ? "CONFIRMED"
+      : "BENCH";
+
+  // For an existing CONFIRMED row downgrading to BENCH, keep their
+  // existing position so we don't shuffle the slot list.
+  const positionToWrite =
+    existing && options.forceBench && existing.status === "CONFIRMED"
+      ? existing.position
+      : nextPosition;
 
   const attendance = await db.attendance.upsert({
     where: { matchId_userId: { matchId, userId } },
-    create: { matchId, userId, status, position: nextPosition },
-    update: { status, position: nextPosition, respondedAt: new Date() },
+    create: { matchId, userId, status, position: positionToWrite },
+    update: { status, position: positionToWrite, respondedAt: new Date() },
   });
 
   // Friendly "slot" the bot uses for its reaction emoji. If the player
@@ -65,11 +89,19 @@ export async function registerAttendance(userId: string, matchId: string) {
   const slot =
     status === "CONFIRMED" ? confirmedCount + 1 : benchCount + 1;
 
+  // If we forced BENCH on a previously-confirmed user, slots may have
+  // shifted up for others — refresh emojis like cancelAttendance does.
+  if (existing?.status === "CONFIRMED" && status === "BENCH") {
+    await queueSlotEmojiRefresh(matchId);
+  }
+
   return {
     status: attendance.status,
     position: attendance.position,
     slot,
-    confirmedCount: confirmedCount + (status === "CONFIRMED" ? 1 : 0),
+    confirmedCount:
+      confirmedCount + (status === "CONFIRMED" && existing?.status !== "CONFIRMED" ? 1 : 0) -
+      (existing?.status === "CONFIRMED" && status === "BENCH" ? 1 : 0),
     maxPlayers: match.maxPlayers,
   };
 }
