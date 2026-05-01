@@ -310,6 +310,75 @@ export async function mergePlayers(
       data: { authorUserId: keepUserId },
     });
 
+    // 8a. RatingAdjustment — @@unique([matchId, userId]).
+    const dropRatingAdjs = await tx.ratingAdjustment.findMany({
+      where: { userId: dropUserId },
+    });
+    for (const ra of dropRatingAdjs) {
+      const exists = await tx.ratingAdjustment.findUnique({
+        where: { matchId_userId: { matchId: ra.matchId, userId: keepUserId } },
+      });
+      if (exists) await tx.ratingAdjustment.delete({ where: { id: ra.id } });
+      else await tx.ratingAdjustment.update({ where: { id: ra.id }, data: { userId: keepUserId } });
+    }
+
+    // 8b. RosterSurveyDM — @@unique([surveyId, userId]).
+    const dropDms = await tx.rosterSurveyDM.findMany({ where: { userId: dropUserId } });
+    for (const d of dropDms) {
+      const exists = await tx.rosterSurveyDM.findUnique({
+        where: { surveyId_userId: { surveyId: d.surveyId, userId: keepUserId } },
+      });
+      if (exists) await tx.rosterSurveyDM.delete({ where: { id: d.id } });
+      else await tx.rosterSurveyDM.update({ where: { id: d.id }, data: { userId: keepUserId } });
+    }
+
+    // 8c. RosterSurveyResponse — @@unique([surveyId, userId]). If both
+    //     have a response for the same survey, prefer the more recent
+    //     (by classifiedAt) and delete the older one.
+    const dropResponses = await tx.rosterSurveyResponse.findMany({
+      where: { userId: dropUserId },
+    });
+    for (const r of dropResponses) {
+      const exists = await tx.rosterSurveyResponse.findUnique({
+        where: { surveyId_userId: { surveyId: r.surveyId, userId: keepUserId } },
+      });
+      if (exists) {
+        if (r.classifiedAt > exists.classifiedAt) {
+          await tx.rosterSurveyResponse.update({
+            where: { id: exists.id },
+            data: {
+              response: r.response,
+              rawReply: r.rawReply,
+              classifiedAt: r.classifiedAt,
+              adminOverride: r.adminOverride,
+            },
+          });
+        }
+        await tx.rosterSurveyResponse.delete({ where: { id: r.id } });
+      } else {
+        await tx.rosterSurveyResponse.update({ where: { id: r.id }, data: { userId: keepUserId } });
+      }
+    }
+
+    // 8d. UserAlias — @@unique([orgId, alias]). Re-point to keep,
+    //     dedupe on collision.
+    const dropAliases = await tx.userAlias.findMany({ where: { userId: dropUserId } });
+    for (const a of dropAliases) {
+      const exists = await tx.userAlias.findUnique({
+        where: { orgId_alias: { orgId: a.orgId, alias: a.alias } },
+      });
+      if (exists && exists.userId !== keepUserId) {
+        // Collision with someone else's alias for this org — prefer
+        // the existing one (don't steal aliases across users).
+        await tx.userAlias.delete({ where: { id: a.id } });
+      } else if (exists && exists.userId === keepUserId) {
+        // Already points at keep — drop the redundant row.
+        await tx.userAlias.delete({ where: { id: a.id } });
+      } else {
+        await tx.userAlias.update({ where: { id: a.id }, data: { userId: keepUserId } });
+      }
+    }
+
     // 8b. Save the dropped user's display name as a UserAlias for
     //     the kept user, scoped to this org. This is the heart of
     //     the "stop the same ghost re-appearing" fix: next time a
