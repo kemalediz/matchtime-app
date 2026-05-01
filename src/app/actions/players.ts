@@ -412,9 +412,66 @@ export async function mergePlayers(
       });
     }
 
-    // 9. Delete drop's memberships across ALL orgs (their identity is
-    //    being absorbed). Then delete the user.
-    await tx.membership.deleteMany({ where: { userId: dropUserId } });
+    // 9. Carry forward Membership fields, then delete drop's memberships.
+    //    Without this, late-added per-org fields (lastSeenInGroupAt,
+    //    leftAt, provisionallyAddedAt) only living on the drop record
+    //    would be lost — most painfully lastSeenInGroupAt, which gates
+    //    DM-blast features like the roster check-in survey.
+    //    Strategy per org:
+    //      - role: take max (OWNER > ADMIN > PLAYER)
+    //      - leftAt: prefer null (active wins); else take most recent
+    //      - provisionallyAddedAt: prefer null (admin-confirmed wins);
+    //        else take the older of the two (earlier provisioning history)
+    //      - lastSeenInGroupAt: take the more recent (freshest sync wins)
+    const ROLE_RANK = { OWNER: 3, ADMIN: 2, PLAYER: 1 } as const;
+    const dropMemberships = await tx.membership.findMany({ where: { userId: dropUserId } });
+    for (const dm of dropMemberships) {
+      const km = await tx.membership.findUnique({
+        where: { userId_orgId: { userId: keepUserId, orgId: dm.orgId } },
+      });
+      if (!km) {
+        // Keep didn't have a membership in this org — re-attribute the
+        // drop's row directly. Cheaper than create-then-delete.
+        await tx.membership.update({
+          where: { id: dm.id },
+          data: { userId: keepUserId },
+        });
+        continue;
+      }
+      const newRole =
+        (ROLE_RANK[dm.role as keyof typeof ROLE_RANK] ?? 0) >
+        (ROLE_RANK[km.role as keyof typeof ROLE_RANK] ?? 0)
+          ? dm.role
+          : km.role;
+      const newLeftAt =
+        km.leftAt === null || dm.leftAt === null
+          ? null
+          : km.leftAt > dm.leftAt
+            ? km.leftAt
+            : dm.leftAt;
+      const newProvisional =
+        km.provisionallyAddedAt === null || dm.provisionallyAddedAt === null
+          ? null
+          : km.provisionallyAddedAt < dm.provisionallyAddedAt
+            ? km.provisionallyAddedAt
+            : dm.provisionallyAddedAt;
+      const newLastSeen =
+        km.lastSeenInGroupAt && dm.lastSeenInGroupAt
+          ? km.lastSeenInGroupAt > dm.lastSeenInGroupAt
+            ? km.lastSeenInGroupAt
+            : dm.lastSeenInGroupAt
+          : (km.lastSeenInGroupAt ?? dm.lastSeenInGroupAt);
+      await tx.membership.update({
+        where: { id: km.id },
+        data: {
+          role: newRole,
+          leftAt: newLeftAt,
+          provisionallyAddedAt: newProvisional,
+          lastSeenInGroupAt: newLastSeen,
+        },
+      });
+      await tx.membership.delete({ where: { id: dm.id } });
+    }
     await tx.user.delete({ where: { id: dropUserId } });
   });
 
