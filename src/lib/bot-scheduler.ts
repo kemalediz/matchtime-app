@@ -781,36 +781,26 @@ async function computeForMatch(
         });
         text = unpaidTail ? `${chaseText}\n\n${unpaidTail.text}` : chaseText;
         mentions = unpaidTail?.mentions;
-      } else if (beforeDeadline && need === 0 && bench.length < 3) {
-        // 2b. Squad full + bench thin — bench chase + roster + unpaid.
-        const benchCount = bench.length;
-        const gap = 3 - benchCount;
-        const benchLine =
-          benchCount === 0
-            ? "*nobody* on the bench"
-            : benchCount === 1
-            ? "only *1* on the bench"
-            : `only *${benchCount}* on the bench`;
-        const benchText =
-          `🪑 Squad is locked at *${m.maxPlayers}/${m.maxPlayers}* for *${activity.name}* ` +
-          `but we've got ${benchLine}. ` +
-          `If anyone drops, we're short again. Say *IN* to pad the bench — ${gap} more would be ideal 🙌`;
-        const parts = [benchText, rosterBlock];
-        if (unpaidTail) parts.push(unpaidTail.text);
-        text = parts.join("\n\n");
-        mentions = unpaidTail?.mentions;
-      } else if (beforeDeadline && need === 0) {
-        // 2c. Squad full, bench healthy. Daily roster reminder + (if
-        // still in the chase window) an unpaid tail. We post even
-        // without an unpaid tail so the daily 5pm always confirms
-        // "you're playing tonight/this week".
-        const intro =
-          `🗓 *${activity.name}* — full squad, ready to go ⚽`;
-        const parts = [intro, rosterBlock];
-        if (unpaidTail) parts.push(unpaidTail.text);
-        text = parts.join("\n\n");
-        mentions = unpaidTail?.mentions;
+      } else if (beforeDeadline && need === 0 && unpaidTail) {
+        // 2b. Squad full but the org tracks payments AND we still have
+        // unpaid players in the chase window — post the unpaid tail
+        // ALONE (no "full squad, ready to go" preamble, no bench
+        // chase, no roster block). Anyone who needs to know who's
+        // playing can scroll up; the only legitimate reason to post
+        // daily once the squad's locked is to chase money.
+        text = unpaidTail.text;
+        mentions = unpaidTail.mentions;
       }
+      // Squad full + no unpaid tail (org doesn't track payments OR
+      // everyone has paid OR we're in the day-before/day-of window
+      // where the chase is suppressed) → stay silent. Previously we
+      // posted "🗓 full squad, ready to go ⚽" + roster every day at
+      // 5pm; Kemal flagged this as spam (2026-05-03). The squad-just-
+      // filled announcement is fired by the analyze route at the
+      // moment the 14th IN lands, which is enough confirmation.
+      // Same for the bench-thin nudge: it was firing every single
+      // 5pm tick once the squad locked, which is more annoying than
+      // useful — bench fills up organically over the week.
       // else: deadline passed but match not yet happened — leave the
       // key un-sent so a later tick in the same window can still fire
       // if state changes (e.g. someone drops out making bench thin).
