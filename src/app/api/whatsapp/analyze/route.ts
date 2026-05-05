@@ -48,6 +48,7 @@ import {
   type AnalysisVerdict,
   type BatchInputMessage,
 } from "@/lib/message-analyzer";
+import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { computeEloDeltas } from "@/lib/elo";
 import { generateTeamsForMatch } from "@/lib/team-generation";
@@ -771,6 +772,45 @@ async function executeVerdict(args: {
   const { verdict, user, orgId } = args;
   let finalReact = verdict.react;
   let finalReply = verdict.reply;
+
+  // ── Bench-confirmation reply ─────────────────────────────────────
+  //    When the LLM detects an answer to an open bench-prompt (the
+  //    bench user replied 👍/yes/no in the GROUP instead of reacting
+  //    to the DM), route to the same flow the reaction handler uses.
+  //    This supersedes any registerAttendance the LLM may have also
+  //    set — bench-confirmation outranks generic IN/OUT for users on
+  //    the open-prompt list.
+  if (verdict.benchConfirmation && user) {
+    const matchForOrg = await db.match.findFirst({
+      where: {
+        activity: { orgId },
+        status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+        attendanceDeadline: { gt: new Date() },
+      },
+      orderBy: { date: "asc" },
+    });
+    if (matchForOrg) {
+      const result = await resolveBenchConfirmation({
+        matchId: matchForOrg.id,
+        userId: user.id,
+        decision: verdict.benchConfirmation === "yes",
+      });
+      // Server posts its own group announcement; suppress the LLM's
+      // reply for this verdict so we don't double-post. Acknowledge
+      // with a slot-emoji react when confirmed, 👋 when declined.
+      if (result.kind === "confirmed") {
+        const slot = result.confirmedCount;
+        finalReact = KEYCAP[slot] ?? "✅";
+        finalReply = null;
+      } else if (result.kind === "declined") {
+        finalReact = "👋";
+        finalReply = null;
+      }
+      // "ignored" (no open PBC found at execution time — race) falls
+      // through; nothing to do.
+      return { react: finalReact, reply: finalReply };
+    }
+  }
 
   // ── Attendance IN/OUT ────────────────────────────────────────────
   //    When the verdict says to register, update attendance and then

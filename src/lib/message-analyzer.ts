@@ -77,6 +77,16 @@ export interface AnalysisVerdict {
    *  of squad capacity, so they're not promoted to a confirmed slot
    *  they didn't ask for. */
   registerAttendance: "IN" | "OUT" | "BENCH" | null;
+  /** Set ONLY when the message author has an OPEN bench-confirmation
+   *  prompt (per the Match Context's "Pending bench-confirmation
+   *  prompts" block) AND their message is a clear answer to it.
+   *    "yes" → confirm; server promotes them to CONFIRMED + announces.
+   *    "no"  → decline; server marks DROPPED + chains to next bencher.
+   *    null  → message isn't a bench answer (e.g. it's about a
+   *            different topic). The LLM should leave registerAttendance
+   *            null too in this case — bench-confirmation supersedes
+   *            registerAttendance for these users. */
+  benchConfirmation: "yes" | "no" | null;
   /** Populated when intent = "score". `scoreRed` + `scoreYellow` correspond
    *  to the two team labels of the match's sport (usually Red/Yellow). */
   scoreRed: number | null;
@@ -142,6 +152,7 @@ Output schema:
       "react": "<emoji>" | null,
       "reply": "<text>" | null,
       "registerAttendance": "IN" | "OUT" | "BENCH" | null,
+      "benchConfirmation": "yes" | "no" | null,
       "scoreRed": <number> | null,
       "scoreYellow": <number> | null,
       "includeNames": [<string>, ...] | null,
@@ -167,6 +178,16 @@ Intent rules:
   (a) Definite drop ("I'm out, ankle sore, can anyone step in?"). registerAttendance: "OUT". react: "👋".
   (b) Tentative ("anyone else who can replace me too? If not I'll still join", "feeling unwell, will play if nobody steps in"). registerAttendance: null (do NOT flip — they're still committed as a backstop). react: "🤔".
   Reply format depends on how short the squad actually is (see SHORT-SQUAD RESPONSE below).
+
+BENCH CONFIRMATION — interpreting the bench user's reply:
+The Match Context may include a "Pending bench-confirmation prompts" block listing users the bot has DM'd a 👍/👎 prompt to (because someone dropped). When ANY of those users posts a message in this batch, your job is to figure out whether they're answering YES, NO, or talking about something unrelated.
+
+Rules:
+- If the listed user's message is affirmative — a thumbs-up emoji on its own (👍 / 👍🏽 / etc.), "yes", "yep", "ok", "I'll do it", "I'm in", "sure", "happy to", "count me in", "done", "deal", any phrasing that clearly says "I accept the bench slot" — emit benchConfirmation:"yes". Set registerAttendance:null (the server handles the promotion). Set reply:null (the server posts its own announcement).
+- If the listed user's message is negative — a thumbs-down (👎), "no", "can't", "sorry", "pass", "not me", "I won't make it", "next time" etc. — emit benchConfirmation:"no". registerAttendance:null. reply:null. Server marks them dropped and chains to the next bencher.
+- If the listed user's message is unrelated to the bench question (asks about something else, complains about the venue, posts a meme, etc.) emit benchConfirmation:null and classify normally as the appropriate intent.
+- ALWAYS prefer benchConfirmation over a plain registerAttendance for users on this list — the bench-prompt is the "open question" they're answering, even if their words happen to also sound like a generic "in" or "out".
+- If the user is NOT on the pending-bench-confirmation list, NEVER emit benchConfirmation — leave it null and classify normally.
 
 BENCH CONFIRMATION FLOW (CRITICAL — never claim a swap is done):
 When ANY player drops (intent "out", "replacement_request" type (a), or a registerFor entry with action:"OUT"), the SERVER does NOT auto-promote a bench player. Instead it DMs the first bench player a 👍/👎 prompt and waits for their confirmation (≤ 2h). Only then are they marked CONFIRMED in a follow-up post.
@@ -381,6 +402,16 @@ function buildMatchContextBlock(args: {
    *  may propose a switch to any of them — admins handle the venue
    *  rebooking (e.g. ring Goals) and flip the match in the app. */
   alternatives?: Array<{ sportName: string; totalPlayers: number }>;
+  /** Open bench-confirmation prompts. The bot DM'd these users a
+   *  👍/👎 prompt when someone dropped, and is waiting on their
+   *  decision. The LLM uses this to interpret subsequent group
+   *  messages from those users (an in-group 👍, "yes", "I can do it"
+   *  etc.) as a bench-confirmation rather than a generic IN. */
+  pendingBenchConfirmations?: Array<{
+    benchUserId: string;
+    benchUserName: string | null;
+    replacingUserName: string | null;
+  }>;
 }): string {
   if (!args.match) {
     return `## Organisation\n${args.orgName}\n\n## Current Match\nNo upcoming match within the attendance window.`;
@@ -449,6 +480,13 @@ function buildMatchContextBlock(args: {
   }
   if (dropped.length) {
     lines.push("", `Dropped: ${dropped.map((a) => a.user.name ?? "(unnamed)").join(", ")}`);
+  }
+  if (args.pendingBenchConfirmations && args.pendingBenchConfirmations.length > 0) {
+    lines.push("", "Pending bench-confirmation prompts (waiting on these users to 👍/👎):");
+    for (const p of args.pendingBenchConfirmations) {
+      const replacing = p.replacingUserName ? ` (replacing ${p.replacingUserName})` : "";
+      lines.push(`  - ${p.benchUserName ?? "(unnamed)"} [userId=${p.benchUserId}]${replacing}`);
+    }
   }
   if (args.alternatives && args.alternatives.length > 0) {
     lines.push("", "Alternative formats available for this sport:");
@@ -529,10 +567,45 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     alternatives.sort((x, y) => y.totalPlayers - x.totalPlayers);
   }
 
+  // Open bench-confirmation prompts — the LLM uses these to interpret
+  // a 👍/yes/ok message from one of these users as a bench-decision
+  // rather than a generic IN.
+  const pendingBenchConfirmations: Array<{
+    benchUserId: string;
+    benchUserName: string | null;
+    replacingUserName: string | null;
+  }> = [];
+  if (match) {
+    const pbcs = await db.pendingBenchConfirmation.findMany({
+      where: { matchId: match.id, resolvedAt: null, expiresAt: { gt: now } },
+      include: {
+        // Replacing user name is fetched separately — Prisma can't
+        // hop directly via replacingUserId without a relation.
+      },
+    });
+    for (const p of pbcs) {
+      const benchUser = match.attendances.find((a) => a.user.id === p.userId)?.user;
+      let replacingName: string | null = null;
+      if (p.replacingUserId) {
+        const r = await db.user.findUnique({
+          where: { id: p.replacingUserId },
+          select: { name: true },
+        });
+        replacingName = r?.name ?? null;
+      }
+      pendingBenchConfirmations.push({
+        benchUserId: p.userId,
+        benchUserName: benchUser?.name ?? null,
+        replacingUserName: replacingName,
+      });
+    }
+  }
+
   const matchContext = buildMatchContextBlock({
     orgName: org.name,
     match,
     alternatives,
+    pendingBenchConfirmations,
   });
 
   const historyBlock = input.history.length
@@ -1081,6 +1154,7 @@ function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {
     react: null,
     reply: null,
     registerAttendance: null,
+    benchConfirmation: null,
     scoreRed: null,
     scoreYellow: null,
     includeNames: null,
@@ -1159,6 +1233,10 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     raw.registerAttendance === "BENCH"
       ? raw.registerAttendance
       : null;
+  const benchConfirmation =
+    raw.benchConfirmation === "yes" || raw.benchConfirmation === "no"
+      ? raw.benchConfirmation
+      : null;
   const scoreRed =
     typeof raw.scoreRed === "number" && Number.isFinite(raw.scoreRed) && raw.scoreRed >= 0
       ? Math.min(99, Math.round(raw.scoreRed))
@@ -1226,6 +1304,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
       react: null,
       reply: null,
       registerAttendance: null,
+      benchConfirmation: null,
       scoreRed: null,
       scoreYellow: null,
       includeNames: null,
@@ -1243,6 +1322,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     react,
     reply,
     registerAttendance,
+    benchConfirmation,
     scoreRed,
     scoreYellow,
     includeNames,
