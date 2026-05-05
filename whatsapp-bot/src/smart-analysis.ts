@@ -91,9 +91,51 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   const contact = await msg.getContact().catch(() => null);
   const authorName = contact?.pushname ?? contact?.name ?? null;
 
+  // Resolve @-mentions in the body before forwarding to the analyzer.
+  // WhatsApp wire-format puts each tag as "@<jid-number>" (e.g.
+  // "@158055467598020" for an @lid sender, "@447xxx" for @c.us). The
+  // LLM can't reason about opaque IDs — Kemal hit this when his
+  // "@Izzet E is replacing @Elnur Mammadov" message got classified as
+  // "noise" because the LLM saw three lid numbers and no names.
+  // For each mentioned id, fetch the contact and replace the @<jid>
+  // token with @<pushname-or-name>. Falls back to the raw token if
+  // resolution fails.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dataBody = (msg as any)._data?.body;
+  const baseBody =
+    typeof msg.body === "string" && msg.body.length > 0
+      ? msg.body
+      : typeof dataBody === "string"
+        ? dataBody
+        : "";
+  let body = baseBody;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mentionedIds: string[] = ((msg as any).mentionedIds ?? []) as string[];
+  if (mentionedIds.length > 0 && body) {
+    for (const jid of mentionedIds) {
+      try {
+        const c = await client.getContactById(jid);
+        const name = c.pushname || c.name || c.shortName || null;
+        if (name && typeof name === "string") {
+          // Match the @-tag using the digits portion of the JID. WA
+          // puts the @-tag in the text as `@<digits>` (no @lid /
+          // @c.us suffix in the visible body), so we strip the suffix
+          // and escape regex metacharacters.
+          const digits = jid.replace(/@.*$/, "").replace(/[+]/g, "");
+          if (digits.length >= 5) {
+            const re = new RegExp(`@${digits}\\b`, "g");
+            body = body.replace(re, `@${name}`);
+          }
+        }
+      } catch {
+        /* non-fatal — fall back to raw @<jid> for this token */
+      }
+    }
+  }
+
   const pending: Pending = {
     waMessageId,
-    body: msg.body ?? "",
+    body,
     authorPhone: phone,
     authorName,
     timestamp: new Date((msg.timestamp ?? Date.now() / 1000) * 1000).toISOString(),

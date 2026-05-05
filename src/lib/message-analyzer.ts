@@ -306,10 +306,19 @@ Examples:
     → intent "in", registerAttendance: "IN", registerFor: [{"name":"Mike","action":"IN"},{"name":"Steve","action":"IN"}]
 - "Karahan just told me he can't play"
     → intent "out", registerAttendance: null, registerFor: [{"name":"Karahan","action":"OUT"}]
+- "@Izzet E is replacing @Elnur Mammadov" (admin swap; @-tags resolve to names)
+    → intent "out", registerAttendance: null, registerFor: [{"name":"Elnur Mammadov","action":"OUT"},{"name":"Izzet E","action":"IN"}]
+- "Elnur can't play tonight, instead Izzet will play"
+    → intent "out", registerAttendance: null, registerFor: [{"name":"Elnur","action":"OUT"},{"name":"Izzet","action":"IN"}]
+- "swap Baki with Aydın" / "swap Baki Aydın"
+    → intent "out", registerAttendance: null, registerFor: [{"name":"Baki","action":"OUT"},{"name":"Aydın","action":"IN"}]
+
+REPLACEMENT / SWAP PATTERNS (CRITICAL — emit BOTH directions):
+The phrasings above all mean "drop X AND add Y in the same message". Treat every "X is replacing Y", "Y is replacing X", "instead of X, Y will play", "swap X with Y", "X can't, Y in" as a TWO-entry registerFor: one OUT for the dropping player, one IN for the incoming player. NEVER classify these as "noise" or "documenting a completed transaction" — the bot is the system of record, so until you emit the registerFor entries, the swap hasn't actually happened. Even if the chat history shows a similar earlier swap, treat each new message as a NEW instruction and execute it (the verdict is idempotent — if Y is already CONFIRMED the server skips, if X is already DROPPED the server skips).
 
 Rules:
-- Only include third-party entries when the relationship to the target is clear (possessive "my dad Najib", "bringing X", "X can't make it"). If it's ambiguous gossip ("someone said Najib might come"), skip — don't guess.
-- First-name is fine ("Najib"). The server fuzzy-matches.
+- Only include third-party entries when the relationship to the target is clear (possessive "my dad Najib", "bringing X", "X can't make it", "X is replacing Y"). If it's ambiguous gossip ("someone said Najib might come"), skip — don't guess.
+- First-name is fine ("Najib"). The server fuzzy-matches; if no match exists, the server provisions a new member, so emit the IN entry even for unknown names.
 - Do NOT put the author themselves in registerFor — use registerAttendance for them.
 - If registerFor has entries, react: "👍" still (server overrides with slot emoji of the newly-added player).
 - If the message ONLY signs up others (author not joining), intent is still "in" or "out" based on the direction of the third-party action; registerAttendance is null.
