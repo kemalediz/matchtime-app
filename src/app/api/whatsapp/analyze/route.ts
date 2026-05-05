@@ -44,6 +44,7 @@ import {
   analyzeBatch,
   enforceProximity,
   enforceCanonicalRoster,
+  rewriteOverconfidentPromotion,
   type AnalysisVerdict,
   type BatchInputMessage,
 } from "@/lib/message-analyzer";
@@ -264,6 +265,32 @@ export async function POST(request: Request) {
         if (verdict.intent !== "generate_teams_request") {
           cleanReply = enforceCanonicalRoster(cleanReply, {
             confirmed: freshAttendances.map((a) => a.user.name ?? "(unnamed)"),
+            maxPlayers: nextMatchForReply.maxPlayers,
+          });
+        }
+        // Safety net: if the LLM claimed a bench player has been
+        // promoted ("X moves up", "X stepped in for Y", "we're still
+        // 14/14") but a PendingBenchConfirmation is OPEN against this
+        // match (= bench player asked, not yet confirmed), the
+        // hallucinated promotion is wrong and the squad is actually
+        // short. Strip those phrases and replace with an honest
+        // "Asking <name> in DMs..." line. The roster block has
+        // already been canonicalised above so we just rewrite the
+        // narrative text around it.
+        const pendingBench =
+          await db.pendingBenchConfirmation.findFirst({
+            where: {
+              matchId: nextMatchForReply.id,
+              resolvedAt: null,
+              expiresAt: { gt: new Date() },
+            },
+            include: { user: { select: { name: true } } },
+            orderBy: { createdAt: "desc" },
+          });
+        if (pendingBench) {
+          cleanReply = rewriteOverconfidentPromotion(cleanReply, {
+            benchName: pendingBench.user.name ?? "the next bench player",
+            confirmedCount: freshAttendances.length,
             maxPlayers: nextMatchForReply.maxPlayers,
           });
         }

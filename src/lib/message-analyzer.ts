@@ -167,6 +167,27 @@ Intent rules:
   (a) Definite drop ("I'm out, ankle sore, can anyone step in?"). registerAttendance: "OUT". react: "👋".
   (b) Tentative ("anyone else who can replace me too? If not I'll still join", "feeling unwell, will play if nobody steps in"). registerAttendance: null (do NOT flip — they're still committed as a backstop). react: "🤔".
   Reply format depends on how short the squad actually is (see SHORT-SQUAD RESPONSE below).
+
+BENCH CONFIRMATION FLOW (CRITICAL — never claim a swap is done):
+When ANY player drops (intent "out", "replacement_request" type (a), or a registerFor entry with action:"OUT"), the SERVER does NOT auto-promote a bench player. Instead it DMs the first bench player a 👍/👎 prompt and waits for their confirmation (≤ 2h). Only then are they marked CONFIRMED in a follow-up post.
+
+This means your reply text MUST NEVER claim a bench player has moved up, stepped up, taken the slot, or replaced anyone — regardless of how someone phrases the drop request. Even when an admin explicitly says "swap X with Y", you do NOT preemptively register Y as confirmed; the server still asks them via DM first.
+
+Forbidden phrasings (do not write any of these or close variants):
+  ✘ "Y moves up from the bench"
+  ✘ "Y is taking the slot"
+  ✘ "Y is replacing X"
+  ✘ "Y stepped in for X"
+  ✘ "we're still N/N" when a confirmed player just dropped (you DON'T know if Y will accept)
+  ✘ Putting Y's name into a numbered roster slot before they're in the Confirmed list
+
+Required phrasing when someone drops and there IS at least one bench player:
+  ✓ "[lead acknowledging the drop]. Asking <first-bench-name> in DMs if they can step up — squad is <confirmedCount-1>/<maxPlayers> until they confirm."
+  Numbered roster shows the squad WITHOUT the dropped player (use 🥁 for the now-empty slot).
+
+When there is NO bench player and the squad is now short, treat as the standard SHORT-SQUAD RESPONSE (see below) — don't reference any bench.
+
+Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Baki with Aydın"): treat as intent "out" with registerFor:[{name:"<dropping-name>",action:"OUT"}]. The "swapping in" name is informational only — do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, and do NOT claim they're playing. Reply phrasing follows the same "Asking <bench> in DMs..." pattern, ideally honouring the admin's preference: "Asking Aydın specifically (per Kemal's request) — squad is 13/14 until he confirms." The bench-confirmation flow already DMs the right person if they're first on bench; otherwise the admin can re-trigger after.
 - "conditional_in": Tentative commitment ("in if my back holds up", "probably, will confirm later", "maybe").
   → registerAttendance: null (do NOT register; admin will chase). react: "🤔". reply: null.
 - "question": Asking about squad numbers, venue, kickoff time, who's in, match state ("do we have enough?", "where tonight?", "who's playing?"), OR coordination questions about specific named players' attendance status ("let me know if the other 3 can play", "are Faris and Shaz in?", "did you accept Adam?", "what's the verdict on my friends?", "Amir's guys — confirmed?").
@@ -931,6 +952,66 @@ export function enforceCanonicalRoster(
     need > 0 ? `need *${need} more*` : "we're full",
   );
   return out;
+}
+
+/**
+ * Safety net for when the LLM hallucinates that a bench player has
+ * been promoted to confirmed ("Aydın moves up from the bench", "Y
+ * stepped in", "we're still 14/14"). The actual flow is async — the
+ * server queues a PendingBenchConfirmation, DMs the bench player, and
+ * only marks them CONFIRMED on their 👍. Until then the squad is
+ * genuinely short.
+ *
+ * Called only when there's an OPEN PendingBenchConfirmation against
+ * the relevant match. Strips the false-promotion sentence (heuristic
+ * regexes targeting common phrasings) and prepends an honest
+ * "Asking <name> in DMs..." line so the group sees the real status.
+ */
+export function rewriteOverconfidentPromotion(
+  text: string,
+  args: { benchName: string; confirmedCount: number; maxPlayers: number },
+): string {
+  const { benchName, confirmedCount, maxPlayers } = args;
+
+  // Strip phrases that imply the swap is done. Match per-line so we
+  // don't gobble unrelated text on the same line.
+  const FALSE_PROMOTION_PATTERNS: RegExp[] = [
+    /[^.!?\n]*\bmoves?\s+up\s+from\s+the\s+bench\b[^.!?\n]*[.!?]?/gi,
+    /[^.!?\n]*\bsteps?\s+in\s+(?:for|to\s+take|to\s+fill)\b[^.!?\n]*[.!?]?/gi,
+    /[^.!?\n]*\bstepped\s+in\b[^.!?\n]*[.!?]?/gi,
+    /[^.!?\n]*\btaking\s+(?:the\s+|that\s+)?slot\b[^.!?\n]*[.!?]?/gi,
+    /[^.!?\n]*\bis\s+replacing\b[^.!?\n]*[.!?]?/gi,
+    /[^.!?\n]*\bcomes\s+(?:up|in)\s+from\s+the\s+bench\b[^.!?\n]*[.!?]?/gi,
+    /[^.!?\n]*\bwe(?:'re|\s+are)\s+still\s+\d+\/\d+\b[^.!?\n]*[.!?]?/gi,
+  ];
+  let stripped = text;
+  for (const re of FALSE_PROMOTION_PATTERNS) {
+    stripped = stripped.replace(re, "");
+  }
+  // Collapse the whitespace/punctuation we just punched holes in.
+  stripped = stripped
+    .replace(/[ \t]+/g, " ")
+    .replace(/ ?\.[ ]*\./g, ".")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^[ \t]+|[ \t]+$/gm, "");
+
+  // Prepend an honest status line above the roster block (or at the
+  // top if no roster block detected).
+  const honest = `Asking *${benchName}* in DMs to step up — squad is *${confirmedCount}/${maxPlayers}* until they confirm.`;
+
+  // Drop the line in just before any "*Playing tonight:*" / "*Squad:*"
+  // header, or at the start when there isn't one.
+  const headerMatch = stripped.match(/^[ \t]*\*?(Playing|Squad)[^\n]*\*?[ \t]*$/m);
+  if (headerMatch?.index !== undefined) {
+    stripped =
+      stripped.slice(0, headerMatch.index) +
+      honest +
+      "\n\n" +
+      stripped.slice(headerMatch.index);
+  } else {
+    stripped = honest + "\n\n" + stripped;
+  }
+  return stripped.trim();
 }
 
 const CHASE_SYSTEM_PROMPT = `You are MatchTime, composing a SCHEDULED group message — not a reply to anyone. The bot's scheduler is firing a chase/announcement at a fixed time because the squad is in a certain state.

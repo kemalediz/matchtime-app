@@ -843,15 +843,35 @@ async function computeForMatch(
       }
     }
 
+    // Build the WhatsApp @-tag using the bencher's phone number — the
+    // bot's scheduler passes `mentions: [phone@c.us]` and WhatsApp
+    // resolves the tag by matching `@<phone>` in the text. Using the
+    // user's NAME (the previous behaviour) leaves it as a plain
+    // string with no notification + no clickable mention.
+    const phoneNoPlus = user.phoneNumber.replace(/^\+/, "");
+
+    // Window-text: when this bencher is the SOLE bench, don't put a
+    // timer on it (Kemal: "no timeout if the bencher is the sole
+    // bencher") — but still convey urgency ("He should feel rushed").
+    // Otherwise show the remaining hours so the bencher knows how
+    // long they have before the next person gets asked.
+    const benchAttCount = m.attendances.filter((a) => a.status === "BENCH").length;
+    const msRemaining = Math.max(0, bc.expiresAt.getTime() - now.getTime());
+    const hoursRemaining = msRemaining / (60 * 60 * 1000);
+    const windowText =
+      benchAttCount <= 1
+        ? "*ASAP please* — you're our only bench tonight 🙏"
+        : `React within ${Math.max(1, Math.round(hoursRemaining))}h or it goes to the next bencher.`;
+
     out.push({
       kind: "bench-prompt",
       key,
       matchId,
       userId: bc.userId,
-      phone: user.phoneNumber.replace(/^\+/, ""),
+      phone: phoneNoPlus,
       text:
-        `🎟 @${user.name ?? ""} a slot just opened ${context}. ` +
-        `React 👍 to confirm, 👎 to pass. You've got 2h.`,
+        `🎟 @${phoneNoPlus} a slot just opened ${context}. ` +
+        `React 👍 to confirm, 👎 to pass. ${windowText}`,
     });
   }
 
@@ -1463,7 +1483,8 @@ export async function requestBenchConfirmationOnDrop(
   });
   if (!match) return;
 
-  const firstBench = match.attendances.find((a) => a.status === "BENCH");
+  const benchPlayers = match.attendances.filter((a) => a.status === "BENCH");
+  const firstBench = benchPlayers[0];
   if (!firstBench) return; // nobody on the bench — nothing to do
 
   // Don't double up if one already exists
@@ -1472,12 +1493,25 @@ export async function requestBenchConfirmationOnDrop(
   });
   if (existing) return;
 
+  // Default 2h is fine when there's another bench player to fall back
+  // on if this one passes/ghosts. When the asked player is the ONLY
+  // bench (Kemal: "no timeout if the bencher is the sole bencher"),
+  // we don't expire until kickoff itself — there's nobody else to
+  // chain to anyway, so dropping the prompt early would just leave
+  // the slot open. Bencher can take it any time before the match
+  // starts; admins can manually intervene if they ghost.
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+  const expiresAt =
+    benchPlayers.length === 1
+      ? match.date
+      : new Date(Date.now() + TWO_HOURS_MS);
+
   await db.pendingBenchConfirmation.create({
     data: {
       matchId,
       userId: firstBench.userId,
       replacingUserId: replacingUserId ?? null,
-      expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      expiresAt,
     },
   });
 }
