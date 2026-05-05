@@ -63,12 +63,11 @@ export async function POST(request: Request) {
       }),
     ]);
 
-    // Step 2 (only when context is available): transfer the dropped
-    // player's TeamAssignment to this bench user and announce the
-    // swap to the group. Wrapped in its own try so any failure here
-    // never reverts the attendance promotion above — bench user is
-    // confirmed regardless. Silent skips on any of the inputs being
-    // missing keep the bot from posting nonsense.
+    // Step 2 (when teams already exist): transfer the dropped
+    // player's TeamAssignment to this bench user. Wrapped in its
+    // own try so any failure here never reverts the attendance
+    // promotion above.
+    let teamSwap: { teamLabel: string } | null = null;
     if (bc.replacingUserId) {
       try {
         const droppedTA = await db.teamAssignment.findUnique({
@@ -77,8 +76,6 @@ export async function POST(request: Request) {
           },
         });
         if (droppedTA) {
-          // Transfer atomically. Use upsert in case the bench user
-          // somehow already has a TA (shouldn't but cheap to guard).
           await db.$transaction([
             db.teamAssignment.delete({
               where: {
@@ -100,49 +97,81 @@ export async function POST(request: Request) {
               update: { team: droppedTA.team },
             }),
           ]);
-
-          // Look up names + sport labels + org for the announcement.
-          const [benchUser, droppedUser, matchWithCtx] = await Promise.all([
-            db.user.findUnique({
-              where: { id: bc.userId },
-              select: { name: true },
-            }),
-            db.user.findUnique({
-              where: { id: bc.replacingUserId },
-              select: { name: true },
-            }),
-            db.match.findUnique({
-              where: { id: bc.matchId },
-              include: {
-                activity: { include: { sport: true, org: true } },
-              },
-            }),
-          ]);
-          if (matchWithCtx && benchUser?.name && droppedUser?.name) {
-            const teamLabels = matchWithCtx.activity.sport.teamLabels as [
+          // Resolve label here so step 3 can reference it cleanly.
+          const matchForLabels = await db.match.findUnique({
+            where: { id: bc.matchId },
+            include: { activity: { include: { sport: true } } },
+          });
+          if (matchForLabels) {
+            const teamLabels = matchForLabels.activity.sport.teamLabels as [
               string,
               string,
             ];
-            const teamLabel =
-              droppedTA.team === "RED" ? teamLabels[0] : teamLabels[1];
-            await db.botJob.create({
-              data: {
-                orgId: matchWithCtx.activity.org.id,
-                kind: "group",
-                text:
-                  `🎟 *Slot filled* — *${benchUser.name}* takes *${droppedUser.name}*'s place on *${teamLabel}* 🙌\n\n` +
-                  `_If anyone wants to rebalance with the new line-up, just say "regenerate teams"._`,
-              },
-            });
+            teamSwap = {
+              teamLabel:
+                droppedTA.team === "RED" ? teamLabels[0] : teamLabels[1],
+            };
           }
         }
-        // If droppedTA is null (drop happened pre-team-generation, or
-        // someone else already swapped), we silently skip the swap +
-        // announcement. Bench user is still CONFIRMED from step 1.
       } catch (err) {
-        // Don't let an announcement-side failure undo the confirm.
+        // Don't let a swap-side failure stop the announcement.
         console.error("[reaction] team-swap on confirm failed:", err);
       }
+    }
+
+    // Step 3 (always): announce the confirmation in the group. Two
+    // wordings depending on whether a team-swap landed:
+    //   - Teams generated → "X takes Y's place on Red"
+    //   - Pre-teams      → "X confirmed for tonight — squad is N/M ✅"
+    // Previously this was gated on the team-swap branch, so
+    // confirmations BEFORE teams-generation went silent and the group
+    // had no idea the slot was filled. Kemal called this out as a
+    // gap on 2026-05-05.
+    try {
+      const matchWithCtx = await db.match.findUnique({
+        where: { id: bc.matchId },
+        include: {
+          activity: { include: { sport: true, org: true } },
+          attendances: { where: { status: "CONFIRMED" } },
+        },
+      });
+      const [benchUser, droppedUser] = await Promise.all([
+        db.user.findUnique({
+          where: { id: bc.userId },
+          select: { name: true },
+        }),
+        bc.replacingUserId
+          ? db.user.findUnique({
+              where: { id: bc.replacingUserId },
+              select: { name: true },
+            })
+          : null,
+      ]);
+      if (matchWithCtx && benchUser?.name) {
+        const confirmedCount = matchWithCtx.attendances.length;
+        const maxPlayers = matchWithCtx.maxPlayers;
+        let text: string;
+        if (teamSwap && droppedUser?.name) {
+          text =
+            `🎟 *Slot filled* — *${benchUser.name}* takes *${droppedUser.name}*'s place on *${teamSwap.teamLabel}* 🙌\n\n` +
+            `_If anyone wants to rebalance with the new line-up, just say "regenerate teams"._`;
+        } else if (droppedUser?.name) {
+          text =
+            `✅ *${benchUser.name}* confirmed for tonight, replacing *${droppedUser.name}* — squad is *${confirmedCount}/${maxPlayers}* 🙌`;
+        } else {
+          text =
+            `✅ *${benchUser.name}* confirmed from the bench — squad is *${confirmedCount}/${maxPlayers}* 🙌`;
+        }
+        await db.botJob.create({
+          data: {
+            orgId: matchWithCtx.activity.org.id,
+            kind: "group",
+            text,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("[reaction] confirm announcement failed:", err);
     }
 
     return NextResponse.json({ ok: true, outcome: "confirmed" });
