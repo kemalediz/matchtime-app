@@ -339,27 +339,27 @@ export async function POST(request: Request) {
     }
   }
 
-  // 3b. Backfill slot-emoji on earlier duplicate IN messages from same author.
-  //     State-collapse: when a player sends "count me in" then "IN" 30s later,
-  //     the LLM only registers the latest (correct — no double-registration).
-  //     But the earlier message gets a plain 👍 which looks like "not registered"
-  //     and confuses people into retyping. If a later verdict for the same
-  //     author registered them as IN with a keycap slot emoji, propagate that
-  //     emoji back to the earlier intent=in verdicts so the chat reads cleanly.
-  const keycapSet = new Set(Object.values(KEYCAP).concat(["🪑"]));
+  // 3b. Backfill the registration-react on earlier duplicate IN messages
+  //     from same author. State-collapse: when a player sends "count me
+  //     in" then "IN" 30s later, the LLM only registers the latest
+  //     (correct — no double-registration). But the earlier message
+  //     gets a plain 👍 which looks like "not registered" and confuses
+  //     people into retyping. If a later verdict for the same author
+  //     registered them as IN (✅ or 🪑), propagate it back to the
+  //     earlier IN verdicts so the chat reads cleanly.
+  const registrationReacts = new Set(["✅", "🪑"]);
   const latestInReactByUser = new Map<string, string>();
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
+  for (const r of results) {
     const uid = senderById.get(r.waMessageId)?.userId;
     if (!uid || r.intent !== "in" || !r.react) continue;
-    if (keycapSet.has(r.react)) latestInReactByUser.set(uid, r.react);
+    if (registrationReacts.has(r.react)) latestInReactByUser.set(uid, r.react);
   }
   for (const r of results) {
     const uid = senderById.get(r.waMessageId)?.userId;
     if (!uid || r.intent !== "in" || !r.react) continue;
-    if (keycapSet.has(r.react)) continue;
-    const slot = latestInReactByUser.get(uid);
-    if (slot) r.react = slot;
+    if (registrationReacts.has(r.react)) continue;
+    const fill = latestInReactByUser.get(uid);
+    if (fill) r.react = fill;
   }
 
   // 4. Return + include next-kickoff so the bot can urgency-flush.
@@ -764,6 +764,37 @@ async function announceSquadFullIfJustFilledFor(orgId: string, matchId: string) 
   });
 }
 
+/**
+ * Pick the right match for an attendance/bench mutation. The naive
+ * `attendanceDeadline > now` filter had a nasty edge case: the moment
+ * tonight's deadline expired, this query fell through to NEXT WEEK's
+ * match and silently registered any subsequent IN/OUT against it.
+ * Real damage on 2026-05-05 — Kemal/Izzet/Baki silently landed on the
+ * May 12 attendance roster minutes after the May 5 deadline expired
+ * while team-discussion messages were still flowing.
+ *
+ * New rule (per Kemal 2026-05-06): drop the deadline gate entirely.
+ * The "deadline" concept is now just a hint for the team-balancer;
+ * players can register IN/OUT all the way up to match COMPLETION.
+ * Late IN's on a full squad land on the bench; team-balancer can
+ * pick them up if anyone drops.
+ *
+ * We still need to NOT cascade to next week's match — so we pick
+ * the SOONEST non-completed match from today onward.
+ */
+async function findRegistrationMatch(orgId: string) {
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  return db.match.findFirst({
+    where: {
+      activity: { orgId },
+      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+      date: { gte: todayStart },
+    },
+    orderBy: { date: "asc" },
+  });
+}
+
 async function executeVerdict(args: {
   verdict: AnalysisVerdict;
   user: { id: string; name: string | null } | null;
@@ -781,14 +812,7 @@ async function executeVerdict(args: {
   //    set — bench-confirmation outranks generic IN/OUT for users on
   //    the open-prompt list.
   if (verdict.benchConfirmation && user) {
-    const matchForOrg = await db.match.findFirst({
-      where: {
-        activity: { orgId },
-        status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-        attendanceDeadline: { gt: new Date() },
-      },
-      orderBy: { date: "asc" },
-    });
+    const matchForOrg = await findRegistrationMatch(orgId);
     if (matchForOrg) {
       const result = await resolveBenchConfirmation({
         matchId: matchForOrg.id,
@@ -796,11 +820,10 @@ async function executeVerdict(args: {
         decision: verdict.benchConfirmation === "yes",
       });
       // Server posts its own group announcement; suppress the LLM's
-      // reply for this verdict so we don't double-post. Acknowledge
-      // with a slot-emoji react when confirmed, 👋 when declined.
+      // reply for this verdict so we don't double-post. Simple
+      // semantic react: ✅ when confirmed, 👋 when declined.
       if (result.kind === "confirmed") {
-        const slot = result.confirmedCount;
-        finalReact = KEYCAP[slot] ?? "✅";
+        finalReact = "✅";
         finalReply = null;
       } else if (result.kind === "declined") {
         finalReact = "👋";
@@ -817,14 +840,7 @@ async function executeVerdict(args: {
   //    compute the real slot emoji so the bot reacts with the correct
   //    1️⃣–🔟 / 🪑 / 👋 instead of the generic 👍/👋 Claude emits.
   if (verdict.registerAttendance && user) {
-    const matchForOrg = await db.match.findFirst({
-      where: {
-        activity: { orgId },
-        status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-        attendanceDeadline: { gt: new Date() },
-      },
-      orderBy: { date: "asc" },
-    });
+    const matchForOrg = await findRegistrationMatch(orgId);
     if (matchForOrg) {
       // Pre-check OUT requests: if the sender doesn't actually have a
       // CONFIRMED/BENCH attendance row for this match, there's nothing
@@ -858,24 +874,13 @@ async function executeVerdict(args: {
           const result = await registerAttendance(user.id, matchForOrg.id, {
             forceBench: verdict.registerAttendance === "BENCH",
           });
-          // `registerAttendance` returns { status, position } but position
-          // is the raw 1-based index of the insertion. Re-derive the slot
-          // within the bucket so the emoji matches what the player sees
-          // on the list (nth confirmed / nth bench).
-          const attendances = await db.attendance.findMany({
-            where: { matchId: matchForOrg.id, status: { in: ["CONFIRMED", "BENCH"] } },
-            orderBy: { position: "asc" },
-          });
-          const confirmed = attendances.filter((a) => a.status === "CONFIRMED");
-          const bench = attendances.filter((a) => a.status === "BENCH");
-          if (result.status === "CONFIRMED") {
-            const slot = confirmed.findIndex((a) => a.userId === user.id) + 1;
-            finalReact = KEYCAP[slot] ?? "✅";
-          } else {
-            // BENCH
-            const slot = bench.findIndex((a) => a.userId === user.id) + 1;
-            finalReact = slot > 0 ? "🪑" : "🪑";
-          }
+          // Simple semantic react: ✅ if they made the squad, 🪑 if
+          // they landed on the bench. We used to react with a slot-
+          // number keycap (1️⃣–🔟) showing the player's position, but
+          // it confused everyone — people read it as a "2 reactions"
+          // counter — and the keycaps went stale every time someone
+          // dropped/added. Kemal flagged this on 2026-05-05.
+          finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";
           await announceSquadFullIfJustFilledFor(orgId, matchForOrg.id);
         } else {
           await cancelAttendance(user.id, matchForOrg.id);
@@ -895,14 +900,7 @@ async function executeVerdict(args: {
   //    the slot of the last newly-added player, so the group can see
   //    the registration landed.
   if (verdict.registerFor && verdict.registerFor.length > 0) {
-    const matchForOrg = await db.match.findFirst({
-      where: {
-        activity: { orgId },
-        status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-        attendanceDeadline: { gt: new Date() },
-      },
-      orderBy: { date: "asc" },
-    });
+    const matchForOrg = await findRegistrationMatch(orgId);
     if (matchForOrg) {
       for (const entry of verdict.registerFor) {
         try {
@@ -913,18 +911,9 @@ async function executeVerdict(args: {
           if (user && target.userId === user.id) continue;
           if (entry.action === "IN") {
             const result = await registerAttendance(target.userId, matchForOrg.id);
-            const attendances = await db.attendance.findMany({
-              where: { matchId: matchForOrg.id, status: { in: ["CONFIRMED", "BENCH"] } },
-              orderBy: { position: "asc" },
-            });
-            const confirmed = attendances.filter((a) => a.status === "CONFIRMED");
-            const bench = attendances.filter((a) => a.status === "BENCH");
-            if (result.status === "CONFIRMED") {
-              const slot = confirmed.findIndex((a) => a.userId === target.userId) + 1;
-              finalReact = KEYCAP[slot] ?? "✅";
-            } else {
-              finalReact = "🪑";
-            }
+            // Same semantic react rule as for the sender — ✅ for a
+            // confirmed slot, 🪑 for bench. No more keycap numbers.
+            finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";
             await announceSquadFullIfJustFilledFor(orgId, matchForOrg.id);
           } else {
             await cancelAttendance(target.userId, matchForOrg.id);

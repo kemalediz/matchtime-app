@@ -15,9 +15,12 @@ export async function registerAttendance(
   const match = await db.match.findUnique({ where: { id: matchId } });
   if (!match) throw new Error("Match not found");
 
-  if (new Date() > match.attendanceDeadline) {
-    throw new Error("Attendance deadline has passed");
-  }
+  // Deadline check removed 2026-05-06 (Kemal's call): players can
+  // register all the way up to match completion. Late INs on a full
+  // squad just go to the bench — the squad-capacity logic below
+  // handles that. Once the match is COMPLETED or CANCELLED the
+  // analyze route's findRegistrationMatch returns null so we never
+  // get here in the first place.
 
   // Idempotency: if the user is already CONFIRMED or BENCH for this
   // match, don't touch position/status — UNLESS the new request is an
@@ -110,9 +113,10 @@ export async function cancelAttendance(userId: string, matchId: string) {
   const match = await db.match.findUnique({ where: { id: matchId } });
   if (!match) throw new Error("Match not found");
 
-  if (new Date() > match.attendanceDeadline) {
-    throw new Error("Attendance deadline has passed");
-  }
+  // Deadline check removed 2026-05-06 — symmetric with
+  // registerAttendance. Players can drop all the way to kickoff;
+  // late OUTs trigger the bench-promote chain regardless of how
+  // close to kickoff the drop happens.
 
   const attendance = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
