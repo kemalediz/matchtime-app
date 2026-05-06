@@ -59,6 +59,24 @@ export default async function MatchDetailPage({
   const isPastDeadline = new Date() > match.attendanceDeadline;
   const hasTeams = match.teamAssignments.length > 0;
 
+  // Block "I'm in" on a future match while a previous scheduled
+  // match in the same org is still in flight (not yet COMPLETED).
+  // Mirrors the server-side guard in src/lib/attendance.ts so the
+  // button is greyed out instead of throwing on click.
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const blockedByPriorMatch =
+    match.date >= todayStart &&
+    !!(await db.match.findFirst({
+      where: {
+        activity: { orgId: match.activity.orgId },
+        status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+        date: { lt: todayStart },
+        id: { not: matchId },
+      },
+      select: { id: true },
+    }));
+
   const redTeam = match.teamAssignments
     .filter((a) => a.team === "RED")
     .map((a) => ({ ...a.user, positions: positionsFor(a.user) }));
@@ -214,6 +232,7 @@ export default async function MatchDetailPage({
             matchId={matchId}
             currentStatus={myAttendance?.status as "CONFIRMED" | "BENCH" | "DROPPED" | null}
             isPastDeadline={isPastDeadline}
+            blockedByPriorMatch={blockedByPriorMatch}
           />
           {!isPastDeadline && (
             <p className="text-sm text-slate-500 flex items-center gap-1.5">

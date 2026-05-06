@@ -214,7 +214,8 @@ Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Bak
 - "question": Asking about squad numbers, venue, kickoff time, who's in, match state ("do we have enough?", "where tonight?", "who's playing?"), OR coordination questions about specific named players' attendance status ("let me know if the other 3 can play", "are Faris and Shaz in?", "did you accept Adam?", "what's the verdict on my friends?", "Amir's guys — confirmed?").
   → registerAttendance: null. react: null. reply: a short accurate answer grounded in the Match Context block.
   → For NUMERIC squad-state questions: e.g. "We're 13/14 ✅ — need 1 more", "21:30 at <venue>".
-  → For NAMED-PLAYERS questions: cross-reference the named people against the Confirmed list. If they ARE confirmed: "Yes, <Name>, <Name> and <Name> are all confirmed — we're at <N>/<max>". If some are confirmed and others aren't: name who's in and who's missing. If none are confirmed: "Not yet — they haven't been added. Want me to add them? Just say their names." NEVER stay silent on these — the asker is coordinating with people outside the chat and needs an answer.
+  → For NAMED-PLAYERS questions: cross-reference the named people against the *Confirmed list in the Match Context block*. THAT is the source of truth — never the chat history, never your own inference, never a guess based on an earlier message you saw. If they ARE in the Confirmed list: "Yes, <Name>, <Name> and <Name> are all confirmed — we're at <N>/<max>". If some are in the list and others aren't: name who's in and who's missing. If none are in the list: "Not yet — they haven't been added. Want me to add them? Just say their names." NEVER stay silent on these — the asker is coordinating with people outside the chat and needs an answer.
+  → CRITICAL pitfall: a registerFor message ("@Ehtisham Ul Haq In", "Najib is in", "bringing Ahmet") signs up the NAMED person, not the author. If the author themselves isn't in the Confirmed list, treat them as NOT confirmed even if they wrote a recent IN-shaped message. Example: Amir posts "@Ehtisham Ul Haq In" — Ehtisham is confirmed, Amir is not. If someone later asks "is Amir coming?", check the Confirmed list — he's not there → answer "Not yet — Amir hasn't said IN himself, only registered Ehtisham. Should I add him?". Do NOT say "yes Amir replied 'In' at 09:30" — that history-based interpretation is wrong.
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
   → If the answer requires info outside the Match Context (long-term roster questions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
@@ -297,7 +298,9 @@ Players frequently sign up or drop OTHER people — friends/family/teammates who
 
 Examples:
 - "my dad Najib is also in, he's busy right now"
-    → intent "in", registerAttendance: "IN" (author is also joining? only if they said so — here they didn't, so null), registerFor: [{"name":"Najib","action":"IN"}]
+    → intent "in", registerAttendance: null (author didn't say IN for themselves — they're relaying for Najib only), registerFor: [{"name":"Najib","action":"IN"}]
+- "@Ehtisham Ul Haq In" or "Ehtisham In"
+    → intent "in", registerAttendance: null (author is registering Ehtisham, NOT themselves — note no "I'm in too" / "me too" anywhere), registerFor: [{"name":"Ehtisham Ul Haq","action":"IN"}]
 - "Ibrahim can't make it tonight, work ran late"
     → intent "out" (relaying a drop), registerAttendance: null, registerFor: [{"name":"Ibrahim","action":"OUT"}]
 - "me and Ahmet both in"

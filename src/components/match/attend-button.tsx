@@ -11,10 +11,17 @@ export function AttendButton({
   matchId,
   currentStatus,
   isPastDeadline,
+  blockedByPriorMatch,
 }: {
   matchId: string;
   currentStatus: Status;
   isPastDeadline: boolean;
+  /** True when an earlier scheduled match for the same org hasn't
+   *  been COMPLETED yet — registrations are paused for THIS (later)
+   *  match until the cron flips the prior match. Mirrors the gate in
+   *  src/lib/attendance.ts (registerAttendance) so the UI doesn't
+   *  let the user click a button that would just throw server-side. */
+  blockedByPriorMatch?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -54,6 +61,19 @@ export function AttendButton({
       >
         <Clock className="w-4 h-4" />
         Deadline passed
+      </button>
+    );
+  }
+
+  if (blockedByPriorMatch) {
+    return (
+      <button
+        disabled
+        title="Earlier match hasn't been completed yet — registrations re-open after."
+        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-400 font-medium cursor-not-allowed"
+      >
+        <Clock className="w-4 h-4" />
+        Wait for the previous match
       </button>
     );
   }

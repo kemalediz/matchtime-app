@@ -12,7 +12,10 @@ export async function registerAttendance(
     forceBench?: boolean;
   } = {},
 ) {
-  const match = await db.match.findUnique({ where: { id: matchId } });
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    include: { activity: { select: { orgId: true } } },
+  });
   if (!match) throw new Error("Match not found");
 
   // Deadline check removed 2026-05-06 (Kemal's call): players can
@@ -21,6 +24,37 @@ export async function registerAttendance(
   // handles that. Once the match is COMPLETED or CANCELLED the
   // analyze route's findRegistrationMatch returns null so we never
   // get here in the first place.
+  //
+  // BUT: block registrations for a FUTURE match while a previous
+  // scheduled match in the same org is still in flight (UPCOMING/
+  // TEAMS_GENERATED/TEAMS_PUBLISHED with date < today). This stops
+  // the dashboard's "I'm in" button on next week's match from
+  // working before this week's match has been completed by the
+  // cron. Without this guard, the same race that bit the WhatsApp
+  // analyzer (Kemal/Izzet/Baki silently registered for the May 12
+  // match minutes after the May 5 match-day deadline) would happen
+  // again via the UI. Mirrors the rule in
+  // analyze/route.ts:findRegistrationMatch.
+  {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    if (match.date >= todayStart) {
+      const inFlight = await db.match.findFirst({
+        where: {
+          activity: { orgId: match.activity.orgId },
+          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+          date: { lt: todayStart },
+          id: { not: matchId },
+        },
+        select: { id: true, date: true },
+      });
+      if (inFlight) {
+        throw new Error(
+          `Previous match (${inFlight.date.toISOString().slice(0, 10)}) hasn't been completed yet — can't register for the next one yet.`,
+        );
+      }
+    }
+  }
 
   // Idempotency: if the user is already CONFIRMED or BENCH for this
   // match, don't touch position/status — UNLESS the new request is an

@@ -765,26 +765,40 @@ async function announceSquadFullIfJustFilledFor(orgId: string, matchId: string) 
 }
 
 /**
- * Pick the right match for an attendance/bench mutation. The naive
- * `attendanceDeadline > now` filter had a nasty edge case: the moment
- * tonight's deadline expired, this query fell through to NEXT WEEK's
- * match and silently registered any subsequent IN/OUT against it.
- * Real damage on 2026-05-05 — Kemal/Izzet/Baki silently landed on the
- * May 12 attendance roster minutes after the May 5 deadline expired
- * while team-discussion messages were still flowing.
+ * Pick the right match for an attendance/bench mutation.
  *
- * New rule (per Kemal 2026-05-06): drop the deadline gate entirely.
- * The "deadline" concept is now just a hint for the team-balancer;
- * players can register IN/OUT all the way up to match COMPLETION.
- * Late IN's on a full squad land on the bench; team-balancer can
- * pick them up if anyone drops.
+ * Two evolutions of this rule:
+ * - 2026-05-06: dropped the `attendanceDeadline > now` filter (was
+ *   causing post-deadline cascade to NEXT WEEK silently). Now we
+ *   only consider matches with date >= startOfToday.
+ * - 2026-05-06 (later): block registrations while the most recent
+ *   scheduled match hasn't been COMPLETED yet. Use case: yesterday's
+ *   match has ended (~22:30) but the cron hasn't flipped its status
+ *   to COMPLETED yet (~01:00 the next morning). During that window
+ *   a player saying "in" should NOT silently register for next
+ *   week's match — they're almost certainly still talking about
+ *   yesterday's match. Registration only opens once the current
+ *   match is COMPLETED.
  *
- * We still need to NOT cascade to next week's match — so we pick
- * the SOONEST non-completed match from today onward.
+ * Rule:
+ *   1. If any non-COMPLETED non-CANCELLED match has date < today,
+ *      return null. The current scheduled match is in flight.
+ *   2. Otherwise return the soonest non-completed match where
+ *      date >= today.
  */
 async function findRegistrationMatch(orgId: string) {
   const todayStart = new Date();
   todayStart.setUTCHours(0, 0, 0, 0);
+  const inFlight = await db.match.findFirst({
+    where: {
+      activity: { orgId },
+      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+      date: { lt: todayStart },
+    },
+    orderBy: { date: "desc" },
+    select: { id: true, date: true, status: true },
+  });
+  if (inFlight) return null;
   return db.match.findFirst({
     where: {
       activity: { orgId },
