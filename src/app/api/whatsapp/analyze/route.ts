@@ -285,12 +285,18 @@ export async function POST(request: Request) {
               resolvedAt: null,
               expiresAt: { gt: new Date() },
             },
-            include: { user: { select: { name: true } } },
             orderBy: { createdAt: "desc" },
           });
         if (pendingBench) {
+          // PendingBenchConfirmation has no `user` relation — fetch
+          // the name separately. Cheap (single PK lookup) and keeps
+          // the schema unchanged.
+          const benchUser = await db.user.findUnique({
+            where: { id: pendingBench.userId },
+            select: { name: true },
+          });
           cleanReply = rewriteOverconfidentPromotion(cleanReply, {
-            benchName: pendingBench.user.name ?? "the next bench player",
+            benchName: benchUser?.name ?? "the next bench player",
             confirmedCount: freshAttendances.length,
             maxPlayers: nextMatchForReply.maxPlayers,
           });
