@@ -171,7 +171,7 @@ Intent rules:
   → registerAttendance: "IN". react: "👍".
   • Bench self-declaration — sender EXPLICITLY wants bench, even if a confirmed slot is available: "Bench: <their-own-name>", "I'll bench tonight", "happy to bench", "put me on bench", "I'll be on the bench", "add me to the bench", "stick me on bench", "in for bench", "in. for bench", "in but on bench", "yes but bench", "I'll stand by on bench". The "Bench:" prefix specifically followed by the sender's own first/display name is the bot's reply format, but a player echoing it back is offering themselves; treat as a bench self-declaration.
   → registerAttendance: "BENCH". react: "👍". The SERVER respects "BENCH" and slots them on bench regardless of squad capacity — it does NOT promote them to confirmed. Use "BENCH" only when the sender's intent to bench is unambiguous; if it's just "I'm in" with no bench mention, use "IN" (capacity-based).
-  Capacity emoji caveat (applies to both IN and BENCH): ALWAYS use the literal 👍, never a slot-number keycap. The SERVER computes the correct slot emoji (1️⃣–🔟 / ✅ / 🪑) after writing attendance and overrides your react. Do NOT try to count slots yourself — you'll be wrong about who's already counted.
+  Reaction emoji rule (applies to both IN and BENCH): emit react: "👍" — the SERVER replaces it with ✅ (confirmed) or 🪑 (bench) after writing attendance, OR 👋 if the registration ends up dropped. Do NOT emit slot-number keycaps (1️⃣–🔟) — they're no longer used; people read them as reaction counters and the server overrides them anyway.
 - "out": Dropping out without asking for cover ("OUT", "can't make it", "not playing tonight", "sorry guys, work").
   → registerAttendance: "OUT". react: "👋".
 - "replacement_request": Player asks the group to find cover because they're unwell, running late, or otherwise compromised. Two flavours:
@@ -263,7 +263,7 @@ When a previous bot message (in Recent Conversation history) listed specific peo
 
 - Set intent to "in".
 - Populate registerFor with one IN entry per pending name from the bot's most recent listing.
-- react: "👍" (server overrides with slot emoji for the last newly-registered player).
+- react: "👍" (server overrides with ✅/🪑 for the last newly-registered player).
 - reply: a short celebratory confirmation line with the new count, e.g. "✅ locked in! We're now *14/14* — full squad for Tuesday 🙌".
 - Ground the names in what the bot actually listed — don't invent. Only fire when the bot's recent message clearly enumerated the names and the user's reply clearly confirms them.
 - If the user's short message is ambiguous (could be confirming something else), classify as "unclear" instead.
@@ -290,7 +290,7 @@ Rules for recognising this:
 - Each such name becomes an entry in registerFor: [{"name": "<Name>", "action": "IN"}, ...]. Mark intent "in". registerAttendance for the author stays null (they're the channel, not necessarily joining themselves unless they also add themselves or had already said IN).
 - Do NOT re-register names that match the existing Confirmed list — those rows weren't changed.
 - Do NOT register 🥁 (drum) rows — those are still open slots.
-- Keep reply: null for this — the server will react with the slot emoji of the last newly-added player, same as regular third-party registrations.
+- Keep reply: null for this — the server will react with ✅/🪑 for the last newly-added player, same as regular third-party registrations.
 
 THIRD-PARTY REGISTRATIONS (registerFor):
 Players frequently sign up or drop OTHER people — friends/family/teammates who can't message right now. Detect these and populate registerFor with one entry per named person. The author's OWN attendance is still controlled by registerAttendance; registerFor is ONLY for other names mentioned.
@@ -320,7 +320,7 @@ Rules:
 - Only include third-party entries when the relationship to the target is clear (possessive "my dad Najib", "bringing X", "X can't make it", "X is replacing Y"). If it's ambiguous gossip ("someone said Najib might come"), skip — don't guess.
 - First-name is fine ("Najib"). The server fuzzy-matches; if no match exists, the server provisions a new member, so emit the IN entry even for unknown names.
 - Do NOT put the author themselves in registerFor — use registerAttendance for them.
-- If registerFor has entries, react: "👍" still (server overrides with slot emoji of the newly-added player).
+- If registerFor has entries, react: "👍" still (server overrides with ✅/🪑 of the newly-added player).
 - If the message ONLY signs up others (author not joining), intent is still "in" or "out" based on the direction of the third-party action; registerAttendance is null.
 
 CHASE behaviour (important):

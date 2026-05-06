@@ -1379,26 +1379,16 @@ export async function sweepExpiredBenchConfirmations(orgId: string): Promise<voi
  * from the dropout flow (lib/attendance.ts).
  */
 /**
- * Slot-emoji map for IN reactions.
- * Slots 1-10 use Unicode keycap digits. Slots 11+ fall back to ✅
- * (Unicode has no single-grapheme keycap for double digits, and
- * concatenated keycaps don't render as one reaction; ⚽ camouflaged
- * with player reactions historically — see memory).
+ * Slot-emoji helper. Used to be a 1️⃣–🔟 keycap map but Kemal flagged
+ * those as confusing (read as reaction counts, go stale on drops,
+ * required this whole RetroReaction queue just to keep them current).
+ * Now: every CONFIRMED player gets ✅ regardless of slot. The
+ * queueSlotEmojiRefresh callers still call us for compat — they're
+ * effectively no-ops now since the emoji never changes after a
+ * shuffle (everyone's already on ✅).
  */
-const KEYCAP_EMOJI: Record<number, string> = {
-  1: "1️⃣",
-  2: "2️⃣",
-  3: "3️⃣",
-  4: "4️⃣",
-  5: "5️⃣",
-  6: "6️⃣",
-  7: "7️⃣",
-  8: "8️⃣",
-  9: "9️⃣",
-  10: "🔟",
-};
-function slotEmoji(slot: number): string {
-  return KEYCAP_EMOJI[slot] ?? "✅";
+function slotEmoji(_slot: number): string {
+  return "✅";
 }
 
 /**
