@@ -804,6 +804,26 @@ async function executeVerdict(args: {
   let finalReact = verdict.react;
   let finalReply = verdict.reply;
 
+  // ── Last-mile react rewrite for IN intent ────────────────────────
+  //    When a player says IN but they're already CONFIRMED/BENCH for
+  //    the match, the LLM correctly leaves registerAttendance null
+  //    (idempotent, no double-register). Without this block, the
+  //    LLM's literal 👍 would slip through and the player would see
+  //    a thumbs-up instead of the ✅/🪑 we use for registration. Run
+  //    BEFORE the registerAttendance/registerFor branches so they can
+  //    overwrite finalReact with their own (slot-aware) value.
+  if (verdict.intent === "in" && user && finalReact === "👍") {
+    const matchForOrg = await findRegistrationMatch(orgId);
+    if (matchForOrg) {
+      const att = await db.attendance.findUnique({
+        where: { matchId_userId: { matchId: matchForOrg.id, userId: user.id } },
+        select: { status: true },
+      });
+      if (att?.status === "CONFIRMED") finalReact = "✅";
+      else if (att?.status === "BENCH") finalReact = "🪑";
+    }
+  }
+
   // ── Bench-confirmation reply ─────────────────────────────────────
   //    When the LLM detects an answer to an open bench-prompt (the
   //    bench user replied 👍/yes/no in the GROUP instead of reacting
