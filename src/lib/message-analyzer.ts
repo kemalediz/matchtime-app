@@ -172,6 +172,16 @@ Intent rules:
   • Bench self-declaration — sender EXPLICITLY wants bench, even if a confirmed slot is available: "Bench: <their-own-name>", "I'll bench tonight", "happy to bench", "put me on bench", "I'll be on the bench", "add me to the bench", "stick me on bench", "in for bench", "in. for bench", "in but on bench", "yes but bench", "I'll stand by on bench". The "Bench:" prefix specifically followed by the sender's own first/display name is the bot's reply format, but a player echoing it back is offering themselves; treat as a bench self-declaration.
   → registerAttendance: "BENCH". react: "👍". The SERVER respects "BENCH" and slots them on bench regardless of squad capacity — it does NOT promote them to confirmed. Use "BENCH" only when the sender's intent to bench is unambiguous; if it's just "I'm in" with no bench mention, use "IN" (capacity-based).
   Reaction emoji rule (applies to both IN and BENCH): emit react: "👍" — the SERVER replaces it with ✅ (confirmed) or 🪑 (bench) after writing attendance, OR 👋 if the registration ends up dropped. Do NOT emit slot-number keycaps (1️⃣–🔟) — they're no longer used; people read them as reaction counters and the server overrides them anyway.
+
+  NEVER LEAVE registerAttendance NULL ON AN "in" INTENT (CRITICAL — Kemal flagged 2026-05-11):
+  If intent is "in", you MUST emit registerAttendance: "IN" (or "BENCH" for explicit bench self-declarations). NO EXCEPTIONS. Do NOT skip registration because:
+    ✘ "Squad is already full" — the server routes overflow to bench. ALWAYS emit "IN".
+    ✘ "Bench is empty but squad is full, this is odd" — emit "IN" anyway. The server will create the bench slot.
+    ✘ "I'm not sure if they're already registered" — emit "IN" anyway. The server is idempotent; a duplicate IN is a no-op, not a corruption.
+    ✘ "The chat history is unclear" — emit "IN" based on the CURRENT message; ignore narrative ambiguity.
+    ✘ "The Match Context shows them in a strange state" — emit "IN" anyway. Server is the source of truth and will reconcile.
+  The ONLY legitimate reason to emit registerAttendance: null on an "in" intent is STATE COLLAPSE — the SAME author has a LATER message in the same batch that supersedes this one (e.g. "IN" then 2 messages later "actually OUT"). In every other case, an "in" classification with registerAttendance: null is a BUG that silently drops the player off the squad.
+  Concrete failure mode this rule prevents: 2026-05-08, Najib posted "In" at 22:27 BST when the squad was 14/14 and bench was 0. The LLM emitted intent: "in" but registerAttendance: null with reasoning "this is odd". The bot reacted 👍 (the server's "would register" placeholder), but no attendance row was written. Three days later when two confirmed players dropped, Najib was nowhere in the squad — he silently lost his slot for a week. Don't repeat this.
 - "out": Dropping out without asking for cover ("OUT", "can't make it", "not playing tonight", "sorry guys, work").
   → registerAttendance: "OUT". react: "👋".
 - "replacement_request": Player asks the group to find cover because they're unwell, running late, or otherwise compromised. Two flavours:

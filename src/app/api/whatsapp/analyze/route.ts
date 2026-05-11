@@ -216,10 +216,47 @@ export async function POST(request: Request) {
     if (verdicts[i].intent === "generate_teams_request") lastTeamsRequestIdx = i;
   }
 
+  // Pre-compute "latest message index per author" for state-collapse-safe
+  // IN backfill below. When the LLM emits intent:"in" but registerAttendance:null
+  // (a known failure mode — see Najib 2026-05-08), we force registerAttendance
+  // back to "IN" UNLESS the same author has a later message in the batch that
+  // legitimately supersedes this one. Without this safety net the player is
+  // silently dropped: the bot reacts 👍 but no attendance row is written.
+  const latestIdxByAuthor = new Map<string, number>();
+  for (let i = 0; i < fresh.length; i++) {
+    const uid = senderById.get(fresh[i].waMessageId)?.userId;
+    if (uid) latestIdxByAuthor.set(uid, i);
+  }
+
   for (let i = 0; i < fresh.length; i++) {
     const msg = fresh[i];
     let verdict = verdicts[i];
     const sender = senderById.get(msg.waMessageId)!;
+
+    // ── IN intent safety net ─────────────────────────────────────────
+    //    If the LLM classified this as "in" but emitted
+    //    registerAttendance:null with no state-collapse reason (i.e.
+    //    this IS the author's latest IN-shaped message in the batch),
+    //    force registerAttendance back to "IN". The prompt forbids
+    //    this combination but Haiku has been observed to skip it when
+    //    it finds the match state "odd" (e.g. squad full + bench
+    //    empty). Server is the source of truth — registerAttendance
+    //    is idempotent and capacity-aware, so this is always safe.
+    if (
+      verdict.intent === "in" &&
+      verdict.registerAttendance === null &&
+      sender.userId
+    ) {
+      const latestIdx = latestIdxByAuthor.get(sender.userId);
+      if (latestIdx === i) {
+        console.warn(
+          `[analyze] LLM emitted intent:"in" with registerAttendance:null for ${sender.name} (${msg.waMessageId}). ` +
+            `Forcing registerAttendance to "IN" — reasoning was: ${verdict.reasoning}`,
+        );
+        verdict = { ...verdict, registerAttendance: "IN" };
+      }
+    }
+
     if (
       verdict.intent === "generate_teams_request" &&
       i !== lastTeamsRequestIdx
