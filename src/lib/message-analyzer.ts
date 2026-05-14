@@ -26,6 +26,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
+import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -228,7 +229,9 @@ Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Bak
   → CRITICAL pitfall: a registerFor message ("@Ehtisham Ul Haq In", "Najib is in", "bringing Ahmet") signs up the NAMED person, not the author. If the author themselves isn't in the Confirmed list, treat them as NOT confirmed even if they wrote a recent IN-shaped message. Example: Amir posts "@Ehtisham Ul Haq In" — Ehtisham is confirmed, Amir is not. If someone later asks "is Amir coming?", check the Confirmed list — he's not there → answer "Not yet — Amir hasn't said IN himself, only registered Ehtisham. Should I add him?". Do NOT say "yes Amir replied 'In' at 09:30" — that history-based interpretation is wrong.
   → SECOND CRITICAL pitfall (the inverse): when a member STATES that a named player is in / committed / playing ("Najib said in as well", "Habib confirmed earlier", "Faris told me he's coming", "we should be at 13 because X is in"), this is NOT a question — it's a third-party REGISTRATION (handle as intent "in" with a registerFor IN entry for the named player, per the THIRD-PARTY REGISTRATIONS section). Do NOT respond with "yes, <name> is confirmed" based on the SPEAKER'S claim when the named player is missing from the Confirmed list — the Match Context is the only source of truth. If the named player IS already in the Confirmed list, the registerFor is a harmless no-op (server is idempotent). If they're NOT, the registerFor adds them — either to the confirmed squad if there's room, or to the bench if it's full. EITHER WAY, never claim someone is in the squad when they're absent from the Confirmed list — that's the exact failure mode Kemal flagged on 2026-05-11 (LLM "confirmed" Najib based on Wasim's claim, while the squad sat at 12/14 with no registerFor emitted).
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
-  → If the answer requires info outside the Match Context (long-term roster questions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
+  → For HISTORICAL / STATS questions about past matches, MoM winners, attendance, current form, scores ("who got MoM last week?", "who got the MoMs in the last 3 matches?", "what was the score last Tuesday?", "who's been the most consistent attender?", "who plays the most?", "who's our top scorer of MoMs?", "who's on a hot streak?", "what's my rating?", "is X our most regular?"): the Recent History block in the Match Context is THE SOURCE OF TRUTH. Answer ONLY from what's in that block — never invent dates, scores, MoM winners, attendance counts, or ratings. The block lists every completed match oldest-first (with date, score, MoM winner + vote count), an all-time MoM leaderboard, an attendance leaderboard, and Elo top/bottom. Pull the relevant rows and phrase the answer in plain group-chat English ("Wasim took MoM at the May 5 match (5 of 11 votes). The one before that was Karahan."). For "last N matches" questions, the LAST N entries in the Completed matches list are what you want (it's already oldest-first, so take from the tail). For "most consistent" questions, default to the Attendance leaderboard — cite the leader, the runner-up, and the % context. If the question is about a SPECIFIC player, cross-reference all four sub-lists (per-match MoM lines, MoM leaderboard, attendance leaderboard, Elo) to compose a richer answer ("Kemal has played 24 of 25 matches (96%), has won MoM twice, and his current rating is 1042 — fourth on the leaderboard."). If the answer ISN'T in the block (e.g. someone asks about a player who's never played, or the org has no completed matches yet), reply honestly: "no record of that yet — once we've played a few more, that'll show up." Never silent on these.
+  → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
+  → If the answer requires info outside the Match Context AND outside the Recent History block (long-term roster questions, opinions, predictions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
   → Populate scoreRed + scoreYellow with the two numbers. Order: if the message explicitly names the team labels, align accordingly; otherwise emit the numbers in the order they appear in the message. react: "👍". registerAttendance: null.
 - "generate_teams_request": Someone asks the bot to set up / balance / post the teams for the next match ("generate teams", "@M Time teams please", "let's see the teams", "split us up", "balance the teams"). The request may optionally include overrides like "consider Ibrahim and Ehtisham as IN" / "include X and Y" / "treat Z as confirmed".
@@ -635,6 +638,20 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     pendingBenchConfirmations,
   });
 
+  // Recent History block — feeds the LLM enough historical context to
+  // answer "who got MoM last week?" / "who's been the most consistent
+  // attender?" / "what was the score last Tuesday?" without inventing
+  // numbers. Lives in the cached portion of the user message so the
+  // 1-hour TTL absorbs its cost; only invalidates when a match
+  // completes or a MoM vote lands. Returns null when the org has no
+  // completed match yet — early-launch orgs simply don't get the
+  // block, and the LLM falls back to its existing "I don't know that
+  // one yet" behaviour.
+  const recentHistory = await loadRecentHistory(org.id);
+  const fullContext = recentHistory
+    ? `${matchContext}\n\n${formatRecentHistoryBlock(recentHistory)}`
+    : matchContext;
+
   const historyBlock = input.history.length
     ? input.history
         .slice(-10)
@@ -692,10 +709,11 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
           content: [
             {
               type: "text",
-              text: matchContext,
-              // Match/squad context only changes when attendance changes;
-              // same 1-hour cache. On DB writes the cache keyed on the
-              // content hash naturally invalidates and rebuilds.
+              text: fullContext,
+              // Match/squad context + Recent History both only change
+              // when attendance/MoM/match-status changes; 1-hour cache
+              // absorbs their cost. On DB writes the cache keyed on
+              // the content hash naturally invalidates and rebuilds.
               cache_control: { type: "ephemeral", ttl: "1h" },
             },
             {
