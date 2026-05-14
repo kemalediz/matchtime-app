@@ -230,6 +230,7 @@ Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Bak
   → SECOND CRITICAL pitfall (the inverse): when a member STATES that a named player is in / committed / playing ("Najib said in as well", "Habib confirmed earlier", "Faris told me he's coming", "we should be at 13 because X is in"), this is NOT a question — it's a third-party REGISTRATION (handle as intent "in" with a registerFor IN entry for the named player, per the THIRD-PARTY REGISTRATIONS section). Do NOT respond with "yes, <name> is confirmed" based on the SPEAKER'S claim when the named player is missing from the Confirmed list — the Match Context is the only source of truth. If the named player IS already in the Confirmed list, the registerFor is a harmless no-op (server is idempotent). If they're NOT, the registerFor adds them — either to the confirmed squad if there's room, or to the bench if it's full. EITHER WAY, never claim someone is in the squad when they're absent from the Confirmed list — that's the exact failure mode Kemal flagged on 2026-05-11 (LLM "confirmed" Najib based on Wasim's claim, while the squad sat at 12/14 with no registerFor emitted).
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
   → For HISTORICAL / STATS questions about past matches, MoM winners, attendance, current form, scores ("who got MoM last week?", "who got the MoMs in the last 3 matches?", "what was the score last Tuesday?", "who's been the most consistent attender?", "who plays the most?", "who's our top scorer of MoMs?", "who's on a hot streak?", "what's my rating?", "is X our most regular?"): the Recent History block in the Match Context is THE SOURCE OF TRUTH. Answer ONLY from what's in that block — never invent dates, scores, MoM winners, attendance counts, or ratings. The block lists every completed match oldest-first (with date, score, MoM winner + vote count), an all-time MoM leaderboard, an attendance leaderboard, and Elo top/bottom. Pull the relevant rows and phrase the answer in plain group-chat English ("Wasim took MoM at the May 5 match (5 of 11 votes). The one before that was Karahan."). For "last N matches" questions, the LAST N entries in the Completed matches list are what you want (it's already oldest-first, so take from the tail). For "most consistent" questions, default to the Attendance leaderboard — cite the leader, the runner-up, and the % context. If the question is about a SPECIFIC player, cross-reference all four sub-lists (per-match MoM lines, MoM leaderboard, attendance leaderboard, Elo) to compose a richer answer ("Kemal has played 24 of 25 matches (96%), has won MoM twice, and his current rating is 1042 — fourth on the leaderboard."). If the answer ISN'T in the block (e.g. someone asks about a player who's never played, or the org has no completed matches yet), reply honestly: "no record of that yet — once we've played a few more, that'll show up." Never silent on these.
+  → For HISTORICAL/STATS questions, do NOT include the current-squad roster block at the end. The SQUAD-STATE REPLY SHAPE rule (below) applies to questions about THIS week's match (numbers, who's playing tonight, drops). Historical questions about consistency, MoM, or ratings have nothing to do with tonight's lineup — appending a squad roster on top of a leaderboard creates a confusing mash-up (and gets clobbered by the server-side roster post-processor, which Kemal saw on 2026-05-14: "top 3 most consistent" came back as the upcoming-squad list because the LLM included both blocks). Reply with the leaderboard / per-match list / per-player summary ONLY — no squad block, no count line ("13/14"), no "Playing tonight" header. Format the leaderboard as a numbered list ("1. Name — 4/4 (100%)"). Keep the answer focused and lineup-free.
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
   → If the answer requires info outside the Match Context AND outside the Recent History block (long-term roster questions, opinions, predictions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
@@ -1034,23 +1035,37 @@ export function enforceCanonicalRoster(
 
   // 2. Find a roster block: 2+ consecutive lines matching "N. ..."
   //    starting from anywhere in the message. Capture the whole run.
+  //    Exclude obvious LEADERBOARD blocks — those also use "N. <name>"
+  //    numbering but carry stats markers ("— 4/4 (100%)", "— 2 wins",
+  //    "— 1042", percent signs, "votes"). Without this exclusion the
+  //    post-processor clobbers the bot's own historical-stats replies
+  //    with the current squad roster (Kemal flagged 2026-05-14 when
+  //    "top 3 most consistent" turned into the upcoming squad list).
+  const isLeaderboardLine = (s: string): boolean =>
+    /\s—\s/.test(s) || // em-dash separator the leaderboard formatter uses
+    /\d+\s*%/.test(s) || // "(96%)"
+    /\b(?:wins?|votes?|matches?)\b/i.test(s) || // "2 wins", "5 of 11 votes", "3 matches"
+    /\b\d+\/\d+\s*\(/.test(s); // "4/4 (100%)" — attendance pattern
   const lines = text.split("\n");
   let start = -1;
   let end = -1;
+  let containsLeaderboardLine = false;
   for (let i = 0; i < lines.length; i++) {
     const isRosterLine = /^\s*\d+\.\s+\S/.test(lines[i]);
     if (isRosterLine) {
       if (start === -1) start = i;
       end = i;
+      if (isLeaderboardLine(lines[i])) containsLeaderboardLine = true;
     } else if (start !== -1 && end - start + 1 >= 2) {
       break;
     } else {
       start = -1;
       end = -1;
+      containsLeaderboardLine = false;
     }
   }
   let out = text;
-  if (start !== -1 && end - start + 1 >= 2) {
+  if (start !== -1 && end - start + 1 >= 2 && !containsLeaderboardLine) {
     const before = lines.slice(0, start).join("\n");
     const after = lines.slice(end + 1).join("\n");
     out = [before, canonical, after].filter((s) => s !== "").join("\n");
