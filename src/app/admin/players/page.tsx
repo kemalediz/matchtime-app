@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Phone, Star, Shield, Check, X, Sparkles, GitMerge } from "lucide-react";
+import { Phone, Star, Shield, Check, X, Sparkles, GitMerge, Tag, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   updatePlayerRole,
@@ -12,6 +12,8 @@ import {
   updatePlayerName,
   updatePlayerPhone,
   mergePlayers,
+  addPlayerAlias,
+  removePlayerAlias,
 } from "@/app/actions/players";
 
 interface Player {
@@ -26,6 +28,7 @@ interface Player {
   isActive: boolean;
   leftAt: string | null;
   provisionallyAddedAt: string | null;
+  aliases: Array<{ alias: string; source: string }>;
   _count: { attendances: number };
 }
 
@@ -121,6 +124,53 @@ export default function PlayersPage() {
       toast.success("Players merged");
       setMergeFrom(null);
       loadPlayers(includeFormer);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  // Track which row's "add alias" input is open (one at a time).
+  const [aliasInputFor, setAliasInputFor] = useState<string | null>(null);
+  const [aliasInputValue, setAliasInputValue] = useState("");
+
+  async function handleAddAlias(userId: string) {
+    if (!orgId) return;
+    const value = aliasInputValue.trim();
+    if (!value) { setAliasInputFor(null); return; }
+    try {
+      const res = await addPlayerAlias(userId, orgId, value);
+      // Optimistic update — push the new alias into the row.
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === userId
+            ? {
+                ...p,
+                aliases: res.alreadyExisted
+                  ? p.aliases
+                  : [...p.aliases, { alias: res.alias, source: "manual" }],
+              }
+            : p,
+        ),
+      );
+      toast.success(res.alreadyExisted ? `"${res.alias}" already linked` : `Added alias "${res.alias}"`);
+      setAliasInputFor(null);
+      setAliasInputValue("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function handleRemoveAlias(userId: string, alias: string) {
+    if (!orgId) return;
+    if (!confirm(`Remove alias "${alias}"? Next time the bot sees that pushname, it'll fall back to fuzzy matching.`)) return;
+    try {
+      await removePlayerAlias(userId, orgId, alias);
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === userId ? { ...p, aliases: p.aliases.filter((a) => a.alias !== alias) } : p,
+        ),
+      );
+      toast.success(`Removed alias "${alias}"`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
@@ -327,6 +377,57 @@ export default function PlayersPage() {
                         </button>
                       </div>
                     </div>
+                  )}
+                  {(p.aliases.length > 0 || aliasInputFor === p.id) && (
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <Tag className="w-3 h-3 text-slate-400 shrink-0" />
+                      {p.aliases.map((a) => (
+                        <button
+                          key={a.alias}
+                          onClick={() => handleRemoveAlias(p.id, a.alias)}
+                          className="group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 text-[11px] font-medium transition-colors"
+                          title={`Alias "${a.alias}" — click to remove (source: ${a.source})`}
+                        >
+                          {a.alias}
+                          <X className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100" />
+                        </button>
+                      ))}
+                      {aliasInputFor === p.id ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={aliasInputValue}
+                          onChange={(e) => setAliasInputValue(e.target.value)}
+                          onBlur={() => handleAddAlias(p.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            if (e.key === "Escape") {
+                              setAliasInputFor(null);
+                              setAliasInputValue("");
+                            }
+                          }}
+                          placeholder="nickname…"
+                          className="w-28 px-1.5 py-0.5 text-[11px] rounded border border-slate-300 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => { setAliasInputFor(p.id); setAliasInputValue(""); }}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-600 text-[11px] font-medium transition-colors"
+                          title="Add a nickname / alternate name the bot should recognise"
+                        >
+                          <Plus className="w-2.5 h-2.5" /> add
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {p.aliases.length === 0 && aliasInputFor !== p.id && (
+                    <button
+                      onClick={() => { setAliasInputFor(p.id); setAliasInputValue(""); }}
+                      className="mt-1 inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-blue-600 transition-colors"
+                      title="Add a nickname / alternate name the bot should recognise"
+                    >
+                      <Tag className="w-2.5 h-2.5" /> add alias
+                    </button>
                   )}
                   <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5 flex-wrap">
                     {p.positions.map((pos) => (

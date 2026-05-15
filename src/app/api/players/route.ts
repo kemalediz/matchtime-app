@@ -52,6 +52,27 @@ export async function GET(request: Request) {
     orderBy: { user: { name: "asc" } },
   });
 
+  // Aliases — per-org UserAlias rows for these users. Surfaced on the
+  // admin player list so admins can see (and edit) the nickname/short
+  // pushname mappings the analyzer uses to resolve ambiguous senders.
+  // Populated automatically by mergePlayers but until now was invisible
+  // (Kemal flagged 2026-05-15 — couldn't see "ba" → Baki or "Nunu" →
+  // Elnur). One findMany + in-memory group-by, cheap.
+  const aliasRows = await db.userAlias.findMany({
+    where: {
+      orgId: membership.orgId,
+      userId: { in: memberships.map((m) => m.user.id) },
+    },
+    select: { userId: true, alias: true, source: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const aliasesByUser = new Map<string, Array<{ alias: string; source: string }>>();
+  for (const a of aliasRows) {
+    const arr = aliasesByUser.get(a.userId) ?? [];
+    arr.push({ alias: a.alias, source: a.source });
+    aliasesByUser.set(a.userId, arr);
+  }
+
   const players = memberships.map((m) => ({
     id: m.user.id,
     name: m.user.name,
@@ -64,6 +85,7 @@ export async function GET(request: Request) {
     isActive: m.user.isActive,
     leftAt: m.leftAt ? m.leftAt.toISOString() : null,
     provisionallyAddedAt: m.provisionallyAddedAt ? m.provisionallyAddedAt.toISOString() : null,
+    aliases: aliasesByUser.get(m.user.id) ?? [],
     _count: m.user._count,
   }));
 

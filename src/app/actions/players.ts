@@ -566,3 +566,77 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
   revalidatePath("/admin/players/phones");
   return { phoneNumber: normalised };
 }
+
+/**
+ * Add a UserAlias for a player. Aliases are nicknames / short
+ * pushnames / variant spellings the sender resolver uses when the
+ * WhatsApp display name doesn't fuzzy-match the canonical name —
+ * "Nunu" → Elnur Mammadov, "ba" → Baki when there are multiple
+ * "ba*" first names in the org.
+ *
+ * Schema: aliases are stored lowercased + diacritic-stripped (matches
+ * the resolver's comparison key), so the input gets normalised here
+ * regardless of how the admin types it. Unique per (orgId, alias) —
+ * adding the same alias for a different user errors out.
+ */
+const aliasNorm = (s: string) =>
+  s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+export async function addPlayerAlias(userId: string, orgId: string, rawAlias: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const alias = aliasNorm(rawAlias);
+  if (alias.length < 2) throw new Error("Alias must be at least 2 characters");
+  if (alias.length > 40) throw new Error("Alias is too long");
+
+  const membership = await db.membership.findUnique({
+    where: { userId_orgId: { userId, orgId } },
+    select: { userId: true },
+  });
+  if (!membership) throw new Error("Player is not a member of this organisation");
+
+  // If alias is already taken by someone else in the org, surface it.
+  const existing = await db.userAlias.findUnique({
+    where: { orgId_alias: { orgId, alias } },
+    select: { userId: true },
+  });
+  if (existing && existing.userId !== userId) {
+    throw new Error(
+      `Alias "${alias}" is already assigned to another player in this organisation`,
+    );
+  }
+  if (existing && existing.userId === userId) {
+    // Idempotent — already exists for this user.
+    return { alias, alreadyExisted: true };
+  }
+
+  await db.userAlias.create({
+    data: { orgId, userId, alias, source: "manual" },
+  });
+  revalidatePath("/admin/players");
+  return { alias, alreadyExisted: false };
+}
+
+export async function removePlayerAlias(userId: string, orgId: string, rawAlias: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const alias = aliasNorm(rawAlias);
+  // Bound the delete to (orgId, alias, userId) so an admin can't
+  // accidentally delete someone else's alias even if they passed the
+  // wrong userId in the request body.
+  const row = await db.userAlias.findUnique({
+    where: { orgId_alias: { orgId, alias } },
+    select: { id: true, userId: true },
+  });
+  if (!row) return { removed: false };
+  if (row.userId !== userId) {
+    throw new Error("Alias belongs to a different player");
+  }
+  await db.userAlias.delete({ where: { id: row.id } });
+  revalidatePath("/admin/players");
+  return { removed: true };
+}
