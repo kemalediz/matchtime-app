@@ -156,24 +156,23 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     .slice(0, LEADERBOARD_LIMIT);
 
   // 4. Attendance leaderboard — count of CONFIRMED appearances per
-  //    player across the completed matches above. Also compute their
-  //    personal "matches available" (matches since they first
-  //    appeared) so we can show a % alongside the raw count.
+  //    player across the completed matches above. Denominator is the
+  //    org's TOTAL completed matches, not the player's personal
+  //    "matches since first played" — Kemal flagged 2026-05-15 that
+  //    showing "3/3 (100%)" for a player who joined late reads the
+  //    same as "4/4 (100%)" for an ever-present, when it isn't. With
+  //    the total denominator, Abid (joined match 2, attended all 3
+  //    since) shows 3/4 (75%) — accurately positioning him below
+  //    Kemal/Idris on consistency.
   const attendanceRows = await db.attendance.findMany({
     where: { matchId: { in: matchIds }, status: "CONFIRMED" },
     select: { userId: true, matchId: true },
   });
-  // Per-player: count + earliest match index (= matches available for them).
-  const matchIndexById = new Map(matches.map((m, i) => [m.id, i]));
-  const perPlayer = new Map<string, { count: number; firstIdx: number }>();
+  const perPlayer = new Map<string, { count: number }>();
   for (const a of attendanceRows) {
     const cur = perPlayer.get(a.userId);
-    const idx = matchIndexById.get(a.matchId) ?? 0;
-    if (!cur) perPlayer.set(a.userId, { count: 1, firstIdx: idx });
-    else {
-      cur.count += 1;
-      if (idx < cur.firstIdx) cur.firstIdx = idx;
-    }
+    if (!cur) perPlayer.set(a.userId, { count: 1 });
+    else cur.count += 1;
   }
   const totalMatches = matches.length;
   const attendanceUserIds = [...perPlayer.keys()];
@@ -184,23 +183,17 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   const attendanceNameById = new Map(attendanceUsers.map((u) => [u.id, u.name ?? "(unnamed)"]));
   const attendanceLeaderboard: LeaderboardRow[] = [...perPlayer.entries()]
     .map(([userId, v]) => {
-      const available = totalMatches - v.firstIdx;
-      const pct = available > 0 ? Math.round((v.count / available) * 100) : 0;
+      const pct = totalMatches > 0 ? Math.round((v.count / totalMatches) * 100) : 0;
       return {
         userId,
         name: attendanceNameById.get(userId) ?? "(unnamed)",
         value: v.count,
-        detail: `${v.count}/${available} (${pct}%)`,
+        detail: `${v.count}/${totalMatches} (${pct}%)`,
       };
     })
-    .sort(
-      (a, b) =>
-        b.value - a.value ||
-        // tiebreaker on %: pull out the percentage from detail strings
-        (parseInt(b.detail!.match(/(\d+)%/)?.[1] ?? "0", 10) -
-          parseInt(a.detail!.match(/(\d+)%/)?.[1] ?? "0", 10)) ||
-        a.name.localeCompare(b.name),
-    )
+    // Sort by raw count desc — with a fixed denominator that's the
+    // same ordering as % desc. Stable name tiebreaker.
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
     .slice(0, LEADERBOARD_LIMIT);
 
   // 5. Elo top + bottom — only players who've actually been assigned
@@ -277,7 +270,7 @@ export function formatRecentHistoryBlock(history: RecentHistory): string {
   }
   if (history.attendanceLeaderboard.length) {
     lines.push("");
-    lines.push(`Attendance leaderboard (CONFIRMED appearances since each player first played):`);
+    lines.push(`Attendance leaderboard (CONFIRMED appearances out of every completed match — denominator is total matches, so a late-joining player who has played every match since is fairly ranked below an ever-present):`);
     history.attendanceLeaderboard.forEach((r, i) => {
       lines.push(`  ${i + 1}. ${r.name} — ${r.detail}`);
     });
