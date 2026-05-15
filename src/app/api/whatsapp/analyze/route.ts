@@ -504,15 +504,35 @@ async function resolveSender(orgId: string, msg: InboundMessage): Promise<Resolv
       if (m.leftAt) await restoreMembership(m.id, m.user.name);
       return { userId: m.user.id, name: m.user.name, phone: null };
     }
-    // Multiple first-name matches (e.g. two Ibrahims) — DO NOT provision
-    // a third user. Ambiguous cases should surface to the admin, not
-    // silently grow the roster. Return unresolved and let the verdict
-    // either silently drop OR (future) ask the group to disambiguate.
+    // Multiple first-name matches (e.g. two Ibrahims) — try the alias
+    // table FIRST before giving up. UserAlias is admin-curated
+    // (populated by mergePlayers) and unique per (orgId, alias), so an
+    // alias hit disambiguates cleanly regardless of how many fuzzy
+    // candidates also match. Kemal flagged 2026-05-15: Baki's "ba"
+    // pushname matches both Baki and Başar by fuzzy, so the resolver
+    // returned null — but UserAlias["ba"] → Baki was already present
+    // from an earlier merge, and it should have taken precedence.
     if (firstNameMatches.length > 1) {
+      const aliasKeyEarly = norm(pushname);
+      if (aliasKeyEarly.length >= 2) {
+        const alias = await db.userAlias.findUnique({
+          where: { orgId_alias: { orgId, alias: aliasKeyEarly } },
+        });
+        if (alias) {
+          const m = candidates.find((c) => c.userId === alias.userId);
+          if (m) {
+            if (m.leftAt) await restoreMembership(m.id, m.user.name);
+            console.log(
+              `[analyze] ambiguous fuzzy "${pushname}" resolved via UserAlias → ${m.user.name} (${alias.userId})`,
+            );
+            return { userId: m.user.id, name: m.user.name, phone: null };
+          }
+        }
+      }
       console.warn(
         `[analyze] ambiguous fuzzy match for "${pushname}" in org ${orgId} — ${firstNameMatches.length} candidates: ${firstNameMatches
           .map((m) => m.user.name)
-          .join(", ")}`,
+          .join(", ")} (no alias to disambiguate)`,
       );
       return { userId: null, name: pushname, phone: null };
     }
@@ -610,13 +630,29 @@ async function resolveOrProvisionByName(
     return { userId: m.user.id, name: m.user.name };
   }
   // Ambiguous: multiple players match the given name ("Ibrahim" when
-  // there are two). Don't silently grow the roster with a third. The
-  // verdict-execution block silently skips; admin can add the correct
-  // attendance from the dashboard. Future: surface a disambiguation
-  // reply to the group.
+  // there are two). BEFORE bailing out, try the alias table — admin-
+  // curated UserAlias rows are unique per (orgId, alias) so an alias
+  // hit disambiguates cleanly regardless of fuzzy ambiguity. Same fix
+  // as resolveSender (Kemal flagged Baki/"ba" 2026-05-15).
   if (firstNameMatches.length > 1) {
+    const aliasKeyEarly = norm(name);
+    if (aliasKeyEarly.length >= 2) {
+      const alias = await db.userAlias.findUnique({
+        where: { orgId_alias: { orgId, alias: aliasKeyEarly } },
+      });
+      if (alias) {
+        const m = candidates.find((c) => c.userId === alias.userId);
+        if (m) {
+          if (m.leftAt) await restoreMembership(m.id, m.user.name);
+          console.log(
+            `[analyze] third-party ambiguous "${name}" resolved via UserAlias → ${m.user.name} (${alias.userId})`,
+          );
+          return { userId: m.user.id, name: m.user.name };
+        }
+      }
+    }
     console.warn(
-      `[analyze] third-party name "${name}" is ambiguous in org ${orgId} (${firstNameMatches.length} candidates). Skipping registration.`,
+      `[analyze] third-party name "${name}" is ambiguous in org ${orgId} (${firstNameMatches.length} candidates, no alias to disambiguate). Skipping registration.`,
     );
     return null;
   }
