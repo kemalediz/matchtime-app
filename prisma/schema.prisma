@@ -402,9 +402,15 @@ model RosterSurveyResponse {
 model BotJob {
   id       String   @id @default(cuid())
   orgId    String
-  kind     String                   // "dm" | "group"
+  kind     String                   // "dm" | "group" | "group-poll"
   phone    String?                  // for DM jobs, E.164 without the + prefix
   text     String   @db.Text
+  /// Poll fields — set when kind = "group-poll". `text` should mirror
+  /// the question for admin-dashboard previews. If pollQuestion is
+  /// non-null, pollOptions must contain at least 2 entries.
+  pollQuestion String?  @db.Text
+  pollOptions  String[]
+  pollMulti    Boolean  @default(false)
   sentAt   DateTime?
   createdAt DateTime @default(now())
 

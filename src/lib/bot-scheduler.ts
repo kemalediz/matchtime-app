@@ -508,6 +508,16 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
           key,
           text: job.text,
         });
+      } else if (job.kind === "group-poll" && job.pollQuestion && job.pollOptions.length >= 2) {
+        // Ad-hoc admin-queued poll (e.g. feedback polls). Reuses the
+        // same `botjob-<id>` ack key so sentAt clears on delivery.
+        out.push({
+          kind: "group-poll",
+          key,
+          question: job.pollQuestion,
+          options: job.pollOptions,
+          multi: job.pollMulti,
+        });
       }
     }
   }
