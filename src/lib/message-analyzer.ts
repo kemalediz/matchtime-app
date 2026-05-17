@@ -48,6 +48,7 @@ export type AnalysisIntent =
   | "generate_teams_request"
   | "bring_guests_vague"
   | "bulk_payment_credit"
+  | "reminder_request"
   | "noise"
   | "unclear";
 
@@ -122,6 +123,31 @@ export interface AnalysisVerdict {
     count: number;
     coveredNames?: string[];
   } | null;
+  /** Populated when intent = "reminder_request" — a player explicitly
+   *  asks MatchTime to DM them a personal reminder at a future time
+   *  ("@MatchTime remind me on Monday", "remind me tomorrow morning to
+   *  confirm", "ping me 2h before kickoff to decide").
+   *
+   *  The LLM resolves the natural-language time into an explicit
+   *  Europe/London wall-clock date (+ optional time). Server converts
+   *  London → UTC (date-fns-tz) and queues a future-dated kind="dm"
+   *  BotJob. Server is the source of truth for validity (must be in the
+   *  future, ≤ 60 days out) and clamps/ignores otherwise.
+   *
+   *  - date: "YYYY-MM-DD" in Europe/London, computed relative to the
+   *    triggering message's timestamp (NOT "now" — messages may be
+   *    classified minutes later in a batch flush).
+   *  - time: "HH:MM" 24h Europe/London. Omit when the user didn't
+   *    specify a time of day; server defaults to 09:00 London.
+   *  - note: a short natural reminder body in the user's voice, e.g.
+   *    "let the group know if you can play" — what THEY asked to be
+   *    reminded about. No bot meta-text; server wraps it.
+   */
+  reminder: {
+    date: string;
+    time?: string;
+    note: string;
+  } | null;
   /** Third-party attendance registrations.
    *  Populated when the sender signs up / drops out OTHER people on their
    *  behalf ("my dad Najib is also in", "Ibrahim can't make it tonight",
@@ -148,7 +174,7 @@ Output schema:
   "verdicts": [
     {
       "waMessageId": "<string>",
-      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "bring_guests_vague" | "noise" | "unclear",
+      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "bring_guests_vague" | "reminder_request" | "noise" | "unclear",
       "confidence": 0..1,
       "react": "<emoji>" | null,
       "reply": "<text>" | null,
@@ -159,6 +185,7 @@ Output schema:
       "includeNames": [<string>, ...] | null,
       "teamOverrides": [{"name": "<string>", "team": "RED" | "YELLOW"}, ...] | null,
       "bulkPayment": {"payerName": "<string>", "count": <number>, "coveredNames": [<string>, ...] | null} | null,
+      "reminder": {"date": "<YYYY-MM-DD>", "time": "<HH:MM>" | null, "note": "<string>"} | null,
       "registerFor": [{"name": "<string>", "action": "IN" | "OUT"}, ...] | null,
       "reasoning": "<short internal explanation>"
     }
@@ -279,6 +306,21 @@ Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Bak
      "Amir paid for Faris and Adam"     → bulkPayment: { payerName: "Amir", count: 2, coveredNames: ["Faris", "Adam"] }
      "Sait covered me and 2 others"     → bulkPayment: { payerName: "Sait", count: 3 }   (sender's name is implied but not extracted — server falls through to count-aggregate when names aren't ALL listed)
   → Only classify as this intent when the message clearly attributes a multi-person payment. A single "I paid" message is just noise/poll territory, not a credit.
+- "reminder_request": The sender explicitly asks MatchTime to remind/ping/message THEM (personally, via DM) at a future time. They must (a) address the bot — "@MatchTime", "@Match Time", "MatchTime", "bot" — OR clearly direct a reminder request at it, AND (b) ask to be reminded/pinged/nudged later. Patterns: "@MatchTime remind me on Monday", "remind me from DM on Monday", "ping me tomorrow morning to confirm", "MatchTime nudge me 2h before kickoff to decide", "can you remind me Sunday night about this", "remind me later to pay".
+  → intent "reminder_request". registerAttendance: null (a reminder request does NOT change their attendance — if the SAME message also clearly registers them in/out, classify the primary attendance intent instead and ignore the reminder; never both). react: "⏰". reply: null (the server composes a short confirmation like "👍 I'll DM you <when>" once the reminder is queued — it knows the resolved time, you don't reliably).
+  → Populate reminder: { date, time?, note }.
+    - Resolve the requested time RELATIVE TO THIS MESSAGE'S timestamp (shown as the message 'timestamp:' field and the Current time line), in Europe/London. Work out the actual calendar date.
+        • "Monday" / "on Monday" → the NEXT Monday strictly after the message date (if the message is itself on a Monday, use the following Monday). date = that YYYY-MM-DD.
+        • "tomorrow" → message date + 1 day.
+        • "tonight" → same date (time defaults below).
+        • "in 2 hours" / "2h before kickoff" → compute the absolute clock time; if it resolves to a date, set date + time. If you cannot compute kickoff-relative times confidently from the Match Context, set confidence < 0.7 so the verdict is dropped (better silent than a wrong-day ping).
+    - time: "HH:MM" 24h Europe/London ONLY if the user named a time ("Monday 8am" → "08:00", "Sunday night" → "20:00", "tomorrow morning" → "09:00"). If no time-of-day is given, OMIT time (null) — the server defaults to 09:00 London.
+    - note: short, in the user's voice, describing what they want to be reminded about. Infer from context. E.g. for "I'll let you know Monday whether I can play. @MatchTime remind me Monday" → note: "let the group know if you can play this week". Keep it under ~120 chars, no bot meta-text, no "@MatchTime", no quotes.
+  → Examples (assume message sent Sun 17 May 2026):
+     "@MatchTime remind me from DM on Monday"            → reminder: { date: "2026-05-18", note: "you said you'd let the group know if you can play" }
+     "ping me tomorrow morning to pay my fee"            → reminder: { date: "2026-05-18", time: "09:00", note: "pay your match fee" }
+     "MatchTime remind me Sunday night to confirm"       → reminder: { date: "2026-05-24", time: "20:00", note: "confirm whether you can play" }
+  → Do NOT fire for general future-tense talk that isn't aimed at the bot ("I'll let you know Monday" with no @bot/remind-me ask → that's conditional_in / noise, NOT reminder_request). The reminder must be a request directed at MatchTime.
 - "noise": Social chat, jokes, memes, photos, links, tangential banter, off-topic questions (recipe links, memes, sports trivia).
   → Everything null.
 - "unclear": Genuinely can't tell. Everything null — bot stays silent.
@@ -692,7 +734,25 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     })
     .join("\n");
 
+  // Current wall-clock in Europe/London — the LLM needs this to
+  // resolve relative reminder phrasing ("on Monday", "tomorrow
+  // night") to an absolute calendar date. Lives in the FRESH block
+  // (not the cached prefix) because it changes every call.
+  const nowLondon = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
+
   const freshBlock = [
+    `## Current time`,
+    `  ${nowLondon} (Europe/London). Use this + each message's \`timestamp\` to resolve relative reminder times.`,
+    ``,
     `## Recent chat history (last messages, oldest first)`,
     historyBlock,
     ``,
@@ -1238,6 +1298,7 @@ function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {
     includeNames: null,
     teamOverrides: null,
     bulkPayment: null,
+    reminder: null,
     registerFor: null,
     reasoning: reason,
   };
@@ -1292,6 +1353,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     "generate_teams_request",
     "bring_guests_vague",
     "bulk_payment_credit",
+    "reminder_request",
     "noise",
     "unclear",
   ];
@@ -1373,6 +1435,27 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
   }
   const reasoning = typeof raw.reasoning === "string" ? raw.reasoning : "";
 
+  // ── reminder (intent: reminder_request) ──────────────────────────
+  // Validate shape only; the SERVER owns the London→UTC conversion and
+  // future/window clamping (see analyze route). We just sanity-check
+  // the date is YYYY-MM-DD and time (if present) is HH:MM.
+  let reminder: AnalysisVerdict["reminder"] = null;
+  if (raw.reminder && typeof raw.reminder === "object") {
+    const r = raw.reminder as Record<string, unknown>;
+    const date = typeof r.date === "string" ? r.date.trim() : "";
+    const time = typeof r.time === "string" ? r.time.trim() : "";
+    const note = typeof r.note === "string" ? r.note.trim() : "";
+    const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(date);
+    const timeOk = time === "" || /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+    if (dateOk && timeOk && note.length > 0) {
+      reminder = {
+        date,
+        time: time === "" ? undefined : time,
+        note: note.slice(0, 300),
+      };
+    }
+  }
+
   // Low-confidence downgrade: wipe all actions so the bot stays silent.
   if (confidence < 0.7 && intent !== "noise") {
     return {
@@ -1388,6 +1471,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
       includeNames: null,
       teamOverrides: null,
       bulkPayment: null,
+      reminder: null,
       registerFor: null,
       reasoning: `[low-confidence downgrade] ${reasoning}`,
     };
@@ -1406,6 +1490,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     includeNames,
     teamOverrides: teamOverrides && teamOverrides.length > 0 ? teamOverrides : null,
     bulkPayment,
+    reminder,
     registerFor: registerFor && registerFor.length > 0 ? registerFor : null,
     reasoning,
   };

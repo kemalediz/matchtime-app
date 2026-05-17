@@ -411,10 +411,20 @@ model BotJob {
   pollQuestion String?  @db.Text
   pollOptions  String[]
   pollMulti    Boolean  @default(false)
+  /// When set, this job must NOT be dispatched until the clock passes
+  /// this instant. Used for player-requested personal reminders
+  /// ("@MatchTime remind me on Monday") — the analyzer resolves the
+  /// natural-language time to an absolute UTC timestamp and queues a
+  /// kind="dm" job with sendAfter in the future. The scheduler's
+  /// BotJob block filters `sendAfter == null OR sendAfter <= now()`, so
+  /// existing immediate jobs (sendAfter null) are unaffected. Nullable
+  /// = additive, zero impact on historical/immediate jobs.
+  sendAfter    DateTime?
   sentAt   DateTime?
   createdAt DateTime @default(now())
 
   @@index([orgId, sentAt])
+  @@index([orgId, sendAfter])
 }
 
 /**
