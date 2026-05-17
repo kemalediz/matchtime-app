@@ -72,7 +72,7 @@ export default function CreateOrgPage() {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">URL</label>
             <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
-              <span className="px-3 text-sm text-slate-500">matchday.app/join/</span>
+              <span className="px-3 text-sm text-slate-500">matchtime.app/join/</span>
               <input
                 type="text"
                 value={slug}

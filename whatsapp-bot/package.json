@@ -1,5 +1,5 @@
 {
-  "name": "matchday-whatsapp-bot",
+  "name": "matchtime-whatsapp-bot",
   "version": "1.0.0",
   "description": "WhatsApp bot for MatchTime attendance tracking",
   "type": "module",

@@ -3,7 +3,7 @@
  * without a password.
  *
  * Primary use: after a match, the WhatsApp bot DMs each confirmed player a
- * link like `https://matchday.app/r/<token>`. The token encodes
+ * link like `https://matchtime.app/r/<token>`. The token encodes
  * `{ userId, matchId?, purpose, exp }` and is signed with AUTH_SECRET using
  * HS256. Landing on `/r/[token]` verifies, creates a NextAuth session, and
  * forwards the user to the appropriate page (e.g. the rating UI for that
