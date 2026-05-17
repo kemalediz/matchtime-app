@@ -12,7 +12,7 @@ function resolvePollMs(): number {
 }
 
 export const config = {
-  apiUrl: process.env.MATCHDAY_API_URL || "https://matchday-nine-zeta.vercel.app",
+  apiUrl: process.env.MATCHTIME_API_URL || "https://matchtime.ai",
   apiKey: process.env.WHATSAPP_API_KEY || "",
   schedulerIntervalMs: resolvePollMs(),
 };

@@ -39,7 +39,7 @@ PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH npx prisma db push
 PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH npx prisma generate
 
 # Vercel deploy status (or check the dashboard)
-PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH vercel ls --scope kemaledizs-projects matchday
+PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH vercel ls --scope kemaledizs-projects matchtime
 ```
 
 The `PATH` prefix is because the user's shell defaults to Node 16, which Prisma 7 + Vercel CLI both reject (`ReferenceError: ReadableStream is not defined`).
@@ -49,10 +49,10 @@ The `PATH` prefix is because the user's shell defaults to Node 16, which Prisma 
 After **every** `git push` that lands on `main`, even server-only changes:
 
 ```bash
-ssh davidediz@matchtime-pi.tail1437f5.ts.net 'cd ~/matchday-bot && git pull --ff-only && sudo systemctl restart matchday-bot.service'
+ssh davidediz@matchtime-pi.tail1437f5.ts.net 'cd ~/matchtime-bot && git pull --ff-only && sudo systemctl restart matchtime-bot.service'
 ```
 
-For bot code changes also run `cd whatsapp-bot && npm install --silent` between pull and restart. Verify with `systemctl status matchday-bot.service --no-pager` — should be `active (running)` within ~10s.
+For bot code changes also run `cd whatsapp-bot && npm install --silent` between pull and restart. Verify with `systemctl status matchtime-bot.service --no-pager` — should be `active (running)` within ~10s.
 
 If SSH returns "additional check required" with a `login.tailscale.com/a/...` URL, ask Kemal to click it once.
 

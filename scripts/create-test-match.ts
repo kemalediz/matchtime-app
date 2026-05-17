@@ -129,7 +129,7 @@ async function main() {
     ]),
   );
 
-  const url = `https://matchday-nine-zeta.vercel.app/matches/${match.id}/rate`;
+  const url = `https://matchtime.ai/matches/${match.id}/rate`;
   console.log(`\n✅ Created test match with 14 players, score 5-3.`);
   console.log(`   Match id: ${match.id}`);
   console.log(`\n→ Open as Kemal: ${url}`);
