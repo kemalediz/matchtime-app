@@ -52,6 +52,7 @@ import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { computeEloDeltas } from "@/lib/elo";
 import { generateTeamsForMatch } from "@/lib/team-generation";
+import { londonDateTimeToUtc, formatLondon } from "@/lib/london-time";
 
 interface InboundMessage {
   waMessageId: string;
@@ -1410,6 +1411,75 @@ async function executeVerdict(args: {
       } // end paymentTrackingEnabled gate
     } catch (err) {
       console.error("[analyze] bulk_payment_credit failed:", err);
+      finalReply = null;
+    }
+  }
+
+  // ── Personal reminder request ────────────────────────────────────
+  //    "@MatchTime remind me on Monday" — queue a future-dated kind="dm"
+  //    BotJob. The analyzer resolved the natural-language time to an
+  //    explicit London date(+time); we convert London→UTC, clamp to a
+  //    sane window, look up the sender's phone, and enqueue. The
+  //    scheduler's BotJob block only emits rows whose sendAfter has
+  //    passed, so this naturally fires on the right day. We compose the
+  //    confirmation reply here (the analyzer can't reliably format the
+  //    resolved time) and override Claude's react/reply.
+  if (verdict.intent === "reminder_request" && verdict.reminder && user) {
+    try {
+      const { date, time, note } = verdict.reminder;
+      const when = londonDateTimeToUtc(date, time ?? "09:00");
+      const now = Date.now();
+      const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
+      // Must be in the future (with a 60s grace so "remind me in a
+      // minute" edge cases don't get silently dropped) and within 60
+      // days — anything outside that is almost certainly a parse error,
+      // not a real request. Stay silent rather than fire a wrong-day DM.
+      if (when.getTime() <= now - 60_000 || when.getTime() > now + SIXTY_DAYS_MS) {
+        console.warn(
+          `[analyze] reminder out of window for ${user.name}: ${when.toISOString()} (note: ${note})`,
+        );
+        finalReact = null;
+        finalReply = null;
+      } else {
+        const dbUser = await db.user.findUnique({
+          where: { id: user.id },
+          select: { phoneNumber: true },
+        });
+        const phone = dbUser?.phoneNumber?.replace(/^\+/, "") ?? null;
+        if (!phone) {
+          // No phone on file → can't DM. Tell them in-group rather than
+          // silently swallow the request.
+          finalReact = "🤔";
+          finalReply =
+            "I'd love to remind you but I don't have your number on file yet — drop the bot a quick DM first and I'll be able to.";
+        } else {
+          const first = (user.name ?? "").split(/\s+/)[0] || "there";
+          const reminderText =
+            `⏰ Reminder, ${first} — you asked me to nudge you:\n\n` +
+            `_${note}_\n\n` +
+            `(reply in the group when you're ready 👍)`;
+          await db.botJob.create({
+            data: {
+              orgId,
+              kind: "dm",
+              phone,
+              text: reminderText,
+              sendAfter: when,
+            },
+          });
+          const whenLabel = formatLondon(
+            when,
+            time ? "EEE d MMM 'at' HH:mm" : "EEE d MMM",
+          );
+          finalReact = "⏰";
+          finalReply = `👍 Got it ${first} — I'll DM you ${whenLabel}.`;
+        }
+      }
+    } catch (err) {
+      console.error("[analyze] reminder_request failed:", err);
+      // Bad date/time from the LLM, or DB error — stay silent rather
+      // than post a misleading confirmation.
+      finalReact = null;
       finalReply = null;
     }
   }

@@ -488,7 +488,14 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
   // separate BotJob update below (see /api/whatsapp/ack).
   {
     const jobs = await db.botJob.findMany({
-      where: { orgId: org.id, sentAt: null },
+      where: {
+        orgId: org.id,
+        sentAt: null,
+        // Future-dated personal reminders (sendAfter > now) are NOT yet
+        // due — skip them until their time passes. Immediate jobs have
+        // sendAfter = null and always pass this filter.
+        OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
+      },
       orderBy: { createdAt: "asc" },
       take: 20,
     });
