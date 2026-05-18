@@ -455,7 +455,7 @@ Example (12/14, Ibrahim + Ehtisham dropped, Ehtisham tentative):
 Tentative: Ehtisham (will play if nobody steps in)"
 
 FORMAT SWITCH (important):
-The Match Context may list "Alternative formats available for this sport" (e.g. Football 5-a-side = 10 players when the current match is 7-a-side). Admins execute a switch by rebooking the venue (e.g. calling Goals) and flipping the match in the portal — you never execute it, you only recommend.
+The Match Context may list "Alternative formats available for this sport" (e.g. Football 5-a-side = 10 players when the current match is 7-a-side). Admins execute a switch by rebooking the venue and flipping the match in the portal — you never execute it, you only recommend.
 
 Proactive recommendation:
 - When someone drops and the squad goes below full, or someone asks about numbers, you MAY propose switching to a smaller format — but only when ALL of these hold:
@@ -493,7 +493,7 @@ function buildMatchContextBlock(args: {
   } | null;
   /** Every smaller-format activity configured for this org. The LLM
    *  may propose a switch to any of them — admins handle the venue
-   *  rebooking (e.g. ring Goals) and flip the match in the app. */
+   *  rebooking the venue and flip the match in the app. */
   alternatives?: Array<{ sportName: string; totalPlayers: number }>;
   /** Open bench-confirmation prompts. The bot tagged these users in
    *  the group with a 👍/👎 prompt when someone dropped, and is
@@ -588,7 +588,7 @@ function buildMatchContextBlock(args: {
       lines.push(`  - ${a.sportName} (${a.totalPlayers} players total)`);
     }
     lines.push(
-      "Admins switch by rebooking the venue (e.g. ringing Goals) and " +
+      "Admins switch by rebooking the venue and " +
         "flipping the match in the portal; a switch converts everyone " +
         "above the new cap from confirmed to bench, keeping their order.",
     );

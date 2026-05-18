@@ -17,7 +17,7 @@
 import { db } from "./db";
 import { buildMagicLinkUrl, signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { findOrgAdminsWithPhone } from "./org";
-import { getOrgFeatures } from "./org-features";
+import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
 
@@ -367,27 +367,66 @@ function hoursBetween(a: Date, b: Date): number {
   return (b.getTime() - a.getTime()) / (1000 * 60 * 60);
 }
 
-/** One-time introductory message posted on the org's first active activity. */
-function botIntroMessage(): string {
-  return [
+/**
+ * One-time introductory message posted on the org's first active
+ * activity. Built from the org's ENABLED feature modules only — a
+ * group running just MoM + ratings must not be promised attendance /
+ * bench / teams / payments it'll never see. No hardcoded owner name
+ * (was "Ask @Kemal" — Sutton-specific; other groups have their own
+ * admins). Kemal flagged 2026-05-19: any static Sutton value has to
+ * become per-group dynamic.
+ */
+function botIntroMessage(f: OrgFeatures): string {
+  const lines: string[] = [
     `👋 Hi all — MatchTime bot is live for this group.`,
     ``,
     `Here's what I do:`,
-    ``,
-    `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with 👍 to confirm — no extra messages from me.`,
-    ``,
-    `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
-    ``,
-    `🔁  *Bench promotion* — If someone drops, I tag the first bencher and ask them to 👍 confirm. 2h window; if no answer, I move to the next.`,
-    ``,
-    `⚽  *Teams* — On match day morning I post the auto-balanced teams. Objections? Reply \`swap X Y\` — admin will apply it.`,
-    ``,
-    `🏆  *Ratings & MoM* — After each match, I DM everyone a rating link (no sign-up, just tap). Vote MoM in-app or in the poll I post — same count either way. MoM announced 5 days after the match.`,
-    ``,
-    `💳  *Payments* — I auto-post "paid?" polls right after each match.`,
-    ``,
-    `Questions? Ask @Kemal. Let's go.`,
-  ].join("\n");
+  ];
+  if (f.attendance) {
+    lines.push(
+      ``,
+      `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with 👍 to confirm — no extra messages from me.`,
+      ``,
+      `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
+    );
+  }
+  if (f.bench) {
+    lines.push(
+      ``,
+      `🔁  *Bench promotion* — If someone drops, I tag the first bencher and ask them to 👍 confirm. 2h window; if no answer, I move to the next.`,
+    );
+  }
+  if (f.teamBalancing) {
+    lines.push(
+      ``,
+      `⚽  *Teams* — Ask me to "generate teams" and I post auto-balanced sides. Objections? Reply \`swap X Y\` — admin will apply it.`,
+    );
+  }
+  if (f.momVoting || f.playerRating) {
+    const bits: string[] = [];
+    if (f.playerRating)
+      bits.push(`I DM everyone a rating link after each match (no sign-up, just tap)`);
+    if (f.momVoting)
+      bits.push(`vote MoM in-app or in the poll I post — MoM announced 5 days after the match`);
+    lines.push(``, `🏆  *Ratings & MoM* — ${bits.join("; ")}.`);
+  }
+  if (f.reminders) {
+    lines.push(
+      ``,
+      `⏰  *Reminders* — Say "@MatchTime remind me Monday" and I'll DM you then.`,
+    );
+  }
+  if (f.statsQa) {
+    lines.push(
+      ``,
+      `📊  *Stats* — Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
+    );
+  }
+  if (f.paymentTracking) {
+    lines.push(``, `💳  *Payments* — I auto-post "paid?" polls right after each match.`);
+  }
+  lines.push(``, `Questions? Just ask here. Let's go.`);
+  return lines.join("\n");
 }
 
 // ─────────────────────────── Main entry point ─────────────────────────────
@@ -429,7 +468,7 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
         out.push({
           kind: "group-message",
           key: introKey,
-          text: botIntroMessage(),
+          text: botIntroMessage(await getOrgFeatures(org.id)),
         });
       }
     }
