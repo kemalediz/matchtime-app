@@ -229,7 +229,7 @@ Intent rules:
   Reply format depends on how short the squad actually is (see SHORT-SQUAD RESPONSE below).
 
 BENCH CONFIRMATION — interpreting the bench user's reply:
-The Match Context may include a "Pending bench-confirmation prompts" block listing users the bot has DM'd a 👍/👎 prompt to (because someone dropped). When ANY of those users posts a message in this batch, your job is to figure out whether they're answering YES, NO, or talking about something unrelated.
+The Match Context may include a "Pending bench-confirmation prompts" block listing users the bot has tagged with a 👍/👎 prompt IN THIS GROUP (because someone dropped). When ANY of those users posts a message in this batch, your job is to figure out whether they're answering YES, NO, or talking about something unrelated.
 
 Rules:
 - If the listed user's message is affirmative — a thumbs-up emoji on its own (👍 / 👍🏽 / etc.), "yes", "yep", "ok", "I'll do it", "I'm in", "sure", "happy to", "count me in", "done", "deal", any phrasing that clearly says "I accept the bench slot" — emit benchConfirmation:"yes". Set registerAttendance:null (the server handles the promotion). Set reply:null (the server posts its own announcement).
@@ -241,7 +241,7 @@ Rules:
 BENCH CONFIRMATION FLOW (CRITICAL — never claim a swap is done):
 When ANY player drops (intent "out", "replacement_request" type (a), or a registerFor entry with action:"OUT"), the SERVER does NOT auto-promote a bench player. Instead it DMs the first bench player a 👍/👎 prompt and waits for their confirmation (≤ 2h). Only then are they marked CONFIRMED in a follow-up post.
 
-This means your reply text MUST NEVER claim a bench player has moved up, stepped up, taken the slot, or replaced anyone — regardless of how someone phrases the drop request. Even when an admin explicitly says "swap X with Y", you do NOT preemptively register Y as confirmed; the server still asks them via DM first.
+This means your reply text MUST NEVER claim a bench player has moved up, stepped up, taken the slot, or replaced anyone — regardless of how someone phrases the drop request. Even when an admin explicitly says "swap X with Y", you do NOT preemptively register Y as confirmed; the server still asks them first (by tagging them in the group, not a DM).
 
 Forbidden phrasings (do not write any of these or close variants):
   ✘ "Y moves up from the bench"
@@ -252,12 +252,13 @@ Forbidden phrasings (do not write any of these or close variants):
   ✘ Putting Y's name into a numbered roster slot before they're in the Confirmed list
 
 Required phrasing when someone drops and there IS at least one bench player:
-  ✓ "[lead acknowledging the drop]. Asking <first-bench-name> in DMs if they can step up — squad is <confirmedCount-1>/<maxPlayers> until they confirm."
+  ✓ "[lead acknowledging the drop]. Asking <first-bench-name> to step up — squad is <confirmedCount-1>/<maxPlayers> until they confirm."
+  CRITICAL — the bench player is asked by an IN-GROUP @mention (a 👍/👎 prompt the bot posts to this group), NOT a private DM. NEVER write "in DMs", "via DM", "I've DM'd them", "messaged them privately" or anything implying a private message — that is factually FALSE (the bot does not DM bench players) and players who receive no DM rightly call it misinformation. Say "asking <name>", "tagged <name> here", "<name>, you're up — 👍/👎 above" — describe the in-group tag, never a DM.
   Numbered roster shows the squad WITHOUT the dropped player (use 🥁 for the now-empty slot).
 
 When there is NO bench player and the squad is now short, treat as the standard SHORT-SQUAD RESPONSE (see below) — don't reference any bench.
 
-Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Baki with Aydın"): treat as intent "out" with registerFor:[{name:"<dropping-name>",action:"OUT"}]. The "swapping in" name is informational only — do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, and do NOT claim they're playing. Reply phrasing follows the same "Asking <bench> in DMs..." pattern, ideally honouring the admin's preference: "Asking Aydın specifically (per Kemal's request) — squad is 13/14 until he confirms." The bench-confirmation flow already DMs the right person if they're first on bench; otherwise the admin can re-trigger after.
+Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Baki with Aydın"): treat as intent "out" with registerFor:[{name:"<dropping-name>",action:"OUT"}]. The "swapping in" name is informational only — do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, and do NOT claim they're playing. Reply phrasing follows the same "Asking <bench>..." pattern (in-group tag, NOT a DM — see the CRITICAL note above), ideally honouring the admin's preference: "Asking Aydın specifically (per Kemal's request) — squad is 13/14 until he confirms." The bench-confirmation flow tags the right person in the group if they're first on bench; otherwise the admin can re-trigger after.
 - "conditional_in": Tentative commitment. Two distinct flavours — they have OPPOSITE registration outcomes, so pick carefully:
 
   (a) STANDING-OFFER conditional — the sender is fine and ready to play; their commitment is contingent on the SQUAD STATE (squad being short, a specific slot opening). Examples: "I'll be the 14th if you're short", "consider me as the 14th whenever you have 13", "ping me if you need one more", "happy to fill in if anyone drops", "I'll play if you can't find someone else", "available as a back-up tonight".
@@ -493,9 +494,10 @@ function buildMatchContextBlock(args: {
    *  may propose a switch to any of them — admins handle the venue
    *  rebooking (e.g. ring Goals) and flip the match in the app. */
   alternatives?: Array<{ sportName: string; totalPlayers: number }>;
-  /** Open bench-confirmation prompts. The bot DM'd these users a
-   *  👍/👎 prompt when someone dropped, and is waiting on their
-   *  decision. The LLM uses this to interpret subsequent group
+  /** Open bench-confirmation prompts. The bot tagged these users in
+   *  the group with a 👍/👎 prompt when someone dropped, and is
+   *  waiting on their decision (NO DM is sent — it's an in-group
+   *  @mention). The LLM uses this to interpret subsequent group
    *  messages from those users (an in-group 👍, "yes", "I can do it"
    *  etc.) as a bench-confirmation rather than a generic IN. */
   pendingBenchConfirmations?: Array<{
@@ -1176,7 +1178,8 @@ export function enforceCanonicalRoster(
  * Called only when there's an OPEN PendingBenchConfirmation against
  * the relevant match. Strips the false-promotion sentence (heuristic
  * regexes targeting common phrasings) and prepends an honest
- * "Asking <name> in DMs..." line so the group sees the real status.
+ * "Asking <name> to step up..." line (in-group tag, NOT a DM) so the
+ * group sees the real status.
  */
 export function rewriteOverconfidentPromotion(
   text: string,
@@ -1208,7 +1211,12 @@ export function rewriteOverconfidentPromotion(
 
   // Prepend an honest status line above the roster block (or at the
   // top if no roster block detected).
-  const honest = `Asking *${benchName}* in DMs to step up — squad is *${confirmedCount}/${maxPlayers}* until they confirm.`;
+  // NB: the bench prompt is an IN-GROUP @mention (kind:"bench-prompt"
+  // posts to the group, not a DM). Saying "in DMs" was misinformation
+  // — a bench player who got no DM (Erdal, 2026-05-18) is right to
+  // call it out. Word it to match what actually happens: they're
+  // tagged in the group with a 👍/👎 prompt.
+  const honest = `Asking *${benchName}* to step up — they've been tagged here with a 👍/👎. Squad is *${confirmedCount}/${maxPlayers}* until they confirm.`;
 
   // Drop the line in just before any "*Playing tonight:*" / "*Squad:*"
   // header, or at the start when there isn't one.

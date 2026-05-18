@@ -313,7 +313,8 @@ export async function POST(request: Request) {
         // match (= bench player asked, not yet confirmed), the
         // hallucinated promotion is wrong and the squad is actually
         // short. Strip those phrases and replace with an honest
-        // "Asking <name> in DMs..." line. The roster block has
+        // "Asking <name> to step up..." line (in-group tag, not a
+        // DM — the bench prompt is never a DM). The roster block has
         // already been canonicalised above so we just rewrite the
         // narrative text around it.
         const pendingBench =
