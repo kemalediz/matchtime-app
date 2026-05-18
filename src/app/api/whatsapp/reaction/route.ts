@@ -19,13 +19,19 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { waMessageId, emoji, fromPhone } = body as {
+  const { waMessageId, emoji, fromPhone, fromAuthorName } = body as {
     waMessageId: string;
     emoji: string;
     fromPhone: string;
+    /** Reactor's WhatsApp pushname. Forwarded by the bot for @lid
+     *  privacy reactors (no phone in the senderId). Optional — older
+     *  bot builds don't send it; we fall back to phone-only then. */
+    fromAuthorName?: string | null;
   };
-  if (!waMessageId || !emoji || !fromPhone) {
-    return NextResponse.json({ error: "waMessageId, emoji, fromPhone required" }, { status: 400 });
+  // fromPhone may be empty for @lid reactors — only waMessageId+emoji
+  // are strictly required now (the @lid fallback uses fromAuthorName).
+  if (!waMessageId || !emoji) {
+    return NextResponse.json({ error: "waMessageId, emoji required" }, { status: 400 });
   }
 
   const bc = await db.pendingBenchConfirmation.findFirst({
@@ -34,14 +40,47 @@ export async function POST(request: Request) {
   });
   if (!bc) return NextResponse.json({ ok: true, ignored: "no-pending-confirmation" });
 
-  const normalised = normalisePhone(fromPhone);
-  if (!normalised) return NextResponse.json({ ok: true, ignored: "bad-phone" });
-
-  const user = await db.user.findUnique({ where: { phoneNumber: normalised } });
-  if (!user || user.id !== bc.userId) {
-    // Someone else reacted — ignore. Only the bench user's own reaction counts.
-    return NextResponse.json({ ok: true, ignored: "wrong-user" });
+  // ── Reactor identity check ───────────────────────────────────────
+  //   We don't need general sender resolution here — we already know
+  //   exactly who we're waiting on (bc.userId). The only question is:
+  //   "did THAT person react?". Two paths:
+  //     1. Phone (most reliable, @c.us reactors).
+  //     2. @lid privacy reactors arrive with no usable phone — verify
+  //        the forwarded pushname maps to bc.userId via exact name /
+  //        UserAlias / unique first-name fuzzy, all SCOPED to the org
+  //        and ultimately to bc.userId. Tightly bounded: a wrong guess
+  //        can only ever accept/reject the one expected user, never
+  //        promote a random person.
+  //   This mirrors the @lid fallback the analyze + dm-reply routes
+  //   already use; the reaction route was the last phone-only path
+  //   (Kemal flagged 2026-05-18: Erdal's 👎 silently lost because he
+  //   reacts via @lid privacy).
+  let isExpectedUser = false;
+  const normalised = fromPhone ? normalisePhone(fromPhone) : null;
+  if (normalised) {
+    const byPhone = await db.user.findUnique({ where: { phoneNumber: normalised } });
+    if (byPhone && byPhone.id === bc.userId) isExpectedUser = true;
   }
+  if (!isExpectedUser && fromAuthorName && fromAuthorName.trim().length >= 2) {
+    isExpectedUser = await pushnameMatchesUser({
+      orgId: bc.match.activityId
+        ? (await db.activity.findUnique({
+            where: { id: bc.match.activityId },
+            select: { orgId: true },
+          }))?.orgId ?? null
+        : null,
+      pushname: fromAuthorName.trim(),
+      expectedUserId: bc.userId,
+    });
+  }
+  if (!isExpectedUser) {
+    // Either a different user reacted, or we genuinely couldn't tie
+    // the @lid reactor to the expected bench player. Same conservative
+    // behaviour as before: ignore. (The in-group 👍/👎 message path
+    // via /analyze is the backstop — it has the full resolver chain.)
+    return NextResponse.json({ ok: true, ignored: "wrong-or-unresolved-user" });
+  }
+  // From here on the reactor IS the expected bench player (bc.userId).
 
   const isYes = emoji === "👍" || emoji === "👍🏻" || emoji === "👍🏼" || emoji === "👍🏽" || emoji === "👍🏾" || emoji === "👍🏿";
   const isNo = emoji === "👎" || emoji === "👎🏻" || emoji === "👎🏼" || emoji === "👎🏽" || emoji === "👎🏾" || emoji === "👎🏿";
@@ -191,4 +230,64 @@ export async function POST(request: Request) {
   ]);
   await requestBenchConfirmationOnDrop(bc.matchId, bc.replacingUserId);
   return NextResponse.json({ ok: true, outcome: "declined" });
+}
+
+/**
+ * Verify a WhatsApp pushname belongs to `expectedUserId` within `orgId`.
+ * Deliberately NARROW — this is not a general resolver, it only answers
+ * "is this @lid reactor the specific bench player we're waiting on?".
+ * A false positive can at worst accept/reject the ONE expected user's
+ * own prompt; it can never promote a third party. Order mirrors the
+ * analyze-route resolver, scoped to the single expected user:
+ *   1. exact case-insensitive name equality
+ *   2. UserAlias (admin-curated nickname / short pushname → user)
+ *   3. unique first-name fuzzy among the expected user's org memberships
+ */
+async function pushnameMatchesUser(args: {
+  orgId: string | null;
+  pushname: string;
+  expectedUserId: string;
+}): Promise<boolean> {
+  const { orgId, pushname, expectedUserId } = args;
+  if (!orgId) return false;
+  const norm = (s: string) =>
+    s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const key = norm(pushname);
+  if (key.length < 2) return false;
+
+  const expected = await db.user.findUnique({
+    where: { id: expectedUserId },
+    select: { id: true, name: true },
+  });
+  if (!expected) return false;
+
+  // 1. Exact name equality.
+  if (expected.name && norm(expected.name) === key) return true;
+
+  // 2. Alias — must point at the expected user specifically.
+  const alias = await db.userAlias.findUnique({
+    where: { orgId_alias: { orgId, alias: key } },
+    select: { userId: true },
+  });
+  if (alias && alias.userId === expectedUserId) return true;
+
+  // 3. First-name fuzzy, but ONLY accept if the expected user is the
+  //    UNIQUE org member matching this pushname (so "ba" → Baki is
+  //    accepted only when Baki is the sole "ba*"; if Başar also
+  //    matches, we refuse — exactly the ambiguity guard from analyze).
+  const memberships = await db.membership.findMany({
+    where: { orgId },
+    include: { user: { select: { id: true, name: true } } },
+  });
+  const pushFirst = key.split(/\s+/).filter(Boolean)[0] ?? "";
+  const matches = memberships.filter((m) => {
+    if (!m.user.name) return false;
+    const dbFirst = norm(m.user.name).split(/\s+/).filter(Boolean)[0] ?? "";
+    return (
+      dbFirst === pushFirst ||
+      (dbFirst.length >= 3 && pushFirst.length >= 2 && dbFirst.startsWith(pushFirst)) ||
+      (pushFirst.length >= 3 && dbFirst.length >= 2 && pushFirst.startsWith(dbFirst))
+    );
+  });
+  return matches.length === 1 && matches[0].user.id === expectedUserId;
 }

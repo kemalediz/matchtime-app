@@ -388,8 +388,27 @@ async function main() {
       const fromId = reaction.senderId;
       const emoji = reaction.reaction;
       if (!waMessageId || !fromId || !emoji) return;
-      const phone = fromId.replace("@c.us", "").replace(/^\+/, "");
-      await postReaction({ waMessageId, emoji, fromPhone: phone });
+      // @c.us reactors carry a phone in the senderId. @lid privacy
+      // reactors don't — sending the opaque @lid string as a "phone"
+      // is useless, so forward an empty phone + the pushname instead
+      // and let the server verify identity against the expected bench
+      // player. Mirrors the poll-vote + DM @lid handling. (Without
+      // this, every privacy-mode bench player's 👍/👎 was silently
+      // dropped — Kemal flagged Erdal's lost 👎 on 2026-05-18.)
+      const isCus = fromId.endsWith("@c.us");
+      const phone = isCus ? fromId.replace("@c.us", "").replace(/^\+/, "") : "";
+      let fromAuthorName: string | undefined;
+      try {
+        const contact = await client!.getContactById(fromId);
+        fromAuthorName =
+          contact?.pushname ||
+          contact?.name ||
+          (contact as unknown as { verifiedName?: string })?.verifiedName ||
+          undefined;
+      } catch {
+        // best-effort — server falls back to phone match if unavailable
+      }
+      await postReaction({ waMessageId, emoji, fromPhone: phone, fromAuthorName });
     } catch (err) {
       console.error("Error forwarding reaction:", err);
     }

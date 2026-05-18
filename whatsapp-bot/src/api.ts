@@ -133,6 +133,10 @@ export async function postReaction(params: {
   waMessageId: string;
   emoji: string;
   fromPhone: string;
+  /** Reactor pushname — forwarded for @lid privacy reactors whose
+   *  senderId carries no phone. Server uses it to verify the reactor
+   *  is the expected bench player. Mirrors postPollVote's fallback. */
+  fromAuthorName?: string;
 }): Promise<void> {
   const res = await fetch(`${config.apiUrl}/api/whatsapp/reaction`, {
     method: "POST",
