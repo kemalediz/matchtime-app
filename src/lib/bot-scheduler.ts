@@ -837,7 +837,15 @@ async function computeForMatch(
   // ── 3. Bench prompt for any unresolved PendingBenchConfirmation ──────
   for (const bc of m.benchConfirmations) {
     const key = `${matchId}:bench-prompt:${bc.userId}`;
-    if (sentKeys.has(key)) continue;
+    const dmKey = `${matchId}:bench-prompt-dm:${bc.userId}`;
+    const groupAlreadySent = sentKeys.has(key);
+    const dmAlreadySent = sentKeys.has(dmKey);
+    // Only bail entirely if BOTH the in-group tag and the DM are
+    // already out — otherwise we still need to emit whichever is
+    // missing (the DM was added 2026-05-18 per Kemal: benchers ignore
+    // the group thinking they won't play, so a personal DM must also
+    // go out when a slot opens).
+    if (groupAlreadySent && dmAlreadySent) continue;
     if (now > bc.expiresAt) continue; // expired — the /due-posts endpoint will sweep it elsewhere
 
     const user = m.attendances.find((a) => a.userId === bc.userId)?.user;
@@ -880,16 +888,40 @@ async function computeForMatch(
         ? "*ASAP please* — you're our only bench tonight 🙏"
         : `React within ${Math.max(1, Math.round(hoursRemaining))}h or it goes to the next bencher.`;
 
-    out.push({
-      kind: "bench-prompt",
-      key,
-      matchId,
-      userId: bc.userId,
-      phone: phoneNoPlus,
-      text:
-        `🎟 @${phoneNoPlus} a slot just opened ${context}. ` +
-        `React 👍 to confirm, 👎 to pass. ${windowText}`,
-    });
+    if (!groupAlreadySent) {
+      out.push({
+        kind: "bench-prompt",
+        key,
+        matchId,
+        userId: bc.userId,
+        phone: phoneNoPlus,
+        text:
+          `🎟 @${phoneNoPlus} a slot just opened ${context}. ` +
+          `React 👍 to confirm, 👎 to pass. ${windowText}`,
+      });
+    }
+
+    // Personal DM — benchers often mute / skip the group thinking
+    // they're not playing, so the in-group tag alone gets missed
+    // (Erdal, 2026-05-18). The DM asks for a TEXT reply (YES/NO) which
+    // routes through /dm-reply → resolveBenchConfirmation; the group
+    // 👍/👎 reaction path still works in parallel. Separate key so it
+    // dedupes independently of the group tag.
+    if (!dmAlreadySent) {
+      const dmContext = context.replace(/\*/g, "");
+      out.push({
+        kind: "dm",
+        key: dmKey,
+        matchId,
+        phone: phoneNoPlus,
+        targetUser: bc.userId,
+        text:
+          `👋 Hi${user.name ? ` ${user.name.split(" ")[0]}` : ""} — you're on the bench for ${activity.name} tonight and a slot just opened ${dmContext}.\n\n` +
+          `Can you play? Reply *YES* or *NO* here and I'll sort it. ` +
+          `(You can also 👍 / 👎 the message I tagged you in, in the group.)\n\n` +
+          `${benchAttCount <= 1 ? "You're our only bench tonight, so a quick reply really helps 🙏" : "First to confirm takes the slot 🙏"}`,
+      });
+    }
   }
 
   // ── 4. Teams post ────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
+import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -42,6 +43,123 @@ export async function POST(request: Request) {
   };
   if (!text || !waMessageId) {
     return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
+  }
+
+  // ── Bench-confirmation DM reply ──────────────────────────────────
+  //   Added 2026-05-18 (Kemal): when a slot opens we now DM the
+  //   bencher as well as tagging them in the group, because benchers
+  //   mute/skip the group thinking they're not playing. The DM asks
+  //   for a TEXT reply (YES/NO) — handle it here, BEFORE the roster
+  //   logic, with its own sender resolution scoped to users who
+  //   actually have an open PendingBenchConfirmation. The in-group
+  //   👍/👎 reaction path still works in parallel; resolveBenchConfirmation
+  //   is idempotent so a double-answer (DM + reaction) is safe.
+  {
+    const openPBCs = await db.pendingBenchConfirmation.findMany({
+      where: { resolvedAt: null, expiresAt: { gt: new Date() } },
+      select: { userId: true, matchId: true },
+    });
+    if (openPBCs.length > 0) {
+      const pbcUserIds = new Set(openPBCs.map((p) => p.userId));
+      let benchUserId: string | null = null;
+
+      // 1. Phone (most reliable; we DM'd their stored number so most
+      //    replies come from it).
+      if (phone && phone.trim().length > 0) {
+        const n = normalisePhone(phone);
+        if (n) {
+          const u = await db.user.findUnique({
+            where: { phoneNumber: n },
+            select: { id: true },
+          });
+          if (u && pbcUserIds.has(u.id)) benchUserId = u.id;
+        }
+      }
+      // 2. @lid privacy reply (no phone) → pushname fuzzy, scoped
+      //    strictly to the open-PBC users (tiny, unambiguous set).
+      if (!benchUserId && authorName && authorName.trim().length >= 2) {
+        const norm = (s: string) =>
+          s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const pushNorm = norm(authorName);
+        const pushFirst = pushNorm.split(/\s+/).filter(Boolean)[0] ?? "";
+        const cands = await db.user.findMany({
+          where: { id: { in: [...pbcUserIds] } },
+          select: { id: true, name: true },
+        });
+        const eq = cands.filter((c) => c.name && norm(c.name) === pushNorm);
+        let pick = eq.length === 1 ? eq[0] : null;
+        if (!pick) {
+          const byFirst = cands.filter((c) => {
+            if (!c.name) return false;
+            const dbFirst = norm(c.name).split(/\s+/).filter(Boolean)[0] ?? "";
+            return (
+              dbFirst === pushFirst ||
+              (dbFirst.length >= 3 && pushFirst.length >= 2 && dbFirst.startsWith(pushFirst)) ||
+              (pushFirst.length >= 3 && dbFirst.length >= 2 && pushFirst.startsWith(dbFirst))
+            );
+          });
+          if (byFirst.length === 1) pick = byFirst[0];
+        }
+        if (pick) benchUserId = pick.id;
+      }
+
+      if (benchUserId) {
+        const pbc = openPBCs.find((p) => p.userId === benchUserId)!;
+        const t = text.trim().toLowerCase();
+        const isYes =
+          /^(y|yes+|yep|yeah|ya|sure|ok(ay)?|in|i'?m in|am in|confirm(ed)?|can do|deal|done|👍|✅|✔️?)\b/.test(t) ||
+          t === "👍" || t === "✅";
+        const isNo =
+          /^(n|no+|nope|nah|can'?t|cannot|cant|pass|sorry|out|not me|next time|unable|👎)\b/.test(t) ||
+          t === "👎";
+
+        const matchOrg = await db.match.findUnique({
+          where: { id: pbc.matchId },
+          select: { activity: { select: { orgId: true } } },
+        });
+        const orgId = matchOrg?.activity.orgId ?? null;
+        const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+
+        if (!isYes && !isNo) {
+          // Unclear — re-ask, don't guess (bench is high-stakes).
+          if (orgId && phoneNoPlus) {
+            await db.botJob.create({
+              data: {
+                orgId,
+                kind: "dm",
+                phone: phoneNoPlus,
+                text:
+                  `Sorry, I didn't catch that — can you play tonight? ` +
+                  `Reply *YES* if you can take the slot, *NO* if you can't 🙏`,
+              },
+            });
+          }
+          return NextResponse.json({ ok: true, handled: "bench-dm-unclear" });
+        }
+
+        const result = await resolveBenchConfirmation({
+          matchId: pbc.matchId,
+          userId: benchUserId,
+          decision: isYes,
+        });
+        // resolveBenchConfirmation already posts the GROUP announcement.
+        // Add a short personal DM ack so the bencher knows it landed.
+        if (orgId && phoneNoPlus) {
+          const ack = isYes
+            ? `✅ You're in — thanks for confirming! See you tonight ⚽`
+            : `👍 No worries — thanks for the quick reply, I'll ask the next person.`;
+          await db.botJob.create({
+            data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack },
+          });
+        }
+        return NextResponse.json({
+          ok: true,
+          handled: "bench-dm",
+          decision: isYes ? "yes" : "no",
+          result: result.kind,
+        });
+      }
+    }
   }
 
   // Try phone first (most accurate). Falls through to pushname-based
