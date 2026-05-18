@@ -234,3 +234,32 @@ If a Pi pull seems to do nothing despite the script running, look for that line 
 Schema changes go in **strictly additive** — nullable + defaulted columns, new tables — so rolling back is safe. Sutton FC is live production; Kemal's Tuesday match depends on this code working every week.
 
 For destructive operations (drop a column, change a status enum, delete data), check with the user first — even when superadmin tools exist.
+
+## Project rebrand: matchday → matchtime (2026-05-17, via Hermes)
+
+The repo folder was renamed `/Sports/matchday` → `/Sports/matchtime` and package names / UI / env var / prod URL / Pi paths / Vercel scope all rebranded. Consequences to remember:
+
+- **`cd` into the old path fails.** Always use `/Users/kemal/Projects/Cressoft/Sports/matchtime`.
+- **Auto-memory symlinks break on rename.** `~/.claude/projects/-Users-kemal-Projects-Cressoft-Sports/memory/{skills,learnings}.md` are symlinks into the repo's `MDs/`. After the rename they dangled until repointed with `ln -sf …/matchtime/MDs/…`. If a future rename happens, fix these first or the memory reads come back empty.
+- **Pi paths rebranded too**: `~/matchtime-bot`, `matchtime-bot.service`, host still `matchtime-pi.tail1437f5.ts.net`. Vercel project is now `matchtime` (scope `kemaledizs-projects`).
+
+## Hermes is a co-developer on this repo
+
+Kemal also drives this codebase from a Slack app called **Hermes** (separate sessions; commits authored `Hermes <davidediz@cressoft.local>`). Hermes' memory lives in `~/.hermes/memories/{MEMORY,USER}.md` and its build conventions match ours (Node 20 PATH prefix, `prisma db push`, Vercel+Pi deploy). **Hermes' workflow preference: merge feature branches straight to `main` and push — no PRs unless asked.** When picking up after a gap, `git log --oneline -25` to see what Hermes shipped; check `~/.hermes/memories/` for its latest-feature notes.
+
+## Ad-hoc bot polls + future-dated jobs (BotJob extensions)
+
+`BotJob` is now the universal ad-hoc bot queue, not just text:
+
+- **`kind: "group-poll"`** + `pollQuestion` / `pollOptions String[]` / `pollMulti` — emits a `group-poll` DueInstruction. Bot-side already handled it (payment-poll path), so no Pi change. Used for the feedback-poll round.
+- **`sendAfter DateTime?`** (Hermes' reminder feature) — scheduler skips rows whose `sendAfter` is still future, so a `kind=dm` job fires on the right day. NL time → explicit London date via `londonDateTimeToUtc` (DST-safe, in `london-time.ts`), clamped `(now, now+60d]`.
+
+Both reuse the existing `botjob-<id>` ack + idempotency path. Pattern for any future "do X later / post a poll" need: extend BotJob, don't invent a new table.
+
+## Deploy-race: wait for Vercel "Ready" before queueing jobs that need new scheduler code
+
+When a one-off script queues BotJobs that depend on scheduler logic you JUST pushed, the bot's next 5-min poll can fire BEFORE Vercel finished building — old scheduler code silently skips the unrecognised rows, newer ones get picked up a tick later, and messages land out of order (bit Kemal's feedback-poll: follow-up text arrived before the polls). Rule: after pushing scheduler/ due-posts changes, confirm `vercel ls` shows the new deploy **Ready** before running the `--apply` script. Schema (`prisma db push`) is immediate; server CODE is not.
+
+## Analyzer Recent History block
+
+`src/lib/match-history.ts#loadRecentHistory(orgId)` pre-computes per-org stats (every completed non-historical match with score + MoM, MoM-wins leaderboard incl. historical backfill, attendance leaderboard with **total-matches denominator**, Elo top-10 / bottom-5 ≥3 matches). `formatRecentHistoryBlock` renders it into the 1-h-cached context so the LLM can answer "who got MoM last week / most consistent attender / what was the score". Returns null pre-first-match. Extend HERE for new stat questions, not with new prompt rules.

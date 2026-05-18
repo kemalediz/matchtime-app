@@ -101,6 +101,30 @@ A condensed digest of what's been learned across many sessions. The detailed sou
 - **Idempotency-by-key everywhere bot-related.** `SentNotification`, `BotJob.sentAt`, `RetroReaction.sentAt`, `MoMVote @@unique [matchId, voterId]`. Every queued action has a stable identifier; ACKs mark sent.
 - **Falls-open LLM calls.** Helper returns empty/null on any failure; user-visible flow continues with a deterministic fallback. Never block on Anthropic.
 
+## The "LLM reasons correctly but skips the action" failure class (2026-05 — three incidents)
+
+This is the single most important pattern from the May sessions. The analyzer's LLM kept getting the *understanding* right but emitting a verdict that did NOT materialise the DB write — the bot reacted 👍/replied confidently, but no Attendance row was written. The group trusts the words; the squad page disagrees; the player is silently lost until someone notices days later.
+
+Three distinct shapes, all fixed:
+
+1. **Najib (2026-05-08).** Said "In" when squad was 14/14 + bench empty. LLM classified `intent:in` but emitted `registerAttendance:null` with reasoning "this is odd". → Prompt rule **"NEVER LEAVE registerAttendance NULL ON AN 'in' INTENT"** (lists every excuse: full squad, empty bench, odd state, already-registered, history unclear) + **server safety net**: after the LLM call, if `intent==="in" && registerAttendance===null && this is the author's latest msg in the batch && user resolved`, force `"IN"` and warn.
+
+2. **Erdal (2026-05-15).** Hasan asked "should Match time put Erdal to the bench?". LLM replied "Erdal goes on the bench" but emitted `intent:question / action:reply`, no `registerFor`. → Prompt rule **"WORDS MUST MATCH ACTION"**: any reply naming a player + announcing a state change MUST emit the matching `registerFor`. If not taking the action, rephrase as a question ("want me to add X?") — never announce an action you don't execute.
+
+3. **Baki (2026-05-15).** "In" came through with pushname "ba" → fuzzy-matched BOTH Baki and Başar → resolver returned null on ambiguity. LLM was perfect; resolution failed. → **Consult `UserAlias` BEFORE bailing on ambiguous fuzzy** (alias rows are unique per orgId — they disambiguate cleanly). Applied to both `resolveSender` and `resolveOrProvisionByName`.
+
+Meta-lesson: when a bot-action bug report comes in, the LLM verdict is usually RIGHT — look at the execution gate (`if (verdict.X && user)`), the sender resolver, and the deploy state before touching the prompt. `AnalyzedMessage` rows (intent / action / authorUserId / reasoning) are the smoking-gun table — write a `peek-*.ts` against it first.
+
+## Other May learnings
+
+**`enforceCanonicalRoster` must skip leaderboard-shaped blocks.** It rewrites any "N. Name" run with the canonical squad. The Recent-History attendance/MoM/Elo leaderboards are also "N. Name" — got clobbered ("top 3 most consistent" came back as the upcoming squad). Guard: skip the rewrite if any line in the run has ` — `, `%`, "wins", "votes", "matches", or "N/M (". Plus a prompt rule: historical/stats answers carry NO squad roster.
+
+**Attendance % denominator = org's total completed matches, not per-player "matches since first played".** "3/3 (100%)" for a late joiner read identically to "4/4 (100%)" for an ever-present. With the fixed denominator a late joiner correctly shows 3/4 (75%).
+
+**Standing-offer conditionals auto-bench.** "I'll be the 14th if you're short" / "back-up if anyone drops" → `conditional_in` + `registerAttendance:"BENCH"` (not 🤔-and-forget). The existing bench-confirmation DM flow then handles match day. Differentiator: standing-offer mentions the SQUAD/slot; personal-uncertainty ("if my back holds up", "maybe") stays `null` + 🤔. Both flavours in one message → default to the conservative `null`.
+
+**Deploy-race burned a user-visible feature.** Queued feedback-poll BotJobs before Vercel finished building the new `group-poll` scheduler handler → text jobs (old code understood them) delivered, poll jobs skipped till next tick → follow-up landed before the polls. Always confirm `vercel ls` Ready before `--apply`-ing a script that depends on just-pushed scheduler code.
+
 ## Things to NEVER do
 
 - Don't filter `leftAt: null` in fuzzy-matcher queries (creates ghost users).
@@ -120,3 +144,7 @@ A condensed digest of what's been learned across many sessions. The detailed sou
 - Don't pitch magic-link forms for "click to confirm" UX without considering trust. Players DM'd by a bot find clicks suspicious; replying-in-DM with LLM-classification feels natural and works.
 - Don't drop @lid privacy-mode senders. WhatsApp delivers some DMs with phone hidden in the JID. Always forward the pushname alongside any phone field so the server can fall back to name-based resolution scoped to the relevant context (e.g. open survey DMs).
 - Don't surface the bot's diagnostic console.logs as an afterthought — `[msg] from=... fromMe=... bodyLen=...` on every incoming message has earned its keep multiple times for "did the bot even see this?" debugging.
+- Don't let the LLM announce an action it didn't execute. A confident reply with no matching `registerFor`/`registerAttendance` write is the worst failure mode — the group trusts words, the DB disagrees, the player vanishes for a week. Words must match action.
+- Don't let the resolver bail on ambiguous fuzzy without first checking `UserAlias` — admin-curated aliases are unique per org and exist precisely to break ties.
+- Don't `--apply` a one-off that depends on just-pushed scheduler/due-posts code until `vercel ls` shows the deploy Ready. Schema push is instant; server code isn't; the bot polls every 5 min and will half-process the queue.
+- Don't assume the project path/name is stable — it was rebranded matchday→matchtime mid-stream. Auto-memory symlinks dangle on rename; repoint before relying on memory reads.
