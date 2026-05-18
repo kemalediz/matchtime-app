@@ -603,6 +603,10 @@ model AnalyzedMessage {
   groupId      String
   authorPhone  String?
   authorUserId String?
+  /// WhatsApp pushname at analysis time. Persisted so the admin
+  /// "unresolved messages" queue can show WHO ("ba") to link to a
+  /// player when authorUserId is null. Nullable + additive.
+  authorName   String?
   body         String?  @db.Text
   handledBy    String
   intent       String?
@@ -613,6 +617,7 @@ model AnalyzedMessage {
 
   @@index([orgId, createdAt])
   @@index([groupId, createdAt])
+  @@index([orgId, authorUserId, createdAt])
 }
 
 /**

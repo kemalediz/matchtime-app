@@ -340,6 +340,66 @@ export async function POST(request: Request) {
           });
         }
       }
+      // ── #1: never silently drop an unresolved attendance message ──
+      //   The whole Najib/Erdal/Baki failure class is "message
+      //   understood, action silently not taken". The worst variant:
+      //   the SENDER themselves couldn't be resolved (ambiguous short
+      //   pushname like "ba" → Baki AND Başar), so an IN / OUT / drop
+      //   vanished with zero signal for 13 days. When that happens we
+      //   now (a) leave a breadcrumb the admin queue surfaces
+      //   (authorName is persisted by recordAnalysis), and (b) post a
+      //   single, deduped, plain-English clarification to the group so
+      //   it's caught in minutes, not when someone eventually notices.
+      const attendanceRelevant =
+        verdict.registerAttendance === "IN" ||
+        verdict.registerAttendance === "OUT" ||
+        verdict.registerAttendance === "BENCH" ||
+        verdict.intent === "replacement_request";
+      if (
+        !sender.userId &&
+        attendanceRelevant &&
+        nextMatchForReply &&
+        (msg.authorName ?? "").trim().length >= 1
+      ) {
+        const pushname = (msg.authorName ?? "").trim();
+        const normKey = pushname
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "");
+        const dedupeKey = `unresolved-sender:${nextMatchForReply.id}:${normKey}`;
+        const already = await db.sentNotification.findUnique({
+          where: { key: dedupeKey },
+        });
+        if (!already) {
+          // Plain English — describe what to DO next, no "resolver"/
+          // "@lid"/"pushname" jargon (per the product copy rule).
+          const verb =
+            verdict.registerAttendance === "OUT" ||
+            verdict.intent === "replacement_request"
+              ? "drop out"
+              : "join";
+          cleanReply =
+            `Heads up — I got a message to *${verb}* from *${pushname}*, but that name isn't ` +
+            `matching anyone on the squad list, so I haven't changed anything yet. ` +
+            `Could *${pushname}* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏`;
+          // Record the dedupe row immediately. Tiny risk: if the bot
+          // fails to post we under-notify — acceptable, the admin
+          // queue is the backstop, and re-nudging every batch would
+          // spam the group (the failure Kemal hates most).
+          await db.sentNotification.create({
+            data: {
+              key: dedupeKey,
+              kind: "unresolved-sender-nudge",
+              matchId: nextMatchForReply.id,
+            },
+          });
+        } else {
+          // Already nudged for this pushname+match — stay silent,
+          // don't repeat. The admin queue still lists it.
+          cleanReply = null;
+        }
+      }
+
       await recordAnalysis({
         orgId: org.id,
         groupId: body.groupId,
@@ -352,6 +412,7 @@ export async function POST(request: Request) {
         confidence: verdict.confidence,
         reasoning: verdict.reasoning,
         authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
       });
       results.push({
         waMessageId: msg.waMessageId,
@@ -1497,6 +1558,10 @@ async function recordAnalysis(args: {
   confidence: number | null;
   reasoning: string;
   authorUserId?: string | null;
+  /** WhatsApp pushname. Persisted so the admin "unresolved messages"
+   *  queue can show WHO ("ba") to link to a player when authorUserId
+   *  is null. */
+  authorName?: string | null;
 }) {
   try {
     await db.analyzedMessage.create({
@@ -1506,6 +1571,7 @@ async function recordAnalysis(args: {
         groupId: args.groupId,
         authorPhone: args.msg.authorPhone || null,
         authorUserId: args.authorUserId ?? null,
+        authorName: args.authorName ?? args.msg.authorName ?? null,
         body: args.msg.body.slice(0, 2000),
         handledBy: args.handledBy,
         intent: args.intent,
