@@ -166,6 +166,51 @@ model Organisation {
   updatedAt DateTime @updatedAt
 }
 
+/**
+ * Phase 2 — autonomous in-group onboarding. When a moderator types
+ * "@MatchTime setup" in a group with no org, the bot runs a
+ * conversational setup IN THE GROUP (anyone can answer): gather the
+ * event details, then the feature menu, then create
+ * Sport/Activity/Match + flip the Phase-1 feature flags.
+ *
+ * One active row per WhatsApp group. `stage` drives the LLM's next
+ * question; collected answers accumulate as we go. orgId is filled in
+ * once we provision the Organisation (at "features" stage, so the
+ * group becomes monitored normally). `selectedFeatures` holds the
+ * FeatureKey strings the group chose.
+ */
+model OnboardingSession {
+  id              String   @id @default(cuid())
+  whatsappGroupId String
+  /// Filled once the Organisation is provisioned (features stage).
+  orgId           String?
+  /// "collecting" → asking event questions
+  /// "features"   → org created, asking which features to enable
+  /// "completed"  → Activity/Match created, flags set, normal ops
+  /// "abandoned"  → admin/cron cleaned up a stale session
+  stage           String   @default("collecting")
+
+  // Collected event details (nullable until answered).
+  groupName       String?
+  venue           String?
+  dayOfWeek       Int?     // 0=Sun..6=Sat
+  kickoffTime     String?  // "21:30" (London wall clock)
+  playersPerSide  Int?     // 7 → 7-a-side
+  recurrence      String?  // "weekly" | "oneoff"
+  oneOffDate      String?  // ISO date when recurrence = oneoff
+
+  selectedFeatures String[]
+
+  /// Last waMessageId we replied to — dedupe so a re-flushed batch
+  /// doesn't re-ask the same question.
+  lastHandledWaId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([whatsappGroupId, stage])
+}
+
 model Sport {
   id                  String   @id @default(cuid())
   orgId               String

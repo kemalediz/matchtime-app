@@ -19,3 +19,13 @@ export function setMonitoredGroups(groupIds: string[]) {
 export function isMonitoredGroup(groupId: string): boolean {
   return monitoredGroups.has(groupId);
 }
+
+/**
+ * Phase 2: dynamically start monitoring a group mid-run (no restart).
+ * Used when an "@MatchTime setup" trigger lands in a group the bot
+ * isn't monitoring yet — add it so the trigger + every subsequent
+ * onboarding answer flows through the normal analyze path.
+ */
+export function addMonitoredGroup(groupId: string): void {
+  monitoredGroups.add(groupId);
+}

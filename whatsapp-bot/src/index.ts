@@ -1,7 +1,7 @@
 import pkg from "whatsapp-web.js";
 const { Client, LocalAuth } = pkg;
 import qrcode from "qrcode-terminal";
-import { setMonitoredGroups, isMonitoredGroup } from "./handlers.js";
+import { setMonitoredGroups, isMonitoredGroup, addMonitoredGroup } from "./handlers.js";
 import { initScheduler, stopScheduler } from "./scheduler.js";
 import {
   getEnabledOrgs,
@@ -62,7 +62,18 @@ async function main() {
           orgName: o.name,
         }));
 
-      setMonitoredGroups(orgConfigs.map((o: { groupId: string }) => o.groupId));
+      // Phase 2: groups mid-onboarding have no bot-enabled org yet but
+      // must stay monitored so a restart doesn't stall an in-progress
+      // setup.
+      const onboardingGroups: string[] = Array.isArray(data.onboardingGroups)
+        ? data.onboardingGroups
+        : [];
+      setMonitoredGroups([
+        ...orgConfigs.map((o: { groupId: string }) => o.groupId),
+        ...onboardingGroups,
+      ]);
+      if (onboardingGroups.length)
+        console.log(`Also monitoring ${onboardingGroups.length} onboarding group(s)`);
 
       console.log(`Monitoring ${orgConfigs.length} group(s):`);
       orgConfigs.forEach((o: { orgName: string; groupId: string }) =>
@@ -347,7 +358,22 @@ async function main() {
         return;
       }
 
-      if (!isMonitoredGroup(msg.from!)) return;
+      // Phase 2: a group the bot isn't monitoring yet can bootstrap
+      // itself with an explicit "@MatchTime setup". Loose pre-filter
+      // here (server has the authoritative tight regex); on a hit we
+      // start monitoring this group dynamically so the trigger + all
+      // subsequent onboarding answers flow through the normal analyze
+      // path. Everything else from unmonitored groups is still
+      // dropped (no extra server load).
+      if (!isMonitoredGroup(msg.from!)) {
+        const t = effectiveBody.toLowerCase();
+        const looksLikeSetup =
+          /match\s*time/.test(t) &&
+          /\b(set\s*up|setup|get\s*started|onboard)\b/.test(t);
+        if (!looksLikeSetup) return;
+        addMonitoredGroup(msg.from!);
+        console.log(`[onboarding] setup trigger in ${msg.from} — now monitoring`);
+      }
 
       // WhatsApp pushname — the sender's self-set profile name. Used
       // for auto-enrolment on new phones and for name-based fallback

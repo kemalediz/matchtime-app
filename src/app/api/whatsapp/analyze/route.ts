@@ -50,6 +50,7 @@ import {
 } from "@/lib/message-analyzer";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
+import { handleOnboardingTurn } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { computeEloDeltas } from "@/lib/elo";
 import { generateTeamsForMatch } from "@/lib/team-generation";
@@ -99,6 +100,17 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as InboundBody | null;
   if (!body?.groupId || !Array.isArray(body?.messages)) {
     return NextResponse.json({ error: "groupId and messages[] required" }, { status: 400 });
+  }
+
+  // ── Phase 2: autonomous onboarding ───────────────────────────────
+  //   Runs BEFORE the bot-enabled-org gate. A group with no org is
+  //   normally ignored; here it can bootstrap itself via an explicit
+  //   "@MatchTime setup" trigger, then a multi-turn in-group Q&A.
+  //   While a session is active every batch routes here (not the
+  //   normal analyzer) until it completes/abandons.
+  {
+    const onb = await handleOnboardingIfApplicable(body);
+    if (onb) return NextResponse.json(onb);
   }
 
   const org = await db.organisation.findFirst({
@@ -1617,4 +1629,71 @@ async function recordAnalysis(args: {
       console.error("[analyze] recordAnalysis failed:", err);
     }
   }
+}
+
+/**
+ * Phase 2 onboarding router. Returns a bot response object when this
+ * batch belongs to an onboarding flow (active session, or a fresh
+ * "@MatchTime setup" trigger in a group with no bot-enabled org), or
+ * null to fall through to normal analysis.
+ *
+ * Trigger is intentionally tight so it can't fire by accident in a
+ * live group: must address MatchTime AND say set up / get started.
+ */
+const SETUP_TRIGGER =
+  /(?:@?\s*match\s*time\b[\s\S]{0,40}\b(?:set\s*up|get\s*started|onboard)\b)|(?:\b(?:set\s*up|onboard)\s+match\s*time\b)/i;
+
+async function handleOnboardingIfApplicable(
+  body: InboundBody,
+): Promise<{ ok: true; results: ActionForBot[] } | null> {
+  const groupId = body.groupId;
+
+  let session = await db.onboardingSession.findFirst({
+    where: { whatsappGroupId: groupId, stage: { in: ["collecting", "features"] } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!session) {
+    // No active session — only start one on an explicit trigger AND
+    // only if this group isn't already a live org (don't hijack a
+    // configured group).
+    const triggered = body.messages.some((m) => SETUP_TRIGGER.test(m.body || ""));
+    if (!triggered) return null;
+    const liveOrg = await db.organisation.findFirst({
+      where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
+      select: { id: true },
+    });
+    if (liveOrg) return null; // already set up — ignore the trigger
+    session = await db.onboardingSession.create({
+      data: { whatsappGroupId: groupId, stage: "collecting" },
+    });
+  }
+
+  // Dedupe: if the last message we already handled is the tail of
+  // this batch, a flush re-sent it — stay silent.
+  const lastWaId = body.messages[body.messages.length - 1]?.waMessageId ?? null;
+  if (lastWaId && session.lastHandledWaId === lastWaId) {
+    return { ok: true, results: [] };
+  }
+
+  const result = await handleOnboardingTurn({
+    session,
+    messages: body.messages.map((m) => ({
+      waMessageId: m.waMessageId,
+      authorName: m.authorName,
+      body: m.body,
+    })),
+  });
+
+  const results: ActionForBot[] = [];
+  if (result.reply && lastWaId) {
+    results.push({
+      waMessageId: lastWaId,
+      handledBy: "llm",
+      intent: "onboarding",
+      react: null,
+      reply: result.reply,
+    });
+  }
+  return { ok: true, results };
 }
