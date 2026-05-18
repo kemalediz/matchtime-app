@@ -136,6 +136,26 @@ model Organisation {
   /// and prefers tracking offline.
   paymentTrackingEnabled Boolean @default(false)
 
+  /// ─── Per-feature module flags ───────────────────────────────────
+  /// Each toggles one bot capability independently so a group can run
+  /// only the bits it wants (Amir's Thursday group: MoM + rating
+  /// only). Gated at every side-effect entry point via
+  /// `getOrgFeatures()` in src/lib/org-features.ts.
+  ///
+  /// Default TRUE for the established behaviours so existing orgs
+  /// (Sutton FC — live production) keep working unchanged on
+  /// migration; new orgs get these set explicitly by the onboarding
+  /// flow. Payment is the pre-existing `paymentTrackingEnabled`
+  /// (default OFF, opt-in) — left as-is so its current gates and
+  /// Sutton's opted-out state don't change.
+  featureAttendance    Boolean @default(true)  // IN/OUT tracking, squad list, chase, short-squad replies
+  featureBench         Boolean @default(true)  // bench prompts, fill-on-drop, bench-confirmation
+  featureTeamBalancing Boolean @default(true)  // generate_teams_request + the balancer
+  featureMomVoting     Boolean @default(true)  // MoM poll + 5-day announcement
+  featurePlayerRating  Boolean @default(true)  // post-match rating links/DMs
+  featureReminders     Boolean @default(true)  // @MatchTime personal reminder_request
+  featureStatsQa       Boolean @default(true)  // Recent-History stats answers
+
   memberships    Membership[]
   activities     Activity[]
   sports         Sport[]

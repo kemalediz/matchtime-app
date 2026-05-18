@@ -31,5 +31,15 @@ export async function GET() {
     whatsappGroupId: org.whatsappGroupId,
     whatsappBotEnabled: org.whatsappBotEnabled,
     memberCount: org._count.memberships,
+    features: {
+      attendance: org.featureAttendance,
+      bench: org.featureBench,
+      teamBalancing: org.featureTeamBalancing,
+      momVoting: org.featureMomVoting,
+      playerRating: org.featurePlayerRating,
+      reminders: org.featureReminders,
+      statsQa: org.featureStatsQa,
+      paymentTracking: org.paymentTrackingEnabled,
+    },
   });
 }

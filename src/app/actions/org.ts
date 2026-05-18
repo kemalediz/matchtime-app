@@ -137,3 +137,42 @@ export async function switchOrg(orgId: string) {
   await setCurrentOrgId(orgId);
   revalidatePath("/");
 }
+
+/**
+ * Toggle a single per-org feature module (Phase 1 — make the bot's
+ * capabilities optional, per Kemal's promise to Amir's Thursday
+ * group: MoM + ratings only). Admin-only. `paymentTracking` maps to
+ * the pre-existing `paymentTrackingEnabled` column; the rest map to
+ * `feature<Name>`.
+ */
+const FEATURE_COLUMN: Record<string, string> = {
+  attendance: "featureAttendance",
+  bench: "featureBench",
+  teamBalancing: "featureTeamBalancing",
+  momVoting: "featureMomVoting",
+  playerRating: "featurePlayerRating",
+  reminders: "featureReminders",
+  statsQa: "featureStatsQa",
+  paymentTracking: "paymentTrackingEnabled",
+};
+
+export async function setOrgFeature(
+  orgId: string,
+  feature: string,
+  enabled: boolean,
+) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const { requireOrgAdmin } = await import("@/lib/org");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const column = FEATURE_COLUMN[feature];
+  if (!column) throw new Error(`Unknown feature: ${feature}`);
+
+  await db.organisation.update({
+    where: { id: orgId },
+    data: { [column]: enabled },
+  });
+  revalidatePath("/admin/settings");
+  return { feature, enabled };
+}

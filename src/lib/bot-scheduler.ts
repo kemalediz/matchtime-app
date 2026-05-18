@@ -17,6 +17,7 @@
 import { db } from "./db";
 import { buildMagicLinkUrl, signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { findOrgAdminsWithPhone } from "./org";
+import { getOrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
 
@@ -560,7 +561,44 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
     await computeForMatch(m, now, sentKeys, out, groupId);
   }
 
-  return { instructions: out, waGroupId: groupId, orgId: org.id };
+  // ── Per-org feature gate (post-compute filter) ───────────────────
+  //   Sections compute as normal; here we drop any instruction whose
+  //   capability is switched off for this org. Done as a single
+  //   key-classified filter rather than threading flags through every
+  //   section — zero control-flow risk to the live scheduler, one
+  //   reviewable transform. Unknown / meta / org-scoped keys
+  //   (bot-intro, admin DMs, ad-hoc BotJobs, retro-reactions) are
+  //   NOT classified → always allowed (fail-open; they're not
+  //   user-facing match features). This is how Amir's group runs
+  //   MoM + ratings only.
+  const features = await getOrgFeatures(org.id);
+  const featureForKey = (key: string): keyof typeof features | null => {
+    const seg = key.includes(":") ? key.slice(key.indexOf(":") + 1) : key;
+    if (
+      seg.startsWith("announce-match") ||
+      seg.startsWith("evening-update") ||
+      seg.startsWith("chase-") ||
+      seg.startsWith("pre-kickoff") ||
+      seg.startsWith("cancel-nudge") ||
+      seg.startsWith("switch-nudge") ||
+      seg.startsWith("football-gear-reminder")
+    )
+      return "attendance";
+    if (seg.startsWith("bench-prompt")) return "bench";
+    if (seg.startsWith("mom-")) return "momVoting";
+    if (seg.startsWith("rate-")) return "playerRating";
+    if (seg.startsWith("payment-")) return "paymentTracking";
+    // ask-score + everything else: infrastructure / meta → allow.
+    return null;
+  };
+  const gated = out.filter((instr) => {
+    // The bench-prompt kind is bench regardless of key shape.
+    if (instr.kind === "bench-prompt" && !features.bench) return false;
+    const f = featureForKey(instr.key);
+    return f === null ? true : features[f];
+  });
+
+  return { instructions: gated, waGroupId: groupId, orgId: org.id };
 }
 
 type MatchWithIncludes = Awaited<ReturnType<typeof getMatchesForScheduler>>[number];

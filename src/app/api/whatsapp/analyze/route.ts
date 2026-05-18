@@ -49,6 +49,7 @@ import {
   type BatchInputMessage,
 } from "@/lib/message-analyzer";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
+import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { computeEloDeltas } from "@/lib/elo";
 import { generateTeamsForMatch } from "@/lib/team-generation";
@@ -959,6 +960,35 @@ async function executeVerdict(args: {
   const { verdict, user, orgId } = args;
   let finalReact = verdict.react;
   let finalReply = verdict.reply;
+
+  // ── Per-org feature gate ─────────────────────────────────────────
+  //   Map the verdict to the module it would exercise; if that module
+  //   is OFF for this org, do nothing (no react, no reply) — the bot
+  //   stays completely silent on that capability. This is how Amir's
+  //   Thursday group runs MoM + ratings only: attendance / bench /
+  //   team-balancing / reminders verdicts are no-ops there. Score
+  //   stays ungated — it's infrastructure that feeds MoM + ratings,
+  //   not a user-facing toggle.
+  {
+    const f = await getOrgFeatures(orgId);
+    const needs: FeatureKey | null = verdict.benchConfirmation
+      ? "bench"
+      : verdict.intent === "generate_teams_request"
+        ? "teamBalancing"
+        : verdict.intent === "reminder_request"
+          ? "reminders"
+          : verdict.registerAttendance ||
+              (verdict.registerFor && verdict.registerFor.length > 0) ||
+              verdict.intent === "in" ||
+              verdict.intent === "out" ||
+              verdict.intent === "replacement_request" ||
+              verdict.intent === "conditional_in"
+            ? "attendance"
+            : null;
+    if (needs && !f[needs]) {
+      return { react: null, reply: null };
+    }
+  }
 
   // ── Last-mile react rewrite for IN intent ────────────────────────
   //    When a player says IN but they're already CONFIRMED/BENCH for

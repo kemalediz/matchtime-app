@@ -27,6 +27,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
+import { getOrgFeatures } from "./org-features";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -710,7 +711,12 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   // completed match yet — early-launch orgs simply don't get the
   // block, and the LLM falls back to its existing "I don't know that
   // one yet" behaviour.
-  const recentHistory = await loadRecentHistory(org.id);
+  //   Gated by the statsQa feature module — when off (e.g. a group
+  //   that only wants MoM + ratings) we don't build or inject the
+  //   block at all, so the LLM has no historical data to answer from
+  //   and falls back to "I don't have that".
+  const statsOn = (await getOrgFeatures(org.id)).statsQa;
+  const recentHistory = statsOn ? await loadRecentHistory(org.id) : null;
   const fullContext = recentHistory
     ? `${matchContext}\n\n${formatRecentHistoryBlock(recentHistory)}`
     : matchContext;

@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Link as LinkIcon, Users, Settings, MessageCircle } from "lucide-react";
+import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal } from "lucide-react";
+import { setOrgFeature } from "@/app/actions/org";
+import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
+
+type FeatureKey = ToggleableKey;
 
 interface OrgData {
   id: string;
@@ -12,6 +16,7 @@ interface OrgData {
   whatsappGroupId: string | null;
   whatsappBotEnabled: boolean;
   memberCount: number;
+  features: Record<FeatureKey, boolean>;
 }
 
 export default function SettingsPage() {
@@ -30,6 +35,28 @@ export default function SettingsPage() {
     const link = `${window.location.origin}/join/${org.inviteCode}`;
     await navigator.clipboard.writeText(link);
     toast.success("Invite link copied!");
+  }
+
+  const [savingFeature, setSavingFeature] = useState<string | null>(null);
+  async function toggleFeature(key: FeatureKey, next: boolean) {
+    if (!org) return;
+    setSavingFeature(key);
+    // Optimistic — flip locally so the switch responds instantly.
+    setOrg((prev) =>
+      prev ? { ...prev, features: { ...prev.features, [key]: next } } : prev,
+    );
+    try {
+      await setOrgFeature(org.id, key, next);
+      toast.success(`${next ? "Enabled" : "Disabled"} ${key}`);
+    } catch (e) {
+      // Roll back on failure.
+      setOrg((prev) =>
+        prev ? { ...prev, features: { ...prev.features, [key]: !next } } : prev,
+      );
+      toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSavingFeature(null);
+    }
   }
 
   if (loading) return <div className="p-10 text-center text-slate-400">Loading…</div>;
@@ -94,6 +121,56 @@ export default function SettingsPage() {
               <Copy className="w-4 h-4" />
               Copy
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4 text-slate-500" />
+          <h2 className="font-semibold text-slate-800">Bot features</h2>
+        </div>
+        <div className="p-6">
+          <p className="text-sm text-slate-500 mb-4">
+            Turn individual capabilities on or off. A group can run just the
+            bits it wants — e.g. only Man of the Match and player ratings.
+            Changes take effect on the bot&apos;s next cycle.
+          </p>
+          <div className="divide-y divide-slate-100">
+            {FEATURE_META.map((m) => {
+              const key = m.key as FeatureKey;
+              const on = org.features?.[key] ?? false;
+              return (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800">
+                      {m.label}
+                    </p>
+                    <p className="text-xs text-slate-500">{m.blurb}</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={on}
+                    disabled={savingFeature === key}
+                    onClick={() => toggleFeature(key, !on)}
+                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                      on ? "bg-green-500" : "bg-slate-300"
+                    }`}
+                    title={on ? "Click to disable" : "Click to enable"}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        on ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
