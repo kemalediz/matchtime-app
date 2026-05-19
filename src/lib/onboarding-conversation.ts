@@ -111,7 +111,12 @@ async function extract(
   messages: OnboardingTurnInput["messages"],
 ): Promise<Extracted | null> {
   const anthropic = getAnthropic();
-  if (!anthropic) return null;
+  // Deterministic fallback when the LLM is unavailable (no key /
+  // outage / error) so onboarding still progresses instead of looping
+  // the first question forever. Event answers are formulaic enough to
+  // regex; venue is handled by the "sole missing field" heuristic in
+  // the collecting branch.
+  if (!anthropic) return regexExtract(messages);
   const known = {
     groupName: session.groupName,
     venue: session.venue,
@@ -138,13 +143,139 @@ async function extract(
       ],
     });
     const block = res.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    if (!block) return null;
+    if (!block) return regexExtract(messages);
     const json = block.text.slice(block.text.indexOf("{"), block.text.lastIndexOf("}") + 1);
-    return JSON.parse(json) as Extracted;
+    const parsed = JSON.parse(json) as Extracted;
+    // Backfill anything the LLM left null with a regex pass — makes
+    // extraction stickier (covers LLM misses on terse answers) and
+    // means a partial LLM failure still advances the flow.
+    const rx = regexExtract(messages);
+    return {
+      groupName: parsed.groupName ?? rx.groupName,
+      venue: parsed.venue ?? rx.venue,
+      dayOfWeek: parsed.dayOfWeek ?? rx.dayOfWeek,
+      kickoffTime: parsed.kickoffTime ?? rx.kickoffTime,
+      playersPerSide: parsed.playersPerSide ?? rx.playersPerSide,
+      recurrence: parsed.recurrence ?? rx.recurrence,
+      oneOffDate: parsed.oneOffDate ?? rx.oneOffDate,
+      featureSelection: parsed.featureSelection ?? rx.featureSelection,
+      confidence: Math.max(parsed.confidence ?? 0, rx.confidence),
+    };
   } catch (err) {
     console.error("[onboarding] extract failed:", err);
-    return null;
+    return regexExtract(messages);
   }
+}
+
+const DAY_WORDS: Record<string, number> = {
+  sunday: 0, sun: 0,
+  monday: 1, mon: 1,
+  tuesday: 2, tue: 2, tues: 2,
+  wednesday: 3, wed: 3, weds: 3,
+  thursday: 4, thu: 4, thur: 4, thurs: 4,
+  friday: 5, fri: 5,
+  saturday: 6, sat: 6,
+};
+
+/** Deterministic, LLM-free extractor. Event answers are formulaic;
+ *  this keeps onboarding progressing if Anthropic is unavailable and
+ *  backfills LLM misses on terse replies. Venue is intentionally not
+ *  guessed here — the collecting branch's "sole missing field"
+ *  heuristic handles a bare "PowerLeague Shoreditch" answer. */
+function regexExtract(
+  messages: OnboardingTurnInput["messages"],
+): Extracted {
+  const text = messages.map((m) => m.body).join("  ").toLowerCase();
+  const empty: Extracted = {
+    groupName: null, venue: null, dayOfWeek: null, kickoffTime: null,
+    playersPerSide: null, recurrence: null, oneOffDate: null,
+    featureSelection: null, confidence: 0,
+  };
+
+  // players-per-side: "7 a side", "7-a-side", "7aside", "5s", "11 aside"
+  let playersPerSide: number | null = null;
+  const ps =
+    text.match(/(\d{1,2})\s*[-\s]?\s*a[-\s]?side/) ||
+    text.match(/\b(\d{1,2})\s*aside\b/) ||
+    text.match(/\b(4|5|6|7|8|9|10|11)s\b/);
+  if (ps) {
+    const n = parseInt(ps[1], 10);
+    if (n >= 4 && n <= 16) playersPerSide = n;
+  }
+
+  // day of week
+  let dayOfWeek: number | null = null;
+  for (const [w, d] of Object.entries(DAY_WORDS)) {
+    if (new RegExp(`\\b${w}s?\\b`).test(text)) { dayOfWeek = d; break; }
+  }
+
+  // kickoff time: "8:30pm", "8 pm", "20:30", "21.30", "9pm"
+  let kickoffTime: string | null = null;
+  const tm =
+    text.match(/\b(\d{1,2})[:.](\d{2})\s*(am|pm)?\b/) ||
+    text.match(/\b(\d{1,2})\s*(am|pm)\b/);
+  if (tm) {
+    let h = parseInt(tm[1], 10);
+    const min = tm[2] && /^\d{2}$/.test(tm[2]) ? tm[2] : "00";
+    const mer = (tm[3] || tm[2] || "").toString();
+    if (/pm/.test(mer) && h < 12) h += 12;
+    if (/am/.test(mer) && h === 12) h = 0;
+    if (h >= 0 && h <= 23) kickoffTime = `${String(h).padStart(2, "0")}:${min}`;
+  }
+
+  // recurrence
+  let recurrence: string | null = null;
+  if (/\b(one[-\s]?off|just this once|one time|single (?:game|match)|this week only)\b/.test(text))
+    recurrence = "oneoff";
+  else if (/\b(weekly|every week|each week|recurring|every (?:mon|tue|wed|thu|fri|sat|sun))/.test(text))
+    recurrence = "weekly";
+
+  // one-off ISO date
+  let oneOffDate: string | null = null;
+  const dm = text.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  if (dm) oneOffDate = `${dm[1]}-${dm[2]}-${dm[3]}`;
+
+  // feature selection (only meaningful at the features stage; caller
+  // decides when to use it). Numbers map to FEATURE_META order.
+  let featureSelection: string[] | null = null;
+  if (/\b(everything|all of (?:it|them)|all features|the lot|all)\b/.test(text)) {
+    featureSelection = FEATURE_META.map((f) => f.key);
+    if (/\b(except|but not|apart from|without)\b[^.]*\bpay/.test(text))
+      featureSelection = featureSelection.filter((k) => k !== "paymentTracking");
+  } else {
+    const picked = new Set<string>();
+    if (/\b(mom|man of the match|motm)\b/.test(text)) picked.add("momVoting");
+    if (/\b(rating|ratings|rate)\b/.test(text)) picked.add("playerRating");
+    if (/\b(attendance|in\/out|squad)\b/.test(text)) picked.add("attendance");
+    if (/\bbench\b/.test(text)) picked.add("bench");
+    if (/\b(teams?|balanc)/.test(text)) picked.add("teamBalancing");
+    if (/\b(reminder|remind)\b/.test(text)) picked.add("reminders");
+    if (/\b(stats|history|leaderboard)\b/.test(text)) picked.add("statsQa");
+    if (/\bpay(ment)?s?\b/.test(text)) picked.add("paymentTracking");
+    // numbered picks: "4 and 5", "options 1, 4", "1 & 4"
+    const nums = text.match(/\b([1-8])\b/g);
+    if (nums) for (const n of nums) {
+      const meta = FEATURE_META[parseInt(n, 10) - 1];
+      if (meta) picked.add(meta.key);
+    }
+    if (picked.size > 0) featureSelection = [...picked];
+  }
+
+  const gotAny =
+    playersPerSide != null || dayOfWeek != null || kickoffTime != null ||
+    recurrence != null || oneOffDate != null ||
+    (featureSelection != null && featureSelection.length > 0);
+
+  return {
+    ...empty,
+    playersPerSide,
+    dayOfWeek,
+    kickoffTime,
+    recurrence,
+    oneOffDate,
+    featureSelection,
+    confidence: gotAny ? 0.7 : 0,
+  };
 }
 
 /** Main turn handler. Pure-ish: it reads/writes the session + (on
@@ -161,20 +292,79 @@ export async function handleOnboardingTurn(
   // ── Stage: collecting event details ──────────────────────────────
   if (session.stage === "collecting") {
     const data: Record<string, unknown> = {};
-    if (ex && ex.confidence >= 0.5) {
-      if (ex.groupName && !session.groupName) data.groupName = ex.groupName.slice(0, 80);
+    // No global confidence gate — each field has its own format
+    // validator, and a present concrete value IS the signal. The old
+    // `confidence >= 0.5` gate dropped clear terse answers and caused
+    // the Q1 loop. Allow correction of an already-set field too (user
+    // says "actually make it 7 a side").
+    if (ex) {
+      if (ex.groupName && !session.groupName && ex.confidence >= 0.5)
+        data.groupName = ex.groupName.slice(0, 80);
       if (ex.venue && !session.venue) data.venue = ex.venue.slice(0, 120);
-      if (ex.dayOfWeek != null && session.dayOfWeek == null && ex.dayOfWeek >= 0 && ex.dayOfWeek <= 6)
+      if (ex.dayOfWeek != null && ex.dayOfWeek >= 0 && ex.dayOfWeek <= 6)
         data.dayOfWeek = ex.dayOfWeek;
-      if (ex.kickoffTime && !session.kickoffTime && /^\d{1,2}:\d{2}$/.test(ex.kickoffTime))
+      if (ex.kickoffTime && /^\d{1,2}:\d{2}$/.test(ex.kickoffTime))
         data.kickoffTime = ex.kickoffTime;
-      if (ex.playersPerSide && !session.playersPerSide && [5, 6, 7, 8, 11].includes(ex.playersPerSide))
+      if (ex.playersPerSide && ex.playersPerSide >= 4 && ex.playersPerSide <= 16)
         data.playersPerSide = ex.playersPerSide;
-      if (ex.recurrence && !session.recurrence && ["weekly", "oneoff"].includes(ex.recurrence))
+      if (ex.recurrence && ["weekly", "oneoff"].includes(ex.recurrence))
         data.recurrence = ex.recurrence;
-      if (ex.oneOffDate && !session.oneOffDate && /^\d{4}-\d{2}-\d{2}$/.test(ex.oneOffDate))
+      if (ex.oneOffDate && /^\d{4}-\d{2}-\d{2}$/.test(ex.oneOffDate))
         data.oneOffDate = ex.oneOffDate;
     }
+
+    // Venue "currently-asked field" heuristic: nextEventQuestion asks
+    // venue 4th (after players/day/time, BEFORE recurrence), so once
+    // those three are known and venue is still blank the next answer
+    // to "where do you play?" IS the venue — take it verbatim (covers
+    // a bare "PowerLeague Shoreditch", and works with no LLM). Guard
+    // must mirror the question ORDER, not require later fields.
+    const structuredKeysThisTurn = Object.keys(data).filter(
+      (k) => k !== "lastHandledWaId",
+    );
+    const lastBody = messages[messages.length - 1].body.trim();
+    const looksLikeTrigger = /match\s*time|set\s*up|setup|get\s*started|onboard/i.test(
+      lastBody,
+    );
+
+    // groupName "currently-asked field" heuristic — LLM-DOWN ONLY.
+    // With the LLM up (normal prod) the model reliably pulls the name
+    // from "we're the Thursday Ballers"; running this heuristic then
+    // would risk capturing chitchat that arrives before the name. So
+    // it's strictly the outage fallback: only when no LLM is
+    // available, treat the (non-trigger, no-structured-field) reply to
+    // Q1 as the club name.
+    if (
+      !getAnthropic() &&
+      !session.groupName &&
+      !data.groupName &&
+      !looksLikeTrigger &&
+      structuredKeysThisTurn.length === 0 &&
+      lastBody.length >= 2 &&
+      lastBody.length <= 60
+    ) {
+      data.groupName = lastBody.slice(0, 80);
+    }
+
+    // Venue "currently-asked field" heuristic: nextEventQuestion asks
+    // venue after players/day/time and BEFORE recurrence, so once
+    // those are known (in a PRIOR turn) and venue is still blank, a
+    // short free-text answer IS the venue.
+    if (
+      !session.venue &&
+      !data.venue &&
+      session.groupName &&
+      session.playersPerSide &&
+      session.dayOfWeek != null &&
+      session.kickoffTime &&
+      structuredKeysThisTurn.length === 0 &&
+      !looksLikeTrigger
+    ) {
+      if (lastBody.length >= 2 && lastBody.length <= 80 && !/^\d+$/.test(lastBody)) {
+        data.venue = lastBody.slice(0, 120);
+      }
+    }
+
     data.lastHandledWaId = messages[messages.length - 1].waMessageId;
     const merged = { ...session, ...data } as Session;
     await db.onboardingSession.update({ where: { id: session.id }, data });
@@ -214,8 +404,10 @@ export async function handleOnboardingTurn(
 }
 
 function nextEventQuestion(s: Session): string | null {
+  if (!s.groupName)
+    return "👋 Let's get MatchTime set up for this group! First — what should I call your club/group? (e.g. *Thursday Ballers*)";
   if (!s.playersPerSide)
-    return "👋 Let's get set up! First — how many players per side? (e.g. *7* for 7-a-side, *5* for 5-a-side)";
+    return `Great, *${s.groupName}* it is. How many players per side? (e.g. *7* for 7-a-side, *5* for 5-a-side)`;
   if (s.dayOfWeek == null)
     return "Which *day of the week* do you usually play? (e.g. Thursday)";
   if (!s.kickoffTime)
