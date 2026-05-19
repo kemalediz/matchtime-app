@@ -262,10 +262,19 @@ export async function POST(request: Request) {
   // Find an active RosterSurveyDM for this user. There SHOULD be at
   // most one open survey per (user, org) at a time. If multiple
   // exist, pick the most recent.
+  // Stale-survey guard: a roster check-in only owns DM replies for a
+  // bounded window. A survey left "open" for weeks (Kemal 2026-05-19:
+  // two surveys from late April were still capturing every DM and
+  // spamming clarifications a month later) must NOT keep hijacking
+  // DMs. 14 days is well past any real check-in.
+  const SURVEY_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
   const dm = await db.rosterSurveyDM.findFirst({
     where: {
       userId: user.id,
-      survey: { status: "open" },
+      survey: {
+        status: "open",
+        createdAt: { gte: new Date(Date.now() - SURVEY_MAX_AGE_MS) },
+      },
     },
     include: {
       survey: { include: { org: { select: { id: true, name: true } } } },
@@ -294,17 +303,37 @@ export async function POST(request: Request) {
   const phoneNoPlus = userPhone?.phoneNumber?.replace(/^\+/, "") ?? null;
 
   if (classification.category === "unclear") {
-    // Don't save a response yet — re-ask politely with the original
-    // context so they know what we're checking on.
+    // ONE clarification per person per survey — full stop. The old
+    // code re-sent it on EVERY unclear reply with no cap, so an
+    // annoyed "are you stupid" / "I already replied" each triggered
+    // another identical DM → the spiral Kemal saw 2026-05-19
+    // (6+ identical DMs, player threatening the bot). After the first
+    // clarification we go silent; admins read raw replies on the
+    // dashboard anyway, so nothing is lost.
+    const priorClarif = await db.botJob.count({
+      where: {
+        orgId: dm.survey.org.id,
+        phone: phoneNoPlus ?? "__none__",
+        text: { startsWith: `Sorry ${firstName} — wasn't sure if that was a reply to the roster check-in` },
+      },
+    });
+    if (priorClarif > 0) {
+      // Already clarified once — stay silent. Don't feed the loop.
+      return NextResponse.json({
+        ok: true,
+        action: "clarification-suppressed-already-sent",
+        classification,
+      });
+    }
     const clarification = [
-      `Sorry ${firstName} — wasn't sure if that was a reply to the roster check-in for *${dm.survey.org.name}* (the Tuesday football WhatsApp group).`,
+      `Sorry ${firstName} — wasn't sure if that was a reply to the roster check-in for *${dm.survey.org.name}*.`,
       ``,
       `Was your answer:`,
       `• yes / I'm in`,
       `• maybe / sometimes`,
       `• not for now / out`,
       ``,
-      `Quick word back is enough 🙏`,
+      `Quick word back is enough — otherwise no worries, an admin will sort it 🙏`,
     ].join("\n");
     if (phoneNoPlus) {
       await db.botJob.create({

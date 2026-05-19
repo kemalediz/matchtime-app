@@ -925,6 +925,16 @@ async function computeForMatch(
     if (groupAlreadySent && dmAlreadySent) continue;
     if (now > bc.expiresAt) continue; // expired — the /due-posts endpoint will sweep it elsewhere
 
+    // Daytime gate: never fire a bench prompt (in-group tag OR DM)
+    // overnight. A slot opening at 00:24 must NOT ping/▼DM a bencher
+    // at 2am — it waits until people are awake. London 08:00–21:59
+    // only. (Kemal flagged 2026-05-19: Karahan got tagged + DM'd at
+    // 00:24 then "timed out" at 02:24 in his sleep.) The PBC row
+    // stays open with no waMessageId, so the sweeper's
+    // "skip undelivered" guard also won't expire it overnight.
+    const lh = londonHour(now);
+    if (lh < 8 || lh >= 22) continue;
+
     const user = m.attendances.find((a) => a.userId === bc.userId)?.user;
     if (!user?.phoneNumber) continue;
 
@@ -1467,36 +1477,88 @@ export async function sweepExpiredBenchConfirmations(orgId: string): Promise<voi
   });
 
   for (const bc of expired) {
+    // (1) Never burn a window the bencher never saw. If the prompt was
+    //     never actually delivered (waMessageId still null — e.g. it
+    //     was time-gated overnight and hasn't been posted yet), DON'T
+    //     expire it. The 2h clock only means anything once they've
+    //     actually been asked. Kemal flagged 2026-05-19: Karahan's
+    //     window opened 23:24 and "expired" 01:24 while he slept.
+    if (!bc.waMessageId) continue;
+
+    // (2) Is there another DISTINCT bench player we could offer next?
+    const nextBench = await db.attendance.findFirst({
+      where: {
+        matchId: bc.matchId,
+        status: "BENCH",
+        userId: { not: bc.userId },
+      },
+      orderBy: { position: "asc" },
+    });
+
+    if (!nextBench) {
+      // (3) They're the only/last bench option — do NOT expire-and-drop
+      //     them. Keep the offer OPEN until kickoff so a late reply
+      //     still promotes them. Nobody is ever removed from the bench
+      //     for being slow to answer.
+      await db.pendingBenchConfirmation.update({
+        where: { id: bc.id },
+        data: { expiresAt: bc.match.date },
+      });
+      continue;
+    }
+
+    // (4) Hand the SAME slot to the next bencher. Crucially the
+    //     non-responder is NOT dropped — they stay on the BENCH and
+    //     remain promotable (later opening, or if everyone else
+    //     passes). Silence ≠ unavailable.
     await db.$transaction(async (tx) => {
       await tx.pendingBenchConfirmation.update({
         where: { id: bc.id },
         data: { resolvedAt: now, outcome: "expired" },
       });
-      // Treat the silent bencher as dropped.
-      await tx.attendance.update({
-        where: { matchId_userId: { matchId: bc.matchId, userId: bc.userId } },
-        data: { status: "DROPPED" },
+      // Don't create a duplicate if one is already open for them.
+      const existing = await tx.pendingBenchConfirmation.findFirst({
+        where: { matchId: bc.matchId, userId: nextBench.userId, resolvedAt: null },
       });
-
-      // Look for the next BENCH player.
-      const nextBench = await tx.attendance.findFirst({
-        where: { matchId: bc.matchId, status: "BENCH" },
-        orderBy: { position: "asc" },
-      });
-      if (!nextBench) return;
-
+      if (existing) return;
       await tx.pendingBenchConfirmation.create({
         data: {
           matchId: bc.matchId,
           userId: nextBench.userId,
-          // Preserve the original dropped player's id — the next
-          // bench user is being offered the SAME slot, not a new one.
           replacingUserId: bc.replacingUserId,
-          expiresAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
+          // Daytime-bounded so the next person also gets a fair,
+          // awake window (see daytimeBenchExpiry).
+          expiresAt: daytimeBenchExpiry(now, bc.match.date),
         },
       });
     });
   }
+}
+
+/**
+ * A bench-confirmation window that never silently burns down
+ * overnight. From `from`, give ~2h — but if that lands in the
+ * sleep band (London 22:00–08:00) push the deadline to 10:00 the
+ * next morning so the bencher gets a real, awake chance. Never past
+ * kickoff.
+ */
+function daytimeBenchExpiry(from: Date, kickoff: Date): Date {
+  const two = new Date(from.getTime() + 2 * 60 * 60 * 1000);
+  const h = londonHour(two);
+  let deadline = two;
+  if (h >= 22 || h < 8) {
+    // London 10:00 the next morning (or today if it's pre-08:00).
+    const d = new Date(two);
+    const curH = londonHour(d);
+    if (curH >= 22) d.setUTCDate(d.getUTCDate() + 1);
+    // Set to ~10:00 London. londonHour works in offset terms; nudging
+    // the UTC hour to 09:00 lands 10:00 BST / 09:00 GMT — close
+    // enough for a "morning" deadline; exact TZ precision isn't
+    // needed for a soft window.
+    d.setUTCHours(9, 0, 0, 0);
+    deadline = d;
+  }
+  return deadline < kickoff ? deadline : kickoff;
 }
 
 /**
@@ -1616,11 +1678,16 @@ export async function requestBenchConfirmationOnDrop(
   // chain to anyway, so dropping the prompt early would just leave
   // the slot open. Bencher can take it any time before the match
   // starts; admins can manually intervene if they ghost.
-  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+  // Sole bencher → open until kickoff (no elimination, ever).
+  // Otherwise a ~2h window that never burns overnight: if it'd land
+  // in the London sleep band it's pushed to the next morning (see
+  // daytimeBenchExpiry). Combined with the daytime emission gate +
+  // the sweeper's "skip undelivered" guard, a slot opening at 00:24
+  // can't ping or time anyone out in their sleep.
   const expiresAt =
     benchPlayers.length === 1
       ? match.date
-      : new Date(Date.now() + TWO_HOURS_MS);
+      : daytimeBenchExpiry(new Date(), match.date);
 
   await db.pendingBenchConfirmation.create({
     data: {
