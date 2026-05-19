@@ -148,3 +148,25 @@ Meta-lesson: when a bot-action bug report comes in, the LLM verdict is usually R
 - Don't let the resolver bail on ambiguous fuzzy without first checking `UserAlias` — admin-curated aliases are unique per org and exist precisely to break ties.
 - Don't `--apply` a one-off that depends on just-pushed scheduler/due-posts code until `vercel ls` shows the deploy Ready. Schema push is instant; server code isn't; the bot polls every 5 min and will half-process the queue.
 - Don't assume the project path/name is stable — it was rebranded matchday→matchtime mid-stream. Auto-memory symlinks dangle on rename; repoint before relying on memory reads.
+
+## Conversational flows: never depend on LLM nondeterminism for progression (2026-05-19)
+
+Phase 2 onboarding's first cut used the LLM to extract every event field. The QA suite (9 scenarios vs prod) flaked: bare answers ("Test FC Two" with no "we're …") sometimes weren't extracted → Q1 re-asked → a fixed-script conversation ran off the end; and `parsed.featureSelection ?? rx` let a wrong-but-non-null LLM value override the correct deterministic numbered-pick (`??` only falls back on null/undefined — a wrong `[...]` or `""` slips through). Lesson: in a multi-turn flow, **the answer to the question currently being asked must be captured deterministically** — free-text fields (name/venue) verbatim-at-their-step, structured fields by regex — with the LLM as an *enhancement* (multi-field messages, natural language), never the load-bearing path. A flow that needs the LLM to fire correctly N times in a row will fail ~(1-p)^N of the time.
+
+## Removing an over-strict guard can open a clobber bug
+
+To support "actually make it 7 a side", the `!session.X` merge guards were dropped so a field could be overwritten. That let a day word *incidentally* present in a later answer (venue "Tuesday Night Sports Centre", a one-off date "Saturday the 5th") silently overwrite the real match day. Fix = a **correction-cue** gate: overwrite a set field only when the message has an explicit cue (`actually|make it|instead|i meant|no wait|…`). General principle: "allow correction" ≠ "allow any later mention to overwrite" — require intent, not coincidence. Added `venue_with_dayword` as a permanent regression scenario.
+
+## Test what the LLM-down path actually does
+
+The "falls open" comment on the onboarding extractor was wrong — with no `ANTHROPIC_API_KEY` it didn't degrade gracefully, it re-asked Q1 forever. Local `.env` has no Anthropic key (Vercel-only), which is exactly why the in-process sim looped and surfaced it. Always exercise the no-LLM branch; "falls open" must mean *progresses deterministically*, not *returns null into a loop*. The fix (regexExtract wired into every extract() failure path) makes onboarding work even during an Anthropic outage.
+
+## Autonomous QA loop that worked
+
+Build a scenario suite that POSTs to the **deployed** server and asserts DB state (org/activity/flags), self-wiping each run. Iterate: run → read FAILs → fix root cause (not the test) → push → wait for Vercel → re-run, until N/N. Keep the suite as the permanent regression gate (must stay green). Pair it with a non-destructive gating/Sutton-regression test so feature isolation + the live org are both proven every change. Sweep synthetic test orgs/sessions (`qa-/gate-/sim-*` prefixes) at the end — prod should only ever show real orgs.
+
+## Things to NEVER do (additions)
+- Don't make a conversational state machine's progression depend on an LLM extraction succeeding — capture the current question's answer deterministically; LLM is the enhancer, not the spine.
+- Don't use `a ?? b` to "fall back" when `a` can be a wrong non-null value (empty array, wrong guess). Use an explicit "a is usable?" check.
+- Don't drop a `!alreadySet` guard to enable corrections without a correction-cue gate — coincidental later mentions will clobber good data.
+- Don't trust `vercel ls` glyph-grep in a tight wait-loop (the `●` status doesn't parse reliably; project is `matchday` not `matchtime`); push, wait ~1-2 min, verify by re-running the actual check.

@@ -263,3 +263,22 @@ When a one-off script queues BotJobs that depend on scheduler logic you JUST pus
 ## Analyzer Recent History block
 
 `src/lib/match-history.ts#loadRecentHistory(orgId)` pre-computes per-org stats (every completed non-historical match with score + MoM, MoM-wins leaderboard incl. historical backfill, attendance leaderboard with **total-matches denominator**, Elo top-10 / bottom-5 ≥3 matches). `formatRecentHistoryBlock` renders it into the 1-h-cached context so the LLM can answer "who got MoM last week / most consistent attender / what was the score". Returns null pre-first-match. Extend HERE for new stat questions, not with new prompt rules.
+
+## Per-org feature modules (Phase 1)
+
+Every bot capability is an independent per-org toggle. `Organisation.feature{Attendance,Bench,TeamBalancing,MomVoting,PlayerRating,Reminders,StatsQa}` (+ pre-existing `paymentTrackingEnabled`), all default **true** so existing orgs (Sutton) are unchanged. Resolve via `src/lib/org-features.ts#getOrgFeatures(orgId)` / `getOrgFeaturesByGroup`. Client-safe labels live in `org-features-meta.ts` (no db import) — never import `org-features.ts` into a "use client" file. Three gating chokepoints: (1) analyze `executeVerdict` maps the verdict→module and returns silent when off; (2) `message-analyzer` skips the Recent-History block when `statsQa` off; (3) `bot-scheduler` post-compute filter classifies each DueInstruction by key (`announce-match`/`evening-update`/`chase-`/`pre-kickoff`/`cancel-nudge`/`switch-nudge`/`football-gear-reminder`→attendance, `bench-prompt*`→bench, `mom-*`→momVoting, `rate-*`→playerRating, `payment-*`→paymentTracking) and drops off-module ones; unknown/meta keys (bot-intro, admin DMs, retro-react, botjob) fail-open. Admin → Settings → "Bot features" optimistic toggles via `setOrgFeature`. Score is ungated (infra feeding MoM+ratings).
+
+## Autonomous onboarding (Phase 2)
+
+`@MatchTime setup` in an unconfigured group → in-group Q&A (anyone answers) → creates Sport/Activity/Match + flips Phase-1 flags. `OnboardingSession` (one active per group, stage collecting→features→completed). `src/lib/onboarding-conversation.ts`: **LLM extracts, deterministic code controls** — every step is LLM-INDEPENDENT for progression (groupName/venue captured verbatim at their asked step; players/day/time/recurrence via `regexExtract`; features deterministic-first via regex numbered/keyword map, LLM only for vague phrasing). `regexExtract` is the LLM-down fallback wired into `extract()` on null-key/no-block/throw. Structured fields only auto-fill UNSET; overwriting a set field needs an explicit correction cue (`actually|make it|instead|i meant|…`) so a day word inside a later venue answer can't clobber the real day. analyze route's `handleOnboardingIfApplicable` runs BEFORE the bot-enabled-org gate (tight SETUP_TRIGGER regex; `liveOrg` guard so it can't hijack a configured group; dedupes re-flushed batches by `lastHandledWaId`). `/orgs` returns `onboardingGroups`; bot adds them + dynamically `addMonitoredGroup` on a loose setup pre-filter (so a brand-new group's trigger isn't dropped by the startup-only monitored set).
+
+## Onboarding/feature test harnesses
+
+- `scripts/test-onboarding-suite.ts` — 9 scenarios POSTed to prod `/analyze`, asserts org/activity/feature flags, self-wipes each. The regression gate; must stay 9/9.
+- `scripts/test-gating.ts` — synthetic MoM+rating-only org: asserts IN/teams silent in analyze + due-posts has no attendance/bench/teams; asserts Sutton all-on + no shadow session. Non-destructive.
+- `scripts/sim-onboarding-remote.ts` — scripted convo vs prod (no WhatsApp). Local `.env` has **no ANTHROPIC_API_KEY** (Vercel only) so always test ONBOARDING against the deployed server, not in-process.
+- `wipe-org.ts <slug> --apply` now also clears OnboardingSession.
+
+## Vercel project is still named `matchday`
+
+The rebrand didn't rename the Vercel project. `vercel ls --scope kemaledizs-projects matchday` (NOT `matchtime` — that errors "not a valid project name"). The `●` status glyph doesn't grep cleanly; don't build tight wait-loops on it — push, give it ~1-2 min, verify by re-running the check.
