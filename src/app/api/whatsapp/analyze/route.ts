@@ -121,6 +121,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
   }
 
+  // ── Skip the LLM entirely when no message-driven feature is on ───
+  //   MoM + player-rating are post-match / poll / scheduler driven —
+  //   they never need per-message analysis. Only attendance, bench,
+  //   team-balancing, reminders and stats-Q&A read chat. If none of
+  //   those are enabled for this org there is nothing for the
+  //   analyzer to do, so we return BEFORE the (now Sonnet, ~3×)
+  //   LLM call. Saves ~£10/mo per such group → ~£0. (Onboarding
+  //   already returned above when its session is active, so a
+  //   mid-setup group still gets handled.)
+  {
+    const f = await getOrgFeatures(org.id);
+    const needsAnalyzer =
+      f.attendance || f.bench || f.teamBalancing || f.reminders || f.statsQa;
+    if (!needsAnalyzer) {
+      return NextResponse.json({
+        ok: true,
+        ignored: "no-message-driven-features",
+        results: [],
+      });
+    }
+  }
+
   // 1. Dedupe.
   const all = body.messages;
   const ids = all.map((m) => m.waMessageId);
@@ -246,6 +268,41 @@ export async function POST(request: Request) {
     const msg = fresh[i];
     let verdict = verdicts[i];
     const sender = senderById.get(msg.waMessageId)!;
+
+    // ── SEATBELT: "swap A with B" between two CONFIRMED players is a
+    //    TEAM swap, never a drop. The LLM's prompt has a forceful
+    //    "swap X with Y = X OUT" rule (built for attendance
+    //    replacements) that wrongly dropped Elvin 2026-05-19.
+    //    Deterministic guard: if the message is a swap/switch of two
+    //    people who are BOTH currently confirmed, we swap their teams
+    //    (or note it for when teams are generated) and SKIP the LLM
+    //    verdict entirely — it cannot drop anyone. A swap where one
+    //    side isn't playing is a genuine replacement → fall through.
+    {
+      const swapResult = await handleTeamSwapIfApplicable(org.id, msg.body);
+      if (swapResult) {
+        await recordAnalysis({
+          orgId: org.id,
+          groupId: body.groupId,
+          msg,
+          handledBy: "llm",
+          intent: "team_swap",
+          action: "team-swap",
+          confidence: 1,
+          reasoning: swapResult.logReason,
+          authorUserId: sender.userId,
+          authorName: msg.authorName ?? null,
+        });
+        results.push({
+          waMessageId: msg.waMessageId,
+          handledBy: "llm",
+          intent: "team_swap",
+          react: "✅",
+          reply: swapResult.reply,
+        });
+        continue; // never reach executeVerdict — no drop possible
+      }
+    }
 
     // ── IN intent safety net ─────────────────────────────────────────
     //    If the LLM classified this as "in" but emitted
@@ -1611,4 +1668,117 @@ async function handleOnboardingIfApplicable(
     });
   }
   return { ok: true, results };
+}
+
+/**
+ * SEATBELT (2026-05-19): "swap A with B" / "switch A and B" where
+ * BOTH are currently CONFIRMED is a TEAM swap — never a drop. We
+ * resolve it deterministically from DB state and bypass the LLM
+ * verdict so the "swap = X OUT" prompt rule can't fire.
+ *
+ * Returns:
+ *   { reply, logReason }  → handled (caller skips executeVerdict)
+ *   null                  → not a both-confirmed swap; let normal
+ *                           flow handle it (a genuine replacement
+ *                           where one side isn't playing is still a
+ *                           legit attendance swap).
+ */
+async function handleTeamSwapIfApplicable(
+  orgId: string,
+  rawBody: string,
+): Promise<{ reply: string; logReason: string } | null> {
+  const body = (rawBody || "").trim();
+  // "swap A with B", "swap A and B", "switch A B", "swap A for B",
+  // "swap A & B", "swap A, B". Names = letter runs (first names).
+  const m = body.match(
+    /\b(?:swap|switch)\s+([\p{L}'-]{2,})\s*(?:with|and|for|&|,|<->|>|\/)?\s*([\p{L}'-]{2,})/iu,
+  );
+  if (!m) return null;
+  const n1 = m[1].toLowerCase();
+  const n2 = m[2].toLowerCase();
+  if (n1 === n2) return null;
+  // Ignore obvious non-name tokens.
+  const STOP = new Set(["the", "them", "him", "her", "with", "and", "for", "team", "teams", "side", "sides", "please", "pls"]);
+  if (STOP.has(n1) || STOP.has(n2)) return null;
+
+  const match = await db.match.findFirst({
+    where: {
+      activity: { orgId },
+      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+    },
+    orderBy: { date: "asc" },
+    include: {
+      activity: { include: { sport: { select: { teamLabels: true } } } },
+      attendances: {
+        where: { status: "CONFIRMED" },
+        include: { user: { select: { id: true, name: true } } },
+      },
+      teamAssignments: true,
+    },
+  });
+  if (!match) return null;
+
+  const norm = (s: string) =>
+    s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const find = (q: string) => {
+    const qq = norm(q);
+    const cands = match.attendances.filter((a) => {
+      if (!a.user.name) return false;
+      const nm = norm(a.user.name);
+      const first = nm.split(/\s+/)[0] ?? "";
+      return nm === qq || first === qq || nm.startsWith(qq) || first.startsWith(qq);
+    });
+    return cands.length === 1 ? cands[0] : null;
+  };
+  const A = find(n1);
+  const B = find(n2);
+  // Both must resolve uniquely AND both be CONFIRMED for this to be a
+  // TEAM swap. Otherwise it's not our case (could be a genuine
+  // replacement, or ambiguous) — fall through to normal handling.
+  if (!A || !B || A.user.id === B.user.id) return null;
+
+  const labels = (match.activity.sport.teamLabels as string[]) ?? ["Red", "Yellow"];
+  const taA = match.teamAssignments.find((t) => t.userId === A.user.id);
+  const taB = match.teamAssignments.find((t) => t.userId === B.user.id);
+
+  if (!taA && !taB) {
+    // Teams not generated yet — nothing to swap, but make ABSOLUTELY
+    // sure nobody is dropped. Acknowledge + defer.
+    return {
+      reply:
+        `Both *${A.user.name}* and *${B.user.name}* are already in — nobody's dropped. ` +
+        `Teams aren't generated yet; say *generate teams* and I'll build them (then I can put them on opposite sides).`,
+      logReason: `team-swap deferred (no teams yet): ${A.user.name} <-> ${B.user.name}`,
+    };
+  }
+
+  // Swap their team sides (handle the one-sided edge defensively).
+  const teamA = taA?.team ?? (taB?.team === "RED" ? "YELLOW" : "RED");
+  const teamB = taB?.team ?? (taA?.team === "RED" ? "YELLOW" : "RED");
+  await db.$transaction([
+    db.teamAssignment.upsert({
+      where: { matchId_userId: { matchId: match.id, userId: A.user.id } },
+      create: { matchId: match.id, userId: A.user.id, team: teamB },
+      update: { team: teamB },
+    }),
+    db.teamAssignment.upsert({
+      where: { matchId_userId: { matchId: match.id, userId: B.user.id } },
+      create: { matchId: match.id, userId: B.user.id, team: teamA },
+      update: { team: teamA },
+    }),
+  ]);
+
+  const fresh = await db.teamAssignment.findMany({
+    where: { matchId: match.id },
+    include: { user: { select: { name: true } } },
+  });
+  const red = fresh.filter((t) => t.team === "RED").map((t) => t.user.name);
+  const yel = fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name);
+  return {
+    reply:
+      `🔁 Swapped *${A.user.name}* and *${B.user.name}* — nobody dropped. Updated teams:\n\n` +
+      `*${labels[0]}*\n${red.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n` +
+      `*${labels[1]}*\n${yel.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
+    logReason: `team-swap applied: ${A.user.name} <-> ${B.user.name}`,
+  };
 }

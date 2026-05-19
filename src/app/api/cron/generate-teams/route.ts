@@ -106,10 +106,18 @@ export async function GET(request: Request) {
     published++;
   }
 
-  // Auto-complete matches whose duration has expired.
+  // Auto-complete matches whose duration has expired. Include
+  // UPCOMING / TEAMS_GENERATED too — not just TEAMS_PUBLISHED. A
+  // MoM+ratings-only group (teamBalancing off) NEVER generates teams,
+  // so its match would otherwise sit UPCOMING forever and the
+  // post-match flow (MoM poll, rating links — gated on COMPLETED)
+  // would never fire (Kemal 2026-05-19: Amir's group). The
+  // `now >= matchEndTime` guard below still applies, so a match is
+  // only completed once it's genuinely over (kickoff + duration),
+  // regardless of whether teams were ever generated.
   const publishedMatches = await db.match.findMany({
     where: {
-      status: "TEAMS_PUBLISHED",
+      status: { in: ["TEAMS_PUBLISHED", "TEAMS_GENERATED", "UPCOMING"] },
       date: { lte: now },
     },
     include: {

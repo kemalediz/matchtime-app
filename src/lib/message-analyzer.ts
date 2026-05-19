@@ -29,7 +29,15 @@ import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
 
-const MODEL = "claude-haiku-4-5";
+// Sonnet (2026-05-19, Kemal): the per-message analyzer makes nuanced
+// calls (team-swap vs drop, conditional vs standing, "is X
+// confirmed", stats vs roster) that Haiku kept getting wrong. Sonnet
+// lifts the floor. Cost is contained: the big system prompt + match
+// context are 1h-cached (cheap reads), and MoM/rating-only groups
+// short-circuit BEFORE this call (analyze route), so only
+// message-scanning groups (Sutton-like) bill Sonnet (~£10/mo each).
+// One-constant change — instantly revertible if spend isn't worth it.
+const MODEL = "claude-sonnet-4-5";
 
 let _anthropic: Anthropic | null = null;
 function getAnthropic(): Anthropic | null {
