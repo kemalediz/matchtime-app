@@ -61,6 +61,31 @@ export interface OnboardingTurnResult {
 
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+/**
+ * Self-introduction the bot leads with the very first time it speaks in
+ * a brand-new group (the opening onboarding turn). It sells the core
+ * features so players actually WANT it switched on, THEN slides into the
+ * setup Q&A. Feature-agnostic on purpose — at this point no org/feature
+ * choice exists yet; the post-setup `botIntroMessage` is the
+ * feature-accurate one. Kept tight: long enough to be compelling, short
+ * enough that nobody scrolls past it.
+ */
+const INTRO =
+  `👋 *Hey, I'm MatchTime* — the automatic organiser for your football group. ` +
+  `I take the weekly admin off your hands so you can just turn up and play.\n\n` +
+  `Here's what I do:\n` +
+  `⚽ *Attendance* — players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
+  `⚖️ *Fair teams* — auto-balanced sides every week from real player ratings\n` +
+  `🪑 *Smart bench* — squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
+  `🏆 *Man of the Match & ratings* — a quick post-match vote and a one-tap rating link, no app to install\n` +
+  `⏰ *Reminders & stats* — "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
+  `No spreadsheets, no chasing, no admin headaches. ⚡\n\n` +
+  `Let's get you set up — takes about a minute:`;
+
+function withIntro(question: string): string {
+  return `${INTRO}\n\n${question}`;
+}
+
 function getAnthropic(): Anthropic | null {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   return key ? new Anthropic({ apiKey: key }) : null;
@@ -287,6 +312,15 @@ export async function handleOnboardingTurn(
   const { session, messages } = input;
   if (messages.length === 0) return { reply: null, completed: false };
 
+  // Opening turn = the bot has never spoken in this group yet (session
+  // freshly created by the "@MatchTime setup" trigger; nothing handled,
+  // nothing collected). On this turn ONLY we lead with the self-intro
+  // so the group hears what MatchTime is before any question.
+  const isOpening =
+    session.stage === "collecting" &&
+    session.lastHandledWaId == null &&
+    !session.groupName;
+
   const ex = await extract(session, messages);
 
   // ── Stage: collecting event details ──────────────────────────────
@@ -398,12 +432,12 @@ export async function handleOnboardingTurn(
 
     // Deterministic: ask for the first still-missing field.
     const ask = nextEventQuestion(merged);
-    if (ask) return { reply: ask, completed: false };
+    if (ask) return { reply: isOpening ? withIntro(ask) : ask, completed: false };
 
     // All event fields gathered → provision the Organisation + Sport,
     // move to the feature menu.
     const reply = await provisionOrgAndAskFeatures(merged);
-    return { reply, completed: false };
+    return { reply: isOpening ? withIntro(reply) : reply, completed: false };
   }
 
   // ── Stage: feature menu ──────────────────────────────────────────
