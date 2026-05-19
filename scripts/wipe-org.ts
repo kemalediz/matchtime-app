@@ -61,7 +61,7 @@ async function main() {
 
   const org = await db.organisation.findFirst({
     where: { OR: [{ slug: target }, { id: target }] },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true, slug: true, whatsappGroupId: true },
   });
   if (!org) {
     console.error(`No org found matching "${target}"`);
@@ -160,6 +160,16 @@ async function main() {
       }
       await tx.botJob.deleteMany({ where: { orgId: org.id } });
       await tx.analyzedMessage.deleteMany({ where: { orgId: org.id } });
+      // Phase 2: onboarding sessions are keyed by whatsappGroupId
+      // (orgId is only filled mid-flow), so clear by group too.
+      await tx.onboardingSession.deleteMany({
+        where: {
+          OR: [
+            { orgId: org.id },
+            ...(org.whatsappGroupId ? [{ whatsappGroupId: org.whatsappGroupId }] : []),
+          ],
+        },
+      });
       await tx.sport.deleteMany({ where: { orgId: org.id } });
       await tx.organisation.delete({ where: { id: org.id } });
       if (orphanIds.length > 0) {
