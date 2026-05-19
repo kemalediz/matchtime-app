@@ -321,34 +321,18 @@ export async function POST(request: Request) {
           });
         }
         // Safety net: if the LLM claimed a bench player has been
-        // promoted ("X moves up", "X stepped in for Y", "we're still
-        // 14/14") but a PendingBenchConfirmation is OPEN against this
-        // match (= bench player asked, not yet confirmed), the
-        // hallucinated promotion is wrong and the squad is actually
-        // short. Strip those phrases and replace with an honest
-        // "Asking <name> to step up..." line (in-group tag, not a
-        // DM — the bench prompt is never a DM). The roster block has
-        // already been canonicalised above so we just rewrite the
-        // narrative text around it.
-        const pendingBench =
-          await db.pendingBenchConfirmation.findFirst({
-            where: {
-              matchId: nextMatchForReply.id,
-              resolvedAt: null,
-              expiresAt: { gt: new Date() },
-            },
-            orderBy: { createdAt: "desc" },
-          });
-        if (pendingBench) {
-          // PendingBenchConfirmation has no `user` relation — fetch
-          // the name separately. Cheap (single PK lookup) and keeps
-          // the schema unchanged.
-          const benchUser = await db.user.findUnique({
-            where: { id: pendingBench.userId },
-            select: { name: true },
-          });
+        // promoted ("X moves up", "we're still 14/14") but a
+        // BenchSlotOffer is still OPEN for this match (slot not yet
+        // claimed), the squad is genuinely short — strip the
+        // hallucinated promotion and state the slot is still open to
+        // the bench. The roster block was already canonicalised above.
+        const openOffer = await db.benchSlotOffer.findFirst({
+          where: { matchId: nextMatchForReply.id, resolvedAt: null },
+          orderBy: { createdAt: "desc" },
+        });
+        if (openOffer) {
           cleanReply = rewriteOverconfidentPromotion(cleanReply, {
-            benchName: benchUser?.name ?? "the next bench player",
+            benchName: "the bench",
             confirmedCount: freshAttendances.length,
             maxPlayers: nextMatchForReply.maxPlayers,
           });

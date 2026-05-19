@@ -55,73 +55,74 @@ export async function POST(request: Request) {
   //   👍/👎 reaction path still works in parallel; resolveBenchConfirmation
   //   is idempotent so a double-answer (DM + reaction) is safe.
   {
-    const openPBCs = await db.pendingBenchConfirmation.findMany({
-      where: { resolvedAt: null, expiresAt: { gt: new Date() } },
-      select: { userId: true, matchId: true },
+    // Candidate set = bench players of any match with an OPEN offer.
+    const openOffers = await db.benchSlotOffer.findMany({
+      where: { resolvedAt: null },
+      select: { matchId: true },
     });
-    if (openPBCs.length > 0) {
-      const pbcUserIds = new Set(openPBCs.map((p) => p.userId));
-      let benchUserId: string | null = null;
+    if (openOffers.length > 0) {
+      const matchIds = [...new Set(openOffers.map((o) => o.matchId))];
+      const benchAtt = await db.attendance.findMany({
+        where: { matchId: { in: matchIds }, status: "BENCH" },
+        select: {
+          matchId: true,
+          user: { select: { id: true, name: true, phoneNumber: true } },
+        },
+      });
+      let claimant: { id: string; matchId: string } | null = null;
 
-      // 1. Phone (most reliable; we DM'd their stored number so most
-      //    replies come from it).
-      if (phone && phone.trim().length > 0) {
+      // 1. Phone match within the bench set.
+      if (!claimant && phone && phone.trim().length > 0) {
         const n = normalisePhone(phone);
         if (n) {
-          const u = await db.user.findUnique({
-            where: { phoneNumber: n },
-            select: { id: true },
-          });
-          if (u && pbcUserIds.has(u.id)) benchUserId = u.id;
+          const hit = benchAtt.find(
+            (a) => a.user.phoneNumber && normalisePhone(a.user.phoneNumber) === n,
+          );
+          if (hit) claimant = { id: hit.user.id, matchId: hit.matchId };
         }
       }
-      // 2. @lid privacy reply (no phone) → pushname fuzzy, scoped
-      //    strictly to the open-PBC users (tiny, unambiguous set).
-      if (!benchUserId && authorName && authorName.trim().length >= 2) {
-        const norm = (s: string) =>
+      // 2. @lid pushname, uniquely matched within the bench set.
+      if (!claimant && authorName && authorName.trim().length >= 2) {
+        const nm = (s: string) =>
           s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-        const pushNorm = norm(authorName);
-        const pushFirst = pushNorm.split(/\s+/).filter(Boolean)[0] ?? "";
-        const cands = await db.user.findMany({
-          where: { id: { in: [...pbcUserIds] } },
-          select: { id: true, name: true },
-        });
-        const eq = cands.filter((c) => c.name && norm(c.name) === pushNorm);
+        const pn = nm(authorName);
+        const pf = pn.split(/\s+/).filter(Boolean)[0] ?? "";
+        const eq = benchAtt.filter((a) => a.user.name && nm(a.user.name) === pn);
         let pick = eq.length === 1 ? eq[0] : null;
         if (!pick) {
-          const byFirst = cands.filter((c) => {
-            if (!c.name) return false;
-            const dbFirst = norm(c.name).split(/\s+/).filter(Boolean)[0] ?? "";
+          const fz = benchAtt.filter((a) => {
+            if (!a.user.name) return false;
+            const df = nm(a.user.name).split(/\s+/).filter(Boolean)[0] ?? "";
             return (
-              dbFirst === pushFirst ||
-              (dbFirst.length >= 3 && pushFirst.length >= 2 && dbFirst.startsWith(pushFirst)) ||
-              (pushFirst.length >= 3 && dbFirst.length >= 2 && pushFirst.startsWith(dbFirst))
+              df === pf ||
+              (df.length >= 3 && pf.length >= 2 && df.startsWith(pf)) ||
+              (pf.length >= 3 && df.length >= 2 && pf.startsWith(df))
             );
           });
-          if (byFirst.length === 1) pick = byFirst[0];
+          if (fz.length === 1) pick = fz[0];
         }
-        if (pick) benchUserId = pick.id;
+        if (pick) claimant = { id: pick.user.id, matchId: pick.matchId };
       }
 
-      if (benchUserId) {
-        const pbc = openPBCs.find((p) => p.userId === benchUserId)!;
+      if (claimant) {
         const t = text.trim().toLowerCase();
         const isYes =
-          /^(y|yes+|yep|yeah|ya|sure|ok(ay)?|in|i'?m in|am in|confirm(ed)?|can do|deal|done|👍|✅|✔️?)\b/.test(t) ||
-          t === "👍" || t === "✅";
+          /^(y|yes+|yep|yeah|ya|sure|ok(ay)?|in|i'?m in|am in|confirm(ed)?|can do|deal|done|grab|i'?ll take|take it|👍|✅|✔️?|🙋)\b/.test(t) ||
+          t === "👍" || t === "✅" || t === "🙋";
         const isNo =
           /^(n|no+|nope|nah|can'?t|cannot|cant|pass|sorry|out|not me|next time|unable|👎)\b/.test(t) ||
           t === "👎";
 
         const matchOrg = await db.match.findUnique({
-          where: { id: pbc.matchId },
+          where: { id: claimant.matchId },
           select: { activity: { select: { orgId: true } } },
         });
         const orgId = matchOrg?.activity.orgId ?? null;
         const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
 
         if (!isYes && !isNo) {
-          // Unclear — re-ask, don't guess (bench is high-stakes).
+          // One gentle clarification (this is a single reply to one
+          // inbound DM — NOT a loop; no spam risk).
           if (orgId && phoneNoPlus) {
             await db.botJob.create({
               data: {
@@ -129,8 +130,8 @@ export async function POST(request: Request) {
                 kind: "dm",
                 phone: phoneNoPlus,
                 text:
-                  `Sorry, I didn't catch that — can you play tonight? ` +
-                  `Reply *YES* if you can take the slot, *NO* if you can't 🙏`,
+                  `Want the open slot for tonight? Reply *YES* to grab it. ` +
+                  `If not, no worries — you stay on the bench either way 🙏`,
               },
             });
           }
@@ -138,16 +139,22 @@ export async function POST(request: Request) {
         }
 
         const result = await resolveBenchConfirmation({
-          matchId: pbc.matchId,
-          userId: benchUserId,
+          matchId: claimant.matchId,
+          userId: claimant.id,
           decision: isYes,
         });
-        // resolveBenchConfirmation already posts the GROUP announcement.
-        // Add a short personal DM ack so the bencher knows it landed.
+        // Personal DM ack (group announcement is posted by the lib).
         if (orgId && phoneNoPlus) {
-          const ack = isYes
-            ? `✅ You're in — thanks for confirming! See you tonight ⚽`
-            : `👍 No worries — thanks for the quick reply, I'll ask the next person.`;
+          let ack: string;
+          if (!isYes) {
+            ack = `👍 No worries — you're still on the bench, nothing changes.`;
+          } else if (result.kind === "confirmed") {
+            ack = `✅ You got it — you're in for tonight! ⚽`;
+          } else if (result.kind === "ignored") {
+            ack = `Ah — someone just grabbed that one first. You're still first in line on the bench if another opens 🙏`;
+          } else {
+            ack = `👍 Got it.`;
+          }
           await db.botJob.create({
             data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack },
           });

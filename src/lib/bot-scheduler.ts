@@ -657,6 +657,7 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
       attendances: { include: { user: { select: { id: true, name: true, phoneNumber: true } } } },
       teamAssignments: { include: { user: { select: { id: true, name: true } } } },
       benchConfirmations: { where: { resolvedAt: null } },
+      benchSlotOffers: { where: { resolvedAt: null } },
     },
     orderBy: { date: "asc" },
   });
@@ -911,103 +912,83 @@ async function computeForMatch(
     }
   }
 
-  // ── 3. Bench prompt for any unresolved PendingBenchConfirmation ──────
-  for (const bc of m.benchConfirmations) {
-    const key = `${matchId}:bench-prompt:${bc.userId}`;
-    const dmKey = `${matchId}:bench-prompt-dm:${bc.userId}`;
-    const groupAlreadySent = sentKeys.has(key);
-    const dmAlreadySent = sentKeys.has(dmKey);
-    // Only bail entirely if BOTH the in-group tag and the DM are
-    // already out — otherwise we still need to emit whichever is
-    // missing (the DM was added 2026-05-18 per Kemal: benchers ignore
-    // the group thinking they won't play, so a personal DM must also
-    // go out when a slot opens).
-    if (groupAlreadySent && dmAlreadySent) continue;
-    if (now > bc.expiresAt) continue; // expired — the /due-posts endpoint will sweep it elsewhere
-
-    // Daytime gate: never fire a bench prompt (in-group tag OR DM)
-    // overnight. A slot opening at 00:24 must NOT ping/▼DM a bencher
-    // at 2am — it waits until people are awake. London 08:00–21:59
-    // only. (Kemal flagged 2026-05-19: Karahan got tagged + DM'd at
-    // 00:24 then "timed out" at 02:24 in his sleep.) The PBC row
-    // stays open with no waMessageId, so the sweeper's
-    // "skip undelivered" guard also won't expire it overnight.
+  // ── 3. Bench slot offers — broadcast to the WHOLE bench ─────────────
+  //   Redesign 2026-05-19 (Kemal): a drop opens ONE BenchSlotOffer
+  //   that goes to EVERY current bencher at once. First to confirm
+  //   (👍 on the group post / reply IN there / YES to the DM) wins it
+  //   — see resolveBenchSlotClaim. NOBODY is ever eliminated, no
+  //   per-person timers, nothing fires overnight. One group post +
+  //   one DM per bencher per offer, both offer-keyed so they send
+  //   exactly once.
+  if (m.benchSlotOffers.length > 0) {
+    // Daytime gate: never ping anyone about a slot overnight. A drop
+    // at 00:24 just waits — the offer stays open (no waMessageId yet)
+    // and posts when people are awake. London 08:00–21:59.
     const lh = londonHour(now);
-    if (lh < 8 || lh >= 22) continue;
+    if (lh >= 8 && lh < 22) {
+      const benchAtt = m.attendances.filter(
+        (a) => a.status === "BENCH" && a.user.phoneNumber,
+      );
+      for (const offer of m.benchSlotOffers) {
+        if (benchAtt.length === 0) continue; // no bench — chase covers it
 
-    const user = m.attendances.find((a) => a.userId === bc.userId)?.user;
-    if (!user?.phoneNumber) continue;
+        // Context: which team / who they'd replace, if teams exist.
+        let ctx = `for *${activity.name}* tonight`;
+        let ctxPlain = `for ${activity.name} tonight`;
+        if (offer.replacingUserId) {
+          const repl = m.attendances.find((a) => a.userId === offer.replacingUserId)?.user;
+          const ta = m.teamAssignments.find((t) => t.userId === offer.replacingUserId);
+          if (repl && ta) {
+            const labels = sport.teamLabels as [string, string];
+            const tl = ta.team === "RED" ? labels[0] : labels[1];
+            ctx = `on *${tl}* (replacing ${repl.name ?? "—"}) for *${activity.name}* tonight`;
+            ctxPlain = `on ${tl} (replacing ${repl.name ?? "—"}) for ${activity.name} tonight`;
+          }
+        }
 
-    // If we know which player is being replaced AND that player had a
-    // TeamAssignment, tell the bencher which team they'd join and who
-    // they're standing in for. Falls back to the generic "a slot just
-    // opened" wording when context is missing (e.g. drop happened
-    // before teams were generated, or legacy PBC row from before the
-    // replacingUserId field shipped).
-    let context = `for *${activity.name}* tonight`;
-    if (bc.replacingUserId) {
-      const replacing = m.attendances.find((a) => a.userId === bc.replacingUserId)?.user;
-      const droppedTA = m.teamAssignments.find((t) => t.userId === bc.replacingUserId);
-      if (replacing && droppedTA) {
-        const teamLabels = sport.teamLabels as [string, string];
-        const teamLabel = droppedTA.team === "RED" ? teamLabels[0] : teamLabels[1];
-        context = `on *${teamLabel}* (replacing ${replacing.name ?? "—"}) for *${activity.name}* tonight`;
+        const mentions = benchAtt.map((a) => a.user.phoneNumber!.replace(/^\+/, ""));
+        const tagList = mentions.map((p) => `@${p}`).join(" ");
+
+        // One group post to the whole bench, offer-keyed (ack maps the
+        // waMessageId onto the BenchSlotOffer so a 👍 reaction finds
+        // it). kind:"bench-prompt" so the bot ACKs with waMessageId.
+        const groupKey = `offer-${offer.id}`;
+        if (!sentKeys.has(groupKey)) {
+          out.push({
+            kind: "bench-prompt",
+            key: groupKey,
+            matchId,
+            // userId unused by the offer model but the union requires
+            // it; pass the first bencher purely to satisfy the type.
+            userId: benchAtt[0].userId,
+            phone: mentions[0],
+            text:
+              `🎟 A slot just opened ${ctx} — *first to claim it plays*.\n\n` +
+              `${tagList}\n\n` +
+              `React 👍 here (or reply *IN*) to take it. No rush, no timeout — ` +
+              `whoever's free first gets it; everyone else stays on the bench. 🙏`,
+          });
+        }
+
+        // Personal DM to each bencher (they often mute the group
+        // thinking they're not playing). Per-(offer,user) key.
+        for (const a of benchAtt) {
+          const dmKey = `offer-${offer.id}:dm:${a.userId}`;
+          if (sentKeys.has(dmKey)) continue;
+          const first = a.user.name ? ` ${a.user.name.split(" ")[0]}` : "";
+          out.push({
+            kind: "dm",
+            key: dmKey,
+            matchId,
+            phone: a.user.phoneNumber!.replace(/^\+/, ""),
+            targetUser: a.userId,
+            text:
+              `👋 Hi${first} — a slot just opened ${ctxPlain} and you're on the bench.\n\n` +
+              `Want it? Reply *YES* here (or 👍 / *IN* on the message I tagged you in, in the group). ` +
+              `First to claim plays — no timeout, and if you're not free no worries, you stay on the bench. 🙏`,
+          });
+        }
       }
-    }
-
-    // Build the WhatsApp @-tag using the bencher's phone number — the
-    // bot's scheduler passes `mentions: [phone@c.us]` and WhatsApp
-    // resolves the tag by matching `@<phone>` in the text. Using the
-    // user's NAME (the previous behaviour) leaves it as a plain
-    // string with no notification + no clickable mention.
-    const phoneNoPlus = user.phoneNumber.replace(/^\+/, "");
-
-    // Window-text: when this bencher is the SOLE bench, don't put a
-    // timer on it (Kemal: "no timeout if the bencher is the sole
-    // bencher") — but still convey urgency ("He should feel rushed").
-    // Otherwise show the remaining hours so the bencher knows how
-    // long they have before the next person gets asked.
-    const benchAttCount = m.attendances.filter((a) => a.status === "BENCH").length;
-    const msRemaining = Math.max(0, bc.expiresAt.getTime() - now.getTime());
-    const hoursRemaining = msRemaining / (60 * 60 * 1000);
-    const windowText =
-      benchAttCount <= 1
-        ? "*ASAP please* — you're our only bench tonight 🙏"
-        : `React within ${Math.max(1, Math.round(hoursRemaining))}h or it goes to the next bencher.`;
-
-    if (!groupAlreadySent) {
-      out.push({
-        kind: "bench-prompt",
-        key,
-        matchId,
-        userId: bc.userId,
-        phone: phoneNoPlus,
-        text:
-          `🎟 @${phoneNoPlus} a slot just opened ${context}. ` +
-          `React 👍 to confirm, 👎 to pass. ${windowText}`,
-      });
-    }
-
-    // Personal DM — benchers often mute / skip the group thinking
-    // they're not playing, so the in-group tag alone gets missed
-    // (Erdal, 2026-05-18). The DM asks for a TEXT reply (YES/NO) which
-    // routes through /dm-reply → resolveBenchConfirmation; the group
-    // 👍/👎 reaction path still works in parallel. Separate key so it
-    // dedupes independently of the group tag.
-    if (!dmAlreadySent) {
-      const dmContext = context.replace(/\*/g, "");
-      out.push({
-        kind: "dm",
-        key: dmKey,
-        matchId,
-        phone: phoneNoPlus,
-        targetUser: bc.userId,
-        text:
-          `👋 Hi${user.name ? ` ${user.name.split(" ")[0]}` : ""} — you're on the bench for ${activity.name} tonight and a slot just opened ${dmContext}.\n\n` +
-          `Can you play? Reply *YES* or *NO* here and I'll sort it. ` +
-          `(You can also 👍 / 👎 the message I tagged you in, in the group.)\n\n` +
-          `${benchAttCount <= 1 ? "You're our only bench tonight, so a quick reply really helps 🙏" : "First to confirm takes the slot 🙏"}`,
-      });
     }
   }
 
@@ -1459,106 +1440,21 @@ async function computeForMatch(
  * the top of /due-posts so the resulting new prompt gets posted in the
  * same poll cycle.
  */
+// Bench redesign 2026-05-19: there is NO elimination/expiry of
+// people any more — an offer is open to the whole bench until
+// someone claims it. This sweep now only does cleanup: close any
+// offer whose match has already kicked off (nobody can claim a slot
+// for a game that's started). Same export name so /due-posts is
+// unchanged. Nobody is ever dropped here.
 export async function sweepExpiredBenchConfirmations(orgId: string): Promise<void> {
   const now = new Date();
-  const expired = await db.pendingBenchConfirmation.findMany({
+  await db.benchSlotOffer.updateMany({
     where: {
       resolvedAt: null,
-      expiresAt: { lte: now },
-      match: { activity: { orgId } },
+      match: { activity: { orgId }, date: { lte: now } },
     },
-    include: {
-      match: {
-        include: {
-          attendances: { orderBy: { position: "asc" } },
-        },
-      },
-    },
+    data: { resolvedAt: now, outcome: "closed-at-kickoff" },
   });
-
-  for (const bc of expired) {
-    // (1) Never burn a window the bencher never saw. If the prompt was
-    //     never actually delivered (waMessageId still null — e.g. it
-    //     was time-gated overnight and hasn't been posted yet), DON'T
-    //     expire it. The 2h clock only means anything once they've
-    //     actually been asked. Kemal flagged 2026-05-19: Karahan's
-    //     window opened 23:24 and "expired" 01:24 while he slept.
-    if (!bc.waMessageId) continue;
-
-    // (2) Is there another DISTINCT bench player we could offer next?
-    const nextBench = await db.attendance.findFirst({
-      where: {
-        matchId: bc.matchId,
-        status: "BENCH",
-        userId: { not: bc.userId },
-      },
-      orderBy: { position: "asc" },
-    });
-
-    if (!nextBench) {
-      // (3) They're the only/last bench option — do NOT expire-and-drop
-      //     them. Keep the offer OPEN until kickoff so a late reply
-      //     still promotes them. Nobody is ever removed from the bench
-      //     for being slow to answer.
-      await db.pendingBenchConfirmation.update({
-        where: { id: bc.id },
-        data: { expiresAt: bc.match.date },
-      });
-      continue;
-    }
-
-    // (4) Hand the SAME slot to the next bencher. Crucially the
-    //     non-responder is NOT dropped — they stay on the BENCH and
-    //     remain promotable (later opening, or if everyone else
-    //     passes). Silence ≠ unavailable.
-    await db.$transaction(async (tx) => {
-      await tx.pendingBenchConfirmation.update({
-        where: { id: bc.id },
-        data: { resolvedAt: now, outcome: "expired" },
-      });
-      // Don't create a duplicate if one is already open for them.
-      const existing = await tx.pendingBenchConfirmation.findFirst({
-        where: { matchId: bc.matchId, userId: nextBench.userId, resolvedAt: null },
-      });
-      if (existing) return;
-      await tx.pendingBenchConfirmation.create({
-        data: {
-          matchId: bc.matchId,
-          userId: nextBench.userId,
-          replacingUserId: bc.replacingUserId,
-          // Daytime-bounded so the next person also gets a fair,
-          // awake window (see daytimeBenchExpiry).
-          expiresAt: daytimeBenchExpiry(now, bc.match.date),
-        },
-      });
-    });
-  }
-}
-
-/**
- * A bench-confirmation window that never silently burns down
- * overnight. From `from`, give ~2h — but if that lands in the
- * sleep band (London 22:00–08:00) push the deadline to 10:00 the
- * next morning so the bencher gets a real, awake chance. Never past
- * kickoff.
- */
-function daytimeBenchExpiry(from: Date, kickoff: Date): Date {
-  const two = new Date(from.getTime() + 2 * 60 * 60 * 1000);
-  const h = londonHour(two);
-  let deadline = two;
-  if (h >= 22 || h < 8) {
-    // London 10:00 the next morning (or today if it's pre-08:00).
-    const d = new Date(two);
-    const curH = londonHour(d);
-    if (curH >= 22) d.setUTCDate(d.getUTCDate() + 1);
-    // Set to ~10:00 London. londonHour works in offset terms; nudging
-    // the UTC hour to 09:00 lands 10:00 BST / 09:00 GMT — close
-    // enough for a "morning" deadline; exact TZ precision isn't
-    // needed for a soft window.
-    d.setUTCHours(9, 0, 0, 0);
-    deadline = d;
-  }
-  return deadline < kickoff ? deadline : kickoff;
 }
 
 /**
@@ -1649,52 +1545,40 @@ export async function queueSlotEmojiRefresh(matchId: string): Promise<void> {
   }
 }
 
+/**
+ * Bench redesign 2026-05-19: a confirmed player dropping opens ONE
+ * BenchSlotOffer broadcast to EVERY current bencher. First to confirm
+ * (group 👍/IN or DM yes) wins it; nobody is ever eliminated. No
+ * per-person timers. Kept the old export name so cancelAttendance's
+ * call site is unchanged.
+ */
 export async function requestBenchConfirmationOnDrop(
   matchId: string,
   replacingUserId?: string | null,
 ): Promise<void> {
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: {
-      attendances: { orderBy: { position: "asc" } },
-    },
+    include: { attendances: true },
   });
   if (!match) return;
 
-  const benchPlayers = match.attendances.filter((a) => a.status === "BENCH");
-  const firstBench = benchPlayers[0];
-  if (!firstBench) return; // nobody on the bench — nothing to do
+  const hasBench = match.attendances.some((a) => a.status === "BENCH");
+  if (!hasBench) return; // nobody on the bench — chase handles it
 
-  // Don't double up if one already exists
-  const existing = await db.pendingBenchConfirmation.findFirst({
-    where: { matchId, resolvedAt: null, userId: firstBench.userId },
+  // One offer PER open slot. If two confirmed players drop there are
+  // two distinct offers (each carries its own replacingUserId for the
+  // TA swap). Don't duplicate an offer that's already open for THIS
+  // dropped player.
+  const existing = await db.benchSlotOffer.findFirst({
+    where: {
+      matchId,
+      resolvedAt: null,
+      replacingUserId: replacingUserId ?? null,
+    },
   });
   if (existing) return;
 
-  // Default 2h is fine when there's another bench player to fall back
-  // on if this one passes/ghosts. When the asked player is the ONLY
-  // bench (Kemal: "no timeout if the bencher is the sole bencher"),
-  // we don't expire until kickoff itself — there's nobody else to
-  // chain to anyway, so dropping the prompt early would just leave
-  // the slot open. Bencher can take it any time before the match
-  // starts; admins can manually intervene if they ghost.
-  // Sole bencher → open until kickoff (no elimination, ever).
-  // Otherwise a ~2h window that never burns overnight: if it'd land
-  // in the London sleep band it's pushed to the next morning (see
-  // daytimeBenchExpiry). Combined with the daytime emission gate +
-  // the sweeper's "skip undelivered" guard, a slot opening at 00:24
-  // can't ping or time anyone out in their sleep.
-  const expiresAt =
-    benchPlayers.length === 1
-      ? match.date
-      : daytimeBenchExpiry(new Date(), match.date);
-
-  await db.pendingBenchConfirmation.create({
-    data: {
-      matchId,
-      userId: firstBench.userId,
-      replacingUserId: replacingUserId ?? null,
-      expiresAt,
-    },
+  await db.benchSlotOffer.create({
+    data: { matchId, replacingUserId: replacingUserId ?? null },
   });
 }

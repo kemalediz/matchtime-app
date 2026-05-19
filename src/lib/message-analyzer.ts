@@ -229,15 +229,16 @@ Intent rules:
   (b) Tentative ("anyone else who can replace me too? If not I'll still join", "feeling unwell, will play if nobody steps in"). registerAttendance: null (do NOT flip — they're still committed as a backstop). react: "🤔".
   Reply format depends on how short the squad actually is (see SHORT-SQUAD RESPONSE below).
 
-BENCH CONFIRMATION — interpreting the bench user's reply:
-The Match Context may include a "Pending bench-confirmation prompts" block listing users the bot has tagged with a 👍/👎 prompt IN THIS GROUP (because someone dropped). When ANY of those users posts a message in this batch, your job is to figure out whether they're answering YES, NO, or talking about something unrelated.
+BENCH SLOT CLAIM — interpreting a bench player grabbing an open slot:
+The Match Context may include an "OPEN BENCH SLOT" block: N slot(s) opened (someone dropped) and they're offered to the WHOLE bench at once. The FIRST bench player to accept claims it — first-come, nobody is eliminated, no timers. The block lists exactly who is on the bench.
 
 Rules:
-- If the listed user's message is affirmative — a thumbs-up emoji on its own (👍 / 👍🏽 / etc.), "yes", "yep", "ok", "I'll do it", "I'm in", "sure", "happy to", "count me in", "done", "deal", any phrasing that clearly says "I accept the bench slot" — emit benchConfirmation:"yes". Set registerAttendance:null (the server handles the promotion). Set reply:null (the server posts its own announcement).
-- If the listed user's message is negative — a thumbs-down (👎), "no", "can't", "sorry", "pass", "not me", "I won't make it", "next time" etc. — emit benchConfirmation:"no". registerAttendance:null. reply:null. Server marks them dropped and chains to the next bencher.
-- If the listed user's message is unrelated to the bench question (asks about something else, complains about the venue, posts a meme, etc.) emit benchConfirmation:null and classify normally as the appropriate intent.
-- ALWAYS prefer benchConfirmation over a plain registerAttendance for users on this list — the bench-prompt is the "open question" they're answering, even if their words happen to also sound like a generic "in" or "out".
-- If the user is NOT on the pending-bench-confirmation list, NEVER emit benchConfirmation — leave it null and classify normally.
+- If the message author IS one of the listed bench players AND their message is affirmative — a 👍 on its own (👍/👍🏽/etc.), "yes", "yep", "ok", "I'll take it", "I'm in", "IN", "in", "sure", "I can play", "count me in", "me", "I'll grab it", "done", "deal" — emit benchConfirmation:"yes". registerAttendance:null, reply:null (the server claims the slot for the first to do so and posts its own announcement; if someone already took it the server tells them they're still on the bench).
+- If a listed bench player declines — 👎, "no", "can't", "sorry", "pass", "not me", "next time" — emit benchConfirmation:"no". registerAttendance:null, reply:null. This is a NO-OP: nobody is dropped, they simply stay on the bench. (Don't say anyone was removed.)
+- If a listed bench player's message is unrelated to the slot (different topic, venue question, meme) emit benchConfirmation:null and classify normally.
+- ALWAYS prefer benchConfirmation:"yes" over a plain registerAttendance for a listed bench player whose message reads as accepting — the open slot is the question they're answering, even if it also sounds like a generic "in".
+- If the author is NOT on the listed bench (or there's no OPEN BENCH SLOT block), NEVER emit benchConfirmation — leave it null and classify normally.
+- NEVER claim in the reply that the slot is filled / that X is in or out — the server owns the first-come outcome and posts the result. Keep reply:null on any benchConfirmation.
 
 BENCH CONFIRMATION FLOW (CRITICAL — never claim a swap is done):
 When ANY player drops (intent "out", "replacement_request" type (a), or a registerFor entry with action:"OUT"), the SERVER does NOT auto-promote a bench player. Instead it DMs the first bench player a 👍/👎 prompt and waits for their confirmation (≤ 2h). Only then are they marked CONFIRMED in a follow-up post.
@@ -501,11 +502,14 @@ function buildMatchContextBlock(args: {
    *  @mention). The LLM uses this to interpret subsequent group
    *  messages from those users (an in-group 👍, "yes", "I can do it"
    *  etc.) as a bench-confirmation rather than a generic IN. */
-  pendingBenchConfirmations?: Array<{
-    benchUserId: string;
-    benchUserName: string | null;
-    replacingUserName: string | null;
-  }>;
+  /** Bench redesign 2026-05-19: open slot(s) offered to the WHOLE
+   *  bench. Any current bench player accepting (👍 / IN / yes) claims
+   *  it — first wins, nobody eliminated. */
+  openBenchSlot?: {
+    count: number;
+    benchNames: string[];
+    replacingNames: string[];
+  } | null;
 }): string {
   if (!args.match) {
     return `## Organisation\n${args.orgName}\n\n## Current Match\nNo upcoming match within the attendance window.`;
@@ -575,12 +579,18 @@ function buildMatchContextBlock(args: {
   if (dropped.length) {
     lines.push("", `Dropped: ${dropped.map((a) => a.user.name ?? "(unnamed)").join(", ")}`);
   }
-  if (args.pendingBenchConfirmations && args.pendingBenchConfirmations.length > 0) {
-    lines.push("", "Pending bench-confirmation prompts (waiting on these users to 👍/👎):");
-    for (const p of args.pendingBenchConfirmations) {
-      const replacing = p.replacingUserName ? ` (replacing ${p.replacingUserName})` : "";
-      lines.push(`  - ${p.benchUserName ?? "(unnamed)"} [userId=${p.benchUserId}]${replacing}`);
-    }
+  if (args.openBenchSlot && args.openBenchSlot.count > 0) {
+    const o = args.openBenchSlot;
+    const repl = o.replacingNames.length
+      ? ` (covering for: ${o.replacingNames.join(", ")})`
+      : "";
+    lines.push(
+      "",
+      `OPEN BENCH SLOT: ${o.count} slot${o.count === 1 ? "" : "s"} open for this match${repl}.`,
+      `Bench (any ONE of these can claim it — first to say 👍 / IN / yes wins; nobody is eliminated): ${
+        o.benchNames.length ? o.benchNames.join(", ") : "(bench empty)"
+      }`,
+    );
   }
   if (args.alternatives && args.alternatives.length > 0) {
     lines.push("", "Alternative formats available for this sport:");
@@ -661,37 +671,37 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     alternatives.sort((x, y) => y.totalPlayers - x.totalPlayers);
   }
 
-  // Open bench-confirmation prompts — the LLM uses these to interpret
-  // a 👍/yes/ok message from one of these users as a bench-decision
-  // rather than a generic IN.
-  const pendingBenchConfirmations: Array<{
-    benchUserId: string;
-    benchUserName: string | null;
-    replacingUserName: string | null;
-  }> = [];
+  // Open bench-slot offers (redesign 2026-05-19). The LLM uses this so
+  // that a 👍 / "IN" / "yes" from ANY current bench player is read as
+  // a CLAIM of the open slot (first-come), not a generic IN.
+  let openBenchSlot: {
+    count: number;
+    benchNames: string[];
+    replacingNames: string[];
+  } | null = null;
   if (match) {
-    const pbcs = await db.pendingBenchConfirmation.findMany({
-      where: { matchId: match.id, resolvedAt: null, expiresAt: { gt: now } },
-      include: {
-        // Replacing user name is fetched separately — Prisma can't
-        // hop directly via replacingUserId without a relation.
-      },
+    const offers = await db.benchSlotOffer.findMany({
+      where: { matchId: match.id, resolvedAt: null },
+      select: { replacingUserId: true },
     });
-    for (const p of pbcs) {
-      const benchUser = match.attendances.find((a) => a.user.id === p.userId)?.user;
-      let replacingName: string | null = null;
-      if (p.replacingUserId) {
-        const r = await db.user.findUnique({
-          where: { id: p.replacingUserId },
-          select: { name: true },
-        });
-        replacingName = r?.name ?? null;
-      }
-      pendingBenchConfirmations.push({
-        benchUserId: p.userId,
-        benchUserName: benchUser?.name ?? null,
-        replacingUserName: replacingName,
-      });
+    if (offers.length > 0) {
+      const benchNames = match.attendances
+        .filter((a) => a.status === "BENCH")
+        .map((a) => a.user.name ?? "(unnamed)");
+      const replIds = offers
+        .map((o) => o.replacingUserId)
+        .filter((x): x is string => !!x);
+      const replUsers = replIds.length
+        ? await db.user.findMany({
+            where: { id: { in: replIds } },
+            select: { name: true },
+          })
+        : [];
+      openBenchSlot = {
+        count: offers.length,
+        benchNames,
+        replacingNames: replUsers.map((u) => u.name ?? "—"),
+      };
     }
   }
 
@@ -699,7 +709,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     orgName: org.name,
     match,
     alternatives,
-    pendingBenchConfirmations,
+    openBenchSlot,
   });
 
   // Recent History block — feeds the LLM enough historical context to

@@ -338,6 +338,7 @@ model Match {
   momVotes               MoMVote[]
   sentNotifications      SentNotification[]
   benchConfirmations     PendingBenchConfirmation[]
+  benchSlotOffers        BenchSlotOffer[]
   ratingAdjustments      RatingAdjustment[]
   paymentCredits         PaymentCredit[]
 
@@ -549,6 +550,41 @@ model PendingBenchConfirmation {
   @@unique([matchId, userId])
   @@index([matchId])
   @@index([resolvedAt])
+}
+
+/**
+ * Bench redesign 2026-05-19 (Kemal). Replaces the sequential
+ * elimination chain (PendingBenchConfirmation, now legacy/unused —
+ * kept for history, not written anymore).
+ *
+ * ONE row per OPEN SLOT. A confirmed player dropping opens an offer
+ * that is broadcast to EVERY current bench player at once. The FIRST
+ * bencher to confirm (👍 / IN / yes — in the group OR by DM) claims
+ * it: they're promoted to CONFIRMED, the dropped player's
+ * TeamAssignment transfers to them, the group is told, and the offer
+ * is resolved. Everyone else stays on the bench — nobody is ever
+ * removed for being slow or silent. No per-person timers. Offers
+ * auto-close at kickoff.
+ *
+ * `replacingUserId` = the dropped CONFIRMED player (for the TA swap +
+ * "X takes Y's place" wording). `waMessageId` = the group offer post
+ * (set on /ack) so a 👍 reaction maps back to the offer.
+ * `claimedByUserId` = who won it (audit). `resolvedAt` set when
+ * claimed or auto-closed at kickoff.
+ */
+model BenchSlotOffer {
+  id              String    @id @default(cuid())
+  matchId         String
+  match           Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  replacingUserId String?
+  waMessageId     String?
+  claimedByUserId String?
+  resolvedAt      DateTime?
+  outcome         String?   // "claimed" | "closed-at-kickoff"
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([matchId, resolvedAt])
 }
 
 model Attendance {

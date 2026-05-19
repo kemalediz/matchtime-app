@@ -33,10 +33,15 @@ export async function POST(request: Request) {
     update: { waMessageId: waMessageId ?? undefined },
   });
 
-  // Link bench prompts so reactions can find the right PendingBenchConfirmation.
-  if (kind === "bench-prompt" && waMessageId && matchId && benchUserId) {
-    await db.pendingBenchConfirmation.updateMany({
-      where: { matchId, userId: benchUserId, resolvedAt: null },
+  // Bench redesign 2026-05-19: the group offer post is keyed
+  // `offer-<benchSlotOfferId>`. Stamp its waMessageId onto the offer
+  // so a 👍 reaction maps back to it (reaction route resolves by
+  // BenchSlotOffer.waMessageId). The per-bencher DM key
+  // `offer-<id>:dm:<userId>` is NOT an offer-post — skip those.
+  if (key.startsWith("offer-") && !key.includes(":dm:") && waMessageId) {
+    const offerId = key.slice("offer-".length);
+    await db.benchSlotOffer.updateMany({
+      where: { id: offerId, resolvedAt: null },
       data: { waMessageId },
     });
   }
