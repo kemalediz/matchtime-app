@@ -170,3 +170,11 @@ Build a scenario suite that POSTs to the **deployed** server and asserts DB stat
 - Don't use `a ?? b` to "fall back" when `a` can be a wrong non-null value (empty array, wrong guess). Use an explicit "a is usable?" check.
 - Don't drop a `!alreadySet` guard to enable corrections without a correction-cue gate — coincidental later mentions will clobber good data.
 - Don't trust `vercel ls` glyph-grep in a tight wait-loop (the `●` status doesn't parse reliably; project is `matchday` not `matchtime`); push, wait ~1-2 min, verify by re-running the actual check.
+
+## Overnight + elimination = the Karahan incident (2026-05-19)
+
+A bench slot opened at 00:24; the old code tagged+DM'd the bencher, ran a 2h timer, and at 01:24 — while he slept — marked him DROPPED and chained to the next (also dropped at 03:24). All three overnight benchers wiped for being asleep; meanwhile two month-old open roster surveys spam-clarified his every reply until he threatened the bot. Three compounding root causes, all now structurally fixed: (1) **never eliminate for silence** — declining/ignoring/slow must never remove someone; the redesign offers to the whole bench, first-come, nobody dropped, ever; (2) **never run engagement logic overnight** — daytime-gate (London 08:00–22:00) anything that pings/times-out a human; a slot opening at 2am waits till morning; (3) **stale state is a spam bomb** — anything with an "open" lifecycle (surveys) needs an age cap + a per-recipient send cap; "re-ask on every unclear reply, forever" is never acceptable. Meta-lesson: when a feature has a timer or a "move on if no response", ask "what happens if this fires at 3am / runs for a month / the person is just asleep?" before shipping.
+
+## Prefer designs with no elimination / no timers when humans are in the loop
+
+The sequential bench chain (ask #1, 2h, drop, ask #2…) was clever but every iteration of it produced an incident (Erdal lost 👎, Karahan dropped asleep). The replacement — broadcast the opening to everyone, first to say yes wins, nobody ever removed — is simpler, fairer, has no overnight edge, far less DM machinery, and matches how a human captain actually fills a spot. When a flow keeps generating incidents, the fix is usually a simpler model, not more guards on the complex one.
