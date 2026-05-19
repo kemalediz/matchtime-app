@@ -108,7 +108,8 @@ async function main() {
       continue;
     }
     if (!attendedUserIds.has(user.id)) {
-      console.warn(`  ⚠ ${user.name} has no CONFIRMED/PLAYED attendance for Apr 28 — sending anyway.`);
+      console.warn(`  ✘ ${user.name} has no CONFIRMED/PLAYED attendance for Apr 28 — skipping.`);
+      continue;
     }
 
     const token = signMagicLinkToken({
