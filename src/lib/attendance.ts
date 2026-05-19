@@ -10,6 +10,15 @@ export async function registerAttendance(
      *  respect their stated intent rather than letting capacity logic
      *  promote them to a confirmed slot they didn't ask for. */
     forceBench?: boolean;
+    /** When true, a player CURRENTLY on the bench who says IN gets
+     *  promoted to CONFIRMED if there's a free slot (squad < max).
+     *  This is set ONLY for the player's OWN claim ("IN" from the
+     *  bencher themselves) — NOT for third-party registerFor. Kemal
+     *  2026-05-19: a benched player saying IN while the squad is short
+     *  must move to the squad; but a random member saying "Burak
+     *  should come" must NOT promote Burak (he didn't ask). Default
+     *  false preserves the old idempotent behaviour. */
+    promoteFromBench?: boolean;
   } = {},
 ) {
   const match = await db.match.findUnique({
@@ -66,7 +75,22 @@ export async function registerAttendance(
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {
     const wantsBenchDowngrade =
       options.forceBench === true && existing.status === "CONFIRMED";
-    if (!wantsBenchDowngrade) {
+    // A benched player claiming a spot ("IN") when the squad has room
+    // must be PROMOTED — not idempotently ignored. Only for their own
+    // claim (promoteFromBench), never a third-party registerFor, and
+    // never when they explicitly asked for bench (forceBench).
+    let wantsBenchPromotion = false;
+    if (
+      existing.status === "BENCH" &&
+      options.promoteFromBench === true &&
+      options.forceBench !== true
+    ) {
+      const confirmedNow = await db.attendance.count({
+        where: { matchId, status: "CONFIRMED" },
+      });
+      if (confirmedNow < match.maxPlayers) wantsBenchPromotion = true;
+    }
+    if (!wantsBenchDowngrade && !wantsBenchPromotion) {
       const all = await db.attendance.findMany({
         where: { matchId, status: { in: ["CONFIRMED", "BENCH"] } },
         orderBy: { position: "asc" },

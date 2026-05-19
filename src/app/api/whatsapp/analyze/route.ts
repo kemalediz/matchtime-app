@@ -1075,6 +1075,11 @@ async function executeVerdict(args: {
         ) {
           const result = await registerAttendance(user.id, matchForOrg.id, {
             forceBench: verdict.registerAttendance === "BENCH",
+            // The sender's OWN "IN" — a benched player claiming a free
+            // slot must be promoted (Kemal 2026-05-19: Enayem said IN
+            // while 13/14, must move to the squad). Third-party
+            // registerFor below does NOT pass this.
+            promoteFromBench: verdict.registerAttendance === "IN",
           });
           // Simple semantic react: ✅ if they made the squad, 🪑 if
           // they landed on the bench. We used to react with a slot-
