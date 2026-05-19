@@ -195,6 +195,18 @@ export async function cancelAttendance(userId: string, matchId: string) {
   // PendingBenchConfirmation; subsequent /due-posts cycles post the prompt
   // and handle confirmation/timeout.
   if (wasConfirmed) {
+    // Re-arm the "squad full" announcement. It dedupes on
+    // `<matchId>:squad-locked` (once per match) — but a squad can
+    // legitimately go full → drop → re-fill several times in a
+    // chaotic week. Without clearing the dedupe, only the FIRST fill
+    // ever gets announced and every later re-completion is silent
+    // (Kemal 2026-05-19: Enayem completed 14/14 but the group was
+    // never told because squad-locked fired days earlier with a
+    // different line-up). Deleting it on a confirmed-drop lets the
+    // next re-fill announce again.
+    await db.sentNotification
+      .deleteMany({ where: { key: `${matchId}:squad-locked` } })
+      .catch(() => {});
     // Pass the dropped user's id so the bench-prompt knows which team
     // slot is being filled. On 👍 the reaction handler will transfer
     // this user's TeamAssignment to the bench player and announce the
