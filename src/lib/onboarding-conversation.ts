@@ -293,23 +293,48 @@ export async function handleOnboardingTurn(
   if (session.stage === "collecting") {
     const data: Record<string, unknown> = {};
     // No global confidence gate — each field has its own format
-    // validator, and a present concrete value IS the signal. The old
-    // `confidence >= 0.5` gate dropped clear terse answers and caused
-    // the Q1 loop. Allow correction of an already-set field too (user
-    // says "actually make it 7 a side").
+    // validator, and a present concrete value IS the signal (the old
+    // `confidence >= 0.5` gate dropped terse answers → Q1 loop).
+    //
+    // Structured fields only auto-fill an UNSET field. Overwriting an
+    // already-set field requires an explicit correction cue in the
+    // message — otherwise a day word that incidentally appears in a
+    // later answer (venue "Tuesday Sports Centre", a one-off date
+    // "Saturday the 5th") would silently clobber the real value.
+    // "actually make it 7 a side" still works (has a cue).
+    const correctionCue =
+      /\b(actually|instead|change it|change that|make it|no wait|correction|rather|scrap that|i meant|sorry i meant)\b/i.test(
+        messages.map((m) => m.body).join(" "),
+      );
+    const canSet = (cur: unknown) => cur == null || correctionCue;
     if (ex) {
       if (ex.groupName && !session.groupName && ex.confidence >= 0.5)
         data.groupName = ex.groupName.slice(0, 80);
       if (ex.venue && !session.venue) data.venue = ex.venue.slice(0, 120);
-      if (ex.dayOfWeek != null && ex.dayOfWeek >= 0 && ex.dayOfWeek <= 6)
+      if (
+        ex.dayOfWeek != null && ex.dayOfWeek >= 0 && ex.dayOfWeek <= 6 &&
+        canSet(session.dayOfWeek)
+      )
         data.dayOfWeek = ex.dayOfWeek;
-      if (ex.kickoffTime && /^\d{1,2}:\d{2}$/.test(ex.kickoffTime))
+      if (
+        ex.kickoffTime && /^\d{1,2}:\d{2}$/.test(ex.kickoffTime) &&
+        canSet(session.kickoffTime)
+      )
         data.kickoffTime = ex.kickoffTime;
-      if (ex.playersPerSide && ex.playersPerSide >= 4 && ex.playersPerSide <= 16)
+      if (
+        ex.playersPerSide && ex.playersPerSide >= 4 && ex.playersPerSide <= 16 &&
+        canSet(session.playersPerSide)
+      )
         data.playersPerSide = ex.playersPerSide;
-      if (ex.recurrence && ["weekly", "oneoff"].includes(ex.recurrence))
+      if (
+        ex.recurrence && ["weekly", "oneoff"].includes(ex.recurrence) &&
+        canSet(session.recurrence)
+      )
         data.recurrence = ex.recurrence;
-      if (ex.oneOffDate && /^\d{4}-\d{2}-\d{2}$/.test(ex.oneOffDate))
+      if (
+        ex.oneOffDate && /^\d{4}-\d{2}-\d{2}$/.test(ex.oneOffDate) &&
+        canSet(session.oneOffDate)
+      )
         data.oneOffDate = ex.oneOffDate;
     }
 

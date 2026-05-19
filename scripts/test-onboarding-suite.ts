@@ -173,6 +173,47 @@ const SCENARIOS: Scenario[] = [
     ],
     expect: { features: { featureMomVoting: true, featurePlayerRating: true, featureAttendance: false } },
   },
+  {
+    name: "oneoff_match",
+    messages: [
+      "@MatchTime setup",
+      "Test FC Eight",
+      "7 a side",
+      "saturday",
+      "3pm",
+      "Hackney Marshes",
+      "just a one-off this time",
+      "2026-06-13",
+      "everything",
+    ],
+    expect: {
+      dayOfWeek: 6,
+      time: "15:00",
+      activeWeekly: false, // one-off → Activity.isActive false
+      features: { featureAttendance: true, featurePlayerRating: true },
+    },
+  },
+  {
+    name: "venue_with_dayword",
+    // Venue literally contains "Tuesday" — must NOT clobber the real
+    // match day (Thursday). Regression for the correction-cue guard.
+    messages: [
+      "@MatchTime setup",
+      "Test FC Nine",
+      "7 a side",
+      "thursdays",
+      "8pm",
+      "Tuesday Night Sports Centre",
+      "weekly",
+      "MoM and ratings",
+    ],
+    expect: {
+      dayOfWeek: 4, // Thursday — NOT 2 (Tuesday from the venue)
+      time: "20:00",
+      venueIncludes: "Tuesday Night Sports",
+      features: { featureMomVoting: true, featurePlayerRating: true, featureAttendance: false },
+    },
+  },
 ];
 
 async function runScenario(s: Scenario): Promise<boolean> {
