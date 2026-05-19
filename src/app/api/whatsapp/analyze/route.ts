@@ -829,81 +829,6 @@ const KEYCAP: Record<number, string> = {
 };
 
 /**
- * Fire a one-off group announcement when the squad JUST reached its
- * maximum confirmed count. Called after any attendance write in this
- * route. Idempotent via SentNotification with key
- * `<matchId>:squad-locked`; the bot picks up the BotJob on its next
- * due-posts poll and sends it to the group.
- */
-async function announceSquadFullIfJustFilled(args: {
-  orgId: string;
-  matchId: string;
-  maxPlayers: number;
-  activityName: string;
-  confirmedCount: number;
-  kickoffLondon: string;
-}) {
-  if (args.confirmedCount < args.maxPlayers) return;
-  const key = `${args.matchId}:squad-locked`;
-  const already = await db.sentNotification.findFirst({ where: { key } });
-  if (already) return;
-
-  // Record intent to send — the bot's next due-posts cycle will emit
-  // the group message. Using BotJob + SentNotification mirror pattern
-  // so the admin-panel view + idempotency both work.
-  await db.botJob.create({
-    data: {
-      orgId: args.orgId,
-      kind: "group",
-      text:
-        `✅ *Squad locked!* We're full at *${args.maxPlayers}/${args.maxPlayers}* for *${args.activityName}* on ${args.kickoffLondon}.\n\n` +
-        `See you all there 🙌⚽`,
-    },
-  });
-  await db.sentNotification.create({
-    data: {
-      matchId: args.matchId,
-      kind: "group-message",
-      key,
-    },
-  });
-}
-
-/** Thin wrapper that loads match + activity + confirmed count before
- *  delegating to announceSquadFullIfJustFilled. Gated by a dedupe row
- *  so if multiple people get registered in the same batch and push the
- *  count to max, only one announcement fires. */
-async function announceSquadFullIfJustFilledFor(orgId: string, matchId: string) {
-  const m = await db.match.findUnique({
-    where: { id: matchId },
-    include: {
-      activity: { select: { name: true } },
-      attendances: { where: { status: "CONFIRMED" }, select: { id: true } },
-    },
-  });
-  if (!m) return;
-  const kickoffLondon = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-    .format(m.date)
-    .replace(/,/g, "");
-  await announceSquadFullIfJustFilled({
-    orgId,
-    matchId: m.id,
-    maxPlayers: m.maxPlayers,
-    activityName: m.activity.name,
-    confirmedCount: m.attendances.length,
-    kickoffLondon,
-  });
-}
-
-/**
  * Pick the right match for an attendance/bench mutation.
  *
  * Two evolutions of this rule:
@@ -1088,7 +1013,8 @@ async function executeVerdict(args: {
           // counter — and the keycaps went stale every time someone
           // dropped/added. Kemal flagged this on 2026-05-05.
           finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";
-          await announceSquadFullIfJustFilledFor(orgId, matchForOrg.id);
+          // squad-full announcement is fired inside registerAttendance
+          // now (covers every confirm path, with the full line-up).
         } else {
           await cancelAttendance(user.id, matchForOrg.id);
           finalReact = "👋";
@@ -1121,7 +1047,7 @@ async function executeVerdict(args: {
             // Same semantic react rule as for the sender — ✅ for a
             // confirmed slot, 🪑 for bench. No more keycap numbers.
             finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";
-            await announceSquadFullIfJustFilledFor(orgId, matchForOrg.id);
+            // squad-full announcement fired inside registerAttendance.
           } else {
             await cancelAttendance(target.userId, matchForOrg.id);
             finalReact = "👋";

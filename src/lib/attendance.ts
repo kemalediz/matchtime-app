@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { requestBenchConfirmationOnDrop, queueSlotEmojiRefresh } from "./bot-scheduler";
+import { announceSquadFullIfJustFilled } from "./squad-announce";
 
 export async function registerAttendance(
   userId: string,
@@ -154,6 +155,16 @@ export async function registerAttendance(
   // shifted up for others — refresh emojis like cancelAttendance does.
   if (existing?.status === "CONFIRMED" && status === "BENCH") {
     await queueSlotEmojiRefresh(matchId);
+  }
+
+  // The moment this confirm completes the squad, announce it with the
+  // full line-up. Idempotent + atomic — safe to call from every
+  // confirm path (plain IN, bench promotion, third-party registerFor);
+  // it self-dedupes per fill cycle.
+  if (status === "CONFIRMED" && existing?.status !== "CONFIRMED") {
+    await announceSquadFullIfJustFilled(matchId).catch((err) =>
+      console.error("[attendance] squad-full announce failed:", err),
+    );
   }
 
   return {

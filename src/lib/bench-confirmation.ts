@@ -15,6 +15,7 @@
  * no-op: silence/"no" never removes anyone from the bench.
  */
 import { db } from "./db";
+import { announceSquadFullIfJustFilled } from "./squad-announce";
 
 export type BenchConfirmationResult =
   | {
@@ -71,6 +72,13 @@ export async function resolveBenchConfirmation(args: {
     where: { matchId_userId: { matchId, userId } },
     data: { status: "CONFIRMED" },
   });
+
+  // If this claim completes the squad, fire the full-line-up
+  // announcement (in addition to the "X grabbed the slot" line
+  // below). Idempotent + atomic; only posts when count hits max.
+  await announceSquadFullIfJustFilled(matchId).catch((err) =>
+    console.error("[bench-claim] squad-full announce failed:", err),
+  );
 
   // Transfer the dropped player's TeamAssignment (when teams exist).
   let teamLabel: string | null = null;
