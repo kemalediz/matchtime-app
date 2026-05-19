@@ -327,15 +327,17 @@ export async function handleOnboardingTurn(
       lastBody,
     );
 
-    // groupName "currently-asked field" heuristic — LLM-DOWN ONLY.
-    // With the LLM up (normal prod) the model reliably pulls the name
-    // from "we're the Thursday Ballers"; running this heuristic then
-    // would risk capturing chitchat that arrives before the name. So
-    // it's strictly the outage fallback: only when no LLM is
-    // available, treat the (non-trigger, no-structured-field) reply to
-    // Q1 as the club name.
+    // groupName "currently-asked field" capture. groupName is Q1, so
+    // when it's still unset the bot is literally asking "what should I
+    // call your club?" — the reply IS the name. Do it
+    // deterministically (not LLM-dependent): the LLM is unreliable on
+    // bare names like
+    // "Test FC Two" with no "we're …" lead-in, and a missed Q1 shifts
+    // the whole conversation. Safe because at Q1 nothing else is set,
+    // and we exclude the trigger message + any turn that parsed a
+    // structured field. A stray chitchat answer here is recoverable
+    // (admin renames) — far better than a re-ask loop.
     if (
-      !getAnthropic() &&
       !session.groupName &&
       !data.groupName &&
       !looksLikeTrigger &&
@@ -381,20 +383,34 @@ export async function handleOnboardingTurn(
 
   // ── Stage: feature menu ──────────────────────────────────────────
   if (session.stage === "features") {
-    if (!ex || !ex.featureSelection || ex.featureSelection.length === 0) {
-      // Couldn't read a selection — re-show the menu once.
+    // Deterministic-FIRST selection. The menu reply is an explicit
+    // pick ("options 4 and 5", "everything", "MoM and ratings") which
+    // the regex maps with high precision (numbers → menu order,
+    // keywords → features, "everything [except payments]"). The LLM
+    // is only the fallback for vague phrasing — and crucially we must
+    // NOT let a wrong-but-non-null LLM selection override the regex
+    // (the `?? ` bug that failed numbered_feature_pick).
+    const rxSel = regexExtract(messages).featureSelection ?? [];
+    const llmSel = ex?.featureSelection ?? [];
+    const rawSel = rxSel.length > 0 ? rxSel : llmSel;
+    const valid = new Set<ToggleableKey>(FEATURE_META.map((f) => f.key));
+    const chosen = [...new Set(rawSel)].filter((k): k is ToggleableKey =>
+      valid.has(k as ToggleableKey),
+    );
+    if (chosen.length === 0) {
+      // Genuinely couldn't read a pick — re-show the menu (not silent;
+      // a distinct user message each time so it's a real re-prompt,
+      // not a loop).
       await db.onboardingSession.update({
         where: { id: session.id },
         data: { lastHandledWaId: messages[messages.length - 1].waMessageId },
       });
-      return { reply: featureMenuText("I didn't catch which ones — reply with the features you want"), completed: false };
-    }
-    const valid = new Set<ToggleableKey>(FEATURE_META.map((f) => f.key));
-    const chosen = [...new Set(ex.featureSelection)].filter((k): k is ToggleableKey =>
-      valid.has(k as ToggleableKey),
-    );
-    if (chosen.length === 0) {
-      return { reply: featureMenuText("Those didn't match anything — pick from this list"), completed: false };
+      return {
+        reply: featureMenuText(
+          "I didn't catch which ones — reply with the features you want",
+        ),
+        completed: false,
+      };
     }
     const reply = await completeOnboarding(session, chosen);
     return { reply, completed: true };
