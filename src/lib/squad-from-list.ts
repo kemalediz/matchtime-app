@@ -80,13 +80,15 @@ const SYSTEM_PROMPT = `You parse WhatsApp group messages from amateur sports gro
 For EACH message you are given, decide whether it is a squad list. A squad list:
   - has multiple lines that LOOK numbered ("1. Name", "1) Name", "1.⁠ ⁠Name", "1️⃣ Name"). The numbers may be plain digits or emoji digits; the separator may be ".", ")", or unusual unicode spacing/word-joiners (U+2060) common when copied from WhatsApp.
   - names a roster of people for a single upcoming game.
-  - may include a separate "Reserves:" / "Subs:" / "Standby:" block of additional numbered names.
 
 A message is NOT a squad list when:
   - it is a leaderboard / stats answer (percentages, "wins", "votes", "MoM").
   - it is generic numbered prose ("1. yes 2. no").
   - it is a Red vs Yellow team breakdown (two parallel lists for the same match).
   - it is short freeform chatter mentioning a number.
+
+RESERVES / SUBS / STANDBY HANDLING — IMPORTANT:
+A message may contain a main playing-squad list AND a separate "Reserves:" / "Subs:" / "Standby:" block (typically below the main list, headed by that label, with its own numbered names). Treat it as ONE list entry: "names" is the playing squad, "reserves" is the entries from the Reserves/Subs/Standby section. Do NOT emit the Reserves block as a separate "lists" entry. If a Reserves section exists, you MUST populate "reserves" — never silently drop it.
 
 For each squad list, extract the playing names IN ORDER (one per slot) and the reserves IN ORDER. Strip the leading number, any unusual unicode spacing, and surrounding decoration. Keep the name as written by the user (don't normalise case — we want "youssef" preserved if that's what they typed).
 
@@ -100,7 +102,7 @@ Return JSON ONLY in this exact schema:
 
 - Omit non-list messages from "lists".
 - "names" must contain ONLY the playing-squad entries (positions 1..N), not reserves.
-- "reserves" is [] when there are no reserves.
+- "reserves" is [] when there is genuinely no Reserves/Subs/Standby block; never [] when the message clearly contains one.
 - If you see the same list pasted twice (re-paste with one new line) emit BOTH as separate list entries; the diff is computed downstream.`;
 
 interface LLMResponse {

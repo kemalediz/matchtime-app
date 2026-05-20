@@ -429,9 +429,13 @@ async function main() {
         a.user.name?.toLowerCase() === guestName.toLowerCase(),
       );
       chk(!!att, `guest "${guestName}" has an Attendance row`);
+      // Required: att must exist AND phoneNumber must be null.
+      // (Previously `att?.user.phoneNumber == null` passed even when
+      // att was undefined — undefined == null is true in JS — masking
+      // missing-attendance bugs.)
       chk(
-        att?.user.phoneNumber == null,
-        `guest "${guestName}" has no phone (admin fills later)`,
+        !!att && att.user.phoneNumber == null,
+        `guest "${guestName}" has Attendance row AND no phone`,
       );
     }
 
