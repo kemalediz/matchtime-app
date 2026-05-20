@@ -130,11 +130,20 @@ export async function POST(request: Request) {
   //   LLM call. Saves ~£10/mo per such group → ~£0. (Onboarding
   //   already returned above when its session is active, so a
   //   mid-setup group still gets handled.)
+  //
+  //   ALSO: when this org has `featureSquadFromList` on (paste-list
+  //   groups like Amir's Thursday — MoM/ratings only, attendance off),
+  //   archive each fresh inbound message into GroupMessage so the
+  //   squad-extraction cron has data to read. STILL no per-batch LLM
+  //   call. The archive write is idempotent on waMessageId (unique).
   {
     const f = await getOrgFeatures(org.id);
     const needsAnalyzer =
       f.attendance || f.bench || f.teamBalancing || f.reminders || f.statsQa;
     if (!needsAnalyzer) {
+      if (f.squadFromList) {
+        await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);
+      }
       return NextResponse.json({
         ok: true,
         ignored: "no-message-driven-features",
@@ -1600,6 +1609,43 @@ async function recordAnalysis(args: {
     if (!/unique/i.test(m)) {
       console.error("[analyze] recordAnalysis failed:", err);
     }
+  }
+}
+
+/**
+ * Archive inbound messages for a `featureSquadFromList` org so the
+ * squad-extraction cron has raw data to diff. Skipped entirely for
+ * other orgs (Sutton etc. don't write here). Idempotent on
+ * waMessageId (unique). Body trimmed to 4 KB to be safe in case of
+ * gigantic copy-pastes.
+ */
+async function storeMessagesForSquadFromList(
+  orgId: string,
+  groupId: string,
+  messages: InboundMessage[],
+): Promise<void> {
+  if (!messages.length) return;
+  // Filter empty bodies + the bot's own messages (no authorPhone +
+  // no authorName) at the edge so we don't pollute the archive.
+  const rows = messages
+    .filter((m) => m.body.trim().length > 0)
+    .map((m) => ({
+      orgId,
+      waChatId: groupId,
+      waMessageId: m.waMessageId,
+      senderPhone: m.authorPhone || null,
+      senderPushname: m.authorName || null,
+      body: m.body.slice(0, 4000),
+      timestamp: new Date(m.timestamp),
+    }));
+  if (!rows.length) return;
+  try {
+    await db.groupMessage.createMany({ data: rows, skipDuplicates: true });
+  } catch (err) {
+    // Don't break the analyze response on archive failure — the
+    // squad-extraction cron will try again next time the same messages
+    // re-arrive (we already dedupe on waMessageId).
+    console.error("[analyze] storeMessagesForSquadFromList failed:", err);
   }
 }
 

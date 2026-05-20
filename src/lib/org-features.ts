@@ -37,6 +37,13 @@ export interface OrgFeatures {
   statsQa: boolean;
   /** Pre-existing opt-in flag; surfaced for a single source of truth. */
   paymentTracking: boolean;
+  /** "Squad from pasted list" mode (Amir's Thursday group shape).
+   *  When true, the analyze route stores group messages without calling
+   *  the LLM, and `/api/cron/extract-squads` runs the one-shot squad
+   *  extraction over a rolling 3-day window. Auto-set at onboarding for
+   *  orgs that need a squad-of-record (MoM/ratings) but don't track
+   *  in/out (attendance off). Default false; never on for Sutton. */
+  squadFromList: boolean;
 }
 
 
@@ -50,6 +57,7 @@ const ALL_OFF: OrgFeatures = {
   reminders: false,
   statsQa: false,
   paymentTracking: false,
+  squadFromList: false,
 };
 
 function fromRow(row: {
@@ -62,6 +70,7 @@ function fromRow(row: {
   featureReminders: boolean;
   featureStatsQa: boolean;
   paymentTrackingEnabled: boolean;
+  featureSquadFromList: boolean;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -73,6 +82,7 @@ function fromRow(row: {
     reminders: row.featureReminders,
     statsQa: row.featureStatsQa,
     paymentTracking: row.paymentTrackingEnabled,
+    squadFromList: row.featureSquadFromList,
   };
 }
 
@@ -86,6 +96,7 @@ const SELECT = {
   featureReminders: true,
   featureStatsQa: true,
   paymentTrackingEnabled: true,
+  featureSquadFromList: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {

@@ -156,11 +156,32 @@ model Organisation {
   featureReminders     Boolean @default(true)  // @MatchTime personal reminder_request
   featureStatsQa       Boolean @default(true)  // Recent-History stats answers
 
+  /// "Squad from pasted list" mode (Amir's Thursday group shape, 2026-05-20).
+  /// Some groups don't say IN/OUT — instead, every player copies the latest
+  /// numbered squad message, appends their own line, and re-pastes the whole
+  /// list. The bot derives the squad from the LATEST such list before kickoff
+  /// (one LLM call per match over the last 3 days, no per-batch analyzer).
+  ///
+  /// Crucially, the bot also DIFFS each consecutive list against the previous
+  /// one: the names added are attributed to that message's SENDER. When the
+  /// sender's pushname matches one of the additions, that becomes a
+  /// ground-truth UserAlias (e.g. ~T → "Tharan") — solving the nickname
+  /// matching problem that letter-overlap fuzzy can never bridge.
+  /// Other additions are signed-in guests (admin can fill in their phone
+  /// later at /admin/players, same flow Sutton uses for any phone-less player).
+  ///
+  /// Default OFF (additive, no impact on Sutton). Auto-set TRUE at the end of
+  /// onboarding for orgs that pick MoM and/or ratings but NOT attendance —
+  /// i.e. groups that need a squad-of-record post-match (for MoM poll + rating
+  /// DMs) but don't use the bot for in/out chatter.
+  featureSquadFromList Boolean @default(false)
+
   memberships    Membership[]
   activities     Activity[]
   sports         Sport[]
   userAliases    UserAlias[]
   rosterSurveys  RosterSurvey[]
+  groupMessages  GroupMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -777,4 +798,47 @@ model RatingAdjustment {
 
   @@unique([matchId, userId])
   @@index([matchId])
+}
+
+/**
+ * Raw archive of group messages for orgs running `featureSquadFromList`.
+ *
+ * For those orgs (Amir's Thursday group, 2026-05-20) the per-batch
+ * analyzer is OFF (cost) but we still need to read the latest pasted
+ * squad list to know who played, so the bot DMs the right people for
+ * MoM voting + ratings. The analyze route stores every inbound message
+ * here without calling the LLM. A single squad-extraction LLM call
+ * (Sonnet, /api/cron/extract-squads) runs over a rolling 3-day window
+ * to find squad lists, attribute additions to senders (ground-truth
+ * UserAlias learning), and resolve the final squad at kickoff.
+ *
+ * Only written when the org has `featureSquadFromList=true` — Sutton
+ * and other live orgs are unaffected.
+ *
+ * Idempotent on `waMessageId` (unique). Sender resolution happens at
+ * extraction time, not write time, so a phone + pushname pair becomes
+ * useful even before the User exists in our DB.
+ */
+model GroupMessage {
+  id             String   @id @default(cuid())
+  orgId          String
+  org            Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  waMessageId    String   @unique
+  waChatId       String?
+  /// E.164 phone of the sender, if WhatsApp delivered one. Empty/null
+  /// when the sender is @lid (privacy mode) — pushname is then the
+  /// only handle we have.
+  senderPhone    String?
+  /// WhatsApp pushname (display name) at message time. Persisted so the
+  /// diff-attribution pass can compare "what name did this sender add"
+  /// against "what name does this sender go by", to learn aliases.
+  senderPushname String?
+  body           String   @db.Text
+  /// WhatsApp's own message timestamp (UTC). The diff pass orders by
+  /// this — NOT createdAt — so out-of-order ingestion (Pi catch-up
+  /// after a restart) still produces the correct list sequence.
+  timestamp      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([orgId, timestamp])
 }

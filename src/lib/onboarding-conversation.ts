@@ -574,8 +574,17 @@ async function completeOnboarding(
 
   const chosenSet = new Set(chosen);
   // Map selection → the Phase-1 columns. Anything not chosen = off.
+  //
+  // `featureSquadFromList` is derived, not menu-picked: it's ON when
+  // the group wants MoM or ratings but NOT attendance — they don't
+  // tell the bot in/out, so the bot reads the squad off whatever
+  // numbered list they paste. (Amir's Thursday group, 2026-05-20.)
+  // Sutton has attendance on, so this stays OFF for them.
+  const needsAttendance = chosenSet.has("attendance");
+  const needsPostMatchPersonalisation =
+    chosenSet.has("momVoting") || chosenSet.has("playerRating");
   const featureData = {
-    featureAttendance: chosenSet.has("attendance"),
+    featureAttendance: needsAttendance,
     featureBench: chosenSet.has("bench"),
     featureTeamBalancing: chosenSet.has("teamBalancing"),
     featureMomVoting: chosenSet.has("momVoting"),
@@ -583,6 +592,7 @@ async function completeOnboarding(
     featureReminders: chosenSet.has("reminders"),
     featureStatsQa: chosenSet.has("statsQa"),
     paymentTrackingEnabled: chosenSet.has("paymentTracking"),
+    featureSquadFromList: !needsAttendance && needsPostMatchPersonalisation,
   };
 
   // Activity. Weekly fixtures stay isActive so the generate-matches

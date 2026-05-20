@@ -15,6 +15,14 @@ export type FeatureKey =
 
 export type ToggleableKey = FeatureKey | "paymentTracking";
 
+/// Features shown in the admin Settings toggles + the in-group onboarding
+/// menu. `squadFromList` is INTENTIONALLY NOT here — it's a derived
+/// behaviour the onboarding completion sets automatically (when momVoting
+/// or playerRating is on AND attendance is off), not a user-pickable
+/// toggle. Surfacing it would confuse non-technical admins (they'd have
+/// to understand why it's only valid for a specific feature combination).
+/// It IS readable as a field on `OrgFeatures` for code that needs to
+/// gate on it.
 export const FEATURE_META: Array<{
   key: ToggleableKey;
   label: string;
