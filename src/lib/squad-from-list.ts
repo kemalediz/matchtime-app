@@ -796,6 +796,11 @@ export async function runSquadExtraction(args: {
       finalisedMatchId: args.finaliseForMatchId,
       written,
       unresolved,
+      // Diagnostic — included so a failed harness can show exactly
+      // what the LLM + backstop produced for the latest list. Safe
+      // to keep in prod; payload size is tiny.
+      latestListReserves: latest.reserves,
+      latestListNames: latest.names,
     };
   }
 

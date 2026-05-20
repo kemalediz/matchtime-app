@@ -374,6 +374,8 @@ async function main() {
     chk(cron1?.ok === true, "cron returned ok");
     const orgResult = (cron1.results ?? []).find((r: { orgId: string }) => r.orgId === orgId);
     chk(!!orgResult, "cron processed this org");
+    console.log("  diagnostic — latestListNames:", JSON.stringify(orgResult?.latestListNames));
+    console.log("  diagnostic — latestListReserves:", JSON.stringify(orgResult?.latestListReserves));
 
     // ── 3. Verify each expected alias landed ────────────────────────
     step("3. Aliases learned — ground-truth name↔phone mapping from diffs");
