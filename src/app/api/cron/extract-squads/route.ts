@@ -53,6 +53,8 @@ export async function GET(request: Request) {
     finalisedMatchId?: string;
     written?: number;
     unresolved?: string[];
+    latestListNames?: string[];
+    latestListReserves?: string[];
     error?: string;
   }> = [];
 
@@ -86,6 +88,8 @@ export async function GET(request: Request) {
         finalisedMatchId: result.finalisedMatchId,
         written: result.written,
         unresolved: result.unresolved,
+        latestListNames: result.latestListNames,
+        latestListReserves: result.latestListReserves,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
