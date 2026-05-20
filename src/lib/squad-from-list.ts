@@ -103,7 +103,22 @@ Return JSON ONLY in this exact schema:
 - Omit non-list messages from "lists".
 - "names" must contain ONLY the playing-squad entries (positions 1..N), not reserves.
 - "reserves" is [] when there is genuinely no Reserves/Subs/Standby block; never [] when the message clearly contains one.
-- If you see the same list pasted twice (re-paste with one new line) emit BOTH as separate list entries; the diff is computed downstream.`;
+- If you see the same list pasted twice (re-paste with one new line) emit BOTH as separate list entries; the diff is computed downstream.
+
+CONCRETE EXAMPLE — a single message body of:
+
+  In sha Allah 9pm Thursday 21 May Wimbledon Goals 7 a side football:
+
+   1.⁠ ⁠Ehtisham
+   2.⁠ ⁠Amir
+   3.⁠ ⁠⁠Atul
+  …
+  14.⁠ ⁠⁠Usama
+
+  Reserves:
+   1.⁠ ⁠Martin
+
+…must produce EXACTLY ONE list entry: { "waMessageId": "<the-one-id>", "isList": true, "names": ["Ehtisham","Amir","Atul",…,"Usama"], "reserves": ["Martin"] }. NOT two entries. The Reserves block belongs to the same list as the main squad above it.`;
 
 interface LLMResponse {
   lists: Array<{
@@ -135,6 +150,42 @@ export function normaliseName(s: string): string {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
+}
+
+/** Deterministic backstop for the "Reserves: / Subs: / Standby:" block
+ *  the LLM sometimes splits off or drops. Reads the message body
+ *  AFTER a literal header label and extracts numbered names. This is
+ *  structural-label parsing — the header is an explicit section
+ *  marker the human typed deliberately, not user-intent guessing.
+ *  Returns [] if no header is found. */
+export function parseReservesFromBody(body: string): string[] {
+  const lower = body.toLowerCase();
+  const headers = ["reserves:", "subs:", "subs ", "standby:", "standby ", "reserve:"];
+  let idx = -1;
+  for (const h of headers) {
+    const i = lower.indexOf(h);
+    if (i !== -1 && (idx === -1 || i < idx)) idx = i;
+  }
+  if (idx === -1) return [];
+  const after = body.slice(idx);
+  // Take subsequent numbered lines: "1.⁠ ⁠Name", "1) Name", "1. Name",
+  // possibly with unusual unicode spacing. Stop at a blank line that's
+  // followed by another section header, or end-of-string.
+  const lines = after.split(/\n/).slice(1); // drop the header line itself
+  const out: string[] = [];
+  for (const raw of lines) {
+    const m = raw.match(/^\s*\d+\s*[.)]\s*(.+?)\s*$/);
+    if (m) {
+      const name = m[1].replace(/[​-‏⁠‪-‮﻿]/g, "").trim();
+      if (name.length >= 2) out.push(name);
+      continue;
+    }
+    if (raw.trim() === "") continue;
+    // Non-numbered, non-blank line → likely the start of new content;
+    // stop.
+    break;
+  }
+  return out;
 }
 
 /** Run the one-shot LLM extraction over a window of stored
@@ -197,21 +248,54 @@ export async function extractSquadListsFromWindow(
   // recover senderPhone / senderPushname / timestamp which the LLM never
   // saw). Drop any list it produced that isn't actually a list, or whose
   // waMessageId doesn't match anything in the window.
+  //
+  // If the LLM splits one message into multiple "lists" entries (it
+  // sometimes treats the trailing "Reserves:" block as a separate list,
+  // despite the prompt — flagged 2026-05-20 during the harness build),
+  // merge them by waMessageId: the longest "names" wins as the playing
+  // squad; everything else from that message becomes additional reserves.
   const byId = new Map(messages.map((m) => [m.waMessageId, m]));
-  const out: ParsedList[] = [];
+  const groupedByWaId = new Map<string, Array<{ names: string[]; reserves: string[] }>>();
   for (const l of parsed.lists) {
     if (!l.isList) continue;
-    const src = byId.get(l.waMessageId);
-    if (!src) continue;
+    if (!byId.has(l.waMessageId)) continue;
     const names = (l.names ?? []).map((s) => s.trim()).filter(Boolean);
-    if (names.length < 2) continue; // a "list" with one slot is almost certainly noise
+    const reserves = (l.reserves ?? []).map((s) => s.trim()).filter(Boolean);
+    if (names.length === 0 && reserves.length === 0) continue;
+    const arr = groupedByWaId.get(l.waMessageId) ?? [];
+    arr.push({ names, reserves });
+    groupedByWaId.set(l.waMessageId, arr);
+  }
+
+  const out: ParsedList[] = [];
+  for (const [waId, parts] of groupedByWaId) {
+    const src = byId.get(waId)!;
+    // Primary = entry with most names (the playing squad). Everything
+    // else collapses into reserves.
+    parts.sort((a, b) => b.names.length - a.names.length);
+    const primary = parts[0];
+    const extraNames = parts.slice(1).flatMap((p) => p.names);
+    const extraReserves = parts.flatMap((p) => p.reserves);
+    if (primary.names.length < 2 && extraNames.length === 0) continue; // noise
+    let reserves = [...extraNames, ...extraReserves];
+    let names = primary.names;
+
+    // Backstop: if reserves is STILL empty after all the LLM gymnastics
+    // but the source body explicitly contains a Reserves/Subs/Standby
+    // header, scan the body deterministically. This is structural-label
+    // parsing (the header is a literal section marker the user typed
+    // intentionally), not regex-guessing user intent.
+    if (reserves.length === 0) {
+      reserves = parseReservesFromBody(src.body);
+    }
+
     out.push({
-      waMessageId: l.waMessageId,
+      waMessageId: waId,
       senderPhone: src.senderPhone,
       senderPushname: src.senderPushname,
       timestamp: src.timestamp,
       names,
-      reserves: (l.reserves ?? []).map((s) => s.trim()).filter(Boolean),
+      reserves,
     });
   }
   // Sort by timestamp ascending (the LLM output order is not guaranteed).
