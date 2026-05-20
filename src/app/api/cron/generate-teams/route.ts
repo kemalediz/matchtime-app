@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { sendRatingEmails } from "@/lib/email";
 import { format } from "date-fns";
 import { computeEloDeltas } from "@/lib/elo";
+import { runSquadExtraction } from "@/lib/squad-from-list";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -13,6 +14,45 @@ export async function GET(request: Request) {
   }
 
   const now = new Date();
+
+  // ── Daily backstop: squad-from-list extraction ──────────────────
+  //   For featureSquadFromList orgs (Amir's shape — derive squad from
+  //   pasted lists, see src/lib/squad-from-list.ts), the timely path
+  //   runs inline from /api/whatsapp/analyze whenever new messages
+  //   arrive within 12h of kickoff. This is the DAILY BACKSTOP for the
+  //   case where no messages arrived in that final window (rare but
+  //   real: full squad reached early in the week and nobody re-paste
+  //   on match day). We can't add a dedicated cron — Vercel plan caps
+  //   the project at 3 cron jobs — but generate-teams already runs
+  //   daily for matches in flight, so this is the natural piggyback.
+  //   Idempotent and falls open on per-org errors.
+  try {
+    const sqlOrgs = await db.organisation.findMany({
+      where: { featureSquadFromList: true, whatsappBotEnabled: true },
+      select: { id: true },
+    });
+    for (const org of sqlOrgs) {
+      const upcoming = await db.match.findFirst({
+        where: {
+          activity: { orgId: org.id },
+          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+          date: { gte: new Date(now.getTime() - 60 * 60 * 1000), lte: new Date(now.getTime() + 12 * 60 * 60 * 1000) },
+        },
+        orderBy: { date: "asc" },
+        select: { id: true },
+      });
+      try {
+        await runSquadExtraction({
+          orgId: org.id,
+          finaliseForMatchId: upcoming?.id,
+        });
+      } catch (err) {
+        console.error(`[generate-teams] squad-from-list backstop failed for org ${org.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error("[generate-teams] squad-from-list backstop org-list failed:", err);
+  }
 
   // Find matches past deadline that need team generation.
   const matches = await db.match.findMany({

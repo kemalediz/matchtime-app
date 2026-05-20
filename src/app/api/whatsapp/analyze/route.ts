@@ -51,6 +51,7 @@ import {
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { handleOnboardingTurn } from "@/lib/onboarding-conversation";
+import { runSquadExtraction } from "@/lib/squad-from-list";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { computeEloDeltas } from "@/lib/elo";
 import { generateTeamsForMatch } from "@/lib/team-generation";
@@ -143,6 +144,33 @@ export async function POST(request: Request) {
     if (!needsAnalyzer) {
       if (f.squadFromList) {
         await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);
+        // When there's a match in the next 12h, run squad extraction
+        // inline — this is the timely path (within seconds of a pasted
+        // list arriving, instead of waiting for the daily backstop in
+        // generate-teams cron). Falls open: any failure is logged and
+        // the analyze response still returns OK.
+        try {
+          const upcoming = await db.match.findFirst({
+            where: {
+              activity: { orgId: org.id },
+              status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+              date: {
+                gte: new Date(Date.now() - 60 * 60 * 1000),
+                lte: new Date(Date.now() + 12 * 60 * 60 * 1000),
+              },
+            },
+            orderBy: { date: "asc" },
+            select: { id: true },
+          });
+          if (upcoming) {
+            await runSquadExtraction({
+              orgId: org.id,
+              finaliseForMatchId: upcoming.id,
+            });
+          }
+        } catch (err) {
+          console.error("[analyze] squad-from-list extraction failed:", err);
+        }
       }
       return NextResponse.json({
         ok: true,

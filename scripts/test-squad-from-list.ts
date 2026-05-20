@@ -363,13 +363,17 @@ async function main() {
     chk(stored === CHAT.length, `${stored} GroupMessage rows stored (expected ${CHAT.length})`);
 
     // ── 2. Trigger the squad-extraction cron ────────────────────────
-    step("2. GET /api/cron/extract-squads — LLM extracts + diffs + learns aliases");
+    //   By this point the inline path in /api/whatsapp/analyze has
+    //   already fired extraction during each POST (match is within
+    //   12h, squad-from-list is on). The cron call here is the daily-
+    //   backstop equivalent; it should be idempotent (find nothing new
+    //   to do). We assert DB state below rather than cron-return-shape
+    //   so the test passes regardless of which path did the work.
+    step("2. GET /api/cron/extract-squads — idempotent over already-extracted state");
     const cron1 = await extractSquads();
+    chk(cron1?.ok === true, "cron returned ok");
     const orgResult = (cron1.results ?? []).find((r: { orgId: string }) => r.orgId === orgId);
     chk(!!orgResult, "cron processed this org");
-    chk(orgResult?.lists >= 10, `extracted ≥10 squad lists (got ${orgResult?.lists})`);
-    chk(orgResult?.finalisedMatchId === match.id, "finalised the upcoming match");
-    chk((orgResult?.written ?? 0) >= 14, `wrote ≥14 CONFIRMED attendances (got ${orgResult?.written})`);
 
     // ── 3. Verify each expected alias landed ────────────────────────
     step("3. Aliases learned — ground-truth name↔phone mapping from diffs");
@@ -432,14 +436,15 @@ async function main() {
     }
 
     // ── 6. Idempotency: re-run the cron, nothing should change ─────
-    step("6. Idempotency — 2nd cron run learns 0 new, writes 0 new");
+    step("6. Idempotency — 2nd cron run learns 0 new aliases, writes 0 new attendances");
+    const aliasesBefore = await db.userAlias.count({ where: { orgId } });
+    const attendancesBefore = await db.attendance.count({ where: { match: { activityId: activity.id } } });
     const cron2 = await extractSquads();
-    const orgResult2 = (cron2.results ?? []).find((r: { orgId: string }) => r.orgId === orgId);
-    chk(orgResult2?.aliasesLearned === 0, `2nd run learns 0 new aliases (got ${orgResult2?.aliasesLearned})`);
-    chk(
-      (orgResult2?.written ?? 0) === 0,
-      `2nd run writes 0 new attendances (got ${orgResult2?.written})`,
-    );
+    chk(cron2?.ok === true, "2nd cron returned ok");
+    const aliasesAfter = await db.userAlias.count({ where: { orgId } });
+    const attendancesAfter = await db.attendance.count({ where: { match: { activityId: activity.id } } });
+    chk(aliasesAfter === aliasesBefore, `aliases stable across 2nd run (${aliasesBefore} → ${aliasesAfter})`);
+    chk(attendancesAfter === attendancesBefore, `attendances stable across 2nd run (${attendancesBefore} → ${attendancesAfter})`);
 
     // ── 7. Sutton untouched: featureSquadFromList off → not in results ─
     step("7. Sutton untouched (sanity)");
