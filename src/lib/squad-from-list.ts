@@ -320,36 +320,27 @@ export function attributeDiffs(lists: ParsedList[]): Attribution[] {
 
     const addedNames = cur.names.filter((n) => !prevSet.has(normaliseName(n)));
     const addedReserves = cur.reserves.filter((n) => !prevSet.has(normaliseName(n)));
-    const allAdded = [...addedNames, ...addedReserves];
 
-    // Identify which (if any) addition is the sender themselves. Match
-    // the normalised pushname against each addition by:
-    //   - exact equality, or
+    // Identify the sender's own contribution. Restricted to additions
+    // in the PLAYING squad — a sender doesn't put their own name in
+    // the Reserves section, so any reserve addition is by construction
+    // a guest they're signing in (e.g. Amir adding 'Martin' to
+    // Reserves is Amir-signing-in-Martin, NOT Amir-aliasing-as-Martin).
+    //
+    // Matching logic for addedNames:
+    //   - exact equality (normalised), or
     //   - one side is a startsWith-prefix of the other and the longer
     //     side is ≥ 3 chars (handles "Nabeel" ↔ "NABEEL", "youssef" ↔
-    //     "Youssef", and the all-important pushname-shorter case
-    //     "T" → "Tharan" we DO want to bridge here).
-    //
-    // The "T" → "Tharan" bridge is intentional and unique to this
-    // pass: in normal sender-resolution we require pushname ≥ 2 / 3 to
-    // avoid creating ghosts, but here the diff itself is the ground
-    // truth — the single addition by sender ~T IS Tharan. We don't
-    // need a length floor because we're not guessing: the sender's
-    // addition is by construction theirs (unless they added multiple,
-    // which we handle below).
+    //     "Youssef"), or
+    //   - the lone addition with no string overlap (the "~T → Tharan"
+    //     ground-truth case where fuzzy could never bridge).
     let selfAddition: string | null = null;
     const guestAdditions: string[] = [];
 
     const pushNorm = cur.senderPushname ? normaliseName(cur.senderPushname) : "";
-    if (pushNorm && allAdded.length > 0) {
-      // Score each addition: best-match wins. Equal score → prefer
-      // longer match. Score thresholds:
-      //  3 = exact match
-      //  2 = pushname startsWith addition or vice versa (longer ≥ 3)
-      //  1 = single-addition with no other signal (the ~T → "Tharan"
-      //      case — only credited when there's exactly ONE addition)
+    if (pushNorm && addedNames.length > 0) {
       let best: { name: string; score: number } | null = null;
-      for (const name of allAdded) {
+      for (const name of addedNames) {
         const n = normaliseName(name);
         let score = 0;
         if (n === pushNorm) score = 3;
@@ -358,35 +349,41 @@ export function attributeDiffs(lists: ParsedList[]): Attribution[] {
           (pushNorm.startsWith(n) && pushNorm.length >= 3)
         )
           score = 2;
-        if (score > 0 && (!best || score > best.score || (score === best.score && n.length > normaliseName(best.name).length))) {
+        if (
+          score > 0 &&
+          (!best ||
+            score > best.score ||
+            (score === best.score && n.length > normaliseName(best.name).length))
+        ) {
           best = { name, score };
         }
       }
-      // No string-overlap match found but there's exactly ONE addition:
-      // by the group's ritual, that's overwhelmingly likely to be the
-      // sender themselves under a different name (the "~T → Tharan"
-      // scenario). Credit it as a tentative self-addition.
-      if (!best && allAdded.length === 1) {
-        best = { name: allAdded[0], score: 1 };
+      // No string-overlap match found but there's exactly ONE
+      // playing-squad addition: by the group's ritual that's
+      // overwhelmingly likely to be the sender themselves under a
+      // different name (the "~T → Tharan" scenario).
+      if (!best && addedNames.length === 1) {
+        best = { name: addedNames[0], score: 1 };
       }
       if (best) {
         selfAddition = best.name;
-        for (const name of allAdded) {
+        for (const name of addedNames) {
           if (name !== best.name) guestAdditions.push(name);
         }
       } else {
-        // No match at all + multiple additions: all guests. Sender is
-        // an organiser signing in others. Their own alias will be
-        // learned later when THEY appear as an addition in someone
-        // else's diff (or when they themselves sign in solo).
-        guestAdditions.push(...allAdded);
+        guestAdditions.push(...addedNames);
       }
     } else {
-      // No pushname (privacy mode + no saved contact): can't bridge.
-      // All additions are guests for now; they'll get aliased when
-      // someone with a known pushname adds them.
-      guestAdditions.push(...allAdded);
+      // No pushname OR no playing-squad additions (e.g. sender only
+      // added someone to Reserves): everything in addedNames falls to
+      // guest. Their own alias will be learned later when they appear
+      // as someone else's addition or sign themselves in solo.
+      guestAdditions.push(...addedNames);
     }
+
+    // Reserves are ALWAYS guests of the sender (people don't put
+    // themselves in their own Reserves section).
+    guestAdditions.push(...addedReserves);
 
     out.push({
       waMessageId: cur.waMessageId,
