@@ -178,3 +178,27 @@ A bench slot opened at 00:24; the old code tagged+DM'd the bencher, ran a 2h tim
 ## Prefer designs with no elimination / no timers when humans are in the loop
 
 The sequential bench chain (ask #1, 2h, drop, ask #2…) was clever but every iteration of it produced an incident (Erdal lost 👎, Karahan dropped asleep). The replacement — broadcast the opening to everyone, first to say yes wins, nobody ever removed — is simpler, fairer, has no overnight edge, far less DM machinery, and matches how a human captain actually fills a spot. When a flow keeps generating incidents, the fix is usually a simpler model, not more guards on the complex one.
+
+## The squad-list ritual IS the labelling system (2026-05-20)
+
+For groups that don't use IN/OUT and instead re-paste the numbered squad with each sign-in (Amir's Thursday shape), the bot can derive ground-truth name↔phone aliases from the DIFF between consecutive lists. The sender of "previous-list + 1 new line" almost always added THEIR OWN name. So that single new line = ground truth for that phone's display name. No fuzzy matching, no admin curation: the group is labelling the data for the bot every time they sign in. This is what unlocked the `~T → "Tharan"` case that no letter-overlap fuzzy could ever bridge. Meta-lesson: when a group has a stable ritual, look for the signal IN the ritual — don't model it as noise.
+
+## Reserves are always guests, never the sender's self (2026-05-20)
+
+When parsing a pasted squad with a `Reserves:` block, attributing the reserve addition to the sender as their own name is the bug. People don't put themselves in their own Reserves section — they put **other** people they're signing in as standby. The first cut of `attributeDiffs` had a "single addition + no string match = it's the sender's nickname" fallback that fired on `Amir → "Reserves: 1. Martin"` and wrongly aliased "martin" → Amir, so when the squad finaliser later tried to write a BENCH row for Martin it resolved back to Amir's CONFIRMED row and the upsert (empty `update: {}`) silently kept it. Fix: split detection — the lone-addition fallback only runs against the **playing-squad** additions; all reserve additions are unconditionally guests. The principle: section semantics inform attribution. The same `addition` means different things in `names` vs `reserves`.
+
+## Vercel cron cap is 3 on the project's current plan (2026-05-20)
+
+Adding a 4th cron to `vercel.json` failed the deploy with the GitHub status pointing at `vercel.link/3Fpeeb1` → `vercel.com/docs/cron-jobs/usage-and-pricing`. Existing 3 daily crons (`generate-matches`, `generate-teams`, `close-ratings`) keep working; adding `extract-squads` (any schedule) tips over the limit. Workaround: consolidate. Run the new logic from an EXISTING cron path (folded squad-extraction into `generate-teams`) and from real-time triggers if needed. Don't try a 4th cron without upgrading the Vercel plan first.
+
+## Long synchronous LLM calls inside `/api/whatsapp/analyze` will time out (2026-05-20)
+
+I tried adding an inline `runSquadExtraction` call inside the analyze route's no-message-driven-features branch (would-have-been timely path for squad-from-list orgs to extract on every fresh paste). On the harness it 500'd around the 4th sequential POST — analyze responses were taking too long when each was awaiting a multi-second Anthropic call. Reverted. Lesson: the analyze route runs on the bot's hot poll path — keep its work tight. For expensive background work, use the cron path or rate-limit aggressively (`<= once per N minutes per org`) with a `SentNotification` lock; never just await a fresh LLM call on every batch.
+
+## Three-layer defence when an LLM is unreliable on a STRUCTURED slot (2026-05-20)
+
+Sonnet kept dropping the `Reserves:` block in extracted lists. Single-fix attempts (stronger prompt, then few-shot example) helped but didn't make it 100%. What worked: layered defence — prompt few-shot for the happy path, server-side merge-by-waMessageId for when the LLM splits one message across multiple entries, AND a deterministic backstop that reads structural section headers from the source body when the LLM still drops them. The deterministic backstop isn't "regex on user intent" (the thing we reject) — it's structural-label parsing of a literal section marker the user typed. That distinction is important: regex IS the right tool when the input has a fixed machine-readable shape; it's the WRONG tool when the input is "what did the user mean".
+
+## When inline triggers are too expensive, batch via cron (2026-05-20)
+
+The squad-extraction is `≤1 Sonnet call per org per cron tick`. The "timely" inline approach turned into 1 call per inbound batch (the bot flushes every ~10 min) — fine cost-wise but timeout-prone. Daily backstop in `generate-teams` gives 1 extraction/day per org, predictable. For Amir's Mon-Wed list-paste rhythm, daily is enough; the final list typically stabilises 8+ hours before kickoff. If we ever need sub-day timing for last-minute Thursday sign-ins we'll add an inline trigger with an explicit per-org rate-limit guard (e.g. SentNotification key `<orgId>:squad-extract-tick:<hour>`), not unbounded fire-on-every-message.
