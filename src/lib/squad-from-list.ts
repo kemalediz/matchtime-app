@@ -766,6 +766,10 @@ export async function runSquadExtraction(args: {
   finalisedMatchId?: string;
   written?: number;
   unresolved?: string[];
+  /** Diagnostic: surface what we ended up with for the latest list,
+   *  for harness + on-call debugging. Tiny payload. */
+  latestListNames?: string[];
+  latestListReserves?: string[];
 }> {
   const since =
     args.since ??
