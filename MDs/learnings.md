@@ -187,9 +187,11 @@ For groups that don't use IN/OUT and instead re-paste the numbered squad with ea
 
 When parsing a pasted squad with a `Reserves:` block, attributing the reserve addition to the sender as their own name is the bug. People don't put themselves in their own Reserves section — they put **other** people they're signing in as standby. The first cut of `attributeDiffs` had a "single addition + no string match = it's the sender's nickname" fallback that fired on `Amir → "Reserves: 1. Martin"` and wrongly aliased "martin" → Amir, so when the squad finaliser later tried to write a BENCH row for Martin it resolved back to Amir's CONFIRMED row and the upsert (empty `update: {}`) silently kept it. Fix: split detection — the lone-addition fallback only runs against the **playing-squad** additions; all reserve additions are unconditionally guests. The principle: section semantics inform attribution. The same `addition` means different things in `names` vs `reserves`.
 
-## Vercel cron cap is 3 on the project's current plan (2026-05-20)
+## Vercel cron cap was 3 on Hobby — lifted by moving to Cressoft Pro (2026-05-20 → 2026-05-21)
 
-Adding a 4th cron to `vercel.json` failed the deploy with the GitHub status pointing at `vercel.link/3Fpeeb1` → `vercel.com/docs/cron-jobs/usage-and-pricing`. Existing 3 daily crons (`generate-matches`, `generate-teams`, `close-ratings`) keep working; adding `extract-squads` (any schedule) tips over the limit. Workaround: consolidate. Run the new logic from an EXISTING cron path (folded squad-extraction into `generate-teams`) and from real-time triggers if needed. Don't try a 4th cron without upgrading the Vercel plan first.
+Original problem (2026-05-20): adding a 4th cron to `vercel.json` failed the deploy with the GitHub status pointing at `vercel.link/3Fpeeb1` → `vercel.com/docs/cron-jobs/usage-and-pricing`. The existing 3 daily crons (`generate-matches`, `generate-teams`, `close-ratings`) kept working; adding `extract-squads` (any schedule) tipped over the limit. **Workaround used:** consolidate — folded squad-extraction into `generate-teams` as a daily backstop.
+
+Resolved (2026-05-21): project transferred from `kemaledizs-projects` (Hobby) to `cressoft` (Pro) so the user's hobby-tier usage warnings stopped and the cron cap rose to 40. The dedicated `/api/cron/extract-squads` schedule (`*/30 * * * *`) was restored and the piggyback in `generate-teams/route.ts` removed. **General lesson:** when a platform cap forces a workaround, document it AND the path to undo when the cap goes — workarounds are easier to ship than to take back later if nobody remembers they exist.
 
 ## Long synchronous LLM calls inside `/api/whatsapp/analyze` will time out (2026-05-20)
 

@@ -6,11 +6,19 @@
  *
  * Cadence: every 30 min via vercel.json. Each run, for each
  * featureSquadFromList org, we:
- *   1. Always run the diff + alias-learning pass over the last 3 days
- *      of stored GroupMessage rows. Cheap (~one Sonnet call per org per
- *      tick that has new messages). Alias warming is the main reason
- *      to run continuously rather than only at kickoff — by the time
- *      we finalise we want as many ground-truth aliases as possible.
+ *   1. Always run the diff + alias-learning pass over the GroupMessage
+ *      rows posted SINCE THE PREVIOUS MATCH ENDED (per
+ *      `computeSinceForOrg` in squad-from-list.ts — bootstrap +
+ *      MAX_WINDOW_DAYS cap apply when there is no previous match or
+ *      the gap is huge). Cheap (~one Sonnet call per org per tick that
+ *      has new messages; orgs with an empty window do no LLM work).
+ *      Starting the window at the previous match's end time matters
+ *      because Amir's group often pastes the next week's list within
+ *      minutes of the final whistle — a fixed rolling window would
+ *      either chop those off or drag in stale lists from BEFORE the
+ *      previous match. Alias warming is the main reason to run
+ *      continuously rather than only at kickoff — by the time we
+ *      finalise we want as many ground-truth aliases as possible.
  *   2. If there's a non-cancelled match within the next 12h, ALSO
  *      finalise the squad: take the latest list, resolve each name
  *      via the chain (alias → exact → fuzzy → provision-with-no-phone),
@@ -53,6 +61,7 @@ export async function GET(request: Request) {
     finalisedMatchId?: string;
     written?: number;
     unresolved?: string[];
+    windowSince?: string;
     latestListNames?: string[];
     latestListReserves?: string[];
     error?: string;
@@ -88,6 +97,7 @@ export async function GET(request: Request) {
         finalisedMatchId: result.finalisedMatchId,
         written: result.written,
         unresolved: result.unresolved,
+        windowSince: result.windowSince,
         latestListNames: result.latestListNames,
         latestListReserves: result.latestListReserves,
       });

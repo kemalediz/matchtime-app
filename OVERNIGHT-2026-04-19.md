@@ -68,7 +68,7 @@ and both Vercel auto-builds green.
 
 1. Prod deploys green:
    ```
-   vercel ls --scope kemaledizs-projects | head -3
+   vercel ls --scope cressoft | head -3
    ```
 2. Bot still running on Pi:
    ```

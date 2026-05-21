@@ -39,7 +39,7 @@ PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH npx prisma db push
 PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH npx prisma generate
 
 # Vercel deploy status (or check the dashboard)
-PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH vercel ls --scope kemaledizs-projects matchtime
+PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH vercel ls --scope cressoft matchday
 ```
 
 The `PATH` prefix is because the user's shell defaults to Node 16, which Prisma 7 + Vercel CLI both reject (`ReferenceError: ReadableStream is not defined`).
@@ -241,7 +241,7 @@ The repo folder was renamed `/Sports/matchday` → `/Sports/matchtime` and packa
 
 - **`cd` into the old path fails.** Always use `/Users/kemal/Projects/Cressoft/Sports/matchtime`.
 - **Auto-memory symlinks break on rename.** `~/.claude/projects/-Users-kemal-Projects-Cressoft-Sports/memory/{skills,learnings}.md` are symlinks into the repo's `MDs/`. After the rename they dangled until repointed with `ln -sf …/matchtime/MDs/…`. If a future rename happens, fix these first or the memory reads come back empty.
-- **Pi paths rebranded too**: `~/matchtime-bot`, `matchtime-bot.service`, host still `matchtime-pi.tail1437f5.ts.net`. Vercel project is now `matchtime` (scope `kemaledizs-projects`).
+- **Pi paths rebranded too**: `~/matchtime-bot`, `matchtime-bot.service`, host still `matchtime-pi.tail1437f5.ts.net`. Vercel project is `matchday` (CLI name — historical, slated for dashboard rename to `matchtime`) on scope `cressoft` (moved off `kemaledizs-projects` Hobby to Cressoft Pro on 2026-05-21).
 
 ## Hermes is a co-developer on this repo
 
@@ -279,9 +279,11 @@ Every bot capability is an independent per-org toggle. `Organisation.feature{Att
 - `scripts/sim-onboarding-remote.ts` — scripted convo vs prod (no WhatsApp). Local `.env` has **no ANTHROPIC_API_KEY** (Vercel only) so always test ONBOARDING against the deployed server, not in-process.
 - `wipe-org.ts <slug> --apply` now also clears OnboardingSession.
 
-## Vercel project is still named `matchday`
+## Vercel project name is `matchday` (CLI) — to be renamed `matchtime` in the dashboard
 
-The rebrand didn't rename the Vercel project. `vercel ls --scope kemaledizs-projects matchday` (NOT `matchtime` — that errors "not a valid project name"). The `●` status glyph doesn't grep cleanly; don't build tight wait-loops on it — push, give it ~1-2 min, verify by re-running the check.
+The 2026-05-17 rebrand left the Vercel project name as `matchday`. CLI lookups go via `vercel ls --scope cressoft matchday`. The `●` status glyph doesn't grep cleanly; don't build tight wait-loops on it — push, give it ~1-2 min, verify by re-running the check.
+
+Slated dashboard rename: cressoft/matchday → Settings → General → Project Name → "matchtime". CLI doesn't expose `project rename` so this is dashboard-only. After it happens, sweep `matchday` → `matchtime` in the MDs and update any scripts that pass the project name explicitly.
 
 ## Bench model: offer-to-all, first-confirm-wins (2026-05-19, replaced the elimination chain)
 
@@ -299,8 +301,8 @@ First time the bot speaks in a new group (opening `@MatchTime setup` turn — `O
 Some groups don't say IN/OUT — instead, every player copies the latest numbered squad message, appends their own line, and re-pastes the whole list (every sign-in is "previous list + my name + send"). The bot derives the squad from that ritual. `Organisation.featureSquadFromList` (default false, auto-set at onboarding when MoM/ratings on AND attendance off). Pipeline lives in `src/lib/squad-from-list.ts`:
 
 1. **/api/whatsapp/analyze** archives every inbound message to a new `GroupMessage` table when the org has the flag — NO per-batch LLM, NO inline extraction (an inline trigger caused timeouts → 500s; removed). Per-batch cost stays the same as a regular MoM/ratings-only org (~£0).
-2. **/api/cron/generate-teams (daily backstop)** iterates `featureSquadFromList` orgs with a match in the next 12h and calls `runSquadExtraction({ orgId, finaliseForMatchId })`. Could not add a dedicated cron — **Vercel project cron cap is 3** on this plan, see learnings.
-3. **runSquadExtraction**: one Sonnet call over the last 3 days of stored messages → returns which messages are squad-list-shaped + parsed `{names, reserves}`. Falls open: any LLM failure short-circuits, no DB damage, retry next tick.
+2. **/api/cron/extract-squads** runs every 30 min (vercel.json). Iterates `featureSquadFromList` orgs and calls `runSquadExtraction({ orgId, finaliseForMatchId })` — `finaliseForMatchId` is set when there's a match in the next 12h, otherwise it's an alias-warming pass only. (Pre-2026-05-21 this was piggybacked into the daily `generate-teams` cron because the Hobby plan capped us at 3 crons; moving to Cressoft Pro lifted that cap and the dedicated schedule was restored for sub-day responsiveness.)
+3. **runSquadExtraction**: one Sonnet call over messages **since the previous match ended** (`computeSinceForOrg` — bootstraps to the earliest archived message for first-ever matches, capped at `MAX_WINDOW_DAYS = 21` for dormant gaps). The "since previous match end" boundary matters because some groups (Amir's) start pasting next week's list within minutes of the final whistle; a rolling window would either chop those off or pull in stale lists from before the previous match. When `finaliseForMatchId` is given, the cutoff for "previous" is THAT match's `date` (not now), so the match being finalised can't be its own predecessor. Returns which messages are squad-list-shaped + parsed `{names, reserves}`. Falls open: any LLM failure short-circuits, no DB damage, retry next tick.
 4. **attributeDiffs** (deterministic, no LLM): for each consecutive list, the names added are attributed to that message's SENDER. Critical rule: **reserves are always guests, never the sender's self-addition** — a person doesn't put their own name in their own Reserves section. Self-detection only runs against playing-squad additions. The "single addition + no string overlap" fallback is what bridges the `~T → "Tharan"` case (ground truth — no fuzzy could span "T" to "Tharan").
 5. **learnAliasesFromAttribution**: for each sender's self-addition, write/upsert a `UserAlias` row with `source="auto-detect"`. Hand-curated aliases (`source="merge"|"manual"`) are never clobbered.
 6. **finaliseSquadForMatch**: take the LATEST list, resolve each name via `resolveOrProvisionSquadName` (alias-first → exact → fuzzy → provision with NO phone). Names go CONFIRMED; reserves go BENCH. Unresolved/guest entries are User+Membership with empty phone — admin fills in numbers at `/admin/players` (same flow Sutton uses).
