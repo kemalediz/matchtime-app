@@ -160,7 +160,9 @@ model Organisation {
   /// Some groups don't say IN/OUT — instead, every player copies the latest
   /// numbered squad message, appends their own line, and re-pastes the whole
   /// list. The bot derives the squad from the LATEST such list before kickoff
-  /// (one LLM call per match over the last 3 days, no per-batch analyzer).
+  /// (one LLM call per match over messages SINCE THE PREVIOUS MATCH ENDED;
+  /// no per-batch analyzer). See `computeSinceForOrg` in squad-from-list.ts
+  /// for the bootstrap + MAX_WINDOW_DAYS cap rules.
   ///
   /// Crucially, the bot also DIFFS each consecutive list against the previous
   /// one: the names added are attributed to that message's SENDER. When the
@@ -808,9 +810,14 @@ model RatingAdjustment {
  * squad list to know who played, so the bot DMs the right people for
  * MoM voting + ratings. The analyze route stores every inbound message
  * here without calling the LLM. A single squad-extraction LLM call
- * (Sonnet, /api/cron/extract-squads) runs over a rolling 3-day window
- * to find squad lists, attribute additions to senders (ground-truth
- * UserAlias learning), and resolve the final squad at kickoff.
+ * (Sonnet, folded into /api/cron/generate-teams — Vercel project cron
+ * cap = 3) runs over messages SINCE THE PREVIOUS MATCH ENDED to find
+ * squad lists, attribute additions to senders (ground-truth UserAlias
+ * learning), and resolve the final squad at kickoff. Starting at the
+ * previous match's end (not a fixed rolling window) matters because
+ * some groups paste the next week's list within minutes of the final
+ * whistle — a rolling window would either chop those off or drag in
+ * stale lists from before the previous match.
  *
  * Only written when the org has `featureSquadFromList=true` — Sutton
  * and other live orgs are unaffected.

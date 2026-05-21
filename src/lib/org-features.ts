@@ -39,10 +39,11 @@ export interface OrgFeatures {
   paymentTracking: boolean;
   /** "Squad from pasted list" mode (Amir's Thursday group shape).
    *  When true, the analyze route stores group messages without calling
-   *  the LLM, and `/api/cron/extract-squads` runs the one-shot squad
-   *  extraction over a rolling 3-day window. Auto-set at onboarding for
-   *  orgs that need a squad-of-record (MoM/ratings) but don't track
-   *  in/out (attendance off). Default false; never on for Sutton. */
+   *  the LLM, and the squad extraction (folded into the generate-teams
+   *  cron — Vercel cap = 3) runs the one-shot LLM pass over messages
+   *  since the previous match ended. Auto-set at onboarding for orgs
+   *  that need a squad-of-record (MoM/ratings) but don't track in/out
+   *  (attendance off). Default false; never on for Sutton. */
   squadFromList: boolean;
 }
 

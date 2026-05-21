@@ -16,9 +16,15 @@
  * Pipeline (no regex on user-typed in/out anywhere; LLM extracts, code
  * attributes):
  *
- *   1. One LLM call (Sonnet, ≤1×/30min/match) over the last 3 days of
- *      stored `GroupMessage` rows for the org → returns which messages
- *      are squad-list-shaped + the parsed numbered names + reserves.
+ *   1. One LLM call (Sonnet, ≤1×/30min/match) over the stored
+ *      `GroupMessage` rows for the org SINCE the previous match
+ *      ended → returns which messages are squad-list-shaped + the
+ *      parsed numbered names + reserves. The "since previous match end"
+ *      boundary matters because Amir's group often starts pasting the
+ *      NEXT week's list within minutes of the final whistle; a fixed
+ *      rolling window would either chop those off or drag in stale
+ *      lists from before the previous match (which were the squad-of-
+ *      record for THAT match, not the next one).
  *   2. Sort lists chronologically. For each consecutive pair, diff
  *      added names. Attribute additions to the sending phone+pushname.
  *      Self-addition (matches the sender's pushname) → ground-truth
@@ -40,12 +46,15 @@ import { normalisePhone } from "./phone";
 
 const MODEL = "claude-sonnet-4-5";
 
-/** Default lookback for the squad-extraction LLM call. The group's
- *  ritual is "re-paste with your name appended each time someone signs
- *  in" so the SAME list typically appears many times over the course of
- *  a week. 3 days is enough to span the typical "list seeded → squad
- *  filled" arc without burning context on unrelated banter. */
-export const WINDOW_DAYS = 3;
+/** Hard CAP on how far back the squad-extraction window can stretch,
+ *  regardless of when the previous match ended. The window normally
+ *  starts at the previous match's end time (see `computeSinceForOrg`),
+ *  so this cap only kicks in for first-ever matches or after a long
+ *  dormant gap (org skipped weeks). 21 days is generous enough to span
+ *  a fortnight-off + the build-up to the next match, while still
+ *  bounding LLM context + DB scan cost on a group that's been silent
+ *  for months. */
+export const MAX_WINDOW_DAYS = 21;
 
 export interface ParsedList {
   waMessageId: string;
@@ -186,6 +195,63 @@ export function parseReservesFromBody(body: string): string[] {
     break;
   }
   return out;
+}
+
+/** Compute the lower bound of the extraction window for an org.
+ *
+ *  Rule (in priority order):
+ *    1. The end time of the most recent prior match (`date +
+ *       activity.matchDurationMins`). This is the right boundary
+ *       because the group's copy-paste ritual for NEXT week's squad
+ *       often starts within minutes of THIS week's final whistle, and
+ *       any list pasted BEFORE the previous match was the squad-of-
+ *       record for THAT match — pulling it in would risk overwriting
+ *       the upcoming match with stale data. Excludes
+ *       `isHistorical: true` matches (synthetic backfill anchors,
+ *       no real end time).
+ *    2. Bootstrap (no prior match for the org — first match ever):
+ *       the timestamp of the earliest archived GroupMessage. This
+ *       way we use everything we've stored, never less.
+ *    3. Floor at `MAX_WINDOW_DAYS` back. Even if the previous match
+ *       was 3 months ago (dormant group), we cap the scan so the LLM
+ *       context + DB read stay bounded.
+ *
+ *  `cutoffDate` is the upper exclusive bound on "what counts as
+ *  previous". When finalising for a specific upcoming match, pass
+ *  THAT match's date (so the match we're processing doesn't end up
+ *  selected as its own predecessor). Otherwise pass `new Date()`.
+ */
+export async function computeSinceForOrg(
+  orgId: string,
+  cutoffDate: Date,
+): Promise<Date> {
+  const minSince = new Date(Date.now() - MAX_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const previousMatch = await db.match.findFirst({
+    where: {
+      activity: { orgId },
+      isHistorical: false,
+      date: { lt: cutoffDate },
+    },
+    orderBy: { date: "desc" },
+    include: { activity: { select: { matchDurationMins: true } } },
+  });
+
+  let since: Date;
+  if (previousMatch) {
+    since = new Date(
+      previousMatch.date.getTime() +
+        previousMatch.activity.matchDurationMins * 60_000,
+    );
+  } else {
+    const earliest = await db.groupMessage.findFirst({
+      where: { orgId },
+      orderBy: { timestamp: "asc" },
+      select: { timestamp: true },
+    });
+    since = earliest?.timestamp ?? minSince;
+  }
+  return since < minSince ? minSince : since;
 }
 
 /** Run the one-shot LLM extraction over a window of stored
@@ -751,7 +817,8 @@ export async function finaliseSquadForMatch(
  */
 export async function runSquadExtraction(args: {
   orgId: string;
-  /** Defaults to now - WINDOW_DAYS. */
+  /** Override the auto-computed lower bound. When omitted, derived
+   *  via `computeSinceForOrg` (previous match end → bootstrap → cap). */
   since?: Date;
   /** When set, finalise the squad for this match if we have a list. */
   finaliseForMatchId?: string;
@@ -763,18 +830,38 @@ export async function runSquadExtraction(args: {
   finalisedMatchId?: string;
   written?: number;
   unresolved?: string[];
+  /** Diagnostic: lower bound used for the window this run, ISO string.
+   *  Harness + on-call debugging — confirms which rule fired
+   *  (previous-match-end vs bootstrap vs cap). */
+  windowSince?: string;
   /** Diagnostic: surface what we ended up with for the latest list,
    *  for harness + on-call debugging. Tiny payload. */
   latestListNames?: string[];
   latestListReserves?: string[];
 }> {
-  const since =
-    args.since ??
-    new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  // When we're finalising for a specific upcoming match, exclude
+  // that match from the "previous match" lookup by using ITS date
+  // as the cutoff. Otherwise use now (any match with date < now is
+  // a candidate predecessor).
+  let cutoffDate: Date = new Date();
+  if (args.finaliseForMatchId) {
+    const forMatch = await db.match.findUnique({
+      where: { id: args.finaliseForMatchId },
+      select: { date: true },
+    });
+    if (forMatch) cutoffDate = forMatch.date;
+  }
+  const since = args.since ?? (await computeSinceForOrg(args.orgId, cutoffDate));
 
   const lists = await extractSquadListsFromWindow(args.orgId, since);
   if (lists.length === 0) {
-    return { lists: 0, attributions: 0, aliasesLearned: 0, usersProvisioned: 0 };
+    return {
+      lists: 0,
+      attributions: 0,
+      aliasesLearned: 0,
+      usersProvisioned: 0,
+      windowSince: since.toISOString(),
+    };
   }
   const attributions = attributeDiffs(lists);
   const { aliasesLearned, usersProvisioned } = await learnAliasesFromAttribution(
@@ -797,6 +884,7 @@ export async function runSquadExtraction(args: {
       finalisedMatchId: args.finaliseForMatchId,
       written,
       unresolved,
+      windowSince: since.toISOString(),
       // Diagnostic — included so a failed harness can show exactly
       // what the LLM + backstop produced for the latest list. Safe
       // to keep in prod; payload size is tiny.
@@ -810,5 +898,6 @@ export async function runSquadExtraction(args: {
     attributions: attributions.length,
     aliasesLearned,
     usersProvisioned,
+    windowSince: since.toISOString(),
   };
 }
