@@ -39,7 +39,7 @@ PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH npx prisma db push
 PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH npx prisma generate
 
 # Vercel deploy status (or check the dashboard)
-PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH vercel ls --scope cressoft matchday
+PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH vercel ls --scope cressoft matchtime
 ```
 
 The `PATH` prefix is because the user's shell defaults to Node 16, which Prisma 7 + Vercel CLI both reject (`ReferenceError: ReadableStream is not defined`).
@@ -241,7 +241,7 @@ The repo folder was renamed `/Sports/matchday` → `/Sports/matchtime` and packa
 
 - **`cd` into the old path fails.** Always use `/Users/kemal/Projects/Cressoft/Sports/matchtime`.
 - **Auto-memory symlinks break on rename.** `~/.claude/projects/-Users-kemal-Projects-Cressoft-Sports/memory/{skills,learnings}.md` are symlinks into the repo's `MDs/`. After the rename they dangled until repointed with `ln -sf …/matchtime/MDs/…`. If a future rename happens, fix these first or the memory reads come back empty.
-- **Pi paths rebranded too**: `~/matchtime-bot`, `matchtime-bot.service`, host still `matchtime-pi.tail1437f5.ts.net`. Vercel project is `matchday` (CLI name — historical, slated for dashboard rename to `matchtime`) on scope `cressoft` (moved off `kemaledizs-projects` Hobby to Cressoft Pro on 2026-05-21).
+- **Pi paths rebranded too**: `~/matchtime-bot`, `matchtime-bot.service`, host still `matchtime-pi.tail1437f5.ts.net`. Vercel project is `matchtime` on scope `cressoft` (moved off `kemaledizs-projects` Hobby to Cressoft Pro on 2026-05-21; dashboard rename `matchday`→`matchtime` completed same day).
 
 ## Hermes is a co-developer on this repo
 
@@ -279,11 +279,11 @@ Every bot capability is an independent per-org toggle. `Organisation.feature{Att
 - `scripts/sim-onboarding-remote.ts` — scripted convo vs prod (no WhatsApp). Local `.env` has **no ANTHROPIC_API_KEY** (Vercel only) so always test ONBOARDING against the deployed server, not in-process.
 - `wipe-org.ts <slug> --apply` now also clears OnboardingSession.
 
-## Vercel project name is `matchday` (CLI) — to be renamed `matchtime` in the dashboard
+## Vercel project name is `matchtime`
 
-The 2026-05-17 rebrand left the Vercel project name as `matchday`. CLI lookups go via `vercel ls --scope cressoft matchday`. The `●` status glyph doesn't grep cleanly; don't build tight wait-loops on it — push, give it ~1-2 min, verify by re-running the check.
+CLI lookups go via `vercel ls --scope cressoft matchtime`. The `●` status glyph doesn't grep cleanly; don't build tight wait-loops on it — push, give it ~1-2 min, verify by re-running the check.
 
-Slated dashboard rename: cressoft/matchday → Settings → General → Project Name → "matchtime". CLI doesn't expose `project rename` so this is dashboard-only. After it happens, sweep `matchday` → `matchtime` in the MDs and update any scripts that pass the project name explicitly.
+History: the 2026-05-17 rebrand left the Vercel project name as `matchday` for a few days because the CLI doesn't expose `project rename`. Renamed in the dashboard via Chrome MCP automation on 2026-05-21 (cressoft/matchday → Settings → General → Project Name). Production URL `matchtime.ai` and the project ID (`prj_J6tkgoWECRMWydQxa7QYVUdTiR8n`) were untouched, so env vars / cron schedules / deployment history all carried over.
 
 ## Bench model: offer-to-all, first-confirm-wins (2026-05-19, replaced the elimination chain)
 

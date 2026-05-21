@@ -21,8 +21,8 @@ ONLY).
 
 ### Architecture (the "dumb bot")
 - **Web/logic**: Next.js 16.2 beta (Turbopack), Prisma 7.5 + `@prisma/adapter-pg`
-  (Supabase Postgres), NextAuth v5, Tailwind v4. Deployed on **Vercel** —
-  ⚠️ Vercel project is still named **`matchday`** (not `matchtime`).
+  (Supabase Postgres), NextAuth v5, Tailwind v4. Deployed on **Vercel** as
+  `cressoft/matchtime` (renamed from `matchday` on 2026-05-21).
 - **Bot client**: a Raspberry Pi (`matchtime-pi.tail1437f5.ts.net`,
   `~/matchtime-bot`, `matchtime-bot.service`) running whatsapp-web.js. It is
   DUMB: it polls `/api/whatsapp/due-posts` (~5 min) and flushes batched group
@@ -66,7 +66,7 @@ fallback, correction-cue, seatbelt), never by "trusting the LLM more".
 8. **Autonomy is expected.** When Kemal says "you're fully autonomous, do the
    entire job and testing yourself" — ship it end to end: code → deploy →
    test against prod → fix → re-test → commit → update memory. Don't wait.
-9. **Deploy discipline.** Push → wait for `vercel ls matchday` **Ready**
+9. **Deploy discipline.** Push → wait for `vercel ls matchtime` **Ready**
    before running prod tests or queueing BotJobs (a deploy-race once caused
    out-of-order poll delivery). The `●` status glyph greps unreliably.
 10. **Generic / commercialisable design.** No hardcoded Sutton values; every
@@ -220,7 +220,7 @@ covered by the unit suites, not the live lifecycle harness.
 
 Deploy wait pattern after a push:
 ```bash
-vercel ls matchday   # wait until top Production row shows "Ready"
+vercel ls matchtime   # wait until top Production row shows "Ready"
 ```
 
 ---
@@ -258,7 +258,7 @@ vercel ls matchday   # wait until top Production row shows "Ready"
 
 ```bash
 # Deploy status
-vercel ls matchday
+vercel ls matchtime
 
 # Pull prod env (if local .env secrets drift again)
 vercel env pull /tmp/p.env --environment=production --yes

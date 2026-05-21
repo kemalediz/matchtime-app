@@ -169,7 +169,7 @@ Build a scenario suite that POSTs to the **deployed** server and asserts DB stat
 - Don't make a conversational state machine's progression depend on an LLM extraction succeeding — capture the current question's answer deterministically; LLM is the enhancer, not the spine.
 - Don't use `a ?? b` to "fall back" when `a` can be a wrong non-null value (empty array, wrong guess). Use an explicit "a is usable?" check.
 - Don't drop a `!alreadySet` guard to enable corrections without a correction-cue gate — coincidental later mentions will clobber good data.
-- Don't trust `vercel ls` glyph-grep in a tight wait-loop (the `●` status doesn't parse reliably; project is `matchday` not `matchtime`); push, wait ~1-2 min, verify by re-running the actual check.
+- Don't trust `vercel ls` glyph-grep in a tight wait-loop (the `●` status doesn't parse reliably); push, wait ~1-2 min, verify by re-running the actual check. (Project rename `matchday`→`matchtime` completed 2026-05-21 so the project name now matches the brand.)
 
 ## Overnight + elimination = the Karahan incident (2026-05-19)
 
