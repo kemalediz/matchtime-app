@@ -2,9 +2,8 @@ import { db } from "@/lib/db";
 import { balanceTeams, type BalancingStrategy } from "@/lib/team-balancer";
 import { PlayerWithRating } from "@/types";
 import { NextResponse } from "next/server";
-import { sendRatingEmails } from "@/lib/email";
-import { format } from "date-fns";
-import { computeEloDeltas } from "@/lib/elo";
+import { completeFinishedMatches } from "@/lib/match-completion";
+import { getOrgFeatures } from "@/lib/org-features";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -34,8 +33,21 @@ export async function GET(request: Request) {
   });
 
   let generated = 0;
+  let skippedNoTeamBalancing = 0;
 
   for (const match of matches) {
+    // Skip orgs that have team-balancing turned off — they pick teams
+    // manually in the group. Without this gate, a fully-attended
+    // MoM-only org (e.g. Amir's Thursday group via squad-from-list)
+    // would silently get TeamAssignment rows that never reach the
+    // group (the bot-scheduler post-compute filter drops match-teams
+    // posts), polluting the DB.
+    const features = await getOrgFeatures(match.activity.orgId);
+    if (!features.teamBalancing) {
+      skippedNoTeamBalancing++;
+      continue;
+    }
+
     const sport = match.activity.sport;
     const perTeam = sport.playersPerTeam;
     if (match.attendances.length < perTeam * 2) continue;
@@ -106,79 +118,13 @@ export async function GET(request: Request) {
     published++;
   }
 
-  // Auto-complete matches whose duration has expired. Include
-  // UPCOMING / TEAMS_GENERATED too — not just TEAMS_PUBLISHED. A
-  // MoM+ratings-only group (teamBalancing off) NEVER generates teams,
-  // so its match would otherwise sit UPCOMING forever and the
-  // post-match flow (MoM poll, rating links — gated on COMPLETED)
-  // would never fire (Kemal 2026-05-19: Amir's group). The
-  // `now >= matchEndTime` guard below still applies, so a match is
-  // only completed once it's genuinely over (kickoff + duration),
-  // regardless of whether teams were ever generated.
-  const publishedMatches = await db.match.findMany({
-    where: {
-      status: { in: ["TEAMS_PUBLISHED", "TEAMS_GENERATED", "UPCOMING"] },
-      date: { lte: now },
-    },
-    include: {
-      activity: true,
-      attendances: {
-        where: { status: "CONFIRMED" },
-        include: { user: { select: { email: true, name: true } } },
-      },
-    },
-  });
+  // Auto-complete matches whose duration has expired. The actual logic
+  // lives in `src/lib/match-completion.ts` and is also called every
+  // 15 min by `/api/cron/complete-matches` (which is the primary
+  // trigger — that gives ~20 min end-to-end from whistle to post-match
+  // bot post). Calling it here too keeps the daily generate-teams as
+  // a backstop; the helper is idempotent.
+  const { completed } = await completeFinishedMatches(now);
 
-  let completed = 0;
-  for (const match of publishedMatches) {
-    const matchEndTime = new Date(match.date.getTime() + match.activity.matchDurationMins * 60 * 1000);
-    if (now < matchEndTime) continue;
-
-    await db.match.update({
-      where: { id: match.id },
-      data: { status: "COMPLETED" },
-    });
-
-    // Auto-complete without a score = no Elo update yet. Admin enters the
-    // score manually via /admin/matches/[id]/teams, which triggers the Elo
-    // pass via updateMatchScore. If admin ALSO auto-fills, we'd apply Elo
-    // here — but for now, unscored matches stay neutral. This is by design:
-    // without knowing who won, there's no outcome signal to learn from.
-    if (match.redScore !== null && match.yellowScore !== null) {
-      try {
-        const teams = await db.teamAssignment.findMany({
-          where: { matchId: match.id },
-          include: { user: { select: { id: true, matchRating: true } } },
-        });
-        const deltas = computeEloDeltas(
-          teams.map((t) => ({ userId: t.userId, team: t.team, matchRating: t.user.matchRating })),
-          match.redScore,
-          match.yellowScore,
-        );
-        await db.$transaction(
-          deltas.map((d) =>
-            db.user.update({ where: { id: d.userId }, data: { matchRating: d.after } }),
-          ),
-        );
-      } catch (err) {
-        console.error("Cron Elo update failed:", err);
-      }
-    }
-
-    const players = match.attendances.map((a) => ({
-      email: a.user.email,
-      name: a.user.name,
-    }));
-
-    sendRatingEmails(
-      match.id,
-      match.activity.name,
-      format(match.date, "EEEE, d MMMM yyyy"),
-      players
-    ).catch((err) => console.error("Failed to send rating emails:", err));
-
-    completed++;
-  }
-
-  return NextResponse.json({ generated, published, completed });
+  return NextResponse.json({ generated, published, completed, skippedNoTeamBalancing });
 }

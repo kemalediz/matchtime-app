@@ -1,42 +1,58 @@
 /**
- * Squad extraction cron (2026-05-20). For orgs running
- * `featureSquadFromList`, this is the single LLM call that derives the
- * squad from the latest pasted numbered list — see
- * `src/lib/squad-from-list.ts` for the full pipeline and design notes.
+ * Squad extraction cron (2026-05-20, cost-guard added 2026-05-23).
  *
- * Cadence: every 30 min via vercel.json. Each run, for each
- * featureSquadFromList org, we:
- *   1. Always run the diff + alias-learning pass over the GroupMessage
- *      rows posted SINCE THE PREVIOUS MATCH ENDED (per
- *      `computeSinceForOrg` in squad-from-list.ts — bootstrap +
- *      MAX_WINDOW_DAYS cap apply when there is no previous match or
- *      the gap is huge). Cheap (~one Sonnet call per org per tick that
- *      has new messages; orgs with an empty window do no LLM work).
- *      Starting the window at the previous match's end time matters
- *      because Amir's group often pastes the next week's list within
- *      minutes of the final whistle — a fixed rolling window would
- *      either chop those off or drag in stale lists from BEFORE the
- *      previous match. Alias warming is the main reason to run
- *      continuously rather than only at kickoff — by the time we
- *      finalise we want as many ground-truth aliases as possible.
- *   2. If there's a non-cancelled match within the next 12h, ALSO
- *      finalise the squad: take the latest list, resolve each name
- *      via the chain (alias → exact → fuzzy → provision-with-no-phone),
- *      write CONFIRMED Attendance rows + BENCH rows for reserves.
- *      Idempotent — re-running over an already-filled match upserts
- *      the same data and skips userIds already CONFIRMED.
+ * For orgs running `featureSquadFromList`, this is the single LLM
+ * call that derives the squad from the latest pasted numbered list —
+ * see `src/lib/squad-from-list.ts` for the full pipeline.
+ *
+ * Cadence: every 30 min via vercel.json. **The Sonnet call only fires
+ * on the tick(s) where it's actually useful.** Specifically:
+ *
+ *   1. There is a non-cancelled match within the next
+ *      FINALISE_WINDOW_HOURS — otherwise no LLM call (just skip).
+ *   2. AND that match does not yet have a full CONFIRMED squad
+ *      (`attendance.count(status:CONFIRMED) < match.maxPlayers`) —
+ *      once the squad is full the extraction has clearly happened
+ *      and re-running would just upsert the same rows.
+ *
+ * That collapses what used to be 48 ticks/day × 7 days = ~336 Sonnet
+ * calls per match week (every tick re-processing the same growing
+ * message set) into 1-2 calls per match — exactly the design intent:
+ * "one LLM call just before the match." Once finalised, every
+ * subsequent tick is a cheap DB query and a `skipped` entry in the
+ * response.
+ *
+ * On the rare extraction tick that fires, it does the full
+ * `runSquadExtraction`: extract lists → diff-attribute → learn
+ * aliases → finalise squad → write CONFIRMED + BENCH rows.
  *
  * Auth: CRON_SECRET (Bearer header), matching the existing crons.
  *
  * Falls open: any per-org failure is logged and the cron continues
- * with the next org. Aliases learned in one tick persist even if the
- * finalise step later errors.
+ * with the next org.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { runSquadExtraction } from "@/lib/squad-from-list";
 
 const FINALISE_WINDOW_HOURS = 12;
+
+type OrgResult = {
+  orgId: string;
+  name: string;
+  lists: number;
+  aliasesLearned: number;
+  usersProvisioned: number;
+  finalisedMatchId?: string;
+  written?: number;
+  unresolved?: string[];
+  windowSince?: string;
+  latestListNames?: string[];
+  latestListReserves?: string[];
+  /** Set when we deliberately skipped the Sonnet call. */
+  skipped?: "no-imminent-match" | "squad-already-finalised";
+  error?: string;
+};
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -52,28 +68,11 @@ export async function GET(request: Request) {
     select: { id: true, name: true },
   });
 
-  const out: Array<{
-    orgId: string;
-    name: string;
-    lists: number;
-    aliasesLearned: number;
-    usersProvisioned: number;
-    finalisedMatchId?: string;
-    written?: number;
-    unresolved?: string[];
-    windowSince?: string;
-    latestListNames?: string[];
-    latestListReserves?: string[];
-    error?: string;
-  }> = [];
+  const out: OrgResult[] = [];
 
   for (const org of orgs) {
     try {
-      // Match within the next FINALISE_WINDOW_HOURS that doesn't yet
-      // have any CONFIRMED attendance. We don't refuse to finalise an
-      // already-filled match (the helper is idempotent) — we skip the
-      // finalise step to save one extraction pass when there's nothing
-      // to do.
+      // ── Gate 1: is there an imminent match worth extracting for? ──
       const match = await db.match.findFirst({
         where: {
           activity: { orgId: org.id },
@@ -81,12 +80,39 @@ export async function GET(request: Request) {
           date: { gte: new Date(now.getTime() - 60 * 60 * 1000), lte: finaliseCutoff },
         },
         orderBy: { date: "asc" },
-        select: { id: true, date: true },
+        select: { id: true, date: true, maxPlayers: true },
       });
+      if (!match) {
+        out.push({
+          orgId: org.id, name: org.name,
+          lists: 0, aliasesLearned: 0, usersProvisioned: 0,
+          skipped: "no-imminent-match",
+        });
+        continue;
+      }
 
+      // ── Gate 2: is the squad already finalised for this match? ──
+      // CONFIRMED rows only come from squad extraction for these orgs
+      // (attendance feature is off, so no admin/IN-OUT writes). If we
+      // already have a full squad, another extraction tick would just
+      // upsert the same data — pure Sonnet spend with no new state.
+      const confirmedCount = await db.attendance.count({
+        where: { matchId: match.id, status: "CONFIRMED" },
+      });
+      if (confirmedCount >= match.maxPlayers) {
+        out.push({
+          orgId: org.id, name: org.name,
+          lists: 0, aliasesLearned: 0, usersProvisioned: 0,
+          finalisedMatchId: match.id,
+          skipped: "squad-already-finalised",
+        });
+        continue;
+      }
+
+      // Both gates passed — do the one real extraction.
       const result = await runSquadExtraction({
         orgId: org.id,
-        finaliseForMatchId: match?.id,
+        finaliseForMatchId: match.id,
       });
       out.push({
         orgId: org.id,

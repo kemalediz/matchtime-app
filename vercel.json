@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/extract-squads",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/complete-matches",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
