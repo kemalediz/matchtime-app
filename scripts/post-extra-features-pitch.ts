@@ -187,8 +187,12 @@ async function main() {
     return;
   }
 
+  // NB: BotJob.kind enum is "dm" | "group" | "group-poll" — NOT
+  // "group-message" (that's the DueInstruction output shape). Using
+  // "group-message" here silently disables the row because no scheduler
+  // branch matches it.
   const job = await db.botJob.create({
-    data: { orgId: org.id, kind: "group-message", text: pitch },
+    data: { orgId: org.id, kind: "group", text: pitch },
   });
   console.log(`✓ Queued BotJob ${job.id} for ${org.name} (${org.whatsappGroupId}).`);
   console.log(`  Bot will post within ~30s on its next /due-posts poll.`);
