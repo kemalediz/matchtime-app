@@ -22,7 +22,9 @@ const chk = (ok: boolean, m: string) => {
 };
 
 async function main() {
-  const tag = Date.now().toString(36);
+  // Digits-only tag so generated phone numbers pass the
+  // user_phone_e164 CHECK constraint.
+  const tag = Date.now().toString();
   const org = await db.organisation.create({
     data: {
       name: `BenchTest ${tag}`,

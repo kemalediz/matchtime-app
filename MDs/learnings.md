@@ -216,3 +216,22 @@ What didn't work: disabling Norton's NE in System Settings (only stopped layer 1
 Lesson: consumer AV products on macOS that advertise a "Smart Firewall" or "Secure VPN" assume they OWN the network stack. They install themselves at four layers (kernel NE, userspace filter, transparent proxy, full-tunnel VPN) and the off-switches don't reliably tear them down. Tailscale (and any tunnel-based VPN) becomes silently broken in unintuitive ways — disco pings succeed because Norton routes them through its tunnel by mistake, but real TCP fails. Recommendation: don't install Norton on a Mac you also want to use developer/infrastructure VPNs on. macOS's own Gatekeeper + XProtect + Notarization gives most users sufficient defence.
 
 Meta-lesson on debug strategy: when `tailscale ping --icmp` "works" but real TCP doesn't, don't trust it as proof the data plane is healthy — `--icmp` bypasses the host OS network stack (tailscaled crafts the packet directly). The real data-plane test is `tcpdump` on the destination's `tailscale0` interface during a TCP probe; if 0 packets show up, the failure is on the source's stack, not in transit.
+
+## Duplicate User rows from phone-format drift — the proper multi-layer fix (2026-05-25)
+
+This had recurred several times despite point fixes (Idris had a dup pair, then Omar had one — manifesting as the bot silently no-op'ing on a real drop because sender-resolution matched the wrong User row). The root cause was that `User.phoneNumber` was a free-form `String?` with only a `@unique` constraint at the application layer — so `"+447943789944"`, `"07943 789944"`, and `"+44 7826 286403"` were all "different" values for the same human. Multiple write paths (admin UI, profile edit, onboarding, magic-link signup) each wrote the user's raw input; whichever one wrote first won and the others quietly created a second row.
+
+**Why patching at point-of-use kept failing:** even with `normalisePhone()` in the codebase, every new write site was one more place to forget the call. The set of write paths grows; the set of devs/agents remembering grows in the opposite direction.
+
+**Defence-in-depth fix that actually holds (4 layers):**
+
+1. **Tightened `normalisePhone`** so its output is *total* — always strict E.164 (`+CC<7-15 digits>`) or `null`. No more "passthrough whatever the user typed minus whitespace" — that was the original drift surface. Added: "447XXXXXXXXX" (UK WhatsApp JID format) → "+447XXXXXXXXX"; any input without a derivable `+CC` → null.
+2. **Prisma extension `auto-normalise-phone` in `src/lib/db.ts`** — intercepts every `user.create/update/upsert/createMany/updateMany` and runs the data's `phoneNumber` through `normalisePhone`. Single point of enforcement; any TS/JS caller is covered automatically, no per-callsite discipline required.
+3. **DB-level CHECK constraint `user_phone_e164`** — `phoneNumber IS NULL OR phoneNumber ~ '^\+[1-9]\d{6,14}$'`. Even raw SQL via `$executeRaw` or psql can't bypass this. Installed by `scripts/normalise-phones-migration.ts --install-constraint` after data is clean.
+4. **One-shot migration** (`scripts/normalise-phones-migration.ts`) cleaned existing prod data: 2 dup pairs merged via `mergePlayersCore` (Idris × 2, Omar × 2), 4 junk phones nulled, 1 post-merge sweep rewrote a keeper's stored phone to canonical. Idempotent; safe to re-run; default mode is dry-run.
+
+**Bonus refactor done at the same time:** the merge logic that lived inline in the `mergePlayers` server-action got extracted into `src/lib/merge-players-core.ts` so the migration script can call it without going through the auth wrapper. Both code paths now share one implementation.
+
+**General lesson:** when a class of bug recurs despite "fixes," the fix is almost always at the wrong layer. Point-of-use normalisation is a recipe for drift; canonical enforcement at the storage layer (extension + CHECK) is the only thing that holds. If you find yourself patching the same bug shape twice, stop patching and move the constraint down a layer.
+
+**Test/harness gotcha hit during this:** several harnesses generated synthetic phone numbers with `Date.now().toString(36)`, which inserts letters into the digit string (e.g. `"+447776mnmv0"`). These started failing the CHECK constraint. Fixed by switching to `toString()` (digits only). Anything that synthesises a phone in test/dev code must stay E.164-clean — the constraint won't bend.

@@ -100,7 +100,10 @@ async function wipe(orgId: string, gid: string) {
 }
 
 async function main() {
-  const tag = Date.now().toString(36);
+  // Digits-only tag so generated phone numbers pass the
+  // user_phone_e164 CHECK constraint (base-36 used to inject letters,
+  // e.g. "+447776mnmv0", which now fails the constraint).
+  const tag = Date.now().toString();
   const gid = `amir-rh-${tag}@g.us`;
   let orgId: string | null = null;
 
