@@ -60,6 +60,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // ?force=true bypasses both the imminent-match gate AND the
+  // already-finalised gate. Use when manually backfilling a brand-new
+  // org with historical messages, or re-extracting after admin edits.
+  // Still requires the CRON_SECRET bearer.
+  const url = new URL(request.url);
+  const FORCE = url.searchParams.get("force") === "true";
+
   const now = new Date();
   const finaliseCutoff = new Date(now.getTime() + FINALISE_WINDOW_HOURS * 60 * 60 * 1000);
 
@@ -73,11 +80,15 @@ export async function GET(request: Request) {
   for (const org of orgs) {
     try {
       // ── Gate 1: is there an imminent match worth extracting for? ──
+      // ?force=true widens the search to ANY future match for this org
+      // (no 12h cutoff) so admin backfills work.
       const match = await db.match.findFirst({
         where: {
           activity: { orgId: org.id },
           status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-          date: { gte: new Date(now.getTime() - 60 * 60 * 1000), lte: finaliseCutoff },
+          date: FORCE
+            ? { gte: new Date(now.getTime() - 60 * 60 * 1000) }
+            : { gte: new Date(now.getTime() - 60 * 60 * 1000), lte: finaliseCutoff },
         },
         orderBy: { date: "asc" },
         select: { id: true, date: true, maxPlayers: true },
@@ -96,10 +107,11 @@ export async function GET(request: Request) {
       // (attendance feature is off, so no admin/IN-OUT writes). If we
       // already have a full squad, another extraction tick would just
       // upsert the same data — pure Sonnet spend with no new state.
+      // ?force=true bypasses (re-extracts even when already filled).
       const confirmedCount = await db.attendance.count({
         where: { matchId: match.id, status: "CONFIRMED" },
       });
-      if (confirmedCount >= match.maxPlayers) {
+      if (!FORCE && confirmedCount >= match.maxPlayers) {
         out.push({
           orgId: org.id, name: org.name,
           lists: 0, aliasesLearned: 0, usersProvisioned: 0,
