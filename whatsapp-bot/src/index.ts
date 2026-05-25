@@ -365,14 +365,27 @@ async function main() {
       // subsequent onboarding answers flow through the normal analyze
       // path. Everything else from unmonitored groups is still
       // dropped (no extra server load).
+      //
+      // 2026-05-25: also treat an @-mention of the bot's own JID as a
+      // match. Reason: when a real user types `@MatchTime setup`,
+      // WhatsApp replaces the visible "@MatchTime" with the bot's
+      // PHONE NUMBER in the raw body (e.g. "@447... setup"), so a
+      // literal-text-only regex misses every real @-mention. Without
+      // this, every Amir-group setup attempt got silently dropped.
       if (!isMonitoredGroup(msg.from!)) {
         const t = effectiveBody.toLowerCase();
+        const selfId = client.info?.wid?._serialized; // e.g. "447...@c.us"
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mentionedIds: string[] = (msg as any).mentionedIds ?? [];
+        const mentionsBot = !!selfId && mentionedIds.includes(selfId);
         const looksLikeSetup =
-          /match\s*time/.test(t) &&
+          (mentionsBot || /match\s*time/.test(t)) &&
           /\b(set\s*up|setup|get\s*started|onboard)\b/.test(t);
         if (!looksLikeSetup) return;
         addMonitoredGroup(msg.from!);
-        console.log(`[onboarding] setup trigger in ${msg.from} — now monitoring`);
+        console.log(
+          `[onboarding] setup trigger in ${msg.from} — now monitoring (mentionsBot=${mentionsBot})`,
+        );
       }
 
       // WhatsApp pushname — the sender's self-set profile name. Used
