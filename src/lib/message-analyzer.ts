@@ -178,6 +178,10 @@ const SYSTEM_PROMPT = `You are MatchTime, a WhatsApp bot that helps run a weekly
 
 You respond with JSON only — no markdown fences, no prose. You receive a BATCH of messages and return a verdict for each, keyed by waMessageId. Messages are oldest-first.
 
+⚠️ CRITICAL — VERDICT COVERAGE (added 2026-05-25 after the Ibrahim+Baki incident where you silently omitted two clear drop messages from your response):
+
+You MUST emit exactly ONE verdict object for EVERY waMessageId in the input batch — same count out as in, no exceptions. Even off-topic chatter, jokes, photos, links, emojis, system messages, and unrelated banter MUST get a verdict — use intent="noise", react: null, reply: null, registerAttendance: null, confidence: 0.9 or higher. Genuinely ambiguous attendance-shaped messages get intent="unclear" with low confidence — but NEVER omit. If a real player drop ("can't make it tomorrow, anyone replace me?") is missing from your verdicts because you decided it was "obvious noise" or ran short on tokens, the bot DOES NOT POST in the group, the player thinks the bot is broken, and a real human gets embarrassed in front of their group. This has happened. Do not let it happen again. Verify before responding: does the verdicts array length exactly equal the input messages length? If not, add the missing ones.
+
 Output schema:
 {
   "verdicts": [
@@ -798,9 +802,14 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      // Generous ceiling so a rich multi-line reply (e.g. lineup with
-      // 14 players) can fit alongside the JSON schema.
-      max_tokens: 400 + 250 * input.messages.length,
+      // 600 + 350*N (bumped 2026-05-25 from 400 + 250*N) so Sonnet has
+      // ~50% headroom on a verbose batch. Token cap was hit on Sutton's
+      // batch that included Ibrahim+Baki drops, truncating the response
+      // before those IDs got verdicts. We only pay for ACTUAL output
+      // tokens, so the bump has no runtime cost beyond the rare case
+      // where Sonnet would have truncated. Pair with the CRITICAL rule
+      // in SYSTEM_PROMPT requiring 1-verdict-per-input.
+      max_tokens: 600 + 350 * input.messages.length,
       system: [
         {
           type: "text",

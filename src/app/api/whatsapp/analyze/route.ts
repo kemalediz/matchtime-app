@@ -255,6 +255,63 @@ export async function POST(request: Request) {
     ? await analyzeBatch({ groupId: body.groupId, history, messages: batchInputs })
     : [];
 
+  // ── Partial-response safety net (added 2026-05-25, Ibrahim+Baki incident) ──
+  // If Claude omits verdicts for some IDs (token-cap, JSON malformation,
+  // or just dropping IDs), `analyzeBatch` substitutes an offline placeholder
+  // with reasoning="Claude emitted no verdict for this id". The bot silently
+  // no-ops those messages. For obvious noise that's fine; for a player drop
+  // it's a disaster (the LLM's verdict + reply never happen, the player
+  // thinks the bot is broken). We can't tell which from the placeholder
+  // alone, so we DM the org's admins with the dropped message bodies and
+  // let a human decide. Idempotent — one DM per admin per 1h window.
+  {
+    const dropped = verdicts
+      .map((v, i) => ({ v, msg: fresh[i] }))
+      .filter(({ v }) => v.reasoning === "Claude emitted no verdict for this id");
+    if (dropped.length > 0) {
+      try {
+        const admins = await db.membership.findMany({
+          where: { orgId: org.id, role: { in: ["ADMIN", "OWNER"] }, leftAt: null },
+          include: { user: { select: { id: true, phoneNumber: true, name: true } } },
+        });
+        const since = new Date(Date.now() - 60 * 60 * 1000); // 1h dedupe window
+        const summary = dropped
+          .map(
+            ({ msg }) =>
+              `• "${(msg.body || "").slice(0, 80)}${(msg.body || "").length > 80 ? "…" : ""}" by ${msg.authorName ?? "?"}`,
+          )
+          .join("\n");
+        const dmText =
+          `⚠️ MatchTime: LLM dropped ${dropped.length} message${dropped.length === 1 ? "" : "s"} from the latest analyzer batch for *${org.name}*:\n\n` +
+          summary +
+          `\n\nThe bot didn't respond to ${dropped.length === 1 ? "it" : "them"} automatically. Check the group and act manually if any were attendance changes.`;
+        for (const m of admins) {
+          if (!m.user.phoneNumber) continue;
+          const phone = m.user.phoneNumber.replace(/^\+/, "");
+          const recentlySent = await db.botJob.findFirst({
+            where: {
+              orgId: org.id,
+              kind: "dm",
+              phone,
+              text: { contains: "LLM dropped" },
+              createdAt: { gte: since },
+            },
+            select: { id: true },
+          });
+          if (recentlySent) continue; // already DM'd this admin in the last hour
+          await db.botJob.create({
+            data: { orgId: org.id, kind: "dm", phone, text: dmText },
+          });
+          console.warn(
+            `[analyze] partial-response — DM'd admin ${m.user.name ?? phone} re ${dropped.length} dropped verdict(s) in org ${org.id}`,
+          );
+        }
+      } catch (err) {
+        console.error("[analyze] failed to dispatch partial-response admin DM:", err);
+      }
+    }
+  }
+
   // 3. Execute verdicts sequentially (attendance writes are cheap and
   //    order matters for state-collapse correctness).
   // Dedupe `generate_teams_request` within a batch — only the LAST one
