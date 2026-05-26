@@ -802,14 +802,14 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      // max_tokens is required by the Anthropic API but it's an
-      // UPPER BOUND, not a budget — billing is per actual output
-      // token. Tight values just risk truncation (Sutton 2026-05-25,
-      // 2026-05-26: a batch containing a generate_teams_request
-      // burnt the budget on its long team-breakdown reply, the
-      // remaining 4 verdicts got silently dropped). Setting to
-      // Sonnet 4.5's max so truncation is no longer a failure mode.
-      max_tokens: 64000,
+      // max_tokens: 16384 — much higher than any realistic batch needs
+      // (a verbose 10-msg batch is ~3-5K tokens output), so truncation
+      // is no longer a failure mode. NOT 64000 (Sonnet 4.5's actual max)
+      // because the Anthropic SDK refuses non-streaming calls whose
+      // implied runtime > 10 min, which 64000 trips. Lesson learned the
+      // hard way 2026-05-26: setting max_tokens to the model max
+      // tanked the whole analyzer for ~30 min until detected.
+      max_tokens: 16384,
       system: [
         {
           type: "text",

@@ -265,9 +265,26 @@ export async function POST(request: Request) {
   // alone, so we DM the org's admins with the dropped message bodies and
   // let a human decide. Idempotent — one DM per admin per 1h window.
   {
+    // Detect ALL offline-fallback verdicts, not just the
+    // "Claude emitted no verdict for this id" placeholder. The
+    // analyzeBatch function falls back via `offlineVerdict` for several
+    // reasons (model error, SDK rejection, JSON parse failure, missing
+    // API key) — all of those should reach the admin so they can act
+    // manually. We were narrowly checking ONE reasoning string and
+    // missed the "Streaming is required" SDK rejection 2026-05-26,
+    // wiping the analyzer for ~30 min before discovery.
+    const OFFLINE_REASON_PREFIXES = [
+      "Claude emitted no verdict for this id",
+      "Claude API error:",
+      "No text in Claude response",
+      "ANTHROPIC_API_KEY not set",
+      "Unknown group",
+    ];
     const dropped = verdicts
       .map((v, i) => ({ v, msg: fresh[i] }))
-      .filter(({ v }) => v.reasoning === "Claude emitted no verdict for this id");
+      .filter(({ v }) =>
+        OFFLINE_REASON_PREFIXES.some((p) => (v.reasoning ?? "").startsWith(p)),
+      );
     if (dropped.length > 0) {
       try {
         const admins = await db.membership.findMany({
