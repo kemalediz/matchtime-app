@@ -418,6 +418,45 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── OUT intent safety net ────────────────────────────────────────
+    //    Mirror of the IN safety net above, for the Mojib/Habib 2026-05-26
+    //    failure: LLM classified "replace me and Habib" as
+    //    intent:"replacement_request" with reasoning saying "both are
+    //    definite drops" — but only emitted registerFor for Habib and
+    //    NO registerAttendance for the sender (Mojib). Result: Habib
+    //    dropped, Mojib silently stayed in the squad. Same shape as the
+    //    Najib IN-skip from 2026-05-08, opposite direction. When intent is
+    //    replacement_request and registerAttendance isn't "OUT" (null or
+    //    anything else), force OUT for the sender — UNLESS reasoning
+    //    explicitly says they're staying in / just running late (the
+    //    "type b" cover-request flavour). Server-side, deterministic,
+    //    only on the sender's latest message in the batch. Safe because
+    //    cancelAttendance is idempotent.
+    if (
+      verdict.intent === "replacement_request" &&
+      verdict.registerAttendance !== "OUT" &&
+      sender.userId
+    ) {
+      const latestIdx = latestIdxByAuthor.get(sender.userId);
+      if (latestIdx === i) {
+        const r = (verdict.reasoning ?? "").toLowerCase();
+        // "still in", "still playing", "still coming", "still attending",
+        // "may still", "might still", "running late", "just late",
+        // "will be late" → sender is NOT dropping, just asking for cover
+        // in case. Don't force OUT.
+        const stillIn =
+          /\b(still|may still|might still)\s+(in|play|attend|com)/.test(r) ||
+          /\b(running late|just late|will be late|be late)\b/.test(r);
+        if (!stillIn) {
+          console.warn(
+            `[analyze] LLM emitted intent:"replacement_request" with registerAttendance:${JSON.stringify(verdict.registerAttendance)} for ${sender.name} (${msg.waMessageId}). ` +
+              `Forcing registerAttendance to "OUT" — reasoning was: ${verdict.reasoning}`,
+          );
+          verdict = { ...verdict, registerAttendance: "OUT" };
+        }
+      }
+    }
+
     if (
       verdict.intent === "generate_teams_request" &&
       i !== lastTeamsRequestIdx
