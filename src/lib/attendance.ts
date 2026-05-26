@@ -144,6 +144,35 @@ export async function registerAttendance(
     update: { status, position: positionToWrite, respondedAt: new Date() },
   });
 
+  // ── Auto-resolve any open BenchSlotOffer for this user (2026-05-26) ──
+  // If we just re-CONFIRMED / re-BENCHED a user who was previously
+  // DROPPED, any open BenchSlotOffer where they were `replacingUserId`
+  // is now stale — the slot they vacated isn't vacant anymore, so
+  // asking the bench to step up for it makes no sense. The scheduler
+  // keeps emitting bench-prompts for unresolved offers forever; if we
+  // don't close them here the bot looks confused (Sutton 2026-05-26:
+  // Baki was re-CONFIRMED in admin after his earlier drop, but the
+  // open offer for his slot kept firing bench prompts on top of the
+  // squad-locked message).
+  if (
+    existing?.status === "DROPPED" &&
+    (status === "CONFIRMED" || status === "BENCH")
+  ) {
+    try {
+      const closed = await db.benchSlotOffer.updateMany({
+        where: { matchId, replacingUserId: userId, resolvedAt: null },
+        data: { resolvedAt: new Date() },
+      });
+      if (closed.count > 0) {
+        console.log(
+          `[attendance] auto-resolved ${closed.count} stale BenchSlotOffer(s) for user ${userId} re-${status} on match ${matchId}`,
+        );
+      }
+    } catch (err) {
+      console.error("[attendance] auto-resolve BenchSlotOffer failed:", err);
+    }
+  }
+
   // Friendly "slot" the bot uses for its reaction emoji. If the player
   // made the squad, their slot is their 1-indexed place in the squad
   // (equals the new confirmed count). If they landed on the bench, it's
