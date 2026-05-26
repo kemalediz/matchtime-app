@@ -1290,9 +1290,22 @@ export function enforceCanonicalRoster(
  */
 export function rewriteOverconfidentPromotion(
   text: string,
-  args: { benchName: string; confirmedCount: number; maxPlayers: number },
+  args: {
+    benchName: string;
+    confirmedCount: number;
+    maxPlayers: number;
+    /** Current bench attendance count. When 0 there's literally no one
+     *  to step up, so don't prepend the "Asking the bench" line — it
+     *  reads as delusional ("tagged here with a 👍/👎" when nobody was).
+     *  We still strip false "X moves up" phrases the LLM may have
+     *  hallucinated. Sutton 2026-05-26: 4 dropped at once on an empty
+     *  bench, the open BenchSlotOffers piled "Asking the bench — 10/14"
+     *  onto every subsequent unrelated reply for ~11 min until the
+     *  format flip cleared them. */
+    benchCount: number;
+  },
 ): string {
-  const { benchName, confirmedCount, maxPlayers } = args;
+  const { benchName, confirmedCount, maxPlayers, benchCount } = args;
 
   // Strip phrases that imply the swap is done. Match per-line so we
   // don't gobble unrelated text on the same line.
@@ -1315,6 +1328,12 @@ export function rewriteOverconfidentPromotion(
     .replace(/ ?\.[ ]*\./g, ".")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/^[ \t]+|[ \t]+$/gm, "");
+
+  // Empty bench → only strip the false claims; don't prepend the
+  // "Asking the bench" line, because there's no bench to ask. The
+  // LLM's reply will naturally state what's needed (chase the group);
+  // we don't override it with a misleading status line.
+  if (benchCount === 0) return stripped.trim();
 
   // Prepend an honest status line above the roster block (or at the
   // top if no roster block detected).

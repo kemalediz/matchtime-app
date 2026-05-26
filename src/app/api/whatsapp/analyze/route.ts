@@ -517,10 +517,14 @@ export async function POST(request: Request) {
           orderBy: { createdAt: "desc" },
         });
         if (openOffer) {
+          const benchCount = await db.attendance.count({
+            where: { matchId: nextMatchForReply.id, status: "BENCH" },
+          });
           cleanReply = rewriteOverconfidentPromotion(cleanReply, {
             benchName: "the bench",
             confirmedCount: freshAttendances.length,
             maxPlayers: nextMatchForReply.maxPlayers,
+            benchCount,
           });
         }
       }
