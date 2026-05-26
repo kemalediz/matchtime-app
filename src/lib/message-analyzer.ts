@@ -802,14 +802,14 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      // 600 + 350*N (bumped 2026-05-25 from 400 + 250*N) so Sonnet has
-      // ~50% headroom on a verbose batch. Token cap was hit on Sutton's
-      // batch that included Ibrahim+Baki drops, truncating the response
-      // before those IDs got verdicts. We only pay for ACTUAL output
-      // tokens, so the bump has no runtime cost beyond the rare case
-      // where Sonnet would have truncated. Pair with the CRITICAL rule
-      // in SYSTEM_PROMPT requiring 1-verdict-per-input.
-      max_tokens: 600 + 350 * input.messages.length,
+      // max_tokens is required by the Anthropic API but it's an
+      // UPPER BOUND, not a budget — billing is per actual output
+      // token. Tight values just risk truncation (Sutton 2026-05-25,
+      // 2026-05-26: a batch containing a generate_teams_request
+      // burnt the budget on its long team-breakdown reply, the
+      // remaining 4 verdicts got silently dropped). Setting to
+      // Sonnet 4.5's max so truncation is no longer a failure mode.
+      max_tokens: 64000,
       system: [
         {
           type: "text",
@@ -943,7 +943,7 @@ export async function composeChaseText(input: {
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 500,
+      max_tokens: 64000,
       system: [
         {
           type: "text",
