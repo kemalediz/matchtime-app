@@ -847,7 +847,79 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     if (!textBlock) {
       return input.messages.map((m) => offlineVerdict(m.waMessageId, "No text in Claude response"));
     }
-    return normaliseBatch(textBlock.text, input.messages);
+    let verdicts = normaliseBatch(textBlock.text, input.messages);
+
+    // ── Auto re-prompt for missing IDs (added 2026-05-26) ──
+    // Even with max_tokens at the model max, Sonnet occasionally
+    // drops verdicts (JSON malformation, model just skips one,
+    // etc.). For those rare cases, do ONE focused retry with just
+    // the missing IDs and a minimal prompt (no Recent History,
+    // smaller batch → much higher chance of full coverage). If
+    // re-prompt still doesn't recover a verdict, the placeholder
+    // stays and the analyze route's admin-DM fires.
+    const missingIds = verdicts
+      .filter((v) => v.reasoning === "Claude emitted no verdict for this id")
+      .map((v) => v.waMessageId);
+    if (missingIds.length > 0) {
+      const missingMsgs = input.messages.filter((m) => missingIds.includes(m.waMessageId));
+      const retryMessagesBlock = missingMsgs
+        .map((m) => [
+          `- waMessageId: ${m.waMessageId}`,
+          `  from: ${m.authorName ?? m.authorPhone ?? "?"}`,
+          `  timestamp: ${m.timestamp.toISOString()}`,
+          `  body: ${JSON.stringify(m.body.slice(0, 800))}`,
+        ].join("\n"))
+        .join("\n");
+      const retryFresh = [
+        `## Retry — your previous response omitted verdicts for these waMessageIds. Emit EXACTLY one verdict per id, in the same JSON shape as before.`,
+        ``,
+        `## Current time`,
+        `  ${nowLondon} (Europe/London).`,
+        ``,
+        `## Messages to classify`,
+        retryMessagesBlock,
+      ].join("\n");
+      try {
+        const retryResp = await anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 64000,
+          system: [
+            {
+              type: "text",
+              text: SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral", ttl: "1h" },
+            },
+          ],
+          messages: [{ role: "user", content: retryFresh }],
+        });
+        const retryText = retryResp.content.find(
+          (b): b is Anthropic.TextBlock => b.type === "text",
+        );
+        if (retryText) {
+          const retryVerdicts = normaliseBatch(retryText.text, missingMsgs);
+          // Merge: any retry verdict whose reasoning is NOT the
+          // placeholder replaces the original placeholder.
+          const retryById = new Map(retryVerdicts.map((v) => [v.waMessageId, v]));
+          verdicts = verdicts.map((v) => {
+            if (v.reasoning !== "Claude emitted no verdict for this id") return v;
+            const r = retryById.get(v.waMessageId);
+            return r && r.reasoning !== "Claude emitted no verdict for this id" ? r : v;
+          });
+          const stillMissing = verdicts.filter(
+            (v) => v.reasoning === "Claude emitted no verdict for this id",
+          ).length;
+          console.log(
+            `[analyzer] re-prompt recovered ${missingIds.length - stillMissing}/${missingIds.length} dropped verdict(s)` +
+              (stillMissing > 0 ? ` (${stillMissing} still missing — admin DM will fire)` : ""),
+          );
+        }
+      } catch (err) {
+        console.error("[analyzer] re-prompt failed:", err);
+        // Fall through — original placeholders remain, admin DM fires.
+      }
+    }
+
+    return verdicts;
   } catch (err) {
     console.error("[analyzer] Claude call failed:", err);
     const reason = `Claude API error: ${err instanceof Error ? err.message : String(err)}`;
