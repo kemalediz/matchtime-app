@@ -285,12 +285,71 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
   if (!membership) throw new Error("Player is not a member of this organisation");
 
   const normalised = normalisePhone(phone);
+  if (!normalised) throw new Error("Phone number is not a valid international format");
 
   try {
     await db.user.update({ where: { id: userId }, data: { phoneNumber: normalised } });
   } catch (err: unknown) {
     if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002") {
-      throw new Error(`Phone number ${normalised} is already assigned to another player`);
+      // P2002 = unique-constraint failure on User.phoneNumber. Two
+      // scenarios collide here:
+      //   (a) The phone genuinely belongs to a DIFFERENT real player
+      //       already in the system — admin made a typo. Surface a
+      //       friendly error so they can correct it.
+      //   (b) The phone belongs to a wweb.js sync-orphan: a placeholder
+      //       User that the bot's sync-participants step auto-created
+      //       when it found the contact in the WhatsApp group with no
+      //       saved display name. The orphan has phone but no name and
+      //       a synthetic email like `wa-sync+player-<id>@matchtime.local`.
+      //       In that case the admin's intent is clear — they're
+      //       claiming the phone for the player they're editing — so we
+      //       merge the orphan in instead of fighting them. The orphan's
+      //       attendance/ratings/etc. (if any) transfer to the target.
+      //       Documented in MDs/learnings.md after the recurring
+      //       duplicate-User issue 2026-05-25/26.
+      const colliding = await db.user.findUnique({
+        where: { phoneNumber: normalised },
+        select: { id: true, name: true, email: true },
+      });
+      const isSyncOrphan =
+        !!colliding &&
+        colliding.id !== userId &&
+        (colliding.name === null || colliding.name === "") &&
+        typeof colliding.email === "string" &&
+        colliding.email.startsWith("wa-sync+");
+      if (isSyncOrphan) {
+        // Merge the orphan INTO the target user. We need shared-org IDs
+        // for alias scope — fall back to the action's orgId so at
+        // minimum the orphan's dropped name (if it ever got one) ends
+        // up aliased here.
+        const orphanMemberships = await db.membership.findMany({
+          where: { userId: colliding!.id },
+          select: { orgId: true },
+        });
+        const targetMemberships = await db.membership.findMany({
+          where: { userId },
+          select: { orgId: true },
+        });
+        const targetOrgSet = new Set(targetMemberships.map((m) => m.orgId));
+        const aliasOrgs = orphanMemberships
+          .map((m) => m.orgId)
+          .filter((id) => targetOrgSet.has(id));
+        if (aliasOrgs.length === 0) aliasOrgs.push(orgId);
+        await db.$transaction(
+          async (tx) => {
+            await mergePlayersCore(tx, userId, colliding!.id, { saveAliasInOrgIds: aliasOrgs });
+          },
+          { timeout: 60_000 },
+        );
+        // After the merge the phone is now on the target user.
+        revalidatePath("/admin/players");
+        revalidatePath("/admin/players/phones");
+        return { phoneNumber: normalised, mergedSyncOrphan: colliding!.id };
+      }
+      throw new Error(
+        `Phone number ${normalised} is already assigned to another player` +
+          (colliding?.name ? ` (${colliding.name})` : ""),
+      );
     }
     throw err;
   }
