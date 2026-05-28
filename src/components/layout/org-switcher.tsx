@@ -57,6 +57,14 @@ export function OrgSwitcher() {
     setSwitching(orgId);
     try {
       await switchOrg(orgId);
+      // router.refresh() re-runs RSCs with the new cookie, but THIS
+      // client component's state persists across the refresh — the
+      // mount-time useEffect that originally populated `current`
+      // doesn't fire again. Without this line the brand block keeps
+      // showing the previous org's name even though the rest of the
+      // page already reflects the switch (Kemal 2026-05-28).
+      const next = memberships?.find((m) => m.org.id === orgId);
+      if (next) setCurrent(next);
       router.refresh();
       setOpen(false);
     } finally {
