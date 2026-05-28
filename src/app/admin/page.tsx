@@ -40,7 +40,13 @@ export default async function AdminDashboardPage() {
       include: {
         activity: { select: { name: true } },
         attendances: {
-          where: { status: { in: ["CONFIRMED", "BENCH"] } },
+          // CONFIRMED only — the rating-DM dispatch in bot-scheduler.ts
+          // only sends to CONFIRMED players (BENCH never plays, never
+          // gets the DM, can't reach the rating UI). Including BENCH
+          // here left them permanently in "pending" with no way to
+          // resolve. Sutton Lads 2026-05-28 showed 0/15 instead of 0/14
+          // because Eman was on the bench.
+          where: { status: "CONFIRMED" },
           include: { user: { select: { id: true, name: true } } },
         },
         ratings: { select: { raterId: true } },
