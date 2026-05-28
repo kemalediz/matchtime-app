@@ -627,7 +627,15 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
     if (seg.startsWith("mom-")) return "momVoting";
     if (seg.startsWith("rate-")) return "playerRating";
     if (seg.startsWith("payment-")) return "paymentTracking";
-    // ask-score + everything else: infrastructure / meta → allow.
+    // ask-score is the "what was the final score?" prompt. Its sole
+    // consumer is ELO recomputation, which only runs when teams were
+    // generated — i.e. when teamBalancing is on. For rating-only orgs
+    // (Sutton Lads 2026-05-28) the prompt's "I'll use it to update
+    // everyone's rating for next week" is literally false — peer
+    // ratings come from teammates, not from the score. Gate the
+    // prompt out unless team balancing is enabled.
+    if (seg.startsWith("ask-score")) return "teamBalancing";
+    // Everything else: infrastructure / meta → allow.
     return null;
   };
   const gated = out.filter((instr) => {
