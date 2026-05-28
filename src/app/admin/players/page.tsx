@@ -105,6 +105,21 @@ export default function PlayersPage() {
     if (trimmed === (original ?? "")) return; // no-op
     try {
       const res = await updatePlayerPhone(userId, orgId, trimmed);
+      // If the action auto-merged an orphan (wa-sync OR provisional),
+      // the player list shape has changed under us — one row removed,
+      // another updated. Just reload rather than trying to patch.
+      const merged =
+        ("mergedSyncOrphan" in res && res.mergedSyncOrphan) ||
+        ("mergedProvisional" in res && res.mergedProvisional);
+      if (merged) {
+        await loadPlayers(includeFormer);
+        if ("redirectToUserId" in res && res.redirectToUserId) {
+          toast.success("Merged into the existing player record with that phone");
+        } else {
+          toast.success("Phone updated — merged a duplicate placeholder");
+        }
+        return;
+      }
       setPlayers((prev) =>
         prev.map((p) => (p.id === userId ? { ...p, phoneNumber: res.phoneNumber } : p)),
       );

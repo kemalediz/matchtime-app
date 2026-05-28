@@ -74,7 +74,21 @@ export default function BulkPhonesPage() {
     }
     setStates((s) => ({ ...s, [userId]: "saving" }));
     try {
-      const { phoneNumber } = await updatePlayerPhone(userId, orgId, raw);
+      const res = await updatePlayerPhone(userId, orgId, raw);
+      const { phoneNumber } = res;
+      // Auto-merge (wa-sync or provisional orphan) shifts the player
+      // list shape — one row removed, possibly a redirect. Reload.
+      const merged =
+        ("mergedSyncOrphan" in res && res.mergedSyncOrphan) ||
+        ("mergedProvisional" in res && res.mergedProvisional);
+      if (merged) {
+        await load();
+        setStates((s) => ({ ...s, [userId]: "saved" }));
+        setTimeout(() => {
+          setStates((s) => (s[userId] === "saved" ? { ...s, [userId]: "idle" } : s));
+        }, 2000);
+        return;
+      }
       setStates((s) => ({ ...s, [userId]: "saved" }));
       setPlayers((prev) =>
         prev.map((p) => (p.id === userId ? { ...p, phoneNumber } : p)),

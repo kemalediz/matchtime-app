@@ -317,6 +317,22 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
         (colliding.name === null || colliding.name === "") &&
         typeof colliding.email === "string" &&
         colliding.email.startsWith("wa-sync+");
+      // provisional+ orphan: same admin-intent class as wa-sync but with
+      // a NAMED placeholder. Created when the LLM resolved a player name
+      // without a phone match (e.g. "Faris" mentioned in chat → a
+      // provisional User). When the admin later types Faris's phone into
+      // ANOTHER provisional Faris record (different org's group), P2002
+      // fires. Sutton Lads Faris 2026-05-28 incident: target was an
+      // empty placeholder; colliding was the older Sutton FC Faris with
+      // 11 ratings + 1 team assignment + 1 attendance. Naively dropping
+      // the colliding (as we do for wa-sync) would have destroyed real
+      // history. So direction here is chosen by history weight: keep
+      // whichever side has more attendance/ratings/MoM/TA rows.
+      const isProvisionalOrphan =
+        !!colliding &&
+        colliding.id !== userId &&
+        typeof colliding.email === "string" &&
+        colliding.email.startsWith("provisional+");
       if (isSyncOrphan) {
         // Merge the orphan INTO the target user. We need shared-org IDs
         // for alias scope — fall back to the action's orgId so at
@@ -345,6 +361,52 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
         revalidatePath("/admin/players");
         revalidatePath("/admin/players/phones");
         return { phoneNumber: normalised, mergedSyncOrphan: colliding!.id };
+      }
+      if (isProvisionalOrphan) {
+        // Weigh by history rows on each side. The one with MORE history
+        // is the established record; the other is a placeholder.
+        const weigh = async (uid: string) => {
+          const [att, rGiven, rRecv, mom, ta] = await Promise.all([
+            db.attendance.count({ where: { userId: uid } }),
+            db.rating.count({ where: { raterId: uid } }),
+            db.rating.count({ where: { playerId: uid } }),
+            db.moMVote.count({ where: { voterId: uid } }),
+            db.teamAssignment.count({ where: { userId: uid } }),
+          ]);
+          return att + rGiven + rRecv + mom + ta;
+        };
+        const [targetWeight, collidingWeight] = await Promise.all([
+          weigh(userId),
+          weigh(colliding!.id),
+        ]);
+        const keepCollidingSide = collidingWeight > targetWeight;
+        const keepId = keepCollidingSide ? colliding!.id : userId;
+        const dropId = keepCollidingSide ? userId : colliding!.id;
+        // Alias scope: shared orgs between both sides, fall back to the
+        // edit context.
+        const [keepMems, dropMems] = await Promise.all([
+          db.membership.findMany({ where: { userId: keepId }, select: { orgId: true } }),
+          db.membership.findMany({ where: { userId: dropId }, select: { orgId: true } }),
+        ]);
+        const keepOrgSet = new Set(keepMems.map((m) => m.orgId));
+        const aliasOrgs = dropMems.map((m) => m.orgId).filter((id) => keepOrgSet.has(id));
+        if (aliasOrgs.length === 0) aliasOrgs.push(orgId);
+        await db.$transaction(
+          async (tx) => {
+            await mergePlayersCore(tx, keepId, dropId, { saveAliasInOrgIds: aliasOrgs });
+          },
+          { timeout: 60_000 },
+        );
+        revalidatePath("/admin/players");
+        revalidatePath("/admin/players/phones");
+        return {
+          phoneNumber: normalised,
+          mergedProvisional: dropId,
+          // When the admin's record was the one dropped, the UI needs to
+          // navigate to the kept record — the page they were on is now
+          // pointing at a merged-out User.
+          redirectToUserId: keepCollidingSide ? keepId : undefined,
+        };
       }
       throw new Error(
         `Phone number ${normalised} is already assigned to another player` +
