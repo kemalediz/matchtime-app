@@ -1232,7 +1232,7 @@ async function computeForMatch(
         matchId,
         text:
           `🏁 *${activity.name}* — hope it was a good one. What was the final score? ` +
-          `I'll use it to update everyone's rating for next week.`,
+          `I'll use it to keep next week's teams balanced.`,
       });
     }
   }
