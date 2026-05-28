@@ -1282,12 +1282,17 @@ async function computeForMatch(
       const matchDayKey = londonDateKey(m.date);
       const todayKey = londonDateKey(now);
       const hourNow = londonHour(now);
+      // Widened from 08-09 to 08-10 so the promo (which can only fire
+      // AFTER all rate DMs have landed — see below) still has runway
+      // when there are many players or the bot started mid-window.
+      // Pi DM rate-limit = 1/min, so 14 players = 14min; widening gives
+      // the promo room to land even at the upper edge.
       const isMorningAfter =
         todayKey !== matchDayKey &&
         hoursSinceMatch >= 6 &&
         hoursSinceMatch <= 36 &&
         hourNow >= 8 &&
-        hourNow < 9;
+        hourNow < 10;
 
       if (isMorningAfter) {
         for (const a of confirmed) {
@@ -1314,8 +1319,23 @@ async function computeForMatch(
           });
         }
 
+        // Promo gating: the Pi rate-limits DMs to 1/min so a 14-player
+        // squad takes ~14min to finish. The promo says "I just DM'd
+        // every player" — when it posted at 08:00 alongside the first
+        // DM (old behaviour), 13 players would check their chats, see
+        // nothing, and conclude the bot lied. Now hold the promo until
+        // every CONFIRMED-with-phone player has a rate-dm SentNotification
+        // breadcrumb. The promo then fires on the NEXT tick after the
+        // last DM lands — typically 08:13-08:14 for a 14-player squad
+        // — by which point all DMs really are in players' chats.
         const promoKey = `${matchId}:rate-promo`;
-        if (!sentKeys.has(promoKey) && confirmed.some((a) => a.user.phoneNumber)) {
+        const expectedRateDmKeys = confirmed
+          .filter((a) => a.user.phoneNumber)
+          .map((a) => `${matchId}:rate-dm:${a.userId}`);
+        const allRateDmsSent =
+          expectedRateDmKeys.length > 0 &&
+          expectedRateDmKeys.every((k) => sentKeys.has(k));
+        if (allRateDmsSent && !sentKeys.has(promoKey)) {
           out.push({
             kind: "group-message",
             key: promoKey,
