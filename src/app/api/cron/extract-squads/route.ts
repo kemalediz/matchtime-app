@@ -108,17 +108,44 @@ export async function GET(request: Request) {
       // already have a full squad, another extraction tick would just
       // upsert the same data — pure Sonnet spend with no new state.
       // ?force=true bypasses (re-extracts even when already filled).
+      //
+      // EXCEPTION: a NEW squad-list-shaped GroupMessage arrived since
+      // the last attendance write. That's the Sutton Lads 2026-05-28
+      // failure mode — original list had Ehtisham at #1, Usama later
+      // posted a new list with Eman swapped in, the cost guard above
+      // (added 2026-05-21 b9346b4) skipped re-extraction so the swap
+      // never landed. Bypass on a fresh list-shaped message so admins
+      // / players can fix the squad mid-week without `?force=true`.
+      // Cheap chitchat ("nice game") doesn't trip the heuristic.
       const confirmedCount = await db.attendance.count({
         where: { matchId: match.id, status: "CONFIRMED" },
       });
       if (!FORCE && confirmedCount >= match.maxPlayers) {
-        out.push({
-          orgId: org.id, name: org.name,
-          lists: 0, aliasesLearned: 0, usersProvisioned: 0,
-          finalisedMatchId: match.id,
-          skipped: "squad-already-finalised",
+        const latestAtt = await db.attendance.aggregate({
+          where: { matchId: match.id },
+          _max: { updatedAt: true },
         });
-        continue;
+        const since = latestAtt._max.updatedAt ?? new Date(0);
+        const recent = await db.groupMessage.findMany({
+          where: { orgId: org.id, createdAt: { gt: since } },
+          select: { body: true },
+        });
+        const NUMBERED_LINE = /^\s*\d+[.):\-]\s*\S/;
+        const hasFreshList = recent.some((m) => {
+          const lines = (m.body ?? "").split("\n");
+          let n = 0;
+          for (const line of lines) if (NUMBERED_LINE.test(line)) n++;
+          return n >= 3;
+        });
+        if (!hasFreshList) {
+          out.push({
+            orgId: org.id, name: org.name,
+            lists: 0, aliasesLearned: 0, usersProvisioned: 0,
+            finalisedMatchId: match.id,
+            skipped: "squad-already-finalised",
+          });
+          continue;
+        }
       }
 
       // Both gates passed — do the one real extraction.
