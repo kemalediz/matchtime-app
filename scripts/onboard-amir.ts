@@ -208,7 +208,10 @@ async function main() {
         whatsappBotEnabled: true,
         featureAttendance: false, featureBench: false, featureTeamBalancing: false,
         featureMomVoting: true, featurePlayerRating: true,
-        featureReminders: false, featureStatsQa: false,
+        // featureStatsQa stays ON always (Kemal 2026-05-29: "always keep
+        // them flipped on") — historical leaderboard answers are useful
+        // for every org regardless of which other features they use.
+        featureReminders: false, featureStatsQa: true,
         paymentTrackingEnabled: false, featureSquadFromList: true,
       },
     });

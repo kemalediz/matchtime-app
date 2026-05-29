@@ -590,7 +590,13 @@ async function completeOnboarding(
     featureMomVoting: chosenSet.has("momVoting"),
     featurePlayerRating: chosenSet.has("playerRating"),
     featureReminders: chosenSet.has("reminders"),
-    featureStatsQa: chosenSet.has("statsQa"),
+    // featureStatsQa is unconditionally on (Kemal 2026-05-29: "always
+    // keep them flipped on"). Historical leaderboard answers — who's
+    // most consistent, MoM history, score recall — are useful for every
+    // org regardless of which other features they chose, and the
+    // Recent History block only renders when there ARE completed
+    // matches, so an early-launch org with no history sees nothing.
+    featureStatsQa: true,
     paymentTrackingEnabled: chosenSet.has("paymentTracking"),
     featureSquadFromList: !needsAttendance && needsPostMatchPersonalisation,
   };
