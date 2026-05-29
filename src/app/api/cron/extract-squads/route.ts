@@ -126,16 +126,49 @@ export async function GET(request: Request) {
           _max: { updatedAt: true },
         });
         const since = latestAtt._max.updatedAt ?? new Date(0);
-        const recent = await db.groupMessage.findMany({
-          where: { orgId: org.id, createdAt: { gt: since } },
-          select: { body: true },
-        });
+        const [recent, members] = await Promise.all([
+          db.groupMessage.findMany({
+            where: { orgId: org.id, createdAt: { gt: since } },
+            select: { body: true },
+          }),
+          db.membership.findMany({
+            where: { orgId: org.id, leftAt: null },
+            include: { user: { select: { name: true } } },
+          }),
+        ]);
+        // Normalise: lowercase, strip diacritics, take first name token.
+        const norm = (s: string) =>
+          s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const memberFirstNames = new Set(
+          members
+            .map((m) => m.user.name?.split(/\s+/)[0])
+            .filter((n): n is string => !!n)
+            .map(norm),
+        );
         const NUMBERED_LINE = /^\s*\d+[.):\-]\s*\S/;
+        // Strip numbering prefix + trailing punctuation, then take the
+        // first word — that's what we compare against memberFirstNames.
+        const firstWordOfLine = (line: string): string => {
+          const cleaned = line.replace(/^\s*\d+[.):\-]\s*/, "").trim();
+          const first = cleaned.split(/[\s,/]+/)[0] ?? "";
+          return norm(first.replace(/[^\w'\-]/g, ""));
+        };
         const hasFreshList = recent.some((m) => {
           const lines = (m.body ?? "").split("\n");
-          let n = 0;
-          for (const line of lines) if (NUMBERED_LINE.test(line)) n++;
-          return n >= 3;
+          let nNumbered = 0;
+          let nMemberLines = 0;
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            if (NUMBERED_LINE.test(line)) nNumbered++;
+            const fw = firstWordOfLine(line);
+            if (fw && memberFirstNames.has(fw)) nMemberLines++;
+          }
+          // Numbered list (≥3 lines) OR a plain name-per-line list
+          // (≥5 lines starting with a known member's first name —
+          // catches the Amir "I propose the following teams: ⏎
+          // NABEEL ⏎ Jordan ⏎ …" 2-column post from 2026-05-28
+          // which has no numbering at all).
+          return nNumbered >= 3 || nMemberLines >= 5;
         });
         if (!hasFreshList) {
           out.push({
