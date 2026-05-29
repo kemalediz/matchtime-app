@@ -37,9 +37,10 @@
  *     ]
  *   }
  */
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
+import { runShadowAnalysis } from "@/lib/window-analyzer";
 import {
   analyzeBatch,
   enforceProximity,
@@ -685,6 +686,29 @@ export async function POST(request: Request) {
     orderBy: { date: "asc" },
     select: { date: true },
   });
+
+  // ── Shadow window-analyzer ────────────────────────────────────────
+  //   Runs AFTER the response is sent — zero added Pi latency.
+  //   Persists a WindowVerdict row with a single-diff verdict for the
+  //   whole batch so we can compare against the live per-message
+  //   verdicts on /admin/shadow. Never writes to attendance; errors
+  //   logged and swallowed. Daily cost-capped via SHADOW_DAILY_USD_CAP
+  //   (default $5/day). See src/lib/window-analyzer.ts for context.
+  if (fresh.length > 0) {
+    const shadowBatch = batchInputs;
+    const shadowHistory = history;
+    const orgId = org.id;
+    const groupId = body.groupId;
+    after(() =>
+      runShadowAnalysis({
+        orgId,
+        groupId,
+        messages: shadowBatch,
+        history: shadowHistory,
+        currentVerdictIds: shadowBatch.map((m) => m.waMessageId),
+      }),
+    );
+  }
 
   return NextResponse.json({
     ok: true,

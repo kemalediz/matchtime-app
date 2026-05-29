@@ -184,6 +184,7 @@ model Organisation {
   userAliases    UserAlias[]
   rosterSurveys  RosterSurvey[]
   groupMessages  GroupMessage[]
+  windowVerdicts WindowVerdict[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -848,4 +849,54 @@ model GroupMessage {
   createdAt      DateTime @default(now())
 
   @@index([orgId, timestamp])
+}
+
+/**
+ * Shadow analyzer output (2026-05-29). The current `/api/whatsapp/analyze`
+ * route forces Claude to emit a structured verdict per message, then
+ * runs server-side regex safety-nets to "fix" wrong verdicts. That
+ * bandaid layer is itself the source of recurring bugs (Kemal dropped
+ * from his own squad 2026-05-28; Mojib not dropped 2026-05-26; etc.).
+ *
+ * The shadow path runs alongside the live analyzer on every Pi flush.
+ * It sends the SAME window (fresh batch + history) to a fresh, concise
+ * prompt that returns ONE coherent state diff for the window — no
+ * per-message verdicts to conflict with each other, no safety nets to
+ * override. Output is persisted here for offline comparison; no
+ * attendance is written by this path until we cut over.
+ *
+ * `currentVerdictRefs` is the array of AnalyzedMessage IDs that the
+ * LIVE analyzer wrote for the same batch, so the /admin/shadow dash
+ * can render side-by-side: shadow's single diff vs live's per-message
+ * verdicts, with a cheap "agree?" badge.
+ */
+model WindowVerdict {
+  id                  String   @id @default(cuid())
+  orgId               String
+  org                 Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// First message timestamp in the batch (or now() if the batch was empty).
+  windowStart         DateTime
+  /// Last message timestamp in the batch.
+  windowEnd           DateTime
+  /// SHA-256 of the sorted waMessageIds in the batch — lets us dedupe
+  /// re-runs on the same window (Pi catch-up resending) without a
+  /// second Claude call.
+  batchHash           String
+  /// Wall-clock ms the shadow Claude call took. Cheap proxy for window
+  /// complexity + lets us spot regressions.
+  modelMs             Int
+  /// Best-effort USD cost of this shadow call (input+output tokens).
+  /// Null if pricing lookup failed.
+  costUsd             Float?
+  /// Full Claude response parsed into our shadow schema. See
+  /// `src/lib/window-analyzer.ts` for the type. Includes
+  /// stateChanges, reactions, optional groupReply, windowSummary.
+  verdictJson         Json
+  /// The AnalyzedMessage IDs that the live per-message analyzer wrote
+  /// for this same batch. Used by the dashboard for side-by-side.
+  currentVerdictRefs  String[]
+  createdAt           DateTime @default(now())
+
+  @@unique([orgId, batchHash])
+  @@index([orgId, windowEnd])
 }
