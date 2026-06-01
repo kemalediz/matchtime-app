@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Home, CalendarDays, User, Shield, Menu, X, LogOut, LogIn, HelpCircle } from "lucide-react";
 import { OrgSwitcher } from "./org-switcher";
 
@@ -60,11 +60,41 @@ export function Sidebar() {
   // show. No pathname gating needed here.
 
   const user = session?.user;
-  // Admin is visible to everyone; admin layout itself enforces access.
-  // A cleaner approach would pass isAdmin via session but keeps the sidebar
-  // a pure client component without extra fetches.
 
-  const items = NAV.filter((n) => !n.adminOnly || !!user);
+  // Role-gate the Admin link. The /admin layout already enforces access
+  // server-side (non-admins are redirected to /), but the OLD filter
+  // showed the "Admin" nav item to EVERY logged-in user — so a regular
+  // player (Izzet, 2026-06-01) opened their stats link and saw an Admin
+  // menu item, which reads as a bug/privilege even though clicking it
+  // just bounced them. Default hidden; reveal only for OWNER/ADMIN of
+  // the current org. Re-checks on navigation so an org switch reflects.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/memberships")
+      .then((r) => (r.ok ? r.json() : { memberships: [], currentOrgId: null }))
+      .then((data) => {
+        if (cancelled) return;
+        const memberships = data.memberships ?? [];
+        const current =
+          memberships.find(
+            (m: { role: string; org: { id: string } }) => m.org.id === data.currentOrgId,
+          ) ?? memberships[0];
+        setIsAdmin(current?.role === "OWNER" || current?.role === "ADMIN");
+      })
+      .catch(() => {
+        if (!cancelled) setIsAdmin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, pathname]);
+
+  const items = NAV.filter((n) => !n.adminOnly || isAdmin);
 
   const sidebarContent = (
     <>
