@@ -42,6 +42,7 @@ import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { runShadowAnalysis } from "@/lib/window-analyzer";
 import { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } from "@/lib/magic-link";
+import { answerScopedQuestion } from "@/lib/dm-qa";
 import {
   analyzeBatch,
   enforceProximity,
@@ -359,6 +360,52 @@ export async function POST(request: Request) {
       intent: "stats_blast",
       react: "✅",
       reply: `📊 Done — DM'd ${queued} player${queued === 1 ? "" : "s"} their personal stats link. They'll arrive over the next few minutes.`,
+    });
+  }
+
+  // ── Group → DM: "@MT DM me <question>" ──────────────────────────────
+  //   When someone in the group explicitly asks to be DM'd an answer
+  //   ("dm me the fixtures", "@Match Time message me when's the next
+  //   game"), answer them PRIVATELY via the scoped Q&A engine instead
+  //   of cluttering the group. Same no-leak guardrails as direct DMs
+  //   (dm-qa.ts: only group-public + the asker's own data). React 📩 in
+  //   the group so it's clear it was handled. Personal stats requests
+  //   are already handled above (they DM a stats link), so skip those.
+  const DM_ME = /\b(dm|pm|message)\s+me\b/i;
+  for (const m of fresh) {
+    if (statsRequestIds.has(m.waMessageId)) continue;
+    if (!DM_ME.test(m.body)) continue;
+    const sender = senderById.get(m.waMessageId)!;
+    const phone = (sender.phone || m.authorPhone || "").replace(/^\+/, "");
+    if (!sender.userId || !phone) continue; // can't DM an unresolved sender
+    statsRequestIds.add(m.waMessageId); // peel off the LLM batch + drop set
+    try {
+      const result = await answerScopedQuestion({
+        userId: sender.userId,
+        orgId: org.id,
+        question: m.body,
+        askerName: sender.name,
+      });
+      if (result) {
+        await db.botJob.create({
+          data: { orgId: org.id, kind: "dm", phone, text: result.answer },
+        });
+      }
+    } catch (err) {
+      console.error("[analyze] group→DM Q&A failed:", err);
+    }
+    await recordAnalysis({
+      orgId: org.id, groupId: body.groupId, msg: m,
+      handledBy: "fast-path", intent: "dm-qa", action: "dm-scoped-answer",
+      confidence: 1, reasoning: "group request to be DM'd — answered privately via scoped Q&A",
+      authorUserId: sender.userId, authorName: m.authorName ?? null,
+    });
+    results.push({
+      waMessageId: m.waMessageId,
+      handledBy: "fast-path",
+      intent: "dm-qa",
+      react: "📩",
+      reply: null,
     });
   }
 

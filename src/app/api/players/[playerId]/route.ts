@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
+import { loadPlayerSeasonStats } from "@/lib/player-stats";
 import { NextResponse } from "next/server";
 
 export async function GET(
@@ -40,36 +41,13 @@ export async function GET(
     primaryPositions = match?.positions ?? [];
   }
 
-  const matchesPlayed = await db.attendance.count({
-    where: { userId: playerId, status: "CONFIRMED", match: { status: "COMPLETED" } },
-  });
-  const totalMatches = await db.match.count({ where: { status: "COMPLETED" } });
-
-  const ratings = await db.rating.findMany({
-    where: { playerId },
-    orderBy: { createdAt: "desc" },
-    take: 60,
-  });
-  const avgRating = ratings.length > 0
-    ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
-    : null;
-
-  const momResults = await db.moMVote.groupBy({
-    by: ["matchId"],
-    where: { playerId },
-    _count: true,
-  });
-  let momWins = 0;
-  for (const group of momResults) {
-    const topVote = await db.moMVote.groupBy({
-      by: ["playerId"],
-      where: { matchId: group.matchId },
-      _count: { playerId: true },
-      orderBy: { _count: { playerId: "desc" } },
-      take: 1,
-    });
-    if (topVote.length > 0 && topVote[0].playerId === playerId) momWins++;
-  }
+  // Stats come from the SAME org-scoped engine as /profile/stats, so the
+  // two pages never disagree. The old inline computation here counted
+  // matches/MoM across ALL orgs (Kemal 2026-06-01: showed 35% attendance
+  // = 6/17 across every org's matches instead of 6/6 in his own group,
+  // and could mis-tally MoM for multi-org players). loadPlayerSeasonStats
+  // scopes everything to the viewer's current org.
+  const season = viewerOrg ? await loadPlayerSeasonStats(viewerOrg.orgId, playerId) : null;
 
   return NextResponse.json({
     player: {
@@ -82,10 +60,10 @@ export async function GET(
       activityPositions: player.activityPositions,
     },
     stats: {
-      matchesPlayed,
-      avgRating,
-      momCount: momWins,
-      attendanceRate: totalMatches > 0 ? Math.round((matchesPlayed / totalMatches) * 100) : 0,
+      matchesPlayed: season?.gamesPlayed ?? 0,
+      avgRating: season?.avgRating ?? null,
+      momCount: season?.momCount ?? 0,
+      attendanceRate: season?.attendanceRate ?? 0,
     },
   });
 }

@@ -24,6 +24,7 @@ import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
+import { answerScopedQuestion, pickRelevantOrgForUser, looksLikeQuestion } from "@/lib/dm-qa";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -289,6 +290,48 @@ export async function POST(request: Request) {
     orderBy: { createdAt: "desc" },
   });
   if (!dm) {
+    // ── Scoped Q&A (2026-06-01) ──────────────────────────────────────
+    //   No open survey to answer → if this resolved member is asking a
+    //   question, treat it as a private match Q&A. Strictly scoped to
+    //   their group's football (see dm-qa.ts — the LLM only ever sees
+    //   safe, group-public data + the asker's own stats, never contact
+    //   details or other groups). Reply via a DM BotJob the Pi sends.
+    if (looksLikeQuestion(text)) {
+      const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+      // Fall back to the user's stored phone for @lid senders.
+      const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });
+      const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+      const orgId = await pickRelevantOrgForUser(user.id);
+      if (!orgId || !replyPhone) {
+        return NextResponse.json({ ok: true, ignored: "qa-no-org-or-phone" });
+      }
+      // Per-user abuse/cost cap: max 10 outbound DMs to this phone in the
+      // last rolling hour (covers QA + any other DM). Bounds LLM spend
+      // and stops a runaway back-and-forth.
+      const recentDms = await db.botJob.count({
+        where: {
+          orgId,
+          kind: "dm",
+          phone: replyPhone,
+          createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+        },
+      });
+      if (recentDms >= 10) {
+        return NextResponse.json({ ok: true, ignored: "qa-rate-limited" });
+      }
+      const result = await answerScopedQuestion({
+        userId: user.id,
+        orgId,
+        question: text,
+        askerName: user.name,
+      });
+      if (result) {
+        await db.botJob.create({
+          data: { orgId, kind: "dm", phone: replyPhone, text: result.answer },
+        });
+        return NextResponse.json({ ok: true, handled: "dm-qa" });
+      }
+    }
     return NextResponse.json({ ok: true, ignored: "no-open-survey" });
   }
 
