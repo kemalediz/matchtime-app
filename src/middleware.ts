@@ -23,7 +23,19 @@ export function middleware(request: NextRequest) {
     // without a session so it can be shared straight into WhatsApp.
     // Shows only aggregate season stats the bot already posts to the
     // group as leaderboards. Keyed by an opaque cuid.
-    pathname.startsWith("/api/wrapped")
+    pathname.startsWith("/api/wrapped") ||
+    // Public brand / icon / social-preview assets must be reachable
+    // without a session — they appear on the signed-out landing & login
+    // pages and are fetched by social scrapers. (Kemal 2026-06-02: the
+    // matcher only excluded favicon.ico, so /icon.svg, /apple-icon.png,
+    // /opengraph-image.png and /matchtime-*.svg were 307-redirecting to
+    // /login → broken logos on public pages + no social preview.)
+    pathname.startsWith("/icon") ||
+    pathname.startsWith("/apple-icon") ||
+    pathname.startsWith("/opengraph-image") ||
+    pathname.startsWith("/twitter-image") ||
+    pathname.startsWith("/matchtime-") ||
+    pathname === "/manifest.webmanifest"
   ) {
     return NextResponse.next();
   }
