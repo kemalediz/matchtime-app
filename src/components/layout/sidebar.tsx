@@ -100,10 +100,18 @@ export function Sidebar() {
     <>
       {/* Logo / brand */}
       <div className="px-5 pt-5 pb-3 border-b border-slate-700">
-        <h1 className="text-lg font-bold tracking-tight text-white">MatchTime</h1>
-        <p className="text-[11px] text-slate-400 mt-0.5 tracking-wide uppercase">
-          Sports Management
-        </p>
+        <div className="flex items-center gap-2.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/matchtime-icon.svg" alt="" className="w-8 h-8 rounded-lg shrink-0" />
+          <div className="leading-tight">
+            <h1 className="text-lg font-bold tracking-tight text-white">
+              Match<span className="text-blue-400">Time</span>
+            </h1>
+            <p className="text-[10px] text-slate-400 tracking-wide uppercase">
+              Sports Management
+            </p>
+          </div>
+        </div>
         {user && (
           <div className="mt-3 -mx-2">
             <OrgSwitcher />

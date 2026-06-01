@@ -41,11 +41,13 @@ export function LandingPage() {
       {/* ── Top nav ───────────────────────────────────────────────────── */}
       <header className="absolute top-0 inset-x-0 z-20">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-5 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <span className="relative inline-flex w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-teal-400 items-center justify-center text-white font-black shadow-lg shadow-blue-500/30">
-              M
-              <span className="absolute -inset-0.5 rounded-lg bg-gradient-to-br from-blue-400 to-teal-300 opacity-0 group-hover:opacity-40 blur-md transition-opacity" />
-            </span>
+          <Link href="/" className="flex items-center gap-2.5 group">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/matchtime-icon.svg"
+              alt="MatchTime"
+              className="w-9 h-9 rounded-xl shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-105"
+            />
             <span className="font-bold tracking-tight text-lg text-white" style={DISPLAY_FONT}>
               Match<span className="text-blue-400">Time</span>
             </span>

@@ -35,7 +35,11 @@ function LoginForm() {
     <div className="min-h-screen flex items-center justify-center px-6 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-slate-800">MatchTime</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/matchtime-icon.svg" alt="" className="w-14 h-14 rounded-2xl mx-auto mb-3 shadow-md" />
+          <h1 className="text-2xl font-bold text-slate-800">
+            Match<span className="text-blue-600">Time</span>
+          </h1>
           <p className="text-sm text-slate-500 mt-1">Sign in to your account</p>
         </div>
 
