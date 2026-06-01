@@ -109,4 +109,11 @@ export const MAGIC_LINK_TTL = {
   // received 3h earlier was already dead because it used the 1h signIn
   // TTL — the whole point of the nudge is to be actioned later.
   actionNudge: 48 * 60 * 60,  // 48 hours for async DM action links
+  // Personal stats links are meant to be a permanent bookmark a player
+  // can re-open any time (Kemal 2026-06-01: "magic link that never
+  // expires"). 100 years ≈ never. NOTE: this is a long-lived sign-in
+  // credential — anyone with the URL can sign in as that player for the
+  // life of the link. Acceptable here because it only fronts /profile/
+  // stats (read-only personal stats) and the DM goes only to the player.
+  permanent: 100 * 365 * 24 * 60 * 60, // ~100 years
 };

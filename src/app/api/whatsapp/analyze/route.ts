@@ -274,7 +274,95 @@ export async function POST(request: Request) {
       reply: null,
     });
   }
-  // Drop stats-requests from the batch the LLM sees.
+  // ── Fast-path: admin "DM stats/ratings to active players" ──────────
+  //   An ADMIN asking the bot to push everyone their personal stats
+  //   link ("@MatchTime DM ratings of active players", "send everyone
+  //   their stats"). Each active member with a phone gets a DM with
+  //   their OWN never-expiring magic link to /profile/stats. Gated to
+  //   OWNER/ADMIN so randoms can't trigger a DM blast. No LLM cost.
+  const blastTrigger = (text: string) =>
+    /\b(dm|send|share|message)\b/i.test(text) &&
+    /\b(stats|ratings?)\b/i.test(text) &&
+    /\b(everyone|all|active|players|squad|the team|the group)\b/i.test(text);
+  for (const m of fresh) {
+    if (statsRequestIds.has(m.waMessageId)) continue; // already handled as personal
+    if (!blastTrigger(m.body)) continue;
+    const sender = senderById.get(m.waMessageId)!;
+    statsRequestIds.add(m.waMessageId); // peel off the LLM batch regardless
+    // Admin gate.
+    let isAdmin = false;
+    if (sender.userId) {
+      const mem = await db.membership.findUnique({
+        where: { userId_orgId: { userId: sender.userId, orgId: org.id } },
+        select: { role: true },
+      });
+      isAdmin = mem?.role === "OWNER" || mem?.role === "ADMIN";
+    }
+    if (!isAdmin) {
+      results.push({
+        waMessageId: m.waMessageId,
+        handledBy: "fast-path",
+        intent: "stats_blast_denied",
+        react: "🔒",
+        reply: null,
+      });
+      await recordAnalysis({
+        orgId: org.id, groupId: body.groupId, msg: m,
+        handledBy: "fast-path", intent: "stats_blast_denied", action: null,
+        confidence: 1, reasoning: "non-admin asked to DM stats to everyone — ignored",
+        authorUserId: sender.userId, authorName: m.authorName ?? null,
+      });
+      continue;
+    }
+    // Queue a personal stats DM for every active member with a phone.
+    const members = await db.membership.findMany({
+      where: { orgId: org.id, leftAt: null, user: { phoneNumber: { not: null } } },
+      select: { user: { select: { id: true, name: true, phoneNumber: true } } },
+    });
+    let queued = 0;
+    for (const mem of members) {
+      const u = mem.user;
+      if (!u.phoneNumber) continue;
+      try {
+        const token = signMagicLinkToken({
+          userId: u.id,
+          purpose: "sign-in",
+          nextPath: "/profile/stats",
+          ttlSeconds: MAGIC_LINK_TTL.permanent,
+        });
+        const first = u.name?.split(" ")[0] ?? "there";
+        await db.botJob.create({
+          data: {
+            orgId: org.id,
+            kind: "dm",
+            phone: u.phoneNumber.replace(/^\+/, ""),
+            text:
+              `📊 Hi ${first} — here are your MatchTime stats: your ratings over time, ` +
+              `Man-of-the-Match games, how you stack up against the squad, your badges and a ` +
+              `shareable season card.\n\n${buildMagicLinkUrl(token)}\n\nKeep this link — it doesn't expire.`,
+          },
+        });
+        queued++;
+      } catch (err) {
+        console.error(`[analyze] stats-blast DM failed for ${u.id}:`, err);
+      }
+    }
+    await recordAnalysis({
+      orgId: org.id, groupId: body.groupId, msg: m,
+      handledBy: "fast-path", intent: "stats_blast", action: `dm-stats-blast:${queued}`,
+      confidence: 1, reasoning: `admin stats blast — queued ${queued} personal stats-link DMs`,
+      authorUserId: sender.userId, authorName: m.authorName ?? null,
+    });
+    results.push({
+      waMessageId: m.waMessageId,
+      handledBy: "fast-path",
+      intent: "stats_blast",
+      react: "✅",
+      reply: `📊 Done — DM'd ${queued} player${queued === 1 ? "" : "s"} their personal stats link. They'll arrive over the next few minutes.`,
+    });
+  }
+
+  // Drop stats-requests + blast triggers from the batch the LLM sees.
   for (let i = fresh.length - 1; i >= 0; i--) {
     if (statsRequestIds.has(fresh[i].waMessageId)) fresh.splice(i, 1);
   }

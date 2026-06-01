@@ -1305,6 +1305,15 @@ async function computeForMatch(
             matchId,
             ttlSeconds: MAGIC_LINK_TTL.rateMatch,
           });
+          // Permanent personal-stats link rides along on the rating DM
+          // every player already gets — so they can open their season
+          // stats any time without asking in the group (Kemal 2026-06-01).
+          const statsToken = signMagicLinkToken({
+            userId: a.userId,
+            purpose: "sign-in",
+            nextPath: "/profile/stats",
+            ttlSeconds: MAGIC_LINK_TTL.permanent,
+          });
           out.push({
             kind: "dm",
             key,
@@ -1315,7 +1324,8 @@ async function computeForMatch(
               `🏆 *${activity.name}* — ${format(m.date, "EEE d MMM")}\n\n` +
               `Rate your teammates and pick ${sport.mvpLabel}. Takes ~1 minute.\n\n` +
               `Your personal link:\n${buildMagicLinkUrl(token)}\n\n` +
-              `Link expires in 5 days.`,
+              `Link expires in 5 days.\n\n` +
+              `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${buildMagicLinkUrl(statsToken)}`,
           });
         }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Send, Trophy, Star } from "lucide-react";
@@ -67,10 +68,10 @@ export default function RatePlayersPage() {
       });
       if (momPick) await submitMoMVote(matchId, { playerId: momPick });
       toast.success("Ratings submitted! Thanks for voting.");
-      // Land them on their dashboard — magic-link sign-in is already
-      // active, so they see their stats (rating, MoM count, recent
-      // results) without another click.
-      router.push("/");
+      // Land them straight on their own season stats — they're signed
+      // in via the magic link and just engaged with ratings, so it's
+      // the perfect payoff moment (Kemal 2026-06-01).
+      router.push("/profile/stats");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit");
     } finally {
@@ -174,6 +175,13 @@ export default function RatePlayersPage() {
         <Send className="w-4 h-4" />
         {submitting ? "Submitting…" : "Submit ratings"}
       </button>
+
+      <Link
+        href="/profile/stats"
+        className="mt-3 w-full h-11 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium inline-flex items-center justify-center gap-2"
+      >
+        📊 See my season stats
+      </Link>
     </div>
   );
 }

@@ -3,8 +3,13 @@ import { getUserOrg } from "@/lib/org";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Share2 } from "lucide-react";
-import { loadPlayerSeasonStats } from "@/lib/player-stats";
+import {
+  loadPlayerSeasonStats,
+  loadRatingLeaderboard,
+  loadTeamOfSeason,
+} from "@/lib/player-stats";
 import { RatingTimeline } from "@/components/stats/rating-timeline";
+import { InfoButton } from "@/components/stats/info-button";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +20,12 @@ export default async function MyStatsPage() {
   const membership = await getUserOrg(session.user.id);
   if (!membership) redirect("/create-org");
 
-  const stats = await loadPlayerSeasonStats(membership.orgId, session.user.id);
+  const meId = session.user.id;
+  const [stats, leaderboard, tots] = await Promise.all([
+    loadPlayerSeasonStats(membership.orgId, meId),
+    loadRatingLeaderboard(membership.orgId, { minGames: 2, limit: 12 }),
+    loadTeamOfSeason(membership.orgId, { minGames: 2 }),
+  ]);
   if (!stats) redirect("/profile");
 
   const earnedBadges = stats.badges.filter((b) => b.earned);
@@ -73,7 +83,19 @@ export default async function MyStatsPage() {
         {/* Form */}
         <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4 flex items-center justify-between">
           <div>
-            <div className="text-xs uppercase tracking-wider text-slate-400">Current form</div>
+            <div className="flex items-center gap-1.5">
+              <div className="text-xs uppercase tracking-wider text-slate-400">Current form</div>
+              <InfoButton title="Current form">
+                <p>
+                  Your average rating across your last 5 rated games, and which way it&apos;s
+                  trending.
+                </p>
+                <p>
+                  🔥 <b>On fire</b> = climbing · ❄️ <b>Cold spell</b> = dipping · ➡️ <b>Steady</b> =
+                  holding level.
+                </p>
+              </InfoButton>
+            </div>
             <div className="text-lg font-semibold text-slate-800">
               {stats.form.trend === "hot" && "🔥 On fire"}
               {stats.form.trend === "cold" && "❄️ Cold spell"}
@@ -90,7 +112,17 @@ export default async function MyStatsPage() {
 
         {/* Timeline chart */}
         <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4">
-          <div className="text-sm font-semibold text-slate-800 mb-1">Ratings over time</div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="text-sm font-semibold text-slate-800">Ratings over time</div>
+            <InfoButton title="Ratings over time">
+              <p>
+                After every match, your teammates rate each player out of 10. The blue line is
+                your average rating per game; the dashed grey line is the whole squad&apos;s average
+                that game — so you can see when you played above or below the group.
+              </p>
+              <p>👑 marks games where you won Man of the Match. Tap any point to see that game&apos;s score, your rating, and how many people rated you.</p>
+            </InfoButton>
+          </div>
           <p className="text-[11px] text-slate-400 mb-2">Tap a point for that game&apos;s detail.</p>
           <RatingTimeline data={stats.timeline} />
         </div>
@@ -98,7 +130,22 @@ export default async function MyStatsPage() {
         {/* Chemistry */}
         {(stats.chemistry.bestByWinRate || stats.chemistry.bestByRating) && (
           <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4">
-            <div className="text-sm font-semibold text-slate-800 mb-3">Chemistry</div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="text-sm font-semibold text-slate-800">Chemistry</div>
+              <InfoButton title="Chemistry">
+                <p>
+                  Who you click with on the pitch. We look at games where you were on the
+                  <b> same team</b> as someone.
+                </p>
+                <p>
+                  <b>Best partnership</b> = the teammate your team wins with most often.
+                  <br />
+                  <b>You play your best with</b> = the teammate alongside whom your own ratings
+                  are highest.
+                </p>
+                <p className="text-slate-400">Needs at least 2 games together to count.</p>
+              </InfoButton>
+            </div>
             <div className="space-y-3">
               {stats.chemistry.bestByWinRate && (
                 <ChemRow
@@ -121,13 +168,141 @@ export default async function MyStatsPage() {
           </div>
         )}
 
+        {/* Rivalry */}
+        {(stats.rivalry.nemesis || stats.rivalry.bestVictim) && (
+          <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="text-sm font-semibold text-slate-800">Rivalries</div>
+              <InfoButton title="Rivalries">
+                <p>
+                  The flip side of chemistry — how you do against people on the <b>opposing</b>{" "}
+                  team.
+                </p>
+                <p>
+                  <b>Nemesis</b> = the opponent who beats you most often.
+                  <br />
+                  <b>You own</b> = the opponent you beat most often.
+                </p>
+                <p className="text-slate-400">Needs at least 2 head-to-heads to count.</p>
+              </InfoButton>
+            </div>
+            <div className="space-y-3">
+              {stats.rivalry.nemesis && (
+                <ChemRow
+                  emoji="😤"
+                  title="Your nemesis"
+                  name={stats.rivalry.nemesis.name}
+                  detail={`You've won ${stats.rivalry.nemesis.wins} of ${stats.rivalry.nemesis.gamesAgainst} when they're against you`}
+                />
+              )}
+              {stats.rivalry.bestVictim && (
+                <ChemRow
+                  emoji="😎"
+                  title="You own"
+                  name={stats.rivalry.bestVictim.name}
+                  detail={`${stats.rivalry.bestVictim.wins} wins from ${stats.rivalry.bestVictim.gamesAgainst} head-to-heads`}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Rating leaderboard with movement arrows */}
+        {leaderboard.length > 0 && (
+          <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="text-sm font-semibold text-slate-800">Squad leaderboard</div>
+              <InfoButton title="Squad leaderboard">
+                <p>Everyone ranked by their average rating this season.</p>
+                <p>
+                  The arrow shows how each player moved since last week&apos;s match:{" "}
+                  <span className="text-emerald-600 font-semibold">↑</span> climbed,{" "}
+                  <span className="text-red-500 font-semibold">↓</span> dropped,{" "}
+                  <span className="text-slate-400 font-semibold">▬</span> no change.
+                </p>
+                <p className="text-slate-400">Players need at least 2 games to appear.</p>
+              </InfoButton>
+            </div>
+            <div className="space-y-1">
+              {leaderboard.map((r) => {
+                const isMe = r.userId === meId;
+                return (
+                  <div
+                    key={r.userId}
+                    className={`flex items-center gap-3 rounded-lg px-2 py-1.5 ${
+                      isMe ? "bg-blue-50" : ""
+                    }`}
+                  >
+                    <span className="w-5 text-sm font-semibold text-slate-500 text-right">
+                      {r.rank}
+                    </span>
+                    <span
+                      className={`flex-1 text-sm truncate ${
+                        isMe ? "font-bold text-blue-700" : "text-slate-700"
+                      }`}
+                    >
+                      {r.name}
+                      {isMe && " (you)"}
+                    </span>
+                    <Movement delta={r.delta} />
+                    <span className="w-10 text-right text-sm font-semibold text-slate-800">
+                      {r.avg.toFixed(1)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Team of the Season */}
+        {tots && tots.formation.length > 0 && (
+          <div className="mt-4 rounded-2xl bg-gradient-to-b from-emerald-700 to-emerald-800 text-white p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="text-sm font-semibold">⚽ Team of the Season</div>
+              <span className="[&_svg]:text-emerald-200">
+                <InfoButton title="Team of the Season">
+                  <p>
+                    The best line-up of the season so far — the highest season-average-rated player
+                    in each position ({tots.sportName}).
+                  </p>
+                  <p className="text-slate-400">Players need at least 2 games to be eligible.</p>
+                </InfoButton>
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {tots.formation.map((slot, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="w-10 text-[11px] font-semibold text-emerald-200">
+                    {slot.position}
+                  </span>
+                  <span className="flex-1 text-sm font-medium truncate">
+                    {slot.name}
+                    {slot.userId === meId && " (you)"}
+                  </span>
+                  <span className="text-sm font-bold">{slot.avg.toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Badges */}
         <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4">
-          <div className="text-sm font-semibold text-slate-800 mb-3">
-            Badges{" "}
-            <span className="text-slate-400 font-normal">
-              ({earnedBadges.length}/{stats.badges.length})
-            </span>
+          <div className="flex items-center gap-1.5 mb-3">
+            <div className="text-sm font-semibold text-slate-800">
+              Badges{" "}
+              <span className="text-slate-400 font-normal">
+                ({earnedBadges.length}/{stats.badges.length})
+              </span>
+            </div>
+            <InfoButton title="Badges">
+              <p>Milestones you unlock as you play. Greyed-out ones are still to earn.</p>
+              <p className="text-slate-400">
+                e.g. Iron Man = played every match · MoM Machine = 3+ Man-of-the-Match awards ·
+                Masterclass = averaged 9+ in a game.
+              </p>
+            </InfoButton>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {stats.badges.map((b) => (
@@ -183,6 +358,15 @@ function Tile({
       {sub && <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}
     </div>
   );
+}
+
+function Movement({ delta }: { delta: number | null }) {
+  if (delta === null)
+    return <span className="text-[11px] text-blue-500 w-8 text-center">new</span>;
+  if (delta === 0) return <span className="text-slate-300 w-8 text-center">▬</span>;
+  if (delta > 0)
+    return <span className="text-emerald-600 text-xs font-semibold w-8 text-center">↑{delta}</span>;
+  return <span className="text-red-500 text-xs font-semibold w-8 text-center">↓{-delta}</span>;
 }
 
 function ChemRow({

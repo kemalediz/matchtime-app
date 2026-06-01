@@ -54,6 +54,17 @@ export interface TeammateChemistry {
   myAvgWith: number | null;
 }
 
+export interface RivalRecord {
+  userId: string;
+  name: string;
+  /** Games where this opponent was on the OTHER team. */
+  gamesAgainst: number;
+  /** Of those, how many the player's team won. */
+  wins: number;
+  losses: number;
+  winRate: number; // 0..1 (player's win rate against them)
+}
+
 export interface PlayerSeasonStats {
   orgId: string;
   orgName: string;
@@ -81,6 +92,12 @@ export interface PlayerSeasonStats {
   chemistry: {
     bestByWinRate: TeammateChemistry | null;
     bestByRating: TeammateChemistry | null;
+  };
+  rivalry: {
+    /** Opponent the player loses to most (worst win rate, min 2 games). */
+    nemesis: RivalRecord | null;
+    /** Opponent the player beats most (best win rate, min 2 games). */
+    bestVictim: RivalRecord | null;
   };
 }
 
@@ -150,23 +167,25 @@ export async function loadPlayerSeasonStats(
 
   const totalOrgMatches = matches.length;
 
-  // Names for chemistry labelling — gather all teammate userIds first.
-  const teammateIds = new Set<string>();
+  // Names for chemistry + rivalry labelling — gather all teammate AND
+  // opponent userIds first (one names lookup for both).
+  const relatedIds = new Set<string>();
   for (const m of matches) {
     const mine = m.teamAssignments.find((t) => t.userId === userId);
     if (!mine) continue;
     for (const t of m.teamAssignments) {
-      if (t.userId !== userId && t.team === mine.team) teammateIds.add(t.userId);
+      if (t.userId !== userId) relatedIds.add(t.userId);
     }
   }
-  const teammateNames = new Map<string, string>();
-  if (teammateIds.size > 0) {
+  const relatedNames = new Map<string, string>();
+  if (relatedIds.size > 0) {
     const users = await db.user.findMany({
-      where: { id: { in: [...teammateIds] } },
+      where: { id: { in: [...relatedIds] } },
       select: { id: true, name: true },
     });
-    for (const u of users) teammateNames.set(u.id, u.name ?? "(unknown)");
+    for (const u of users) relatedNames.set(u.id, u.name ?? "(unknown)");
   }
+  const teammateNames = relatedNames; // alias kept for readability below
 
   const timeline: TimelinePoint[] = [];
   const myScoresAll: number[] = [];
@@ -178,6 +197,8 @@ export async function loadPlayerSeasonStats(
 
   // teammateId -> { games, wins, myScores[] }
   const chem = new Map<string, { games: number; wins: number; myScores: number[] }>();
+  // opponentId -> { games, wins, losses } (from the player's perspective)
+  const opp = new Map<string, { games: number; wins: number; losses: number }>();
 
   for (const m of matches) {
     const played =
@@ -215,14 +236,22 @@ export async function loadPlayerSeasonStats(
         result = "D";
         record.d++;
       }
-      // Chemistry: accumulate per teammate on the same team.
+      // Chemistry (same team) + rivalry (other team) in one pass.
       for (const t of m.teamAssignments) {
-        if (t.userId === userId || t.team !== mine.team) continue;
-        const c = chem.get(t.userId) ?? { games: 0, wins: 0, myScores: [] };
-        c.games++;
-        if (result === "W") c.wins++;
-        if (myAvg !== null) c.myScores.push(myAvg);
-        chem.set(t.userId, c);
+        if (t.userId === userId) continue;
+        if (t.team === mine.team) {
+          const c = chem.get(t.userId) ?? { games: 0, wins: 0, myScores: [] };
+          c.games++;
+          if (result === "W") c.wins++;
+          if (myAvg !== null) c.myScores.push(myAvg);
+          chem.set(t.userId, c);
+        } else {
+          const o = opp.get(t.userId) ?? { games: 0, wins: 0, losses: 0 };
+          o.games++;
+          if (result === "W") o.wins++;
+          else if (result === "L") o.losses++;
+          opp.set(t.userId, o);
+        }
       }
     }
 
@@ -309,6 +338,27 @@ export async function loadPlayerSeasonStats(
           .sort((a, b) => (b.myAvgWith ?? 0) - (a.myAvgWith ?? 0))[0]
       : null;
 
+  // Rivalry: best win-rate against (you own them) + worst (nemesis).
+  // Min 2 head-to-heads so a single game doesn't crown a nemesis.
+  const rivalRows: RivalRecord[] = [...opp.entries()]
+    .filter(([, o]) => o.games >= 2)
+    .map(([id, o]) => ({
+      userId: id,
+      name: relatedNames.get(id) ?? "(unknown)",
+      gamesAgainst: o.games,
+      wins: o.wins,
+      losses: o.losses,
+      winRate: o.games > 0 ? o.wins / o.games : 0,
+    }));
+  const bestVictim =
+    rivalRows.length > 0
+      ? [...rivalRows].sort((a, b) => b.winRate - a.winRate || b.gamesAgainst - a.gamesAgainst)[0]
+      : null;
+  const nemesis =
+    rivalRows.length > 0
+      ? [...rivalRows].sort((a, b) => a.winRate - b.winRate || b.gamesAgainst - a.gamesAgainst)[0]
+      : null;
+
   return {
     orgId: org.id,
     orgName: org.name,
@@ -327,5 +377,209 @@ export async function loadPlayerSeasonStats(
     form: { last5Avg, trend },
     badges,
     chemistry: { bestByWinRate, bestByRating },
+    rivalry: {
+      // Only call someone a nemesis if you actually lose to them more
+      // than you beat them; only a "victim" if you win more than you
+      // lose. (winRate<0.5 vs >0.5 → they can't be the same person.)
+      nemesis: nemesis && nemesis.winRate < 0.5 ? nemesis : null,
+      bestVictim: bestVictim && bestVictim.winRate > 0.5 ? bestVictim : null,
+    },
   };
+}
+
+// ─── Org-wide leaderboards & Team of the Season ──────────────────────
+
+export interface LeaderboardRow {
+  userId: string;
+  name: string;
+  avg: number;
+  games: number;
+  rank: number;
+  /** Rank as of the previous completed match (null if new this week). */
+  prevRank: number | null;
+  /** prevRank - rank: positive = climbed, negative = dropped, 0 = same. */
+  delta: number | null;
+}
+
+/**
+ * Season rating leaderboard with week-on-week movement arrows. Ranks
+ * players by their average peer rating across all completed matches,
+ * then re-ranks excluding the most recent completed match to compute
+ * the movement since last week. Min `minGames` appearances to rank
+ * (one lucky game shouldn't top the table).
+ */
+export async function loadRatingLeaderboard(
+  orgId: string,
+  opts: { minGames?: number; limit?: number } = {},
+): Promise<LeaderboardRow[]> {
+  const minGames = opts.minGames ?? 2;
+  const limit = opts.limit ?? 20;
+
+  const matches = await db.match.findMany({
+    where: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
+    orderBy: { date: "asc" },
+    select: {
+      id: true,
+      date: true,
+      ratings: { select: { playerId: true, score: true } },
+    },
+  });
+  if (matches.length === 0) return [];
+
+  const latestMatchId = matches[matches.length - 1].id;
+
+  // playerId -> { scores[], distinct matchIds } — `games` must count
+  // matches, NOT rating rows (a game with 12 raters is still one game).
+  type Acc = { scores: number[]; matches: Set<string> };
+  const all = new Map<string, Acc>();
+  const prior = new Map<string, Acc>();
+  const bump = (map: Map<string, Acc>, pid: string, score: number, matchId: string) => {
+    const a = map.get(pid) ?? { scores: [], matches: new Set<string>() };
+    a.scores.push(score);
+    a.matches.add(matchId);
+    map.set(pid, a);
+  };
+  for (const m of matches) {
+    for (const r of m.ratings) {
+      bump(all, r.playerId, r.score, m.id);
+      if (m.id !== latestMatchId) bump(prior, r.playerId, r.score, m.id);
+    }
+  }
+
+  const nameRows = await db.user.findMany({
+    where: { id: { in: [...all.keys()] } },
+    select: { id: true, name: true },
+  });
+  const names = new Map(nameRows.map((u) => [u.id, u.name ?? "(unknown)"]));
+
+  const rank = (map: Map<string, Acc>) => {
+    const rows = [...map.entries()]
+      .map(([id, a]) => ({ id, avg: mean(a.scores)!, games: a.matches.size }))
+      .filter((r) => r.games >= minGames)
+      .sort((a, b) => b.avg - a.avg);
+    const rankMap = new Map<string, number>();
+    rows.forEach((r, i) => rankMap.set(r.id, i + 1));
+    return { rows, rankMap };
+  };
+
+  const now = rank(all);
+  const priorRanked = rank(prior);
+
+  return now.rows.slice(0, limit).map((r) => {
+    const prevRank = priorRanked.rankMap.get(r.id) ?? null;
+    const rankNow = now.rankMap.get(r.id)!;
+    return {
+      userId: r.id,
+      name: names.get(r.id) ?? "(unknown)",
+      avg: r.avg,
+      games: r.games,
+      rank: rankNow,
+      prevRank,
+      delta: prevRank !== null ? prevRank - rankNow : null,
+    };
+  });
+}
+
+export interface TeamOfSeasonSlot {
+  position: string;
+  userId: string;
+  name: string;
+  avg: number;
+  games: number;
+}
+
+/**
+ * Team of the Season — the single best XI (one team's worth) by season
+ * average rating, respecting the sport's position composition when set
+ * (e.g. {GK:1, DEF:2, MID:2, FWD:2}). Players are assigned greedily:
+ * highest-rated eligible player fills each slot for the position they
+ * list. Slots that can't be filled by a position specialist fall back
+ * to the best remaining player. Returns [] if there isn't enough data.
+ */
+export async function loadTeamOfSeason(
+  orgId: string,
+  opts: { minGames?: number } = {},
+): Promise<{ formation: TeamOfSeasonSlot[]; sportName: string } | null> {
+  const minGames = opts.minGames ?? 2;
+
+  const sport = await db.sport.findFirst({
+    where: { orgId },
+    orderBy: { createdAt: "asc" },
+    select: { name: true, playersPerTeam: true, positions: true, positionComposition: true },
+  });
+  if (!sport) return null;
+
+  const matches = await db.match.findMany({
+    where: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
+    select: { id: true, ratings: { select: { playerId: true, score: true } } },
+  });
+  // games = distinct matches rated in, NOT rating-row count.
+  const acc = new Map<string, { scores: number[]; matches: Set<string> }>();
+  for (const m of matches) {
+    for (const r of m.ratings) {
+      const a = acc.get(r.playerId) ?? { scores: [], matches: new Set<string>() };
+      a.scores.push(r.score);
+      a.matches.add(m.id);
+      acc.set(r.playerId, a);
+    }
+  }
+  const eligible = [...acc.entries()]
+    .map(([id, a]) => ({ id, avg: mean(a.scores)!, games: a.matches.size }))
+    .filter((r) => r.games >= minGames)
+    .sort((a, b) => b.avg - a.avg);
+  if (eligible.length === 0) return null;
+
+  // Player positions (per this org's primary activity set).
+  const posRows = await db.playerActivityPosition.findMany({
+    where: { userId: { in: eligible.map((e) => e.id) }, activity: { orgId } },
+    select: { userId: true, positions: true },
+  });
+  const playerPositions = new Map<string, Set<string>>();
+  for (const p of posRows) {
+    const set = playerPositions.get(p.userId) ?? new Set<string>();
+    p.positions.forEach((x) => set.add(x));
+    playerPositions.set(p.userId, set);
+  }
+
+  const nameRows = await db.user.findMany({
+    where: { id: { in: eligible.map((e) => e.id) } },
+    select: { id: true, name: true },
+  });
+  const names = new Map(nameRows.map((u) => [u.id, u.name ?? "(unknown)"]));
+
+  // Build the slot list from positionComposition, else fall back to a
+  // flat top-N by rating.
+  const comp = sport.positionComposition as Record<string, number> | null;
+  const slots: string[] = [];
+  if (comp && Object.keys(comp).length > 0) {
+    for (const pos of sport.positions) {
+      const n = comp[pos] ?? 0;
+      for (let i = 0; i < n; i++) slots.push(pos);
+    }
+  }
+  // If composition is missing/short, pad with generic slots up to team size.
+  while (slots.length < sport.playersPerTeam) slots.push("ANY");
+
+  const picked = new Set<string>();
+  const formation: TeamOfSeasonSlot[] = [];
+  for (const pos of slots) {
+    // Best eligible unpicked player who lists this position (or ANY).
+    const pick = eligible.find(
+      (e) =>
+        !picked.has(e.id) &&
+        (pos === "ANY" || (playerPositions.get(e.id)?.has(pos) ?? false)),
+    );
+    const chosen = pick ?? eligible.find((e) => !picked.has(e.id)); // fallback: best leftover
+    if (!chosen) break;
+    picked.add(chosen.id);
+    formation.push({
+      position: pos,
+      userId: chosen.id,
+      name: names.get(chosen.id) ?? "(unknown)",
+      avg: chosen.avg,
+      games: chosen.games,
+    });
+  }
+
+  return { formation, sportName: sport.name };
 }
