@@ -100,5 +100,13 @@ export function buildMagicLinkUrl(token: string): string {
 /** TTL presets in seconds. */
 export const MAGIC_LINK_TTL = {
   rateMatch: 5 * 24 * 60 * 60, // 5 days — matches MoM announcement window
-  signIn: 60 * 60,            // 1 hour for ad-hoc sign-in links
+  signIn: 60 * 60,            // 1 hour for ad-hoc sign-in links (interactive)
+  // Action nudges (switch-format, cancel, provisional-review) are DMs
+  // that sit unread in an admin's chat for hours and must stay clickable
+  // until the relevant deadline. The day-before nudges fire ~10:00 and
+  // ~18:00 the day before a kickoff, so 48h keeps the link live right up
+  // to and a little past kickoff. Kemal 2026-06-01: a switch-format link
+  // received 3h earlier was already dead because it used the 1h signIn
+  // TTL — the whole point of the nudge is to be actioned later.
+  actionNudge: 48 * 60 * 60,  // 48 hours for async DM action links
 };

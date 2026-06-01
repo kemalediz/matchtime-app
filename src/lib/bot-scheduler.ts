@@ -498,7 +498,7 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
           userId: admin.id,
           purpose: "sign-in",
           nextPath: "/admin/players",
-          ttlSeconds: MAGIC_LINK_TTL.signIn,
+          ttlSeconds: MAGIC_LINK_TTL.actionNudge,
         });
         const signInUrl = buildMagicLinkUrl(token);
         const names = provisional
@@ -1044,7 +1044,7 @@ async function computeForMatch(
           const token = signMagicLinkToken({
             userId: admin.id,
             purpose: "sign-in",
-            ttlSeconds: MAGIC_LINK_TTL.signIn,
+            ttlSeconds: MAGIC_LINK_TTL.actionNudge,
           });
           const signInUrl = buildMagicLinkUrl(token);
           out.push({
@@ -1085,7 +1085,7 @@ async function computeForMatch(
           const token = signMagicLinkToken({
             userId: admin.id,
             purpose: "sign-in",
-            ttlSeconds: MAGIC_LINK_TTL.signIn,
+            ttlSeconds: MAGIC_LINK_TTL.actionNudge,
           });
           const signInUrl = buildMagicLinkUrl(token);
           out.push({
