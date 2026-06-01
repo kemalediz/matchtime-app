@@ -41,6 +41,7 @@ import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { runShadowAnalysis } from "@/lib/window-analyzer";
+import { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } from "@/lib/magic-link";
 import {
   analyzeBatch,
   enforceProximity,
@@ -212,6 +213,70 @@ export async function POST(request: Request) {
   const senderById = new Map<string, ResolvedSender>();
   for (const m of fresh) {
     senderById.set(m.waMessageId, await resolveSender(org.id, m));
+  }
+
+  // ── Fast-path: "my stats" / "wrapped" personal-stats request ────────
+  //   Deterministic (NO LLM cost — Kemal is cost-conscious about
+  //   per-message LLM use). When a resolved sender asks for THEIR OWN
+  //   stats, DM them a 48h magic link straight to /profile/stats and
+  //   react 📊. Peeled off the batch so the LLM never sees it. Requires
+  //   the possessive ("my stats/season/ratings/form/card") or the word
+  //   "wrapped" so it never collides with group-level stats questions
+  //   ("who's most consistent?") which the LLM still answers from the
+  //   Recent History block.
+  const STATS_REQUEST = /\bwrapped\b|\bmy\s+(stats|season|ratings?|performance|form|card)\b/i;
+  const statsRequestIds = new Set<string>();
+  for (const m of fresh) {
+    if (!STATS_REQUEST.test(m.body)) continue;
+    const sender = senderById.get(m.waMessageId)!;
+    const phone = (sender.phone || m.authorPhone || "").replace(/^\+/, "");
+    if (!sender.userId || !phone) continue; // can't DM an unresolved sender
+    statsRequestIds.add(m.waMessageId);
+    try {
+      const token = signMagicLinkToken({
+        userId: sender.userId,
+        purpose: "sign-in",
+        nextPath: "/profile/stats",
+        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+      });
+      const first = sender.name?.split(" ")[0] ?? "there";
+      await db.botJob.create({
+        data: {
+          orgId: org.id,
+          kind: "dm",
+          phone,
+          text:
+            `📊 Hey ${first} — here are your MatchTime stats: ratings over time, your ` +
+            `Man-of-the-Match games, how you compare to the squad, your badges, and a ` +
+            `shareable season card.\n\n${buildMagicLinkUrl(token)}\n\nLink works for 48h.`,
+        },
+      });
+    } catch (err) {
+      console.error("[analyze] my-stats DM queue failed:", err);
+    }
+    await recordAnalysis({
+      orgId: org.id,
+      groupId: body.groupId,
+      msg: m,
+      handledBy: "fast-path",
+      intent: "stats_link",
+      action: "dm-stats-link",
+      confidence: 1,
+      reasoning: "personal stats request — DM'd a magic link to /profile/stats",
+      authorUserId: sender.userId,
+      authorName: m.authorName ?? null,
+    });
+    results.push({
+      waMessageId: m.waMessageId,
+      handledBy: "fast-path",
+      intent: "stats_link",
+      react: "📊",
+      reply: null,
+    });
+  }
+  // Drop stats-requests from the batch the LLM sees.
+  for (let i = fresh.length - 1; i >= 0; i--) {
+    if (statsRequestIds.has(fresh[i].waMessageId)) fresh.splice(i, 1);
   }
 
   // Pre-load the next upcoming match so we can post-process LLM replies

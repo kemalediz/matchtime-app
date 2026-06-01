@@ -18,7 +18,12 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/r/") || // magic-link landing page does its own sign-in
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron") ||
-    pathname.startsWith("/api/whatsapp")
+    pathname.startsWith("/api/whatsapp") ||
+    // Wrapped share card is a public image artifact — it must render
+    // without a session so it can be shared straight into WhatsApp.
+    // Shows only aggregate season stats the bot already posts to the
+    // group as leaderboards. Keyed by an opaque cuid.
+    pathname.startsWith("/api/wrapped")
   ) {
     return NextResponse.next();
   }

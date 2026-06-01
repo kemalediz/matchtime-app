@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { Pencil, Calendar, Star, Trophy, TrendingUp } from "lucide-react";
@@ -212,6 +213,16 @@ export default function ProfilePage() {
         <StatTile icon={<Trophy className="w-4 h-4" />} label="MoM" value={stats.momCount} color="amber" />
         <StatTile icon={<TrendingUp className="w-4 h-4" />} label="Attendance" value={`${stats.attendanceRate}%`} color="purple" />
       </div>
+
+      <Link
+        href="/profile/stats"
+        className="flex items-center justify-between rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white px-5 h-14 font-semibold shadow-sm hover:from-blue-700 hover:to-blue-800 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <TrendingUp className="w-5 h-5" /> View my full stats
+        </span>
+        <span className="text-xl">📊</span>
+      </Link>
     </div>
   );
 }

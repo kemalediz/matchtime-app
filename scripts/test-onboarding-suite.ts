@@ -58,7 +58,10 @@ const SCENARIOS: Scenario[] = [
         featureBench: false,
         featureTeamBalancing: false,
         featureReminders: false,
-        featureStatsQa: false,
+        // Always-on regardless of user selection (commit 3917f00 —
+        // "always keep them flipped on"). Stats Q&A is useful for
+        // every org and self-suppresses when there's no match history.
+        featureStatsQa: true,
         paymentTrackingEnabled: false,
       },
     },
