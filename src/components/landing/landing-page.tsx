@@ -16,6 +16,14 @@ import {
   BarChart3,
   Clock,
   Gamepad2,
+  TrendingUp,
+  Crown,
+  Swords,
+  Medal,
+  Share2,
+  Flame,
+  ListOrdered,
+  ShieldCheck,
 } from "lucide-react";
 
 /**
@@ -56,11 +64,14 @@ export function LandingPage() {
             <a href="#features" className="hover:text-white transition-colors">
               Features
             </a>
+            <a href="#player-stats" className="hover:text-white transition-colors">
+              Player stats
+            </a>
+            <a href="#ask" className="hover:text-white transition-colors">
+              Ask anything
+            </a>
             <a href="#how-it-works" className="hover:text-white transition-colors">
               How it works
-            </a>
-            <a href="#for-whom" className="hover:text-white transition-colors">
-              Who it&apos;s for
             </a>
           </nav>
           <div className="flex items-center gap-2">
@@ -251,6 +262,155 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ── Player stats & rewards ────────────────────────────────────── */}
+      <section
+        id="player-stats"
+        className="relative py-24 sm:py-32 px-5 sm:px-8 bg-slate-950 text-slate-100 overflow-hidden"
+      >
+        <div
+          className="absolute inset-0 opacity-50"
+          style={{
+            backgroundImage:
+              "radial-gradient(700px circle at 75% 25%, rgba(59,130,246,0.22), transparent 45%), radial-gradient(700px circle at 15% 80%, rgba(16,185,129,0.16), transparent 50%)",
+          }}
+        />
+        <div className="relative max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-12 lg:gap-16 items-center">
+            {/* Copy */}
+            <div>
+              <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+                <Sparkles className="w-3.5 h-3.5" /> New · Player experience
+              </span>
+              <h2
+                className="mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight text-white"
+                style={DISPLAY_FONT}
+              >
+                Stats that make players
+                <br />
+                <span className="bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
+                  actually show up.
+                </span>
+              </h2>
+              <p className="mt-5 text-lg text-slate-300 leading-relaxed">
+                Every rating and result becomes a season your players care about.
+                They open one link — no app, no login — and see how they&apos;re
+                really doing, week by week. Bragging rights drive turnout.
+              </p>
+              <ul className="mt-7 space-y-3">
+                {[
+                  "Their rating over time, plotted against the whole squad",
+                  "A live leaderboard with weekly ↑↓ movement",
+                  "Badges, milestones and a shareable season card",
+                ].map((b) => (
+                  <li key={b} className="flex items-start gap-3 text-slate-200">
+                    <Check className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Wrapped card mock */}
+            <div className="relative mx-auto w-full max-w-sm">
+              <div className="absolute -inset-4 bg-gradient-to-br from-blue-500/30 to-emerald-500/20 blur-2xl rounded-[2rem]" />
+              <div className="relative rounded-[1.75rem] p-7 bg-gradient-to-br from-slate-900 via-blue-950 to-blue-900 border border-white/10 shadow-2xl">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-bold text-white flex items-center gap-1.5">⚽ MatchTime</span>
+                  <span className="text-blue-300">Sutton FC</span>
+                </div>
+                <p className="mt-6 text-xs tracking-widest text-slate-400">SEASON SO FAR</p>
+                <p className="text-3xl font-extrabold text-white" style={DISPLAY_FONT}>Kemal</p>
+                <div className="mt-5 rounded-2xl bg-white/5 border border-white/10 p-5 text-center">
+                  <p className="text-[11px] tracking-widest text-blue-300">AVERAGE RATING</p>
+                  <p className="text-6xl font-extrabold text-white leading-none mt-1" style={DISPLAY_FONT}>7.3</p>
+                  <p className="mt-2 text-emerald-400 font-semibold text-sm">▲ 10% vs squad average</p>
+                </div>
+                <div className="mt-5 flex items-center justify-between text-center">
+                  <div><p className="text-2xl font-extrabold text-white">1</p><p className="text-[11px] text-slate-400">🏆 MoM</p></div>
+                  <div><p className="text-2xl font-extrabold text-white">6</p><p className="text-[11px] text-slate-400">👟 Games</p></div>
+                  <div><p className="text-2xl font-extrabold text-white">2-2-2</p><p className="text-[11px] text-slate-400">W-D-L</p></div>
+                </div>
+                <div className="mt-5 flex items-center gap-2 text-sm text-slate-200">
+                  <span className="text-lg">📈</span> Above the Curve · 🔥 last 5: 7.2
+                </div>
+              </div>
+              <div className="absolute -bottom-3 -right-2 rotate-3 rounded-xl bg-white text-slate-900 text-xs font-semibold px-3 py-2 shadow-xl flex items-center gap-1.5">
+                <Share2 className="w-3.5 h-3.5 text-blue-600" /> Shareable card
+              </div>
+            </div>
+          </div>
+
+          {/* Stat feature grid */}
+          <div className="mt-20 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <GlassStat icon={<TrendingUp className="w-5 h-5" />} title="Ratings over time" body="Your line vs the squad average, with 👑 markers on your MoM games. Tap any point for the detail." />
+            <GlassStat icon={<Flame className="w-5 h-5" />} title="Form &amp; momentum" body="Hot, cold or steady over your last five — the streak everyone wants to keep alive." />
+            <GlassStat icon={<ListOrdered className="w-5 h-5" />} title="Live leaderboard" body="The whole squad ranked by rating, with ↑↓ arrows showing who climbed since last week." />
+            <GlassStat icon={<Crown className="w-5 h-5" />} title="Team of the Season" body="The best XI by position, auto-picked from real ratings. Did you make the cut?" />
+            <GlassStat icon={<Users className="w-5 h-5" />} title="Chemistry" body="Who you win most with, and who brings out your best football." />
+            <GlassStat icon={<Swords className="w-5 h-5" />} title="Rivalries" body="Your nemesis — and the opponent you own. Settled by results, not banter." />
+            <GlassStat icon={<Medal className="w-5 h-5" />} title="Badges" body="Iron Man, MoM Machine, Masterclass and more to unlock as you play." />
+            <GlassStat icon={<Share2 className="w-5 h-5" />} title="Season “Wrapped” card" body="A Spotify-Wrapped-style recap players screenshot straight into the group." />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Ask MatchTime anything ─────────────────────────────────────── */}
+      <section
+        id="ask"
+        className="relative py-24 sm:py-32 px-5 sm:px-8 bg-slate-50 text-slate-800"
+      >
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-12 lg:gap-16 items-center">
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+              Conversational
+            </span>
+            <h2
+              className="mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900"
+              style={DISPLAY_FONT}
+            >
+              Your group&apos;s football brain, on call.
+            </h2>
+            <p className="mt-5 text-lg text-slate-600 leading-relaxed">
+              Players just ask — DM the bot, or tag it in the group — about the
+              next match, who&apos;s playing, their own stats, the leaderboard.
+              They get a friendly answer back in seconds.
+            </p>
+            <ul className="mt-7 space-y-3">
+              <li className="flex items-start gap-3 text-slate-700">
+                <MessageCircle className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
+                <span>Answered privately by DM, so the group chat stays clean.</span>
+              </li>
+              <li className="flex items-start gap-3 text-slate-700">
+                <ShieldCheck className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
+                <span>
+                  Locked to <strong>your</strong>{" "}group&apos;s football — it can&apos;t
+                  reveal phone numbers, other people&apos;s data, or anything off-topic.
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Chat mock */}
+          <div className="rounded-3xl bg-white border border-slate-200 shadow-xl p-5 sm:p-7 space-y-4">
+            <ChatRow from="player" text="When’s the next match and am I in?" />
+            <ChatRow
+              from="bot"
+              text="Tuesday 9 Jun, 9:30pm at Goals 🟢 You’re confirmed in — full squad of 14. See you there!"
+            />
+            <ChatRow from="player" text="Who’s top of the leaderboard?" />
+            <ChatRow
+              from="bot"
+              text="Abid’s top on rating right now, and you’re joint-top for attendance at 100% 🙌"
+            />
+            <ChatRow from="player" text="What’s Elvin’s number?" />
+            <ChatRow
+              from="bot"
+              text="I can’t share anyone’s contact details 🙂 — but I can help with anything about Sutton FC’s matches."
+            />
+          </div>
+        </div>
+      </section>
+
       {/* ── How it works ──────────────────────────────────────────────── */}
       <section
         id="how-it-works"
@@ -358,8 +518,9 @@ export function LandingPage() {
               bullets={[
                 "Chat naturally in WhatsApp — &lsquo;IN&rsquo;, &lsquo;count me in&rsquo;, &lsquo;sorry not tonight&rsquo;, the bot gets it.",
                 "Balanced teams every match, no favouritism",
-                "One-tap rating link after each game",
-                "Your own stats: matches played, MoMs, rating over time",
+                "A full season of stats: rating timeline, form, chemistry, rivalries &amp; badges",
+                "A live leaderboard, Team of the Season &amp; a shareable season card",
+                "Ask the bot anything about your matches — by DM or in the group",
               ]}
             />
           </div>
@@ -432,9 +593,8 @@ export function LandingPage() {
       <footer className="bg-slate-950 text-slate-400 py-10 px-5 sm:px-8 border-t border-white/5">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="inline-flex w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-teal-400 items-center justify-center text-white font-black text-sm">
-              M
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/matchtime-icon.svg" alt="" className="w-7 h-7 rounded-lg" />
             <span className="font-bold text-white" style={DISPLAY_FONT}>
               Match<span className="text-blue-400">Time</span>
             </span>
@@ -562,6 +722,53 @@ function Step({
         dangerouslySetInnerHTML={{ __html: body }}
       />
     </li>
+  );
+}
+
+function GlassStat({
+  icon,
+  title,
+  body,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all backdrop-blur">
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/30 to-emerald-500/20 border border-white/10 flex items-center justify-center text-blue-200">
+        {icon}
+      </div>
+      <h3
+        className="mt-4 text-base font-bold text-white"
+        style={DISPLAY_FONT}
+        dangerouslySetInnerHTML={{ __html: title }}
+      />
+      <p
+        className="mt-1.5 text-sm leading-relaxed text-slate-400"
+        dangerouslySetInnerHTML={{ __html: body }}
+      />
+    </div>
+  );
+}
+
+function ChatRow({ from, text }: { from: "player" | "bot"; text: string }) {
+  const isBot = from === "bot";
+  return (
+    <div className={`flex ${isBot ? "justify-start" : "justify-end"}`}>
+      <div
+        className={`max-w-[80%] px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
+          isBot
+            ? "bg-white border border-slate-200 text-slate-700 rounded-2xl rounded-bl-md"
+            : "bg-emerald-600 text-white rounded-2xl rounded-br-md"
+        }`}
+      >
+        {isBot && (
+          <span className="block text-[11px] font-semibold text-blue-600 mb-0.5">MatchTime</span>
+        )}
+        {text}
+      </div>
+    </div>
   );
 }
 
