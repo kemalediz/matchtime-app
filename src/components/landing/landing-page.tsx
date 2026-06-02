@@ -345,8 +345,8 @@ export function LandingPage() {
             <GlassStat icon={<TrendingUp className="w-5 h-5" />} title="Ratings over time" body="Your line vs the squad average, with 👑 markers on your MoM games. Tap any point for the detail." />
             <GlassStat icon={<Flame className="w-5 h-5" />} title="Form &amp; momentum" body="Hot, cold or steady over your last five — the streak everyone wants to keep alive." />
             <GlassStat icon={<ListOrdered className="w-5 h-5" />} title="Live leaderboard" body="The whole squad ranked by rating, with ↑↓ arrows showing who climbed since last week." />
-            <GlassStat icon={<Crown className="w-5 h-5" />} title="Team of the Season" body="The best XI by position, auto-picked from real ratings. Did you make the cut?" />
-            <GlassStat icon={<Users className="w-5 h-5" />} title="Chemistry" body="Who you win most with, and who brings out your best football." />
+            <GlassStat icon={<Crown className="w-5 h-5" />} title="Team of the Season" body="The best lineup by position, auto-picked from real ratings. Did you make the cut?" />
+            <GlassStat icon={<Users className="w-5 h-5" />} title="Chemistry" body="Who you win most with, and who brings out your best game." />
             <GlassStat icon={<Swords className="w-5 h-5" />} title="Rivalries" body="Your nemesis — and the opponent you own. Settled by results, not banter." />
             <GlassStat icon={<Medal className="w-5 h-5" />} title="Badges" body="Iron Man, MoM Machine, Masterclass and more to unlock as you play." />
             <GlassStat icon={<Share2 className="w-5 h-5" />} title="Season “Wrapped” card" body="A Spotify-Wrapped-style recap players screenshot straight into the group." />
@@ -368,7 +368,7 @@ export function LandingPage() {
               className="mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900"
               style={DISPLAY_FONT}
             >
-              Your group&apos;s football brain, on call.
+              Your group&apos;s match-day brain, on call.
             </h2>
             <p className="mt-5 text-lg text-slate-600 leading-relaxed">
               Players just ask — DM the bot, or tag it in the group — about the
@@ -383,7 +383,7 @@ export function LandingPage() {
               <li className="flex items-start gap-3 text-slate-700">
                 <ShieldCheck className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
                 <span>
-                  Locked to <strong>your</strong>{" "}group&apos;s football — it can&apos;t
+                  Locked to <strong>your</strong>{" "}group&apos;s matches — it can&apos;t
                   reveal phone numbers, other people&apos;s data, or anything off-topic.
                 </span>
               </li>
