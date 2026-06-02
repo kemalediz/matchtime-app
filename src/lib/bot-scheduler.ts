@@ -407,7 +407,7 @@ function botIntroMessage(f: OrgFeatures): string {
     if (f.playerRating)
       bits.push(`I DM everyone a rating link after each match (no sign-up, just tap)`);
     if (f.momVoting)
-      bits.push(`vote MoM in-app or in the poll I post — MoM announced 5 days after the match`);
+      bits.push(`vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest)`);
     lines.push(``, `🏆  *Ratings & MoM* — ${bits.join("; ")}.`);
   }
   if (f.reminders) {
@@ -1416,13 +1416,44 @@ async function computeForMatch(
       }
     }
 
-    // 6e. MoM announcement 5 days after match at 15:00 (London)
+    // 6e. MoM announcement. Two triggers (whichever comes first):
+    //   • EARLY — as soon as every confirmed player with a phone has
+    //     engaged (cast a MoM vote OR submitted ratings). No point making
+    //     the group wait 5 days once everyone's voted (Kemal 2026-06-02).
+    //     Civil hours only (09:00–21:00 London) so we never announce
+    //     overnight.
+    //   • BACKSTOP — 5 days after the match at 15:00 London, for matches
+    //     where some players never vote.
     {
       const key = `${matchId}:mom-announcement`;
       const fiveDaysLater = new Date(m.date.getTime() + 5 * 24 * 60 * 60 * 1000);
-      const afterAnnouncementTime =
-        now >= fiveDaysLater && londonHour(now) >= 15 && londonHour(now) < 16;
-      if (!sentKeys.has(key) && afterAnnouncementTime) {
+      const lh = londonHour(now);
+      const backstopWindow = now >= fiveDaysLater && lh >= 15 && lh < 16;
+
+      let earlyReady = false;
+      if (!sentKeys.has(key) && !backstopWindow && lh >= 9 && lh < 21) {
+        const expected = confirmed.filter((a) => a.user.phoneNumber);
+        if (expected.length > 0) {
+          const [momVoters, ratingVoters] = await Promise.all([
+            db.moMVote.findMany({ where: { matchId }, select: { voterId: true } }),
+            db.rating.findMany({
+              where: { matchId },
+              select: { raterId: true },
+              distinct: ["raterId"],
+            }),
+          ]);
+          const engaged = new Set<string>([
+            ...momVoters.map((v) => v.voterId),
+            ...ratingVoters.map((r) => r.raterId),
+          ]);
+          // Everyone we asked has engaged, AND at least one real MoM vote
+          // exists (players can rate without picking MoM).
+          earlyReady =
+            momVoters.length > 0 && expected.every((a) => engaged.has(a.userId));
+        }
+      }
+
+      if (!sentKeys.has(key) && (backstopWindow || earlyReady)) {
         const votes = await db.moMVote.groupBy({
           by: ["playerId"],
           where: { matchId },
