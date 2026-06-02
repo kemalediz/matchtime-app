@@ -199,7 +199,14 @@ export async function mergePlayersCore(
       const m = drop.email.match(/^provisional\+([a-z0-9-]+)-[a-z0-9]+@/i);
       if (m) {
         const k = aliasNorm(m[1].replace(/-/g, " "));
-        if (k.length >= 2) aliasesToSave.add(k);
+        // Skip GENERIC auto-provision slugs. Sync-created users get
+        // `provisional+player-<id>@` (no real name), so the slug is
+        // literally "player" — saving that as an alias would make every
+        // future "player" mention resolve to this person (Kemal
+        // 2026-06-02: David's merge added a bogus "player" alias).
+        // Named relays like `provisional+najib-<id>@` still alias fine.
+        const GENERIC = new Set(["player", "guest", "unknown", "member", "someone"]);
+        if (k.length >= 2 && !GENERIC.has(k)) aliasesToSave.add(k);
       }
     }
     for (const orgId of opts.saveAliasInOrgIds) {
