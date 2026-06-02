@@ -112,7 +112,11 @@ export async function GET(
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 44 }}>
           <Stat big={`${s.momCount}`} label="🏆 MoM" />
           <Stat big={`${s.gamesPlayed}`} label="👟 Games" />
-          <Stat big={`${s.record.w}-${s.record.d}-${s.record.l}`} label="W-D-L" />
+          {s.tracksResults ? (
+            <Stat big={`${s.record.w}-${s.record.d}-${s.record.l}`} label="W-D-L" />
+          ) : (
+            <Stat big={s.bestGame ? s.bestGame.avg.toFixed(1) : "—"} label="⭐ Best game" />
+          )}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", marginTop: 48, flex: 1, justifyContent: "flex-end" }}>

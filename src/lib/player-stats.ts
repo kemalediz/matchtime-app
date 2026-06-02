@@ -80,6 +80,11 @@ export interface PlayerSeasonStats {
   momCount: number;
   record: { w: number; d: number; l: number };
   goalDiff: number;
+  /** True only when this player has at least one game with teams +
+   *  a recorded score. Ratings-only orgs (no team balancing, e.g.
+   *  Sutton Lads) never do — so the UI hides W-D-L / goal-diff /
+   *  chemistry / rivalries for them instead of showing empty zeros. */
+  tracksResults: boolean;
   /** Best single-game average rating + its label. */
   bestGame: { label: string; avg: number; matchId: string } | null;
   timeline: TimelinePoint[];
@@ -372,6 +377,7 @@ export async function loadPlayerSeasonStats(
     momCount,
     record,
     goalDiff,
+    tracksResults: record.w + record.d + record.l > 0,
     bestGame,
     timeline,
     form: { last5Avg, trend },

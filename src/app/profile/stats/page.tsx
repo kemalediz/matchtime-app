@@ -72,12 +72,21 @@ export default async function MyStatsPage() {
             sub={`${stats.attendanceRate}% attendance`}
             tone="blue"
           />
-          <Tile
-            big={`${stats.record.w}-${stats.record.d}-${stats.record.l}`}
-            label="W–D–L"
-            sub={`GD ${stats.goalDiff >= 0 ? "+" : ""}${stats.goalDiff}`}
-            tone="slate"
-          />
+          {stats.tracksResults ? (
+            <Tile
+              big={`${stats.record.w}-${stats.record.d}-${stats.record.l}`}
+              label="W–D–L"
+              sub={`GD ${stats.goalDiff >= 0 ? "+" : ""}${stats.goalDiff}`}
+              tone="slate"
+            />
+          ) : (
+            <Tile
+              big={stats.bestGame ? stats.bestGame.avg.toFixed(1) : "—"}
+              label="Best game"
+              sub={stats.bestGame ? stats.bestGame.label : undefined}
+              tone="slate"
+            />
+          )}
         </div>
 
         {/* Form */}
