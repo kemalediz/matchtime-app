@@ -35,7 +35,9 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/opengraph-image") ||
     pathname.startsWith("/twitter-image") ||
     pathname.startsWith("/matchtime-") ||
-    pathname === "/manifest.webmanifest"
+    pathname === "/manifest.webmanifest" ||
+    // Stripe webhook is server-to-server (Stripe's signature is the auth).
+    pathname.startsWith("/api/stripe")
   ) {
     return NextResponse.next();
   }
