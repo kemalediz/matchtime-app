@@ -154,6 +154,10 @@ const FEATURE_COLUMN: Record<string, string> = {
   reminders: "featureReminders",
   statsQa: "featureStatsQa",
   paymentTracking: "paymentTrackingEnabled",
+  paymentCollection: "paymentCollectionEnabled",
+  payByBank: "payMethodPayByBank",
+  payCard: "payMethodCard",
+  payDirect: "payMethodDirect",
 };
 
 export async function setOrgFeature(

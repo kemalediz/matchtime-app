@@ -40,6 +40,13 @@ export async function GET() {
       reminders: org.featureReminders,
       statsQa: org.featureStatsQa,
       paymentTracking: org.paymentTrackingEnabled,
+      paymentCollection: org.paymentCollectionEnabled,
+      payByBank: org.payMethodPayByBank,
+      payCard: org.payMethodCard,
+      payDirect: org.payMethodDirect,
     },
+    // Stripe Connect status — drives the "connect bank" button.
+    stripeConnected: !!org.stripeConnectAccountId,
+    stripeChargesEnabled: org.stripeChargesEnabled,
   });
 }

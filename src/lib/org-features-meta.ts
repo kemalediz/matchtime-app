@@ -13,7 +13,13 @@ export type FeatureKey =
   | "reminders"
   | "statsQa";
 
-export type ToggleableKey = FeatureKey | "paymentTracking";
+export type ToggleableKey =
+  | FeatureKey
+  | "paymentTracking"
+  | "paymentCollection"
+  | "payByBank"
+  | "payCard"
+  | "payDirect";
 
 /// Features shown in the admin Settings toggles + the in-group onboarding
 /// menu. `squadFromList` is INTENTIONALLY NOT here — it's a derived
@@ -36,4 +42,8 @@ export const FEATURE_META: Array<{
   { key: "reminders", label: "Personal reminders", blurb: '"@MatchTime remind me Monday" — bot DMs you later.' },
   { key: "statsQa", label: "Stats answers", blurb: "Answers history questions (top attenders, past MoMs, scores)." },
   { key: "paymentTracking", label: "Payment tracking", blurb: "Tracks who has paid and chases the unpaid (opt-in)." },
+  { key: "paymentCollection", label: "Collect match fees (Stripe)", blurb: "After each match, DM each player a link to pay. Needs a connected bank (below)." },
+  { key: "payByBank", label: "  ↳ Pay by Bank", blurb: "Cheapest method (~10p). The recommended default." },
+  { key: "payCard", label: "  ↳ Card / Apple Pay", blurb: "Card payments (~35p on £10)." },
+  { key: "payDirect", label: "  ↳ Pay organiser directly", blurb: "Cash/transfer; the money collector confirms receipt. No fee." },
 ];

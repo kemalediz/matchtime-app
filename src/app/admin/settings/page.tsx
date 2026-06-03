@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal } from "lucide-react";
+import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2 } from "lucide-react";
 import { setOrgFeature } from "@/app/actions/org";
+import { startCollectorOnboarding, refreshCollectorStatus } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 
 type FeatureKey = ToggleableKey;
@@ -17,6 +18,8 @@ interface OrgData {
   whatsappBotEnabled: boolean;
   memberCount: number;
   features: Record<FeatureKey, boolean>;
+  stripeConnected?: boolean;
+  stripeChargesEnabled?: boolean;
 }
 
 export default function SettingsPage() {
@@ -56,6 +59,29 @@ export default function SettingsPage() {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
       setSavingFeature(null);
+    }
+  }
+
+  const [connecting, setConnecting] = useState(false);
+  async function connectBank() {
+    if (!org) return;
+    setConnecting(true);
+    try {
+      const { url } = await startCollectorOnboarding(org.id);
+      window.location.href = url; // Stripe-hosted onboarding
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't start bank connect");
+      setConnecting(false);
+    }
+  }
+  async function refreshBank() {
+    if (!org) return;
+    try {
+      const { chargesEnabled } = await refreshCollectorStatus(org.id);
+      setOrg((prev) => (prev ? { ...prev, stripeChargesEnabled: chargesEnabled, stripeConnected: true } : prev));
+      toast.success(chargesEnabled ? "Bank connected — ready to take payments" : "Onboarding not finished yet");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't refresh");
     }
   }
 
@@ -174,6 +200,47 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      {/* Payments — Connect bank */}
+      {org.features?.paymentCollection && (
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+            <Landmark className="w-4 h-4 text-slate-500" />
+            <h2 className="font-semibold text-slate-800">Money collector&apos;s bank</h2>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-slate-500">
+              Card &amp; Pay-by-Bank payments go straight to the money collector&apos;s bank
+              (via Stripe). Connect it once — Stripe handles the rest. (&ldquo;Pay
+              directly&rdquo; needs no bank.)
+            </p>
+            {org.stripeChargesEnabled ? (
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
+                <CheckCircle2 className="w-4 h-4" /> Bank connected — ready to take payments
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={connectBank}
+                  disabled={connecting}
+                  className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
+                >
+                  <Landmark className="w-4 h-4" />
+                  {connecting ? "Opening Stripe…" : org.stripeConnected ? "Finish bank setup" : "Connect bank"}
+                </button>
+                {org.stripeConnected && (
+                  <button
+                    onClick={refreshBank}
+                    className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                  >
+                    Refresh status
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* WhatsApp */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
