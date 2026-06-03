@@ -178,6 +178,30 @@ model Organisation {
   /// DMs) but don't use the bot for in/out chatter.
   featureSquadFromList Boolean @default(false)
 
+  /// ─── Stripe payments (2026-06-03) ───────────────────────────────
+  /// Per-match fee collection. The money collector is `paymentHolderId`
+  /// (surfaced as "Money collector" in org setup). The three methods
+  /// below are independently toggleable; at least one must stay on when
+  /// `paymentCollectionEnabled`. Surcharge-safe pricing: card is the
+  /// standard (highest) price, pay-by-bank a discount, direct = base.
+  /// Nothing here charges anyone until Stripe is connected AND
+  /// paymentCollectionEnabled is true — fully gated, additive.
+  paymentCollectionEnabled Boolean @default(false)
+  /// Pay by Bank (open banking) — cheapest rail, the recommended default.
+  payMethodPayByBank       Boolean @default(true)
+  /// Card / Apple Pay / Google Pay — fallback rail.
+  payMethodCard            Boolean @default(true)
+  /// "Pay the collector directly" (cash/transfer) — honesty path, the
+  /// collector confirms receipt. No processor fee.
+  payMethodDirect          Boolean @default(true)
+  /// The money collector's connected Stripe (Express) account id. Set
+  /// when they complete the one-time bank onboarding. Null = not yet
+  /// connected → Stripe rails unavailable, only "direct" can run.
+  stripeConnectAccountId   String?
+  /// True once Stripe reports the connected account can accept charges
+  /// + receive payouts (onboarding fully complete).
+  stripeChargesEnabled     Boolean @default(false)
+
   memberships    Membership[]
   activities     Activity[]
   sports         Sport[]
@@ -308,6 +332,16 @@ model Activity {
   matchDurationMins Int          @default(60)
   ratingWindowHours Int          @default(120) // 5 days — aligns with MoM announcement & magic-link TTL
 
+  /// Default per-player match fee (£) for this activity/format. The
+  /// 5-a-side and 7-a-side activities each carry their own, so a format
+  /// switch auto-applies the right fee. Null = no default; the collector
+  /// is asked each week. This is the BASE fee (before the per-method
+  /// processing uplift). 2026-06-03.
+  feePerPlayer      Float?
+  /// When true, the collector enters the TOTAL pitch cost and MatchTime
+  /// divides by who played, instead of a fixed per-player fee.
+  feeSplitTotal     Boolean      @default(false)
+
   matches           Match[]
   playerPositions   PlayerActivityPosition[]
 
@@ -355,6 +389,21 @@ model Match {
   /// The leaderboard's MoM-count query DOES include them — which is
   /// the whole point of backfilling.
   isHistorical       Boolean     @default(false)
+
+  /// ─── Per-match fee capture (2026-06-03) ─────────────────────────
+  /// The agreed per-player fee for THIS match (£, base before method
+  /// uplift). Set when the money collector tells MatchTime the amount
+  /// (chat capture) or from the activity default. Null = not set yet.
+  feePerPlayer           Float?
+  /// Amount the collector proposed but hasn't confirmed yet — MatchTime
+  /// echoes it back and waits for ✅ before releasing links.
+  feePendingConfirm      Float?
+  /// Who set the fee + when (audit).
+  feeSetByUserId         String?
+  feeSetAt               DateTime?
+  /// Set when the per-player payment-link DMs have gone out. Null = not
+  /// released yet (fee not confirmed). Gates the chaser.
+  paymentLinksReleasedAt DateTime?
 
   attendances            Attendance[]
   teamAssignments        TeamAssignment[]
@@ -634,6 +683,23 @@ model Attendance {
   /// his id here against Faris's and Adam's Attendance rows. Useful
   /// for audit / undo. Nullable = additive.
   paidViaUserId String?
+
+  /// ─── Stripe per-player payment (2026-06-03) ─────────────────────
+  /// How this player chose to pay: "pay_by_bank" | "card" | "direct".
+  /// Null until they pick / are sent a link.
+  paymentMethod      String?
+  /// Total charged for this row incl. the per-method processing uplift
+  /// (and quantity if they paid for others). £.
+  paymentAmount      Float?
+  /// How many people this payment covered (self + guests). Default 1.
+  paymentQuantity    Int       @default(1)
+  /// Stripe Checkout Session id (card / pay-by-bank). Null for direct.
+  stripeSessionId    String?
+  /// Set when the player chose "pay the collector directly" and we're
+  /// awaiting the collector's confirmation. Cleared (→ paidAt) on confirm.
+  directPendingAt    DateTime?
+  /// Who confirmed the direct payment (the money collector).
+  directConfirmedByUserId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

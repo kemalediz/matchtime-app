@@ -37,6 +37,9 @@ export interface OrgFeatures {
   statsQa: boolean;
   /** Pre-existing opt-in flag; surfaced for a single source of truth. */
   paymentTracking: boolean;
+  /** Stripe per-match fee collection (2026-06-03). Fully gated; needs
+   *  Stripe connected too. Default off. */
+  paymentCollection: boolean;
   /** "Squad from pasted list" mode (Amir's Thursday group shape).
    *  When true, the analyze route stores group messages without calling
    *  the LLM, and the squad extraction (folded into the generate-teams
@@ -58,6 +61,7 @@ const ALL_OFF: OrgFeatures = {
   reminders: false,
   statsQa: false,
   paymentTracking: false,
+  paymentCollection: false,
   squadFromList: false,
 };
 
@@ -71,6 +75,7 @@ function fromRow(row: {
   featureReminders: boolean;
   featureStatsQa: boolean;
   paymentTrackingEnabled: boolean;
+  paymentCollectionEnabled: boolean;
   featureSquadFromList: boolean;
 }): OrgFeatures {
   return {
@@ -83,6 +88,7 @@ function fromRow(row: {
     reminders: row.featureReminders,
     statsQa: row.featureStatsQa,
     paymentTracking: row.paymentTrackingEnabled,
+    paymentCollection: row.paymentCollectionEnabled,
     squadFromList: row.featureSquadFromList,
   };
 }
@@ -97,6 +103,7 @@ const SELECT = {
   featureReminders: true,
   featureStatsQa: true,
   paymentTrackingEnabled: true,
+  paymentCollectionEnabled: true,
   featureSquadFromList: true,
 } as const;
 
