@@ -97,8 +97,29 @@ export async function applyCheckoutPaid(session: Stripe.Checkout.Session): Promi
  *  attributed to it. Long enough to cover "I'll sort it tonight". */
 const FEE_CAPTURE_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
 
-const AFFIRMATIVE = /^(✅|👍|y|ye|yes|yep|yeah|yup|ok|okay|confirm|confirmed|correct|send|send it|go|do it|that's right|thats right|right)\b/i;
-const NEGATIVE = /^(❌|n|no|nope|nah|cancel|stop|wait|hold|not yet)\b/i;
+/** A short "yes, send them" reply. Emoji are matched directly (a regex
+ *  `\b` never matches after a lone emoji, which silently broke "✅"). */
+function isAffirmative(text: string): boolean {
+  if (/[✅✔👍]/u.test(text)) return true; // ✅ ✔ 👍
+  const t = text.trim().toLowerCase().replace(/[^a-z ]/g, "").trim();
+  if (!t) return false;
+  const AFF = new Set([
+    "y", "ye", "yes", "yep", "yeah", "yup", "ya", "ok", "oki", "okay", "k", "kk",
+    "confirm", "confirmed", "correct", "send", "send it", "send them", "release",
+    "go", "go on", "do it", "sure", "right", "thats right", "that is right",
+    "yes please", "ok send", "yes send",
+  ]);
+  return AFF.has(t) || /^(yes|yeah|yep|yup|ok|okay|confirm|send|correct|sure|go)\b/.test(t);
+}
+
+/** A short "no / not yet" reply. */
+function isNegative(text: string): boolean {
+  if (/[❌✖🚫]/u.test(text)) return true; // ❌ ✖ 🚫
+  const t = text.trim().toLowerCase().replace(/[^a-z ]/g, "").trim();
+  if (!t) return false;
+  const NEG = new Set(["n", "no", "nope", "nah", "cancel", "stop", "wait", "hold", "not yet", "dont", "do not"]);
+  return NEG.has(t) || /^(no|nope|nah|cancel|stop|wait|dont|do not)\b/.test(t);
+}
 
 /** Does this message look like a fee amount (vs. arbitrary chat that
  *  merely contains a number, e.g. "we had 10 players")? Used to gate the
@@ -171,7 +192,7 @@ export async function handleCollectorFeeReply(
 
   // ── Awaiting confirmation of a previously-proposed amount ──
   if (match.feePendingConfirm != null) {
-    if (AFFIRMATIVE.test(text.trim())) {
+    if (isAffirmative(text)) {
       const amount = match.feePendingConfirm;
       await db.match.update({
         where: { id: match.id },
@@ -190,7 +211,7 @@ export async function handleCollectorFeeReply(
           `Players can pay by bank, card, or settle with you directly. I'll chase anyone who hasn't paid.`,
       };
     }
-    if (NEGATIVE.test(text.trim())) {
+    if (isNegative(text)) {
       await db.match.update({
         where: { id: match.id },
         data: { feePendingConfirm: null },
