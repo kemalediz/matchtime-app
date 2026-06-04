@@ -25,6 +25,7 @@ import {
   ListOrdered,
   ShieldCheck,
 } from "lucide-react";
+import { StatsShowcase, WrappedCard } from "./stats-showcase";
 
 /**
  * Public marketing landing page served at `/` for signed-out visitors.
@@ -310,34 +311,13 @@ export function LandingPage() {
               </ul>
             </div>
 
-            {/* Wrapped card mock */}
-            <div className="relative mx-auto w-full max-w-sm">
-              <div className="absolute -inset-4 bg-gradient-to-br from-blue-500/30 to-emerald-500/20 blur-2xl rounded-[2rem]" />
-              <div className="relative rounded-[1.75rem] p-7 bg-gradient-to-br from-slate-900 via-blue-950 to-blue-900 border border-white/10 shadow-2xl">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-bold text-white flex items-center gap-1.5">⚽ MatchTime</span>
-                  <span className="text-blue-300">Sutton FC</span>
-                </div>
-                <p className="mt-6 text-xs tracking-widest text-slate-400">SEASON SO FAR</p>
-                <p className="text-3xl font-extrabold text-white" style={DISPLAY_FONT}>Kemal</p>
-                <div className="mt-5 rounded-2xl bg-white/5 border border-white/10 p-5 text-center">
-                  <p className="text-[11px] tracking-widest text-blue-300">AVERAGE RATING</p>
-                  <p className="text-6xl font-extrabold text-white leading-none mt-1" style={DISPLAY_FONT}>7.3</p>
-                  <p className="mt-2 text-emerald-400 font-semibold text-sm">▲ 10% vs squad average</p>
-                </div>
-                <div className="mt-5 flex items-center justify-between text-center">
-                  <div><p className="text-2xl font-extrabold text-white">1</p><p className="text-[11px] text-slate-400">🏆 MoM</p></div>
-                  <div><p className="text-2xl font-extrabold text-white">6</p><p className="text-[11px] text-slate-400">👟 Games</p></div>
-                  <div><p className="text-2xl font-extrabold text-white">2-2-2</p><p className="text-[11px] text-slate-400">W-D-L</p></div>
-                </div>
-                <div className="mt-5 flex items-center gap-2 text-sm text-slate-200">
-                  <span className="text-lg">📈</span> Above the Curve · 🔥 last 5: 7.2
-                </div>
-              </div>
-              <div className="absolute -bottom-3 -right-2 rotate-3 rounded-xl bg-white text-slate-900 text-xs font-semibold px-3 py-2 shadow-xl flex items-center gap-1.5">
-                <Share2 className="w-3.5 h-3.5 text-blue-600" /> Shareable card
-              </div>
-            </div>
+            {/* Wrapped share card — faithful recreation, fictional data */}
+            <WrappedCard />
+          </div>
+
+          {/* Phone mockups — the real screens, recreated sharp (fictional data) */}
+          <div className="mt-16">
+            <StatsShowcase />
           </div>
 
           {/* Stat feature grid */}
