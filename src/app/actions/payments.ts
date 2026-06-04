@@ -184,7 +184,7 @@ export async function payDirect(matchId: string, quantity = 1): Promise<{ ok: tr
       const token = signMagicLinkToken({
         userId: org.paymentHolderId,
         purpose: "sign-in",
-        nextPath: `/admin/matches/${matchId}`,
+        nextPath: `/collect/${matchId}`,
         ttlSeconds: MAGIC_LINK_TTL.actionNudge,
       });
       const { gbp } = await import("@/lib/payments");
@@ -204,21 +204,32 @@ export async function payDirect(matchId: string, quantity = 1): Promise<{ ok: tr
   return { ok: true };
 }
 
-/** Collector/admin confirms a direct payment was received. */
+/** Confirm a direct payment was received. Authorised for an org admin OR
+ *  the org's money collector (paymentHolderId) — the collector is often
+ *  not an admin (e.g. Elvin collects for Sutton, Kemal owns). */
 export async function confirmDirectPayment(matchId: string, userId: string): Promise<{ ok: true }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
-  const match = await db.match.findUnique({
-    where: { id: matchId },
-    select: { activity: { select: { orgId: true } } },
-  });
-  if (!match) throw new Error("Match not found");
-  await requireOrgAdmin(session.user.id, match.activity.orgId);
+  await requireMatchCollectorOrAdmin(session.user.id, matchId);
 
   await db.attendance.update({
     where: { matchId_userId: { matchId, userId } },
     data: { paidAt: new Date(), directConfirmedByUserId: session.user.id, directPendingAt: null },
   });
-  revalidatePath(`/admin/matches/${matchId}`);
+  revalidatePath(`/collect/${matchId}`);
   return { ok: true };
+}
+
+/** Throws unless `userId` is an org admin or the org's money collector for
+ *  the match's org. Shared by the collector-facing confirm flow. */
+export async function requireMatchCollectorOrAdmin(userId: string, matchId: string): Promise<string> {
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: { activity: { select: { org: { select: { id: true, paymentHolderId: true } } } } },
+  });
+  if (!match) throw new Error("Match not found");
+  const org = match.activity.org;
+  if (org.paymentHolderId === userId) return org.id; // collector
+  await requireOrgAdmin(userId, org.id); // else must be an admin (throws otherwise)
+  return org.id;
 }

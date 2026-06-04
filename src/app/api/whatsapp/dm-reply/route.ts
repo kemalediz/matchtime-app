@@ -25,6 +25,7 @@ import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { answerScopedQuestion, pickRelevantOrgForUser, looksLikeQuestion } from "@/lib/dm-qa";
+import { handleCollectorFeeReply } from "@/lib/payment-flow";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -265,6 +266,35 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ ok: true, ignored: "unknown-sender" });
+  }
+
+  // ── Money-collector fee capture (2026-06-04) ────────────────────────
+  //   If this sender is a money collector for a payment-collecting org
+  //   with a just-played match awaiting its fee, their DM ("£8 each" /
+  //   "✅") sets/confirms the fee and releases the per-player pay links.
+  //   Takes priority over survey/Q&A so the amount isn't misread as a
+  //   check-in answer or a question. Returns null when it's not a fee
+  //   interaction → falls through unchanged.
+  {
+    const feeResult = await handleCollectorFeeReply(user.id, text);
+    if (feeResult) {
+      const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+      const u = await db.user.findUnique({
+        where: { id: user.id },
+        select: { phoneNumber: true },
+      });
+      const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+      const orgId = await db.organisation.findFirst({
+        where: { paymentHolderId: user.id, paymentCollectionEnabled: true },
+        select: { id: true },
+      });
+      if (replyPhone && orgId) {
+        await db.botJob.create({
+          data: { orgId: orgId.id, kind: "dm", phone: replyPhone, text: feeResult.reply },
+        });
+      }
+      return NextResponse.json({ ok: true, handled: "collector-fee", released: feeResult.released });
+    }
   }
 
   // Find an active RosterSurveyDM for this user. There SHOULD be at

@@ -20,6 +20,7 @@ import { findOrgAdminsWithPhone } from "./org";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
+import { gbp } from "./payments";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -627,6 +628,8 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
     if (seg.startsWith("mom-")) return "momVoting";
     if (seg.startsWith("rate-")) return "playerRating";
     if (seg.startsWith("payment-")) return "paymentTracking";
+    if (seg.startsWith("fee-ask")) return "paymentCollection";
+    if (seg.startsWith("pay-chase")) return "paymentCollection";
     // ask-score is the "what was the final score?" prompt. Its sole
     // consumer is ELO recomputation, which only runs when teams were
     // generated — i.e. when teamBalancing is on. For rating-only orgs
@@ -661,7 +664,19 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
       ],
     },
     include: {
-      activity: { include: { sport: true } },
+      activity: {
+        include: {
+          sport: true,
+          // Money-collector + payment-collection flag, for the
+          // match-end "how much per player?" DM (gated below).
+          org: {
+            select: {
+              paymentCollectionEnabled: true,
+              paymentHolderId: true,
+            },
+          },
+        },
+      },
       attendances: { include: { user: { select: { id: true, name: true, phoneNumber: true } } } },
       teamAssignments: { include: { user: { select: { id: true, name: true } } } },
       benchConfirmations: { where: { resolvedAt: null } },
@@ -1263,6 +1278,149 @@ async function computeForMatch(
         question: `💳 Payments for *${activity.name}* — tick when you've paid`,
         options: [redLabel, yellowLabel],
       });
+    }
+  }
+
+  // ── 6a-bis. Ask the money collector for the per-player fee ──────────
+  //    When the org collects fees (Stripe) and no fee is set yet, DM the
+  //    money collector (Organisation.paymentHolderId) once at match-end:
+  //    "how much per player?". Their reply (handled in dm-reply →
+  //    handleCollectorFeeReply) sets the fee + releases the pay links.
+  //    Gated inline on paymentCollectionEnabled so non-paying orgs never
+  //    see it; the post-compute filter also classifies `fee-ask` →
+  //    paymentCollection for defence in depth.
+  if (
+    m.postMatchEndFlow !== false &&
+    activity.org?.paymentCollectionEnabled &&
+    activity.org.paymentHolderId &&
+    m.feePerPlayer == null &&
+    m.feePendingConfirm == null
+  ) {
+    const endedAt = new Date(m.date.getTime() + activity.matchDurationMins * 60 * 1000);
+    const key = `${matchId}:fee-ask`;
+    if (!sentKeys.has(key) && now >= endedAt) {
+      const collectorId = activity.org.paymentHolderId;
+      // Prefer a phone already loaded on the squad; else look it up.
+      let collectorPhone =
+        m.attendances.find((a) => a.userId === collectorId)?.user.phoneNumber ?? null;
+      let collectorName =
+        m.attendances.find((a) => a.userId === collectorId)?.user.name ?? null;
+      if (!collectorPhone) {
+        const c = await db.user.findUnique({
+          where: { id: collectorId },
+          select: { name: true, phoneNumber: true },
+        });
+        collectorPhone = c?.phoneNumber ?? null;
+        collectorName = c?.name ?? collectorName;
+      }
+      if (collectorPhone) {
+        const first = collectorName?.split(" ")[0] ?? "there";
+        const headcount = confirmed.length;
+        out.push({
+          kind: "dm",
+          key,
+          matchId,
+          targetUser: collectorId,
+          phone: collectorPhone.replace(/^\+/, ""),
+          text:
+            `💷 ${first} — how much should each player pay for *${activity.name}*` +
+            (headcount > 0 ? ` (${headcount} played)` : "") +
+            `?\n\n` +
+            `Just reply with the amount — e.g. "£8 each" or "£80 total to split". ` +
+            `I'll confirm, then send everyone their pay link.`,
+        });
+      }
+    }
+  }
+
+  // ── 6a-ter. Daily payment chaser (method-aware) ────────────────────
+  //    Once links are released, chase the unpaid daily at 18:00 London,
+  //    capped at 10 days so we never nag forever.
+  //      • Card / Pay-by-Bank (or no method yet) → DM the player their
+  //        pay link again.
+  //      • Chose "pay directly" (directPendingAt) → don't pester the
+  //        player (they've committed); instead nudge the COLLECTOR once
+  //        a day to confirm receipt.
+  if (
+    activity.org?.paymentCollectionEnabled &&
+    m.paymentLinksReleasedAt != null &&
+    m.feePerPlayer != null
+  ) {
+    const daysSinceRelease =
+      (now.getTime() - m.paymentLinksReleasedAt.getTime()) / (24 * 60 * 60 * 1000);
+    const hourNow = londonHour(now);
+    if (daysSinceRelease <= 10 && hourNow >= 18 && hourNow < 19) {
+      const dayKey = londonDateKey(now);
+      const dayNum = Math.max(1, Math.ceil(daysSinceRelease));
+
+      // Players paying electronically (or undecided) — re-send the link.
+      for (const a of confirmed) {
+        if (a.paidAt) continue;
+        if (a.directPendingAt) continue; // handled via collector nudge below
+        if (!a.user.phoneNumber) continue;
+        const key = `${matchId}:pay-chase:${a.userId}:${dayKey}`;
+        if (sentKeys.has(key)) continue;
+        const token = signMagicLinkToken({
+          userId: a.userId,
+          purpose: "sign-in",
+          nextPath: `/pay/${matchId}`,
+          ttlSeconds: MAGIC_LINK_TTL.permanent,
+        });
+        const first = a.user.name?.split(" ")[0] ?? "there";
+        const opener =
+          dayNum <= 1
+            ? `Quick one ${first}`
+            : dayNum === 2
+              ? `${first}, gentle nudge`
+              : `${first}, still owed`;
+        out.push({
+          kind: "dm",
+          key,
+          matchId,
+          targetUser: a.userId,
+          phone: a.user.phoneNumber.replace(/^\+/, ""),
+          text:
+            `💷 ${opener} — your *${gbp(m.feePerPlayer)}* for *${activity.name}* is still outstanding.\n\n` +
+            `Pay by bank, card, or settle directly:\n${buildMagicLinkUrl(token)}`,
+        });
+      }
+
+      // Direct-pending → one daily nudge to the collector to confirm.
+      const pendingDirect = confirmed.filter((a) => !a.paidAt && a.directPendingAt);
+      if (pendingDirect.length > 0 && activity.org.paymentHolderId) {
+        const ckey = `${matchId}:pay-chase-collector:${dayKey}`;
+        if (!sentKeys.has(ckey)) {
+          const collectorId = activity.org.paymentHolderId;
+          let collectorPhone =
+            m.attendances.find((a) => a.userId === collectorId)?.user.phoneNumber ?? null;
+          if (!collectorPhone) {
+            const c = await db.user.findUnique({
+              where: { id: collectorId },
+              select: { phoneNumber: true },
+            });
+            collectorPhone = c?.phoneNumber ?? null;
+          }
+          if (collectorPhone) {
+            const token = signMagicLinkToken({
+              userId: collectorId,
+              purpose: "sign-in",
+              nextPath: `/collect/${matchId}`,
+              ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+            });
+            const n = pendingDirect.length;
+            out.push({
+              kind: "dm",
+              key: ckey,
+              matchId,
+              targetUser: collectorId,
+              phone: collectorPhone.replace(/^\+/, ""),
+              text:
+                `🤝 ${n} player${n === 1 ? "" : "s"} said they'd pay you directly for *${activity.name}*. ` +
+                `Tick off whoever's settled up:\n${buildMagicLinkUrl(token)}`,
+            });
+          }
+        }
+      }
     }
   }
 
