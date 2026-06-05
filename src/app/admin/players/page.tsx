@@ -14,6 +14,7 @@ import {
   mergePlayers,
   addPlayerAlias,
   removePlayerAlias,
+  createPlayer,
 } from "@/app/actions/players";
 
 interface Player {
@@ -37,6 +38,10 @@ export default function PlayersPage() {
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [includeFormer, setIncludeFormer] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addPhone, setAddPhone] = useState("");
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
@@ -182,6 +187,37 @@ export default function PlayersPage() {
     }
   }
 
+  async function handleAddPlayer() {
+    if (!orgId) return;
+    if (!addName.trim() && !addPhone.trim()) {
+      toast.error("Enter a name (and optionally a phone)");
+      return;
+    }
+    setAdding(true);
+    try {
+      const res = await createPlayer(orgId, addName, addPhone || undefined);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        res.rejoined
+          ? "Welcomed back an existing player"
+          : res.created
+            ? `Added ${addName.trim() || "player"}`
+            : "Added existing player to this group",
+      );
+      setAddName("");
+      setAddPhone("");
+      setShowAdd(false);
+      await loadPlayers(includeFormer);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add player");
+    } finally {
+      setAdding(false);
+    }
+  }
+
   async function handleRemoveAlias(userId: string, alias: string) {
     if (!orgId) return;
     if (!confirm(`Remove alias "${alias}"? Next time the bot sees that pushname, it'll fall back to fuzzy matching.`)) return;
@@ -248,6 +284,13 @@ export default function PlayersPage() {
           </label>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAdd((s) => !s)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Add player
+          </button>
           <Link
             href="/admin/players/phones"
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium"
@@ -274,6 +317,48 @@ export default function PlayersPage() {
           </Link>
         </div>
       </div>
+
+      {showAdd && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
+          <p className="text-sm font-medium text-slate-800 mb-3">Add a player</p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder="Name (e.g. Mo)"
+              className="flex-1 h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-800"
+              onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
+            />
+            <input
+              value={addPhone}
+              onChange={(e) => setAddPhone(e.target.value)}
+              placeholder="Phone (optional, e.g. 07952130028)"
+              className="flex-1 h-11 px-3 rounded-lg border border-slate-200 bg-white font-mono text-sm text-slate-800"
+              onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAddPlayer}
+                disabled={adding}
+                className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50"
+              >
+                {adding ? "Adding…" : "Add"}
+              </button>
+              <button
+                onClick={() => { setShowAdd(false); setAddName(""); setAddPhone(""); }}
+                className="px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Adding a phone is recommended — it links them across groups and lets
+            the bot recognise them automatically. If that number already exists
+            anywhere, we&apos;ll reuse it instead of creating a duplicate.
+          </p>
+        </div>
+      )}
 
       <p className="text-sm text-slate-500">
         <span className="font-medium text-slate-700">Seed rating</span> is the player&apos;s

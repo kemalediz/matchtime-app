@@ -239,6 +239,87 @@ export async function updatePlayerName(userId: string, orgId: string, name: stri
  * touch anything else — phone/positions/rating are edited via the
  * usual inputs on the same row.
  */
+/**
+ * Admin: manually add a player to the org from the portal — for guests
+ * who played but aren't in the WhatsApp group (so the bot never
+ * auto-created them) and don't use the invite link.
+ *
+ * Phone-aware + dedup-safe: if a record with that phone already exists
+ * anywhere, we reuse it (add/reactivate the membership) instead of
+ * creating a duplicate — same principle as the group-join flow. Returns a
+ * discriminated union (errors as DATA, not thrown — Next redacts thrown
+ * Server-Action messages in production).
+ */
+export type CreatePlayerResult =
+  | { ok: true; userId: string; created: boolean; rejoined: boolean }
+  | { ok: false; error: string };
+
+export async function createPlayer(
+  orgId: string,
+  rawName: string,
+  rawPhone?: string,
+): Promise<CreatePlayerResult> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const name = rawName.trim();
+  const phoneInput = (rawPhone ?? "").trim();
+
+  // ── Phone supplied: reuse any existing record to avoid duplicates ──
+  if (phoneInput) {
+    const phone = normalisePhone(phoneInput);
+    if (!phone) return { ok: false, error: "That doesn't look like a valid phone number" };
+
+    const existing = await db.user.findUnique({
+      where: { phoneNumber: phone },
+      select: { id: true, name: true },
+    });
+    if (existing) {
+      // Backfill a name if the record had none.
+      if (name && !existing.name) {
+        await db.user.update({ where: { id: existing.id }, data: { name } });
+      }
+      const mem = await db.membership.findUnique({
+        where: { userId_orgId: { userId: existing.id, orgId } },
+        select: { id: true, leftAt: true },
+      });
+      if (mem && !mem.leftAt) {
+        return { ok: false, error: `That number already belongs to ${existing.name ?? "a player"} in this group.` };
+      }
+      if (mem && mem.leftAt) {
+        await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
+        revalidatePath("/admin/players");
+        return { ok: true, userId: existing.id, created: false, rejoined: true };
+      }
+      await db.membership.create({ data: { userId: existing.id, orgId, role: "PLAYER" } });
+      revalidatePath("/admin/players");
+      return { ok: true, userId: existing.id, created: false, rejoined: false };
+    }
+
+    if (!name) return { ok: false, error: "Please enter a name" };
+    const placeholderEmail = `wa-${phone.replace(/^\+/, "")}@placeholder.matchtime`;
+    const user = await db.user.create({
+      data: { name, email: placeholderEmail, phoneNumber: phone, onboarded: false, isActive: true },
+      select: { id: true },
+    });
+    await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
+    revalidatePath("/admin/players");
+    return { ok: true, userId: user.id, created: true, rejoined: false };
+  }
+
+  // ── No phone: name-only guest (synthetic unique email) ──
+  if (!name) return { ok: false, error: "Please enter a name (or a phone number)" };
+  const email = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@placeholder.matchtime`;
+  const user = await db.user.create({
+    data: { name, email, phoneNumber: null, onboarded: false, isActive: true },
+    select: { id: true },
+  });
+  await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
+  revalidatePath("/admin/players");
+  return { ok: true, userId: user.id, created: true, rejoined: false };
+}
+
 export async function confirmProvisionalPlayer(userId: string, orgId: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
