@@ -148,6 +148,16 @@ export async function loadPlayerSeasonStats(
   });
   if (!player) return null;
 
+  // When did this player join the org? Attendance % must be measured
+  // against matches that happened SINCE they joined — not since the group
+  // launched — otherwise a player who joined last week shows a low % for
+  // matches they were never part of (David, 2026-06-05: 1/7 = 14%).
+  const membership = await db.membership.findUnique({
+    where: { userId_orgId: { userId, orgId } },
+    select: { createdAt: true },
+  });
+  const joinDate = membership?.createdAt ?? null;
+
   const matches = await db.match.findMany({
     where: {
       activity: { orgId },
@@ -196,6 +206,7 @@ export async function loadPlayerSeasonStats(
   const myScoresAll: number[] = [];
   const fieldScoresAll: number[] = [];
   let gamesPlayed = 0;
+  let earliestPlayed: Date | null = null;
   let momCount = 0;
   const record = { w: 0, d: 0, l: 0 };
   let goalDiff = 0;
@@ -209,7 +220,10 @@ export async function loadPlayerSeasonStats(
     const played =
       m.attendances.some((a) => a.status === "CONFIRMED") ||
       m.teamAssignments.some((t) => t.userId === userId);
-    if (played) gamesPlayed++;
+    if (played) {
+      gamesPlayed++;
+      if (!earliestPlayed || m.date < earliestPlayed) earliestPlayed = m.date;
+    }
 
     const myRatings = m.ratings.filter((r) => r.playerId === userId).map((r) => r.score);
     const fieldRatings = m.ratings.map((r) => r.score);
@@ -306,14 +320,31 @@ export async function loadPlayerSeasonStats(
     }
   }
 
+  // Attendance denominator = matches since the player joined. We start
+  // from the EARLIER of their join date and their first appearance, so a
+  // player added retroactively to a past match (manual squad fixes) still
+  // has that match counted, and a brand-new member isn't judged on games
+  // that happened before they existed.
+  const effectiveStart =
+    joinDate && earliestPlayed
+      ? earliestPlayed < joinDate
+        ? earliestPlayed
+        : joinDate
+      : (joinDate ?? earliestPlayed);
+  const eligibleMatches = effectiveStart
+    ? matches.filter((m) => m.date >= effectiveStart).length
+    : totalOrgMatches;
+  const attendanceRate =
+    eligibleMatches > 0 ? Math.round((gamesPlayed / eligibleMatches) * 100) : 0;
+
   // Badges (milestones).
-  const playedEvery = totalOrgMatches > 0 && gamesPlayed === totalOrgMatches;
+  const playedEvery = eligibleMatches > 0 && gamesPlayed === eligibleMatches;
   const sd = stddev(timeline.map((p) => p.myAvg!).filter((x) => x != null));
   const hadMasterclass = timeline.some((p) => p.myAvg !== null && p.myAvg >= 9);
   const badges: Badge[] = [
     { key: "first-game", emoji: "👟", label: "On the board", hint: "Played your first game", earned: gamesPlayed >= 1 },
     { key: "ten-games", emoji: "🔟", label: "Regular", hint: "Played 10+ games", earned: gamesPlayed >= 10 },
-    { key: "ironman", emoji: "🦾", label: "Iron Man", hint: "Played every single match", earned: playedEvery && totalOrgMatches >= 3 },
+    { key: "ironman", emoji: "🦾", label: "Iron Man", hint: "Played every match since joining", earned: playedEvery && eligibleMatches >= 3 },
     { key: "first-mom", emoji: "🏆", label: "Man of the Match", hint: "Won MoM at least once", earned: momCount >= 1 },
     { key: "mom-machine", emoji: "👑", label: "MoM Machine", hint: "Won MoM 3+ times", earned: momCount >= 3 },
     { key: "masterclass", emoji: "🌟", label: "Masterclass", hint: "Averaged 9+ in a game", earned: hadMasterclass },
@@ -370,7 +401,7 @@ export async function loadPlayerSeasonStats(
     player: { id: player.id, name: player.name, image: player.image },
     totalOrgMatches,
     gamesPlayed,
-    attendanceRate: totalOrgMatches > 0 ? Math.round((gamesPlayed / totalOrgMatches) * 100) : 0,
+    attendanceRate,
     avgRating,
     fieldAvgSeason,
     vsFieldPct,
@@ -632,7 +663,7 @@ export async function loadAllClubsOverview(userId: string): Promise<AllClubsOver
     activity: { orgId: { in: orgIds } },
   };
 
-  const [atts, ratings, moms] = await Promise.all([
+  const [atts, ratings, matchesWithVotes] = await Promise.all([
     db.attendance.findMany({
       where: { userId, status: "CONFIRMED", match: matchScope },
       select: { match: { select: { activity: { select: { orgId: true } } } } },
@@ -641,9 +672,13 @@ export async function loadAllClubsOverview(userId: string): Promise<AllClubsOver
       where: { playerId: userId, match: matchScope },
       select: { score: true, match: { select: { activity: { select: { orgId: true } } } } },
     }),
-    db.moMVote.findMany({
-      where: { playerId: userId, match: matchScope },
-      select: { match: { select: { activity: { select: { orgId: true } } } } },
+    // MoM is WINS, not votes received: fetch each match's full vote set,
+    // resolve the winner(s), and count matches this user won. (Counting
+    // MoMVote rows would tally every vote cast for them — Kemal saw "9
+    // MoM" which was really 9 votes across fewer wins. 2026-06-05.)
+    db.match.findMany({
+      where: matchScope,
+      select: { activity: { select: { orgId: true } }, momVotes: { select: { playerId: true } } },
     }),
   ]);
 
@@ -651,7 +686,13 @@ export async function loadAllClubsOverview(userId: string): Promise<AllClubsOver
   for (const o of orgs) byOrg.set(o.id, { games: 0, scores: [], mom: 0 });
   for (const a of atts) byOrg.get(a.match.activity.orgId)!.games++;
   for (const r of ratings) byOrg.get(r.match.activity.orgId)!.scores.push(r.score);
-  for (const mv of moms) byOrg.get(mv.match.activity.orgId)!.mom++;
+  let totalMom = 0;
+  for (const m of matchesWithVotes) {
+    if (momWinners(m.momVotes).has(userId)) {
+      byOrg.get(m.activity.orgId)!.mom++;
+      totalMom++;
+    }
+  }
 
   const clubs: ClubStat[] = orgs
     .map((o) => {
@@ -671,7 +712,7 @@ export async function loadAllClubsOverview(userId: string): Promise<AllClubsOver
   return {
     clubCount: clubs.length,
     totalGames: atts.length,
-    totalMom: moms.length,
+    totalMom,
     overallAvg: mean(ratings.map((r) => r.score)),
     clubs,
   };
