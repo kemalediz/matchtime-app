@@ -41,7 +41,8 @@ import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { runShadowAnalysis } from "@/lib/window-analyzer";
-import { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } from "@/lib/magic-link";
+import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
+import { buildShortMagicLinkUrl } from "@/lib/short-link";
 import { answerScopedQuestion } from "@/lib/dm-qa";
 import {
   analyzeBatch,
@@ -257,7 +258,7 @@ export async function POST(request: Request) {
           text:
             `📊 Hey ${first} — here are your MatchTime stats: ratings over time, your ` +
             `Man-of-the-Match games, how you compare to the squad, your badges, and a ` +
-            `shareable season card.\n\n${buildMagicLinkUrl(token)}\n\nLink works for 48h.`,
+            `shareable season card.\n\n${await buildShortMagicLinkUrl(token)}\n\nLink works for 48h.`,
         },
       });
     } catch (err) {
@@ -348,7 +349,7 @@ export async function POST(request: Request) {
             text:
               `📊 Hi ${first} — here are your MatchTime stats: your ratings over time, ` +
               `Man-of-the-Match games, how you stack up against the squad, your badges and a ` +
-              `shareable season card.\n\n${buildMagicLinkUrl(token)}\n\nKeep this link — it doesn't expire.`,
+              `shareable season card.\n\n${await buildShortMagicLinkUrl(token)}\n\nKeep this link — it doesn't expire.`,
           },
         });
         queued++;

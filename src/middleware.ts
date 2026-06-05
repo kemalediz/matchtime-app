@@ -16,6 +16,7 @@ export function middleware(request: NextRequest) {
     pathname === "/robots.txt" ||
     pathname.startsWith("/join/") ||
     pathname.startsWith("/r/") || // magic-link landing page does its own sign-in
+    pathname.startsWith("/api/r/") || // short-code → token resolver (code is the secret)
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/whatsapp") ||

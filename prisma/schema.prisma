@@ -966,3 +966,21 @@ model WindowVerdict {
   @@unique([orgId, batchHash])
   @@index([orgId, windowEnd])
 }
+
+/// Short-code wrapper for magic links (2026-06-05). The DM contains
+/// `/r/<code>` (~30 chars) instead of the full ~250-char signed token;
+/// the code resolves back to the token server-side via /api/r/[code].
+/// Purely additive — legacy long-token links (which contain a ".") bypass
+/// this entirely and keep working. Generation falls back to the long URL
+/// if a row can't be written, so a DB hiccup never breaks sign-in links.
+model ShortLink {
+  /// Random URL-safe code, e.g. "k7Qp2m9".
+  code      String   @id
+  /// The full signed magic-link token this code stands in for.
+  token     String   @db.Text
+  /// Mirrors the token's own exp — the resolver rejects expired codes.
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

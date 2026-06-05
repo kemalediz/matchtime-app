@@ -43,11 +43,34 @@ export default function MagicLinkLandingPage() {
         return;
       }
 
+      // Short-link support (2026-06-05): a legacy magic-link token always
+      // contains a "." (payload.signature); a short code never does. If
+      // there's no ".", resolve the code → its real token first. Old long
+      // links contain a "." and skip this entirely, so they keep working.
+      let realToken = token;
+      if (!token.includes(".")) {
+        try {
+          const res = await fetch(`/api/r/${encodeURIComponent(token)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.token) realToken = data.token;
+          }
+        } catch {
+          // fall through to the "couldn't resolve" check below
+        }
+        if (cancelled) return;
+        if (realToken === token) {
+          setError("This link isn't valid any more — it may have expired or already been used.");
+          setState("error");
+          return;
+        }
+      }
+
       // Peek at the payload without verifying — just so we know where to
       // redirect after sign-in. Actual verification is server-side.
       let preview: PayloadPreview | null = null;
       try {
-        const body = token.split(".")[0];
+        const body = realToken.split(".")[0];
         if (body) {
           const padded =
             body.replace(/-/g, "+").replace(/_/g, "/") +
@@ -60,7 +83,7 @@ export default function MagicLinkLandingPage() {
       }
 
       // Sign in via the magic-link credentials provider (server verifies).
-      const result = await signIn("magic-link", { token, redirect: false });
+      const result = await signIn("magic-link", { token: realToken, redirect: false });
 
       if (cancelled) return;
 

@@ -15,7 +15,8 @@
  * Date to London wall-clock hour — DST-safe.
  */
 import { db } from "./db";
-import { buildMagicLinkUrl, signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
+import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
+import { buildShortMagicLinkUrl } from "./short-link";
 import { findOrgAdminsWithPhone } from "./org";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
@@ -501,7 +502,7 @@ export async function computeDuePosts(groupId: string): Promise<DuePostsResult |
           nextPath: "/admin/players",
           ttlSeconds: MAGIC_LINK_TTL.actionNudge,
         });
-        const signInUrl = buildMagicLinkUrl(token);
+        const signInUrl = await buildShortMagicLinkUrl(token);
         const names = provisional
           .map((p) => p.user.name)
           .filter(Boolean)
@@ -1061,7 +1062,7 @@ async function computeForMatch(
             purpose: "sign-in",
             ttlSeconds: MAGIC_LINK_TTL.actionNudge,
           });
-          const signInUrl = buildMagicLinkUrl(token);
+          const signInUrl = await buildShortMagicLinkUrl(token);
           out.push({
             kind: "dm",
             key,
@@ -1102,7 +1103,7 @@ async function computeForMatch(
             purpose: "sign-in",
             ttlSeconds: MAGIC_LINK_TTL.actionNudge,
           });
-          const signInUrl = buildMagicLinkUrl(token);
+          const signInUrl = await buildShortMagicLinkUrl(token);
           out.push({
             kind: "dm",
             key,
@@ -1381,7 +1382,7 @@ async function computeForMatch(
           phone: a.user.phoneNumber.replace(/^\+/, ""),
           text:
             `💷 ${opener} — your *${gbp(m.feePerPlayer)}* for *${activity.name}* is still outstanding.\n\n` +
-            `Pay by bank, card, or settle directly:\n${buildMagicLinkUrl(token)}`,
+            `Pay by bank, card, or settle directly:\n${await buildShortMagicLinkUrl(token)}`,
         });
       }
 
@@ -1416,7 +1417,7 @@ async function computeForMatch(
               phone: collectorPhone.replace(/^\+/, ""),
               text:
                 `🤝 ${n} player${n === 1 ? "" : "s"} said they'd pay you directly for *${activity.name}*. ` +
-                `Tick off whoever's settled up:\n${buildMagicLinkUrl(token)}`,
+                `Tick off whoever's settled up:\n${await buildShortMagicLinkUrl(token)}`,
             });
           }
         }
@@ -1481,9 +1482,9 @@ async function computeForMatch(
             text:
               `🏆 *${activity.name}* — ${format(m.date, "EEE d MMM")}\n\n` +
               `Rate your teammates and pick ${sport.mvpLabel}. Takes ~1 minute.\n\n` +
-              `Your personal link:\n${buildMagicLinkUrl(token)}\n\n` +
+              `Your personal link:\n${await buildShortMagicLinkUrl(token)}\n\n` +
               `Link expires in 5 days.\n\n` +
-              `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${buildMagicLinkUrl(statsToken)}`,
+              `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${await buildShortMagicLinkUrl(statsToken)}`,
           });
         }
 
@@ -1560,7 +1561,7 @@ async function computeForMatch(
             playerName: a.user.name,
             activityName: activity.name,
             mvpLabel: sport.mvpLabel,
-            url: buildMagicLinkUrl(token),
+            url: await buildShortMagicLinkUrl(token),
           });
           out.push({
             kind: "dm",

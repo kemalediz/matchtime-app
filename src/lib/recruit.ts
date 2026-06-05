@@ -11,7 +11,8 @@
  * the work for a given orgId.
  */
 import { db } from "./db";
-import { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } from "./magic-link";
+import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
+import { buildShortMagicLinkUrl } from "./short-link";
 import { formatLondon } from "./london-time";
 
 /** How many recent completed matches to pull attendees from. */
@@ -130,7 +131,7 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
         phone: c.phone.replace(/^\+/, ""),
         text:
           `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}${shortLine}. ` +
-          `Fancy it?\n\nTap to grab a spot:\n${buildMagicLinkUrl(token)}`,
+          `Fancy it?\n\nTap to grab a spot:\n${await buildShortMagicLinkUrl(token)}`,
       },
     });
     await db.sentNotification.create({

@@ -11,7 +11,8 @@
  */
 
 import { db } from "./db";
-import { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } from "./magic-link";
+import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
+import { buildShortMagicLinkUrl } from "./short-link";
 import { gbp, parseFeeReply } from "./payments";
 import type Stripe from "stripe";
 
@@ -50,7 +51,7 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
         phone: a.user.phoneNumber.replace(/^\+/, ""),
         text:
           `💷 ${first} — match fee for *${match.activity.name}* is *${gbp(match.feePerPlayer)}*.\n\n` +
-          `Tap to pay (choose Pay by Bank, card, or pay the organiser directly):\n${buildMagicLinkUrl(token)}\n\n` +
+          `Tap to pay (choose Pay by Bank, card, or pay the organiser directly):\n${await buildShortMagicLinkUrl(token)}\n\n` +
           `You can also pay for anyone you brought along.`,
       },
     });

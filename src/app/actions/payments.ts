@@ -180,7 +180,8 @@ export async function payDirect(matchId: string, quantity = 1): Promise<{ ok: tr
       select: { phoneNumber: true },
     });
     if (holder?.phoneNumber) {
-      const { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } = await import("@/lib/magic-link");
+      const { signMagicLinkToken, MAGIC_LINK_TTL } = await import("@/lib/magic-link");
+      const { buildShortMagicLinkUrl } = await import("@/lib/short-link");
       const token = signMagicLinkToken({
         userId: org.paymentHolderId,
         purpose: "sign-in",
@@ -196,7 +197,7 @@ export async function payDirect(matchId: string, quantity = 1): Promise<{ ok: tr
           text:
             `💸 *${me?.name ?? "A player"}* says they'll pay you directly for *${match.activity.name}* — ` +
             `*${gbp(amount)}*${qty > 1 ? ` (${qty} players)` : ""}.\n\n` +
-            `Mark it paid once it lands:\n${buildMagicLinkUrl(token)}`,
+            `Mark it paid once it lands:\n${await buildShortMagicLinkUrl(token)}`,
         },
       });
     }

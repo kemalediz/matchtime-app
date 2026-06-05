@@ -725,7 +725,8 @@ export async function addPlayerToMatch(
       db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } }),
     ]);
     if (features.playerRating && !momDone && !already && u?.phoneNumber) {
-      const { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } = await import("@/lib/magic-link");
+      const { signMagicLinkToken, MAGIC_LINK_TTL } = await import("@/lib/magic-link");
+      const { buildShortMagicLinkUrl } = await import("@/lib/short-link");
       const token = signMagicLinkToken({ userId, purpose: "rate-match", matchId, ttlSeconds: MAGIC_LINK_TTL.rateMatch });
       const statsToken = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: "/profile/stats", ttlSeconds: MAGIC_LINK_TTL.permanent });
       const dlabel = format(match.date, "EEE d MMM");
@@ -737,9 +738,9 @@ export async function addPlayerToMatch(
           text:
             `🏆 *${match.activity.name}* — ${dlabel}\n\n` +
             `Rate your teammates and pick ${match.activity.sport.mvpLabel}. Takes ~1 minute.\n\n` +
-            `Your personal link:\n${buildMagicLinkUrl(token)}\n\n` +
+            `Your personal link:\n${await buildShortMagicLinkUrl(token)}\n\n` +
             `Link expires in 5 days.\n\n` +
-            `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${buildMagicLinkUrl(statsToken)}`,
+            `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${await buildShortMagicLinkUrl(statsToken)}`,
         },
       });
       await db.sentNotification.create({ data: { key: rateKey, kind: "rate-dm", matchId, targetUser: userId } });
