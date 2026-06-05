@@ -176,15 +176,22 @@ export async function mergePlayersCore(
     }
   }
 
-  // 8d. UserAlias — re-point to keep, dedupe on collision.
+  // 8d. UserAlias — re-point the dropped player's aliases to the keeper.
+  //
+  // (orgId, alias) is UNIQUE, so a lookup by that pair returns the very
+  // row being migrated — and re-pointing only its userId never violates
+  // the constraint, nor can the keeper already hold the same (orgId,
+  // alias) as a separate row. So a plain re-point is always safe and is
+  // the whole job.
+  //
+  // BUG FIXED 2026-06-05: the previous code did findUnique(orgId_alias),
+  // got back the drop-user's own row, saw userId !== keepUserId, and
+  // DELETED it as a phantom "collision" — so every merge silently threw
+  // away the dropped player's learned nicknames (e.g. Omar/Omar Yusuf
+  // merge lost "yusuf.i" + "yusuf i"). The re-point branch never ran.
   const dropAliases = await tx.userAlias.findMany({ where: { userId: dropUserId } });
   for (const a of dropAliases) {
-    const exists = await tx.userAlias.findUnique({
-      where: { orgId_alias: { orgId: a.orgId, alias: a.alias } },
-    });
-    if (exists && exists.userId !== keepUserId) await tx.userAlias.delete({ where: { id: a.id } });
-    else if (exists && exists.userId === keepUserId) await tx.userAlias.delete({ where: { id: a.id } });
-    else await tx.userAlias.update({ where: { id: a.id }, data: { userId: keepUserId } });
+    await tx.userAlias.update({ where: { id: a.id }, data: { userId: keepUserId } });
   }
 
   // 8e. Save dropped name + email-slug as alias for keeper, in the
