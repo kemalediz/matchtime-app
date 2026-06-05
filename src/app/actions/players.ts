@@ -8,6 +8,11 @@ import { normalisePhone } from "@/lib/phone";
 import { mergePlayersCore } from "@/lib/merge-players-core";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { format } from "date-fns";
+
+/** Default seed rating for newly-created players — a neutral mid-point the
+ *  team-balancer uses until they accumulate enough peer ratings. */
+const DEFAULT_SEED_RATING = 6;
 
 export async function completeOnboarding(formData: { name: string; phoneNumber?: string }) {
   const session = await auth();
@@ -300,7 +305,7 @@ export async function createPlayer(
     if (!name) return { ok: false, error: "Please enter a name" };
     const placeholderEmail = `wa-${phone.replace(/^\+/, "")}@placeholder.matchtime`;
     const user = await db.user.create({
-      data: { name, email: placeholderEmail, phoneNumber: phone, onboarded: false, isActive: true },
+      data: { name, email: placeholderEmail, phoneNumber: phone, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
       select: { id: true },
     });
     await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
@@ -312,7 +317,7 @@ export async function createPlayer(
   if (!name) return { ok: false, error: "Please enter a name (or a phone number)" };
   const email = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@placeholder.matchtime`;
   const user = await db.user.create({
-    data: { name, email, phoneNumber: null, onboarded: false, isActive: true },
+    data: { name, email, phoneNumber: null, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
     select: { id: true },
   });
   await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
@@ -599,4 +604,150 @@ export async function removePlayerAlias(userId: string, orgId: string, rawAlias:
   await db.userAlias.delete({ where: { id: row.id } });
   revalidatePath("/admin/players");
   return { removed: true };
+}
+
+// ─── Add a player directly to a match (2026-06-05) ──────────────────────
+//   Admin convenience: drop a missing player into a specific match's squad
+//   — past or future — creating their record on the fly if needed. For a
+//   match that has ALREADY happened and whose MoM isn't announced yet, it
+//   also DMs them their rating link so they can rate + be rated before the
+//   window closes. Removes the need to hand-fix recovered squads.
+
+/** Find or create a player in `orgId` from {userId|phone|name}, ensuring
+ *  an active membership. New users default to seedRating 6. */
+async function ensureOrgPlayer(
+  orgId: string,
+  input: { userId?: string; name?: string; phone?: string },
+): Promise<{ ok: true; userId: string; created: boolean } | { ok: false; error: string }> {
+  const name = (input.name ?? "").trim();
+
+  if (input.userId) {
+    const u = await db.user.findUnique({ where: { id: input.userId }, select: { id: true } });
+    if (!u) return { ok: false, error: "Player not found" };
+    await ensureMembership(u.id, orgId);
+    return { ok: true, userId: u.id, created: false };
+  }
+
+  const phoneInput = (input.phone ?? "").trim();
+  if (phoneInput) {
+    const phone = normalisePhone(phoneInput);
+    if (!phone) return { ok: false, error: "That doesn't look like a valid phone number" };
+    const existing = await db.user.findUnique({ where: { phoneNumber: phone }, select: { id: true, name: true } });
+    if (existing) {
+      if (name && !existing.name) await db.user.update({ where: { id: existing.id }, data: { name } });
+      await ensureMembership(existing.id, orgId);
+      return { ok: true, userId: existing.id, created: false };
+    }
+    if (!name) return { ok: false, error: "Please enter a name" };
+    const user = await db.user.create({
+      data: { name, email: `wa-${phone.replace(/^\+/, "")}@placeholder.matchtime`, phoneNumber: phone, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
+      select: { id: true },
+    });
+    await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
+    return { ok: true, userId: user.id, created: true };
+  }
+
+  if (!name) return { ok: false, error: "Please enter a name (or a phone number)" };
+  const email = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@placeholder.matchtime`;
+  const user = await db.user.create({
+    data: { name, email, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
+    select: { id: true },
+  });
+  await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
+  return { ok: true, userId: user.id, created: true };
+}
+
+async function ensureMembership(userId: string, orgId: string) {
+  const mem = await db.membership.findUnique({
+    where: { userId_orgId: { userId, orgId } },
+    select: { id: true, leftAt: true },
+  });
+  if (!mem) await db.membership.create({ data: { userId, orgId, role: "PLAYER" } });
+  else if (mem.leftAt) await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
+}
+
+export type AddToMatchResult =
+  | { ok: true; userId: string; created: boolean; ratingDmSent: boolean }
+  | { ok: false; error: string };
+
+export async function addPlayerToMatch(
+  matchId: string,
+  input: { userId?: string; name?: string; phone?: string },
+  status: "CONFIRMED" | "BENCH" = "CONFIRMED",
+): Promise<AddToMatchResult> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: {
+      id: true,
+      date: true,
+      status: true,
+      activity: {
+        select: { name: true, orgId: true, matchDurationMins: true, sport: { select: { mvpLabel: true } } },
+      },
+    },
+  });
+  if (!match) return { ok: false, error: "Match not found" };
+  const orgId = match.activity.orgId;
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const resolved = await ensureOrgPlayer(orgId, input);
+  if (!resolved.ok) return resolved;
+  const userId = resolved.userId;
+
+  // Append at the end of the chosen status group.
+  const last = await db.attendance.findFirst({
+    where: { matchId, status },
+    orderBy: { position: "desc" },
+    select: { position: true },
+  });
+  await db.attendance.upsert({
+    where: { matchId_userId: { matchId, userId } },
+    update: { status, position: (last?.position ?? 0) + 1 },
+    create: { matchId, userId, status, position: (last?.position ?? 0) + 1 },
+  });
+
+  // Late rating-link DM — only when it still makes sense: the match has
+  // happened, MoM isn't announced yet, the org rates players, and the
+  // player is confirmed + has a phone + hasn't already been sent one.
+  let ratingDmSent = false;
+  const endedAt = new Date(match.date.getTime() + match.activity.matchDurationMins * 60 * 1000);
+  const hasHappened = match.status === "COMPLETED" || new Date() >= endedAt;
+  if (status === "CONFIRMED" && hasHappened) {
+    const { getOrgFeatures } = await import("@/lib/org-features");
+    const features = await getOrgFeatures(orgId);
+    const rateKey = `${matchId}:rate-dm:${userId}`;
+    const [momDone, already, u] = await Promise.all([
+      db.sentNotification.findUnique({ where: { key: `${matchId}:mom-announcement` }, select: { id: true } }),
+      db.sentNotification.findUnique({ where: { key: rateKey }, select: { id: true } }),
+      db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } }),
+    ]);
+    if (features.playerRating && !momDone && !already && u?.phoneNumber) {
+      const { signMagicLinkToken, buildMagicLinkUrl, MAGIC_LINK_TTL } = await import("@/lib/magic-link");
+      const token = signMagicLinkToken({ userId, purpose: "rate-match", matchId, ttlSeconds: MAGIC_LINK_TTL.rateMatch });
+      const statsToken = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: "/profile/stats", ttlSeconds: MAGIC_LINK_TTL.permanent });
+      const dlabel = format(match.date, "EEE d MMM");
+      await db.botJob.create({
+        data: {
+          orgId,
+          kind: "dm",
+          phone: u.phoneNumber.replace(/^\+/, ""),
+          text:
+            `🏆 *${match.activity.name}* — ${dlabel}\n\n` +
+            `Rate your teammates and pick ${match.activity.sport.mvpLabel}. Takes ~1 minute.\n\n` +
+            `Your personal link:\n${buildMagicLinkUrl(token)}\n\n` +
+            `Link expires in 5 days.\n\n` +
+            `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${buildMagicLinkUrl(statsToken)}`,
+        },
+      });
+      await db.sentNotification.create({ data: { key: rateKey, kind: "rate-dm", matchId, targetUser: userId } });
+      ratingDmSent = true;
+    }
+  }
+
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath("/admin/players");
+  return { ok: true, userId, created: resolved.created, ratingDmSent };
 }

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AttendButton } from "@/components/match/attend-button";
 import { AttendanceList } from "@/components/match/attendance-list";
+import { AddPlayerToMatch } from "@/components/match/add-player-to-match";
 import { TeamDisplay } from "@/components/match/team-display";
 import { isOrgAdmin } from "@/lib/org";
 import { format } from "date-fns";
@@ -263,7 +264,8 @@ export default async function MatchDetailPage({
         <div className="px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-800">Attendance</h2>
         </div>
-        <div className="p-6">
+        <div className="p-6 space-y-4">
+          {isAdmin && <AddPlayerToMatch matchId={matchId} />}
           <AttendanceList
             attendances={match.attendances.map((a) => ({
               ...a,
