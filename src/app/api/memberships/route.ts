@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getCurrentOrgId } from "@/lib/org";
+import { getCurrentOrgId, isSuperadmin } from "@/lib/org";
 
 export async function GET() {
   const session = await auth();
@@ -17,7 +17,10 @@ export async function GET() {
     orderBy: { createdAt: "asc" },
   });
 
-  const currentOrgId = await getCurrentOrgId();
+  const [currentOrgId, superadmin] = await Promise.all([
+    getCurrentOrgId(),
+    isSuperadmin(session.user.id),
+  ]);
 
   return NextResponse.json({
     memberships: memberships.map((m) => ({
@@ -26,5 +29,6 @@ export async function GET() {
       org: m.org,
     })),
     currentOrgId,
+    isSuperadmin: superadmin,
   });
 }

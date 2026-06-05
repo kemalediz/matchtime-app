@@ -66,8 +66,15 @@ export function Sidebar() {
   // showed the "Admin" nav item to EVERY logged-in user — so a regular
   // player (Izzet, 2026-06-01) opened their stats link and saw an Admin
   // menu item, which reads as a bug/privilege even though clicking it
-  // just bounced them. Default hidden; reveal only for OWNER/ADMIN of
-  // the current org. Re-checks on navigation so an org switch reflects.
+  // just bounced them. Default hidden; reveal for OWNER/ADMIN of the
+  // current org OR a superadmin. Re-checks on navigation so an org switch
+  // reflects.
+  //
+  // Superadmin clause added 2026-06-05: a superadmin (e.g. Kemal) is only
+  // a PLAYER in some orgs (Sutton Lads) but the /admin pages DO work for
+  // them there — so hiding the link on org-switch made the Admin section
+  // "disappear" even though it was still accessible. Keep link + page in
+  // sync.
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     if (!user) {
@@ -79,6 +86,10 @@ export function Sidebar() {
       .then((r) => (r.ok ? r.json() : { memberships: [], currentOrgId: null }))
       .then((data) => {
         if (cancelled) return;
+        if (data.isSuperadmin) {
+          setIsAdmin(true);
+          return;
+        }
         const memberships = data.memberships ?? [];
         const current =
           memberships.find(
