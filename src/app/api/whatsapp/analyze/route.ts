@@ -141,19 +141,27 @@ export async function POST(request: Request) {
   //   call. The archive write is idempotent on waMessageId (unique).
   {
     const f = await getOrgFeatures(org.id);
+    // Squad-from-list orgs ALWAYS archive inbound messages so the
+    // squad-extraction cron has raw data to diff — INDEPENDENT of whether
+    // the per-batch analyzer also runs below.
+    //
+    // Regression fix (2026-06-05): this archive used to live inside the
+    // `if (!needsAnalyzer)` block. When featureStatsQa was flipped on for
+    // every org (commit 3917f00, 29 May), `needsAnalyzer` became always
+    // true, so this block stopped running and squad extraction silently
+    // broke for squad-from-list groups (Sutton Lads' 4 Jun match
+    // registered 0 players → no rating DMs). Archiving must not depend on
+    // the analyzer gate.
+    //
+    // (No inline LLM extraction here — keeps the analyze response fast and
+    // never times out. Extraction runs via the daily generate-teams cron
+    // backstop plus manual triggers via /api/cron/extract-squads.)
+    if (f.squadFromList) {
+      await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);
+    }
     const needsAnalyzer =
       f.attendance || f.bench || f.teamBalancing || f.reminders || f.statsQa;
     if (!needsAnalyzer) {
-      if (f.squadFromList) {
-        await storeMessagesForSquadFromList(org.id, body.groupId, body.messages);
-        // (No inline LLM extraction here — keeps analyze response
-        // fast and never times out. Extraction runs via the daily
-        // generate-teams cron backstop, plus manual triggers via
-        // /api/cron/extract-squads. If we ever need sub-day timing
-        // for last-minute sign-ins we'll add an inline call with an
-        // explicit rate-limit guard, but the daily backstop covers
-        // Amir's Mon-Wed list-paste rhythm cleanly.)
-      }
       return NextResponse.json({
         ok: true,
         ignored: "no-message-driven-features",
