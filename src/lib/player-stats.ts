@@ -589,3 +589,90 @@ export async function loadTeamOfSeason(
 
   return { formation, sportName: sport.name };
 }
+
+// ─── All-clubs overview (2026-06-05) ────────────────────────────────────
+//   A player is ONE User (unique phone) with a membership per club, so
+//   ratings/MoM already accumulate under one id. Per-club rankings
+//   (leaderboard, TOTS, rivalries) only mean anything within a squad and
+//   stay scoped — but these cross-club TOTALS are meaningful and are what
+//   a multi-club player wants to see on their own profile.
+
+export interface ClubStat {
+  orgId: string;
+  orgName: string;
+  games: number;
+  avgRating: number | null;
+  momCount: number;
+}
+
+export interface AllClubsOverview {
+  clubCount: number;
+  totalGames: number;
+  totalMom: number;
+  /** Mean of every rating received across all clubs. Different clubs rate
+   *  on their own scales, so treat as an indicative blended number. */
+  overallAvg: number | null;
+  clubs: ClubStat[]; // sorted by games desc
+}
+
+export async function loadAllClubsOverview(userId: string): Promise<AllClubsOverview> {
+  const memberships = await db.membership.findMany({
+    where: { userId, leftAt: null },
+    select: { org: { select: { id: true, name: true } } },
+  });
+  const orgs = memberships.map((m) => m.org);
+  const orgIds = orgs.map((o) => o.id);
+  if (orgIds.length === 0) {
+    return { clubCount: 0, totalGames: 0, totalMom: 0, overallAvg: null, clubs: [] };
+  }
+
+  const matchScope = {
+    status: "COMPLETED" as const,
+    isHistorical: false,
+    activity: { orgId: { in: orgIds } },
+  };
+
+  const [atts, ratings, moms] = await Promise.all([
+    db.attendance.findMany({
+      where: { userId, status: "CONFIRMED", match: matchScope },
+      select: { match: { select: { activity: { select: { orgId: true } } } } },
+    }),
+    db.rating.findMany({
+      where: { playerId: userId, match: matchScope },
+      select: { score: true, match: { select: { activity: { select: { orgId: true } } } } },
+    }),
+    db.moMVote.findMany({
+      where: { playerId: userId, match: matchScope },
+      select: { match: { select: { activity: { select: { orgId: true } } } } },
+    }),
+  ]);
+
+  const byOrg = new Map<string, { games: number; scores: number[]; mom: number }>();
+  for (const o of orgs) byOrg.set(o.id, { games: 0, scores: [], mom: 0 });
+  for (const a of atts) byOrg.get(a.match.activity.orgId)!.games++;
+  for (const r of ratings) byOrg.get(r.match.activity.orgId)!.scores.push(r.score);
+  for (const mv of moms) byOrg.get(mv.match.activity.orgId)!.mom++;
+
+  const clubs: ClubStat[] = orgs
+    .map((o) => {
+      const g = byOrg.get(o.id)!;
+      return {
+        orgId: o.id,
+        orgName: o.name,
+        games: g.games,
+        avgRating: mean(g.scores),
+        momCount: g.mom,
+      };
+    })
+    // Only clubs where they've actually played show in the breakdown.
+    .filter((c) => c.games > 0 || c.momCount > 0)
+    .sort((a, b) => b.games - a.games);
+
+  return {
+    clubCount: clubs.length,
+    totalGames: atts.length,
+    totalMom: moms.length,
+    overallAvg: mean(ratings.map((r) => r.score)),
+    clubs,
+  };
+}

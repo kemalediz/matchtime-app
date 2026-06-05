@@ -7,6 +7,7 @@ import {
   loadPlayerSeasonStats,
   loadRatingLeaderboard,
   loadTeamOfSeason,
+  loadAllClubsOverview,
 } from "@/lib/player-stats";
 import { RatingTimeline } from "@/components/stats/rating-timeline";
 import { InfoButton } from "@/components/stats/info-button";
@@ -21,10 +22,11 @@ export default async function MyStatsPage() {
   if (!membership) redirect("/create-org");
 
   const meId = session.user.id;
-  const [stats, leaderboard, tots] = await Promise.all([
+  const [stats, leaderboard, tots, allClubs] = await Promise.all([
     loadPlayerSeasonStats(membership.orgId, meId),
     loadRatingLeaderboard(membership.orgId, { minGames: 2, limit: 12 }),
     loadTeamOfSeason(membership.orgId, { minGames: 2 }),
+    loadAllClubsOverview(meId),
   ]);
   if (!stats) redirect("/profile");
 
@@ -52,6 +54,66 @@ export default async function MyStatsPage() {
 
         <h1 className="mt-3 text-2xl font-bold text-slate-900">{firstName}&apos;s season</h1>
         <p className="text-sm text-slate-500">{stats.orgName} · since launch</p>
+
+        {/* All clubs overview — only when they play for more than one. The
+            club-specific sections below stay scoped to {stats.orgName}. */}
+        {allClubs.clubCount > 1 && (
+          <div className="mt-4 rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-indigo-900 flex items-center gap-1.5">
+                🌍 Across all your clubs
+              </p>
+              <InfoButton title="Across all your clubs">
+                <p>
+                  Combined totals from every club you play for ({allClubs.clubCount}).
+                  One profile follows your phone number across groups, so your
+                  games, MoMs and ratings add up everywhere you play.
+                </p>
+                <p>
+                  Each club rates on its own scale, so the blended average is
+                  indicative — the per-club breakdown is the precise picture.
+                  The leaderboard, Team of the Season and rivalries below stay
+                  specific to {stats.orgName}.
+                </p>
+              </InfoButton>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              <div>
+                <p className="text-2xl font-extrabold text-slate-900">{allClubs.totalGames}</p>
+                <p className="text-[11px] text-slate-500">Games</p>
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-slate-900">{allClubs.totalMom}</p>
+                <p className="text-[11px] text-slate-500">🏆 MoM</p>
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-slate-900">
+                  {allClubs.overallAvg !== null ? allClubs.overallAvg.toFixed(1) : "—"}
+                </p>
+                <p className="text-[11px] text-slate-500">Avg rating</p>
+              </div>
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {allClubs.clubs.map((c) => (
+                <div
+                  key={c.orgId}
+                  className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                    c.orgId === stats.orgId ? "bg-white/80 ring-1 ring-indigo-200" : "bg-white/50"
+                  }`}
+                >
+                  <span className="font-medium text-slate-700 truncate">{c.orgName}</span>
+                  <span className="flex items-center gap-3 text-xs text-slate-500 shrink-0">
+                    <span>{c.games} games</span>
+                    {c.momCount > 0 && <span>{c.momCount}🏆</span>}
+                    <span className="font-semibold text-slate-700">
+                      {c.avgRating !== null ? c.avgRating.toFixed(1) : "—"}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Headline tiles */}
         <div className="grid grid-cols-2 gap-3 mt-4">
