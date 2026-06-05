@@ -436,20 +436,39 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
 const aliasNorm = (s: string) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-export async function addPlayerAlias(userId: string, orgId: string, rawAlias: string) {
+/**
+ * Result is a discriminated union, NOT a thrown error, for the EXPECTED
+ * validation failures (too short/long, alias already taken by someone
+ * else). Next.js redacts thrown Server-Action error messages in
+ * production — they surface to the client as the generic "An error
+ * occurred in the Server Components render…" digest — so a useful message
+ * has to be RETURNED as data. (Caught us 2026-06-05: adding an alias that
+ * already belonged to another player showed that scary generic error
+ * instead of "alias already assigned".) Genuine faults (not authed, not
+ * admin) still throw — those shouldn't reach the UI.
+ */
+export type AddAliasResult =
+  | { ok: true; alias: string; alreadyExisted: boolean }
+  | { ok: false; error: string; conflictUserId?: string };
+
+export async function addPlayerAlias(
+  userId: string,
+  orgId: string,
+  rawAlias: string,
+): Promise<AddAliasResult> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   await requireOrgAdmin(session.user.id, orgId);
 
   const alias = aliasNorm(rawAlias);
-  if (alias.length < 2) throw new Error("Alias must be at least 2 characters");
-  if (alias.length > 40) throw new Error("Alias is too long");
+  if (alias.length < 2) return { ok: false, error: "Alias must be at least 2 characters" };
+  if (alias.length > 40) return { ok: false, error: "Alias is too long" };
 
   const membership = await db.membership.findUnique({
     where: { userId_orgId: { userId, orgId } },
     select: { userId: true },
   });
-  if (!membership) throw new Error("Player is not a member of this organisation");
+  if (!membership) return { ok: false, error: "Player is not a member of this organisation" };
 
   // If alias is already taken by someone else in the org, surface it.
   const existing = await db.userAlias.findUnique({
@@ -457,20 +476,26 @@ export async function addPlayerAlias(userId: string, orgId: string, rawAlias: st
     select: { userId: true },
   });
   if (existing && existing.userId !== userId) {
-    throw new Error(
-      `Alias "${alias}" is already assigned to another player in this organisation`,
-    );
+    // Name the conflicting player so the admin knows where it lives.
+    const other = await db.user.findUnique({
+      where: { id: existing.userId },
+      select: { name: true },
+    });
+    return {
+      ok: false,
+      conflictUserId: existing.userId,
+      error: `"${alias}" is already an alias of ${other?.name ?? "another player"}. Merge the two records or remove it there first.`,
+    };
   }
   if (existing && existing.userId === userId) {
-    // Idempotent — already exists for this user.
-    return { alias, alreadyExisted: true };
+    return { ok: true, alias, alreadyExisted: true };
   }
 
   await db.userAlias.create({
     data: { orgId, userId, alias, source: "manual" },
   });
   revalidatePath("/admin/players");
-  return { alias, alreadyExisted: false };
+  return { ok: true, alias, alreadyExisted: false };
 }
 
 export async function removePlayerAlias(userId: string, orgId: string, rawAlias: string) {

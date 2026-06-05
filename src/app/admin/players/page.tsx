@@ -154,6 +154,13 @@ export default function PlayersPage() {
     if (!value) { setAliasInputFor(null); return; }
     try {
       const res = await addPlayerAlias(userId, orgId, value);
+      if (!res.ok) {
+        // Expected validation failure (e.g. alias already on another
+        // player) — returned as data, not thrown, so the message survives
+        // Next's production error redaction.
+        toast.error(res.error);
+        return;
+      }
       // Optimistic update — push the new alias into the row.
       setPlayers((prev) =>
         prev.map((p) =>
