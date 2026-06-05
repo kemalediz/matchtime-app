@@ -1,3 +1,5 @@
+import { RemoveFromMatchButton } from "./remove-from-match-button";
+
 interface AttendancePlayer {
   id: string;
   status: string;
@@ -22,9 +24,14 @@ function Initials({ name }: { name: string | null }) {
 export function AttendanceList({
   attendances,
   maxPlayers,
+  admin = false,
+  matchId,
 }: {
   attendances: AttendancePlayer[];
   maxPlayers: number;
+  /** When true (and matchId given), show an admin remove (×) per row. */
+  admin?: boolean;
+  matchId?: string;
 }) {
   const confirmed = attendances
     .filter((a) => a.status === "CONFIRMED")
@@ -45,7 +52,7 @@ export function AttendanceList({
               <span className="text-xs text-slate-400 w-5 text-right font-mono">{i + 1}</span>
               <Initials name={a.user.name} />
               <span className="text-sm font-medium text-slate-800 truncate">{a.user.name}</span>
-              <div className="ml-auto flex gap-1">
+              <div className="ml-auto flex items-center gap-1.5">
                 {a.user.positions.slice(0, 2).map((pos) => (
                   <span
                     key={pos}
@@ -54,6 +61,9 @@ export function AttendanceList({
                     {pos}
                   </span>
                 ))}
+                {admin && matchId && (
+                  <RemoveFromMatchButton matchId={matchId} userId={a.user.id} name={a.user.name} />
+                )}
               </div>
             </li>
           ))}
@@ -74,6 +84,11 @@ export function AttendanceList({
                 <span className="text-xs text-slate-400 w-5 text-right font-mono">{i + 1}</span>
                 <Initials name={a.user.name} />
                 <span className="text-sm text-slate-700">{a.user.name}</span>
+                {admin && matchId && (
+                  <span className="ml-auto">
+                    <RemoveFromMatchButton matchId={matchId} userId={a.user.id} name={a.user.name} />
+                  </span>
+                )}
               </li>
             ))}
           </ul>

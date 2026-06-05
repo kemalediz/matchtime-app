@@ -57,6 +57,22 @@ export default async function MatchDetailPage({
   });
 
   const isAdmin = await isOrgAdmin(session.user.id, match.activity.orgId);
+
+  // Existing org members not already in this match — for the admin
+  // "add player" picker, so they select rather than retype (avoids dupes).
+  const inMatchIds = new Set(match.attendances.map((a) => a.userId));
+  const addablePlayers = isAdmin
+    ? (
+        await db.membership.findMany({
+          where: { orgId: match.activity.orgId, leftAt: null },
+          select: { user: { select: { id: true, name: true, phoneNumber: true } } },
+        })
+      )
+        .map((m) => m.user)
+        .filter((u) => u.name && !inMatchIds.has(u.id))
+        .map((u) => ({ id: u.id, name: u.name as string, hasPhone: !!u.phoneNumber }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
   const isPastDeadline = new Date() > match.attendanceDeadline;
   const hasTeams = match.teamAssignments.length > 0;
 
@@ -265,13 +281,15 @@ export default async function MatchDetailPage({
           <h2 className="text-lg font-semibold text-slate-800">Attendance</h2>
         </div>
         <div className="p-6 space-y-4">
-          {isAdmin && <AddPlayerToMatch matchId={matchId} />}
+          {isAdmin && <AddPlayerToMatch matchId={matchId} existingPlayers={addablePlayers} />}
           <AttendanceList
             attendances={match.attendances.map((a) => ({
               ...a,
               user: { ...a.user, positions: positionsFor(a.user) },
             }))}
             maxPlayers={match.maxPlayers}
+            admin={isAdmin}
+            matchId={matchId}
           />
         </div>
       </section>

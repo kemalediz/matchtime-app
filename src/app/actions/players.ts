@@ -751,3 +751,21 @@ export async function addPlayerToMatch(
   revalidatePath("/admin/players");
   return { ok: true, userId, created: resolved.created, ratingDmSent };
 }
+
+/** Remove a player from a match's squad (e.g. added by mistake). Deletes
+ *  the attendance row so they vanish from the squad + rating list. History
+ *  in other matches is untouched. Admin-only. */
+export async function removePlayerFromMatch(matchId: string, userId: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: { activity: { select: { orgId: true } } },
+  });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  await db.attendance.deleteMany({ where: { matchId, userId } });
+  revalidatePath(`/matches/${matchId}`);
+  return { ok: true };
+}
