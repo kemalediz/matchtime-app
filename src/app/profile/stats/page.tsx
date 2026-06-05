@@ -24,7 +24,7 @@ export default async function MyStatsPage() {
   const meId = session.user.id;
   const [stats, leaderboard, tots, allClubs] = await Promise.all([
     loadPlayerSeasonStats(membership.orgId, meId),
-    loadRatingLeaderboard(membership.orgId, { minGames: 2, limit: 12 }),
+    loadRatingLeaderboard(membership.orgId, { minGames: 1, limit: 20 }),
     loadTeamOfSeason(membership.orgId, { minGames: 2 }),
     loadAllClubsOverview(meId),
   ]);
@@ -291,7 +291,11 @@ export default async function MyStatsPage() {
                   <span className="text-red-500 font-semibold">↓</span> dropped,{" "}
                   <span className="text-slate-400 font-semibold">▬</span> no change.
                 </p>
-                <p className="text-slate-400">Players need at least 2 games to appear.</p>
+                <p className="text-slate-400">
+                  Everyone who&apos;s been rated appears. A{" "}
+                  <span className="font-semibold">1 game</span> tag means it&apos;s
+                  early days for them — their position will settle as they play more.
+                </p>
               </InfoButton>
             </div>
             <div className="space-y-1">
@@ -315,6 +319,11 @@ export default async function MyStatsPage() {
                       {r.name}
                       {isMe && " (you)"}
                     </span>
+                    {r.provisional && (
+                      <span className="shrink-0 inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold">
+                        1 game
+                      </span>
+                    )}
                     <Movement delta={r.delta} />
                     <span className="w-10 text-right text-sm font-semibold text-slate-800">
                       {r.avg.toFixed(1)}

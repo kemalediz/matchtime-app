@@ -436,6 +436,9 @@ export interface LeaderboardRow {
   prevRank: number | null;
   /** prevRank - rank: positive = climbed, negative = dropped, 0 = same. */
   delta: number | null;
+  /** Only one rated match so far — ranking is provisional/noisy. UI marks
+   *  these so a young squad still shows everyone who's played. */
+  provisional: boolean;
 }
 
 /**
@@ -513,6 +516,7 @@ export async function loadRatingLeaderboard(
       rank: rankNow,
       prevRank,
       delta: prevRank !== null ? prevRank - rankNow : null,
+      provisional: r.games < 2,
     };
   });
 }
