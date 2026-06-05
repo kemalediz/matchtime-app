@@ -417,6 +417,48 @@ export async function POST(request: Request) {
     });
   }
 
+  // ── Fast-path: admin "DM recent players to join the next match" ─────
+  //   An ADMIN asking the bot to nudge recent attendees who haven't yet
+  //   responded to the upcoming match. REAL action (queues invite DMs) —
+  //   exists because the LLM was otherwise *claiming* "I'll DM the recent
+  //   players" with nothing behind it (Kemal 2026-06-05). Admin-gated.
+  const { looksLikeRecruitRequest } = await import("@/lib/recruit");
+  for (const m of fresh) {
+    if (statsRequestIds.has(m.waMessageId)) continue;
+    if (!looksLikeRecruitRequest(m.body)) continue;
+    const sender = senderById.get(m.waMessageId)!;
+    statsRequestIds.add(m.waMessageId); // peel off the LLM batch regardless
+    let isAdmin = false;
+    if (sender.userId) {
+      const { isOrgAdmin } = await import("@/lib/org");
+      isAdmin = await isOrgAdmin(sender.userId, org.id);
+    }
+    if (!isAdmin) {
+      results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "recruit_denied", react: "🔒", reply: null });
+      await recordAnalysis({
+        orgId: org.id, groupId: body.groupId, msg: m,
+        handledBy: "fast-path", intent: "recruit_denied", action: null,
+        confidence: 1, reasoning: "non-admin asked to DM recent players — ignored",
+        authorUserId: sender.userId, authorName: m.authorName ?? null,
+      });
+      continue;
+    }
+    const { inviteRecentPlayers } = await import("@/lib/recruit");
+    const r = await inviteRecentPlayers(org.id);
+    const reply = !r.ok
+      ? r.reason ?? "Couldn't do that right now."
+      : r.invited && r.invited > 0
+        ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
+        : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+    await recordAnalysis({
+      orgId: org.id, groupId: body.groupId, msg: m,
+      handledBy: "fast-path", intent: "recruit_recent", action: `recruit:${r.invited ?? 0}`,
+      confidence: 1, reasoning: `admin recruit — invited ${r.invited ?? 0} recent players`,
+      authorUserId: sender.userId, authorName: m.authorName ?? null,
+    });
+    results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "recruit_recent", react: "✅", reply });
+  }
+
   // Drop stats-requests + blast triggers from the batch the LLM sees.
   for (let i = fresh.length - 1; i >= 0; i--) {
     if (statsRequestIds.has(fresh[i].waMessageId)) fresh.splice(i, 1);

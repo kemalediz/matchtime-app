@@ -297,6 +297,60 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── Admin recruit via DM (2026-06-05) ───────────────────────────────
+  //   An org admin can DM MatchTime "DM recent players to join the next
+  //   match" (instead of posting in the group) and it fires the same
+  //   invite blast. Gated to OWNER/ADMIN (or superadmin) of an org with
+  //   an upcoming match. Replies privately with the outcome.
+  {
+    const { looksLikeRecruitRequest } = await import("@/lib/recruit");
+    if (looksLikeRecruitRequest(text)) {
+      const { isSuperadmin } = await import("@/lib/org");
+      const su = await isSuperadmin(user.id);
+      const adminMems = await db.membership.findMany({
+        where: {
+          userId: user.id,
+          leftAt: null,
+          ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] } }),
+        },
+        select: { orgId: true },
+      });
+      if (adminMems.length > 0) {
+        const startToday = new Date();
+        startToday.setUTCHours(0, 0, 0, 0);
+        const cand = await db.match.findFirst({
+          where: {
+            activity: { orgId: { in: adminMems.map((m) => m.orgId) } },
+            isHistorical: false,
+            status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+            date: { gte: startToday },
+          },
+          orderBy: { date: "asc" },
+          select: { activity: { select: { orgId: true } } },
+        });
+        if (cand) {
+          const { inviteRecentPlayers } = await import("@/lib/recruit");
+          const r = await inviteRecentPlayers(cand.activity.orgId);
+          const reply = !r.ok
+            ? r.reason ?? "Couldn't do that right now."
+            : r.invited && r.invited > 0
+              ? `📣 Done — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}* on ${r.matchWhen}${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
+              : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+          const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+          const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });
+          const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+          if (replyPhone) {
+            await db.botJob.create({
+              data: { orgId: cand.activity.orgId, kind: "dm", phone: replyPhone, text: reply },
+            });
+          }
+          return NextResponse.json({ ok: true, handled: "recruit-dm", invited: r.invited ?? 0 });
+        }
+      }
+      // Not an admin of any org with an upcoming match → fall through.
+    }
+  }
+
   // Find an active RosterSurveyDM for this user. There SHOULD be at
   // most one open survey per (user, org) at a time. If multiple
   // exist, pick the most recent.
