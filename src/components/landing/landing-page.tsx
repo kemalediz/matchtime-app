@@ -548,8 +548,7 @@ export function LandingPage() {
             <br /> match-day morning?
           </h2>
           <p className="mt-5 text-lg text-slate-200 leading-relaxed">
-            Set your group up in under five minutes. First month on us — no
-            credit card needed.
+            Set your group up in under five minutes.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center">
             <Link
