@@ -49,6 +49,14 @@ export default function ActivitiesPage() {
   const [deadlineHours, setDeadlineHours] = useState("5");
   const [matchDurationMins, setMatchDurationMins] = useState("60");
 
+  // Edit existing activity (timing/venue/name).
+  const [editId, setEditId] = useState<string | null>(null);
+  const [eName, setEName] = useState("");
+  const [eDay, setEDay] = useState("2");
+  const [eTime, setETime] = useState("21:30");
+  const [eVenue, setEVenue] = useState("");
+  const [eSaving, setESaving] = useState(false);
+
   useEffect(() => {
     fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
     fetch("/api/sports").then((r) => (r.ok ? r.json() : [])).then((s: Sport[]) => {
@@ -97,6 +105,35 @@ export default function ActivitiesPage() {
       toast.success("Match generated for next week!");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to generate");
+    }
+  }
+
+  function openEdit(a: Activity) {
+    setEditId(a.id);
+    setEName(a.name);
+    setEDay(String(a.dayOfWeek));
+    setETime(a.time);
+    setEVenue(a.venue);
+  }
+
+  async function handleEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editId) return;
+    setESaving(true);
+    try {
+      await updateActivity(editId, {
+        name: eName,
+        dayOfWeek: parseInt(eDay),
+        time: eTime,
+        venue: eVenue,
+      });
+      toast.success("Activity updated");
+      setEditId(null);
+      loadActivities();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setESaving(false);
     }
   }
 
@@ -160,6 +197,12 @@ export default function ActivitiesPage() {
                 >
                   <Zap className="w-3.5 h-3.5" />
                   Generate match
+                </button>
+                <button
+                  onClick={() => openEdit(a)}
+                  className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium"
+                >
+                  Edit
                 </button>
                 <button
                   onClick={() => handleToggleActive(a)}
@@ -276,6 +319,73 @@ export default function ActivitiesPage() {
                 className="w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
               >
                 Create
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
+          onClick={() => setEditId(null)}
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-800">Edit activity</h3>
+              <button onClick={() => setEditId(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleEdit} className="p-6 space-y-4">
+              <Field label="Name">
+                <input
+                  value={eName}
+                  onChange={(e) => setEName(e.target.value)}
+                  required
+                  className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Day">
+                  <select
+                    value={eDay}
+                    onChange={(e) => setEDay(e.target.value)}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {DAYS_OF_WEEK.map((d, i) => (
+                      <option key={i} value={i}>{d}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Time">
+                  <input
+                    type="time"
+                    value={eTime}
+                    onChange={(e) => setETime(e.target.value)}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </Field>
+              </div>
+              <Field label="Venue">
+                <input
+                  value={eVenue}
+                  onChange={(e) => setEVenue(e.target.value)}
+                  required
+                  className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </Field>
+              <p className="text-xs text-slate-400">
+                Changing the day/time affects future matches generated for this
+                activity. Matches already created keep their existing date — edit
+                or cancel those individually if needed.
+              </p>
+              <button
+                type="submit"
+                disabled={eSaving}
+                className="w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
+              >
+                {eSaving ? "Saving…" : "Save changes"}
               </button>
             </form>
           </div>
