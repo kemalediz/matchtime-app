@@ -321,6 +321,17 @@ export default async function MatchDetailPage({
             Manage teams
           </Link>
         )}
+        {isAdmin &&
+          (match.status === "UPCOMING" ||
+            match.status === "TEAMS_GENERATED" ||
+            match.status === "TEAMS_PUBLISHED") && (
+            <Link
+              href={`/admin/matches/${matchId}/switch-format`}
+              className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+            >
+              Switch format
+            </Link>
+          )}
       </div>
     </div>
   );
