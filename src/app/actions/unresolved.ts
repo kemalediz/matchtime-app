@@ -190,6 +190,31 @@ export async function assignUnresolvedToPlayer(args: {
     }
   }
 
+  // 3. Backfill authorUserId on the historical unresolved messages for
+  //    this pushname so they drop off the unresolved list. Without this
+  //    the alias fixes FUTURE messages but the original message stays
+  //    authorUserId=null and keeps reappearing forever (Kemal 2026-06-06:
+  //    "I linked & applied join but it keeps coming up"). Runs AFTER the
+  //    replay above (which reads authorUserId=null rows).
+  const since2 = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000);
+  const unresolvedRows = await db.analyzedMessage.findMany({
+    where: {
+      orgId: args.orgId,
+      authorUserId: null,
+      authorName: { not: null },
+      intent: { in: ATTENDANCE_INTENTS },
+      createdAt: { gte: since2 },
+    },
+    select: { id: true, authorName: true },
+  });
+  const toClear = unresolvedRows.filter((r) => norm(r.authorName ?? "") === key).map((r) => r.id);
+  if (toClear.length > 0) {
+    await db.analyzedMessage.updateMany({
+      where: { id: { in: toClear } },
+      data: { authorUserId: args.userId },
+    });
+  }
+
   revalidatePath("/admin/unresolved");
   revalidatePath("/admin/players");
   return { aliasCreated, applied };
