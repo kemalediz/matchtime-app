@@ -351,6 +351,41 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── Admin rating-progress via DM (2026-06-06) ───────────────────────
+  //   "how many have rated / who's left / who hasn't picked MoM?" —
+  //   grounded answer for the org's last completed match. Admin-gated.
+  {
+    const { looksLikeRatingProgressRequest } = await import("@/lib/rating-progress");
+    if (looksLikeRatingProgressRequest(text)) {
+      const { isSuperadmin } = await import("@/lib/org");
+      const su = await isSuperadmin(user.id);
+      const adminMems = await db.membership.findMany({
+        where: { userId: user.id, leftAt: null, ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] } }) },
+        select: { orgId: true },
+      });
+      if (adminMems.length > 0) {
+        // The org whose most-recently-played match is the freshest.
+        const cand = await db.match.findFirst({
+          where: { activity: { orgId: { in: adminMems.map((m) => m.orgId) } }, isHistorical: false, status: "COMPLETED" },
+          orderBy: { date: "desc" },
+          select: { activity: { select: { orgId: true } } },
+        });
+        if (cand) {
+          const { loadRatingProgress, formatRatingProgressReply } = await import("@/lib/rating-progress");
+          const reply = formatRatingProgressReply(await loadRatingProgress(cand.activity.orgId));
+          const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+          const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });
+          const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+          if (replyPhone) {
+            await db.botJob.create({ data: { orgId: cand.activity.orgId, kind: "dm", phone: replyPhone, text: reply } });
+          }
+          return NextResponse.json({ ok: true, handled: "rating-progress-dm" });
+        }
+      }
+      // Not an admin / no completed match → fall through.
+    }
+  }
+
   // Find an active RosterSurveyDM for this user. There SHOULD be at
   // most one open survey per (user, org) at a time. If multiple
   // exist, pick the most recent.

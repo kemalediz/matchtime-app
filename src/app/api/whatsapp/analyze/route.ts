@@ -460,6 +460,43 @@ export async function POST(request: Request) {
     results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "recruit_recent", react: "✅", reply });
   }
 
+  // ── Fast-path: admin "how many have rated / who's left / who hasn't
+  //    picked MoM?" ────────────────────────────────────────────────────
+  //   Grounded rating-completion answer (the analyzer's normal context
+  //   has no rating data, so the LLM would otherwise guess). Admin-gated.
+  const { looksLikeRatingProgressRequest } = await import("@/lib/rating-progress");
+  for (const m of fresh) {
+    if (statsRequestIds.has(m.waMessageId)) continue;
+    if (!looksLikeRatingProgressRequest(m.body)) continue;
+    const sender = senderById.get(m.waMessageId)!;
+    statsRequestIds.add(m.waMessageId); // peel off the LLM batch regardless
+    let isAdmin = false;
+    if (sender.userId) {
+      const { isOrgAdmin } = await import("@/lib/org");
+      isAdmin = await isOrgAdmin(sender.userId, org.id);
+    }
+    if (!isAdmin) {
+      // Non-admins shouldn't see who-hasn't-rated; stay silent (no react).
+      results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "rating_progress_denied", react: null, reply: null });
+      await recordAnalysis({
+        orgId: org.id, groupId: body.groupId, msg: m,
+        handledBy: "fast-path", intent: "rating_progress_denied", action: null,
+        confidence: 1, reasoning: "non-admin asked rating progress — ignored",
+        authorUserId: sender.userId, authorName: m.authorName ?? null,
+      });
+      continue;
+    }
+    const { loadRatingProgress, formatRatingProgressReply } = await import("@/lib/rating-progress");
+    const reply = formatRatingProgressReply(await loadRatingProgress(org.id));
+    await recordAnalysis({
+      orgId: org.id, groupId: body.groupId, msg: m,
+      handledBy: "fast-path", intent: "rating_progress", action: "rating-progress",
+      confidence: 1, reasoning: "admin rating-progress query",
+      authorUserId: sender.userId, authorName: m.authorName ?? null,
+    });
+    results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "rating_progress", react: "📋", reply });
+  }
+
   // Drop stats-requests + blast triggers from the batch the LLM sees.
   for (let i = fresh.length - 1; i >= 0; i--) {
     if (statsRequestIds.has(fresh[i].waMessageId)) fresh.splice(i, 1);
