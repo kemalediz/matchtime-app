@@ -15,6 +15,7 @@ import {
 import {
   enqueueForAnalysis,
   recordHistory,
+  recoverGroupMessages,
   startBatchFlushTimer,
   stopBatchFlushTimer,
 } from "./smart-analysis.js";
@@ -91,6 +92,18 @@ async function main() {
         client,
         orgConfigs.map((o: { groupId: string }) => o.groupId),
       );
+
+      // Catch-up on reconnect: whatsapp-web.js silently DROPS messages
+      // that arrive while the socket is down (during a deploy/restart).
+      // Re-feed the last ~2h of each monitored group's messages into the
+      // analyser — the server dedupes on waMessageId, so only genuinely
+      // missed messages reach the LLM. Fixes the gap that lost Ibrahim's
+      // "in" during a restart (Kemal 2026-06-06). Fire-and-forget; the
+      // re-queued messages get classified by the startup flush above.
+      recoverGroupMessages(
+        client,
+        orgConfigs.map((o: { groupId: string }) => o.groupId),
+      ).catch((err) => console.error("[recover-group] sweep failed:", err));
 
       // Backfill the "lurker gap": members who were in the WhatsApp
       // group before the bot joined, who haven't typed since (so

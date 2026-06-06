@@ -249,6 +249,49 @@ export function startBatchFlushTimer(client: Client, groupIds: string[]): void {
   }, 15_000);
 }
 
+/**
+ * Catch-up after a (re)start: re-feed the last ~2h of each monitored
+ * group's messages into the analyzer. The server dedupes on waMessageId,
+ * so messages already processed are dropped BEFORE any LLM call — only
+ * messages that arrived while the bot was down / reconnecting (and were
+ * therefore never seen) actually get analysed. Fixes the "message lost
+ * during a restart" gap (Kemal 2026-06-06: Ibrahim's "in" landed during
+ * a deploy restart and was never registered). Best-effort + idempotent;
+ * any per-group failure is logged and skipped.
+ */
+export async function recoverGroupMessages(client: Client, groupIds: string[]): Promise<void> {
+  const cutoffSec = Math.floor(Date.now() / 1000) - 2 * 60 * 60; // last 2h
+  for (const gid of groupIds) {
+    try {
+      const chat = await client.getChatById(gid);
+      let msgs: Message[] = [];
+      try {
+        msgs = await chat.fetchMessages({ limit: 50 });
+      } catch {
+        // fetchMessages can throw for chats not yet fully loaded in the
+        // headless session — fall back to the cached last message so we
+        // at least catch the most recent.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const lm = (chat as any).lastMessage as Message | undefined;
+        if (lm) msgs = [lm];
+      }
+      let queued = 0;
+      for (const m of msgs) {
+        if (m.fromMe) continue;
+        if ((m.timestamp ?? 0) < cutoffSec) continue;
+        await enqueueForAnalysis(client, m); // server dedupes on waMessageId
+        queued++;
+      }
+      console.log(`[recover-group] ${gid}: re-queued ${queued} recent message(s) for catch-up`);
+    } catch (err) {
+      console.error(
+        `[recover-group] ${gid} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
 export function stopBatchFlushTimer(): void {
   if (flushTimer) {
     clearInterval(flushTimer);
