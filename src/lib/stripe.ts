@@ -97,6 +97,9 @@ export interface CheckoutArgs {
   connectedAccountId: string;
   /** Pounds — the TOTAL to charge (base × quantity + uplift). */
   amount: number;
+  /** Pence — MatchTime's platform fee, skimmed from the connected-account
+   *  charge via Stripe `application_fee_amount`. 0 = no platform fee. */
+  applicationFeePence: number;
   method: "pay_by_bank" | "card";
   quantity: number;
   description: string; // "Tuesday 7-a-side — 2 Jun"
@@ -127,6 +130,11 @@ export async function createCheckoutSession(args: CheckoutArgs): Promise<string>
           },
         },
       ],
+      // Direct charge on the collector's connected account: the platform
+      // fee is skimmed to MatchTime, the rest settles to the collector.
+      ...(args.applicationFeePence > 0
+        ? { payment_intent_data: { application_fee_amount: args.applicationFeePence } }
+        : {}),
       metadata: args.metadata,
       success_url: `${base}${args.successPath}`,
       cancel_url: `${base}${args.cancelPath}`,

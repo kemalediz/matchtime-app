@@ -21,7 +21,7 @@ import {
   accountChargesEnabled,
   createCheckoutSession,
 } from "@/lib/stripe";
-import { totalForMethod, type PayMethod } from "@/lib/payments";
+import { totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
 
 // ── Connect onboarding (money collector links their bank) ────────────
 
@@ -138,6 +138,7 @@ export async function payByMethod(
   const url = await createCheckoutSession({
     connectedAccountId: org.stripeConnectAccountId,
     amount: total,
+    applicationFeePence: platformFeePence(method as PayMethod),
     method,
     quantity: qty,
     description: `${match.activity.name} — match fee${qty > 1 ? ` (${qty} players)` : ""}`,

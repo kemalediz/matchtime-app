@@ -84,7 +84,7 @@ export function PayOptions({ matchId, prices }: { matchId: string; prices: Metho
             <span className="flex-1 min-w-0">
               <span className="block font-semibold text-slate-900">{p.label}</span>
               {p.method !== "direct" && p.fee > 0 && (
-                <span className="block text-[11px] text-slate-400">includes {gbp(p.fee)} processing</span>
+                <span className="block text-[11px] text-slate-400">includes {gbp(p.fee)} processing &amp; service fee</span>
               )}
               {p.method === "direct" && (
                 <span className="block text-[11px] text-emerald-600">no fee · cash or transfer</span>
