@@ -15,29 +15,19 @@
 
 export type PayMethod = "pay_by_bank" | "card" | "direct";
 
-/** MatchTime's platform fee per payment, in pounds — our revenue. It is
- *  baked into the uplift the player pays AND passed to Stripe as
- *  `application_fee_amount`, so it's skimmed to MatchTime while the
- *  collector still nets ≥ the base fee. Only Stripe-rail methods (card /
- *  pay-by-bank) carry it; "direct" is off-platform and earns nothing.
- *  Charged once per payment (a player paying for guests is one charge).
- *  Change this single number to reprice. */
-export const PLATFORM_FEE = 0.1; // 10p
+/** MatchTime's platform fee as a fraction of the base match fee — our
+ *  revenue. 1% of base (e.g. 8p on £8). Skimmed from each Stripe-rail
+ *  payment via `application_fee_amount`; "direct" (cash) is off-platform
+ *  and carries none. Change this single number to reprice. */
+export const PLATFORM_FEE_RATE = 0.01; // 1% of base
 
-/** Per-method uplift added to the base fee, in pounds = Stripe's UK
- *  processing cost (covered so the collector nets ≥ base) + PLATFORM_FEE.
- *  Stripe UK rates (2026): card 1.5% + 20p, pay-by-bank 0.5% + 20p.
- *  These flat uplifts safely cover those rates for the realistic match-fee
- *  range (~£5–£15) with a few pennies of headroom, and are rounded so
- *  prices read cleanly (5p steps). Card is the standard (highest) price;
- *  pay-by-bank is the cheaper rail — the surcharge-safe framing.
- *    - card        ~£0.45 Stripe cover + £0.10 platform = £0.55
- *    - pay by bank ~£0.30 Stripe cover + £0.10 platform = £0.40
- *    - direct      no processor, no platform fee        = £0 */
-const METHOD_UPLIFT: Record<PayMethod, number> = {
-  card: 0.55,
-  pay_by_bank: 0.4,
-  direct: 0,
+/** Stripe UK processing rates by rail (2026): % of the charge + a fixed
+ *  fee. Passed through exactly so the collector nets the full base fee.
+ *    - card        1.5% + 20p
+ *    - pay by bank 0.5% + 20p (cap £5 — never reached at match-fee sizes) */
+const STRIPE_FEE: Record<Exclude<PayMethod, "direct">, { pct: number; fixed: number }> = {
+  card: { pct: 0.015, fixed: 0.2 },
+  pay_by_bank: { pct: 0.005, fixed: 0.2 },
 };
 
 const METHOD_LABEL: Record<PayMethod, string> = {
@@ -46,18 +36,19 @@ const METHOD_LABEL: Record<PayMethod, string> = {
   direct: "Pay the collector directly",
 };
 
-/** Round up to the nearest 5p so totals read cleanly and never net under
- *  base (we round the UPLIFT up, never down). */
-function roundUp5p(pounds: number): number {
-  return Math.ceil(pounds * 20) / 20;
+/** Round to the nearest penny. */
+function round2(pounds: number): number {
+  return Math.round(pounds * 100) / 100;
 }
 
 export interface MethodPrice {
   method: PayMethod;
   label: string;
-  /** Total the player pays for ONE person, including uplift. £. */
+  /** Per-person base match fee. £. */
+  base: number;
+  /** Total the player pays for ONE person, incl. Stripe + platform fee. £. */
   total: number;
-  /** The uplift portion (for transparency copy). £. */
+  /** The add-on (total − base): Stripe's fee + MatchTime's 1%. £. */
   fee: number;
 }
 
@@ -69,30 +60,37 @@ export function priceMethods(baseFee: number, enabled: PayMethod[]): MethodPrice
   return order
     .filter((m) => enabled.includes(m))
     .map((method) => {
-      const fee = roundUp5p(METHOD_UPLIFT[method]);
-      const total = method === "direct" ? baseFee : roundUp5p(baseFee + METHOD_UPLIFT[method]);
-      return { method, label: METHOD_LABEL[method], total, fee };
+      const total = totalForMethod(baseFee, method, 1);
+      return { method, label: METHOD_LABEL[method], base: baseFee, total, fee: round2(total - baseFee) };
     });
 }
 
-/** Total for a method when paying for `quantity` people (self + guests).
- *  Base scales by quantity; the processing uplift is charged ONCE per
- *  transaction (a single Stripe charge), which is why paying for others
- *  is cheaper per head. */
+/** Exact total a player pays for `quantity` people via `method`, in £.
+ *  Grosses up so that after Stripe's fee AND MatchTime's 1% platform fee,
+ *  the collector nets exactly base×quantity:
+ *
+ *    G = (base·qty + stripeFixed + platform) / (1 − stripePct)
+ *
+ *  Rounded UP to the penny so the collector is never left short — the
+ *  ≤1p penny-rounding residual (unavoidable, since charges are integer
+ *  pence) falls to the collector, never against them. Direct = base×qty
+ *  (off-platform, no fees). */
 export function totalForMethod(baseFee: number, method: PayMethod, quantity: number): number {
-  const base = baseFee * Math.max(1, quantity);
-  if (method === "direct") return base;
-  return roundUp5p(base + METHOD_UPLIFT[method]);
+  const qty = Math.max(1, quantity);
+  const baseTotal = baseFee * qty;
+  if (method === "direct") return round2(baseTotal);
+  const { pct, fixed } = STRIPE_FEE[method];
+  const platform = baseTotal * PLATFORM_FEE_RATE;
+  const gross = (baseTotal + fixed + platform) / (1 - pct);
+  return Math.ceil(gross * 100) / 100;
 }
 
-/** MatchTime's platform fee for one payment, in PENCE — passed to Stripe
- *  as `application_fee_amount` on the connected-account charge. Returns 0
- *  for "direct" (off-platform, no Stripe charge). Charged once per
- *  payment regardless of quantity, matching the once-per-transaction
- *  uplift in {@link METHOD_UPLIFT}. */
-export function platformFeePence(method: PayMethod): number {
+/** MatchTime's platform fee for a payment, in PENCE — passed to Stripe as
+ *  `application_fee_amount` on the connected-account charge. 1% of
+ *  base×quantity. Returns 0 for "direct" (off-platform, no Stripe charge). */
+export function platformFeePence(baseFee: number, method: PayMethod, quantity: number): number {
   if (method === "direct") return 0;
-  return Math.round(PLATFORM_FEE * 100);
+  return Math.round(baseFee * Math.max(1, quantity) * PLATFORM_FEE_RATE * 100);
 }
 
 export interface ParsedFee {

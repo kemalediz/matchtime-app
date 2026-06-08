@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Landmark, CreditCard, HandCoins, Minus, Plus } from "lucide-react";
 import { payByMethod, payDirect } from "@/app/actions/payments";
-import { gbp, type MethodPrice } from "@/lib/payments";
+import { gbp, totalForMethod, type MethodPrice } from "@/lib/payments";
 
 const ICON: Record<string, React.ReactNode> = {
   pay_by_bank: <Landmark className="w-5 h-5" />,
@@ -67,9 +67,10 @@ export function PayOptions({ matchId, prices }: { matchId: string; prices: Metho
       )}
 
       {prices.map((p) => {
-        // Per-person base = (total for 1) minus its uplift; show the
-        // quantity-scaled total on the button.
-        const total = p.method === "direct" ? perDirect(p, qty) : scale(p, qty);
+        // Exact total for the chosen quantity — same gross-up the server
+        // charges (single source of truth in payments.ts), so the button
+        // and the Stripe charge always match.
+        const total = totalForMethod(p.base, p.method, qty);
         return (
           <button
             key={p.method}
@@ -98,12 +99,3 @@ export function PayOptions({ matchId, prices }: { matchId: string; prices: Metho
   );
 }
 
-// total for qty: (base*qty) + uplift-once. We only have the per-1 total
-// (base+uplift) and the uplift (fee), so base = total - fee.
-function scale(p: MethodPrice, qty: number): number {
-  const base = p.total - p.fee;
-  return Math.ceil((base * qty + p.fee) * 20) / 20;
-}
-function perDirect(p: MethodPrice, qty: number): number {
-  return p.total * qty; // direct has no uplift; total === base
-}

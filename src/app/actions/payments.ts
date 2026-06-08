@@ -138,7 +138,7 @@ export async function payByMethod(
   const url = await createCheckoutSession({
     connectedAccountId: org.stripeConnectAccountId,
     amount: total,
-    applicationFeePence: platformFeePence(method as PayMethod),
+    applicationFeePence: platformFeePence(base, method as PayMethod, qty),
     method,
     quantity: qty,
     description: `${match.activity.name} — match fee${qty > 1 ? ` (${qty} players)` : ""}`,
