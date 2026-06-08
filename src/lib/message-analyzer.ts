@@ -620,6 +620,30 @@ function buildMatchContextBlock(args: {
   return lines.join("\n");
 }
 
+/**
+ * Hard override appended to SYSTEM_PROMPT for orgs with featureAttendance
+ * OFF (e.g. a MoM + ratings-only group like Sutton Lads). The analyzer
+ * still runs for these orgs (stats Q&A keeps it on), but it must NOT do
+ * any squad/attendance behaviour — no IN/OUT registration, no squad
+ * counts, no "0/14 need players", no roster, no chasing. Without this the
+ * LLM happily tracks the squad because the base prompt is attendance-rich
+ * (Kemal flagged 2026-06-08: MT told Sutton Lads "0/14 — need 14 players"
+ * and "quick correction, we're 0/14" for a group that doesn't track
+ * attendance). Placed LAST so it overrides every attendance rule above.
+ */
+const ATTENDANCE_OFF_OVERRIDE = `
+
+⚠️⚠️ OVERRIDE — THIS GROUP DOES NOT TRACK ATTENDANCE ⚠️⚠️
+This group uses MatchTime ONLY for Man-of-the-Match voting, player ratings, and answering rating/stats questions. It does NOT manage the squad or who is playing. This section OVERRIDES every attendance/squad/bench/short-squad/correction instruction above.
+
+For ANY message about availability or the squad — "in", "out", "I'm in", "can't make it", numbered or name rosters, "we have 7", "need more players", "who's playing", "anyone want to join?", standing offers, third-party registrations, swaps, drops, counts:
+- DO NOT register attendance (registerAttendance: null, registerFor: []).
+- DO NOT report, confirm, or correct any squad count — NEVER output "X/14", "need N players", a 🥁 roster, "I've got you down", or "quick correction".
+- DO NOT chase for players or offer to add anyone.
+- Set BOTH reply: null and react: null. Stay completely silent.
+
+ONLY produce a reply for questions explicitly about RATINGS, MAN OF THE MATCH, or STATS (e.g. "how many rated so far?", "who won MoM?", "my stats"). For every other message, classify the intent but emit reply: null and react: null.`;
+
 export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisVerdict[]> {
   if (input.messages.length === 0) return [];
 
@@ -739,7 +763,11 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   //   that only wants MoM + ratings) we don't build or inject the
   //   block at all, so the LLM has no historical data to answer from
   //   and falls back to "I don't have that".
-  const statsOn = (await getOrgFeatures(org.id)).statsQa;
+  const features = await getOrgFeatures(org.id);
+  const statsOn = features.statsQa;
+  // Attendance-off orgs (MoM/ratings only) get a hard override that
+  // suppresses all squad/attendance behaviour — see ATTENDANCE_OFF_OVERRIDE.
+  const systemText = features.attendance ? SYSTEM_PROMPT : SYSTEM_PROMPT + ATTENDANCE_OFF_OVERRIDE;
   const recentHistory = statsOn ? await loadRecentHistory(org.id) : null;
   const fullContext = recentHistory
     ? `${matchContext}\n\n${formatRecentHistoryBlock(recentHistory)}`
@@ -813,7 +841,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
       system: [
         {
           type: "text",
-          text: SYSTEM_PROMPT,
+          text: systemText,
           // 1-hour cache — the system prompt never changes, so we pay
           // the higher 2× write cost once and read cheaply from then on.
           cache_control: { type: "ephemeral", ttl: "1h" },
@@ -886,7 +914,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
           system: [
             {
               type: "text",
-              text: SYSTEM_PROMPT,
+              text: systemText,
               cache_control: { type: "ephemeral", ttl: "1h" },
             },
           ],

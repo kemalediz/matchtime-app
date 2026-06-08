@@ -643,10 +643,47 @@ export async function POST(request: Request) {
     if (uid) latestIdxByAuthor.set(uid, i);
   }
 
+  const attendanceOn = (await getOrgFeatures(org.id)).attendance;
+
   for (let i = 0; i < fresh.length; i++) {
     const msg = fresh[i];
     let verdict = verdicts[i];
     const sender = senderById.get(msg.waMessageId)!;
+
+    // ── Attendance OFF (MoM/ratings-only org, e.g. Sutton Lads): never
+    //    track the squad. Drop attendance-class verdicts so the IN/OUT
+    //    backfills below can't force a registration, and the bot stays
+    //    silent on squad chatter. Stats/MoM/rating replies fall through
+    //    untouched. Pairs with ATTENDANCE_OFF_OVERRIDE in the analyzer
+    //    prompt (Kemal 2026-06-08: MT was posting "0/14 — need 14
+    //    players" to a group that doesn't track attendance).
+    if (
+      !attendanceOn &&
+      (verdict.intent === "in" ||
+        verdict.intent === "out" ||
+        verdict.intent === "replacement_request")
+    ) {
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: "ignored",
+        intent: verdict.intent,
+        action: null,
+        confidence: 1,
+        reasoning: "attendance feature off — squad not tracked",
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      results.push({
+        waMessageId: msg.waMessageId,
+        handledBy: "ignored",
+        intent: verdict.intent,
+        react: null,
+        reply: null,
+      });
+      continue;
+    }
 
     // ── SEATBELT: "swap A with B" between two CONFIRMED players is a
     //    TEAM swap, never a drop. The LLM's prompt has a forceful
