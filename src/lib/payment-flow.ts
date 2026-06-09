@@ -56,7 +56,7 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
         phone: a.user.phoneNumber.replace(/^\+/, ""),
         text:
           `💷 ${first} — match fee for *${match.activity.name}* is *${gbp(match.feePerPlayer)}*.\n\n` +
-          `Tap to pay (card / Apple Pay, or pay the organiser directly):\n${await buildShortMagicLinkUrl(token)}\n\n` +
+          `Tap to pay (card, Apple or Google Pay, or pay the organiser directly):\n${await buildShortMagicLinkUrl(token)}\n\n` +
           `You can also pay for anyone you brought along.`,
       },
     });
@@ -220,7 +220,7 @@ export async function handleCollectorFeeReply(
         released,
         reply:
           `✅ Done — sent ${released} pay link${released === 1 ? "" : "s"} at *${gbp(amount)}* each for *${match.activity.name}*. ` +
-          `Players can pay by card / Apple Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
+          `Players can pay by card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
       };
     }
     if (isNegative(text)) {
