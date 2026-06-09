@@ -11,6 +11,7 @@ import {
   movePlayerToOtherTeam,
   addToTeam,
   removeFromTeam,
+  promoteFromBench,
   publishTeams,
 } from "@/app/actions/teams";
 import { updateMatchScore } from "@/app/actions/matches";
@@ -112,6 +113,15 @@ export default function TeamManagementPage() {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
   }
+  async function handlePromote(userId: string, team: "RED" | "YELLOW") {
+    try {
+      await promoteFromBench(matchId, userId, team);
+      toast.success("Moved up from the bench");
+      loadMatch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
 
   async function handlePublish() {
     try {
@@ -163,6 +173,9 @@ export default function TeamManagementPage() {
   );
   const unassigned = attendances
     .filter((a) => a.status === "CONFIRMED" && !assignedIds.has(a.user.id))
+    .map((a) => a.user);
+  const benchPlayers = attendances
+    .filter((a) => a.status === "BENCH" && !assignedIds.has(a.user.id))
     .map((a) => a.user);
 
   return (
@@ -251,6 +264,34 @@ export default function TeamManagementPage() {
                       className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100"
                     >
                       → Yellow
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Bench — promote a standby player straight into a team */}
+          {benchPlayers.length > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <p className="text-sm font-medium text-slate-700 mb-3">
+                🪑 Bench ({benchPlayers.length}) — move up into the squad
+              </p>
+              <ul className="space-y-2">
+                {benchPlayers.map((u) => (
+                  <li key={u.id} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2">
+                    <span className="text-sm font-medium text-slate-800 flex-1 truncate">{u.name}</span>
+                    <button
+                      onClick={() => handlePromote(u.id, "RED")}
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100"
+                    >
+                      ↑ Red
+                    </button>
+                    <button
+                      onClick={() => handlePromote(u.id, "YELLOW")}
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    >
+                      ↑ Yellow
                     </button>
                   </li>
                 ))}

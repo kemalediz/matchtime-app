@@ -222,6 +222,34 @@ export async function removeFromTeam(matchId: string, userId: string) {
   revalidatePath(`/admin/matches/${matchId}/teams`);
 }
 
+/**
+ * Promote a bench player into the playing squad and onto a team — sets
+ * their attendance to CONFIRMED and assigns them to `team`. This is the
+ * "move up from bench" admin action (Kemal 2026-06-09: a bench player like
+ * Enayem couldn't be slotted in from any admin screen). Dedicated action
+ * so the plain addToTeam/removeFromTeam keep their existing behaviour.
+ */
+export async function promoteFromBench(matchId: string, userId: string, team: "RED" | "YELLOW") {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({ where: { id: matchId }, include: { activity: true } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  await db.attendance.upsert({
+    where: { matchId_userId: { matchId, userId } },
+    create: { matchId, userId, status: "CONFIRMED" },
+    update: { status: "CONFIRMED" },
+  });
+  await db.teamAssignment.upsert({
+    where: { matchId_userId: { matchId, userId } },
+    create: { matchId, userId, team },
+    update: { team },
+  });
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}/teams`);
+}
+
 export async function publishTeams(matchId: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
