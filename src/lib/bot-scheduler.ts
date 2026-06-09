@@ -1382,7 +1382,7 @@ async function computeForMatch(
           phone: a.user.phoneNumber.replace(/^\+/, ""),
           text:
             `💷 ${opener} — your *${gbp(m.feePerPlayer)}* for *${activity.name}* is still outstanding.\n\n` +
-            `Pay by bank, card, or settle directly:\n${await buildShortMagicLinkUrl(token)}`,
+            `Pay by card / Apple Pay, or settle directly:\n${await buildShortMagicLinkUrl(token)}`,
         });
       }
 
