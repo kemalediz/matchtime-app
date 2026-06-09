@@ -685,6 +685,37 @@ export async function POST(request: Request) {
       continue;
     }
 
+    // ── COLOUR SWAP: "swap/switch/flip the colours", "swap red and
+    //    yellow" — flip the team labels, keep the exact same player
+    //    groupings. Deterministic so it never hits the generate_teams
+    //    path (which would rebalance into different teams). Runs before
+    //    the player-swap seatbelt and before any LLM verdict is applied.
+    {
+      const colourResult = await handleColorSwapIfApplicable(org.id, msg.body);
+      if (colourResult) {
+        await recordAnalysis({
+          orgId: org.id,
+          groupId: body.groupId,
+          msg,
+          handledBy: "llm",
+          intent: "team_colour_swap",
+          action: "colour-swap",
+          confidence: 1,
+          reasoning: colourResult.logReason,
+          authorUserId: sender.userId,
+          authorName: msg.authorName ?? null,
+        });
+        results.push({
+          waMessageId: msg.waMessageId,
+          handledBy: "llm",
+          intent: "team_colour_swap",
+          react: "✅",
+          reply: colourResult.reply,
+        });
+        continue; // never reach the generate_teams path
+      }
+    }
+
     // ── SEATBELT: "swap A with B" between two CONFIRMED players is a
     //    TEAM swap, never a drop. The LLM's prompt has a forceful
     //    "swap X with Y = X OUT" rule (built for attendance
@@ -2320,5 +2351,67 @@ async function handleTeamSwapIfApplicable(
       `*${labels[0]}*\n${red.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n` +
       `*${labels[1]}*\n${yel.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
     logReason: `team-swap applied: ${A.user.name} <-> ${B.user.name}`,
+  };
+}
+
+/**
+ * "swap/switch/flip the colours", "swap colors", "swap red and yellow" —
+ * a request to flip the team LABELS while keeping the exact same player
+ * groupings. Deterministic guard so it NEVER reaches the LLM's
+ * generate_teams_request path, which rebalances into different teams
+ * (Kemal 2026-06-09: "swap the colours and keep the same teams" ran a
+ * full regen and produced different teams the night of a match). Returns
+ * null when it isn't a colour swap or no teams exist yet — caller falls
+ * through to normal handling.
+ */
+async function handleColorSwapIfApplicable(
+  orgId: string,
+  rawBody: string,
+): Promise<{ reply: string; logReason: string } | null> {
+  const body = (rawBody || "").trim();
+  const isColourSwap =
+    /\b(swap|switch|flip|reverse|invert|change)\b[\s\S]{0,40}\bcolou?rs?\b/i.test(body) ||
+    /\bcolou?rs?\b[\s\S]{0,40}\b(swap|switch|flip|reverse|invert|change)\b/i.test(body) ||
+    /\bswap\b[\s\S]{0,25}\b(red|yellow|reds|yellows)\b[\s\S]{0,25}\b(red|yellow|reds|yellows)\b/i.test(body);
+  if (!isColourSwap) return null;
+
+  const match = await db.match.findFirst({
+    where: {
+      activity: { orgId },
+      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+    },
+    orderBy: { date: "asc" },
+    include: {
+      activity: { include: { sport: { select: { teamLabels: true } } } },
+      teamAssignments: { include: { user: { select: { name: true } } } },
+    },
+  });
+  // No teams generated yet → nothing to flip; let normal handling decide.
+  if (!match || match.teamAssignments.length === 0) return null;
+
+  // Flip every assignment RED<->YELLOW in one transaction — same rosters,
+  // labels swapped. No rebalance, no LLM.
+  await db.$transaction(
+    match.teamAssignments.map((t) =>
+      db.teamAssignment.update({
+        where: { id: t.id },
+        data: { team: t.team === "RED" ? "YELLOW" : "RED" },
+      }),
+    ),
+  );
+
+  const labels = (match.activity.sport.teamLabels as string[]) ?? ["Red", "Yellow"];
+  const fresh = await db.teamAssignment.findMany({
+    where: { matchId: match.id },
+    include: { user: { select: { name: true } } },
+  });
+  const red = fresh.filter((t) => t.team === "RED").map((t) => t.user.name);
+  const yel = fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name);
+  return {
+    reply:
+      `🎨 Swapped the colours — same teams, sides flipped:\n\n` +
+      `*${labels[0]}*\n${red.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n` +
+      `*${labels[1]}*\n${yel.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
+    logReason: `colour-swap applied (labels flipped, rosters unchanged)`,
   };
 }
