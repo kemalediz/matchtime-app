@@ -32,7 +32,7 @@ const STRIPE_FEE: Record<Exclude<PayMethod, "direct">, { pct: number; fixed: num
 
 const METHOD_LABEL: Record<PayMethod, string> = {
   pay_by_bank: "Pay by Bank",
-  card: "Card / Apple Pay",
+  card: "Card / Apple Pay / Google Pay",
   direct: "Pay the collector directly",
 };
 
