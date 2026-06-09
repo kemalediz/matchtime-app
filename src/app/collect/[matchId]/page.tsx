@@ -51,7 +51,14 @@ export default async function CollectPage({
     paid: a.paidAt != null,
     method: a.paymentMethod,
     directPending: a.directPendingAt != null && a.paidAt == null,
-    amount: a.paymentAmount,
+    // What the collector RECEIVES (base × qty), not the gross the player
+    // paid. The gross-up nets the collector exactly base per head on every
+    // method; the Stripe + platform fees are the player's and would only
+    // confuse the collector. Fall back to stored amount if no fee set.
+    amount:
+      match.feePerPlayer != null
+        ? match.feePerPlayer * (a.paymentQuantity ?? 1)
+        : a.paymentAmount,
     quantity: a.paymentQuantity,
   }));
 
