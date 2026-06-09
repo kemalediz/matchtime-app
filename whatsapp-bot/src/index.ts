@@ -339,22 +339,40 @@ async function main() {
         if (msg.from?.endsWith("@c.us")) {
           phone = msg.from.replace("@c.us", "").replace(/^\+/, "");
         }
-        // Pushname / contact name — used as fallback when phone is
-        // hidden by @lid privacy.
+        // Pushname / contact name — fallback identifier.
         let authorName: string | undefined;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rawNotify = (msg as any)._data?.notifyName;
         if (typeof rawNotify === "string" && rawNotify.trim()) {
           authorName = rawNotify.trim();
-        } else {
+        }
+        // @lid privacy DMs hide the phone in the JID (msg.from ends in
+        // "@lid", not "@c.us"). Without a phone the server can't map the
+        // sender to a user and drops the reply as "unknown sender" — which
+        // silently broke collector fee replies ("£10 each"), DM Q&A, etc.
+        // Recover the real number (and name) from the contact record.
+        if (!phone || !authorName) {
           try {
             const contact = await msg.getContact();
-            const pn = contact.pushname || contact.name;
-            if (pn && pn.trim()) authorName = pn.trim();
+            if (!phone) {
+              // Contact.number is the real phone even when the JID is @lid.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const num = (contact as any)?.number;
+              if (num && String(num).trim()) {
+                phone = String(num).replace(/[^\d]/g, "");
+              }
+            }
+            if (!authorName) {
+              const pn = contact.pushname || contact.name;
+              if (pn && pn.trim()) authorName = pn.trim();
+            }
           } catch {
             /* non-fatal */
           }
         }
+        console.log(
+          `[dm] resolved from=${msg.from} phone=${phone || "?"} name=${authorName ?? "?"}`,
+        );
         try {
           await postDmReply({
             phone,

@@ -264,6 +264,38 @@ export async function POST(request: Request) {
     }
   }
 
+  // @lid fallback for MONEY COLLECTORS: if the sender still isn't resolved
+  // (e.g. an @lid DM whose phone we couldn't recover bot-side) but the
+  // pushname uniquely matches a collector of a payment-collecting org,
+  // treat them as that collector. Tightly scoped to paymentHolderId users
+  // so it can never misattribute ordinary chat to a random member.
+  if (!user && authorName && authorName.trim().length >= 2) {
+    const norm = (s: string) =>
+      s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const pushNorm = norm(authorName);
+    const pushFirst = pushNorm.split(/\s+/).filter(Boolean)[0] ?? "";
+    const collectingOrgs = await db.organisation.findMany({
+      where: { paymentCollectionEnabled: true, paymentHolderId: { not: null } },
+      select: { paymentHolderId: true },
+    });
+    const holderIds = [...new Set(collectingOrgs.map((o) => o.paymentHolderId).filter(Boolean) as string[])];
+    if (holderIds.length > 0) {
+      const holders = await db.user.findMany({
+        where: { id: { in: holderIds } },
+        select: { id: true, name: true, memberships: { select: { orgId: true } } },
+      });
+      const equals = holders.filter((h) => h.name && norm(h.name) === pushNorm);
+      let pick = equals.length === 1 ? equals[0] : null;
+      if (!pick) {
+        const byFirst = holders.filter(
+          (h) => h.name && pushFirst.length >= 2 && (norm(h.name).split(/\s+/).filter(Boolean)[0] ?? "") === pushFirst,
+        );
+        if (byFirst.length === 1) pick = byFirst[0];
+      }
+      if (pick) user = pick;
+    }
+  }
+
   if (!user) {
     return NextResponse.json({ ok: true, ignored: "unknown-sender" });
   }
