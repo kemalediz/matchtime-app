@@ -31,7 +31,7 @@ export default async function CollectPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { select: { name: true, org: { select: { name: true } } } },
+      activity: { select: { name: true, org: { select: { name: true, paymentHolderId: true } } } },
       attendances: {
         where: { status: "CONFIRMED" },
         include: { user: { select: { id: true, name: true } } },
@@ -41,7 +41,11 @@ export default async function CollectPage({
   });
   if (!match) redirect("/");
 
-  const rows = match.attendances.map((a) => ({
+  // The collector collects — they don't pay themselves, so don't list them.
+  const collectorId = match.activity.org.paymentHolderId;
+  const rows = match.attendances
+    .filter((a) => a.userId !== collectorId)
+    .map((a) => ({
     userId: a.userId,
     name: a.user.name ?? "Player",
     paid: a.paidAt != null,

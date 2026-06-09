@@ -1356,6 +1356,7 @@ async function computeForMatch(
 
       // Players paying electronically (or undecided) — re-send the link.
       for (const a of confirmed) {
+        if (a.userId === activity.org.paymentHolderId) continue; // collector doesn't pay
         if (a.paidAt) continue;
         if (a.directPendingAt) continue; // handled via collector nudge below
         if (!a.user.phoneNumber) continue;

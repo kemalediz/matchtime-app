@@ -24,7 +24,9 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { select: { name: true, orgId: true } },
+      activity: {
+        select: { name: true, orgId: true, org: { select: { paymentHolderId: true } } },
+      },
       attendances: {
         where: { status: "CONFIRMED" },
         include: { user: { select: { id: true, name: true, phoneNumber: true } } },
@@ -34,8 +36,11 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
   if (!match || match.feePerPlayer == null) return 0;
 
   const orgId = match.activity.orgId;
+  // The money collector doesn't pay themselves — never DM them a pay link.
+  const collectorId = match.activity.org.paymentHolderId;
   let queued = 0;
   for (const a of match.attendances) {
+    if (a.user.id === collectorId) continue; // collector collects, doesn't pay
     if (!a.user.phoneNumber) continue;
     const token = signMagicLinkToken({
       userId: a.user.id,
