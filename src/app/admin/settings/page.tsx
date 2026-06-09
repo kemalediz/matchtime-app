@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2 } from "lucide-react";
 import { setOrgFeature } from "@/app/actions/org";
-import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard } from "@/app/actions/payments";
+import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 
 type FeatureKey = ToggleableKey;
@@ -20,6 +20,8 @@ interface OrgData {
   features: Record<FeatureKey, boolean>;
   stripeConnected?: boolean;
   stripeChargesEnabled?: boolean;
+  paymentHolderId?: string | null;
+  members?: { id: string; name: string | null }[];
 }
 
 export default function SettingsPage() {
@@ -79,6 +81,23 @@ export default function SettingsPage() {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
       setSavingFeature(null);
+    }
+  }
+
+  const [savingHolder, setSavingHolder] = useState(false);
+  async function changeHolder(userId: string) {
+    if (!org || !userId) return;
+    const prevId = org.paymentHolderId ?? null;
+    setSavingHolder(true);
+    setOrg((prev) => (prev ? { ...prev, paymentHolderId: userId } : prev)); // optimistic
+    try {
+      const { name } = await setPaymentHolder(org.id, userId);
+      toast.success(`Money collector set to ${name ?? "that member"}`);
+    } catch (e) {
+      setOrg((prev) => (prev ? { ...prev, paymentHolderId: prevId } : prev)); // roll back
+      toast.error(e instanceof Error ? e.message : "Couldn't change collector");
+    } finally {
+      setSavingHolder(false);
     }
   }
 
@@ -258,8 +277,37 @@ export default function SettingsPage() {
             <h2 className="font-semibold text-slate-800">Money collector&apos;s bank</h2>
           </div>
           <div className="p-6 space-y-4">
+            {/* Who collects the money */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Money collector
+              </label>
+              <select
+                value={org.paymentHolderId ?? ""}
+                onChange={(e) => changeHolder(e.target.value)}
+                disabled={savingHolder}
+                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-50"
+              >
+                <option value="" disabled>
+                  Choose a member…
+                </option>
+                {(org.members ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name ?? "Unnamed"}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-400 mt-1.5">
+                Gets the &ldquo;how much per player?&rdquo; prompt after each match, receives
+                &ldquo;pay you directly&rdquo; confirmations, and is whose connected bank the
+                card payouts settle to. Only members with a phone number are listed.
+              </p>
+            </div>
+
+            <hr className="border-slate-100" />
+
             <p className="text-sm text-slate-500">
-              Card &amp; Pay-by-Bank payments go straight to the money collector&apos;s bank
+              Card payments go straight to the money collector&apos;s bank
               (via Stripe). Connect it once — Stripe handles the rest. (&ldquo;Pay
               directly&rdquo; needs no bank.)
             </p>

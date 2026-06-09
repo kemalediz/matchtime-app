@@ -112,6 +112,37 @@ export async function openCollectorDashboard(orgId: string): Promise<{ url: stri
   return { url };
 }
 
+/**
+ * Set which org member is the money collector (`paymentHolderId`) — the
+ * person who gets the "how much per player?" prompt, receives the
+ * "pay you directly" confirmations, and whose connected bank the Stripe
+ * payouts settle to. Does NOT touch the connected Stripe account: that
+ * stays as connected. The chosen member must have a phone number, or the
+ * post-match collector DMs would have nowhere to go.
+ */
+export async function setPaymentHolder(
+  orgId: string,
+  userId: string,
+): Promise<{ ok: true; name: string | null }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  // The collector must be a member of this org (and have a phone to be DM'd).
+  const membership = await db.membership.findUnique({
+    where: { userId_orgId: { userId, orgId } },
+    select: { user: { select: { name: true, phoneNumber: true } } },
+  });
+  if (!membership) throw new Error("That person isn't a member of this group");
+  if (!membership.user.phoneNumber) {
+    throw new Error("That person has no phone number on file — they can't receive collection messages");
+  }
+
+  await db.organisation.update({ where: { id: orgId }, data: { paymentHolderId: userId } });
+  revalidatePath("/admin/settings");
+  return { ok: true, name: membership.user.name };
+}
+
 export async function resetCollectorConnect(orgId: string): Promise<{ ok: true }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");

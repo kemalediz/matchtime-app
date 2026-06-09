@@ -23,6 +23,15 @@ export async function GET() {
     return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
   }
 
+  // Members eligible to be the money collector — must have a phone (so they
+  // can receive the "how much?" + confirm-direct DMs). Used by the collector
+  // picker in the Payments section.
+  const members = await db.membership.findMany({
+    where: { orgId: org.id, leftAt: null, user: { phoneNumber: { not: null } } },
+    select: { user: { select: { id: true, name: true } } },
+    orderBy: { user: { name: "asc" } },
+  });
+
   return NextResponse.json({
     id: org.id,
     name: org.name,
@@ -48,5 +57,8 @@ export async function GET() {
     // Stripe Connect status — drives the "connect bank" button.
     stripeConnected: !!org.stripeConnectAccountId,
     stripeChargesEnabled: org.stripeChargesEnabled,
+    // Money collector picker.
+    paymentHolderId: org.paymentHolderId,
+    members: members.map((m) => ({ id: m.user.id, name: m.user.name })),
   });
 }
