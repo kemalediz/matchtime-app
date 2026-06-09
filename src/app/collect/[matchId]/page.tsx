@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireMatchCollectorOrAdmin } from "@/app/actions/payments";
 import { gbp } from "@/lib/payments";
 import { PaymentRoster } from "@/components/pay/payment-roster";
+import { RefreshButton } from "@/components/pay/refresh-button";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,9 @@ export default async function CollectPage({
             </span>
             {collected > 0 && <> · {gbp(collected)} collected</>}
           </p>
+          <div className="mt-3 flex justify-center">
+            <RefreshButton />
+          </div>
         </div>
 
         {base == null && (
