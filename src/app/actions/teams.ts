@@ -139,6 +139,89 @@ export async function swapPlayers(matchId: string, playerId1: string, playerId2:
   revalidatePath(`/admin/matches/${matchId}/teams`);
 }
 
+/**
+ * Flip the team labels — every RED becomes YELLOW and vice-versa — keeping
+ * the exact same player groupings. One-click colour swap so admins never
+ * need a DB edit for "swap the colours, keep the same teams" (Kemal
+ * 2026-06-09). Mirrors the bot's handleColorSwapIfApplicable.
+ */
+export async function swapTeamColours(matchId: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({ where: { id: matchId }, include: { activity: true } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  const assignments = await db.teamAssignment.findMany({ where: { matchId } });
+  await db.$transaction(
+    assignments.map((a) =>
+      db.teamAssignment.update({
+        where: { id: a.id },
+        data: { team: a.team === "RED" ? "YELLOW" : "RED" },
+      }),
+    ),
+  );
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}/teams`);
+}
+
+/**
+ * Move a single player to the other team. Lets an admin build any line-up
+ * by hand (no rebalance) — combined with the page's two-player swap, this
+ * covers arbitrary corrections without DB surgery.
+ */
+export async function movePlayerToOtherTeam(matchId: string, userId: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({ where: { id: matchId }, include: { activity: true } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  const a = await db.teamAssignment.findUnique({
+    where: { matchId_userId: { matchId, userId } },
+  });
+  if (!a) throw new Error("Player isn't assigned to a team");
+  await db.teamAssignment.update({
+    where: { id: a.id },
+    data: { team: a.team === "RED" ? "YELLOW" : "RED" },
+  });
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}/teams`);
+}
+
+/** Put a confirmed player onto a team (or move them to a specific side).
+ *  Used to slot a replacement/bench player into the line-up after a drop,
+ *  without regenerating. */
+export async function addToTeam(matchId: string, userId: string, team: "RED" | "YELLOW") {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({ where: { id: matchId }, include: { activity: true } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  await db.teamAssignment.upsert({
+    where: { matchId_userId: { matchId, userId } },
+    create: { matchId, userId, team },
+    update: { team },
+  });
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}/teams`);
+}
+
+/** Remove a player from the teams entirely — e.g. they dropped after teams
+ *  were generated and are still showing in a slot. */
+export async function removeFromTeam(matchId: string, userId: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({ where: { id: matchId }, include: { activity: true } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  await db.teamAssignment.deleteMany({ where: { matchId, userId } });
+  revalidatePath(`/matches/${matchId}`);
+  revalidatePath(`/admin/matches/${matchId}/teams`);
+}
+
 export async function publishTeams(matchId: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
