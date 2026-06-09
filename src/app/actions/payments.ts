@@ -232,7 +232,11 @@ export async function payByMethod(
   });
   await db.attendance.update({
     where: { matchId_userId: { matchId, userId } },
-    data: { paymentMethod: method, paymentAmount: total, paymentQuantity: qty },
+    // Switching to a card/bank method supersedes any earlier "pay directly"
+    // intent — clear directPendingAt so the player isn't mislabelled as
+    // "paying you directly" (with the card amount) on the collect page if
+    // they tapped direct first and then changed their mind.
+    data: { paymentMethod: method, paymentAmount: total, paymentQuantity: qty, directPendingAt: null },
   });
   return { url };
 }
