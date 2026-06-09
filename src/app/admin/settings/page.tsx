@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2 } from "lucide-react";
 import { setOrgFeature } from "@/app/actions/org";
-import { startCollectorOnboarding, refreshCollectorStatus } from "@/app/actions/payments";
+import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 
 type FeatureKey = ToggleableKey;
@@ -82,6 +82,26 @@ export default function SettingsPage() {
       toast.success(chargesEnabled ? "Bank connected — ready to take payments" : "Onboarding not finished yet");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't refresh");
+    }
+  }
+  const [resetting, setResetting] = useState(false);
+  async function resetBank() {
+    if (!org) return;
+    if (
+      !confirm(
+        "Disconnect the current Stripe account so you can connect a fresh one?\n\nThis only clears the link in MatchTime — it won't affect any payments already taken. You'll need to complete bank setup again.",
+      )
+    )
+      return;
+    setResetting(true);
+    try {
+      await resetCollectorConnect(org.id);
+      setOrg((prev) => (prev ? { ...prev, stripeConnected: false, stripeChargesEnabled: false } : prev));
+      toast.success("Disconnected — tap “Connect bank” to set up a fresh account");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't reset");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -215,8 +235,17 @@ export default function SettingsPage() {
               directly&rdquo; needs no bank.)
             </p>
             {org.stripeChargesEnabled ? (
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
-                <CheckCircle2 className="w-4 h-4" /> Bank connected — ready to take payments
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
+                  <CheckCircle2 className="w-4 h-4" /> Bank connected — ready to take payments
+                </div>
+                <button
+                  onClick={resetBank}
+                  disabled={resetting}
+                  className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-600 font-medium disabled:opacity-50"
+                >
+                  {resetting ? "Disconnecting…" : "Disconnect / start over"}
+                </button>
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
@@ -229,12 +258,21 @@ export default function SettingsPage() {
                   {connecting ? "Opening Stripe…" : org.stripeConnected ? "Finish bank setup" : "Connect bank"}
                 </button>
                 {org.stripeConnected && (
-                  <button
-                    onClick={refreshBank}
-                    className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
-                  >
-                    Refresh status
-                  </button>
+                  <>
+                    <button
+                      onClick={refreshBank}
+                      className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                    >
+                      Refresh status
+                    </button>
+                    <button
+                      onClick={resetBank}
+                      disabled={resetting}
+                      className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-600 font-medium disabled:opacity-50"
+                    >
+                      {resetting ? "Resetting…" : "Start over"}
+                    </button>
+                  </>
                 )}
               </div>
             )}

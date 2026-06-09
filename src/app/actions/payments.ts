@@ -80,6 +80,27 @@ export async function refreshCollectorStatus(orgId: string): Promise<{ chargesEn
   return { chargesEnabled: enabled };
 }
 
+/**
+ * Detach the org's Stripe connected account so the collector can start
+ * "Connect bank" from scratch — e.g. they onboarded the wrong identity, or
+ * a stale test-mode account is bound. This only clears MatchTime's
+ * reference (`stripeConnectAccountId` + `stripeChargesEnabled`); the
+ * abandoned Stripe account is left as-is (delete it in the Stripe
+ * dashboard if desired). The next onboarding creates a fresh account.
+ */
+export async function resetCollectorConnect(orgId: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  await db.organisation.update({
+    where: { id: orgId },
+    data: { stripeConnectAccountId: null, stripeChargesEnabled: false },
+  });
+  revalidatePath("/admin/settings");
+  return { ok: true };
+}
+
 // ── Player pays ──────────────────────────────────────────────────────
 
 async function loadPayContext(userId: string, matchId: string) {
