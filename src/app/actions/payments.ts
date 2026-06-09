@@ -242,8 +242,14 @@ export async function payDirect(matchId: string, quantity = 1): Promise<{ ok: tr
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   const userId = session.user.id;
-  const { match, org, base } = await loadPayContext(userId, matchId);
+  const { match, org, base, attendance } = await loadPayContext(userId, matchId);
   if (!org.payMethodDirect) throw new Error("Direct payment is off");
+
+  // Was this player ALREADY in "will pay directly" (unpaid) before this tap?
+  // If so, this is a repeat tap — refresh state silently, don't re-DM the
+  // collector (one nudge per player per match). A fresh selection (no prior
+  // pending, or after the state cleared) still notifies.
+  const alreadyPending = attendance.directPendingAt != null && attendance.paidAt == null;
 
   const qty = Math.max(1, Math.min(10, Math.floor(quantity)));
   const amount = base * qty;
@@ -257,8 +263,9 @@ export async function payDirect(matchId: string, quantity = 1): Promise<{ ok: tr
     },
   });
 
-  // Notify the collector so they can confirm when the cash/transfer lands.
-  if (org.paymentHolderId) {
+  // Notify the collector so they can confirm when the cash/transfer lands —
+  // but only on a NEW direct selection, not a repeat tap while still pending.
+  if (org.paymentHolderId && !alreadyPending) {
     const me = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
     const holder = await db.user.findUnique({
       where: { id: org.paymentHolderId },
