@@ -23,6 +23,7 @@ import {
   createCheckoutSession,
 } from "@/lib/stripe";
 import { totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
+import { formatLondon } from "@/lib/london-time";
 
 // ── Connect onboarding (money collector links their bank) ────────────
 
@@ -211,6 +212,12 @@ export async function payByMethod(
 
   const qty = Math.max(1, Math.min(10, Math.floor(quantity)));
   const total = totalForMethod(base, method as PayMethod, qty);
+  // Collector-facing label so they can tell who paid: "Amir - 9th June"
+  // (name + match date, no time). +N when paying for guests.
+  const payer = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
+  const matchDay = formatLondon(match.date, "do MMMM");
+  const payerDescription =
+    `${payer?.name ?? "Player"}${qty > 1 ? ` +${qty - 1}` : ""} - ${matchDay}`;
   const url = await createCheckoutSession({
     connectedAccountId: org.stripeConnectAccountId,
     amount: total,
@@ -218,6 +225,7 @@ export async function payByMethod(
     method,
     quantity: qty,
     description: `${match.activity.name} — match fee${qty > 1 ? ` (${qty} players)` : ""}`,
+    payerDescription,
     metadata: { matchId, userId, quantity: String(qty), orgId: org.id },
     successPath: `/pay/${matchId}?paid=1`,
     cancelPath: `/pay/${matchId}`,

@@ -122,7 +122,10 @@ export interface CheckoutArgs {
   applicationFeePence: number;
   method: "pay_by_bank" | "card";
   quantity: number;
-  description: string; // "Tuesday 7-a-side — 2 Jun"
+  description: string; // line item the PAYER sees, e.g. "Tuesday 7-a-side — match fee"
+  /** PaymentIntent description the COLLECTOR sees on their Stripe payments
+   *  list — so they can tell who paid. e.g. "Amir - 9th June". */
+  payerDescription?: string;
   metadata: Record<string, string>; // { matchId, userId, ... }
   successPath: string;
   cancelPath: string;
@@ -152,9 +155,13 @@ export async function createCheckoutSession(args: CheckoutArgs): Promise<string>
       ],
       // Direct charge on the collector's connected account: the platform
       // fee is skimmed to MatchTime, the rest settles to the collector.
-      ...(args.applicationFeePence > 0
-        ? { payment_intent_data: { application_fee_amount: args.applicationFeePence } }
-        : {}),
+      // The description is the collector-facing "who paid" label.
+      ...(() => {
+        const pi: Stripe.Checkout.SessionCreateParams.PaymentIntentData = {};
+        if (args.applicationFeePence > 0) pi.application_fee_amount = args.applicationFeePence;
+        if (args.payerDescription) pi.description = args.payerDescription;
+        return Object.keys(pi).length ? { payment_intent_data: pi } : {};
+      })(),
       metadata: args.metadata,
       success_url: `${base}${args.successPath}`,
       cancel_url: `${base}${args.cancelPath}`,

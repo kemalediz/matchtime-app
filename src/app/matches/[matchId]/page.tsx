@@ -58,6 +58,17 @@ export default async function MatchDetailPage({
 
   const isAdmin = await isOrgAdmin(session.user.id, match.activity.orgId);
 
+  // Payments dashboard link — shown to an org admin OR the money collector
+  // when the org collects fees. Lets them open /collect/<match> on demand
+  // to see who's paid (instead of only via the post-match DM link).
+  const orgPay = await db.organisation.findUnique({
+    where: { id: match.activity.orgId },
+    select: { paymentCollectionEnabled: true, paymentHolderId: true },
+  });
+  const canSeePayments =
+    !!orgPay?.paymentCollectionEnabled &&
+    (isAdmin || orgPay.paymentHolderId === session.user.id);
+
   // Existing org members not already in this match — for the admin
   // "add player" picker, so they select rather than retype (avoids dupes).
   const inMatchIds = new Set(match.attendances.map((a) => a.userId));
@@ -296,6 +307,15 @@ export default async function MatchDetailPage({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
+        {canSeePayments && (
+          <Link
+            href={`/collect/${matchId}`}
+            className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+          >
+            Payments · who&apos;s paid
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        )}
         {canRate && (
           <Link
             href={`/matches/${matchId}/rate`}
