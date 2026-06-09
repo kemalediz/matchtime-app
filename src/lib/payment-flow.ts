@@ -192,8 +192,14 @@ export async function handleCollectorFeeReply(
   const match = await findCollectorPendingMatch(userId);
   if (!match) return null;
 
+  // Players to charge = confirmed squad MINUS the collector themselves
+  // (userId is the collector — findCollectorPendingMatch matched on
+  // paymentHolderId === userId). They collect the pot, they don't pay it,
+  // so they're excluded from both the "N to charge" count and any
+  // "£X total to split" division. Matches releaseMatchPayments, which
+  // skips the collector when sending links.
   const headcount = await db.attendance.count({
-    where: { matchId: match.id, status: "CONFIRMED" },
+    where: { matchId: match.id, status: "CONFIRMED", userId: { not: userId } },
   });
 
   // ── Awaiting confirmation of a previously-proposed amount ──
