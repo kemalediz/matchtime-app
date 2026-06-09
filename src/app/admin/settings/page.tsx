@@ -243,6 +243,13 @@ export default function SettingsPage() {
               (via Stripe). Connect it once — Stripe handles the rest. (&ldquo;Pay
               directly&rdquo; needs no bank.)
             </p>
+            {!org.stripeChargesEnabled && (
+              <p className="text-xs text-slate-400">
+                Stripe will ask you to confirm a few identity details and add your bank
+                account — choose <span className="font-medium text-slate-500">Individual</span>{" "}
+                when asked; the business details are already filled in for you. Takes ~2 minutes.
+              </p>
+            )}
             {org.stripeChargesEnabled ? (
               <div className="flex flex-wrap items-center gap-3">
                 <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">

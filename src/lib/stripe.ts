@@ -64,7 +64,18 @@ export async function createConnectAccount(opts: {
       transfers: { requested: true },
       card_payments: { requested: true },
     },
-    business_profile: { name: opts.orgName, mcc: "7941" /* sports clubs */ },
+    // Pre-fill the whole business profile so Stripe's "Business
+    // information" step arrives COMPLETE — ordinary collectors only then
+    // have to confirm identity + add their bank, not describe a
+    // "business" (mcc + url + product_description are what Stripe marks
+    // incomplete otherwise).
+    business_profile: {
+      name: opts.orgName,
+      mcc: "7941", // Commercial sports / athletic fields / sports clubs
+      url: "https://matchtime.ai",
+      product_description:
+        "Collecting amateur sports match fees from players to cover pitch / venue hire, organised via MatchTime.",
+    },
     metadata: { matchtimeOrg: opts.orgName },
   });
   return acct.id;
