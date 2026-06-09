@@ -14,6 +14,7 @@ import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { formatLondon } from "./london-time";
+import { getOrgFeatures } from "./org-features";
 
 /** How many recent completed matches to pull attendees from. */
 const LOOKBACK_MATCHES = 3;
@@ -73,7 +74,11 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
   // who haven't engaged with this match at all.
   const responded = new Set(next.attendances.map((a) => a.userId));
   const confirmedCount = next.attendances.filter((a) => a.status === "CONFIRMED").length;
-  const need = Math.max(0, next.maxPlayers - confirmedCount);
+  // Only meaningful when the org actually tracks attendance. For MoM/
+  // ratings-only orgs (e.g. Sutton Lads) confirmed is always 0, so the
+  // count would falsely read "14 spots left" in every invite — suppress it.
+  const attendanceOn = (await getOrgFeatures(orgId)).attendance;
+  const need = attendanceOn ? Math.max(0, next.maxPlayers - confirmedCount) : 0;
 
   // 2. Distinct CONFIRMED attendees from the last few completed matches.
   const recent = await db.match.findMany({
@@ -116,22 +121,33 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
     const key = `${next.id}:recruit-dm:${c.id}`;
     const exists = await db.sentNotification.findUnique({ where: { key }, select: { id: true } });
     if (exists) continue; // already invited for this match
-    const token = signMagicLinkToken({
-      userId: c.id,
-      purpose: "sign-in",
-      nextPath: `/matches/${next.id}`,
-      ttlSeconds: MAGIC_LINK_TTL.actionNudge,
-    });
     const first = c.name?.split(" ")[0] ?? "there";
-    const shortLine = need > 0 ? ` — ${need} ${need === 1 ? "spot" : "spots"} left` : "";
+    let text: string;
+    if (attendanceOn) {
+      // Org tracks attendance in-app → an RSVP link works.
+      const token = signMagicLinkToken({
+        userId: c.id,
+        purpose: "sign-in",
+        nextPath: `/matches/${next.id}`,
+        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+      });
+      const shortLine = need > 0 ? ` — ${need} ${need === 1 ? "spot" : "spots"} left` : "";
+      text =
+        `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}${shortLine}. ` +
+        `Fancy it?\n\nTap to grab a spot:\n${await buildShortMagicLinkUrl(token)}`;
+    } else {
+      // MoM/ratings-only org (no in-app squad) → an RSVP link does nothing.
+      // Players join by posting in the group, so nudge them there.
+      text =
+        `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}. ` +
+        `Fancy it? Just reply *IN* in the group and you're sorted 🙌`;
+    }
     await db.botJob.create({
       data: {
         orgId,
         kind: "dm",
         phone: c.phone.replace(/^\+/, ""),
-        text:
-          `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}${shortLine}. ` +
-          `Fancy it?\n\nTap to grab a spot:\n${await buildShortMagicLinkUrl(token)}`,
+        text,
       },
     });
     await db.sentNotification.create({
