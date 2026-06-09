@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2 } from "lucide-react";
 import { setOrgFeature } from "@/app/actions/org";
-import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect } from "@/app/actions/payments";
+import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 
 type FeatureKey = ToggleableKey;
@@ -82,6 +82,15 @@ export default function SettingsPage() {
       toast.success(chargesEnabled ? "Bank connected — ready to take payments" : "Onboarding not finished yet");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't refresh");
+    }
+  }
+  async function manageBank() {
+    if (!org) return;
+    try {
+      const { url } = await openCollectorDashboard(org.id);
+      window.open(url, "_blank", "noopener,noreferrer"); // Stripe Express dashboard
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't open the bank dashboard");
     }
   }
   const [resetting, setResetting] = useState(false);
@@ -239,6 +248,12 @@ export default function SettingsPage() {
                 <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
                   <CheckCircle2 className="w-4 h-4" /> Bank connected — ready to take payments
                 </div>
+                <button
+                  onClick={manageBank}
+                  className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                >
+                  <Landmark className="w-4 h-4" /> Manage bank / payouts
+                </button>
                 <button
                   onClick={resetBank}
                   disabled={resetting}

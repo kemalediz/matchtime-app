@@ -18,6 +18,7 @@ import {
   isStripeConfigured,
   createConnectAccount,
   createOnboardingLink,
+  createDashboardLoginLink,
   accountChargesEnabled,
   createCheckoutSession,
 } from "@/lib/stripe";
@@ -88,6 +89,29 @@ export async function refreshCollectorStatus(orgId: string): Promise<{ chargesEn
  * abandoned Stripe account is left as-is (delete it in the Stripe
  * dashboard if desired). The next onboarding creates a fresh account.
  */
+/**
+ * One-time link to the collector's Stripe Express dashboard so they can
+ * CHANGE THEIR PAYOUT BANK or review payouts later, on their existing
+ * account — no disconnect, no re-onboarding, history preserved. This is
+ * the right tool for "I want the money to go to a different account now"
+ * (vs. resetCollectorConnect, which wipes the account entirely).
+ */
+export async function openCollectorDashboard(orgId: string): Promise<{ url: string }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireOrgAdmin(session.user.id, orgId);
+  if (!isStripeConfigured()) throw new Error("Stripe is not configured");
+
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { stripeConnectAccountId: true },
+  });
+  if (!org?.stripeConnectAccountId) throw new Error("No connected bank to manage yet");
+
+  const url = await createDashboardLoginLink(org.stripeConnectAccountId);
+  return { url };
+}
+
 export async function resetCollectorConnect(orgId: string): Promise<{ ok: true }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");

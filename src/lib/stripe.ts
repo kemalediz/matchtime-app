@@ -85,6 +85,15 @@ export async function createOnboardingLink(
   return link.url;
 }
 
+/** One-time login link to the collector's Express dashboard, where they
+ *  can change their payout bank account, view payouts, and update details
+ *  later — WITHOUT disconnecting or re-onboarding. Only valid once the
+ *  Express account has finished onboarding. */
+export async function createDashboardLoginLink(accountId: string): Promise<string> {
+  const link = await client().accounts.createLoginLink(accountId);
+  return link.url;
+}
+
 /** Is the connected account fully able to take charges + receive payouts? */
 export async function accountChargesEnabled(accountId: string): Promise<boolean> {
   const acct = await client().accounts.retrieve(accountId);
