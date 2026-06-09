@@ -770,3 +770,24 @@ export async function removePlayerFromMatch(matchId: string, userId: string): Pr
   revalidatePath(`/matches/${matchId}`);
   return { ok: true };
 }
+
+/** Squad-level "move up from bench": promote a BENCH player into the
+ *  playing squad (status → CONFIRMED). Squad management only — does NOT
+ *  assign a team (that's done in the teams section). Admin-only. */
+export async function moveUpFromBench(matchId: string, userId: string): Promise<{ ok: true }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: { activity: { select: { orgId: true } } },
+  });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  await db.attendance.updateMany({
+    where: { matchId, userId },
+    data: { status: "CONFIRMED" },
+  });
+  revalidatePath(`/matches/${matchId}`);
+  return { ok: true };
+}

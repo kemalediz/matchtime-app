@@ -1,4 +1,5 @@
 import { RemoveFromMatchButton } from "./remove-from-match-button";
+import { MoveUpFromBenchButton } from "./move-up-from-bench-button";
 
 interface AttendancePlayer {
   id: string;
@@ -85,7 +86,8 @@ export function AttendanceList({
                 <Initials name={a.user.name} />
                 <span className="text-sm text-slate-700">{a.user.name}</span>
                 {admin && matchId && (
-                  <span className="ml-auto">
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <MoveUpFromBenchButton matchId={matchId} userId={a.user.id} name={a.user.name} />
                     <RemoveFromMatchButton matchId={matchId} userId={a.user.id} name={a.user.name} />
                   </span>
                 )}
