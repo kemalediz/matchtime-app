@@ -751,6 +751,45 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Conditional-drop HOLD ────────────────────────────────────────
+    //    The sender offers to leave ONLY IF a replacement materialises
+    //    ("happy to drop if you can find someone"). Never auto-drop them.
+    //    Deterministic backstop to the prompt rule — double-gated: only
+    //    when the verdict already treats this as a drop AND the text is
+    //    clearly conditional, and only on the sender's latest message.
+    //    (Kemal 2026-06-09: Erdal dropped on "If u can make happy to drop".)
+    if (
+      sender.userId &&
+      (verdict.registerAttendance === "OUT" ||
+        verdict.intent === "out" ||
+        verdict.intent === "replacement_request") &&
+      looksLikeConditionalDrop(msg.body) &&
+      latestIdxByAuthor.get(sender.userId) === i
+    ) {
+      const first = (sender.name ?? "").split(" ")[0] || "you";
+      const reply = `Thanks ${first} — noted 🙏 You're still in; if someone needs the spot I'll take you up on it.`;
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: "llm",
+        intent: "conditional_out",
+        action: "hold",
+        confidence: 1,
+        reasoning: "conditional drop — held; no replacement confirmed yet",
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      results.push({
+        waMessageId: msg.waMessageId,
+        handledBy: "llm",
+        intent: "conditional_out",
+        react: "🤝",
+        reply,
+      });
+      continue; // never reach the drop path
+    }
+
     // ── IN intent safety net ─────────────────────────────────────────
     //    If the LLM classified this as "in" but emitted
     //    registerAttendance:null with no state-collapse reason (i.e.
@@ -2254,6 +2293,26 @@ async function handleOnboardingIfApplicable(
  *                           where one side isn't playing is still a
  *                           legit attendance swap).
  */
+/**
+ * Deterministic backstop for conditional drops ("happy to drop if you can
+ * find someone", "step aside if Enayem can play"). Returns true only when
+ * the text has a drop/step-aside cue AND a conditional clause — an
+ * unconditional drop ("I'm out", "can't make it") has no `if` and returns
+ * false. Used to HOLD a drop the LLM would otherwise execute, so a player
+ * offering to leave only IF replaced is never auto-dropped (Kemal
+ * 2026-06-09: Erdal dropped on "If u can make happy to drop"). Pairs with
+ * the prompt rule; double-gated in the caller (only fires when the verdict
+ * already treats the message as a drop).
+ */
+function looksLikeConditionalDrop(body: string): boolean {
+  const t = (body || "").toLowerCase();
+  const dropCue =
+    /\b(drop|step aside|stand aside|give (up )?(my )?(spot|place|slot)|make way|pull me|sit (this )?out)\b/.test(t) ||
+    /\bhappy to (drop|step|sit|give)/.test(t);
+  if (!dropCue) return false;
+  return /\bif\b/.test(t); // contingent → not a definite drop
+}
+
 async function handleTeamSwapIfApplicable(
   orgId: string,
   rawBody: string,
