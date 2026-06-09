@@ -29,7 +29,27 @@ export default function SettingsPage() {
   useEffect(() => {
     fetch("/api/org/settings")
       .then((r) => (r.ok ? r.json() : null))
-      .then(setOrg)
+      .then(async (data) => {
+        setOrg(data);
+        // Returning from Stripe onboarding (?stripe=done|refresh) → auto
+        // re-check charges-enabled so the collector doesn't have to hit
+        // "Refresh status" and wonder why it still says "Finish setup".
+        if (
+          data?.id &&
+          typeof window !== "undefined" &&
+          /[?&]stripe=(done|refresh)/.test(window.location.search)
+        ) {
+          try {
+            const { chargesEnabled } = await refreshCollectorStatus(data.id);
+            setOrg((prev) =>
+              prev ? { ...prev, stripeChargesEnabled: chargesEnabled, stripeConnected: true } : prev,
+            );
+            if (chargesEnabled) toast.success("Bank connected — ready to take payments");
+          } catch {
+            /* non-fatal — the "Refresh status" button is the fallback */
+          }
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
