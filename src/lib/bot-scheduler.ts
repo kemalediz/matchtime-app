@@ -1383,7 +1383,7 @@ async function computeForMatch(
           phone: a.user.phoneNumber.replace(/^\+/, ""),
           text:
             `💷 ${opener} — your *${gbp(m.feePerPlayer)}* for *${activity.name}* is still outstanding.\n\n` +
-            `Pay by card, Apple or Google Pay, or settle directly:\n${await buildShortMagicLinkUrl(token)}`,
+            `Pay by bank, card, Apple or Google Pay, or settle directly:\n${await buildShortMagicLinkUrl(token)}`,
         });
       }
 
