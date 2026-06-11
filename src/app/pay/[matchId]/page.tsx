@@ -126,10 +126,7 @@ function Methods({
 }) {
   const enabled: PayMethod[] = [];
   // Card/bank only offered when the collector's bank is connected.
-  // Pay by Bank is temporarily hidden from the player menu (2026-06-09):
-  // unreliable on connected accounts right now. Re-enable by restoring this
-  // line — the org toggle, pricing and server action are all still wired.
-  // if (org.payMethodPayByBank && org.stripeChargesEnabled) enabled.push("pay_by_bank");
+  if (org.payMethodPayByBank && org.stripeChargesEnabled) enabled.push("pay_by_bank");
   if (org.payMethodCard && org.stripeChargesEnabled) enabled.push("card");
   if (org.payMethodDirect) enabled.push("direct");
   const prices = priceMethods(base, enabled);
