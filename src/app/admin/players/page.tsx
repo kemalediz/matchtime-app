@@ -401,7 +401,7 @@ export default function PlayersPage() {
                   {(p.name ?? p.email).charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <input
                       type="text"
                       defaultValue={p.name ?? ""}
@@ -414,7 +414,7 @@ export default function PlayersPage() {
                           (e.target as HTMLInputElement).blur();
                         }
                       }}
-                      className="font-semibold text-slate-800 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none min-w-0 flex-1 px-0 py-0.5 rounded-none"
+                      className="font-semibold text-slate-800 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none min-w-[6rem] flex-1 px-0 py-0.5 rounded-none"
                       title="Click to rename"
                     />
                     {p.leftAt && (
@@ -427,28 +427,10 @@ export default function PlayersPage() {
                         <Sparkles className="w-3 h-3" /> New
                       </span>
                     )}
-                    {p.provisionallyAddedAt && !p.leftAt && (
-                      <button
-                        onClick={() => handleConfirm(p.id)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-600 hover:bg-green-700 text-white text-[10px] font-semibold"
-                        title="Confirm this is a real player"
-                      >
-                        <Check className="w-3 h-3" /> Confirm
-                      </button>
-                    )}
-                    {p.provisionallyAddedAt && !p.leftAt && (
-                      <button
-                        onClick={() => handleRemove(p.id)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-semibold"
-                        title="Not a player — remove"
-                      >
-                        <X className="w-3 h-3" /> Remove
-                      </button>
-                    )}
                     {!p.leftAt && (
                       <button
                         onClick={() => setMergeFrom(mergeFrom === p.id ? null : p.id)}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        className={`inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
                           mergeFrom === p.id
                             ? "bg-blue-600 text-white"
                             : "bg-slate-100 hover:bg-slate-200 text-slate-600"
@@ -459,6 +441,27 @@ export default function PlayersPage() {
                       </button>
                     )}
                   </div>
+                  {/* Provisional players: Confirm / Remove live on their own
+                      wrapping row so they can never crowd the name input to
+                      zero width on narrow screens (2026-06-11). */}
+                  {p.provisionallyAddedAt && !p.leftAt && (
+                    <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                      <button
+                        onClick={() => handleConfirm(p.id)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-600 hover:bg-green-700 text-white text-[10px] font-semibold"
+                        title="Confirm this is a real player"
+                      >
+                        <Check className="w-3 h-3" /> Confirm
+                      </button>
+                      <button
+                        onClick={() => handleRemove(p.id)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-semibold"
+                        title="Not a player — remove"
+                      >
+                        <X className="w-3 h-3" /> Remove
+                      </button>
+                    </div>
+                  )}
                   {mergeFrom === p.id && (
                     <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-200 text-xs">
                       <p className="text-slate-700 mb-1.5">
