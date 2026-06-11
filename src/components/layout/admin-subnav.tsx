@@ -30,6 +30,9 @@ export function AdminSubnav() {
         .catch(() => {});
     load();
     // Re-check on navigation so it clears promptly after an admin links a name.
+    return () => {
+      alive = false;
+    };
   }, [pathname]);
 
   return (
