@@ -171,9 +171,9 @@ export default function ActivitiesPage() {
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
           {activities.map((a) => (
-            <div key={a.id} className="px-6 py-5 flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
+            <div key={a.id} className="px-4 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-slate-800">{a.name}</p>
                   <span
                     className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -190,7 +190,7 @@ export default function ActivitiesPage() {
                   {a.sport.name} · {a.matchDurationMins}min · Sign-ups close {a.deadlineHours}h before
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
                 <button
                   onClick={() => handleGenerateMatch(a.id)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium"

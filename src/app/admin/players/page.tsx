@@ -283,7 +283,7 @@ export default function PlayersPage() {
             </span>
           </label>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowAdd((s) => !s)}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
@@ -390,7 +390,7 @@ export default function PlayersPage() {
           {players.map((p) => (
             <div
               key={p.id}
-              className={`grid grid-cols-[1fr_auto_auto] gap-4 px-6 py-4 items-center ${
+              className={`flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_auto] sm:gap-4 px-4 sm:px-6 py-4 sm:items-center ${
                 p.leftAt ? "bg-slate-50/70 opacity-70" : p.provisionallyAddedAt ? "bg-amber-50/50" : ""
               }`}
             >
@@ -565,33 +565,39 @@ export default function PlayersPage() {
                   </div>
                 </div>
               </div>
-              <div className="w-24 flex flex-col items-center">
-                <label className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
-                  Seed
-                </label>
-                <input
-                  type="number"
-                  defaultValue={p.seedRating != null ? Math.round(p.seedRating) : ""}
-                  min={1}
-                  max={10}
-                  step={1}
-                  title="Seed rating (1–10). Used by the team-balancer until peer ratings accumulate."
-                  onBlur={(e) => e.target.value && handleSeedRating(p.id, e.target.value)}
-                  className="w-20 h-10 px-2 rounded-lg border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="w-28 flex flex-col items-center">
-                <label className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
-                  Role
-                </label>
-                <select
-                  value={p.role}
-                  onChange={(e) => handleRoleChange(p.id, e.target.value)}
-                  className="w-28 h-10 px-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="PLAYER">Player</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
+              {/* Mobile: seed + role sit in one row below the player block.
+                  sm:contents dissolves this wrapper at ≥sm so the two boxes
+                  become direct grid children again (preserving the desktop
+                  3-column layout). */}
+              <div className="flex gap-4 sm:contents">
+                <div className="w-24 flex flex-col items-center">
+                  <label className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
+                    Seed
+                  </label>
+                  <input
+                    type="number"
+                    defaultValue={p.seedRating != null ? Math.round(p.seedRating) : ""}
+                    min={1}
+                    max={10}
+                    step={1}
+                    title="Seed rating (1–10). Used by the team-balancer until peer ratings accumulate."
+                    onBlur={(e) => e.target.value && handleSeedRating(p.id, e.target.value)}
+                    className="w-20 h-10 px-2 rounded-lg border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="w-28 flex flex-col items-center">
+                  <label className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
+                    Role
+                  </label>
+                  <select
+                    value={p.role}
+                    onChange={(e) => handleRoleChange(p.id, e.target.value)}
+                    className="w-28 h-10 px-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="PLAYER">Player</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
               </div>
             </div>
           ))}
