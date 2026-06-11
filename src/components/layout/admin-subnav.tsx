@@ -33,7 +33,7 @@ export function AdminSubnav() {
   }, [pathname]);
 
   return (
-    <nav className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit overflow-x-auto">
+    <nav className="flex gap-1 p-1 bg-slate-100 rounded-lg max-w-full overflow-x-auto">
       {TABS.map((t) => {
         const active =
           t.href === "/admin"
