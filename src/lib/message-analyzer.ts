@@ -163,8 +163,19 @@ export interface AnalysisVerdict {
    *  "bringing Ahmet with me"). The SENDER's own attendance is handled by
    *  `registerAttendance` — this field is strictly for others named in the
    *  same message. Server fuzzy-matches each name to an org member; if no
-   *  match, a provisional member is created so attendance still lands. */
-  registerFor: Array<{ name: string; action: "IN" | "OUT" }> | null;
+   *  match, a provisional member is created so attendance still lands.
+   *
+   *  action:
+   *    "IN"    → take a confirmed slot if available, else bench.
+   *    "OUT"   → drop them (frees slot, triggers the bench-offer flow).
+   *    "BENCH" → admin demotion: move a player who is CURRENTLY in the
+   *              squad onto the bench and FREE their slot (squad N→N-1,
+   *              slot opens). Server forces BENCH regardless of capacity,
+   *              keeps their position, and does NOT open a bench-offer
+   *              (unlike OUT) — the freed slot just sits open for the
+   *              admin to fill. Also used to add a not-yet-registered
+   *              player straight to the bench. */
+  registerFor: Array<{ name: string; action: "IN" | "OUT" | "BENCH" }> | null;
   reasoning: string;
 }
 
@@ -199,7 +210,7 @@ Output schema:
       "teamOverrides": [{"name": "<string>", "team": "RED" | "YELLOW"}, ...] | null,
       "bulkPayment": {"payerName": "<string>", "count": <number>, "coveredNames": [<string>, ...] | null} | null,
       "reminder": {"date": "<YYYY-MM-DD>", "time": "<HH:MM>" | null, "note": "<string>"} | null,
-      "registerFor": [{"name": "<string>", "action": "IN" | "OUT"}, ...] | null,
+      "registerFor": [{"name": "<string>", "action": "IN" | "OUT" | "BENCH"}, ...] | null,
       "reasoning": "<short internal explanation>"
     }
   ]
@@ -226,11 +237,12 @@ Intent rules:
   WORDS MUST MATCH ACTION (CRITICAL — Kemal flagged 2026-05-15):
   If your reply text announces that a named player is being added, registered, slotted to the bench, included, or otherwise materialised in the squad, you MUST also emit a registerFor entry that ACTUALLY performs that registration. Replies are visible group text — they tell the group "X is in / X goes on bench". The DB write only happens when registerFor (or registerAttendance for the sender) is populated. A reply without the matching write means the bot LIES to the group: the announcement says they're in, the squad page disagrees, and the player gets forgotten until someone notices days later.
   Concrete patterns that REQUIRE a matching registerFor entry:
-    • "Erdal goes on the bench" / "Putting Erdal on the bench" / "Bench slot for Erdal" → registerFor: [{name:"Erdal", action:"IN"}]
+    • "Erdal goes on the bench" / "Putting Erdal on the bench" / "Bench slot for Erdal" — when Erdal is NOT already in the confirmed squad (he's being ADDED, straight to bench) → registerFor: [{name:"Erdal", action:"BENCH"}]
     • "Adding Faris now" / "I've added Shaz" / "Slotting them in" → registerFor: [{name:"Faris", action:"IN"}] (etc., one entry per named player)
     • "Yes, Najib is in" / "Confirmed for X" → registerFor: [{name:"Najib", action:"IN"}] (idempotent if already registered)
     • "Conditional offer activated — Erdal as the 14th" / "We hit 13 so Erdal steps in" → registerFor: [{name:"Erdal", action:"IN"}]
     • "Removing X" / "Marking X as out" → registerFor: [{name:"X", action:"OUT"}]
+    • ADMIN DEMOTE TO BENCH — "move X to the bench" / "put X on the bench" / "bench X" / "drop X to the bench" / "X to bench, keep Y in the squad" — when X IS one of the currently-CONFIRMED players in the squad list → registerFor: [{name:"X", action:"BENCH"}]. This moves X from the squad onto the bench and FREES their slot: the squad goes from N/M to (N-1)/M with one slot open. It is NOT a drop (X stays available on the bench) and the freed slot is NOT auto-offered to anyone — it just opens. Any "keep Y" / "keep Y in the squad" clause is informational: Y is already confirmed, so leave Y untouched (emit a registerFor for Y only if Y genuinely needs adding). Reply: state plainly that X has moved to the bench and the squad is now (N-1)/M with a slot open — do NOT claim anyone moved up, do NOT re-list X among the playing numbers, and do NOT announce "squad complete" (it isn't full any more).
   This applies to ANY intent — question, in, out, replacement_request — whenever the reply text names a player and announces a state change for them. If you're NOT going to take the action, do NOT announce it; rephrase the reply to ask the group instead ("Want me to add Erdal? Just say yes.") and emit no registerFor. Never announce an action without executing it.
   Concrete failure mode this rule prevents: 2026-05-15, Hasan asked "Should Match time put Erdal to the bench or not?". The LLM replied "Erdal goes on the bench" but emitted intent:question / action:reply with no registerFor entry. Erdal's Attendance row stayed NONE — the group thought he was on the bench, the DB didn't. He'd have shown up on match day with no slot. Don't repeat this.
   Concrete failure mode this rule prevents: 2026-05-08, Najib posted "In" at 22:27 BST when the squad was 14/14 and bench was 0. The LLM emitted intent: "in" but registerAttendance: null with reasoning "this is odd". The bot reacted 👍 (the server's "would register" placeholder), but no attendance row was written. Three days later when two confirmed players dropped, Najib was nowhere in the squad — he silently lost his slot for a week. Don't repeat this.
@@ -275,7 +287,7 @@ Required phrasing when someone drops and there IS at least one bench player:
 
 When there is NO bench player and the squad is now short, treat as the standard SHORT-SQUAD RESPONSE (see below) — don't reference any bench.
 
-Admin "swap" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Baki with Aydın"): treat as intent "out" with registerFor:[{name:"<dropping-name>",action:"OUT"}]. The "swapping in" name is informational only — do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, and do NOT claim they're playing. Reply phrasing follows the same "Asking <bench>..." pattern (in-group tag, NOT a DM — see the CRITICAL note above), ideally honouring the admin's preference: "Asking Aydın specifically (per Kemal's request) — squad is 13/14 until he confirms." The bench-confirmation flow tags the right person in the group if they're first on bench; otherwise the admin can re-trigger after.
+Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Baki with Aydın") mean X LEAVES entirely: treat as intent "out" with registerFor:[{name:"<dropping-name>",action:"OUT"}]. (This is different from "move X to the bench" — that DEMOTES X to the bench but keeps them available; use action:"BENCH" for that, see the ADMIN DEMOTE TO BENCH pattern above.) The "swapping in" name is informational only — do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, and do NOT claim they're playing. Reply phrasing follows the same "Asking <bench>..." pattern (in-group tag, NOT a DM — see the CRITICAL note above), ideally honouring the admin's preference: "Asking Aydın specifically (per Kemal's request) — squad is 13/14 until he confirms." The bench-confirmation flow tags the right person in the group if they're first on bench; otherwise the admin can re-trigger after.
 - "conditional_in": Tentative commitment. Two distinct flavours — they have OPPOSITE registration outcomes, so pick carefully:
 
   (a) STANDING-OFFER conditional — the sender is fine and ready to play; their commitment is contingent on the SQUAD STATE (squad being short, a specific slot opening). Examples: "I'll be the 14th if you're short", "consider me as the 14th whenever you have 13", "ping me if you need one more", "happy to fill in if anyone drops", "I'll play if you can't find someone else", "available as a back-up tonight".

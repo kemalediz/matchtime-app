@@ -1678,6 +1678,18 @@ async function executeVerdict(args: {
             // confirmed slot, 🪑 for bench. No more keycap numbers.
             finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";
             // squad-full announcement fired inside registerAttendance.
+          } else if (entry.action === "BENCH") {
+            // Admin demote (2026-06-11): "move X to the bench". forceBench
+            // downgrades a CONFIRMED player to BENCH, keeps their position
+            // and frees their slot (squad N→N-1, slot opens). Unlike a
+            // drop it does NOT open a BenchSlotOffer, so the player we just
+            // benched isn't immediately re-offered the slot they vacated —
+            // it just sits open for the admin to fill. Also handles adding
+            // a not-yet-registered player straight to the bench.
+            await registerAttendance(target.userId, matchForOrg.id, {
+              forceBench: true,
+            });
+            finalReact = "🪑";
           } else {
             await cancelAttendance(target.userId, matchForOrg.id);
             finalReact = "👋";
