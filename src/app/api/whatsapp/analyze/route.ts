@@ -54,6 +54,7 @@ import {
 } from "@/lib/message-analyzer";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
+import { normaliseName } from "@/lib/squad-from-list";
 import { handleOnboardingTurn } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { computeEloDeltas } from "@/lib/elo";
@@ -870,6 +871,61 @@ export async function POST(request: Request) {
               `Reasoning has strong-drop signal AND no opt-out → forcing OUT. Reasoning: ${verdict.reasoning}`,
           );
           verdict = { ...verdict, registerAttendance: "OUT" };
+        }
+      }
+    }
+
+    // ── BENCH-DEMOTE safety net (2026-06-11, Salman Shelly incident) ──
+    //    Admin "move X to the bench" must demote a CONFIRMED player to
+    //    BENCH and free their slot. The LLM reasons this correctly but has
+    //    been seen to misclassify it as the sender's own intent:"in" and
+    //    leave registerFor empty — so the move is announced in the reply
+    //    ("Salman has moved to the bench") but never written: the player
+    //    stays CONFIRMED and the count reads the contradictory "14/14 with
+    //    1 slot open". When the reply asserts a named player moved to the
+    //    bench but no registerFor BENCH entry exists for them, synthesise
+    //    one from the confirmed roster so the demote actually happens.
+    //    Conservative: only fires on assertive "<Name> … moved to/benched"
+    //    phrasing AND when the name resolves to exactly one CONFIRMED
+    //    player (someone already benched/dropped won't match → no-op).
+    if (
+      verdict.reply &&
+      !(verdict.registerFor ?? []).some((e) => e.action === "BENCH")
+    ) {
+      const m = verdict.reply.match(
+        /\b(\p{Lu}[\p{L}'’.-]*(?:\s+\p{Lu}[\p{L}'’.-]*){0,2})\s+(?:has\s+|have\s+|is\s+|are\s+|’s\s+|'s\s+)?(?:now\s+)?(?:(?:moved|been\s+moved|dropped\s+to|sat)\s*(?:to\s+|on\s+|down\s+to\s+)?(?:the\s+)?bench|benched)\b/u,
+      );
+      if (m) {
+        const matchForOrg = await findRegistrationMatch(orgId);
+        if (matchForOrg) {
+          const confirmedNow = await db.attendance.findMany({
+            where: { matchId: matchForOrg.id, status: "CONFIRMED" },
+            include: { user: { select: { id: true, name: true } } },
+          });
+          const want = normaliseName(m[1]);
+          const hits = confirmedNow.filter((a) => {
+            const n = normaliseName(a.user.name ?? "");
+            if (!n) return false;
+            return (
+              n === want ||
+              n.startsWith(want + " ") ||
+              want.startsWith(n + " ") ||
+              n.split(" ")[0] === want
+            );
+          });
+          if (hits.length === 1) {
+            console.warn(
+              `[analyze] bench-demote safety net: reply claims "${m[1]}" → bench but no registerFor BENCH was emitted. ` +
+                `Forcing BENCH for ${hits[0].user.name} (${msg.waMessageId}). Reasoning: ${verdict.reasoning}`,
+            );
+            verdict = {
+              ...verdict,
+              registerFor: [
+                ...(verdict.registerFor ?? []),
+                { name: hits[0].user.name ?? m[1], action: "BENCH" },
+              ],
+            };
+          }
         }
       }
     }
