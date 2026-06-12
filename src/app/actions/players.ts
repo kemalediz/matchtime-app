@@ -211,9 +211,24 @@ export async function mergePlayers(
     throw new Error("Both players must be members of this organisation");
   }
 
-  await db.$transaction(async (tx) => {
-    await mergePlayersCore(tx, keepUserId, dropUserId, { saveAliasInOrgIds: [orgId] });
-  });
+  // 2026-06-12: explicit 60s timeout. mergePlayersCore issues ~25+ serial
+  // round-trips (one per relation scan / per-row conflict check) inside
+  // ONE interactive transaction; from a Vercel function to the Supabase
+  // eu-west pooler that's ~200ms each, so Prisma's DEFAULT 5s interactive-
+  // transaction timeout expires mid-merge (P2028, seen live on the Omar
+  // Yusuf merge: "timeout for this transaction was 5000 ms, however
+  // 5184 ms passed", dying at moMVote.updateMany). The transaction rolls
+  // back cleanly but the admin just sees a redacted "Failed".
+  // updatePlayerPhone's two merge paths already pass 60_000 for the same
+  // reason (added 2026-05-26); this entry point was missed. House rule in
+  // MDs/skills.md: any transaction spanning more than two writes gets
+  // { timeout: 60_000 }.
+  await db.$transaction(
+    async (tx) => {
+      await mergePlayersCore(tx, keepUserId, dropUserId, { saveAliasInOrgIds: [orgId] });
+    },
+    { timeout: 60_000 },
+  );
 
   revalidatePath("/admin/players");
   revalidatePath("/admin");

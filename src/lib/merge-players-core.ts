@@ -53,13 +53,38 @@ export async function mergePlayersCore(
   if (!keep || !drop) throw new Error("Player not found");
 
   // 1. Backfill missing fields on `keep` from `drop`.
-  const patch: { phoneNumber?: string; seedRating?: number; matchRating?: number; name?: string } = {};
+  const patch: {
+    phoneNumber?: string;
+    seedRating?: number;
+    matchRating?: number;
+    name?: string;
+    email?: string;
+    image?: string;
+    password?: string;
+    emailVerified?: Date;
+    onboarded?: boolean;
+  } = {};
   if (!keep.phoneNumber && drop.phoneNumber) patch.phoneNumber = drop.phoneNumber;
   if (keep.seedRating == null && drop.seedRating != null) patch.seedRating = drop.seedRating;
   if ((!keep.matchRating || keep.matchRating === 1000) && drop.matchRating && drop.matchRating !== 1000) {
     patch.matchRating = drop.matchRating;
   }
   if (!keep.name && drop.name) patch.name = drop.name;
+  // 2026-06-12: carry the rest of a real identity over too. If the keeper
+  // is a synthetic record (wa-sync/provisional placeholder email) but the
+  // dropped duplicate is the row the person actually signed in with, the
+  // old code kept the placeholder email and threw away avatar/password —
+  // even though 8f now re-points their OAuth Account to the keeper. A
+  // placeholder email is any of our synthetic domains; a real one wins.
+  const isPlaceholderEmail = (e: string | null | undefined) =>
+    !e || /@placeholder\.matchtime$|@matchtime\.local$/i.test(e);
+  if (isPlaceholderEmail(keep.email) && !isPlaceholderEmail(drop.email)) {
+    patch.email = drop.email;
+    if (!keep.emailVerified && drop.emailVerified) patch.emailVerified = drop.emailVerified;
+  }
+  if (!keep.image && drop.image) patch.image = drop.image;
+  if (!keep.password && drop.password) patch.password = drop.password;
+  if (!keep.onboarded && drop.onboarded) patch.onboarded = true;
 
   // 2. Free up unique fields on `drop` so `keep` can take them.
   await tx.user.update({
@@ -100,6 +125,26 @@ export async function mergePlayersCore(
     if (exists) await tx.rating.delete({ where: { id: r.id } });
     else await tx.rating.update({ where: { id: r.id }, data: { raterId: keepUserId } });
   }
+  // Ratings RECEIVED — re-pointing playerId can also hit the
+  // (matchId, raterId, playerId) unique key: if the same rater rated
+  // BOTH duplicate records in the same match, the blanket updateMany
+  // would P2002 and abort the whole merge (2026-06-12 hardening; the
+  // old code assumed received ratings could never collide). Resolve by
+  // keeping the rating already on `keep` (it targeted the record with
+  // the real history) and deleting the duplicate aimed at `drop`, then
+  // batch-re-point the rest in one updateMany — no per-row loop, so big
+  // histories don't add round-trips.
+  const [dropRecv, keepRecv] = await Promise.all([
+    tx.rating.findMany({ where: { playerId: dropUserId }, select: { id: true, matchId: true, raterId: true } }),
+    tx.rating.findMany({ where: { playerId: keepUserId }, select: { matchId: true, raterId: true } }),
+  ]);
+  const keepRecvKeys = new Set(keepRecv.map((r: { matchId: string; raterId: string }) => `${r.matchId}:${r.raterId}`));
+  const collidingRecvIds = dropRecv
+    .filter((r: { matchId: string; raterId: string }) => keepRecvKeys.has(`${r.matchId}:${r.raterId}`))
+    .map((r: { id: string }) => r.id);
+  if (collidingRecvIds.length > 0) {
+    await tx.rating.deleteMany({ where: { id: { in: collidingRecvIds } } });
+  }
   await tx.rating.updateMany({ where: { playerId: dropUserId }, data: { playerId: keepUserId } });
 
   // 5. MoMVote — (matchId, voterId) unique.
@@ -111,6 +156,8 @@ export async function mergePlayersCore(
     if (exists) await tx.moMVote.delete({ where: { id: v.id } });
     else await tx.moMVote.update({ where: { id: v.id }, data: { voterId: keepUserId } });
   }
+  // Votes RECEIVED are safe to blanket re-point: playerId is not part of
+  // the (matchId, voterId) unique key, so no collision is possible.
   await tx.moMVote.updateMany({ where: { playerId: dropUserId }, data: { playerId: keepUserId } });
 
   // 6. TeamAssignment — (matchId, userId) unique (via findFirst).
@@ -226,6 +273,20 @@ export async function mergePlayersCore(
       }
     }
   }
+
+  // 8f. Auth Accounts + Sessions (2026-06-12). Previously these were
+  //     CASCADE-deleted along with the drop user — fine for wa-sync
+  //     ghosts (they never sign in), but if the dropped duplicate was
+  //     the one a real person had OAuth'd into, the merge silently
+  //     destroyed their sign-in link. Re-point instead:
+  //     - Account's unique key is (provider, providerAccountId) and the
+  //       re-point doesn't touch either column, so it can never collide.
+  //       A user may hold several accounts (even same provider), so no
+  //       dedupe needed.
+  //     - Session's unique key is sessionToken (untouched) — safe too;
+  //       the person stays logged in as the keeper.
+  await tx.account.updateMany({ where: { userId: dropUserId }, data: { userId: keepUserId } });
+  await tx.session.updateMany({ where: { userId: dropUserId }, data: { userId: keepUserId } });
 
   // 9. Membership — merge per org, drop's row deleted.
   const dropMemberships = await tx.membership.findMany({ where: { userId: dropUserId } });
