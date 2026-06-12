@@ -314,6 +314,7 @@ Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time r
   → For HISTORICAL / STATS questions about past matches, MoM winners, attendance, current form, scores ("who got MoM last week?", "who got the MoMs in the last 3 matches?", "what was the score last Tuesday?", "who's been the most consistent attender?", "who plays the most?", "who's our top scorer of MoMs?", "who's on a hot streak?", "what's my rating?", "is X our most regular?"): the Recent History block in the Match Context is THE SOURCE OF TRUTH. Answer ONLY from what's in that block — never invent dates, scores, MoM winners, attendance counts, or ratings. The block lists every completed match oldest-first (with date, score, MoM winner + vote count), an all-time MoM leaderboard, an attendance leaderboard, and Elo top/bottom. Pull the relevant rows and phrase the answer in plain group-chat English ("Wasim took MoM at the May 5 match (5 of 11 votes). The one before that was Karahan."). For "last N matches" questions, the LAST N entries in the Completed matches list are what you want (it's already oldest-first, so take from the tail). For "most consistent" questions, default to the Attendance leaderboard — cite the leader, the runner-up, and the % context. If the question is about a SPECIFIC player, cross-reference all four sub-lists (per-match MoM lines, MoM leaderboard, attendance leaderboard, Elo) to compose a richer answer ("Kemal has played 24 of 25 matches (96%), has won MoM twice, and his current rating is 1042 — fourth on the leaderboard."). If the answer ISN'T in the block (e.g. someone asks about a player who's never played, or the org has no completed matches yet), reply honestly: "no record of that yet — once we've played a few more, that'll show up." Never silent on these.
   → For HISTORICAL/STATS questions, do NOT include the current-squad roster block at the end. The SQUAD-STATE REPLY SHAPE rule (below) applies to questions about THIS week's match (numbers, who's playing tonight, drops). Historical questions about consistency, MoM, or ratings have nothing to do with tonight's lineup — appending a squad roster on top of a leaderboard creates a confusing mash-up (and gets clobbered by the server-side roster post-processor, which Kemal saw on 2026-05-14: "top 3 most consistent" came back as the upcoming-squad list because the LLM included both blocks). Reply with the leaderboard / per-match list / per-player summary ONLY — no squad block, no count line ("13/14"), no "Playing tonight" header. Format the leaderboard as a numbered list ("1. Name — 4/4 (100%)"). Keep the answer focused and lineup-free.
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
+  → For PHONE-PRESENCE / DATA-GAP questions ("who has no phone number?", "which players are missing a number?", "who's not got a contact number on record?", "anyone in the squad without a number?"): the Confirmed and Bench lists in the Match Context tag every player WITHOUT a number on record with "📵 no number on record". Answer NAMES ONLY from those flags — list the flagged players ("No number on record: Aaron, Idris."), or "Everyone in the squad has a number on record 👍" if none are flagged. This is a names-only data-gap answer, NOT a contact leak — it is answerable for anyone. NEVER print, read back, or even hint at a raw phone number/email/contact detail; the digits are not in your context and the no-raw-number rule (SQUAD-STATE REPLY SHAPE) always holds. You are reporting presence/absence of a number, never the number itself.
   → If the answer requires info outside the Match Context AND outside the Recent History block (long-term roster questions, opinions, predictions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
   → Populate scoreRed + scoreYellow with the two numbers. Order: if the message explicitly names the team labels (see the "Team labels" line in the Match Context — the group may use custom names like "Lions"/"Tigers"), align accordingly: the first/RED label's goals → scoreRed, the second/YELLOW label's goals → scoreYellow. Otherwise emit the numbers in the order they appear in the message. react: "👍". registerAttendance: null.
@@ -527,7 +528,7 @@ function buildMatchContextBlock(args: {
     date: Date;
     status: string;
     maxPlayers: number;
-    attendances: Array<{ status: string; user: { id: string; name: string | null } }>;
+    attendances: Array<{ status: string; user: { id: string; name: string | null; phoneNumber?: string | null } }>;
   } | null;
   /** Resolved display labels for the two team slots —
    *  `[redLabel, yellowLabel]`. Injected into the context so the LLM
@@ -561,6 +562,14 @@ function buildMatchContextBlock(args: {
   const bench = m.attendances.filter((a) => a.status === "BENCH");
   const dropped = m.attendances.filter((a) => a.status === "DROPPED");
   const need = Math.max(0, m.maxPlayers - confirmed.length);
+  // Derive a BOOLEAN "no number on record" flag from phoneNumber. The
+  // raw digits are NEVER emitted — only this boolean ever reaches the
+  // LLM context (PII rule, see line ~472). A player counts as "no
+  // number" when phoneNumber is null/undefined/empty/whitespace.
+  const noPhone = (a: { user: { phoneNumber?: string | null } }): boolean =>
+    !a.user.phoneNumber || a.user.phoneNumber.trim() === "";
+  const phoneFlag = (a: { user: { phoneNumber?: string | null } }): string =>
+    noPhone(a) ? "  📵 no number on record" : "";
   const hoursToKickoff = (m.date.getTime() - Date.now()) / (1000 * 60 * 60);
   const daysToKickoff = Math.floor(hoursToKickoff / 24);
   const kickoffHint =
@@ -617,11 +626,11 @@ function buildMatchContextBlock(args: {
     `Bench: ${bench.length}`,
     ``,
     `Confirmed list:`,
-    ...confirmed.map((a, i) => `  ${i + 1}. ${a.user.name ?? "(unnamed)"}`),
+    ...confirmed.map((a, i) => `  ${i + 1}. ${a.user.name ?? "(unnamed)"}${phoneFlag(a)}`),
   ];
   if (bench.length) {
     lines.push("", "Bench list:");
-    bench.forEach((a, i) => lines.push(`  ${i + 1}. ${a.user.name ?? "(unnamed)"}`));
+    bench.forEach((a, i) => lines.push(`  ${i + 1}. ${a.user.name ?? "(unnamed)"}${phoneFlag(a)}`));
   }
   if (dropped.length) {
     lines.push("", `Dropped: ${dropped.map((a) => a.user.name ?? "(unnamed)").join(", ")}`);
@@ -717,7 +726,11 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
         },
       },
       attendances: {
-        include: { user: { select: { id: true, name: true } } },
+        // phoneNumber is selected ONLY to derive a boolean "has a number
+        // on record" flag (see buildMatchContextBlock). The raw value is
+        // never passed into LLM context or any reply — only the noPhone
+        // boolean is. PII rule (line ~472) stays intact.
+        include: { user: { select: { id: true, name: true, phoneNumber: true } } },
         orderBy: { position: "asc" },
       },
     },
@@ -1049,7 +1062,11 @@ export async function composeChaseText(input: {
         },
       },
       attendances: {
-        include: { user: { select: { id: true, name: true } } },
+        // phoneNumber is selected ONLY to derive a boolean "has a number
+        // on record" flag (see buildMatchContextBlock). The raw value is
+        // never passed into LLM context or any reply — only the noPhone
+        // boolean is. PII rule (line ~472) stays intact.
+        include: { user: { select: { id: true, name: true, phoneNumber: true } } },
         orderBy: { position: "asc" },
       },
     },

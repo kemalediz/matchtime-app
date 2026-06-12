@@ -32,6 +32,7 @@ You may ONLY help with this player's football group, using the CONTEXT provided.
 - THIS player's own stats and standing (their ratings, MoM, form, rank)
 - past results, scores, Man-of-the-Match winners, and the public leaderboards in the context
 - how to rate teammates / sign up / drop out
+- IF (and ONLY if) the context tags players with "📵 no number on record": which squad/bench players are MISSING a phone number on record. Answer NAMES ONLY from those flags ("No number on record: Aaron, Idris.", or "Everyone has a number on record 👍" if none are flagged). This reports the PRESENCE/ABSENCE of a number, never a number itself. If the context has NO 📵 flags at all, you do NOT have this information — politely say you can't help with that and steer back to football. NEVER print, read back, or hint at any actual phone number, email, or contact detail under any circumstance.
 
 OUT of scope — politely decline these in one short line and steer back to football ("I can only help with <group> match stuff 🙂"):
 - anything not about this group's football (general knowledge, news, maths, coding, advice, etc.)
@@ -65,8 +66,18 @@ export async function pickRelevantOrgForUser(userId: string): Promise<string | n
   return recent?.activity.orgId ?? orgIds[0];
 }
 
-/** Build the SAFE context block — only group-public + own data. */
-async function buildScopedContext(orgId: string, userId: string): Promise<string> {
+/** Build the SAFE context block — only group-public + own data.
+ *  `includePhoneFlags` (admin-only, gated by the caller) appends a
+ *  "📵 no number on record" flag to confirmed/bench NAMES so an
+ *  OWNER/ADMIN can ask "who's missing a phone number?". The raw digits
+ *  are NEVER selected or emitted — only a derived boolean. For
+ *  non-admins this is false, so the flags never enter their context at
+ *  all (nothing to extract). Default false keeps existing behaviour. */
+async function buildScopedContext(
+  orgId: string,
+  userId: string,
+  includePhoneFlags = false,
+): Promise<string> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
     select: { id: true, name: true },
@@ -86,7 +97,10 @@ async function buildScopedContext(orgId: string, userId: string): Promise<string
     include: {
       activity: { select: { name: true, venue: true } },
       attendances: {
-        include: { user: { select: { id: true, name: true } } },
+        // phoneNumber selected ONLY to derive a boolean flag when the
+        // asker is an admin (includePhoneFlags). The raw value never
+        // enters context or any reply — only the 📵 flag does.
+        include: { user: { select: { id: true, name: true, phoneNumber: true } } },
         orderBy: { position: "asc" },
       },
     },
@@ -95,14 +109,21 @@ async function buildScopedContext(orgId: string, userId: string): Promise<string
     const confirmed = match.attendances.filter((a) => a.status === "CONFIRMED");
     const bench = match.attendances.filter((a) => a.status === "BENCH");
     const mine = match.attendances.find((a) => a.user.id === userId);
+    // Admin-only: derive a BOOLEAN "no number on record" flag. Digits
+    // never emitted. For non-admins, includePhoneFlags is false so the
+    // flag string is always "" — their context has nothing to extract.
+    const phoneFlag = (a: { user: { phoneNumber?: string | null } }): string =>
+      includePhoneFlags && (!a.user.phoneNumber || a.user.phoneNumber.trim() === "")
+        ? " 📵 no number on record"
+        : "";
     lines.push("");
     lines.push("UPCOMING MATCH:");
     lines.push(`- ${match.activity.name} on ${format(match.date, "EEE d MMM 'at' HH:mm")} (UK time)`);
     if (match.activity.venue) lines.push(`- Venue: ${match.activity.venue}`);
     lines.push(`- Squad: ${confirmed.length}/${match.maxPlayers} confirmed, ${bench.length} on the bench`);
     lines.push(`- You are currently: ${mine ? mine.status : "not signed up"}`);
-    lines.push(`- Confirmed players: ${confirmed.map((a) => a.user.name ?? "—").join(", ") || "(none yet)"}`);
-    if (bench.length > 0) lines.push(`- Bench: ${bench.map((a) => a.user.name ?? "—").join(", ")}`);
+    lines.push(`- Confirmed players: ${confirmed.map((a) => `${a.user.name ?? "—"}${phoneFlag(a)}`).join(", ") || "(none yet)"}`);
+    if (bench.length > 0) lines.push(`- Bench: ${bench.map((a) => `${a.user.name ?? "—"}${phoneFlag(a)}`).join(", ")}`);
   } else {
     lines.push("", "UPCOMING MATCH: none scheduled right now.");
   }
@@ -143,6 +164,11 @@ export async function answerScopedQuestion(args: {
   orgId: string;
   question: string;
   askerName?: string | null;
+  /** Set true ONLY when the asker is an OWNER/ADMIN/superadmin of the
+   *  resolved org (the route computes this). Gates inclusion of the
+   *  📵 "no number on record" flags in the context — non-admins never
+   *  get the flags, so there's nothing to extract. */
+  includePhoneFlags?: boolean;
 }): Promise<ScopedAnswer | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -153,7 +179,7 @@ export async function answerScopedQuestion(args: {
   });
   if (!org) return null;
 
-  const context = await buildScopedContext(args.orgId, args.userId);
+  const context = await buildScopedContext(args.orgId, args.userId, args.includePhoneFlags ?? false);
   const first = args.askerName?.split(/\s+/)[0] ?? null;
 
   const userPrompt = [

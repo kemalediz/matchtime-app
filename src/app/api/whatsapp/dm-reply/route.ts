@@ -529,11 +529,25 @@ export async function POST(request: Request) {
       if (recentDms >= 10) {
         return NextResponse.json({ ok: true, ignored: "qa-rate-limited" });
       }
+      // Admin gate for the 📵 phone-presence flags (data-quality
+      // question "who has no number on record?"). Only OWNER/ADMIN of
+      // the resolved org (or a superadmin) gets the flags in their
+      // context; non-admins get the existing flag-free context, so
+      // there is literally nothing for them to extract. Mirrors the
+      // recruit-DM / rating-progress-DM admin-resolution pattern above.
+      const { isSuperadmin } = await import("@/lib/org");
+      const su = await isSuperadmin(user.id);
+      const includePhoneFlags =
+        su ||
+        (await db.membership.count({
+          where: { userId: user.id, orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+        })) > 0;
       const result = await answerScopedQuestion({
         userId: user.id,
         orgId,
         question: text,
         askerName: user.name,
+        includePhoneFlags,
       });
       if (result) {
         await db.botJob.create({
