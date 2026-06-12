@@ -454,7 +454,9 @@ export async function POST(request: Request) {
       ? r.reason ?? "Couldn't do that right now."
       : r.invited && r.invited > 0
         ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-        : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+        : r.reason
+          ? r.reason // full-squad case: no open spots to recruit for.
+          : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
     await recordAnalysis({
       orgId: org.id, groupId: body.groupId, msg: m,
       handledBy: "fast-path", intent: "recruit_recent", action: `recruit:${r.invited ?? 0}`,
@@ -1093,6 +1095,44 @@ export async function POST(request: Request) {
             maxPlayers: nextMatchForReply.maxPlayers,
             benchCount: freshBench.length,
           });
+        }
+        // Offer-independent promotion strip: an admin demote never creates a
+        // BenchSlotOffer, so the openOffer gate above misses it. Strip any
+        // "<benchPlayer> moves up / comes up / steps in / is promoted from the
+        // bench" claim whenever that player is STILL on the bench per the fresh
+        // snapshot — regardless of any offer.
+        if (cleanReply) {
+          const before = cleanReply;
+          for (const b of freshBench) {
+            const name = b.user.name;
+            if (!name) continue;
+            const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const firstName = name
+              .split(" ")[0]
+              .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const nameAlt = firstName === esc ? esc : `(?:${esc}|${firstName})`;
+            // verb → bench ("X moves up from the bench")
+            const promoVerbFirst = new RegExp(
+              `[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in)|is\\s+promoted|promoted)\\b[^.!?\\n]*\\bbench\\b[^.!?\\n]*[.!?]?`,
+              "gi",
+            );
+            // bench → verb ("off the bench, X steps in")
+            const promoBenchFirst = new RegExp(
+              `[^.!?\\n]*\\bbench\\b[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in))\\b[^.!?\\n]*[.!?]?`,
+              "gi",
+            );
+            cleanReply = cleanReply
+              .replace(promoVerbFirst, "")
+              .replace(promoBenchFirst, "");
+          }
+          // Only re-collapse whitespace if we actually stripped something,
+          // to avoid reformatting otherwise-fine replies.
+          if (cleanReply !== before) {
+            cleanReply = cleanReply
+              .replace(/[ \t]+/g, " ")
+              .replace(/\n{3,}/g, "\n\n")
+              .replace(/^[ \t]+|[ \t]+$/gm, "");
+          }
         }
       }
       // ── #1: never silently drop an unresolved attendance message ──

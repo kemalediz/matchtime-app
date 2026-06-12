@@ -1470,6 +1470,42 @@ export function enforceCanonicalRoster(
       out = `${out.trimEnd()}\n\n${benchCanonical}`;
     }
   }
+
+  // Belt-and-braces (2026-06-12): structural strip independent of intent /
+  // offers. (i) drop "<bench player> moves up from the bench" when the
+  // player is still on the bench per truth; (ii) cap impossible totals.
+  if (truth.bench) {
+    for (const name of truth.bench) {
+      if (!name) continue;
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const first = name.split(" ")[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const nameAlt = first === esc ? esc : `(?:${esc}|${first})`;
+      out = out.replace(
+        new RegExp(
+          `[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in)|is\\s+promoted|promoted)\\b[^.!?\\n]*\\bbench\\b[^.!?\\n]*[.!?]?`,
+          "gi",
+        ),
+        "",
+      );
+      out = out.replace(
+        new RegExp(
+          `[^.!?\\n]*\\bbench\\b[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in))\\b[^.!?\\n]*[.!?]?`,
+          "gi",
+        ),
+        "",
+      );
+    }
+  }
+  // Cap impossible totals: "15 total" / "15 players" when 15 > maxPlayers.
+  out = out.replace(/\b(\d+)\s+total\b/gi, (whole, n) =>
+    Number(n) > truth.maxPlayers ? `${truth.confirmed.length} total` : whole,
+  );
+  out = out.replace(/\b(\d+)\s+players?\b/gi, (whole, n) =>
+    Number(n) > truth.maxPlayers
+      ? `${truth.confirmed.length} player${truth.confirmed.length === 1 ? "" : "s"}`
+      : whole,
+  );
+
   return out;
 }
 

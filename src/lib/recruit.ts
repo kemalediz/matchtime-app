@@ -19,16 +19,49 @@ import { getOrgFeatures } from "./org-features";
 /** How many recent completed matches to pull attendees from. */
 const LOOKBACK_MATCHES = 3;
 
-/** Does this message read like "DM recent players to join the next
- *  match"? Used by both the in-group fast-path and the admin DM handler.
- *  Needs all three senses: a send verb + a recruiting intent + a
- *  people/recency noun — so it won't fire on ordinary chat. */
+/** Does this message read like an EXPLICIT "we need more players" request?
+ *  Used by both the in-group fast-path and the admin DM handler. Fires
+ *  ONLY on (a) an explicit recruit verb (find/get/invite/recruit/grab/
+ *  round up, or dm/message/text/nudge) sitting ADJACENT to a people/
+ *  recency/spots noun, OR (b) an explicit shortage phrase ("we're short",
+ *  "need N more players", "anyone free", "spots left", …) — adjacency
+ *  required in both cases (proximity-anchored, not scattered words). A
+ *  plain LIST/SHOW/who's-playing roster question is EXCLUDED — those are
+ *  answered by the roster, never by a DM blast. */
 export function looksLikeRecruitRequest(text: string): boolean {
-  return (
-    /\b(dm|message|text|invite|nudge|ask|send|get)\b/i.test(text) &&
-    /\b(join|fill|play|come|spot|short|next match|squad)\b/i.test(text) &&
-    /\b(recent|player|people|those|attend|lads|team|guys|everyone|others)\b/i.test(text)
-  );
+  const t = text.toLowerCase();
+
+  // Hard exclusions: plain roster list/show questions are answered by the
+  // roster, never by a DM blast. If the message is fundamentally a
+  // "list/show/who's playing" request, it's not a recruit request.
+  const isListRequest =
+    /\b(list|show|who(?:'s| is| are)?)\b[^.?!\n]*\b(playing|player|players|squad|team|roster|lineup|line-?up)\b/.test(
+      t,
+    );
+  if (isListRequest) return false;
+
+  // Explicit recruit verb adjacent to a people/recency/spots noun.
+  // e.g. "get more players", "round up the lads", "invite recent players",
+  //      "grab a couple of players", "dm the recent players".
+  const recruitVerbNearPeople =
+    /\b(?:find|get|grab|invite|recruit|round\s+up|dm|message|text|nudge)\b(?:\W+\w+){0,4}\W+(?:more\s+)?(?:players?|people|lads|recent(?:\s+(?:players?|attendees|lads))?|attendees|spots?|slots?)\b/.test(
+      t,
+    );
+
+  // Explicit shortage / need phrasing adjacent to players/spots.
+  const shortagePhrase =
+    /\bwe(?:'re|\s+are)\s+short\b/.test(t) ||
+    /\bneed(?:ing)?\b(?:\W+\w+){0,3}\W+(?:more\s+)?(?:players?|people|spots?|slots?|bodies)\b/.test(
+      t,
+    ) ||
+    /\b(?:\d+|one|two|three|four|five|a\s+couple|a\s+few|some)\s+(?:more\s+)?(?:players?|spots?|slots?)\s+(?:needed|short|left|open|free|available)\b/.test(
+      t,
+    ) ||
+    /\b(?:any(?:one|body))\s+(?:free|available|around|up\s+for\s+it)\b/.test(t) ||
+    /\b(?:spots?|slots?)\s+(?:left|open|available|free)\b/.test(t) ||
+    /\bneed\s+(?:more\s+)?players?\b/.test(t);
+
+  return recruitVerbNearPeople || shortagePhrase;
 }
 
 export interface RecruitResult {
@@ -78,7 +111,35 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
   // ratings-only orgs (e.g. Sutton Lads) confirmed is always 0, so the
   // count would falsely read "14 spots left" in every invite — suppress it.
   const attendanceOn = (await getOrgFeatures(orgId)).attendance;
-  const need = attendanceOn ? Math.max(0, next.maxPlayers - confirmedCount) : 0;
+  // Real capacity, independent of the attendance feature flag. CONFIRMED
+  // fills the squad, so open slots = maxPlayers − confirmed. `need` is kept
+  // for DISPLAY copy (suppressed for ratings-only orgs) so the visible
+  // "N spots left" behaviour is unchanged.
+  const openSlots = Math.max(0, next.maxPlayers - confirmedCount);
+  const need = attendanceOn ? openSlots : 0;
+
+  // formatLondon needed both by the capacity-guard early return and the
+  // normal return paths — compute it once, up front.
+  const matchWhen = formatLondon(next.date, "EEE d MMM, HH:mm");
+
+  // CAPACITY GUARD: if the confirmed squad is already full there are no
+  // open spots to recruit for — bail before building the candidate map /
+  // DM loop. Only applies when the org tracks capacity (maxPlayers > 0);
+  // for attendance-off orgs confirmedCount is always 0 so openSlots stays
+  // > 0 and this never blocks them (they recruit via the group, capacity
+  // isn't really tracked) — desired behaviour.
+  if (next.maxPlayers > 0 && openSlots <= 0) {
+    return {
+      ok: true,
+      matchId: next.id,
+      matchName: next.activity.name,
+      matchWhen,
+      need,
+      invited: 0,
+      invitedNames: [],
+      reason: `The squad for *${next.activity.name}* is already full — no open spots to recruit for.`,
+    };
+  }
 
   // 2. Distinct CONFIRMED attendees from the last few completed matches.
   const recent = await db.match.findMany({
@@ -102,7 +163,6 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
     }
   }
 
-  const matchWhen = formatLondon(next.date, "EEE d MMM, HH:mm");
   if (candidates.size === 0) {
     return {
       ok: true,
