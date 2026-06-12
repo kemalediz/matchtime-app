@@ -36,6 +36,25 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 const DM_GAP_MS = 60_000;
 let lastDmAtMs = 0;
 
+// Max time we'll wait for a single outbound send before giving up on it.
+// 2026-06-12: a send to an invalid / not-on-WhatsApp number can hang
+// indefinitely inside whatsapp-web.js (the underlying promise never
+// settles). Since every outbound message is serialized behind this one
+// throttle, one hung send wedges ALL groups. A timeout lets the queue
+// advance past a stuck send instead of deadlocking forever.
+const SEND_TIMEOUT_MS = 30_000;
+
+// Re-entrancy guard. setInterval() fires tick() on a fixed cadence and
+// does NOT wait for the previous (async) tick to finish. With the poll
+// interval (30s) shorter than DM_GAP_MS (60s), ticks overlapped: while
+// tick A was awaiting a slow/hung send, tick B fired, re-read the same
+// due-posts, and raced the rate-limit gate on a STALE lastDmAtMs. The
+// successful ticks kept bumping lastDmAtMs to "now", so the held DMs'
+// "next allowed" countdown perpetually reset (the observed 31s/1s/60s
+// cycle on 2026-06-12) and nothing was ever released — a ~2h deadlock.
+// Serializing ticks makes the gate check + timer advance atomic again.
+let tickRunning = false;
+
 export function initScheduler(waClient: Client, orgConfigs: Org[]) {
   client = waClient;
   orgs = orgConfigs;
@@ -63,31 +82,66 @@ export function stopScheduler() {
 
 async function tick(): Promise<void> {
   if (!client) return;
-  for (const org of orgs) {
-    try {
-      const result = await getDuePosts(org.groupId);
-      if (!result || result.instructions.length === 0) continue;
-      console.log(`[${org.orgName}] ${result.instructions.length} due instruction(s)`);
-      for (const instr of result.instructions) {
-        if (instr.kind === "dm") {
-          const sinceLast = Date.now() - lastDmAtMs;
-          if (sinceLast < DM_GAP_MS) {
-            const remainingS = Math.ceil((DM_GAP_MS - sinceLast) / 1000);
-            console.log(
-              `[rate-limit] DM ${instr.key} held — ${remainingS}s until next DM allowed`,
-            );
-            continue; // not acked → server re-emits next tick
+
+  // 2026-06-12 deadlock fix: refuse to run a new tick while the previous
+  // one is still in flight. setInterval keeps firing on its cadence even
+  // if a tick is mid-await (e.g. a slow send). Overlapping ticks used to
+  // race the DM rate-limit gate on a stale lastDmAtMs and reset the
+  // "next allowed" countdown forever. One tick at a time = the gate
+  // check and the timer advance below stay consistent.
+  if (tickRunning) return;
+  tickRunning = true;
+  try {
+    for (const org of orgs) {
+      try {
+        const result = await getDuePosts(org.groupId);
+        if (!result || result.instructions.length === 0) continue;
+        console.log(`[${org.orgName}] ${result.instructions.length} due instruction(s)`);
+        for (const instr of result.instructions) {
+          if (instr.kind === "dm") {
+            const sinceLast = Date.now() - lastDmAtMs;
+            if (sinceLast < DM_GAP_MS) {
+              const remainingS = Math.ceil((DM_GAP_MS - sinceLast) / 1000);
+              console.log(
+                `[rate-limit] DM ${instr.key} held — ${remainingS}s until next DM allowed`,
+              );
+              continue; // not acked → server re-emits next tick
+            }
+            // Reserve the rate-limit window BEFORE the (awaited) send so a
+            // slow/hung send can't be double-gated by a later instruction,
+            // and so the timer only ever advances when we actually commit
+            // to sending a DM — never merely on holding/deferring one.
+            lastDmAtMs = Date.now();
           }
+          await executeInstruction(instr, org.groupId);
         }
-        await executeInstruction(instr, org.groupId);
-        if (instr.kind === "dm") {
-          lastDmAtMs = Date.now();
-        }
+      } catch (err) {
+        console.error(`[${org.orgName}] scheduler tick failed:`, err);
       }
-    } catch (err) {
-      console.error(`[${org.orgName}] scheduler tick failed:`, err);
     }
+  } finally {
+    tickRunning = false;
   }
+}
+
+// Reject if a promise hasn't settled within ms. 2026-06-12: guards the
+// single serialized send queue against a send that never resolves (an
+// invalid / not-on-WhatsApp number can hang forever in whatsapp-web.js),
+// which would otherwise freeze ALL outbound traffic for every group.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
 }
 
 async function executeInstruction(instr: DueInstruction, groupId: string): Promise<void> {
@@ -137,14 +191,34 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
 
     if (instr.kind === "dm") {
       const jid = `${instr.phone}@c.us`;
-      const msg = await client.sendMessage(jid, instr.text);
-      await ackInstruction({
-        key: instr.key,
-        kind: instr.kind,
-        matchId: instr.matchId,
-        targetUser: instr.targetUser,
-        waMessageId: msg.id?._serialized,
-      });
+      try {
+        const msg = await withTimeout(
+          client.sendMessage(jid, instr.text),
+          SEND_TIMEOUT_MS,
+          `DM send to ${instr.phone}`,
+        );
+        await ackInstruction({
+          key: instr.key,
+          kind: instr.kind,
+          matchId: instr.matchId,
+          targetUser: instr.targetUser,
+          waMessageId: msg.id?._serialized,
+        });
+      } catch (e) {
+        // 2026-06-12: a failed/timed-out DM (bad number, not on WhatsApp)
+        // must NOT be retried forever — left un-acked, the server re-emits
+        // it every poll and it re-claims the rate-limit slot indefinitely,
+        // starving every other DM. ACK it so the server records it as
+        // handled and the queue advances past it. The window was already
+        // reserved by the caller, so pacing is preserved.
+        console.error(`DM send failed for ${instr.phone} (${instr.key}), acking to skip:`, e);
+        await ackInstruction({
+          key: instr.key,
+          kind: instr.kind,
+          matchId: instr.matchId,
+          targetUser: instr.targetUser,
+        });
+      }
       return;
     }
 
