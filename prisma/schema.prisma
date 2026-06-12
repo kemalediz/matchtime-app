@@ -310,6 +310,16 @@ model Membership {
   /// in a sync (could be pre-sync legacy member, or genuinely gone).
   lastSeenInGroupAt DateTime?
 
+  /// Per-club opt-out for rating + Man-of-the-Match DMs. When true the
+  /// post-match rating DM and the daily rating-reminder DM are both
+  /// suppressed for this member in this org. Deliberately narrow: it
+  /// does NOT suppress match invites/recruit DMs, payment chases, or
+  /// answers to questions the player initiates. Set via the DM
+  /// keyword fast-path in /api/whatsapp/dm-reply ("stop messaging me
+  /// about ratings"). Re-opt-in clears both columns.
+  ratingDmOptOut   Boolean   @default(false)
+  ratingDmOptOutAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@unique([userId, orgId])

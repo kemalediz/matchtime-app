@@ -26,6 +26,7 @@ import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { answerScopedQuestion, pickRelevantOrgForUser, looksLikeQuestion } from "@/lib/dm-qa";
 import { handleCollectorFeeReply } from "@/lib/payment-flow";
+import { setRatingDmOptOut } from "@/lib/notification-prefs";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -298,6 +299,64 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ ok: true, ignored: "unknown-sender" });
+  }
+
+  // ── Rating/MoM DM opt-out fast-path (2026-06-11) ────────────────────
+  //   A player can text "stop messaging me about ratings" (or just
+  //   "stop") to silence the post-match rating DM + daily rating
+  //   reminder. Deterministic keyword match, run BEFORE the collector-fee
+  //   and Q&A branches so it can't be swallowed: the Q&A fallthrough only
+  //   composes prose and writes nothing, which is exactly the gap that let
+  //   a player keep getting nudged after asking us to stop.
+  //
+  //   GOLDEN RULE: only ack ("Done — no more rating messages") AFTER the
+  //   DB write succeeds. If the write touched 0 rows / threw, we do NOT
+  //   claim they're unsubscribed — fall through silently.
+  {
+    const t = (text ?? "").trim();
+    const optOutRe =
+      /\b(stop|don'?t|do not|no more|quit|unsubscribe|opt[\s-]?out|leave me alone)\b[^.]*\b(rate|rating|ratings|mom|man of the match|message|messaging|messages|prompt|nudg)/i;
+    const bareStopRe = /^\s*stop\s*$/i;
+    const reOptInRe = /\b(start|resume|opt[\s-]?in)\b[^.]*\b(rate|rating|mom|message)/i;
+
+    const wantsOptIn = reOptInRe.test(t);
+    const wantsOptOut = !wantsOptIn && (optOutRe.test(t) || bareStopRe.test(t));
+
+    if (wantsOptIn || wantsOptOut) {
+      const optOut = wantsOptOut;
+      let written = false;
+      try {
+        const res = await setRatingDmOptOut(user.id, optOut);
+        written = res.count > 0;
+      } catch (err) {
+        console.error("[dm-reply] setRatingDmOptOut failed:", err);
+      }
+
+      if (written) {
+        const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+        const u = await db.user.findUnique({
+          where: { id: user.id },
+          select: { phoneNumber: true },
+        });
+        const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+        // Any active org the player belongs to works as the BotJob owner —
+        // the DM is addressed by phone, the org just routes which bot sends.
+        const mem = await db.membership.findFirst({
+          where: { userId: user.id, leftAt: null },
+          select: { orgId: true },
+        });
+        if (replyPhone && mem) {
+          const reply = optOut
+            ? "Done — no more rating or Man-of-the-Match messages from me 👍 Text \"start ratings\" anytime to turn them back on."
+            : "Great — I'll send you rating and Man-of-the-Match links again 👍";
+          await db.botJob.create({
+            data: { orgId: mem.orgId, kind: "dm", phone: replyPhone, text: reply },
+          });
+        }
+        return NextResponse.json({ ok: true, handled: "rating-dm-opt-out", optOut });
+      }
+      // Write didn't land — don't lie. Fall through to normal handling.
+    }
   }
 
   // ── Money-collector fee capture (2026-06-04) ────────────────────────

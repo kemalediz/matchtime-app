@@ -1431,6 +1431,21 @@ async function computeForMatch(
   //    above is gated on *ended*, which is earlier.
   if (m.status === "COMPLETED" && m.postMatchEndFlow !== false) {
 
+    // Per-club opt-out: players who texted "stop messaging me about
+    // ratings" have ratingDmOptOut=true on their Membership. Build the
+    // set once for this match's org and skip them in BOTH personal DM
+    // loops below (rate-dm + rate-reminder). Group-wide messages
+    // (rate-promo, MoM announcement) are intentionally NOT gated — they
+    // aren't personal DMs.
+    const optedOut = new Set(
+      (
+        await db.membership.findMany({
+          where: { orgId: activity.orgId, ratingDmOptOut: true },
+          select: { userId: true },
+        })
+      ).map((mem) => mem.userId),
+    );
+
     // 6b + 6c. Rating DMs + group promo — HOLD until 08:00–09:00 London
     //          the morning AFTER match day. Previously these fired the
     //          moment the match flipped to COMPLETED, which for a
@@ -1457,6 +1472,7 @@ async function computeForMatch(
       if (isMorningAfter) {
         for (const a of confirmed) {
           if (!a.user.phoneNumber) continue;
+          if (optedOut.has(a.userId)) continue;
           const key = `${matchId}:rate-dm:${a.userId}`;
           if (sentKeys.has(key)) continue;
           const token = signMagicLinkToken({
@@ -1500,7 +1516,7 @@ async function computeForMatch(
         // — by which point all DMs really are in players' chats.
         const promoKey = `${matchId}:rate-promo`;
         const expectedRateDmKeys = confirmed
-          .filter((a) => a.user.phoneNumber)
+          .filter((a) => a.user.phoneNumber && !optedOut.has(a.userId))
           .map((a) => `${matchId}:rate-dm:${a.userId}`);
         const allRateDmsSent =
           expectedRateDmKeys.length > 0 &&
@@ -1543,6 +1559,7 @@ async function computeForMatch(
         const dayKey = londonDateKey(now);
         for (const a of confirmed) {
           if (!a.user.phoneNumber) continue;
+          if (optedOut.has(a.userId)) continue;
           if (rated.has(a.userId)) continue;
           const key = `${matchId}:rate-reminder:${a.userId}:${dayKey}`;
           if (sentKeys.has(key)) continue;
