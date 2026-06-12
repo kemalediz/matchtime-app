@@ -7,6 +7,7 @@ import { AttendanceList } from "@/components/match/attendance-list";
 import { AddPlayerToMatch } from "@/components/match/add-player-to-match";
 import { TeamDisplay } from "@/components/match/team-display";
 import { isOrgAdmin } from "@/lib/org";
+import { resolveTeamLabels } from "@/lib/team-labels";
 import { format } from "date-fns";
 import { formatLondon } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
@@ -23,7 +24,7 @@ export default async function MatchDetailPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true } },
+      activity: { include: { sport: true, org: { select: { teamLabels: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -46,7 +47,7 @@ export default async function MatchDetailPage({
   if (!match) redirect("/matches");
 
   const sport = match.activity.sport;
-  const [redLabel, yellowLabel] = sport.teamLabels as [string, string];
+  const [redLabel, yellowLabel] = resolveTeamLabels(match.activity.org, sport);
 
   // Per-activity positions for the players in this match
   const positionsFor = (u: { activityPositions: { activityId: string; positions: string[] }[] }) =>

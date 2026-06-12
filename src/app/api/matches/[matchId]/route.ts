@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { resolveTeamLabels } from "@/lib/team-labels";
 import { NextResponse } from "next/server";
 
 export async function GET(
@@ -13,7 +14,7 @@ export async function GET(
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true } },
+      activity: { include: { sport: true, org: { select: { teamLabels: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -69,5 +70,8 @@ export async function GET(
     teamAssignments: flatTeamAssignments,
     existingRatings,
     existingMoMVote,
+    // Resolved display labels for the two team slots (org override →
+    // sport labels → "Red"/"Yellow"). [0] = RED, [1] = YELLOW.
+    teamLabels: resolveTeamLabels(match.activity.org, match.activity.sport),
   });
 }

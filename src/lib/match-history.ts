@@ -32,6 +32,7 @@
  */
 import { db } from "./db";
 import { getMomSummaries } from "./mom";
+import { resolveTeamLabels } from "./team-labels";
 
 export interface RecentMatchRow {
   id: string;
@@ -93,6 +94,12 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     return null;
   }
 
+  // Org-level team-label override (falls back to sport labels per slot).
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { teamLabels: true },
+  });
+
   const matchIds = matches.map((m) => m.id);
 
   // 2. MoM votes for these matches — uses the shared helper so
@@ -100,9 +107,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   const momSummaries = await getMomSummaries(matchIds);
 
   const recentMatches: RecentMatchRow[] = matches.map((m) => {
-    const labels = m.activity.sport.teamLabels;
-    const redLabel = labels[0] ?? "Red";
-    const yellowLabel = labels[1] ?? "Yellow";
+    const [redLabel, yellowLabel] = resolveTeamLabels(org, m.activity.sport);
     const hasScore = m.redScore !== null && m.yellowScore !== null;
     const scoreLabel = hasScore
       ? `${redLabel} ${m.redScore} - ${m.yellowScore} ${yellowLabel}`

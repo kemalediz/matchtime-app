@@ -180,3 +180,38 @@ export async function setOrgFeature(
   revalidatePath("/admin/settings");
   return { feature, enabled };
 }
+
+/**
+ * Org-admin override for the two team DISPLAY labels (index 0 = the
+ * canonical RED slot, index 1 = YELLOW). Empty strings mean "use the
+ * default" for that slot — the resolver (`resolveTeamLabels`) falls
+ * back per-slot to the Sport's labels, then "Red"/"Yellow". Both
+ * empty clears the override entirely.
+ */
+export async function setOrgTeamLabels(
+  orgId: string,
+  redLabel: string,
+  yellowLabel: string,
+) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const { requireOrgAdmin } = await import("@/lib/org");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  // Strip chars that would break WhatsApp markdown (we post `*${label}*`)
+  // and keep names short enough for poll options / lineup posts.
+  const clean = (s: string) => s.replace(/[*\n\r`]/g, "").trim().slice(0, 24);
+  const red = clean(redLabel);
+  const yellow = clean(yellowLabel);
+  if (red && yellow && red.toLowerCase() === yellow.toLowerCase()) {
+    throw new Error("The two team names must be different");
+  }
+
+  const teamLabels = !red && !yellow ? [] : [red, yellow];
+  await db.organisation.update({
+    where: { id: orgId },
+    data: { teamLabels },
+  });
+  revalidatePath("/admin/settings");
+  return { teamLabels };
+}

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2 } from "lucide-react";
-import { setOrgFeature } from "@/app/actions/org";
+import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt } from "lucide-react";
+import { setOrgFeature, setOrgTeamLabels } from "@/app/actions/org";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 
@@ -17,6 +17,10 @@ interface OrgData {
   whatsappGroupId: string | null;
   whatsappBotEnabled: boolean;
   memberCount: number;
+  /** Org-level team-name override (raw — [] or empty strings = defaults). */
+  teamLabels?: string[];
+  /** What the labels resolve to when no override is set (sport defaults). */
+  defaultTeamLabels?: [string, string];
   features: Record<FeatureKey, boolean>;
   stripeConnected?: boolean;
   stripeChargesEnabled?: boolean;
@@ -33,6 +37,8 @@ export default function SettingsPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then(async (data) => {
         setOrg(data);
+        setTeamRed(data?.teamLabels?.[0] ?? "");
+        setTeamYellow(data?.teamLabels?.[1] ?? "");
         // Returning from Stripe onboarding (?stripe=done|refresh) → auto
         // re-check charges-enabled so the collector doesn't have to hit
         // "Refresh status" and wonder why it still says "Finish setup".
@@ -60,6 +66,31 @@ export default function SettingsPage() {
     const link = `${window.location.origin}/join/${org.inviteCode}`;
     await navigator.clipboard.writeText(link);
     toast.success("Invite link copied!");
+  }
+
+  // Team names — controlled inputs holding the org OVERRIDE (empty =
+  // fall back to the sport defaults shown as placeholders).
+  const [teamRed, setTeamRed] = useState("");
+  const [teamYellow, setTeamYellow] = useState("");
+  const [savingTeamLabels, setSavingTeamLabels] = useState(false);
+  async function saveTeamLabels() {
+    if (!org) return;
+    setSavingTeamLabels(true);
+    try {
+      const { teamLabels } = await setOrgTeamLabels(org.id, teamRed, teamYellow);
+      setOrg((prev) => (prev ? { ...prev, teamLabels } : prev));
+      setTeamRed(teamLabels[0] ?? "");
+      setTeamYellow(teamLabels[1] ?? "");
+      toast.success(
+        teamLabels.length
+          ? `Teams will be called ${teamLabels[0] || org.defaultTeamLabels?.[0] || "Red"} and ${teamLabels[1] || org.defaultTeamLabels?.[1] || "Yellow"}`
+          : "Back to the default team names",
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save team names");
+    } finally {
+      setSavingTeamLabels(false);
+    }
   }
 
   const [savingFeature, setSavingFeature] = useState<string | null>(null);
@@ -189,6 +220,57 @@ export default function SettingsPage() {
             <Users className="w-4 h-4" />
             {org.memberCount} members
           </div>
+        </div>
+      </section>
+
+      {/* Team names */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+          <Shirt className="w-4 h-4 text-slate-500" />
+          <h2 className="font-semibold text-slate-800">Team names</h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-slate-500">
+            What the two sides are called in lineups, score messages and match
+            pages. Leave a field empty to use the default
+            (&ldquo;{org.defaultTeamLabels?.[0] ?? "Red"}&rdquo; /
+            &ldquo;{org.defaultTeamLabels?.[1] ?? "Yellow"}&rdquo;).
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                First team
+              </label>
+              <input
+                value={teamRed}
+                onChange={(e) => setTeamRed(e.target.value)}
+                placeholder={org.defaultTeamLabels?.[0] ?? "Red"}
+                maxLength={24}
+                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                Second team
+              </label>
+              <input
+                value={teamYellow}
+                onChange={(e) => setTeamYellow(e.target.value)}
+                placeholder={org.defaultTeamLabels?.[1] ?? "Yellow"}
+                maxLength={24}
+                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <button
+            onClick={saveTeamLabels}
+            disabled={savingTeamLabels}
+            className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
+          >
+            {savingTeamLabels ? "Saving…" : "Save team names"}
+          </button>
         </div>
       </section>
 

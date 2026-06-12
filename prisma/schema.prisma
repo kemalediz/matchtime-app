@@ -136,6 +136,16 @@ model Organisation {
   /// and prefers tracking offline.
   paymentTrackingEnabled Boolean @default(false)
 
+  /// Org-level override for the two team DISPLAY labels (lineups,
+  /// score prompts, payment poll, match pages…). Index 0 maps to the
+  /// canonical Team enum RED, index 1 to YELLOW — the enum itself
+  /// never changes, only what we call the teams. Empty (default) or
+  /// an empty-string slot falls back to the Sport's `teamLabels`,
+  /// then to ["Red","Yellow"]. Resolved everywhere via
+  /// `resolveTeamLabels()` in src/lib/team-labels.ts; editable by an
+  /// org admin on /admin/settings.
+  teamLabels String[] @default([])
+
   /// ─── Per-feature module flags ───────────────────────────────────
   /// Each toggles one bot capability independently so a group can run
   /// only the bits it wants (Amir's Thursday group: MoM + rating
