@@ -17,8 +17,11 @@ import { U } from "./helpers/constants";
 
 export const test = base.extend<{ db: TestDb }>({
   // (named "provide" rather than Playwright's conventional "use" so the
-  // react-hooks lint rule doesn't mistake the fixture for a hook call)
-  db: async ({ browserName: _ }, provide) => {
+  // react-hooks lint rule doesn't mistake the fixture for a hook call;
+  // browserName is destructured only because Playwright requires the
+  // object-destructuring pattern for the first fixture argument)
+  db: async ({ browserName }, provide) => {
+    void browserName;
     await provide(testDb());
   },
 });
