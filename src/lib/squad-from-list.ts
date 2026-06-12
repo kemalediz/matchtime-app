@@ -93,7 +93,7 @@ For EACH message you are given, decide whether it is a squad list. A squad list:
 A message is NOT a squad list when:
   - it is a leaderboard / stats answer (percentages, "wins", "votes", "MoM").
   - it is generic numbered prose ("1. yes 2. no").
-  - it is a Red vs Yellow team breakdown (two parallel lists for the same match).
+  - it is a two-team breakdown (e.g. "Red vs Yellow", "Home vs Away", or two parallel named lists for the same match).
   - it is short freeform chatter mentioning a number.
 
 RESERVES / SUBS / STANDBY HANDLING — IMPORTANT:

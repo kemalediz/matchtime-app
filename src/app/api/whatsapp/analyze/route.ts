@@ -2502,11 +2502,19 @@ async function handleColorSwapIfApplicable(
   rawBody: string,
 ): Promise<{ reply: string; logReason: string } | null> {
   const body = (rawBody || "").trim();
-  const isColourSwap =
+
+  // Fast path: "swap/flip the colours" or "swap red and yellow" need no DB
+  // lookup — the literal colour words / "colours" keyword are enough.
+  const hasSwapVerb = /\b(swap|switch|flip|reverse|invert|change)\b/i.test(body);
+  let isColourSwap =
     /\b(swap|switch|flip|reverse|invert|change)\b[\s\S]{0,40}\bcolou?rs?\b/i.test(body) ||
     /\bcolou?rs?\b[\s\S]{0,40}\b(swap|switch|flip|reverse|invert|change)\b/i.test(body) ||
     /\bswap\b[\s\S]{0,25}\b(red|yellow|reds|yellows)\b[\s\S]{0,25}\b(red|yellow|reds|yellows)\b/i.test(body);
-  if (!isColourSwap) return null;
+
+  // Cheap pre-gate before touching the DB: only orgs with a swap verb in
+  // the message can possibly be a "swap <labelA> and <labelB>" — anything
+  // without a swap verb can't be a colour swap at all.
+  if (!isColourSwap && !hasSwapVerb) return null;
 
   const match = await db.match.findFirst({
     where: {
@@ -2526,6 +2534,27 @@ async function handleColorSwapIfApplicable(
   });
   // No teams generated yet → nothing to flip; let normal handling decide.
   if (!match || match.teamAssignments.length === 0) return null;
+
+  // Custom-label aware detection: if not already a literal red/yellow or
+  // "colours" swap, recognise "swap <labelA> and <labelB>" using THIS org's
+  // configured team labels (resolved from Organisation/Sport.teamLabels).
+  // Red/Yellow stay covered by the regexes above as a fallback.
+  if (!isColourSwap) {
+    const cfgLabels = resolveTeamLabels(match.activity.org, match.activity.sport);
+    const labelAlts = cfgLabels
+      .map((l) => l.trim())
+      .filter((l) => l && !/^(red|yellow)$/i.test(l))
+      .map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (labelAlts.length === 2) {
+      const alt = `(?:${labelAlts.join("|")})`;
+      const labelSwap = new RegExp(
+        `\\bswap\\b[\\s\\S]{0,25}${alt}[\\s\\S]{0,25}${alt}`,
+        "i",
+      );
+      if (labelSwap.test(body)) isColourSwap = true;
+    }
+    if (!isColourSwap) return null;
+  }
 
   // Flip every assignment RED<->YELLOW in one transaction — same rosters,
   // labels swapped. No rebalance, no LLM.
