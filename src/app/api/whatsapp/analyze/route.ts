@@ -49,6 +49,8 @@ import {
   enforceProximity,
   enforceCanonicalRoster,
   rewriteOverconfidentPromotion,
+  composeSquadStatusPost,
+  looksLikeSquadStateReply,
   type AnalysisVerdict,
   type BatchInputMessage,
 } from "@/lib/message-analyzer";
@@ -647,6 +649,13 @@ export async function POST(request: Request) {
 
   const attendanceOn = (await getOrgFeatures(org.id)).attendance;
 
+  // Sender-registration reacts to audit AFTER the whole batch has been
+  // applied (see the reaction ↔ status reconciliation pass below). Only
+  // verdicts where the react describes the SENDER's own attendance row
+  // qualify — third-party registerFor reacts reflect the target's slot.
+  const REGISTRATION_STATUS_REACTS = new Set(["✅", "🪑", "👋"]);
+  const senderReactAudit: Array<{ idx: number; userId: string }> = [];
+
   for (let i = 0; i < fresh.length; i++) {
     const msg = fresh[i];
     let verdict = verdicts[i];
@@ -931,6 +940,85 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── BANTER-DROP guard (2026-06-12, Zeeshan/Sutton Lads incident) ──
+    //    A third-party "X is out" must not drop X when X is right there
+    //    in the same batch talking — banter, wind-ups and mock votes
+    //    ("Zeeshan is out 😂") were misread as real drops while the
+    //    target was still protesting. Deterministic rule: a registerFor
+    //    OUT for a player who AUTHORED a message in this very batch is
+    //    only honoured when (a) the sender is an org admin (real roster
+    //    surgery), or (b) the target's own verdict in the batch
+    //    corroborates the drop (they said they're out themselves).
+    //    Otherwise strip the OUT entry — the player can speak for
+    //    themselves — and silence the reply so the bot never announces
+    //    a drop it refused to make.
+    if (verdict.registerFor?.some((e) => e.action === "OUT")) {
+      let senderIsAdmin = false;
+      if (sender.userId) {
+        const mem = await db.membership.findUnique({
+          where: { userId_orgId: { userId: sender.userId, orgId: org.id } },
+          select: { role: true },
+        });
+        senderIsAdmin = mem?.role === "OWNER" || mem?.role === "ADMIN";
+      }
+      if (!senderIsAdmin) {
+        const sameName = (a: string, b: string): boolean => {
+          const na = normaliseName(a);
+          const nb = normaliseName(b);
+          if (!na || !nb) return false;
+          return (
+            na === nb ||
+            na.startsWith(nb + " ") ||
+            nb.startsWith(na + " ") ||
+            na.split(" ")[0] === nb.split(" ")[0]
+          );
+        };
+        const kept: NonNullable<AnalysisVerdict["registerFor"]> = [];
+        const strippedNames: string[] = [];
+        for (const entry of verdict.registerFor) {
+          if (entry.action !== "OUT") {
+            kept.push(entry);
+            continue;
+          }
+          let targetSpokeInBatch = false;
+          let targetCorroboratesOut = false;
+          for (let j = 0; j < fresh.length; j++) {
+            if (j === i) continue;
+            const other = senderById.get(fresh[j].waMessageId);
+            const otherName = other?.name ?? fresh[j].authorName ?? "";
+            if (!otherName || !sameName(otherName, entry.name)) continue;
+            targetSpokeInBatch = true;
+            const vj = verdicts[j];
+            if (vj && (vj.intent === "out" || vj.registerAttendance === "OUT")) {
+              targetCorroboratesOut = true;
+            }
+          }
+          if (targetSpokeInBatch && !targetCorroboratesOut) {
+            strippedNames.push(entry.name);
+          } else {
+            kept.push(entry);
+          }
+        }
+        if (strippedNames.length > 0) {
+          console.warn(
+            `[analyze] banter-drop guard: stripped registerFor OUT for ${strippedNames.join(", ")} — ` +
+              `target is active in this batch, sender isn't admin, no self-drop corroboration (${msg.waMessageId}). ` +
+              `Reasoning was: ${verdict.reasoning}`,
+          );
+          verdict = {
+            ...verdict,
+            registerFor: kept.length > 0 ? kept : null,
+            // The reply almost certainly narrates the drop we just
+            // refused — posting it would be a lie. Stay silent; if other
+            // squad-state replies exist in the batch the consolidated
+            // status post below shows the truth anyway.
+            reply: null,
+            react: verdict.react === "👋" ? null : verdict.react,
+          };
+        }
+      }
+    }
+
     if (
       verdict.intent === "generate_teams_request" &&
       i !== lastTeamsRequestIdx
@@ -969,14 +1057,22 @@ export async function POST(request: Request) {
       let cleanReply = reply;
       if (cleanReply && nextMatchForReply) {
         const freshAttendances = await db.attendance.findMany({
-          where: { matchId: nextMatchForReply.id, status: "CONFIRMED" },
+          where: {
+            matchId: nextMatchForReply.id,
+            status: { in: ["CONFIRMED", "BENCH"] },
+          },
           include: { user: { select: { name: true } } },
           orderBy: { position: "asc" },
         });
+        const freshConfirmed = freshAttendances.filter(
+          (a) => a.status === "CONFIRMED",
+        );
+        const freshBench = freshAttendances.filter((a) => a.status === "BENCH");
         cleanReply = enforceProximity(cleanReply, nextMatchForReply.date);
         if (verdict.intent !== "generate_teams_request") {
           cleanReply = enforceCanonicalRoster(cleanReply, {
-            confirmed: freshAttendances.map((a) => a.user.name ?? "(unnamed)"),
+            confirmed: freshConfirmed.map((a) => a.user.name ?? "(unnamed)"),
+            bench: freshBench.map((a) => a.user.name ?? "(unnamed)"),
             maxPlayers: nextMatchForReply.maxPlayers,
           });
         }
@@ -991,14 +1087,11 @@ export async function POST(request: Request) {
           orderBy: { createdAt: "desc" },
         });
         if (openOffer) {
-          const benchCount = await db.attendance.count({
-            where: { matchId: nextMatchForReply.id, status: "BENCH" },
-          });
           cleanReply = rewriteOverconfidentPromotion(cleanReply, {
             benchName: "the bench",
-            confirmedCount: freshAttendances.length,
+            confirmedCount: freshConfirmed.length,
             maxPlayers: nextMatchForReply.maxPlayers,
-            benchCount,
+            benchCount: freshBench.length,
           });
         }
       }
@@ -1040,10 +1133,14 @@ export async function POST(request: Request) {
             verdict.intent === "replacement_request"
               ? "drop out"
               : "join";
-          cleanReply =
-            `Heads up — I got a message to *${verb}* from *${pushname}*, but that name isn't ` +
-            `matching anyone on the squad list, so I haven't changed anything yet. ` +
-            `Could *${pushname}* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏`;
+          // Never print a raw numeric id as a name in the group (RC4).
+          cleanReply = isRawDigitName(pushname)
+            ? `Heads up — I got a message to *${verb}* from a number I don't recognise, ` +
+              `so I haven't changed anything yet. Could they reply with the name they're ` +
+              `registered under, or an admin can link it on the dashboard? 🙏`
+            : `Heads up — I got a message to *${verb}* from *${pushname}*, but that name isn't ` +
+              `matching anyone on the squad list, so I haven't changed anything yet. ` +
+              `Could *${pushname}* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏`;
           // Record the dedupe row immediately. Tiny risk: if the bot
           // fails to post we under-notify — acceptable, the admin
           // queue is the backstop, and re-nudging every batch would
@@ -1076,6 +1173,18 @@ export async function POST(request: Request) {
         authorUserId: sender.userId,
         authorName: msg.authorName ?? null,
       });
+      // Queue this result for the post-batch reaction ↔ status audit
+      // when the react claims something about the SENDER's own row.
+      if (
+        sender.userId &&
+        nextMatchForReply &&
+        react !== null &&
+        REGISTRATION_STATUS_REACTS.has(react) &&
+        !(verdict.registerFor && verdict.registerFor.length > 0) &&
+        !verdict.benchConfirmation
+      ) {
+        senderReactAudit.push({ idx: results.length, userId: sender.userId });
+      }
       results.push({
         waMessageId: msg.waMessageId,
         handledBy: "llm",
@@ -1103,6 +1212,118 @@ export async function POST(request: Request) {
         react: null,
         reply: null,
       });
+    }
+  }
+
+  // 3a-i. Reaction ↔ persisted-status reconciliation ──────────────────
+  //   (Zeeshan 2026-06-12: MT reacted 🪑 to his message but his row
+  //   ended DROPPED.) A registration react (✅/🪑/👋) on a sender's own
+  //   attendance message is a public claim about their FINAL status —
+  //   derive it from the DB after ALL of the batch's writes have
+  //   landed, not from whatever the verdict guessed mid-batch.
+  if (nextMatchForReply && senderReactAudit.length > 0) {
+    try {
+      const auditUserIds = [...new Set(senderReactAudit.map((a) => a.userId))];
+      const rowsNow = await db.attendance.findMany({
+        where: { matchId: nextMatchForReply.id, userId: { in: auditUserIds } },
+        select: { userId: true, status: true },
+      });
+      const statusByUser = new Map(rowsNow.map((r) => [r.userId, r.status]));
+      const reactForStatus = (s: string | undefined): string | null =>
+        s === "CONFIRMED" ? "✅" : s === "BENCH" ? "🪑" : s === "DROPPED" ? "👋" : null;
+      for (const { idx, userId } of senderReactAudit) {
+        const want = reactForStatus(statusByUser.get(userId));
+        const r = results[idx];
+        if (
+          want &&
+          r.react &&
+          REGISTRATION_STATUS_REACTS.has(r.react) &&
+          r.react !== want
+        ) {
+          console.warn(
+            `[analyze] react/status reconciliation: ${r.waMessageId} react ${r.react} → ${want} (final attendance row wins)`,
+          );
+          r.react = want;
+        }
+      }
+    } catch (err) {
+      console.error("[analyze] react/status reconciliation failed:", err);
+    }
+  }
+
+  // 3a-ii. ONE authoritative squad/bench status per batch ─────────────
+  //   Root cause of the Sutton Lads 2026-06-12 incident: four
+  //   separately-composed squad replies in one batch, each from a
+  //   different point-in-time snapshot, contradicting each other
+  //   ("14/14 full squad", "one slot open", "bench is empty").
+  //   Mirror of the generate_teams_request dedupe: every squad-STATE
+  //   reply in the batch collapses into a single deterministic status
+  //   post, computed from a FRESH snapshot taken AFTER all attendance
+  //   writes. Non-squad replies (stats answers, acks, score, team
+  //   posts, opt-out confirmations) pass through untouched.
+  if (nextMatchForReply) {
+    try {
+      const SQUAD_STATE_INTENTS = new Set([
+        "in",
+        "out",
+        "replacement_request",
+        "conditional_in",
+        "question",
+        "unclear",
+      ]);
+      const squadReplyIdx: number[] = [];
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (!r.reply || r.handledBy !== "llm") continue;
+        if (!r.intent || !SQUAD_STATE_INTENTS.has(r.intent)) continue;
+        if (looksLikeSquadStateReply(r.reply)) squadReplyIdx.push(i);
+      }
+      if (squadReplyIdx.length > 0) {
+        const finalAtt = await db.attendance.findMany({
+          where: {
+            matchId: nextMatchForReply.id,
+            status: { in: ["CONFIRMED", "BENCH"] },
+          },
+          include: { user: { select: { name: true } } },
+          orderBy: { position: "asc" },
+        });
+        const confirmedNames = finalAtt
+          .filter((a) => a.status === "CONFIRMED")
+          .map((a) => a.user.name ?? "(unnamed)");
+        const benchNames = finalAtt
+          .filter((a) => a.status === "BENCH")
+          .map((a) => a.user.name ?? "(unnamed)");
+        if (squadReplyIdx.length >= 2) {
+          // Multiple squad-state replies → collapse to ONE post on the
+          // LAST of them (freshest message), everything else silenced.
+          const last = squadReplyIdx[squadReplyIdx.length - 1];
+          for (const i of squadReplyIdx) {
+            if (i !== last) results[i].reply = null;
+          }
+          results[last].reply = composeSquadStatusPost({
+            confirmed: confirmedNames,
+            bench: benchNames,
+            maxPlayers: nextMatchForReply.maxPlayers,
+          });
+          console.log(
+            `[analyze] collapsed ${squadReplyIdx.length} squad-state replies into one batch-final status post`,
+          );
+        } else {
+          // A single squad-state reply keeps its voice, but is re-
+          // canonicalised against the BATCH-FINAL snapshot — the
+          // in-loop pass used the state as of that verdict; later
+          // writes in the same batch may have changed it (RC1 of the
+          // conflicting-posts bug).
+          const i = squadReplyIdx[0];
+          results[i].reply = enforceCanonicalRoster(results[i].reply!, {
+            confirmed: confirmedNames,
+            bench: benchNames,
+            maxPlayers: nextMatchForReply.maxPlayers,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[analyze] squad-status collapse failed:", err);
     }
   }
 
@@ -1181,6 +1402,22 @@ async function restoreMembership(membershipId: string, name: string | null) {
     data: { leftAt: null, provisionallyAddedAt: null },
   });
   console.log(`[analyze] restored soft-removed membership ${membershipId} (${name ?? "unknown"})`);
+}
+
+/**
+ * True when a "name" is really a raw phone number / numeric @lid id
+ * ("447700900123", "123456789012@lid", "+44 7700 900123", "@4477…").
+ * Never stamp these as display names or print them in group posts —
+ * use a neutral placeholder and let an admin rename. (RC4 of the
+ * 2026-06-12 Sutton Lads incident: a bare number showed up as a player
+ * name in a group post.)
+ */
+function isRawDigitName(raw: string): boolean {
+  const cleaned = raw
+    .trim()
+    .replace(/@?lid$/i, "")
+    .replace(/[@\s+().-]/g, "");
+  return /^\d{5,}$/.test(cleaned);
 }
 
 async function resolveSender(orgId: string, msg: InboundMessage): Promise<ResolvedSender> {
@@ -1313,7 +1550,11 @@ async function resolveSender(orgId: string, msg: InboundMessage): Promise<Resolv
   //   so they can set phone/position/rating or remove them.
   const provisional = await createProvisionalMember(orgId, msg);
   if (provisional) return provisional;
-  return { userId: null, name: msg.authorName, phone: null };
+  // Never surface a raw numeric id as a display name — downstream
+  // replies address the sender by this field.
+  const fallbackName =
+    msg.authorName && !isRawDigitName(msg.authorName) ? msg.authorName : null;
+  return { userId: null, name: fallbackName, phone: null };
 }
 
 async function createProvisionalMember(
@@ -1432,7 +1673,13 @@ async function createProvisionalByName(
   rawName: string | null,
   rawPhone: string | null,
 ): Promise<ResolvedSender | null> {
-  const name = rawName?.trim();
+  const trimmed = rawName?.trim();
+  // Never stamp a raw phone number / @lid numeric id as a display name
+  // (RC4, 2026-06-12): provision under a neutral placeholder instead
+  // and let the admin rename from the dashboard — the membership is
+  // flagged provisional either way, and group posts must never show
+  // bare digits as a player.
+  const name = trimmed && isRawDigitName(trimmed) ? "New player" : trimmed;
   // Require ≥3 chars: 2-char pushnames like "ba" are almost always
   // truncations of a real name we already have (e.g. "Baki Sutton") and
   // provisioning them creates duplicate ghost users. The relaxed fuzzy

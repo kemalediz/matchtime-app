@@ -437,6 +437,7 @@ The phrasings above all mean "drop X AND add Y in the same message". Treat every
 
 Rules:
 - Only include third-party entries when the relationship to the target is clear (possessive "my dad Najib", "bringing X", "X can't make it", "X is replacing Y"). If it's ambiguous gossip ("someone said Najib might come"), skip — don't guess.
+- BANTER / CONTESTED "X IS OUT" (CRITICAL — Zeeshan 2026-06-12): a third-party "X is out" only counts as a real drop when the speaker is clearly RELAYING a genuine unavailability ("X told me he can't make it", "X's knee is gone, he's out") or is an admin instructing a roster change ("remove X", "take X off"). Jokes, teasing, wind-up campaigns and mock votes — "X is out 😂😂", "vote X out", "get X off the list lol", pile-ons with laughing emojis — are NOT drops: classify intent "noise", NO registerFor OUT, no squad-state reply. Read the WHOLE window (batch + recent history): if X is actively chatting like they're still playing, protests the claim, or never confirms dropping, X STAYS — never emit OUT for X off the back of someone else's message while X is present and hasn't dropped themselves. A real drop for X requires X's OWN message or a clear admin instruction. If the squad is over-full and the group genuinely wants X to make way while X stays available, that is an admin DEMOTE → registerFor [{name:"X", action:"BENCH"}] on a clear ADMIN instruction only — never OUT, never inferred from banter.
 - First-name is fine ("Najib"). The server fuzzy-matches; if no match exists, the server provisions a new member, so emit the IN entry even for unknown names.
 - Do NOT put the author themselves in registerFor — use registerAttendance for them.
 - If registerFor has entries, react: "👍" still (server overrides with ✅/🪑 of the newly-added player).
@@ -456,6 +457,7 @@ Every reply that concerns attendance state — "replacement_request", an "out" t
 - Any row above confirmedCount is an OPEN slot — render it as 🥁 (a single drum — keeps it tidy).
 - If a player is in the Dropped list AND their most recent message in the provided history said they'll still play if nobody steps in (e.g. "but if no one comes I'll still join", "feeling rough, will play as fallback"), mention them in a separate *Tentative:* line UNDER the roster. Format: "Tentative: <Name> (will play if nobody steps in)". Never put them in a numbered slot — those slots are for definitely-confirmed players only.
 - If nobody is tentative, omit the Tentative line.
+- BENCH SECTION (mandatory, every org — Kemal 2026-06-12): when the Bench list in the Match Context is non-empty, EVERY squad display must also show the bench. Append after the roster (and after any Tentative line): "*Bench (N):*" followed by the bench names as a numbered list, in Match Context order. Never silently omit a benched player from a squad display — they need to see they're still in the picture. When the bench is empty, omit the block entirely (no "Bench (0)").
 
 Above the roster, vary the lead depending on how short we are:
 - Short by 1: one sentence, e.g. "Sorry to hear, Ibrahim — can anyone step in?"
@@ -467,6 +469,7 @@ Formatting rules:
 - Blank line between the lead and the roster.
 - One or two emoji total — no soup.
 - Header the roster with "*Playing tonight:*" or "*Squad:*" so it's scannable.
+- NEVER display a raw phone number or numeric id as a player name ("447700900123", "123456789012@lid", a bare "@4477…" mention). If a sender or mentioned player resolves only to digits, refer to them neutrally ("one of the group", "a new player") and never put digits in a roster, bench list, or reply.
 
 Example (12/14, Ibrahim + Ehtisham dropped, Ehtisham tentative):
 "Ibrahim (ankle) and Ehtisham (not 100%) are out — we're 12/14, need 2 more. Anyone free? 🙏
@@ -1262,6 +1265,88 @@ export function enforceProximity(text: string, matchDate: Date): string {
   return out;
 }
 
+/** Leaderboard rows also use "N. <name>" numbering but carry stats
+ *  markers ("— 4/4 (100%)", "— 2 wins", "— 1042", percent signs,
+ *  "votes"). Roster post-processors must never treat those as squad
+ *  rosters (Kemal flagged 2026-05-14 when "top 3 most consistent"
+ *  turned into the upcoming squad list). */
+function isLeaderboardLine(s: string): boolean {
+  return (
+    /\s—\s/.test(s) || // em-dash separator the leaderboard formatter uses
+    /\d+\s*%/.test(s) || // "(96%)"
+    /\b(?:wins?|votes?|matches?)\b/i.test(s) || // "2 wins", "5 of 11 votes", "3 matches"
+    /\b\d+\/\d+\s*\(/.test(s) // "4/4 (100%)" — attendance pattern
+  );
+}
+
+/**
+ * Does this reply text display SQUAD STATE — a numbered roster, a
+ * squad/bench header, a "N/M" count claim, or a bench-emptiness claim?
+ * Used by the analyze route to find the replies that must collapse into
+ * ONE authoritative status post per batch (Sutton Lads 2026-06-12: four
+ * contradictory squad posts ~1s apart from one batch). Leaderboard /
+ * stats replies are explicitly NOT squad state.
+ */
+export function looksLikeSquadStateReply(text: string): boolean {
+  const lines = text.split("\n");
+  // Stats/leaderboard replies — never squad state, never collapse them.
+  if (lines.some((l) => /^\s*\d+\.\s+\S/.test(l) && isLeaderboardLine(l))) {
+    return false;
+  }
+  // (a) A numbered roster run of 2+ lines.
+  let run = 0;
+  for (const l of lines) {
+    if (/^\s*\d+\.\s+\S/.test(l)) {
+      run++;
+      if (run >= 2) return true;
+    } else {
+      run = 0;
+    }
+  }
+  // (b) Squad/bench display headers.
+  if (/\*(?:Playing\b[^*\n]*|Squad\b[^*\n]*|Confirmed\s*\(\d+\/\d+\)[^*\n]*|Bench\s*\(\d+\)[^*\n]*):?\*/i.test(text)) {
+    return true;
+  }
+  // (c) A count claim alongside squad vocabulary.
+  if (/\b\d+\/\d+\b/.test(text) && /\b(?:squad|bench|slot|full|need|player)/i.test(text)) {
+    return true;
+  }
+  if (/\bbench is empty\b/i.test(text)) return true;
+  return false;
+}
+
+/**
+ * Deterministic, server-composed squad+bench status post. Used when a
+ * batch produced MULTIPLE squad-state replies: they all collapse into
+ * this single message, computed from a FRESH DB snapshot taken AFTER
+ * every attendance write in the batch has been applied — so it can
+ * never contradict itself or the database (Kemal's chosen design,
+ * 2026-06-12: "examine all messages in the window as a whole, then post
+ * ONE clear message with the latest squad and bench").
+ */
+export function composeSquadStatusPost(args: {
+  confirmed: string[];
+  bench: string[];
+  maxPlayers: number;
+}): string {
+  const { confirmed, bench, maxPlayers } = args;
+  const need = Math.max(0, maxPlayers - confirmed.length);
+  const count = `*${confirmed.length}/${maxPlayers}*`;
+  const lead =
+    `📋 Based on all the messages I've picked up, here's the latest squad${bench.length > 0 ? " and bench" : ""} — ` +
+    (need > 0 ? `${count}, need *${need} more* 🙏` : `${count} ✅ full squad.`);
+  const rows: string[] = [];
+  for (let i = 0; i < maxPlayers; i++) {
+    rows.push(i < confirmed.length ? `${i + 1}. ${confirmed[i]}` : `${i + 1}. 🥁`);
+  }
+  const lines = [lead, "", "*Playing:*", ...rows];
+  if (bench.length > 0) {
+    lines.push("", `*Bench (${bench.length}):*`);
+    bench.forEach((n, i) => lines.push(`${i + 1}. ${n}`));
+  }
+  return lines.join("\n");
+}
+
 /**
  * Replace any LLM-generated numbered roster in a reply with the canonical
  * roster built from the actual Match Context. The LLM has been observed
@@ -1271,7 +1356,11 @@ export function enforceProximity(text: string, matchDate: Date): string {
  * visible — overwrite.
  *
  * Also patches stale "N/M" count claims in the lead text when they
- * disagree with the truth from Match Context.
+ * disagree with the truth from Match Context, reconciles slot-open /
+ * full-squad PROSE with the real count (RC3 of the 2026-06-12 incident:
+ * the count was patched to "14/14" but "— one slot open" survived), and
+ * — when `truth.bench` is provided — overwrites/append the bench list so
+ * every squad display shows the real bench.
  *
  * The roster block is detected as 2+ consecutive lines starting with
  * "<digits>." or "<digits>. 🥁". The header line "*Playing …:*" or
@@ -1279,7 +1368,7 @@ export function enforceProximity(text: string, matchDate: Date): string {
  */
 export function enforceCanonicalRoster(
   text: string,
-  truth: { confirmed: string[]; maxPlayers: number },
+  truth: { confirmed: string[]; bench?: string[]; maxPlayers: number },
 ): string {
   // 1. Build the canonical roster lines.
   const rows: string[] = [];
@@ -1294,17 +1383,7 @@ export function enforceCanonicalRoster(
 
   // 2. Find a roster block: 2+ consecutive lines matching "N. ..."
   //    starting from anywhere in the message. Capture the whole run.
-  //    Exclude obvious LEADERBOARD blocks — those also use "N. <name>"
-  //    numbering but carry stats markers ("— 4/4 (100%)", "— 2 wins",
-  //    "— 1042", percent signs, "votes"). Without this exclusion the
-  //    post-processor clobbers the bot's own historical-stats replies
-  //    with the current squad roster (Kemal flagged 2026-05-14 when
-  //    "top 3 most consistent" turned into the upcoming squad list).
-  const isLeaderboardLine = (s: string): boolean =>
-    /\s—\s/.test(s) || // em-dash separator the leaderboard formatter uses
-    /\d+\s*%/.test(s) || // "(96%)"
-    /\b(?:wins?|votes?|matches?)\b/i.test(s) || // "2 wins", "5 of 11 votes", "3 matches"
-    /\b\d+\/\d+\s*\(/.test(s); // "4/4 (100%)" — attendance pattern
+  //    Exclude obvious LEADERBOARD blocks (see isLeaderboardLine).
   const lines = text.split("\n");
   let start = -1;
   let end = -1;
@@ -1324,7 +1403,9 @@ export function enforceCanonicalRoster(
     }
   }
   let out = text;
-  if (start !== -1 && end - start + 1 >= 2 && !containsLeaderboardLine) {
+  const hadRosterBlock =
+    start !== -1 && end - start + 1 >= 2 && !containsLeaderboardLine;
+  if (hadRosterBlock) {
     const before = lines.slice(0, start).join("\n");
     const after = lines.slice(end + 1).join("\n");
     out = [before, canonical, after].filter((s) => s !== "").join("\n");
@@ -1337,12 +1418,58 @@ export function enforceCanonicalRoster(
     new RegExp(`\\b\\d+/${truth.maxPlayers}\\b`, "g"),
     realCount,
   );
-  // 4. "need N more" claims — recompute from the truth.
   const need = Math.max(0, truth.maxPlayers - truth.confirmed.length);
+  // 4. PROSE ↔ count reconciliation (RC3, 2026-06-12): the count patch
+  //    above used to leave contradictory prose behind ("14/14 — one
+  //    slot open"). Recompute every slot-open / full-squad / need-N
+  //    claim from the truth.
+  //    4a. Full-squad claims while actually short.
+  if (need > 0) {
+    out = out.replace(
+      /\b(?:full\s+squad|squad\s+(?:is\s+)?(?:now\s+)?(?:complete|full|locked)|we'?re\s+(?:now\s+)?full)\b/gi,
+      `need *${need} more*`,
+    );
+  }
+  //    4b. "one slot open" / "2 slots open" claims.
   out = out.replace(
-    /\bneed\s+(?:\*)?\s*\d+\s*(?:\*)?\s+more\b/gi,
+    /\b(?:one|a|an|two|three|\d+)\s+(?:more\s+)?slots?\s+(?:still\s+)?open\b/gi,
+    need > 0 ? `${need} slot${need === 1 ? "" : "s"} open` : "full squad",
+  );
+  //    4c. "need N more" claims — recompute from the truth.
+  out = out.replace(
+    /\b(?:we\s+)?(?:still\s+)?need\s+(?:\*)?\s*(?:\d+|one|two|three|four|five)\s*(?:\*)?\s+more\b/gi,
     need > 0 ? `need *${need} more*` : "we're full",
   );
+
+  // 5. Bench reconciliation (2026-06-12: bench must be shown — and
+  //    shown CORRECTLY — in every squad display, for every org).
+  //    Replace any bench section/claim with the truth; when the reply
+  //    displays a roster but omitted the bench, append it.
+  if (truth.bench) {
+    const benchNames = truth.bench;
+    const benchCanonical =
+      benchNames.length > 0
+        ? `*Bench (${benchNames.length}):*\n${benchNames
+            .map((n, i) => `${i + 1}. ${n}`)
+            .join("\n")}`
+        : null;
+    // A bench section: a line like "*Bench (2):*" / "Bench: A, B" /
+    // "Bench is empty …" plus any numbered/bulleted rows under it.
+    const benchSectionRe =
+      /(^|\n)[ \t]*[*_]?Bench\b(?:[^\n]*:[^\n]*|\s+is\s+empty[^\n]*)(?:\n[ \t]*(?:\d+\.|[-•])[ \t][^\n]*)*/i;
+    if (benchSectionRe.test(out)) {
+      out = out.replace(benchSectionRe, (whole, lead: string) => {
+        if (benchCanonical) return `${lead}${benchCanonical}`;
+        // Truth: bench IS empty. Keep an accurate empty-claim as-is,
+        // otherwise overwrite a stale name list.
+        return /\bbench\s+is\s+empty\b/i.test(whole)
+          ? whole
+          : `${lead}Bench is empty.`;
+      });
+    } else if (benchCanonical && hadRosterBlock) {
+      out = `${out.trimEnd()}\n\n${benchCanonical}`;
+    }
+  }
   return out;
 }
 
@@ -1438,6 +1565,8 @@ Output is PLAIN WhatsApp-ready text (no JSON, no markdown fences). Return only t
 Use the same style as the reactive replies: WhatsApp-friendly formatting with *bold* via single asterisks, real line breaks, one or two emoji at most. Ground every name in the Match Context — never invent. Use "Kemal" / "Elvin" first names fine; for ambiguous repeats in the group, use fuller names ("Ibrahim Sahin" when needed to disambiguate).
 
 Every chase message MUST end with a numbered roster block. Use the EXACT header from "Use roster header:" in the Match Context — do NOT invent your own. It'll be one of: "*Playing tonight:*" (same-day / within 6h), "*Playing tomorrow:*", or "*Playing <Weekday DD Mon>:*" for anything further out. Getting this wrong (e.g. saying "tonight" 6 days before the match) confuses the group — always use the pre-computed header. The roster has exactly maxPlayers rows; filled slots use names from the Confirmed list in order; any row above confirmedCount is 🥁 (single drum per row).
+
+BENCH (mandatory, every org): when the Bench list in the Match Context is non-empty, ALWAYS append a bench block straight after the roster: "*Bench (N):*" followed by the bench names as a numbered list, in Match Context order. Never omit the bench when it has players — a benched player scanning the post must see their name. Omit the block entirely when the bench is empty.
 
 NEVER write "tonight", "this evening", "tomorrow" or similar temporal references in the LEAD text unless "proximity=" in the Match Context confirms it. For any proximity other than "tonight"/"tomorrow", refer to the match by its day-and-date (e.g. "Tuesday 7-a-side on Tue 28 Apr at 21:30") rather than a vague relative time.
 
@@ -1655,11 +1784,22 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
           if (!e || typeof e !== "object") return null;
           const o = e as Record<string, unknown>;
           const name = typeof o.name === "string" ? o.name.trim() : "";
-          const action = o.action === "IN" || o.action === "OUT" ? o.action : null;
+          // "BENCH" is a legitimate action (admin demote / straight-to-
+          // bench add). It was missing here until 2026-06-12 — the LLM's
+          // bench demotes were silently filtered out at normalisation, so
+          // the bot ANNOUNCED the move but never persisted it (RC2 of the
+          // Sutton Lads conflicting-posts incident; the bench-demote
+          // safety net in the analyze route only caught some phrasings).
+          const action =
+            o.action === "IN" || o.action === "OUT" || o.action === "BENCH"
+              ? o.action
+              : null;
           if (!name || !action) return null;
           return { name, action };
         })
-        .filter((e): e is { name: string; action: "IN" | "OUT" } => e !== null)
+        .filter(
+          (e): e is { name: string; action: "IN" | "OUT" | "BENCH" } => e !== null,
+        )
     : null;
   let bulkPayment: AnalysisVerdict["bulkPayment"] = null;
   if (raw.bulkPayment && typeof raw.bulkPayment === "object") {

@@ -23,14 +23,16 @@ export async function announceSquadFullIfJustFilled(
     include: {
       activity: { select: { name: true, orgId: true } },
       attendances: {
-        where: { status: "CONFIRMED" },
+        where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: { user: { select: { name: true } } },
         orderBy: { position: "asc" },
       },
     },
   });
   if (!m) return;
-  if (m.attendances.length < m.maxPlayers) return;
+  const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED");
+  const bench = m.attendances.filter((a) => a.status === "BENCH");
+  if (confirmed.length < m.maxPlayers) return;
 
   const key = `${matchId}:squad-locked`;
   // Atomic claim of the announcement — first writer wins.
@@ -54,9 +56,18 @@ export async function announceSquadFullIfJustFilled(
     .format(m.date)
     .replace(/,/g, "");
 
-  const roster = m.attendances
+  const roster = confirmed
     .map((a, i) => `${i + 1}. ${a.user.name ?? "(unnamed)"}`)
     .join("\n");
+  // Bench shown in EVERY squad display, all orgs (Kemal 2026-06-12) —
+  // a benched player scanning the "squad complete" post must see their
+  // name rather than wonder if they were dropped.
+  const benchBlock =
+    bench.length > 0
+      ? `\n\n*Bench (${bench.length}):*\n${bench
+          .map((a, i) => `${i + 1}. ${a.user.name ?? "(unnamed)"}`)
+          .join("\n")}`
+      : "";
 
   await db.botJob.create({
     data: {
@@ -64,7 +75,7 @@ export async function announceSquadFullIfJustFilled(
       kind: "group",
       text:
         `✅ *Squad complete — ${m.maxPlayers}/${m.maxPlayers}* for *${m.activity.name}* on ${kickoffLondon} 🙌\n\n` +
-        `*Playing:*\n${roster}\n\nSee you all there ⚽`,
+        `*Playing:*\n${roster}${benchBlock}\n\nSee you all there ⚽`,
     },
   });
 }

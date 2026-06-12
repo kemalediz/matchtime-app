@@ -901,12 +901,13 @@ async function computeForMatch(
         // already keeps that list in sync, so we leave it untouched
         // here rather than appending a duplicate roster block.
         const chaseText = await composeOrFallback("daily-in-list", () => {
-          const list = confirmed
-            .map((a, i) => `${i + 1}. ${a.user.name ?? "(unnamed)"}`)
-            .join("\n");
+          // Static fallback mirrors the LLM template — count + roster
+          // INCLUDING the bench (bench shows in every squad display,
+          // all orgs — Kemal 2026-06-12). buildSquadRosterBlock already
+          // renders the "*Bench (N):*" sub-list when populated.
           return (
             `🗓 *${activity.name}* — need *${need} more*.\n\n` +
-            (confirmed.length > 0 ? list : "_nobody yet_")
+            buildSquadRosterBlock({ confirmed, bench, maxPlayers: m.maxPlayers })
           );
         });
         text = unpaidTail ? `${chaseText}\n\n${unpaidTail.text}` : chaseText;
