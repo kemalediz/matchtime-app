@@ -21,6 +21,7 @@ import { findOrgAdminsWithPhone } from "./org";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
+import { resolveTeamLabels } from "./team-labels";
 import { gbp } from "./payments";
 
 // All user-facing times in bot-posted messages are Europe/London wall
@@ -332,12 +333,13 @@ function buildSquadRosterBlock(args: {
  */
 function buildMatchDayTeamsBlock(args: {
   activity: { name: string; venue: string };
+  org: { teamLabels?: string[] | null } | null;
   sport: { teamLabels: string[] };
   matchDate: Date;
   teamAssignments: { team: "RED" | "YELLOW"; user: { name: string | null } }[];
 }): string {
-  const { activity, sport, matchDate, teamAssignments } = args;
-  const [redLabel, yellowLabel] = sport.teamLabels as [string, string];
+  const { activity, org, sport, matchDate, teamAssignments } = args;
+  const [redLabel, yellowLabel] = resolveTeamLabels(org, sport);
   const red = teamAssignments.filter((t) => t.team === "RED");
   const yellow = teamAssignments.filter((t) => t.team === "YELLOW");
   const numbered = (arr: typeof red) =>
@@ -681,6 +683,7 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
             select: {
               paymentCollectionEnabled: true,
               paymentHolderId: true,
+              teamLabels: true,
             },
           },
         },
@@ -875,6 +878,7 @@ async function computeForMatch(
         // naming them on the lineup post is unnecessary noise.
         text = buildMatchDayTeamsBlock({
           activity,
+          org: activity.org ?? null,
           sport,
           matchDate: m.date,
           teamAssignments: m.teamAssignments,
@@ -970,7 +974,7 @@ async function computeForMatch(
           const repl = m.attendances.find((a) => a.userId === offer.replacingUserId)?.user;
           const ta = m.teamAssignments.find((t) => t.userId === offer.replacingUserId);
           if (repl && ta) {
-            const labels = sport.teamLabels as [string, string];
+            const labels = resolveTeamLabels(activity.org, sport);
             const tl = ta.team === "RED" ? labels[0] : labels[1];
             ctx = `on *${tl}* (replacing ${repl.name ?? "—"}) for *${activity.name}* tonight`;
             ctxPlain = `on ${tl} (replacing ${repl.name ?? "—"}) for ${activity.name} tonight`;
@@ -1278,7 +1282,7 @@ async function computeForMatch(
         m.status === "TEAMS_PUBLISHED" ||
         m.status === "COMPLETED")
     ) {
-      const [redLabel, yellowLabel] = sport.teamLabels as [string, string];
+      const [redLabel, yellowLabel] = resolveTeamLabels(activity.org, sport);
       out.push({
         kind: "group-poll",
         key,

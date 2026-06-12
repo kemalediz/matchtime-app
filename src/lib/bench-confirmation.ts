@@ -16,6 +16,7 @@
  */
 import { db } from "./db";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
+import { resolveTeamLabels } from "./team-labels";
 
 export type BenchConfirmationResult =
   | {
@@ -106,10 +107,17 @@ export async function resolveBenchConfirmation(args: {
         ]);
         const mForLabels = await db.match.findUnique({
           where: { id: matchId },
-          include: { activity: { include: { sport: true } } },
+          include: {
+            activity: {
+              include: { sport: true, org: { select: { teamLabels: true } } },
+            },
+          },
         });
         if (mForLabels) {
-          const labels = mForLabels.activity.sport.teamLabels as [string, string];
+          const labels = resolveTeamLabels(
+            mForLabels.activity.org,
+            mForLabels.activity.sport,
+          );
           teamLabel = droppedTA.team === "RED" ? labels[0] : labels[1];
         }
       }

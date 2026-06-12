@@ -29,6 +29,7 @@ import { readFileSync } from "node:fs";
 import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
+import { resolveTeamLabels } from "./team-labels";
 
 // Sonnet (2026-05-19, Kemal): the per-message analyzer makes nuanced
 // calls (team-swap vs drop, conditional vs standing, "is X
@@ -315,14 +316,14 @@ Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time r
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
   → If the answer requires info outside the Match Context AND outside the Recent History block (long-term roster questions, opinions, predictions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
-  → Populate scoreRed + scoreYellow with the two numbers. Order: if the message explicitly names the team labels, align accordingly; otherwise emit the numbers in the order they appear in the message. react: "👍". registerAttendance: null.
+  → Populate scoreRed + scoreYellow with the two numbers. Order: if the message explicitly names the team labels (see the "Team labels" line in the Match Context — the group may use custom names like "Lions"/"Tigers"), align accordingly: the first/RED label's goals → scoreRed, the second/YELLOW label's goals → scoreYellow. Otherwise emit the numbers in the order they appear in the message. react: "👍". registerAttendance: null.
 - "generate_teams_request": Someone asks the bot to set up / balance / post the teams for the next match ("generate teams", "@M Time teams please", "let's see the teams", "split us up", "balance the teams"). The request may optionally include overrides like "consider Ibrahim and Ehtisham as IN" / "include X and Y" / "treat Z as confirmed".
   → react: "⚽". registerAttendance: null. reply: null — the SERVER runs the balancer and replaces reply with the formatted Red/Yellow lineup. Do NOT invent teams yourself.
   → If the message names players to include (force-add), extract those names (first-name-only is fine) into includeNames. Examples:
      "@M Time generate teams and consider Ibrahim and Ehtisham as IN"  → includeNames: ["Ibrahim", "Ehtisham"]
      "teams please, count Baki in"                                     → includeNames: ["Baki"]
      "generate teams"                                                   → includeNames: []
-  → If the message PINS specific players to specific teams ("put me on Red", "Wasim on Yellow", "stick Idris in Red, I've got the bib"), extract these into teamOverrides as {name, team}. Map any colour the user says to the canonical team enum: the first team-label in the org's sport (e.g. "Red") → "RED", the second (e.g. "Yellow") → "YELLOW". Use first names only. The author can refer to themselves with "me/myself/I" — use their first name from the sender hint. Examples:
+  → If the message PINS specific players to specific teams ("put me on Red", "Wasim on Yellow", "stick Idris in Red, I've got the bib"), extract these into teamOverrides as {name, team}. Map any team name the user says to the canonical team enum using the "Team labels" line in the Match Context: the first label (canonical RED) → "RED", the second (canonical YELLOW) → "YELLOW". Groups may use custom names ("put me on Lions" → whichever enum the Team labels line maps "Lions" to). Use first names only. The author can refer to themselves with "me/myself/I" — use their first name from the sender hint. Examples:
      "generate teams but put myself in Red, I have a red bib"   → teamOverrides: [{"name": "<author-first>", "team": "RED"}]
      "teams please, Wasim on Yellow with me on Yellow"          → teamOverrides: [{"name": "Wasim", "team": "YELLOW"}, {"name": "<author-first>", "team": "YELLOW"}]
      "generate teams"                                            → teamOverrides: []
@@ -525,6 +526,11 @@ function buildMatchContextBlock(args: {
     maxPlayers: number;
     attendances: Array<{ status: string; user: { id: string; name: string | null } }>;
   } | null;
+  /** Resolved display labels for the two team slots —
+   *  `[redLabel, yellowLabel]`. Injected into the context so the LLM
+   *  can map custom team names ("Lions"/"Tigers") onto the canonical
+   *  RED/YELLOW enum for teamOverrides and score order. */
+  teamLabels?: [string, string];
   /** Every smaller-format activity configured for this org. The LLM
    *  may propose a switch to any of them — admins handle the venue
    *  rebooking the venue and flip the match in the app. */
@@ -599,6 +605,11 @@ function buildMatchContextBlock(args: {
     `Use roster header: ${rosterHeader}`,
     `Venue: ${m.activity.venue}`,
     `Status: ${m.status}`,
+    ...(args.teamLabels
+      ? [
+          `Team labels: first team = "${args.teamLabels[0]}" (canonical RED), second team = "${args.teamLabels[1]}" (canonical YELLOW)`,
+        ]
+      : []),
     `Confirmed: ${confirmed.length}/${m.maxPlayers}${need > 0 ? ` (need ${need} more)` : " ✅ full squad"}`,
     `Bench: ${bench.length}`,
     ``,
@@ -680,7 +691,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
 
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: input.groupId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, teamLabels: true },
   });
   if (!org) {
     return input.messages.map((m) => offlineVerdict(m.waMessageId, "Unknown group"));
@@ -699,7 +710,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
         select: {
           name: true,
           venue: true,
-          sport: { select: { name: true, playersPerTeam: true } },
+          sport: { select: { name: true, playersPerTeam: true, teamLabels: true } },
         },
       },
       attendances: {
@@ -777,6 +788,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   const matchContext = buildMatchContextBlock({
     orgName: org.name,
     match,
+    teamLabels: resolveTeamLabels(org, match?.activity.sport),
     alternatives,
     openBenchSlot,
   });
@@ -1015,7 +1027,7 @@ export async function composeChaseText(input: {
 
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: input.groupId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, teamLabels: true },
   });
   if (!org) return null;
 
@@ -1030,7 +1042,7 @@ export async function composeChaseText(input: {
         select: {
           name: true,
           venue: true,
-          sport: { select: { name: true, playersPerTeam: true } },
+          sport: { select: { name: true, playersPerTeam: true, teamLabels: true } },
         },
       },
       attendances: {
@@ -1066,6 +1078,7 @@ export async function composeChaseText(input: {
   const matchContext = buildMatchContextBlock({
     orgName: org.name,
     match,
+    teamLabels: resolveTeamLabels(org, match.activity.sport),
     alternatives,
   });
 

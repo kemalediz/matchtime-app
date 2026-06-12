@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
+import { resolveTeamLabels } from "@/lib/team-labels";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -32,6 +33,16 @@ export async function GET() {
     orderBy: { user: { name: "asc" } },
   });
 
+  // Default team labels (what the org falls back to when no override is
+  // set) — from the org's first sport, then "Red"/"Yellow". Drives the
+  // placeholders in the Team names editor.
+  const firstSport = await db.sport.findFirst({
+    where: { orgId: org.id },
+    select: { teamLabels: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const defaultTeamLabels = resolveTeamLabels(null, firstSport);
+
   return NextResponse.json({
     id: org.id,
     name: org.name,
@@ -40,6 +51,10 @@ export async function GET() {
     whatsappGroupId: org.whatsappGroupId,
     whatsappBotEnabled: org.whatsappBotEnabled,
     memberCount: org._count.memberships,
+    // Team-name override (raw — empty array / empty strings mean
+    // "use the defaults") + the defaults themselves for placeholders.
+    teamLabels: org.teamLabels,
+    defaultTeamLabels,
     features: {
       attendance: org.featureAttendance,
       bench: org.featureBench,

@@ -37,6 +37,8 @@ export default function TeamManagementPage() {
     attendances: { status: string; user: Player }[];
     redScore: number | null;
     yellowScore: number | null;
+    /** Resolved display labels from the API: [RED slot, YELLOW slot]. */
+    teamLabels?: [string, string];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSwap, setSelectedSwap] = useState<string[]>([]);
@@ -157,6 +159,7 @@ export default function TeamManagementPage() {
   if (loading) return <div className="p-6 sm:p-8 max-w-6xl mx-auto text-slate-400">Loading…</div>;
   if (!match) return <div className="p-6 sm:p-8 max-w-6xl mx-auto text-slate-400">Match not found</div>;
 
+  const [redLabel, yellowLabel] = match.teamLabels ?? ["Red", "Yellow"];
   const redTeam = match.teamAssignments.filter((a) => a.team === "RED");
   const yellowTeam = match.teamAssignments.filter((a) => a.team === "YELLOW");
   const hasTeams = match.teamAssignments.length > 0;
@@ -236,9 +239,9 @@ export default function TeamManagementPage() {
           )}
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <TeamCard color="red" players={redTeam} selected={selectedSwap} onToggle={toggleSwap}
+            <TeamCard color="red" label={redLabel} players={redTeam} selected={selectedSwap} onToggle={toggleSwap}
               dropped={droppedAssigned} onMove={handleMove} onRemove={handleRemove} />
-            <TeamCard color="yellow" players={yellowTeam} selected={selectedSwap} onToggle={toggleSwap}
+            <TeamCard color="yellow" label={yellowLabel} players={yellowTeam} selected={selectedSwap} onToggle={toggleSwap}
               dropped={droppedAssigned} onMove={handleMove} onRemove={handleRemove} />
           </div>
 
@@ -257,13 +260,13 @@ export default function TeamManagementPage() {
                       onClick={() => handleAdd(u.id, "RED")}
                       className="px-2.5 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100"
                     >
-                      → Red
+                      → {redLabel}
                     </button>
                     <button
                       onClick={() => handleAdd(u.id, "YELLOW")}
                       className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100"
                     >
-                      → Yellow
+                      → {yellowLabel}
                     </button>
                   </li>
                 ))}
@@ -285,13 +288,13 @@ export default function TeamManagementPage() {
                       onClick={() => handlePromote(u.id, "RED")}
                       className="px-2.5 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100"
                     >
-                      ↑ Red
+                      ↑ {redLabel}
                     </button>
                     <button
                       onClick={() => handlePromote(u.id, "YELLOW")}
                       className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100"
                     >
-                      ↑ Yellow
+                      ↑ {yellowLabel}
                     </button>
                   </li>
                 ))}
@@ -336,7 +339,7 @@ export default function TeamManagementPage() {
           <div className="p-6 flex flex-wrap items-center gap-5">
             <div className="flex items-center gap-3">
               <span className="h-4 w-4 rounded-full bg-red-500" />
-              <span className="font-medium text-slate-700">Red</span>
+              <span className="font-medium text-slate-700">{redLabel}</span>
               <input
                 type="number"
                 min="0"
@@ -348,7 +351,7 @@ export default function TeamManagementPage() {
             <span className="text-xl font-bold text-slate-300">–</span>
             <div className="flex items-center gap-3">
               <span className="h-4 w-4 rounded-full bg-amber-400" />
-              <span className="font-medium text-slate-700">Yellow</span>
+              <span className="font-medium text-slate-700">{yellowLabel}</span>
               <input
                 type="number"
                 min="0"
@@ -373,6 +376,7 @@ export default function TeamManagementPage() {
 
 function TeamCard({
   color,
+  label,
   players,
   selected,
   onToggle,
@@ -381,6 +385,7 @@ function TeamCard({
   onRemove,
 }: {
   color: "red" | "yellow";
+  label: string;
   players: TeamAssignment[];
   selected: string[];
   onToggle: (id: string) => void;
@@ -390,8 +395,8 @@ function TeamCard({
 }) {
   const palette =
     color === "red"
-      ? { dot: "bg-red-500", border: "border-red-200", label: "Red team", initialsBg: "bg-red-50 text-red-700" }
-      : { dot: "bg-amber-400", border: "border-amber-200", label: "Yellow team", initialsBg: "bg-amber-50 text-amber-700" };
+      ? { dot: "bg-red-500", border: "border-red-200", label: `${label} team`, initialsBg: "bg-red-50 text-red-700" }
+      : { dot: "bg-amber-400", border: "border-amber-200", label: `${label} team`, initialsBg: "bg-amber-50 text-amber-700" };
 
   return (
     <div className={`bg-white rounded-xl border-2 ${palette.border} shadow-sm`}>

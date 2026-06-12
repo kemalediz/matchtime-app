@@ -28,6 +28,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { BatchInputHistory, BatchInputMessage } from "./message-analyzer";
 import { db } from "./db";
 import { format as formatDate } from "date-fns";
+import { resolveTeamLabels } from "./team-labels";
 
 export type WindowStateChangeAction =
   | "drop"
@@ -295,6 +296,11 @@ export async function buildShadowMatchContext(orgId: string): Promise<string> {
     orderBy: { date: "asc" },
   });
 
+  const orgLabels = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { teamLabels: true },
+  });
+
   const memberRows = await db.membership.findMany({
     where: { orgId, leftAt: null },
     include: { user: { select: { name: true } } },
@@ -333,6 +339,8 @@ export async function buildShadowMatchContext(orgId: string): Promise<string> {
   lines.push(`Date: ${formatDate(match.date, "EEE d MMM HH:mm")} UK (UTC ${match.date.toISOString()})`);
   lines.push(`Venue: ${match.activity.venue ?? "—"}`);
   lines.push(`Max players: ${match.maxPlayers} (${match.activity.sport.playersPerTeam}-a-side)`);
+  const [redLbl, yellowLbl] = resolveTeamLabels(orgLabels, match.activity.sport);
+  lines.push(`Team labels: first team = "${redLbl}" (scoreRed), second team = "${yellowLbl}" (scoreYellow)`);
   lines.push(`Squad: ${confirmed.length}/${match.maxPlayers} confirmed, ${bench.length} bench, ${dropped.length} dropped`);
   lines.push("");
   lines.push("CONFIRMED:");

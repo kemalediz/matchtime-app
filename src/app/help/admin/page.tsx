@@ -179,7 +179,7 @@ export default function AdminGuidePage() {
       <p>
         Morning check-in. When someone types{" "}
         <code>@MatchTime generate teams</code> (or similar), MatchTime
-        balances and posts Red vs Yellow with positions.
+        balances and posts the two team lineups with positions.
       </p>
 
       <h3>Tuesday ~19:00: gear reminder</h3>

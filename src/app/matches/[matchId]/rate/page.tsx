@@ -63,11 +63,22 @@ export default function RatePlayersPage() {
   async function handleSubmit() {
     setSubmitting(true);
     try {
-      await submitRatings(matchId, {
+      const res = await submitRatings(matchId, {
         ratings: Object.entries(ratings).map(([playerId, score]) => ({ playerId, score })),
       });
       if (momPick) await submitMoMVote(matchId, { playerId: momPick });
-      toast.success("Ratings submitted! Thanks for voting.");
+      // If a few players in this (possibly stale) tab had been
+      // merged-away/removed since the page loaded, the server skips
+      // them instead of failing the whole submission — still a success
+      // for everyone that saved.
+      if (res && res.skipped > 0) {
+        toast.success(
+          `Ratings submitted for ${res.saved} player${res.saved === 1 ? "" : "s"}. ` +
+            `${res.skipped} player${res.skipped === 1 ? " was" : "s were"} removed since you opened this page — refresh to rate ${res.skipped === 1 ? "them" : "the rest"}.`,
+        );
+      } else {
+        toast.success("Ratings submitted! Thanks for voting.");
+      }
       // Land them straight on their own season stats — they're signed
       // in via the magic link and just engaged with ratings, so it's
       // the perfect payoff moment (Kemal 2026-06-01).

@@ -15,6 +15,7 @@ import type { PlayerWithRating } from "@/types";
 import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
 import { computePlayerRating } from "./player-rating";
+import { resolveTeamLabels } from "./team-labels";
 
 export type GenerateTeamsResult =
   | { ok: true; groupPost: string; matchId: string }
@@ -123,7 +124,7 @@ export async function generateTeamsForMatch(
     data: { status: "TEAMS_GENERATED" },
   });
 
-  const [redLabel, yellowLabel] = sport.teamLabels as [string, string];
+  const [redLabel, yellowLabel] = resolveTeamLabels(match.activity.org, sport);
   const kickoff = formatLondon(match.date, "HH:mm");
   const listFor = (arr: typeof result.red) =>
     arr.map((p, i) => `${i + 1}. ${p.name}`).join("\n");

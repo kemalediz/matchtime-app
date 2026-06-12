@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { format } from "date-fns";
+import { resolveTeamLabels } from "@/lib/team-labels";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
     .filter((a) => a.team === "YELLOW")
     .map((a) => ({ name: a.user.name, position: positionFor(a.user) }));
 
-  const [redLabel, yellowLabel] = match.activity.sport.teamLabels;
+  const [redLabel, yellowLabel] = resolveTeamLabels(org, match.activity.sport);
 
   return NextResponse.json({
     match: {

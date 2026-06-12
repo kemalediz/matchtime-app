@@ -58,6 +58,7 @@ import { normaliseName } from "@/lib/squad-from-list";
 import { handleOnboardingTurn } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { computeEloDeltas } from "@/lib/elo";
+import { resolveTeamLabels } from "@/lib/team-labels";
 import { generateTeamsForMatch } from "@/lib/team-generation";
 import { londonDateTimeToUtc, formatLondon } from "@/lib/london-time";
 
@@ -2406,7 +2407,12 @@ async function handleTeamSwapIfApplicable(
     },
     orderBy: { date: "asc" },
     include: {
-      activity: { include: { sport: { select: { teamLabels: true } } } },
+      activity: {
+        include: {
+          sport: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true } },
+        },
+      },
       attendances: {
         where: { status: "CONFIRMED" },
         include: { user: { select: { id: true, name: true } } },
@@ -2435,7 +2441,7 @@ async function handleTeamSwapIfApplicable(
   // replacement, or ambiguous) — fall through to normal handling.
   if (!A || !B || A.user.id === B.user.id) return null;
 
-  const labels = (match.activity.sport.teamLabels as string[]) ?? ["Red", "Yellow"];
+  const labels = resolveTeamLabels(match.activity.org, match.activity.sport);
   const taA = match.teamAssignments.find((t) => t.userId === A.user.id);
   const taB = match.teamAssignments.find((t) => t.userId === B.user.id);
 
@@ -2509,7 +2515,12 @@ async function handleColorSwapIfApplicable(
     },
     orderBy: { date: "asc" },
     include: {
-      activity: { include: { sport: { select: { teamLabels: true } } } },
+      activity: {
+        include: {
+          sport: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true } },
+        },
+      },
       teamAssignments: { include: { user: { select: { name: true } } } },
     },
   });
@@ -2527,7 +2538,7 @@ async function handleColorSwapIfApplicable(
     ),
   );
 
-  const labels = (match.activity.sport.teamLabels as string[]) ?? ["Red", "Yellow"];
+  const labels = resolveTeamLabels(match.activity.org, match.activity.sport);
   const fresh = await db.teamAssignment.findMany({
     where: { matchId: match.id },
     include: { user: { select: { name: true } } },

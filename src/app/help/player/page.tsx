@@ -143,7 +143,7 @@ export default function PlayerGuidePage() {
       </ul>
       <p>
         MatchTime considers everyone&apos;s rating + preferred position,
-        runs a balancing algorithm, and posts Red vs Yellow.
+        runs a balancing algorithm, and posts the two team lineups.
       </p>
       <p>
         You can also include people who haven&apos;t confirmed yet:
