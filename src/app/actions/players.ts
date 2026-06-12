@@ -6,6 +6,7 @@ import { onboardingSchema, playerPositionsSchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { normalisePhone } from "@/lib/phone";
 import { mergePlayersCore } from "@/lib/merge-players-core";
+import { findExistingOrgMember } from "@/lib/resolve-player";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
@@ -315,6 +316,27 @@ export async function createPlayer(
 
   // ── No phone: name-only guest (synthetic unique email) ──
   if (!name) return { ok: false, error: "Please enter a name (or a phone number)" };
+  // Dedup BEFORE creating: reuse an existing member only on a strong,
+  // unambiguous signal (alias / unique exact-or-fuzzy name). Ambiguous names
+  // fall through to a fresh create so we never collapse two distinct people.
+  const nameMatch = await findExistingOrgMember(orgId, { name });
+  if (nameMatch) {
+    const mem = await db.membership.findUnique({
+      where: { userId_orgId: { userId: nameMatch.userId, orgId } },
+      select: { id: true, leftAt: true },
+    });
+    if (mem && !mem.leftAt) {
+      return { ok: true, userId: nameMatch.userId, created: false, rejoined: false };
+    }
+    if (mem && mem.leftAt) {
+      await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
+      revalidatePath("/admin/players");
+      return { ok: true, userId: nameMatch.userId, created: false, rejoined: true };
+    }
+    await db.membership.create({ data: { userId: nameMatch.userId, orgId, role: "PLAYER" } });
+    revalidatePath("/admin/players");
+    return { ok: true, userId: nameMatch.userId, created: false, rejoined: false };
+  }
   const email = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@placeholder.matchtime`;
   const user = await db.user.create({
     data: { name, email, phoneNumber: null, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
@@ -648,6 +670,14 @@ async function ensureOrgPlayer(
   }
 
   if (!name) return { ok: false, error: "Please enter a name (or a phone number)" };
+  // Dedup BEFORE creating: reuse an existing member only on a strong,
+  // unambiguous signal (alias / unique exact-or-fuzzy name). Ambiguous names
+  // fall through to a fresh create so we never collapse two distinct people.
+  const match = await findExistingOrgMember(orgId, { name });
+  if (match) {
+    await ensureMembership(match.userId, orgId);
+    return { ok: true, userId: match.userId, created: false };
+  }
   const email = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@placeholder.matchtime`;
   const user = await db.user.create({
     data: { name, email, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },

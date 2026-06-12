@@ -23,6 +23,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
+import { findExistingOrgMember } from "@/lib/resolve-player";
 
 interface InboundParticipant {
   phone?: string | null;
@@ -83,6 +84,30 @@ export async function POST(request: Request) {
       where: { phoneNumber: phone },
       select: { id: true, name: true },
     });
+    if (!user && pushname) {
+      // No phone-keyed record — but a phone-less record (e.g. a provisional
+      // member the analyzer/squad-list created earlier by NAME) may already
+      // exist for this person. Dedup BEFORE creating, on a strong unambiguous
+      // signal only (alias / unique exact-or-fuzzy name). Ambiguous names fall
+      // through to a fresh create so two distinct people are never merged.
+      const match = await findExistingOrgMember(org.id, { name: pushname });
+      if (match) {
+        // Backfill the phone we now know onto the matched record (it was
+        // created phone-less). Guard against a unique-constraint race in case
+        // another row already claimed this number.
+        try {
+          await db.user.update({
+            where: { id: match.userId },
+            data: { phoneNumber: phone },
+          });
+        } catch {
+          // Phone already taken by another row — leave the matched record's
+          // existing identity untouched; membership upsert below still runs.
+        }
+        // Counted as alreadyKnown by the else-branch below (user is now set).
+        user = { id: match.userId, name: match.name };
+      }
+    }
     if (!user) {
       // New User — synthetic email keeps the unique index happy.
       const slug =
