@@ -861,6 +861,33 @@ model UserAlias {
 }
 
 /**
+ * Merge tombstone (2026-06-12). When two duplicate User rows are merged,
+ * the dropped row is DELETED — so any id captured before the merge (e.g.
+ * a rated playerId baked into a rating submission, a cached squad list)
+ * becomes a dangling reference. This row records old→new so those stale
+ * ids can be REMAPPED to the survivor instead of silently dropped.
+ *
+ * `oldUserId` is a PLAIN STRING, not an FK — the row it points at is
+ * gone by the time this is queried. Chains are possible (a survivor may
+ * itself later be merged away), so readers follow `oldUserId →
+ * survivorUserId` transitively with a small hop cap to break cycles.
+ *
+ * Written inside the same transaction as the user delete in
+ * `mergePlayersCore`. Read by `submitRatings` / `submitMoMVote` to
+ * remap a merged-away player to the survivor (respecting their unique
+ * keys) rather than skipping the score.
+ */
+model UserMerge {
+  id             String   @id @default(cuid())
+  oldUserId      String                          // dropped (deleted) user id — NOT an FK
+  survivorUserId String                          // surviving keeper user id
+  orgId          String
+  createdAt      DateTime @default(now())
+
+  @@index([oldUserId])
+}
+
+/**
  * Phase 4 hybrid LLM team-balancer audit trail.
  *
  * Before the deterministic balancer runs, an LLM reads the last ~7 days

@@ -53,18 +53,48 @@ export async function submitRatings(matchId: string, formData: { ratings: { play
   // caught and that row skipped rather than throwing out the submission.
   let saved = 0;
   let skipped = 0;
+  // Track which survivors this rater already has a row for in THIS match,
+  // so a remap onto an already-rated survivor merges (skip) rather than
+  // double-writing. Seed lazily on first remap to avoid an extra query
+  // for the common no-merge path.
+  let ratedSurvivors: Set<string> | null = null;
   for (const { playerId, score } of parsed.ratings) {
     if (playerId === session.user.id) continue; // Can't rate yourself
-    if (!validPlayerIds.has(playerId)) {
-      skipped++;
-      continue;
+    let targetId = playerId;
+    if (!validPlayerIds.has(targetId)) {
+      // Stale id — may be a player merged away since the rate page loaded.
+      // Follow the merge tombstone chain to the survivor and, if THEY are
+      // a valid attendee, remap the score to them rather than losing it.
+      const survivor = await resolveMergeSurvivor(playerId, validPlayerIds);
+      if (!survivor || survivor === session.user.id) {
+        skipped++;
+        continue;
+      }
+      if (ratedSurvivors === null) {
+        ratedSurvivors = new Set(
+          (
+            await db.rating.findMany({
+              where: { matchId, raterId: session.user.id },
+              select: { playerId: true },
+            })
+          ).map((r) => r.playerId),
+        );
+      }
+      // Already rated the survivor directly (or via an earlier remap this
+      // submission) → merging two scores into one; keep the existing, skip.
+      if (ratedSurvivors.has(survivor)) {
+        skipped++;
+        continue;
+      }
+      ratedSurvivors.add(survivor);
+      targetId = survivor;
     }
     try {
       await db.rating.upsert({
         where: {
-          matchId_raterId_playerId: { matchId, raterId: session.user.id, playerId },
+          matchId_raterId_playerId: { matchId, raterId: session.user.id, playerId: targetId },
         },
-        create: { matchId, raterId: session.user.id, playerId, score },
+        create: { matchId, raterId: session.user.id, playerId: targetId, score },
         update: { score },
       });
       saved++;
@@ -99,6 +129,40 @@ function isSkippableWriteError(err: unknown): boolean {
   return code === "P2003" || code === "P2002" || code === "P2025";
 }
 
+/**
+ * Resolve a (possibly merged-away) playerId to a survivor who is a valid
+ * attendee, by following UserMerge tombstones.
+ *
+ * `mergePlayers` deletes the dropped User with no FK linkage, so an id
+ * captured before the merge (e.g. baked into an open rate-page tab) is
+ * dangling. The UserMerge row records old→new; we follow the chain (a
+ * survivor may itself have been merged later) with a small hop cap to
+ * break any accidental cycle, and return the first survivor that is in
+ * `validAttendees`. Returns null when the chain dead-ends or never lands
+ * on a current attendee — the caller then falls back to skip-and-lose.
+ */
+async function resolveMergeSurvivor(
+  oldUserId: string,
+  validAttendees: Set<string>,
+): Promise<string | null> {
+  let current = oldUserId;
+  const seen = new Set<string>([current]);
+  for (let hop = 0; hop < 5; hop++) {
+    const merge = await db.userMerge.findFirst({
+      where: { oldUserId: current },
+      orderBy: { createdAt: "desc" },
+      select: { survivorUserId: true },
+    });
+    if (!merge) return null;
+    const survivor = merge.survivorUserId;
+    if (validAttendees.has(survivor)) return survivor;
+    if (seen.has(survivor)) return null; // cycle guard
+    seen.add(survivor);
+    current = survivor;
+  }
+  return null;
+}
+
 export async function submitMoMVote(matchId: string, formData: { playerId: string }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
@@ -124,22 +188,36 @@ export async function submitMoMVote(matchId: string, formData: { playerId: strin
   }
 
   // Same stale-snapshot guard as ratings: a voted player who's been
-  // merged-away + deleted would throw P2003 MoMVote_playerId_fkey. Skip
-  // the vote (return saved:false) rather than 500 the submission — the
-  // ratings that came before it have already been saved by submitRatings.
+  // merged-away + deleted would throw P2003 MoMVote_playerId_fkey. Now,
+  // before skipping, follow the merge tombstone chain — if the voted id
+  // was merged into a survivor who IS a current attendee, REMAP the vote
+  // to the survivor instead of losing it. Otherwise skip (return
+  // saved:false) rather than 500 the submission — the ratings that came
+  // before it have already been saved by submitRatings.
+  let targetId = parsed.playerId;
   const validPlayer = await db.attendance.findUnique({
-    where: { matchId_userId: { matchId, userId: parsed.playerId } },
+    where: { matchId_userId: { matchId, userId: targetId } },
     select: { status: true },
   });
   if (!validPlayer || validPlayer.status === "DROPPED") {
-    return { saved: false as const };
+    const validAttendees = new Set(
+      (
+        await db.attendance.findMany({
+          where: { matchId, status: { not: "DROPPED" } },
+          select: { userId: true },
+        })
+      ).map((a) => a.userId),
+    );
+    const survivor = await resolveMergeSurvivor(parsed.playerId, validAttendees);
+    if (!survivor) return { saved: false as const };
+    targetId = survivor;
   }
 
   try {
     await db.moMVote.upsert({
       where: { matchId_voterId: { matchId, voterId: session.user.id } },
-      create: { matchId, voterId: session.user.id, playerId: parsed.playerId },
-      update: { playerId: parsed.playerId },
+      create: { matchId, voterId: session.user.id, playerId: targetId },
+      update: { playerId: targetId },
     });
   } catch (err) {
     if (isSkippableWriteError(err)) return { saved: false as const };

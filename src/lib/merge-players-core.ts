@@ -328,5 +328,23 @@ export async function mergePlayersCore(
     await tx.membership.delete({ where: { id: dm.id } });
   }
 
+  // 9b. Merge tombstone (2026-06-12). Record old→new BEFORE deleting the
+  //     drop row, in the SAME transaction, so a stale id captured before
+  //     the merge (a rated playerId baked into an open rate-page tab, a
+  //     cached squad list) can be REMAPPED to the survivor by readers
+  //     (submitRatings / submitMoMVote) instead of being silently skipped
+  //     and the score lost. `oldUserId` is a plain string — the row it
+  //     points at is gone after the delete below. We write one tombstone
+  //     per org we're scoping the merge to; with no org scope (global
+  //     migration) we still write a single orgId-less row so the chain is
+  //     never broken — the ratings remap validates against match attendees
+  //     and doesn't filter on orgId.
+  const tombstoneOrgIds = opts.saveAliasInOrgIds.length > 0 ? opts.saveAliasInOrgIds : [""];
+  for (const orgId of tombstoneOrgIds) {
+    await tx.userMerge.create({
+      data: { oldUserId: dropUserId, survivorUserId: keepUserId, orgId },
+    });
+  }
+
   await tx.user.delete({ where: { id: dropUserId } });
 }
