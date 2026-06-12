@@ -896,7 +896,7 @@ export async function POST(request: Request) {
         /\b(\p{Lu}[\p{L}'’.-]*(?:\s+\p{Lu}[\p{L}'’.-]*){0,2})\s+(?:has\s+|have\s+|is\s+|are\s+|’s\s+|'s\s+)?(?:now\s+)?(?:(?:moved|been\s+moved|dropped\s+to|sat)\s*(?:to\s+|on\s+|down\s+to\s+)?(?:the\s+)?bench|benched)\b/u,
       );
       if (m) {
-        const matchForOrg = await findRegistrationMatch(orgId);
+        const matchForOrg = await findRegistrationMatch(org.id);
         if (matchForOrg) {
           const confirmedNow = await db.attendance.findMany({
             where: { matchId: matchForOrg.id, status: "CONFIRMED" },
