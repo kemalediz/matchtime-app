@@ -433,13 +433,20 @@ function botIntroMessage(f: OrgFeatures): string {
 
 // ─────────────────────────── Main entry point ─────────────────────────────
 
-export async function computeDuePosts(groupId: string): Promise<DuePostsResult | null> {
+export async function computeDuePosts(
+  groupId: string,
+  /** TEST-ONLY clock override — the e2e suite passes a fixed instant
+   *  (via the x-test-now header on /api/whatsapp/due-posts, gated on
+   *  MT_TEST_MODE) so time-of-day windows (rate-dm 08-10, reminder
+   *  18-19) are deterministic. Never set in prod. */
+  nowOverride?: Date,
+): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
   });
   if (!org) return null;
 
-  const now = new Date();
+  const now = nowOverride ?? new Date();
   const out: DueInstruction[] = [];
 
   // Pull every already-sent notification we might care about: those linked

@@ -25,6 +25,7 @@
  *     messages are fresh tokens per call.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { readFileSync } from "node:fs";
 import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
@@ -664,6 +665,18 @@ ONLY produce a reply for questions explicitly about RATINGS, MAN OF THE MATCH, o
 
 export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisVerdict[]> {
   if (input.messages.length === 0) return [];
+
+  // ── TEST-ONLY seam (e2e suite) ────────────────────────────────────
+  //   When MT_TEST_LLM_STUB_FILE is set (never in prod — only the e2e
+  //   harness sets it), verdicts are read from that JSON file instead
+  //   of calling Anthropic. The file maps waMessageId → a partial
+  //   AnalysisVerdict; unmapped messages get a silent "noise" verdict.
+  //   This lets the integration tests feed a KNOWN verdict and assert
+  //   the deterministic apply path (attendance writes, bench demotes,
+  //   safety nets) without paying for / depending on the LLM.
+  if (process.env.MT_TEST_LLM_STUB_FILE) {
+    return stubbedVerdictsForTest(process.env.MT_TEST_LLM_STUB_FILE, input.messages);
+  }
 
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: input.groupId },
@@ -1462,6 +1475,46 @@ function buildChaseComposePrompt(kind: ChaseKind): string {
         "Purpose: last-chance plea — squad still not full and we're 2h out. Lead with kickoff time + venue + count. Explicit 'last chance to jump in' line. If a format switch is viable, propose it. End with the roster block.",
       ].join("\n");
   }
+}
+
+/** TEST-ONLY (see the MT_TEST_LLM_STUB_FILE block in analyzeBatch).
+ *  Reads `{ verdicts: { [waMessageId]: Partial<AnalysisVerdict> } }`
+ *  from the stub file fresh on every call so a test can rewrite it
+ *  between requests. Failure to read/parse → noise verdicts (silent),
+ *  never the offline-fallback path (which would DM admins). */
+function stubbedVerdictsForTest(
+  filePath: string,
+  messages: BatchInputMessage[],
+): AnalysisVerdict[] {
+  let map: Record<string, Partial<AnalysisVerdict>> = {};
+  try {
+    const raw = readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw) as { verdicts?: Record<string, Partial<AnalysisVerdict>> };
+    map = parsed.verdicts ?? {};
+  } catch {
+    // Missing/garbled stub file → every message is noise.
+  }
+  return messages.map((m) => {
+    const base: AnalysisVerdict = {
+      waMessageId: m.waMessageId,
+      intent: "noise",
+      confidence: 1,
+      react: null,
+      reply: null,
+      registerAttendance: null,
+      benchConfirmation: null,
+      scoreRed: null,
+      scoreYellow: null,
+      includeNames: null,
+      teamOverrides: null,
+      bulkPayment: null,
+      reminder: null,
+      registerFor: null,
+      reasoning: "test-stub: no verdict configured for this id",
+    };
+    const partial = map[m.waMessageId];
+    return partial ? { ...base, ...partial, waMessageId: m.waMessageId } : base;
+  });
 }
 
 function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {

@@ -34,7 +34,20 @@ export async function GET(request: Request) {
 
   await sweepExpiredBenchConfirmations(org.id);
 
-  const result = await computeDuePosts(groupId);
+  // TEST-ONLY clock override (e2e suite): honour x-test-now only when the
+  // server was booted with MT_TEST_MODE=1 (never set in prod). Lets tests
+  // exercise time-of-day windows (rate-dm 08-10 London, rate-reminder
+  // 18-19) deterministically.
+  let nowOverride: Date | undefined;
+  if (process.env.MT_TEST_MODE === "1") {
+    const header = request.headers.get("x-test-now");
+    if (header) {
+      const d = new Date(header);
+      if (!Number.isNaN(d.getTime())) nowOverride = d;
+    }
+  }
+
+  const result = await computeDuePosts(groupId, nowOverride);
   if (!result) {
     return NextResponse.json({ instructions: [] });
   }

@@ -42,3 +42,9 @@ next-env.d.ts
 
 /src/generated/prisma
 .claude/settings.local.json
+
+# e2e test harness (isolated local test DB + artifacts)
+/.e2e/
+.env.e2e
+/playwright-report/
+/test-results/
