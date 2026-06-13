@@ -17,6 +17,12 @@ export interface StubVerdict {
   registerAttendance?: "IN" | "OUT" | "BENCH" | null;
   benchConfirmation?: "yes" | "no" | null;
   registerFor?: Array<{ name: string; action: "IN" | "OUT" | "BENCH" }> | null;
+  scoreRed?: number | null;
+  scoreYellow?: number | null;
+  includeNames?: string[] | null;
+  teamOverrides?: Array<{ name: string; team: "RED" | "YELLOW" }> | null;
+  bulkPayment?: { payerName: string; count: number; coveredNames?: string[] } | null;
+  reminder?: { date: string; time?: string; note: string } | null;
   reasoning?: string;
 }
 

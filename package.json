@@ -14,7 +14,8 @@
     "db:studio": "prisma studio",
     "test:unit": "vitest run",
     "test:e2e": "tsx e2e/run.ts",
-    "test:e2e:ui": "tsx e2e/run.ts --ui"
+    "test:e2e:ui": "tsx e2e/run.ts --ui",
+    "test:sim": "tsx e2e/run.ts sim/"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

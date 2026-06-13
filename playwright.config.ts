@@ -27,7 +27,7 @@ for (const [k, v] of Object.entries(testEnv)) process.env[k] = v;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(api|web)\/.*\.spec\.ts/,
+  testMatch: /(api|web|sim)\/.*\.spec\.ts/,
   // Deterministic, state-sharing-safe: one worker, files in order.
   fullyParallel: false,
   workers: 1,

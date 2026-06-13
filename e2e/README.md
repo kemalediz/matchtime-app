@@ -12,6 +12,7 @@ LLM is stubbed.
 npm run test:e2e            # full run (provisions everything itself)
 npm run test:e2e -- web/pay.spec.ts   # one file; args forwarded to playwright
 npm run test:e2e:ui         # Playwright UI mode
+npm run test:sim            # just the group-simulator scenario matrix (e2e/sim/)
 ```
 
 That single command:
@@ -49,6 +50,7 @@ unprovisioned/ambient `DATABASE_URL`.
 |---|---|---|
 | LLM stub — `analyzeBatch` reads verdicts from a JSON file instead of calling Anthropic | `src/lib/message-analyzer.ts` | `MT_TEST_LLM_STUB_FILE` |
 | Clock override for scheduler windows — `x-test-now` header on `/api/whatsapp/due-posts` | `src/app/api/whatsapp/due-posts/route.ts` → `computeDuePosts(groupId, nowOverride?)` | `MT_TEST_MODE=1` |
+| DM-Q&A stub — `answerScopedQuestion` returns the SCOPED CONTEXT itself instead of calling Anthropic, so specs assert the no-leak guarantee structurally (no raw phone digits ever enter the model's context; 📵 flags admin-only) | `src/lib/dm-qa.ts` | `MT_TEST_LLM_STUB_FILE` |
 
 ### Architecture notes
 
@@ -90,24 +92,77 @@ unprovisioned/ambient `DATABASE_URL`.
 | Dedup helper + squad-from-list | `api/resolve-and-pricing.spec.ts` → `helpers/lib-tests.ts` (tsx) | `findExistingOrgMember`: phone wins, alias hit, unique exact, unique fuzzy, ambiguous→null, unknown→null; `normaliseName`, `parseReservesFromBody`; `resolveOrProvisionSquadName` reuse vs provision |
 | Fee math | `api/resolve-and-pricing.spec.ts` | `totalForMethod`/`priceMethods`/`platformFeePence`/`parseFeeReply` against hardcoded oracles |
 
+### Covered — group simulator (`e2e/sim/`, the WhatsApp regression net)
+
+A **virtual WhatsApp group** abstraction (`e2e/sim/group.ts`) spins up a
+fresh org + roster + match(es) per scenario and drives the REAL pipeline
+end-to-end: post a message (with the verdict the LLM *would* emit, or an
+inferred one for plain "in"/"out"), then assert the bot's react/reply,
+every queued group post + DM (BotJob rows) and the DB end-state.
+
+```ts
+const g = await createGroup(request, db, {
+  maxPlayers: 8,
+  attendance: [{ key: "owner", status: "CONFIRMED" }, …],   // initial state
+  features: { attendance: false, squadFromList: true },      // org flags
+  completedMatch: { daysAgo: 1, confirmedKeys: […], teams: {…} },
+});
+const r = await g.post("pete", "in");                 // or .postBatch([...])
+r.react; r.reply; r.groupPosts; r.dms;                // what the bot did
+await g.confirmed(); await g.bench(); await g.dropped(); await g.openOffers();
+await g.dm("pete", "YES");                            // 1-1 DM path
+await g.reaction(msgId, "👍", "henry");               // offer-claim reaction
+await g.pollVote({ waMessageId, voterKey, optionName }); // MoM/payment poll
+await g.duePosts(londonAt(0, 8, 30));                 // scheduler at a pinned clock
+await g.botAdded({ … });                              // onboarding event
+// + createOnboardingGroup(request) for groups with no org yet.
+```
+
+Default roster: 16 members with phones (owner + 2 admins + 13 players),
+2 without a number on record, 1 @lid-only member. Phones/ids are
+allocated per-process so groups never collide; specs `resetDb()` once in
+`beforeAll` and share a memoized group per serial describe-block
+(re-`attach(request)`ed each test — the fixture context is per-test).
+
+| Area | Spec | Scenarios |
+|---|---|---|
+| Onboarding | `sim/onboarding.spec.ts` | live-org group never re-enters onboarding; bot-added → intro; chat falls open; EVERYTHING → payments on + admins asked; admins by **name+phone AND @mention** → 2 ADMIN memberships + magic-link DMs; when&where → Activity + first Match (11-a-side → 22); roster import with @lid skipped; OWNER = consenting replier |
+| Attendance | `sim/attendance.spec.ts` | IN→CONFIRMED; the filling IN posts ONE squad-complete announcement; IN at capacity→BENCH; OUT→DROPPED + open BenchSlotOffer; in-group bench claim (benchConfirmation) → promoted + offer resolved + announce; admin "move X to bench" → demote, slot freed, NO offer, no dup announce; benched player's own IN → promoted when a slot is free; **banter "X is out" while X chats → NOT dropped, bot silent**; third-party OUT for an absent player honoured; OUT from a non-registered player → silent; DM "YES" claims the offer (ack + announce), late claimer misses; 👎 reaction no-op, 👍 reaction claims |
+| Squad messaging | `sim/squad-post.spec.ts` | burst of mixed messages collapses to ONE windowed "latest squad and bench" post; bench ALWAYS listed; stale single reply re-canonicalised (count + "slots open" + "need N more" prose recomputed); never "full + slot open"; never a total above the cap; never "X moves up from the bench" while X is benched; raw-digit pushnames never surface (provisioned as "New player") |
+| Recruit | `sim/recruit.spec.ts` | explicit shortage from an admin → invite DMs to recent non-responders with phones (idempotent per match); "list the players" NEVER recruits; non-admin → 🔒; full squad → DMs nobody |
+| Q&A / privacy | `sim/qa.spec.ts` | "who's on the bench?" → bench rewritten from DB; leaderboard replies pass through verbatim; DM "what's X's number?" → context contains ZERO phone digits + no 📵 flags for non-admins; "who's missing a number?" → 📵 flags for admins only, still digit-free; group "dm me …" → 📩 + private scoped answer; "my stats" → 📊 + personal magic-link DM |
+| Opt-out | `sim/optout.spec.ts` | "stop messaging me about ratings" → flag set, ack only AFTER the write; morning rate-DM loop + evening reminder loop both skip opted-out (and already-rated); re-opt-in clears |
+| Score + MoM | `sim/score-mom.spec.ts` | chat score with CUSTOM team labels (Bibs/Skins → redScore/yellowScore) → COMPLETED + Elo applied; non-participant non-admin refused silently; `/api/whatsapp/score` route; MoM poll vote recorded / re-vote replaces / self-vote refused / un-vote clears |
+| Squad-from-list | `sim/squad-from-list.spec.ts` (+ `sim/squad-from-list-lib.ts` under tsx) | pasted lists archived to GroupMessage with the analyzer out of the loop; attendance verdicts dropped when attendance is OFF (stats-Q&A on); paste → squad built via `attributeDiffs` → alias learning ("~T" → Tharan) → `finaliseSquadForMatch` (existing members + aliases reused, unknown → provisional, **ambiguous → NEW provisional never a guess**, reserves → BENCH) |
+
+Known sim-coverage limits (LLM-classification itself is out of scope by
+design): the squad-from-list LLM *extraction* call, the in-group
+"who's missing a number?" answer (generated by the model from 📵 flags
+in its context — the DM path's context flags ARE asserted), and rating
+submission with a merged-away player (covered in `web/rate.spec.ts`).
+
 ### DEFERRED (known gaps — next wave candidates)
 
 - **Stripe webhook flow** (`/api/stripe/*`): checkout completion →
   `paidAt`, Connect onboarding. Needs `stripe-cli` fixtures or signed
   payload replay; nothing here drives Stripe.
-- **Bench-confirmation lifecycle end-to-end**: bench-prompt posting,
-  👍/👎 reaction route, DM YES/NO claim, expiry sweep chaining to the
-  next bencher (`/api/whatsapp/reaction`, parts of dm-reply).
+- **Bench-confirmation residue**: the scheduler's bench-PROMPT posting
+  and the expiry sweep chaining to the next bencher (the claim paths —
+  👍/👎 reaction, DM YES/NO, in-group benchConfirmation — are now
+  covered in `sim/attendance.spec.ts`).
 - **Collector fee capture via chat** (`handleCollectorFeeReply`): "£8
   each" → fee set + links released (deterministic, good candidate).
 - **Team generation / balancer / colour-swap / team-swap seatbelts** in
   the analyzer route.
-- **Score capture + match completion cron** (`/api/cron/complete-matches`,
-  Elo updates, MoM announcement).
+- **Match completion cron** (`/api/cron/complete-matches`, MoM
+  announcement; score capture + Elo now covered in
+  `sim/score-mom.spec.ts`).
 - **Squad-from-list EXTRACTION cron** (`/api/cron/extract-squads`) — the
-  LLM extraction itself; only the deterministic resolution helpers are
-  covered.
-- **Onboarding conversation** (group "@MatchTime setup" multi-turn).
+  LLM extraction itself; the deterministic chain after it is covered in
+  `sim/squad-from-list.spec.ts`.
+- **Onboarding conversation** (Phase 2 "@MatchTime setup" multi-turn
+  trigger; the group-add flow is covered in `api/onboarding.spec.ts` +
+  `sim/onboarding.spec.ts`).
 - **Roster survey** flows; **group-join/leave/sync-participants**.
 - **Other analyzer safety nets**: conditional-drop hold, IN/OUT intent
   backfills, proximity/roster reply rewriters (pure functions — easy
@@ -121,7 +176,10 @@ unprovisioned/ambient `DATABASE_URL`.
 
 ## Conventions for new specs
 
-- Put browser flows in `e2e/web/`, API/integration in `e2e/api/`.
+- Put browser flows in `e2e/web/`, API/integration in `e2e/api/`, and
+  bot-behaviour scenarios in `e2e/sim/` (build on `e2e/sim/group.ts` —
+  prefer a fresh `createGroup` per describe-block over mutating the
+  shared fixture org).
 - Reseed with `resetDb()` in `beforeAll` if the spec mutates state.
 - Never import `@/lib/*` modules that touch Prisma from a spec — use the
   `db` fixture (pg) or extend `helpers/lib-tests.ts`.

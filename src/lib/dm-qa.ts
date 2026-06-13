@@ -171,7 +171,14 @@ export async function answerScopedQuestion(args: {
   includePhoneFlags?: boolean;
 }): Promise<ScopedAnswer | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  // TEST-ONLY seam (mirrors MT_TEST_LLM_STUB_FILE in message-analyzer):
+  // the e2e suite runs with no Anthropic key. Instead of calling the
+  // model we return the SCOPED CONTEXT itself as the "answer", so specs
+  // can assert the no-leak guarantee STRUCTURALLY — raw phone digits are
+  // physically absent from what the LLM would see, and the 📵 flags only
+  // appear for admins. Inert in prod (the env var is never set there).
+  const stubMode = !!process.env.MT_TEST_LLM_STUB_FILE;
+  if (!apiKey && !stubMode) return null;
 
   const org = await db.organisation.findUnique({
     where: { id: args.orgId },
@@ -180,6 +187,13 @@ export async function answerScopedQuestion(args: {
   if (!org) return null;
 
   const context = await buildScopedContext(args.orgId, args.userId, args.includePhoneFlags ?? false);
+  if (stubMode) {
+    return {
+      answer: `[scoped-qa-stub]\n${context}`,
+      orgId: args.orgId,
+      orgName: org.name,
+    };
+  }
   const first = args.askerName?.split(/\s+/)[0] ?? null;
 
   const userPrompt = [
