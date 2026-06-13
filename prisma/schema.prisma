@@ -247,7 +247,10 @@ model OnboardingSession {
   /// "introduced" → bot was ADDED to the group and posted its intro; waiting
   ///                for a YES/EVERYTHING/named-features consent reply
   ///                (group-add flow, Phase 1 autonomous onboarding)
-  /// "details"    → consent given, admin captured; asking the one combined
+  /// "admins"     → consent given, owner captured; asking "who else helps
+  ///                run this group?" to capture additional admins
+  ///                (group-add flow, Phase 1 autonomous onboarding)
+  /// "details"    → admins captured; asking the one combined
   ///                "when & where do you play?" question (group-add flow)
   /// "completed"  → Activity/Match created, flags set, normal ops
   /// "dormant"    → nobody consented after the intro; bot stays silent
@@ -274,6 +277,11 @@ model OnboardingSession {
   /// 24h "still here" re-nudge idempotency (group-add flow, Phase 1 cron
   /// sweep — reserved; written by the nudge when it ships).
   introNudgedAt   DateTime?
+  /// Additional admins parsed at the "admins" stage (group-add flow):
+  /// [{name?, phone?, mention?}]. Stashed here because the Organisation
+  /// doesn't exist yet at that stage; resolved into ADMIN Memberships at
+  /// completion. null/[] = just the owner.
+  pendingAdmins   Json?
 
   // Collected event details (nullable until answered).
   groupName       String?

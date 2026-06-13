@@ -11,6 +11,7 @@
  * LLM only ever backfills what they miss.
  */
 import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
+import { normalisePhone } from "./phone";
 
 // ─────────────────────────── feature bundles ───────────────────────────
 
@@ -108,6 +109,180 @@ export function parseBundleReply(raw: string): BundleChoice | null {
     return { choice: "custom", features: picks };
   }
   return null;
+}
+
+// ─────────────────────────── admins parsing ────────────────────────────
+
+export interface ParsedAdmin {
+  /** Display name if a name was given (null for a bare phone/mention). */
+  name: string | null;
+  /** Phone as EXTRACTED — a cleaned digit/`+` string, NOT E.164. The
+   *  conversation/DB layer calls normalisePhone() on it. null when only
+   *  a name or an unusable @lid mention was given. */
+  phone: string | null;
+  /** The raw "@<digits>" mention token if the entry came from a mention. */
+  mention: string | null;
+}
+
+export interface AdminsParse {
+  admins: ParsedAdmin[];
+  /** True for "just me"/"only me"/"nobody else" style answers — the owner
+   *  already covers admin, so `admins` is empty. */
+  justMe: boolean;
+}
+
+/** "Just me / nobody else" answers — the owner is already the admin, so
+ *  there are no ADDITIONAL admins to capture. Strict whole-string match
+ *  on the cleaned (lowercased, punctuation/emoji-stripped) text. */
+const JUST_ME_RE =
+  /^(just me|only me|me only|just us|only us|just myself|no ?one(?: else)?|nobody(?: else)?|none|nope|no thanks?|me|myself|i(?:'| a)?m the (?:only )?admin|i'?ll do it|i will do it|i'?ll handle it|i'?m it|it'?s (?:just )?me|im the only one)( (?:thanks?|cheers|please|pls|ta|mate|for now))?$/i;
+
+/** Common chat interjections / filler that are NOT names — keeps a junk
+ *  one-liner ("lol", "idk really") from being mistaken for a bare-name
+ *  admin. Matched as whole-string against the cleaned text. */
+const FILLER_RE =
+  /^(lol+|lmao|haha+|hah|hmm+|idk|idk really|dunno|maybe|ok|okay|kk|cool|nice|sure|yeah|yep|yes|nah|nope|no|what|huh|eh|um+|erm|good|great|fine|alright|right|true|wow|omg|wtf|cheers|thanks?|ta)$/i;
+
+/** Pull the digit run out of a mention/jid token. "@447700900123",
+ *  "447700900123@c.us", "447700900123@lid" → "447700900123". A pure
+ *  @lid id with no usable phone (e.g. "1234567890@lid" is treated as a
+ *  lid, not a phone) returns null — but we KEEP the mention string so
+ *  the caller can skip it gracefully. */
+function digitsFromMentionToken(token: string): string | null {
+  const t = token.trim();
+  // "<digits>@lid" is a privacy id, NOT a phone — no usable number.
+  if (/@lid$/i.test(t)) return null;
+  const m = t.match(/(\d{7,})/);
+  return m ? m[1] : null;
+}
+
+/** Extract a phone-like number from a free-text chunk. Accepts an
+ *  optional leading "+", spaces/dashes/parens inside. Returns the cleaned
+ *  "+?digits" string (NOT normalised to E.164) or null. */
+function phoneFromChunk(chunk: string): string | null {
+  // A run of >=7 phone characters (digits, +, space, -, parens).
+  const m = chunk.match(/\+?\d[\d\s().-]{5,}\d/);
+  if (!m) return null;
+  const plus = /^\s*\+/.test(m[0]);
+  const digits = m[0].replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  return (plus ? "+" : "") + digits;
+}
+
+/** Strip a phone number + mention noise out of a chunk to leave the name
+ *  (letters/spaces). Returns null when nothing name-like remains. */
+function nameFromChunk(chunk: string): string | null {
+  const cleaned = chunk
+    .replace(/@\S+/g, " ")               // drop @mentions
+    .replace(/\+?\d[\d\s().-]{5,}\d/g, " ") // drop phone numbers
+    .replace(/[^\p{L}\s'.-]/gu, " ")     // keep letters, spaces, simple name punctuation
+    .replace(/\s+/g, " ")
+    .trim();
+  // Need at least one alphabetic character of length >= 2.
+  if (!/\p{L}{2,}/u.test(cleaned)) return null;
+  return cleaned.slice(0, 80);
+}
+
+/**
+ * Parse the `admins` stage answer: "who else helps run this group?".
+ *
+ * PURE — no normalisation to E.164 (that would lose the raw form the DB
+ * layer needs); phones are returned as cleaned "+?digits" strings and
+ * the conversation layer calls normalisePhone() on them.
+ *
+ *  - vague / "just me" / "nobody else"  → {admins:[], justMe:true}
+ *  - junk / empty / unparseable          → {admins:[], justMe:false}
+ *  - otherwise extract MULTIPLE admins, split on , / "and" / "&" / newlines:
+ *      @mention      → {name:null, phone:<digits|null>, mention:"@<digits>"}
+ *      name + phone  → {name, phone}
+ *      bare phone    → {name:null, phone}
+ *      bare name     → {name, phone:null}   (resolved against the org later)
+ *  - dedupes entries that share a normalised phone or a lowercased name.
+ *
+ * `mentions` (optional, forward-compat — inbound messages don't carry it
+ * today) folds extra @mention/@lid tokens in alongside the body parse.
+ */
+export function parseAdmins(text: string, mentions?: string[]): AdminsParse {
+  const raw = (text ?? "").trim();
+
+  // "Just me" / vague — owner already covers it. Check on a cleaned form.
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[!.,…]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned && JUST_ME_RE.test(cleaned)) {
+    return { admins: [], justMe: true };
+  }
+  // Whole-string filler/interjection with no number → junk, not a name.
+  if (cleaned && !/\d/.test(raw) && FILLER_RE.test(cleaned)) {
+    return { admins: [], justMe: false };
+  }
+
+  const admins: ParsedAdmin[] = [];
+  // Dedupe keys: a Set of normalised phones and a Set of lowercased names.
+  const seenPhones = new Set<string>();
+  const seenNames = new Set<string>();
+
+  const push = (a: ParsedAdmin) => {
+    const phoneKey = a.phone ? normalisePhone(a.phone) ?? a.phone.replace(/\D/g, "") : null;
+    const nameKey = a.name ? a.name.toLowerCase().trim() : null;
+    if (phoneKey && seenPhones.has(phoneKey)) return;
+    if (!phoneKey && nameKey && seenNames.has(nameKey)) return;
+    if (phoneKey) seenPhones.add(phoneKey);
+    if (nameKey) seenNames.add(nameKey);
+    admins.push(a);
+  };
+
+  // Split the body into chunks on commas / "and" / "&" / newlines.
+  const chunks = raw
+    .split(/\s*(?:,|;|\n|&|\band\b)\s*/i)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  // First pass: parse each chunk into a partial admin (or null for junk).
+  const parsed: Array<ParsedAdmin | null> = chunks.map((chunk) => {
+    const mentionMatch = chunk.match(/@(\d{7,})/);
+    const phone = phoneFromChunk(chunk);
+    const name = nameFromChunk(chunk);
+    if (mentionMatch) {
+      return { name, phone: phone ?? mentionMatch[1], mention: `@${mentionMatch[1]}` };
+    }
+    if (name || phone) return { name, phone, mention: null };
+    return null; // chunk had neither a name nor a phone — junk fragment.
+  });
+
+  // Second pass: a name-only chunk immediately followed by a bare-phone
+  // chunk is one person whose name+number got split on the comma
+  // ("Kemal Ediz, 07700900123"). Merge the phone up into the name entry.
+  for (let i = 0; i < parsed.length - 1; i++) {
+    const cur = parsed[i];
+    const nxt = parsed[i + 1];
+    if (cur && nxt && cur.name && !cur.phone && !cur.mention && nxt.phone && !nxt.name) {
+      cur.phone = nxt.phone;
+      cur.mention = cur.mention ?? nxt.mention;
+      parsed[i + 1] = null;
+    }
+  }
+
+  for (const a of parsed) {
+    if (a) push(a);
+  }
+
+  // Fold in any forward-compat mentions[] entries (today: never present).
+  for (const tok of mentions ?? []) {
+    const digits = digitsFromMentionToken(tok);
+    const mentionStr = digits ? `@${digits}` : tok.trim();
+    if (digits) {
+      push({ name: null, phone: digits, mention: mentionStr });
+    } else {
+      // @lid with no usable phone — record it; caller skips gracefully.
+      admins.push({ name: null, phone: null, mention: mentionStr });
+    }
+  }
+
+  return { admins, justMe: false };
 }
 
 // ───────────────────── when & where extraction ─────────────────────────

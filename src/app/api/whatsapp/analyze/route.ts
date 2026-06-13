@@ -2593,7 +2593,7 @@ async function handleOnboardingIfApplicable(
     // every group that never went through a bot-add.
     where: {
       whatsappGroupId: groupId,
-      stage: { in: ["collecting", "features", "introduced", "details"] },
+      stage: { in: ["collecting", "features", "introduced", "admins", "details"] },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -2631,6 +2631,10 @@ async function handleOnboardingIfApplicable(
       // consenting admin (design fix: this used to be dropped, so the
       // flow COULDN'T assign an owner even if it wanted to).
       authorPhone: m.authorPhone ?? null,
+      // mentions aren't forwarded by the Pi bot yet — InboundMessage has
+      // no `mentions` field. The `admins` stage's parseAdmins() accepts
+      // an optional mentions[] for forward-compat; thread it through here
+      // once inbound messages start carrying mentions.
     })),
   });
 

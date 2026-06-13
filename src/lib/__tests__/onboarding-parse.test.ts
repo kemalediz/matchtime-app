@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseBundleReply,
+  parseAdmins,
   RECOMMENDED_BUNDLE,
   EVERYTHING_BUNDLE,
   extractWhenWhere,
@@ -91,6 +92,83 @@ describe("parseBundleReply — junk falls open", () => {
       expect(parseBundleReply(msg)).toBeNull();
     },
   );
+});
+
+// ───────────────────────── admins parsing ──────────────────────────────
+
+describe("parseAdmins — additional-admin capture", () => {
+  it("single @mention → 1 admin, phone + mention present", () => {
+    const r = parseAdmins("@447700900123");
+    expect(r.justMe).toBe(false);
+    expect(r.admins).toHaveLength(1);
+    expect(r.admins[0].phone).toBeTruthy();
+    expect(r.admins[0].mention).toBe("@447700900123");
+  });
+
+  it("single name + phone → 1 admin with both", () => {
+    const r = parseAdmins("Kemal Ediz, 07700900123");
+    expect(r.admins).toHaveLength(1);
+    expect(r.admins[0].name?.toLowerCase()).toContain("kemal");
+    expect(r.admins[0].phone).toBeTruthy();
+  });
+
+  it("mixed mention + name/phone (different numbers) → 2 admins", () => {
+    const r = parseAdmins("@447700900123 and John 07700900111");
+    expect(r.admins).toHaveLength(2);
+    expect(r.admins.some((a) => a.mention === "@447700900123")).toBe(true);
+    expect(r.admins.some((a) => a.name?.toLowerCase().includes("john"))).toBe(true);
+  });
+
+  it("comma / 'and' / newline separation → 3 admins", () => {
+    const r = parseAdmins("Ana 07700900111\nBob 07700900222, Cem 07700900333");
+    expect(r.admins).toHaveLength(3);
+    const names = r.admins.map((a) => a.name?.toLowerCase());
+    expect(names).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("ana"),
+        expect.stringContaining("bob"),
+        expect.stringContaining("cem"),
+      ]),
+    );
+  });
+
+  it.each(["just me", "only me thanks", "nobody else", "no one else", "just us"])(
+    "%j → justMe:true, no admins",
+    (msg) => {
+      const r = parseAdmins(msg);
+      expect(r.justMe).toBe(true);
+      expect(r.admins).toEqual([]);
+    },
+  );
+
+  it.each(["lol", "", "👍", "idk really"])(
+    "junk %j → justMe:false, no admins",
+    (msg) => {
+      const r = parseAdmins(msg);
+      expect(r.justMe).toBe(false);
+      expect(r.admins).toEqual([]);
+    },
+  );
+
+  it("dedupes two entries with the same normalised phone", () => {
+    const r = parseAdmins("John 07700900111 and Johnny 07700900111");
+    expect(r.admins).toHaveLength(1);
+    expect(r.admins[0].phone).toBeTruthy();
+  });
+
+  it("forward-compat mentions[] fold in alongside the body", () => {
+    const r = parseAdmins("", ["447700900444@c.us"]);
+    expect(r.admins).toHaveLength(1);
+    expect(r.admins[0].phone).toBe("447700900444");
+    expect(r.admins[0].mention).toBe("@447700900444");
+  });
+
+  it("an @lid mention with no usable phone is recorded with phone=null", () => {
+    const r = parseAdmins("", ["1234567890@lid"]);
+    expect(r.admins).toHaveLength(1);
+    expect(r.admins[0].phone).toBeNull();
+    expect(r.admins[0].mention).toBe("1234567890@lid");
+  });
 });
 
 // ─────────────────── when & where multi-field extraction ───────────────

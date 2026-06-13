@@ -46,11 +46,14 @@ import {
 import {
   regexExtract,
   parseBundleReply,
+  parseAdmins,
   extractWhenWhere,
   detailsStillMissing,
   detailsFollowUpQuestion,
   type Extracted,
+  type ParsedAdmin,
 } from "./onboarding-parse";
+import { findExistingOrgMember } from "./resolve-player";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -74,6 +77,10 @@ type Session = {
   addedByPhone?: string | null;
   adminUserId?: string | null;
   participants?: unknown;
+  /** Additional admins parsed at the `admins` stage; resolved into ADMIN
+   *  Memberships at completion (the org doesn't exist yet at that stage).
+   *  Stored as JSON (ParsedAdmin[]); coerced defensively on read. */
+  pendingAdmins?: unknown;
 };
 
 export interface OnboardingTurnInput {
@@ -86,6 +93,10 @@ export interface OnboardingTurnInput {
     authorName: string | null;
     body: string;
     authorPhone?: string | null;
+    /** @mention/@lid strings if the bot forwards them. Absent today —
+     *  inbound messages don't carry mentions yet; threaded through for
+     *  the `admins` stage's forward-compat parseAdmins(mentions). */
+    mentions?: string[];
   }>;
   groupSubject?: string | null;
 }
@@ -123,6 +134,15 @@ const INTRO =
 function withIntro(question: string): string {
   return `${INTRO}\n\n${question}`;
 }
+
+/**
+ * The `admins` stage question (group-add flow). The owner is already
+ * captured at `introduced`; this asks for ADDITIONAL admins. Never
+ * blocks the flow — any answer (including junk) advances to `details`.
+ */
+const ADMIN_QUESTION =
+  `Who else helps run this group? Reply with their name + number (or @mention) — ` +
+  `you can list a few, separated by commas. Or say *just me* if it's only you.`;
 
 /**
  * Intro posted the moment the bot is ADDED to a group (Phase 1
@@ -182,6 +202,24 @@ async function ensureUserForPhone(rawPhone: string): Promise<string | null> {
     });
     return again?.id ?? null;
   }
+}
+
+/** Defensively coerce the JSON `pendingAdmins` column back into a
+ *  ParsedAdmin[]. Tolerates null / non-array / malformed entries. */
+function coercePendingAdmins(raw: unknown): ParsedAdmin[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ParsedAdmin[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") continue;
+    const o = e as Record<string, unknown>;
+    const name = typeof o.name === "string" && o.name.trim() ? o.name.trim() : null;
+    const phone = typeof o.phone === "string" && o.phone.trim() ? o.phone.trim() : null;
+    const mention =
+      typeof o.mention === "string" && o.mention.trim() ? o.mention.trim() : null;
+    if (!name && !phone && !mention) continue;
+    out.push({ name, phone, mention });
+  }
+  return out;
 }
 
 function getAnthropic(): Anthropic | null {
@@ -337,7 +375,7 @@ export async function handleOnboardingTurn(
     await db.onboardingSession.update({
       where: { id: session.id },
       data: {
-        stage: "details",
+        stage: "admins",
         selectedFeatures: consent.features,
         // Group subject = club name: never ask what we already know.
         groupName:
@@ -351,7 +389,44 @@ export async function handleOnboardingTurn(
       ? "Done — you're the admin 🎽"
       : "Done ✅";
     return {
-      reply: `${lead} ${detailsFollowUpQuestion(["day", "time", "venue"])}`,
+      reply: `${lead} ${ADMIN_QUESTION}`,
+      completed: false,
+    };
+  }
+
+  // ── Stage: admins (group-add flow) ───────────────────────────────
+  // The owner is captured; this asks "who else helps run this group?".
+  // NEVER blocks the flow — whatever we parse is stashed on the session
+  // (the Organisation doesn't exist yet, so Memberships can't be created
+  // here) and we ALWAYS advance to `details`. "just me" / junk → []
+  // pending admins; named/numbered admins → ParsedAdmin[] resolved into
+  // ADMIN Memberships at completeOnboarding().
+  if (session.stage === "admins") {
+    const joined = messages.map((m) => m.body).join("  ");
+    // Inbound messages don't carry mentions today; thread them through
+    // for forward-compat (parseAdmins accepts an optional mentions arg).
+    const mentions = messages.flatMap((m) => m.mentions ?? []);
+    const parsed = parseAdmins(joined, mentions.length > 0 ? mentions : undefined);
+
+    await db.onboardingSession.update({
+      where: { id: session.id },
+      data: {
+        stage: "details",
+        // Stash whatever we parsed (justMe / junk both stash []).
+        pendingAdmins: parsed.admins.map((a) => ({ ...a })) as Array<
+          Record<string, string | null>
+        >,
+        lastHandledWaId: lastWaId,
+      },
+    });
+
+    const added = parsed.admins.length;
+    const lead =
+      added > 0
+        ? `Got it — I'll set up ${added === 1 ? "that admin" : `those ${added} admins`} once we're live. `
+        : "";
+    return {
+      reply: `${lead}${detailsFollowUpQuestion(["day", "time", "venue"])}`,
       completed: false,
     };
   }
@@ -857,6 +932,89 @@ async function completeOnboarding(
     }
   }
 
+  // ── ①b ADDITIONAL ADMIN memberships (group-add `admins` stage) ────
+  // The owner is already handled above; these are the extra admins the
+  // group named at the `admins` stage (stashed on s.pendingAdmins because
+  // the org didn't exist yet then). Each one is resolved → ADMIN
+  // Membership → magic-link DM, wrapped so one bad admin never breaks
+  // completion. Never downgrades an existing OWNER/ADMIN.
+  const pending = coercePendingAdmins(s.pendingAdmins);
+  let adminsAdded = 0;
+  if (pending.length > 0) {
+    const processed = new Set<string>(adminUserId ? [adminUserId] : []);
+    for (const pa of pending) {
+      try {
+        // Resolve to a userId: phone first (create-or-find), else name.
+        let userId: string | null = null;
+        if (pa.phone) {
+          userId = await ensureUserForPhone(pa.phone);
+        } else if (pa.name) {
+          const hit = await findExistingOrgMember(orgId, { name: pa.name });
+          userId = hit?.userId ?? null;
+          if (!userId) {
+            console.warn(
+              `[onboarding] admin "${pa.name}" not found in org roster — skipping`,
+            );
+          }
+        }
+        if (!userId) continue; // mention-only / unresolvable → skip
+        if (processed.has(userId)) continue; // owner or already-done dupe
+        processed.add(userId);
+
+        // Upsert as ADMIN — mirror the OWNER upsert logic; never downgrade.
+        const existing = await db.membership.findUnique({
+          where: { userId_orgId: { userId, orgId } },
+          select: { id: true, role: true, leftAt: true },
+        });
+        let madeAdmin = false;
+        if (!existing) {
+          await db.membership.create({
+            data: { userId, orgId, role: "ADMIN" },
+          });
+          madeAdmin = true;
+        } else if (existing.role === "PLAYER" || existing.leftAt) {
+          await db.membership.update({
+            where: { id: existing.id },
+            data: {
+              leftAt: null,
+              ...(existing.role === "PLAYER" ? { role: "ADMIN" as const } : {}),
+            },
+          });
+          madeAdmin = true;
+        }
+        // else already OWNER/ADMIN → leave as-is (don't downgrade).
+        if (madeAdmin) adminsAdded++;
+
+        // DM the new admin a magic link → /admin (only if we have a phone).
+        const newAdmin = await db.user.findUnique({
+          where: { id: userId },
+          select: { phoneNumber: true },
+        });
+        if (madeAdmin && newAdmin?.phoneNumber) {
+          const token = signMagicLinkToken({
+            userId,
+            purpose: "sign-in",
+            nextPath: "/admin",
+            ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+          });
+          const url = await buildShortMagicLinkUrl(token);
+          await db.botJob.create({
+            data: {
+              orgId,
+              kind: "dm",
+              phone: newAdmin.phoneNumber.replace(/^\+/, ""),
+              text:
+                `👋 You've been made an admin of *${s.groupName || "the club"}* on MatchTime.\n\n` +
+                `Here's your private link to the admin page:\n${url}`,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[onboarding] co-admin setup failed:", err);
+      }
+    }
+  }
+
   // ── ② Roster auto-import from the add-time participant snapshot ──
   // The admin never types a player in by hand. Shared loop with the
   // startup sync route (src/lib/participant-sync.ts).
@@ -918,8 +1076,12 @@ async function completeOnboarding(
       `📅 First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +
       `${weekly ? ", every week" : ""}.\n` +
       (rosterCount > 0
-        ? `👥 I've added the *${rosterCount} ${rosterCount === 1 ? "person" : "people"}* in this group to the squad — no need to type anyone in.\n\n`
-        : `\n`) +
+        ? `👥 I've added the *${rosterCount} ${rosterCount === 1 ? "person" : "people"}* in this group to the squad — no need to type anyone in.\n`
+        : ``) +
+      (adminsAdded > 0
+        ? `👮 Added *${adminsAdded} co-admin${adminsAdded === 1 ? "" : "s"}* — I've DM'd them their admin link.\n`
+        : ``) +
+      `\n` +
       `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽`
     );
   }

@@ -95,6 +95,7 @@ const session = (db: TestDb, groupId: string) =>
     recurrence: string | null;
     playersPerSide: number | null;
     orgId: string | null;
+    pendingAdmins: Array<{ name: string | null; phone: string | null; mention: string | null }> | null;
   }>(
     `SELECT * FROM "OnboardingSession" WHERE "whatsappGroupId" = $1 ORDER BY "createdAt" DESC`,
     [groupId],
@@ -106,6 +107,8 @@ const RUN = Date.now().toString(36);
 const GROUP_A = `e2e-onb-a-${RUN}@g.us`; // YES happy path
 const GROUP_B = `e2e-onb-b-${RUN}@g.us`; // EVERYTHING
 const GROUP_C = `e2e-onb-c-${RUN}@g.us`; // named subset
+const GROUP_D = `e2e-onb-d-${RUN}@g.us`; // co-admins by name+phone
+const GROUP_E = `e2e-onb-e-${RUN}@g.us`; // "just me" → zero co-admins
 
 const ADMIN_PHONE = "447700900050"; // as the bot forwards it (no "+")
 const ADMIN_E164 = "+447700900050";
@@ -188,15 +191,17 @@ test("ordinary chat after the intro falls open — silent, still introduced", as
   expect(s?.adminUserId).toBeNull();
 });
 
-test('"YES" → recommended bundle, replier captured as admin, details asked', async ({
+test('"YES" → recommended bundle, replier captured as owner, admins asked', async ({
   request,
   db,
 }) => {
   const { reply } = await say(request, GROUP_A, "YES", ADMIN_PHONE, "Adam Admin");
-  expect(reply).toContain("when and where do you play?");
+  // YES now advances to the `admins` stage (asks for additional admins),
+  // NOT straight to details.
+  expect(reply?.toLowerCase()).toContain("who else helps run");
 
   const s = await session(db, GROUP_A);
-  expect(s?.stage).toBe("details");
+  expect(s?.stage).toBe("admins");
   expect(s?.selectedFeatures).toEqual(
     expect.arrayContaining([
       "attendance",
@@ -215,6 +220,18 @@ test('"YES" → recommended bundle, replier captured as admin, details asked', a
     [s!.adminUserId],
   );
   expect(admin?.phoneNumber).toBe(ADMIN_E164);
+});
+
+test('admin question "just me" → details asked, no pending admins', async ({
+  request,
+  db,
+}) => {
+  const { reply } = await say(request, GROUP_A, "just me", ADMIN_PHONE, "Adam Admin");
+  expect(reply).toContain("when and where do you play?");
+
+  const s = await session(db, GROUP_A);
+  expect(s?.stage).toBe("details");
+  expect(s?.pendingAdmins ?? []).toHaveLength(0);
 });
 
 test('"Tuesdays 9pm at Goals Wembley" → org live: OWNER, activity, match, roster, magic link', async ({
@@ -333,6 +350,8 @@ test('"EVERYTHING" enables payment tracking too', async ({ request, db }) => {
     participants: [],
   });
   await say(request, GROUP_B, "EVERYTHING", "447700900060", "Olive Owner");
+  // New `admins` stage — answer "just me" to reach `details`.
+  await say(request, GROUP_B, "just me", "447700900060", "Olive Owner");
   const { reply } = await say(
     request,
     GROUP_B,
@@ -383,6 +402,8 @@ test('"just MoM and ratings" → exactly those + derived squad-from-list', async
     participants: [{ phone: "447700900071", pushname: "Pat Player" }],
   });
   await say(request, GROUP_C, "just MoM and ratings please", "447700900070");
+  // New `admins` stage — answer "just me" to reach `details`.
+  await say(request, GROUP_C, "just me", "447700900070");
   const { reply } = await say(
     request,
     GROUP_C,
@@ -415,4 +436,142 @@ test('"just MoM and ratings" → exactly those + derived squad-from-list', async
     [org!.id],
   );
   expect(match?.maxPlayers).toBe(10);
+});
+
+// ───────────────────────── admins stage ─────────────────────────────────
+
+const COADMIN_OWNER = "447700900100";
+const COADMIN_1 = "447700900201";
+const COADMIN_2 = "447700900202";
+
+test('admins stage: two named co-admins → 2 ADMIN memberships + magic-link DMs', async ({
+  request,
+  db,
+}) => {
+  await postBotAdded(request, {
+    groupId: GROUP_D,
+    groupSubject: "Co-Admin FC",
+    addedByPhone: COADMIN_OWNER,
+    participants: [],
+  });
+
+  // YES → owner captured, advances to the `admins` stage.
+  const yes = await say(request, GROUP_D, "YES", COADMIN_OWNER, "Cara Owner");
+  expect(yes.reply?.toLowerCase()).toContain("who else helps run");
+  let s = await session(db, GROUP_D);
+  expect(s?.stage).toBe("admins");
+
+  // Name two co-admins by name+phone (phones not in the owner/snapshot).
+  const adminsReply = await say(
+    request,
+    GROUP_D,
+    `Baki ${COADMIN_1} and Derya ${COADMIN_2}`,
+    COADMIN_OWNER,
+    "Cara Owner",
+  );
+  // Advances to details, asking when&where.
+  expect(adminsReply.reply).toContain("when and where do you play?");
+  s = await session(db, GROUP_D);
+  expect(s?.stage).toBe("details");
+  expect(s?.pendingAdmins ?? []).toHaveLength(2);
+
+  // Complete with the when&where answer.
+  const done = await say(
+    request,
+    GROUP_D,
+    "Tuesdays 9pm at Goals Wembley",
+    COADMIN_OWNER,
+    "Cara Owner",
+  );
+  expect(done.reply).toContain("All set");
+
+  s = await session(db, GROUP_D);
+  expect(s?.stage).toBe("completed");
+
+  const org = await db.one<{ id: string }>(
+    `SELECT id FROM "Organisation" WHERE "whatsappGroupId" = $1`,
+    [GROUP_D],
+  );
+
+  // OWNER = the YES replier.
+  const owner = await db.one<{ role: string }>(
+    `SELECT m.role FROM "Membership" m JOIN "User" u ON u.id = m."userId"
+     WHERE m."orgId" = $1 AND u."phoneNumber" = $2`,
+    [org!.id, `+${COADMIN_OWNER}`],
+  );
+  expect(owner?.role).toBe("OWNER");
+
+  // Exactly 2 ADMIN memberships, for the two co-admin phones.
+  const adminCount = await db.count(
+    `SELECT COUNT(*) FROM "Membership" WHERE "orgId" = $1 AND role = 'ADMIN' AND "leftAt" IS NULL`,
+    [org!.id],
+  );
+  expect(adminCount).toBe(2);
+
+  for (const phone of [COADMIN_1, COADMIN_2]) {
+    const m = await db.one<{ role: string }>(
+      `SELECT m.role FROM "Membership" m JOIN "User" u ON u.id = m."userId"
+       WHERE m."orgId" = $1 AND u."phoneNumber" = $2`,
+      [org!.id, `+${phone}`],
+    );
+    expect(m?.role).toBe("ADMIN");
+
+    // Magic-link DM queued for each co-admin.
+    const dm = await db.one<{ phone: string; text: string }>(
+      `SELECT phone, text FROM "BotJob"
+       WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2`,
+      [org!.id, phone],
+    );
+    expect(dm?.phone).toBe(phone);
+    expect(dm?.text.toLowerCase()).toContain("admin");
+    expect(dm?.text).toMatch(/https?:\/\//);
+  }
+});
+
+test('admins stage: "just me" → zero ADMIN memberships (only the OWNER)', async ({
+  request,
+  db,
+}) => {
+  await postBotAdded(request, {
+    groupId: GROUP_E,
+    groupSubject: "Solo Admin FC",
+    addedByPhone: "447700900110",
+    participants: [],
+  });
+
+  await say(request, GROUP_E, "YES", "447700900110", "Solo Sam");
+  let s = await session(db, GROUP_E);
+  expect(s?.stage).toBe("admins");
+
+  const adminsReply = await say(request, GROUP_E, "just me", "447700900110", "Solo Sam");
+  expect(adminsReply.reply).toContain("when and where do you play?");
+  s = await session(db, GROUP_E);
+  expect(s?.stage).toBe("details");
+  expect(s?.pendingAdmins ?? []).toHaveLength(0);
+
+  const done = await say(
+    request,
+    GROUP_E,
+    "Mondays 8pm at the cage",
+    "447700900110",
+    "Solo Sam",
+  );
+  expect(done.reply).toContain("All set");
+
+  const org = await db.one<{ id: string }>(
+    `SELECT id FROM "Organisation" WHERE "whatsappGroupId" = $1`,
+    [GROUP_E],
+  );
+  const adminCount = await db.count(
+    `SELECT COUNT(*) FROM "Membership" WHERE "orgId" = $1 AND role = 'ADMIN' AND "leftAt" IS NULL`,
+    [org!.id],
+  );
+  expect(adminCount).toBe(0);
+
+  const owner = await db.one<{ role: string }>(
+    `SELECT m.role FROM "Membership" m JOIN "User" u ON u.id = m."userId"
+     WHERE m."orgId" = $1 AND u."phoneNumber" = '+447700900110'`,
+    [org!.id],
+  );
+  expect(owner?.role).toBe("OWNER");
 });
