@@ -27,7 +27,10 @@ export async function GET(request: Request) {
   // flowing through /analyze (which routes them to the onboarding
   // handler until the session completes).
   const onboarding = await db.onboardingSession.findMany({
-    where: { stage: { in: ["collecting", "features"] } },
+    // "introduced"/"details" are the Phase 1 group-add stages — a group
+    // mid-way through add-triggered onboarding must survive a Pi
+    // restart too.
+    where: { stage: { in: ["collecting", "features", "introduced", "details"] } },
     select: { whatsappGroupId: true, groupName: true },
   });
   const known = new Set(orgs.map((o) => o.whatsappGroupId));

@@ -242,11 +242,38 @@ model OnboardingSession {
   whatsappGroupId String
   /// Filled once the Organisation is provisioned (features stage).
   orgId           String?
-  /// "collecting" → asking event questions
-  /// "features"   → org created, asking which features to enable
+  /// "collecting" → asking event questions (legacy "@MatchTime setup" flow)
+  /// "features"   → org created, asking which features to enable (legacy flow)
+  /// "introduced" → bot was ADDED to the group and posted its intro; waiting
+  ///                for a YES/EVERYTHING/named-features consent reply
+  ///                (group-add flow, Phase 1 autonomous onboarding)
+  /// "details"    → consent given, admin captured; asking the one combined
+  ///                "when & where do you play?" question (group-add flow)
   /// "completed"  → Activity/Match created, flags set, normal ops
+  /// "dormant"    → nobody consented after the intro; bot stays silent
   /// "abandoned"  → admin/cron cleaned up a stale session
   stage           String   @default("collecting")
+
+  /// How this session started: "setup-trigger" (legacy "@MatchTime setup"),
+  /// "group-add" (bot detected being added to the group), or
+  /// "dashboard-pair" (Phase 2, reserved).
+  source          String   @default("setup-trigger")
+  /// WhatsApp group subject at the moment the bot was added — used as the
+  /// club name so we never ask a question we already know the answer to.
+  groupSubject    String?
+  /// E.164 phone of whoever added the bot to the group (fallback admin
+  /// candidate when the consent replier has no resolvable phone).
+  addedByPhone    String?
+  /// Captured admin (User.id) — the YES/EVERYTHING replier. Becomes the
+  /// org OWNER at completion.
+  adminUserId     String?
+  /// Participant snapshot at add time: [{phone?, lidId?, pushname?}].
+  /// Imported into the org roster at completion so the admin never types
+  /// a player in by hand.
+  participants    Json?
+  /// 24h "still here" re-nudge idempotency (group-add flow, Phase 1 cron
+  /// sweep — reserved; written by the nudge when it ships).
+  introNudgedAt   DateTime?
 
   // Collected event details (nullable until answered).
   groupName       String?

@@ -15,17 +15,42 @@
  *   - Falls open: if the LLM errors, we re-ask the next missing
  *     question with static copy. Never blocks the group.
  *
- * Lifecycle:
+ * Lifecycle (legacy "@MatchTime setup" flow):
  *   collecting → (all event fields gathered) → provision Organisation
  *   → features → (group picks modules) → create Sport/Activity/Match,
  *   set Phase-1 flags, whatsappBotEnabled=true → completed (the group
  *   is now a normal monitored org).
+ *
+ * Lifecycle (Phase 1 autonomous group-add flow, 2026-06-12 design —
+ * gated behind ONBOARDING_AUTOSTART at the /bot-added entry point):
+ *   introduced → (YES / EVERYTHING / named-features consent reply;
+ *   replier becomes the captured admin) → details → (one combined
+ *   "when & where do you play?" answer; weekly + 7-a-side defaults)
+ *   → provision org → completed, which ALSO: creates an OWNER
+ *   Membership for the captured admin, imports the participant
+ *   snapshot into the roster, and DMs the admin a magic link into
+ *   /admin.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { SPORT_PRESETS } from "./sport-presets";
 import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
 import { londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
+import { normalisePhone } from "./phone";
+import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
+import { buildShortMagicLinkUrl } from "./short-link";
+import {
+  importParticipants,
+  parseParticipantSnapshot,
+} from "./participant-sync";
+import {
+  regexExtract,
+  parseBundleReply,
+  extractWhenWhere,
+  detailsStillMissing,
+  detailsFollowUpQuestion,
+  type Extracted,
+} from "./onboarding-parse";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -43,12 +68,25 @@ type Session = {
   oneOffDate: string | null;
   selectedFeatures: string[];
   lastHandledWaId: string | null;
+  // Phase 1 group-add columns (additive; null on legacy sessions).
+  source?: string | null;
+  groupSubject?: string | null;
+  addedByPhone?: string | null;
+  adminUserId?: string | null;
+  participants?: unknown;
 };
 
 export interface OnboardingTurnInput {
   session: Session;
-  /** Oldest-first batch of fresh group messages since last handled. */
-  messages: Array<{ waMessageId: string; authorName: string | null; body: string }>;
+  /** Oldest-first batch of fresh group messages since last handled.
+   *  `authorPhone` is the sender's phone as the bot forwards it
+   *  (digits, no "+"; empty string for @lid privacy senders). */
+  messages: Array<{
+    waMessageId: string;
+    authorName: string | null;
+    body: string;
+    authorPhone?: string | null;
+  }>;
   groupSubject?: string | null;
 }
 
@@ -86,6 +124,66 @@ function withIntro(question: string): string {
   return `${INTRO}\n\n${question}`;
 }
 
+/**
+ * Intro posted the moment the bot is ADDED to a group (Phase 1
+ * group-add flow — design §B.3). Skimmable, non-native-friendly; one
+ * question that doubles as consent + feature selection + admin capture.
+ * The recommended bundle ("YES") is the first option so it's the path
+ * of least resistance; payments are explicitly optional; the opt-out
+ * line keeps the falls-open promise.
+ */
+export const BOT_ADDED_INTRO =
+  `👋 Hey! I'm *MatchTime* — I run the boring parts of your game so nobody has to.\n\n` +
+  `Here's what I can do:\n` +
+  `⚽ *Squad list* — say "in" or "out" here; I keep the list and chase when we're short\n` +
+  `⚖️ *Fair teams* — balanced sides from real player ratings, posted before kickoff\n` +
+  `🪑 *Bench* — someone drops? I offer the spot; first to claim it plays\n` +
+  `🏆 *Man of the Match + ratings* — quick vote and a one-tap rating link after each game. No app to install\n` +
+  `💳 *Payments* — I track who's paid, or collect match fees by link _(optional)_\n` +
+  `⏰ *Reminders & stats* — "remind me Thursday", "who won MoM last week?"\n\n` +
+  `*Want me running here?* Whoever runs this group, just reply:\n` +
+  `• *YES* — switches on the usual setup (squad list, fair teams, bench, MoM, ratings, reminders)\n` +
+  `• *EVERYTHING* — the lot, including payment tracking\n` +
+  `• or name just the parts you want — e.g. _"just MoM and ratings"_\n\n` +
+  `Not interested? Ignore me and I'll stay quiet. 🤐`;
+
+/**
+ * Find-or-create a User for a bot-forwarded phone (digits, usually no
+ * "+"). Same placeholder-email pattern as the group-join route, so the
+ * admin can fill name/email in later. Returns null when the phone
+ * can't be normalised (@lid senders forward an empty phone).
+ */
+async function ensureUserForPhone(rawPhone: string): Promise<string | null> {
+  const withPlus = rawPhone.startsWith("+") ? rawPhone : `+${rawPhone}`;
+  const phone = normalisePhone(withPlus);
+  if (!phone) return null;
+  const existing = await db.user.findUnique({
+    where: { phoneNumber: phone },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+  try {
+    const created = await db.user.create({
+      data: {
+        name: null,
+        email: `wa-${phone.replace(/^\+/, "")}@placeholder.matchtime`,
+        phoneNumber: phone,
+        onboarded: false,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    return created.id;
+  } catch {
+    // Unique race (phone or placeholder email already taken) — re-read.
+    const again = await db.user.findUnique({
+      where: { phoneNumber: phone },
+      select: { id: true },
+    });
+    return again?.id ?? null;
+  }
+}
+
 function getAnthropic(): Anthropic | null {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   return key ? new Anthropic({ apiKey: key }) : null;
@@ -118,18 +216,6 @@ Rules:
 - Multiple messages may each contribute different fields; merge them.
 - "tuesdays" → dayOfWeek 2. "every week" → recurrence "weekly". "just this once" / a single date → "oneoff".
 - Be conservative: confidence < 0.5 if it's chit-chat with no concrete answer.`;
-
-interface Extracted {
-  groupName: string | null;
-  venue: string | null;
-  dayOfWeek: number | null;
-  kickoffTime: string | null;
-  playersPerSide: number | null;
-  recurrence: string | null;
-  oneOffDate: string | null;
-  featureSelection: string[] | null;
-  confidence: number;
-}
 
 async function extract(
   session: Session,
@@ -192,117 +278,6 @@ async function extract(
   }
 }
 
-const DAY_WORDS: Record<string, number> = {
-  sunday: 0, sun: 0,
-  monday: 1, mon: 1,
-  tuesday: 2, tue: 2, tues: 2,
-  wednesday: 3, wed: 3, weds: 3,
-  thursday: 4, thu: 4, thur: 4, thurs: 4,
-  friday: 5, fri: 5,
-  saturday: 6, sat: 6,
-};
-
-/** Deterministic, LLM-free extractor. Event answers are formulaic;
- *  this keeps onboarding progressing if Anthropic is unavailable and
- *  backfills LLM misses on terse replies. Venue is intentionally not
- *  guessed here — the collecting branch's "sole missing field"
- *  heuristic handles a bare "PowerLeague Shoreditch" answer. */
-function regexExtract(
-  messages: OnboardingTurnInput["messages"],
-): Extracted {
-  const text = messages.map((m) => m.body).join("  ").toLowerCase();
-  const empty: Extracted = {
-    groupName: null, venue: null, dayOfWeek: null, kickoffTime: null,
-    playersPerSide: null, recurrence: null, oneOffDate: null,
-    featureSelection: null, confidence: 0,
-  };
-
-  // players-per-side: "7 a side", "7-a-side", "7aside", "5s", "11 aside"
-  let playersPerSide: number | null = null;
-  const ps =
-    text.match(/(\d{1,2})\s*[-\s]?\s*a[-\s]?side/) ||
-    text.match(/\b(\d{1,2})\s*aside\b/) ||
-    text.match(/\b(4|5|6|7|8|9|10|11)s\b/);
-  if (ps) {
-    const n = parseInt(ps[1], 10);
-    if (n >= 4 && n <= 16) playersPerSide = n;
-  }
-
-  // day of week
-  let dayOfWeek: number | null = null;
-  for (const [w, d] of Object.entries(DAY_WORDS)) {
-    if (new RegExp(`\\b${w}s?\\b`).test(text)) { dayOfWeek = d; break; }
-  }
-
-  // kickoff time: "8:30pm", "8 pm", "20:30", "21.30", "9pm"
-  let kickoffTime: string | null = null;
-  const tm =
-    text.match(/\b(\d{1,2})[:.](\d{2})\s*(am|pm)?\b/) ||
-    text.match(/\b(\d{1,2})\s*(am|pm)\b/);
-  if (tm) {
-    let h = parseInt(tm[1], 10);
-    const min = tm[2] && /^\d{2}$/.test(tm[2]) ? tm[2] : "00";
-    const mer = (tm[3] || tm[2] || "").toString();
-    if (/pm/.test(mer) && h < 12) h += 12;
-    if (/am/.test(mer) && h === 12) h = 0;
-    if (h >= 0 && h <= 23) kickoffTime = `${String(h).padStart(2, "0")}:${min}`;
-  }
-
-  // recurrence
-  let recurrence: string | null = null;
-  if (/\b(one[-\s]?off|just this once|one time|single (?:game|match)|this week only)\b/.test(text))
-    recurrence = "oneoff";
-  else if (/\b(weekly|every week|each week|recurring|every (?:mon|tue|wed|thu|fri|sat|sun))/.test(text))
-    recurrence = "weekly";
-
-  // one-off ISO date
-  let oneOffDate: string | null = null;
-  const dm = text.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
-  if (dm) oneOffDate = `${dm[1]}-${dm[2]}-${dm[3]}`;
-
-  // feature selection (only meaningful at the features stage; caller
-  // decides when to use it). Numbers map to FEATURE_META order.
-  let featureSelection: string[] | null = null;
-  if (/\b(everything|all of (?:it|them)|all features|the lot|all)\b/.test(text)) {
-    featureSelection = FEATURE_META.map((f) => f.key);
-    if (/\b(except|but not|apart from|without)\b[^.]*\bpay/.test(text))
-      featureSelection = featureSelection.filter((k) => k !== "paymentTracking");
-  } else {
-    const picked = new Set<string>();
-    if (/\b(mom|man of the match|motm)\b/.test(text)) picked.add("momVoting");
-    if (/\b(rating|ratings|rate)\b/.test(text)) picked.add("playerRating");
-    if (/\b(attendance|in\/out|squad)\b/.test(text)) picked.add("attendance");
-    if (/\bbench\b/.test(text)) picked.add("bench");
-    if (/\b(teams?|balanc)/.test(text)) picked.add("teamBalancing");
-    if (/\b(reminder|remind)\b/.test(text)) picked.add("reminders");
-    if (/\b(stats|history|leaderboard)\b/.test(text)) picked.add("statsQa");
-    if (/\bpay(ment)?s?\b/.test(text)) picked.add("paymentTracking");
-    // numbered picks: "4 and 5", "options 1, 4", "1 & 4"
-    const nums = text.match(/\b([1-8])\b/g);
-    if (nums) for (const n of nums) {
-      const meta = FEATURE_META[parseInt(n, 10) - 1];
-      if (meta) picked.add(meta.key);
-    }
-    if (picked.size > 0) featureSelection = [...picked];
-  }
-
-  const gotAny =
-    playersPerSide != null || dayOfWeek != null || kickoffTime != null ||
-    recurrence != null || oneOffDate != null ||
-    (featureSelection != null && featureSelection.length > 0);
-
-  return {
-    ...empty,
-    playersPerSide,
-    dayOfWeek,
-    kickoffTime,
-    recurrence,
-    oneOffDate,
-    featureSelection,
-    confidence: gotAny ? 0.7 : 0,
-  };
-}
-
 /** Main turn handler. Pure-ish: it reads/writes the session + (on
  *  completion) provisions org/sport/activity/match, and returns the
  *  group reply to post. */
@@ -321,7 +296,163 @@ export async function handleOnboardingTurn(
     session.lastHandledWaId == null &&
     !session.groupName;
 
+  const lastWaId = messages[messages.length - 1].waMessageId;
+
+  // ── Stage: introduced (group-add flow) ───────────────────────────
+  // The bot has posted its add-time intro and is waiting for a
+  // consent/bundle reply. Pure-deterministic parsing (no LLM): a
+  // standalone YES / EVERYTHING / named-features message advances to
+  // `details`; anything else is ordinary group chat and the bot stays
+  // SILENT (falls open — the group is never spammed).
+  if (session.stage === "introduced") {
+    let consent: { features: ToggleableKey[]; authorPhone: string | null } | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const bundle = parseBundleReply(messages[i].body);
+      if (bundle) {
+        consent = {
+          features: bundle.features,
+          authorPhone: messages[i].authorPhone?.trim() || null,
+        };
+        break;
+      }
+    }
+    if (!consent) {
+      await db.onboardingSession.update({
+        where: { id: session.id },
+        data: { lastHandledWaId: lastWaId },
+      });
+      return { reply: null, completed: false };
+    }
+
+    // Admin capture: the consent replier's phone, falling back to
+    // whoever added the bot. @lid replier with no resolvable phone and
+    // no adder phone → park admin assignment (completion still works;
+    // the dashboard /claim flow picks it up later).
+    let adminUserId = session.adminUserId ?? null;
+    if (!adminUserId) {
+      const adminPhone = consent.authorPhone || session.addedByPhone || null;
+      if (adminPhone) adminUserId = await ensureUserForPhone(adminPhone);
+    }
+
+    await db.onboardingSession.update({
+      where: { id: session.id },
+      data: {
+        stage: "details",
+        selectedFeatures: consent.features,
+        // Group subject = club name: never ask what we already know.
+        groupName:
+          session.groupName ?? session.groupSubject?.slice(0, 80) ?? null,
+        adminUserId,
+        lastHandledWaId: lastWaId,
+      },
+    });
+
+    const lead = adminUserId
+      ? "Done — you're the admin 🎽"
+      : "Done ✅";
+    return {
+      reply: `${lead} ${detailsFollowUpQuestion(["day", "time", "venue"])}`,
+      completed: false,
+    };
+  }
+
   const ex = await extract(session, messages);
+
+  // ── Stage: details (group-add flow) ──────────────────────────────
+  // One combined "when & where do you play?" answer. Multi-field
+  // extraction (deterministic first, LLM backfill); only day/time/
+  // venue are mandatory — recurrence defaults to weekly and format to
+  // 7-a-side at completion. Venue is FREE TEXT (no geocoding, Phase 1).
+  if (session.stage === "details") {
+    const joined = messages.map((m) => m.body).join("  ");
+    const ww = extractWhenWhere(joined);
+
+    const data: Record<string, unknown> = {};
+    if (
+      session.dayOfWeek == null &&
+      (ww.dayOfWeek ?? ex?.dayOfWeek) != null
+    ) {
+      const d = (ww.dayOfWeek ?? ex?.dayOfWeek)!;
+      if (d >= 0 && d <= 6) data.dayOfWeek = d;
+    }
+    {
+      const t = ww.kickoffTime ?? ex?.kickoffTime ?? null;
+      if (!session.kickoffTime && t && /^\d{1,2}:\d{2}$/.test(t))
+        data.kickoffTime = t;
+    }
+    {
+      const v = ww.venue ?? ex?.venue ?? null;
+      if (!session.venue && v) data.venue = v.slice(0, 120);
+    }
+    {
+      const p = ww.playersPerSide ?? ex?.playersPerSide ?? null;
+      if (!session.playersPerSide && p && p >= 4 && p <= 16)
+        data.playersPerSide = p;
+    }
+    {
+      const r = ww.recurrence ?? ex?.recurrence ?? null;
+      if (!session.recurrence && r && ["weekly", "oneoff"].includes(r))
+        data.recurrence = r;
+    }
+    {
+      const o = ww.oneOffDate ?? ex?.oneOffDate ?? null;
+      if (!session.oneOffDate && o && /^\d{4}-\d{2}-\d{2}$/.test(o))
+        data.oneOffDate = o;
+    }
+
+    // "Currently-asked field" heuristic (mirrors the collecting stage):
+    // once day+time are known and ONLY the venue is missing, a short
+    // free-text reply with no structured fields IS the venue.
+    const merged0 = { ...session, ...data } as Session;
+    const lastBody = messages[messages.length - 1].body.trim();
+    if (
+      !merged0.venue &&
+      merged0.dayOfWeek != null &&
+      merged0.kickoffTime &&
+      Object.keys(data).length === 0 &&
+      lastBody.length >= 2 &&
+      lastBody.length <= 80 &&
+      !/^\d+$/.test(lastBody)
+    ) {
+      data.venue = lastBody.slice(0, 120);
+    }
+
+    data.lastHandledWaId = lastWaId;
+    let merged = { ...session, ...data } as Session;
+    await db.onboardingSession.update({ where: { id: session.id }, data });
+
+    const missing = detailsStillMissing(merged);
+    if (missing.length > 0) {
+      // Re-ask only for the gaps — but stay silent when this batch
+      // contributed nothing at all (ordinary chat between answers).
+      const contributed = Object.keys(data).some((k) => k !== "lastHandledWaId");
+      if (!contributed && missing.length === 3) {
+        return { reply: null, completed: false };
+      }
+      return { reply: detailsFollowUpQuestion(missing), completed: false };
+    }
+
+    // Defaults policy: weekly + 7-a-side unless stated otherwise.
+    const defaults: Record<string, unknown> = {};
+    if (!merged.recurrence) defaults.recurrence = "weekly";
+    if (!merged.playersPerSide) defaults.playersPerSide = 7;
+    if (Object.keys(defaults).length > 0) {
+      await db.onboardingSession.update({ where: { id: session.id }, data: defaults });
+      merged = { ...merged, ...defaults } as Session;
+    }
+
+    // Provision the Organisation + Sport, then run the full completion
+    // (features, Activity, first Match, OWNER membership, roster
+    // import, admin magic-link DM).
+    const orgId = await provisionOrg(merged);
+    merged = { ...merged, orgId };
+    const valid = new Set<ToggleableKey>(FEATURE_META.map((f) => f.key));
+    const chosen = [...new Set(merged.selectedFeatures)].filter(
+      (k): k is ToggleableKey => valid.has(k as ToggleableKey),
+    );
+    const reply = await completeOnboarding(merged, chosen);
+    return { reply, completed: true };
+  }
 
   // ── Stage: collecting event details ──────────────────────────────
   if (session.stage === "collecting") {
@@ -471,7 +602,22 @@ export async function handleOnboardingTurn(
         completed: false,
       };
     }
-    const reply = await completeOnboarding(session, chosen);
+    // Admin capture for the legacy flow too (design: "admin = whoever
+    // gave the feature/consent reply"). Best-effort — the feature pick
+    // is almost always the batch's last message; take the most recent
+    // sender with a resolvable phone. Falls back to no admin exactly
+    // like before, so this can only ADD an OWNER, never break a flow.
+    let adminUserId: string | null = session.adminUserId ?? null;
+    if (!adminUserId) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const p = messages[i].authorPhone?.trim();
+        if (p) {
+          adminUserId = await ensureUserForPhone(p);
+          if (adminUserId) break;
+        }
+      }
+    }
+    const reply = await completeOnboarding(session, chosen, adminUserId);
     return { reply, completed: true };
   }
 
@@ -519,9 +665,13 @@ function featureMenuText(lead: string): string {
   );
 }
 
-async function provisionOrgAndAskFeatures(s: Session): Promise<string> {
+/** Create the Organisation + Sport for a gathered session and stamp
+ *  `orgId` on the session. Shared by the legacy flow (which then asks
+ *  the feature menu) and the group-add flow (which already has the
+ *  feature selection and completes immediately). */
+async function provisionOrg(s: Session): Promise<string> {
   // Name: stated group name → else WhatsApp subject → else fallback.
-  const name = (s.groupName || "New Club").trim();
+  const name = (s.groupName || s.groupSubject || "New Club").trim();
   let slug = slugify(name);
   // Ensure slug uniqueness.
   for (let i = 0; i < 5; i++) {
@@ -536,8 +686,8 @@ async function provisionOrgAndAskFeatures(s: Session): Promise<string> {
       name,
       slug,
       whatsappGroupId: s.whatsappGroupId,
-      // Stay OFF until the group picks features; flipped on at
-      // completion so the bot doesn't start acting mid-setup.
+      // Stay OFF until completion so the bot doesn't start acting
+      // mid-setup.
       whatsappBotEnabled: false,
       sports: {
         create: {
@@ -557,8 +707,19 @@ async function provisionOrgAndAskFeatures(s: Session): Promise<string> {
   });
   await db.onboardingSession.update({
     where: { id: s.id },
-    data: { orgId: org.id, stage: "features" },
+    data: { orgId: org.id },
   });
+  return org.id;
+}
+
+async function provisionOrgAndAskFeatures(s: Session): Promise<string> {
+  await provisionOrg(s);
+  await db.onboardingSession.update({
+    where: { id: s.id },
+    data: { stage: "features" },
+  });
+  const name = (s.groupName || "New Club").trim();
+  const preset = presetForSide(s.playersPerSide ?? 7);
   return featureMenuText(
     `Nice — *${name}* is set up for *${preset.playersPerTeam}-a-side* on *${DOW[s.dayOfWeek ?? 0]}s ${s.kickoffTime}* at *${s.venue}*.\n\nLast step: which features do you want? Here's everything I can do`,
   );
@@ -567,8 +728,10 @@ async function provisionOrgAndAskFeatures(s: Session): Promise<string> {
 async function completeOnboarding(
   s: Session,
   chosen: ToggleableKey[],
+  adminUserIdOverride?: string | null,
 ): Promise<string> {
   const orgId = s.orgId!;
+  const adminUserId = adminUserIdOverride ?? s.adminUserId ?? null;
   const sport = await db.sport.findFirst({ where: { orgId }, select: { id: true, playersPerTeam: true } });
   if (!sport) throw new Error("onboarding: sport missing at completion");
 
@@ -649,11 +812,118 @@ async function completeOnboarding(
     }),
     db.onboardingSession.update({
       where: { id: s.id },
-      data: { stage: "completed", selectedFeatures: chosen },
+      data: { stage: "completed", selectedFeatures: chosen, adminUserId },
     }),
   ]);
 
+  // ── ① OWNER membership for the captured admin ────────────────────
+  // The core fix from the 2026-06-12 design: chat onboarding used to
+  // create ZERO Membership rows, leaving the org ownerless (no /admin
+  // access, every admin-DM feature silently dead).
+  let adminUser: { id: string; name: string | null; phoneNumber: string | null } | null = null;
+  if (adminUserId) {
+    try {
+      adminUser = await db.user.findUnique({
+        where: { id: adminUserId },
+        select: { id: true, name: true, phoneNumber: true },
+      });
+      if (adminUser) {
+        const existingOwner = await db.membership.findFirst({
+          where: { orgId, role: "OWNER", leftAt: null },
+          select: { userId: true },
+        });
+        const role =
+          existingOwner && existingOwner.userId !== adminUserId ? "ADMIN" : "OWNER";
+        const existing = await db.membership.findUnique({
+          where: { userId_orgId: { userId: adminUserId, orgId } },
+          select: { id: true, role: true, leftAt: true },
+        });
+        if (!existing) {
+          await db.membership.create({
+            data: { userId: adminUserId, orgId, role },
+          });
+        } else if (existing.role === "PLAYER" || existing.leftAt) {
+          await db.membership.update({
+            where: { id: existing.id },
+            data: {
+              leftAt: null,
+              ...(existing.role === "PLAYER" ? { role } : {}),
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[onboarding] admin membership failed:", err);
+    }
+  }
+
+  // ── ② Roster auto-import from the add-time participant snapshot ──
+  // The admin never types a player in by hand. Shared loop with the
+  // startup sync route (src/lib/participant-sync.ts).
+  let rosterCount = 0;
+  const snapshot = parseParticipantSnapshot(s.participants);
+  if (snapshot.length > 0) {
+    try {
+      const imported = await importParticipants(orgId, snapshot);
+      rosterCount = imported.added + imported.alreadyKnown + imported.restoredMembership;
+    } catch (err) {
+      console.error("[onboarding] roster import failed:", err);
+    }
+  }
+
+  // ── ③ Magic-link DM to the admin → /admin ────────────────────────
+  let adminDmQueued = false;
+  if (adminUser?.phoneNumber) {
+    try {
+      const token = signMagicLinkToken({
+        userId: adminUser.id,
+        purpose: "sign-in",
+        nextPath: "/admin",
+        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+      });
+      const url = await buildShortMagicLinkUrl(token);
+      const payments = chosenSet.has("paymentTracking");
+      await db.botJob.create({
+        data: {
+          orgId,
+          kind: "dm",
+          phone: adminUser.phoneNumber.replace(/^\+/, ""),
+          text:
+            `👋 You're the admin of *${s.groupName || "your club"}* on MatchTime.\n\n` +
+            `Here's your private link to the admin page — player names, ratings` +
+            `${payments ? ", payments" : ""} and settings live there:\n${url}` +
+            (payments
+              ? `\n\nWant me to *collect* the money too? Connect a bank from your admin page — takes 2 minutes.`
+              : ``),
+        },
+      });
+      adminDmQueued = true;
+    } catch (err) {
+      console.error("[onboarding] admin magic-link DM failed:", err);
+    }
+  }
+
   const onLabels = FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
+
+  // Group-add flow gets the design's completion copy (roster + admin
+  // link callouts); the legacy setup-trigger copy is unchanged so the
+  // existing QA suite keeps passing byte-identical.
+  if (s.source === "group-add") {
+    const adminName = adminUser?.name?.trim();
+    const adminLine = adminDmQueued
+      ? `${adminName || "Admin"}, I've sent you a private link to your admin page — player names, ratings and payments live there. `
+      : `Whoever runs this group can claim the admin page any time at matchtime.ai. `;
+    return (
+      `✅ *All set!* I'm live for *${s.groupName || "this group"}* with: *${onLabels.join(", ")}*.\n\n` +
+      `📅 First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +
+      `${weekly ? ", every week" : ""}.\n` +
+      (rosterCount > 0
+        ? `👥 I've added the *${rosterCount} ${rosterCount === 1 ? "person" : "people"}* in this group to the squad — no need to type anyone in.\n\n`
+        : `\n`) +
+      `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽`
+    );
+  }
+
   return (
     `✅ *All set!* I'm now running for this group with: *${onLabels.join(", ")}*.\n\n` +
     `First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +

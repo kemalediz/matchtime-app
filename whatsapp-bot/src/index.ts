@@ -11,6 +11,7 @@ import {
   postGroupLeave,
   postDmReply,
   postSyncParticipants,
+  postBotAdded,
 } from "./api.js";
 import {
   enqueueForAnalysis,
@@ -538,13 +539,119 @@ async function main() {
       .filter((p) => p.length > 0);
   }
 
+  // Phase 1 autonomous onboarding helper: snapshot a group's current
+  // participants with the SAME phone/lid/pushname extraction as the
+  // startup sync sweep (index.ts ready-handler). Used only by the
+  // self-add branch below; the startup sweep is deliberately untouched.
+  async function collectGroupParticipants(
+    groupId: string,
+    selfId: string | undefined,
+  ): Promise<Array<{ phone?: string; lidId?: string; pushname?: string }>> {
+    const chat = await client.getChatById(groupId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const participants = (chat as any).participants ?? [];
+    const out: Array<{ phone?: string; lidId?: string; pushname?: string }> = [];
+    for (const p of participants as Array<{ id: { _serialized: string } }>) {
+      const id = p.id._serialized;
+      if (selfId && id === selfId) continue; // skip the bot itself
+      let phone: string | undefined;
+      let lidId: string | undefined;
+      if (id.endsWith("@c.us")) {
+        phone = id.replace("@c.us", "").replace(/^\+/, "");
+      } else if (id.endsWith("@lid")) {
+        lidId = id;
+        try {
+          const contact = await client.getContactById(id);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const num = (contact as any).number;
+          if (typeof num === "string" && num.length > 0) phone = num;
+        } catch {
+          /* ignore — server skips lid-only participants */
+        }
+      }
+      let pushname: string | undefined;
+      try {
+        const contact = await client.getContactById(id);
+        pushname = contact.pushname || contact.name || undefined;
+      } catch {
+        /* non-fatal */
+      }
+      out.push({ phone, lidId, pushname });
+    }
+    return out;
+  }
+
   client.on(
     "group_join" as Parameters<typeof client.on>[0],
-    async (notification: { chatId?: string; recipientIds?: string[] }) => {
+    async (notification: { chatId?: string; recipientIds?: string[]; author?: string }) => {
       try {
         const groupId = notification.chatId;
-        if (!groupId || !isMonitoredGroup(groupId)) return;
+        if (!groupId) return;
         const selfId = client.info?.wid?._serialized;
+
+        // ── Self-add detection (Phase 1 autonomous onboarding) ─────
+        // The bot itself was just ADDED to a group it isn't monitoring
+        // → tell the server. The server is fully authoritative: the
+        // ONBOARDING_AUTOSTART flag gate and the live-org
+        // short-circuit both live there; the bot only posts the intro
+        // (and starts monitoring) when the server hands text back.
+        // Monitored groups and human joins are untouched below.
+        const recipientIds = notification.recipientIds ?? [];
+        const isSelfAdd = !!selfId && recipientIds.includes(selfId);
+        if (isSelfAdd && !isMonitoredGroup(groupId)) {
+          console.log(
+            `[bot-added] self-add detected in ${groupId} (author=${notification.author ?? "?"})`,
+          );
+          let groupSubject: string | undefined;
+          let participants: Array<{ phone?: string; lidId?: string; pushname?: string }> = [];
+          try {
+            const chat = await client.getChatById(groupId);
+            groupSubject = chat?.name || undefined;
+          } catch (err) {
+            console.error("[bot-added] getChatById failed:", err);
+          }
+          try {
+            participants = await collectGroupParticipants(groupId, selfId);
+          } catch (err) {
+            console.error("[bot-added] participant snapshot failed:", err);
+          }
+          // The adder's JID → phone. @lid adders: try the contact record.
+          let addedByPhone: string | undefined;
+          const author = notification.author;
+          if (author?.endsWith("@c.us")) {
+            addedByPhone = author.replace("@c.us", "").replace(/^\+/, "");
+          } else if (author?.endsWith("@lid")) {
+            try {
+              const contact = await client.getContactById(author);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const num = (contact as any)?.number;
+              if (typeof num === "string" && num.length > 0) addedByPhone = num;
+            } catch {
+              /* non-fatal — server falls back to the consent replier */
+            }
+          }
+          const res = await postBotAdded({
+            groupId,
+            groupSubject,
+            addedByPhone,
+            participants,
+          });
+          if (res?.introText) {
+            addMonitoredGroup(groupId);
+            await client.sendMessage(groupId, res.introText);
+            console.log(
+              `[bot-added] intro posted in ${groupId} ("${groupSubject ?? "?"}") — now monitoring`,
+            );
+          } else {
+            console.log(
+              `[bot-added] server says stay silent for ${groupId} (${res?.ignored ?? res?.existing ?? "no-intro"})`,
+            );
+          }
+          return;
+        }
+
+        // ── Existing human-join path (byte-identical behaviour) ────
+        if (!isMonitoredGroup(groupId)) return;
         const phones = extractPhones(notification.recipientIds, selfId);
         if (phones.length === 0) return;
         console.log(`group_join in ${groupId}: ${phones.join(", ")}`);

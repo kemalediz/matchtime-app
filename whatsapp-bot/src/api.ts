@@ -198,6 +198,44 @@ export async function postSyncParticipants(params: {
   }>;
 }
 
+/**
+ * Phase 1 autonomous onboarding: the bot detected ITSELF being added
+ * to a group. The server decides everything (ONBOARDING_AUTOSTART flag
+ * gate, live-org short-circuit, session create) and returns the intro
+ * text to post — or introText:null when the bot should stay silent.
+ */
+export async function postBotAdded(params: {
+  groupId: string;
+  groupSubject?: string | null;
+  addedByPhone?: string | null;
+  participants?: Array<{
+    phone?: string | null;
+    lidId?: string | null;
+    pushname?: string | null;
+  }>;
+}): Promise<{
+  ok?: boolean;
+  ignored?: string;
+  existing?: boolean;
+  introText?: string | null;
+} | null> {
+  const res = await fetch(`${config.apiUrl}/api/whatsapp/bot-added`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    console.error("bot-added post failed:", res.status, await res.text());
+    return null;
+  }
+  return res.json() as Promise<{
+    ok?: boolean;
+    ignored?: string;
+    existing?: boolean;
+    introText?: string | null;
+  }>;
+}
+
 export async function postGroupJoin(params: {
   groupId: string;
   phones: string[]; // E.164 without the leading "+"

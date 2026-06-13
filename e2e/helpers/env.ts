@@ -92,6 +92,10 @@ export function buildTestEnv(): Record<string, string> {
     CRON_SECRET: E2E.CRON_SECRET,
     MT_TEST_MODE: "1",
     MT_TEST_LLM_STUB_FILE: E2E.LLM_STUB_FILE,
+    // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
+    // ON for the suite so the flow is exercisable; prod keeps it OFF
+    // until deliberately flipped (the route no-ops without it).
+    ONBOARDING_AUTOSTART: "1",
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
     STRIPE_SECRET_KEY: "",

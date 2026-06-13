@@ -2587,7 +2587,14 @@ async function handleOnboardingIfApplicable(
   const groupId = body.groupId;
 
   let session = await db.onboardingSession.findFirst({
-    where: { whatsappGroupId: groupId, stage: { in: ["collecting", "features"] } },
+    // "introduced"/"details" are the Phase 1 group-add stages
+    // (2026-06-12 design); they only ever exist when the flag-gated
+    // /api/whatsapp/bot-added route created them, so this is inert for
+    // every group that never went through a bot-add.
+    where: {
+      whatsappGroupId: groupId,
+      stage: { in: ["collecting", "features", "introduced", "details"] },
+    },
     orderBy: { createdAt: "desc" },
   });
 
@@ -2620,6 +2627,10 @@ async function handleOnboardingIfApplicable(
       waMessageId: m.waMessageId,
       authorName: m.authorName,
       body: m.body,
+      // Sender identity — used by the group-add flow to capture the
+      // consenting admin (design fix: this used to be dropped, so the
+      // flow COULDN'T assign an owner even if it wanted to).
+      authorPhone: m.authorPhone ?? null,
     })),
   });
 

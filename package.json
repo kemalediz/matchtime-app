@@ -12,6 +12,7 @@
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "test:unit": "vitest run",
     "test:e2e": "tsx e2e/run.ts",
     "test:e2e:ui": "tsx e2e/run.ts --ui"
   },
@@ -60,6 +61,7 @@
     "pg": "^8.21.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.8"
   }
 }
