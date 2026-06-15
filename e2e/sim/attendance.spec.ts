@@ -433,12 +433,17 @@ test.describe("admin-directed promote a specific bench player", () => {
   });
 });
 
-test.describe("non-admin cannot promote a bench player into the squad", () => {
-  // Test B — NEGATIVE. A genuinely free slot exists (4/5), so the ONLY
-  // thing preventing promotion is the sender's role. A non-admin PLAYER
-  // says "move Aydın from bench to squad". Aydın must STAY on the bench;
-  // an admin in the same seeded state WOULD have promoted (same verdict,
-  // only the role differs).
+// ── G. SELF-REPLACE: a player drops THEMSELVES for a named bench player ──
+// The exact Kemal-reported intent: "the real issue here is extra steps of
+// asking Aydin — when a player tells MT to replace them with someone from
+// the bench, it should just do it." Ehtisham (a CONFIRMED, NON-admin
+// player) posts "replace me with Aydın". MatchTime must DIRECTLY drop
+// Ehtisham and promote Aydın off the bench into the freed slot — NO 👍
+// bench-confirmation step, no dangling offer. This is authorised because
+// the sender IS the player being dropped (self-replace), even though
+// they're not an admin.
+
+test.describe("self-replace: player swaps themselves for a bench player", () => {
   let g: SimGroup;
   const group = async (request: APIRequestContext, db: TestDb) =>
     (g ??= await createGroup(request, db, {
@@ -448,31 +453,110 @@ test.describe("non-admin cannot promote a bench player into the squad", () => {
         { key: "owner", status: "CONFIRMED" },
         { key: "alice", status: "CONFIRMED" },
         { key: "pete", status: "CONFIRMED" },
-        { key: "dan", status: "CONFIRMED" }, // 4/5 — one slot genuinely free
+        { key: "dan", status: "CONFIRMED" },
+        { key: "ehtisham", status: "CONFIRMED" }, // squad full at 5/5
         { key: "aydin", status: "BENCH" },
+        { key: "salman", status: "BENCH" },
       ],
     })).attach(request);
 
-  test('non-admin "move Aydın from bench to squad" → Aydın stays BENCH (role gate, not capacity)', async ({
+  test('non-admin "replace me with Aydın" → Aydın IN, sender OUT, NO 👍 step, offer closed, squad full', async ({
     request,
     db,
   }) => {
     const grp = await group(request, db);
-    // pete is a plain PLAYER member.
-    await grp.post("pete", "move Aydın from bench to squad", {
+
+    // Ehtisham is a plain PLAYER (not in the OWNER/ADMIN seats). He gives
+    // up his OWN slot for Aydın — the same OUT/IN registerFor pair the
+    // admin-directed promote uses; the OUT target is the sender himself.
+    const r = await grp.post("ehtisham", "Can't make it — replace me with Aydın from the bench", {
       verdict: {
         intent: "in",
         registerAttendance: null,
-        registerFor: [{ name: "Aydın", action: "IN" }],
-        react: "🪑",
-        reply: "Aydın stays on the bench for now.",
-        confidence: 0.9,
-        reasoning: "stub: non-admin promote attempt",
+        registerFor: [
+          { name: "Ehtisham", action: "OUT" },
+          { name: "Aydın", action: "IN" },
+        ],
+        reply: "No worries — Aydın Arslan is in for you, squad stays full at 5/5.",
+        react: "✅",
+        confidence: 0.95,
+        reasoning: "stub: self-replace from bench",
       },
     });
 
-    // The free slot was available, yet the non-admin's IN did NOT promote
-    // Aydın — the admin gate (not capacity) blocked it.
+    // End-state: Ehtisham dropped, Aydın promoted into the squad, squad
+    // back to full, Salman left untouched on the bench.
+    expect(await grp.dropped()).toContain("Ehtisham Ekin");
+    expect(await grp.confirmed()).not.toContain("Ehtisham Ekin");
+    expect((await grp.attendanceOf("aydin"))?.status).toBe("CONFIRMED");
+    expect(await grp.confirmed()).toContain("Aydın Arslan");
+    expect((await grp.counts()).confirmed).toBe(grp.maxPlayers);
+    expect((await grp.attendanceOf("salman"))?.status).toBe("BENCH");
+
+    // The promotion was DIRECT — no bench-confirmation step. There must be
+    // no dangling open offer, and nothing in the bot's output may ask
+    // anyone to react with 👍 to confirm / step up / take the slot.
+    expect(await grp.openOffers()).toHaveLength(0);
+    const finalText = [r.reply ?? "", ...r.groupPosts, ...r.dms.map((d) => d.text)].join("\n");
+    expect(finalText).not.toMatch(/👍/);
+    expect(finalText).not.toMatch(/react .* to confirm/i);
+    expect(finalText).not.toMatch(/asking the bench/i);
+    expect(finalText).not.toMatch(/until .*confirm/i);
+    expect(finalText).not.toMatch(/step up/i);
+    // It should read as a done deal naming Aydın / a full squad.
+    expect(finalText).toMatch(/Aydın|5\/5/);
+  });
+});
+
+test.describe("unrelated non-admin cannot promote a bench player into the squad", () => {
+  // Test B (now the UNRELATED-THIRD-PARTY case) — NEGATIVE. A genuinely
+  // free slot exists (4/5), so the ONLY thing preventing promotion is
+  // authorisation. Bilal is neither an admin NOR the player being
+  // dropped — he nominates SOMEONE ELSE'S replacement: "replace Ehtisham
+  // with Aydın". Aydın must STAY on the bench. (Contrast Test G above,
+  // where the sender drops *themselves* and the promote DOES go through;
+  // and Test F, where an admin drives it.)
+  const BILAL_ROSTER = [...PROMOTE_ROSTER, { key: "bilal", name: "Bilal Bright" }];
+  let g: SimGroup;
+  const group = async (request: APIRequestContext, db: TestDb) =>
+    (g ??= await createGroup(request, db, {
+      maxPlayers: 5,
+      players: BILAL_ROSTER,
+      attendance: [
+        { key: "owner", status: "CONFIRMED" },
+        { key: "alice", status: "CONFIRMED" },
+        { key: "pete", status: "CONFIRMED" },
+        { key: "ehtisham", status: "CONFIRMED" }, // 4/5 — one slot genuinely free
+        { key: "aydin", status: "BENCH" },
+      ],
+    })).attach(request);
+
+  test('non-admin "replace Ehtisham with Aydın" (sender is neither) → Aydın stays BENCH', async ({
+    request,
+    db,
+  }) => {
+    const grp = await group(request, db);
+    // bilal is a plain PLAYER and is NOT Ehtisham — he can't pick the
+    // replacement. The IN must NOT promote despite the free slot.
+    await grp.post("bilal", "replace Ehtisham with Aydın from the bench", {
+      verdict: {
+        intent: "in",
+        registerAttendance: null,
+        registerFor: [
+          { name: "Ehtisham", action: "OUT" },
+          { name: "Aydın", action: "IN" },
+        ],
+        react: "🪑",
+        reply: "It's up to Ehtisham / an admin to action that.",
+        confidence: 0.9,
+        reasoning: "stub: unrelated non-admin promote attempt",
+      },
+    });
+
+    // The free slot was available, yet the unrelated non-admin's IN did
+    // NOT promote Aydın — the authorisation gate blocked it. (The banter-
+    // drop guard also protects Ehtisham, who isn't speaking, but the
+    // load-bearing assertion here is that Aydın was NOT promoted.)
     expect((await grp.attendanceOf("aydin"))?.status).toBe("BENCH");
     expect(await grp.bench()).toContain("Aydın Arslan");
     expect(await grp.confirmed()).not.toContain("Aydın Arslan");

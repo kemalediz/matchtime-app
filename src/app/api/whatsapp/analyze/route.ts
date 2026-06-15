@@ -59,6 +59,7 @@ import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { normaliseName } from "@/lib/squad-from-list";
 import { handleOnboardingTurn } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import { isPromoteFromBenchAuthorized } from "@/lib/promote-authorization";
 import { computeEloDeltas } from "@/lib/elo";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { generateTeamsForMatch } from "@/lib/team-generation";
@@ -2029,22 +2030,51 @@ async function executeVerdict(args: {
         });
         senderIsAdmin = mem?.role === "OWNER" || mem?.role === "ADMIN";
       }
-      for (const entry of verdict.registerFor) {
+      // Pre-resolve every entry's name to a userId up front so the
+      // promote-from-bench gate can see the WHOLE pair before we act on
+      // any single entry. This is what lets a SELF-REPLACE work: when a
+      // non-admin player drops THEMSELVES (OUT) to bring a bench player
+      // up (IN) — "replace me with Aydın" — the IN must promote directly
+      // (no 👍 step), exactly like an admin's. The gate below treats the
+      // sender being one of the OUT targets as authorisation. An
+      // UNRELATED non-admin nominating someone else's drop stays
+      // unauthorised (no promotion) — that's the third-party guard.
+      const resolved = await Promise.all(
+        verdict.registerFor.map(async (entry) => ({
+          entry,
+          target: await resolveOrProvisionByName(orgId, entry.name),
+        })),
+      );
+      const promoteAuthorized = isPromoteFromBenchAuthorized({
+        senderUserId: user?.id ?? null,
+        senderIsAdmin,
+        entries: resolved.map(({ entry, target }) => ({
+          action: entry.action,
+          userId: target?.userId ?? null,
+        })),
+      });
+      for (const { entry, target } of resolved) {
         try {
-          const target = await resolveOrProvisionByName(orgId, entry.name);
           if (!target) continue;
           // Don't double-register the sender if the LLM mistakenly
-          // put them in registerFor as well.
-          if (user && target.userId === user.id) continue;
+          // put them in registerFor with an IN/BENCH for themselves.
+          // A SELF-REPLACE OUT for the sender is the one case where the
+          // sender's own entry IS the action — let it fall through so
+          // they actually get dropped (the IN below then fills the slot).
+          if (user && target.userId === user.id && entry.action !== "OUT") {
+            continue;
+          }
           if (entry.action === "IN") {
-            // Admin-directed third-party IN promotes a bench player
-            // straight into the squad (mirrors the player's own IN);
-            // a non-admin third-party IN cannot promote (no options →
-            // default idempotent behaviour preserved).
+            // Promotes a bench player straight into the squad when the
+            // sender is authorised — either an ADMIN directing roster
+            // surgery, OR a player self-replacing (the sender is one of
+            // the OUT targets in this same pair). A non-admin promoting
+            // an UNRELATED player cannot promote (no options → default
+            // idempotent behaviour preserved).
             const result = await registerAttendance(
               target.userId,
               matchForOrg.id,
-              senderIsAdmin ? { promoteFromBench: true } : undefined,
+              promoteAuthorized ? { promoteFromBench: true } : undefined,
             );
             // Same semantic react rule as for the sender — ✅ for a
             // confirmed slot, 🪑 for bench. No more keycap numbers.
