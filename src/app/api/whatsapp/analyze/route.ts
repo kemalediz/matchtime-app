@@ -2017,6 +2017,18 @@ async function executeVerdict(args: {
   if (verdict.registerFor && verdict.registerFor.length > 0) {
     const matchForOrg = await findRegistrationMatch(orgId);
     if (matchForOrg) {
+      // Resolve the SENDER's org role once — only an OWNER/ADMIN may
+      // promote a bench player into the squad via a third-party IN
+      // (mirrors the demote gate). Same membership lookup pattern as the
+      // OUT banter-guard above.
+      let senderIsAdmin = false;
+      if (user?.id) {
+        const mem = await db.membership.findUnique({
+          where: { userId_orgId: { userId: user.id, orgId } },
+          select: { role: true },
+        });
+        senderIsAdmin = mem?.role === "OWNER" || mem?.role === "ADMIN";
+      }
       for (const entry of verdict.registerFor) {
         try {
           const target = await resolveOrProvisionByName(orgId, entry.name);
@@ -2025,7 +2037,15 @@ async function executeVerdict(args: {
           // put them in registerFor as well.
           if (user && target.userId === user.id) continue;
           if (entry.action === "IN") {
-            const result = await registerAttendance(target.userId, matchForOrg.id);
+            // Admin-directed third-party IN promotes a bench player
+            // straight into the squad (mirrors the player's own IN);
+            // a non-admin third-party IN cannot promote (no options →
+            // default idempotent behaviour preserved).
+            const result = await registerAttendance(
+              target.userId,
+              matchForOrg.id,
+              senderIsAdmin ? { promoteFromBench: true } : undefined,
+            );
             // Same semantic react rule as for the sender — ✅ for a
             // confirmed slot, 🪑 for bench. No more keycap numbers.
             finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";

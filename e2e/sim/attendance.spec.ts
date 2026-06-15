@@ -351,3 +351,130 @@ test.describe("self-promotion resolves the open bench offer", () => {
     expect(resolved?.claimedByUserId).toBe(grp.player("greg").userId);
   });
 });
+
+// ── F. admin-directed promote a specific bench player ───────────────────
+// An ADMIN names a bench player to bring up and a confirmed player to drop
+// for them ("move Aydın from bench to squad to replace Ehtisham"). The bot
+// must DIRECTLY promote the bench player (no thumbs-up confirmation), drop
+// the named player, close the freed slot's offer, and report the bench
+// player IN / squad full. A NON-admin issuing the same instruction must
+// NOT be able to promote (the admin role, not capacity, is the gate).
+
+const PROMOTE_ROSTER = [
+  { key: "owner", name: "Oscar Owner", role: "OWNER" as const },
+  { key: "alice", name: "Alice Admin", role: "ADMIN" as const },
+  { key: "pete", name: "Pete Power" },
+  { key: "dan", name: "Dan Drummer" },
+  { key: "ehtisham", name: "Ehtisham Ekin" },
+  { key: "aydin", name: "Aydın Arslan" },
+  { key: "salman", name: "Salman Saric" },
+];
+
+test.describe("admin-directed promote a specific bench player", () => {
+  // Test A — the exact reported exchange. Squad full at 5/5 with Ehtisham
+  // filling the last slot; Aydın + Salman on the bench. An admin says
+  // "move Aydın from bench to squad to replace Ehtisham".
+  let g: SimGroup;
+  const group = async (request: APIRequestContext, db: TestDb) =>
+    (g ??= await createGroup(request, db, {
+      maxPlayers: 5,
+      players: PROMOTE_ROSTER,
+      attendance: [
+        { key: "owner", status: "CONFIRMED" },
+        { key: "alice", status: "CONFIRMED" },
+        { key: "pete", status: "CONFIRMED" },
+        { key: "dan", status: "CONFIRMED" },
+        { key: "ehtisham", status: "CONFIRMED" }, // squad full at 5/5
+        { key: "aydin", status: "BENCH" },
+        { key: "salman", status: "BENCH" },
+      ],
+    })).attach(request);
+
+  test('admin "move Aydın from bench to replace Ehtisham" → Aydın IN, Ehtisham dropped, offer closed, squad full', async ({
+    request,
+    db,
+  }) => {
+    const grp = await group(request, db);
+
+    // The decisive admin instruction. OUT for Ehtisham FIRST (frees the
+    // slot + opens an offer), then IN for Aydın WITH promoteFromBench
+    // (admin sender) → fills the slot and resolves the offer.
+    const r = await grp.post("alice", "Move Aydın from bench to squad to replace Ehtisham", {
+      verdict: {
+        intent: "in",
+        registerAttendance: null,
+        registerFor: [
+          { name: "Ehtisham", action: "OUT" },
+          { name: "Aydın", action: "IN" },
+        ],
+        reply: "Done — Aydın Arslan is in and the squad is back to full at 5/5.",
+        react: "✅",
+        confidence: 0.95,
+        reasoning: "stub: admin promote bench player",
+      },
+    });
+
+    // End-state: Ehtisham dropped, Aydın confirmed, squad full, Salman
+    // untouched on the bench, no dangling offer.
+    expect(await grp.dropped()).toContain("Ehtisham Ekin");
+    expect(await grp.confirmed()).not.toContain("Ehtisham Ekin");
+    expect((await grp.attendanceOf("aydin"))?.status).toBe("CONFIRMED");
+    expect(await grp.confirmed()).toContain("Aydın Arslan");
+    expect((await grp.counts()).confirmed).toBe(grp.maxPlayers);
+    expect(await grp.confirmed()).not.toContain("Salman Saric");
+    expect(await grp.openOffers()).toHaveLength(0);
+
+    // The reply must reflect Aydın IN / squad full — never "asking the
+    // bench" or "until they confirm" (X is genuinely confirmed).
+    const finalText = [r.reply ?? "", ...r.groupPosts].join("\n");
+    expect(finalText).not.toMatch(/asking the bench/i);
+    expect(finalText).not.toMatch(/until .*confirm/i);
+    expect(finalText).toMatch(/Aydın|5\/5/);
+  });
+});
+
+test.describe("non-admin cannot promote a bench player into the squad", () => {
+  // Test B — NEGATIVE. A genuinely free slot exists (4/5), so the ONLY
+  // thing preventing promotion is the sender's role. A non-admin PLAYER
+  // says "move Aydın from bench to squad". Aydın must STAY on the bench;
+  // an admin in the same seeded state WOULD have promoted (same verdict,
+  // only the role differs).
+  let g: SimGroup;
+  const group = async (request: APIRequestContext, db: TestDb) =>
+    (g ??= await createGroup(request, db, {
+      maxPlayers: 5,
+      players: PROMOTE_ROSTER,
+      attendance: [
+        { key: "owner", status: "CONFIRMED" },
+        { key: "alice", status: "CONFIRMED" },
+        { key: "pete", status: "CONFIRMED" },
+        { key: "dan", status: "CONFIRMED" }, // 4/5 — one slot genuinely free
+        { key: "aydin", status: "BENCH" },
+      ],
+    })).attach(request);
+
+  test('non-admin "move Aydın from bench to squad" → Aydın stays BENCH (role gate, not capacity)', async ({
+    request,
+    db,
+  }) => {
+    const grp = await group(request, db);
+    // pete is a plain PLAYER member.
+    await grp.post("pete", "move Aydın from bench to squad", {
+      verdict: {
+        intent: "in",
+        registerAttendance: null,
+        registerFor: [{ name: "Aydın", action: "IN" }],
+        react: "🪑",
+        reply: "Aydın stays on the bench for now.",
+        confidence: 0.9,
+        reasoning: "stub: non-admin promote attempt",
+      },
+    });
+
+    // The free slot was available, yet the non-admin's IN did NOT promote
+    // Aydın — the admin gate (not capacity) blocked it.
+    expect((await grp.attendanceOf("aydin"))?.status).toBe("BENCH");
+    expect(await grp.bench()).toContain("Aydın Arslan");
+    expect(await grp.confirmed()).not.toContain("Aydın Arslan");
+  });
+});
