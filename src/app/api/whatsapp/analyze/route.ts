@@ -70,6 +70,9 @@ interface InboundMessage {
   authorPhone: string;
   authorName: string | null;
   timestamp: string;
+  /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
+   *  forwarded UNCHANGED for the onboarding admin parser. */
+  mentions?: string[];
 }
 
 interface InboundHistory {
@@ -456,7 +459,12 @@ export async function POST(request: Request) {
         ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
         : r.reason
           ? r.reason // full-squad case: no open spots to recruit for.
-          : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+          : r.alreadyInvited && r.alreadyInvited > 0
+            ? // Branch 3: candidates existed but were ALL already pinged on a
+              // previous recruit call — they just haven't replied yet.
+              `Already pinged the recent players for *${r.matchName}* — just waiting on their replies. 🙏`
+            : // Branch 2: genuinely nobody recent left to ask.
+              `No new players to ask for *${r.matchName}* right now. 👍`;
     await recordAnalysis({
       orgId: org.id, groupId: body.groupId, msg: m,
       handledBy: "fast-path", intent: "recruit_recent", action: `recruit:${r.invited ?? 0}`,
@@ -2631,10 +2639,10 @@ async function handleOnboardingIfApplicable(
       // consenting admin (design fix: this used to be dropped, so the
       // flow COULDN'T assign an owner even if it wanted to).
       authorPhone: m.authorPhone ?? null,
-      // mentions aren't forwarded by the Pi bot yet — InboundMessage has
-      // no `mentions` field. The `admins` stage's parseAdmins() accepts
-      // an optional mentions[] for forward-compat; thread it through here
-      // once inbound messages start carrying mentions.
+      // Raw WhatsApp mention JIDs, forwarded UNCHANGED from the bot. The
+      // `admins` stage's parseAdmins() resolves "<digits>@c.us" → phone
+      // and treats "<digits>@lid" as a privacy id (no phone).
+      mentions: m.mentions,
     })),
   });
 

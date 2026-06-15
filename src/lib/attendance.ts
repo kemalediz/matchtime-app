@@ -73,6 +73,9 @@ export async function registerAttendance(
   const existing = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
   });
+  // True when this call is a bench player's OWN claim ("IN") that filled a
+  // free slot — used below to resolve the dangling open BenchSlotOffer.
+  let selfPromoted = false;
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {
     const wantsBenchDowngrade =
       options.forceBench === true && existing.status === "CONFIRMED";
@@ -91,6 +94,7 @@ export async function registerAttendance(
       });
       if (confirmedNow < match.maxPlayers) wantsBenchPromotion = true;
     }
+    selfPromoted = wantsBenchPromotion;
     if (!wantsBenchDowngrade && !wantsBenchPromotion) {
       const all = await db.attendance.findMany({
         where: { matchId, status: { in: ["CONFIRMED", "BENCH"] } },
@@ -170,6 +174,37 @@ export async function registerAttendance(
       }
     } catch (err) {
       console.error("[attendance] auto-resolve BenchSlotOffer failed:", err);
+    }
+  }
+
+  // ── Resolve the open BenchSlotOffer on a bench self-promotion (2026-06) ──
+  // When a benched player says IN and that claim actually fills a free slot
+  // (promoteFromBench → CONFIRMED), the existing open offer for this match is
+  // now satisfied — the player took the slot themselves. The DROPPED-path
+  // block above never fires for them (different gate / filter), so without
+  // this the offer dangles until the kickoff sweep and the scheduler keeps
+  // emitting bench prompts. Mirror resolveBenchConfirmation: close the
+  // OLDEST open offer atomically (first-come-wins on resolvedAt:null).
+  if (selfPromoted && status === "CONFIRMED") {
+    try {
+      const offer = await db.benchSlotOffer.findFirst({
+        where: { matchId, resolvedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      if (offer) {
+        const now = new Date();
+        const claim = await db.benchSlotOffer.updateMany({
+          where: { id: offer.id, resolvedAt: null },
+          data: { resolvedAt: now, claimedByUserId: userId, outcome: "claimed" },
+        });
+        if (claim.count > 0) {
+          console.log(
+            `[attendance] self-promotion closed BenchSlotOffer ${offer.id} for user ${userId} on match ${matchId}`,
+          );
+        }
+      }
+    } catch (err) {
+      console.error("[attendance] self-promotion offer-resolve failed:", err);
     }
   }
 

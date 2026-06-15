@@ -40,6 +40,9 @@ interface Pending {
   authorPhone: string;
   authorName: string | null;
   timestamp: string;
+  /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
+   *  forwarded UNCHANGED so the onboarding admin parser can resolve them. */
+  mentions?: string[];
   /** Kept so the bot can react/reply to the exact wweb.js Message later. */
   msg: Message;
 }
@@ -139,6 +142,9 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     authorPhone: phone,
     authorName,
     timestamp: new Date((msg.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
+    // Forward the RAW mention JIDs unchanged — the server-side onboarding
+    // parser resolves "<digits>@c.us" → phone and "<digits>@lid" → no phone.
+    mentions: mentionedIds.length > 0 ? mentionedIds : undefined,
     msg,
   };
 
@@ -172,6 +178,7 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
       authorPhone: p.authorPhone,
       authorName: p.authorName,
       timestamp: p.timestamp,
+      mentions: p.mentions,
     }));
     const history = getHistory(groupId);
 

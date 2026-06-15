@@ -71,7 +71,9 @@ test("repeating the request never re-DMs the same players for the same match", a
   const before = (await recruitDms(grp)).length;
   const r = await grp.post("owner", "still need more players lads");
   expect(r.intent).toBe("recruit_recent");
-  expect(r.reply).toContain("already responded"); // nobody NEW to invite
+  // Branch 3: candidates existed but were ALL pinged on the earlier call —
+  // honest "awaiting replies" copy, not the misleading "already responded".
+  expect(r.reply).toContain("waiting on their replies");
   expect((await recruitDms(grp)).length).toBe(before);
 });
 

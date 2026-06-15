@@ -59,6 +59,9 @@ async function say(
   body: string,
   authorPhone: string,
   authorName: string | null = null,
+  // Raw WhatsApp mention JIDs, forwarded UNCHANGED (e.g. "447…@c.us",
+  // "…@lid") — exactly what the bot puts on the analyze payload.
+  mentions?: string[],
 ) {
   const res = await request.post("/api/whatsapp/analyze", {
     headers: HEADERS,
@@ -71,6 +74,7 @@ async function say(
           authorPhone,
           authorName,
           timestamp: new Date().toISOString(),
+          ...(mentions ? { mentions } : {}),
         },
       ],
     },
@@ -109,6 +113,7 @@ const GROUP_B = `e2e-onb-b-${RUN}@g.us`; // EVERYTHING
 const GROUP_C = `e2e-onb-c-${RUN}@g.us`; // named subset
 const GROUP_D = `e2e-onb-d-${RUN}@g.us`; // co-admins by name+phone
 const GROUP_E = `e2e-onb-e-${RUN}@g.us`; // "just me" → zero co-admins
+const GROUP_F = `e2e-onb-f-${RUN}@g.us`; // co-admin via tap-to-@-mention
 
 const ADMIN_PHONE = "447700900050"; // as the bot forwards it (no "+")
 const ADMIN_E164 = "+447700900050";
@@ -574,4 +579,77 @@ test('admins stage: "just me" → zero ADMIN memberships (only the OWNER)', asyn
     [org!.id],
   );
   expect(owner?.role).toBe("OWNER");
+});
+
+// ───────────────── admins stage: tap-to-@-mention ────────────────────────
+//
+// The owner TAPS "@" and picks a member rather than typing a number. The
+// bot forwards that as a raw mention JID in `mentions[]` (NOT typed digits
+// in the body). The admin parser resolves "<digits>@c.us" → phone → ADMIN
+// membership. This is the producer→parser wiring this fix adds.
+
+const MENTION_OWNER = "447700900120";
+const MENTION_COADMIN = "447700900221";
+
+test('admins stage: @-tagged co-admin via mentions[] → ADMIN membership', async ({
+  request,
+  db,
+}) => {
+  await postBotAdded(request, {
+    groupId: GROUP_F,
+    groupSubject: "Mention FC",
+    addedByPhone: MENTION_OWNER,
+    participants: [],
+  });
+
+  // YES → owner captured, advances to the `admins` stage.
+  const yes = await say(request, GROUP_F, "YES", MENTION_OWNER, "Mara Owner");
+  expect(yes.reply?.toLowerCase()).toContain("who else helps run");
+  let s = await session(db, GROUP_F);
+  expect(s?.stage).toBe("admins");
+
+  // The owner taps "@" to pick the co-admin — the body has the visible
+  // "@<name>" text but the machine-readable identity is the raw JID in
+  // mentions[]. NO typed digits in the body.
+  const adminsReply = await say(
+    request,
+    GROUP_F,
+    "@Berk",
+    MENTION_OWNER,
+    "Mara Owner",
+    [`${MENTION_COADMIN}@c.us`],
+  );
+  expect(adminsReply.reply).toContain("when and where do you play?");
+  s = await session(db, GROUP_F);
+  expect(s?.stage).toBe("details");
+  expect(s?.pendingAdmins ?? []).toHaveLength(1);
+
+  // Complete with the when&where answer.
+  const done = await say(
+    request,
+    GROUP_F,
+    "Tuesdays 9pm at Goals Wembley",
+    MENTION_OWNER,
+    "Mara Owner",
+  );
+  expect(done.reply).toContain("All set");
+
+  const org = await db.one<{ id: string }>(
+    `SELECT id FROM "Organisation" WHERE "whatsappGroupId" = $1`,
+    [GROUP_F],
+  );
+
+  // The @-tagged member is now an ADMIN membership.
+  const admin = await db.one<{ role: string }>(
+    `SELECT m.role FROM "Membership" m JOIN "User" u ON u.id = m."userId"
+     WHERE m."orgId" = $1 AND u."phoneNumber" = $2`,
+    [org!.id, `+${MENTION_COADMIN}`],
+  );
+  expect(admin?.role).toBe("ADMIN");
+
+  const adminCount = await db.count(
+    `SELECT COUNT(*) FROM "Membership" WHERE "orgId" = $1 AND role = 'ADMIN' AND "leftAt" IS NULL`,
+    [org!.id],
+  );
+  expect(adminCount).toBe(1);
 });

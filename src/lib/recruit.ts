@@ -78,6 +78,11 @@ export interface RecruitResult {
   invited?: number;
   /** Names invited (for the admin confirmation). */
   invitedNames?: string[];
+  /** Candidates that existed but were SKIPPED this call purely because they
+   *  were already invited for this match (idempotency). Lets the caller tell
+   *  "already pinged everyone, awaiting replies" apart from "no candidates at
+   *  all" — the two otherwise return identical (invited:0) shapes. */
+  alreadyInvited?: number;
 }
 
 export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult> {
@@ -177,10 +182,14 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
 
   // 3. Queue an invite DM per candidate, idempotent per match.
   const invitedNames: string[] = [];
+  let alreadyInvited = 0;
   for (const c of candidates.values()) {
     const key = `${next.id}:recruit-dm:${c.id}`;
     const exists = await db.sentNotification.findUnique({ where: { key }, select: { id: true } });
-    if (exists) continue; // already invited for this match
+    if (exists) {
+      alreadyInvited++; // candidate existed but was pinged on an earlier call
+      continue;
+    }
     const first = c.name?.split(" ")[0] ?? "there";
     let text: string;
     if (attendanceOn) {
@@ -224,5 +233,6 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
     need,
     invited: invitedNames.length,
     invitedNames,
+    alreadyInvited,
   };
 }

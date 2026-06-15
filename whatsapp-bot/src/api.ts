@@ -272,6 +272,9 @@ export interface AnalyzeInboundMessage {
   authorPhone: string;
   authorName: string | null;
   timestamp: string; // ISO
+  /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
+   *  forwarded UNCHANGED for the onboarding admin parser. */
+  mentions?: string[];
 }
 
 export interface AnalyzeInboundHistory {

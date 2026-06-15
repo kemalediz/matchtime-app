@@ -296,3 +296,58 @@ test.describe("bench-offer claim lifecycle", () => {
     expect(await grp.openOffers()).toHaveLength(0);
   });
 });
+
+// ── E. self-promotion (plain "IN") resolves the dangling bench offer ─────
+//
+// A confirmed player drops → an open BenchSlotOffer is created. A BENCH
+// player then says plain "IN" and self-promotes into the freed slot. The
+// offer is now satisfied by that very self-promotion, so it must be CLOSED
+// (resolvedAt set, outcome "claimed") — not left dangling until the
+// kickoff sweep (which would keep the scheduler emitting bench prompts).
+
+test.describe("self-promotion resolves the open bench offer", () => {
+  let g: SimGroup;
+  const group = async (request: APIRequestContext, db: TestDb) =>
+    (g ??= await createGroup(request, db, {
+      maxPlayers: 5,
+      attendance: [
+        { key: "owner", status: "CONFIRMED" },
+        { key: "alice", status: "CONFIRMED" },
+        { key: "pete", status: "CONFIRMED" },
+        { key: "dan", status: "CONFIRMED" },
+        { key: "felix", status: "CONFIRMED" }, // squad full at 5/5
+        { key: "greg", status: "BENCH" },
+        { key: "henry", status: "BENCH" },
+      ],
+    })).attach(request);
+
+  test('drop → open offer → benched "IN" self-promotes AND closes the offer', async ({ request, db }) => {
+    const grp = await group(request, db);
+
+    // Confirmed player drops → a slot frees up + an open offer is created.
+    await grp.post("pete", "out");
+    const offers = await grp.openOffers();
+    expect(offers).toHaveLength(1);
+    const offerId = offers[0].id;
+
+    // A bench player says plain "IN" — self-promotes into the freed slot.
+    const r = await grp.post("greg", "in");
+    expect(r.react).toBe("✅");
+    expect((await grp.attendanceOf("greg"))?.status).toBe("CONFIRMED");
+    expect((await grp.counts()).confirmed).toBe(5);
+
+    // The offer must no longer dangle — closed with outcome "claimed".
+    expect(await grp.openOffers()).toHaveLength(0);
+    const resolved = await grp.db.one<{
+      resolvedAt: string | null;
+      outcome: string | null;
+      claimedByUserId: string | null;
+    }>(
+      `SELECT "resolvedAt", outcome, "claimedByUserId" FROM "BenchSlotOffer" WHERE id = $1`,
+      [offerId],
+    );
+    expect(resolved?.resolvedAt).not.toBeNull();
+    expect(resolved?.outcome).toBe("claimed");
+    expect(resolved?.claimedByUserId).toBe(grp.player("greg").userId);
+  });
+});

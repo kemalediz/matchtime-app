@@ -169,6 +169,48 @@ describe("parseAdmins — additional-admin capture", () => {
     expect(r.admins[0].phone).toBeNull();
     expect(r.admins[0].mention).toBe("1234567890@lid");
   });
+
+  // ── tap-to-@-mention via the forwarded RAW JID mentions[] array ──
+  // The bot forwards mentionedIds UNCHANGED ("447700900123@c.us",
+  // "…@lid"); the parser resolves c.us → phone, @lid → no phone.
+  it("single @-tagged admin via mentions[] (raw c.us JID) → 1 admin with phone", () => {
+    const r = parseAdmins("", ["447700900123@c.us"]);
+    expect(r.justMe).toBe(false);
+    expect(r.admins).toHaveLength(1);
+    expect(r.admins[0].phone).toBe("447700900123");
+    expect(r.admins[0].mention).toBe("@447700900123");
+  });
+
+  it("multiple @-tagged admins via mentions[] → multiple admins", () => {
+    const r = parseAdmins("", ["447700900123@c.us", "447700900222@c.us"]);
+    expect(r.admins).toHaveLength(2);
+    const phones = r.admins.map((a) => a.phone).sort();
+    expect(phones).toEqual(["447700900123", "447700900222"]);
+  });
+
+  it("mixed: one admin via mentions[] tag + another via name+phone text → both", () => {
+    const r = parseAdmins("John 07700900111", ["447700900123@c.us"]);
+    expect(r.admins).toHaveLength(2);
+    expect(r.admins.some((a) => a.name?.toLowerCase().includes("john"))).toBe(true);
+    expect(r.admins.some((a) => a.phone === "447700900123")).toBe(true);
+  });
+
+  it("dedupes a mentions[] token whose phone equals an already-parsed admin", () => {
+    // The body admin "+447700900123" and the mention JID resolve to the
+    // same normalised phone — only one admin should survive.
+    const r = parseAdmins("Kemal +447700900123", ["447700900123@c.us"]);
+    expect(r.admins).toHaveLength(1);
+    expect(r.admins[0].phone).toBeTruthy();
+  });
+
+  it("mixed c.us + @lid mentions[] → phone for c.us, phone=null for @lid", () => {
+    const r = parseAdmins("", ["447700900123@c.us", "158055467598020@lid"]);
+    expect(r.admins).toHaveLength(2);
+    const withPhone = r.admins.find((a) => a.phone);
+    const noPhone = r.admins.find((a) => a.phone === null);
+    expect(withPhone?.phone).toBe("447700900123");
+    expect(noPhone?.mention).toBe("158055467598020@lid");
+  });
 });
 
 // ─────────────────── when & where multi-field extraction ───────────────
