@@ -31,6 +31,11 @@ export type { StubVerdict };
 
 const HEADERS = { "x-api-key": E2E.WHATSAPP_API_KEY };
 
+// Opt-in "live LLM" mode: when MT_SIM_LIVE_LLM=1 the harness skips the
+// deterministic stub so the real Anthropic model drives the verdict. Default
+// (flag OFF) keeps the stubbed, byte-identical behaviour described above.
+const LIVE_LLM = process.env.MT_SIM_LIVE_LLM === "1";
+
 // Per-process uniqueness: ids/phones can never collide across groups or
 // spec files, even without a reseed.
 const RUN = Date.now().toString(36);
@@ -430,7 +435,7 @@ export class SimGroup {
     const messages = items.map((it) => {
       const id = nextMsgId();
       const v = it.verdict ?? inferVerdict(it.body);
-      if (v) stub[id] = v;
+      if (!LIVE_LLM && v) stub[id] = v;
       let authorPhone = "";
       let authorName: string | null = null;
       if (it.author) {
@@ -449,7 +454,7 @@ export class SimGroup {
         timestamp: new Date().toISOString(),
       };
     });
-    setLlmStub(stub);
+    if (!LIVE_LLM) setLlmStub(stub);
     const res = await this.request.post("/api/whatsapp/analyze", {
       headers: HEADERS,
       data: { groupId: this.groupId, messages },

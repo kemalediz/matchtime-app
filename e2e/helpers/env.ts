@@ -80,7 +80,15 @@ export function assertSafeTestDbUrl(url: string | undefined): asserts url is str
  *  worker processes. Every var that could reach an external service is
  *  pinned to an inert value so a stray `.env` can never leak in. */
 export function buildTestEnv(): Record<string, string> {
-  return {
+  // Opt-in "live LLM" seam: when MT_SIM_LIVE_LLM=1, the group-simulator
+  // harness exercises the real Anthropic model instead of the deterministic
+  // stub. This omits MT_TEST_LLM_STUB_FILE (so message-analyzer.ts falls
+  // through to getAnthropic()), passes the real ANTHROPIC_API_KEY from the
+  // orchestrator's env, and propagates the flag into the Playwright workers
+  // (where group.ts runs). When the flag is OFF (the default), the returned
+  // env is byte-identical to the original stubbed configuration.
+  const live = process.env.MT_SIM_LIVE_LLM === "1";
+  const env: Record<string, string> = {
     DATABASE_URL: E2E_DB_URL,
     DIRECT_URL: E2E_DB_URL,
     MT_E2E_DATABASE_URL: E2E_DB_URL,
@@ -105,4 +113,10 @@ export function buildTestEnv(): Record<string, string> {
     GOOGLE_CLIENT_ID: "e2e-dummy-google-client-id",
     GOOGLE_CLIENT_SECRET: "e2e-dummy-google-client-secret",
   };
+  if (live) {
+    delete env.MT_TEST_LLM_STUB_FILE;
+    env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
+    env.MT_SIM_LIVE_LLM = "1";
+  }
+  return env;
 }

@@ -15,7 +15,8 @@
     "test:unit": "vitest run",
     "test:e2e": "tsx e2e/run.ts",
     "test:e2e:ui": "tsx e2e/run.ts --ui",
-    "test:sim": "tsx e2e/run.ts sim/"
+    "test:sim": "tsx e2e/run.ts sim/",
+    "test:sim:live": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/self-replace-live.spec.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

@@ -17,6 +17,9 @@
  *      Playwright's webServer boots `next dev` on :3105 with that env.
  *   6. Stops the embedded Postgres (data dir persists for fast re-runs).
  */
+import { config as loadEnv } from "dotenv";
+loadEnv(); // load repo-root .env so process.env.ANTHROPIC_API_KEY is set before helpers/env reads it
+
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
