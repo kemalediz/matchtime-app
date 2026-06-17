@@ -65,6 +65,27 @@ test("morning-after rate DMs skip the opted-out player, everyone else gets their
   expect(keys).not.toContain(`${grp.completedMatchId}:rate-dm:${grp.player("pete").userId}`);
 });
 
+test("morning-after rate DM window has no upper bound: fires at 11:00, not before 08:00, not on match day", async ({ request, db }) => {
+  const grp = await group(request, db);
+  const key = (k: string) => `${grp.completedMatchId}:rate-dm:${grp.player(k).userId}`;
+  const everyone = ["owner", "alice", "dan", "felix"]; // pete opted out earlier
+
+  // 11:00 the day after = 15h since the 20:00 kickoff. Old 08-10 cap would
+  // have excluded this; with the cap dropped the DMs must still fire.
+  const at11 = await grp.duePosts(londonAt(0, 11, 0));
+  const keys11 = at11.map((i) => i.key);
+  for (const k of everyone) expect(keys11).toContain(key(k));
+  expect(keys11).not.toContain(key("pete")); // still respects opt-out
+
+  // 07:00 the day after = before the 08:00 floor → silent.
+  const at7 = await grp.duePosts(londonAt(0, 7, 0));
+  expect(at7.filter((i) => i.key?.includes(":rate-dm:"))).toHaveLength(0);
+
+  // 22:00 on the kickoff day itself = match day → silent (no midnight DMs).
+  const atMatchDay = await grp.duePosts(londonAt(-1, 22, 0));
+  expect(atMatchDay.filter((i) => i.key?.includes(":rate-dm:"))).toHaveLength(0);
+});
+
 test("evening rating REMINDERS skip the opted-out player AND anyone who already rated", async ({ request, db }) => {
   const grp = await group(request, db);
   // Simulate the bot having ACK'd everyone's morning DM.

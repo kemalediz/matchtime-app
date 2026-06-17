@@ -439,8 +439,8 @@ export async function computeDuePosts(
   groupId: string,
   /** TEST-ONLY clock override — the e2e suite passes a fixed instant
    *  (via the x-test-now header on /api/whatsapp/due-posts, gated on
-   *  MT_TEST_MODE) so time-of-day windows (rate-dm 08-10, reminder
-   *  18-19) are deterministic. Never set in prod. */
+   *  MT_TEST_MODE) so time-of-day windows (rate-dm from 08:00 onward,
+   *  reminder 18-19) are deterministic. Never set in prod. */
   nowOverride?: Date,
 ): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
@@ -1458,10 +1458,11 @@ async function computeForMatch(
       ).map((mem) => mem.userId),
     );
 
-    // 6b + 6c. Rating DMs + group promo — HOLD until 08:00–09:00 London
-    //          the morning AFTER match day. Previously these fired the
-    //          moment the match flipped to COMPLETED, which for a
-    //          21:30 kickoff meant midnight DMs — players asleep, worst
+    // 6b + 6c. Rating DMs + group promo — HOLD until 08:00 London, then
+    //          fire any time from 08:00 onward the morning/day AFTER match
+    //          day (no upper bound). Previously these
+    //          fired the moment the match flipped to COMPLETED, which for
+    //          a 21:30 kickoff meant midnight DMs — players asleep, worst
     //          possible time to ask for a rating. Now we wait for a
     //          civilised hour the next morning. Idempotency keys unchanged
     //          so this is a one-time shift, not a retroactive resend.
@@ -1469,17 +1470,21 @@ async function computeForMatch(
       const matchDayKey = londonDateKey(m.date);
       const todayKey = londonDateKey(now);
       const hourNow = londonHour(now);
-      // Widened from 08-09 to 08-10 so the promo (which can only fire
-      // AFTER all rate DMs have landed — see below) still has runway
-      // when there are many players or the bot started mid-window.
-      // Pi DM rate-limit = 1/min, so 14 players = 14min; widening gives
-      // the promo room to land even at the upper edge.
+      // No upper bound on the hour: the DMs (and the promo, which can
+      // only fire AFTER all rate DMs have landed — see below) fire at any
+      // time from 08:00 London onward the morning/day after the match.
+      // We previously capped this at 10:00, but on a slow squad (Pi DM
+      // rate-limit = 1/min, so 14 players = 14min) or a bot that started
+      // mid-morning the window could expire before the promo got runway.
+      // Dropping the cap removes that race. The per-user idempotency key
+      // (`${matchId}:rate-dm:${userId}`, persisted in SentNotification)
+      // prevents any resend across the wider window AND across subsequent
+      // mornings still inside the 36h band, so widening is safe.
       const isMorningAfter =
         todayKey !== matchDayKey &&
         hoursSinceMatch >= 6 &&
         hoursSinceMatch <= 36 &&
-        hourNow >= 8 &&
-        hourNow < 10;
+        hourNow >= 8;
 
       if (isMorningAfter) {
         for (const a of confirmed) {

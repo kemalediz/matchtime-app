@@ -196,8 +196,8 @@ export default function PlayerGuidePage() {
 
       <h3>Rating DM — the morning after</h3>
       <p>
-        At <strong>08:00 the next day</strong>, every confirmed player
-        with a phone gets a personal DM with a magic link:
+        From <strong>08:00 the next day</strong> onward, every confirmed
+        player with a phone gets a personal DM with a magic link:
       </p>
       <blockquote>
         <p>
