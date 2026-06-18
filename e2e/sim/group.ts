@@ -356,6 +356,11 @@ export interface BatchItem {
   body: string;
   verdict?: StubVerdict;
   author?: { name: string | null; phone: string };
+  /** Simulate the message @-mentioning the bot ("@Match Time …"). Sets
+   *  the structured `botMentioned` signal the interaction-contract gate
+   *  reads. Default false/undefined = untagged. `tag` is an alias. */
+  botMentioned?: boolean;
+  tag?: boolean;
 }
 
 // ── The group itself ───────────────────────────────────────────────────
@@ -446,12 +451,16 @@ export class SimGroup {
         authorPhone = p.lid || !p.phone ? "" : p.phone.replace(/^\+/, "");
         authorName = p.name;
       }
+      const tagged = it.botMentioned ?? it.tag;
       return {
         waMessageId: id,
         body: it.body,
         authorPhone,
         authorName,
         timestamp: new Date().toISOString(),
+        // Only forward the structured signal when the spec set it, so the
+        // server's text fallback still exercises on untouched callers.
+        ...(typeof tagged === "boolean" ? { botMentioned: tagged } : {}),
       };
     });
     if (!LIVE_LLM) setLlmStub(stub);
@@ -477,10 +486,23 @@ export class SimGroup {
   async post(
     playerKey: string | null,
     body: string,
-    opts: { verdict?: StubVerdict; author?: { name: string | null; phone: string } } = {},
+    opts: {
+      verdict?: StubVerdict;
+      author?: { name: string | null; phone: string };
+      /** Simulate an @Match Time tag (structured botMentioned signal). */
+      botMentioned?: boolean;
+      tag?: boolean;
+    } = {},
   ): Promise<SimPostResult> {
     const batch = await this.postBatch([
-      { player: playerKey ?? undefined, body, verdict: opts.verdict, author: opts.author },
+      {
+        player: playerKey ?? undefined,
+        body,
+        verdict: opts.verdict,
+        author: opts.author,
+        botMentioned: opts.botMentioned,
+        tag: opts.tag,
+      },
     ]);
     return { ...batch.results[0], groupPosts: batch.groupPosts, dms: batch.dms, raw: batch.raw };
   }
@@ -606,6 +628,41 @@ export class SimGroup {
       `SELECT status, position FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`,
       [this.requireMatch(matchId), this.player(playerKey).userId],
     );
+  }
+
+  /** Insert an ADDITIONAL match for this org's activity and return its id.
+   *  Used by the rollover scenario (two upcoming matches at once). The
+   *  kickoff is `daysFromNow` days out at 20:00 London (negative = past);
+   *  attendanceDeadline is kickoff − 5h, mirroring createGroup. Optional
+   *  initial attendance can be seeded by player key. */
+  async addMatch(opts: {
+    daysFromNow: number;
+    status?: "UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED" | "COMPLETED";
+    attendance?: Array<{ key: string; status: AttStatus }>;
+  }): Promise<string> {
+    const id = `sim-match2-${nextMsgId()}`;
+    const date = londonAt(opts.daysFromNow, 20, 0);
+    await this.db.run(
+      `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, now())`,
+      [
+        id,
+        this.activityId,
+        date,
+        this.maxPlayers,
+        opts.status ?? "UPCOMING",
+        new Date(date.getTime() - 5 * 60 * 60 * 1000),
+      ],
+    );
+    let pos = 0;
+    for (const a of opts.attendance ?? []) {
+      await this.db.run(
+        `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, now())`,
+        [`sim-att2-${nextMsgId()}`, id, this.player(a.key).userId, a.status, ++pos],
+      );
+    }
+    return id;
   }
 
   /** Directly set attendance (test setup shortcut, not via the bot). */

@@ -80,7 +80,11 @@ test("repeating the request never re-DMs the same players for the same match", a
 test('"list the players" is a roster question — NEVER a recruit blast', async ({ request, db }) => {
   const grp = await group(request, db);
   const before = (await recruitDms(grp)).length;
-  const r = await grp.post("owner", "can you list the players for tuesday?", {
+  // Tagged: a roster question is answer-y → requires a tag under the
+  // interaction contract. The point of this test (a roster question must
+  // NOT be misrouted to a recruit blast) is preserved.
+  const r = await grp.post("owner", "@Match Time can you list the players for tuesday?", {
+    tag: true,
     verdict: {
       intent: "question",
       reply: "Here's the squad so far: 2/8 confirmed.",

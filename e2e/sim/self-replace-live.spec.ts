@@ -66,9 +66,12 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
       ).attach(request);
 
       // No verdict — the live model infers the swap from the message.
+      // Tagged: the message promotes another player (directed op) → the
+      // interaction contract requires an @Match Time tag.
       const r = await grp.post(
         "ehtisham",
-        "Can't make it — replace me with Aydın from the bench",
+        "@Match Time can't make it — replace me with Aydın from the bench",
+        { tag: true },
       );
 
       expect(await grp.dropped()).toContain("Ehtisham Ekin");
@@ -111,7 +114,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
         })
       ).attach(request);
 
-      const r = await grp.post("alice", "Move Aydın from bench to squad to replace Ehtisham");
+      const r = await grp.post("alice", "@Match Time move Aydın from bench to squad to replace Ehtisham", { tag: true });
 
       expect(await grp.dropped()).toContain("Ehtisham Ekin");
       expect(await grp.confirmed()).not.toContain("Ehtisham Ekin");
@@ -151,7 +154,10 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 
       // bilal is a plain PLAYER and is NOT Ehtisham — he can't pick the
       // replacement. The IN must NOT promote despite the free slot.
-      await grp.post("bilal", "replace Ehtisham with Aydın from the bench");
+      // Tagged so the message reaches the promote-AUTHORISATION gate (the
+      // gate under test); without the tag the interaction contract would
+      // suppress it for a different reason.
+      await grp.post("bilal", "@Match Time replace Ehtisham with Aydın from the bench", { tag: true });
 
       expect((await grp.attendanceOf("aydin"))?.status).toBe("BENCH");
       expect(await grp.bench()).toContain("Aydın Arslan");

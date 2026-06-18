@@ -66,7 +66,14 @@ export const asCollector = (page: Page, nextPath?: string) => signInAs(page, U.c
 /** POST a batch to /api/whatsapp/analyze the way the Pi bot does. */
 export async function postAnalyze(
   request: APIRequestContext,
-  messages: Array<{ waMessageId: string; body: string; authorPhone: string; authorName: string | null }>,
+  messages: Array<{
+    waMessageId: string;
+    body: string;
+    authorPhone: string;
+    authorName: string | null;
+    /** Simulate an @Match Time tag (interaction-contract gate signal). */
+    botMentioned?: boolean;
+  }>,
 ) {
   const res = await request.post("/api/whatsapp/analyze", {
     headers: { "x-api-key": E2E.WHATSAPP_API_KEY },

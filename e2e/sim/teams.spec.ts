@@ -114,7 +114,9 @@ test('(b) control: plain "generate teams" → Match.teamLabels stays empty, post
 
   expect(await matchLabels(grp)).toEqual([]);
 
-  const r = await grp.post("alice", "generate the teams", {
+  // Interaction contract: team ops require an @Match Time tag.
+  const r = await grp.post("alice", "@Match Time generate the teams", {
+    tag: true,
     verdict: {
       intent: "generate_teams_request",
       react: "⚽",

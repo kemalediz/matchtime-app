@@ -127,7 +127,10 @@ test.describe("admin demote and re-promotion", () => {
 
   test('admin "move Pete to the bench" → demote, slot freed, NO offer, single announce', async ({ request, db }) => {
     const grp = await group(request, db);
-    const r = await grp.post("alice", "Move Pete to the bench please", {
+    const r = await grp.post("alice", "@Match Time move Pete to the bench please", {
+      // Interaction contract: moving ANOTHER player (registerFor) is a
+      // directed op → requires an @Match Time tag.
+      tag: true,
       verdict: {
         intent: "question",
         registerFor: [{ name: "Pete", action: "BENCH" }],
@@ -208,7 +211,10 @@ test.describe("third-party drops", () => {
 
   test("third-party OUT for a player NOT in the batch is honoured", async ({ request, db }) => {
     const grp = await group(request, db);
-    const r = await grp.post("felix", "Dan can't make it tonight, he told me", {
+    const r = await grp.post("felix", "@Match Time Dan can't make it tonight, he told me", {
+      // Interaction contract: dropping ANOTHER player (registerFor OUT) is
+      // a directed op → requires an @Match Time tag.
+      tag: true,
       verdict: {
         intent: "out",
         registerFor: [{ name: "Dan", action: "OUT" }],
@@ -399,7 +405,10 @@ test.describe("admin-directed promote a specific bench player", () => {
     // The decisive admin instruction. OUT for Ehtisham FIRST (frees the
     // slot + opens an offer), then IN for Aydın WITH promoteFromBench
     // (admin sender) → fills the slot and resolves the offer.
-    const r = await grp.post("alice", "Move Aydın from bench to squad to replace Ehtisham", {
+    const r = await grp.post("alice", "@Match Time move Aydın from bench to squad to replace Ehtisham", {
+      // Interaction contract: promoting/replacing OTHER players is a
+      // directed op → requires an @Match Time tag.
+      tag: true,
       verdict: {
         intent: "in",
         registerAttendance: null,
@@ -469,7 +478,12 @@ test.describe("self-replace: player swaps themselves for a bench player", () => 
     // Ehtisham is a plain PLAYER (not in the OWNER/ADMIN seats). He gives
     // up his OWN slot for Aydın — the same OUT/IN registerFor pair the
     // admin-directed promote uses; the OUT target is the sender himself.
-    const r = await grp.post("ehtisham", "Can't make it — replace me with Aydın from the bench", {
+    const r = await grp.post("ehtisham", "@Match Time can't make it — replace me with Aydın from the bench", {
+      // Interaction contract: although the OUT half is the sender's own
+      // self-attendance (tag-free), the message ALSO promotes a named
+      // bench player (Aydın) — a directed op on another player — so the
+      // whole self-replace flow requires an @Match Time tag.
+      tag: true,
       verdict: {
         intent: "in",
         registerAttendance: null,
@@ -636,7 +650,13 @@ test.describe("unrelated non-admin cannot promote a bench player into the squad"
     const grp = await group(request, db);
     // bilal is a plain PLAYER and is NOT Ehtisham — he can't pick the
     // replacement. The IN must NOT promote despite the free slot.
-    await grp.post("bilal", "replace Ehtisham with Aydın from the bench", {
+    // Tagged so the message clears the interaction-contract gate and
+    // actually reaches the promote-AUTHORISATION gate — that's the gate
+    // under test here (an unrelated non-admin must not promote). Without
+    // the tag the contract gate would suppress it for a different reason,
+    // masking the authorisation check.
+    await grp.post("bilal", "@Match Time replace Ehtisham with Aydın from the bench", {
+      tag: true,
       verdict: {
         intent: "in",
         registerAttendance: null,

@@ -104,7 +104,8 @@ async function matchLabels(grp: SimGroup): Promise<string[]> {
 
       expect(await matchLabels(grp)).toEqual([]);
 
-      const r = await grp.post("alice", "generate the teams");
+      // Tagged: team ops require an @Match Time tag (interaction contract).
+      const r = await grp.post("alice", "@Match Time generate the teams", { tag: true });
 
       // No naming request → no per-match override.
       expect(await matchLabels(grp)).toEqual([]);

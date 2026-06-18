@@ -45,7 +45,9 @@ const group = async (request: APIRequestContext, db: TestDb) =>
 
 test('"who\'s on the bench?" → bench section rewritten from the DB, never the LLM\'s claim', async ({ request, db }) => {
   const grp = await group(request, db);
-  const r = await grp.post("alice", "who's on the bench?", {
+  const r = await grp.post("alice", "@Match Time who's on the bench?", {
+    // Interaction contract: a question is answer-y → requires a tag.
+    tag: true,
     verdict: {
       intent: "question",
       reply: "Bench is empty — nobody on standby.",
@@ -67,7 +69,8 @@ test("leaderboard replies pass through verbatim — never collapsed or canonical
     { player: "felix", body: "in" }, // state changes in the same batch
     {
       player: "owner",
-      body: "who's top of the standings?",
+      body: "@Match Time who's top of the standings?",
+      tag: true, // question → requires a tag under the interaction contract
       verdict: { intent: "question", reply: leaderboard, react: null, confidence: 0.95, reasoning: "stub" },
     },
   ]);
@@ -114,7 +117,8 @@ test('group "dm me …" → answered PRIVATELY via scoped Q&A, 📩 react, no gr
 
 test('"my stats" fast-path → 📊 react + personal magic-link DM, no LLM involved', async ({ request, db }) => {
   const grp = await group(request, db);
-  const r = await grp.post("pete", "can I see my stats?");
+  // Interaction contract: a stats request is answer-y → requires a tag.
+  const r = await grp.post("pete", "@Match Time can I see my stats?", { tag: true });
   expect(r.handledBy).toBe("fast-path");
   expect(r.intent).toBe("stats_link");
   expect(r.react).toBe("📊");

@@ -285,6 +285,11 @@ export interface AnalyzeInboundMessage {
   /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
    *  forwarded UNCHANGED for the onboarding admin parser. */
   mentions?: string[];
+  /** Did this message @-mention the bot's own JID? Computed on the Pi
+   *  (only it knows the bot's selfId). PRIMARY signal for the server's
+   *  @Match Time interaction-contract gate; the server falls back to body
+   *  text matching when this is absent (older Pi builds). */
+  botMentioned?: boolean;
 }
 
 export interface AnalyzeInboundHistory {

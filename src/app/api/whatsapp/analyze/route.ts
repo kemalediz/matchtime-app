@@ -64,6 +64,12 @@ import { computeEloDeltas } from "@/lib/elo";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { generateTeamsForMatch, formatTeamsPost } from "@/lib/team-generation";
 import { londonDateTimeToUtc, formatLondon } from "@/lib/london-time";
+import { selectRegistrationMatch } from "@/lib/registration-match-select";
+import {
+  messageTagsBot,
+  actionRequiresTag,
+  looksLikeHypotheticalOrPast,
+} from "@/lib/interaction-contract";
 
 interface InboundMessage {
   waMessageId: string;
@@ -74,6 +80,11 @@ interface InboundMessage {
   /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
    *  forwarded UNCHANGED for the onboarding admin parser. */
   mentions?: string[];
+  /** Did this message @-mention the bot's own JID? Computed on the Pi
+   *  (only it knows the bot's selfId) and forwarded as a structured
+   *  signal. PRIMARY input to the @Match Time interaction-contract gate;
+   *  `undefined` from older Pi builds falls back to body text matching. */
+  botMentioned?: boolean;
 }
 
 interface InboundHistory {
@@ -259,6 +270,10 @@ export async function POST(request: Request) {
   const statsRequestIds = new Set<string>();
   for (const m of fresh) {
     if (!STATS_REQUEST.test(m.body)) continue;
+    // Interaction contract: a stats request is an ANSWER-y action MT
+    // performs for a player → requires an @Match Time tag. Untagged
+    // "my stats" is ordinary chat; stay silent (don't DM, don't peel).
+    if (!messageTagsBot(m)) continue;
     const sender = senderById.get(m.waMessageId)!;
     const phone = (sender.phone || m.authorPhone || "").replace(/^\+/, "");
     if (!sender.userId || !phone) continue; // can't DM an unresolved sender
@@ -405,6 +420,9 @@ export async function POST(request: Request) {
   for (const m of fresh) {
     if (statsRequestIds.has(m.waMessageId)) continue;
     if (!DM_ME.test(m.body)) continue;
+    // Interaction contract: "DM me <question>" is an answer MT gives →
+    // requires an @Match Time tag. Untagged → ordinary chat, stay silent.
+    if (!messageTagsBot(m)) continue;
     const sender = senderById.get(m.waMessageId)!;
     const phone = (sender.phone || m.authorPhone || "").replace(/^\+/, "");
     if (!sender.userId || !phone) continue; // can't DM an unresolved sender
@@ -530,25 +548,31 @@ export async function POST(request: Request) {
     if (statsRequestIds.has(fresh[i].waMessageId)) fresh.splice(i, 1);
   }
 
-  // Pre-load the next upcoming match so we can post-process LLM replies
-  // through enforceProximity — guards against "20:30 vs 21:30" style
-  // BST/UTC mistakes the LLM occasionally makes when it tries to
+  // Pre-load the ACTIVE registration match so we can post-process LLM
+  // replies through enforceProximity — guards against "20:30 vs 21:30"
+  // style BST/UTC mistakes the LLM occasionally makes when it tries to
   // helpfully convert times.
-  const nextMatchForReply = await db.match.findFirst({
-    where: {
-      activity: { orgId: org.id },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-      attendanceDeadline: { gt: new Date() },
-    },
-    orderBy: { date: "asc" },
-    include: {
-      attendances: {
-        where: { status: "CONFIRMED" },
-        include: { user: { select: { name: true } } },
-        orderBy: { position: "asc" },
-      },
-    },
-  });
+  //
+  // UNIFIED with findRegistrationMatch (2026-06-18 rollover fix): this
+  // MUST be the exact same match every attendance write lands on, picked
+  // by the shared pure selector (soonest upcoming, regardless of fullness
+  // or attendanceDeadline). Previously this used an attendanceDeadline
+  // filter, so once tonight's deadline passed it silently drifted to next
+  // week's match — the reply/reconciliation passes then described a
+  // different match than the one the write touched.
+  const activeMatchForReply = await findRegistrationMatch(org.id);
+  const nextMatchForReply = activeMatchForReply
+    ? await db.match.findFirst({
+        where: { id: activeMatchForReply.id },
+        include: {
+          attendances: {
+            where: { status: "CONFIRMED" },
+            include: { user: { select: { name: true } } },
+            orderBy: { position: "asc" },
+          },
+        },
+      })
+    : null;
 
   const history = (body.history ?? []).map((h) => ({
     authorName: h.authorName,
@@ -684,6 +708,69 @@ export async function POST(request: Request) {
     const msg = fresh[i];
     let verdict = verdicts[i];
     const sender = senderById.get(msg.waMessageId)!;
+
+    // ── INTERACTION CONTRACT — hypothetical/past-tense self seatbelt ──
+    //    "LLM extracts, code decides." A hypothetical ("If I was in the
+    //    team it won't be ruined"), counterfactual ("I would've been
+    //    in") or past-tense ("I was in last week") self-statement must
+    //    NEVER become an attendance write, even if the LLM slips. Strip
+    //    any self attendance write the verdict carries (the third-party
+    //    registerFor is left alone — that's a different, gated path) and
+    //    fall through as noise so it's neither acted on nor replied to.
+    if (
+      looksLikeHypotheticalOrPast(msg.body) &&
+      (verdict.registerAttendance === "IN" ||
+        verdict.registerAttendance === "OUT" ||
+        verdict.registerAttendance === "BENCH" ||
+        verdict.intent === "in" ||
+        verdict.intent === "out" ||
+        verdict.intent === "replacement_request") &&
+      !(verdict.registerFor && verdict.registerFor.length > 0)
+    ) {
+      console.warn(
+        `[analyze] interaction-contract: hypothetical/past-tense self-statement "${(msg.body || "").slice(0, 60)}" ` +
+          `— suppressing attendance write (${msg.waMessageId}). Reasoning was: ${verdict.reasoning}`,
+      );
+      verdict = {
+        ...verdict,
+        intent: "noise",
+        registerAttendance: null,
+        react: null,
+        reply: null,
+      };
+      verdicts[i] = verdict;
+    }
+
+    // ── INTERACTION CONTRACT — @Match Time tag gate ──────────────────
+    //    ACT WITHOUT A TAG only for a player's OWN clear self-attendance.
+    //    Everything else MT could DO or ANSWER (questions, team ops,
+    //    moving/benching OTHER players, reminders, stats, payment, score)
+    //    requires an explicit @Match Time mention. Untagged → noise: no
+    //    action, no reply, no reaction, DB untouched. Keeps MT quiet on
+    //    banter and predictable about when it speaks. (The squad-from-
+    //    list admin pipeline stays tag-free — it never reaches here.)
+    if (actionRequiresTag(verdict) && !messageTagsBot(msg)) {
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: "ignored",
+        intent: "noise",
+        action: null,
+        confidence: 1,
+        reasoning: `interaction-contract: "${verdict.intent}" needs @Match Time tag; message untagged — suppressed`,
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      results.push({
+        waMessageId: msg.waMessageId,
+        handledBy: "ignored",
+        intent: "noise",
+        react: null,
+        reply: null,
+      });
+      continue;
+    }
 
     // ── Attendance OFF (MoM/ratings-only org, e.g. Sutton Lads): never
     //    track the squad. Drop attendance-class verdicts so the IN/OUT
@@ -1850,27 +1937,28 @@ const KEYCAP: Record<number, string> = {
  *   2. Otherwise return the soonest non-completed match where
  *      date >= today.
  */
+/**
+ * The ACTIVE registration match — the single match every attendance WRITE
+ * lands on. Delegates the date/state decision to the pure, unit-tested
+ * `selectRegistrationMatch` so the rule (soonest upcoming, regardless of
+ * fullness or attendanceDeadline; blocked while a previous match is still
+ * in flight) is one source of truth shared with the LLM-context + reply
+ * selectors below. Fixes the 2026-06-18 Sutton Lads rollover bug where a
+ * FULL this-week match let casual "In"s land on next week's empty match.
+ */
 async function findRegistrationMatch(orgId: string) {
-  const todayStart = new Date();
-  todayStart.setUTCHours(0, 0, 0, 0);
-  const inFlight = await db.match.findFirst({
+  // Load every non-completed match for the org (always a small set — the
+  // cron completes finished matches). The pure selector then decides the
+  // active match and the in-flight block deterministically.
+  const candidates = await db.match.findMany({
     where: {
       activity: { orgId },
       status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-      date: { lt: todayStart },
-    },
-    orderBy: { date: "desc" },
-    select: { id: true, date: true, status: true },
-  });
-  if (inFlight) return null;
-  return db.match.findFirst({
-    where: {
-      activity: { orgId },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-      date: { gte: todayStart },
     },
     orderBy: { date: "asc" },
   });
+  const picked = selectRegistrationMatch(candidates);
+  return picked ?? null;
 }
 
 async function executeVerdict(args: {

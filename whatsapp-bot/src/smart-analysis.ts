@@ -43,6 +43,10 @@ interface Pending {
   /** Raw WhatsApp mention JIDs (e.g. "447700900123@c.us", "…@lid"),
    *  forwarded UNCHANGED so the onboarding admin parser can resolve them. */
   mentions?: string[];
+  /** Did this message @-mention the bot's own JID? Computed here on the Pi
+   *  (only the Pi knows its selfId); forwarded as the PRIMARY signal for
+   *  the server's @Match Time interaction-contract gate. */
+  botMentioned?: boolean;
   /** Kept so the bot can react/reply to the exact wweb.js Message later. */
   msg: Message;
 }
@@ -136,6 +140,12 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     }
   }
 
+  // Did this message @-mention the bot itself? Only the Pi knows its own
+  // JID (client.info.wid), so compute the structured signal HERE and
+  // forward it — the server can't match its own JID inside mentions[].
+  const selfId = client.info?.wid?._serialized;
+  const botMentioned = !!selfId && mentionedIds.includes(selfId);
+
   const pending: Pending = {
     waMessageId,
     body,
@@ -145,6 +155,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     // Forward the RAW mention JIDs unchanged — the server-side onboarding
     // parser resolves "<digits>@c.us" → phone and "<digits>@lid" → no phone.
     mentions: mentionedIds.length > 0 ? mentionedIds : undefined,
+    botMentioned,
     msg,
   };
 
@@ -179,6 +190,7 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
       authorName: p.authorName,
       timestamp: p.timestamp,
       mentions: p.mentions,
+      botMentioned: p.botMentioned,
     }));
     const history = getHistory(groupId);
 

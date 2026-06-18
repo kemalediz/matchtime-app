@@ -115,7 +115,7 @@ test("third-party BENCH demote: CONFIRMED → BENCH, slot freed, no duplicate", 
     },
   });
   const res = await postAnalyze(request, [
-    { waMessageId: id, body: "Move Tom to the bench please", authorPhone: "447700900001", authorName: "Alex Admin" },
+    { waMessageId: id, body: "@Match Time move Tom to the bench please", authorPhone: "447700900001", authorName: "Alex Admin", botMentioned: true },
   ]);
   const r = res.results.find((x: { waMessageId: string }) => x.waMessageId === id);
   expect(r.react).toBe("🪑");
@@ -160,7 +160,7 @@ test("bench-demote SAFETY NET: reply claims the move but registerFor is empty �
     },
   });
   const res = await postAnalyze(request, [
-    { waMessageId: id, body: "Can you put Ian on the bench for now", authorPhone: "447700900001", authorName: "Alex Admin" },
+    { waMessageId: id, body: "@Match Time can you put Ian on the bench for now", authorPhone: "447700900001", authorName: "Alex Admin", botMentioned: true },
   ]);
   const r = res.results.find((x: { waMessageId: string }) => x.waMessageId === id);
   expect(r.react).toBe("🪑");
@@ -182,8 +182,8 @@ test("multiple squad-state replies collapse into ONE batch-final status post", a
     [idB]: { intent: "question", reply: "Bench is empty — no standby players.", react: null, confidence: 0.95, reasoning: "stub" },
   });
   const res = await postAnalyze(request, [
-    { waMessageId: idA, body: "are we full for tuesday?", authorPhone: "447700900001", authorName: "Alex Admin" },
-    { waMessageId: idB, body: "who's on the bench?", authorPhone: "447700900002", authorName: "Colin Collector" },
+    { waMessageId: idA, body: "@Match Time are we full for tuesday?", authorPhone: "447700900001", authorName: "Alex Admin", botMentioned: true },
+    { waMessageId: idB, body: "@Match Time who's on the bench?", authorPhone: "447700900002", authorName: "Colin Collector", botMentioned: true },
   ]);
   const rA = res.results.find((x: { waMessageId: string }) => x.waMessageId === idA);
   const rB = res.results.find((x: { waMessageId: string }) => x.waMessageId === idB);

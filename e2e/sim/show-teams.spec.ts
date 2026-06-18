@@ -177,7 +177,9 @@ test("(c) regression: generate_teams_request still generates teams", async ({
 
   expect((await teamRows(grp)).length).toBe(0);
 
-  const r = await grp.post("alice", "generate the teams", {
+  // Interaction contract: team ops require an @Match Time tag.
+  const r = await grp.post("alice", "@Match Time generate the teams", {
+    tag: true,
     verdict: {
       intent: "generate_teams_request",
       react: "⚽",

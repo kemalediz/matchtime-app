@@ -37,7 +37,8 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
     { player: "dan", body: "in" }, // default-inferred IN verdict
     {
       player: "owner",
-      body: "are we full for tuesday?",
+      body: "@Match Time are we full for tuesday?",
+      tag: true, // question → requires a tag under the interaction contract
       verdict: {
         intent: "question",
         reply: "We're 5/5 — full squad ✅ no more spots.",
@@ -48,7 +49,8 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
     },
     {
       player: "alice",
-      body: "who's on the bench?",
+      body: "@Match Time who's on the bench?",
+      tag: true, // question → requires a tag under the interaction contract
       verdict: {
         intent: "question",
         reply: "Bench is empty — nobody on standby right now.",
@@ -81,7 +83,8 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
 
 test("a single stale squad reply is re-canonicalised: count, slots-open and need-N prose all recomputed", async ({ request, db }) => {
   const grp = await group(request, db);
-  const r = await grp.post("pete", "how many are we?", {
+  const r = await grp.post("pete", "@Match Time how many are we?", {
+    tag: true,
     verdict: {
       intent: "question",
       reply: "We're 2/5 — three slots open, need *3 more* lads!",
@@ -100,7 +103,8 @@ test("a single stale squad reply is re-canonicalised: count, slots-open and need
 test('never "5/5 with a slot open": full-squad truth wipes slot-open prose', async ({ request, db }) => {
   const grp = await group(request, db);
   await grp.post("felix", "in"); // 5/5 now
-  const r = await grp.post("owner", "where are we at?", {
+  const r = await grp.post("owner", "@Match Time where are we at?", {
+    tag: true,
     verdict: {
       intent: "question",
       reply: "We're 4/5 — one slot open for tuesday.",
@@ -116,7 +120,8 @@ test('never "5/5 with a slot open": full-squad truth wipes slot-open prose', asy
 
 test("never a total above the cap: impossible player counts are clamped to the truth", async ({ request, db }) => {
   const grp = await group(request, db);
-  const r = await grp.post("alice", "strong turnout this week", {
+  const r = await grp.post("alice", "@Match Time strong turnout this week?", {
+    tag: true,
     verdict: {
       intent: "question",
       reply: "We've got 9 players for Tuesday — squad looks strong.",
@@ -132,7 +137,8 @@ test("never a total above the cap: impossible player counts are clamped to the t
 test('never "X moves up from the bench" while X is still benched', async ({ request, db }) => {
   const grp = await group(request, db);
   expect(await grp.bench()).toContain("Greg Gale"); // still benched
-  const r = await grp.post("owner", "are we sorted?", {
+  const r = await grp.post("owner", "@Match Time are we sorted?", {
+    tag: true,
     verdict: {
       intent: "question",
       reply: "Greg Gale moves up from the bench — all sorted.",
@@ -162,7 +168,8 @@ test("a raw-digit pushname never appears as a player name anywhere", async ({ re
     },
     {
       player: "owner",
-      body: "who's in then?",
+      body: "@Match Time who's in then?",
+      tag: true,
       verdict: {
         intent: "question",
         reply: "Squad check: we're 3/5 — need 2.",
@@ -173,7 +180,8 @@ test("a raw-digit pushname never appears as a player name anywhere", async ({ re
     },
     {
       player: "alice",
-      body: "and the bench?",
+      body: "@Match Time and the bench?",
+      tag: true,
       verdict: {
         intent: "question",
         reply: "Bench is empty.",
