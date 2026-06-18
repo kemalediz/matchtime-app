@@ -34,6 +34,35 @@ const HISTORY_PER_GROUP = 15;
 const FLUSH_INTERVAL_MS = 10 * 60 * 1000;
 const URGENCY_WINDOW_MS = 60 * 60 * 1000; // within 1h of kickoff → flush immediately
 
+// ─── Immediate-flush decision (pure, unit-tested) ───────────────────
+/**
+ * Decide whether a freshly-enqueued message should trigger an immediate
+ * flush of its group's buffer instead of waiting for the next 10-min
+ * tick — and, if so, why. Pure function so the precedence is testable
+ * in isolation.
+ *
+ * Precedence (highest first):
+ *   1. "mention"  — the bot was @-mentioned; a tagged command/question
+ *                   should reply within seconds, not after a 10-min wait.
+ *   2. "urgency"  — kickoff is within `urgencyWindowMs` from now.
+ *   3. "full"     — the buffer has reached its cap.
+ *   4. null       — leave it on the 10-min batch (bare In/Out, banter).
+ */
+export function immediateFlushReason(args: {
+  botMentioned: boolean;
+  bufferLen: number;
+  maxBufferLen: number;
+  kickoffMs: number | null;
+  nowMs: number;
+  urgencyWindowMs: number;
+}): "mention" | "urgency" | "full" | null {
+  const { botMentioned, bufferLen, maxBufferLen, kickoffMs, nowMs, urgencyWindowMs } = args;
+  if (botMentioned) return "mention";
+  if (typeof kickoffMs === "number" && kickoffMs - nowMs <= urgencyWindowMs) return "urgency";
+  if (bufferLen >= maxBufferLen) return "full";
+  return null;
+}
+
 interface Pending {
   waMessageId: string;
   body: string;
@@ -163,13 +192,31 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   arr.push(pending);
   bufferByGroup.set(msg.from, arr);
 
-  // Urgency: match kicks off within URGENCY_WINDOW → flush now so any
-  // "can I still join?" style questions land in the group without a
-  // 10-min wait. Otherwise the buffer just sits until the next tick.
-  const kickoff = nextKickoffMsByGroup.get(msg.from);
-  const urgent = typeof kickoff === "number" && kickoff - Date.now() <= URGENCY_WINDOW_MS;
-  if (urgent) {
-    console.log(`[smart] urgency flush for ${msg.from} (${arr.length} pending)`);
+  // Decide whether to flush immediately or leave the message on the
+  // 10-min batch. A direct @Match Time mention beats everything (tagged
+  // commands/questions should reply within seconds); then urgency (match
+  // kicks off within URGENCY_WINDOW); then a full buffer. Bare In/Out and
+  // banter return null and sit until the next tick.
+  // The buffer has no live cap, so pass Infinity — the "full" branch
+  // stays a tested no-op here and live batching is unchanged.
+  const kickoff = nextKickoffMsByGroup.get(msg.from) ?? null;
+  const reason = immediateFlushReason({
+    botMentioned,
+    bufferLen: arr.length,
+    maxBufferLen: Infinity,
+    kickoffMs: kickoff,
+    nowMs: Date.now(),
+    urgencyWindowMs: URGENCY_WINDOW_MS,
+  });
+  if (reason) {
+    if (reason === "mention") {
+      console.log(`[smart] mention flush for ${msg.from} (${arr.length} pending)`);
+    } else if (reason === "urgency") {
+      console.log(`[smart] urgency flush for ${msg.from} (${arr.length} pending)`);
+    } else {
+      console.log(`[smart] ${reason} flush for ${msg.from} (${arr.length} pending)`);
+    }
+    // flushGroup's inFlightFlush guard prevents double-running per group.
     await flushGroup(client, msg.from);
   }
 }
