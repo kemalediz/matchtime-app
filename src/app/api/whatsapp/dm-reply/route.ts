@@ -27,6 +27,8 @@ import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { answerScopedQuestion, pickRelevantOrgForUser, looksLikeQuestion } from "@/lib/dm-qa";
 import { handleCollectorFeeReply } from "@/lib/payment-flow";
 import { setRatingDmOptOut } from "@/lib/notification-prefs";
+import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import { resolveTentative } from "@/lib/tentative-store";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -356,6 +358,108 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true, handled: "rating-dm-opt-out", optOut });
       }
       // Write didn't land — don't lie. Fall through to normal handling.
+    }
+  }
+
+  // ── Tentative-availability follow-up reply (IN/OUT) ─────────────────
+  //   The bot DMs a player who was a MAYBE ~24h before kickoff asking for
+  //   a firm IN/OUT. Their reply lands here. If they have an OPEN
+  //   (unresolved) tentative row, classify IN/OUT, write attendance via
+  //   the same lib the group path uses (against the deterministic active
+  //   match), and resolve the tentative so no duplicate follow-ups fire.
+  //   Runs BEFORE fee/recruit/survey so a firm "IN"/"OUT" isn't misread.
+  {
+    const openTentatives = await db.tentativeAvailability.findMany({
+      where: { userId: user.id, resolvedAt: null },
+      include: {
+        match: {
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            activity: { select: { orgId: true } },
+          },
+        },
+      },
+    });
+    // Only chase-able matches (not completed/cancelled), soonest first.
+    const active = openTentatives
+      .filter(
+        (t) =>
+          t.match.status === "UPCOMING" ||
+          t.match.status === "TEAMS_GENERATED" ||
+          t.match.status === "TEAMS_PUBLISHED",
+      )
+      .sort((a, b) => a.match.date.getTime() - b.match.date.getTime());
+
+    if (active.length > 0) {
+      const t = (text ?? "").trim().toLowerCase().replace(/[!.\s]+$/g, "");
+      const isIn = /^(in|i'?m in|count me in|in please|yes,?\s*(i'?m )?in|yes|y|👍|✅)\b/.test(t) || t === "in" || t === "yes";
+      const isOut =
+        /^(out|i'?m out|count me out|can'?t make it|cant make it|no,?\s*(i'?m )?out|no|nope|nah|👎)\b/.test(t) ||
+        t === "out" ||
+        t === "no";
+
+      // Ambiguous reply → one gentle re-ask, scoped to the soonest match.
+      if (!isIn && !isOut) {
+        const row = active[0];
+        const replyPhone = (await db.user.findUnique({
+          where: { id: user.id },
+          select: { phoneNumber: true },
+        }))?.phoneNumber?.replace(/^\+/, "") ?? null;
+        if (replyPhone) {
+          await db.botJob.create({
+            data: {
+              orgId: row.match.activity.orgId,
+              kind: "dm",
+              phone: replyPhone,
+              text: "No worries — just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏",
+            },
+          });
+        }
+        return NextResponse.json({ ok: true, handled: "tentative-followup-unclear" });
+      }
+
+      const row = active[0];
+      try {
+        if (isIn) {
+          await registerAttendance(user.id, row.match.id, { promoteFromBench: true });
+        } else {
+          // Only cancel if they actually have a CONFIRMED/BENCH row —
+          // a tentative player usually has none, in which case OUT is a
+          // no-op (cancelAttendance throws "Not attending" otherwise).
+          const existing = await db.attendance.findFirst({
+            where: { userId: user.id, matchId: row.match.id, status: { in: ["CONFIRMED", "BENCH"] } },
+            select: { id: true },
+          });
+          if (existing) await cancelAttendance(user.id, row.match.id);
+        }
+      } catch (err) {
+        console.error("[dm-reply] tentative IN/OUT attendance write failed:", err);
+      }
+      await resolveTentative({ matchId: row.match.id, userId: user.id }).catch(() => {});
+
+      const replyPhone = (await db.user.findUnique({
+        where: { id: user.id },
+        select: { phoneNumber: true },
+      }))?.phoneNumber?.replace(/^\+/, "") ?? null;
+      if (replyPhone) {
+        await db.botJob.create({
+          data: {
+            orgId: row.match.activity.orgId,
+            kind: "dm",
+            phone: replyPhone,
+            text: isIn
+              ? "✅ Brilliant — you're in! See you there ⚽"
+              : "👋 No worries, thanks for letting me know — maybe next time!",
+          },
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        handled: "tentative-followup",
+        decision: isIn ? "in" : "out",
+      });
     }
   }
 

@@ -59,6 +59,7 @@ import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { normaliseName } from "@/lib/squad-from-list";
 import { handleOnboardingTurn } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import { recordTentative, resolveTentative } from "@/lib/tentative-store";
 import { isPromoteFromBenchAuthorized } from "@/lib/promote-authorization";
 import { computeEloDeltas } from "@/lib/elo";
 import { resolveTeamLabels } from "@/lib/team-labels";
@@ -2000,6 +2001,36 @@ async function executeVerdict(args: {
     }
   }
 
+  // ── Tentative availability (conditional_in, flavour b) ───────────
+  //    PERSONAL-UNCERTAINTY conditionals ("maybe, I'll confirm later",
+  //    "in if my back holds up") classify as conditional_in with NO
+  //    attendance write (registerAttendance:null). Instead of leaving
+  //    the admin to chase manually, record the player as a MAYBE for
+  //    the active match and schedule a follow-up DM ~24h before kickoff
+  //    (TENTATIVE_FOLLOWUP_LEAD_MS — see lib/tentative-followup.ts).
+  //    Idempotent: one unresolved row per (match,user). Flavour (a)
+  //    standing-offer conditionals carry registerAttendance:"BENCH" and
+  //    fall through to the registerAttendance branch below — they get a
+  //    real bench slot, NOT a follow-up, so they're excluded here.
+  if (
+    verdict.intent === "conditional_in" &&
+    !verdict.registerAttendance &&
+    user
+  ) {
+    const matchForOrg = await findRegistrationMatch(orgId);
+    if (matchForOrg) {
+      // Best-effort: never let a recording hiccup change the bot's reply.
+      await recordTentative({
+        matchId: matchForOrg.id,
+        userId: user.id,
+        kickoff: matchForOrg.date,
+      }).catch((err) =>
+        console.error("[analyze] recordTentative failed:", err),
+      );
+    }
+    return { react: finalReact, reply: finalReply };
+  }
+
   // ── Last-mile react rewrite for IN intent ────────────────────────
   //    When a player says IN but they're already CONFIRMED/BENCH for
   //    the match, the LLM correctly leaves registerAttendance null
@@ -2108,6 +2139,12 @@ async function executeVerdict(args: {
           await cancelAttendance(user.id, matchForOrg.id);
           finalReact = "👋";
         }
+        // A firm IN/OUT resolves any pending tentative follow-up for
+        // this player on this match — no point DMing "in or out?" once
+        // they've answered. Idempotent + best-effort.
+        await resolveTentative({ matchId: matchForOrg.id, userId: user.id }).catch(
+          (err) => console.error("[analyze] resolveTentative failed:", err),
+        );
       } catch (err) {
         console.error("[analyze] attendance update failed:", err);
       }

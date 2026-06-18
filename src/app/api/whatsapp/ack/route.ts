@@ -66,5 +66,21 @@ export async function POST(request: Request) {
     }).catch(() => {});
   }
 
+  // Tentative-availability follow-up keys look like
+  // `<matchId>:tentative-followup:<userId>` — stamp notifiedAt on the row
+  // so the scheduler's dueRows query stops returning it (the question has
+  // now been asked; the player's IN/OUT reply resolves it).
+  if (key.includes(":tentative-followup:")) {
+    const [mId, , uId] = key.split(":");
+    if (mId && uId) {
+      await db.tentativeAvailability
+        .updateMany({
+          where: { matchId: mId, userId: uId, notifiedAt: null },
+          data: { notifiedAt: new Date() },
+        })
+        .catch(() => {});
+    }
+  }
+
   return NextResponse.json({ ok: true });
 }

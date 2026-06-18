@@ -20,6 +20,7 @@ import { buildShortMagicLinkUrl } from "./short-link";
 import { findOrgAdminsWithPhone } from "./org";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
+import { evaluateFollowupGuard } from "./tentative-followup";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
 import { resolveTeamLabels } from "./team-labels";
 import { gbp } from "./payments";
@@ -578,6 +579,85 @@ export async function computeDuePosts(
           multi: job.pollMulti,
         });
       }
+    }
+  }
+
+  // ── Tentative-availability follow-up DMs ─────────────────────────────
+  // A player who signalled UNCERTAIN availability ("maybe, will confirm
+  // later", "in if my back holds up") was recorded as a MAYBE for a match
+  // with a dueAt = kickoff − 24h (see lib/tentative-followup.ts). When a
+  // row falls due we re-check the player's CURRENT state (the send-time
+  // guard): if they've since confirmed/dropped, the squad is full, or the
+  // match completed/cancelled, the question is moot — resolve the row
+  // silently and DON'T DM. Otherwise DM them a short, PII-safe nudge for a
+  // firm IN/OUT. Idempotency key `<matchId>:tentative-followup:<userId>`;
+  // notifiedAt is stamped on ACK so it fires exactly once.
+  {
+    const dueRows = await db.tentativeAvailability.findMany({
+      where: {
+        resolvedAt: null,
+        notifiedAt: null,
+        dueAt: { lte: now },
+        match: { activity: { orgId: org.id } },
+      },
+      include: {
+        user: { select: { id: true, name: true, phoneNumber: true } },
+        match: {
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            maxPlayers: true,
+            activity: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { dueAt: "asc" },
+      take: 20,
+    });
+    for (const row of dueRows) {
+      const key = `${row.match.id}:tentative-followup:${row.user.id}`;
+      if (sentKeys.has(key)) continue;
+
+      // Send-time guard: re-check current state. Resolve-and-skip when the
+      // question is moot; only DM genuinely-unresolved players.
+      const confirmedCount = await db.attendance.count({
+        where: { matchId: row.match.id, status: "CONFIRMED" },
+      });
+      const att = await db.attendance.findUnique({
+        where: { matchId_userId: { matchId: row.match.id, userId: row.user.id } },
+        select: { status: true },
+      });
+      const decision = evaluateFollowupGuard({
+        matchStatus: row.match.status,
+        attendanceStatus: att?.status ?? null,
+        confirmedCount,
+        maxPlayers: row.match.maxPlayers,
+      });
+      if (decision === "skip") {
+        // Moot — mark resolved so it never re-evaluates or DMs.
+        await db.tentativeAvailability
+          .update({ where: { id: row.id }, data: { resolvedAt: now } })
+          .catch(() => {});
+        continue;
+      }
+
+      // No phone on record → can't DM. Leave the row open (an admin can
+      // chase) rather than spam the group; don't resolve.
+      if (!row.user.phoneNumber) continue;
+
+      const firstName = (row.user.name ?? "there").split(" ")[0];
+      const when = format(row.match.date, "EEE d MMM 'at' HH:mm");
+      out.push({
+        kind: "dm",
+        key,
+        targetUser: row.user.id,
+        phone: row.user.phoneNumber.replace(/^\+/, ""),
+        matchId: row.match.id,
+        text:
+          `Hi ${firstName} 👋 You were a *maybe* for *${row.match.activity.name}* on ${when}.\n\n` +
+          `Are you in or out? Just reply *IN* or *OUT* and I'll sort the squad 🙏`,
+      });
     }
   }
 

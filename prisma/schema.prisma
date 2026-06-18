@@ -97,33 +97,34 @@ model User {
   homeAreaLat            Float?
   homeAreaLng            Float?
 
-  accounts          Account[]
-  sessions          Session[]
-  memberships       Membership[]
-  attendances       Attendance[]
-  ratingsGiven      Rating[]         @relation("RatingsGiven")
-  ratingsReceived   Rating[]         @relation("RatingsReceived")
-  momVotesGiven     MoMVote[]        @relation("MoMVotesGiven")
-  momVotesReceived  MoMVote[]        @relation("MoMVotesReceived")
-  teamAssignments   TeamAssignment[]
-  activityPositions PlayerActivityPosition[]
-  ratingAdjustments RatingAdjustment[]
-  aliases           UserAlias[]
-  rosterSurveyDMs   RosterSurveyDM[]
-  rosterSurveyResponses RosterSurveyResponse[]
+  accounts                Account[]
+  sessions                Session[]
+  memberships             Membership[]
+  attendances             Attendance[]
+  ratingsGiven            Rating[]                 @relation("RatingsGiven")
+  ratingsReceived         Rating[]                 @relation("RatingsReceived")
+  momVotesGiven           MoMVote[]                @relation("MoMVotesGiven")
+  momVotesReceived        MoMVote[]                @relation("MoMVotesReceived")
+  teamAssignments         TeamAssignment[]
+  activityPositions       PlayerActivityPosition[]
+  ratingAdjustments       RatingAdjustment[]
+  aliases                 UserAlias[]
+  rosterSurveyDMs         RosterSurveyDM[]
+  rosterSurveyResponses   RosterSurveyResponse[]
+  tentativeAvailabilities TentativeAvailability[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Organisation {
-  id                 String   @id @default(cuid())
+  id                 String  @id @default(cuid())
   name               String
-  slug               String   @unique
+  slug               String  @unique
   logo               String?
-  inviteCode         String   @unique @default(cuid())
+  inviteCode         String  @unique @default(cuid())
   whatsappGroupId    String?
-  whatsappBotEnabled Boolean  @default(false)
+  whatsappBotEnabled Boolean @default(false)
 
   /// The player who collects match fees on behalf of the group.
   /// Often a trusted long-serving member, not always the OWNER
@@ -171,13 +172,13 @@ model Organisation {
   /// flow. Payment is the pre-existing `paymentTrackingEnabled`
   /// (default OFF, opt-in) — left as-is so its current gates and
   /// Sutton's opted-out state don't change.
-  featureAttendance    Boolean @default(true)  // IN/OUT tracking, squad list, chase, short-squad replies
-  featureBench         Boolean @default(true)  // bench prompts, fill-on-drop, bench-confirmation
-  featureTeamBalancing Boolean @default(true)  // generate_teams_request + the balancer
-  featureMomVoting     Boolean @default(true)  // MoM poll + 5-day announcement
-  featurePlayerRating  Boolean @default(true)  // post-match rating links/DMs
-  featureReminders     Boolean @default(true)  // @MatchTime personal reminder_request
-  featureStatsQa       Boolean @default(true)  // Recent-History stats answers
+  featureAttendance    Boolean @default(true) // IN/OUT tracking, squad list, chase, short-squad replies
+  featureBench         Boolean @default(true) // bench prompts, fill-on-drop, bench-confirmation
+  featureTeamBalancing Boolean @default(true) // generate_teams_request + the balancer
+  featureMomVoting     Boolean @default(true) // MoM poll + 5-day announcement
+  featurePlayerRating  Boolean @default(true) // post-match rating links/DMs
+  featureReminders     Boolean @default(true) // @MatchTime personal reminder_request
+  featureStatsQa       Boolean @default(true) // Recent-History stats answers
 
   /// "Squad from pasted list" mode (Amir's Thursday group shape, 2026-05-20).
   /// Some groups don't say IN/OUT — instead, every player copies the latest
@@ -243,7 +244,6 @@ model Organisation {
  * conversational setup IN THE GROUP (anyone can answer): gather the
  * event details, then the feature menu, then create
  * Sport/Activity/Match + flip the Phase-1 feature flags.
- *
  * One active row per WhatsApp group. `stage` drives the LLM's next
  * question; collected answers accumulate as we go. orgId is filled in
  * once we provision the Organisation (at "features" stage, so the
@@ -251,7 +251,7 @@ model Organisation {
  * FeatureKey strings the group chose.
  */
 model OnboardingSession {
-  id              String   @id @default(cuid())
+  id              String  @id @default(cuid())
   whatsappGroupId String
   /// Filled once the Organisation is provisioned (features stage).
   orgId           String?
@@ -268,42 +268,42 @@ model OnboardingSession {
   /// "completed"  → Activity/Match created, flags set, normal ops
   /// "dormant"    → nobody consented after the intro; bot stays silent
   /// "abandoned"  → admin/cron cleaned up a stale session
-  stage           String   @default("collecting")
+  stage           String  @default("collecting")
 
   /// How this session started: "setup-trigger" (legacy "@MatchTime setup"),
   /// "group-add" (bot detected being added to the group), or
   /// "dashboard-pair" (Phase 2, reserved).
-  source          String   @default("setup-trigger")
+  source        String    @default("setup-trigger")
   /// WhatsApp group subject at the moment the bot was added — used as the
   /// club name so we never ask a question we already know the answer to.
-  groupSubject    String?
+  groupSubject  String?
   /// E.164 phone of whoever added the bot to the group (fallback admin
   /// candidate when the consent replier has no resolvable phone).
-  addedByPhone    String?
+  addedByPhone  String?
   /// Captured admin (User.id) — the YES/EVERYTHING replier. Becomes the
   /// org OWNER at completion.
-  adminUserId     String?
+  adminUserId   String?
   /// Participant snapshot at add time: [{phone?, lidId?, pushname?}].
   /// Imported into the org roster at completion so the admin never types
   /// a player in by hand.
-  participants    Json?
+  participants  Json?
   /// 24h "still here" re-nudge idempotency (group-add flow, Phase 1 cron
   /// sweep — reserved; written by the nudge when it ships).
-  introNudgedAt   DateTime?
+  introNudgedAt DateTime?
   /// Additional admins parsed at the "admins" stage (group-add flow):
   /// [{name?, phone?, mention?}]. Stashed here because the Organisation
   /// doesn't exist yet at that stage; resolved into ADMIN Memberships at
   /// completion. null/[] = just the owner.
-  pendingAdmins   Json?
+  pendingAdmins Json?
 
   // Collected event details (nullable until answered).
-  groupName       String?
-  venue           String?
-  dayOfWeek       Int?     // 0=Sun..6=Sat
-  kickoffTime     String?  // "21:30" (London wall clock)
-  playersPerSide  Int?     // 7 → 7-a-side
-  recurrence      String?  // "weekly" | "oneoff"
-  oneOffDate      String?  // ISO date when recurrence = oneoff
+  groupName      String?
+  venue          String?
+  dayOfWeek      Int? // 0=Sun..6=Sat
+  kickoffTime    String? // "21:30" (London wall clock)
+  playersPerSide Int? // 7 → 7-a-side
+  recurrence     String? // "weekly" | "oneoff"
+  oneOffDate     String? // ISO date when recurrence = oneoff
 
   selectedFeatures String[]
 
@@ -346,17 +346,17 @@ model OnboardingSession {
 }
 
 model Sport {
-  id                  String   @id @default(cuid())
+  id                  String       @id @default(cuid())
   orgId               String
   org                 Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  name                String               // "Football 7-a-side"
-  preset              String?              // "football-7aside" | "basketball-5v5" | null for custom
+  name                String // "Football 7-a-side"
+  preset              String? // "football-7aside" | "basketball-5v5" | null for custom
   playersPerTeam      Int
-  positions           String[]             // ["GK","DEF","MID","FWD"]
-  teamLabels          String[]             // ["Red","Yellow"]
-  mvpLabel            String   @default("Man of the Match")
-  balancingStrategy   String   @default("position-aware") // "position-aware" | "rating-only"
-  positionComposition Json?                // { GK: 1, DEF: 2, MID: 2, FWD: 2 } — per-team target
+  positions           String[] // ["GK","DEF","MID","FWD"]
+  teamLabels          String[] // ["Red","Yellow"]
+  mvpLabel            String       @default("Man of the Match")
+  balancingStrategy   String       @default("position-aware") // "position-aware" | "rating-only"
+  positionComposition Json? // { GK: 1, DEF: 2, MID: 2, FWD: 2 } — per-team target
 
   activities Activity[]
 
@@ -367,12 +367,12 @@ model Sport {
 }
 
 model Membership {
-  id     String     @id @default(cuid())
+  id     String       @id @default(cuid())
   userId String
-  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   orgId  String
   org    Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  role   MemberRole @default(PLAYER)
+  role   MemberRole   @default(PLAYER)
 
   /// Non-null when the user has been detected as leaving the org's
   /// WhatsApp group (bot `group_leave` event) or been manually removed
@@ -418,16 +418,16 @@ model Membership {
 /// same pitch resolve to one row — the backbone of "nearby players".
 /// Contains no personal data.
 model Venue {
-  id               String   @id @default(cuid())
-  placeId          String?  @unique
+  id               String     @id @default(cuid())
+  placeId          String?    @unique
   name             String
   formattedAddress String?
   lat              Float?
   lng              Float?
   source           String?
   activities       Activity[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
 
 model Activity {
@@ -437,8 +437,8 @@ model Activity {
   sportId           String
   sport             Sport        @relation(fields: [sportId], references: [id])
   name              String
-  dayOfWeek         Int          // 0=Sun..6=Sat
-  time              String       // "21:30"
+  dayOfWeek         Int // 0=Sun..6=Sat
+  time              String // "21:30"
   venue             String
   venueId           String?
   venueRef          Venue?       @relation(fields: [venueId], references: [id])
@@ -452,13 +452,13 @@ model Activity {
   /// switch auto-applies the right fee. Null = no default; the collector
   /// is asked each week. This is the BASE fee (before the per-method
   /// processing uplift). 2026-06-03.
-  feePerPlayer      Float?
+  feePerPlayer  Float?
   /// When true, the collector enters the TOTAL pitch cost and MatchTime
   /// divides by who played, instead of a fixed per-player fee.
-  feeSplitTotal     Boolean      @default(false)
+  feeSplitTotal Boolean @default(false)
 
-  matches           Match[]
-  playerPositions   PlayerActivityPosition[]
+  matches         Match[]
+  playerPositions PlayerActivityPosition[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -504,7 +504,7 @@ model Match {
   /// lists all exclude these so they don't pollute present-day UX.
   /// The leaderboard's MoM-count query DOES include them — which is
   /// the whole point of backfilling.
-  isHistorical       Boolean     @default(false)
+  isHistorical Boolean @default(false)
 
   /// ─── Per-match fee capture (2026-06-03) ─────────────────────────
   /// The agreed per-player fee for THIS match (£, base before method
@@ -525,17 +525,18 @@ model Match {
   /// Index 0 = RED, 1 = YELLOW. Set when an admin asks MatchTime to invent
   /// fun team names for this week's match. Empty (default) = fall through to
   /// org/sport/default via resolveTeamLabels().
-  teamLabels             String[]    @default([])
+  teamLabels String[] @default([])
 
-  attendances            Attendance[]
-  teamAssignments        TeamAssignment[]
-  ratings                Rating[]
-  momVotes               MoMVote[]
-  sentNotifications      SentNotification[]
-  benchConfirmations     PendingBenchConfirmation[]
-  benchSlotOffers        BenchSlotOffer[]
-  ratingAdjustments      RatingAdjustment[]
-  paymentCredits         PaymentCredit[]
+  attendances             Attendance[]
+  teamAssignments         TeamAssignment[]
+  ratings                 Rating[]
+  momVotes                MoMVote[]
+  sentNotifications       SentNotification[]
+  benchConfirmations      PendingBenchConfirmation[]
+  benchSlotOffers         BenchSlotOffer[]
+  ratingAdjustments       RatingAdjustment[]
+  paymentCredits          PaymentCredit[]
+  tentativeAvailabilities TentativeAvailability[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -551,14 +552,14 @@ model Match {
  * (per-user DMs / reminders).
  */
 model SentNotification {
-  id         String   @id @default(cuid())
-  key        String   @unique
-  kind       String                    // e.g. "announce-match", "daily-in-list", "match-teams", ...
-  matchId    String?
-  match      Match?   @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  targetUser String?                   // userId when it's a per-user DM
-  waMessageId String?                  // WhatsApp message id for reaction tracking
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  key         String   @unique
+  kind        String // e.g. "announce-match", "daily-in-list", "match-teams", ...
+  matchId     String?
+  match       Match?   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  targetUser  String? // userId when it's a per-user DM
+  waMessageId String? // WhatsApp message id for reaction tracking
+  createdAt   DateTime @default(now())
 
   @@index([matchId])
   @@index([kind])
@@ -575,19 +576,18 @@ model SentNotification {
  * Short-lived one-time passcodes used by the phone-number signup flow.
  * Owner delivers codes via WhatsApp DM (using the shared MatchTime
  * bot) and verifies them at /signup/verify.
- *
  * Rate-limiting: we keep rows around past usedAt/expiresAt briefly to
  * throttle resends — a separate sweep drops them after 24h.
  */
 model PhoneOtp {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   /// Normalised phone number (no "+" prefix; purely digits).
   phone     String
-  code      String   // 6 digits, zero-padded
+  code      String // 6 digits, zero-padded
   expiresAt DateTime
   usedAt    DateTime?
-  attempts  Int      @default(0)
-  createdAt DateTime @default(now())
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
 
   @@index([phone, createdAt])
 }
@@ -598,21 +598,20 @@ model PhoneOtp {
  * DMs every active member; replies are LLM-classified into
  * in/maybe/out/unclear; admins read raw replies + override on the
  * dashboard.
- *
  * Lifecycle: status="open" while DMs are out and replies trickle in.
  * Once admin closes it (or after a manual cleanup pass), status="closed"
  * — daily group updates stop, no more replies are accepted.
  */
 model RosterSurvey {
-  id           String  @id @default(cuid())
+  id           String       @id @default(cuid())
   orgId        String
   org          Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  sentByUserId String                                               // admin who triggered
-  status       String  @default("open")                             // "open" | "closed"
+  sentByUserId String // admin who triggered
+  status       String       @default("open") // "open" | "closed"
   closedAt     DateTime?
   closedById   String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   dms       RosterSurveyDM[]
   responses RosterSurveyResponse[]
@@ -626,15 +625,15 @@ model RosterSurvey {
 /// have an account). Admin dashboard uses this to show "pending"
 /// (no Response yet) vs "delivery failed".
 model RosterSurveyDM {
-  id           String  @id @default(cuid())
+  id           String       @id @default(cuid())
   surveyId     String
   survey       RosterSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   userId       String
-  user         User    @relation(fields: [userId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
   botJobId     String?
   sentAt       DateTime?
   failedReason String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime     @default(now())
 
   @@unique([surveyId, userId])
   @@index([surveyId])
@@ -646,32 +645,32 @@ model RosterSurveyDM {
 /// is the LLM's classification; `adminOverride=true` means an admin
 /// changed it manually and the LLM shouldn't re-flip it.
 model RosterSurveyResponse {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   surveyId      String
   survey        RosterSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  response      String                                              // "in" | "maybe" | "out" | "unclear"
-  rawReply      String   @db.Text
-  classifiedAt  DateTime @default(now())
-  adminOverride Boolean  @default(false)
+  user          User         @relation(fields: [userId], references: [id])
+  response      String // "in" | "maybe" | "out" | "unclear"
+  rawReply      String       @db.Text
+  classifiedAt  DateTime     @default(now())
+  adminOverride Boolean      @default(false)
 
   @@unique([surveyId, userId])
   @@index([surveyId])
 }
 
 model BotJob {
-  id       String   @id @default(cuid())
-  orgId    String
-  kind     String                   // "dm" | "group" | "group-poll"
-  phone    String?                  // for DM jobs, E.164 without the + prefix
-  text     String   @db.Text
+  id           String    @id @default(cuid())
+  orgId        String
+  kind         String // "dm" | "group" | "group-poll"
+  phone        String? // for DM jobs, E.164 without the + prefix
+  text         String    @db.Text
   /// Poll fields — set when kind = "group-poll". `text` should mirror
   /// the question for admin-dashboard previews. If pollQuestion is
   /// non-null, pollOptions must contain at least 2 entries.
-  pollQuestion String?  @db.Text
+  pollQuestion String?   @db.Text
   pollOptions  String[]
-  pollMulti    Boolean  @default(false)
+  pollMulti    Boolean   @default(false)
   /// When set, this job must NOT be dispatched until the clock passes
   /// this instant. Used for player-requested personal reminders
   /// ("@MatchTime remind me on Monday") — the analyzer resolves the
@@ -681,22 +680,62 @@ model BotJob {
   /// existing immediate jobs (sendAfter null) are unaffected. Nullable
   /// = additive, zero impact on historical/immediate jobs.
   sendAfter    DateTime?
-  sentAt   DateTime?
-  createdAt DateTime @default(now())
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([orgId, sentAt])
   @@index([orgId, sendAfter])
 }
 
 /**
+ * A player who signalled UNCERTAIN availability ("maybe", "in if my back
+ * holds up", "I'll check closer to the match") for a specific match.
+ * The analyzer classifies these as intent="conditional_in" with no
+ * attendance write (registerAttendance:null) — flavour (b),
+ * personal-uncertainty. We record the player as a MAYBE for the match
+ * here, then the scheduler proactively DMs them at `dueAt` (kickoff minus
+ * TENTATIVE_FOLLOWUP_LEAD_MS, clamped to soon if kickoff is imminent) to
+ * get a firm IN/OUT. `dueAt` is computed ONCE at declaration so the
+ * lead-time constant is applied deterministically.
+ * Lifecycle:
+ * - created when conditional_in (flavour b) is detected; idempotent —
+ * at most one UNRESOLVED row per (matchId, userId).
+ * - `notifiedAt` stamped when the follow-up DM has been dispatched
+ * (set on ACK) so it never re-fires.
+ * - `resolvedAt` stamped when the player gives a firm IN/OUT (group or
+ * DM) OR a send-time guard finds them already CONFIRMED/DROPPED/the
+ * match full/completed/cancelled — at which point no follow-up is
+ * needed.
+ * Strictly additive: a brand-new table, nullable timestamps, no change to
+ * Attendance / Match / User columns. Safe `prisma db push` on live prod.
+ */
+model TentativeAvailability {
+  id         String    @id @default(cuid())
+  matchId    String
+  match      Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  /// When the follow-up DM should fire (kickoff − lead, clamped to soon).
+  dueAt      DateTime
+  /// Stamped when the follow-up DM has been dispatched (set on ACK).
+  notifiedAt DateTime?
+  /// Stamped when the player gave a firm IN/OUT or the guard short-circuits.
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([matchId, userId])
+  @@index([matchId, resolvedAt])
+  @@index([dueAt, resolvedAt])
+}
+
+/**
  * Queued retroactive react updates.
- *
  * When a player's slot changes after their original IN message has
  * already been reacted to (drop-and-shift, slot-emoji rule changes,
  * historical fixes), the server queues a row here. The bot's next
  * /due-posts tick picks up unsent rows, calls `msg.react(emoji)` on the
  * existing WhatsApp message, and ACKs back to mark `sentAt`.
- *
  * Reaction replacement is in-place — whatsapp-web.js's react() swaps
  * any existing reaction the bot account placed on that message, so we
  * don't need a separate "clear" step.
@@ -706,7 +745,7 @@ model RetroReaction {
   orgId       String
   waMessageId String
   emoji       String
-  reason      String?                // optional debug note: "slot 5 → 4 after drop"
+  reason      String? // optional debug note: "slot 5 → 4 after drop"
   sentAt      DateTime?
   createdAt   DateTime  @default(now())
 
@@ -722,14 +761,14 @@ model RetroReaction {
  * dropped and the scheduler posts a new prompt for the next bencher.
  */
 model PendingBenchConfirmation {
-  id          String    @id @default(cuid())
-  matchId     String
-  match       Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  userId      String
-  waMessageId String?                // the bot's prompt message id; filled in by /ack
-  expiresAt   DateTime
-  resolvedAt  DateTime?
-  outcome     String?                // "confirmed" | "declined" | "expired"
+  id              String    @id @default(cuid())
+  matchId         String
+  match           Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId          String
+  waMessageId     String? // the bot's prompt message id; filled in by /ack
+  expiresAt       DateTime
+  resolvedAt      DateTime?
+  outcome         String? // "confirmed" | "declined" | "expired"
   /// The CONFIRMED player whose drop opened this slot. When this bench
   /// user 👍s, their TeamAssignment takes the dropped player's slot
   /// (the dropped TA row is deleted). On 👎/timeout, the chain to the
@@ -751,7 +790,6 @@ model PendingBenchConfirmation {
  * Bench redesign 2026-05-19 (Kemal). Replaces the sequential
  * elimination chain (PendingBenchConfirmation, now legacy/unused —
  * kept for history, not written anymore).
- *
  * ONE row per OPEN SLOT. A confirmed player dropping opens an offer
  * that is broadcast to EVERY current bench player at once. The FIRST
  * bencher to confirm (👍 / IN / yes — in the group OR by DM) claims
@@ -760,7 +798,6 @@ model PendingBenchConfirmation {
  * is resolved. Everyone else stays on the bench — nobody is ever
  * removed for being slow or silent. No per-person timers. Offers
  * auto-close at kickoff.
- *
  * `replacingUserId` = the dropped CONFIRMED player (for the TA swap +
  * "X takes Y's place" wording). `waMessageId` = the group offer post
  * (set on /ack) so a 👍 reaction maps back to the offer.
@@ -775,7 +812,7 @@ model BenchSlotOffer {
   waMessageId     String?
   claimedByUserId String?
   resolvedAt      DateTime?
-  outcome         String?   // "claimed" | "closed-at-kickoff"
+  outcome         String? // "claimed" | "closed-at-kickoff"
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -783,21 +820,21 @@ model BenchSlotOffer {
 }
 
 model Attendance {
-  id          String           @id @default(cuid())
-  matchId     String
-  match       Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User             @relation(fields: [userId], references: [id])
-  status      AttendanceStatus @default(CONFIRMED)
-  position    Int              @default(0)
-  respondedAt DateTime         @default(now())
+  id            String           @id @default(cuid())
+  matchId       String
+  match         Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User             @relation(fields: [userId], references: [id])
+  status        AttendanceStatus @default(CONFIRMED)
+  position      Int              @default(0)
+  respondedAt   DateTime         @default(now())
   /// Non-null when the player has marked themselves as paid for this
   /// match. Populated by the bot when the voter ticks their team's
   /// option in the WhatsApp payment poll; can also be toggled from
   /// the admin match page. Scheduler uses this to chase unpaid players
   /// on the daily 17:00 squad nudge. Nullable = additive, zero impact
   /// on historical attendance rows.
-  paidAt      DateTime?
+  paidAt        DateTime?
   /// When this attendance was paid for via someone else (bulk
   /// payment by the same WhatsApp member who collected several
   /// players' fees). Populated when an admin says e.g. "Amir paid
@@ -809,17 +846,17 @@ model Attendance {
   /// ─── Stripe per-player payment (2026-06-03) ─────────────────────
   /// How this player chose to pay: "pay_by_bank" | "card" | "direct".
   /// Null until they pick / are sent a link.
-  paymentMethod      String?
+  paymentMethod           String?
   /// Total charged for this row incl. the per-method processing uplift
   /// (and quantity if they paid for others). £.
-  paymentAmount      Float?
+  paymentAmount           Float?
   /// How many people this payment covered (self + guests). Default 1.
-  paymentQuantity    Int       @default(1)
+  paymentQuantity         Int       @default(1)
   /// Stripe Checkout Session id (card / pay-by-bank). Null for direct.
-  stripeSessionId    String?
+  stripeSessionId         String?
   /// Set when the player chose "pay the collector directly" and we're
   /// awaiting the collector's confirmation. Cleared (→ paidAt) on confirm.
-  directPendingAt    DateTime?
+  directPendingAt         DateTime?
   /// Who confirmed the direct payment (the money collector).
   directConfirmedByUserId String?
 
@@ -835,22 +872,20 @@ model Attendance {
  * message (e.g. "Amir paid for 4 players"). Used when individual
  * names aren't given and we just have a count to credit against the
  * match. Each row offsets the unpaid count for that match by `count`.
- *
  * If the admin DOES name specific players, the bot updates each
  * Attendance.paidAt + paidViaUserId directly and does NOT create a
  * PaymentCredit row — avoids double-counting.
- *
  * Authorisation: only OWNER/ADMIN of the org can create these.
  */
 model PaymentCredit {
-  id            String   @id @default(cuid())
-  matchId       String
-  match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  payerUserId   String                                           // who collected/paid the venue
-  count         Int                                              // how many players' fees this covers
-  note          String?                                          // optional context
-  recordedById  String                                           // sender of the credit instruction (for audit)
-  recordedAt    DateTime @default(now())
+  id           String   @id @default(cuid())
+  matchId      String
+  match        Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  payerUserId  String // who collected/paid the venue
+  count        Int // how many players' fees this covers
+  note         String? // optional context
+  recordedById String // sender of the credit instruction (for audit)
+  recordedAt   DateTime @default(now())
 
   @@index([matchId])
 }
@@ -874,7 +909,7 @@ model Rating {
   rater    User   @relation("RatingsGiven", fields: [raterId], references: [id])
   playerId String
   player   User   @relation("RatingsReceived", fields: [playerId], references: [id])
-  score    Int    // 1-10
+  score    Int // 1-10
 
   createdAt DateTime @default(now())
 
@@ -902,12 +937,11 @@ model MoMVote {
  * check this table first so no message is processed twice. The
  * `intent` / `action` columns record what the bot decided, useful for
  * auditing and prompt-tuning.
- *
  * handledBy:
- *   - "fast-path": regex matched (IN/OUT/score); acted inline
- *   - "llm":       sent to Claude for classification; action executed
- *   - "ignored":   skipped on purpose (bot's own msg, non-c.us author, empty body)
- *   - "error":     analyzer call failed; don't re-try this exact message
+ * - "fast-path": regex matched (IN/OUT/score); acted inline
+ * - "llm":       sent to Claude for classification; action executed
+ * - "ignored":   skipped on purpose (bot's own msg, non-c.us author, empty body)
+ * - "error":     analyzer call failed; don't re-try this exact message
  */
 model AnalyzedMessage {
   id           String   @id @default(cuid())
@@ -936,14 +970,12 @@ model AnalyzedMessage {
 /**
  * Per-org alias for a user — the WhatsApp pushname (or nickname /
  * variant spelling) that doesn't fuzzy-match the canonical DB name.
- *
  * Populated automatically when an admin merges a provisional ghost
  * into a real user: the ghost's display name becomes an alias for
  * the real user, scoped to the org. Next time a message arrives with
  * that pushname (and no phone — typical @lid privacy mode case), the
  * resolver finds the real user via alias instead of creating another
  * ghost.
- *
  * Stored lower-cased + diacritics-stripped to match the resolver's
  * comparison key.
  */
@@ -953,8 +985,8 @@ model UserAlias {
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   orgId     String
   org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  alias     String                            // already-normalised key
-  source    String       @default("merge")    // "merge" | "manual" | "auto-detect"
+  alias     String // already-normalised key
+  source    String       @default("merge") // "merge" | "manual" | "auto-detect"
   createdAt DateTime     @default(now())
 
   @@unique([orgId, alias])
@@ -968,12 +1000,10 @@ model UserAlias {
  * a rated playerId baked into a rating submission, a cached squad list)
  * becomes a dangling reference. This row records old→new so those stale
  * ids can be REMAPPED to the survivor instead of silently dropped.
- *
  * `oldUserId` is a PLAIN STRING, not an FK — the row it points at is
  * gone by the time this is queried. Chains are possible (a survivor may
  * itself later be merged away), so readers follow `oldUserId →
  * survivorUserId` transitively with a small hop cap to break cycles.
- *
  * Written inside the same transaction as the user delete in
  * `mergePlayersCore`. Read by `submitRatings` / `submitMoMVote` to
  * remap a merged-away player to the survivor (respecting their unique
@@ -981,8 +1011,8 @@ model UserAlias {
  */
 model UserMerge {
   id             String   @id @default(cuid())
-  oldUserId      String                          // dropped (deleted) user id — NOT an FK
-  survivorUserId String                          // surviving keeper user id
+  oldUserId      String // dropped (deleted) user id — NOT an FK
+  survivorUserId String // surviving keeper user id
   orgId          String
   createdAt      DateTime @default(now())
 
@@ -991,15 +1021,12 @@ model UserMerge {
 
 /**
  * Phase 4 hybrid LLM team-balancer audit trail.
- *
  * Before the deterministic balancer runs, an LLM reads the last ~7 days
  * of group chat and proposes per-player rating deltas based on
  * conditions for tonight (sick, tentative, hot streak, rusty). The
  * balancer then runs with the adjusted ratings.
- *
  * One row per (match, user) — captures what the LLM said and why so an
  * admin can audit balance decisions ("why was Wasim on Yellow?").
- *
  * Delta is clamped to [-2, +2] in the analyser so a single hallucination
  * can't dominate the balance. Confidence < 0.3 is treated as no signal.
  */
@@ -1020,7 +1047,6 @@ model RatingAdjustment {
 
 /**
  * Raw archive of group messages for orgs running `featureSquadFromList`.
- *
  * For those orgs (Amir's Thursday group, 2026-05-20) the per-batch
  * analyzer is OFF (cost) but we still need to read the latest pasted
  * squad list to know who played, so the bot DMs the right people for
@@ -1034,19 +1060,17 @@ model RatingAdjustment {
  * some groups paste the next week's list within minutes of the final
  * whistle — a rolling window would either chop those off or drag in
  * stale lists from before the previous match.
- *
  * Only written when the org has `featureSquadFromList=true` — Sutton
  * and other live orgs are unaffected.
- *
  * Idempotent on `waMessageId` (unique). Sender resolution happens at
  * extraction time, not write time, so a phone + pushname pair becomes
  * useful even before the User exists in our DB.
  */
 model GroupMessage {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   orgId          String
   org            Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  waMessageId    String   @unique
+  waMessageId    String       @unique
   waChatId       String?
   /// E.164 phone of the sender, if WhatsApp delivered one. Empty/null
   /// when the sender is @lid (privacy mode) — pushname is then the
@@ -1056,12 +1080,12 @@ model GroupMessage {
   /// diff-attribution pass can compare "what name did this sender add"
   /// against "what name does this sender go by", to learn aliases.
   senderPushname String?
-  body           String   @db.Text
+  body           String       @db.Text
   /// WhatsApp's own message timestamp (UTC). The diff pass orders by
   /// this — NOT createdAt — so out-of-order ingestion (Pi catch-up
   /// after a restart) still produces the correct list sequence.
   timestamp      DateTime
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
   @@index([orgId, timestamp])
 }
@@ -1072,45 +1096,43 @@ model GroupMessage {
  * runs server-side regex safety-nets to "fix" wrong verdicts. That
  * bandaid layer is itself the source of recurring bugs (Kemal dropped
  * from his own squad 2026-05-28; Mojib not dropped 2026-05-26; etc.).
- *
  * The shadow path runs alongside the live analyzer on every Pi flush.
  * It sends the SAME window (fresh batch + history) to a fresh, concise
  * prompt that returns ONE coherent state diff for the window — no
  * per-message verdicts to conflict with each other, no safety nets to
  * override. Output is persisted here for offline comparison; no
  * attendance is written by this path until we cut over.
- *
  * `currentVerdictRefs` is the array of AnalyzedMessage IDs that the
  * LIVE analyzer wrote for the same batch, so the /admin/shadow dash
  * can render side-by-side: shadow's single diff vs live's per-message
  * verdicts, with a cheap "agree?" badge.
  */
 model WindowVerdict {
-  id                  String   @id @default(cuid())
-  orgId               String
-  org                 Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id                 String       @id @default(cuid())
+  orgId              String
+  org                Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
   /// First message timestamp in the batch (or now() if the batch was empty).
-  windowStart         DateTime
+  windowStart        DateTime
   /// Last message timestamp in the batch.
-  windowEnd           DateTime
+  windowEnd          DateTime
   /// SHA-256 of the sorted waMessageIds in the batch — lets us dedupe
   /// re-runs on the same window (Pi catch-up resending) without a
   /// second Claude call.
-  batchHash           String
+  batchHash          String
   /// Wall-clock ms the shadow Claude call took. Cheap proxy for window
   /// complexity + lets us spot regressions.
-  modelMs             Int
+  modelMs            Int
   /// Best-effort USD cost of this shadow call (input+output tokens).
   /// Null if pricing lookup failed.
-  costUsd             Float?
+  costUsd            Float?
   /// Full Claude response parsed into our shadow schema. See
   /// `src/lib/window-analyzer.ts` for the type. Includes
   /// stateChanges, reactions, optional groupReply, windowSummary.
-  verdictJson         Json
+  verdictJson        Json
   /// The AnalyzedMessage IDs that the live per-message analyzer wrote
   /// for this same batch. Used by the dashboard for side-by-side.
-  currentVerdictRefs  String[]
-  createdAt           DateTime @default(now())
+  currentVerdictRefs String[]
+  createdAt          DateTime     @default(now())
 
   @@unique([orgId, batchHash])
   @@index([orgId, windowEnd])
