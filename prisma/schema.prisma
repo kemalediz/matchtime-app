@@ -311,6 +311,26 @@ model OnboardingSession {
   /// doesn't re-ask the same question.
   lastHandledWaId String?
 
+  // ── Onboarding enrichment (Phase: chat-history analysis) ──────────────
+  /// Lifecycle of the post-onboarding enrichment pass that mines chat
+  /// history for player positions, seed ratings and the match schedule.
+  /// null | "pending" | "ready" | "applied".
+  enrichmentStatus    String?
+  /// When the admin applied the proposed roster to live records.
+  enrichmentAppliedAt DateTime?
+  /// How many recent messages the analyser actually saw.
+  messagesAnalyzed    Int?
+  /// Proposed roster from the analyser, reconciled against members:
+  /// [{ name, matchedUserId?, proposedPosition?, proposedSeedRating?(1-10),
+  ///    evidence, confidence }].
+  proposedRoster      Json?
+  /// Members with no resolvable phone — rating/positions are meaningless
+  /// until a phone is added: [{ name, lidId? }].
+  unresolvedMembers   Json?
+  /// Best-guess match schedule mined from the chat:
+  /// { dayOfWeek?, time?, venue?, playersPerSide?, capacity? }.
+  capturedSchedule    Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

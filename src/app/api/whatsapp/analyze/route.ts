@@ -86,6 +86,19 @@ interface InboundBody {
   groupId: string;
   history?: InboundHistory[];
   messages: InboundMessage[];
+  /** Optional stored chat history for the onboarding ENRICHMENT pass.
+   *  DISTINCT from `history` above: that field is the LLM-context history
+   *  the main analyzer consumes ({authorName, body, timestamp}). This one
+   *  is the {author, authorPhone?, text, timestamp} shape consumed by
+   *  runOnboardingEnrichment via handleOnboardingTurn. Named separately
+   *  to avoid clobbering the existing `history` field; forwarded only to
+   *  the onboarding turn. Absent → no enrichment, behaviour unchanged. */
+  enrichmentHistory?: Array<{
+    author: string;
+    authorPhone?: string | null;
+    text: string;
+    timestamp: string | number;
+  }>;
 }
 
 type ActionForBot = {
@@ -2696,6 +2709,10 @@ async function handleOnboardingIfApplicable(
       // and treats "<digits>@lid" as a privacy id (no phone).
       mentions: m.mentions,
     })),
+    // Forward enrichment history (if any) to the onboarding turn; the
+    // turn fires the enrichment pass + admin DM on completion. Absent →
+    // no enrichment runs. Already in the HistoryMessage shape.
+    history: body.enrichmentHistory,
   });
 
   const results: ActionForBot[] = [];

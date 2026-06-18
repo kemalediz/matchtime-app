@@ -56,6 +56,12 @@ export async function POST(request: Request) {
     groupSubject?: string | null;
     addedByPhone?: string | null;
     participants?: unknown;
+    // Forward-compat: bot-added only CREATES the session (it never
+    // completes onboarding), so enrichment history isn't used here —
+    // accepted and ignored so a caller that sends it doesn't error.
+    // There's no schema column for it; the enrichment pass runs later
+    // from /api/whatsapp/analyze on the completing turn.
+    enrichmentHistory?: unknown;
   } | null;
   if (!body?.groupId) {
     return NextResponse.json({ error: "groupId required" }, { status: 400 });

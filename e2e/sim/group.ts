@@ -651,6 +651,14 @@ export interface OnboardingSimGroup {
   say(
     body: string,
     author: { phone: string; name?: string | null },
+    opts?: {
+      enrichmentHistory?: Array<{
+        author: string;
+        authorPhone?: string | null;
+        text: string;
+        timestamp: string | number;
+      }>;
+    },
   ): Promise<{ reply: string | null; raw: unknown }>;
 }
 
@@ -668,7 +676,7 @@ export function createOnboardingGroup(request: APIRequestContext): OnboardingSim
       expect(res.status(), await res.text()).toBe(200);
       return (await res.json()) as Record<string, unknown>;
     },
-    async say(body, author) {
+    async say(body, author, opts) {
       const res = await request.post("/api/whatsapp/analyze", {
         headers: HEADERS,
         data: {
@@ -682,6 +690,11 @@ export function createOnboardingGroup(request: APIRequestContext): OnboardingSim
               timestamp: new Date().toISOString(),
             },
           ],
+          // Only included when a caller passes enrichment history (e.g. on
+          // the completing turn); existing callers stay byte-identical.
+          ...(opts?.enrichmentHistory
+            ? { enrichmentHistory: opts.enrichmentHistory }
+            : {}),
         },
       });
       expect(res.status(), await res.text()).toBe(200);

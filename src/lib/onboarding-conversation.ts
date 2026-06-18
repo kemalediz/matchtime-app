@@ -39,6 +39,8 @@ import { londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
 import { normalisePhone } from "./phone";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
+import { runOnboardingEnrichment } from "./onboarding-enrichment";
+import type { HistoryMessage } from "./onboarding-enrichment-reconcile";
 import {
   importParticipants,
   parseParticipantSnapshot,
@@ -99,6 +101,13 @@ export interface OnboardingTurnInput {
     mentions?: string[];
   }>;
   groupSubject?: string | null;
+  /** Optional stored chat history for the onboarding ENRICHMENT pass
+   *  (positions + seed ratings + schedule mining). Distinct from the
+   *  LLM-context `history` the analyzer uses — this is the
+   *  {author, authorPhone?, text, timestamp} shape consumed by
+   *  runOnboardingEnrichment. When absent/empty, no enrichment runs and
+   *  no enrichment DM is queued; default behaviour is unchanged. */
+  history?: HistoryMessage[];
 }
 
 export interface OnboardingTurnResult {
@@ -322,7 +331,7 @@ async function extract(
 export async function handleOnboardingTurn(
   input: OnboardingTurnInput,
 ): Promise<OnboardingTurnResult> {
-  const { session, messages } = input;
+  const { session, messages, history } = input;
   if (messages.length === 0) return { reply: null, completed: false };
 
   // Opening turn = the bot has never spoken in this group yet (session
@@ -525,7 +534,7 @@ export async function handleOnboardingTurn(
     const chosen = [...new Set(merged.selectedFeatures)].filter(
       (k): k is ToggleableKey => valid.has(k as ToggleableKey),
     );
-    const reply = await completeOnboarding(merged, chosen);
+    const reply = await completeOnboarding(merged, chosen, undefined, history);
     return { reply, completed: true };
   }
 
@@ -692,7 +701,7 @@ export async function handleOnboardingTurn(
         }
       }
     }
-    const reply = await completeOnboarding(session, chosen, adminUserId);
+    const reply = await completeOnboarding(session, chosen, adminUserId, history);
     return { reply, completed: true };
   }
 
@@ -804,6 +813,7 @@ async function completeOnboarding(
   s: Session,
   chosen: ToggleableKey[],
   adminUserIdOverride?: string | null,
+  history?: HistoryMessage[],
 ): Promise<string> {
   const orgId = s.orgId!;
   const adminUserId = adminUserIdOverride ?? s.adminUserId ?? null;
@@ -1061,6 +1071,30 @@ async function completeOnboarding(
     }
   }
 
+  // ── ④ Onboarding ENRICHMENT pass (fire-and-forget) ───────────────
+  // Only when the turn carried stored chat history. Mines positions +
+  // seed ratings + schedule from the group's past messages, stashes
+  // proposals on the OnboardingSession (nothing applied to live
+  // records), then DMs the admin a magic link into /finish-setup/<id>.
+  //
+  // Detached (no await): runOnboardingEnrichment calls the LLM and can
+  // take 10-60s — blocking here would stall the WhatsApp turn and the
+  // group reply. A plain detached promise is sufficient: the request
+  // context stays alive long enough (and the sim test polls the DB
+  // afterwards). We deliberately avoid `after()` here — completeOnboarding
+  // is a lib function, not a route handler, so importing the route-only
+  // `after` would be out of place; the detached promise is the simplest
+  // mechanism that also runs reliably under the sim harness.
+  if (history && history.length > 0) {
+    void triggerEnrichmentAndDm({
+      sessionId: s.id,
+      history,
+      orgId,
+      adminUserId,
+      groupName: s.groupName ?? null,
+    }).catch((err) => console.error("[onboarding] enrichment+DM failed:", err));
+  }
+
   const onLabels = FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
 
   // Group-add flow gets the design's completion copy (roster + admin
@@ -1092,4 +1126,61 @@ async function completeOnboarding(
     `${weekly ? " (every week)" : ""}.\n\n` +
     `That's it — I'll take it from here. Anyone can just chat normally; I'll handle the rest. ⚽`
   );
+}
+
+/**
+ * Run the onboarding enrichment pass and, if it produced a result, DM the
+ * admin a magic link into the /finish-setup review page. Fire-and-forget:
+ * called WITHOUT await from completeOnboarding so the WhatsApp turn isn't
+ * blocked on the LLM.
+ *
+ * PII-safe: the DM text never contains a phone number.
+ */
+async function triggerEnrichmentAndDm(args: {
+  sessionId: string;
+  history: HistoryMessage[];
+  orgId: string;
+  adminUserId: string | null;
+  groupName: string | null;
+}): Promise<void> {
+  const summary = await runOnboardingEnrichment({
+    sessionId: args.sessionId,
+    history: args.history,
+  });
+  // No-op result (empty history) → nothing to review, skip the DM.
+  if (summary.status !== "ready") return;
+
+  if (!args.adminUserId) {
+    console.warn("[onboarding] enrichment ready but no adminUserId — skipping DM");
+    return;
+  }
+  const admin = await db.user.findUnique({
+    where: { id: args.adminUserId },
+    select: { phoneNumber: true },
+  });
+  if (!admin?.phoneNumber) {
+    console.warn("[onboarding] enrichment ready but admin has no phone — skipping DM");
+    return;
+  }
+
+  const token = signMagicLinkToken({
+    userId: args.adminUserId,
+    purpose: "sign-in",
+    nextPath: `/finish-setup/${args.sessionId}`,
+    ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+  });
+  const url = await buildShortMagicLinkUrl(token);
+  const text =
+    `📋 I read ${summary.messagesAnalyzed} past messages from *${args.groupName || "your group"}* ` +
+    `and drafted positions + seed ratings for ${summary.playerCount} players.\n\n` +
+    `Nothing's applied yet — review & finish setup here:\n${url}`;
+
+  await db.botJob.create({
+    data: {
+      orgId: args.orgId,
+      kind: "dm",
+      phone: admin.phoneNumber.replace(/^\+/, ""),
+      text,
+    },
+  });
 }
