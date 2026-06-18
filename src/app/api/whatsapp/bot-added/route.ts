@@ -34,6 +34,7 @@ import { normalisePhone } from "@/lib/phone";
 import { BOT_ADDED_INTRO } from "@/lib/onboarding-conversation";
 import { isOnboardingAutostartEnabled } from "@/lib/onboarding-parse";
 import { parseParticipantSnapshot } from "@/lib/participant-sync";
+import { coerceHistoryMessages } from "@/lib/onboarding-enrichment-reconcile";
 
 const ACTIVE_STAGES = ["introduced", "details", "collecting", "features"];
 
@@ -56,17 +57,29 @@ export async function POST(request: Request) {
     groupSubject?: string | null;
     addedByPhone?: string | null;
     participants?: unknown;
-    // Forward-compat: bot-added only CREATES the session (it never
-    // completes onboarding), so enrichment history isn't used here —
-    // accepted and ignored so a caller that sends it doesn't error.
-    // There's no schema column for it; the enrichment pass runs later
-    // from /api/whatsapp/analyze on the completing turn.
+    // Chat history the Pi captured shortly after the bot was added (it can
+    // only reliably fetch WhatsApp history around join time). We PERSIST it
+    // on the OnboardingSession (capturedHistory) so the enrichment pass,
+    // which runs later at completion from /api/whatsapp/analyze, can fall
+    // back to it when the completing request omits its own
+    // enrichmentHistory. Validated/coerced defensively below.
     enrichmentHistory?: unknown;
   } | null;
   if (!body?.groupId) {
     return NextResponse.json({ error: "groupId required" }, { status: 400 });
   }
   const groupId = body.groupId;
+
+  // Validate the Pi-captured chat history into HistoryMessage[] (blank
+  // author/text rows dropped; chronological order is the Pi's job —
+  // we never reorder). Empty → don't persist anything.
+  // Cast through `unknown as object` (the repo's convention for typed
+  // structs → Prisma Json — see onboarding-enrichment.ts): our struct
+  // carries optional/null fields that don't line up with InputJsonValue,
+  // but the shape is valid JSON.
+  const captured = coerceHistoryMessages(body.enrichmentHistory);
+  const capturedJson =
+    captured.length > 0 ? (captured as unknown as object) : undefined;
 
   // 1. Live-org short-circuit — a group that already has a bot-enabled
   //    org must NEVER re-enter onboarding (e.g. the bot was kicked and
@@ -88,9 +101,18 @@ export async function POST(request: Request) {
   const active = await db.onboardingSession.findFirst({
     where: { whatsappGroupId: groupId, stage: { in: ACTIVE_STAGES } },
     orderBy: { createdAt: "desc" },
-    select: { id: true, stage: true },
+    select: { id: true, stage: true, capturedHistory: true },
   });
   if (active) {
+    // Late-sync rescue: if this re-add finally carries history and the
+    // session has none yet, store it. We never CLOBBER existing history —
+    // a later re-add could fetch fewer/no messages than the first.
+    if (capturedJson && active.capturedHistory == null) {
+      await db.onboardingSession.update({
+        where: { id: active.id },
+        data: { capturedHistory: capturedJson },
+      });
+    }
     return NextResponse.json({
       ok: true,
       existing: true,
@@ -124,6 +146,7 @@ export async function POST(request: Request) {
         snapshot.length > 0
           ? (snapshot.map((p) => ({ ...p })) as Array<Record<string, string | null>>)
           : undefined,
+      capturedHistory: capturedJson,
     },
     select: { id: true },
   });

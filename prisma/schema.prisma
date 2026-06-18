@@ -330,6 +330,14 @@ model OnboardingSession {
   /// Best-guess match schedule mined from the chat:
   /// { dayOfWeek?, time?, venue?, playersPerSide?, capacity? }.
   capturedSchedule    Json?
+  /// Chat history captured by the Pi bot shortly AFTER the bot was added
+  /// (it can only fetch WhatsApp history around join time, but enrichment
+  /// runs later at completion). Shape: [{author, authorPhone?, text,
+  /// timestamp}] — the HistoryMessage shape consumed by completeOnboarding/
+  /// runOnboardingEnrichment. Persisted at bot-added; read as the fallback
+  /// at completion when the completing /analyze request omits its own
+  /// enrichmentHistory. null = none captured → no enrichment (unchanged).
+  capturedHistory     Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

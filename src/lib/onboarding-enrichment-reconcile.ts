@@ -44,6 +44,46 @@ const nameKey = (s: string | null | undefined): string =>
   (s ?? "").trim().toLowerCase();
 
 /**
+ * Defensively coerce an arbitrary value (a request body field or a Prisma
+ * `Json` column) into a clean HistoryMessage[]. Used by /bot-added (to
+ * validate the Pi's enrichmentHistory before persisting it as
+ * capturedHistory) and by completeOnboarding (to read that stored column
+ * back at completion). Mirrors what buildParsedChatFromHistory/
+ * runOnboardingEnrichment expect:
+ *   - non-objects are skipped,
+ *   - rows with a blank author OR blank text are skipped,
+ *   - chronological order is preserved as-given (the Pi orders oldest→
+ *     newest; we never reorder),
+ *   - timestamp passes through as-is (HistoryMessage.timestamp is
+ *     string | number | Date; a missing one defaults to now()).
+ * Returns [] for anything unusable.
+ */
+export function coerceHistoryMessages(value: unknown): HistoryMessage[] {
+  if (!Array.isArray(value)) return [];
+  const out: HistoryMessage[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const author = typeof r.author === "string" ? r.author.trim() : "";
+    const text = typeof r.text === "string" ? r.text.trim() : "";
+    if (!author || !text) continue;
+    const authorPhone =
+      typeof r.authorPhone === "string" && r.authorPhone.trim()
+        ? r.authorPhone.trim()
+        : null;
+    const ts = r.timestamp;
+    const timestamp: string | number | Date =
+      typeof ts === "string" || typeof ts === "number"
+        ? ts
+        : ts instanceof Date
+          ? ts
+          : Date.now();
+    out.push({ author, authorPhone, text, timestamp });
+  }
+  return out;
+}
+
+/**
  * Build a ParsedChat from stored history. Mirrors the shape that
  * parseWhatsAppChat produces, but from already-structured rows rather than
  * a raw export. Blank-author / blank-text rows are skipped; everything is

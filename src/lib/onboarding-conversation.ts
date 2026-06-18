@@ -40,7 +40,10 @@ import { normalisePhone } from "./phone";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { runOnboardingEnrichment } from "./onboarding-enrichment";
-import type { HistoryMessage } from "./onboarding-enrichment-reconcile";
+import {
+  coerceHistoryMessages,
+  type HistoryMessage,
+} from "./onboarding-enrichment-reconcile";
 import {
   importParticipants,
   parseParticipantSnapshot,
@@ -83,6 +86,11 @@ type Session = {
    *  Memberships at completion (the org doesn't exist yet at that stage).
    *  Stored as JSON (ParsedAdmin[]); coerced defensively on read. */
   pendingAdmins?: unknown;
+  /** Chat history the Pi captured shortly after the bot was added, stored
+   *  by /api/whatsapp/bot-added. Prisma Json — coerced to HistoryMessage[]
+   *  on read. Used as the enrichment fallback at completion when the
+   *  completing /analyze request omits its own enrichmentHistory. */
+  capturedHistory?: unknown;
 };
 
 export interface OnboardingTurnInput {
@@ -1085,10 +1093,19 @@ async function completeOnboarding(
   // is a lib function, not a route handler, so importing the route-only
   // `after` would be out of place; the detached promise is the simplest
   // mechanism that also runs reliably under the sim harness.
-  if (history && history.length > 0) {
+  // Prefer the request-provided history; else fall back to the chat
+  // history the Pi captured at bot-added time (stored on the session as
+  // capturedHistory). This is the core of PIECE 2: the Pi can only fetch
+  // WhatsApp history around JOIN, but enrichment runs later at COMPLETION,
+  // so the completing /analyze request usually has no history of its own.
+  const enrichmentHistory =
+    history && history.length > 0
+      ? history
+      : coerceHistoryMessages(s.capturedHistory);
+  if (enrichmentHistory.length > 0) {
     void triggerEnrichmentAndDm({
       sessionId: s.id,
-      history,
+      history: enrichmentHistory,
       orgId,
       adminUserId,
       groupName: s.groupName ?? null,

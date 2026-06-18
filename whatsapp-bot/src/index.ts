@@ -581,6 +581,128 @@ async function main() {
     return out;
   }
 
+  // Phase-2 onboarding enrichment helper: capture the group's recent chat
+  // history shortly after the bot is added, so the server can mine player
+  // positions / seed ratings / schedule LATER at onboarding completion
+  // (the bot can only reliably fetch WhatsApp history around JOIN time).
+  //
+  // WhatsApp may not have synced history to a freshly-joined member yet,
+  // so we RETRY a couple of times. Whole thing is best-effort: any failure
+  // returns [] and the caller proceeds without history (degrade
+  // gracefully — never block the intro/onboarding).
+  async function collectGroupHistory(
+    groupId: string,
+    _selfId: string | undefined,
+  ): Promise<
+    Array<{ author: string; authorPhone: string | null; text: string; timestamp: string }>
+  > {
+    const LIMIT = 600;
+    const ATTEMPTS = 3;
+    const RETRY_MS = 4000;
+    const MIN_USEFUL = 5; // < this many → assume history hasn't synced yet
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let raw: any[] = [];
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      try {
+        const chat = await client.getChatById(groupId);
+        try {
+          raw = await chat.fetchMessages({ limit: LIMIT });
+        } catch {
+          // fetchMessages can throw for a chat not fully loaded in the
+          // headless session — fall back to the cached last message.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const lm = (chat as any).lastMessage;
+          raw = lm ? [lm] : [];
+        }
+      } catch {
+        raw = [];
+      }
+      console.log(
+        `[bot-added] history fetch attempt ${attempt}: got ${raw.length} msgs`,
+      );
+      if (raw.length >= MIN_USEFUL) break;
+      if (attempt < ATTEMPTS) await new Promise((r) => setTimeout(r, RETRY_MS));
+    }
+
+    if (raw.length === 0) return [];
+
+    // Sort oldest→newest (fetchMessages usually returns oldest-first, but
+    // don't rely on it).
+    raw.sort((a, b) => (a?.timestamp ?? 0) - (b?.timestamp ?? 0));
+
+    const out: Array<{
+      author: string;
+      authorPhone: string | null;
+      text: string;
+      timestamp: string;
+    }> = [];
+    for (const m of raw) {
+      try {
+        if (m.fromMe) continue; // never include the bot's own messages
+        // Skip system / notification events: keep only normal chat
+        // messages (type "chat") OR anything carrying a non-empty body.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dataBody = (m as any)._data?.body;
+        const text =
+          typeof m.body === "string" && m.body.length > 0
+            ? m.body
+            : typeof dataBody === "string"
+              ? dataBody
+              : "";
+        if (m.type !== "chat" && !text) continue;
+        if (!text.trim()) continue; // blank text → server drops it anyway
+
+        // Author display name (best-effort; skip nameless rows — the
+        // server drops blank-author rows regardless).
+        let author: string | null = null;
+        try {
+          const contact = await m.getContact();
+          author = contact?.pushname || contact?.name || null;
+        } catch {
+          /* non-fatal */
+        }
+        if (!author) continue;
+
+        // authorPhone: E.164 digits without "+", or null. @c.us → digits;
+        // @lid → resolve via the contact's .number; else null.
+        let authorPhone: string | null = null;
+        const id: string | undefined = m.author ?? m.from;
+        if (id?.endsWith("@c.us")) {
+          authorPhone = id.replace("@c.us", "").replace(/^\+/, "") || null;
+        } else if (id?.endsWith("@lid")) {
+          try {
+            const contact = await client.getContactById(id);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const num = (contact as any)?.number;
+            if (typeof num === "string" && num.length > 0) {
+              authorPhone = num.replace(/^\+/, "");
+            }
+          } catch {
+            /* non-fatal — leave null */
+          }
+        }
+        if (authorPhone) authorPhone = authorPhone.replace(/\D/g, "") || null;
+
+        out.push({
+          author,
+          authorPhone,
+          text,
+          timestamp: new Date(
+            (m.timestamp ?? Date.now() / 1000) * 1000,
+          ).toISOString(),
+        });
+      } catch {
+        /* skip this message; never abort the whole capture */
+      }
+    }
+
+    console.log(
+      `[bot-added] history fetched ${raw.length} msgs (mapped ${out.length} after filtering) for ${groupId}`,
+    );
+    return out;
+  }
+
   client.on(
     "group_join" as Parameters<typeof client.on>[0],
     async (notification: { chatId?: string; recipientIds?: string[]; author?: string }) => {
@@ -630,11 +752,29 @@ async function main() {
               /* non-fatal — server falls back to the consent replier */
             }
           }
+          // Capture chat history for the onboarding enrichment pass. The
+          // server persists it and uses it later at completion. Best-effort
+          // — any failure leaves history undefined and onboarding proceeds.
+          let enrichmentHistory:
+            | Array<{ author: string; authorPhone: string | null; text: string; timestamp: string }>
+            | undefined;
+          try {
+            const hist = await collectGroupHistory(groupId, selfId);
+            if (hist.length > 0) {
+              enrichmentHistory = hist;
+              console.log(
+                `[bot-added] sending ${hist.length} history msgs to server`,
+              );
+            }
+          } catch (err) {
+            console.error("[bot-added] history capture failed:", err);
+          }
           const res = await postBotAdded({
             groupId,
             groupSubject,
             addedByPhone,
             participants,
+            enrichmentHistory,
           });
           if (res?.introText) {
             addMonitoredGroup(groupId);

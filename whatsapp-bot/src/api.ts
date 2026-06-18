@@ -213,6 +213,16 @@ export async function postBotAdded(params: {
     lidId?: string | null;
     pushname?: string | null;
   }>;
+  /** Chat history the Pi captured shortly after join (it can only fetch
+   *  WhatsApp history around join time). The server PERSISTS it on the
+   *  OnboardingSession and uses it later as the enrichment fallback at
+   *  completion. Oldest→newest; blank rows are dropped server-side. */
+  enrichmentHistory?: Array<{
+    author: string;
+    authorPhone?: string | null;
+    text: string;
+    timestamp: string | number;
+  }>;
 }): Promise<{
   ok?: boolean;
   ignored?: string;

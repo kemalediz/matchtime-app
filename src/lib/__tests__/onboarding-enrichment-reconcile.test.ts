@@ -9,10 +9,48 @@
 import { describe, it, expect } from "vitest";
 import {
   buildParsedChatFromHistory,
+  coerceHistoryMessages,
   reconcileProposals,
   detectUnresolvedMembers,
   type HistoryMessage,
 } from "@/lib/onboarding-enrichment-reconcile";
+
+describe("coerceHistoryMessages", () => {
+  it("returns [] for non-array / nullish input", () => {
+    expect(coerceHistoryMessages(null)).toEqual([]);
+    expect(coerceHistoryMessages(undefined)).toEqual([]);
+    expect(coerceHistoryMessages("nope")).toEqual([]);
+    expect(coerceHistoryMessages({ author: "x", text: "y" })).toEqual([]);
+  });
+
+  it("keeps valid rows, preserves order, drops blank-author / blank-text / non-objects", () => {
+    const out = coerceHistoryMessages([
+      { author: "Coach", authorPhone: null, text: "Najib MOTM", timestamp: "t1" },
+      { author: "   ", text: "blank author", timestamp: "t2" }, // dropped
+      { author: "Talha", text: "   ", timestamp: "t3" }, // blank text → dropped
+      null, // dropped
+      42, // dropped
+      { author: "Captain", text: "Squad: Najib GK", timestamp: 1700000000000 },
+    ]);
+    expect(out.map((m) => m.author)).toEqual(["Coach", "Captain"]);
+    expect(out[0].text).toBe("Najib MOTM");
+    expect(out[1].timestamp).toBe(1700000000000);
+  });
+
+  it("trims fields and normalises a present authorPhone, else null", () => {
+    const out = coerceHistoryMessages([
+      { author: "  Sam  ", authorPhone: " 447700900000 ", text: " GK ", timestamp: "t" },
+      { author: "No Phone", authorPhone: "  ", text: "hi", timestamp: "t" },
+    ]);
+    expect(out[0]).toMatchObject({ author: "Sam", authorPhone: "447700900000", text: "GK" });
+    expect(out[1].authorPhone).toBeNull();
+  });
+
+  it("defaults a missing/invalid timestamp to a number (now)", () => {
+    const out = coerceHistoryMessages([{ author: "A", text: "b" }]);
+    expect(typeof out[0].timestamp).toBe("number");
+  });
+});
 
 describe("buildParsedChatFromHistory", () => {
   const history: HistoryMessage[] = [

@@ -121,6 +121,135 @@ test("completing onboarding WITH enrichment history fires enrichment + DMs the a
   expect(dm!.text).not.toMatch(/\d{10,}/);
 });
 
+test("bot-added PERSISTS enrichmentHistory on the session (blank rows skipped), and re-add idempotency holds", async ({ request, db }) => {
+  const onb = createOnboardingGroup(request);
+
+  const HISTORY = [
+    { author: "Coach", authorPhone: null, text: "Najib saved us again", timestamp: Date.now() },
+    { author: "", authorPhone: null, text: "blank author dropped", timestamp: Date.now() }, // skipped
+    { author: "Talha", authorPhone: null, text: "", timestamp: Date.now() }, // blank text → skipped
+    { author: "Captain", authorPhone: null, text: "Squad: Najib GK, Talha ST", timestamp: Date.now() },
+  ];
+
+  const added = await onb.botAdded({
+    groupSubject: "Persist FC",
+    addedByPhone: "447700916200",
+    participants: [],
+    enrichmentHistory: HISTORY,
+  });
+  expect(added.ok).toBe(true);
+
+  const readHistory = async () =>
+    (
+      await db.one<{ capturedHistory: Array<{ author: string; text: string }> | null }>(
+        `SELECT "capturedHistory" FROM "OnboardingSession"
+         WHERE "whatsappGroupId" = $1 ORDER BY "createdAt" DESC`,
+        [onb.groupId],
+      )
+    )?.capturedHistory ?? null;
+
+  const stored = await readHistory();
+  expect(stored).not.toBeNull();
+  // Only the 2 valid rows survive (blank-author + blank-text dropped).
+  expect(stored!.length).toBe(2);
+  expect(stored!.map((m) => m.author)).toEqual(["Coach", "Captain"]);
+
+  // Re-add WITH a different (smaller/empty) history must NOT clobber.
+  await onb.botAdded({
+    groupSubject: "Persist FC",
+    addedByPhone: "447700916200",
+    participants: [],
+    enrichmentHistory: [{ author: "Late", authorPhone: null, text: "showed up late", timestamp: Date.now() }],
+  });
+  const afterReAdd = await readHistory();
+  expect(afterReAdd!.length).toBe(2);
+  expect(afterReAdd!.map((m) => m.author)).toEqual(["Coach", "Captain"]);
+});
+
+test("bot-added stores history on RE-ADD when the session had none captured yet", async ({ request, db }) => {
+  const onb = createOnboardingGroup(request);
+
+  // First add carries NO history → session created with capturedHistory null.
+  await onb.botAdded({
+    groupSubject: "LateSync FC",
+    addedByPhone: "447700916300",
+    participants: [],
+  });
+
+  const readHistory = async () =>
+    (
+      await db.one<{ capturedHistory: Array<{ author: string; text: string }> | null }>(
+        `SELECT "capturedHistory" FROM "OnboardingSession"
+         WHERE "whatsappGroupId" = $1 ORDER BY "createdAt" DESC`,
+        [onb.groupId],
+      )
+    )?.capturedHistory ?? null;
+
+  expect(await readHistory()).toBeNull();
+
+  // Re-add once WhatsApp finally synced history → it should now land.
+  await onb.botAdded({
+    groupSubject: "LateSync FC",
+    addedByPhone: "447700916300",
+    participants: [],
+    enrichmentHistory: [
+      { author: "Sam", authorPhone: null, text: "GK every week", timestamp: Date.now() },
+    ],
+  });
+
+  const stored = await readHistory();
+  expect(stored).not.toBeNull();
+  expect(stored!.length).toBe(1);
+  expect(stored![0].author).toBe("Sam");
+});
+
+test("completion uses STORED capturedHistory when the completing request omits enrichmentHistory", async ({ request, db }) => {
+  const STORE_OWNER = "447700916400";
+  const onb = createOnboardingGroup(request);
+
+  // bot-added carries the enrichment history; it gets persisted.
+  const added = await onb.botAdded({
+    groupSubject: "Stored Sat FC",
+    addedByPhone: STORE_OWNER,
+    participants: [],
+    enrichmentHistory: enrichmentHistory,
+  });
+  expect(added.ok).toBe(true);
+
+  // Drive to completion WITHOUT passing enrichmentHistory on any turn.
+  await onb.say("EVERYTHING", { phone: STORE_OWNER, name: "Stella Owner" });
+  await onb.say("just me for now", { phone: STORE_OWNER, name: "Stella Owner" });
+  const done = await onb.say(
+    "we play saturdays 10am at Hackney Marshes, 11 a side",
+    { phone: STORE_OWNER, name: "Stella Owner" },
+    undefined, // no request-provided enrichmentHistory → must fall back to stored
+  );
+  expect(done.reply).toContain("All set");
+
+  const org = await db.one<{ id: string }>(
+    `SELECT id FROM "Organisation" WHERE "whatsappGroupId" = $1`,
+    [onb.groupId],
+  );
+  expect(org?.id).toBeTruthy();
+
+  // Enrichment fired from the STORED history → status ready + DM queued.
+  await expect
+    .poll(async () => (await sessionRow(db, onb.groupId))?.enrichmentStatus, { timeout: 20_000 })
+    .toBe("ready");
+
+  await expect
+    .poll(
+      async () =>
+        await db.count(
+          `SELECT COUNT(*) FROM "BotJob"
+           WHERE "orgId" = $1 AND kind = 'dm' AND text ILIKE '%' || $2 || '%'`,
+          [org!.id, ENRICHMENT_MARKER],
+        ),
+      { timeout: 20_000 },
+    )
+    .toBeGreaterThan(0);
+});
+
 test("completing onboarding WITHOUT enrichment history queues NO enrichment DM and leaves enrichmentStatus null", async ({ request, db }) => {
   const NO_HIST_OWNER = "447700916100";
   const { groupId } = await completeOnboarding(
