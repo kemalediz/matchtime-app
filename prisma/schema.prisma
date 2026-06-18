@@ -84,6 +84,19 @@ model User {
   isActive      Boolean   @default(true)
   onboarded     Boolean   @default(false)
 
+  /// Cross-club "nearby players" discoverability. Default OFF — a user is
+  /// only surfaced to other groups after explicit opt-in. Scope is narrow:
+  /// a coarse home-area point + radius, never a precise location, and no
+  /// data here is shared until the user consents (discoverableConsentVer
+  /// records which consent text they agreed to).
+  discoverableNearby     Boolean   @default(false)
+  discoverableNearbyAt   DateTime?
+  discoverableConsentVer Int?
+  nearbyRadiusKm         Int       @default(10)
+  homeAreaLabel          String?
+  homeAreaLat            Float?
+  homeAreaLng            Float?
+
   accounts          Account[]
   sessions          Session[]
   memberships       Membership[]
@@ -372,6 +385,23 @@ model Membership {
   @@index([leftAt])
 }
 
+/// GLOBAL (not org-scoped) registry of physical venues, deduped by Google
+/// Place ID (placeId). Shared across all groups so two clubs playing at the
+/// same pitch resolve to one row — the backbone of "nearby players".
+/// Contains no personal data.
+model Venue {
+  id               String   @id @default(cuid())
+  placeId          String?  @unique
+  name             String
+  formattedAddress String?
+  lat              Float?
+  lng              Float?
+  source           String?
+  activities       Activity[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
 model Activity {
   id                String       @id @default(cuid())
   orgId             String
@@ -382,6 +412,8 @@ model Activity {
   dayOfWeek         Int          // 0=Sun..6=Sat
   time              String       // "21:30"
   venue             String
+  venueId           String?
+  venueRef          Venue?       @relation(fields: [venueId], references: [id])
   isActive          Boolean      @default(true)
   deadlineHours     Int          @default(5)
   matchDurationMins Int          @default(60)
@@ -405,6 +437,7 @@ model Activity {
 
   @@index([orgId])
   @@index([sportId])
+  @@index([venueId])
 }
 
 model PlayerActivityPosition {
