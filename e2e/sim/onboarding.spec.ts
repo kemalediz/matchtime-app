@@ -93,6 +93,18 @@ test("bot-added → intro → EVERYTHING → admins (@mention + name+phone) → 
   expect(done.reply).toContain("All set");
   expect((await session(db, onb.groupId))?.stage).toBe("completed");
 
+  // The completion post teaches the interaction contract, feature-aware.
+  // EVERYTHING enables attendance + teamBalancing + momVoting +
+  // playerRating + paymentTracking, so every contract line is present.
+  expect(done.reply).toMatch(/in.*out/i); // In/Out availability
+  expect(done.reply?.toLowerCase()).toContain("tag"); // tag-to-ask rule
+  expect(done.reply).toMatch(/maybe/i); // tentative path
+  expect(done.reply).toMatch(/24h/i); // ~24h DM follow-up
+  expect(done.reply).toMatch(/quiet/i); // stays quiet / banter safe
+  expect(done.reply).toMatch(/team/i); // teamBalancing capability
+  expect(done.reply?.toLowerCase()).toMatch(/mom|man of the match/); // momVoting
+  expect(done.reply?.toLowerCase()).toMatch(/pa(id|yment)/); // paymentTracking
+
   // Org: EVERYTHING = recommended bundle + payment tracking ON.
   const org = await db.one<{
     id: string;
@@ -173,4 +185,14 @@ test("bot-added → intro → EVERYTHING → admins (@mention + name+phone) → 
     [org!.id, OWNER_PHONE],
   );
   expect(ownerDm?.text).toMatch(/https?:\/\//);
+});
+
+test('"@Match Time help" reprints the feature-aware usage summary', async ({ request, db }) => {
+  const g = await createGroup(request, db, {}); // default features: all on except payments
+  const r = await g.post("pete", "@Match Time help", { tag: true });
+  expect(r.handledBy).toBe("fast-path");
+  expect(r.intent).toBe("help");
+  expect(r.reply).toMatch(/in.*out/i);
+  expect(r.reply?.toLowerCase()).toContain("tag");
+  expect(r.reply).toMatch(/quiet/i);
 });

@@ -153,6 +153,66 @@ function withIntro(question: string): string {
 }
 
 /**
+ * The feature-aware "how to use me" usage block, posted when setup
+ * completes (and re-printed on "@Match Time help"). Teaches the shipped
+ * interaction contract in short, scannable WhatsApp-friendly lines:
+ *
+ *   - In/Out marks your OWN availability, no tag needed (attendance orgs).
+ *   - Not sure? Say "maybe" and MatchTime DMs you ~24h before for a firm
+ *     yes/no.
+ *   - Tag *@Match Time* to make it DO/TELL something — only the enabled
+ *     capabilities are listed.
+ *   - It stays quiet otherwise (banter is safe).
+ *   - Feature extras (MoM / ratings / reminders / payments) appear ONLY
+ *     when their flag is on.
+ *
+ * Every line is gated on the relevant feature flag so a group never sees
+ * instructions for something they didn't switch on. No raw phone numbers.
+ */
+export function buildHowToUseMe(features: {
+  attendance: boolean;
+  teamBalancing: boolean;
+  momVoting: boolean;
+  playerRating: boolean;
+  statsQa: boolean;
+  reminders: boolean;
+  bench: boolean;
+  paymentTracking: boolean;
+}): string {
+  const lines: string[] = [];
+
+  if (features.attendance) {
+    lines.push(`✅ Say *"In"* or *"Out"* to mark your own availability — no need to tag me.`);
+    lines.push(`🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.`);
+  } else {
+    // Squad-from-list shape: no In/Out tracking — the bot reads the squad
+    // off whatever numbered list the group pastes.
+    lines.push(`📋 Paste your squad list and I'll read who's playing — no need to tag me.`);
+  }
+
+  // The tag gate + ONLY the enabled "ask me to do/tell" capabilities.
+  const caps: string[] = [];
+  if (features.attendance) caps.push(`see who's in / how many we've got`);
+  if (features.teamBalancing) caps.push(`make / show the teams`);
+  if (features.statsQa) caps.push(`who won last week? / past stats`);
+  lines.push(`💬 Tag *@Match Time* when you want me to do or tell you something:`);
+  for (const c of caps) lines.push(`   • ${c}`);
+
+  lines.push(`🤐 I stay quiet the rest of the time — banter and jokes are safe, I won't butt in.`);
+
+  // Feature extras — each strictly gated.
+  if (features.momVoting) lines.push(`🏆 After the game I'll run a quick *Man of the Match* vote.`);
+  if (features.playerRating) lines.push(`⭐ I'll DM you a one-tap *rating* link after the match.`);
+  if (features.reminders) lines.push(`⏰ Say *"@Match Time remind me Thursday"* and I'll nudge you.`);
+  if (features.paymentTracking) lines.push(`💳 I keep track of who's *paid*.`);
+
+  // Tip line — only valid because the "@Match Time help" fast-path is wired.
+  lines.push(`\nType *"@Match Time help"* any time to see this again.`);
+
+  return lines.join("\n");
+}
+
+/**
  * The `admins` stage question (group-add flow). The owner is already
  * captured at `introduced`; this asks for ADDITIONAL admins. Never
  * blocks the flow — any answer (including junk) advances to `details`.
@@ -163,26 +223,21 @@ const ADMIN_QUESTION =
 
 /**
  * Intro posted the moment the bot is ADDED to a group (Phase 1
- * group-add flow — design §B.3). Skimmable, non-native-friendly; one
- * question that doubles as consent + feature selection + admin capture.
- * The recommended bundle ("YES") is the first option so it's the path
- * of least resistance; payments are explicitly optional; the opt-out
- * line keeps the falls-open promise.
+ * group-add flow — design §B.3). SHORT and inviting: what MatchTime is
+ * in a line or two, then a tight consent question. The full "how to use
+ * me" rules come later, at setup completion (buildHowToUseMe) — NOT
+ * here. The consent keywords (YES / EVERYTHING / named features) are
+ * load-bearing: the `introduced` stage parser (parseBundleReply) reads
+ * them, so they must stay. The opt-out line keeps the falls-open
+ * promise.
  */
 export const BOT_ADDED_INTRO =
-  `👋 Hey! I'm *MatchTime* — I run the boring parts of your game so nobody has to.\n\n` +
-  `Here's what I can do:\n` +
-  `⚽ *Squad list* — say "in" or "out" here; I keep the list and chase when we're short\n` +
-  `⚖️ *Fair teams* — balanced sides from real player ratings, posted before kickoff\n` +
-  `🪑 *Bench* — someone drops? I offer the spot; first to claim it plays\n` +
-  `🏆 *Man of the Match + ratings* — quick vote and a one-tap rating link after each game. No app to install\n` +
-  `💳 *Payments* — I track who's paid, or collect match fees by link _(optional)_\n` +
-  `⏰ *Reminders & stats* — "remind me Thursday", "who won MoM last week?"\n\n` +
+  `👋 Hi! I'm *MatchTime* — I take the weekly admin off your hands: squad list, fair teams, MoM, ratings and more, so you just turn up and play.\n\n` +
   `*Want me running here?* Whoever runs this group, just reply:\n` +
-  `• *YES* — switches on the usual setup (squad list, fair teams, bench, MoM, ratings, reminders)\n` +
+  `• *YES* — the usual setup (squad list, fair teams, bench, MoM, ratings, reminders)\n` +
   `• *EVERYTHING* — the lot, including payment tracking\n` +
-  `• or name just the parts you want — e.g. _"just MoM and ratings"_\n\n` +
-  `Not interested? Ignore me and I'll stay quiet. 🤐`;
+  `• or name the parts you want — e.g. _"just MoM and ratings"_\n\n` +
+  `Not interested? Just ignore me and I'll stay quiet. 🤐`;
 
 /**
  * Find-or-create a User for a bot-forwarded phone (digits, usually no
@@ -1114,6 +1169,20 @@ async function completeOnboarding(
 
   const onLabels = FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
 
+  // Feature-aware "how to use me" block, appended to the completion post
+  // so players learn the interaction contract the moment the bot goes
+  // live. statsQa is always-on (see featureData above).
+  const howToUseMe = buildHowToUseMe({
+    attendance: chosenSet.has("attendance"),
+    teamBalancing: chosenSet.has("teamBalancing"),
+    momVoting: chosenSet.has("momVoting"),
+    playerRating: chosenSet.has("playerRating"),
+    statsQa: true,
+    reminders: chosenSet.has("reminders"),
+    bench: chosenSet.has("bench"),
+    paymentTracking: chosenSet.has("paymentTracking"),
+  });
+
   // Group-add flow gets the design's completion copy (roster + admin
   // link callouts); the legacy setup-trigger copy is unchanged so the
   // existing QA suite keeps passing byte-identical.
@@ -1133,7 +1202,8 @@ async function completeOnboarding(
         ? `👮 Added *${adminsAdded} co-admin${adminsAdded === 1 ? "" : "s"}* — I've DM'd them their admin link.\n`
         : ``) +
       `\n` +
-      `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽`
+      `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽` +
+      `\n\n*How to use me* 👇\n${howToUseMe}`
     );
   }
 
@@ -1141,7 +1211,7 @@ async function completeOnboarding(
     `✅ *All set!* I'm now running for this group with: *${onLabels.join(", ")}*.\n\n` +
     `First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +
     `${weekly ? " (every week)" : ""}.\n\n` +
-    `That's it — I'll take it from here. Anyone can just chat normally; I'll handle the rest. ⚽`
+    `*How to use me* 👇\n${howToUseMe}`
   );
 }
 
