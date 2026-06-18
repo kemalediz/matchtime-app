@@ -47,7 +47,7 @@ export default async function MatchDetailPage({
   if (!match) redirect("/matches");
 
   const sport = match.activity.sport;
-  const [redLabel, yellowLabel] = resolveTeamLabels(match.activity.org, sport);
+  const [redLabel, yellowLabel] = resolveTeamLabels(match, match.activity.org, sport);
 
   // Per-activity positions for the players in this match
   const positionsFor = (u: { activityPositions: { activityId: string; positions: string[] }[] }) =>

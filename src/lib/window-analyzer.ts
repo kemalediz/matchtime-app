@@ -339,7 +339,7 @@ export async function buildShadowMatchContext(orgId: string): Promise<string> {
   lines.push(`Date: ${formatDate(match.date, "EEE d MMM HH:mm")} UK (UTC ${match.date.toISOString()})`);
   lines.push(`Venue: ${match.activity.venue ?? "—"}`);
   lines.push(`Max players: ${match.maxPlayers} (${match.activity.sport.playersPerTeam}-a-side)`);
-  const [redLbl, yellowLbl] = resolveTeamLabels(orgLabels, match.activity.sport);
+  const [redLbl, yellowLbl] = resolveTeamLabels(match, orgLabels, match.activity.sport);
   lines.push(`Team labels: first team = "${redLbl}" (scoreRed), second team = "${yellowLbl}" (scoreYellow)`);
   lines.push(`Squad: ${confirmed.length}/${match.maxPlayers} confirmed, ${bench.length} bench, ${dropped.length} dropped`);
   lines.push("");

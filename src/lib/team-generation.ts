@@ -16,6 +16,7 @@ import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
 import { computePlayerRating } from "./player-rating";
 import { resolveTeamLabels } from "./team-labels";
+import { sanitiseTeamNames } from "./message-analyzer";
 
 export type GenerateTeamsResult =
   | { ok: true; groupPost: string; matchId: string }
@@ -27,6 +28,13 @@ export interface GenerateTeamsOptions {
    *  intent overrides the optimiser. Used by the LLM "put me on
    *  Red" pathway. */
   pinnedToTeam?: Record<string, "RED" | "YELLOW">;
+  /** Fun, MatchTime-invented display names for THIS match, [redName,
+   *  yellowName]. Set when an admin asks the bot to choose the team
+   *  names ("you pick the names this week"). Sanitised here; when valid
+   *  they're persisted to Match.teamLabels (highest-precedence display
+   *  override) and used in the group post. When absent/invalid we do NOT
+   *  touch Match.teamLabels — a prior per-match override survives. */
+  teamNames?: [string, string];
 }
 
 export async function generateTeamsForMatch(
@@ -119,12 +127,27 @@ export async function generateTeamsForMatch(
       ...result.yellow.map((p) => ({ matchId, userId: p.id, team: "YELLOW" as const })),
     ],
   });
+  // If the requester asked MatchTime to invent fun names this week,
+  // sanitise and persist them as the per-match display override. When
+  // no (valid) names are given we leave Match.teamLabels untouched so a
+  // prior override from an earlier request this week isn't clobbered.
+  const validNames = sanitiseTeamNames(opts.teamNames);
   await db.match.update({
     where: { id: matchId },
-    data: { status: "TEAMS_GENERATED" },
+    data: {
+      status: "TEAMS_GENERATED",
+      ...(validNames ? { teamLabels: validNames } : {}),
+    },
   });
 
-  const [redLabel, yellowLabel] = resolveTeamLabels(match.activity.org, sport);
+  // `match` still carries its pre-update teamLabels, so a prior override
+  // survives when no new names are given this run.
+  const matchLabelSource = validNames ? { teamLabels: validNames } : match;
+  const [redLabel, yellowLabel] = resolveTeamLabels(
+    matchLabelSource,
+    match.activity.org,
+    sport,
+  );
   const kickoff = formatLondon(match.date, "HH:mm");
   const listFor = (arr: typeof result.red) =>
     arr.map((p, i) => `${i + 1}. ${p.name}`).join("\n");

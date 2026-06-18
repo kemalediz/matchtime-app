@@ -115,6 +115,7 @@ export async function resolveBenchConfirmation(args: {
         });
         if (mForLabels) {
           const labels = resolveTeamLabels(
+            mForLabels,
             mForLabels.activity.org,
             mForLabels.activity.sport,
           );

@@ -1044,6 +1044,7 @@ export async function POST(request: Request) {
         react: "⚽",
         teamOverrides: null,
         includeNames: null,
+        teamNames: null,
       };
     }
     try {
@@ -2287,6 +2288,7 @@ async function executeVerdict(args: {
         const result = await generateTeamsForMatch(match.id, {
           pinnedToTeam:
             Object.keys(pinnedToTeam).length > 0 ? pinnedToTeam : undefined,
+          teamNames: verdict.teamNames ?? undefined,
         });
         if (result.ok) {
           let text = result.groupPost;
@@ -2801,7 +2803,7 @@ async function handleTeamSwapIfApplicable(
   // replacement, or ambiguous) — fall through to normal handling.
   if (!A || !B || A.user.id === B.user.id) return null;
 
-  const labels = resolveTeamLabels(match.activity.org, match.activity.sport);
+  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
   const taA = match.teamAssignments.find((t) => t.userId === A.user.id);
   const taB = match.teamAssignments.find((t) => t.userId === B.user.id);
 
@@ -2900,7 +2902,7 @@ async function handleColorSwapIfApplicable(
   // configured team labels (resolved from Organisation/Sport.teamLabels).
   // Red/Yellow stay covered by the regexes above as a fallback.
   if (!isColourSwap) {
-    const cfgLabels = resolveTeamLabels(match.activity.org, match.activity.sport);
+    const cfgLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
     const labelAlts = cfgLabels
       .map((l) => l.trim())
       .filter((l) => l && !/^(red|yellow)$/i.test(l))
@@ -2927,7 +2929,7 @@ async function handleColorSwapIfApplicable(
     ),
   );
 
-  const labels = resolveTeamLabels(match.activity.org, match.activity.sport);
+  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
   const fresh = await db.teamAssignment.findMany({
     where: { matchId: match.id },
     include: { user: { select: { name: true } } },

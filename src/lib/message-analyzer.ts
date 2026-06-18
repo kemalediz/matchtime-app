@@ -117,6 +117,15 @@ export interface AnalysisVerdict {
    *  enum value, NOT the org's display label. Server resolves names
    *  to userIds and feeds the balancer a pinnedToTeam map. */
   teamOverrides: Array<{ name: string; team: "RED" | "YELLOW" }> | null;
+  /** Populated ONLY when intent = "generate_teams_request" AND the requester
+   *  asks MatchTime to CHOOSE/randomize/invent/surprise them with the team
+   *  names ("you pick the names", "give them fun names", "team names will be
+   *  something you randomly select this week", "surprise us"). When set, it's
+   *  [redName, yellowName] — a FUN, clean, broadly-appropriate, DISTINCT pair
+   *  themed for a community football club; persisted to Match.teamLabels and
+   *  used everywhere that match's teams are shown. Null when no naming request
+   *  was made (behaviour stays the default Red/Yellow or org/sport labels). */
+  teamNames: [string, string] | null;
   /** Populated when intent = "bulk_payment_credit" — the message says
    *  "X paid for N players" or names specific players X paid for.
    *  Server only acts on this when the SENDER is OWNER/ADMIN of the
@@ -210,6 +219,7 @@ Output schema:
       "scoreYellow": <number> | null,
       "includeNames": [<string>, ...] | null,
       "teamOverrides": [{"name": "<string>", "team": "RED" | "YELLOW"}, ...] | null,
+      "teamNames": ["<redName>", "<yellowName>"] | null,
       "bulkPayment": {"payerName": "<string>", "count": <number>, "coveredNames": [<string>, ...] | null} | null,
       "reminder": {"date": "<YYYY-MM-DD>", "time": "<HH:MM>" | null, "note": "<string>"} | null,
       "registerFor": [{"name": "<string>", "action": "IN" | "OUT" | "BENCH"}, ...] | null,
@@ -342,6 +352,11 @@ Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time r
      "generate teams but put myself in Red, I have a red bib"   → teamOverrides: [{"name": "<author-first>", "team": "RED"}]
      "teams please, Wasim on Yellow with me on Yellow"          → teamOverrides: [{"name": "Wasim", "team": "YELLOW"}, {"name": "<author-first>", "team": "YELLOW"}]
      "generate teams"                                            → teamOverrides: []
+  → If the requester asks MatchTime to CHOOSE / randomize / invent / surprise them with the team NAMES ("you pick the names", "give them fun names", "team names will be something you randomly select this week", "surprise us", "come up with cool names"), populate teamNames with a FUN, friendly, CLEAN, broadly-appropriate themed PAIR: two DISTINCT names, each short (≤18 chars), suitable for a community football club. Good themes: animals, mythical creatures, playful football/nature themes (Lions/Tigers, Falcons/Sharks, Dragons/Phoenixes, Thunder/Lightning, Wolves/Hawks). Vary them week to week. NO offensive, political, sexual, or religious content; NO real people's names; NO PII. If the message does NOT ask the bot to choose the names, leave teamNames null. Examples:
+     "generate the teams, you pick fun names this week"          → teamNames: ["Wolves", "Hawks"]
+     "@Match Time generate the teams, surprise us with the names" → teamNames: ["Dragons", "Falcons"]
+     "generate teams"                                            → teamNames: null
+     "generate teams and put me on Red"                          → teamNames: null
   → Only classify as this intent if the request is CLEAR. If the person is just wondering who'd be on which team ("who'd be in red?"), that's "question", not this.
 - "bring_guests_vague": Someone commits to bringing additional players but DOESN'T name them ("two of my guys can play next week", "I'll bring 2 friends", "my mate wants to come", "can I bring someone?").
   → registerAttendance: null (can't register without names). registerFor: null. react: null. reply: short, warm question asking for the names so we can add them. Format the reply as: "thanks @<firstName>, could you share their names so I can add them to the list? 🙌". Ground the author's first name from the Match Context/sender. Use their display-name first token, no fabrication.
@@ -818,7 +833,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   const matchContext = buildMatchContextBlock({
     orgName: org.name,
     match,
-    teamLabels: resolveTeamLabels(org, match?.activity.sport),
+    teamLabels: resolveTeamLabels(match, org, match?.activity.sport),
     alternatives,
     openBenchSlot,
   });
@@ -1112,7 +1127,7 @@ export async function composeChaseText(input: {
   const matchContext = buildMatchContextBlock({
     orgName: org.name,
     match,
-    teamLabels: resolveTeamLabels(org, match.activity.sport),
+    teamLabels: resolveTeamLabels(match, org, match.activity.sport),
     alternatives,
   });
 
@@ -1716,6 +1731,7 @@ function stubbedVerdictsForTest(
       scoreYellow: null,
       includeNames: null,
       teamOverrides: null,
+      teamNames: null,
       bulkPayment: null,
       reminder: null,
       registerFor: null,
@@ -1739,11 +1755,50 @@ function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {
     scoreYellow: null,
     includeNames: null,
     teamOverrides: null,
+    teamNames: null,
     bulkPayment: null,
     reminder: null,
     registerFor: null,
     reasoning: reason,
   };
+}
+
+/**
+ * Sanitise an LLM-proposed pair of fun team names into a safe
+ * `[redName, yellowName]` tuple, or `null` when the input is unusable.
+ *
+ * Exported so it can be unit-tested and reused by the team-generation
+ * builder before persisting to `Match.teamLabels`.
+ *
+ * Rules:
+ *   - must be an array of exactly length 2, each element a string
+ *   - each is trimmed and capped at 24 chars
+ *   - rejected (→ null) if either is empty after trim, the two are
+ *     case-insensitively identical, or either is purely punctuation /
+ *     contains control characters
+ */
+export function sanitiseTeamNames(input: unknown): [string, string] | null {
+  if (!Array.isArray(input) || input.length !== 2) return null;
+  const [a, b] = input;
+  if (typeof a !== "string" || typeof b !== "string") return null;
+  // Reject anything with control characters (incl. newlines/tabs).
+  // Checked by char code so the source stays free of literal control bytes.
+  const hasControl = (s: string) => {
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x20 || c === 0x7f) return true;
+    }
+    return false;
+  };
+  if (hasControl(a) || hasControl(b)) return null;
+  const red = a.trim().slice(0, 24);
+  const yellow = b.trim().slice(0, 24);
+  if (!red || !yellow) return null;
+  // Purely punctuation / no letter-or-number → reject.
+  const hasAlnum = (s: string) => /[\p{L}\p{N}]/u.test(s);
+  if (!hasAlnum(red) || !hasAlnum(yellow)) return null;
+  if (red.toLowerCase() === yellow.toLowerCase()) return null;
+  return [red, yellow];
 }
 
 function safeParseJson(text: string): Record<string, unknown> | null {
@@ -1845,6 +1900,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
         })
         .filter((e): e is { name: string; team: "RED" | "YELLOW" } => e !== null)
     : null;
+  const teamNames = sanitiseTeamNames(raw.teamNames);
   const registerFor = Array.isArray(raw.registerFor)
     ? (raw.registerFor as unknown[])
         .map((e) => {
@@ -1923,6 +1979,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
       scoreYellow: null,
       includeNames: null,
       teamOverrides: null,
+      teamNames: null,
       bulkPayment: null,
       reminder: null,
       registerFor: null,
@@ -1942,6 +1999,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     scoreYellow,
     includeNames,
     teamOverrides: teamOverrides && teamOverrides.length > 0 ? teamOverrides : null,
+    teamNames,
     bulkPayment,
     reminder,
     registerFor: registerFor && registerFor.length > 0 ? registerFor : null,

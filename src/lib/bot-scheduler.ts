@@ -333,13 +333,14 @@ function buildSquadRosterBlock(args: {
  */
 function buildMatchDayTeamsBlock(args: {
   activity: { name: string; venue: string };
+  match: { teamLabels?: string[] | null } | null;
   org: { teamLabels?: string[] | null } | null;
   sport: { teamLabels: string[] };
   matchDate: Date;
   teamAssignments: { team: "RED" | "YELLOW"; user: { name: string | null } }[];
 }): string {
-  const { activity, org, sport, matchDate, teamAssignments } = args;
-  const [redLabel, yellowLabel] = resolveTeamLabels(org, sport);
+  const { activity, match, org, sport, matchDate, teamAssignments } = args;
+  const [redLabel, yellowLabel] = resolveTeamLabels(match, org, sport);
   const red = teamAssignments.filter((t) => t.team === "RED");
   const yellow = teamAssignments.filter((t) => t.team === "YELLOW");
   const numbered = (arr: typeof red) =>
@@ -878,6 +879,7 @@ async function computeForMatch(
         // naming them on the lineup post is unnecessary noise.
         text = buildMatchDayTeamsBlock({
           activity,
+          match: m,
           org: activity.org ?? null,
           sport,
           matchDate: m.date,
@@ -975,7 +977,7 @@ async function computeForMatch(
           const repl = m.attendances.find((a) => a.userId === offer.replacingUserId)?.user;
           const ta = m.teamAssignments.find((t) => t.userId === offer.replacingUserId);
           if (repl && ta) {
-            const labels = resolveTeamLabels(activity.org, sport);
+            const labels = resolveTeamLabels(m, activity.org, sport);
             const tl = ta.team === "RED" ? labels[0] : labels[1];
             ctx = `on *${tl}* (replacing ${repl.name ?? "—"}) for *${activity.name}* tonight`;
             ctxPlain = `on ${tl} (replacing ${repl.name ?? "—"}) for ${activity.name} tonight`;
@@ -1283,7 +1285,7 @@ async function computeForMatch(
         m.status === "TEAMS_PUBLISHED" ||
         m.status === "COMPLETED")
     ) {
-      const [redLabel, yellowLabel] = resolveTeamLabels(activity.org, sport);
+      const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org, sport);
       out.push({
         kind: "group-poll",
         key,

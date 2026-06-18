@@ -493,6 +493,12 @@ model Match {
   /// released yet (fee not confirmed). Gates the chaser.
   paymentLinksReleasedAt DateTime?
 
+  /// Per-match display-label override (highest precedence over org/sport).
+  /// Index 0 = RED, 1 = YELLOW. Set when an admin asks MatchTime to invent
+  /// fun team names for this week's match. Empty (default) = fall through to
+  /// org/sport/default via resolveTeamLabels().
+  teamLabels             String[]    @default([])
+
   attendances            Attendance[]
   teamAssignments        TeamAssignment[]
   ratings                Rating[]

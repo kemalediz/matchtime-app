@@ -107,7 +107,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   const momSummaries = await getMomSummaries(matchIds);
 
   const recentMatches: RecentMatchRow[] = matches.map((m) => {
-    const [redLabel, yellowLabel] = resolveTeamLabels(org, m.activity.sport);
+    const [redLabel, yellowLabel] = resolveTeamLabels(m, org, m.activity.sport);
     const hasScore = m.redScore !== null && m.yellowScore !== null;
     const scoreLabel = hasScore
       ? `${redLabel} ${m.redScore} - ${m.yellowScore} ${yellowLabel}`

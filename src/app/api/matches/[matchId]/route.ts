@@ -70,8 +70,10 @@ export async function GET(
     teamAssignments: flatTeamAssignments,
     existingRatings,
     existingMoMVote,
-    // Resolved display labels for the two team slots (org override →
-    // sport labels → "Red"/"Yellow"). [0] = RED, [1] = YELLOW.
-    teamLabels: resolveTeamLabels(match.activity.org, match.activity.sport),
+    // Resolved display labels for the two team slots (per-match override →
+    // org override → sport labels → "Red"/"Yellow"). [0] = RED, [1] = YELLOW.
+    // NOTE: this overwrites the raw `match.teamLabels` scalar spread from
+    // `...match` above (intentional — clients read the resolved pair here).
+    teamLabels: resolveTeamLabels(match, match.activity.org, match.activity.sport),
   });
 }

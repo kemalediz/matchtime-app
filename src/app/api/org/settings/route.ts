@@ -41,7 +41,7 @@ export async function GET() {
     select: { teamLabels: true },
     orderBy: { createdAt: "asc" },
   });
-  const defaultTeamLabels = resolveTeamLabels(null, firstSport);
+  const defaultTeamLabels = resolveTeamLabels(null, null, firstSport);
 
   return NextResponse.json({
     id: org.id,
