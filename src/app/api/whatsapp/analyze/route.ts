@@ -62,7 +62,7 @@ import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { isPromoteFromBenchAuthorized } from "@/lib/promote-authorization";
 import { computeEloDeltas } from "@/lib/elo";
 import { resolveTeamLabels } from "@/lib/team-labels";
-import { generateTeamsForMatch } from "@/lib/team-generation";
+import { generateTeamsForMatch, formatTeamsPost } from "@/lib/team-generation";
 import { londonDateTimeToUtc, formatLondon } from "@/lib/london-time";
 
 interface InboundMessage {
@@ -1094,7 +1094,10 @@ export async function POST(request: Request) {
         );
         const freshBench = freshAttendances.filter((a) => a.status === "BENCH");
         cleanReply = enforceProximity(cleanReply, nextMatchForReply.date);
-        if (verdict.intent !== "generate_teams_request") {
+        if (
+          verdict.intent !== "generate_teams_request" &&
+          verdict.intent !== "show_teams_request"
+        ) {
           cleanReply = enforceCanonicalRoster(cleanReply, {
             confirmed: freshConfirmed.map((a) => a.user.name ?? "(unnamed)"),
             bench: freshBench.map((a) => a.user.name ?? "(unnamed)"),
@@ -1891,7 +1894,8 @@ async function executeVerdict(args: {
     const f = await getOrgFeatures(orgId);
     const needs: FeatureKey | null = verdict.benchConfirmation
       ? "bench"
-      : verdict.intent === "generate_teams_request"
+      : verdict.intent === "generate_teams_request" ||
+          verdict.intent === "show_teams_request"
         ? "teamBalancing"
         : verdict.intent === "reminder_request"
           ? "reminders"
@@ -2326,6 +2330,74 @@ async function executeVerdict(args: {
       }
     } catch (err) {
       console.error("[analyze] generate_teams_request failed:", err);
+      finalReply = null;
+    }
+  }
+
+  // ── Show-teams request ───────────────────────────────────────────
+  //    Someone asked to SEE / re-post the CURRENT teams ("show the
+  //    teams again", "what are the teams"). We re-post the EXISTING
+  //    TeamAssignment rows verbatim — NO balancer, NO reshuffle, NO
+  //    mutation of Match.teamLabels / status / assignments. This is the
+  //    fix for the bug where "show the teams" used to regenerate from
+  //    scratch (the only team intent was generate_teams_request).
+  if (verdict.intent === "show_teams_request") {
+    try {
+      const match = await db.match.findFirst({
+        where: {
+          activity: { orgId },
+          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+          attendanceDeadline: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { date: "asc" },
+        include: { activity: { include: { sport: true, org: true } } },
+      });
+      if (!match) {
+        finalReply =
+          "No teams generated yet — say 'generate the teams' and I'll sort them.";
+        finalReact = "🤔";
+      } else {
+        // Read existing assignments in INSERTION order (id asc) so the
+        // re-post renders the same players in the same order generate
+        // wrote them (createMany writes red then yellow).
+        const assignments = await db.teamAssignment.findMany({
+          where: { matchId: match.id },
+          include: { user: { select: { name: true } } },
+          orderBy: { id: "asc" },
+        });
+        const red = assignments
+          .filter((a) => a.team === "RED")
+          .map((a) => ({ name: a.user.name ?? "Unknown" }));
+        const yellow = assignments
+          .filter((a) => a.team === "YELLOW")
+          .map((a) => ({ name: a.user.name ?? "Unknown" }));
+
+        if (red.length === 0 && yellow.length === 0) {
+          // No teams exist yet — do NOT auto-generate.
+          finalReply =
+            "No teams generated yet — say 'generate the teams' and I'll sort them.";
+          finalReact = "🤔";
+        } else {
+          // Re-post verbatim. `match` carries its own teamLabels so any
+          // per-match fun-name override is honoured.
+          const [redLabel, yellowLabel] = resolveTeamLabels(
+            match,
+            match.activity.org,
+            match.activity.sport,
+          );
+          finalReply = formatTeamsPost({
+            redLabel,
+            yellowLabel,
+            red,
+            yellow,
+            kickoff: formatLondon(match.date, "HH:mm"),
+            venue: match.activity.venue,
+          });
+          finalReact = "👀";
+        }
+      }
+    } catch (err) {
+      console.error("[analyze] show_teams_request failed:", err);
       finalReply = null;
     }
   }

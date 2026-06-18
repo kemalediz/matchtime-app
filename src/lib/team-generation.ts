@@ -22,6 +22,31 @@ export type GenerateTeamsResult =
   | { ok: true; groupPost: string; matchId: string }
   | { ok: false; reason: string };
 
+/**
+ * Pure formatter for the group "teams" post. Single source of truth for
+ * the message layout, shared by `generateTeamsForMatch` (after balancing)
+ * and the analyze route's "show the teams again" re-post path (which
+ * reads the EXISTING assignments verbatim — no balancer). Keep the output
+ * byte-stable: the sim suite asserts on its substrings.
+ */
+export function formatTeamsPost(args: {
+  redLabel: string;
+  yellowLabel: string;
+  red: { name: string }[];
+  yellow: { name: string }[];
+  kickoff: string;
+  venue: string;
+}): string {
+  const listFor = (arr: { name: string }[]) =>
+    arr.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
+  return (
+    `⚽ *Teams for tonight* — ${args.kickoff} at ${args.venue}\n\n` +
+    `*${args.redLabel}*:\n${listFor(args.red)}\n\n` +
+    `*${args.yellowLabel}*:\n${listFor(args.yellow)}\n\n` +
+    `Objections? Reply \`swap X Y\` — admin will confirm.`
+  );
+}
+
 export interface GenerateTeamsOptions {
   /** Pin specific userIds to specific teams. Honoured by the
    *  balancer even when it makes the rating-diff worse — admin
@@ -149,13 +174,14 @@ export async function generateTeamsForMatch(
     sport,
   );
   const kickoff = formatLondon(match.date, "HH:mm");
-  const listFor = (arr: typeof result.red) =>
-    arr.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
-  const groupPost =
-    `⚽ *Teams for tonight* — ${kickoff} at ${match.activity.venue}\n\n` +
-    `*${redLabel}*:\n${listFor(result.red)}\n\n` +
-    `*${yellowLabel}*:\n${listFor(result.yellow)}\n\n` +
-    `Objections? Reply \`swap X Y\` — admin will confirm.`;
+  const groupPost = formatTeamsPost({
+    redLabel,
+    yellowLabel,
+    red: result.red,
+    yellow: result.yellow,
+    kickoff,
+    venue: match.activity.venue,
+  });
 
   return { ok: true, groupPost, matchId };
 }

@@ -57,6 +57,7 @@ export type AnalysisIntent =
   | "question"
   | "score"
   | "generate_teams_request"
+  | "show_teams_request"
   | "bring_guests_vague"
   | "bulk_payment_credit"
   | "reminder_request"
@@ -209,7 +210,7 @@ Output schema:
   "verdicts": [
     {
       "waMessageId": "<string>",
-      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "bring_guests_vague" | "reminder_request" | "noise" | "unclear",
+      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "show_teams_request" | "bring_guests_vague" | "reminder_request" | "noise" | "unclear",
       "confidence": 0..1,
       "react": "<emoji>" | null,
       "reply": "<text>" | null,
@@ -342,8 +343,9 @@ Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time r
   → If the answer requires info outside the Match Context AND outside the Recent History block (long-term roster questions, opinions, predictions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
   → Populate scoreRed + scoreYellow with the two numbers. Order: if the message explicitly names the team labels (see the "Team labels" line in the Match Context — the group may use custom names like "Lions"/"Tigers"), align accordingly: the first/RED label's goals → scoreRed, the second/YELLOW label's goals → scoreYellow. Otherwise emit the numbers in the order they appear in the message. react: "👍". registerAttendance: null.
-- "generate_teams_request": Someone asks the bot to set up / balance / post the teams for the next match ("generate teams", "@M Time teams please", "let's see the teams", "split us up", "balance the teams"). The request may optionally include overrides like "consider Ibrahim and Ehtisham as IN" / "include X and Y" / "treat Z as confirmed".
+- "generate_teams_request": Someone asks the bot to CREATE or CHANGE the teams for the next match — i.e. (re)run the balancer. Patterns: "generate the teams", "make the teams", "balance the teams", "split us up", "@M Time teams please", "sort us into teams", "redo / re-do the teams", "shuffle / re-shuffle the teams", "regenerate the teams", "do the teams again from scratch". The request may optionally include overrides like "consider Ibrahim and Ehtisham as IN" / "include X and Y" / "treat Z as confirmed", per-team pins ("put me on Red"), or a request to invent fun names.
   → react: "⚽". registerAttendance: null. reply: null — the SERVER runs the balancer and replaces reply with the formatted Red/Yellow lineup. Do NOT invent teams yourself.
+  → CONTRAST WITH show_teams_request: if the user only wants to SEE / re-post the EXISTING teams (show / display / "again" / "once more" / "what are the teams"), that is "show_teams_request", NOT generate — do NOT balance or reshuffle. Only use generate when the user wants the teams CREATED or CHANGED. Ambiguous "sort the teams": lean generate only if it implies creating teams; if it reads as "show me the teams", use show_teams_request.
   → If the message names players to include (force-add), extract those names (first-name-only is fine) into includeNames. Examples:
      "@M Time generate teams and consider Ibrahim and Ehtisham as IN"  → includeNames: ["Ibrahim", "Ehtisham"]
      "teams please, count Baki in"                                     → includeNames: ["Baki"]
@@ -358,6 +360,9 @@ Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time r
      "generate teams"                                            → teamNames: null
      "generate teams and put me on Red"                          → teamNames: null
   → Only classify as this intent if the request is CLEAR. If the person is just wondering who'd be on which team ("who'd be in red?"), that's "question", not this.
+- "show_teams_request": Someone wants to SEE / show / display / re-post the CURRENT teams that already exist — NOT create or change them. Patterns: "show the teams", "show them again", "show me the teams once more", "show the teams once more", "what are the teams", "what are the teams again", "post the teams again", "display the teams", "display teams", "can we see the teams", "teams again please", "re-post the teams", "remind me of the teams". The key tell is SEEING the existing teams (show / display / "again" / "once more" / "what are"), with NO intent to balance, redo, shuffle, or change anything.
+  → react: "👀". registerAttendance: null. reply: null — the SERVER re-posts the EXISTING teams verbatim (or says none exist yet). Do NOT invent, balance, or reshuffle teams. Do NOT populate teamNames, includeNames, or teamOverrides for this intent.
+  → CONTRAST WITH generate_teams_request: if the user wants the teams CREATED, balanced, redone, shuffled, or otherwise CHANGED ("generate / make / balance / redo / shuffle / regenerate the teams"), that is "generate_teams_request", NOT show. "show"/"display"/"again"/"once more"/"what are the teams" = show; "generate"/"redo"/"shuffle"/"make"/"balance" = generate.
 - "bring_guests_vague": Someone commits to bringing additional players but DOESN'T name them ("two of my guys can play next week", "I'll bring 2 friends", "my mate wants to come", "can I bring someone?").
   → registerAttendance: null (can't register without names). registerFor: null. react: null. reply: short, warm question asking for the names so we can add them. Format the reply as: "thanks @<firstName>, could you share their names so I can add them to the list? 🙌". Ground the author's first name from the Match Context/sender. Use their display-name first token, no fabrication.
   → Example: Amir posts "Two of my guys can play next week. They played once here 2 weeks ago" → reply: "thanks @Amir, could you share their names so I can add them to the list? 🙌"
@@ -1848,6 +1853,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     "question",
     "score",
     "generate_teams_request",
+    "show_teams_request",
     "bring_guests_vague",
     "bulk_payment_credit",
     "reminder_request",
