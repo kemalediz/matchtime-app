@@ -508,6 +508,104 @@ test.describe("self-replace: player swaps themselves for a bench player", () => 
   });
 });
 
+// ── H. OFF-LIST joiner grabbing the LAST slot closes the open offer ──────
+//
+// Regression for the dangling-offer bug (2026-06): a player on NEITHER the
+// squad NOR the bench (a general group member) posts plain "IN" and grabs
+// the LAST open squad slot. The squad goes full, but the offer-close used
+// to be gated on `selfPromoted` (which requires an existing BENCH row), so
+// an off-list joiner left the open BenchSlotOffer dangling. The scheduler
+// would then keep emitting "asking the bench to step up" nudges for a slot
+// that no longer exists. The fix decouples the offer-close from
+// `selfPromoted`: whenever a confirm fills the squad, ALL open offers close.
+
+test.describe("off-list joiner taking the last slot closes the open offer", () => {
+  let g: SimGroup;
+  // owner, alice (admin), pete, dan, felix are CONFIRMED (5/5 full); greg is
+  // BENCH; quinn is a plain group MEMBER with no attendance row at all (not
+  // on the squad, not on the bench).
+  const group = async (request: APIRequestContext, db: TestDb) =>
+    (g ??= await createGroup(request, db, {
+      maxPlayers: 5,
+      attendance: [
+        { key: "owner", status: "CONFIRMED" },
+        { key: "alice", status: "CONFIRMED" },
+        { key: "pete", status: "CONFIRMED" },
+        { key: "dan", status: "CONFIRMED" },
+        { key: "felix", status: "CONFIRMED" }, // squad full at 5/5
+        { key: "greg", status: "BENCH" },
+      ],
+    })).attach(request);
+
+  test('drop → open offer → OFF-LIST member "IN" fills last slot AND closes the offer (no more bench nudge)', async ({
+    request,
+    db,
+  }) => {
+    const grp = await group(request, db);
+
+    // A confirmed player drops → a slot frees up + an open offer is created.
+    await grp.post("pete", "out");
+    const offers = await grp.openOffers();
+    expect(offers).toHaveLength(1);
+    const offerId = offers[0].id;
+    // Sanity: quinn has no attendance row — genuinely off-list.
+    expect(await grp.attendanceOf("quinn")).toBeNull();
+
+    // Quinn (not squad, not bench) says plain "IN" and grabs the last slot.
+    const r = await grp.post("quinn", "in");
+    expect(r.react).toBe("✅");
+    expect((await grp.attendanceOf("quinn"))?.status).toBe("CONFIRMED");
+    expect((await grp.counts()).confirmed).toBe(5); // squad full again
+
+    // The offer must no longer dangle — closed with outcome "claimed".
+    expect(await grp.openOffers()).toHaveLength(0);
+    const resolved = await grp.db.one<{
+      resolvedAt: string | null;
+      outcome: string | null;
+      claimedByUserId: string | null;
+    }>(
+      `SELECT "resolvedAt", outcome, "claimedByUserId" FROM "BenchSlotOffer" WHERE id = $1`,
+      [offerId],
+    );
+    expect(resolved?.resolvedAt).not.toBeNull();
+    expect(resolved?.outcome).toBe("claimed");
+    expect(resolved?.claimedByUserId).toBe(grp.player("quinn").userId);
+
+    // A subsequent scheduler tick must NOT emit another "asking the bench"
+    // nudge for this match — the offer that would have driven it is closed.
+    const instructions = await grp.duePosts(new Date());
+    const benchNudge = instructions.find(
+      (i) =>
+        i.kind === "bench-prompt" ||
+        /asking the bench|step up|spot.*open/i.test(i.text ?? ""),
+    );
+    expect(benchNudge).toBeUndefined();
+  });
+
+  test("OFF-LIST member IN while slots remain → lands in squad, offer STAYS open", async ({
+    request,
+    db,
+  }) => {
+    const grp = await group(request, db);
+    // Squad is full (5/5) with quinn from the previous test. Two players drop
+    // → two open slots → one open offer. A single off-list joiner fills only
+    // ONE slot; the squad is still short, so the offer must remain open for
+    // the bench.
+    await grp.post("owner", "out");
+    await grp.post("alice", "out");
+    expect((await grp.counts()).confirmed).toBe(3); // 3/5 — two slots open
+    const openBefore = await grp.openOffers();
+    expect(openBefore.length).toBeGreaterThanOrEqual(1);
+
+    // ryan is another off-list member; fills just one of the two slots.
+    const r = await grp.post("ryan", "in");
+    expect(r.react).toBe("✅");
+    expect((await grp.counts()).confirmed).toBe(4); // 4/5 — still one open
+    // Squad NOT full → the offer must NOT be closed.
+    expect((await grp.openOffers()).length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 test.describe("unrelated non-admin cannot promote a bench player into the squad", () => {
   // Test B (now the UNRELATED-THIRD-PARTY case) — NEGATIVE. A genuinely
   // free slot exists (4/5), so the ONLY thing preventing promotion is

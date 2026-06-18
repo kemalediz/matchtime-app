@@ -177,34 +177,63 @@ export async function registerAttendance(
     }
   }
 
-  // ── Resolve the open BenchSlotOffer on a bench self-promotion (2026-06) ──
-  // When a benched player says IN and that claim actually fills a free slot
-  // (promoteFromBench → CONFIRMED), the existing open offer for this match is
-  // now satisfied — the player took the slot themselves. The DROPPED-path
-  // block above never fires for them (different gate / filter), so without
-  // this the offer dangles until the kickoff sweep and the scheduler keeps
-  // emitting bench prompts. Mirror resolveBenchConfirmation: close the
-  // OLDEST open offer atomically (first-come-wins on resolvedAt:null).
-  if (selfPromoted && status === "CONFIRMED") {
+  // ── Resolve open BenchSlotOffer(s) when this confirm fills the squad ─────
+  // Whenever a registration RESULTS IN the squad becoming full (the last open
+  // slot is taken), any open offer for this match is now moot — there is no
+  // longer a vacant slot for the bench to step up into. Close every open
+  // offer so the scheduler stops emitting "asking the bench" prompts and the
+  // analyze route's overconfident-promotion rewrite doesn't treat the now-
+  // full squad as still short.
+  //
+  // This must fire for ANY joiner who grabs the last slot — NOT just a bench
+  // self-promotion (`selfPromoted`). The original bug (2026-06): a player on
+  // NEITHER the squad nor the bench (a general group member, or an auto-
+  // provisioned user from an unresolved @lid) says IN, takes the final slot,
+  // squad goes full — but the offer-close used to be gated on `selfPromoted`
+  // (which requires an existing BENCH row), so an off-list joiner left the
+  // offer dangling. We decouple the close from `selfPromoted`: trigger on
+  // "this confirm just completed the squad" instead.
+  //
+  // Guards: only on a GENUINE new confirm (CONFIRMED + not already CONFIRMED)
+  // AND only when the squad is now actually full — never on an OUT, never
+  // while open slots remain. We re-count CONFIRMED after the write so a
+  // partial fill (slots still open) leaves the offer open for the bench.
+  const isFreshConfirm = status === "CONFIRMED" && existing?.status !== "CONFIRMED";
+  if (isFreshConfirm) {
     try {
-      const offer = await db.benchSlotOffer.findFirst({
-        where: { matchId, resolvedAt: null },
-        orderBy: { createdAt: "asc" },
+      const confirmedNow = await db.attendance.count({
+        where: { matchId, status: "CONFIRMED" },
       });
-      if (offer) {
+      if (confirmedNow >= match.maxPlayers) {
+        // Squad full. Close the OLDEST open offer as "claimed" by this user
+        // (mirrors resolveBenchConfirmation — the joiner effectively took the
+        // slot the offer was advertising), and close any other stragglers so
+        // none dangle. `claimedByUserId` is set only on the one this joiner
+        // claimed; extra offers (rare) close without a claimant.
         const now = new Date();
-        const claim = await db.benchSlotOffer.updateMany({
-          where: { id: offer.id, resolvedAt: null },
-          data: { resolvedAt: now, claimedByUserId: userId, outcome: "claimed" },
+        const oldest = await db.benchSlotOffer.findFirst({
+          where: { matchId, resolvedAt: null },
+          orderBy: { createdAt: "asc" },
         });
-        if (claim.count > 0) {
-          console.log(
-            `[attendance] self-promotion closed BenchSlotOffer ${offer.id} for user ${userId} on match ${matchId}`,
-          );
+        if (oldest) {
+          const claim = await db.benchSlotOffer.updateMany({
+            where: { id: oldest.id, resolvedAt: null },
+            data: { resolvedAt: now, claimedByUserId: userId, outcome: "claimed" },
+          });
+          // Sweep any remaining open offers for this now-full match.
+          const swept = await db.benchSlotOffer.updateMany({
+            where: { matchId, resolvedAt: null },
+            data: { resolvedAt: now, outcome: "claimed" },
+          });
+          if (claim.count > 0 || swept.count > 0) {
+            console.log(
+              `[attendance] squad-full close: resolved ${claim.count + swept.count} open BenchSlotOffer(s) for match ${matchId} (last slot taken by user ${userId}, selfPromoted=${selfPromoted})`,
+            );
+          }
         }
       }
     } catch (err) {
-      console.error("[attendance] self-promotion offer-resolve failed:", err);
+      console.error("[attendance] squad-full offer-resolve failed:", err);
     }
   }
 
