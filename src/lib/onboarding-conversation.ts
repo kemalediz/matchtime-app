@@ -223,21 +223,203 @@ const ADMIN_QUESTION =
 
 /**
  * Intro posted the moment the bot is ADDED to a group (Phase 1
- * group-add flow — design §B.3). SHORT and inviting: what MatchTime is
- * in a line or two, then a tight consent question. The full "how to use
- * me" rules come later, at setup completion (buildHowToUseMe) — NOT
- * here. The consent keywords (YES / EVERYTHING / named features) are
+ * group-add flow — design §B.3). This is now the DESCRIPTIVE full-menu
+ * pitch: it walks the group through everything MatchTime can do (so
+ * players actually WANT it on), THEN asks the consent question. It is a
+ * SINGLE exported string — `introText` is consumed by the out-of-repo
+ * Pi bot as one message, so the two logical blocks (Message 1: features;
+ * Message 2: the setup choice) are joined with a blank line here, not
+ * split into two messages.
+ *
+ * The consent keywords (YES / EVERYTHING / named features) are
  * load-bearing: the `introduced` stage parser (parseBundleReply) reads
- * them, so they must stay. The opt-out line keeps the falls-open
- * promise.
+ * them, so they must stay verbatim. The opt-out line keeps the
+ * falls-open promise. The `@Match Time help <topic>` pointers route into
+ * buildHelpReply once the bot is live.
  */
-export const BOT_ADDED_INTRO =
-  `👋 Hi! I'm *MatchTime* — I take the weekly admin off your hands: squad list, fair teams, MoM, ratings and more, so you just turn up and play.\n\n` +
-  `*Want me running here?* Whoever runs this group, just reply:\n` +
-  `• *YES* — the usual setup (squad list, fair teams, bench, MoM, ratings, reminders)\n` +
-  `• *EVERYTHING* — the lot, including payment tracking\n` +
-  `• or name the parts you want — e.g. _"just MoM and ratings"_\n\n` +
-  `Not interested? Just ignore me and I'll stay quiet. 🤐`;
+const BOT_ADDED_INTRO_FEATURES =
+  `👋 Hi everyone, I'm *MatchTime* — a free assistant that runs the weekly admin for your football group, so the organiser doesn't have to chase everyone every week.\n\n` +
+  `Here's what I can do for this group:\n\n` +
+  `⚽ *Squad list* — each week just reply *In* or *Out* and I keep a live, numbered list of who's playing. When you're full I start a *reserve/bench* list, and if someone drops out I nudge the bench to fill the spot.\n\n` +
+  `🤔 *Maybes* — not sure yet? Say *"maybe"* and I'll quietly DM you ~24h before kick-off for a final yes or no.\n\n` +
+  `🟥🟦 *Fair teams* — once the squad's locked I split everyone into balanced teams based on recent form, so games stay even (I can even name the teams).\n\n` +
+  `🏆 *Man of the Match* — after the game I run a quick vote to pick the standout player, then announce the winner.\n\n` +
+  `⭐ *Player ratings* — after each match I DM everyone a private one-tap link to rate the others out of 10. That builds each player's form score over time — which is what makes the teams fair.\n\n` +
+  `⏰ *Reminders* — I chase people who haven't replied and remind the squad before kick-off.\n\n` +
+  `💳 *Payment tracking (optional)* — I can track who's paid the match fee, remind those who haven't, and show the organiser who still owes.`;
+
+const BOT_ADDED_INTRO_CHOICE =
+  `*Want me to run this group?* Whoever organises it, just reply:\n\n` +
+  `• *YES* — switch on the essentials: squad list, fair teams, bench, Man of the Match, ratings & reminders.\n` +
+  `• *EVERYTHING* — all of that *plus* payment tracking.\n` +
+  `• Or name the bits you want — e.g. *"just Man of the Match and ratings"*.\n\n` +
+  `Want more detail first? Type *@Match Time help teams*, *help ratings*, *help mom*, *help payments* or *help availability* and I'll explain.\n\n` +
+  `Not for you? Just ignore me and I'll stay quiet. 🤐`;
+
+export const BOT_ADDED_INTRO = `${BOT_ADDED_INTRO_FEATURES}\n\n${BOT_ADDED_INTRO_CHOICE}`;
+
+// ── Topic-aware help (the "@Match Time help <topic>" router) ───────────
+
+/** A help topic the bot can explain on demand. Each maps to the org
+ *  feature flag that gates it (see HELP_TOPIC_FEATURE). */
+export type HelpTopic =
+  | "ratings"
+  | "teams"
+  | "mom"
+  | "availability"
+  | "reminders"
+  | "payments";
+
+/** The org-feature flag each topic is gated behind. A topic is only
+ *  explained (and only listed in bare help) when its flag is ON. */
+const HELP_TOPIC_FEATURE: Record<HelpTopic, keyof HelpFeatures> = {
+  ratings: "playerRating",
+  teams: "teamBalancing",
+  mom: "momVoting",
+  availability: "attendance",
+  reminders: "reminders",
+  payments: "paymentTracking",
+};
+
+type HelpFeatures = {
+  attendance: boolean;
+  teamBalancing: boolean;
+  momVoting: boolean;
+  playerRating: boolean;
+  statsQa: boolean;
+  reminders: boolean;
+  bench: boolean;
+  paymentTracking: boolean;
+};
+
+/** The per-topic detailed explainers (warm, plain-English, WhatsApp
+ *  markdown). Returned verbatim by buildHelpReply when the gating
+ *  feature is ON. */
+const HELP_EXPLAINERS: Record<HelpTopic, string> = {
+  ratings:
+    `⭐ *Player ratings — how it works*\n` +
+    `After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).\n` +
+    `I combine everyone's scores into a form rating for each player that updates after every game — and that's what I use to build *balanced teams*. So the more people rate, the fairer the teams.\n` +
+    `You'll get the link the morning after the game. Type *@Match Time my stats* for yours anytime.`,
+  teams:
+    `🟥🟦 *Fair teams — how it works*\n` +
+    `Once the squad's locked in, any admin can tag *@Match Time generate the teams* and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
+    `I post the line-ups straight into the chat. Not happy with a pairing? Tag me to *swap two players* (e.g. _"@Match Time swap Sam and Alex"_), or ask me to *"@Match Time show the teams"* again any time.\n` +
+    `Want a bit of fun? Ask me to give the teams names and I'll sort it. Tag *@Match Time generate the teams* when you're ready.`,
+  mom:
+    `🏆 *Man of the Match — how it works*\n` +
+    `After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.\n` +
+    `I tally the votes, announce the winner, and it counts towards everyone's season stats — so the MoM race builds up over the year.\n` +
+    `Nothing to set up — I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.`,
+  availability:
+    `⚽ *Squad & availability — how it works*\n` +
+    `Just say *In* or *Out* in the group to mark yourself for the next game — no need to tag me, I read it automatically.\n` +
+    `I keep a live, numbered squad list. When it's full, extra players go on the *bench/reserve* list in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
+    `If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.`,
+  reminders:
+    `⏰ *Reminders — how it works*\n` +
+    `I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.\n` +
+    `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll ping you then.\n` +
+    `It all happens automatically — you don't need to chase anyone yourself.`,
+  payments:
+    `💳 *Payment tracking — how it works*\n` +
+    `I keep track of who's paid the match fee. The organiser sets the fee, and I show who's paid and who still owes at a glance.\n` +
+    `I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.\n` +
+    `This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.`,
+};
+
+/** Words/aliases that map a free-text help message to a HelpTopic. Order
+ *  matters: longer/more-specific aliases first so "man of the match"
+ *  wins over a stray "match". */
+const HELP_TOPIC_ALIASES: Array<[RegExp, HelpTopic]> = [
+  [/\bman of the match\b/, "mom"],
+  [/\bmotm\b/, "mom"],
+  [/\bmom\b/, "mom"],
+  [/\bplayer ratings?\b/, "ratings"],
+  [/\bratings?\b/, "ratings"],
+  [/\brate\b/, "ratings"],
+  [/\bteams?\b/, "teams"],
+  [/\bbalanc\w*\b/, "teams"],
+  [/\bavailability\b/, "availability"],
+  [/\bsquad\b/, "availability"],
+  [/\battendance\b/, "availability"],
+  [/\breminders?\b/, "reminders"],
+  [/\bremind\b/, "reminders"],
+  [/\bpayments?\b/, "payments"],
+  [/\bpaid\b/, "payments"],
+  [/\bfees?\b/, "payments"],
+];
+
+/**
+ * Extract the help TOPIC word from a help-message body, or null when the
+ * message is bare help (no topic) or no known topic word appears. Robust
+ * to the bot tag and the "help" keyword being present — it scans the
+ * portion AFTER "help" for a known topic alias.
+ */
+export function parseHelpTopic(raw: string): HelpTopic | null {
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  const m = lower.match(/\bhelp\b([\s\S]*)$/);
+  // No "help" keyword at all → nothing to parse (caller gates on this too).
+  const tail = m ? m[1] : lower;
+  for (const [re, topic] of HELP_TOPIC_ALIASES) {
+    if (re.test(tail)) return topic;
+  }
+  return null;
+}
+
+/** Human label for each topic, used in the bare-help topic menu. */
+const HELP_TOPIC_LABEL: Record<HelpTopic, string> = {
+  availability: "squad & availability",
+  teams: "fair teams",
+  mom: "Man of the Match",
+  ratings: "player ratings",
+  reminders: "reminders",
+  payments: "payment tracking",
+};
+
+// Stable order for the bare-help topic list.
+const HELP_TOPIC_ORDER: HelpTopic[] = [
+  "availability",
+  "teams",
+  "mom",
+  "ratings",
+  "reminders",
+  "payments",
+];
+
+/**
+ * The "@Match Time help [topic]" reply.
+ *
+ *   - topic === null (bare help): a short lead line + the list of
+ *     AVAILABLE topics (only those whose gating feature is ON), a blank
+ *     line, then the feature-aware buildHowToUseMe(features) block.
+ *   - topic with its feature ON → that topic's detailed explainer.
+ *   - topic with its feature OFF → a one-line decline (NOT the
+ *     explainer for a feature this group didn't switch on).
+ */
+export function buildHelpReply(
+  topic: HelpTopic | null,
+  features: HelpFeatures,
+): string {
+  if (topic) {
+    const flag = HELP_TOPIC_FEATURE[topic];
+    if (!features[flag]) {
+      return `That one isn't switched on for this group. Type *@Match Time help* to see what is.`;
+    }
+    return HELP_EXPLAINERS[topic];
+  }
+
+  // Bare help: list only the enabled topics, then the how-to block.
+  const enabled = HELP_TOPIC_ORDER.filter((t) => features[HELP_TOPIC_FEATURE[t]]);
+  const topicLines = enabled.map(
+    (t) => `   • *@Match Time help ${t}* — ${HELP_TOPIC_LABEL[t]}`,
+  );
+  const head =
+    `ℹ️ *MatchTime help* — here's what I can explain. Tag me with one of these:`;
+  const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
+  return `${head}${list}\n\n${buildHowToUseMe(features)}`;
+}
 
 /**
  * Find-or-create a User for a bot-forwarded phone (digits, usually no

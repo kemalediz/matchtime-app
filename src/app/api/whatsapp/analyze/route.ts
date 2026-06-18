@@ -57,7 +57,11 @@ import {
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { normaliseName } from "@/lib/squad-from-list";
-import { handleOnboardingTurn, buildHowToUseMe } from "@/lib/onboarding-conversation";
+import {
+  handleOnboardingTurn,
+  buildHelpReply,
+  parseHelpTopic,
+} from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { recordTentative, resolveTentative } from "@/lib/tentative-store";
 import { isPromoteFromBenchAuthorized } from "@/lib/promote-authorization";
@@ -544,18 +548,25 @@ export async function POST(request: Request) {
     results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "rating_progress", react: "📋", reply });
   }
 
-  // ── Fast-path: "@Match Time help" → reprint the usage summary ───────
+  // ── Fast-path: "@Match Time help [topic]" → usage / topic explainer ─
   //   Tag-gated (honours the interaction contract — only when the bot is
   //   addressed). Feature-aware via the org's live flags. Deterministic;
-  //   peeled off the LLM batch so the model never sees it.
-  const HELP_RE = /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*\bhelp\b\s*$/i;
+  //   peeled off the LLM batch so the model never sees it. An OPTIONAL
+  //   trailing topic word ("help teams", "help ratings", …) routes into
+  //   buildHelpReply for a detailed explainer; bare "help" prints the
+  //   topic menu + the how-to block. The regex still REQUIRES the help
+  //   keyword and stays single-token-anchored (no mid-sentence "help"
+  //   triggers), allowing only an optional topic token after it.
+  const HELP_RE =
+    /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*\bhelp\b(?:\s+[\w &]+?)?\s*$/i;
   for (const m of fresh) {
     if (statsRequestIds.has(m.waMessageId)) continue;
     if (!HELP_RE.test(m.body)) continue;
     if (!messageTagsBot(m)) continue;
     statsRequestIds.add(m.waMessageId); // peel off the LLM batch
     const feats = await getOrgFeatures(org.id);
-    const reply = buildHowToUseMe({
+    const topic = parseHelpTopic(m.body);
+    const reply = buildHelpReply(topic, {
       attendance: feats.attendance,
       teamBalancing: feats.teamBalancing,
       momVoting: feats.momVoting,

@@ -1,14 +1,23 @@
 /**
  * Unit tests for the autonomous-onboarding messaging copy:
- *   - BOT_ADDED_INTRO: the SHORT on-add intro (what MatchTime is + a
- *     tight consent line). Must stay short, keep the consent keywords
- *     the `introduced` parser depends on, and NOT dump the usage rules.
+ *   - BOT_ADDED_INTRO: the DESCRIPTIVE full-menu on-add pitch (a single
+ *     string carrying the feature pitch + the consent question). It is
+ *     intentionally long now (the descriptive menu), but MUST keep the
+ *     consent keywords the `introduced` parser depends on, keep an
+ *     opt-out, and surface the help commands.
  *   - buildHowToUseMe(): the feature-aware "how to use me" block posted
  *     when setup completes. Only mentions enabled capabilities.
+ *   - parseHelpTopic() + buildHelpReply(): the topic-aware help router.
  * No DB, no network.
  */
 import { describe, it, expect } from "vitest";
-import { BOT_ADDED_INTRO, buildHowToUseMe } from "@/lib/onboarding-conversation";
+import {
+  BOT_ADDED_INTRO,
+  buildHowToUseMe,
+  parseHelpTopic,
+  buildHelpReply,
+  type HelpTopic,
+} from "@/lib/onboarding-conversation";
 
 const ALL_ON = {
   attendance: true,
@@ -21,9 +30,21 @@ const ALL_ON = {
   paymentTracking: true,
 } as const;
 
-describe("BOT_ADDED_INTRO (short on-add intro)", () => {
-  it("is short — a tight intro, not a feature dump", () => {
-    expect(BOT_ADDED_INTRO.length).toBeLessThan(700);
+describe("BOT_ADDED_INTRO (descriptive on-add pitch)", () => {
+  it("is a single string carrying both message blocks", () => {
+    expect(typeof BOT_ADDED_INTRO).toBe("string");
+    // Two blocks joined by a blank line.
+    expect(BOT_ADDED_INTRO).toContain("\n\n");
+  });
+
+  it("describes the headline features", () => {
+    expect(BOT_ADDED_INTRO).toContain("Squad list");
+    expect(BOT_ADDED_INTRO.toLowerCase()).toMatch(/maybe/);
+    expect(BOT_ADDED_INTRO).toContain("Fair teams");
+    expect(BOT_ADDED_INTRO).toContain("Man of the Match");
+    expect(BOT_ADDED_INTRO).toContain("Player ratings");
+    expect(BOT_ADDED_INTRO).toContain("Reminders");
+    expect(BOT_ADDED_INTRO).toContain("Payment tracking");
   });
 
   it("identifies MatchTime and keeps the consent keywords the parser needs", () => {
@@ -36,12 +57,9 @@ describe("BOT_ADDED_INTRO (short on-add intro)", () => {
     expect(BOT_ADDED_INTRO.toLowerCase()).toMatch(/ignore me|stay quiet/);
   });
 
-  it("does NOT carry the full usage rules block (that comes at completion)", () => {
-    expect(BOT_ADDED_INTRO).not.toMatch(/how to use me/i);
-    // The "stays quiet rest of the time / banter is safe" rules line is a
-    // completion-only marker — the opt-out "ignore me and I'll stay quiet"
-    // is allowed, but the banter rules must not appear here.
-    expect(BOT_ADDED_INTRO).not.toMatch(/banter/i);
+  it("mentions the help commands so players can dig deeper", () => {
+    expect(BOT_ADDED_INTRO).toMatch(/help teams/);
+    expect(BOT_ADDED_INTRO).toMatch(/help ratings/);
   });
 });
 
@@ -107,5 +125,92 @@ describe("buildHowToUseMe — feature awareness", () => {
     const block = buildHowToUseMe({ ...ALL_ON, attendance: false });
     expect(block).not.toMatch(/say \*?"in"/i);
     expect(block.toLowerCase()).toMatch(/squad|list/);
+  });
+});
+
+describe("parseHelpTopic", () => {
+  const cases: Array<[string, HelpTopic | null]> = [
+    ["@Match Time help ratings", "ratings"],
+    ["matchtime help teams", "teams"],
+    ["help mom", "mom"],
+    ["@Match Time help availability", "availability"],
+    ["help reminders", "reminders"],
+    ["@MT help payments", "payments"],
+    ["@Match Time help", null], // bare help → no topic
+    ["help", null],
+    ["help unicorns", null], // unknown topic word
+    ["", null],
+  ];
+  for (const [raw, expected] of cases) {
+    it(`"${raw}" → ${expected}`, () => {
+      expect(parseHelpTopic(raw)).toBe(expected);
+    });
+  }
+
+  it("recognises a few aliases (man of the match, player ratings)", () => {
+    expect(parseHelpTopic("@Match Time help man of the match")).toBe("mom");
+    expect(parseHelpTopic("help player ratings")).toBe("ratings");
+  });
+});
+
+describe("buildHelpReply — topic explainers (feature ON)", () => {
+  it("ratings → the ratings explainer", () => {
+    const r = buildHelpReply("ratings", ALL_ON);
+    expect(r).toMatch(/rate the other players out of 10/i);
+  });
+  it("teams → the fair-teams explainer", () => {
+    const r = buildHelpReply("teams", ALL_ON);
+    expect(r.toLowerCase()).toMatch(/balanced/);
+    expect(r.toLowerCase()).toMatch(/form rating|form ratings/);
+  });
+  it("mom → the Man of the Match explainer", () => {
+    const r = buildHelpReply("mom", ALL_ON);
+    expect(r).toMatch(/Man of the Match/);
+    expect(r.toLowerCase()).toMatch(/vote/);
+  });
+  it("availability → the squad/availability explainer", () => {
+    const r = buildHelpReply("availability", ALL_ON);
+    expect(r.toLowerCase()).toMatch(/in.*out/);
+    expect(r.toLowerCase()).toMatch(/bench|reserve/);
+  });
+  it("reminders → the reminders explainer", () => {
+    const r = buildHelpReply("reminders", ALL_ON);
+    expect(r.toLowerCase()).toMatch(/nudge|remind/);
+  });
+  it("payments → the payment-tracking explainer", () => {
+    const r = buildHelpReply("payments", ALL_ON);
+    expect(r.toLowerCase()).toMatch(/match fee|who.*paid|still owe/);
+  });
+});
+
+describe("buildHelpReply — feature OFF → decline (not the explainer)", () => {
+  it("payments off → decline, not the payments explainer", () => {
+    const r = buildHelpReply("payments", { ...ALL_ON, paymentTracking: false });
+    expect(r.toLowerCase()).toMatch(/isn't switched on|isn.t switched on/);
+    expect(r).not.toMatch(/match fee/i);
+  });
+  it("mom off → decline, not the MoM explainer", () => {
+    const r = buildHelpReply("mom", { ...ALL_ON, momVoting: false });
+    expect(r.toLowerCase()).toMatch(/isn't switched on|isn.t switched on/);
+    expect(r).not.toMatch(/tally the votes/i);
+  });
+});
+
+describe("buildHelpReply — bare help (topic null)", () => {
+  it("lists only enabled topics + includes the how-to block", () => {
+    const feats = { ...ALL_ON, paymentTracking: false };
+    const r = buildHelpReply(null, feats);
+    // Lead line.
+    expect(r).toMatch(/MatchTime help/);
+    // Enabled topic present, disabled topic absent.
+    expect(r).toMatch(/help ratings/);
+    expect(r).not.toMatch(/help payments/);
+    // The feature-aware how-to block is appended.
+    expect(r).toContain(buildHowToUseMe(feats));
+  });
+
+  it("with payments ON the payments topic IS listed", () => {
+    const r = buildHelpReply(null, ALL_ON);
+    expect(r).toMatch(/help payments/);
   });
 });

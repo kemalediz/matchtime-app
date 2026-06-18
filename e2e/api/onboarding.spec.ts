@@ -162,6 +162,12 @@ test("bot-added creates an introduced session and returns the intro", async ({
   expect(res.introText).toContain("MatchTime");
   expect(res.introText).toContain("YES");
   expect(res.introText).toContain("EVERYTHING");
+  // Now the DESCRIPTIVE full-menu pitch — names the headline features.
+  expect(res.introText).toContain("Squad list");
+  expect(res.introText).toContain("Fair teams");
+  expect(res.introText).toContain("Man of the Match");
+  expect(res.introText).toContain("Player ratings");
+  expect(res.introText).toContain("Payment tracking");
 
   const s = await session(db, GROUP_A);
   expect(s?.stage).toBe("introduced");
