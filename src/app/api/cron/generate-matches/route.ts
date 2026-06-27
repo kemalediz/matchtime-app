@@ -11,6 +11,7 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { londonWallClockToUtc, formatLondon } from "@/lib/london-time";
+import { hasMatchForSlot } from "@/lib/match-slot";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -46,10 +47,33 @@ export async function GET(request: Request) {
     // different representation.
     const dayStart = new Date(matchDate.getTime() - 12 * 60 * 60 * 1000);
     const dayEnd = new Date(matchDate.getTime() + 12 * 60 * 60 * 1000);
-    const existing = await db.match.findFirst({
-      where: { activityId: activity.id, date: { gte: dayStart, lte: dayEnd } },
+
+    // Dedupe on the recurring SLOT — (orgId, venue, dayOfWeek, time) — NOT
+    // on activityId. A format switch (`switchMatchFormat`) re-points the
+    // existing Match to a different Activity but leaves the old Activity
+    // active; keying on activityId alone would regenerate an empty "ghost"
+    // match for the old format's still-active Activity. We scope to the
+    // org and load every match in the window, then delegate the same-slot
+    // decision to a pure (unit-tested) predicate.
+    const existingInWindow = await db.match.findMany({
+      where: {
+        date: { gte: dayStart, lte: dayEnd },
+        activity: { orgId: activity.orgId },
+      },
+      select: {
+        activity: {
+          select: { orgId: true, venue: true, dayOfWeek: true, time: true },
+        },
+      },
     });
-    if (existing) continue;
+    const slot = {
+      orgId: activity.orgId,
+      venue: activity.venue,
+      dayOfWeek: activity.dayOfWeek,
+      time: activity.time,
+    };
+    if (hasMatchForSlot(slot, existingInWindow.map((existing) => existing.activity)))
+      continue;
 
     const deadline = new Date(matchDate.getTime() - activity.deadlineHours * 60 * 60 * 1000);
     await db.match.create({

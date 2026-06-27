@@ -24,6 +24,7 @@ import { evaluateFollowupGuard } from "./tentative-followup";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
 import { resolveTeamLabels } from "./team-labels";
 import { gbp } from "./payments";
+import { isNextUpcomingForPosting } from "./next-upcoming-match";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -689,7 +690,7 @@ export async function computeDuePosts(
   const matches = await getMatchesForScheduler(org.id, windowStart);
 
   for (const m of matches) {
-    await computeForMatch(m, now, sentKeys, out, groupId);
+    await computeForMatch(m, now, sentKeys, out, groupId, matches);
   }
 
   // ── Per-org feature gate (post-compute filter) ───────────────────
@@ -786,6 +787,7 @@ async function computeForMatch(
   sentKeys: Set<string>,
   out: DueInstruction[],
   groupId: string,
+  siblingMatches: MatchWithIncludes[],
 ) {
   /**
    * LLM compose with a static fallback. If Claude is unavailable
@@ -843,18 +845,14 @@ async function computeForMatch(
     const key = `${matchId}:announce-match`;
     const lh = londonHour(now);
     const inAnnounceWindow = lh >= 9 && lh < 13;
-    const earlierUnplayedCount =
+    // "Is this the next match in this activity?" — suppressed when an
+    // earlier unplayed match in the same activity exists (next-week
+    // rollover), OR when a co-timed duplicate/ghost with a lower id exists
+    // anywhere in the org (format-switch defense). Pure, unit-tested.
+    const isNextUpcoming =
       m.status === "UPCOMING" && hoursUntilMatch > 24
-        ? await db.match.count({
-            where: {
-              activityId: activity.id,
-              isHistorical: false,
-              status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-              date: { lt: m.date },
-            },
-          })
-        : 1; // any non-zero short-circuits the gate below
-    const isNextUpcoming = earlierUnplayedCount === 0;
+        ? isNextUpcomingForPosting(siblingMatches, m)
+        : false;
 
     if (
       !sentKeys.has(key) &&
@@ -903,17 +901,9 @@ async function computeForMatch(
     // 5pm post is relevant. Without this, both matches fire their own
     // evening-update and the group sees a "next week is empty, need
     // 14" chase at 17:00 the same day as today's actual match.
-    const earlierUnplayedCount = isPrematch
-      ? await db.match.count({
-          where: {
-            activityId: activity.id,
-            isHistorical: false,
-            status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-            date: { lt: m.date },
-          },
-        })
-      : 1;
-    const isNextUpcoming = earlierUnplayedCount === 0;
+    const isNextUpcoming = isPrematch
+      ? isNextUpcomingForPosting(siblingMatches, m)
+      : false;
 
     // Single shared key for the entire 17:00 evening slot. Whichever
     // branch fires first claims today; subsequent ticks see this key in
