@@ -17,7 +17,8 @@
     "test:e2e:ui": "tsx e2e/run.ts --ui",
     "test:sim": "tsx e2e/run.ts sim/",
     "test:sim:live": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/self-replace-live.spec.ts",
-    "test:sim:live:tentative": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/tentative-followup-live.spec.ts"
+    "test:sim:live:tentative": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/tentative-followup-live.spec.ts",
+    "test:sim:live:adds": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/auto-register-adds-live.spec.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

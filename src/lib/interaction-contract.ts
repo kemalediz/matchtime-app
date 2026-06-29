@@ -101,14 +101,25 @@ export function isSelfAttendanceVerdict(v: GateVerdict): boolean {
  * No when there's nothing to do (noise/unclear with no writes) — there's
  * no action to gate, so the tag is irrelevant; the existing noise path
  * already keeps MT silent.
+ * No for a third-party registerFor that ONLY ADDS named players (every
+ * entry is an "IN") — registering a friend someone names in natural group
+ * chat ("Add Rashad please", "my mate Kieran's in") is now tag-free. The
+ * upstream LLM confidence + hypothetical/future seatbelts still gate WHEN
+ * an add is emitted; this just removes the tag requirement for it.
  * Yes for everything else action/answer-y: questions, team ops, reminders,
- * payment, score handling, and any third-party registerFor.
+ * payment, score handling, and any third-party registerFor that DROPS,
+ * BENCHES, or SWAPS OUT another player (any non-IN entry) — removing or
+ * moving someone who never consented stays an explicit, tagged op.
  */
 export function actionRequiresTag(v: GateVerdict): boolean {
   if (isSelfAttendanceVerdict(v)) return false;
 
-  const movesOthers = !!(v.registerFor && v.registerFor.length > 0);
-  if (movesOthers) return true;
+  const entries = v.registerFor ?? [];
+  if (entries.length > 0) {
+    // IN-only adds → tag-free. Any OUT/BENCH (a drop, demote, or the OUT
+    // half of a swap) → still requires a tag.
+    return entries.some((e) => e.action !== "IN");
+  }
 
   // Action/answer-y intents MT performs in the group, all of which
   // require an explicit @Match Time tag. NOTE: "score" is deliberately

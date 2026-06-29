@@ -238,6 +238,100 @@ test.describe("positive controls", () => {
   });
 });
 
+// ── Tag-free third-party ADDS vs still-gated drops/swaps ──────────────
+// The behaviour change: a registerFor that ONLY adds named players ("Add
+// Rashad") passes the gate WITHOUT an @Match Time tag and registers them;
+// a registerFor that drops/benches/swaps OUT another player is still
+// suppressed when untagged. Drives the REAL analyze pipeline (LLM stubbed)
+// so the gate + write path are exercised end-to-end.
+test.describe("third-party adds tag-free; drops/swaps still tagged", () => {
+  const mkGroup = (request: APIRequestContext, db: TestDb) =>
+    createGroup(request, db, {
+      maxPlayers: 14,
+      attendance: [
+        { key: "owner", status: "CONFIRMED" },
+        { key: "alice", status: "CONFIRMED" },
+        { key: "pete", status: "CONFIRMED" },
+        { key: "dan", status: "CONFIRMED" },
+      ],
+    });
+
+  // Look up a (possibly provisioned) player's attendance on the match by
+  // NAME — third-party adds provision a brand-new User, so there's no roster
+  // key to use with attendanceOf().
+  const attendanceByName = (grp: SimGroup, name: string) =>
+    grp.db.one<{ status: string }>(
+      `SELECT a.status FROM "Attendance" a JOIN "User" u ON u.id = a."userId"
+       WHERE a."matchId" = $1 AND u.name ILIKE $2`,
+      [grp.matchId, name],
+    );
+
+  const addRashad: StubVerdict = {
+    intent: "in",
+    registerAttendance: null,
+    registerFor: [{ name: "Rashad", action: "IN" }],
+    react: "👍",
+    confidence: 0.9,
+    reasoning: "stub: untagged third-party IN add",
+  };
+
+  test('untagged "Add Rashad please" → registers Rashad, NOT the sender (gate + relay guard)', async ({
+    request,
+    db,
+  }) => {
+    const grp = (await mkGroup(request, db)).attach(request);
+    // greg is NOT in the seeded squad — he's only adding Rashad, not joining.
+    const r = await grp.post("greg", "Add Rashad please", { verdict: addRashad });
+    // The gate must NOT suppress it: handled by the LLM path.
+    expect(r.handledBy).toBe("llm");
+    const att = await attendanceByName(grp, "Rashad");
+    expect(att, "Rashad must be registered").not.toBeNull();
+    expect(["CONFIRMED", "BENCH"]).toContain(att!.status);
+    // RELAY GUARD: the sender (greg) was only relaying — must NOT be joined.
+    expect(await grp.attendanceOf("greg"), "sender must not be auto-joined").toBeNull();
+  });
+
+  test('untagged third-party DROP ("Pete can\'t make it") is SUPPRESSED (still needs a tag)', async ({
+    request,
+    db,
+  }) => {
+    const grp = (await mkGroup(request, db)).attach(request);
+    const before = await grp.confirmed();
+    expect(before).toContain("Pete Power");
+    const r = await grp.post("alice", "Pete can't make it tonight", {
+      verdict: {
+        intent: "out",
+        registerAttendance: null,
+        registerFor: [{ name: "Pete Power", action: "OUT" }],
+        react: "👋",
+        confidence: 0.9,
+        reasoning: "stub: untagged third-party OUT — must be gated",
+      },
+    });
+    // Untagged drop of another player → noise, DB untouched.
+    expect(r.intent).toBe("noise");
+    expect(r.react).toBeNull();
+    expect(r.reply).toBeNull();
+    expect(await grp.confirmed()).toContain("Pete Power");
+    expect(await grp.dropped()).not.toContain("Pete Power");
+  });
+
+  test('TAGGED third-party add behaves exactly as before (still registers)', async ({
+    request,
+    db,
+  }) => {
+    const grp = (await mkGroup(request, db)).attach(request);
+    const r = await grp.post("pete", "@Match Time add Rashad", {
+      verdict: addRashad,
+      tag: true,
+    });
+    expect(r.handledBy).toBe("llm");
+    const att = await attendanceByName(grp, "Rashad");
+    expect(att, "Rashad must be registered when tagged too").not.toBeNull();
+    expect(["CONFIRMED", "BENCH"]).toContain(att!.status);
+  });
+});
+
 // ── Full-squad rollover (Deliverable 2 end-to-end) ────────────────────
 test.describe("full-squad rollover", () => {
   test('FULL this-week match + empty next-week match → "In" benches on THIS week, not next', async ({

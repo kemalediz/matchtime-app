@@ -155,12 +155,86 @@ describe("actionRequiresTag — the act-without-tag vs require-tag split", () =>
     ).toBe(true);
   });
 
-  it("moving/benching ANOTHER player (registerFor) REQUIRES a tag", () => {
+  it("moving/benching ANOTHER player (registerFor BENCH) REQUIRES a tag", () => {
     expect(
       actionRequiresTag({
         intent: "out",
         registerAttendance: null,
         registerFor: [{ name: "Pete", action: "BENCH" }],
+      }),
+    ).toBe(true);
+  });
+
+  it("dropping ANOTHER player (registerFor OUT) REQUIRES a tag", () => {
+    expect(
+      actionRequiresTag({
+        intent: "out",
+        registerAttendance: null,
+        registerFor: [{ name: "Ibrahim", action: "OUT" }],
+      }),
+    ).toBe(true);
+  });
+
+  // ── Third-party ADDITIONS are now tag-free (the behaviour change) ──────
+  // Registering a NAMED other player as IN from natural group chat ("Add
+  // Rashad please", "my mate Kieran's in") no longer needs an @Match Time
+  // tag. Dropping/benching/swapping someone else still does.
+  it("an IN-only third-party add does NOT require a tag (single name)", () => {
+    expect(
+      actionRequiresTag({
+        intent: "in",
+        registerAttendance: null,
+        registerFor: [{ name: "Rashad", action: "IN" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("an IN-only third-party add does NOT require a tag (multiple names)", () => {
+    expect(
+      actionRequiresTag({
+        intent: "in",
+        registerAttendance: null,
+        registerFor: [
+          { name: "Mike", action: "IN" },
+          { name: "Steve", action: "IN" },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("self IN that ALSO adds a friend (IN-only registerFor) does NOT require a tag", () => {
+    expect(
+      actionRequiresTag({
+        intent: "in",
+        registerAttendance: "IN",
+        registerFor: [{ name: "Ahmet", action: "IN" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("a SWAP (registerFor with both IN and OUT) STILL requires a tag", () => {
+    // "Elnur out, Izzet in" — removing another player is the gated half.
+    expect(
+      actionRequiresTag({
+        intent: "out",
+        registerAttendance: null,
+        registerFor: [
+          { name: "Elnur", action: "OUT" },
+          { name: "Izzet", action: "IN" },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("an add MIXED with a bench of another player STILL requires a tag", () => {
+    expect(
+      actionRequiresTag({
+        intent: "in",
+        registerAttendance: null,
+        registerFor: [
+          { name: "Rashad", action: "IN" },
+          { name: "Pete", action: "BENCH" },
+        ],
       }),
     ).toBe(true);
   });
