@@ -967,7 +967,17 @@ export async function POST(request: Request) {
     if (
       verdict.intent === "in" &&
       verdict.registerAttendance === null &&
-      sender.userId
+      sender.userId &&
+      // RELAY GUARD: a pure third-party ADD ("Add Rashad please", "my mate
+      // Kieran's in") carries intent:"in" + registerAttendance:null +
+      // registerFor[IN] — the author is relaying for OTHERS, not joining
+      // themselves. Do NOT force-register the SENDER here; the registerFor
+      // adds the named players below. (When the author IS also joining, the
+      // LLM sets registerAttendance:"IN" explicitly — "me and Ahmet both
+      // in" — so this guard never strips a genuine self-join.) Critical now
+      // that IN-adds are tag-free: a casual "add X" from a non-player must
+      // never silently register the SENDER on a paid match.
+      !(verdict.registerFor && verdict.registerFor.length > 0)
     ) {
       const latestIdx = latestIdxByAuthor.get(sender.userId);
       if (latestIdx === i) {
