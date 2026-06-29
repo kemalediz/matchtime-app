@@ -48,21 +48,26 @@ export async function GET(request: Request) {
     const dayStart = new Date(matchDate.getTime() - 12 * 60 * 60 * 1000);
     const dayEnd = new Date(matchDate.getTime() + 12 * 60 * 60 * 1000);
 
-    // Dedupe on the recurring SLOT — (orgId, venue, dayOfWeek, time) — NOT
-    // on activityId. A format switch (`switchMatchFormat`) re-points the
-    // existing Match to a different Activity but leaves the old Activity
-    // active; keying on activityId alone would regenerate an empty "ghost"
-    // match for the old format's still-active Activity. We scope to the
-    // org and load every match in the window, then delegate the same-slot
-    // decision to a pure (unit-tested) predicate.
+    // Dedupe on the recurring SLOT — (orgId, venue, dayOfWeek) + match
+    // INSTANT proximity — NOT on activityId, and NOT on the activity `time`
+    // string. A format switch (`switchMatchFormat`) re-points the existing
+    // Match to a different Activity but leaves the old Activity active;
+    // keying on activityId alone regenerates an empty "ghost" match. And the
+    // two formats of one fixture can carry DIFFERENT configured times
+    // (21:30 vs 21:15), so exact-`time` equality also fails. We compare the
+    // existing Match's real `date` instant against the computed `matchDate`
+    // within ±90 min (see match-slot.ts). We scope to the org, load every
+    // match in the window, then delegate the same-slot decision to a pure
+    // (unit-tested) predicate.
     const existingInWindow = await db.match.findMany({
       where: {
         date: { gte: dayStart, lte: dayEnd },
         activity: { orgId: activity.orgId },
       },
       select: {
+        date: true,
         activity: {
-          select: { orgId: true, venue: true, dayOfWeek: true, time: true },
+          select: { orgId: true, venue: true, dayOfWeek: true },
         },
       },
     });
@@ -70,10 +75,15 @@ export async function GET(request: Request) {
       orgId: activity.orgId,
       venue: activity.venue,
       dayOfWeek: activity.dayOfWeek,
-      time: activity.time,
+      instant: matchDate,
     };
-    if (hasMatchForSlot(slot, existingInWindow.map((existing) => existing.activity)))
-      continue;
+    const existingSlots = existingInWindow.map((existing) => ({
+      orgId: existing.activity.orgId,
+      venue: existing.activity.venue,
+      dayOfWeek: existing.activity.dayOfWeek,
+      instant: existing.date,
+    }));
+    if (hasMatchForSlot(slot, existingSlots)) continue;
 
     const deadline = new Date(matchDate.getTime() - activity.deadlineHours * 60 * 60 * 1000);
     await db.match.create({
