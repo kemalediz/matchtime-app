@@ -26,22 +26,31 @@ import {
   type GateVerdict,
 } from "@/lib/interaction-contract";
 
-describe("messageTagsBot — structured signal is primary", () => {
+describe("messageTagsBot — structured signal OR hardened text fallback", () => {
   it("returns true when botMentioned === true (regardless of body)", () => {
     expect(messageTagsBot({ body: "what are the teams?", botMentioned: true })).toBe(true);
   });
 
-  it("returns false when botMentioned === false even if body mentions matchtime", () => {
-    // Pi explicitly said the bot was NOT mentioned — trust it over text.
-    expect(messageTagsBot({ body: "matchtime is broken lol", botMentioned: false })).toBe(false);
+  it("HARDENED: botMentioned === false but body clearly tags the bot → true", () => {
+    // The structured signal can regress (the @lid-vs-@c.us self-mention bug
+    // that dropped a real admin add: "@Match Time Kieran and Rashad are IN").
+    // The Pi rewrites a bot @-mention into the literal "@Match Time" in the
+    // body, so an explicit text tag is a reliable second signal — don't let a
+    // false botMentioned suppress it.
+    expect(
+      messageTagsBot({ body: "@Match Time Kieran and Rashad are IN", botMentioned: false }),
+    ).toBe(true);
+    // The looser "matchtime" word match also counts — same false-positive
+    // tradeoff already accepted for the undefined-fallback path.
+    expect(messageTagsBot({ body: "matchtime is broken lol", botMentioned: false })).toBe(true);
   });
 
-  it("returns false when botMentioned === false on a plain question", () => {
+  it("returns false when botMentioned === false and body does NOT tag the bot", () => {
     expect(messageTagsBot({ body: "what are the teams?", botMentioned: false })).toBe(false);
   });
 });
 
-describe("messageTagsBot — text fallback ONLY when botMentioned is undefined", () => {
+describe("messageTagsBot — text fallback (undefined botMentioned, older Pi)", () => {
   it('matches "@Match Time what are the teams?"', () => {
     expect(messageTagsBot({ body: "@Match Time what are the teams?" })).toBe(true);
   });

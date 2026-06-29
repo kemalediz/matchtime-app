@@ -31,16 +31,25 @@ export interface TagInput {
 /**
  * Did this message tag @Match Time?
  *
- *  - PRIMARY:  msg.botMentioned (a real boolean) — trust it absolutely.
- *              The Pi already matched the bot's JID inside the message's
- *              mention list (the server cannot, it doesn't know its own
- *              JID). If the Pi says true/false, that's authoritative.
- *  - FALLBACK: only when botMentioned is undefined/unavailable (older Pi
- *              build) — a conservative text match on the bot's name.
- *              Brittle, so it's the last resort, never the default.
+ *  - PRIMARY:  msg.botMentioned === true — the Pi matched the bot inside
+ *              the message's mention list. Authoritative when true.
+ *  - FALLBACK: an explicit textual bot tag in the body. This runs whenever
+ *              the structured signal is NOT a positive true — i.e. when
+ *              botMentioned is `false` OR `undefined`.
+ *
+ * HARDENED (prod incident 2026-06-29): a `false` botMentioned NO LONGER
+ * suppresses a clear text tag. Root cause was a Pi-side @lid-vs-@c.us
+ * self-mention bug that reported botMentioned:false for a genuinely-tagged
+ * admin command ("@Match Time Kieran and Rashad are IN"), so the gate
+ * silently dropped a real action. Since the Pi rewrites a bot @-mention
+ * into the literal "@Match Time" in the body, the text tag is a reliable
+ * second signal that survives a structured-signal regression. The
+ * false-positive risk (casual "match time" banter) is the same tradeoff
+ * already accepted for the undefined-fallback path, and we lean toward the
+ * hardened fallback because dropping a real admin action is the worse error.
  */
 export function messageTagsBot(msg: TagInput): boolean {
-  if (typeof msg.botMentioned === "boolean") return msg.botMentioned;
+  if (msg.botMentioned === true) return true;
   const body = msg.body ?? "";
   return (
     /@?\s*match\s*time\b/i.test(body) ||

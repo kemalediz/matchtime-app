@@ -63,6 +63,46 @@ export function immediateFlushReason(args: {
   return null;
 }
 
+// ─── Self-mention detection (pure, unit-tested) ─────────────────────
+/** A mentioned JID plus, when its Contact could be resolved, the
+ *  whatsapp-web.js `Contact.isMe` flag. */
+export interface MentionedContact {
+  /** Mentioned JID as it appears in `mentionedIds` — "<digits>@c.us" or
+   *  the opaque "<digits>@lid" form WhatsApp now emits for @-mentions. */
+  jid: string;
+  /** Resolved `Contact.isMe`; undefined when the contact couldn't be fetched. */
+  isMe?: boolean;
+}
+
+/**
+ * Did this message @-mention the BOT itself? Immune to the
+ * @c.us-vs-@lid identity mismatch that caused the prod incident.
+ *
+ * Root cause: WhatsApp encodes @-mentions as opaque "<digits>@lid" JIDs,
+ * but `client.info.wid` is the phone-based "<digits>@c.us" form. So a plain
+ * `mentionedIds.includes(selfId)` is ALWAYS false even when the bot was
+ * mentioned (the mention carries the bot's @lid identity, selfId is its
+ * @c.us identity — two different strings for the same account).
+ *
+ * Reliable signal: the resolved `Contact.isMe` boolean, which is true for
+ * the bot's own contact regardless of JID format. We also match the raw jid
+ * against every known bot identity string (its @c.us wid, its @lid, etc.) as
+ * belt-and-suspenders for when a contact couldn't be resolved.
+ *
+ * Returns true if ANY mentioned contact is the bot under ANY identity form.
+ */
+export function isSelfMention(
+  mentioned: MentionedContact[],
+  botIdentities: Array<string | null | undefined>,
+): boolean {
+  const botIds = new Set(botIdentities.filter((s): s is string => !!s));
+  for (const m of mentioned) {
+    if (m.isMe === true) return true;
+    if (botIds.has(m.jid)) return true;
+  }
+  return false;
+}
+
 interface Pending {
   waMessageId: string;
   body: string;
@@ -147,33 +187,53 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   let body = baseBody;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mentionedIds: string[] = ((msg as any).mentionedIds ?? []) as string[];
-  if (mentionedIds.length > 0 && body) {
-    for (const jid of mentionedIds) {
-      try {
-        const c = await client.getContactById(jid);
-        const name = c.pushname || c.name || c.shortName || null;
-        if (name && typeof name === "string") {
-          // Match the @-tag using the digits portion of the JID. WA
-          // puts the @-tag in the text as `@<digits>` (no @lid /
-          // @c.us suffix in the visible body), so we strip the suffix
-          // and escape regex metacharacters.
-          const digits = jid.replace(/@.*$/, "").replace(/[+]/g, "");
-          if (digits.length >= 5) {
-            const re = new RegExp(`@${digits}\\b`, "g");
-            body = body.replace(re, `@${name}`);
-          }
+  // Resolve each mentioned contact ONCE: we both rewrite the body @-token
+  // and capture its `isMe` flag for self-mention detection below.
+  const mentionedContacts: MentionedContact[] = [];
+  for (const jid of mentionedIds) {
+    try {
+      const c = await client.getContactById(jid);
+      mentionedContacts.push({ jid, isMe: c.isMe });
+      const name = c.pushname || c.name || c.shortName || null;
+      if (body && name && typeof name === "string") {
+        // Match the @-tag using the digits portion of the JID. WA
+        // puts the @-tag in the text as `@<digits>` (no @lid /
+        // @c.us suffix in the visible body), so we strip the suffix
+        // and escape regex metacharacters.
+        const digits = jid.replace(/@.*$/, "").replace(/[+]/g, "");
+        if (digits.length >= 5) {
+          const re = new RegExp(`@${digits}\\b`, "g");
+          body = body.replace(re, `@${name}`);
         }
-      } catch {
-        /* non-fatal — fall back to raw @<jid> for this token */
       }
+    } catch {
+      /* non-fatal — fall back to raw @<jid> for this token, and to a
+         jid-only (no isMe) entry for self-mention matching. */
+      mentionedContacts.push({ jid });
     }
   }
 
   // Did this message @-mention the bot itself? Only the Pi knows its own
-  // JID (client.info.wid), so compute the structured signal HERE and
-  // forward it — the server can't match its own JID inside mentions[].
-  const selfId = client.info?.wid?._serialized;
-  const botMentioned = !!selfId && mentionedIds.includes(selfId);
+  // identity, so compute the structured signal HERE and forward it — the
+  // server can't match the bot's own JID inside mentions[].
+  //
+  // IMPORTANT: WhatsApp now encodes @-mentions as opaque "<digits>@lid"
+  // JIDs, while client.info.wid is the phone-based "<digits>@c.us" form, so
+  // a plain `mentionedIds.includes(selfId)` is ALWAYS false even when the
+  // bot was mentioned (the @lid vs @c.us identity mismatch that dropped a
+  // real admin add in prod). Detect via the resolved Contact.isMe and match
+  // against EVERY known bot identity form (wid @c.us, the deprecated .me,
+  // and any .lid the wweb.js build exposes) — true under ANY of them.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const info = client.info as any;
+  const botIdentities: Array<string | null | undefined> = [
+    client.info?.wid?._serialized,
+    info?.me?._serialized,
+    info?.lid?._serialized,
+    info?.wid?.lid,
+    info?.lid,
+  ];
+  const botMentioned = isSelfMention(mentionedContacts, botIdentities);
 
   const pending: Pending = {
     waMessageId,
