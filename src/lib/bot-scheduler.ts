@@ -25,6 +25,7 @@ import { composeChaseText, type ChaseKind } from "./message-analyzer";
 import { resolveTeamLabels } from "./team-labels";
 import { gbp } from "./payments";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
+import { buildMomAnnouncement } from "./mom-announcement";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -1726,7 +1727,6 @@ async function computeForMatch(
           _count: { playerId: true },
         });
         if (votes.length > 0) {
-          const totalVotes = votes.reduce((sum, v) => sum + v._count.playerId, 0);
           const allUsers = await db.user.findMany({
             where: { id: { in: votes.map((v) => v.playerId) } },
             select: { id: true, name: true },
@@ -1738,26 +1738,15 @@ async function computeForMatch(
               votes: v._count.playerId,
             }))
             .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));
-          const topCount = tally[0].votes;
-          const topNames = tally.filter((t) => t.votes === topCount).map((t) => t.name);
-          const sharedHeader = topNames.length > 1;
-          const namesText = sharedHeader
-            ? topNames.length === 2
-              ? `${topNames[0]} & ${topNames[1]}`
-              : `${topNames.slice(0, -1).join(", ")} & ${topNames.slice(-1)[0]}`
-            : topNames[0];
-          const breakdown = tally.map((t) => `• ${t.name} — ${t.votes}`).join("\n");
           out.push({
             kind: "group-message",
             key,
             matchId,
-            text:
-              `🏆 *${sport.mvpLabel} — ${activity.name}*\n\n` +
-              (sharedHeader
-                ? `Shared between *${namesText}* (${topCount} vote${topCount === 1 ? "" : "s"} each, ${totalVotes} total) 🎉\n\n`
-                : `Congrats *${namesText}* (${topCount}/${totalVotes} vote${totalVotes === 1 ? "" : "s"}) 🎉\n\n`) +
-              `Votes:\n${breakdown}\n\n` +
-              `Your trophy & drink awaits next match.`,
+            text: buildMomAnnouncement({
+              mvpLabel: sport.mvpLabel,
+              activityName: activity.name,
+              tally,
+            }),
           });
         }
         // If 0 votes, skip silently.
