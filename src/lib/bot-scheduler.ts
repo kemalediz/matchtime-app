@@ -834,7 +834,7 @@ async function computeForMatch(
   //         so without this gate the announcement landed at ~01:20 BST
   //         the moment the new match row was created. Middle-of-night
   //         posts wake people up.
-  //     (b) "Is this actually the next match in this activity?" — when
+  //     (b) "Is this actually the next match in this recurring fixture?" — when
   //         today's match is still UPCOMING/TEAMS_GENERATED/TEAMS_PUBLISHED
   //         and next week's match has just been created, only the
   //         current week's announcement should ever be live. Once
@@ -846,10 +846,12 @@ async function computeForMatch(
     const key = `${matchId}:announce-match`;
     const lh = londonHour(now);
     const inAnnounceWindow = lh >= 9 && lh < 13;
-    // "Is this the next match in this activity?" — suppressed when an
-    // earlier unplayed match in the same activity exists (next-week
-    // rollover), OR when a co-timed duplicate/ghost with a lower id exists
-    // anywhere in the org (format-switch defense). Pure, unit-tested.
+    // "Is this the next match in this recurring fixture?" — suppressed
+    // when an earlier unplayed match in the same fixture (org/venue/
+    // weekday — NOT activityId, which a format switch re-points) exists
+    // (next-week rollover), OR when a co-timed duplicate/ghost with a
+    // lower id exists anywhere in the org (format-switch defense).
+    // Pure, unit-tested.
     const isNextUpcoming =
       m.status === "UPCOMING" && hoursUntilMatch > 24
         ? isNextUpcomingForPosting(siblingMatches, m)
@@ -896,7 +898,7 @@ async function computeForMatch(
       m.status === "TEAMS_GENERATED" ||
       m.status === "TEAMS_PUBLISHED";
 
-    // "Is this the soonest unplayed match in the activity?" — same gate
+    // "Is this the soonest unplayed match in the fixture?" — same gate
     // as announce-match. When today's match is still unplayed and next
     // week's match has been auto-created, only the current week's
     // 5pm post is relevant. Without this, both matches fire their own
