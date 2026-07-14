@@ -32,10 +32,36 @@
 /** ±90 minutes: format time tweaks count as the same slot; ≥~2h apart does not. */
 export const SLOT_TIME_TOLERANCE_MS = 90 * 60 * 1000;
 
-export interface MatchSlot {
+/**
+ * The recurring FIXTURE an Activity represents, independent of format.
+ * The two format Activities of one weekly game (e.g. `tuesday-7aside` and
+ * `tuesday-5aside`) share this identity — deliberately excluding the
+ * configured `time` (the formats have different kickoff times) and the
+ * `activityId` (a format switch re-points it).
+ */
+export interface RecurringFixtureKey {
   orgId: string;
   venue: string;
   dayOfWeek: number; // 0=Sun..6=Sat
+}
+
+/**
+ * Same recurring weekly fixture? Keyed on (orgId, venue, dayOfWeek) only —
+ * see {@link RecurringFixtureKey} for why time/activityId are excluded.
+ * Used by the generator's slot dedupe (plus instant proximity, since it
+ * compares within one week's window) and by the scheduler's rollover guard
+ * (WITHOUT proximity, since it compares matches a week apart).
+ */
+export function isSameRecurringFixture(
+  a: RecurringFixtureKey,
+  b: RecurringFixtureKey,
+): boolean {
+  return (
+    a.orgId === b.orgId && a.venue === b.venue && a.dayOfWeek === b.dayOfWeek
+  );
+}
+
+export interface MatchSlot extends RecurringFixtureKey {
   instant: Date; // the match's real UTC kickoff timestamp (Match.date / computed matchDate)
 }
 
@@ -49,9 +75,7 @@ export function isSameSlot(
   toleranceMs: number = SLOT_TIME_TOLERANCE_MS,
 ): boolean {
   return (
-    a.orgId === b.orgId &&
-    a.venue === b.venue &&
-    a.dayOfWeek === b.dayOfWeek &&
+    isSameRecurringFixture(a, b) &&
     Math.abs(a.instant.getTime() - b.instant.getTime()) <= toleranceMs
   );
 }
