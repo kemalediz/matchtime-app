@@ -396,15 +396,39 @@ model Membership {
   /// in a sync (could be pre-sync legacy member, or genuinely gone).
   lastSeenInGroupAt DateTime?
 
-  /// Per-club opt-out for rating + Man-of-the-Match DMs. When true the
-  /// post-match rating DM and the daily rating-reminder DM are both
-  /// suppressed for this member in this org. Deliberately narrow: it
-  /// does NOT suppress match invites/recruit DMs, payment chases, or
-  /// answers to questions the player initiates. Set via the DM
-  /// keyword fast-path in /api/whatsapp/dm-reply ("stop messaging me
-  /// about ratings"). Re-opt-in clears both columns.
+  /// @deprecated 2026-07-17 — SUPERSEDED by `subRatingDm` (inverted
+  /// semantics: subRatingDm=true means subscribed). No longer read or
+  /// written anywhere in the app; kept only so we don't drop a column on
+  /// a live DB in the same PR that introduced the replacement. The data
+  /// migration backfilled `subRatingDm = NOT ratingDmOptOut`, so this
+  /// column's meaning is fully preserved in the new one. Safe to DROP in
+  /// a later, dedicated migration once the backfill is confirmed in prod.
   ratingDmOptOut   Boolean   @default(false)
   ratingDmOptOutAt DateTime?
+
+  /// ─── Per-category proactive-DM subscriptions (2026-07-17) ───────────
+  /// Every member is subscribed to ALL proactive-DM categories by default
+  /// (true = subscribed = receives). A player can unsubscribe from any
+  /// subset by DM'ing the bot — see the keyword fast-path in
+  /// `/api/whatsapp/dm-reply` and `setDmSubscriptions` in
+  /// `src/lib/notification-prefs.ts`. Flags apply across ALL of a user's
+  /// active (non-left) memberships (a preference is about the human, not
+  /// one club). Born from a real incident (2026-07-17): a player asked to
+  /// only be messaged about payments; the old single `ratingDmOptOut`
+  /// silenced ratings but let recruit/bench/reminder DMs through, so the
+  /// bot effectively lied. These give the player real per-category control.
+  ///
+  /// PAYMENT DMs deliberately have NO flag here: a player who owes money is
+  /// always sent their pay link + chases regardless of every flag below.
+  subMatchInviteDm Boolean @default(true) // recruit / squad-fill invites (src/lib/recruit.ts)
+  subBenchOfferDm  Boolean @default(true) // bench-slot offers (bot-scheduler)
+  subTentativeDm   Boolean @default(true) // tentative-availability follow-up DM
+  subRatingDm      Boolean @default(true) // rating DM + daily rating reminder + MoM DMs (supersedes ratingDmOptOut)
+  subReminderDm    Boolean @default(true) // user-requested "@MatchTime remind me" DMs
+
+  /// Last time any of the sub* flags above was changed (audit). Null =
+  /// never touched since creation (still on all defaults).
+  subPrefsUpdatedAt DateTime?
 
   createdAt DateTime @default(now())
 

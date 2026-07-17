@@ -159,10 +159,24 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
     },
   });
 
+  // Respect per-category DM subscriptions: anyone who opted OUT of match
+  // invites (subMatchInviteDm=false on their membership for this org) is
+  // excluded from the recruit blast. Default is subscribed, so only
+  // explicit opt-outs are filtered.
+  const inviteOptedOut = new Set(
+    (
+      await db.membership.findMany({
+        where: { orgId, subMatchInviteDm: false },
+        select: { userId: true },
+      })
+    ).map((mem) => mem.userId),
+  );
+
   const candidates = new Map<string, { id: string; name: string | null; phone: string }>();
   for (const m of recent) {
     for (const a of m.attendances) {
       if (responded.has(a.userId)) continue; // already responded to next match
+      if (inviteOptedOut.has(a.userId)) continue; // opted out of match-invite DMs
       if (!a.user.phoneNumber) continue; // can't DM without a number
       candidates.set(a.user.id, { id: a.user.id, name: a.user.name, phone: a.user.phoneNumber });
     }

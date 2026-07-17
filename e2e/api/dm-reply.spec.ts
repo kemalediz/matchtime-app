@@ -1,9 +1,13 @@
 /**
- * /api/whatsapp/dm-reply — rating-DM opt-out keyword fast-path.
+ * /api/whatsapp/dm-reply — DM subscription-preference keyword fast-path.
  *
- * Asserts the GOLDEN RULE: the bot only acks ("no more rating messages")
- * AFTER the Membership write actually landed, opt-out and re-opt-in both
- * flip Membership.ratingDmOptOut, and unknown senders are ignored.
+ * Asserts the GOLDEN RULE: the bot only acks AFTER the Membership write
+ * actually landed. Covers the narrow ratings-only opt-out (flips
+ * subRatingDm), the BROAD all-but-payment opt-out (flips every sub* flag
+ * false while payment stays sendable), opt-in, and unknown-sender ignore.
+ *
+ * (Supersedes the old single ratingDmOptOut toggle — see
+ * src/lib/dm-subscriptions.ts.)
  */
 import { test, expect, resetDb } from "../fixtures";
 import { U, ORG_ID, PHONE } from "../helpers/constants";
@@ -27,8 +31,12 @@ async function postDm(request: APIRequestContext, phone: string, body: string) {
 }
 
 interface MembershipRow {
-  ratingDmOptOut: boolean;
-  ratingDmOptOutAt: Date | null;
+  subMatchInviteDm: boolean;
+  subBenchOfferDm: boolean;
+  subTentativeDm: boolean;
+  subRatingDm: boolean;
+  subReminderDm: boolean;
+  subPrefsUpdatedAt: Date | null;
 }
 
 const membership = (db: import("../helpers/test-db").TestDb) =>
@@ -37,16 +45,18 @@ const membership = (db: import("../helpers/test-db").TestDb) =>
     [U.opt, ORG_ID],
   );
 
-test("opt-out keyword sets ratingDmOptOut and acks only after the write", async ({ request, db }) => {
+test("ratings-only opt-out flips subRatingDm and acks only after the write", async ({ request, db }) => {
   const json = await postDm(request, PHONE.opt, "stop messaging me about ratings please");
-  expect(json.handled).toBe("rating-dm-opt-out");
-  expect(json.optOut).toBe(true);
+  expect(json.handled).toBe("dm-subscription");
+  expect(json.cmd).toBe("opt-out-ratings");
 
   const mem = await membership(db);
-  expect(mem?.ratingDmOptOut).toBe(true);
-  expect(mem?.ratingDmOptOutAt).not.toBeNull();
+  expect(mem?.subRatingDm).toBe(false);
+  // Only ratings touched — other categories remain subscribed.
+  expect(mem?.subMatchInviteDm).toBe(true);
+  expect(mem?.subReminderDm).toBe(true);
+  expect(mem?.subPrefsUpdatedAt).not.toBeNull();
 
-  // Confirmation DM was queued (BotJob row — the Pi is not in the loop).
   const ack = await db.one<{ text: string }>(
     `SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt" DESC LIMIT 1`,
     [ORG_ID, PHONE.opt.replace(/^\+/, "")],
@@ -54,14 +64,36 @@ test("opt-out keyword sets ratingDmOptOut and acks only after the write", async 
   expect(ack?.text).toContain("no more rating");
 });
 
-test("re-opt-in clears the flag", async ({ request, db }) => {
-  const json = await postDm(request, PHONE.opt, "start ratings again please");
-  expect(json.handled).toBe("rating-dm-opt-out");
-  expect(json.optOut).toBe(false);
+test("broad 'only payment' opt-out flips EVERY sub flag false", async ({ request, db }) => {
+  const json = await postDm(request, PHONE.opt, "do not message me on any topic but payment");
+  expect(json.handled).toBe("dm-subscription");
+  expect(json.cmd).toBe("opt-out-all");
 
   const mem = await membership(db);
-  expect(mem?.ratingDmOptOut).toBe(false);
-  expect(mem?.ratingDmOptOutAt).toBeNull();
+  expect(mem?.subMatchInviteDm).toBe(false);
+  expect(mem?.subBenchOfferDm).toBe(false);
+  expect(mem?.subTentativeDm).toBe(false);
+  expect(mem?.subRatingDm).toBe(false);
+  expect(mem?.subReminderDm).toBe(false);
+
+  const ack = await db.one<{ text: string }>(
+    `SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+    [ORG_ID, PHONE.opt.replace(/^\+/, "")],
+  );
+  expect(ack?.text.toLowerCase()).toContain("payment");
+});
+
+test("'start messages' re-subscribes to everything", async ({ request, db }) => {
+  const json = await postDm(request, PHONE.opt, "start messages");
+  expect(json.handled).toBe("dm-subscription");
+  expect(json.cmd).toBe("opt-in-all");
+
+  const mem = await membership(db);
+  expect(mem?.subMatchInviteDm).toBe(true);
+  expect(mem?.subBenchOfferDm).toBe(true);
+  expect(mem?.subTentativeDm).toBe(true);
+  expect(mem?.subRatingDm).toBe(true);
+  expect(mem?.subReminderDm).toBe(true);
 });
 
 test("unknown sender is ignored — no write, no ack", async ({ request, db }) => {

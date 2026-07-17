@@ -6,7 +6,7 @@
  *   rate-dm        from 08:00 London onward the morning/day after the match
  *   rate-reminder  18:00–19:00 London, only after the initial DM landed
  *
- * Asserts that members with Membership.ratingDmOptOut=true are skipped
+ * Asserts that members with Membership.subRatingDm=false are skipped
  * in BOTH personal-DM loops while everyone else still gets theirs.
  */
 import { test, expect, resetDb } from "../fixtures";
@@ -28,10 +28,11 @@ test.beforeAll(async () => {
 });
 
 test.beforeEach(async ({ db }) => {
-  // Olivia opted out (set directly — the dm-reply path itself is covered
-  // in dm-reply.spec.ts; this spec tests the scheduler respecting it).
+  // Olivia opted out of rating DMs (set directly — the dm-reply path itself
+  // is covered in dm-reply.spec.ts; this spec tests the scheduler
+  // respecting subRatingDm).
   await db.run(
-    `UPDATE "Membership" SET "ratingDmOptOut" = true, "ratingDmOptOutAt" = now()
+    `UPDATE "Membership" SET "subRatingDm" = false, "subPrefsUpdatedAt" = now()
      WHERE "userId" = $1 AND "orgId" = $2`,
     [U.opt, ORG_ID],
   );
