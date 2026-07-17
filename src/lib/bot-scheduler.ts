@@ -617,9 +617,23 @@ export async function computeDuePosts(
       orderBy: { dueAt: "asc" },
       take: 20,
     });
+    // Per-category opt-out: players with subTentativeDm=false asked not to
+    // get the "you were a maybe — in or out?" nudge. Default is subscribed.
+    const tentativeOptedOut =
+      dueRows.length > 0
+        ? new Set(
+            (
+              await db.membership.findMany({
+                where: { orgId: org.id, subTentativeDm: false },
+                select: { userId: true },
+              })
+            ).map((mem) => mem.userId),
+          )
+        : new Set<string>();
     for (const row of dueRows) {
       const key = `${row.match.id}:tentative-followup:${row.user.id}`;
       if (sentKeys.has(key)) continue;
+      if (tentativeOptedOut.has(row.user.id)) continue; // opted out of tentative DMs
 
       // Send-time guard: re-check current state. Resolve-and-skip when the
       // question is moot; only DM genuinely-unresolved players.
@@ -1037,8 +1051,21 @@ async function computeForMatch(
     // and posts when people are awake. London 08:00–21:59.
     const lh = londonHour(now);
     if (lh >= 8 && lh < 22) {
+      // Per-category opt-out: benchers with subBenchOfferDm=false asked not
+      // to be offered slots. Exclude them from BOTH the group @-tag and the
+      // personal DM below (default is subscribed, so only explicit opt-outs
+      // are filtered). If everyone benched opted out, benchAtt is empty and
+      // the offer just waits — the short-squad chase covers the group.
+      const benchOptedOut = new Set(
+        (
+          await db.membership.findMany({
+            where: { orgId: activity.orgId, subBenchOfferDm: false },
+            select: { userId: true },
+          })
+        ).map((mem) => mem.userId),
+      );
       const benchAtt = m.attendances.filter(
-        (a) => a.status === "BENCH" && a.user.phoneNumber,
+        (a) => a.status === "BENCH" && a.user.phoneNumber && !benchOptedOut.has(a.userId),
       );
       for (const offer of m.benchSlotOffers) {
         if (benchAtt.length === 0) continue; // no bench — chase covers it
@@ -1518,16 +1545,17 @@ async function computeForMatch(
   //    above is gated on *ended*, which is earlier.
   if (m.status === "COMPLETED" && m.postMatchEndFlow !== false) {
 
-    // Per-club opt-out: players who texted "stop messaging me about
-    // ratings" have ratingDmOptOut=true on their Membership. Build the
-    // set once for this match's org and skip them in BOTH personal DM
-    // loops below (rate-dm + rate-reminder). Group-wide messages
-    // (rate-promo, MoM announcement) are intentionally NOT gated — they
-    // aren't personal DMs.
+    // Per-category opt-out: players who texted "stop messaging me about
+    // ratings" (or a broad "only payment" request) have subRatingDm=false
+    // on their Membership. Build the set once for this match's org and skip
+    // them in BOTH personal DM loops below (rate-dm + rate-reminder).
+    // Group-wide messages (rate-promo, MoM announcement) are intentionally
+    // NOT gated — they aren't personal DMs. (subRatingDm supersedes the
+    // deprecated ratingDmOptOut column.)
     const optedOut = new Set(
       (
         await db.membership.findMany({
-          where: { orgId: activity.orgId, ratingDmOptOut: true },
+          where: { orgId: activity.orgId, subRatingDm: false },
           select: { userId: true },
         })
       ).map((mem) => mem.userId),

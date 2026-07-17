@@ -26,7 +26,12 @@ import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { answerScopedQuestion, pickRelevantOrgForUser, looksLikeQuestion } from "@/lib/dm-qa";
 import { handleCollectorFeeReply } from "@/lib/payment-flow";
-import { setRatingDmOptOut } from "@/lib/notification-prefs";
+import { setDmSubscriptions } from "@/lib/notification-prefs";
+import {
+  parseDmSubscriptionCommand,
+  dmSubPatchForCommand,
+  dmSubAckMessage,
+} from "@/lib/dm-subscriptions";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { resolveTentative } from "@/lib/tentative-store";
 
@@ -303,35 +308,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "unknown-sender" });
   }
 
-  // ── Rating/MoM DM opt-out fast-path (2026-06-11) ────────────────────
-  //   A player can text "stop messaging me about ratings" (or just
-  //   "stop") to silence the post-match rating DM + daily rating
-  //   reminder. Deterministic keyword match, run BEFORE the collector-fee
-  //   and Q&A branches so it can't be swallowed: the Q&A fallthrough only
-  //   composes prose and writes nothing, which is exactly the gap that let
-  //   a player keep getting nudged after asking us to stop.
+  // ── DM subscription-preference fast-path (2026-06-11; per-category
+  //    2026-07-17) ──────────────────────────────────────────────────────
+  //   A player can text the bot to opt out of proactive DMs — either a
+  //   single category ("stop messaging me about ratings") or everything
+  //   except payment ("do not message me on any topic but payment", "only
+  //   payment please"). Payment DMs have NO flag and are never silenced.
+  //   Deterministic keyword match (parser in lib/dm-subscriptions.ts), run
+  //   BEFORE the collector-fee and Q&A branches so it can't be swallowed:
+  //   the Q&A fallthrough only composes prose and writes nothing, which is
+  //   exactly the gap that once let a player keep getting DMs after asking
+  //   us to stop.
   //
-  //   GOLDEN RULE: only ack ("Done — no more rating messages") AFTER the
-  //   DB write succeeds. If the write touched 0 rows / threw, we do NOT
-  //   claim they're unsubscribed — fall through silently.
+  //   GOLDEN RULE: only ack AFTER the DB write succeeds. If the write
+  //   touched 0 rows / threw, we do NOT claim they're unsubscribed — fall
+  //   through silently rather than lie.
   {
-    const t = (text ?? "").trim();
-    const optOutRe =
-      /\b(stop|don'?t|do not|no more|quit|unsubscribe|opt[\s-]?out|leave me alone)\b[^.]*\b(rate|rating|ratings|mom|man of the match|message|messaging|messages|prompt|nudg)/i;
-    const bareStopRe = /^\s*stop\s*$/i;
-    const reOptInRe = /\b(start|resume|opt[\s-]?in)\b[^.]*\b(rate|rating|mom|message)/i;
-
-    const wantsOptIn = reOptInRe.test(t);
-    const wantsOptOut = !wantsOptIn && (optOutRe.test(t) || bareStopRe.test(t));
-
-    if (wantsOptIn || wantsOptOut) {
-      const optOut = wantsOptOut;
+    const cmd = parseDmSubscriptionCommand(text ?? "");
+    if (cmd) {
       let written = false;
       try {
-        const res = await setRatingDmOptOut(user.id, optOut);
+        const res = await setDmSubscriptions(user.id, dmSubPatchForCommand(cmd));
         written = res.count > 0;
       } catch (err) {
-        console.error("[dm-reply] setRatingDmOptOut failed:", err);
+        console.error("[dm-reply] setDmSubscriptions failed:", err);
       }
 
       if (written) {
@@ -348,14 +348,11 @@ export async function POST(request: Request) {
           select: { orgId: true },
         });
         if (replyPhone && mem) {
-          const reply = optOut
-            ? "Done — no more rating or Man-of-the-Match messages from me 👍 Text \"start ratings\" anytime to turn them back on."
-            : "Great — I'll send you rating and Man-of-the-Match links again 👍";
           await db.botJob.create({
-            data: { orgId: mem.orgId, kind: "dm", phone: replyPhone, text: reply },
+            data: { orgId: mem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd) },
           });
         }
-        return NextResponse.json({ ok: true, handled: "rating-dm-opt-out", optOut });
+        return NextResponse.json({ ok: true, handled: "dm-subscription", cmd });
       }
       // Write didn't land — don't lie. Fall through to normal handling.
     }

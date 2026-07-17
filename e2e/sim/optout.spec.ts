@@ -1,11 +1,11 @@
 /**
  * Group-simulator scenario matrix — RATING-DM OPT-OUT.
  *
- * "stop messaging me about ratings" must (a) flip the per-club
- * Membership.ratingDmOptOut flag, (b) only ACK after the write landed,
- * and (c) actually silence BOTH scheduler loops — the morning-after
- * rating DM and the evening rating reminder — while everyone else still
- * gets theirs. Re-opt-in restores delivery.
+ * "stop messaging me about ratings" must (a) flip the per-category
+ * Membership.subRatingDm flag to false, (b) only ACK after the write
+ * landed, and (c) actually silence BOTH scheduler loops — the
+ * morning-after rating DM and the evening rating reminder — while everyone
+ * else still gets theirs. Re-opt-in restores delivery.
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
@@ -36,20 +36,20 @@ const group = async (request: APIRequestContext, db: TestDb) =>
   })).attach(request);
 
 const flag = (grp: SimGroup, key: string) =>
-  grp.db.one<{ ratingDmOptOut: boolean; ratingDmOptOutAt: Date | null }>(
-    `SELECT "ratingDmOptOut", "ratingDmOptOutAt" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
+  grp.db.one<{ subRatingDm: boolean; subPrefsUpdatedAt: Date | null }>(
+    `SELECT "subRatingDm", "subPrefsUpdatedAt" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
     [grp.player(key).userId, grp.orgId],
   );
 
 test('"stop messaging me about ratings" → flag set, ack only after the write', async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.dm("pete", "stop messaging me about ratings please");
-  expect(r.json.handled).toBe("rating-dm-opt-out");
-  expect(r.json.optOut).toBe(true);
+  expect(r.json.handled).toBe("dm-subscription");
+  expect(r.json.cmd).toBe("opt-out-ratings");
 
   const m = await flag(grp, "pete");
-  expect(m?.ratingDmOptOut).toBe(true);
-  expect(m?.ratingDmOptOutAt).not.toBeNull();
+  expect(m?.subRatingDm).toBe(false);
+  expect(m?.subPrefsUpdatedAt).not.toBeNull();
 
   const petePhone = grp.player("pete").phone!.replace(/^\+/, "");
   expect(r.dms.some((d) => d.phone === petePhone && /no more rating/i.test(d.text))).toBe(true);
@@ -116,9 +116,8 @@ test("evening rating REMINDERS skip the opted-out player AND anyone who already 
 test('"start ratings" re-opt-in clears the flag', async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.dm("pete", "start ratings again please");
-  expect(r.json.handled).toBe("rating-dm-opt-out");
-  expect(r.json.optOut).toBe(false);
+  expect(r.json.handled).toBe("dm-subscription");
+  expect(r.json.cmd).toBe("opt-in-ratings");
   const m = await flag(grp, "pete");
-  expect(m?.ratingDmOptOut).toBe(false);
-  expect(m?.ratingDmOptOutAt).toBeNull();
+  expect(m?.subRatingDm).toBe(true);
 });

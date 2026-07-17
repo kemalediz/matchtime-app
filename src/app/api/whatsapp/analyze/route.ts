@@ -2773,7 +2773,19 @@ async function executeVerdict(args: {
           select: { phoneNumber: true },
         });
         const phone = dbUser?.phoneNumber?.replace(/^\+/, "") ?? null;
-        if (!phone) {
+        // Per-category opt-out: if the player unsubscribed from reminder
+        // DMs (subReminderDm=false, e.g. via a broad "only payment"
+        // request), honour it — don't queue the reminder. Be honest about
+        // why rather than silently swallow a request they made out loud.
+        const remindOptedOut = await db.membership.findFirst({
+          where: { userId: user.id, leftAt: null, subReminderDm: false },
+          select: { id: true },
+        });
+        if (remindOptedOut) {
+          finalReact = "🔕";
+          finalReply =
+            'You\'ve muted my messages, so I can\'t DM you a reminder. Text me "start messages" and I\'ll be able to nudge you.';
+        } else if (!phone) {
           // No phone on file → can't DM. Tell them in-group rather than
           // silently swallow the request.
           finalReact = "🤔";
