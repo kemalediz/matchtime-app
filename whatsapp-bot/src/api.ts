@@ -113,6 +113,28 @@ export async function ackInstruction(ack: {
   }
 }
 
+/**
+ * Give a claimed instruction back to the server without sending it.
+ *
+ * Since 2026-07-19 the server CLAIMS an instruction (writes its dedupe
+ * row) at the moment it hands it to us, so duplicate bot processes can't
+ * each send the same message. That makes delivery at-most-once: anything
+ * we're handed but don't send is otherwise lost forever. The DM rate
+ * limiter deliberately holds DMs back expecting them to be re-emitted, so
+ * it must release the claim. The server only deletes rows that carry no
+ * waMessageId, i.e. that were never actually sent.
+ */
+export async function releaseInstruction(key: string): Promise<void> {
+  const res = await fetch(`${config.apiUrl}/api/whatsapp/ack`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ key, release: true }),
+  });
+  if (!res.ok) {
+    console.error("release failed:", res.status, await res.text());
+  }
+}
+
 export async function postDmReply(params: {
   phone: string;
   body: string;

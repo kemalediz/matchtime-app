@@ -562,10 +562,24 @@ export class SimGroup {
   }
 
   /** Scheduler tick at a pinned clock (MT_TEST_MODE x-test-now). */
-  async duePosts(now: Date): Promise<Array<{ kind: string; key?: string; targetUser?: string; text?: string }>> {
+  async duePosts(
+    now: Date,
+    /** Claim-on-dispatch (2026-07-19): by default the sim polls in
+     *  preview mode (x-no-claim) so a scenario can inspect the same due
+     *  window more than once. Pass { claim: true } to exercise the real
+     *  dispatch path, where each instruction is claimed as it is handed
+     *  out and therefore only ever returned once. */
+    opts: { claim?: boolean } = {},
+  ): Promise<Array<{ kind: string; key?: string; targetUser?: string; text?: string }>> {
     const res = await this.request.get(
       `/api/whatsapp/due-posts?groupId=${encodeURIComponent(this.groupId)}`,
-      { headers: { ...HEADERS, "x-test-now": now.toISOString() } },
+      {
+        headers: {
+          ...HEADERS,
+          "x-test-now": now.toISOString(),
+          ...(opts.claim ? {} : { "x-no-claim": "1" }),
+        },
+      },
     );
     expect(res.status(), await res.text()).toBe(200);
     const json = (await res.json()) as { instructions?: Array<{ kind: string }> };

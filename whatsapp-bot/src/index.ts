@@ -21,9 +21,29 @@ import {
   stopBatchFlushTimer,
 } from "./smart-analysis.js";
 import { config } from "./config.js";
+import { acquireInstanceLock } from "./instance-lock.js";
 
 async function main() {
   console.log("MatchTime WhatsApp Bot starting...");
+
+  // ── Single-instance guard (2026-07-19 duplicate-send incident) ──────
+  // Several bot processes were alive on the Pi at once (orphans left
+  // outside systemd's cgroup by repeated `systemctl restart`), all
+  // logged into the same WhatsApp account, all polling due-posts — so
+  // one due instruction became 30+ group messages. Refuse to be the
+  // second instance. Exit code is 0 under systemd on purpose: the unit
+  // has Restart=on-failure, and a non-zero exit here would produce an
+  // endless crash-restart loop. See instance-lock.ts.
+  const lock = acquireInstanceLock();
+  if (!lock.acquired) {
+    console.error(
+      `CRITICAL: another MatchTime bot instance is already running (pid ${lock.holderPid}). ` +
+        `Refusing to start a second one — duplicate instances cause duplicate WhatsApp sends. ` +
+        `Use scripts/deploy-pi.sh to restart cleanly; never bare 'systemctl restart'.`,
+    );
+    process.exit(lock.exitCode);
+  }
+
   console.log(`API URL: ${config.apiUrl}`);
 
   const client = new Client({

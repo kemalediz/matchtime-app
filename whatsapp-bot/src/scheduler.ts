@@ -9,7 +9,7 @@
  * writes a SentNotification row and the same instruction doesn't fire again.
  */
 import pkg from "whatsapp-web.js";
-import { getDuePosts, ackInstruction, type DueInstruction } from "./api.js";
+import { getDuePosts, ackInstruction, releaseInstruction, type DueInstruction } from "./api.js";
 import { config } from "./config.js";
 
 const { Poll } = pkg;
@@ -105,7 +105,15 @@ async function tick(): Promise<void> {
               console.log(
                 `[rate-limit] DM ${instr.key} held — ${remainingS}s until next DM allowed`,
               );
-              continue; // not acked → server re-emits next tick
+              // Since claim-on-dispatch (2026-07-19) the server has
+              // ALREADY written this key's dedupe row, so simply skipping
+              // would drop the DM permanently. Release the claim so the
+              // server re-emits it on a later tick — restoring the
+              // original "not acked → comes back" behaviour.
+              await releaseInstruction(instr.key).catch((e) =>
+                console.error(`[rate-limit] failed to release ${instr.key}:`, e),
+              );
+              continue;
             }
             // Reserve the rate-limit window BEFORE the (awaited) send so a
             // slow/hung send can't be double-gated by a later instruction,
@@ -259,7 +267,20 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
       });
       return;
     }
+
+    // Unknown kind (server is ahead of this bot build). We definitely did
+    // not send anything, and the server has already claimed the key — so
+    // release it, otherwise the instruction is silently lost until this
+    // bot is upgraded.
+    const unknown = instr as { kind: string; key: string };
+    console.warn(`Unknown instruction kind "${unknown.kind}" (${unknown.key}) — releasing claim`);
+    await releaseInstruction(unknown.key);
   } catch (err) {
+    // Deliberately NOT released. Delivery is at-most-once by design: a
+    // send that threw may still have reached WhatsApp (e.g. a timeout
+    // after the message landed), and re-emitting it risks the duplicate
+    // flood this whole mechanism exists to prevent. The next scheduled
+    // post covers the gap.
     console.error(`Failed to execute instruction ${instr.kind} (${instr.key}):`, err);
   }
 }
