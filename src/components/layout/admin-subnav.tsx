@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 const TABS = [
   { label: "Dashboard", href: "/admin" },
   { label: "Activities", href: "/admin/activities" },
+  { label: "Block bookings", href: "/admin/block-bookings" },
   { label: "Players", href: "/admin/players" },
   { label: "Unresolved", href: "/admin/unresolved" },
   { label: "Stats", href: "/admin/stats" },

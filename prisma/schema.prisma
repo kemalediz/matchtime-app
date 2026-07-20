@@ -483,6 +483,7 @@ model Activity {
 
   matches         Match[]
   playerPositions PlayerActivityPosition[]
+  blockBookings   BlockBooking[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -490,6 +491,52 @@ model Activity {
   @@index([orgId])
   @@index([sportId])
   @@index([venueId])
+}
+
+/**
+ * A venue BLOCK BOOKING (2026-07-20). Sutton FC's real-world shape: the
+ * club pays the venue for N consecutive weekly matches up-front (e.g. 10
+ * Tuesdays, 25 Aug → 27 Oct 2026). All Match rows are created UP-FRONT at
+ * block creation so the whole season is visible and manageable as a set
+ * (list, bulk-cancel for holidays, bulk-restore, delete).
+ *
+ * Posting semantics are unchanged: the scheduler's
+ * `isNextUpcomingForPosting` gate (src/lib/next-upcoming-match.ts) already
+ * suppresses any match with an earlier LIVE match in the same recurring
+ * fixture, so pre-created future matches stay silent until the previous
+ * one is COMPLETED or CANCELLED. Creating a block queues no group post.
+ *
+ * `time` is a LONDON WALL CLOCK "HH:mm"; each match's UTC instant is
+ * resolved PER DATE (DST-safe — the 2026 block straddles the BST→GMT
+ * change). `startDate`/`endDate` are London calendar dates (DATE column,
+ * read back as UTC midnight).
+ *
+ * Deleting a block never deletes played/history-bearing matches — they are
+ * detached (Match.blockBookingId → NULL via ON DELETE SET NULL after the
+ * explicit partition in deleteBlockBooking).
+ */
+model BlockBooking {
+  id         String   @id @default(cuid())
+  orgId      String
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id])
+  /// First match calendar date (London), inclusive.
+  startDate  DateTime @db.Date
+  /// Last match calendar date (London), inclusive.
+  endDate    DateTime @db.Date
+  /// Kickoff, London wall clock "HH:mm" — resolved to UTC per date.
+  time       String
+  /// What the venue charges per match (£). Optional bookkeeping.
+  costPerMatch Float?
+  notes        String?
+
+  matches Match[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([activityId])
 }
 
 model PlayerActivityPosition {
@@ -521,6 +568,13 @@ model Match {
   /// MoM announcement, rating-reminder DMs) for this specific match. Useful for
   /// the first match after launch while the rating UI is still maturing.
   postMatchEndFlow   Boolean     @default(true)
+
+  /// Set when this match was generated as part of a venue block booking
+  /// (see BlockBooking). Lets a block be listed/bulk-cancelled/deleted as
+  /// a set. Nullable + SetNull on block deletion = additive, zero impact
+  /// on existing rows and on the weekly cron's matches.
+  blockBookingId String?
+  blockBooking   BlockBooking? @relation(fields: [blockBookingId], references: [id], onDelete: SetNull)
 
   /// Synthetic historical match — NOT a real scheduled match, just an
   /// anchor for pre-MatchTime MoM votes we backfilled from WhatsApp
@@ -567,6 +621,7 @@ model Match {
 
   @@index([date])
   @@index([status])
+  @@index([blockBookingId])
 }
 
 /**
