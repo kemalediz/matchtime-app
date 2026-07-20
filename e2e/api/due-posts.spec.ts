@@ -41,7 +41,18 @@ test.beforeEach(async ({ db }) => {
 async function duePostsAt(request: APIRequestContext, now: Date): Promise<Instruction[]> {
   const res = await request.get(
     `/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`,
-    { headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": now.toISOString() } },
+    // x-no-claim: preview mode. Since claim-on-dispatch (2026-07-19) the
+    // endpoint writes each instruction's SentNotification row as it hands
+    // it out, so a second poll for the same window returns nothing. These
+    // tests assert scheduler SELECTION, so they poll in preview mode.
+    // Claim behaviour has its own spec: e2e/api/due-posts-claim.spec.ts.
+    {
+      headers: {
+        "x-api-key": E2E.WHATSAPP_API_KEY,
+        "x-test-now": now.toISOString(),
+        "x-no-claim": "1",
+      },
+    },
   );
   expect(res.status(), await res.text()).toBe(200);
   const json = await res.json();

@@ -49,12 +49,39 @@ The `PATH` prefix is because the user's shell defaults to Node 16, which Prisma 
 After **every** `git push` that lands on `main`, even server-only changes:
 
 ```bash
-ssh davidediz@matchtime-pi.tail1437f5.ts.net 'cd ~/matchtime-bot && git pull --ff-only && sudo systemctl restart matchtime-bot.service'
+ssh davidediz@matchtime-pi.tail1437f5.ts.net \
+  'cd ~/matchtime-bot && git pull --ff-only && \
+   cd whatsapp-bot && npm install --silent && cd .. && \
+   sudo sh scripts/deploy-pi.sh'
 ```
 
-For bot code changes also run `cd whatsapp-bot && npm install --silent` between pull and restart. Verify with `systemctl status matchtime-bot.service --no-pager` — should be `active (running)` within ~10s.
+`scripts/deploy-pi.sh` exits **0 only if exactly one bot instance is running afterwards**; any other count is a loud non-zero failure. Read its output — do not assume success.
 
 If SSH returns "additional check required" with a `login.tailscale.com/a/...` URL, ask Kemal to click it once.
+
+### 🚨 NEVER restart the Pi bot by hand
+
+**Do not run `sudo systemctl restart matchtime-bot.service`.** Always use `scripts/deploy-pi.sh`.
+
+**Why (2026-07-19 incident).** A customer's WhatsApp group received **30+ copies of the same roster message in ~20 minutes**. Root cause: duplicate bot processes on the Pi. Repeated bare `systemctl restart` had left node processes running **outside systemd's cgroup** — we confirmed two separate `sh -c node --env-file … src/index.ts` process trees while systemd's `MainPID` tracked only one. Every orphan was logged into the same WhatsApp account and every one polled `/api/whatsapp/due-posts` on a 30s timer, so each of them sent the same due message. `systemctl restart` cannot fix this: it only stops what it owns.
+
+Worse, it was **invisible server-side**: every instance ACKed the same key, which upserted into exactly **one** `SentNotification` row. 30+ messages in the group, 1 row in the database.
+
+`deploy-pi.sh` does: `systemctl stop` → wait → `pkill` any survivors **by process pattern** (cgroup membership is exactly what orphans escape) → verify **zero** remain → `systemctl start` **once** → wait → verify **exactly one** → print the PID.
+
+Two defences were added alongside it:
+
+- **Claim-on-dispatch** (`src/lib/dispatch-claim.ts`, `api/whatsapp/due-posts`): an instruction's `SentNotification` row is now created when it is handed to a bot, not on ACK. The `@unique` constraint on `key` means the first poller wins and every concurrent one skips. Delivery is deliberately **at-most-once** — a claimed-but-unsent message is lost rather than duplicated.
+- **Outbound circuit breaker**: `MAX_GROUP_MESSAGES_PER_HOUR = 10` per org. Past that, group dispatch stops and a `CRITICAL:` line is logged. Normal traffic is 1-2 group posts/day, so this only ever fires on a runaway. If you see it in the Vercel logs, check the Pi for duplicate processes first.
+- **Startup guard** (`whatsapp-bot/src/instance-lock.ts`): the bot takes a liveness-verified pidfile lock on boot and refuses to become a second instance. Under systemd it exits **0** on purpose — the unit has `Restart=on-failure`, and a non-zero exit would produce an endless crash-restart loop.
+
+Diagnosing by hand? Count instances like this (the naive `pgrep -f "sh -c node --env-file"` also matches your own shell — that false positive cost us an hour):
+
+```bash
+pgrep -a -f 'sh -c node --env-file.*src/index.ts' | grep -v "^$$ "
+```
+
+One line = healthy. Two or more = you are mid-incident: `sudo pkill -9 -f 'sh -c node --env-file.*src/index.ts'` then run `scripts/deploy-pi.sh`.
 
 ## Verification tools / pre-built scripts
 
