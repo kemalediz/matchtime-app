@@ -6,35 +6,49 @@ the season restart.
 
 ---
 
-## ⚠️ READ FIRST — THE ONE THING THAT IS BROKEN RIGHT NOW
+## ✅ STATUS: LIVE AND HEALTHY (verified 27 Aug 2026, ~20:30 London)
 
-**The Pi bot cannot connect to WhatsApp. It is stuck in a QR-code loop and
-can neither send nor receive anything.**
+The season is configured and the bot is connected. Nothing outstanding.
 
-Everything else for the new season is configured and correct. This is the
-only blocker, and it needs a human with the burner phone.
+Verified end to end after the WhatsApp re-pair:
 
-**Fix:**
+| Check | Result |
+|---|---|
+| WhatsApp auth | ready, `Monitoring 1 group(s)` |
+| Bot processes on the Pi | exactly 1 |
+| Live matches in block | 20 |
+| **Postable right now** | **exactly 1** (Tue 1 Sept) — the other 19 silent |
+| Sent in last hour | 0 |
+| Pending BotJobs | 0 |
+
+First announcement goes out **09:00 London on Fri 28 Aug** (the natural
+window — Kemal chose not to queue an early one). Daily attendance chase at
+17:00 thereafter.
+
+### Historical note: the QR outage that blocked this
+
+On 27 Aug the bot sat in a QR-code loop and could neither send nor receive.
+The `.wwebjs_auth` session folder was rebuilt at **12:50**, roughly seven
+hours BEFORE the Pi was restarted at 19:48 — so the session had already
+dropped earlier that day; the restart surfaced it rather than caused it.
+Do NOT assume `pkill -9` in `deploy-pi.sh` corrupted it. Resolved by
+scanning a fresh QR with the burner phone.
+
+Worth knowing for next time: `initScheduler` and `startBatchFlushTimer`
+both live INSIDE `client.on("ready")` (`whatsapp-bot/src/index.ts:63,105,112`),
+so while auth is lost the bot does not even poll `/api/whatsapp/due-posts`
+and NOTHING sends, queued or not. Queued BotJobs persist and fire ~30s
+after a successful scan.
+
+To re-pair if it happens again:
 
 ```bash
 ssh davidediz@matchtime-pi.tail1437f5.ts.net 'tail -f ~/matchtime-bot/bot.log'
 ```
 
-Scan a freshly-printed QR (they rotate every ~20s) with the burner phone:
-WhatsApp → Linked devices → Link a device. Success looks like
-`WhatsApp bot is ready!` followed by `Monitoring 1 group(s)`.
-
-**Cause (best evidence, not certain):** the `.wwebjs_auth` session folder
-was rebuilt at **12:50 on 27 Aug**, roughly seven hours BEFORE the Pi was
-restarted at 19:48. So the session had already dropped earlier that day;
-the restart surfaced it rather than caused it. Do not assume `pkill -9` in
-`deploy-pi.sh` corrupted it — the timestamps say otherwise.
-
-**Nothing sends until this is fixed**, queued or not: `initScheduler` and
-`startBatchFlushTimer` both live INSIDE `client.on("ready")`
-(`whatsapp-bot/src/index.ts:63,105,112`), so the bot does not even poll
-`/api/whatsapp/due-posts` until WhatsApp authenticates. Any BotJob queued
-in the meantime persists in the DB and fires ~30s after a successful scan.
+Scan a freshly-printed QR (they rotate every ~20s): WhatsApp → Linked
+devices → Link a device. Success is `WhatsApp bot is ready!` then
+`Monitoring 1 group(s)`.
 
 ---
 
@@ -169,7 +183,7 @@ They can be bulk-cancelled from `/admin/matches/bulk` if plans change.
 | Next match | Tue 1 Sept 2026, 21:30 London (`20:30Z`) |
 | Pi git HEAD | `9c1fbad` |
 | Pi processes | exactly 1 (verified via `deploy-pi.sh`) |
-| WhatsApp auth | ❌ **BROKEN — QR loop, see top of file** |
+| WhatsApp auth | ✅ ready (re-paired 27 Aug ~20:20) |
 
 **Payment-chase risk checked and cleared:** there are 101 CONFIRMED
 attendances with `paidAt = null`, but every one belongs to a match whose
@@ -232,13 +246,12 @@ He pulled me up for drifting off the agreed workflow. Recorded in memory
 
 ## 8. OPEN ITEMS
 
-1. **Scan the QR** (top of file). Nothing works until then.
-2. After scanning, verify: `Monitoring 1 group(s)`, exactly one bot
-   process, and that ONLY the 1 Sept match is announced — the other 19 must
-   stay silent.
-3. **Optional:** queue an immediate announcement so it fires ~30s after the
-   scan instead of waiting for the 09:00 window. Worth it — Tuesday needs
-   14 players after a 6-week break.
+1. ~~Scan the QR~~ — **done 27 Aug**, verified connected.
+2. ~~Verify only the 1 Sept match announces~~ — **done**, postable count
+   confirmed as exactly 1 against live data.
+3. **Watch the first real post at 09:00 Fri 28 Aug.** Confirm exactly one
+   announcement lands (not 20, not duplicated). This is the first live
+   exercise of both the block-booking gate AND claim-on-dispatch.
 4. **Recovery-window weakness, still unfixed** (from the 7 Jul outage):
    `recoverGroupMessages` only re-feeds the last 2 hours, and right after a
    restart `fetchMessages` often cannot load history and falls back to just
