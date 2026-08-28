@@ -11,6 +11,11 @@
 import pkg from "whatsapp-web.js";
 import { getDuePosts, ackInstruction, releaseInstruction, type DueInstruction } from "./api.js";
 import { config } from "./config.js";
+import {
+  waMessageIdFrom,
+  isMissingSendResult,
+  missingSendResultMessage,
+} from "./send-result.js";
 
 const { Poll } = pkg;
 
@@ -152,6 +157,45 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
+/**
+ * Read the WhatsApp message id out of a `sendMessage()` result, shouting if
+ * the library gave us nothing.
+ *
+ * 2026-08-28: `client.sendMessage()` resolves to `undefined` whenever its
+ * injected page code can't build a Message model — which is what WhatsApp
+ * Web's summer frontend change caused. The old direct property read threw a
+ * TypeError on `msg` itself (optional chaining guards `id`, not `msg`), which
+ * aborted `executeInstruction` BEFORE the ACK. The group post had already
+ * been delivered; the ACK never ran, so `SentNotification.waMessageId` stayed
+ * NULL and — because the instruction was already claimed on dispatch — it
+ * could never be retried either.
+ *
+ * We ACK ANYWAY in that case. Reasoning, deliberately:
+ *   - Under claim-on-dispatch the server has ALREADY written the dedupe row,
+ *     so NOT acking does not cause a retry — it just leaves the row without a
+ *     waMessageId and skips the per-key ACK side effects (BotJob.sentAt,
+ *     BenchSlotOffer.waMessageId, tentative-followup notifiedAt).
+ *   - The only way to get a retry is an explicit `release`, and releasing a
+ *     send that very likely landed is exactly how the 2026-07-19 duplicate
+ *     flood happened. At-most-once is the deliberate design.
+ *   - A missing waMessageId costs reaction tracking on one message. A
+ *     duplicate send costs customer trust. Take the former.
+ */
+function ackMessageId(kind: string, key: string, sent: unknown): string | undefined {
+  if (isMissingSendResult(sent)) {
+    console.error(missingSendResultMessage(kind, key));
+    return undefined;
+  }
+  const id = waMessageIdFrom(sent);
+  if (!id) {
+    console.warn(
+      `[ack] ${kind} (${key}): send result carried no usable message id — ` +
+        "acking without one (reaction tracking unavailable for this message)",
+    );
+  }
+  return id;
+}
+
 async function executeInstruction(instr: DueInstruction, groupId: string): Promise<void> {
   if (!client) return;
 
@@ -173,7 +217,7 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
         key: instr.key,
         kind: instr.kind,
         matchId: instr.matchId,
-        waMessageId: msg.id?._serialized,
+        waMessageId: ackMessageId(instr.kind, instr.key, msg),
       });
       return;
     }
@@ -192,7 +236,7 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
         key: instr.key,
         kind: instr.kind,
         matchId: instr.matchId,
-        waMessageId: msg.id?._serialized,
+        waMessageId: ackMessageId(instr.kind, instr.key, msg),
       });
       return;
     }
@@ -210,7 +254,7 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
           kind: instr.kind,
           matchId: instr.matchId,
           targetUser: instr.targetUser,
-          waMessageId: msg.id?._serialized,
+          waMessageId: ackMessageId(instr.kind, instr.key, msg),
         });
       } catch (e) {
         // 2026-06-12: a failed/timed-out DM (bad number, not on WhatsApp)
@@ -239,7 +283,7 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
         kind: instr.kind,
         matchId: instr.matchId,
         benchUserId: instr.userId,
-        waMessageId: msg.id?._serialized,
+        waMessageId: ackMessageId(instr.kind, instr.key, msg),
       });
       return;
     }

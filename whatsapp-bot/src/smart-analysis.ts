@@ -23,6 +23,8 @@ import {
   type AnalyzeInboundMessage,
   type AnalyzeResult,
 } from "./api.js";
+import { enrichOrDegrade, planFlushRetry, type InboundEnrichment } from "./inbound-enrich.js";
+import { waMessageIdFrom } from "./send-result.js";
 
 const HISTORY_PER_GROUP = 15;
 // Ten-minute batches keep Claude cost ~£2/month at Sutton's volume
@@ -118,7 +120,14 @@ interface Pending {
   botMentioned?: boolean;
   /** Kept so the bot can react/reply to the exact wweb.js Message later. */
   msg: Message;
+  /** How many analyze POSTs have already failed for this message. */
+  attempts: number;
 }
+
+// How many times a batch may fail its analyze POST before we give up on it.
+// 1 initial attempt + 2 retries. Bounded so a genuinely poisonous payload
+// can't wedge a group's buffer forever.
+const MAX_FLUSH_ATTEMPTS = 3;
 
 // ─── In-memory state ────────────────────────────────────────────────
 const historyByGroup = new Map<string, AnalyzeInboundHistory[]>();
@@ -161,10 +170,104 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   if (!msg.from.endsWith("@g.us")) return;
 
   const phone = phoneFromAuthor(msg.author, msg.from);
-  const waMessageId = msg.id?._serialized;
+  // Total read: `msg` here always IS a Message, but the same defensive
+  // accessor is used everywhere else and costs nothing.
+  const waMessageId = waMessageIdFrom(msg);
   if (!waMessageId) return;
 
-  const contact = await msg.getContact().catch(() => null);
+  // Everything from here to `pending` is ENRICHMENT — pushname lookup,
+  // @-mention resolution, self-mention detection — and every bit of it goes
+  // through whatsapp-web.js's injected page code. When WhatsApp Web ships a
+  // frontend change that code throws (the minified `r: r` seen on the Pi on
+  // 2026-08-28) and, before this wrapper, took the whole enqueue with it:
+  // the message was never buffered, never POSTed to /api/whatsapp/analyze,
+  // and attendance silently stopped being recorded for a live customer.
+  //
+  // Enrichment is a nice-to-have; DELIVERY IS NOT. Degrade to the raw body
+  // and keep going.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawMentionedIds: string[] = ((msg as any).mentionedIds ?? []) as string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawDataBody = (msg as any)._data?.body;
+  const rawBody =
+    typeof msg.body === "string" && msg.body.length > 0
+      ? msg.body
+      : typeof rawDataBody === "string"
+        ? rawDataBody
+        : "";
+
+  const enriched = await enrichOrDegrade(
+    rawBody,
+    () => enrichInbound(client, msg, rawBody),
+    (err) =>
+      console.error(
+        `CRITICAL: enrichment failed for ${waMessageId} in ${msg.from} — ` +
+          "forwarding the RAW message to the analyzer instead (author name and " +
+          "@-mention resolution lost for this message). This usually means " +
+          "whatsapp-web.js's injected page code is out of step with the live " +
+          "WhatsApp Web build — consider pinning WA_WEB_VERSION. Cause:",
+        err instanceof Error ? err.message : err,
+      ),
+  );
+  const { body, authorName, botMentioned } = enriched;
+
+  const pending: Pending = {
+    waMessageId,
+    body,
+    authorPhone: phone,
+    authorName,
+    timestamp: new Date((msg.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
+    // Forward the RAW mention JIDs unchanged — the server-side onboarding
+    // parser resolves "<digits>@c.us" → phone and "<digits>@lid" → no phone.
+    // Sent even when enrichment failed, so the server can still do what it
+    // can with them.
+    mentions: rawMentionedIds.length > 0 ? rawMentionedIds : undefined,
+    botMentioned,
+    msg,
+    attempts: 0,
+  };
+
+  const arr = bufferByGroup.get(msg.from) ?? [];
+  arr.push(pending);
+  bufferByGroup.set(msg.from, arr);
+
+  // Decide whether to flush immediately or leave the message on the
+  // 10-min batch. A direct @Match Time mention beats everything (tagged
+  // commands/questions should reply within seconds); then urgency (match
+  // kicks off within URGENCY_WINDOW); then a full buffer. Bare In/Out and
+  // banter return null and sit until the next tick.
+  // The buffer has no live cap, so pass Infinity — the "full" branch
+  // stays a tested no-op here and live batching is unchanged.
+  const kickoff = nextKickoffMsByGroup.get(msg.from) ?? null;
+  const reason = immediateFlushReason({
+    botMentioned,
+    bufferLen: arr.length,
+    maxBufferLen: Infinity,
+    kickoffMs: kickoff,
+    nowMs: Date.now(),
+    urgencyWindowMs: URGENCY_WINDOW_MS,
+  });
+  if (reason) {
+    console.log(`[smart] ${reason} flush for ${msg.from} (${arr.length} pending)`);
+    // flushGroup's inFlightFlush guard prevents double-running per group.
+    await flushGroup(client, msg.from);
+  }
+}
+
+/**
+ * The WhatsApp-client-dependent half of enqueue: pushname, @-mention
+ * resolution, self-mention detection. Extracted so `enrichOrDegrade` can
+ * contain its failures — every call in here can throw when the injected
+ * page code is out of step with the live WhatsApp Web build.
+ */
+async function enrichInbound(
+  client: Client,
+  msg: Message,
+  rawBody: string,
+): Promise<InboundEnrichment> {
+  const contact = await Promise.resolve()
+    .then(() => msg.getContact())
+    .catch(() => null);
   const authorName = contact?.pushname ?? contact?.name ?? null;
 
   // Resolve @-mentions in the body before forwarding to the analyzer.
@@ -176,15 +279,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   // For each mentioned id, fetch the contact and replace the @<jid>
   // token with @<pushname-or-name>. Falls back to the raw token if
   // resolution fails.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dataBody = (msg as any)._data?.body;
-  const baseBody =
-    typeof msg.body === "string" && msg.body.length > 0
-      ? msg.body
-      : typeof dataBody === "string"
-        ? dataBody
-        : "";
-  let body = baseBody;
+  let body = rawBody;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mentionedIds: string[] = ((msg as any).mentionedIds ?? []) as string[];
   // Resolve each mentioned contact ONCE: we both rewrite the body @-token
@@ -235,50 +330,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   ];
   const botMentioned = isSelfMention(mentionedContacts, botIdentities);
 
-  const pending: Pending = {
-    waMessageId,
-    body,
-    authorPhone: phone,
-    authorName,
-    timestamp: new Date((msg.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
-    // Forward the RAW mention JIDs unchanged — the server-side onboarding
-    // parser resolves "<digits>@c.us" → phone and "<digits>@lid" → no phone.
-    mentions: mentionedIds.length > 0 ? mentionedIds : undefined,
-    botMentioned,
-    msg,
-  };
-
-  const arr = bufferByGroup.get(msg.from) ?? [];
-  arr.push(pending);
-  bufferByGroup.set(msg.from, arr);
-
-  // Decide whether to flush immediately or leave the message on the
-  // 10-min batch. A direct @Match Time mention beats everything (tagged
-  // commands/questions should reply within seconds); then urgency (match
-  // kicks off within URGENCY_WINDOW); then a full buffer. Bare In/Out and
-  // banter return null and sit until the next tick.
-  // The buffer has no live cap, so pass Infinity — the "full" branch
-  // stays a tested no-op here and live batching is unchanged.
-  const kickoff = nextKickoffMsByGroup.get(msg.from) ?? null;
-  const reason = immediateFlushReason({
-    botMentioned,
-    bufferLen: arr.length,
-    maxBufferLen: Infinity,
-    kickoffMs: kickoff,
-    nowMs: Date.now(),
-    urgencyWindowMs: URGENCY_WINDOW_MS,
-  });
-  if (reason) {
-    if (reason === "mention") {
-      console.log(`[smart] mention flush for ${msg.from} (${arr.length} pending)`);
-    } else if (reason === "urgency") {
-      console.log(`[smart] urgency flush for ${msg.from} (${arr.length} pending)`);
-    } else {
-      console.log(`[smart] ${reason} flush for ${msg.from} (${arr.length} pending)`);
-    }
-    // flushGroup's inFlightFlush guard prevents double-running per group.
-    await flushGroup(client, msg.from);
-  }
+  return { body, authorName, botMentioned };
 }
 
 // ─── Flush mechanics ────────────────────────────────────────────────
@@ -308,7 +360,26 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
       results = res.results;
       nextKickoffMs = res.nextKickoffMs;
     } catch (err) {
-      console.error("[smart] analyze POST failed:", err);
+      // The buffer was cleared optimistically above, so without this the
+      // whole batch of IN/OUT messages is binned on a transient network
+      // blip. Put it back (bounded, so a poison batch can't loop forever)
+      // and let the next tick — or the next enqueue — retry it.
+      const { requeue, dropped } = planFlushRetry(pending, MAX_FLUSH_ATTEMPTS);
+      if (requeue.length > 0) {
+        bufferByGroup.set(groupId, [...requeue, ...(bufferByGroup.get(groupId) ?? [])]);
+      }
+      console.error(
+        `[smart] analyze POST failed for ${groupId} — requeued ${requeue.length}, ` +
+          `dropped ${dropped.length} after ${MAX_FLUSH_ATTEMPTS} attempts:`,
+        err instanceof Error ? err.message : err,
+      );
+      if (dropped.length > 0) {
+        console.error(
+          `CRITICAL: ${dropped.length} message(s) in ${groupId} never reached the analyzer — ` +
+            "attendance from them is NOT recorded: " +
+            dropped.map((d) => d.waMessageId).join(", "),
+        );
+      }
       return;
     }
 
@@ -316,12 +387,16 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
       nextKickoffMsByGroup.set(groupId, nextKickoffMs);
     }
 
+    // Log EVERY flush, not just ones with actionable results. The 2026-08-28
+    // outage was diagnosed off the absence of `[smart] flush` lines, which
+    // was ambiguous: it could mean "the flush never ran" (what actually
+    // happened) or "it ran and nothing was actionable". One line per flush
+    // removes that ambiguity.
     const actionable = results.filter((r) => r.handledBy !== "deduped");
-    if (actionable.length > 0) {
-      console.log(
-        `[smart] flush ${groupId}: ${actionable.length}/${results.length} actionable`,
-      );
-    }
+    console.log(
+      `[smart] flush ${groupId}: sent ${msgsForAnalyze.length}, ` +
+        `${actionable.length}/${results.length} actionable`,
+    );
 
     // Execute per-message actions on the WhatsApp side.
     for (const r of results) {
@@ -339,11 +414,21 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
         }
       }
       if (r.reply) {
+        // Prefer client.sendMessage: `getChatById` goes through
+        // `window.WWebJS.getChat`, which is precisely the injected call that
+        // started throwing `r: r` on 2026-08-28 while sends still worked.
+        // Keep the chat path as a fallback so nothing regresses if
+        // sendMessage is the one that breaks next time.
         try {
-          const chat = await client.getChatById(groupId);
-          await chat.sendMessage(r.reply);
+          await client.sendMessage(groupId, r.reply);
         } catch (err) {
-          console.error("[smart] reply failed:", err);
+          console.error("[smart] reply via client.sendMessage failed, trying chat:", err);
+          try {
+            const chat = await client.getChatById(groupId);
+            await chat.sendMessage(r.reply);
+          } catch (err2) {
+            console.error("[smart] reply failed:", err2);
+          }
         }
       }
     }
@@ -428,4 +513,13 @@ export function stopBatchFlushTimer(): void {
 export function _test_flushNow(groupId: string): Promise<void> {
   if (!sharedClient) return Promise.resolve();
   return flushGroup(sharedClient, groupId);
+}
+
+/** Test-only: clear all module-level state between cases. */
+export function _test_reset(): void {
+  historyByGroup.clear();
+  bufferByGroup.clear();
+  nextKickoffMsByGroup.clear();
+  inFlightFlush.clear();
+  sharedClient = null;
 }
