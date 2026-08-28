@@ -22,6 +22,37 @@ import {
 } from "./smart-analysis.js";
 import { config } from "./config.js";
 import { acquireInstanceLock } from "./instance-lock.js";
+import {
+  resolveWebVersionOptions,
+  describeWebVersionOptions,
+  warnIfPinUnreachable,
+} from "./web-version.js";
+
+/**
+ * Retry an async call a few times with a fixed delay. Used for the ONE
+ * startup call whose failure silently disables the whole bot (org config).
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts: number,
+  delayMs: number,
+  label: string,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      console.error(
+        `[startup] ${label} attempt ${i}/${attempts} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+      if (i < attempts) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
 
 async function main() {
   console.log("MatchTime WhatsApp Bot starting...");
@@ -46,6 +77,19 @@ async function main() {
 
   console.log(`API URL: ${config.apiUrl}`);
 
+  // WhatsApp Web version pinning — see src/web-version.ts. Resolves to {}
+  // when the WA_WEB_VERSION* env vars are unset, so the client is built
+  // exactly as before unless someone opts in on the Pi. This is the escape
+  // hatch for the next time WhatsApp ships a frontend change that breaks
+  // whatsapp-web.js's injected code: pin a known-good build in
+  // ~/matchtime-bot/.env and redeploy, no code change needed.
+  const webVersionOptions = resolveWebVersionOptions(process.env);
+  console.log(describeWebVersionOptions(webVersionOptions));
+  // Warn-only: a pin to a build the archive doesn't have is ignored SILENTLY
+  // by whatsapp-web.js, which would look identical to a working pin.
+  // Fire-and-forget so a slow GitHub can't delay startup.
+  void warnIfPinUnreachable(webVersionOptions);
+
   const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -53,6 +97,7 @@ async function main() {
       executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     },
+    ...webVersionOptions,
   });
 
   client.on("qr", (qr: string) => {
@@ -72,11 +117,31 @@ async function main() {
       });
       console.log(`=== end groups ===\n`);
     } catch (err) {
-      console.error("Failed to enumerate groups:", err);
+      // Non-fatal: this block is a startup diagnostic only. But it is also
+      // the CANARY for whatsapp-web.js's injected page code being out of
+      // step with the live WhatsApp Web build (2026-08-28: this threw the
+      // minified `r: r` while every contact/chat lookup on the inbound path
+      // died the same way). Say so loudly rather than logging a bare error.
+      console.error(
+        "Failed to enumerate groups:",
+        err instanceof Error ? err.message : err,
+      );
+      console.error(
+        "CRITICAL: client.getChats() failed. whatsapp-web.js's injected page " +
+          "code is probably out of step with the live WhatsApp Web build. " +
+          "Group posting may still work, but contact/chat lookups will not. " +
+          "Mitigation: pin a known-good build with WA_WEB_VERSION in " +
+          "~/matchtime-bot/.env, or upgrade whatsapp-web.js. " +
+          "See MDs/whatsapp-web-version-pinning.md.",
+      );
     }
 
     try {
-      const data = await getEnabledOrgs();
+      // Retry: everything below (scheduler, batch-flush timer, catch-up)
+      // only ever starts here. A single transient failure used to leave the
+      // bot connected to WhatsApp but permanently deaf and mute — no polling,
+      // no analysis — until someone noticed and restarted it.
+      const data = await withRetry(getEnabledOrgs, 3, 5_000, "getEnabledOrgs");
       const orgConfigs = (data.orgs || [])
         .filter((o: { whatsappGroupId: string | null }) => o.whatsappGroupId)
         .map((o: { whatsappGroupId: string; name: string }) => ({
@@ -188,7 +253,13 @@ async function main() {
         }
       }
     } catch (err) {
-      console.error("Failed to fetch org configs:", err);
+      console.error(
+        "CRITICAL: failed to fetch org configs after retries — the scheduler " +
+          "and the batch-flush timer did NOT start, so nothing will be posted " +
+          "and no inbound message will be analysed. Restart the bot with " +
+          "scripts/deploy-pi.sh once the API is reachable. Cause:",
+        err,
+      );
     }
 
     // One-shot recovery: if BOT_RECOVER_DM_REPLIES=1, walk every
