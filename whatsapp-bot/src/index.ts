@@ -27,6 +27,11 @@ import {
   describeWebVersionOptions,
   warnIfPinUnreachable,
 } from "./web-version.js";
+import {
+  resolvePairingOptions,
+  describePairingOptions,
+  formatPairingCodeBanner,
+} from "./pair-phone.js";
 
 /**
  * Retry an async call a few times with a fixed delay. Used for the ONE
@@ -90,6 +95,20 @@ async function main() {
   // Fire-and-forget so a slow GitHub can't delay startup.
   void warnIfPinUnreachable(webVersionOptions);
 
+  // Mobile-friendly login — see src/pair-phone.ts. Resolves to {} when
+  // WA_PAIR_PHONE is unset, so the client is built exactly as before and the
+  // QR flow is untouched. When it IS set, whatsapp-web.js asks WhatsApp for
+  // an 8-character pairing code instead, which can be typed into the burner
+  // phone with no second screen — the QR needed a terminal AND the phone,
+  // which repeatedly left the bot logged out and the product dead.
+  //
+  // Note the library treats QR and pairing code as mutually exclusive
+  // (Client.js:161), so no QR is printed while WA_PAIR_PHONE is set. Unset it
+  // and redeploy to get the QR route back.
+  const pairing = resolvePairingOptions(process.env);
+  if (pairing.criticalLog) console.error(pairing.criticalLog);
+  console.log(describePairingOptions(pairing));
+
   const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -98,11 +117,22 @@ async function main() {
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     },
     ...webVersionOptions,
+    ...pairing.clientOptions,
   });
 
+  // Still registered unconditionally: harmless when pairing is on (the
+  // library simply never emits 'qr' in that mode) and the sole auth path
+  // when it is off.
   client.on("qr", (qr: string) => {
     console.log("\nScan this QR code with WhatsApp on the burner phone:\n");
     qrcode.generate(qr, { small: true });
+  });
+
+  // whatsapp-web.js emits 'code' each time a pairing code is generated —
+  // once immediately and again on every refresh, so a lapsed code is
+  // replaced without anyone touching the Pi.
+  client.on("code", (code: string) => {
+    console.log(formatPairingCodeBanner(code, pairing.intervalMs));
   });
 
   client.on("ready", async () => {
