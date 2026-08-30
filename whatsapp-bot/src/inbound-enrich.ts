@@ -19,28 +19,70 @@ export interface InboundEnrichment {
   body: string;
   /** WhatsApp pushname / contact name, or null when it couldn't be resolved. */
   authorName: string | null;
+  /**
+   * Sender's phone as bare digits, or "" when there isn't one.
+   *
+   * Starts as whatever the sender's JID gave us (empty for an `@lid`
+   * privacy sender) and can be UPGRADED by enrichment via `Contact.number`,
+   * which resolves an `@lid` to a real phone when the injected layer is
+   * healthy. A phone is the server's strongest identity signal, so it is
+   * worth the extra read.
+   */
+  authorPhone: string;
   /** Was the bot itself @-mentioned? */
   botMentioned: boolean;
 }
 
 /**
- * Run `enrich`, and on ANY failure fall back to the raw message body.
+ * Run `enrich`, and fall back — PER FIELD — to `fallback` for anything it
+ * could not produce.
  *
- * Total: never throws, whatever `enrich` or `onDegrade` do (including a
- * synchronous throw, which is what kills `msg.getContact().catch(...)` when
- * `getContact` itself blows up rather than returning a rejected promise).
+ * `fallback` is a whole enrichment, not just the raw body. That is the
+ * 2026-08-30 change and the point of this function: the old version could
+ * only preserve the message TEXT, and threw the sender's identity away,
+ * because the only source of a name was `msg.getContact()` — an injected
+ * page call that dies exactly when the fallback is needed. The caller now
+ * builds an identity from the raw payload (`_data.notifyName`, the author
+ * JID) BEFORE enrichment, so a degraded message still says who spoke and
+ * the server can still register their attendance.
+ *
+ * Per-field rather than all-or-nothing because the common failure is
+ * PARTIAL: `getContact()` throws while mention resolution completes fine.
+ * Discarding the good half of a half-good enrichment loses information for
+ * no reason.
+ *
+ * Total: never throws, whatever `enrich`, `onDegrade` or `fallback` do
+ * (including a synchronous throw, which is what kills
+ * `msg.getContact().catch(...)` when `getContact` itself blows up rather
+ * than returning a rejected promise).
  */
 export async function enrichOrDegrade(
-  rawBody: string,
+  fallback: InboundEnrichment,
   enrich: () => Promise<InboundEnrichment> | InboundEnrichment,
   onDegrade: (err: unknown) => void,
 ): Promise<InboundEnrichment> {
+  const base: InboundEnrichment = {
+    body: typeof fallback?.body === "string" ? fallback.body : "",
+    authorName:
+      typeof fallback?.authorName === "string" && fallback.authorName.trim()
+        ? fallback.authorName.trim()
+        : null,
+    authorPhone: typeof fallback?.authorPhone === "string" ? fallback.authorPhone : "",
+    botMentioned: fallback?.botMentioned === true,
+  };
   try {
     const e = await enrich();
     return {
-      body: typeof e?.body === "string" && e.body.length > 0 ? e.body : rawBody,
-      authorName: typeof e?.authorName === "string" && e.authorName ? e.authorName : null,
-      botMentioned: e?.botMentioned === true,
+      body: typeof e?.body === "string" && e.body.length > 0 ? e.body : base.body,
+      authorName:
+        typeof e?.authorName === "string" && e.authorName.trim()
+          ? e.authorName.trim()
+          : base.authorName,
+      authorPhone:
+        typeof e?.authorPhone === "string" && e.authorPhone.length > 0
+          ? e.authorPhone
+          : base.authorPhone,
+      botMentioned: e?.botMentioned === true || base.botMentioned,
     };
   } catch (err) {
     try {
@@ -48,7 +90,10 @@ export async function enrichOrDegrade(
     } catch {
       /* a broken logger must not break the pipeline either */
     }
-    return { body: rawBody, authorName: null, botMentioned: false };
+    // botMentioned cannot be recovered from the raw payload (only the Pi
+    // knows its own JID and that read goes through the broken layer), so it
+    // degrades to the fallback's value — normally false.
+    return base;
   }
 }
 
