@@ -285,3 +285,66 @@ Tailscale SSH periodically demands a browser re-auth; it prints a
 Prod scripts used this session live in `scripts/` (untracked):
 `create-sutton-block.ts`, `extend-sutton-block.ts`, `verify-block.ts`,
 `enable-sutton.ts`, `check-reenable.ts`.
+
+---
+
+## 10. INBOUND OUTAGE, 30 Aug 2026 — every "IN" was silently discarded
+
+Attendance tracking was dead for ~3 days before the Tue 1 Sept fixture.
+The bot was connected and healthy (`bot is ready`, 1 group, exactly 1
+process, 18.5h uptime) and `[msg]` lines scrolled for every inbound
+message, but **zero `AnalyzedMessage` rows were written**.
+
+**Root cause.** `enqueueForAnalysis` opened with:
+
+```ts
+const waMessageId = waMessageIdFrom(msg);
+if (!waMessageId) return;
+```
+
+`waMessageIdFrom` came from `send-result.ts` (PR #11), where a missing id
+genuinely means "there is nothing to ACK". Reusing it on the INBOUND path
+turned "we couldn't read an id" into "bin the message". Once
+whatsapp-web.js's injected page code fell out of step with the live
+WhatsApp Web build (the minified `r: r` failures), inbound `Message`
+objects stopped exposing `id._serialized` and **every** group message hit
+that `return` before it was buffered.
+
+It was invisible because `flushGroup` early-returned on an empty buffer
+**without logging**, so ~111 flushes over 18.5h said nothing at all.
+
+**Fix (PR #13, `fix/inbound-missing-message-id`).**
+
+- An unreadable id now degrades to a deterministic synthetic id,
+  `synthetic:<16 hex of sha256(from ⊘ author ⊘ timestamp ⊘ body)>`
+  (`whatsapp-bot/src/message-id.ts`). No `Date.now()`, no randomness, no
+  counter: `/api/whatsapp/analyze` dedupes on `waMessageId`, so the id
+  MUST hash the same when `recoverGroupMessages` replays the last 2h, or
+  attendance would be registered twice.
+- Every remaining raw read in the enqueue path (`from`, `author`, `body`,
+  `_data.body`, `mentionedIds`, `timestamp`) is now total — on a broken
+  build any of them can be a throwing getter, and any throw lost the
+  message exactly like the id guard did.
+- `index.ts`: the DM path sent `msg.id?._serialized ?? ""` and
+  `/api/whatsapp/dm-reply` **400s on an empty waMessageId**, so DM replies
+  (bench confirmations, tentative follow-ups, collector fee replies) were
+  dropped by the same failure. It now uses the same resolver. The
+  unmonitored-group setup trigger's `client.info.wid` / `mentionedIds`
+  reads are guarded too.
+- Diagnostics: per-process counters (`seen`, `buffered`, `synthetic`,
+  `notGroup`) printed on every empty flush, e.g.
+  `[smart] flush <gid>: buffer empty (seen=340 buffered=0 synthetic=0 notGroup=0)`.
+  **`seen` far exceeding `buffered` is the signature of this class of
+  failure** and is now visible within 10 minutes instead of never. The
+  first synthetic id logs CRITICAL, then rate-limited (1, 10, 100, then
+  every 1000).
+
+**Known degradation.** Messages carrying a synthetic id cannot be matched
+by the `message_reaction` handler (that event carries a real WhatsApp id),
+so a 👍/👎 on such a message is not mapped back. Attendance registration,
+which is what matters, works.
+
+**Watch for after deploy:** `[smart] flush … buffer empty (seen=… buffered=…)`
+lines, and any `CRITICAL: could not read id._serialized` line — the latter
+means the library is still out of step and `WA_WEB_VERSION` /
+whatsapp-web.js should be revisited.
