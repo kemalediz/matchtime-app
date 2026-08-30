@@ -2,6 +2,8 @@ import pkg from "whatsapp-web.js";
 const { Client, LocalAuth } = pkg;
 import qrcode from "qrcode-terminal";
 import { setMonitoredGroups, isMonitoredGroup, addMonitoredGroup } from "./handlers.js";
+import { degradedMessage } from "./degraded.js";
+import { asString, readInboundHeadline, safePath, safeRead } from "./wa-read.js";
 import { initScheduler, stopScheduler } from "./scheduler.js";
 import {
   getEnabledOrgs,
@@ -153,18 +155,7 @@ async function main() {
       // step with the live WhatsApp Web build (2026-08-28: this threw the
       // minified `r: r` while every contact/chat lookup on the inbound path
       // died the same way). Say so loudly rather than logging a bare error.
-      console.error(
-        "Failed to enumerate groups:",
-        err instanceof Error ? err.message : err,
-      );
-      console.error(
-        "CRITICAL: client.getChats() failed. whatsapp-web.js's injected page " +
-          "code is probably out of step with the live WhatsApp Web build. " +
-          "Group posting may still work, but contact/chat lookups will not. " +
-          "Mitigation: pin a known-good build with WA_WEB_VERSION in " +
-          "~/matchtime-bot/.env, or upgrade whatsapp-web.js. " +
-          "See MDs/whatsapp-web-version-pinning.md.",
-      );
+      console.error(degradedMessage("group-enumeration", err));
     }
 
     try {
@@ -235,6 +226,21 @@ async function main() {
           // chats don't.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const participants = (chat as any).participants ?? [];
+          // A chat object that resolves but carries no participants is the
+          // QUIET version of the same breakage: nothing throws, we POST an
+          // empty roster, the server reports "0 added, total=0" and everyone
+          // assumes the group is simply already in sync. Treat it as the
+          // failure it is.
+          if (!Array.isArray(participants) || participants.length === 0) {
+            console.error(
+              degradedMessage(
+                "participant-sync",
+                "the chat resolved but its participants list was empty",
+                `${o.orgName} (${o.groupId})`,
+              ),
+            );
+            continue;
+          }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const selfId = client.info?.wid?._serialized;
           const out: Array<{ phone?: string; lidId?: string; pushname?: string }> = [];
@@ -277,10 +283,10 @@ async function main() {
             );
           }
         } catch (err) {
-          console.error(
-            `[sync-participants] ${o.orgName} failed:`,
-            err instanceof Error ? err.message : err,
-          );
+          // Was `[sync-participants] <org> failed: r` — a line that told
+          // nobody the web app's self-IN gate was about to start rejecting
+          // real players. Say what it costs.
+          console.error(degradedMessage("participant-sync", err, `${o.orgName} (${o.groupId})`));
         }
       }
     } catch (err) {
@@ -397,37 +403,39 @@ async function main() {
   // (react, reply) for the bot to perform.
   client.on("message", async (msg) => {
     try {
-      // whatsapp-web.js gotcha: for messages from chats the bot
-      // hasn't fully synced yet, msg.body is sometimes empty but the
-      // raw payload still carries the text in msg._data.body. Fall
-      // back to it before deciding the message is empty/media.
-      // Discovered when the morning roster-survey DMs landed: 50+
-      // inbound replies all logged as bodyLen=0 even though Kemal
-      // could see them as plain text in WhatsApp.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawBody = (msg as any)._data?.body;
-      const effectiveBody =
-        typeof msg.body === "string" && msg.body.length > 0
-          ? msg.body
-          : typeof rawBody === "string"
-            ? rawBody
-            : "";
+      // Read EVERY headline field through one total helper.
+      //
+      // These reads used to be direct (`msg.body`, `(msg as any)._data?.body`,
+      // `msg.from`, `msg.type`, `msg.hasMedia`). Optional chaining guards a
+      // null `_data`; it does NOT guard a `_data` that is a THROWING GETTER,
+      // which is what whatsapp-web.js's broken injected build produces. A
+      // throw here lands in this handler's outer catch and the message is
+      // lost before `enqueueForAnalysis` — which PRs #11/#13 went to some
+      // trouble to make total — is ever reached. Same silent drop, one frame
+      // earlier. See wa-read.ts.
+      //
+      // (The `_data.body` fallback itself predates all this: for chats the
+      // bot hasn't fully synced, `msg.body` is empty while the raw payload
+      // still carries the text. Found when 50+ roster-survey DM replies all
+      // logged bodyLen=0 despite being plain text in WhatsApp.)
+      const head = readInboundHeadline(msg);
+      const effectiveBody = head.body;
 
       // Diagnostic — log every incoming message's headline metadata
       // so we can debug the DM-reply path without re-deploying.
       // Trim if too noisy in production.
       console.log(
-        `[msg] from=${msg.from} fromMe=${msg.fromMe} type=${msg.type} bodyLen=${(msg.body ?? "").length} dataBodyLen=${typeof rawBody === "string" ? rawBody.length : "?"} hasMedia=${msg.hasMedia ?? false}`,
+        `[msg] from=${head.from} fromMe=${head.fromMe} type=${head.type} bodyLen=${effectiveBody.length} hasMedia=${head.hasMedia}`,
       );
 
-      if (msg.fromMe) return;
+      if (head.fromMe) return;
 
       // 1-1 DM detection: anything that's NOT a group (@g.us) is
       // treated as a DM. Sender JID can be @c.us (phone-keyed) or
       // @lid (privacy-mode, opaque). For @c.us we extract the phone.
       // For @lid we forward an empty phone + the sender's pushname,
       // and let the server resolve by name against open survey DMs.
-      const isGroup = msg.from?.endsWith("@g.us");
+      const isGroup = head.from.endsWith("@g.us");
       if (!isGroup) {
         const text = effectiveBody.trim();
 
@@ -439,10 +447,8 @@ async function main() {
         // on the user's open-survey state too.
         if (text.length === 0) {
           const isMediaReply =
-            msg.hasMedia === true ||
-            ["audio", "ptt", "image", "video", "sticker", "document"].includes(
-              String(msg.type),
-            );
+            head.hasMedia ||
+            ["audio", "ptt", "image", "video", "sticker", "document"].includes(head.type);
           if (isMediaReply) {
             try {
               await msg.reply(
@@ -451,7 +457,7 @@ async function main() {
                   "• \"maybe\" / \"depends\"\n" +
                   "• \"not for now\" / \"out\"",
               );
-              console.log(`[dm] nudged non-text reply from=${msg.from} type=${msg.type}`);
+              console.log(`[dm] nudged non-text reply from=${head.from} type=${head.type}`);
             } catch (err) {
               console.error("dm nudge reply failed:", err);
             }
@@ -459,16 +465,11 @@ async function main() {
           return;
         }
         let phone = "";
-        if (msg.from?.endsWith("@c.us")) {
-          phone = msg.from.replace("@c.us", "").replace(/^\+/, "");
+        if (head.from.endsWith("@c.us")) {
+          phone = head.from.replace("@c.us", "").replace(/^\+/, "");
         }
         // Pushname / contact name — fallback identifier.
-        let authorName: string | undefined;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rawNotify = (msg as any)._data?.notifyName;
-        if (typeof rawNotify === "string" && rawNotify.trim()) {
-          authorName = rawNotify.trim();
-        }
+        let authorName: string | undefined = head.notifyName ?? undefined;
         // @lid privacy DMs hide the phone in the JID (msg.from ends in
         // "@lid", not "@c.us"). Without a phone the server can't map the
         // sender to a user and drops the reply as "unknown sender" — which
@@ -494,7 +495,7 @@ async function main() {
           }
         }
         console.log(
-          `[dm] resolved from=${msg.from} phone=${phone || "?"} name=${authorName ?? "?"}`,
+          `[dm] resolved from=${head.from} phone=${phone || "?"} name=${authorName ?? "?"}`,
         );
         try {
           // `/api/whatsapp/dm-reply` 400s on an empty waMessageId, so the old
@@ -510,7 +511,7 @@ async function main() {
             waMessageId: resolveWaMessageId(msg).waMessageId,
           });
           console.log(
-            `[dm] forwarded reply from=${msg.from} authorName=${authorName ?? "?"}`,
+            `[dm] forwarded reply from=${head.from} authorName=${authorName ?? "?"}`,
           );
         } catch (err) {
           console.error("dm-reply forward failed:", err);
@@ -532,7 +533,7 @@ async function main() {
       // PHONE NUMBER in the raw body (e.g. "@447... setup"), so a
       // literal-text-only regex misses every real @-mention. Without
       // this, every Amir-group setup attempt got silently dropped.
-      if (!isMonitoredGroup(msg.from!)) {
+      if (!isMonitoredGroup(head.from)) {
         const t = effectiveBody.toLowerCase();
         // Both reads below go through whatsapp-web.js's injected page code and
         // can THROW on a build mismatch. Unguarded they'd escape to the outer
@@ -556,21 +557,17 @@ async function main() {
           (mentionsBot || /match\s*time/.test(t)) &&
           /\b(set\s*up|setup|get\s*started|onboard)\b/.test(t);
         if (!looksLikeSetup) return;
-        addMonitoredGroup(msg.from!);
+        addMonitoredGroup(head.from);
         console.log(
-          `[onboarding] setup trigger in ${msg.from} — now monitoring (mentionsBot=${mentionsBot})`,
+          `[onboarding] setup trigger in ${head.from} — now monitoring (mentionsBot=${mentionsBot})`,
         );
       }
 
       // WhatsApp pushname — the sender's self-set profile name. Used
       // for auto-enrolment on new phones and for name-based fallback
       // when the sender is an @lid (opaque, no phone).
-      let authorName: string | undefined;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rawNotify = (msg as any)._data?.notifyName;
-      if (typeof rawNotify === "string" && rawNotify.trim()) {
-        authorName = rawNotify.trim();
-      } else {
+      let authorName: string | undefined = head.notifyName ?? undefined;
+      if (!authorName) {
         try {
           const contact = await msg.getContact();
           const pn = contact.pushname || contact.name;
@@ -581,10 +578,10 @@ async function main() {
       }
 
       // Context buffer the analyser reads for nuanced classification.
-      recordHistory(msg.from, {
+      recordHistory(head.from, {
         authorName: authorName ?? null,
         body: effectiveBody,
-        timestamp: new Date((msg.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
+        timestamp: new Date(head.timestampSec * 1000).toISOString(),
       });
 
       await enqueueForAnalysis(client, msg);
@@ -597,10 +594,31 @@ async function main() {
   // and let it decide the outcome.
   client.on("message_reaction", async (reaction) => {
     try {
-      const waMessageId = reaction.msgId?._serialized;
-      const fromId = reaction.senderId;
-      const emoji = reaction.reaction;
-      if (!waMessageId || !fromId || !emoji) return;
+      // Total reads — `msgId` is an id object built by the injected page
+      // code, so on a broken build it is a throwing getter, not merely
+      // absent.
+      const waMessageId = asString(safePath(reaction, "msgId", "_serialized"));
+      const fromId = asString(safeRead(reaction, "senderId"));
+      const emoji = asString(safeRead(reaction, "reaction"));
+
+      // An EMPTY emoji is a reaction being REMOVED, which is a normal thing
+      // for a player to do — quietly ignore it. Only a missing id or sender
+      // means we actually lost something.
+      if (!emoji) return;
+      if (!waMessageId || !fromId) {
+        // Used to be a bare `return`. A bench-prompt 👍/👎 that lands here is
+        // gone for good: there is no synthetic-id trick available, because
+        // the server has to JOIN this reaction to the bench prompt it already
+        // sent, and only the real WhatsApp id can do that. So the only honest
+        // thing is to say so.
+        console.error(
+          degradedMessage(
+            "reaction-forwarding",
+            `msgId=${waMessageId || "?"} senderId=${fromId || "?"} emoji=${emoji}`,
+          ),
+        );
+        return;
+      }
       // @c.us reactors carry a phone in the senderId. @lid privacy
       // reactors don't — sending the opaque @lid string as a "phone"
       // is useless, so forward an empty phone + the pushname instead

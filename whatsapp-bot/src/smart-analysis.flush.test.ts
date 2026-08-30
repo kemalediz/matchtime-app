@@ -378,6 +378,7 @@ describe("inbound counters + empty-flush heartbeat", () => {
       seen: 0,
       buffered: 0,
       synthetic: 0,
+      reconstructed: 0,
       notGroup: 0,
     });
   });
@@ -418,5 +419,48 @@ describe("enqueue survives a totally booby-trapped Message", () => {
     // the analyzer parses it.
     expect(Number.isNaN(Date.parse(payload.messages[0].timestamp))).toBe(false);
     expect(_test_getInboundStats().buffered).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// recoverGroupMessages — the restart catch-up.
+//
+// It exists to close the gap that lost Ibrahim's "in" during a deploy
+// (Kemal, 2026-06-06): whatsapp-web.js silently drops messages that arrive
+// while the socket is down, so on startup we re-feed the last ~2h and let
+// the server dedupe. Every step of it goes through the injected page code,
+// so on a broken build it does nothing at all — and it used to say so with
+// `[recover-group] <gid> failed: r`, which reads like a transient blip
+// rather than "the restart gap is open again".
+// ─────────────────────────────────────────────────────────────────────
+describe("recoverGroupMessages failure is loud", () => {
+  it("names the restart gap when getChatById throws", async () => {
+    const { recoverGroupMessages } = await import("./smart-analysis.js");
+    const errs: string[] = [];
+    const spy = vi
+      .spyOn(console, "error")
+      .mockImplementation((...a: unknown[]) => void errs.push(a.map(String).join(" ")));
+    try {
+      await recoverGroupMessages(asClient(brokenClient()), ["120363000000000099@g.us"]);
+    } finally {
+      spy.mockRestore();
+    }
+    const joined = errs.join("\n");
+    expect(joined).toContain("CRITICAL");
+    expect(joined).toContain("message-recovery");
+    expect(joined).toContain("120363000000000099@g.us");
+    expect(joined.toLowerCase()).toContain("restart");
+  });
+
+  it("never throws out of the sweep — one bad group must not skip the rest", async () => {
+    const { recoverGroupMessages } = await import("./smart-analysis.js");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        recoverGroupMessages(asClient(brokenClient()), ["a@g.us", "b@g.us"]),
+      ).resolves.toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

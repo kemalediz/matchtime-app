@@ -29,7 +29,11 @@ const baseMsg = {
 describe("resolveWaMessageId — happy path", () => {
   it("returns the real id unchanged and does NOT synthesise", () => {
     const r = resolveWaMessageId({ ...baseMsg, id: { _serialized: "false_1203@g.us_ABC" } });
-    expect(r).toEqual({ waMessageId: "false_1203@g.us_ABC", synthetic: false });
+    expect(r).toEqual({
+      waMessageId: "false_1203@g.us_ABC",
+      synthetic: false,
+      source: "serialized",
+    });
     expect(isSyntheticWaMessageId(r.waMessageId)).toBe(false);
   });
 });
@@ -220,5 +224,114 @@ describe("missingMessageIdMessage", () => {
     expect(m.startsWith("CRITICAL:")).toBe(true);
     expect(m).toContain("injected");
     expect(m).toContain("synthetic:abc");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Reconstructing a REAL id when `id._serialized` is gone but the parts
+// that compose it are still there (added 2026-08-30 hardening audit).
+//
+// Why this matters more than the synthetic fallback: a synthetic id keeps
+// attendance working but permanently loses reaction tracking, because
+// `message_reaction` events carry the REAL WhatsApp id and nothing can be
+// joined to `synthetic:…`. If the id's component parts survive on the
+// object (they are plain data on `_data`, not injected-code calls), we can
+// rebuild the exact string WhatsApp itself uses and keep reactions alive.
+//
+// WhatsApp's own MsgKey serialisation is
+//   `${fromMe}_${remote}_${id}`                       (1:1 chats)
+//   `${fromMe}_${remote}_${id}_${participant}`        (group chats)
+// ─────────────────────────────────────────────────────────────────────
+describe("resolveWaMessageId — real-id recovery before synthesising", () => {
+  it("uses `id` directly when the library hands back the serialized STRING", () => {
+    // Observed shape: getMessageModel's serialize() no longer nests the key,
+    // so `msg.id` is the "false_…@g.us_ABC_…@lid" string itself.
+    const r = resolveWaMessageId({ id: "false_1203@g.us_ABCDEF_99@lid" });
+    expect(r.waMessageId).toBe("false_1203@g.us_ABCDEF_99@lid");
+    expect(r.synthetic).toBe(false);
+    expect(r.source).toBe("serialized");
+  });
+
+  it("reconstructs a group id from fromMe/remote/id/participant", () => {
+    const r = resolveWaMessageId({
+      id: { fromMe: false, remote: "120363000@g.us", id: "3EB0ABC", participant: "99@lid" },
+    });
+    expect(r.waMessageId).toBe("false_120363000@g.us_3EB0ABC_99@lid");
+    expect(r.synthetic).toBe(false);
+    expect(r.source).toBe("reconstructed");
+  });
+
+  it("reconstructs a 1:1 id (no participant segment)", () => {
+    const r = resolveWaMessageId({
+      id: { fromMe: true, remote: "447700900123@c.us", id: "3EB0XYZ" },
+    });
+    expect(r.waMessageId).toBe("true_447700900123@c.us_3EB0XYZ");
+    expect(r.source).toBe("reconstructed");
+  });
+
+  it("handles a `remote` that is itself an object carrying _serialized", () => {
+    const r = resolveWaMessageId({
+      id: {
+        fromMe: false,
+        remote: { _serialized: "120363000@g.us" },
+        id: "3EB0ABC",
+        participant: { _serialized: "99@lid" },
+      },
+    });
+    expect(r.waMessageId).toBe("false_120363000@g.us_3EB0ABC_99@lid");
+    expect(r.source).toBe("reconstructed");
+  });
+
+  it("falls back to _data.id when msg.id is unreadable", () => {
+    const msg: Record<string, unknown> = { _data: { id: "false_1203@g.us_ZZZ" } };
+    Object.defineProperty(msg, "id", {
+      get() {
+        throw new Error("r");
+      },
+      enumerable: true,
+    });
+    const r = resolveWaMessageId(msg);
+    expect(r.waMessageId).toBe("false_1203@g.us_ZZZ");
+    expect(r.source).toBe("serialized");
+  });
+
+  it("prefers the true _serialized over reconstruction when both are present", () => {
+    const r = resolveWaMessageId({
+      id: { _serialized: "REAL", fromMe: false, remote: "g@g.us", id: "X" },
+    });
+    expect(r.waMessageId).toBe("REAL");
+    expect(r.source).toBe("serialized");
+  });
+
+  it("refuses to reconstruct from partial parts (no remote) and synthesises instead", () => {
+    const r = resolveWaMessageId({
+      id: { fromMe: false, id: "3EB0ABC" },
+      from: "g@g.us",
+      author: "99@lid",
+      timestamp: 1,
+      body: "in",
+    });
+    expect(r.synthetic).toBe(true);
+    expect(r.source).toBe("synthetic");
+    expect(r.waMessageId.startsWith("synthetic:")).toBe(true);
+  });
+
+  it("still synthesises — deterministically — when nothing is readable", () => {
+    const a = resolveWaMessageId({ from: "g@g.us", author: "99@lid", timestamp: 5, body: "in" });
+    const b = resolveWaMessageId({ from: "g@g.us", author: "99@lid", timestamp: 5, body: "in" });
+    expect(a.source).toBe("synthetic");
+    expect(a.waMessageId).toBe(b.waMessageId);
+  });
+
+  it("never throws on a reconstruction path booby-trapped with throwing getters", () => {
+    const id: Record<string, unknown> = { fromMe: false, id: "X" };
+    Object.defineProperty(id, "remote", {
+      get() {
+        throw new Error("r");
+      },
+      enumerable: true,
+    });
+    expect(() => resolveWaMessageId({ id })).not.toThrow();
+    expect(resolveWaMessageId({ id }).source).toBe("synthetic");
   });
 });

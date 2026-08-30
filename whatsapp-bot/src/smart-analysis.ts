@@ -24,6 +24,14 @@ import {
   type AnalyzeResult,
 } from "./api.js";
 import { enrichOrDegrade, planFlushRetry, type InboundEnrichment } from "./inbound-enrich.js";
+import { firstUsableName, readMessageBody, readNotifyName, safeRead } from "./wa-read.js";
+import { degradedMessage } from "./degraded.js";
+import {
+  composeReactFallback,
+  reactFallbackEnabled,
+  shouldSendReactFallback,
+  type ReactFallbackEntry,
+} from "./react-fallback.js";
 import {
   missingMessageIdMessage,
   resolveWaMessageId,
@@ -39,6 +47,17 @@ const HISTORY_PER_GROUP = 15;
 // still waits for the 10-min batch.
 const FLUSH_INTERVAL_MS = 10 * 60 * 1000;
 const URGENCY_WINDOW_MS = 60 * 60 * 1000; // within 1h of kickoff → flush immediately
+/**
+ * At most one reaction catch-up post per group per this window.
+ *
+ * Two flush intervals. The reaction exists precisely so the bot does NOT
+ * speak on every "in", so its text stand-in must not become the spam it was
+ * avoiding: a persistently broken injected layer would otherwise turn every
+ * 10-minute tick into a group post. Two intervals still gets a confirmation
+ * out within ~20 minutes of a player replying, which is inside the window
+ * that matters on a match day.
+ */
+const REACT_FALLBACK_COOLDOWN_MS = 2 * FLUSH_INTERVAL_MS;
 
 // ─── Immediate-flush decision (pure, unit-tested) ───────────────────
 /**
@@ -150,29 +169,56 @@ interface InboundStats {
   buffered: number;
   /** Of those, how many needed a synthesised waMessageId. */
   synthetic: number;
+  /**
+   * How many had a REAL id rebuilt from the message key's parts because
+   * `id._serialized` was gone.
+   *
+   * Worth counting separately from `synthetic`: a reconstructed id still
+   * joins to `message_reaction` events, so the product keeps working — but a
+   * non-zero count is the earliest hard evidence that the injected layer has
+   * drifted from the live WhatsApp Web build, usually days before something
+   * user-visible breaks.
+   */
+  reconstructed: number;
   /** Skipped because they were not a group (@g.us) message. */
   notGroup: number;
 }
-const inboundStats: InboundStats = { seen: 0, buffered: 0, synthetic: 0, notGroup: 0 };
+const inboundStats: InboundStats = {
+  seen: 0,
+  buffered: 0,
+  synthetic: 0,
+  reconstructed: 0,
+  notGroup: 0,
+};
 
 function formatInboundStats(s: InboundStats): string {
-  return `seen=${s.seen} buffered=${s.buffered} synthetic=${s.synthetic} notGroup=${s.notGroup}`;
+  return (
+    `seen=${s.seen} buffered=${s.buffered} synthetic=${s.synthetic} ` +
+    `reconstructed=${s.reconstructed} notGroup=${s.notGroup}`
+  );
+}
+
+/** A string when the value is a usable non-blank one, else undefined. */
+function asOptionalString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
 }
 
 /**
- * Read one property off a Message totally.
+ * A WhatsApp `Contact.number` reduced to bare digits, or "" when it is not
+ * a usable phone.
  *
- * On the broken injected build ANY property can be a throwing getter, and an
- * unguarded read inside `enqueueForAnalysis` aborts the enqueue exactly like
- * the id guard used to — i.e. it silently loses the message.
+ * `Contact.number` is normally "+447700900123" but on a half-broken layer it
+ * can be a placeholder ("n/a"), a throwing getter, or absent. Anything that
+ * does not reduce to a plausible run of digits is discarded rather than sent
+ * to the server as a phone number: a WRONG phone resolves to the WRONG
+ * player, which is far worse than no phone at all (the server then has the
+ * name to fall back on).
  */
-function safeRead(obj: unknown, key: string): unknown {
-  try {
-    if (obj === null || typeof obj !== "object") return undefined;
-    return (obj as Record<string, unknown>)[key];
-  } catch {
-    return undefined;
-  }
+function digitsOnlyPhone(v: unknown): string {
+  if (typeof v !== "string") return "";
+  const digits = v.replace(/\D/g, "");
+  // Shortest plausible international subscriber number is ~7 digits.
+  return digits.length >= 7 ? digits : "";
 }
 
 /** `msg.timestamp` in seconds, falling back to now when unreadable. */
@@ -192,6 +238,8 @@ const historyByGroup = new Map<string, AnalyzeInboundHistory[]>();
 const bufferByGroup = new Map<string, Pending[]>();
 const nextKickoffMsByGroup = new Map<string, number | null>();
 const inFlightFlush = new Set<string>(); // prevent two flushes running in parallel per group
+/** When this group last got a reaction catch-up post (cooldown gate). */
+const lastReactFallbackAt = new Map<string, number>();
 let flushTimer: NodeJS.Timeout | null = null;
 let sharedClient: Client | null = null;
 
@@ -250,7 +298,8 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   // message-id.ts). Determinism matters: /api/whatsapp/analyze dedupes on
   // waMessageId, so a stable id keeps recoverGroupMessages' 2h replay
   // idempotent, while an unstable one would register attendance twice.
-  const { waMessageId, synthetic } = resolveWaMessageId(msg);
+  const { waMessageId, synthetic, source } = resolveWaMessageId(msg);
+  if (source === "reconstructed") inboundStats.reconstructed++;
   if (synthetic) {
     inboundStats.synthetic++;
     // Loud on the first, then rate-limited — one line per message would
@@ -275,18 +324,35 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   // past the buffer.
   const rawMentions = safeRead(msg, "mentionedIds");
   const rawMentionedIds: string[] = Array.isArray(rawMentions) ? (rawMentions as string[]) : [];
-  const msgBody = safeRead(msg, "body");
-  const rawDataBody = safeRead(safeRead(msg, "_data"), "body");
-  const rawBody =
-    typeof msgBody === "string" && msgBody.length > 0
-      ? msgBody
-      : typeof rawDataBody === "string"
-        ? rawDataBody
-        : "";
+  const rawBody = readMessageBody(msg);
+
+  // The DEGRADED-PATH IDENTITY, built from the raw payload BEFORE any
+  // injected-code call is attempted.
+  //
+  // This is the fix for the last hole the 2026-08-28 breakage left open.
+  // PRs #11/#13 guaranteed the message reaches /api/whatsapp/analyze; they
+  // did not guarantee the server could tell WHO sent it. The server resolves
+  // a sender by `authorPhone` first and `authorName` second — and for an
+  // `@lid` privacy sender there IS no phone, so the name is the only
+  // identity there is. `authorName` came solely from `msg.getContact()`, an
+  // injected-page call, so on the broken build an `@lid` player's "IN"
+  // arrived with no identity at all and was binned by the server instead of
+  // by the Pi. Same outcome for the customer: no attendance.
+  //
+  // `msg._data.notifyName` is the sender's pushname as serialised ONTO the
+  // message when the event fired — plain data, no page call — so it
+  // survives. index.ts's `message` handler already read it for the history
+  // buffer and then threw it away; now it travels with the message.
+  const fallbackIdentity: InboundEnrichment = {
+    body: rawBody,
+    authorName: readNotifyName(msg),
+    authorPhone: phone,
+    botMentioned: false,
+  };
 
   const enriched = await enrichOrDegrade(
-    rawBody,
-    () => enrichInbound(client, msg, rawBody),
+    fallbackIdentity,
+    () => enrichInbound(client, msg, rawBody, fallbackIdentity),
     (err) =>
       console.error(
         `CRITICAL: enrichment failed for ${waMessageId} in ${groupId} — ` +
@@ -297,12 +363,12 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
         err instanceof Error ? err.message : err,
       ),
   );
-  const { body, authorName, botMentioned } = enriched;
+  const { body, authorName, authorPhone, botMentioned } = enriched;
 
   const pending: Pending = {
     waMessageId,
     body,
-    authorPhone: phone,
+    authorPhone,
     authorName,
     // WhatsApp's own timestamp when readable; wall-clock only as a last
     // resort (the analyzer needs a parseable ISO string). NOTE: the synthetic
@@ -358,11 +424,29 @@ async function enrichInbound(
   client: Client,
   msg: Message,
   rawBody: string,
+  fallback: InboundEnrichment,
 ): Promise<InboundEnrichment> {
   const contact = await Promise.resolve()
     .then(() => msg.getContact())
     .catch(() => null);
-  const authorName = contact?.pushname ?? contact?.name ?? null;
+  // Every read off `contact` is total: on the broken build these are
+  // throwing getters, and one throw here used to take the whole enrichment
+  // (and, before PR #11, the whole message) with it.
+  const authorName = firstUsableName(
+    asOptionalString(safeRead(contact, "pushname")),
+    asOptionalString(safeRead(contact, "name")),
+    asOptionalString(safeRead(contact, "verifiedName")),
+    fallback.authorName,
+  );
+
+  // `@lid` privacy senders carry no phone in their JID, but the contact
+  // record usually still knows the real number. The DM path has resolved
+  // it this way since the @lid incident; the GROUP path never did, so an
+  // `@lid` player who COULD have been matched by phone was left to survive
+  // on a fuzzy name match. Only ever an upgrade — a JID-derived phone is
+  // authoritative and is never overwritten.
+  const authorPhone =
+    fallback.authorPhone || digitsOnlyPhone(safeRead(contact, "number"));
 
   // Resolve @-mentions in the body before forwarding to the analyzer.
   // WhatsApp wire-format puts each tag as "@<jid-number>" (e.g.
@@ -424,7 +508,7 @@ async function enrichInbound(
   ];
   const botMentioned = isSelfMention(mentionedContacts, botIdentities);
 
-  return { body, authorName, botMentioned };
+  return { body, authorName, authorPhone, botMentioned };
 }
 
 // ─── Flush mechanics ────────────────────────────────────────────────
@@ -501,18 +585,35 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
     );
 
     // Execute per-message actions on the WhatsApp side.
+    //
+    // Reactions that could not be delivered are COLLECTED rather than just
+    // logged one by one: the emoji is the player's entire confirmation that
+    // their "in" landed, so a batch of failures is a product incident, not
+    // n unrelated warnings. See the catch-up block after this loop.
+    const failedReacts: ReactFallbackEntry[] = [];
+    let reactAttempts = 0;
+
     for (const r of results) {
       if (r.handledBy === "deduped" || r.handledBy === "error") continue;
       if (!r.react && !r.reply) continue;
 
-      const target = pending.find((p) => p.waMessageId === r.waMessageId)?.msg;
+      const entry = pending.find((p) => p.waMessageId === r.waMessageId);
+      const target = entry?.msg;
       if (!target) continue;
 
       if (r.react) {
+        reactAttempts++;
         try {
           await target.react(r.react);
         } catch (err) {
-          console.error("[smart] react failed:", err);
+          // Deliberately NOT retried through `client.getMessageById(...)`:
+          // that goes through the very same injected page code, so it would
+          // fail identically while costing a round-trip per message.
+          console.error(
+            `[smart] react ${r.react} failed for ${r.waMessageId} in ${groupId}:`,
+            err instanceof Error ? err.message : err,
+          );
+          failedReacts.push({ authorName: entry?.authorName ?? null, emoji: r.react });
         }
       }
       if (r.reply) {
@@ -534,8 +635,71 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
         }
       }
     }
+
+    await handleFailedReacts(client, groupId, failedReacts, reactAttempts);
   } finally {
     inFlightFlush.delete(groupId);
+  }
+}
+
+/**
+ * What to do when reactions could not be delivered.
+ *
+ * Two separate jobs, and they are deliberately independent:
+ *
+ *  1. SHOUT. The attendance write is server-side and already happened, so
+ *     the database looks perfectly healthy while every player in the group
+ *     sees the bot say nothing. The old `[smart] react failed:` line was one
+ *     unremarkable error among hundreds and told nobody what it cost. This
+ *     one names the count, the group, and — crucially — that attendance IS
+ *     recorded, so whoever reads it before a fixture does not go
+ *     hand-editing production data. It fires whether or not the text
+ *     catch-up is enabled or on cooldown.
+ *
+ *  2. Tell the PLAYERS, in words, once. Justified in react-fallback.ts:
+ *     one post per batch, only for failures, only for players we can name,
+ *     behind a cooldown, killable with BOT_REACT_TEXT_FALLBACK=0.
+ *
+ * Total — a failure in here must never break the flush that produced it.
+ */
+async function handleFailedReacts(
+  client: Client,
+  groupId: string,
+  failed: ReactFallbackEntry[],
+  attempted: number,
+): Promise<void> {
+  if (failed.length === 0) return;
+
+  console.error(
+    `CRITICAL: ${failed.length} of ${attempted} reaction(s) could not be delivered in ` +
+      `${groupId}. The attendance IS recorded server-side — the players simply got no ` +
+      "✅/🪑 confirmation, so they will think the bot ignored them. This is " +
+      "whatsapp-web.js's injected page code being out of step with the live WhatsApp " +
+      "Web build: Message.react() goes through it. Mitigation: pin a known-good build " +
+      "with WA_WEB_VERSION in ~/matchtime-bot/.env, or upgrade whatsapp-web.js. " +
+      "See MDs/whatsapp-web-version-pinning.md.",
+  );
+
+  if (!reactFallbackEnabled(process.env)) return;
+
+  const now = Date.now();
+  if (!shouldSendReactFallback(lastReactFallbackAt.get(groupId) ?? null, now, REACT_FALLBACK_COOLDOWN_MS)) {
+    return;
+  }
+
+  const text = composeReactFallback(failed);
+  if (!text) return; // nothing we can put a name to — silence beats nonsense
+
+  try {
+    await client.sendMessage(groupId, text);
+    lastReactFallbackAt.set(groupId, now);
+    console.log(`[smart] posted a text catch-up for ${failed.length} undelivered reaction(s) in ${groupId}`);
+  } catch (err) {
+    console.error(
+      `[smart] the reaction catch-up post ALSO failed for ${groupId} — the players have ` +
+        "no confirmation at all. Cause:",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -597,10 +761,11 @@ export async function recoverGroupMessages(client: Client, groupIds: string[]): 
       }
       console.log(`[recover-group] ${gid}: re-queued ${queued} recent message(s) for catch-up`);
     } catch (err) {
-      console.error(
-        `[recover-group] ${gid} failed:`,
-        err instanceof Error ? err.message : err,
-      );
+      // This whole sweep exists to close the restart gap (Kemal 2026-06-06:
+      // Ibrahim's "in" landed during a deploy restart and was never
+      // registered). When it fails, that gap is silently back open — and it
+      // fails on exactly the deploys where it matters most.
+      console.error(degradedMessage("message-recovery", err, gid));
     }
   }
 }
@@ -628,9 +793,11 @@ export function _test_reset(): void {
   bufferByGroup.clear();
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();
+  lastReactFallbackAt.clear();
   sharedClient = null;
   inboundStats.seen = 0;
   inboundStats.buffered = 0;
   inboundStats.synthetic = 0;
+  inboundStats.reconstructed = 0;
   inboundStats.notGroup = 0;
 }
