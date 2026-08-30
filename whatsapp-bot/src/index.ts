@@ -21,6 +21,7 @@ import {
   stopBatchFlushTimer,
 } from "./smart-analysis.js";
 import { config } from "./config.js";
+import { resolveWaMessageId } from "./message-id.js";
 import { acquireInstanceLock } from "./instance-lock.js";
 import {
   resolveWebVersionOptions,
@@ -496,11 +497,17 @@ async function main() {
           `[dm] resolved from=${msg.from} phone=${phone || "?"} name=${authorName ?? "?"}`,
         );
         try {
+          // `/api/whatsapp/dm-reply` 400s on an empty waMessageId, so the old
+          // `msg.id?._serialized ?? ""` silently binned every DM reply once
+          // the injected page code stopped exposing a readable id — the same
+          // failure that killed group attendance on 2026-08-30. Degrade to a
+          // deterministic synthetic id instead (the route only uses the field
+          // as a presence check, so a stand-in is safe).
           await postDmReply({
             phone,
             authorName,
             body: text,
-            waMessageId: msg.id?._serialized ?? "",
+            waMessageId: resolveWaMessageId(msg).waMessageId,
           });
           console.log(
             `[dm] forwarded reply from=${msg.from} authorName=${authorName ?? "?"}`,
@@ -527,9 +534,23 @@ async function main() {
       // this, every Amir-group setup attempt got silently dropped.
       if (!isMonitoredGroup(msg.from!)) {
         const t = effectiveBody.toLowerCase();
-        const selfId = client.info?.wid?._serialized; // e.g. "447...@c.us"
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mentionedIds: string[] = (msg as any).mentionedIds ?? [];
+        // Both reads below go through whatsapp-web.js's injected page code and
+        // can THROW on a build mismatch. Unguarded they'd escape to the outer
+        // catch and drop the message entirely, so the setup trigger could
+        // never fire while the library was broken. Degrade to the text regex.
+        let selfId: string | undefined;
+        try {
+          selfId = client.info?.wid?._serialized; // e.g. "447...@c.us"
+        } catch {
+          /* non-fatal — fall back to the literal "match time" regex below */
+        }
+        let mentionedIds: string[] = [];
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          mentionedIds = ((msg as any).mentionedIds ?? []) as string[];
+        } catch {
+          /* non-fatal */
+        }
         const mentionsBot = !!selfId && mentionedIds.includes(selfId);
         const looksLikeSetup =
           (mentionsBot || /match\s*time/.test(t)) &&

@@ -24,7 +24,11 @@ import {
   type AnalyzeResult,
 } from "./api.js";
 import { enrichOrDegrade, planFlushRetry, type InboundEnrichment } from "./inbound-enrich.js";
-import { waMessageIdFrom } from "./send-result.js";
+import {
+  missingMessageIdMessage,
+  resolveWaMessageId,
+  shouldLogSyntheticId,
+} from "./message-id.js";
 
 const HISTORY_PER_GROUP = 15;
 // Ten-minute batches keep Claude cost ~£2/month at Sutton's volume
@@ -129,6 +133,60 @@ interface Pending {
 // can't wedge a group's buffer forever.
 const MAX_FLUSH_ATTEMPTS = 3;
 
+// ─── Inbound counters (diagnostics) ─────────────────────────────────
+/**
+ * Per-process tallies of what the inbound path did with the messages it was
+ * handed. These exist because the 2026-08-30 outage was INVISIBLE: `[msg]`
+ * lines scrolled past all day while `enqueueForAnalysis` dropped every one
+ * of them before the buffer, and `flushGroup` returned on an empty buffer
+ * without logging. `seen` far exceeding `buffered` is now the signature of
+ * that class of failure, and it is printed on every empty flush (i.e. within
+ * ten minutes) rather than never.
+ */
+interface InboundStats {
+  /** enqueueForAnalysis calls. */
+  seen: number;
+  /** Messages that made it onto a group buffer. */
+  buffered: number;
+  /** Of those, how many needed a synthesised waMessageId. */
+  synthetic: number;
+  /** Skipped because they were not a group (@g.us) message. */
+  notGroup: number;
+}
+const inboundStats: InboundStats = { seen: 0, buffered: 0, synthetic: 0, notGroup: 0 };
+
+function formatInboundStats(s: InboundStats): string {
+  return `seen=${s.seen} buffered=${s.buffered} synthetic=${s.synthetic} notGroup=${s.notGroup}`;
+}
+
+/**
+ * Read one property off a Message totally.
+ *
+ * On the broken injected build ANY property can be a throwing getter, and an
+ * unguarded read inside `enqueueForAnalysis` aborts the enqueue exactly like
+ * the id guard used to — i.e. it silently loses the message.
+ */
+function safeRead(obj: unknown, key: string): unknown {
+  try {
+    if (obj === null || typeof obj !== "object") return undefined;
+    return (obj as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+/** `msg.timestamp` in seconds, falling back to now when unreadable. */
+function safeTimestampSec(msg: Message): number {
+  const ts = safeRead(msg, "timestamp");
+  return typeof ts === "number" && Number.isFinite(ts) ? ts : Date.now() / 1000;
+}
+
+/** `msg.from`, or null when it is unreadable/not a string. */
+function safeGroupId(msg: Message): string | null {
+  const from = safeRead(msg, "from");
+  return typeof from === "string" && from.length > 0 ? from : null;
+}
+
 // ─── In-memory state ────────────────────────────────────────────────
 const historyByGroup = new Map<string, AnalyzeInboundHistory[]>();
 const bufferByGroup = new Map<string, Pending[]>();
@@ -167,13 +225,40 @@ function phoneFromAuthor(authorId: string | undefined, fromId: string): string {
  */
 export async function enqueueForAnalysis(client: Client, msg: Message): Promise<void> {
   sharedClient = client;
-  if (!msg.from.endsWith("@g.us")) return;
+  inboundStats.seen++;
 
-  const phone = phoneFromAuthor(msg.author, msg.from);
-  // Total read: `msg` here always IS a Message, but the same defensive
-  // accessor is used everywhere else and costs nothing.
-  const waMessageId = waMessageIdFrom(msg);
-  if (!waMessageId) return;
+  const groupId = safeGroupId(msg);
+  if (!groupId || !groupId.endsWith("@g.us")) {
+    inboundStats.notGroup++;
+    return;
+  }
+
+  const author = safeRead(msg, "author");
+  const phone = phoneFromAuthor(typeof author === "string" ? author : undefined, groupId);
+
+  // NEVER drop a message because the library could not give us an id.
+  //
+  // This line used to read `if (!waMessageId) return;`, reusing the SEND
+  // path's helper (PR #11) on the INBOUND path. When whatsapp-web.js's
+  // injected page code fell out of step with the live WhatsApp Web build,
+  // `id._serialized` stopped being readable on inbound Messages and that
+  // guard silently binned EVERY group message for three days — no error, no
+  // log, no AnalyzedMessage rows, no attendance for a live customer fixture.
+  //
+  // The id only exists for server-side dedupe and reaction mapping, so an
+  // unreadable one degrades to a deterministic synthetic id (see
+  // message-id.ts). Determinism matters: /api/whatsapp/analyze dedupes on
+  // waMessageId, so a stable id keeps recoverGroupMessages' 2h replay
+  // idempotent, while an unstable one would register attendance twice.
+  const { waMessageId, synthetic } = resolveWaMessageId(msg);
+  if (synthetic) {
+    inboundStats.synthetic++;
+    // Loud on the first, then rate-limited — one line per message would
+    // drown the log on a busy group.
+    if (shouldLogSyntheticId(inboundStats.synthetic)) {
+      console.error(missingMessageIdMessage(inboundStats.synthetic, waMessageId));
+    }
+  }
 
   // Everything from here to `pending` is ENRICHMENT — pushname lookup,
   // @-mention resolution, self-mention detection — and every bit of it goes
@@ -185,13 +270,16 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   //
   // Enrichment is a nice-to-have; DELIVERY IS NOT. Degrade to the raw body
   // and keep going.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawMentionedIds: string[] = ((msg as any).mentionedIds ?? []) as string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawDataBody = (msg as any)._data?.body;
+  // Every read below is total (`safeRead`): on the broken build these are
+  // throwing getters, and before this an unguarded `msg.body` threw straight
+  // past the buffer.
+  const rawMentions = safeRead(msg, "mentionedIds");
+  const rawMentionedIds: string[] = Array.isArray(rawMentions) ? (rawMentions as string[]) : [];
+  const msgBody = safeRead(msg, "body");
+  const rawDataBody = safeRead(safeRead(msg, "_data"), "body");
   const rawBody =
-    typeof msg.body === "string" && msg.body.length > 0
-      ? msg.body
+    typeof msgBody === "string" && msgBody.length > 0
+      ? msgBody
       : typeof rawDataBody === "string"
         ? rawDataBody
         : "";
@@ -201,7 +289,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     () => enrichInbound(client, msg, rawBody),
     (err) =>
       console.error(
-        `CRITICAL: enrichment failed for ${waMessageId} in ${msg.from} — ` +
+        `CRITICAL: enrichment failed for ${waMessageId} in ${groupId} — ` +
           "forwarding the RAW message to the analyzer instead (author name and " +
           "@-mention resolution lost for this message). This usually means " +
           "whatsapp-web.js's injected page code is out of step with the live " +
@@ -216,7 +304,12 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     body,
     authorPhone: phone,
     authorName,
-    timestamp: new Date((msg.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
+    // WhatsApp's own timestamp when readable; wall-clock only as a last
+    // resort (the analyzer needs a parseable ISO string). NOTE: the synthetic
+    // id above is hashed from the RAW timestamp read, so a message whose
+    // timestamp is unreadable still hashes deterministically — the fallback
+    // here never feeds the id.
+    timestamp: new Date(safeTimestampSec(msg) * 1000).toISOString(),
     // Forward the RAW mention JIDs unchanged — the server-side onboarding
     // parser resolves "<digits>@c.us" → phone and "<digits>@lid" → no phone.
     // Sent even when enrichment failed, so the server can still do what it
@@ -227,9 +320,10 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     attempts: 0,
   };
 
-  const arr = bufferByGroup.get(msg.from) ?? [];
+  const arr = bufferByGroup.get(groupId) ?? [];
   arr.push(pending);
-  bufferByGroup.set(msg.from, arr);
+  bufferByGroup.set(groupId, arr);
+  inboundStats.buffered++;
 
   // Decide whether to flush immediately or leave the message on the
   // 10-min batch. A direct @Match Time mention beats everything (tagged
@@ -238,7 +332,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   // banter return null and sit until the next tick.
   // The buffer has no live cap, so pass Infinity — the "full" branch
   // stays a tested no-op here and live batching is unchanged.
-  const kickoff = nextKickoffMsByGroup.get(msg.from) ?? null;
+  const kickoff = nextKickoffMsByGroup.get(groupId) ?? null;
   const reason = immediateFlushReason({
     botMentioned,
     bufferLen: arr.length,
@@ -248,9 +342,9 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     urgencyWindowMs: URGENCY_WINDOW_MS,
   });
   if (reason) {
-    console.log(`[smart] ${reason} flush for ${msg.from} (${arr.length} pending)`);
+    console.log(`[smart] ${reason} flush for ${groupId} (${arr.length} pending)`);
     // flushGroup's inFlightFlush guard prevents double-running per group.
-    await flushGroup(client, msg.from);
+    await flushGroup(client, groupId);
   }
 }
 
@@ -339,7 +433,15 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
   inFlightFlush.add(groupId);
   try {
     const pending = bufferByGroup.get(groupId) ?? [];
-    if (pending.length === 0) return;
+    if (pending.length === 0) {
+      // Log even the do-nothing flush. Silence here is exactly what hid the
+      // 2026-08-30 outage for three days: the timer fired ~111 times and
+      // returned without a word, so "the pipeline is stalled" and "there was
+      // simply nothing to say" looked identical in the log. One compact line
+      // per 10-min tick per group makes `seen=340 buffered=0` obvious.
+      console.log(`[smart] flush ${groupId}: buffer empty (${formatInboundStats(inboundStats)})`);
+      return;
+    }
     bufferByGroup.set(groupId, []); // clear optimistically; errors will log, but we don't want to loop
 
     const msgsForAnalyze: AnalyzeInboundMessage[] = pending.map((p) => ({
@@ -515,6 +617,11 @@ export function _test_flushNow(groupId: string): Promise<void> {
   return flushGroup(sharedClient, groupId);
 }
 
+/** Test-only: snapshot of the inbound counters. */
+export function _test_getInboundStats(): InboundStats {
+  return { ...inboundStats };
+}
+
 /** Test-only: clear all module-level state between cases. */
 export function _test_reset(): void {
   historyByGroup.clear();
@@ -522,4 +629,8 @@ export function _test_reset(): void {
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();
   sharedClient = null;
+  inboundStats.seen = 0;
+  inboundStats.buffered = 0;
+  inboundStats.synthetic = 0;
+  inboundStats.notGroup = 0;
 }
