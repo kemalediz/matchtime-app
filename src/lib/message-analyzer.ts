@@ -30,6 +30,10 @@ import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
 import { resolveTeamLabels } from "./team-labels";
+import {
+  buildFormatSwitchFacts,
+  renderFormatSwitchContext,
+} from "./format-switch";
 
 // Sonnet (2026-05-19, Kemal): the per-message analyzer makes nuanced
 // calls (team-swap vs drop, conditional vs standing, "is X
@@ -566,21 +570,32 @@ Example (12/14, Ibrahim + Ehtisham dropped, Ehtisham tentative):
 
 Tentative: Ehtisham (will play if nobody steps in)"
 
-FORMAT SWITCH (important):
+FORMAT SWITCH (important) — YOU DO NO ARITHMETIC HERE:
 The Match Context may list "Alternative formats available for this sport" (e.g. Football 5-a-side = 10 players when the current match is 7-a-side). Admins execute a switch by rebooking the venue and flipping the match in the portal — you never execute it, you only recommend.
+
+⚠️ THE SERVER HAS ALREADY DONE THE MATHS. Under each alternative the Match Context gives you, computed in code:
+  • "✅ VIABLE" or "❌ NOT VIABLE" — whether the confirmed squad would fill that format.
+  • "Bench on switch: …" — the EXACT players who would lose their slot, or "NOBODY".
+  • An EXACT proposal line to copy VERBATIM.
+You MUST NOT recompute any of it. Do NOT count the squad, do NOT subtract anything, do NOT pick who goes on the bench, do NOT reason about "N per team". Copy what you are given. A format's headline ("5-a-side") is NOT its capacity — the capacity is the "(N players total)" figure, and it is already accounted for in the lines above.
 
 Proactive recommendation:
 - When someone drops and the squad goes below full, or someone asks about numbers, you MAY propose switching to a smaller format — but only when ALL of these hold:
   1. The smaller format is listed in the Alternatives block.
-  2. Confirmed squad is BELOW maxPlayers.
+  2. That format is marked "✅ VIABLE" in the Match Context (if it says "❌ NOT VIABLE", proposing the switch is FORBIDDEN — say nothing about switching to it).
   3. Kickoff is within ~24 hours (see "X.Xh until kickoff").
-  4. Confirmed count is >= the smaller format's total players (we'd actually fill it).
-- Proposal is one line inside the SQUAD-STATE reply: "If we don't find 2 more, we could switch to 5-a-side (10 players) — Mauricio + Ersin go on the bench. Admins can rebook and flip it in the portal." Use the LAST N confirmed names (N = confirmedCount - smallerFormatTotal) for who'd go to bench. Never invent.
+- The proposal is exactly the one line the Match Context gives you under "use this EXACT line VERBATIM", reproduced character-for-character inside the SQUAD-STATE reply. Nothing added, no names changed, no names appended.
 - Dedupe: at most once per batch.
+
+BENCH-ON-SWITCH — absolute rules (a false "you're benched" is a trust failure with real people):
+- The ONLY names you may ever describe as going on the bench in a switch are the ones listed after "Bench on switch:" for that exact format.
+- If it says "Bench on switch: NOBODY", you MUST NOT write any "goes on the bench" / "drops to the bench" / "loses their place" clause for that format, and you MUST NOT name a single player in that context. Nobody is benched. Say so, or say nothing.
+- Never name a player as benched for a format marked "❌ NOT VIABLE" — a switch that cannot happen benches nobody.
 
 Direct question about a switch (e.g. "should we switch to 5-a-side?", "@M Time 5 aside?", "can we downgrade?"):
 - Treat as intent "question".
-- If the smaller format is in the Alternatives block: give a grounded recommendation — yes/no based on numbers + kickoff time. If the switch conditions hold, say "yes, worth it" briefly and explain who goes to bench. Include the roster.
+- If the smaller format is in the Alternatives block and marked "✅ VIABLE": say "yes, worth it" briefly and state who goes to bench USING ONLY the server-computed "Bench on switch:" list (if that says NOBODY, say plainly that everyone still plays). Include the roster.
+- If the format is in the Alternatives block but marked "❌ NOT VIABLE": answer honestly that we do not have the numbers for it either — quote the counts exactly as the Match Context states them (confirmed vs the format's total). Never name anyone as benched. Include the roster.
 - If the format isn't in the Alternatives block: reply honestly that the group hasn't set it up; admin would need to add it first as an Activity. Include the current roster regardless.
 - Never pretend a format is available when it isn't. Never execute the switch yourself.
 
@@ -594,7 +609,7 @@ Confidence: be honest. If below 0.7 for anything except "noise", downgrade the v
 
 Reply tone: WhatsApp casual, no corporate fluff. Match the group's energy. Most replies are one short line; use the multi-line SHORT-SQUAD RESPONSE format ONLY when the squad is short by 2+ or there are multiple people in the Dropped list. Never invent facts — if the answer needs info outside the Match Context block, reply: null.`;
 
-function buildMatchContextBlock(args: {
+export function buildMatchContextBlock(args: {
   orgName: string;
   match: {
     activity: { name: string; venue: string };
@@ -721,16 +736,19 @@ function buildMatchContextBlock(args: {
       }`,
     );
   }
+  // FORMAT SWITCH — every number and every name in this block is
+  // computed HERE, in code (src/lib/format-switch.ts). The model used to
+  // be asked to do the arithmetic itself and got it catastrophically
+  // wrong in production on 2026-08-30 (8 confirmed, "5-a-side (10
+  // players) — Najib + Mojib + Mustafa go on the bench" — it subtracted
+  // players-per-TEAM instead of the format TOTAL). It now only copies.
   if (args.alternatives && args.alternatives.length > 0) {
-    lines.push("", "Alternative formats available for this sport:");
-    for (const a of args.alternatives) {
-      lines.push(`  - ${a.sportName} (${a.totalPlayers} players total)`);
-    }
-    lines.push(
-      "Admins switch by rebooking the venue and " +
-        "flipping the match in the portal; a switch converts everyone " +
-        "above the new cap from confirmed to bench, keeping their order.",
-    );
+    const facts = buildFormatSwitchFacts({
+      confirmedNames: confirmed.map((a) => a.user.name ?? "(unnamed)"),
+      currentMaxPlayers: m.maxPlayers,
+      alternatives: args.alternatives,
+    });
+    lines.push("", ...renderFormatSwitchContext(facts));
   }
   return lines.join("\n");
 }
@@ -1698,7 +1716,7 @@ NEVER write "tonight", "this evening", "tomorrow" or similar temporal references
 
 If any player appears in the Dropped list AND the history or chat context suggests they'll still play if nobody replaces them, add a separate line *below* the roster: "Tentative: <Name> (will play if nobody steps in)". Do not put tentative players in a numbered slot.
 
-If an "Alternative formats available" block is in the context AND the squad is short AND kickoff is within 24h AND the smaller format would actually fill, you MAY append one line proposing the switch and naming (from the Confirmed list) who'd go to the bench. Never invent names for the bench overflow.
+If an "Alternative formats available" block is in the context AND the squad is short AND kickoff is within 24h AND that format is marked "✅ VIABLE", you MAY append ONE line proposing the switch — and it must be the line the context gives you under "use this EXACT line VERBATIM", copied character-for-character. The server already did the arithmetic: NEVER count the squad, NEVER subtract anything, NEVER choose who goes on the bench. The only names you may describe as benched are the ones after "Bench on switch:" for that format; if it says NOBODY, write no bench clause at all and name nobody. Never propose a format marked "❌ NOT VIABLE".
 
 Tone: the group's tone — casual, terse, no corporate fluff. No emoji soup.`;
 
