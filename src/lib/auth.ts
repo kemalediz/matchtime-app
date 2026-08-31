@@ -54,7 +54,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const token = credentials?.token;
         if (!token || typeof token !== "string") return null;
 
-        const payload = await verifyMagicLinkToken(token);
+        // Purpose allow-list is passed explicitly: only these two are
+        // meant to establish a session. A narrower purpose added later
+        // (e.g. a one-tap RSVP link) has to be opted in here rather than
+        // silently minting a full session.
+        const payload = await verifyMagicLinkToken(token, {
+          purposes: ["sign-in", "rate-match"],
+        });
         if (!payload) return null;
 
         const user = await db.user.findUnique({ where: { id: payload.userId } });

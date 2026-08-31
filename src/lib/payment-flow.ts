@@ -49,7 +49,7 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
       userId: a.user.id,
       purpose: "sign-in",
       nextPath: `/pay/${matchId}`,
-      ttlSeconds: MAGIC_LINK_TTL.permanent,
+      ttlSeconds: MAGIC_LINK_TTL.bookmark,
     });
     const first = a.user.name?.split(" ")[0] ?? "there";
     await db.botJob.create({

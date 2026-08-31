@@ -385,7 +385,7 @@ export async function POST(request: Request) {
           userId: u.id,
           purpose: "sign-in",
           nextPath: "/profile/stats",
-          ttlSeconds: MAGIC_LINK_TTL.permanent,
+          ttlSeconds: MAGIC_LINK_TTL.bookmark,
         });
         const first = u.name?.split(" ")[0] ?? "there";
         await db.botJob.create({
