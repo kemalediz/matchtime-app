@@ -49,6 +49,7 @@ import {
 } from "@/lib/dm-subscriptions";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { resolveTentative } from "@/lib/tentative-store";
+import { buildTentativeFollowupAck } from "@/lib/tentative-followup";
 import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
 import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
 import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
@@ -473,6 +474,10 @@ export async function POST(request: Request) {
           ? priorRow.status
           : null;
       let newStatus: "CONFIRMED" | "BENCH" | "DROPPED" | null = null;
+      // The honest-ack rule: a write that THREW must never be acked as if
+      // it landed. Only a genuine exception counts: an OUT from a player
+      // with no row is a legitimate no-op, not a failure.
+      let writeFailed = false;
       try {
         if (isIn) {
           const res = await registerAttendance(user.id, row.match.id, { promoteFromBench: true });
@@ -487,6 +492,7 @@ export async function POST(request: Request) {
           }
         }
       } catch (err) {
+        writeFailed = true;
         console.error("[dm-reply] tentative IN/OUT attendance write failed:", err);
       }
       // Tell the GROUP — this registration happened out of band, so nobody
@@ -511,9 +517,10 @@ export async function POST(request: Request) {
             orgId: row.match.activity.orgId,
             kind: "dm",
             phone: replyPhone,
-            text: isIn
-              ? "✅ Brilliant — you're in! See you there ⚽"
-              : "👋 No worries, thanks for letting me know — maybe next time!",
+            text: buildTentativeFollowupAck({
+              decision: isIn ? "in" : "out",
+              failed: writeFailed,
+            }),
           },
         });
       }
@@ -521,6 +528,8 @@ export async function POST(request: Request) {
         ok: true,
         handled: "tentative-followup",
         decision: isIn ? "in" : "out",
+        status: newStatus,
+        failed: writeFailed,
       });
     }
   }

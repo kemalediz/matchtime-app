@@ -106,3 +106,34 @@ export function evaluateFollowupGuard(args: {
 
   return "send";
 }
+
+/**
+ * THE PLAYER'S ACK for a tentative follow-up answer.
+ *
+ * Pure, so the wording is testable and, more importantly, so it can only
+ * ever be built from what the DATABASE actually did. The route used to
+ * pick this string from the classifier's verdict alone while the
+ * attendance write sat inside a try/catch that only logged: a thrown
+ * write produced "you're in!" and no squad row. That is the same
+ * honest-ack rule `out-of-band-self-attendance.ts` already implements
+ * ("never tell a player something happened unless it actually landed"),
+ * and it belongs on both reply paths, not one.
+ *
+ * House style: no em dashes.
+ */
+export function buildTentativeFollowupAck(args: {
+  /** What the player told us. */
+  decision: "in" | "out";
+  /** Did the attendance write throw? Then we promise nothing. */
+  failed: boolean;
+}): string {
+  if (args.failed) {
+    return (
+      "Sorry, I couldn't update the squad just now. An admin will sort it, " +
+      "try again in a bit if you like 🙏"
+    );
+  }
+  return args.decision === "in"
+    ? "✅ Brilliant, you're in! See you there ⚽"
+    : "👋 No worries, thanks for letting me know. Maybe next time!";
+}

@@ -16,6 +16,7 @@ import { describe, it, expect } from "vitest";
 import {
   TENTATIVE_FOLLOWUP_LEAD_MS,
   TENTATIVE_FOLLOWUP_MIN_DELAY_MS,
+  buildTentativeFollowupAck,
   computeFollowupDueAt,
   isFollowupDue,
   evaluateFollowupGuard,
@@ -125,5 +126,52 @@ describe("evaluateFollowupGuard", () => {
 
   it("sends when the squad is one short of full", () => {
     expect(evaluateFollowupGuard({ ...base, confirmedCount: 13, maxPlayers: 14 })).toBe("send");
+  });
+});
+
+/**
+ * THE HONEST-ACK RULE (2026-08-31).
+ *
+ * The tentative follow-up reply path told the player they were "in!"
+ * from `isIn` alone, with the attendance write wrapped in a
+ * try/catch that only logged. A thrown write therefore produced a
+ * cheerful confirmation and no squad row: the player believes they are
+ * playing, the squad stays short, and nobody finds out until kick-off.
+ * That is the exact failure mode `out-of-band-self-attendance.ts` was
+ * built to prevent ("never tell a player something happened unless it
+ * actually landed") and that MDs/learnings.md calls the worst one we
+ * have. The ack must be derived from what the DB actually did.
+ */
+describe("buildTentativeFollowupAck", () => {
+  it("confirms an IN that actually landed", () => {
+    const ack = buildTentativeFollowupAck({ decision: "in", failed: false });
+    expect(ack).toContain("you're in");
+    expect(ack.toLowerCase()).not.toContain("sorry");
+  });
+
+  it("acknowledges an OUT that actually landed", () => {
+    const ack = buildTentativeFollowupAck({ decision: "out", failed: false });
+    expect(ack.toLowerCase()).toContain("no worries");
+    expect(ack).not.toContain("you're in");
+  });
+
+  it("NEVER claims the player is in when the write threw", () => {
+    const ack = buildTentativeFollowupAck({ decision: "in", failed: true });
+    expect(ack).not.toContain("you're in");
+    expect(ack).not.toContain("Brilliant");
+    expect(ack.toLowerCase()).toContain("couldn't update the squad");
+  });
+
+  it("is honest about a failed OUT too", () => {
+    const ack = buildTentativeFollowupAck({ decision: "out", failed: true });
+    expect(ack.toLowerCase()).toContain("couldn't update the squad");
+  });
+
+  it("has no em dashes (house rule)", () => {
+    for (const decision of ["in", "out"] as const) {
+      for (const failed of [false, true]) {
+        expect(buildTentativeFollowupAck({ decision, failed })).not.toContain("—");
+      }
+    }
   });
 });
