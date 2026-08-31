@@ -615,6 +615,17 @@ Rates: Sonnet 4.5 $3/$15 per MTok, Sonnet 5 $2/$10, Haiku 4.5 $1/$5; cache read 
 
 ### 8.1 Two bugs are inflating today's bill by ~30%
 
+> **Both fixed on 2026-08-31** (branch `fix/prompt-cache-and-shadow-cost`). The
+> cache-buster moved to a new `buildMatchClockBlock` on the uncached side of the
+> breakpoint — at **both** call sites, since `composeChaseText`
+> (`message-analyzer.ts:1252`) caches the same `matchContext` string and had the
+> identical defect. The shadow analyzer is now behind `SHADOW_ANALYZER_ENABLED`,
+> default off; turn it on for the §10 migration comparison and off again after.
+> Regression tests: `src/lib/__tests__/prompt-cache-stability.test.ts`,
+> `prompt-cache-request-shape.test.ts`, `shadow-analyzer-flag.test.ts`.
+> The rest of step 0 (the two `max_tokens: 64000` sites, `take:` on
+> `loadRecentHistory`, the prompt tidy-ups) is still open.
+
 **Bug 1 — the prompt cache is being busted on every call.**
 `buildMatchContextBlock` renders `kickoffHint` = `` `${hoursToKickoff.toFixed(1)}h until
 kickoff` `` (`message-analyzer.ts:668-671`) into the match-context block at `:709`. That

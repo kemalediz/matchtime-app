@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import { isShadowAnalysisEnabled } from "@/lib/window-analyzer";
 import type {
   WindowVerdict as WindowVerdictShape,
   WindowStateChange,
@@ -68,6 +69,7 @@ export default async function ShadowDashboardPage() {
     }),
   );
 
+  const enabled = isShadowAnalysisEnabled();
   const totalCost = verdicts.reduce((s, v) => s + (v.costUsd ?? 0), 0);
   const dayCount = Math.max(1, Math.ceil((Date.now() - (verdicts.at(-1)?.createdAt.getTime() ?? Date.now())) / (24 * 60 * 60 * 1000)));
 
@@ -80,10 +82,36 @@ export default async function ShadowDashboardPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Shadow window-analyzer</h1>
         <p className="text-sm text-slate-600 mt-1">
-          The new single-diff analyzer running alongside the live per-message one. No attendance is
+          A single-diff analyzer that can run alongside the live per-message one. No attendance is
           written from this path — it's a comparison view for the architectural cut-over decision.
         </p>
       </div>
+
+      {enabled ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p className="font-semibold">Shadow analysis is ON.</p>
+          <p className="mt-1">
+            Every batch is being analysed a second time (~$0.014 each, capped by{" "}
+            <code className="font-mono text-xs">SHADOW_DAILY_USD_CAP</code>, default $5/day). Turn it
+            off again with <code className="font-mono text-xs">SHADOW_ANALYZER_ENABLED=0</code> once
+            you have read the comparison you needed.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Shadow analysis is OFF. Nothing new is being recorded.</p>
+          <p className="mt-1">
+            It ran on every batch from 29 May to 31 Aug 2026 — a second, uncached Sonnet call per
+            batch, roughly 30% of the analyzer bill — without a decision ever being taken from it,
+            so it was switched off. Anything below is historical.
+          </p>
+          <p className="mt-2">
+            To collect fresh comparison data (e.g. to diff a new pipeline against the current one on
+            live traffic), set <code className="font-mono text-xs">SHADOW_ANALYZER_ENABLED=1</code>{" "}
+            in the app environment and redeploy. Turn it off again afterwards.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Windows analyzed (14d)" value={verdicts.length.toString()} />
@@ -93,8 +121,17 @@ export default async function ShadowDashboardPage() {
 
       {verdicts.length === 0 && (
         <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          No shadow runs yet. Once the bot's next Pi flush hits this org, you'll see windows here.
-          The Pi flushes every 10 min when there are pending messages.
+          {enabled ? (
+            <>
+              No shadow runs in the last 14 days. Once the bot's next Pi flush hits this org, you'll
+              see windows here. The Pi flushes every 10 min when there are pending messages.
+            </>
+          ) : (
+            <>
+              No shadow runs in the last 14 days — shadow analysis is switched off, so this is
+              expected. Nothing is broken. See the note above to turn it on.
+            </>
+          )}
         </div>
       )}
 

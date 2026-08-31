@@ -16,12 +16,22 @@
  *   coherent state diff for the whole window — no per-message
  *   verdicts to conflict, no safety nets to override.
  *
- * Shadow only (for now):
+ * Shadow only:
  *   This module never writes to attendance. Its output is persisted to
  *   the `WindowVerdict` table so the /admin/shadow dashboard can show
  *   it side-by-side with the live analyzer's per-message verdicts.
- *   After a week of comparison data we decide: cut over, hybrid, or
- *   scrap.
+ *
+ * ⚠️ OFF BY DEFAULT since 2026-08-31 — set `SHADOW_ANALYZER_ENABLED=1`.
+ *   It ran on every batch from 2026-05-29, a second entirely-uncached
+ *   Sonnet call at ~$0.014/batch — roughly 30% of the whole analyzer
+ *   bill (MDs/analyzer-redesign-2026-08-31.md §8.1) — to gather "a
+ *   week of comparison data" for a decision that was never taken.
+ *   Three months of that is enough.
+ *
+ *   It is deliberately NOT deleted: it is the safest tool available for
+ *   the migration in §10 of that document — run the new pipeline and
+ *   the old one over the same live traffic and diff them. Switch it on
+ *   when that comparison is actually being read, and off again after.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -361,6 +371,21 @@ export async function buildShadowMatchContext(orgId: string): Promise<string> {
   return lines.join("\n");
 }
 
+/**
+ * Is the shadow comparison switched on?
+ *
+ * Default OFF. Only an explicit affirmative value turns it on, so a
+ * stray `SHADOW_ANALYZER_ENABLED=` or a leftover `false` in an env file
+ * cannot silently start paying for a second analysis of every batch.
+ */
+export function isShadowAnalysisEnabled(): boolean {
+  const raw = process.env.SHADOW_ANALYZER_ENABLED?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+/** So the "it's off" line is said once per process, not per batch. */
+let loggedShadowDisabled = false;
+
 /** Has today's shadow spend exceeded the cap? Reads
  *  SHADOW_DAILY_USD_CAP (default $5/day). */
 async function shadowCapReached(): Promise<boolean> {
@@ -391,6 +416,20 @@ export async function runShadowAnalysis(opts: {
   currentVerdictIds: string[];
 }): Promise<void> {
   try {
+    // Explicit switch, default OFF. Checked FIRST so a disabled shadow
+    // costs nothing at all — no query, no Claude call, no row.
+    if (!isShadowAnalysisEnabled()) {
+      if (!loggedShadowDisabled) {
+        loggedShadowDisabled = true;
+        console.log(
+          "[shadow] window-analyzer is DISABLED (default since 2026-08-31) — " +
+            "set SHADOW_ANALYZER_ENABLED=1 to run the comparison. " +
+            "/admin/shadow will show historical runs only.",
+        );
+      }
+      return;
+    }
+
     if (opts.messages.length === 0) return;
 
     // Dedupe — if a row already exists for this batch hash, don't pay

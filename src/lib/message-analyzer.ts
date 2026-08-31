@@ -617,6 +617,26 @@ Confidence: be honest. If below 0.7 for anything except "noise", downgrade the v
 
 Reply tone: WhatsApp casual, no corporate fluff. Match the group's energy. Most replies are one short line; use the multi-line SHORT-SQUAD RESPONSE format ONLY when the squad is short by 2+ or there are multiple people in the Dropped list. Never invent facts — if the answer needs info outside the Match Context block, reply: null.`;
 
+/**
+ * The STABLE half of the Match Context — everything that changes only
+ * when the world changes (squad, bench, match status, org settings).
+ *
+ * ⏱ NOTHING CLOCK-DERIVED MAY GO IN HERE. Callers mark this string
+ * `cache_control: {ttl: "1h"}`, and Anthropic prompt caching matches on
+ * an exact byte prefix: one changed character throws the whole ~2,120-
+ * token block from a $0.30/MTok cache READ to a $6/MTok cache WRITE.
+ *
+ * That is exactly what happened between 2026-05 and 2026-08-31: the
+ * kickoff countdown (`32.4h until kickoff`) was rendered into this
+ * block, changed every ~6 minutes, and the Pi flushes every 10 — so the
+ * cache essentially never hit and every call paid +40% (measured, four
+ * identical requests varying only that figure: MDs/analyzer-redesign-
+ * 2026-08-31.md §8.1). The countdown, the proximity bucket and the
+ * roster header now live in `buildMatchClockBlock` instead.
+ *
+ * If you add a field here, ask: does it change when the clock moves but
+ * the database doesn't? If yes, it belongs in the clock block.
+ */
 export function buildMatchContextBlock(args: {
   orgName: string;
   match: {
@@ -666,51 +686,15 @@ export function buildMatchContextBlock(args: {
     !a.user.phoneNumber || a.user.phoneNumber.trim() === "";
   const phoneFlag = (a: { user: { phoneNumber?: string | null } }): string =>
     noPhone(a) ? "  📵 no number on record" : "";
-  const hoursToKickoff = (m.date.getTime() - Date.now()) / (1000 * 60 * 60);
-  const daysToKickoff = Math.floor(hoursToKickoff / 24);
-  const kickoffHint =
-    hoursToKickoff > 0
-      ? `${hoursToKickoff.toFixed(1)}h until kickoff`
-      : `${Math.abs(hoursToKickoff).toFixed(1)}h since kickoff`;
-  // Pre-format the kickoff in London time so the LLM doesn't have to
-  // do TZ math and guess at BST/GMT. Format: "Tue 28 Apr at 21:30".
-  const kickoffLocal = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-    .format(m.date)
-    .replace(/,/g, "");
-  // Proximity token drives how the LLM should title the roster block.
-  const proximity =
-    hoursToKickoff < 0
-      ? "past"
-      : hoursToKickoff <= 6
-      ? "tonight"
-      : hoursToKickoff <= 24
-      ? "tomorrow"
-      : daysToKickoff <= 7
-      ? "this-week"
-      : "future";
-  const rosterHeader = {
-    past: "*Squad:*",
-    tonight: "*Playing tonight:*",
-    tomorrow: "*Playing tomorrow:*",
-    "this-week": `*Playing ${kickoffLocal.split(" at ")[0]}:*`,
-    future: `*Playing ${kickoffLocal.split(" at ")[0]}:*`,
-  }[proximity];
   const lines = [
     `## Organisation`,
     args.orgName,
     ``,
     `## Current Match`,
     `Activity: ${m.activity.name}`,
-    `Kickoff (London): ${kickoffLocal}  (${kickoffHint}, proximity=${proximity})`,
-    `Use roster header: ${rosterHeader}`,
+    // Kickoff time, countdown, proximity and roster header are NOT
+    // here — they live in buildMatchClockBlock, which callers append
+    // to the UNCACHED half of the request. See that function's header.
     `Venue: ${m.activity.venue}`,
     `Status: ${m.status}`,
     ...(args.teamLabels
@@ -759,6 +743,66 @@ export function buildMatchContextBlock(args: {
     lines.push("", ...renderFormatSwitchContext(facts));
   }
   return lines.join("\n");
+}
+
+/**
+ * The VOLATILE half of the Match Context — kickoff wall-clock time, the
+ * countdown, the proximity bucket and the roster header derived from it.
+ *
+ * Split out of `buildMatchContextBlock` on 2026-08-31. The wording and
+ * the values are byte-for-byte what that function used to emit; only the
+ * side of the cache breakpoint they sit on has changed. Callers MUST put
+ * this in an uncached content block, immediately after the cached Match
+ * Context, so the system prompt's references to "proximity=" and
+ * "Use roster header:" in the Match Context still resolve.
+ *
+ * Everything here is recomputed from `Date.now()` on every call, which
+ * is precisely why it cannot live in the cached prefix.
+ */
+export function buildMatchClockBlock(matchDate: Date | null | undefined): string {
+  if (!matchDate) return "";
+  const hoursToKickoff = (matchDate.getTime() - Date.now()) / (1000 * 60 * 60);
+  const daysToKickoff = Math.floor(hoursToKickoff / 24);
+  const kickoffHint =
+    hoursToKickoff > 0
+      ? `${hoursToKickoff.toFixed(1)}h until kickoff`
+      : `${Math.abs(hoursToKickoff).toFixed(1)}h since kickoff`;
+  // Pre-format the kickoff in London time so the LLM doesn't have to
+  // do TZ math and guess at BST/GMT. Format: "Tue 28 Apr at 21:30".
+  const kickoffLocal = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+    .format(matchDate)
+    .replace(/,/g, "");
+  // Proximity token drives how the LLM should title the roster block.
+  const proximity =
+    hoursToKickoff < 0
+      ? "past"
+      : hoursToKickoff <= 6
+      ? "tonight"
+      : hoursToKickoff <= 24
+      ? "tomorrow"
+      : daysToKickoff <= 7
+      ? "this-week"
+      : "future";
+  const rosterHeader = {
+    past: "*Squad:*",
+    tonight: "*Playing tonight:*",
+    tomorrow: "*Playing tomorrow:*",
+    "this-week": `*Playing ${kickoffLocal.split(" at ")[0]}:*`,
+    future: `*Playing ${kickoffLocal.split(" at ")[0]}:*`,
+  }[proximity];
+  return [
+    `## Current Match — timing (live, part of the Match Context above)`,
+    `Kickoff (London): ${kickoffLocal}  (${kickoffHint}, proximity=${proximity})`,
+    `Use roster header: ${rosterHeader}`,
+  ].join("\n");
 }
 
 /**
@@ -967,7 +1011,14 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     hour12: false,
   }).format(new Date());
 
+  // Kickoff countdown / proximity / roster header. Deliberately OUTSIDE
+  // the cached block above — see buildMatchClockBlock. Placed first in
+  // the fresh block so it still reads as a continuation of the Match
+  // Context the system prompt refers to.
+  const matchClock = buildMatchClockBlock(match?.date ?? null);
+
   const freshBlock = [
+    ...(matchClock ? [matchClock, ``] : []),
     `## Current time`,
     `  ${nowLondon} (Europe/London). Use this + each message's \`timestamp\` to resolve relative reminder times.`,
     ``,
@@ -1201,7 +1252,15 @@ export async function composeChaseText(input: {
     alternatives,
   });
 
-  const composePrompt = buildChaseComposePrompt(input.kind);
+  // Same cache split as analyzeBatch: matchContext is the 1h-cached
+  // prefix, the clock block rides with the uncached compose prompt.
+  // This call site had the identical cache-buster (it caches the very
+  // same matchContext string), so every scheduled chase was paying a
+  // cache WRITE for the whole block.
+  const matchClock = buildMatchClockBlock(match.date);
+  const composePrompt = matchClock
+    ? `${matchClock}\n\n${buildChaseComposePrompt(input.kind)}`
+    : buildChaseComposePrompt(input.kind);
 
   try {
     const response = await anthropic.messages.create({

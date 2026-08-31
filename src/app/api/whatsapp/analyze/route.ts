@@ -40,7 +40,7 @@
 import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { runShadowAnalysis } from "@/lib/window-analyzer";
+import { runShadowAnalysis, isShadowAnalysisEnabled } from "@/lib/window-analyzer";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
 import { buildShortMagicLinkUrl } from "@/lib/short-link";
 import { answerScopedQuestion } from "@/lib/dm-qa";
@@ -1658,7 +1658,13 @@ export async function POST(request: Request) {
   //   verdicts on /admin/shadow. Never writes to attendance; errors
   //   logged and swallowed. Daily cost-capped via SHADOW_DAILY_USD_CAP
   //   (default $5/day). See src/lib/window-analyzer.ts for context.
-  if (fresh.length > 0) {
+  //
+  //   OFF unless SHADOW_ANALYZER_ENABLED=1. runShadowAnalysis enforces
+  //   that itself (it is the authority); the same check is repeated
+  //   here so a disabled shadow doesn't even schedule an after() task.
+  //   Nothing above this line depends on the shadow, so the response
+  //   and every verdict are identical either way.
+  if (fresh.length > 0 && isShadowAnalysisEnabled()) {
     const shadowBatch = batchInputs;
     const shadowHistory = history;
     const orgId = org.id;
