@@ -16,7 +16,10 @@
  * SENDER. "my brother can play if needed" matches the shape exactly.
  *
  * The contract this file pins — the SUBJECT of the offer decides:
- *   • Offer about the SENDER   → conditional_in + BENCH (unchanged).
+ *   • Offer about the SENDER   → conditional_in + a self-attendance write
+ *     (unchanged). Whether that write lands on the bench or in the squad
+ *     is capacity's call, not the classifier's — see BenchIntent in
+ *     src/lib/attendance.ts. This fixture is 8/14, so it confirms.
  *   • Offer about a THIRD PARTY, unnamed → NO attendance write for the
  *     sender at all; ask warmly for the name.
  *   • Offer about a THIRD PARTY, named   → registerFor IN for them, and
@@ -280,7 +283,16 @@ const RUNS = Number(process.env.MT_SIM_RUNS ?? 5);
       });
     }
 
-    // ── POSITIVE CONTROLS — standing offers about the SENDER still bench ──
+    // ── POSITIVE CONTROLS — standing offers about the SENDER still write ──
+    //
+    // What's under test here is the CLASSIFICATION: the analyzer must still
+    // recognise an offer about the sender and produce a self-attendance
+    // write for them (versus a third-party offer, which must produce none).
+    // The resulting STATUS is decided by capacity, not by the model: this
+    // fixture is 8 confirmed of 14, and a bench alongside 6 open slots is
+    // the state that caused the incident (see BenchIntent in
+    // src/lib/attendance.ts). Full-squad → BENCH is covered deterministically
+    // in e2e/sim/bench-capacity.spec.ts.
 
     const BENCH_CASES: Array<{ label: string; sender: string; body: string }> = [
       { label: "I'll be the 14th if you're short", sender: "noah", body: "I'll be the 14th if you're short" },
@@ -288,7 +300,7 @@ const RUNS = Number(process.env.MT_SIM_RUNS ?? 5);
     ];
 
     for (const c of BENCH_CASES) {
-      test(`self standing offer "${c.label}" → sender BENCHED (×${RUNS})`, async ({
+      test(`self standing offer "${c.label}" → sender REGISTERED (×${RUNS})`, async ({
         request,
         db,
       }) => {
@@ -304,14 +316,17 @@ const RUNS = Number(process.env.MT_SIM_RUNS ?? 5);
             `[third-party-live] "${c.label}" run ${i + 1}: intent=${r.intent} react=${r.react} ` +
               `sender=${att ? att.status : "NO ROW"}`,
           );
-          if (att?.status === "BENCH") hits++;
+          // Squad is 8/14 here, so capacity gives them a slot. BENCH is
+          // accepted too in case the fixture's capacity ever changes — the
+          // control is "the sender got a row", not which list it landed on.
+          if (att?.status === "CONFIRMED" || att?.status === "BENCH") hits++;
           else failures.push(`run ${i + 1}: sender was ${att ? att.status : "NOT registered"}`);
         }
         // eslint-disable-next-line no-console
         console.log(`[third-party-live] HIT-RATE "${c.label}": ${hits}/${RUNS}`);
         expect(
           failures.join(" | "),
-          `a standing offer about the SENDER must still take a bench slot`,
+          `a standing offer about the SENDER must still register them`,
         ).toBe("");
         expect(hits).toBe(RUNS);
       });
