@@ -773,7 +773,7 @@ export async function addPlayerToMatch(
       const { signMagicLinkToken, MAGIC_LINK_TTL } = await import("@/lib/magic-link");
       const { buildShortMagicLinkUrl } = await import("@/lib/short-link");
       const token = signMagicLinkToken({ userId, purpose: "rate-match", matchId, ttlSeconds: MAGIC_LINK_TTL.rateMatch });
-      const statsToken = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: "/profile/stats", ttlSeconds: MAGIC_LINK_TTL.permanent });
+      const statsToken = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: "/profile/stats", ttlSeconds: MAGIC_LINK_TTL.bookmark });
       const dlabel = format(match.date, "EEE d MMM");
       await db.botJob.create({
         data: {

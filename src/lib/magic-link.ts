@@ -17,6 +17,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type MagicLinkPurpose = "rate-match" | "sign-in";
 
+const KNOWN_PURPOSES: readonly MagicLinkPurpose[] = ["rate-match", "sign-in"] as const;
+
 export interface MagicLinkPayload {
   userId: string;
   purpose: MagicLinkPurpose;
@@ -26,6 +28,11 @@ export interface MagicLinkPayload {
    *  that doesn't match. Used by admin DMs that link to specific review pages. */
   nextPath?: string;
   exp: number;     // Unix seconds
+  /** Issued-at, Unix seconds. Added 2026-08-31 so the verifier can tell
+   *  how long a token was minted for and reject anything that outlives
+   *  its purpose's policy TTL. Tokens minted before that date have no
+   *  `iat` — see LEGACY_TOKEN_SUNSET. */
+  iat: number;
 }
 
 const SECRET_ENV = "AUTH_SECRET";
@@ -53,11 +60,19 @@ function b64urlDecode(input: string): Buffer {
   return Buffer.from(padded + "=".repeat(padLen), "base64");
 }
 
-export function signMagicLinkToken(payload: Omit<MagicLinkPayload, "exp"> & { ttlSeconds: number }): string {
+export function signMagicLinkToken(
+  payload: Omit<MagicLinkPayload, "exp" | "iat"> & { ttlSeconds: number },
+): string {
   const { ttlSeconds, ...rest } = payload;
+  const iat = Math.floor(Date.now() / 1000);
+  // Clamp at mint time as well as verify time: a call site asking for a
+  // longer life than the purpose allows gets a policy-length link, not a
+  // link that silently fails to verify.
+  const ttl = Math.min(ttlSeconds, MAX_TTL_BY_PURPOSE[rest.purpose]);
   const fullPayload: MagicLinkPayload = {
     ...rest,
-    exp: Math.floor(Date.now() / 1000) + ttlSeconds,
+    iat,
+    exp: iat + ttl,
   };
   const body = b64url(JSON.stringify(fullPayload));
   const sig = b64url(
@@ -66,7 +81,18 @@ export function signMagicLinkToken(payload: Omit<MagicLinkPayload, "exp"> & { tt
   return `${body}.${sig}`;
 }
 
-export async function verifyMagicLinkToken(token: string): Promise<MagicLinkPayload | null> {
+export interface VerifyMagicLinkOptions {
+  /** Purposes the CONSUMER is willing to honour. The magic-link sign-in
+   *  provider passes the session-granting set explicitly, so a purpose
+   *  added later has to be opted in rather than silently minting
+   *  sessions. */
+  purposes?: readonly MagicLinkPurpose[];
+}
+
+export async function verifyMagicLinkToken(
+  token: string,
+  opts: VerifyMagicLinkOptions = {},
+): Promise<MagicLinkPayload | null> {
   try {
     const [body, sig] = token.split(".");
     if (!body || !sig) return null;
@@ -79,7 +105,32 @@ export async function verifyMagicLinkToken(token: string): Promise<MagicLinkPayl
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
 
     const payload = JSON.parse(b64urlDecode(body).toString("utf8")) as MagicLinkPayload;
-    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    const now = Math.floor(Date.now() / 1000);
+
+    // ── Shape: a valid signature is not a licence to skip validation.
+    if (typeof payload?.userId !== "string" || !payload.userId) return null;
+    if (typeof payload?.exp !== "number" || !isFinite(payload.exp)) return null;
+    if (!KNOWN_PURPOSES.includes(payload.purpose)) return null;
+    if (payload.purpose === "rate-match" && !payload.matchId) return null;
+
+    // ── Purpose: enforced at the consumer, not just carried along.
+    const allowed = opts.purposes ?? KNOWN_PURPOSES;
+    if (!allowed.includes(payload.purpose)) return null;
+
+    // ── Expiry.
+    if (payload.exp < now) return null;
+
+    // ── Lifetime policy. `iat` is present on everything minted since
+    // 2026-08-31; anything older predates the policy and is honoured
+    // only until the sunset, so links already sitting in players'
+    // WhatsApp chats keep working today but do not live forever.
+    // (The old "permanent" preset was ~100 years — effectively an
+    // unrevocable sign-in credential.)
+    if (typeof payload.iat === "number" && isFinite(payload.iat)) {
+      if (payload.exp - payload.iat > MAX_TTL_BY_PURPOSE[payload.purpose]) return null;
+    } else if (now >= LEGACY_TOKEN_SUNSET) {
+      return null;
+    }
 
     return payload;
   } catch {
@@ -109,11 +160,33 @@ export const MAGIC_LINK_TTL = {
   // received 3h earlier was already dead because it used the 1h signIn
   // TTL — the whole point of the nudge is to be actioned later.
   actionNudge: 48 * 60 * 60,  // 48 hours for async DM action links
-  // Personal stats links are meant to be a permanent bookmark a player
-  // can re-open any time (Kemal 2026-06-01: "magic link that never
-  // expires"). 100 years ≈ never. NOTE: this is a long-lived sign-in
-  // credential — anyone with the URL can sign in as that player for the
-  // life of the link. Acceptable here because it only fronts /profile/
-  // stats (read-only personal stats) and the DM goes only to the player.
-  permanent: 100 * 365 * 24 * 60 * 60, // ~100 years
+  // Bookmarkable links: personal stats and pay links, meant to be
+  // re-openable long after the DM (Kemal 2026-06-01: "magic link that
+  // never expires"). This WAS ~100 years, which made every such DM an
+  // unrevocable full-privilege sign-in credential for the life of
+  // AUTH_SECRET — an admin's stats link was an admin session. One year
+  // keeps the bookmark useful (players are DM'd a fresh link after every
+  // match they play) while bounding the blast radius of a leaked URL.
+  bookmark: 365 * 24 * 60 * 60,
 };
+
+/**
+ * Hard ceiling on how long a token of each purpose may live, enforced at
+ * BOTH mint and verify time. A token whose payload claims a longer life
+ * than this is rejected outright, whatever call site produced it.
+ */
+export const MAX_TTL_BY_PURPOSE: Record<MagicLinkPurpose, number> = {
+  "sign-in": 365 * 24 * 60 * 60, // bookmarkable stats / pay links
+  "rate-match": 7 * 24 * 60 * 60, // the 5-day rating window, plus slack
+};
+
+/**
+ * Tokens minted before the lifetime policy existed carry no `iat`, so
+ * their real age is unknowable — including the ~100-year "permanent"
+ * stats and pay links already in players' chats. They keep working until
+ * this date and are refused afterwards, by which point every active
+ * player has been DM'd fresh, policy-bound links. Unix seconds.
+ */
+export const LEGACY_TOKEN_SUNSET = Math.floor(
+  Date.parse("2026-11-30T00:00:00Z") / 1000,
+);

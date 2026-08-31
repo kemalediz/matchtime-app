@@ -1676,7 +1676,7 @@ async function computeForMatch(
           userId: a.userId,
           purpose: "sign-in",
           nextPath: `/pay/${matchId}`,
-          ttlSeconds: MAGIC_LINK_TTL.permanent,
+          ttlSeconds: MAGIC_LINK_TTL.bookmark,
         });
         const first = a.user.name?.split(" ")[0] ?? "there";
         const opener =
@@ -1804,7 +1804,7 @@ async function computeForMatch(
             userId: a.userId,
             purpose: "sign-in",
             nextPath: "/profile/stats",
-            ttlSeconds: MAGIC_LINK_TTL.permanent,
+            ttlSeconds: MAGIC_LINK_TTL.bookmark,
           });
           out.push({
             kind: "dm",
