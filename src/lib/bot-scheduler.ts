@@ -35,6 +35,11 @@ import { resolveTeamLabels } from "./team-labels";
 import { gbp } from "./payments";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { buildMomAnnouncement } from "./mom-announcement";
+import {
+  buildBenchOfferGroupPost,
+  buildBenchOfferDm,
+  buildBenchIntroLine,
+} from "./bench-offer-copy";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -410,7 +415,7 @@ function botIntroMessage(f: OrgFeatures): string {
   if (f.bench) {
     lines.push(
       ``,
-      `🔁  *Bench promotion* — If someone drops, I tag the first bencher and ask them to 👍 confirm. 2h window; if no answer, I move to the next.`,
+      buildBenchIntroLine(),
     );
   }
   if (f.teamBalancing) {
@@ -1284,6 +1289,10 @@ async function computeForMatch(
         // One group post to the whole bench, offer-keyed (ack maps the
         // waMessageId onto the BenchSlotOffer so a 👍 reaction finds
         // it). kind:"bench-prompt" so the bot ACKs with waMessageId.
+        // The post itself no longer ASKS for a 👍 while
+        // BENCH_PROMPT_MENTION_REACTIONS is false (inbound reactions are
+        // dead on the Pi) — the mapping stays wired so an unprompted one
+        // still lands the moment forwarding is repaired.
         const groupKey = `offer-${offer.id}`;
         if (!sentKeys.has(groupKey)) {
           out.push({
@@ -1294,11 +1303,7 @@ async function computeForMatch(
             // it; pass the first bencher purely to satisfy the type.
             userId: benchAtt[0].userId,
             phone: mentions[0],
-            text:
-              `🎟 A slot just opened ${ctx} — *first to claim it plays*.\n\n` +
-              `${tagList}\n\n` +
-              `React 👍 here (or reply *IN*) to take it. No rush, no timeout — ` +
-              `whoever's free first gets it; everyone else stays on the bench. 🙏`,
+            text: buildBenchOfferGroupPost({ context: ctx, tagList }),
           });
         }
 
@@ -1307,17 +1312,14 @@ async function computeForMatch(
         for (const a of benchAtt) {
           const dmKey = `offer-${offer.id}:dm:${a.userId}`;
           if (sentKeys.has(dmKey)) continue;
-          const first = a.user.name ? ` ${a.user.name.split(" ")[0]}` : "";
+          const first = a.user.name ? a.user.name.split(" ")[0] : "";
           out.push({
             kind: "dm",
             key: dmKey,
             matchId,
             phone: a.user.phoneNumber!.replace(/^\+/, ""),
             targetUser: a.userId,
-            text:
-              `👋 Hi${first} — a slot just opened ${ctxPlain} and you're on the bench.\n\n` +
-              `Want it? Reply *YES* here (or 👍 / *IN* on the message I tagged you in, in the group). ` +
-              `First to claim plays — no timeout, and if you're not free no worries, you stay on the bench. 🙏`,
+            text: buildBenchOfferDm({ firstName: first, context: ctxPlain }),
           });
         }
       }
