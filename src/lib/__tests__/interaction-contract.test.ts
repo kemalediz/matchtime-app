@@ -22,6 +22,7 @@ import {
   actionRequiresTag,
   isSelfAttendanceVerdict,
   looksLikeHypotheticalOrPast,
+  offerIsAboutSomeoneElse,
   type TagInput,
   type GateVerdict,
 } from "@/lib/interaction-contract";
@@ -281,6 +282,59 @@ describe("looksLikeHypotheticalOrPast — deterministic self-attendance seatbelt
 
   it('does NOT flag "I am in for tonight"', () => {
     expect(looksLikeHypotheticalOrPast("I am in for tonight")).toBe(false);
+  });
+});
+
+describe("offerIsAboutSomeoneElse — third-party-subject seatbelt", () => {
+  // The production regression (Amir, 2026-08-30): the offer is about his
+  // BROTHER, and Amir never says he is playing.
+  it("flags the production message, @mention and all", () => {
+    expect(offerIsAboutSomeoneElse("@Kemal Ediz my brother can play if needed")).toBe(true);
+  });
+
+  it("flags other third-party-subject offers", () => {
+    expect(offerIsAboutSomeoneElse("my brother can play if needed")).toBe(true);
+    expect(offerIsAboutSomeoneElse("my mate could fill in if you're short")).toBe(true);
+    expect(offerIsAboutSomeoneElse("My cousin is up for it")).toBe(true);
+    expect(offerIsAboutSomeoneElse("my brother Shahrokh can play")).toBe(true);
+    expect(offerIsAboutSomeoneElse("Dan's brother can play if you need one")).toBe(true);
+    expect(offerIsAboutSomeoneElse("his mate wants a game")).toBe(true);
+  });
+
+  // MIXED — the sender says they are playing too. Never strip these.
+  it("does NOT flag a mixed offer that includes the sender", () => {
+    expect(offerIsAboutSomeoneElse("me and my brother are both in")).toBe(false);
+    expect(offerIsAboutSomeoneElse("my brother and I are in")).toBe(false);
+    expect(offerIsAboutSomeoneElse("my mate and I can fill in if you're short")).toBe(false);
+    expect(offerIsAboutSomeoneElse("my brother and me are playing")).toBe(false);
+    expect(offerIsAboutSomeoneElse("put us both down, my brother's coming")).toBe(false);
+  });
+
+  // The third-party phrase must be the SUBJECT of the message. A self
+  // statement that merely MENTIONS a mate is a legitimate self write.
+  it("does NOT flag a self statement that only mentions a third party later", () => {
+    expect(offerIsAboutSomeoneElse("in, my mate's coming too")).toBe(false);
+    expect(offerIsAboutSomeoneElse("count me in and my brother wants to play")).toBe(false);
+    expect(offerIsAboutSomeoneElse("I'll be the 14th if my mate can't")).toBe(false);
+  });
+
+  it("does NOT flag plain self attendance", () => {
+    expect(offerIsAboutSomeoneElse("in")).toBe(false);
+    expect(offerIsAboutSomeoneElse("I'm in")).toBe(false);
+    expect(offerIsAboutSomeoneElse("I'll be the 14th if you're short")).toBe(false);
+    expect(offerIsAboutSomeoneElse("ping me if you need one more")).toBe(false);
+    expect(offerIsAboutSomeoneElse("happy to fill in if anyone drops")).toBe(false);
+    expect(offerIsAboutSomeoneElse("available as a back-up tonight")).toBe(false);
+  });
+
+  it("does NOT flag possessives that are not people", () => {
+    expect(offerIsAboutSomeoneElse("my back is fine, in")).toBe(false);
+    expect(offerIsAboutSomeoneElse("my car broke down")).toBe(false);
+  });
+
+  it("handles empty / junk input", () => {
+    expect(offerIsAboutSomeoneElse("")).toBe(false);
+    expect(offerIsAboutSomeoneElse("   ")).toBe(false);
   });
 });
 

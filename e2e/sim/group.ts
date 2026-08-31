@@ -363,6 +363,22 @@ export interface BatchItem {
   tag?: boolean;
 }
 
+/** One line of the "Recent chat history" block the Pi keeps in memory
+ *  (last 15 per group) and forwards on every analyze call. The sim
+ *  omitted it entirely until 2026-08-31, which made every spec run
+ *  against a context-free prompt — real groups NEVER are. */
+export interface SimHistoryEntry {
+  authorName: string | null;
+  body: string;
+  /** Default: 10 minutes before now, in list order. */
+  timestamp?: string;
+}
+
+export interface SimBatchOpts {
+  /** Recent chat history to send with the batch (oldest first). */
+  history?: SimHistoryEntry[];
+}
+
 // ── The group itself ───────────────────────────────────────────────────
 
 export class SimGroup {
@@ -435,7 +451,7 @@ export class SimGroup {
   }
 
   /** Send a BATCH of group messages through the real analyze pipeline. */
-  async postBatch(items: BatchItem[]): Promise<SimBatchResult> {
+  async postBatch(items: BatchItem[], opts: SimBatchOpts = {}): Promise<SimBatchResult> {
     const stub: Record<string, StubVerdict> = {};
     const messages = items.map((it) => {
       const id = nextMsgId();
@@ -464,9 +480,21 @@ export class SimGroup {
       };
     });
     if (!LIVE_LLM) setLlmStub(stub);
+    // Oldest first, spaced a minute apart ending 1 minute before now —
+    // the same shape the Pi's in-memory buffer produces.
+    const history = (opts.history ?? []).map((h, i, arr) => ({
+      authorName: h.authorName,
+      body: h.body,
+      timestamp:
+        h.timestamp ?? new Date(Date.now() - (arr.length - i) * 60_000).toISOString(),
+    }));
     const res = await this.request.post("/api/whatsapp/analyze", {
       headers: HEADERS,
-      data: { groupId: this.groupId, messages },
+      data: {
+        groupId: this.groupId,
+        messages,
+        ...(history.length ? { history } : {}),
+      },
     });
     expect(res.status(), await res.text()).toBe(200);
     const raw = (await res.json()) as {
@@ -492,18 +520,23 @@ export class SimGroup {
       /** Simulate an @Match Time tag (structured botMentioned signal). */
       botMentioned?: boolean;
       tag?: boolean;
+      /** Recent chat history to send with this message (oldest first). */
+      history?: SimHistoryEntry[];
     } = {},
   ): Promise<SimPostResult> {
-    const batch = await this.postBatch([
-      {
-        player: playerKey ?? undefined,
-        body,
-        verdict: opts.verdict,
-        author: opts.author,
-        botMentioned: opts.botMentioned,
-        tag: opts.tag,
-      },
-    ]);
+    const batch = await this.postBatch(
+      [
+        {
+          player: playerKey ?? undefined,
+          body,
+          verdict: opts.verdict,
+          author: opts.author,
+          botMentioned: opts.botMentioned,
+          tag: opts.tag,
+        },
+      ],
+      { history: opts.history },
+    );
     return { ...batch.results[0], groupPosts: batch.groupPosts, dms: batch.dms, raw: batch.raw };
   }
 
