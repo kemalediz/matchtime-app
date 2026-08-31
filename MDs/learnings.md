@@ -235,3 +235,15 @@ This had recurred several times despite point fixes (Idris had a dup pair, then 
 **General lesson:** when a class of bug recurs despite "fixes," the fix is almost always at the wrong layer. Point-of-use normalisation is a recipe for drift; canonical enforcement at the storage layer (extension + CHECK) is the only thing that holds. If you find yourself patching the same bug shape twice, stop patching and move the constraint down a layer.
 
 **Test/harness gotcha hit during this:** several harnesses generated synthetic phone numbers with `Date.now().toString(36)`, which inserts letters into the digit string (e.g. `"+447776mnmv0"`). These started failing the CHECK constraint. Fixed by switching to `toString()` (digits only). Anything that synthesises a phone in test/dev code must stay E.164-clean — the constraint won't bend.
+
+## Never confirm a write you didn't verify: the group path had the same lie as the DM path (2026-08-31)
+
+`buildTentativeFollowupAck` (9f19040) and `lib/out-of-band-self-attendance.ts` both build a player's ack from what the DB actually did. The group path in `/api/whatsapp/analyze` never got that treatment: the attendance write sat in a bare `try/catch` that logged and moved on, and the LLM's "you're in!" went out regardless. The player turns up believing they're playing, no squad row exists, and the reconciliation pass can't repair it (`reactForStatus` returns null when there's no row, and the guard is `if (want && ...)`, so a react on a phantom registration is left alone). `AnalyzedMessage.action` stored the INTENDED action, so it was invisible in the data too.
+
+Three rules that came out of it, worth applying to any new write path:
+
+1. **The ack is derived from the write's outcome, never from the classifier's verdict.** A confirmation is a claim about the database; only the database can authorise it.
+2. **A failure is a write that THREW. Nothing else.** An OUT from someone with no row and a repeat IN from a confirmed player are legitimate no-ops. Apologising for those would be its own bug, so test the boundary explicitly, not just the happy and sad paths.
+3. **Store what happened, not what was intended.** If the row says `action: "IN"` for a write that threw, no dashboard, query or audit will ever find it. `handledBy: "error"` with an `attendance-failed:*` action, plus a CRITICAL log and a line in the admin unresolved queue, is the minimum for an operator to catch it.
+
+Testing note: the failure was reproduced with a Postgres BEFORE-trigger on `"Attendance"` that raises for a given userId. That gives a genuine thrown write in e2e with zero test-only hooks in production code, which is much better than an env-var escape hatch.

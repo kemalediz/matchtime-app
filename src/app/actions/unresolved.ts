@@ -4,6 +4,10 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { requireOrgAdmin } from "@/lib/org";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import {
+  parseAttendanceFailureAction,
+  describeAttendanceFailure,
+} from "@/lib/attendance-write-outcome";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -99,7 +103,63 @@ export async function unresolvedCount(orgId: string): Promise<number> {
     },
     select: { authorName: true },
   });
-  return new Set(rows.map((r) => norm(r.authorName ?? "")).filter(Boolean)).size;
+  const failed = await db.analyzedMessage.count({
+    where: {
+      orgId,
+      handledBy: "error",
+      action: { startsWith: "attendance-failed" },
+      createdAt: { gte: since },
+    },
+  });
+  return (
+    new Set(rows.map((r) => norm(r.authorName ?? "")).filter(Boolean)).size + failed
+  );
+}
+
+export interface FailedAttendanceWrite {
+  waMessageId: string;
+  /** Plain English: "Ian Innes tried to join". */
+  summary: string;
+  body: string;
+  at: string;
+}
+
+/**
+ * Attendance writes that THREW — the player was told, honestly, that
+ * nothing landed (see lib/attendance-write-outcome.ts), and this is the
+ * operator half of that: without it a DB fault is invisible outside the
+ * server log. Read-only on purpose: there is nothing to "link" here, the
+ * player just needs to say it again or an admin sets it on the roster.
+ */
+export async function listFailedAttendanceWrites(
+  orgId: string,
+): Promise<FailedAttendanceWrite[]> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const since = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000);
+  const rows = await db.analyzedMessage.findMany({
+    where: {
+      orgId,
+      handledBy: "error",
+      action: { startsWith: "attendance-failed" },
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    select: { waMessageId: true, authorName: true, action: true, body: true, createdAt: true },
+  });
+
+  return rows.map((r) => ({
+    waMessageId: r.waMessageId,
+    summary: describeAttendanceFailure(
+      parseAttendanceFailureAction(r.action),
+      r.authorName,
+    ),
+    body: (r.body ?? "").slice(0, 160),
+    at: r.createdAt.toISOString(),
+  }));
 }
 
 /**

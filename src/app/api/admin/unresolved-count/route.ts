@@ -30,8 +30,17 @@ export async function GET() {
     },
     select: { authorName: true },
   });
-  const count = new Set(
-    rows.map((r) => norm(r.authorName ?? "")).filter(Boolean),
-  ).size;
+  // Attendance writes that THREW count too: the player was told the
+  // truth in the group, but a human still has to see the fault.
+  const failed = await db.analyzedMessage.count({
+    where: {
+      orgId: membership.orgId,
+      handledBy: "error",
+      action: { startsWith: "attendance-failed" },
+      createdAt: { gte: since },
+    },
+  });
+  const count =
+    new Set(rows.map((r) => norm(r.authorName ?? "")).filter(Boolean)).size + failed;
   return NextResponse.json({ count });
 }
