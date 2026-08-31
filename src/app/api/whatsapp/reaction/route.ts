@@ -6,11 +6,16 @@
  *   1. The GROUP bench-slot-offer post (2026-05-19) — a 👍 from any
  *      current bench player claims the slot, first one wins; 👎 is a
  *      no-op because nobody is ever removed for passing.
- *   2. The 1-1 RECRUIT INVITE DM (2026-08-31) — the invite now asks for
- *      "reply *IN* or tap 👍", so the tap has to mean something. Here 👎
- *      is NOT a no-op: the owner asked for saying no to be as easy as
- *      saying yes, so 👎 registers OUT. See src/lib/recruit-reaction.ts
- *      for how a reaction finds its player and its match.
+ *   2. The 1-1 RECRUIT INVITE DM (2026-08-31) — a 👍 registers the player
+ *      IN and a 👎 registers them OUT. Unlike the bench offer, 👎 is NOT
+ *      a no-op: the owner asked for saying no to be as easy as saying
+ *      yes. The invite does not currently ADVERTISE this (inbound
+ *      reaction forwarding is broken on the Pi, so the copy would be
+ *      asking for something that does nothing — see
+ *      RECRUIT_DM_MENTION_REACTIONS in src/lib/recruit.ts), but the
+ *      handling stays live so an unprompted 👍 still counts. See
+ *      src/lib/recruit-reaction.ts for how a reaction finds its player
+ *      and its match.
  *
  * The bench branch runs first and is unchanged. Its reactor resolution is
  * scoped to the bench of the offer's match (phone first, then @lid

@@ -3,12 +3,19 @@
  *
  * WHY
  * ---
- * The invite now leads with "reply *IN*, or just tap 👍" (see recruit.ts).
- * Replying was already handled by PR #18. Tapping was not: the reaction
- * arrived, matched no open bench offer, and was dropped. A player who
- * gave us a thumbs-up believed they were in the squad and nothing was
- * recorded — the same silent-failure class as the duplicate-send incident,
- * where the database looked healthy and the humans got the wrong outcome.
+ * Replying "IN" to the invite was already handled by PR #18. Tapping 👍
+ * was not: the reaction arrived, matched no open bench offer, and was
+ * dropped. A player who gave us a thumbs-up believed they were in the
+ * squad and nothing was recorded — the same silent-failure class as the
+ * duplicate-send incident, where the database looked healthy and the
+ * humans got the wrong outcome.
+ *
+ * THE INVITE DOES NOT CURRENTLY ADVERTISE THIS. `RECRUIT_DM_MENTION_
+ * REACTIONS` in recruit.ts is false while inbound reaction forwarding is
+ * broken on the Pi (see the caveat at the bottom of this comment). That
+ * gates the INSTRUCTION, not the capability: everything below stays live,
+ * so an UNPROMPTED 👍 from a player who reacts out of habit is still
+ * honoured, and flipping the flag back is a one-line change.
  *
  * HOW A REACTION FINDS ITS PLAYER AND ITS MATCH
  * --------------------------------------------
@@ -43,14 +50,18 @@
  *   - the repetition ledger filters on `outbound-text-log`;
  *   - `planAckSideEffects` has no `recruit-dm-job:` branch.
  *
- * ⚠️ OPERATIONAL CAVEAT — see the PR description. This depends on
- * `SentNotification.waMessageId` being non-null, which depends on
- * whatsapp-web.js's `sendMessage()` returning a usable Message. On the Pi
- * today it returns `undefined` (see whatsapp-bot/src/send-result.ts and
- * MDs/whatsapp-layer-independent-audit-2026-08-30.md row 7/8), so bench
- * offers are ALREADY unmappable for the same reason. The reply path is
- * unaffected and is what players will land on until the injected layer is
- * fixed.
+ * ⚠️ OPERATIONAL CAVEAT — verified on prod 2026-08-31, both halves of the
+ * round trip are currently broken by the whatsapp-web.js injected-layer
+ * breakage:
+ *   - OUTBOUND: `sendMessage()` gives back a Message whose id we cannot
+ *     read, so `SentNotification.waMessageId` is NULL on 0 of the last 17
+ *     dispatches (see whatsapp-bot/src/send-result.ts, and rows 7/8 of
+ *     MDs/whatsapp-layer-independent-audit-2026-08-30.md);
+ *   - INBOUND: the bot logs `CRITICAL: reaction-forwarding is
+ *     unavailable` and has never once forwarded a reaction, so this route
+ *     is not even reached.
+ * Bench offers are already dead for exactly the same reason. The reply
+ * path is unaffected and is what the invite asks for meanwhile.
  */
 import { db } from "./db";
 

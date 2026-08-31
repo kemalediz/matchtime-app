@@ -36,7 +36,7 @@ const group = async (request: APIRequestContext, db: TestDb) =>
 
 const recruitDms = (grp: SimGroup) =>
   grp.db.all<{ phone: string | null; text: string }>(
-    `SELECT phone, text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND text LIKE '%tap 👍%'`,
+    `SELECT phone, text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND text ILIKE '%reply *IN*%'`,
     [grp.orgId],
   );
 
@@ -55,11 +55,14 @@ test("explicit shortage from an admin → invite DMs to recent non-responders wi
   expect(phones).toEqual(expected);
   for (const d of dms) {
     expect(d.text).toContain("putting the squad together");
-    // The ASK leads (2026-08-31): reply IN or 👍, reply OUT or 👎.
-    expect(d.text).toContain("Reply *IN*");
+    // The ASK leads (2026-08-31): reply IN, reply OUT.
+    expect(d.text).toContain("reply *IN*");
     expect(d.text).toContain("Reply *OUT*");
-    expect(d.text).toContain("👍");
-    expect(d.text).toContain("👎");
+    // …and it does NOT tell them to tap an emoji, because inbound
+    // reaction forwarding is dead on the Pi. See
+    // RECRUIT_DM_MENTION_REACTIONS in src/lib/recruit.ts.
+    expect(d.text).not.toContain("👍");
+    expect(d.text).not.toContain("👎");
     // The magic link survives, demoted to the trailing optional line.
     expect(d.text).toMatch(/https?:\/\//);
     expect(d.text.trim().split("\n").at(-1)).toContain("Prefer the app?");

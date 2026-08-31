@@ -10,9 +10,24 @@
  * House style (Cressoft): no em dashes, no en dashes as punctuation, no
  * slashes in prose. The magic link obviously contains slashes, so the
  * slash rule is asserted against the message with URLs stripped out.
+ *
+ * ── THE REACTION INSTRUCTION IS GATED ────────────────────────────────
+ * The DM must only instruct players to do things that ACTUALLY WORK.
+ * Inbound reaction forwarding is dead on the Pi right now (the bot logs
+ * `reaction-forwarding is unavailable` and has never once forwarded a
+ * reaction), so telling a player to "tap 👍" would be the exact
+ * silent-failure pattern this club has just lost a week to: the bot
+ * appears to offer something, the player believes they answered, nothing
+ * is recorded. RECRUIT_DM_MENTION_REACTIONS gates the sentence; the
+ * handling code behind it stays live either way, so an UNPROMPTED 👍 is
+ * still honoured the moment forwarding is repaired.
  */
 import { describe, it, expect } from "vitest";
-import { buildRecruitInviteDm, buildRecruitGroupInviteDm } from "@/lib/recruit";
+import {
+  buildRecruitInviteDm,
+  buildRecruitGroupInviteDm,
+  RECRUIT_DM_MENTION_REACTIONS,
+} from "@/lib/recruit";
 
 const BASE = {
   firstName: "Abid",
@@ -35,19 +50,15 @@ describe("buildRecruitInviteDm — attendance-tracking org", () => {
     expect(askAt).toBeLessThan(linkAt);
   });
 
-  it("offers BOTH ways to say yes: reply IN and a 👍 reaction", () => {
-    const text = buildRecruitInviteDm(BASE);
-    expect(text).toContain("*IN*");
-    expect(text).toContain("👍");
+  it("asks them to reply IN to play", () => {
+    expect(buildRecruitInviteDm(BASE)).toContain("*IN*");
   });
 
   // Owner, 2026-08-31: saying NO must be exactly as easy as saying yes.
   // A parallel chase-up feature DMs everyone who stays silent, so an
   // effortless "no" is what keeps the club from looking naggy.
-  it("offers BOTH ways to say no, symmetrically: reply OUT and a 👎 reaction", () => {
-    const text = buildRecruitInviteDm(BASE);
-    expect(text).toContain("*OUT*");
-    expect(text).toContain("👎");
+  it("offers a negative route just as plainly: reply OUT", () => {
+    expect(buildRecruitInviteDm(BASE)).toContain("*OUT*");
   });
 
   it("gives the negative route the same shape as the positive one", () => {
@@ -105,6 +116,47 @@ describe("buildRecruitInviteDm — attendance-tracking org", () => {
 
   it("greets the player by first name", () => {
     expect(buildRecruitInviteDm(BASE)).toContain("Abid");
+  });
+});
+
+describe("the reaction instruction is gated on RECRUIT_DM_MENTION_REACTIONS", () => {
+  it("is OFF right now — inbound reaction forwarding is dead on the Pi", () => {
+    expect(RECRUIT_DM_MENTION_REACTIONS).toBe(false);
+  });
+
+  it("NEVER tells a player to tap an emoji while the flag is false", () => {
+    const text = buildRecruitInviteDm({ ...BASE, mentionReactions: false });
+    // The instruction, in any shape we might reach for.
+    expect(text).not.toMatch(/\btap\b/i);
+    expect(text).not.toMatch(/\breact\b/i);
+    expect(text).not.toContain("👍");
+    expect(text).not.toContain("👎");
+    // …but the message still works: both routes are still offered.
+    expect(text).toContain("*IN*");
+    expect(text).toContain("*OUT*");
+  });
+
+  it("defaults to the flag, so production copy cannot drift from it", () => {
+    expect(buildRecruitInviteDm(BASE)).toBe(
+      buildRecruitInviteDm({ ...BASE, mentionReactions: RECRUIT_DM_MENTION_REACTIONS }),
+    );
+  });
+
+  it("offers 👍 and 👎 symmetrically once the flag is flipped back on", () => {
+    const text = buildRecruitInviteDm({ ...BASE, mentionReactions: true });
+    expect(text).toContain("👍");
+    expect(text).toContain("👎");
+    expect(text).toContain("*IN*");
+    expect(text).toContain("*OUT*");
+    // Still house style, still the same shape.
+    expect(text).not.toContain("—");
+    expect(withoutUrls(text)).not.toContain("/");
+    expect(text.trim().split("\n").at(-1)).toContain(BASE.link);
+  });
+
+  it("decorative emoji are fine — only INSTRUCTIONS to react are gated", () => {
+    // The sign-off 🙌 is decoration, not a thing we ask them to do.
+    expect(buildRecruitInviteDm(BASE)).toMatch(/\p{Extended_Pictographic}/u);
   });
 });
 

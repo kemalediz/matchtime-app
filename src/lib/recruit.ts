@@ -112,9 +112,16 @@ export function looksLikeRecruitRequest(text: string): boolean {
  *
  * SAYING NO IS AS EASY AS SAYING YES (owner, same day). A chase-up DM
  * for silent players is being built alongside this; a player who cannot
- * make it but never answers gets chased for no reason. Offering *OUT*
- * and 👎 as plainly as *IN* and 👍 is what keeps the club considerate
- * rather than naggy — hence "I'll stop asking".
+ * make it but never answers gets chased for no reason. Offering *OUT* as
+ * plainly as *IN* is what keeps the club considerate rather than naggy —
+ * hence "I'll stop asking".
+ *
+ * WHY THE DM DOES NOT MENTION 👍 (2026-08-31, and this is the important
+ * one): see RECRUIT_DM_MENTION_REACTIONS below. The bot can HANDLE a
+ * reaction; it currently cannot RECEIVE one. Instructing a player to do
+ * something that silently does nothing is the exact failure this club
+ * just lost a week to, so the instruction is gated even though the
+ * capability behind it is live.
  *
  * The link is KEPT rather than dropped: some players do use the app, and
  * it doubles as their sign-in path (it is a magic link, so tapping it is
@@ -123,6 +130,46 @@ export function looksLikeRecruitRequest(text: string): boolean {
  * House style: no em dashes, no en dashes, no slashes in prose. Only the
  * URL contains a slash.
  * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * Does the invite TELL players they can answer with a 👍 or a 👎?
+ *
+ * ⚠️ FALSE, deliberately, and it is not a style choice.
+ *
+ * The handling is built, tested and live (src/lib/recruit-reaction.ts):
+ * an unprompted 👍 on an invite DM registers the player, a 👎 drops them.
+ * What is NOT working is the bot's ability to RECEIVE a reaction at all.
+ * whatsapp-web.js's injected page code is out of step with the live
+ * WhatsApp Web build, so `msgId._serialized` is unreadable on the inbound
+ * `message_reaction` event and the bot discards it before the server is
+ * ever called. Evidence, on the Pi, 2026-08-31:
+ *
+ *   $ grep -c "reaction-forwarding is unavailable" ~/matchtime-bot/bot.err.log
+ *   8                      # and zero successful reaction forwards, ever
+ *
+ * The outbound half is broken too: `sendMessage` returns a Message whose
+ * id we cannot read, so `SentNotification.waMessageId` is NULL on 0 of
+ * the last 17 dispatches. Bench-offer 👍 is already dead for the same
+ * reason.
+ *
+ * So an invite saying "tap 👍" would ask a player to do something that
+ * does absolutely nothing, and they would believe they had answered.
+ * That is precisely the silent-failure class behind the duplicate-send
+ * incident and the 3-day inbound outage: the system looks fine, the human
+ * gets the wrong outcome. We do not ship it, however good the code
+ * behind it is.
+ *
+ * ── FLIP THIS BACK TO `true` WHEN ────────────────────────────────────
+ * inbound reaction forwarding works again. The fix is in the bot, not
+ * here: `whatsapp-bot/src/message-id.ts` (see §1b of
+ * MDs/whatsapp-layer-independent-audit-2026-08-30.md — `msg.id` most
+ * likely arrives as a STRING rather than the `{_serialized}` object and
+ * `read()` throws it away). Verify BEFORE flipping: no new
+ * `reaction-forwarding is unavailable` lines in bot.err.log, and recent
+ * `SentNotification` rows carrying a non-null `waMessageId`. Then this
+ * one line restores the 👍 instruction; nothing else needs to change.
+ */
+export const RECRUIT_DM_MENTION_REACTIONS = false;
 
 export interface RecruitInviteCopy {
   firstName: string;
@@ -133,17 +180,24 @@ export interface RecruitInviteCopy {
   spotsLeft: number;
   /** Short magic link, or null to omit the optional last line entirely. */
   link: string | null;
+  /** Override the 👍/👎 instruction gate. Tests only — production must
+   *  read RECRUIT_DM_MENTION_REACTIONS so the copy cannot drift from
+   *  what the bot can actually receive. */
+  mentionReactions?: boolean;
 }
 
 /** The invite for an org that tracks attendance in-app. */
 export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
   const spots =
     c.spotsLeft > 0 ? ` ${c.spotsLeft} ${c.spotsLeft === 1 ? "spot" : "spots"} left.` : "";
+  const reactions = c.mentionReactions ?? RECRUIT_DM_MENTION_REACTIONS;
   const lines = [
     `👋 ${c.firstName}, we're putting the squad together for *${c.matchName}* on ${c.matchWhen}.${spots}`,
     "",
-    "Playing? Reply *IN* or tap 👍 on this message.",
-    "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌",
+    reactions ? "Playing? Reply *IN* or tap 👍 on this message." : "Playing? Just reply *IN*.",
+    reactions
+      ? "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌"
+      : "Can't make it? Reply *OUT* and I'll stop asking 🙌",
   ];
   if (c.link) lines.push("", `Prefer the app? ${c.link}`);
   return lines.join("\n");
