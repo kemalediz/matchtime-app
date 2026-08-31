@@ -21,6 +21,15 @@ import { findOrgAdminsWithPhone } from "./org";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
 import { evaluateFollowupGuard } from "./tentative-followup";
+import {
+  RECRUIT_CHASE_AFTER_MS,
+  ATTENDANCE_ISH_INTENTS,
+  buildRecruitChaseText,
+  isMatchChaseable,
+  isSociableChaseHour,
+  recruitChaseKey,
+  shouldChaseRecruit,
+} from "./recruit-chase";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
 import { resolveTeamLabels } from "./team-labels";
 import { gbp } from "./payments";
@@ -731,6 +740,11 @@ export async function computeDuePosts(
       seg.startsWith("football-gear-reminder")
     )
       return "attendance";
+    // The recruit chase-up says "still after N players", which is only
+    // meaningful where capacity is tracked. A ratings-only org has zero
+    // CONFIRMED rows by construction, so its squad would read as
+    // permanently short and every invited player would be chased.
+    if (seg.startsWith("recruit-chase")) return "attendance";
     if (seg.startsWith("bench-prompt")) return "bench";
     if (seg.startsWith("mom-")) return "momVoting";
     if (seg.startsWith("rate-")) return "playerRating";
@@ -1033,6 +1047,186 @@ async function computeForMatch(
           text,
           mentions,
         });
+      }
+    }
+  }
+
+  // ── 2-bis. Recruit chase-up DMs (2026-08-31) ────────────────────────
+  //   `inviteRecentPlayers` DMs recent players when the squad is short.
+  //   Plenty never reply at all. The owner asked for exactly ONE nudge to
+  //   those who stayed completely silent, ~3h after their OWN invite, and
+  //   never a second one. All the timing/state judgement lives in the pure
+  //   `shouldChaseRecruit` (src/lib/recruit-chase.ts); this block only
+  //   loads the rows and derives its booleans.
+  //
+  //   WHAT COUNTS AS A RESPONSE (deliberately generous — the bias is HARD
+  //   toward staying silent, because chasing someone who already said no
+  //   is the exact failure the owner asked us to avoid):
+  //     1. an Attendance row for this match in ANY status (CONFIRMED /
+  //        BENCH / DROPPED). This is the workhorse: it covers an IN or OUT
+  //        said in the group, said by DM (PR #18), tapped as a 👍 on the
+  //        invite, registered in the app, or entered by an admin.
+  //     2. a TentativeAvailability row for this match — they said maybe.
+  //     3. an AnalyzedMessage they authored in this org SINCE their invite
+  //        that the analyzer read as attendance-ish (in / out / conditional
+  //        / replacement request). Catches the case where the analyzer
+  //        understood them but wrote no Attendance row.
+  //     4. any outbound DM BotJob to their number created strictly AFTER
+  //        their invite. There is no inbound-DM log table and no migration
+  //        was on the table, so this outbound reply is the durable
+  //        fingerprint of an inbound DM: every handler in
+  //        /api/whatsapp/dm-reply answers with a BotJob DM (self-attendance
+  //        ack, "you weren't down anyway", Q&A answer, subscription ack,
+  //        clarification). It closes the gaps the first three leave — an
+  //        OUT from someone who was never registered writes no Attendance
+  //        row, and a question or a 👍 the model called `unclear` writes
+  //        nothing at all. It fails safe in the other direction too: if we
+  //        have DM'd them since for ANY reason, another DM is nagging.
+  //        The invite's own BotJob is created just BEFORE its
+  //        SentNotification row, so a strict `>` never counts it.
+  //
+  //   The chase itself is emitted as an instruction (not a BotJob), so it
+  //   can never trip signal 4 for a later match.
+  {
+    const matchLive = isMatchChaseable({
+      status: m.status,
+      attendanceDeadline: m.attendanceDeadline,
+      now,
+    });
+    const squadShort = need > 0;
+    // Cheap pre-filter: the three cheap booleans and the clock gate all
+    // have to hold before we spend a query. This block therefore costs
+    // nothing on the overwhelmingly common tick.
+    if (matchLive && squadShort && isSociableChaseHour(now)) {
+      const invites = await db.sentNotification.findMany({
+        where: { matchId, kind: "recruit-dm", targetUser: { not: null } },
+        select: { targetUser: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+        take: 100,
+      });
+      // Only the ones whose 3h is up and whose chase hasn't been claimed.
+      const ripe = invites.filter(
+        (i) =>
+          i.targetUser !== null &&
+          !sentKeys.has(recruitChaseKey(matchId, i.targetUser)) &&
+          now.getTime() - i.createdAt.getTime() >= RECRUIT_CHASE_AFTER_MS,
+      ) as { targetUser: string; createdAt: Date }[];
+
+      if (ripe.length > 0) {
+        const userIds = [...new Set(ripe.map((i) => i.targetUser))];
+        const invitedAtByUser = new Map<string, Date>();
+        for (const i of ripe) {
+          // Earliest invite wins if a user somehow has two rows.
+          const prev = invitedAtByUser.get(i.targetUser);
+          if (!prev || i.createdAt < prev) invitedAtByUser.set(i.targetUser, i.createdAt);
+        }
+        const earliestInvite = new Date(
+          Math.min(...[...invitedAtByUser.values()].map((d) => d.getTime())),
+        );
+
+        const [users, optedOutRows, attendanceRows, tentativeRows, analyzed] =
+          await Promise.all([
+            db.user.findMany({
+              where: { id: { in: userIds } },
+              select: { id: true, name: true, phoneNumber: true },
+            }),
+            db.membership.findMany({
+              where: { orgId: activity.orgId, userId: { in: userIds }, subMatchInviteDm: false },
+              select: { userId: true },
+            }),
+            // Signal 1 — any attendance row at all for this match.
+            db.attendance.findMany({
+              where: { matchId, userId: { in: userIds } },
+              select: { userId: true },
+            }),
+            // Signal 2 — they said maybe.
+            db.tentativeAvailability.findMany({
+              where: { matchId, userId: { in: userIds } },
+              select: { userId: true },
+            }),
+            // Signal 3 — an attendance-ish group message since the invite.
+            db.analyzedMessage.findMany({
+              where: {
+                orgId: activity.orgId,
+                authorUserId: { in: userIds },
+                createdAt: { gt: earliestInvite },
+                intent: { in: [...ATTENDANCE_ISH_INTENTS] },
+              },
+              select: { authorUserId: true, createdAt: true },
+            }),
+          ]);
+
+        const optedOut = new Set(optedOutRows.map((r) => r.userId));
+        const responded = new Set<string>([
+          ...attendanceRows.map((r) => r.userId),
+          ...tentativeRows.map((r) => r.userId),
+        ]);
+        for (const a of analyzed) {
+          const invitedAt = a.authorUserId ? invitedAtByUser.get(a.authorUserId) : undefined;
+          if (a.authorUserId && invitedAt && a.createdAt > invitedAt) {
+            responded.add(a.authorUserId);
+          }
+        }
+
+        // Signal 4 — we have DM'd them since their invite, which means the
+        // DM path answered something they sent us (or we have already
+        // messaged them enough).
+        const phoneToUser = new Map<string, string>();
+        for (const u of users) {
+          if (u.phoneNumber) phoneToUser.set(u.phoneNumber.replace(/^\+/, ""), u.id);
+        }
+        if (phoneToUser.size > 0) {
+          const outboundDms = await db.botJob.findMany({
+            where: {
+              orgId: activity.orgId,
+              kind: "dm",
+              phone: { in: [...phoneToUser.keys()] },
+              createdAt: { gt: earliestInvite },
+            },
+            select: { phone: true, createdAt: true },
+          });
+          for (const j of outboundDms) {
+            const uid = j.phone ? phoneToUser.get(j.phone) : undefined;
+            if (!uid) continue;
+            const invitedAt = invitedAtByUser.get(uid);
+            if (invitedAt && j.createdAt > invitedAt) responded.add(uid);
+          }
+        }
+
+        const when = format(m.date, "EEE d MMM, HH:mm");
+        // Hard cap per tick. The Pi rate-limits DMs to 1/min anyway, and
+        // after the duplicate-send incident a bounded batch is cheap
+        // insurance; the remainder simply chases on the next poll.
+        let emitted = 0;
+        for (const u of users) {
+          if (emitted >= 20) break;
+          if (!u.phoneNumber) continue; // can't DM without a number
+          const key = recruitChaseKey(matchId, u.id);
+          const decision = shouldChaseRecruit({
+            invitedAt: invitedAtByUser.get(u.id) ?? null,
+            now,
+            hasResponded: responded.has(u.id),
+            squadShort,
+            matchLive,
+            subscribed: !optedOut.has(u.id),
+            alreadyChased: sentKeys.has(key),
+          });
+          if (!decision) continue;
+          out.push({
+            kind: "dm",
+            key,
+            matchId,
+            targetUser: u.id,
+            phone: u.phoneNumber.replace(/^\+/, ""),
+            text: buildRecruitChaseText({
+              playerName: u.name,
+              activityName: activity.name,
+              matchWhen: when,
+              need,
+            }),
+          });
+          emitted++;
+        }
       }
     }
   }
