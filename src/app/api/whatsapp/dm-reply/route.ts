@@ -53,6 +53,7 @@ import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
 import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
 import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
+import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { formatLondon } from "@/lib/london-time";
 
 export async function POST(request: Request) {
@@ -665,10 +666,11 @@ export async function POST(request: Request) {
     orderBy: { createdAt: "desc" },
   });
   // ── COLD self-attendance fallback (2026-08-31) ──────────────────────
-  //   THE GAP THIS CLOSES: the recruit blast DMs a player "Fancy it? Tap
-  //   to grab a spot: <link>". Plenty of players — especially the older,
-  //   less technical half of a club — never tap. They reply "IN" to the
-  //   DM and consider themselves signed up. That reply matched none of the
+  //   THE GAP THIS CLOSES: the recruit blast DMs a player about the next
+  //   match. Plenty of players — especially the older, less technical
+  //   half of a club — reply "IN" to the DM and consider themselves
+  //   signed up. (The invite now explicitly asks for exactly that; see
+  //   buildRecruitInviteDm.) That reply matched none of the
   //   specific pending prompts above, so it was silently dropped: the
   //   player believed they had a spot and NOTHING was recorded. Same
   //   silent-failure class as the duplicate-send incident.
@@ -719,39 +721,11 @@ export async function POST(request: Request) {
       });
 
       if (resolution.decision) {
-        const priorRow = await db.attendance.findUnique({
-          where: { matchId_userId: { matchId: target.matchId, userId: user.id } },
-          select: { status: true },
-        });
-        const priorStatus =
-          priorRow?.status === "CONFIRMED" ||
-          priorRow?.status === "BENCH" ||
-          priorRow?.status === "DROPPED"
-            ? priorRow.status
-            : null;
-
-        let newStatus: "CONFIRMED" | "BENCH" | "DROPPED" | null = null;
-        let failed = false;
-        try {
-          if (resolution.decision === "in") {
-            // promoteFromBench: this is the player's OWN claim, so a
-            // bencher saying IN moves up if a slot freed. Capacity is
-            // honoured by registerAttendance exactly as in the group
-            // path — a full squad puts them on the bench, it does NOT
-            // roll them onto a later match.
-            const res = await registerAttendance(user.id, target.matchId, {
-              promoteFromBench: true,
-            });
-            newStatus = res.status === "BENCH" ? "BENCH" : "CONFIRMED";
-          } else if (priorStatus === "CONFIRMED" || priorStatus === "BENCH") {
-            await cancelAttendance(user.id, target.matchId);
-            newStatus = "DROPPED";
-          }
-        } catch (err) {
-          failed = true;
-          console.error("[dm-reply] cold self-attendance write failed:", err);
-        }
-
+        // The write + personal ack + group announcement all live in
+        // lib/out-of-band-self-attendance.ts, shared verbatim with the
+        // 👍-on-the-invite reaction path (api/whatsapp/reaction). One
+        // implementation, so capacity rules, the honest-ack golden rule
+        // and the group line can never drift between the two.
         const replyPhone =
           (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
           (
@@ -762,50 +736,23 @@ export async function POST(request: Request) {
           )?.phoneNumber?.replace(/^\+/, "") ??
           null;
 
-        // GOLDEN RULE (same as the subscription fast-path): never claim
-        // something we didn't write. A failed write gets an honest reply.
-        let ack: string;
-        if (failed) {
-          ack =
-            `Sorry, I couldn't update the squad just now. An admin will sort it — ` +
-            `try again in a bit if you like 🙏`;
-        } else if (newStatus === "CONFIRMED") {
-          ack = `✅ You're in for *${target.matchName}* on ${target.matchWhen}. See you there ⚽`;
-        } else if (newStatus === "BENCH") {
-          ack =
-            `📋 Squad's full for *${target.matchName}* on ${target.matchWhen}, so I've put you ` +
-            `first on the bench. I'll message you the moment a spot opens 🙏`;
-        } else if (newStatus === "DROPPED") {
-          ack = `👋 No worries, you're marked out for *${target.matchName}* on ${target.matchWhen}. Thanks for letting me know.`;
-        } else {
-          ack = `👍 Noted. You weren't down for *${target.matchName}* on ${target.matchWhen} anyway, so nothing's changed.`;
-        }
-        if (replyPhone) {
-          await db.botJob.create({
-            data: { orgId: target.orgId, kind: "dm", phone: replyPhone, text: ack },
-          });
-        }
-
-        // Tell the GROUP: this registration is invisible to everyone else.
-        // No-op repeats and bursts are filtered inside the announcer.
-        if (!failed) {
-          await announceOutOfBandAttendance({
-            matchId: target.matchId,
-            userId: user.id,
-            before: priorStatus,
-            after: newStatus,
-            source: "dm",
-          }).catch((err) =>
-            console.error("[dm-reply] cold self-attendance group announce failed:", err),
-          );
-        }
+        const applied = await applyOutOfBandSelfAttendance({
+          userId: user.id,
+          matchId: target.matchId,
+          orgId: target.orgId,
+          decision: resolution.decision,
+          matchName: target.matchName,
+          matchWhen: target.matchWhen,
+          source: "dm",
+          replyPhone,
+        });
 
         return NextResponse.json({
           ok: true,
           handled: "dm-self-attendance",
           decision: resolution.decision,
           via: resolution.via,
-          status: newStatus,
+          status: applied.status,
           matchId: target.matchId,
         });
       }

@@ -12,7 +12,13 @@
  * again would be noise. Nothing in the analyze route calls this.
  */
 
-export type OutOfBandSource = "dm" | "app";
+/**
+ * How the player told us. "reaction" is a 👍 or 👎 tapped on the invite
+ * DM (2026-08-31) — a distinct route worth naming in the group line,
+ * because "replied by DM" would be a small lie about a message that was
+ * never typed.
+ */
+export type OutOfBandSource = "dm" | "app" | "reaction";
 
 /** The attendance states an out-of-band write can land on. */
 export type OutOfBandStatus = "CONFIRMED" | "BENCH" | "DROPPED";
@@ -68,7 +74,8 @@ export interface OutOfBandLineInput {
   maxPlayers: number;
 }
 
-function sourceLabel(source: OutOfBandSource): string {
+function sourceLabel(source: OutOfBandSource, status: OutOfBandStatus): string {
+  if (source === "reaction") return status === "DROPPED" ? "👎 on their invite" : "👍 on their invite";
   return source === "dm" ? "replied by DM" : "from the app";
 }
 
@@ -81,11 +88,16 @@ export function buildOutOfBandAttendanceLine(input: OutOfBandLineInput): string 
   const squad = `Squad *${input.confirmedCount}/${input.maxPlayers}*.`;
 
   if (input.status === "BENCH") {
-    const how = input.source === "dm" ? "replied IN by DM" : "marked IN on the app";
+    const how =
+      input.source === "reaction"
+        ? "gave a 👍 on their invite"
+        : input.source === "dm"
+          ? "replied IN by DM"
+          : "marked IN on the app";
     return `📋 *${name}* ${how} and goes to the bench. ${squad}`;
   }
   if (input.status === "DROPPED") {
-    return `❌ *${name}* is OUT (${sourceLabel(input.source)}). ${squad}`;
+    return `❌ *${name}* is OUT (${sourceLabel(input.source, input.status)}). ${squad}`;
   }
-  return `✅ *${name}* is IN (${sourceLabel(input.source)}). ${squad}`;
+  return `✅ *${name}* is IN (${sourceLabel(input.source, input.status)}). ${squad}`;
 }

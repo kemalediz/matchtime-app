@@ -15,6 +15,7 @@ import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { formatLondon } from "./london-time";
 import { getOrgFeatures } from "./org-features";
+import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 
 /**
  * How many recent COMPLETED matches to pull attendees from.
@@ -91,6 +92,130 @@ export function looksLikeRecruitRequest(text: string): boolean {
     /\bneed\s+(?:more\s+)?players?\b/.test(t);
 
   return recruitVerbNearPeople || shortagePhrase;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * THE INVITE COPY
+ *
+ * Rewritten 2026-08-31 at the owner's instruction. The old invite led
+ * with a magic link:
+ *
+ *   "👋 Abid — we're putting the squad together for *Tuesday 7-a-side*
+ *    on Tue 1 Sept, 21:30 — 4 spots left. Fancy it?
+ *
+ *    Tap to grab a spot:
+ *    <link>"
+ *
+ * Half of this club is older and not technical. They do not tap links;
+ * they reply, or they tap the emoji their thumb is already near. So the
+ * ASK now leads and the link is demoted to a trailing option.
+ *
+ * SAYING NO IS AS EASY AS SAYING YES (owner, same day). A chase-up DM
+ * for silent players is being built alongside this; a player who cannot
+ * make it but never answers gets chased for no reason. Offering *OUT* as
+ * plainly as *IN* is what keeps the club considerate rather than naggy —
+ * hence "I'll stop asking".
+ *
+ * WHY THE DM DOES NOT MENTION 👍 (2026-08-31, and this is the important
+ * one): see RECRUIT_DM_MENTION_REACTIONS below. The bot can HANDLE a
+ * reaction; it currently cannot RECEIVE one. Instructing a player to do
+ * something that silently does nothing is the exact failure this club
+ * just lost a week to, so the instruction is gated even though the
+ * capability behind it is live.
+ *
+ * The link is KEPT rather than dropped: some players do use the app, and
+ * it doubles as their sign-in path (it is a magic link, so tapping it is
+ * how a player gets an authenticated session at all).
+ *
+ * House style: no em dashes, no en dashes, no slashes in prose. Only the
+ * URL contains a slash.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * Does the invite TELL players they can answer with a 👍 or a 👎?
+ *
+ * ⚠️ FALSE, deliberately, and it is not a style choice.
+ *
+ * The handling is built, tested and live (src/lib/recruit-reaction.ts):
+ * an unprompted 👍 on an invite DM registers the player, a 👎 drops them.
+ * What is NOT working is the bot's ability to RECEIVE a reaction at all.
+ * whatsapp-web.js's injected page code is out of step with the live
+ * WhatsApp Web build, so `msgId._serialized` is unreadable on the inbound
+ * `message_reaction` event and the bot discards it before the server is
+ * ever called. Evidence, on the Pi, 2026-08-31:
+ *
+ *   $ grep -c "reaction-forwarding is unavailable" ~/matchtime-bot/bot.err.log
+ *   8                      # and zero successful reaction forwards, ever
+ *
+ * The outbound half is broken too: `sendMessage` returns a Message whose
+ * id we cannot read, so `SentNotification.waMessageId` is NULL on 0 of
+ * the last 17 dispatches. Bench-offer 👍 is already dead for the same
+ * reason.
+ *
+ * So an invite saying "tap 👍" would ask a player to do something that
+ * does absolutely nothing, and they would believe they had answered.
+ * That is precisely the silent-failure class behind the duplicate-send
+ * incident and the 3-day inbound outage: the system looks fine, the human
+ * gets the wrong outcome. We do not ship it, however good the code
+ * behind it is.
+ *
+ * ── FLIP THIS BACK TO `true` WHEN ────────────────────────────────────
+ * inbound reaction forwarding works again. The fix is in the bot, not
+ * here: `whatsapp-bot/src/message-id.ts` (see §1b of
+ * MDs/whatsapp-layer-independent-audit-2026-08-30.md — `msg.id` most
+ * likely arrives as a STRING rather than the `{_serialized}` object and
+ * `read()` throws it away). Verify BEFORE flipping: no new
+ * `reaction-forwarding is unavailable` lines in bot.err.log, and recent
+ * `SentNotification` rows carrying a non-null `waMessageId`. Then this
+ * one line restores the 👍 instruction; nothing else needs to change.
+ */
+export const RECRUIT_DM_MENTION_REACTIONS = false;
+
+export interface RecruitInviteCopy {
+  firstName: string;
+  matchName: string;
+  /** "EEE d MMM, HH:mm" London. */
+  matchWhen: string;
+  /** Open slots. 0 means "suppressed or full" and the phrase is omitted. */
+  spotsLeft: number;
+  /** Short magic link, or null to omit the optional last line entirely. */
+  link: string | null;
+  /** Override the 👍/👎 instruction gate. Tests only — production must
+   *  read RECRUIT_DM_MENTION_REACTIONS so the copy cannot drift from
+   *  what the bot can actually receive. */
+  mentionReactions?: boolean;
+}
+
+/** The invite for an org that tracks attendance in-app. */
+export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
+  const spots =
+    c.spotsLeft > 0 ? ` ${c.spotsLeft} ${c.spotsLeft === 1 ? "spot" : "spots"} left.` : "";
+  const reactions = c.mentionReactions ?? RECRUIT_DM_MENTION_REACTIONS;
+  const lines = [
+    `👋 ${c.firstName}, we're putting the squad together for *${c.matchName}* on ${c.matchWhen}.${spots}`,
+    "",
+    reactions ? "Playing? Reply *IN* or tap 👍 on this message." : "Playing? Just reply *IN*.",
+    reactions
+      ? "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌"
+      : "Can't make it? Reply *OUT* and I'll stop asking 🙌",
+  ];
+  if (c.link) lines.push("", `Prefer the app? ${c.link}`);
+  return lines.join("\n");
+}
+
+/**
+ * The invite for a MoM/ratings-only org. There is no in-app squad, so an
+ * RSVP link would do nothing and the group is where they join.
+ */
+export function buildRecruitGroupInviteDm(c: {
+  firstName: string;
+  matchName: string;
+  matchWhen: string;
+}): string {
+  return (
+    `👋 ${c.firstName}, we're putting the squad together for *${c.matchName}* on ${c.matchWhen}. ` +
+    `Fancy it? Just reply *IN* in the group and you're sorted 🙌`
+  );
 }
 
 export interface RecruitResult {
@@ -242,25 +367,31 @@ export async function inviteRecentPlayers(
     const first = c.name?.split(" ")[0] ?? "there";
     let text: string;
     if (attendanceOn) {
-      // Org tracks attendance in-app → an RSVP link works.
+      // Org tracks attendance in-app → the magic link is worth offering,
+      // as a trailing option and as this player's sign-in path.
       const token = signMagicLinkToken({
         userId: c.id,
         purpose: "sign-in",
         nextPath: `/matches/${next.id}`,
         ttlSeconds: MAGIC_LINK_TTL.actionNudge,
       });
-      const shortLine = need > 0 ? ` — ${need} ${need === 1 ? "spot" : "spots"} left` : "";
-      text =
-        `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}${shortLine}. ` +
-        `Fancy it?\n\nTap to grab a spot:\n${await buildShortMagicLinkUrl(token)}`;
+      text = buildRecruitInviteDm({
+        firstName: first,
+        matchName: next.activity.name,
+        matchWhen,
+        spotsLeft: need,
+        link: await buildShortMagicLinkUrl(token),
+      });
     } else {
       // MoM/ratings-only org (no in-app squad) → an RSVP link does nothing.
       // Players join by posting in the group, so nudge them there.
-      text =
-        `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}. ` +
-        `Fancy it? Just reply *IN* in the group and you're sorted 🙌`;
+      text = buildRecruitGroupInviteDm({
+        firstName: first,
+        matchName: next.activity.name,
+        matchWhen,
+      });
     }
-    await db.botJob.create({
+    const job = await db.botJob.create({
       data: {
         orgId,
         kind: "dm",
@@ -271,6 +402,30 @@ export async function inviteRecentPlayers(
     await db.sentNotification.create({
       data: { key, kind: "recruit-dm", matchId: next.id, targetUser: c.id },
     });
+    // LINK ROW — how a 👍/👎 on this very DM finds its way back to this
+    // player and this match. The reaction event carries only the WhatsApp
+    // message id; /ack stamps that onto the `botjob-<id>` claim row, and
+    // this row turns that BotJob id into (matchId, userId). Without it we
+    // would be guessing from a phone number and a timestamp, and a 👍 on
+    // a payment chase would silently sign someone up. See
+    // src/lib/recruit-reaction.ts. Best-effort: a failure here loses the
+    // reaction shortcut, never the invite itself.
+    await db.sentNotification
+      .create({
+        data: {
+          key: recruitDmLinkKey(job.id),
+          kind: RECRUIT_DM_LINK_KIND,
+          matchId: next.id,
+          targetUser: c.id,
+        },
+      })
+      .catch((err) => {
+        console.error(
+          `[recruit] could not link BotJob ${job.id} to the invite for ${c.id} — ` +
+            `a 👍 on that DM will not be mappable. The reply path is unaffected.`,
+          err,
+        );
+      });
     invitedNames.push(c.name ?? "Player");
   }
 
