@@ -127,6 +127,24 @@ export function actionRequiresTag(v: GateVerdict): boolean {
   // change MT records (feeds MoM/ratings), closer to self-attendance than
   // to an answer; it stays tag-free (and is separately permission-gated
   // to participants/admins by the score path).
+  //
+  // "bring_guests_vague" stays listed as a BACKSTOP only. The analyze
+  // route peels every unnamed-guest offer off BEFORE this gate (see the
+  // UNNAMED-GUEST NAME ASK block in api/whatsapp/analyze/route.ts) and
+  // decides it with shouldAskForGuestName in lib/guest-name-ask.ts —
+  // the one tag-free thing MT may SAY rather than DO.
+  //
+  // Why that is a narrow exception and not a hole in the contract
+  // (Kemal, 2026-08-31): nobody has been named, so the branch is
+  // structurally incapable of writing attendance — its blast radius is
+  // one sentence. Against that, staying silent cost the owner a manual
+  // "yes pls, can you share the name?" for a guest who was being
+  // offered to him. The chattiness the contract exists to prevent is
+  // held back by four separate gates in shouldAskForGuestName: the
+  // message must READ as an offer (not banter that mentions a mate),
+  // the squad must actually have room, the sender must be a resolved
+  // member, and each player gets AT MOST ONE ask per match, forever.
+  // Anything that fails those gets today's silence.
   const ACTIONY_INTENTS = new Set([
     "question",
     "generate_teams_request",

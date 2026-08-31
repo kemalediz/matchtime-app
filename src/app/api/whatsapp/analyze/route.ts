@@ -83,6 +83,14 @@ import {
   looksLikeHypotheticalOrPast,
   offerIsAboutSomeoneElse,
 } from "@/lib/interaction-contract";
+import {
+  isVagueGuestOfferVerdict,
+  stripPlaceholderGuests,
+  shouldAskForGuestName,
+  renderGuestNameAsk,
+  guestNameAskKey,
+  GUEST_NAME_ASK_KIND,
+} from "@/lib/guest-name-ask";
 
 interface InboundMessage {
   waMessageId: string;
@@ -825,6 +833,130 @@ export async function POST(request: Request) {
           // you on the bench") is now false. Stay silent.
           { ...verdict, intent: "noise", registerAttendance: null, react: null, reply: null };
       verdicts[i] = verdict;
+    }
+
+    // ── INTERACTION CONTRACT — UNNAMED-GUEST NAME ASK ────────────────
+    //    The other half of the Amir incident. #26 stopped MT registering
+    //    the SENDER for "@Kemal Ediz my brother can play if needed" —
+    //    correct — but the result was SILENCE: bring_guests_vague is in
+    //    ACTIONY_INTENTS, so an untagged one is forced to noise. Kemal
+    //    had to type "yes pls, can you share the name?" himself before
+    //    the guest could be added, and asked MT to do the asking.
+    //
+    //    This is a QUESTION, never a write. Nobody has been named, so
+    //    there is nothing to register; the copy is composed by CODE
+    //    (lib/guest-name-ask.ts) from DB facts, per the direction
+    //    lib/format-switch.ts set. The branch is TERMINAL on purpose:
+    //    every unnamed-guest verdict leaves here with a reply or with
+    //    silence, and neither can reach an apply path. That is also what
+    //    makes "at most one ask per player per match, whatever they say
+    //    afterwards" hold — a deduped repeat cannot fall through to the
+    //    model's own (asking) reply.
+    //
+    //    Compute vagueness BEFORE stripping placeholders, because the
+    //    ghost-user verdict IS the placeholder registerFor.
+    const vagueGuestOffer = isVagueGuestOfferVerdict(verdict);
+
+    //    Placeholder ADDs ("my brother", "Amir's brother", "someone")
+    //    can only ever provision a ghost member — the analyzer emitted
+    //    registerFor:[{name:"Amir's brother"}] on SIX of six runs against
+    //    the real pre-incident squad state (MDs/analyzer-redesign-
+    //    2026-08-31.md §4.1). Drop them wherever they appear, including
+    //    alongside a real name. Non-IN placeholders are left alone: this
+    //    must never eat a drop.
+    {
+      const entries = verdict.registerFor ?? [];
+      const kept = stripPlaceholderGuests(entries);
+      if (kept.length !== entries.length) {
+        const dropped = entries
+          .filter((e) => !kept.includes(e))
+          .map((e) => e.name)
+          .join(", ");
+        console.warn(
+          `[analyze] guest-name-ask: dropped placeholder registerFor add(s) [${dropped}] on ` +
+            `"${(msg.body || "").slice(0, 60)}" (${msg.waMessageId}) — a relationship is not a name ` +
+            `and would provision a ghost member.`,
+        );
+        verdict = { ...verdict, registerFor: kept.length > 0 ? kept : null };
+        verdicts[i] = verdict;
+      }
+    }
+
+    if (vagueGuestOffer) {
+      const matchId = nextMatchForReply?.id ?? null;
+      const askKey =
+        matchId && sender.userId ? guestNameAskKey(matchId, sender.userId) : null;
+      const alreadyAsked = askKey
+        ? !!(await db.sentNotification.findUnique({
+            where: { key: askKey },
+            select: { id: true },
+          }))
+        : false;
+      // Squad size read FRESH — earlier verdicts in this same batch may
+      // already have filled slots, and the ask must never be composed
+      // from the model's idea of the roster.
+      const confirmedCount = matchId
+        ? await db.attendance.count({ where: { matchId, status: "CONFIRMED" } })
+        : 0;
+      const decision = shouldAskForGuestName({
+        body: msg.body,
+        tagged: messageTagsBot(msg),
+        senderKnown: !!sender.userId,
+        attendanceOn,
+        hasActiveMatch: !!matchId,
+        confirmedCount,
+        maxPlayers: nextMatchForReply?.maxPlayers ?? 0,
+        alreadyAsked,
+      });
+
+      let askReply: string | null = null;
+      if (decision.ask && askKey && matchId && sender.userId) {
+        askReply = renderGuestNameAsk({
+          askerName: sender.name ?? msg.authorName ?? null,
+          body: msg.body,
+        });
+        // Claim the one-ask slot BEFORE handing the reply back. The
+        // unique key makes a concurrent batch lose the race and stay
+        // silent, which is the right way round: under-asking is a
+        // no-op, double-asking is the nagging Kemal hates.
+        try {
+          await db.sentNotification.create({
+            data: {
+              key: askKey,
+              kind: GUEST_NAME_ASK_KIND,
+              matchId,
+              targetUser: sender.userId,
+            },
+          });
+        } catch (err) {
+          console.warn(
+            `[analyze] guest-name-ask: lost the dedupe race for ${askKey} — staying silent.`,
+            err,
+          );
+          askReply = null;
+        }
+      }
+
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: askReply ? "fast-path" : "ignored",
+        intent: "bring_guests_vague",
+        action: askReply ? "guest-name-ask" : "none",
+        confidence: verdict.confidence,
+        reasoning: `guest-name-ask: ${decision.reason}`,
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      results.push({
+        waMessageId: msg.waMessageId,
+        handledBy: askReply ? "fast-path" : "ignored",
+        intent: askReply ? "bring_guests_vague" : "noise",
+        react: null,
+        reply: askReply,
+      });
+      continue; // TERMINAL — no attendance write is reachable from here
     }
 
     // ── INTERACTION CONTRACT — @Match Time tag gate ──────────────────
