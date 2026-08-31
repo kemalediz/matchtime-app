@@ -31,6 +31,11 @@ import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
 import { resolveTeamLabels } from "./team-labels";
 import {
+  BENCH_PROMPT_MENTION_REACTIONS,
+  buildBenchAskedLine,
+  benchClaimPhrasingExample,
+} from "./bench-offer-copy";
+import {
   buildFormatSwitchFacts,
   renderFormatSwitchContext,
 } from "./format-switch";
@@ -201,7 +206,7 @@ export interface AnalysisBatchInput {
   history: BatchInputHistory[];
 }
 
-const SYSTEM_PROMPT = `You are MatchTime, a WhatsApp bot that helps run a weekly amateur match (typically football). You watch a group chat and classify every message. The bot executes your output directly, so be precise.
+export const SYSTEM_PROMPT = `You are MatchTime, a WhatsApp bot that helps run a weekly amateur match (typically football). You watch a group chat and classify every message. The bot executes your output directly, so be precise.
 
 You respond with JSON only — no markdown fences, no prose. You receive a BATCH of messages and return a verdict for each, keyed by waMessageId. Messages are oldest-first.
 
@@ -324,7 +329,7 @@ Rules:
 BENCH CONFIRMATION FLOW (CRITICAL — applies to the OPEN-CALL case ONLY):
 SCOPE — this whole flow applies ONLY to the OPEN-CALL case: a slot opens (a player drops) and NO specific current-bench player was named to take it, so the slot is offered to the bench at large. When someone explicitly NAMES a CURRENT BENCH player to take a slot — an admin directing a swap, OR a confirmed player handing over their own slot (SELF-REPLACE) — that is the PROMOTE FROM BENCH case, NOT this flow: follow the PROMOTE FROM BENCH rule above (emit the IN for the named bench player, announce them as IN / squad back to full, NO hedge), and IGNORE everything in this BENCH CONFIRMATION FLOW block. Do not route a named-bench-player swap into this flow.
 
-For the OPEN-CALL case only: when a player drops (intent "out", "replacement_request" type (a), or a registerFor entry with action:"OUT") and NO specific bench player was named, the SERVER does NOT auto-promote a bench player. Instead it DMs the first bench player a 👍/👎 prompt and waits for their confirmation (≤ 2h). Only then are they marked CONFIRMED in a follow-up post.
+For the OPEN-CALL case only: when a player drops (intent "out", "replacement_request" type (a), or a registerFor entry with action:"OUT") and NO specific bench player was named, the SERVER does NOT auto-promote a bench player. Instead it tags the bench and waits for one of them to ${BENCH_PROMPT_MENTION_REACTIONS ? "confirm (a 👍 or an IN)" : "reply IN"}. Only then are they marked CONFIRMED in a follow-up post.
 
 For the OPEN-CALL case only, your reply text MUST NEVER claim a bench player has moved up, stepped up, taken the slot, or replaced anyone — because nobody specific was named, so you genuinely don't know who'll take it. This does NOT apply when a specific current-bench player was named (that's PROMOTE FROM BENCH — announce them as IN). In particular, when an admin says "swap X with Y" and Y is NOT a current bench player, do not preemptively register Y as confirmed (see the "Admin swap/replace" paragraph below); but when Y IS a current bench player, PROMOTE FROM BENCH governs and you DO confirm Y.
 
@@ -338,7 +343,7 @@ Forbidden phrasings (OPEN-CALL case only — when NO specific bench player was n
 
 Required phrasing when someone drops and there IS at least one bench player:
   ✓ "[lead acknowledging the drop]. Asking <first-bench-name> to step up — squad is <confirmedCount-1>/<maxPlayers> until they confirm."
-  CRITICAL — the bench player is asked by an IN-GROUP @mention (a 👍/👎 prompt the bot posts to this group), NOT a private DM. NEVER write "in DMs", "via DM", "I've DM'd them", "messaged them privately" or anything implying a private message — that is factually FALSE (the bot does not DM bench players) and players who receive no DM rightly call it misinformation. Say "asking <name>", "tagged <name> here", "<name>, you're up — 👍/👎 above" — describe the in-group tag, never a DM.
+  CRITICAL — the bench player is asked by an IN-GROUP @mention (${BENCH_PROMPT_MENTION_REACTIONS ? "a 👍/👎 prompt the bot posts to this group" : "the bot posts the offer to this group and asks them to reply IN"}), NOT a private DM. NEVER write "in DMs", "via DM", "I've DM'd them", "messaged them privately" or anything implying a private message — that is factually FALSE (the bot does not DM bench players) and players who receive no DM rightly call it misinformation. Say "asking <name>", "tagged <name> here", ${benchClaimPhrasingExample()} — describe the in-group tag, never a DM.
   Numbered roster shows the squad WITHOUT the dropped player (use 🥁 for the now-empty slot).
 
 When there is NO bench player and the squad is now short, treat as the standard SHORT-SQUAD RESPONSE (see below) — don't reference any bench.
@@ -731,7 +736,7 @@ export function buildMatchContextBlock(args: {
     lines.push(
       "",
       `OPEN BENCH SLOT: ${o.count} slot${o.count === 1 ? "" : "s"} open for this match${repl}.`,
-      `Bench (any ONE of these can claim it — first to say 👍 / IN / yes wins; nobody is eliminated): ${
+      `Bench (any ONE of these can claim it — first to reply IN or yes wins; nobody is eliminated): ${
         o.benchNames.length ? o.benchNames.join(", ") : "(bench empty)"
       }`,
     );
@@ -1622,8 +1627,8 @@ export function enforceCanonicalRoster(
  * been promoted to confirmed ("Aydın moves up from the bench", "Y
  * stepped in", "we're still 14/14"). The actual flow is async — the
  * server queues a PendingBenchConfirmation, DMs the bench player, and
- * only marks them CONFIRMED on their 👍. Until then the squad is
- * genuinely short.
+ * only marks them CONFIRMED when one of them claims the slot. Until
+ * then the squad is genuinely short.
  *
  * Called only when there's an OPEN PendingBenchConfirmation against
  * the relevant match. Strips the false-promotion sentence (heuristic
@@ -1639,7 +1644,7 @@ export function rewriteOverconfidentPromotion(
     maxPlayers: number;
     /** Current bench attendance count. When 0 there's literally no one
      *  to step up, so don't prepend the "Asking the bench" line — it
-     *  reads as delusional ("tagged here with a 👍/👎" when nobody was).
+     *  reads as delusional ("tagged here" when nobody was).
      *  We still strip false "X moves up" phrases the LLM may have
      *  hallucinated. Sutton 2026-05-26: 4 dropped at once on an empty
      *  bench, the open BenchSlotOffers piled "Asking the bench — 10/14"
@@ -1684,8 +1689,10 @@ export function rewriteOverconfidentPromotion(
   // posts to the group, not a DM). Saying "in DMs" was misinformation
   // — a bench player who got no DM (Erdal, 2026-05-18) is right to
   // call it out. Word it to match what actually happens: they're
-  // tagged in the group with a 👍/👎 prompt.
-  const honest = `Asking *${benchName}* to step up — they've been tagged here with a 👍/👎. Squad is *${confirmedCount}/${maxPlayers}* until they confirm.`;
+  // tagged in the group and asked to reply IN (see
+  // BENCH_PROMPT_MENTION_REACTIONS in src/lib/bench-offer-copy.ts for
+  // why the 👍 instruction is currently withdrawn).
+  const honest = buildBenchAskedLine({ benchName, confirmedCount, maxPlayers });
 
   // Drop the line in just before any "*Playing tonight:*" / "*Squad:*"
   // header, or at the start when there isn't one.

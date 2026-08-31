@@ -20,7 +20,8 @@
     "test:sim:live:tentative": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/tentative-followup-live.spec.ts",
     "test:sim:live:adds": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/auto-register-adds-live.spec.ts",
     "test:sim:live:format": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/format-switch-live.spec.ts",
-    "test:sim:live:dm-in": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/dm-self-attendance-live.spec.ts"
+    "test:sim:live:dm-in": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/dm-self-attendance-live.spec.ts",
+    "test:sim:live:bench": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/bench-offer-live.spec.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
