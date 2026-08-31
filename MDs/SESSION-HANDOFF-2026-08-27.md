@@ -85,6 +85,7 @@ healthy** and the first pass of diagnosis found nothing.
   THREW is deliberately not released — it may have landed.
 - **Circuit breaker.** `MAX_GROUP_MESSAGES_PER_HOUR = 10` per org (normal
   traffic is 1-2 group posts/day). Trips → nothing claimed, logs CRITICAL.
+  **SUPERSEDED 2026-08-31 — see "Outbound guards" below.**
 - **`scripts/deploy-pi.sh`** — the ONLY sanctioned way to restart the bot.
   Stops the unit, kills orphans by PROCESS PATTERN (cgroup membership is
   exactly what orphans escape), verifies zero, starts once, verifies
@@ -93,6 +94,58 @@ healthy** and the first pass of diagnosis found nothing.
 - **Startup instance lock** (`whatsapp-bot/src/instance-lock.ts`):
   liveness-verified pidfile, steals dead locks. Under systemd it exits **0**
   so `Restart=on-failure` cannot cause a respawn storm.
+
+### Outbound guards, reshaped (2026-08-31)
+
+The raw volume cap above was the wrong shape and has been replaced. It
+gagged the bot exactly when a group was busiest — match day, players
+dropping out, questions flying — and every message it suppressed was
+legitimate. Normal traffic is 1-2 group posts/day, but a chaotic Tuesday
+can plausibly clear 10/hour with entirely real replies.
+
+The insight: **a runaway sends many copies of the SAME message; a busy
+match day sends many DIFFERENT messages.** So guard on repetition, not
+volume.
+
+| Guard | Constant | Behaviour |
+|---|---|---|
+| **Repetition** (the real protection) | `MAX_IDENTICAL_GROUP_MESSAGES = 3` over `REPETITION_WINDOW_MS = 5 min` | The same normalised group text a 4th time inside 5 minutes is refused. Per-message: only the repeat is dropped, every other post still goes. Logs CRITICAL. |
+| **Volume ceiling** (last resort) | `MAX_GROUP_MESSAGES_PER_HOUR = 40` over the same 1-hour window | Should never fire. If it does it is an incident, not a tuning problem. Whole-org stop, logs CRITICAL. |
+
+Both apply to `GROUP_DIRECTED_KINDS` only. **DMs are gated by neither** —
+a player asking a question or dropping out must always get their reply,
+and identical DM text across many players is completely normal.
+
+**Where the recent text comes from, with no migration.** `SentNotification`
+has no body column and adding one was not on the table. Every dispatched
+group post now also writes a ledger row into the table we already write
+to:
+
+```
+key  = txtlog:<orgId>:<sha256-16 of normalised text>:<instructionKey>
+kind = outbound-text-log
+```
+
+It is inert to every existing reader: the scheduler's dedupe set only
+loads rows joined to this org's matches or keyed `org-<id>:`; the hourly
+count filters on `kind IN GROUP_DIRECTED_KINDS` and this kind is
+deliberately not one of them; poll-vote matches on `waMessageId`, null
+here; `planAckSideEffects` has no `txtlog:` branch. `matchId` is left
+null on purpose, which does mean `wipe-org` will not sweep these (same
+as the existing `botjob-` rows).
+
+Both guards are **best-effort and fail open**: if the ledger read throws
+the guard degrades to within-batch only, and if the ledger write throws
+the message still goes out. A broken guard must never silence a
+customer's group.
+
+Normalisation is trim → collapse whitespace runs → lowercase. Lowercasing
+costs nothing in detection (a runaway re-renders one template, so its
+copies never differ in case) and catches near-duplicates that differ only
+by casing.
+
+Decision logic is pure and unit-tested (`evaluateRepetition`,
+`evaluateCircuitBreaker`); the DB reads/writes live in the route.
 
 ### Diagnostic gotchas worth remembering
 
