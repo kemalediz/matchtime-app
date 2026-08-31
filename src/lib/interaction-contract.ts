@@ -170,3 +170,78 @@ export function looksLikeHypotheticalOrPast(body: string): boolean {
 
   return false;
 }
+
+/** People a member can offer up who are NOT the member. Deliberately a
+ *  closed list of PERSON nouns — "my back", "my car", "my shift" must
+ *  never match. */
+const THIRD_PARTY_NOUN =
+  "brothers?|sisters?|bro|sis|mates?|friends?|cousins?|sons?|dad|father|uncle|nephew|" +
+  "colleagues?|boys?|lads?|guys?|pals?|neighbou?rs?|flatmates?|housemates?|team-?mates?|kids?";
+
+/** The message's SUBJECT is someone else: it opens with a possessive
+ *  person ("my brother", "Dan's mate", "his cousin"). Leading @mentions
+ *  and punctuation are stripped first — the production message was
+ *  "@Kemal Ediz my brother can play if needed". */
+const THIRD_PARTY_SUBJECT = new RegExp(
+  `^(?:my|his|her|their|[a-z][a-z'’-]*'s)\\s+(?:${THIRD_PARTY_NOUN})\\b`,
+  "i",
+);
+
+/** Any first-person pronoun anywhere — the sender putting THEMSELVES in
+ *  the picture ("me and my brother", "my mate and I", "put us down"). */
+const FIRST_PERSON = /\b(?:i|me|myself|we|us|our)\b/i;
+
+/** Words that can legitimately OPEN the sentence we're testing, so they
+ *  must never be swallowed as part of a leading @mention. */
+const SUBJECT_STARTER = /^(?:my|his|her|their|our|i|im|me|we|us)\b/i;
+
+/** Drop leading "@Handle Surname" mentions — the production message was
+ *  "@Kemal Ediz my brother can play if needed", and the subject we care
+ *  about only starts after them. One capitalised token is consumed per
+ *  mention (the surname), never a word that could start the sentence. */
+function stripLeadingMentions(raw: string): string {
+  const tokens = raw.trim().split(/\s+/);
+  let i = 0;
+  let afterMention = false;
+  while (i < tokens.length) {
+    const tk = tokens[i];
+    if (tk.startsWith("@")) {
+      afterMention = true;
+      i++;
+      continue;
+    }
+    if (afterMention && /^\p{Lu}/u.test(tk) && !SUBJECT_STARTER.test(tk)) {
+      afterMention = false;
+      i++;
+      continue;
+    }
+    break;
+  }
+  return tokens.slice(i).join(" ");
+}
+
+/**
+ * Deterministic seatbelt: is this message an offer about a THIRD PARTY
+ * playing, with the sender nowhere in it?
+ *
+ *   "my brother can play if needed"          → true  (the production bug)
+ *   "my mate could fill in if you're short"  → true
+ *   "me and my brother are both in"          → false (sender included)
+ *   "in, my mate's coming too"               → false (sender is the subject)
+ *   "I'll be the 14th if you're short"       → false (a real self offer)
+ *
+ * Callers use it ONLY to strip a self IN/BENCH write the LLM should never
+ * have emitted (see the analyze route). It is deliberately narrow on both
+ * axes — the third-party phrase must be the SUBJECT of the message, and
+ * a single first-person pronoun anywhere disarms it — because wrongly
+ * dropping a genuine self-registration is worse than the bug it guards.
+ */
+export function offerIsAboutSomeoneElse(body: string): boolean {
+  const t = stripLeadingMentions(body ?? "")
+    // Leading punctuation / emoji, so the real subject lands at index 0.
+    .replace(/^[^\p{L}]+/u, "")
+    .trim();
+  if (!t) return false;
+  if (FIRST_PERSON.test(t)) return false;
+  return THIRD_PARTY_SUBJECT.test(t);
+}

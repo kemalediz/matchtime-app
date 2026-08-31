@@ -80,6 +80,7 @@ import {
   messageTagsBot,
   actionRequiresTag,
   looksLikeHypotheticalOrPast,
+  offerIsAboutSomeoneElse,
 } from "@/lib/interaction-contract";
 
 interface InboundMessage {
@@ -787,6 +788,41 @@ export async function POST(request: Request) {
         react: null,
         reply: null,
       };
+      verdicts[i] = verdict;
+    }
+
+    // ── INTERACTION CONTRACT — third-party-subject self seatbelt ─────
+    //    Amir, 2026-08-30: "@Kemal Ediz my brother can play if needed".
+    //    The analyzer matched the STANDING-OFFER shape of conditional_in
+    //    ("if needed" = contingent on squad state) and benched AMIR, who
+    //    was never playing; "Bench (1): 1. Amir" then went out to the
+    //    whole club in the 17:00 roster. conditional_in is tag-free self
+    //    attendance, so nothing downstream questioned the write.
+    //
+    //    The prompt now makes the subject check explicit, but a wrong
+    //    self write here is silent and public, so it gets a deterministic
+    //    backstop too. Narrow on purpose — it only fires when a self
+    //    IN/BENCH write already exists AND the message OPENS with a
+    //    third-party person AND contains no first-person pronoun at all
+    //    (see offerIsAboutSomeoneElse). A third-party registerFor is left
+    //    untouched: naming a guest is a different, working path.
+    if (
+      (verdict.registerAttendance === "IN" ||
+        verdict.registerAttendance === "BENCH") &&
+      offerIsAboutSomeoneElse(msg.body)
+    ) {
+      const addsOthers = !!(verdict.registerFor && verdict.registerFor.length > 0);
+      console.warn(
+        `[analyze] interaction-contract: third-party-subject offer "${(msg.body || "").slice(0, 60)}" ` +
+          `— suppressing the SENDER's ${verdict.registerAttendance} write (${msg.waMessageId}). ` +
+          `Reasoning was: ${verdict.reasoning}`,
+      );
+      verdict = addsOthers
+        ? // The named-guest add stands; only the sender's own row goes.
+          { ...verdict, registerAttendance: null }
+        : // Nothing left to act on, and any reply the model wrote ("putting
+          // you on the bench") is now false. Stay silent.
+          { ...verdict, intent: "noise", registerAttendance: null, react: null, reply: null };
       verdicts[i] = verdict;
     }
 
