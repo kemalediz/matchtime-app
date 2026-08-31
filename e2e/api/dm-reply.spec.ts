@@ -103,6 +103,61 @@ test("unknown sender is ignored — no write, no ack", async ({ request, db }) =
   expect(await db.count(`SELECT COUNT(*) FROM "BotJob"`)).toBe(before);
 });
 
+// ── Collector impersonation via pushname (2026-08-31) ─────────────────
+//   A DM whose phone we can't resolve must stay UNKNOWN. WhatsApp
+//   pushname is chosen by the sender, so resolving an unknown sender to
+//   the org's money collector on a name match handed a stranger the fee
+//   -setting authority: name yourself after the collector, DM an amount,
+//   confirm, and the whole squad gets billed whatever you said.
+
+async function postNamedDm(request: APIRequestContext, authorName: string, body: string) {
+  const res = await request.post("/api/whatsapp/dm-reply", {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+    // phone empty = an @lid DM the bot couldn't attach a number to.
+    data: { phone: "", body, waMessageId: `e2e-dm-${Date.now()}-${++n}`, authorName },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  return res.json();
+}
+
+const rateMatchFee = (db: import("../helpers/test-db").TestDb) =>
+  db.one<{ feePendingConfirm: number | null; feePerPlayer: number | null }>(
+    `SELECT "feePendingConfirm", "feePerPlayer" FROM "Match" WHERE id = $1`,
+    [MATCH.rate],
+  );
+
+test("an unverified sender named after the collector CANNOT set the match fee", async ({
+  request,
+  db,
+}) => {
+  const before = await db.count(`SELECT COUNT(*) FROM "BotJob"`);
+
+  // "Colin Collector" is the fixture money collector; a first-name match
+  // was enough for the old fallback.
+  const json = await postNamedDm(request, "Colin Cheeky", "£50 each");
+
+  expect(json.ignored).toBe("unknown-sender");
+  expect(json.handled).toBeUndefined();
+
+  const fee = await rateMatchFee(db);
+  expect(fee?.feePendingConfirm).toBeNull();
+  expect(fee?.feePerPlayer).toBeNull();
+  // No confirm prompt, no pay-link blast — nothing queued at all.
+  expect(await db.count(`SELECT COUNT(*) FROM "BotJob"`)).toBe(before);
+});
+
+test("…nor confirm one, nor blast pay links", async ({ request, db }) => {
+  const before = await db.count(`SELECT COUNT(*) FROM "BotJob"`);
+  const json = await postNamedDm(request, "Colin", "yes send them");
+  expect(json.ignored).toBe("unknown-sender");
+  expect(await db.count(`SELECT COUNT(*) FROM "BotJob"`)).toBe(before);
+  const released = await db.count(
+    `SELECT COUNT(*) FROM "Match" WHERE id = $1 AND "paymentLinksReleasedAt" IS NOT NULL`,
+    [MATCH.rate],
+  );
+  expect(released).toBe(0);
+});
+
 // ── COLD self-attendance fallback (2026-08-31) ─────────────────────────
 //   A player replying "IN" / "OUT" to a recruit DM, with no pending prompt
 //   to attribute it to, must be registered against the SAME match the group

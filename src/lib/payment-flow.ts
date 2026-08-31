@@ -6,14 +6,17 @@
  *   releaseMatchPayments(matchId)  — once the fee is confirmed, DM every
  *     confirmed player a link to /pay/<matchId> and stamp
  *     paymentLinksReleasedAt (gates the chaser).
- *   applyCheckoutPaid(session)     — webhook handler: a Stripe Checkout
- *     completed → mark that player's Attendance paid.
+ *   applyCheckoutEvent(type, session) — webhook handler: applies a
+ *     Stripe Checkout event to that player's Attendance. Only a
+ *     genuinely-settled payment marks them paid (Pay by Bank settles
+ *     asynchronously and can fail after the session completes).
  */
 
 import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { gbp, parseFeeReply } from "./payments";
+import { decideCheckoutEvent } from "./payment-outcome";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -69,19 +72,87 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
   return queued;
 }
 
-/** Webhook: a Checkout Session completed. Mark the player's attendance
- *  paid. The session carries matchId + userId + quantity in metadata. */
-export async function applyCheckoutPaid(session: Stripe.Checkout.Session): Promise<void> {
+/** What `applyCheckoutEvent` did, for logs + tests. */
+export type CheckoutApplyResult =
+  | { action: "ignored"; reason: string }
+  | { action: "marked-paid" }
+  | { action: "already-settled" }
+  | { action: "awaiting-settlement" }
+  | { action: "reversed" }
+  | { action: "nothing-to-reverse" };
+
+/**
+ * Webhook: apply a Stripe Checkout Session event to the player's
+ * attendance. The session carries matchId + userId + quantity in
+ * metadata.
+ *
+ * The decision of WHETHER this event means "paid" is pure and lives in
+ * lib/payment-outcome.ts — see the long note there on why
+ * `checkout.session.completed` is NOT proof of payment for Pay by Bank.
+ *
+ * Idempotent + order-independent, because Stripe retries events and can
+ * deliver them more than once and out of order:
+ *   - marking paid only touches rows that are still unpaid, so a repeat
+ *     delivery never re-stamps `paidAt` and never overwrites a payment
+ *     the collector already confirmed by hand;
+ *   - a reversal only touches a row still carrying THIS session id, so a
+ *     stale failure can't un-pay a later, genuine payment.
+ */
+export async function applyCheckoutEvent(
+  eventType: string,
+  session: Stripe.Checkout.Session,
+): Promise<CheckoutApplyResult> {
   const matchId = session.metadata?.matchId;
   const userId = session.metadata?.userId;
   if (!matchId || !userId) {
-    console.warn("[payments] checkout completed without matchId/userId metadata", session.id);
-    return;
+    console.warn(`[payments] ${eventType} without matchId/userId metadata`, session.id);
+    return { action: "ignored", reason: "no-metadata" };
   }
+
+  const decision = decideCheckoutEvent(eventType, session.payment_status);
+  const who = `match ${matchId} user ${userId} session ${session.id}`;
+
+  if (decision === "ignore") return { action: "ignored", reason: eventType };
+
+  if (decision === "reverse-unpaid") {
+    // The delayed (bank) debit failed after the fact. Undo the paid mark
+    // IF this exact session is the one that set it. No message is sent
+    // from here on purpose: the player is now unpaid + not
+    // direct-pending, so the existing daily chaser picks them back up
+    // (bot-scheduler §pay chase) — no new outbound path, no flood risk.
+    const res = await db.attendance.updateMany({
+      where: { matchId, userId, stripeSessionId: session.id, paidAt: { not: null } },
+      data: { paidAt: null },
+    });
+    if (res.count > 0) {
+      console.warn(`[payments] payment FAILED after completion — un-paid ${who}`);
+      return { action: "reversed" };
+    }
+    console.warn(`[payments] payment failed, nothing to reverse (already unpaid): ${who}`);
+    return { action: "nothing-to-reverse" };
+  }
+
   const amount = session.amount_total != null ? session.amount_total / 100 : null;
   const quantity = Number(session.metadata?.quantity ?? "1") || 1;
-  await db.attendance.updateMany({
-    where: { matchId, userId },
+
+  if (decision === "await-settlement") {
+    // Session finished but the money has NOT landed (Pay by Bank in
+    // flight). Record which session we're waiting on so a later
+    // async_payment_failed can be attributed to it — but leave paidAt
+    // alone: as far as the club is concerned this player still owes.
+    await db.attendance.updateMany({
+      where: { matchId, userId, paidAt: null },
+      data: { stripeSessionId: session.id },
+    });
+    console.log(
+      `[payments] checkout complete but payment_status=${session.payment_status ?? "?"} — NOT marking paid, awaiting settlement: ${who}`,
+    );
+    return { action: "awaiting-settlement" };
+  }
+
+  // decision === "mark-paid"
+  const res = await db.attendance.updateMany({
+    where: { matchId, userId, paidAt: null },
     data: {
       paidAt: new Date(),
       paymentAmount: amount,
@@ -90,7 +161,26 @@ export async function applyCheckoutPaid(session: Stripe.Checkout.Session): Promi
       directPendingAt: null,
     },
   });
-  console.log(`[payments] marked paid: match ${matchId} user ${userId} (£${amount}, x${quantity})`);
+  if (res.count > 0) {
+    console.log(`[payments] marked paid: ${who} (£${amount}, x${quantity})`);
+    return { action: "marked-paid" };
+  }
+  // Nothing to update: either a duplicate delivery of this same event, or
+  // the row was already settled another way (collector marked it
+  // received). Never re-stamp — but shout if a DIFFERENT session paid for
+  // an already-paid attendance, which would mean a genuine double charge.
+  const existing = await db.attendance.findUnique({
+    where: { matchId_userId: { matchId, userId } },
+    select: { stripeSessionId: true, paidAt: true },
+  });
+  if (!existing) {
+    console.warn(`[payments] paid event for an attendance that no longer exists: ${who}`);
+  } else if (existing.paidAt && existing.stripeSessionId !== session.id) {
+    console.warn(
+      `[payments] POSSIBLE DOUBLE PAYMENT — ${who} but attendance already settled by ${existing.stripeSessionId ?? "another method"}`,
+    );
+  }
+  return { action: "already-settled" };
 }
 
 // ─── Collector chat fee-capture (2026-06-04) ──────────────────────────
