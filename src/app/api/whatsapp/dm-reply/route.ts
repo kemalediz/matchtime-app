@@ -1,8 +1,23 @@
 /**
  * Bot forwards every incoming 1-1 DM here. The server figures out
- * what to do with it. Today: the only DM-reply behaviour that exists
- * is the roster check-in survey. Future expansions (DM-based score
- * entry, DM-based attendance, etc.) live alongside that.
+ * what to do with it.
+ *
+ * HANDLER ORDER IS THE CONTRACT. The most SPECIFIC pending prompt wins,
+ * and the general fallback runs last:
+ *
+ *   1. bench-slot offer reply           (an open BenchSlotOffer)
+ *   2. DM subscription command          ("stop messaging me about ratings")
+ *   3. tentative-availability follow-up (an open TentativeAvailability)
+ *   4. money-collector fee reply        (a match awaiting its fee)
+ *   5. admin recruit blast / rating progress  (admin-gated)
+ *   6. roster check-in survey           (an open RosterSurveyDM)
+ *   7. COLD self-attendance fallback    (2026-08-31 — a player replying
+ *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
+ *      it to; registers against the active match)
+ *   8. scoped Q&A, else ignore
+ *
+ * Adding a handler means slotting it by SPECIFICITY, never in front of a
+ * prompt that knows which question is being answered.
  *
  * Flow for roster surveys:
  *   1. Resolve sender phone → User.
@@ -34,6 +49,11 @@ import {
 } from "@/lib/dm-subscriptions";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { resolveTentative } from "@/lib/tentative-store";
+import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
+import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
+import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
+import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
+import { formatLondon } from "@/lib/london-time";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -391,13 +411,36 @@ export async function POST(request: Request) {
 
     if (active.length > 0) {
       const t = (text ?? "").trim().toLowerCase().replace(/[!.\s]+$/g, "");
-      const isIn = /^(in|i'?m in|count me in|in please|yes,?\s*(i'?m )?in|yes|y|👍|✅)\b/.test(t) || t === "in" || t === "yes";
-      const isOut =
+      // Cheap, instant FAST-PATH for the unambiguous replies. Free, so we
+      // use it — but it is NOT the decision (2026-08-31). A player who
+      // answers "yeah go on then" or "can't tomorrow sorry" is not
+      // ambiguous, they just didn't type a keyword; anything this misses
+      // now goes to the LLM below instead of triggering a re-ask.
+      let isIn = /^(in|i'?m in|count me in|in please|yes,?\s*(i'?m )?in|yes|y|👍|✅)\b/.test(t) || t === "in" || t === "yes";
+      let isOut =
         /^(out|i'?m out|count me out|can'?t make it|cant make it|no,?\s*(i'?m )?out|no|nope|nah|👎)\b/.test(t) ||
         t === "out" ||
         t === "no";
 
-      // Ambiguous reply → one gentle re-ask, scoped to the soonest match.
+      if (!isIn && !isOut) {
+        const row0 = active[0];
+        const org0 = await db.organisation.findUnique({
+          where: { id: row0.match.activity.orgId },
+          select: { name: true },
+        });
+        const verdict = await classifyMatchAvailability(text ?? "", {
+          playerName: user.name,
+          clubName: org0?.name ?? null,
+          matchWhen: formatLondon(row0.match.date, "EEE d MMM, HH:mm"),
+          // The bot DM'd this player asking for a firm IN/OUT, so a bare
+          // "yes"/"👍" here genuinely IS an answer.
+          wasAskedToPlay: true,
+        });
+        if (verdict.decision === "in") isIn = true;
+        else if (verdict.decision === "out") isOut = true;
+      }
+
+      // Genuinely unclear reply → one gentle re-ask, scoped to the soonest match.
       if (!isIn && !isOut) {
         const row = active[0];
         const replyPhone = (await db.user.findUnique({
@@ -418,22 +461,43 @@ export async function POST(request: Request) {
       }
 
       const row = active[0];
+      // Capture the PRIOR state so the group announcement below can tell a
+      // real change from an idempotent repeat.
+      const priorRow = await db.attendance.findUnique({
+        where: { matchId_userId: { matchId: row.match.id, userId: user.id } },
+        select: { status: true },
+      });
+      const priorStatus =
+        priorRow?.status === "CONFIRMED" || priorRow?.status === "BENCH" || priorRow?.status === "DROPPED"
+          ? priorRow.status
+          : null;
+      let newStatus: "CONFIRMED" | "BENCH" | "DROPPED" | null = null;
       try {
         if (isIn) {
-          await registerAttendance(user.id, row.match.id, { promoteFromBench: true });
+          const res = await registerAttendance(user.id, row.match.id, { promoteFromBench: true });
+          newStatus = res.status === "BENCH" ? "BENCH" : "CONFIRMED";
         } else {
           // Only cancel if they actually have a CONFIRMED/BENCH row —
           // a tentative player usually has none, in which case OUT is a
           // no-op (cancelAttendance throws "Not attending" otherwise).
-          const existing = await db.attendance.findFirst({
-            where: { userId: user.id, matchId: row.match.id, status: { in: ["CONFIRMED", "BENCH"] } },
-            select: { id: true },
-          });
-          if (existing) await cancelAttendance(user.id, row.match.id);
+          if (priorStatus === "CONFIRMED" || priorStatus === "BENCH") {
+            await cancelAttendance(user.id, row.match.id);
+            newStatus = "DROPPED";
+          }
         }
       } catch (err) {
         console.error("[dm-reply] tentative IN/OUT attendance write failed:", err);
       }
+      // Tell the GROUP — this registration happened out of band, so nobody
+      // else can see it. No-op repeats and rate-capped bursts are filtered
+      // inside the announcer.
+      await announceOutOfBandAttendance({
+        matchId: row.match.id,
+        userId: user.id,
+        before: priorStatus,
+        after: newStatus,
+        source: "dm",
+      }).catch((err) => console.error("[dm-reply] tentative group announce failed:", err));
       await resolveTentative({ matchId: row.match.id, userId: user.id }).catch(() => {});
 
       const replyPhone = (await db.user.findUnique({
@@ -600,6 +664,154 @@ export async function POST(request: Request) {
     },
     orderBy: { createdAt: "desc" },
   });
+  // ── COLD self-attendance fallback (2026-08-31) ──────────────────────
+  //   THE GAP THIS CLOSES: the recruit blast DMs a player "Fancy it? Tap
+  //   to grab a spot: <link>". Plenty of players — especially the older,
+  //   less technical half of a club — never tap. They reply "IN" to the
+  //   DM and consider themselves signed up. That reply matched none of the
+  //   specific pending prompts above, so it was silently dropped: the
+  //   player believed they had a spot and NOTHING was recorded. Same
+  //   silent-failure class as the duplicate-send incident.
+  //
+  //   PLACEMENT IS LOAD-BEARING. Every more-specific handler runs FIRST
+  //   and still wins outright: bench offer, DM subscription command,
+  //   tentative follow-up, collector fee, admin recruit, admin rating
+  //   progress, and the roster survey (`dm`, resolved just above and
+  //   passed in as `hasPendingPrompt`). Those know WHICH question is
+  //   being answered; this fallback does not, so it goes last.
+  //
+  //   INTERACTION CONTRACT: a DM to MatchTime is inherently directed at
+  //   the bot, so no "@Match Time" tag is required. The contract only
+  //   gates GROUP messages, and even there a player's OWN self-attendance
+  //   is the one tag-free action class (isSelfAttendanceVerdict /
+  //   actionRequiresTag in lib/interaction-contract.ts). This handles
+  //   exactly that class: the sender's own in/out, never a third party.
+  //
+  //   DM SUBSCRIPTIONS ARE DELIBERATELY *NOT* CONSULTED HERE. The sub*
+  //   flags govern PROACTIVE DMs (the invite blast, bench offers, rating
+  //   nudges). This is a REPLY to a message the player just sent us. A
+  //   player who muted match invites and then messages "IN" must still be
+  //   registered and must still be told it worked — silently ignoring a
+  //   human who addressed us directly is precisely the lie the
+  //   subscription feature was built to stop (lib/dm-subscriptions.ts).
+  {
+    // Only worth asking the model when there is actually something to
+    // register against: an active match on an attendance-tracking org,
+    // chosen by the SAME selector the group path uses.
+    const target = !dm ? await findDmRegistrationTarget(user.id) : null;
+    if (target) {
+      // Did we DM this player about this very match? Unlocks bare
+      // affirmatives ("yes", "👍") for the classifier — see rule 5 there.
+      const invited = await db.sentNotification.findUnique({
+        where: { key: `${target.matchId}:recruit-dm:${user.id}` },
+        select: { id: true },
+      });
+      const resolution = await resolveDmSelfAttendance({
+        text,
+        hasPendingPrompt: !!dm,
+        context: {
+          playerName: user.name,
+          clubName: target.clubName,
+          matchName: target.matchName,
+          matchWhen: target.matchWhen,
+          wasAskedToPlay: !!invited,
+        },
+      });
+
+      if (resolution.decision) {
+        const priorRow = await db.attendance.findUnique({
+          where: { matchId_userId: { matchId: target.matchId, userId: user.id } },
+          select: { status: true },
+        });
+        const priorStatus =
+          priorRow?.status === "CONFIRMED" ||
+          priorRow?.status === "BENCH" ||
+          priorRow?.status === "DROPPED"
+            ? priorRow.status
+            : null;
+
+        let newStatus: "CONFIRMED" | "BENCH" | "DROPPED" | null = null;
+        let failed = false;
+        try {
+          if (resolution.decision === "in") {
+            // promoteFromBench: this is the player's OWN claim, so a
+            // bencher saying IN moves up if a slot freed. Capacity is
+            // honoured by registerAttendance exactly as in the group
+            // path — a full squad puts them on the bench, it does NOT
+            // roll them onto a later match.
+            const res = await registerAttendance(user.id, target.matchId, {
+              promoteFromBench: true,
+            });
+            newStatus = res.status === "BENCH" ? "BENCH" : "CONFIRMED";
+          } else if (priorStatus === "CONFIRMED" || priorStatus === "BENCH") {
+            await cancelAttendance(user.id, target.matchId);
+            newStatus = "DROPPED";
+          }
+        } catch (err) {
+          failed = true;
+          console.error("[dm-reply] cold self-attendance write failed:", err);
+        }
+
+        const replyPhone =
+          (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+          (
+            await db.user.findUnique({
+              where: { id: user.id },
+              select: { phoneNumber: true },
+            })
+          )?.phoneNumber?.replace(/^\+/, "") ??
+          null;
+
+        // GOLDEN RULE (same as the subscription fast-path): never claim
+        // something we didn't write. A failed write gets an honest reply.
+        let ack: string;
+        if (failed) {
+          ack =
+            `Sorry, I couldn't update the squad just now. An admin will sort it — ` +
+            `try again in a bit if you like 🙏`;
+        } else if (newStatus === "CONFIRMED") {
+          ack = `✅ You're in for *${target.matchName}* on ${target.matchWhen}. See you there ⚽`;
+        } else if (newStatus === "BENCH") {
+          ack =
+            `📋 Squad's full for *${target.matchName}* on ${target.matchWhen}, so I've put you ` +
+            `first on the bench. I'll message you the moment a spot opens 🙏`;
+        } else if (newStatus === "DROPPED") {
+          ack = `👋 No worries, you're marked out for *${target.matchName}* on ${target.matchWhen}. Thanks for letting me know.`;
+        } else {
+          ack = `👍 Noted. You weren't down for *${target.matchName}* on ${target.matchWhen} anyway, so nothing's changed.`;
+        }
+        if (replyPhone) {
+          await db.botJob.create({
+            data: { orgId: target.orgId, kind: "dm", phone: replyPhone, text: ack },
+          });
+        }
+
+        // Tell the GROUP: this registration is invisible to everyone else.
+        // No-op repeats and bursts are filtered inside the announcer.
+        if (!failed) {
+          await announceOutOfBandAttendance({
+            matchId: target.matchId,
+            userId: user.id,
+            before: priorStatus,
+            after: newStatus,
+            source: "dm",
+          }).catch((err) =>
+            console.error("[dm-reply] cold self-attendance group announce failed:", err),
+          );
+        }
+
+        return NextResponse.json({
+          ok: true,
+          handled: "dm-self-attendance",
+          decision: resolution.decision,
+          via: resolution.via,
+          status: newStatus,
+          matchId: target.matchId,
+        });
+      }
+    }
+  }
+
   if (!dm) {
     // ── Scoped Q&A (2026-06-01) ──────────────────────────────────────
     //   No open survey to answer → if this resolved member is asking a
