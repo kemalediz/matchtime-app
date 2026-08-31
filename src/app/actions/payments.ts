@@ -23,6 +23,7 @@ import {
   createCheckoutSession,
 } from "@/lib/stripe";
 import { totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
+import { payBlockedReason } from "@/lib/payment-outcome";
 import { formatLondon } from "@/lib/london-time";
 
 // ── Connect onboarding (money collector links their bank) ────────────
@@ -189,6 +190,18 @@ async function loadPayContext(userId: string, matchId: string) {
     where: { matchId_userId: { matchId, userId } },
   });
   if (!attendance) throw new Error("You weren't in this squad");
+  // Money guards, shared by every way a player can start paying
+  // (2026-08-31). The pay link is a PERMANENT magic link sent over
+  // WhatsApp, so these are the only thing between an old message and a
+  // second charge — the pay page's "you're all paid" screen is a display,
+  // not a guard. Blocked reasons are human sentences (payment-outcome.ts)
+  // that surface as a toast on the pay page.
+  const blocked = payBlockedReason({
+    paidAt: attendance.paidAt,
+    attendanceStatus: attendance.status,
+    matchStatus: match.status,
+  });
+  if (blocked) throw new Error(blocked);
   return { match, org: match.activity.org, attendance, base: match.feePerPlayer };
 }
 

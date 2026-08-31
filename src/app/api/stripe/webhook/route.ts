@@ -1,12 +1,23 @@
 /**
- * Stripe webhook (2026-06-03). Receives events from Stripe; on a
- * completed Checkout we mark the player's attendance paid.
+ * Stripe webhook (2026-06-03; payment-outcome hardening 2026-08-31).
+ * Receives Checkout events from Stripe and applies them to the player's
+ * attendance — marking paid ONLY when the money genuinely settled.
  *
- * Register at Stripe → Developers → Webhooks → Add endpoint:
- *   URL:   https://matchtime.ai/api/stripe/webhook
- *   Event: checkout.session.completed (+ checkout.session.async_payment_succeeded
- *          for Pay-by-Bank, which can settle asynchronously)
+ * Register at Stripe → Developers → Webhooks → Add endpoint. MatchTime
+ * uses Connect DIRECT charges, so the destination MUST be scoped to
+ * **Connected accounts** — a platform-scoped endpoint receives nothing
+ * (2026-06-09 incident, see MDs/SESSION-HANDOFF-2026-06-09-payments-golive.md):
+ *   URL:    https://matchtime.ai/api/stripe/webhook
+ *   Events: checkout.session.completed
+ *           checkout.session.async_payment_succeeded
+ *           checkout.session.async_payment_failed   ← REQUIRED (2026-08-31)
+ *           checkout.session.expired                 (optional, ignored)
  * Then put the signing secret in env as STRIPE_WEBHOOK_SECRET.
+ *
+ * `async_payment_failed` is not optional now Pay by Bank is live: a bank
+ * debit can complete the Checkout Session and FAIL days later. Without
+ * that event a failed payment reads as settled forever. See
+ * src/lib/payment-outcome.ts.
  *
  * Public route (no session) — allowlisted in middleware. Stripe's
  * signature check is the auth.
@@ -14,7 +25,7 @@
 
 import { NextResponse } from "next/server";
 import { constructWebhookEvent, isStripeConfigured } from "@/lib/stripe";
-import { applyCheckoutPaid } from "@/lib/payment-flow";
+import { applyCheckoutEvent } from "@/lib/payment-flow";
 import type Stripe from "stripe";
 
 export async function POST(request: Request) {
@@ -37,10 +48,19 @@ export async function POST(request: Request) {
     switch (event.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded":
-        await applyCheckoutPaid(event.data.object as Stripe.Checkout.Session);
-        break;
+      case "checkout.session.async_payment_failed":
+      case "checkout.session.expired": {
+        // Whether the event actually means "paid" is decided in
+        // lib/payment-outcome.ts — completion alone is NOT payment for
+        // delayed-notification methods like Pay by Bank.
+        const result = await applyCheckoutEvent(
+          event.type,
+          event.data.object as Stripe.Checkout.Session,
+        );
+        return NextResponse.json({ received: true, ...result });
+      }
       default:
-        // ignore other events
+        // ignore other events (refunds included — see payment-outcome.ts)
         break;
     }
   } catch (err) {

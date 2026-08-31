@@ -294,39 +294,31 @@ export async function POST(request: Request) {
     }
   }
 
-  // @lid fallback for MONEY COLLECTORS: if the sender still isn't resolved
-  // (e.g. an @lid DM whose phone we couldn't recover bot-side) but the
-  // pushname uniquely matches a collector of a payment-collecting org,
-  // treat them as that collector. Tightly scoped to paymentHolderId users
-  // so it can never misattribute ordinary chat to a random member.
-  if (!user && authorName && authorName.trim().length >= 2) {
-    const norm = (s: string) =>
-      s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-    const pushNorm = norm(authorName);
-    const pushFirst = pushNorm.split(/\s+/).filter(Boolean)[0] ?? "";
-    const collectingOrgs = await db.organisation.findMany({
-      where: { paymentCollectionEnabled: true, paymentHolderId: { not: null } },
-      select: { paymentHolderId: true },
-    });
-    const holderIds = [...new Set(collectingOrgs.map((o) => o.paymentHolderId).filter(Boolean) as string[])];
-    if (holderIds.length > 0) {
-      const holders = await db.user.findMany({
-        where: { id: { in: holderIds } },
-        select: { id: true, name: true, memberships: { select: { orgId: true } } },
-      });
-      const equals = holders.filter((h) => h.name && norm(h.name) === pushNorm);
-      let pick = equals.length === 1 ? equals[0] : null;
-      if (!pick) {
-        const byFirst = holders.filter(
-          (h) => h.name && pushFirst.length >= 2 && (norm(h.name).split(/\s+/).filter(Boolean)[0] ?? "") === pushFirst,
-        );
-        if (byFirst.length === 1) pick = byFirst[0];
-      }
-      if (pick) user = pick;
-    }
-  }
+  // REMOVED 2026-08-31 — the @lid "pushname matches a money collector"
+  // fallback. It resolved an otherwise-UNKNOWN DM sender to the org's
+  // money collector on a first-name pushname match, and pushname is
+  // attacker-controlled: anyone who knows the bot's number could set
+  // their WhatsApp display name to the collector's first name, DM an
+  // amount, confirm it, and blast a pay link at the whole squad for a fee
+  // they chose. Sutton's collector is "Kemal" — a single common first
+  // name — so the bar was that low.
+  //
+  // Nothing may promote an unverified sender to fee-setting authority.
+  // `Organisation.paymentHolderId` stays the source of truth for WHO the
+  // collector is (handleCollectorFeeReply already scopes on it); what was
+  // broken was WHO WE THINK IS TEXTING. Identity must come from the
+  // phone number, which the bot recovers for @lid DMs via `Contact.number`
+  // (whatsapp-bot fix, 2026-06-09). If that ever regresses, collector fee
+  // DMs go unanswered — loudly, in the log below — rather than being
+  // answerable by a stranger.
 
   if (!user) {
+    if (authorName && authorName.trim().length >= 2) {
+      console.warn(
+        `[dm-reply] unresolved sender (no phone match) pushname="${authorName}" — ignoring. ` +
+          `If this is a real member, the bot failed to forward their number (Contact.number).`,
+      );
+    }
     return NextResponse.json({ ok: true, ignored: "unknown-sender" });
   }
 
