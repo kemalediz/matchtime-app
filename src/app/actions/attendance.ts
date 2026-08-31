@@ -3,7 +3,12 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
-import { canSelfMarkIn } from "@/lib/group-membership-gate";
+import {
+  decideSelfMarkIn,
+  isGroupSyncStale,
+  groupSyncStaleDays,
+  selfMarkInDenialMessage,
+} from "@/lib/group-membership-gate";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { revalidatePath } from "next/cache";
 
@@ -27,11 +32,57 @@ export async function attendMatch(matchId: string) {
     select: { leftAt: true, lastSeenInGroupAt: true, role: true },
   });
 
-  if (!canSelfMarkIn(membership)) {
-    const club = match.activity.org.name;
-    throw new Error(
-      `You need to be in the ${club} WhatsApp group to mark yourself in. Ask a member to add you in the group.`,
-    );
+  // Strict pass first. When it allows, or when it denies on something the
+  // participant sweep has no say in (no membership at all, or `leftAt`),
+  // we are done — and the healthy path pays no extra query.
+  let decision = decideSelfMarkIn(membership);
+
+  if (!decision.allowed && decision.reason === "not-in-group") {
+    // The only thing standing between this player and the button is a null
+    // `lastSeenInGroupAt`. That column has exactly one writer, the bot's
+    // startup participant sweep, and that sweep has been failing since
+    // 2026-07-07 (MDs/cold-audit-2026-08-31.md). Check whether the signal
+    // can still be trusted before telling someone they are not in a group
+    // they may well be sitting in.
+    //
+    // Freshness comes from existing data: the newest sighting anywhere in
+    // the org, left members included, because this measures when a SWEEP
+    // last succeeded rather than who is on the roster today.
+    const newest = await db.membership.aggregate({
+      where: { orgId: match.activity.orgId },
+      _max: { lastSeenInGroupAt: true },
+    });
+    const sync = { lastSyncAt: newest._max.lastSeenInGroupAt ?? null, now: new Date() };
+
+    if (isGroupSyncStale(sync)) {
+      // Degraded. Look for positive evidence that this person really is in
+      // this club's group: a message they posted in the monitored group, or
+      // a squad they were already put in by someone who was.
+      const [authoredGroupMessages, clubAttendances] = await Promise.all([
+        db.analyzedMessage.count({
+          where: { orgId: match.activity.orgId, authorUserId: session.user.id },
+        }),
+        db.attendance.count({
+          where: { userId: session.user.id, match: { activity: { orgId: match.activity.orgId } } },
+        }),
+      ]);
+      decision = decideSelfMarkIn(membership, {
+        sync,
+        evidence: { authoredGroupMessages, clubAttendances },
+      });
+      console.warn(
+        `[attendMatch] participant sync is stale for org ${match.activity.orgId} ` +
+          `(${groupSyncStaleDays(sync)} days since the last successful sweep), so the ` +
+          "self-IN gate is running degraded and falling back to group-presence evidence. " +
+          `user=${session.user.id} authoredGroupMessages=${authoredGroupMessages} ` +
+          `clubAttendances=${clubAttendances} decision=${decision.reason} ` +
+          `allowed=${decision.allowed}`,
+      );
+    }
+  }
+
+  if (!decision.allowed) {
+    throw new Error(selfMarkInDenialMessage(decision.reason, match.activity.org.name));
   }
 
   // Capture the PRIOR state: registerAttendance is idempotent, so an

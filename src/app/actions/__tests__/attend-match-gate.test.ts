@@ -18,6 +18,9 @@ const authMock = vi.fn();
 const matchFindUnique = vi.fn();
 const membershipFindUnique = vi.fn();
 const attendanceFindUnique = vi.fn();
+const attendanceCount = vi.fn();
+const membershipAggregate = vi.fn();
+const analyzedMessageCount = vi.fn();
 const registerAttendance = vi.fn();
 const cancelAttendance = vi.fn();
 const announce = vi.fn();
@@ -26,8 +29,15 @@ vi.mock("@/lib/auth", () => ({ auth: () => authMock() }));
 vi.mock("@/lib/db", () => ({
   db: {
     match: { findUnique: (...a: unknown[]) => matchFindUnique(...a) },
-    membership: { findUnique: (...a: unknown[]) => membershipFindUnique(...a) },
-    attendance: { findUnique: (...a: unknown[]) => attendanceFindUnique(...a) },
+    membership: {
+      findUnique: (...a: unknown[]) => membershipFindUnique(...a),
+      aggregate: (...a: unknown[]) => membershipAggregate(...a),
+    },
+    attendance: {
+      findUnique: (...a: unknown[]) => attendanceFindUnique(...a),
+      count: (...a: unknown[]) => attendanceCount(...a),
+    },
+    analyzedMessage: { count: (...a: unknown[]) => analyzedMessageCount(...a) },
   },
 }));
 vi.mock("@/lib/out-of-band-announce", () => ({
@@ -51,6 +61,11 @@ beforeEach(() => {
   authMock.mockResolvedValue({ user: { id: "user-1" } });
   matchFindUnique.mockResolvedValue(MATCH);
   attendanceFindUnique.mockResolvedValue(null);
+  attendanceCount.mockResolvedValue(0);
+  analyzedMessageCount.mockResolvedValue(0);
+  // Default: the participant sweep ran this morning, so the gate is on
+  // its strict, undegraded path.
+  membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: new Date() } });
   registerAttendance.mockResolvedValue({
     status: "CONFIRMED",
     position: 1,
@@ -167,5 +182,160 @@ describe("attendMatch — out-of-band group announcement", () => {
     });
     await expect(attendMatch("match-1")).rejects.toThrow(/WhatsApp group/);
     expect(announce).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ── DEGRADED PARTICIPANT SWEEP (2026-08-31) ─────────────────────────────
+ *
+ * `Membership.lastSeenInGroupAt` is written only by the bot's startup
+ * participant sweep, and that sweep has been broken since 2026-07-07. When
+ * it is stale, a null sighting means "we could not look", not "you are not
+ * in the group", and nine real Sutton players were being blocked and told
+ * a falsehood.
+ *
+ * These cases pin the WIRING: where the org's sweep freshness comes from,
+ * which fallback evidence is queried, that the healthy path pays no extra
+ * query, and that the honest message reaches the user.
+ */
+const STALE = new Date("2026-07-07T15:08:00Z"); // the real production value
+
+describe("attendMatch — degraded participant sweep", () => {
+  const neverSeenPlayer = { leftAt: null, lastSeenInGroupAt: null, role: "PLAYER" as const };
+
+  it("derives sweep freshness from the org's newest lastSeenInGroupAt", async () => {
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: STALE } });
+    attendanceCount.mockResolvedValue(1);
+
+    await attendMatch("match-1");
+
+    expect(membershipAggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orgId: "org-1" },
+        _max: { lastSeenInGroupAt: true },
+      }),
+    );
+  });
+
+  it("ALLOWS a never-seen player who has already been in a squad for this club", async () => {
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: STALE } });
+    attendanceCount.mockResolvedValue(2);
+
+    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1");
+    // Evidence is scoped to THIS org's matches, not every club they play for.
+    expect(attendanceCount).toHaveBeenCalledWith({
+      where: { userId: "user-1", match: { activity: { orgId: "org-1" } } },
+    });
+  });
+
+  it("ALLOWS a never-seen player who has posted in the club's WhatsApp group", async () => {
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: STALE } });
+    analyzedMessageCount.mockResolvedValue(4);
+
+    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    expect(analyzedMessageCount).toHaveBeenCalledWith({
+      where: { orgId: "org-1", authorUserId: "user-1" },
+    });
+  });
+
+  it("still DENIES a never-seen player with no evidence, and never registers", async () => {
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: STALE } });
+
+    await expect(attendMatch("match-1")).rejects.toThrow(/cannot confirm your place/i);
+    expect(registerAttendance).not.toHaveBeenCalled();
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  it("the degraded denial does NOT accuse the player of being outside the group", async () => {
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: STALE } });
+
+    const err = await attendMatch("match-1").catch((e: Error) => e);
+    const msg = (err as Error).message;
+    expect(msg).toContain("Sutton FC");
+    expect(msg).not.toMatch(/You need to be in the/);
+    expect(msg).toMatch(/\bIN\b/);
+  });
+
+  it("treats a club whose sweep has NEVER succeeded as degraded too", async () => {
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: null } });
+    attendanceCount.mockResolvedValue(1);
+
+    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+  });
+
+  it("DENIES a member who LEFT even when the sweep is stale, with the plain message", async () => {
+    membershipFindUnique.mockResolvedValue({
+      leftAt: new Date("2026-08-01T00:00:00Z"),
+      lastSeenInGroupAt: null,
+      role: "PLAYER",
+    });
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: STALE } });
+    attendanceCount.mockResolvedValue(50);
+    analyzedMessageCount.mockResolvedValue(50);
+
+    await expect(attendMatch("match-1")).rejects.toThrow(
+      /You need to be in the Sutton FC WhatsApp group/,
+    );
+    expect(registerAttendance).not.toHaveBeenCalled();
+  });
+
+  it("keeps the strict behaviour while the sweep is healthy, and asks for no evidence", async () => {
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    attendanceCount.mockResolvedValue(99);
+    analyzedMessageCount.mockResolvedValue(99);
+
+    await expect(attendMatch("match-1")).rejects.toThrow(
+      /You need to be in the Sutton FC WhatsApp group/,
+    );
+    expect(attendanceCount).not.toHaveBeenCalled();
+    expect(analyzedMessageCount).not.toHaveBeenCalled();
+  });
+
+  it("costs the healthy, already-seen path no extra queries at all", async () => {
+    membershipFindUnique.mockResolvedValue({
+      leftAt: null,
+      lastSeenInGroupAt: new Date(),
+      role: "PLAYER",
+    });
+
+    await attendMatch("match-1");
+    expect(membershipAggregate).not.toHaveBeenCalled();
+    expect(attendanceCount).not.toHaveBeenCalled();
+    expect(analyzedMessageCount).not.toHaveBeenCalled();
+  });
+
+  it("logs the degraded decision so a running-degraded gate is never silent", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    membershipFindUnique.mockResolvedValue(neverSeenPlayer);
+    membershipAggregate.mockResolvedValue({ _max: { lastSeenInGroupAt: STALE } });
+    attendanceCount.mockResolvedValue(1);
+
+    await attendMatch("match-1");
+
+    const line = warn.mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(line).toMatch(/participant sync/i);
+    expect(line).toContain("org-1");
+    expect(line).toContain("degraded-plays-for-club");
+    warn.mockRestore();
+  });
+
+  it("does not log anything on the healthy path", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    membershipFindUnique.mockResolvedValue({
+      leftAt: null,
+      lastSeenInGroupAt: new Date(),
+      role: "PLAYER",
+    });
+
+    await attendMatch("match-1");
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

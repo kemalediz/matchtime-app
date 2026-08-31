@@ -89,5 +89,21 @@ export async function GET(request: Request) {
     _count: m.user._count,
   }));
 
-  return NextResponse.json({ players, activityId: targetActivityId });
+  // Participant-sweep freshness (2026-08-31). `lastSeenInGroupAt` has one
+  // writer, the bot's startup sweep, and when it stops the app's self-IN
+  // gate quietly starts turning real players away. Surface its age here so
+  // the admin player list can say so out loud. Left rows are included on
+  // purpose: this measures when a SWEEP last succeeded, not who is on the
+  // roster today.
+  const newestSighting = await db.membership.aggregate({
+    where: { orgId: membership.orgId },
+    _max: { lastSeenInGroupAt: true },
+  });
+  const lastSyncAt = newestSighting._max.lastSeenInGroupAt ?? null;
+
+  return NextResponse.json({
+    players,
+    activityId: targetActivityId,
+    groupSync: { lastSyncAt: lastSyncAt ? lastSyncAt.toISOString() : null },
+  });
 }

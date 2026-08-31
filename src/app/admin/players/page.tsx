@@ -2,7 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Phone, Star, Shield, Check, X, Sparkles, GitMerge, Tag, Plus } from "lucide-react";
+import {
+  Phone,
+  Star,
+  Shield,
+  Check,
+  X,
+  Sparkles,
+  GitMerge,
+  Tag,
+  Plus,
+  AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   updatePlayerRole,
@@ -16,6 +27,7 @@ import {
   removePlayerAlias,
   createPlayer,
 } from "@/app/actions/players";
+import { groupSyncAdminWarning } from "@/lib/group-membership-gate";
 
 interface Player {
   id: string;
@@ -42,6 +54,10 @@ export default function PlayersPage() {
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
   const [adding, setAdding] = useState(false);
+  // Age of the bot's last successful participant sweep. When it goes
+  // quiet the app's self-IN gate starts turning real players away, so the
+  // roster page says so rather than leaving it to the server log.
+  const [lastGroupSyncAt, setLastGroupSyncAt] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
@@ -58,6 +74,7 @@ export default function PlayersPage() {
     if (res.ok) {
       const data = await res.json();
       setPlayers(Array.isArray(data) ? data : data.players ?? []);
+      setLastGroupSyncAt(Array.isArray(data) ? undefined : (data.groupSync?.lastSyncAt ?? null));
     }
     setLoading(false);
   }
@@ -262,6 +279,13 @@ export default function PlayersPage() {
   const withPhoneCount = players.filter((p) => p.phoneNumber).length;
   const leftCount = players.filter((p) => p.leftAt).length;
   const provisionalPlayers = players.filter((p) => p.provisionallyAddedAt && !p.leftAt);
+  const groupSyncWarning =
+    lastGroupSyncAt === undefined
+      ? null
+      : groupSyncAdminWarning({
+          lastSyncAt: lastGroupSyncAt ? new Date(lastGroupSyncAt) : null,
+          now: new Date(),
+        });
 
   return (
     <div className="space-y-6">
@@ -317,6 +341,16 @@ export default function PlayersPage() {
           </Link>
         </div>
       </div>
+
+      {groupSyncWarning && (
+        <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+          <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900">WhatsApp group sync is behind</p>
+            <p className="mt-1 text-sm text-amber-800">{groupSyncWarning}</p>
+          </div>
+        </div>
+      )}
 
       {showAdd && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
