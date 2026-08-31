@@ -2,15 +2,54 @@ import { db } from "./db";
 import { requestBenchConfirmationOnDrop, queueSlotEmojiRefresh } from "./bot-scheduler";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 
+/**
+ * Why a caller is asking for BENCH.
+ *
+ * This used to be a single `forceBench: boolean`, which meant three
+ * different things depending on who was calling and could not tell them
+ * apart — so it wrote a bench row without ever looking at capacity.
+ * Production, 2026-08-31: a 7-a-side match (maxPlayers 14) sat at 10
+ * confirmed with 4 open slots when a third-party offer was misread as
+ * the sender's own standing offer. The 17:00 roster then posted
+ * "Confirmed (10/14)" followed by "Bench (1): Amir" — a bench alongside
+ * four empty slots, which reads to the group as though the match had
+ * silently become a 10-player format.
+ *
+ * THE INVARIANT a BENCH row must satisfy: it means either "there is no
+ * slot for this player" (squad FULL) or "this player asked not to occupy
+ * one" (explicit). Never "a classifier inferred it".
+ */
+export type BenchIntent =
+  /**
+   * A HUMAN named the bench. Either the player's own first-person
+   * request ("put me on the bench", "I'll bench tonight") or an admin
+   * directing it ("move X to the bench"). Honoured at ANY capacity: we
+   * never promote someone into a slot they told us they didn't want,
+   * and an admin doing roster surgery sees the result immediately.
+   */
+  | "explicit"
+  /**
+   * NOBODY asked for the bench. The classifier decided that a
+   * standing-offer conditional ("I'll be the 14th if you're short",
+   * "ping me if you need one more") is functionally a bench commitment
+   * (see the conditional_in flavour-(a) rule in lib/message-analyzer.ts).
+   *
+   * That inference is only sound when the squad is FULL — a bench is
+   * where you wait for a slot. With slots OPEN the offer's own condition
+   * is already met: the squad IS short, so the honest outcome is an
+   * ordinary IN and capacity decides (→ CONFIRMED). We do not leave an
+   * available player parked on a bench that shouldn't exist, and we
+   * never let an inference take a CONFIRMED player out of the squad.
+   */
+  | "inferred";
+
 export async function registerAttendance(
   userId: string,
   matchId: string,
   options: {
-    /** When true, force BENCH regardless of squad capacity. Used when a
-     *  player explicitly self-declares "for bench" / "I'll bench" — we
-     *  respect their stated intent rather than letting capacity logic
-     *  promote them to a confirmed slot they didn't ask for. */
-    forceBench?: boolean;
+    /** Why BENCH is being asked for — see {@link BenchIntent}. Only
+     *  "explicit" can put a player on the bench while slots are open. */
+    benchIntent?: BenchIntent;
     /** When true, a player CURRENTLY on the bench who says IN gets
      *  promoted to CONFIRMED if there's a free slot (squad < max).
      *  This is set ONLY for the player's OWN claim ("IN" from the
@@ -68,8 +107,15 @@ export async function registerAttendance(
 
   // Idempotency: if the user is already CONFIRMED or BENCH for this
   // match, don't touch position/status — UNLESS the new request is an
-  // explicit forceBench AND they're currently CONFIRMED. That means
-  // they retroactively want bench (e.g. "actually put me on bench").
+  // EXPLICIT bench request AND they're currently CONFIRMED. That means
+  // they (or an admin) retroactively want bench ("actually put me on
+  // bench" / "move X to the bench").
+  //
+  // An INFERRED bench signal never demotes: pulling a confirmed player
+  // out of the squad on a classifier's reading of "if you're short I can
+  // play" is strictly worse than the incident that motivated this — it
+  // both invents a bench and removes someone who was actually playing.
+  // Those fall through to the idempotent return below and stay CONFIRMED.
   const existing = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
   });
@@ -78,16 +124,18 @@ export async function registerAttendance(
   let selfPromoted = false;
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {
     const wantsBenchDowngrade =
-      options.forceBench === true && existing.status === "CONFIRMED";
+      options.benchIntent === "explicit" && existing.status === "CONFIRMED";
     // A benched player claiming a spot ("IN") when the squad has room
     // must be PROMOTED — not idempotently ignored. Only for their own
     // claim (promoteFromBench), never a third-party registerFor, and
-    // never when they explicitly asked for bench (forceBench).
+    // never when a human explicitly asked for bench. An INFERRED bench
+    // signal carries no authority to keep someone on the bench when the
+    // same call also says they claimed a slot.
     let wantsBenchPromotion = false;
     if (
       existing.status === "BENCH" &&
       options.promoteFromBench === true &&
-      options.forceBench !== true
+      options.benchIntent !== "explicit"
     ) {
       const confirmedNow = await db.attendance.count({
         where: { matchId, status: "CONFIRMED" },
@@ -129,16 +177,21 @@ export async function registerAttendance(
     where: { matchId, status: "BENCH" },
   });
 
-  const status = options.forceBench
-    ? "BENCH"
-    : confirmedCount < match.maxPlayers
-      ? "CONFIRMED"
-      : "BENCH";
+  // A BENCH row is only ever written for one of two reasons: the squad
+  // is FULL (there is no slot to give), or a human EXPLICITLY asked for
+  // the bench. An "inferred" bench intent gets no special treatment here
+  // — it falls through to the ordinary capacity rule, so with slots open
+  // the player is CONFIRMED and with the squad full they land on the
+  // bench exactly as before. That is what keeps the squad renderable:
+  // "N/M confirmed with slots open, plus a bench" can no longer occur.
+  const squadHasRoom = confirmedCount < match.maxPlayers;
+  const status =
+    options.benchIntent === "explicit" || !squadHasRoom ? "BENCH" : "CONFIRMED";
 
   // For an existing CONFIRMED row downgrading to BENCH, keep their
   // existing position so we don't shuffle the slot list.
   const positionToWrite =
-    existing && options.forceBench && existing.status === "CONFIRMED"
+    existing && status === "BENCH" && existing.status === "CONFIRMED"
       ? existing.position
       : nextPosition;
 

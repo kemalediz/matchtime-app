@@ -130,7 +130,7 @@ test.describe("third-party offer — server seatbelt (stubbed verdicts)", () => 
     expect((await grp.attendanceOf("amir"))?.status).toBe("CONFIRMED");
   });
 
-  test("a genuine self standing offer still takes the bench", async ({ request, db }) => {
+  test("a genuine self standing offer still registers the SENDER", async ({ request, db }) => {
     const grp = await mkGroup(request, db);
     await grp.post("amir", "I'll be the 14th if you're short", {
       verdict: {
@@ -142,7 +142,17 @@ test.describe("third-party offer — server seatbelt (stubbed verdicts)", () => 
         reasoning: "stub: standing offer about the sender",
       },
     });
-    expect((await grp.attendanceOf("amir"))?.status).toBe("BENCH");
+    // The seatbelt must not strip a GENUINE self offer — the sender still
+    // gets a self-attendance row. That is what this control exists to pin,
+    // and it is unchanged.
+    //
+    // The row's STATUS is capacity's business, not the classifier's (see
+    // BenchIntent in src/lib/attendance.ts, 2026-08-31). This squad is 3/14,
+    // so the offer's own condition ("if you're short") is already met and a
+    // bench alongside 11 open slots is exactly the state that produced the
+    // "Confirmed (10/14) + Bench (1): Amir" roster. On a FULL squad the same
+    // verdict still benches — see e2e/sim/bench-capacity.spec.ts.
+    expect((await grp.attendanceOf("amir"))?.status).toBe("CONFIRMED");
   });
 
   test("a third-party-subject OUT is left alone (never strip a drop)", async ({ request, db }) => {

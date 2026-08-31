@@ -63,6 +63,7 @@ import {
   parseHelpTopic,
 } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import { buildBenchUpgradeReply } from "@/lib/bench-upgrade-ack";
 import {
   resolveAttendanceAck,
   attendanceFailureAction,
@@ -2264,7 +2265,23 @@ async function executeVerdict(args: {
           verdict.registerAttendance === "BENCH"
         ) {
           const result = await registerAttendance(user.id, matchForOrg.id, {
-            forceBench: verdict.registerAttendance === "BENCH",
+            // registerAttendance:"BENCH" reaches us from TWO different
+            // rules and they are not the same thing (2026-08-31):
+            //   • intent "in"            → the sender EXPLICITLY asked
+            //     for the bench ("put me on bench", "I'll bench
+            //     tonight"). A human named it; honour it at any capacity.
+            //   • intent "conditional_in" → a STANDING OFFER ("I'll be
+            //     the 14th if you're short") that the classifier decided
+            //     is functionally a bench commitment. Nobody said
+            //     "bench" — it's INFERRED, and it's only sound when the
+            //     squad is full. registerAttendance downgrades it to an
+            //     ordinary capacity decision when slots are open.
+            benchIntent:
+              verdict.registerAttendance === "BENCH"
+                ? verdict.intent === "conditional_in"
+                  ? "inferred"
+                  : "explicit"
+                : undefined,
             // The sender's OWN "IN" — a benched player claiming a free
             // slot must be promoted (Kemal 2026-05-19: Enayem said IN
             // while 13/14, must move to the squad). Third-party
@@ -2278,6 +2295,22 @@ async function executeVerdict(args: {
           // counter — and the keycaps went stale every time someone
           // dropped/added. Kemal flagged this on 2026-05-05.
           finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";
+          // The LLM composed its reply from the verdict, so a "BENCH"
+          // verdict that the server confirmed instead (slots were open —
+          // see BenchIntent in lib/attendance.ts) is now carrying text
+          // that says the opposite of what landed: "putting you on the
+          // bench, if we drop below 14 you're first up". Replace it with
+          // the truth rather than announce a bench that doesn't exist.
+          if (
+            verdict.registerAttendance === "BENCH" &&
+            result.status === "CONFIRMED"
+          ) {
+            finalReply = buildBenchUpgradeReply({
+              name: user.name,
+              confirmedCount: result.confirmedCount,
+              maxPlayers: result.maxPlayers,
+            });
+          }
           // squad-full announcement is fired inside registerAttendance
           // now (covers every confirm path, with the full line-up).
         } else {
@@ -2378,15 +2411,17 @@ async function executeVerdict(args: {
             finalReact = result.status === "CONFIRMED" ? "✅" : "🪑";
             // squad-full announcement fired inside registerAttendance.
           } else if (entry.action === "BENCH") {
-            // Admin demote (2026-06-11): "move X to the bench". forceBench
-            // downgrades a CONFIRMED player to BENCH, keeps their position
-            // and frees their slot (squad N→N-1, slot opens). Unlike a
-            // drop it does NOT open a BenchSlotOffer, so the player we just
-            // benched isn't immediately re-offered the slot they vacated —
-            // it just sits open for the admin to fill. Also handles adding
-            // a not-yet-registered player straight to the bench.
+            // Admin demote (2026-06-11): "move X to the bench". An
+            // EXPLICIT bench intent — a human typed the instruction, so
+            // it is honoured whatever the capacity. It downgrades a
+            // CONFIRMED player to BENCH, keeps their position and frees
+            // their slot (squad N→N-1, slot opens). Unlike a drop it does
+            // NOT open a BenchSlotOffer, so the player we just benched
+            // isn't immediately re-offered the slot they vacated — it just
+            // sits open for the admin to fill. Also handles adding a
+            // not-yet-registered player straight to the bench.
             await registerAttendance(target.userId, matchForOrg.id, {
-              forceBench: true,
+              benchIntent: "explicit",
             });
             finalReact = "🪑";
           } else {
