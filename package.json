@@ -22,7 +22,8 @@
     "test:sim:live:format": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/format-switch-live.spec.ts",
     "test:sim:live:dm-in": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/dm-self-attendance-live.spec.ts",
     "test:sim:live:bench": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/bench-offer-live.spec.ts",
-    "test:sim:live:third-party": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/third-party-offer-live.spec.ts"
+    "test:sim:live:third-party": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/third-party-offer-live.spec.ts",
+    "test:sim:live:guest-name": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/guest-name-ask-live.spec.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
