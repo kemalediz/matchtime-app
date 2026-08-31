@@ -15,6 +15,7 @@ import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { formatLondon } from "./london-time";
 import { getOrgFeatures } from "./org-features";
+import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 
 /**
  * How many recent COMPLETED matches to pull attendees from.
@@ -91,6 +92,76 @@ export function looksLikeRecruitRequest(text: string): boolean {
     /\bneed\s+(?:more\s+)?players?\b/.test(t);
 
   return recruitVerbNearPeople || shortagePhrase;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * THE INVITE COPY
+ *
+ * Rewritten 2026-08-31 at the owner's instruction. The old invite led
+ * with a magic link:
+ *
+ *   "👋 Abid — we're putting the squad together for *Tuesday 7-a-side*
+ *    on Tue 1 Sept, 21:30 — 4 spots left. Fancy it?
+ *
+ *    Tap to grab a spot:
+ *    <link>"
+ *
+ * Half of this club is older and not technical. They do not tap links;
+ * they reply, or they tap the emoji their thumb is already near. So the
+ * ASK now leads and the link is demoted to a trailing option.
+ *
+ * SAYING NO IS AS EASY AS SAYING YES (owner, same day). A chase-up DM
+ * for silent players is being built alongside this; a player who cannot
+ * make it but never answers gets chased for no reason. Offering *OUT*
+ * and 👎 as plainly as *IN* and 👍 is what keeps the club considerate
+ * rather than naggy — hence "I'll stop asking".
+ *
+ * The link is KEPT rather than dropped: some players do use the app, and
+ * it doubles as their sign-in path (it is a magic link, so tapping it is
+ * how a player gets an authenticated session at all).
+ *
+ * House style: no em dashes, no en dashes, no slashes in prose. Only the
+ * URL contains a slash.
+ * ──────────────────────────────────────────────────────────────────── */
+
+export interface RecruitInviteCopy {
+  firstName: string;
+  matchName: string;
+  /** "EEE d MMM, HH:mm" London. */
+  matchWhen: string;
+  /** Open slots. 0 means "suppressed or full" and the phrase is omitted. */
+  spotsLeft: number;
+  /** Short magic link, or null to omit the optional last line entirely. */
+  link: string | null;
+}
+
+/** The invite for an org that tracks attendance in-app. */
+export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
+  const spots =
+    c.spotsLeft > 0 ? ` ${c.spotsLeft} ${c.spotsLeft === 1 ? "spot" : "spots"} left.` : "";
+  const lines = [
+    `👋 ${c.firstName}, we're putting the squad together for *${c.matchName}* on ${c.matchWhen}.${spots}`,
+    "",
+    "Playing? Reply *IN* or tap 👍 on this message.",
+    "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌",
+  ];
+  if (c.link) lines.push("", `Prefer the app? ${c.link}`);
+  return lines.join("\n");
+}
+
+/**
+ * The invite for a MoM/ratings-only org. There is no in-app squad, so an
+ * RSVP link would do nothing and the group is where they join.
+ */
+export function buildRecruitGroupInviteDm(c: {
+  firstName: string;
+  matchName: string;
+  matchWhen: string;
+}): string {
+  return (
+    `👋 ${c.firstName}, we're putting the squad together for *${c.matchName}* on ${c.matchWhen}. ` +
+    `Fancy it? Just reply *IN* in the group and you're sorted 🙌`
+  );
 }
 
 export interface RecruitResult {
@@ -242,25 +313,31 @@ export async function inviteRecentPlayers(
     const first = c.name?.split(" ")[0] ?? "there";
     let text: string;
     if (attendanceOn) {
-      // Org tracks attendance in-app → an RSVP link works.
+      // Org tracks attendance in-app → the magic link is worth offering,
+      // as a trailing option and as this player's sign-in path.
       const token = signMagicLinkToken({
         userId: c.id,
         purpose: "sign-in",
         nextPath: `/matches/${next.id}`,
         ttlSeconds: MAGIC_LINK_TTL.actionNudge,
       });
-      const shortLine = need > 0 ? ` — ${need} ${need === 1 ? "spot" : "spots"} left` : "";
-      text =
-        `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}${shortLine}. ` +
-        `Fancy it?\n\nTap to grab a spot:\n${await buildShortMagicLinkUrl(token)}`;
+      text = buildRecruitInviteDm({
+        firstName: first,
+        matchName: next.activity.name,
+        matchWhen,
+        spotsLeft: need,
+        link: await buildShortMagicLinkUrl(token),
+      });
     } else {
       // MoM/ratings-only org (no in-app squad) → an RSVP link does nothing.
       // Players join by posting in the group, so nudge them there.
-      text =
-        `👋 ${first} — we're putting the squad together for *${next.activity.name}* on ${matchWhen}. ` +
-        `Fancy it? Just reply *IN* in the group and you're sorted 🙌`;
+      text = buildRecruitGroupInviteDm({
+        firstName: first,
+        matchName: next.activity.name,
+        matchWhen,
+      });
     }
-    await db.botJob.create({
+    const job = await db.botJob.create({
       data: {
         orgId,
         kind: "dm",
@@ -271,6 +348,30 @@ export async function inviteRecentPlayers(
     await db.sentNotification.create({
       data: { key, kind: "recruit-dm", matchId: next.id, targetUser: c.id },
     });
+    // LINK ROW — how a 👍/👎 on this very DM finds its way back to this
+    // player and this match. The reaction event carries only the WhatsApp
+    // message id; /ack stamps that onto the `botjob-<id>` claim row, and
+    // this row turns that BotJob id into (matchId, userId). Without it we
+    // would be guessing from a phone number and a timestamp, and a 👍 on
+    // a payment chase would silently sign someone up. See
+    // src/lib/recruit-reaction.ts. Best-effort: a failure here loses the
+    // reaction shortcut, never the invite itself.
+    await db.sentNotification
+      .create({
+        data: {
+          key: recruitDmLinkKey(job.id),
+          kind: RECRUIT_DM_LINK_KIND,
+          matchId: next.id,
+          targetUser: c.id,
+        },
+      })
+      .catch((err) => {
+        console.error(
+          `[recruit] could not link BotJob ${job.id} to the invite for ${c.id} — ` +
+            `a 👍 on that DM will not be mappable. The reply path is unaffected.`,
+          err,
+        );
+      });
     invitedNames.push(c.name ?? "Player");
   }
 

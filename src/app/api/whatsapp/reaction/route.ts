@@ -1,19 +1,30 @@
 /**
- * Reactions on the bot's bench-slot-offer post.
+ * Reactions on messages the bot sent.
  *
- * Bench redesign 2026-05-19 (Kemal): the offer is broadcast to the
- * WHOLE bench, so a 👍 from ANY current bench player claims the slot
- * (first one wins, atomically — see resolveBenchConfirmation). 👎 is
- * a no-op: nobody is ever removed for passing or staying silent.
+ * Two things can be reacted to:
  *
- * Reactor resolution is scoped to the bench of the offer's match:
- * phone first, then @lid pushname matched UNIQUELY against that small
- * bench set. We can't promote a non-bencher.
+ *   1. The GROUP bench-slot-offer post (2026-05-19) — a 👍 from any
+ *      current bench player claims the slot, first one wins; 👎 is a
+ *      no-op because nobody is ever removed for passing.
+ *   2. The 1-1 RECRUIT INVITE DM (2026-08-31) — the invite now asks for
+ *      "reply *IN* or tap 👍", so the tap has to mean something. Here 👎
+ *      is NOT a no-op: the owner asked for saying no to be as easy as
+ *      saying yes, so 👎 registers OUT. See src/lib/recruit-reaction.ts
+ *      for how a reaction finds its player and its match.
+ *
+ * The bench branch runs first and is unchanged. Its reactor resolution is
+ * scoped to the bench of the offer's match (phone first, then @lid
+ * pushname matched UNIQUELY against that small bench set) because a
+ * GROUP post can be reacted to by anybody and we must not promote a
+ * non-bencher. The DM branch has no such problem: see below.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
+import { classifyReactionAttendance, resolveRecruitDmReaction } from "@/lib/recruit-reaction";
+import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
+import { formatLondon } from "@/lib/london-time";
 
 const norm = (s: string) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -50,7 +61,16 @@ export async function POST(request: Request) {
       },
     },
   });
-  if (!offer) return NextResponse.json({ ok: true, ignored: "no-open-offer" });
+  if (!offer) {
+    // Not a bench offer. Was it the recruit invite DM?
+    const recruit = await handleRecruitDmReaction({
+      waMessageId,
+      emoji,
+      fromPhone,
+    });
+    if (recruit) return NextResponse.json(recruit);
+    return NextResponse.json({ ok: true, ignored: "no-open-offer" });
+  }
 
   const isYes =
     emoji === "👍" || emoji === "👍🏻" || emoji === "👍🏼" || emoji === "👍🏽" ||
@@ -120,4 +140,74 @@ export async function POST(request: Request) {
     decision: true,
   });
   return NextResponse.json({ ok: true, outcome: res.kind });
+}
+
+/**
+ * A 👍 or 👎 on the recruit invite DM.
+ *
+ * Returns null when this reaction is not on an invite we sent, so the
+ * caller falls through to its existing "ignored" response.
+ *
+ * REACTOR IDENTITY. In a 1-1 chat only two parties exist: MatchTime and
+ * the player we DMed. So the DM itself identifies the player, and an
+ * @lid reactor with no readable phone is handled for free (the failure
+ * mode that lost Erdal's bench 👎 on 2026-05-18 cannot occur here). The
+ * phone check below is therefore a SEATBELT, not the resolution: it only
+ * rejects a reactor we can positively identify as somebody else, which in
+ * practice means the bot reacting to its own message.
+ */
+async function handleRecruitDmReaction(input: {
+  waMessageId: string;
+  emoji: string;
+  fromPhone: string;
+}): Promise<Record<string, unknown> | null> {
+  const target = await resolveRecruitDmReaction(input.waMessageId);
+  if (!target) return null;
+
+  const decision = classifyReactionAttendance(input.emoji);
+  if (!decision) return { ok: true, ignored: "not-yes-no" };
+
+  if (input.fromPhone && target.phone) {
+    const reactor = normalisePhone(input.fromPhone);
+    const recipient = normalisePhone(target.phone);
+    if (reactor && recipient && reactor !== recipient) {
+      return { ok: true, ignored: "reactor-not-the-recipient" };
+    }
+  }
+
+  const match = await db.match.findUnique({
+    where: { id: target.matchId },
+    select: {
+      status: true,
+      date: true,
+      activity: { select: { name: true, orgId: true } },
+    },
+  });
+  // A reaction on a stale invite (match played, or called off) changes
+  // nothing. Silently ignored rather than registering someone for a game
+  // that no longer exists.
+  if (!match) return { ok: true, ignored: "match-missing" };
+  if (!["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)) {
+    return { ok: true, ignored: "match-not-open" };
+  }
+
+  const res = await applyOutOfBandSelfAttendance({
+    userId: target.userId,
+    matchId: target.matchId,
+    orgId: match.activity.orgId,
+    decision,
+    matchName: match.activity.name,
+    matchWhen: formatLondon(match.date, "EEE d MMM, HH:mm"),
+    source: "reaction",
+    replyPhone: target.phone,
+  });
+
+  return {
+    ok: true,
+    handled: "recruit-dm-reaction",
+    decision,
+    status: res.status,
+    announced: res.announced,
+    matchId: target.matchId,
+  };
 }

@@ -3,10 +3,12 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * The recruit blast DMs a player: "Fancy it? Tap to grab a spot: <link>".
- * Plenty of players — especially the older, less technical half of a club
- * — never tap. They reply "IN" to the DM and consider themselves signed
- * up. Until now that reply matched no pending prompt in
+ * The recruit blast DMs a player about the next match. Plenty of players
+ * — especially the older, less technical half of a club — reply "IN" to
+ * the DM and consider themselves signed up. (Since 2026-08-31 the invite
+ * explicitly ASKS for that reply; before then it led with a magic link
+ * and they replied anyway.) Until this existed, that reply matched no
+ * pending prompt in
  * /api/whatsapp/dm-reply (tentative follow-up, roster survey, bench offer,
  * collector fee) so it was silently dropped: the player believed they had
  * a spot and nothing was recorded. Same silent-failure class as the

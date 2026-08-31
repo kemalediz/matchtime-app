@@ -36,7 +36,7 @@ const group = async (request: APIRequestContext, db: TestDb) =>
 
 const recruitDms = (grp: SimGroup) =>
   grp.db.all<{ phone: string | null; text: string }>(
-    `SELECT phone, text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND text LIKE '%grab a spot%'`,
+    `SELECT phone, text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND text LIKE '%tap 👍%'`,
     [grp.orgId],
   );
 
@@ -55,7 +55,14 @@ test("explicit shortage from an admin → invite DMs to recent non-responders wi
   expect(phones).toEqual(expected);
   for (const d of dms) {
     expect(d.text).toContain("putting the squad together");
-    expect(d.text).toMatch(/https?:\/\//); // RSVP magic link
+    // The ASK leads (2026-08-31): reply IN or 👍, reply OUT or 👎.
+    expect(d.text).toContain("Reply *IN*");
+    expect(d.text).toContain("Reply *OUT*");
+    expect(d.text).toContain("👍");
+    expect(d.text).toContain("👎");
+    // The magic link survives, demoted to the trailing optional line.
+    expect(d.text).toMatch(/https?:\/\//);
+    expect(d.text.trim().split("\n").at(-1)).toContain("Prefer the app?");
   }
   // Idempotency breadcrumbs, one per invited player.
   for (const k of ["pete", "dan", "felix"]) {
