@@ -63,6 +63,12 @@ import {
   parseHelpTopic,
 } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import {
+  resolveAttendanceAck,
+  attendanceFailureAction,
+  attendanceFailureLog,
+  type AttendanceWriteFailure,
+} from "@/lib/attendance-write-outcome";
 import { recordTentative, resolveTentative } from "@/lib/tentative-store";
 import { isPromoteFromBenchAuthorized } from "@/lib/promote-authorization";
 import { computeEloDeltas } from "@/lib/elo";
@@ -1201,11 +1207,53 @@ export async function POST(request: Request) {
       };
     }
     try {
-      const { react, reply } = await executeVerdict({
+      const executed = await executeVerdict({
         verdict,
         user: sender.userId ? { id: sender.userId, name: sender.name } : null,
         orgId: org.id,
       });
+      // ── Honest ack ────────────────────────────────────────────────
+      //   A confirmation is NEVER sent for a write that did not land.
+      //   Only a write that actually THREW counts as a failure here: an
+      //   OUT from a player with no row returns before any write, and a
+      //   repeat IN is idempotent — both are legitimate no-ops and must
+      //   not get an apology. Same rule as the DM path (9f19040) and
+      //   lib/out-of-band-self-attendance.ts.
+      const ack = resolveAttendanceAck({
+        failures: executed.attendanceFailures,
+        react: executed.react,
+        reply: executed.reply,
+        senderName: sender.name ?? msg.authorName ?? null,
+      });
+      if (ack.failed) {
+        // Operator-visible: this is an incident, not a warning.
+        console.error(attendanceFailureLog(executed.attendanceFailures), "for", msg.waMessageId);
+        // Store what HAPPENED, not what was intended — an "IN" row for a
+        // write that threw is exactly what made this invisible in the
+        // data as well as in the chat.
+        await recordAnalysis({
+          orgId: org.id,
+          groupId: body.groupId,
+          msg,
+          handledBy: "error",
+          intent: verdict.intent,
+          action: attendanceFailureAction(executed.attendanceFailures),
+          confidence: verdict.confidence,
+          reasoning: attendanceFailureLog(executed.attendanceFailures).slice(0, 2000),
+          authorUserId: sender.userId,
+          authorName: msg.authorName ?? null,
+        });
+        results.push({
+          waMessageId: msg.waMessageId,
+          handledBy: "error",
+          intent: verdict.intent,
+          react: null,
+          reply: ack.reply,
+          reasoning: verdict.reasoning,
+        });
+        continue;
+      }
+      const { react, reply } = ack;
       // Apply the same proximity post-processor the chase composer uses
       // so reactive replies also rewrite "tonight" → "Tue 28 Apr" and
       // any 20:30/21:30-style UTC-vs-BST mistakes. Also enforce the
@@ -2018,10 +2066,19 @@ async function executeVerdict(args: {
   verdict: AnalysisVerdict;
   user: { id: string; name: string | null } | null;
   orgId: string;
-}): Promise<{ react: string | null; reply: string | null }> {
+}): Promise<{
+  react: string | null;
+  reply: string | null;
+  /** Every attendance write that THREW in this verdict. Empty means
+   *  everything either landed or was never attempted — the caller uses
+   *  this to decide whether the ack is honest (see
+   *  lib/attendance-write-outcome.ts). */
+  attendanceFailures: AttendanceWriteFailure[];
+}> {
   const { verdict, user, orgId } = args;
   let finalReact = verdict.react;
   let finalReply = verdict.reply;
+  const attendanceFailures: AttendanceWriteFailure[] = [];
 
   // ── Per-org feature gate ─────────────────────────────────────────
   //   Map the verdict to the module it would exercise; if that module
@@ -2049,7 +2106,7 @@ async function executeVerdict(args: {
             ? "attendance"
             : null;
     if (needs && !f[needs]) {
-      return { react: null, reply: null };
+      return { react: null, reply: null, attendanceFailures };
     }
   }
 
@@ -2080,7 +2137,7 @@ async function executeVerdict(args: {
         console.error("[analyze] recordTentative failed:", err),
       );
     }
-    return { react: finalReact, reply: finalReply };
+    return { react: finalReact, reply: finalReply, attendanceFailures };
   }
 
   // ── Last-mile react rewrite for IN intent ────────────────────────
@@ -2130,7 +2187,7 @@ async function executeVerdict(args: {
       }
       // "ignored" (no open PBC found at execution time — race) falls
       // through; nothing to do.
-      return { react: finalReact, reply: finalReply };
+      return { react: finalReact, reply: finalReply, attendanceFailures };
     }
   }
 
@@ -2162,7 +2219,7 @@ async function executeVerdict(args: {
         if (!existingAtt) {
           finalReact = null;
           finalReply = null;
-          return { react: finalReact, reply: finalReply };
+          return { react: finalReact, reply: finalReply, attendanceFailures };
         }
       }
       try {
@@ -2198,6 +2255,15 @@ async function executeVerdict(args: {
           (err) => console.error("[analyze] resolveTentative failed:", err),
         );
       } catch (err) {
+        // NEVER swallow this. A thrown write means no squad row exists,
+        // so the LLM's cheerful "you're in!" would be a lie. Record it
+        // and let the caller replace the ack with the truth (the same
+        // rule the DM path got in 9f19040).
+        attendanceFailures.push({
+          action: verdict.registerAttendance,
+          who: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
         console.error("[analyze] attendance update failed:", err);
       }
     }
@@ -2292,6 +2358,13 @@ async function executeVerdict(args: {
             finalReact = "👋";
           }
         } catch (err) {
+          // Same rule for someone else's registration: "Najib's in 👍"
+          // must not go out when Najib's row never landed.
+          attendanceFailures.push({
+            action: entry.action,
+            who: entry.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
           console.error(`[analyze] third-party registration failed for "${entry.name}":`, err);
         }
       }
@@ -2823,7 +2896,7 @@ async function executeVerdict(args: {
     }
   }
 
-  return { react: finalReact, reply: finalReply };
+  return { react: finalReact, reply: finalReply, attendanceFailures };
 }
 
 async function recordAnalysis(args: {

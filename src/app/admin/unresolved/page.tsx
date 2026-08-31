@@ -5,8 +5,10 @@ import { AlertTriangle, Link2, Check } from "lucide-react";
 import { toast } from "sonner";
 import {
   listUnresolved,
+  listFailedAttendanceWrites,
   assignUnresolvedToPlayer,
   type UnresolvedGroup,
+  type FailedAttendanceWrite,
 } from "@/app/actions/unresolved";
 
 interface Player {
@@ -24,6 +26,7 @@ const INTENT_LABEL: Record<string, string> = {
 export default function UnresolvedPage() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [groups, setGroups] = useState<UnresolvedGroup[]>([]);
+  const [failed, setFailed] = useState<FailedAttendanceWrite[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [pick, setPick] = useState<Record<string, string>>({});
@@ -44,6 +47,11 @@ export default function UnresolvedPage() {
       .then(setGroups)
       .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
+    listFailedAttendanceWrites(orgId)
+      .then(setFailed)
+      .catch(() => {
+        /* non-fatal: the main queue is the important half */
+      });
   }, [orgId]);
 
   async function handleAssign(g: UnresolvedGroup, applyLatestIntent: boolean) {
@@ -93,6 +101,39 @@ export default function UnresolvedPage() {
           drop/join they asked for.
         </p>
       </div>
+
+      {failed.length > 0 && (
+        <div className="bg-white rounded-xl border border-rose-200 shadow-sm p-5">
+          <h3 className="text-base font-semibold text-rose-800 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-500" />
+            Changes that didn&apos;t save ({failed.length})
+          </h3>
+          <p className="text-sm text-slate-500 mt-1 max-w-2xl">
+            The bot hit an error writing these to the squad. It told the player in the
+            group that nothing landed, so they may have asked again. Check the roster
+            below is right and set it by hand if it isn&apos;t.
+          </p>
+          <div className="mt-3 space-y-2">
+            {failed.map((f) => (
+              <div key={f.waMessageId} className="rounded-lg bg-rose-50 px-3 py-2">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-sm font-semibold text-rose-900">{f.summary}</span>
+                  <span className="text-xs text-slate-500">
+                    {new Date(f.at).toLocaleString("en-GB", {
+                      timeZone: "Europe/London",
+                      day: "2-digit",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600 mt-1">{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {groups.length === 0 ? (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center">
