@@ -26,6 +26,16 @@
  * RELEASES those claims (POST /api/whatsapp/ack with `release: true`) so
  * they are re-emitted next tick, preserving the existing pacing
  * behaviour. Full reasoning in src/lib/dispatch-claim.ts.
+ *
+ * ── Outbound guards (2026-08-31) ──────────────────────────────────────
+ * The blunt "10 group messages per hour" cap added the day after the
+ * incident was the wrong shape: it gagged the bot exactly when a match
+ * day got busy and every suppressed message was legitimate. It is
+ * replaced by a REPETITION guard (the same text to the same group more
+ * than MAX_IDENTICAL_GROUP_MESSAGES times inside REPETITION_WINDOW_MS is
+ * always a bug) plus a raised sanity ceiling of 40/hour. DMs are gated by
+ * neither. Both are best-effort: if the guard's own queries fail we allow
+ * the send, because a broken guard must never silence a customer's group.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
@@ -33,8 +43,15 @@ import { computeDuePosts, sweepExpiredBenchConfirmations } from "@/lib/bot-sched
 import {
   CIRCUIT_BREAKER_WINDOW_MS,
   GROUP_DIRECTED_KINDS,
+  MAX_IDENTICAL_GROUP_MESSAGES,
+  OUTBOUND_TEXT_LOG_KIND,
+  REPETITION_WINDOW_MS,
+  outboundTextLogKey,
+  outboundTextLogPrefix,
+  parseOutboundTextLogKey,
   selectDispatchable,
   type Claimable,
+  type RecentOutboundText,
 } from "@/lib/dispatch-claim";
 
 /**
@@ -49,7 +66,9 @@ import {
  *                       and a non-`org-` key, so neither of the other two
  *                       predicates would ever see them).
  * `retro-react-<id>` is an update-reaction (not group-directed) so it
- * never counts against the group budget.
+ * never counts against the group budget. Neither do `outbound-text-log`
+ * ledger rows — that kind is deliberately absent from
+ * GROUP_DIRECTED_KINDS.
  */
 async function countRecentGroupSends(orgId: string, since: Date): Promise<number> {
   const orgBotJobs = await db.botJob.findMany({
@@ -70,6 +89,47 @@ async function countRecentGroupSends(orgId: string, since: Date): Promise<number
       ],
     },
   });
+}
+
+/**
+ * The group texts this org has sent inside the repetition window.
+ *
+ * Sourced from the `outbound-text-log` ledger rows this route writes
+ * itself (see src/lib/dispatch-claim.ts for why the hash lives in the
+ * SentNotification key rather than a new column — no migration). Filtered
+ * on the indexed `kind` first, so this is a handful of rows even on a
+ * busy day.
+ *
+ * FAILS OPEN. If this query throws we return no history, the repetition
+ * guard sees only within-batch repeats, and the message still goes out.
+ * A guard that can silence a customer's group when the database hiccups
+ * would be worse than the bug it is guarding against.
+ */
+async function fetchRecentGroupTexts(orgId: string, now: Date): Promise<RecentOutboundText[]> {
+  try {
+    const rows = await db.sentNotification.findMany({
+      where: {
+        kind: OUTBOUND_TEXT_LOG_KIND,
+        createdAt: { gte: new Date(now.getTime() - REPETITION_WINDOW_MS) },
+        key: { startsWith: outboundTextLogPrefix(orgId) },
+      },
+      select: { key: true, createdAt: true },
+      take: 500,
+    });
+    const out: RecentOutboundText[] = [];
+    for (const row of rows) {
+      const parsed = parseOutboundTextLogKey(row.key);
+      if (parsed && parsed.orgId === orgId) out.push({ hash: parsed.hash, at: row.createdAt });
+    }
+    return out;
+  } catch (err) {
+    console.error(
+      `[due-posts] org ${orgId}: could not read the outbound text log — repetition guard ` +
+        `degraded to within-batch only for this poll.`,
+      err,
+    );
+    return [];
+  }
 }
 
 export async function GET(request: Request) {
@@ -130,8 +190,12 @@ export async function GET(request: Request) {
     new Date(now.getTime() - CIRCUIT_BREAKER_WINDOW_MS),
   );
 
+  const recentTexts = await fetchRecentGroupTexts(org.id, now);
+
   const selection = await selectDispatchable(result.instructions, {
     recentGroupSends,
+    recentTexts,
+    now,
     // The atomic claim. `create` on a @unique column is the whole guard:
     // the loser gets P2002 and skips. A findFirst-then-create check here
     // would reintroduce exactly the race this fixes.
@@ -147,12 +211,37 @@ export async function GET(request: Request) {
     },
     onBreak: ({ count, cap }) => {
       console.error(
-        `CRITICAL: outbound circuit breaker TRIPPED for org ${org.id} (group ${groupId}) — ` +
-          `${count} group message(s) in the last hour, cap is ${cap}. ` +
+        `CRITICAL: outbound volume ceiling TRIPPED for org ${org.id} (group ${groupId}) — ` +
+          `${count} group message(s) in the last hour, ceiling is ${cap}. ` +
           `Suppressing all further group dispatch for this org until the window clears. ` +
-          `Normal traffic is 1-2 posts/day: check for duplicate bot processes on the Pi ` +
+          `This ceiling is set far above any legitimate match day, so it firing is an ` +
+          `INCIDENT, not a tuning problem: check for duplicate bot processes on the Pi ` +
           `(scripts/deploy-pi.sh) and for a re-emitting scheduler key.`,
       );
+    },
+    onRepeat: ({ key, repeats, limit, windowMs, text }) => {
+      console.error(
+        `CRITICAL: outbound repetition guard BLOCKED a group message for org ${org.id} ` +
+          `(group ${groupId}, key ${key}) — the same text has already gone out ${repeats} ` +
+          `time(s) in the last ${Math.round(windowMs / 60000)} minute(s), limit is ${limit}. ` +
+          `Identical repeats at this rate are always a bug: look for a loop emitting new ` +
+          `keys for one message, or duplicate bot processes on the Pi (scripts/deploy-pi.sh). ` +
+          `Text: ${JSON.stringify(text.slice(0, 160))}`,
+      );
+    },
+    // Best-effort ledger write so the NEXT poll can see this send. Any
+    // failure is swallowed by selectDispatchable — the message is already
+    // claimed and must still go out.
+    recordText: async ({ hash, key }) => {
+      await db.sentNotification.create({
+        data: {
+          key: outboundTextLogKey(org.id, hash, key),
+          kind: OUTBOUND_TEXT_LOG_KIND,
+          // matchId deliberately left null: that keeps these rows out of
+          // the scheduler's dedupe query entirely (it only loads rows
+          // joined to this org's matches, or keyed `org-<id>:`).
+        },
+      });
     },
   });
 
@@ -163,6 +252,14 @@ export async function GET(request: Request) {
     console.warn(
       `[due-posts] org ${org.id}: ${selection.alreadyClaimed.length} instruction(s) already ` +
         `claimed by another poller — skipped: ${selection.alreadyClaimed.join(", ")}`,
+    );
+  }
+  if (selection.repetitionBlocked.length > 0) {
+    console.error(
+      `[due-posts] org ${org.id}: ${selection.repetitionBlocked.length} instruction(s) blocked by ` +
+        `the repetition guard (max ${MAX_IDENTICAL_GROUP_MESSAGES} identical group posts per ` +
+        `${Math.round(REPETITION_WINDOW_MS / 60000)} min) — not claimed, keys left free: ` +
+        `${selection.repetitionBlocked.join(", ")}`,
     );
   }
   if (selection.errored.length > 0) {
