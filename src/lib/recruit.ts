@@ -16,8 +16,37 @@ import { buildShortMagicLinkUrl } from "./short-link";
 import { formatLondon } from "./london-time";
 import { getOrgFeatures } from "./org-features";
 
-/** How many recent completed matches to pull attendees from. */
-const LOOKBACK_MATCHES = 3;
+/**
+ * How many recent COMPLETED matches to pull attendees from.
+ *
+ * Widened 3 → 5 at the owner's request (2026-08-31). Measured pool sizes
+ * for that club (12 completed matches, 73 active members):
+ *   lookback 3 → 17 players, 5 → 22, 10 → 35, 12 → 39.
+ * At 3, after excluding everyone already registered, only 9 invites went
+ * out and the squad stayed short.
+ *
+ * DO NOT raise this default further. The bot runs on an UNOFFICIAL
+ * WhatsApp client; a mass-DM risks the account being banned, which takes
+ * the whole product down. `inviteRecentPlayers` takes a per-invocation
+ * override so the window can be tuned for one blast without a deploy, and
+ * that override is clamped to RECRUIT_LOOKBACK_MAX for the same reason.
+ */
+export const LOOKBACK_MATCHES = 5;
+
+/** Hard ceiling on the per-invocation override. Ban-risk backstop. */
+export const RECRUIT_LOOKBACK_MAX = 12;
+
+/**
+ * Sanitise a caller-supplied lookback: floor it, clamp it to
+ * [1, RECRUIT_LOOKBACK_MAX], and fall back to the default when it is
+ * missing or not a finite number.
+ */
+export function resolveLookbackMatches(requested?: number): number {
+  if (requested === undefined || requested === null || !Number.isFinite(requested)) {
+    return LOOKBACK_MATCHES;
+  }
+  return Math.min(RECRUIT_LOOKBACK_MAX, Math.max(1, Math.floor(requested)));
+}
 
 /** Does this message read like an EXPLICIT "we need more players" request?
  *  Used by both the in-group fast-path and the admin DM handler. Fires
@@ -85,7 +114,13 @@ export interface RecruitResult {
   alreadyInvited?: number;
 }
 
-export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult> {
+export async function inviteRecentPlayers(
+  orgId: string,
+  /** Override the number of recent completed matches to draw candidates
+   *  from. Defaults to LOOKBACK_MATCHES; clamped to RECRUIT_LOOKBACK_MAX. */
+  lookbackMatches?: number,
+): Promise<RecruitResult> {
+  const lookback = resolveLookbackMatches(lookbackMatches);
   // 1. The next upcoming match.
   const startToday = new Date();
   startToday.setUTCHours(0, 0, 0, 0);
@@ -150,7 +185,7 @@ export async function inviteRecentPlayers(orgId: string): Promise<RecruitResult>
   const recent = await db.match.findMany({
     where: { activity: { orgId }, isHistorical: false, status: "COMPLETED" },
     orderBy: { date: "desc" },
-    take: LOOKBACK_MATCHES,
+    take: lookback,
     select: {
       attendances: {
         where: { status: "CONFIRMED" },

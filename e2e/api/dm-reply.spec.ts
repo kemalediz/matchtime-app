@@ -10,7 +10,7 @@
  * src/lib/dm-subscriptions.ts.)
  */
 import { test, expect, resetDb } from "../fixtures";
-import { U, ORG_ID, PHONE } from "../helpers/constants";
+import { U, ORG_ID, PHONE, MATCH } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -101,4 +101,124 @@ test("unknown sender is ignored — no write, no ack", async ({ request, db }) =
   const json = await postDm(request, "+447700900999", "stop messaging me about ratings");
   expect(json.ignored).toBe("unknown-sender");
   expect(await db.count(`SELECT COUNT(*) FROM "BotJob"`)).toBe(before);
+});
+
+// ── COLD self-attendance fallback (2026-08-31) ─────────────────────────
+//   A player replying "IN" / "OUT" to a recruit DM, with no pending prompt
+//   to attribute it to, must be registered against the SAME match the group
+//   path would choose — and the group must be told, because an out-of-band
+//   registration is invisible to everybody else.
+//
+//   These bodies all hit the free regex FAST-PATH, so they are
+//   deterministic under the normal e2e env (ANTHROPIC_API_KEY is blank, so
+//   the LLM layer returns "unclear"). The MODEL's behaviour on natural
+//   wording is validated separately against the real model in
+//   e2e/sim/dm-self-attendance-live.spec.ts.
+
+const attendance = (db: import("../helpers/test-db").TestDb, userId: string) =>
+  db.one<{ status: string; position: number }>(
+    `SELECT status, position FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`,
+    [MATCH.upcoming, userId],
+  );
+
+const groupPostsLike = (db: import("../helpers/test-db").TestDb, needle: string) =>
+  db.count(
+    `SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group' AND text LIKE $2`,
+    [ORG_ID, `%${needle}%`],
+  );
+
+test("a cold 'IN' DM registers against the next match and tells the group", async ({ request, db }) => {
+  const json = await postDm(request, PHONE.fresh, "IN");
+  expect(json.handled).toBe("dm-self-attendance");
+  expect(json.decision).toBe("in");
+  expect(json.via).toBe("fast-path");
+  expect(json.matchId).toBe(MATCH.upcoming);
+  expect(json.status).toBe("CONFIRMED");
+
+  // Registered on the upcoming match (4 confirmed seeded + this one = 5/5).
+  const att = await attendance(db, U.fresh);
+  expect(att?.status).toBe("CONFIRMED");
+
+  // Personal confirmation DM back to the player.
+  const ack = await db.one<{ text: string }>(
+    `SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+    [ORG_ID, PHONE.fresh.replace(/^\+/, "")],
+  );
+  expect(ack?.text).toContain("You're in for");
+
+  // Group announcement, with the count computed AFTER the write.
+  expect(await groupPostsLike(db, "*Ian Innes* is IN (replied by DM). Squad *5/5*.")).toBe(1);
+});
+
+test("a repeat 'IN' is idempotent and does NOT announce again", async ({ request, db }) => {
+  const before = await attendance(db, U.fresh);
+  const beforeGroup = await db.count(
+    `SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group'`,
+    [ORG_ID],
+  );
+
+  const json = await postDm(request, PHONE.fresh, "i'm in");
+  expect(json.handled).toBe("dm-self-attendance");
+  expect(json.status).toBe("CONFIRMED");
+
+  // Same row, same slot — no duplicate, no reshuffle.
+  const after = await attendance(db, U.fresh);
+  expect(after?.status).toBe(before?.status);
+  expect(after?.position).toBe(before?.position);
+  expect(
+    await db.count(
+      `SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`,
+      [MATCH.upcoming, U.fresh],
+    ),
+  ).toBe(1);
+
+  // Nothing changed, so the group hears nothing.
+  expect(
+    await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group'`, [ORG_ID]),
+  ).toBe(beforeGroup);
+});
+
+test("a cold 'IN' on a FULL squad goes to the bench, exactly like the group path", async ({ request, db }) => {
+  const json = await postDm(request, PHONE.extra, "count me in");
+  expect(json.handled).toBe("dm-self-attendance");
+  expect(json.status).toBe("BENCH");
+
+  const att = await attendance(db, U.extra);
+  expect(att?.status).toBe("BENCH");
+
+  const ack = await db.one<{ text: string }>(
+    `SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+    [ORG_ID, PHONE.extra.replace(/^\+/, "")],
+  );
+  expect(ack?.text).toContain("bench");
+
+  expect(
+    await groupPostsLike(db, "*Zara Zest* replied IN by DM and goes to the bench. Squad *5/5*."),
+  ).toBe(1);
+});
+
+test("an ambiguous DM is NOT guessed at — no write, no announcement", async ({ request, db }) => {
+  const beforeGroup = await db.count(
+    `SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group'`,
+    [ORG_ID],
+  );
+  const json = await postDm(request, PHONE.rater, "cheers mate");
+  expect(json.handled).not.toBe("dm-self-attendance");
+
+  expect(await attendance(db, U.rater)).toBeNull();
+  expect(
+    await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group'`, [ORG_ID]),
+  ).toBe(beforeGroup);
+});
+
+test("a cold 'OUT' DM drops the player and tells the group", async ({ request, db }) => {
+  const json = await postDm(request, PHONE.player, "out");
+  expect(json.handled).toBe("dm-self-attendance");
+  expect(json.decision).toBe("out");
+  expect(json.status).toBe("DROPPED");
+
+  const att = await attendance(db, U.player);
+  expect(att?.status).toBe("DROPPED");
+
+  expect(await groupPostsLike(db, "*Pat Player* is OUT (replied by DM). Squad *4/5*.")).toBe(1);
 });
