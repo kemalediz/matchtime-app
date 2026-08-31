@@ -11,6 +11,7 @@
 import pkg from "whatsapp-web.js";
 import { getDuePosts, ackInstruction, releaseInstruction, type DueInstruction } from "./api.js";
 import { config } from "./config.js";
+import { reactAndReport } from "./react-with-id.js";
 import {
   waMessageIdFrom,
   isMissingSendResult,
@@ -289,22 +290,22 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
     }
 
     if (instr.kind === "update-reaction") {
-      // Look up the original message and replace the bot account's
-      // reaction. whatsapp-web.js's msg.react() swaps any prior react
-      // from this account on the same message — no separate clear
-      // step. If the message can't be found (rare; very old messages
-      // can fall out of the cache) we still ACK so the server stops
-      // re-emitting it.
-      try {
-        const msg = await client.getMessageById(instr.waMessageId);
-        if (msg) {
-          await msg.react(instr.emoji);
-        } else {
-          console.warn(`update-reaction: message not found ${instr.waMessageId}`);
-        }
-      } catch (e) {
-        console.warn(`update-reaction failed for ${instr.waMessageId}:`, e);
-      }
+      // Replace the bot account's reaction on the original message.
+      // Placing a reaction swaps any prior one from the same account on the
+      // same message — no separate clear step.
+      //
+      // We already HAVE the id (`instr.waMessageId`, straight from the
+      // server), so react with it directly. The old code did
+      // `getMessageById(id)` and then `msg.react(emoji)`, which threw both
+      // ids away: `Message.react()` re-reads `this.id._serialized`, which the
+      // live WhatsApp Web build made unreadable, and then its page code does
+      // `if (!messageId) return null` — resolving without placing anything.
+      // Two round-trips through the injected layer to achieve a silent no-op.
+      // See react-with-id.ts.
+      //
+      // A failure is logged with a specific reason and we still ACK, so the
+      // server stops re-emitting an instruction we cannot satisfy.
+      await reactAndReport(client, instr.waMessageId, instr.emoji, "update-reaction");
       await ackInstruction({
         key: instr.key,
         kind: instr.kind,

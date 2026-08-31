@@ -37,6 +37,7 @@ import {
   resolveWaMessageId,
   shouldLogSyntheticId,
 } from "./message-id.js";
+import { describeReactionFailure, planReaction, reactWithId } from "./react-with-id.js";
 
 const HISTORY_PER_GROUP = 15;
 // Ten-minute batches keep Claude cost ~£2/month at Sutton's volume
@@ -141,8 +142,16 @@ interface Pending {
    *  (only the Pi knows its selfId); forwarded as the PRIMARY signal for
    *  the server's @Match Time interaction-contract gate. */
   botMentioned?: boolean;
-  /** Kept so the bot can react/reply to the exact wweb.js Message later. */
-  msg: Message;
+  // Deliberately NO `msg: Message` here any more.
+  //
+  // It existed so the flush could call `target.react(emoji)` later. That is
+  // exactly the bug: `Message.react()` re-reads `this.id._serialized`, which
+  // the live WhatsApp Web build made unreadable, and then silently resolves
+  // without placing anything. The flush now reacts through `waMessageId`
+  // above — the same id it POSTs to the analyzer — via react-with-id.ts.
+  // Dropping the reference keeps the two from drifting apart again, and
+  // stops a buffered batch pinning wweb.js Message objects for a whole
+  // flush interval.
   /** How many analyze POSTs have already failed for this message. */
   attempts: number;
 }
@@ -382,7 +391,6 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     // can with them.
     mentions: rawMentionedIds.length > 0 ? rawMentionedIds : undefined,
     botMentioned,
-    msg,
     attempts: 0,
   };
 
@@ -591,6 +599,8 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
     // their "in" landed, so a batch of failures is a product incident, not
     // n unrelated warnings. See the catch-up block after this loop.
     const failedReacts: ReactFallbackEntry[] = [];
+    /** One per failure, so the CRITICAL log can break them down by cause. */
+    const failureReasons: string[] = [];
     let reactAttempts = 0;
 
     for (const r of results) {
@@ -598,22 +608,49 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
       if (!r.react && !r.reply) continue;
 
       const entry = pending.find((p) => p.waMessageId === r.waMessageId);
-      const target = entry?.msg;
-      if (!target) continue;
+      if (!entry) continue;
 
       if (r.react) {
         reactAttempts++;
-        try {
-          await target.react(r.react);
-        } catch (err) {
-          // Deliberately NOT retried through `client.getMessageById(...)`:
-          // that goes through the very same injected page code, so it would
-          // fail identically while costing a round-trip per message.
+
+        // React with the id WE resolved for this message and POSTed to the
+        // analyzer — `entry.waMessageId`, threaded through from the buffer,
+        // NOT re-derived here and emphatically NOT `Message.react()`.
+        //
+        // `Message.react()` reads `this.id._serialized`, which the live
+        // WhatsApp Web build made unreadable, and its page code opens with
+        // `if (!messageId) return null;`. So it RESOLVED without placing
+        // anything: no emoji, no throw, so the catch below never fired and
+        // reactions were silently dead for days. See react-with-id.ts.
+        const plan = planReaction(entry.waMessageId, r.react);
+
+        if (plan.action === "skip") {
+          // The only skip that happens in practice is a synthetic id: one we
+          // invented because the message's real id was unreadable. WhatsApp
+          // never issued it, so no page lookup can resolve it. A documented
+          // degradation, not a bug — but the player still got no emoji, so
+          // they go into the text catch-up like any other failure.
           console.error(
-            `[smart] react ${r.react} failed for ${r.waMessageId} in ${groupId}:`,
-            err instanceof Error ? err.message : err,
+            `[smart] react ${r.react} skipped for ${entry.waMessageId} in ${groupId}: ` +
+              `${plan.reason} — ` +
+              (plan.reason === "synthetic-id"
+                ? "this id was synthesised locally because the message's real WhatsApp id " +
+                  "could not be read, so there is no message in the page to react to"
+                : "no usable id/emoji to react with"),
           );
-          failedReacts.push({ authorName: entry?.authorName ?? null, emoji: r.react });
+          failedReacts.push({ authorName: entry.authorName ?? null, emoji: r.react });
+          failureReasons.push(plan.reason);
+        } else {
+          const outcome = await reactWithId(client, plan.messageId, plan.emoji);
+          if (!outcome.ok) {
+            console.error(
+              `[smart] react ${plan.emoji} failed for ${plan.messageId} in ${groupId}: ` +
+                `${outcome.reason} — ${describeReactionFailure(outcome.reason)}` +
+                (outcome.detail ? ` (${outcome.detail})` : ""),
+            );
+            failedReacts.push({ authorName: entry.authorName ?? null, emoji: plan.emoji });
+            failureReasons.push(outcome.reason);
+          }
         }
       }
       if (r.reply) {
@@ -636,7 +673,7 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
       }
     }
 
-    await handleFailedReacts(client, groupId, failedReacts, reactAttempts);
+    await handleFailedReacts(client, groupId, failedReacts, reactAttempts, failureReasons);
   } finally {
     inFlightFlush.delete(groupId);
   }
@@ -667,17 +704,28 @@ async function handleFailedReacts(
   groupId: string,
   failed: ReactFallbackEntry[],
   attempted: number,
+  reasons: string[] = [],
 ): Promise<void> {
   if (failed.length === 0) return;
 
+  // Break the failures down by cause. "Reactions are broken" was the ONLY
+  // signal available during the outage and it was not enough: a page that
+  // has gone away, a Store method WhatsApp renamed, a message that has
+  // fallen out of the cache, and our own synthetic ids all want different
+  // responses. Every reason string is defined in react-with-id.ts.
+  const tally = new Map<string, number>();
+  for (const reason of reasons) tally.set(reason, (tally.get(reason) ?? 0) + 1);
+  const breakdown = [...tally.entries()].map(([reason, n]) => `${reason}×${n}`).join(", ");
+
   console.error(
     `CRITICAL: ${failed.length} of ${attempted} reaction(s) could not be delivered in ` +
-      `${groupId}. The attendance IS recorded server-side — the players simply got no ` +
-      "✅/🪑 confirmation, so they will think the bot ignored them. This is " +
-      "whatsapp-web.js's injected page code being out of step with the live WhatsApp " +
-      "Web build: Message.react() goes through it. Mitigation: pin a known-good build " +
-      "with WA_WEB_VERSION in ~/matchtime-bot/.env, or upgrade whatsapp-web.js. " +
-      "See MDs/whatsapp-web-version-pinning.md.",
+      `${groupId}${breakdown ? ` [${breakdown}]` : ""}. The attendance IS recorded ` +
+      "server-side — the players simply got no ✅/🪑 confirmation, so they will think " +
+      "the bot ignored them. Unless the reason above is `synthetic-id` (a message whose " +
+      "real WhatsApp id we could not read at all), this means whatsapp-web.js's injected " +
+      "page code is out of step with the live WhatsApp Web build. Mitigation: pin a " +
+      "known-good build with WA_WEB_VERSION in ~/matchtime-bot/.env, or upgrade " +
+      "whatsapp-web.js. See MDs/whatsapp-web-version-pinning.md.",
   );
 
   if (!reactFallbackEnabled(process.env)) return;
