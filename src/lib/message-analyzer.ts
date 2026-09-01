@@ -1,12 +1,21 @@
 /**
- * Smart WhatsApp message analysis — the LLM pass that handles
- * anything the regex fast-path can't classify.
+ * Smart WhatsApp message analysis — the LLM pass that classifies
+ * EVERY message from a monitored group.
  *
  * Pipeline:
- *   - Regex fast-path (on the bot) still runs first and handles
- *     instant IN/OUT/score reactions without ever hitting this code.
- *   - Anything it can't classify (drops with excuses, conditional
- *     joins, squad questions, social chatter) lands here.
+ *   - There is no regex pre-filter on the bot. The one that sat in
+ *     `handlers.ts` and reacted instantly to clear IN/OUT/score was
+ *     deleted on 2026-04-21, deliberately: a few minutes of latency in
+ *     exchange for a single code path that handles nuance end to end.
+ *   - So everything a monitored group says reaches this function — the
+ *     clear INs as much as the drops with excuses, the conditional
+ *     joins, the squad questions and the banter.
+ *   - The analyze route does keep a handful of narrow regex
+ *     short-circuits BEFORE this call (personal stats link, DM Q&A,
+ *     admin rating progress). Those answer from grounded data this
+ *     prompt cannot see; none of them touch attendance. The recruit
+ *     one, which did overlap with attendance, was deleted on
+ *     2026-09-01 (PR #33) after it swallowed a third-party OUT.
  *
  * Batching:
  *   - Messages accumulate in a per-group in-memory buffer on the bot.
@@ -46,8 +55,13 @@ import {
 // lifts the floor. Cost is contained: the big system prompt + match
 // context are 1h-cached (cheap reads), and MoM/rating-only groups
 // short-circuit BEFORE this call (analyze route), so only
-// message-scanning groups (Sutton-like) bill Sonnet (~£10/mo each).
+// message-scanning groups (Sutton-like) bill Sonnet.
 // One-constant change — instantly revertible if spend isn't worth it.
+// The "~£10/mo each" that used to end that sentence was struck out on
+// 2026-09-01 for the same reason as smart-analysis.ts's "~£2/month":
+// it predates the shadow analyzer and the prompt-cache buster. See
+// analyzer-redesign-2026-08-31.md §8.2/§8.4 for the modelled numbers,
+// and read `WindowVerdict.costUsd` for real ones.
 const MODEL = "claude-sonnet-4-5";
 
 // ─── max_tokens — READ BEFORE ADDING ANY messages.create CALL ────────
@@ -316,7 +330,7 @@ Output schema:
   "verdicts": [
     {
       "waMessageId": "<string>",
-      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "show_teams_request" | "bring_guests_vague" | "reminder_request" | "noise" | "unclear",
+      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "show_teams_request" | "bring_guests_vague" | "bulk_payment_credit" | "reminder_request" | "noise" | "unclear",
       "confidence": 0..1,
       "react": "<emoji>" | null,
       "reply": "<text>" | null,
@@ -343,7 +357,7 @@ Intent rules:
   → registerAttendance: "IN". react: "👍".
   • Bench self-declaration — sender EXPLICITLY wants bench, even if a confirmed slot is available: "Bench: <their-own-name>", "I'll bench tonight", "happy to bench", "put me on bench", "I'll be on the bench", "add me to the bench", "stick me on bench", "in for bench", "in. for bench", "in but on bench", "yes but bench", "I'll stand by on bench". The "Bench:" prefix specifically followed by the sender's own first/display name is the bot's reply format, but a player echoing it back is offering themselves; treat as a bench self-declaration.
   → registerAttendance: "BENCH". react: "👍". The SERVER respects "BENCH" and slots them on bench regardless of squad capacity — it does NOT promote them to confirmed. Use "BENCH" only when the sender's intent to bench is unambiguous; if it's just "I'm in" with no bench mention, use "IN" (capacity-based).
-  Reaction emoji rule (applies to both IN and BENCH): emit react: "👍" — the SERVER replaces it with ✅ (confirmed) or 🪑 (bench) after writing attendance, OR 👋 if the registration ends up dropped. Do NOT emit slot-number keycaps (1️⃣–🔟) — they're no longer used; people read them as reaction counters and the server overrides them anyway.
+  Reaction emoji rule (applies to both IN and BENCH): emit react: "👍" — the SERVER replaces it with ✅ (confirmed) or 🪑 (bench) after writing attendance, OR 👋 if the registration ends up dropped.
 
   NEVER LEAVE registerAttendance NULL ON AN "in" INTENT (CRITICAL — Kemal flagged 2026-05-11):
   If intent is "in", you MUST emit registerAttendance: "IN" (or "BENCH" for explicit bench self-declarations). NO EXCEPTIONS. Do NOT skip registration because:
@@ -419,14 +433,14 @@ Forbidden phrasings (OPEN-CALL case only — when NO specific bench player was n
 
 Required phrasing when someone drops and there IS at least one bench player:
   ✓ "[lead acknowledging the drop]. Asking <first-bench-name> to step up — squad is <confirmedCount-1>/<maxPlayers> until they confirm."
-  CRITICAL — the bench player is asked by an IN-GROUP @mention (${BENCH_PROMPT_MENTION_REACTIONS ? "a 👍/👎 prompt the bot posts to this group" : "the bot posts the offer to this group and asks them to reply IN"}), NOT a private DM. NEVER write "in DMs", "via DM", "I've DM'd them", "messaged them privately" or anything implying a private message — that is factually FALSE (the bot does not DM bench players) and players who receive no DM rightly call it misinformation. Say "asking <name>", "tagged <name> here", ${benchClaimPhrasingExample()} — describe the in-group tag, never a DM.
+  CRITICAL — what the bot actually does, and what you may say about it. The SERVER posts the offer to THIS group and @mentions every bench player (${BENCH_PROMPT_MENTION_REACTIONS ? "a 👍/👎 prompt" : "asking them to reply IN"}); it ALSO queues a personal DM nudge to each of them, because benchers mute the group. Both are sent LATER by the scheduler — daytime only, and never to a player who has turned bench DMs off — so at the moment you write your reply NOTHING has been sent yet, and for some players nothing will be. So: NEVER claim a delivery that has already happened. Forbidden: "in DMs", "I've DM'd them", "messaged them privately", "they've been notified", or any wording that says a message is already with them. That is the 2026-05-18 Erdal incident — the bot announced a DM, he received nothing, and rightly called it misinformation. Point at the GROUP, which is where the slot is claimed: say "asking <name>", "tagged <name> here", ${benchClaimPhrasingExample()}. You may mention the nudge only as something still to come ("I'll give the bench a nudge too") — never as done, and never promised to a named individual.
   Numbered roster shows the squad WITHOUT the dropped player (use 🥁 for the now-empty slot).
 
 When there is NO bench player and the squad is now short, treat as the standard SHORT-SQUAD RESPONSE (see below) — don't reference any bench.
 
 Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Baki with Aydın") mean X LEAVES entirely: treat as intent "out" with a registerFor OUT for the dropping player. (This is different from "move X to the bench" — that DEMOTES X to the bench but keeps them available; use action:"BENCH" for that, see the ADMIN DEMOTE TO BENCH pattern above.) Now decide what to do with the "swapping in" player Y, based on whether Y is a CURRENT BENCH player:
   • Y IS a current bench player (named explicitly) → this is PROMOTE FROM BENCH, NOT informational. Emit the IN for Y as well (registerFor:[{name:"X",action:"OUT"},{name:"Y",action:"IN"}]), name Y as playing, state the squad is back to full (N/M), and do NOT hedge — NO "asking Y", NO "until Y confirms", NO "step up". Y is genuinely confirmed; say so. (Same as the SELF-REPLACE case when a player hands over their own slot to a named bench player.)
-  • Y is NOT a current bench player → the "swapping in" name is informational only: do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, do NOT claim they're playing. Reply phrasing follows the "Asking <bench>..." open-call pattern (in-group tag, NOT a DM — see the CRITICAL note above): "Asking <first-bench-name> to step up — squad is 13/14 until they confirm." The bench-confirmation flow tags the right person in the group if they're first on bench; otherwise the admin can re-trigger after.
+  • Y is NOT a current bench player → the "swapping in" name is informational only: do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, do NOT claim they're playing. Reply phrasing follows the "Asking <bench>..." open-call pattern (point at the in-group tag; claim no delivery — see the CRITICAL note above): "Asking <first-bench-name> to step up — squad is 13/14 until they confirm." The bench-confirmation flow tags the right person in the group if they're first on bench; otherwise the admin can re-trigger after.
 - "conditional_in": Tentative commitment BY the sender ABOUT THE SENDER'S OWN SLOT. Two distinct flavours — they have OPPOSITE registration outcomes, so pick carefully:
 
   SUBJECT CHECK — DO THIS FIRST, IT GATES BOTH FLAVOURS. Ask "who would be playing?". Only an offer about the SENDER is "conditional_in". If the person who would play is SOMEONE ELSE — "my brother can play if needed", "my mate could fill in if you're short", "I can bring someone if you need", "my mate's up for it if you need one" — it is NOT conditional_in and the SENDER gets registerAttendance: null (they never said THEY are playing, and benching them puts a non-player on the roster). Route it by whether that third party is NAMED: NAMED ("my brother Shahrokh can play") → intent "in", registerAttendance: null, registerFor [{"name":"Shahrokh","action":"IN"}]; UNNAMED → intent "bring_guests_vague" (no writes at all, warm ask for the name). MIXED — the sender AND someone else ("me and my brother are both in", "my mate and I can fill in if you're short") — DOES include the sender, so handle the sender's own half normally. (Kemal flagged 2026-08-31: Amir posted "@Kemal Ediz my brother can play if needed"; the bot matched the standing-offer SHAPE, benched AMIR, and the 17:00 roster went out to the whole club reading "Bench (1): 1. Amir" while Amir was not playing at all.)
@@ -445,9 +459,8 @@ Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time r
   → CRITICAL pitfall: a registerFor message ("@Ehtisham Ul Haq In", "Najib is in", "bringing Ahmet") signs up the NAMED person, not the author. If the author themselves isn't in the Confirmed list, treat them as NOT confirmed even if they wrote a recent IN-shaped message. Example: Amir posts "@Ehtisham Ul Haq In" — Ehtisham is confirmed, Amir is not. If someone later asks "is Amir coming?", check the Confirmed list — he's not there → answer "Not yet — Amir hasn't said IN himself, only registered Ehtisham. Should I add him?". Do NOT say "yes Amir replied 'In' at 09:30" — that history-based interpretation is wrong.
   → SECOND CRITICAL pitfall (the inverse): when a member STATES that a named player is in / committed / playing ("Najib said in as well", "Habib confirmed earlier", "Faris told me he's coming", "we should be at 13 because X is in"), this is NOT a question — it's a third-party REGISTRATION (handle as intent "in" with a registerFor IN entry for the named player, per the THIRD-PARTY REGISTRATIONS section). Do NOT respond with "yes, <name> is confirmed" based on the SPEAKER'S claim when the named player is missing from the Confirmed list — the Match Context is the only source of truth. If the named player IS already in the Confirmed list, the registerFor is a harmless no-op (server is idempotent). If they're NOT, the registerFor adds them — either to the confirmed squad if there's room, or to the bench if it's full. EITHER WAY, never claim someone is in the squad when they're absent from the Confirmed list — that's the exact failure mode Kemal flagged on 2026-05-11 (LLM "confirmed" Najib based on Wasim's claim, while the squad sat at 12/14 with no registerFor emitted).
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
-  → For HISTORICAL / STATS questions about past matches, MoM winners, attendance, current form, scores ("who got MoM last week?", "who got the MoMs in the last 3 matches?", "what was the score last Tuesday?", "who's been the most consistent attender?", "who plays the most?", "who's our top scorer of MoMs?", "who's on a hot streak?", "what's my rating?", "is X our most regular?"): the Recent History block in the Match Context is THE SOURCE OF TRUTH. Answer ONLY from what's in that block — never invent dates, scores, MoM winners, attendance counts, or ratings. The block lists every completed match oldest-first (with date, score, MoM winner + vote count), an all-time MoM leaderboard, an attendance leaderboard, and Elo top/bottom. Pull the relevant rows and phrase the answer in plain group-chat English ("Wasim took MoM at the May 5 match (5 of 11 votes). The one before that was Karahan."). For "last N matches" questions, the LAST N entries in the Completed matches list are what you want (it's already oldest-first, so take from the tail). For "most consistent" questions, default to the Attendance leaderboard — cite the leader, the runner-up, and the % context. If the question is about a SPECIFIC player, cross-reference all four sub-lists (per-match MoM lines, MoM leaderboard, attendance leaderboard, Elo) to compose a richer answer ("Kemal has played 24 of 25 matches (96%), has won MoM twice, and his current rating is 1042 — fourth on the leaderboard."). If the answer ISN'T in the block (e.g. someone asks about a player who's never played, or the org has no completed matches yet), reply honestly: "no record of that yet — once we've played a few more, that'll show up." Never silent on these.
+  → For HISTORICAL / STATS questions about past matches, MoM winners, attendance, current form, scores ("who got MoM last week?", "who got the MoMs in the last 3 matches?", "what was the score last Tuesday?", "who's been the most consistent attender?", "who plays the most?", "who's our top scorer of MoMs?", "who's on a hot streak?", "what's my rating?", "is X our most regular?"): the Recent History block in the Match Context is THE SOURCE OF TRUTH. Answer ONLY from what's in that block — never invent dates, scores, MoM winners, attendance counts, or ratings. The block lists the club's most recent completed matches oldest-first (with date, score, MoM winner + vote count) — its own header line says how many of the total are shown, and older matches are simply not there — plus an ALL-TIME MoM leaderboard, an attendance leaderboard (over every completed match) and Elo top/bottom, none of which are windowed. All-time questions are answered from the leaderboards; per-match questions only from the matches actually listed. If a match isn't listed, say you don't have that one rather than inferring it. Pull the relevant rows and phrase the answer in plain group-chat English ("Wasim took MoM at the May 5 match (5 of 11 votes). The one before that was Karahan."). For "last N matches" questions, the LAST N entries in the Completed matches list are what you want (it's already oldest-first, so take from the tail). For "most consistent" questions, default to the Attendance leaderboard — cite the leader, the runner-up, and the % context. If the question is about a SPECIFIC player, cross-reference all four sub-lists (per-match MoM lines, MoM leaderboard, attendance leaderboard, Elo) to compose a richer answer ("Kemal has played 24 of 25 matches (96%), has won MoM twice, and his current rating is 1042 — fourth on the leaderboard."). If the answer ISN'T in the block (e.g. someone asks about a player who's never played, or the org has no completed matches yet), reply honestly: "no record of that yet — once we've played a few more, that'll show up." Never silent on these.
   → For HISTORICAL/STATS questions, do NOT include the current-squad roster block at the end. The SQUAD-STATE REPLY SHAPE rule (below) applies to questions about THIS week's match (numbers, who's playing tonight, drops). Historical questions about consistency, MoM, or ratings have nothing to do with tonight's lineup — appending a squad roster on top of a leaderboard creates a confusing mash-up (and gets clobbered by the server-side roster post-processor, which Kemal saw on 2026-05-14: "top 3 most consistent" came back as the upcoming-squad list because the LLM included both blocks). Reply with the leaderboard / per-match list / per-player summary ONLY — no squad block, no count line ("13/14"), no "Playing tonight" header. Format the leaderboard as a numbered list ("1. Name — 4/4 (100%)"). Keep the answer focused and lineup-free.
-  → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
   → For PHONE-PRESENCE / DATA-GAP questions ("who has no phone number?", "which players are missing a number?", "who's not got a contact number on record?", "anyone in the squad without a number?"): the Confirmed and Bench lists in the Match Context tag every player WITHOUT a number on record with "📵 no number on record". Answer NAMES ONLY from those flags — list the flagged players ("No number on record: Aaron, Idris."), or "Everyone in the squad has a number on record 👍" if none are flagged. This is a names-only data-gap answer, NOT a contact leak — it is answerable for anyone. NEVER print, read back, or even hint at a raw phone number/email/contact detail; the digits are not in your context and the no-raw-number rule (SQUAD-STATE REPLY SHAPE) always holds. You are reporting presence/absence of a number, never the number itself.
   → If the answer requires info outside the Match Context AND outside the Recent History block (long-term roster questions, opinions, predictions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
@@ -1835,8 +1848,9 @@ export function enforceCanonicalRoster(
  * Called only when there's an OPEN PendingBenchConfirmation against
  * the relevant match. Strips the false-promotion sentence (heuristic
  * regexes targeting common phrasings) and prepends an honest
- * "Asking <name> to step up..." line (in-group tag, NOT a DM) so the
- * group sees the real status.
+ * "Asking <name> to step up..." line — worded around the IN-GROUP tag,
+ * because that is where the slot is claimed and it is the one channel
+ * every eligible bencher is on — so the group sees the real status.
  */
 export function rewriteOverconfidentPromotion(
   text: string,
@@ -1887,13 +1901,17 @@ export function rewriteOverconfidentPromotion(
 
   // Prepend an honest status line above the roster block (or at the
   // top if no roster block detected).
-  // NB: the bench prompt is an IN-GROUP @mention (kind:"bench-prompt"
-  // posts to the group, not a DM). Saying "in DMs" was misinformation
-  // — a bench player who got no DM (Erdal, 2026-05-18) is right to
-  // call it out. Word it to match what actually happens: they're
-  // tagged in the group and asked to reply IN (see
-  // BENCH_PROMPT_MENTION_REACTIONS in src/lib/bench-offer-copy.ts for
-  // why the 👍 instruction is currently withdrawn).
+  // NB: this line describes the IN-GROUP @mention (kind:"bench-prompt")
+  // and deliberately nothing else. A personal DM nudge does also go out
+  // per bencher (bot-scheduler.ts, "Personal DM to each bencher", added
+  // 2026-05-19) — but it is queued for a later scheduler tick,
+  // daytime-gated, and skipped for anyone who turned bench DMs off, so
+  // NOTHING has been delivered at the moment this line is written.
+  // Claiming otherwise is what burned us: a bench player who got no DM
+  // (Erdal, 2026-05-18) is right to call it misinformation. Stick to
+  // what is certain — they're tagged in the group and asked to reply IN
+  // (see BENCH_PROMPT_MENTION_REACTIONS in src/lib/bench-offer-copy.ts
+  // for why the 👍 instruction is currently withdrawn).
   const honest = buildBenchAskedLine({ benchName, confirmedCount, maxPlayers });
 
   // Drop the line in just before any "*Playing tonight:*" / "*Squad:*"
