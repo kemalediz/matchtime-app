@@ -244,6 +244,34 @@ export interface AnalysisVerdict {
    *              admin to fill. Also used to add a not-yet-registered
    *              player straight to the bench. */
   registerFor: Array<{ name: string; action: "IN" | "OUT" | "BENCH" }> | null;
+  /**
+   * The message asks for MORE PLAYERS for the upcoming match.
+   *
+   * An EXTRACTED FACT, deliberately ORTHOGONAL to `intent`. `intent` is
+   * single-valued, and the 2026-09-01 incident is precisely a message
+   * carrying two facts at once:
+   *
+   *   "Najib is out. We need one more player.
+   *    Can someone pls come forward"
+   *
+   * That is a third-party OUT *and* a recruit request. Expressing recruit
+   * as another intent value would force the model to pick one and throw
+   * the other away — the same loss the regex fast path caused, moved one
+   * layer up. As a flag, both facts survive: `registerFor` carries the
+   * drop, `recruitRequest` carries the ask, and the server applies the
+   * drop FIRST so the invite blast sees the corrected squad.
+   *
+   * THE MODEL NEVER PERFORMS OR PROMISES THE ACTION. It only reports that
+   * one was asked for. `inviteRecentPlayers` (src/lib/recruit.ts) does the
+   * work and the server writes the sentence describing it. That split is
+   * the whole point of the field: before the fast path existed the model
+   * was *claiming* "I'll DM the recent players" with nothing behind it
+   * (Kemal, 2026-06-05); the fast path fixed that by taking the
+   * classification away from the model too, which was the wrong half.
+   *
+   * Authorisation is the SERVER's: only an OWNER/ADMIN triggers a blast.
+   */
+  recruitRequest: boolean;
   reasoning: string;
 }
 
@@ -302,6 +330,7 @@ Output schema:
       "bulkPayment": {"payerName": "<string>", "count": <number>, "coveredNames": [<string>, ...] | null} | null,
       "reminder": {"date": "<YYYY-MM-DD>", "time": "<HH:MM>" | null, "note": "<string>"} | null,
       "registerFor": [{"name": "<string>", "action": "IN" | "OUT" | "BENCH"}, ...] | null,
+      "recruitRequest": true | false,
       "reasoning": "<short internal explanation>"
     }
   ]
@@ -522,6 +551,33 @@ Rules for recognising this:
 - Do NOT re-register names that match the existing Confirmed list — those rows weren't changed.
 - Do NOT register 🥁 (drum) rows — those are still open slots.
 - Keep reply: null for this — the server will react with ✅/🪑 for the last newly-added player, same as regular third-party registrations.
+
+RECRUIT REQUESTS (recruitRequest) — A FLAG, NOT AN INTENT:
+Someone asking for MORE PLAYERS for the upcoming match. Set "recruitRequest": true. Otherwise false.
+
+READ THIS FIRST: recruitRequest is INDEPENDENT of intent, and independent of registerAttendance and registerFor. It is an extra FACT you extract, not a category you choose instead of another. One message very often carries a drop AND a recruit ask, and BOTH must survive:
+  "Najib is out. We need one more player. Can someone pls come forward"
+    → intent "out", registerAttendance: null, registerFor: [{"name":"Najib","action":"OUT"}], recruitRequest: true
+  Emitting only one of those halves is the failure this field exists to prevent (2026-09-01: the drop was thrown away, the squad stayed full, and the bot told the owner his squad was full one line after he said a player was out).
+
+SET IT TRUE for:
+- "we need one more player" / "need 2 more" / "we're short tonight" / "still short"
+- "anyone free tonight?" / "anyone else up for it?" / "can someone come forward"
+- "@Match Time dm the recent players" / "get some more lads" / "invite the regulars" / "round up a couple more"
+- "2 spots left, anyone?" (an appeal, not a status question)
+
+LEAVE IT FALSE for:
+- Roster questions: "who's playing?", "list the players", "how many are in?", "show me the squad". These are answered by the roster, never by a DM blast. This distinction matters and it is yours to make — you have the conversation, the Match Context and the squad count.
+- Statements of fact with no ask: "we're 9/10", "one short but it'll be fine", "we'll play 5-a-side then".
+- Past or hypothetical: "we needed players last week", "if we're short I'll ask around".
+- The bot's own previous recruit messages quoted back.
+- Banter: "we need a striker who can actually finish".
+
+WHAT HAPPENS NEXT, AND WHAT YOU MUST NOT WRITE:
+The SERVER performs the recruit. It looks up who played recently, excludes anyone who already responded, DMs them, and then writes the sentence reporting exactly how many were messaged. You do not know that number and you never will.
+- Do NOT write "I'll DM the recent players", "I've messaged the lads", "asking around now", or any other promise of a recruit action in "reply". You would be describing work you cannot do. That exact false promise is why this was taken away from the model in the first place; the flag gives it back to you on the condition that you only REPORT the request.
+- Keep "reply" to the part of the message that is genuinely yours (e.g. acknowledging the drop and the new squad count) and leave the recruiting sentence to the server, or use reply: null if the drop half is all there is.
+- If the sender is not an admin the server ignores the flag. Set it truthfully anyway; authorisation is not your decision.
 
 THIRD-PARTY REGISTRATIONS (registerFor):
 Players frequently sign up or drop OTHER people — friends/family/teammates who can't message right now. Detect these and populate registerFor with one entry per named person. The author's OWN attendance is still controlled by registerAttendance; registerFor is ONLY for other names mentioned. This fires from NATURAL, untagged group chat — you do NOT need an @Match Time tag to add a NAMED player (the server treats a pure IN-add as tag-free). But be CONSERVATIVE: only a CONCRETE, PRESENT/affirmative add of a SPECIFIC NAMED person registers. When genuinely ambiguous between a real add and banter/future-talk/hypothetical/lament, PREFER NOT registering (emit no registerFor) — a missed add is recoverable in one message; a wrong registration on a paid match is not.
@@ -1950,6 +2006,7 @@ function stubbedVerdictsForTest(
       bulkPayment: null,
       reminder: null,
       registerFor: null,
+      recruitRequest: false,
       reasoning: "test-stub: no verdict configured for this id",
     };
     const partial = map[m.waMessageId];
@@ -1974,6 +2031,7 @@ function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {
     bulkPayment: null,
     reminder: null,
     registerFor: null,
+    recruitRequest: false,
     reasoning: reason,
   };
 }
@@ -2158,6 +2216,11 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
       };
     }
   }
+  // recruitRequest: an extracted FACT, orthogonal to intent. Strictly
+  // boolean — anything else (missing, "true", 1) reads as false so a
+  // malformed verdict can never trigger a DM blast.
+  const recruitRequest = raw.recruitRequest === true;
+
   const reasoning = typeof raw.reasoning === "string" ? raw.reasoning : "";
 
   // ── reminder (intent: reminder_request) ──────────────────────────
@@ -2199,6 +2262,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
       bulkPayment: null,
       reminder: null,
       registerFor: null,
+      recruitRequest: false,
       reasoning: `[low-confidence downgrade] ${reasoning}`,
     };
   }
@@ -2219,6 +2283,7 @@ function normaliseVerdict(waMessageId: string, raw: Record<string, unknown>): An
     bulkPayment,
     reminder,
     registerFor: registerFor && registerFor.length > 0 ? registerFor : null,
+    recruitRequest,
     reasoning,
   };
 }

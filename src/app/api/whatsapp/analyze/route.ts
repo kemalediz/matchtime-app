@@ -92,6 +92,7 @@ import {
   guestNameAskKey,
   GUEST_NAME_ASK_KIND,
 } from "@/lib/guest-name-ask";
+import { mergeRecruitReply, RECRUIT_COMMAND_IMPLIES_ADDRESSED } from "@/lib/recruit-request";
 
 interface InboundMessage {
   waMessageId: string;
@@ -479,54 +480,24 @@ export async function POST(request: Request) {
     });
   }
 
-  // ── Fast-path: admin "DM recent players to join the next match" ─────
-  //   An ADMIN asking the bot to nudge recent attendees who haven't yet
-  //   responded to the upcoming match. REAL action (queues invite DMs) —
-  //   exists because the LLM was otherwise *claiming* "I'll DM the recent
-  //   players" with nothing behind it (Kemal 2026-06-05). Admin-gated.
-  const { looksLikeRecruitRequest } = await import("@/lib/recruit");
-  for (const m of fresh) {
-    if (statsRequestIds.has(m.waMessageId)) continue;
-    if (!looksLikeRecruitRequest(m.body)) continue;
-    const sender = senderById.get(m.waMessageId)!;
-    statsRequestIds.add(m.waMessageId); // peel off the LLM batch regardless
-    let isAdmin = false;
-    if (sender.userId) {
-      const { isOrgAdmin } = await import("@/lib/org");
-      isAdmin = await isOrgAdmin(sender.userId, org.id);
-    }
-    if (!isAdmin) {
-      results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "recruit_denied", react: "🔒", reply: null });
-      await recordAnalysis({
-        orgId: org.id, groupId: body.groupId, msg: m,
-        handledBy: "fast-path", intent: "recruit_denied", action: null,
-        confidence: 1, reasoning: "non-admin asked to DM recent players — ignored",
-        authorUserId: sender.userId, authorName: m.authorName ?? null,
-      });
-      continue;
-    }
-    const { inviteRecentPlayers } = await import("@/lib/recruit");
-    const r = await inviteRecentPlayers(org.id);
-    const reply = !r.ok
-      ? r.reason ?? "Couldn't do that right now."
-      : r.invited && r.invited > 0
-        ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-        : r.reason
-          ? r.reason // full-squad case: no open spots to recruit for.
-          : r.alreadyInvited && r.alreadyInvited > 0
-            ? // Branch 3: candidates existed but were ALL already pinged on a
-              // previous recruit call — they just haven't replied yet.
-              `Already pinged the recent players for *${r.matchName}* — just waiting on their replies. 🙏`
-            : // Branch 2: genuinely nobody recent left to ask.
-              `No new players to ask for *${r.matchName}* right now. 👍`;
-    await recordAnalysis({
-      orgId: org.id, groupId: body.groupId, msg: m,
-      handledBy: "fast-path", intent: "recruit_recent", action: `recruit:${r.invited ?? 0}`,
-      confidence: 1, reasoning: `admin recruit — invited ${r.invited ?? 0} recent players`,
-      authorUserId: sender.userId, authorName: m.authorName ?? null,
-    });
-    results.push({ waMessageId: m.waMessageId, handledBy: "fast-path", intent: "recruit_recent", react: "✅", reply });
-  }
+  // ── DELETED 2026-09-01: the recruit REGEX fast path ─────────────────
+  //   It lived here, matched `looksLikeRecruitRequest(m.body)`, and then
+  //   peeled the message off the LLM batch UNCONDITIONALLY. On 2026-09-01
+  //   the owner wrote "Najib is out. We need one more player." — the
+  //   regex matched the second sentence and the third-party OUT was never
+  //   analysed by anything. Najib stayed in, the recruit action saw 10/10,
+  //   and MatchTime told the owner his squad was full.
+  //
+  //   Recruit is now an extracted verdict FACT (`verdict.recruitRequest`,
+  //   a flag rather than an intent, because one message carries both a
+  //   drop and an ask). It is applied AFTER every attendance write in the
+  //   batch, so the blast sees the corrected squad — see "VERDICT-DRIVEN
+  //   RECRUIT" further down. The deterministic action and the admin gate
+  //   are unchanged; only the classification moved from regex to model.
+  //
+  //   `looksLikeRecruitRequest` still exists for ONE remaining caller,
+  //   api/whatsapp/dm-reply/route.ts — a 1:1 DM surface with no verdict
+  //   pipeline. Converting that is the next step, not this PR's.
 
   // ── Fast-path: admin "how many have rated / who's left / who hasn't
   //    picked MoM?" ────────────────────────────────────────────────────
@@ -764,6 +735,18 @@ export async function POST(request: Request) {
   const REGISTRATION_STATUS_REACTS = new Set(["✅", "🪑", "👋"]);
   const senderReactAudit: Array<{ idx: number; userId: string }> = [];
 
+  // ── VERDICT-DRIVEN RECRUIT (2026-09-01, replaces the deleted regex) ──
+  //   Messages whose verdict carries `recruitRequest` AND whose sender is
+  //   an org admin. Collected here and executed ONCE, after the whole
+  //   batch has been applied — see "RUN THE RECRUIT" below. Deferring is
+  //   the point: the incident's message drops Najib and asks for a
+  //   replacement in the same breath, and the blast must see 9/10, not
+  //   the 10/10 it saw when a regex ran it first.
+  const recruitRequests: Array<{ msg: InboundMessage; sender: ResolvedSender }> = [];
+  //   Messages an admin's recruit command has ADDRESSED to MatchTime, for
+  //   the tag gate below. See RECRUIT_COMMAND_IMPLIES_ADDRESSED.
+  const addressedByRecruit = new Set<string>();
+
   for (let i = 0; i < fresh.length; i++) {
     const msg = fresh[i];
     let verdict = verdicts[i];
@@ -960,6 +943,31 @@ export async function POST(request: Request) {
       continue; // TERMINAL — no attendance write is reachable from here
     }
 
+    // ── RECRUIT REQUEST — extract now, ACT after the whole batch ─────
+    //   `recruitRequest` is a FLAG on the verdict, not an intent, so it
+    //   coexists with whatever attendance the same message carries. All
+    //   that happens here is the admin gate; the action itself runs after
+    //   every write in the batch has landed, so it sees the real squad.
+    //
+    //   Authorisation is unchanged from the deleted fast path: OWNER or
+    //   ADMIN only. A non-admin's recruit request is simply ignored —
+    //   note this DROPS the old 🔒 react, which was only ever reachable
+    //   because the fast path had already swallowed the message. The rest
+    //   of a non-admin's message now flows through the normal path
+    //   instead of being discarded with it.
+    if (verdict.recruitRequest) {
+      const { isOrgAdmin } = await import("@/lib/org");
+      const isAdmin = sender.userId ? await isOrgAdmin(sender.userId, org.id) : false;
+      if (isAdmin) {
+        recruitRequests.push({ msg, sender });
+        if (RECRUIT_COMMAND_IMPLIES_ADDRESSED) addressedByRecruit.add(msg.waMessageId);
+      } else {
+        console.log(
+          `[analyze] recruitRequest from non-admin ${sender.userId ?? msg.authorPhone} — ignored`,
+        );
+      }
+    }
+
     // ── INTERACTION CONTRACT — @Match Time tag gate ──────────────────
     //    ACT WITHOUT A TAG only for a player's OWN clear self-attendance.
     //    Everything else MT could DO or ANSWER (questions, team ops,
@@ -968,7 +976,16 @@ export async function POST(request: Request) {
     //    action, no reply, no reaction, DB untouched. Keeps MT quiet on
     //    banter and predictable about when it speaks. (The squad-from-
     //    list admin pipeline stays tag-free — it never reaches here.)
-    if (actionRequiresTag(verdict) && !messageTagsBot(msg)) {
+    //   `addressedByRecruit` is the ONE widening (2026-09-01): an admin's
+    //   recruit command is a direct instruction to MatchTime, so the rest
+    //   of that same message is addressed to it too. Narrow, admin-only,
+    //   and revertible by flipping RECRUIT_COMMAND_IMPLIES_ADDRESSED —
+    //   `actionRequiresTag` itself is untouched.
+    if (
+      actionRequiresTag(verdict) &&
+      !messageTagsBot(msg) &&
+      !addressedByRecruit.has(msg.waMessageId)
+    ) {
       await recordAnalysis({
         orgId: org.id,
         groupId: body.groupId,
@@ -1742,6 +1759,106 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       console.error("[analyze] squad-status collapse failed:", err);
+    }
+  }
+
+  // ── RUN THE RECRUIT (verdict-driven, 2026-09-01) ────────────────────
+  //   LAST, on purpose, and this ordering IS the fix.
+  //
+  //   Every attendance write in the batch has landed, and the batch-final
+  //   squad-status collapse above has already re-canonicalised the roster
+  //   text. Only now does the invite blast run, so it counts the squad
+  //   the sender's own message just changed. On 2026-09-01 a regex ran it
+  //   FIRST, against 10/10, and MatchTime told the owner his squad was
+  //   full one line after he said Najib was out.
+  //
+  //   The action, its copy and the admin gate are the deleted fast path's,
+  //   unchanged. What moved is WHEN it runs and WHO decided it was asked
+  //   for. The reply is MERGED into the message's single existing result,
+  //   never pushed as a second one: MatchTime replies once or not at all.
+  if (recruitRequests.length > 0) {
+    // Only the LAST request fires, mirroring the generate_teams_request
+    // dedupe above. Two admins asking in one batch must not produce two
+    // DM blasts to the same people.
+    const { msg: recruitMsg } = recruitRequests[recruitRequests.length - 1];
+    if (recruitRequests.length > 1) {
+      console.log(
+        `[analyze] ${recruitRequests.length} recruit requests in one batch — firing the last only`,
+      );
+    }
+    try {
+      const { inviteRecentPlayers } = await import("@/lib/recruit");
+      const r = await inviteRecentPlayers(org.id);
+      const recruitReply = !r.ok
+        ? r.reason ?? "Couldn't do that right now."
+        : r.invited && r.invited > 0
+          ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
+          : r.reason
+            ? r.reason // full-squad case: no open spots to recruit for.
+            : r.alreadyInvited && r.alreadyInvited > 0
+              ? // Branch 3: candidates existed but were ALL already pinged on a
+                // previous recruit call — they just haven't replied yet.
+                `Already pinged the recent players for *${r.matchName}* — just waiting on their replies. 🙏`
+              : // Branch 2: genuinely nobody recent left to ask.
+                `No new players to ask for *${r.matchName}* right now. 👍`;
+
+      const idx = results.findIndex((x) => x.waMessageId === recruitMsg.waMessageId);
+      if (idx >= 0) {
+        // ONE reply. If the LLM already answered the attendance half, the
+        // recruit line is appended to it; it is never a second send.
+        results[idx].reply = mergeRecruitReply(results[idx].reply, recruitReply);
+        results[idx].react = results[idx].react ?? "✅";
+        if (
+          results[idx].handledBy === "ignored" ||
+          results[idx].intent === "noise" ||
+          results[idx].intent === "unclear"
+        ) {
+          // The verdict itself carried nothing (a PURE recruit ask), so
+          // the blast is the only thing that happened — label it as such.
+          // "fast-path" still means "a deterministic server action, not
+          // the model's words", which is exactly what this is; keeping the
+          // old label leaves the admin log's vocabulary unchanged.
+          results[idx].handledBy = "fast-path";
+          results[idx].intent = "recruit_recent";
+        }
+      } else {
+        // Defensive: every loop iteration pushes exactly one result, so
+        // this is unreachable. Never drop the outcome if it ever isn't.
+        results.push({
+          waMessageId: recruitMsg.waMessageId,
+          handledBy: "fast-path",
+          intent: "recruit_recent",
+          react: "✅",
+          reply: recruitReply,
+        });
+      }
+      await augmentAnalysis({
+        waMessageId: recruitMsg.waMessageId,
+        action: `recruit:${r.invited ?? 0}`,
+        reasoningSuffix: `admin recruit — invited ${r.invited ?? 0} recent players`,
+      });
+    } catch (err) {
+      console.error("[analyze] verdict-driven recruit failed:", err);
+    }
+  }
+
+  // ── INVARIANT: at most ONE result per message ───────────────────────
+  //   MatchTime must never reply twice to one message. Every path above
+  //   pushes exactly one result per waMessageId and the recruit merges
+  //   into an existing one rather than appending; this is the backstop
+  //   that says so out loud if a future path forgets.
+  {
+    const seenIds = new Set<string>();
+    for (let i = results.length - 1; i >= 0; i--) {
+      const id = results[i].waMessageId;
+      if (seenIds.has(id)) {
+        console.error(
+          `[analyze] INVARIANT VIOLATION: duplicate result for ${id} — dropping the extra so the bot replies once`,
+        );
+        results.splice(i, 1);
+        continue;
+      }
+      seenIds.add(id);
     }
   }
 
@@ -3140,6 +3257,42 @@ async function recordAnalysis(args: {
     if (!/unique/i.test(m)) {
       console.error("[analyze] recordAnalysis failed:", err);
     }
+  }
+}
+
+/**
+ * Add an outcome to an AnalyzedMessage row that already exists.
+ *
+ * `AnalyzedMessage.waMessageId` is UNIQUE and `recordAnalysis` swallows
+ * the unique violation, so a second create for the same message is
+ * silently discarded — the first write wins. The verdict-driven recruit
+ * runs AFTER the LLM path has already recorded the message, so it must
+ * UPDATE rather than create, or the admin log would show the drop and no
+ * trace of the invite blast that went out with it.
+ *
+ * Best-effort: a failure here must never fail the batch.
+ */
+async function augmentAnalysis(args: {
+  waMessageId: string;
+  action: string;
+  reasoningSuffix: string;
+}) {
+  try {
+    const existing = await db.analyzedMessage.findUnique({
+      where: { waMessageId: args.waMessageId },
+      select: { action: true, reasoning: true },
+    });
+    if (!existing) return;
+    const action = existing.action ? `${existing.action}+${args.action}` : args.action;
+    const reasoning = existing.reasoning
+      ? `${existing.reasoning} | ${args.reasoningSuffix}`
+      : args.reasoningSuffix;
+    await db.analyzedMessage.update({
+      where: { waMessageId: args.waMessageId },
+      data: { action: action.slice(0, 2000), reasoning: reasoning.slice(0, 2000) },
+    });
+  } catch (err) {
+    console.error("[analyze] augmentAnalysis failed:", err);
   }
 }
 

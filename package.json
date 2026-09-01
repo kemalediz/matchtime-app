@@ -24,6 +24,7 @@
     "test:sim:live:bench": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/bench-offer-live.spec.ts",
     "test:sim:live:third-party": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/third-party-offer-live.spec.ts",
     "test:sim:live:guest-name": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/guest-name-ask-live.spec.ts",
+    "test:sim:live:recruit": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/recruit-live.spec.ts",
     "test:corpus": "tsx e2e/run.ts sim/corpus.spec.ts",
     "test:corpus:live": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/corpus-live.spec.ts"
   },

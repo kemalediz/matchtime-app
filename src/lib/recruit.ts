@@ -49,8 +49,30 @@ export function resolveLookbackMatches(requested?: number): number {
   return Math.min(RECRUIT_LOOKBACK_MAX, Math.max(1, Math.floor(requested)));
 }
 
-/** Does this message read like an EXPLICIT "we need more players" request?
- *  Used by both the in-group fast-path and the admin DM handler. Fires
+/**
+ * ⚠️ DEPRECATED FOR GROUP MESSAGES — one caller left (2026-09-01).
+ *
+ * This regex used to gate the in-group recruit fast path, and it caused
+ * the 2026-09-01 incident: the owner wrote "Najib is out. We need one
+ * more player.", the pattern matched the SECOND sentence, and the fast
+ * path peeled the whole message off the LLM batch, so the third-party
+ * OUT was never analysed. Najib stayed in, the blast saw 10/10, and
+ * MatchTime told the owner his squad was full.
+ *
+ * The deeper problem is visible in the code below: the "hard exclusions"
+ * are an attempt to tell "list the players" from "get more players" with
+ * a pattern. That is language understanding, done in regex, inside a
+ * system already paying a language model to do exactly that. The group
+ * path now takes it from `AnalysisVerdict.recruitRequest` instead — the
+ * model extracts, code decides and acts.
+ *
+ * The ONE remaining caller is api/whatsapp/dm-reply/route.ts, a 1:1 DM
+ * surface with no verdict pipeline of its own. It is the next conversion,
+ * not this PR's; deleting the function outright would silently kill
+ * recruit-by-DM. DO NOT add new callers.
+ *
+ * Does this message read like an EXPLICIT "we need more players" request?
+ *  Fires
  *  ONLY on (a) an explicit recruit verb (find/get/invite/recruit/grab/
  *  round up, or dm/message/text/nudge) sitting ADJACENT to a people/
  *  recency/spots noun, OR (b) an explicit shortage phrase ("we're short",
