@@ -17,6 +17,9 @@ export interface StubVerdict {
   registerAttendance?: "IN" | "OUT" | "BENCH" | null;
   benchConfirmation?: "yes" | "no" | null;
   registerFor?: Array<{ name: string; action: "IN" | "OUT" | "BENCH" }> | null;
+  /** The message asks for MORE PLAYERS. A flag, not an intent — it
+   *  coexists with the attendance the same message carries. */
+  recruitRequest?: boolean;
   scoreRed?: number | null;
   scoreYellow?: number | null;
   includeNames?: string[] | null;

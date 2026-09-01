@@ -48,6 +48,7 @@
     "PR27-inferred-bench-never-while-the-squad-has-room": "pass",
     "PR29-combined-in-and-brother-keeps-the-senders-write": "pass",
     "PR29-combined-out-and-mate-still-drops-the-sender": "pass",
-    "S17-final-score-is-recorded": "pass"
+    "S17-final-score-is-recorded": "pass",
+    "PR33-recruit-ask-must-not-swallow-the-drop": "pass"
   }
 }
