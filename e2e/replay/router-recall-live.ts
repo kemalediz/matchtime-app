@@ -36,7 +36,10 @@ import { keyFingerprint, probeAnthropic } from "../helpers/live-llm";
 import { anthropicModel, ROUTER_MODEL } from "../../src/lib/pipeline/llm";
 import { routeBatch } from "../../src/lib/pipeline/router";
 import { batchMessages, groupRefOf } from "./reconstruct";
+import { floorForcesAnalysis } from "../../src/lib/pipeline/gate";
 import {
+  deriveFloorEffect,
+  renderFloorEffect,
   renderRecall,
   summariseRecall,
   toRoutedRow,
@@ -163,6 +166,15 @@ async function main(): Promise<number> {
 
   console.log("");
   console.log(renderRecall(report, { label, costUsd, ms, calls, batches: batches.length }));
+  // On a floor-OFF run, derive what the floor WOULD have done to these
+  // exact answers. Two paid sweeps answer it badly: half the difference
+  // between them is the model changing its mind. This isolates the
+  // floor, costs nothing, and is reproducible from the stored run.
+  const derived = floor ? null : deriveFloorEffect(rows, report, floorForcesAnalysis);
+  if (derived) {
+    console.log("");
+    console.log(renderFloorEffect(derived, report));
+  }
   console.log("");
   console.log(
     `[recall] LLM: LIVE confirmed - ${calls} router call(s) billed: ` +
@@ -187,6 +199,7 @@ async function main(): Promise<number> {
         batches: batches.length,
         fallbackRate,
         report,
+        derivedFloor: derived,
         rows,
       },
       null,

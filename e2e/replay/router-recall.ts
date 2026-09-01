@@ -265,6 +265,75 @@ export function renderRecall(
   return L.join("\n");
 }
 
+/**
+ * What the floor WOULD have rescued, computed on a floor-OFF run.
+ *
+ * Two paid sweeps, one per flag, answer the with/without question badly:
+ * the model is non-deterministic, so half the difference between them is
+ * the model changing its mind and the other half is the floor. The floor
+ * is a pure function of the body, so the honest comparison is to hold
+ * the router's answers FIXED and apply it — which isolates the floor
+ * exactly, costs nothing, and is reproducible from a stored run.
+ *
+ * `forces` is injected rather than imported so this module stays pure
+ * and free of `src/`.
+ */
+export interface DerivedFloor {
+  /** `none`-routed messages the floor would force back to the analyzer. */
+  rescued: Miss[];
+  /** Of those, the ones that were REAL misses — the seatbelt working. */
+  rescuedMisses: Miss[];
+  /** Benign messages the floor would drag back in. The cost: one
+   *  analyzer call each, and nothing worse. */
+  rescuedBenign: number;
+  /** The miss rate that remains after the floor has done its work. */
+  missesAfter: number;
+  missRateAfter: number;
+  missRateAfterCi95: [number, number];
+}
+
+export function deriveFloorEffect(
+  rows: RoutedRow[],
+  report: RecallReport,
+  forces: (body: string) => boolean,
+): DerivedFloor {
+  const rescued: Miss[] = [];
+  let rescuedBenign = 0;
+  for (const r of rows) {
+    if (r.route !== "none" || !forces(r.body)) continue;
+    if (isBenignIntent(r.intent)) rescuedBenign += 1;
+    else rescued.push({ ...r, severity: severityOf(r.intent) });
+  }
+  const rescuedIds = new Set(rescued.map((m) => m.waMessageId));
+  const missesAfter = report.misses.filter((m) => !rescuedIds.has(m.waMessageId)).length;
+  return {
+    rescued,
+    rescuedMisses: rescued,
+    rescuedBenign,
+    missesAfter,
+    missRateAfter: report.nonBenign === 0 ? 0 : missesAfter / report.nonBenign,
+    missRateAfterCi95: wilson(missesAfter, report.nonBenign),
+  };
+}
+
+export function renderFloorEffect(d: DerivedFloor, r: RecallReport): string {
+  const L: string[] = [];
+  L.push(`  DERIVED — what the floor would do to THIS run (the router's answers held fixed):`);
+  L.push(
+    `    misses rescued:      ${d.rescuedMisses.length} of ${r.misses.length}` +
+      `   → ${d.missesAfter} of ${r.nonBenign} remain (${pct(d.missRateAfter)}, ` +
+      `95% CI ${pct(d.missRateAfterCi95[0])} – ${pct(d.missRateAfterCi95[1])})`,
+  );
+  L.push(`    benign dragged back: ${d.rescuedBenign}   (one analyzer call each, nothing worse)`);
+  for (const m of d.rescuedMisses) {
+    L.push(`      [${m.severity}] intent=${m.intent} ${JSON.stringify(m.body.slice(0, 80))}`);
+  }
+  if (d.rescuedMisses.length === 0) {
+    L.push(`      the floor rescues NONE of the misses in this run.`);
+  }
+  return L.join("\n");
+}
+
 /** Everything the live driver needs from a raw production row. */
 export function toRoutedRow(
   m: RawMessage,

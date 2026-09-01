@@ -7,7 +7,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  deriveFloorEffect,
   isBenignIntent,
+  renderFloorEffect,
   renderRecall,
   severityOf,
   summariseRecall,
@@ -126,6 +128,62 @@ describe("the report", () => {
     const r = summariseRecall([row({ intent: "in", route: "self_att" })]);
     const text = renderRecall(r, { label: "test", costUsd: 0, ms: 0, calls: 1, batches: 1 });
     expect(text).toContain("Every non-noise message reached the analyzer");
+  });
+});
+
+describe("deriveFloorEffect", () => {
+  /** Stands in for `floorForcesAnalysis`: claims a bare "in" and
+   *  nothing else, which is the real floor's defining shape. */
+  const forces = (b: string) => /^in$/i.test(b.trim());
+
+  it("rescues a miss the floor claims, and leaves the rest", () => {
+    const rows = [
+      row({ waMessageId: "a", intent: "in", body: "in", route: "none" }),
+      row({ waMessageId: "b", intent: "in", body: "👍", route: "none" }),
+      row({ waMessageId: "c", intent: "noise", body: "in", route: "none" }),
+    ];
+    const r = summariseRecall(rows);
+    expect(r.misses).toHaveLength(2);
+    const d = deriveFloorEffect(rows, r, forces);
+    expect(d.rescuedMisses.map((m) => m.waMessageId)).toEqual(["a"]);
+    expect(d.rescuedBenign).toBe(1);
+    expect(d.missesAfter).toBe(1);
+    expect(d.missRateAfter).toBe(0.5);
+  });
+
+  it("never rescues a message the router did NOT route `none`", () => {
+    // The floor's only job in the gate is to un-skip. A message already
+    // heading for the analyzer cannot be "rescued" into it.
+    const rows = [row({ waMessageId: "a", intent: "in", body: "in", route: "self_att" })];
+    const d = deriveFloorEffect(rows, summariseRecall(rows), forces);
+    expect(d.rescued).toEqual([]);
+    expect(d.rescuedBenign).toBe(0);
+  });
+
+  it("can only ever REDUCE the miss count — the monotonicity, at the corpus level", () => {
+    const bodies = ["in", "out", "👍", "😂", "Shahrokh", "In ", "im in"];
+    for (let seed = 0; seed < 30; seed++) {
+      const rows = bodies.map((b, i) =>
+        row({
+          waMessageId: `m${i}`,
+          body: b,
+          intent: (i + seed) % 3 === 0 ? "in" : "noise",
+          route: (i + seed) % 2 === 0 ? "none" : "self_att",
+        }),
+      );
+      const r = summariseRecall(rows);
+      const d = deriveFloorEffect(rows, r, forces);
+      expect(d.missesAfter).toBeLessThanOrEqual(r.misses.length);
+      expect(d.missRateAfter).toBeLessThanOrEqual(r.missRate);
+    }
+  });
+
+  it("says plainly when the floor rescues nothing", () => {
+    const rows = [row({ waMessageId: "b", intent: "in", body: "👍", route: "none" })];
+    const r = summariseRecall(rows);
+    expect(renderFloorEffect(deriveFloorEffect(rows, r, forces), r)).toContain(
+      "rescues NONE of the misses",
+    );
   });
 });
 
