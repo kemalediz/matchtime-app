@@ -14,11 +14,24 @@ npm run test:corpus            # stubbed, deterministic, part of npm run test:e2
 npm run test:corpus:live       # real model, 3 runs per case (opt-in, costs money)
 
 MT_SIM_RUNS=5 npm run test:corpus:live         # more repeats
-MT_CORPUS_FILTER=S6 npm run test:corpus:live   # one case
+MT_CORPUS_FILTER=S6 npm run test:corpus        # triage one case (skips the baseline compare)
 MT_CORPUS_RECORD=1 npm run test:corpus         # re-record the stub baseline
 ```
 
 Both write a machine-readable report to `.e2e/corpus/report-<mode>.json`.
+
+**46 cases; 35 run in CI.** The other 11 cannot be replayed deterministically and
+each must say why (see *Stubbed vs live*). The scoreboard states all three numbers
+on its first two lines — a case that never ran is never counted as a pass.
+
+> ⚠️ **Do not run either sweep while another checkout is running the e2e suite.**
+> `e2e/helpers/env.ts` hard-codes ports 3105/54311 and `playwright.config.ts` sets
+> `reuseExistingServer: true`, so two runs share a database and a dev server: one
+> `resetDb()` truncates the other's world mid-sweep, and a live-mode server has no
+> `MT_TEST_LLM_STUB_FILE`, so stubbed verdicts silently become noise. Neither run
+> errors; both report plausible wrong numbers. The signature is mass
+> `expected CONFIRMED, got no attendance row` with everything silent. Check
+> `lsof -ti :3105` first.
 
 ## Files
 
@@ -65,6 +78,13 @@ fails: check the expectation against the commit in its provenance block,
 then record the failure in the baseline. **Never weaken an expectation to
 make the suite green.**
 
+**5. A failing case is not yet a production bug either.** Before reporting one,
+rule out a badly-built world. Three cases in the first sweep failed because the
+world did not reproduce the scenario: a completed match seeded at today 20:00,
+which `endedAt <= now` rejects for most of a working day, and two payment cases
+with no completed match for the credit to attach to. Read the code path the case
+targets before calling it a defect, and say plainly when you have not.
+
 ## Case shape
 
 ```jsonc
@@ -108,7 +128,17 @@ order and later turns see earlier ones as history), `stub`.
 - **`corrected`** — what a correct model emits. A stubbed run asks: does the
   server execute a correct verdict correctly?
 - **absent** — the case is live-only: its outcome depends on the real model
-  classifying the message, so there is nothing honest to stub.
+  classifying the message, so there is nothing honest to stub. **The loader then
+  requires `liveOnlyReason`**, so the count of CI-covered cases can never quietly
+  drift away from the count of corpus cases. The three honest reasons are: the
+  assertion IS the classification; the asserted text is model-authored, so a stub
+  would contain the answer; or a stub is structurally impossible (a reminder
+  verdict carries an absolute date the server clamps to `now+60d`).
+
+**Do not "record" stubs from a live run.** The model is non-deterministic, so one
+sample pins whatever it happened to emit — and §4.1 of the redesign doc measured
+the Amir case emitting the ghost `registerFor: [{name: "Amir's brother"}]` on six
+of six runs. A recorded stub there would enshrine the bug as the expected input.
 
 ## Adding a pipeline
 
@@ -128,3 +158,8 @@ console.log(renderScoreboard(sb));
 `sb.criteria` carries the two numbers §10 step 3 fixes in advance as the
 go/no-go: `spuriousWriteRuns` (target 0 — a write the old pipeline
 correctly did not make) and `missedWriteRate` (target ≤2%).
+
+Failures are classified worst-first: `error` (the case threw — not a measurement
+of anything), `spurious_write`, `wrong_write`, `missed_write`, `speech`. A case
+that throws is recorded and the sweep carries on; a paid live sweep must never
+hinge on one malformed fixture.
