@@ -106,10 +106,18 @@ export function parseCorpus(body: string): CorpusCase[] {
       keys.add(p.key);
       names.push(p.name);
     }
+    const seededKeys = new Set<string>();
     for (const a of (world.attendance ?? []) as unknown[]) {
       if (!isRecord(a) || typeof a.key !== "string" || !keys.has(a.key)) {
         bad(at, `world.attendance references unknown player key ${JSON.stringify(isRecord(a) ? a.key : a)}`);
       }
+      // One player, one row. A duplicate is a Postgres primary-key
+      // violation that only surfaces mid-run, and by then it has taken
+      // down every case after it.
+      if (seededKeys.has(a.key)) {
+        bad(at, `world.attendance seeds "${a.key}" twice — one player has one attendance row`);
+      }
+      seededKeys.add(a.key);
       if (!["CONFIRMED", "BENCH", "DROPPED"].includes(String(a.status))) {
         bad(at, `world.attendance has an unknown status ${JSON.stringify(a.status)}`);
       }

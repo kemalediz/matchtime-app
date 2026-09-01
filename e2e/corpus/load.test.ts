@@ -65,6 +65,27 @@ describe("parseCorpus", () => {
     expect(parseCorpus(line(ok))).toHaveLength(1);
   });
 
+  it("rejects the same player appearing twice in world.attendance", () => {
+    // This one is not hypothetical: a hand-edit put Karahan in both the
+    // confirmed list and the bench of the S13 bench-offer case, and it
+    // only surfaced as a Postgres primary-key violation 12 cases into a
+    // live run. The loader is the right place to catch it.
+    const bad = {
+      ...good,
+      world: {
+        players: [
+          { key: "najib", name: "Najib Ahmadi" },
+          { key: "karahan", name: "Karahan Yildiz" },
+        ],
+        attendance: [
+          { key: "karahan", status: "CONFIRMED" },
+          { key: "karahan", status: "BENCH" },
+        ],
+      },
+    };
+    expect(() => parseCorpus(line(bad))).toThrow(/karahan/);
+  });
+
   it("rejects a message from a roster key that does not exist", () => {
     expect(() => parseCorpus(line({ ...good, messages: [{ from: "nobody", body: "hi" }] }))).toThrow(
       /nobody/,

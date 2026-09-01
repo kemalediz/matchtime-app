@@ -301,6 +301,19 @@ describe("buildScoreboard", () => {
     expect(sb.sectionsWithACase).toContain("S34");
   });
 
+  it("counts a case that THREW as its own failure class, worse than any other", () => {
+    const withError = [
+      ...results,
+      { caseId: "e", sections: ["S6"], category: "D" as const, runs: 3, passes: 0,
+        classifications: ["error" as const, "error" as const, "error" as const],
+        failures: ['harness error: duplicate key value violates unique constraint "Attendance_pkey"'] },
+    ];
+    const sb = buildScoreboard(withError, { sections: ALL_PROMPT_SECTIONS });
+    expect(sb.byClassification.error).toBe(3);
+    expect(sb.totals.casesFullyPassed).toBe(1);
+    expect(renderScoreboard(sb)).toMatch(/error/);
+  });
+
   it("tallies the step-3 decision criteria (spurious vs missed writes)", () => {
     const sb = buildScoreboard(results, { sections: ALL_PROMPT_SECTIONS });
     expect(sb.byClassification.spurious_write).toBe(1);

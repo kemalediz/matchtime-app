@@ -64,9 +64,19 @@ export async function runCorpus(
     }
 
     for (let i = 0; i < runs; i++) {
-      const observation = await pipeline.run(ctx, c, opts.mode);
-      const grade = gradeCase(c, observation);
       summary.runs += 1;
+      // A case that throws is recorded and the run carries on. One bad
+      // case took down a whole live sweep 12 cases in; three hours of
+      // model calls should never hinge on one malformed fixture.
+      let grade;
+      try {
+        grade = gradeCase(c, await pipeline.run(ctx, c, opts.mode));
+      } catch (err) {
+        summary.classifications.push("error");
+        const msg = `harness error: ${(err as Error).message}`;
+        if (!summary.failures!.includes(msg)) summary.failures!.push(msg);
+        continue;
+      }
       if (grade.passed) {
         summary.passes += 1;
       } else {

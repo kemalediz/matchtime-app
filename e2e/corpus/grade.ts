@@ -245,10 +245,23 @@ export interface CorpusObservation {
 
 // ── Grading ────────────────────────────────────────────────────────────
 
-export type Classification = "spurious_write" | "wrong_write" | "missed_write" | "speech";
+export type Classification =
+  /** The case could not be replayed at all — the harness threw. Worst of
+   *  the lot, because it is not a measurement of anything. */
+  | "error"
+  | "spurious_write"
+  | "wrong_write"
+  | "missed_write"
+  | "speech";
 
 /** Worst-first. §10 step 3 cares most about writes that should not be. */
-const SEVERITY: Classification[] = ["spurious_write", "wrong_write", "missed_write", "speech"];
+const SEVERITY: Classification[] = [
+  "error",
+  "spurious_write",
+  "wrong_write",
+  "missed_write",
+  "speech",
+];
 
 export interface CaseGrade {
   passed: boolean;
@@ -549,6 +562,7 @@ export function buildScoreboard(
   const bySection: Record<string, Bucket> = {};
   for (const s of sections) bySection[s] = emptyBucket();
   const byClassification: Record<Classification, number> = {
+    error: 0,
     spurious_write: 0,
     wrong_write: 0,
     missed_write: 0,
