@@ -96,7 +96,6 @@ interface RunRecord {
         messages: rows.map((r) => ({ ...r, backstop: outSafetyNetSignals(r.reasoning) })),
       });
       const passes = records.filter((r) => r.passed).length;
-      // eslint-disable-next-line no-console
       console.log(
         `[settle:${LABEL}] ${i}/${RUNS} ${grade.passed ? "pass" : "FAIL"} ` +
           `(${passes}/${i})` +
@@ -157,7 +156,6 @@ interface RunRecord {
     );
     lines.push("═".repeat(62));
     const summary = lines.join("\n");
-    // eslint-disable-next-line no-console
     console.log(summary);
 
     const dir = path.join(process.cwd(), ".e2e", "corpus");
@@ -181,7 +179,6 @@ interface RunRecord {
         2,
       ),
     );
-    // eslint-disable-next-line no-console
     console.log(`[settle:${LABEL}] machine-readable → ${file}`);
 
     const notLive = liveReachFailure(reach);
