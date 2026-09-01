@@ -208,3 +208,61 @@ describe("OUT safety net — degenerate input", () => {
     expect(shouldForceSenderOut("BOTH ARE DEFINITE DROPS.")).toBe(true);
   });
 });
+
+/**
+ * The limit of a prose guard, pinned with the real strings that hit it.
+ *
+ * These are NOT aspirational. They record what the guard does today so
+ * the limitation is a documented property rather than something the next
+ * person rediscovers from a flaky corpus case. Measured over 200 live
+ * runs of `S12-mojib-replacement-request-drops-sender` on 2026-09-01
+ * (`npm run test:corpus:settle`, 100 runs per prompt arm): `forceOut`
+ * fired in 77/100 and 78/100 runs, so the seatbelt is carrying the case
+ * — but every single failing run had `notDropping` true.
+ *
+ * If step 6 ever deletes `out-safety-net.ts`, delete this block with it.
+ */
+const REAL_S12_REASONINGS_THAT_DID_NOT_FIRE: Array<[string, string]> = [
+  [
+    "the model called it flavour (b) — the veto is CORRECT here",
+    "Mojib is asking for replacements for himself and Habib ('habibi' = Habib Rahimi from the " +
+      "Confirmed list). This is replacement_request flavour (b) — tentative drop, will play as " +
+      "fallback if nobody steps in. registerAttendance: null (keep them committed as backstop).",
+  ],
+  [
+    "TWO PLAYERS, TWO VERDICTS, ONE BLOB — the veto is WRONG here",
+    // The sharp one. "definite drop" is about HABIB; "tentative" is about
+    // MOJIB, the sender the net exists to protect. `outSafetyNetSignals`
+    // reads one string with no idea which clause is about whom, both
+    // signals fire, and the deliberately-generous veto wins. No regex
+    // fixes this: the guard has no notion of a subject. It is the
+    // clearest argument in the file for §6 replacing prose signals with
+    // per-player extraction.
+    "Mojib asks for replacements for himself and 'habibi' (Habib Rahimi). This is a tentative " +
+      "replacement_request — Mojib is compromised but will play if nobody steps in. Habib " +
+      "appears to be a definite drop. registerAttendance: null (Mojib stays tentative). " +
+      "registerFor OUT for Habib.",
+  ],
+];
+
+describe("OUT safety net — the documented limits of prose matching", () => {
+  for (const [label, reasoning] of REAL_S12_REASONINGS_THAT_DID_NOT_FIRE) {
+    it(`does not fire: ${label}`, () => {
+      const s = outSafetyNetSignals(reasoning);
+      expect(s.notDropping).toBe(true);
+      expect(s.forceOut).toBe(false);
+    });
+  }
+
+  it("cannot attribute a signal to a player, and that is the finding", () => {
+    const both = REAL_S12_REASONINGS_THAT_DID_NOT_FIRE[1][1];
+    const s = outSafetyNetSignals(both);
+    // Both signals present, from clauses about DIFFERENT people.
+    expect(s.strongDrop).toBe(true);
+    expect(s.notDropping).toBe(true);
+    // The veto wins by design. Changing that here would re-introduce the
+    // 2026-05-28 over-fire (Kemal's "@all we need more players pls"), so
+    // the fix is per-player extraction, not a wider regex.
+    expect(s.forceOut).toBe(false);
+  });
+});

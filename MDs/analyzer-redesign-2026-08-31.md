@@ -231,6 +231,44 @@ call.
 > seatbelt that parses the model's English prose does not even do the one thing it
 > was added to do, and nobody could tell for three months.
 >
+> > **CORRECTED 2026-09-01 (PR #31 `710e1fd`, measured in `fix/live-sweep-must-be-live`).**
+> > Note 2 above is history, not current behaviour, and it was still being
+> > quoted as current in PR #36's write-up five commits after it stopped
+> > being true. `710e1fd` widened `strongDrop` to
+> > `/\b(?:definite|definitely)\s+(?:drops?|dropping|out)\b/` — the plural
+> > matches — and narrowed `notDropping` so a bare "chase nudge" no longer
+> > vetoes. The signals moved to `src/lib/out-safety-net.ts`.
+> >
+> > **The seatbelt now fires, and it carries this case.** 200 live runs of
+> > `S12-mojib-replacement-request-drops-sender` (100 per prompt arm,
+> > `npm run test:corpus:settle`): `strongDrop` matched 85/100 and 91/100,
+> > and `forceOut` was true in **77/100** and **78/100**. S12 passes
+> > **96/100** on today's prompt.
+> >
+> > The remaining misses are NOT a regex gap, and §5's argument survives in
+> > a sharper form. Two modes, both structural:
+> >
+> > 1. **The model calls it flavour (b).** Its reasoning says "tentative",
+> >    "will still play if nobody steps in". `notDropping` vetoes, exactly
+> >    as designed — that veto is what stopped the 2026-05-28 Kemal
+> >    over-fire. No prose guard can rescue a drop the model has decided is
+> >    not a drop, and widening `strongDrop` to force one would re-introduce
+> >    the incident the veto exists for.
+> > 2. **The signals have no per-player attribution** — the sharper point,
+> >    and previously undocumented. `outSafetyNetSignals` reads ONE
+> >    free-text blob for a message about TWO players. In a real failing run
+> >    the model wrote *"Habib appears to be a definite drop … Mojib stays
+> >    tentative"*: `strongDrop` matched on Habib's clause, `notDropping` on
+> >    Mojib's, the veto won, and the sender it was meant to protect stayed
+> >    in. The guard cannot tell which player a phrase is about, and no
+> >    amount of regex work gives it that. Step 6 deleting this class of
+> >    guard is the fix.
+> >
+> > Also note the OUT safety net only ever forces the **sender** out. Three
+> > of the pre-#36 arm's ten misses dropped Mojib correctly and left Habib
+> > in, because the model read "habibi" as slang rather than as Habib. No
+> > seatbelt covers a third party named in someone else's message.
+>
 > **3. §3.4's items 1 and 2 are confirmed still live on `3702911`**, at moved line
 > numbers. The byte-identical "For BENCH questions" paragraph is now at
 > `message-analyzer.ts:418` and `:421` (was 369/372). The output-schema enum that
