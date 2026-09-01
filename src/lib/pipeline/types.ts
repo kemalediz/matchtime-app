@@ -412,3 +412,27 @@ export interface EngineInput {
   /** Injected so the engine stays pure (no clock). */
   now: Date;
 }
+
+// ── The shadow payload ─────────────────────────────────────────────────
+
+/**
+ * What the dry run persists to `WindowVerdict.verdictJson`.
+ *
+ * The first four fields are EXACTLY the 2026-05-29 `WindowVerdict`
+ * shape, so `/admin/shadow` renders a v2 row with no change at all. The
+ * last two are the detail that shape cannot hold, and are what §10 step
+ * 3's go/no-go is actually read from.
+ */
+export interface WindowShapedVerdict {
+  windowSummary: string;
+  stateChanges: Array<{
+    action: "drop" | "add" | "bench";
+    targetName: string;
+    targetUserId: string;
+    reason: string;
+  }>;
+  reactions: Array<{ waMessageId: string; emoji: string; kind: string }>;
+  groupReply: string | null;
+  pipeline: "dryrun-v2";
+  proposal: Record<string, unknown>;
+}
