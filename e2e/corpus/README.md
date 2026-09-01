@@ -24,14 +24,35 @@ Both write a machine-readable report to `.e2e/corpus/report-<mode>.json`.
 each must say why (see *Stubbed vs live*). The scoreboard states all three numbers
 on its first two lines — a case that never ran is never counted as a pass.
 
-> ⚠️ **Do not run either sweep while another checkout is running the e2e suite.**
-> `e2e/helpers/env.ts` hard-codes ports 3105/54311 and `playwright.config.ts` sets
-> `reuseExistingServer: true`, so two runs share a database and a dev server: one
-> `resetDb()` truncates the other's world mid-sweep, and a live-mode server has no
-> `MT_TEST_LLM_STUB_FILE`, so stubbed verdicts silently become noise. Neither run
-> errors; both report plausible wrong numbers. The signature is mass
-> `expected CONFIRMED, got no attendance row` with everything silent. Check
-> `lsof -ti :3105` first.
+### Running a sweep while another checkout is running one
+
+Fine, and it needs nothing from you. Each checkout gets its own port pair,
+derived from its absolute path (`e2e/helpers/ports.ts`), so two worktrees get
+two databases and two dev servers. Every run prints which pair it used, on its
+first three lines — quote that alongside any number you report:
+
+```
+[e2e] checkout /Users/kemal/Projects/Cressoft/Sports/matchtime
+[e2e] app  http://localhost:3187  (slot 82 of 200)
+[e2e] db   127.0.0.1:54393  (slot 82 of 200)
+```
+
+If a run **cannot** have its own world it stops before touching anything, with
+`REFUSING to run` and the reason: something else on the app port, a Postgres on
+the db port whose data directory belongs to another checkout, or another run
+already holding this checkout's `.e2e/run.lock`. Two checkouts hashing to the
+same slot (a 1-in-200 chance) lands here; escape it for one run with
+`MT_E2E_APP_PORT` / `MT_E2E_DB_PORT`.
+
+What this replaced, because a sweep from before PR #34 may still be quoted
+somewhere: ports 3105/54311 were hard-coded and `playwright.config.ts` set
+`reuseExistingServer: true`, so two runs shared a database and a dev server.
+One `resetDb()` truncated the other's world mid-sweep, and a live-mode server
+(no `MT_TEST_LLM_STUB_FILE`) served the other's stubbed requests as noise.
+Neither run errored; both reported plausible wrong numbers — the same commit
+gave 26/35 and then 9/35. The signature is mass
+`expected CONFIRMED, got no attendance row` with everything silent. **Any
+scoreboard from before PR #34 that does not name its ports is unverifiable.**
 
 ## Files
 
