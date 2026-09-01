@@ -229,4 +229,46 @@ export async function seedAll(db: PrismaClient): Promise<void> {
       { matchId: MATCH.upcoming, userId: U.bench, status: "BENCH", position: 5 },
     ],
   });
+
+  await seedAttendanceEvents(db);
+}
+
+/**
+ * Give the fixture world an attendance HISTORY, not just a state.
+ *
+ * Every seeded `Attendance` row above gets the event that would have
+ * created it, so the log agrees with the table from the first moment of
+ * the suite. Two things need that:
+ *
+ *   · `squadStateAt(log, now)` can be asserted equal to the live squad
+ *     — the property the whole table exists for, and it is worthless if
+ *     the fixture starts with a table full of rows and an empty log.
+ *   · while the COVERAGE gate is armed (see
+ *     prisma/sql/attendance-event-coverage.sql, which one spec arms and
+ *     disarms), a mid-suite `resetDb()` would otherwise be refused.
+ *
+ * Timestamps are back-dated by position so the fold has an order to
+ * follow and a "mid-week" instant is a real question, not a tie.
+ */
+async function seedAttendanceEvents(db: PrismaClient): Promise<void> {
+  const rows = await db.attendance.findMany({
+    orderBy: [{ matchId: "asc" }, { position: "asc" }],
+    select: { matchId: true, userId: true, status: true, position: true },
+  });
+  const base = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  await db.attendanceEvent.createMany({
+    data: rows.map((r, i) => ({
+      matchId: r.matchId,
+      userId: r.userId,
+      orgId: ORG_ID,
+      fromStatus: null,
+      toStatus: r.status,
+      fromPosition: null,
+      toPosition: r.position,
+      cause: "test-fixture",
+      actorKind: "system",
+      sourceRef: "e2e:seed",
+      at: new Date(base + i * 60_000),
+    })),
+  });
 }
