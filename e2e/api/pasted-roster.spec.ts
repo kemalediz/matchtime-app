@@ -219,6 +219,79 @@ test("a real add ALONGSIDE a paste still registers — the clamp is not a mute b
   expect(await members(db)).not.toContain("Amir");
 });
 
+/** The seeded upcoming match confirms Alex, Colin, Pat and Tom in that
+ *  order (Ben is on the bench). A forward of MatchTime's own roster post
+ *  restates exactly that prefix and fills slot 5 — the S26 shape. */
+const OF_RECORD_PASTE =
+  "1. Alex Admin\n2. Colin Collector\n3. Pat Player\n4. Tom Third\n5. Ian Innes";
+
+test("an OF-RECORD paste registers the appended name — and the same one either way", async ({
+  request,
+  db,
+}) => {
+  // Two readings of the identical message. The model's own picks off
+  // the list are discarded and recomputed from the squad, so it does
+  // not matter which of these it produced.
+  const readings: StubVerdict[] = [
+    { intent: "noise", registerAttendance: null, react: null, reply: null, confidence: 0.9, reasoning: "read as noise" },
+    {
+      intent: "in",
+      registerAttendance: null,
+      // over-reads the list: re-registers two confirmed players and
+      // misses nothing only by accident
+      registerFor: [
+        { name: "Alex Admin", action: "IN" },
+        { name: "Colin Collector", action: "IN" },
+        { name: "Ian Innes", action: "IN" },
+      ],
+      react: "👍",
+      confidence: 0.9,
+      reasoning: "read as five adds",
+    },
+  ];
+
+  const outcomes: string[][] = [];
+  for (const reading of readings) {
+    resetDb();
+    const id = msgId();
+    setLlmStub({ [id]: reading });
+    await postAnalyze(request, [
+      {
+        waMessageId: id,
+        body: OF_RECORD_PASTE,
+        authorPhone: PHONE.admin,
+        authorName: "Alex Admin",
+      },
+    ]);
+    outcomes.push(await squad(db));
+  }
+
+  expect(outcomes[1]).toEqual(outcomes[0]);
+  expect(outcomes[0]).toContain("Ian Innes:CONFIRMED");
+  // …and nobody who was already confirmed was touched or duplicated.
+  expect(outcomes[0].filter((r) => r.startsWith("Alex Admin:"))).toHaveLength(1);
+});
+
+test("the sender appending their OWN name registers them, not a third party", async ({
+  request,
+  db,
+}) => {
+  resetDb();
+  const id = msgId();
+  setLlmStub({
+    [id]: { intent: "noise", registerAttendance: null, react: null, reply: null, confidence: 0.9, reasoning: "stub" },
+  });
+  await postAnalyze(request, [
+    {
+      waMessageId: id,
+      body: OF_RECORD_PASTE,
+      authorPhone: PHONE.fresh,
+      authorName: "Ian Innes",
+    },
+  ]);
+  expect(await squad(db)).toContain("Ian Innes:CONFIRMED");
+});
+
 test("the clamp never eats a drop — an OUT beside a paste still fires", async ({
   request,
   db,

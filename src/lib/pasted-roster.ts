@@ -252,6 +252,90 @@ export function rosterMentionsAny(
   return candidates.some((c) => rosterMentions(roster, c));
 }
 
+/** Do these two strings name the same person, by the same rule
+ *  `rosterMentions` uses? Exact on the folded name, or an equal first
+ *  name. Deliberately not fuzzy — the resolver owns fuzzy matching. */
+export function sameName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = tokens(a ?? "");
+  const y = tokens(b ?? "");
+  if (x.length === 0 || y.length === 0) return false;
+  if (x.join(" ") === y.join(" ")) return true;
+  return x[0].length >= 2 && y[0].length >= 2 && x[0] === y[0];
+}
+
+export interface RosterReconciliation {
+  /** The paste restates THIS match's confirmed squad, in order, and
+   *  anything after it is new. The one pasted-list shape from which a
+   *  registration can be read without guessing. */
+  ofRecord: boolean;
+  reason: "not-a-roster" | "no-confirmed-squad" | "prefix-mismatch" | "of-record";
+  /** Names in slots beyond the confirmed squad, in slot order, deduped,
+   *  with anyone already confirmed removed. Empty unless `ofRecord`. */
+  additions: string[];
+}
+
+/**
+ * The one pasted-list shape that IS a registration, and how to read it
+ * WITHOUT the model choosing.
+ *
+ * S26 (`4cbdd05`, 2026-04-24, corpus case
+ * `S26-reposted-roster-registers-appended-names`): a member forwards
+ * MatchTime's own roster post with the open slots filled in. The
+ * confirmed squad is restated in Match Context ORDER and the new names
+ * are appended after it, so "which lines are new" is arithmetic.
+ *
+ * Everything else registers nobody, and the two conditions that decide
+ * it are the reason this is safe:
+ *
+ * **An empty squad is never of record.** With nothing to restate, ANY
+ * list qualifies — including a shopping list, and including the
+ * five-name paste of 2026-06-07 that the incumbent read four different
+ * ways. No evidence, no write.
+ *
+ * **The prefix must match IN ORDER.** A forward of MatchTime's post
+ * carries MatchTime's ordering; a group's own ritual list carries the
+ * group's. 2026-06-11's paste runs Ehtisham, Amir, Martin… while the
+ * squad runs Ehtisham, Amir, Nabeel… — slot 3 settles it. That single
+ * comparison is what separates "the bot's roster, filled in" from "a
+ * list somebody typed", and it is the whole difference between a
+ * registration we can justify and a coin flip.
+ */
+export function reconcilePastedRoster(
+  roster: PastedRoster | null,
+  confirmedInContextOrder: string[],
+): RosterReconciliation {
+  const no = (reason: RosterReconciliation["reason"]): RosterReconciliation => ({
+    ofRecord: false,
+    reason,
+    additions: [],
+  });
+
+  if (!roster) return no("not-a-roster");
+  const confirmed = confirmedInContextOrder.filter((n) => tokens(n).length > 0);
+  if (confirmed.length === 0) return no("no-confirmed-squad");
+  if (roster.entries.length < confirmed.length) return no("prefix-mismatch");
+
+  for (let i = 0; i < confirmed.length; i++) {
+    const slot = roster.entries[i];
+    if (!slot.name) return no("prefix-mismatch");
+    const a = tokens(slot.name);
+    const b = tokens(confirmed[i]);
+    const same = a.join(" ") === b.join(" ") || (a[0].length >= 2 && a[0] === b[0]);
+    if (!same) return no("prefix-mismatch");
+  }
+
+  const seen = new Set(confirmed.map((n) => tokens(n)[0]));
+  const additions: string[] = [];
+  for (const slot of roster.entries.slice(confirmed.length)) {
+    if (!slot.name || !slot.nameLike) continue;
+    const head = tokens(slot.name)[0];
+    if (!head || seen.has(head)) continue;
+    seen.add(head);
+    additions.push(slot.name);
+  }
+  return { ofRecord: true, reason: "of-record", additions };
+}
+
 export type AttendanceAction = "IN" | "OUT" | "BENCH";
 export interface RegisterForEntry {
   name: string;

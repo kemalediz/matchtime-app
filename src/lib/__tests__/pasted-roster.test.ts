@@ -15,6 +15,7 @@ import {
   rosterMentions,
   rosterMentionsAny,
   clampRosterDerivedWrites,
+  reconcilePastedRoster,
 } from "../pasted-roster";
 
 /** The real 2026-06-11 message (Youssef, batch g-ab95248799:13:10:32).
@@ -252,6 +253,131 @@ describe("rosterMentions — matching a verdict name to a slot", () => {
   it("rosterMentionsAny takes the sender's several known names", () => {
     expect(rosterMentionsAny(r, [null, undefined, "Youssef"])).toBe(true);
     expect(rosterMentionsAny(r, [null, "Kemal"])).toBe(false);
+  });
+});
+
+describe("reconcilePastedRoster — the one shape that IS a registration", () => {
+  /** S26 (`4cbdd05`, 2026-04-24). A member forwards MatchTime's own
+   *  roster post with the open slots filled in. The confirmed squad is
+   *  restated in Match Context ORDER and the new names are appended, so
+   *  "which lines are new" is arithmetic, not a judgement call. */
+  const S26_CONFIRMED = [
+    "Kemal Ediz",
+    "Elvin Aliyev",
+    "Sait Demir",
+    "Mustafa Kaya",
+    "Abid Hussain",
+    "Idris Bello",
+    "Faris Nasser",
+    "Shaz Iqbal",
+    "Adam Osman",
+    "Efat Rahman",
+    "Usama Tariq",
+    "Karahan Yildiz",
+  ];
+  const S26_PASTE = `${S26_CONFIRMED.map((n, i) => `${i + 1}. ${n}`).join("\n")}
+13. Zair Malik
+14. Wasim Akhtar`;
+
+  it("a forwarded MatchTime roster registers EXACTLY the appended names", () => {
+    const r = reconcilePastedRoster(parsePastedRoster(S26_PASTE), S26_CONFIRMED);
+    expect(r.ofRecord).toBe(true);
+    expect(r.additions).toEqual(["Zair Malik", "Wasim Akhtar"]);
+  });
+
+  it("re-listing the squad with nothing appended registers nobody", () => {
+    const body = S26_CONFIRMED.map((n, i) => `${i + 1}. ${n}`).join("\n");
+    const r = reconcilePastedRoster(parsePastedRoster(body), S26_CONFIRMED);
+    expect(r.ofRecord).toBe(true);
+    expect(r.additions).toEqual([]);
+  });
+
+  it("first names in the list still match fuller member records", () => {
+    const body = "1. Kemal\n2. Elvin\n3. Sait\n4. Mustafa\n5. Zair Malik";
+    const r = reconcilePastedRoster(parsePastedRoster(body), S26_CONFIRMED.slice(0, 4));
+    expect(r.ofRecord).toBe(true);
+    expect(r.additions).toEqual(["Zair Malik"]);
+  });
+
+  it("an EMPTY squad is never of record — any list restates nothing", () => {
+    // 2026-06-07: 0 confirmed of 14, two members paste a five- and a
+    // six-name list. With nothing to restate there is no evidence the
+    // paste is THIS match's roster, and a shopping list would qualify.
+    const r = reconcilePastedRoster(parsePastedRoster(REAL_20260607), []);
+    expect(r.ofRecord).toBe(false);
+    expect(r.reason).toBe("no-confirmed-squad");
+    expect(r.additions).toEqual([]);
+  });
+
+  it("a list in the GROUP's own order is not of record (2026-06-11)", () => {
+    // Confirmed order is Ehtisham, Amir, Nabeel, …; the paste runs
+    // Ehtisham, Amir, Martin, …. Slot 3 disagrees, so this is the
+    // group's own ritual list, not a forward of MatchTime's post.
+    const r = reconcilePastedRoster(parsePastedRoster(REAL_20260611), [
+      "Ehtisham Ul Haq",
+      "Amir",
+      "Nabeel",
+      "Martin",
+      "Mo",
+      "Talha",
+      "Youssef",
+      "Ersin Sevindik",
+      "Omar Yusuf",
+      "Adam Khandaza",
+    ]);
+    expect(r.ofRecord).toBe(false);
+    expect(r.reason).toBe("prefix-mismatch");
+    expect(r.additions).toEqual([]);
+  });
+
+  it("2026-06-10 is not of record either — slot 2 is Amir, the squad's is Nabeel", () => {
+    const r = reconcilePastedRoster(parsePastedRoster(REAL_20260610), [
+      "Ehtisham Ul Haq",
+      "Nabeel",
+    ]);
+    expect(r.ofRecord).toBe(false);
+    expect(r.reason).toBe("prefix-mismatch");
+  });
+
+  it("a list SHORTER than the confirmed squad is not of record", () => {
+    const body = "1. Kemal Ediz\n2. Elvin Aliyev\n3. Sait Demir\n4. Mustafa Kaya";
+    const r = reconcilePastedRoster(parsePastedRoster(body), S26_CONFIRMED);
+    expect(r.ofRecord).toBe(false);
+    expect(r.reason).toBe("prefix-mismatch");
+  });
+
+  it("appended blanks and drum rows add nobody", () => {
+    const body = `1. Kemal Ediz\n2. Elvin Aliyev\n3. Sait Demir\n4. Mustafa Kaya\n5. 🥁\n6.`;
+    const r = reconcilePastedRoster(parsePastedRoster(body), S26_CONFIRMED.slice(0, 4));
+    expect(r.ofRecord).toBe(true);
+    expect(r.additions).toEqual([]);
+  });
+
+  it("an appended name repeated twice is added once", () => {
+    const body =
+      "1. Kemal Ediz\n2. Elvin Aliyev\n3. Sait Demir\n4. Mustafa Kaya\n5. Zair Malik\n6. Zair";
+    const r = reconcilePastedRoster(parsePastedRoster(body), S26_CONFIRMED.slice(0, 4));
+    expect(r.additions).toEqual(["Zair Malik"]);
+  });
+
+  it("a name already confirmed is never re-registered, wherever it appears", () => {
+    const body =
+      "1. Kemal Ediz\n2. Elvin Aliyev\n3. Sait Demir\n4. Mustafa Kaya\n5. Kemal\n6. Zair Malik";
+    const r = reconcilePastedRoster(parsePastedRoster(body), S26_CONFIRMED.slice(0, 4));
+    expect(r.additions).toEqual(["Zair Malik"]);
+  });
+
+  it("a message that is not list-shaped is never of record", () => {
+    const r = reconcilePastedRoster(parsePastedRoster("Add Rashad please"), S26_CONFIRMED);
+    expect(r.ofRecord).toBe(false);
+    expect(r.reason).toBe("not-a-roster");
+  });
+
+  it("RESERVES are never additions — a bench block is not a squad slot", () => {
+    const body =
+      "1. Kemal Ediz\n2. Elvin Aliyev\n3. Sait Demir\n4. Mustafa Kaya\n5. Zair Malik\n\nReserves:\n1. Wasim Akhtar";
+    const r = reconcilePastedRoster(parsePastedRoster(body), S26_CONFIRMED.slice(0, 4));
+    expect(r.additions).toEqual(["Zair Malik"]);
   });
 });
 

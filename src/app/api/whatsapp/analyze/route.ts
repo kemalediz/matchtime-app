@@ -64,7 +64,13 @@ import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { normaliseName } from "@/lib/squad-from-list";
-import { clampRosterDerivedWrites } from "@/lib/pasted-roster";
+import {
+  clampRosterDerivedWrites,
+  parsePastedRoster,
+  reconcilePastedRoster,
+  rosterMentions,
+  sameName,
+} from "@/lib/pasted-roster";
 import {
   handleOnboardingTurn,
   buildHelpReply,
@@ -877,10 +883,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── PASTED-ROSTER CLAMP ─────────────────────────────────────────
-    //    "The model extracts, code decides", applied to the shape that
-    //    the self-replay sweep (PR #35) proved the incumbent cannot
-    //    reproduce: a pasted numbered roster. Three of its four
+    // ── PASTED ROSTER — CODE DECIDES, NOT THE MODEL ─────────────────
+    //    The shape the self-replay sweep (PR #35) proved the incumbent
+    //    cannot reproduce: a pasted numbered roster. Three of its four
     //    write-level disagreements were this one shape — on 2026-06-07
     //    one run registered Nabeel and the other registered Adam, Amir,
     //    Ehtisham and Martin, from the same two messages against the
@@ -889,58 +894,129 @@ export async function POST(request: Request) {
     //    never read as one defect.
     //
     //    The prompt says nothing about a pasted list, so the model
-    //    improvises which of the fourteen lines are registrations. It
-    //    cannot do better: reading a registration out of a re-paste
-    //    needs the PREVIOUS list to diff against ("line 6 is new AND it
-    //    is the sender's own name"), and this route holds no such
-    //    state. `lib/squad-from-list.ts` does — it keeps the lists,
-    //    diffs them, attributes additions to the sender and learns
-    //    aliases, behind the `featureSquadFromList` org flag. A group
-    //    that maintains its squad by re-pasting should have that
-    //    switched on. Here, we stop guessing.
+    //    improvises which of the fourteen lines are registrations, and
+    //    improvisation is not reproducible. Two deterministic rules
+    //    replace it, in this order:
     //
-    //    MONOTONE by construction (see lib/pasted-roster.ts): the clamp
-    //    can only REMOVE writes, and never touches an OUT. A name in
-    //    the registerFor that is NOT a slot in the list survives —
-    //    prose alongside a paste ("also adding Kieran", "Trevell got
-    //    injured, he's out") is a real statement.
-    {
-      const clamp = clampRosterDerivedWrites({
-        body: msg.body,
-        senderNames: [sender.name, msg.authorName],
-        registerAttendance: verdict.registerAttendance,
-        registerFor: verdict.registerFor,
-      });
-      if (clamp.droppedSelf || clamp.droppedNames.length > 0) {
-        console.warn(
-          `[analyze] pasted-roster clamp: "${(msg.body || "").slice(0, 60)}" (${msg.waMessageId}) ` +
-            `is a pasted list — dropped ` +
-            `${clamp.droppedSelf ? `self ${verdict.registerAttendance}` : ""}` +
-            `${clamp.droppedSelf && clamp.droppedNames.length > 0 ? " + " : ""}` +
-            `${clamp.droppedNames.length > 0 ? `registerFor [${clamp.droppedNames.join(", ")}]` : ""}. ` +
-            `A re-paste is a restatement, not a registration; org ${org.id} should use ` +
-            `featureSquadFromList if it maintains its squad this way.`,
+    //    1. RECONCILE. There is exactly one pasted shape a registration
+    //       can be read out of without guessing — the one S26
+    //       (`4cbdd05`) shipped: a forward of MatchTime's OWN roster
+    //       post, restating the confirmed squad in Match Context order
+    //       with the open slots filled in. "Which lines are new" is
+    //       then arithmetic, and `reconcilePastedRoster` does it.
+    //
+    //    2. CLAMP. Every other list — the group's own ritual order, a
+    //       list against an empty squad, a list shorter than the squad
+    //       — registers NOBODY, and the model's picks off it are
+    //       dropped. Reading those needs the PREVIOUS list to diff
+    //       against, which this route does not have.
+    //       `lib/squad-from-list.ts` does: it keeps the lists, diffs
+    //       them, attributes additions to the sender and learns
+    //       aliases, behind the `featureSquadFromList` org flag. A
+    //       group that maintains its squad by re-pasting should have
+    //       that switched on.
+    //
+    //    The clamp is MONOTONE by construction (see
+    //    lib/pasted-roster.ts): it only removes writes, and never
+    //    touches an OUT. A registerFor name that is NOT a slot in the
+    //    list survives whatever its direction — prose alongside a paste
+    //    ("also adding Kieran", "Trevell got injured, he's out") is a
+    //    real statement and the list says nothing about it.
+    const pastedRoster = parsePastedRoster(msg.body);
+    if (pastedRoster) {
+      //  The NEXT match's confirmed squad, in Match Context order —
+      //  the same list the group sees in MatchTime's roster post, which
+      //  is what an of-record paste is a forward of. If the message was
+      //  really about some other match the prefix simply will not
+      //  match, and the clamp takes over: the failure direction is
+      //  "register nobody", never "register the wrong squad".
+      const confirmedNames = nextMatchForReply
+        ? (
+            await db.attendance.findMany({
+              where: { matchId: nextMatchForReply.id, status: "CONFIRMED" },
+              include: { user: { select: { name: true } } },
+              orderBy: { position: "asc" },
+            })
+          ).map((a) => a.user.name ?? "")
+        : [];
+      const reconciled = reconcilePastedRoster(pastedRoster, confirmedNames);
+
+      if (reconciled.ofRecord) {
+        //  A forward of our own roster post with the open slots filled
+        //  in (S26). The additions are COMPUTED from the squad, so two
+        //  runs of the same message cannot produce two different
+        //  squads. The model's own picks off the list are discarded and
+        //  replaced; anything it named that is NOT in the list is kept
+        //  alongside them.
+        const offList = (verdict.registerFor ?? []).filter(
+          (e) => !rosterMentions(pastedRoster, e.name),
         );
+        const senderAddition = reconciled.additions.find(
+          (n) => sameName(n, sender.name) || sameName(n, msg.authorName),
+        );
+        const rebuilt = [
+          ...offList,
+          ...reconciled.additions
+            .filter((n) => n !== senderAddition)
+            .map((name) => ({ name, action: "IN" as const })),
+        ];
+        if (reconciled.additions.length > 0) {
+          console.warn(
+            `[analyze] pasted-roster reconcile: "${(msg.body || "").slice(0, 60)}" ` +
+              `(${msg.waMessageId}) restates the confirmed squad in order, so the ` +
+              `${reconciled.additions.length} appended name(s) [${reconciled.additions.join(", ")}] ` +
+              `are new. Computed from the squad, not from the model's reading of the list.`,
+          );
+        }
         verdict = {
           ...verdict,
-          registerAttendance: clamp.registerAttendance,
-          registerFor: clamp.registerFor,
+          //  The sender appended their OWN name: that is self
+          //  attendance, which registerAttendance carries. The author
+          //  never belongs in registerFor.
+          ...(senderAddition && verdict.registerAttendance === null
+            ? { registerAttendance: "IN" as const }
+            : {}),
+          registerFor: rebuilt.length > 0 ? rebuilt : null,
         };
-        //  Nothing is left to do. Fall through as noise so the IN
-        //  safety net below cannot put the sender's registration back,
-        //  and so a reply announcing a write that will not happen never
-        //  reaches the group (the same shape as the hypothetical/
-        //  past-tense seatbelt above). An out-shaped verdict keeps its
-        //  intent: the OUT safety net owns that direction, and this
-        //  clamp must never eat a drop.
-        if (
-          clamp.silenced &&
-          verdict.intent !== "out" &&
-          verdict.intent !== "replacement_request"
-        ) {
-          verdict = { ...verdict, intent: "noise", react: null, reply: null };
-        }
         verdicts[i] = verdict;
+      } else {
+        const clamp = clampRosterDerivedWrites({
+          body: msg.body,
+          senderNames: [sender.name, msg.authorName],
+          registerAttendance: verdict.registerAttendance,
+          registerFor: verdict.registerFor,
+        });
+        if (clamp.droppedSelf || clamp.droppedNames.length > 0) {
+          console.warn(
+            `[analyze] pasted-roster clamp: "${(msg.body || "").slice(0, 60)}" (${msg.waMessageId}) ` +
+              `is a pasted list that does not restate the squad (${reconciled.reason}) — dropped ` +
+              `${clamp.droppedSelf ? `self ${verdict.registerAttendance}` : ""}` +
+              `${clamp.droppedSelf && clamp.droppedNames.length > 0 ? " + " : ""}` +
+              `${clamp.droppedNames.length > 0 ? `registerFor [${clamp.droppedNames.join(", ")}]` : ""}. ` +
+              `A re-paste is a restatement, not a registration; org ${org.id} should use ` +
+              `featureSquadFromList if it maintains its squad this way.`,
+          );
+          verdict = {
+            ...verdict,
+            registerAttendance: clamp.registerAttendance,
+            registerFor: clamp.registerFor,
+          };
+          //  Nothing is left to do. Fall through as noise so the IN
+          //  safety net below cannot put the sender's registration
+          //  back, and so a reply announcing a write that will not
+          //  happen never reaches the group (the same shape as the
+          //  hypothetical/past-tense seatbelt above). An out-shaped
+          //  verdict keeps its intent: the OUT safety net owns that
+          //  direction, and this clamp must never eat a drop.
+          if (
+            clamp.silenced &&
+            verdict.intent !== "out" &&
+            verdict.intent !== "replacement_request"
+          ) {
+            verdict = { ...verdict, intent: "noise", react: null, reply: null };
+          }
+          verdicts[i] = verdict;
+        }
       }
     }
 
