@@ -54,6 +54,7 @@ import {
   type AnalysisVerdict,
   type BatchInputMessage,
 } from "@/lib/message-analyzer";
+import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { normaliseName } from "@/lib/squad-from-list";
@@ -1185,7 +1186,6 @@ export async function POST(request: Request) {
     ) {
       const latestIdx = latestIdxByAuthor.get(sender.userId);
       if (latestIdx === i) {
-        const r = (verdict.reasoning ?? "").toLowerCase();
         // OLD rule (Mojib fix 2026-05-26): force OUT unless reasoning
         // hedged with "still in / running late". That fired on Kemal
         // 2026-05-28 — "@all we need more players pls" → LLM correctly
@@ -1196,25 +1196,20 @@ export async function POST(request: Request) {
         // NEW rule: only override when reasoning shows a STRONG signal
         // that the sender themselves is dropping. If reasoning shows
         // ANY "I deliberately left this null" signal (hedging, type-b,
-        // "stays null", "tentative", "group-level"), respect it.
-        // Mojib's case still fires because "definite drop" matches
-        // strongDrop and no hedging matches notDropping. Kemal's case
-        // no longer fires because "tentative/group-level" matches
+        // "stays null", "tentative", "group-level"), respect it. Kemal's
+        // case doesn't fire because "tentative/group-level" matches
         // notDropping.
-        const notDropping =
-          /\b(still|may still|might still)\s+(in|play|attend|com)/.test(r) ||
-          /\b(running late|just late|will be late|be late)\b/.test(r) ||
-          /\bstays?\s+null\b/.test(r) ||
-          /\b(register\w*\s+(stays?\s+)?null|no\s+register\w*)\b/.test(r) ||
-          /\b(tentative|group[-\s]level|not\s+a\s+personal\s+drop)\b/.test(r) ||
-          /\b(just\s+(chasing|asking|nudg)|chase\s+nudge|admin\s+(chase|nudg))\b/.test(r) ||
-          /\btype\s*\(?b\)?\b/.test(r);
-        const strongDrop =
-          /\b(definite|definitely)\s+(drop|out)\b/.test(r) ||
-          /\b(cannot|can'?t|won'?t|unable\s+to|will\s+not)\s+(make|play|attend|come|be\s+there|join)/.test(r) ||
-          /\b(is|am)\s+(definitely\s+)?(dropping|out)\b/.test(r) ||
-          /\bsender\s+(is|are)?\s*(dropping|out|gone|leaving|sick|injured|ill|can'?t\s+make)/.test(r);
-        if (strongDrop && !notDropping) {
+        //
+        // The signals live in lib/out-safety-net.ts, pinned against the
+        // real production reasoning strings. They have to: this guard was
+        // DEAD from the day it shipped until 2026-09-01. Mojib's actual
+        // reasoning was "Both are definite drops" — `drop\b` never
+        // matched the plural — and, independently, "chase nudge" in the
+        // same sentence (describing the REPLY, not his attendance) hit
+        // notDropping and would have vetoed it anyway. The comment that
+        // used to sit here claimed the opposite, which is how it survived
+        // three months unnoticed.
+        if (shouldForceSenderOut(verdict.reasoning)) {
           console.warn(
             `[analyze] LLM emitted intent:"replacement_request" with registerAttendance:${JSON.stringify(verdict.registerAttendance)} for ${sender.name} (${msg.waMessageId}). ` +
               `Reasoning has strong-drop signal AND no opt-out → forcing OUT. Reasoning: ${verdict.reasoning}`,
