@@ -1,0 +1,89 @@
+/**
+ * INCIDENT CORPUS — LIVE replay against the real Anthropic model.
+ *
+ * The measurement that matters. Every case is replayed through the real
+ * `/api/whatsapp/analyze` route with no stub, WITH the chat-history
+ * block the Pi sends in production, N times each because the model is
+ * non-deterministic (MT_SIM_RUNS, following the convention of the other
+ * `-live.spec.ts` files).
+ *
+ * Opt-in: only runs when MT_SIM_LIVE_LLM=1.
+ *
+ *   set -a; source .env; set +a
+ *   npm run test:corpus:live                     # 3 runs per case
+ *   MT_SIM_RUNS=5 npm run test:corpus:live       # 5
+ *   MT_CORPUS_FILTER=S6 npm run test:corpus:live # one case
+ *
+ * REPORTING, NOT GATING, BY DEFAULT. §4 documents that today's prompt
+ * does not reliably do what it says, so a live run is expected to show
+ * failures; the deliverable is the scoreboard and the JSON report, which
+ * is what §10 step 3's criteria are evaluated from. Set
+ * MT_CORPUS_MIN_PASS=0.95 to turn it into a gate once a pipeline is
+ * meant to hold a bar.
+ *
+ * NEVER weaken a corpus expectation to make this green. If a case fails,
+ * check the expectation against the commit in its provenance block, then
+ * record the failure.
+ */
+import { test, expect, resetDb } from "../fixtures";
+import { loadCorpus } from "../corpus/load";
+import { CurrentAnalyzerPipeline } from "../corpus/current-analyzer-pipeline";
+import { runCorpus, renderScoreboard, writeReport } from "../corpus/runner";
+
+const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
+const RUNS = Number(process.env.MT_SIM_RUNS ?? 3);
+const FILTER = process.env.MT_CORPUS_FILTER;
+const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_MIN_PASS) : null;
+
+(LIVE ? test.describe : test.describe.skip)(
+  "incident corpus LIVE (real Anthropic model)",
+  () => {
+    test.describe.configure({ mode: "default" });
+    test.beforeAll(resetDb);
+
+    test(`replays the whole corpus ×${RUNS} and reports a scoreboard`, async ({ request, db }) => {
+      // 45 cases × RUNS × one real batch call each. Budget generously.
+      test.setTimeout(3 * 60 * 60_000);
+
+      const cases = loadCorpus();
+      const pipeline = new CurrentAnalyzerPipeline();
+
+      const sb = await runCorpus({ request, db }, pipeline, cases, {
+        mode: "live",
+        runs: RUNS,
+        ...(FILTER ? { filter: FILTER } : {}),
+        onCase: (s) => {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[corpus-live] ${s.passes}/${s.runs} ${s.caseId}` +
+              (s.failures?.length ? `\n              ↳ ${s.failures.slice(0, 4).join(" | ")}` : ""),
+          );
+        },
+      });
+
+      // eslint-disable-next-line no-console
+      console.log(renderScoreboard(sb));
+      const file = writeReport({
+        pipeline: pipeline.name,
+        mode: "live",
+        runsPerCase: RUNS,
+        generatedAt: new Date().toISOString(),
+        scoreboard: sb,
+      });
+      // eslint-disable-next-line no-console
+      console.log(`[corpus-live] machine-readable report → ${file}`);
+
+      // The run itself must have produced data; a zero-case run means
+      // the filter matched nothing or the harness broke.
+      expect(sb.totals.runs, "the live run produced no results at all").toBeGreaterThan(0);
+
+      if (MIN_PASS !== null) {
+        expect(
+          sb.totals.runPassRate,
+          `run pass rate ${(sb.totals.runPassRate * 100).toFixed(1)}% below the ` +
+            `MT_CORPUS_MIN_PASS gate of ${(MIN_PASS * 100).toFixed(1)}%`,
+        ).toBeGreaterThanOrEqual(MIN_PASS);
+      }
+    });
+  },
+);
