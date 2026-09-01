@@ -97,9 +97,14 @@ export interface RoutedRow {
   createdAt: string;
   /** What the router said. */
   route: string;
-  /** `model` · `fallback` · `floor` — a floor route is the seatbelt
-   *  firing, and is counted separately. */
+  /** `model` · `fallback` · `floor`. */
   source: string;
+  /** When `source` is `floor`, the route the MODEL gave. A RESCUE is
+   *  specifically `overrodeRoute === "none"` — the seatbelt firing.
+   *  Counting `source === "floor"` instead counts every relabel and
+   *  flatters the floor: the first full sweep reported 136 "rescues"
+   *  against a true count of 0. */
+  overrodeRoute?: string;
 }
 
 // ── Output ────────────────────────────────────────────────────────────
@@ -173,11 +178,11 @@ export function summariseRecall(rows: RoutedRow[]): RecallReport {
     if (isBenign) benign += 1;
     if (r.source === "floor") {
       floorRoutes += 1;
-      // A floor route is only a RESCUE if the message would otherwise
-      // have been skipped. `routeBatch` reports `floor` as the source
-      // exactly when the floor's answer differed from the model's, so
-      // any floor route on a message the gate would have dropped counts.
-      if (r.route !== "none") floorRescues += 1;
+      // A floor route is a RESCUE only when the message would OTHERWISE
+      // have been skipped — i.e. the model said `none`. Every other
+      // override is a relabel the gate cannot see, because the gate
+      // discards the route and keeps only `none` / not-`none`.
+      if (r.overrodeRoute === "none") floorRescues += 1;
     }
     if (r.route === "none") {
       none += 1;
@@ -338,7 +343,7 @@ export function renderFloorEffect(d: DerivedFloor, r: RecallReport): string {
 export function toRoutedRow(
   m: RawMessage,
   groupRef: string,
-  routed: { route: string; source: string },
+  routed: { route: string; source: string; overrodeRoute?: string },
 ): RoutedRow {
   return {
     waMessageId: m.waMessageId,
@@ -349,5 +354,6 @@ export function toRoutedRow(
     createdAt: m.createdAt,
     route: routed.route,
     source: routed.source,
+    ...(routed.overrodeRoute ? { overrodeRoute: routed.overrodeRoute } : {}),
   };
 }

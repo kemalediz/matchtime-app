@@ -81,6 +81,20 @@ export interface RoutedMessage {
   messageId: string;
   route: Route;
   source: RouteSource;
+  /**
+   * When `source` is `floor`, the route the MODEL gave that the floor
+   * replaced. Absent otherwise.
+   *
+   * Without this, "how often did the floor rescue a message?" is
+   * unanswerable, and the obvious proxy — counting `source === "floor"`
+   * — is wrong in a way that flatters the floor: it counts every
+   * override, including `other_att → self_att`, which changes nothing
+   * about whether the analyzer sees the message. A rescue is
+   * specifically `overrodeRoute === "none"`. That mistake was made and
+   * caught in the first full recall sweep, where it reported 136
+   * rescues against a true count of 0.
+   */
+  overrodeRoute?: Route;
 }
 
 // ── Stage 2: FACTS ─────────────────────────────────────────────────────

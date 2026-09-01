@@ -36,7 +36,7 @@ import {
   partition,
   type GateMessage,
 } from "../gate";
-import { routeFloor } from "../router";
+import { routeBatch, routeFloor } from "../router";
 import type { Route, RoutedMessage } from "../types";
 
 const ALL_ROUTES: Route[] = [
@@ -267,6 +267,60 @@ describe("partition", () => {
   it("an empty batch decides nothing", () => {
     const p = partition([], [], { floor: true });
     expect(p).toEqual({ analysed: [], skipped: [], floorForced: [] });
+  });
+});
+
+describe("the floor's override records what it replaced", () => {
+  it("a floor override carries the model's route, so a RESCUE is distinguishable", async () => {
+    // Without this, "how often did the floor rescue a message?" has no
+    // honest answer, and the obvious proxy (count `source === "floor"`)
+    // over-reports: it counts `other_att → self_att` relabels, which
+    // change nothing the gate can see. The first full recall sweep
+    // reported 136 rescues that way against a true count of 0.
+    const model = {
+      name: "fake",
+      async complete() {
+        return {
+          text: JSON.stringify({ routes: [{ id: "m1", route: "none" }, { id: "m2", route: "😂" }] }),
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 0,
+        };
+      },
+    };
+    const out = await routeBatch(
+      model,
+      [
+        { id: "m1", authorName: "a", body: "in" },
+        { id: "m2", authorName: "b", body: "😂" },
+      ],
+      { floor: true },
+    );
+    const m1 = out.routes.find((r) => r.messageId === "m1")!;
+    expect(m1.source).toBe("floor");
+    expect(m1.route).toBe("self_att");
+    expect(m1.overrodeRoute).toBe("none"); // a real rescue
+  });
+
+  it("no override, no `overrodeRoute` — an absent field is not a rescue", async () => {
+    const model = {
+      name: "fake",
+      async complete() {
+        return {
+          text: JSON.stringify({ routes: [{ id: "m1", route: "self_att" }] }),
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 0,
+        };
+      },
+    };
+    const out = await routeBatch(model, [{ id: "m1", authorName: "a", body: "whatever" }], {
+      floor: true,
+    });
+    expect(out.routes[0].source).toBe("model");
+    expect(out.routes[0].overrodeRoute).toBeUndefined();
   });
 });
 

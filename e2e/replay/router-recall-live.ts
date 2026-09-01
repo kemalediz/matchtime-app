@@ -141,6 +141,7 @@ async function main(): Promise<number> {
         toRoutedRow(m, groupRefOf(m.groupId), {
           route: r?.route ?? "unsure",
           source: r?.source ?? "fallback",
+          ...(r?.overrodeRoute ? { overrodeRoute: r.overrodeRoute } : {}),
         }),
       );
     }

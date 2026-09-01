@@ -356,7 +356,11 @@ export async function routeBatch(
         `the floor overrode the router: ${r.route} → ${f} (bare self-attendance)`,
       ),
     );
-    return { ...r, route: f, source: "floor" as const };
+    // `overrodeRoute` is what makes a RESCUE distinguishable from a
+    // mere relabel. Only `overrodeRoute === "none"` is the seatbelt
+    // actually firing; `other_att → self_att` changes nothing about
+    // whether the analyzer sees the message.
+    return { ...r, route: f, source: "floor" as const, overrodeRoute: r.route };
   });
 
   return { routes, degradations: result.degradations, usage };

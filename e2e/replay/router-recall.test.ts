@@ -84,13 +84,28 @@ describe("summariseRecall", () => {
     expect(r.misses.map((m) => m.waMessageId)).toEqual(["i", "t", "q"]);
   });
 
-  it("counts floor rescues separately from floor routes", () => {
+  it("counts a floor RESCUE only when the model had said `none`", () => {
+    // The bug this pins: the first full sweep counted every
+    // `source === "floor"` row as a rescue and reported 136 of them
+    // against a true count of ZERO. A floor override from `other_att`
+    // to `self_att` changes nothing the gate can see — the gate keeps
+    // only `none` / not-`none` — so it is a relabel, not a seatbelt
+    // firing.
     const r = summariseRecall([
-      row({ intent: "in", route: "self_att", source: "floor" }),
+      row({ intent: "in", route: "self_att", source: "floor", overrodeRoute: "none" }),
+      row({ intent: "in", route: "self_att", source: "floor", overrodeRoute: "other_att" }),
       row({ intent: "noise", route: "none", source: "model" }),
     ]);
-    expect(r.floorRoutes).toBe(1);
+    expect(r.floorRoutes).toBe(2);
     expect(r.floorRescues).toBe(1);
+  });
+
+  it("a floor row with no recorded model route is not counted as a rescue", () => {
+    // Fail towards UNDER-claiming for the floor. An unknown override is
+    // not evidence the seatbelt did anything.
+    const r = summariseRecall([row({ intent: "in", route: "self_att", source: "floor" })]);
+    expect(r.floorRoutes).toBe(1);
+    expect(r.floorRescues).toBe(0);
   });
 
   it("reports an interval, because 0 of 40 is not 0%", () => {
