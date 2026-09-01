@@ -6,6 +6,7 @@
  */
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { APP_PORT_ENV, DB_PORT_ENV, resolvePorts } from "./ports";
 
 // All entry points (npm scripts, the Playwright runner and its workers)
 // run with cwd = repo root. Verified rather than assumed — this file is
@@ -16,16 +17,33 @@ if (!existsSync(path.join(REPO_ROOT, "prisma", "schema.prisma"))) {
   throw new Error(`e2e: expected to run from the repo root, got cwd=${REPO_ROOT}`);
 }
 
+/**
+ * Which ports this checkout owns. Derived from the checkout path, not
+ * fixed, so two worktrees running the suite at once cannot share a
+ * database or a dev server — see helpers/ports.ts for why derived rather
+ * than dynamically allocated, and helpers/preflight.ts for what happens
+ * when two checkouts hash to the same slot anyway.
+ *
+ * Everything else under `.e2e/` was already per-checkout (it hangs off
+ * REPO_ROOT); the ports were the one piece of global state left.
+ */
+export const E2E_PORTS = resolvePorts(REPO_ROOT);
+
 export const E2E = {
   /** Embedded Postgres — local-only, throwaway cluster under .e2e/. */
-  DB_PORT: 54311,
+  DB_PORT: E2E_PORTS.db,
   DB_NAME: "matchtime_test",
   DB_USER: "postgres",
   DB_PASSWORD: "postgres",
   DATA_DIR: path.join(REPO_ROOT, ".e2e", "pgdata"),
 
   /** Next dev server under test. */
-  APP_PORT: 3105,
+  APP_PORT: E2E_PORTS.app,
+
+  /** One run per checkout — see acquireRunLock in helpers/preflight.ts.
+   *  Overridable so the harness's own tests can exercise the guard
+   *  without fighting a real run for the checkout's lock. */
+  RUN_LOCK: process.env.MT_E2E_RUN_LOCK ?? path.join(REPO_ROOT, ".e2e", "run.lock"),
 
   /** Test-only secrets — deliberately NOT the prod values, so a token
    *  minted by the tests can never be valid against prod (and vice
@@ -89,6 +107,14 @@ export function buildTestEnv(): Record<string, string> {
   // env is byte-identical to the original stubbed configuration.
   const live = process.env.MT_SIM_LIVE_LLM === "1";
   const env: Record<string, string> = {
+    // Pin the resolved ports for every child process (Playwright and its
+    // workers, the dev server). run.ts and playwright.config.ts are
+    // separate processes that would each derive the same pair from cwd,
+    // but passing them explicitly means one run can only ever have one
+    // answer — and it puts the ports in `env` where a debugger can see
+    // them.
+    [APP_PORT_ENV]: String(E2E.APP_PORT),
+    [DB_PORT_ENV]: String(E2E.DB_PORT),
     DATABASE_URL: E2E_DB_URL,
     DIRECT_URL: E2E_DB_URL,
     MT_E2E_DATABASE_URL: E2E_DB_URL,

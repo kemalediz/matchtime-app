@@ -45,7 +45,14 @@ export default defineConfig({
   webServer: {
     command: `npx next dev --port ${E2E.APP_PORT}`,
     url: `${E2E_BASE_URL}/login`,
-    reuseExistingServer: !process.env.CI,
+    // NEVER adopt a server this run did not start. `reuseExistingServer:
+    // !CI` used to hand the suite whatever was on the port — including
+    // another checkout's dev server, pointed at another database and
+    // possibly running live-LLM with no `MT_TEST_LLM_STUB_FILE`, which
+    // serves this run's stubbed requests as noise and reports plausible,
+    // wrong numbers without erroring. run.ts's preflight refuses first;
+    // this is the second lock on the same door.
+    reuseExistingServer: false,
     timeout: 180_000,
     env: testEnv,
   },

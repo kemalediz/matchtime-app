@@ -17,19 +17,63 @@ npm run test:sim            # just the group-simulator scenario matrix (e2e/sim/
 
 That single command:
 
-1. Starts an **embedded Postgres** (binaries from the `embedded-postgres`
-   npm package — no Docker, no system Postgres) on `127.0.0.1:54311`,
-   data dir `.e2e/pgdata` (gitignored, persists between runs for speed).
-2. `prisma db push` (this repo's schema-sync mechanism) + seeds the
+1. Resolves **this checkout's ports** and prints them, takes the
+   per-checkout run lock, and refuses to start if either port is held by
+   anything it did not start (see *Isolation* below).
+2. Starts an **embedded Postgres** (binaries from the `embedded-postgres`
+   npm package — no Docker, no system Postgres) on this checkout's db
+   port, data dir `.e2e/pgdata` (gitignored, persists between runs for
+   speed).
+3. `prisma db push` (this repo's schema-sync mechanism) + seeds the
    fixture world (`e2e/helpers/seed.ts`) via tsx.
-3. Writes `.env.e2e` (gitignored) documenting the test DB URL.
-4. Runs Playwright; its `webServer` boots `next dev` on `:3105` with a
-   pinned env (`e2e/helpers/env.ts → buildTestEnv()`).
-5. Stops the embedded Postgres.
+4. Writes `.env.e2e` (gitignored) documenting the test DB URL and ports.
+5. Runs Playwright; its `webServer` boots `next dev` on this checkout's
+   app port with a pinned env (`e2e/helpers/env.ts → buildTestEnv()`).
+6. Stops the embedded Postgres.
 
 `npx playwright test` directly is **blocked** (the config throws unless
 launched through the orchestrator) so the suite can never run against an
 unprovisioned/ambient `DATABASE_URL`.
+
+### Isolation — two checkouts can run the suite at the same time
+
+Everything the suite owns is per-checkout, including the ports, so a
+second worktree (another agent, a clone, a `git worktree`) needs no
+coordination and no ritual.
+
+- **Ports are derived from the checkout's absolute path**
+  (`e2e/helpers/ports.ts`): `3105 + slot` for Next, `54311 + slot` for
+  Postgres, where `slot` is a SHA-256 of the path modulo 200. Derived
+  rather than dynamically allocated so a run is **reproducible** — the
+  same checkout always gets the same pair, `psql` keeps working, and a
+  failure can be re-run against the same world — and so there is no
+  "find a free port, then bind it" race.
+- **Every run says where it lives**, first thing:
+
+  ```
+  [e2e] checkout /Users/you/Projects/matchtime
+  [e2e] app  http://localhost:3187  (slot 82 of 200)
+  [e2e] db   127.0.0.1:54393  (slot 82 of 200)
+  ```
+
+  Quote those lines next to any number a run produces.
+- **Nothing is ever adopted.** `e2e/helpers/preflight.ts` aborts the run
+  before any side effect if: anything is listening on the app port; a
+  Postgres on the db port reports a `data_directory` that is not this
+  checkout's `.e2e/pgdata`; or `.e2e/run.lock` is held by a live pid.
+  `playwright.config.ts` sets `reuseExistingServer: false` as the second
+  lock on the same door. The one case that still reuses a running
+  cluster is a crashed run of **this** checkout, proven by reading its
+  data directory back off the server.
+- **Two checkouts can still hash to the same slot** (1 in 200). That is
+  the case the refusals above exist for: it fails loudly and names the
+  escape hatch. `MT_E2E_APP_PORT` / `MT_E2E_DB_PORT` override either
+  port for one run; `MT_E2E_RUN_LOCK` moves the lock file.
+- **This is tested, not asserted.** `e2e/helpers/isolation.test.ts`
+  stands up two real checkouts with two real databases at the same time
+  and checks neither can see the other's rows, and drives `e2e/run.ts`
+  at a port somebody else holds to check that it stops. It runs in
+  `npm run test:unit`.
 
 ### Safety model (read before changing anything)
 
@@ -171,8 +215,11 @@ submission with a merged-away player (covered in `web/rate.spec.ts`).
 - **Visual regression** (screenshots) — only overflow geometry is
   asserted today.
 - **CI wiring** (GitHub Actions): the suite is CI-ready (self-provisions
-  Postgres; set `CI=1` so `reuseExistingServer` is off) but no workflow
-  file is committed.
+  Postgres, never reuses a server, derives its ports from the checkout
+  path with no machine-specific dependency) but no workflow file is
+  committed. Two jobs on one runner should set `MT_E2E_APP_PORT` /
+  `MT_E2E_DB_PORT` per job rather than rely on the checkout paths
+  differing.
 
 ## Conventions for new specs
 
