@@ -54,7 +54,7 @@ export class DryRunPipeline implements CorpusPipeline {
     return mode === "live";
   }
 
-  async run(ctx: PipelineContext, c: CorpusCase, _mode: CorpusMode): Promise<CorpusObservation> {
+  async run(ctx: PipelineContext, c: CorpusCase): Promise<CorpusObservation> {
     const grp = await buildCorpusWorld(ctx, c);
 
     const attendanceBefore = await readRows(grp);

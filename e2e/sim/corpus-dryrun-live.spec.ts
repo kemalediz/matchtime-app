@@ -66,7 +66,7 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
           // "why did nothing happen?" is one command, not two logs
           // (§11.2 — debugging spans calls now, and this is the answer).
           if (FILTER) {
-            // eslint-disable-next-line no-console
+             
             console.log(
               `[corpus-dryrun] ${c.id}\n` +
                 `  routes:  ${JSON.stringify(n?.routes)}\n` +
@@ -81,7 +81,7 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
           }
         },
         onCase: (s) => {
-          // eslint-disable-next-line no-console
+           
           console.log(
             `[corpus-dryrun] ${s.passes}/${s.runs} ${s.caseId}` +
               (s.failures?.length ? `\n              ↳ ${s.failures.slice(0, 4).join(" | ")}` : ""),
@@ -89,9 +89,9 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
         },
       });
 
-      // eslint-disable-next-line no-console
+       
       console.log(renderScoreboard(sb));
-      // eslint-disable-next-line no-console
+       
       console.log(
         `[corpus-dryrun] measured cost: $${costUsd.toFixed(4)} over ${batches} batches ` +
           `= $${batches > 0 ? (costUsd / batches).toFixed(5) : "0"} per batch`,
@@ -107,7 +107,7 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
         },
         path.join(process.cwd(), ".e2e", "corpus", "report-live-dryrun.json"),
       );
-      // eslint-disable-next-line no-console
+       
       console.log(`[corpus-dryrun] machine-readable report → ${file}`);
 
       expect(sb.totals.runs, "the dry-run sweep produced no results at all").toBeGreaterThan(0);
