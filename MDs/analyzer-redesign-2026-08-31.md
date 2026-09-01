@@ -202,6 +202,41 @@ call.
 | S37 | 613 | 43 | **B** | Confidence floor 0.7 | — | engine |
 | S38 | 615 | 88 | **C** | Reply tone | — | the one thing left for a model |
 
+> **Note added 2026-09-01, while building the §10 step-1 corpus.** Every row above
+> was replayed from the commit it cites, and three things came out of that which
+> the table does not say on its own.
+>
+> **1. This column describes HISTORICAL behaviour, not necessarily current
+> behaviour.** The interaction contract (`19f43e3`, 2026-06-18, narrowed by
+> `bd3305d`) made an `@Match Time` tag mandatory for every directed op. Sixteen of
+> the incidents above happened on **untagged** messages, before that rule existed,
+> and can no longer reach the code path they are cited for: an untagged verdict
+> carrying a `registerFor` with any non-`IN` entry is now forced to noise before any
+> seatbelt sees it. Those corpus cases carry a tag and are flagged
+> `contractTagAdded: true` with the caveat in their own `notes`. The clearest
+> example is S12: Mojib's untagged *"is anyone able to replace me and habibi
+> tonight?"* today produces **nothing at all** — not the drop, not the partial drop,
+> not the safety net. That is a deliberate product decision, not a regression, but
+> it means the row's stated incident is not reproducible as written.
+>
+> **2. The S12 seatbelt has never fired for the incident it was written for.**
+> `route.ts:1212-1216` gates the forced OUT on
+> `/\b(definite|definitely)\s+(drop|out)\b/`. `f35dfe6`'s own commit message quotes
+> the model's reasoning as **"both are definite drops"** — plural — and the trailing
+> `\b` after `drop` cannot match inside `drops`, so the regex returns `false`. The
+> comment at `route.ts:1200` asserts the opposite ("Mojib's case still fires because
+> 'definite drop' matches strongDrop"). Reproduced by corpus case
+> `S12-mojib-replacement-request-drops-sender`, which is a recorded baseline failure
+> until it is fixed. This strengthens §5's argument rather than weakening it: the
+> seatbelt that parses the model's English prose does not even do the one thing it
+> was added to do, and nobody could tell for three months.
+>
+> **3. §3.4's items 1 and 2 are confirmed still live on `3702911`**, at moved line
+> numbers. The byte-identical "For BENCH questions" paragraph is now at
+> `message-analyzer.ts:418` and `:421` (was 369/372). The output-schema enum that
+> omits `bulk_payment_credit` is now at `:291` (was 244); `AnalysisIntent` still
+> accepts it at `:118` and `normaliseVerdict` at `:2068`.
+
 ### 3.3 The prompt stopped growing. The seatbelts did not.
 
 Measured `SYSTEM_PROMPT` template lines per commit:

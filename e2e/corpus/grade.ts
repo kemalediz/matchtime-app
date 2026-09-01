@@ -200,6 +200,15 @@ export interface CorpusCase {
    * Absent → the case is LIVE-ONLY (nothing to stub).
    */
   stubKind?: "historical" | "corrected";
+  /**
+   * True when the case carries an `@Match Time` tag the ORIGINAL
+   * production message did not have. The interaction contract (19f43e3,
+   * 2026-06-18) made a tag mandatory for every directed op, so incidents
+   * from before that date cannot replay untagged and still reach the
+   * behaviour they exist to pin. §3.2's provenance column describes
+   * historical behaviour, not necessarily current behaviour.
+   */
+  contractTagAdded?: boolean;
   /** Free-form labels, e.g. "banter", "paid-match", "lid". */
   tags?: string[];
   notes?: string;
