@@ -947,6 +947,112 @@ model Attendance {
 }
 
 /**
+ * APPEND-ONLY attendance audit log (2026-09-01).
+ *
+ * WHY IT EXISTS
+ * -------------
+ * `Attendance` records what a squad IS. Nothing recorded what it WAS.
+ * That is not a cosmetic gap: `e2e/replay/` can only replay 447 of
+ * 1,723 real production messages (25.9%) because 1,149 of them landed
+ * in a world that cannot be reconstructed — a row that existed before a
+ * batch and was touched after it has an unknowable status AT that
+ * instant, and Sutton's per-player payment metadata bumps `updatedAt`
+ * on settled rows for days after the whistle, which widens it further.
+ * §10 step 6 of MDs/analyzer-redesign-2026-08-31.md — swapping the
+ * attendance WRITE path, the only change in the redesign that can put a
+ * player at a pitch with no slot — is meant to turn on that evidence.
+ *
+ * WHAT IT GUARANTEES
+ * ------------------
+ * 1. APPEND-ONLY. A database trigger (`attendance_event_no_mutate`)
+ *    rejects every UPDATE and DELETE on this table. Its whole value is
+ *    that it is the one thing here that cannot be rewritten, so that is
+ *    enforced in the database and not by convention. TRUNCATE is
+ *    deliberately still allowed — the e2e fixture world resets that way
+ *    and a test database is not an audit trail.
+ * 2. WRITTEN IN THE SAME TRANSACTION as the attendance change it
+ *    records, so the log can never disagree with the state.
+ * 3. It records the CAUSE, not just the effect. A replay has to be able
+ *    to tell a drop that came from a bench claim from a self-OUT.
+ *
+ * NO FOREIGN KEYS — DELIBERATE
+ * ----------------------------
+ * `matchId` / `userId` / `orgId` / `actorUserId` are plain strings, not
+ * relations. An FK would carry a referential action, and every honest
+ * choice is wrong for a log: CASCADE deletes history when a match or a
+ * merged-away user is removed (`Attendance` is `onDelete: Cascade` from
+ * `Match`), and RESTRICT would make the log block ordinary deletes.
+ * `UserMerge.oldUserId` sets the same precedent for the same reason: a
+ * record of what happened has to outlive the row it describes.
+ *
+ * GROWTH
+ * ------
+ * One row per attendance TRANSITION, not per message. Sutton FC's real
+ * rate is roughly 25-40 transitions a week (a 14-player squad, one
+ * match a week, plus drops, bench moves and the odd format switch), so
+ * ~2k rows a year per active club at ~250 bytes: well under 1 MB/year.
+ * There is deliberately NO retention policy — see the PR. Adding one
+ * silently would defeat the point of the table.
+ */
+model AttendanceEvent {
+  id String @id @default(cuid())
+
+  /// Which squad place this is about. Plain strings — see NO FOREIGN
+  /// KEYS above.
+  matchId String
+  userId  String
+  /// Denormalised so the log can be read (and retained) per club
+  /// without joining through Match → Activity.
+  orgId   String
+
+  /// The status the row held IMMEDIATELY BEFORE this event.
+  /// NULL = no Attendance row existed (a first registration).
+  fromStatus   AttendanceStatus?
+  /// The status the row holds IMMEDIATELY AFTER.
+  /// NULL = the row was DELETED (admin "remove from match", or a merge
+  /// dropping a duplicate). A deletion is a transition like any other
+  /// and is the one the old model lost completely.
+  toStatus     AttendanceStatus?
+  fromPosition Int?
+  toPosition   Int?
+
+  /// WHY this happened — one of ATTENDANCE_EVENT_CAUSES in
+  /// `src/lib/attendance-events.ts`. A String rather than an enum
+  /// deliberately: adding a cause must never need a migration on a live
+  /// database, and this column is read by humans and by the replay
+  /// harness, never branched on by the write path. Same precedent as
+  /// `AnalyzedMessage.handledBy` and `BenchSlotOffer.outcome`.
+  cause       String
+  /// WHO caused it: "player" | "member" | "admin" | "scheduler" |
+  /// "system" | "script". The player themselves and a third party are
+  /// different facts even when the effect is identical.
+  actorKind   String
+  /// The user who caused it — the sender, the admin, the bench claimant.
+  /// NULL for scheduler/system/script.
+  actorUserId String?
+  /// Provenance: a WhatsApp message id, an analyze batch id, a
+  /// BenchSlotOffer id, a script name. Free-form, never parsed.
+  sourceRef   String?
+  /// Human detail for triage. Never parsed, never branched on.
+  note        String? @db.Text
+
+  /// The Postgres transaction that wrote this event, so a reader can
+  /// group the events of one atomic change (a format switch recuts a
+  /// whole squad at once) and so the e2e coverage trigger can prove an
+  /// attendance write and its event shared a transaction. Filled by the
+  /// DATABASE, never by the application.
+  txId String? @default(dbgenerated("txid_current()::text"))
+
+  at DateTime @default(now())
+
+  @@index([matchId, at])
+  @@index([matchId, userId, at])
+  @@index([orgId, at])
+  @@index([userId, at])
+  @@index([txId])
+}
+
+/**
  * Bulk-payment credit recorded by an admin via natural-language WA
  * message (e.g. "Amir paid for 4 players"). Used when individual
  * names aren't given and we just have a count to credit against the
@@ -1039,11 +1145,28 @@ model AnalyzedMessage {
   action       String?
   confidence   Float?
   reasoning    String?  @db.Text
+
+  /// The analyze REQUEST this message was reasoned about in (2026-09-01).
+  /// The Pi buffers inbound messages and flushes a WINDOW to
+  /// `/api/whatsapp/analyze`; the route reasons over the whole window at
+  /// once, so the batch — not the message — is the unit anything
+  /// replaying this history has to reconstruct. Until now no batch id was
+  /// stored, so `e2e/replay/reconstruct.ts` recovered batches from WRITE
+  /// TIMING: gaps under 2s are one flush, over 10s are certainly two, and
+  /// the 62 batches whose gaps landed in between were thrown away because
+  /// "one slow flush" and "two quick ones" are indistinguishable.
+  /// One nullable column removes that class of guess. Stamped by the
+  /// analyze route for every message in a request (see
+  /// `src/lib/analyze-batch-context.ts`); NULL on every row written
+  /// before this shipped, and null-safe everywhere it is read.
+  batchId      String?
+
   createdAt    DateTime @default(now())
 
   @@index([orgId, createdAt])
   @@index([groupId, createdAt])
   @@index([orgId, authorUserId, createdAt])
+  @@index([batchId])
 }
 
 /**

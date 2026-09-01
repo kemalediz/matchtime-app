@@ -17,6 +17,8 @@ const stats: ReconstructionStats = {
   batchesReplayable: 300,
   batchesExcluded: 400,
   byTier: { strict: 250, wide: 50 },
+  bySquadSource: { "event-log": 0, "row-timestamps": 300 },
+  batchesFromRecordedId: 0,
   byReason: {
     "attendance-state-unknown": { batches: 380, messages: 1200 },
   } as ReconstructionStats["byReason"],
@@ -59,6 +61,7 @@ function replayCaseFor(key: string, intent: string): ReplayCase {
     meta: {
       batchKey: key, orgId: "o", groupRef: "g", at: "2026-05-12T18:30:00.000Z",
       tier: "strict", assumptions: [], caveats: [], hoursToKickoff: 2, maxPlayers: 14,
+      squadSource: "row-timestamps",
       squadBefore: { confirmed: 0, bench: 0, dropped: 0 },
       prodOutcomes: [{ waMessageId: "m-1", intent, action: null, handledBy: "llm" }],
       unresolvedSenders: [],
@@ -231,6 +234,7 @@ describe("renderTriage", () => {
       caveats: ["completed match omitted"],
       hoursToKickoff: 2.5,
       maxPlayers: 14,
+      squadSource: "row-timestamps",
       squadBefore: { confirmed: 13, bench: 0, dropped: 1 },
       prodOutcomes: [{ waMessageId: "wa1", intent: "in", action: "registered", handledBy: "llm" }],
       unresolvedSenders: [],

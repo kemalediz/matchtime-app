@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { balanceTeams, type BalancingStrategy } from "@/lib/team-balancer";
 import { requireOrgAdmin } from "@/lib/org";
+import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { PlayerWithRating } from "@/types";
 import { revalidatePath } from "next/cache";
 
@@ -236,10 +237,38 @@ export async function promoteFromBench(matchId: string, userId: string, team: "R
   if (!match) throw new Error("Match not found");
   await requireOrgAdmin(session.user.id, match.activity.orgId);
 
-  await db.attendance.upsert({
+  const priorRow = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
-    create: { matchId, userId, status: "CONFIRMED" },
-    update: { status: "CONFIRMED" },
+    select: { status: true, position: true },
+  });
+  // Same transaction as the record of it — see lib/attendance-events.ts.
+  // Only the squad place is logged; the TeamAssignment below is a
+  // different fact (which shirt), not a squad place, and has its own row.
+  await db.$transaction(async (tx) => {
+    const row = await tx.attendance.upsert({
+      where: { matchId_userId: { matchId, userId } },
+      create: { matchId, userId, status: "CONFIRMED" },
+      update: { status: "CONFIRMED" },
+    });
+    await recordAttendanceEvent(
+      tx,
+      {
+        matchId,
+        userId,
+        orgId: match.activity.orgId,
+        fromStatus: priorRow?.status ?? null,
+        toStatus: row.status,
+        fromPosition: priorRow?.position ?? null,
+        toPosition: row.position,
+      },
+      {
+        cause: "admin-squad-edit",
+        actorKind: "admin",
+        actorUserId: session.user!.id,
+        sourceRef: "admin:promoteFromBench",
+        note: `promoted into the squad and onto ${team}`,
+      },
+    );
   });
   await db.teamAssignment.upsert({
     where: { matchId_userId: { matchId, userId } },

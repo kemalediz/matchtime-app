@@ -386,3 +386,225 @@ describe("reconstruct — stats", () => {
     expect(r.stats.intentDistributionAll).toEqual({ noise: 1, in: 1 });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// THE TWO FIXES (2026-09-01)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// The extract measured on 2026-09-01 replayed 447 of 1,723 messages. The
+// two biggest reasons were both recording gaps, not analysis problems:
+// no attendance audit log (1,149 messages) and no batch id (104). Both
+// now exist. These cases pin how the harness USES them — and, just as
+// important, that it does not use them where they do not apply.
+//
+// Neither fix recovers a single historical message. What they change is
+// what tomorrow's extract can prove.
+
+describe("reconstruct — the squad from the EVENT LOG rather than row timestamps", () => {
+  /** When logging began — in production the first event for a row and
+   *  the row itself are written in the SAME transaction, so a row is
+   *  covered exactly when it was created at or after the epoch. */
+  const LOG_EPOCH = "2026-05-12T10:00:00.000Z";
+
+  /** A source whose attendance rows would be unknowable at T0 (touched
+   *  after the batch) but whose history IS in the log. */
+  function loggedSource(over: Partial<ReplaySource> = {}): ReplaySource {
+    return source({
+      attendance: [
+        att({ userId: "u-dan", createdAt: LOG_EPOCH, updatedAt: "2026-05-12T23:00:00.000Z" }),
+        att({
+          userId: "u-gina",
+          status: "BENCH",
+          position: 2,
+          createdAt: LOG_EPOCH,
+          updatedAt: "2026-05-12T23:00:00.000Z",
+        }),
+      ],
+      attendanceEvents: [
+        {
+          matchId: "m-1",
+          userId: "u-dan",
+          orgId: ORG,
+          fromStatus: null,
+          toStatus: "CONFIRMED",
+          toPosition: 1,
+          cause: "self-attendance",
+          actorKind: "player",
+          at: "2026-05-12T10:00:00.000Z",
+        },
+        {
+          matchId: "m-1",
+          userId: "u-gina",
+          orgId: ORG,
+          fromStatus: null,
+          toStatus: "BENCH",
+          toPosition: 2,
+          cause: "self-attendance",
+          actorKind: "player",
+          at: "2026-05-12T11:00:00.000Z",
+        },
+        // AFTER the batch: the payment/settlement churn that made these
+        // rows unknowable in the first place, plus a real later move.
+        {
+          matchId: "m-1",
+          userId: "u-gina",
+          orgId: ORG,
+          fromStatus: "BENCH",
+          toStatus: "CONFIRMED",
+          toPosition: 2,
+          cause: "bench-claim",
+          actorKind: "player",
+          at: "2026-05-12T23:00:00.000Z",
+        },
+      ],
+      ...over,
+    });
+  }
+
+  it("REPLAYS a batch the old rule had to throw away", () => {
+    const r = reconstruct(loggedSource());
+    expect(r.excluded).toEqual([]);
+    expect(r.cases).toHaveLength(1);
+    // The world is the world at 18:30, not the world after the whistle:
+    // Gina is still on the bench, because her claim came at 23:00.
+    expect(r.cases[0].case.world.attendance).toEqual([
+      { key: "u-dan", status: "CONFIRMED" },
+      { key: "u-gina", status: "BENCH" },
+    ]);
+    expect(r.cases[0].meta.squadBefore).toEqual({ confirmed: 1, bench: 1, dropped: 0 });
+  });
+
+  it("says on the case that the squad came from the log, so a reader can tell", () => {
+    const c = reconstruct(loggedSource()).cases[0];
+    expect(c.meta.squadSource).toBe("event-log");
+    // And a case built the old way still says so.
+    expect(reconstruct(source()).cases[0].meta.squadSource).toBe("row-timestamps");
+  });
+
+  it("still EXCLUDES a match whose rows predate the log — half a history is not a history", () => {
+    // The row was created before logging began, so the log cannot
+    // account for how it reached the status it holds. Trusting a
+    // partial log is exactly the fabrication the harness refuses.
+    const s = loggedSource({
+      attendance: [
+        att({ userId: "u-dan", createdAt: "2026-05-01T09:00:00.000Z", updatedAt: "2026-05-12T23:00:00.000Z" }),
+      ],
+    });
+    const r = reconstruct(s);
+    expect(r.cases).toEqual([]);
+    expect(r.excluded[0].reason).toBe("attendance-state-unknown");
+  });
+
+  it("falls back to row timestamps when there is no log at all", () => {
+    // Every message before this shipped. Nothing about the old path
+    // changes, which is what makes the 447 comparable.
+    const r = reconstruct(source({ attendanceEvents: [] }));
+    expect(r.cases).toHaveLength(1);
+    expect(r.cases[0].meta.squadSource).toBe("row-timestamps");
+  });
+
+  it("does not let a DELETED row linger as DROPPED in a replayed world", () => {
+    const s = loggedSource({
+      attendance: [
+        att({ userId: "u-dan", createdAt: LOG_EPOCH, updatedAt: "2026-05-12T23:00:00.000Z" }),
+      ],
+      attendanceEvents: [
+        {
+          matchId: "m-1",
+          userId: "u-dan",
+          orgId: ORG,
+          fromStatus: null,
+          toStatus: "CONFIRMED",
+          toPosition: 1,
+          cause: "self-attendance",
+          actorKind: "player",
+          at: "2026-05-12T10:00:00.000Z",
+        },
+        {
+          matchId: "m-1",
+          userId: "u-gina",
+          orgId: ORG,
+          fromStatus: null,
+          toStatus: "CONFIRMED",
+          toPosition: 2,
+          cause: "admin-squad-edit",
+          actorKind: "admin",
+          at: "2026-05-12T10:30:00.000Z",
+        },
+        {
+          matchId: "m-1",
+          userId: "u-gina",
+          orgId: ORG,
+          fromStatus: "CONFIRMED",
+          toStatus: null,
+          fromPosition: 2,
+          cause: "admin-squad-edit",
+          actorKind: "admin",
+          at: "2026-05-12T11:00:00.000Z",
+        },
+      ],
+    });
+    const c = reconstruct(s).cases[0];
+    expect(c.case.world.attendance).toEqual([{ key: "u-dan", status: "CONFIRMED" }]);
+  });
+});
+
+describe("reconstruct — batches RECORDED rather than inferred", () => {
+  it("groups by batchId, and the ambiguous band no longer costs anything", () => {
+    // The exact gap the timing heuristic cannot call. With a recorded
+    // batch id there is nothing to call.
+    const gap = (BATCH_JOIN_MS + BATCH_AMBIGUOUS_MS) / 2;
+    const s = source({
+      messages: [
+        msg({ waMessageId: "w1", createdAt: T0, batchId: "b-1" }),
+        msg({ waMessageId: "w2", createdAt: iso(T0, gap), body: "me too", batchId: "b-2" }),
+      ],
+    });
+    const r = reconstruct(s);
+    expect(r.excluded).toEqual([]);
+    expect(r.cases).toHaveLength(2);
+    expect(r.cases[0].case.messages.map((m) => m.body)).toEqual(["in"]);
+    expect(r.cases[1].case.messages.map((m) => m.body)).toEqual(["me too"]);
+  });
+
+  it("keeps ONE flush together even when the writes were seconds apart", () => {
+    const s = source({
+      messages: [
+        msg({ waMessageId: "w1", createdAt: T0, batchId: "b-1" }),
+        msg({ waMessageId: "w2", createdAt: iso(T0, 8_000), body: "me too", batchId: "b-1" }),
+      ],
+    });
+    const r = reconstruct(s);
+    expect(r.cases).toHaveLength(1);
+    expect(r.cases[0].case.messages.map((m) => m.body)).toEqual(["in", "me too"]);
+  });
+
+  it("still infers, and still excludes, for the messages written before the column existed", () => {
+    const gap = (BATCH_JOIN_MS + BATCH_AMBIGUOUS_MS) / 2;
+    const s = source({
+      messages: [
+        msg({ waMessageId: "w1", createdAt: T0 }),
+        msg({ waMessageId: "w2", createdAt: iso(T0, gap), body: "me too" }),
+      ],
+    });
+    const r = reconstruct(s);
+    expect(r.cases).toEqual([]);
+    expect(r.excluded.every((e) => e.reason === "batch-boundary-ambiguous")).toBe(true);
+  });
+
+  it("a stamped flush is not disturbed by an unstamped message beside it", () => {
+    // The changeover moment: one batch carries an id, its neighbour does
+    // not. The stamped one must be exact regardless of what the timing
+    // heuristic makes of the other.
+    const s = source({
+      messages: [
+        msg({ waMessageId: "w1", createdAt: T0 }),
+        msg({ waMessageId: "w2", createdAt: iso(T0, 3_000), body: "stamped", batchId: "b-9" }),
+      ],
+    });
+    const r = reconstruct(s);
+    const stamped = r.cases.find((c) => c.case.messages.some((m) => m.body === "stamped"));
+    expect(stamped, "a recorded batch is never thrown away for a neighbour's ambiguity").toBeTruthy();
+    expect(stamped!.case.messages).toHaveLength(1);
+  });
+});

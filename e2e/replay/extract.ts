@@ -52,10 +52,25 @@ async function main(): Promise<number> {
   const orgClause = orgFilter ? `WHERE am."orgId" = $1` : "";
   const orgParams = orgFilter ? [orgFilter] : [];
 
+  // `batchId` and `AttendanceEvent` arrived on 2026-09-01 and the
+  // migration is applied by hand (see prisma/migrations/…). Until it has
+  // been, production does not have them — and an extractor that assumes
+  // its own schema would fail against exactly the database it exists to
+  // read. Both are probed, not assumed.
+  const hasBatchId = Boolean(
+    (
+      await q<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM information_schema.columns
+          WHERE table_name = 'AnalyzedMessage' AND column_name = 'batchId'`,
+      )
+    )[0]?.n,
+  );
+
   const messages = await q<Record<string, unknown>>(
     `SELECT am."waMessageId", am."orgId", am."groupId", am."authorUserId", am."authorName",
             (am."authorPhone" IS NOT NULL AND am."authorPhone" <> '') AS "authorHadPhone",
-            am.body, am.intent, am.action, am."handledBy", am."createdAt"
+            am.body, am.intent, am.action, am."handledBy",
+            ${hasBatchId ? `am."batchId"` : `NULL::text AS "batchId"`}, am."createdAt"
        FROM "AnalyzedMessage" am ${orgClause}
       ORDER BY am."createdAt" ASC`,
     orgParams,
@@ -112,6 +127,28 @@ async function main(): Promise<number> {
     [matches.map((m) => (m as { id: string }).id)],
   );
 
+  // The append-only attendance log (2026-09-01). It is what turns "the
+  // squad at this instant is unknowable" into a fact — but only from the
+  // day it was applied, so on an older database this query returns
+  // nothing and every case reconstructs exactly as it did before.
+  // `to_regclass` keeps the extractor working against a database that
+  // has not had the migration applied yet, which is the state production
+  // is in until Kemal runs it.
+  const hasEventLog = (
+    await q<{ t: string | null }>(`SELECT to_regclass('"AttendanceEvent"')::text AS t`)
+  )[0]?.t;
+  const attendanceEvents = hasEventLog
+    ? await q(
+        `SELECT e."matchId", e."userId", e."orgId",
+                e."fromStatus"::text AS "fromStatus", e."toStatus"::text AS "toStatus",
+                e."fromPosition", e."toPosition", e.cause, e."actorKind", e."actorUserId", e."at"
+           FROM "AttendanceEvent" e
+          WHERE e."orgId" = ANY($1)
+          ORDER BY e."at" ASC`,
+        [orgIds],
+      )
+    : [];
+
   await client.query("COMMIT");
   await client.end();
 
@@ -133,6 +170,9 @@ async function main(): Promise<number> {
       intent: (m.intent as string | null) ?? null,
       action: (m.action as string | null) ?? null,
       handledBy: String(m.handledBy),
+      // Null on every message written before the column shipped. The
+      // batcher falls back to write timing for exactly those.
+      batchId: (m.batchId as string | null) ?? null,
       createdAt: iso(m.createdAt),
     })),
     matches: matches.map((m) => {
@@ -197,6 +237,22 @@ async function main(): Promise<number> {
     teamAssignments: teamAssignments.map((t) => {
       const r = t as Record<string, unknown>;
       return { matchId: String(r.matchId), userId: String(r.userId), team: String(r.team) as "RED" | "YELLOW" };
+    }),
+    attendanceEvents: attendanceEvents.map((e) => {
+      const r = e as Record<string, unknown>;
+      return {
+        matchId: String(r.matchId),
+        userId: String(r.userId),
+        orgId: String(r.orgId),
+        fromStatus: (r.fromStatus as "CONFIRMED" | "BENCH" | "DROPPED" | null) ?? null,
+        toStatus: (r.toStatus as "CONFIRMED" | "BENCH" | "DROPPED" | null) ?? null,
+        fromPosition: r.fromPosition === null ? null : Number(r.fromPosition),
+        toPosition: r.toPosition === null ? null : Number(r.toPosition),
+        cause: String(r.cause),
+        actorKind: String(r.actorKind),
+        actorUserId: (r.actorUserId as string | null) ?? null,
+        at: iso(r.at),
+      };
     }),
     benchOffers: benchOffers.map((b) => {
       const r = b as Record<string, unknown>;

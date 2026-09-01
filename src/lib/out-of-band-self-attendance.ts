@@ -75,10 +75,23 @@ export async function applyOutOfBandSelfAttendance(
       // puts them on the bench, it does NOT roll them onto a later match.
       const res = await registerAttendance(input.userId, input.matchId, {
         promoteFromBench: true,
+        // A 1:1 DM to the bot. The player's own claim; the fact that
+        // the group could not see it is `sourceRef`, not a new cause.
+        event: {
+          cause: "self-attendance",
+          actorKind: "player",
+          actorUserId: input.userId,
+          sourceRef: "dm:self-attendance",
+        },
       });
       status = res.status === "BENCH" ? "BENCH" : "CONFIRMED";
     } else if (before === "CONFIRMED" || before === "BENCH") {
-      await cancelAttendance(input.userId, input.matchId);
+      await cancelAttendance(input.userId, input.matchId, {
+        cause: "self-attendance",
+        actorKind: "player",
+        actorUserId: input.userId,
+        sourceRef: "dm:self-attendance",
+      });
       status = "DROPPED";
     }
   } catch (err) {

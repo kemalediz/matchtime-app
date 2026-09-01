@@ -47,6 +47,39 @@ export interface RawMessage {
   handledBy: string;
   /** ISO. Analysis time, which is also the batch instant. */
   createdAt: string;
+  /** The analyze REQUEST this message was reasoned about in. Null for
+   *  every message written before `AnalyzedMessage.batchId` shipped
+   *  (2026-09-01) — which is all 1,723 in the measured extract — so the
+   *  batcher falls back to inferring from write timing for those, and
+   *  only for those. See `batchMessages`. */
+  batchId?: string | null;
+}
+
+/**
+ * One row of the append-only attendance log (`AttendanceEvent`).
+ *
+ * This is the record that did not exist when the 2026-09-01 extract was
+ * taken, and whose absence excluded 1,149 of 1,723 messages. Optional
+ * on `ReplaySource` so an OLD extract still reconstructs exactly as it
+ * did — the 447 has to stay comparable.
+ */
+export interface RawAttendanceEvent {
+  matchId: string;
+  userId: string;
+  orgId: string;
+  fromStatus: AttStatus | null;
+  /** Null = the Attendance row was DELETED. */
+  toStatus: AttStatus | null;
+  fromPosition?: number | null;
+  toPosition?: number | null;
+  /** WHY it happened — see ATTENDANCE_EVENT_CAUSES in
+   *  `src/lib/attendance-events.ts`. Triage and clustering only; the
+   *  reconstruction itself never branches on it. */
+  cause: string;
+  actorKind: string;
+  actorUserId?: string | null;
+  /** ISO. */
+  at: string;
 }
 
 export interface RawMatch {
@@ -119,6 +152,10 @@ export interface ReplaySource {
   orgs: RawOrg[];
   teamAssignments: RawTeamAssignment[];
   benchOffers: RawBenchOffer[];
+  /** The append-only attendance log. OPTIONAL: an extract taken before
+   *  the table existed simply has none, and reconstructs exactly as it
+   *  did before. */
+  attendanceEvents?: RawAttendanceEvent[];
   /** When the extract was taken, and against which schema revision. */
   extractedAt?: string;
 }
@@ -175,6 +212,19 @@ export interface Exclusion {
  */
 export type ReplayTier = "strict" | "wide";
 
+/**
+ * WHERE the replayed squad came from.
+ *  - "event-log": folded from `AttendanceEvent`, which RECORDS every
+ *    transition. The status at the batch instant is a fact.
+ *  - "row-timestamps": inferred from `Attendance.createdAt/updatedAt`,
+ *    which only works when a row was already settled — the rule that
+ *    excluded 1,149 messages. Every case in the 2026-09-01 extract is
+ *    this, and always will be; the log only helps from the day it is
+ *    applied.
+ * Reported per case so the two can never be silently mixed in a number.
+ */
+export type SquadSource = "event-log" | "row-timestamps";
+
 export interface ReplayMeta {
   batchKey: string;
   orgId: string;
@@ -190,6 +240,9 @@ export interface ReplayMeta {
   caveats: string[];
   hoursToKickoff: number;
   maxPlayers: number;
+  /** Whether the squad below was PROVEN from the event log or inferred
+   *  from row timestamps. */
+  squadSource: SquadSource;
   squadBefore: { confirmed: number; bench: number; dropped: number };
   /** What production's live analyzer did, per message. TRIAGE ONLY. */
   prodOutcomes: Array<{
@@ -218,6 +271,14 @@ export interface ReconstructionStats {
   batchesReplayable: number;
   batchesExcluded: number;
   byTier: Record<ReplayTier, number>;
+  /** How many replayable batches had their squad PROVEN from the event
+   *  log vs inferred from row timestamps. The honest way to report the
+   *  fix: this is 0 / N until the log has been live for a while, and
+   *  saying so is the point. */
+  bySquadSource: Record<SquadSource, number>;
+  /** How many batches were grouped by a RECORDED `batchId` rather than
+   *  by write timing. Same story, same reason for reporting it. */
+  batchesFromRecordedId: number;
   byReason: Record<ExclusionReason, { batches: number; messages: number }>;
   /** Production's own intent labels over the REPLAYABLE messages. Not
    *  ground truth; the 69%-is-noise economic claim reads off this. */

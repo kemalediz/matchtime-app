@@ -36,7 +36,7 @@ import { config as loadEnv } from "dotenv";
 loadEnv(); // load repo-root .env so process.env.ANTHROPIC_API_KEY is set before helpers/env reads it
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import EmbeddedPostgres from "embedded-postgres";
 import {
@@ -127,6 +127,27 @@ function assertMeterSawTraffic(meter: AnthropicMeter, playwrightExitCode: number
       `${n(sum((c) => c.cacheWrite1hTokens + c.cacheWrite5mTokens))} cache-write tokens, ` +
       `$${sum((c) => c.costUsd).toFixed(4)} across ${[...new Set(calls.map((c) => c.model))].join(", ")}.`,
   );
+}
+
+/**
+ * Run a .sql file against the isolated test database.
+ *
+ * `prisma db push` builds the e2e schema, and it creates tables and
+ * columns but NEVER triggers — so anything the production migration
+ * enforces with a trigger has to be applied here too, or the suite
+ * tests a database that is missing exactly the guarantee under test.
+ * Gated by `assertSafeTestDbUrl` like every other DB entry point.
+ */
+async function applySql(file: string): Promise<void> {
+  const { Client } = await import("pg");
+  assertSafeTestDbUrl(E2E_DB_URL);
+  const client = new Client({ connectionString: E2E_DB_URL });
+  await client.connect();
+  try {
+    await client.query(readFileSync(file, "utf8"));
+  } finally {
+    await client.end();
+  }
 }
 
 function run(cmd: string, args: string[], env: Record<string, string>): Promise<number> {
@@ -252,6 +273,15 @@ async function runSuite(): Promise<number> {
     console.log("[e2e] applying schema (prisma db push)…");
     const push = await run("npx", ["prisma", "db", "push"], dbEnv);
     if (push !== 0) return push;
+
+    // `db push` creates tables and columns; it never creates TRIGGERS.
+    // The append-only guarantee on "AttendanceEvent" IS a trigger, so
+    // without this the test database would silently allow the one thing
+    // production forbids — and the spec asserting it cannot be updated
+    // or deleted would pass against a table with no guard at all.
+    // Idempotent; the file is the same DDL as the production migration.
+    console.log("[e2e] arming the AttendanceEvent append-only trigger…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "attendance-event-append-only.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {

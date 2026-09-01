@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { matchScoreSchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
+import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { revalidatePath } from "next/cache";
 import { sendRatingEmails } from "@/lib/email";
 import { format } from "date-fns";
@@ -61,15 +62,41 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
     where: { matchId, status: { in: ["CONFIRMED", "BENCH"] } },
     orderBy: { position: "asc" },
   });
-  for (let i = 0; i < attendances.length; i++) {
-    const shouldBe = i < newMaxPlayers ? "CONFIRMED" : "BENCH";
-    if (attendances[i].status !== shouldBe) {
-      await db.attendance.update({
-        where: { id: attendances[i].id },
-        data: { status: shouldBe as "CONFIRMED" | "BENCH" },
-      });
+  // ONE transaction for the whole recut, so the log carries a single
+  // `txId` for it. A format switch is one decision that moves several
+  // players at once, and reading it back as N unrelated moves would
+  // misrepresent exactly the incident (2026-08-30, "Najib + Mojib +
+  // Mustafa go on the bench") this history is being kept for.
+  await db.$transaction(async (tx) => {
+    for (let i = 0; i < attendances.length; i++) {
+      const shouldBe = i < newMaxPlayers ? "CONFIRMED" : "BENCH";
+      if (attendances[i].status !== shouldBe) {
+        await tx.attendance.update({
+          where: { id: attendances[i].id },
+          data: { status: shouldBe as "CONFIRMED" | "BENCH" },
+        });
+        await recordAttendanceEvent(
+          tx,
+          {
+            matchId,
+            userId: attendances[i].userId,
+            orgId: match.activity.orgId,
+            fromStatus: attendances[i].status,
+            toStatus: shouldBe,
+            fromPosition: attendances[i].position,
+            toPosition: attendances[i].position,
+          },
+          {
+            cause: "format-switch",
+            actorKind: "admin",
+            actorUserId: session.user!.id,
+            sourceRef: `admin:switchMatchActivity:${newActivity.id}`,
+            note: `squad recut to ${newMaxPlayers} places; ranked ${i + 1} by original position`,
+          },
+        );
+      }
     }
-  }
+  });
 
   // Queue a group announcement so the bot posts the new lineup. Server
   // creates a BotJob (text built with the updated roster); scheduler picks

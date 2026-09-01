@@ -99,7 +99,16 @@ export async function attendMatch(matchId: string) {
       ? priorRow.status
       : null;
 
-  const result = await registerAttendance(session.user.id, matchId);
+  const result = await registerAttendance(session.user.id, matchId, {
+    // The signed-in player tapping "I'm in" on the web app. Same cause
+    // as an IN in the group — the channel is `sourceRef`, not the cause.
+    event: {
+      cause: "self-attendance",
+      actorKind: "player",
+      actorUserId: session.user.id,
+      sourceRef: "web:attendMatch",
+    },
+  });
 
   // OUT-OF-BAND announcement (owner, 2026-08-31): a player marking
   // themselves in on the web app is invisible to the group, so the others
@@ -124,7 +133,12 @@ export async function dropFromMatch(matchId: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
-  await cancelAttendance(session.user.id, matchId);
+  await cancelAttendance(session.user.id, matchId, {
+    cause: "self-attendance",
+    actorKind: "player",
+    actorUserId: session.user.id,
+    sourceRef: "web:dropFromMatch",
+  });
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath("/matches");

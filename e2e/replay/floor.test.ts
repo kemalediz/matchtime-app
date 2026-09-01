@@ -58,6 +58,7 @@ function rcase(key: string, intent: string): ReplayCase {
     meta: {
       batchKey: key, orgId: "o", groupRef: "g", at: "2026-05-12T18:30:00.000Z",
       tier: "strict", assumptions: [], caveats: [], hoursToKickoff: 2, maxPlayers: 14,
+      squadSource: "row-timestamps",
       squadBefore: { confirmed: 0, bench: 0, dropped: 0 },
       prodOutcomes: [{ waMessageId: "m-1", intent, action: null, handledBy: "llm" }],
       unresolvedSenders: [],

@@ -103,8 +103,12 @@ fabricated diff — which is worse than no diff at all, because it reads
 exactly like a real one. Every field of a replayed world sits in one of
 two buckets:
 
-- **Proven at the instant**, from row timestamps: which `Attendance`
-  rows existed and what status they held, which `Match` was next and its
+- **Recorded at the instant**, from the append-only `AttendanceEvent`
+  log (2026-09-01 onwards): the exact status and position of every squad
+  place, folded forward to the batch instant. Not inferred — recorded.
+- **Proven at the instant**, from row timestamps, where the log does not
+  reach: which `Attendance` rows existed and what status they held
+  (only when a row was already settled), which `Match` was next and its
   kickoff / capacity / deadline, who was a member
   (`Membership.createdAt` / `leftAt`), who sent each message and whether
   WhatsApp gave a phone, the bodies, the batch, the chat history.
@@ -182,18 +186,51 @@ excluded:
   no-upcoming-match            2 batches /     2 messages
 ```
 
-- **`attendance-state-unknown`** is the big one, and it is not fixable
-  with more cleverness. There is no attendance audit log. A row that
-  existed before a batch and was touched after it has an unknowable
-  status *at* that instant — including when the batch itself was what
-  touched it. Sutton's per-player payment metadata (live since
-  2026-06-09) bumps `updatedAt` on confirmed rows for days after a
-  match, which widens this further.
-- **`batch-boundary-ambiguous`** — `AnalyzedMessage` has no batch id, so
+- **`attendance-state-unknown`** is the big one. There was no attendance
+  audit log, so a row that existed before a batch and was touched after
+  it has an unknowable status *at* that instant — including when the
+  batch itself was what touched it. Sutton's per-player payment metadata
+  (live since 2026-06-09) bumps `updatedAt` on confirmed rows for days
+  after a match, which widens this further.
+- **`batch-boundary-ambiguous`** — `AnalyzedMessage` had no batch id, so
   batches are recovered from write timing. Gaps under `BATCH_JOIN_MS`
   (2 s) are one flush; over `BATCH_AMBIGUOUS_MS` (10 s) are certainly
   two. In between, "one slow flush" and "two quick ones" are
   indistinguishable, so **both** neighbouring batches go.
+
+### Both were recording gaps, and both are now closed — forwards only
+
+Shipped 2026-09-01:
+
+- **`AttendanceEvent`**, an append-only log of every squad-place
+  transition (who, which match, from what status to what, when, why, and
+  what caused it), written *inside the same transaction* as the change
+  and refused any UPDATE or DELETE by a database trigger. `reconstruct.ts`
+  now folds it in preference to row timestamps (`logCoverage` +
+  `squadStateAt`), so a batch is replayable whenever the log covers its
+  match.
+- **`AnalyzedMessage.batchId`**, stamped per analyze request. Where it is
+  set, the batch is read rather than inferred and nothing is ambiguous.
+
+**Neither recovers a single one of the 1,723 messages already on disk,
+and the headline number does not move because of them.** The log cannot
+reach backwards; a squad state nobody wrote down is gone. What changes is
+tomorrow: every batch analysed after the migration is applied is
+reconstructable, and the 104 lost to batch ambiguity become zero.
+
+The report says this out loud every run, under **`recording, not
+inference`**, with two counters — how many replayable batches had their
+squad *proven* from the log, and how many were read from a recorded
+`batchId`. Both read `0 of N` on the 2026-09-01 extract, and the report
+states in words that this is expected rather than leaving a reader to
+assume the fix underperformed. `ReplayMeta.squadSource` carries the same
+fact per case, so log-proven and timestamp-inferred worlds can never be
+silently mixed inside one number.
+
+A match is only covered when **every** one of its attendance rows was
+created at or after the log's first event. A half-recorded history would
+fold into a squad with players missing — a fabricated world, which is
+the one thing this harness exists not to produce.
 - **`no-upcoming-match`** — a deleted `Match` row leaves no trace, so
   "there was no match" cannot be told from "the row was removed later".
 

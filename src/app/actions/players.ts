@@ -6,6 +6,7 @@ import { onboardingSchema, playerPositionsSchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { normalisePhone } from "@/lib/phone";
 import { mergePlayersCore } from "@/lib/merge-players-core";
+import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { findExistingOrgMember } from "@/lib/resolve-player";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -748,10 +749,35 @@ export async function addPlayerToMatch(
     orderBy: { position: "desc" },
     select: { position: true },
   });
-  await db.attendance.upsert({
+  const priorRow = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
-    update: { status, position: (last?.position ?? 0) + 1 },
-    create: { matchId, userId, status, position: (last?.position ?? 0) + 1 },
+    select: { status: true, position: true },
+  });
+  // Same transaction as the record of it — see lib/attendance-events.ts.
+  await db.$transaction(async (tx) => {
+    const row = await tx.attendance.upsert({
+      where: { matchId_userId: { matchId, userId } },
+      update: { status, position: (last?.position ?? 0) + 1 },
+      create: { matchId, userId, status, position: (last?.position ?? 0) + 1 },
+    });
+    await recordAttendanceEvent(
+      tx,
+      {
+        matchId,
+        userId,
+        orgId,
+        fromStatus: priorRow?.status ?? null,
+        toStatus: row.status,
+        fromPosition: priorRow?.position ?? null,
+        toPosition: row.position,
+      },
+      {
+        cause: "admin-squad-edit",
+        actorKind: "admin",
+        actorUserId: session.user!.id,
+        sourceRef: "admin:addPlayerToMatch",
+      },
+    );
   });
 
   // Late rating-link DM — only when it still makes sense: the match has
@@ -811,7 +837,37 @@ export async function removePlayerFromMatch(matchId: string, userId: string): Pr
   if (!match) throw new Error("Match not found");
   await requireOrgAdmin(session.user.id, match.activity.orgId);
 
-  await db.attendance.deleteMany({ where: { matchId, userId } });
+  // A DELETION is a transition like any other, and it is the one the
+  // old model lost completely: the row simply vanished, leaving nothing
+  // to say a player was ever in this squad. `toStatus: null` records it.
+  const priorRow = await db.attendance.findUnique({
+    where: { matchId_userId: { matchId, userId } },
+    select: { status: true, position: true },
+  });
+  await db.$transaction(async (tx) => {
+    await tx.attendance.deleteMany({ where: { matchId, userId } });
+    if (priorRow) {
+      await recordAttendanceEvent(
+        tx,
+        {
+          matchId,
+          userId,
+          orgId: match.activity.orgId,
+          fromStatus: priorRow.status,
+          toStatus: null,
+          fromPosition: priorRow.position,
+          toPosition: null,
+        },
+        {
+          cause: "admin-squad-edit",
+          actorKind: "admin",
+          actorUserId: session.user!.id,
+          sourceRef: "admin:removePlayerFromMatch",
+          note: "attendance row deleted outright",
+        },
+      );
+    }
+  });
   revalidatePath(`/matches/${matchId}`);
   return { ok: true };
 }
@@ -829,9 +885,35 @@ export async function moveUpFromBench(matchId: string, userId: string): Promise<
   if (!match) throw new Error("Match not found");
   await requireOrgAdmin(session.user.id, match.activity.orgId);
 
-  await db.attendance.updateMany({
-    where: { matchId, userId },
-    data: { status: "CONFIRMED" },
+  const priorRow = await db.attendance.findUnique({
+    where: { matchId_userId: { matchId, userId } },
+    select: { status: true, position: true },
+  });
+  await db.$transaction(async (tx) => {
+    await tx.attendance.updateMany({
+      where: { matchId, userId },
+      data: { status: "CONFIRMED" },
+    });
+    if (priorRow) {
+      await recordAttendanceEvent(
+        tx,
+        {
+          matchId,
+          userId,
+          orgId: match.activity.orgId,
+          fromStatus: priorRow.status,
+          toStatus: "CONFIRMED",
+          fromPosition: priorRow.position,
+          toPosition: priorRow.position,
+        },
+        {
+          cause: "admin-squad-edit",
+          actorKind: "admin",
+          actorUserId: session.user!.id,
+          sourceRef: "admin:moveUpFromBench",
+        },
+      );
+    }
   });
   revalidatePath(`/matches/${matchId}`);
   return { ok: true };

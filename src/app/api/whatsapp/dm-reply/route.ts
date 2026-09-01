@@ -472,14 +472,30 @@ export async function POST(request: Request) {
       let writeFailed = false;
       try {
         if (isIn) {
-          const res = await registerAttendance(user.id, row.match.id, { promoteFromBench: true });
+          const res = await registerAttendance(user.id, row.match.id, {
+            promoteFromBench: true,
+            // Answering the tentative follow-up DM. Their own claim,
+            // out of band — the group never saw it, which is why
+            // announceOutOfBandAttendance runs below.
+            event: {
+              cause: "self-attendance",
+              actorKind: "player",
+              actorUserId: user.id,
+              sourceRef: "dm:tentative-followup",
+            },
+          });
           newStatus = res.status === "BENCH" ? "BENCH" : "CONFIRMED";
         } else {
           // Only cancel if they actually have a CONFIRMED/BENCH row —
           // a tentative player usually has none, in which case OUT is a
           // no-op (cancelAttendance throws "Not attending" otherwise).
           if (priorStatus === "CONFIRMED" || priorStatus === "BENCH") {
-            await cancelAttendance(user.id, row.match.id);
+            await cancelAttendance(user.id, row.match.id, {
+              cause: "self-attendance",
+              actorKind: "player",
+              actorUserId: user.id,
+              sourceRef: "dm:tentative-followup",
+            });
             newStatus = "DROPPED";
           }
         }

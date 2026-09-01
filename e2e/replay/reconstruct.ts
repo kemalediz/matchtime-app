@@ -79,16 +79,19 @@
  */
 import { createHash } from "node:crypto";
 import type { CorpusCase, CorpusHistoryLine, CorpusMessage, CorpusPlayer } from "../corpus/grade";
+import { squadStateAt } from "@/lib/attendance-events";
 import type {
   Exclusion,
   ExclusionReason,
   RawAttendance,
+  RawAttendanceEvent,
   RawMessage,
   ReplayCase,
   ReplaySource,
   ReplayTier,
   Reconstruction,
   ReconstructionStats,
+  SquadSource,
 } from "./types";
 
 /**
@@ -136,17 +139,18 @@ export const EXCLUSION_TRACTABILITY: Record<
   "attendance-state-unknown": {
     tractability: "structurally-lost",
     note:
-      "no attendance audit log exists, so a row's status at a past instant was never recorded. " +
-      "FIXABLE GOING FORWARD, NOT BACKWARDS: an AttendanceEvent append-only log (matchId, userId, " +
-      "from, to, at, cause) would make every future batch replayable, and would also give the " +
-      "admin UI the history it has never had. It cannot recover 2026-04-20 → today.",
+      "a row's status at a past instant was never recorded. The append-only `AttendanceEvent` " +
+      "log SHIPPED on 2026-09-01 and this harness now folds it in preference to row timestamps " +
+      "(see logCoverage), so every batch analysed after the log went live is replayable. It " +
+      "still cannot recover 2026-04-20 → 2026-09-01: nothing can. Messages counted here are " +
+      "the ones that predate it, or belong to a match whose rows do.",
   },
   "batch-boundary-ambiguous": {
     tractability: "fixable",
     note:
-      "AnalyzedMessage carries no batch id, so batches are inferred from write timing. A single " +
-      "nullable `batchId` column, stamped by the analyze route, removes this class entirely — " +
-      "again only for future traffic, but it is one column and one assignment.",
+      "batches used to be inferred from write timing. `AnalyzedMessage.batchId` SHIPPED on " +
+      "2026-09-01 and the batcher reads it where it exists, so this class is gone for traffic " +
+      "analysed after that. Messages counted here were written before the column existed.",
   },
   "no-body": {
     tractability: "structurally-lost",
@@ -224,16 +228,68 @@ interface Batch {
   messages: RawMessage[];
   /** Set when a neighbouring gap fell in the ambiguous band. */
   boundaryAmbiguous: boolean;
+  /** True when the batch was READ from `AnalyzedMessage.batchId` rather
+   *  than inferred from write timing. */
+  fromRecordedId: boolean;
 }
 
+/**
+ * Group messages into the flushes production actually analysed.
+ *
+ * TWO PATHS, and which one a message takes is a property of the message,
+ * not a mode:
+ *
+ *   · **Recorded** — `AnalyzedMessage.batchId` is set (2026-09-01
+ *     onwards). The batch is a fact; there is nothing to infer and
+ *     nothing to be ambiguous about.
+ *   · **Inferred** — no batch id, so the flush is recovered from write
+ *     timing: under `BATCH_JOIN_MS` is one flush, over
+ *     `BATCH_AMBIGUOUS_MS` is certainly two, and in between BOTH
+ *     neighbours are excluded rather than guessed. Every message in the
+ *     2026-09-01 extract is this, and 104 of them were lost to it.
+ *
+ * The two are batched SEPARATELY, which matters at the changeover: a
+ * stamped flush must never be thrown away because an unstamped
+ * neighbour's gap happened to be ambiguous. The cost is that the timing
+ * gaps either side of a stamped batch are computed with it removed,
+ * which can only ever make an unstamped neighbour look LESS ambiguous —
+ * the conservative direction is the one we care about, and once every
+ * message is stamped the question disappears.
+ */
 export function batchMessages(messages: RawMessage[]): Batch[] {
+  const recorded = messages.filter((m) => m.batchId);
+  const inferred = messages.filter((m) => !m.batchId);
+
+  const out: Batch[] = [];
+
+  // ── recorded ────────────────────────────────────────────────────────
+  const byBatchId = new Map<string, RawMessage[]>();
+  for (const m of recorded) {
+    // Keyed with the group too: batch ids are UUIDs, but a key collision
+    // across groups would silently merge two clubs' worlds.
+    const k = `${m.groupId} ${m.batchId}`;
+    if (!byBatchId.has(k)) byBatchId.set(k, []);
+    byBatchId.get(k)!.push(m);
+  }
+  for (const rows of byBatchId.values()) {
+    const sorted = [...rows].sort((a, b) => ms(a.createdAt) - ms(b.createdAt));
+    out.push({
+      key: `${groupRefOf(sorted[0].groupId)}:${sorted[0].createdAt}`,
+      orgId: sorted[0].orgId,
+      groupId: sorted[0].groupId,
+      messages: sorted,
+      boundaryAmbiguous: false,
+      fromRecordedId: true,
+    });
+  }
+
+  // ── inferred ────────────────────────────────────────────────────────
   const byGroup = new Map<string, RawMessage[]>();
-  for (const m of messages) {
+  for (const m of inferred) {
     if (!byGroup.has(m.groupId)) byGroup.set(m.groupId, []);
     byGroup.get(m.groupId)!.push(m);
   }
 
-  const out: Batch[] = [];
   for (const [groupId, rows] of byGroup) {
     const sorted = [...rows].sort((a, b) => ms(a.createdAt) - ms(b.createdAt));
     let current: Batch | null = null;
@@ -252,6 +308,7 @@ export function batchMessages(messages: RawMessage[]): Batch[] {
           groupId,
           messages: [m],
           boundaryAmbiguous: ambiguous,
+          fromRecordedId: false,
         };
         out.push(current);
       }
@@ -265,12 +322,76 @@ function ms(iso: string): number {
   return new Date(iso).getTime();
 }
 
+// ── The event log, and when it may be trusted ──────────────────────────
+
+/**
+ * Can the squad for `matchId` at instant `t` be PROVEN from the log?
+ *
+ * Three conditions, and every one of them is about refusing to trust a
+ * partial history — the same rule as everything else here, applied to a
+ * new source of truth:
+ *
+ *  1. The log has to exist at all (`logEpoch` = the earliest event in
+ *     the whole extract, i.e. when logging began).
+ *  2. The instant has to be AFTER logging began. Before that the log is
+ *     silent, and silence is not "nothing happened".
+ *  3. Every Attendance row of this match must have been created at or
+ *     after the epoch. A row that predates the log reached its status
+ *     by moves the log never saw, so folding the log would produce a
+ *     squad missing a player — which is a fabricated world, exactly
+ *     what this harness exists not to produce.
+ *
+ * A match created after the log went live passes all three, which is
+ * why coverage grows to 100% of new traffic rather than trickling in.
+ */
+function logCoverage(
+  matchId: string,
+  rows: RawAttendance[],
+  eventsByMatch: Map<string, RawAttendanceEvent[]>,
+  logEpoch: number | null,
+  t: number,
+): { covered: true; events: RawAttendanceEvent[] } | { covered: false; why: string } {
+  if (logEpoch === null) {
+    return { covered: false, why: "no attendance audit log existed when this batch was analysed" };
+  }
+  if (t < logEpoch) {
+    return {
+      covered: false,
+      why: "this batch predates the attendance audit log, which cannot reach backwards",
+    };
+  }
+  const preLog = rows.filter((r) => ms(r.createdAt) < logEpoch);
+  if (preLog.length) {
+    return {
+      covered: false,
+      why:
+        `${preLog.length} attendance row(s) on this match were created before the audit log ` +
+        `began, so their history is only half recorded and folding it would invent a squad`,
+    };
+  }
+  return { covered: true, events: eventsByMatch.get(matchId) ?? [] };
+}
+
 // ── Reconstruction ─────────────────────────────────────────────────────
 
 export function reconstruct(src: ReplaySource): Reconstruction {
   const batches = batchMessages(src.messages);
   const cases: ReplayCase[] = [];
   const excluded: Exclusion[] = [];
+
+  // The attendance log, indexed by match, plus the instant logging
+  // began. `null` means the extract carries no log at all — every
+  // extract taken before 2026-09-01, and the path that keeps the
+  // measured 447 comparable.
+  const allEvents = src.attendanceEvents ?? [];
+  const eventsByMatch = new Map<string, RawAttendanceEvent[]>();
+  for (const e of allEvents) {
+    if (!eventsByMatch.has(e.matchId)) eventsByMatch.set(e.matchId, []);
+    eventsByMatch.get(e.matchId)!.push(e);
+  }
+  const logEpoch = allEvents.length
+    ? Math.min(...allEvents.map((e) => ms(e.at)))
+    : null;
 
   const usersById = new Map(src.users.map((u) => [u.id, u]));
   const orgsById = new Map(src.orgs.map((o) => [o.id, o]));
@@ -330,17 +451,46 @@ export function reconstruct(src: ReplaySource): Reconstruction {
     }
 
     // ── the squad, as it stood ────────────────────────────────────────
+    //
+    // PREFERRED: fold the append-only `AttendanceEvent` log up to the
+    // batch instant. Every transition is recorded, so the status at that
+    // moment is a FACT rather than something inferred from whether a row
+    // happened to have been left alone since.
+    //
+    // FALLBACK: the original rule — a row is only usable if it was
+    // already settled at the batch instant (created before, untouched
+    // after). That is what excluded 1,149 of 1,723 messages, and it
+    // still applies to every one of them: the log cannot reach
+    // backwards.
     const rows = attendanceByMatch.get(upcoming.id) ?? [];
-    const existed = rows.filter((r) => ms(r.createdAt) <= t);
-    const unknown = existed.filter((r) => ms(r.updatedAt) > t);
-    if (unknown.length) {
-      drop(
-        "attendance-state-unknown",
-        `${unknown.length} attendance row(s) predate the batch and changed after it, so their ` +
-          `status at that instant is unrecoverable (no attendance audit log): ` +
-          unknown.map((r) => r.userId).join(", "),
-      );
-      continue;
+    const logged = logCoverage(upcoming.id, rows, eventsByMatch, logEpoch, t);
+    let squadRows: Array<{ userId: string; status: RawAttendance["status"]; position: number }>;
+    let squadSource: SquadSource;
+    if (logged.covered) {
+      squadRows = squadStateAt(logged.events, at, upcoming.id).map((p) => ({
+        userId: p.userId,
+        status: p.status as RawAttendance["status"],
+        position: p.position,
+      }));
+      squadSource = "event-log";
+    } else {
+      const existed = rows.filter((r) => ms(r.createdAt) <= t);
+      const unknown = existed.filter((r) => ms(r.updatedAt) > t);
+      if (unknown.length) {
+        drop(
+          "attendance-state-unknown",
+          `${unknown.length} attendance row(s) predate the batch and changed after it, so their ` +
+            `status at that instant is unrecoverable (${logged.why}): ` +
+            unknown.map((r) => r.userId).join(", "),
+        );
+        continue;
+      }
+      squadRows = existed.map((r) => ({
+        userId: r.userId,
+        status: r.status,
+        position: r.position,
+      }));
+      squadSource = "row-timestamps";
     }
 
     // ── the roster ────────────────────────────────────────────────────
@@ -439,7 +589,7 @@ export function reconstruct(src: ReplaySource): Reconstruction {
       })
       .sort((a, b) => a.key.localeCompare(b.key));
 
-    const attendance = existed
+    const attendance = squadRows
       .slice()
       .sort((a, b) => a.position - b.position || a.userId.localeCompare(b.userId))
       .filter((r) => rosterIds.has(r.userId))
@@ -505,6 +655,7 @@ export function reconstruct(src: ReplaySource): Reconstruction {
         caveats,
         hoursToKickoff,
         maxPlayers: upcoming.maxPlayers,
+        squadSource,
         squadBefore: {
           confirmed: tally("CONFIRMED"),
           bench: tally("BENCH"),
@@ -554,6 +705,12 @@ function buildStats(
   const byTier = { strict: 0, wide: 0 } as Record<ReplayTier, number>;
   for (const c of cases) byTier[c.meta.tier] += 1;
 
+  const bySquadSource = { "event-log": 0, "row-timestamps": 0 } as Record<SquadSource, number>;
+  for (const c of cases) bySquadSource[c.meta.squadSource] += 1;
+
+  const recordedKeys = new Set(batches.filter((b) => b.fromRecordedId).map((b) => b.key));
+  const batchesFromRecordedId = cases.filter((c) => recordedKeys.has(c.key)).length;
+
   return {
     messagesInSource: src.messages.length,
     messagesReplayable: replayableIds.size,
@@ -562,6 +719,8 @@ function buildStats(
     batchesReplayable: cases.length,
     batchesExcluded: excluded.length,
     byTier,
+    bySquadSource,
+    batchesFromRecordedId,
     byReason,
     intentDistribution: tally(src.messages.filter((m) => replayableIds.has(m.waMessageId))),
     intentDistributionAll: tally(src.messages),

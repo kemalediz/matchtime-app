@@ -105,7 +105,14 @@ describe("attendMatch — group-membership gate", () => {
     });
 
     await expect(attendMatch("match-1")).resolves.toBeUndefined();
-    expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1");
+    expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1", {
+      event: {
+        cause: "self-attendance",
+        actorKind: "player",
+        actorUserId: "user-1",
+        sourceRef: "web:attendMatch",
+      },
+    });
   });
 
   it("ALLOWS an admin who was never seen in the group sync", async () => {
@@ -116,7 +123,14 @@ describe("attendMatch — group-membership gate", () => {
     });
 
     await attendMatch("match-1");
-    expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1");
+    expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1", {
+      event: {
+        cause: "self-attendance",
+        actorKind: "player",
+        actorUserId: "user-1",
+        sourceRef: "web:attendMatch",
+      },
+    });
   });
 
   it("still requires authentication", async () => {
@@ -224,7 +238,14 @@ describe("attendMatch — degraded participant sweep", () => {
     attendanceCount.mockResolvedValue(2);
 
     await expect(attendMatch("match-1")).resolves.toBeUndefined();
-    expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1");
+    expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1", {
+      event: {
+        cause: "self-attendance",
+        actorKind: "player",
+        actorUserId: "user-1",
+        sourceRef: "web:attendMatch",
+      },
+    });
     // Evidence is scoped to THIS org's matches, not every club they play for.
     expect(attendanceCount).toHaveBeenCalledWith({
       where: { userId: "user-1", match: { activity: { orgId: "org-1" } } },

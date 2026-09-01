@@ -15,6 +15,7 @@
  * no-op: silence/"no" never removes anyone from the bench.
  */
 import { db } from "./db";
+import { recordAttendanceEvent } from "./attendance-events";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 import { resolveTeamLabels } from "./team-labels";
 
@@ -44,7 +45,7 @@ export async function resolveBenchConfirmation(args: {
   // Claimant must currently be ON the bench for this match.
   const att = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
-    select: { status: true },
+    select: { status: true, position: true, match: { select: { activity: { select: { orgId: true } } } } },
   });
   if (!att || att.status !== "BENCH") {
     return { kind: "ignored", reason: "claimant-not-on-bench" };
@@ -68,10 +69,40 @@ export async function resolveBenchConfirmation(args: {
     return { kind: "ignored", reason: "already-claimed" };
   }
 
-  // Promote the claimant.
-  await db.attendance.update({
-    where: { matchId_userId: { matchId, userId } },
-    data: { status: "CONFIRMED" },
+  // Promote the claimant — in the same transaction as the record of it.
+  //
+  // This is the transition the log most needs to be able to name. The
+  // row that comes out of it is indistinguishable from an ordinary IN,
+  // and a replay that cannot tell "a bench player claimed a vacated
+  // slot" from "this player said they were coming" is reconstructing
+  // the wrong world. `sourceRef` is the offer, so the slot it came from
+  // (and whose drop opened it) is one join away.
+  await db.$transaction(async (tx) => {
+    await tx.attendance.update({
+      where: { matchId_userId: { matchId, userId } },
+      data: { status: "CONFIRMED" },
+    });
+    await recordAttendanceEvent(
+      tx,
+      {
+        matchId,
+        userId,
+        orgId: att.match.activity.orgId,
+        fromStatus: "BENCH",
+        toStatus: "CONFIRMED",
+        fromPosition: att.position,
+        toPosition: att.position,
+      },
+      {
+        cause: "bench-claim",
+        actorKind: "player",
+        actorUserId: userId,
+        sourceRef: offer.id,
+        note: offer.replacingUserId
+          ? `claimed the slot vacated by ${offer.replacingUserId}`
+          : "claimed an open slot offered to the bench",
+      },
+    );
   });
 
   // If this claim completes the squad, fire the full-line-up
