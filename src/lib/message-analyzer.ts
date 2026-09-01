@@ -316,7 +316,7 @@ Output schema:
   "verdicts": [
     {
       "waMessageId": "<string>",
-      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "show_teams_request" | "bring_guests_vague" | "reminder_request" | "noise" | "unclear",
+      "intent": "in" | "out" | "replacement_request" | "conditional_in" | "question" | "score" | "generate_teams_request" | "show_teams_request" | "bring_guests_vague" | "bulk_payment_credit" | "reminder_request" | "noise" | "unclear",
       "confidence": 0..1,
       "react": "<emoji>" | null,
       "reply": "<text>" | null,
