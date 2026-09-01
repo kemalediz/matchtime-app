@@ -143,6 +143,20 @@ excluded:
 in the plan would produce, it exists today, and it is biased towards
 *honest* cases rather than convenient ones.
 
+### The clock is relative, and that is a choice
+
+A replay runs *now*, so a world is rebuilt with the same **distance** to
+kickoff the message really had, not the same calendar date. Everything
+that gates a decision — deadline passed or not, how close the chase is,
+whether bench offers are live — is a function of that distance.
+
+The cost: the replayed kickoff lands on an arbitrary weekday and time
+(one observed run produced "Tue 15 Sept 03:02"). Copy that names the day
+is not faithful, and a prompt reasoning about "Tuesday" may behave
+differently than it did. Both pipelines see the same synthetic clock so
+the diff still holds — but a disagreement that turns on the day of the
+week does not, and should be adjudicated `both_right`.
+
 ### Tiers
 
 - **strict** — every element of the world was proven. Headline criteria

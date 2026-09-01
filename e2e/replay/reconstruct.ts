@@ -53,6 +53,22 @@
  * view, which is why every triage card prints it.
  *
  * ─────────────────────────────────────────────────────────────────────
+ * THE CLOCK IS RELATIVE, AND THAT IS A CHOICE
+ * ─────────────────────────────────────────────────────────────────────
+ * A replay runs NOW, so the world is rebuilt with the same DISTANCE to
+ * kickoff the message really had (`upcomingMatchInHours`), not the same
+ * calendar date. Everything that gates a decision — deadline passed or
+ * not, how close the chase is, whether bench offers are live — is a
+ * function of that distance, so the distance is what is preserved.
+ *
+ * The cost is that the replayed kickoff lands on an arbitrary weekday
+ * and time ("Tue 15 Sept 03:02" in one observed run). Copy that names
+ * the day is therefore not faithful, and a prompt that reasons about
+ * "Tuesday" specifically may behave differently than it did. Both
+ * pipelines see the same synthetic clock, so the DIFF still holds; a
+ * disagreement that turns on the day of the week does not.
+ *
+ * ─────────────────────────────────────────────────────────────────────
  * WHY THE BATCH IS THE UNIT
  * ─────────────────────────────────────────────────────────────────────
  * The Pi buffers messages and flushes a WINDOW to /api/whatsapp/analyze
