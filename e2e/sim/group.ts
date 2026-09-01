@@ -111,6 +111,10 @@ export type AttStatus = "CONFIRMED" | "BENCH" | "DROPPED";
 export interface CompletedMatchSpec {
   /** Days before today; kickoff 20:00 London. Default 1. */
   daysAgo?: number;
+  /** Exact hours before now — takes precedence over `daysAgo`. Used by
+   *  `e2e/replay/` to keep a replayed world's match history the same
+   *  distance in the past that it really was. */
+  hoursAgo?: number;
   confirmedKeys: string[];
   /** null scores = unscored (waiting for a score). Default 3–2. */
   redScore?: number | null;
@@ -140,8 +144,22 @@ export interface CreateGroupOpts {
   }>;
   /** Sport-level team display labels (index 0 → RED, 1 → YELLOW). */
   sportTeamLabels?: [string, string];
-  /** false → no upcoming match at all. Default: +2 days, 20:00 London. */
-  upcomingMatch?: { daysFromNow?: number } | false;
+  /**
+   * false → no upcoming match at all. Default: +2 days, 20:00 London.
+   *
+   * `hoursFromNow` takes precedence over `daysFromNow` and places
+   * kickoff at an EXACT offset from now rather than at 20:00 on some
+   * day. Added for `e2e/replay/`, which replays a real message with the
+   * hours-to-kickoff it actually had: two hours before kickoff and two
+   * days before are different worlds (deadline, chase, bench offers),
+   * and day granularity erases that.
+   *
+   * `deadlineHoursBeforeKickoff` overrides the historical 5-hour gap —
+   * Sutton FC runs `deadlineHours: 0`.
+   */
+  upcomingMatch?:
+    | { daysFromNow?: number; hoursFromNow?: number; deadlineHoursBeforeKickoff?: number }
+    | false;
   /** Initial attendance on the upcoming match. */
   attendance?: Array<{ key: string; status: AttStatus }>;
   completedMatch?: CompletedMatchSpec;
@@ -228,7 +246,19 @@ export async function createGroup(
     ],
   );
 
-  const upDate = opts.upcomingMatch === false ? null : londonAt(opts.upcomingMatch?.daysFromNow ?? 2, 20, 0);
+  const upDate =
+    opts.upcomingMatch === false
+      ? null
+      : typeof opts.upcomingMatch?.hoursFromNow === "number"
+        ? new Date(Date.now() + opts.upcomingMatch.hoursFromNow * 3_600_000)
+        : londonAt(opts.upcomingMatch?.daysFromNow ?? 2, 20, 0);
+  const deadlineGapMs =
+    (opts.upcomingMatch !== false && opts.upcomingMatch?.deadlineHoursBeforeKickoff !== undefined
+      ? opts.upcomingMatch.deadlineHoursBeforeKickoff
+      : 5) *
+    60 *
+    60 *
+    1000;
   await db.run(
     `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "updatedAt")
      VALUES ($1, $2, $3, $4, $5, '20:00', 'Sim Arena', now())`,
@@ -241,7 +271,7 @@ export async function createGroup(
     await db.run(
       `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
        VALUES ($1, $2, $3, $4, 'UPCOMING', $5, now())`,
-      [matchId, activityId, upDate, maxPlayers, new Date(upDate.getTime() - 5 * 60 * 60 * 1000)],
+      [matchId, activityId, upDate, maxPlayers, new Date(upDate.getTime() - deadlineGapMs)],
     );
     let pos = 0;
     for (const a of opts.attendance ?? []) {
@@ -259,7 +289,10 @@ export async function createGroup(
   if (opts.completedMatch) {
     const cm = opts.completedMatch;
     completedMatchId = `sim-cmatch-${nonce}`;
-    const cmDate = londonAt(-(cm.daysAgo ?? 1), 20, 0);
+    const cmDate =
+      typeof cm.hoursAgo === "number"
+        ? new Date(Date.now() - cm.hoursAgo * 3_600_000)
+        : londonAt(-(cm.daysAgo ?? 1), 20, 0);
     await db.run(
       `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline",
                             "redScore", "yellowScore", "postMatchEndFlow", "updatedAt")

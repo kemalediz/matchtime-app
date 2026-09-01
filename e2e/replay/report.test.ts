@@ -120,7 +120,7 @@ describe("renderReport", () => {
     expect(out).toContain("SELF-REPLAY NOISE FLOOR");
     // Every disagreement in a self-replay is either model non-determinism
     // or a harness bug — the number every other number is read against.
-    expect(out).toMatch(/noise floor.*50\.0%|50\.0%.*noise floor/is);
+    expect(out).toMatch(/NOISE FLOOR: 1 of 2 identical-pipeline replays disagreed — 50\.0%/);
   });
 
   it("shouts when the run was capped, and says what it dropped", () => {
