@@ -12,8 +12,17 @@
  */
 import type { Adjudication, CaseDiff, Criteria } from "./diff";
 import { MISSED_WRITE_RATE_TARGET, SPURIOUS_WRITE_TARGET } from "./diff";
+import {
+  compareToFloor,
+  discriminates,
+  runsForHalfWidth,
+  summariseFloor,
+  type ClassFloor,
+  type FloorSummary,
+} from "./floor";
+import { EXCLUSION_TRACTABILITY } from "./reconstruct";
 import type { SweepResult } from "./sweep";
-import type { ReconstructionStats, ReplayCase } from "./types";
+import type { ExclusionReason, ReconstructionStats, ReplayCase } from "./types";
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const usd = (n: number) => `$${n.toFixed(4)}`;
@@ -54,10 +63,23 @@ function criteriaBlock(c: Criteria, label: string): string[] {
   return lines;
 }
 
+function ci(f: ClassFloor): string {
+  return `${pct(f.rate).padStart(6)}  95% CI [${pct(f.ci95[0])}, ${pct(f.ci95[1])}]`;
+}
+
+/**
+ * @param cases the replayed cases, so write-level noise can be clustered
+ *   by production's own intent label.
+ * @param priorFloor a floor measured in an EARLIER self-replay, so a
+ *   candidate comparison is stated relative to it rather than as an
+ *   absolute the incumbent itself could not meet.
+ */
 export function renderReport(
   r: SweepResult,
   stats: ReconstructionStats,
   adjudications: Adjudication[],
+  cases: ReplayCase[] = [],
+  priorFloor?: FloorSummary,
 ): string {
   const L: string[] = [];
   const self = isSelfReplay(r);
@@ -102,10 +124,26 @@ export function renderReport(
   );
   L.push(`  tiers: strict ${stats.byTier.strict} · wide ${stats.byTier.wide}`);
   L.push("  excluded, by reason (a world that cannot be proven is never guessed):");
+  let lost = 0;
+  let fixable = 0;
   for (const [reason, n] of Object.entries(stats.byReason).sort(
     (a, b) => b[1].messages - a[1].messages,
   )) {
-    L.push(`    ${reason.padEnd(26)} ${n.batches} batches / ${n.messages} messages`);
+    const t = EXCLUSION_TRACTABILITY[reason as ExclusionReason];
+    if (t?.tractability === "fixable") fixable += n.messages;
+    else lost += n.messages;
+    L.push(
+      `    ${reason.padEnd(26)} ${String(n.batches).padStart(4)} batches / ` +
+        `${String(n.messages).padStart(5)} messages   ${t?.tractability ?? "unclassified"}`,
+    );
+  }
+  L.push(
+    `  → of the ${stats.messagesExcluded} excluded messages, ${lost} are STRUCTURALLY LOST ` +
+      `(state that was never recorded) and ${fixable} are FIXABLE going forward.`,
+  );
+  for (const [reason, n] of Object.entries(stats.byReason)) {
+    const t = EXCLUSION_TRACTABILITY[reason as ExclusionReason];
+    if (t?.tractability === "fixable") L.push(`    fix for ${reason} (${n.messages} msgs): ${t.note}`);
   }
 
   L.push("");
@@ -116,26 +154,92 @@ export function renderReport(
     L.push(`  ${intent.padEnd(24)} ${String(n).padStart(5)}  ${pct(n / total).padStart(7)}   replayable ${replayed}`);
   }
 
+  const floor = summariseFloor(r.diffs, cases);
   L.push("");
   if (self) {
-    const floor = r.criteria.runs ? r.criteria.disagreements / r.criteria.runs : 0;
+    L.push(`NOISE FLOOR: ${floor.any.count} of ${floor.runs} identical-pipeline replays disagreed.`);
     L.push(
-      `NOISE FLOOR: ${r.criteria.disagreements} of ${r.criteria.runs} identical-pipeline replays ` +
-        `disagreed — ${pct(floor)}.`,
+      "  Same pipeline, same message, same reconstructed world. Every one of these is model " +
+        "non-determinism or a harness bug — never a pipeline difference.",
     );
+    L.push("");
+    L.push("  by class (they mean very different things)");
+    L.push(`    ${"any disagreement".padEnd(20)} ${String(floor.any.count).padStart(3)}  ${ci(floor.any)}`);
+    for (const c of floor.byClass) {
+      L.push(`    ${String(c.cls).padEnd(20)} ${String(c.count).padStart(3)}  ${ci(c)}`);
+    }
     L.push(
-      "  Every one of those is model non-determinism or a harness bug, not a pipeline difference. " +
-        "No comparison below this number means anything.",
+      `    ${"WRITE-LEVEL".padEnd(20)} ${String(floor.writeLevel.count).padStart(3)}  ` +
+        `${ci(floor.writeLevel)}   <- the one that gates §10 step 3`,
     );
-    const writeFloor = r.criteria.runs
-      ? (r.criteria.spuriousWriteUnadjudicated +
-          r.criteria.spuriousWriteRuns +
-          r.criteria.missedWriteUnadjudicated +
-          r.criteria.missedWriteRuns +
-          r.criteria.divergentWriteRuns) /
-        r.criteria.runs
+    L.push("");
+    L.push(
+      "  speech_only is chattiness — the bot posting the roster on one run and staying silent on " +
+        "the other. divergent_write is a player being in or out of a squad depending on luck.",
+    );
+
+    if (floor.writeLevel.count > 0) {
+      L.push("");
+      L.push("  write-level noise, by production's intent label:");
+      for (const [intent, n] of Object.entries(floor.writeClustersByIntent).sort(
+        (a, b) => b[1] - a[1],
+      )) {
+        L.push(`    ${intent.padEnd(24)} ${n}`);
+      }
+      L.push(
+        `    concentration: ${pct(floor.writeClusterConcentration)} of write-level noise sits in ` +
+          `one intent — ${
+            floor.writeClusterConcentration >= 0.6
+              ? "a CLUSTER, which is a named defect worth its own PR, not background noise"
+              : "spread out, which reads as background non-determinism"
+          }`,
+      );
+      L.push(`    keys: ${floor.writeLevelKeys.join(", ")}`);
+    }
+
+    L.push("");
+    L.push("  what this floor can and cannot settle");
+    const bar = MISSED_WRITE_RATE_TARGET;
+    L.push(
+      `    §10 step 3's ≤${pct(bar)} write bar ${
+        discriminates(floor.writeLevel.ci95, bar)
+          ? "CAN discriminate: the incumbent's own write-level floor sits entirely below it."
+          : `CANNOT discriminate at this sample size: the incumbent's own write-level floor ` +
+            `reaches ${pct(floor.writeLevel.ci95[1])}, above the bar. A candidate scoring exactly ` +
+            `${pct(bar)} could not be told apart from the pipeline we already ship.`
+      }`,
+    );
+    const near = Math.max(floor.writeLevel.rate, 0.01);
+    const want = runsForHalfWidth(near, 0.01);
+    L.push(
+      `    for a ±1.0pp interval on a rate near ${pct(near)} you need ~${want} replays ` +
+        `(this run: ${floor.runs}).`,
+    );
+    const perPairNow = r.cost.old.batches
+      ? (r.cost.old.costUsd + r.cost.new.costUsd) / r.cost.old.batches
       : 0;
-    L.push(`  of which WRITE-level: ${pct(writeFloor)} — the number that gates §10 step 3.`);
+    L.push(
+      `    at the measured ${usd(perPairNow)} per batch pair that is ~${usd(want * perPairNow)}, ` +
+        `reachable by raising MT_REPLAY_RUNS over the same ${r.plan.total} batches.`,
+    );
+    L.push("");
+  }
+
+  if (!self && priorFloor) {
+    L.push("");
+    L.push("candidate vs the incumbent's own floor (the criteria are RELATIVE, not absolute)");
+    L.push(
+      `  candidate write-level divergence ${pct(floor.writeLevel.rate)} against an incumbent floor ` +
+        `of ${pct(priorFloor.writeLevel.rate)} 95% CI [${pct(priorFloor.writeLevel.ci95[0])}, ` +
+        `${pct(priorFloor.writeLevel.ci95[1])}] → ${compareToFloor(
+          floor.writeLevel.rate,
+          priorFloor.writeLevel,
+        ).toUpperCase()}`,
+    );
+    L.push(
+      "  A candidate BELOW the incumbent's floor is better, not a regression. Inside the interval " +
+        "is indistinguishable, and saying so beats reporting a difference that is noise.",
+    );
     L.push("");
   }
 

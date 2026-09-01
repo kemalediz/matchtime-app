@@ -14,6 +14,10 @@
  *                        itself, which measures the noise floor.
  *   MT_REPLAY_METER_PORT start the metering proxy on this port for measured cost
  *   MT_REPLAY_ADJUDICATIONS  path to a JSONL of human verdicts
+ *   MT_REPLAY_FLOOR      path to an earlier self-replay's result.json, so a
+ *                        candidate's rate is reported RELATIVE to the
+ *                        incumbent's own noise floor rather than as an
+ *                        absolute the incumbent itself could not meet
  *
  * ─────────────────────────────────────────────────────────────────────
  * VALIDATE BEFORE YOU TRUST
@@ -31,6 +35,7 @@ import { testDb } from "../helpers/test-db";
 import { CurrentAnalyzerPipeline } from "../corpus/current-analyzer-pipeline";
 import type { CorpusPipeline } from "../corpus/pipeline";
 import type { Adjudication } from "../replay/diff";
+import { summariseFloor, type FloorSummary } from "../replay/floor";
 import { AnthropicMeter, NULL_METER } from "../replay/meter";
 import { renderReport, renderTriage } from "../replay/report";
 import { runSweep } from "../replay/sweep";
@@ -95,6 +100,17 @@ test.describe("history replay sweep", () => {
 
     const db = testDb();
     const started = Date.now();
+    // A candidate comparison is only meaningful against the incumbent's
+    // own floor: §10 step 3's "≤2%" is not an absolute if the current
+    // analyzer cannot reproduce its own writes.
+    let priorFloor: FloorSummary | undefined;
+    if (process.env.MT_REPLAY_FLOOR && existsSync(process.env.MT_REPLAY_FLOOR)) {
+      const prior = JSON.parse(readFileSync(process.env.MT_REPLAY_FLOOR, "utf8")) as {
+        result: { diffs: Parameters<typeof summariseFloor>[0] };
+      };
+      priorFloor = summariseFloor(prior.result.diffs, cases);
+    }
+
     const result = await runSweep({ request, db }, oldPipeline, newPipeline, cases, {
       mode: "live",
       runs: num("MT_REPLAY_RUNS", 1),
@@ -115,18 +131,14 @@ test.describe("history replay sweep", () => {
 
     const dir = path.join(OUT, result.runId);
     mkdirSync(dir, { recursive: true });
-    const report = renderReport(result, stats, loadAdjudications());
+    const selected = cases.filter((c) => result.plan.selected.includes(c.key));
+    const report = renderReport(result, stats, loadAdjudications(), selected, priorFloor);
+    const floor = summariseFloor(result.diffs, selected);
     writeFileSync(path.join(dir, "report.txt"), `${report}\n`);
-    writeFileSync(
-      path.join(dir, "triage.md"),
-      renderTriage(
-        result.diffs,
-        cases.filter((c) => result.plan.selected.includes(c.key)),
-      ),
-    );
+    writeFileSync(path.join(dir, "triage.md"), renderTriage(result.diffs, selected));
     writeFileSync(
       path.join(dir, "result.json"),
-      JSON.stringify({ result, reconstruction: stats, meteredCalls: proxy?.all ?? [] }, null, 2),
+      JSON.stringify({ result, floor, reconstruction: stats, meteredCalls: proxy?.all ?? [] }, null, 2),
     );
     console.log(report);
     console.log(`\nwrote ${dir}/report.txt, triage.md, result.json`);

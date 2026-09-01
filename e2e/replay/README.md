@@ -34,6 +34,43 @@ nothing if the same pipeline disagrees with itself 3% of the time.
 The report prints that number first and labels it. Read it before
 anything else.
 
+### The floor is reported per class, because the classes mean different things
+
+- **`speech_only`** is chattiness: one run posts the roster, the other
+  stays silent on the identical world. Annoying, not dangerous.
+- **`divergent_write`** is a player being in or out of a squad depending
+  on luck. The same pipeline, the same message, the same world, two
+  different attendance outcomes.
+
+Every rate carries a **Wilson 95% interval**, because a rare event over
+a few dozen replays is not a point estimate: 0 of 80 does not mean 0%,
+it means "somewhere under about 4.5%".
+
+### The criteria are RELATIVE to the floor
+
+§10 step 3's *"≤2% where it would miss a write the old one correctly
+made"* is meaningless as an **absolute** if the incumbent cannot
+reproduce its own writes. A candidate scoring 1% against a 2% incumbent
+floor is **better**, not a regression.
+
+So the report:
+
+- states whether the ≤2% bar **can discriminate at all** — it can only
+  do so if the incumbent's own write-level interval sits entirely below
+  it;
+- compares a candidate to the stored floor (`MT_REPLAY_FLOOR=<an earlier
+  result.json>`) and answers *better · indistinguishable · worse*;
+- says how many replays a ±1pp interval would need, and what that costs,
+  instead of shrugging at a number it cannot support.
+
+### Where the write-level noise sits
+
+Counting it is not enough. The report clusters write-level disagreements
+by production's own intent label and reports the **concentration**: if
+most of them land on one intent, that is a **named defect worth its own
+PR**, not background non-determinism. Spread out, it reads as the model
+being the model.
+
 ---
 
 ## Four rules
@@ -139,9 +176,47 @@ excluded:
 - **`no-upcoming-match`** — a deleted `Match` row leaves no trace, so
   "there was no match" cannot be told from "the row was removed later".
 
-**447 is a floor, not a disappointment.** It is 2.5x what the fortnight
-in the plan would produce, it exists today, and it is biased towards
-*honest* cases rather than convenient ones.
+**447 is a floor, not a disappointment.** It is roughly **ten times the
+46-case incident corpus** and about **2.5x what the fortnight in the plan
+would produce**, it exists today, and it is biased towards *honest* cases
+rather than convenient ones.
+
+### 74% unusable is itself a finding: what is fixable, what is gone
+
+`EXCLUSION_TRACTABILITY` in `reconstruct.ts` classifies every reason, and
+the report totals them:
+
+| reason | tractability | what would fix it |
+| --- | --- | --- |
+| `attendance-state-unknown` | structurally lost **backwards**, fixable **forwards** | an append-only `AttendanceEvent` log (`matchId, userId, from, to, at, cause`). It would make every future batch replayable and give the admin UI a history it has never had. It cannot recover April→September. |
+| `batch-boundary-ambiguous` | **fixable** | one nullable `batchId` column on `AnalyzedMessage`, stamped by the analyze route. Removes the class entirely for future traffic. |
+| `no-body` | structurally lost | media and stickers have no text |
+| `no-upcoming-match` | structurally lost | a deleted `Match` leaves no trace; soft-delete would fix it forwards |
+| `sender-unknown` | structurally lost | the pushname was never persisted |
+| `no-roster` | structurally lost | no membership row predates the batch |
+
+**Both fixes are small and both are worth doing before step 6 leans on
+this harness**, because step 6 is the one that can put a player at a
+pitch with no slot. Neither helps the history already on disk.
+
+### What this harness is NOT
+
+It is **not the two-week live parallel run §10 step 3 asks for**, and it
+cannot replace one:
+
+- it replays a *reconstructed* world, not the live one, and only the 26%
+  of it that can be proven;
+- it cannot see anything the recorded state never captured — reactions
+  the Pi swallowed, DMs outside the analyze path, or a decision that
+  turned on the real calendar date;
+- it is biased towards batches that changed nothing, because a batch that
+  wrote is more likely to have left an unknowable pre-state;
+- it says nothing about production *latency under load*, retries, or the
+  `after()` shadow path.
+
+What it does give, today, is ten times the corpus in real traffic with a
+measured noise floor. Treat it as the evidence that makes a shorter live
+parallel run safe to start — not as the run itself.
 
 ### The clock is relative, and that is a choice
 

@@ -124,6 +124,50 @@ export const ASSUMPTIONS = {
     "assumed unchanged since the batch — none of them has an audit trail",
 } as const;
 
+/**
+ * Is an exclusion reason FIXABLE with more work, or is the state simply
+ * gone? 74% of production traffic is unreplayable and that is itself a
+ * finding — but only if it says which half of it is recoverable.
+ */
+export const EXCLUSION_TRACTABILITY: Record<
+  ExclusionReason,
+  { tractability: "structurally-lost" | "fixable"; note: string }
+> = {
+  "attendance-state-unknown": {
+    tractability: "structurally-lost",
+    note:
+      "no attendance audit log exists, so a row's status at a past instant was never recorded. " +
+      "FIXABLE GOING FORWARD, NOT BACKWARDS: an AttendanceEvent append-only log (matchId, userId, " +
+      "from, to, at, cause) would make every future batch replayable, and would also give the " +
+      "admin UI the history it has never had. It cannot recover 2026-04-20 → today.",
+  },
+  "batch-boundary-ambiguous": {
+    tractability: "fixable",
+    note:
+      "AnalyzedMessage carries no batch id, so batches are inferred from write timing. A single " +
+      "nullable `batchId` column, stamped by the analyze route, removes this class entirely — " +
+      "again only for future traffic, but it is one column and one assignment.",
+  },
+  "no-body": {
+    tractability: "structurally-lost",
+    note: "media, stickers and deleted messages have no text to replay. Nothing to recover.",
+  },
+  "sender-unknown": {
+    tractability: "structurally-lost",
+    note: "the sender was never resolved and their pushname was not persisted at the time.",
+  },
+  "no-upcoming-match": {
+    tractability: "structurally-lost",
+    note:
+      "a deleted Match row leaves no trace, so 'there was no match' cannot be told from " +
+      "'the row was removed later'. Soft-deleting matches would fix it going forward.",
+  },
+  "no-roster": {
+    tractability: "structurally-lost",
+    note: "no membership row predates the batch, so the org's roster at that instant is unknown.",
+  },
+};
+
 export const CAVEATS = {
   completedMatchOmitted:
     "a previous completed match existed but its state at this instant is unrecoverable " +

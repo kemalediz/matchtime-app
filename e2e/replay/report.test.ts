@@ -3,6 +3,7 @@
  * run read as complete, and let an unadjudicated sweep read as a pass.
  */
 import { describe, expect, it } from "vitest";
+import { summariseFloor } from "./floor";
 import { renderReport, renderTriage } from "./report";
 import type { CaseDiff } from "./diff";
 import type { SweepResult } from "./sweep";
@@ -49,6 +50,24 @@ const spurious: CaseDiff = {
   onlyNew: [{ name: "Gina Gale", from: "ABSENT", to: "CONFIRMED" }],
   spokenNew: ["Gina you're in"],
 };
+
+function replayCaseFor(key: string, intent: string): ReplayCase {
+  return {
+    key,
+    meta: {
+      batchKey: key, orgId: "o", groupRef: "g", at: "2026-05-12T18:30:00.000Z",
+      tier: "strict", assumptions: [], caveats: [], hoursToKickoff: 2, maxPlayers: 14,
+      squadBefore: { confirmed: 0, bench: 0, dropped: 0 },
+      prodOutcomes: [{ waMessageId: "m-1", intent, action: null, handledBy: "llm" }],
+      unresolvedSenders: [],
+    },
+    case: {
+      id: key, title: key, sections: [], category: "A",
+      provenance: { kind: "production", note: "n" },
+      world: { players: [] }, messages: [], expect: {},
+    },
+  };
+}
 
 function result(over: Partial<SweepResult> = {}): SweepResult {
   const base: SweepResult = {
@@ -120,7 +139,55 @@ describe("renderReport", () => {
     expect(out).toContain("SELF-REPLAY NOISE FLOOR");
     // Every disagreement in a self-replay is either model non-determinism
     // or a harness bug — the number every other number is read against.
-    expect(out).toMatch(/NOISE FLOOR: 1 of 2 identical-pipeline replays disagreed — 50\.0%/);
+    expect(out).toMatch(/NOISE FLOOR: 1 of 2 identical-pipeline replays disagreed/);
+  });
+
+  it("splits the floor by class, because chattiness and a lost write are not the same thing", () => {
+    const out = renderReport(result(), stats, [], [replayCaseFor("k2", "in")]);
+    expect(out).toContain("by class");
+    expect(out).toContain("WRITE-LEVEL");
+    // Every rate carries an interval: a rare event on a small sweep is
+    // not a point estimate.
+    expect(out).toMatch(/95% CI \[/);
+  });
+
+  it("says plainly when the sample cannot discriminate at the 2% bar", () => {
+    const out = renderReport(result(), stats, [], [replayCaseFor("k2", "in")]);
+    expect(out).toContain("CANNOT discriminate at this sample size");
+    // And answers "would more runs help?" with arithmetic.
+    expect(out).toMatch(/you need ~\d+ replays/);
+  });
+
+  it("clusters write-level noise by intent, so a named defect is visible", () => {
+    const out = renderReport(result(), stats, [], [replayCaseFor("k2", "conditional_in")]);
+    expect(out).toContain("write-level noise, by production's intent label");
+    expect(out).toContain("conditional_in");
+  });
+
+  it("separates structurally-lost exclusions from fixable ones", () => {
+    const out = renderReport(result(), stats, []);
+    expect(out).toContain("STRUCTURALLY LOST");
+    expect(out).toContain("FIXABLE going forward");
+  });
+
+  it("states a candidate's rate RELATIVE to the incumbent's floor", () => {
+    const priorFloor = summariseFloor(
+      [
+        ...Array.from({ length: 78 }, (_, i) => ({ ...agreed, key: `f${i}` })),
+        { ...spurious, key: "f78", classes: ["divergent_write" as const], primary: "divergent_write" as const },
+        { ...spurious, key: "f79", classes: ["divergent_write" as const], primary: "divergent_write" as const },
+      ],
+      [],
+    );
+    const out = renderReport(
+      result({ pipelines: { old: "current", new: "candidate" } }),
+      stats,
+      [],
+      [replayCaseFor("k2", "in")],
+      priorFloor,
+    );
+    expect(out).toContain("candidate vs the incumbent's own floor");
+    expect(out).toMatch(/BETTER|INDISTINGUISHABLE|WORSE/);
   });
 
   it("shouts when the run was capped, and says what it dropped", () => {
