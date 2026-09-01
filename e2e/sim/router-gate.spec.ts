@@ -225,4 +225,40 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     // exactly as it does with the gate off.
     expect(await g.attendanceOf("greg")).toMatchObject({ status: "CONFIRMED" });
   });
+
+  test("the IN safety net still sees a gated message as the author's latest", async ({
+    request,
+    db,
+  }) => {
+    // The Najib net (2026-05-08): intent:"in" with registerAttendance
+    // null is forced back to IN, but ONLY on the author's LAST message
+    // in the batch. `latestIdxByAuthor` is built from `fresh`, so a
+    // gated message must still occupy its index — otherwise the net
+    // would fire on a superseded message and register someone who had
+    // moved on.
+    const g = await createGroup(request, db, { attendance: [] });
+    setRouterStub({ enabled: true, floor: false, bodies: { "😂": "none" } });
+
+    await g.postBatch([
+      // intent "in" with NO registerAttendance — the net's trigger.
+      { player: "alice", body: "yeah go on then", verdict: { intent: "in", registerAttendance: null } },
+      { player: "alice", body: "😂" },
+    ]);
+
+    // The 😂 is the author's latest, so the net correctly does NOT fire
+    // — which is exactly what happens today with the gate off.
+    expect(await g.attendanceOf("alice")).toBeNull();
+  });
+
+  test("…and DOES fire when the gated message came first", async ({ request, db }) => {
+    const g = await createGroup(request, db, { attendance: [] });
+    setRouterStub({ enabled: true, floor: false, bodies: { "😂": "none" } });
+
+    await g.postBatch([
+      { player: "alice", body: "😂" },
+      { player: "alice", body: "yeah go on then", verdict: { intent: "in", registerAttendance: null } },
+    ]);
+
+    expect(await g.attendanceOf("alice")).toMatchObject({ status: "CONFIRMED" });
+  });
 });
