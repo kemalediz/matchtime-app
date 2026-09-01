@@ -126,7 +126,10 @@ export class CurrentAnalyzerPipeline implements CorpusPipeline {
       for (const [key, team] of Object.entries(w.teams)) {
         await ctx.db.run(
           `INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ($1, $2, $3, $4)`,
-          [`corpus-ta-${c.id}-${key}`.slice(0, 60), grp.matchId, grp.player(key).userId, team],
+          // Derived from matchId, which already carries the harness's
+          // per-process nonce — a fixed `corpus-ta-<caseId>` collides
+          // between two runs sharing the embedded Postgres.
+          [`ta-${grp.matchId}-${key}`, grp.matchId, grp.player(key).userId, team],
         );
       }
     }
@@ -142,7 +145,7 @@ export class CurrentAnalyzerPipeline implements CorpusPipeline {
       await ctx.db.run(
         `INSERT INTO "BenchSlotOffer" (id, "matchId", "replacingUserId", "createdAt", "updatedAt")
          VALUES ($1, $2, $3, now(), now())`,
-        [`corpus-offer-${c.id}`.slice(0, 60), grp.matchId, dropped.userId],
+        [`offer-${grp.matchId}`, grp.matchId, dropped.userId],
       );
     }
 

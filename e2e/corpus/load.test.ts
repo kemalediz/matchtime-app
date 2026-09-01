@@ -19,6 +19,7 @@ const good = {
   world: { players: [{ key: "najib", name: "Najib Ahmadi" }] },
   messages: [{ from: "najib", body: "In" }],
   expect: { attendance: [{ player: "najib", status: "BENCH" }] },
+  liveOnlyReason: "fixture: the assertion IS the model's classification",
 };
 
 const line = (o: unknown) => JSON.stringify(o);
@@ -101,9 +102,17 @@ describe("parseCorpus", () => {
     expect(() => parseCorpus(line(bad))).toThrow(/stubKind/);
   });
 
-  it("marks a case with no stub verdicts as live-only", () => {
+  it("a case with no stub verdicts must say WHY it cannot be stubbed", () => {
+    // A live-only case never runs in CI. "46 cases" must not be allowed
+    // to imply "46 cases in CI", so the exemption is argued case by
+    // case rather than left as a silent default.
+    const noReason: Record<string, unknown> = { ...good };
+    delete noReason.liveOnlyReason;
+    expect(() => parseCorpus(line(noReason))).toThrow(/liveOnlyReason/);
+
     const [c] = parseCorpus(line(good));
     expect(c.stubKind).toBeUndefined();
+    expect(c.liveOnlyReason).toBeTruthy();
   });
 
   it("never mistakes a phone-shaped string in a message for real contact data", () => {

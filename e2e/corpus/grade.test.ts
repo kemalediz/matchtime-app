@@ -257,6 +257,26 @@ describe("buildScoreboard", () => {
     },
   ];
 
+  it("a case that never RAN is never countable as a pass, and is reported separately", () => {
+    const withSkips = [
+      ...results,
+      { caseId: "x", sections: ["S6"], category: "D" as const, runs: 0, passes: 0,
+        classifications: [], skipped: true },
+      { caseId: "y", sections: ["S8"], category: "B" as const, runs: 0, passes: 0,
+        classifications: [], skipped: true },
+    ];
+    const sb = buildScoreboard(withSkips, { sections: ALL_PROMPT_SECTIONS });
+    expect(sb.totals.casesInCorpus).toBe(5);
+    expect(sb.totals.cases).toBe(3); // ran
+    expect(sb.totals.casesNotRun).toBe(2);
+    expect(sb.totals.casesFullyPassed).toBe(1);
+    // The headline must state all three numbers, so nobody reads
+    // "green" and believes CI covered the whole corpus.
+    const text = renderScoreboard(sb);
+    expect(text).toMatch(/1 of 3 cases ran green/);
+    expect(text).toMatch(/2 of 5 corpus cases DID NOT RUN/);
+  });
+
   it("counts cases, runs and hit-rates", () => {
     const sb = buildScoreboard(results, { sections: ["S6", "S7", "S8", "S9"] });
     expect(sb.totals.cases).toBe(3);
@@ -334,7 +354,8 @@ describe("buildScoreboard", () => {
 
   it("renders a human-readable scoreboard mentioning every category", () => {
     const text = renderScoreboard(buildScoreboard(results, { sections: ALL_PROMPT_SECTIONS }));
-    expect(text).toMatch(/CASES/);
+    expect(text).toMatch(/INCIDENT CORPUS SCOREBOARD/);
+    expect(text).toMatch(/cases ran green/);
     expect(text).toMatch(/spurious_write/);
     expect(text).toMatch(/coverage gap/i);
   });

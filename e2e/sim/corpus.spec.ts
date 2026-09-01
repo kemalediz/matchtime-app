@@ -36,6 +36,8 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 const BASELINE = path.join(process.cwd(), "e2e", "corpus", "baseline.stub.json");
 /** Set when deliberately re-recording the baseline after a real change. */
 const RECORD = process.env.MT_CORPUS_RECORD === "1";
+/** Triage one case: MT_CORPUS_FILTER=S17 npm run test:corpus */
+const FILTER = process.env.MT_CORPUS_FILTER;
 
 interface Baseline {
   pipeline: string;
@@ -57,7 +59,26 @@ interface Baseline {
 
     const cases = loadCorpus();
     const pipeline = new CurrentAnalyzerPipeline();
-    const sb = await runCorpus({ request, db }, pipeline, cases, { mode: "stub", runs: 1 });
+    const sb = await runCorpus({ request, db }, pipeline, cases, {
+      mode: "stub",
+      runs: 1,
+      ...(FILTER ? { filter: FILTER } : {}),
+      ...(FILTER
+        ? {
+            onObservation: (c, o) => {
+              // eslint-disable-next-line no-console
+              console.log(
+                `[corpus] ${c.id}\n  before: ${JSON.stringify(o.attendanceBefore)}\n` +
+                  `  after:  ${JSON.stringify(o.attendanceAfter)}\n` +
+                  `  spoken: ${JSON.stringify(o.spoken)}\n` +
+                  `  dms:    ${JSON.stringify(o.dms)}\n` +
+                  `  reacts: ${JSON.stringify(o.reacts)}  offers: ${o.benchOffersOpen}\n` +
+                  `  score:  ${JSON.stringify(o.scoreAfter)}  teams: ${JSON.stringify(o.teamsAfter)}`,
+              );
+            },
+          }
+        : {}),
+    });
 
     // eslint-disable-next-line no-console
     console.log(renderScoreboard(sb));
@@ -74,6 +95,15 @@ interface Baseline {
     const observed: Record<string, "pass" | "fail" | "skip"> = {};
     for (const c of sb.cases) {
       observed[c.caseId] = c.skipped ? "skip" : c.passes === c.runs ? "pass" : "fail";
+    }
+
+    if (FILTER) {
+      // A filtered run is a triage tool, not a gate — comparing a
+      // 1-case run against a 46-case baseline would report 45 phantom
+      // regressions.
+      // eslint-disable-next-line no-console
+      console.log(`[corpus] filtered run (MT_CORPUS_FILTER=${FILTER}) — baseline NOT compared`);
+      return;
     }
 
     if (RECORD || !existsSync(BASELINE)) {

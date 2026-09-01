@@ -209,6 +209,15 @@ export interface CorpusCase {
    * historical behaviour, not necessarily current behaviour.
    */
   contractTagAdded?: boolean;
+  /**
+   * Set on a case that carries NO stub verdict and therefore never runs
+   * in CI. It must say what a stub would destroy — usually that the
+   * assertion IS the model's classification, or that the asserted text
+   * is model-authored so a stub would contain the answer. Enforced by
+   * the loader so the count of CI-covered cases can never quietly drift
+   * away from the count of corpus cases.
+   */
+  liveOnlyReason?: string;
   /** Free-form labels, e.g. "banter", "paid-match", "lid". */
   tags?: string[];
   notes?: string;
@@ -524,7 +533,15 @@ export interface Bucket {
 }
 
 export interface Scoreboard {
-  totals: Bucket & { runPassRate: number; casePassRate: number };
+  /** `cases` counts only cases that RAN. `casesInCorpus` is the whole
+   *  corpus and `casesNotRun` the difference — a case that never
+   *  executed is never countable as a pass, in either mode. */
+  totals: Bucket & {
+    runPassRate: number;
+    casePassRate: number;
+    casesInCorpus: number;
+    casesNotRun: number;
+  };
   byCategory: Record<Category, Bucket>;
   bySection: Record<string, Bucket>;
   byClassification: Record<Classification, number>;
@@ -601,6 +618,8 @@ export function buildScoreboard(
       ...totals,
       runPassRate: totals.runs ? totals.runsPassed / totals.runs : 0,
       casePassRate: totals.cases ? totals.casesFullyPassed / totals.cases : 0,
+      casesInCorpus: results.length,
+      casesNotRun: results.length - scored.length,
     },
     byCategory,
     bySection,
@@ -624,12 +643,20 @@ export function renderScoreboard(sb: Scoreboard): string {
   lines.push("");
   lines.push("══ INCIDENT CORPUS SCOREBOARD ═══════════════════════════════════");
   lines.push(
-    `CASES ${sb.totals.casesFullyPassed}/${sb.totals.cases} fully passed (${pct(
-      sb.totals.casePassRate,
-    )})   RUNS ${sb.totals.runsPassed}/${sb.totals.runs} (${pct(sb.totals.runPassRate)})`,
+    `${sb.totals.casesFullyPassed} of ${sb.totals.cases} cases ran green ` +
+      `(${pct(sb.totals.casePassRate)})   ` +
+      `RUNS ${sb.totals.runsPassed}/${sb.totals.runs} (${pct(sb.totals.runPassRate)})`,
   );
-  const skipped = sb.cases.filter((c) => c.skipped);
-  if (skipped.length) lines.push(`skipped (no stub, live-only): ${skipped.length}`);
+  if (sb.totals.casesNotRun > 0) {
+    lines.push(
+      `⚠️  ${sb.totals.casesNotRun} of ${sb.totals.casesInCorpus} corpus cases DID NOT RUN in ` +
+        `this mode and are NOT covered by the numbers above.`,
+    );
+    lines.push(
+      `    A case with no stub verdict cannot be replayed deterministically — its outcome ` +
+        `depends on the real model. Run \`npm run test:corpus:live\` for those.`,
+    );
+  }
 
   lines.push("");
   lines.push("by category (§3.1)");

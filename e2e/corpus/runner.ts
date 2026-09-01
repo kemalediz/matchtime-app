@@ -18,6 +18,7 @@ import {
   renderScoreboard,
   type CaseRunSummary,
   type CorpusCase,
+  type CorpusObservation,
   type Scoreboard,
 } from "./grade";
 import type { CorpusMode, CorpusPipeline, PipelineContext } from "./pipeline";
@@ -32,6 +33,8 @@ export interface RunOptions {
   filter?: string;
   /** Called after every case so a long live run reports as it goes. */
   onCase?: (summary: CaseRunSummary) => void;
+  /** Called with every raw observation. Triage aid — never asserted. */
+  onObservation?: (c: CorpusCase, o: CorpusObservation) => void;
 }
 
 export async function runCorpus(
@@ -70,7 +73,9 @@ export async function runCorpus(
       // model calls should never hinge on one malformed fixture.
       let grade;
       try {
-        grade = gradeCase(c, await pipeline.run(ctx, c, opts.mode));
+        const observation = await pipeline.run(ctx, c, opts.mode);
+        opts.onObservation?.(c, observation);
+        grade = gradeCase(c, observation);
       } catch (err) {
         summary.classifications.push("error");
         const msg = `harness error: ${(err as Error).message}`;

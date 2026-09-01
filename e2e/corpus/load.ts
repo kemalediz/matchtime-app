@@ -151,6 +151,20 @@ export function parseCorpus(body: string): CorpusCase[] {
     if (!anyStub && parsed.stubKind !== undefined) {
       bad(at, "`stubKind` set but no message carries a `stub` verdict");
     }
+    // A case with no stub never runs in CI. "46 cases" must not be
+    // allowed to imply "46 cases in CI", so every exemption is argued
+    // case by case rather than left as a silent default.
+    if (!anyStub && (typeof parsed.liveOnlyReason !== "string" || !parsed.liveOnlyReason.trim())) {
+      bad(
+        at,
+        "carries no `stub` verdict, so it can never run in CI — set `liveOnlyReason` explaining " +
+          "what a stub would destroy (usually: the assertion IS the model's classification, or " +
+          "the asserted text is model-authored)",
+      );
+    }
+    if (anyStub && parsed.liveOnlyReason !== undefined) {
+      bad(at, "`liveOnlyReason` set on a case that DOES carry stub verdicts");
+    }
 
     const exp = parsed.expect;
     if (!isRecord(exp)) bad(at, "missing `expect`");
