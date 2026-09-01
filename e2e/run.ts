@@ -54,7 +54,13 @@ import {
   assertAppPortAvailable,
   inspectDbPort,
 } from "./helpers/preflight";
-import { assertLiveLlmReady, assertSeamMatchesMode, describeProbe, isLiveRun } from "./helpers/live-llm";
+import {
+  LIVE_ENV_FLAG,
+  assertLiveLlmReady,
+  assertSeamMatchesMode,
+  describeProbe,
+  isLiveRun,
+} from "./helpers/live-llm";
 import { AnthropicMeter } from "./replay/meter";
 
 /**
@@ -93,17 +99,16 @@ class NotActuallyLiveError extends Error {
 /**
  * The self-describing half. A live run says, in its own output, exactly
  * how much model it used — and if the answer is "none", the run fails
- * no matter what Playwright reported.
- *
- * `passedButNeverCalled` is the precise shape of the false green: a
- * green tick over a sweep that never left the machine.
+ * no matter what Playwright reported. Zero calls plus a green Playwright
+ * is the exact shape of the false green: a passing tick over a sweep
+ * that never left the machine.
  */
 function assertMeterSawTraffic(meter: AnthropicMeter, playwrightExitCode: number): void {
   const calls = meter.all;
   if (calls.length === 0) {
     const skipped = playwrightExitCode === 0;
     throw new NotActuallyLiveError(
-      `e2e: this run declared ${"MT_SIM_LIVE_LLM"}=1 but made ZERO calls to the model.\n` +
+      `e2e: this run declared ${LIVE_ENV_FLAG}=1 but made ZERO calls to the model.\n` +
         (skipped
           ? `  Playwright exited 0, so this would otherwise have been reported as a passing ` +
             `LIVE sweep. It measured nothing.\n`

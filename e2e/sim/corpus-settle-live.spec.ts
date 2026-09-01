@@ -33,7 +33,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { loadCorpus } from "../corpus/load";
 import { CurrentAnalyzerPipeline } from "../corpus/current-analyzer-pipeline";
 import { gradeCase, type CorpusCase } from "../corpus/grade";
-import { describeReach, liveReachFailure, readReach } from "../helpers/live-llm";
+import { describeReach, liveReachFailure, reachWatermark, readReach } from "../helpers/live-llm";
 import { runsForHalfWidth, wilson } from "../replay/floor";
 import { outSafetyNetSignals } from "../../src/lib/out-safety-net";
 
@@ -76,6 +76,7 @@ interface RunRecord {
     );
     const c: CorpusCase = matches[0];
     const pipeline = new CurrentAnalyzerPipeline();
+    const since = await reachWatermark(db);
 
     const records: RunRecord[] = [];
     for (let i = 1; i <= RUNS; i++) {
@@ -106,7 +107,7 @@ interface RunRecord {
     const passes = records.filter((r) => r.passed).length;
     const rate = passes / RUNS;
     const ci = wilson(passes, RUNS);
-    const reach = await readReach(db);
+    const reach = await readReach(db, since);
 
     const lines: string[] = [];
     lines.push(`══ SETTLE ${c.id} — ${LABEL} ══════════════════════════════`);

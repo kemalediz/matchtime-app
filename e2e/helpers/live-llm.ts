@@ -468,10 +468,25 @@ export interface ReachDb {
   all<T>(sql: string, params?: unknown[]): Promise<T[]>;
 }
 
-export async function readReach(db: ReachDb): Promise<ReachSummary> {
-  const rows = await db.all<ReachRow>(
-    `SELECT reasoning, "handledBy" FROM "AnalyzedMessage"`,
-  );
+/**
+ * A watermark to read reach FROM, taken from the DATABASE's clock so no
+ * clock skew can shift it. Call it before the sweep starts: not every
+ * live spec truncates first (the replay sweep does not), and rows left
+ * behind by an earlier STUBBED run would otherwise be counted as this
+ * run's stubbed verdicts and fail it for the wrong reason.
+ */
+export async function reachWatermark(db: ReachDb): Promise<string> {
+  const rows = await db.all<{ now: string }>(`SELECT now()::text AS now`);
+  return rows[0]?.now ?? new Date(0).toISOString();
+}
+
+export async function readReach(db: ReachDb, since?: string): Promise<ReachSummary> {
+  const rows = since
+    ? await db.all<ReachRow>(
+        `SELECT reasoning, "handledBy" FROM "AnalyzedMessage" WHERE "createdAt" >= $1::timestamptz`,
+        [since],
+      )
+    : await db.all<ReachRow>(`SELECT reasoning, "handledBy" FROM "AnalyzedMessage"`);
   return summariseReach(rows);
 }
 
@@ -482,9 +497,9 @@ export async function readReach(db: ReachDb): Promise<ReachSummary> {
  */
 export async function assertLiveSweepReachedModel(
   db: ReachDb,
-  opts: { maxOfflineRate?: number } = {},
+  opts: { maxOfflineRate?: number; since?: string } = {},
 ): Promise<ReachSummary> {
-  const summary = await readReach(db);
+  const summary = await readReach(db, opts.since);
   const failure = liveReachFailure(summary, opts);
   if (failure) throw new Error(failure);
   return summary;

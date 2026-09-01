@@ -40,7 +40,7 @@ import { AnthropicMeter, NULL_METER } from "../replay/meter";
 import { renderReport, renderTriage } from "../replay/report";
 import { runSweep } from "../replay/sweep";
 import type { ReconstructionStats, ReplayCase } from "../replay/types";
-import { describeReach, liveReachFailure, readReach } from "../helpers/live-llm";
+import { describeReach, liveReachFailure, reachWatermark, readReach } from "../helpers/live-llm";
 
 const OUT = path.join(process.cwd(), ".e2e", "replay");
 const CASES_FILE = path.join(OUT, "cases.json");
@@ -100,6 +100,10 @@ test.describe("history replay sweep", () => {
     }
 
     const db = testDb();
+    // The replay spec does NOT truncate first, so reach has to be read
+    // from a watermark: AnalyzedMessage rows a previous STUBBED run left
+    // behind would otherwise be counted as this sweep's.
+    const since = await reachWatermark(db);
     const started = Date.now();
     // A candidate comparison is only meaningful against the incumbent's
     // own floor: §10 step 3's "≤2%" is not an absolute if the current
@@ -136,7 +140,7 @@ test.describe("history replay sweep", () => {
     // all-silent pipelines agree with each other perfectly, 0%
     // disagreement, green tick. Same hole as the corpus sweep, same
     // read-back off AnalyzedMessage.reasoning. See helpers/live-llm.ts.
-    const reach = await readReach(db);
+    const reach = await readReach(db, since);
     console.log(describeReach(reach));
 
     const dir = path.join(OUT, result.runId);
