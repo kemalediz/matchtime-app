@@ -112,7 +112,7 @@ export function compose(result: EngineResult): ComposedOutput {
         const need = Math.max(0, state.maxPlayers - confirmed.length);
         const head =
           s.statedCount !== null && s.statedCount !== confirmed.length
-            ? `Not quite — we're ${confirmed.length}/${state.maxPlayers} for ${state.kickoffLabel}`
+            ? `Not quite, we're ${confirmed.length}/${state.maxPlayers} for ${state.kickoffLabel}`
             : `We're ${confirmed.length}/${state.maxPlayers} for ${state.kickoffLabel}`;
         const tail = need > 0 ? `, need ${need} more 🙏` : " ✅ full squad.";
         utterances.push({ messageId: s.messageId, text: `${head}${tail}` });
@@ -265,7 +265,7 @@ export function compose(result: EngineResult): ComposedOutput {
         // wording stays where it lives.
         utterances.push({
           messageId: s.messageId,
-          text: `A slot just opened 🎟 ${joinList(bench)} — first to say IN takes it, nobody gets dropped.`,
+          text: `A slot just opened 🎟 ${joinList(bench)}, first to say IN takes it. Nobody gets dropped.`,
         });
         break;
 
