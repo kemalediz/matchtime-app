@@ -18,10 +18,11 @@
  *     low-frequency events at amateur-league cadence.
  *
  * Scope:
- *   - Per-match detail: ALL completed non-historical matches for the
- *     org, oldest first. The per-match block grows linearly with
- *     match count; at ~50 matches we'd want to roll up the older
- *     tail. Not a today problem.
+ *   - Per-match detail: the most recent RECENT_MATCH_DETAIL_LIMIT
+ *     completed non-historical matches, rendered oldest first. It used
+ *     to be ALL of them with no `take:` — see that constant for why
+ *     that was a real cost bug and why bounding it needed two queries
+ *     rather than one `take:`.
  *   - MoM leaderboard: includes historical backfilled votes (their
  *     whole point) — `Match.isHistorical = true` only excludes the
  *     match-row itself from the per-match list, not the votes
@@ -65,6 +66,36 @@ export interface RecentHistory {
   eloBottom: LeaderboardRow[];
 }
 
+/**
+ * How many completed matches get a per-match DETAIL row in the prompt.
+ *
+ * Why a bound at all: these rows live in the analyzer's user message
+ * first content block, which carries `cache_control: {ttl: "1h"}`
+ * (`message-analyzer.ts`). With no `take:` the club's whole match list
+ * was re-sent on every batch — ~52 rows a year at Sutton's weekly
+ * cadence, growing for the life of the club, in a segment that is also
+ * re-WRITTEN at 2× price every time a match completes. Flagged as an
+ * unbounded cached prefix in analyzer-redesign-2026-08-31.md §8.1.
+ *
+ * Why 20 and not 10: the rows answer recency questions — "who got MoM
+ * last week?", "the score last Tuesday", "the last 3 matches", "who's
+ * on a hot streak?". 20 weekly matches is ~4.5 months, comfortably
+ * longer than anything a group chat means by "recent", and still only
+ * ~600 tokens. Nothing needs more, because every question that spans
+ * the club's whole history is answered from the LEADERBOARDS below,
+ * and those are deliberately NOT bounded.
+ *
+ * Why this is not simply a `take:` on the existing query: three things
+ * were derived from that one result set — these detail rows,
+ * `totalCompletedMatches`, and the attendance leaderboard's
+ * denominator. The denominator is the org's TOTAL completed matches on
+ * purpose (Kemal, 2026-05-15 — see the attendance section below), so a
+ * `take:` there would have quietly started reporting different
+ * percentages. Hence two queries: a bounded one for the detail rows, an
+ * unbounded id-only one for the aggregates.
+ */
+export const RECENT_MATCH_DETAIL_LIMIT = 20;
+
 const LEADERBOARD_LIMIT = 10;
 const ELO_BOTTOM_LIMIT = 5;
 /** Minimum matches played before a user qualifies for the Elo
@@ -72,27 +103,44 @@ const ELO_BOTTOM_LIMIT = 5;
 const ELO_BOTTOM_MIN_MATCHES = 3;
 
 export async function loadRecentHistory(orgId: string): Promise<RecentHistory | null> {
-  // 1. All completed, non-historical matches for the org. Oldest first
-  //    so the LLM reads time left-to-right.
-  const matches = await db.match.findMany({
-    where: {
-      activity: { orgId },
-      status: "COMPLETED",
-      isHistorical: false,
-    },
+  const completedWhere = {
+    activity: { orgId },
+    status: "COMPLETED" as const,
+    isHistorical: false,
+  };
+
+  // 1a. EVERY completed, non-historical match, ids only. The aggregates
+  //     below (totalCompletedMatches, the attendance leaderboard's
+  //     numerator AND denominator, matches-played for the Elo floor) are
+  //     defined over the club's whole history and must never be bounded.
+  const allCompleted = await db.match.findMany({
+    where: completedWhere,
     orderBy: { date: "asc" },
-    include: {
-      activity: {
-        select: {
-          sport: { select: { teamLabels: true } },
-        },
-      },
-    },
+    select: { id: true },
   });
 
-  if (matches.length === 0) {
+  if (allCompleted.length === 0) {
     return null;
   }
+
+  // 1b. The most recent RECENT_MATCH_DETAIL_LIMIT of them, in full, for
+  //     the per-match detail rows. Pulled newest-first so the `take:`
+  //     keeps the RECENT end, then reversed so the LLM reads time
+  //     left-to-right.
+  const matches = (
+    await db.match.findMany({
+      where: completedWhere,
+      orderBy: { date: "desc" },
+      take: RECENT_MATCH_DETAIL_LIMIT,
+      include: {
+        activity: {
+          select: {
+            sport: { select: { teamLabels: true } },
+          },
+        },
+      },
+    })
+  ).reverse();
 
   // Org-level team-label override (falls back to sport labels per slot).
   const org = await db.organisation.findUnique({
@@ -100,11 +148,16 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     select: { teamLabels: true },
   });
 
-  const matchIds = matches.map((m) => m.id);
+  /** Every completed match — the aggregates' scope. */
+  const allCompletedIds = allCompleted.map((m) => m.id);
+  /** Only the matches that get a detail row — the display's scope. */
+  const detailMatchIds = matches.map((m) => m.id);
 
-  // 2. MoM votes for these matches — uses the shared helper so
-  //    tie-handling matches the dashboard's display.
-  const momSummaries = await getMomSummaries(matchIds);
+  // 2. MoM votes for the matches we actually render — uses the shared
+  //    helper so tie-handling matches the dashboard's display. The
+  //    all-time MoM leaderboard is computed separately, in step 3, over
+  //    every match the org has.
+  const momSummaries = await getMomSummaries(detailMatchIds);
 
   const recentMatches: RecentMatchRow[] = matches.map((m) => {
     const [redLabel, yellowLabel] = resolveTeamLabels(m, org, m.activity.sport);
@@ -170,7 +223,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //    since) shows 3/4 (75%) — accurately positioning him below
   //    Kemal/Idris on consistency.
   const attendanceRows = await db.attendance.findMany({
-    where: { matchId: { in: matchIds }, status: "CONFIRMED" },
+    where: { matchId: { in: allCompletedIds }, status: "CONFIRMED" },
     select: { userId: true, matchId: true },
   });
   const perPlayer = new Map<string, { count: number }>();
@@ -179,7 +232,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     if (!cur) perPlayer.set(a.userId, { count: 1 });
     else cur.count += 1;
   }
-  const totalMatches = matches.length;
+  const totalMatches = allCompleted.length;
   const attendanceUserIds = [...perPlayer.keys()];
   const attendanceUsers = await db.user.findMany({
     where: { id: { in: attendanceUserIds } },
@@ -256,7 +309,17 @@ export function formatRecentHistoryBlock(history: RecentHistory): string {
       `if the answer isn't here, say "I don't have that one yet" rather than guessing.`,
   );
   lines.push("");
-  lines.push(`Completed matches (oldest first):`);
+  // Say plainly when the per-match list is a WINDOW, not the whole
+  // history — otherwise the model answers "we've never played them"
+  // about a match that simply rolled off the end of the block. The
+  // leaderboards below still span every match, so all-time questions
+  // remain answerable.
+  const windowed = history.recentMatches.length < history.totalCompletedMatches;
+  lines.push(
+    windowed
+      ? `Completed matches (most recent ${history.recentMatches.length} of ${history.totalCompletedMatches}, oldest first — older matches are not listed here):`
+      : `Completed matches (oldest first):`,
+  );
   for (const m of history.recentMatches) {
     const dateStr = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/London",
