@@ -74,6 +74,15 @@ describe("a reply that says nothing about squad state is left alone", () => {
     expect(r.composed).toBe(false);
     expect(r.text).toBe("Kemal is in ✅");
   });
+
+  it("does not read an attendance ratio in a stats answer as a squad count", () => {
+    // "3/5" here is Sait's record, not the squad. Judging it as a count
+    // would replace the leaderboard with a squad post — a worse version
+    // of the 2026-05-14 bug the leaderboard exclusion exists for.
+    const stats = "Most consistent:\n1. Kemal Ediz — 5/5 (100%)\n2. Sait Demir — 3/5 (60%)";
+    expect(contradictsSquadState(stats, truth)).toBe(false);
+    expect(composeSquadStateReply(stats, truth).composed).toBe(false);
+  });
 });
 
 describe("a model-authored roster is replaced, never patched (Wasim's drop, ef8d801, 2026-04-26)", () => {

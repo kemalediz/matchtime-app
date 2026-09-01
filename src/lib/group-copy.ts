@@ -242,6 +242,17 @@ function statusOfClaimedName(name: string, truth: SquadTruth): ClaimedStatus | n
  * database, not the model, gets to describe the squad.
  */
 export function contradictsSquadState(text: string, truth: SquadTruth): boolean {
+  // A stats answer's numbers are not squad claims. "Kemal — 4/14 (29%)"
+  // is an attendance record, and on a 14-a-side match the count check
+  // below would read it as a squad count that disagrees with the rows —
+  // and then replace a leaderboard with a squad post, which is a worse
+  // version of the 2026-05-14 bug this whole exclusion exists for.
+  // Move claims are still judged: they are about a named person's row
+  // and mean the same thing wherever they appear.
+  const isStatsAnswer = text
+    .split("\n")
+    .some((l) => /^\s*\d+\.\s+\S/.test(l) && isLeaderboardLine(l));
+
   for (const [re, claimed] of MOVE_CLAIM_PATTERNS) {
     re.lastIndex = 0;
     for (const m of text.matchAll(re)) {
@@ -252,6 +263,7 @@ export function contradictsSquadState(text: string, truth: SquadTruth): boolean 
       if (actual !== claimed) return true;
     }
   }
+  if (isStatsAnswer) return false;
   // A count against this match's capacity, e.g. "we're still 13/14".
   const countRe = new RegExp(`\\b(\\d+)\\s*/\\s*${truth.maxPlayers}\\b`, "g");
   for (const m of text.matchAll(countRe)) {
