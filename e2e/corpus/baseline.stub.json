@@ -13,7 +13,7 @@
     "S8-salman-admin-demote-to-bench": "pass",
     "S9-aydin-promote-from-bench-no-hedge": "fail",
     "S11-erdal-conditional-drop-holds": "pass",
-    "S12-mojib-replacement-request-drops-sender": "fail",
+    "S12-mojib-replacement-request-drops-sender": "pass",
     "S2b-untagged-third-party-drop-is-gated": "pass",
     "S12b-kemal-chase-nudge-is-not-a-drop": "pass",
     "S13-third-party-nomination-cannot-claim-slot": "pass",
