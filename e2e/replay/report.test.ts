@@ -27,6 +27,7 @@ const stats: ReconstructionStats = {
 const agreed: CaseDiff = {
   key: "k1",
   agree: true,
+  differsOn: { attendance: false, members: false, benchOffers: false, score: false, teams: false },
   classes: [],
   primary: null,
   writesOld: { attendance: [], newMembers: [], benchOffersDelta: 0, score: null, teams: [] },
@@ -45,6 +46,7 @@ const spurious: CaseDiff = {
   ...agreed,
   key: "k2",
   agree: false,
+  differsOn: { attendance: true, members: false, benchOffers: false, score: false, teams: false },
   classes: ["spurious_write"],
   primary: "spurious_write",
   onlyNew: [{ name: "Gina Gale", from: "ABSENT", to: "CONFIRMED" }],

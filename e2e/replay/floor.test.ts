@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   compareToFloor,
   discriminates,
+  looksLikePastedRoster,
   runsForHalfWidth,
   summariseFloor,
   wilson,
@@ -19,7 +20,11 @@ import {
 import type { CaseDiff, DisagreementClass } from "./diff";
 import type { ReplayCase } from "./types";
 
-function diff(key: string, classes: DisagreementClass[]): CaseDiff {
+function diff(
+  key: string,
+  classes: DisagreementClass[],
+  differsOn: Partial<CaseDiff["differsOn"]> = { attendance: classes.length > 0 },
+): CaseDiff {
   const empty = { attendance: [], newMembers: [], benchOffersDelta: 0, score: null, teams: [] };
   const speech = {
     spoke: false, posts: 0, dms: 0, reacted: false,
@@ -28,6 +33,10 @@ function diff(key: string, classes: DisagreementClass[]): CaseDiff {
   return {
     key,
     agree: classes.length === 0,
+    differsOn: {
+      attendance: false, members: false, benchOffers: false, score: false, teams: false,
+      ...differsOn,
+    },
     classes,
     primary: classes[0] ?? null,
     writesOld: empty,
@@ -90,9 +99,9 @@ describe("summariseFloor", () => {
   ];
   const diffs = [
     diff("k1", []),
-    diff("k2", ["divergent_write"]),
-    diff("k3", ["divergent_write"]),
-    diff("k4", ["speech_only"]),
+    diff("k2", ["divergent_write"], { attendance: true }),
+    diff("k3", ["divergent_write"], { attendance: true }),
+    diff("k4", ["speech_only"], {}),
   ];
 
   it("separates chattiness from a player being in or out on luck", () => {
@@ -103,6 +112,28 @@ describe("summariseFloor", () => {
     // The one that matters: writes, not wording.
     expect(f.writeLevel.count).toBe(2);
     expect(f.writeLevel.rate).toBeCloseTo(0.5, 5);
+  });
+
+  it("does NOT let a different-but-valid team split inflate the squad-place risk", () => {
+    // The balancer has ties. Two runs allocating the same 14 players to
+    // teams differently is not a player losing a place, and reporting it
+    // as one would overstate exactly the number step 3 turns on.
+    const f = summariseFloor(
+      [diff("t1", ["divergent_write"], { teams: true }), diff("t2", [])],
+      [rcase("t1", "generate_teams_request"), rcase("t2", "noise")],
+    );
+    expect(f.writeLevel.count).toBe(1);
+    expect(f.squadPlace.count).toBe(0);
+    expect(f.teamsOnly.count).toBe(1);
+  });
+
+  it("counts the write-level disagreements whose batch pastes a roster list", () => {
+    const withList = rcase("k9", "noise");
+    withList.case.messages = [
+      { from: { name: "A", phone: "" }, body: "9pm Thursday:\n1. Ehtisham\n2. Amir\n3. Martin\n4. Adam\n5. Mo" },
+    ];
+    const f = summariseFloor([diff("k9", ["spurious_write"], { attendance: true })], [withList]);
+    expect(f.pastedRosterCount).toBe(1);
   });
 
   it("says WHERE the write-level noise clusters, not just how much", () => {
@@ -158,5 +189,20 @@ describe("runsForHalfWidth", () => {
     const n = runsForHalfWidth(0.025, 0.01);
     expect(n).toBeGreaterThan(500);
     expect(runsForHalfWidth(0.025, 0.02)).toBeLessThan(n);
+  });
+});
+
+describe("looksLikePastedRoster", () => {
+  it("recognises the shape that carried every attendance-level disagreement", () => {
+    expect(
+      looksLikePastedRoster(
+        "In sha Allah 9pm Thursday 11 June:\n\n1. Ehtisham\n2. Amir\n3. Martin\n4. Adam\n5. Mo",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not fire on ordinary chat", () => {
+    expect(looksLikePastedRoster("in")).toBe(false);
+    expect(looksLikePastedRoster("I can do 1. or 2. tonight")).toBe(false);
   });
 });

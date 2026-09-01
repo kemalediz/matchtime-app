@@ -117,9 +117,23 @@ export interface Adjudication {
   at?: string;
 }
 
+/**
+ * WHICH write surface the two runs differ on. A different team split is
+ * not the same danger as a player gaining or losing a squad place, and
+ * collapsing them into one "write-level" number overstates the risk.
+ */
+export interface DiffersOn {
+  attendance: boolean;
+  members: boolean;
+  benchOffers: boolean;
+  score: boolean;
+  teams: boolean;
+}
+
 export interface CaseDiff {
   key: string;
   agree: boolean;
+  differsOn: DiffersOn;
   classes: DisagreementClass[];
   primary: DisagreementClass | null;
   writesOld: WriteSet;
@@ -267,6 +281,7 @@ export function diffRun(
     return {
       key,
       agree: false,
+      differsOn: { attendance: false, members: false, benchOffers: false, score: false, teams: false },
       classes: [...classes],
       primary: "error",
       writesOld: EMPTY_WRITES,
@@ -314,12 +329,18 @@ export function diffRun(
   }
   if (conflicting.length) classes.add("divergent_write");
 
-  const scoreOld = JSON.stringify(writesOld.score);
-  const scoreNew = JSON.stringify(writesNew.score);
-  if (scoreOld !== scoreNew) classes.add("divergent_write");
-  if (JSON.stringify(writesOld.teams) !== JSON.stringify(writesNew.teams)) {
-    classes.add("divergent_write");
-  }
+  const scoreDiffers = JSON.stringify(writesOld.score) !== JSON.stringify(writesNew.score);
+  const teamsDiffer = JSON.stringify(writesOld.teams) !== JSON.stringify(writesNew.teams);
+  if (scoreDiffers) classes.add("divergent_write");
+  if (teamsDiffer) classes.add("divergent_write");
+
+  const differsOn: DiffersOn = {
+    attendance: onlyOld.length > 0 || onlyNew.length > 0 || conflicting.length > 0,
+    members: membersOnlyOld.length > 0 || membersOnlyNew.length > 0,
+    benchOffers: writesOld.benchOffersDelta !== writesNew.benchOffersDelta,
+    score: scoreDiffers,
+    teams: teamsDiffer,
+  };
 
   const speechOld = speechOf(oldRun.observation, roster);
   const speechNew = speechOf(newRun.observation, roster);
@@ -337,6 +358,7 @@ export function diffRun(
   return {
     key,
     agree: ordered.length === 0,
+    differsOn,
     classes: ordered,
     primary: ordered[0] ?? null,
     writesOld,

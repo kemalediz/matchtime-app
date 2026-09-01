@@ -170,7 +170,15 @@ export function renderReport(
     }
     L.push(
       `    ${"WRITE-LEVEL".padEnd(20)} ${String(floor.writeLevel.count).padStart(3)}  ` +
-        `${ci(floor.writeLevel)}   <- the one that gates §10 step 3`,
+        `${ci(floor.writeLevel)}`,
+    );
+    L.push(
+      `    ${"  of which SQUAD PLACE".padEnd(20)} ${String(floor.squadPlace.count).padStart(3)}  ` +
+        `${ci(floor.squadPlace)}   <- the one that gates §10 step 3`,
+    );
+    L.push(
+      `    ${"  of which TEAM SPLIT".padEnd(20)} ${String(floor.teamsOnly.count).padStart(3)}  ` +
+        `${ci(floor.teamsOnly)}   (the balancer has ties; a different valid split is not a lost place)`,
     );
     L.push("");
     L.push(
@@ -191,13 +199,28 @@ export function renderReport(
       )) {
         L.push(`    ${intent.padEnd(24)} ${n}`);
       }
+      if (floor.pastedRosterCount > 0) {
+        L.push(
+          `    ${floor.pastedRosterCount} of ${floor.writeLevel.count} write-level disagreements ` +
+            `come from a batch containing a PASTED NUMBERED ROSTER LIST — the same list registering ` +
+            `a different subset of names on two runs of the identical world.`,
+        );
+      }
+      const shapeShare = floor.writeLevel.count
+        ? floor.pastedRosterCount / floor.writeLevel.count
+        : 0;
       L.push(
-        `    concentration: ${pct(floor.writeClusterConcentration)} of write-level noise sits in ` +
-          `one intent — ${
-            floor.writeClusterConcentration >= 0.6
-              ? "a CLUSTER, which is a named defect worth its own PR, not background noise"
-              : "spread out, which reads as background non-determinism"
-          }`,
+        `    by intent: ${pct(floor.writeClusterConcentration)} in the biggest intent bucket. ` +
+          `by SHAPE: ${pct(shapeShare)} paste a roster list.`,
+      );
+      L.push(
+        `    → ${
+          shapeShare >= 0.6 || floor.writeClusterConcentration >= 0.6
+            ? "a CLUSTER, which is a named defect worth its own PR, not background noise. Note the " +
+              "cluster is a message SHAPE, not an intent label — production's own labels scatter " +
+              "these across noise/in/generate_teams_request and would have hidden it."
+            : "spread out, which reads as background non-determinism"
+        }`,
       );
       L.push(`    keys: ${floor.writeLevelKeys.join(", ")}`);
     }
@@ -207,14 +230,14 @@ export function renderReport(
     const bar = MISSED_WRITE_RATE_TARGET;
     L.push(
       `    §10 step 3's ≤${pct(bar)} write bar ${
-        discriminates(floor.writeLevel.ci95, bar)
-          ? "CAN discriminate: the incumbent's own write-level floor sits entirely below it."
-          : `CANNOT discriminate at this sample size: the incumbent's own write-level floor ` +
-            `reaches ${pct(floor.writeLevel.ci95[1])}, above the bar. A candidate scoring exactly ` +
+        discriminates(floor.squadPlace.ci95, bar)
+          ? "CAN discriminate: the incumbent's own squad-place floor sits entirely below it."
+          : `CANNOT discriminate at this sample size: the incumbent's own squad-place floor ` +
+            `reaches ${pct(floor.squadPlace.ci95[1])}, above the bar. A candidate scoring exactly ` +
             `${pct(bar)} could not be told apart from the pipeline we already ship.`
       }`,
     );
-    const near = Math.max(floor.writeLevel.rate, 0.01);
+    const near = Math.max(floor.squadPlace.rate, 0.01);
     const want = runsForHalfWidth(near, 0.01);
     L.push(
       `    for a ±1.0pp interval on a rate near ${pct(near)} you need ~${want} replays ` +
@@ -234,11 +257,11 @@ export function renderReport(
     L.push("");
     L.push("candidate vs the incumbent's own floor (the criteria are RELATIVE, not absolute)");
     L.push(
-      `  candidate write-level divergence ${pct(floor.writeLevel.rate)} against an incumbent floor ` +
-        `of ${pct(priorFloor.writeLevel.rate)} 95% CI [${pct(priorFloor.writeLevel.ci95[0])}, ` +
-        `${pct(priorFloor.writeLevel.ci95[1])}] → ${compareToFloor(
-          floor.writeLevel.rate,
-          priorFloor.writeLevel,
+      `  candidate squad-place divergence ${pct(floor.squadPlace.rate)} against an incumbent floor ` +
+        `of ${pct(priorFloor.squadPlace.rate)} 95% CI [${pct(priorFloor.squadPlace.ci95[0])}, ` +
+        `${pct(priorFloor.squadPlace.ci95[1])}] → ${compareToFloor(
+          floor.squadPlace.rate,
+          priorFloor.squadPlace,
         ).toUpperCase()}`,
     );
     L.push(
