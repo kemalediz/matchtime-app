@@ -41,6 +41,7 @@ import {
   type PromoteRegisterEntry,
 } from "../promote-authorization";
 import { shouldAskForGuestName } from "../guest-name-ask";
+import { RECRUIT_COMMAND_IMPLIES_ADDRESSED } from "../recruit-request";
 import { resolvePerson } from "./identity";
 import type {
   AttendanceFacts,
@@ -263,10 +264,30 @@ export function decide(input: EngineInput): EngineResult {
       }
 
       // ── The interaction contract, unchanged in meaning (§13) ─────────
+      //
+      // Including PR #33's one deliberate widening, reused rather than
+      // re-decided: an ADMIN's recruit command is a direct instruction
+      // to MatchTime, so the rest of that same message is addressed to
+      // it too. That is what the 2026-09-01 incident turned on — the bot
+      // acted on the recruit half of an untagged message and treated the
+      // drop in the sentence before it as overheard banter. Both
+      // pipelines now read the same constant, so flipping
+      // RECRUIT_COMMAND_IMPLIES_ADDRESSED reverts both together.
+      const senderIsAdmin =
+        !!msg.senderUserId && !!w.roster.find((m2) => m2.userId === msg.senderUserId)?.isAdmin;
+      const addressedByRecruit =
+        RECRUIT_COMMAND_IMPLIES_ADDRESSED &&
+        senderIsAdmin &&
+        facts.sideRequests.includes("recruit");
       const gate = toGateVerdict(claims, facts);
-      if (actionRequiresTag(gate) && !msg.tagged) {
+      if (actionRequiresTag(gate) && !msg.tagged && !addressedByRecruit) {
         out.reasons.push("requires an @Match Time tag (interaction contract)");
         return;
+      }
+      if (addressedByRecruit && !msg.tagged) {
+        out.reasons.push(
+          "untagged, but an admin's recruit command addresses MatchTime (PR #33)",
+        );
       }
 
       if (!state.matchId) {
@@ -438,8 +459,6 @@ export function decide(input: EngineInput): EngineResult {
       if (targets.length === 0) return;
 
       // ── Authorisation for the privileged moves ──────────────────────
-      const senderIsAdmin =
-        !!msg.senderUserId && !!w.roster.find((m2) => m2.userId === msg.senderUserId)?.isAdmin;
       const promoteEntries: PromoteRegisterEntry[] = targets.map((t) => ({
         userId: t.userId,
         action: polarityToAction(t.claim.polarity),

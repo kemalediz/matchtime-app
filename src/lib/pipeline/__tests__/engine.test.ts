@@ -1921,3 +1921,103 @@ describe("value clamps degrade rather than silently altering a number", () => {
     expect(r.outcomes[0].reasons.join(" ")).toMatch(/already recorded/i);
   });
 });
+
+describe("PR#33 · an admin's recruit command addresses MatchTime", () => {
+  const world10 = () =>
+    world({
+      players: [
+        "kemal",
+        "elvin",
+        "sait",
+        "mustafa",
+        "abid",
+        "idris",
+        "faris",
+        "shaz",
+        "adam",
+        "najib",
+        "zair",
+      ],
+      confirmed: [
+        "kemal",
+        "elvin",
+        "sait",
+        "mustafa",
+        "abid",
+        "idris",
+        "faris",
+        "shaz",
+        "adam",
+        "najib",
+      ],
+    });
+
+  const facts = () =>
+    attendanceFacts(
+      [claim({ subject: "other", personRef: "Najib", personNamed: true, polarity: "out" })],
+      { sideRequests: ["recruit"] },
+    );
+
+  it("drops the named player from the SAME untagged message (2026-09-01)", () => {
+    // The incident: the bot acted on the recruit half of an untagged
+    // admin message and treated the drop in the sentence before it as
+    // overheard banter, then told the owner his squad was full moments
+    // after he said someone was out. PR #33's widening is reused here,
+    // not re-decided, so one constant reverts both pipelines.
+    const r = decide({
+      now: NOW,
+      state: world10(),
+      messages: [
+        msg({
+          from: "kemal",
+          body: "Najib is out. We need one more player.\n\nCan someone pls come forward",
+          route: "other_att",
+          tagged: false,
+          facts: facts(),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "najib")).toBe("DROPPED");
+    expect(confirmedCount(r.nextState)).toBe(9);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/recruit command addresses/i);
+  });
+
+  it("does NOT widen the gate for a non-admin", () => {
+    const r = decide({
+      now: NOW,
+      state: world10(),
+      messages: [
+        msg({
+          from: "zair",
+          body: "Najib is out. Can someone come forward",
+          route: "other_att",
+          tagged: false,
+          facts: facts(),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "najib")).toBe("CONFIRMED");
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/tag/i);
+  });
+
+  it("does NOT widen the gate for an admin with no recruit ask", () => {
+    // "Whether THAT should change is a separate decision and is not taken
+    // here" — recruit-request.ts, on Wasim's 10:09 message the same day.
+    const r = decide({
+      now: NOW,
+      state: world10(),
+      messages: [
+        msg({
+          from: "kemal",
+          body: "Najib has hurt his foot unfortunately",
+          route: "other_att",
+          tagged: false,
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Najib", personNamed: true, polarity: "out" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "najib")).toBe("CONFIRMED");
+  });
+});
