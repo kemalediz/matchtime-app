@@ -135,6 +135,13 @@ order and later turns see earlier ones as history), `stub`.
   would contain the answer; or a stub is structurally impossible (a reminder
   verdict carries an absolute date the server clamps to `now+60d`).
 
+**For a prompt-only fix, the live result is the authority.** A `corrected` stub is
+a guess at what the model emits, and when the original fix changed only the prompt
+(`c85a23c`, `a5a150a`) that guess is guessing the answer. S9 and S28 fail stubbed
+and pass live 3/3 for exactly this reason: the hand-written verdict asked the apply
+path for something the real model never requests. Treat a stubbed failure on a
+prompt-only fix as a question about the stub, not a finding about production.
+
 **Do not "record" stubs from a live run.** The model is non-deterministic, so one
 sample pins whatever it happened to emit — and §4.1 of the redesign doc measured
 the Amir case emitting the ghost `registerFor: [{name: "Amir's brother"}]` on six
