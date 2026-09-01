@@ -201,8 +201,16 @@ export function isPastedRoster(body: string | null | undefined): boolean {
   return parsePastedRoster(body) !== null;
 }
 
-function firstToken(s: string): string {
-  return s.split(" ")[0] ?? "";
+/** `normaliseName` folds case, accents and invisible characters; this
+ *  also folds the punctuation a handle carries, so the list's
+ *  "Yusuf.i" and the model's "Yusuf" are comparable. Observed on
+ *  2026-06-10: the model paraphrased the slot and the write slipped the
+ *  clamp, provisioning a ghost member named "Yusuf". */
+function tokens(s: string): string[] {
+  return normaliseName(s)
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(" ")
+    .filter(Boolean);
 }
 
 /**
@@ -220,17 +228,17 @@ export function rosterMentions(
   roster: PastedRoster,
   candidate: string | null | undefined,
 ): boolean {
-  const c = normaliseName(candidate ?? "");
-  if (!c) return false;
-  const cHead = firstToken(c);
+  const c = tokens(candidate ?? "");
+  if (c.length === 0) return false;
 
   for (const entry of [...roster.entries, ...roster.reserves]) {
     if (!entry.name) continue;
-    const e = normaliseName(entry.name);
-    if (!e) continue;
-    if (e === c) return true;
-    const eHead = firstToken(e);
-    if (eHead.length >= 2 && cHead.length >= 2 && (eHead === c || e === cHead)) return true;
+    const e = tokens(entry.name);
+    if (e.length === 0) continue;
+    if (e.join(" ") === c.join(" ")) return true;
+    // First names must MATCH, not merely share a prefix: "Adam" is a
+    // slot, "Adamu" is a different person.
+    if (e[0].length >= 2 && c[0].length >= 2 && e[0] === c[0]) return true;
   }
   return false;
 }

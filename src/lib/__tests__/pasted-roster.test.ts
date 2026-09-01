@@ -224,6 +224,15 @@ describe("rosterMentions — matching a verdict name to a slot", () => {
     expect(rosterMentions(r, "Ersin Sevindik")).toBe(true);
   });
 
+  it("matches when the model PARAPHRASES the slot's punctuation", () => {
+    // 2026-06-10, after the first cut of this clamp shipped: the list
+    // says "8. Yusuf.i", the model emitted registerFor "Yusuf", the
+    // write slipped through and provisioned a ghost member called
+    // "Yusuf". Matching has to fold the punctuation a handle carries.
+    expect(rosterMentions(r, "Yusuf")).toBe(true);
+    expect(rosterMentions(r, "Yusuf I")).toBe(true);
+  });
+
   it("does NOT match on a substring or a different first name", () => {
     expect(rosterMentions(r, "Am")).toBe(false);
     expect(rosterMentions(r, "Adamu Bello")).toBe(false);
