@@ -285,9 +285,12 @@ export function contradictsSquadState(text: string, truth: SquadTruth): boolean 
   }
   // A total that cannot be true — "15 players" on a 14-player match.
   // The old cap rewrote these numbers in place; the composer replaces
-  // the sentence that contains them.
-  for (const m of text.matchAll(/\b(\d+)\s+(?:players?|total)\b/gi)) {
-    if (Number(m[1]) > truth.maxPlayers) return true;
+  // the whole reply, so it asks for squad vocabulary too: "covered 6
+  // players" in a payment ack is not a claim about the squad.
+  if (/\b(?:squad|playing|turnout|confirmed|bench|lineup)\b/i.test(text)) {
+    for (const m of text.matchAll(/\b(\d+)\s+(?:players?|total)\b/gi)) {
+      if (Number(m[1]) > truth.maxPlayers) return true;
+    }
   }
   return false;
 }

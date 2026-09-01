@@ -3,10 +3,17 @@
  *
  * The Sutton Lads 2026-06-12 failure class: contradictory squad posts,
  * stale counts, missing bench, raw-digit "names", impossible totals and
- * hallucinated bench promotions. The server post-processors
- * (composeSquadStatusPost / enforceCanonicalRoster / promotion strips)
- * must make every squad display match the database, whatever the LLM
- * verdicts claimed.
+ * hallucinated bench promotions. Every squad display must match the
+ * database, whatever the LLM verdicts claimed.
+ *
+ * As of §10 step 4 (2026-09-01) it does so by COMPOSITION rather than
+ * correction: `composeSquadStateReply` replaces any reply that shows
+ * squad state, or claims a move the database does not support, with a
+ * post built from the rows. The post-processors these cases were
+ * written against — `enforceCanonicalRoster`,
+ * `rewriteOverconfidentPromotion` and the two promotion strips — are
+ * gone. Two cases below were re-recorded because they asserted the
+ * output of a patcher; each says so and why.
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
@@ -81,7 +88,15 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
   expect(aliceR.reply).not.toContain("5/5");
 });
 
-test("a single stale squad reply is re-canonicalised: count, slots-open and need-N prose all recomputed", async ({ request, db }) => {
+// RE-RECORDED 2026-09-01 (§10 step 4). This used to assert the output of
+// the count/slots-open/need-N PATCHER: "1 slot open" was the model's
+// "three slots open" rewritten in place. There is no patcher any more —
+// a single stale squad reply is replaced by the composed post, so the
+// stale prose is not corrected, it is gone. The assertions that mattered
+// (the truth is stated, the stale claims never surface) are kept and
+// tightened; only the expectation of surviving PROSE was dropped, and it
+// was an expectation about a mechanism that no longer exists.
+test("a single stale squad reply is replaced wholesale by the composed post", async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.post("pete", "@Match Time how many are we?", {
     tag: true,
@@ -93,11 +108,13 @@ test("a single stale squad reply is re-canonicalised: count, slots-open and need
       reasoning: "stub: stale snapshot",
     },
   });
-  expect(r.reply).toContain("4/5");
-  expect(r.reply).toContain("1 slot open");
+  expect(r.reply).toContain("*4/5*");
   expect(r.reply).toContain("need *1 more*");
+  expect(r.reply).toContain("*Playing:*");
+  expect(r.reply).toContain("*Bench (1):*");
   expect(r.reply).not.toContain("2/5");
-  expect(r.reply).not.toContain("three slots open");
+  expect(r.reply).not.toMatch(/slots? open/i);
+  expect(r.reply).not.toContain("need *3 more*");
 });
 
 test('never "5/5 with a slot open": full-squad truth wipes slot-open prose', async ({ request, db }) => {
@@ -118,7 +135,12 @@ test('never "5/5 with a slot open": full-squad truth wipes slot-open prose', asy
   expect(r.reply).not.toMatch(/slot[s]? open/i);
 });
 
-test("never a total above the cap: impossible player counts are clamped to the truth", async ({ request, db }) => {
+// RE-RECORDED 2026-09-01 (§10 step 4). The old assertion, `toContain("5
+// players")`, was the CLAMP's output — "9 players" rewritten to the cap
+// in place. A count that cannot be true is now a claim the database
+// contradicts, so the whole sentence is replaced by the composed post,
+// which states the real count in its own words.
+test("never a total above the cap: an impossible count is replaced by the real one", async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.post("alice", "@Match Time strong turnout this week?", {
     tag: true,
@@ -130,7 +152,7 @@ test("never a total above the cap: impossible player counts are clamped to the t
       reasoning: "stub: impossible total",
     },
   });
-  expect(r.reply).toContain("5 players");
+  expect(r.reply).toContain("*5/5*");
   expect(r.reply).not.toContain("9 players");
 });
 

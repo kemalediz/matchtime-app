@@ -9,7 +9,7 @@
     "S3-past-tense-never-registers": "pass",
     "S5-aydin-in-for-bench": "pass",
     "S6-najib-in-at-full-squad": "pass",
-    "S7-erdal-words-must-match-action": "fail",
+    "S7-erdal-words-must-match-action": "pass",
     "S8-salman-admin-demote-to-bench": "pass",
     "S9-aydin-promote-from-bench-no-hedge": "fail",
     "S11-erdal-conditional-drop-holds": "pass",
