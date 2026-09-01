@@ -506,6 +506,8 @@ export interface Scoreboard {
   byCategory: Record<Category, Bucket>;
   bySection: Record<string, Bucket>;
   byClassification: Record<Classification, number>;
+  /** §3.2 sections the CORPUS covers, whether or not they ran here. */
+  sectionsWithACase: string[];
   /** §3.2 sections with no case at all. A deliverable in its own right. */
   coverageGaps: string[];
   /** §10 step 3's go/no-go numbers. */
@@ -561,7 +563,15 @@ export function buildScoreboard(
     for (const k of r.classifications) byClassification[k] += 1;
   }
 
-  const coverageGaps = sections.filter((s) => (bySection[s]?.cases ?? 0) === 0);
+  // Coverage is a property of the CORPUS, not of one run: a case skipped
+  // for want of a stub verdict still covers its section. Counting only
+  // the cases that ran would have reported 26 phantom gaps in the
+  // stubbed baseline, which is exactly the kind of number that gets
+  // repeated in a funding document.
+  const covered = new Set<string>();
+  for (const r of results) for (const s of r.sections) covered.add(s);
+  const sectionsWithACase = sections.filter((s) => covered.has(s));
+  const coverageGaps = sections.filter((s) => !covered.has(s));
 
   return {
     totals: {
@@ -572,6 +582,7 @@ export function buildScoreboard(
     byCategory,
     bySection,
     byClassification,
+    sectionsWithACase,
     coverageGaps,
     criteria: {
       spuriousWriteRuns: byClassification.spurious_write,

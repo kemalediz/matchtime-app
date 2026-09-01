@@ -286,6 +286,21 @@ describe("buildScoreboard", () => {
     expect(sb.coverageGaps).toEqual(["S7", "S34"]);
   });
 
+  it("coverage is a property of the CORPUS, so a skipped case still counts as covered", () => {
+    const withSkip = [
+      ...results,
+      { caseId: "d", sections: ["S34"], category: "D" as const, runs: 0, passes: 0,
+        classifications: [], skipped: true },
+    ];
+    const sb = buildScoreboard(withSkip, { sections: ["S6", "S7", "S8", "S9", "S34"] });
+    // S34 has a case — it just did not run in this mode.
+    expect(sb.coverageGaps).toEqual(["S7"]);
+    // …but it must not inflate the pass/fail buckets.
+    expect(sb.totals.cases).toBe(3);
+    expect(sb.bySection.S34.cases).toBe(0);
+    expect(sb.sectionsWithACase).toContain("S34");
+  });
+
   it("tallies the step-3 decision criteria (spurious vs missed writes)", () => {
     const sb = buildScoreboard(results, { sections: ALL_PROMPT_SECTIONS });
     expect(sb.byClassification.spurious_write).toBe(1);

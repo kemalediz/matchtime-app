@@ -11,7 +11,6 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   ALL_PROMPT_SECTIONS,
   type AttStatus,
@@ -20,8 +19,11 @@ import {
   type CorpusMessage,
 } from "./grade";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const CORPUS_PATH = path.join(HERE, "incidents.jsonl");
+// NOT import.meta.url: this file is loaded in both CJS (Playwright's
+// transpile) and ESM (vitest) contexts, exactly like e2e/helpers/env.ts,
+// which documents the same trap. Every entry point runs from the repo
+// root and env.ts asserts it.
+export const CORPUS_PATH = path.join(process.cwd(), "e2e", "corpus", "incidents.jsonl");
 
 const CATEGORIES: Category[] = ["A", "B", "C", "D", "E"];
 const STATUSES: string[] = ["CONFIRMED", "BENCH", "DROPPED", "ABSENT"];
@@ -163,14 +165,15 @@ export function parseCorpus(body: string): CorpusCase[] {
 
     for (const a of (exp.attendance ?? []) as unknown[]) {
       if (!isRecord(a) || typeof a.player !== "string") bad(at, "expect.attendance needs a `player`");
+      const player: string = a.player;
       if (!STATUSES.includes(String(a.status))) {
         bad(at, `expect.attendance has an unknown status ${JSON.stringify(a.status)}`);
       }
-      const known = keys.has(a.player) || names.some((n) => n.toLowerCase().includes(a.player.toLowerCase()));
+      const known = keys.has(player) || names.some((n) => n.toLowerCase().includes(player.toLowerCase()));
       if (!known && !exp.allowNewMembers) {
         bad(
           at,
-          `expect.attendance names "${a.player}", who is neither a roster key nor an existing ` +
+          `expect.attendance names "${player}", who is neither a roster key nor an existing ` +
             `member — set allowNewMembers if the case really expects a new person to be created`,
         );
       }
