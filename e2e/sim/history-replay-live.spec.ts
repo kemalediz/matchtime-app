@@ -7,6 +7,10 @@
  *
  * Env:
  *   MT_REPLAY_LIMIT      cap the number of batches (the report says so, loudly)
+ *   MT_REPLAY_KEYS       comma-separated batch keys — replay ONLY these.
+ *                        For re-running the exact batches a defect was
+ *                        found on; the sampler stratifies by intent and
+ *                        cannot be asked for a named batch.
  *   MT_REPLAY_SEED       sampling seed (default 0)
  *   MT_REPLAY_RUNS       repeats per batch (default 1)
  *   MT_REPLAY_CANDIDATE  module exporting `default` = a CorpusPipeline class.
@@ -73,10 +77,33 @@ test.describe("history replay sweep", () => {
     // timeout is an interruption, not a lost run.
     test.setTimeout(num("MT_REPLAY_TIMEOUT_MS", 6 * 60 * 60 * 1000));
 
-    const { cases, stats } = JSON.parse(readFileSync(CASES_FILE, "utf8")) as {
+    const all = JSON.parse(readFileSync(CASES_FILE, "utf8")) as {
       cases: ReplayCase[];
       stats: ReconstructionStats;
     };
+    const stats = all.stats;
+
+    // MT_REPLAY_KEYS — replay only these batch keys (comma-separated).
+    // The sampler stratifies by intent, so it cannot be asked for a
+    // NAMED batch, and re-running the exact batches a defect was found
+    // on is the only way to show the defect is gone. A key that is not
+    // in the extract is an error, never a silently smaller sweep: this
+    // suite's own failure mode is a green tick on a run that measured
+    // nothing.
+    const wanted = (process.env.MT_REPLAY_KEYS ?? "")
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
+    let cases = all.cases;
+    if (wanted.length > 0) {
+      const have = new Set(cases.map((c) => c.key));
+      const missing = wanted.filter((k) => !have.has(k));
+      expect(missing, `MT_REPLAY_KEYS not present in the extract: ${missing.join(", ")}`).toEqual(
+        [],
+      );
+      cases = cases.filter((c) => wanted.includes(c.key));
+      console.log(`[replay] MT_REPLAY_KEYS: ${cases.length} named batch(es)`);
+    }
 
     const oldPipeline: CorpusPipeline = new CurrentAnalyzerPipeline();
     let newPipeline: CorpusPipeline;
