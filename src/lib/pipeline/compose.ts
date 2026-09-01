@@ -195,7 +195,11 @@ export function compose(result: EngineResult): ComposedOutput {
           alternatives: state.smallerFormats,
         });
         const viable = facts.filter((f) => f.proposal !== null);
-        const lines = [`We're ${confirmed.length}/${state.maxPlayers}, need ${need} more 🙏`];
+        const lines = [
+          need > 0
+            ? `We're ${confirmed.length}/${state.maxPlayers}, need ${need} more 🙏`
+            : `We're ${confirmed.length}/${state.maxPlayers} ✅ full squad.`,
+        ];
         if (viable.length === 0) {
           lines.push(
             state.smallerFormats.length === 0
@@ -257,17 +261,40 @@ export function compose(result: EngineResult): ComposedOutput {
         });
         break;
 
-      case "bench_offer_open":
+      case "bench_offer_open": {
         // The bench-offer copy is owned by bench-offer-copy.ts and is
         // pinned to a feature flag (inbound reaction forwarding is dead
         // on the Pi, so the 👍 instruction must not be printed). The
         // dry-run only needs to say that an offer WOULD open; the real
         // wording stays where it lives.
+        //
+        // AND it must not survive the offer. A drop opens an offer and a
+        // bench player can claim it LATER IN THE SAME BATCH, at which
+        // point announcing it contradicts the squad post that follows —
+        // the 2026-06-12 shape S36's single-post rule exists to prevent
+        // — and `bench` is empty by then, so the sentence had a dangling
+        // comma where the names should be.
+        if (bench.length === 0) break;
         utterances.push({
           messageId: s.messageId,
           text: `A slot just opened 🎟 ${joinList(bench)}, first to say IN takes it. Nobody gets dropped.`,
         });
         break;
+      }
+
+      case "bench_claim_too_late": {
+        const who = firstName(
+          state.roster.find((m) => m.userId === s.userId)?.name ?? "",
+        );
+        utterances.push({
+          messageId: s.messageId,
+          text:
+            `Thanks ${who} 🙏 someone got there first, so the squad is back to ` +
+            `${confirmed.length}/${state.maxPlayers}. You're still on the bench and ` +
+            `first in line if another slot opens.`,
+        });
+        break;
+      }
 
       case "pending_confirmed_ack": {
         const byId = new Map(state.roster.map((m) => [m.userId, m.name]));

@@ -97,9 +97,20 @@ export function normaliseRoute(raw: string): Route | null {
  * everything except the token, optional punctuation and an emoji is a
  * disqualifier.
  */
-const FLOOR_IN = /^(?:i\s*'?a?m|i\s+am|im)?\s*\+?\s*(?:in|innn+)\b/i;
+const FLOOR_IN = /^(?:i\s*'?a?m|i\s+am|im)?\s*(?:in|innn+)\b/i;
 const FLOOR_OUT = /^(?:i\s*'?a?m|i\s+am|im)?\s*(?:out|can'?t\s+make\s+it)\b/i;
-const FLOOR_PLUS = /^\+\s*[1-5]\b/;
+/**
+ * ⚠️ "+1" IS NOT IN THE FLOOR, deliberately.
+ *
+ * The first cut force-routed it `self_att`, which is the wrong subject:
+ * "+1" offers a GUEST, not the sender. The self extractor would then
+ * produce a sender claim, the guest would be lost, and PR #29's
+ * name-ask — the whole point of which is that an unnamed guest gets a
+ * question rather than a ghost user — would be bypassed on the single
+ * most common way to offer one. `guest-name-ask.ts` already classifies
+ * `+N` as a placeholder guest, so the rest of the codebase agrees.
+ * The router decides this one.
+ */
 /** Anything left after the token that is not punctuation or an emoji
  *  means this is a sentence, not a bare declaration. */
 const FLOOR_TAIL = /^[\s\p{P}\p{S}]*$/u;
@@ -161,7 +172,7 @@ function isFloorToken(word: string): boolean {
 /** Is the whole of `t` a bare IN/OUT/+N declaration and nothing else? */
 function isBareDeclaration(t: string): boolean {
   if (!t || t.length > 24) return false;
-  for (const re of [FLOOR_PLUS, FLOOR_IN, FLOOR_OUT]) {
+  for (const re of [FLOOR_IN, FLOOR_OUT]) {
     const m = re.exec(t);
     if (!m) continue;
     return FLOOR_TAIL.test(t.slice(m[0].length));

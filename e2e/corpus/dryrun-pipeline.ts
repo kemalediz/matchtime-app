@@ -287,9 +287,9 @@ async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
   }>(
     `SELECT m.id, m."redScore", m."yellowScore"
        FROM "Match" m JOIN "Activity" a ON a.id = m."activityId"
-      WHERE a."orgId" = $1 AND m.status = 'COMPLETED'
+      WHERE a."orgId" = $1 AND m.status = 'COMPLETED' AND m.date <= $2
       ORDER BY m.date DESC LIMIT 1`,
-    [grp.orgId],
+    [grp.orgId, now],
   );
 
   const participants = completed[0]
@@ -305,8 +305,9 @@ async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
        JOIN "Match" m ON m.id = att."matchId"
        JOIN "Activity" a ON a.id = m."activityId"
       WHERE a."orgId" = $1 AND m.status = 'COMPLETED' AND att.status = 'CONFIRMED'
+        AND m.date >= $2
       GROUP BY att."userId"`,
-    [grp.orgId],
+    [grp.orgId, new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)],
   );
 
   const formats = await grp.db.all<{ name: string; playersPerTeam: number }>(
@@ -351,24 +352,42 @@ async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
     features: {
       attendance: org?.featureAttendance ?? true,
       paymentTracking: org?.paymentTrackingEnabled ?? false,
-      statsQa: org?.featureStatsQa ?? true,
+      // `?? false` to match the server's `getOrgFeatures`, which
+      // returns ALL_OFF for an org it cannot read. An inverted default
+      // here would let the corpus exercise a feature production has off.
+      statsQa: org?.featureStatsQa ?? false,
     },
     smallerFormats: formats
       .map((f) => ({ sportName: f.name, totalPlayers: totalPlayersFor(f.playersPerTeam) }))
       .filter((f) => f.totalPlayers > 0 && f.totalPlayers < currentTotal),
+    // KNOWN GAP: the server reads SentNotification for PR #29's
+    // "one guest-name ask per player per match, forever" dedupe. Every
+    // corpus world is freshly built, so the honest value here is always
+    // empty — but it does mean a REGRESSION in that dedupe could not be
+    // caught by the corpus. Its own unit tests cover it.
     guestAskedUserIds: [],
   };
 }
 
+/**
+ * Mirrors `resolveTeamLabels`: each side falls back INDEPENDENTLY
+ * (match, then org, then sport, then the default). Picking the first
+ * complete pair instead gave `["Red","Yellow"]` where the server gives
+ * `["Bibs","Yellow"]` for `match=["Bibs",""], org=["Red","Yellow"]`.
+ */
 function pickLabels(
   matchLabels: string[] | null,
   orgLabels: string[] | null,
   sportLabels: string[] | null,
 ): [string, string] {
-  for (const set of [matchLabels, orgLabels, sportLabels]) {
-    if (set && set.length === 2 && set[0] && set[1]) return [set[0], set[1]];
-  }
-  return ["Red", "Yellow"];
+  const pick = (i: number): string => {
+    for (const set of [matchLabels, orgLabels, sportLabels]) {
+      const v = set?.[i]?.trim();
+      if (v) return v;
+    }
+    return i === 0 ? "Red" : "Yellow";
+  };
+  return [pick(0), pick(1)];
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

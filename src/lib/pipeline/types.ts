@@ -351,6 +351,9 @@ export type SpeechIntent =
   /** A resolved "Confirmed" whose writes were all idempotent. Saying
    *  nothing there is the silent-no-op failure in miniature. */
   | { kind: "pending_confirmed_ack"; messageId: string; userIds: string[] }
+  /** A bench player answered an open offer and the slot had already
+   *  gone. Silence there is the 2026-05-19 Karahan shape. */
+  | { kind: "bench_claim_too_late"; messageId: string; userId: string }
   /** Something failed and the bot says so rather than going quiet. */
   | { kind: "degraded"; messageId: string; reason: string };
 

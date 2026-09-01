@@ -60,13 +60,16 @@ describe("the regex floor — built new, because the old one was deleted", () =>
     ["out", "self_att"],
     ["OUT", "self_att"],
     ["i'm out", "self_att"],
-    ["+1", "self_att"],
-    ["+2", "self_att"],
   ])("%s → %s", (body, route) => {
     expect(routeFloor(body)).toBe(route);
   });
 
   it.each([
+    // "+1" offers a GUEST, not the sender, so the floor must not claim
+    // it: routing it self_att loses the guest and bypasses PR #29's
+    // name-ask on the commonest way to offer one.
+    "+1",
+    "+2",
     "Zeeshan is out 😂😂 vote him out lads",
     "anyone watching the derby tonight",
     "my brother can play if needed",

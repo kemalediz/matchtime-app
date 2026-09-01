@@ -127,11 +127,19 @@ export function decide(input: EngineInput): EngineResult {
   // Only an author's LATEST self-attendance message writes. Computed up
   // front so the superseded message still gets an outcome (it must never
   // simply disappear) with a reason saying why it did nothing.
+  //
+  // "LATEST" MEANS LATEST THAT WOULD ACTUALLY WRITE. The first cut
+  // recorded the last message CONTAINING a self claim, so any later
+  // claim the engine then declines — contingent, past, hypothetical,
+  // below the confidence floor — silently killed the earlier real one.
+  // "out" followed by "in if I finish work early" left the player
+  // CONFIRMED and said nothing: a phantom player in a paid squad, and
+  // "message understood, action silently not taken" (§9).
   const lastSelfIndexByAuthor = new Map<string, number>();
   messages.forEach((m, i) => {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
-    if (!m.facts.claims.some((c) => c.subject === "sender")) return;
+    if (!m.facts.claims.some((c) => c.subject === "sender" && wouldWrite(c))) return;
     lastSelfIndexByAuthor.set(m.senderUserId, i);
   });
 
@@ -274,7 +282,21 @@ export function decide(input: EngineInput): EngineResult {
       // 14/14 squad put Izzet on the BENCH (processed first, no room)
       // and then dropped Elnur, leaving 13 confirmed and a bench beside
       // an empty slot. OUT first, always.
-      const ordered = [...claims].sort(
+      //
+      // …but ONLY across distinct people. Applied to two claims about the
+      // same person it reversed a self-correction: "I'm in tonight.
+      // Actually no, scrap that, I'm out" sorted to [out, in] and
+      // registered someone who had just said they were out. So each
+      // person is collapsed to their LAST claim first (textual order is
+      // the correction), and only then are the survivors ordered
+      // OUT-first. That also guarantees at most one attendance write per
+      // person per message.
+      const byTarget = new Map<string, Claim>();
+      for (const c of claims) {
+        const key = c.subject === "sender" ? "@self" : c.personRef.trim().toLowerCase();
+        byTarget.set(key, c);
+      }
+      const ordered = [...byTarget.values()].sort(
         (a, b) => (a.polarity === "out" ? 0 : 1) - (b.polarity === "out" ? 0 : 1),
       );
       const targets: Target[] = [];
@@ -300,7 +322,13 @@ export function decide(input: EngineInput): EngineResult {
             degrade("sender could not be resolved to a member; no write attempted");
             continue;
           }
-          if (lastSelfIndexByAuthor.get(msg.senderUserId) !== i) {
+          // Superseded only by a LATER message that would itself write,
+          // and only for a claim that would otherwise have written. A
+          // claim the engine is going to decline anyway keeps its own
+          // honest reason ("contingent", "past") rather than being
+          // reported as superseded by something that did nothing.
+          const lastIdx = lastSelfIndexByAuthor.get(msg.senderUserId);
+          if (wouldWrite(c) && lastIdx !== undefined && lastIdx !== i) {
             out.reasons.push("superseded by a later message from the same author");
             continue;
           }
@@ -508,12 +536,40 @@ export function decide(input: EngineInput): EngineResult {
           messageId: msg.id,
         });
         if (!write) {
+          // A bench player answering an open offer when the slot has
+          // already gone gets an ANSWER, not silence. That is the
+          // 2026-05-19 Karahan shape: the bencher does what they were
+          // asked and machinery ignores them.
+          if (statusBefore === "BENCH" && c.polarity === "in" && openOffer && self) {
+            speech.push({ kind: "bench_claim_too_late", messageId: msg.id, userId: t.userId! });
+            out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+          }
           out.reasons.push(`no change for ${t.name}`);
           continue;
         }
         emit(write);
         squadChanged = true;
         out.react = out.react ?? reactFor(write.status, self);
+
+        // A player who was DROPPED and is back closes the offer that
+        // was opened for THEIR slot: it isn't vacant any more, so asking
+        // the bench to step into it makes no sense. `attendance.ts`
+        // auto-resolves exactly this (Sutton 2026-05-26: Baki was
+        // re-confirmed and the stale offer kept firing bench prompts on
+        // top of the squad-locked message).
+        if (statusBefore === "DROPPED" && t.userId && write.status !== "DROPPED") {
+          const stale = w.offers.filter((o) => o.replacingUserId === t.userId);
+          w.offers = w.offers.filter((o) => o.replacingUserId !== t.userId);
+          for (const o of stale) {
+            emit({
+              kind: "resolve_bench_offer",
+              offerId: o.id,
+              claimedByUserId: t.userId,
+              sourceMessageId: msg.id,
+              reason: `${t.name} is back, so the slot they vacated is no longer open`,
+            });
+          }
+        }
 
         // Claiming an open offer resolves it — but only when the
         // claimant actually came off the bench for it. A brand-new
@@ -684,6 +740,17 @@ export function decide(input: EngineInput): EngineResult {
         out.reasons.push("score reported by someone who neither played nor is an admin");
         return;
       }
+      if (completed.redScore !== null || completed.yellowScore !== null) {
+        // The shipped path only ever looks for an UNSCORED completed
+        // match (`route.ts` filters on redScore/yellowScore null). Without
+        // that, any later message the router calls `score` rewrites a
+        // settled result — and in step 6 it would re-run the Elo deltas.
+        out.reasons.push(
+          `the last completed match already recorded ` +
+            `${completed.redScore}-${completed.yellowScore}; not overwriting it`,
+        );
+        return;
+      }
       const red = clampScore(facts.first);
       const yellow = clampScore(facts.second);
       if (red === null || yellow === null) {
@@ -730,9 +797,19 @@ export function decide(input: EngineInput): EngineResult {
           degrade(`payment credit names "${facts.payerRef}", who does not resolve to a member`);
           return;
         }
-        const count = Math.max(0, Math.min(state.maxPlayers, Math.floor(facts.count ?? 0)));
-        if (count === 0) {
+        const count = Math.floor(facts.count ?? 0);
+        if (count <= 0) {
           degrade("payment credit with no usable player count");
+          return;
+        }
+        // Real money on a real club. §6.4's claim is that numbers are
+        // never model-authored so they cannot be wrong; THIS one is
+        // model-authored, so a figure that cannot be true is refused and
+        // said out loud rather than quietly clamped and then announced.
+        if (count > state.maxPlayers) {
+          degrade(
+            `payment credit for ${count} players exceeds the format's ${state.maxPlayers}; refusing`,
+          );
           return;
         }
         const covered: string[] = [];
@@ -822,6 +899,23 @@ export function decide(input: EngineInput): EngineResult {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Would this claim, on its own, ever produce a write?
+ *
+ * Only the vetoes that need no state: the confidence floor, tense, and
+ * the two contingency holds. Used by the state collapse so a claim the
+ * engine is going to decline cannot supersede an earlier one it would
+ * have acted on. Kept beside the rules it mirrors — if one moves, this
+ * has to move with it, and the collapse tests are what say so.
+ */
+function wouldWrite(c: Claim): boolean {
+  if (c.confidence < CONFIDENCE_FLOOR) return false;
+  if (c.tense === "past" || c.tense === "hypothetical") return false;
+  if (c.contingent && c.polarity === "out") return false;
+  if (c.contingent && c.conditionOn === "self") return false;
+  return true;
+}
 
 function polarityToAction(p: Claim["polarity"]): "IN" | "OUT" | "BENCH" {
   return p === "in" ? "IN" : p === "out" ? "OUT" : "BENCH";
@@ -966,7 +1060,15 @@ function applyClaim(args: {
     };
   }
 
-  const explicitBench = polarity === "bench";
+  // A model-supplied `bench` is only EXPLICIT when nobody attached a
+  // condition to it. `route.ts:2412-2417` makes exactly this
+  // distinction on the shipped path: a conditional_in's BENCH is
+  // "inferred", because nobody said the word "bench" — the classifier
+  // decided a standing offer was functionally one, and that is only
+  // sound when the squad is full. Treating it as explicit regenerates
+  // the 2026-08-31 incident: a bench row rendered beside four empty
+  // slots.
+  const explicitBench = polarity === "bench" && !target.claim.contingent;
   const confirmed = confirmedCount(w);
   const squadHasRoom = confirmed < state.maxPlayers;
 

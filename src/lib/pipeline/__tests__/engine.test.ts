@@ -1611,3 +1611,313 @@ describe("S13 · an offer is claimed by someone it was offered to, and only then
     expect(r.nextState.openOffers).toHaveLength(1);
   });
 });
+
+// ── Found by an adversarial review of this branch (2026-09-01) ─────────
+//
+// Three of these were blockers: a real OUT swallowed, a self-correction
+// inverted, and PR #27's bench invariant loosened. All three are the
+// same shape — a rule that is right for the case it was written for and
+// wrong one step to the side — which is precisely why the engine has to
+// be dense with tests rather than merely pure.
+
+describe("state collapse only defers to a message that would ACTUALLY write", () => {
+  it("keeps an OUT that a later CONTINGENT message would not have acted on", () => {
+    // Blocker. `lastSelfIndexByAuthor` used to record the last message
+    // CONTAINING a self claim, not the last one that produces a write,
+    // so any later claim the engine then declines (contingent, past,
+    // hypothetical, low confidence) killed the earlier real one. In
+    // production: a phantom player in a paid squad, and "message
+    // understood, action silently not taken".
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "wasim",
+          body: "out",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "out" })]),
+        }),
+        msg({
+          from: "wasim",
+          body: "in if I finish work early",
+          route: "offer",
+          facts: attendanceFacts([
+            claim({ polarity: "in", contingent: true, conditionOn: "self" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "wasim")).toBe("DROPPED");
+    expect(confirmedCount(r.nextState)).toBe(13);
+  });
+
+  it("keeps an OUT that a later PAST-TENSE message would not have acted on", () => {
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "wasim",
+          body: "out",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "out" })]),
+        }),
+        msg({
+          from: "wasim",
+          body: "gutted, I was in last week too",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "in", tense: "past" })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "wasim")).toBe("DROPPED");
+  });
+
+  it("still lets a later REAL message supersede an earlier one (S35)", () => {
+    const state = world({ confirmed: ["kemal", "elvin", "sait", "mustafa", "usama"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({ from: "usama", body: "actually I'm in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+        msg({
+          from: "usama",
+          body: "no sorry, out",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "out" })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "usama")).toBe("DROPPED");
+  });
+});
+
+describe("a self-correction inside ONE message keeps its textual order", () => {
+  it("'I'm in tonight. Actually no, scrap that, I'm out' leaves the player OUT", () => {
+    // Blocker. The OUT-first sort exists so a REPLACEMENT frees a slot
+    // before it fills it, which is always two different people. Applied
+    // to two claims about the SAME person it reversed the correction and
+    // registered someone who had just said they were out.
+    const state = world({ confirmed: FULL_14.slice(0, 5) });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "zair",
+          body: "I'm in tonight. Actually no, scrap that, I'm out",
+          route: "self_att",
+          facts: attendanceFacts([
+            claim({ polarity: "in" }),
+            claim({ polarity: "out" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "zair")).toBe("ABSENT");
+    expect(attWrites(r.writes)).toHaveLength(0);
+  });
+
+  it("emits at most one attendance write per person per message", () => {
+    const state = world({ confirmed: [...FULL_14.slice(0, 4), "usama"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "usama",
+          body: "I'm out. actually I'm in",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "out" }), claim({ polarity: "in" })]),
+        }),
+      ],
+    });
+    const perUser = attWrites(r.writes).filter((w) => w.kind === "attendance" && w.userId === "u-usama");
+    expect(perUser.length).toBeLessThanOrEqual(1);
+    expect(statusOf(r.nextState, "usama")).toBe("CONFIRMED");
+  });
+
+  it("still frees the slot before filling it across DIFFERENT people", () => {
+    const state = world({
+      players: [...FULL_14, "izzet", "elnur"],
+      confirmed: [...FULL_14.slice(0, 13), "elnur"],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "kemal",
+          body: "@Match Time @Izzet Erdogan is replacing @Elnur Mammadov",
+          route: "other_att",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Izzet Erdogan", personNamed: true, polarity: "in" }),
+            claim({ subject: "other", personRef: "Elnur Mammadov", personNamed: true, polarity: "out" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "izzet")).toBe("CONFIRMED");
+    expect(benchCount(r.nextState)).toBe(0);
+  });
+});
+
+describe("PR#27 · a CONTINGENT bench is inferred, not explicit", () => {
+  it("does not write a bench row at 0/14 for a standing offer", () => {
+    // Blocker. `route.ts:2412-2417` derives benchIntent deterministically
+    // and calls a conditional_in's BENCH "inferred" precisely so that a
+    // standing offer with slots open becomes CONFIRMED. The engine was
+    // calling every model-supplied `bench` explicit, which regenerates
+    // the 2026-08-31 incident: "Confirmed (10/14)" over "Bench (1)".
+    const state = world({ confirmed: [] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "happy to bench if you're short",
+          route: "offer",
+          facts: attendanceFacts([
+            claim({ polarity: "bench", contingent: true, conditionOn: "squad" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "amir")).toBe("CONFIRMED");
+    expect(benchCount(r.nextState)).toBe(0);
+  });
+
+  it("an UNCONDITIONAL bench request is still honoured with slots open", () => {
+    const state = world({ confirmed: ["kemal", "elvin"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "In. For bench👍",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "bench" })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "amir")).toBe("BENCH");
+  });
+});
+
+describe("bench offers, continued", () => {
+  it("re-registering a DROPPED player closes the offer opened for their slot", () => {
+    // attendance.ts:204-240 does this for real (Sutton 2026-05-26: Baki
+    // was re-confirmed in admin and the stale offer kept firing bench
+    // prompts on top of the squad-locked message). The engine must not
+    // propose a world where that offer is still open.
+    const state = world({
+      confirmed: ["kemal", "elvin", "sait"],
+      bench: ["karahan"],
+      dropped: ["wasim"],
+      openOffers: [
+        { id: "offer-1", replacingUserId: "u-wasim", offeredToUserIds: ["u-karahan"] },
+      ],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "wasim",
+          body: "actually I can make it",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "in" })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "wasim")).toBe("CONFIRMED");
+    expect(r.nextState.openOffers).toHaveLength(0);
+  });
+
+  it("says something when a bench player answers an offer whose slot has gone", () => {
+    // The 2026-05-19 Karahan shape: a bench player answers and machinery
+    // ignores them. Silence is the one response that is never right.
+    const state = world({
+      players: ["kemal", "elvin", "karahan"],
+      maxPlayers: 2,
+      confirmed: ["kemal", "elvin"],
+      bench: ["karahan"],
+      openOffers: [{ id: "offer-1", replacingUserId: null, offeredToUserIds: ["u-karahan"] }],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({ from: "karahan", body: "in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+      ],
+    });
+    expect(statusOf(r.nextState, "karahan")).toBe("BENCH");
+    expect(r.speech.some((s) => s.kind === "bench_claim_too_late")).toBe(true);
+  });
+});
+
+describe("value clamps degrade rather than silently altering a number", () => {
+  it("refuses a payment credit larger than the squad", () => {
+    // Real money on a real club. §6.4's claim is that numbers are never
+    // model-authored so they cannot be wrong; this one IS model-authored,
+    // and silently clamping it and then announcing the clamped figure is
+    // the worst of both.
+    const state = world({
+      confirmed: ["kemal", "elvin", "sait", "amir"],
+      features: { paymentTracking: true },
+      completedMatch: {
+        id: "done-1",
+        redScore: null,
+        yellowScore: null,
+        participantUserIds: ["u-kemal", "u-elvin", "u-sait", "u-amir"],
+      },
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "elvin",
+          body: "@Match Time Amir paid for 20 players",
+          route: "admin_ops",
+          tagged: true,
+          facts: { kind: "admin", action: "bulk_payment", payerRef: "Amir", count: 20 },
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(0);
+    expect(r.degradations.some((d) => /20/.test(d.detail))).toBe(true);
+  });
+
+  it("never overwrites a score that is already recorded", () => {
+    const state = world({
+      confirmed: ["kemal"],
+      completedMatch: {
+        id: "done-1",
+        redScore: 5,
+        yellowScore: 2,
+        participantUserIds: ["u-kemal"],
+      },
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "kemal",
+          body: "3-3 last night",
+          route: "score",
+          facts: { kind: "score", first: 3, second: 3 },
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/already recorded/i);
+  });
+});

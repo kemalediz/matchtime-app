@@ -83,3 +83,66 @@ describe("resolvePerson", () => {
     expect(resolvePerson("Za", roster).kind).toBe("unknown");
   });
 });
+
+// ── Found by an adversarial review of this branch (2026-09-01) ─────────
+
+describe("nearMiss must not resolve a DIFFERENT person", () => {
+  const squad = [
+    member("samir", { name: "Samir Khan" }),
+    member("hasanali", { name: "Hasanali Zaidi" }),
+    member("habib", { name: "Habib Rahimi" }),
+  ];
+
+  it.each([
+    // Ordinary first names that merely SHARE A PREFIX with a member.
+    // A tagged "Sami is out" about a guest called Sami used to drop
+    // Samir Khan; "Sami's in" used to register Samir instead of asking
+    // for the guest's name.
+    ["Sami", "Samir Khan"],
+    ["Hasan", "Hasanali Zaidi"],
+    ["Sam", "Samir Khan"],
+  ])("%s does not resolve to %s", (ref) => {
+    expect(resolvePerson(ref, squad).kind).toBe("unknown");
+  });
+
+  it("still resolves a one-or-two-character near miss", () => {
+    // "habibi" → "Habib Rahimi" is the real S12 message and must survive.
+    const r = resolvePerson("habibi", squad);
+    expect(r.kind === "resolved" && r.member.name).toBe("Habib Rahimi");
+  });
+});
+
+describe("a member named with a relationship prefix is not a new person", () => {
+  it("'my dad Najib' resolves to Najib, it does not provision a duplicate", () => {
+    // §6.2's own worked example. `firstToken("my dad Najib")` is "my",
+    // so every lookup missed and the engine provisioned a second member
+    // literally called "my dad Najib" beside the real one.
+    const squad = [member("najib", { name: "Najib Ali" }), member("kemal")];
+    const r = resolvePerson("my dad Najib", squad);
+    expect(r.kind === "resolved" && r.member.name).toBe("Najib Ali");
+  });
+
+  it("'my brother' with no name attached is still not a person", () => {
+    const squad = [member("najib", { name: "Najib Ali" })];
+    expect(resolvePerson("my brother", squad).kind).toBe("not-a-person");
+  });
+
+  it("bails rather than guessing when two tokens both match", () => {
+    const squad = [member("najib", { name: "Najib Ali" }), member("ali", { name: "Ali Reza" })];
+    expect(resolvePerson("Najib Ali", squad).kind).toBe("resolved");
+    expect(resolvePerson("my mate Najib or Ali", squad).kind).toBe("ambiguous");
+  });
+});
+
+describe("a group address is never a person", () => {
+  it.each(["everyone", "@everyone", "everybody", "all", "all of you", "the group", "lads"])(
+    "%s",
+    (ref) => {
+      // "@everyone in" is entirely idiomatic in a football group, and the
+      // deterministic floor routes it as a third-party add. Without this
+      // the engine provisioned a member called "everyone" and confirmed
+      // them into the squad.
+      expect(resolvePerson(ref, [member("kemal")]).kind).toBe("not-a-person");
+    },
+  );
+});

@@ -76,15 +76,42 @@ function firstToken(s: string): string {
 }
 
 /**
- * A near miss that is safe to accept: one first name is a prefix of the
- * other and the shorter is at least four characters. That covers
- * "habibi" → "Habib" (the real S12 message) and "Aydin" → "Aydın" once
- * accents are stripped, without letting "Sa" match "Sait".
+ * A near miss that is safe to accept.
+ *
+ * ⚠️ TIGHTENED after an adversarial review found the first version
+ * resolving the WRONG PERSON on ordinary names from this squad's own
+ * distribution: "Sami" resolved to Samir Khan and "Hasan" to Hasanali
+ * Zaidi. A tagged "Sami is out" about a guest would then have dropped a
+ * confirmed member, and the engine's personNamed override (which trusts
+ * this function over the model) amplifies it.
+ *
+ * So a near miss now needs BOTH: at least five characters on the shorter
+ * side, and a length difference of at most two. That still covers
+ * "habibi" → "Habib" (the real S12 message, difference 1) and "Aydin" →
+ * "Aydın" once accents are stripped, and refuses everything above.
  */
+const NEAR_MISS_MIN_LENGTH = 5;
+const NEAR_MISS_MAX_EXTRA = 2;
+
 function nearMiss(a: string, b: string): boolean {
-  if (a.length < 4 || b.length < 4) return false;
+  const shorter = Math.min(a.length, b.length);
+  if (shorter < NEAR_MISS_MIN_LENGTH) return false;
+  if (Math.abs(a.length - b.length) > NEAR_MISS_MAX_EXTRA) return false;
   return a.startsWith(b) || b.startsWith(a);
 }
+
+/**
+ * Words that address the GROUP rather than a person. "@everyone in" is
+ * entirely idiomatic in a football group and the deterministic floor
+ * routes it as a third-party add, so without this the engine provisions
+ * a member called "everyone" and confirms them into the squad.
+ *
+ * Kept here rather than added to `guest-name-ask.ts`'s list: that module
+ * is shipped and its list drives `stripPlaceholderGuests` on the live
+ * path. This is the pipeline's own additional refusal.
+ */
+const GROUP_ADDRESS =
+  /^(?:@?everyone|@?everybody|@?all(?:\s+of\s+(?:you|us))?|the\s+group|the\s+lads|the\s+boys|lads|boys|guys|team|squad)$/i;
 
 export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome {
   const raw = (ref ?? "").trim().replace(/^@/, "").trim();
@@ -94,6 +121,9 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   }
   if (isPlaceholderGuestName(raw)) {
     return { kind: "not-a-person", why: `a relationship is not a name: "${raw}"` };
+  }
+  if (GROUP_ADDRESS.test(raw.replace(/\s+/g, " ").trim())) {
+    return { kind: "not-a-person", why: `"${raw}" addresses the group, not a person` };
   }
 
   const target = norm(raw);
@@ -121,6 +151,20 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   const near = roster.filter((m) => nearMiss(firstToken(m.name), tFirst));
   if (near.length === 1) return { kind: "resolved", member: near[0] };
   if (near.length > 1) return { kind: "ambiguous", candidates: near };
+
+  // 5. ANY token of the reference against the roster's first names.
+  //
+  // §6.2's own worked example is `{other, "my dad Najib", named=true}`,
+  // and "my dad Najib" has first token "my", so steps 1-4 all miss even
+  // when Najib is on the roster — and `isPlaceholderGuestName` correctly
+  // says it is NOT a placeholder, because a real name is attached. The
+  // result was a duplicate member called "my dad Najib" beside the real
+  // Najib. Two different members matching different tokens is an
+  // ambiguity and bails, as everywhere else here.
+  const tokens = target.split(" ").filter((t) => t.length >= 3);
+  const byAnyToken = roster.filter((m) => tokens.includes(firstToken(m.name)));
+  if (byAnyToken.length === 1) return { kind: "resolved", member: byAnyToken[0] };
+  if (byAnyToken.length > 1) return { kind: "ambiguous", candidates: byAnyToken };
 
   return { kind: "unknown", name: raw };
 }
