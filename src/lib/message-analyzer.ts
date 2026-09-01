@@ -34,7 +34,7 @@
  *     messages are fresh tokens per call.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
@@ -1189,6 +1189,15 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
       ],
     });
 
+    // Per-batch token meter. §8.2 measured output at 37-50% of the main
+    // call and "the single largest line", and §8.4 notes the real bill
+    // could be read out of the database but is not: this call site
+    // recorded nothing at all. One line, on the path that costs the
+    // money, so the effect of a prompt change is a fact and not an
+    // estimate. `MT_ANALYZER_USAGE=1` also appends it to a file, which
+    // is how the before/after in the step 4 PR was measured.
+    logAnalyzerUsage("batch", response.usage, input.messages.length);
+
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );
@@ -1705,6 +1714,42 @@ function stubbedVerdictsForTest(
     const partial = map[m.waMessageId];
     return partial ? { ...base, ...partial, waMessageId: m.waMessageId } : base;
   });
+}
+
+/**
+ * Log what a batch actually cost in tokens. Input is nearly free once
+ * cached; OUTPUT is the line that moves when the model stops writing
+ * text the server composes (§8.2, §10 step 4).
+ *
+ * Set `MT_ANALYZER_USAGE=<path>` to also append one JSON line per call,
+ * which is how an A/B over a corpus sweep is measured without adding a
+ * second harness.
+ */
+function logAnalyzerUsage(
+  site: string,
+  usage: Anthropic.Usage | undefined,
+  batchSize: number,
+): void {
+  if (!usage) return;
+  const row = {
+    site,
+    batchSize,
+    in: usage.input_tokens ?? 0,
+    out: usage.output_tokens ?? 0,
+    cacheRead: usage.cache_read_input_tokens ?? 0,
+    cacheWrite: usage.cache_creation_input_tokens ?? 0,
+  };
+  console.log(
+    `[analyzer] usage site=${row.site} msgs=${row.batchSize} in=${row.in} out=${row.out} cacheRead=${row.cacheRead} cacheWrite=${row.cacheWrite}`,
+  );
+  const path = process.env.MT_ANALYZER_USAGE;
+  if (path) {
+    try {
+      appendFileSync(path, `${JSON.stringify({ ...row, at: new Date().toISOString() })}\n`);
+    } catch {
+      // Metering must never break a batch.
+    }
+  }
 }
 
 function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {
