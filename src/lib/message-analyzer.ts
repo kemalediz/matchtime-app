@@ -50,6 +50,53 @@ import {
 // One-constant change — instantly revertible if spend isn't worth it.
 const MODEL = "claude-sonnet-4-5";
 
+// ─── max_tokens — READ BEFORE ADDING ANY messages.create CALL ────────
+//
+// The Anthropic SDK refuses a NON-STREAMING request whose implied
+// runtime exceeds 10 minutes, and it does so LOCALLY, before any
+// network call is made (`_calculateNonstreamingTimeout` in
+// node_modules/@anthropic-ai/sdk/src/client.ts):
+//
+//     expectedTimeout = 60 * 60 * max_tokens / 128_000   // seconds
+//     if (expectedTimeout > 600) throw AnthropicError(
+//       "Streaming is required for operations that may take longer
+//        than 10 minutes.")
+//
+// so the SDK's hard limit for a non-streaming call is 21_333. Sonnet
+// 4.5's real output ceiling is 64000, which is why that number keeps
+// looking correct and keeps being wrong here.
+//
+// This has bitten three times — 2026-05-26 (analyzeBatch, killed the
+// whole analyzer for ~30 min) and twice on 2026-08-31 (composeChaseText
+// and the dropped-verdict re-prompt, both of which had NEVER once
+// succeeded). Every call site sits inside a try/catch with a fallback,
+// so a bad value produces no error and no alert — just permanently
+// degraded output. A comment did not stop recurrence, so
+// `src/lib/__tests__/max-tokens-ceiling.test.ts` now scans the source
+// and fails the build on any value above this ceiling.
+//
+// Derive every call site's cap from this constant. Do not hand a
+// `messages.create` its own literal, and do not switch a call to
+// streaming to dodge the limit — none of these calls need minutes of
+// runtime.
+export const MAX_TOKENS_CEILING = 16_384;
+
+// Batch verdict analysis. A verbose 10-message batch is ~3-5K output
+// tokens, so the ceiling leaves ~3x headroom and truncation is not a
+// realistic failure mode.
+const ANALYSIS_MAX_TOKENS = MAX_TOKENS_CEILING;
+
+// The dropped-verdict re-prompt emits verdicts for a SUBSET of a batch
+// in the same JSON shape, so it needs roughly what a batch needs and by
+// definition never more than the main call.
+const ANALYSIS_RETRY_MAX_TOKENS = ANALYSIS_MAX_TOKENS;
+
+// The chase composer emits ONE short WhatsApp message — a roster post
+// with a nudge line, ~100-200 output tokens in practice. 1024 is ~5x
+// the realistic worst case (a full 14-player roster plus tentative and
+// dropped sections) while keeping the SDK's implied timeout at ~29s.
+const CHASE_COMPOSE_MAX_TOKENS = 1_024;
+
 let _anthropic: Anthropic | null = null;
 function getAnthropic(): Anthropic | null {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
@@ -1041,14 +1088,8 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      // max_tokens: 16384 — much higher than any realistic batch needs
-      // (a verbose 10-msg batch is ~3-5K tokens output), so truncation
-      // is no longer a failure mode. NOT 64000 (Sonnet 4.5's actual max)
-      // because the Anthropic SDK refuses non-streaming calls whose
-      // implied runtime > 10 min, which 64000 trips. Lesson learned the
-      // hard way 2026-05-26: setting max_tokens to the model max
-      // tanked the whole analyzer for ~30 min until detected.
-      max_tokens: 16384,
+      // See MAX_TOKENS_CEILING at the top of this file before changing.
+      max_tokens: ANALYSIS_MAX_TOKENS,
       system: [
         {
           type: "text",
@@ -1089,7 +1130,7 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
     let verdicts = normaliseBatch(textBlock.text, input.messages);
 
     // ── Auto re-prompt for missing IDs (added 2026-05-26) ──
-    // Even with max_tokens at the model max, Sonnet occasionally
+    // Even with generous headroom on max_tokens, Sonnet occasionally
     // drops verdicts (JSON malformation, model just skips one,
     // etc.). For those rare cases, do ONE focused retry with just
     // the missing IDs and a minimal prompt (no Recent History,
@@ -1121,7 +1162,10 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
       try {
         const retryResp = await anthropic.messages.create({
           model: MODEL,
-          max_tokens: 64000,
+          // See MAX_TOKENS_CEILING at the top of this file. This site
+          // shipped 64000 and therefore threw on EVERY invocation since
+          // it was written — the recovery path had never once run.
+          max_tokens: ANALYSIS_RETRY_MAX_TOKENS,
           system: [
             {
               type: "text",
@@ -1153,7 +1197,17 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
           );
         }
       } catch (err) {
-        console.error("[analyzer] re-prompt failed:", err);
+        // Degrade LOUDLY. This path silently threw on every invocation
+        // for months (max_tokens was 64000, which the SDK refuses), and
+        // the "re-prompt failed" wording read as a note rather than a
+        // fault. Say what broke AND what the user sees because of it.
+        console.error(
+          `[analyzer] BROKEN: dropped-verdict re-prompt threw — ` +
+            `${missingIds.length} message(s) will keep their placeholder ` +
+            `verdict, so MatchTime does not reply to them and an admin DM ` +
+            `fires instead. ids=${missingIds.join(",")}`,
+          err,
+        );
         // Fall through — original placeholders remain, admin DM fires.
       }
     }
@@ -1267,7 +1321,10 @@ export async function composeChaseText(input: {
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 64000,
+      // See MAX_TOKENS_CEILING at the top of this file. This site
+      // shipped 64000 and therefore threw on EVERY invocation since it
+      // was written — every scheduled chase used the static fallback.
+      max_tokens: CHASE_COMPOSE_MAX_TOKENS,
       system: [
         {
           type: "text",
@@ -1292,6 +1349,22 @@ export async function composeChaseText(input: {
         },
       ],
     });
+    // Truncation guard. This text is posted VERBATIM to a customer's
+    // WhatsApp group, and it is the only call site here whose output is
+    // not JSON (a truncated JSON site fails closed when the parse
+    // throws; free text has no such protection). `stop_reason` is the
+    // only signal that what we got is a sentence cut off mid-word, so
+    // treat it as a failure: the static fallback is strictly better
+    // than half a roster post.
+    if (response.stop_reason === "max_tokens") {
+      console.error(
+        `[analyzer] BROKEN: composeChaseText hit the ${CHASE_COMPOSE_MAX_TOKENS}-token ` +
+          `cap for kind=${input.kind} group=${input.groupId} — the composed text was ` +
+          `TRUNCATED mid-sentence and has been discarded. The chase will fall back to ` +
+          `STATIC text. If this recurs, the cap is too low for this group's roster.`,
+      );
+      return null;
+    }
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );
@@ -1310,7 +1383,16 @@ export async function composeChaseText(input: {
     // the LLM got it wrong.
     return enforceProximity(cleaned, match.date);
   } catch (err) {
-    console.error("[analyzer] composeChaseText Claude call failed:", err);
+    // Degrade LOUDLY. This threw on every invocation for months
+    // (max_tokens was 64000, which the SDK refuses) and nobody noticed,
+    // because the chase still fired — just with the plain static text
+    // instead of the composed roster / tentative / dropped summary.
+    console.error(
+      `[analyzer] BROKEN: composeChaseText threw for kind=${input.kind} ` +
+        `group=${input.groupId} — the chase will fall back to STATIC text, ` +
+        `losing the roster/tentative/dropped summary.`,
+      err,
+    );
     return null;
   }
 }
