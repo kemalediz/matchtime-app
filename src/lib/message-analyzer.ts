@@ -419,14 +419,14 @@ Forbidden phrasings (OPEN-CALL case only — when NO specific bench player was n
 
 Required phrasing when someone drops and there IS at least one bench player:
   ✓ "[lead acknowledging the drop]. Asking <first-bench-name> to step up — squad is <confirmedCount-1>/<maxPlayers> until they confirm."
-  CRITICAL — the bench player is asked by an IN-GROUP @mention (${BENCH_PROMPT_MENTION_REACTIONS ? "a 👍/👎 prompt the bot posts to this group" : "the bot posts the offer to this group and asks them to reply IN"}), NOT a private DM. NEVER write "in DMs", "via DM", "I've DM'd them", "messaged them privately" or anything implying a private message — that is factually FALSE (the bot does not DM bench players) and players who receive no DM rightly call it misinformation. Say "asking <name>", "tagged <name> here", ${benchClaimPhrasingExample()} — describe the in-group tag, never a DM.
+  CRITICAL — what the bot actually does, and what you may say about it. The SERVER posts the offer to THIS group and @mentions every bench player (${BENCH_PROMPT_MENTION_REACTIONS ? "a 👍/👎 prompt" : "asking them to reply IN"}); it ALSO queues a personal DM nudge to each of them, because benchers mute the group. Both are sent LATER by the scheduler — daytime only, and never to a player who has turned bench DMs off — so at the moment you write your reply NOTHING has been sent yet, and for some players nothing will be. So: NEVER claim a delivery that has already happened. Forbidden: "in DMs", "I've DM'd them", "messaged them privately", "they've been notified", or any wording that says a message is already with them. That is the 2026-05-18 Erdal incident — the bot announced a DM, he received nothing, and rightly called it misinformation. Point at the GROUP, which is where the slot is claimed: say "asking <name>", "tagged <name> here", ${benchClaimPhrasingExample()}. You may mention the nudge only as something still to come ("I'll give the bench a nudge too") — never as done, and never promised to a named individual.
   Numbered roster shows the squad WITHOUT the dropped player (use 🥁 for the now-empty slot).
 
 When there is NO bench player and the squad is now short, treat as the standard SHORT-SQUAD RESPONSE (see below) — don't reference any bench.
 
 Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time replace Baki with Aydın") mean X LEAVES entirely: treat as intent "out" with a registerFor OUT for the dropping player. (This is different from "move X to the bench" — that DEMOTES X to the bench but keeps them available; use action:"BENCH" for that, see the ADMIN DEMOTE TO BENCH pattern above.) Now decide what to do with the "swapping in" player Y, based on whether Y is a CURRENT BENCH player:
   • Y IS a current bench player (named explicitly) → this is PROMOTE FROM BENCH, NOT informational. Emit the IN for Y as well (registerFor:[{name:"X",action:"OUT"},{name:"Y",action:"IN"}]), name Y as playing, state the squad is back to full (N/M), and do NOT hedge — NO "asking Y", NO "until Y confirms", NO "step up". Y is genuinely confirmed; say so. (Same as the SELF-REPLACE case when a player hands over their own slot to a named bench player.)
-  • Y is NOT a current bench player → the "swapping in" name is informational only: do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, do NOT claim they're playing. Reply phrasing follows the "Asking <bench>..." open-call pattern (in-group tag, NOT a DM — see the CRITICAL note above): "Asking <first-bench-name> to step up — squad is 13/14 until they confirm." The bench-confirmation flow tags the right person in the group if they're first on bench; otherwise the admin can re-trigger after.
+  • Y is NOT a current bench player → the "swapping in" name is informational only: do NOT add a registerFor IN entry, do NOT name them in a confirmed slot, do NOT claim they're playing. Reply phrasing follows the "Asking <bench>..." open-call pattern (point at the in-group tag; claim no delivery — see the CRITICAL note above): "Asking <first-bench-name> to step up — squad is 13/14 until they confirm." The bench-confirmation flow tags the right person in the group if they're first on bench; otherwise the admin can re-trigger after.
 - "conditional_in": Tentative commitment BY the sender ABOUT THE SENDER'S OWN SLOT. Two distinct flavours — they have OPPOSITE registration outcomes, so pick carefully:
 
   SUBJECT CHECK — DO THIS FIRST, IT GATES BOTH FLAVOURS. Ask "who would be playing?". Only an offer about the SENDER is "conditional_in". If the person who would play is SOMEONE ELSE — "my brother can play if needed", "my mate could fill in if you're short", "I can bring someone if you need", "my mate's up for it if you need one" — it is NOT conditional_in and the SENDER gets registerAttendance: null (they never said THEY are playing, and benching them puts a non-player on the roster). Route it by whether that third party is NAMED: NAMED ("my brother Shahrokh can play") → intent "in", registerAttendance: null, registerFor [{"name":"Shahrokh","action":"IN"}]; UNNAMED → intent "bring_guests_vague" (no writes at all, warm ask for the name). MIXED — the sender AND someone else ("me and my brother are both in", "my mate and I can fill in if you're short") — DOES include the sender, so handle the sender's own half normally. (Kemal flagged 2026-08-31: Amir posted "@Kemal Ediz my brother can play if needed"; the bot matched the standing-offer SHAPE, benched AMIR, and the 17:00 roster went out to the whole club reading "Bench (1): 1. Amir" while Amir was not playing at all.)
@@ -1834,8 +1834,9 @@ export function enforceCanonicalRoster(
  * Called only when there's an OPEN PendingBenchConfirmation against
  * the relevant match. Strips the false-promotion sentence (heuristic
  * regexes targeting common phrasings) and prepends an honest
- * "Asking <name> to step up..." line (in-group tag, NOT a DM) so the
- * group sees the real status.
+ * "Asking <name> to step up..." line — worded around the IN-GROUP tag,
+ * because that is where the slot is claimed and it is the one channel
+ * every eligible bencher is on — so the group sees the real status.
  */
 export function rewriteOverconfidentPromotion(
   text: string,
@@ -1886,13 +1887,17 @@ export function rewriteOverconfidentPromotion(
 
   // Prepend an honest status line above the roster block (or at the
   // top if no roster block detected).
-  // NB: the bench prompt is an IN-GROUP @mention (kind:"bench-prompt"
-  // posts to the group, not a DM). Saying "in DMs" was misinformation
-  // — a bench player who got no DM (Erdal, 2026-05-18) is right to
-  // call it out. Word it to match what actually happens: they're
-  // tagged in the group and asked to reply IN (see
-  // BENCH_PROMPT_MENTION_REACTIONS in src/lib/bench-offer-copy.ts for
-  // why the 👍 instruction is currently withdrawn).
+  // NB: this line describes the IN-GROUP @mention (kind:"bench-prompt")
+  // and deliberately nothing else. A personal DM nudge does also go out
+  // per bencher (bot-scheduler.ts, "Personal DM to each bencher", added
+  // 2026-05-19) — but it is queued for a later scheduler tick,
+  // daytime-gated, and skipped for anyone who turned bench DMs off, so
+  // NOTHING has been delivered at the moment this line is written.
+  // Claiming otherwise is what burned us: a bench player who got no DM
+  // (Erdal, 2026-05-18) is right to call it misinformation. Stick to
+  // what is certain — they're tagged in the group and asked to reply IN
+  // (see BENCH_PROMPT_MENTION_REACTIONS in src/lib/bench-offer-copy.ts
+  // for why the 👍 instruction is currently withdrawn).
   const honest = buildBenchAskedLine({ benchName, confirmedCount, maxPlayers });
 
   // Drop the line in just before any "*Playing tonight:*" / "*Squad:*"

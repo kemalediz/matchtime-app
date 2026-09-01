@@ -8,7 +8,10 @@
  * that a human would have caught live here instead.
  */
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { SYSTEM_PROMPT, type AnalysisIntent } from "@/lib/message-analyzer";
+import { benchClaimPhrasingExample } from "@/lib/bench-offer-copy";
 
 /**
  * Every value `AnalysisIntent` admits, written out.
@@ -105,5 +108,64 @@ describe("§3.4.2 — the prompt's output schema matches what the server accepts
     expect(SYSTEM_PROMPT).toContain('"team": "RED" | "YELLOW"');
     expect(SYSTEM_PROMPT).toContain('"action": "IN" | "OUT" | "BENCH"');
     expect(SYSTEM_PROMPT).toContain('"recruitRequest": true | false');
+  });
+});
+
+describe("§3.4.3 — the bench-DM rule must not make the model assert a falsehood", () => {
+  /** The bench-offer emission block in the scheduler, as source. */
+  function schedulerBenchOfferBlock(): string {
+    const src = fs.readFileSync(path.resolve(__dirname, "../bot-scheduler.ts"), "utf8");
+    const start = src.indexOf("if (m.benchSlotOffers.length > 0)");
+    expect(start).toBeGreaterThan(-1);
+    return src.slice(start, start + 4000);
+  }
+
+  it("PREMISE: the bot really does DM bench players (else the old rule was right)", () => {
+    // The rule was written on 2026-05-18 (7e3284c) when it was TRUE. The
+    // personal bench DM landed the NEXT DAY, 2026-05-19 (9a12ace), and the
+    // rule was never revisited. If the DM is ever removed, restore the old
+    // wording rather than deleting this test.
+    const block = schedulerBenchOfferBlock();
+    expect(block).toContain("Personal DM to each bencher");
+    expect(block).toContain('kind: "dm"');
+    expect(block).toContain("buildBenchOfferDm");
+  });
+
+  it("no longer tells the model the bot does not DM bench players", () => {
+    expect(SYSTEM_PROMPT).not.toContain("the bot does not DM bench players");
+    expect(SYSTEM_PROMPT).not.toMatch(/does\s+not\s+DM/i);
+  });
+
+  it("tells the model the personal DM exists", () => {
+    expect(SYSTEM_PROMPT).toMatch(/personal DM/i);
+  });
+
+  it("still bans the claim that caused the Erdal incident: a delivery already made", () => {
+    // 2026-05-18: the bot announced "asking Erdal in DMs" / "I've DM'd them".
+    // He got nothing and called it misinformation. Nothing has been sent when
+    // the model composes its reply — the scheduler queues BOTH the group tag
+    // and the DM for a later tick — so a past-tense delivery claim is still
+    // false, and still forbidden.
+    for (const banned of [
+      `"I've DM'd them"`,
+      `"messaged them privately"`,
+      `"they've been notified"`,
+    ]) {
+      expect(SYSTEM_PROMPT).toContain(banned);
+    }
+    expect(SYSTEM_PROMPT).toMatch(/NEVER (write|claim)/);
+  });
+
+  it("still points the reply at the group, where the slot is actually claimed", () => {
+    expect(SYSTEM_PROMPT).toContain(`"asking <name>"`);
+    expect(SYSTEM_PROMPT).toContain(`"tagged <name> here"`);
+    // The server's own approved wording, kept in one place so prompt copy and
+    // post-processor copy cannot drift (bench-offer-copy.test.ts pins the
+    // other direction).
+    expect(SYSTEM_PROMPT).toContain(benchClaimPhrasingExample());
+  });
+
+  it("names the conditions under which no DM arrives, so the model does not promise one", () => {
+    expect(SYSTEM_PROMPT).toMatch(/turned bench DMs off|opted out/i);
   });
 });
