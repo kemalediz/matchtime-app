@@ -125,7 +125,12 @@ describe("reconstruct — a clean batch", () => {
   it("carries production's own verdict as triage metadata, never as an expectation", () => {
     const c = reconstruct(source()).cases[0];
     expect(c.meta.prodOutcomes).toEqual([
-      { waMessageId: "w1", intent: "in", action: "registered", handledBy: "llm" },
+      {
+        waMessageId: expect.stringMatching(/^m-[0-9a-f]{12}$/),
+        intent: "in",
+        action: "registered",
+        handledBy: "llm",
+      },
     ]);
     // The incumbent is not ground truth: nothing it did becomes an
     // assertion. `expect` stays empty so the grader can never "pass" a
@@ -325,6 +330,27 @@ describe("reconstruct — chat history", () => {
 });
 
 describe("reconstruct — privacy", () => {
+  it("hashes the WhatsApp message id, which embeds a phone AND the group JID", () => {
+    const s = source({
+      messages: [
+        msg({ waMessageId: "false_447525334985-1607872139@g.us_ACD62BCA47B2B0B1", createdAt: T0 }),
+      ],
+    });
+    const ref = reconstruct(s).cases[0].meta.prodOutcomes[0].waMessageId;
+    expect(ref).toMatch(/^m-[0-9a-f]{12}$/);
+    // Stable, so two extracts of the same history line up.
+    expect(reconstruct(s).cases[0].meta.prodOutcomes[0].waMessageId).toBe(ref);
+  });
+
+  it("replaces a pushname that is itself a phone number", () => {
+    const s = source({
+      messages: [msg({ waMessageId: "w1", createdAt: T0, authorUserId: null, authorName: "+44 7700 900123" })],
+    });
+    const from = reconstruct(s).cases[0].case.messages[0].from as { name: string };
+    expect(from.name).not.toMatch(/\d{5}/);
+    expect(from.name).toMatch(/^Member /);
+  });
+
   it("never emits a phone number or an @lid/@g.us JID", () => {
     const s = source({
       messages: [

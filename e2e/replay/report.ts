@@ -159,11 +159,19 @@ export function renderReport(
         `cache read ${side.cacheReadTokens} · cache write ${side.cacheWriteTokens}`,
     );
   }
-  const fullSweep = r.plan.total * (r.cost.old.batches ? r.cost.old.costUsd / r.cost.old.batches : 0);
+  const pairs = r.cost.old.batches;
+  const perPair = pairs ? (r.cost.old.costUsd + r.cost.new.costUsd) / pairs : 0;
   L.push(
     `  → one full sweep of all ${r.plan.total} replayable batches, both pipelines: ` +
-      `${usd(fullSweep * 2)} at the measured rate`,
+      `${usd(perPair * r.plan.total)} at the measured rate (${usd(perPair)} per batch pair)`,
   );
+  if (self) {
+    L.push(
+      "  ⚠️  the split between the two columns is a PROMPT-CACHE artefact, not a difference: the " +
+        "first pipeline pays the cache WRITE and the second reads it back at 0.1x. Only the sum " +
+        "is meaningful in a self-replay.",
+    );
+  }
 
   L.push("");
   L.push(`adjudications on file: ${adjudications.length}`);

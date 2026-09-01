@@ -130,8 +130,29 @@ export function redact(text: string): string {
     .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone]");
 }
 
-function groupRefOf(groupId: string): string {
+export function groupRefOf(groupId: string): string {
   return `g-${createHash("sha256").update(groupId).digest("hex").slice(0, 10)}`;
+}
+
+/**
+ * A WhatsApp message id is a routable identifier, not an opaque key:
+ * they look like `false_447525334985-1607872139@g.us_ACD6…` and carry
+ * BOTH a phone number and the group JID. Every one that leaves the
+ * database is replaced by a one-way hash — stable, so two extracts line
+ * up, and useless to anyone who gets hold of the file.
+ *
+ * Applied in the extractor AND here, so a hand-built source can never
+ * smuggle one through either.
+ */
+export function messageRef(waMessageId: string): string {
+  if (/^m-[0-9a-f]{12}$/.test(waMessageId)) return waMessageId;
+  return `m-${createHash("sha256").update(waMessageId).digest("hex").slice(0, 12)}`;
+}
+
+/** A pushname that IS a phone number must not be replayed verbatim. */
+function safeName(name: string): string {
+  if (!/\d{7,}/.test(name.replace(/[\s()+-]/g, ""))) return name;
+  return `Member ${createHash("sha256").update(name).digest("hex").slice(0, 4)}`;
 }
 
 // ── Batching ───────────────────────────────────────────────────────────
@@ -215,7 +236,7 @@ export function reconstruct(src: ReplaySource): Reconstruction {
         batchKey: batch.key,
         orgId: batch.orgId,
         at,
-        waMessageIds: batch.messages.map((m) => m.waMessageId),
+        waMessageIds: batch.messages.map((m) => messageRef(m.waMessageId)),
         reason,
         detail,
       });
@@ -277,7 +298,8 @@ export function reconstruct(src: ReplaySource): Reconstruction {
     let senderProblem: string | null = null;
     const unresolvedSenders: string[] = [];
     const senders = batch.messages.map((m) => {
-      const name = m.authorName?.trim() ?? null;
+      const raw = m.authorName?.trim();
+      const name = raw ? safeName(raw) : null;
       if (m.authorUserId) {
         const membership = src.memberships.find(
           (x) => x.orgId === m.orgId && x.userId === m.authorUserId,
@@ -287,14 +309,16 @@ export function reconstruct(src: ReplaySource): Reconstruction {
           senderProblem ??= `sender ${m.authorUserId} has no membership or user row today`;
           return null;
         }
-        if (rosterIds.has(m.authorUserId)) {
-          return { name: user.name ?? name, insider: true };
-        }
+        const display = safeName(user.name ?? "") || name;
+        if (rosterIds.has(m.authorUserId)) return { name: display };
         // Not a member at the instant. Either the batch itself enrolled
-        // them (faithful: replay as an outsider) or the row appeared far
-        // later, which contradicts production having resolved them.
+        // them — faithful, replay as the outsider they were, which is
+        // exactly the path that provisions a ghost member — or the row
+        // appeared far later, which contradicts production having
+        // resolved them at all.
         if (ms(membership.createdAt) <= batchEnd + AUTO_ENROL_SLACK_MS) {
-          return { name: user.name ?? name, insider: false };
+          if (display) unresolvedSenders.push(display);
+          return { name: display };
         }
         senderProblem ??=
           `sender ${m.authorUserId} was resolved in production but their membership row ` +
@@ -306,7 +330,7 @@ export function reconstruct(src: ReplaySource): Reconstruction {
         return null;
       }
       unresolvedSenders.push(name);
-      return { name, insider: false };
+      return { name };
     });
     if (senderProblem) {
       drop("sender-unknown", senderProblem);
@@ -348,7 +372,7 @@ export function reconstruct(src: ReplaySource): Reconstruction {
         const u = usersById.get(m.userId);
         return {
           key: m.userId,
-          name: (u?.name ?? "").trim() || `Member ${m.userId.slice(-4)}`,
+          name: safeName((u?.name ?? "").trim()) || `Member ${m.userId.slice(-4)}`,
           role: m.role,
           hasPhone: u?.hasPhone ?? false,
         };
@@ -369,7 +393,10 @@ export function reconstruct(src: ReplaySource): Reconstruction {
     const history: CorpusHistoryLine[] = (historyByGroup.get(batch.groupId) ?? [])
       .filter((m) => ms(m.createdAt) <= batchEnd && m.body && m.body.trim())
       .slice(-HISTORY_PER_GROUP)
-      .map((m) => ({ author: m.authorName?.trim() || null, body: redact(m.body!.trim()) }));
+      .map((m) => ({
+        author: m.authorName?.trim() ? safeName(m.authorName.trim()) : null,
+        body: redact(m.body!.trim()),
+      }));
 
     const org = orgsById.get(batch.orgId);
     const hoursToKickoff = (ms(upcoming.date) - t) / 3_600_000;
@@ -424,7 +451,7 @@ export function reconstruct(src: ReplaySource): Reconstruction {
           dropped: tally("DROPPED"),
         },
         prodOutcomes: batch.messages.map((m) => ({
-          waMessageId: m.waMessageId,
+          waMessageId: messageRef(m.waMessageId),
           intent: m.intent,
           action: m.action,
           handledBy: m.handledBy,

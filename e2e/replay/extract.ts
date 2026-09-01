@@ -25,7 +25,7 @@ import { config as loadEnv } from "dotenv";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { reconstruct } from "./reconstruct";
+import { groupRefOf, messageRef, reconstruct } from "./reconstruct";
 import { renderReport } from "./report";
 import type { ReplaySource } from "./types";
 
@@ -118,9 +118,14 @@ async function main(): Promise<number> {
   const source: ReplaySource = {
     extractedAt: new Date().toISOString(),
     messages: messages.map((m) => ({
-      waMessageId: String(m.waMessageId),
+      // A WhatsApp message id embeds the sender's phone AND the group
+      // JID (`false_447…-160…@g.us_ACD6…`). Hashed here so no artefact —
+      // not even the raw source dump — ever holds one.
+      waMessageId: messageRef(String(m.waMessageId)),
       orgId: String(m.orgId),
-      groupId: String(m.groupId),
+      // The group JID is routable and embeds a phone; only its hash
+      // leaves the database. Batching keys off it either way.
+      groupId: groupRefOf(String(m.groupId)),
       authorUserId: (m.authorUserId as string | null) ?? null,
       authorName: (m.authorName as string | null) ?? null,
       authorHadPhone: Boolean(m.authorHadPhone),

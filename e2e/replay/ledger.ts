@@ -33,6 +33,16 @@ export interface LedgerEntry {
   observation?: CorpusObservation;
   /** Measured, not estimated — see meter.ts. */
   costUsd?: number;
+  /** The whole metered span, so a RESUMED sweep reports the same token
+   *  columns as the run that produced it rather than a cost with no
+   *  tokens behind it. */
+  span?: {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  };
   ms?: number;
   at: string;
 }

@@ -153,6 +153,13 @@ export async function runSweep(
       bucket.wallMs += cached.ms ?? 0;
       bucket.costUsd += cached.costUsd ?? 0;
       bucket.batches += 1;
+      if (cached.span) {
+        bucket.calls += cached.span.calls;
+        bucket.inputTokens += cached.span.inputTokens;
+        bucket.outputTokens += cached.span.outputTokens;
+        bucket.cacheReadTokens += cached.span.cacheReadTokens;
+        bucket.cacheWriteTokens += cached.span.cacheWriteTokens;
+      }
       return cached.ok && cached.observation
         ? { ok: true, observation: cached.observation }
         : { ok: false, error: cached.error ?? "unknown ledger error" };
@@ -193,6 +200,13 @@ export async function runSweep(
     const span = opts.meter?.end();
     if (span) {
       entry.costUsd = span.costUsd;
+      entry.span = {
+        calls: span.calls,
+        inputTokens: span.inputTokens,
+        outputTokens: span.outputTokens,
+        cacheReadTokens: span.cacheReadTokens,
+        cacheWriteTokens: span.cacheWriteTokens,
+      };
       bucket.calls += span.calls;
       bucket.inputTokens += span.inputTokens;
       bucket.outputTokens += span.outputTokens;
