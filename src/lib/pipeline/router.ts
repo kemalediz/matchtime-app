@@ -60,7 +60,8 @@ Rules:
 3. A relayed commitment IS other_att ("Najib said in as well").
 4. Moving, benching or swapping a NAMED PLAYER is other_att, never balancer. ONE list of players, however long or numbered, is a reposted squad roster and is other_att; balancer is only about the TWO team line-ups.
 5. An @mention of a person with in or out is other_att.
-6. When in doubt between none and anything else, choose the other route.
+6. A question mark does not make a message a question. If it also states that someone is joining or leaving ("can anyone replace me tonight?"), route the attendance. question is only for a message that ASKS FOR information the bot holds and states no change.
+7. When in doubt between none and anything else, choose the other route.
 
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 

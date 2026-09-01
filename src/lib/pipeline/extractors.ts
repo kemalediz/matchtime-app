@@ -83,7 +83,7 @@ For each attendance claim in the message, return:
   polarity     "in" joining, "out" leaving, "bench" only when the bench is EXPLICITLY asked for ("in, for bench"). Never guess "bench" from how full the squad is: you are not told the squad.
   contingent   true if the commitment depends on something ("if you're short", "if my back holds up", "happy to drop if you find someone")
   conditionOn  "squad" if the condition is about the squad or the team's needs, "self" if it is about the person themselves, otherwise "none"
-  tense        "present", "future", "past" ("I was in last week"), or "hypothetical" ("if I was in the team")
+  tense        "present" now, "future" a commitment about an upcoming match INCLUDING a standing one ("count me in whenever you are short"), "past" reporting something that already happened ("I was in last week"), "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined"). A condition attached to a real future commitment is NOT hypothetical: use future and set contingent
   reported     true when relaying what someone else said ("Najib said he's in")
   confidence   0 to 1
 
@@ -93,7 +93,7 @@ Also return:
 
 A message can carry SEVERAL claims and a side request at once. Report all of them. "I'm out, anyone able to replace me?" is one claim plus "recruit". "I'm in, and my brother can play too" is TWO claims.
 
-Asking for cover is NOT a condition. Someone asking whether anyone can replace them is leaving either way: report the out with contingent false, plus the "recruit" side request. Only report contingent true when the message states something the claim DEPENDS ON ("happy to drop if you find someone", "in if my back holds up").
+Asking for cover is NOT a condition. Someone asking whether anyone can replace them, or saying they need covering, is leaving either way: report the out with contingent FALSE, plus the "recruit" side request. Report contingent true ONLY when the message states something the claim itself depends on, in the message: "happy to drop IF you find someone", "in IF my back holds up".
 
 Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere with information you do not have.
 
