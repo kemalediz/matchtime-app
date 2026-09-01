@@ -55,6 +55,14 @@ export const E2E = {
   /** The LLM stub file the server reads fresh on every analyzeBatch. */
   LLM_STUB_FILE: path.join(REPO_ROOT, ".e2e", "llm-stub.json"),
 
+  /** The ROUTER stub file (§10 step 5). Carries the router's answer AND
+   *  the two step-5 flags, because the dev server's environment is fixed
+   *  at boot and a spec needs to run one request with the gate on and
+   *  the next with it off. `{}` — the default `clearRouterStub()` writes
+   *  — means "no override", so the flags fall back to the env, which is
+   *  off. Every other spec is therefore untouched by its existence. */
+  ROUTER_STUB_FILE: path.join(REPO_ROOT, ".e2e", "router-stub.json"),
+
   /** WhatsApp group id of the seeded test org. */
   GROUP_ID: "e2e-test-group@g.us",
 } as const;
@@ -126,6 +134,7 @@ export function buildTestEnv(): Record<string, string> {
     CRON_SECRET: E2E.CRON_SECRET,
     MT_TEST_MODE: "1",
     MT_TEST_LLM_STUB_FILE: E2E.LLM_STUB_FILE,
+    MT_TEST_ROUTER_STUB_FILE: E2E.ROUTER_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
@@ -149,6 +158,10 @@ export function buildTestEnv(): Record<string, string> {
     // overrides it, and analyzeBatch's check is a plain truthiness test.
     // helpers/live-llm.ts asserts the result rather than trusting it.
     env.MT_TEST_LLM_STUB_FILE = "";
+    // Same reasoning, for the router: a "live" sweep must not be able to
+    // read a canned route out of a file, and must not be able to have
+    // the step-5 flags flipped by one either. Pinned empty, not deleted.
+    env.MT_TEST_ROUTER_STUB_FILE = "";
     env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
     env.MT_SIM_LIVE_LLM = "1";
     // Cost metering (e2e/replay/meter.ts): the server's Anthropic SDK is
