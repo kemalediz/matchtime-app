@@ -177,6 +177,11 @@ export function renderReport(
       "  speech_only is chattiness — the bot posting the roster on one run and staying silent on " +
         "the other. divergent_write is a player being in or out of a squad depending on luck.",
     );
+    L.push(
+      "  ⚠️  in a SELF-replay the spurious/missed split is ORIENTATION ONLY: the two sides are the " +
+        "same pipeline, so which one is called 'new' is just which ran second. Read the " +
+        "WRITE-LEVEL line, not the split — and read the criteria block below the same way.",
+    );
 
     if (floor.writeLevel.count > 0) {
       L.push("");
@@ -243,6 +248,13 @@ export function renderReport(
     L.push("");
   }
 
+  if (self) {
+    L.push("");
+    L.push(
+      "criteria block below: in a self-replay these are NOT candidate defects. They are the " +
+        "incumbent disagreeing with itself, arbitrarily labelled by run order.",
+    );
+  }
   L.push(...criteriaBlock(r.criteria, "criteria — all replayed batches"));
   if (r.byTier.wide > 0) {
     L.push("");
