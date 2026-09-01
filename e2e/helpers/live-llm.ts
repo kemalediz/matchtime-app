@@ -469,21 +469,38 @@ export interface ReachDb {
 }
 
 /**
- * A watermark to read reach FROM, taken from the DATABASE's clock so no
- * clock skew can shift it. Call it before the sweep starts: not every
- * live spec truncates first (the replay sweep does not), and rows left
- * behind by an earlier STUBBED run would otherwise be counted as this
- * run's stubbed verdicts and fail it for the wrong reason.
+ * A watermark to read reach FROM. Call it before the sweep starts: not
+ * every live spec truncates first (the replay sweep does not), and rows
+ * left behind by an earlier STUBBED run would otherwise be counted as
+ * this run's stubbed verdicts and fail it for the wrong reason.
+ *
+ * IT IS THE TABLE'S OWN HIGH-WATER MARK, NOT A CLOCK, and that is not
+ * fussiness. The first version of this asked Postgres for `now()`, and
+ * the whole before/after S12 arm then reported "0 of 0 messages reached
+ * the model" while the metering proxy was simultaneously reporting 100
+ * real calls and $1.48 billed. Prisma maps `DateTime` to
+ * `timestamp(3)` — WITHOUT time zone — and writes UTC into it, while
+ * `now()` is a `timestamptz`. Comparing the two makes Postgres read the
+ * naive column in the SESSION's zone, which in Europe/London in summer
+ * is UTC+1, so every row of the run landed an hour "before" a watermark
+ * taken an instant before it. Reading `max("createdAt")` off the same
+ * column compares like with like: no clock, no zone, no conversion.
+ *
+ * `null` (an empty table) means "read everything".
  */
-export async function reachWatermark(db: ReachDb): Promise<string> {
-  const rows = await db.all<{ now: string }>(`SELECT now()::text AS now`);
-  return rows[0]?.now ?? new Date(0).toISOString();
+export async function reachWatermark(db: ReachDb): Promise<Date | null> {
+  const rows = await db.all<{ high: Date | string | null }>(
+    `SELECT max("createdAt") AS high FROM "AnalyzedMessage"`,
+  );
+  const high = rows[0]?.high ?? null;
+  if (high === null) return null;
+  return high instanceof Date ? high : new Date(high);
 }
 
-export async function readReach(db: ReachDb, since?: string): Promise<ReachSummary> {
+export async function readReach(db: ReachDb, since?: Date | null): Promise<ReachSummary> {
   const rows = since
     ? await db.all<ReachRow>(
-        `SELECT reasoning, "handledBy" FROM "AnalyzedMessage" WHERE "createdAt" >= $1::timestamptz`,
+        `SELECT reasoning, "handledBy" FROM "AnalyzedMessage" WHERE "createdAt" > $1`,
         [since],
       )
     : await db.all<ReachRow>(`SELECT reasoning, "handledBy" FROM "AnalyzedMessage"`);
@@ -497,7 +514,7 @@ export async function readReach(db: ReachDb, since?: string): Promise<ReachSumma
  */
 export async function assertLiveSweepReachedModel(
   db: ReachDb,
-  opts: { maxOfflineRate?: number; since?: string } = {},
+  opts: { maxOfflineRate?: number; since?: Date | null } = {},
 ): Promise<ReachSummary> {
   const summary = await readReach(db, opts.since);
   const failure = liveReachFailure(summary, opts);

@@ -30,6 +30,8 @@ import {
   keyFingerprint,
   liveReachFailure,
   probeAnthropic,
+  reachWatermark,
+  readReach,
   summariseReach,
 } from "./live-llm";
 import { E2EPreflightError } from "./preflight";
@@ -329,5 +331,60 @@ describe("liveReachFailure", () => {
       })),
     ]);
     expect(liveReachFailure(s)).toBeNull();
+  });
+});
+
+describe("reachWatermark", () => {
+  /** A db that records the SQL it was asked for. */
+  function fakeDb(rows: Record<string, unknown[]>) {
+    const sql: string[] = [];
+    const params: unknown[][] = [];
+    return {
+      sql,
+      params,
+      async all<T>(q: string, p: unknown[] = []): Promise<T[]> {
+        sql.push(q);
+        params.push(p);
+        const key = /max\(/.test(q) ? "watermark" : "reach";
+        return (rows[key] ?? []) as T[];
+      },
+    };
+  }
+
+  it("reads the table's own high-water mark, never a clock", async () => {
+    // The bug this pins: `SELECT now()` is a timestamptz, `createdAt` is
+    // a Prisma `timestamp(3)` holding UTC, and comparing them makes
+    // Postgres reinterpret the column in the session's zone. In
+    // Europe/London in summer that put every row of a live sweep an hour
+    // "before" a watermark taken an instant earlier, and the S12 arm
+    // reported "0 of 0 messages reached the model" while the metering
+    // proxy reported 100 real calls and $1.48 billed.
+    const db = fakeDb({ watermark: [{ high: "2026-09-01T15:00:00.000Z" }] });
+    const w = await reachWatermark(db);
+    expect(w).toBeInstanceOf(Date);
+    expect(db.sql[0]).toMatch(/max\("createdAt"\)/);
+    expect(db.sql[0]).not.toMatch(/now\(\)|current_timestamp/i);
+  });
+
+  it("returns null for an empty table, meaning read everything", async () => {
+    const db = fakeDb({ watermark: [{ high: null }] });
+    expect(await reachWatermark(db)).toBeNull();
+  });
+
+  it("filters on the same column it read the watermark from", async () => {
+    const db = fakeDb({ reach: [{ reasoning: "player is in", handledBy: "llm" }] });
+    const since = new Date("2026-09-01T15:00:00.000Z");
+    const s = await readReach(db, since);
+    expect(db.sql[0]).toMatch(/WHERE "createdAt" > \$1/);
+    // Passed as a Date, so node-pg does the encoding — no string
+    // formatting, no cast, nothing for a time zone to get hold of.
+    expect(db.params[0][0]).toBe(since);
+    expect(s.model).toBe(1);
+  });
+
+  it("reads the whole table when there is no watermark", async () => {
+    const db = fakeDb({ reach: [] });
+    await readReach(db, null);
+    expect(db.sql[0]).not.toMatch(/WHERE/);
   });
 });
