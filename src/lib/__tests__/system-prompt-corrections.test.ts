@@ -169,3 +169,36 @@ describe("§3.4.3 — the bench-DM rule must not make the model assert a falseho
     expect(SYSTEM_PROMPT).toMatch(/turned bench DMs off|opted out/i);
   });
 });
+
+describe("§3.4.4 — the dead keycap rule is gone", () => {
+  function source(rel: string): string {
+    return fs.readFileSync(path.resolve(__dirname, rel), "utf8");
+  }
+
+  it("PREMISE: slot-number keycap reactions really are a removed feature", () => {
+    // bot-scheduler's slotEmoji used to map slot 1-10 onto 1️⃣-🔟. Kemal had it
+    // removed on 2026-05-05: people read the keycap as a "2 reactions" counter,
+    // and it went stale every time someone dropped. It now returns ✅ for
+    // everyone, and the RetroReaction refresh it required is a no-op.
+    const scheduler = source("../bot-scheduler.ts");
+    const fn = scheduler.slice(scheduler.indexOf("function slotEmoji"));
+    expect(fn.slice(0, 120)).toContain('return "✅"');
+
+    // And the analyze route picks the react semantically, never by slot.
+    const route = source("../../app/api/whatsapp/analyze/route.ts");
+    expect(route).toContain('finalReact = result.status === "CONFIRMED" ? "✅" : "🪑"');
+  });
+
+  it("no longer spends prompt on an instruction about a removed feature", () => {
+    expect(SYSTEM_PROMPT).not.toContain("keycap");
+    expect(SYSTEM_PROMPT).not.toContain("1️⃣");
+    expect(SYSTEM_PROMPT).not.toContain("🔟");
+    expect(SYSTEM_PROMPT).not.toContain("no longer used");
+  });
+
+  it("keeps the live half of that line — what to emit and who overrides it", () => {
+    expect(SYSTEM_PROMPT).toContain("Reaction emoji rule");
+    expect(SYSTEM_PROMPT).toMatch(/emit react: "👍"/);
+    expect(SYSTEM_PROMPT).toContain("✅ (confirmed) or 🪑 (bench)");
+  });
+});

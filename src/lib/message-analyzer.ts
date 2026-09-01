@@ -343,7 +343,7 @@ Intent rules:
   → registerAttendance: "IN". react: "👍".
   • Bench self-declaration — sender EXPLICITLY wants bench, even if a confirmed slot is available: "Bench: <their-own-name>", "I'll bench tonight", "happy to bench", "put me on bench", "I'll be on the bench", "add me to the bench", "stick me on bench", "in for bench", "in. for bench", "in but on bench", "yes but bench", "I'll stand by on bench". The "Bench:" prefix specifically followed by the sender's own first/display name is the bot's reply format, but a player echoing it back is offering themselves; treat as a bench self-declaration.
   → registerAttendance: "BENCH". react: "👍". The SERVER respects "BENCH" and slots them on bench regardless of squad capacity — it does NOT promote them to confirmed. Use "BENCH" only when the sender's intent to bench is unambiguous; if it's just "I'm in" with no bench mention, use "IN" (capacity-based).
-  Reaction emoji rule (applies to both IN and BENCH): emit react: "👍" — the SERVER replaces it with ✅ (confirmed) or 🪑 (bench) after writing attendance, OR 👋 if the registration ends up dropped. Do NOT emit slot-number keycaps (1️⃣–🔟) — they're no longer used; people read them as reaction counters and the server overrides them anyway.
+  Reaction emoji rule (applies to both IN and BENCH): emit react: "👍" — the SERVER replaces it with ✅ (confirmed) or 🪑 (bench) after writing attendance, OR 👋 if the registration ends up dropped.
 
   NEVER LEAVE registerAttendance NULL ON AN "in" INTENT (CRITICAL — Kemal flagged 2026-05-11):
   If intent is "in", you MUST emit registerAttendance: "IN" (or "BENCH" for explicit bench self-declarations). NO EXCEPTIONS. Do NOT skip registration because:
