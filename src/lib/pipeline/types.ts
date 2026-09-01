@@ -236,6 +236,10 @@ export interface SquadState {
   matchId: string | null;
   /** Format TOTAL across both teams (7-a-side → 14). Never per-team. */
   maxPlayers: number;
+  /** Pre-formatted for the composer, so it needs no clock and no
+   *  timezone library: "Tue 21:30". */
+  kickoffLabel: string;
+  venue: string;
   rows: AttendanceRow[];
   roster: Member[];
   openOffers: BenchOffer[];

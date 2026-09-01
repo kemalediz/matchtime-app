@@ -126,6 +126,8 @@ export function world(opts: WorldOpts = {}): SquadState {
   return {
     matchId: opts.noMatch ? null : "match-1",
     maxPlayers: opts.maxPlayers ?? 14,
+    kickoffLabel: "Tue 21:30",
+    venue: "Goals North Cheam",
     rows,
     roster,
     openOffers: opts.openOffers ?? [],
