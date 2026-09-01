@@ -112,7 +112,19 @@ export class CurrentAnalyzerPipeline implements CorpusPipeline {
         players: w.players,
         ...(w.features ? { features: w.features } : {}),
         upcomingMatch:
-          w.upcomingMatchInDays === null ? false : { daysFromNow: w.upcomingMatchInDays ?? 2 },
+          w.upcomingMatchInDays === null
+            ? false
+            : {
+                // Hours win when a case gives them: the replay harness
+                // reproduces the exact distance to kickoff a real
+                // message had, which day granularity would erase.
+                ...(w.upcomingMatchInHours !== undefined
+                  ? { hoursFromNow: w.upcomingMatchInHours }
+                  : { daysFromNow: w.upcomingMatchInDays ?? 2 }),
+                ...(w.deadlineHoursBeforeKickoff !== undefined
+                  ? { deadlineHoursBeforeKickoff: w.deadlineHoursBeforeKickoff }
+                  : {}),
+              },
         attendance: w.attendance ?? [],
         ...(w.completedMatch ? { completedMatch: w.completedMatch } : {}),
       })

@@ -143,6 +143,15 @@ export function buildTestEnv(): Record<string, string> {
     delete env.MT_TEST_LLM_STUB_FILE;
     env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
     env.MT_SIM_LIVE_LLM = "1";
+    // Opt-in cost metering (e2e/replay/meter.ts). When the orchestrator
+    // names a port, the server's Anthropic SDK is pointed at a local
+    // proxy that forwards every call verbatim and banks the `usage`
+    // block, so a replay sweep can report MEASURED cost against §8.2
+    // without editing anything under src/. Unset → untouched behaviour.
+    if (process.env.MT_REPLAY_METER_PORT) {
+      env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${process.env.MT_REPLAY_METER_PORT}`;
+      env.MT_REPLAY_METER_PORT = process.env.MT_REPLAY_METER_PORT;
+    }
   }
   return env;
 }
