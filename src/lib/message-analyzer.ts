@@ -1592,56 +1592,6 @@ export function enforceProximity(text: string, matchDate: Date): string {
   return out;
 }
 
-/** Leaderboard rows also use "N. <name>" numbering but carry stats
- *  markers ("— 4/4 (100%)", "— 2 wins", "— 1042", percent signs,
- *  "votes"). Roster post-processors must never treat those as squad
- *  rosters (Kemal flagged 2026-05-14 when "top 3 most consistent"
- *  turned into the upcoming squad list). */
-function isLeaderboardLine(s: string): boolean {
-  return (
-    /\s—\s/.test(s) || // em-dash separator the leaderboard formatter uses
-    /\d+\s*%/.test(s) || // "(96%)"
-    /\b(?:wins?|votes?|matches?)\b/i.test(s) || // "2 wins", "5 of 11 votes", "3 matches"
-    /\b\d+\/\d+\s*\(/.test(s) // "4/4 (100%)" — attendance pattern
-  );
-}
-
-/**
- * Does this reply text display SQUAD STATE — a numbered roster, a
- * squad/bench header, a "N/M" count claim, or a bench-emptiness claim?
- * Used by the analyze route to find the replies that must collapse into
- * ONE authoritative status post per batch (Sutton Lads 2026-06-12: four
- * contradictory squad posts ~1s apart from one batch). Leaderboard /
- * stats replies are explicitly NOT squad state.
- */
-export function looksLikeSquadStateReply(text: string): boolean {
-  const lines = text.split("\n");
-  // Stats/leaderboard replies — never squad state, never collapse them.
-  if (lines.some((l) => /^\s*\d+\.\s+\S/.test(l) && isLeaderboardLine(l))) {
-    return false;
-  }
-  // (a) A numbered roster run of 2+ lines.
-  let run = 0;
-  for (const l of lines) {
-    if (/^\s*\d+\.\s+\S/.test(l)) {
-      run++;
-      if (run >= 2) return true;
-    } else {
-      run = 0;
-    }
-  }
-  // (b) Squad/bench display headers.
-  if (/\*(?:Playing\b[^*\n]*|Squad\b[^*\n]*|Confirmed\s*\(\d+\/\d+\)[^*\n]*|Bench\s*\(\d+\)[^*\n]*):?\*/i.test(text)) {
-    return true;
-  }
-  // (c) A count claim alongside squad vocabulary.
-  if (/\b\d+\/\d+\b/.test(text) && /\b(?:squad|bench|slot|full|need|player)/i.test(text)) {
-    return true;
-  }
-  if (/\bbench is empty\b/i.test(text)) return true;
-  return false;
-}
-
 /**
  * Deterministic, server-composed squad+bench status post.
  *
