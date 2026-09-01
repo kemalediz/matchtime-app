@@ -1,6 +1,11 @@
 import { db } from "./db";
 import { requestBenchConfirmationOnDrop, queueSlotEmojiRefresh } from "./bot-scheduler";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
+import {
+  UNATTRIBUTED_ATTENDANCE_CONTEXT,
+  recordAttendanceEvent,
+  type AttendanceEventContext,
+} from "./attendance-events";
 
 /**
  * Why a caller is asking for BENCH.
@@ -59,8 +64,31 @@ export async function registerAttendance(
      *  should come" must NOT promote Burak (he didn't ask). Default
      *  false preserves the old idempotent behaviour. */
     promoteFromBench?: boolean;
-  } = {},
+    /**
+     * WHY this registration is happening, for the append-only
+     * `AttendanceEvent` log — see `lib/attendance-events.ts`.
+     *
+     * REQUIRED, deliberately. The log's whole value is that it records
+     * the CAUSE and not just the effect: a CONFIRMED row written
+     * because the player said IN and one written because an admin did
+     * roster surgery are identical afterwards and completely different
+     * facts. Making this optional would let a new caller land in the
+     * log as "unknown", which is the class of silent hole this table
+     * exists to end.
+     *
+     * `scripts/*.ts` sit outside tsconfig, so a script that omits it
+     * still writes an event — recorded as UNATTRIBUTED, visibly.
+     */
+    event: AttendanceEventContext;
+  },
 ) {
+  // TypeScript makes `options.event` mandatory for everything under
+  // src/, but scripts/*.ts is excluded from tsconfig and calls this with
+  // one or two arguments. Normalise rather than crash — and record the
+  // resulting event as UNATTRIBUTED so the gap is visible in the log
+  // instead of missing from it.
+  options = options ?? ({ event: UNATTRIBUTED_ATTENDANCE_CONTEXT } as typeof options);
+  const eventContext = options.event ?? UNATTRIBUTED_ATTENDANCE_CONTEXT;
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: { activity: { select: { orgId: true } } },
@@ -122,6 +150,8 @@ export async function registerAttendance(
   // True when this call is a bench player's OWN claim ("IN") that filled a
   // free slot — used below to resolve the dangling open BenchSlotOffer.
   let selfPromoted = false;
+  /** Only used to annotate the audit event with WHY the row moved. */
+  let promotedFromBench = false;
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {
     const wantsBenchDowngrade =
       options.benchIntent === "explicit" && existing.status === "CONFIRMED";
@@ -143,6 +173,7 @@ export async function registerAttendance(
       if (confirmedNow < match.maxPlayers) wantsBenchPromotion = true;
     }
     selfPromoted = wantsBenchPromotion;
+    promotedFromBench = wantsBenchPromotion;
     if (!wantsBenchDowngrade && !wantsBenchPromotion) {
       const all = await db.attendance.findMany({
         where: { matchId, status: { in: ["CONFIRMED", "BENCH"] } },
@@ -195,10 +226,49 @@ export async function registerAttendance(
       ? existing.position
       : nextPosition;
 
-  const attendance = await db.attendance.upsert({
-    where: { matchId_userId: { matchId, userId } },
-    create: { matchId, userId, status, position: positionToWrite },
-    update: { status, position: positionToWrite, respondedAt: new Date() },
+  // ── THE WRITE AND ITS RECORD ARE ONE TRANSACTION ────────────────────
+  //
+  // Not "the write, then the log". A log written NEXT TO the change can
+  // disagree with the state — the row lands, the process dies, the event
+  // never happens, and the log now quietly says a player is benched who
+  // is actually in the squad. Something that can disagree with the state
+  // is not evidence, and this log exists to be the evidence §10 step 6
+  // turns on. Only these two statements are inside the transaction, so
+  // it is nowhere near Prisma's interactive timeout.
+  const attendance = await db.$transaction(async (tx) => {
+    const row = await tx.attendance.upsert({
+      where: { matchId_userId: { matchId, userId } },
+      create: { matchId, userId, status, position: positionToWrite },
+      update: { status, position: positionToWrite, respondedAt: new Date() },
+    });
+    await recordAttendanceEvent(
+      tx,
+      {
+        matchId,
+        userId,
+        orgId: match.activity.orgId,
+        fromStatus: existing?.status ?? null,
+        toStatus: row.status,
+        fromPosition: existing?.position ?? null,
+        toPosition: row.position,
+      },
+      {
+        ...eventContext,
+        // WHY a player is on the bench is exactly what the August 2026
+        // incidents turned on, so it is written down rather than left to
+        // be re-derived from capacity months later.
+        note:
+          eventContext.note ??
+          (row.status === "BENCH"
+            ? options?.benchIntent === "explicit"
+              ? "explicit bench request"
+              : "squad full — no slot to give"
+            : promotedFromBench
+              ? "bench player claimed a free slot"
+              : null),
+      },
+    );
+    return row;
   });
 
   // ── Auto-resolve any open BenchSlotOffer for this user (2026-05-26) ──
@@ -324,8 +394,20 @@ export async function registerAttendance(
   };
 }
 
-export async function cancelAttendance(userId: string, matchId: string) {
-  const match = await db.match.findUnique({ where: { id: matchId } });
+export async function cancelAttendance(
+  userId: string,
+  matchId: string,
+  /** WHY this drop is happening — see `registerAttendance`'s `event` for
+   *  why it is required rather than optional. A slot vacated by a bench
+   *  claim and a player's own OUT leave an identical row behind; the
+   *  replay has to be able to tell them apart. */
+  event: AttendanceEventContext,
+) {
+  const eventContext = event ?? UNATTRIBUTED_ATTENDANCE_CONTEXT;
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    include: { activity: { select: { orgId: true } } },
+  });
   if (!match) throw new Error("Match not found");
 
   // Deadline check removed 2026-05-06 — symmetric with
@@ -341,9 +423,25 @@ export async function cancelAttendance(userId: string, matchId: string) {
 
   const wasConfirmed = attendance.status === "CONFIRMED";
 
-  await db.attendance.update({
-    where: { id: attendance.id },
-    data: { status: "DROPPED" },
+  // One transaction with the record of it — see registerAttendance.
+  await db.$transaction(async (tx) => {
+    await tx.attendance.update({
+      where: { id: attendance.id },
+      data: { status: "DROPPED" },
+    });
+    await recordAttendanceEvent(
+      tx,
+      {
+        matchId,
+        userId,
+        orgId: match.activity.orgId,
+        fromStatus: attendance.status,
+        toStatus: "DROPPED",
+        fromPosition: attendance.position,
+        toPosition: attendance.position,
+      },
+      eventContext,
+    );
   });
 
   // If someone in the confirmed 14 dropped, we DON'T auto-promote any more.

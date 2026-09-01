@@ -233,11 +233,22 @@ export async function assignUnresolvedToPlayer(args: {
       });
       if (match) {
         try {
+          // An admin linked an unresolved pushname to a player, and we
+          // are REPLAYING their most recent intent onto the squad. The
+          // subject asked for it originally; the admin is why it landed
+          // now, which is why both are recorded.
+          const event = {
+            cause: "unresolved-link",
+            actorKind: "admin",
+            actorUserId: session.user.id,
+            sourceRef: `unresolved:${latest.intent}`,
+            note: `replayed "${latest.intent}" when ${args.userId} was linked to pushname "${args.pushname}"`,
+          } as const;
           if (latest.intent === "out" || latest.intent === "replacement_request") {
-            await cancelAttendance(args.userId, match.id);
+            await cancelAttendance(args.userId, match.id, event);
             applied = "OUT";
           } else if (latest.intent === "in") {
-            const r = await registerAttendance(args.userId, match.id);
+            const r = await registerAttendance(args.userId, match.id, { event });
             applied = r.status; // CONFIRMED | BENCH
           }
         } catch (err) {

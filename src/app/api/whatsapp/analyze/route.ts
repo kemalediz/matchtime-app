@@ -78,6 +78,8 @@ import {
   parseHelpTopic,
 } from "@/lib/onboarding-conversation";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
+import { recordAttendanceEvent } from "@/lib/attendance-events";
+import { currentAnalyzeBatchId, withAnalyzeBatch } from "@/lib/analyze-batch-context";
 import { buildBenchUpgradeReply } from "@/lib/bench-upgrade-ack";
 import {
   resolveAttendanceAck,
@@ -164,7 +166,22 @@ type ResolvedSender = {
   phone: string | null;
 };
 
+/**
+ * One HTTP request = one analyze BATCH = one `batchId`.
+ *
+ * The Pi flushes a WINDOW of buffered messages here and the route
+ * reasons over all of it at once, so the batch is the unit any replay
+ * of this history has to reconstruct. Stamping it (via
+ * `lib/analyze-batch-context.ts`, read in `recordAnalysis`) replaces
+ * the timing heuristic `e2e/replay/reconstruct.ts` had to use, which
+ * threw away 62 batches whose write gaps were genuinely ambiguous.
+ * Purely additive: the column is nullable and nothing branches on it.
+ */
 export async function POST(request: Request) {
+  return withAnalyzeBatch(() => handleAnalyzeRequest(request));
+}
+
+async function handleAnalyzeRequest(request: Request) {
   const apiKey = request.headers.get("x-api-key");
   if (apiKey !== process.env.WHATSAPP_API_KEY) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -2639,6 +2656,13 @@ async function executeVerdict(args: {
             // while 13/14, must move to the squad). Third-party
             // registerFor below does NOT pass this.
             promoteFromBench: verdict.registerAttendance === "IN",
+            // The sender's OWN claim, in the group.
+            event: {
+              cause: "self-attendance",
+              actorKind: "player",
+              actorUserId: user.id,
+              sourceRef: verdict.waMessageId,
+            },
           });
           // Simple semantic react: ✅ if they made the squad, 🪑 if
           // they landed on the bench. We used to react with a slot-
@@ -2666,7 +2690,12 @@ async function executeVerdict(args: {
           // squad-full announcement is fired inside registerAttendance
           // now (covers every confirm path, with the full line-up).
         } else {
-          await cancelAttendance(user.id, matchForOrg.id);
+          await cancelAttendance(user.id, matchForOrg.id, {
+            cause: "self-attendance",
+            actorKind: "player",
+            actorUserId: user.id,
+            sourceRef: verdict.waMessageId,
+          });
           finalReact = "👋";
         }
         // A firm IN/OUT resolves any pending tentative follow-up for
@@ -2735,6 +2764,18 @@ async function executeVerdict(args: {
           userId: target?.userId ?? null,
         })),
       });
+      // Every write in this loop is SOMEONE ELSE acting on a player's
+      // squad place. The subject is `target.userId`; the actor is the
+      // sender. An admin directing roster surgery and a member relaying
+      // a mate's message are different facts, so they get different
+      // causes — a replay reading "third-party-attendance" must not have
+      // to guess whether authority was involved.
+      const thirdPartyEvent = {
+        cause: promoteAuthorized ? ("admin-message" as const) : ("third-party-attendance" as const),
+        actorKind: promoteAuthorized ? ("admin" as const) : ("member" as const),
+        actorUserId: user?.id ?? null,
+        sourceRef: verdict.waMessageId,
+      };
       for (const { entry, target } of resolved) {
         try {
           if (!target) continue;
@@ -2756,7 +2797,9 @@ async function executeVerdict(args: {
             const result = await registerAttendance(
               target.userId,
               matchForOrg.id,
-              promoteAuthorized ? { promoteFromBench: true } : undefined,
+              promoteAuthorized
+                ? { promoteFromBench: true, event: thirdPartyEvent }
+                : { event: thirdPartyEvent },
             );
             // Same semantic react rule as for the sender — ✅ for a
             // confirmed slot, 🪑 for bench. No more keycap numbers.
@@ -2774,10 +2817,11 @@ async function executeVerdict(args: {
             // not-yet-registered player straight to the bench.
             await registerAttendance(target.userId, matchForOrg.id, {
               benchIntent: "explicit",
+              event: thirdPartyEvent,
             });
             finalReact = "🪑";
           } else {
-            await cancelAttendance(target.userId, matchForOrg.id);
+            await cancelAttendance(target.userId, matchForOrg.id, thirdPartyEvent);
             finalReact = "👋";
           }
         } catch (err) {
@@ -2927,9 +2971,33 @@ async function executeVerdict(args: {
               continue;
             }
             if (target.status !== "CONFIRMED") {
-              await db.attendance.update({
-                where: { id: target.id },
-                data: { status: "CONFIRMED" },
+              // "generate teams including X" pulls a bench/dropped
+              // player back into the squad. Same transaction as the
+              // event that records it — see lib/attendance-events.ts.
+              await db.$transaction(async (tx) => {
+                await tx.attendance.update({
+                  where: { id: target.id },
+                  data: { status: "CONFIRMED" },
+                });
+                await recordAttendanceEvent(
+                  tx,
+                  {
+                    matchId: match.id,
+                    userId: target.userId,
+                    orgId,
+                    fromStatus: target.status,
+                    toStatus: "CONFIRMED",
+                    fromPosition: target.position,
+                    toPosition: target.position,
+                  },
+                  {
+                    cause: "admin-message",
+                    actorKind: "admin",
+                    actorUserId: user?.id ?? null,
+                    sourceRef: verdict.waMessageId,
+                    note: `force-included in a team-generation request as "${rawName}"`,
+                  },
+                );
               });
             }
             includedLog.push(target.user.name ?? rawName);
@@ -3352,6 +3420,9 @@ async function recordAnalysis(args: {
         action: args.action,
         confidence: args.confidence,
         reasoning: args.reasoning.slice(0, 2000),
+        // The flush this message was reasoned about in. Null outside a
+        // batch (nothing else calls this) — see analyze-batch-context.ts.
+        batchId: currentAnalyzeBatchId(),
       },
     });
   } catch (err) {

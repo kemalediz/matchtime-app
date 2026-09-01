@@ -227,7 +227,16 @@ export async function POST(request: Request) {
 
   try {
     if (action === "IN") {
-      const result = await registerAttendance(user.id, nextMatch.id);
+      const result = await registerAttendance(user.id, nextMatch.id, {
+        // The bot's explicit IN/OUT endpoint — always the player acting
+        // on their own place, never a third party.
+        event: {
+          cause: "self-attendance",
+          actorKind: "player",
+          actorUserId: user.id,
+          sourceRef: "wa:attendance-endpoint",
+        },
+      });
       return NextResponse.json({
         success: true,
         player: user.name,
@@ -241,7 +250,12 @@ export async function POST(request: Request) {
         autoReactivated,
       });
     } else {
-      await cancelAttendance(user.id, nextMatch.id);
+      await cancelAttendance(user.id, nextMatch.id, {
+        cause: "self-attendance",
+        actorKind: "player",
+        actorUserId: user.id,
+        sourceRef: "wa:attendance-endpoint",
+      });
       const confirmedCount = await db.attendance.count({
         where: { matchId: nextMatch.id, status: "CONFIRMED" },
       });

@@ -61,6 +61,15 @@ describe("IN", () => {
     // The player's OWN claim, so a bencher is promoted if a slot freed.
     expect(registerAttendance).toHaveBeenCalledWith("user-abid", "match-next", {
       promoteFromBench: true,
+      // Named for the append-only log: their own claim, arriving by DM
+      // rather than in the group. The channel is provenance, not a
+      // different cause.
+      event: {
+        cause: "self-attendance",
+        actorKind: "player",
+        actorUserId: "user-abid",
+        sourceRef: "dm:self-attendance",
+      },
     });
     expect(botJobCreate).toHaveBeenCalledTimes(1);
     expect(ackText()).toContain("Tuesday 7-a-side");
@@ -100,7 +109,12 @@ describe("OUT", () => {
     const res = await applyOutOfBandSelfAttendance({ ...BASE, decision: "out" });
 
     expect(res.status).toBe("DROPPED");
-    expect(cancelAttendance).toHaveBeenCalledWith("user-abid", "match-next");
+    expect(cancelAttendance).toHaveBeenCalledWith("user-abid", "match-next", {
+      cause: "self-attendance",
+      actorKind: "player",
+      actorUserId: "user-abid",
+      sourceRef: "dm:self-attendance",
+    });
     expect(announceOutOfBandAttendance).toHaveBeenCalledWith(
       expect.objectContaining({ before: "CONFIRMED", after: "DROPPED" }),
     );

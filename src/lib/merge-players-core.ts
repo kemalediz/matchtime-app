@@ -22,6 +22,8 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TxClient = any;
 
+import { recordAttendanceEvent } from "./attendance-events";
+
 const ATT_RANK = { CONFIRMED: 3, BENCH: 2, DROPPED: 1 } as const;
 const ROLE_RANK = { OWNER: 3, ADMIN: 2, PLAYER: 1 } as const;
 
@@ -96,13 +98,68 @@ export async function mergePlayersCore(
   }
 
   // 3. Attendance — CONFIRMED > BENCH > DROPPED on collision.
+  //
+  // A merge MOVES squad places between two user ids and DELETES the
+  // loser of every collision. Both are attendance transitions, and both
+  // were previously invisible: the row for the dropped id simply
+  // stopped existing, so a reconstruction reading only today's rows
+  // would place a player in a squad they were never recorded in (or
+  // miss one they were). This whole function already runs inside the
+  // caller's transaction, so the events land with it.
+  const orgIdOfMatch = async (matchId: string): Promise<string> => {
+    const m = await tx.match.findUnique({
+      where: { id: matchId },
+      select: { activity: { select: { orgId: true } } },
+    });
+    return m?.activity?.orgId ?? "";
+  };
   const dropAtts = await tx.attendance.findMany({ where: { userId: dropUserId } });
   for (const a of dropAtts) {
     const existing = await tx.attendance.findUnique({
       where: { matchId_userId: { matchId: a.matchId, userId: keepUserId } },
     });
+    const orgId = await orgIdOfMatch(a.matchId);
     if (!existing) {
       await tx.attendance.update({ where: { id: a.id }, data: { userId: keepUserId } });
+      // The place did not change; WHO holds it did. Recorded as the old
+      // id losing it and the new id gaining it, so a fold over the log
+      // ends up with exactly the rows the table now holds.
+      await recordAttendanceEvent(
+        tx,
+        {
+          matchId: a.matchId,
+          userId: dropUserId,
+          orgId,
+          fromStatus: a.status,
+          toStatus: null,
+          fromPosition: a.position,
+          toPosition: null,
+        },
+        {
+          cause: "player-merge",
+          actorKind: "system",
+          sourceRef: `merge:${dropUserId}->${keepUserId}`,
+          note: "duplicate user merged; this squad place moved to the survivor",
+        },
+      );
+      await recordAttendanceEvent(
+        tx,
+        {
+          matchId: a.matchId,
+          userId: keepUserId,
+          orgId,
+          fromStatus: null,
+          toStatus: a.status,
+          fromPosition: null,
+          toPosition: a.position,
+        },
+        {
+          cause: "player-merge",
+          actorKind: "system",
+          sourceRef: `merge:${dropUserId}->${keepUserId}`,
+          note: `squad place inherited from merged-away user ${dropUserId}`,
+        },
+      );
     } else {
       const dropRank = ATT_RANK[a.status as keyof typeof ATT_RANK] ?? 0;
       const keepRank = ATT_RANK[existing.status as keyof typeof ATT_RANK] ?? 0;
@@ -111,8 +168,44 @@ export async function mergePlayersCore(
           where: { id: existing.id },
           data: { status: a.status, position: a.position, paidAt: a.paidAt ?? existing.paidAt },
         });
+        await recordAttendanceEvent(
+          tx,
+          {
+            matchId: a.matchId,
+            userId: keepUserId,
+            orgId,
+            fromStatus: existing.status,
+            toStatus: a.status,
+            fromPosition: existing.position,
+            toPosition: a.position,
+          },
+          {
+            cause: "player-merge",
+            actorKind: "system",
+            sourceRef: `merge:${dropUserId}->${keepUserId}`,
+            note: `collision resolved in favour of the merged-away row (${a.status} beats ${existing.status})`,
+          },
+        );
       }
       await tx.attendance.delete({ where: { id: a.id } });
+      await recordAttendanceEvent(
+        tx,
+        {
+          matchId: a.matchId,
+          userId: dropUserId,
+          orgId,
+          fromStatus: a.status,
+          toStatus: null,
+          fromPosition: a.position,
+          toPosition: null,
+        },
+        {
+          cause: "player-merge",
+          actorKind: "system",
+          sourceRef: `merge:${dropUserId}->${keepUserId}`,
+          note: "duplicate row deleted; the survivor already held a place in this match",
+        },
+      );
     }
   }
 

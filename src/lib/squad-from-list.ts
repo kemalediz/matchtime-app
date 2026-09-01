@@ -42,6 +42,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
+import { recordAttendanceEvent } from "./attendance-events";
 import { normalisePhone } from "./phone";
 
 const MODEL = "claude-sonnet-4-5";
@@ -756,18 +757,43 @@ export async function finaliseSquadForMatch(
       continue;
     }
     try {
-      await db.attendance.upsert({
+      const priorRow = await db.attendance.findUnique({
         where: { matchId_userId: { matchId, userId: r.userId } },
-        create: {
-          matchId,
-          userId: r.userId,
-          status: "CONFIRMED",
-          position: r.position,
-        },
-        update: {
-          status: "CONFIRMED",
-          position: r.position,
-        },
+        select: { status: true, position: true },
+      });
+      // Same transaction as the record of it — see lib/attendance-events.ts.
+      await db.$transaction(async (tx) => {
+        const row = await tx.attendance.upsert({
+          where: { matchId_userId: { matchId, userId: r.userId } },
+          create: {
+            matchId,
+            userId: r.userId,
+            status: "CONFIRMED",
+            position: r.position,
+          },
+          update: {
+            status: "CONFIRMED",
+            position: r.position,
+          },
+        });
+        await recordAttendanceEvent(
+          tx,
+          {
+            matchId,
+            userId: r.userId,
+            orgId,
+            fromStatus: priorRow?.status ?? null,
+            toStatus: row.status,
+            fromPosition: priorRow?.position ?? null,
+            toPosition: row.position,
+          },
+          {
+            cause: "pasted-roster",
+            actorKind: "system",
+            sourceRef: "cron:extract-squads",
+            note: `extracted from a posted list as "${r.name}"${r.provisional ? " (provisional player)" : ""}`,
+          },
+        );
       });
       written++;
     } catch (err) {
@@ -783,20 +809,47 @@ export async function finaliseSquadForMatch(
     const r = await resolveOrProvisionSquadName(orgId, name);
     if (!r) continue;
     try {
-      await db.attendance.upsert({
+      const priorRow = await db.attendance.findUnique({
         where: { matchId_userId: { matchId, userId: r.userId } },
-        create: {
-          matchId,
-          userId: r.userId,
-          status: "BENCH",
-          position: i + 1,
-        },
-        update: {
-          // Don't downgrade a CONFIRMED to BENCH if they later moved
-          // into the playing list. (Shouldn't happen by construction —
-          // names live in EITHER playing or reserves on a single list
-          // — but guard anyway.)
-        },
+        select: { status: true, position: true },
+      });
+      await db.$transaction(async (tx) => {
+        const row = await tx.attendance.upsert({
+          where: { matchId_userId: { matchId, userId: r.userId } },
+          create: {
+            matchId,
+            userId: r.userId,
+            status: "BENCH",
+            position: i + 1,
+          },
+          update: {
+            // Don't downgrade a CONFIRMED to BENCH if they later moved
+            // into the playing list. (Shouldn't happen by construction —
+            // names live in EITHER playing or reserves on a single list
+            // — but guard anyway.)
+          },
+        });
+        // The empty `update` above means an existing row is UNCHANGED,
+        // and recordAttendanceEvent writes nothing for a no-op — so a
+        // re-run of the cron does not pad the log.
+        await recordAttendanceEvent(
+          tx,
+          {
+            matchId,
+            userId: r.userId,
+            orgId,
+            fromStatus: priorRow?.status ?? null,
+            toStatus: row.status,
+            fromPosition: priorRow?.position ?? null,
+            toPosition: row.position,
+          },
+          {
+            cause: "pasted-roster",
+            actorKind: "system",
+            sourceRef: "cron:extract-squads",
+            note: "listed as a reserve on a posted list",
+          },
+        );
       });
     } catch (err) {
       console.error("[squad-from-list] reserve upsert failed:", err);
