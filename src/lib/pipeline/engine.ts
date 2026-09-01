@@ -468,11 +468,22 @@ export function decide(input: EngineInput): EngineResult {
 
         // ── Bench-slot offers (§3.2 S13, and NOBODY is ever dropped) ──
         const existing = t.userId ? w.rows.get(t.userId) : undefined;
-        const openOffer = w.offers.find(
-          (o) =>
-            t.userId !== null &&
-            (o.offeredToUserIds.length === 0 || o.offeredToUserIds.includes(t.userId)),
-        );
+        // An offer's audience is the bench AS IT WAS when the offer
+        // opened, and an EMPTY audience is offered to nobody rather than
+        // to everyone. An offer can outlive its bench (everyone on it
+        // gets confirmed), and the everyone-reading meant the next
+        // person to say IN silently consumed a slot that was never
+        // theirs — the first bencher to answer would then find the offer
+        // gone. Fail closed.
+        const openOffer =
+          t.userId !== null
+            ? w.offers.find((o) => o.offeredToUserIds.includes(t.userId as string))
+            : undefined;
+        // `existing` is a live reference into the working state and
+        // applyClaim mutates it, so the BEFORE status has to be read
+        // now. (Caught by the S13b unit test the moment the claim rule
+        // started depending on it.)
+        const statusBefore = existing?.status;
         if (
           existing?.status === "BENCH" &&
           c.polarity === "in" &&
@@ -504,8 +515,10 @@ export function decide(input: EngineInput): EngineResult {
         squadChanged = true;
         out.react = out.react ?? reactFor(write.status, self);
 
-        // Claiming an open offer resolves it.
-        if (write.status === "CONFIRMED" && openOffer && t.userId) {
+        // Claiming an open offer resolves it — but only when the
+        // claimant actually came off the bench for it. A brand-new
+        // registration is an ordinary IN, not a claim.
+        if (write.status === "CONFIRMED" && openOffer && t.userId && statusBefore === "BENCH") {
           w.offers = w.offers.filter((o) => o.id !== openOffer.id);
           emit({
             kind: "resolve_bench_offer",

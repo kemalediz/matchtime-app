@@ -1524,3 +1524,90 @@ describe("S25 · a resolved confirmation is answered even when nothing changed",
     expect(r.speech.some((s) => s.kind === "pending_confirmed_ack")).toBe(true);
   });
 });
+
+describe("S13 · an offer is claimed by someone it was offered to, and only then", () => {
+  it("an unrelated player's IN does not resolve an open offer", () => {
+    // The offer's audience is the bench AT THE TIME IT OPENED. Anyone
+    // else saying IN is an ordinary registration; it must not consume
+    // the slot the bench is being asked to step into, or the first
+    // bencher to answer finds the offer already gone.
+    const state = world({
+      confirmed: [
+        "kemal",
+        "elvin",
+        "sait",
+        "mustafa",
+        "abid",
+        "idris",
+        "faris",
+        "shaz",
+        "adam",
+        "efat",
+        "usama",
+        "najib",
+        "zair",
+      ],
+      bench: ["karahan"],
+      dropped: ["wasim"],
+      openOffers: [
+        { id: "offer-1", replacingUserId: "u-wasim", offeredToUserIds: ["u-karahan"] },
+      ],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({ from: "amir", body: "in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+      ],
+    });
+    expect(statusOf(r.nextState, "amir")).toBe("CONFIRMED");
+    expect(r.nextState.openOffers).toHaveLength(1);
+    expect(r.writes.some((w) => w.kind === "resolve_bench_offer")).toBe(false);
+  });
+
+  it("an offer whose audience list is EMPTY is offered to nobody, not to everyone", () => {
+    // An offer can outlive its bench (everyone on it gets confirmed).
+    // An empty audience must fail closed: the alternative is that the
+    // next person to say IN silently consumes an offer that was never
+    // theirs.
+    const state = world({
+      confirmed: ["kemal", "elvin", "sait"],
+      dropped: ["wasim"],
+      openOffers: [{ id: "offer-1", replacingUserId: "u-wasim", offeredToUserIds: [] }],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({ from: "amir", body: "in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+      ],
+    });
+    expect(statusOf(r.nextState, "amir")).toBe("CONFIRMED");
+    expect(r.nextState.openOffers).toHaveLength(1);
+  });
+
+  it("a CONFIRMED player cannot claim an offer they were never on the bench for", () => {
+    const state = world({
+      confirmed: ["kemal", "elvin", "sait", "karahan"],
+      dropped: ["wasim"],
+      openOffers: [
+        { id: "offer-1", replacingUserId: "u-wasim", offeredToUserIds: ["u-karahan"] },
+      ],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "karahan",
+          body: "in",
+          route: "self_att",
+          facts: attendanceFacts([claim({})]),
+        }),
+      ],
+    });
+    // Idempotent: already confirmed, nothing to do, offer untouched.
+    expect(r.writes).toHaveLength(0);
+    expect(r.nextState.openOffers).toHaveLength(1);
+  });
+});
