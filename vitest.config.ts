@@ -10,6 +10,9 @@
  *     proofs. These DO start throwaway databases (that is the point: a
  *     config assertion would prove nothing), but they never touch the
  *     suite's own fixture world.
+ *   - `e2e/replay/**\/*.test.ts` — the history-replay harness's pure
+ *     half: reconstruction rules, the differ, the noise floor, the
+ *     sampler and the resume ledger.
  * so it never collides with the Playwright e2e harness
  * (e2e/{api,web,sim}/**\/*.spec.ts, run via `npm run test:e2e` + its
  * embedded Postgres orchestrator).
@@ -19,7 +22,12 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts", "e2e/corpus/**/*.test.ts", "e2e/helpers/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "e2e/corpus/**/*.test.ts",
+      "e2e/helpers/**/*.test.ts",
+      "e2e/replay/**/*.test.ts",
+    ],
     environment: "node",
   },
   resolve: {
