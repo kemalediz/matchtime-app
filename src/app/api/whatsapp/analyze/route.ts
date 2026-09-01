@@ -64,6 +64,7 @@ import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
 import { normaliseName } from "@/lib/squad-from-list";
+import { clampRosterDerivedWrites } from "@/lib/pasted-roster";
 import {
   handleOnboardingTurn,
   buildHelpReply,
@@ -872,6 +873,73 @@ export async function POST(request: Request) {
             `and would provision a ghost member.`,
         );
         verdict = { ...verdict, registerFor: kept.length > 0 ? kept : null };
+        verdicts[i] = verdict;
+      }
+    }
+
+    // ── PASTED-ROSTER CLAMP ─────────────────────────────────────────
+    //    "The model extracts, code decides", applied to the shape that
+    //    the self-replay sweep (PR #35) proved the incumbent cannot
+    //    reproduce: a pasted numbered roster. Three of its four
+    //    write-level disagreements were this one shape — on 2026-06-07
+    //    one run registered Nabeel and the other registered Adam, Amir,
+    //    Ehtisham and Martin, from the same two messages against the
+    //    same empty squad. Production's own labels scatter these across
+    //    `noise`, `in` and `generate_teams_request`, which is why it
+    //    never read as one defect.
+    //
+    //    The prompt says nothing about a pasted list, so the model
+    //    improvises which of the fourteen lines are registrations. It
+    //    cannot do better: reading a registration out of a re-paste
+    //    needs the PREVIOUS list to diff against ("line 6 is new AND it
+    //    is the sender's own name"), and this route holds no such
+    //    state. `lib/squad-from-list.ts` does — it keeps the lists,
+    //    diffs them, attributes additions to the sender and learns
+    //    aliases, behind the `featureSquadFromList` org flag. A group
+    //    that maintains its squad by re-pasting should have that
+    //    switched on. Here, we stop guessing.
+    //
+    //    MONOTONE by construction (see lib/pasted-roster.ts): the clamp
+    //    can only REMOVE writes, and never touches an OUT. A name in
+    //    the registerFor that is NOT a slot in the list survives —
+    //    prose alongside a paste ("also adding Kieran", "Trevell got
+    //    injured, he's out") is a real statement.
+    {
+      const clamp = clampRosterDerivedWrites({
+        body: msg.body,
+        senderNames: [sender.name, msg.authorName],
+        registerAttendance: verdict.registerAttendance,
+        registerFor: verdict.registerFor,
+      });
+      if (clamp.droppedSelf || clamp.droppedNames.length > 0) {
+        console.warn(
+          `[analyze] pasted-roster clamp: "${(msg.body || "").slice(0, 60)}" (${msg.waMessageId}) ` +
+            `is a pasted list — dropped ` +
+            `${clamp.droppedSelf ? `self ${verdict.registerAttendance}` : ""}` +
+            `${clamp.droppedSelf && clamp.droppedNames.length > 0 ? " + " : ""}` +
+            `${clamp.droppedNames.length > 0 ? `registerFor [${clamp.droppedNames.join(", ")}]` : ""}. ` +
+            `A re-paste is a restatement, not a registration; org ${org.id} should use ` +
+            `featureSquadFromList if it maintains its squad this way.`,
+        );
+        verdict = {
+          ...verdict,
+          registerAttendance: clamp.registerAttendance,
+          registerFor: clamp.registerFor,
+        };
+        //  Nothing is left to do. Fall through as noise so the IN
+        //  safety net below cannot put the sender's registration back,
+        //  and so a reply announcing a write that will not happen never
+        //  reaches the group (the same shape as the hypothetical/
+        //  past-tense seatbelt above). An out-shaped verdict keeps its
+        //  intent: the OUT safety net owns that direction, and this
+        //  clamp must never eat a drop.
+        if (
+          clamp.silenced &&
+          verdict.intent !== "out" &&
+          verdict.intent !== "replacement_request"
+        ) {
+          verdict = { ...verdict, intent: "noise", react: null, reply: null };
+        }
         verdicts[i] = verdict;
       }
     }
