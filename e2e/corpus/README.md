@@ -16,6 +16,10 @@ npm run test:corpus:live       # real model, 3 runs per case (opt-in, costs mone
 MT_SIM_RUNS=5 npm run test:corpus:live         # more repeats
 MT_CORPUS_FILTER=S6 npm run test:corpus        # triage one case (skips the baseline compare)
 MT_CORPUS_RECORD=1 npm run test:corpus         # re-record the stub baseline
+
+# settle ONE case: many runs, every reasoning kept, backstop signals per run
+MT_CORPUS_FILTER=S12 MT_SIM_RUNS=100 MT_SETTLE_LABEL=after-36 \
+  npm run test:corpus:settle
 ```
 
 Both write a machine-readable report to `.e2e/corpus/report-<mode>.json`.
@@ -43,6 +47,39 @@ the db port whose data directory belongs to another checkout, or another run
 already holding this checkout's `.e2e/run.lock`. Two checkouts hashing to the
 same slot (a 1-in-200 chance) lands here; escape it for one run with
 `MT_E2E_APP_PORT` / `MT_E2E_DB_PORT`.
+
+### A live sweep proves it is live, before it starts and after it finishes
+
+A live sweep that cannot reach the model does not degrade, it **fails**.
+`e2e/helpers/live-llm.ts` refuses the run before any work when the key is
+missing, blank, or rejected (401/403/404/429), when a "live" run would still
+see `MT_TEST_LLM_STUB_FILE`, or when a "stubbed" run carries a real key and
+could quietly spend money. It spends one token proving the exact model
+`analyzeBatch` uses is reachable, and says so:
+
+```
+[e2e] LLM: LIVE — probe OK. claude-sonnet-4-5-20250929 answered in 4273ms and
+      billed 8 in / 1 out tokens to key ...uQAA.
+[e2e] LLM: metering every model call through http://127.0.0.1:56590
+...
+[live] 141 of 141 analyzed messages reached the real model.
+[e2e] LLM: LIVE confirmed - 141 model call(s) billed: ... $2.05 across claude-sonnet-4-5.
+```
+
+Every live run goes through the metering proxy, so "how many calls did this
+actually make and what did they cost" is a fact the run states rather than a
+question nobody asked; **zero calls fails the run** whatever Playwright said.
+The sweep itself then reads `AnalyzedMessage.reasoning` back and fails if
+messages fell through to an offline verdict. **Quote the `LIVE confirmed` line
+alongside any live number, the way you quote the ports.**
+
+What this replaced: on `034f694`, in a checkout with no `.env`,
+`npm run test:corpus:live` finished in **4 seconds**, scored **8/47** and
+**passed**. `buildTestEnv()` forwards `ANTHROPIC_API_KEY: ""` when the
+orchestrator has no key, so all 141 "runs" fell through to
+`offlineVerdict("ANTHROPIC_API_KEY not set")` and were graded as an analyzer
+that stayed silent. **Any live scoreboard that does not state how many messages
+reached the model is unverifiable.**
 
 What this replaced, because a sweep from before PR #34 may still be quoted
 somewhere: ports 3105/54311 were hard-coded and `playwright.config.ts` set

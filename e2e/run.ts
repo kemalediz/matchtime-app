@@ -12,6 +12,14 @@
  *      preflight.ts). Two checkouts running the suite at once used to
  *      share both the database and the dev server and report plausible,
  *      wrong numbers without either run erroring — see PR #34.
+ *   0b. Checks the MODEL seam against the mode (helpers/live-llm.ts).
+ *      A live run proves it can reach Anthropic — and spends one token
+ *      doing it — before any work starts; a stubbed run proves it
+ *      cannot. A keyless `test:corpus:live` used to score 8/47 in four
+ *      seconds and PASS, every case having fallen through to
+ *      `offlineVerdict`. For live runs every model call is then metered
+ *      on the way out, so the run can state what it really cost and
+ *      fail if the answer is nothing.
  *   1. Starts an EMBEDDED Postgres (binaries from the `embedded-postgres`
  *      npm package) on this checkout's db port, data dir under .e2e/ —
  *      fully isolated, no Docker, no system Postgres, no prod anywhere.
@@ -46,6 +54,75 @@ import {
   assertAppPortAvailable,
   inspectDbPort,
 } from "./helpers/preflight";
+import { assertLiveLlmReady, assertSeamMatchesMode, describeProbe, isLiveRun } from "./helpers/live-llm";
+import { AnthropicMeter } from "./replay/meter";
+
+/**
+ * The LLM half of the pre-flight, and the mirror image of the port
+ * half: refuse to produce a measurement the run cannot actually make.
+ *
+ * Checked against the env the SERVER UNDER TEST will really see —
+ * `{ ...process.env, ...buildTestEnv() }` — because the bug this exists
+ * for lived in the gap between the overlay we send and the environment
+ * the child inherits.
+ */
+async function assertLlmSeamReady(): Promise<void> {
+  const childEnv = { ...process.env, ...buildTestEnv() };
+  if (!isLiveRun()) {
+    assertSeamMatchesMode("stub", childEnv);
+    console.log(
+      `[e2e] LLM: STUBBED — verdicts come from ${E2E.LLM_STUB_FILE}; ` +
+        `ANTHROPIC_API_KEY is pinned empty, so this run cannot call a model or spend anything.`,
+    );
+    return;
+  }
+  console.log("[e2e] LLM: LIVE requested — checking the seam before spending anything…");
+  console.log(describeProbe(await assertLiveLlmReady({ childEnv })));
+}
+
+/** Thrown when a live run finishes without ever having called the model.
+ *  Not a test failure — the tests may all have "passed"; that is the
+ *  problem. */
+class NotActuallyLiveError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotActuallyLiveError";
+  }
+}
+
+/**
+ * The self-describing half. A live run says, in its own output, exactly
+ * how much model it used — and if the answer is "none", the run fails
+ * no matter what Playwright reported.
+ *
+ * `passedButNeverCalled` is the precise shape of the false green: a
+ * green tick over a sweep that never left the machine.
+ */
+function assertMeterSawTraffic(meter: AnthropicMeter, playwrightExitCode: number): void {
+  const calls = meter.all;
+  if (calls.length === 0) {
+    const skipped = playwrightExitCode === 0;
+    throw new NotActuallyLiveError(
+      `e2e: this run declared ${"MT_SIM_LIVE_LLM"}=1 but made ZERO calls to the model.\n` +
+        (skipped
+          ? `  Playwright exited 0, so this would otherwise have been reported as a passing ` +
+            `LIVE sweep. It measured nothing.\n`
+          : `  Playwright also failed, so the run was broken before it got that far.\n`) +
+        `  Either every spec selected was skipped (a live spec skips unless it is the one you ` +
+        `named), or the server under test never reached analyzeBatch's model path.\n` +
+        `  Check the spec selection, and that no MT_TEST_LLM_STUB_FILE is set in your shell.`,
+    );
+  }
+  const sum = (f: (c: (typeof calls)[number]) => number) => calls.reduce((a, c) => a + f(c), 0);
+  const n = (x: number) => x.toLocaleString("en-GB");
+  console.log(
+    `[e2e] LLM: LIVE confirmed — ${n(calls.length)} model call(s) billed: ` +
+      `${n(sum((c) => c.inputTokens))} in / ${n(sum((c) => c.outputTokens))} out / ` +
+      `${n(sum((c) => c.cacheReadTokens))} cache-read / ` +
+      `${n(sum((c) => c.cacheWrite1hTokens + c.cacheWrite5mTokens))} cache-write tokens, ` +
+      `$${sum((c) => c.costUsd).toFixed(4)} across ${[...new Set(calls.map((c) => c.model))].join(", ")}.`,
+  );
+}
 
 function run(cmd: string, args: string[], env: Record<string, string>): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -63,6 +140,13 @@ async function main(): Promise<number> {
   // Say where this run lives BEFORE anything else, so every log, report
   // and pasted scoreboard can be traced back to the world it came from.
   console.log(`[e2e] ${describePorts(E2E_PORTS)}`);
+
+  // Is the model seam wired the way the flag claims? This runs BEFORE
+  // the run lock, before Postgres, before anything is written — a run
+  // that cannot reach the model it says it is measuring must cost
+  // nothing and change nothing. See helpers/live-llm.ts for the four
+  // holes this closes and the false green that motivated them.
+  await assertLlmSeamReady();
 
   assertSafeTestDbUrl(E2E_DB_URL);
   mkdirSync(path.dirname(E2E.DATA_DIR), { recursive: true });
@@ -170,9 +254,33 @@ async function runSuite(): Promise<number> {
     });
     if (seedCode !== 0) return seedCode;
 
+    // ── the wire, for live runs ──────────────────────────────────────
+    // A live sweep has to be able to SHOW it was live. The metering
+    // proxy already exists (e2e/replay/meter.ts) and forwards every
+    // Anthropic call verbatim while banking the `usage` block, so every
+    // live run now goes through it: the orchestrator can then state how
+    // many calls were really made and what they cost — and refuse the
+    // run outright if the answer is none.
+    //   MT_REPLAY_METER_PORT → the replay spec owns its own proxy; leave it be.
+    //   MT_E2E_NO_METER=1    → opt out (the reach assertion in the live
+    //                          specs is then the only backstop).
+    let meter: AnthropicMeter | null = null;
+    if (isLiveRun() && !process.env.MT_REPLAY_METER_PORT && process.env.MT_E2E_NO_METER !== "1") {
+      meter = new AnthropicMeter();
+      const url = await meter.listen(0);
+      process.env.MT_E2E_LIVE_METER_PORT = new URL(url).port;
+      console.log(`[e2e] LLM: metering every model call through ${url} (measured, not estimated).`);
+    }
+
     console.log("[e2e] running Playwright…");
     const pwArgs = ["playwright", "test", ...process.argv.slice(2)];
-    return await run("npx", pwArgs, { ...buildTestEnv(), MT_E2E: "1" });
+    try {
+      const code = await run("npx", pwArgs, { ...buildTestEnv(), MT_E2E: "1" });
+      if (meter) assertMeterSawTraffic(meter, code);
+      return code;
+    } finally {
+      await meter?.close();
+    }
   } finally {
     if (weStartedPg) {
       console.log("[e2e] stopping embedded Postgres…");
@@ -186,7 +294,8 @@ main().then(
   (err) => {
     // A preflight refusal is a decision, not a crash: print the message
     // it was written to be read, not a stack trace nobody needs.
-    if (err instanceof E2EPreflightError) console.error(`\n${err.message}\n`);
+    if (err instanceof E2EPreflightError || err instanceof NotActuallyLiveError)
+      console.error(`\n${err.message}\n`);
     else console.error("[e2e] fatal:", err);
     process.exit(1);
   },

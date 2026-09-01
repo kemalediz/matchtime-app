@@ -140,17 +140,32 @@ export function buildTestEnv(): Record<string, string> {
     GOOGLE_CLIENT_SECRET: "e2e-dummy-google-client-secret",
   };
   if (live) {
-    delete env.MT_TEST_LLM_STUB_FILE;
+    // PINNED EMPTY, NOT DELETED. The child is spawned with
+    // `{ ...process.env, ...thisOverlay }` (run.ts) and Playwright's
+    // webServer merges the same way, so DELETING the key here only
+    // removes it from the overlay — an MT_TEST_LLM_STUB_FILE already in
+    // the orchestrator's own environment survived into the dev server
+    // and the "live" sweep ran entirely off the stub. An empty string
+    // overrides it, and analyzeBatch's check is a plain truthiness test.
+    // helpers/live-llm.ts asserts the result rather than trusting it.
+    env.MT_TEST_LLM_STUB_FILE = "";
     env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
     env.MT_SIM_LIVE_LLM = "1";
-    // Opt-in cost metering (e2e/replay/meter.ts). When the orchestrator
-    // names a port, the server's Anthropic SDK is pointed at a local
-    // proxy that forwards every call verbatim and banks the `usage`
-    // block, so a replay sweep can report MEASURED cost against §8.2
-    // without editing anything under src/. Unset → untouched behaviour.
-    if (process.env.MT_REPLAY_METER_PORT) {
-      env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${process.env.MT_REPLAY_METER_PORT}`;
-      env.MT_REPLAY_METER_PORT = process.env.MT_REPLAY_METER_PORT;
+    // Cost metering (e2e/replay/meter.ts): the server's Anthropic SDK is
+    // pointed at a local proxy that forwards every call verbatim and
+    // banks the `usage` block, so a sweep can report MEASURED cost
+    // against §8.2 without editing anything under src/.
+    //   MT_REPLAY_METER_PORT   — the replay spec owns the proxy.
+    //   MT_E2E_LIVE_METER_PORT — run.ts owns it, for every live run, so
+    //                            that "no call was ever made" is a fact
+    //                            the orchestrator can state rather than
+    //                            a possibility nobody checked.
+    const meterPort = process.env.MT_REPLAY_METER_PORT || process.env.MT_E2E_LIVE_METER_PORT;
+    if (meterPort) {
+      env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${meterPort}`;
+      if (process.env.MT_REPLAY_METER_PORT) env.MT_REPLAY_METER_PORT = process.env.MT_REPLAY_METER_PORT;
+      if (process.env.MT_E2E_LIVE_METER_PORT)
+        env.MT_E2E_LIVE_METER_PORT = process.env.MT_E2E_LIVE_METER_PORT;
     }
   }
   return env;

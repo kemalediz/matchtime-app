@@ -23,6 +23,27 @@ Everything the sweep writes lands under `.e2e/replay/` (gitignored).
 
 ---
 
+## The sweep must actually be live, and now says so
+
+The noise floor is load-bearing: every candidate pipeline is judged
+relative to it. A sweep run without a usable `ANTHROPIC_API_KEY` produces
+the most flattering floor there is — two all-silent pipelines agree with
+each other perfectly, 0% disagreement, green tick — and until
+`fix/live-sweep-must-be-live` nothing noticed. It is the same defect the
+corpus sweep had, where a keyless `npm run test:corpus:live` scored 8/47
+in four seconds and passed.
+
+`e2e/helpers/live-llm.ts` now refuses the run before it starts (missing,
+blank or rejected key; a "live" run still wired to the stub seam; a
+"stubbed" run carrying a real key), meters every model call so the
+orchestrator can state what was really spent, and this spec reads
+`AnalyzedMessage.reasoning` back at the end and fails if the messages
+never reached the model. `result.json` carries that `reach` block.
+**Quote the `LIVE confirmed` line alongside any floor you report**, the
+same way you quote the ports.
+
+---
+
 ## Validate the harness before you trust it
 
 **Run the self-replay first.** With no `MT_REPLAY_CANDIDATE` the sweep
