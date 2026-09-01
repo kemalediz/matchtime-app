@@ -133,6 +133,100 @@ function upperBound(
   return null;
 }
 
+/**
+ * COMPANION GUARD — truncation.
+ *
+ * Fixing the ceiling created a failure mode that could not previously
+ * happen: with a sane cap the model can actually REACH it, and then
+ * `stop_reason === "max_tokens"` means the text is a sentence cut off
+ * mid-word. At 64000 the call always threw, so this was unreachable.
+ *
+ * Most call sites are protected for free: they JSON.parse the output,
+ * and truncated JSON never parses, so they fail closed into an existing
+ * fallback. Sites that hand the model's RAW TEXT to a human have no
+ * such protection — a truncated chase gets posted to a customer's
+ * WhatsApp group, a truncated DM answer gets sent to a player.
+ *
+ * Rather than demand a `stop_reason` check everywhere (9 of 11 sites do
+ * not need one, so that would be mostly false positives), every file
+ * with a `messages.create` must EITHER check `stop_reason` OR be listed
+ * below with the reason its truncation already fails closed. A new call
+ * site forces a deliberate choice instead of a default of "nothing".
+ *
+ * Known limitation: this is file-level, not call-level. `message-analyzer.ts`
+ * has three call sites (two JSON, one free text) and passes because the
+ * free-text one is guarded. That is the intended trade — a call-level
+ * check needs real dataflow analysis, and a guard people learn to
+ * silence is worse than one they trust.
+ */
+const TRUNCATION_FAILS_CLOSED: Record<string, string> = {
+  "lib/squad-from-list.ts":
+    "JSON.parse of a truncated body throws → caught → returns [] → no DB writes.",
+  "lib/onboarding-analyzer.ts":
+    "normaliseAnalysis JSON.parses twice, both fail on truncation → returns null.",
+  "lib/onboarding-conversation.ts":
+    "JSON.parse throws → falls back to regexExtract, which is the designed fallback.",
+  "lib/rating-adjuster.ts":
+    "normaliseAdjustments JSON.parse fails → empty map → no rating changes applied.",
+  "lib/match-availability-classifier.ts":
+    "parse() fails → UNCLEAR verdict, which is the safe default.",
+  "lib/roster-survey-classifier.ts": "parse() fails → the caller's fallback classification.",
+  "lib/window-analyzer.ts":
+    "Shadow analysis only — off by default (#28), telemetry, never user-facing.",
+};
+
+describe("truncation coverage (companion guard)", () => {
+  const files = walk(SRC);
+  const callSites = files.filter((f) =>
+    /\bmessages\s*\.\s*create\s*\(/.test(fs.readFileSync(f, "utf8")),
+  );
+
+  it("finds the known messages.create files (the scanner still works)", () => {
+    expect(callSites.length).toBeGreaterThanOrEqual(9);
+  });
+
+  it("has no stale exemptions", () => {
+    const live = new Set(callSites.map((f) => path.relative(SRC, f)));
+    const stale = Object.keys(TRUNCATION_FAILS_CLOSED).filter((f) => !live.has(f));
+    expect(
+      stale,
+      `These files are exempted from the truncation check but no longer ` +
+        `contain a messages.create call. Remove them from ` +
+        `TRUNCATION_FAILS_CLOSED so the list cannot rot into a rubber stamp.`,
+    ).toEqual([]);
+  });
+
+  it("every messages.create file checks stop_reason or is a documented fail-closed site", () => {
+    const unguarded = callSites
+      .map((f) => path.relative(SRC, f))
+      .filter((rel) => !(rel in TRUNCATION_FAILS_CLOSED))
+      .filter(
+        (rel) => !/stop_reason/.test(fs.readFileSync(path.join(SRC, rel), "utf8")),
+      );
+
+    expect(
+      unguarded,
+      unguarded.length === 0
+        ? ""
+        : `\n\n${unguarded.length} file(s) call messages.create without handling ` +
+            `truncation:\n\n${unguarded.map((f) => `  • src/${f}`).join("\n")}\n\n` +
+            `WHY THIS MATTERS\n` +
+            `  When the model hits max_tokens the response comes back with\n` +
+            `  stop_reason === "max_tokens" and the text is cut off mid-word.\n` +
+            `  There is no error and no exception — it looks like a normal\n` +
+            `  reply. Posting it sends half a sentence to a real user.\n\n` +
+            `PICK ONE\n` +
+            `  (a) The output is shown to a human / used as free text:\n` +
+            `      check \`if (resp.stop_reason === "max_tokens")\`, log loudly,\n` +
+            `      and return your existing fallback. Partial text is always\n` +
+            `      worse than the fallback.\n` +
+            `  (b) The output is JSON-parsed, so truncation already fails\n` +
+            `      closed: add the file to TRUNCATION_FAILS_CLOSED in this\n` +
+            `      test with a one-line reason naming the fallback it hits.\n`,
+    ).toEqual([]);
+  });
+});
+
 describe("max_tokens ceiling (recurrence guard)", () => {
   const files = walk(SRC);
 

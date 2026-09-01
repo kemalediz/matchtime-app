@@ -1349,6 +1349,22 @@ export async function composeChaseText(input: {
         },
       ],
     });
+    // Truncation guard. This text is posted VERBATIM to a customer's
+    // WhatsApp group, and it is the only call site here whose output is
+    // not JSON (a truncated JSON site fails closed when the parse
+    // throws; free text has no such protection). `stop_reason` is the
+    // only signal that what we got is a sentence cut off mid-word, so
+    // treat it as a failure: the static fallback is strictly better
+    // than half a roster post.
+    if (response.stop_reason === "max_tokens") {
+      console.error(
+        `[analyzer] BROKEN: composeChaseText hit the ${CHASE_COMPOSE_MAX_TOKENS}-token ` +
+          `cap for kind=${input.kind} group=${input.groupId} — the composed text was ` +
+          `TRUNCATED mid-sentence and has been discarded. The chase will fall back to ` +
+          `STATIC text. If this recurs, the cap is too low for this group's roster.`,
+      );
+      return null;
+    }
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );

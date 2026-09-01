@@ -213,11 +213,24 @@ export async function answerScopedQuestion(args: {
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userPrompt }],
   });
+  const APOLOGY = "Sorry, I couldn't work that one out — try asking again? 🙂";
+
+  // Truncation guard. This answer is DM'd to a player verbatim, and
+  // unlike the JSON call sites (whose truncation fails closed on a
+  // parse error) nothing else would catch a half-finished sentence.
+  // Degrade to the apology we already send when there's no text at all.
+  if (resp.stop_reason === "max_tokens") {
+    console.error(
+      `[dm-qa] BROKEN: answer hit the 600-token cap for org=${args.orgId} — the ` +
+        `reply was TRUNCATED mid-sentence and has been discarded. Sending the ` +
+        `generic apology instead. If this recurs, the cap is too low.`,
+    );
+    return { answer: APOLOGY, orgId: args.orgId, orgName: org.name };
+  }
+
   const textBlock = resp.content.find((c) => c.type === "text");
   const answer =
-    textBlock && textBlock.type === "text"
-      ? textBlock.text.trim()
-      : "Sorry, I couldn't work that one out — try asking again? 🙂";
+    textBlock && textBlock.type === "text" ? textBlock.text.trim() : APOLOGY;
 
   return { answer, orgId: args.orgId, orgName: org.name };
 }

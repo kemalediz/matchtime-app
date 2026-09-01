@@ -23,7 +23,11 @@ const SDK_NONSTREAMING_LIMIT = (600 * 128_000) / 3_600; // 21_333.33
 
 type CreateArgs = { max_tokens: number; system: unknown; messages: unknown };
 const captured: CreateArgs[] = [];
-let RESPONSES: string[] = [];
+
+/** A canned response. A bare string is an ordinary `end_turn` reply;
+ *  the object form models a reply the model ran out of room to finish. */
+type Canned = string | { text: string; stop_reason: string };
+let RESPONSES: Canned[] = [];
 let callIndex = 0;
 
 const create = vi.fn(async (args: CreateArgs) => {
@@ -34,9 +38,12 @@ const create = vi.fn(async (args: CreateArgs) => {
       "Streaming is required for operations that may take longer than 10 minutes.",
     );
   }
-  const text = RESPONSES[Math.min(callIndex++, RESPONSES.length - 1)] ?? "";
+  const canned = RESPONSES[Math.min(callIndex++, RESPONSES.length - 1)] ?? "";
+  const { text, stop_reason } =
+    typeof canned === "string" ? { text: canned, stop_reason: "end_turn" } : canned;
   return {
     content: [{ type: "text", text }],
+    stop_reason,
     usage: { input_tokens: 1, output_tokens: 1 },
   };
 });
@@ -73,14 +80,21 @@ vi.mock("@/lib/db", () => ({
     match: { findFirst: async () => MATCH },
     activity: { findMany: async () => [] },
     benchSlotOffer: { findMany: async () => [] },
-    user: { findMany: async () => [] },
+    // `null` short-circuits loadPlayerSeasonStats, so the scoped DM
+    // context builds with no stats block — irrelevant to truncation.
+    user: { findMany: async () => [], findUnique: async () => null },
   },
 }));
 vi.mock("@/lib/org-features", () => ({
   getOrgFeatures: async () => ({ attendance: true, statsQa: false }),
 }));
+vi.mock("@/lib/match-history", () => ({
+  loadRecentHistory: async () => [],
+  formatRecentHistoryBlock: () => "",
+}));
 
 import { analyzeBatch, composeChaseText } from "@/lib/message-analyzer";
+import { answerScopedQuestion } from "@/lib/dm-qa";
 
 beforeEach(() => {
   captured.length = 0;
@@ -177,5 +191,76 @@ describe("dropped-verdict re-prompt max_tokens", () => {
     // The real symptom: the dropped verdict is recovered, no placeholder left.
     const wa2 = verdicts.find((v) => v.waMessageId === "wa-2");
     expect(wa2?.reasoning).not.toBe("Claude emitted no verdict for this id");
+  });
+});
+
+/**
+ * TRUNCATION — the failure mode the max_tokens fix newly made reachable.
+ *
+ * While these sites shipped max_tokens: 64000 the call ALWAYS threw, so
+ * a truncated response was structurally impossible. Now that the caps
+ * are sane the model can actually hit them, and `stop_reason` becomes
+ * load-bearing: it is the ONLY signal that the returned text is a
+ * sentence cut off mid-word.
+ *
+ * Sites that JSON.parse their output are protected for free (truncated
+ * JSON never parses, so they fail closed). Sites that hand the model's
+ * raw text to a human are not — those are the two below, and both have
+ * an existing fallback that is strictly better than partial text.
+ */
+describe("truncated responses never reach a human", () => {
+  it("composeChaseText returns null so the scheduler sends static copy", async () => {
+    RESPONSES = [
+      {
+        text: "*Playing Tuesday:*\n1. Elvin\n2. Mustafa\n3. Idr",
+        stop_reason: "max_tokens",
+      },
+    ];
+
+    const out = await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
+
+    expect(
+      out,
+      "a chase truncated mid-word is worse than the plain static copy — " +
+        "composeChaseText must return null so composeOrFallback falls back",
+    ).toBeNull();
+  });
+
+  it("composeChaseText still returns a complete response", async () => {
+    // Guard against over-correcting into "never return anything".
+    RESPONSES = [{ text: "Need 10 more for Tuesday.", stop_reason: "end_turn" }];
+    const out = await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
+    expect(out).toBe("Need 10 more for Tuesday.");
+  });
+
+  it("answerScopedQuestion does not DM a half-finished sentence", async () => {
+    RESPONSES = [
+      {
+        text: "Your next match is Tuesday at 8:30pm at Sim Ar",
+        stop_reason: "max_tokens",
+      },
+    ];
+
+    const out = await answerScopedQuestion({
+      userId: "u0",
+      orgId: "org-1",
+      question: "when is my next match?",
+    });
+
+    expect(out?.answer ?? "").not.toContain("Sim Ar");
+    expect(
+      out?.answer ?? "",
+      "a truncated DM must degrade to the existing apology, not partial text",
+    ).toMatch(/couldn't work that one out/i);
+  });
+
+  it("answerScopedQuestion still returns a complete answer", async () => {
+    RESPONSES = [{ text: "Tuesday, 8:30pm at Sim Arena.", stop_reason: "end_turn" }];
+    const out = await answerScopedQuestion({
+      userId: "u0",
+      orgId: "org-1",
+      question: "when is my next match?",
+    });
+    expect(out?.answer).toBe("Tuesday, 8:30pm at Sim Arena.");
   });
 });
