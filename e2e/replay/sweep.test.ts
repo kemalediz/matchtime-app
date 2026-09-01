@@ -40,6 +40,7 @@ function replayCase(key: string, intent: string, players: string[] = ["Pete Powe
       caveats: [],
       hoursToKickoff: 2,
       maxPlayers: 14,
+      squadSource: "row-timestamps",
       squadBefore: { confirmed: 1, bench: 0, dropped: 0 },
       prodOutcomes: [{ waMessageId: `wa-${key}`, intent, action: null, handledBy: "llm" }],
       unresolvedSenders: [],

@@ -146,6 +146,37 @@ export function renderReport(
     if (t?.tractability === "fixable") L.push(`    fix for ${reason} (${n.messages} msgs): ${t.note}`);
   }
 
+  // ── How much of this extract the 2026-09-01 recording fixes reach ───
+  //
+  // Reported EVERY run, including (especially) when the answer is zero.
+  // The `AttendanceEvent` log and `AnalyzedMessage.batchId` do not
+  // recover one historical message; they stop the gap growing. A report
+  // that quietly folded the fixes into the headline would read as a
+  // coverage jump that has not happened, which is the one thing this
+  // harness must never do.
+  const logged = stats.bySquadSource["event-log"];
+  const inferredSquad = stats.bySquadSource["row-timestamps"];
+  L.push("");
+  L.push("recording, not inference (the 2026-09-01 fixes)");
+  L.push(
+    `  squad state PROVEN from the attendance event log: ${logged} of ${stats.batchesReplayable} ` +
+      `replayable batches (${pct(logged / Math.max(1, stats.batchesReplayable))}); ` +
+      `${inferredSquad} still inferred from row timestamps`,
+  );
+  L.push(
+    `  batches read from a RECORDED batchId: ${stats.batchesFromRecordedId} of ` +
+      `${stats.batchesReplayable} (${pct(stats.batchesFromRecordedId / Math.max(1, stats.batchesReplayable))}); ` +
+      `the rest are recovered from write timing`,
+  );
+  if (logged === 0 && stats.batchesFromRecordedId === 0) {
+    L.push(
+      `  → NEITHER fix has reached this extract yet. Every message here predates them, and ` +
+        `nothing can recover a squad state that was never written down. The number above is ` +
+        `what it will be until the log has accumulated traffic; it is not a disappointment ` +
+        `and it is not going to move by re-running this.`,
+    );
+  }
+
   L.push("");
   L.push("intent mix (production's own labels — triage only, never ground truth)");
   const total = Object.values(stats.intentDistributionAll).reduce((a, b) => a + b, 0) || 1;
