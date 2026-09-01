@@ -23,29 +23,15 @@ export type GenerateTeamsResult =
   | { ok: false; reason: string };
 
 /**
- * Pure formatter for the group "teams" post. Single source of truth for
- * the message layout, shared by `generateTeamsForMatch` (after balancing)
- * and the analyze route's "show the teams again" re-post path (which
- * reads the EXISTING assignments verbatim — no balancer). Keep the output
- * byte-stable: the sim suite asserts on its substrings.
+ * Pure formatter for the group "teams" post.
+ *
+ * MOVED to `./group-copy` (2026-09-01) and re-exported here so every
+ * existing import keeps working. Same reason as composeSquadStatusPost:
+ * this file imports the Prisma client, and a pure formatter should be
+ * reachable from a process that must not load it.
  */
-export function formatTeamsPost(args: {
-  redLabel: string;
-  yellowLabel: string;
-  red: { name: string }[];
-  yellow: { name: string }[];
-  kickoff: string;
-  venue: string;
-}): string {
-  const listFor = (arr: { name: string }[]) =>
-    arr.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
-  return (
-    `⚽ *Teams for tonight* — ${args.kickoff} at ${args.venue}\n\n` +
-    `*${args.redLabel}*:\n${listFor(args.red)}\n\n` +
-    `*${args.yellowLabel}*:\n${listFor(args.yellow)}\n\n` +
-    `Objections? Reply \`swap X Y\` — admin will confirm.`
-  );
-}
+import { formatTeamsPost } from "./group-copy";
+export { formatTeamsPost };
 
 export interface GenerateTeamsOptions {
   /** Pin specific userIds to specific teams. Honoured by the

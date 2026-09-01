@@ -1644,36 +1644,16 @@ export function looksLikeSquadStateReply(text: string): boolean {
 }
 
 /**
- * Deterministic, server-composed squad+bench status post. Used when a
- * batch produced MULTIPLE squad-state replies: they all collapse into
- * this single message, computed from a FRESH DB snapshot taken AFTER
- * every attendance write in the batch has been applied — so it can
- * never contradict itself or the database (Kemal's chosen design,
- * 2026-06-12: "examine all messages in the window as a whole, then post
- * ONE clear message with the latest squad and bench").
+ * Deterministic, server-composed squad+bench status post.
+ *
+ * MOVED to `./group-copy` (2026-09-01) and re-exported here so every
+ * existing import keeps working. It is pure, and this file is not: it
+ * imports the Prisma client, which makes the function unreachable from
+ * the Playwright worker process and from the new pipeline's composer.
+ * §13 lists it under "what must not change" — so it did not change; it
+ * moved somewhere it can actually be reused.
  */
-export function composeSquadStatusPost(args: {
-  confirmed: string[];
-  bench: string[];
-  maxPlayers: number;
-}): string {
-  const { confirmed, bench, maxPlayers } = args;
-  const need = Math.max(0, maxPlayers - confirmed.length);
-  const count = `*${confirmed.length}/${maxPlayers}*`;
-  const lead =
-    `📋 Based on all the messages I've picked up, here's the latest squad${bench.length > 0 ? " and bench" : ""} — ` +
-    (need > 0 ? `${count}, need *${need} more* 🙏` : `${count} ✅ full squad.`);
-  const rows: string[] = [];
-  for (let i = 0; i < maxPlayers; i++) {
-    rows.push(i < confirmed.length ? `${i + 1}. ${confirmed[i]}` : `${i + 1}. 🥁`);
-  }
-  const lines = [lead, "", "*Playing:*", ...rows];
-  if (bench.length > 0) {
-    lines.push("", `*Bench (${bench.length}):*`);
-    bench.forEach((n, i) => lines.push(`${i + 1}. ${n}`));
-  }
-  return lines.join("\n");
-}
+export { composeSquadStatusPost } from "./group-copy";
 
 /**
  * Replace any LLM-generated numbered roster in a reply with the canonical

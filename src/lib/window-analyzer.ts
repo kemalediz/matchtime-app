@@ -37,6 +37,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BatchInputHistory, BatchInputMessage } from "./message-analyzer";
 import { db } from "./db";
+// §10 step 2 — the shadow is the migration harness, repointed at the new
+// pipeline. See src/lib/pipeline/shadow.ts.
+import { runDryRunShadow, shadowPipelineMode } from "./pipeline/shadow";
 import { format as formatDate } from "date-fns";
 import { resolveTeamLabels } from "./team-labels";
 
@@ -449,6 +452,46 @@ export async function runShadowAnalysis(opts: {
       return;
     }
 
+    const windowStart = opts.messages[0].timestamp;
+    const windowEnd = opts.messages[opts.messages.length - 1].timestamp;
+
+    // ── §10 step 2: the shadow can now run the NEW pipeline ───────────
+    // Same harness, same table, same dashboard; the payload is router →
+    // extractors → engine in DRY RUN. Still zero writes: nothing on this
+    // path registers attendance, queues a BotJob or sends anything.
+    // Default stays `window` so turning the shadow on does not silently
+    // change WHAT it is.
+    if (shadowPipelineMode() === "v2") {
+      const dry = await runDryRunShadow({
+        orgId: opts.orgId,
+        messages: opts.messages,
+        history: opts.history,
+      });
+      await db.windowVerdict.create({
+        data: {
+          orgId: opts.orgId,
+          windowStart,
+          windowEnd,
+          batchHash,
+          modelMs: dry.modelMs,
+          costUsd: dry.costUsd,
+          verdictJson: dry.payload as never,
+          currentVerdictRefs: opts.currentVerdictIds,
+        },
+      });
+      console.log(
+        `[shadow:v2] org ${opts.orgId} window ${windowStart.toISOString()}..${windowEnd.toISOString()} ` +
+          `→ ${dry.payload.stateChanges.length} proposed change(s), ` +
+          `${dry.result.cost.routerCalls} router + ${dry.result.cost.extractorCalls} extractor call(s), ` +
+          `${dry.modelMs}ms, $${dry.costUsd.toFixed(5)}` +
+          (dry.result.degradations.length > 0
+            ? ` — ${dry.result.degradations.length} degradation(s): ` +
+              dry.result.degradations.map((d) => `${d.stage}: ${d.detail}`).join(" | ")
+            : ""),
+      );
+      return;
+    }
+
     const matchContext = await buildShadowMatchContext(opts.orgId);
     const result = await analyzeWindow({
       messages: opts.messages,
@@ -456,8 +499,6 @@ export async function runShadowAnalysis(opts: {
       matchContext,
     });
 
-    const windowStart = opts.messages[0].timestamp;
-    const windowEnd = opts.messages[opts.messages.length - 1].timestamp;
     await db.windowVerdict.create({
       data: {
         orgId: opts.orgId,
