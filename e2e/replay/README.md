@@ -17,6 +17,9 @@ npm run replay:extract        # READ-ONLY against production, once
 npm run test:replay           # free, stubbed: do the reconstructed worlds BUILD?
 MT_REPLAY_LIMIT=80 npm run test:replay:live      # self-replay noise floor
 MT_REPLAY_CANDIDATE=<module> npm run test:replay:live   # the real comparison
+
+npm run replay:router-recall                     # §10 step 5: router recall, floor OFF
+MT_RECALL_FLOOR=1 npm run replay:router-recall   # …and with the floor ON
 ```
 
 Everything the sweep writes lands under `.e2e/replay/` (gitignored).
@@ -308,6 +311,63 @@ economic claim (§8.3: *"44x cheaper on the case that happens most"*),
 measured rather than asserted.
 
 ---
+
+## Router recall (§10 step 5) — a different question, same extract
+
+The sweep above compares two **pipelines** over the 447 batches whose
+world can be proven. Step 5's question needs neither a world nor a
+second pipeline: *given a message, would the router have thrown it
+away?* So `router-recall-live.ts` routes **all 1,695 messages that have
+a body** — every one, not the replayable quarter — through the real
+router, in the batches the extract recovered, and reports two numbers.
+
+- **The saving.** Benign messages (production called them `noise`,
+  `unclear`, or `non-c.us author`) routed `none`. Boring and expected;
+  it is 69.3% of traffic.
+- **The danger.** **Non-benign** messages routed `none`. Each one is a
+  message the gate would delete before the analyzer ever saw it. The
+  report lists **every instance**, sorted worst-first by what it would
+  cost:
+
+  | severity | intents | what a `none` route costs |
+  | --- | --- | --- |
+  | `squad_place` | `in` `out` `conditional_in` `conditional_out` `replacement_request` `team_swap` `bring_guests_vague` | a player's slot. The one that matters. |
+  | `action` | `generate_teams_request` `score` `reminder_request` `recruit_*` `show_teams_request` `stats_*` | the bot fails to do something it was asked to do |
+  | `speech` | `question` `rating_progress` | the bot stays quiet where it would have answered |
+  | `benign` | `noise` `unclear` `non-c.us author` | nothing — this is the saving |
+
+  An intent the table does not list is treated as `action`, never as
+  benign: a label added next year must not silently stop being counted.
+
+**Production's `intent` is the incumbent's opinion, not truth** — the
+same rule as rule 2 above. The report says *disagreement*, never
+*wrong*, and asks for a human verdict on each one.
+
+**Only the `none`/not-`none` boundary matters here**, which is why the
+report never grades the route itself. The gate discards the route and
+keeps only the membership decision, so the router being unstable
+*between* `self_att` and `other_att` (observed: "can anyone replace me
+tonight?" split 4/1 over five runs) changes nothing at all about what
+the analyzer receives.
+
+### It proves it was live, for a reason specific to this harness
+
+`routeBatch` catches a failed call and routes the whole batch `unsure`
+(§11.4 — fail open). That is the right production behaviour and a trap
+for a measurement: a keyless run produces **zero `none` routes**, and
+therefore a flawless **0% miss rate**, in about a minute. It is the
+same shape as the keyless `test:corpus:live` that scored 8/47 and
+passed.
+
+So the script refuses without a key; probes the **exact router model**
+(`claude-haiku-4-5`) rather than `PROBE_MODEL`, because a key with
+Sonnet access but no Haiku access sails through the latter and then
+falls back on every batch; fails on zero billed calls; fails when more
+than 5% of routes came from the fallback; and prints a `LIVE confirmed`
+line to be quoted alongside the number.
+
+`MT_RECALL_LIMIT=N` caps a run for a smoke test and stamps
+`PARTIAL RUN` on the report so it can never be quoted as the full sweep.
 
 ## Classification
 

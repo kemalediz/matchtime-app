@@ -164,6 +164,21 @@ export function buildTestEnv(): Record<string, string> {
     env.MT_TEST_ROUTER_STUB_FILE = "";
     env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
     env.MT_SIM_LIVE_LLM = "1";
+    // §10 step 5's flags, forwarded ONLY on a live run.
+    //
+    // This is how "the corpus, with the gate on" becomes runnable, and
+    // it is the strongest evidence step 5 exists to produce: the same 47
+    // incident cases, the same real model, the REAL router in front,
+    // scored against the same baseline. A stubbed run could not answer
+    // it — stubbing the router means choosing the routes, which is
+    // assuming the conclusion.
+    //
+    // Live only, deliberately. A stubbed run has no key, so the router
+    // would fail on every batch and fall back to analysing everything;
+    // the flags would read as on and mean nothing.
+    for (const flag of ["ROUTER_GATE_ENABLED", "ROUTER_GATE_FLOOR_ENABLED"]) {
+      if (process.env[flag]) env[flag] = process.env[flag]!;
+    }
     // Cost metering (e2e/replay/meter.ts): the server's Anthropic SDK is
     // pointed at a local proxy that forwards every call verbatim and
     // banks the `usage` block, so a sweep can report MEASURED cost
