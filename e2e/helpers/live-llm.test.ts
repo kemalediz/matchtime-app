@@ -27,6 +27,7 @@ import {
   PROBE_MODEL,
   assertSeamMatchesMode,
   classifyReasoning,
+  describeReach,
   keyFingerprint,
   liveReachFailure,
   probeAnthropic,
@@ -386,5 +387,78 @@ describe("reachWatermark", () => {
     const db = fakeDb({ reach: [] });
     await readReach(db, null);
     expect(db.sql[0]).not.toMatch(/WHERE/);
+  });
+});
+
+/**
+ * §10 step 5 adds a THIRD way a message can legitimately not reach the
+ * model: the router gate decided not to ask. That is a design decision,
+ * not a degradation — but it must never be counted as "reached the real
+ * model", or a live sweep run with `ROUTER_GATE_ENABLED=1` would report
+ * a model-reach number that includes messages no model ever saw. That is
+ * the same class of unverifiable number PR #38 exists to kill.
+ */
+describe("a live run cannot be secretly gated", () => {
+  const liveOkNoRouterStub = { ANTHROPIC_API_KEY: "sk-ant-real", MT_TEST_LLM_STUB_FILE: "" };
+
+  it("refuses a live run that can still see the router stub file", () => {
+    expect(() =>
+      assertSeamMatchesMode("live", {
+        ...liveOkNoRouterStub,
+        MT_TEST_ROUTER_STUB_FILE: "/tmp/router-stub.json",
+      }),
+    ).toThrow(/MT_TEST_ROUTER_STUB_FILE/);
+  });
+
+  it("allows a live run with the router stub pinned empty", () => {
+    expect(() =>
+      assertSeamMatchesMode("live", { ...liveOkNoRouterStub, MT_TEST_ROUTER_STUB_FILE: "" }),
+    ).not.toThrow();
+  });
+});
+
+describe("the router gate is visible to the reach guard", () => {
+  it("a gated message is classified `gated`, never `model`", () => {
+    expect(
+      classifyReasoning("router-gate: routed none; the analyzer was not asked", "router-gate"),
+    ).toBe("gated");
+  });
+
+  it("gated messages are excluded from the attributable denominator", () => {
+    const s = summariseReach([
+      { reasoning: "the player said in", handledBy: "llm" },
+      { reasoning: "router-gate: routed none; not asked", handledBy: "router-gate" },
+      { reasoning: "router-gate: routed none; not asked", handledBy: "router-gate" },
+    ]);
+    expect(s.total).toBe(3);
+    expect(s.model).toBe(1);
+    expect(s.gated).toBe(2);
+    // 1 of 1, not 3 of 3 and not 1 of 3.
+    expect(s.attributable).toBe(1);
+    expect(s.offlineRate).toBe(0);
+  });
+
+  it("a gate that ate the WHOLE sweep still fails, because nothing reached the model", () => {
+    const s = summariseReach([
+      { reasoning: "router-gate: routed none", handledBy: "router-gate" },
+      { reasoning: "router-gate: routed none", handledBy: "router-gate" },
+    ]);
+    expect(s.attributable).toBe(0);
+    expect(liveReachFailure(s)).not.toBeNull();
+  });
+
+  it("the reach line SAYS how many were gated, rather than hiding them", () => {
+    const s = summariseReach([
+      { reasoning: "the player said in", handledBy: "llm" },
+      { reasoning: "router-gate: routed none", handledBy: "router-gate" },
+    ]);
+    expect(describeReach(s)).toContain("gated");
+  });
+
+  it("an offline verdict is still offline even with the gate on", () => {
+    // The guard must not be weakened: `router-gate` is a handledBy, and
+    // a REAL offline reasoning must win over it if both ever appear.
+    expect(classifyReasoning("ANTHROPIC_API_KEY not set", "router-gate")).toBe("offline-fatal");
+    expect(classifyReasoning("test-stub: no verdict configured", "router-gate")).toBe("stub");
   });
 });

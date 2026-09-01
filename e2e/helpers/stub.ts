@@ -38,3 +38,33 @@ export function setLlmStub(verdicts: Record<string, StubVerdict>): void {
 export function clearLlmStub(): void {
   setLlmStub({});
 }
+
+/**
+ * The ROUTER stub (§10 step 5). Same seam, one layer earlier: it says
+ * what the router answered and whether the gate and the floor are on for
+ * this request.
+ *
+ * `{}` means "no override" — the flags fall back to the environment,
+ * where both are OFF. That is what `clearRouterStub()` writes, and why
+ * every spec that has never heard of the router is unaffected by the
+ * file's existence.
+ */
+export interface RouterStub {
+  enabled?: boolean;
+  floor?: boolean;
+  /** waMessageId → route. Unmapped ids come back `unsure`, so the
+   *  analyzer still sees them — the direction that cannot lose a write. */
+  routes?: Record<string, string>;
+  /** Trimmed body → route. The sim harness mints its own message ids, so
+   *  a spec addresses the router by what was said. */
+  bodies?: Record<string, string>;
+}
+
+export function setRouterStub(stub: RouterStub): void {
+  mkdirSync(path.dirname(E2E.ROUTER_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.ROUTER_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearRouterStub(): void {
+  setRouterStub({});
+}

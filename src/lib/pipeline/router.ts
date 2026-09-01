@@ -236,16 +236,40 @@ export function parseRouterResponse(text: string, ids: string[]): RouterResult {
   return { routes, degradations };
 }
 
+export interface RouteBatchOptions {
+  /**
+   * Apply the deterministic floor. DEFAULT TRUE, which is PR #37's
+   * behaviour and what the dry-run pipeline still gets.
+   *
+   * §10 step 5 ships the floor behind its own flag, default off, for
+   * two reasons: §11.1 says reintroducing one at all is a product
+   * decision needing Kemal's sign-off, and the router's TRUE recall is
+   * only measurable with the floor out of the way. So the gate passes
+   * this explicitly rather than the floor being unconditional.
+   *
+   * Note what turning it off cannot do: the floor only ever returns
+   * `self_att` or `other_att`, never `none` (proved in
+   * `__tests__/gate.test.ts`), so its override below can only move a
+   * message OUT of `none`. Disabling it can therefore only lose
+   * analysis, never cause it — and enabling it can only add.
+   */
+  floor?: boolean;
+}
+
 export async function routeBatch(
   model: PipelineModel,
   messages: RouterMessage[],
+  opts: RouteBatchOptions = {},
 ): Promise<RouterResult> {
   if (messages.length === 0) return { routes: [], degradations: [] };
 
+  const floorEnabled = opts.floor ?? true;
   const floor = new Map<string, Route>();
-  for (const m of messages) {
-    const f = routeFloor(m.body);
-    if (f) floor.set(m.id, f);
+  if (floorEnabled) {
+    for (const m of messages) {
+      const f = routeFloor(m.body);
+      if (f) floor.set(m.id, f);
+    }
   }
 
   // Every message hit the floor: there is nothing left to ask about, so
@@ -332,7 +356,11 @@ export async function routeBatch(
         `the floor overrode the router: ${r.route} → ${f} (bare self-attendance)`,
       ),
     );
-    return { ...r, route: f, source: "floor" as const };
+    // `overrodeRoute` is what makes a RESCUE distinguishable from a
+    // mere relabel. Only `overrodeRoute === "none"` is the seatbelt
+    // actually firing; `other_att → self_att` changes nothing about
+    // whether the analyzer sees the message.
+    return { ...r, route: f, source: "floor" as const, overrodeRoute: r.route };
   });
 
   return { routes, degradations: result.degradations, usage };

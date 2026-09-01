@@ -61,6 +61,12 @@ import {
   stripSquadPostMarker,
   type SquadTruth,
 } from "@/lib/group-copy";
+import {
+  gateBatch,
+  gatedVerdict,
+  isRouterGateEnabled,
+  GATED_HANDLED_BY,
+} from "@/lib/pipeline/gate";
 import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
@@ -646,21 +652,107 @@ async function handleAnalyzeRequest(request: Request) {
     timestamp: new Date(h.timestamp),
   }));
 
-  const batchInputs: BatchInputMessage[] = fresh.map((m) => {
-    const s = senderById.get(m.waMessageId)!;
-    return {
-      waMessageId: m.waMessageId,
-      body: m.body,
-      authorPhone: m.authorPhone,
-      authorName: m.authorName,
-      authorUserId: s.userId,
-      timestamp: new Date(m.timestamp),
-    };
-  });
+  // ── §10 STEP 5 — THE ROUTER GATE (ROUTER_GATE_ENABLED, default OFF) ──
+  //
+  //   "Router in front, mega-call behind. `none`-routed messages skip
+  //    the analyzer; everything else hits the existing prompt
+  //    unchanged."
+  //
+  // 69.3% of real traffic is banter (measured over 1,723 production
+  // messages, PR #35), and today every one of those costs the full
+  // 18,315-token prompt and 14-19 s to conclude that a laughing emoji
+  // is a laughing emoji. A cheap Haiku router decides which messages
+  // the analyzer never sees.
+  //
+  // THREE THINGS THIS DELIBERATELY DOES NOT DO:
+  //
+  //   1. It does not remove skipped messages from `fresh`. Downstream
+  //      guards SCAN THE BATCH — the banter-drop guard below looks for
+  //      the target's own message in it, and would flip from "strip
+  //      this OUT" to "apply it" if a `none` message vanished. So the
+  //      gate only narrows what the MODEL sees; every later pass sees
+  //      the whole window exactly as it does today.
+  //   2. It does not change any verdict. A skipped message gets the
+  //      same `intent: "noise"`, all-nulls verdict the mega-call emits
+  //      for banter, so nothing downstream can tell the difference.
+  //   3. It does not go silent. A skipped message still gets its
+  //      `AnalyzedMessage` row, tagged `router-gate` — §11.1's
+  //      complaint about the `none` bucket is that the message
+  //      disappears with "no `AnalyzedMessage.action`", and this is
+  //      what makes "did the gate eat an IN?" a query.
+  //
+  // REVERT: unset ROUTER_GATE_ENABLED (or set it to 0). `gateGuard`
+  // then stays null, `gatedIds` stays empty, and every line below is
+  // the code that shipped on 2d52d7a.
+  const gate =
+    fresh.length > 0 && isRouterGateEnabled()
+      ? await gateBatch(
+          fresh.map((m) => ({
+            waMessageId: m.waMessageId,
+            body: m.body,
+            authorName: m.authorName,
+          })),
+        )
+      : null;
+  const gatedIds = new Set(gate?.skipped ?? []);
+  const gateRouteById = new Map((gate?.routes ?? []).map((r) => [r.messageId, r.route]));
+  if (gate) {
+    for (const d of gate.degradations) {
+      console.warn(`[analyze] router-gate degraded (${d.messageId ?? "batch"}): ${d.detail}`);
+    }
+    console.log(
+      `[analyze] router-gate: ${gate.analysed.length}/${fresh.length} to the analyzer, ` +
+        `${gate.skipped.length} skipped, ${gate.floorForced.length} floor-forced ` +
+        `(floor ${gate.floorEnabled ? "ON" : "OFF"})` +
+        (gate.usage
+          ? `, router $${(gate.usage.costUsd ?? 0).toFixed(5)} in ${gate.usage.ms}ms`
+          : ", no router call"),
+    );
+  }
 
-  const verdicts = fresh.length
+  const batchInputs: BatchInputMessage[] = fresh
+    .filter((m) => !gatedIds.has(m.waMessageId))
+    .map((m) => {
+      const s = senderById.get(m.waMessageId)!;
+      return {
+        waMessageId: m.waMessageId,
+        body: m.body,
+        authorPhone: m.authorPhone,
+        authorName: m.authorName,
+        authorUserId: s.userId,
+        timestamp: new Date(m.timestamp),
+      };
+    });
+
+  const analysedVerdicts = batchInputs.length
     ? await analyzeBatch({ groupId: body.groupId, history, messages: batchInputs })
     : [];
+
+  // Re-expand to one verdict per message in `fresh`, in `fresh` order.
+  // `analyzeBatch` already returns one verdict per input id (see
+  // `normaliseBatch`), so keying by id is equivalent to the positional
+  // pairing this replaced — and it stays correct now that the two arrays
+  // can differ in length.
+  const verdictById = new Map(analysedVerdicts.map((v) => [v.waMessageId, v]));
+  const verdicts: AnalysisVerdict[] = fresh.map((m) => {
+    if (gatedIds.has(m.waMessageId)) {
+      return gatedVerdict(m.waMessageId, gateRouteById.get(m.waMessageId));
+    }
+    const v = verdictById.get(m.waMessageId);
+    if (v) return v;
+    // Unreachable today — `normaliseBatch` emits one verdict per input
+    // id. Written explicitly anyway: a message that WAS sent to the
+    // analyzer and came back with nothing must land on the
+    // partial-response admin DM (2026-05-25, the Ibrahim+Baki
+    // incident), never on a silent noise verdict. The gate must not be
+    // able to turn a dropped verdict into a shrug.
+    return {
+      ...gatedVerdict(m.waMessageId, undefined),
+      intent: "unclear" as const,
+      confidence: 0,
+      reasoning: "Claude emitted no verdict for this id",
+    };
+  });
 
   // ── Partial-response safety net (added 2026-05-25, Ibrahim+Baki incident) ──
   // If Claude omits verdicts for some IDs (token-cap, JSON malformation,
@@ -1694,7 +1786,14 @@ async function handleAnalyzeRequest(request: Request) {
         orgId: org.id,
         groupId: body.groupId,
         msg,
-        handledBy: "llm",
+        // The AUDIT field, not the wire field. A gated message is
+        // labelled for what actually happened to it, so the nightly
+        // `none`-bucket sweep and the admin log can find it. The HTTP
+        // response below still says `llm`: `whatsapp-bot/src/api.ts:325`
+        // types that as a closed union, the Pi only special-cases
+        // `deduped` and `error`, and that file is out of scope for this
+        // step.
+        handledBy: gatedIds.has(msg.waMessageId) ? GATED_HANDLED_BY : "llm",
         intent: verdict.intent,
         action:
           verdict.registerAttendance ??

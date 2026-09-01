@@ -48,6 +48,9 @@ import { E2EPreflightError } from "./preflight";
 
 export const LIVE_ENV_FLAG = "MT_SIM_LIVE_LLM";
 export const STUB_FILE_ENV = "MT_TEST_LLM_STUB_FILE";
+/** §10 step 5's router seam. Mirrors `ROUTER_STUB_FILE_ENV` in
+ *  `src/lib/pipeline/gate.ts`. */
+export const ROUTER_STUB_FILE_ENV = "MT_TEST_ROUTER_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -119,6 +122,17 @@ export function assertSeamMatchesMode(
           `the "live" sweep would be stubbed end to end and would report the stub's numbers ` +
           `as the model's.\n` +
           `  Fix:  unset ${STUB_FILE_ENV} in your shell — the suite sets it itself for ` +
+          `stubbed runs and pins it empty for live ones.`,
+      );
+    }
+    if (!blank(childEnv[ROUTER_STUB_FILE_ENV])) {
+      throw new E2EPreflightError(
+        `e2e: REFUSING to run — ${LIVE_ENV_FLAG}=1 asks for a LIVE model run, but the ` +
+          `server under test would still see ${ROUTER_STUB_FILE_ENV}=${childEnv[ROUTER_STUB_FILE_ENV]}.\n` +
+          `  That file both answers for the router AND overrides the §10 step 5 flags, so a ` +
+          `"live" sweep could be gated by a canned route the model never produced — and the ` +
+          `router's recall, the number the whole step turns on, would be the stub's.\n` +
+          `  Fix:  unset ${ROUTER_STUB_FILE_ENV} in your shell — the suite sets it itself for ` +
           `stubbed runs and pins it empty for live ones.`,
       );
     }
@@ -322,7 +336,16 @@ export function describeProbe(p: ProbeResult): string {
  * `AnalyzedMessage.reasoning` — the one place the server already
  * records it, so none of this needs a change under `src/`.
  */
-export type ReachClass = "model" | "offline" | "offline-fatal" | "stub" | "fast-path";
+export type ReachClass = "model" | "offline" | "offline-fatal" | "stub" | "fast-path" | "gated";
+
+/**
+ * `AnalyzedMessage.handledBy` for a message the §10 step 5 router gate
+ * decided not to send to the analyzer. Mirrors `GATED_HANDLED_BY` in
+ * `src/lib/pipeline/gate.ts`; duplicated rather than imported because
+ * that module reaches the Prisma client's type surface and this file
+ * must stay loadable with nothing but `vitest`.
+ */
+export const GATED_HANDLED_BY = "router-gate";
 
 /** Offline fallbacks that are CONFIGURATION or INFRASTRUCTURE faults.
  *  None of these is ever tolerable in a run being reported as live. */
@@ -352,6 +375,11 @@ export function classifyReasoning(
   if (OFFLINE_FATAL_PREFIXES.some((p) => r.startsWith(p))) return "offline-fatal";
   if (OFFLINE_TOLERATED_PREFIXES.some((p) => r.startsWith(p))) return "offline";
   if (handledBy === "fast-path") return "fast-path";
+  // AFTER the offline and stub checks, deliberately. The gate's
+  // handledBy must never let a real offline verdict pass as something
+  // benign — PR #38's guard is not weakened, only made able to see a
+  // fourth, legitimate reason a message did not reach the model.
+  if (handledBy === GATED_HANDLED_BY) return "gated";
   return "model";
 }
 
@@ -368,6 +396,10 @@ export interface ReachSummary {
   offlineFatal: number;
   stub: number;
   fastPath: number;
+  /** Messages the §10 step 5 router gate deliberately did not send. Not
+   *  a failure, and not evidence of liveness either — reported, and
+   *  excluded from `attributable`. */
+  gated: number;
   /** Denominator for the rate: rows that SHOULD have reached the model. */
   attributable: number;
   offlineRate: number;
@@ -383,6 +415,7 @@ export function summariseReach(rows: ReachRow[]): ReachSummary {
     offlineFatal: 0,
     stub: 0,
     fastPath: 0,
+    gated: 0,
     attributable: 0,
     offlineRate: 0,
     byReason: {},
@@ -393,8 +426,9 @@ export function summariseReach(rows: ReachRow[]): ReachSummary {
     else if (cls === "offline") s.offline += 1;
     else if (cls === "offline-fatal") s.offlineFatal += 1;
     else if (cls === "stub") s.stub += 1;
+    else if (cls === "gated") s.gated += 1;
     else s.fastPath += 1;
-    if (cls !== "model" && cls !== "fast-path") {
+    if (cls !== "model" && cls !== "fast-path" && cls !== "gated") {
       const key = truncateReason(row.reasoning ?? "(no reasoning)");
       s.byReason[key] = (s.byReason[key] ?? 0) + 1;
     }
@@ -458,6 +492,7 @@ export function describeReach(s: ReachSummary): string {
     `[live] ${s.model} of ${s.attributable} analyzed messages reached the real model` +
     (s.offline ? `, ${s.offline} dropped verdict(s)` : "") +
     (s.fastPath ? `, ${s.fastPath} answered by a deterministic fast path` : "") +
+    (s.gated ? `, ${s.gated} gated out by the router before the analyzer` : "") +
     `.`
   );
 }
