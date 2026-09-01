@@ -30,6 +30,7 @@
  * The fourth containment — shadowing the `none` bucket forever — belongs
  * to the harness, not here.
  */
+import { messageTagsBot } from "../interaction-contract";
 import {
   anthropicModel,
   degradation,
@@ -57,8 +58,9 @@ Rules:
 1. Route on what a message DOES, not what it is about. "Great game last night" is none.
 2. A completed join stated about someone else IS other_att ("Ayoub snatched that spot").
 3. A relayed commitment IS other_att ("Najib said in as well").
-4. Moving, benching or swapping a NAMED PLAYER is other_att, never balancer. balancer is only about the two team line-ups as a whole.
-5. When in doubt between none and anything else, choose the other route.
+4. Moving, benching or swapping a NAMED PLAYER is other_att, never balancer. ONE list of players, however long or numbered, is a reposted squad roster and is other_att; balancer is only about the TWO team line-ups.
+5. An @mention of a person with in or out is other_att.
+6. When in doubt between none and anything else, choose the other route.
 
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 
@@ -101,16 +103,69 @@ const FLOOR_PLUS = /^\+\s*[1-5]\b/;
  *  means this is a sentence, not a bare declaration. */
 const FLOOR_TAIL = /^[\s\p{P}\p{S}]*$/u;
 
+/**
+ * The MENTION half of the floor: `@Someone in`, `@Zair Malik out`.
+ *
+ * Same shape as the bare self-attendance floor — a subject and a token,
+ * nothing else — one route along. It exists because the live corpus
+ * caught `@Ehtisham Ul Haq In` routed `none`, which is §11.1's failure
+ * exactly: a real third-party registration gone with no write, no reply
+ * and no signal.
+ *
+ * A mention of the BOT is never a player. Without that check
+ * "@Match Time in" would try to register a member called "Match Time",
+ * which is the ghost-user class of bug one layer up.
+ */
+const MENTION_TOKEN = /^@[\p{L}\d._'-]+/u;
+/** A capitalised word after a mention is part of the mentioned display
+ *  name ("@Ehtisham Ul Haq") — the Pi expands a mention to the display
+ *  name. A lower-case word is the sentence starting, and ends the
+ *  subject. */
+const NAME_WORD = /^\p{Lu}[\p{L}'-]*$/u;
+
 export function routeFloor(body: string): Route | null {
   const t = (body ?? "").trim();
-  if (!t || t.length > 24) return null;
+  if (!t) return null;
+
+  if (t.startsWith("@")) {
+    // Never the bot. `messageTagsBot` is this project's one definition
+    // of "this message tags MatchTime"; it is reused, not re-derived.
+    if (messageTagsBot({ body: t })) return null;
+    let rest = t;
+    let sawMention = false;
+    for (;;) {
+      const m = MENTION_TOKEN.exec(rest);
+      if (!m) break;
+      sawMention = true;
+      rest = rest.slice(m[0].length).trimStart();
+      // Consume the rest of the mentioned display name.
+      for (;;) {
+        const word = rest.split(/\s+/)[0] ?? "";
+        if (!word || !NAME_WORD.test(word) || isFloorToken(word)) break;
+        rest = rest.slice(word.length).trimStart();
+      }
+    }
+    if (!sawMention) return null;
+    return isBareDeclaration(rest) ? "other_att" : null;
+  }
+
+  return isBareDeclaration(t) ? "self_att" : null;
+}
+
+/** Is this single word one of the bare tokens the floor recognises? */
+function isFloorToken(word: string): boolean {
+  return /^(?:in|out)$/i.test(word.replace(/[^\p{L}]/gu, ""));
+}
+
+/** Is the whole of `t` a bare IN/OUT/+N declaration and nothing else? */
+function isBareDeclaration(t: string): boolean {
+  if (!t || t.length > 24) return false;
   for (const re of [FLOOR_PLUS, FLOOR_IN, FLOOR_OUT]) {
     const m = re.exec(t);
     if (!m) continue;
-    if (!FLOOR_TAIL.test(t.slice(m[0].length))) return null;
-    return "self_att";
+    return FLOOR_TAIL.test(t.slice(m[0].length));
   }
-  return null;
+  return false;
 }
 
 export interface RouterMessage {

@@ -70,6 +70,11 @@ export class DryRunPipeline implements CorpusPipeline {
       orgId: grp.orgId,
       matchId: grp.matchId,
       routes: [] as unknown[],
+      // §11.2: "log the route alongside the extracted facts, so triage
+      // is one query". Two-stage disagreement is a new failure mode and
+      // this is the thing that makes it debuggable.
+      facts: [] as unknown[],
+      reasons: [] as unknown[],
       degradations: [] as string[],
       costUsd: 0,
       ms: 0,
@@ -126,6 +131,14 @@ export class DryRunPipeline implements CorpusPipeline {
 
       (notes.routes as unknown[]).push(
         ...result.routes.map((r) => ({ id: r.messageId, route: r.route, source: r.source })),
+      );
+      (notes.facts as unknown[]).push(...result.facts.map((f) => ({ id: f.messageId, facts: f.facts })));
+      (notes.reasons as unknown[]).push(
+        ...result.engine.outcomes.map((o) => ({
+          id: o.messageId,
+          disposition: o.disposition,
+          reasons: o.reasons,
+        })),
       );
       (notes.degradations as string[]).push(...result.degradations.map((d) => `${d.stage}: ${d.detail}`));
       notes.costUsd = (notes.costUsd as number) + result.cost.totalUsd;

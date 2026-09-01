@@ -50,7 +50,13 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
         ...(FILTER ? { filter: FILTER } : {}),
         onObservation: (c, o) => {
           const n = o.notes as
-            | { costUsd?: number; routes?: unknown[]; degradations?: string[] }
+            | {
+                costUsd?: number;
+                routes?: unknown[];
+                facts?: unknown[];
+                reasons?: unknown[];
+                degradations?: string[];
+              }
             | undefined;
           if (typeof n?.costUsd === "number") {
             costUsd += n.costUsd;
@@ -64,6 +70,8 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
             console.log(
               `[corpus-dryrun] ${c.id}\n` +
                 `  routes:  ${JSON.stringify(n?.routes)}\n` +
+                `  facts:   ${JSON.stringify(n?.facts)}\n` +
+                `  reasons: ${JSON.stringify(n?.reasons)}\n` +
                 `  before:  ${JSON.stringify(o.attendanceBefore)}\n` +
                 `  after:   ${JSON.stringify(o.attendanceAfter)}\n` +
                 `  spoken:  ${JSON.stringify(o.spoken)}\n` +

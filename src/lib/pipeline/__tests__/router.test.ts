@@ -210,3 +210,50 @@ describe("routeBatch", () => {
     expect(out.routes.every((r) => r.source === "floor")).toBe(true);
   });
 });
+
+// ── Found by the first live corpus sweep (2026-09-01) ──────────────────
+
+describe("the mention floor — a tagged person plus a bare IN/OUT", () => {
+  // §11.1 in its purest form: `@Ehtisham Ul Haq In` routed `none` on the
+  // live corpus, so a real third-party registration disappeared with no
+  // write, no reply and no signal. It is the same shape as the bare
+  // self-attendance floor — a mention and a token, nothing else — so it
+  // gets the same treatment, one route along.
+  it.each([
+    ["@Ehtisham Ul Haq In", "other_att"],
+    ["@Najib in", "other_att"],
+    ["@Zair Malik out", "other_att"],
+    ["@Faris Nasser IN 👍", "other_att"],
+  ])("%s → %s", (body, route) => {
+    expect(routeFloor(body)).toBe(route);
+  });
+
+  it.each([
+    // A tagged bot is never a player. Without this, "@Match Time in"
+    // would try to register a member called "Match Time" — the ghost
+    // user class of bug, one layer up.
+    "@Match Time in",
+    "@MatchTime out",
+    // Not a bare declaration: anything past the token is a sentence.
+    "@Zair Malik is in if we're short",
+    "@all we need more players pls",
+    "@Kemal Ediz my brother can play if needed",
+    "@Match Time who's on the bench?",
+    "@Ehtisham Ul Haq is replacing @Elnur Mammadov",
+  ])("does not claim %s", (body) => {
+    expect(routeFloor(body)).toBeNull();
+  });
+});
+
+describe("router prompt rules added after the live sweep", () => {
+  it("tells the router that a reposted roster is not a team sheet", () => {
+    // Live corpus: a 14-name numbered list (S26's reposted roster) routed
+    // `balancer`, so the tag gate refused it as a team op and two real
+    // registrations were lost.
+    expect(ROUTER_SYSTEM_PROMPT).toMatch(/list of players|roster/i);
+  });
+
+  it("tells the router that an @mention with in/out is other_att", () => {
+    expect(ROUTER_SYSTEM_PROMPT).toMatch(/@-?mention|mention/i);
+  });
+});

@@ -214,6 +214,7 @@ export function decide(input: EngineInput): EngineResult {
       // bot's last post is a KNOWN OBJECT, so this is a lookup, not an
       // inference (§3.2 S25, 2026-04-24 Amir, 7453daa).
       let claims = facts.claims;
+      let fromAffirmation = false;
       if (claims.length === 0 && facts.affirmation === "yes") {
         const pending = parsePendingSet(state.lastBotPost);
         if (pending.length === 0) {
@@ -231,6 +232,7 @@ export function decide(input: EngineInput): EngineResult {
           reported: true,
           confidence: 0.95,
         }));
+        fromAffirmation = true;
         out.reasons.push(`short confirmation resolved to ${pending.length} pending name(s)`);
       }
 
@@ -265,9 +267,19 @@ export function decide(input: EngineInput): EngineResult {
       }
 
       // ── Resolve every claim to a person BEFORE deciding anything ─────
+      //
+      // ORDER MATTERS, and it is a DECISION, so the engine owns it: a
+      // replacement frees the slot before it fills it. Found by the
+      // first live corpus sweep — "@Izzet is replacing @Elnur" against a
+      // 14/14 squad put Izzet on the BENCH (processed first, no room)
+      // and then dropped Elnur, leaving 13 confirmed and a bench beside
+      // an empty slot. OUT first, always.
+      const ordered = [...claims].sort(
+        (a, b) => (a.polarity === "out" ? 0 : 1) - (b.polarity === "out" ? 0 : 1),
+      );
       const targets: Target[] = [];
       const guestAsks: Claim[] = [];
-      for (const c of claims) {
+      for (const c of ordered) {
         if (c.confidence < CONFIDENCE_FLOOR) {
           out.reasons.push(
             `claim about "${c.personRef || "sender"}" below the confidence floor ` +
@@ -304,7 +316,27 @@ export function decide(input: EngineInput): EngineResult {
         // Third party. A relationship is not a name — and the engine
         // says so itself rather than trusting `personNamed` (§11.3).
         const resolution = resolvePerson(c.personRef, w.roster);
-        if (!c.personNamed || resolution.kind === "not-a-person") {
+
+        // …and the same distrust runs the OTHER way. `personNamed` is
+        // the model's reading of the TEXT; whether a reference
+        // identifies a SQUAD MEMBER is the roster's business, and only
+        // code has the roster. The first live corpus sweep had the
+        // extractor call "habibi" an endearment rather than a name 3
+        // times out of 3, which blocked a drop the message plainly
+        // makes. A reference that uniquely resolves to a member has
+        // named someone, whatever the model thinks — and it can only get
+        // here after identity.ts has already refused relationships,
+        // quantities, indefinites and raw digits.
+        let personNamed = c.personNamed;
+        if (!personNamed && resolution.kind === "resolved") {
+          personNamed = true;
+          out.reasons.push(
+            `"${c.personRef}" was reported unnamed but resolves to a squad member ` +
+              `(${resolution.member.name}); treating it as named`,
+          );
+        }
+
+        if (!personNamed || resolution.kind === "not-a-person") {
           if (c.polarity === "in") {
             guestAsks.push(c);
             out.reasons.push(`unnamed third party ("${c.personRef}") cannot register anyone`);
@@ -313,7 +345,7 @@ export function decide(input: EngineInput): EngineResult {
               `unnamed third party ("${c.personRef}") cannot be dropped or benched`,
             );
           }
-          if (resolution.kind === "not-a-person" && c.personNamed) {
+          if (resolution.kind === "not-a-person" && personNamed) {
             degrade(`extractor said personNamed but ${resolution.why}`);
           }
           continue;
@@ -511,6 +543,22 @@ export function decide(input: EngineInput): EngineResult {
             });
           }
         }
+      }
+
+      // A resolved confirmation is a conversational turn and deserves an
+      // answer even when every write turned out to be idempotent. Found
+      // by the first live corpus sweep: "Confirmed" resolved the pending
+      // set correctly, both names were ALREADY down, so nothing changed
+      // and the bot said nothing at all. "Message understood, action
+      // silently not taken" is this product's signature failure (§9) and
+      // it applies just as much to an action that was already true.
+      if (fromAffirmation && out.writes.length === 0 && targets.length > 0) {
+        speech.push({
+          kind: "pending_confirmed_ack",
+          messageId: msg.id,
+          userIds: targets.map((t) => t.userId).filter((id): id is string => !!id),
+        });
+        out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
       }
 
       // A recruit request alongside a drop opens the same offer path; if

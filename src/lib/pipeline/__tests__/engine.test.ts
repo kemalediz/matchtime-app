@@ -1387,3 +1387,140 @@ describe("degrade loudly (never a silent no-op)", () => {
     expect(r.degradations.some((d) => /disagree/i.test(d.detail))).toBe(true);
   });
 });
+
+// ── Found by the first live corpus sweep (2026-09-01) ──────────────────
+//
+// Everything below was a real failure on the 46-case corpus, triaged
+// from the pipeline's own routes+facts+reasons trail and fixed in the
+// ENGINE rather than in a prompt. That is the loop the redesign is for:
+// §6.1's "fixing a rule in a 360-token router with a 40-case eval set
+// takes ten minutes and produces a number", applied to the engine too.
+
+describe("S28 · a replacement frees the slot BEFORE it fills it", () => {
+  it("'X is replacing Y' at a full squad confirms X and drops Y", () => {
+    // Live corpus, first sweep: Izzet was processed first against a
+    // 14/14 squad, landed on the BENCH, and Elnur's drop then left the
+    // squad at 13 with a bench. Claim ORDER inside one message is a
+    // decision, so the engine owns it: OUT before IN, always.
+    const state = world({
+      players: [...FULL_14, "izzet", "elnur"],
+      confirmed: [...FULL_14.slice(0, 13), "elnur"],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "kemal",
+          body: "@Match Time @Izzet Erdogan is replacing @Elnur Mammadov",
+          route: "other_att",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Izzet Erdogan", personNamed: true, polarity: "in" }),
+            claim({ subject: "other", personRef: "Elnur Mammadov", personNamed: true, polarity: "out" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "elnur")).toBe("DROPPED");
+    expect(statusOf(r.nextState, "izzet")).toBe("CONFIRMED");
+    expect(confirmedCount(r.nextState)).toBe(14);
+    expect(benchCount(r.nextState)).toBe(0);
+  });
+});
+
+describe("S12 · the roster decides whether a reference names someone", () => {
+  it("honours a nickname the model reported as personNamed:false", () => {
+    // Live corpus: the extractor called "habibi" an endearment rather
+    // than a name (3/3), so the engine's unnamed-third-party rule
+    // blocked a drop the message plainly makes. `personNamed` is the
+    // model's reading of the TEXT; whether a reference identifies a
+    // SQUAD MEMBER is the roster's business, and only code has the
+    // roster. Placeholder words still lose: identity.ts refuses them
+    // before this can fire.
+    const state = world({
+      confirmed: [...FULL_14.slice(0, 12), "mojib", "habib"],
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "mojib",
+          body: "@Match Time is anyone able to replace me and habibi tonight?",
+          route: "other_att",
+          tagged: true,
+          facts: attendanceFacts(
+            [
+              claim({ subject: "sender", polarity: "out" }),
+              claim({
+                subject: "other",
+                personRef: "habibi",
+                personNamed: false,
+                polarity: "out",
+              }),
+            ],
+            { sideRequests: ["recruit"] },
+          ),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "mojib")).toBe("DROPPED");
+    expect(statusOf(r.nextState, "habib")).toBe("DROPPED");
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/resolves to a squad member/i);
+  });
+
+  it("still refuses a relationship, however confident the model is", () => {
+    const state = world({ confirmed: FULL_14.slice(0, 7) });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "my brother can play",
+          route: "other_att",
+          facts: attendanceFacts([
+            claim({
+              subject: "other",
+              personRef: "my brother",
+              personNamed: true,
+              polarity: "in",
+              confidence: 1,
+            }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes.filter((w) => w.kind === "attendance")).toHaveLength(0);
+  });
+});
+
+describe("S25 · a resolved confirmation is answered even when nothing changed", () => {
+  it("acknowledges names that were already down", () => {
+    // Live corpus: "Confirmed" resolved the pending set correctly, both
+    // names were ALREADY confirmed, so every write was idempotent and
+    // the bot said nothing at all. "Message understood, action silently
+    // not taken" is this product's signature failure (§9), and it
+    // applies just as much to an action that was already true.
+    const state = world({
+      confirmed: ["kemal", "elvin", "sait", "mustafa", "abid", "idris", "faris", "shaz"],
+      lastBotPost:
+        "Got it 🙌 Pending — waiting for confirmation: Faris Nasser, Shaz Iqbal. Say the word and I'll lock them in.",
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "Confirmed",
+          route: "other_att",
+          facts: attendanceFacts([], { affirmation: "yes" }),
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(0);
+    expect(r.speech.some((s) => s.kind === "pending_confirmed_ack")).toBe(true);
+  });
+});

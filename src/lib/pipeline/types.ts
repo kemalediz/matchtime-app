@@ -348,6 +348,9 @@ export type SpeechIntent =
   | { kind: "payment_ack"; messageId: string; payerName: string; count: number }
   | { kind: "reminder_ack"; messageId: string; phrase: string }
   | { kind: "bench_offer_open"; messageId: string; replacingName: string }
+  /** A resolved "Confirmed" whose writes were all idempotent. Saying
+   *  nothing there is the silent-no-op failure in miniature. */
+  | { kind: "pending_confirmed_ack"; messageId: string; userIds: string[] }
   /** Something failed and the bot says so rather than going quiet. */
   | { kind: "degraded"; messageId: string; reason: string };
 

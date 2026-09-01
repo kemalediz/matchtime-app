@@ -79,7 +79,7 @@ export const EXTRACTOR_PROMPTS: Record<Exclude<ExtractorKind, "none">, string> =
 For each attendance claim in the message, return:
   subject      "sender" if the claim is about the person who typed it, "other" for anyone else
   personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender.
-  personNamed  true only if an actual personal NAME was used. "my brother", "2 of my guys", "someone", "a mate" -> false
+  personNamed  true when the words IDENTIFY A PARTICULAR PERSON: a name, a nickname, or an @mention. false ONLY for a relationship, a quantity or an indefinite: "my brother", "2 of my guys", "someone", "a mate", "another keeper"
   polarity     "in" joining, "out" leaving, "bench" only when the bench is EXPLICITLY asked for ("in, for bench"). Never guess "bench" from how full the squad is: you are not told the squad.
   contingent   true if the commitment depends on something ("if you're short", "if my back holds up", "happy to drop if you find someone")
   conditionOn  "squad" if the condition is about the squad or the team's needs, "self" if it is about the person themselves, otherwise "none"
@@ -92,6 +92,8 @@ Also return:
   sideRequests any of: "recruit" (asks for a replacement or more players for a specific gap), "chase" (a general nudge for more players that says nothing about the sender's own place)
 
 A message can carry SEVERAL claims and a side request at once. Report all of them. "I'm out, anyone able to replace me?" is one claim plus "recruit". "I'm in, and my brother can play too" is TWO claims.
+
+Asking for cover is NOT a condition. Someone asking whether anyone can replace them is leaving either way: report the out with contingent false, plus the "recruit" side request. Only report contingent true when the message states something the claim DEPENDS ON ("happy to drop if you find someone", "in if my back holds up").
 
 Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere with information you do not have.
 

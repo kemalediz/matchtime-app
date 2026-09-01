@@ -269,6 +269,26 @@ export function compose(result: EngineResult): ComposedOutput {
         });
         break;
 
+      case "pending_confirmed_ack": {
+        const byId = new Map(state.roster.map((m) => [m.userId, m.name]));
+        const down = s.userIds
+          .filter((id) => {
+            const row = state.rows.find((r) => r.userId === id);
+            return row && row.status !== "DROPPED";
+          })
+          .map((id) => safeName(byId.get(id) ?? ""));
+        // Composed from the PROJECTED state, so it can only name people
+        // who actually have a place. An empty list means the
+        // confirmation resolved to nobody, and then we say nothing
+        // rather than inventing a cheerful tick.
+        if (down.length === 0) break;
+        utterances.push({
+          messageId: s.messageId,
+          text: `Got it 🙌 ${joinList(down)} ${down.length === 1 ? "is" : "are"} down for ${state.kickoffLabel}.`,
+        });
+        break;
+      }
+
       case "degraded":
         operatorNotes.push(s.reason);
         break;
