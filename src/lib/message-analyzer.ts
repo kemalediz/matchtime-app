@@ -41,7 +41,6 @@ import { getOrgFeatures } from "./org-features";
 import { resolveTeamLabels } from "./team-labels";
 import {
   BENCH_PROMPT_MENTION_REACTIONS,
-  buildBenchAskedLine,
   benchClaimPhrasingExample,
 } from "./bench-offer-copy";
 import {
@@ -1654,98 +1653,6 @@ export function looksLikeSquadStateReply(text: string): boolean {
  * moved somewhere it can actually be reused.
  */
 export { composeSquadStatusPost } from "./group-copy";
-
-/**
- * Safety net for when the LLM hallucinates that a bench player has
- * been promoted to confirmed ("Aydın moves up from the bench", "Y
- * stepped in", "we're still 14/14"). The actual flow is async — the
- * server queues a PendingBenchConfirmation, DMs the bench player, and
- * only marks them CONFIRMED when one of them claims the slot. Until
- * then the squad is genuinely short.
- *
- * Called only when there's an OPEN PendingBenchConfirmation against
- * the relevant match. Strips the false-promotion sentence (heuristic
- * regexes targeting common phrasings) and prepends an honest
- * "Asking <name> to step up..." line — worded around the IN-GROUP tag,
- * because that is where the slot is claimed and it is the one channel
- * every eligible bencher is on — so the group sees the real status.
- */
-export function rewriteOverconfidentPromotion(
-  text: string,
-  args: {
-    benchName: string;
-    confirmedCount: number;
-    maxPlayers: number;
-    /** Current bench attendance count. When 0 there's literally no one
-     *  to step up, so don't prepend the "Asking the bench" line — it
-     *  reads as delusional ("tagged here" when nobody was).
-     *  We still strip false "X moves up" phrases the LLM may have
-     *  hallucinated. Sutton 2026-05-26: 4 dropped at once on an empty
-     *  bench, the open BenchSlotOffers piled "Asking the bench — 10/14"
-     *  onto every subsequent unrelated reply for ~11 min until the
-     *  format flip cleared them. */
-    benchCount: number;
-  },
-): string {
-  const { benchName, confirmedCount, maxPlayers, benchCount } = args;
-
-  // Strip phrases that imply the swap is done. Match per-line so we
-  // don't gobble unrelated text on the same line.
-  const FALSE_PROMOTION_PATTERNS: RegExp[] = [
-    /[^.!?\n]*\bmoves?\s+up\s+from\s+the\s+bench\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bsteps?\s+in\s+(?:for|to\s+take|to\s+fill)\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bstepped\s+in\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\btaking\s+(?:the\s+|that\s+)?slot\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bis\s+replacing\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bcomes\s+(?:up|in)\s+from\s+the\s+bench\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bwe(?:'re|\s+are)\s+still\s+\d+\/\d+\b[^.!?\n]*[.!?]?/gi,
-  ];
-  let stripped = text;
-  for (const re of FALSE_PROMOTION_PATTERNS) {
-    stripped = stripped.replace(re, "");
-  }
-  // Collapse the whitespace/punctuation we just punched holes in.
-  stripped = stripped
-    .replace(/[ \t]+/g, " ")
-    .replace(/ ?\.[ ]*\./g, ".")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/^[ \t]+|[ \t]+$/gm, "");
-
-  // Empty bench → only strip the false claims; don't prepend the
-  // "Asking the bench" line, because there's no bench to ask. The
-  // LLM's reply will naturally state what's needed (chase the group);
-  // we don't override it with a misleading status line.
-  if (benchCount === 0) return stripped.trim();
-
-  // Prepend an honest status line above the roster block (or at the
-  // top if no roster block detected).
-  // NB: this line describes the IN-GROUP @mention (kind:"bench-prompt")
-  // and deliberately nothing else. A personal DM nudge does also go out
-  // per bencher (bot-scheduler.ts, "Personal DM to each bencher", added
-  // 2026-05-19) — but it is queued for a later scheduler tick,
-  // daytime-gated, and skipped for anyone who turned bench DMs off, so
-  // NOTHING has been delivered at the moment this line is written.
-  // Claiming otherwise is what burned us: a bench player who got no DM
-  // (Erdal, 2026-05-18) is right to call it misinformation. Stick to
-  // what is certain — they're tagged in the group and asked to reply IN
-  // (see BENCH_PROMPT_MENTION_REACTIONS in src/lib/bench-offer-copy.ts
-  // for why the 👍 instruction is currently withdrawn).
-  const honest = buildBenchAskedLine({ benchName, confirmedCount, maxPlayers });
-
-  // Drop the line in just before any "*Playing tonight:*" / "*Squad:*"
-  // header, or at the start when there isn't one.
-  const headerMatch = stripped.match(/^[ \t]*\*?(Playing|Squad)[^\n]*\*?[ \t]*$/m);
-  if (headerMatch?.index !== undefined) {
-    stripped =
-      stripped.slice(0, headerMatch.index) +
-      honest +
-      "\n\n" +
-      stripped.slice(headerMatch.index);
-  } else {
-    stripped = honest + "\n\n" + stripped;
-  }
-  return stripped.trim();
-}
 
 const CHASE_SYSTEM_PROMPT = `You are MatchTime, composing a SCHEDULED group message — not a reply to anyone. The bot's scheduler is firing a chase/announcement at a fixed time because the squad is in a certain state.
 

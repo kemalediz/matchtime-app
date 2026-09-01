@@ -31,7 +31,7 @@ import {
   buildBenchAskedLine,
   benchClaimPhrasingExample,
 } from "@/lib/bench-offer-copy";
-import { SYSTEM_PROMPT, rewriteOverconfidentPromotion } from "@/lib/message-analyzer";
+import { SYSTEM_PROMPT } from "@/lib/message-analyzer";
 
 const GROUP = {
   context: "on *Reds* (replacing Ehtisham Ekin) for *Tuesday 7-a-side* tonight",
@@ -223,26 +223,12 @@ describe("the system prompt is pinned to the same flag", () => {
   });
 });
 
-describe("rewriteOverconfidentPromotion uses the gated line", () => {
-  const args = { benchName: "Aydın", confirmedCount: 13, maxPlayers: 14, benchCount: 2 };
-
-  it("prepends a status line that never mentions a reaction", () => {
-    const out = rewriteOverconfidentPromotion("Aydın moves up from the bench.", args);
-    expect(out).not.toContain("👍");
-    expect(out).not.toContain("👎");
-    expect(out).toContain(buildBenchAskedLine(args));
-  });
-
-  it("still strips the false promotion claim", () => {
-    const out = rewriteOverconfidentPromotion("Aydın moves up from the bench.", args);
-    expect(out).not.toMatch(/moves up from the bench/i);
-  });
-
-  it("adds no status line at all when the bench is empty", () => {
-    const out = rewriteOverconfidentPromotion("Aydın moves up from the bench.", {
-      ...args,
-      benchCount: 0,
-    });
-    expect(out).not.toContain("Aydın");
-  });
-});
+/**
+ * `rewriteOverconfidentPromotion` was deleted on 2026-09-01 (§10 step 4)
+ * and its three cases here went with it. It stripped a hallucinated
+ * promotion out of a reply and prepended `buildBenchAskedLine()` in its
+ * place; the model no longer writes the squad sentence at all, so there
+ * is nothing to strip. `buildBenchAskedLine` itself is kept and still
+ * covered above: the copy is the bench-offer feature's, not the
+ * post-processor's, and the flag it is pinned to is a shipped guard.
+ */
