@@ -17,6 +17,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { MAX_TOKENS_CEILING } from "./message-analyzer";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_DELTA = 2;
@@ -150,7 +151,11 @@ export async function adjustRatings(
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 200 + 80 * input.players.length,
+      // Clamped: an unbounded expression can drift past the SDK's
+      // non-streaming limit with no warning (see MAX_TOKENS_CEILING in
+      // message-analyzer.ts). No realistic roster gets near this, but
+      // "no call site picks its own unbounded number" is the rule.
+      max_tokens: Math.min(MAX_TOKENS_CEILING, 200 + 80 * input.players.length),
       system: [
         {
           type: "text",

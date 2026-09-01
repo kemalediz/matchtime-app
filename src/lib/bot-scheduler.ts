@@ -836,8 +836,22 @@ async function computeForMatch(
     try {
       const llm = await composeChaseText({ groupId, kind });
       if (llm && llm.trim().length > 0) return llm;
+      // Degrade LOUDLY. composeChaseText swallows its own failures and
+      // returns null, so for months this branch was the ONLY trace of a
+      // permanently-dead composer — and it logged nothing at all. Every
+      // scheduled chase quietly went out as plain static text.
+      console.error(
+        `[scheduler] DEGRADED: composeChaseText returned no text for ` +
+          `kind=${kind} group=${groupId} — sending the STATIC chase copy ` +
+          `instead of the composed roster/tentative/dropped summary.`,
+      );
     } catch (err) {
-      console.error(`[scheduler] compose ${kind} failed:`, err);
+      console.error(
+        `[scheduler] DEGRADED: compose ${kind} threw for group=${groupId} — ` +
+          `sending the STATIC chase copy instead of the composed ` +
+          `roster/tentative/dropped summary.`,
+        err,
+      );
     }
     return staticFallback();
   }
