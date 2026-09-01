@@ -53,13 +53,14 @@ import { answerScopedQuestion } from "@/lib/dm-qa";
 import {
   analyzeBatch,
   enforceProximity,
-  enforceCanonicalRoster,
-  rewriteOverconfidentPromotion,
-  composeSquadStatusPost,
-  looksLikeSquadStateReply,
   type AnalysisVerdict,
   type BatchInputMessage,
 } from "@/lib/message-analyzer";
+import {
+  composeSquadStateReply,
+  stripSquadPostMarker,
+  type SquadTruth,
+} from "@/lib/group-copy";
 import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
@@ -1591,98 +1592,22 @@ export async function POST(request: Request) {
       const { react, reply } = ack;
       // Apply the same proximity post-processor the chase composer uses
       // so reactive replies also rewrite "tonight" → "Tue 28 Apr" and
-      // any 20:30/21:30-style UTC-vs-BST mistakes. Also enforce the
-      // canonical roster — the LLM has been observed to reorder/omit
-      // players (especially provisional ones), so any numbered roster
-      // in the reply gets overwritten with the truth from the DB.
-      // EXCEPT for generate_teams_request: that reply intentionally
-      // contains TWO numbered team lists (Red + Yellow) which would
-      // be wrecked by the canonical-roster overwrite. Skip it.
-      // Re-fetch the match state HERE (not before the loop) so any
-      // attendance change just made by the prior verdicts in this
-      // batch is reflected — otherwise canonical-roster patches the
-      // count back to the stale pre-loop value.
+      // any 20:30/21:30-style UTC-vs-BST mistakes.
+      //
+      // NOTHING ELSE HAPPENS TO THE TEXT HERE ANY MORE (§10 step 4,
+      // 2026-09-01). Everything this reply says about the SQUAD —
+      // roster, count, bench, who moved where — is composed from the
+      // database in the batch-final pass below, after every write in
+      // the batch has landed. The four regex post-processors that used
+      // to run here (`enforceCanonicalRoster`,
+      // `rewriteOverconfidentPromotion` behind an open BenchSlotOffer,
+      // the offer-independent promotion strip, and the per-message
+      // fresh-attendance query the three of them needed) all patched
+      // the model's words after it had already written the wrong ones.
+      // Composition means it does not write them.
       let cleanReply = reply;
       if (cleanReply && nextMatchForReply) {
-        const freshAttendances = await db.attendance.findMany({
-          where: {
-            matchId: nextMatchForReply.id,
-            status: { in: ["CONFIRMED", "BENCH"] },
-          },
-          include: { user: { select: { name: true } } },
-          orderBy: { position: "asc" },
-        });
-        const freshConfirmed = freshAttendances.filter(
-          (a) => a.status === "CONFIRMED",
-        );
-        const freshBench = freshAttendances.filter((a) => a.status === "BENCH");
         cleanReply = enforceProximity(cleanReply, nextMatchForReply.date);
-        if (
-          verdict.intent !== "generate_teams_request" &&
-          verdict.intent !== "show_teams_request"
-        ) {
-          cleanReply = enforceCanonicalRoster(cleanReply, {
-            confirmed: freshConfirmed.map((a) => a.user.name ?? "(unnamed)"),
-            bench: freshBench.map((a) => a.user.name ?? "(unnamed)"),
-            maxPlayers: nextMatchForReply.maxPlayers,
-          });
-        }
-        // Safety net: if the LLM claimed a bench player has been
-        // promoted ("X moves up", "we're still 14/14") but a
-        // BenchSlotOffer is still OPEN for this match (slot not yet
-        // claimed), the squad is genuinely short — strip the
-        // hallucinated promotion and state the slot is still open to
-        // the bench. The roster block was already canonicalised above.
-        const openOffer = await db.benchSlotOffer.findFirst({
-          where: { matchId: nextMatchForReply.id, resolvedAt: null },
-          orderBy: { createdAt: "desc" },
-        });
-        if (openOffer) {
-          cleanReply = rewriteOverconfidentPromotion(cleanReply, {
-            benchName: "the bench",
-            confirmedCount: freshConfirmed.length,
-            maxPlayers: nextMatchForReply.maxPlayers,
-            benchCount: freshBench.length,
-          });
-        }
-        // Offer-independent promotion strip: an admin demote never creates a
-        // BenchSlotOffer, so the openOffer gate above misses it. Strip any
-        // "<benchPlayer> moves up / comes up / steps in / is promoted from the
-        // bench" claim whenever that player is STILL on the bench per the fresh
-        // snapshot — regardless of any offer.
-        if (cleanReply) {
-          const before = cleanReply;
-          for (const b of freshBench) {
-            const name = b.user.name;
-            if (!name) continue;
-            const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const firstName = name
-              .split(" ")[0]
-              .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const nameAlt = firstName === esc ? esc : `(?:${esc}|${firstName})`;
-            // verb → bench ("X moves up from the bench")
-            const promoVerbFirst = new RegExp(
-              `[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in)|is\\s+promoted|promoted)\\b[^.!?\\n]*\\bbench\\b[^.!?\\n]*[.!?]?`,
-              "gi",
-            );
-            // bench → verb ("off the bench, X steps in")
-            const promoBenchFirst = new RegExp(
-              `[^.!?\\n]*\\bbench\\b[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in))\\b[^.!?\\n]*[.!?]?`,
-              "gi",
-            );
-            cleanReply = cleanReply
-              .replace(promoVerbFirst, "")
-              .replace(promoBenchFirst, "");
-          }
-          // Only re-collapse whitespace if we actually stripped something,
-          // to avoid reformatting otherwise-fine replies.
-          if (cleanReply !== before) {
-            cleanReply = cleanReply
-              .replace(/[ \t]+/g, " ")
-              .replace(/\n{3,}/g, "\n\n")
-              .replace(/^[ \t]+|[ \t]+$/gm, "");
-          }
-        }
       }
       // ── #1: never silently drop an unresolved attendance message ──
       //   The whole Najib/Erdal/Baki failure class is "message
@@ -1840,34 +1765,39 @@ export async function POST(request: Request) {
     }
   }
 
-  // 3a-ii. ONE authoritative squad/bench status per batch ─────────────
-  //   Root cause of the Sutton Lads 2026-06-12 incident: four
-  //   separately-composed squad replies in one batch, each from a
-  //   different point-in-time snapshot, contradicting each other
-  //   ("14/14 full squad", "one slot open", "bench is empty").
-  //   Mirror of the generate_teams_request dedupe: every squad-STATE
-  //   reply in the batch collapses into a single deterministic status
-  //   post, computed from a FRESH snapshot taken AFTER all attendance
-  //   writes. Non-squad replies (stats answers, acks, score, team
-  //   posts, opt-out confirmations) pass through untouched.
+  // 3a-ii. THE SQUAD POST IS COMPOSED, NOT CHECKED ────────────────────
+  //   §10 step 4 (2026-09-01). Every reply that shows squad state, or
+  //   that claims a move the database does not support, is REPLACED by
+  //   text composed from a FRESH snapshot taken AFTER every attendance
+  //   write in the batch has landed. The model's numbers and names
+  //   never reach the group, so they cannot be wrong, so nothing
+  //   downstream has to check them (§6.4).
+  //
+  //   This replaces the two-branch collapse that stood here: two or
+  //   more squad replies collapsed into one composed post, and a single
+  //   one was re-canonicalised in place by `enforceCanonicalRoster`.
+  //   The single-post branch was the hole — one reply meant the model
+  //   still authored the words and 140 lines of regex tried to correct
+  //   them afterwards. Root cause it was written for stands (Sutton
+  //   Lads 2026-06-12: four separately-composed squad replies in one
+  //   batch, each from a different snapshot, contradicting each other)
+  //   and is now closed by construction, since every composed reply in
+  //   a batch renders the SAME post and only the last one speaks.
+  //
+  //   Team posts are excluded: `generate_teams_request` /
+  //   `show_teams_request` replies intentionally carry two numbered
+  //   lists (Red + Yellow) and are already deterministic. That is the
+  //   same exclusion the deleted in-loop pass used.
   if (nextMatchForReply) {
     try {
-      const SQUAD_STATE_INTENTS = new Set([
-        "in",
-        "out",
-        "replacement_request",
-        "conditional_in",
-        "question",
-        "unclear",
-      ]);
-      const squadReplyIdx: number[] = [];
+      const candidates: number[] = [];
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (!r.reply || r.handledBy !== "llm") continue;
-        if (!r.intent || !SQUAD_STATE_INTENTS.has(r.intent)) continue;
-        if (looksLikeSquadStateReply(r.reply)) squadReplyIdx.push(i);
+        if (r.intent === "generate_teams_request" || r.intent === "show_teams_request") continue;
+        candidates.push(i);
       }
-      if (squadReplyIdx.length > 0) {
+      if (candidates.length > 0) {
         const finalAtt = await db.attendance.findMany({
           where: {
             matchId: nextMatchForReply.id,
@@ -1876,43 +1806,48 @@ export async function POST(request: Request) {
           include: { user: { select: { name: true } } },
           orderBy: { position: "asc" },
         });
-        const confirmedNames = finalAtt
-          .filter((a) => a.status === "CONFIRMED")
-          .map((a) => a.user.name ?? "(unnamed)");
-        const benchNames = finalAtt
-          .filter((a) => a.status === "BENCH")
-          .map((a) => a.user.name ?? "(unnamed)");
-        if (squadReplyIdx.length >= 2) {
-          // Multiple squad-state replies → collapse to ONE post on the
-          // LAST of them (freshest message), everything else silenced.
-          const last = squadReplyIdx[squadReplyIdx.length - 1];
-          for (const i of squadReplyIdx) {
-            if (i !== last) results[i].reply = null;
-          }
-          results[last].reply = composeSquadStatusPost({
-            confirmed: confirmedNames,
-            bench: benchNames,
-            maxPlayers: nextMatchForReply.maxPlayers,
-          });
+        // The composer needs one fact the request does not carry: who
+        // this group knows. Without it, a claim about someone with NO
+        // attendance row — S7's Erdal, the exact incident — is a claim
+        // about a stranger and gets waved through. Loaded here rather
+        // than taken from the model (§10 step 4: "if the composer needs
+        // facts the caller does not have, add a loader").
+        const memberships = await db.membership.findMany({
+          where: { orgId: org.id, leftAt: null },
+          select: { user: { select: { name: true } } },
+        });
+        const truth: SquadTruth = {
+          confirmed: finalAtt
+            .filter((a) => a.status === "CONFIRMED")
+            .map((a) => a.user.name ?? "(unnamed)"),
+          bench: finalAtt
+            .filter((a) => a.status === "BENCH")
+            .map((a) => a.user.name ?? "(unnamed)"),
+          maxPlayers: nextMatchForReply.maxPlayers,
+          knownNames: memberships
+            .map((m) => m.user.name)
+            .filter((n): n is string => !!n),
+        };
+        const composedIdx: number[] = [];
+        for (const i of candidates) {
+          const out = composeSquadStateReply(results[i].reply!, truth);
+          if (!out.composed) continue;
+          results[i].reply = out.text;
+          composedIdx.push(i);
+        }
+        // MatchTime posts ONE squad status per batch. Every composed
+        // reply now renders the same post, so the earlier ones would be
+        // literal duplicates — silence them, keeping the last (the
+        // freshest message), exactly as the collapse did.
+        for (const i of composedIdx.slice(0, -1)) results[i].reply = null;
+        if (composedIdx.length > 0) {
           console.log(
-            `[analyze] collapsed ${squadReplyIdx.length} squad-state replies into one batch-final status post`,
+            `[analyze] composed the squad status from the DB for ${composedIdx.length} repl${composedIdx.length === 1 ? "y" : "ies"}; ${composedIdx.length - 1} silenced`,
           );
-        } else {
-          // A single squad-state reply keeps its voice, but is re-
-          // canonicalised against the BATCH-FINAL snapshot — the
-          // in-loop pass used the state as of that verdict; later
-          // writes in the same batch may have changed it (RC1 of the
-          // conflicting-posts bug).
-          const i = squadReplyIdx[0];
-          results[i].reply = enforceCanonicalRoster(results[i].reply!, {
-            confirmed: confirmedNames,
-            bench: benchNames,
-            maxPlayers: nextMatchForReply.maxPlayers,
-          });
         }
       }
     } catch (err) {
-      console.error("[analyze] squad-status collapse failed:", err);
+      console.error("[analyze] squad-status composition failed:", err);
     }
   }
 
@@ -1994,6 +1929,19 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error("[analyze] verdict-driven recruit failed:", err);
     }
+  }
+
+  // ── The marker is never posted to a group ───────────────────────────
+  //   The prompt asks the model to end a squad-state reply with
+  //   `[SQUAD]` and the composer above replaces it. The composer only
+  //   runs when there IS a match to compose from, so a group with no
+  //   upcoming match would otherwise read a literal "[SQUAD]". Last
+  //   line of defence, applied to every result whatever produced it.
+  for (const r of results) {
+    if (!r.reply) continue;
+    const stripped = stripSquadPostMarker(r.reply);
+    if (stripped === r.reply) continue;
+    r.reply = stripped.length > 0 ? stripped : null;
   }
 
   // ── INVARIANT: at most ONE result per message ───────────────────────
@@ -2643,11 +2591,11 @@ async function executeVerdict(args: {
       // CONFIRMED/BENCH attendance row for this match, there's nothing
       // to drop — but Claude's reply (composed before this server-side
       // check) typically reads "Squad is now (N-1)/M — we need one
-      // more". Posting that text when no drop actually happened is
-      // misleading, AND when paired with enforceCanonicalRoster's
-      // count-patcher (which rewrites the count to the true DB value)
-      // produces nonsense like "14/14 — we need one more". Suppress
-      // the reply + react and let the bot stay silent on these.
+      // more". Posting that when no drop happened is misleading: the
+      // squad post the composer appends would state the UNCHANGED
+      // count, so the group reads a drop that did not happen next to a
+      // count that did not move. Suppress the reply + react and let
+      // the bot stay silent on these.
       if (verdict.registerAttendance === "OUT") {
         const existingAtt = await db.attendance.findFirst({
           where: {

@@ -34,14 +34,13 @@
  *     messages are fresh tokens per call.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
 import { resolveTeamLabels } from "./team-labels";
 import {
   BENCH_PROMPT_MENTION_REACTIONS,
-  buildBenchAskedLine,
   benchClaimPhrasingExample,
 } from "./bench-offer-copy";
 import {
@@ -429,12 +428,12 @@ Forbidden phrasings (OPEN-CALL case only — when NO specific bench player was n
   ✘ "Y is replacing X"
   ✘ "Y stepped in for X"
   ✘ "we're still N/N" when a confirmed player just dropped (you DON'T know if Y will accept)
-  ✘ Putting Y's name into a numbered roster slot before they're in the Confirmed list
+  ✘ Naming Y as playing before they're in the Confirmed list
 
 Required phrasing when someone drops and there IS at least one bench player:
-  ✓ "[lead acknowledging the drop]. Asking <first-bench-name> to step up — squad is <confirmedCount-1>/<maxPlayers> until they confirm."
+  ✓ "[lead acknowledging the drop]. Asking <first-bench-name> to step up until they confirm." (no count — the squad post the server appends carries it)
   CRITICAL — what the bot actually does, and what you may say about it. The SERVER posts the offer to THIS group and @mentions every bench player (${BENCH_PROMPT_MENTION_REACTIONS ? "a 👍/👎 prompt" : "asking them to reply IN"}); it ALSO queues a personal DM nudge to each of them, because benchers mute the group. Both are sent LATER by the scheduler — daytime only, and never to a player who has turned bench DMs off — so at the moment you write your reply NOTHING has been sent yet, and for some players nothing will be. So: NEVER claim a delivery that has already happened. Forbidden: "in DMs", "I've DM'd them", "messaged them privately", "they've been notified", or any wording that says a message is already with them. That is the 2026-05-18 Erdal incident — the bot announced a DM, he received nothing, and rightly called it misinformation. Point at the GROUP, which is where the slot is claimed: say "asking <name>", "tagged <name> here", ${benchClaimPhrasingExample()}. You may mention the nudge only as something still to come ("I'll give the bench a nudge too") — never as done, and never promised to a named individual.
-  Numbered roster shows the squad WITHOUT the dropped player (use 🥁 for the now-empty slot).
+  End the reply with the [SQUAD] marker; the server's squad post already shows the dropped player gone and the slot open.
 
 When there is NO bench player and the squad is now short, treat as the standard SHORT-SQUAD RESPONSE (see below) — don't reference any bench.
 
@@ -460,7 +459,7 @@ Admin "swap"/"replace" messages ("Swap Baki Aydın", "swap X with Y", "@M Time r
   → SECOND CRITICAL pitfall (the inverse): when a member STATES that a named player is in / committed / playing ("Najib said in as well", "Habib confirmed earlier", "Faris told me he's coming", "we should be at 13 because X is in"), this is NOT a question — it's a third-party REGISTRATION (handle as intent "in" with a registerFor IN entry for the named player, per the THIRD-PARTY REGISTRATIONS section). Do NOT respond with "yes, <name> is confirmed" based on the SPEAKER'S claim when the named player is missing from the Confirmed list — the Match Context is the only source of truth. If the named player IS already in the Confirmed list, the registerFor is a harmless no-op (server is idempotent). If they're NOT, the registerFor adds them — either to the confirmed squad if there's room, or to the bench if it's full. EITHER WAY, never claim someone is in the squad when they're absent from the Confirmed list — that's the exact failure mode Kemal flagged on 2026-05-11 (LLM "confirmed" Najib based on Wasim's claim, while the squad sat at 12/14 with no registerFor emitted).
   → For BENCH questions ("who's on the bench?", "anyone bench?", "who's back-up?"): reply with EXACTLY the bench list from the Match Context — names only. If empty: "Bench is empty — no standby players." If populated: "Bench: <Name>" (one) or "Bench: <Name>, <Name>" (multiple). Do NOT add parenthetical commentary, do NOT speculate about format-switch scenarios ("(5-a-side bench if we downgrade)" is FORBIDDEN), do NOT mention what would happen if the squad shrank. The user asked a factual question — give the factual answer and stop.
   → For HISTORICAL / STATS questions about past matches, MoM winners, attendance, current form, scores ("who got MoM last week?", "who got the MoMs in the last 3 matches?", "what was the score last Tuesday?", "who's been the most consistent attender?", "who plays the most?", "who's our top scorer of MoMs?", "who's on a hot streak?", "what's my rating?", "is X our most regular?"): the Recent History block in the Match Context is THE SOURCE OF TRUTH. Answer ONLY from what's in that block — never invent dates, scores, MoM winners, attendance counts, or ratings. The block lists the club's most recent completed matches oldest-first (with date, score, MoM winner + vote count) — its own header line says how many of the total are shown, and older matches are simply not there — plus an ALL-TIME MoM leaderboard, an attendance leaderboard (over every completed match) and Elo top/bottom, none of which are windowed. All-time questions are answered from the leaderboards; per-match questions only from the matches actually listed. If a match isn't listed, say you don't have that one rather than inferring it. Pull the relevant rows and phrase the answer in plain group-chat English ("Wasim took MoM at the May 5 match (5 of 11 votes). The one before that was Karahan."). For "last N matches" questions, the LAST N entries in the Completed matches list are what you want (it's already oldest-first, so take from the tail). For "most consistent" questions, default to the Attendance leaderboard — cite the leader, the runner-up, and the % context. If the question is about a SPECIFIC player, cross-reference all four sub-lists (per-match MoM lines, MoM leaderboard, attendance leaderboard, Elo) to compose a richer answer ("Kemal has played 24 of 25 matches (96%), has won MoM twice, and his current rating is 1042 — fourth on the leaderboard."). If the answer ISN'T in the block (e.g. someone asks about a player who's never played, or the org has no completed matches yet), reply honestly: "no record of that yet — once we've played a few more, that'll show up." Never silent on these.
-  → For HISTORICAL/STATS questions, do NOT include the current-squad roster block at the end. The SQUAD-STATE REPLY SHAPE rule (below) applies to questions about THIS week's match (numbers, who's playing tonight, drops). Historical questions about consistency, MoM, or ratings have nothing to do with tonight's lineup — appending a squad roster on top of a leaderboard creates a confusing mash-up (and gets clobbered by the server-side roster post-processor, which Kemal saw on 2026-05-14: "top 3 most consistent" came back as the upcoming-squad list because the LLM included both blocks). Reply with the leaderboard / per-match list / per-player summary ONLY — no squad block, no count line ("13/14"), no "Playing tonight" header. Format the leaderboard as a numbered list ("1. Name — 4/4 (100%)"). Keep the answer focused and lineup-free.
+  → For HISTORICAL/STATS questions, do NOT include the current-squad roster block at the end. The SQUAD-STATE REPLY SHAPE rule (below) applies to questions about THIS week's match (numbers, who's playing tonight, drops). Historical questions about consistency, MoM, or ratings have nothing to do with tonight's lineup — appending a squad roster on top of a leaderboard creates a confusing mash-up (Kemal saw this on 2026-05-14: "top 3 most consistent" came back as the upcoming-squad list because the LLM included both blocks). Reply with the leaderboard / per-match list / per-player summary ONLY — no [SQUAD] marker, no squad block, no count line ("13/14"), no "Playing tonight" header. Format the leaderboard as a numbered list ("1. Name — 4/4 (100%)"). Keep the answer focused and lineup-free.
   → For PHONE-PRESENCE / DATA-GAP questions ("who has no phone number?", "which players are missing a number?", "who's not got a contact number on record?", "anyone in the squad without a number?"): the Confirmed and Bench lists in the Match Context tag every player WITHOUT a number on record with "📵 no number on record". Answer NAMES ONLY from those flags — list the flagged players ("No number on record: Aaron, Idris."), or "Everyone in the squad has a number on record 👍" if none are flagged. This is a names-only data-gap answer, NOT a contact leak — it is answerable for anyone. NEVER print, read back, or even hint at a raw phone number/email/contact detail; the digits are not in your context and the no-raw-number rule (SQUAD-STATE REPLY SHAPE) always holds. You are reporting presence/absence of a number, never the number itself.
   → If the answer requires info outside the Match Context AND outside the Recent History block (long-term roster questions, opinions, predictions, "can these guys come every week?"), reply with what you DO know plus "the admin can answer the rest", rather than going silent.
 - "score": A final match result like "7-3", "Final 5:2", "we won 4-2" posted after the game.
@@ -653,48 +652,32 @@ CHASE behaviour (important):
 - Don't chase on every single "out" — only when the squad actually goes below full after that drop.
 - Use the SHORT-SQUAD RESPONSE format below for the reply.
 
-SQUAD-STATE REPLY SHAPE (mandatory roster block):
-Every reply that concerns attendance state — "replacement_request", an "out" that leaves the squad short, a "question" about numbers or who's playing — must END with a numbered roster so everyone in the group can see the state at a glance. Roster rules:
+SQUAD-STATE REPLY SHAPE (the server writes the squad, you write the sentence):
+Every reply that concerns attendance state — "replacement_request", an "out" that leaves the squad short, a "question" about numbers or who's playing — must END with the marker [SQUAD] on a line of its own. The server replaces that marker with the authoritative squad and bench, composed from the database AFTER every write in this batch has landed. You never write that block yourself. Rules:
 
-- Length: exactly maxPlayers rows (e.g. 14 rows for 7-a-side).
-- Fill rows 1..confirmedCount with names from the Match Context Confirmed list, in the order they appear there. Do NOT re-order, do NOT invent names, do NOT shorten ("Ehtisham Ul Haq" can become "Ehtisham" for brevity but no further).
-- Any row above confirmedCount is an OPEN slot — render it as 🥁 (a single drum — keeps it tidy).
-- If a player is in the Dropped list AND their most recent message in the provided history said they'll still play if nobody steps in (e.g. "but if no one comes I'll still join", "feeling rough, will play as fallback"), mention them in a separate *Tentative:* line UNDER the roster. Format: "Tentative: <Name> (will play if nobody steps in)". Never put them in a numbered slot — those slots are for definitely-confirmed players only.
-- If nobody is tentative, omit the Tentative line.
-- BENCH SECTION (mandatory, every org — Kemal 2026-06-12): when the Bench list in the Match Context is non-empty, EVERY squad display must also show the bench. Append after the roster (and after any Tentative line): "*Bench (N):*" followed by the bench names as a numbered list, in Match Context order. Never silently omit a benched player from a squad display — they need to see they're still in the picture. When the bench is empty, omit the block entirely (no "Bench (0)").
+- NEVER write a numbered roster, a 🥁 row, a "*Playing tonight:*" / "*Squad:*" header or a "*Bench (N):*" list. All of it is the server's, from the rows, and it is appended for you.
+- NEVER state a count ("13/14"), a shortfall ("need 2 more"), a slot claim ("one slot open", "full squad") or a total ("we've got 12 players"). The server states those. Two different counts one line apart is a bug this group has already been shown once (2026-06-12).
+- NEVER announce a move: "X is in", "X goes on the bench", "X moves up from the bench", "adding X", "X is out", "we're still 14/14". Registering someone is what registerAttendance and registerFor do; the squad post then shows where they ended up. Announcing a move that no write backs is the failure we treat as unacceptable — 2026-05-15, the bot replied "Erdal goes on the bench", nothing was written, and he would have turned up to no slot.
+- DO write the human half, in one or two short lines: acknowledge who can't make it and why (stated reasons only, never invented), ask the group for cover, answer the question that was asked, and nothing else.
+- If a player is in the Dropped list AND their most recent message in the provided history said they'll still play if nobody steps in (e.g. "but if no one comes I'll still join", "feeling rough, will play as fallback"), say so in your lead ("Ehtisham will still play if nobody steps in"). The server does not know this, so it is yours to say — but never as a squad slot.
+- The FORMAT SWITCH line, when the conditions below hold, goes in your lead, copied verbatim.
+- NEVER display a raw phone number or numeric id as a player name ("447700900123", "123456789012@lid", a bare "@4477…" mention). If a sender or mentioned player resolves only to digits, refer to them neutrally ("one of the group", "a new player") and never put digits in a reply.
 
-Above the roster, vary the lead depending on how short we are:
+Vary the lead depending on how short we are, WITHOUT numbers:
 - Short by 1: one sentence, e.g. "Sorry to hear, Ibrahim — can anyone step in?"
-- Short by 2+ OR multiple drops in the Dropped list: a richer lead — name who can't make it (from the Dropped list + any new drop in this batch, with stated reasons only, no invention), then the count ("We're 12/14 — need 2 more"), then the FORMAT SWITCH suggestion on its own line IF the conditions hold.
-- Questions about state ("who's playing?", "do we have enough?"): open with the count, then the roster.
+- Short by 2+ OR multiple drops in the Dropped list: a richer lead — name who can't make it (from the Dropped list + any new drop in this batch, with stated reasons only, no invention), then the FORMAT SWITCH suggestion on its own line IF the conditions hold.
+- Questions about state ("who's playing?", "do we have enough?"): one short line at most, or nothing at all beyond the marker. The squad post is the answer.
 
 Formatting rules:
 - WhatsApp-friendly markdown: *bold* with single asterisks, newlines as real line breaks, no code fences.
-- Blank line between the lead and the roster.
+- Blank line between the lead and the [SQUAD] marker.
 - One or two emoji total — no soup.
-- Header the roster with "*Playing tonight:*" or "*Squad:*" so it's scannable.
-- NEVER display a raw phone number or numeric id as a player name ("447700900123", "123456789012@lid", a bare "@4477…" mention). If a sender or mentioned player resolves only to digits, refer to them neutrally ("one of the group", "a new player") and never put digits in a roster, bench list, or reply.
 
-Example (12/14, Ibrahim + Ehtisham dropped, Ehtisham tentative):
-"Ibrahim (ankle) and Ehtisham (not 100%) are out — we're 12/14, need 2 more. Anyone free? 🙏
+Example (Ibrahim + Ehtisham dropped, Ehtisham tentative):
+"Ibrahim (ankle) and Ehtisham (not 100%) can't make it — anyone free? 🙏
+Ehtisham will still play if nobody steps in.
 
-*Playing tonight:*
-1. Elvin
-2. Mustafa
-3. Idris
-4. Sait
-5. Kemal
-6. Elnur
-7. Najib
-8. Wasim
-9. Aydın
-10. Mauricio
-11. Ersin
-12. Habib
-13. 🥁
-14. 🥁
-
-Tentative: Ehtisham (will play if nobody steps in)"
+[SQUAD]"
 
 FORMAT SWITCH (important) — YOU DO NO ARITHMETIC HERE:
 The Match Context may list "Alternative formats available for this sport" (e.g. Football 5-a-side = 10 players when the current match is 7-a-side). Admins execute a switch by rebooking the venue and flipping the match in the portal — you never execute it, you only recommend.
@@ -710,7 +693,7 @@ Proactive recommendation:
   1. The smaller format is listed in the Alternatives block.
   2. That format is marked "✅ VIABLE" in the Match Context (if it says "❌ NOT VIABLE", proposing the switch is FORBIDDEN — say nothing about switching to it).
   3. Kickoff is within ~24 hours (see "X.Xh until kickoff").
-- The proposal is exactly the one line the Match Context gives you under "use this EXACT line VERBATIM", reproduced character-for-character inside the SQUAD-STATE reply. Nothing added, no names changed, no names appended.
+- The proposal is exactly the one line the Match Context gives you under "use this EXACT line VERBATIM", reproduced character-for-character in the lead of the SQUAD-STATE reply (above the [SQUAD] marker). Nothing added, no names changed, no names appended.
 - Dedupe: at most once per batch.
 
 BENCH-ON-SWITCH — absolute rules (a false "you're benched" is a trust failure with real people):
@@ -720,9 +703,9 @@ BENCH-ON-SWITCH — absolute rules (a false "you're benched" is a trust failure 
 
 Direct question about a switch (e.g. "should we switch to 5-a-side?", "@M Time 5 aside?", "can we downgrade?"):
 - Treat as intent "question".
-- If the smaller format is in the Alternatives block and marked "✅ VIABLE": say "yes, worth it" briefly and state who goes to bench USING ONLY the server-computed "Bench on switch:" list (if that says NOBODY, say plainly that everyone still plays). Include the roster.
-- If the format is in the Alternatives block but marked "❌ NOT VIABLE": answer honestly that we do not have the numbers for it either — quote the counts exactly as the Match Context states them (confirmed vs the format's total). Never name anyone as benched. Include the roster.
-- If the format isn't in the Alternatives block: reply honestly that the group hasn't set it up; admin would need to add it first as an Activity. Include the current roster regardless.
+- If the smaller format is in the Alternatives block and marked "✅ VIABLE": say "yes, worth it" briefly and state who goes to bench USING ONLY the server-computed "Bench on switch:" list (if that says NOBODY, say plainly that everyone still plays). End with [SQUAD].
+- If the format is in the Alternatives block but marked "❌ NOT VIABLE": answer honestly that we do not have the numbers for that format either. Say it in words — no figures, the squad post carries the count. Never name anyone as benched. End with [SQUAD].
+- If the format isn't in the Alternatives block: reply honestly that the group hasn't set it up; admin would need to add it first as an Activity. End with [SQUAD] regardless.
 - Never pretend a format is available when it isn't. Never execute the switch yourself.
 
 State collapse (when SAME author has multiple messages in the batch):
@@ -1190,6 +1173,15 @@ export async function analyzeBatch(input: AnalysisBatchInput): Promise<AnalysisV
       ],
     });
 
+    // Per-batch token meter. §8.2 measured output at 37-50% of the main
+    // call and "the single largest line", and §8.4 notes the real bill
+    // could be read out of the database but is not: this call site
+    // recorded nothing at all. One line, on the path that costs the
+    // money, so the effect of a prompt change is a fact and not an
+    // estimate. `MT_ANALYZER_USAGE=1` also appends it to a file, which
+    // is how the before/after in the step 4 PR was measured.
+    logAnalyzerUsage("batch", response.usage, input.messages.length);
+
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );
@@ -1593,56 +1585,6 @@ export function enforceProximity(text: string, matchDate: Date): string {
   return out;
 }
 
-/** Leaderboard rows also use "N. <name>" numbering but carry stats
- *  markers ("— 4/4 (100%)", "— 2 wins", "— 1042", percent signs,
- *  "votes"). Roster post-processors must never treat those as squad
- *  rosters (Kemal flagged 2026-05-14 when "top 3 most consistent"
- *  turned into the upcoming squad list). */
-function isLeaderboardLine(s: string): boolean {
-  return (
-    /\s—\s/.test(s) || // em-dash separator the leaderboard formatter uses
-    /\d+\s*%/.test(s) || // "(96%)"
-    /\b(?:wins?|votes?|matches?)\b/i.test(s) || // "2 wins", "5 of 11 votes", "3 matches"
-    /\b\d+\/\d+\s*\(/.test(s) // "4/4 (100%)" — attendance pattern
-  );
-}
-
-/**
- * Does this reply text display SQUAD STATE — a numbered roster, a
- * squad/bench header, a "N/M" count claim, or a bench-emptiness claim?
- * Used by the analyze route to find the replies that must collapse into
- * ONE authoritative status post per batch (Sutton Lads 2026-06-12: four
- * contradictory squad posts ~1s apart from one batch). Leaderboard /
- * stats replies are explicitly NOT squad state.
- */
-export function looksLikeSquadStateReply(text: string): boolean {
-  const lines = text.split("\n");
-  // Stats/leaderboard replies — never squad state, never collapse them.
-  if (lines.some((l) => /^\s*\d+\.\s+\S/.test(l) && isLeaderboardLine(l))) {
-    return false;
-  }
-  // (a) A numbered roster run of 2+ lines.
-  let run = 0;
-  for (const l of lines) {
-    if (/^\s*\d+\.\s+\S/.test(l)) {
-      run++;
-      if (run >= 2) return true;
-    } else {
-      run = 0;
-    }
-  }
-  // (b) Squad/bench display headers.
-  if (/\*(?:Playing\b[^*\n]*|Squad\b[^*\n]*|Confirmed\s*\(\d+\/\d+\)[^*\n]*|Bench\s*\(\d+\)[^*\n]*):?\*/i.test(text)) {
-    return true;
-  }
-  // (c) A count claim alongside squad vocabulary.
-  if (/\b\d+\/\d+\b/.test(text) && /\b(?:squad|bench|slot|full|need|player)/i.test(text)) {
-    return true;
-  }
-  if (/\bbench is empty\b/i.test(text)) return true;
-  return false;
-}
-
 /**
  * Deterministic, server-composed squad+bench status post.
  *
@@ -1654,260 +1596,6 @@ export function looksLikeSquadStateReply(text: string): boolean {
  * moved somewhere it can actually be reused.
  */
 export { composeSquadStatusPost } from "./group-copy";
-
-/**
- * Replace any LLM-generated numbered roster in a reply with the canonical
- * roster built from the actual Match Context. The LLM has been observed
- * to "helpfully" reorder players (putting late-joiners or provisional
- * members at the bottom) or omit some, despite explicit prompt rules
- * forbidding it. Don't rely on prompt discipline for something this
- * visible — overwrite.
- *
- * Also patches stale "N/M" count claims in the lead text when they
- * disagree with the truth from Match Context, reconciles slot-open /
- * full-squad PROSE with the real count (RC3 of the 2026-06-12 incident:
- * the count was patched to "14/14" but "— one slot open" survived), and
- * — when `truth.bench` is provided — overwrites/append the bench list so
- * every squad display shows the real bench.
- *
- * The roster block is detected as 2+ consecutive lines starting with
- * "<digits>." or "<digits>. 🥁". The header line "*Playing …:*" or
- * "*Squad:*" right above is preserved (or rewritten by enforceProximity).
- */
-export function enforceCanonicalRoster(
-  text: string,
-  truth: { confirmed: string[]; bench?: string[]; maxPlayers: number },
-): string {
-  // 1. Build the canonical roster lines.
-  const rows: string[] = [];
-  for (let i = 0; i < truth.maxPlayers; i++) {
-    rows.push(
-      i < truth.confirmed.length
-        ? `${i + 1}. ${truth.confirmed[i]}`
-        : `${i + 1}. 🥁`,
-    );
-  }
-  const canonical = rows.join("\n");
-
-  // 2. Find a roster block: 2+ consecutive lines matching "N. ..."
-  //    starting from anywhere in the message. Capture the whole run.
-  //    Exclude obvious LEADERBOARD blocks (see isLeaderboardLine).
-  const lines = text.split("\n");
-  let start = -1;
-  let end = -1;
-  let containsLeaderboardLine = false;
-  for (let i = 0; i < lines.length; i++) {
-    const isRosterLine = /^\s*\d+\.\s+\S/.test(lines[i]);
-    if (isRosterLine) {
-      if (start === -1) start = i;
-      end = i;
-      if (isLeaderboardLine(lines[i])) containsLeaderboardLine = true;
-    } else if (start !== -1 && end - start + 1 >= 2) {
-      break;
-    } else {
-      start = -1;
-      end = -1;
-      containsLeaderboardLine = false;
-    }
-  }
-  let out = text;
-  const hadRosterBlock =
-    start !== -1 && end - start + 1 >= 2 && !containsLeaderboardLine;
-  if (hadRosterBlock) {
-    const before = lines.slice(0, start).join("\n");
-    const after = lines.slice(end + 1).join("\n");
-    out = [before, canonical, after].filter((s) => s !== "").join("\n");
-  }
-
-  // 3. Fix "N/M" count claims to match truth. Only replace when the
-  //    denominator matches (so we don't clobber unrelated numbers).
-  const realCount = `${truth.confirmed.length}/${truth.maxPlayers}`;
-  out = out.replace(
-    new RegExp(`\\b\\d+/${truth.maxPlayers}\\b`, "g"),
-    realCount,
-  );
-  const need = Math.max(0, truth.maxPlayers - truth.confirmed.length);
-  // 4. PROSE ↔ count reconciliation (RC3, 2026-06-12): the count patch
-  //    above used to leave contradictory prose behind ("14/14 — one
-  //    slot open"). Recompute every slot-open / full-squad / need-N
-  //    claim from the truth.
-  //    4a. Full-squad claims while actually short.
-  if (need > 0) {
-    out = out.replace(
-      /\b(?:full\s+squad|squad\s+(?:is\s+)?(?:now\s+)?(?:complete|full|locked)|we'?re\s+(?:now\s+)?full)\b/gi,
-      `need *${need} more*`,
-    );
-  }
-  //    4b. "one slot open" / "2 slots open" claims.
-  out = out.replace(
-    /\b(?:one|a|an|two|three|\d+)\s+(?:more\s+)?slots?\s+(?:still\s+)?open\b/gi,
-    need > 0 ? `${need} slot${need === 1 ? "" : "s"} open` : "full squad",
-  );
-  //    4c. "need N more" claims — recompute from the truth.
-  out = out.replace(
-    /\b(?:we\s+)?(?:still\s+)?need\s+(?:\*)?\s*(?:\d+|one|two|three|four|five)\s*(?:\*)?\s+more\b/gi,
-    need > 0 ? `need *${need} more*` : "we're full",
-  );
-
-  // 5. Bench reconciliation (2026-06-12: bench must be shown — and
-  //    shown CORRECTLY — in every squad display, for every org).
-  //    Replace any bench section/claim with the truth; when the reply
-  //    displays a roster but omitted the bench, append it.
-  if (truth.bench) {
-    const benchNames = truth.bench;
-    const benchCanonical =
-      benchNames.length > 0
-        ? `*Bench (${benchNames.length}):*\n${benchNames
-            .map((n, i) => `${i + 1}. ${n}`)
-            .join("\n")}`
-        : null;
-    // A bench section: a line like "*Bench (2):*" / "Bench: A, B" /
-    // "Bench is empty …" plus any numbered/bulleted rows under it.
-    const benchSectionRe =
-      /(^|\n)[ \t]*[*_]?Bench\b(?:[^\n]*:[^\n]*|\s+is\s+empty[^\n]*)(?:\n[ \t]*(?:\d+\.|[-•])[ \t][^\n]*)*/i;
-    if (benchSectionRe.test(out)) {
-      out = out.replace(benchSectionRe, (whole, lead: string) => {
-        if (benchCanonical) return `${lead}${benchCanonical}`;
-        // Truth: bench IS empty. Keep an accurate empty-claim as-is,
-        // otherwise overwrite a stale name list.
-        return /\bbench\s+is\s+empty\b/i.test(whole)
-          ? whole
-          : `${lead}Bench is empty.`;
-      });
-    } else if (benchCanonical && hadRosterBlock) {
-      out = `${out.trimEnd()}\n\n${benchCanonical}`;
-    }
-  }
-
-  // Belt-and-braces (2026-06-12): structural strip independent of intent /
-  // offers. (i) drop "<bench player> moves up from the bench" when the
-  // player is still on the bench per truth; (ii) cap impossible totals.
-  if (truth.bench) {
-    for (const name of truth.bench) {
-      if (!name) continue;
-      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const first = name.split(" ")[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const nameAlt = first === esc ? esc : `(?:${esc}|${first})`;
-      out = out.replace(
-        new RegExp(
-          `[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in)|is\\s+promoted|promoted)\\b[^.!?\\n]*\\bbench\\b[^.!?\\n]*[.!?]?`,
-          "gi",
-        ),
-        "",
-      );
-      out = out.replace(
-        new RegExp(
-          `[^.!?\\n]*\\bbench\\b[^.!?\\n]*\\b${nameAlt}\\b[^.!?\\n]*\\b(?:moves?\\s+up|comes?\\s+up|steps?\\s+(?:up|in))\\b[^.!?\\n]*[.!?]?`,
-          "gi",
-        ),
-        "",
-      );
-    }
-  }
-  // Cap impossible totals: "15 total" / "15 players" when 15 > maxPlayers.
-  out = out.replace(/\b(\d+)\s+total\b/gi, (whole, n) =>
-    Number(n) > truth.maxPlayers ? `${truth.confirmed.length} total` : whole,
-  );
-  out = out.replace(/\b(\d+)\s+players?\b/gi, (whole, n) =>
-    Number(n) > truth.maxPlayers
-      ? `${truth.confirmed.length} player${truth.confirmed.length === 1 ? "" : "s"}`
-      : whole,
-  );
-
-  return out;
-}
-
-/**
- * Safety net for when the LLM hallucinates that a bench player has
- * been promoted to confirmed ("Aydın moves up from the bench", "Y
- * stepped in", "we're still 14/14"). The actual flow is async — the
- * server queues a PendingBenchConfirmation, DMs the bench player, and
- * only marks them CONFIRMED when one of them claims the slot. Until
- * then the squad is genuinely short.
- *
- * Called only when there's an OPEN PendingBenchConfirmation against
- * the relevant match. Strips the false-promotion sentence (heuristic
- * regexes targeting common phrasings) and prepends an honest
- * "Asking <name> to step up..." line — worded around the IN-GROUP tag,
- * because that is where the slot is claimed and it is the one channel
- * every eligible bencher is on — so the group sees the real status.
- */
-export function rewriteOverconfidentPromotion(
-  text: string,
-  args: {
-    benchName: string;
-    confirmedCount: number;
-    maxPlayers: number;
-    /** Current bench attendance count. When 0 there's literally no one
-     *  to step up, so don't prepend the "Asking the bench" line — it
-     *  reads as delusional ("tagged here" when nobody was).
-     *  We still strip false "X moves up" phrases the LLM may have
-     *  hallucinated. Sutton 2026-05-26: 4 dropped at once on an empty
-     *  bench, the open BenchSlotOffers piled "Asking the bench — 10/14"
-     *  onto every subsequent unrelated reply for ~11 min until the
-     *  format flip cleared them. */
-    benchCount: number;
-  },
-): string {
-  const { benchName, confirmedCount, maxPlayers, benchCount } = args;
-
-  // Strip phrases that imply the swap is done. Match per-line so we
-  // don't gobble unrelated text on the same line.
-  const FALSE_PROMOTION_PATTERNS: RegExp[] = [
-    /[^.!?\n]*\bmoves?\s+up\s+from\s+the\s+bench\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bsteps?\s+in\s+(?:for|to\s+take|to\s+fill)\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bstepped\s+in\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\btaking\s+(?:the\s+|that\s+)?slot\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bis\s+replacing\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bcomes\s+(?:up|in)\s+from\s+the\s+bench\b[^.!?\n]*[.!?]?/gi,
-    /[^.!?\n]*\bwe(?:'re|\s+are)\s+still\s+\d+\/\d+\b[^.!?\n]*[.!?]?/gi,
-  ];
-  let stripped = text;
-  for (const re of FALSE_PROMOTION_PATTERNS) {
-    stripped = stripped.replace(re, "");
-  }
-  // Collapse the whitespace/punctuation we just punched holes in.
-  stripped = stripped
-    .replace(/[ \t]+/g, " ")
-    .replace(/ ?\.[ ]*\./g, ".")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/^[ \t]+|[ \t]+$/gm, "");
-
-  // Empty bench → only strip the false claims; don't prepend the
-  // "Asking the bench" line, because there's no bench to ask. The
-  // LLM's reply will naturally state what's needed (chase the group);
-  // we don't override it with a misleading status line.
-  if (benchCount === 0) return stripped.trim();
-
-  // Prepend an honest status line above the roster block (or at the
-  // top if no roster block detected).
-  // NB: this line describes the IN-GROUP @mention (kind:"bench-prompt")
-  // and deliberately nothing else. A personal DM nudge does also go out
-  // per bencher (bot-scheduler.ts, "Personal DM to each bencher", added
-  // 2026-05-19) — but it is queued for a later scheduler tick,
-  // daytime-gated, and skipped for anyone who turned bench DMs off, so
-  // NOTHING has been delivered at the moment this line is written.
-  // Claiming otherwise is what burned us: a bench player who got no DM
-  // (Erdal, 2026-05-18) is right to call it misinformation. Stick to
-  // what is certain — they're tagged in the group and asked to reply IN
-  // (see BENCH_PROMPT_MENTION_REACTIONS in src/lib/bench-offer-copy.ts
-  // for why the 👍 instruction is currently withdrawn).
-  const honest = buildBenchAskedLine({ benchName, confirmedCount, maxPlayers });
-
-  // Drop the line in just before any "*Playing tonight:*" / "*Squad:*"
-  // header, or at the start when there isn't one.
-  const headerMatch = stripped.match(/^[ \t]*\*?(Playing|Squad)[^\n]*\*?[ \t]*$/m);
-  if (headerMatch?.index !== undefined) {
-    stripped =
-      stripped.slice(0, headerMatch.index) +
-      honest +
-      "\n\n" +
-      stripped.slice(headerMatch.index);
-  } else {
-    stripped = honest + "\n\n" + stripped;
-  }
-  return stripped.trim();
-}
 
 const CHASE_SYSTEM_PROMPT = `You are MatchTime, composing a SCHEDULED group message — not a reply to anyone. The bot's scheduler is firing a chase/announcement at a fixed time because the squad is in a certain state.
 
@@ -2010,6 +1698,42 @@ function stubbedVerdictsForTest(
     const partial = map[m.waMessageId];
     return partial ? { ...base, ...partial, waMessageId: m.waMessageId } : base;
   });
+}
+
+/**
+ * Log what a batch actually cost in tokens. Input is nearly free once
+ * cached; OUTPUT is the line that moves when the model stops writing
+ * text the server composes (§8.2, §10 step 4).
+ *
+ * Set `MT_ANALYZER_USAGE=<path>` to also append one JSON line per call,
+ * which is how an A/B over a corpus sweep is measured without adding a
+ * second harness.
+ */
+function logAnalyzerUsage(
+  site: string,
+  usage: Anthropic.Usage | undefined,
+  batchSize: number,
+): void {
+  if (!usage) return;
+  const row = {
+    site,
+    batchSize,
+    in: usage.input_tokens ?? 0,
+    out: usage.output_tokens ?? 0,
+    cacheRead: usage.cache_read_input_tokens ?? 0,
+    cacheWrite: usage.cache_creation_input_tokens ?? 0,
+  };
+  console.log(
+    `[analyzer] usage site=${row.site} msgs=${row.batchSize} in=${row.in} out=${row.out} cacheRead=${row.cacheRead} cacheWrite=${row.cacheWrite}`,
+  );
+  const path = process.env.MT_ANALYZER_USAGE;
+  if (path) {
+    try {
+      appendFileSync(path, `${JSON.stringify({ ...row, at: new Date().toISOString() })}\n`);
+    } catch {
+      // Metering must never break a batch.
+    }
+  }
 }
 
 function offlineVerdict(waMessageId: string, reason: string): AnalysisVerdict {
