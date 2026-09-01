@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CorpusObservation } from "../corpus/grade";
-import type { CorpusMode, CorpusPipeline, PipelineContext } from "../corpus/pipeline";
+import type { CorpusPipeline, PipelineContext } from "../corpus/pipeline";
 import { Ledger, runIdOf } from "./ledger";
 import { planSample } from "./sample";
 import { runSweep } from "./sweep";
@@ -88,7 +88,7 @@ class ScriptedPipeline implements CorpusPipeline {
   supports(): boolean {
     return true;
   }
-  async run(_ctx: PipelineContext, c: { id: string }, _mode: CorpusMode): Promise<CorpusObservation> {
+  async run(_ctx: PipelineContext, c: { id: string }): Promise<CorpusObservation> {
     this.calls.push(c.id);
     const scripted = this.script[c.id];
     if (scripted instanceof Error) throw scripted;
