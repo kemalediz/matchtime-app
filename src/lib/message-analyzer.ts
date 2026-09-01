@@ -1,12 +1,21 @@
 /**
- * Smart WhatsApp message analysis — the LLM pass that handles
- * anything the regex fast-path can't classify.
+ * Smart WhatsApp message analysis — the LLM pass that classifies
+ * EVERY message from a monitored group.
  *
  * Pipeline:
- *   - Regex fast-path (on the bot) still runs first and handles
- *     instant IN/OUT/score reactions without ever hitting this code.
- *   - Anything it can't classify (drops with excuses, conditional
- *     joins, squad questions, social chatter) lands here.
+ *   - There is no regex pre-filter on the bot. The one that sat in
+ *     `handlers.ts` and reacted instantly to clear IN/OUT/score was
+ *     deleted on 2026-04-21, deliberately: a few minutes of latency in
+ *     exchange for a single code path that handles nuance end to end.
+ *   - So everything a monitored group says reaches this function — the
+ *     clear INs as much as the drops with excuses, the conditional
+ *     joins, the squad questions and the banter.
+ *   - The analyze route does keep a handful of narrow regex
+ *     short-circuits BEFORE this call (personal stats link, DM Q&A,
+ *     admin rating progress). Those answer from grounded data this
+ *     prompt cannot see; none of them touch attendance. The recruit
+ *     one, which did overlap with attendance, was deleted on
+ *     2026-09-01 (PR #33) after it swallowed a third-party OUT.
  *
  * Batching:
  *   - Messages accumulate in a per-group in-memory buffer on the bot.
@@ -46,8 +55,13 @@ import {
 // lifts the floor. Cost is contained: the big system prompt + match
 // context are 1h-cached (cheap reads), and MoM/rating-only groups
 // short-circuit BEFORE this call (analyze route), so only
-// message-scanning groups (Sutton-like) bill Sonnet (~£10/mo each).
+// message-scanning groups (Sutton-like) bill Sonnet.
 // One-constant change — instantly revertible if spend isn't worth it.
+// The "~£10/mo each" that used to end that sentence was struck out on
+// 2026-09-01 for the same reason as smart-analysis.ts's "~£2/month":
+// it predates the shadow analyzer and the prompt-cache buster. See
+// analyzer-redesign-2026-08-31.md §8.2/§8.4 for the modelled numbers,
+// and read `WindowVerdict.costUsd` for real ones.
 const MODEL = "claude-sonnet-4-5";
 
 // ─── max_tokens — READ BEFORE ADDING ANY messages.create CALL ────────

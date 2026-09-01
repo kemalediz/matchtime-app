@@ -1,7 +1,7 @@
 /**
- * Smart-analysis glue: buffers any message the regex fast-path didn't
- * handle, flushes the buffer to the server-side analyzer on a timer
- * (every ~10 min), and executes the returned verdicts (react, reply).
+ * Smart-analysis glue: buffers EVERY message from a monitored group,
+ * flushes the buffer to the server-side analyzer on a timer (every
+ * ~10 min), and executes the returned verdicts (react, reply).
  *
  * Why batch instead of inline:
  *   - One Claude call per tick instead of per message → cheaper.
@@ -40,12 +40,29 @@ import {
 import { describeReactionFailure, planReaction, reactWithId } from "./react-with-id.js";
 
 const HISTORY_PER_GROUP = 15;
-// Ten-minute batches keep Claude cost ~£2/month at Sutton's volume
-// (cache hit on system + match context, only the new messages cost
-// fresh tokens). A regex fast-path in handlers.ts catches obvious
-// IN/OUT/score messages BEFORE they queue here, so they react
-// near-instantly without burning an LLM call. Anything ambiguous
-// still waits for the 10-min batch.
+// Ten-minute batches are the cost control: the system prompt and the
+// match context are 1h-cached, so a batch bills fresh tokens only for
+// the new messages and the reply it writes.
+//
+// There is NO regex fast path in front of this. The one in handlers.ts
+// that reacted instantly to obvious IN/OUT/score was deleted on
+// 2026-04-21 — deliberately, trading a few minutes of latency for a
+// single code path that handles nuance end to end — so every message a
+// monitored group posts is queued here and every flush is a real LLM
+// call.
+//
+// Cost, corrected 2026-09-01. The "~£2/month at Sutton's volume" that
+// stood here was one to two orders of magnitude low. It predated both
+// the shadow analyzer (a second, entirely uncached analysis on every
+// batch) and the prompt-cache buster, and it assumed the fast path
+// above, which had already been deleted when it was written.
+// analyzer-redesign-2026-08-31.md §8.4 models $58-$207 per club per
+// month at 40-144 batches/day, falling to $28-$101 once step 0's two
+// bugs are fixed. All of that is MODELLED, not measured: the real
+// number can be read out of the database (`AnalyzedMessage` for batch
+// volume, `WindowVerdict.costUsd` for a per-call price) and nobody has
+// run that query yet. Do not quote a figure from this comment as an
+// observation.
 const FLUSH_INTERVAL_MS = 10 * 60 * 1000;
 const URGENCY_WINDOW_MS = 60 * 60 * 1000; // within 1h of kickoff → flush immediately
 /**
@@ -275,9 +292,9 @@ function phoneFromAuthor(authorId: string | undefined, fromId: string): string {
 
 // ─── Enqueue ────────────────────────────────────────────────────────
 /**
- * Called from the `message` event handler when the regex fast-path
- * didn't act. Pushes the message onto the group's pending buffer and
- * either (a) triggers an urgent flush if kickoff is close, or (b)
+ * Called from the `message` event handler for every message in a
+ * monitored group. Pushes the message onto the group's pending buffer
+ * and either (a) triggers an urgent flush if kickoff is close, or (b)
  * flushes immediately if the buffer is full.
  */
 export async function enqueueForAnalysis(client: Client, msg: Message): Promise<void> {

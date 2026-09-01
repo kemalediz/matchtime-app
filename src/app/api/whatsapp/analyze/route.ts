@@ -1,9 +1,15 @@
 /**
  * Smart-analysis entry point. Called by the bot once per flush cycle
- * (every ~10 min, or immediately on urgency). Accepts a batch of group
- * messages that the regex fast-path didn't handle, runs Claude Haiku
- * ONCE on the batch, executes verdicts, and returns per-message
- * actions for the bot to perform on the WhatsApp side.
+ * (every ~10 min, or immediately on urgency). Accepts a batch of EVERY
+ * message the group posted in that window — the bot has had no regex
+ * pre-filter since 2026-04-21 — runs Claude Sonnet ONCE on the batch
+ * (see MODEL in lib/message-analyzer.ts; this said "Haiku" until
+ * 2026-09-01, three and a half months after the model changed),
+ * executes verdicts, and returns per-message actions for the bot to
+ * perform on the WhatsApp side. A few narrow `handledBy: "fast-path"`
+ * branches below peel off grounded-data requests (personal stats link,
+ * DM Q&A, admin rating progress) before the batch is built; none of
+ * them touch attendance.
  *
  * Flow:
  *   1. Dedupe: skip any waMessageId already in AnalyzedMessage
@@ -186,7 +192,11 @@ export async function POST(request: Request) {
   //   team-balancing, reminders and stats-Q&A read chat. If none of
   //   those are enabled for this org there is nothing for the
   //   analyzer to do, so we return BEFORE the (now Sonnet, ~3×)
-  //   LLM call. Saves ~£10/mo per such group → ~£0. (Onboarding
+  //   LLM call. Takes such a group's analyzer bill to ~£0, which is the
+  //   whole claim; the "~£10/mo" it used to say it saved was a
+  //   pre-shadow-analyzer, pre-cache-buster guess. See
+  //   analyzer-redesign-2026-08-31.md §8.4 for the modelled range and
+  //   for why even that is not a measurement. (Onboarding
   //   already returned above when its session is active, so a
   //   mid-setup group still gets handled.)
   //
