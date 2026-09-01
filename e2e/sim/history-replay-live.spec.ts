@@ -40,6 +40,7 @@ import { AnthropicMeter, NULL_METER } from "../replay/meter";
 import { renderReport, renderTriage } from "../replay/report";
 import { runSweep } from "../replay/sweep";
 import type { ReconstructionStats, ReplayCase } from "../replay/types";
+import { describeReach, liveReachFailure, reachWatermark, readReach } from "../helpers/live-llm";
 
 const OUT = path.join(process.cwd(), ".e2e", "replay");
 const CASES_FILE = path.join(OUT, "cases.json");
@@ -99,6 +100,10 @@ test.describe("history replay sweep", () => {
     }
 
     const db = testDb();
+    // The replay spec does NOT truncate first, so reach has to be read
+    // from a watermark: AnalyzedMessage rows a previous STUBBED run left
+    // behind would otherwise be counted as this sweep's.
+    const since = await reachWatermark(db);
     const started = Date.now();
     // A candidate comparison is only meaningful against the incumbent's
     // own floor: §10 step 3's "≤2%" is not an absolute if the current
@@ -129,6 +134,15 @@ test.describe("history replay sweep", () => {
 
     await proxy?.close();
 
+    // Was this actually live? The noise floor is now a load-bearing
+    // number — every candidate pipeline is judged relative to it — and a
+    // keyless sweep produces the most flattering floor imaginable: two
+    // all-silent pipelines agree with each other perfectly, 0%
+    // disagreement, green tick. Same hole as the corpus sweep, same
+    // read-back off AnalyzedMessage.reasoning. See helpers/live-llm.ts.
+    const reach = await readReach(db, since);
+    console.log(describeReach(reach));
+
     const dir = path.join(OUT, result.runId);
     mkdirSync(dir, { recursive: true });
     const selected = cases.filter((c) => result.plan.selected.includes(c.key));
@@ -138,15 +152,22 @@ test.describe("history replay sweep", () => {
     writeFileSync(path.join(dir, "triage.md"), renderTriage(result.diffs, selected));
     writeFileSync(
       path.join(dir, "result.json"),
-      JSON.stringify({ result, floor, reconstruction: stats, meteredCalls: proxy?.all ?? [] }, null, 2),
+      JSON.stringify(
+        { result, floor, reach, reconstruction: stats, meteredCalls: proxy?.all ?? [] },
+        null,
+        2,
+      ),
     );
     console.log(report);
     console.log(`\nwrote ${dir}/report.txt, triage.md, result.json`);
 
-    // The sweep MEASURES; it does not gate. The only thing asserted is
+    // The sweep MEASURES; it does not gate. The only things asserted are
     // that it measured something — a green tick on an empty sweep is
-    // exactly the failure mode §10 step 3 warns about.
+    // exactly the failure mode §10 step 3 warns about — and that what it
+    // measured was the model rather than an offline fallback.
     expect(result.diffs.length, "the sweep replayed nothing").toBeGreaterThan(0);
     expect(result.criteria.runs + result.criteria.errors).toBe(result.diffs.length);
+    const notLive = liveReachFailure(reach);
+    expect(notLive ?? "", notLive ?? "").toBe("");
   });
 });

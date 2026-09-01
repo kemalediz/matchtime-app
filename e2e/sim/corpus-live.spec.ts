@@ -29,6 +29,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { loadCorpus } from "../corpus/load";
 import { CurrentAnalyzerPipeline } from "../corpus/current-analyzer-pipeline";
 import { runCorpus, renderScoreboard, writeReport } from "../corpus/runner";
+import { describeReach, liveReachFailure, reachWatermark, readReach } from "../helpers/live-llm";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 const RUNS = Number(process.env.MT_SIM_RUNS ?? 3);
@@ -47,6 +48,10 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
 
       const cases = loadCorpus();
       const pipeline = new CurrentAnalyzerPipeline();
+      // Taken from the database's own clock, before a single case runs:
+      // reach must be read from THIS sweep's rows, never from whatever
+      // an earlier stubbed run left in the table.
+      const since = await reachWatermark(db);
 
       const sb = await runCorpus({ request, db }, pipeline, cases, {
         mode: "live",
@@ -61,6 +66,16 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
         },
       });
 
+      // ── was this actually live? ───────────────────────────────────
+      // Read back off AnalyzedMessage.reasoning, which is where the
+      // server already records how each verdict was reached. A sweep in
+      // which the model was never asked scores whatever an all-silent
+      // analyzer scores — 8/47, in four seconds — and reports it as a
+      // measurement. It must fail instead. See helpers/live-llm.ts.
+      const reach = await readReach(db, since);
+      // eslint-disable-next-line no-console
+      console.log(describeReach(reach));
+
       // eslint-disable-next-line no-console
       console.log(renderScoreboard(sb));
       const file = writeReport({
@@ -69,6 +84,7 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
         runsPerCase: RUNS,
         generatedAt: new Date().toISOString(),
         scoreboard: sb,
+        reach,
       });
       // eslint-disable-next-line no-console
       console.log(`[corpus-live] machine-readable report → ${file}`);
@@ -76,6 +92,13 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
       // The run itself must have produced data; a zero-case run means
       // the filter matched nothing or the harness broke.
       expect(sb.totals.runs, "the live run produced no results at all").toBeGreaterThan(0);
+
+      // Asserted AFTER the scoreboard is printed and the report written,
+      // so a failed sweep still leaves its evidence behind — but before
+      // MT_CORPUS_MIN_PASS, because a pass rate from a sweep that never
+      // reached the model is not a pass rate.
+      const notLive = liveReachFailure(reach);
+      expect(notLive ?? "", notLive ?? "").toBe("");
 
       if (MIN_PASS !== null) {
         expect(

@@ -22,6 +22,7 @@ import {
   type Scoreboard,
 } from "./grade";
 import type { CorpusMode, CorpusPipeline, PipelineContext } from "./pipeline";
+import type { ReachSummary } from "../helpers/live-llm";
 
 export interface RunOptions {
   mode: CorpusMode;
@@ -104,6 +105,10 @@ export interface CorpusReport {
   runsPerCase: number;
   generatedAt: string;
   scoreboard: Scoreboard;
+  /** LIVE runs only: how many of the sweep's messages actually reached
+   *  the model. A scoreboard without this is not evidence that anything
+   *  was measured — see e2e/helpers/live-llm.ts. */
+  reach?: ReachSummary;
 }
 
 export function writeReport(
