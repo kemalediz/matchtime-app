@@ -365,6 +365,16 @@ describe("gradeCase — teams, reply volume, and explicit claim-checking", () =>
     expect(gradeCase(c, obs({ spoken: ["Najib goes on the bench"] })).passed).toBe(false);
   });
 
+  it("`score` compares the recorded result of the completed match", () => {
+    const c = baseCase({ expect: { unchanged: true, score: { red: 5, yellow: 3 } } });
+    expect(gradeCase(c, obs({ scoreAfter: { red: 5, yellow: 3 } })).passed).toBe(true);
+    const r = gradeCase(c, obs({ scoreAfter: { red: null, yellow: null } }));
+    expect(r.passed).toBe(false);
+    expect(r.classification).toBe("missed_write");
+    const wrong = gradeCase(c, obs({ scoreAfter: { red: 3, yellow: 5 } }));
+    expect(wrong.classification).toBe("wrong_write");
+  });
+
   it("`claimsMatchWrites: false` opts a case out of the words-match-action check", () => {
     const c = baseCase({ expect: { unchanged: true, claimsMatchWrites: false } });
     expect(gradeCase(c, obs({ spoken: ["Najib goes on the bench"] })).passed).toBe(true);

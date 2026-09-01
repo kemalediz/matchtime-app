@@ -139,6 +139,8 @@ export interface CorpusExpectation {
   counts?: { confirmed?: number; bench?: number; dropped?: number };
   /** How many BenchSlotOffers should be open afterwards. */
   benchOffersOpen?: number;
+  /** The score recorded on the completed match (S17). */
+  score?: { red: number | null; yellow: number | null };
   /** Default false: creating a User is a WRITE and needs declaring. */
   allowNewMembers?: boolean;
   /** silent = not a word, not a DM, not a reaction. required = at least
@@ -223,6 +225,8 @@ export interface CorpusObservation {
   /** One entry per input message; null = no reaction. */
   reacts: Array<string | null>;
   benchOffersOpen: number;
+  /** The completed match's score, when the case cares about it. */
+  scoreAfter?: { red: number | null; yellow: number | null };
   /** TeamAssignment rows, when the case cares about them. */
   teamsBefore?: Array<{ name: string; team: string }>;
   teamsAfter?: Array<{ name: string; team: string }>;
@@ -356,6 +360,17 @@ export function gradeCase(c: CorpusCase, o: CorpusObservation): CaseGrade {
       if (got !== want) {
         fail(got > want ? "spurious_write" : "missed_write", `${key}: expected ${want}, got ${got}`);
       }
+    }
+  }
+
+  if (e.score) {
+    const got = o.scoreAfter ?? { red: null, yellow: null };
+    if (got.red !== e.score.red || got.yellow !== e.score.yellow) {
+      const nothing = got.red == null && got.yellow == null;
+      fail(
+        nothing ? "missed_write" : "wrong_write",
+        `score: expected ${e.score.red}-${e.score.yellow}, got ${got.red}-${got.yellow}`,
+      );
     }
   }
 

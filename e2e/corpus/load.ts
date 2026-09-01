@@ -149,6 +149,7 @@ export function parseCorpus(body: string): CorpusCase[] {
       exp.unchanged !== undefined ||
       exp.counts !== undefined ||
       exp.benchOffersOpen !== undefined ||
+      exp.score !== undefined ||
       exp.speaks !== undefined ||
       exp.speaksAtMost !== undefined ||
       exp.teamsUnchanged !== undefined ||
