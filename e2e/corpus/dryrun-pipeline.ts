@@ -215,9 +215,14 @@ async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
        FROM "Match" m
        JOIN "Activity" a ON a.id = m."activityId"
        JOIN "Sport" s ON s.id = a."sportId"
-      WHERE a."orgId" = $1
+      WHERE a."orgId" = $1 AND m.date >= $2
       ORDER BY m.date ASC`,
-    [grp.orgId],
+    // The SAME 30-day window the server's loader uses. Without it the
+    // two loaders can disagree about `selectRegistrationMatch`'s
+    // "previous match still in flight" guard, which decides whether a
+    // write lands at all — the one place a divergence between them would
+    // change a decision rather than a display.
+    [grp.orgId, new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)],
   );
 
   const active = selectRegistrationMatch(
