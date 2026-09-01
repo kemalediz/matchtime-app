@@ -56,7 +56,11 @@ import {
   type AnalysisVerdict,
   type BatchInputMessage,
 } from "@/lib/message-analyzer";
-import { composeSquadStateReply, type SquadTruth } from "@/lib/group-copy";
+import {
+  composeSquadStateReply,
+  stripSquadPostMarker,
+  type SquadTruth,
+} from "@/lib/group-copy";
 import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
@@ -1927,6 +1931,19 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── The marker is never posted to a group ───────────────────────────
+  //   The prompt asks the model to end a squad-state reply with
+  //   `[SQUAD]` and the composer above replaces it. The composer only
+  //   runs when there IS a match to compose from, so a group with no
+  //   upcoming match would otherwise read a literal "[SQUAD]". Last
+  //   line of defence, applied to every result whatever produced it.
+  for (const r of results) {
+    if (!r.reply) continue;
+    const stripped = stripSquadPostMarker(r.reply);
+    if (stripped === r.reply) continue;
+    r.reply = stripped.length > 0 ? stripped : null;
+  }
+
   // ── INVARIANT: at most ONE result per message ───────────────────────
   //   MatchTime must never reply twice to one message. Every path above
   //   pushes exactly one result per waMessageId and the recruit merges
@@ -2574,11 +2591,11 @@ async function executeVerdict(args: {
       // CONFIRMED/BENCH attendance row for this match, there's nothing
       // to drop — but Claude's reply (composed before this server-side
       // check) typically reads "Squad is now (N-1)/M — we need one
-      // more". Posting that text when no drop actually happened is
-      // misleading, AND when paired with enforceCanonicalRoster's
-      // count-patcher (which rewrites the count to the true DB value)
-      // produces nonsense like "14/14 — we need one more". Suppress
-      // the reply + react and let the bot stay silent on these.
+      // more". Posting that when no drop happened is misleading: the
+      // squad post the composer appends would state the UNCHANGED
+      // count, so the group reads a drop that did not happen next to a
+      // count that did not move. Suppress the reply + react and let
+      // the bot stay silent on these.
       if (verdict.registerAttendance === "OUT") {
         const existingAtt = await db.attendance.findFirst({
           where: {

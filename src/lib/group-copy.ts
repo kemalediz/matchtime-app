@@ -302,6 +302,22 @@ export function wantsSquadPost(text: string): boolean {
 }
 
 /**
+ * Last-mile cleanup: the marker must never be posted to a group.
+ * `composeSquadStateReply` removes it on every path it takes, but it
+ * only runs when there is a match to compose from. Ask "who's playing?"
+ * in a group with no upcoming match and the model still emits the
+ * marker it was told to emit, and without this the group would read a
+ * literal "[SQUAD]".
+ *
+ * Returns "" when the marker was the whole reply — the caller then says
+ * nothing rather than sending an empty message.
+ */
+export function stripSquadPostMarker(text: string): string {
+  if (!wantsSquadPost(text)) return text;
+  return text.replace(SQUAD_POST_MARKER_RE, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
  * THE RULE. Given the model's reply and the database's truth, return the
  * text the group actually gets.
  *

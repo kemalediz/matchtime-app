@@ -25,6 +25,7 @@ import {
   composeSquadStateReply,
   contradictsSquadState,
   displaysSquadState,
+  stripSquadPostMarker,
   type SquadTruth,
 } from "@/lib/group-copy";
 // The corpus grader's own vocabulary of "a move was announced". Imported
@@ -241,6 +242,25 @@ describe("the model keeps the human half of the message, and only that", () => {
   it("composes on the marker even when the model wrote nothing else", () => {
     const r = composeSquadStateReply(SQUAD_POST_MARKER, truth);
     expect(r.text).toBe(composed);
+  });
+});
+
+describe("the marker never reaches a group", () => {
+  // The composer strips it on every path — but it only runs when there
+  // IS a match to compose from. "Who's playing?" in a group with no
+  // upcoming match still gets a marker out of the model.
+  it("is removed from a reply the composer never saw", () => {
+    expect(stripSquadPostMarker(`No match on the calendar yet.\n\n${SQUAD_POST_MARKER}`)).toBe(
+      "No match on the calendar yet.",
+    );
+  });
+
+  it("leaves a reply without one exactly as it was", () => {
+    expect(stripSquadPostMarker("Nice one 👍")).toBe("Nice one 👍");
+  });
+
+  it("returns empty when the marker was the whole reply, so the caller can stay silent", () => {
+    expect(stripSquadPostMarker(SQUAD_POST_MARKER)).toBe("");
   });
 });
 

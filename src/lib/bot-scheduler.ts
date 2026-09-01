@@ -1018,10 +1018,13 @@ async function computeForMatch(
         text = `${intro}\n\n${rosterBlock}`;
       } else if (beforeDeadline && need > 0) {
         // 2a. Short squad — chase + unpaid tail. Chase template (LLM
-        // or fallback) produces its own numbered list; the
-        // enforceCanonicalRoster post-processor on the analyze path
-        // already keeps that list in sync, so we leave it untouched
-        // here rather than appending a duplicate roster block.
+        // or fallback) produces its own numbered list, so we leave it
+        // untouched here rather than appending a duplicate roster
+        // block. NB this is the SCHEDULED path: it composes its own
+        // text and never went through the analyze route's
+        // post-processors, whatever the note that used to be here
+        // claimed. The reply path composes its roster from the rows
+        // (§10 step 4); this one still asks the model for it.
         const chaseText = await composeOrFallback("daily-in-list", () => {
           // Static fallback mirrors the LLM template — count + roster
           // INCLUDING the bench (bench shows in every squad display,
