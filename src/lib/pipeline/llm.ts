@@ -7,8 +7,8 @@
  *
  * §8.5 — "the estate has 11 `messages.create` sites; do not add one
  * without a `max_tokens` derived from `MAX_TOKENS_CEILING`". This file
- * adds the twelfth, and it is the reason the constant is imported rather
- * than a number typed out:
+ * adds the twelfth, and it is why the cap below is a named constant tied
+ * to the project ceiling by a test rather than a number typed out:
  *
  *   2026-05-26  analyzeBatch at the model max → the whole analyzer dead
  *               for 30 minutes.
@@ -22,8 +22,28 @@
  * precisely the failure §11.1 says must never be silent.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { MAX_TOKENS_CEILING } from "../message-analyzer";
 import type { Degradation } from "./types";
+
+/**
+ * The project ceiling, MIRRORED rather than imported.
+ *
+ * `MAX_TOKENS_CEILING` lives in `message-analyzer.ts`, which imports the
+ * Prisma client; importing it here would make the whole pipeline
+ * unloadable in the Playwright worker, and the corpus could not judge
+ * this pipeline at all. So the relationship is asserted by a test
+ * instead — `__tests__/max-tokens-derivation.test.ts` imports BOTH and
+ * fails if this value ever exceeds the shared ceiling. The source-
+ * scanning guard in `max-tokens-ceiling.test.ts` still statically bounds
+ * the call site below, because `Math.min(<const>, …)` resolves through
+ * the same constant table.
+ *
+ * 4,096 rather than 16,384 on purpose: the router emits ~140 tokens for
+ * a batch of eight and an extractor ~180 for one message. Nothing here
+ * has any business generating more than a page of JSON, and a tight cap
+ * turns a runaway into a caught `TruncatedResponseError` rather than a
+ * bill.
+ */
+export const PIPELINE_MAX_TOKENS_CEILING = 4_096;
 
 /**
  * §8.3 proposes Haiku 4.5 for the router and Sonnet 5 for the
@@ -59,7 +79,7 @@ export interface ModelRequest {
   system: string;
   /** The per-call content. Never cached. */
   user: string;
-  /** Clamped against MAX_TOKENS_CEILING at the call site. */
+  /** Clamped against PIPELINE_MAX_TOKENS_CEILING at the call site. */
   maxTokens: number;
   /** Structured output. `output_config.format`, not a tool. */
   schema?: Record<string, unknown>;
@@ -121,10 +141,10 @@ export function anthropicModel(opts?: { apiKey?: string }): PipelineModel {
       const t0 = Date.now();
       const resp = await client.messages.create({
         model: req.model,
-        // See MAX_TOKENS_CEILING in src/lib/message-analyzer.ts. Clamped
-        // here rather than trusted from the caller so a new stage cannot
-        // reintroduce the 64000 bug by passing its own number.
-        max_tokens: Math.min(MAX_TOKENS_CEILING, req.maxTokens),
+        // Clamped here rather than trusted from the caller, so a new
+        // stage cannot reintroduce the 64000 bug by passing its own
+        // number. See PIPELINE_MAX_TOKENS_CEILING above.
+        max_tokens: Math.min(PIPELINE_MAX_TOKENS_CEILING, req.maxTokens),
         system: [
           {
             type: "text" as const,

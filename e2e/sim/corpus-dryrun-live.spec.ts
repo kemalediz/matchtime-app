@@ -48,11 +48,28 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
         mode: "live",
         runs: RUNS,
         ...(FILTER ? { filter: FILTER } : {}),
-        onObservation: (_c, o) => {
-          const n = o.notes as { costUsd?: number } | undefined;
+        onObservation: (c, o) => {
+          const n = o.notes as
+            | { costUsd?: number; routes?: unknown[]; degradations?: string[] }
+            | undefined;
           if (typeof n?.costUsd === "number") {
             costUsd += n.costUsd;
             batches += 1;
+          }
+          // Triage: a filtered run prints the whole decision trail, so
+          // "why did nothing happen?" is one command, not two logs
+          // (§11.2 — debugging spans calls now, and this is the answer).
+          if (FILTER) {
+            // eslint-disable-next-line no-console
+            console.log(
+              `[corpus-dryrun] ${c.id}\n` +
+                `  routes:  ${JSON.stringify(n?.routes)}\n` +
+                `  before:  ${JSON.stringify(o.attendanceBefore)}\n` +
+                `  after:   ${JSON.stringify(o.attendanceAfter)}\n` +
+                `  spoken:  ${JSON.stringify(o.spoken)}\n` +
+                `  reacts:  ${JSON.stringify(o.reacts)}  offers: ${o.benchOffersOpen}\n` +
+                `  degrade: ${JSON.stringify(n?.degradations)}`,
+            );
           }
         },
         onCase: (s) => {

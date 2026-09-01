@@ -29,8 +29,12 @@
  */
 import { buildFormatSwitchFacts } from "../format-switch";
 import { renderGuestNameAsk } from "../guest-name-ask";
-import { composeSquadStatusPost } from "../message-analyzer";
-import { formatTeamsPost } from "../team-generation";
+// From `../group-copy`, not from message-analyzer / team-generation:
+// both of those import the Prisma client, and this module has to be
+// loadable in the Playwright worker (which never loads Prisma) so the
+// corpus can judge this pipeline. The functions themselves are the same
+// ones, moved and re-exported, not copies.
+import { composeSquadStatusPost, formatTeamsPost } from "../group-copy";
 import { resolvePerson } from "./identity";
 import type { EngineResult, SquadState } from "./types";
 

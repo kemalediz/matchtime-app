@@ -88,7 +88,7 @@ For each attendance claim in the message, return:
   confidence   0 to 1
 
 Also return:
-  affirmation  "yes" or "no" when the message is a bare answer to MatchTime's own last post ("Confirmed", "yes", "no"), otherwise null
+  affirmation  "yes" or "no" when the message is a bare answer to MatchTime's own last post ("Confirmed", "yes", "no"), otherwise "none"
   sideRequests any of: "recruit" (asks for a replacement or more players for a specific gap), "chase" (a general nudge for more players that says nothing about the sender's own place)
 
 A message can carry SEVERAL claims and a side request at once. Report all of them. "I'm out, anyone able to replace me?" is one claim plus "recruit". "I'm in, and my brother can play too" is TWO claims.
@@ -107,8 +107,8 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
                "stats" form, appearances, most consistent, man of the match
                "options" what to do about being short (smaller format, alternatives)
                "other" anything else
-  personRef    the person the question is about, verbatim, or null
-  statedCount  a number the message ASSERTS about the squad, or null`,
+  personRef    the person the question is about, verbatim, or "" when it names nobody
+  statedCount  a number the message ASSERTS about the squad, or -1 when it asserts none`,
 
   teams: `You read ONE message about the two team line-ups and report what it asks for. You never pick the teams.
 
@@ -117,7 +117,7 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
                "rename" change the team names
                "swap" move named players between the two teams
   includeRefs  names the message says to include, verbatim
-  teamNames    the two new names, in order, or null
+  teamNames    the two new names, in order, or an empty array
   swaps        for "swap": each named person and the team they should be on ("RED" or "YELLOW")`,
 
   score: `You read ONE message reporting a football result and return the two numbers, in the order the teams are named in the message. first = the first team mentioned, second = the other. Nothing else.`,
@@ -127,10 +127,10 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
   action       "bulk_payment" someone paid for several players
                "reminder" the sender wants to be reminded
                "other"
-  payerRef     for bulk_payment: who paid, verbatim
-  count        for bulk_payment: how many players they paid for
+  payerRef     for bulk_payment: who paid, verbatim. "" when not applicable
+  count        for bulk_payment: how many players they paid for. 0 when not applicable
   coveredRefs  for bulk_payment: the specific people covered, verbatim, if named
-  phrase       for reminder: the time phrase EXACTLY as written ("on Monday", "tomorrow at 6"). Do not convert it to a date.`,
+  phrase       for reminder: the time phrase EXACTLY as written ("on Monday", "tomorrow at 6"). Do not convert it to a date. "" when not applicable`,
 };
 
 // ── Schemas ────────────────────────────────────────────────────────────
@@ -167,7 +167,13 @@ export const ATTENDANCE_SCHEMA = {
         additionalProperties: false,
       },
     },
-    affirmation: { type: ["string", "null"], enum: ["yes", "no", null] },
+    // "none" rather than a nullable enum: the API rejects
+    // `{type: ["string","null"], enum: ["yes","no",null]}` outright
+    // ("Enum value 'yes' does not match declared type"), and it rejects
+    // it at request time, which the dry run surfaced as a loud
+    // degradation on the very first live case. The parser maps "none"
+    // back to null so the fact type stays honest.
+    affirmation: { type: "string", enum: ["yes", "no", "none"] },
     sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase"] } },
   },
   required: ["claims", "affirmation", "sideRequests"],
@@ -181,8 +187,8 @@ const QUESTION_SCHEMA = {
       type: "string",
       enum: ["squad", "bench", "count", "person_status", "phones", "stats", "options", "other"],
     },
-    personRef: { type: ["string", "null"] },
-    statedCount: { type: ["number", "null"] },
+    personRef: { type: "string" },
+    statedCount: { type: "number" },
   },
   required: ["topic", "personRef", "statedCount"],
   additionalProperties: false,
@@ -193,7 +199,7 @@ const TEAMS_SCHEMA = {
   properties: {
     action: { type: "string", enum: ["show", "generate", "rename", "swap"] },
     includeRefs: { type: "array", items: { type: "string" } },
-    teamNames: { type: ["array", "null"], items: { type: "string" } },
+    teamNames: { type: "array", items: { type: "string" } },
     swaps: {
       type: "array",
       items: {
@@ -222,12 +228,12 @@ const ADMIN_SCHEMA = {
   type: "object",
   properties: {
     action: { type: "string", enum: ["bulk_payment", "reminder", "other"] },
-    payerRef: { type: ["string", "null"] },
-    count: { type: ["number", "null"] },
+    payerRef: { type: "string" },
+    count: { type: "number" },
     coveredRefs: { type: "array", items: { type: "string" } },
-    phrase: { type: ["string", "null"] },
+    phrase: { type: "string" },
   },
-  required: ["action"],
+  required: ["action", "payerRef", "count", "coveredRefs", "phrase"],
   additionalProperties: false,
 } as const;
 
@@ -341,6 +347,7 @@ export function parseFacts(
           confidence: clamp01(r.confidence),
         });
       }
+      // "none" is the schema's stand-in for null (see ATTENDANCE_SCHEMA).
       const affRaw = str(raw.affirmation).toLowerCase();
       const affirmation = affRaw === "yes" ? "yes" : affRaw === "no" ? "no" : null;
       const sideRequests: SideRequest[] = (
@@ -359,9 +366,12 @@ export function parseFacts(
       const facts: QuestionFacts = {
         kind: "question",
         topic,
+        // "" and -1 are the schema's stand-ins for null.
         personRef: typeof raw.personRef === "string" && raw.personRef ? raw.personRef : null,
         statedCount:
-          typeof raw.statedCount === "number" && Number.isFinite(raw.statedCount)
+          typeof raw.statedCount === "number" &&
+          Number.isFinite(raw.statedCount) &&
+          raw.statedCount >= 0
             ? raw.statedCount
             : null,
       };
@@ -410,12 +420,12 @@ export function parseFacts(
       const facts: AdminFacts = {
         kind: "admin",
         action: action as AdminFacts["action"],
-        ...(typeof raw.payerRef === "string" ? { payerRef: raw.payerRef } : {}),
-        ...(typeof raw.count === "number" ? { count: raw.count } : {}),
+        ...(typeof raw.payerRef === "string" && raw.payerRef ? { payerRef: raw.payerRef } : {}),
+        ...(typeof raw.count === "number" && raw.count > 0 ? { count: raw.count } : {}),
         ...(Array.isArray(raw.coveredRefs)
           ? { coveredRefs: raw.coveredRefs.map(str).filter(Boolean) }
           : {}),
-        ...(typeof raw.phrase === "string" ? { phrase: raw.phrase } : {}),
+        ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
       };
       return { facts, degradations };
     }
