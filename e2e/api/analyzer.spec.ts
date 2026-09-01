@@ -231,6 +231,71 @@ test("banter-drop guard: third-party OUT for a player active in the batch is ref
   expect(att?.status).toBe("CONFIRMED"); // Colin untouched
 });
 
+test("OUT safety net must NOT fire on a group-level chase (Kemal 2026-05-28)", async ({ request, db }) => {
+  // The over-fire direction, and the reason `notDropping` exists. Alex
+  // asks the group for more players; the model correctly leaves
+  // registerAttendance null and SAYS SO in its reasoning. Dropping the
+  // admin who was chasing is the worse failure — it happened once.
+  // Reasoning verbatim from production AnalyzedMessage 2026-05-28.
+  const pre = await attendance(db, U.admin);
+  expect(pre?.status).toBe("CONFIRMED");
+
+  const id = msgId();
+  setLlmStub({
+    [id]: {
+      intent: "replacement_request",
+      registerAttendance: null,
+      react: "📣",
+      confidence: 0.9,
+      reasoning:
+        "Kemal (admin) is asking the group for more players — squad is 5/14, very short. " +
+        "This is a replacement_request type (b) — tentative/group-level rather than a personal drop, " +
+        "so registerAttendance stays null.",
+    },
+  });
+  await postAnalyze(request, [
+    { waMessageId: id, body: "@all we need more players pls", authorPhone: "447700900001", authorName: "Alex Admin" },
+  ]);
+
+  const att = await attendance(db, U.admin);
+  expect(att?.status).toBe("CONFIRMED"); // never dropped for chasing
+});
+
+test("OUT safety net: replacement_request with no registerAttendance drops the sender (Mojib 2026-05-26)", async ({ request, db }) => {
+  // The incident f35dfe6 was written for, replayed with the REAL
+  // reasoning string production emitted. Colin asks for cover for
+  // himself AND Ben; the "LLM" emits a registerFor OUT for Ben only and
+  // leaves its own sender un-dropped. Before this fix the net could not
+  // fire on this text at all — "definite drops" missed `drop\b`, and
+  // "chase nudge" tripped the notDropping veto — so Colin stayed in the
+  // squad and the group post asked for one replacement instead of two.
+  const pre = await attendance(db, U.collector);
+  expect(pre?.status).toBe("CONFIRMED");
+
+  const id = msgId();
+  setLlmStub({
+    [id]: {
+      intent: "replacement_request",
+      registerAttendance: null, // ← the bug: sender never dropped
+      registerFor: [{ name: "Ben Bench", action: "OUT" }],
+      react: "👋",
+      confidence: 0.9,
+      reasoning:
+        "Colin is asking the group to find replacements for himself and Ben (third-party). " +
+        "Both are definite drops. Squad goes from 14/14 to 12/14 — short by 2. " +
+        "Reply includes the chase nudge with roster showing open slots 8 and 9.",
+    },
+  });
+  await postAnalyze(request, [
+    { waMessageId: id, body: "is anyone able to replace me and Ben tonight?", authorPhone: "447700900002", authorName: "Colin Collector", botMentioned: true },
+  ]);
+
+  const att = await attendance(db, U.collector);
+  expect(att?.status).toBe("DROPPED"); // the sender, not just the named player
+  const ben = await attendance(db, U.bench);
+  expect(ben?.status).toBe("DROPPED");
+});
+
 test("duplicate waMessageId is deduped (bot retry safety)", async ({ request }) => {
   const id = msgId();
   setLlmStub({
