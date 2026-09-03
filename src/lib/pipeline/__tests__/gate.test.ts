@@ -27,13 +27,16 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  engineOwnsRoute,
   floorForcesAnalysis,
   gatedVerdict,
   GATED_REASON_PREFIX,
+  isAttendanceEngineEnabled,
   isNoneBucketShadowEnabled,
   isRouterFloorEnabled,
   isRouterGateEnabled,
   partition,
+  routerIsNeeded,
   type GateMessage,
 } from "../gate";
 import { routeBatch, routeFloor } from "../router";
@@ -365,5 +368,63 @@ describe("the verdict a skipped message gets", () => {
     // Defensive: a skipped id with no route recorded still says so
     // rather than claiming a route it never had.
     expect(gatedVerdict("m1", undefined).reasoning).toContain("routed none");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// §10 STEP 6 — WHICH MESSAGES THE ENGINE OWNS
+// ─────────────────────────────────────────────────────────────────────
+//
+// Step 5 decided which messages the analyzer SEES. Step 6 decides which
+// messages the analyzer no longer DECIDES. The two flags are separate
+// on purpose: §10's revert column for step 6 is "flag flips the three
+// routes back", and a revert that also switched the router gate off
+// would be reverting two steps at once.
+describe("the attendance engine's ownership (§10 step 6)", () => {
+  it("is OFF unless ATTENDANCE_ENGINE_ENABLED says otherwise", () => {
+    expect(isAttendanceEngineEnabled({})).toBe(false);
+    expect(isAttendanceEngineEnabled({ ATTENDANCE_ENGINE_ENABLED: "" })).toBe(false);
+    expect(isAttendanceEngineEnabled({ ATTENDANCE_ENGINE_ENABLED: "0" })).toBe(false);
+    expect(isAttendanceEngineEnabled({ ATTENDANCE_ENGINE_ENABLED: "no" })).toBe(false);
+    expect(isAttendanceEngineEnabled({ ATTENDANCE_ENGINE_ENABLED: "maybe" })).toBe(false);
+    // A typo in a Vercel env var must never enable the write path.
+    expect(isAttendanceEngineEnabled({ ATTENDANCE_ENGINE_ENABLE: "1" })).toBe(false);
+  });
+
+  it("turns on for exactly the five spellings the other flags accept", () => {
+    for (const v of ["1", "true", "yes", "on", "TRUE", "Yes", " on "]) {
+      expect(isAttendanceEngineEnabled({ ATTENDANCE_ENGINE_ENABLED: v })).toBe(true);
+    }
+  });
+
+  it("is independent of the router gate in BOTH directions", () => {
+    expect(isAttendanceEngineEnabled({ ROUTER_GATE_ENABLED: "1" })).toBe(false);
+    expect(isRouterGateEnabled({ ATTENDANCE_ENGINE_ENABLED: "1" })).toBe(false);
+    expect(
+      isAttendanceEngineEnabled({ ROUTER_GATE_ENABLED: "0", ATTENDANCE_ENGINE_ENABLED: "1" }),
+    ).toBe(true);
+  });
+
+  it("owns self_att, other_att and offer — and nothing else", () => {
+    const owned = ALL_ROUTES.filter((r) => engineOwnsRoute(r));
+    expect(owned.sort()).toEqual(["offer", "other_att", "self_att"]);
+  });
+
+  it("never owns `unsure`, so a router that could not tell still reaches the old prompt", () => {
+    // §11.1's asymmetry. `unsure` is attendance-SHAPED but unresolved,
+    // and the conservative default (§13) is that doubt costs an
+    // analyzer call, never a write from a path with less context.
+    expect(engineOwnsRoute("unsure")).toBe(false);
+  });
+
+  it("never owns a route it has never heard of", () => {
+    expect(engineOwnsRoute(undefined)).toBe(false);
+    expect(engineOwnsRoute("lineup_ops" as never)).toBe(false);
+  });
+
+  it("the router must run when EITHER flag is on — the engine needs routes too", () => {
+    expect(routerIsNeeded({})).toBe(false);
+    expect(routerIsNeeded({ ROUTER_GATE_ENABLED: "1" })).toBe(true);
+    expect(routerIsNeeded({ ATTENDANCE_ENGINE_ENABLED: "1" })).toBe(true);
   });
 });
