@@ -68,6 +68,18 @@ export interface EngineActor {
  */
 export const ENGINE_APPLY_DEGRADED_PREFIX = "attendance-engine: degraded —";
 
+/**
+ * `AnalyzedMessage.handledBy` for a message the engine decided.
+ *
+ * The AUDIT field, not the wire field — same split step 5 made for
+ * `router-gate`. `whatsapp-bot/src/api.ts:325` types the HTTP
+ * response's `handledBy` as a closed union and that file is out of
+ * scope, so the wire keeps saying `llm`; this makes "what did the
+ * engine decide, and what did it write?" a single query against the
+ * admin log rather than an archaeology exercise.
+ */
+export const ENGINE_HANDLED_BY = "attendance-engine";
+
 /** The engine's placeholder for a named guest with no member row yet
  *  (`engine.ts:1061`, `userId = \`new:${name}\``). */
 const PROVISIONAL_PREFIX = "new:";

@@ -59,15 +59,20 @@ import {
 import {
   composeSquadStateReply,
   stripSquadPostMarker,
+  SQUAD_POST_MARKER,
   type SquadTruth,
 } from "@/lib/group-copy";
 import {
   gateBatch,
   gatedVerdict,
+  isAttendanceEngineEnabled,
   isRouterGateEnabled,
+  routerIsNeeded,
   GATED_HANDLED_BY,
 } from "@/lib/pipeline/gate";
 import { loadOpenQuestion } from "@/lib/pipeline/load-awaiting-answer";
+import { ENGINE_APPLY_DEGRADED_PREFIX, ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
+import { runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
@@ -685,8 +690,14 @@ async function handleAnalyzeRequest(request: Request) {
   // REVERT: unset ROUTER_GATE_ENABLED (or set it to 0). `gateGuard`
   // then stays null, `gatedIds` stays empty, and every line below is
   // the code that shipped on 2d52d7a.
+  //
+  // STEP 6 CHANGES ONE THING HERE: the router now runs when EITHER flag
+  // is on (`routerIsNeeded`), because the engine needs routes even when
+  // the gate is off. What the router's answer is USED for still splits
+  // by flag — `gate.skipped` is only honoured while ROUTER_GATE_ENABLED
+  // is on, so turning the engine on does not start skipping messages.
   const gate =
-    fresh.length > 0 && isRouterGateEnabled()
+    fresh.length > 0 && routerIsNeeded()
       ? await gateBatch(
           fresh.map((m) => ({
             waMessageId: m.waMessageId,
@@ -706,7 +717,7 @@ async function handleAnalyzeRequest(request: Request) {
           { awaiting: await loadOpenQuestion(org.id) },
         )
       : null;
-  const gatedIds = new Set(gate?.skipped ?? []);
+  const gatedIds = new Set(isRouterGateEnabled() ? (gate?.skipped ?? []) : []);
   const gateRouteById = new Map((gate?.routes ?? []).map((r) => [r.messageId, r.route]));
   if (gate) {
     for (const d of gate.degradations) {
@@ -723,8 +734,88 @@ async function handleAnalyzeRequest(request: Request) {
     );
   }
 
+  // ── §10 STEP 6 — THE ATTENDANCE ENGINE (ATTENDANCE_ENGINE_ENABLED) ──
+  //
+  //   "Swap the attendance path to extractor + engine. `self_att`,
+  //    `other_att`, `offer` only — the three routes covering every
+  //    incident in the archive. Everything else still runs the old
+  //    prompt."
+  //
+  // This runs BEFORE `analyzeBatch` because the route has to know which
+  // ids to leave OUT of it. Two deciders for one message would mean two
+  // replies for one message, and "MatchTime replies once or not at all"
+  // is the invariant the whole tail of this function protects.
+  //
+  // It owns nothing unless the flag is on, and it fails open on every
+  // other axis — no match, attendance off, an unroutable id, a bench
+  // prompt open for the sender, a state load that threw. See
+  // `lib/attendance-engine-batch.ts`.
+  //
+  // REVERT: unset ATTENDANCE_ENGINE_ENABLED (or set it to 0).
+  // `engineBatch.ownedIds` is then empty, every branch below that
+  // mentions it is inert, and each of the three routes goes back to the
+  // 18,315-token prompt and `executeVerdict`, exactly as on `b03d96b`.
+  // The router gate is untouched by that flip, in both directions.
+  const engineAdminIds = isAttendanceEngineEnabled()
+    ? new Set(
+        (
+          await db.membership.findMany({
+            where: { orgId: org.id, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
+            select: { userId: true },
+          })
+        ).map((m) => m.userId),
+      )
+    : new Set<string>();
+  const engineBatch =
+    fresh.length > 0 && isAttendanceEngineEnabled()
+      ? await runAttendanceEngineBatch({
+          orgId: org.id,
+          now: new Date(),
+          expectedMatchId: activeMatchForReply?.id ?? null,
+          history: history.map((h) => ({ author: h.authorName, body: h.body })),
+          messages: fresh.map((m) => {
+            const s = senderById.get(m.waMessageId)!;
+            return {
+              waMessageId: m.waMessageId,
+              body: m.body,
+              authorName: m.authorName,
+              senderUserId: s.userId,
+              senderName: s.name,
+              senderIsAdmin: !!s.userId && engineAdminIds.has(s.userId),
+              tagged: messageTagsBot(m),
+              route: gateRouteById.get(m.waMessageId),
+              gated: gatedIds.has(m.waMessageId),
+            };
+          }),
+          deps: {
+            registerAttendance,
+            cancelAttendance,
+            resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
+            openBenchPromptUserIds: async (matchId) =>
+              (
+                await db.pendingBenchConfirmation.findMany({
+                  where: { matchId, resolvedAt: null },
+                  select: { userId: true },
+                })
+              ).map((p) => p.userId),
+          },
+        })
+      : null;
+  const engineOwnedIds = engineBatch?.ownedIds ?? new Set<string>();
+  if (engineBatch && engineOwnedIds.size > 0) {
+    for (const d of engineBatch.degradations) {
+      console.warn(`[analyze] attendance-engine degraded: ${d}`);
+    }
+    console.log(
+      `[analyze] attendance-engine: decided ${engineOwnedIds.size}/${fresh.length} message(s) ` +
+        `on match ${engineBatch.matchId}, ` +
+        `$${engineBatch.cost.usd.toFixed(5)} across ${engineBatch.cost.calls} extractor call(s) ` +
+        `in ${engineBatch.cost.ms}ms`,
+    );
+  }
+
   const batchInputs: BatchInputMessage[] = fresh
-    .filter((m) => !gatedIds.has(m.waMessageId))
+    .filter((m) => !gatedIds.has(m.waMessageId) && !engineOwnedIds.has(m.waMessageId))
     .map((m) => {
       const s = senderById.get(m.waMessageId)!;
       return {
@@ -750,6 +841,27 @@ async function handleAnalyzeRequest(request: Request) {
   const verdicts: AnalysisVerdict[] = fresh.map((m) => {
     if (gatedIds.has(m.waMessageId)) {
       return gatedVerdict(m.waMessageId, gateRouteById.get(m.waMessageId));
+    }
+    if (engineOwnedIds.has(m.waMessageId)) {
+      // The engine decided this one. It has no verdict and must never
+      // get an invented one: the per-message loop short-circuits on
+      // `engineOwnedIds` before the first branch that could read this,
+      // and this placeholder exists only so `verdicts` stays index-
+      // aligned with `fresh` for the passes that scan the whole batch.
+      // `intent: "noise"`, every action field null — the same shape the
+      // gate uses, so nothing downstream can act on it by accident.
+      //
+      // The one field that carries real information is `reasoning`: an
+      // extractor that FAILED must reach the partial-response admin DM
+      // below, which selects on reasoning prefixes. Carrying the
+      // engine's typed marker here is what puts it there without that
+      // net growing a second selector.
+      return {
+        ...gatedVerdict(m.waMessageId, gateRouteById.get(m.waMessageId)),
+        reasoning:
+          engineBatch?.outcomes.get(m.waMessageId)?.reasoning ??
+          `${ENGINE_APPLY_DEGRADED_PREFIX} owned by the engine but it produced no outcome`,
+      };
     }
     const v = verdictById.get(m.waMessageId);
     if (v) return v;
@@ -791,6 +903,14 @@ async function handleAnalyzeRequest(request: Request) {
       "No text in Claude response",
       "ANTHROPIC_API_KEY not set",
       "Unknown group",
+      // §10 step 6. §9 keeps this net and says to "fix the mechanism:
+      // under the new design it matches a typed error, which is what it
+      // always wanted to be". An extractor that FAILED (as opposed to
+      // one that found nothing) is exactly the same operator event as a
+      // dropped verdict — a message understood by a human, silently not
+      // acted on by the bot — so it reaches the same admin DM instead
+      // of a log line nobody reads.
+      ENGINE_APPLY_DEGRADED_PREFIX,
     ];
     const dropped = verdicts
       .map((v, i) => ({ v, msg: fresh[i] }))
@@ -891,6 +1011,149 @@ async function handleAnalyzeRequest(request: Request) {
     const msg = fresh[i];
     let verdict = verdicts[i];
     const sender = senderById.get(msg.waMessageId)!;
+
+    // ── §10 STEP 6 — THE ENGINE ALREADY DECIDED THIS MESSAGE ─────────
+    //
+    // The extractor read it, the engine decided it, `attendance.ts`
+    // wrote it and the composer said it — all before `analyzeBatch` was
+    // called, and with no verdict anywhere in the chain. Every branch
+    // below this point reads `verdict.intent`, `verdict.reasoning`,
+    // `verdict.reply` or `verdict.registerFor`, and none of those
+    // exists here. So the message takes the short path: honest ack,
+    // unresolved-sender nudge, one `AnalyzedMessage` row, one result.
+    //
+    // The three seatbelts §10 step 6 names — the IN net, the OUT net
+    // and the bench-demote net — are all BELOW this `continue`, and
+    // that is the whole of their deletion: their input is the model's
+    // `intent`, `reasoning` and `reply`, and on this path the model
+    // produces none of the three. See the essay above each of them.
+    const engineOutcome = engineBatch?.outcomes.get(msg.waMessageId);
+    if (engineOutcome) {
+      // A recruit ask alongside a drop runs LAST, on the same deferred
+      // path the analyzer's uses, so the blast counts the squad this
+      // message just changed (PR #33).
+      if (engineOutcome.recruitRequest) {
+        recruitRequests.push({ msg, sender });
+        addressedByRecruit.add(msg.waMessageId);
+      }
+      if (engineOutcome.recordTentativeForUserId && engineBatch?.matchId && nextMatchForReply) {
+        // conditional_in flavour (b) — personal uncertainty. The engine
+        // declines the write; the 24h chase is a shipped product
+        // behaviour (`executeVerdict`'s `recordTentative`) and step 6
+        // must not lose it. Best-effort, exactly as on the old path.
+        await recordTentative({
+          matchId: engineBatch.matchId,
+          userId: engineOutcome.recordTentativeForUserId,
+          kickoff: nextMatchForReply.date,
+        }).catch((err) => console.error("[analyze] engine recordTentative failed:", err));
+      }
+      if (engineOutcome.resolveTentativeForUserId && engineBatch?.matchId) {
+        await resolveTentative({
+          matchId: engineBatch.matchId,
+          userId: engineOutcome.resolveTentativeForUserId,
+        }).catch((err) => console.error("[analyze] engine resolveTentative failed:", err));
+      }
+
+      // The honest ack, unchanged and shared: a confirmation is NEVER
+      // sent for a write that did not land (9f19040).
+      const ack = resolveAttendanceAck({
+        failures: engineOutcome.failures,
+        react: engineOutcome.react,
+        reply: engineOutcome.reply,
+        senderName: sender.name ?? msg.authorName ?? null,
+      });
+      if (ack.failed) {
+        console.error(attendanceFailureLog(engineOutcome.failures), "for", msg.waMessageId);
+        await recordAnalysis({
+          orgId: org.id,
+          groupId: body.groupId,
+          msg,
+          handledBy: "error",
+          intent: engineOutcome.intent,
+          action: attendanceFailureAction(engineOutcome.failures),
+          confidence: 1,
+          reasoning: attendanceFailureLog(engineOutcome.failures).slice(0, 2000),
+          authorUserId: sender.userId,
+          authorName: msg.authorName ?? null,
+        });
+        results.push({
+          waMessageId: msg.waMessageId,
+          handledBy: "error",
+          intent: engineOutcome.intent,
+          react: null,
+          reply: ack.reply,
+          reasoning: engineOutcome.reasoning,
+        });
+        continue;
+      }
+
+      let engineReply = ack.reply;
+      // The batch's one squad post rides on the last message that acted
+      // and is composed from the DATABASE in the batch-final pass
+      // below — the SAME pass, the same `SquadTruth`, the same
+      // keep-only-the-last collapse the analyzer's replies go through
+      // (§10 step 4). That is what makes "one squad post per batch"
+      // hold across a batch that both deciders touched, rather than
+      // being two rules that happen to agree.
+      //
+      // The marker rather than the composer's own text on purpose: the
+      // engine composed from its PROJECTED state, and between that
+      // projection and this line the writes actually landed. The
+      // database is the later, truer fact, and `[SQUAD]` is the
+      // existing way of saying "put the real post here".
+      // ONE reply per message: joined onto whatever this message was
+      // already going to say, never pushed as a second result.
+      if (engineBatch && engineBatch.squadPostForMessageId === msg.waMessageId) {
+        engineReply = engineReply ? `${engineReply}\n\n${SQUAD_POST_MARKER}` : SQUAD_POST_MARKER;
+      }
+      if (engineReply && nextMatchForReply) {
+        engineReply = enforceProximity(engineReply, nextMatchForReply.date);
+      }
+      const engineNudge = await unresolvedSenderNudge({
+        senderResolved: !!sender.userId,
+        attendanceRelevant: engineOutcome.action !== "none",
+        matchId: nextMatchForReply?.id ?? null,
+        authorName: msg.authorName,
+        dropping: engineOutcome.intent === "out",
+      });
+      if (engineNudge.applies) engineReply = engineNudge.reply;
+
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: ENGINE_HANDLED_BY,
+        intent: engineOutcome.intent,
+        action: engineOutcome.action,
+        confidence: 1,
+        reasoning: engineOutcome.reasoning,
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      if (
+        sender.userId &&
+        nextMatchForReply &&
+        ack.react !== null &&
+        REGISTRATION_STATUS_REACTS.has(ack.react) &&
+        engineOutcome.senderOwnRowMoved
+      ) {
+        senderReactAudit.push({ idx: results.length, userId: sender.userId });
+      }
+      results.push({
+        waMessageId: msg.waMessageId,
+        // The WIRE field, which `whatsapp-bot/src/api.ts:325` types as a
+        // closed union the Pi only special-cases for `deduped` and
+        // `error`. The AUDIT field on `AnalyzedMessage` above says
+        // `attendance-engine`, which is what makes "what did the engine
+        // decide?" one query.
+        handledBy: "llm",
+        intent: engineOutcome.intent,
+        react: ack.react,
+        reply: engineReply,
+        reasoning: engineOutcome.reasoning,
+      });
+      continue;
+    }
 
     // ── INTERACTION CONTRACT — hypothetical/past-tense self seatbelt ──
     //    "LLM extracts, code decides." A hypothetical ("If I was in the
@@ -1425,7 +1688,59 @@ async function handleAnalyzeRequest(request: Request) {
       continue; // never reach the drop path
     }
 
+    // ═════════════════════════════════════════════════════════════════
+    // §10 STEP 6 — THE THREE SEATBELTS THIS STEP DELETES
+    // ═════════════════════════════════════════════════════════════════
+    //
+    // Step 6 says: "Delete the OUT net, the IN net, the bench-demote net,
+    // and both prose-parsing regexes." All three are below this line and
+    // ALL THREE ARE DEAD ON THE ENGINE PATH BY CONSTRUCTION: the
+    // `continue` at the top of this loop returns before any of them for
+    // every message `ATTENDANCE_ENGINE_ENABLED` owns, and each one's
+    // only input is a field the engine's schemas do not contain.
+    // `pipeline/__tests__/extractors.test.ts` asserts that absence
+    // route by route: no `intent`, no `registerAttendance`, no
+    // `registerFor`, no `react`, no `reply`, no `reasoning`, on any of
+    // the three routes step 6 owns. The error each net catches is not
+    // merely unlikely there; it is unrepresentable.
+    //
+    // WHY THEY ARE STILL PHYSICALLY HERE, and this is a deliberate
+    // deviation from the step's wording:
+    //
+    //   The flag ships DEFAULT OFF, and §10's revert for this step is
+    //   "flag flips the three routes back". With the flag off, the
+    //   analyzer decides every attendance message — so deleting these
+    //   would ship a regression in the DEFAULT configuration, and would
+    //   make the stated revert not a revert: it would restore the
+    //   analyzer without restoring the guards written for it. The
+    //   redundancy proof is real but CONDITIONAL, and the condition is
+    //   exactly what this flag controls.
+    //
+    //   §10 step 6's own instruction elsewhere is the tie-breaker: a
+    //   seatbelt that cannot be proven redundant is kept, and said so.
+    //   These cannot be proven redundant for the path that runs by
+    //   default. They become deletable the day the flag defaults ON and
+    //   the old attendance path is retired with step 7.
+    //
+    // Each net below carries its incident and its proof.
+    // ═════════════════════════════════════════════════════════════════
+
     // ── IN intent safety net ─────────────────────────────────────────
+    //    §10 step 6: DIES on the engine path. Its incident is Najib,
+    //    2026-05-08 (`f61a897`): "In" at 22:27 with the squad 14/14, and
+    //    the model emitted `intent:"in"` with `registerAttendance:null`
+    //    and reasoning "this is odd". He lost his slot for a week.
+    //
+    //    PROOF OF REDUNDANCY. This net exists because `intent` and
+    //    `registerAttendance` are two separately-hallucinated fields
+    //    that can disagree. An `AttendanceFacts` claim has ONE
+    //    `polarity`, and no second field for it to contradict; there is
+    //    no `intent` in the schema at all. The engine's own answer to
+    //    "in at a full squad" is arithmetic it does itself — capacity
+    //    decides CONFIRMED vs BENCH — so the state the model found
+    //    "odd" is never something it is asked about. Corpus case
+    //    `S6-najib-in-at-full-squad`.
+    //
     //    If the LLM classified this as "in" but emitted
     //    registerAttendance:null with no state-collapse reason (i.e.
     //    this IS the author's latest IN-shaped message in the batch),
@@ -1460,6 +1775,42 @@ async function handleAnalyzeRequest(request: Request) {
     }
 
     // ── OUT intent safety net ────────────────────────────────────────
+    //    §10 step 6: DIES on the engine path, and this is the one the
+    //    doc calls out by name — "regex over `reasoning`", the first of
+    //    the two prose-parsing regexes (the patterns themselves live in
+    //    `lib/out-safety-net.ts` since `710e1fd`). Its incident is
+    //    Mojib/Habib, 2026-05-26 (`f35dfe6`): "anyone able to replace me
+    //    and habibi tonight?" dropped Habib and left Mojib in.
+    //
+    //    PROOF OF REDUNDANCY, in three parts, because this guard fails
+    //    in three distinct ways that all become impossible:
+    //
+    //    1. THE ASK NO LONGER CANNIBALISES THE DROP. The whole failure
+    //       is that `replacement_request` is ONE intent trying to carry
+    //       two facts, so the recruit half wins and the sender's own OUT
+    //       is never emitted. In the facts schema they are separate
+    //       fields — a `Claim{subject:"sender", polarity:"out"}` and
+    //       `sideRequests:["recruit"]` — and the extractor prompt says
+    //       so explicitly ("Asking for cover is NOT a condition …
+    //       report the out with contingent FALSE, plus the 'recruit'
+    //       side request"). One cannot consume the other.
+    //    2. THERE IS NO PROSE TO PARSE. `forceOut` is
+    //       `strongDrop && !notDropping` over `verdict.reasoning`. The
+    //       extractor emits no `reasoning` field, so the regexes have
+    //       no input; the same fact is now `polarity` and `contingent`.
+    //    3. PER-PLAYER ATTRIBUTION, WHICH NO REGEX COULD EVER HAVE.
+    //       §3.2's 2026-09-01 note is explicit: `outSafetyNetSignals`
+    //       reads ONE free-text blob for a message about TWO players,
+    //       and in a real failing run `strongDrop` matched on Habib's
+    //       clause while `notDropping` matched on Mojib's, so the veto
+    //       won and the sender it existed to protect stayed in. "The
+    //       guard cannot tell which player a phrase is about, and no
+    //       amount of regex work gives it that. Step 6 deleting this
+    //       class of guard is the fix." The engine has one claim PER
+    //       PERSON, each with its own polarity and its own contingency.
+    //       Corpus case `S12-mojib-replacement-request-drops-sender`,
+    //       and PR #33's `PR33-recruit-ask-must-not-swallow-the-drop`.
+    //
     //    Mirror of the IN safety net above, for the Mojib/Habib 2026-05-26
     //    failure: LLM classified "replace me and Habib" as
     //    intent:"replacement_request" with reasoning saying "both are
@@ -1514,6 +1865,27 @@ async function handleAnalyzeRequest(request: Request) {
     }
 
     // ── BENCH-DEMOTE safety net (2026-06-11, Salman Shelly incident) ──
+    //    §10 step 6: DIES on the engine path. This is the SECOND
+    //    prose-parsing regex — it reads `verdict.reply`, the model's
+    //    English, and SYNTHESISES an attendance write from it. §1 of the
+    //    redesign doc: "That is not an interface. It is a hope."
+    //
+    //    PROOF OF REDUNDANCY. The net reverse-engineers a write from a
+    //    sentence the model wrote. On the engine path the model writes
+    //    no sentences: `compose.ts` renders every utterance from the
+    //    PROJECTED state, after the engine has decided, so a bench move
+    //    can only be ANNOUNCED if a write was PROPOSED. The direction
+    //    of causation is reversed, which makes "the reply says it and
+    //    the database does not" — the whole S7/S8 failure class —
+    //    unrepresentable rather than merely rare (§6.4, closing
+    //    cold-audit 1.1 by construction).
+    //
+    //    And the underlying misread is separately gone: the incident is
+    //    the model reading an admin's demote as the SENDER's own
+    //    `intent:"in"`. `subject` is a schema field, not an inference,
+    //    and `engine.ts` requires `senderIsAdmin` before any third-party
+    //    BENCH. Corpus case `S8-salman-admin-demote-to-bench`.
+    //
     //    Admin "move X to the bench" must demote a CONFIRMED player to
     //    BENCH and free their slot. The LLM reasons this correctly but has
     //    been seen to misclassify it as the sender's own intent:"in" and
@@ -1616,6 +1988,18 @@ async function handleAnalyzeRequest(request: Request) {
             const otherName = other?.name ?? fresh[j].authorName ?? "";
             if (!otherName || !sameName(otherName, entry.name)) continue;
             targetSpokeInBatch = true;
+            // §10 step 6: the target's own message may have been decided
+            // by the ENGINE, in which case `verdicts[j]` is the
+            // all-nulls placeholder and reading it alone would report
+            // "the target spoke and did not corroborate" for someone who
+            // had just dropped themselves — stripping a drop that the
+            // database has already made. Ask the decider that actually
+            // handled message j.
+            const engineJ = engineBatch?.outcomes.get(fresh[j].waMessageId);
+            if (engineJ) {
+              if (engineJ.intent === "out") targetCorroboratesOut = true;
+              continue;
+            }
             const vj = verdicts[j];
             if (vj && (vj.intent === "out" || vj.registerAttendance === "OUT")) {
               targetCorroboratesOut = true;
@@ -1746,54 +2130,15 @@ async function handleAnalyzeRequest(request: Request) {
         verdict.registerAttendance === "OUT" ||
         verdict.registerAttendance === "BENCH" ||
         verdict.intent === "replacement_request";
-      if (
-        !sender.userId &&
-        attendanceRelevant &&
-        nextMatchForReply &&
-        (msg.authorName ?? "").trim().length >= 1
-      ) {
-        const pushname = (msg.authorName ?? "").trim();
-        const normKey = pushname
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[̀-ͯ]/g, "");
-        const dedupeKey = `unresolved-sender:${nextMatchForReply.id}:${normKey}`;
-        const already = await db.sentNotification.findUnique({
-          where: { key: dedupeKey },
-        });
-        if (!already) {
-          // Plain English — describe what to DO next, no "resolver"/
-          // "@lid"/"pushname" jargon (per the product copy rule).
-          const verb =
-            verdict.registerAttendance === "OUT" ||
-            verdict.intent === "replacement_request"
-              ? "drop out"
-              : "join";
-          // Never print a raw numeric id as a name in the group (RC4).
-          cleanReply = isRawDigitName(pushname)
-            ? `Heads up — I got a message to *${verb}* from a number I don't recognise, ` +
-              `so I haven't changed anything yet. Could they reply with the name they're ` +
-              `registered under, or an admin can link it on the dashboard? 🙏`
-            : `Heads up — I got a message to *${verb}* from *${pushname}*, but that name isn't ` +
-              `matching anyone on the squad list, so I haven't changed anything yet. ` +
-              `Could *${pushname}* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏`;
-          // Record the dedupe row immediately. Tiny risk: if the bot
-          // fails to post we under-notify — acceptable, the admin
-          // queue is the backstop, and re-nudging every batch would
-          // spam the group (the failure Kemal hates most).
-          await db.sentNotification.create({
-            data: {
-              key: dedupeKey,
-              kind: "unresolved-sender-nudge",
-              matchId: nextMatchForReply.id,
-            },
-          });
-        } else {
-          // Already nudged for this pushname+match — stay silent,
-          // don't repeat. The admin queue still lists it.
-          cleanReply = null;
-        }
-      }
+      const nudge = await unresolvedSenderNudge({
+        senderResolved: !!sender.userId,
+        attendanceRelevant,
+        matchId: nextMatchForReply?.id ?? null,
+        authorName: msg.authorName,
+        dropping:
+          verdict.registerAttendance === "OUT" || verdict.intent === "replacement_request",
+      });
+      if (nudge.applies) cleanReply = nudge.reply;
 
       await recordAnalysis({
         orgId: org.id,
@@ -2161,6 +2506,70 @@ async function handleAnalyzeRequest(request: Request) {
     nextKickoffMs: nextMatch?.date.getTime() ?? null,
     results,
   });
+}
+
+/**
+ * §9 "UNRESOLVED-SENDER NUDGE — SURVIVES".
+ *
+ * "Message understood, action silently not taken" is this product's
+ * signature failure and is independent of who decides, so it is now
+ * SHARED by both deciders rather than living inside the analyzer's
+ * branch. §10 step 6 moves the attendance path to the engine; an
+ * engine-decided message whose sender could not be resolved must reach
+ * exactly the same nudge, with the same dedupe key, or turning the flag
+ * on would quietly delete a guard.
+ *
+ * The rules are unchanged from the block this was lifted out of: fires
+ * only for an unresolved sender on an attendance-relevant message with
+ * a match to name; one nudge per pushname per match, forever; never
+ * prints a raw numeric id as a name (RC4).
+ *
+ * `applies: false` means the caller keeps whatever reply it had.
+ * `applies: true` with `reply: null` means "already nudged — say
+ * nothing", which is deliberately not the same thing.
+ */
+async function unresolvedSenderNudge(args: {
+  senderResolved: boolean;
+  attendanceRelevant: boolean;
+  matchId: string | null;
+  authorName: string | null;
+  dropping: boolean;
+}): Promise<{ applies: boolean; reply: string | null }> {
+  const { senderResolved, attendanceRelevant, matchId, authorName, dropping } = args;
+  const pushname = (authorName ?? "").trim();
+  if (senderResolved || !attendanceRelevant || !matchId || pushname.length < 1) {
+    return { applies: false, reply: null };
+  }
+  const normKey = pushname
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  const dedupeKey = `unresolved-sender:${matchId}:${normKey}`;
+  const already = await db.sentNotification.findUnique({ where: { key: dedupeKey } });
+  if (already) {
+    // Already nudged for this pushname+match — stay silent, don't
+    // repeat. The admin queue still lists it.
+    return { applies: true, reply: null };
+  }
+  // Plain English — describe what to DO next, no "resolver"/"@lid"/
+  // "pushname" jargon (per the product copy rule).
+  const verb = dropping ? "drop out" : "join";
+  // Never print a raw numeric id as a name in the group (RC4).
+  const reply = isRawDigitName(pushname)
+    ? `Heads up — I got a message to *${verb}* from a number I don't recognise, ` +
+      `so I haven't changed anything yet. Could they reply with the name they're ` +
+      `registered under, or an admin can link it on the dashboard? 🙏`
+    : `Heads up — I got a message to *${verb}* from *${pushname}*, but that name isn't ` +
+      `matching anyone on the squad list, so I haven't changed anything yet. ` +
+      `Could *${pushname}* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏`;
+  // Record the dedupe row immediately. Tiny risk: if the bot fails to
+  // post we under-notify — acceptable, the admin queue is the backstop,
+  // and re-nudging every batch would spam the group (the failure Kemal
+  // hates most).
+  await db.sentNotification.create({
+    data: { key: dedupeKey, kind: "unresolved-sender-nudge", matchId },
+  });
+  return { applies: true, reply };
 }
 
 /**
