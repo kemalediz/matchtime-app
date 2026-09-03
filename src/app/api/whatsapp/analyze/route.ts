@@ -67,6 +67,7 @@ import {
   gatedVerdict,
   isAttendanceEngineEnabled,
   isRouterGateEnabled,
+  routerIsNeeded,
   engineHeaderOverride,
   ENGINE_HEADER,
   GATED_HANDLED_BY,
@@ -697,15 +698,16 @@ async function handleAnalyzeRequest(request: Request) {
   // the gate is off. What the router's answer is USED for still splits
   // by flag — `gate.skipped` is only honoured while ROUTER_GATE_ENABLED
   // is on, so turning the engine on does not start skipping messages.
-  // The step-6 flag, plus the test-only per-request override the live
-  // A/B needs (`engineHeaderOverride` — inert unless MT_TEST_MODE is
-  // "1"). Resolved HERE because the router has to run for it: step 5
-  // needed routes to decide what the analyzer sees, step 6 needs the
-  // same routes to decide what the analyzer DECIDES.
+  //
+  // The step-6 flag is resolved HERE, before the router call, and it
+  // carries the test-only per-request override the live A/B needs
+  // (`engineHeaderOverride` — inert unless MT_TEST_MODE is "1"). It is
+  // then PASSED to `routerIsNeeded` rather than re-read from the env
+  // there, so the two can never disagree about whether the engine is on.
   const engineEnabled =
     engineHeaderOverride(request.headers.get(ENGINE_HEADER)) ?? isAttendanceEngineEnabled();
   const gate =
-    fresh.length > 0 && (isRouterGateEnabled() || engineEnabled)
+    fresh.length > 0 && routerIsNeeded(process.env, engineEnabled)
       ? await gateBatch(
           fresh.map((m) => ({
             waMessageId: m.waMessageId,

@@ -224,8 +224,19 @@ export function engineOwnsRoute(route: Route | undefined): boolean {
  * step 5 would silently own nothing, which is the worst kind of flag:
  * one that looks enabled and does nothing.
  */
-export function routerIsNeeded(env: Env = process.env): boolean {
-  return isRouterGateEnabled(env) || isAttendanceEngineEnabled(env);
+export function routerIsNeeded(
+  env: Env = process.env,
+  /**
+   * The step-6 flag AS THE CALLER RESOLVED IT. The analyze route may
+   * have a per-request override (`engineHeaderOverride`) that the
+   * environment knows nothing about, and a predicate that re-read the
+   * env here would disagree with the caller about whether the engine is
+   * on — which would mean running the engine with no routes, the worst
+   * kind of flag: one that looks enabled and does nothing.
+   */
+  engineEnabled: boolean = isAttendanceEngineEnabled(env),
+): boolean {
+  return isRouterGateEnabled(env) || engineEnabled;
 }
 
 // ── The floor, as a boolean ───────────────────────────────────────────

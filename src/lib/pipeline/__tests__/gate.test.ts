@@ -30,6 +30,7 @@ import {
   engineHeaderOverride,
   engineOwnsRoute,
   ENGINE_HEADER,
+  ENGINE_ROUTES,
   floorForcesAnalysis,
   gatedVerdict,
   GATED_REASON_PREFIX,
@@ -419,6 +420,19 @@ describe("the attendance engine's ownership (§10 step 6)", () => {
     expect(engineOwnsRoute("unsure")).toBe(false);
   });
 
+  it("never owns what PR #43's open-question rescue produces", () => {
+    // The seam between #43 and §10 step 6, asserted rather than assumed.
+    // #43 rewrites `none` → `unsure` when MatchTime is still waiting for
+    // an answer, so a bare `👍` claiming an open slot is no longer
+    // thrown away. `unsure` is deliberately not an engine route, so
+    // every rescued message goes to the ANALYZER — the decider with the
+    // most context — and never to a path that would have to infer what
+    // the thumbs-up was answering. The two mechanisms compose without
+    // either weakening the other.
+    expect(engineOwnsRoute("unsure")).toBe(false);
+    expect(ENGINE_ROUTES).not.toContain("unsure");
+  });
+
   it("never owns a route it has never heard of", () => {
     expect(engineOwnsRoute(undefined)).toBe(false);
     expect(engineOwnsRoute("lineup_ops" as never)).toBe(false);
@@ -428,6 +442,16 @@ describe("the attendance engine's ownership (§10 step 6)", () => {
     expect(routerIsNeeded({})).toBe(false);
     expect(routerIsNeeded({ ROUTER_GATE_ENABLED: "1" })).toBe(true);
     expect(routerIsNeeded({ ATTENDANCE_ENGINE_ENABLED: "1" })).toBe(true);
+  });
+
+  it("takes the engine flag from the CALLER, so a per-request override still gets routes", () => {
+    // The analyze route resolves the step-6 flag once (env, or the
+    // test-only header) and hands it here. Re-reading the env would let
+    // the two disagree, and the failure would be the engine running with
+    // no routes: a flag that looks enabled and does nothing.
+    expect(routerIsNeeded({}, true)).toBe(true);
+    expect(routerIsNeeded({ ATTENDANCE_ENGINE_ENABLED: "1" }, false)).toBe(false);
+    expect(routerIsNeeded({ ROUTER_GATE_ENABLED: "1" }, false)).toBe(true);
   });
 });
 
