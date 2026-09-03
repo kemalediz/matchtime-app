@@ -732,8 +732,13 @@ async function handleAnalyzeRequest(request: Request) {
       console.warn(`[analyze] router-gate degraded (${d.messageId ?? "batch"}): ${d.detail}`);
     }
     console.log(
-      `[analyze] router-gate: ${gate.analysed.length}/${fresh.length} to the analyzer, ` +
-        `${gate.skipped.length} skipped, ${gate.floorForced.length} floor-forced, ` +
+      // With the gate OFF and only the engine on, the router still ran
+      // (the engine needs routes) but NOTHING is skipped — `gatedIds`
+      // is empty. Say which of those two worlds this is, or the line
+      // reads as messages having been dropped that were not.
+      `[analyze] router-gate ${isRouterGateEnabled() ? "ON" : "OFF (routes for the engine only)"}: ` +
+        `${gatedIds.size === 0 ? fresh.length : gate.analysed.length}/${fresh.length} to the analyzer, ` +
+        `${gatedIds.size} skipped, ${gate.floorForced.length} floor-forced, ` +
         `${gate.awaitingForced.length} forced by an open question ` +
         `(floor ${gate.floorEnabled ? "ON" : "OFF"})` +
         (gate.usage

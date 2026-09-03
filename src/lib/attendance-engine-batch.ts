@@ -67,6 +67,7 @@ import { loadSquadState } from "./pipeline/load-state";
 import type {
   AttendanceFacts,
   EngineMessage,
+  EngineResult,
   Facts,
   Route,
   SquadState,
@@ -290,7 +291,24 @@ export async function runAttendanceEngineBatch(args: {
     };
   });
 
-  const result = decide({ messages: engineMessages, state, now });
+  // `decide` asserts its own post-conditions and THROWS on a coverage
+  // violation, which is right — a coverage hole is a bug in the engine,
+  // not a bad model day. But it must not 500 the analyze request: at
+  // this point not one write has happened and the analyzer batch has
+  // not been decided, so owning nothing is a complete fail-open back to
+  // today's behaviour. §11.5 is honest that the engine is a single
+  // point of failure; this is what stops it being a single point of
+  // OUTAGE.
+  let result: EngineResult;
+  try {
+    result = decide({ messages: engineMessages, state, now });
+  } catch (err) {
+    console.error(
+      "[attendance-engine] the engine threw; the analyzer keeps the batch:",
+      err,
+    );
+    return EMPTY;
+  }
   for (const d of result.degradations) {
     degradations.push(`${d.stage} ${d.messageId ?? "batch"}: ${d.detail}`);
   }

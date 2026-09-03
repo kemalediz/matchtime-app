@@ -100,6 +100,8 @@ scoreboard from before PR #34 that does not name its ports is unverifiable.**
 | `load.ts` | JSONL parser + validator. |
 | `pipeline.ts` | the adapter boundary: `CorpusPipeline`. |
 | `current-analyzer-pipeline.ts` | pipeline #1 — today's analyzer, via the sim harness. |
+| `dryrun-pipeline.ts` | pipeline #2 — router → extractor → engine, deciding but never writing (§10 step 2). |
+| `engine-pipeline.ts` | pipeline #3 — the shipped route with the engine WRITING (§10 step 6). |
 | `runner.ts` | feeds cases to a pipeline, scores them, writes the report. |
 | `baseline.stub.json` | what passes today. A record, not an endorsement. |
 | `../sim/corpus.spec.ts` | stubbed runner (CI). |
@@ -228,3 +230,50 @@ Failures are classified worst-first: `error` (the case threw — not a measureme
 of anything), `spurious_write`, `wrong_write`, `missed_write`, `speech`. A case
 that throws is recorded and the sweep carries on; a paid live sweep must never
 hinge on one malformed fixture.
+
+## §10 step 6 — the second live arm
+
+Step 6 moves `self_att`, `other_att` and `offer` off the mega-prompt and
+onto router → extractor → engine → `registerAttendance`. The corpus is
+how that is judged, and it is judged by running the **same 47 cases
+twice**, same real model, same worlds, in the same spec:
+
+```bash
+set -a; source .env; set +a
+npm run test:corpus:live                      # arm A — the incumbent
+MT_CORPUS_ENGINE=1 npm run test:corpus:live   # arm B — the engine, WRITING
+```
+
+Each arm writes `.e2e/corpus/report-live-<pipeline>.json`, so the two
+can be diffed case by case afterwards rather than overwriting each
+other. **Any case arm A passes and arm B fails is a blocker.**
+
+`AttendanceEnginePipeline` (`engine-pipeline.ts`) is the shipped route
+with the engine on. It is a third pipeline, not a variant of the second:
+
+| | what it grades | writes? |
+| --- | --- | --- |
+| `current-analyzer` | the mega-prompt's decision, applied | yes |
+| `pipeline-dryrun` | the engine's DECISION | **no** — proposals, projected in memory |
+| `attendance-engine` | the engine's **WRITE** | yes — transactions, events, bench offers, the recruit blast |
+
+That third row is why `PR33-recruit-ask-must-not-swallow-the-drop`
+scores 0/3 under the dry run and must PASS under the engine: it expects
+`DM'd N recent players`, and a dry run performs no DM blast.
+
+### How the flag is flipped on a live run
+
+Not by an env var, and not by the router stub file. A live sweep runs
+one dev server whose environment is fixed at boot, and the stub seams
+are pinned empty on live runs on purpose — a "live" sweep that could
+read canned routes or canned FACTS out of a file would be grading its
+own answer key. So `AttendanceEnginePipeline` sends
+`x-mt-attendance-engine: 1` on every request, which
+`src/lib/pipeline/gate.ts` honours **only when `MT_TEST_MODE` is exactly
+`"1"`** and which can only ever choose between two shipped code paths.
+It cannot inject a route, a fact, a verdict or a write. The baseline arm
+sends no header at all.
+
+`MT_TEST_EXTRACTOR_STUB_FILE` is the extractor's own stub seam, used by
+`e2e/sim/attendance-engine.spec.ts` in the free suite and pinned empty
+(and refused by `helpers/live-llm.ts`) on any live run.

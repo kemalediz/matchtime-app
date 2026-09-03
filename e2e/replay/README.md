@@ -20,7 +20,20 @@ MT_REPLAY_CANDIDATE=<module> npm run test:replay:live   # the real comparison
 
 npm run replay:router-recall                     # §10 step 5: router recall, floor OFF
 MT_RECALL_FLOOR=1 npm run replay:router-recall   # …and with the floor ON
+
+# §10 step 6: the attendance engine, WRITING, against the incumbent —
+# always with the floor from a self-replay of the same size beside it
+MT_REPLAY_LIMIT=80 MT_REPLAY_CANDIDATE=../corpus/engine-pipeline.ts \
+  MT_REPLAY_FLOOR=.e2e/replay/floor.json npm run test:replay:live
 ```
+
+`../corpus/engine-pipeline.ts` is the shipped route with
+`ATTENDANCE_ENGINE_ENABLED` forced on for its own requests, via the
+test-only `x-mt-attendance-engine` header (see `e2e/corpus/README.md`).
+The incumbent side sends no header and therefore gets the server's own
+flag, which is off. Both sides are the same route, the same world and
+the same request shape; the only difference is who decides the three
+attendance routes.
 
 Everything the sweep writes lands under `.e2e/replay/` (gitignored).
 
