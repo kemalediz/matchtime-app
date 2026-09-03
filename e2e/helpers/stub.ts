@@ -52,6 +52,10 @@ export function clearLlmStub(): void {
 export interface RouterStub {
   enabled?: boolean;
   floor?: boolean;
+  /** Overrides ATTENDANCE_ENGINE_ENABLED (§10 step 6). Carried on the
+   *  ROUTER stub because the engine needs the router's answer anyway,
+   *  and one file per request is easier to reason about than two. */
+  engine?: boolean;
   /** waMessageId → route. Unmapped ids come back `unsure`, so the
    *  analyzer still sees them — the direction that cannot lose a write. */
   routes?: Record<string, string>;
@@ -67,4 +71,56 @@ export function setRouterStub(stub: RouterStub): void {
 
 export function clearRouterStub(): void {
   setRouterStub({});
+}
+
+/**
+ * The EXTRACTOR stub (§10 step 6). One layer later than the router: it
+ * says what FACTS the attendance extractor returned for a given body.
+ *
+ * It deliberately carries the model's RAW JSON rather than a `Facts`
+ * object, so `parseFacts` still runs for real — the enum re-validation,
+ * the dropped claim on a drifted polarity and the "none" → null
+ * affirmation mapping are part of what a step-6 spec is testing.
+ *
+ * `{}` — what `clearExtractorStub()` writes — means every body extracts
+ * NO claims. That is the direction that cannot invent a write in a spec
+ * which has never heard of the engine, and combined with the flag
+ * defaulting off it is why the existing suite is untouched by this
+ * file's existence.
+ */
+export interface ExtractorStub {
+  bodies?: Record<string, Record<string, unknown>>;
+}
+
+/** A single attendance claim, with the boring fields filled in. */
+export function claim(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    subject: "sender",
+    personRef: "",
+    personNamed: false,
+    polarity: "in",
+    contingent: false,
+    conditionOn: "none",
+    tense: "present",
+    reported: false,
+    confidence: 0.95,
+    ...over,
+  };
+}
+
+/** The whole attendance-extractor body, with the boring fields filled in. */
+export function facts(
+  claims: Array<Record<string, unknown>>,
+  over: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { claims, affirmation: "none", sideRequests: [], ...over };
+}
+
+export function setExtractorStub(stub: ExtractorStub): void {
+  mkdirSync(path.dirname(E2E.EXTRACTOR_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.EXTRACTOR_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearExtractorStub(): void {
+  setExtractorStub({});
 }

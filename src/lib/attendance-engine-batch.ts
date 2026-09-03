@@ -171,10 +171,14 @@ export async function runAttendanceEngineBatch(args: {
    * describing.
    */
   expectedMatchId: string | null;
+  /** The flag, resolved by the caller (which also knows about the
+   *  test-only per-request override). Defaults to reading the env, so
+   *  no caller can accidentally get an engine it did not ask for. */
+  enabled?: boolean;
   deps: EngineBatchDeps;
 }): Promise<EngineBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, deps } = args;
-  if (!isAttendanceEngineEnabled()) return EMPTY;
+  if (!(args.enabled ?? isAttendanceEngineEnabled())) return EMPTY;
 
   const candidates = messages.filter((m) => !m.gated && engineOwnsRoute(m.route));
   if (candidates.length === 0) return EMPTY;

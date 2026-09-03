@@ -410,6 +410,18 @@ export interface SimHistoryEntry {
 export interface SimBatchOpts {
   /** Recent chat history to send with the batch (oldest first). */
   history?: SimHistoryEntry[];
+  /**
+   * §10 step 6, LIVE runs only: force the attendance engine on or off
+   * for THIS request, via the test-only `x-mt-attendance-engine` header
+   * (`src/lib/pipeline/gate.ts`, inert unless MT_TEST_MODE is "1").
+   *
+   * The stub-file seam cannot do this on a live run — the suite pins
+   * `MT_TEST_ROUTER_STUB_FILE` empty there on purpose — and the dev
+   * server's environment is fixed at boot, so a live A/B has no other
+   * way to run one arm with the flag on and the next with it off in the
+   * same process. Omitted → the server's own flag decides.
+   */
+  attendanceEngine?: boolean;
 }
 
 // ── The group itself ───────────────────────────────────────────────────
@@ -522,7 +534,12 @@ export class SimGroup {
         h.timestamp ?? new Date(Date.now() - (arr.length - i) * 60_000).toISOString(),
     }));
     const res = await this.request.post("/api/whatsapp/analyze", {
-      headers: HEADERS,
+      headers: {
+        ...HEADERS,
+        ...(typeof opts.attendanceEngine === "boolean"
+          ? { "x-mt-attendance-engine": opts.attendanceEngine ? "1" : "0" }
+          : {}),
+      },
       data: {
         groupId: this.groupId,
         messages,

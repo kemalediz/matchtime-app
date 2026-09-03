@@ -27,7 +27,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  engineHeaderOverride,
   engineOwnsRoute,
+  ENGINE_HEADER,
   floorForcesAnalysis,
   gatedVerdict,
   GATED_REASON_PREFIX,
@@ -426,5 +428,46 @@ describe("the attendance engine's ownership (§10 step 6)", () => {
     expect(routerIsNeeded({})).toBe(false);
     expect(routerIsNeeded({ ROUTER_GATE_ENABLED: "1" })).toBe(true);
     expect(routerIsNeeded({ ATTENDANCE_ENGINE_ENABLED: "1" })).toBe(true);
+  });
+});
+
+/**
+ * The one seam a LIVE A/B needs, and the two gates that keep it out of
+ * production. A test-only override on the WRITE path is exactly the
+ * kind of thing that has to be proven inert rather than assumed inert.
+ */
+describe("the test-only per-request engine override", () => {
+  it("is inert without MT_TEST_MODE=1, whatever the header says", () => {
+    for (const v of ["1", "true", "yes", "on", "0", "off", "garbage"]) {
+      expect(engineHeaderOverride(v, {})).toBeNull();
+      expect(engineHeaderOverride(v, { MT_TEST_MODE: "0" })).toBeNull();
+      expect(engineHeaderOverride(v, { MT_TEST_MODE: "true" })).toBeNull();
+      // Even with the real flag on, the header cannot turn it off in a
+      // process that has not declared itself a test.
+      expect(engineHeaderOverride(v, { ATTENDANCE_ENGINE_ENABLED: "1" })).toBeNull();
+    }
+  });
+
+  it("reads both directions inside a test process", () => {
+    const env = { MT_TEST_MODE: "1" };
+    for (const v of ["1", "true", "yes", "on", "ON", " 1 "]) {
+      expect(engineHeaderOverride(v, env)).toBe(true);
+    }
+    for (const v of ["0", "false", "no", "off"]) {
+      expect(engineHeaderOverride(v, env)).toBe(false);
+    }
+  });
+
+  it("falls back to the flag when the header is absent or unrecognised", () => {
+    const env = { MT_TEST_MODE: "1" };
+    expect(engineHeaderOverride(undefined, env)).toBeNull();
+    expect(engineHeaderOverride(null, env)).toBeNull();
+    expect(engineHeaderOverride("", env)).toBeNull();
+    expect(engineHeaderOverride("   ", env)).toBeNull();
+    expect(engineHeaderOverride("maybe", env)).toBeNull();
+  });
+
+  it("names a header nothing in production sends", () => {
+    expect(ENGINE_HEADER).toBe("x-mt-attendance-engine");
   });
 });

@@ -170,6 +170,44 @@ export function isAttendanceEngineEnabled(env: Env = process.env): boolean {
   return on(env, ENGINE_FLAG);
 }
 
+/**
+ * TEST-ONLY per-request override, for the ONE thing the stub-file seam
+ * cannot do: an A/B on a LIVE run.
+ *
+ * The corpus and the replay harness both need "the same real model, the
+ * same real world, the flag on for one arm and off for the other, in
+ * one process". The stub file cannot serve that — a live run pins
+ * `MT_TEST_ROUTER_STUB_FILE` empty on purpose, because a live sweep
+ * that could read canned routes out of a file would not be measuring
+ * anything. And the dev server's environment is fixed at boot, so the
+ * env var cannot differ between two requests either.
+ *
+ * So the header. It is DOUBLE-gated and both gates matter:
+ *
+ *   1. `MT_TEST_MODE` must be exactly "1". Nothing sets that but
+ *      `e2e/helpers/env.ts:buildTestEnv()`; it is not in `.env.example`,
+ *      not in Vercel, and not on the Pi.
+ *   2. Absent or unrecognised → `null`, and the caller falls back to the
+ *      env flag. There is no value of this header that can turn the
+ *      engine on in a process that has not declared itself a test.
+ *
+ * It can only ever choose between two shipped code paths. It cannot
+ * inject a route, a fact, a verdict or a write.
+ */
+export const ENGINE_HEADER = "x-mt-attendance-engine";
+
+export function engineHeaderOverride(
+  header: string | null | undefined,
+  env: Env = process.env,
+): boolean | null {
+  if (env.MT_TEST_MODE !== "1") return null;
+  const raw = header?.trim().toLowerCase();
+  if (raw === undefined || raw === "") return null;
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return true;
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
+  return null;
+}
+
 /** Does the engine decide this route? A route it has never heard of —
  *  including `undefined`, which is what a message the router never
  *  mentioned looks like — is never owned. */

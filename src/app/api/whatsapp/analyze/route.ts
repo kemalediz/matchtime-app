@@ -67,7 +67,8 @@ import {
   gatedVerdict,
   isAttendanceEngineEnabled,
   isRouterGateEnabled,
-  routerIsNeeded,
+  engineHeaderOverride,
+  ENGINE_HEADER,
   GATED_HANDLED_BY,
 } from "@/lib/pipeline/gate";
 import { loadOpenQuestion } from "@/lib/pipeline/load-awaiting-answer";
@@ -696,8 +697,15 @@ async function handleAnalyzeRequest(request: Request) {
   // the gate is off. What the router's answer is USED for still splits
   // by flag — `gate.skipped` is only honoured while ROUTER_GATE_ENABLED
   // is on, so turning the engine on does not start skipping messages.
+  // The step-6 flag, plus the test-only per-request override the live
+  // A/B needs (`engineHeaderOverride` — inert unless MT_TEST_MODE is
+  // "1"). Resolved HERE because the router has to run for it: step 5
+  // needed routes to decide what the analyzer sees, step 6 needs the
+  // same routes to decide what the analyzer DECIDES.
+  const engineEnabled =
+    engineHeaderOverride(request.headers.get(ENGINE_HEADER)) ?? isAttendanceEngineEnabled();
   const gate =
-    fresh.length > 0 && routerIsNeeded()
+    fresh.length > 0 && (isRouterGateEnabled() || engineEnabled)
       ? await gateBatch(
           fresh.map((m) => ({
             waMessageId: m.waMessageId,
@@ -756,7 +764,7 @@ async function handleAnalyzeRequest(request: Request) {
   // mentions it is inert, and each of the three routes goes back to the
   // 18,315-token prompt and `executeVerdict`, exactly as on `b03d96b`.
   // The router gate is untouched by that flip, in both directions.
-  const engineAdminIds = isAttendanceEngineEnabled()
+  const engineAdminIds = engineEnabled
     ? new Set(
         (
           await db.membership.findMany({
@@ -767,11 +775,12 @@ async function handleAnalyzeRequest(request: Request) {
       )
     : new Set<string>();
   const engineBatch =
-    fresh.length > 0 && isAttendanceEngineEnabled()
+    fresh.length > 0 && engineEnabled
       ? await runAttendanceEngineBatch({
           orgId: org.id,
           now: new Date(),
           expectedMatchId: activeMatchForReply?.id ?? null,
+          enabled: engineEnabled,
           history: history.map((h) => ({ author: h.authorName, body: h.body })),
           messages: fresh.map((m) => {
             const s = senderById.get(m.waMessageId)!;

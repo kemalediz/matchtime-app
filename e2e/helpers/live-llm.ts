@@ -51,6 +51,9 @@ export const STUB_FILE_ENV = "MT_TEST_LLM_STUB_FILE";
 /** §10 step 5's router seam. Mirrors `ROUTER_STUB_FILE_ENV` in
  *  `src/lib/pipeline/gate.ts`. */
 export const ROUTER_STUB_FILE_ENV = "MT_TEST_ROUTER_STUB_FILE";
+/** §10 step 6's extractor seam. Mirrors `EXTRACTOR_STUB_FILE_ENV` in
+ *  `src/lib/pipeline/extractor-stub.ts`. */
+export const EXTRACTOR_STUB_FILE_ENV = "MT_TEST_EXTRACTOR_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -134,6 +137,18 @@ export function assertSeamMatchesMode(
           `router's recall, the number the whole step turns on, would be the stub's.\n` +
           `  Fix:  unset ${ROUTER_STUB_FILE_ENV} in your shell — the suite sets it itself for ` +
           `stubbed runs and pins it empty for live ones.`,
+      );
+    }
+    if (!blank(childEnv[EXTRACTOR_STUB_FILE_ENV])) {
+      throw new E2EPreflightError(
+        `e2e: REFUSING to run — ${LIVE_ENV_FLAG}=1 asks for a LIVE model run, but the ` +
+          `server under test would still see ${EXTRACTOR_STUB_FILE_ENV}=${childEnv[EXTRACTOR_STUB_FILE_ENV]}.\n` +
+          `  That file answers for the §10 step 6 attendance extractor, so a "live" sweep ` +
+          `could be deciding a real player's squad place from FACTS a human wrote — which is ` +
+          `grading your own answer key, the trap e2e/corpus/README.md names under "Do not ` +
+          `'record' stubs from a live run".\n` +
+          `  Fix:  unset ${EXTRACTOR_STUB_FILE_ENV} in your shell — the suite sets it itself ` +
+          `for stubbed runs and pins it empty for live ones.`,
       );
     }
     return;

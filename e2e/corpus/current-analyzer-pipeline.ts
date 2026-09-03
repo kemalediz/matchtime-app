@@ -22,7 +22,16 @@ import type { CorpusMode, CorpusPipeline, PipelineContext } from "./pipeline";
 import { buildCorpusWorld, readMembers, readRows, readScore, readTeams } from "./world";
 
 export class CurrentAnalyzerPipeline implements CorpusPipeline {
-  readonly name = "current-analyzer";
+  readonly name: string = "current-analyzer";
+
+  /**
+   * §10 step 6: force the attendance engine on (or off) for every
+   * request this pipeline makes, via the test-only per-request header.
+   * `undefined` — the default, and what every existing caller gets —
+   * means the server's own flag decides, so nothing about this class's
+   * behaviour changes until a subclass says otherwise.
+   */
+  protected readonly attendanceEngine: boolean | undefined = undefined;
 
   supports(c: CorpusCase, mode: CorpusMode): boolean {
     if (mode === "live") return true;
@@ -65,7 +74,12 @@ export class CurrentAnalyzerPipeline implements CorpusPipeline {
           botMentioned: m.tag ?? false,
           ...(mode === "stub" && m.stub ? { verdict: m.stub as StubVerdict } : {}),
         })),
-        { history: [...history] },
+        {
+          history: [...history],
+          ...(this.attendanceEngine !== undefined
+            ? { attendanceEngine: this.attendanceEngine }
+            : {}),
+        },
       );
 
       for (const r of batch.results) {

@@ -25,9 +25,11 @@
  * check the expectation against the commit in its provenance block, then
  * record the failure.
  */
+import path from "node:path";
 import { test, expect, resetDb } from "../fixtures";
 import { loadCorpus } from "../corpus/load";
 import { CurrentAnalyzerPipeline } from "../corpus/current-analyzer-pipeline";
+import { AttendanceEnginePipeline } from "../corpus/engine-pipeline";
 import { runCorpus, renderScoreboard, writeReport } from "../corpus/runner";
 import { describeReach, liveReachFailure, reachWatermark, readReach } from "../helpers/live-llm";
 
@@ -47,7 +49,17 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
       test.setTimeout(3 * 60 * 60_000);
 
       const cases = loadCorpus();
-      const pipeline = new CurrentAnalyzerPipeline();
+      // §10 step 6. `MT_CORPUS_ENGINE=1` runs the SAME 47 cases, the
+      // same real model and the same worlds through the shipped route
+      // with the attendance engine deciding and WRITING. Two runs of
+      // this file, one with and one without, is the case-by-case
+      // old-vs-new evidence the step is judged on — and because both
+      // arms are the same spec, a difference cannot come from the
+      // harness.
+      const pipeline =
+        process.env.MT_CORPUS_ENGINE === "1"
+          ? new AttendanceEnginePipeline()
+          : new CurrentAnalyzerPipeline();
       // Taken from the database's own clock, before a single case runs:
       // reach must be read from THIS sweep's rows, never from whatever
       // an earlier stubbed run left in the table.
@@ -78,14 +90,20 @@ const MIN_PASS = process.env.MT_CORPUS_MIN_PASS ? Number(process.env.MT_CORPUS_M
 
       // eslint-disable-next-line no-console
       console.log(renderScoreboard(sb));
-      const file = writeReport({
-        pipeline: pipeline.name,
-        mode: "live",
-        runsPerCase: RUNS,
-        generatedAt: new Date().toISOString(),
-        scoreboard: sb,
-        reach,
-      });
+      const file = writeReport(
+        {
+          pipeline: pipeline.name,
+          mode: "live",
+          runsPerCase: RUNS,
+          generatedAt: new Date().toISOString(),
+          scoreboard: sb,
+          reach,
+        },
+        // Named by PIPELINE as well as mode, so the two arms of the
+        // step-6 A/B do not overwrite each other and can be diffed
+        // case by case afterwards.
+        path.join(process.cwd(), ".e2e", "corpus", `report-live-${pipeline.name}.json`),
+      );
       // eslint-disable-next-line no-console
       console.log(`[corpus-live] machine-readable report → ${file}`);
 
