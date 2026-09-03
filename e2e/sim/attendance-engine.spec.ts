@@ -215,6 +215,41 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
   });
 
+  test("a pasted numbered roster is not the engine's — PR #39's guard still runs", async ({
+    request,
+    db,
+  }) => {
+    // The engine would read a fourteen-line roster as fourteen
+    // third-party IN claims. `clampRosterDerivedWrites` registers
+    // NOBODY off a list that does not restate our own roster post, and
+    // that guard lives in the analyze route, below the engine's
+    // short-circuit. So the shape is not owned and the shipped rule
+    // still runs — which matters, because PR #35 caught the same paste
+    // registering a different subset of itself on each run.
+    const g = await createGroup(request, db, { attendance: [] });
+    const roster = "1. Dan Drummer\n2. Felix Fox\n3. Greg Gale\n4. Henry Hill";
+    engineOn({
+      [roster]: {
+        route: "other_att",
+        facts: facts([
+          claim({ subject: "other", personRef: "Dan", personNamed: true, polarity: "in" }),
+          claim({ subject: "other", personRef: "Felix", personNamed: true, polarity: "in" }),
+        ]),
+      },
+    });
+
+    await g.postBatch([{ player: "pete", body: roster, tag: true }]);
+
+    // Nobody off the list is registered, by either decider.
+    expect(await g.attendanceOf("dan")).toBeNull();
+    expect(await g.attendanceOf("felix")).toBeNull();
+    const row = await db.one<{ handledBy: string }>(
+      `SELECT "handledBy" FROM "AnalyzedMessage" WHERE "orgId" = $1 AND body = $2`,
+      [g.orgId, roster],
+    );
+    expect(row?.handledBy).not.toBe("attendance-engine");
+  });
+
   test("a NON-admin cannot demote anyone, tag or no tag", async ({ request, db }) => {
     const g = await createGroup(request, db, {
       attendance: [

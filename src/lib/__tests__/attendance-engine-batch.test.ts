@@ -242,6 +242,20 @@ describe("it fails OPEN — every failure owns nothing and the analyzer keeps th
     warn.mockRestore();
   });
 
+  it("the message is a pasted numbered roster — PR #39's shape, and its guard is in the route", async () => {
+    // `reconcilePastedRoster` + `clampRosterDerivedWrites` are the
+    // shipped handling for this shape, and PR #35 measured why: the
+    // same paste registered a DIFFERENT SUBSET on each run. The engine
+    // has no equivalent and would read fourteen lines as fourteen
+    // third-party INs, so it does not own the shape at all.
+    const d = deps();
+    const roster =
+      "1. Pete Power\n2. Dan Drummer\n3. Alice Admin\n4. Someone Else\n5. Another Name";
+    const r = await run([msg({ body: roster })], d);
+    expect(r.ownedIds.size).toBe(0);
+    expect(d.registered).toEqual([]);
+  });
+
   it("the sender has an open bench PROMPT — a different flow the engine has no concept of", async () => {
     // `resolveBenchConfirmation` owns a group "yes"/"👍" answering a
     // PendingBenchConfirmation. Handing that to the engine would silently

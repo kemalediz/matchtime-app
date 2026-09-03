@@ -57,6 +57,7 @@
  * message" true across the split.
  */
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
+import { parsePastedRoster } from "./pasted-roster";
 import { extractForRoute } from "./pipeline/extractors";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
@@ -242,9 +243,29 @@ export async function runAttendanceEngineBatch(args: {
     return empty();
   }
 
-  const owned = candidates.filter(
-    (m) => !(m.senderUserId && promptedUserIds.has(m.senderUserId)),
-  );
+  const owned = candidates.filter((m) => {
+    if (m.senderUserId && promptedUserIds.has(m.senderUserId)) return false;
+    // ── PR #39's pasted-roster clamp is NOT reimplemented here ───────
+    //
+    // A pasted numbered roster is a message shape with its own solved
+    // handling in the analyze route: `reconcilePastedRoster` computes
+    // the appended names ARITHMETICALLY when the paste restates our own
+    // roster post (S26), and `clampRosterDerivedWrites` registers
+    // NOBODY off any other list. That exists because PR #35's
+    // self-replay measured the same paste registering a DIFFERENT
+    // SUBSET on each run — `Nabeel` one time, `Adam, Amir, Ehtisham,
+    // Martin` the next.
+    //
+    // The engine has no equivalent, and a fourteen-line roster routed
+    // `other_att` is fourteen third-party IN claims it would happily
+    // apply. Rather than reimplement a shipped guard on the one step
+    // that can put a player at a pitch with no slot, the shape is
+    // simply not owned: it goes to the analyzer, where both rules
+    // already run. The test is on the SHAPE and never on who is named,
+    // so it cannot be steered by content.
+    if (parsePastedRoster(m.body)) return false;
+    return true;
+  });
   if (owned.length === 0) return empty();
   const ownedIds = new Set(owned.map((m) => m.waMessageId));
 
