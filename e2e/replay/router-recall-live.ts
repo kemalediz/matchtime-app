@@ -45,6 +45,12 @@ import {
   toRoutedRow,
   type RoutedRow,
 } from "./router-recall";
+import {
+  awaitingQuestionsFrom,
+  openQuestionForBatch,
+  renderAwaitingEffect,
+  summariseAwaiting,
+} from "./router-recall-awaiting";
 import type { ReplaySource } from "./types";
 
 loadEnv();
@@ -117,8 +123,27 @@ async function main(): Promise<number> {
   let calls = 0;
   let fallbacks = 0;
 
+  // §11.1's gap, closed. `MT_RECALL_NO_AWAITING=1` routes without the
+  // open-question context, for anyone who wants the two paid sweeps
+  // rather than the free derivation below.
+  const awaitingOff = process.env.MT_RECALL_NO_AWAITING === "1";
+  const questions = awaitingOff ? [] : awaitingQuestionsFrom(source);
+  let batchesWithOpenQuestion = 0;
+  console.log(
+    `[recall] open-question context: ${awaitingOff ? "OFF" : `${questions.length} question(s) ` +
+      `MatchTime asked across the whole extract`}`,
+  );
+
   for (let i = 0; i < batches.length; i++) {
     const b = batches[i];
+    // The batch instant is when production wrote its rows; the flush it
+    // covers is the ten minutes before that. `openQuestionForBatch`
+    // takes the wide reading of the overlap and says why.
+    const batchAt = new Date(
+      Math.max(...b.messages.map((m) => new Date(m.createdAt).getTime())),
+    );
+    const awaiting = openQuestionForBatch(questions, b.orgId, batchAt);
+    if (awaiting) batchesWithOpenQuestion += 1;
     const res = await routeBatch(
       model,
       b.messages.map((m) => ({
@@ -126,7 +151,7 @@ async function main(): Promise<number> {
         authorName: m.authorName,
         body: m.body ?? "",
       })),
-      { floor },
+      { floor, awaiting },
     );
     if (res.usage) {
       calls += 1;
@@ -176,6 +201,19 @@ async function main(): Promise<number> {
     console.log("");
     console.log(renderFloorEffect(derived, report));
   }
+  // The open-question context only ever rewrites `none` and records what
+  // it replaced, so the run WITHOUT it is recoverable exactly from the
+  // run WITH it. Before and after, from one paid sweep, with the
+  // router's own answers held fixed.
+  const awaitingEffect = awaitingOff ? null : summariseAwaiting(rows, report);
+  if (awaitingEffect) {
+    console.log("");
+    console.log(
+      `  MatchTime had a question open in ${batchesWithOpenQuestion} of ${batches.length} batches ` +
+        `(${((batchesWithOpenQuestion / Math.max(1, batches.length)) * 100).toFixed(1)}%).`,
+    );
+    console.log(renderAwaitingEffect(awaitingEffect, report));
+  }
   console.log("");
   console.log(
     `[recall] LLM: LIVE confirmed - ${calls} router call(s) billed: ` +
@@ -201,6 +239,8 @@ async function main(): Promise<number> {
         fallbackRate,
         report,
         derivedFloor: derived,
+        awaiting: awaitingEffect,
+        batchesWithOpenQuestion,
         rows,
       },
       null,

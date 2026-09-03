@@ -127,6 +127,24 @@ async function main(): Promise<number> {
     [matches.map((m) => (m as { id: string }).id)],
   );
 
+  // The other two things MatchTime writes down when it asks a question
+  // and waits (`src/lib/pipeline/awaiting-answer.ts`).
+  // `PendingBenchConfirmation` is legacy — the 2026-05-19 bench redesign
+  // replaced it — but it is what the 2026-05-05 case actually was, so a
+  // sweep without it cannot reproduce half of the evidence the gate is
+  // gated on.
+  const pendingBenchConfirmations = await q(
+    `SELECT p."matchId", p."userId", p."createdAt", p."resolvedAt", p."expiresAt"
+       FROM "PendingBenchConfirmation" p WHERE p."matchId" = ANY($1)`,
+    [matches.map((m) => (m as { id: string }).id)],
+  );
+
+  const tentativeAvailabilities = await q(
+    `SELECT t."matchId", t."userId", t."notifiedAt", t."resolvedAt"
+       FROM "TentativeAvailability" t WHERE t."matchId" = ANY($1)`,
+    [matches.map((m) => (m as { id: string }).id)],
+  );
+
   // The append-only attendance log (2026-09-01). It is what turns "the
   // squad at this instant is unknowable" into a fact — but only from the
   // day it was applied, so on an older database this query returns
@@ -260,6 +278,25 @@ async function main(): Promise<number> {
         matchId: String(r.matchId),
         replacingUserId: (r.replacingUserId as string | null) ?? null,
         createdAt: iso(r.createdAt),
+        resolvedAt: r.resolvedAt ? iso(r.resolvedAt) : null,
+      };
+    }),
+    pendingBenchConfirmations: pendingBenchConfirmations.map((p) => {
+      const r = p as Record<string, unknown>;
+      return {
+        matchId: String(r.matchId),
+        userId: String(r.userId),
+        createdAt: iso(r.createdAt),
+        resolvedAt: r.resolvedAt ? iso(r.resolvedAt) : null,
+        expiresAt: iso(r.expiresAt),
+      };
+    }),
+    tentativeAvailabilities: tentativeAvailabilities.map((t) => {
+      const r = t as Record<string, unknown>;
+      return {
+        matchId: String(r.matchId),
+        userId: String(r.userId),
+        notifiedAt: r.notifiedAt ? iso(r.notifiedAt) : null,
         resolvedAt: r.resolvedAt ? iso(r.resolvedAt) : null,
       };
     }),
