@@ -533,23 +533,128 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(await g.attendanceOf("dan")).toMatchObject({ status: "CONFIRMED" });
   });
 
-  test("an extractor failure is LOUD: no write, no reply, and a row that says so", async ({
+  test("an extractor failure hands the message to the ANALYZER, not to silence", async ({
     request,
     db,
   }) => {
-    // §9 keeps the partial-response admin DM and asks for the mechanism
-    // to be fixed — "under the new design it matches a typed error,
-    // which is what it always wanted to be". This is that.
+    // §11.4 asked for "fail closed and surface it". That was written
+    // before the analyzer was still standing beside this path, and
+    // closed here meant SILENT — no write, no reply, and a player who
+    // said IN not in the squad. The first live sweep measured 27
+    // `529 Overloaded` and 3 `500`s across 10 messages, which took two
+    // corpus cases from 3/3 to 0/3 without the engine ever deciding
+    // them wrongly.
+    //
+    // So the message goes back to the incumbent, with every seatbelt
+    // still around it: the step's own revert, applied per message and
+    // automatically. Possible only because the engine runs BEFORE
+    // `analyzeBatch`, so nothing has been written and no batch sent.
     const g = await createGroup(request, db, { attendance: [] });
     setRouterStub({ enabled: false, floor: false, engine: true, bodies: { in: "self_att" } });
-    // Something `extractJson` cannot read at all → a degradation, not
-    // silence and not a guess.
+    // Something `extractJson` cannot read at all.
     setExtractorStub({ bodies: { in: "not json at all" as never } });
 
-    const res = await g.postBatch([{ player: "pete", body: "in" }]);
+    await g.postBatch([
+      {
+        player: "pete",
+        body: "in",
+        verdict: { intent: "in", registerAttendance: "IN", react: "✅" },
+      },
+    ]);
 
-    expect(await g.attendanceOf("pete")).toBeNull();
-    expect(res.results[0].reply).toBeNull();
+    // The write still lands — by the OTHER decider.
+    expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
+    const row = await db.one<{ handledBy: string }>(
+      `SELECT "handledBy" FROM "AnalyzedMessage" WHERE "orgId" = $1 AND body = 'in'`,
+      [g.orgId],
+    );
+    expect(row?.handledBy).toBe("llm");
+    expect(row?.handledBy).not.toBe("attendance-engine");
+  });
+
+  // ── the two defects the first live sweep found ────────────────────
+
+  test("a bare 'Confirmed' resolves against the post in the HISTORY, not a BotJob row", async ({
+    request,
+    db,
+  }) => {
+    // §3.2 S25 (2026-04-24 Amir, 7453daa): MatchTime's own last post is
+    // a KNOWN OBJECT, so a one-word confirmation is a lookup rather
+    // than an inference. The first live sweep of this step took
+    // `S25-short-confirm-after-pending-list` from 3/3 to 0/3 —
+    // "expected MatchTime to say something; it was silent" — because
+    // `loadSquadState` reads the last group `BotJob` and the pending
+    // list lives in the HISTORY the Pi forwards. The history is what
+    // actually appeared in the group, so it wins.
+    const g = await createGroup(request, db, { attendance: [] });
+    engineOn({
+      Confirmed: {
+        route: "self_att",
+        facts: facts([], { affirmation: "yes" }),
+      },
+    });
+
+    const res = await g.postBatch([{ player: "pete", body: "Confirmed" }], {
+      history: [
+        {
+          authorName: "MatchTime",
+          body: "Squad for Tue 20:00. Waiting for confirmation: Dan Drummer and Felix Fox.",
+        },
+      ],
+    });
+
+    expect(await g.attendanceOf("dan")).toMatchObject({ status: "CONFIRMED" });
+    expect(await g.attendanceOf("felix")).toMatchObject({ status: "CONFIRMED" });
+    // And it SPEAKS. "Message understood, action silently not taken" is
+    // this product's signature failure and it applies just as much when
+    // the action was already true.
+    expect(res.results.filter((r) => (r.reply ?? "").length > 0).length).toBeGreaterThan(0);
+  });
+
+  test("ONE squad post per batch even when both deciders speak", async ({ request, db }) => {
+    // The other defect the first live sweep found, on
+    // `S36-one-authoritative-squad-post-per-batch`: the engine posts the
+    // roster whenever the squad changed, the analyzer answers the
+    // question in the same batch, and the batch sends twice. The
+    // incumbent avoided it for the wrong reason — a plain "in" got a
+    // react and no reply — so the question's answer was the only send.
+    //
+    // The squad post now rides on the LAST message that speaks,
+    // whichever decider produced it, so the answer and the roster
+    // arrive as one message.
+    const g = await createGroup(request, db, { attendance: [] });
+    engineOn({
+      in: { route: "self_att", facts: IN() },
+      "me too": { route: "self_att", facts: IN() },
+      "@Match Time how many are we now?": { route: "question" },
+    });
+
+    const res = await g.postBatch([
+      { player: "pete", body: "in" },
+      { player: "dan", body: "me too" },
+      {
+        player: "felix",
+        body: "@Match Time how many are we now?",
+        tag: true,
+        verdict: {
+          intent: "question",
+          registerAttendance: null,
+          confidence: 0.9,
+          reply: "We're 2 in now, need plenty more.",
+          reasoning: "squad-state question",
+        },
+      },
+    ]);
+
+    const spoke = res.results.filter((r) => (r.reply ?? "").length > 0);
+    expect(spoke).toHaveLength(1);
+    expect(res.groupPosts).toEqual([]);
+    // The one send carries the roster, composed from the database.
+    expect(spoke[0].reply).toContain("2/");
+    expect(spoke[0].reply).not.toContain("[SQUAD]");
+    // Both writes landed.
+    expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
+    expect(await g.attendanceOf("dan")).toMatchObject({ status: "CONFIRMED" });
   });
 
   test("turning the flag back off is a complete revert, mid-suite", async ({ request, db }) => {

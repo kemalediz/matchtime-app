@@ -1104,24 +1104,9 @@ async function handleAnalyzeRequest(request: Request) {
       }
 
       let engineReply = ack.reply;
-      // The batch's one squad post rides on the last message that acted
-      // and is composed from the DATABASE in the batch-final pass
-      // below — the SAME pass, the same `SquadTruth`, the same
-      // keep-only-the-last collapse the analyzer's replies go through
-      // (§10 step 4). That is what makes "one squad post per batch"
-      // hold across a batch that both deciders touched, rather than
-      // being two rules that happen to agree.
-      //
-      // The marker rather than the composer's own text on purpose: the
-      // engine composed from its PROJECTED state, and between that
-      // projection and this line the writes actually landed. The
-      // database is the later, truer fact, and `[SQUAD]` is the
-      // existing way of saying "put the real post here".
-      // ONE reply per message: joined onto whatever this message was
-      // already going to say, never pushed as a second result.
-      if (engineBatch && engineBatch.squadPostForMessageId === msg.waMessageId) {
-        engineReply = engineReply ? `${engineReply}\n\n${SQUAD_POST_MARKER}` : SQUAD_POST_MARKER;
-      }
+      // NOTE: the batch's squad post is NOT attached here. It is
+      // attached after the whole loop, to whichever message ends up
+      // speaking last — see "THE BATCH'S ONE SQUAD POST" below.
       if (engineReply && nextMatchForReply) {
         engineReply = enforceProximity(engineReply, nextMatchForReply.date);
       }
@@ -2252,6 +2237,50 @@ async function handleAnalyzeRequest(request: Request) {
       }
     } catch (err) {
       console.error("[analyze] react/status reconciliation failed:", err);
+    }
+  }
+
+  // ── THE BATCH'S ONE SQUAD POST, ACROSS BOTH DECIDERS (§10 step 6) ──
+  //
+  //   The engine posts the roster whenever the squad changed. The
+  //   analyzer answers the questions in the same batch. Attach the
+  //   squad post to the message the engine acted on and you get TWO
+  //   sends whenever a batch contains both — measured on the first live
+  //   sweep of this step, where
+  //   `S36-one-authoritative-squad-post-per-batch` produced "📋 Based
+  //   on all the messages…" from the engine AND "Quick correction,
+  //   @Zair — we're actually…" from the analyzer, and its
+  //   `speaksAtMost: 1` caught it.
+  //
+  //   The incumbent did not have this problem for the wrong reason: a
+  //   plain "in" usually got a react and no reply at all, so the
+  //   question's answer was the batch's only send. The engine speaking
+  //   about every write is the improvement; two sends is the cost, and
+  //   it is avoidable.
+  //
+  //   So the marker goes on the LAST result that is already going to
+  //   speak — whichever decider produced it. `composeSquadStateReply`
+  //   then renders `lead + roster` into that one message, keeping the
+  //   analyzer's answer AND the database's roster in a single send, and
+  //   the collapse below still guarantees at most one composed post.
+  //   Nothing is lost: the lead survives unless it makes a squad claim
+  //   of its own, in which case the roster it would have contradicted
+  //   replaces it.
+  //
+  //   `[SQUAD]` rather than the composer's own text on purpose: the
+  //   engine composed from its PROJECTED state, and the writes have
+  //   landed since. The database is the later, truer fact, and the
+  //   marker is the existing way of saying "put the real post here".
+  if (engineBatch?.squadPostForMessageId) {
+    const speaks = results.filter((r) => (r.reply ?? "").length > 0);
+    const target =
+      speaks.length > 0
+        ? speaks[speaks.length - 1]
+        : results.find((r) => r.waMessageId === engineBatch.squadPostForMessageId);
+    if (target) {
+      target.reply = target.reply
+        ? `${target.reply}\n\n${SQUAD_POST_MARKER}`
+        : SQUAD_POST_MARKER;
     }
   }
 

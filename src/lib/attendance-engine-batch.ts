@@ -138,14 +138,25 @@ export interface EngineBatchResult {
   cost: { usd: number; calls: number; ms: number };
 }
 
-const EMPTY: EngineBatchResult = {
-  ownedIds: new Set(),
-  outcomes: new Map(),
-  squadPostForMessageId: null,
-  matchId: null,
-  degradations: [],
-  cost: { usd: 0, calls: 0, ms: 0 },
-};
+/**
+ * "The engine owns nothing; the analyzer keeps the batch."
+ *
+ * A FUNCTION, not a shared const. The result carries a `Set` and a
+ * `Map`, and a single frozen-by-convention instance handed to every
+ * caller is one `.add()` away from one request's state leaking into
+ * the next. Cheap to build, and it takes the accumulated degradations
+ * so a fail-open never loses the reason it happened.
+ */
+function empty(degradations: string[] = []): EngineBatchResult {
+  return {
+    ownedIds: new Set(),
+    outcomes: new Map(),
+    squadPostForMessageId: null,
+    matchId: null,
+    degradations,
+    cost: { usd: 0, calls: 0, ms: 0 },
+  };
+}
 
 export interface EngineBatchDeps extends EngineApplyDeps {
   /** Users with an unresolved bench prompt open on the active match.
@@ -179,10 +190,10 @@ export async function runAttendanceEngineBatch(args: {
   deps: EngineBatchDeps;
 }): Promise<EngineBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, deps } = args;
-  if (!(args.enabled ?? isAttendanceEngineEnabled())) return EMPTY;
+  if (!(args.enabled ?? isAttendanceEngineEnabled())) return empty();
 
   const candidates = messages.filter((m) => !m.gated && engineOwnsRoute(m.route));
-  if (candidates.length === 0) return EMPTY;
+  if (candidates.length === 0) return empty();
 
   const degradations: string[] = [];
   const t0 = Date.now();
@@ -194,25 +205,25 @@ export async function runAttendanceEngineBatch(args: {
     // Fail open. Owning nothing means the analyzer decides, which is
     // what happens today.
     console.error("[attendance-engine] state load failed; the analyzer keeps the batch:", err);
-    return EMPTY;
+    return empty();
   }
 
   // ── The carve-outs, all in the "own nothing" direction ─────────────
-  if (!state.features.attendance) return EMPTY;
+  if (!state.features.attendance) return empty();
   if (!state.matchId) {
     // No active registration match. The analyzer's `findRegistrationMatch`
     // would return null too and `executeVerdict` would do nothing, so
     // the outcome is the same either way — but it is the analyzer's
     // silence, with its reply and its `AnalyzedMessage` row, rather
     // than a second kind of silence nobody has seen before.
-    return EMPTY;
+    return empty();
   }
   if (expectedMatchId !== null && state.matchId !== expectedMatchId) {
     console.warn(
       `[attendance-engine] the route's registration match (${expectedMatchId}) and the ` +
         `engine's (${state.matchId}) disagree; owning nothing`,
     );
-    return EMPTY;
+    return empty();
   }
   const matchId = state.matchId;
 
@@ -228,20 +239,39 @@ export async function runAttendanceEngineBatch(args: {
     promptedUserIds = new Set(await deps.openBenchPromptUserIds(matchId));
   } catch (err) {
     console.error("[attendance-engine] bench-prompt lookup failed; owning nothing:", err);
-    return EMPTY;
+    return empty();
   }
 
   const owned = candidates.filter(
     (m) => !(m.senderUserId && promptedUserIds.has(m.senderUserId)),
   );
-  if (owned.length === 0) return EMPTY;
+  if (owned.length === 0) return empty();
   const ownedIds = new Set(owned.map((m) => m.waMessageId));
 
   // ── Stage 2: extractors, in parallel ───────────────────────────────
   const model = deps.model ?? extractorStubFromEnv() ?? anthropicModel();
+  // MatchTime's own last post, from the HISTORY the Pi forwards on every
+  // call, falling back to the last queued group `BotJob` that
+  // `loadSquadState` read.
+  //
+  // The history wins because it is what actually appeared in the group:
+  // a `BotJob` is a queued send, and a group whose last post predates
+  // the buffer window has an empty one. §3.2 S25's whole mechanism is
+  // that the bot's last post is a KNOWN OBJECT, so a bare "Confirmed"
+  // is a lookup rather than an inference — and with the wrong object it
+  // is neither. Measured: corpus case
+  // `S25-short-confirm-after-pending-list` went 3/3 → 0/3 ("expected
+  // MatchTime to say something; it was silent") because the pending
+  // list was in the history and `state.lastBotPost` was null.
+  //
+  // It feeds BOTH the extractor's context block and the engine's
+  // `parsePendingSet`, which must agree or the two stages resolve the
+  // same "Confirmed" against different posts.
   const lastBotPost =
     [...history].reverse().find((h) => (h.author ?? "").toLowerCase() === "matchtime")?.body ??
+    state.lastBotPost ??
     null;
+  state = { ...state, lastBotPost };
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, { facts: Facts; degraded: string | null }>();
@@ -264,7 +294,7 @@ export async function runAttendanceEngineBatch(args: {
         };
       }
       // An extractor that FAILED (as opposed to one that found nothing)
-      // must reach the engine as a degradation, not as silence.
+      // must not become silence.
       const failure = res.degradations.find((d) => /failed|could not be parsed/i.test(d.detail));
       factsById.set(m.waMessageId, {
         facts: res.facts,
@@ -272,6 +302,49 @@ export async function runAttendanceEngineBatch(args: {
       });
     }),
   );
+
+  // ── A FAILED EXTRACTION FALLS BACK TO THE ANALYZER, PER MESSAGE ────
+  //
+  // §11.4 says "on extractor failure, fail closed and surface it". That
+  // was written before the analyzer was still standing beside this
+  // path, and closed here meant SILENT: no write, no reply, and a
+  // player who said IN is not in the squad. Measured on the first live
+  // corpus sweep of this step: 27 `529 Overloaded` and 3 `500`s across
+  // 10 messages, which took S8 and S13b from 3/3 to 0/3 — not because
+  // the engine decided them wrongly but because it never got to decide
+  // them at all.
+  //
+  // The engine is one of TWO deciders and the other one is the
+  // incumbent, with every seatbelt still around it. So a message whose
+  // extraction failed is simply not owned: it goes back into
+  // `batchInputs` and the 18,315-token prompt handles it, exactly as it
+  // does today. That is the step's own revert — "flag flips the three
+  // routes back" — applied per message and automatically, and it costs
+  // one analyzer call.
+  //
+  // This is only possible because the engine runs BEFORE `analyzeBatch`
+  // (see the header). Nothing has been written and no batch has been
+  // sent when this decision is made.
+  const failedIds = new Set(
+    [...factsById.entries()].filter(([, v]) => v.degraded).map(([id]) => id),
+  );
+  if (failedIds.size > 0) {
+    for (const id of failedIds) {
+      const detail = factsById.get(id)?.degraded ?? "unknown";
+      degradations.push(
+        `${ENGINE_APPLY_DEGRADED_PREFIX} ${id}: ${detail} — handing this message back to the analyzer`,
+      );
+    }
+    console.warn(
+      `[attendance-engine] ${failedIds.size} extraction(s) failed; those messages go to the ` +
+        `analyzer instead of going silent`,
+    );
+  }
+  for (const id of failedIds) ownedIds.delete(id);
+  // Carrying `degradations` matters here: this is the branch where
+  // EVERY extraction failed, and returning the bare empty result would
+  // throw away the only record of why the engine went quiet.
+  if (ownedIds.size === 0) return empty(degradations);
 
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => {
@@ -307,7 +380,7 @@ export async function runAttendanceEngineBatch(args: {
       "[attendance-engine] the engine threw; the analyzer keeps the batch:",
       err,
     );
-    return EMPTY;
+    return empty();
   }
   for (const d of result.degradations) {
     degradations.push(`${d.stage} ${d.messageId ?? "batch"}: ${d.detail}`);
@@ -368,6 +441,10 @@ export async function runAttendanceEngineBatch(args: {
   let lastActed: string | null = null;
 
   for (const m of owned) {
+    // A message whose extraction failed is no longer ours — it is in
+    // `batchInputs` and the analyzer will decide it. Producing an
+    // outcome for it here would give it two deciders and two replies.
+    if (!ownedIds.has(m.waMessageId)) continue;
     const engineOutcome = result.outcomes.find((o) => o.messageId === m.waMessageId);
     const writes = appliedByMessage.get(m.waMessageId) ?? [];
     const landed = writes.filter((w) => w.ok).map((w) => w.write);

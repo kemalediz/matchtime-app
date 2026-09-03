@@ -136,7 +136,24 @@ export function anthropicModel(opts?: { apiKey?: string }): PipelineModel {
     name: "anthropic",
     async complete(req: ModelRequest): Promise<ModelResponse> {
       if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
-      const client = new Anthropic({ apiKey });
+      // RETRIES, RAISED FROM THE SDK DEFAULT OF 2, and this is not a
+      // tuning preference.
+      //
+      // §10 step 6 puts these calls on the WRITE path, and the failure
+      // mode of a call that gives up is a player who said IN not being
+      // in the squad. The first live corpus sweep of that step measured
+      // 27 `529 Overloaded` and 3 `500`s across 10 messages in one run
+      // — the analyzer, making one call per BATCH, rode the same window
+      // out while the engine, making one per MESSAGE and fanning them
+      // out in parallel, did not.
+      //
+      // The SDK retries 408/409/429/5xx with exponential backoff, which
+      // is exactly this class. Four attempts rather than two costs a
+      // few seconds on a bad minute and nothing at all on a good one.
+      // It is the FIRST of two defences: `attendance-engine-batch.ts`
+      // hands a message whose extraction still failed back to the
+      // analyzer rather than letting it go silent.
+      const client = new Anthropic({ apiKey, maxRetries: 4 });
       const cacheAttempted = req.system.length >= MIN_CACHEABLE_CHARS;
       const t0 = Date.now();
       const resp = await client.messages.create({

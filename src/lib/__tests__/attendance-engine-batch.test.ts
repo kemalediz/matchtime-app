@@ -277,11 +277,18 @@ describe("it fails OPEN — every failure owns nothing and the analyzer keeps th
 
 // ── the extractor failing is loud, not silent ───────────────────────
 
-describe("an extractor failure degrades LOUDLY and writes nothing", () => {
-  it("unparseable output → a typed marker on the reasoning, no reply, no write", async () => {
-    const d = deps({ model: modelReturning({}) });
-    // `{}` parses but yields no claims; a genuinely unreadable body is
-    // the one that has to reach the admin DM.
+describe("an extractor failure hands the message BACK to the analyzer", () => {
+  // The behaviour this replaced was "fail closed", which §11.4 asked
+  // for — and which meant SILENT: no write, no reply, and a player who
+  // said IN not in the squad. The first live corpus sweep of this step
+  // measured 27 `529 Overloaded` and 3 `500`s across 10 messages, which
+  // took two corpus cases from 3/3 to 0/3 without the engine ever
+  // deciding them wrongly. The engine is one of two deciders and the
+  // other one is the incumbent with all its seatbelts; handing the
+  // message over is the step's own revert, applied per message.
+
+  it("unparseable output → not owned, nothing written, and it is recorded", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const broken: PipelineModel = {
       name: "broken",
       async complete() {
@@ -294,26 +301,64 @@ describe("an extractor failure degrades LOUDLY and writes nothing", () => {
         };
       },
     };
-    const d2 = deps({ model: broken });
-    const r = await run([msg()], d2);
-    const o = r.outcomes.get("wa-1")!;
-    expect(o.reasoning).toMatch(/^attendance-engine: degraded —/);
-    expect(o.reply).toBeNull();
-    expect(d2.registered).toEqual([]);
+    const d = deps({ model: broken });
+    const r = await run([msg()], d);
+    // NOT owned → the route leaves it in `batchInputs` and the
+    // 18,315-token prompt decides it, exactly as it does today.
+    expect(r.ownedIds.size).toBe(0);
+    expect(r.outcomes.size).toBe(0);
     expect(d.registered).toEqual([]);
+    // Loud, not silent: the reason is on the record for the operator.
+    expect(r.degradations.join(" ")).toMatch(/handing this message back to the analyzer/);
+    warn.mockRestore();
   });
 
   it("a model call that throws is reported, not swallowed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const throwing: PipelineModel = {
       name: "throwing",
       async complete() {
-        throw new Error("upstream 529");
+        throw new Error("529 Overloaded");
       },
     };
     const d = deps({ model: throwing });
     const r = await run([msg()], d);
-    expect(r.outcomes.get("wa-1")!.reasoning).toMatch(/^attendance-engine: degraded —/);
+    expect(r.ownedIds.size).toBe(0);
     expect(d.registered).toEqual([]);
+    expect(r.degradations.join(" ")).toMatch(/529 Overloaded/);
+    warn.mockRestore();
+  });
+
+  it("one failed extraction does not cost the REST of the batch its decider", async () => {
+    // The fallback is per MESSAGE. A batch where one extractor call
+    // times out must not send four healthy ones to the analyzer too.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let n = 0;
+    const flaky: PipelineModel = {
+      name: "flaky",
+      async complete() {
+        n += 1;
+        if (n === 1) throw new Error("529 Overloaded");
+        return {
+          text: JSON.stringify(SELF_IN),
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 1,
+        };
+      },
+    };
+    const d = deps({ model: flaky });
+    const r = await run(
+      [
+        msg({ waMessageId: "a", senderUserId: "u-pete" }),
+        msg({ waMessageId: "b", senderUserId: "u-dan" }),
+      ],
+      d,
+    );
+    expect(r.ownedIds.size).toBe(1);
+    expect(d.registered).toHaveLength(1);
+    warn.mockRestore();
   });
 });
 
