@@ -143,6 +143,29 @@ export interface RawBenchOffer {
   resolvedAt: string | null;
 }
 
+/**
+ * An open question MatchTime asked and had not yet been answered.
+ *
+ * Added for the router's open-question context (`awaiting-answer.ts`).
+ * `BenchSlotOffer` was already extracted for world reconstruction; these
+ * two were not, and without them the recall sweep cannot reproduce
+ * either of the two thumbs-up cases PR #42 found.
+ */
+export interface RawPendingBenchConfirmation {
+  matchId: string;
+  userId: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  expiresAt: string;
+}
+
+export interface RawTentativeAvailability {
+  matchId: string;
+  userId: string;
+  notifiedAt: string | null;
+  resolvedAt: string | null;
+}
+
 export interface ReplaySource {
   messages: RawMessage[];
   matches: RawMatch[];
@@ -152,6 +175,11 @@ export interface ReplaySource {
   orgs: RawOrg[];
   teamAssignments: RawTeamAssignment[];
   benchOffers: RawBenchOffer[];
+  /** OPTIONAL, like `attendanceEvents`: an extract taken before the
+   *  router's open-question context existed simply has none, and every
+   *  batch then routes exactly as it did on `b03d96b`. */
+  pendingBenchConfirmations?: RawPendingBenchConfirmation[];
+  tentativeAvailabilities?: RawTentativeAvailability[];
   /** The append-only attendance log. OPTIONAL: an extract taken before
    *  the table existed simply has none, and reconstructs exactly as it
    *  did before. */

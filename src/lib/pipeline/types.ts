@@ -74,8 +74,17 @@ export const ALL_ROUTES: readonly Route[] = [
   "unsure",
 ];
 
-/** Where a route came from. `floor` outranks `model` (§11.1). */
-export type RouteSource = "floor" | "model" | "fallback";
+/**
+ * Where a route came from. `floor` outranks `model` (§11.1).
+ *
+ * `awaiting` is the same idea as `floor` and inherits its one-directional
+ * proof — it can only move a message OUT of `none` — but it is gated on a
+ * DATABASE ROW (an open `BenchSlotOffer` / `PendingBenchConfirmation` /
+ * `TentativeAvailability`) rather than on the text of the message. See
+ * `awaiting-answer.ts` for why the two `👍`s PR #42 found need a fact and
+ * not a pattern.
+ */
+export type RouteSource = "floor" | "awaiting" | "model" | "fallback";
 
 export interface RoutedMessage {
   messageId: string;

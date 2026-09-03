@@ -29,8 +29,22 @@
  *
  * The fourth containment — shadowing the `none` bucket forever — belongs
  * to the harness, not here.
+ *
+ * A FIFTH, WHICH §11.1 DID NOT ANTICIPATE AND THE DATA FOUND:
+ *
+ *   5. THE OPEN-QUESTION CONTEXT. Shadowing the `none` bucket is what
+ *      turned this up: over 1,695 real messages, exactly two are an
+ *      attendance write the gate would have lost, and both are a bare
+ *      `👍` answering a slot MatchTime had left open (PR #42). The floor
+ *      cannot reach them — a `👍` pattern would fire on every thumbs-up
+ *      in the group, which is the floor becoming a classifier again — so
+ *      the trigger is a DATABASE ROW instead of the message text: while
+ *      MatchTime has an open, unanswered question, a `none` route is not
+ *      trusted. Same one-directional shape as the floor, different
+ *      trigger. See `awaiting-answer.ts`.
  */
 import { messageTagsBot } from "../interaction-contract";
+import { describeQuestion, type AwaitingQuestion } from "./awaiting-answer";
 import {
   anthropicModel,
   degradation,
@@ -254,6 +268,21 @@ export interface RouteBatchOptions {
    * analysis, never cause it — and enabling it can only add.
    */
   floor?: boolean;
+  /**
+   * THE QUESTION MATCHTIME IS STILL WAITING FOR AN ANSWER TO, if any.
+   *
+   * PR #42's release condition: two of 1,695 production messages are an
+   * attendance write the gate would have lost, and both are a bare `👍`
+   * answering a slot MatchTime had left open. A `👍` pattern in the
+   * floor cannot fix that without firing on every thumbs-up in the group
+   * — the floor becoming a classifier again. So the fix is CONTEXT: a
+   * row saying MatchTime asked something and has not been answered.
+   *
+   * Loaded deterministically by `loadAwaitingQuestions`; never inferred
+   * and never asked of the model. Null (the default) is the entire
+   * history bar 18 windows, and with it nothing here changes anything.
+   */
+  awaiting?: AwaitingQuestion | null;
 }
 
 export async function routeBatch(
@@ -346,7 +375,7 @@ export async function routeBatch(
   }
 
   // The floor OVERRIDES the model, in both directions.
-  const routes = result.routes.map((r) => {
+  const floored = result.routes.map((r) => {
     const f = floor.get(r.messageId);
     if (!f || f === r.route) return r;
     result.degradations.push(
@@ -362,6 +391,43 @@ export async function routeBatch(
     // whether the analyzer sees the message.
     return { ...r, route: f, source: "floor" as const, overrodeRoute: r.route };
   });
+
+  // ── WHILE MATCHTIME IS WAITING FOR AN ANSWER, `none` IS NOT TRUSTED ──
+  //
+  // The gap PR #42 measured and would not turn the gate on without: two
+  // of 1,695 real messages are an attendance write the gate would lose,
+  // and both are a bare `👍` answering a slot MatchTime had left open.
+  //
+  // Note what this is NOT. It reads nothing out of the message — no
+  // token list, no emoji, no length. It reads a ROW. So it cannot fire
+  // on a thumbs-up in a group MatchTime has asked nothing of, which is
+  // where 99% of them live, and a `👍` pattern in the floor could not
+  // make that distinction at all (§11.1's "the floor becoming a
+  // classifier again").
+  //
+  // Structurally it is the floor's one-directional override with a
+  // different trigger: it only ever rewrites `none`, so it can add an
+  // analyzer call and can never remove one. `overrodeRoute` is set for
+  // the same reason it is on the floor — so "how often did this
+  // actually rescue something?" is a query and not a guess.
+  //
+  // A `fallback` route is left alone: the batch is already going to the
+  // extractor and relabelling it would hide a router failure.
+  const awaiting = opts.awaiting ?? null;
+  const routes = !awaiting
+    ? floored
+    : floored.map((r) => {
+        if (r.route !== "none" || r.source === "fallback") return r;
+        result.degradations.push(
+          degradation(
+            "router",
+            r.messageId,
+            `MatchTime is still waiting for an answer (${describeQuestion(awaiting)}); ` +
+              `none → unsure so the analyzer still sees it`,
+          ),
+        );
+        return { ...r, route: "unsure" as const, source: "awaiting" as const, overrodeRoute: "none" as const };
+      });
 
   return { routes, degradations: result.degradations, usage };
 }

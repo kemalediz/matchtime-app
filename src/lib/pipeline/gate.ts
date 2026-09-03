@@ -78,6 +78,7 @@ import { readFileSync } from "node:fs";
 // the Prisma client, and a runtime import here would make this module
 // unloadable in the Playwright worker where the recall harness runs it.
 import type { AnalysisVerdict } from "../message-analyzer";
+import type { AwaitingQuestion } from "./awaiting-answer";
 import { anthropicModel, degradation, type PipelineModel } from "./llm";
 import { routeBatch, routeFloor, type RouterMessage } from "./router";
 import type { Degradation, Route, RoutedMessage } from "./types";
@@ -266,6 +267,11 @@ export interface GateOutcome extends Partitioned {
    *  left to ask about. */
   modelCalled: boolean;
   floorEnabled: boolean;
+  /** Ids the OPEN-QUESTION context pulled back out of `skipped`, i.e.
+   *  the router said `none` while MatchTime was still waiting for an
+   *  answer. Always a subset of `analysed`, and always empty when no
+   *  question is open -- which is 99% of the history. */
+  awaitingForced: string[];
   usage?: { costUsd: number | null; ms: number; inputTokens: number; outputTokens: number };
 }
 
@@ -273,6 +279,27 @@ export interface GateOptions {
   floor?: boolean;
   /** Injected by tests and by the recall harness. */
   model?: PipelineModel;
+  /**
+   * THE ONE OPEN QUESTION MATCHTIME IS STILL WAITING FOR AN ANSWER TO.
+   *
+   * PR #42 would not turn `ROUTER_GATE_ENABLED` on because two of its
+   * 1,695 measured messages were an attendance write the gate lost, and
+   * both were a bare thumbs-up answering a slot MatchTime had left open.
+   * A thumbs-up pattern in the floor cannot tell those two from the
+   * dozens of thumbs-up that are banter; a row in the database can,
+   * because the fact lives in the conversation and not in the token. See
+   * `awaiting-answer.ts`.
+   *
+   * PASSED IN, not loaded here: `load-awaiting-answer.ts` is the only
+   * module that touches Prisma, and this one has to stay loadable in the
+   * Playwright worker and in the plain `tsx` recall script (the same
+   * reason `message-analyzer` is imported type-only above).
+   *
+   * `undefined` -- the default, and what every existing caller gets --
+   * is "MatchTime is not waiting for anything", under which the gate
+   * behaves exactly as it did on `b03d96b`.
+   */
+  awaiting?: AwaitingQuestion | null;
 }
 
 /**
@@ -297,6 +324,7 @@ export async function gateBatch(
     degradations,
     modelCalled: false,
     floorEnabled: floor,
+    awaitingForced: [],
   });
 
   if (messages.length === 0) {
@@ -315,7 +343,10 @@ export async function gateBatch(
     // measurable. When the flag is on, the router-level floor and the
     // gate-level floor agree by construction (both are `routeFloor`),
     // and the gate-level one is what the proof is written against.
-    const routed = await routeBatch(model, routerMessages, { floor });
+    const routed = await routeBatch(model, routerMessages, {
+      floor,
+      awaiting: opts.awaiting ?? null,
+    });
     const p = partition(messages, routed.routes, { floor });
     return {
       ...p,
@@ -323,6 +354,7 @@ export async function gateBatch(
       degradations: routed.degradations,
       modelCalled: routed.usage !== undefined,
       floorEnabled: floor,
+      awaitingForced: routed.routes.filter((r) => r.source === "awaiting").map((r) => r.messageId),
       ...(routed.usage ? { usage: routed.usage } : {}),
     };
   } catch (err) {

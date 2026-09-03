@@ -162,6 +162,8 @@ analysed.
 | `ledger.ts` | append-only resume ledger |
 | `sweep.ts` | the driver: two pipelines, one batch at a time |
 | `report.ts` | the human report and the triage cards. Pure |
+| `router-recall.ts` | router recall: severity, rates, the report. Pure |
+| `router-recall-awaiting.ts` | the open-question context, replayed. Pure |
 | `extract.ts` | READ-ONLY production extract (the only thing that touches prod) |
 | `meter.ts` | metering proxy — measured cost, without editing the analyze route |
 | `../sim/history-replay.spec.ts` | free, stubbed: the worlds build |
@@ -349,6 +351,38 @@ keeps only the membership decision, so the router being unstable
 *between* `self_att` and `other_att` (observed: "can anyone replace me
 tonight?" split 4/1 over five runs) changes nothing at all about what
 the analyzer receives.
+
+### The open-question context, and why the sweep replays it
+
+PR #42's sweep found **two messages of 1,695** that are an attendance
+write the gate would have lost, and both are a bare `👍` answering a slot
+MatchTime had left open. `src/lib/pipeline/awaiting-answer.ts` closes
+that, and `router-recall-awaiting.ts` is how the same 1,695 messages are
+re-measured against it.
+
+The fact is a **row**, not a pattern: an unanswered `BenchSlotOffer`,
+`PendingBenchConfirmation` or `TentativeAvailability`. So the extract now
+carries all three (`pendingBenchConfirmations` and
+`tentativeAvailabilities` are new and **optional** — an older
+`source.json` simply has none and every batch routes exactly as it did
+on `b03d96b`), and each batch is routed with the question that was open
+at the time.
+
+Two things about that reconstruction, both stated so nobody has to guess:
+
+- **The instant is a window, not a point.** The Pi buffers and flushes,
+  so a batch whose rows landed at 07:45:08 covers messages that arrived
+  in the ten minutes before. `openQuestionForBatch` counts a question as
+  open when its window **overlaps** the flush window. That is knowingly
+  the wide reading: it can only find more open questions than production
+  would, so **the rescue it reports is an upper bound and the saving it
+  reports is a lower bound**. Both err against the change.
+- **Before and after come from ONE paid sweep.** The context only ever
+  rewrites `none` and records what it replaced in `overrodeRoute`, so the
+  run without it is recoverable exactly from the run with it — the same
+  trick, for the same reason, as `deriveFloorEffect`. `MT_RECALL_NO_AWAITING=1`
+  runs the sweep without the context for anyone who wants to pay twice
+  instead.
 
 ### It proves it was live, for a reason specific to this harness
 

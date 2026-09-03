@@ -67,6 +67,7 @@ import {
   isRouterGateEnabled,
   GATED_HANDLED_BY,
 } from "@/lib/pipeline/gate";
+import { loadOpenQuestion } from "@/lib/pipeline/load-awaiting-answer";
 import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
@@ -692,6 +693,17 @@ async function handleAnalyzeRequest(request: Request) {
             body: m.body,
             authorName: m.authorName,
           })),
+          // The ONE thing the router was missing, and the reason PR #42
+          // would not turn this flag on: a bare `👍` answering a slot
+          // MatchTime had left open routes `none`, and the write is
+          // lost. Both of the two real cases in 1,695 production
+          // messages are that. It is not a pattern — the `👍` is banter
+          // far more often than it is a registration — so the fix is a
+          // ROW: is there an unanswered `BenchSlotOffer` /
+          // `PendingBenchConfirmation` / `TentativeAvailability` on the
+          // board right now? See `src/lib/pipeline/awaiting-answer.ts`.
+          // Null 99% of the time, and with it nothing changes at all.
+          { awaiting: await loadOpenQuestion(org.id) },
         )
       : null;
   const gatedIds = new Set(gate?.skipped ?? []);
@@ -702,7 +714,8 @@ async function handleAnalyzeRequest(request: Request) {
     }
     console.log(
       `[analyze] router-gate: ${gate.analysed.length}/${fresh.length} to the analyzer, ` +
-        `${gate.skipped.length} skipped, ${gate.floorForced.length} floor-forced ` +
+        `${gate.skipped.length} skipped, ${gate.floorForced.length} floor-forced, ` +
+        `${gate.awaitingForced.length} forced by an open question ` +
         `(floor ${gate.floorEnabled ? "ON" : "OFF"})` +
         (gate.usage
           ? `, router $${(gate.usage.costUsd ?? 0).toFixed(5)} in ${gate.usage.ms}ms`
