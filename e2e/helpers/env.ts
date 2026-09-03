@@ -63,6 +63,15 @@ export const E2E = {
    *  off. Every other spec is therefore untouched by its existence. */
   ROUTER_STUB_FILE: path.join(REPO_ROOT, ".e2e", "router-stub.json"),
 
+  /** The EXTRACTOR stub file (§10 step 6). Body → the raw JSON the
+   *  attendance extractor would have returned. §10 step 6 puts the
+   *  extractor on the WRITE path, and a write path that can only be
+   *  exercised by spending money is a write path nobody exercises — so
+   *  the free suite has to be able to drive the whole engine. Absent or
+   *  `{}` → every body extracts NO claims, which is the direction that
+   *  cannot invent a write in a spec that has never heard of it. */
+  EXTRACTOR_STUB_FILE: path.join(REPO_ROOT, ".e2e", "extractor-stub.json"),
+
   /** WhatsApp group id of the seeded test org. */
   GROUP_ID: "e2e-test-group@g.us",
 } as const;
@@ -135,6 +144,7 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_MODE: "1",
     MT_TEST_LLM_STUB_FILE: E2E.LLM_STUB_FILE,
     MT_TEST_ROUTER_STUB_FILE: E2E.ROUTER_STUB_FILE,
+    MT_TEST_EXTRACTOR_STUB_FILE: E2E.EXTRACTOR_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
@@ -162,6 +172,12 @@ export function buildTestEnv(): Record<string, string> {
     // read a canned route out of a file, and must not be able to have
     // the step-5 flags flipped by one either. Pinned empty, not deleted.
     env.MT_TEST_ROUTER_STUB_FILE = "";
+    // And for the extractor (§10 step 6). A "live" sweep that could read
+    // canned FACTS out of a file would be grading its own answer key —
+    // the trap `e2e/corpus/README.md` warns about under "Do not
+    // 'record' stubs from a live run". Pinned empty, not deleted, for
+    // the same reason as the two above.
+    env.MT_TEST_EXTRACTOR_STUB_FILE = "";
     env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
     env.MT_SIM_LIVE_LLM = "1";
     // §10 step 5's flags, forwarded ONLY on a live run.
@@ -176,7 +192,15 @@ export function buildTestEnv(): Record<string, string> {
     // Live only, deliberately. A stubbed run has no key, so the router
     // would fail on every batch and fall back to analysing everything;
     // the flags would read as on and mean nothing.
-    for (const flag of ["ROUTER_GATE_ENABLED", "ROUTER_GATE_FLOOR_ENABLED"]) {
+    // ATTENDANCE_ENGINE_ENABLED joins them for §10 step 6: "the corpus,
+    // with the engine deciding and WRITING" is the evidence that step
+    // is judged by, and it needs the real router, the real extractor
+    // and the real apply path all at once.
+    for (const flag of [
+      "ROUTER_GATE_ENABLED",
+      "ROUTER_GATE_FLOOR_ENABLED",
+      "ATTENDANCE_ENGINE_ENABLED",
+    ]) {
       if (process.env[flag]) env[flag] = process.env[flag]!;
     }
     // Cost metering (e2e/replay/meter.ts): the server's Anthropic SDK is

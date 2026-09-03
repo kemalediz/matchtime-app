@@ -93,6 +93,35 @@ export const GATE_FLAG = "ROUTER_GATE_ENABLED";
 export const FLOOR_FLAG = "ROUTER_GATE_FLOOR_ENABLED";
 /** The nightly `none`-bucket sweep (§11.1's fourth containment). */
 export const SHADOW_FLAG = "NONE_BUCKET_SHADOW_ENABLED";
+/**
+ * §10 STEP 6 — THE REVERT.
+ *
+ *   "Swap the attendance path to extractor + engine. `self_att`,
+ *    `other_att`, `offer` only … Everything else still runs the old
+ *    prompt."  revert: "flag flips the three routes back".
+ *
+ * Unset it (or set it to `0`) and every attendance message goes back to
+ * the 18,315-token prompt and `executeVerdict`, exactly as on `b03d96b`.
+ * It is SEPARATE from `GATE_FLAG` on purpose and in BOTH directions: a
+ * revert of step 6 must not also revert step 5, and turning step 5 on
+ * must not turn the write path over.
+ */
+export const ENGINE_FLAG = "ATTENDANCE_ENGINE_ENABLED";
+
+/**
+ * The three routes the engine owns, and no others.
+ *
+ * `unsure` is deliberately ABSENT even though it shares the attendance
+ * extractor in the dry run. §11.1's asymmetry runs the other way once a
+ * write is real: inside the dry run a doubtful message costs one
+ * extractor call and proposes nothing, but on the WRITE path it would
+ * decide a squad place from a route the router itself could not settle.
+ * §13's conservative default — "a missed add is recoverable in one
+ * message; a wrong registration on a paid match is not" — makes doubt
+ * cost an analyzer call, which is today's behaviour and therefore
+ * cannot be a regression.
+ */
+export const ENGINE_ROUTES: readonly Route[] = ["self_att", "other_att", "offer"];
 
 type Env = Record<string, string | undefined>;
 
@@ -125,6 +154,89 @@ export function isRouterFloorEnabled(env: Env = process.env): boolean {
 
 export function isNoneBucketShadowEnabled(env: Env = process.env): boolean {
   return on(env, SHADOW_FLAG);
+}
+
+/**
+ * §10 step 6. Default OFF, same five spellings, same test seam.
+ *
+ * Read through a predicate rather than `process.env.X` in the route so
+ * a unit test can prove the default without mutating the process, and
+ * so there is exactly ONE place that decides whether the write path has
+ * moved.
+ */
+export function isAttendanceEngineEnabled(env: Env = process.env): boolean {
+  const stub = routerStubConfig(env);
+  if (stub && typeof stub.engine === "boolean") return stub.engine;
+  return on(env, ENGINE_FLAG);
+}
+
+/**
+ * TEST-ONLY per-request override, for the ONE thing the stub-file seam
+ * cannot do: an A/B on a LIVE run.
+ *
+ * The corpus and the replay harness both need "the same real model, the
+ * same real world, the flag on for one arm and off for the other, in
+ * one process". The stub file cannot serve that — a live run pins
+ * `MT_TEST_ROUTER_STUB_FILE` empty on purpose, because a live sweep
+ * that could read canned routes out of a file would not be measuring
+ * anything. And the dev server's environment is fixed at boot, so the
+ * env var cannot differ between two requests either.
+ *
+ * So the header. It is DOUBLE-gated and both gates matter:
+ *
+ *   1. `MT_TEST_MODE` must be exactly "1". Nothing sets that but
+ *      `e2e/helpers/env.ts:buildTestEnv()`; it is not in `.env.example`,
+ *      not in Vercel, and not on the Pi.
+ *   2. Absent or unrecognised → `null`, and the caller falls back to the
+ *      env flag. There is no value of this header that can turn the
+ *      engine on in a process that has not declared itself a test.
+ *
+ * It can only ever choose between two shipped code paths. It cannot
+ * inject a route, a fact, a verdict or a write.
+ */
+export const ENGINE_HEADER = "x-mt-attendance-engine";
+
+export function engineHeaderOverride(
+  header: string | null | undefined,
+  env: Env = process.env,
+): boolean | null {
+  if (env.MT_TEST_MODE !== "1") return null;
+  const raw = header?.trim().toLowerCase();
+  if (raw === undefined || raw === "") return null;
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return true;
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
+  return null;
+}
+
+/** Does the engine decide this route? A route it has never heard of —
+ *  including `undefined`, which is what a message the router never
+ *  mentioned looks like — is never owned. */
+export function engineOwnsRoute(route: Route | undefined): boolean {
+  return route !== undefined && ENGINE_ROUTES.includes(route);
+}
+
+/**
+ * Must the router run at all?
+ *
+ * Step 5 needed routes to decide what the analyzer SEES; step 6 needs
+ * the same routes to decide what the analyzer DECIDES. Either flag on
+ * means the router call happens — otherwise turning step 6 on without
+ * step 5 would silently own nothing, which is the worst kind of flag:
+ * one that looks enabled and does nothing.
+ */
+export function routerIsNeeded(
+  env: Env = process.env,
+  /**
+   * The step-6 flag AS THE CALLER RESOLVED IT. The analyze route may
+   * have a per-request override (`engineHeaderOverride`) that the
+   * environment knows nothing about, and a predicate that re-read the
+   * env here would disagree with the caller about whether the engine is
+   * on — which would mean running the engine with no routes, the worst
+   * kind of flag: one that looks enabled and does nothing.
+   */
+  engineEnabled: boolean = isAttendanceEngineEnabled(env),
+): boolean {
+  return isRouterGateEnabled(env) || engineEnabled;
 }
 
 // ── The floor, as a boolean ───────────────────────────────────────────
@@ -395,6 +507,11 @@ export interface RouterStubConfig {
   enabled?: boolean;
   /** Overrides ROUTER_GATE_FLOOR_ENABLED for this request. */
   floor?: boolean;
+  /** Overrides ATTENDANCE_ENGINE_ENABLED for this request (§10 step 6).
+   *  Same seam, same blast radius: only ever read when
+   *  MT_TEST_ROUTER_STUB_FILE is set, which nothing outside the e2e
+   *  harness sets. */
+  engine?: boolean;
   /** waMessageId → route. Unmapped ids fall back to `unsure`. */
   routes?: Record<string, string>;
   /** Trimmed message body → route, for specs that cannot know the ids

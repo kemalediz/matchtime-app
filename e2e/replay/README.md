@@ -20,7 +20,28 @@ MT_REPLAY_CANDIDATE=<module> npm run test:replay:live   # the real comparison
 
 npm run replay:router-recall                     # §10 step 5: router recall, floor OFF
 MT_RECALL_FLOOR=1 npm run replay:router-recall   # …and with the floor ON
+
+# §10 step 6: the attendance engine, WRITING, against the incumbent —
+# always with the floor from a self-replay of the same size beside it
+MT_REPLAY_LIMIT=80 MT_REPLAY_CANDIDATE=attendance-engine \
+  MT_REPLAY_FLOOR=.e2e/replay/<floorRunId>/result.json npm run test:replay:live
 ```
+
+`MT_REPLAY_CANDIDATE` is a **name in the registry** at the top of
+`../sim/history-replay-live.spec.ts`, not a module path. The documented
+path form never worked: `await import(someVariable)` on a `.ts` file
+fails under Playwright's transform with "Cannot use import statement
+outside a module", before a single model call — so a "candidate" sweep
+died in 85ms and the only comparison anyone had ever actually run was
+the self-replay. Adding a candidate is one line in that registry.
+
+`attendance-engine` is the shipped route with
+`ATTENDANCE_ENGINE_ENABLED` forced on for its own requests, via the
+test-only `x-mt-attendance-engine` header (see `e2e/corpus/README.md`).
+The incumbent side sends no header and therefore gets the server's own
+flag, which is off. Both sides are the same route, the same world and
+the same request shape; the only difference is who decides the three
+attendance routes.
 
 Everything the sweep writes lands under `.e2e/replay/` (gitignored).
 
@@ -454,6 +475,29 @@ missing. `runId` is derived from the sweep's **shape** — pipelines,
 repeats, mode, the exact set of case keys — so a resume can only ever
 join a run that is genuinely the same one. Errored units are not
 retained, so a transient timeout is retried on resume.
+
+### ⚠️ THE SHAPE IS NOT THE CODE — delete the ledger after a fix
+
+A re-run with the same shape **resumes**: it replays nothing and reports
+the RECORDED results. That is exactly right for a crashed sweep, and a
+trap when you are validating a fix, because the report looks completely
+normal — same classifications, same summary, no warning that nothing
+ran. The tells are `0.0m` elapsed on every unit and a
+`LIVE SWEEP DID NOT HAPPEN` / `0 of 0 analyzed messages` line at the
+end, and both read as something else at a glance.
+
+It cost real time on 2026-09-03. A fix for a spurious write measured
+`spurious_write` 3/3 on the same key twice AFTER the fix, and was very
+nearly reverted as ineffective. It was the ledger. With the ledger
+removed the same key came back `agree` 3/3 and the fix was correct all
+along.
+
+```bash
+# validating a fix on the same keys → clear the ledger first
+rm -f .e2e/replay/<runId>.jsonl && rm -rf .e2e/replay/<runId>
+```
+
+The `runId` is in the report header and is the ledger's filename.
 
 `MT_REPLAY_LIMIT` caps a run. The cap is **stratified by production's
 own intent label** so it cannot fill itself with the 69% that is noise,

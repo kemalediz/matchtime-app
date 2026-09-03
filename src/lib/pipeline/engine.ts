@@ -484,16 +484,48 @@ export function decide(input: EngineInput): EngineResult {
             out.reasons.push(`contingent drop for ${t.name}: holding, no write`);
             continue;
           }
+          if (!self) {
+            // A CONTINGENT CLAIM ABOUT SOMEONE ELSE NEVER REGISTERS THEM.
+            //
+            // Found by the §10 step 6 replay sweep, adjudicated
+            // `old_right`, and it is the dangerous direction:
+            //
+            //   2026-06-11, Omar Yusuf, 7.3h to kickoff, squad 10/14 —
+            //   "Also, if David would like to join, I'd be happy for him
+            //   to take my spot". The engine registered DAVID, who had
+            //   not spoken, and left Omar in: the squad grew to 11
+            //   instead of the swap Omar actually offered. Production
+            //   labelled it `conditional_in` and wrote nothing.
+            //
+            // The standing-offer rule (§3.2 S15 flavour (a)) is about
+            // the SENDER — "consider me as the 14th whenever you have
+            // 13" — and its corpus case is
+            // `PR26-self-standing-offer-registers-the-sender`. Nothing
+            // in the archive wants a contingent claim about a third
+            // party to register anyone, and `conditionOn` has no value
+            // for "the condition is about that third party's own
+            // willingness", so such a claim landed in the standing-offer
+            // branch by default. It now holds instead.
+            //
+            // This also makes A5's protection STRUCTURAL rather than
+            // dependent on the extractor's `personNamed`: "my brother
+            // can play if needed" is refused twice over.
+            out.reasons.push(
+              `contingent claim about ${t.name} (not the sender): holding, no write`,
+            );
+            continue;
+          }
           if (c.conditionOn === "self") {
             // Personal uncertainty ("in if my back holds up"). Record
             // nothing; the tentative follow-up path chases later.
             out.reasons.push(`tentative (personal uncertainty) for ${t.name}: no write`);
             continue;
           }
-          // conditionOn "squad" or "none": a standing offer. §3.2 S15(a)
-          // is the rule behind incident A5 and its outcome is the
-          // OPPOSITE of (b): the person is registered now, and capacity
-          // below decides whether that is a slot or the bench.
+          // conditionOn "squad" or "none", and the SENDER's own claim: a
+          // standing offer. §3.2 S15(a) is the rule behind incident A5
+          // and its outcome is the OPPOSITE of (b): the person is
+          // registered now, and capacity below decides whether that is a
+          // slot or the bench.
           out.reasons.push(`standing offer for ${t.name}: registering`);
         }
 
