@@ -476,6 +476,29 @@ repeats, mode, the exact set of case keys — so a resume can only ever
 join a run that is genuinely the same one. Errored units are not
 retained, so a transient timeout is retried on resume.
 
+### ⚠️ THE SHAPE IS NOT THE CODE — delete the ledger after a fix
+
+A re-run with the same shape **resumes**: it replays nothing and reports
+the RECORDED results. That is exactly right for a crashed sweep, and a
+trap when you are validating a fix, because the report looks completely
+normal — same classifications, same summary, no warning that nothing
+ran. The tells are `0.0m` elapsed on every unit and a
+`LIVE SWEEP DID NOT HAPPEN` / `0 of 0 analyzed messages` line at the
+end, and both read as something else at a glance.
+
+It cost real time on 2026-09-03. A fix for a spurious write measured
+`spurious_write` 3/3 on the same key twice AFTER the fix, and was very
+nearly reverted as ineffective. It was the ledger. With the ledger
+removed the same key came back `agree` 3/3 and the fix was correct all
+along.
+
+```bash
+# validating a fix on the same keys → clear the ledger first
+rm -f .e2e/replay/<runId>.jsonl && rm -rf .e2e/replay/<runId>
+```
+
+The `runId` is in the report header and is the ledger's filename.
+
 `MT_REPLAY_LIMIT` caps a run. The cap is **stratified by production's
 own intent label** so it cannot fill itself with the 69% that is noise,
 and the report leads with a `PARTIAL RUN` banner naming the cap, the

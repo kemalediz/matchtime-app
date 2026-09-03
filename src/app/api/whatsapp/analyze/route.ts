@@ -830,8 +830,49 @@ async function handleAnalyzeRequest(request: Request) {
     );
   }
 
+  // ── THE ANALYZER STILL SEES THE WHOLE WINDOW (§10 step 6) ──────────
+  //
+  //   Measured on real production history, 3 runs out of 3, and it is
+  //   the sharpest thing the replay sweep found:
+  //
+  //     2026-06-11, Ehtisham Ul Haq, two messages in one batch — a
+  //     forwarded vCard, then "Add these 2 boys pl". With the WHOLE
+  //     batch in front of it the analyzer says noise, twice, which is
+  //     what production recorded. With "Add these 2 boys pl" removed
+  //     because the engine owned it, the analyzer reads the vCard ALONE
+  //     and registers a member called "Salman Shelly Ftbl".
+  //
+  //   Nothing was wrong with either decider. Taking one message OUT of
+  //   the batch changed what the mega-prompt concluded about the
+  //   message NEXT to it — the sentence that made the card actionable
+  //   was the sentence that had been removed. A message's meaning can
+  //   depend on its neighbour, and an 18,315-token prompt reasons over
+  //   the window as a whole.
+  //
+  //   So the engine's messages stay in the analyzer's INPUT and only
+  //   its VERDICTS for them are discarded: the loop short-circuits on
+  //   `engineOwnedIds` long before `executeVerdict`, so there is still
+  //   exactly one decider and one reply per message. What changes is
+  //   that the prompt sees the same window it sees today.
+  //
+  //   The cost is honest and bounded: a batch the engine owns ENTIRELY
+  //   makes no analyzer call at all (the common case, and where step
+  //   6's saving lives), while a MIXED batch pays the full call it pays
+  //   today. Paying for context on mixed batches is the right trade on
+  //   the one step that can put a player at a pitch with no slot.
+  //
+  //   Step 5's gate is deliberately NOT changed here: a `none`-routed
+  //   message is banter, and its removal is that step's entire saving.
+  //
+  //   The filter below is therefore EXACTLY the line that shipped on
+  //   `448d5a2` — gated ids only. No `engineOwnedIds` term, deliberately,
+  //   and no cleverness about skipping the call when the engine owns
+  //   everything: an "optimisation" on this line is an optimisation that
+  //   changes what the prompt sees, which is the bug this comment is
+  //   about. Step 6 buys correctness here, not tokens; step 5 is where
+  //   the saving lives.
   const batchInputs: BatchInputMessage[] = fresh
-    .filter((m) => !gatedIds.has(m.waMessageId) && !engineOwnedIds.has(m.waMessageId))
+    .filter((m) => !gatedIds.has(m.waMessageId))
     .map((m) => {
       const s = senderById.get(m.waMessageId)!;
       return {
