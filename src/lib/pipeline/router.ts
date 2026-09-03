@@ -29,6 +29,19 @@
  *
  * The fourth containment — shadowing the `none` bucket forever — belongs
  * to the harness, not here.
+ *
+ * A FIFTH, WHICH §11.1 DID NOT ANTICIPATE AND THE DATA FOUND:
+ *
+ *   5. THE OPEN-QUESTION CONTEXT. Shadowing the `none` bucket is what
+ *      turned this up: over 1,695 real messages, exactly two are an
+ *      attendance write the gate would have lost, and both are a bare
+ *      `👍` answering a slot MatchTime had left open (PR #42). The floor
+ *      cannot reach them — a `👍` pattern would fire on every thumbs-up
+ *      in the group, which is the floor becoming a classifier again — so
+ *      the trigger is a DATABASE ROW instead of the message text: while
+ *      MatchTime has an open, unanswered question, a `none` route is not
+ *      trusted. Same one-directional shape as the floor, different
+ *      trigger. See `awaiting-answer.ts`.
  */
 import { messageTagsBot } from "../interaction-contract";
 import { describeQuestion, type AwaitingQuestion } from "./awaiting-answer";
