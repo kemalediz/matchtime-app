@@ -264,6 +264,29 @@ export async function runAttendanceEngineBatch(args: {
     // already run. The test is on the SHAPE and never on who is named,
     // so it cannot be steered by content.
     if (parsePastedRoster(m.body)) return false;
+    // ── A SHARED CONTACT CARD IS NOT AN ATTENDANCE MESSAGE ───────────
+    //
+    // Found by the §10 step 6 replay sweep, adjudicated `old_right`:
+    //
+    //   2026-06-11, Ehtisham Ul Haq — a forwarded WhatsApp vCard
+    //   (`BEGIN:VCARD … FN:Salman Shelly Ftbl … END:VCARD`) followed by
+    //   "Add these 2 boys pl". The engine registered a member literally
+    //   called "Salman Shelly Ftbl" — the card's display name, football
+    //   suffix and all — and registered ONE of the two people asked
+    //   for. The incumbent wrote nothing. Production labelled both
+    //   messages `noise`.
+    //
+    // The card's `FN:` line looks exactly like a name to an extractor
+    // and passes every check in `identity.ts`, because it IS letters and
+    // it IS a person. What makes it wrong is the CONTAINER: a vCard is
+    // an attachment WhatsApp renders as text, its display name is
+    // whatever the sender saved in their phone, and "add these 2 boys"
+    // beside it is `bring_guests_vague` (§3.2 S20) — a guest-name ask,
+    // never a registration.
+    //
+    // Shape, not content: the test is the envelope, so it cannot be
+    // steered by who the card names.
+    if (/^BEGIN:VCARD/im.test(m.body)) return false;
     return true;
   });
   if (owned.length === 0) return empty();

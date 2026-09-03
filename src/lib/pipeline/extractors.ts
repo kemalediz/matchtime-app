@@ -95,6 +95,8 @@ A message can carry SEVERAL claims and a side request at once. Report all of the
 
 Asking for cover is NOT a condition. Someone asking whether anyone can replace them, or saying they need covering, is leaving either way: report the out with contingent FALSE, plus the "recruit" side request. Report contingent true ONLY when the message states something the claim itself depends on, in the message: "happy to drop IF you find someone", "in IF my back holds up".
 
+An OFFER to give up a place is contingent even with no "if" in it. "I can drop out", "happy to pull out", "I'll step aside", "I can make room", "happy to drop for X" — the person is offering, not leaving, and the offer depends on it being taken up. Report polarity out with contingent TRUE and conditionOn "squad". Compare: "I'm out", "can't make it", "I won't be there" state a decision already taken — contingent FALSE. The test is whether the message says the sender IS leaving or that they COULD.
+
 Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere with information you do not have.
 
 Report nothing (an empty claims array) only when the message genuinely makes no claim about anyone's attendance.`,

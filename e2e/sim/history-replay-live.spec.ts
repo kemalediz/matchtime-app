@@ -3,7 +3,7 @@
  *
  *   npm run replay:extract                       # once, read-only, production
  *   MT_REPLAY_LIMIT=40 npm run test:replay:live  # self-replay noise floor
- *   MT_REPLAY_CANDIDATE=../pipeline/x.ts MT_REPLAY_LIMIT=40 npm run test:replay:live
+ *   MT_REPLAY_CANDIDATE=attendance-engine MT_REPLAY_LIMIT=40 npm run test:replay:live
  *
  * Env:
  *   MT_REPLAY_LIMIT      cap the number of batches (the report says so, loudly)
@@ -13,7 +13,9 @@
  *                        cannot be asked for a named batch.
  *   MT_REPLAY_SEED       sampling seed (default 0)
  *   MT_REPLAY_RUNS       repeats per batch (default 1)
- *   MT_REPLAY_CANDIDATE  module exporting `default` = a CorpusPipeline class.
+ *   MT_REPLAY_CANDIDATE  NAME of a candidate in the registry below (not a path:
+ *                        a dynamic import of a .ts path does not survive
+ *                        Playwright's transform and never worked).
  *                        Omitted → SELF-REPLAY: the current analyzer against
  *                        itself, which measures the noise floor.
  *   MT_REPLAY_METER_PORT start the metering proxy on this port for measured cost
@@ -37,6 +39,7 @@ import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { testDb } from "../helpers/test-db";
 import { CurrentAnalyzerPipeline } from "../corpus/current-analyzer-pipeline";
+import { AttendanceEnginePipeline } from "../corpus/engine-pipeline";
 import type { CorpusPipeline } from "../corpus/pipeline";
 import type { Adjudication } from "../replay/diff";
 import { summariseFloor, type FloorSummary } from "../replay/floor";
@@ -109,8 +112,31 @@ test.describe("history replay sweep", () => {
     let newPipeline: CorpusPipeline;
     const candidate = process.env.MT_REPLAY_CANDIDATE;
     if (candidate) {
-      const mod = (await import(candidate)) as { default: new () => CorpusPipeline };
-      newPipeline = new mod.default();
+      // A REGISTRY, not a dynamic import of a path.
+      //
+      // `await import(someVariable)` where the variable is a `.ts` path
+      // does not work under Playwright's transform — it fails with
+      // "Cannot use import statement outside a module" before a single
+      // model call is made. The documented `MT_REPLAY_CANDIDATE=<module>`
+      // form has therefore never actually run, which is worth saying out
+      // loud: it is the same class of thing as a seatbelt that was dead
+      // from the day it shipped.
+      //
+      // Statically-imported constructors keyed by name resolve at build
+      // time and cannot fail at runtime. A new candidate pipeline adds
+      // one line here.
+      const registry: Record<string, () => CorpusPipeline> = {
+        "attendance-engine": () => new AttendanceEnginePipeline(),
+      };
+      const make = registry[candidate];
+      expect(
+        make,
+        `MT_REPLAY_CANDIDATE="${candidate}" is not a known candidate. ` +
+          `Known: ${Object.keys(registry).join(", ")}. ` +
+          `Add it to the registry in this file — a path is not accepted any more, ` +
+          `because a dynamic import of one silently never worked.`,
+      ).toBeTruthy();
+      newPipeline = make!();
     } else {
       // SELF-REPLAY. A distinct name would make the report claim a
       // comparison it is not making, so the name stays identical and

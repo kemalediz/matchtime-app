@@ -256,6 +256,20 @@ describe("it fails OPEN — every failure owns nothing and the analyzer keeps th
     expect(d.registered).toEqual([]);
   });
 
+  it("the message is a shared CONTACT CARD — its display name is not a registration", async () => {
+    // Real production message, 2026-06-11: a forwarded vCard plus "Add
+    // these 2 boys pl" registered a member called "Salman Shelly Ftbl"
+    // and only one of the two people asked for. The card's `FN:` line
+    // passes every identity check because it IS a name; what makes it
+    // wrong is the container.
+    const d = deps();
+    const vcard =
+      "BEGIN:VCARD\nVERSION:3.0\nN:;Salman Shelly Ftbl;;;\nFN:Salman Shelly Ftbl\nTEL;waid=447700900001:447700900001\nEND:VCARD";
+    const r = await run([msg({ body: vcard })], d);
+    expect(r.ownedIds.size).toBe(0);
+    expect(d.registered).toEqual([]);
+  });
+
   it("the sender has an open bench PROMPT — a different flow the engine has no concept of", async () => {
     // `resolveBenchConfirmation` owns a group "yes"/"👍" answering a
     // PendingBenchConfirmation. Handing that to the engine would silently

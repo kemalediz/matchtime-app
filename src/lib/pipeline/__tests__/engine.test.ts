@@ -1766,6 +1766,131 @@ describe("a self-correction inside ONE message keeps its textual order", () => {
   });
 });
 
+describe("a CONTINGENT claim about someone ELSE never registers them", () => {
+  // Found by the §10 step 6 replay sweep over real production history
+  // and adjudicated `old_right`. It is the dangerous direction —
+  // registering someone who did not ask — and it is the one criterion
+  // §10 step 3 sets at ZERO.
+  //
+  //   2026-06-11, Omar Yusuf, 7.3h to kickoff, squad 10/14:
+  //   "Also, if David would like to join, I'd be happy for him to take
+  //   my spot" → the engine registered DAVID, who had not spoken, and
+  //   left Omar in. The squad grew to 11 instead of swapping. The
+  //   incumbent wrote nothing, and production's own label was
+  //   `conditional_in`.
+
+  it("holds a named third party's contingent IN instead of registering them", () => {
+    const state = world({ confirmed: ["omar"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "omar",
+          body: "if David would like to join, I'd be happy for him to take my spot",
+          route: "offer",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({
+              subject: "other",
+              personRef: "David",
+              personNamed: true,
+              polarity: "in",
+              contingent: true,
+              conditionOn: "squad",
+            }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toEqual([]);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/contingent claim about .*not the sender/);
+  });
+
+  it("still registers the SENDER's own standing offer — S15(a) is unchanged", () => {
+    // The control case, and the one that would break if this fix were
+    // written as "contingent never registers". §3.2 S15's two flavours
+    // have OPPOSITE outcomes and conflating them is incident A5.
+    const state = world({ confirmed: [] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "consider me as the 14th whenever you have 13",
+          route: "offer",
+          facts: attendanceFacts([
+            claim({ polarity: "in", contingent: true, conditionOn: "squad", tense: "future" }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(1);
+    expect(r.writes[0]).toMatchObject({ kind: "attendance", status: "CONFIRMED" });
+  });
+
+  it("makes A5's refusal structural — it no longer rests on personNamed", () => {
+    // "my brother can play if needed" is now refused TWICE: once because
+    // the reference is not a name, and once because a contingent claim
+    // about a third party never registers. A schema-drift regression in
+    // `personNamed` can no longer provision a ghost user on its own.
+    const state = world({ confirmed: [] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "@Match Time my brother can play if needed",
+          route: "offer",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({
+              subject: "other",
+              personRef: "Amir's brother",
+              // The model getting this WRONG is the whole point of the test.
+              personNamed: true,
+              polarity: "in",
+              contingent: true,
+              conditionOn: "squad",
+            }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toEqual([]);
+    expect(r.nextState.roster.some((m) => /brother/i.test(m.name))).toBe(false);
+  });
+
+  it("a contingent third-party BENCH is held too, not just an IN", () => {
+    const state = world({ confirmed: ["dan"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "@Match Time Dan can bench if we're over",
+          route: "offer",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({
+              subject: "other",
+              personRef: "Dan",
+              personNamed: true,
+              polarity: "bench",
+              contingent: true,
+              conditionOn: "squad",
+            }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toEqual([]);
+  });
+});
+
 describe("PR#27 · a CONTINGENT bench is inferred, not explicit", () => {
   it("does not write a bench row at 0/14 for a standing offer", () => {
     // Blocker. `route.ts:2412-2417` derives benchIntent deterministically

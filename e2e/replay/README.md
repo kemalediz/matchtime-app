@@ -23,11 +23,19 @@ MT_RECALL_FLOOR=1 npm run replay:router-recall   # …and with the floor ON
 
 # §10 step 6: the attendance engine, WRITING, against the incumbent —
 # always with the floor from a self-replay of the same size beside it
-MT_REPLAY_LIMIT=80 MT_REPLAY_CANDIDATE=../corpus/engine-pipeline.ts \
-  MT_REPLAY_FLOOR=.e2e/replay/floor.json npm run test:replay:live
+MT_REPLAY_LIMIT=80 MT_REPLAY_CANDIDATE=attendance-engine \
+  MT_REPLAY_FLOOR=.e2e/replay/<floorRunId>/result.json npm run test:replay:live
 ```
 
-`../corpus/engine-pipeline.ts` is the shipped route with
+`MT_REPLAY_CANDIDATE` is a **name in the registry** at the top of
+`../sim/history-replay-live.spec.ts`, not a module path. The documented
+path form never worked: `await import(someVariable)` on a `.ts` file
+fails under Playwright's transform with "Cannot use import statement
+outside a module", before a single model call — so a "candidate" sweep
+died in 85ms and the only comparison anyone had ever actually run was
+the self-replay. Adding a candidate is one line in that registry.
+
+`attendance-engine` is the shipped route with
 `ATTENDANCE_ENGINE_ENABLED` forced on for its own requests, via the
 test-only `x-mt-attendance-engine` header (see `e2e/corpus/README.md`).
 The incumbent side sends no header and therefore gets the server's own
