@@ -100,8 +100,9 @@ export class AnswerEnginePipeline implements CorpusPipeline {
    * exactly what the model produces. Writing them myself would be
    * grading my own answer key — the trap `e2e/corpus/README.md` warns
    * about under "Do not 'record' stubs from a live run". The
-   * deterministic coverage is 42 unit tests in
-   * `src/lib/pipeline/__tests__/answer-batch.test.ts`.
+   * deterministic coverage is `answer-batch.test.ts` +
+   * `route-flags.test.ts` — 121 unit tests, and a count is not quoted
+   * anywhere it can rot silently.
    */
   supports(c: CorpusCase, mode: CorpusMode): boolean {
     return mode === "live" && OWNED_CASE_IDS.has(c.id);
@@ -193,12 +194,24 @@ export class AnswerEnginePipeline implements CorpusPipeline {
 
       notes.costUsd = (notes.costUsd as number) + res.cost.usd;
       (notes.degradations as string[]).push(...res.degradations);
+      // THIS TURN's replies, kept separately. `spoken` accumulates
+      // across turns, and `spoken.slice(-messages.length)` is wrong the
+      // moment a turn's message count and reply count differ — which is
+      // every turn something is handed back or de-duplicated. It re-fed
+      // an earlier turn's post into `history`, and `history` is where
+      // both `lastBotPost` and the extractor's RECENT CHAT block come
+      // from, so §3.2 S25's "the bot's last post is a KNOWN OBJECT"
+      // would be resolving against the wrong object.
+      const saidThisTurn: string[] = [];
       for (const m of messages) {
         const out = res.outcomes.get(m.waMessageId);
         if (out) {
           (notes.owned as string[]).push(`${m.waMessageId} ${out.route}`);
           (notes.reasons as unknown[]).push({ id: m.waMessageId, reasoning: out.reasoning });
-          if (out.reply) spoken.push(out.reply);
+          if (out.reply) {
+            spoken.push(out.reply);
+            saidThisTurn.push(out.reply);
+          }
           reacts.push(out.react);
         } else {
           (notes.handedBack as string[]).push(`${m.waMessageId} route=${m.route ?? "(none)"}`);
@@ -212,7 +225,7 @@ export class AnswerEnginePipeline implements CorpusPipeline {
           body: m.body,
         });
       }
-      for (const s of spoken.slice(-messages.length)) {
+      for (const s of saidThisTurn) {
         history.push({ author: "MatchTime", body: s });
       }
     }

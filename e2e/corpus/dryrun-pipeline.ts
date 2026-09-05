@@ -275,7 +275,11 @@ export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
 
   const teams = match
     ? await grp.db.all<{ userId: string; team: "RED" | "YELLOW" }>(
-        `SELECT "userId", team FROM "TeamAssignment" WHERE "matchId" = $1`,
+        // INSERTION order (id asc), matching `load-state.ts` and the
+        // shipped show-teams path. Without it both loaders return heap
+        // order and a re-ordering regression is invisible to the corpus
+        // because BOTH arms are equally unordered.
+        `SELECT "userId", team FROM "TeamAssignment" WHERE "matchId" = $1 ORDER BY id ASC`,
         [match.id],
       )
     : [];

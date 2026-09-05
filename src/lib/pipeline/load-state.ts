@@ -103,6 +103,14 @@ export async function loadSquadState(
         await db.teamAssignment.findMany({
           where: { matchId: match.id },
           select: { userId: true, team: true },
+          // INSERTION order, exactly as the shipped `show_teams_request`
+          // path reads them (`route.ts:3709`: "so the re-post renders
+          // the same players in the same order generate wrote them —
+          // createMany writes red then yellow"). Without it Postgres
+          // returns heap order, which changes after an UPDATE — i.e.
+          // after exactly the manual admin swap `c408649` and corpus
+          // case S19 exist to protect.
+          orderBy: { id: "asc" },
         })
       ).map((t) => ({ userId: t.userId, team: t.team as "RED" | "YELLOW" }))
     : [];

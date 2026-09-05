@@ -16,8 +16,11 @@
  *      change cannot pick a different spelling; setting either must do
  *      nothing at all, because nothing owns those routes yet.
  */
-import { describe, it, expect } from "vitest";
-import { isAttendanceEngineEnabled, isRouterGateEnabled } from "../gate";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, it, expect, afterAll } from "vitest";
+import { isAttendanceEngineEnabled, isRouterGateEnabled, routerIsNeeded } from "../gate";
 import {
   BALANCER_FLAG,
   QUESTION_FLAG,
@@ -198,10 +201,85 @@ describe("the test-only routes header", () => {
   });
 });
 
+describe("the stub-file seam", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-route-flags-"));
+  const file = path.join(dir, "router-stub.json");
+  const env = (extra: Record<string, string | undefined> = {}) => ({
+    MT_TEST_ROUTER_STUB_FILE: file,
+    ...extra,
+  });
+  const write = (cfg: unknown) => fs.writeFileSync(file, JSON.stringify(cfg));
+
+  afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("is inert unless MT_TEST_ROUTER_STUB_FILE is set", () => {
+    write({ engineRoutes: ["question"] });
+    expect([...enabledStepSevenRoutes({})]).toEqual([]);
+  });
+
+  it("reads the SAME file gate.ts reads, so one stub configures the whole pipeline", () => {
+    write({ enabled: true, engine: true, engineRoutes: ["question", "balancer"] });
+    expect([...enabledStepSevenRoutes(env())].sort()).toEqual(["balancer", "question"]);
+    expect(isRouterGateEnabled(env())).toBe(true);
+    expect(isAttendanceEngineEnabled(env())).toBe(true);
+  });
+
+  it("a stub with no engineRoutes key falls through to the env, exactly as gate.ts does", () => {
+    // `gate.ts:144` reads its own key as `typeof stub.enabled ===
+    // "boolean"` and otherwise falls back to the env; this file matches
+    // that convention rather than inventing a second one, and the two
+    // are asserted side by side so neither can drift into the other's
+    // shape. A spec that means "own nothing" says so with
+    // `engineRoutes: []`.
+    write({ enabled: true });
+    expect([...enabledStepSevenRoutes(env({ [QUESTION_FLAG]: "1" }))]).toEqual(["question"]);
+    expect([...enabledStepSevenRoutes(env())]).toEqual([]);
+    expect(isRouterGateEnabled(env())).toBe(true);
+    write({ enabled: true, engineRoutes: [] });
+    expect([...enabledStepSevenRoutes(env({ [QUESTION_FLAG]: "1" }))]).toEqual([]);
+  });
+
+  it("cannot invent a route through the stub file either", () => {
+    write({ engineRoutes: ["self_att", "banana", "question"] });
+    expect([...enabledStepSevenRoutes(env())]).toEqual(["question"]);
+  });
+
+  it("a garbled stub file owns nothing rather than throwing", () => {
+    fs.writeFileSync(file, "{ not json");
+    expect(() => enabledStepSevenRoutes(env())).not.toThrow();
+    expect([...enabledStepSevenRoutes(env())]).toEqual([]);
+  });
+
+  it("the header still wins over the stub file", () => {
+    write({ engineRoutes: ["question", "balancer"] });
+    expect([
+      ...enabledStepSevenRoutes(env({ MT_TEST_MODE: "1" }), routesHeaderOverride("balancer", {
+        MT_TEST_MODE: "1",
+      })),
+    ]).toEqual(["balancer"]);
+  });
+});
+
 describe("the router has to run for a step-7 route to own anything", () => {
   it("says so, rather than owning nothing while looking enabled", () => {
     expect(stepSevenNeedsRouter(new Set())).toBe(false);
     expect(stepSevenNeedsRouter(new Set<Route>(["question"]))).toBe(true);
     expect(stepSevenNeedsRouter(new Set<Route>(["balancer"]))).toBe(true);
+  });
+
+  it("is the ONLY thing standing between a live flag and owning nothing", () => {
+    // The trap, spelled out because it is not enforceable from here: a
+    // stub file (or an env flag) can turn `question` on while
+    // `ROUTER_GATE_ENABLED` and `ATTENDANCE_ENGINE_ENABLED` are both
+    // off, in which case `routerIsNeeded` is false, the router never
+    // runs, every route is `undefined`, and step 7 owns nothing while
+    // its flag reads on. The wiring commit MUST OR this into
+    // `routerIsNeeded`; this test is the reminder attached to the
+    // reason.
+    const env = { QUESTION_ENGINE_ENABLED: "1" };
+    expect(isRouterGateEnabled(env)).toBe(false);
+    expect(isAttendanceEngineEnabled(env)).toBe(false);
+    expect(routerIsNeeded(env, false)).toBe(false);
+    expect(stepSevenNeedsRouter(enabledStepSevenRoutes(env))).toBe(true);
   });
 });

@@ -62,12 +62,15 @@
  *     cannot answer well                      → handed back
  *   • the engine threw, or proposed a write   → owns nothing
  *
- * THE TAG GATE IS NOT REIMPLEMENTED HERE. `question` and both team
- * intents are in `ACTIONY_INTENTS` (`interaction-contract.ts:149-156`),
- * so an untagged one is already refused by the shipped gate at
- * `route.ts:1553-1592` before any of this could matter. Owning only
- * TAGGED messages means this module never has a second copy of that
- * policy to drift from — and it saves an extractor call on every
+ * THE TAG GATE IS NOT REIMPLEMENTED HERE — this module requires a tag
+ * unconditionally rather than calling `actionRequiresTag`. That is
+ * strictly MORE conservative than the contract for these two routes,
+ * not a second copy of it: `question` and both team intents are in
+ * `ACTIONY_INTENTS` (`interaction-contract.ts:149-156`), so the shipped
+ * gate at `route.ts:1553-1592` already refuses an untagged one before
+ * any of this could matter. Requiring `m.tagged` means there is nothing
+ * here that could drift away from that policy if it changes — the worst
+ * this can do is own less — and it saves an extractor call on every
  * untagged question in the group, which is most of them.
  *
  * ─────────────────────────────────────────────────────────────────────
@@ -153,19 +156,80 @@ export const ANSWER_ROUTES = STEP_SEVEN_ROUTES;
  * remove, so it goes back to the prompt that can still try.
  */
 export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
-  "squad",
   "count",
   "bench",
   "person_status",
   "phones",
 ];
 
-/** Routes whose messages might change the squad in this same batch. */
-const ATTENDANCE_ROUTES: readonly Route[] = ["self_att", "other_att", "offer", "unsure"];
+/**
+ * `squad` — "who's playing / show me the list" — is NOT in that set, and
+ * this is the one place §6's sentence is not honoured in full.
+ *
+ * `engine.ts:701-716` sends `squad` and `count` to the same
+ * `answer_count` speech intent, which renders "We're 11/14 for Tue
+ * 21:30, need 3 more". That is the right answer to "how many are we?"
+ * and a poor one to "who's playing?" — nobody is named. In the wired
+ * system it READS correctly only because that string trips
+ * `displaysSquadState` and `route.ts:2393` swaps it for the roster post;
+ * lean on that and the answer degrades to a bare count on two real
+ * paths, the composition pass being inside a `try/catch` and its
+ * `if (nextMatchForReply)` guard using a different match selector from
+ * this module's.
+ *
+ * Relying on a regex in another module to turn a count into a roster is
+ * the opposite of §6.4. The fix is an `answer_squad` intent rendering
+ * `composeSquadStatusPost` directly — a composer change, and it belongs
+ * with the `stats` and `options` format fixes above rather than being
+ * smuggled into an ownership layer.
+ */
 
-/** Prefix on every degradation this module reports, so the analyze
- *  route's partial-response admin DM can match a typed marker rather
- *  than prefix-matching free-text prose (§9). */
+/**
+ * Could ANY other message in this batch change the squad before the
+ * answer is read?
+ *
+ * Every answer this module composes is rendered from the state loaded at
+ * the top of the batch, and this module runs BEFORE `analyzeBatch` and
+ * before `executeVerdict` — so a write later in the same batch lands
+ * after the answer is composed. §3.2 S36's single-post rule stops two
+ * SQUAD POSTS contradicting each other, and `composeSquadStateReply`
+ * catches a reply that displays squad state. Neither catches
+ * "Yes, Idris has a slot for Tue 21:30" sent in the same window as
+ * Idris's own "sorry lads can't make it": it is a squad CLAIM, not a
+ * squad post, and no shape in `MOVE_CLAIM_PATTERNS` matches it.
+ *
+ * So no question is owned in a batch that carries anything else. The
+ * test is the ROUTE, not the content: anything not on one of step 7's
+ * own routes might write, including a `none` the gate did not skip (the
+ * gate is off, so the analyzer still sees it) and an id the router never
+ * mentioned. Conservative on purpose — it costs one extractor call on a
+ * mixed batch and it removes a whole class of contradiction.
+ *
+ * It also means step 7 is designed to run BEHIND step 5: with
+ * `ROUTER_GATE_ENABLED` off, ordinary banter counts as "anything else"
+ * and questions are rarely owned. That is stated rather than hidden.
+ */
+function batchCarriesAnythingElse(messages: AnswerBatchMessage[]): boolean {
+  return messages.some(
+    (m) => !m.gated && m.route !== "question" && m.route !== "balancer",
+  );
+}
+
+/**
+ * Prefix on every degradation this module reports.
+ *
+ * ⚠️ LOG-ONLY TODAY, and saying so matters: step 6's equivalent
+ * (`ENGINE_APPLY_DEGRADED_PREFIX`) is in `OFFLINE_REASON_PREFIXES`
+ * (`route.ts:957-972`) and reaches the partial-response admin DM,
+ * because `route.ts:919` puts it into a placeholder verdict's
+ * `reasoning`. Nothing does that for this prefix yet — it has no
+ * consumer outside this file. §9 asks for a TYPED marker instead of
+ * prefix-matched prose and this is the marker; the wiring commit is what
+ * makes it load-bearing, by adding it to that list. Until then this
+ * comment describes an intention, not a mechanism, which is the only
+ * honest thing a comment about a guard can say when the guard is not
+ * connected.
+ */
 export const ANSWER_DEGRADED_PREFIX = "answer-engine: degraded —";
 
 /** `AnalyzedMessage.handledBy` for a message this module decided. The
@@ -324,10 +388,16 @@ export async function runAnswerBatch(args: {
   // to describe, the composer would answer "0/0" from an empty state.
   if (!state.matchId) return empty();
 
-  if (expectedMatchId !== null && state.matchId !== expectedMatchId) {
+  // `!== null` is NOT enough, and this differs from step 6 deliberately.
+  // A null expectation means the ROUTE found no registration match while
+  // this module found one — a disagreement, not an absence, and the one
+  // that matters most: `route.ts:2353`'s squad-status composition is
+  // guarded by `if (nextMatchForReply)`, so with the route seeing no
+  // match nothing downstream would re-compose whatever is said here.
+  if (state.matchId !== expectedMatchId) {
     const detail =
-      `${ANSWER_DEGRADED_PREFIX} the route's registration match (${expectedMatchId}) and the ` +
-      `engine's (${state.matchId}) disagree; owning nothing`;
+      `${ANSWER_DEGRADED_PREFIX} the route's registration match (${expectedMatchId ?? "none"}) ` +
+      `and the engine's (${state.matchId}) disagree; owning nothing`;
     console.warn(`[answer-engine] ${detail}`);
     return empty([detail]);
   }
@@ -356,18 +426,12 @@ export async function runAnswerBatch(args: {
 
   const matchId = state.matchId;
 
-  // §3.2 S36 — one authoritative squad post per batch. Two batch
-  // runners each calling `decide()` cannot enforce that between them:
-  // the attendance engine would emit the squad post and this one would
-  // emit a count line beside it, which is the shape of the 2026-06-12
-  // Sutton Lads incident (four contradictory posts in one batch). So a
-  // question ABOUT THE SQUAD in a batch that might also change the
-  // squad goes to the analyzer, where the shipped squad-status collapse
-  // (`route.ts:2328-2410`) already owns the problem. Bench, phone and
-  // person questions are unaffected — they are not squad posts.
-  const batchMayChangeSquad = messages.some(
-    (m) => !m.gated && m.route !== undefined && ATTENDANCE_ROUTES.includes(m.route),
-  );
+  // See `batchCarriesAnythingElse`. Two batch runners each calling
+  // `decide()` cannot enforce §3.2 S36's single squad post between
+  // them, and — the sharper half — an answer composed here is composed
+  // from a PRE-WRITE snapshot, so a question answered beside an
+  // attendance change is a claim about a squad that no longer exists.
+  const otherTraffic = batchCarriesAnythingElse(messages);
 
   const eligible = candidates.filter((m) => {
     if (m.route === "balancer" && !features.teamBalancing) {
@@ -474,10 +538,16 @@ export async function runAnswerBatch(args: {
         hand(`question topic "${facts.topic}" is not answered from the database`);
         continue;
       }
-      if ((facts.topic === "squad" || facts.topic === "count") && batchMayChangeSquad) {
+      if (otherTraffic) {
+        // EVERY topic, not just the squad-shaped ones. An answer here is
+        // composed from a pre-write snapshot, and "Yes, Idris has a slot
+        // for Tue 21:30" beside Idris's own "sorry lads can't make it"
+        // is a claim about a squad that no longer exists — invisible to
+        // `composeSquadStateReply`, which only recognises squad POSTS
+        // and the `MOVE_CLAIM_PATTERNS` phrasings.
         hand(
-          `a squad question in a batch that may also change the squad — one authoritative ` +
-            `squad post per batch (S36) is the analyzer's collapse to make`,
+          `the batch also carries messages this step does not own, which may change the ` +
+            `squad after this answer is composed (S36, and the pre-write snapshot)`,
         );
         continue;
       }
@@ -559,8 +629,13 @@ export async function runAnswerBatch(args: {
     console.error("[answer-engine] the engine threw:", err);
     return empty([...degradations, detail]);
   }
+  // Pushed HERE rather than left to the composer, because the write
+  // assertion below can return before `compose()` ever runs and a
+  // fail-open must never lose the reason it happened. `compose()` folds
+  // the same list into its `operatorNotes` (`compose.ts:328-330`), so
+  // the fold below de-duplicates rather than reporting each one twice.
   for (const d of result.degradations) {
-    degradations.push(`${d.stage} ${d.messageId ?? "batch"}: ${d.detail}`);
+    degradations.push(`[${d.stage}${d.messageId ? ` ${d.messageId}` : ""}] ${d.detail}`);
   }
 
   // ── THE WRITE ASSERTION ────────────────────────────────────────────
@@ -602,24 +677,69 @@ export async function runAnswerBatch(args: {
     utteranceByMessageId.set(u.messageId, list);
   }
   const reactByMessageId = new Map(composed.reacts.map((r) => [r.messageId, r.emoji]));
-  for (const n of composed.operatorNotes) degradations.push(n);
+  // De-duplicated: `compose()` re-emits `result.degradations` verbatim
+  // in the same format they were pushed in above.
+  for (const n of composed.operatorNotes) {
+    if (!degradations.includes(n)) degradations.push(n);
+  }
+
+  // ── AN OWNED MESSAGE THAT SAYS NOTHING IS NOT OWNED ────────────────
+  //
+  // Ownership is decided before `decide()` runs, so an owned id that
+  // produces no utterance would return a completely silent outcome —
+  // "message understood, action silently not taken", the failure §9
+  // calls this product's signature. Every owned topic speaks today, so
+  // this is unreachable; it is asserted for the same reason the write
+  // assertion is, and because the coincidence is fragile:
+  // `engine.ts:923-931` drops the deferred question speech entirely
+  // whenever a squad change is in the same `decide()` call, which is
+  // exactly what a hybrid pipeline would produce.
+  //
+  // Built as a NEW set rather than by removing from `ownedIds`:
+  // `__tests__/zero-writes.test.ts` scans this directory for
+  // `.delete(`, and a `Set.delete` is indistinguishable from a Prisma
+  // one to a source scanner. The scanner is right to be blunt — the
+  // shape it is looking for is the one that can change a squad — so the
+  // shape is avoided here rather than the scanner taught an exception.
+  const silentIds = [...ownedIds].filter(
+    (id) => (utteranceByMessageId.get(id) ?? []).length === 0,
+  );
+  for (const id of silentIds) {
+    degradations.push(
+      `${ANSWER_DEGRADED_PREFIX} ${id}: owned but composed nothing to say — ` +
+        `handing this message back to the analyzer rather than going silent`,
+    );
+  }
+  const spokenIds = new Set([...ownedIds].filter((id) => !silentIds.includes(id)));
+  if (spokenIds.size === 0) return empty(degradations);
 
   // ── Per-message outcomes ───────────────────────────────────────────
   const outcomes = new Map<string, AnswerMessageOutcome>();
   for (const m of messages) {
-    if (!ownedIds.has(m.waMessageId)) continue;
+    if (!spokenIds.has(m.waMessageId)) continue;
     const engineOutcome = result.outcomes.find((o) => o.messageId === m.waMessageId);
     const utterances = utteranceByMessageId.get(m.waMessageId) ?? [];
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
+    // ONE reply per message. Several speech intents for the same message
+    // join into one send; they never become two results.
+    const reply = utterances.length > 0 ? utterances.join("\n\n") : null;
+    // `handleQuestion` and `handleTeams` set no react, so the composer
+    // produces none. The shipped show-teams path reacts 👀
+    // (`route.ts:3746`), and losing it would be a visible change on a
+    // flag advertised as a like-for-like move — so it is carried here
+    // rather than added to the engine.
+    const react = reactByMessageId.get(m.waMessageId) ?? (m.route === "balancer" ? "👀" : null);
     outcomes.set(m.waMessageId, {
       waMessageId: m.waMessageId,
       route: m.route as Route,
-      // ONE reply per message. Several speech intents for the same
-      // message join into one send; they never become two results.
-      reply: utterances.length > 0 ? utterances.join("\n\n") : null,
-      react: reactByMessageId.get(m.waMessageId) ?? null,
+      reply,
+      react,
       intent: m.route === "balancer" ? "show_teams_request" : "question",
-      action: "none",
+      // `AnalyzedMessage.action`, derived exactly as `route.ts:2197-2200`
+      // derives it for a message with no attendance write. "none" would
+      // make every step-7 answer look like a no-op to anything filtering
+      // the admin log — including the nightly `none`-bucket sweep.
+      action: react ? "react" : reply ? "reply" : "none",
       reasoning: `${ANSWER_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}`,
     });
   }
@@ -642,7 +762,10 @@ export async function runAnswerBatch(args: {
   }
 
   return {
-    ownedIds,
+    // The ids that both survived ownership AND produced an answer. An
+    // id in neither is one the analyzer decides, and there is exactly
+    // one outcome per id in here.
+    ownedIds: spokenIds,
     outcomes,
     writes: [],
     matchId,

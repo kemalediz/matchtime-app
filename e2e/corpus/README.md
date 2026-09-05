@@ -315,8 +315,9 @@ Two more differences:
 
 - **Live only.** A stubbed run would need hand-written FACTS, and the
   facts are what the model produces — writing them yourself is the trap
-  rule 5 above warns about. The deterministic coverage is 46 unit tests
-  in `src/lib/pipeline/__tests__/answer-batch.test.ts`.
+  rule 5 above warns about. The deterministic coverage is
+  `src/lib/pipeline/__tests__/answer-batch.test.ts` and
+  `route-flags.test.ts`.
 - **It fails if it billed nothing.** The pipeline is in-process and
   writes no `AnalyzedMessage` rows, so `liveReachFailure` has nothing to
   read. Measured spend is the direct evidence that the router and the
