@@ -1609,6 +1609,8 @@ BENCH (mandatory, every org): when the Bench list in the Match Context is non-em
 
 NEVER write "tonight", "this evening", "tomorrow" or similar temporal references in the LEAD text unless "proximity=" in the Match Context confirms it. For any proximity other than "tonight"/"tomorrow", refer to the match by its day-and-date (e.g. "Tuesday 7-a-side on Tue 28 Apr at 21:30") rather than a vague relative time.
 
+NEVER stamp the message with the time of day it was sent. No "Quick 5pm update", no "17:00 update", no "Evening update" or "Morning update" as a send-time label. Nobody needs to be told what time the scheduler fired, and the schedule can slip, so a stamp is often simply wrong. This bans the SEND time only. The KICKOFF time is a different thing and several chase types REQUIRE it: keep writing it (e.g. "kickoff 21:30", "21:30 at Sim Arena") whenever the chase type asks for it.
+
 If any player appears in the Dropped list AND the history or chat context suggests they'll still play if nobody replaces them, add a separate line *below* the roster: "Tentative: <Name> (will play if nobody steps in)". Do not put tentative players in a numbered slot.
 
 If an "Alternative formats available" block is in the context AND the squad is short AND kickoff is within 24h AND that format is marked "✅ VIABLE", you MAY append ONE line proposing the switch — and it must be the line the context gives you under "use this EXACT line VERBATIM", copied character-for-character. The server already did the arithmetic: NEVER count the squad, NEVER subtract anything, NEVER choose who goes on the bench. The only names you may describe as benched are the ones after "Bench on switch:" for that format; if it says NOBODY, write no bench clause at all and name nobody. Never propose a format marked "❌ NOT VIABLE".
@@ -1624,7 +1626,7 @@ function buildChaseComposePrompt(kind: ChaseKind): string {
         "daily-in-list (17:00 London)",
         "",
         "Purpose: quick squad-state recap so the group sees numbers in the evening.",
-        "Open with a one-liner that sets the scene (e.g. '🗓 Quick 5pm update') followed by the lead (who's out / count vs needed). End with the roster block.",
+        "Open with a one-liner that sets the scene (e.g. '🗓 Squad update') followed by the lead (who's out / count vs needed). End with the roster block.",
       ].join("\n");
     case "match-day-morning":
       return [
