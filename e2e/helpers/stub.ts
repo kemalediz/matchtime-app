@@ -102,6 +102,7 @@ export function claim(over: Record<string, unknown> = {}): Record<string, unknow
     contingent: false,
     conditionOn: "none",
     tense: "present",
+    basis: "decision",
     reported: false,
     confidence: 0.95,
     ...over,

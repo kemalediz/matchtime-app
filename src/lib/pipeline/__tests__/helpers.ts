@@ -156,6 +156,7 @@ export function claim(partial: Partial<Claim> = {}): Claim {
     contingent: false,
     conditionOn: "none",
     tense: "present",
+    basis: "decision",
     reported: false,
     confidence: 0.95,
     ...partial,

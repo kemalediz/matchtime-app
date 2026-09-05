@@ -30,6 +30,7 @@ import type {
   AdminFacts,
   AttendanceFacts,
   Claim,
+  ClaimBasis,
   ConditionOn,
   Degradation,
   Facts,
@@ -84,6 +85,7 @@ For each attendance claim in the message, return:
   contingent   true if the commitment depends on something ("if you're short", "if my back holds up", "happy to drop if you find someone")
   conditionOn  "squad" if the condition is about the squad or the team's needs, "self" if it is about the person themselves, otherwise "none"
   tense        "present" now, "future" a commitment about an upcoming match INCLUDING a standing one ("count me in whenever you are short"), "past" reporting something that already happened ("I was in last week"), "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined"). A condition attached to a real future commitment is NOT hypothetical: use future and set contingent
+  basis        what the message DOES about the person's place. "decision" it says they are playing or not playing: "I'm in", "count me in", "I'm out", "can't make it", "I'll be there". "availability" it reports where they will be or what they can do, and leaves the question unanswered: "I will be back Tuesday week", "I land Monday", "I'm away that week", "I'm free after the 5th", "I'm around if you need me". The test is whether someone reading the message alone would know the person's answer, or only their circumstances. "I'm in for next Tuesday" names a day and is still a decision; "I will be back Tuesday week" names a day and is not
   reported     true when relaying what someone else said ("Najib said he's in")
   confidence   0 to 1
 
@@ -154,6 +156,7 @@ export const ATTENDANCE_SCHEMA = {
           contingent: { type: "boolean" },
           conditionOn: { type: "string", enum: ["squad", "self", "none"] },
           tense: { type: "string", enum: ["present", "future", "past", "hypothetical"] },
+          basis: { type: "string", enum: ["decision", "availability"] },
           reported: { type: "boolean" },
           confidence: { type: "number" },
         },
@@ -165,6 +168,7 @@ export const ATTENDANCE_SCHEMA = {
           "contingent",
           "conditionOn",
           "tense",
+          "basis",
           "reported",
           "confidence",
         ],
@@ -260,6 +264,7 @@ export function factsSchemaFor(route: Route): Record<string, unknown> | null {
 const POLARITIES: Polarity[] = ["in", "out", "bench"];
 const TENSES: Tense[] = ["present", "future", "past", "hypothetical"];
 const CONDITIONS: ConditionOn[] = ["squad", "self", "none"];
+const BASES: ClaimBasis[] = ["decision", "availability"];
 const TOPICS: QuestionTopic[] = [
   "squad",
   "bench",
@@ -338,6 +343,16 @@ export function parseFacts(
         }
         const condRaw = str(r.conditionOn).toLowerCase() as ConditionOn;
         const conditionOn = CONDITIONS.includes(condRaw) ? condRaw : "none";
+        // `decision` on drift, matching what `tense` and `conditionOn`
+        // already do: the fallback is the value that preserves today's
+        // behaviour, so an unreadable field can never silently start
+        // SUPPRESSING writes the pipeline makes now. Loud when the model
+        // sent something, silent when it sent nothing (an older stub).
+        const basisRaw = str(r.basis).toLowerCase() as ClaimBasis;
+        const basis = BASES.includes(basisRaw) ? basisRaw : "decision";
+        if (!BASES.includes(basisRaw) && str(r.basis)) {
+          bad(`unknown basis "${str(r.basis)}" treated as decision`);
+        }
         const subject = str(r.subject).toLowerCase() === "other" ? "other" : "sender";
         claims.push({
           subject,
@@ -347,6 +362,7 @@ export function parseFacts(
           contingent: bool(r.contingent),
           conditionOn,
           tense,
+          basis,
           reported: bool(r.reported),
           confidence: clamp01(r.confidence),
         });
