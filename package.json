@@ -29,6 +29,7 @@
     "test:corpus:live": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/corpus-live.spec.ts",
     "test:corpus:dryrun": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/corpus-dryrun-live.spec.ts",
     "test:corpus:settle": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/corpus-settle-live.spec.ts",
+    "test:corpus:answers": "MT_SIM_LIVE_LLM=1 tsx e2e/run.ts sim/corpus-answers-live.spec.ts",
     "replay:extract": "tsx e2e/replay/extract.ts",
     "replay:router-recall": "tsx e2e/replay/router-recall-live.ts",
     "test:replay": "tsx e2e/run.ts sim/history-replay.spec.ts",

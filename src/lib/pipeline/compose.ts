@@ -145,12 +145,29 @@ export function compose(result: EngineResult): ComposedOutput {
       }
 
       case "answer_phones": {
-        const missing = state.roster.filter((m) => !m.hasPhone).map((m) => safeName(m.name));
+        // SQUAD-SCOPED, like the rule it replaces. `message-analyzer.ts`
+        // answers this from "the Confirmed and Bench lists in the Match
+        // Context", and the question it is answering is "anyone IN THE
+        // SQUAD without a number?".
+        //
+        // `state.roster` is EVERY active membership, so an org-scoped
+        // answer on a club that has been provisioning named guests for
+        // months is a wall of names about people who are not playing —
+        // and it is invisible to every net downstream, because a list of
+        // names is not squad state and `composeSquadStateReply` never
+        // looks at it. Found by an adversarial review of §10 step 7,
+        // before the `question` route was ever switched on.
+        const byId = new Map(state.roster.map((m) => [m.userId, m]));
+        const missing = state.rows
+          .filter((r) => r.status === "CONFIRMED" || r.status === "BENCH")
+          .sort((a, b) => a.position - b.position)
+          .filter((r) => byId.get(r.userId)?.hasPhone === false)
+          .map((r) => safeName(byId.get(r.userId)?.name ?? ""));
         utterances.push({
           messageId: s.messageId,
           text:
             missing.length === 0
-              ? "Everyone on the roster has a number on record."
+              ? "Everyone in the squad has a number on record."
               : `No number on record for ${joinList(missing)}.`,
         });
         break;
