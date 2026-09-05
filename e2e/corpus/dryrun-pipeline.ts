@@ -198,7 +198,7 @@ export class DryRunPipeline implements CorpusPipeline {
  * `totalPlayersFor` — the two places a divergence would actually change
  * a decision. Everything else here is a column read.
  */
-async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
+export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
   const now = new Date();
 
   const matches = await grp.db.all<{

@@ -80,14 +80,29 @@
  * one outcome per input id. A message this module does not own arrives
  * with `facts: {kind:"none"}` and produces a `noop` with a reason.
  */
-import { getOrgFeatures, type OrgFeatures } from "../org-features";
+// ── ONE IMPORT RULE, AND IT IS LOAD-BEARING ──────────────────────────
+//
+// Nothing that reaches the Prisma client may be imported STATICALLY
+// here. `compose.ts`'s header records why: the Playwright worker never
+// loads Prisma (`e2e/sim/group.ts` talks plain SQL), and the corpus
+// judges this module from that worker. A static
+// `import { getOrgFeatures } from "../org-features"` pulls in
+// `src/lib/db.ts` → the generated client, and the whole spec file dies
+// at load with "exports is not defined in ES module scope" — before a
+// single model call, so the sweep reports "no tests found" rather than
+// a failure anyone can read. Measured here on 2026-09-05.
+//
+// So the two database-backed defaults are `await import`ed inside the
+// function, and only when the caller did not inject them. The analyze
+// route (which has Prisma) gets the real loaders; the corpus injects
+// its SQL ones and never touches Prisma at all.
+import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
 import { decide as decideDefault } from "./engine";
 import { extractForRoute } from "./extractors";
 import { extractorStubFromEnv } from "./extractor-stub";
 import { resolvePerson } from "./identity";
 import { anthropicModel, type PipelineModel } from "./llm";
-import { loadSquadState } from "./load-state";
 import { STEP_SEVEN_ROUTES, stepSevenOwnsRoute } from "./route-flags";
 import type {
   EngineInput,
@@ -270,7 +285,12 @@ export async function runAnswerBatch(args: {
 
   let state: SquadState;
   try {
-    state = await (deps.loadState ?? loadSquadState)(orgId, now);
+    if (deps.loadState) {
+      state = await deps.loadState(orgId, now);
+    } else {
+      const m = await import("./load-state");
+      state = await m.loadSquadState(orgId, now);
+    }
   } catch (err) {
     // Fail open. Owning nothing means the analyzer decides, which is
     // what happens today.
@@ -283,7 +303,12 @@ export async function runAnswerBatch(args: {
 
   let features: OrgFeatures;
   try {
-    features = await (deps.loadFeatures ?? getOrgFeatures)(orgId);
+    if (deps.loadFeatures) {
+      features = await deps.loadFeatures(orgId);
+    } else {
+      const m = await import("../org-features");
+      features = await m.getOrgFeatures(orgId);
+    }
   } catch (err) {
     const detail = `${ANSWER_DEGRADED_PREFIX} feature load failed (${
       err instanceof Error ? err.message : String(err)

@@ -18,6 +18,8 @@
  *      contains no mutation; `refuses to own anything when the engine
  *      proposes a write` proves it would refuse even if one appeared.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { displaysSquadState, formatTeamsPost } from "../../group-copy";
 import type { ModelRequest, ModelResponse, PipelineModel } from "../llm";
@@ -680,5 +682,42 @@ describe("the measured reason two topics stay with the analyzer", () => {
     expect(displaysSquadState("No number on record for Idris Bello.")).toBe(false);
     expect(displaysSquadState("Yes, Faris Nasser has a slot for Tue 21:30.")).toBe(false);
     expect(displaysSquadState("Faris Nasser isn't down for Tue 21:30 yet.")).toBe(false);
+  });
+});
+
+// ── 7. The module must stay loadable where there is no Prisma ────────
+
+describe("nothing that reaches Prisma is imported statically", () => {
+  // Measured on 2026-09-05, and it cost a live sweep: a plain
+  // `import { getOrgFeatures } from "../org-features"` pulls in
+  // `src/lib/db.ts` → the generated client, and the corpus spec that
+  // imports this module died at LOAD with "exports is not defined in ES
+  // module scope". Playwright then reported "No tests found" — a broken
+  // measurement that reads like an empty one. `compose.ts` carries the
+  // same rule in its header; this asserts it instead of stating it.
+  const PRISMA_BACKED = ["../db", "./load-state", "../org-features"];
+  const SRC = fs.readFileSync(path.resolve(__dirname, "..", "answer-batch.ts"), "utf8");
+
+  it.each(PRISMA_BACKED)("does not statically import %s", (mod) => {
+    const offenders = SRC.split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      // `import type` is erased at compile time and pulls in nothing.
+      .filter((l) => /^\s*import\s+(?!type\b)/.test(l))
+      .filter((l) => l.includes(`"${mod}"`));
+    expect(
+      offenders,
+      `${mod} reaches the Prisma client. Import it with \`await import\` inside the ` +
+        `function instead, so the module stays loadable in the Playwright worker.`,
+    ).toEqual([]);
+  });
+
+  it("still reaches the real loaders when no dep is injected", () => {
+    // The lazy imports must be REAL imports of the real modules, not a
+    // silently-null fallback that would make the analyze route own
+    // nothing forever while looking enabled.
+    expect(SRC).toMatch(/await import\("\.\/load-state"\)/);
+    expect(SRC).toMatch(/await import\("\.\.\/org-features"\)/);
+    expect(SRC).toMatch(/m\.loadSquadState/);
+    expect(SRC).toMatch(/m\.getOrgFeatures/);
   });
 });
