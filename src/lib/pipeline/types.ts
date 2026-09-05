@@ -115,6 +115,42 @@ export type Tense = "present" | "future" | "past" | "hypothetical";
 export type ConditionOn = "squad" | "self" | "none";
 
 /**
+ * Does the message SETTLE this person's attendance, or only report their
+ * availability?
+ *
+ * The schema gap PR #44 left open, found by the §10 step 6 replay sweep:
+ *
+ *   2026-06-20, Abid Kazmi, ten days before kickoff, squad 0/14 —
+ *   "I will be back Tuesday week". The engine registered him CONFIRMED.
+ *
+ * Three live runs of the shipped extractor on the real message returned
+ * `polarity:"in" · contingent:false · conditionOn:"none" · tense:"future"`
+ * — which is the SAME shape "I'm in for next Tuesday" returns. `tense`
+ * covers WHEN ("future" is right for both) and `contingent` covers
+ * WHETHER-IF (neither is conditional). Nothing in the schema covered
+ * WHAT THE MESSAGE DOES, so a travel statement and a commitment were
+ * literally indistinguishable and the engine had to guess.
+ *
+ * That is the same class of gap as the one that produced the Omar Yusuf
+ * defect — `conditionOn` had no value for "the condition is about a
+ * third party's willingness" — and it gets the same treatment: a field,
+ * not a paragraph of prose in the prompt telling the model what to do.
+ *
+ * - `decision`     the message settles it: "I'm in", "count me in",
+ *                  "I'm out", "can't make it", "I'll be there".
+ * - `availability` the message reports where the person will be or what
+ *                  they can do, and leaves the decision unmade: "I'll be
+ *                  back Tuesday week", "I land Monday", "I'm away that
+ *                  week", "I'm free after the 5th".
+ *
+ * The engine reads it asymmetrically, on purpose (§13): being ABLE to
+ * play is necessary but never sufficient, so an `availability` claim
+ * never gives anyone a squad place; being UNABLE to play settles the
+ * question by itself, so an `availability` OUT still frees one.
+ */
+export type ClaimBasis = "decision" | "availability";
+
+/**
  * One attendance claim the TEXT makes. Every field is a property of the
  * message, checkable by re-reading it. None of them is a decision.
  */
@@ -134,6 +170,8 @@ export interface Claim {
   contingent: boolean;
   conditionOn: ConditionOn;
   tense: Tense;
+  /** Settles it, or merely reports availability. See `ClaimBasis`. */
+  basis: ClaimBasis;
   /** Relaying what someone else said ("Najib said he's in"). */
   reported: boolean;
   confidence: number;

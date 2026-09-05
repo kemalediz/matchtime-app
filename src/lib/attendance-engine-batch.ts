@@ -140,6 +140,40 @@ export interface EngineBatchResult {
 }
 
 /**
+ * WHAT THE ENGINE DID, AND WHAT IT LOST, as lines for the operator.
+ *
+ * Pure and exported for one reason: the SELECTION of these lines was
+ * wrong, and silently so. The analyze route composed them behind
+ * `if (engineOwnedIds.size > 0)`, which silences them in exactly the
+ * case they exist for — a batch where EVERY extraction failed ends with
+ * `ownedIds` empty, and `empty(degradations)` above goes out of its way
+ * to carry the reasons through that early return precisely so they could
+ * be printed. One `&&` upstream threw them away, and a batch that had
+ * just lost its whole extraction to an overloaded API read exactly like
+ * a batch where the flag was off.
+ *
+ * A condition that can be wrong that quietly is a condition that belongs
+ * in a unit test, not in a 2,600-line route handler.
+ */
+export function describeEngineBatch(
+  batch: EngineBatchResult,
+  batchSize: number,
+): { warns: string[]; info: string | null } {
+  const warns = batch.degradations.map((d) => `[analyze] attendance-engine degraded: ${d}`);
+  // Silence only when there is genuinely nothing to say: the engine
+  // owned nothing AND lost nothing, which is the flag being off or a
+  // batch of pure banter.
+  const info =
+    batch.ownedIds.size > 0 || batch.degradations.length > 0
+      ? `[analyze] attendance-engine: decided ${batch.ownedIds.size}/${batchSize} message(s) ` +
+        `on match ${batch.matchId}, ` +
+        `$${batch.cost.usd.toFixed(5)} across ${batch.cost.calls} extractor call(s) ` +
+        `in ${batch.cost.ms}ms`
+      : null;
+  return { warns, info };
+}
+
+/**
  * "The engine owns nothing; the analyzer keeps the batch."
  *
  * A FUNCTION, not a shared const. The result carries a `Set` and a
@@ -379,9 +413,17 @@ export async function runAttendanceEngineBatch(args: {
         `${ENGINE_APPLY_DEGRADED_PREFIX} ${id}: ${detail} — handing this message back to the analyzer`,
       );
     }
+    // THE RATE, not just the count. PR #44 raised `maxRetries` to 4 and
+    // the corpus sweep's ten lost messages went to zero — which means
+    // the fallback never fired there, and the only question an operator
+    // has in week 1 of the flag being on is "how often is the second
+    // line carrying this?". A bare count cannot answer it; a count over
+    // the batch's owned population can, and it is the same line whether
+    // one message failed or all of them did.
+    const rate = ((failedIds.size / owned.length) * 100).toFixed(1);
     console.warn(
-      `[attendance-engine] ${failedIds.size} extraction(s) failed; those messages go to the ` +
-        `analyzer instead of going silent`,
+      `[attendance-engine] ${failedIds.size} of ${owned.length} extraction(s) failed (${rate}%); ` +
+        `those messages go to the analyzer instead of going silent`,
     );
   }
   for (const id of failedIds) ownedIds.delete(id);

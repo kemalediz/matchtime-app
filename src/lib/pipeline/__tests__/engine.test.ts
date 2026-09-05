@@ -2146,3 +2146,183 @@ describe("PR#33 · an admin's recruit command addresses MatchTime", () => {
     expect(statusOf(r.nextState, "najib")).toBe("CONFIRMED");
   });
 });
+
+// ── basis · availability is not a commitment ───────────────────────────
+
+describe("an AVAILABILITY statement registers nobody (2026-06-20, Abid Kazmi)", () => {
+  // The last adjudicated spurious write left open by PR #44, found by
+  // the §10 step 6 replay sweep over real production history:
+  //
+  //   g-9e11e1c220:2026-06-20T18:00:34.268Z — Kemal chases the group
+  //   ("guys, nobody interested? …"), Abid Kazmi replies "I will be back
+  //   Tuesday week", 241.5h (ten days) before kickoff, squad 0/14. The
+  //   engine registered him CONFIRMED. Production labelled it out/OUT
+  //   and the incumbent's replay run wrote nothing: only the engine put
+  //   him in the squad.
+  //
+  // It is a SCHEMA GAP, measured rather than assumed. Three live runs of
+  // the shipped extractor on the real message with its real history
+  // returned, every time:
+  //
+  //   polarity "in" · contingent false · conditionOn "none" · tense "future"
+  //
+  // …which is byte-for-byte the shape "I'm in for next Tuesday" returns.
+  // Neither `tense` nor `contingent` can separate them: `future` is the
+  // right tense for both, and neither is conditional on anything. The
+  // schema had no field for "this reports where I will be, it does not
+  // ask for a place", so `basis` is that field.
+  //
+  // The asymmetry is deliberate and is §13's default: being ABLE to play
+  // is necessary but never sufficient, so an availability IN never
+  // registers; being UNABLE to play settles it, so an availability OUT
+  // still frees the slot.
+
+  it("does not register the sender who says they will be back", () => {
+    const state = world({ confirmed: [] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "abid",
+          body: "I will be back Tuesday week",
+          route: "self_att",
+          facts: attendanceFacts([
+            claim({ polarity: "in", tense: "future", basis: "availability", confidence: 0.7 }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toEqual([]);
+    expect(statusOf(r.nextState, "abid")).toBe("ABSENT");
+    expect(r.outcomes[0].disposition).toBe("noop");
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/availability/i);
+  });
+
+  it("STILL registers a real commitment ten days out — the opposite direction", () => {
+    // The control. A fix written as "future never registers" would pass
+    // the test above and break this one, and this is the shape the group
+    // actually uses when the chase goes out early.
+    const state = world({ confirmed: [] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "abid",
+          body: "I'm in for next Tuesday",
+          route: "self_att",
+          facts: attendanceFacts([
+            claim({ polarity: "in", tense: "future", basis: "decision", confidence: 0.95 }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(1);
+    expect(statusOf(r.nextState, "abid")).toBe("CONFIRMED");
+  });
+
+  it("does not register a THIRD PARTY reported as available either", () => {
+    const state = world({ confirmed: [] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "kemal",
+          body: "@Match Time Najib is back from Turkey next week",
+          route: "other_att",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({
+              subject: "other",
+              personRef: "Najib",
+              personNamed: true,
+              polarity: "in",
+              tense: "future",
+              basis: "availability",
+            }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toEqual([]);
+    expect(statusOf(r.nextState, "najib")).toBe("ABSENT");
+  });
+
+  it("does not put an available player on the bench either", () => {
+    // `bench` is an EXPLICIT ask, so `availability` + `bench` should not
+    // occur — but a squad place is a squad place, and the rule is about
+    // giving one to someone who never asked for it.
+    const state = world({ confirmed: FULL_14 });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "efat",
+          body: "I'm around Tuesday if that helps",
+          route: "offer",
+          facts: attendanceFacts([
+            claim({ polarity: "bench", tense: "future", basis: "availability" }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes).toEqual([]);
+  });
+
+  it("STILL drops a confirmed player who says they are away — an availability OUT settles it", () => {
+    // The other half of the asymmetry, and the reason this is not
+    // "availability claims are ignored". A place nobody can use is a
+    // place the club loses; "I'm away that week" is as good a reason to
+    // free it as "I'm out". Suppressing this direction would trade one
+    // spurious write for a class of missed ones.
+    const state = world({ confirmed: ["kemal", "abid", "elvin"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "abid",
+          body: "I'm away next week",
+          route: "self_att",
+          facts: attendanceFacts([
+            claim({ polarity: "out", tense: "future", basis: "availability", confidence: 0.9 }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "abid")).toBe("DROPPED");
+  });
+
+  it("cannot be superseded INTO existence by a later availability claim", () => {
+    // The state collapse defers to a later message only when that later
+    // message would itself write. An availability IN would not, so an
+    // earlier real commitment must survive it.
+    const state = world({ confirmed: [] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          id: "m1",
+          from: "abid",
+          body: "In",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "in", basis: "decision" })]),
+        }),
+        msg({
+          id: "m2",
+          from: "abid",
+          body: "I will be back Tuesday week anyway",
+          route: "self_att",
+          facts: attendanceFacts([
+            claim({ polarity: "in", tense: "future", basis: "availability" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "abid")).toBe("CONFIRMED");
+  });
+});

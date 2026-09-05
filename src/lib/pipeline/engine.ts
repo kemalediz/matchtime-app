@@ -238,6 +238,10 @@ export function decide(input: EngineInput): EngineResult {
           contingent: false,
           conditionOn: "none" as const,
           tense: "present" as const,
+          // The bot ASKED these names to confirm and one of them just
+          // said yes. That is a decision by construction; it is not the
+          // model's reading of anything.
+          basis: "decision" as const,
           reported: true,
           confidence: 0.95,
         }));
@@ -472,6 +476,37 @@ export function decide(input: EngineInput): EngineResult {
       for (const t of targets) {
         const c = t.claim;
         const self = c.subject === "sender";
+
+        // ── Availability is not a commitment ──────────────────────────
+        //
+        // The last adjudicated spurious write left open by PR #44, found
+        // by the §10 step 6 replay sweep and adjudicated `old_right`:
+        //
+        //   2026-06-20, Abid Kazmi, 241.5h (ten days) to kickoff, squad
+        //   0/14, answering Kemal's chase — "I will be back Tuesday
+        //   week". The engine registered him CONFIRMED. Production
+        //   labelled it out/OUT and the incumbent wrote nothing; only
+        //   the engine put him in the squad.
+        //
+        // It was a SCHEMA gap, not a bad decision: `tense` said "future"
+        // and `contingent` said false, which is exactly what "I'm in for
+        // next Tuesday" says. `basis` is the missing field (see
+        // `ClaimBasis`), and this is the only place that reads it.
+        //
+        // ASYMMETRIC, and the asymmetry is the point. A squad place goes
+        // to someone who asked for one, and reporting that you will be
+        // in the country is not asking — being ABLE to play is necessary
+        // and never sufficient. Being UNABLE to play settles it on its
+        // own, so an availability OUT still frees the slot; a place
+        // nobody can use is a place the club loses, and refusing that
+        // direction too would trade one spurious write for a class of
+        // missed ones.
+        if (c.basis === "availability" && c.polarity !== "out") {
+          out.reasons.push(
+            `availability statement about ${t.name}, not a commitment to play: no write`,
+          );
+          continue;
+        }
 
         // ── Contingency (§3.2 S11, S12, S15) ──────────────────────────
         if (c.contingent) {
@@ -954,15 +989,17 @@ export function decide(input: EngineInput): EngineResult {
 /**
  * Would this claim, on its own, ever produce a write?
  *
- * Only the vetoes that need no state: the confidence floor, tense, and
- * the two contingency holds. Used by the state collapse so a claim the
- * engine is going to decline cannot supersede an earlier one it would
- * have acted on. Kept beside the rules it mirrors — if one moves, this
- * has to move with it, and the collapse tests are what say so.
+ * Only the vetoes that need no state: the confidence floor, tense, the
+ * availability hold and the two contingency holds. Used by the state
+ * collapse so a claim the engine is going to decline cannot supersede an
+ * earlier one it would have acted on. Kept beside the rules it mirrors —
+ * if one moves, this has to move with it, and the collapse tests are
+ * what say so.
  */
 function wouldWrite(c: Claim): boolean {
   if (c.confidence < CONFIDENCE_FLOOR) return false;
   if (c.tense === "past" || c.tense === "hypothetical") return false;
+  if (c.basis === "availability" && c.polarity !== "out") return false;
   if (c.contingent && c.polarity === "out") return false;
   if (c.contingent && c.conditionOn === "self") return false;
   return true;

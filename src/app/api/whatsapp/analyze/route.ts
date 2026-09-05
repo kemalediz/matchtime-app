@@ -74,7 +74,7 @@ import {
 } from "@/lib/pipeline/gate";
 import { loadOpenQuestion } from "@/lib/pipeline/load-awaiting-answer";
 import { ENGINE_APPLY_DEGRADED_PREFIX, ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
-import { runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
+import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { shouldForceSenderOut } from "@/lib/out-safety-net";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures, type FeatureKey } from "@/lib/org-features";
@@ -818,16 +818,24 @@ async function handleAnalyzeRequest(request: Request) {
         })
       : null;
   const engineOwnedIds = engineBatch?.ownedIds ?? new Set<string>();
-  if (engineBatch && engineOwnedIds.size > 0) {
-    for (const d of engineBatch.degradations) {
-      console.warn(`[analyze] attendance-engine degraded: ${d}`);
-    }
-    console.log(
-      `[analyze] attendance-engine: decided ${engineOwnedIds.size}/${fresh.length} message(s) ` +
-        `on match ${engineBatch.matchId}, ` +
-        `$${engineBatch.cost.usd.toFixed(5)} across ${engineBatch.cost.calls} extractor call(s) ` +
-        `in ${engineBatch.cost.ms}ms`,
-    );
+  // WHAT THE ENGINE DID, AND WHAT IT LOST — the lines are composed by a
+  // pure function so the SELECTION of them is unit-testable.
+  //
+  // They used to be composed here behind `if (engineOwnedIds.size > 0)`,
+  // which silenced them in exactly the case they exist for. A batch
+  // where EVERY extraction failed — the total-overload edge — ends with
+  // `ownedIds` empty, and `attendance-engine-batch.ts` goes out of its
+  // way to carry the degradations through that early return precisely so
+  // they could be printed ("returning the bare empty result would throw
+  // away the only record of why the engine went quiet"). The gate threw
+  // them away one layer up, and a batch that had just lost its whole
+  // extraction became indistinguishable from one where the flag was
+  // simply off. Found by asking what the fail-open path looks like at
+  // its WORST, rather than whether it works at all.
+  if (engineBatch) {
+    const report = describeEngineBatch(engineBatch, fresh.length);
+    for (const w of report.warns) console.warn(w);
+    if (report.info) console.log(report.info);
   }
 
   // ── THE ANALYZER STILL SEES THE WHOLE WINDOW (§10 step 6) ──────────
