@@ -49,6 +49,8 @@
     "PR29-combined-in-and-brother-keeps-the-senders-write": "pass",
     "PR29-combined-out-and-mate-still-drops-the-sender": "pass",
     "S17-final-score-is-recorded": "pass",
-    "PR33-recruit-ask-must-not-swallow-the-drop": "pass"
+    "PR33-recruit-ask-must-not-swallow-the-drop": "pass",
+    "PR44-availability-statement-registers-nobody": "skip",
+    "PR44-a-real-commitment-ten-days-out-still-registers": "skip"
   }
 }
