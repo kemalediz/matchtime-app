@@ -429,6 +429,19 @@ export async function runAnswerBatch(args: {
   // Each rejection below is "the analyzer answers this one", never "the
   // bot says nothing". Enumerated rather than folded into one condition
   // so the reason survives into the log.
+  //
+  // ON THE `continue`s. Three defects this week came from a terminal
+  // `continue` silently skipping every guard below it, so: the ONLY
+  // effect of a full pass through this loop body is `ownedIds.add(...)`.
+  // There is no write, no send, no state mutation and no later guard
+  // inside it, so a `continue` can skip exactly one thing — ownership —
+  // which is the intent. Everything a skipped message still needs
+  // happens OUTSIDE the loop: it reaches `decide()` with
+  // `facts: {kind:"none"}` (so `assertCoverage` still sees one outcome
+  // per input id and the window is intact for its neighbours), it gets
+  // no entry in `outcomes` (so the analyze route leaves its verdict
+  // alone and the analyzer decides it), and its reason is already in
+  // `degradations` before the `continue` runs.
   const ownedIds = new Set<string>();
   for (const m of eligible) {
     const facts = factsById.get(m.waMessageId);

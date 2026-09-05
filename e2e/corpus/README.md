@@ -102,10 +102,12 @@ scoreboard from before PR #34 that does not name its ports is unverifiable.**
 | `current-analyzer-pipeline.ts` | pipeline #1 — today's analyzer, via the sim harness. |
 | `dryrun-pipeline.ts` | pipeline #2 — router → extractor → engine, deciding but never writing (§10 step 2). |
 | `engine-pipeline.ts` | pipeline #3 — the shipped route with the engine WRITING (§10 step 6). |
+| `answer-engine-pipeline.ts` | pipeline #4 — `question` + `balancer`, answered from the database and writing nothing (§10 step 7). |
 | `runner.ts` | feeds cases to a pipeline, scores them, writes the report. |
 | `baseline.stub.json` | what passes today. A record, not an endorsement. |
 | `../sim/corpus.spec.ts` | stubbed runner (CI). |
 | `../sim/corpus-live.spec.ts` | live runner (opt-in). |
+| `../sim/corpus-answers-live.spec.ts` | live runner for pipeline #4 (opt-in). |
 
 ## Four rules
 
@@ -277,3 +279,46 @@ sends no header at all.
 `MT_TEST_EXTRACTOR_STUB_FILE` is the extractor's own stub seam, used by
 `e2e/sim/attendance-engine.spec.ts` in the free suite and pinned empty
 (and refused by `helpers/live-llm.ts`) on any live run.
+
+## §10 step 7 — the answer engine (`question` + `balancer`)
+
+```bash
+set -a; source .env; set +a
+npm run test:corpus:answers                      # 3 runs per case
+MT_SIM_RUNS=1 npm run test:corpus:answers        # one pass, cheap
+MT_CORPUS_FILTER=S19 npm run test:corpus:answers # one case, verbose
+```
+
+`AnswerEnginePipeline` (`answer-engine-pipeline.ts`) is router →
+question/teams extractor → engine → composer and **nothing after it**,
+because both routes are reads. `attendanceAfter` is a database read
+taken after the run, so `unchanged` really is asserting that nothing
+moved.
+
+It differs from the other three in one way worth knowing before reading
+its numbers: **it declares the cases it owns.** `runAnswerBatch` hands a
+message back to the analyzer for a dozen documented reasons, and in
+production the mega-prompt is still standing to catch it. In process
+there is nothing to catch it, so a handed-back message would be scored
+as silence and a carve-out working exactly as designed would be reported
+as a defect. The owned set is therefore listed in the source, case by
+case, with the reason each neighbouring §3.2 S16 / S19 / S24 / S32 case
+is in or out. The scoreboard's own "N cases DID NOT RUN and are NOT
+covered by the numbers above" banner then says so in the output.
+
+When the analyze route learns about the per-route flags, this pipeline
+should be replaced by a `CurrentAnalyzerPipeline` subclass sending
+`x-mt-engine-routes`, exactly as `engine-pipeline.ts` does for step 6,
+and the declared list deleted.
+
+Two more differences:
+
+- **Live only.** A stubbed run would need hand-written FACTS, and the
+  facts are what the model produces — writing them yourself is the trap
+  rule 5 above warns about. The deterministic coverage is 46 unit tests
+  in `src/lib/pipeline/__tests__/answer-batch.test.ts`.
+- **It fails if it billed nothing.** The pipeline is in-process and
+  writes no `AnalyzedMessage` rows, so `liveReachFailure` has nothing to
+  read. Measured spend is the direct evidence that the router and the
+  extractor were really called — PR #38's rule applied to a harness its
+  own mechanism does not reach.
