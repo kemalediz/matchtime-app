@@ -129,6 +129,17 @@ describe("daily-in-list no longer suggests a clock-time opener", () => {
     ).not.toMatch(/\d{1,2}\s*(?:am|pm)\b/i);
   });
 
+  it("carries no wall-clock schedule slot the model can lift", async () => {
+    const prompt = composePrompt(await request("daily-in-list"));
+    // The type label used to read "daily-in-list (17:00 London)". The model
+    // has no use for the slot it fired in, and a label sitting two lines
+    // above the opener instruction is exactly the kind of thing it copies.
+    expect(prompt).not.toContain("17:00 London");
+    // Same reason: "so the group sees numbers in the evening" seeds the
+    // banned "Evening update" opener.
+    expect(prompt).not.toContain("in the evening");
+  });
+
   it("keeps the rest of the instruction intact", async () => {
     const prompt = composePrompt(await request("daily-in-list"));
     // Substance that must survive the edit: an opening one-liner, the

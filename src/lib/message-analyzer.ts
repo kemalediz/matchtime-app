@@ -1623,9 +1623,9 @@ function buildChaseComposePrompt(kind: ChaseKind): string {
     case "daily-in-list":
       return [
         header,
-        "daily-in-list (17:00 London)",
+        "daily-in-list",
         "",
-        "Purpose: quick squad-state recap so the group sees numbers in the evening.",
+        "Purpose: quick squad-state recap so the group sees where the numbers are.",
         "Open with a one-liner that sets the scene (e.g. '🗓 Squad update') followed by the lead (who's out / count vs needed). End with the roster block.",
       ].join("\n");
     case "match-day-morning":
