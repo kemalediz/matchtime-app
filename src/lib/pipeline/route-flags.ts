@@ -137,11 +137,24 @@ export function routesHeaderOverride(
     .map((s) => s.trim())
     .filter(Boolean);
   const routes = new Set<Route>();
+  const unknown: string[] = [];
   for (const w of wanted) {
     const match = STEP_SEVEN_ROUTES.find((r) => r === w);
     if (match) routes.add(match);
+    else unknown.push(w);
   }
-  return routes.size > 0 ? routes : new Set();
+  // A mistyped arm is the shape PR #38 exists to stop: it would own
+  // nothing, score whatever the baseline scores, and report itself as
+  // the candidate. It cannot throw from a request path, so it says so
+  // instead — loudly enough that a sweep's log carries the reason its
+  // numbers look like the incumbent's.
+  if (unknown.length > 0) {
+    console.warn(
+      `[route-flags] ${STEP_SEVEN_HEADER} named ${unknown.length} route(s) step 7 cannot own ` +
+        `(${unknown.join(", ")}); they were ignored. Valid: ${STEP_SEVEN_ROUTES.join(", ")}.`,
+    );
+  }
+  return routes;
 }
 
 interface RouteStubConfig {
