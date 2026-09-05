@@ -267,6 +267,21 @@ describe("shapes that stay with the analyzer", () => {
     expect(calls).toEqual([]);
   });
 
+  it("owns nothing when the match has no capacity to divide by", async () => {
+    // "We're 11/0, need 0 more" is the 2026-06-08 "0/14" shape reached
+    // from the other direction. It should be impossible; the answer to
+    // an impossible state is the path that already handles it.
+    const { model, calls } = stubModel({});
+    const res = await run({
+      messages: [msg({ body: COUNT_Q, route: "question" })],
+      model,
+      worldOpts: { confirmed: ELEVEN, maxPlayers: 0 },
+    });
+    expect([...res.ownedIds]).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(res.degradations.join(" ")).toMatch(/maxPlayers=0/);
+  });
+
   it("does not own a team post when team balancing is off for the org", async () => {
     const { model, calls } = stubModel({});
     const res = await run({

@@ -341,6 +341,19 @@ export async function runAnswerBatch(args: {
   // incident again, reached by a path that never read the override.
   if (!state.features.attendance) return empty();
 
+  // Every answer this module composes divides by, or prints, the format
+  // total. A `Match` with `maxPlayers` 0 would produce "We're 11/0" and
+  // "need 0 more" — the same shape as the 2026-06-08 "0/14" the check
+  // above exists for, arrived at from the other direction. It should be
+  // impossible; the answer to something that should be impossible is to
+  // hand it to the path that already handles it, not to print it.
+  if (state.maxPlayers <= 0) {
+    return empty([
+      `${ANSWER_DEGRADED_PREFIX} match ${state.matchId} has maxPlayers=${state.maxPlayers}; ` +
+        `owning nothing rather than composing an answer around it`,
+    ]);
+  }
+
   const matchId = state.matchId;
 
   // §3.2 S36 — one authoritative squad post per batch. Two batch
