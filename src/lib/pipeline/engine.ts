@@ -991,10 +991,10 @@ export function decide(input: EngineInput): EngineResult {
  *
  * Only the vetoes that need no state: the confidence floor, tense, the
  * availability hold and the two contingency holds. Used by the state
- * collapse so a claim the
- * engine is going to decline cannot supersede an earlier one it would
- * have acted on. Kept beside the rules it mirrors — if one moves, this
- * has to move with it, and the collapse tests are what say so.
+ * collapse so a claim the engine is going to decline cannot supersede an
+ * earlier one it would have acted on. Kept beside the rules it mirrors —
+ * if one moves, this has to move with it, and the collapse tests are
+ * what say so.
  */
 function wouldWrite(c: Claim): boolean {
   if (c.confidence < CONFIDENCE_FLOOR) return false;

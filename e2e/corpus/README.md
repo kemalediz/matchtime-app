@@ -24,7 +24,7 @@ MT_CORPUS_FILTER=S12 MT_SIM_RUNS=100 MT_SETTLE_LABEL=after-36 \
 
 Both write a machine-readable report to `.e2e/corpus/report-<mode>.json`.
 
-**46 cases; 35 run in CI.** The other 11 cannot be replayed deterministically and
+**49 cases; 36 run in CI.** The other 13 cannot be replayed deterministically and
 each must say why (see *Stubbed vs live*). The scoreboard states all three numbers
 on its first two lines — a case that never ran is never counted as a pass.
 
@@ -237,7 +237,7 @@ hinge on one malformed fixture.
 
 Step 6 moves `self_att`, `other_att` and `offer` off the mega-prompt and
 onto router → extractor → engine → `registerAttendance`. The corpus is
-how that is judged, and it is judged by running the **same 47 cases
+how that is judged, and it is judged by running the **same 49 cases
 twice**, same real model, same worlds, in the same spec:
 
 ```bash
