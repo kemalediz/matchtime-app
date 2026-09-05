@@ -152,6 +152,67 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(await g.attendanceOf("pete")).toBeNull();
   });
 
+  test("an AVAILABILITY statement registers nobody — PR #44's last spurious write", async ({
+    request,
+    db,
+  }) => {
+    // 2026-06-20, Abid Kazmi, ten days before kickoff, squad 0/14,
+    // answering a chase: "I will be back Tuesday week". The engine
+    // registered him CONFIRMED. `tense` said "future" and `contingent`
+    // said false — exactly what "I'm in for next Tuesday" says — so the
+    // schema had nothing to separate a travel statement from a
+    // commitment. `basis` is that field, and this is it end to end.
+    const g = await createGroup(request, db, { attendance: [] });
+    engineOn({
+      "I will be back Tuesday week": {
+        route: "self_att",
+        facts: IN({ tense: "future", basis: "availability", confidence: 0.7 }),
+      },
+    });
+
+    const res = await g.postBatch([{ player: "pete", body: "I will be back Tuesday week" }]);
+
+    expect(await g.attendanceOf("pete")).toBeNull();
+    expect(res.results[0].reply).toBeNull();
+  });
+
+  test("…and a real commitment the same distance out STILL registers", async ({ request, db }) => {
+    // The control, and the direction a careless fix breaks. Same sender,
+    // same world, same "Tuesday": only what the message DOES differs.
+    const g = await createGroup(request, db, { attendance: [] });
+    engineOn({
+      "I'm in for next Tuesday": {
+        route: "self_att",
+        facts: IN({ tense: "future", basis: "decision" }),
+      },
+    });
+
+    await g.postBatch([{ player: "pete", body: "I'm in for next Tuesday" }]);
+    expect(await g.attendanceOf("pete")).toMatchObject({ status: "CONFIRMED" });
+  });
+
+  test("an availability OUT still frees the slot — the asymmetry is deliberate", async ({
+    request,
+    db,
+  }) => {
+    // Being ABLE to play is necessary and never sufficient; being
+    // UNABLE settles it. Refusing this direction too would trade one
+    // spurious write for a class of missed ones, and a place nobody can
+    // use is a place the club loses.
+    const g = await createGroup(request, db, {
+      attendance: [{ key: "pete", status: "CONFIRMED" }],
+    });
+    engineOn({
+      "I'm away next week": {
+        route: "self_att",
+        facts: IN({ polarity: "out", tense: "future", basis: "availability", confidence: 0.9 }),
+      },
+    });
+
+    await g.postBatch([{ player: "pete", body: "I'm away next week" }]);
+    expect(await g.attendanceOf("pete")).toMatchObject({ status: "DROPPED" });
+  });
+
   test("an unnamed third party provisions no ghost member — the A5 incident", async ({
     request,
     db,

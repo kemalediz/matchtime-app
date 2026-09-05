@@ -16,6 +16,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   intentFor,
+  describeEngineBatch,
   runAttendanceEngineBatch,
   tentativeUserId,
   type EngineBatchDeps,
@@ -387,6 +388,152 @@ describe("an extractor failure hands the message BACK to the analyzer", () => {
     expect(r.ownedIds.size).toBe(1);
     expect(d.registered).toHaveLength(1);
     warn.mockRestore();
+  });
+
+  // ── the fallback under LOAD, not one throw ────────────────────────
+  //
+  // PR #44's own caveat: `maxRetries: 4` took the corpus sweep's ten
+  // lost messages to zero, which means **the fallback never fired in
+  // that sweep**. The retry is doing the work; this is the untested
+  // second line. What an operator needs from it is not "it worked" but
+  // "how often did it work, and would I have known", so the batch has to
+  // report a RATE and it has to report it in the one case where the
+  // engine has nothing left to report about.
+
+  it("names the fallback RATE, not just the count", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const failing = new Set(["a", "b", "c"]);
+    const partial: PipelineModel = {
+      name: "partial",
+      async complete(req) {
+        // The stub seam matches on the body; here the body IS the id.
+        if ([...failing].some((id) => req.user.includes(`body-${id}`))) {
+          throw new Error("529 Overloaded");
+        }
+        return {
+          text: JSON.stringify(SELF_IN),
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 1,
+        };
+      },
+    };
+    const d = deps({ model: partial });
+    const r = await run(
+      ["a", "b", "c", "d"].map((id) =>
+        msg({ waMessageId: id, body: `body-${id}`, senderUserId: `u-${id}` }),
+      ),
+      d,
+    );
+
+    expect(r.ownedIds.size).toBe(1);
+    expect(d.registered).toEqual(["u-d"]);
+    const said = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(said).toMatch(/3 of 4/);
+    expect(said).toMatch(/75(\.0)?%/);
+    warn.mockRestore();
+  });
+
+  it("carries EVERY degradation out when EVERY extraction fails", async () => {
+    // The total-overload edge. The engine owns nothing and returns
+    // early; returning a bare empty result there would throw away the
+    // only record of why it went quiet, and the caller would have a
+    // batch that looks exactly like "the engine was switched off".
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const dead: PipelineModel = {
+      name: "dead",
+      async complete() {
+        throw new Error("529 Overloaded");
+      },
+    };
+    const d = deps({ model: dead });
+    const r = await run(
+      ["a", "b", "c"].map((id) =>
+        msg({ waMessageId: id, body: `body-${id}`, senderUserId: `u-${id}` }),
+      ),
+      d,
+    );
+
+    expect(r.ownedIds.size).toBe(0);
+    expect(d.registered).toEqual([]);
+    // One per message, each naming the message it lost and where it went.
+    for (const id of ["a", "b", "c"]) {
+      expect(r.degradations.join("\n")).toContain(id);
+    }
+    expect(
+      r.degradations.filter((x) => /handing this message back to the analyzer/.test(x)),
+    ).toHaveLength(3);
+    expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/3 of 3/);
+    warn.mockRestore();
+  });
+
+  it("a failure on the ONE message carrying the write hands exactly that one back", async () => {
+    // The edge that decides whether the fallback is worth anything: the
+    // batch is mostly noise and the single message that moves a squad
+    // place is the one that fails.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const onlyTheWriter: PipelineModel = {
+      name: "only-the-writer",
+      async complete(req) {
+        if (req.user.includes("im in lads")) throw new Error("529 Overloaded");
+        return {
+          text: JSON.stringify({ claims: [], affirmation: "none", sideRequests: [] }),
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 1,
+        };
+      },
+    };
+    const d = deps({ model: onlyTheWriter });
+    const r = await run(
+      [
+        msg({ waMessageId: "n1", body: "😂😂", senderUserId: "u-a", route: "unsure" }),
+        msg({ waMessageId: "w", body: "im in lads", senderUserId: "u-pete" }),
+        msg({ waMessageId: "n2", body: "who's watching the derby", senderUserId: "u-b" }),
+      ],
+      d,
+    );
+
+    // The writer is NOT owned — it goes to the analyzer, which still has
+    // every seatbelt around it — and the engine keeps the rest.
+    expect(r.ownedIds.has("w")).toBe(false);
+    expect(d.registered).toEqual([]);
+    expect(r.degradations.join("\n")).toMatch(/w: attendance extractor failed/);
+    warn.mockRestore();
+  });
+
+  it("REPORTS a batch that lost everything — the silence this fix found", async () => {
+    // The condition that was wrong, in the one place it can be tested.
+    // The route composed its operator lines behind
+    // `if (engineOwnedIds.size > 0)`, so a batch where EVERY extraction
+    // failed printed nothing and read exactly like a batch where the
+    // flag was off. The engine had gone quiet and the log agreed.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const dead: PipelineModel = {
+      name: "dead",
+      async complete() {
+        throw new Error("529 Overloaded");
+      },
+    };
+    const r = await run([msg({ waMessageId: "a", body: "in" })], deps({ model: dead }));
+    const report = describeEngineBatch(r, 1);
+
+    expect(r.ownedIds.size).toBe(0);
+    expect(report.warns.length).toBeGreaterThan(0);
+    expect(report.warns.join("\n")).toMatch(/529 Overloaded/);
+    expect(report.info).toMatch(/decided 0\/1 message\(s\)/);
+    warn.mockRestore();
+  });
+
+  it("says NOTHING about a batch that owned nothing and lost nothing", async () => {
+    // The other half: with the flag off, or a window of pure banter, the
+    // engine must not put a line in the log every ten minutes.
+    const r = await run([msg({ route: "none" })], deps());
+    const report = describeEngineBatch(r, 1);
+    expect(report.warns).toEqual([]);
+    expect(report.info).toBeNull();
   });
 });
 

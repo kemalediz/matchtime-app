@@ -90,6 +90,12 @@ export function clearRouterStub(): void {
  */
 export interface ExtractorStub {
   bodies?: Record<string, Record<string, unknown>>;
+  /** Bodies whose extractor CALL fails with a real overload error, after
+   *  the SDK's four retries. The only way to exercise the fail-open
+   *  fallback end to end. */
+  fail?: string[];
+  /** Every extractor call fails — the total-overload edge. */
+  failAll?: boolean;
 }
 
 /** A single attendance claim, with the boring fields filled in. */

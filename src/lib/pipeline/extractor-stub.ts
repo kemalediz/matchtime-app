@@ -28,7 +28,32 @@ export interface ExtractorStubConfig {
   /** Trimmed message body → the raw JSON body the extractor would have
    *  returned, e.g. `{"claims":[…],"affirmation":"none","sideRequests":[]}`. */
   bodies?: Record<string, Record<string, unknown>>;
+  /**
+   * Trimmed message bodies whose extractor CALL FAILS, the way the real
+   * API fails under load: a 529 the SDK has already retried four times.
+   *
+   * This is not "an error somewhere in the pipeline" — it is the exact
+   * failure §10 step 6 measured (27 `529 Overloaded` and 3 `500`s across
+   * 10 of 177 messages on the first live sweep), and it is the only
+   * thing that exercises the fail-open fallback. `OVERLOADED_MESSAGE` is
+   * asserted against a REAL 529 from a real `anthropicModel()` call in
+   * `__tests__/overload.test.ts`, so the failure this seam injects is
+   * provably the failure production sees rather than a convenient
+   * stand-in for it.
+   */
+  fail?: string[];
+  /** EVERY extractor call fails. The total-overload edge, where the
+   *  engine owns nothing and the analyzer must take the whole batch. */
+  failAll?: boolean;
 }
+
+/**
+ * What the Anthropic SDK throws once its retry budget is exhausted on an
+ * overloaded API. Pinned by a test against a real 529 rather than
+ * copied from memory.
+ */
+export const OVERLOADED_MESSAGE =
+  '529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}';
 
 /** The facts a body with no entry gets: none. That is the direction
  *  that cannot invent a write in a test. */
@@ -62,6 +87,9 @@ export function extractorStubFromEnv(env: NodeJS.ProcessEnv = process.env): Pipe
     async complete(req) {
       const cfg = config(env) ?? {};
       const body = messageBodyOf(req.user);
+      if (cfg.failAll || (cfg.fail ?? []).includes(body)) {
+        throw new Error(OVERLOADED_MESSAGE);
+      }
       const canned = cfg.bodies?.[body] ?? EMPTY_ATTENDANCE;
       return {
         text: JSON.stringify(canned),
