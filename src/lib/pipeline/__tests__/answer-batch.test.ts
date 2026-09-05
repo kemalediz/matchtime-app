@@ -21,7 +21,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
-import { displaysSquadState, formatTeamsPost } from "../../group-copy";
+import {
+  composeSquadStatusPost,
+  displaysSquadState,
+  formatTeamsPost,
+} from "../../group-copy";
+import { compose } from "../compose";
 import type { ModelRequest, ModelResponse, PipelineModel } from "../llm";
 import {
   ANSWER_ROUTES,
@@ -30,7 +35,7 @@ import {
   type AnswerBatchDeps,
 } from "../answer-batch";
 import type { OrgFeatures } from "../../org-features";
-import type { Route, SquadState } from "../types";
+import type { Route, SpeechIntent, SquadState } from "../types";
 import { NOW, fullName, world, type WorldOpts } from "./helpers";
 
 // ── Fixtures ───────────────────────────────────────────────────────────
@@ -653,6 +658,38 @@ describe("zero writes, structurally", () => {
 // ── 6. Why `stats` and `options` are NOT owned — measured, not asserted ──
 
 describe("the measured reason two topics stay with the analyzer", () => {
+  /**
+   * The strings under test are produced by the REAL composer, not typed
+   * out here. A hand-written approximation would keep passing after
+   * `compose.ts` changed format, which is the "test that would still
+   * pass if the implementation were deleted" trap — and the whole point
+   * of these two is that they must FAIL the day the format is fixed, so
+   * the carve-out is revisited rather than forgotten.
+   */
+  function say(
+    speech: SpeechIntent,
+    state: SquadState,
+  ): string {
+    const out = compose({
+      outcomes: [],
+      writes: [],
+      nextState: state,
+      speech: [speech],
+      degradations: [],
+    });
+    expect(out.utterances).toHaveLength(1);
+    return out.utterances[0].text;
+  }
+
+  const APPEARANCES = world({
+    confirmed: ELEVEN,
+    appearances: [
+      { userId: "u-kemal", matches: 24 },
+      { userId: "u-elvin", matches: 22 },
+      { userId: "u-sait", matches: 21 },
+    ],
+  });
+
   it("the composed STATS answer would be replaced by the squad post — the 2026-05-14 incident", () => {
     // `compose.ts`'s `answer_stats` renders "1. Kemal Ediz (24)" lines.
     // `isLeaderboardLine` (`group-copy.ts:129`) recognises a leaderboard
@@ -662,8 +699,9 @@ describe("the measured reason two topics stay with the analyzer", () => {
     // is wired into the analyze route the step-4 composer would swap a
     // "most consistent" answer for the upcoming-squad roster. That is
     // the exact incident §3.2 S16 cites for 2026-05-14.
-    const composedStats = "Most consistent by appearances:\n1. Kemal Ediz (24)\n2. Elvin Aliyev (22)\n3. Sait Demir (21)";
-    expect(displaysSquadState(composedStats)).toBe(true);
+    const text = say({ kind: "answer_stats", messageId: "wa-1" }, APPEARANCES);
+    expect(text).toContain("Kemal Ediz");
+    expect(displaysSquadState(text)).toBe(true);
   });
 
   it("the composed OPTIONS answer would be replaced by the squad post, losing the format-switch line", () => {
@@ -672,16 +710,50 @@ describe("the measured reason two topics stay with the analyzer", () => {
     // when the model asked for a squad post AND the lead makes no claim
     // of its own, so this whole answer — including the arithmetic
     // `format-switch.ts` computed — is dropped, not appended to.
-    const composedOptions =
-      "We're 8/14, need 6 more 🙏 Switch to 5-a-side (10 players) and nobody sits out.";
-    expect(displaysSquadState(composedOptions)).toBe(true);
+    const state = world({
+      confirmed: ELEVEN.slice(0, 8),
+      smallerFormats: [{ sportName: "5-a-side", totalPlayers: 10 }],
+    });
+    const text = say({ kind: "answer_options", messageId: "wa-1" }, state);
+    expect(text).toContain("8/14");
+    expect(displaysSquadState(text)).toBe(true);
   });
 
   it("the composed BENCH, PHONES and PERSON answers survive untouched", () => {
-    expect(displaysSquadState("On the bench: Zair Malik and Wasim Akhtar.")).toBe(false);
-    expect(displaysSquadState("No number on record for Idris Bello.")).toBe(false);
-    expect(displaysSquadState("Yes, Faris Nasser has a slot for Tue 21:30.")).toBe(false);
-    expect(displaysSquadState("Faris Nasser isn't down for Tue 21:30 yet.")).toBe(false);
+    const benched = world({ confirmed: ELEVEN, bench: ["zair", "wasim"], noPhone: ["idris"] });
+    expect(displaysSquadState(say({ kind: "answer_bench", messageId: "m" }, benched))).toBe(false);
+    expect(displaysSquadState(say({ kind: "answer_phones", messageId: "m" }, benched))).toBe(false);
+    expect(
+      displaysSquadState(
+        say(
+          { kind: "answer_person_status", messageId: "m", personRef: "Faris", userId: "u-faris" },
+          benched,
+        ),
+      ),
+    ).toBe(false);
+    // …and the same answer about somebody with no row at all.
+    expect(
+      displaysSquadState(
+        say(
+          { kind: "answer_person_status", messageId: "m", personRef: "Zeeshan", userId: "u-zeeshan" },
+          benched,
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("the composed COUNT answer IS replaced — which is today's behaviour, not a regression", () => {
+    // Owned deliberately. "How many are we?" already gets the composed
+    // squad post today, because the model's answer displays squad state
+    // and `composeSquadStateReply` replaces it. The engine's version
+    // lands in exactly the same place, and S24's `\b11\b` is satisfied
+    // by the post's own `*11/14*`.
+    const text = say({ kind: "answer_count", messageId: "m", statedCount: 9 }, world({ confirmed: ELEVEN }));
+    expect(text).toMatch(/not quite/i);
+    expect(displaysSquadState(text)).toBe(true);
+    expect(
+      composeSquadStatusPost({ confirmed: ELEVEN.map(fullName), bench: [], maxPlayers: 14 }),
+    ).toMatch(/\b11\b/);
   });
 });
 
