@@ -1642,8 +1642,12 @@ describe("degrade loudly (never a silent no-op)", () => {
 // Everything below was a real failure on the 46-case corpus, triaged
 // from the pipeline's own routes+facts+reasons trail and fixed in the
 // ENGINE rather than in a prompt. That is the loop the redesign is for:
-// §6.1's "fixing a rule in a 360-token router with a 40-case eval set
-// takes ten minutes and produces a number", applied to the engine too.
+// §6.1's "fixing a rule in a small router with a 40-case eval set takes
+// ten minutes and produces a number", applied to the engine too. (§6.1
+// wrote "360-token"; the router prompt was 669 tokens when anyone
+// finally counted, and is 2,554 since 2026-09-11. The point survives
+// the arithmetic: it is the eval set, not the token count, that turns
+// an argument into a number.)
 
 describe("S28 · a replacement frees the slot BEFORE it fills it", () => {
   it("'X is replacing Y' at a full squad confirms X and drops Y", () => {

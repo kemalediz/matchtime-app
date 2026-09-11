@@ -63,15 +63,101 @@ const RATES: Record<string, { input: number; output: number }> = {
 };
 
 /**
- * A cached prefix has a MINIMUM length (1,024 tokens on Sonnet, higher
- * on Haiku). §8.5's audit note: "several `cache_control` markers sit on
- * prompts below the minimum cacheable prefix and are silent no-ops."
- * The router prompt is ~360 tokens and will never cache, so we do not
- * pretend: the marker is only attached above this threshold, and the
- * decision is reported in `cacheAttempted` so a sweep can show whether
- * caching was even asked for.
+ * ─────────────────────────────────────────────────────────────────────
+ * THE MINIMUM CACHEABLE PREFIX IS A TOKEN COUNT, AND IT IS PER MODEL
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ * What stood here was `MIN_CACHEABLE_CHARS = 4_000`, with the note "the
+ * router prompt is ~360 tokens and will never cache, so we do not
+ * pretend". Both halves were wrong, and
+ * `MDs/router-accuracy-2026-09-11.md` §3.3 is where they were caught:
+ *
+ *   - the router prompt was **669 tokens**, not ~360 (measured with
+ *     `messages.count_tokens` against `claude-haiku-4-5`);
+ *   - 4,000 CHARACTERS is about 1,000 tokens, which is a **Sonnet**
+ *     threshold applied to a **Haiku** call. Haiku 4.5's minimum is
+ *     **4,096 tokens** — roughly 15,500 characters of this pipeline's
+ *     English, four times what the constant allowed for.
+ *
+ * That was harmless only while the router prompt was short. §3.1's
+ * rewrite is 9,608 characters, which clears 4,000 and does not come
+ * close to 4,096 tokens — so under the old rule every router call would
+ * have reported `cacheAttempted: true` and cached **nothing**. Probed
+ * live on 2026-09-11, that exact prompt with a marker attached:
+ *
+ *     claude-haiku-4-5, 9,608 chars / 2,554 tokens
+ *       call 1: input=2560  cache_creation=0  cache_read=0
+ *       call 2: input=2560  cache_creation=0  cache_read=0
+ *
+ * `cacheAttempted` exists so a sweep can say whether caching was asked
+ * for. A field that says "asked for" on a request that can never get it
+ * is worse than no field — it is §8.5's audit note ("several
+ * `cache_control` markers sit on prompts below the minimum cacheable
+ * prefix and are silent no-ops") rebuilt inside the fix for it.
+ *
+ * ⚠️ ONE PROMPT IN THIS PIPELINE REALLY DOES CACHE, AND THIS CHANGE
+ * MUST NOT TAKE IT. `EXTRACTOR_PROMPTS.attendance` is 5,261 characters
+ * — over the old character rule, and the brief for this change believed
+ * it was therefore a silent no-op. It is not. The extractors run
+ * `claude-sonnet-5`, whose minimum is 1,024 tokens, and that prompt is
+ * 1,778 of them. Probed on 2026-09-11:
+ *
+ *     claude-sonnet-5, extractor attendance, 5,261 chars
+ *       call 1: input=14  cache_creation=1773  cache_read=0
+ *       call 2: input=14  cache_creation=0     cache_read=1773
+ *
+ * So the regression to guard against here is losing a cache that
+ * works, not removing one that never did — which is why the estimator
+ * below under-counts on Sonnet by a wide margin and this prompt still
+ * clears the threshold. `__tests__/cache-threshold.test.ts` pins it.
+ *
+ * THE MINIMUMS ARE NOT MONOTONE ACROSS GENERATIONS, which is the whole
+ * reason one constant cannot serve: the newest model has the lowest
+ * minimum and Haiku 4.5 has the highest. Published figures
+ * (anthropic.com, prompt caching), all confirmed against this
+ * pipeline's own prompts.
  */
-const MIN_CACHEABLE_CHARS = 4_000;
+export const MIN_CACHEABLE_TOKENS: Record<string, number> = {
+  "claude-opus-5": 512,
+  "claude-sonnet-5": 1_024,
+  "claude-sonnet-4-5": 1_024,
+  "claude-haiku-4-5": 4_096,
+};
+
+/**
+ * An id nobody has measured gets the most demanding minimum we know of.
+ * A new model is cleared by the corpus (§11.3), and until it is, the
+ * safe answer to "would this cache?" is "assume not" — claiming a cache
+ * we did not get is the defect this whole block exists to remove.
+ */
+export const DEFAULT_MIN_CACHEABLE_TOKENS = 4_096;
+
+/**
+ * A DELIBERATE UNDER-COUNT. Measured with `messages.count_tokens` on
+ * 2026-09-11 across every prompt this pipeline sends:
+ *
+ *     claude-haiku-4-5   3.78 – 5.08 characters per token
+ *     claude-sonnet-5    2.78 – 2.98 characters per token
+ *
+ * Dividing by four sits at or below the real Haiku count and a long way
+ * below the Sonnet one, so the estimate errs towards NOT attaching a
+ * marker. That is the direction that matters: a declined marker costs a
+ * cache read we might have had, and a wrongly attached one costs the
+ * truth of `cacheAttempted`.
+ *
+ * It is an estimate on purpose. `count_tokens` is a network round trip,
+ * and spending one on every call to decide whether to save money on
+ * that call is the wrong trade by an order of magnitude.
+ */
+export function estimateTokens(text: string): number {
+  return Math.floor(text.length / 4);
+}
+
+/** Does this system prompt clear this model's minimum cacheable prefix? */
+export function shouldCachePrompt(model: string, system: string): boolean {
+  const min = MIN_CACHEABLE_TOKENS[model] ?? DEFAULT_MIN_CACHEABLE_TOKENS;
+  return estimateTokens(system) >= min;
+}
 
 export interface ModelRequest {
   model: string;
@@ -157,7 +243,22 @@ export class TruncatedResponseError extends Error {
   }
 }
 
-export function anthropicModel(opts?: { apiKey?: string }): PipelineModel {
+/**
+ * The one method this file uses. Injecting it is what lets
+ * `__tests__/cache-threshold.test.ts` assert the REQUEST BODY — that a
+ * `cache_control` marker is or is not on it — rather than assert the
+ * predicate and hope the call site agrees. Production never passes it.
+ */
+export interface MessagesCreateClient {
+  messages: {
+    create(body: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message>;
+  };
+}
+
+export function anthropicModel(opts?: {
+  apiKey?: string;
+  client?: MessagesCreateClient;
+}): PipelineModel {
   const apiKey = opts?.apiKey ?? process.env.ANTHROPIC_API_KEY;
   return {
     name: "anthropic",
@@ -193,8 +294,9 @@ export function anthropicModel(opts?: { apiKey?: string }): PipelineModel {
       // covers the transport class the SDK knows about, that one covers
       // a response the strict schema rejects, which the SDK considers a
       // successful call. Neither subsumes the other.
-      const client = new Anthropic({ apiKey, maxRetries: 4 });
-      const cacheAttempted = req.system.length >= MIN_CACHEABLE_CHARS;
+      const client: MessagesCreateClient =
+        opts?.client ?? new Anthropic({ apiKey, maxRetries: 4 });
+      const cacheAttempted = shouldCachePrompt(req.model, req.system);
       const t0 = Date.now();
       const resp = await client.messages.create({
         model: req.model,

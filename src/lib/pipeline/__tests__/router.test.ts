@@ -17,7 +17,13 @@ import {
   routeFloor,
   routeBatch,
 } from "../router";
-import type { PipelineModel, ModelResponse } from "../llm";
+import {
+  MIN_CACHEABLE_TOKENS,
+  ROUTER_MODEL,
+  estimateTokens,
+  type PipelineModel,
+  type ModelResponse,
+} from "../llm";
 
 function fakeModel(responses: string[] | ((n: number) => string)): PipelineModel & {
   calls: Array<{ system: string; user: string; maxTokens: number }>;
@@ -149,10 +155,26 @@ describe("parseRouterResponse", () => {
 // ── The prompt itself ──────────────────────────────────────────────────
 
 describe("the router prompt", () => {
-  it("is small — its size is the argument (§6.1)", () => {
-    // ~360 tokens in the proposal. A generous character ceiling keeps
-    // this honest without pinning the wording.
-    expect(ROUTER_SYSTEM_PROMPT.length).toBeLessThan(2600);
+  // ⚠️ THE SIZE CEILING MOVED ON 2026-09-11, AND IT IS NOT A TASTE
+  // CHANGE. §6.1's "its size is the argument" was tested as
+  // `length < 2600`, which is a character count standing in for a
+  // measurement nobody had made. `MDs/router-accuracy-2026-09-11.md`
+  // made it: the 2,501-character prompt reached 83.3% owner accuracy
+  // over 1,748 real messages, and the rewrite reached 91%+ for
+  // $0.41/month more. Small was never the goal — cheap and right was.
+  //
+  // What replaces it is a bound that means something. Every token of
+  // this prompt is paid on every call, because it sits under Haiku
+  // 4.5's 4,096-token minimum cacheable prefix and therefore never
+  // caches (`__tests__/cache-threshold.test.ts` pins that, and §1.5
+  // probed it). So the ceiling IS the cache minimum: cross it and the
+  // per-batch cost stops being a rounding error, and the honest fix is
+  // to pass ~15,500 characters so it genuinely caches rather than to
+  // creep up to it.
+  it("stays under the minimum cacheable prefix, so every token is one we pay knowingly", () => {
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThan(
+      MIN_CACHEABLE_TOKENS[ROUTER_MODEL]!,
+    );
   });
 
   it("carries the bias-toward-action rule", () => {
@@ -163,6 +185,33 @@ describe("the router prompt", () => {
     for (const r of ["none", "self_att", "other_att", "offer", "question", "balancer", "score", "admin_ops", "unsure"]) {
       expect(ROUTER_SYSTEM_PROMPT, r).toContain(r);
     }
+  });
+
+  // ── The prompt TEACHES routes. A route it teaches that this file
+  //    cannot parse is a silent degradation on every batch that copies
+  //    it, so the worked examples are checked against the parser rather
+  //    than read. This is the one property of the prompt's wording that
+  //    is a behaviour and not a preference.
+  it("never teaches a route the parser would reject", () => {
+    const taught = [...ROUTER_SYSTEM_PROMPT.matchAll(/->\s*([a-z_]+)\s*$/gm)].map((m) => m[1]!);
+    expect(taught.length).toBeGreaterThan(20);
+    for (const route of taught) {
+      expect(normaliseRoute(route), `worked example teaches "${route}"`).not.toBeNull();
+    }
+  });
+
+  it("demands an output shape this file actually parses", () => {
+    // The last line of the prompt is the contract between the model and
+    // `parseRouterResponse`. Pull it out, fill it in, and run it through
+    // the parser: if someone renames a field in the prompt, every batch
+    // degrades to `unsure` and nothing else in this suite would notice.
+    const line = ROUTER_SYSTEM_PROMPT.trimEnd().split("\n").at(-1)!;
+    expect(line).toMatch(/^Return JSON only:/);
+    const shape = line.slice(line.indexOf("{"));
+    const filled = shape.replace("<id>", "wa-1").replace("<route>", "other_att");
+    const out = parseRouterResponse(filled, ["wa-1"]);
+    expect(out.routes).toEqual([{ messageId: "wa-1", route: "other_att", source: "model" }]);
+    expect(out.degradations).toEqual([]);
   });
 });
 
