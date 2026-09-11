@@ -99,12 +99,14 @@ function deps(
   state: SquadState,
   features: Partial<OrgFeatures> = {},
   loadPayments?: AnswerBatchDeps["loadPayments"],
+  loadRatingProgress?: AnswerBatchDeps["loadRatingProgress"],
 ): AnswerBatchDeps {
   return {
     model,
     loadState: async () => state,
     loadFeatures: async () => ({ ...FEATURES_ON, ...features }),
     loadPayments,
+    loadRatingProgress,
   };
 }
 
@@ -117,6 +119,7 @@ async function run(args: {
   state?: SquadState;
   expectedMatchId?: string | null;
   loadPayments?: AnswerBatchDeps["loadPayments"];
+  loadRatingProgress?: AnswerBatchDeps["loadRatingProgress"];
 }) {
   const state = args.state ?? world(args.worldOpts ?? { confirmed: ELEVEN });
   return runAnswerBatch({
@@ -126,7 +129,7 @@ async function run(args: {
     history: [],
     expectedMatchId: args.expectedMatchId === undefined ? state.matchId : args.expectedMatchId,
     enabled: new Set<Route>(args.enabled ?? ["question", "balancer"]),
-    deps: deps(args.model, state, args.features, args.loadPayments),
+    deps: deps(args.model, state, args.features, args.loadPayments, args.loadRatingProgress),
   });
 }
 
@@ -1223,5 +1226,103 @@ describe("payments are read only when a payment question is in the window", () =
     });
     expect([...res.ownedIds]).toHaveLength(1);
     expect([...res.outcomes.values()][0].reply).toMatch(/don't track/i);
+  });
+});
+
+// ── THE SECOND TARGETED READ — RATING PROGRESS (2026-09-11) ──────────
+//
+// Same contract as `payments` above, and it is on this path for the same
+// kind of reason `stats_blast` moved to the engine: the regex that used
+// to claim this ask — `looksLikeRatingProgressRequest`, (a rating word)
+// AND (a progress word) anywhere in a body — is the conjunction shape
+// behind the 2026-09-01 and 2026-09-10 incidents, and it is deleted.
+//
+// Three cases, the same three that matter for any read behind a topic:
+// it fires when it must, it does not fire otherwise, and a failure costs
+// one answer rather than the batch.
+
+describe("rating progress is read only when a rating question is in the window", () => {
+  const RATE_Q = "@Match Time who hasn't rated yet?";
+  const RATE_FACTS = { topic: "rating_progress", personRef: "", statedCount: -1 };
+
+  const PROGRESS = {
+    ok: true,
+    matchName: "Tuesday 7-a-side",
+    matchWhen: "Tue 2 Sep",
+    confirmed: 10,
+    ratedCount: 6,
+    momCount: 5,
+    notRated: ["Zair Malik"],
+    ratedNoMom: [],
+  };
+
+  function spyLoader() {
+    const calls: string[] = [];
+    const loadRatingProgress: AnswerBatchDeps["loadRatingProgress"] = async (orgId) => {
+      calls.push(orgId);
+      return PROGRESS;
+    };
+    return { calls, loadRatingProgress };
+  }
+
+  it("does NOT read it for an ordinary count question — the common path stays cheap", async () => {
+    const { model } = stubModel({ [COUNT_Q]: COUNT_FACTS });
+    const { calls, loadRatingProgress } = spyLoader();
+    const res = await run({
+      messages: [msg({ body: COUNT_Q, route: "question" })],
+      model,
+      loadRatingProgress,
+    });
+    expect([...res.ownedIds]).toHaveLength(1);
+    expect(calls).toEqual([]);
+  });
+
+  it("reads it exactly once for a rating question, and answers from what came back", async () => {
+    const { model } = stubModel({ [RATE_Q]: RATE_FACTS });
+    const { calls, loadRatingProgress } = spyLoader();
+    const res = await run({
+      messages: [msg({ body: RATE_Q, route: "question", senderUserId: "u-kemal", tagged: true })],
+      model,
+      loadRatingProgress,
+    });
+    expect(calls).toEqual(["org-1"]);
+    const reply = [...res.outcomes.values()][0]?.reply ?? "";
+    expect(reply).toContain("Rated: 6/10");
+    // UNLIKE `payments`, THIS ANSWER NAMES NAMES — which is exactly why
+    // the engine keeps the deleted fast path's admin gate on it.
+    expect(reply).toContain("Zair Malik");
+  });
+
+  it("keeps the intent label the deleted fast path wrote", async () => {
+    // So the admin log's vocabulary, and every sweep over it, is
+    // unchanged by the move from regex to model.
+    const { model } = stubModel({ [RATE_Q]: RATE_FACTS });
+    const { loadRatingProgress } = spyLoader();
+    const res = await run({
+      messages: [msg({ body: RATE_Q, route: "question", senderUserId: "u-kemal", tagged: true })],
+      model,
+      loadRatingProgress,
+    });
+    expect([...res.outcomes.values()][0]?.intent).toBe("rating_progress");
+  });
+
+  it("a rating read that throws costs that answer, not the batch", async () => {
+    const { model } = stubModel({ [RATE_Q]: RATE_FACTS, [COUNT_Q]: COUNT_FACTS });
+    const res = await run({
+      messages: [
+        msg({ waMessageId: "wa-rate", body: RATE_Q, route: "question", senderUserId: "u-kemal", tagged: true }),
+        msg({ waMessageId: "wa-count", body: COUNT_Q, route: "question" }),
+      ],
+      model,
+      loadRatingProgress: async () => {
+        throw new Error("db down");
+      },
+    });
+    // The count question still gets its answer.
+    expect(res.outcomes.get("wa-count")?.reply ?? "").toBeTruthy();
+    // The rating question is disowned rather than answered emptily — a
+    // hand-back with a receipt.
+    expect(res.outcomes.has("wa-rate")).toBe(false);
+    expect(res.degradations.join(" ")).toMatch(/rating-progress read failed/i);
   });
 });
