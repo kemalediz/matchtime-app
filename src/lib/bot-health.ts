@@ -125,6 +125,35 @@ export const GROUP_ALIVE_WINDOW_MS = 14 * DAY;
  */
 export const ALERT_REPEAT_MS = 6 * HOUR;
 
+/**
+ * How long the server waits for the nightly `none`-bucket shadow sweep
+ * to file a row before calling it dead.
+ *
+ * 30 hours, against a job scheduled at 03:00 UTC daily (`vercel.json`).
+ * The same argument as `HEARTBEAT_SILENT_MS`, one cadence up: the sweep
+ * reports every night whether or not it found anything, so absence is
+ * the only signal there is.
+ *
+ *   - 25 hours would fire on a cron that started late. Vercel does not
+ *     promise a scheduled invocation to the minute, and a monitoring
+ *     rule that trips on ordinary scheduler jitter is a muted channel.
+ *   - 48 hours is two missed nights, and the second night's `none`
+ *     bucket is already gone past the 24-hour lookback by then — a miss
+ *     discovered after the messages have aged out is a miss discovered
+ *     too late to re-read.
+ *   - 30 hours clears every plausible delay and still reports a missed
+ *     night by 09:00 UTC the following morning, in daylight, which is
+ *     when somebody could act on it. The DM is suppressed before 07:00
+ *     London anyway, so a tighter number would buy no earlier a reader.
+ *
+ * Unlike every other threshold here this one guards a MONITOR rather
+ * than the pipeline, so the finding is a warning: nothing about the
+ * club's evening changes while it fires. What is lost is the ability to
+ * find out later that the router called a real IN banter, and `gate.ts`
+ * rests its entire containment argument on exactly that.
+ */
+export const NONE_SHADOW_SILENT_MS = 30 * HOUR;
+
 /** London wall-clock hours in which a WhatsApp DM is not sent. */
 export const DM_QUIET_START_HOUR = 22;
 export const DM_QUIET_END_HOUR = 7;
@@ -139,6 +168,7 @@ export type HealthCode =
   | "reactions-failing"
   | "capability-degraded"
   | "sweep-stale"
+  | "none-shadow-stale"
   | "inbound-silent";
 
 /**
@@ -298,6 +328,25 @@ export interface HealthInput {
    * built to catch exactly that.
    */
   namelessUnattributed24h: number;
+  /**
+   * Is the nightly `none`-bucket shadow sweep switched on
+   * (`NONE_BUCKET_SHADOW_ENABLED`)?
+   *
+   * Read from the env by the cron, not from the database, because the
+   * flag IS the env var. When it is off the rule below says nothing —
+   * see the argument there.
+   */
+  noneShadowEnabled: boolean;
+  /**
+   * When the `none`-bucket sweep last filed a `WindowVerdict` for this
+   * org — `MAX(windowEnd)` over rows whose `batchHash` starts with
+   * `NONE_SHADOW_BATCH_PREFIX`. Null when it never has.
+   *
+   * This is the sweep's heartbeat, and it only became one on 2026-09-11:
+   * until then the row was filed only when the sweep found something, so
+   * a healthy night and a dead cron were the same absence.
+   */
+  lastNoneShadowAt: Date | null;
 }
 
 export interface HealthFinding {
@@ -525,7 +574,59 @@ export function assessBotHealth(input: HealthInput): HealthFinding[] {
     });
   }
 
-  // ── 10. A live group has gone silent before a fixture ──────────────
+  // ── 10. The only thing watching the `none` bucket has gone quiet ───
+  //
+  // `pipeline/gate.ts` calls the nightly shadow sweep "the ONLY remaining
+  // thing watching for a real IN that the router called banter", and
+  // rests its whole containment argument on it. On 2026-09-11 that sweep
+  // was found to have filed ONE row in its entire life — 1 of 506
+  // `WindowVerdict` rows — because the cron only filed a row when it had
+  // an alert to report. A clean night wrote nothing, and so did a dead
+  // cron. The sweep now files unconditionally, which turns the row into a
+  // heartbeat, and this rule is the half that notices its absence. It is
+  // the same shape as `pi-silent`: the failures that cost the most (a
+  // crashed cron, a revoked key, a flag turned off by mistake, a deploy
+  // that dropped the schedule) all look like nothing arriving.
+  //
+  // TWO deliberate asymmetries, both about not becoming noise:
+  //
+  //   a. THE FLAG OFF IS SILENCE. `NONE_BUCKET_SHADOW_ENABLED` defaults
+  //      OFF and turning it on is a deliberate act. A job nobody asked to
+  //      run is not a fault, and paging about one every six hours forever
+  //      is how this channel gets muted — which matters more than usual
+  //      right now, with four capabilities degraded since July already
+  //      repeating on that timer. If the sweep is off, what is void is
+  //      `gate.ts`'s containment argument, and that is a product decision
+  //      to take in daylight, not an ops page.
+  //
+  //   b. NEVER-FILED IS A FINDING, unlike `pi-silent`'s never-heard-from.
+  //      The difference is who deploys: the Pi is flashed by hand and can
+  //      legitimately be older than the server, but this sweep and this
+  //      rule ship in the same commit to the same Vercel project. With
+  //      the flag on, one night with no row means the cron did not run.
+  const shadowAt = input.lastNoneShadowAt;
+  if (
+    input.noneShadowEnabled &&
+    (shadowAt === null || now - shadowAt.getTime() > NONE_SHADOW_SILENT_MS)
+  ) {
+    findings.push({
+      code: "none-shadow-stale",
+      severity: "warning",
+      headline:
+        shadowAt === null
+          ? "The nightly `none`-bucket sweep has never filed a result."
+          : `The nightly \`none\`-bucket sweep last filed a result ${ageText(now - shadowAt.getTime())} ago.`,
+      detail:
+        "It runs at 03:00 and files a row every night whether or not it finds anything, so " +
+        "no row means it did not run. Nothing is broken for the club today — but while it " +
+        "is down, a message the router dismissed as banter when it was really somebody's " +
+        "IN will never be found by anybody, because nothing else ever re-reads the `none` " +
+        "bucket. Check the Vercel cron for /api/cron/none-bucket-shadow, and that " +
+        "NONE_BUCKET_SHADOW_ENABLED and ANTHROPIC_API_KEY are still set.",
+    });
+  }
+
+  // ── 11. A live group has gone silent before a fixture ──────────────
   //
   // The one rule here that could plausibly fire on a healthy club, so it
   // carries FOUR guards, every one of which exists because of a specific

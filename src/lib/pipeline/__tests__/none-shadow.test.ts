@@ -14,6 +14,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   claimsOf,
+  noneShadowBatchHash,
+  NONE_SHADOW_BATCH_PREFIX,
   runNoneBucketShadow,
   sampleNoneBucket,
   toWindowShape,
@@ -212,6 +214,9 @@ describe("what it must never do", () => {
       enabled: true,
       checked: 1,
       available: 1,
+      windowStart: new Date(Date.UTC(2026, 8, 1, 3)),
+      windowEnd: new Date(Date.UTC(2026, 8, 2, 3)),
+      byOrg: [{ orgId: "org1", available: 1, checked: 1, alerts: 1, costUsd: 0.001, ms: 5 }],
       alerts: [
         {
           waMessageId: "m0",
@@ -236,6 +241,153 @@ describe("what it must never do", () => {
   });
 
   it("claimsOf ignores every non-attendance fact shape", () => {
+    expect(claimsOf({ kind: "none" })).toEqual([]);
+    expect(
+      claimsOf({ kind: "score", red: 1, yellow: 2, reportedBy: null } as never),
+    ).toEqual([]);
+  });
+});
+
+/**
+ * 2026-09-11 — the sweep has to leave evidence that it RAN.
+ *
+ * §1.4 of `MDs/router-accuracy-2026-09-11.md` counted one filed
+ * `WindowVerdict` in the sweep's whole life, 1 of 506 rows, because the
+ * cron only filed when `result.alerts[0]` existed. A clean night and a
+ * dead cron left identical evidence: none. Everything below exists so
+ * that "ran, found nothing" is a different state in the data from "did
+ * not run".
+ */
+describe("proof that it ran", () => {
+  it("reports the window it covered, so a filed row says WHAT was swept", () => {
+    const now = new Date("2026-09-11T03:00:00.000Z");
+    return runNoneBucketShadow({
+      db: fakeDb(rows(2)),
+      now,
+      lookbackHours: 24,
+      force: true,
+      model: fakeModel(NO_CLAIMS),
+    }).then((r) => {
+      expect(r.windowEnd.toISOString()).toBe("2026-09-11T03:00:00.000Z");
+      expect(r.windowStart.toISOString()).toBe("2026-09-10T03:00:00.000Z");
+    });
+  });
+
+  it("names the org it read, on a night with NO alerts", () => {
+    // The org was always knowable from the rows the sweep read. The old
+    // route took it from `alerts[0]`, which is exactly the value that is
+    // missing on a healthy night.
+    return runNoneBucketShadow({
+      db: fakeDb(rows(3)),
+      force: true,
+      model: fakeModel(NO_CLAIMS),
+    }).then((r) => {
+      expect(r.alerts).toEqual([]);
+      expect(r.byOrg).toHaveLength(1);
+      expect(r.byOrg[0].orgId).toBe("org1");
+      expect(r.byOrg[0].available).toBe(3);
+      expect(r.byOrg[0].checked).toBe(3);
+      expect(r.byOrg[0].alerts).toBe(0);
+      expect(r.byOrg[0].costUsd).toBeCloseTo(0.0003, 6);
+    });
+  });
+
+  it("splits coverage per org, so one row per org can be filed", async () => {
+    const mixed: NoneBucketRow[] = [
+      { ...rows(1)[0], waMessageId: "a1", orgId: "orgA" },
+      { ...rows(1)[0], waMessageId: "b1", orgId: "orgB" },
+      { ...rows(1)[0], waMessageId: "b2", orgId: "orgB" },
+    ];
+    const r = await runNoneBucketShadow({
+      db: fakeDb(mixed),
+      force: true,
+      model: fakeModel(NO_CLAIMS),
+    });
+    expect(r.byOrg.map((o) => [o.orgId, o.checked])).toEqual([
+      ["orgA", 1],
+      ["orgB", 2],
+    ]);
+  });
+
+  it("reports an EMPTY sweep as a real result, not as nothing happening", async () => {
+    // A night with no gated traffic at all — production had exactly this
+    // on 2026-09-10 and 2026-09-11. The row filed for it is the only
+    // thing that distinguishes it from a cron that never fired.
+    const r = await runNoneBucketShadow({
+      db: fakeDb([]),
+      force: true,
+      model: fakeModel(NO_CLAIMS),
+    });
+    expect(r.enabled).toBe(true);
+    expect(r.checked).toBe(0);
+    expect(r.available).toBe(0);
+    expect(r.byOrg).toEqual([]);
+    expect(r.windowEnd.getTime()).toBeGreaterThan(r.windowStart.getTime());
+  });
+
+  it("stamps the batch hash with the sweep's own day, under one shared prefix", () => {
+    // `bot-health` finds the sweep's rows by this prefix. Two spellings
+    // of it in two files is how the watcher silently stops watching.
+    const h = noneShadowBatchHash(new Date("2026-09-11T03:00:00.000Z"));
+    expect(h).toBe(`${NONE_SHADOW_BATCH_PREFIX}2026-09-11`);
+    expect(NONE_SHADOW_BATCH_PREFIX).toBe("none-bucket:");
+  });
+
+  it("scopes the filed payload to one org, and still says it ran when it found nothing", () => {
+    const payload = toWindowShape(
+      {
+        enabled: true,
+        checked: 0,
+        available: 0,
+        windowStart: new Date(Date.UTC(2026, 8, 10, 3)),
+        windowEnd: new Date(Date.UTC(2026, 8, 11, 3)),
+        byOrg: [],
+        alerts: [],
+        costUsd: 0,
+        ms: 0,
+        errors: [],
+      },
+      "org1",
+    );
+    expect(payload.pipeline).toBe("none-bucket-shadow");
+    expect(payload.ran).toBe(true);
+    expect(payload.checked).toBe(0);
+    expect(payload.available).toBe(0);
+    expect(payload.alerts).toEqual([]);
+    expect(String(payload.windowSummary)).toMatch(/re-examined 0 of 0/);
+  });
+
+  it("keeps another org's alert out of this org's row", () => {
+    const alert = {
+      waMessageId: "m0",
+      orgId: "orgB",
+      authorName: "p0",
+      body: "im in",
+      createdAt: "2026-09-01T12:00:00.000Z",
+      claims: ONE_IN_CLAIM.claims as never,
+    };
+    const r = {
+      enabled: true,
+      checked: 2,
+      available: 2,
+      windowStart: new Date(Date.UTC(2026, 8, 10, 3)),
+      windowEnd: new Date(Date.UTC(2026, 8, 11, 3)),
+      byOrg: [
+        { orgId: "orgA", available: 1, checked: 1, alerts: 0, costUsd: 0.001, ms: 1 },
+        { orgId: "orgB", available: 1, checked: 1, alerts: 1, costUsd: 0.001, ms: 1 },
+      ],
+      alerts: [alert],
+      costUsd: 0.002,
+      ms: 2,
+      errors: [],
+    };
+    expect(toWindowShape(r, "orgA").alerts).toEqual([]);
+    expect(toWindowShape(r, "orgB").alerts).toHaveLength(1);
+  });
+});
+
+describe("claimsOf", () => {
+  it("ignores every non-attendance fact shape", () => {
     expect(claimsOf({ kind: "none" })).toEqual([]);
     expect(
       claimsOf({ kind: "score", red: 1, yellow: 2, reportedBy: null } as never),

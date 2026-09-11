@@ -15,6 +15,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID } from "../helpers/constants";
 import { E2E } from "../helpers/env";
+import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
@@ -68,7 +69,27 @@ test.beforeEach(async ({ db }) => {
   await db.run(`UPDATE "Organisation" SET "lastParticipantSweepAt" = now() WHERE id = $1`, [
     ORG_ID,
   ]);
+  // Same argument for the nightly `none`-bucket sweep (2026-09-11): a
+  // missing row is now a real finding, and true of production the day
+  // this shipped, so pin it FRESH here or it colours every assertion
+  // below. The row is what the sweep files when it runs; see
+  // `none-bucket-shadow.spec.ts` for the filing itself.
+  await fileShadowRow(db, "now()");
 });
+
+/** Stand in for last night's `none`-bucket sweep having run. `at` is a
+ *  SQL expression so a test can place it in the past. */
+async function fileShadowRow(db: TestDb, at: string) {
+  await db.run(`DELETE FROM "WindowVerdict" WHERE "batchHash" LIKE 'none-bucket:%'`);
+  await db.run(
+    `INSERT INTO "WindowVerdict"
+       ("id","orgId","windowStart","windowEnd","batchHash","modelMs","costUsd","verdictJson","currentVerdictRefs")
+     VALUES ('bh-shadow', $1, ${at} - interval '24 hours', ${at},
+             'none-bucket:' || to_char(${at}, 'YYYY-MM-DD'), 0, 0,
+             '{"ran":true,"checked":0,"alertCount":0}'::jsonb, '{}')`,
+    [ORG_ID],
+  );
+}
 
 test("the Pi's heartbeat lands on the org's health row", async ({ request, db }) => {
   const res = await heartbeat(request, {
@@ -191,6 +212,67 @@ test("a NEW fault landing on top of an old one speaks immediately", async ({ req
   const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
   expect(row.sent).toBe(true);
   expect(row.reason).toContain("new condition");
+});
+
+test("a `none`-bucket sweep that has filed NO row is a degradation", async ({ request, db }) => {
+  // THE TEST THIS WHOLE CHANGE EXISTS FOR. The sweep is the only thing
+  // that ever re-reads a message the router dismissed as banter, and its
+  // failure mode is silence: it reports by filing a row, so the absence
+  // of one is the only signal there is. A cron that stopped, a revoked
+  // key, a flag turned off — all of them look like this.
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  await db.run(`DELETE FROM "WindowVerdict" WHERE "batchHash" LIKE 'none-bucket:%'`);
+
+  const out = await runHealthCron(request);
+  const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.codes).toContain("none-shadow-stale");
+  expect(row.sent).toBe(true);
+});
+
+test("a sweep that ran LAST NIGHT and found nothing raises nothing", async ({ request, db }) => {
+  // The distinction the old design destroyed. A clean night used to write
+  // no row, so it was indistinguishable from the test above.
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  await fileShadowRow(db, "now() - interval '9 hours'");
+
+  const out = await runHealthCron(request);
+  const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.codes).not.toContain("none-shadow-stale");
+  expect(row.codes).toEqual([]);
+});
+
+test("a sweep that last filed two nights ago is stale", async ({ request, db }) => {
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  await fileShadowRow(db, "now() - interval '48 hours'");
+
+  const out = await runHealthCron(request);
+  const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.codes).toContain("none-shadow-stale");
+});
+
+test("the shadow finding rides the same email and the same repeat window", async ({
+  request,
+  db,
+}) => {
+  // Not a second channel. One alert, one dedupe, one six-hourly repeat —
+  // the existing one, which Kemal is already receiving.
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  await db.run(`DELETE FROM "WindowVerdict" WHERE "batchHash" LIKE 'none-bucket:%'`);
+
+  const first = await runHealthCron(request);
+  expect(first.report.find((r: { org: string }) => r.org === "E2E Test FC").sent).toBe(true);
+
+  const second = await runHealthCron(request);
+  const row = second.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.codes).toContain("none-shadow-stale");
+  expect(row.sent).toBe(false);
+  expect(row.reason).toContain("repeat window");
+
+  const stored = await db.all<{ lastAlertCodes: string[] }>(
+    `SELECT "lastAlertCodes" FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  expect(stored[0].lastAlertCodes).toContain("none-shadow-stale");
 });
 
 test("the cron requires the cron secret", async ({ request }) => {
