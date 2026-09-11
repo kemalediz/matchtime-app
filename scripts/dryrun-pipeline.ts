@@ -120,6 +120,15 @@ type Case = {
   as?: string;
   body: string;
   tagged?: boolean;
+  /** The STRICTER tag signal (`messageMentionsBotExplicitly`), which the
+   *  bulk-DM commands read instead of `tagged`. Defaults to `tagged`.
+   *
+   *  It has to be settable INDEPENDENTLY, and case B1 is why: the
+   *  2026-09-10 near-miss sentence contains the bare word "Matchtime",
+   *  so production's `messageTagsBot` calls it TAGGED while nobody
+   *  @-mentioned the bot. A harness that could not express that
+   *  combination could not replay the incident. */
+  taggedExplicitly?: boolean;
   /** Fill the squad from the roster before running — for replaying an
    *  incident that only happens at 14/14. See `FULL_SQUAD_INCLUDES` /
    *  `FULL_SQUAD_BENCH` for who ends up where, and override per case. */
@@ -211,7 +220,7 @@ const CASES: Case[] = [
   // the real capacity arithmetic underneath.
   { id: "C16", who: "Zair", body: "In", expect: "THE 2026-09-09 INCIDENT. WRITE Zair CONFIRMED, every run. It was silently discarded twice on the night" },
   { id: "C17", who: "Zair", body: "count me", expect: "WRITE Zair CONFIRMED — Kemal named this phrasing by name" },
-  { id: "C18", who: "Zair", body: "sure", expect: "MEASURED 7/10 WRITE Zair CONFIRMED, 3/10 silent — the router splits self_att 7/10 · none 3/10 on a bare "sure", and that is the honest answer for a genuinely ambiguous word. Before the fix it was 0/10. The SAME word answering a question routes `none` 19/20 and does nothing" },
+  { id: "C18", who: "Zair", body: "sure", expect: "MEASURED 7/10 WRITE Zair CONFIRMED, 3/10 silent — the router splits self_att 7/10 · none 3/10 on a bare \"sure\", and that is the honest answer for a genuinely ambiguous word. Before the fix it was 0/10. The SAME word answering a question routes `none` 19/20 and does nothing" },
 
   // ── X: a pasted roster that ALSO says something (2026-09-07) ──────
   //
@@ -395,6 +404,87 @@ const CASES: Case[] = [
   { id: "R8", who: "Kemal", body: "come on lads we need more players", tagged: false, expect: "NO recruit_blast — a chase nudge is the scheduler's job, never a mass DM (router: none 20/20)" },
   { id: "R9", who: "Kemal", body: "Najib is out. We need one more player", fullSquad: true, expect: "DROP Najib untagged (PR #33 side-request path, UNTOUCHED by the blast tag gate). No recruit_blast write here — the side request is reported by attendance-engine-batch, not the engine. MEASURED 13/15; the other 2 extract `chase` instead of `recruit` and the drop is then suppressed — a PRE-EXISTING extractor wobble, see the note above" },
   { id: "R10", who: "Kemal", body: "@Match Time come on lads we need more players", tagged: true, expect: "NO recruit_blast — a tag does not turn a nudge into a bulk-DM command" },
+
+  // ── B: THE STATS BLAST, and the 2026-09-10 near-miss ──────────────
+  //
+  // At 18:38 Kemal posted an ordinary reminder to his players and
+  // MatchTime queued 69 personal stats-link DMs, off three keyword tests
+  // ANDed together in `analyze/route.ts`. The regex is deleted; the ask
+  // is now `AdminFacts.action = "stats_blast"`, gated by the engine
+  // (admin + an EXPLICIT @-mention) and fired by the route.
+  //
+  // B1 IS THE ACCEPTANCE CASE OF THE WHOLE CHANGE and it must come back
+  // "no stats_blast write" on every run. Note `tagged: true` on it: the
+  // sentence contains the bare word "Matchtime", so `messageTagsBot`
+  // — and therefore production — calls it tagged. The gate that refuses
+  // it is the stricter `messageMentionsBotExplicitly`, which this
+  // harness feeds through `taggedExplicitly`.
+  //
+  // B2–B5 are the natural variants that mention ratings, players and
+  // DMs without instructing the bot: the shapes a keyword conjunction
+  // cannot tell from a command, measured against a model that can.
+  // B6–B8 are the controls — the real command, tagged (must fire),
+  // untagged (must not), and from a non-admin (must not).
+  {
+    id: "B1",
+    who: "Kemal",
+    body:
+      "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
+      "the more accurate ratings, the more balanced teams next time",
+    tagged: true,
+    taggedExplicitly: false,
+    expect: "THE 10 SEPT NEAR-MISS, VERBATIM. NO stats_blast write, on every run. 69 DMs is the alternative",
+  },
+  {
+    id: "B2",
+    who: "Kemal",
+    body: "lads don't forget to rate the players from tuesday, the link is in your DMs",
+    expect: "NOT a command. It instructs the PLAYERS; MatchTime is not asked for anything",
+  },
+  {
+    id: "B3",
+    who: "Kemal",
+    body: "the more of you that rate, the more accurate everyone's stats get",
+    expect: "NOT a command — a remark about ratings",
+  },
+  {
+    id: "B4",
+    who: "Zair",
+    body: "did everyone get their stats link? mine came through last night",
+    expect: "NOT a command — a question, and from a non-admin",
+  },
+  {
+    id: "B5",
+    who: "Kemal",
+    body: "@Match Time can you remind everyone to rate the players",
+    tagged: true,
+    taggedExplicitly: true,
+    expect: "TAGGED, and still NOT a stats blast: it asks for a REMINDER about rating, not for the stats links to be sent",
+  },
+  {
+    id: "B6",
+    who: "Kemal",
+    body: "@Match Time send everyone their stats",
+    tagged: true,
+    taggedExplicitly: true,
+    expect: "WRITE stats_blast. The feature is not deleted — this is the command it exists for",
+  },
+  {
+    id: "B7",
+    who: "Kemal",
+    body: "send everyone their stats",
+    tagged: false,
+    taggedExplicitly: false,
+    expect: "NO stats_blast — untagged is untagged, however unambiguous the imperative (RECRUIT_BLAST_REQUIRES_TAG's argument)",
+  },
+  {
+    id: "B8",
+    who: "Zair",
+    body: "@Match Time send everyone their stats",
+    tagged: true,
+    taggedExplicitly: true,
+    expect: "NO stats_blast — only an admin may DM the whole club",
+  },
 
   // ── W: the 2026-09-07 incident — an admin's UNTAGGED third-party OUT
   //
@@ -1310,6 +1400,7 @@ async function main(): Promise<void> {
               senderUserId: sender.userId,
               senderName: c.as ?? sender.name,
               tagged: c.tagged ?? false,
+              taggedExplicitly: c.taggedExplicitly ?? c.tagged ?? false,
             },
           ],
           history: HISTORY,

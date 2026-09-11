@@ -371,8 +371,18 @@ export interface AdminFacts {
    * second of two recognisers: it is the ONLY one. Remove it and an
    * admin's recruit ask falls to `other`, which nothing owns — silence
    * plus an operator note.
+   *
+   * `stats_blast` was added on 2026-09-10, for the same reason one layer
+   * along: it was the LAST bulk-DM command still classified by a regex.
+   * `analyze/route.ts:737` recognised it with three keyword tests ANDed
+   * together, and on 2026-09-10 an owner's reminder to his players
+   * ("…rate the players via the link from Matchtime DM'ed to you. the
+   * more accurate ratings…") satisfied all three from three unrelated
+   * fragments and queued 69 mass DMs. The regex is deleted; this field
+   * is now the only recogniser, and `lib/stats-blast.ts` carries the
+   * argument.
    */
-  action: "bulk_payment" | "reminder" | "recruit" | "other";
+  action: "bulk_payment" | "reminder" | "recruit" | "stats_blast" | "other";
   /** bulk_payment */
   payerRef?: string;
   count?: number;
@@ -725,6 +735,26 @@ export type ProposedWrite =
       lookbackMatches: number | null;
       sourceMessageId: string;
       reason: string;
+    }
+  | {
+      /**
+       * A personal-stats-link DM to EVERY active member — the widest
+       * mass DM in the product (69 people on Sutton FC), and until
+       * 2026-09-10 the last one still fired by a regex. Modelled exactly
+       * like `recruit_blast` and for the same reason: the engine decides
+       * WHO may ask, the route decides WHEN it runs and performs it, and
+       * the copy is composed from what actually landed.
+       *
+       * It carries no parameters at all. There is no lookback and no
+       * count for a model to widen: the recipient list is "every active
+       * member with a phone", read from the database by the route. The
+       * only thing the model contributes is "this message asks for it",
+       * and `lib/stats-blast.ts` explains what stands between that and a
+       * DM.
+       */
+      kind: "stats_blast";
+      sourceMessageId: string;
+      reason: string;
     };
 
 /**
@@ -864,6 +894,23 @@ export interface EngineMessage {
   senderName: string | null;
   /** Did this message @-mention the bot? The interaction-contract signal. */
   tagged: boolean;
+  /**
+   * Did it mention the bot EXPLICITLY — the Pi's structured signal, or a
+   * literal "@" in front of the name? `messageMentionsBotExplicitly`.
+   *
+   * ⚠️ A SECOND, STRICTER TAG FIELD, AND IT EXISTS BECAUSE OF ONE
+   * MESSAGE. `tagged` is `messageTagsBot`, which counts the bare word
+   * "matchtime" ANYWHERE in a body — so the sentence that queued 69 mass
+   * DMs on 2026-09-10 ("…the link from Matchtime DM'ed to you…") is
+   * `tagged: true`. For an ANSWER that looseness is right and hardened
+   * in on purpose; in front of a mass DM it is not a gate at all.
+   *
+   * ONLY the bulk-DM commands read this. Optional so no caller is forced
+   * to learn a field it does not use: when it is absent the engine
+   * derives it from the body, which is safe because the Pi rewrites a
+   * real bot @-mention into the literal "@Match Time" in the text.
+   */
+  taggedExplicitly?: boolean;
   route: Route;
   facts: Facts;
   /** Set when a stage above failed for this message. The engine must

@@ -20,6 +20,7 @@ import { describe, it, expect } from "vitest";
 import {
   ADMIN_REPORTED_OUT_IS_TAG_FREE,
   messageTagsBot,
+  messageMentionsBotExplicitly,
   actionRequiresTag,
   isSelfAttendanceVerdict,
   registerForEntryRequiresTag,
@@ -579,3 +580,52 @@ describe("offerIsAboutSomeoneElse — third-party-subject seatbelt", () => {
 // Type smoke — TagInput accepts the InboundMessage subset we feed it.
 const _t: TagInput = { body: "x", botMentioned: undefined };
 void _t;
+
+// ── THE 2026-09-10 NEAR-MISS: "tagged" is weaker than it reads ────────
+//
+// `messageTagsBot` counts the bare word "matchtime", anywhere in a
+// message, as a tag. That is deliberate and it is right for what it
+// gates — the 2026-06-29 hardening exists because a real admin command
+// was dropped when the Pi's structured signal regressed, and dropping a
+// real action is the worse error for an ANSWER.
+//
+// It is NOT right in front of a mass DM. On 2026-09-10 Kemal wrote
+// "…the link from Matchtime DM'ed to you…" to his players — a sentence
+// ABOUT MatchTime, addressed to the group — and `messageTagsBot` calls
+// it tagged. `messageMentionsBotExplicitly` is the stricter question the
+// bulk-DM commands ask instead: was the bot ADDRESSED, with an @, or did
+// the Pi see a real mention?
+describe("messageMentionsBotExplicitly — the stricter test for a bulk-DM command", () => {
+  const incident =
+    "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
+    "the more accurate ratings, the more balanced teams next time";
+
+  it("THE INCIDENT SENTENCE counts as tagged, and is NOT an explicit mention", () => {
+    expect(messageTagsBot({ body: incident })).toBe(true);
+    expect(messageMentionsBotExplicitly({ body: incident })).toBe(false);
+  });
+
+  it("trusts the Pi's structured mention signal", () => {
+    expect(messageMentionsBotExplicitly({ body: "send everyone their stats", botMentioned: true })).toBe(true);
+  });
+
+  it("accepts the literal @-tag the Pi writes into the body", () => {
+    expect(messageMentionsBotExplicitly({ body: "@Match Time send everyone their stats" })).toBe(true);
+    expect(messageMentionsBotExplicitly({ body: "@MatchTime send everyone their stats" })).toBe(true);
+    expect(messageMentionsBotExplicitly({ body: "@mt send everyone their stats" })).toBe(true);
+  });
+
+  it("refuses the bare word, wherever it appears", () => {
+    expect(messageMentionsBotExplicitly({ body: "matchtime is being weird today" })).toBe(false);
+    expect(messageMentionsBotExplicitly({ body: "match time lads, get your kit on" })).toBe(false);
+    expect(messageMentionsBotExplicitly({ body: "" })).toBe(false);
+  });
+
+  it("a FALSE structured signal does not suppress a real @-tag in the body", () => {
+    // The 2026-06-29 hardening, kept: the @lid self-mention bug reported
+    // botMentioned:false for a genuinely tagged admin command.
+    expect(
+      messageMentionsBotExplicitly({ body: "@Match Time send everyone their stats", botMentioned: false }),
+    ).toBe(true);
+  });
+});

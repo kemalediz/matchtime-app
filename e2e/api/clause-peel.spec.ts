@@ -190,11 +190,12 @@ test.describe("incident #6 — the swap peel used to swallow the sender's OUT", 
 
 // ── THE OTHER FOUR PEELS ────────────────────────────────────────────
 //
-// Same mechanism, four more sites. Two of them (the stats blast and the
-// rating-progress answer) are NOT tag-gated, which is why they matter
-// more than their frequency suggests: an ordinary untagged sentence
-// could reach them, be answered with silence, and take an attendance
-// change with it.
+// Same mechanism, three more sites. The rating-progress answer is NOT
+// tag-gated, which is why it matters more than its frequency suggests:
+// an ordinary untagged sentence can reach it, be answered with silence,
+// and take an attendance change with it. The stats blast used to be the
+// other one; its peel is gone with the regex that made it possible —
+// see the block below.
 //
 // Each is asserted three ways: the compound message lands BOTH halves,
 // the single-purpose message is unchanged, and exactly one outbound
@@ -251,7 +252,7 @@ test.describe("the colour swap keeps the sender's OUT", () => {
   });
 });
 
-test.describe("the four answer peels keep the sender's OUT", () => {
+test.describe("the answer peels keep the sender's OUT", () => {
   test.beforeEach(async ({ db }) => {
     resetDb();
     await db.run(
@@ -307,11 +308,53 @@ test.describe("the four answer peels keep the sender's OUT", () => {
     expect(speaks(res).length).toBeLessThanOrEqual(1);
   });
 
-  test("the stats blast — DMs everyone AND drops the sender, in one reply", async ({
+  // ── THE STATS BLAST IS NO LONGER A PEEL, AND THIS IS THE COST ──────
+  //
+  // WHAT STOOD HERE: "the stats blast — DMs everyone AND drops the
+  // sender, in one reply", which passed because a regex
+  // (`analyze/route.ts:737`) recognised the blast clause and the peel
+  // handed the rest of the message to the pipeline.
+  //
+  // That regex was three keyword tests ANDed together, and on 2026-09-10
+  // it read an owner's reminder to his players — "please do not forget
+  // to rate the players via the link from Matchtime DM'ed to you. the
+  // more accurate ratings, the more balanced teams next time" — as a
+  // bulk-DM command and queued 69 DMs. It is deleted (`lib/stats-blast.ts`),
+  // and the blast is now classified by the model on the `admin_ops`
+  // route and gated by the engine.
+  //
+  // A peel needs a deterministic predicate over language. Deleting the
+  // predicate deletes the peel, so a COMPOUND bulk-DM command now
+  // behaves the way every other `admin_ops` command already does: the
+  // whole message goes to one owner and the attendance half is lost.
+  // That is incident 6's shape and it is stated rather than discovered,
+  // here, in the file about incident 6.
+  //
+  // The trade, plainly: the alternative was keeping a keyword classifier
+  // in front of the widest mass DM in the product so that a rare
+  // compound phrasing keeps working. 69 DMs from an unofficial WhatsApp
+  // client is the account; a lost OUT in a message that also commands a
+  // blast is one re-typed line. The fix worth having is a `sideRequests`
+  // entry on the ATTENDANCE extractor — which is how a recruit ask
+  // survives beside a drop — and it is a separate change.
+  test("the compound blast command: the blast fires, the OUT is LOST (stated cost)", async ({
     request,
     db,
   }) => {
-    engineOn({ "I'm out": { route: "self_att", facts: selfOut() } });
+    engineOn({
+      "@Match Time send everyone their stats. Also I'm out": {
+        route: "admin_ops",
+        facts: {
+          action: "stats_blast",
+          payerRef: "",
+          count: 0,
+          coveredRefs: [],
+          phrase: "",
+          note: "",
+          lookbackMatches: 0,
+        },
+      },
+    });
     const res = await postAnalyze(request, [
       {
         waMessageId: msgId(),
@@ -321,13 +364,56 @@ test.describe("the four answer peels keep the sender's OUT", () => {
         botMentioned: true,
       },
     ]);
-    // The blast queues one DM per member with a phone — many more than
-    // the one the sender would get on his own.
-    const queued = await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE kind = 'dm'`);
+    const queued = await db.count(
+      `SELECT COUNT(*) FROM "BotJob" WHERE kind = 'dm' AND text ILIKE '%MatchTime stats%'`,
+    );
     expect(queued).toBeGreaterThan(1);
-    expect(await statusOf(db, U.admin)).toBe("DROPPED");
+    // THE COST. The sender said he was out in the same breath and he is
+    // still CONFIRMED. Six incidents were this shape; this one is a
+    // deliberate, argued instance of it rather than an accident.
+    expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
     expect(speaks(res)).toHaveLength(1);
     expect(speaks(res)[0].reply).toContain("personal stats link");
+  });
+
+  test("an untagged blast command DMs nobody, whatever the model said", async ({
+    request,
+    db,
+  }) => {
+    // The gate that makes the fix independent of the extractor. This body
+    // mentions MatchTime by name, so `messageTagsBot` calls it tagged —
+    // exactly as the incident sentence is — and it is still refused,
+    // because nobody @-mentioned the bot.
+    engineOn({
+      "matchtime send everyone their stats": {
+        route: "admin_ops",
+        facts: {
+          action: "stats_blast",
+          payerRef: "",
+          count: 0,
+          coveredRefs: [],
+          phrase: "",
+          note: "",
+          lookbackMatches: 0,
+        },
+      },
+    });
+    const before = await db.count(
+      `SELECT COUNT(*) FROM "BotJob" WHERE kind = 'dm' AND text ILIKE '%MatchTime stats%'`,
+    );
+    await postAnalyze(request, [
+      {
+        waMessageId: msgId(),
+        body: "matchtime send everyone their stats",
+        authorPhone: PHONE.admin,
+        authorName: NAME.admin,
+      },
+    ]);
+    expect(
+      await db.count(
+        `SELECT COUNT(*) FROM "BotJob" WHERE kind = 'dm' AND text ILIKE '%MatchTime stats%'`,
+      ),
+    ).toBe(before);
   });
 
   test("rating progress — answers AND drops the sender, in one reply", async ({

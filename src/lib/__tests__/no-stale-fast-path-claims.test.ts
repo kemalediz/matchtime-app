@@ -20,7 +20,10 @@
  * rating progress) — those are real, they answer from grounded data the
  * prompt cannot see, and none of them touch IN / OUT / score. The one that
  * did overlap with attendance, recruit, was deleted on 2026-09-01 in PR #33
- * after it swallowed a third-party OUT.
+ * after it swallowed a third-party OUT, and the ADMIN STATS BLAST was
+ * deleted on 2026-09-10 after three ANDed keyword tests read an owner's
+ * reminder to his players as a bulk-DM command and queued 69 mass DMs
+ * (`lib/stats-blast.ts`).
  *
  * ─────────────────────────────────────────────────────────────────────
  * RE-CHECKED AFTER §10 STEP 8 (2026-09-06): KEPT, AND IT GUARDS MORE

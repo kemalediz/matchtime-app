@@ -71,6 +71,65 @@ export function messageTagsBot(msg: TagInput): boolean {
   );
 }
 
+/**
+ * Was MatchTime ADDRESSED — with an @ — rather than merely mentioned?
+ *
+ * ⚠️ THE STRICTER SIBLING OF `messageTagsBot`, AND IT EXISTS BECAUSE OF
+ * ONE MESSAGE. Read them together. This one is for the BULK-DM commands
+ * and nothing else; every other caller keeps `messageTagsBot`.
+ *
+ * ── THE 2026-09-10 NEAR-MISS ─────────────────────────────────────────
+ *
+ * At 18:38 Kemal posted an ordinary reminder to his players in the live
+ * group:
+ *
+ *   "please do not forget to rate the players via the link from
+ *    Matchtime DM'ed to you. the more accurate ratings, the more
+ *    balanced teams next time"
+ *
+ * MatchTime queued 69 personal stats-link DMs. The classifier that fired
+ * is deleted (see `lib/stats-blast.ts`), but the tag gate that was
+ * supposed to be the backstop would NOT have stopped it either:
+ * `messageTagsBot` counts the bare word "matchtime", anywhere in a body,
+ * as a tag — and that sentence contains it. The sentence is ABOUT
+ * MatchTime and addressed to the PLAYERS.
+ *
+ * ── WHY `messageTagsBot` IS STILL RIGHT WHERE IT IS ──────────────────
+ *
+ * Its looseness is deliberate and was hardened INTO it on 2026-06-29,
+ * after the Pi's structured signal regressed and a genuine admin command
+ * was dropped. For an ANSWER — a question, a team sheet, one DM to the
+ * asker — a false negative (silence at a player who really did ask) is
+ * the worse error, so leaning loose is correct.
+ *
+ * In front of a MASS DM the costs invert, and `RECRUIT_BLAST_REQUIRES_TAG`
+ * already spells out why: "A blast that does not fire costs the owner
+ * one re-typed message. A blast that fires when it should not costs the
+ * WhatsApp account" — the bot runs on an unofficial client, and the ban
+ * takes the whole product down. So the bulk-DM door asks the strictest
+ * question the bytes can answer.
+ *
+ * ── WHAT COUNTS, AND WHAT THIS COSTS ─────────────────────────────────
+ *
+ *   • the Pi's structured mention list (`botMentioned === true`) — the
+ *     authoritative signal, unchanged;
+ *   • an explicit "@" in the body: "@Match Time", "@MatchTime", "@mt".
+ *     The Pi rewrites a real bot @-mention into the literal "@Match
+ *     Time", so this is the same fact seen from the text side, and the
+ *     2026-06-29 hardening survives: a FALSE structured signal still
+ *     cannot suppress a real @-tag.
+ *
+ * NOT the bare word. THE COST, stated rather than discovered later: an
+ * admin who types "matchtime send everyone their stats", with no @, gets
+ * silence and has to send it again with the tag on. That is the cheap
+ * direction of the asymmetry above, and it is the whole point.
+ */
+export function messageMentionsBotExplicitly(msg: TagInput): boolean {
+  if (msg.botMentioned === true) return true;
+  const body = msg.body ?? "";
+  return /@\s*match\s*time\b/i.test(body) || /@\s*matchtime\b/i.test(body) || /@mt\b/i.test(body);
+}
+
 export interface GateRegisterForEntry {
   name: string;
   action: "IN" | "OUT" | "BENCH";

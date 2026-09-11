@@ -161,6 +161,7 @@ export class WriteRoutesPipeline implements CorpusPipeline {
       handedBack: [] as string[],
       reasons: [] as unknown[],
       recruit: [] as unknown[],
+      statsBlast: [] as unknown[],
       degradations: [] as string[],
       costUsd: 0,
     };
@@ -241,6 +242,13 @@ export class WriteRoutesPipeline implements CorpusPipeline {
         if (out) {
           (notes.owned as string[]).push(`${m.waMessageId} ${out.route} ${out.intent}`);
           (notes.reasons as unknown[]).push({ id: m.waMessageId, reasoning: out.reasoning });
+          if ("statsBlastRequest" in out && out.statsBlastRequest) {
+            // Same deferral as the recruit blast below: production fires
+            // this in the route's batch-final pass, so what the corpus
+            // can assert is that the ask was RECOGNISED — and, for the
+            // 2026-09-10 case, that it was not.
+            (notes.statsBlast as unknown[]).push({ id: m.waMessageId });
+          }
           if ("recruitRequest" in out && out.recruitRequest) {
             // The blast is NOT fired here, exactly as production defers
             // it to the batch-final pass. What the corpus can assert is

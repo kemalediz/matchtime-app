@@ -61,6 +61,10 @@ export const SEVERITY_BY_INTENT: Record<string, Severity> = {
   recruit_recent: "action",
   recruit_denied: "action",
   stats_blast_denied: "action",
+  // Since 2026-09-10 the blast is decided by the engine on `admin_ops`
+  // and this is the label the row carries. The `_denied` row above is
+  // historical: the regex that produced it is deleted.
+  stats_blast: "action",
 
   question: "speech",
   rating_progress: "speech",

@@ -56,6 +56,9 @@ export interface PipelineMessage {
   senderName?: string | null;
   /** The interaction-contract signal forwarded by the Pi. */
   tagged: boolean;
+  /** The STRICTER signal, read only by the bulk-DM commands. Omitted →
+   *  the engine derives it from the body. See `lib/stats-blast.ts`. */
+  taggedExplicitly?: boolean;
 }
 
 export interface PipelineInput {
@@ -199,6 +202,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
       senderUserId: m.senderUserId,
       senderName: m.senderName ?? m.authorName,
       tagged: m.tagged,
+      ...(m.taggedExplicitly === undefined ? {} : { taggedExplicitly: m.taggedExplicitly }),
       route: routeById.get(m.id) ?? "unsure",
       facts: e?.facts ?? { kind: "none" },
       degraded: e?.degraded ?? null,

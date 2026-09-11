@@ -167,6 +167,7 @@ A person the message says to include ("generate the teams, Ibrahim is playing") 
   action       "bulk_payment" someone paid for several players
                "reminder" the sender wants to be reminded, at a time
                "recruit" the sender is asking the bot to CONTACT or INVITE players who are not registered yet — "message the lads from the last few games", "DM everyone who played recently and invite them", "ask the regulars if they can play", "we need more players, can you round some up"
+               "stats_blast" the sender is INSTRUCTING YOU to send every player their own stats or ratings link — "send everyone their stats", "DM the squad their ratings", "share the stats links with the lads"
                "other"
   payerRef     for bulk_payment: who paid, verbatim. "" when not applicable
   count        for bulk_payment: how many players they paid for. 0 when not applicable
@@ -175,7 +176,16 @@ A person the message says to include ("generate the teams, Ibrahim is playing") 
   note         for reminder: WHAT to remind them about, in their own words ("bring the bibs"). "" when the message names nothing to remember
   lookbackMatches  for recruit: how many recent matches the message says to draw players from ("the last 5 matches" -> 5, "the last couple of games" -> 2). 0 when the message names no number.
 
-"recruit" is about reaching people OUTSIDE the current squad. A message asking to SHOW, LIST or COUNT the players already registered is not recruit — that is "other".`,
+"recruit" is about reaching people OUTSIDE the current squad. A message asking to SHOW, LIST or COUNT the players already registered is not recruit — that is "other".
+
+"stats_blast" is a message that tells YOU to send something to every player. Ask who is being told to do the work. If the sender is telling the PLAYERS to do something — to rate each other, to check a link, to click the one they already have, to not forget something — it is "other", however many times it says stats, ratings, players, DM or everyone. A message can be ABOUT the stats links without asking you to send them.
+
+  "@Match Time send everyone their stats"                                      -> stats_blast
+  "@Match Time can you DM the squad their ratings links"                       -> stats_blast
+  "lads don't forget to rate the players via the link MatchTime DM'ed you"     -> other, it instructs the players
+  "the more accurate the ratings, the more balanced the teams"                 -> other, it is a remark
+  "did everyone get their stats link?"                                         -> other, it is a question
+  "@Match Time what are my stats"                                              -> other, one person asking about themselves`,
 };
 
 // ── Schemas ────────────────────────────────────────────────────────────
@@ -290,7 +300,10 @@ const SCORE_SCHEMA = {
 const ADMIN_SCHEMA = {
   type: "object",
   properties: {
-    action: { type: "string", enum: ["bulk_payment", "reminder", "recruit", "other"] },
+    action: {
+      type: "string",
+      enum: ["bulk_payment", "reminder", "recruit", "stats_blast", "other"],
+    },
     payerRef: { type: "string" },
     count: { type: "number" },
     coveredRefs: { type: "array", items: { type: "string" } },
@@ -501,7 +514,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "reminder", "recruit", "other"].includes(action)) {
+      if (!["bulk_payment", "reminder", "recruit", "stats_blast", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }

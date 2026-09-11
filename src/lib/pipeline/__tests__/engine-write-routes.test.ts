@@ -614,3 +614,129 @@ describe("S19 · `generate` is owned; `rename` and `swap` are not", () => {
     expect(r.speech.map((s) => s.kind)).toContain("teams_post");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// THE STATS BLAST — DECIDED BY THE ENGINE, RUN BY THE ROUTE (2026-09-10)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// THE INCIDENT. At 18:38 Kemal posted an ordinary reminder to his
+// players:
+//
+//   "please do not forget to rate the players via the link from
+//    Matchtime DM'ed to you. the more accurate ratings, the more
+//    balanced teams next time"
+//
+// MatchTime queued 69 personal stats-link DMs. The trigger was three
+// keyword tests ANDed together in `analyze/route.ts`: a send word ("DM'ed
+// to you"), a stats word ("the more accurate ratings") and an everyone
+// word ("rate the players") — three unrelated fragments of one sentence,
+// from an instruction TO THE PLAYERS that means roughly the opposite of
+// what fired.
+//
+// That is a regex doing CLASSIFICATION, which this codebase has now
+// deleted three times — 2026-04-21 (`handlers.ts:7-10`), 2026-09-01
+// (`looksLikeRecruitRequest`) and here — each time after an incident.
+//
+// The replacement is the recruit blast's shape exactly: the extractor
+// reports the ask as a typed FACT (`AdminFacts.action = "stats_blast"`),
+// the engine decides WHO may fire one, and the route performs the blast
+// deterministically so the action is never the model's to invent.
+describe("the stats blast is DECIDED by the engine and RUN by the route", () => {
+  const blast = (
+    from: string | null,
+    opts: { tagged?: boolean; taggedExplicitly?: boolean; body?: string } = {},
+  ) =>
+    decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal", "elvin", "sait"] }),
+      messages: [
+        {
+          ...msg({
+            from,
+            tagged: opts.tagged ?? true,
+            body: opts.body ?? "@Match Time send everyone their stats",
+            route: "admin_ops",
+            facts: { kind: "admin", action: "stats_blast" },
+          }),
+          ...(opts.taggedExplicitly === undefined
+            ? {}
+            : { taggedExplicitly: opts.taggedExplicitly }),
+        },
+      ],
+    });
+
+  it("a tagged ADMIN's ask proposes a blast", () => {
+    const w = blast("kemal").writes.find((x) => x.kind === "stats_blast");
+    expect(w).toBeTruthy();
+  });
+
+  it("refuses a non-admin — the blast DMs the whole club", () => {
+    const r = blast("zair");
+    expect(r.writes.filter((x) => x.kind === "stats_blast")).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/only an admin/i);
+  });
+
+  it("refuses an unresolved sender — nobody is an admin until they are somebody", () => {
+    const r = blast(null);
+    expect(r.writes.filter((x) => x.kind === "stats_blast")).toHaveLength(0);
+  });
+
+  it("REFUSES an untagged blast, exactly as the recruit blast does", () => {
+    const r = blast("kemal", {
+      tagged: false,
+      taggedExplicitly: false,
+      body: "send everyone their stats",
+    });
+    expect(r.writes.filter((x) => x.kind === "stats_blast")).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/@Match Time tag/i);
+  });
+
+  // ── THE HEADLINE, IN THE ENGINE ────────────────────────────────────
+  //
+  // The incident sentence contains the bare word "Matchtime", so
+  // `messageTagsBot` — and therefore `EngineMessage.tagged` — is TRUE
+  // for it. A gate that read `tagged` alone would have let it through.
+  // This is the case that makes the fix independent of the model: even
+  // if the extractor MISREADS the sentence as a bulk-DM command, the
+  // engine refuses it, because nobody addressed the bot with an @.
+  it("REFUSES the 2026-09-10 incident sentence even when the model calls it a blast", () => {
+    const r = blast("kemal", {
+      tagged: true, // ← `messageTagsBot` says yes: the body says "Matchtime"
+      taggedExplicitly: false, // ← but nobody @-mentioned the bot
+      body:
+        "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
+        "the more accurate ratings, the more balanced teams next time",
+    });
+    expect(r.writes.filter((x) => x.kind === "stats_blast")).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/@Match Time tag/i);
+  });
+
+  it("says nothing in the group when it refuses — silence is the contract", () => {
+    const r = blast("kemal", { tagged: false, taggedExplicitly: false });
+    expect(r.speech).toHaveLength(0);
+  });
+
+  it("proposes no speech of its own — the route speaks after the blast runs", () => {
+    // Same rule as the recruit blast: the words come from what the
+    // action ACTUALLY did (how many DMs were queued), which the engine
+    // cannot know.
+    expect(blast("kemal").speech).toHaveLength(0);
+  });
+
+  it("derives the explicit tag from the BODY when the caller supplied none", () => {
+    // The Pi rewrites a real bot @-mention into the literal "@Match
+    // Time" in the body, so a caller that has not been taught the new
+    // field still gets the right answer — and gets it in the safe
+    // direction for a body with no @ in it.
+    expect(
+      blast("kemal", { body: "@Match Time send everyone their stats" }).writes.filter(
+        (x) => x.kind === "stats_blast",
+      ),
+    ).toHaveLength(1);
+    expect(
+      blast("kemal", { body: "send everyone their stats" }).writes.filter(
+        (x) => x.kind === "stats_blast",
+      ),
+    ).toHaveLength(0);
+  });
+});

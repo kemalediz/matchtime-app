@@ -44,6 +44,7 @@
  */
 import {
   actionRequiresTag,
+  messageMentionsBotExplicitly,
   registerForEntryRequiresTag,
   type GateRegisterForEntry,
   type GateVerdict,
@@ -57,6 +58,10 @@ import {
   RECRUIT_BLAST_REQUIRES_TAG,
   RECRUIT_COMMAND_IMPLIES_ADDRESSED,
 } from "../recruit-request";
+import {
+  STATS_BLAST_REQUIRES_TAG,
+  STATS_BLAST_TAG_MUST_BE_EXPLICIT,
+} from "../stats-blast";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
 import { resolveReminderPhrase } from "../reminder-time";
 import { resolvePerson } from "./identity";
@@ -1863,6 +1868,84 @@ export function decide(input: EngineInput): EngineResult {
           lookbackMatches: lookback,
           sourceMessageId: msg.id,
           reason: "admin asked for a recruit blast",
+        });
+        return;
+      }
+
+      if (facts.action === "stats_blast") {
+        // ═══════════════════════════════════════════════════════════════
+        // THE STATS BLAST — 2026-09-10, and this branch IS the fix
+        // ═══════════════════════════════════════════════════════════════
+        //
+        // Until today this action was recognised by a regex in
+        // `analyze/route.ts`: a send word AND a stats word AND an
+        // everyone word, anywhere in the body. At 18:38 an owner's
+        // reminder to his players — "please do not forget to rate the
+        // players via the link from Matchtime DM'ed to you. the more
+        // accurate ratings, the more balanced teams next time" —
+        // satisfied all three from three unrelated fragments and queued
+        // 69 personal stats-link DMs. One was delivered before the queue
+        // was killed. The full argument is in `lib/stats-blast.ts`.
+        //
+        // ── WHAT THIS BRANCH SKIPS, since a `return` here means every
+        //    rule below is skipped for THIS message: nothing. Like the
+        //    recruit branch above it, the admin handler's remaining body
+        //    is one `degrade()` for an unhandled action, and returning
+        //    is how a HANDLED action leaves. No write, no speech and no
+        //    state mutation happens after this point in the callback, so
+        //    a `return` can skip exactly one thing — the "no
+        //    deterministic handler" degradation — which is the intent.
+        //    (Seven incidents in this codebase came from a terminal
+        //    short-circuit that silently deleted the guards beneath it.)
+        //
+        // ── WHO MAY ASK. Admin-only, exactly as the deleted fast path
+        //    gated it (`route.ts:747-755`, an OWNER/ADMIN membership
+        //    lookup). Unchanged, deliberately: this is a fix to the
+        //    CLASSIFIER, not a re-litigation of the permission.
+        if (!senderIsAdmin) {
+          out.reasons.push("only an admin may send a stats blast");
+          return;
+        }
+        // ── AND THEY MUST ADDRESS THE BOT, WITH AN @ ─────────────────
+        //
+        // `RECRUIT_BLAST_REQUIRES_TAG`'s argument, applied to the other
+        // bulk-DM door: a blast that does not fire costs one re-typed
+        // message; one that fires wrongly costs 69 DMs from an
+        // unofficial WhatsApp client and possibly the account.
+        //
+        // AND ONE STEP STRICTER THAN RECRUIT, because the incident
+        // message proves the ordinary tag test is not a gate here.
+        // `msg.tagged` is `messageTagsBot`, which counts the bare word
+        // "matchtime" anywhere in a body — and the sentence that queued
+        // 69 DMs contains it ("the link from Matchtime DM'ed to you").
+        // A gate reading `tagged` alone would have let the incident
+        // message through and left the whole fix resting on the model
+        // reading one ambiguous sentence right, every time, at
+        // temperature 1. `taggedExplicitly` asks the question the bytes
+        // can actually answer: did somebody @-mention the bot?
+        //
+        // Derived from the body when the caller did not supply it — the
+        // Pi rewrites a real bot @-mention into the literal "@Match
+        // Time", so the text carries the same fact, and a body with no
+        // @ in it fails in the safe direction.
+        const addressed =
+          !STATS_BLAST_TAG_MUST_BE_EXPLICIT
+            ? msg.tagged
+            : (msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }));
+        if (STATS_BLAST_REQUIRES_TAG && !addressed) {
+          // A plain reason rather than `degrade()`: this IS a decision,
+          // recorded on the message's row for the admin log, and it adds
+          // no sentence to the group — untagged silence is what the
+          // interaction contract already promises.
+          out.reasons.push(
+            "a stats blast requires an @Match Time tag: a mass DM is not fired off a message that only mentions MatchTime",
+          );
+          return;
+        }
+        emit({
+          kind: "stats_blast",
+          sourceMessageId: msg.id,
+          reason: "admin asked for a stats blast",
         });
         return;
       }

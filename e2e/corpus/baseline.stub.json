@@ -1,7 +1,7 @@
 {
   "pipeline": "current-analyzer",
   "recordedAt": "2026-09-08",
-  "note": "Stubbed-mode baseline for e2e/sim/corpus.spec.ts. This is a RECORD OF TODAY'S BEHAVIOUR, not a statement that today's behaviour is correct. RE-RECORDED 2026-09-08, on the commit that ported every case from the deleted VERDICT seam to routes + facts: 35 pass, 0 fail, 26 skip (live-only, each with a liveOnlyReason). The previous baseline was recorded 2026-09-01 against a stubbed sweep that fed the server verdicts; between the two, 24 cases showed as 'pass -> fail' purely because the seam had been deleted, and every one of the 36 was adjudicated case by case rather than re-recorded wholesale - the verdict and the reason are in each case's `adjudication` block in incidents.jsonl. 35 pass is NOT 35 cases of coverage on its own: the number that says the cases measure something is that 32 of the 35 FAIL when the seam stops forwarding (S2b and S21b assert silence and cannot; S26 is written by reconcilePastedRoster above the router). NEVER weaken a corpus expectation to turn a 'fail' into a 'pass' here - fix the pipeline, or adjudicate the case in writing, then re-record with MT_CORPUS_RECORD=1. 'skip' means the case carries no route and is live-only.",
+  "note": "Stubbed-mode baseline for e2e/sim/corpus.spec.ts. This is a RECORD OF TODAY'S BEHAVIOUR, not a statement that today's behaviour is correct. RE-RECORDED 2026-09-08, on the commit that ported every case from the deleted VERDICT seam to routes + facts: 35 pass, 0 fail, 26 skip (live-only, each with a liveOnlyReason). The previous baseline was recorded 2026-09-01 against a stubbed sweep that fed the server verdicts; between the two, 24 cases showed as 'pass -> fail' purely because the seam had been deleted, and every one of the 36 was adjudicated case by case rather than re-recorded wholesale - the verdict and the reason are in each case's `adjudication` block in incidents.jsonl. 35 pass is NOT 35 cases of coverage on its own: the number that says the cases measure something is that 32 of the 35 FAIL when the seam stops forwarding (S2b and S21b assert silence and cannot; S26 is written by reconcilePastedRoster above the router). NEVER weaken a corpus expectation to turn a 'fail' into a 'pass' here - fix the pipeline, or adjudicate the case in writing, then re-record with MT_CORPUS_RECORD=1. 'skip' means the case carries no route and is live-only. TOUCHED 2026-09-10, and this is a corpus GROWTH rather than a behaviour change: the two ADMIN-stats-blast-* cases were added for the 69-DM near-miss and both record 'skip' (they carry no route and are live-only, each with a liveOnlyReason). Every pre-existing case kept its recorded result exactly - 35 pass, 0 fail - so deleting the stats-blast regex regressed nothing the stubbed corpus can see.",
   "cases": {
     "S1-ibrahim-baki-verdict-coverage": "skip",
     "S2-rollover-full-squad-benches-this-week": "pass",
@@ -63,6 +63,8 @@
     "S22-reminder-request-is-queued-for-the-resolved-day": "skip",
     "ADMIN-recruit-blast-from-the-last-n-matches": "skip",
     "ADMIN-recruit-blast-untagged-needs-a-tag": "skip",
-    "ADMIN-chase-nudge-is-not-a-recruit-blast": "skip"
+    "ADMIN-chase-nudge-is-not-a-recruit-blast": "skip",
+    "ADMIN-stats-blast-an-owner-reminding-his-players": "skip",
+    "ADMIN-stats-blast-the-tagged-command-still-works": "skip"
   }
 }

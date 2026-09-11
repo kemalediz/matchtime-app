@@ -143,8 +143,14 @@
  * command a direct instruction to MatchTime on its own". That waiver was
  * scope creep from the attendance path onto this one, and it made an
  * untagged 20-person mass DM turn on a router coin flip (measured
- * `admin_ops` 13/20 on one real phrasing). All THREE `admin_ops` actions
- * now require a tag — see `RECRUIT_BLAST_REQUIRES_TAG`.
+ * `admin_ops` 13/20 on one real phrasing). All FOUR `admin_ops` actions
+ * now require a tag — see `RECRUIT_BLAST_REQUIRES_TAG`, and
+ * `STATS_BLAST_REQUIRES_TAG` for the fourth, which arrived on
+ * 2026-09-10 and requires an EXPLICIT @-mention rather than the loose
+ * `messageTagsBot` test. Read `lib/stats-blast.ts` for why the loose one
+ * is not a gate in front of a mass DM: the message that queued 69 of
+ * them says "Matchtime" in the middle of a sentence and is therefore
+ * `tagged`.
  *
  * IT IS STILL NOT A PRE-FILTER, and that is deliberate rather than
  * leftover. Refusing untagged `admin_ops` messages before extraction
@@ -157,7 +163,7 @@
  * The cost is one extractor call on an untagged `admin_ops` message.
  *
  * ─────────────────────────────────────────────────────────────────────
- * THE RECRUIT BLAST IS DECIDED HERE AND RUN LATER
+ * THE TWO BLASTS ARE DECIDED HERE AND RUN LATER
  * ─────────────────────────────────────────────────────────────────────
  * `recruitRequest` on the outcome is the same field
  * `attendance-engine-batch.ts` already reports, read by the same
@@ -166,6 +172,12 @@
  * 2026-09-01, where a regex ran the blast first, against a 10/10 squad,
  * and MatchTime told the owner his squad was full one line after he said
  * Najib was out. Applying `recruit_blast` here would rebuild that bug.
+ *
+ * `statsBlastRequest` (2026-09-10) is the same field for the other mass
+ * DM, deferred the same way. It has no ordering argument of its own —
+ * the stats blast reads no squad state — but it goes down the same road
+ * so there is ONE place in the codebase where a bulk DM is performed,
+ * and one shape to review when the next one arrives.
  */
 import {
   ADMIN_OPS_APPLY_DEGRADED_PREFIX,
@@ -206,6 +218,10 @@ export interface AdminOpsBatchMessage {
   senderUserId: string | null;
   senderName: string | null;
   tagged: boolean;
+  /** `messageMentionsBotExplicitly` — the STRICTER tag test, read only by
+   *  the bulk-DM commands. Omitted → the engine derives it from the body.
+   *  See `EngineMessage.taggedExplicitly` and `lib/stats-blast.ts`. */
+  taggedExplicitly?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then this never sees it. */
@@ -234,6 +250,18 @@ export interface AdminOpsMessageOutcome {
   /** The clamped lookback for that blast, or null for the default of 5.
    *  `inviteRecentPlayers` takes it as its second argument. */
   recruitLookbackMatches: number | null;
+  /**
+   * An admin asked, with an @-tag, for every active member to be DM'd
+   * their personal stats link. Same shape as `recruitRequest` and same
+   * batch-final pass: this path applies NOTHING, the route performs the
+   * blast. It carries no parameters — the recipient list is "every
+   * active member with a phone", read from the database by the route,
+   * so there is no number here for a model to widen.
+   *
+   * The gate is `pipeline/engine.ts`'s `stats_blast` branch (admin +
+   * an explicit @-mention); this field is what it decided.
+   */
+  statsBlastRequest: boolean;
   /** A write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
 }
@@ -498,6 +526,7 @@ export async function runAdminOpsBatch(args: {
     senderUserId: m.senderUserId,
     senderName: m.senderName ?? m.authorName,
     tagged: m.tagged,
+    ...(m.taggedExplicitly === undefined ? {} : { taggedExplicitly: m.taggedExplicitly }),
     route: m.route ?? "none",
     facts: ownedIds.has(m.waMessageId)
       ? (factsById.get(m.waMessageId) ?? { kind: "none" })
@@ -533,6 +562,7 @@ export async function runAdminOpsBatch(args: {
   const payments: EnginePaymentWrite[] = [];
   const reminders: EngineReminderWrite[] = [];
   const recruitByMessage = new Map<string, number | null>();
+  const statsBlastIds = new Set<string>();
   const foreign: string[] = [];
   for (const w of result.writes) {
     if (!ownedIds.has(w.sourceMessageId)) {
@@ -542,6 +572,10 @@ export async function runAdminOpsBatch(args: {
     if (w.kind === "payment_credit") payments.push(w);
     else if (w.kind === "reminder") reminders.push(w);
     else if (w.kind === "recruit_blast") recruitByMessage.set(w.sourceMessageId, w.lookbackMatches);
+    // Deferred to the route's batch-final pass, exactly like
+    // `recruit_blast` and for the same reason — see the header, and
+    // `lib/stats-blast.ts` for why the classification moved here at all.
+    else if (w.kind === "stats_blast") statsBlastIds.add(w.sourceMessageId);
     else foreign.push(w.kind);
   }
   if (foreign.length > 0) {
@@ -655,6 +689,7 @@ export async function runAdminOpsBatch(args: {
     const failed = failedIds.has(m.waMessageId);
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
     const isRecruit = recruitByMessage.has(m.waMessageId);
+    const isStatsBlast = statsBlastIds.has(m.waMessageId);
 
     // §3.2 S7: a write that threw says nothing at all.
     const reply = failed ? null : (replyByMessage.get(m.waMessageId) ?? null);
@@ -685,13 +720,19 @@ export async function runAdminOpsBatch(args: {
             ? "reminder_request"
             : isRecruit
               ? "recruit_recent"
-              : "noise",
+              : // The label the deleted fast path wrote, kept so the
+                // admin log's vocabulary and every sweep over it are
+                // unchanged by the move from regex to model.
+                isStatsBlast
+                ? "stats_blast"
+                : "noise",
       action: failed ? "none" : actedIds.has(m.waMessageId) ? action : react ? "react" : reply ? "reply" : "none",
       reasoning:
         `${ADMIN_OPS_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}` +
         (failed ? "; the write FAILED and nothing was said" : ""),
       recruitRequest: isRecruit,
       recruitLookbackMatches: recruitByMessage.get(m.waMessageId) ?? null,
+      statsBlastRequest: isStatsBlast,
       writeFailed: failed,
     });
   }

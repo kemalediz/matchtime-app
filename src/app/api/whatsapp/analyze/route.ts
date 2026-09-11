@@ -20,11 +20,21 @@
  *
  * `analyzeBatch` and `SYSTEM_PROMPT` are deleted. What replaced them:
  *
- *   0. DETERMINISTIC PEELS — no model at all. Personal stats link, the
- *      admin stats blast, group→DM Q&A, admin rating progress, help,
- *      the colour swap, the team swap, a bench-prompt answer, a pasted
- *      roster. Each is a database row or a whole-message match, and
- *      each is peeled before the router so nothing else can claim it.
+ *   0. DETERMINISTIC PEELS — no model at all. Personal stats link,
+ *      group→DM Q&A, admin rating progress, help, the colour swap, the
+ *      team swap, a bench-prompt answer, a pasted roster. Each is a
+ *      database row or a whole-message match, and each is peeled before
+ *      the router so nothing else can claim it.
+ *
+ *      THE ADMIN STATS BLAST WAS THE NINTH AND IS NOT ONE ANY MORE
+ *      (2026-09-10). It was recognised by three keyword tests ANDed
+ *      together, which is a "whole-message match" only in the sense that
+ *      the three words could be anywhere in the message: an owner's
+ *      reminder to his players satisfied all three from three unrelated
+ *      fragments and MatchTime queued 69 mass DMs. It is now an
+ *      extracted fact on the `admin_ops` route, gated by the engine and
+ *      fired by this route after the batch — see the tombstone in
+ *      section 0 and `lib/stats-blast.ts`.
  *   1. ROUTER — `claude-haiku-4-5`, ~360 tokens, nine routes. Banter
  *      exits here and costs nothing further. (`pipeline/gate.ts`)
  *   2. EXTRACTORS — one small specialist per route, strict JSON schema,
@@ -237,12 +247,13 @@ import {
 import { recordTentative, resolveTentative } from "@/lib/tentative-store";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
-import { messageTagsBot } from "@/lib/interaction-contract";
+import { messageMentionsBotExplicitly, messageTagsBot } from "@/lib/interaction-contract";
 import { mergeRecruitReply } from "@/lib/recruit-request";
 import { readBenchPromptAnswer } from "@/lib/bench-prompt-answer";
 import {
   peelClause,
   applyClauseReports,
+  mergeOneReply,
   type ClausePeel,
   type ClauseReport,
 } from "@/lib/pipeline/clause-peel";
@@ -715,96 +726,65 @@ async function handleAnalyzeRequest(request: Request) {
       reply: null,
     });
   }
-  // ── Fast-path: admin "DM stats/ratings to active players" ──────────
-  //   An ADMIN asking the bot to push everyone their personal stats
-  //   link ("@MatchTime DM ratings of active players", "send everyone
-  //   their stats"). Each active member with a phone gets a DM with
-  //   their OWN never-expiring magic link to /profile/stats. Gated to
-  //   OWNER/ADMIN so randoms can't trigger a DM blast. No LLM cost.
+  // ── DELETED 2026-09-10: the stats-blast REGEX fast path ────────────
+  //   It lived here, and it was the last bulk-DM command in the product
+  //   still classified by a pattern. The trigger was three keyword tests
+  //   ANDed together over the whole body:
   //
-  //   ⚠️ THIS PEEL IS NOT TAG-GATED, and the clause peel is why that now
-  //   matters less. The brief for this change asserted every fast path
-  //   requires an `@Match Time` tag; this one and the rating-progress
-  //   one below do not, so an ORDINARY sentence could reach them. The
-  //   tag requirement is a different axis and is NOT changed here (it
-  //   was settled on 2026-09-08) — but a DENIED blast used to peel the
-  //   whole message too, so "can someone send the ratings to all the
-  //   lads? I'm out btw" answered 🔒 and lost the OUT. It no longer can.
+  //     /\b(dm|send|share|message)\b/  AND
+  //     /\b(stats|ratings?)\b/         AND
+  //     /\b(everyone|all|active|players|squad|the team|the group)\b/
   //
-  //   CLAUSE-PEELED. Like the personal link above, nothing in the blast
-  //   is composed from the body, so peeling a clause changes only what
-  //   is left over.
-  const blastTrigger = (text: string) =>
-    /\b(dm|send|share|message)\b/i.test(text) &&
-    /\b(stats|ratings?)\b/i.test(text) &&
-    /\b(everyone|all|active|players|squad|the team|the group)\b/i.test(text);
-  for (const m of fresh) {
-    if (fastPathHandledIds.has(m.waMessageId)) continue; // already handled as personal
-    const blastPeel = peelClause(m.body, blastTrigger);
-    if (!blastPeel) continue;
-    const sender = senderById.get(m.waMessageId)!;
-    // Admin gate.
-    let isAdmin = false;
-    if (sender.userId) {
-      const mem = await db.membership.findUnique({
-        where: { userId_orgId: { userId: sender.userId, orgId: org.id } },
-        select: { role: true },
-      });
-      isAdmin = mem?.role === "OWNER" || mem?.role === "ADMIN";
-    }
-    if (!isAdmin) {
-      await claimFastPath(m, blastPeel, {
-        handledBy: "fast-path",
-        intent: "stats_blast_denied",
-        action: null,
-        reasoning: "non-admin asked to DM stats to everyone — ignored",
-        react: "🔒",
-        reply: null,
-      });
-      continue;
-    }
-    // Queue a personal stats DM for every active member with a phone.
-    const members = await db.membership.findMany({
-      where: { orgId: org.id, leftAt: null, user: { phoneNumber: { not: null } } },
-      select: { user: { select: { id: true, name: true, phoneNumber: true } } },
-    });
-    let queued = 0;
-    for (const mem of members) {
-      const u = mem.user;
-      if (!u.phoneNumber) continue;
-      try {
-        const token = signMagicLinkToken({
-          userId: u.id,
-          purpose: "sign-in",
-          nextPath: "/profile/stats",
-          ttlSeconds: MAGIC_LINK_TTL.bookmark,
-        });
-        const first = u.name?.split(" ")[0] ?? "there";
-        await db.botJob.create({
-          data: {
-            orgId: org.id,
-            kind: "dm",
-            phone: u.phoneNumber.replace(/^\+/, ""),
-            text:
-              `📊 Hi ${first} — here are your MatchTime stats: your ratings over time, ` +
-              `Man-of-the-Match games, how you stack up against the squad, your badges and a ` +
-              `shareable season card.\n\n${await buildShortMagicLinkUrl(token)}\n\nKeep this link — it doesn't expire.`,
-          },
-        });
-        queued++;
-      } catch (err) {
-        console.error(`[analyze] stats-blast DM failed for ${u.id}:`, err);
-      }
-    }
-    await claimFastPath(m, blastPeel, {
-      handledBy: "fast-path",
-      intent: "stats_blast",
-      action: `dm-stats-blast:${queued}`,
-      reasoning: `admin stats blast — queued ${queued} personal stats-link DMs`,
-      react: "✅",
-      reply: `📊 Done — DM'd ${queued} player${queued === 1 ? "" : "s"} their personal stats link. They'll arrive over the next few minutes.`,
-    });
-  }
+  //   At 18:38 on 2026-09-10 Kemal posted an ordinary reminder to his
+  //   players in the live Sutton FC group:
+  //
+  //     "please do not forget to rate the players via the link from
+  //      Matchtime DM'ed to you. the more accurate ratings, the more
+  //      balanced teams next time"
+  //
+  //   Each test matched a different, unrelated fragment of that one
+  //   sentence — "DM'ed to you", "the more accurate ratings", "rate the
+  //   players" — and MatchTime recorded `by=fast-path intent=stats_blast
+  //   action=dm-stats-blast:69` and queued 69 personal stats-link DMs.
+  //   One was delivered before the queue was killed; 68 were deleted
+  //   unsent. The sentence is an instruction to the PLAYERS and means
+  //   roughly the opposite of what fired.
+  //
+  //   THE FIX IS A DELETION, for the third time in this codebase
+  //   (2026-04-21 `handlers.ts:7-10`; 2026-09-01 `looksLikeRecruitRequest`,
+  //   the tombstone 60 lines below). A fourth keyword test or an
+  //   exclusion list would be a fourth thing to get wrong in front of
+  //   the widest mass DM the product has — 69 people, from an unofficial
+  //   WhatsApp client, which `recruit-lookback.ts` calls the way the
+  //   account gets banned and the whole product goes down.
+  //
+  //   The stats blast is now an extracted FACT (`AdminFacts.action =
+  //   "stats_blast"` on the `admin_ops` route), GATED by the engine
+  //   (admin, plus an EXPLICIT @-mention — `lib/stats-blast.ts` explains
+  //   why `messageTagsBot` is not a gate here: the incident sentence
+  //   contains the bare word "Matchtime" and is therefore "tagged"), and
+  //   PERFORMED by this route in the batch-final pass beside the recruit
+  //   blast. The action, the recipients and the copy are unchanged; only
+  //   the classification moved from regex to model, and the decision
+  //   from this loop to the engine.
+  //
+  //   ── TWO THINGS WENT WITH IT, STATED RATHER THAN DISCOVERED ───────
+  //
+  //   THE 🔒 DENIAL. A non-admin's ask was answered with a 🔒 react and
+  //   an `stats_blast_denied` row. Nothing recognises a non-admin's ask
+  //   any more, so it is silence plus one line on the operator note —
+  //   the same trade the recruit deletion made on 2026-09-01.
+  //
+  //   THE CLAUSE PEEL. "@Match Time send everyone their stats. Also I'm
+  //   out" used to blast AND drop the sender. `admin_ops` is a
+  //   whole-message route and a step-7 owner never sees a residual, so
+  //   the attendance half of a compound bulk-DM command is now lost —
+  //   exactly as it already is for a payment credit, a reminder and the
+  //   recruit blast on that route. A peel needs a deterministic
+  //   predicate over language, and a deterministic predicate over
+  //   language is what caused this incident. The follow-up, if it is
+  //   worth one, is a `sideRequests` entry on the ATTENDANCE extractor,
+  //   which is how a recruit ask survives beside a drop.
 
   // ── Group → DM: "@MT DM me <question>" ──────────────────────────────
   //   When someone in the group explicitly asks to be DM'd an answer
@@ -1767,6 +1747,10 @@ async function handleAnalyzeRequest(request: Request) {
         senderUserId: s.userId,
         senderName: s.name,
         tagged: messageTagsBot(m),
+        // The STRICTER tag, read only by the bulk-DM commands. Same
+        // rule as `tagged` about which body it is computed from: what
+        // the sender WROTE, never a residual.
+        taggedExplicitly: messageMentionsBotExplicitly(m),
         route: gateRouteById.get(m.waMessageId),
         gated: gatedIds.has(m.waMessageId),
       };
@@ -1961,6 +1945,20 @@ async function handleAnalyzeRequest(request: Request) {
     sender: ResolvedSender;
     lookbackMatches: number | null;
   }> = [];
+
+  // ── AND SO DOES THE STATS BLAST (2026-09-10) ────────────────────────
+  //   The other mass DM, collected the same way and fired in the same
+  //   batch-final pass. It has no ordering argument of its own — it
+  //   reads no squad state — but it goes down the same road so there is
+  //   ONE place in this file where a bulk DM is performed.
+  //
+  //   ONE owner reports it, not two: `admin_ops`. Until today a regex in
+  //   the fast-path loop above classified it, and on 2026-09-10 that
+  //   regex assembled a bot command out of three scattered words in an
+  //   owner's reminder to his players and queued 69 DMs. See the
+  //   tombstone at the top of this file's fast-path section and
+  //   `lib/stats-blast.ts`.
+  const statsBlastRequests: Array<{ msg: InboundMessage }> = [];
 
   // ── EVERY MESSAGE NOBODY OWNED ─────────────────────────────────────
   //   The input to `lib/operator-note.ts`, which is what replaces "fall
@@ -2186,6 +2184,12 @@ async function handleAnalyzeRequest(request: Request) {
           sender,
           lookbackMatches: adminOutcome.recruitLookbackMatches ?? null,
         });
+      }
+      // An admin's stats blast, deferred the same way. The engine has
+      // already applied both gates (admin, and an explicit @-mention);
+      // nothing here re-decides, it only defers.
+      if (adminOutcome?.statsBlastRequest) {
+        statsBlastRequests.push({ msg });
       }
       // A write that threw says nothing at all (§3.2 S7, the 2026-05-15
       // Erdal incident). The runner has already blanked the reply; this
@@ -2709,6 +2713,89 @@ async function handleAnalyzeRequest(request: Request) {
       });
     } catch (err) {
       console.error("[analyze] verdict-driven recruit failed:", err);
+    }
+  }
+
+  // ── RUN THE STATS BLAST (verdict-driven, 2026-09-10) ────────────────
+  //   The 69-DM near-miss, fixed the way the recruit blast was fixed on
+  //   2026-09-01: the classification moved to the model and the action
+  //   stayed in code. Nothing here decides anything — by the time this
+  //   runs the ENGINE has established that the sender is an admin and
+  //   that they addressed MatchTime with an explicit @-mention
+  //   (`pipeline/engine.ts`'s `stats_blast` branch, `lib/stats-blast.ts`
+  //   for the argument). This performs the action and composes the words
+  //   from what actually landed.
+  //
+  //   Beside the recruit blast rather than in the fast-path loop, so the
+  //   two mass DMs in this product are performed in one place, under one
+  //   set of eyes, after every write in the batch.
+  if (statsBlastRequests.length > 0) {
+    // Only the LAST one fires. Two admins asking in one batch must not
+    // DM the same 69 people twice — the same rule the recruit blast and
+    // the generate-teams request follow.
+    const { msg: blastMsg } = statsBlastRequests[statsBlastRequests.length - 1];
+    if (statsBlastRequests.length > 1) {
+      console.log(
+        `[analyze] ${statsBlastRequests.length} stats blasts in one batch — firing the last only`,
+      );
+    }
+    try {
+      const { runStatsBlast, composeStatsBlastReply } = await import("@/lib/stats-blast");
+      const { queued } = await runStatsBlast({
+        // Every active member with a phone — the recipient list the
+        // deleted fast path used, unchanged, and read from the DATABASE
+        // rather than from anything the model said.
+        recipients: async () =>
+          (
+            await db.membership.findMany({
+              where: { orgId: org.id, leftAt: null, user: { phoneNumber: { not: null } } },
+              select: { user: { select: { id: true, name: true, phoneNumber: true } } },
+            })
+          ).map((mem) => ({
+            userId: mem.user.id,
+            name: mem.user.name,
+            phone: mem.user.phoneNumber ?? "",
+          })),
+        linkFor: async (userId) =>
+          buildShortMagicLinkUrl(
+            signMagicLinkToken({
+              userId,
+              purpose: "sign-in",
+              nextPath: "/profile/stats",
+              ttlSeconds: MAGIC_LINK_TTL.bookmark,
+            }),
+          ),
+        queueDm: async ({ phone, text }) => {
+          await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text } });
+        },
+      });
+      const blastReply = composeStatsBlastReply(queued);
+      const idx = results.findIndex((x) => x.waMessageId === blastMsg.waMessageId);
+      if (idx >= 0) {
+        // ONE reply, merged — never a second send. The same invariant the
+        // recruit merge four lines up protects.
+        // `mergeOneReply` and not `mergeRecruitReply`: same function,
+        // and the name that is not about recruiting.
+        results[idx].reply = mergeOneReply(results[idx].reply, blastReply);
+        results[idx].react = results[idx].react ?? "✅";
+      } else {
+        // Defensive: every loop iteration pushes exactly one result, so
+        // this is unreachable. Never drop an outcome whose DMs LANDED.
+        results.push({
+          waMessageId: blastMsg.waMessageId,
+          handledBy: "fast-path",
+          intent: "stats_blast",
+          react: "✅",
+          reply: blastReply,
+        });
+      }
+      await augmentAnalysis({
+        waMessageId: blastMsg.waMessageId,
+        action: `dm-stats-blast:${queued}`,
+        reasoningSuffix: `admin stats blast — queued ${queued} personal stats-link DMs`,
+      });
+    } catch (err) {
+      console.error("[analyze] verdict-driven stats blast failed:", err);
     }
   }
 

@@ -671,3 +671,83 @@ describe("the apply layer's dependencies are injected, asserted by scanning it",
     expect(SRC).not.toMatch(/inviteRecentPlayers/);
   });
 });
+
+// ── 5. The stats blast (2026-09-10) ────────────────────────────────────
+//
+// The other mass DM, modelled exactly like the recruit blast one block
+// up: reported here, fired by the route after the batch. It arrived on
+// this path because a regex in `analyze/route.ts` classified it until
+// 18:38 on 2026-09-10, when an owner's reminder to his players ("…rate
+// the players via the link from Matchtime DM'ed to you. the more
+// accurate ratings…") satisfied its three keyword tests from three
+// unrelated fragments and queued 69 DMs.
+
+const STATS = "@Match Time send everyone their stats";
+const STATS_FACTS = {
+  action: "stats_blast",
+  payerRef: "",
+  count: 0,
+  coveredRefs: [],
+  phrase: "",
+  note: "",
+  lookbackMatches: 0,
+};
+
+describe("the stats blast is reported, never fired here", () => {
+  it("a tagged admin's ask is owned and reported", async () => {
+    const { model } = stubModel({ [STATS]: STATS_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body: STATS, senderUserId: "u-kemal", taggedExplicitly: true })],
+      deps: r.deps,
+    });
+    const out = [...res.outcomes.values()][0];
+    expect(out.statsBlastRequest).toBe(true);
+    expect(out.intent).toBe("stats_blast");
+    // Nothing left this path. The route performs the blast, after every
+    // write in the batch, and composes the reply from what landed.
+    expect(r.dms).toEqual([]);
+    expect(out.reply).toBeNull();
+  });
+
+  it("a non-admin's ask fires nothing and is not reported as a request", async () => {
+    const { model } = stubModel({ [STATS]: STATS_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [
+        msg({
+          body: STATS,
+          senderUserId: "u-zair",
+          senderName: fullName("zair"),
+          taggedExplicitly: true,
+        }),
+      ],
+      deps: r.deps,
+    });
+    expect([...res.outcomes.values()][0].statsBlastRequest).toBe(false);
+    expect(r.dms).toEqual([]);
+  });
+
+  // ⚠️ THE INCIDENT, AT THIS LAYER. `tagged` is TRUE here on purpose:
+  // `messageTagsBot` counts the bare word "Matchtime" anywhere in a
+  // body, and the sentence that queued 69 DMs contains it. The gate that
+  // refuses it is the stricter one — nobody @-mentioned the bot.
+  it("refuses a message that only MENTIONS MatchTime, however the model read it", async () => {
+    const incident =
+      "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
+      "the more accurate ratings, the more balanced teams next time";
+    const { model } = stubModel({ [incident]: STATS_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [
+        msg({ body: incident, senderUserId: "u-kemal", tagged: true, taggedExplicitly: false }),
+      ],
+      deps: r.deps,
+    });
+    const out = [...res.outcomes.values()][0];
+    expect(out.statsBlastRequest).toBe(false);
+    expect(r.dms).toEqual([]);
+    expect(out.reply).toBeNull();
+    expect(out.reasoning).toMatch(/@Match Time tag/i);
+  });
+});
