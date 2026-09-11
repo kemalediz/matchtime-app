@@ -17,6 +17,7 @@ import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { gbp, parseFeeReply } from "./payments";
 import { decideCheckoutEvent } from "./payment-outcome";
+import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -193,30 +194,6 @@ export async function applyCheckoutEvent(
  *  attributed to it. Long enough to cover "I'll sort it tonight". */
 const FEE_CAPTURE_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
 
-/** A short "yes, send them" reply. Emoji are matched directly (a regex
- *  `\b` never matches after a lone emoji, which silently broke "✅"). */
-function isAffirmative(text: string): boolean {
-  if (/[✅✔👍]/u.test(text)) return true; // ✅ ✔ 👍
-  const t = text.trim().toLowerCase().replace(/[^a-z ]/g, "").trim();
-  if (!t) return false;
-  const AFF = new Set([
-    "y", "ye", "yes", "yep", "yeah", "yup", "ya", "ok", "oki", "okay", "k", "kk",
-    "confirm", "confirmed", "correct", "send", "send it", "send them", "release",
-    "go", "go on", "do it", "sure", "right", "thats right", "that is right",
-    "yes please", "ok send", "yes send",
-  ]);
-  return AFF.has(t) || /^(yes|yeah|yep|yup|ok|okay|confirm|send|correct|sure|go)\b/.test(t);
-}
-
-/** A short "no / not yet" reply. */
-function isNegative(text: string): boolean {
-  if (/[❌✖🚫]/u.test(text)) return true; // ❌ ✖ 🚫
-  const t = text.trim().toLowerCase().replace(/[^a-z ]/g, "").trim();
-  if (!t) return false;
-  const NEG = new Set(["n", "no", "nope", "nah", "cancel", "stop", "wait", "hold", "not yet", "dont", "do not"]);
-  return NEG.has(t) || /^(no|nope|nah|cancel|stop|wait|dont|do not)\b/.test(t);
-}
-
 /** Does this message look like a fee amount (vs. arbitrary chat that
  *  merely contains a number, e.g. "we had 10 players")? Used to gate the
  *  UNPROMPTED capture so a stray number doesn't become a fee. */
@@ -270,34 +247,156 @@ export interface CollectorReplyResult {
   released?: number;
 }
 
+/** The one match this collector might be setting or confirming a fee
+ *  for, reduced to the three fields the decision actually uses. */
+export interface CollectorPendingMatch {
+  id: string;
+  name: string;
+  /** An amount awaiting a yes/no. NULL means nothing has been proposed,
+   *  and a "yes" is therefore meaningless. */
+  feePendingConfirm: number | null;
+}
+
+/**
+ * Every piece of I/O the collector fee flow performs, injected — the
+ * shape `dm-intent.ts` uses, and for the same reason: a write path that
+ * can only be exercised against a live database is a write path nobody
+ * tests, and this one charges a real club.
+ */
+export interface CollectorFeeDeps {
+  /** A recently-played, unreleased match in an org this sender collects
+   *  for. Null means "not ours" and nothing below runs. */
+  pendingMatch: () => Promise<CollectorPendingMatch | null>;
+  /** Confirmed squad MINUS the collector — they collect the pot, they
+   *  do not pay into it. */
+  headcount: (matchId: string) => Promise<number>;
+  /** The model's read of the reply. Consulted ONLY when the anchored
+   *  allowlist abstains AND the message is not an amount, which on the
+   *  measured history is approximately never. */
+  judge: (text: string, amount: number, matchName: string) => Promise<FeeReply>;
+  /** ⚠️ THE MONEY. Sets the fee and DMs a pay link to the whole
+   *  confirmed squad. Returns how many went out. */
+  release: (matchId: string, amount: number) => Promise<number>;
+  /** Clears the pending amount. Sends nothing to anybody. */
+  cancel: (matchId: string) => Promise<void>;
+  /** Stages an amount for confirmation. Sends nothing to anybody. */
+  stage: (matchId: string, perPlayer: number) => Promise<void>;
+}
+
+/**
+ * The collector fee flow, as a pure function of six callbacks.
+ *
+ * ORDER IS THE CONTRACT, and it is cheapest-and-most-certain first:
+ *
+ *   1. IS THERE A MATCH AT ALL? One query. No → return, and the model
+ *      is never asked.
+ *   2. IS THIS THE MENU ANSWER? `anchoredFeeReply` — whole-body, free,
+ *      offline. This is what the prompt told them to type, so it is
+ *      what almost every real reply is, and it must keep working with
+ *      Anthropic unreachable.
+ *   3. IS THIS A NEW AMOUNT? Deterministic, and BEFORE the model, so
+ *      "✅ actually make it £12" re-stages instead of releasing at the
+ *      superseded price (it did, until 2026-09-11).
+ *   4. ONLY THEN, WHAT IS IT? One model call, failing closed to
+ *      `neither`.
+ *
+ * A null return means "not a fee interaction"; the caller falls through
+ * to the handlers below it, exactly as it always has.
+ */
+export async function runCollectorFeeReply(
+  text: string,
+  deps: CollectorFeeDeps,
+): Promise<CollectorReplyResult | null> {
+  const match = await deps.pendingMatch();
+  if (!match) return null;
+
+  const headcount = await deps.headcount(match.id);
+
+  const releaseNow = async (amount: number): Promise<CollectorReplyResult> => {
+    const released = await deps.release(match.id, amount);
+    return {
+      released,
+      reply:
+        `✅ Done — sent ${released} pay link${released === 1 ? "" : "s"} at *${gbp(amount)}* each for *${match.name}*. ` +
+        `Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
+    };
+  };
+  const cancelNow = async (): Promise<CollectorReplyResult> => {
+    await deps.cancel(match.id);
+    return { reply: `No problem — cancelled. Just tell me the amount per player when you're ready.` };
+  };
+  const stageNow = async (): Promise<CollectorReplyResult | null> => {
+    const parsed = parseFeeReply(text, headcount);
+    if (!parsed) return null;
+    await deps.stage(match.id, parsed.perPlayer);
+    return { reply: confirmPrompt(parsed.perPlayer, headcount, match.name, parsed.wasTotal) };
+  };
+
+  // ── Awaiting confirmation of a previously-proposed amount ──
+  const pending = match.feePendingConfirm;
+  if (pending != null) {
+    const anchored = anchoredFeeReply(text);
+    if (anchored === "yes") return releaseNow(pending);
+    if (anchored === "no") return cancelNow();
+
+    // A fresh amount supersedes the pending one — decided by code, and
+    // decided before the model gets a look.
+    if (looksLikeFeeAmount(text)) {
+      const staged = await stageNow();
+      if (staged) return staged;
+    }
+
+    // Neither the menu answer nor a number. Ask once; every failure of
+    // that call is `neither`, which does nothing.
+    let judged: FeeReply;
+    try {
+      judged = await deps.judge(text, pending, match.name);
+    } catch (err) {
+      // FAIL CLOSED, in the second place it can matter. `classifyFeeReply`
+      // already swallows its own failures; this covers a caller that
+      // wires in something else. No links go out on a classifier that
+      // threw.
+      console.error("[fee-confirm] judge threw; treating the reply as `neither`:", err);
+      return null;
+    }
+    if (judged === "yes") return releaseNow(pending);
+    if (judged === "no") return cancelNow();
+    return null; // unrelated chatter while awaiting confirm → fall through
+  }
+
+  // ── No fee set yet: capture an amount if the message looks like one ──
+  //   NOTE the asymmetry, and it is deliberate: with nothing proposed
+  //   there is nothing for a "yes" to mean, so the model is never asked
+  //   here and no reply can release anything.
+  if (!looksLikeFeeAmount(text)) return null;
+  return stageNow();
+}
+
 /**
  * Handle a DM from a money collector that may be setting or confirming a
  * per-match fee. Returns null when the message isn't a fee
  * interaction (caller then falls through to survey / Q&A handling).
+ *
+ * This is the DATABASE WIRING for `runCollectorFeeReply` and nothing
+ * else — the decision lives there so it can be tested without one.
  */
 export async function handleCollectorFeeReply(
   userId: string,
   text: string,
 ): Promise<CollectorReplyResult | null> {
-  const match = await findCollectorPendingMatch(userId);
-  if (!match) return null;
-
-  // Players to charge = confirmed squad MINUS the collector themselves
-  // (userId is the collector — findCollectorPendingMatch matched on
-  // paymentHolderId === userId). They collect the pot, they don't pay it,
-  // so they're excluded from both the "N to charge" count and any
-  // "£X total to split" division. Matches releaseMatchPayments, which
-  // skips the collector when sending links.
-  const headcount = await db.attendance.count({
-    where: { matchId: match.id, status: "CONFIRMED", userId: { not: userId } },
-  });
-
-  // ── Awaiting confirmation of a previously-proposed amount ──
-  if (match.feePendingConfirm != null) {
-    if (isAffirmative(text)) {
-      const amount = match.feePendingConfirm;
+  return runCollectorFeeReply(text, {
+    pendingMatch: async () => {
+      const m = await findCollectorPendingMatch(userId);
+      return m ? { id: m.id, name: m.activity.name, feePendingConfirm: m.feePendingConfirm } : null;
+    },
+    headcount: (matchId) =>
+      db.attendance.count({
+        where: { matchId, status: "CONFIRMED", userId: { not: userId } },
+      }),
+    judge: (reply, amount, matchName) => classifyFeeReply(reply, { amount, matchName }),
+    release: async (matchId, amount) => {
       await db.match.update({
-        where: { id: match.id },
+        where: { id: matchId },
         data: {
           feePerPlayer: amount,
           feePendingConfirm: null,
@@ -305,44 +404,18 @@ export async function handleCollectorFeeReply(
           feeSetAt: new Date(),
         },
       });
-      const released = await releaseMatchPayments(match.id);
-      return {
-        released,
-        reply:
-          `✅ Done — sent ${released} pay link${released === 1 ? "" : "s"} at *${gbp(amount)}* each for *${match.activity.name}*. ` +
-          `Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
-      };
-    }
-    if (isNegative(text)) {
+      return releaseMatchPayments(matchId);
+    },
+    cancel: async (matchId) => {
+      await db.match.update({ where: { id: matchId }, data: { feePendingConfirm: null } });
+    },
+    stage: async (matchId, perPlayer) => {
       await db.match.update({
-        where: { id: match.id },
-        data: { feePendingConfirm: null },
+        where: { id: matchId },
+        data: { feePendingConfirm: perPlayer, feeSetByUserId: userId },
       });
-      return { reply: `No problem — cancelled. Just tell me the amount per player when you're ready.` };
-    }
-    // A fresh amount supersedes the pending one.
-    if (looksLikeFeeAmount(text)) {
-      const parsed = parseFeeReply(text, headcount);
-      if (parsed) {
-        await db.match.update({
-          where: { id: match.id },
-          data: { feePendingConfirm: parsed.perPlayer },
-        });
-        return { reply: confirmPrompt(parsed.perPlayer, headcount, match.activity.name, parsed.wasTotal) };
-      }
-    }
-    return null; // unrelated chatter while awaiting confirm → let it fall through
-  }
-
-  // ── No fee set yet: capture an amount if the message looks like one ──
-  if (!looksLikeFeeAmount(text)) return null;
-  const parsed = parseFeeReply(text, headcount);
-  if (!parsed) return null;
-  await db.match.update({
-    where: { id: match.id },
-    data: { feePendingConfirm: parsed.perPlayer, feeSetByUserId: userId },
+    },
   });
-  return { reply: confirmPrompt(parsed.perPlayer, headcount, match.activity.name, parsed.wasTotal) };
 }
 
 function confirmPrompt(perPlayer: number, headcount: number, matchName: string, wasTotal: boolean): string {

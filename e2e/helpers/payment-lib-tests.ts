@@ -22,6 +22,9 @@
  * MT_E2E_DATABASE_URL to point at the embedded test DB.
  */
 import assert from "node:assert/strict";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type Stripe from "stripe";
 import { assertSafeTestDbUrl, E2E_DB_URL } from "./env";
 import { U, MATCH } from "./constants";
@@ -56,6 +59,7 @@ async function main() {
   process.env.DATABASE_URL = url;
 
   const { applyCheckoutEvent, handleCollectorFeeReply } = await import("@/lib/payment-flow");
+  const { FEE_REPLY_STUB_FILE_ENV } = await import("@/lib/fee-confirm");
   const { db } = await import("@/lib/db");
 
   let n = 0;
@@ -207,11 +211,106 @@ async function main() {
     ok("collector CAN set a match fee (happy path intact)");
   }
 
+  // ── 12. A FRAGMENT CANNOT RELEASE THE SQUAD'S PAY LINKS ────────────
+  //   `isAffirmative` used to answer "is there a 👍 anywhere in the
+  //   body", so "great game 👍" typed while a fee confirmation was
+  //   pending charged the whole squad. Same for the word list's
+  //   unanchored prefix and "ok so I'll sort it tomorrow". Both are
+  //   proven here against a REAL database, with the pending £7 from
+  //   assertion 11 still staged.
+  //   The classifier is STUBBED to `neither` throughout, so this is a
+  //   test of the deterministic layer and nothing else — no model is
+  //   reachable and none is paid for. What the real model does with
+  //   these three is validated separately, live, by
+  //   `scripts/dryrun-fee-confirm.ts`.
+  {
+    const payLinkCount = () =>
+      db.botJob.count({ where: { kind: "dm", text: { contains: "match fee for" } } });
+    const before = await payLinkCount();
+
+    const stub = join(tmpdir(), `mt-fee-reply-neither-${process.pid}.json`);
+    writeFileSync(stub, JSON.stringify({ bodies: {} }));
+    process.env[FEE_REPLY_STUB_FILE_ENV] = stub;
+    try {
+      for (const fragment of [
+        "great game 👍",
+        "ok so I'll sort it tomorrow",
+        "no worries mate, great game",
+      ]) {
+        const res = await handleCollectorFeeReply(U.collector, fragment);
+        assert.equal(res, null, `${JSON.stringify(fragment)} must not be a fee instruction`);
+      }
+    } finally {
+      delete process.env[FEE_REPLY_STUB_FILE_ENV];
+      try {
+        unlinkSync(stub);
+      } catch {
+        /* best effort */
+      }
+    }
+    const m = await db.match.findUnique({
+      where: { id: MATCH.rate },
+      select: { feePendingConfirm: true, feePerPlayer: true, paymentLinksReleasedAt: true },
+    });
+    assert.equal(m?.feePendingConfirm, 7, "the pending amount survives untouched");
+    assert.equal(m?.feePerPlayer, null, "no fee was confirmed");
+    assert.equal(m?.paymentLinksReleasedAt, null, "no links were released");
+    assert.equal(await payLinkCount(), before, "NOT ONE pay-link DM was queued");
+    ok("a 👍 inside a sentence releases nothing, and a stray 'no' cancels nothing");
+  }
+
+  // ── 13. …and an unreachable classifier releases nothing either ─────
+  //   The new failure mode, in the direction it is supposed to fail.
+  {
+    const stub = join(tmpdir(), `mt-fee-reply-stub-${process.pid}.json`);
+    writeFileSync(stub, JSON.stringify({ fail: ["cheers mate, go for it"] }));
+    process.env[FEE_REPLY_STUB_FILE_ENV] = stub;
+    try {
+      const res = await handleCollectorFeeReply(U.collector, "cheers mate, go for it");
+      assert.equal(res, null, "a thrown classifier is not a yes");
+      const m = await db.match.findUnique({
+        where: { id: MATCH.rate },
+        select: { feePendingConfirm: true, paymentLinksReleasedAt: true },
+      });
+      assert.equal(m?.feePendingConfirm, 7, "the fee is still pending, so they can just re-type ✅");
+      assert.equal(m?.paymentLinksReleasedAt, null, "no links were released");
+      ok("a classifier that throws releases nothing and leaves the fee pending");
+
+      // …and the anchored path does NOT depend on it: the stub is still
+      // installed (so no real model is reachable) and ✅ still works.
+      const yes = await handleCollectorFeeReply(U.collector, "✅");
+      assert.ok(yes, "✅ is still a confirmation");
+      assert.ok((yes!.released ?? 0) > 0, "…and it released real pay links");
+      const after = await db.match.findUnique({
+        where: { id: MATCH.rate },
+        select: { feePerPlayer: true, feePendingConfirm: true, paymentLinksReleasedAt: true },
+      });
+      assert.equal(after?.feePerPlayer, 7, "the fee is set at the amount that was pending");
+      assert.equal(after?.feePendingConfirm, null, "…and nothing is left pending");
+      assert.ok(after?.paymentLinksReleasedAt, "…and the release is stamped");
+      ok("✅ still releases with the model unreachable (the happy path is offline)");
+    } finally {
+      delete process.env[FEE_REPLY_STUB_FILE_ENV];
+      try {
+        unlinkSync(stub);
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+
   // Leave the fixture world as we found it — later specs assume the seed.
   await db.match.update({
     where: { id: MATCH.rate },
-    data: { feePendingConfirm: null, feeSetByUserId: null },
+    data: {
+      feePendingConfirm: null,
+      feeSetByUserId: null,
+      feePerPlayer: null,
+      feeSetAt: null,
+      paymentLinksReleasedAt: null,
+    },
   });
+  await db.botJob.deleteMany({ where: { kind: "dm", text: { contains: "match fee for" } } });
   await db.attendance.updateMany({
     where: { matchId: MATCH.pay, userId: { in: [U.player, U.fresh] } },
     data: { paidAt: null, stripeSessionId: null, paymentAmount: null, paymentQuantity: 1 },
