@@ -13,6 +13,7 @@ import {
   composeHealthAlert,
   dmAllowedNow,
   HEARTBEAT_SILENT_MS,
+  NONE_SHADOW_SILENT_MS,
   parseHeartbeat,
   planHealthAlert,
   type HealthCounters,
@@ -55,6 +56,11 @@ function healthy(over: Partial<HealthInput> = {}): HealthInput {
     lastParticipantSweepAt: new Date(NOW.getTime() - 2 * DAY),
     nextMatchAt: new Date(NOW.getTime() + 2 * DAY),
     namelessUnattributed24h: 0,
+    // The nightly `none`-bucket sweep is on, and filed its row at 03:00
+    // this morning. Anything else is a finding — see the block at the
+    // bottom of this file.
+    noneShadowEnabled: true,
+    lastNoneShadowAt: new Date(NOW.getTime() - 9 * HOUR),
     ...over,
   };
 }
@@ -312,6 +318,88 @@ describe("assessBotHealth — the participant sweep", () => {
   it("does NOT raise sweep-stale inside that window", () => {
     const fresh = healthy({ lastParticipantSweepAt: new Date(NOW.getTime() - 9 * DAY) });
     expect(codes(fresh)).not.toContain("sweep-stale");
+  });
+});
+
+describe("assessBotHealth — the `none`-bucket shadow sweep", () => {
+  // THE POINT OF THIS BLOCK IS THE FIRST TEST. The sweep's whole failure
+  // mode is silence: it files a row when it runs, so the only evidence
+  // that it did NOT run is a row that is not there. A test that only
+  // proves the happy path would have passed against the code that let
+  // the sweep file one row in five nights.
+
+  it("ALERTS ON SILENCE — no row inside the expected window is the degradation", () => {
+    const silent = healthy({
+      lastNoneShadowAt: new Date(NOW.getTime() - (NONE_SHADOW_SILENT_MS + HOUR)),
+    });
+    const f = assessBotHealth(silent).find((x) => x.code === "none-shadow-stale");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("warning");
+    expect(f?.headline).toMatch(/hours|days/);
+    // The sentence has to say what is LOST, not just that a cron is late:
+    // nothing else re-reads the `none` bucket.
+    expect(f?.detail).toMatch(/none/i);
+  });
+
+  it("alerts when the sweep has never filed a row at all", () => {
+    const never = healthy({ lastNoneShadowAt: null });
+    const f = assessBotHealth(never).find((x) => x.code === "none-shadow-stale");
+    expect(f?.headline).toMatch(/never/i);
+  });
+
+  it("does NOT alert on a sweep that ran last night and found nothing", () => {
+    // The case the old code could not express at all: a clean night wrote
+    // no row, so "ran, found nothing" and "did not run" were the same
+    // data. It files unconditionally now, so a clean night is silence
+    // from the ALERT and a row in the table.
+    const clean = healthy({ lastNoneShadowAt: new Date(NOW.getTime() - 9 * HOUR) });
+    expect(codes(clean)).not.toContain("none-shadow-stale");
+  });
+
+  it("does NOT alert just because the cron ran a few hours late", () => {
+    const lateButRan = healthy({
+      lastNoneShadowAt: new Date(NOW.getTime() - (NONE_SHADOW_SILENT_MS - HOUR)),
+    });
+    expect(codes(lateButRan)).not.toContain("none-shadow-stale");
+  });
+
+  it("says NOTHING when the sweep is switched off — off is a decision, not a fault", () => {
+    // `NONE_BUCKET_SHADOW_ENABLED` defaults OFF and is a deliberate act to
+    // turn on. Paging hourly, forever, about a job nobody asked to run is
+    // exactly the noise that gets this channel muted — and the four
+    // capabilities that have been degraded for 65 days are already
+    // testing Kemal's patience with it.
+    const off = healthy({ noneShadowEnabled: false, lastNoneShadowAt: null });
+    expect(codes(off)).not.toContain("none-shadow-stale");
+    const offAndStale = healthy({
+      noneShadowEnabled: false,
+      lastNoneShadowAt: new Date(NOW.getTime() - 30 * DAY),
+    });
+    expect(codes(offAndStale)).not.toContain("none-shadow-stale");
+  });
+
+  it("rides the EXISTING dedupe rather than a channel of its own", () => {
+    // New condition on top of a long-running one → speaks immediately.
+    const known = ["capability-degraded", "sweep-stale"];
+    const fresh = planHealthAlert({
+      codes: [...known, "none-shadow-stale"],
+      lastAlertAt: new Date(NOW.getTime() - 10 * 60 * 1000),
+      lastAlertCodes: known,
+      now: NOW,
+    });
+    expect(fresh.send).toBe(true);
+    expect(fresh.reason).toContain("none-shadow-stale");
+
+    // …and from then on it is one more line inside the same six-hourly
+    // repeat, never its own email.
+    const repeat = planHealthAlert({
+      codes: [...known, "none-shadow-stale"],
+      lastAlertAt: new Date(NOW.getTime() - 10 * 60 * 1000),
+      lastAlertCodes: [...known, "none-shadow-stale"],
+      now: NOW,
+    });
+    expect(repeat.send).toBe(false);
+    expect(repeat.reason).toContain("repeat window");
   });
 });
 

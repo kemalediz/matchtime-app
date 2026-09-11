@@ -196,6 +196,18 @@ export const FLOOR_FLAG = "ROUTER_GATE_FLOOR_ENABLED";
  * router called banter. Before step 8, a wrong `none` could still be
  * caught by a second decider reading the same window; there is no second
  * decider, so nothing else ever looks at that bucket again.
+ *
+ * ⚠️ AND FOR FIVE NIGHTS NOBODY COULD TELL WHETHER IT WAS RUNNING.
+ * Measured 2026-09-11 (§1.4, `MDs/router-accuracy-2026-09-11.md`): the
+ * sweep had filed ONE `WindowVerdict` in its whole life, 1 of 506 rows,
+ * because the cron only filed a row when it had an alert to report. A
+ * clean night wrote nothing and so did a dead cron. The containment
+ * argument this file makes was therefore resting on something whose
+ * liveness could not be checked. Fixed the same day: the sweep files a
+ * row every night whether or not it finds anything, and
+ * `lib/bot-health.ts` raises `none-shadow-stale` when one does not turn
+ * up inside 30 hours. If that alert is firing, treat everything this
+ * file says about containment as unverified until it clears.
  */
 export const SHADOW_FLAG = "NONE_BUCKET_SHADOW_ENABLED";
 

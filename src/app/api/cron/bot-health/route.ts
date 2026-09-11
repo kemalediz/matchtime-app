@@ -58,6 +58,8 @@ import {
   type HeartbeatSnapshot,
 } from "@/lib/bot-health";
 import { sendBotHealthAlertEmail } from "@/lib/email";
+import { isNoneBucketShadowEnabled } from "@/lib/pipeline/gate";
+import { NONE_SHADOW_BATCH_PREFIX } from "@/lib/pipeline/none-shadow";
 
 /** Marker every health DM carries, so the dedupe can find its own kind. */
 export const BOT_HEALTH_DM_MARKER = "MatchTime's WhatsApp layer is degraded";
@@ -85,7 +87,7 @@ export async function GET(request: Request) {
 
   for (const org of orgs) {
     try {
-      const [health, lastMsg, nextMatch, nameless] = await Promise.all([
+      const [health, lastMsg, nextMatch, nameless, lastShadow] = await Promise.all([
         db.botHealth.findUnique({ where: { orgId: org.id } }),
         db.analyzedMessage.findFirst({
           where: { orgId: org.id },
@@ -112,6 +114,20 @@ export async function GET(request: Request) {
             authorName: null,
             createdAt: { gte: new Date(now.getTime() - DAY_MS) },
           },
+        }),
+        // The nightly `none`-bucket sweep's heartbeat. It files a
+        // `WindowVerdict` every night whether or not it found anything
+        // (since 2026-09-11), so the ABSENCE of a recent row is the only
+        // evidence that the one thing watching the `none` bucket has
+        // stopped. `windowEnd` rather than `createdAt`: a same-day re-run
+        // upserts the day's row, which moves `windowEnd` and leaves
+        // `createdAt` at the first run — and "when did it last run" is
+        // the question being asked. Served by the existing
+        // `[orgId, windowEnd]` index.
+        db.windowVerdict.findFirst({
+          where: { orgId: org.id, batchHash: { startsWith: NONE_SHADOW_BATCH_PREFIX } },
+          orderBy: { windowEnd: "desc" },
+          select: { windowEnd: true },
         }),
       ]);
 
@@ -150,6 +166,12 @@ export async function GET(request: Request) {
         lastParticipantSweepAt: org.lastParticipantSweepAt ?? null,
         nextMatchAt: nextMatch?.date ?? null,
         namelessUnattributed24h: nameless,
+        // Read from the env, because the flag IS the env var. With it
+        // off the rule stays silent: a nightly job nobody turned on is a
+        // decision, not an outage, and an hourly page about one would be
+        // the noise that gets this whole channel muted.
+        noneShadowEnabled: isNoneBucketShadowEnabled(),
+        lastNoneShadowAt: lastShadow?.windowEnd ?? null,
       });
       const codes = findings.map((f) => f.code);
 

@@ -177,6 +177,17 @@ export function buildTestEnv(): Record<string, string> {
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
     ONBOARDING_AUTOSTART: "1",
+    // The nightly `none`-bucket shadow sweep. ON for the suite, for the
+    // same reason as the line above: prod keeps it behind a flag, but a
+    // path the free suite cannot drive is a path nobody exercises — and
+    // this one went five nights filing nothing while `gate.ts` rested its
+    // containment argument on it (§1.4,
+    // MDs/router-accuracy-2026-09-11.md). Nothing runs it implicitly: it
+    // has one caller, `GET /api/cron/none-bucket-shadow`, and only
+    // `e2e/api/none-bucket-shadow.spec.ts` calls that. What the flag does
+    // reach is `bot-health`'s `none-shadow-stale` rule, which is the
+    // whole point — the alert has to be provable in a test.
+    NONE_BUCKET_SHADOW_ENABLED: "1",
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
     STRIPE_SECRET_KEY: "",

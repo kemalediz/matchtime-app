@@ -250,7 +250,7 @@ today:
 
 ```
 WindowVerdict rows in total:                506
-…from the none-bucket shadow:                 1      (2026-09-09 02:00 UTC)
+…from the none-bucket shadow:                 1      (2026-09-09 03:00 UTC)
 ```
 
 The cron is scheduled nightly in `vercel.json` and the flag is evidently
@@ -861,6 +861,18 @@ visible, and worth one more example.
 
 ## 3.2 ⭐ Make the `none`-bucket sweep prove it ran
 
+> **SHIPPED 2026-09-11** (PR — `feat(observability)`). The sweep files a
+> `WindowVerdict` per org per night whether or not it finds anything,
+> recording the window it covered and how many messages it examined, and
+> `bot-health` raises `none-shadow-stale` when no row appears inside 30
+> hours. Re-verified against production while shipping: 506
+> `WindowVerdict` rows, 1 from the sweep, filed 2026-09-09 **03:00:23
+> UTC** (the 02:00 below was an hour out; the cron is `0 3 * * *`). That
+> row's own summary reads "re-examined 12 of 12", which matches exactly
+> the 12 `router-gate` rows in the 24h window it covered. The two nights
+> since had 7 and 0 gated messages and filed nothing — the 0 is the case
+> the old code could not express at all.
+
 §1.4: one filed row in five nights, because the cron only writes a
 `WindowVerdict` when `result.alerts[0]` exists. **File the row
 unconditionally** (the org is knowable from the rows the sweep read, not
@@ -1034,7 +1046,7 @@ paid match is not."* The right version of the idea is narrower and is
 | # | change | measured effect | effort | cost/month at peak | do it? |
 |---|---|---|---|---|---|
 | 1 | **§3.1** rewrite the router prompt | owner accuracy 83.1% → **91.1%**; banter escaping `none` 21.3% → 10.5%; `admin_ops` precision 14.9% → 40.4% | hours | +$0.41 | **yes, first** |
-| 2 | **§3.2** file the `none`-shadow row unconditionally + alert on absence | turns "1 row in 5 nights" into a signal; makes every §1.4 number keep being true | ~an hour | $0 | **yes** |
+| 2 | **§3.2** file the `none`-shadow row unconditionally + alert on absence | turns "1 row in 5 nights" into a signal; makes every §1.4 number keep being true | ~an hour | $0 | **SHIPPED 2026-09-11** |
 | 3 | **§3.4** move the router to Sonnet 5 **after** #1 | attendance routed `none` **3.0 → 0.0 of 373**, three runs of three | minutes (one constant) + a corpus run | +$1.52 on top of #1 | **yes, after #1** |
 | 4 | **§3.3** make `MIN_CACHEABLE_CHARS` per-model | stops `cacheAttempted: true` meaning nothing on Haiku | minutes | $0 | yes, with #1 |
 | 5 | **§2.2** convert `DM_ME` to `QuestionFacts.deliverBy` | removes the one regex that has actually matched the wrong thing | medium | ~$0 | yes, after #1 |
