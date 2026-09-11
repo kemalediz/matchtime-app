@@ -424,6 +424,51 @@ line to be quoted alongside the number.
 `MT_RECALL_LIMIT=N` caps a run for a smoke test and stamps
 `PARTIAL RUN` on the report so it can never be quoted as the full sweep.
 
+## Clearing a router prompt change (added 2026-09-11)
+
+`npm run replay:router-recall` grades against **production's own
+`intent` column**, and `MDs/router-accuracy-2026-09-11.md` §1.2 shows
+how far that flatters: `SEVERITY_BY_INTENT` maps `noise` and `unclear`
+to `benign`, so a real IN the old mega-prompt mislabelled `noise` is
+scored as **the saving** when the router calls it `none`. By hand the
+miss count on that corpus is 3 of 373, not the 5 of 517 the harness
+reports.
+
+So a prompt change is cleared by two scripts that grade against
+**hand labels**, not against the incumbent's opinion:
+
+```bash
+npm run replay:router-regressions     # ~$0.18, ~2 min — do this one first
+npm run replay:router-attendance      # ~$2.80, ~8 min — three live runs
+```
+
+| script | what it answers | fails on |
+| --- | --- | --- |
+| `router-regressions.ts` + `-live.ts` | every message a router prompt has already lost, one per call, N runs | an `A` case routed `none` in ANY run. Nothing else |
+| `router-attendance-live.ts` | of all 373 hand-labelled attendance messages in the extract, in their real batches, how many are called banter | nothing — it reports. The veto is yours, against the arm you are replacing |
+
+**Three runs, not one.** §1.6 measured the shipped prompt losing three,
+two and four across three live runs of the identical corpus. One run
+cannot tell a real improvement from the model having a different
+afternoon, and it cannot tell the two failure shapes apart: a message
+lost in one run of three is sampling, and one lost in all three is a
+prompt gap with a name and a fix.
+
+**Evaluate on the whole corpus, never on a split.** §3.1's first
+candidate prompt scored **higher overall** than the one in production
+and **tripled** the attendance it threw away — and the held-out
+220-message split did not catch it, because the offending messages were
+in the train half. That is the single most expensive methodological
+lesson in that document.
+
+`.e2e/replay/gold.json` carries the hand labels — 445 real bodies keyed
+by lower-cased, trimmed text, each with the owner it must reach
+(`A` attendance · `Q` question · `B` balancer · `S` score · `D`
+admin-ops · `N` nobody), and the stratum it was sampled from. It is out
+of git for the same reason `source.json` is: see **Privacy** above. A
+checkout without one is told so and refuses, rather than reporting a
+flattering `0 of 0`.
+
 ## Classification
 
 Structural, computed per replayed batch:
