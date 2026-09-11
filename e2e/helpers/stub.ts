@@ -130,13 +130,45 @@ export function clearExtractorStub(): void {
   setExtractorStub({});
 }
 
-/** Both seams back to their empty state. `resetDb()` calls it, so a spec
- *  can never inherit the routes or the facts of the spec that ran before
- *  it — the two files are per-checkout and long-lived, and a leak would
- *  make a passing test describe a world nobody wrote. */
+/**
+ * The DM-INTENT seam (2026-09-11). One layer of its own, because the 1:1
+ * DM surface has no router and no extractor: `lib/dm-intent.ts` is the
+ * whole classifier, and behind one of its three values sits
+ * `inviteRecentPlayers` — a mass DM to 13-27 real people.
+ *
+ * It stubs what the MODEL said, never what the route concludes. Every
+ * gate behind it runs for real: the admin/superadmin membership lookup,
+ * the upcoming-match and completed-match lookups, and the action itself.
+ *
+ * `{}` — what `clearDmIntentStub()` writes — means every body classifies
+ * as `other`. That is the direction that cannot invent a mass DM in a
+ * spec that has never heard of it.
+ */
+export interface DmIntentStub {
+  /** Trimmed DM body → "recruit_blast" | "rating_progress" | "other". */
+  bodies?: Record<string, string>;
+  /** Bodies whose model CALL throws, the way an overloaded API does. The
+   *  only way to exercise the fail-closed path end to end. */
+  fail?: string[];
+}
+
+export function setDmIntentStub(stub: DmIntentStub): void {
+  mkdirSync(path.dirname(E2E.DM_INTENT_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.DM_INTENT_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearDmIntentStub(): void {
+  setDmIntentStub({});
+}
+
+/** Every seam back to its empty state. `resetDb()` calls it, so a spec
+ *  can never inherit the routes, the facts or the DM intents of the spec
+ *  that ran before it — the files are per-checkout and long-lived, and a
+ *  leak would make a passing test describe a world nobody wrote. */
 export function clearPipelineStubs(): void {
   clearRouterStub();
   clearExtractorStub();
+  clearDmIntentStub();
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

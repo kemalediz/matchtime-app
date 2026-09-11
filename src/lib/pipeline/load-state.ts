@@ -19,6 +19,7 @@ import { resolveTeamLabels } from "../team-labels";
 import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
+import type { RatingProgress } from "../rating-progress-answer";
 import type { SquadState } from "./types";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
@@ -252,7 +253,34 @@ export async function loadSquadState(
     // question is rare enough that its two extra reads belong behind a
     // topic check rather than in front of every joke.
     payments: null,
+    // Nor this one, for the same reason — see `loadRatingProgressSnapshot`
+    // below and `SquadState.ratingProgress`.
+    ratingProgress: null,
   };
+}
+
+/**
+ * THE SECOND TARGETED EXTRA READ — rating progress, and only when asked.
+ *
+ * Same shape, same three reasons, as `loadPaymentSnapshot` above: it is
+ * four queries deep, it is asked for a handful of times a season, and
+ * `compose.ts` cannot import Prisma so a lazy accessor on `SquadState`
+ * is not available at all.
+ *
+ * It arrived on 2026-09-11, when `looksLikeRatingProgressRequest` was
+ * deleted — two keyword tests ANDed over a whole body, the conjunction
+ * shape behind the 2026-09-01 and 2026-09-10 incidents. The ask is now
+ * `QuestionTopic.rating_progress` and this is where its answer comes
+ * from.
+ *
+ * A THIN WRAPPER ON `loadRatingProgress`, deliberately: that function
+ * has been the definition of "who has rated" since 2026-06-06 and is
+ * what the DM surface still calls. Two selectors for one question is how
+ * the group and the DM start disagreeing about the same club.
+ */
+export async function loadRatingProgressSnapshot(orgId: string): Promise<RatingProgress> {
+  const { loadRatingProgress } = await import("../rating-progress");
+  return loadRatingProgress(orgId);
 }
 
 /**

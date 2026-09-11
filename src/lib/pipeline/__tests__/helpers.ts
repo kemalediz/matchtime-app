@@ -119,6 +119,7 @@ export interface WorldOpts {
   smallerFormats?: SquadState["smallerFormats"];
   guestAskedUserIds?: string[];
   payments?: SquadState["payments"];
+  ratingProgress?: SquadState["ratingProgress"];
   noPhone?: string[];
   admins?: string[];
 }
@@ -168,6 +169,7 @@ export function world(opts: WorldOpts = {}): SquadState {
     smallerFormats: opts.smallerFormats ?? [],
     guestAskedUserIds: opts.guestAskedUserIds ?? [],
     payments: opts.payments ?? null,
+    ratingProgress: opts.ratingProgress ?? null,
   };
 }
 

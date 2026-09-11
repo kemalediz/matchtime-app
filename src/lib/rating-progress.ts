@@ -3,40 +3,73 @@
  *
  * Lets an admin ask, in the group or by DM, "how many have rated so far?
  * who's left? who hasn't picked a MoM?" and get a REAL, grounded answer
- * — the analyzer's normal context has no rating-submission data, so
- * without this the LLM would either deflect or hallucinate.
- *
- * Two distinct actions are tracked separately because they're separate:
- *   - "rated"      = submitted at least one teammate rating (Rating.raterId)
- *   - "picked MoM" = cast a Man-of-the-Match vote (MoMVote.voterId)
- * A player can rate without picking a MoM (e.g. Omar Yusuf, 4 Jun).
+ * — nothing else in the system holds rating-submission data, so without
+ * this the model would either deflect or guess.
  *
  * Authorisation (org admin) is the CALLER's responsibility.
+ *
+ * ── THE PURE HALF MOVED (2026-09-11) ─────────────────────────────────
+ * `RatingProgress` and `formatRatingProgressReply` now live in
+ * `rating-progress-answer.ts`, alongside the policy constants, and are
+ * re-exported here so every existing caller is unchanged. They moved
+ * because the COMPOSER has to render this answer now, and nothing the
+ * pipeline imports may reach Prisma — see that file's header for what
+ * happens when it does.
  */
 import { db } from "./db";
 import { formatLondon } from "./london-time";
+import type { RatingProgress } from "./rating-progress-answer";
 
-export interface RatingProgress {
-  ok: boolean;
-  reason?: string;
-  matchName?: string;
-  matchWhen?: string;
-  confirmed?: number;
-  ratedCount?: number; // confirmed players who submitted ratings
-  momCount?: number; // confirmed players who picked a MoM
-  notRated?: string[]; // confirmed players who did neither
-  ratedNoMom?: string[]; // rated teammates but skipped the MoM pick
-}
+export {
+  RATING_PROGRESS_IS_ADMIN_ONLY,
+  RATING_PROGRESS_TAG_MUST_BE_EXPLICIT,
+  formatRatingProgressReply,
+  type RatingProgress,
+} from "./rating-progress-answer";
 
-/** Does this read like "how many have rated / who's left / who hasn't
- *  picked MoM?" — needs a rating/MoM word AND a completion/who word, so it
- *  won't hijack historical stats questions like "how many MoM has X won". */
-export function looksLikeRatingProgressRequest(text: string): boolean {
-  const hasTopic = /\b(rate|rated|rating|ratings|mom|moms|motm|man of the match|voted|vote)\b/i.test(text);
-  const hasProgress =
-    /\b(so far|remaining|left|pending|outstanding|yet|still to|who'?s? (left|remaining|yet|still)|hasn'?t|haven'?t|not (yet|rated|voted|picked|selected|done|in))\b/i.test(text);
-  return hasTopic && hasProgress;
-}
+/* ────────────────────────────────────────────────────────────────────
+ * ⚰️ DELETED 2026-09-11: `looksLikeRatingProgressRequest`
+ *
+ * It was two keyword tests ANDed over the whole body — a rating word
+ * AND a progress word, anywhere — and it had two callers:
+ *
+ *   analyze/route.ts   a CLAUSE-PEELED group fast path, which its own
+ *                      comment called "the WIDEST trigger of the six
+ *                      peels": "I haven't rated yet and I'm out
+ *                      Thursday" satisfies both halves and addresses
+ *                      nobody. Peeled whole, answered with silence
+ *                      (the sender is not an admin), and the OUT went
+ *                      with it.
+ *   dm-reply/route.ts  the 1:1 DM surface.
+ *
+ * THE FIX IS A DELETION, for the fourth time in this codebase:
+ * 2026-04-21 `handlers.ts:7-10` (at Kemal's explicit request),
+ * 2026-09-01 `looksLikeRecruitRequest` (a pattern matched half a
+ * sentence and MatchTime told the owner his squad was full),
+ * 2026-09-10 the stats blast's three ANDed keyword tests (69 mass DMs
+ * off an owner's reminder to his players), and now the last two.
+ *
+ * WHAT REPLACED IT, on each surface:
+ *
+ *   GROUP  `QuestionFacts.topic = "rating_progress"` on the `question`
+ *          route — measured 60/60 `question` on the live router, which
+ *          is why it is NOT an `admin_ops` action the way the stats
+ *          blast is. `rating-progress-answer.ts` carries the argument.
+ *   DM     one model call on the whole DM (`lib/dm-intent.ts`), asked
+ *          once instead of testing two regexes, and only after the
+ *          deterministic admin lookup has already said the sender could
+ *          act on the answer.
+ *
+ * WHAT WENT WITH IT, stated rather than discovered: the CLAUSE PEEL.
+ * `question` is a whole-message route, so a compound "@Match Time who
+ * hasn't rated yet? Also I'm out" now loses its attendance half — the
+ * same price the stats blast and the recruit blast already pay on
+ * `admin_ops`. A peel needs a deterministic predicate over language, and
+ * a deterministic predicate over language is the thing that caused both
+ * incidents.
+ *
+ * DO NOT ADD IT BACK.
+ * ──────────────────────────────────────────────────────────────────── */
 
 /** Compute rating + MoM completion for the org's most recent completed
  *  match (the one currently in its rating window). */
@@ -75,21 +108,4 @@ export async function loadRatingProgress(orgId: string): Promise<RatingProgress>
     notRated: conf.filter((a) => !engaged.has(a.userId)).map((a) => a.user.name ?? "Player"),
     ratedNoMom: conf.filter((a) => ratingVoters.has(a.userId) && !momVoters.has(a.userId)).map((a) => a.user.name ?? "Player"),
   };
-}
-
-/** Render a progress result into a WhatsApp-friendly reply. */
-export function formatRatingProgressReply(p: RatingProgress): string {
-  if (!p.ok) return p.reason ?? "Couldn't check that right now.";
-  const lines = [`📋 *${p.matchName}* (${p.matchWhen}) — rating progress:`];
-  lines.push(`• Rated: ${p.ratedCount}/${p.confirmed}`);
-  lines.push(`• Picked MoM: ${p.momCount}/${p.confirmed}`);
-  lines.push(
-    (p.notRated && p.notRated.length > 0)
-      ? `• Still to rate (${p.notRated.length}): ${p.notRated.join(", ")}`
-      : `• Everyone's rated ✅`,
-  );
-  if (p.ratedNoMom && p.ratedNoMom.length > 0) {
-    lines.push(`• Rated but no MoM pick (${p.ratedNoMom.length}): ${p.ratedNoMom.join(", ")}`);
-  }
-  return lines.join("\n");
 }

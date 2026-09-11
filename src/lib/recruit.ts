@@ -36,72 +36,63 @@ export {
   resolveLookbackMatches,
 } from "./recruit-lookback";
 
-/**
- * ⚠️ DEPRECATED FOR GROUP MESSAGES — one caller left (2026-09-01).
+/* ────────────────────────────────────────────────────────────────────
+ * ⚰️ DELETED 2026-09-11: `looksLikeRecruitRequest`
  *
- * This regex used to gate the in-group recruit fast path, and it caused
- * the 2026-09-01 incident: the owner wrote "Najib is out. We need one
- * more player.", the pattern matched the SECOND sentence, and the fast
- * path peeled the whole message off the LLM batch, so the third-party
- * OUT was never analysed. Najib stayed in, the blast saw 10/10, and
- * MatchTime told the owner his squad was full.
+ * It was:
  *
- * The deeper problem is visible in the code below: the "hard exclusions"
- * are an attempt to tell "list the players" from "get more players" with
- * a pattern. That is language understanding, done in regex, inside a
- * system already paying a language model to do exactly that. The group
- * path now takes it from `AnalysisVerdict.recruitRequest` instead — the
- * model extracts, code decides and acts.
+ *   an explicit recruit verb (find / get / invite / recruit / grab /
+ *   round up / dm / message / text / nudge) sitting ADJACENT to a
+ *   people / recency / spots noun,
+ *     OR
+ *   an explicit shortage phrase ("we're short", "need N more players",
+ *   "anyone free", "spots left", …),
  *
- * The ONE remaining caller is api/whatsapp/dm-reply/route.ts, a 1:1 DM
- * surface with no verdict pipeline of its own. It is the next conversion,
- * not this PR's; deleting the function outright would silently kill
- * recruit-by-DM. DO NOT add new callers.
+ *   minus a "hard exclusion" for list/show/who's-playing questions.
  *
- * Does this message read like an EXPLICIT "we need more players" request?
- *  Fires
- *  ONLY on (a) an explicit recruit verb (find/get/invite/recruit/grab/
- *  round up, or dm/message/text/nudge) sitting ADJACENT to a people/
- *  recency/spots noun, OR (b) an explicit shortage phrase ("we're short",
- *  "need N more players", "anyone free", "spots left", …) — adjacency
- *  required in both cases (proximity-anchored, not scattered words). A
- *  plain LIST/SHOW/who's-playing roster question is EXCLUDED — those are
- *  answered by the roster, never by a DM blast. */
-export function looksLikeRecruitRequest(text: string): boolean {
-  const t = text.toLowerCase();
-
-  // Hard exclusions: plain roster list/show questions are answered by the
-  // roster, never by a DM blast. If the message is fundamentally a
-  // "list/show/who's playing" request, it's not a recruit request.
-  const isListRequest =
-    /\b(list|show|who(?:'s| is| are)?)\b[^.?!\n]*\b(playing|player|players|squad|team|roster|lineup|line-?up)\b/.test(
-      t,
-    );
-  if (isListRequest) return false;
-
-  // Explicit recruit verb adjacent to a people/recency/spots noun.
-  // e.g. "get more players", "round up the lads", "invite recent players",
-  //      "grab a couple of players", "dm the recent players".
-  const recruitVerbNearPeople =
-    /\b(?:find|get|grab|invite|recruit|round\s+up|dm|message|text|nudge)\b(?:\W+\w+){0,4}\W+(?:more\s+)?(?:players?|people|lads|recent(?:\s+(?:players?|attendees|lads))?|attendees|spots?|slots?)\b/.test(
-      t,
-    );
-
-  // Explicit shortage / need phrasing adjacent to players/spots.
-  const shortagePhrase =
-    /\bwe(?:'re|\s+are)\s+short\b/.test(t) ||
-    /\bneed(?:ing)?\b(?:\W+\w+){0,3}\W+(?:more\s+)?(?:players?|people|spots?|slots?|bodies)\b/.test(
-      t,
-    ) ||
-    /\b(?:\d+|one|two|three|four|five|a\s+couple|a\s+few|some)\s+(?:more\s+)?(?:players?|spots?|slots?)\s+(?:needed|short|left|open|free|available)\b/.test(
-      t,
-    ) ||
-    /\b(?:any(?:one|body))\s+(?:free|available|around|up\s+for\s+it)\b/.test(t) ||
-    /\b(?:spots?|slots?)\s+(?:left|open|available|free)\b/.test(t) ||
-    /\bneed\s+(?:more\s+)?players?\b/.test(t);
-
-  return recruitVerbNearPeople || shortagePhrase;
-}
+ * ── WHY IT IS GONE, IN TWO ACTS ──────────────────────────────────────
+ *
+ * 2026-09-01, the GROUP path. The owner posted "Najib is out. We need
+ * one more player.\n\nCan someone pls come forward". The pattern matched
+ * the SECOND sentence and the fast path peeled the whole message off the
+ * LLM batch, so the third-party OUT was never analysed by anything.
+ * Najib stayed in, the blast saw a 10/10 squad, and MatchTime replied
+ * "The squad for *Tuesday 5-a-side* is already full — no open spots to
+ * recruit for." one line after the owner said a player was out.
+ * `recruit-request.ts` carries that argument in full, including the part
+ * that names the real defect: the "hard exclusions" were an attempt to
+ * tell "list the players" from "get more players" with a pattern, which
+ * is language understanding done in regex, inside a system already
+ * paying a language model to do exactly that.
+ *
+ * 2026-09-11, the DM path. The comment that stood here said the
+ * remaining caller — `api/whatsapp/dm-reply/route.ts` — "is the next
+ * conversion, not this PR's; deleting the function outright would
+ * silently kill recruit-by-DM". This is that conversion. The DM surface
+ * now asks ONE model call what a message is (`lib/dm-intent.ts`, a
+ * closed enum of `recruit_blast` / `rating_progress` / `other`) and the
+ * code keeps every gate: the admin/superadmin lookup runs BEFORE the
+ * model is asked at all, the upcoming-match lookup runs after it, and a
+ * classifier that fails for any reason yields `other`, which DMs nobody.
+ *
+ * Between the two, on 2026-09-10, the third member of the family — the
+ * stats blast's three ANDed keyword tests — read an owner's reminder to
+ * his players as a bulk-DM command and queued 69 personal stats-link
+ * DMs (`lib/stats-blast.ts`). Four deletions of this shape now:
+ * 2026-04-21 `handlers.ts:7-10`, 2026-09-01, 2026-09-10, 2026-09-11.
+ *
+ * ── WHAT IS LOST, SAID OUT LOUD ──────────────────────────────────────
+ *
+ * A DM that asks for a blast now costs one Haiku call (about £0.001) on
+ * the small fraction of DMs that come from an admin, where before it
+ * cost nothing. And a model can decline an ask a regex would have
+ * matched — measured, not assumed: see the live counts in the PR body
+ * and `DMS=1` in `scripts/dryrun-pipeline.ts`. Against that, the regex
+ * could FIRE on a message that asked for nothing, and the thing behind
+ * it DMs up to 27 people from an unofficial WhatsApp client.
+ *
+ * DO NOT ADD IT BACK.
+ * ──────────────────────────────────────────────────────────────────── */
 
 /* ────────────────────────────────────────────────────────────────────
  * THE INVITE COPY

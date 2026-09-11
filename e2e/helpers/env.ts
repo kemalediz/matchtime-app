@@ -88,6 +88,16 @@ export const E2E = {
    *  cannot invent a write in a spec that has never heard of it. */
   EXTRACTOR_STUB_FILE: path.join(REPO_ROOT, ".e2e", "extractor-stub.json"),
 
+  /** The DM-INTENT stub file (2026-09-11). Body → the intent
+   *  `lib/dm-intent.ts` would have returned. The 1:1 DM surface has no
+   *  verdict pipeline, so this one classifier is the whole seam, and
+   *  behind one of its three values sits `inviteRecentPlayers` — a mass
+   *  DM to 13-27 real people. Same argument as the extractor stub: a
+   *  write path that can only be exercised by spending money is a write
+   *  path nobody exercises. Absent or `{}` → every body classifies as
+   *  `other`, which DMs nobody. */
+  DM_INTENT_STUB_FILE: path.join(REPO_ROOT, ".e2e", "dm-intent-stub.json"),
+
   /** WhatsApp group id of the seeded test org. */
   GROUP_ID: "e2e-test-group@g.us",
 } as const;
@@ -162,6 +172,7 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_DM_QA_STUB: E2E.DM_QA_STUB,
     MT_TEST_ROUTER_STUB_FILE: E2E.ROUTER_STUB_FILE,
     MT_TEST_EXTRACTOR_STUB_FILE: E2E.EXTRACTOR_STUB_FILE,
+    MT_TEST_DM_INTENT_STUB_FILE: E2E.DM_INTENT_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
@@ -205,6 +216,11 @@ export function buildTestEnv(): Record<string, string> {
     // 'record' stubs from a live run". Pinned empty, not deleted, for
     // the same reason as the two above.
     env.MT_TEST_EXTRACTOR_STUB_FILE = "";
+    // And for the DM surface's only classifier (2026-09-11). A "live"
+    // DM sweep that could read a canned intent out of a file would be
+    // grading its own answer key in front of a mass DM. Pinned empty,
+    // not deleted, for the same reason as the three above.
+    env.MT_TEST_DM_INTENT_STUB_FILE = "";
     env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
     env.MT_SIM_LIVE_LLM = "1";
     // The pipeline's remaining flags, forwarded ONLY on a live run.
