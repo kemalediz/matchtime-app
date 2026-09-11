@@ -14,6 +14,15 @@
  *   2026-09-11  the last two, both on the DM surface:
  *               `looksLikeRecruitRequest`'s final caller and
  *               `looksLikeRatingProgressRequest`
+ *   2026-09-11  `isAffirmative` / `isNegative` on the MONEY path — an
+ *               emoji ANYWHERE in the body released the squad's pay
+ *               links, so "great game 👍" charged 8-13 real people, and
+ *               an unanchored word list made "ok so I'll sort it
+ *               tomorrow" a yes. Replaced by `lib/fee-confirm.ts`: an
+ *               anchored whole-body allowlist first, the model only for
+ *               what it abstains on. That one is an ARGUED hybrid
+ *               rather than a straight deletion — the argument is at
+ *               `FEE_CONFIRM_ANCHORS_BEFORE_IT_ASKS`.
  *
  * Every one had the same shape: two or three keyword tests ANDed over a
  * whole body, standing in for reading a sentence. This file asserts the
@@ -48,7 +57,12 @@ function sources(): string[] {
   ];
 }
 
-const DELETED = ["looksLikeRecruitRequest", "looksLikeRatingProgressRequest"] as const;
+const DELETED = [
+  "looksLikeRecruitRequest",
+  "looksLikeRatingProgressRequest",
+  "isAffirmative",
+  "isNegative",
+] as const;
 
 describe("the deleted conjunction classifiers have ZERO callers", () => {
   for (const name of DELETED) {
@@ -79,6 +93,34 @@ describe("the deleted conjunction classifiers have ZERO callers", () => {
     const rating = fs.readFileSync(path.join(REPO, "src", "lib", "rating-progress.ts"), "utf8");
     expect(recruit).not.toMatch(/export function looksLikeRecruitRequest/);
     expect(rating).not.toMatch(/export function looksLikeRatingProgressRequest/);
+  });
+
+  it("the money path no longer tests for an emoji ANYWHERE in the body", () => {
+    const flow = fs.readFileSync(path.join(REPO, "src", "lib", "payment-flow.ts"), "utf8");
+    const code = flow
+      .split("\n")
+      .filter((l) => {
+        const t = l.trim();
+        return !t.startsWith("*") && !t.startsWith("//") && !t.startsWith("/*");
+      })
+      .join("\n");
+    // The exact shape that released a live club's pay links off "great
+    // game 👍". Any unanchored emoji or word test in this file is the
+    // regression.
+    expect(code).not.toMatch(/\/\[[^\]]*[\u2705\u2714\u{1F44D}][^\]]*\]\/u?\.test/u);
+    expect(code).not.toMatch(/\^\(yes\|/);
+    // …and the replacement is wired in.
+    expect(code).toContain("anchoredFeeReply");
+  });
+
+  it("the money path's replacement carries its argument, not just its code", () => {
+    const fee = fs.readFileSync(path.join(REPO, "src", "lib", "fee-confirm.ts"), "utf8");
+    expect(fee).toContain("FEE_CONFIRM_ANCHORS_BEFORE_IT_ASKS");
+    // The measured history, so nobody re-argues this from imagination.
+    expect(fee).toContain("6   fee-confirmation prompts ever sent");
+    // Both directions priced, and the failure direction named.
+    expect(fee).toMatch(/A WRONG RELEASE costs/);
+    expect(fee).toMatch(/A WRONG REFUSAL costs/);
   });
 
   it("each deletion left a tombstone naming the incident that caused it", () => {
