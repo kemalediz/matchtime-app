@@ -94,6 +94,16 @@ describe("anchoredFeeReply — a whole-body allowlist, never a fragment", () => 
     "",
     "   ",
     "👍❌",
+    // An acknowledgement is not an authorisation. Each of these was in
+    // the first draft's YES list; none was in the list it replaces. They
+    // go to the model, which has the amount and the question in front of
+    // it, rather than being decided by a word.
+    "perfect",
+    "great",
+    "good",
+    "all good",
+    "spot on",
+    "that's it",
   ];
   for (const t of ABSTAIN) {
     it(`abstains on ${JSON.stringify(t)}`, () => {

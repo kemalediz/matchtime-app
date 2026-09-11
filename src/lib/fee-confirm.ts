@@ -240,7 +240,17 @@ const YES_WORDS: ReadonlySet<string> = new Set([
   "send", "send it", "send them", "send it out", "send them out", "send the links",
   "yes send", "yes send it", "yes send them", "yes confirm", "yes go", "yes go ahead",
   "release", "release them", "go", "go on", "go ahead", "do it", "sure", "right",
-  "perfect", "great", "good", "thats it", "all good", "spot on", "agreed", "approved",
+  "agreed", "approved",
+  // ⚠️ NOT HERE, DELIBERATELY: "perfect", "great", "good", "all good",
+  //    "spot on", "thats it". They read as assent, and the first draft
+  //    of this list carried them — but each is equally an acknowledgement
+  //    of something else, and none of them was in the list this replaces.
+  //    A tightening that quietly adds six new ways to release the squad's
+  //    pay links is not a tightening. They fall to the model, which sees
+  //    the pending amount and the question that was asked, and a model
+  //    that is unsure or unreachable yields `neither` and does nothing.
+  //    The cost of being wrong in that direction is one re-typed word,
+  //    on a path that fires about six times a quarter.
 ]);
 
 /** …and when he means not yet. */
