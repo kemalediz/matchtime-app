@@ -863,9 +863,12 @@ async function handleAnalyzeRequest(request: Request) {
   //   RECRUIT" further down. The deterministic action and the admin gate
   //   are unchanged; only the classification moved from regex to model.
   //
-  //   `looksLikeRecruitRequest` still exists for ONE remaining caller,
-  //   api/whatsapp/dm-reply/route.ts — a 1:1 DM surface with no verdict
-  //   pipeline. Converting that is the next step, not this PR's.
+  //   `looksLikeRecruitRequest` is GONE (2026-09-11). It outlived this
+  //   tombstone by ten days for one caller, api/whatsapp/dm-reply/route.ts
+  //   — a 1:1 DM surface with no verdict pipeline — where it could still
+  //   fire a mass DM to 13-27 people off a pattern match. That surface is
+  //   now model-classified too (`lib/dm-intent.ts`) and the function was
+  //   deleted with its last caller.
 
   // ── DELETED 2026-09-11: the rating-progress REGEX fast path ────────
   //   It lived here, matched `looksLikeRatingProgressRequest(m.body)`,
