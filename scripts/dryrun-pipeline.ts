@@ -57,6 +57,11 @@
  *                  not just when REPEAT=1
  *   CHASES=1       compose all five scheduled-chase kinds instead of
  *                  running the case table (also read-only)
+ *   DMS=1          run the DM-INTENT table (N*) through `lib/dm-intent.ts`
+ *                  — the 1:1 DM surface's only classifier since
+ *                  2026-09-11, and the gate in front of a 13-27 person
+ *                  mass DM. Reports the INTENT distribution per case.
+ *                  See `runDmIntents`; it makes no database call at all.
  *   QUESTIONS=1    run the TAGGED-QUESTION table (Q*) through §10 step
  *                  7's owner instead, and score every phrasing as
  *                  ANSWERED / HANDED BACK / SILENT. See `runQuestions`.
@@ -94,8 +99,7 @@
  */
 import { peelClause } from "../src/lib/pipeline/clause-peel.ts";
 import { parseSwapNames } from "../src/lib/team-slot-swap.ts";
-import { looksLikeRatingProgressRequest } from "../src/lib/rating-progress.ts";
-import { loadSquadState } from "../src/lib/pipeline/load-state.ts";
+import { loadSquadState, loadRatingProgressSnapshot } from "../src/lib/pipeline/load-state.ts";
 import { runPipeline } from "../src/lib/pipeline/run.ts";
 import { runAnswerBatch } from "../src/lib/pipeline/answer-batch.ts";
 import { runTeamOpsBatch } from "../src/lib/team-ops-engine-batch.ts";
@@ -289,7 +293,14 @@ const CASES: Case[] = [
   // nothing else. That difference is the argument for peeling the
   // CLAUSE rather than either peeling the message or peeling nothing.
   { id: "Y2", who: "Kemal", body: "@Match Time swap Elvin with Raihan, and I'm out", tagged: true, confirm: ["Kemal"], expect: "THE CONTROL — the WHOLE body down the pipeline, the alternative to clause peeling. Expect the drop PLUS a phantom CONFIRMED Raihan read off the swap instruction" },
-  { id: "Y3", who: "Kemal", body: "@Match Time who hasn't rated yet? Also I'm out", tagged: true, confirm: ["Kemal"], peel: looksLikeRatingProgressRequest, expect: "the rating-progress peel. Residual \"I'm out\" -> DROP Kemal" },
+  // ⚠️ Y3 NO LONGER PEELS, AND THAT IS THE POINT OF LEAVING IT HERE.
+  // `looksLikeRatingProgressRequest` was deleted on 2026-09-11 (two
+  // keyword tests ANDed over a whole body, the shape behind 2026-09-01
+  // and 2026-09-10), so there is no predicate to peel with. The whole
+  // message goes down the pipeline and the ATTENDANCE HALF IS LOST —
+  // the price stated in `lib/rating-progress-answer.ts` rather than
+  // discovered later, and this row is where it is measured.
+  { id: "Y3", who: "Kemal", body: "@Match Time who hasn't rated yet? Also I'm out", tagged: true, confirm: ["Kemal"], expect: "THE COST OF THE 11 SEPT DELETION. No peel exists any more: expect `question`/rating_progress and NO drop of Kemal. Before the deletion the residual \"I'm out\" dropped him" },
   // ⚠️ Y4 IS THE ONE CASE WHOSE HARNESS OUTPUT IS NOT WHAT PRODUCTION
   // DOES, and it is listed anyway because the difference is the point.
   // This harness has no `fresh` and therefore no SPLICE: when the peel
@@ -484,6 +495,72 @@ const CASES: Case[] = [
     tagged: true,
     taggedExplicitly: true,
     expect: "NO stats_blast — only an admin may DM the whole club",
+  },
+
+  // ── M: RATING PROGRESS, and the conjunction that used to claim it ─
+  //
+  // `looksLikeRatingProgressRequest` was deleted on 2026-09-11: (a
+  // rating word) AND (a progress word), anywhere in the body, in a
+  // clause-peeled fast path that `analyze/route.ts` itself called "the
+  // WIDEST trigger of the six peels". The ask is now
+  // `QuestionFacts.topic = "rating_progress"` on the `question` route,
+  // gated by the engine on admin plus the route's ordinary @Match Time
+  // tag.
+  //
+  // M1 IS THE ACCEPTANCE CASE OF THE GROUP HALF: the genuine tagged ask
+  // must be answered on every run, or the deletion deleted the feature.
+  // M2-M5 are the shapes the conjunction could not tell from a question
+  // — every one of them satisfies both halves of the old predicate and
+  // asks MatchTime for nothing. M6 and M7 are the two gates.
+  {
+    id: "M1",
+    who: "Kemal",
+    body: "@Match Time who hasn't rated yet?",
+    tagged: true,
+    expect: "ANSWER rating progress, every run. This is the phrasing the feature exists for",
+  },
+  {
+    id: "M2",
+    who: "Kemal",
+    body: "@Match Time how many have rated so far?",
+    tagged: true,
+    expect: "ANSWER rating progress — the same ask, counted rather than named",
+  },
+  {
+    id: "M3",
+    who: "Kemal",
+    body:
+      "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
+      "the more accurate ratings, the more balanced teams next time",
+    tagged: true,
+    taggedExplicitly: false,
+    expect: "THE 10 SEPT NEAR-MISS SENTENCE. It satisfied the old conjunction. NO answer, no write, on every run",
+  },
+  {
+    id: "M4",
+    who: "Zair",
+    body: "I haven't rated yet, I'll do it tonight",
+    expect: "NOT a question — it satisfied both halves of the deleted predicate and asks nothing",
+  },
+  {
+    id: "M5",
+    who: "Kemal",
+    body: "@Match Time can you remind everyone to rate the players",
+    tagged: true,
+    expect: "TAGGED, and still NOT rating progress: it asks for a REMINDER, not for the tally",
+  },
+  {
+    id: "M6",
+    who: "Kemal",
+    body: "who hasn't rated yet?",
+    expect: "NO answer — UNTAGGED. A real behaviour change: the deleted fast path was not tag-gated",
+  },
+  {
+    id: "M7",
+    who: "Zair",
+    body: "@Match Time who hasn't rated yet?",
+    tagged: true,
+    expect: "NO answer — only an admin sees who has and has not rated, because the answer NAMES them",
   },
 
   // ── W: the 2026-09-07 incident — an admin's UNTAGGED third-party OUT
@@ -1305,6 +1382,129 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
   );
 }
 
+/**
+ * ── THE DM-INTENT TABLE (`DMS=1`) ────────────────────────────────────
+ *
+ * The 1:1 DM surface has no verdict pipeline, so since 2026-09-11 it has
+ * exactly one classifier: `lib/dm-intent.ts`. It replaced the last two
+ * conjunction regexes in the product — `looksLikeRecruitRequest` (a
+ * recruit verb adjacent to a people noun, OR a shortage phrase) and
+ * `looksLikeRatingProgressRequest` (a rating word AND a progress word).
+ * One of them stands in front of `inviteRecentPlayers`, a mass DM to
+ * 13-27 real people.
+ *
+ * ⚠️ READ-ONLY, AND MORE STRONGLY THAN THE REST OF THIS FILE: this mode
+ * makes NO database call at all. It runs the classifier and prints what
+ * it said. Nothing downstream of it — no membership lookup, no match
+ * lookup, and above all no `inviteRecentPlayers` — is reached from here.
+ * The DECISION those gates make is pinned deterministically in
+ * `src/lib/__tests__/dm-intent.test.ts`; what this measures is the one
+ * part a test cannot: what the real model says about a real sentence,
+ * repeatedly.
+ *
+ * N1-N2 are the genuine asks and must be recognised on every run, or the
+ * deletion deleted the feature. N3-N7 are the sentences a keyword
+ * conjunction could not tell from a command: every one of them is ABOUT
+ * DMs, players or ratings and instructs MatchTime to do nothing. N3 is
+ * the 2026-09-10 near-miss verbatim and N4 is the 2026-09-01 incident
+ * sentence, both of which the deleted regexes matched.
+ */
+type DmCase = { id: string; body: string; who?: string; expect: string };
+
+const DM_CASES: DmCase[] = [
+  {
+    id: "N1",
+    body: "DM everyone who played in the last 5 matches and invite them",
+    expect: "recruit_blast, every run. The command the feature exists for",
+  },
+  {
+    id: "N2",
+    body: "who hasn't rated yet?",
+    expect: "rating_progress, every run",
+  },
+  {
+    id: "N3",
+    body:
+      "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
+      "the more accurate ratings, the more balanced teams next time",
+    expect: "THE 10 SEPT NEAR-MISS, VERBATIM. `other`, every run. It instructs the PLAYERS",
+  },
+  {
+    id: "N4",
+    body: "Najib is out. We need one more player.",
+    expect: "THE 1 SEPT INCIDENT SENTENCE. `other` — looksLikeRecruitRequest matched its second half",
+  },
+  {
+    id: "N5",
+    body: "the lads keep asking me to DM them the ratings link",
+    expect: "`other` — ABOUT DMs, players and ratings, and an instruction to nobody",
+  },
+  {
+    id: "N6",
+    body: "cheers for sorting the players out last week",
+    expect: "`other` — thanks",
+  },
+  {
+    id: "N7",
+    body: "I'm out tuesday sorry",
+    expect: "`other` — the sender's own attendance, owned by a later handler on that route",
+  },
+  {
+    id: "N8",
+    body: "we're short for tuesday, can you message the recent lads and ask them",
+    expect: "recruit_blast — the phrasing an admin actually uses",
+  },
+];
+
+/**
+ * Run the DM-intent classifier over `DM_CASES`, `REPEAT` times each, and
+ * report the INTENT DISTRIBUTION per case.
+ *
+ * The acceptance signal here is the intent itself rather than a write:
+ * this classifier's whole job is to be the one thing standing between a
+ * sentence and a 13-27 person mass DM, and everything downstream of it
+ * is deterministic code pinned by unit tests.
+ */
+async function runDmIntents(): Promise<void> {
+  const { classifyDmIntent } = await import("../src/lib/dm-intent.ts");
+  const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
+  const only = process.env.ONLY?.split(",").map((s) => s.trim());
+  const selected = DM_CASES.filter((c) => !only || only.includes(c.id));
+  if (only) {
+    const unknown = only.filter((id) => !DM_CASES.some((c) => c.id === id));
+    if (unknown.length) throw new Error(`ONLY names no such DM case: ${unknown.join(", ")}`);
+  }
+  let unstable = 0;
+  for (const c of selected) {
+    console.log(
+      `\n${"─".repeat(72)}\n${c.id}  ${c.who ?? "Kemal"} (DM): ${JSON.stringify(c.body)}` +
+        `\n  expect : ${c.expect}`,
+    );
+    const seen: string[] = [];
+    for (let n = 0; n < repeat; n++) {
+      const r = await classifyDmIntent(c.body, { senderName: c.who ?? "Kemal Ediz" });
+      seen.push(r.intent);
+      if (repeat === 1 || process.env.FACTS === "1") {
+        console.log(`  run ${n + 1}: ${r.intent} (conf ${r.confidence}) — ${r.reasoning}`);
+      }
+    }
+    const spread = [...new Set(seen)]
+      .map((i) => ({ i, n: seen.filter((x) => x === i).length }))
+      .sort((a, b) => b.n - a.n)
+      .map(({ i, n }) => `${i} ${n}/${seen.length}`)
+      .join(" · ");
+    const stable = new Set(seen).size === 1;
+    if (!stable) unstable++;
+    console.log(`  INTENT   : ${stable ? "✅ STABLE" : "⚠️  SPLIT"} — ${spread}`);
+  }
+  console.log(
+    `\n${"═".repeat(72)}\n` +
+      `${selected.length} DM case(s) × ${repeat} = ${selected.length * repeat} run(s). ` +
+      `${unstable === 0 ? "No split cases." : `⚠️  ${unstable} SPLIT case(s).`}\n` +
+      `Writes performed: 0 (this mode makes no database call at all).`,
+  );
+}
+
 async function main(): Promise<void> {
   const groupId = process.env.ORG_GROUP ?? DEFAULT_GROUP;
   const org = await db.organisation.findFirst({
@@ -1320,12 +1520,40 @@ async function main(): Promise<void> {
   }
 
   const now = new Date();
-  const base = await loadSquadState(org.id, now);
+  const loaded = await loadSquadState(org.id, now);
+  // ── THE TARGETED READ `answer-batch.ts` DOES AT STAGE 2c ───────────
+  //
+  //   `loadSquadState` deliberately leaves `ratingProgress` null: it
+  //   runs on every batch including the 69% that are banter, and a
+  //   rating question is a handful of messages a season. Production
+  //   loads it AFTER extraction and only when a `rating_progress` topic
+  //   survived ownership.
+  //
+  //   THIS HARNESS HAS TO LOAD IT UP FRONT, and saying so matters: with
+  //   it null the composer says nothing under `answer_rating_progress`
+  //   and writes an operator note, so the acceptance case for the whole
+  //   2026-09-11 change — "@Match Time who hasn't rated yet?" is still
+  //   answered — would print "(silent)" on every run and read as a
+  //   PASS for the thing it is supposed to catch. A case that cannot
+  //   fail is not a case.
+  //
+  //   One extra READ, once per invocation rather than once per run, and
+  //   `loadRatingProgress` performs no writes.
+  const base: SquadState = {
+    ...loaded,
+    ratingProgress: await loadRatingProgressSnapshot(org.id),
+  };
   console.log(
     `ORG   : ${org.name}\n` +
       `MATCH : ${base.matchId ?? "(none)"} — ${base.kickoffLabel} at ${base.venue}\n` +
       `STATE : ${describeSquad(base)}\n`,
   );
+
+  if (process.env.DMS === "1") {
+    await runDmIntents();
+    await db.$disconnect();
+    return;
+  }
 
   if (process.env.QUESTIONS === "1") {
     await runQuestions(org.id, base, now);

@@ -9,7 +9,9 @@
  *   2. DM subscription command          ("stop messaging me about ratings")
  *   3. tentative-availability follow-up (an open TentativeAvailability)
  *   4. money-collector fee reply        (a match awaiting its fee)
- *   5. admin recruit blast / rating progress  (admin-gated)
+ *   5. admin recruit blast / rating progress  (admin-gated, and
+ *      MODEL-classified since 2026-09-11 — the two regexes that
+ *      used to select it are deleted; see lib/dm-intent.ts)
  *   6. roster check-in survey           (an open RosterSurveyDM)
  *   7. COLD self-attendance fallback    (2026-08-31 — a player replying
  *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
@@ -571,30 +573,81 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── Admin recruit via DM (2026-06-05) ───────────────────────────────
-  //   An org admin can DM MatchTime "DM recent players to join the next
-  //   match" (instead of posting in the group) and it fires the same
-  //   invite blast. Gated to OWNER/ADMIN (or superadmin) of an org with
-  //   an upcoming match. Replies privately with the outcome.
+  // ── ADMIN COMMANDS BY DM — ONE MODEL CALL, TWO ACTIONS ─────────────
+  //
+  //   ⚰️ WHAT WAS HERE UNTIL 2026-09-11: two regexes, one per handler.
+  //
+  //     looksLikeRecruitRequest         a recruit verb ADJACENT to a
+  //                                     people noun, OR a shortage
+  //                                     phrase — with `inviteRecentPlayers`
+  //                                     behind it, a mass DM to 13-27
+  //                                     real people.
+  //     looksLikeRatingProgressRequest  (a rating word) AND (a progress
+  //                                     word), anywhere in the body.
+  //
+  //   The first one's own doc comment said what it was: deprecated for
+  //   group messages since 2026-09-01, when it matched the SECOND
+  //   sentence of "Najib is out. We need one more player.", the fast
+  //   path peeled the whole message off the batch, the third-party OUT
+  //   was never analysed, and MatchTime told the owner his squad was
+  //   full one line after he said a player was out. It kept ONE caller,
+  //   this one, "the next conversion, not this PR's". This is that
+  //   conversion, and both regexes are now deleted outright.
+  //
+  //   On 2026-09-10 the same family — three keyword tests ANDed — read
+  //   an owner's reminder to his players as a bulk-DM command and queued
+  //   69 personal stats-link DMs. `recruit-lookback.ts` names the stake:
+  //   the bot runs on an UNOFFICIAL WhatsApp client, and a mass DM risks
+  //   the account, which takes the whole product down.
+  //
+  //   ── THE REPLACEMENT IS `lib/stats-blast.ts`'s SPLIT ──────────────
+  //   The model says only "this looks like the ask". Every gate and the
+  //   action stay in code: the admin/superadmin membership lookup, the
+  //   upcoming-match and completed-match lookups, the blast itself and
+  //   the words describing it. A classifier that fails — no key, an
+  //   overload, unparseable output, an intent outside the enum, a
+  //   confidence below the floor — yields `other`, which DMs nobody.
+  //
+  //   ── PLACEMENT IS UNCHANGED, AND THE MODEL CALL IS NOT PAID FOR ON
+  //      EVERY DM. Still fifth, behind every handler that knows WHICH
+  //      question is being answered (bench offer, subscription command,
+  //      tentative follow-up, collector fee) and ahead of the roster
+  //      survey, the cold self-attendance fallback and scoped Q&A. And
+  //      `adminOrgIds` runs BEFORE the classifier: a club has one or two
+  //      admins and dozens of players, so the overwhelming majority of
+  //      DMs reach the model never.
+  //
+  //      WHAT THAT COSTS, STATED: those two indexed reads (the
+  //      superadmin flag and the memberships) now run on every DM that
+  //      gets this far, where before they ran only behind a regex
+  //      match. Two primary-key lookups against a DM volume of a few a
+  //      day, in exchange for never testing a mass-DM trigger with a
+  //      pattern again. See `lib/dm-intent.ts`.
   {
-    const { looksLikeRecruitRequest } = await import("@/lib/recruit");
-    if (looksLikeRecruitRequest(text)) {
-      const { isSuperadmin } = await import("@/lib/org");
-      const su = await isSuperadmin(user.id);
-      const adminMems = await db.membership.findMany({
-        where: {
-          userId: user.id,
-          leftAt: null,
-          ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] } }),
-        },
-        select: { orgId: true },
-      });
-      if (adminMems.length > 0) {
+    const { classifyDmIntent, runDmAdminIntent } = await import("@/lib/dm-intent");
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    const outcome = await runDmAdminIntent({
+      adminOrgIds: async () => {
+        const { isSuperadmin } = await import("@/lib/org");
+        const su = await isSuperadmin(user.id);
+        const mems = await db.membership.findMany({
+          where: {
+            userId: user.id,
+            leftAt: null,
+            ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] } }),
+          },
+          select: { orgId: true },
+        });
+        return mems.map((mem) => mem.orgId);
+      },
+      classify: async () =>
+        (await classifyDmIntent(text, { senderName: authorName ?? null })).intent,
+      orgWithUpcomingMatch: async (orgIds) => {
         const startToday = new Date();
         startToday.setUTCHours(0, 0, 0, 0);
         const cand = await db.match.findFirst({
           where: {
-            activity: { orgId: { in: adminMems.map((m) => m.orgId) } },
+            activity: { orgId: { in: orgIds } },
             isHistorical: false,
             status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
             date: { gte: startToday },
@@ -602,62 +655,56 @@ export async function POST(request: Request) {
           orderBy: { date: "asc" },
           select: { activity: { select: { orgId: true } } },
         });
-        if (cand) {
-          const { inviteRecentPlayers } = await import("@/lib/recruit");
-          const r = await inviteRecentPlayers(cand.activity.orgId);
-          const reply = !r.ok
-            ? r.reason ?? "Couldn't do that right now."
-            : r.invited && r.invited > 0
-              ? `📣 Done — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}* on ${r.matchWhen}${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-              : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
-          const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
-          const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });
-          const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
-          if (replyPhone) {
-            await db.botJob.create({
-              data: { orgId: cand.activity.orgId, kind: "dm", phone: replyPhone, text: reply },
-            });
-          }
-          return NextResponse.json({ ok: true, handled: "recruit-dm", invited: r.invited ?? 0 });
-        }
-      }
-      // Not an admin of any org with an upcoming match → fall through.
-    }
-  }
-
-  // ── Admin rating-progress via DM (2026-06-06) ───────────────────────
-  //   "how many have rated / who's left / who hasn't picked MoM?" —
-  //   grounded answer for the org's last completed match. Admin-gated.
-  {
-    const { looksLikeRatingProgressRequest } = await import("@/lib/rating-progress");
-    if (looksLikeRatingProgressRequest(text)) {
-      const { isSuperadmin } = await import("@/lib/org");
-      const su = await isSuperadmin(user.id);
-      const adminMems = await db.membership.findMany({
-        where: { userId: user.id, leftAt: null, ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] } }) },
-        select: { orgId: true },
-      });
-      if (adminMems.length > 0) {
-        // The org whose most-recently-played match is the freshest.
+        return cand?.activity.orgId ?? null;
+      },
+      // The org whose most-recently-played match is the freshest.
+      orgWithCompletedMatch: async (orgIds) => {
         const cand = await db.match.findFirst({
-          where: { activity: { orgId: { in: adminMems.map((m) => m.orgId) } }, isHistorical: false, status: "COMPLETED" },
+          where: { activity: { orgId: { in: orgIds } }, isHistorical: false, status: "COMPLETED" },
           orderBy: { date: "desc" },
           select: { activity: { select: { orgId: true } } },
         });
-        if (cand) {
-          const { loadRatingProgress, formatRatingProgressReply } = await import("@/lib/rating-progress");
-          const reply = formatRatingProgressReply(await loadRatingProgress(cand.activity.orgId));
-          const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
-          const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });
-          const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
-          if (replyPhone) {
-            await db.botJob.create({ data: { orgId: cand.activity.orgId, kind: "dm", phone: replyPhone, text: reply } });
-          }
-          return NextResponse.json({ ok: true, handled: "rating-progress-dm" });
-        }
-      }
-      // Not an admin / no completed match → fall through.
+        return cand?.activity.orgId ?? null;
+      },
+      invite: async (orgId) => {
+        const { inviteRecentPlayers } = await import("@/lib/recruit");
+        const r = await inviteRecentPlayers(orgId);
+        // Composed from what ACTUALLY landed, never from what was asked
+        // for — the same rule the group blast follows. Byte-for-byte the
+        // sentences the deleted handler sent.
+        const reply = !r.ok
+          ? r.reason ?? "Couldn't do that right now."
+          : r.invited && r.invited > 0
+            ? `📣 Done — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}* on ${r.matchWhen}${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
+            : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+        return { reply, invited: r.invited ?? 0 };
+      },
+      ratingProgress: async (orgId) => {
+        const { loadRatingProgress, formatRatingProgressReply } = await import(
+          "@/lib/rating-progress"
+        );
+        return formatRatingProgressReply(await loadRatingProgress(orgId));
+      },
+      reply: async ({ orgId, text: replyText }) => {
+        const u = await db.user.findUnique({
+          where: { id: user.id },
+          select: { phoneNumber: true },
+        });
+        const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
+        if (!replyPhone) return;
+        await db.botJob.create({
+          data: { orgId, kind: "dm", phone: replyPhone, text: replyText },
+        });
+      },
+    });
+    if (outcome.handled === "recruit-dm") {
+      return NextResponse.json({ ok: true, handled: "recruit-dm", invited: outcome.invited });
     }
+    if (outcome.handled === "rating-progress-dm") {
+      return NextResponse.json({ ok: true, handled: "rating-progress-dm" });
+    }
+    // Not an admin, not one of the two asks, or nothing to act on →
+    // fall through, exactly as an unmatched regex did.
   }
 
   // Find an active RosterSurveyDM for this user. There SHOULD be at

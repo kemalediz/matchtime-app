@@ -21,20 +21,29 @@
  * `analyzeBatch` and `SYSTEM_PROMPT` are deleted. What replaced them:
  *
  *   0. DETERMINISTIC PEELS — no model at all. Personal stats link,
- *      group→DM Q&A, admin rating progress, help, the colour swap, the
- *      team swap, a bench-prompt answer, a pasted roster. Each is a
- *      database row or a whole-message match, and each is peeled before
- *      the router so nothing else can claim it.
+ *      group→DM Q&A, help, the colour swap, the team swap, a
+ *      bench-prompt answer, a pasted roster. Each is a database row or a
+ *      whole-message match, and each is peeled before the router so
+ *      nothing else can claim it.
  *
- *      THE ADMIN STATS BLAST WAS THE NINTH AND IS NOT ONE ANY MORE
- *      (2026-09-10). It was recognised by three keyword tests ANDed
- *      together, which is a "whole-message match" only in the sense that
- *      the three words could be anywhere in the message: an owner's
- *      reminder to his players satisfied all three from three unrelated
- *      fragments and MatchTime queued 69 mass DMs. It is now an
+ *      TWO OF THEM WERE NOT WHOLE-MESSAGE MATCHES AT ALL AND ARE GONE.
+ *
+ *      THE ADMIN STATS BLAST (2026-09-10). Recognised by three keyword
+ *      tests ANDed together, which is a "whole-message match" only in
+ *      the sense that the three words could be anywhere in the message:
+ *      an owner's reminder to his players satisfied all three from three
+ *      unrelated fragments and MatchTime queued 69 mass DMs. Now an
  *      extracted fact on the `admin_ops` route, gated by the engine and
  *      fired by this route after the batch — see the tombstone in
  *      section 0 and `lib/stats-blast.ts`.
+ *
+ *      ADMIN RATING PROGRESS (2026-09-11). Two keyword tests ANDed — a
+ *      rating word and a progress word, anywhere in the body — which
+ *      this file's own comment called "the WIDEST trigger of the six
+ *      peels". Now `QuestionFacts.topic = "rating_progress"` on the
+ *      `question` route, where the live router puts these phrasings
+ *      60 of 60. See the tombstone in section 0 and
+ *      `lib/rating-progress-answer.ts`.
  *   1. ROUTER — `claude-haiku-4-5`, ~360 tokens, nine routes. Banter
  *      exits here and costs nothing further. (`pipeline/gate.ts`)
  *   2. EXTRACTORS — one small specialist per route, strict JSON schema,
@@ -854,61 +863,72 @@ async function handleAnalyzeRequest(request: Request) {
   //   RECRUIT" further down. The deterministic action and the admin gate
   //   are unchanged; only the classification moved from regex to model.
   //
-  //   `looksLikeRecruitRequest` still exists for ONE remaining caller,
-  //   api/whatsapp/dm-reply/route.ts — a 1:1 DM surface with no verdict
-  //   pipeline. Converting that is the next step, not this PR's.
+  //   `looksLikeRecruitRequest` is GONE (2026-09-11). It outlived this
+  //   tombstone by ten days for one caller, api/whatsapp/dm-reply/route.ts
+  //   — a 1:1 DM surface with no verdict pipeline — where it could still
+  //   fire a mass DM to 13-27 people off a pattern match. That surface is
+  //   now model-classified too (`lib/dm-intent.ts`) and the function was
+  //   deleted with its last caller.
 
-  // ── Fast-path: admin "how many have rated / who's left / who hasn't
-  //    picked MoM?" ────────────────────────────────────────────────────
-  //   Grounded rating-completion answer (the analyzer's normal context
-  //   has no rating data, so the LLM would otherwise guess). Admin-gated.
+  // ── DELETED 2026-09-11: the rating-progress REGEX fast path ────────
+  //   It lived here, matched `looksLikeRatingProgressRequest(m.body)`,
+  //   and was CLAUSE-PEELED. The trigger was two keyword tests ANDed
+  //   over the whole body:
   //
-  //   ⚠️ ALSO NOT TAG-GATED, and the WIDEST trigger of the six peels:
-  //   `looksLikeRatingProgressRequest` is (a rating word) AND (a
-  //   progress word), which "I haven't rated yet and I'm out Thursday"
-  //   satisfies without addressing anybody. That message used to be
-  //   peeled whole, answered with SILENCE (the sender is not an admin),
-  //   and the OUT went with it. The tag requirement is a separate axis
-  //   and is deliberately unchanged; the clause peel is what stops the
-  //   silence taking the drop down with it.
+  //     /\b(rate|rated|rating|ratings|mom|motm|…|voted|vote)\b/  AND
+  //     /\b(so far|remaining|left|pending|yet|hasn'?t|not yet|…)\b/
   //
-  //   CLAUSE-PEELED. The answer is loaded from the DATABASE
-  //   (`loadRatingProgress(org.id)`) and never from the body, so which
-  //   clause matched changes nothing about the reply.
-  const { looksLikeRatingProgressRequest } = await import("@/lib/rating-progress");
-  for (const m of fresh) {
-    if (fastPathHandledIds.has(m.waMessageId)) continue;
-    const ratingPeel = peelClause(m.body, looksLikeRatingProgressRequest);
-    if (!ratingPeel) continue;
-    const sender = senderById.get(m.waMessageId)!;
-    let isAdmin = false;
-    if (sender.userId) {
-      const { isOrgAdmin } = await import("@/lib/org");
-      isAdmin = await isOrgAdmin(sender.userId, org.id);
-    }
-    if (!isAdmin) {
-      // Non-admins shouldn't see who-hasn't-rated; stay silent (no react).
-      await claimFastPath(m, ratingPeel, {
-        handledBy: "fast-path",
-        intent: "rating_progress_denied",
-        action: null,
-        reasoning: "non-admin asked rating progress — ignored",
-        react: null,
-        reply: null,
-      });
-      continue;
-    }
-    const { loadRatingProgress, formatRatingProgressReply } = await import("@/lib/rating-progress");
-    const reply = formatRatingProgressReply(await loadRatingProgress(org.id));
-    await claimFastPath(m, ratingPeel, {
-      handledBy: "fast-path",
-      intent: "rating_progress",
-      action: "rating-progress",
-      reasoning: "admin rating-progress query",
-      react: "📋",
-      reply,
-    });
-  }
+  //   The comment that stood here called it, correctly, "the WIDEST
+  //   trigger of the six peels": "I haven't rated yet and I'm out
+  //   Thursday" satisfies both halves and addresses nobody. It is the
+  //   same conjunction shape that matched the second sentence of "Najib
+  //   is out. We need one more player." on 2026-09-01 and that queued 69
+  //   personal stats-link DMs on 2026-09-10 — the two deletions whose
+  //   tombstones sit above this one.
+  //
+  //   THE FIX IS A DELETION, for the fourth time in this codebase
+  //   (2026-04-21 `handlers.ts:7-10`; 2026-09-01 `looksLikeRecruitRequest`;
+  //   2026-09-10 the stats blast; now this and the DM surface's last
+  //   caller). A third keyword test or an exclusion list would be a third
+  //   thing to get wrong.
+  //
+  //   The ask is now an extracted FACT — `QuestionFacts.topic =
+  //   "rating_progress"` on the `question` route — gated by the engine
+  //   (admin, plus the question route's own @Match Time tag) and
+  //   answered by `pipeline/compose.ts` from a targeted database read
+  //   that `pipeline/answer-batch.ts` performs only when such a topic
+  //   survived ownership. The answer, its copy and the admin gate are
+  //   unchanged; only the classification moved from regex to model.
+  //
+  //   ── WHY `question` AND NOT `admin_ops`, WHICH IS WHERE THE STATS
+  //      BLAST WENT. Measured on the live router, 2026-09-11, 15 calls
+  //      a phrasing: "@Match Time who hasn't rated yet?", "how many have
+  //      rated so far?", "who hasn't picked a MoM yet?" and "who is
+  //      still to rate from tuesday" all come back `question` 15/15 —
+  //      60 of 60. The router's own rule 8 says why: "ASKING is
+  //      question; INSTRUCTING is admin_ops." Putting the fact on
+  //      `admin_ops` would have shipped a feature the router never
+  //      routes to.
+  //
+  //   ── THREE THINGS WENT WITH IT, STATED RATHER THAN DISCOVERED ─────
+  //
+  //   THE CLAUSE PEEL. "@Match Time who hasn't rated yet? Also I'm out"
+  //   used to answer AND drop the sender. `question` is a whole-message
+  //   route, so the attendance half of a compound rating question is now
+  //   lost — exactly as it already is for the stats blast, the recruit
+  //   blast, a payment credit and a reminder. A peel needs a
+  //   deterministic predicate over language, and a deterministic
+  //   predicate over language is what caused the two incidents above.
+  //
+  //   THE UNTAGGED ANSWER. This peel was not tag-gated at all. The
+  //   `question` route requires a tag, so "who hasn't rated yet?" with
+  //   no tag is now silence. That is the ordinary bar every other answer
+  //   has had since 2026-09-08; `RATING_PROGRESS_TAG_MUST_BE_EXPLICIT`
+  //   records why it is not raised any higher than that.
+  //
+  //   THE 📋 REACT and the `rating_progress_denied` row. A non-admin's
+  //   ask now gets the same silence every other unowned message gets,
+  //   plus one line on the operator note.
 
   // ── Fast-path: "@Match Time help [topic]" → usage / topic explainer ─
   //   Tag-gated (honours the interaction contract — only when the bot is

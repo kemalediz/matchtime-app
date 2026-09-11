@@ -25,8 +25,12 @@
 // Type-only, and from a module with no Prisma import of its own — see
 // `SquadState.payments` and `payment-answer.ts`'s header.
 import type { PaymentSnapshot } from "./payment-answer";
+// Same rule, same reason: `rating-progress-answer.ts` is the Prisma-free
+// half of `rating-progress.ts`, split out on 2026-09-11 so the composer
+// can render this answer. See `SquadState.ratingProgress`.
+import type { RatingProgress } from "../rating-progress-answer";
 
-export type { PaymentSnapshot };
+export type { PaymentSnapshot, RatingProgress };
 
 // ── Stage 1: routes ────────────────────────────────────────────────────
 
@@ -303,6 +307,32 @@ export type QuestionTopic =
    * the other side.
    */
   | "payments"
+  /**
+   * HOW MANY HAVE RATED the match just played, and WHO HAS NOT.
+   *
+   * Added 2026-09-11, and it is a DELETION rather than a feature. Until
+   * that day this ask was recognised by `looksLikeRatingProgressRequest`
+   * — (a rating word) AND (a progress word), scattered anywhere in the
+   * body — in a clause-peeled fast path that `analyze/route.ts` itself
+   * called "the WIDEST trigger of the six peels". It is the conjunction
+   * shape that caused 2026-09-01 and 2026-09-10, and it is gone.
+   *
+   * ── WHY A TOPIC AND NOT AN `admin_ops` ACTION ─────────────────────
+   * MEASURED, on the live router, 2026-09-11: "who hasn't rated yet?",
+   * "how many have rated so far?", "who hasn't picked a MoM yet?" and
+   * "who is still to rate from tuesday" come back `question` 15/15
+   * each — 60 of 60. The router's rule 8 is why: "ASKING is question;
+   * INSTRUCTING is admin_ops." The stats blast IS an instruction and
+   * went to `admin_ops`; this is an ask and belongs here.
+   *
+   * The second topic that reads something `loadSquadState` does not
+   * load. It follows `payments` in every respect except one: this
+   * answer NAMES the players who have not rated, so it keeps the fast
+   * path's ADMIN gate, which `payment-answer.ts` predicted would be
+   * needed the moment an answer named anybody.
+   * `rating-progress-answer.ts` carries the whole argument.
+   */
+  | "rating_progress"
   | "stats"
   | "options"
   | "other";
@@ -587,6 +617,24 @@ export interface SquadState {
    * says nothing, which makes `answer-batch.ts` disown the message.
    */
   payments: PaymentSnapshot | null;
+  /**
+   * HOW MANY HAVE RATED, AND WHO HAS NOT — and `null` on almost every
+   * batch, for exactly the reasons on `payments` above.
+   *
+   * The SECOND field `loadSquadState` does not fill. It arrived on
+   * 2026-09-11, when `looksLikeRatingProgressRequest` was deleted: two
+   * keyword tests ANDed over a whole body, in front of a group post, and
+   * the same conjunction shape that queued 69 mass DMs on 2026-09-10.
+   * The ask is now `QuestionTopic.rating_progress`, and this is where
+   * its answer arrives — one targeted load in `answer-batch.ts`, after
+   * extraction, only when such a topic survived ownership.
+   *
+   * `null` means NOT LOADED, never "nothing to report": `RatingProgress`
+   * carries `ok: false` with a reason for that. The composer treats a
+   * null under `answer_rating_progress` as an operator note and says
+   * nothing, which makes `answer-batch.ts` disown the message.
+   */
+  ratingProgress: RatingProgress | null;
 }
 
 // ── What the engine hands back ─────────────────────────────────────────
@@ -800,6 +848,14 @@ export type SpeechIntent =
    * `PaymentSnapshot` and has no field a name could come out of.
    */
   | { kind: "answer_payments"; messageId: string }
+  /**
+   * How many have rated the match just played, and who has not. Carries
+   * no counts and no names: the composer reads `state.ratingProgress`,
+   * which `answer-batch.ts` loaded from the database. Same split as
+   * `answer_payments`, and the same reason — the engine is a pure
+   * function of one value and cannot query anything.
+   */
+  | { kind: "answer_rating_progress"; messageId: string }
   | { kind: "answer_options"; messageId: string }
   | { kind: "teams_post"; messageId: string }
   /**

@@ -137,13 +137,23 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
                "fixture" the match itself: whether it is on, what time it kicks off, where it is played ("what time is kickoff?", "where are we playing?", "are we playing tuesday?", "is the game still on?", "same place as usual?")
                "payments" who has or has not paid their match fee, how many are still outstanding ("who hasn't paid?", "has everyone paid for last week?", "how many still owe?", "any payments outstanding?"). NOT how much the fee IS — that is "other".
                "score" the RESULT of a match that has already been played ("what was the score?", "did we win on tuesday?", "how did we get on last night?", "what did it finish?")
+               "rating_progress" how many people have SUBMITTED their ratings or Man-of-the-Match votes for the match just played, or who has not submitted yet ("who hasn't rated yet?", "how many have rated so far?", "who still needs to pick a MoM?", "any ratings outstanding from tuesday?", "is everyone done rating")
                "stats" how OFTEN someone plays, or how they rate, ACROSS matches — appearances, form over a run of games, most consistent, man of the match. Never the RESULT of a single match: "did we win?" and "what was the score?" are "score", not "stats".
                "options" what to do about being short (smaller format, alternatives)
                "other" anything else
   personRef    the person the question is about, verbatim, or "" when it names nobody
   statedCount  a number the message ASSERTS about the squad, or -1 when it asserts none
 
-"squad" and "count" are the same subject asked two ways, and the answers look nothing alike: "squad" gets a list of names, "count" gets a number. Choose on what the asker wants BACK, not on what the question is about. If it asks WHO, it is "squad"; if it asks HOW MANY, it is "count".`,
+"squad" and "count" are the same subject asked two ways, and the answers look nothing alike: "squad" gets a list of names, "count" gets a number. Choose on what the asker wants BACK, not on what the question is about. If it asks WHO, it is "squad"; if it asks HOW MANY, it is "count".
+
+"rating_progress" is about the ACT of rating, not about anybody's numbers, and it is a QUESTION the asker wants answered. If the message tells the PLAYERS to go and rate, thanks them for rating, or remarks on ratings, it is "other" — it asks you for nothing, however many times it says rate, ratings, players or MoM.
+
+  "@Match Time who hasn't rated yet?"                                        -> rating_progress
+  "@Match Time how many have picked a MoM so far"                            -> rating_progress
+  "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" -> other, it instructs the players
+  "lads don't forget to rate each other from tuesday"                        -> other, it instructs the players
+  "@Match Time who has the best rating this season"                          -> stats, that is a number across matches
+  "@Match Time can you remind everyone to rate"                              -> other, that asks for a reminder, not for the tally`,
 
   teams: `You read ONE message about the two team line-ups and report what it asks for. You never pick the teams.
 
@@ -251,6 +261,7 @@ const QUESTION_SCHEMA = {
         "fixture",
         "payments",
         "score",
+        "rating_progress",
         "stats",
         "options",
         "other",
@@ -346,6 +357,9 @@ const TOPICS: QuestionTopic[] = [
   "fixture",
   "payments",
   "score",
+  // 2026-09-11, and it is a regex coming OUT of the product rather than
+  // a topic going in. See `lib/rating-progress-answer.ts`.
+  "rating_progress",
   "stats",
   "options",
   "other",

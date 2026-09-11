@@ -190,12 +190,15 @@ test.describe("incident #6 — the swap peel used to swallow the sender's OUT", 
 
 // ── THE OTHER FOUR PEELS ────────────────────────────────────────────
 //
-// Same mechanism, three more sites. The rating-progress answer is NOT
-// tag-gated, which is why it matters more than its frequency suggests:
-// an ordinary untagged sentence can reach it, be answered with silence,
-// and take an attendance change with it. The stats blast used to be the
-// other one; its peel is gone with the regex that made it possible —
-// see the block below.
+// Same mechanism, two more sites. TWO OF THE ORIGINAL SIX ARE GONE, and
+// both went with the regex that made them possible: the stats blast on
+// 2026-09-10 (three ANDed keyword tests, 69 mass DMs) and the
+// rating-progress answer on 2026-09-11 (a rating word AND a progress
+// word, which this file used to call out as the widest of the six).
+// What replaced each is a fact the model extracts on a WHOLE-message
+// route, so the compound form loses its attendance half — the price
+// stated in `lib/stats-blast.ts` and `lib/rating-progress-answer.ts`,
+// and measured by the last two tests in this file.
 //
 // Each is asserted three ways: the compound message lands BOTH halves,
 // the single-purpose message is unchanged, and exactly one outbound
@@ -416,11 +419,34 @@ test.describe("the answer peels keep the sender's OUT", () => {
     ).toBe(before);
   });
 
-  test("rating progress — answers AND drops the sender, in one reply", async ({
+  // ── THE RATING-PROGRESS PEEL IS GONE (2026-09-11) ─────────────────
+  //
+  //   It was `looksLikeRatingProgressRequest` — (a rating word) AND (a
+  //   progress word), anywhere in the body — and this file's own header
+  //   used to single it out as the widest of the six. It is the
+  //   conjunction shape behind 2026-09-01 and 2026-09-10, and it is
+  //   deleted. The ask is now `QuestionFacts.topic = "rating_progress"`
+  //   on the `question` route, which is a WHOLE-message route.
+  //
+  //   So these two tests pin the OPPOSITE of what they used to: the
+  //   compound form now loses its attendance half, and that is stated
+  //   in `lib/rating-progress-answer.ts` rather than discovered here.
+
+  const RATING_Q = {
+    route: "question",
+    facts: { topic: "rating_progress", personRef: "", statedCount: -1 },
+  };
+
+  test("rating progress — the compound form now LOSES the sender's OUT", async ({
     request,
     db,
   }) => {
-    engineOn({ "I'm out": { route: "self_att", facts: selfOut() } });
+    // THE COST OF THE DELETION, measured. Before 2026-09-11 the peel
+    // took the question and the residual "Also I'm out" dropped the
+    // sender. A peel needs a deterministic predicate over language, and
+    // a deterministic predicate over language is what caused both
+    // incidents, so the peel went with it.
+    engineOn({ "@Match Time who hasn't rated yet? Also I'm out": RATING_Q });
     const res = await postAnalyze(request, [
       {
         waMessageId: msgId(),
@@ -430,11 +456,14 @@ test.describe("the answer peels keep the sender's OUT", () => {
         botMentioned: true,
       },
     ]);
-    expect(await statusOf(db, U.admin)).toBe("DROPPED");
+    expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
+    // It still answers, and it still speaks exactly once.
     expect(speaks(res)).toHaveLength(1);
   });
 
-  test("rating progress — single-purpose is unchanged", async ({ request, db }) => {
+  test("rating progress — the single-purpose ask still answers", async ({ request, db }) => {
+    // The feature is not deleted, only its recogniser.
+    engineOn({ "@Match Time who hasn't rated yet?": RATING_Q });
     const res = await postAnalyze(request, [
       {
         waMessageId: msgId(),
@@ -445,8 +474,28 @@ test.describe("the answer peels keep the sender's OUT", () => {
       },
     ]);
     expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
-    expect(
-      res.results.map((r: { intent: string | null }) => r.intent),
-    ).toContain("rating_progress");
+    // The intent label the deleted fast path wrote, kept on purpose so
+    // the admin log's vocabulary is unchanged by the move to the model.
+    expect(res.results.map((r: { intent: string | null }) => r.intent)).toContain(
+      "rating_progress",
+    );
+    expect(speaks(res)).toHaveLength(1);
+  });
+
+  test("rating progress — a non-admin is refused, and silently", async ({ request, db }) => {
+    // The answer NAMES the players who have not rated, which is why this
+    // gate survived the conversion unchanged.
+    engineOn({ "@Match Time who hasn't rated yet please": RATING_Q });
+    const res = await postAnalyze(request, [
+      {
+        waMessageId: msgId(),
+        body: "@Match Time who hasn't rated yet please",
+        authorPhone: PHONE.collector,
+        authorName: NAME.collector,
+        botMentioned: true,
+      },
+    ]);
+    expect(await statusOf(db, U.collector)).toBe("CONFIRMED");
+    expect(speaks(res)).toHaveLength(0);
   });
 });

@@ -62,6 +62,10 @@ import {
   STATS_BLAST_REQUIRES_TAG,
   STATS_BLAST_TAG_MUST_BE_EXPLICIT,
 } from "../stats-blast";
+import {
+  RATING_PROGRESS_IS_ADMIN_ONLY,
+  RATING_PROGRESS_TAG_MUST_BE_EXPLICIT,
+} from "../rating-progress-answer";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
 import { resolveReminderPhrase } from "../reminder-time";
 import { resolvePerson } from "./identity";
@@ -1247,6 +1251,63 @@ export function decide(input: EngineInput): EngineResult {
             `payment question answered from the last settled match (${state.payments?.kind ?? "not loaded"})`,
           );
           break;
+        case "rating_progress": {
+          // ═══════════════════════════════════════════════════════════
+          // HOW MANY HAVE RATED — 2026-09-11, and this branch IS the fix
+          // ═══════════════════════════════════════════════════════════
+          //
+          // Until today this ask was recognised by
+          // `looksLikeRatingProgressRequest` in `analyze/route.ts`: a
+          // rating word AND a progress word, anywhere in the body, in a
+          // clause-peeled fast path that route's own comment called "the
+          // WIDEST trigger of the six peels" — "I haven't rated yet and
+          // I'm out Thursday" satisfies both halves and addresses
+          // nobody. It is the same conjunction shape that matched half a
+          // sentence on 2026-09-01 and queued 69 mass DMs on 2026-09-10.
+          // The full argument is in `lib/rating-progress-answer.ts`.
+          //
+          // ── WHO MAY ASK. Admin-only, exactly as the deleted fast path
+          //    gated it. Unchanged deliberately: this is a fix to the
+          //    CLASSIFIER, not a re-litigation of the permission. It is
+          //    also the one place this answer differs from `payments`,
+          //    which argues at length that it needs no admin gate
+          //    because it names nobody. THIS ONE NAMES NAMES.
+          //
+          // ── THE TAG is the question route's own, checked at the top
+          //    of this function: `msg.tagged`, which is
+          //    `messageTagsBot`. Not the stricter
+          //    `messageMentionsBotExplicitly` the two bulk-DM doors use
+          //    — this answer sends no DM, so the asymmetry that justifies
+          //    that gate does not exist here. See
+          //    `RATING_PROGRESS_TAG_MUST_BE_EXPLICIT`, which is the
+          //    named constant carrying that decision and is read below
+          //    so that flipping it actually changes behaviour.
+          const senderIsAdmin =
+            !!msg.senderUserId && !!w.roster.find((m2) => m2.userId === msg.senderUserId)?.isAdmin;
+          if (RATING_PROGRESS_IS_ADMIN_ONLY && !senderIsAdmin) {
+            // Silence, not a refusal sentence: who has and has not rated
+            // is admin-facing, and the deleted fast path stayed silent
+            // for a non-admin too (no react, no reply).
+            out.reasons.push("only an admin may see who has and has not rated");
+            out.disposition = "noop";
+            break;
+          }
+          if (
+            RATING_PROGRESS_TAG_MUST_BE_EXPLICIT &&
+            !(msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }))
+          ) {
+            out.reasons.push("a rating-progress answer requires an explicit @Match Time mention");
+            out.disposition = "noop";
+            break;
+          }
+          speech.push({ kind: "answer_rating_progress", messageId: msg.id });
+          out.reasons.push(
+            `rating-progress question answered from the last match played (${
+              state.ratingProgress ? (state.ratingProgress.ok ? "loaded" : "nothing to check") : "not loaded"
+            })`,
+          );
+          break;
+        }
         case "bench":
           speech.push({ kind: "answer_bench", messageId: msg.id });
           break;

@@ -49,6 +49,10 @@ import { renderGuestNameAsk } from "../guest-name-ask";
 // corpus can judge this pipeline. The functions themselves are the same
 // ones, moved and re-exported, not copies.
 import { composeSquadStatusPost, formatTeamsPost } from "../group-copy";
+// The Prisma-free half of `rating-progress.ts`, split out on 2026-09-11
+// precisely so this file can render that answer. See this module's
+// header for what a Prisma import here does to the corpus spec.
+import { formatRatingProgressReply } from "../rating-progress-answer";
 import { resolvePerson } from "./identity";
 import type { EngineResult, SquadState } from "./types";
 
@@ -249,6 +253,33 @@ export function compose(result: EngineResult): ComposedOutput {
                   ? `💳 All settled for ${p.kickoffLabel} 🙌`
                   : `💳 ${p.unpaid} of ${p.chargeable} still to pay for ${p.kickoffLabel}. I don't put names to that in the group.`;
         utterances.push({ messageId: s.messageId, text });
+        break;
+      }
+
+      case "answer_rating_progress": {
+        // HOW MANY HAVE RATED, AND WHO HAS NOT. Rendered by
+        // `formatRatingProgressReply`, byte-for-byte the sentence the
+        // deleted fast path posted: the copy is not the thing that went
+        // wrong, and a rewrite would be an unreviewed change riding
+        // along with a fix.
+        //
+        // THIS ANSWER NAMES NAMES, which `answer_payments` deliberately
+        // cannot. That is why the engine gates it on the sender being an
+        // admin — see `rating-progress-answer.ts`.
+        const p = state.ratingProgress;
+        if (!p) {
+          // NOT LOADED. `answer-batch.ts` does the rating read only when
+          // a `rating_progress` topic survived ownership, so reaching
+          // here means the intent was emitted without it. Saying nothing
+          // sends this message to that module's silent-id check, which
+          // disowns it — a hand-back with a receipt rather than an empty
+          // answer.
+          operatorNotes.push(
+            `compose: answer_rating_progress for ${s.messageId} with no rating snapshot loaded; saying nothing`,
+          );
+          break;
+        }
+        utterances.push({ messageId: s.messageId, text: formatRatingProgressReply(p) });
         break;
       }
 

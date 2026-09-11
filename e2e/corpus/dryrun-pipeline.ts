@@ -375,6 +375,7 @@ export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
     // names what it counted rather than implying "all time".
     appearanceWindowDays: 30,
     payments: null,
+    ratingProgress: null,
     lastBotPost: null,
     features: {
       attendance: org?.featureAttendance ?? true,

@@ -189,6 +189,7 @@ import type {
   PaymentSnapshot,
   ProposedWrite,
   QuestionTopic,
+  RatingProgress,
   Route,
   SquadState,
 } from "./types";
@@ -351,6 +352,14 @@ export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
   "score",
   "stats",
   "options",
+  // 2026-09-11. The SECOND topic that reads something `loadSquadState`
+  // does not load, and it is on this list because a regex came off it:
+  // `looksLikeRatingProgressRequest` (a rating word AND a progress word,
+  // anywhere in the body) used to claim this ask in a clause-peeled fast
+  // path. Measured `question` 60/60 on the live router, which is why it
+  // is a topic here rather than an `admin_ops` action like the stats
+  // blast. See `lib/rating-progress-answer.ts`.
+  "rating_progress",
 ];
 
 /**
@@ -607,6 +616,10 @@ export interface AnswerBatchDeps {
     orgId: string,
     completedMatch: SquadState["completedMatch"],
   ) => Promise<PaymentSnapshot>;
+  /** The OTHER targeted read that does not happen on every batch (2026-
+   *  09-11). Injected for the same reason: a test must be able to prove
+   *  it is called for a `rating_progress` topic and for nothing else. */
+  loadRatingProgress?: (orgId: string) => Promise<RatingProgress>;
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated engine rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
@@ -626,6 +639,13 @@ export interface AnswerBatchDeps {
  * MORE now, because those lines are `composeOperatorNote`'s only source
  * for the "why" clause it prints beside each lost message.
  */
+/** Is this message the rating-progress ask? Used twice: to decide
+ *  whether the targeted read happens, and to keep the intent label the
+ *  deleted fast path wrote. */
+function isRatingProgress(f: Facts | undefined): boolean {
+  return f?.kind === "question" && f.topic === "rating_progress";
+}
+
 function empty(degradations: string[] = []): AnswerBatchResult {
   return {
     ownedIds: new Set(),
@@ -1044,6 +1064,44 @@ export async function runAnswerBatch(args: {
     }
   }
 
+  // ── Stage 2c: the OTHER targeted read — rating progress ────────────
+  //
+  // Identical in every respect to the payment load above, including the
+  // fail-open: a rating read that throws leaves `state.ratingProgress`
+  // null, the composer says nothing under `answer_rating_progress`, and
+  // the silent-id check below disowns the message. A fixture question
+  // beside it still gets its answer.
+  //
+  // It is here because `looksLikeRatingProgressRequest` is deleted
+  // (2026-09-11). That regex was two keyword tests ANDed over a whole
+  // body — the shape that matched half a sentence on 2026-09-01 and
+  // queued 69 mass DMs on 2026-09-10 — and it sat in a clause-peeled
+  // fast path ahead of the router. Now the model says which messages are
+  // this ask, and this is the one place the data behind the answer is
+  // read.
+  const wantsRatingProgress = [...ownedIds].some((id) => {
+    const f = factsById.get(id);
+    return f?.kind === "question" && f.topic === "rating_progress";
+  });
+  if (wantsRatingProgress) {
+    try {
+      const load =
+        deps.loadRatingProgress ??
+        (async (o: string) => {
+          const m = await import("./load-state");
+          return m.loadRatingProgressSnapshot(o);
+        });
+      state = { ...state, ratingProgress: await load(orgId) };
+    } catch (err) {
+      const detail =
+        `${ANSWER_DEGRADED_PREFIX} the rating-progress read failed (${
+          err instanceof Error ? err.message : String(err)
+        }); the rating question in this batch goes unanswered and onto this note`;
+      console.error("[answer-engine] rating-progress load failed:", err);
+      degradations.push(detail);
+    }
+  }
+
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => ({
     id: m.waMessageId,
@@ -1203,7 +1261,17 @@ export async function runAnswerBatch(args: {
       route: m.route as Route,
       reply,
       react,
-      intent: m.route === "balancer" ? "show_teams_request" : "question",
+      // `rating_progress` keeps the label the deleted fast path wrote,
+      // so the admin log's vocabulary — and every sweep over it,
+      // including `e2e/replay/router-recall.ts`'s severity map — is
+      // unchanged by the move from regex to model. Same decision #72
+      // took for `stats_blast`.
+      intent:
+        m.route === "balancer"
+          ? "show_teams_request"
+          : isRatingProgress(factsById.get(m.waMessageId))
+            ? "rating_progress"
+            : "question",
       // `AnalyzedMessage.action`, derived exactly as `route.ts:2197-2200`
       // derives it for a message with no attendance write. "none" would
       // make every step-7 answer look like a no-op to anything filtering

@@ -75,6 +75,9 @@ export const ROUTER_STUB_FILE_ENV = "MT_TEST_ROUTER_STUB_FILE";
 /** §10 step 6's extractor seam. Mirrors `EXTRACTOR_STUB_FILE_ENV` in
  *  `src/lib/pipeline/extractor-stub.ts`. */
 export const EXTRACTOR_STUB_FILE_ENV = "MT_TEST_EXTRACTOR_STUB_FILE";
+/** The DM surface's only classifier (2026-09-11). Mirrors
+ *  `DM_INTENT_STUB_FILE_ENV` in `src/lib/dm-intent.ts`. */
+export const DM_INTENT_STUB_FILE_ENV = "MT_TEST_DM_INTENT_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -204,6 +207,18 @@ export function assertSeamMatchesMode(
           `grading your own answer key, the trap e2e/corpus/README.md names under "Do not ` +
           `'record' stubs from a live run".\n` +
           `  Fix:  unset ${EXTRACTOR_STUB_FILE_ENV} in your shell — the suite sets it itself ` +
+          `for stubbed runs and pins it empty for live ones.`,
+      );
+    }
+    if (!blank(childEnv[DM_INTENT_STUB_FILE_ENV])) {
+      throw new E2EPreflightError(
+        `e2e: REFUSING to run — ${LIVE_ENV_FLAG}=1 asks for a LIVE model run, but the ` +
+          `server under test would still see ${DM_INTENT_STUB_FILE_ENV}=${childEnv[DM_INTENT_STUB_FILE_ENV]}.\n` +
+          `  That file answers for lib/dm-intent.ts, the 1:1 DM surface's only classifier ` +
+          `since 2026-09-11 and the single gate in front of a 13-27 person mass DM. A ` +
+          `"live" sweep reading a canned intent out of it would be grading its own answer ` +
+          `key in the one place this product cannot afford it.\n` +
+          `  Fix:  unset ${DM_INTENT_STUB_FILE_ENV} in your shell — the suite sets it itself ` +
           `for stubbed runs and pins it empty for live ones.`,
       );
     }

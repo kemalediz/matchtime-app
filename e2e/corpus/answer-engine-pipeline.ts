@@ -92,6 +92,13 @@ const OWNED_CASE_IDS = new Set([
   "S16e-roster-question-names-the-players",
   "S16f-fixture-question-states-time-and-venue",
   "S19b-show-teams-with-none-generated-says-so",
+  // 2026-09-11 — the `rating_progress` topic and its control. They are
+  // owned here rather than left ungraded because the whole change is a
+  // classification moving out of a regex and into the model, and this
+  // pipeline is the one that grades the real router and the real
+  // question extractor against a real world.
+  "ADMIN-rating-progress-the-tagged-ask-is-answered",
+  "ADMIN-rating-progress-a-reminder-to-the-players",
 ]);
 
 /** Both routes, both flags on. The point of the sweep is to measure

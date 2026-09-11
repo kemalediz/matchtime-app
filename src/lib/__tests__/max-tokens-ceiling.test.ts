@@ -198,6 +198,8 @@ const TRUNCATION_FAILS_CLOSED: Record<string, string> = {
   "lib/match-availability-classifier.ts":
     "parse() fails → UNCLEAR verdict, which is the safe default.",
   "lib/roster-survey-classifier.ts": "parse() fails → the caller's fallback classification.",
+  "lib/dm-intent.ts":
+    "parseDmIntent JSON.parse fails on a truncated body → `other`, which DMs nobody.",
   // ── `lib/window-analyzer.ts` REMOVED FROM THIS LIST (§10 step 8) ──
   //
   //   Its exemption read "Shadow analysis only — off by default (#28),
