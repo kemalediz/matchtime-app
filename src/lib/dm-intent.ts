@@ -184,6 +184,16 @@ const OTHER = (reasoning: string): DmIntentClassification => ({
  */
 export const DM_INTENT_STUB_FILE_ENV = "MT_TEST_DM_INTENT_STUB_FILE";
 
+/** What separates the context lines from the message itself. */
+const MESSAGE_HEADER = "THE DM:";
+
+/** Everything after the header, trimmed — so a multi-line message is
+ *  matched whole rather than by its last line. */
+export function dmBodyOf(user: string): string {
+  const i = user.indexOf(`${MESSAGE_HEADER}\n`);
+  return (i === -1 ? user : user.slice(i + MESSAGE_HEADER.length + 1)).trim();
+}
+
 interface DmIntentStub {
   /** Trimmed message body → the intent the model would have returned. */
   bodies?: Record<string, string>;
@@ -203,7 +213,7 @@ function stubCall(env: NodeJS.ProcessEnv): DmIntentCall | null {
       // which is the direction that cannot invent a mass DM.
       cfg = {};
     }
-    const body = user.split("\n").pop()?.trim() ?? "";
+    const body = dmBodyOf(user);
     if ((cfg.fail ?? []).includes(body)) throw new Error("dm-intent stub: forced failure");
     const intent = cfg.bodies?.[body] ?? "other";
     return JSON.stringify({ intent, confidence: 1, reasoning: "dm-intent stub" });
@@ -227,9 +237,11 @@ export async function classifyDmIntent(
   const user = [
     context.clubName ? `Club: ${context.clubName}` : null,
     context.senderName ? `Admin: ${context.senderName}` : null,
-    // LAST LINE, and the stub seam reads it as such. Kept unquoted so a
-    // multi-line WhatsApp message arrives as the model will read it.
-    text.trim(),
+    // A HEADER, not a last line, and `extractors.ts` does the same for
+    // the same reason: a real WhatsApp message is routinely several
+    // lines long — the 2026-09-01 incident message is — so a stub seam
+    // that read only the last line would silently classify a fragment.
+    `${MESSAGE_HEADER}\n${text.trim()}`,
   ]
     .filter(Boolean)
     .join("\n");

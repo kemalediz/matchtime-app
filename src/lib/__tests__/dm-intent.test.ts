@@ -22,6 +22,7 @@ import {
   DM_INTENT_MIN_CONFIDENCE,
   DM_INTENT_SYSTEM_PROMPT,
   classifyDmIntent,
+  dmBodyOf,
   parseDmIntent,
   runDmAdminIntent,
   type DmAdminIntentDeps,
@@ -170,6 +171,23 @@ describe("classifyDmIntent — the model can only ever say what it saw", () => {
   it("forces a wobbly answer down to `other`", async () => {
     const c = await classifyDmIntent("x", {}, answer("recruit_blast", DM_INTENT_MIN_CONFIDENCE - 0.01));
     expect(c.intent).toBe("other");
+  });
+
+  it("sends the WHOLE message, not its last line", async () => {
+    // A real WhatsApp message is routinely several lines long — the
+    // 2026-09-01 incident message is — and a seam that read only the
+    // last line would classify a fragment. The header is what makes the
+    // body recoverable whole.
+    let seen = "";
+    await classifyDmIntent(
+      "Najib is out.\n\nWe need one more player.",
+      { senderName: "Kemal Ediz" },
+      async (_s, user) => {
+        seen = user;
+        return JSON.stringify({ intent: "other", confidence: 1, reasoning: "x" });
+      },
+    );
+    expect(dmBodyOf(seen)).toBe("Najib is out.\n\nWe need one more player.");
   });
 
   it("strips a markdown fence, which the model still sometimes adds", () => {
