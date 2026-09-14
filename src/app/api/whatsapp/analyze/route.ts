@@ -2688,7 +2688,17 @@ async function handleAnalyzeRequest(request: Request) {
         : r.invited && r.invited > 0
           ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
           : r.reason
-            ? r.reason // full-squad case: no open spots to recruit for.
+            ? // FULL-SQUAD CASE, and the words are the LIB's on purpose.
+              // With the bench feature on this is the bench invitation
+              // (2026-09-14: "is already full, no open spots to recruit
+              // for" was answering an ask for BENCHERS, which are wanted
+              // because the squad is full); with it off it is the old
+              // refusal, which for that org is true. `recruit.ts`'s
+              // capacity guard is the only place holding the squad, the
+              // features and the match at once, and the DM admin path
+              // (`dm-reply/route.ts`) prints the same string — deciding
+              // it here would have fixed one caller of two.
+              r.reason
             : r.alreadyInvited && r.alreadyInvited > 0
               ? // Branch 3: candidates existed but were ALL already pinged on a
                 // previous recruit call — they just haven't replied yet.

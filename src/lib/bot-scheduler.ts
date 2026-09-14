@@ -2034,18 +2034,21 @@ async function computeForMatch(
 // ─────────────────────── Bench-confirmation sweeper ───────────────────────
 
 /**
- * Move forward any PendingBenchConfirmation whose window has expired. For
- * each expired unresolved row, mark the user as DROPPED and create a new
- * PendingBenchConfirmation for the next bench player. Call this right at
- * the top of /due-posts so the resulting new prompt gets posted in the
- * same poll cycle.
+ * CLOSE any BenchSlotOffer whose match has already kicked off — nobody
+ * can claim a slot for a game that has started. Called at the top of
+ * /due-posts so a stale offer never outlives its match.
+ *
+ * NOBODY IS EVER DROPPED OR ELIMINATED HERE, and there is no expiry of
+ * people. The bench redesign (2026-05-19) replaced the sequential
+ * `PendingBenchConfirmation` chain — one named bencher at a time, on a
+ * timer, dropped when it ran out — with ONE offer broadcast to the whole
+ * bench until somebody claims it. The export name was kept so
+ * /due-posts's call site did not have to change, and the doc comment
+ * that used to stand here still described the deleted chain ("mark the
+ * user as DROPPED and create a new PendingBenchConfirmation"). Corrected
+ * 2026-09-14: a comment that contradicts the function underneath it is
+ * how a live feature comes to read as demolished.
  */
-// Bench redesign 2026-05-19: there is NO elimination/expiry of
-// people any more — an offer is open to the whole bench until
-// someone claims it. This sweep now only does cleanup: close any
-// offer whose match has already kicked off (nobody can claim a slot
-// for a game that's started). Same export name so /due-posts is
-// unchanged. Nobody is ever dropped here.
 export async function sweepExpiredBenchConfirmations(orgId: string): Promise<void> {
   const now = new Date();
   await db.benchSlotOffer.updateMany({
@@ -2057,11 +2060,24 @@ export async function sweepExpiredBenchConfirmations(orgId: string): Promise<voi
   });
 }
 
-/**
- * Create a PendingBenchConfirmation when someone drops AND the match is
- * already full (status UPCOMING with confirmed === maxPlayers). Call this
- * from the dropout flow (lib/attendance.ts).
+/*
+ * ⚰️ REMOVED 2026-09-14: a doc comment reading "Create a
+ * PendingBenchConfirmation when someone drops AND the match is already
+ * full … Call this from the dropout flow (lib/attendance.ts)" stood
+ * here, dangling above `slotEmoji`, which is not that function and never
+ * was. The function it described was replaced by
+ * `requestBenchConfirmationOnDrop` (further down this file, correctly
+ * documented) in the 2026-05-19 bench redesign, and the comment outlived
+ * it by four months attached to an unrelated helper.
+ *
+ * It is deleted rather than corrected because there is nothing here to
+ * correct: `slotEmoji` has its own doc comment below. It is called out
+ * because it did real damage — reading this file, the bench system looks
+ * demolished, when in fact the whole path (auto-bench on a full squad,
+ * BenchSlotOffer broadcast, group tag, per-bencher DM, first claim wins)
+ * is live and `featureBench` is on for Sutton FC.
  */
+
 /**
  * Slot-emoji helper. Used to be a 1️⃣–🔟 keycap map but Kemal flagged
  * those as confusing (read as reaction counts, go stale on drops,

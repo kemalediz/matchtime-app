@@ -139,6 +139,53 @@ test("the genuine admin rating-progress ask still answers, and blasts nobody", a
   expect(await inviteDms(db)).toHaveLength(before);
 });
 
+/**
+ * ── THE SAME DEFECT, ON THE 1:1 SURFACE (2026-09-14) ─────────────────
+ *
+ * The group reply and this DM reply are two renderings of ONE
+ * `RecruitResult`, and on 14 Sept the group one told Kemal "The squad
+ * for *Tuesday 7-a-side* is already full — no open spots to recruit
+ * for." in answer to an ask for BENCHERS.
+ *
+ * This surface was differently wrong: it dropped `reason` on the floor
+ * and reported "Everyone who played recently has already responded …
+ * nobody new to invite", which is not what happened either. Nobody was
+ * asked, the squad was simply full.
+ *
+ * Both now read the decision `inviteRecentPlayers` made, so an admin who
+ * asks by DM hears the same true thing the group hears.
+ *
+ * LAST IN THE FILE, because it shrinks the fixture match's capacity to
+ * make it full and every test above it assumes a match with room.
+ */
+test("a recruit ask by DM into a FULL squad invites the bench, and DMs nobody", async ({
+  request,
+  db,
+}) => {
+  // The fixture match is 4 confirmed + 1 bench of 5. Dropping capacity
+  // to 4 makes it full without inventing players — and it exercises the
+  // exact guard (`openSlots <= 0`), not a lookalike.
+  await db.run(`UPDATE "Match" SET "maxPlayers" = 4 WHERE id = $1`, [MATCH.upcoming]);
+  const bench = await db.one<{ featureBench: boolean }>(
+    `SELECT "featureBench" FROM "Organisation" WHERE id = $1`,
+    [ORG_ID],
+  );
+  expect(bench?.featureBench, "the fixture org must have the bench on").toBe(true);
+
+  setDmIntentStub({ bodies: { [RECRUIT]: "recruit_blast" } });
+  const before = (await inviteDms(db)).length;
+  const json = await postDm(request, PHONE.admin, RECRUIT);
+  expect(json.handled).toBe("recruit-dm");
+
+  const replies = await dmsTo(db, PHONE.admin);
+  expect(replies[0].text).toContain("the bench is open");
+  expect(replies[0].text).toContain("*IN*");
+  expect(replies[0].text).not.toContain("already full");
+  expect(replies[0].text).not.toContain("already responded");
+  // A full squad means the blast is skipped, on BOTH surfaces.
+  expect(await inviteDms(db)).toHaveLength(before);
+});
+
 test("PREMISE: the seeded admin really is an admin, and the collector is not", async ({ db }) => {
   // A case that cannot fail is not a case. If the fixture ever stopped
   // making U.admin an OWNER, every refusal above would pass for the

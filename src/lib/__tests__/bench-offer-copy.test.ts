@@ -30,6 +30,7 @@ import {
   buildBenchIntroLine,
   buildBenchAskedLine,
   benchClaimPhrasingExample,
+  buildFullSquadBenchInvite,
 } from "@/lib/bench-offer-copy";
 
 const GROUP = {
@@ -235,3 +236,95 @@ describe("the phrasing example honours the flag in both directions", () => {
  * covered above: the copy is the bench-offer feature's, not the
  * post-processor's, and the flag it is pinned to is a shipped guard.
  */
+
+/**
+ * ── THE FIFTH SURFACE: THE RECRUIT ASK INTO A FULL SQUAD ─────────────
+ *
+ * 2026-09-14, Sutton FC, live. Kemal asked his group, untagged, for
+ * benchers: "it would be great to have some benchers in case someone
+ * drops tomorrow? Anybody else interested". MatchTime replied "The squad
+ * for *Tuesday 7-a-side* is already full — no open spots to recruit
+ * for." and the match kicked off at 14 of 14 with nobody on the bench.
+ *
+ * The answer was backwards: benchers are wanted BECAUSE the squad is
+ * full. `buildFullSquadBenchInvite` is what MatchTime says instead, and
+ * it lives in this file because it is a PROMISE about the bench, the
+ * same promise `buildBenchIntroLine` makes on day one, made again at the
+ * moment somebody asks. If it ever drifts from what the platform can
+ * receive (today: no reactions, inbound forwarding is dead) it sends a
+ * volunteer off to do something that does nothing, which is the failure
+ * this whole file exists to prevent.
+ */
+describe("buildFullSquadBenchInvite — the answer to a recruit ask at 14 of 14", () => {
+  const ARGS = { matchName: "Tuesday 7-a-side", confirmedCount: 14, maxPlayers: 14 };
+
+  it("never repeats the incident sentence", () => {
+    for (const on of [false, true]) {
+      const text = buildFullSquadBenchInvite({ ...ARGS, mentionReactions: on });
+      expect(text).not.toContain("no open spots");
+      expect(text).not.toContain("already full");
+    }
+  });
+
+  it("names the match, states the honest count, and opens the bench", () => {
+    const text = buildFullSquadBenchInvite({ ...ARGS, mentionReactions: false });
+    expect(text).toContain("*Tuesday 7-a-side*");
+    expect(text).toContain("14 of 14");
+    expect(text.toLowerCase()).toContain("bench");
+  });
+
+  it("tells a volunteer the one thing that actually works: reply IN", () => {
+    const text = buildFullSquadBenchInvite({ ...ARGS, mentionReactions: false });
+    expect(text).toContain("*IN*");
+    expect(text).not.toMatch(/\breact\b/i);
+    expect(text).not.toMatch(/\btap\b/i);
+    expect(text).not.toContain("👍");
+    expect(text).not.toContain("👎");
+  });
+
+  it("describes the promotion the way the day-one promise does, first come", () => {
+    const text = buildFullSquadBenchInvite({ ...ARGS, mentionReactions: false });
+    expect(text.toLowerCase()).toContain("first");
+    expect(text.toLowerCase()).toContain("drops");
+  });
+
+  it("defaults to the flag, so production copy cannot drift from it", () => {
+    expect(buildFullSquadBenchInvite(ARGS)).toBe(
+      buildFullSquadBenchInvite({ ...ARGS, mentionReactions: BENCH_PROMPT_MENTION_REACTIONS }),
+    );
+  });
+
+  it("offers the 👍 again the moment the flag is flipped back on", () => {
+    const text = buildFullSquadBenchInvite({ ...ARGS, mentionReactions: true });
+    expect(text).toContain("👍");
+    expect(text).toContain("*IN*"); // the reply route never goes away
+  });
+
+  it("makes the SAME promotion promise as the day-one intro line", () => {
+    // Both sentences describe one mechanism (a drop opens a
+    // BenchSlotOffer that the first claimer takes), so they share the
+    // fragment rather than each carrying their own wording. Two copies
+    // of one promise is one copy too many: a flag flip could move one
+    // and leave the other lying.
+    for (const on of [false, true]) {
+      const claim = on
+        ? "the first to react 👍 or reply *IN* takes the slot"
+        : "the first to reply *IN* takes the slot";
+      expect(buildBenchIntroLine({ mentionReactions: on })).toContain(claim);
+      expect(buildFullSquadBenchInvite({ ...ARGS, mentionReactions: on })).toContain(claim);
+    }
+  });
+
+  it("uses no em dashes, en dashes or slashes (house style)", () => {
+    for (const on of [false, true]) {
+      const text = buildFullSquadBenchInvite({ ...ARGS, mentionReactions: on });
+      expect(text).not.toContain("—");
+      expect(text).not.toContain("–");
+      expect(text).not.toContain("/");
+    }
+  });
+
+  it("stays short — a WhatsApp reply, not a letter", () => {
+    expect(buildFullSquadBenchInvite(ARGS).length).toBeLessThan(400);
+  });
+});

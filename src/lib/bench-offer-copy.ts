@@ -127,16 +127,102 @@ export function buildBenchOfferDm(c: BenchOfferDmCopy): string {
   );
 }
 
+/**
+ * HOW A BENCH PLACE TURNS INTO A GAME, in one fragment.
+ *
+ * Extracted 2026-09-14 so the day-one PROMISE and the answer to a
+ * recruit ask (`buildFullSquadBenchInvite`) cannot say different things
+ * about the same mechanism. Both are promises made before there is any
+ * offer to point at, both are read by people deciding whether it is
+ * worth volunteering, and both have to move together when
+ * BENCH_PROMPT_MENTION_REACTIONS flips. Two copies of one promise is one
+ * copy too many: the flag would move one and leave the other lying.
+ *
+ * The wording is `buildBenchIntroLine`'s, unchanged.
+ */
+function benchPromotionHow(c: ReactionGate): string {
+  const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
+  return reactions
+    ? "the first to react 👍 or reply *IN* takes the slot"
+    : "the first to reply *IN* takes the slot";
+}
+
 /** The bench line in the bot's day-one intro post. It is a promise about
  *  how the feature behaves, so it is gated with the feature. */
 export function buildBenchIntroLine(c: ReactionGate = {}): string {
-  const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  const how = reactions
-    ? "the first to react 👍 or reply *IN* takes the slot"
-    : "the first to reply *IN* takes the slot";
+  const how = benchPromotionHow(c);
   return (
     `🔁  *Bench promotion* — If someone drops, I tag the bench here and ` +
     `${how}. No timeout, and nobody loses their place for missing it.`
+  );
+}
+
+export interface FullSquadBenchInviteCopy extends ReactionGate {
+  /** The activity name, e.g. "Tuesday 7-a-side". Rendered bold. */
+  matchName: string;
+  /** CONFIRMED right now. Printed, not rounded to "full". */
+  confirmedCount: number;
+  maxPlayers: number;
+}
+
+/**
+ * ── THE ANSWER TO "ANY BENCHERS?" WHEN THE SQUAD IS FULL ─────────────
+ *
+ * 2026-09-14, Sutton FC, live. The owner posted, untagged:
+ *
+ *   "it would be great to have some benchers in case someone drops
+ *    tomorrow? Anybody else interested"
+ *
+ * MatchTime replied "The squad for *Tuesday 7-a-side* is already full,
+ * no open spots to recruit for." The match then kicked off at 14 of 14
+ * with NOBODY on the bench.
+ *
+ * That answer is backwards, and it is not a wording problem. Benchers
+ * are wanted PRECISELY BECAUSE the squad is full, and MatchTime already
+ * does the thing he was asking for: a late IN into a full squad is
+ * written as a BENCH row by the capacity rule (`attendance.ts`,
+ * `engine.ts`), a confirmed player dropping opens ONE BenchSlotOffer
+ * broadcast to every bencher, and the first to claim it plays. The
+ * recruit path's capacity guard simply could not see any of that, so it
+ * refused the volunteers and the club lost its cover.
+ *
+ * ── EVERY CLAUSE IS SOMETHING THE SYSTEM REALLY DOES ─────────────────
+ *
+ *   "full at N of M"         the count as the group can see it. Printed
+ *                            rather than described so the reply is
+ *                            checkable against the squad post above it.
+ *   "say *IN* and I'll put   `registerAttendance` with a full squad
+ *    you on the bench"       writes BENCH, today, with no admin step.
+ *   "if someone drops"       `cancelAttendance` →
+ *                            `requestBenchConfirmationOnDrop`, which
+ *                            opens the offer only when a bench exists.
+ *   benchPromotionHow()      the claim instruction, shared with the
+ *                            day-one promise and gated on what the
+ *                            platform can actually receive.
+ *
+ * ── WHY IT IS A GROUP REPLY AND NOT A DM BLAST ───────────────────────
+ *
+ * The tempting version of this fix DMs recent players inviting them to
+ * the bench. It is deliberately NOT built. `recruit-lookback.ts`: "the
+ * bot runs on an UNOFFICIAL WhatsApp client; a mass DM risks the account
+ * being banned, which takes the whole product down." A reply in the
+ * group reaches the same people, in the thread where they asked, at no
+ * risk and no cost. The recruit path already refuses to DM into a full
+ * squad; this changes what it SAYS, not what it sends.
+ *
+ * ── WHAT IT MUST NEVER SAY ───────────────────────────────────────────
+ *
+ * A 👍. Inbound reaction forwarding is dead on the Pi (see the essay on
+ * BENCH_PROMPT_MENTION_REACTIONS at the top of this file), and this
+ * sentence is read by somebody deciding whether to volunteer. Telling
+ * them to tap something that does nothing is how a club turns up short
+ * believing it has cover.
+ */
+export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
+  return (
+    `*${c.matchName}* is full at ${c.confirmedCount} of ${c.maxPlayers}, but the bench is open. ` +
+    `Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group ` +
+    `and ${benchPromotionHow(c)}. 🙏`
   );
 }
 
