@@ -11,6 +11,7 @@
  * the work for a given orgId.
  */
 import { db } from "./db";
+import { buildFullSquadBenchInvite } from "./bench-offer-copy";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { formatLondon } from "./london-time";
@@ -275,7 +276,13 @@ export async function inviteRecentPlayers(
   // Only meaningful when the org actually tracks attendance. For MoM/
   // ratings-only orgs (e.g. Sutton Lads) confirmed is always 0, so the
   // count would falsely read "14 spots left" in every invite — suppress it.
-  const attendanceOn = (await getOrgFeatures(orgId)).attendance;
+  // One features read, two consumers. `attendance` suppresses the "N
+  // spots left" phrase for ratings-only orgs; `bench` decides what a
+  // recruit ask into a FULL squad is answered with (the capacity guard
+  // below). Reading both off the same call keeps the query count
+  // unchanged — the bench branch costs nothing.
+  const features = await getOrgFeatures(orgId);
+  const attendanceOn = features.attendance;
   // Real capacity, independent of the attendance feature flag. CONFIRMED
   // fills the squad, so open slots = maxPlayers − confirmed. `need` is kept
   // for DISPLAY copy (suppressed for ratings-only orgs) so the visible
@@ -287,12 +294,61 @@ export async function inviteRecentPlayers(
   // normal return paths — compute it once, up front.
   const matchWhen = formatLondon(next.date, "EEE d MMM, HH:mm");
 
-  // CAPACITY GUARD: if the confirmed squad is already full there are no
-  // open spots to recruit for — bail before building the candidate map /
-  // DM loop. Only applies when the org tracks capacity (maxPlayers > 0);
-  // for attendance-off orgs confirmedCount is always 0 so openSlots stays
+  // ── CAPACITY GUARD ──────────────────────────────────────────────────
+  //
+  // A full confirmed squad has no open spot to DM anyone into, so the
+  // blast is skipped: bail before the candidate map and the DM loop.
+  // Only applies when the org tracks capacity (maxPlayers > 0); for
+  // attendance-off orgs confirmedCount is always 0 so openSlots stays
   // > 0 and this never blocks them (they recruit via the group, capacity
   // isn't really tracked) — desired behaviour.
+  //
+  // ── WHAT IS ANSWERED IS NOT "NOTHING" (2026-09-14) ──────────────────
+  //
+  // Skipping the blast is right. The SENTENCE that went with it was not.
+  // Live, in the Sutton group, the owner asked untagged:
+  //
+  //   "it would be great to have some benchers in case someone drops
+  //    tomorrow? Anybody else interested"
+  //
+  // and MatchTime answered "The squad for *Tuesday 7-a-side* is already
+  // full — no open spots to recruit for." Backwards: benchers are wanted
+  // BECAUSE the squad is full. The match kicked off 14 of 14 with an
+  // empty bench, because the reply talked the volunteers out of
+  // volunteering.
+  //
+  // With `featureBench` on, a full squad is the one state where MatchTime
+  // has something genuinely useful to offer a volunteer, and it needs no
+  // admin and no new code: a late IN is written BENCH by the capacity
+  // rule, a drop opens a BenchSlotOffer, the first bencher to reply IN
+  // takes the slot. So the branch is on the FEATURE, not on the phrasing.
+  //
+  // ── WHY THE DECISION IS HERE AND THE WORDS ARE NOT ──────────────────
+  //
+  // Here, because this is the only place that holds all three facts at
+  // once (the squad is full, the org's features, which match it is) and
+  // because ONE branch then fixes BOTH surfaces. The group blast in
+  // `analyze/route.ts` printed this `reason` verbatim; the admin-by-DM
+  // path in `dm-reply/route.ts` dropped it and said "everyone has
+  // already responded", which for a full squad was never true either.
+  // Both now render this decision, so they cannot disagree about the
+  // state of the squad. Deciding it at a call site would have fixed one.
+  //
+  // The words live in `bench-offer-copy.ts` with every other sentence
+  // that promises a bench promotion, so they cannot drift from what the
+  // platform can actually receive — today that means no 👍, because
+  // inbound reaction forwarding is dead on the Pi.
+  //
+  // ── AND NOTHING IS DM'd, EITHER WAY ─────────────────────────────────
+  //
+  // The obvious next step is a DM blast inviting recent players onto the
+  // bench. Deliberately not built, and not because it is hard:
+  // `recruit-lookback.ts` records that the bot runs on an UNOFFICIAL
+  // WhatsApp client where a mass DM risks the account, which takes the
+  // whole product down, and this week's work has been spent deleting
+  // things that can mass-DM. A group reply reaches the same people, in
+  // the thread where they asked, at no risk. Both branches below return
+  // `invited: 0` and queue nothing.
   if (next.maxPlayers > 0 && openSlots <= 0) {
     return {
       ok: true,
@@ -302,7 +358,19 @@ export async function inviteRecentPlayers(
       need,
       invited: 0,
       invitedNames: [],
-      reason: `The squad for *${next.activity.name}* is already full — no open spots to recruit for.`,
+      reason: features.bench
+        ? buildFullSquadBenchInvite({
+            matchName: next.activity.name,
+            confirmedCount,
+            maxPlayers: next.maxPlayers,
+          })
+        : // Bench OFF: the old sentence, unchanged, because for that org
+          // it is the truth. `bot-scheduler.ts` refuses to post a bench
+          // prompt without the feature (`instr.kind === "bench-prompt" &&
+          // !features.bench`), so promising one would be the silent
+          // failure this codebase keeps paying for: a player does as they
+          // are told and nothing happens.
+          `The squad for *${next.activity.name}* is already full — no open spots to recruit for.`,
     };
   }
 

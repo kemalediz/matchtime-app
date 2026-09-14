@@ -107,6 +107,7 @@ import { buildTeamOpsApplyDeps } from "../src/lib/owner-deps.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
 import { getOrgFeatures } from "../src/lib/org-features.ts";
+import { buildFullSquadBenchInvite } from "../src/lib/bench-offer-copy.ts";
 import { composeChaseText, type ChaseKind } from "../src/lib/message-analyzer.ts";
 import { db } from "../src/lib/db.ts";
 import type { AttendanceRow, Member, Route, SquadState } from "../src/lib/pipeline/types.ts";
@@ -266,6 +267,33 @@ const CASES: Case[] = [
   { id: "K1", who: "Kemal", body: "Najib is out. We need one more player. Can someone pls come forward", fullSquad: true, expect: "THE ACTUAL 1 SEPT INCIDENT. Admin + recruit => addressedByRecruit. Expect DROP Najib, NEVER 'squad is already full'" },
   { id: "K2", who: "Kemal", body: "Najib is out", fullSquad: true, expect: "admin, NO recruit clause => still untagged third-party OUT. Documented behaviour is silence" },
   { id: "K3", who: "Kemal", body: "@Match Time Najib is out", tagged: true, fullSquad: true, expect: "tagged third-party OUT => DROP Najib" },
+
+  // ── K4-K6: THE 14 SEPT INCIDENT — a recruit ask into a FULL squad ──
+  //
+  // K4 is Kemal's message, verbatim, from the live group. MatchTime
+  // answered "The squad for *Tuesday 7-a-side* is already full — no open
+  // spots to recruit for." to a man asking for BENCHERS, and the match
+  // kicked off 14 of 14 with nobody on the bench.
+  //
+  // WHAT THESE MEASURE, AND WHAT THEY DO NOT. The wrong sentence was
+  // written by `inviteRecentPlayers`' capacity guard, which is
+  // deterministic and pinned by unit tests — it is not what an LLM can
+  // wobble on. What CAN wobble is whether the ask reaches that guard at
+  // all: the router has to hand the message to the attendance extractor
+  // and the extractor has to report `sideRequests: ["recruit"]`, which
+  // is what `reasons: side-request:recruit` below means. So the counts
+  // to read off these three are "recruit side-request, N of M runs".
+  //
+  // The `recruit:` line under each run then prints the sentence the
+  // route WOULD compose against this squad and this org's features —
+  // deterministic, read-only, and the thing the owner actually sees.
+  //
+  // K5 is the same ask with no question mark and no second sentence; K6
+  // asks for cover rather than benchers, which is the phrasing that
+  // reads most like the ordinary shortage the blast was built for.
+  { id: "K4", who: "Kemal", body: "it would be great to have some benchers in case someone drops tomorrow? Anybody else interested", fullSquad: true, expect: "THE ACTUAL 14 SEPT INCIDENT. Squad is full, so no DM can go out — but the answer must INVITE the bench, never 'already full, no open spots to recruit for'" },
+  { id: "K5", who: "Kemal", body: "anyone fancy being a bencher tomorrow in case we get a drop out", fullSquad: true, expect: "same ask, flatter phrasing — recruit side-request, bench invitation" },
+  { id: "K6", who: "Kemal", body: "we could do with one or two on standby for tomorrow in case someone pulls out", fullSquad: true, expect: "cover rather than benchers. Same state, same answer: the bench IS the standby" },
 
   // ── Y: THE CLAUSE PEEL — incident #6 and its control ──────────────
   //
@@ -1543,10 +1571,35 @@ async function main(): Promise<void> {
     ...loaded,
     ratingProgress: await loadRatingProgressSnapshot(org.id),
   };
+  // ── TWO MORE READS, ONCE PER INVOCATION, FOR THE RECRUIT PROJECTION ─
+  //
+  //   The recruit blast is performed by `analyze/route.ts` AFTER the
+  //   batch, so `runPipeline` never reaches it and this harness can
+  //   never print what the group would hear from it. That gap is what
+  //   let the 2026-09-14 sentence ship: the pipeline's own output for
+  //   Kemal's message was correct ("side-request:recruit"), and the
+  //   wrong words were written one layer further on.
+  //
+  //   So the two facts the guard branches on are loaded here — the org's
+  //   features (does it have a bench?) and the match's name (the copy
+  //   prints it) — and the `recruit:` line under each run composes the
+  //   answer with the SHIPPED builder against the PROJECTED squad. Both
+  //   are `findFirst`-class reads, once per invocation, and the
+  //   projection touches no database at all.
+  const features = await getOrgFeatures(org.id);
+  const matchName = base.matchId
+    ? (
+        await db.match.findFirst({
+          where: { id: base.matchId },
+          select: { activity: { select: { name: true } } },
+        })
+      )?.activity.name ?? "(unnamed match)"
+    : "(no match)";
   console.log(
     `ORG   : ${org.name}\n` +
-      `MATCH : ${base.matchId ?? "(none)"} — ${base.kickoffLabel} at ${base.venue}\n` +
-      `STATE : ${describeSquad(base)}\n`,
+      `MATCH : ${base.matchId ?? "(none)"} — ${matchName}, ${base.kickoffLabel} at ${base.venue}\n` +
+      `STATE : ${describeSquad(base)}\n` +
+      `BENCH : featureBench=${features.bench} (decides what a recruit ask into a FULL squad is answered with)\n`,
   );
 
   if (process.env.DMS === "1") {
@@ -1677,6 +1730,39 @@ async function main(): Promise<void> {
             : "(silent)"
         }`,
       );
+      // ── WHAT THE RECRUIT PATH WOULD SAY, PROJECTED ──────────────────
+      //
+      //   Printed only when this run actually carried a recruit ask, so
+      //   it is never noise. `inviteRecentPlayers` is NOT called: it
+      //   writes BotJobs, and this file calls nothing that writes. What
+      //   is composed here is its capacity-guard branch, from the
+      //   shipped copy builder, against the squad this run projected and
+      //   the features loaded above — the two inputs the guard reads.
+      //
+      //   The blast half is deliberately left as a count rather than a
+      //   simulation. Whether MatchTime should DM 13 to 27 people is
+      //   settled by unit tests and by `recruit-lookback.ts`'s ceiling,
+      //   not by a harness pointed at a live squad.
+      const askedToRecruit =
+        r.engine.outcomes[0]?.reasons.some((x) => x.includes("side-request:recruit")) ||
+        r.engine.writes.some((w) => w.kind === "recruit_blast");
+      if (askedToRecruit) {
+        const confirmedNow = state.rows.filter((x) => x.status === "CONFIRMED").length;
+        const open = Math.max(0, state.maxPlayers - confirmedNow);
+        console.log(
+          open > 0
+            ? `  recruit: ${open} open slot(s) at ${confirmedNow} of ${state.maxPlayers} — the blast runs (no DM is sent from here)`
+            : `  recruit: FULL at ${confirmedNow} of ${state.maxPlayers}, 0 DMs — the group hears: ${JSON.stringify(
+                features.bench
+                  ? buildFullSquadBenchInvite({
+                      matchName,
+                      confirmedCount: confirmedNow,
+                      maxPlayers: state.maxPlayers,
+                    })
+                  : `The squad for *${matchName}* is already full — no open spots to recruit for.`,
+              )}`,
+        );
+      }
       if (r.composed.reacts.length) {
         console.log(`  reacts : ${r.composed.reacts.map((x) => x.emoji).join(" ")}`);
       }

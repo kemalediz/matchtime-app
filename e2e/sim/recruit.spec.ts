@@ -185,7 +185,34 @@ test("a non-admin's recruit request DMs nobody and says nothing", async ({ reque
   expect((await recruitDms(grp)).length).toBe(before);
 });
 
-test("full squad → recruit DMs nobody and says so", async ({ request, db }) => {
+/* ────────────────────────────────────────────────────────────────────
+ * THE 2026-09-14 INCIDENT — a recruit ask into a FULL squad.
+ *
+ * Sutton FC, live, reported by the owner. Kemal posted, untagged:
+ *
+ *   "it would be great to have some benchers in case someone drops
+ *    tomorrow? Anybody else interested"
+ *
+ * MatchTime replied:
+ *
+ *   "The squad for *Tuesday 7-a-side* is already full — no open spots to
+ *    recruit for."
+ *
+ * Backwards. Benchers are wanted PRECISELY BECAUSE the squad is full,
+ * and the reply talked the volunteers he was asking for out of
+ * volunteering: the match kicked off at 14 of 14 with an empty bench.
+ *
+ * Nothing misfired upstream — the production row reads `by=attendance-
+ * engine intent=replacement_request action=none+recruit:0`, so the ask
+ * WAS read as a recruit side-request. `inviteRecentPlayers`' capacity
+ * guard was bench-blind, and "squad full" meant "nothing to do".
+ *
+ * These two tests are the same world with one flag moved. The blast
+ * still DMs nobody in BOTH: a group reply reaches the same people at
+ * none of the risk (`recruit-lookback.ts` — the bot runs on an
+ * unofficial WhatsApp client and a mass DM risks the account).
+ * ──────────────────────────────────────────────────────────────────── */
+test("full squad + bench ON → invites the group onto the bench, DMs nobody", async ({ request, db }) => {
   const grp = await group(request, db);
   // Top the squad up to 8/8 directly (setup shortcut, not via the bot).
   for (const k of ["pete", "dan", "felix", "greg", "henry", "ivan"]) {
@@ -195,8 +222,47 @@ test("full squad → recruit DMs nobody and says so", async ({ request, db }) =>
 
   const before = (await recruitDms(grp)).length;
   const r = await grp.post("alice", "anyone free? we need players", RECRUIT);
-  expect(r.reply).toContain("already full");
+  // The sentence from the incident, gone.
+  expect(r.reply).not.toContain("already full");
+  expect(r.reply).not.toContain("no open spots");
+  // …replaced by what the system ACTUALLY does with a late IN: the
+  // engine writes a BENCH row (capacity rule, `engine.ts:2326`), a drop
+  // opens a BenchSlotOffer, and the first bencher to reply IN takes it.
+  expect(r.reply).toContain("8 of 8");
+  expect(r.reply?.toLowerCase()).toContain("bench");
+  expect(r.reply).toContain("*IN*");
   expect((await recruitDms(grp)).length).toBe(before);
+});
+
+test("full squad + bench OFF → the old sentence, which for that org is true", async ({ request, db }) => {
+  // A separate org: with `featureBench` off, `bot-scheduler.ts:772`
+  // refuses to post a bench prompt, so promising one would be a lie.
+  const nobench = await (
+    await createGroup(request, db, {
+      name: "No Bench United",
+      maxPlayers: 8,
+      features: { bench: false },
+      attendance: [
+        { key: "owner", status: "CONFIRMED" },
+        { key: "alice", status: "CONFIRMED" },
+        { key: "brian", status: "CONFIRMED" },
+        { key: "pete", status: "CONFIRMED" },
+        { key: "dan", status: "CONFIRMED" },
+        { key: "felix", status: "CONFIRMED" },
+        { key: "greg", status: "CONFIRMED" },
+        { key: "henry", status: "CONFIRMED" },
+      ],
+      // liam + mike played last week and have not responded, so there is
+      // a real pool: "DM'd nobody" is the guard's doing, not an empty set.
+      completedMatch: { daysAgo: 7, confirmedKeys: ["owner", "liam", "mike"] },
+    })
+  ).attach(request);
+  expect((await nobench.counts()).confirmed).toBe(8);
+
+  const r = await nobench.post("alice", "anyone free? we need players", RECRUIT);
+  expect(r.reply).toContain("already full");
+  expect(r.reply).toContain("no open spots to recruit for");
+  expect(await recruitDms(nobench)).toHaveLength(0);
 });
 
 /* ────────────────────────────────────────────────────────────────────

@@ -676,7 +676,19 @@ export async function POST(request: Request) {
           ? r.reason ?? "Couldn't do that right now."
           : r.invited && r.invited > 0
             ? `📣 Done — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}* on ${r.matchWhen}${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-            : `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+            : // A `reason` on an ok result means the CAPACITY GUARD stopped
+              // the blast, and the guard has already decided what is true
+              // for this org: the bench invitation when `featureBench` is
+              // on, the old "already full" refusal when it is not. Passing
+              // it through was missing until 2026-09-14, so a full squad
+              // was reported here as "everyone has already responded",
+              // which was never what happened — nobody was asked, and the
+              // bench (the thing the admin could actually be offered) went
+              // unmentioned on this surface entirely. The group reply and
+              // this one are two renderings of ONE RecruitResult and must
+              // not disagree about the state of the squad.
+              r.reason ??
+              `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
         return { reply, invited: r.invited ?? 0 };
       },
       ratingProgress: async (orgId) => {
