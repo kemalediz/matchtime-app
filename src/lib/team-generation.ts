@@ -1,8 +1,26 @@
 /**
- * Shared team-generation helper. Called from both the legacy
- * `/api/cron/generate-teams` (which still runs for maintenance — auto-
- * publish + auto-complete) and the LLM analyse route when a player
- * asks the bot to generate teams.
+ * THE team-generation helper — since 2026-09-15 the only code in
+ * MatchTime that decides who is on which team.
+ *
+ * Callers: the legacy `/api/cron/generate-teams` (which still runs for
+ * maintenance — auto-publish + auto-complete), the LLM analyse route
+ * when a player asks the bot to generate teams, and the admin
+ * dashboard's Generate/Regenerate button via
+ * `app/actions/teams.ts#generateTeams`. That last one used to be a
+ * SECOND implementation with its own rating formula, so the same squad
+ * got different teams depending on which button was pressed; the
+ * tombstone at the top of `app/actions/teams.ts` records what it did
+ * and why it went.
+ *
+ * NO AUTHORISATION LIVES HERE. Every caller authorises first — the cron
+ * by being the cron, the analyse route by its own gates, the server
+ * action by `auth()` then `requireOrgAdmin`. A new caller must do the
+ * same before it calls in.
+ *
+ * IT DOES NOT POST. The ready-to-send group message comes back as
+ * `groupPost` and nothing in this file queues a `BotJob`. Whether the
+ * club hears about it is the caller's decision: the WhatsApp route
+ * posts, the dashboard discards.
  *
  * Balances the confirmed squad via the Activity's configured strategy
  * (snake-draft + hill-climb, rating-only, etc.), writes TeamAssignment
@@ -107,13 +125,31 @@ export async function generateTeamsForMatch(
   // tentative, hot streak, rusty). Deltas clamped to [-2, +2] in the
   // adjuster itself. Falls through silently to base ratings on any
   // failure — team generation never blocks on the LLM.
-  const adjustments = await runRatingAdjuster({
-    matchId: match.id,
-    orgId: match.activity.org.id,
-    sportName: sport.name,
-    matchDate: match.date,
-    basePlayers,
-  });
+  //
+  // THE CATCH IS NOT BELT AND BRACES. `adjustRatings` swallows its own
+  // model errors, but `runRatingAdjuster` is more than that call: it
+  // reads AnalyzedMessage and User, and it upserts one RatingAdjustment
+  // audit row per player. A Postgres hiccup in any of those used to
+  // take the whole team sheet down with it, which is exactly the thing
+  // the adjuster's own header promises cannot happen. Since 2026-09-15
+  // the ADMIN DASHBOARD runs this too (it used to skip the adjuster
+  // entirely), so the blast radius of an unprotected LLM-shaped
+  // dependency is now a button an admin presses on match night.
+  //
+  // Base ratings are the fallback and they are complete on their own —
+  // the deltas are a margin adjustment, never the rating.
+  let adjustments: Awaited<ReturnType<typeof runRatingAdjuster>> = new Map();
+  try {
+    adjustments = await runRatingAdjuster({
+      matchId: match.id,
+      orgId: match.activity.org.id,
+      sportName: sport.name,
+      matchDate: match.date,
+      basePlayers,
+    });
+  } catch (err) {
+    console.error("[team-generation] rating adjuster failed, using base ratings:", err);
+  }
 
   const players: PlayerWithRating[] = basePlayers.map((p) => {
     const adj = adjustments.get(p.id);
