@@ -15,7 +15,11 @@
 import { describe, it, expect } from "vitest";
 import { compose } from "../compose";
 import { decide } from "../engine";
-import { composeSquadStatusPost, displaysSquadState } from "../../group-copy";
+import {
+  composeSquadStatusPost,
+  contradictsSquadState,
+  displaysSquadState,
+} from "../../group-copy";
 import { NOW, SUTTON, attendanceFacts, claim, fullName, msg, world } from "./helpers";
 import type { EngineResult, SquadState } from "../types";
 
@@ -818,5 +822,135 @@ describe("a partially applied instruction says which half did not happen", () =>
     );
     const refusal = out.utterances.find((u) => u.text.includes("left alone"))!;
     expect(refusal.text).toContain("I've not taken David out or moved Mojib Sadat to the bench");
+  });
+});
+
+// ── the open-slot line (2026-09-15) ────────────────────────────────────
+
+describe("a drop that opens a spot says so, in one line", () => {
+  const FULL = [
+    "kemal",
+    "elvin",
+    "sait",
+    "mustafa",
+    "abid",
+    "idris",
+    "faris",
+    "shaz",
+    "adam",
+    "efat",
+    "usama",
+    "karahan",
+    "zair",
+    "wasim",
+  ];
+
+  /** The DB truth the analyze route hands `composeSquadStateReply`
+   *  AFTER the batch's writes land — which is what decides whether this
+   *  sentence survives to the group or is replaced by the roster. */
+  const truthAfter = (outKeys: string[]) => ({
+    confirmed: FULL.filter((k) => !outKeys.includes(k)).map(fullName),
+    bench: [],
+    maxPlayers: 14,
+  });
+
+  const selfOut = (from: string, body: string) =>
+    msg({ from, body, route: "self_att", facts: attendanceFacts([claim({ polarity: "out" })]) });
+
+  it("names the player, the count and the way in — the 2026-09-15 incident", () => {
+    const { out } = composeFor(world({ confirmed: FULL }), [
+      selfOut("abid", "foot injury, I am out today"),
+    ]);
+    expect(out.utterances).toHaveLength(1);
+    expect(out.utterances[0].text).toBe(
+      "Abid is out, 13 of 14 for Tue 21:30. One slot open, say *IN* to take it.",
+    );
+  });
+
+  it("rides the drop message, so the route does not throw the copy away", () => {
+    // `attendance-engine-batch.ts` keeps a `messageId: null` utterance
+    // only as a BOOLEAN — the text is dropped and `route.ts` expands
+    // `[SQUAD]` into the roster instead. A batch-level utterance here
+    // would never reach the group.
+    const { out } = composeFor(world({ confirmed: FULL }), [
+      selfOut("abid", "foot injury, I am out today"),
+    ]);
+    expect(out.utterances[0].messageId).not.toBeNull();
+  });
+
+  it("carries NO slash, so the route cannot mistake it for a roster", () => {
+    // `displaysSquadState` rule (c) is an "N/M" beside squad vocabulary,
+    // and anything it recognises is REPLACED by the fourteen-line roster
+    // (`route.ts`, `composeSquadStateReply`). "13 of 14" says the same
+    // thing to a human and survives. This is the trap that kept the
+    // STATS and OPTIONS answers refused for months.
+    const { out } = composeFor(world({ confirmed: FULL }), [
+      selfOut("abid", "foot injury, I am out today"),
+    ]);
+    expect(displaysSquadState(out.utterances[0].text)).toBe(false);
+  });
+
+  it("is CHECKED against the database, and survives when it is right", () => {
+    // Both halves are shapes `contradictsSquadState` reads: "Abid is
+    // out" is a DROPPED move claim, and "One slot open" is measured
+    // against the real shortfall. Saying "spot" instead of "slot" would
+    // have escaped the check, which is the wrong kind of clever.
+    const { out } = composeFor(world({ confirmed: FULL }), [
+      selfOut("abid", "foot injury, I am out today"),
+    ]);
+    expect(contradictsSquadState(out.utterances[0].text, truthAfter(["abid"]))).toBe(false);
+  });
+
+  it("is REPLACED by the roster when the database has moved on", () => {
+    // Somebody filled the slot between the engine's projection and the
+    // post-write snapshot. The sentence now claims a slot that is not
+    // open, `contradictsSquadState` says so, and the composed roster
+    // wins. Truth beats copy.
+    const { out } = composeFor(world({ confirmed: FULL }), [
+      selfOut("abid", "foot injury, I am out today"),
+    ]);
+    const refilled = { confirmed: FULL.map(fullName), bench: [], maxPlayers: 14 };
+    expect(contradictsSquadState(out.utterances[0].text, refilled)).toBe(true);
+  });
+
+  it("names every player who went out, in one sentence", () => {
+    const { out } = composeFor(world({ confirmed: FULL }), [
+      selfOut("abid", "out today lads"),
+      selfOut("zair", "cant make it sorry"),
+      selfOut("shaz", "im out"),
+    ]);
+    expect(out.utterances).toHaveLength(1);
+    expect(out.utterances[0].text).toBe(
+      "Abid, Zair and Shaz are out, 11 of 14 for Tue 21:30. 3 slots open, say *IN* to take one.",
+    );
+    expect(
+      contradictsSquadState(out.utterances[0].text, truthAfter(["abid", "zair", "shaz"])),
+    ).toBe(false);
+  });
+
+  it("says nobody is OUT when the slot was vacated by a move to the bench", () => {
+    // A confirmed player asking for the bench off a full squad opens a
+    // slot without anybody being out, and "Wasim is out" would be a
+    // sentence the database does not support.
+    const { out } = composeFor(world({ confirmed: FULL }), [
+      msg({
+        from: "wasim",
+        body: "stick me on the bench tonight lads",
+        route: "self_att",
+        facts: attendanceFacts([claim({ polarity: "bench" })]),
+      }),
+    ]);
+    expect(out.utterances).toHaveLength(1);
+    expect(out.utterances[0].text).toBe(
+      "That's 13 of 14 for Tue 21:30. One slot open, say *IN* to take it.",
+    );
+  });
+
+  it("says NOTHING for an IN — PR #63's rule is untouched", () => {
+    const { out } = composeFor(world({ confirmed: FULL.slice(0, 10) }), [
+      msg({ from: "habib", body: "in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+    ]);
+    expect(out.utterances).toHaveLength(0);
+    expect(out.reacts.map((r) => r.emoji)).toEqual(["✅"]);
   });
 });

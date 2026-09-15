@@ -1306,6 +1306,192 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
   });
 });
 
+// ── S36c · a drop that OPENS A SPOT speaks ─────────────────────────────
+
+describe("S36c · a drop that opens a spot speaks; an IN still does not (2026-09-15)", () => {
+  // THE INCIDENT. 10:48 UTC on match day, Sutton FC, 14 of 14 and an
+  // empty bench. Abid posted:
+  //
+  //   "Guys im really sorry but i have a foot injury sustained on the
+  //    weekend. Was hopingvit would get better but it hasnt so I am out
+  //    today"
+  //
+  // The engine read it correctly (`intent=out`, `action=OUT`), the row
+  // went DROPPED, the squad went to 13 of 14 — and MatchTime said
+  // nothing at all, because S36b's rule asks whether somebody ASKED or
+  // whether a row moved for somebody who did not speak. He dropped
+  // HIMSELF, so the 👋 on his own message was the whole acknowledgement
+  // and nobody was told there was a hole.
+  //
+  // S36b is not wrong; it treats an IN and an OUT as the same event, and
+  // they are not symmetric. An IN closes a gap. An OUT opens one, and a
+  // spot nobody hears about cannot be filled.
+  const COUNT_Q = {
+    kind: "question",
+    topic: "count",
+    personRef: null,
+    statedCount: null,
+  } as const;
+
+  const INCIDENT =
+    "Guys im really sorry but i have a foot injury sustained on the weekend. " +
+    "Was hopingvit would get better but it hasnt so I am out today";
+
+  const selfOut = (from: string, body: string) =>
+    msg({ from, body, route: "self_att", facts: attendanceFacts([claim({ polarity: "out" })]) });
+
+  it("THE INCIDENT: a self-drop off a full squad with an EMPTY bench speaks, exactly once", () => {
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({ now: NOW, state, messages: [selfOut("abid", INCIDENT)] });
+
+    expect(statusOf(r.nextState, "abid")).toBe("DROPPED");
+    expect(confirmedCount(r.nextState)).toBe(13);
+    expect(r.outcomes[0].react).toBe("👋");
+    // ONE post, and it is the new one. Not the fourteen-line roster.
+    expect(r.speech.map((s) => s.kind)).toEqual(["slot_opened"]);
+    const s = r.speech[0] as { kind: "slot_opened"; outNames: string[]; messageId: string | null };
+    expect(s.outNames).toEqual(["Abid Hussain"]);
+    // It rides the drop message, not the batch. A `messageId: null`
+    // utterance is discarded by `attendance-engine-batch.ts` (it keeps
+    // only the boolean, and the route re-composes the roster from a
+    // fresh snapshot), so the copy would never reach the group.
+    expect(s.messageId).not.toBeNull();
+  });
+
+  it("an IN is STILL silent — that is PR #63 and it is the regression that matters", () => {
+    const state = world({ confirmed: ["kemal", "elvin", "sait"] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({ from: "usama", body: "in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+      ],
+    });
+    expect(statusOf(r.nextState, "usama")).toBe("CONFIRMED");
+    expect(r.outcomes[0].react).toBe("✅");
+    expect(r.speech).toHaveLength(0);
+  });
+
+  it("the IN that FILLS the squad is still silent too", () => {
+    const state = world({ confirmed: FULL_14.slice(0, 13) });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({ from: "habib", body: "in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+      ],
+    });
+    expect(confirmedCount(r.nextState)).toBe(14);
+    expect(r.speech).toHaveLength(0);
+  });
+
+  it("THREE drops in one batch make ONE post, naming all three", () => {
+    // Four contradictory posts in one batch is the 2026-06-12 Sutton Lads
+    // incident. S36 exists to stop it and this must not reopen it.
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        selfOut("abid", "out today lads"),
+        selfOut("zair", "cant make it sorry"),
+        selfOut("shaz", "im out"),
+      ],
+    });
+    expect(confirmedCount(r.nextState)).toBe(11);
+    expect(r.speech.map((s) => s.kind)).toEqual(["slot_opened"]);
+    const s = r.speech[0] as { outNames: string[] };
+    // In the order they dropped, which is the order the group read them
+    // in. Nothing sorts this list.
+    expect(s.outNames).toEqual(["Abid Hussain", "Zair Malik", "Shaz Iqbal"]);
+  });
+
+  it("a drop with a BENCH behind it says the bench offer and nothing on top of it", () => {
+    // The bench broadcast already owns this: `open_bench_offer` →
+    // `requestBenchConfirmationOnDrop` → a group post tagging every
+    // bencher plus a DM each. A second "one slot open" is noise.
+    const state = world({ confirmed: [...FULL_14], bench: ["habib"] });
+    const r = decide({ now: NOW, state, messages: [selfOut("zair", "cant make it")] });
+    expect(r.speech.map((s) => s.kind)).toEqual(["bench_offer_open"]);
+  });
+
+  it("a squad that was ALREADY short says nothing when another player drops", () => {
+    // 13 of 14 → 12 of 14. The group can already see it is short, the
+    // 17:00 chase is already running on `need > 0`, and posting on every
+    // subsequent OUT is the overmessaging PR #63 was asked to stop.
+    const state = world({ confirmed: FULL_14.slice(0, 13) });
+    const r = decide({ now: NOW, state, messages: [selfOut("zair", "out sorry")] });
+    expect(confirmedCount(r.nextState)).toBe(12);
+    expect(r.speech).toHaveLength(0);
+  });
+
+  it("a drop and a replacement in the SAME batch leave a full squad and silence", () => {
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        selfOut("abid", "out today"),
+        msg({ from: "habib", body: "in", route: "self_att", facts: attendanceFacts([claim({})]) }),
+      ],
+    });
+    expect(confirmedCount(r.nextState)).toBe(14);
+    expect(r.speech).toHaveLength(0);
+  });
+
+  it("an admin dropping somebody ELSE still posts the roster, and ONLY the roster", () => {
+    // `movedSomeoneElsesRow` already covers this and the roster it posts
+    // already leads with "13/14, need 1 more 🙏". Two posts for one drop
+    // is what this ordering exists to prevent.
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "kemal",
+          body: "@Match Time Zair is out tonight",
+          route: "other_att",
+          tagged: true,
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Zair", personNamed: true, polarity: "out" }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
+    expect(r.speech.map((s) => s.kind)).toEqual(["squad_status"]);
+  });
+
+  it("a count question beside the drop gets the roster, and no second post", () => {
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        selfOut("abid", INCIDENT),
+        msg({
+          from: "zair",
+          body: "@Match Time how many are we now?",
+          route: "question",
+          tagged: true,
+          facts: COUNT_Q,
+        }),
+      ],
+    });
+    expect(r.speech.map((s) => s.kind)).toEqual(["squad_status"]);
+  });
+
+  it("proposes NO write that can send anybody a message", () => {
+    // The standing instruction all week is "do not DM anyone". The
+    // engine's only two mass-DM doors are `recruit_blast` and
+    // `stats_blast`; a drop must open neither.
+    const state = world({ confirmed: [...FULL_14] });
+    const r = decide({ now: NOW, state, messages: [selfOut("abid", INCIDENT)] });
+    expect([...new Set(r.writes.map((w) => w.kind))].sort()).toEqual(["attendance"]);
+  });
+});
+
 // ── S37 · the confidence floor ─────────────────────────────────────────
 
 describe("S37 · the confidence floor is per fact, not per verdict", () => {
