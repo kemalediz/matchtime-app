@@ -17,8 +17,25 @@
  *   2. hand all of it to `assessBotHealth` — pure, unit-tested, and where
  *      every threshold and every false-alarm guard is argued,
  *   3. if it decides a human needs telling, mail them, and additionally
- *      DM the org's admins when the Pi is demonstrably alive to deliver
- *      it and it is not the middle of the night.
+ *      DM the org's admins when the message is worth an interruption,
+ *      the Pi is demonstrably alive to deliver it, and it is not the
+ *      middle of the night.
+ *
+ * ── One a day, and the two channels are not the same schedule ─────────
+ *
+ * Until 2026-09-15 an unchanged set of problems re-fired every six hours
+ * down BOTH channels. Sutton FC's had not changed since 2026-07-07, so
+ * the owner got 24 emails and 15 DMs in six days, three of which said
+ * anything he had not read. He asked for one a day.
+ *
+ *   EMAIL  every alert. At most one a day for an unchanged set, plus
+ *          anything genuinely new the moment it appears.
+ *   DM     only when it is worth a buzz: something new, something
+ *          long-running finally fixed, a still-unfixed CRITICAL, or a
+ *          previous alert whose DM quiet hours swallowed.
+ *
+ * `planHealthAlert` owns and argues that split; this route only obeys
+ * `plan.send` and `plan.dm`.
  *
  * ── Why email is the primary channel ──────────────────────────────────
  *
@@ -54,6 +71,7 @@ import {
   composeHealthAlert,
   dmAllowedNow,
   planHealthAlert,
+  trackFirstSeen,
   type HealthCounters,
   type HeartbeatSnapshot,
 } from "@/lib/bot-health";
@@ -83,7 +101,14 @@ export async function GET(request: Request) {
     select: { id: true, name: true, lastParticipantSweepAt: true },
   });
 
-  const report: Array<{ org: string; codes: string[]; sent: boolean; reason: string }> = [];
+  const report: Array<{
+    org: string;
+    codes: string[];
+    sent: boolean;
+    reason: string;
+    /** Did the email also earn a WhatsApp DM? See `planHealthAlert`. */
+    dm: boolean;
+  }> = [];
 
   for (const org of orgs) {
     try {
@@ -157,7 +182,7 @@ export async function GET(request: Request) {
           }
         : null;
 
-      const findings = assessBotHealth({
+      const assessed = assessBotHealth({
         orgName: org.name,
         now,
         botEnabled: true,
@@ -173,38 +198,87 @@ export async function GET(request: Request) {
         noneShadowEnabled: isNoneBucketShadowEnabled(),
         lastNoneShadowAt: lastShadow?.windowEnd ?? null,
       });
+      // Give every finding the date it started, and name anything that
+      // has stopped. The ledger lives in one `Json?` column next to
+      // `lastAlertCodes`, which is already the row's memory of the last
+      // alert. `BotHealth.createdAt` is the fallback for a code this row
+      // was already alerting on before the ledger existed: not when the
+      // fault began, but the earliest instant this monitor could have
+      // known, which is the only honest answer available.
+      const { findings, ledger, resolved } = trackFirstSeen({
+        findings: assessed,
+        ledger: health?.codeFirstSeenAt ?? null,
+        knownCodes: health?.lastAlertCodes ?? [],
+        fallbackFirstSeen: health?.createdAt ?? now,
+        now,
+      });
       const codes = findings.map((f) => f.code);
 
       const plan = planHealthAlert({
-        codes,
+        findings,
+        resolved,
         lastAlertAt: health?.lastAlertAt ?? null,
         lastAlertCodes: health?.lastAlertCodes ?? [],
         now,
       });
-      report.push({ org: org.name, codes, sent: plan.send, reason: plan.reason });
+      report.push({
+        org: org.name,
+        codes,
+        sent: plan.send,
+        reason: plan.reason,
+        dm: plan.dm,
+      });
 
       if (!plan.send) continue; // NOTE: nothing below this line runs for a
-      // healthy org or one already alerted inside the repeat window —
-      // which is the entire dispatch block and the dedupe write. Both are
-      // side effects only; no assessment or state the next tick depends
-      // on happens after this point, so skipping them is a no-op rather
-      // than a guard being deleted.
+      // healthy org or one already alerted today — which is the entire
+      // dispatch block and the dedupe write. Both are side effects only;
+      // no assessment happens after this point, so skipping them is a
+      // no-op rather than a guard being deleted.
+      //
+      // ONE CONSEQUENCE, SAID OUT LOUD, because it got longer on
+      // 2026-09-15. The row's memory (`lastAlertCodes` + the ledger) is
+      // written ONLY on a tick that sent. So a SHORT-lived fault that
+      // appears and clears between two alerts leaves its code sitting in
+      // `lastAlertCodes`, and if it comes back before the next digest it
+      // does not read as new and does not break through. That window was
+      // up to six hours and is now up to about a day.
+      //
+      // Left deliberately. Writing state on every tick would make a
+      // flapping fault (a Pi on bad Wi-Fi crossing the 45-minute
+      // `pi-silent` line) alert on every single return, which is the
+      // noise this change exists to remove. The faults whose thresholds
+      // are hours or days wide (`inbound-silent` at 18h,
+      // `none-shadow-stale` at 30h, `sweep-stale` at a week) cannot
+      // flap inside a day in the first place.
 
-      const alert = composeHealthAlert(org.name, findings);
-      if (!alert) continue; // unreachable while codes.length > 0; belt and braces.
+      const knownCodes = new Set(health?.lastAlertCodes ?? []);
+      const alert = composeHealthAlert(org.name, findings, {
+        now,
+        resolved,
+        freshCodes: codes.filter((c) => !knownCodes.has(c)),
+      });
+      if (!alert) continue; // unreachable while the plan said send; belt and braces.
 
       console.error(`[bot-health] ${alert.subject}\n${alert.text}`);
       const emailed = await sendBotHealthAlertEmail(alert);
 
-      // The DM rides on top, and only when it can actually be delivered.
-      // `pi-silent` means the queue it goes into is not being drained, so
-      // queueing it would leave a stale "the bot is down" DM to be
-      // delivered whenever the Pi comes back — confusing, and by then
-      // untrue. Quiet hours suppress it too; the repeat window re-fires
-      // it in the morning.
+      // The DM rides on top, and only when it is BOTH worth an
+      // interruption and deliverable.
+      //
+      //   plan.dm      the judgement, argued in `planHealthAlert`: news,
+      //                or a still-unfixed critical, or a previous alert
+      //                whose DM quiet hours ate. A daily repeat of the
+      //                same two warnings is not any of those, and that
+      //                is the half of this change the owner will feel.
+      //   piAlive      `pi-silent` means the queue it goes into is not
+      //                being drained, so queueing it would leave a stale
+      //                "the bot is down" DM to be delivered whenever the
+      //                Pi comes back: confusing, and by then untrue.
+      //   quiet hours  nothing here is actionable at 03:00, and a 03:00
+      //                buzz is how a channel gets muted.
       const piAlive = !codes.includes("pi-silent");
       let dmsQueued = 0;
-      if (piAlive && dmAllowedNow(now)) {
+      if (plan.dm && piAlive && dmAllowedNow(now)) {
         const admins = await db.membership.findMany({
           where: { orgId: org.id, role: { in: ["ADMIN", "OWNER"] }, leftAt: null },
           select: { user: { select: { phoneNumber: true } } },
@@ -241,8 +315,9 @@ export async function GET(request: Request) {
           // dead from the next tick onward.
           lastAlertAt: now,
           lastAlertCodes: codes,
+          codeFirstSeenAt: ledger,
         },
-        update: { lastAlertAt: now, lastAlertCodes: codes },
+        update: { lastAlertAt: now, lastAlertCodes: codes, codeFirstSeenAt: ledger },
       });
 
       console.warn(
@@ -253,7 +328,7 @@ export async function GET(request: Request) {
       // org. A monitoring job that dies on the first exception is a
       // monitoring job that reports nothing.
       console.error(`[bot-health] assessment failed for ${org.name}:`, err);
-      report.push({ org: org.name, codes: [], sent: false, reason: "assessment threw" });
+      report.push({ org: org.name, codes: [], sent: false, reason: "assessment threw", dm: false });
     }
   }
 

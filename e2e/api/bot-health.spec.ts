@@ -194,7 +194,7 @@ test("the same fault an hour later does NOT alert again", async ({ request }) =>
   const second = await runHealthCron(request);
   const row = second.report.find((r: { org: string }) => r.org === "E2E Test FC");
   expect(row.sent).toBe(false);
-  expect(row.reason).toContain("repeat window");
+  expect(row.reason).toContain("already alerted today");
 });
 
 test("a NEW fault landing on top of an old one speaks immediately", async ({ request }) => {
@@ -250,11 +250,11 @@ test("a sweep that last filed two nights ago is stale", async ({ request, db }) 
   expect(row.codes).toContain("none-shadow-stale");
 });
 
-test("the shadow finding rides the same email and the same repeat window", async ({
+test("the shadow finding rides the same email and the same daily digest", async ({
   request,
   db,
 }) => {
-  // Not a second channel. One alert, one dedupe, one six-hourly repeat —
+  // Not a second channel. One alert, one dedupe, one daily digest —
   // the existing one, which Kemal is already receiving.
   await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
   await db.run(`DELETE FROM "WindowVerdict" WHERE "batchHash" LIKE 'none-bucket:%'`);
@@ -266,7 +266,7 @@ test("the shadow finding rides the same email and the same repeat window", async
   const row = second.report.find((r: { org: string }) => r.org === "E2E Test FC");
   expect(row.codes).toContain("none-shadow-stale");
   expect(row.sent).toBe(false);
-  expect(row.reason).toContain("repeat window");
+  expect(row.reason).toContain("already alerted today");
 
   const stored = await db.all<{ lastAlertCodes: string[] }>(
     `SELECT "lastAlertCodes" FROM "BotHealth" WHERE "orgId" = $1`,
@@ -289,4 +289,182 @@ test("no heartbeat at all is not treated as an outage", async ({ request }) => {
   const out = await runHealthCron(request);
   const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
   expect(row.codes).not.toContain("pi-silent");
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// ONE A DAY, AND THE OLD NEWS COLLAPSED (2026-09-15)
+//
+// `src/lib/__tests__/bot-health-digest.test.ts` pins the judgement with
+// an injected clock, exhaustively. These pin the WIRING, which is the
+// half that has historically been dead: does the ledger actually reach
+// the column, does the cron actually read it back, and does the DM
+// actually stop being queued for news the owner already has.
+// ═══════════════════════════════════════════════════════════════════════
+
+test("the first-seen ledger lands in the row and is carried forward", async ({ request, db }) => {
+  await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: CLEAN_COUNTERS,
+    degradedCapabilities: ["participant-sync"],
+  });
+  await runHealthCron(request);
+
+  const first = await db.all<{ codeFirstSeenAt: Record<string, string> | null }>(
+    `SELECT "codeFirstSeenAt" FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  expect(first[0].codeFirstSeenAt).toHaveProperty("capability-degraded");
+  const stamped = first[0].codeFirstSeenAt!["capability-degraded"];
+
+  // A second alert (a new fault on top) must not restart the old one's
+  // clock. That clock is the only thing that can ever collapse it.
+  await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: { ...CLEAN_COUNTERS, droppedMessages: 4 },
+    degradedCapabilities: ["participant-sync"],
+  });
+  const out = await runHealthCron(request);
+  expect(out.report.find((r: { org: string }) => r.org === "E2E Test FC").sent).toBe(true);
+
+  const second = await db.all<{ codeFirstSeenAt: Record<string, string> | null }>(
+    `SELECT "codeFirstSeenAt" FROM "BotHealth" WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  expect(second[0].codeFirstSeenAt!["capability-degraded"]).toBe(stamped);
+  expect(second[0].codeFirstSeenAt).toHaveProperty("messages-dropped");
+});
+
+test("a day later, an unchanged WARNING emails but does not DM", async ({ request, db }) => {
+  // The complaint, wired end to end. The owner was getting four of these
+  // a day on WhatsApp for a pair of faults unchanged since July.
+  await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: CLEAN_COUNTERS,
+    degradedCapabilities: ["participant-sync"],
+  });
+  await runHealthCron(request); // the first alert: new, so it DOES DM
+  const afterFirst = await db.all<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm'`,
+    [ORG_ID],
+  );
+
+  // Wind the row back two days, both the alert clock and the ledger, so
+  // the finding is older than COLLAPSE_AFTER_MS and the digest is due
+  // whatever hour the suite happens to be running at.
+  await db.run(
+    `UPDATE "BotHealth"
+        SET "lastAlertAt" = now() - interval '48 hours',
+            "codeFirstSeenAt" = jsonb_build_object(
+              'capability-degraded', to_char(now() - interval '10 days',
+                                             'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+      WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+
+  const out = await runHealthCron(request);
+  const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.sent).toBe(true); // the email still goes, once
+  expect(row.dm).toBe(false); // the phone does not buzz for ten-day-old news
+
+  const afterDigest = await db.all<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm'`,
+    [ORG_ID],
+  );
+  expect(afterDigest[0].n).toBe(afterFirst[0].n);
+});
+
+test("a CRITICAL that is still broken tomorrow does still buzz the phone", async ({
+  request,
+  db,
+}) => {
+  await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: { ...CLEAN_COUNTERS, droppedMessages: 3 },
+  });
+  await runHealthCron(request);
+  const afterFirst = await db.all<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm'`,
+    [ORG_ID],
+  );
+
+  await db.run(
+    `UPDATE "BotHealth" SET "lastAlertAt" = now() - interval '48 hours' WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+  const out = await runHealthCron(request);
+  const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.sent).toBe(true);
+  expect(row.dm).toBe(true);
+
+  const afterDigest = await db.all<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm'`,
+    [ORG_ID],
+  );
+  expect(afterDigest[0].n).toBeGreaterThan(afterFirst[0].n);
+});
+
+test("a long-running fault that finally clears says so, once", async ({ request, db }) => {
+  // The "Still broken since 7 Jul" line has been in every digest for
+  // weeks. It getting silently shorter reads as a monitoring bug, not
+  // as a fix.
+  await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: CLEAN_COUNTERS,
+    degradedCapabilities: ["participant-sync"],
+  });
+  await runHealthCron(request);
+  await db.run(
+    `UPDATE "BotHealth"
+        SET "lastAlertAt" = now() - interval '2 hours',
+            "codeFirstSeenAt" = jsonb_build_object(
+              'capability-degraded', to_char(now() - interval '30 days',
+                                             'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+      WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+
+  // The Pi recovers.
+  await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: CLEAN_COUNTERS,
+    degradedCapabilities: [],
+  });
+  const out = await runHealthCron(request);
+  const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.codes).toEqual([]);
+  expect(row.sent).toBe(true);
+  expect(row.reason).toContain("capability-degraded");
+
+  const stored = await db.all<{
+    lastAlertCodes: string[];
+    codeFirstSeenAt: Record<string, string> | null;
+  }>(`SELECT "lastAlertCodes", "codeFirstSeenAt" FROM "BotHealth" WHERE "orgId" = $1`, [ORG_ID]);
+  expect(stored[0].lastAlertCodes).toEqual([]);
+  expect(stored[0].codeFirstSeenAt).toEqual({});
+
+  // …and then it shuts up. Recovery is announced once, never repeated.
+  const again = await runHealthCron(request);
+  const row2 = again.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row2.sent).toBe(false);
+  expect(row2.reason).toBe("healthy");
+});
+
+test("a SHORT-lived fault clearing stays silent", async ({ request, db }) => {
+  // Unchanged judgement. A blip recovering is what is supposed to
+  // happen, and a channel that announces good outcomes stops being read.
+  await heartbeat(request, {
+    groupId: E2E.GROUP_ID,
+    counters: { ...CLEAN_COUNTERS, reactFailures: 2 },
+  });
+  await runHealthCron(request);
+  await db.run(
+    `UPDATE "BotHealth" SET "lastAlertAt" = now() - interval '2 hours' WHERE "orgId" = $1`,
+    [ORG_ID],
+  );
+
+  await heartbeat(request, { groupId: E2E.GROUP_ID, counters: CLEAN_COUNTERS });
+  const out = await runHealthCron(request);
+  const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.codes).toEqual([]);
+  expect(row.sent).toBe(false);
 });
