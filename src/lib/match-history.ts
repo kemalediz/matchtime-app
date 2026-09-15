@@ -259,6 +259,14 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   // 5. Elo top + bottom — only players who've actually been assigned
   //    to a team in a completed match (rules out provisional ghosts
   //    that never played).
+  //
+  //    THIS IS THE ONLY PLACE `matchRating` IS READ FOR ANYTHING A
+  //    PLAYER SEES. It is a leaderboard number and not a team-selection
+  //    input: the balancer rates players with `computePlayerRating`
+  //    (seed + peer ratings, no Elo term) on every path since
+  //    2026-09-15. Don't "fix" that by feeding this number back into
+  //    team generation — the reasoning is in `lib/elo.ts`'s header and
+  //    the tombstone at the top of `app/actions/teams.ts`.
   const teamAssignmentUserIds = await db.teamAssignment.findMany({
     where: { match: { activity: { orgId }, status: "COMPLETED", isHistorical: false } },
     select: { userId: true },

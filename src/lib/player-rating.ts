@@ -14,9 +14,17 @@
  *   - 60 peer ratings: peer ~95%
  *
  * Used by:
- *   - team-generation.ts (balancer input)
+ *   - team-generation.ts (balancer input) — and since 2026-09-15 that is
+ *     the ONLY route into the balancer, so this is the one formula that
+ *     picks teams, whether the request arrives from WhatsApp or from the
+ *     admin dashboard's Generate button. The dashboard's own rival
+ *     formula, which blended the Elo `matchRating` in, was deleted;
+ *     `app/actions/teams.ts` carries the tombstone.
  *   - dashboard rating tile
  *   - player profile pages (any future "show my rating" surface)
+ *
+ * The Elo `matchRating` is NOT an input here and is not meant to be.
+ * It is a leaderboard number — see the header of `lib/elo.ts`.
  */
 
 const PRIOR_WEIGHT = 3;
