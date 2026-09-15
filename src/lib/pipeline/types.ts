@@ -698,6 +698,39 @@ export type ProposedWrite =
     }
   | {
       /**
+       * A REPLACEMENT TAKES THE SLOT THE DROPPED PLAYER LEFT (2026-09-15).
+       *
+       * ONE `TeamAssignment` row changes hands. Nothing else: no
+       * balancer, no attendance, no second row. The owner's words after
+       * the incident were "the dropped player should be swapped with the
+       * new replacement in the team and teams are not generated", and
+       * this write is the whole of that sentence. `team-slot-inherit.ts`
+       * decides it; `attendance-engine.ts` applies it.
+       *
+       * ⚠️ `toUserId` CAN BE A `new:` PLACEHOLDER. The engine decides on
+       * a PROJECTED world, and a guest the org has never seen is
+       * `new:<name>` there until `applyEngineWrites` provisions them. The
+       * apply layer maps it to the id provisioning settled on before it
+       * touches the sheet — a `TeamAssignment` pointed at the
+       * placeholder string is a foreign key to nobody — and for the same
+       * reason it applies this AFTER every attendance write in the batch.
+       *
+       * `team` is carried for the composer and the audit line rather
+       * than for the update: the row keeps the side it is already on,
+       * and the argument for why that is the RIGHT side after a colour
+       * swap is in `team-slot-inherit.ts`'s header.
+       */
+      kind: "team_slot_inherit";
+      fromUserId: string;
+      fromName: string;
+      toUserId: string;
+      toName: string;
+      team: "RED" | "YELLOW";
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
        * RUN THE BALANCER AND POST THE LINE-UPS — §10 step 8's carve-out
        * for the club's most-used command. 23 occurrences in 120 days on
        * Sutton FC, more than every question shape combined, so deleting
@@ -922,6 +955,37 @@ export type SpeechIntent =
    * the composer must not say they are.
    */
   | { kind: "slot_opened"; messageId: string; outNames: string[] }
+  /**
+   * A REPLACEMENT ARRIVED FOR A SLOT THAT WAS ALREADY ON THE SHEET
+   * (2026-09-15). ONE post for the whole batch however many pairs moved,
+   * and it is the TEAMS — never the fourteen-name roster, which is the
+   * post the owner asked us to stop sending once the line-ups are out:
+   * "There is no point listing all the 14 players after the teams were
+   * announced."
+   *
+   * `messageId` is NOT NULLABLE for exactly the reason `slot_opened`'s
+   * is not: `attendance-engine-batch.ts` reads a `messageId: null`
+   * utterance as a BOOLEAN and throws its text away, and `route.ts` then
+   * expands `[SQUAD]` into a composed post in its place. It rides the
+   * message that seated the last replacement.
+   *
+   * `swaps` carries RESOLVED ROSTER NAMES and the side each pair changed
+   * hands on. `outWentOut` separates a DROP from a demotion, because a
+   * confirmed player moved to the bench vacates a slot WITHOUT being
+   * out and "<Name> is out" would then be a claim the rows do not
+   * support — the same distinction `slot_opened.outNames` makes.
+   */
+  | {
+      kind: "replacement_teams_post";
+      messageId: string;
+      swaps: Array<{
+        outName: string;
+        inName: string;
+        team: "RED" | "YELLOW";
+        /** DROPPED, as opposed to demoted to the bench. */
+        outWentOut: boolean;
+      }>;
+    }
   /** A resolved "Confirmed" whose writes were all idempotent. Saying
    *  nothing there is the silent-no-op failure in miniature. */
   | { kind: "pending_confirmed_ack"; messageId: string; userIds: string[] }

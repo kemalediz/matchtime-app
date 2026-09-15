@@ -139,7 +139,7 @@
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState } from "../../pipeline/types";
 import { compose } from "../../pipeline/compose";
-import { world } from "../../pipeline/__tests__/helpers";
+import { world, fullName } from "../../pipeline/__tests__/helpers";
 import type { Lang } from "../lang";
 import {
   buildMatchDayChaseFallback,
@@ -306,6 +306,24 @@ function teamsWorld(lang: Lang): SquadState {
   return fullWorld(lang, { teams });
 }
 
+/**
+ * The sheet AFTER a replacement has taken the vacated slot (2026-09-15).
+ *
+ * `decide` moves the `TeamAssignment` row in the projected state before
+ * the composer ever runs, so by the time `replacement_teams_post` is
+ * rendered the incoming player is ALREADY seated where the outgoing one
+ * stood. These cases therefore describe the repaired world, which is the
+ * only world the live composer sees.
+ */
+function replacedWorld(lang: Lang, outKey: string, inKey: string): SquadState {
+  const teams: Record<string, "RED" | "YELLOW"> = {};
+  FOURTEEN.forEach((k, i) => {
+    if (k !== outKey) teams[k] = i % 2 === 0 ? "RED" : "YELLOW";
+  });
+  teams[inKey] = FOURTEEN.indexOf(outKey) % 2 === 0 ? "RED" : "YELLOW";
+  return fullWorld(lang, { teams });
+}
+
 const MSG = "wa-1";
 
 /** Everything MatchTime would SAY for one speech intent, in order. */
@@ -359,6 +377,37 @@ function cases(lang: Lang): Case[] {
   add("R6 answer_count / full", say(full, { kind: "answer_count", messageId: MSG, statedCount: null }));
 
   add("R7 answer_squad / short", say(short, { kind: "answer_squad", messageId: MSG }));
+  // 2026-09-15: once the teams are out, BOTH squad-state posts are the
+  // line-ups rather than the fourteen-name roster. The three cases above
+  // are the before-the-teams world and are unchanged, byte for byte.
+  add("R1 squad_status / teams generated, so the line-ups", say(teams, { kind: "squad_status", messageId: null }));
+  add("R7 answer_squad / teams generated, so the line-ups", say(teams, { kind: "answer_squad", messageId: MSG }));
+
+  // ── R2b replacement_teams_post ──────────────────────────────────────
+  add(
+    "R2b replacement_teams_post / one swap, the player went out",
+    say(replacedWorld(lang, "wasim", "najib"), {
+      kind: "replacement_teams_post",
+      messageId: MSG,
+      swaps: [{ outName: fullName("wasim"), inName: fullName("najib"), team: "YELLOW", outWentOut: true }],
+    }),
+  );
+  add(
+    "R2b replacement_teams_post / one swap, the vacating player was BENCHED, not out",
+    say(replacedWorld(lang, "wasim", "najib"), {
+      kind: "replacement_teams_post",
+      messageId: MSG,
+      swaps: [{ outName: fullName("wasim"), inName: fullName("najib"), team: "YELLOW", outWentOut: false }],
+    }),
+  );
+  add(
+    "R2b replacement_teams_post / no team sheet, so it says nothing",
+    say(full, {
+      kind: "replacement_teams_post",
+      messageId: MSG,
+      swaps: [{ outName: fullName("wasim"), inName: fullName("najib"), team: "YELLOW", outWentOut: true }],
+    }),
+  );
 
   add("R8 answer_fixture / venue", say(short, { kind: "answer_fixture", messageId: MSG }));
   add("R8 answer_fixture / no venue", say({ ...short, venue: "" }, { kind: "answer_fixture", messageId: MSG }));

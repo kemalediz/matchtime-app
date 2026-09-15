@@ -69,6 +69,10 @@ import {
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
 import { resolveReminderPhrase } from "../reminder-time";
 import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
+// The 2026-09-15 replacement rule, pure and beside the pure core it is
+// built out of (§13) rather than inlined here — its header carries the
+// incident, the state-check argument and the pairing order.
+import { decideSlotInherits } from "../team-slot-inherit";
 import { resolvePerson } from "./identity";
 import type {
   AttendanceFacts,
@@ -256,6 +260,18 @@ export function decide(input: EngineInput): EngineResult {
   const degradations: Degradation[] = [];
   /** Did anything change the squad? Drives the single status post. */
   let squadChanged = false;
+  /**
+   * The LAST message in this batch that moved a row, or null.
+   *
+   * `squadChanged` says THAT the squad moved; this says WHICH message to
+   * hang a post on, and the replacement post needs one: a
+   * `messageId: null` utterance has its text thrown away by
+   * `attendance-engine-batch.ts` and replaced by `route.ts`'s `[SQUAD]`
+   * expansion, which is the fourteen-name roster this post exists
+   * instead of. Set in the same statement block as `squadChanged`, so
+   * the two cannot disagree.
+   */
+  let lastSquadChangeMessageId: string | null = null;
   /**
    * Did a row move for somebody who did NOT type the message that moved
    * it?
@@ -1248,6 +1264,7 @@ export function decide(input: EngineInput): EngineResult {
         }
         emit(write);
         squadChanged = true;
+        lastSquadChangeMessageId = msg.id;
         // `self` is the SAME condition `reactFor` reads one line down, so
         // the two cannot disagree about who was told: a status react on
         // the sender's message, or the batch's roster post for a row that
@@ -2438,7 +2455,117 @@ export function decide(input: EngineInput): EngineResult {
     confirmedCount(w) < state.maxPlayers &&
     vacated.length > 0;
 
-  if (squadChanged && (deferredSquadQuestions.length > 0 || movedSomeoneElsesRow)) {
+  // ═══════════════════════════════════════════════════════════════════
+  // …AND A FOURTH ARM, IN FRONT OF ALL THREE (2026-09-15, same night)
+  // ═══════════════════════════════════════════════════════════════════
+  //
+  // THE SECOND INCIDENT OF THE DAY. Teams generated 16:41. At 19:14,
+  // kickoff 21:30:
+  //
+  //   19:14  Wasim  "Salam guys… I feel a fever… If there is someone who
+  //                  can take my place, then please do."  → OUT, DROPPED
+  //   19:15  Amir   "Shahrokh can play in sha Allah"      → Shahrokh IN
+  //
+  // Both attendance writes were RIGHT. The TEAM SHEET was never touched:
+  // Wasim kept his Yellow slot, Shahrokh had none, and the last line-up
+  // standing in the group still named a man at home with a fever. Yellow
+  // would have turned up with six. On top of that the fourteen-name
+  // roster went out TWICE, after the teams had already been announced.
+  //
+  // The owner: "when a replacement arrives for a dropped player after
+  // teams are generated, the dropped player should be swapped with the
+  // new replacement in the team and teams are not generated… all match
+  // time need to do is to declare the teams again with the swapped
+  // replacement and the person that is out."
+  //
+  // ── A STATE CHECK, NOT AN EVENT CORRELATION ────────────────────────
+  //
+  // `decideSlotInherits` asks the projected WORLD "is anybody confirmed
+  // with no slot while the sheet still holds a slot for somebody who is
+  // not playing?", which is true after either ordering of the two
+  // messages, across any number of flushes, and whether the drop came
+  // from this path at all. Its header carries the full argument.
+  //
+  // ── GATED ON `squadChanged`, AND THAT IS LOAD-BEARING ──────────────
+  //
+  // Not on "the sheet is stale". Two reasons, and the second is the
+  // hard one:
+  //
+  //   • A batch that changed nothing has no message to ride and no
+  //     reason to speak. Repairing a sheet off the back of an unrelated
+  //     "haha" would attach a line-up post to a joke.
+  //   • `answer-batch.ts` REFUSES A WHOLE BATCH that `decide` hands any
+  //     write at all ("the engine proposed N write(s) from a read-only
+  //     route; this path has no apply layer"). `question` and
+  //     `balancer`(show) never change the squad, so this cannot turn a
+  //     tagged question into silence. Found by reading that guard, not
+  //     by running into it.
+  //
+  // ── FIRST IN PRECEDENCE ────────────────────────────────────────────
+  //
+  // Ahead of S36b's roster post, because a batch that seats a
+  // replacement is exactly the batch S36b would have answered with the
+  // fourteen names the owner asked us to stop sending. Ahead of
+  // `slot_opened`, because a slot that opens AND is refilled in the same
+  // batch is ONE event: "Wasim is out, one slot open" beside "Shahrokh
+  // takes his place" is two posts contradicting each other by a line,
+  // which is the 2026-06-12 shape S36 exists to prevent.
+  //
+  // It cannot swallow a question: the teams post is a superset of every
+  // answer `deferredSquadQuestions` holds (who is playing, and how
+  // many), which is the same argument S36b's arm makes for the roster.
+  //
+  // ⚠️ STILL NO ARM RETURNS OR CONTINUES. All four fall into
+  // `assertCoverage` and no guard sits between.
+  /** The message a replacement post would ride. Non-null exactly when
+   *  `squadChanged` is, and narrowed once here so neither the write nor
+   *  the speech below needs a non-null assertion. */
+  const rideOn = lastSquadChangeMessageId;
+  const inherits = rideOn
+    ? decideSlotInherits({
+        rows: [...w.rows.values()].map((r) => ({
+          userId: r.userId,
+          status: r.status,
+          position: r.position,
+        })),
+        teams: w.teams,
+      })
+    : [];
+  if (rideOn) {
+    for (const m of inherits) {
+      // The row CHANGES HANDS rather than being deleted and re-created,
+      // so the replacement appears where the dropped player stood. Sheet
+      // order is `id: asc` in `load-state.ts` and the apply layer
+      // updates in place, so "takes his spot" is literal on both sides
+      // of the seam.
+      w.teams = w.teams.map((t) => (t.userId === m.fromUserId ? { ...t, userId: m.toUserId } : t));
+      writes.push({
+        kind: "team_slot_inherit",
+        fromUserId: m.fromUserId,
+        fromName: nameOf(w, m.fromUserId),
+        toUserId: m.toUserId,
+        toName: nameOf(w, m.toUserId),
+        team: m.team,
+        sourceMessageId: rideOn,
+        reason: `${nameOf(w, m.toUserId)} takes the ${m.team} slot ${nameOf(w, m.fromUserId)} vacated`,
+      });
+    }
+  }
+
+  if (rideOn && inherits.length > 0) {
+    speech.push({
+      kind: "replacement_teams_post",
+      messageId: rideOn,
+      swaps: inherits.map((m) => ({
+        outName: nameOf(w, m.fromUserId),
+        inName: nameOf(w, m.toUserId),
+        team: m.team,
+        // A demote to the bench vacates a slot without anybody being
+        // out, and the composer must not say otherwise.
+        outWentOut: w.rows.get(m.fromUserId)?.status === "DROPPED",
+      })),
+    });
+  } else if (squadChanged && (deferredSquadQuestions.length > 0 || movedSomeoneElsesRow)) {
     // Somebody ASKED about the squad, or a row moved with no react to
     // carry it, in a batch that also changed the squad. ONE post,
     // composed from the projected state, covers both and answers every

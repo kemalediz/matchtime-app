@@ -120,16 +120,131 @@ export function compose(result: EngineResult): ComposedOutput {
   const confirmed = namesByStatus(state, "CONFIRMED", s.fallback_player);
   const bench = namesByStatus(state, "BENCH", s.fallback_player);
 
+  /** Names on each side of the sheet, in sheet order, or null when the
+   *  teams have not been generated. */
+  const sheet = (): { red: string[]; yellow: string[] } | null => {
+    if (state.teams.length === 0) return null;
+    const byId = new Map(state.roster.map((m) => [m.userId, m.name]));
+    const side = (team: "RED" | "YELLOW") =>
+      state.teams.filter((x) => x.team === team).map((x) => name(byId.get(x.userId) ?? ""));
+    const red = side("RED");
+    const yellow = side("YELLOW");
+    // Two empty sides render a team post with empty headings — the
+    // 2026-09-06 shape. Treated as "no sheet".
+    return red.length + yellow.length > 0 ? { red, yellow } : null;
+  };
+
+  /**
+   * THE ONE SQUAD-STATE POST, and which of the two it is.
+   *
+   * 2026-09-15. The owner, after the fourteen-name roster went out twice
+   * an hour after the line-ups were announced: "if the teams are
+   * generated, all match time need to do is to declare the teams again…
+   * There is no point listing all the 14 players after the teams were
+   * announced."
+   *
+   * So: with a sheet, the line-ups; without one, the roster exactly as
+   * it has always been. One function, so `squad_status` and
+   * `answer_squad` cannot start disagreeing about which post this group
+   * gets. `route.ts`'s `composeSquadStateReply` makes the same choice on
+   * the same test, and `group-copy.ts` carries the argument.
+   */
+  const squadStatePost = (): string => {
+    const sh = sheet();
+    if (!sh) return composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers, lang });
+    return formatTeamsPost({
+      redLabel: state.teamLabels[0],
+      yellowLabel: state.teamLabels[1],
+      red: sh.red.map((n) => ({ name: n })),
+      yellow: sh.yellow.map((n) => ({ name: n })),
+      kickoff: state.kickoffLabel,
+      venue: state.venue,
+      lang,
+    });
+  };
+
   for (const sp of result.speech) {
     switch (sp.kind) {
       case "squad_status":
         // The composer that already existed and was only ever used as a
-        // fallback. Promoted, not rewritten (§13).
+        // fallback. Promoted, not rewritten (§13) — and since
+        // 2026-09-15 it defers to the line-ups once there are any. See
+        // `squadStatePost`.
+        utterances.push({ messageId: null, text: squadStatePost() });
+        break;
+
+      case "replacement_teams_post": {
+        // ── A REPLACEMENT TOOK THE DROPPED PLAYER'S SLOT ────────────
+        //
+        // ONE post: who left, who took their place, and the whole sheet
+        // again with the change marked on the line it happened. The
+        // owner's shape, from the repair he posted by hand on the night:
+        //
+        //   🔁 *Wasim is out* — *Shahrokh* takes his place and his spot
+        //   in *Yellow*.
+        //
+        //   ⚽ *Teams for tonight* — 21:30 at Goals North Cheam
+        //   …
+        //   7. Shahrokh  (replacing Wasim)
+        //
+        //   Objections? An admin can ask me to regenerate the teams.
+        //
+        // ⚠️ THE FOOTER IS NOT THE DEFAULT ONE, and that is not a style
+        // choice. `formatTeamsPost`'s standing line says "Reply
+        // `swap X Y`", which is the wrong instruction on a post whose
+        // whole subject is a swap that has already been made — and the
+        // owner named the remedy he wants offered instead: "if then the
+        // team that somebody is not happy with the new team then the
+        // admin may ask to regenerate the teams."
+        //
+        // ⚠️ "<NAME> IS OUT" IS ONLY SAID OF SOMEBODY WHO IS. A
+        // confirmed player demoted to the bench vacates a slot without
+        // being out, `outWentOut` keeps the two apart, and
+        // `contradictsSquadState` would replace this whole post with the
+        // roster if it said otherwise — which is the post it exists
+        // instead of.
+        const sh = sheet();
+        if (!sh) {
+          // Unreachable from `decide` (no sheet means no inherit), so
+          // this is the branch that stops a future caller composing a
+          // team post out of nothing rather than a live condition.
+          operatorNotes.push(
+            `compose: replacement_teams_post for ${sp.messageId} with no team sheet; saying nothing`,
+          );
+          break;
+        }
+        const noteFor = new Map(
+          sp.swaps.map((x) => [name(x.inName), s.replacement_note({ from: first(x.outName) })]),
+        );
+        const withNotes = (names: string[]) =>
+          names.map((n) => ({ name: n, note: noteFor.get(n) }));
+        const label = (team: "RED" | "YELLOW") =>
+          team === "RED" ? state.teamLabels[0] : state.teamLabels[1];
+        const lead = s.replacement_lead({
+          outNames: sp.swaps.filter((x) => x.outWentOut).map((x) => first(x.outName)),
+          swaps: sp.swaps.map((x) => ({
+            inName: first(x.inName),
+            outName: first(x.outName),
+            teamLabel: label(x.team),
+          })),
+        });
         utterances.push({
-          messageId: null,
-          text: composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers, lang }),
+          messageId: sp.messageId,
+          text:
+            `${lead}\n\n` +
+            formatTeamsPost({
+              redLabel: state.teamLabels[0],
+              yellowLabel: state.teamLabels[1],
+              red: withNotes(sh.red),
+              yellow: withNotes(sh.yellow),
+              kickoff: state.kickoffLabel,
+              venue: state.venue,
+              lang,
+              footer: s.teams_post_footer_after_replacement,
+            }),
         });
         break;
+      }
 
       case "answer_count": {
         const need = Math.max(0, state.maxPlayers - confirmed.length);
@@ -154,10 +269,11 @@ export function compose(result: EngineResult): ComposedOutput {
         // regex in `route.ts` swapped the string for this post
         // afterwards. §6.4's claim is that the composer writes the final
         // words, so it writes them.
-        utterances.push({
-          messageId: sp.messageId,
-          text: composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers, lang }),
-        });
+        //
+        // Since 2026-09-15 "who's playing?" with a sheet on the table is
+        // answered with the LINE-UPS, which name the same fourteen people
+        // and also say which side each is on. See `squadStatePost`.
+        utterances.push({ messageId: sp.messageId, text: squadStatePost() });
         break;
 
       case "answer_fixture": {
