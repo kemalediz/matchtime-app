@@ -531,6 +531,72 @@ export function compose(result: EngineResult): ComposedOutput {
         break;
       }
 
+      case "slot_opened": {
+        // ── A COMPLETE SQUAD IS NOT COMPLETE ANY MORE ───────────────
+        //
+        // The whole post, in one sentence: who went, where the count
+        // stands, and the one thing a reader can do about it. Composed
+        // rather than the fourteen-line roster because the roster is
+        // what PR #63 was asked to stop sending on every squad change,
+        // and because "say *IN* to take it" is the half of this the
+        // roster has never carried.
+        //
+        // ⚠️ "13 OF 14", NEVER "13/14", AND THAT IS NOT A STYLE CHOICE.
+        // An "N/M" beside squad vocabulary is rule (c) of
+        // `displaysSquadState`, and `route.ts`'s `composeSquadStateReply`
+        // pass REPLACES anything it recognises with the composed roster
+        // — so the slash would delete this sentence and post the very
+        // thing it exists instead of. Same trap that kept the STATS and
+        // OPTIONS answers refused for months (`answer_options` above
+        // spells out its count for the same reason), and the house style
+        // has no slashes in prose anyway.
+        //
+        // ⚠️ "SLOT", NEVER "SPOT", AND THAT IS NOT A STYLE CHOICE
+        // EITHER. `contradictsSquadState` measures
+        // `/(one|a|an|two|three|\d+)\s+(?:more\s+)?slots?\s+open/`
+        // against the REAL shortfall in the post-write snapshot, and
+        // "<Name> is out" against that player's real row. Saying "spot"
+        // would slip past the check — which is the wrong kind of clever:
+        // both halves of this sentence are claims about the squad, and
+        // the point of §6.4 is that such claims are checked against the
+        // database rather than trusted. Written this way, a slot that
+        // got filled between the projection and the writes landing gets
+        // the roster instead of a wrong number.
+        //
+        // NAMES ONLY THE PLAYERS WHO ARE ACTUALLY OUT. A confirmed
+        // player moving to the bench vacates a slot without being out,
+        // and the engine keeps the two apart (`vacancies[].wentOut`) so
+        // this cannot say otherwise. With nobody out, the sentence just
+        // leads with the count.
+        const open = Math.max(0, state.maxPlayers - confirmed.length);
+        if (open === 0) {
+          // The projection says a slot opened and the state in hand says
+          // it is full. Unreachable from `decide` (the engine computes
+          // both from the same working state), so this is the branch
+          // that stops a future caller composing "0 slots open" rather
+          // than a live condition. Say nothing; the roster post and the
+          // 17:00 block both still describe a full squad correctly.
+          operatorNotes.push(
+            `compose: slot_opened for ${s.messageId} with a full squad; saying nothing`,
+          );
+          break;
+        }
+        const names = s.outNames.map(firstName);
+        const lead =
+          names.length === 0
+            ? "That's"
+            : `${joinList(names)} ${names.length === 1 ? "is" : "are"} out,`;
+        const slots =
+          open === 1
+            ? "One slot open, say *IN* to take it."
+            : `${open} slots open, say *IN* to take one.`;
+        utterances.push({
+          messageId: s.messageId,
+          text: `${lead} ${confirmed.length} of ${state.maxPlayers} for ${state.kickoffLabel}. ${slots}`,
+        });
+        break;
+      }
+
       case "needs_tag_for_rest": {
         // WHAT MATCHTIME DID NOT DO, named. The engine has already
         // decided this sentence is allowed (it only emits the intent

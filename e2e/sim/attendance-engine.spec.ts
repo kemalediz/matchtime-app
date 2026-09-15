@@ -698,6 +698,180 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect((await g.counts()).confirmed).toBe(3);
   });
 
+  // ── A drop that opens a spot speaks (2026-09-15) ──────────────────
+
+  /** The squad the incident happened in: 14 of 14, empty bench. */
+  const FOURTEEN = [
+    "owner",
+    "alice",
+    "brian",
+    "pete",
+    "dan",
+    "felix",
+    "greg",
+    "henry",
+    "ivan",
+    "jake",
+    "kyle",
+    "liam",
+    "mike",
+    "noah",
+  ];
+
+  const OUT = () => facts([claim({ polarity: "out" })]);
+
+  /** The message as it was posted, verbatim, typos and all. */
+  const INJURY =
+    "Guys im really sorry but i have a foot injury sustained on the weekend. " +
+    "Was hopingvit would get better but it hasnt so I am out today";
+
+  test("THE 2026-09-15 INCIDENT: a self-drop off a full squad is announced, once", async ({
+    request,
+    db,
+  }) => {
+    // 10:48 UTC, match day, 14 of 14 and NOBODY on the bench. MatchTime
+    // read the message correctly and marked him OUT, then said nothing
+    // at all: he dropped himself, so S36b's two survivors (somebody
+    // asked / a row moved for somebody who did not speak) both missed
+    // it, and the 👋 on his own message was the whole acknowledgement.
+    // The squad played 13 of 14 because nobody in the group was ever
+    // told there was a hole.
+    const g = await createGroup(request, db, {
+      maxPlayers: 14,
+      attendance: FOURTEEN.map((key) => ({ key, status: "CONFIRMED" as const })),
+    });
+    engineOn({ [INJURY]: { route: "self_att", facts: OUT() } });
+
+    const res = await g.postBatch([{ player: "pete", body: INJURY }]);
+
+    expect((await g.attendanceOf("pete"))?.status).toBe("DROPPED");
+    expect(await g.counts()).toMatchObject({ confirmed: 13, bench: 0 });
+
+    // EXACTLY ONE speaker, and it is the drop's own message.
+    const speakers = res.results.filter((r) => (r.reply ?? "").length > 0);
+    expect(speakers).toHaveLength(1);
+    // The kickoff label is whatever the next fixture is for this sim
+    // group, so it is matched rather than spelled: the words either side
+    // of it are the assertion.
+    expect(speakers[0].reply).toMatch(
+      /^Pete is out, 13 of 14 for \w{3} \d\d:\d\d\. One slot open, say \*IN\* to take it\.$/,
+    );
+    expect(res.results[0].react).toBe("👋");
+
+    // It survived `composeSquadStateReply` intact — no `[SQUAD]` marker,
+    // no fourteen-line roster in its place, no extra group post.
+    expect(speakers[0].reply).not.toContain("[SQUAD]");
+    expect(speakers[0].reply).not.toContain("Playing:");
+    expect(res.groupPosts).toEqual([]);
+
+    // AND NOBODY WAS DM'd. A group post reaches the same people at no
+    // risk to the (unofficial) WhatsApp client.
+    expect(res.dms).toEqual([]);
+  });
+
+  test("an IN into the same full squad still says nothing (PR #63)", async ({ request, db }) => {
+    // The regression that matters most. An IN closes a gap and needs
+    // only the tick; an OUT opens one. Same squad, same batch shape,
+    // opposite polarity, opposite answer.
+    const g = await createGroup(request, db, {
+      maxPlayers: 14,
+      attendance: FOURTEEN.slice(0, 13).map((key) => ({ key, status: "CONFIRMED" as const })),
+    });
+    engineOn({ in: { route: "self_att", facts: IN() } });
+
+    const res = await g.postBatch([{ player: "noah", body: "in" }]);
+
+    expect(await g.counts()).toMatchObject({ confirmed: 14 });
+    expect(res.results.filter((r) => (r.reply ?? "").length > 0)).toHaveLength(0);
+    expect(res.results[0].react).toBe("✅");
+    // The ONE thing that speaks is `squad-announce.ts`'s squad-complete
+    // post, which PR #63 named as the owner of this occasion and which
+    // this change does not touch. Nothing from the engine, and above all
+    // no open-slot line: a fill is not a vacancy.
+    expect(res.groupPosts).toHaveLength(1);
+    expect(res.groupPosts[0]).toContain("Squad complete");
+    expect(res.groupPosts.join("\n")).not.toContain("slot open");
+    expect(res.dms).toEqual([]);
+  });
+
+  test("a drop with a BENCH behind it leaves the bench broadcast to do the talking", async ({
+    request,
+    db,
+  }) => {
+    // `cancelAttendance` → `requestBenchConfirmationOnDrop` opens ONE
+    // BenchSlotOffer, and the scheduler turns it into a group post
+    // tagging every bencher plus a DM each. A second "one slot open" on
+    // top of that is noise.
+    const g = await createGroup(request, db, {
+      maxPlayers: 14,
+      attendance: [
+        ...FOURTEEN.map((key) => ({ key, status: "CONFIRMED" as const })),
+        { key: "quinn", status: "BENCH" as const },
+      ],
+    });
+    engineOn({ [INJURY]: { route: "self_att", facts: OUT() } });
+
+    const res = await g.postBatch([{ player: "pete", body: INJURY }]);
+
+    expect(await g.counts()).toMatchObject({ confirmed: 13, bench: 1 });
+    const speakers = res.results.filter((r) => (r.reply ?? "").length > 0);
+    expect(speakers).toHaveLength(1);
+    expect(speakers[0].reply).toContain("A slot just opened");
+    expect(speakers[0].reply).not.toContain("13 of 14");
+    expect(res.dms).toEqual([]);
+  });
+
+  test("a batch with SEVERAL drops announces them once, in one sentence", async ({
+    request,
+    db,
+  }) => {
+    // Four contradictory posts in one batch is the 2026-06-12 Sutton
+    // Lads incident. S36's single-post rule has to hold here too.
+    const g = await createGroup(request, db, {
+      maxPlayers: 14,
+      attendance: FOURTEEN.map((key) => ({ key, status: "CONFIRMED" as const })),
+    });
+    engineOn({
+      "out today lads": { route: "self_att", facts: OUT() },
+      "cant make it sorry": { route: "self_att", facts: OUT() },
+    });
+
+    const res = await g.postBatch([
+      { player: "pete", body: "out today lads" },
+      { player: "dan", body: "cant make it sorry" },
+    ]);
+
+    expect(await g.counts()).toMatchObject({ confirmed: 12, bench: 0 });
+    const speakers = res.results.filter((r) => (r.reply ?? "").length > 0);
+    expect(speakers).toHaveLength(1);
+    expect(speakers[0].reply).toMatch(
+      /^Pete and Dan are out, 12 of 14 for \w{3} \d\d:\d\d\. 2 slots open, say \*IN\* to take one\.$/,
+    );
+    expect(res.groupPosts).toEqual([]);
+    expect(res.dms).toEqual([]);
+  });
+
+  test("a squad that was ALREADY short says nothing when another player drops", async ({
+    request,
+    db,
+  }) => {
+    // 13 of 14 → 12 of 14. The group can already see it is short and the
+    // 17:00 chase is already running on `need > 0`. Announcing every
+    // subsequent OUT is the overmessaging PR #63 was asked to stop.
+    const g = await createGroup(request, db, {
+      maxPlayers: 14,
+      attendance: FOURTEEN.slice(0, 13).map((key) => ({ key, status: "CONFIRMED" as const })),
+    });
+    engineOn({ [INJURY]: { route: "self_att", facts: OUT() } });
+
+    const res = await g.postBatch([{ player: "pete", body: INJURY }]);
+
+    expect(await g.counts()).toMatchObject({ confirmed: 12 });
+    expect(res.results.filter((r) => (r.reply ?? "").length > 0)).toHaveLength(0);
+    expect(res.groupPosts).toEqual([]);
+    expect(res.dms).toEqual([]);
+  });
+
   test("the banter-drop guard survives: a wind-up does not drop a protesting player", async ({
     request,
     db,

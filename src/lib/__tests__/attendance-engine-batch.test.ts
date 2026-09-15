@@ -1073,3 +1073,90 @@ describe("the unnamed-guest name ask claims its once-per-match slot before it sp
     expect(d.cancelled).toEqual([]);
   });
 });
+
+/**
+ * ── THE OPEN-SLOT LINE ON THE LIVE SHAPE (2026-09-15) ────────────────
+ *
+ * `pipeline/__tests__/compose.test.ts` settles the words and
+ * `pipeline/__tests__/engine.test.ts` settles when they are said. What
+ * this file owns is the thing that decides whether they ever leave the
+ * process: a `messageId: null` utterance is read here as a BOOLEAN and
+ * its text is thrown away (`squadPostForMessageId`, which `route.ts`
+ * expands into the composed roster from a fresh snapshot). An open-slot
+ * line composed at batch level would be silently replaced by the
+ * fourteen-line roster it exists to avoid.
+ *
+ * So the assertion is on `outcomes.get(id).reply`, not on
+ * `squadPostForMessageId`.
+ */
+describe("a drop off a full squad reaches the group; an IN still does not", () => {
+  const SELF_OUT = {
+    claims: [
+      {
+        subject: "sender",
+        personRef: "",
+        personNamed: false,
+        polarity: "out",
+        contingent: false,
+        conditionOn: "none",
+        tense: "present",
+        reported: false,
+        confidence: 0.95,
+      },
+    ],
+    affirmation: "none",
+    sideRequests: [],
+  };
+
+  /** maxPlayers 4 and four confirmed: the state the incident happened
+   *  in, with an EMPTY bench. */
+  const fullSquad = async () =>
+    state({
+      rows: [
+        { userId: "u-pete", status: "CONFIRMED" as const, position: 1 },
+        { userId: "u-alice", status: "CONFIRMED" as const, position: 2 },
+        { userId: "u-dan", status: "CONFIRMED" as const, position: 3 },
+        { userId: "u-extra", status: "CONFIRMED" as const, position: 4 },
+      ],
+      roster: [
+        { userId: "u-pete", name: "Pete Power", isAdmin: false, hasPhone: true },
+        { userId: "u-alice", name: "Alice Admin", isAdmin: true, hasPhone: true },
+        { userId: "u-dan", name: "Dan Drummer", isAdmin: false, hasPhone: true },
+        { userId: "u-extra", name: "Ed Extra", isAdmin: false, hasPhone: true },
+      ],
+    });
+
+  it("puts the open-slot line on the DROP message, not on the batch marker", async () => {
+    const d = deps({ model: modelReturning(SELF_OUT), loadState: fullSquad });
+    const r = await run([msg({ body: "foot injury lads, I am out today" })], d);
+
+    expect(d.cancelled).toEqual(["u-pete"]);
+    expect(r.outcomes.get("wa-1")?.reply).toBe(
+      "Pete is out, 3 of 4 for Tue 20:00. One slot open, say *IN* to take it.",
+    );
+    // The roster marker stays OFF. If this ever goes non-null the route
+    // appends `[SQUAD]` and the group gets the roster as well.
+    expect(r.squadPostForMessageId).toBeNull();
+    expect(r.outcomes.get("wa-1")?.react).toBe("👋");
+    expect(r.outcomes.get("wa-1")?.intent).toBe("out");
+  });
+
+  it("an IN into the same squad still says nothing at all", async () => {
+    const d = deps({ loadState: async () => state({ rows: [] }) });
+    const r = await run([msg()], d);
+    expect(d.registered).toEqual(["u-pete"]);
+    expect(r.outcomes.get("wa-1")?.reply).toBeNull();
+    expect(r.squadPostForMessageId).toBeNull();
+  });
+
+  it("sends nobody a message: the apply layer has no DM door at all", async () => {
+    // The standing instruction all week is "do not DM anyone". This
+    // runner's ENTIRE I/O surface is the injected deps below, and none
+    // of them can send anything — so a drop opening a slot cannot
+    // become a DM even by accident. Asserted on the fake rather than
+    // argued, and it fails the moment a sending dep is added.
+    const d = deps({ model: modelReturning(SELF_OUT), loadState: fullSquad });
+    await run([msg({ body: "foot injury lads, I am out today" })], d);
+    expect(Object.keys(d).filter((k) => /dm|send|notify|blast/i.test(k))).toEqual([]);
+  });
+});

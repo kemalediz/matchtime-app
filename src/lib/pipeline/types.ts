@@ -877,6 +877,24 @@ export type SpeechIntent =
    *  resolved label out loud for exactly that reason. */
   | { kind: "reminder_ack"; messageId: string; phrase: string; whenLabel: string | null }
   | { kind: "bench_offer_open"; messageId: string; replacingName: string }
+  /**
+   * A COMPLETE SQUAD IS NOT COMPLETE ANY MORE, and there is no bench to
+   * absorb it (2026-09-15). One post per batch however many rows moved.
+   *
+   * `messageId` is NOT NULLABLE, and that is load-bearing rather than
+   * tidy. `attendance-engine-batch.ts` reads a `messageId: null`
+   * utterance as a BOOLEAN and throws its text away — `route.ts` then
+   * expands `[SQUAD]` into the composed roster from a post-write
+   * snapshot — so a batch-level open-slot line would be silently
+   * replaced by the fourteen-line roster it exists to avoid. It rides
+   * the message that vacated the last slot.
+   *
+   * `outNames` are RESOLVED ROSTER NAMES of the players who actually
+   * went OUT, which can be fewer than the slots opened: a confirmed
+   * player moving to the bench vacates a slot without being out, and
+   * the composer must not say they are.
+   */
+  | { kind: "slot_opened"; messageId: string; outNames: string[] }
   /** A resolved "Confirmed" whose writes were all idempotent. Saying
    *  nothing there is the silent-no-op failure in miniature. */
   | { kind: "pending_confirmed_ack"; messageId: string; userIds: string[] }

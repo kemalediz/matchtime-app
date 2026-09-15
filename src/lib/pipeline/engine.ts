@@ -190,6 +190,27 @@ export function decide(input: EngineInput): EngineResult {
    * of what does NOT, and why each is already covered.
    */
   let movedSomeoneElsesRow = false;
+  /**
+   * Every CONFIRMED row that LEFT the squad in this batch — dropped, or
+   * moved to the bench. A vacancy, in the order it happened.
+   *
+   * Recorded rather than derived from the counts afterwards, because the
+   * sentence has to name WHO and has to know whether they are actually
+   * out: a confirmed player moving to the bench opens a slot without
+   * being out, and "Wasim is out" is then a claim the database does not
+   * support (`contradictsSquadState` would replace the whole reply with
+   * the roster, and it would be right to).
+   *
+   * See the speech assembly at the bottom of `decide` for what is done
+   * with it and for the three reasons a vacancy says nothing.
+   */
+  const vacancies: Array<{
+    userId: string | null;
+    name: string;
+    /** DROPPED, as opposed to demoted to the bench. */
+    wentOut: boolean;
+    messageId: string;
+  }> = [];
   /** Question speech that the squad post would subsume (§3.2 S36). */
   const deferredSquadQuestions: SpeechIntent[] = [];
 
@@ -1050,6 +1071,19 @@ export function decide(input: EngineInput): EngineResult {
         // the sender's message, or the batch's roster post for a row that
         // moved without one. See `movedSomeoneElsesRow`'s declaration.
         if (!self) movedSomeoneElsesRow = true;
+        // A CONFIRMED row leaving the squad is a VACANCY, whichever way
+        // it left. `statusBefore` was read before `applyClaim` mutated
+        // the live row, which is the only reason this comparison can be
+        // made here at all (the S13b unit test caught that the first
+        // time a rule started depending on it).
+        if (statusBefore === "CONFIRMED" && write.status !== "CONFIRMED") {
+          vacancies.push({
+            userId: t.userId,
+            name: t.name,
+            wentOut: write.status === "DROPPED",
+            messageId: msg.id,
+          });
+        }
         out.react = out.react ?? reactFor(write.status, self);
 
         // A player who was DROPPED and is back closes the offer that
@@ -2075,12 +2109,118 @@ export function decide(input: EngineInput): EngineResult {
   //     that flag's declaration for why the retro-react is not enough to
   //     rest on.
   //
-  // ⚠️ NEITHER ARM RETURNS OR CONTINUES. This is the last statement
-  // before `assertCoverage`, both arms fall into it, and there is no
-  // guard between them and it. (The terminal-short-circuit class — six
-  // incidents in this repo where a branch silently deleted what sat
-  // below it — is the reason that sentence is written down rather than
-  // left to a reading.)
+  // A THIRD ARM JOINED THEM ON 2026-09-15 — see the block immediately
+  // below, which also re-states the no-short-circuit argument for all
+  // three.
+  //
+  // ═══════════════════════════════════════════════════════════════════
+  // …EXCEPT THAT AN OUT IS NOT AN IN (2026-09-15)
+  // ═══════════════════════════════════════════════════════════════════
+  //
+  // THE INCIDENT. 10:48 UTC on match day, Sutton FC, 14 of 14 and an
+  // empty bench. Abid posted "Guys im really sorry but i have a foot
+  // injury … so I am out today". The pipeline read it perfectly —
+  // `intent=out`, `action=OUT`, row DROPPED, squad 13 of 14 — and
+  // MatchTime said NOTHING AT ALL, on match day, with a hole in the
+  // squad. He dropped HIMSELF, so `movedSomeoneElsesRow` is false and
+  // the 👋 on his own message was the whole acknowledgement; nobody
+  // asked a squad question, so there was no post. The club played 13.
+  //
+  // The rule above is not wrong. It is the rule Kemal asked for, and
+  // every occasion it removed really does have another owner. What it
+  // gets wrong is treating an IN and an OUT as the same event. They are
+  // not symmetric:
+  //
+  //   • An IN CLOSES a gap. Nobody has to do anything about it, the
+  //     ✅ tells the one person who needs telling, and twenty text
+  //     confirmations in an evening is what PR #63 deleted.
+  //   • An OUT OPENS one. It is the most time-critical thing that can
+  //     happen in the group on match day, and the people who could fill
+  //     it are precisely the ones who will never hear about it from a
+  //     react on somebody else's message.
+  //
+  // ── THE TRIGGER IS AN EDGE, NOT A LEVEL ────────────────────────────
+  //
+  // "The squad was COMPLETE when this batch began and is not now."
+  // Deliberately not "the squad is short", which is a level and would
+  // fire on every OUT for the rest of the week:
+  //
+  //   14 → 13   speaks. A complete squad became incomplete; that is news.
+  //   13 → 12   SILENT. The group can already see it is short, the
+  //             17:00 chase is already running on `need > 0`, and a post
+  //             per subsequent drop is the overmessaging PR #63 was
+  //             asked to stop. This is the deliberate cost, written down
+  //             rather than discovered: the second drop of the week is
+  //             not announced.
+  //   14 → 13 → 14 → 13  speaks twice, and should. Each is a real
+  //             re-opening, and the arithmetic bounds it at one post per
+  //             transition rather than one per message.
+  //
+  // NO MATCH-DAY GATE, on purpose. A slot that opens on Saturday for
+  // Tuesday is still a slot nobody can fill without hearing about it,
+  // and the alternative channel (the 17:00 chase) is a scheduled
+  // reminder rather than news of a change — on a week that filled early
+  // it is suppressed entirely until the drop puts `need > 0` back.
+  //
+  // ── AND THE BENCH ANSWERS IT FIRST WHEN THERE IS ONE ───────────────
+  //
+  // Checked on the live path rather than assumed. A drop reaches
+  // `attendance.ts:cancelAttendance` → `requestBenchConfirmationOnDrop`,
+  // which returns early unless `hasBench`, and otherwise creates ONE
+  // `BenchSlotOffer`; `bot-scheduler.ts` then posts it to the group
+  // tagging every bencher AND DMs each of them. So with a bench behind
+  // it, a drop is already announced twice over and "one slot open" is
+  // noise on top. With NO bench — which is what the squad looked like on
+  // 15 September, 0 players and 0 offers — that whole path returns
+  // early and nothing reaches the group at all.
+  //
+  // Gated on the OFFER rather than on `bench.length` so the one case the
+  // offer path does not cover is not silently inherited: a confirmed
+  // player moving to the BENCH vacates a slot and opens no offer, so
+  // that vacancy is announced even though a bench exists.
+  //
+  // KNOWN GAP, stated: the scheduler's broadcast is additionally gated
+  // on London 08:00-21:59 and on per-player `subBenchOfferDm` opt-outs,
+  // neither of which is in `SquadState`. A 02:00 drop with a bench is
+  // therefore still quiet until morning, exactly as it is today.
+  //
+  // ── ORDER, AND WHY THE ROSTER STILL WINS ───────────────────────────
+  //
+  // This arm is SECOND. The roster post is a superset — it already
+  // leads with "13/14, need *1 more* 🙏" — so where S36b was already
+  // going to post, the open slot is named and a second sentence would
+  // be the two-posts-one-line-apart shape S36 exists to prevent. That
+  // also settles the admin case the brief asks about: an admin dropping
+  // somebody else sets `movedSomeoneElsesRow`, takes arm one, and gets
+  // exactly one post.
+  //
+  // It cannot swallow a question either, and that is arithmetic rather
+  // than a promise: reaching arm two requires arm one to be false, and
+  // `slotJustOpened` implies `squadChanged`, so
+  // `deferredSquadQuestions` must be empty here.
+  //
+  // ⚠️ NO ARM RETURNS OR CONTINUES. Still the last statement before
+  // `assertCoverage`; all three fall into it; no guard sits between.
+  // (The terminal-short-circuit class — seven incidents in this repo
+  // where a branch silently deleted what sat below it — is why that is
+  // written down rather than left to a reading.)
+  const confirmedBefore = state.rows.filter((r) => r.status === "CONFIRMED").length;
+  const benchSize = benchUserIds(w).length;
+  const vacated = vacancies.filter((v) => {
+    // Back in the squad by the end of the batch: no vacancy to announce,
+    // and naming them would contradict the rows.
+    if (v.userId !== null && w.rows.get(v.userId)?.status === "CONFIRMED") return false;
+    // An open offer with somebody on the bench to receive it: the
+    // broadcast owns this slot.
+    if (benchSize > 0 && v.userId !== null && w.offers.some((o) => o.replacingUserId === v.userId))
+      return false;
+    return true;
+  });
+  const slotJustOpened =
+    confirmedBefore >= state.maxPlayers &&
+    confirmedCount(w) < state.maxPlayers &&
+    vacated.length > 0;
+
   if (squadChanged && (deferredSquadQuestions.length > 0 || movedSomeoneElsesRow)) {
     // Somebody ASKED about the squad, or a row moved with no react to
     // carry it, in a batch that also changed the squad. ONE post,
@@ -2088,9 +2228,18 @@ export function decide(input: EngineInput): EngineResult {
     // deferred question. Four contradictory posts in one batch is the
     // 2026-06-12 Sutton Lads incident, and it is what S36 exists to stop.
     speech.push({ kind: "squad_status", messageId: null });
+  } else if (slotJustOpened) {
+    // A complete squad is not complete any more and nothing else is
+    // going to say so. ONE post for the whole batch however many rows
+    // moved, riding the message that vacated the last of them.
+    speech.push({
+      kind: "slot_opened",
+      messageId: vacated[vacated.length - 1].messageId,
+      outNames: vacated.filter((v) => v.wentOut).map((v) => v.name),
+    });
   } else {
     // Either nothing here needs saying — and then this pushes NOTHING,
-    // which is the whole change: the ✅ on each message is the
+    // which is PR #63's whole change: the ✅ on each message is the
     // acknowledgement — or the squad did not move, and each question is
     // answered on its own message exactly as before.
     speech.push(...deferredSquadQuestions);

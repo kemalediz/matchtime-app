@@ -140,8 +140,16 @@ type Case = {
   fullSquad?: boolean;
   /** Who the fill must put IN the squad. Defaults to `FULL_SQUAD_INCLUDES`. */
   squadIncludes?: string[];
-  /** Who the fill parks on the bench. Defaults to `FULL_SQUAD_BENCH`. */
-  benched?: string;
+  /** Who the fill parks on the bench. Defaults to `FULL_SQUAD_BENCH`.
+   *
+   *  `null` means NO BENCH AT ALL, and it is not a nicety: a bench
+   *  absorbs a drop (`requestBenchConfirmationOnDrop` opens an offer and
+   *  the scheduler broadcasts it), so a full squad with one bencher and
+   *  a full squad with none behave completely differently on an OUT.
+   *  Sutton FC was at 0 benchers on 15 September, which is why nothing
+   *  reached the group at all, and a harness that could not express an
+   *  empty bench could not replay it. */
+  benched?: string | null;
   /** Force these roster members CONFIRMED on the CLONED state before the
    *  run. IN MEMORY ONLY — like every other knob here, it edits the
    *  structuredClone this iteration throws away, never the database.
@@ -294,6 +302,50 @@ const CASES: Case[] = [
   { id: "K4", who: "Kemal", body: "it would be great to have some benchers in case someone drops tomorrow? Anybody else interested", fullSquad: true, expect: "THE ACTUAL 14 SEPT INCIDENT. Squad is full, so no DM can go out — but the answer must INVITE the bench, never 'already full, no open spots to recruit for'" },
   { id: "K5", who: "Kemal", body: "anyone fancy being a bencher tomorrow in case we get a drop out", fullSquad: true, expect: "same ask, flatter phrasing — recruit side-request, bench invitation" },
   { id: "K6", who: "Kemal", body: "we could do with one or two on standby for tomorrow in case someone pulls out", fullSquad: true, expect: "cover rather than benchers. Same state, same answer: the bench IS the standby" },
+
+  // ── W: A DROP THAT OPENS A SPOT — the 15 Sept incident ────────────
+  //
+  // 10:48 UTC on match day, 14 of 14 and NOBODY on the bench. The
+  // message below was read perfectly (`intent=out`, `action=OUT`, row
+  // DROPPED, squad 13 of 14) and MatchTime then said NOTHING AT ALL.
+  // Kemal noticed; the club played 13.
+  //
+  // What to read: the `speaks :` line. W1 must speak, once, with the
+  // open-slot sentence. W2 is the same drop with a bench behind it,
+  // where the BenchSlotOffer broadcast already owns the announcement and
+  // a second sentence would be noise. W3 is the control that matters
+  // most — an IN must stay silent, which is PR #63 and the thing the
+  // owner asked for in the first place.
+  //
+  // `benched: null` is doing real work in W1: with one bencher (the
+  // table's default) this case tests the branch W2 tests, not the
+  // incident.
+  {
+    id: "Z1",
+    who: "Abid Kazmi",
+    body: "Guys im really sorry but i have a foot injury sustained on the weekend. Was hopingvit would get better but it hasnt so I am out today",
+    fullSquad: true,
+    benched: null,
+    confirm: ["Abid Kazmi"],
+    expect:
+      "THE 15 SEPT INCIDENT. DROP Abid, and SPEAK once: \"Abid is out, 13 of 14 for <kickoff>. One slot open, say IN to take it.\" Before the fix: the drop landed and the group heard nothing",
+  },
+  {
+    id: "Z2",
+    who: "Abid Kazmi",
+    body: "Guys im really sorry but i have a foot injury sustained on the weekend. Was hopingvit would get better but it hasnt so I am out today",
+    fullSquad: true,
+    confirm: ["Abid Kazmi"],
+    expect:
+      "THE SAME DROP WITH A BENCH. DROP Abid and speak the BENCH OFFER only — the offer broadcast (group tag + a DM per bencher) already announces it, so no open-slot line on top",
+  },
+  {
+    id: "Z3",
+    who: "Zair",
+    body: "in",
+    expect:
+      "THE CONTROL. WRITE Zair CONFIRMED and say NOTHING — an IN closes a gap and the ✅ is the whole acknowledgement (PR #63). If this ever speaks, the fix has reopened the overmessaging Kemal asked to stop",
+  },
 
   // ── Y: THE CLAUSE PEEL — incident #6 and its control ──────────────
   //
@@ -963,15 +1015,19 @@ function forceConfirmed(s: SquadState, names: string[]): void {
   }
 }
 
-function fillSquad(state: SquadState, include: string[], benchName: string): SquadState {
+function fillSquad(
+  state: SquadState,
+  include: string[],
+  benchName: string | null,
+): SquadState {
   const s = structuredClone(state);
   const taken = new Set(s.rows.map((r) => r.userId));
-  const bench = memberByName(s.roster, benchName);
+  const bench = benchName === null ? null : memberByName(s.roster, benchName);
   const seed = include.map((n) => memberByName(s.roster, n));
 
   for (const m of [...seed, ...s.roster]) {
     if (s.rows.length >= s.maxPlayers) break;
-    if (taken.has(m.userId) || m.userId === bench.userId) continue;
+    if (taken.has(m.userId) || m.userId === bench?.userId) continue;
     taken.add(m.userId);
     s.rows.push({ userId: m.userId, status: "CONFIRMED", position: s.rows.length + 1 });
   }
@@ -988,7 +1044,7 @@ function fillSquad(state: SquadState, include: string[], benchName: string): Squ
       );
     }
   }
-  if (!taken.has(bench.userId)) {
+  if (bench && !taken.has(bench.userId)) {
     s.rows.push({ userId: bench.userId, status: "BENCH", position: s.rows.length + 1 });
   }
   return s;
@@ -1665,7 +1721,10 @@ async function main(): Promise<void> {
         ? fillSquad(
             base,
             c.squadIncludes ?? FULL_SQUAD_INCLUDES,
-            c.benched ?? FULL_SQUAD_BENCH,
+            // `??` would be wrong here: `benched: null` is a case SAYING
+            // there is no bench, and nullish-coalescing would quietly
+            // hand it the default bencher instead.
+            c.benched === undefined ? FULL_SQUAD_BENCH : c.benched,
           )
         : structuredClone(base);
       if (c.alreadyAskedForGuestName) state.guestAskedUserIds = [sender.userId];
