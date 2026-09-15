@@ -11,6 +11,7 @@ import {
 } from "@/lib/player-stats";
 import { RatingTimeline } from "@/components/stats/rating-timeline";
 import { InfoButton } from "@/components/stats/info-button";
+import { formatLastPlayed } from "@/lib/ranked-table-activity";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,10 @@ export default async function MyStatsPage() {
   const meId = session.user.id;
   const [stats, leaderboard, tots, allClubs] = await Promise.all([
     loadPlayerSeasonStats(membership.orgId, meId),
-    loadRatingLeaderboard(membership.orgId, { minGames: 1, limit: 20 }),
+    // `viewerId` so a player who has aged out of the ranked table still
+    // sees his own row on his own page — see
+    // VIEWER_IS_EXEMPT_ON_OWN_STATS_PAGE in `ranked-table-activity.ts`.
+    loadRatingLeaderboard(membership.orgId, { minGames: 1, limit: 20, viewerId: meId }),
     loadTeamOfSeason(membership.orgId, { minGames: 2 }),
     loadAllClubsOverview(meId),
   ]);
@@ -291,10 +295,21 @@ export default async function MyStatsPage() {
                   <span className="text-red-500 font-semibold">↓</span> dropped,{" "}
                   <span className="text-slate-400 font-semibold">▬</span> no change.
                 </p>
+                {/* Say the table is filtered. A silent filter is how
+                    "where did I go?" questions start, and this InfoButton
+                    is where a player looks for the answer. */}
+                <p>
+                  The table lists players who have played in the last three months.
+                  Anyone who hasn&apos;t comes out of the rankings until they play
+                  again — their rating isn&apos;t changed or reduced while
+                  they&apos;re away, it just isn&apos;t ranked. One game back and
+                  they&apos;re in the table again at the same number.
+                </p>
                 <p className="text-slate-400">
-                  Everyone who&apos;s been rated appears. A{" "}
-                  <span className="font-semibold">1 game</span> tag means it&apos;s
+                  A <span className="font-semibold">1 game</span> tag means it&apos;s
                   early days for them — their position will settle as they play more.
+                  Team of the Season below is an award for the whole season, so it can
+                  still name someone who isn&apos;t in this table.
                 </p>
               </InfoButton>
             </div>
@@ -305,32 +320,66 @@ export default async function MyStatsPage() {
                   <div
                     key={r.userId}
                     className={`flex items-center gap-3 rounded-lg px-2 py-1.5 ${
-                      isMe ? "bg-blue-50" : ""
-                    }`}
+                      r.inactive ? "mt-2 border-t border-slate-200 pt-2.5" : ""
+                    } ${isMe && !r.inactive ? "bg-blue-50" : ""}`}
                   >
                     <span className="w-5 text-sm font-semibold text-slate-500 text-right">
-                      {r.rank}
+                      {/* An unranked row shows a dash, never a number.
+                          Giving it a position would invent a standing the
+                          player hasn't played for — the same objection
+                          that ruled out decaying the rating. */}
+                      {r.rank ?? "–"}
                     </span>
                     <span
                       className={`flex-1 text-sm truncate ${
-                        isMe ? "font-bold text-blue-700" : "text-slate-700"
+                        r.inactive
+                          ? "text-slate-400"
+                          : isMe
+                            ? "font-bold text-blue-700"
+                            : "text-slate-700"
                       }`}
                     >
                       {r.name}
                       {isMe && " (you)"}
                     </span>
-                    {r.provisional && (
+                    {r.provisional && !r.inactive && (
                       <span className="shrink-0 inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold">
                         1 game
                       </span>
                     )}
-                    <Movement delta={r.delta} />
-                    <span className="w-10 text-right text-sm font-semibold text-slate-800">
+                    {r.inactive && (
+                      <span className="shrink-0 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold">
+                        not ranked
+                      </span>
+                    )}
+                    {!r.inactive && <Movement delta={r.delta} />}
+                    <span
+                      className={`w-10 text-right text-sm font-semibold ${
+                        r.inactive ? "text-slate-400" : "text-slate-800"
+                      }`}
+                    >
                       {r.avg.toFixed(1)}
                     </span>
                   </div>
                 );
               })}
+              {/* The whole point of the viewer exemption: tell him why
+                  he's below the line and that his number is intact, so
+                  the page reads as an invitation back rather than a
+                  demotion he didn't earn. */}
+              {leaderboard.some((r) => r.inactive && r.userId === meId) && (
+                <p className="px-2 pt-1 text-[11px] leading-snug text-slate-500">
+                  You&apos;re not in the rankings at the moment
+                  {(() => {
+                    const mine = leaderboard.find((r) => r.userId === meId)!;
+                    return mine.lastPlayed
+                      ? ` — your last game was ${formatLastPlayed(mine.lastPlayed)}`
+                      : "";
+                  })()}
+                  . Your {leaderboard.find((r) => r.userId === meId)!.avg.toFixed(1)} is
+                  untouched: play one more and you&apos;re straight back in the table with it.
+                </p>
+              )}
             </div>
           </div>
         )}
