@@ -58,18 +58,33 @@ export function composeSquadStatusPost(args: {
 export function formatTeamsPost(args: {
   redLabel: string;
   yellowLabel: string;
-  red: { name: string }[];
-  yellow: { name: string }[];
+  red: { name: string; note?: string }[];
+  yellow: { name: string; note?: string }[];
   kickoff: string;
   venue: string;
+  /**
+   * The closing line. DEFAULTED, not required, and that is deliberate:
+   * every shipped caller keeps the words it has always sent, and the sim
+   * suite asserts on them. Only the 2026-09-15 replacement post overrides
+   * it, because "reply `swap X Y`" is the wrong instruction on a post
+   * whose whole subject is a swap that has already happened — the owner
+   * asked for "if then the team that somebody is not happy with the new
+   * team then the admin may ask to regenerate the teams".
+   */
+  footer?: string;
 }): string {
-  const listFor = (arr: { name: string }[]) =>
-    arr.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
+  // `note` renders as a trailing parenthetical on the player's own line
+  // ("7. Shahrokh  (replacing Wasim)"), which is the owner's shape: "when
+  // displaying those teams, it should indicate Wasim is replaced with
+  // Shakruh in the respective team". Two spaces before it so the mark
+  // reads as an aside rather than part of the name.
+  const listFor = (arr: { name: string; note?: string }[]) =>
+    arr.map((p, i) => `${i + 1}. ${p.name}${p.note ? `  (${p.note})` : ""}`).join("\n");
   return (
     `⚽ *Teams for tonight* — ${args.kickoff} at ${args.venue}\n\n` +
     `*${args.redLabel}*:\n${listFor(args.red)}\n\n` +
     `*${args.yellowLabel}*:\n${listFor(args.yellow)}\n\n` +
-    `Objections? Reply \`swap X Y\` — admin will confirm.`
+    (args.footer ?? "Objections? Reply `swap X Y` — admin will confirm.")
   );
 }
 
@@ -117,6 +132,36 @@ export interface SquadTruth {
    *  the same restriction ("only judge claims about people this world
    *  knows about"). */
   knownNames?: string[];
+  /**
+   * THE TEAM SHEET, WHEN THERE IS ONE (2026-09-15).
+   *
+   * Present only once the teams have been generated, and when it is
+   * present the composed post is the LINE-UPS rather than the roster.
+   * The owner, after MatchTime posted the fourteen names twice in a row
+   * an hour after announcing the teams: "I don't think we should even
+   * mention the squad because if the teams are generated, all match time
+   * need to do is to declare the teams again… There is no point listing
+   * all the 14 players after the teams were announced."
+   *
+   * ⚠️ AN EMPTY SHEET IS NOT A SHEET. `formatTeamsPost` over two empty
+   * arrays renders a team post with no players under either heading —
+   * the shape the 2026-09-06 sweep caught — so both sides empty falls
+   * back to the roster. The caller is not trusted to have filtered it.
+   *
+   * OPTIONAL, and every existing caller that omits it gets byte-for-byte
+   * what it gets today. That is the regression that matters: before the
+   * teams exist, nothing about the squad post changes.
+   */
+  teams?: {
+    /** Display names, in sheet order, on each side. */
+    red: string[];
+    yellow: string[];
+    /** `resolveTeamLabels`' output — a match may carry custom labels, so
+     *  "Red" and "Yellow" are never hardcoded here. */
+    labels: [string, string];
+    kickoff: string;
+    venue: string;
+  } | null;
 }
 
 /** Leaderboard rows also use "N. <name>" numbering but carry stats
@@ -307,6 +352,39 @@ export function contradictsSquadState(text: string, truth: SquadTruth): boolean 
   return false;
 }
 
+/**
+ * THE ONE POST THE DATABASE COMPOSES, whichever of the two it is.
+ *
+ * Before the teams are generated: the roster, unchanged. After: the
+ * line-ups. Written as one function so there is a single place where
+ * that choice is made — a second copy of the `truth.teams` test is how
+ * the reply and the batch post start disagreeing about which post this
+ * group gets.
+ *
+ * A sheet with nobody on either side is NOT a sheet. `formatTeamsPost`
+ * over two empty arrays renders a team post with empty headings (the
+ * 2026-09-06 sweep caught that shape once already), and a caller that
+ * loaded zero assignments has told us the teams do not exist.
+ */
+function composeSquadTruthPost(truth: SquadTruth): string {
+  const t = truth.teams;
+  if (t && t.red.length + t.yellow.length > 0) {
+    return formatTeamsPost({
+      redLabel: t.labels[0],
+      yellowLabel: t.labels[1],
+      red: t.red.map((name) => ({ name })),
+      yellow: t.yellow.map((name) => ({ name })),
+      kickoff: t.kickoff,
+      venue: t.venue,
+    });
+  }
+  return composeSquadStatusPost({
+    confirmed: truth.confirmed,
+    bench: truth.bench,
+    maxPlayers: truth.maxPlayers,
+  });
+}
+
 /** Did the model ask for the squad post to be appended here? */
 export function wantsSquadPost(text: string): boolean {
   SQUAD_POST_MARKER_RE.lastIndex = 0;
@@ -345,6 +423,17 @@ export function stripSquadPostMarker(text: string): string {
  *
  * `composed: true` means the group is getting the database's words. The
  * analyze route uses it to keep exactly one such post per batch.
+ *
+ * ── AND ONCE THE TEAMS EXIST, THOSE WORDS ARE THE LINE-UPS ───────────
+ *
+ * 2026-09-15: with a sheet on the table the composed post is
+ * `formatTeamsPost`, not the fourteen-name roster. The TRIGGER is
+ * unchanged — the same replies are recognised and replaced, so the S7
+ * property ("never announce a move the database did not make") holds
+ * exactly as before — what changed is which database-composed post
+ * lands in their place. The teams are a strictly more useful answer to
+ * every question the roster answered, and the owner asked for the
+ * roster to stop once they are out.
  */
 export function composeSquadStateReply(
   reply: string,
@@ -355,11 +444,7 @@ export function composeSquadStateReply(
   if (!wanted && !displaysSquadState(reply) && !contradictsSquadState(reply, truth)) {
     return { text: reply, composed: false };
   }
-  const post = composeSquadStatusPost({
-    confirmed: truth.confirmed,
-    bench: truth.bench,
-    maxPlayers: truth.maxPlayers,
-  });
+  const post = composeSquadTruthPost(truth);
   const keepLead =
     wanted && lead.length > 0 && !displaysSquadState(lead) && !contradictsSquadState(lead, truth);
   return { text: keepLead ? `${lead}\n\n${post}` : post, composed: true };

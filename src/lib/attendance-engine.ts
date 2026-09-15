@@ -202,10 +202,27 @@ export interface EngineApplyDeps {
    *  provisioning policy (`resolveOrProvisionByName`) and this module
    *  must not grow a second one. */
   resolveOrProvision: (name: string) => Promise<{ userId: string } | null>;
+  /**
+   * Hand the `TeamAssignment` row `fromUserId` holds on this match to
+   * `toUserId`, keeping its side and its place on the sheet.
+   *
+   * ONE ROW UPDATED IN PLACE, never a delete-and-create: `load-state.ts`
+   * reads the sheet in `id: asc` order precisely so a re-post renders the
+   * players in the order the balancer wrote them, and a new row would put
+   * the replacement at the bottom instead of in the spot they took.
+   *
+   * Injected for the same reason the three above are: this module is
+   * pure translation, and the one place that owns Prisma for this path is
+   * `analyze/route.ts`.
+   */
+  moveTeamSlot: (matchId: string, fromUserId: string, toUserId: string) => Promise<void>;
 }
 
+/** A team-slot move, once the apply layer has resolved its ids. */
+export type EngineTeamSlotWrite = ProposedWrite & { kind: "team_slot_inherit" };
+
 export interface EngineWriteResult {
-  write: EngineAttendanceWrite;
+  write: EngineAttendanceWrite | EngineTeamSlotWrite;
   /** The id actually written to, after provisioning. */
   userId: string | null;
   ok: boolean;
@@ -224,11 +241,27 @@ export async function applyEngineWrites(args: {
 }): Promise<EngineWriteResult[]> {
   const { matchId, writes, actorByMessageId, deps } = args;
   const out: EngineWriteResult[] = [];
+  /**
+   * `new:<name>` → the id provisioning settled on, for every guest this
+   * batch created. The engine decides on a PROJECTED world where a guest
+   * the org has never seen is a placeholder string, and a
+   * `TeamAssignment` pointed at that string is a foreign key to nobody.
+   */
+  const realIdFor = new Map<string, string>();
+  /** Ids whose attendance write did NOT land. A slot must not be moved
+   *  to somebody who has no row on this match. */
+  const failedUserIds = new Set<string>();
 
   for (const w of writes) {
     // Bench-offer bookkeeping belongs to `attendance.ts` (see the
     // header). Proposals are recorded by the dry run and ignored here.
     if (w.kind === "open_bench_offer" || w.kind === "resolve_bench_offer") continue;
+    // Team-slot moves run in a SECOND PASS below, after every attendance
+    // write in this batch has landed — a guest who has not been
+    // provisioned yet has no user row for an assignment to point at, and
+    // a slot handed to a register that threw would seat a player who is
+    // not in the squad.
+    if (w.kind === "team_slot_inherit") continue;
 
     if (w.kind !== "attendance") {
       // Unreachable: the engine only produces these from `question`,
@@ -276,6 +309,7 @@ export async function applyEngineWrites(args: {
           });
           continue;
         }
+        realIdFor.set(w.userId, target.userId);
         userId = target.userId;
       } catch (err) {
         out.push({
@@ -310,9 +344,50 @@ export async function applyEngineWrites(args: {
       // NEVER swallowed. A thrown write means no row moved, so any
       // cheerful ack would be a lie — the caller replaces it with the
       // truth (`attendance-write-outcome.ts`, the 9f19040 rule).
+      failedUserIds.add(userId);
       out.push({
         write: w,
         userId,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // ── SECOND PASS: the slots a replacement inherited (2026-09-15) ────
+  //
+  // Sutton FC: Wasim went out at 19:14 holding a Yellow slot, Amir put
+  // Shahrokh in at 19:15, and nothing touched the team sheet — Yellow
+  // would have turned up with six. `team-slot-inherit.ts` decides the
+  // pairing; this is the only place it is written.
+  //
+  // AFTER the attendance loop, not inside it, for two reasons that are
+  // both about a row that does not exist yet: a guest the org has never
+  // seen has no user row until `resolveOrProvision` has run, and a
+  // register that THREW has no attendance row at all. Seating either
+  // would put somebody on the line-up who is not in the squad, which is
+  // the failure this whole change exists to stop.
+  for (const w of writes) {
+    if (w.kind !== "team_slot_inherit") continue;
+    const toUserId = realIdFor.get(w.toUserId) ?? w.toUserId;
+    if (isProvisionalUserId(toUserId) || failedUserIds.has(toUserId)) {
+      // Reported, never skipped silently: the sheet is now known to be
+      // wrong and the operator note is what says so.
+      out.push({
+        write: w,
+        userId: null,
+        ok: false,
+        error: `cannot seat "${w.toName}" in ${w.fromName}'s slot: their attendance write did not land`,
+      });
+      continue;
+    }
+    try {
+      await deps.moveTeamSlot(matchId, w.fromUserId, toUserId);
+      out.push({ write: w, userId: toUserId, ok: true });
+    } catch (err) {
+      out.push({
+        write: w,
+        userId: toUserId,
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });

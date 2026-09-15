@@ -1050,6 +1050,19 @@ async function computeForMatch(
           `Squad is locked. Say *@MatchTime generate teams* in the chat to lock in tonight's lineup 👇`;
         text = `${intro}\n\n${rosterBlock}`;
       } else if (beforeDeadline && need > 0) {
+        // ⚠️ THE ONE ROSTER THAT STILL GOES OUT WITH A SHEET ON THE
+        // TABLE, and it is a deliberate exception to the 2026-09-15
+        // rule ("no point listing all the 14 players after the teams
+        // were announced"). Stated rather than left to be discovered.
+        //
+        // Reachable only OFF match day (branch 2-pre above takes every
+        // match-day tick that has a sheet) and only while the squad is
+        // SHORT. The roster is not the announcement there; it is the
+        // shape of the ask — "here is who we have, here is the gap" —
+        // and the recruiting chase is the only thing this branch is
+        // for. Replacing it with a line-up would show seven against six
+        // and say nothing about the slot that needs filling.
+        //
         // 2a. Short squad — chase + unpaid tail. Chase template (LLM
         // or fallback) produces its own numbered list, so we leave it
         // untouched here rather than appending a duplicate roster

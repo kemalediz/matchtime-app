@@ -201,6 +201,18 @@ export interface CreateGroupOpts {
     | false;
   /** Initial attendance on the upcoming match. */
   attendance?: Array<{ key: string; status: AttStatus }>;
+  /**
+   * A TEAM SHEET ON THE UPCOMING MATCH, key → team, in the order given.
+   *
+   * Sets `Match.status = TEAMS_GENERATED` too, because in production the
+   * two arrive together (`actions/teams.ts`, `cron/generate-teams`) and a
+   * world where one exists without the other is not one the bot can
+   * reach. Insertion order matters: `load-state.ts` reads the sheet
+   * `id: asc` so a re-post renders the players in the order the balancer
+   * wrote them, and the 2026-09-15 slot inherit pairs vacancies in that
+   * same order.
+   */
+  teams?: Record<string, "RED" | "YELLOW">;
   completedMatch?: CompletedMatchSpec;
 }
 
@@ -321,6 +333,20 @@ export async function createGroup(
          VALUES ($1, $2, $3, $4, $5, now())`,
         [`sim-att-${nonce}-${a.key}`, matchId, p.userId, a.status, ++pos],
       );
+    }
+    // The team sheet, if this world has one. Ids are sequential so the
+    // `id: asc` read order is the order they were declared.
+    let slot = 0;
+    for (const [key, team] of Object.entries(opts.teams ?? {})) {
+      const p = players.get(key);
+      if (!p) throw new Error(`teams: unknown player key "${key}"`);
+      await db.run(
+        `INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES ($1, $2, $3, $4)`,
+        [`sim-ta-${nonce}-${String(++slot).padStart(3, "0")}`, matchId, p.userId, team],
+      );
+    }
+    if (slot > 0) {
+      await db.run(`UPDATE "Match" SET status = 'TEAMS_GENERATED' WHERE id = $1`, [matchId]);
     }
   }
 
@@ -513,6 +539,13 @@ export class SimGroup {
     const p = this.players.get(key);
     if (!p) throw new Error(`sim: unknown player key "${key}"`);
     return p;
+  }
+
+  /** The roster key a user id belongs to — the inverse of `player()`, so
+   *  a DB assertion can be written in the same vocabulary as the setup. */
+  keyOf(userId: string): string {
+    for (const [key, p] of this.players) if (p.userId === userId) return key;
+    throw new Error(`sim: no player for user id "${userId}"`);
   }
 
   /** Drain BotJobs created since the last drain (any kind). */
@@ -791,6 +824,16 @@ export class SimGroup {
       dropped: (await this.dropped(matchId)).length,
       maxPlayers: this.maxPlayers,
     };
+  }
+
+  /** The team sheet as the database has it, in `id: asc` order — the
+   *  same order `load-state.ts` reads it in. */
+  async teamSheet(matchId?: string): Promise<Array<{ key: string; team: string }>> {
+    const rows = await this.db.all<{ userId: string; team: string }>(
+      `SELECT "userId", team FROM "TeamAssignment" WHERE "matchId" = $1 ORDER BY id ASC`,
+      [this.requireMatch(matchId)],
+    );
+    return rows.map((r) => ({ key: this.keyOf(r.userId), team: r.team }));
   }
 
   async attendanceOf(

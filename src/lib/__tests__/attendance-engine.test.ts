@@ -218,6 +218,9 @@ function stubDeps(over: Partial<EngineApplyDeps> = {}): {
       calls.push(`provision(${name})`);
       return { userId: `new-real:${name}` };
     },
+    async moveTeamSlot(matchId, fromUserId, toUserId) {
+      calls.push(`moveSlot(${matchId},${fromUserId}->${toUserId})`);
+    },
     ...over,
   };
   return { deps, calls };
@@ -427,5 +430,133 @@ describe("registerAttendance / cancelAttendance stay the only way in", () => {
 
   it("the degraded marker is a typed prefix, not free prose", () => {
     expect(ENGINE_APPLY_DEGRADED_PREFIX).toMatch(/^attendance-engine:/);
+  });
+});
+
+
+// ── THE SLOT A REPLACEMENT INHERITS (2026-09-15) ─────────────────────
+//
+// Sutton FC: Wasim went out at 19:14 holding a Yellow slot, Amir put
+// Shahrokh in at 19:15, and the team sheet was never touched. The engine
+// decides the move; this layer is what makes it.
+describe("applyEngineWrites — team_slot_inherit", () => {
+  it("moves the slot, and only after the attendance writes have landed", async () => {
+    const { deps, calls } = stubDeps();
+    const res = await applyEngineWrites({
+      matchId: "m",
+      writes: [
+        write({ userId: "u-shahrokh", name: "Shahrokh", status: "CONFIRMED" }),
+        {
+          kind: "team_slot_inherit",
+          fromUserId: "u-wasim",
+          fromName: "Wasim Akhtar",
+          toUserId: "u-shahrokh",
+          toName: "Shahrokh",
+          team: "YELLOW",
+          sourceMessageId: "m1",
+          reason: "Shahrokh takes the slot Wasim vacated",
+        },
+      ],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(res.every((r) => r.ok)).toBe(true);
+    // The register FIRST: a `TeamAssignment` has a foreign key on the
+    // user, and a guest who has not been provisioned yet has no row for
+    // it to point at.
+    expect(calls).toEqual([
+      "register(u-shahrokh,m,bench=-,promote=false,cause=third-party-attendance)",
+      "moveSlot(m,u-wasim->u-shahrokh)",
+    ]);
+  });
+
+  it("uses the id PROVISIONING settled on, never the `new:` placeholder", () => {
+    // The engine decides on a projected world where a guest the org has
+    // never seen is `new:Raihan`. A slot moved to that string points at
+    // nobody.
+    return (async () => {
+      const { deps, calls } = stubDeps();
+      const res = await applyEngineWrites({
+        matchId: "m",
+        writes: [
+          write({ userId: "new:Raihan", name: "Raihan", status: "CONFIRMED" }),
+          {
+            kind: "team_slot_inherit",
+            fromUserId: "u-elvin",
+            fromName: "Elvin Aliyev",
+            toUserId: "new:Raihan",
+            toName: "Raihan",
+            team: "RED",
+            sourceMessageId: "m1",
+            reason: "Raihan takes the slot Elvin vacated",
+          },
+        ],
+        actorByMessageId: ACTORS,
+        deps,
+      });
+      expect(calls).toEqual([
+        "provision(Raihan)",
+        "register(new-real:Raihan,m,bench=-,promote=false,cause=third-party-attendance)",
+        "moveSlot(m,u-elvin->new-real:Raihan)",
+      ]);
+      expect(res.every((r) => r.ok)).toBe(true);
+    })();
+  });
+
+  it("refuses to move a slot to a guest whose attendance write FAILED", async () => {
+    // A failed register means no row, so there is nobody to seat. The
+    // refusal is REPORTED — a silent skip is how a decision disappears.
+    const { deps, calls } = stubDeps({
+      async registerAttendance() {
+        throw new Error("Previous match hasn't been completed yet");
+      },
+    });
+    const res = await applyEngineWrites({
+      matchId: "m",
+      writes: [
+        write({ userId: "new:Raihan", name: "Raihan", status: "CONFIRMED" }),
+        {
+          kind: "team_slot_inherit",
+          fromUserId: "u-elvin",
+          fromName: "Elvin Aliyev",
+          toUserId: "new:Raihan",
+          toName: "Raihan",
+          team: "RED",
+          sourceMessageId: "m1",
+          reason: "Raihan takes the slot Elvin vacated",
+        },
+      ],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(calls.some((c) => c.startsWith("moveSlot"))).toBe(false);
+    expect(res.find((r) => r.write.kind === "team_slot_inherit")?.ok).toBe(false);
+  });
+
+  it("surfaces a move that THREW instead of swallowing it", async () => {
+    const { deps } = stubDeps({
+      async moveTeamSlot() {
+        throw new Error("no such assignment");
+      },
+    });
+    const res = await applyEngineWrites({
+      matchId: "m",
+      writes: [
+        {
+          kind: "team_slot_inherit",
+          fromUserId: "u-wasim",
+          fromName: "Wasim Akhtar",
+          toUserId: "u-shahrokh",
+          toName: "Shahrokh",
+          team: "YELLOW",
+          sourceMessageId: "m1",
+          reason: "Shahrokh takes the slot Wasim vacated",
+        },
+      ],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(res[0].ok).toBe(false);
+    expect(res[0].error).toContain("no such assignment");
   });
 });
