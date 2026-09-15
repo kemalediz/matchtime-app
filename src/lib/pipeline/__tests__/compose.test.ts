@@ -954,3 +954,211 @@ describe("a drop that opens a spot says so, in one line", () => {
     expect(out.reacts.map((r) => r.emoji)).toEqual(["✅"]);
   });
 });
+
+// ── THE REPLACEMENT POST — the 2026-09-15 copy ────────────────────────
+//
+// The owner, having repaired the night by hand and posted the result
+// himself:
+//
+//   "match time should let people know that Wasim is out, instead
+//    Shakruh will play and these are the teams. And when displaying
+//    those teams, it should indicate Wasim is replaced with Shakruh in
+//    the respective team… There is no point listing all the 14 players
+//    after the teams were announced."
+//
+// So: one post, the TEAMS and not the roster, the swap named in the lead
+// AND marked on the line the replacement took.
+describe("the replacement post says who is out, who is in, and the teams", () => {
+  const SHEET: Record<string, "RED" | "YELLOW"> = {
+    kemal: "RED",
+    mustafa: "RED",
+    idris: "RED",
+    najib: "RED",
+    efat: "RED",
+    mojib: "RED",
+    karahan: "RED",
+    elvin: "YELLOW",
+    adam: "YELLOW",
+    erdal: "YELLOW",
+    sait: "YELLOW",
+    habib: "YELLOW",
+    faris: "YELLOW",
+    wasim: "YELLOW",
+  };
+  const SEATED = Object.keys(SHEET);
+  const ROSTER = [...SUTTON, "shahrokh"];
+
+  const amirRegistersShahrokh = () =>
+    msg({
+      from: "amir",
+      body: "Shahrokh can play in sha Allah",
+      route: "other_att",
+      facts: attendanceFacts([
+        claim({ subject: "other", personRef: "Shahrokh", personNamed: true, polarity: "in" }),
+      ]),
+    });
+
+  const staleSheet = (extra: Record<string, unknown> = {}) =>
+    world({
+      players: ROSTER,
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: SHEET,
+      ...extra,
+    });
+
+  it("THE POST, in full", () => {
+    const { out } = composeFor(staleSheet(), [amirRegistersShahrokh()]);
+    expect(out.utterances).toHaveLength(1);
+    expect(out.utterances[0].text).toBe(
+      [
+        "🔁 *Wasim is out* — *Shahrokh* takes his place and his spot in *Yellow*.",
+        "",
+        "⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam",
+        "",
+        "*Red*:",
+        "1. Kemal Ediz",
+        "2. Mustafa Kaya",
+        "3. Idris Bello",
+        "4. Najib Ahmadi",
+        "5. Efat Rahman",
+        "6. Mojib Sadat",
+        "7. Karahan Yildiz",
+        "",
+        "*Yellow*:",
+        "1. Elvin Aliyev",
+        "2. Adam Osman",
+        "3. Erdal Ozkan",
+        "4. Sait Demir",
+        "5. Habib Rahman",
+        "6. Faris Nasser",
+        "7. Shahrokh  (replacing Wasim)",
+        "",
+        "Objections? An admin can ask me to regenerate the teams.",
+      ].join("\n"),
+    );
+  });
+
+  it("it rides the message, so the route cannot replace it with a roster", () => {
+    const { out } = composeFor(staleSheet(), [amirRegistersShahrokh()]);
+    expect(out.utterances[0].messageId).not.toBeNull();
+  });
+
+  it("it uses the match's OWN labels, never the words Red and Yellow", () => {
+    const state = staleSheet();
+    state.teamLabels = ["Bibs", "Skins"];
+    const { out } = composeFor(state, [amirRegistersShahrokh()]);
+    expect(out.utterances[0].text).toContain("his spot in *Skins*");
+    expect(out.utterances[0].text).toContain("*Skins*:");
+    expect(out.utterances[0].text).not.toContain("Yellow");
+  });
+
+  it("two replacements are named in one lead and marked on their own lines", () => {
+    const state = world({
+      players: ROSTER,
+      confirmed: SEATED.filter((k) => k !== "wasim" && k !== "kemal"),
+      dropped: ["wasim", "kemal"],
+      teams: SHEET,
+    });
+    const { out } = composeFor(state, [
+      amirRegistersShahrokh(),
+      msg({
+        from: "amir",
+        body: "and Ayoub too",
+        route: "other_att",
+        facts: attendanceFacts([
+          claim({ subject: "other", personRef: "Ayoub", personNamed: true, polarity: "in" }),
+        ]),
+      }),
+    ]);
+    expect(out.utterances).toHaveLength(1);
+    const text = out.utterances[0].text;
+    expect(text.split("\n")[0]).toBe(
+      "🔁 *Kemal and Wasim are out* — *Shahrokh* takes Kemal's spot in *Red*, *Ayoub* takes Wasim's spot in *Yellow*.",
+    );
+    expect(text).toContain("1. Shahrokh  (replacing Kemal)");
+    expect(text).toContain("7. Ayoub Benali  (replacing Wasim)");
+  });
+
+  it("names a player who went to the BENCH as replaced, never as out", () => {
+    // A confirmed player demoted to the bench vacates a slot without
+    // being out, and "Wasim is out" is a claim the rows do not support.
+    const state = world({
+      players: ROSTER,
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      bench: ["wasim"],
+      teams: SHEET,
+    });
+    const { out } = composeFor(state, [amirRegistersShahrokh()]);
+    expect(out.utterances[0].text.split("\n")[0]).toBe(
+      "🔁 *Shahrokh* takes Wasim's spot in *Yellow*.",
+    );
+    expect(out.utterances[0].text).not.toContain("is out");
+  });
+});
+
+// ── ONCE THE TEAMS EXIST, THE ROSTER IS NOT POSTED ────────────────────
+//
+// "if the teams are generated, all match time need to do is to declare
+// the teams again with the swapped replacement and the person that is
+// out. That's it. There is no point listing all the 14 players after the
+// teams were announced."
+describe("a squad post with a team sheet on the table is the TEAMS", () => {
+  const SHEET: Record<string, "RED" | "YELLOW"> = {
+    kemal: "RED",
+    mustafa: "RED",
+    idris: "RED",
+    najib: "RED",
+    efat: "RED",
+    mojib: "RED",
+    karahan: "RED",
+    elvin: "YELLOW",
+    adam: "YELLOW",
+    erdal: "YELLOW",
+    sait: "YELLOW",
+    habib: "YELLOW",
+    faris: "YELLOW",
+    wasim: "YELLOW",
+  };
+  const SEATED = Object.keys(SHEET);
+
+  it("'who's playing?' is answered with the line-ups, not the roster", () => {
+    const { out } = composeFor(world({ confirmed: SEATED, teams: SHEET }), [rosterAsk("amir")]);
+    const text = out.utterances.map((u) => u.text).join("\n");
+    expect(text).toContain("⚽ *Teams for tonight*");
+    expect(text).toContain("*Red*:");
+    expect(text).not.toContain("*Playing:*");
+    expect(text).not.toContain("Based on all the messages");
+  });
+
+  it("an admin dropping somebody else posts the TEAMS, not fourteen names", () => {
+    const { out } = composeFor(world({ confirmed: SEATED, teams: SHEET }), [
+      msg({
+        from: "kemal",
+        body: "@Match Time Wasim is out",
+        tagged: true,
+        route: "other_att",
+        facts: attendanceFacts([
+          claim({ subject: "other", personRef: "Wasim", personNamed: true, polarity: "out" }),
+        ]),
+      }),
+    ]);
+    const text = out.utterances.map((u) => u.text).join("\n");
+    expect(text).toContain("⚽ *Teams for tonight*");
+    expect(text).not.toContain("*Playing:*");
+  });
+
+  it("WITHOUT a sheet the roster is EXACTLY what it is today", () => {
+    // THE REGRESSION THAT MATTERS. Before teams are generated nothing
+    // about the squad post changes, byte for byte.
+    const state = world({ confirmed: SEATED });
+    const { out } = composeFor(state, [rosterAsk("amir")]);
+    expect(out.utterances.map((u) => u.text).join("\n")).toBe(
+      composeSquadStatusPost({
+        confirmed: SEATED.map(fullName),
+        bench: [],
+        maxPlayers: 14,
+      }),
+    );
+  });
+});

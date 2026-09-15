@@ -27,12 +27,35 @@ export async function announceSquadFullIfJustFilled(
         include: { user: { select: { name: true } } },
         orderBy: { position: "asc" },
       },
+      teamAssignments: { select: { id: true }, take: 1 },
     },
   });
   if (!m) return;
   const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED");
   const bench = m.attendances.filter((a) => a.status === "BENCH");
   if (confirmed.length < m.maxPlayers) return;
+
+  // ── ONCE THE TEAMS ARE OUT, THE ROSTER IS NOT THE NEWS ─────────────
+  //
+  // 2026-09-15, Sutton FC. Teams were generated at 16:41 and announced.
+  // At 19:14 Wasim dropped out — which cleared this function's dedupe key
+  // (`attendance.ts`'s cancel path re-arms each fill CYCLE) — and at
+  // 19:15 Shahrokh came in, putting the count back to 14 and firing this.
+  // The group got the fourteen-name roster as a group post, one line
+  // after the same fourteen names had gone out as a reply, an hour after
+  // the line-ups.
+  //
+  // Kemal: "I agree there shouldn't be two messages, one after another,
+  // saying the same information about the squad. And I don't think we
+  // should even mention the squad because if the teams are generated, all
+  // match time need to do is to declare the teams again."
+  //
+  // So with a sheet on the table this says nothing, and the replacement
+  // post (`pipeline/compose.ts`'s `replacement_teams_post`) is the one
+  // message. THE DEDUPE KEY IS NOT CLAIMED on this branch, deliberately:
+  // a format switch deletes every assignment, and the squad that fills
+  // again afterwards should still get its announcement.
+  if (m.teamAssignments.length > 0) return;
 
   const key = `${matchId}:squad-locked`;
   // Atomic claim of the announcement — first writer wins.

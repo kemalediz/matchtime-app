@@ -4080,3 +4080,361 @@ describe("S43c · the same bare word, both ways round", () => {
     expect(statusOf(r.nextState, "mojib")).toBe("CONFIRMED");
   });
 });
+
+// ── S44 · a replacement inherits the dropped player's slot ─────────────
+//
+// THE INCIDENT. Sutton FC, 15 September 2026, kickoff 21:30, teams
+// generated at 16:41. At 19:14, two messages from two different people:
+//
+//   19:14  Wasim  "Salam guys… I feel a fever… If there is someone who
+//                  can take my place, then please do."   → OUT, DROPPED
+//   19:15  Amir   "Shahrokh can play in sha Allah"       → Shahrokh IN
+//
+// BOTH ATTENDANCE WRITES WERE CORRECT. What nothing touched was the TEAM
+// SHEET: Wasim kept his Yellow slot, Shahrokh had none, and the last
+// line-up standing in the group still named a man who was at home with a
+// fever. Yellow would have turned up with six.
+//
+// On top of that, MatchTime posted the fourteen-name squad roster TWICE
+// — once as a reply, once as `announceSquadFullIfJustFilled`'s group
+// post — after the teams had already been announced. The owner:
+//
+//   "if the teams are generated, all match time need to do is to declare
+//    the teams again with the swapped replacement and the person that is
+//    out. That's it. There is no point listing all the 14 players after
+//    the teams were announced."
+//
+// So: ONE post, and it is the TEAMS, never the roster.
+describe("S44 · a replacement takes the dropped player's slot (2026-09-15)", () => {
+  /** The sheet as the balancer wrote it on the night: red block first,
+   *  then yellow, with Wasim last in yellow. */
+  const SHEET: Record<string, "RED" | "YELLOW"> = {
+    kemal: "RED",
+    mustafa: "RED",
+    idris: "RED",
+    najib: "RED",
+    efat: "RED",
+    mojib: "RED",
+    karahan: "RED",
+    elvin: "YELLOW",
+    adam: "YELLOW",
+    erdal: "YELLOW",
+    sait: "YELLOW",
+    habib: "YELLOW",
+    faris: "YELLOW",
+    wasim: "YELLOW",
+  };
+  const SEATED = Object.keys(SHEET);
+
+  /** Shahrokh is a member of the club with no row on this match — which
+   *  is exactly how the night went: Amir named somebody the org already
+   *  knows. The provisional case (a guest nobody has seen before) has
+   *  its own test at the bottom of this block. */
+  const ROSTER = [...SUTTON, "shahrokh"];
+  const at = (opts: Parameters<typeof world>[0] = {}) => world({ players: ROSTER, ...opts });
+
+  const WASIM_OUT =
+    "Salam guys, I know this is very late but I had a cold yesterday which was fine " +
+    "but today I feel a fever as well and it has been getting worse. It's only started " +
+    "affecting me now. If there is someone who can take my place, then please do.\n\n" +
+    "If not, I can still come and just play in goal no worries.";
+  const AMIR_IN = "Shahrokh can play in sha Allah";
+
+  const wasimOut = () =>
+    msg({
+      from: "wasim",
+      body: WASIM_OUT,
+      route: "self_att",
+      facts: attendanceFacts([claim({ polarity: "out" })], { sideRequests: ["recruit"] }),
+    });
+
+  const amirRegistersShahrokh = () =>
+    msg({
+      from: "amir",
+      body: AMIR_IN,
+      route: "other_att",
+      facts: attendanceFacts([
+        claim({ subject: "other", personRef: "Shahrokh", personNamed: true, polarity: "in" }),
+      ]),
+    });
+
+  const teamOf = (r: ReturnType<typeof decide>, key: string) =>
+    r.nextState.teams.find((t) => t.userId === `u-${key}`)?.team ?? null;
+
+  it("TONIGHT, BATCH 2: Shahrokh inherits Wasim's YELLOW slot", () => {
+    // Batch 1 (Wasim's drop) has already landed, so the world this batch
+    // opens on is the one the group was actually looking at: a stale
+    // sheet with a hole in it.
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: SHEET,
+    });
+    const r = decide({ now: NOW, state, messages: [amirRegistersShahrokh()] });
+
+    expect(statusOf(r.nextState, "shahrokh")).toBe("CONFIRMED");
+    expect(teamOf(r, "shahrokh")).toBe("YELLOW");
+    expect(teamOf(r, "wasim")).toBeNull();
+  });
+
+  it("the other thirteen are untouched — people have already read the sheet", () => {
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: SHEET,
+    });
+    const r = decide({ now: NOW, state, messages: [amirRegistersShahrokh()] });
+    for (const key of SEATED) {
+      if (key === "wasim") continue;
+      expect(teamOf(r, key)).toBe(SHEET[key]);
+    }
+    // And the sheet is still fourteen rows, with the replacement in the
+    // row the dropped player held.
+    expect(r.nextState.teams).toHaveLength(14);
+    expect(r.nextState.teams[13].userId).toBe("u-shahrokh");
+  });
+
+  it("EXACTLY ONE message goes out, and it names the swap", () => {
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: SHEET,
+    });
+    const r = decide({ now: NOW, state, messages: [amirRegistersShahrokh()] });
+    expect(r.speech.map((s) => s.kind)).toEqual(["replacement_teams_post"]);
+    const s = r.speech[0] as {
+      kind: "replacement_teams_post";
+      messageId: string;
+      swaps: Array<{
+        outName: string;
+        inName: string;
+        team: "RED" | "YELLOW";
+        outWentOut: boolean;
+      }>;
+    };
+    expect(s.swaps).toEqual([
+      { outName: "Wasim Akhtar", inName: "Shahrokh", team: "YELLOW", outWentOut: true },
+    ]);
+    // It rides a MESSAGE. `attendance-engine-batch.ts` throws away the
+    // text of a `messageId: null` utterance and the route expands
+    // `[SQUAD]` into a roster in its place — which is the very post this
+    // exists instead of.
+    expect(s.messageId).not.toBeNull();
+  });
+
+  it("it proposes a TEAM move and NOT a regeneration", () => {
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: SHEET,
+    });
+    const r = decide({ now: NOW, state, messages: [amirRegistersShahrokh()] });
+    const moves = r.writes.filter((w) => w.kind === "team_slot_inherit");
+    expect(moves).toEqual([
+      expect.objectContaining({
+        kind: "team_slot_inherit",
+        fromUserId: "u-wasim",
+        toUserId: "u-shahrokh",
+        team: "YELLOW",
+      }),
+    ]);
+    expect(r.writes.some((w) => w.kind === "generate_teams")).toBe(false);
+  });
+
+  it("BOTH messages in ONE batch: one post, and no open-slot line beside it", () => {
+    // What actually happened on the night — the Pi flushed all four
+    // messages together. A slot that opens and is refilled in the same
+    // batch is ONE event to the group, not two.
+    const state = at({ confirmed: SEATED, teams: SHEET });
+    const r = decide({ now: NOW, state, messages: [wasimOut(), amirRegistersShahrokh()] });
+    expect(statusOf(r.nextState, "wasim")).toBe("DROPPED");
+    expect(statusOf(r.nextState, "shahrokh")).toBe("CONFIRMED");
+    expect(teamOf(r, "shahrokh")).toBe("YELLOW");
+    expect(r.speech.map((s) => s.kind)).toEqual(["replacement_teams_post"]);
+  });
+
+  it("BATCH 1 ALONE still gets today's open-slot sentence, and only that", () => {
+    // The drop with no replacement yet. `slot_opened` (S36c) owns it and
+    // must not be doubled up or displaced.
+    const state = at({ confirmed: SEATED, teams: SHEET });
+    const r = decide({ now: NOW, state, messages: [wasimOut()] });
+    expect(r.speech.map((s) => s.kind)).toEqual(["slot_opened"]);
+    expect(r.writes.some((w) => w.kind === "team_slot_inherit")).toBe(false);
+  });
+
+  it("NO ROSTER once the teams exist: a third-party drop still takes S36b's arm", () => {
+    // An admin dropping somebody else sets `movedSomeoneElsesRow`, which
+    // is S36b's arm and posted the fourteen-name roster. The KIND is
+    // unchanged; what it RENDERS is the change, and `compose.test.ts`
+    // pins that. Here: the sheet is still there to render from.
+    const state = at({ confirmed: SEATED, teams: SHEET });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "kemal",
+          body: "@Match Time Wasim is out",
+          tagged: true,
+          route: "other_att",
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Wasim", personNamed: true, polarity: "out" }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.speech.map((s) => s.kind)).toEqual(["squad_status"]);
+    expect(r.nextState.teams.length).toBe(14);
+  });
+
+  it("BEFORE the teams are generated nothing changes at all", () => {
+    // THE REGRESSION THAT MATTERS. With no sheet, a confirmed player
+    // without a slot is the normal state of the world.
+    const state = at({ confirmed: SEATED.filter((k) => k !== "wasim"), dropped: ["wasim"] });
+    const r = decide({ now: NOW, state, messages: [amirRegistersShahrokh()] });
+    expect(statusOf(r.nextState, "shahrokh")).toBe("CONFIRMED");
+    expect(r.writes.some((w) => w.kind === "team_slot_inherit")).toBe(false);
+    expect(r.speech.map((s) => s.kind)).toEqual(["squad_status"]);
+  });
+
+  it("TWO drops and TWO replacements resolve deterministically", () => {
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim" && k !== "kemal"),
+      dropped: ["wasim", "kemal"],
+      teams: SHEET,
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "Shahrokh can play in sha Allah",
+          route: "other_att",
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Shahrokh", personNamed: true, polarity: "in" }),
+          ]),
+        }),
+        msg({
+          from: "amir",
+          body: "and Ayoub too",
+          route: "other_att",
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Ayoub", personNamed: true, polarity: "in" }),
+          ]),
+        }),
+      ],
+    });
+    // Sheet order puts Kemal's RED vacancy first; join order puts
+    // Shahrokh first. Both orders are properties of the data, so a
+    // re-run of the same batch produces the same pairing.
+    expect(teamOf(r, "shahrokh")).toBe("RED");
+    expect(teamOf(r, "ayoub")).toBe("YELLOW");
+    const s = r.speech[0] as {
+      kind: "replacement_teams_post";
+      swaps: Array<{ outName: string; inName: string }>;
+    };
+    expect(s.swaps.map((x) => `${x.outName} -> ${x.inName}`)).toEqual([
+      "Kemal Ediz -> Shahrokh",
+      "Wasim Akhtar -> Ayoub Benali",
+    ]);
+  });
+
+  it("a replacement with NO vacancy reassigns nobody", () => {
+    // The squad GREW: a sheet built at thirteen and a fourteenth arrives.
+    // Inventing a slot for them would put eight on one side.
+    const thirteen = SEATED.filter((k) => k !== "wasim");
+    const sheet13 = Object.fromEntries(
+      Object.entries(SHEET).filter(([k]) => k !== "wasim"),
+    ) as Record<string, "RED" | "YELLOW">;
+    const state = at({ confirmed: thirteen, teams: sheet13 });
+    const r = decide({ now: NOW, state, messages: [amirRegistersShahrokh()] });
+    expect(statusOf(r.nextState, "shahrokh")).toBe("CONFIRMED");
+    expect(r.writes.some((w) => w.kind === "team_slot_inherit")).toBe(false);
+    for (const [key, team] of Object.entries(sheet13)) expect(teamOf(r, key)).toBe(team);
+  });
+
+  it("AFTER A COLOUR SWAP the replacement lands in the right ACTUAL team", () => {
+    // "@Match Time swap all yellow team players with red team players"
+    // flips the ENUM on every assignment row (the handler's log says
+    // "labels flipped"; it is the rosters that move). Wasim's slot is
+    // RED afterwards, so Shahrokh must be RED.
+    const flipped = Object.fromEntries(
+      Object.entries(SHEET).map(([k, t]) => [k, t === "RED" ? "YELLOW" : "RED"]),
+    ) as Record<string, "RED" | "YELLOW">;
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: flipped,
+    });
+    const r = decide({ now: NOW, state, messages: [amirRegistersShahrokh()] });
+    expect(teamOf(r, "shahrokh")).toBe("RED");
+  });
+
+  it("NOT A DM IN SIGHT — no write here queues one", () => {
+    const state = at({ confirmed: SEATED, teams: SHEET });
+    const r = decide({ now: NOW, state, messages: [wasimOut(), amirRegistersShahrokh()] });
+    for (const w of r.writes) {
+      expect(["stats_blast", "recruit_blast"]).not.toContain(w.kind);
+    }
+  });
+
+  it("a QUESTION batch proposes no team move — the answer path has no apply layer", () => {
+    // `answer-batch.ts` refuses the whole batch if `decide` hands it any
+    // write at all ("the engine proposed N write(s) from a read-only
+    // route"). A stale sheet must not turn a question into silence.
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: SHEET,
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "@Match Time who's playing?",
+          tagged: true,
+          route: "question",
+          facts: { kind: "question", topic: "squad", personRef: null, statedCount: null },
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(0);
+  });
+
+  it("a replacement nobody has seen before still inherits the slot", () => {
+    // The name resolves to no member, so `applyClaim` provisions
+    // `new:Raihan` and the inherit carries that placeholder. The apply
+    // layer is what turns it into a real id, and
+    // `__tests__/attendance-engine.test.ts` pins that half.
+    const state = at({
+      confirmed: SEATED.filter((k) => k !== "wasim"),
+      dropped: ["wasim"],
+      teams: SHEET,
+    });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        msg({
+          from: "amir",
+          body: "I have a friend who will play instead of my dad. His name is Raihan",
+          route: "other_att",
+          facts: attendanceFacts([
+            claim({ subject: "other", personRef: "Raihan", personNamed: true, polarity: "in" }),
+          ]),
+        }),
+      ],
+    });
+    expect(r.writes.filter((w) => w.kind === "team_slot_inherit")).toEqual([
+      expect.objectContaining({
+        kind: "team_slot_inherit",
+        fromUserId: "u-wasim",
+        toUserId: "new:Raihan",
+        team: "YELLOW",
+      }),
+    ]);
+  });
+});

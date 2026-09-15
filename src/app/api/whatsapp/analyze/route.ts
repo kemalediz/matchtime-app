@@ -255,6 +255,9 @@ import {
 } from "@/lib/attendance-write-outcome";
 import { recordTentative, resolveTentative } from "@/lib/tentative-store";
 import { resolveTeamLabels } from "@/lib/team-labels";
+// The SAME kickoff label `pipeline/load-state.ts` puts on `SquadState`,
+// so the teams post reads identically whichever composer wrote it.
+import { formatLondon } from "@/lib/london-time";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageMentionsBotExplicitly, messageTagsBot } from "@/lib/interaction-contract";
 import { mergeRecruitReply } from "@/lib/recruit-request";
@@ -1644,6 +1647,19 @@ async function handleAnalyzeRequest(request: Request) {
             registerAttendance,
             cancelAttendance,
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
+            // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
+            // updated IN PLACE — `load-state.ts` reads the sheet in
+            // `id: asc` so the re-post renders the players in the order
+            // the balancer wrote them, and a delete-and-create would put
+            // the replacement at the bottom instead of in the spot they
+            // took. `@@unique([matchId, userId])` is what the composite
+            // where clause names.
+            moveTeamSlot: async (matchId, fromUserId, toUserId) => {
+              await db.teamAssignment.update({
+                where: { matchId_userId: { matchId, userId: fromUserId } },
+                data: { userId: toUserId },
+              });
+            },
             openBenchPromptUserIds: async (matchId) =>
               (
                 await db.pendingBenchConfirmation.findMany({
@@ -1950,6 +1966,11 @@ async function handleAnalyzeRequest(request: Request) {
   const REGISTRATION_STATUS_REACTS = new Set(["✅", "🪑", "👋"]);
   const senderReactAudit: Array<{ idx: number; userId: string }> = [];
 
+  /** Replies that are ALREADY a team sheet composed from the database —
+   *  the 2026-09-15 replacement post. Excluded from the §10 step 4
+   *  composition pass below; see `EngineMessageOutcome.deterministicTeamPost`. */
+  const deterministicTeamPostIds = new Set<string>();
+
   // ── THE RECRUIT BLAST STILL RUNS LAST ───────────────────────────────
   //   Collected here, fired once after every write in the batch has
   //   landed — see "RUN THE RECRUIT" below. The deferral is the fix for
@@ -2138,6 +2159,17 @@ async function handleAnalyzeRequest(request: Request) {
         // say the same thing, and neither of them decides anything.
         why: engineOutcome.reasoning,
       });
+      // AN ALREADY-COMPOSED TEAM SHEET (2026-09-15). The §10 step 4 pass
+      // below replaces anything `displaysSquadState` recognises, and two
+      // numbered lists under two headings is rule (a) — so without this
+      // the replacement post loses its lead ("Wasim is out — Shahrokh
+      // takes his place") and its regenerate footer, and the group is
+      // told the line-ups again with no word about the swap. Same
+      // exclusion that pass already makes for the two team intents; see
+      // `EngineMessageOutcome.deterministicTeamPost`.
+      if (engineOutcome.deterministicTeamPost) {
+        deterministicTeamPostIds.add(msg.waMessageId);
+      }
       results.push({
         waMessageId: msg.waMessageId,
         // The WIRE field, which `whatsapp-bot/src/api.ts:325` types as a
@@ -2591,6 +2623,11 @@ async function handleAnalyzeRequest(request: Request) {
         if (!r.reply) continue;
         if (r.handledBy !== "llm" && !pastedRosterAck) continue;
         if (r.intent === "generate_teams_request" || r.intent === "show_teams_request") continue;
+        // The 2026-09-15 replacement post — a team sheet with a lead this
+        // pass would strip. Excluded on the same argument as the two
+        // intents above, on a flag because the message's own intent is
+        // still the attendance one that caused it.
+        if (deterministicTeamPostIds.has(r.waMessageId)) continue;
         candidates.push(i);
       }
       if (candidates.length > 0) {
@@ -2612,6 +2649,43 @@ async function handleAnalyzeRequest(request: Request) {
           where: { orgId: org.id, leftAt: null },
           select: { user: { select: { name: true } } },
         });
+        // ── THE TEAM SHEET, WHEN THERE IS ONE (2026-09-15) ──────────
+        //
+        // With the line-ups out, the composed post IS the line-ups. The
+        // owner, after the fourteen-name roster went out twice an hour
+        // after they were announced: "There is no point listing all the
+        // 14 players after the teams were announced."
+        //
+        // `id: asc` for the same reason `pipeline/load-state.ts` gives:
+        // insertion order is the order the balancer wrote them, and
+        // Postgres heap order changes after an UPDATE — i.e. after
+        // exactly the slot move this change introduces.
+        const sheetMatch = await db.match.findUnique({
+          where: { id: nextMatchForReply.id },
+          select: {
+            date: true,
+            teamLabels: true,
+            activity: {
+              select: {
+                venue: true,
+                org: { select: { teamLabels: true } },
+                sport: { select: { teamLabels: true, name: true, playersPerTeam: true } },
+              },
+            },
+            teamAssignments: {
+              select: { team: true, user: { select: { name: true } } },
+              orderBy: { id: "asc" },
+            },
+          },
+        });
+        const sheetRows = sheetMatch?.teamAssignments ?? [];
+        const teamLabels = sheetMatch
+          ? resolveTeamLabels(
+              { teamLabels: sheetMatch.teamLabels },
+              sheetMatch.activity.org,
+              sheetMatch.activity.sport,
+            )
+          : ["Red", "Yellow"];
         const truth: SquadTruth = {
           confirmed: finalAtt
             .filter((a) => a.status === "CONFIRMED")
@@ -2623,6 +2697,20 @@ async function handleAnalyzeRequest(request: Request) {
           knownNames: memberships
             .map((m) => m.user.name)
             .filter((n): n is string => !!n),
+          teams:
+            sheetMatch && sheetRows.length > 0
+              ? {
+                  red: sheetRows
+                    .filter((t) => t.team === "RED")
+                    .map((t) => t.user.name ?? "(unnamed)"),
+                  yellow: sheetRows
+                    .filter((t) => t.team === "YELLOW")
+                    .map((t) => t.user.name ?? "(unnamed)"),
+                  labels: [teamLabels[0], teamLabels[1]],
+                  kickoff: formatLondon(sheetMatch.date, "EEE HH:mm"),
+                  venue: sheetMatch.activity.venue,
+                }
+              : null,
         };
         const composedIdx: number[] = [];
         for (const i of candidates) {
