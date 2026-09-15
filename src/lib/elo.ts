@@ -12,6 +12,29 @@
  * Small margins → small nudge. Blowouts → big nudge. Over time, players
  * who consistently win against stronger teams climb; players who lose
  * against weaker teams drop. Self-calibrating, no tuning required.
+ *
+ * ── `matchRating` DOES NOT PICK TEAMS. THAT IS DELIBERATE ────────────
+ *
+ * It is a LEADERBOARD number. `lib/match-history.ts` ranks the Elo top
+ * and bottom from it, and that is the whole of its job. The balancer
+ * never sees it: `lib/team-generation.ts` — since 2026-09-15 the only
+ * implementation of "build the team sheet" — rates players with
+ * `computePlayerRating`, a seed-and-peer blend with no Elo term.
+ *
+ * If you are here because the Elo "isn't being used", that is not a bug
+ * and please do not wire it back in. Until 2026-09-15 the admin
+ * dashboard DID blend it in (0.5 x peerAvg + 0.5 x matchRating/200)
+ * while the WhatsApp path did not, so the club had two buttons that
+ * built different teams from the same squad. Kemal's call was that the
+ * blended, Elo-free formula is the one used everywhere. On the live
+ * Sutton squad the Elo term was moving players up to seven draft places
+ * and compressing the whole rating spread from 2.49 to 1.37, because an
+ * Elo that has only moved for eight players is still clustered near its
+ * 1000 start and drags everyone toward 5.0.
+ *
+ * The tombstone with the reasoning is at the top of
+ * `app/actions/teams.ts`; `scripts/compare-rating-formulas.ts`
+ * re-measures the difference on a live squad at any time.
  */
 
 export interface PlayerEloInput {

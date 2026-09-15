@@ -79,7 +79,12 @@ model User {
   password      String?
   phoneNumber   String?   @unique
   seedRating    Float?
-  matchRating   Int       @default(1000) // Elo-style; updated after each completed match with a score
+  /// Elo-style; updated after each completed match with a score.
+  /// LEADERBOARD ONLY — `lib/match-history.ts` ranks from it and nothing
+  /// else reads it. Team selection uses `computePlayerRating` (seed +
+  /// peer ratings, no Elo term) on every path since 2026-09-15; see the
+  /// tombstone at the top of `app/actions/teams.ts`.
+  matchRating   Int       @default(1000)
   isSuperadmin  Boolean   @default(false) // platform-level operator; see all orgs
   isActive      Boolean   @default(true)
   onboarded     Boolean   @default(false)
