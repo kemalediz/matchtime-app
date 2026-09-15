@@ -924,9 +924,22 @@ model BotHealth {
   /// is a property of this org's health, not of a match. `alertedCodes`
   /// is what makes "a NEW condition appeared" distinguishable from "the
   /// same thing is still broken" — the difference between speaking up
-  /// immediately and waiting for the repeat window.
+  /// immediately and waiting for tomorrow morning's digest.
   lastAlertAt    DateTime?
   lastAlertCodes String[]
+
+  /// Per-code first-seen ledger: `{"sweep-stale":"2026-07-07T15:08:13Z"}`.
+  /// `lastAlertCodes` answers "was this in the last alert"; this answers
+  /// "since when", which is what lets the alert collapse anything that
+  /// has been true for more than `COLLAPSE_AFTER_MS` into one dated line
+  /// instead of repeating its paragraph every day, and what lets it say
+  /// how long something lasted when it finally clears.
+  ///
+  /// A column and not a table: at most eleven entries, read and written
+  /// only as a whole, alongside `lastAlertCodes` which is already a bare
+  /// array on this row, and nothing will ever query inside it.
+  /// `trackFirstSeen` parses it totally, so any shape is survivable.
+  codeFirstSeenAt Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

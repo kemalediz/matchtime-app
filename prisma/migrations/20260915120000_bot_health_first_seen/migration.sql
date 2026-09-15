@@ -1,0 +1,79 @@
+-- BotHealth."codeFirstSeenAt": since WHEN each problem has been true
+-- (2026-09-15).
+--
+-- WHY THIS COLUMN EXISTS
+-- ----------------------
+-- The owner, 2026-09-15:
+--
+--   "I keep getting so many emails and WhatsApp messages regarding the
+--    alerts. It should be composed to one a day."
+--
+-- Two things were wrong and this column is what the second one needs.
+--
+-- The first was cadence: `ALERT_REPEAT_MS` was six hours, so an
+-- unchanged set of problems re-fired about four times a day by email AND
+-- by WhatsApp DM. That fix is code only and needs no schema.
+--
+-- The second is that the alert had no idea how OLD anything was, so it
+-- could not tell the reader's second copy of a paragraph from his
+-- twenty-third. Sutton FC's `degradedCapabilities` has held the same
+-- four strings since 2026-07-07 and the participant sweep last succeeded
+-- the same day. On 2026-09-14 at 09:00 a live inbound outage, 35 hours
+-- before a fixture, was rendered as the THIRD item of the message, under
+-- two warnings that had been true since July.
+--
+-- `lastAlertCodes` answers "was this in the last alert". It cannot
+-- answer "since when", and "since when" is the whole of the fix: a
+-- finding continuously present for longer than COLLAPSE_AFTER_MS (72
+-- hours) collapses to one named, dated line UNDER whatever is new, and
+-- one that finally clears can say how long it lasted.
+--
+-- SHAPE
+-- -----
+-- A JSONB object, code to ISO 8601 timestamp:
+--
+--   {"capability-degraded":"2026-09-09T12:00:30.853Z",
+--    "sweep-stale":"2026-09-09T12:00:30.853Z"}
+--
+-- A column rather than a table because it holds at most eleven entries
+-- (one per `HealthCode`), is only ever read and written as a whole,
+-- sits next to `lastAlertCodes` which is already a bare array on this
+-- row, and will never be queried inside. `trackFirstSeen` in
+-- src/lib/bot-health.ts parses it TOTALLY: a null, a string, an array,
+-- an unparseable date, all read as "no entry", because a monitoring job
+-- that throws on its own bookkeeping reports nothing, which is the
+-- failure this whole subsystem exists to end.
+--
+-- NO BACKFILL, ON PURPOSE
+-- -----------------------
+-- Sutton FC's row already carries
+-- `lastAlertCodes = {capability-degraded, sweep-stale}` and, after this
+-- migration, a NULL ledger. The application handles that case itself:
+-- a code that is in `lastAlertCodes` but not in the ledger is stamped
+-- with `BotHealth."createdAt"` (2026-09-09 for Sutton), which is not
+-- when the fault began but IS the earliest instant this monitor could
+-- have known about it. That is the honest value and it is already more
+-- than 72 hours old, so the roll-up works on the first tick after
+-- deploy rather than in three days' time.
+--
+-- Backfilling here would mean writing 2026-07-07 into the column from
+-- outside the code that owns it, asserting a date this table never
+-- observed. The rule is left in one place, in `trackFirstSeen`, where
+-- it is unit-tested.
+--
+-- WHAT APPLYING THIS DOES TO A LIVE DATABASE
+-- ------------------------------------------
+-- One ADD COLUMN, NULLABLE, no DEFAULT. Postgres records that in the
+-- catalog and does not rewrite the table; "BotHealth" has one row in
+-- production in any case. It does NOT: rewrite a row, backfill
+-- anything, drop or rename anything, add a constraint, add an index, or
+-- change any existing query. Every reader of this table other than
+-- /api/cron/bot-health and /api/whatsapp/heartbeat is `SELECT`-only.
+--
+-- Rolling back is
+--   ALTER TABLE "BotHealth" DROP COLUMN IF EXISTS "codeFirstSeenAt";
+-- with no data loss outside the new column: the alert then simply
+-- reports every finding in full again, which is exactly today's
+-- behaviour.
+
+ALTER TABLE "BotHealth" ADD COLUMN IF NOT EXISTS "codeFirstSeenAt" JSONB;
