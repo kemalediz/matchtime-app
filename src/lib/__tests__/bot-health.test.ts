@@ -8,15 +8,17 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  ALERT_REPEAT_MS,
   assessBotHealth,
   composeHealthAlert,
   dmAllowedNow,
   HEARTBEAT_SILENT_MS,
+  labelForCode,
   NONE_SHADOW_SILENT_MS,
   parseHeartbeat,
   planHealthAlert,
+  type HealthCode,
   type HealthCounters,
+  type HealthFinding,
   type HealthInput,
 } from "../bot-health";
 
@@ -66,6 +68,15 @@ function healthy(over: Partial<HealthInput> = {}): HealthInput {
 }
 
 const codes = (i: HealthInput) => assessBotHealth(i).map((f) => f.code).sort();
+
+/** A minimal finding, for the rules that only care about its code. */
+const mkFinding = (code: HealthCode): HealthFinding => ({
+  code,
+  severity: "warning",
+  label: labelForCode(code),
+  headline: `${code}.`,
+  detail: `${code} detail.`,
+});
 
 describe("assessBotHealth — the healthy baseline", () => {
   it("says nothing at all about a healthy org", () => {
@@ -381,8 +392,10 @@ describe("assessBotHealth — the `none`-bucket shadow sweep", () => {
   it("rides the EXISTING dedupe rather than a channel of its own", () => {
     // New condition on top of a long-running one → speaks immediately.
     const known = ["capability-degraded", "sweep-stale"];
+    const all = [...known, "none-shadow-stale"] as HealthCode[];
     const fresh = planHealthAlert({
-      codes: [...known, "none-shadow-stale"],
+      findings: all.map(mkFinding),
+      resolved: [],
       lastAlertAt: new Date(NOW.getTime() - 10 * 60 * 1000),
       lastAlertCodes: known,
       now: NOW,
@@ -390,16 +403,17 @@ describe("assessBotHealth — the `none`-bucket shadow sweep", () => {
     expect(fresh.send).toBe(true);
     expect(fresh.reason).toContain("none-shadow-stale");
 
-    // …and from then on it is one more line inside the same six-hourly
-    // repeat, never its own email.
+    // …and from then on it is one more line inside the same daily
+    // digest, never its own email.
     const repeat = planHealthAlert({
-      codes: [...known, "none-shadow-stale"],
+      findings: all.map(mkFinding),
+      resolved: [],
       lastAlertAt: new Date(NOW.getTime() - 10 * 60 * 1000),
-      lastAlertCodes: [...known, "none-shadow-stale"],
+      lastAlertCodes: all,
       now: NOW,
     });
     expect(repeat.send).toBe(false);
-    expect(repeat.reason).toContain("repeat window");
+    expect(repeat.reason).toContain("already alerted today");
   });
 });
 
@@ -426,7 +440,7 @@ describe("assessBotHealth — the pipe is silent before a match", () => {
 
 describe("composeHealthAlert", () => {
   it("returns null when there is nothing wrong", () => {
-    expect(composeHealthAlert("Sutton FC", [])).toBeNull();
+    expect(composeHealthAlert("Sutton FC", [], { now: NOW })).toBeNull();
   });
 
   it("names the club, the worst severity and every finding", () => {
@@ -440,7 +454,7 @@ describe("composeHealthAlert", () => {
         },
       }),
     );
-    const alert = composeHealthAlert("Sutton FC", findings);
+    const alert = composeHealthAlert("Sutton FC", findings, { now: NOW });
     expect(alert).not.toBeNull();
     expect(alert!.subject).toContain("Sutton FC");
     expect(alert!.text).toContain("Sutton FC");
@@ -470,7 +484,7 @@ describe("composeHealthAlert", () => {
         namelessUnattributed24h: 1,
       }),
     );
-    const alert = composeHealthAlert("Sutton FC", findings)!;
+    const alert = composeHealthAlert("Sutton FC", findings, { now: NOW })!;
     expect(alert.subject).not.toContain("—");
     expect(alert.subject).not.toContain("–");
     expect(alert.text).not.toContain("—");
@@ -488,47 +502,66 @@ describe("composeHealthAlert", () => {
         },
       }),
     );
-    const alert = composeHealthAlert("Sutton FC", findings)!;
+    const alert = composeHealthAlert("Sutton FC", findings, { now: NOW })!;
     expect(alert.text.toLowerCase()).toContain("bot.log");
   });
 });
 
 describe("planHealthAlert — dedupe", () => {
-  const two = ["pi-silent", "sweep-stale"];
+  // NOW is 2026-09-09T12:00Z, which is 13:00 London: a new London day
+  // with the digest hour already passed.
+  const two: HealthCode[] = ["pi-silent", "sweep-stale"];
+  const findings = two.map(mkFinding);
 
   it("sends the first time anything is wrong", () => {
-    const p = planHealthAlert({ codes: two, lastAlertAt: null, lastAlertCodes: [], now: NOW });
+    const p = planHealthAlert({
+      findings,
+      resolved: [],
+      lastAlertAt: null,
+      lastAlertCodes: [],
+      now: NOW,
+    });
     expect(p.send).toBe(true);
   });
 
   it("stays silent when nothing is wrong", () => {
-    const p = planHealthAlert({ codes: [], lastAlertAt: null, lastAlertCodes: [], now: NOW });
+    const p = planHealthAlert({
+      findings: [],
+      resolved: [],
+      lastAlertAt: null,
+      lastAlertCodes: [],
+      now: NOW,
+    });
     expect(p.send).toBe(false);
   });
 
-  it("stays silent on the same conditions inside the repeat window", () => {
+  it("stays silent on the same conditions when it has already spoken today", () => {
     const p = planHealthAlert({
-      codes: two,
-      lastAlertAt: new Date(NOW.getTime() - ALERT_REPEAT_MS + 60_000),
+      findings,
+      resolved: [],
+      lastAlertAt: new Date(NOW.getTime() - HOUR),
       lastAlertCodes: two,
       now: NOW,
     });
     expect(p.send).toBe(false);
   });
 
-  it("repeats once the window has passed and it is still broken", () => {
+  it("repeats once the next day's digest hour arrives and it is still broken", () => {
     const p = planHealthAlert({
-      codes: two,
-      lastAlertAt: new Date(NOW.getTime() - ALERT_REPEAT_MS - 60_000),
+      findings,
+      resolved: [],
+      lastAlertAt: new Date("2026-09-08T07:00:00.000Z"), // yesterday, 08:00 London
       lastAlertCodes: two,
       now: NOW,
     });
     expect(p.send).toBe(true);
+    expect(p.reason).toContain("digest");
   });
 
-  it("speaks immediately when a NEW condition appears, window or not", () => {
+  it("speaks immediately when a NEW condition appears, digest hour or not", () => {
     const p = planHealthAlert({
-      codes: [...two, "messages-dropped"],
+      findings: [...findings, mkFinding("messages-dropped")],
+      resolved: [],
       lastAlertAt: new Date(NOW.getTime() - 60_000),
       lastAlertCodes: two,
       now: NOW,
@@ -537,9 +570,20 @@ describe("planHealthAlert — dedupe", () => {
     expect(p.reason).toContain("new");
   });
 
-  it("does NOT speak when a condition CLEARS — recovery is not an incident", () => {
+  it("does NOT speak when a SHORT-LIVED condition clears", () => {
+    // Unchanged judgement: recovery from a blip is what is supposed to
+    // happen, and a channel that announces good outcomes stops being
+    // read. A LONG-running one clearing is different, and has its own
+    // tests in bot-health-digest.test.ts.
     const p = planHealthAlert({
-      codes: ["pi-silent"],
+      findings: [mkFinding("pi-silent")],
+      resolved: [
+        {
+          code: "sweep-stale",
+          label: labelForCode("sweep-stale"),
+          firstSeenAt: new Date(NOW.getTime() - HOUR),
+        },
+      ],
       lastAlertAt: new Date(NOW.getTime() - 60_000),
       lastAlertCodes: two,
       now: NOW,
