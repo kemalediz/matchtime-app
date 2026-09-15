@@ -30,10 +30,25 @@
  *   - Attendance + Elo leaderboards: top 10 + bottom 5 (for Elo).
  *     Excludes synthetic-historical matches from the denominators
  *     because those have no Attendance rows.
+ *   - ALL FOUR leaderboards drop players with no match in the last
+ *     three months (Kemal, 2026-09-15: "drop inactive players from the
+ *     table after three months, leave the balancer alone"). The rule,
+ *     and the argument for removal over a decayed rating, live in
+ *     `ranked-table-activity.ts`. It is a DISPLAY filter: it removes
+ *     rows and touches no number, no denominator and nothing team
+ *     generation reads. The per-match detail rows above are NOT
+ *     filtered — those are a record of what happened, and a departed
+ *     player's MoM award still belongs in the match he won it in.
  */
 import { db } from "./db";
 import { getMomSummaries } from "./mom";
 import { resolveTeamLabels } from "./team-labels";
+import {
+  RANKED_TABLE_INACTIVE_AFTER_MONTHS,
+  buildRankedRoster,
+  lastPlayedFromRows,
+  type RankedRoster,
+} from "./ranked-table-activity";
 
 export interface RecentMatchRow {
   id: string;
@@ -64,6 +79,10 @@ export interface RecentHistory {
   attendanceLeaderboard: LeaderboardRow[];
   eloTop: LeaderboardRow[];
   eloBottom: LeaderboardRow[];
+  /** How many players the inactivity rule removed from the four tables
+   *  above. Non-zero means the block must SAY the tables are filtered —
+   *  see `formatRecentHistoryBlock`. */
+  inactivePlayersHidden: number;
 }
 
 /**
@@ -113,10 +132,14 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //     below (totalCompletedMatches, the attendance leaderboard's
   //     numerator AND denominator, matches-played for the Elo floor) are
   //     defined over the club's whole history and must never be bounded.
+  //     `date` comes back alongside `id` because the inactivity filter
+  //     needs to know WHEN each appearance happened, and this query
+  //     already spans exactly the matches an appearance can be counted
+  //     on. One extra column here; a whole extra query otherwise.
   const allCompleted = await db.match.findMany({
     where: completedWhere,
     orderBy: { date: "asc" },
-    select: { id: true },
+    select: { id: true, date: true },
   });
 
   if (allCompleted.length === 0) {
@@ -152,6 +175,33 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   const allCompletedIds = allCompleted.map((m) => m.id);
   /** Only the matches that get a detail row — the display's scope. */
   const detailMatchIds = matches.map((m) => m.id);
+
+  // 1c. CONFIRMED appearances across every completed match. This one
+  //     query feeds three things: the attendance leaderboard's
+  //     numerator, the Elo floor's matches-played, and — pulled up to
+  //     here from step 4 so the tables below can all use it — the
+  //     inactivity filter's last-appearance dates.
+  const attendanceRows = await db.attendance.findMany({
+    where: { matchId: { in: allCompletedIds }, status: "CONFIRMED" },
+    select: { userId: true, matchId: true },
+  });
+
+  // 1d. WHO IS STILL IN THE TABLES. A player with no CONFIRMED
+  //     appearance in the last three months comes out of all four
+  //     leaderboards and returns, with their real unchanged number, the
+  //     moment they play again. `ranked-table-activity.ts` carries the
+  //     argument for removal over a decayed rating, and the reasons this
+  //     window is three months and measured from today.
+  //
+  //     Note what this does NOT do: it removes ROWS. Every value on the
+  //     surviving rows — Elo, MoM wins, appearance counts, and above all
+  //     the attendance denominator — is computed exactly as before.
+  const matchDateById = new Map(allCompleted.map((m) => [m.id, m.date]));
+  const roster: RankedRoster = buildRankedRoster(
+    lastPlayedFromRows(
+      attendanceRows.map((a) => ({ userId: a.userId, date: matchDateById.get(a.matchId) })),
+    ),
+  );
 
   // 2. MoM votes for the matches we actually render — uses the shared
   //    helper so tie-handling matches the dashboard's display. The
@@ -210,6 +260,12 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   }
   const momLeaderboard: LeaderboardRow[] = [...momWinsByPlayer.entries()]
     .map(([userId, v]) => ({ userId, name: v.name, value: v.wins }))
+    // Inactive players out. This is also where a name that exists ONLY
+    // through a backfilled historical award drops off — those anchor
+    // matches carry no Attendance rows, so there is no appearance to
+    // qualify on. Intended: a pre-MatchTime name is not a current squad
+    // member. The match he won it in still lists him, above.
+    .filter((r) => roster.isRanked(r.userId))
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
     .slice(0, LEADERBOARD_LIMIT);
 
@@ -222,10 +278,9 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //    the total denominator, Abid (joined match 2, attended all 3
   //    since) shows 3/4 (75%) — accurately positioning him below
   //    Kemal/Idris on consistency.
-  const attendanceRows = await db.attendance.findMany({
-    where: { matchId: { in: allCompletedIds }, status: "CONFIRMED" },
-    select: { userId: true, matchId: true },
-  });
+  //
+  //    `attendanceRows` is fetched at step 1c, because the inactivity
+  //    filter needs it before the MoM table above.
   const perPlayer = new Map<string, { count: number }>();
   for (const a of attendanceRows) {
     const cur = perPlayer.get(a.userId);
@@ -249,6 +304,12 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
         detail: `${v.count}/${totalMatches} (${pct}%)`,
       };
     })
+    // Inactive players out — see ATTENDANCE_TABLE_FOLLOWS_ACTIVITY_RULE
+    // for why the one table that is literally ABOUT turning up still
+    // follows the rule. Note the denominator above is computed from
+    // `allCompleted` and is untouched by this: removing a leaver must
+    // never inflate everyone else's percentage.
+    .filter((r) => roster.isRanked(r.userId))
     // Sort by raw count desc — with a fixed denominator that's the
     // same ordering as % desc. Stable name tiebreaker.
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
@@ -278,11 +339,19 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     value: u.matchRating,
     detail: `${matchesPlayedByUser.get(u.id) ?? 0} matches`,
   }));
+  // Both Elo tables take the inactivity filter. The bottom table stacks
+  // it on top of ELO_BOTTOM_MIN_MATCHES, which is the same idea on a
+  // different axis — that one keeps a newcomer with one bad night off
+  // the foot of the club, this one keeps a man who left in May off it.
+  // Neither changes anybody's rating; `matchRating` is read, never
+  // written, anywhere in this file.
   const eloTop = [...eloRows]
+    .filter((r) => roster.isRanked(r.userId))
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
     .slice(0, LEADERBOARD_LIMIT);
   const eloBottom = [...eloRows]
     .filter((r) => (matchesPlayedByUser.get(r.userId) ?? 0) >= ELO_BOTTOM_MIN_MATCHES)
+    .filter((r) => roster.isRanked(r.userId))
     .sort((a, b) => a.value - b.value || a.name.localeCompare(b.name))
     .slice(0, ELO_BOTTOM_LIMIT);
 
@@ -293,6 +362,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     attendanceLeaderboard,
     eloTop,
     eloBottom,
+    inactivePlayersHidden: roster.hiddenCount,
   };
 }
 
@@ -328,6 +398,25 @@ export function formatRecentHistoryBlock(history: RecentHistory): string {
       year: "numeric",
     }).format(m.date);
     lines.push(`  - ${dateStr}: ${m.scoreLabel} | MoM: ${m.momLabel}`);
+  }
+  // SAY THE TABLES ARE FILTERED. Without this line the model is handed
+  // four leaderboards that silently omit a man with two MoM awards, and
+  // answers "I have no record of Ehtisham" to a group that watched him
+  // win them. A silent filter is how "where did I go?" questions start,
+  // and the model is the surface most likely to be asked. One sentence,
+  // only when something was actually hidden.
+  if (history.inactivePlayersHidden > 0) {
+    lines.push("");
+    lines.push(
+      `NOTE ON THE LEADERBOARDS BELOW: they list only players who have played in the last ` +
+        `${RANKED_TABLE_INACTIVE_AFTER_MONTHS} months. ` +
+        `${history.inactivePlayersHidden} player(s) who have played for this club are not listed, ` +
+        `because they haven't turned out since. If somebody asks about a player who isn't in these ` +
+        `tables, do NOT say they never played or that there's no record of them — say they haven't ` +
+        `played in the last ${RANKED_TABLE_INACTIVE_AFTER_MONTHS} months, so they're out of the ` +
+        `rankings until they play again. Their record is kept and their rating is unchanged. ` +
+        `The per-match list above is NOT filtered, so it still names them.`,
+    );
   }
   if (history.momLeaderboard.length) {
     lines.push("");

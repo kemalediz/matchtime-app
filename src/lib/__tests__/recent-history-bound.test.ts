@@ -50,11 +50,20 @@ import {
 
 const ORG = "org-1";
 
-/** `n` completed matches, one a week, oldest first — the real cadence. */
+/** `n` completed matches, one a week, oldest first — the real cadence.
+ *
+ *  The series ENDS at "now" rather than starting at a fixed date in the
+ *  past, because the leaderboards now drop players with no match in the
+ *  last three months (`ranked-table-activity.ts`). A fixture list that
+ *  finished two years ago would put every seeded player outside that
+ *  window, and these tests would pass over four empty tables while
+ *  appearing to assert something about their contents. */
+const WEEK = 7 * 86_400_000;
 function completedMatches(n: number) {
+  const mostRecent = Date.now() - 2 * 86_400_000;
   return Array.from({ length: n }, (_, i) => ({
     id: `m${i + 1}`,
-    date: new Date(2024, 0, 2 + i * 7),
+    date: new Date(mostRecent - (n - 1 - i) * WEEK),
     redScore: 5,
     yellowScore: 4,
     activity: { sport: { teamLabels: null } },
@@ -102,15 +111,22 @@ function seed(matchCount: number, opts: { attendanceRows?: number } = {}) {
       const ordered = desc ? [...all].reverse() : all;
       return typeof take === "number" ? ordered.slice(0, take) : ordered;
     }
-    return all.map((m) => ({ id: m.id }));
+    // `date` as well as `id`: the aggregate query really does select
+    // both, because the inactivity filter needs to know when each
+    // appearance happened. A mock that returns bare ids makes the
+    // filter compare against `undefined` and silently pass everyone.
+    return all.map((m) => ({ id: m.id, date: m.date }));
   });
   orgFindUnique.mockResolvedValue({ teamLabels: null });
-  // One ever-present player across every match, so the denominator is visible.
+  // One player, present for `attendanceRows` matches taken from the
+  // RECENT end of the fixture list. Recent because the four
+  // leaderboards drop anyone with no match in the last three months, so
+  // a player seeded onto the oldest matches would vanish from the very
+  // tables these tests assert on.
   attendanceFindMany.mockResolvedValue(
-    Array.from({ length: opts.attendanceRows ?? matchCount }, (_, i) => ({
-      userId: "u1",
-      matchId: `m${i + 1}`,
-    })),
+    all
+      .slice(-(opts.attendanceRows ?? matchCount))
+      .map((m) => ({ userId: "u1", matchId: m.id })),
   );
   userFindMany.mockResolvedValue([{ id: "u1", name: "Kemal", matchRating: 1000 }]);
   teamAssignmentFindMany.mockResolvedValue([{ userId: "u1" }]);
