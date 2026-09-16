@@ -46,6 +46,7 @@ Decide what the player is saying about THEIR OWN availability for THAT match:
 
 RULES (in priority order):
 1. HEDGES ARE UNCLEAR, never "in" and never "out". If the reply contains any of: "maybe", "not sure", "I'll let you know", "I'll try", "probably", "possibly", "if I can", "depends", "we'll see", "hopefully" — return "unclear". "maybe, I'll let you know" is unclear.
+1a. THE REPLY MAY BE IN TURKISH. Same rules on meaning: "varım", "geliyorum", "sayın beni" are "in"; "yokum", "gelemiyorum", "bu hafta yokum" are "out"; "belki", "bakarız", "kesin değil", "bakacağım" are hedges and "unclear".
 2. A QUESTION about the match ("what time is it again?", "who else is playing?", "where are we playing?", "am I in?", "is there space?") is "unclear" — the player is asking, not answering. But a reply that clearly accepts AND also asks something ("go on then, what time?") is "in".
 3. THIRD PARTIES ARE UNCLEAR. This decision only ever covers the SENDER. "Kieran is in", "my mate wants a game", "is Rashad playing" → "unclear".
 4. PAST OR HYPOTHETICAL statements are "unclear": "I was in last week", "if I was fit I'd play".

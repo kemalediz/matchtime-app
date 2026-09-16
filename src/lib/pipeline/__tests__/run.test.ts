@@ -291,3 +291,38 @@ describe("cost accounting", () => {
     expect(out.cost.routerCalls).toBe(1);
   });
 });
+
+describe("the floor is a pipeline input, so a harness can measure the router without it", () => {
+  // Production runs with `ROUTER_GATE_FLOOR_ENABLED` unset (floor OFF).
+  // `scripts/dryrun-pipeline.ts` ran with the floor ON by default, so a
+  // bare "in" there was never the router's answer — it was the regex's.
+  // `floor: false` is how the harness asks the question production asks.
+  const routerSaysNone = '{"routes":[{"id":"a","route":"none"}]}';
+  const input = (floor: boolean | undefined, model: PipelineModel) => ({
+    now: NOW,
+    state: world({ confirmed: TEN }),
+    history: [],
+    messages: batch([{ id: "a", from: "zair", body: "in" }]),
+    models: { router: model, extractor: model },
+    ...(floor === undefined ? {} : { floor }),
+  });
+
+  it("floor omitted: the floor overrides the model, as before", async () => {
+    const { model } = scriptedModels({ router: routerSaysNone });
+    const out = await runPipeline(input(undefined, model));
+    expect(out.routes[0]).toMatchObject({ route: "self_att", source: "floor" });
+  });
+
+  it("floor: false — the model's `none` stands", async () => {
+    const { model } = scriptedModels({ router: routerSaysNone });
+    const out = await runPipeline(input(false, model));
+    expect(out.routes[0]).toMatchObject({ route: "none", source: "model" });
+    expect(out.cost.extractorCalls).toBe(0);
+  });
+
+  it("floor: true — same as omitted", async () => {
+    const { model } = scriptedModels({ router: routerSaysNone });
+    const out = await runPipeline(input(true, model));
+    expect(out.routes[0]).toMatchObject({ route: "self_att", source: "floor" });
+  });
+});
