@@ -834,6 +834,8 @@ NEVER write "tonight", "this evening", "tomorrow" or similar temporal references
 
 NEVER stamp the message with the time of day it was sent. No "Quick 5pm update", no "17:00 update", no "Evening update" or "Morning update" as a send-time label. Nobody needs to be told what time the scheduler fired, and the schedule can slip, so a stamp is often simply wrong. This bans the SEND time only. The KICKOFF time is a different thing and several chase types REQUIRE it: keep writing it (e.g. "kickoff 21:30", "21:30 at Sim Arena") whenever the chase type asks for it.
 
+NEVER greet the group with a part of the day either. No "Morning all", no "Afternoon all", no "Evening all", no "Good morning everyone". A greeting is a coarse clock: you are told what state the squad is in, not what hour the post will reach anyone's phone, and a post held up by an outage or a busy DM queue arrives saying "Morning" in the afternoon. Open with the substance instead.
+
 If any player appears in the Dropped list AND the history or chat context suggests they'll still play if nobody replaces them, add a separate line *below* the roster: "Tentative: <Name> (will play if nobody steps in)". Do not put tentative players in a numbered slot.
 
 If an "Alternative formats available" block is in the context AND the squad is short AND kickoff is within 24h AND that format is marked "✅ VIABLE", you MAY append ONE line proposing the switch — and it must be the line the context gives you under "use this EXACT line VERBATIM", copied character-for-character. The server already did the arithmetic: NEVER count the squad, NEVER subtract anything, NEVER choose who goes on the bench. The only names you may describe as benched are the ones after "Bench on switch:" for that format; if it says NOBODY, write no bench clause at all and name nobody. Never propose a format marked "❌ NOT VIABLE".
@@ -901,12 +903,18 @@ function buildChaseComposePrompt(
         ...(opts?.atRisk ? AT_RISK_BLOCK : []),
       ].join("\n");
     case "match-day-morning":
+      // The wall-clock slot ("8-9am London") and the "☀️ Morning all —"
+      // example are both gone, for the same reason daily-in-list lost
+      // "17:00 London": whatever sits above the opener instruction is
+      // what the model puts in the first line, and the scheduler cannot
+      // promise the hour a post actually goes out in. See the
+      // no-send-time-stamp rule in CHASE_SYSTEM_PROMPT.
       return [
         header,
-        "match-day-morning (8-9am London on match day)",
+        "match-day-morning (match day, while there's still time to fill spots)",
         "",
-        "Purpose: upbeat morning nudge while there's still time to fill spots.",
-        "Open with something like '☀️ Morning all —' and lead with how many we still need. End with the roster block.",
+        "Purpose: upbeat nudge on the day of the match.",
+        "Open with a short scene-setting one-liner (e.g. '☀️ Squad update') and lead with how many we still need. End with the roster block.",
       ].join("\n");
     case "chase-pre-kickoff":
       return [

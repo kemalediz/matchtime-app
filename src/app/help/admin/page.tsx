@@ -214,8 +214,9 @@ export default function AdminGuidePage() {
           gets a personal rating DM (magic link, no login friction).
         </li>
         <li>
-          <strong>08:05</strong> — group post: &quot;Morning all — DM&apos;d
-          everyone a rating link&quot;.
+          <strong>08:05</strong> — group post: &quot;Just DM&apos;d every
+          player a rating link&quot;. It waits for the last DM to land, so
+          after an outage it can go out later in the day.
         </li>
       </ul>
 

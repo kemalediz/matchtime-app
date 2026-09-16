@@ -364,3 +364,61 @@ export function composeSquadStateReply(
     wanted && lead.length > 0 && !displaysSquadState(lead) && !contradictsSquadState(lead, truth);
   return { text: keepLead ? `${lead}\n\n${post}` : post, composed: true };
 }
+
+/**
+ * ── No time of day in a scheduled post ─────────────────────────────
+ *
+ * The two builders below are the static group posts that used to open
+ * with "Morning all". They no longer open with any time of day, and
+ * nothing that fires on a schedule should.
+ *
+ * Why: the scheduler decides WHEN a post is due, but the Pi decides when
+ * it actually goes out. A released claim, a rate-limited DM queue or a
+ * bot coming back from an outage can push a post hours past its window
+ * — on 2026-09-16 the rating promo opened "🎯 Morning all" at 16:05
+ * London because the rating claims were re-issued after an outage. A
+ * greeting that is right 95% of the time and wrong the other 5% is
+ * worse than no greeting: the 5% is what the group screenshots. Kemal's
+ * standing rule from the 2026-09-04 "Quick 5pm update" incident is the
+ * short version — "we don't need the time on the updates".
+ *
+ * The fix is to drop the time, not to compute it. A clock-aware
+ * greeting would be correct more often and would still be a thing that
+ * can be wrong, for no gain: nobody needs to be told what part of the
+ * day it is.
+ */
+
+/**
+ * The group post that follows the rating DMs.
+ *
+ * Fires on the first tick after the LAST rating DM has landed, which is
+ * any hour from 08:00 London onward on a day after the match (the window
+ * is 6-36h past kickoff). The match is therefore named by its DATE, not
+ * as "last night's": a Saturday lunchtime kickoff gets this post on
+ * Sunday morning, when "last night" is simply false.
+ *
+ * `matchDateLabel` is the London-formatted match date, e.g. "Tue 15 Sep"
+ * — the same `EEE d MMM` label the rating DM itself uses.
+ */
+export function buildRatePromoPost(args: {
+  activityName: string;
+  matchDateLabel: string;
+}): string {
+  return (
+    `🎯 Just DM'd every player from the *${args.activityName}* on ${args.matchDateLabel} ` +
+    `a personal rating link. The more ratings we get, the better-balanced the ` +
+    `teams get next week. Check your DMs from me 👇`
+  );
+}
+
+/**
+ * Static fallback for the match-day chase (the one scheduled for the
+ * 8-9am London window) when the model compose path is unavailable.
+ * Keeps the sun emoji and the ask; drops the "Morning all" greeting.
+ */
+export function buildMatchDayChaseFallback(args: {
+  need: number;
+  activityName: string;
+}): string {
+  return `☀️ Still *${args.need} short* for tonight's *${args.activityName}*. Any takers? 👀`;
+}
