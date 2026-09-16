@@ -123,8 +123,8 @@ Measured on 2026-09-16 against WhatsApp Web `2.3000.1047086005`:
 | version | pairing | init | notes |
 |---|---|---|---|
 | **1.34.6** | works | crashes `null.Socket` at `Client.inject` | the version the repo declares |
-| **1.34.7** | worked, then `t: t` at `requestPairingCode`, crash-looped | init clean | uncaught → systemd restart loop |
-| **2.0.0-alpha.0** | **QR only — ignores `WA_PAIR_PHONE`** | clean, no crashes, **never emits `ready`** | needs `WA_WEB_VERSION_CACHE_TYPE=none` or it dies parsing the page manifest |
+| **1.34.7** | **QR works; this is the fix.** The `t: t` crash loop at `requestPairingCode` only happened because `WA_PAIR_PHONE` was set while unpaired; unset it and link by QR | clean; `window.WWebJS.getChat` is a function on the live build (probed) | the version the repo now declares (`a2c3769`) |
+| **2.0.0-alpha.0** | QR only, ignores `WA_PAIR_PHONE` | authenticates, **never emits `ready`** (a `waitForFunction` with no timeout on a 2023 `moduleRaid` that finds no `window.Store`) | **published 2023-08-10; the oldest option, not the newest. Do not use.** |
 
 Two things to know before reaching for the alpha:
 - it **loses phone-number pairing**, which is the only login route that does
