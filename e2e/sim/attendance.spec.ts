@@ -38,6 +38,7 @@ import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
 import { claim, facts, otherFacts, selfIn, selfOut } from "../helpers/stub";
+import { buildSquadCompleteBenchInvite } from "../../src/lib/bench-offer-copy";
 
 /** The two bodies this file posts most: a plain self IN and a plain self
  *  OUT, as the FACTS the extractor reads out of them. Everything that
@@ -89,7 +90,32 @@ test.describe("capacity lifecycle", () => {
     expect(announce).toContain("8/8");
     // All eight names, numbered; bench empty → no bench block.
     for (const name of await grp.confirmed()) expect(announce).toContain(name);
-    expect(announce).not.toContain("Bench");
+    expect(announce).not.toContain("*Bench (");
+    // Bench feature on (the sim default): the SAME post ends by inviting
+    // benchers, so the owner never has to ask (Sutton, 2026-09-16).
+    expect(announce!.endsWith(buildSquadCompleteBenchInvite())).toBe(true);
+    expect(r.groupPosts.filter((t) => t.includes("Bench is open"))).toHaveLength(1);
+  });
+
+  test("bench feature OFF: the squad-complete post ends as it always did, no invite", async ({
+    request,
+    db,
+  }) => {
+    // A separate group: the lifecycle group above is shared and serial.
+    const off = await createGroup(request, db, {
+      maxPlayers: 8,
+      features: { bench: false },
+      attendance: ["owner", "alice", "brian", "pete", "dan", "felix", "greg"].map((key) => ({
+        key,
+        status: "CONFIRMED" as const,
+      })),
+    });
+    const r = await off.post("henry", "I'm in", IN);
+    expect((await off.counts()).confirmed).toBe(8);
+    const announce = r.groupPosts.find((t) => t.includes("Squad complete"));
+    expect(announce).toBeTruthy();
+    expect(announce!.endsWith("See you all there ⚽")).toBe(true);
+    expect(announce).not.toContain("Bench is open");
   });
 
   test("IN at capacity lands on the BENCH with 🪑", async ({ request, db }) => {

@@ -226,6 +226,45 @@ export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
   );
 }
 
+/**
+ * ── THE CLOSING LINE OF THE "SQUAD COMPLETE" POST ────────────────────
+ *
+ * 2026-09-16, Sutton FC, live. MatchTime posted "✅ *Squad complete,
+ * 14/14*" with the line-up, and the OWNER then had to ask the group
+ * "can we have more players for bench please?" himself. His words: "i
+ * shouldn't be asking this. When squad complete, MT should just show the
+ * squad and ask for benchers to continue the INs flowing."
+ *
+ * So `squad-announce.ts` ends its post with this line when the org's
+ * bench feature is on. Same message, never a second post: the owner has
+ * said the group gets too many bot messages already.
+ *
+ * It is `buildFullSquadBenchInvite` without the "full at N of M" lead,
+ * because the post it closes has just printed the count in its header
+ * and the numbered roster under it. Every remaining clause is the same
+ * promise, checked against the same code:
+ *
+ *   "say *IN* and I'll put    `registerAttendance` writes BENCH when the
+ *    you on the bench"        squad has no room, with no admin step.
+ *   "If someone drops out     `cancelAttendance` →
+ *    I tag the bench here"    `requestBenchConfirmationOnDrop` opens a
+ *                             BenchSlotOffer, and the scheduler posts the
+ *                             tag in the group (only with the feature on,
+ *                             which is why the caller gates on it).
+ *   benchPromotionHow()       shared with the day-one promise and the
+ *                             recruit answer, gated on what the platform
+ *                             can actually receive.
+ *
+ * "here" rather than "in the group": this line is only ever read in the
+ * group. `buildFullSquadBenchInvite` also reaches an admin by DM.
+ */
+export function buildSquadCompleteBenchInvite(c: ReactionGate = {}): string {
+  return (
+    `🪑 *Bench is open.* Say *IN* and I'll put you on the bench. ` +
+    `If someone drops out I tag the bench here and ${benchPromotionHow(c)}.`
+  );
+}
+
 export interface BenchAskedLineCopy extends ReactionGate {
   benchName: string;
   confirmedCount: number;
