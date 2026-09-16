@@ -923,38 +923,143 @@ export function startBatchFlushTimer(client: Client, groupIds: string[]): void {
  * a deploy restart and was never registered). Best-effort + idempotent;
  * any per-group failure is logged and skipped.
  */
-export async function recoverGroupMessages(client: Client, groupIds: string[]): Promise<void> {
-  const cutoffSec = Math.floor(Date.now() / 1000) - 2 * 60 * 60; // last 2h
-  for (const gid of groupIds) {
-    try {
-      const chat = await client.getChatById(gid);
-      let msgs: Message[] = [];
+export async function recoverGroupMessages(
+  client: Client,
+  groupIds: string[],
+  window: RecoveryWindow = resolveRecoveryWindow(process.env),
+): Promise<void> {
+  // `ready` is not once-only: whatsapp-web.js re-injects on every page
+  // navigation and emits it again (two `ready` lines under one PID on
+  // 2026-09-16). Two sweeps interleaving would feed the same messages into
+  // the buffer twice; the server dedupes, but there is no reason to pay
+  // for it.
+  if (recoverySweepInFlight) {
+    console.warn("[recover-group] a sweep is already running; this call is skipped");
+    return;
+  }
+  recoverySweepInFlight = true;
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const cutoffSec = nowSec - window.lookbackHours * 60 * 60;
+    for (const gid of groupIds) {
       try {
-        msgs = await chat.fetchMessages({ limit: 50 });
-      } catch {
-        // fetchMessages can throw for chats not yet fully loaded in the
-        // headless session — fall back to the cached last message so we
-        // at least catch the most recent.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const lm = (chat as any).lastMessage as Message | undefined;
-        if (lm) msgs = [lm];
+        const msgs = await fetchRecentGroupMessages(client, gid, window.fetchLimit);
+        let queued = 0;
+        let oldestSec = Number.POSITIVE_INFINITY;
+        for (const m of msgs) {
+          const ts = m.timestamp ?? 0;
+          if (ts > 0 && ts < oldestSec) oldestSec = ts;
+          if (m.fromMe) continue;
+          if (ts < cutoffSec) continue;
+          await enqueueForAnalysis(client, m); // server dedupes on waMessageId
+          queued++;
+        }
+        console.log(
+          `[recover-group] ${gid}: fetched ${msgs.length}, re-queued ${queued} from the last ` +
+            `${window.lookbackHours}h (limit ${window.fetchLimit}) for catch-up`,
+        );
+        // The page hands back the NEWEST `limit` messages. If that many all
+        // fall inside the window, older ones inside it were never seen.
+        if (msgs.length >= window.fetchLimit && oldestSec >= cutoffSec) {
+          console.warn(
+            `[recover-group] ${gid}: every fetched message is inside the ${window.lookbackHours}h ` +
+              `window, so the window is probably truncated at ${window.fetchLimit} messages. ` +
+              `Raise RECOVER_FETCH_LIMIT and restart to reach further back.`,
+          );
+        }
+      } catch (err) {
+        // This whole sweep exists to close the restart gap (Kemal 2026-06-06:
+        // Ibrahim's "in" landed during a deploy restart and was never
+        // registered). When it fails, that gap is silently back open — and it
+        // fails on exactly the deploys where it matters most.
+        recordDegradedCapability("message-recovery");
+        console.error(degradedMessage("message-recovery", err, gid));
       }
-      let queued = 0;
-      for (const m of msgs) {
-        if (m.fromMe) continue;
-        if ((m.timestamp ?? 0) < cutoffSec) continue;
-        await enqueueForAnalysis(client, m); // server dedupes on waMessageId
-        queued++;
-      }
-      console.log(`[recover-group] ${gid}: re-queued ${queued} recent message(s) for catch-up`);
-    } catch (err) {
-      // This whole sweep exists to close the restart gap (Kemal 2026-06-06:
-      // Ibrahim's "in" landed during a deploy restart and was never
-      // registered). When it fails, that gap is silently back open — and it
-      // fails on exactly the deploys where it matters most.
-      recordDegradedCapability("message-recovery");
-      console.error(degradedMessage("message-recovery", err, gid));
     }
+  } finally {
+    recoverySweepInFlight = false;
+  }
+}
+
+let recoverySweepInFlight = false;
+
+/** How far back the catch-up reaches, and how many messages it may ask for. */
+export interface RecoveryWindow {
+  lookbackHours: number;
+  fetchLimit: number;
+}
+
+const DEFAULT_LOOKBACK_HOURS = 2;
+const DEFAULT_FETCH_LIMIT = 50;
+
+/**
+ * Env-driven so a one-off wide replay after an outage needs no code change:
+ * `RECOVER_LOOKBACK_HOURS=24 RECOVER_FETCH_LIMIT=400` on the restart that
+ * follows a multi-hour gap, then removed again. Anything unparseable or
+ * non-positive falls back to the default rather than to "nothing".
+ */
+export function resolveRecoveryWindow(env: Record<string, string | undefined>): RecoveryWindow {
+  const positive = (raw: string | undefined): number | undefined => {
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+  return {
+    lookbackHours: positive(env.RECOVER_LOOKBACK_HOURS) ?? DEFAULT_LOOKBACK_HOURS,
+    fetchLimit: Math.floor(positive(env.RECOVER_FETCH_LIMIT) ?? DEFAULT_FETCH_LIMIT),
+  };
+}
+
+/**
+ * The group's most recent messages, WITHOUT `client.getChatById`.
+ *
+ * On the live WhatsApp Web build (2026-09-16, whatsapp-web.js 1.34.7)
+ * `getChatById` throws the minified `r` from `getChatModel` (group
+ * metadata refresh + lid migration), and so does `getChats`. The message
+ * read itself, `Chat.fetchMessages`, never calls `getChatModel`: it asks
+ * the page for the chat with `getAsModel: false`, the same lookup every
+ * successful `sendMessage` makes. The walk only ever failed because the
+ * one way it knew to get a `Chat` object was the broken one.
+ *
+ * `Chat`'s constructor is a plain `_patch(data)`, and `fetchMessages`
+ * reads nothing off the instance but `id._serialized` and the client's
+ * page, so a handle built from the group id alone is enough. The old
+ * path is kept as the fallback, so a build where the bare handle fails
+ * behaves exactly as before.
+ */
+async function fetchRecentGroupMessages(
+  client: Client,
+  gid: string,
+  limit: number,
+): Promise<Message[]> {
+  try {
+    // CommonJS module: the structures hang off `default` under ESM import.
+    const wweb = (await import("whatsapp-web.js")) as unknown as {
+      default?: Record<string, unknown>;
+      Chat?: unknown;
+    };
+    const ChatCtor = (wweb.default?.Chat ?? wweb.Chat) as new (
+      c: Client,
+      data: unknown,
+    ) => { fetchMessages(o: { limit: number }): Promise<Message[]> };
+    if (typeof ChatCtor !== "function") throw new Error("whatsapp-web.js exports no Chat");
+    const handle = new ChatCtor(client, { id: { _serialized: gid } });
+    return await handle.fetchMessages({ limit });
+  } catch (err) {
+    console.warn(
+      `[recover-group] ${gid}: fetchMessages via a bare chat handle failed ` +
+        `(${err instanceof Error ? err.message : String(err)}); falling back to getChatById`,
+    );
+  }
+  const chat = await client.getChatById(gid);
+  try {
+    return await chat.fetchMessages({ limit });
+  } catch {
+    // fetchMessages can throw for chats not yet fully loaded in the
+    // headless session — fall back to the cached last message so we
+    // at least catch the most recent.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lm = (chat as any).lastMessage as Message | undefined;
+    return lm ? [lm] : [];
   }
 }
 
