@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt } from "lucide-react";
-import { setOrgFeature, setOrgTeamLabels } from "@/app/actions/org";
+import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt, Languages } from "lucide-react";
+import { setOrgFeature, setOrgLanguage, setOrgTeamLabels } from "@/app/actions/org";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
+import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
 
 type FeatureKey = ToggleableKey;
 
@@ -21,6 +22,8 @@ interface OrgData {
   teamLabels?: string[];
   /** What the labels resolve to when no override is set (sport defaults). */
   defaultTeamLabels?: [string, string];
+  /** The language the bot speaks to this group in ("en" | "tr"). */
+  language?: string;
   features: Record<FeatureKey, boolean>;
   stripeConnected?: boolean;
   stripeChargesEnabled?: boolean;
@@ -90,6 +93,22 @@ export default function SettingsPage() {
       toast.error(e instanceof Error ? e.message : "Couldn't save team names");
     } finally {
       setSavingTeamLabels(false);
+    }
+  }
+
+  // Bot language. Saved on change; the select is the whole form.
+  const [savingLanguage, setSavingLanguage] = useState(false);
+  async function saveLanguage(next: Lang) {
+    if (!org) return;
+    setSavingLanguage(true);
+    try {
+      const { language } = await setOrgLanguage(org.id, next);
+      setOrg((prev) => (prev ? { ...prev, language } : prev));
+      toast.success(`MatchTime will speak ${LANG_LABELS[normaliseLang(language)]} in this group`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save the language");
+    } finally {
+      setSavingLanguage(false);
     }
   }
 
@@ -271,6 +290,33 @@ export default function SettingsPage() {
           >
             {savingTeamLabels ? "Saving…" : "Save team names"}
           </button>
+        </div>
+      </section>
+
+      {/* Bot language */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+          <Languages className="w-4 h-4 text-slate-500" />
+          <h2 className="font-semibold text-slate-800">Bot language</h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-slate-500">
+            The language MatchTime speaks in this group. Turkish copy is
+            being added in stages; until a message has been translated it
+            is sent in English.
+          </p>
+          <select
+            value={normaliseLang(org.language)}
+            onChange={(e) => saveLanguage(e.target.value as Lang)}
+            disabled={savingLanguage}
+            className="h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {LANGS.map((code) => (
+              <option key={code} value={code}>
+                {LANG_LABELS[code]}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
 

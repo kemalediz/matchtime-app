@@ -21,7 +21,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
-import { format } from "date-fns";
+import { formatLondon } from "./london-time";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { loadPlayerSeasonStats } from "./player-stats";
 
@@ -118,7 +118,7 @@ async function buildScopedContext(
         : "";
     lines.push("");
     lines.push("UPCOMING MATCH:");
-    lines.push(`- ${match.activity.name} on ${format(match.date, "EEE d MMM 'at' HH:mm")} (UK time)`);
+    lines.push(`- ${match.activity.name} on ${formatLondon(match.date, "EEE d MMM 'at' HH:mm")} (UK time)`);
     if (match.activity.venue) lines.push(`- Venue: ${match.activity.venue}`);
     lines.push(`- Squad: ${confirmed.length}/${match.maxPlayers} confirmed, ${bench.length} on the bench`);
     lines.push(`- You are currently: ${mine ? mine.status : "not signed up"}`);

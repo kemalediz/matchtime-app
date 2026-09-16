@@ -16,7 +16,7 @@
  */
 
 import { db } from "./db";
-import { format } from "date-fns";
+import { formatLondon } from "./london-time";
 
 export interface TimelinePoint {
   matchId: string;
@@ -280,7 +280,7 @@ export async function loadPlayerSeasonStats(
       timeline.push({
         matchId: m.id,
         date: m.date.toISOString(),
-        label: format(m.date, "d MMM"),
+        label: formatLondon(m.date, "d MMM"),
         myAvg,
         raterCount: myRatings.length,
         fieldAvg,

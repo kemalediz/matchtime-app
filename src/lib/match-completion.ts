@@ -27,7 +27,7 @@
 import { db } from "./db";
 import { sendRatingEmails } from "./email";
 import { computeEloDeltas } from "./elo";
-import { format } from "date-fns";
+import { formatLondon } from "./london-time";
 
 export async function completeFinishedMatches(now: Date = new Date()): Promise<{ completed: number }> {
   const candidates = await db.match.findMany({
@@ -89,7 +89,7 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
     sendRatingEmails(
       match.id,
       match.activity.name,
-      format(match.date, "EEEE, d MMMM yyyy"),
+      formatLondon(match.date, "EEEE, d MMMM yyyy"),
       players,
     ).catch((err) => console.error("[match-completion] sendRatingEmails failed:", err));
 

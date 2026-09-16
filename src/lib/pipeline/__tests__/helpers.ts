@@ -164,6 +164,8 @@ export function world(opts: WorldOpts = {}): SquadState {
       paymentTracking: false,
       statsQa: true,
       reminders: true,
+      // Sutton FC's value. A test world that needs Turkish says so.
+      language: "en",
       ...(opts.features ?? {}),
     },
     smallerFormats: opts.smallerFormats ?? [],

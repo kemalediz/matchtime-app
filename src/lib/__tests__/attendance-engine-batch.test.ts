@@ -57,7 +57,7 @@ function state(over: Partial<SquadState> = {}): SquadState {
     payments: null,
     ratingProgress: null,
     lastBotPost: null,
-    features: { attendance: true, paymentTracking: false, statsQa: false, reminders: false },
+    features: { attendance: true, paymentTracking: false, statsQa: false, reminders: false, language: "en" },
     smallerFormats: [],
     guestAskedUserIds: [],
     ...over,
@@ -337,7 +337,7 @@ describe("every failure owns nothing — which since §10 step 8 means silence +
   it("attendance is off for the org", async () => {
     const d = deps({
       loadState: async () =>
-        state({ features: { attendance: false, paymentTracking: false, statsQa: false, reminders: false } }),
+        state({ features: { attendance: false, paymentTracking: false, statsQa: false, reminders: false, language: "en" } }),
     });
     const r = await run([msg()], d);
     expect(r.ownedIds.size).toBe(0);

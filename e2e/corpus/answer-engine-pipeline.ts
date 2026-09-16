@@ -40,6 +40,7 @@ import { anthropicModel } from "@/lib/pipeline/llm";
 import { routeBatch } from "@/lib/pipeline/router";
 import { runAnswerBatch, type AnswerBatchMessage } from "@/lib/pipeline/answer-batch";
 import type { OrgFeatures } from "@/lib/org-features";
+import { normaliseLang } from "@/lib/i18n/lang";
 import type { Route } from "@/lib/pipeline/types";
 import { loadStateViaSql } from "./dryrun-pipeline";
 import type { CorpusCase, CorpusMessage, CorpusObservation } from "./grade";
@@ -282,10 +283,11 @@ async function loadFeaturesViaSql(ctx: PipelineContext, orgId: string): Promise<
     paymentTrackingEnabled: boolean;
     paymentCollectionEnabled: boolean;
     featureSquadFromList: boolean;
+    language: string;
   }>(
     `SELECT "whatsappBotEnabled", "featureAttendance", "featureBench", "featureTeamBalancing",
             "featureMomVoting", "featurePlayerRating", "featureReminders", "featureStatsQa",
-            "paymentTrackingEnabled", "paymentCollectionEnabled", "featureSquadFromList"
+            "paymentTrackingEnabled", "paymentCollectionEnabled", "featureSquadFromList", "language"
        FROM "Organisation" WHERE id = $1`,
     [orgId],
   );
@@ -307,6 +309,7 @@ async function loadFeaturesViaSql(ctx: PipelineContext, orgId: string): Promise<
     paymentTracking: row.paymentTrackingEnabled,
     paymentCollection: row.paymentCollectionEnabled,
     squadFromList: row.featureSquadFromList,
+    language: normaliseLang(row.language),
   };
 }
 

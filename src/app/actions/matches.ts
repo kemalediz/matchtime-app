@@ -7,7 +7,7 @@ import { requireOrgAdmin } from "@/lib/org";
 import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { revalidatePath } from "next/cache";
 import { sendRatingEmails } from "@/lib/email";
-import { format } from "date-fns";
+import { formatLondon } from "@/lib/london-time";
 import { computeEloDeltas } from "@/lib/elo";
 import {
   planFormatSwitchSchedule,
@@ -194,7 +194,7 @@ export async function cancelMatch(matchId: string) {
       orgId: match.activity.orgId,
       kind: "group",
       text:
-        `❌ *Match cancelled* — ${match.activity.name} on ${format(match.date, "EEE d MMM 'at' HH:mm")}.\n\n` +
+        `❌ *Match cancelled* — ${match.activity.name} on ${formatLondon(match.date, "EEE d MMM 'at' HH:mm")}.\n\n` +
         `Not enough players this week. See you next week!`,
     },
   });
@@ -277,7 +277,7 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
   sendRatingEmails(
     matchId,
     updated.activity.name,
-    format(updated.date, "EEEE, d MMMM yyyy"),
+    formatLondon(updated.date, "EEEE, d MMMM yyyy"),
     players
   ).catch((err) => console.error("Failed to send rating emails:", err));
 

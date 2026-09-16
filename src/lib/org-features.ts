@@ -21,6 +21,7 @@
  */
 import { db } from "./db";
 import type { FeatureKey } from "./org-features-meta";
+import { normaliseLang, type Lang } from "./i18n/lang";
 
 export { FEATURE_META } from "./org-features-meta";
 export type { FeatureKey, ToggleableKey } from "./org-features-meta";
@@ -48,6 +49,13 @@ export interface OrgFeatures {
    *  that need a squad-of-record (MoM/ratings) but don't track in/out
    *  (attendance off). Default false; never on for Sutton. */
   squadFromList: boolean;
+  /** The language this group is spoken to in (`Organisation.language`,
+   *  2026-09-16). Carried here so `loadSquadState`'s single
+   *  `getOrgFeatures` call puts it on `SquadState.features` with no
+   *  extra query. Always a language the product ships: an unknown
+   *  column value normalises to "en". Phase 0: no consumer reads it
+   *  yet. See MDs/multi-language-design-2026-09-16.md section 4.1. */
+  language: Lang;
 }
 
 
@@ -63,6 +71,7 @@ const ALL_OFF: OrgFeatures = {
   paymentTracking: false,
   paymentCollection: false,
   squadFromList: false,
+  language: "en",
 };
 
 function fromRow(row: {
@@ -77,6 +86,7 @@ function fromRow(row: {
   paymentTrackingEnabled: boolean;
   paymentCollectionEnabled: boolean;
   featureSquadFromList: boolean;
+  language: string;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -90,6 +100,7 @@ function fromRow(row: {
     paymentTracking: row.paymentTrackingEnabled,
     paymentCollection: row.paymentCollectionEnabled,
     squadFromList: row.featureSquadFromList,
+    language: normaliseLang(row.language),
   };
 }
 
@@ -105,6 +116,7 @@ const SELECT = {
   paymentTrackingEnabled: true,
   paymentCollectionEnabled: true,
   featureSquadFromList: true,
+  language: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {
