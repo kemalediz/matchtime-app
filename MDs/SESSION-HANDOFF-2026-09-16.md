@@ -223,3 +223,29 @@ protocol client (Baileys) as the strategic answer and it has now been
 deferred three times. The owner's position, stated today, is that ratings and
 money must be settled before any migration — **money is settled** (13 pay
 links delivered 2026-09-15 22:02), ratings are not.
+
+---
+
+# HomeTenant
+
+HomeTenant runs the other `whatsapp-web.js` bot on the same Raspberry Pi
+(`hometenant-bot.service`, `~/hometenant-bot/whatsapp-bot`) and it handles
+gas-leak and tenant reports, so the owner asked for today's learnings written
+up for that repo. **HomeTenant was never down**: it already runs `1.34.7`,
+because its `package.json` declares the caret range `^1.26.1-alpha.3` which
+floated to 1.34.7 in July and its lock file froze it there, so the 06:57
+re-injection succeeded where ours failed. Its `.wwebjs_cache/` gained
+`2.3000.1047451014.html` at 07:04, its log carries a second `bot ready` line
+under one PID with `NRestarts=0` (the same repeat-`ready` behaviour #84 fixed
+here), and it received and routed an inbound message at 11:34. The full
+write-up, with each finding mapped onto a HomeTenant file and line and the
+MatchTime commit to copy from, is
+`/Users/kemal/Projects/Cressoft/HomeTenant/MDs/whatsapp-web-js-1.34.7-upgrade-from-matchtime-2026-09-16.md`
+(HomeTenant `f188b7c`). It extends the earlier review pointer at
+`HomeTenant/MDs/whatsapp-layer-review-from-matchtime-2026-09-09.md`. Their
+open work is to pin the version exactly, keep `window.Store` out of any page
+code they add, build the catch-up walk they do not have, and move their
+liveness signal off the outbox poll, which is plain HTTP and would have read
+healthy through a seven-hour WhatsApp outage. Their outbox is at-least-once
+with leases and dead-lettering, so unlike ours it does not consume a message
+attempted during an outage, and that difference should not be "fixed".
