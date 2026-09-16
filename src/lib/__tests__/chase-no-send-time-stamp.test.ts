@@ -12,6 +12,14 @@
  * it verbatim. The static fallback in bot-scheduler.ts carries no
  * timestamp, so the prompt was the only source.
  *
+ * EXTENDED 2026-09-16: the same fault came back as a GREETING. The
+ * rating promo opened "🎯 Morning all" at 16:05 London after an outage
+ * delayed it, and `match-day-morning` was the one chase kind still being
+ * handed "☀️ Morning all —" as an example opener. A greeting is a coarse
+ * clock, so it falls under the same rule; the carve-out this file used
+ * to grant it is gone. The static half of that fix lives in
+ * `no-time-of-day-greeting.test.ts`.
+ *
  * These tests assert on the REQUEST that goes on the wire (system +
  * user prompt), not on model output — the prompt is the thing we own.
  * The regression half is the important half: three chase kinds REQUIRE
@@ -204,8 +212,62 @@ describe("REGRESSION: the pre-kickoff kinds still demand the kickoff time", () =
     expect(prompt).toContain("Lead with kickoff time + venue");
   });
 
-  it("match-day-morning keeps its greeting (a greeting is not a clock stamp)", async () => {
+  it("match-day-morning still asks for the shortfall and the roster", async () => {
+    // UPDATED 2026-09-16. This test used to assert the opposite: that
+    // match-day-morning KEPT "☀️ Morning all —", on the reasoning that a
+    // greeting is not a clock stamp. That reasoning died the same day the
+    // rating promo said "Morning all" at 16:05 London (see
+    // no-time-of-day-greeting.test.ts). A greeting IS a clock stamp, just
+    // a coarse one, and this chase fires from a scheduler that can slip.
+    // What must survive the edit is the substance, asserted here; the ban
+    // itself is asserted in the block below.
     const prompt = composePrompt(await request("match-day-morning"));
-    expect(prompt).toContain("☀️ Morning all —");
+    expect(prompt).toContain("how many we still need");
+    expect(prompt).toContain("End with the roster block.");
+  });
+});
+
+describe("no chase kind suggests a time-of-day greeting", () => {
+  /** The instruction minus its type-label line. The label names the
+   *  scheduler slot (`match-day-morning`) and is not copy the model is
+   *  being shown as an example — but everything below it is. */
+  function instructionBody(prompt: string): string {
+    return prompt
+      .split("\n")
+      .filter((l) => !/^match-day-morning\b/.test(l.trim()))
+      .join("\n");
+  }
+
+  const KINDS: ChaseKind[] = [
+    "daily-in-list",
+    "match-day-morning",
+    "chase-pre-kickoff",
+    "pre-kickoff-full",
+    "pre-kickoff-short",
+  ];
+
+  for (const kind of KINDS) {
+    it(`${kind} hands the model no morning/afternoon/evening opener`, async () => {
+      const body = instructionBody(composePrompt(await request(kind)));
+      expect(
+        body,
+        `${kind}'s instruction suggests a greeting the scheduler cannot guarantee`,
+      ).not.toMatch(/\b(morning|afternoon|evening)\b/i);
+    });
+  }
+
+  it("match-day-morning no longer carries its 8-9am schedule slot either", async () => {
+    // Same reason the daily chase lost "17:00 London": a wall-clock slot
+    // sitting two lines above the opener instruction is exactly what the
+    // model reaches for when it writes the first line.
+    const prompt = composePrompt(await request("match-day-morning"));
+    expect(prompt).not.toContain("8-9am");
+  });
+
+  it("the system prompt bans the greeting outright", async () => {
+    const system = systemText(await request("match-day-morning"));
+    for (const banned of ["Morning all", "Evening all", "Afternoon all"]) {
+      expect(system, `the rule should name "${banned}" as banned`).toContain(banned);
+    }
   });
 });

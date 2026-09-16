@@ -40,6 +40,7 @@ import {
   buildBenchOfferDm,
   buildBenchIntroLine,
 } from "./bench-offer-copy";
+import { buildRatePromoPost, buildMatchDayChaseFallback } from "./group-copy";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -1509,8 +1510,9 @@ async function computeForMatch(
       ) {
         const text = await composeOrFallback(
           "match-day-morning",
-          () =>
-            `☀️ Morning all — still *${need} short* for tonight's *${activity.name}*. Any takers? 👀`,
+          // No "Morning all": the slot is 8-9am but the post can land
+          // late (see buildMatchDayChaseFallback's docblock).
+          () => buildMatchDayChaseFallback({ need, activityName: activity.name }),
         );
         out.push({ kind: "group-message", key, matchId, text });
       }
@@ -1892,10 +1894,16 @@ async function computeForMatch(
             kind: "group-message",
             key: promoKey,
             matchId,
-            text:
-              `🎯 Morning all — just DM'd every player from last night's *${activity.name}* ` +
-              `a personal rating link. The more ratings we get, the better-balanced the ` +
-              `teams get next week. Check your DMs from me 👇`,
+            // Neither "Morning" nor "last night" is safe here: the promo
+            // waits for the last rating DM to land, so it fires at any
+            // hour from 08:00 onward, 6-36h after kickoff. It said
+            // "Morning all" at 16:05 on 2026-09-16 after an outage.
+            // Copy lives in group-copy.ts so it can be tested without
+            // Prisma.
+            text: buildRatePromoPost({
+              activityName: activity.name,
+              matchDateLabel: format(m.date, "EEE d MMM"),
+            }),
           });
         }
       }
