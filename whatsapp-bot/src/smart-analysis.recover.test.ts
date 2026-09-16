@@ -197,7 +197,7 @@ describe("recoverGroupMessages reads the group without getChatById", () => {
 // attendance extractor reads that buffer as "RECENT CHAT". The catch-up
 // enqueued without recording, so a batch replayed after a restart reached
 // the extractor with an EMPTY recent chat. Measured live (15 runs each,
-// scripts in PR #85's report): with the batch's own lines visible, a bare
+// scripts in PR #87's report): with the batch's own lines visible, a bare
 // lowercase "in" is extracted at 0.9-0.95 every run; with no recent chat
 // it comes back at 0.6 in 3 of 15 and claimless in 6 more. Idris's "in"
 // on 2026-09-16 was read in exactly that context.
