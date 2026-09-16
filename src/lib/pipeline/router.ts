@@ -168,6 +168,18 @@ import type { Degradation, Route, RoutedMessage } from "./types";
  * and §8.4 of `MDs/analyzer-redesign-2026-08-31.md` is the standing
  * model this sits inside. Latency +0.45 s a batch, against a Pi that
  * buffers for ten minutes.
+ *
+ * ── TURKISH, 2026-09-16 ──────────────────────────────────────────────
+ *
+ * Rule 17 and the twelve-line Turkish example block below it are
+ * +1,413 characters / +354 tokens on `claude-haiku-4-5` (`count_tokens`:
+ * 2,554 → 2,908; 11,021 characters). Still under the 4,096-token
+ * cacheable minimum, so every one of them is paid on every call:
+ * +$0.00035 a batch, about +$0.13 a month at the peak month above.
+ * `MDs/second-group-readiness-erdal-2026-09-16.md` §2 is the
+ * measurement that paid for them ("yokum", "yok", "var" lost 30 of 30
+ * at this router), and the PR that added them re-ran the 373-message
+ * attendance-to-`none` sweep three times, floor OFF, as the veto.
  */
 export const ROUTER_SYSTEM_PROMPT = `You classify WhatsApp messages from a football club group. For EVERY message id you are given, return exactly one route.
 
@@ -202,6 +214,7 @@ Rules:
 14. A CORRECTION IS STILL ATTENDANCE, AND THE APOLOGY AROUND IT IS NOT BANTER. "oops, sorry, I got the name wrong — it should be Zair not Baki", "ignore my last message, I am in after all", "I meant Thursday not Tuesday" all fix WHO IS PLAYING and are attendance. So is standing in for more than one person: "I am covering for two people, Ismail and Ozgur" adds two players and is other_att.
 15. AN INSTRUCTION TO AN ADMIN OR TO ANOTHER MEMBER TO ADD OR DROP SOMEBODY IS ATTENDANCE, NOT none. Rule 11 is about members ASKING each other things that settle nothing. "@Kemal please put Amir in as the 14th", "@Youssef can you take me off the list", "@Kemal switch it to 7 a side and include Amir" all SETTLE a place, so they are other_att (or self_att about the sender) even when they also ask for a setting to be changed. Where one message carries both a setting change and a place, the place wins.
 16. score IS THE RESULT OF THIS GROUP'S OWN MATCH. A scoreline about a professional or international fixture somebody is watching — "Arsenal 2 Spurs 1", "Brazil 1 France 1" — is football chat and is none. Our own results are reported with our team names, our colours or a bare scoreline ("5-3 to Yellows", "10-10").
+17. MESSAGES MAY BE IN ENGLISH OR TURKISH. Route on meaning, and every rule above applies in both. A bare Turkish "var", "varım", "ben varım" or "geliyorum" is the sender joining, exactly like a bare "in"; a bare "yok", "yokum", "ben yokum" or "gelemiyorum" is the sender leaving, exactly like a bare "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are a tentative commitment: offer. "X de geliyor" / "X de var" adds X and "X gelemiyor" / "X yok" drops X: other_att.
 
 Worked examples from this group. Copy the reasoning, not the wording.
 
@@ -250,6 +263,21 @@ Worked examples from this group. Copy the reasoning, not the wording.
   "@Kemal can you switch it to 7 a side and put Amir in as the 14th" -> other_att
   "Arsenal 2 Spurs 1"                                         -> none
 
+The same in Turkish:
+
+  "var"                                                       -> self_att
+  "varım"                                                     -> self_att
+  "yok"                                                       -> self_att
+  "yokum"                                                     -> self_att
+  "gelemiyorum"                                               -> self_att
+  "belki"                                                     -> offer
+  "bakarız"                                                   -> offer
+  "Ali de geliyor"                                            -> other_att
+  "Mehmet gelemiyor"                                          -> other_att
+  "kaç kişiyiz?"                                              -> question
+  "hadi be ya 😂😂"                                           -> none
+  "dünkü maç efsaneydi"                                       -> none
+
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 
 const ROUTER_MAX_TOKENS = 1_024;
@@ -286,6 +314,23 @@ export function normaliseRoute(raw: string): Route | null {
  */
 const FLOOR_IN = /^(?:i\s*'?a?m|i\s+am|im)?\s*(?:in|innn+)\b/i;
 const FLOOR_OUT = /^(?:i\s*'?a?m|i\s+am|im)?\s*(?:out|can'?t\s+make\s+it)\b/i;
+/**
+ * THE SAME FLOOR IN TURKISH (2026-09-16, Erdal's group). "var" / "varım"
+ * / "ben varım" is a bare "in"; "yok" / "yokum" / "ben yokum" /
+ * "gelemiyorum" is a bare "out". `MDs/second-group-readiness-erdal-
+ * 2026-09-16.md` §2 measured the router losing all three bare forms
+ * 30 of 30 — silently, `none`, no write, no react — which is the exact
+ * failure this floor exists for. Vocabulary only: the flag, the tail
+ * rule and the one-way property are untouched.
+ *
+ * NOT `\b`: JavaScript's `\b` is ASCII-only, so `var\b` matches INSIDE
+ * "varım" (ı is not a `\w`), and the loop below would then reject the
+ * tail "ım" and call "varım" a sentence. The end of a Turkish token is
+ * "not followed by a letter" instead. `[ıi]` because the dotless ı is
+ * typed as a plain i from an English keyboard, and `/i` folds I to i.
+ */
+const FLOOR_IN_TR = /^(?:ben\s+)?(?:var[ıi]m|var)(?!\p{L})/iu;
+const FLOOR_OUT_TR = /^(?:ben\s+)?(?:yokum|yok|gelemiyorum)(?!\p{L})/iu;
 /**
  * ⚠️ "+1" IS NOT IN THE FLOOR, deliberately.
  *
@@ -353,13 +398,13 @@ export function routeFloor(body: string): Route | null {
 
 /** Is this single word one of the bare tokens the floor recognises? */
 function isFloorToken(word: string): boolean {
-  return /^(?:in|out)$/i.test(word.replace(/[^\p{L}]/gu, ""));
+  return /^(?:in|out|var|var[ıi]m|yok|yokum|gelemiyorum)$/iu.test(word.replace(/[^\p{L}]/gu, ""));
 }
 
-/** Is the whole of `t` a bare IN/OUT/+N declaration and nothing else? */
+/** Is the whole of `t` a bare IN/OUT declaration and nothing else? */
 function isBareDeclaration(t: string): boolean {
   if (!t || t.length > 24) return false;
-  for (const re of [FLOOR_IN, FLOOR_OUT]) {
+  for (const re of [FLOOR_IN, FLOOR_OUT, FLOOR_IN_TR, FLOOR_OUT_TR]) {
     const m = re.exec(t);
     if (!m) continue;
     return FLOOR_TAIL.test(t.slice(m[0].length));

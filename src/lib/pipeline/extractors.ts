@@ -123,6 +123,18 @@ Asking for cover is NOT a condition. Someone asking whether anyone can replace t
 
 An OFFER to give up a place is contingent even with no "if" in it. "I can drop out", "happy to pull out", "I'll step aside", "I can make room", "happy to drop for X" — the person is offering, not leaving, and the offer depends on it being taken up. Report polarity out with contingent TRUE and conditionOn "squad". Compare: "I'm out", "can't make it", "I won't be there" state a decision already taken — contingent FALSE. The test is whether the message says the sender IS leaving or that they COULD.
 
+The message may be in ENGLISH or TURKISH. Report the same facts either way. The Turkish shapes, and what they say:
+  "varım", "ben varım", "geliyorum", "sayın beni", "var"           -> the sender, in, decision, contingent false
+  "yokum", "ben yokum", "gelemiyorum", "yok", "bu hafta yokum"      -> the sender, out, decision, contingent false
+  "kaleye geçerim" (I'll go in goal)                                -> the sender, in, decision, contingent false: a position is a note, not a condition
+  "ben de" (me too) after a neighbour's "ben varım"                 -> the sender's own claim, same polarity as the line it answers
+  "Ali de geliyor" (Ali is coming too)                              -> other, personRef "Ali", in, reported false. "Ali geliyorum dedi" (Ali said he's coming) -> reported true
+  "Mehmet gelemiyor" (Mehmet can't come)                            -> other, personRef "Mehmet", out
+
+"+1", "+2" or "plus one", on its own or after a sender's own claim, is a GUEST the sender is bringing, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, polarity in. "ben de" is the sender; "+1" is not.
+
+A bare hedge is a claim, not silence. "maybe", "50/50", "not sure yet", "I'll see", and in Turkish "belki", "bakarız", "kesin değil", "bakacağım" all say the SENDER might play and has not decided: report subject sender, polarity in, contingent TRUE, conditionOn "self", basis decision, tense future. That shape is what gets the person asked again nearer the match; an empty claims array for a hedge is a maybe nobody ever follows up.
+
 Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere with information you do not have.
 
 Report nothing (an empty claims array) only when the message genuinely makes no claim about anyone's attendance.`,

@@ -98,7 +98,9 @@ function normalise(text: string): string {
     .replace(/[‘’'`´]/g, "")
     .replace(/\p{Extended_Pictographic}/gu, " ")
     .replace(/[‍️⃣⁠​]/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
+    // Letters, not [a-z]: a Turkish dotless ı has no accent to strip and
+    // used to vanish here, turning "varım" into "varm" (2026-09-16).
+    .replace(/[^\p{L}0-9\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     // A leading "@Match Time" / "@MatchTime" / "@MT" is allowed but not
@@ -154,8 +156,8 @@ const TAIL_ONLY = ["this", "week", "one", "for", "now", "still"];
  *  ("yes" alone, "yes please"). Kept polarity-specific so a lead can
  *  never bridge into the OPPOSITE polarity's core — "yes cant" matches
  *  nothing at all, which is the correct answer. */
-const YES_LEAD = ["yes", "yess", "yesss", "yep", "yeah", "yeh", "yea", "yup", "yh", "ya", "sure", "ok", "okay"];
-const NO_LEAD = ["no", "nope", "nah", "naah", "naa", "sorry"];
+const YES_LEAD = ["yes", "yess", "yesss", "yep", "yeah", "yeh", "yea", "yup", "yh", "ya", "sure", "ok", "okay", "evet", "tamam", "olur"];
+const NO_LEAD = ["no", "nope", "nah", "naah", "naa", "sorry", "hayır", "hayir"];
 
 /** The affirmative cores, as WHOLE alternatives. */
 const YES_CORE = [
@@ -182,6 +184,11 @@ const YES_CORE = [
   String.raw`can do`,
   String.raw`i can (?:play|make it|do it)`,
   String.raw`grab it`,
+  // Turkish (2026-09-16): yes / okay / fine / I'm in / in.
+  String.raw`evet`,
+  String.raw`tamam`,
+  String.raw`olur`,
+  String.raw`(?:ben\s+)?var(?:[ıi]m)?`,
 ];
 
 /** The negative cores, as WHOLE alternatives. */
@@ -201,6 +208,10 @@ const NO_CORE = [
   String.raw`not (?:tonight|today|tomorrow|this week|this one|available|playing|coming|free)`,
   String.raw`next time`,
   String.raw`unable`,
+  // Turkish (2026-09-16): no / I'm out / out / I can't come.
+  String.raw`hay[ıi]r`,
+  String.raw`(?:ben\s+)?yok(?:um)?`,
+  String.raw`gelemiyorum`,
 ];
 
 function whole(lead: string[], cores: string[]): RegExp {

@@ -309,3 +309,86 @@ describe("router prompt rules added after the live sweep", () => {
     expect(ROUTER_SYSTEM_PROMPT).toMatch(/@-?mention|mention/i);
   });
 });
+
+// ── Turkish (2026-09-16): Erdal's group reads and writes in Turkish ────
+//
+// `MDs/second-group-readiness-erdal-2026-09-16.md` §2 measured the live
+// router on the bare Turkish forms: "yokum" routed `none` 10 of 10,
+// "yok" 10 of 10, "var" registered 0 of 10. Those are the Turkish "in"
+// and "out" — the single most common attendance messages a group sends —
+// and they were lost silently, exactly the failure the floor exists for.
+// The floor's vocabulary grows; its flag, its shape and its one-way
+// property do not.
+describe("the floor reads the bare Turkish forms, same shape as the English ones", () => {
+  it.each([
+    ["var", "self_att"],
+    ["Var", "self_att"],
+    ["VAR", "self_att"],
+    ["var.", "self_att"],
+    ["varım", "self_att"],
+    ["Varım", "self_att"],
+    ["VARIM", "self_att"],
+    ["varim", "self_att"],
+    ["ben varım", "self_att"],
+    ["Ben varım 👍", "self_att"],
+    ["yok", "self_att"],
+    ["Yok.", "self_att"],
+    ["yokum", "self_att"],
+    ["ben yokum", "self_att"],
+    ["gelemiyorum", "self_att"],
+    ["Gelemiyorum 😔", "self_att"],
+    // The mention half: a tagged person plus a bare Turkish token.
+    ["@Ali var", "other_att"],
+    ["@Ali Yok", "other_att"],
+    ["@Ali Veli yok", "other_att"],
+  ])("%s → %s", (body, route) => {
+    expect(routeFloor(body)).toBe(route);
+  });
+
+  it.each([
+    // Anything beyond the bare token is a sentence and goes to the model.
+    "var mı?",
+    "varım ama geç kalırım",
+    "yok artık",
+    "bir şey yok",
+    "top var mı bugün",
+    "varsa gelirim",
+    "bu hafta yokum",
+    "belki",
+    "bakarız",
+    "kesin değil",
+    // A mention of the bot is never a player.
+    "@Match Time var",
+  ])("does not claim %s", (body) => {
+    expect(routeFloor(body)).toBeNull();
+  });
+});
+
+describe("the router prompt reads Turkish", () => {
+  it("says a message may be Turkish, and that a bare var/yok is attendance like a bare in/out", () => {
+    expect(ROUTER_SYSTEM_PROMPT).toMatch(/Turkish/);
+    for (const w of ["var", "yok", "varım", "yokum"]) {
+      expect(ROUTER_SYSTEM_PROMPT, w).toContain(`"${w}"`);
+    }
+  });
+
+  it("teaches the seven Turkish shapes as worked examples, in the block the router copies from", () => {
+    const taught = new Map(
+      [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
+    );
+    // bare IN and OUT forms
+    expect(taught.get("var")).toBe("self_att");
+    expect(taught.get("yokum")).toBe("self_att");
+    // a hedge
+    expect(taught.get("belki")).toBe("offer");
+    // a relayed third-party IN and a third-party OUT
+    expect(taught.get("Ali de geliyor")).toBe("other_att");
+    expect(taught.get("Mehmet gelemiyor")).toBe("other_att");
+    // a question
+    expect(taught.get("kaç kişiyiz?")).toBe("question");
+    // banter
+    expect(
+      [...taught.entries()].some(([body, route]) => /hadi|maç|😂/.test(body) && route === "none"),
+    ).toBe(true);
+  });
+});
