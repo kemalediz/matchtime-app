@@ -1,7 +1,7 @@
 /**
- * RED-first spec for reacting with an id WE resolved.
+ * RED-first spec for reacting with an id WE resolved, THROUGH the library.
  *
- * ── The bug this module exists to kill ───────────────────────────────
+ * ── The bug this module was born to kill (2026-08-31) ────────────────
  * whatsapp-web.js 1.34.6, `src/structures/Message.js`:
  *
  *     async react(reaction){
@@ -14,42 +14,105 @@
  *         }, this.id._serialized, reaction);
  *     }
  *
- * Since WhatsApp Web's frontend changed, `id._serialized` is unreadable on
- * inbound Message objects, so `react()` passed `undefined`, took the first
- * `return null`, and RESOLVED. No emoji, no throw, so our try/catch never
- * fired and the text catch-up never fired either. Reactions were dead for
- * days and every log line said the system was healthy.
+ * `id._serialized` became unreadable on inbound Message objects, so
+ * `react()` passed `undefined`, took the first `return null`, and RESOLVED.
+ * No emoji, no throw. Reactions were dead for days while every log line
+ * said healthy. The first fix ran that same page code by hand with OUR id.
+ *
+ * ── The bug this REVISION kills (2026-09-16) ─────────────────────────
+ * whatsapp-web.js 1.34.7 (the only build whose injection matches the live
+ * WhatsApp Web frontend) has NO `window.Store`. Our hand-rolled page code
+ * read `window.Store.Msg` and every single reaction failed with
+ * `store-unavailable`; the text catch-up covered the players, but a text
+ * post per flush is not the product. The library itself now does
+ *
+ *     Message.react(reaction)  →  client.sendReaction(this.id._serialized, reaction)
+ *
+ * where `Client.sendReaction` uses `window.require('WAWebCollections')` and
+ * `window.require('WAWebSendReactionMsgAction')`, i.e. module lookups the
+ * library owns and keeps in step with the frontend.
  *
  * ── What these tests pin ─────────────────────────────────────────────
- * 1. The id used is OUR resolved id, passed explicitly — never
- *    `this.id._serialized`.
- * 2. A `synthetic:` id is NEVER attempted: `Store.Msg.get` cannot resolve
- *    an id WhatsApp never issued. That is a documented degradation, not a
- *    bug, and it must be reported as such.
- * 3. EVERY failure mode is named and distinguishable. Nothing may resolve
- *    to "we don't know what happened" silently — the library's `null` is
- *    itself mapped to a loud, specific reason.
- * 4. Nothing in here ever throws. A reaction is a confirmation; the
- *    attendance write already happened server-side and must never be put
- *    at risk by a failure to draw an emoji.
+ * 1. The reaction goes through the LIBRARY's `client.getMessageById` and
+ *    `client.sendReaction`. No hand-rolled `pupPage.evaluate` — a fake page
+ *    whose `evaluate` throws (the 1.34.7 page, with no `window.Store`) must
+ *    not be touched at all.
+ * 2. The id used is OUR resolved id, passed explicitly to BOTH calls —
+ *    never `msg.id._serialized` (that is what `Message.react()` reads, and
+ *    it is the read that went unreadable in August).
+ * 3. `client.sendReaction` still has the library's silent `return null` for
+ *    an unknown id, so it is NEVER fired blind: the message is looked up
+ *    first and a miss is a named `message-not-found`.
+ * 4. A `synthetic:` id is never attempted.
+ * 5. EVERY failure is named and distinguishable. Nothing in here throws.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Client } from "whatsapp-web.js";
 import {
   planReaction,
-  interpretReactionResult,
   reactWithId,
   reactAndReport,
   describeReactionFailure,
-  reactionPageFunction,
   REACTION_FAILURE_REASONS,
   type ReactionFailureReason,
 } from "./react-with-id.js";
 
 const REAL_ID = "false_447525334985-1607872139@g.us_3B0B7E9";
+/** The 4-part form `Chat.fetchMessages` hands back for a group message (the recovery walk). */
+const RECOVERED_ID =
+  "false_447525334985-1607872139@g.us_AC7E5E8D85C46B15C947935009390D7D_76643825668299@lid";
 const SYNTH_ID = "synthetic:9f2c1ab34d5e6f70";
 
 const asClient = (c: unknown) => c as unknown as Client;
+
+/**
+ * The 1.34.7 page: any hand-rolled evaluate that reaches for `window.Store`
+ * blows up, exactly as it did in production on 2026-09-16.
+ */
+function storelessPage() {
+  return {
+    evaluate: vi.fn(async () => {
+      throw new Error(
+        "Evaluation failed: TypeError: Cannot read properties of undefined (reading 'Msg')",
+      );
+    }),
+  };
+}
+
+/** What the library hands back from `getMessageById` on a hit. */
+function libraryMessage() {
+  return {
+    // A DIFFERENT serialised id on purpose: if anything reads it back off
+    // the Message instead of using the id we resolved, the assertion that
+    // sendReaction received OUR id turns red.
+    id: { _serialized: "NOT-THE-ID-WE-RESOLVED" },
+    react: vi.fn(async () => undefined),
+  };
+}
+
+type Lib = {
+  getMessageById?: (id: string) => unknown;
+  sendReaction?: (id: string, emoji: string) => unknown;
+};
+
+/** A client whose ONLY working route to a reaction is the library's own API. */
+function clientWith(lib: Lib = {}) {
+  const found = libraryMessage();
+  const getMessageById = vi.fn(async (id: string) =>
+    lib.getMessageById ? lib.getMessageById(id) : found,
+  );
+  const sendReaction = vi.fn(async (id: string, emoji: string) =>
+    lib.sendReaction ? lib.sendReaction(id, emoji) : undefined,
+  );
+  const pupPage = storelessPage();
+  return {
+    client: { pupPage, getMessageById, sendReaction },
+    getMessageById,
+    sendReaction,
+    pupPage,
+    found,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────
 describe("planReaction — the pure decision", () => {
@@ -62,9 +125,8 @@ describe("planReaction — the pure decision", () => {
   });
 
   it("NEVER attempts a synthetic id", () => {
-    // `synthetic:` ids are ours, not WhatsApp's. `Store.Msg.get` would miss,
-    // `getMessagesById` would miss, and we'd burn a page round-trip to learn
-    // what we already know. Skipping is the honest answer.
+    // `synthetic:` ids are ours, not WhatsApp's. No lookup can resolve one,
+    // and we'd burn a page round-trip to learn what we already know.
     const plan = planReaction(SYNTH_ID, "✅");
     expect(plan.action).toBe("skip");
     expect(plan).toMatchObject({ reason: "synthetic-id" });
@@ -101,45 +163,6 @@ describe("planReaction — the pure decision", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-describe("interpretReactionResult — mapping what the page handed back", () => {
-  it("treats {ok:true} as success", () => {
-    expect(interpretReactionResult({ ok: true })).toEqual({ ok: true });
-  });
-
-  it.each(REACTION_FAILURE_REASONS.filter((r) => r !== "unknown-result" && r !== "no-page"))(
-    "passes through the specific failure reason %s",
-    (reason) => {
-      expect(interpretReactionResult({ ok: false, reason })).toMatchObject({
-        ok: false,
-        reason,
-      });
-    },
-  );
-
-  it("maps the library's silent null to a LOUD unknown-result", () => {
-    // This is the exact value `Message.react()` resolved to for days while
-    // pretending everything was fine. It must never again read as success.
-    expect(interpretReactionResult(null)).toMatchObject({ ok: false, reason: "unknown-result" });
-    expect(interpretReactionResult(undefined)).toMatchObject({
-      ok: false,
-      reason: "unknown-result",
-    });
-  });
-
-  it("maps a reason string it does not recognise to unknown-result, keeping the detail", () => {
-    const out = interpretReactionResult({ ok: false, reason: "something-new" });
-    expect(out).toMatchObject({ ok: false, reason: "unknown-result" });
-    expect(JSON.stringify(out)).toContain("something-new");
-  });
-
-  it("never reports success for a shape it does not understand", () => {
-    for (const raw of [0, "", "ok", [], { ok: "yes" }, { okay: true }]) {
-      expect(interpretReactionResult(raw)).toMatchObject({ ok: false });
-    }
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────
 describe("describeReactionFailure — every reason is explained", () => {
   it("has a distinct, non-empty explanation for every reason", () => {
     const seen = new Set<string>();
@@ -150,170 +173,124 @@ describe("describeReactionFailure — every reason is explained", () => {
       seen.add(text);
     }
   });
+
+  it("no longer knows a `store-unavailable` — there is no window.Store to be unavailable", () => {
+    // The reason vocabulary is the operator's map. A reason that can no
+    // longer occur would send them looking for a Store that 1.34.7 never
+    // defines.
+    expect(REACTION_FAILURE_REASONS).not.toContain("store-unavailable");
+    expect(REACTION_FAILURE_REASONS).not.toContain("send-reaction-unavailable");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────
-describe("reactionPageFunction — what actually runs inside the page", () => {
-  const originalWindow = (globalThis as { window?: unknown }).window;
-  afterEach(() => {
-    if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
-    else (globalThis as { window?: unknown }).window = originalWindow;
+describe("reactWithId — through the library, on a page with no window.Store", () => {
+  it("lands the reaction WITHOUT evaluating any page code of its own", async () => {
+    // THE regression test for 2026-09-16. The page's evaluate throws on
+    // anything that touches window.Store; the reaction must still land.
+    const c = clientWith();
+    await expect(reactWithId(asClient(c.client), REAL_ID, "✅")).resolves.toEqual({ ok: true });
+
+    expect(c.pupPage.evaluate).not.toHaveBeenCalled();
+    expect(c.getMessageById).toHaveBeenCalledWith(REAL_ID);
+    expect(c.sendReaction).toHaveBeenCalledWith(REAL_ID, "✅");
   });
 
-  function withStore(store: unknown) {
-    (globalThis as { window?: unknown }).window = store === undefined ? {} : { Store: store };
-  }
+  it("hands OUR id to sendReaction — never msg.id._serialized", async () => {
+    // `Message.react()` is `client.sendReaction(this.id._serialized, …)`.
+    // That read is the one that went unreadable in August; we already hold
+    // the right id, so nothing may re-derive it from the Message.
+    const c = clientWith();
+    await reactWithId(asClient(c.client), REAL_ID, "✅");
 
-  it("places the reaction on the message Store.Msg.get resolves", async () => {
-    const sendReactionToMsg = vi.fn(async () => undefined);
-    const theMsg = { id: REAL_ID };
-    withStore({ Msg: { get: () => theMsg, getMessagesById: async () => null }, sendReactionToMsg });
-
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toEqual({ ok: true });
-    expect(sendReactionToMsg).toHaveBeenCalledWith(theMsg, "✅");
+    expect(c.sendReaction.mock.calls[0]?.[0]).toBe(REAL_ID);
+    expect(c.sendReaction.mock.calls[0]?.[0]).not.toBe("NOT-THE-ID-WE-RESOLVED");
+    expect(c.found.react).not.toHaveBeenCalled();
   });
 
-  it("falls back to getMessagesById when the cache misses", async () => {
-    const sendReactionToMsg = vi.fn(async () => undefined);
-    const theMsg = { id: REAL_ID };
-    withStore({
-      Msg: { get: () => null, getMessagesById: async () => ({ messages: [theMsg] }) },
-      sendReactionToMsg,
+  it("passes a recovered 4-part id (participant suffix) through verbatim", async () => {
+    // The restart catch-up reads the group with `Chat.fetchMessages`, whose
+    // Message ids carry the `_<participant>@lid` suffix. Those are the ids
+    // that failed five-for-five today; they must work as-is.
+    const c = clientWith();
+    await expect(reactWithId(asClient(c.client), RECOVERED_ID, "✅")).resolves.toEqual({
+      ok: true,
     });
-
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toEqual({ ok: true });
-    expect(sendReactionToMsg).toHaveBeenCalledWith(theMsg, "✅");
+    expect(c.getMessageById).toHaveBeenCalledWith(RECOVERED_ID);
+    expect(c.sendReaction).toHaveBeenCalledWith(RECOVERED_ID, "✅");
   });
 
-  it("reports store-unavailable rather than throwing when the injected layer is gone", async () => {
-    (globalThis as { window?: unknown }).window = {};
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toMatchObject({
-      ok: false,
-      reason: "store-unavailable",
-    });
-
-    withStore({ sendReactionToMsg: () => undefined }); // Store present, Msg missing
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toMatchObject({
-      ok: false,
-      reason: "store-unavailable",
-    });
-  });
-
-  it("reports send-reaction-unavailable when Store.sendReactionToMsg has been renamed away", async () => {
-    withStore({ Msg: { get: () => ({ id: REAL_ID }), getMessagesById: async () => null } });
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toMatchObject({
-      ok: false,
-      reason: "send-reaction-unavailable",
-    });
-  });
-
-  it("reports message-not-found when neither lookup finds the message", async () => {
-    withStore({
-      Msg: { get: () => null, getMessagesById: async () => ({ messages: [] }) },
-      sendReactionToMsg: vi.fn(),
-    });
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toMatchObject({
+  it("reports message-not-found when the lookup misses, and does NOT fire sendReaction blind", async () => {
+    // `Client.sendReaction` keeps the library's `if (!msg) return null;`.
+    // Firing it for an id the page does not know would resolve as if it had
+    // worked — the exact silent no-op this module exists to make visible.
+    const c = clientWith({ getMessageById: () => null });
+    await expect(reactWithId(asClient(c.client), REAL_ID, "✅")).resolves.toMatchObject({
       ok: false,
       reason: "message-not-found",
     });
+    expect(c.sendReaction).not.toHaveBeenCalled();
   });
 
-  it("reports lookup-threw separately from message-not-found", async () => {
-    withStore({
-      Msg: {
-        get: () => {
-          throw new Error("r");
-        },
-        getMessagesById: async () => null,
-      },
-      sendReactionToMsg: vi.fn(),
-    });
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toMatchObject({
-      ok: false,
-      reason: "lookup-threw",
-    });
-  });
-
-  it("reports send-threw when the reaction call itself blows up", async () => {
-    withStore({
-      Msg: { get: () => ({ id: REAL_ID }), getMessagesById: async () => null },
-      sendReactionToMsg: async () => {
-        throw new Error("r");
+  it("reports lookup-threw, with the cause, when getMessageById blows up in the page", async () => {
+    const c = clientWith({
+      getMessageById: () => {
+        throw new Error("Evaluation failed: r");
       },
     });
-    await expect(reactionPageFunction(REAL_ID, "✅")).resolves.toMatchObject({
-      ok: false,
-      reason: "send-threw",
+    const out = await reactWithId(asClient(c.client), REAL_ID, "✅");
+    expect(out).toMatchObject({ ok: false, reason: "lookup-threw" });
+    expect(JSON.stringify(out)).toContain("Evaluation failed: r");
+    expect(c.sendReaction).not.toHaveBeenCalled();
+  });
+
+  it("reports send-threw, with the cause, when sendReaction rejects", async () => {
+    const c = clientWith({
+      sendReaction: () => {
+        throw new Error("Evaluation failed: r");
+      },
     });
+    const out = await reactWithId(asClient(c.client), REAL_ID, "✅");
+    expect(out).toMatchObject({ ok: false, reason: "send-threw" });
+    expect(JSON.stringify(out)).toContain("Evaluation failed: r");
   });
 
-  it("refuses an empty id instead of silently returning null like the library did", async () => {
-    withStore({
-      Msg: { get: () => ({ id: REAL_ID }), getMessagesById: async () => null },
-      sendReactionToMsg: vi.fn(),
-    });
-    await expect(reactionPageFunction("", "✅")).resolves.toMatchObject({
-      ok: false,
-      reason: "no-id",
-    });
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────
-describe("reactWithId — the thin adapter around pupPage.evaluate", () => {
-  function clientWith(evaluate: (...a: unknown[]) => unknown) {
-    const spy = vi.fn(evaluate);
-    return { client: { pupPage: { evaluate: spy } }, spy };
-  }
-
-  it("hands OUR id to the page, not whatever the Message object thinks its id is", async () => {
-    const { client, spy } = clientWith(async () => ({ ok: true }));
-    await reactWithId(asClient(client), REAL_ID, "✅");
-
-    expect(spy).toHaveBeenCalledTimes(1);
-    const args = spy.mock.calls[0];
-    expect(typeof args[0]).toBe("function"); // the page function
-    expect(args[1]).toBe(REAL_ID); // ← the whole point of this module
-    expect(args[2]).toBe("✅");
+  it("reports no-page instead of throwing when the browser session is not there", async () => {
+    for (const c of [{}, { pupPage: null }, { pupPage: undefined }]) {
+      await expect(
+        reactWithId(
+          asClient({ ...c, getMessageById: vi.fn(), sendReaction: vi.fn() }),
+          REAL_ID,
+          "✅",
+        ),
+      ).resolves.toMatchObject({ ok: false, reason: "no-page" });
+    }
   });
 
-  it("reports success when the page says ok", async () => {
-    const { client } = clientWith(async () => ({ ok: true }));
-    await expect(reactWithId(asClient(client), REAL_ID, "✅")).resolves.toEqual({ ok: true });
-  });
-
-  it("maps a null from the page to unknown-result, never to success", async () => {
-    const { client } = clientWith(async () => null);
-    await expect(reactWithId(asClient(client), REAL_ID, "✅")).resolves.toMatchObject({
-      ok: false,
-      reason: "unknown-result",
-    });
-  });
-
-  it("reports evaluate-threw, with the cause, when the injected layer blows up", async () => {
-    const { client } = clientWith(async () => {
-      throw new Error("Evaluation failed: r");
-    });
-    const out = await reactWithId(asClient(client), REAL_ID, "✅");
-    expect(out).toMatchObject({ ok: false, reason: "evaluate-threw" });
-    expect(JSON.stringify(out)).toContain("r");
-  });
-
-  it("reports no-page instead of throwing when pupPage is not there", async () => {
-    for (const c of [{}, { pupPage: null }, { pupPage: {} }, { pupPage: { evaluate: 3 } }]) {
+  it("reports library-api-unavailable when the client has no getMessageById / sendReaction", async () => {
+    // A future whatsapp-web.js that renames either method must show up as
+    // its own reason, not as a TypeError dressed up as something else.
+    for (const c of [
+      { pupPage: storelessPage() },
+      { pupPage: storelessPage(), getMessageById: vi.fn() },
+      { pupPage: storelessPage(), sendReaction: vi.fn() },
+    ]) {
       await expect(reactWithId(asClient(c), REAL_ID, "✅")).resolves.toMatchObject({
         ok: false,
-        reason: "no-page",
+        reason: "library-api-unavailable",
       });
     }
   });
 
-  it("never falls back to Message.react() — that is the silent no-op we are replacing", async () => {
-    // A fallback that resolves without doing anything would reintroduce the
-    // exact failure this module exists to make visible.
-    const { client } = clientWith(async () => null);
-    const out = await reactWithId(asClient(client), REAL_ID, "✅");
+  it("never falls back to Message.react() — that is the silent no-op we replaced", async () => {
+    const c = clientWith({
+      sendReaction: () => {
+        throw new Error("r");
+      },
+    });
+    const out = await reactWithId(asClient(c.client), REAL_ID, "✅");
     expect(out.ok).toBe(false);
+    expect(c.found.react).not.toHaveBeenCalled();
   });
 
   it("is total — it resolves rather than rejects for every input", async () => {
@@ -331,10 +308,6 @@ describe("reactWithId — the thin adapter around pupPage.evaluate", () => {
 
 // ─────────────────────────────────────────────────────────────────────
 describe("reactAndReport — the one-call form used by the scheduler", () => {
-  function clientWith(evaluate: (...a: unknown[]) => unknown) {
-    return { pupPage: { evaluate: vi.fn(evaluate) } };
-  }
-
   let errs: string[];
   beforeEach(() => {
     errs = [];
@@ -345,11 +318,10 @@ describe("reactAndReport — the one-call form used by the scheduler", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("is completely silent when the reaction lands", async () => {
-    const c = clientWith(async () => ({ ok: true }));
-    await expect(reactAndReport(asClient(c), REAL_ID, "🪑", "update-reaction")).resolves.toEqual({
-      delivered: true,
-      reason: null,
-    });
+    const c = clientWith();
+    await expect(
+      reactAndReport(asClient(c.client), REAL_ID, "🪑", "update-reaction"),
+    ).resolves.toEqual({ delivered: true, reason: null });
     expect(errs).toEqual([]);
   });
 
@@ -357,28 +329,31 @@ describe("reactAndReport — the one-call form used by the scheduler", () => {
     // The scheduler's `update-reaction` used to log a bare
     // `update-reaction: message not found` warning — indistinguishable from
     // a broken page, and it ACKed anyway so the instruction never retried.
-    const c = clientWith(async () => null);
-    const out = await reactAndReport(asClient(c), REAL_ID, "🪑", "update-reaction");
-    expect(out).toMatchObject({ delivered: false, reason: "unknown-result" });
+    const c = clientWith({ getMessageById: () => null });
+    const out = await reactAndReport(asClient(c.client), REAL_ID, "🪑", "update-reaction");
+    expect(out).toMatchObject({ delivered: false, reason: "message-not-found" });
     const joined = errs.join("\n");
     expect(joined).toContain("update-reaction");
     expect(joined).toContain(REAL_ID);
-    expect(joined).toContain("unknown-result");
+    expect(joined).toContain("message-not-found");
   });
 
-  it("refuses a synthetic id without spending a page round-trip", async () => {
-    const c = clientWith(async () => ({ ok: true }));
-    const out = await reactAndReport(asClient(c), SYNTH_ID, "🪑", "update-reaction");
+  it("refuses a synthetic id without touching the library at all", async () => {
+    const c = clientWith();
+    const out = await reactAndReport(asClient(c.client), SYNTH_ID, "🪑", "update-reaction");
     expect(out).toMatchObject({ delivered: false, reason: "synthetic-id" });
-    expect(c.pupPage.evaluate).not.toHaveBeenCalled();
+    expect(c.getMessageById).not.toHaveBeenCalled();
+    expect(c.sendReaction).not.toHaveBeenCalled();
     expect(errs.join("\n")).toContain("synthetic-id");
   });
 
   it("never throws, whatever the client does", async () => {
-    const c = clientWith(async () => {
-      throw new Error("r");
+    const c = clientWith({
+      getMessageById: () => {
+        throw new Error("r");
+      },
     });
-    await expect(reactAndReport(asClient(c), REAL_ID, "🪑", "x")).resolves.toMatchObject({
+    await expect(reactAndReport(asClient(c.client), REAL_ID, "🪑", "x")).resolves.toMatchObject({
       delivered: false,
     });
     await expect(reactAndReport(asClient({}), REAL_ID, "🪑", "x")).resolves.toMatchObject({

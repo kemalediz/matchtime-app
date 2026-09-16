@@ -28,12 +28,21 @@
  * The fix: react through OUR resolved id (`react-with-id.ts`), and treat an
  * un-understood return value as a failure rather than a success.
  *
+ * THIRD (2026-09-16): whatsapp-web.js 1.34.7, the only build whose
+ * injection matches the live frontend, defines NO `window.Store`. The
+ * hand-rolled page code from the second fix read `window.Store.Msg` and
+ * every reaction failed `store-unavailable` (the catch-up posted, as
+ * designed). The reaction now goes through the library's own
+ * `client.getMessageById` + `client.sendReaction`, still with OUR id, and
+ * runs no page code of its own.
+ *
  * ── What these tests pin ─────────────────────────────────────────────
  * 1. The id used for the reaction is the SAME id reported to the analyzer.
  * 2. A silent `null` from the page is reported, not swallowed.
  * 3. A `synthetic:` id is never attempted, and says so.
  * 4. A failed reaction NEVER stops the rest of the batch being processed.
- * 5. Exactly ONE catch-up message per flush for the WHOLE batch.
+ * 5. A failed reaction NEVER produces a message in the group (owner
+ *    decision, 2026-09-16); it is counted and shouted in the log only.
  * 6. On the healthy path this machinery is completely silent.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -45,7 +54,9 @@ vi.mock("./api.js", () => ({
   postAnalyzeFull: (...args: unknown[]) => postAnalyzeFull(...args),
 }));
 
-const { enqueueForAnalysis, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
+const { enqueueForAnalysis, _test_flushNow, _test_reset, _test_getInboundStats } = await import(
+  "./smart-analysis.js"
+);
 
 const asClient = (c: unknown) => c as unknown as Client;
 const asMessage = (m: unknown) => m as unknown as Message;
@@ -87,26 +98,47 @@ function makeUnidentifiableMsg(body: string, name: string): Record<string, unkno
   };
 }
 
-/** How the fake page responds to a reaction attempt. */
-type PageReact = (messageId: string, emoji: string) => unknown | Promise<unknown>;
-
-const pageOk: PageReact = () => ({ ok: true });
-/** The injected layer throwing — the 2026-08-28 failure. */
-const pageThrows: PageReact = () => {
-  throw new Error("Evaluation failed: r");
+/**
+ * How the fake LIBRARY responds to a reaction attempt. The reaction goes
+ * through whatsapp-web.js's own `client.getMessageById` + `client.sendReaction`
+ * (2026-09-16: 1.34.7 has no `window.Store`, so hand-rolled page code is
+ * dead); the fake page itself throws on ANY evaluate, like the real one did.
+ */
+type Lib = {
+  getMessageById?: (id: string) => unknown;
+  sendReaction?: (id: string, emoji: string) => unknown;
 };
-/** The library's silent no-op — the 2026-08-31 failure. */
-const pageSilentNull: PageReact = () => null;
 
-function client(react: PageReact = pageOk) {
-  const evaluate = vi.fn(async (_fn: unknown, messageId: string, emoji: string) =>
-    react(messageId, emoji),
+/** The injected layer throwing on the lookup — the 2026-08-28 failure shape. */
+const libLookupThrows: Lib = {
+  getMessageById: () => {
+    throw new Error("Evaluation failed: r");
+  },
+};
+/** The library not finding the message — the branch that used to be a silent null. */
+const libNotFound: Lib = { getMessageById: () => null };
+
+function client(lib: Lib = {}) {
+  const getMessageById = vi.fn(async (id: string) =>
+    lib.getMessageById ? lib.getMessageById(id) : { id: { _serialized: id } },
   );
+  const sendReaction = vi.fn(async (id: string, emoji: string) =>
+    lib.sendReaction ? lib.sendReaction(id, emoji) : undefined,
+  );
+  // whatsapp-web.js 1.34.7 defines no window.Store: any hand-rolled page
+  // function that reaches for it dies exactly like this.
+  const evaluate = vi.fn(async () => {
+    throw new Error(
+      "Evaluation failed: TypeError: Cannot read properties of undefined (reading 'Msg')",
+    );
+  });
   return {
     info: { wid: { _serialized: "447700900999@c.us" } },
     getContactById: async () => ({ pushname: "Someone", isMe: false }),
     getChatById: async () => ({ sendMessage: vi.fn(async () => ({})) }),
     sendMessage: vi.fn(async () => ({ id: { _serialized: "sent" } })),
+    getMessageById,
+    sendReaction,
     pupPage: { evaluate },
   };
 }
@@ -118,10 +150,10 @@ function posts(c: ReturnType<typeof client>): string[] {
     .map((args: unknown[]) => args[1] as string);
 }
 
-/** Every (messageId, emoji) pair actually attempted against the page. */
+/** Every (messageId, emoji) pair actually handed to the library's sendReaction. */
 function attempts(c: ReturnType<typeof client>): Array<[string, string]> {
-  return c.pupPage.evaluate.mock.calls.map(
-    (args: unknown[]) => [args[1], args[2]] as [string, string],
+  return c.sendReaction.mock.calls.map(
+    (args: unknown[]) => [args[0], args[1]] as [string, string],
   );
 }
 
@@ -143,7 +175,6 @@ beforeEach(() => {
   });
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
-  delete process.env.BOT_REACT_TEXT_FALLBACK;
 });
 
 afterEach(() => {
@@ -176,6 +207,8 @@ describe("the id used to react is the id we told the analyzer about", () => {
     expect(attempts(c)).toEqual([["false_120363000000007001@g.us_3B0B7E9", "✅"]]);
     expect(attempts(c)[0][0]).toBe(reportedIds()[0]);
     expect(m.react).not.toHaveBeenCalled();
+    // 1.34.7 has no window.Store: no page code of our own may run.
+    expect(c.pupPage.evaluate).not.toHaveBeenCalled();
     expect(errs.join("\n")).not.toContain("CRITICAL");
   });
 
@@ -208,9 +241,12 @@ describe("the id used to react is the id we told the analyzer about", () => {
 
 // ─────────────────────────────────────────────────────────────────────
 describe("a silent no-op is a FAILURE, not a success", () => {
-  it("reports a null from the page instead of swallowing it", async () => {
-    // Exactly what `Message.react()` resolved to for days.
-    const c = client(pageSilentNull);
+  it("names a message the page cannot find instead of firing sendReaction blind", async () => {
+    // `Client.sendReaction` still carries the library's `if (!msg) return
+    // null;` — exactly what `Message.react()` resolved to for days. So the
+    // message is looked up first, a miss is reported by name, and the
+    // silent branch is never reached.
+    const c = client(libNotFound);
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
     postAnalyzeFull.mockResolvedValue({
       results: [{ waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null }],
@@ -220,14 +256,46 @@ describe("a silent no-op is a FAILURE, not a success", () => {
 
     const joined = errs.join("\n");
     expect(joined).toContain("CRITICAL");
-    expect(joined).toContain("unknown-result");
-    expect(posts(c)[0]).toContain("Kemal"); // the player still gets told
+    expect(joined).toContain("message-not-found");
+    expect(c.sendReaction).not.toHaveBeenCalled();
+    expect(posts(c)).toEqual([]); // and the group hears nothing about it
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+describe("the page has no window.Store (whatsapp-web.js 1.34.7, 2026-09-16)", () => {
+  it("lands every reaction through the library and posts no catch-up", async () => {
+    // The production failure: five recovered INs, five `store-unavailable`,
+    // one text catch-up in the group. On this page every evaluate throws;
+    // the library's own API is the only route, and it must be enough.
+    const c = client();
+    const recovered =
+      "false_447525334985-1607872139@g.us_AC7E5E8D85C46B15C947935009390D7D_76643825668299@lid";
+    await enqueueForAnalysis(asClient(c), asMessage(makeMsg(recovered, "in", "Kemal")));
+    await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m2", "out", "Ayoub")));
+    postAnalyzeFull.mockResolvedValue({
+      results: [
+        { waMessageId: recovered, handledBy: "llm", intent: "in", react: "✅", reply: null },
+        { waMessageId: "m2", handledBy: "llm", intent: "out", react: "🪑", reply: null },
+      ],
+      nextKickoffMs: null,
+    });
+    await _test_flushNow(GID);
+
+    expect(c.pupPage.evaluate).not.toHaveBeenCalled();
+    expect(c.getMessageById.mock.calls.map((a: unknown[]) => a[0])).toEqual([recovered, "m2"]);
+    expect(attempts(c)).toEqual([
+      [recovered, "✅"],
+      ["m2", "🪑"],
+    ]);
+    expect(posts(c)).toEqual([]);
+    expect(errs.join("\n")).not.toContain("CRITICAL");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────
 describe("a synthetic id is never attempted", () => {
-  it("skips it, says why, and still tells the player in words", async () => {
+  it("skips it, says why in the log, and says nothing in the group", async () => {
     const c = client();
     await enqueueForAnalysis(asClient(c), asMessage(makeUnidentifiableMsg("in", "Ayoub")));
     const synthId = reportedIds; // resolved below, after the flush POSTs
@@ -249,7 +317,7 @@ describe("a synthetic id is never attempted", () => {
     const joined = errs.join("\n");
     expect(joined).toContain("synthetic");
     expect(joined).toContain("CRITICAL");
-    expect(posts(c)[0]).toContain("Ayoub");
+    expect(posts(c)).toEqual([]);
   });
 });
 
@@ -279,9 +347,10 @@ describe("the healthy path stays completely silent", () => {
 
 describe("a broken reaction must not take the batch down with it", () => {
   it("still delivers the replies for the other messages in the batch", async () => {
-    const c = client((id) => {
-      if (id === "m1") throw new Error("Evaluation failed: r");
-      return { ok: true };
+    const c = client({
+      sendReaction: (id) => {
+        if (id === "m1") throw new Error("Evaluation failed: r");
+      },
     });
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m2", "how many are we?", "Ayoub")));
@@ -298,7 +367,7 @@ describe("a broken reaction must not take the batch down with it", () => {
   });
 
   it("reports the failure as CRITICAL, names the reason, and names what the player lost", async () => {
-    const c = client(pageThrows);
+    const c = client(libLookupThrows);
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
     postAnalyzeFull.mockResolvedValue({
       results: [{ waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null }],
@@ -310,7 +379,7 @@ describe("a broken reaction must not take the batch down with it", () => {
     expect(joined).toContain("CRITICAL");
     // The specific failure mode, so an operator can tell a broken injected
     // layer from a message that simply is not in the page's store.
-    expect(joined).toContain("evaluate-threw");
+    expect(joined).toContain("lookup-threw");
     // The attendance IS recorded — the log must say so, or whoever reads it
     // at 9pm before a fixture will assume the roster is wrong and go
     // hand-editing production data.
@@ -319,7 +388,7 @@ describe("a broken reaction must not take the batch down with it", () => {
   });
 
   it("distinguishes message-not-found from a broken page", async () => {
-    const c = client(() => ({ ok: false, reason: "message-not-found" }));
+    const c = client(libNotFound);
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
     postAnalyzeFull.mockResolvedValue({
       results: [{ waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null }],
@@ -329,11 +398,11 @@ describe("a broken reaction must not take the batch down with it", () => {
 
     const joined = errs.join("\n");
     expect(joined).toContain("message-not-found");
-    expect(joined).not.toContain("evaluate-threw");
+    expect(joined).not.toContain("lookup-threw");
   });
 
   it("never lets a reaction failure block anything — the flush still resolves", async () => {
-    const c = client(pageThrows);
+    const c = client(libLookupThrows);
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
     postAnalyzeFull.mockResolvedValue({
       results: [{ waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null }],
@@ -343,9 +412,17 @@ describe("a broken reaction must not take the batch down with it", () => {
   });
 });
 
-describe("the text catch-up", () => {
-  it("posts ONE message for the whole batch, naming every affected player", async () => {
-    const c = client(pageThrows);
+describe("a failed reaction never speaks in the group (owner decision, 2026-09-16)", () => {
+  // Until today a batch of failed reactions produced ONE text post in the
+  // group ("WhatsApp won't let me add my usual reactions right now, so here
+  // it is in words: …"). It fired for real on 2026-09-16, on a day the live
+  // group had already had too many bot messages. Kemal: never that message
+  // again; if reactions cannot be placed, go silent. A bot announcing that
+  // it cannot react reads as a broken bot, which is worse than a missing
+  // tick. The failure is still counted and still shouted in the log
+  // (bot-health reports on both); the group hears nothing.
+  it("posts NOTHING when every reaction in the batch fails, and still counts and logs each one", async () => {
+    const c = client(libLookupThrows);
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m2", "in", "Ayoub")));
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m3", "in", "Kieran")));
@@ -361,71 +438,21 @@ describe("the text catch-up", () => {
     });
     await _test_flushNow(GID);
 
-    const p = posts(c);
-    expect(p).toHaveLength(1); // NOT three
-    expect(p[0]).toContain("Kemal");
-    expect(p[0]).toContain("Ayoub");
-    expect(p[0]).toContain("Kieran");
-    expect(p[0]).toContain("✅");
-  });
-
-  it("keeps ✅ and 🪑 players apart — a benched player must not read as picked", async () => {
-    const c = client(pageThrows);
-    await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
-    await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m2", "in", "Ayoub")));
-    postAnalyzeFull.mockResolvedValue({
-      results: [
-        { waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null },
-        { waMessageId: "m2", handledBy: "llm", intent: "in", react: "🪑", reply: null },
-      ],
-      nextKickoffMs: null,
-    });
-    await _test_flushNow(GID);
-
-    const p = posts(c)[0];
-    expect(p).toMatch(/✅[^\n]*Kemal/);
-    expect(p).toMatch(/🪑[^\n]*Ayoub/);
-    expect(p).not.toMatch(/✅[^\n]*Ayoub/);
-  });
-
-  it("says nothing when the only failures are for players it cannot name", async () => {
-    // A confirmation addressed to nobody is worse than silence, and printing
-    // a raw @lid number as a player's name is a mistake this codebase has
-    // already made once.
-    const c = client(pageThrows);
-    const nameless = makeMsg("m1", "in", "");
-    (nameless._data as Record<string, unknown>).notifyName = undefined;
-    nameless.getContact = () => {
-      throw new Error("r");
-    };
-    await enqueueForAnalysis(asClient(c), asMessage(nameless));
-    postAnalyzeFull.mockResolvedValue({
-      results: [{ waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null }],
-      nextKickoffMs: null,
-    });
-    await _test_flushNow(GID);
-
+    // Asserted on the client itself, not just on group-addressed posts:
+    // no message of any kind, to anyone, because a reaction failed.
+    expect(c.sendMessage).not.toHaveBeenCalled();
     expect(posts(c)).toEqual([]);
-    // …but it must still SHOUT, because a player got no confirmation.
-    expect(errs.join("\n")).toContain("CRITICAL");
+
+    // …but the failure is fully observable off-Pi.
+    expect(_test_getInboundStats().reactFailures).toBe(3);
+    const joined = errs.join("\n");
+    expect(joined).toContain("CRITICAL: 3 of 3 reaction(s) could not be delivered");
+    expect(joined).toContain("lookup-threw×3");
+    expect(joined.toLowerCase()).toContain("attendance");
   });
 
-  it("is silenced by BOT_REACT_TEXT_FALLBACK=0 without silencing the alarm", async () => {
-    process.env.BOT_REACT_TEXT_FALLBACK = "0";
-    const c = client(pageThrows);
-    await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
-    postAnalyzeFull.mockResolvedValue({
-      results: [{ waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null }],
-      nextKickoffMs: null,
-    });
-    await _test_flushNow(GID);
-
-    expect(posts(c)).toEqual([]);
-    expect(errs.join("\n")).toContain("CRITICAL");
-  });
-
-  it("does not post twice inside the cooldown window", async () => {
-    const c = client(pageThrows);
+  it("stays silent across repeated failing flushes too — no cooldown, no post, ever", async () => {
+    const c = client(libLookupThrows);
     for (const [id, name] of [
       ["m1", "Kemal"],
       ["m2", "Ayoub"],
@@ -437,21 +464,26 @@ describe("the text catch-up", () => {
       });
       await _test_flushNow(GID);
     }
-    // Two flushes back to back, one catch-up post: a persistently broken
-    // layer must not turn every 10-minute tick into a group post.
-    expect(posts(c)).toHaveLength(1);
+    expect(c.sendMessage).not.toHaveBeenCalled();
+    expect(_test_getInboundStats().reactFailures).toBe(2);
+    expect(errs.filter((l) => l.includes("CRITICAL"))).toHaveLength(2);
   });
 
-  it("never lets a failing catch-up post break the flush", async () => {
-    const c = client(pageThrows);
-    c.sendMessage = vi.fn(async () => {
-      throw new Error("r");
-    }) as unknown as typeof c.sendMessage;
+  it("tells the operator to upgrade whatsapp-web.js, and no longer suggests pinning WA_WEB_VERSION", async () => {
+    // 2026-09-16 proved a pin cannot fix a library break: the injection in
+    // 1.34.6 was wrong for EVERY build the archive offered. See
+    // MDs/whatsapp-outage-2026-09-16-runbook.md.
+    const c = client(libLookupThrows);
     await enqueueForAnalysis(asClient(c), asMessage(makeMsg("m1", "in", "Kemal")));
     postAnalyzeFull.mockResolvedValue({
       results: [{ waMessageId: "m1", handledBy: "llm", intent: "in", react: "✅", reply: null }],
       nextKickoffMs: null,
     });
-    await expect(_test_flushNow(GID)).resolves.toBeUndefined();
+    await _test_flushNow(GID);
+
+    const critical = errs.find((l) => l.includes("CRITICAL")) ?? "";
+    expect(critical).toContain("upgrade whatsapp-web.js");
+    expect(critical).toContain("whatsapp-outage-2026-09-16-runbook.md");
+    expect(critical).not.toContain("WA_WEB_VERSION");
   });
 });

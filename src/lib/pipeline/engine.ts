@@ -2068,10 +2068,10 @@ export function decide(input: EngineInput): EngineResult {
   //
   // He is describing the contract this file already claims to follow:
   // MatchTime is conservative about SPEAKING, and
-  // `whatsapp-bot/src/react-fallback.ts` states the mechanism in the
-  // opposite direction — the react "is why the bot does not reply in
-  // words to every 'in' (twenty text confirmations in an evening would
-  // be intolerable in a customer's group)". A batch post per squad
+  // `whatsapp-bot/src/smart-analysis.react.test.ts` states the mechanism
+  // in the opposite direction — the react "is why the bot does not reply
+  // in words to every 'in' (twenty text replies in an evening would be
+  // unusable in a customer's group)". A batch post per squad
   // change was that reply, wearing a roster.
   //
   // WHAT SURVIVES, AND WHY EVERYTHING ELSE DOES NOT. Every occasion
