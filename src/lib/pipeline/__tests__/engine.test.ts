@@ -1524,6 +1524,187 @@ describe("S37 · the confidence floor is per fact, not per verdict", () => {
   });
 });
 
+// ── 2026-09-16 · a member's own IN is never dropped by the floor ──────
+//
+// Idris typed "in" during the restart catch-up; the extractor said
+// sender / in / 0.6; the floor discarded it and the group heard nothing.
+// Kemal: "self-declared IN from a known squad member should [n]ever be
+// dropped by a confidence floor at all". The rule and its argument are
+// on SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR in engine.ts.
+
+describe("SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR", () => {
+  it("the Idris case: 'in' at 0.6, third of six bare INs in one batch, registers", () => {
+    const state = world({ confirmed: ["sait"] });
+    const bareIn = (from: string, body: string, confidence: number) =>
+      msg({
+        from,
+        body,
+        route: "self_att",
+        facts: attendanceFacts([claim({ subject: "sender", polarity: "in", confidence })]),
+      });
+    const r = decide({
+      now: NOW,
+      state,
+      messages: [
+        bareIn("elvin", "In", 0.95),
+        bareIn("kemal", "In", 0.95),
+        bareIn("idris", "in", 0.6),
+        bareIn("mustafa", "In", 0.95),
+        bareIn("abid", "In", 0.9),
+        bareIn("najib", "In", 0.95),
+      ],
+    });
+    for (const k of ["elvin", "kemal", "idris", "mustafa", "abid", "najib"]) {
+      expect(statusOf(r.nextState, k), k).toBe("CONFIRMED");
+    }
+    const idris = r.outcomes[2];
+    expect(idris.reasons.join(" ")).toMatch(/SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR/);
+    expect(idris.reasons.join(" ")).toMatch(/0\.6 < 0\.7/);
+  });
+
+  it("a member's own IN at confidence 0.1 still registers", () => {
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal"] }),
+      messages: [
+        msg({
+          from: "idris",
+          body: "in",
+          route: "self_att",
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "in", confidence: 0.1 })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "idris")).toBe("CONFIRMED");
+    expect(r.writes).toHaveLength(1);
+  });
+
+  it("the same 0.1 on a member's own OUT is still refused", () => {
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal", "idris"] }),
+      messages: [
+        msg({
+          from: "idris",
+          body: "out?",
+          route: "self_att",
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "out", confidence: 0.1 })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "idris")).toBe("CONFIRMED");
+    expect(r.writes).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/below the confidence floor/);
+  });
+
+  it("the same 0.1 on a member's own BENCH is still refused", () => {
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal"] }),
+      messages: [
+        msg({
+          from: "idris",
+          body: "bench maybe",
+          route: "self_att",
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "bench", confidence: 0.1 })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "idris")).toBe("ABSENT");
+    expect(r.writes).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/below the confidence floor/);
+  });
+
+  it("the same 0.1 on a third-party IN is still refused", () => {
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal"] }),
+      messages: [
+        msg({
+          from: "kemal",
+          body: "@Wasim can Najib come please?",
+          route: "other_att",
+          facts: attendanceFacts([
+            claim({
+              subject: "other",
+              personRef: "Najib",
+              personNamed: true,
+              polarity: "in",
+              confidence: 0.1,
+            }),
+          ]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "najib")).toBe("ABSENT");
+    expect(r.writes).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/"Najib" below the confidence floor/);
+  });
+
+  it("a low-confidence IN from a resolved user who is NOT a member here keeps the floor", () => {
+    // `stranger` resolves to a user id but is not in the roster the engine
+    // was given (Membership with leftAt null): "known squad member" is
+    // defined by the roster, not by having an account.
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal"] }),
+      messages: [
+        msg({
+          from: "stranger",
+          body: "in",
+          route: "self_att",
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "in", confidence: 0.6 })]),
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/below the confidence floor/);
+  });
+
+  it("a low-confidence IN from an unresolved sender keeps the floor", () => {
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal"] }),
+      messages: [
+        msg({
+          from: null,
+          body: "in",
+          route: "self_att",
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "in", confidence: 0.6 })]),
+        }),
+      ],
+    });
+    expect(r.writes).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/below the confidence floor/);
+  });
+
+  it("the state collapse agrees: a member's later low-confidence IN supersedes his earlier OUT", () => {
+    // S35's collapse asks `wouldWrite`; if it still thought a 0.6 IN
+    // would not write, the earlier OUT would stand and the IN would be
+    // reported as superseded by nothing.
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal", "idris"] }),
+      messages: [
+        msg({
+          from: "idris",
+          body: "out",
+          route: "self_att",
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "out", confidence: 0.95 })]),
+        }),
+        msg({
+          from: "idris",
+          body: "in",
+          route: "self_att",
+          facts: attendanceFacts([claim({ subject: "sender", polarity: "in", confidence: 0.6 })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "idris")).toBe("CONFIRMED");
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/superseded/);
+  });
+});
+
 // ── Identity ───────────────────────────────────────────────────────────
 
 describe("identity resolution (SURVIVES §9 — never about the model)", () => {
