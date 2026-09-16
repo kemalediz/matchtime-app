@@ -1095,8 +1095,9 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
     expect(statusOf(r.nextState, "usama")).toBe("CONFIRMED");
     // The react IS the acknowledgement. §9's failure to avoid is
     // "message understood, action silently not taken", and a tick is not
-    // silence — see `whatsapp-bot/src/react-fallback.ts` for what happens
-    // when the WhatsApp layer cannot place one.
+    // silence. When the WhatsApp layer cannot place one, the bot counts and
+    // logs it and says nothing in the group (owner decision, 2026-09-16;
+    // see `reportFailedReacts` in `whatsapp-bot/src/smart-analysis.ts`).
     expect(r.outcomes[0].react).toBe("✅");
     expect(r.speech).toHaveLength(0);
   });

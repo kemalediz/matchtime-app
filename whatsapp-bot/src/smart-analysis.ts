@@ -35,12 +35,6 @@ import { rewriteMentions, type MentionName, type RawMentionContact } from "./men
 import { firstUsableName, readMessageBody, readNotifyName, safeRead } from "./wa-read.js";
 import { degradedMessage } from "./degraded.js";
 import {
-  composeReactFallback,
-  reactFallbackEnabled,
-  shouldSendReactFallback,
-  type ReactFallbackEntry,
-} from "./react-fallback.js";
-import {
   missingMessageIdMessage,
   resolveWaMessageId,
   shouldLogSyntheticId,
@@ -73,17 +67,6 @@ const HISTORY_PER_GROUP = 15;
 // observation.
 const FLUSH_INTERVAL_MS = 10 * 60 * 1000;
 const URGENCY_WINDOW_MS = 60 * 60 * 1000; // within 1h of kickoff → flush immediately
-/**
- * At most one reaction catch-up post per group per this window.
- *
- * Two flush intervals. The reaction exists precisely so the bot does NOT
- * speak on every "in", so its text stand-in must not become the spam it was
- * avoiding: a persistently broken injected layer would otherwise turn every
- * 10-minute tick into a group post. Two intervals still gets a confirmation
- * out within ~20 minutes of a player replying, which is inside the window
- * that matters on a match day.
- */
-const REACT_FALLBACK_COOLDOWN_MS = 2 * FLUSH_INTERVAL_MS;
 
 // ─── Immediate-flush decision (pure, unit-tested) ───────────────────
 /**
@@ -298,8 +281,6 @@ const historyByGroup = new Map<string, AnalyzeInboundHistory[]>();
 const bufferByGroup = new Map<string, Pending[]>();
 const nextKickoffMsByGroup = new Map<string, number | null>();
 const inFlightFlush = new Set<string>(); // prevent two flushes running in parallel per group
-/** When this group last got a reaction catch-up post (cooldown gate). */
-const lastReactFallbackAt = new Map<string, number>();
 let flushTimer: NodeJS.Timeout | null = null;
 let sharedClient: Client | null = null;
 
@@ -707,11 +688,11 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
 
     // Execute per-message actions on the WhatsApp side.
     //
-    // Reactions that could not be delivered are COLLECTED rather than just
+    // Reactions that could not be delivered are COUNTED rather than just
     // logged one by one: the emoji is the player's entire confirmation that
     // their "in" landed, so a batch of failures is a product incident, not
-    // n unrelated warnings. See the catch-up block after this loop.
-    const failedReacts: ReactFallbackEntry[] = [];
+    // n unrelated warnings. See reportFailedReacts after this loop.
+    let failedReacts = 0;
     /** One per failure, so the CRITICAL log can break them down by cause. */
     const failureReasons: string[] = [];
     let reactAttempts = 0;
@@ -742,7 +723,7 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
           // invented because the message's real id was unreadable. WhatsApp
           // never issued it, so no page lookup can resolve it. A documented
           // degradation, not a bug — but the player still got no emoji, so
-          // they go into the text catch-up like any other failure.
+          // it is counted like any other failure.
           console.error(
             `[smart] react ${r.react} skipped for ${entry.waMessageId} in ${groupId}: ` +
               `${plan.reason} — ` +
@@ -751,7 +732,7 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
                   "could not be read, so there is no message in the page to react to"
                 : "no usable id/emoji to react with"),
           );
-          failedReacts.push({ authorName: entry.authorName ?? null, emoji: r.react });
+          failedReacts++;
           failureReasons.push(plan.reason);
         } else {
           const outcome = await reactWithId(client, plan.messageId, plan.emoji);
@@ -761,7 +742,7 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
                 `${outcome.reason} — ${describeReactionFailure(outcome.reason)}` +
                 (outcome.detail ? ` (${outcome.detail})` : ""),
             );
-            failedReacts.push({ authorName: entry.authorName ?? null, emoji: plan.emoji });
+            failedReacts++;
             failureReasons.push(outcome.reason);
           }
         }
@@ -787,89 +768,79 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
     }
 
     // Off-Pi signal for the ✅ that IS the player's confirmation. A WARNING
-    // server-side, not a critical: attendance is still recorded and the
-    // text catch-up below covers the player. It matters because the club
-    // reads a missing emoji as "the bot is broken", and in August it was
-    // silent to BOTH the player and the log (Message.react() resolved
-    // without placing anything, so nothing threw).
-    inboundStats.reactFailures += failedReacts.length;
+    // server-side, not a critical: attendance is still recorded. It matters
+    // because the club reads a missing emoji as "the bot is broken", and in
+    // August it was silent to BOTH the player and the log (Message.react()
+    // resolved without placing anything, so nothing threw). The group
+    // itself is told nothing; see reportFailedReacts.
+    inboundStats.reactFailures += failedReacts;
 
-    await handleFailedReacts(client, groupId, failedReacts, reactAttempts, failureReasons);
+    reportFailedReacts(groupId, failedReacts, reactAttempts, failureReasons);
   } finally {
     inFlightFlush.delete(groupId);
   }
 }
 
 /**
- * What to do when reactions could not be delivered.
+ * What to do when reactions could not be delivered: SHOUT, and only shout.
  *
- * Two separate jobs, and they are deliberately independent:
+ * The attendance write is server-side and already happened, so the
+ * database looks perfectly healthy while every player in the group sees
+ * the bot say nothing. The old `[smart] react failed:` line was one
+ * unremarkable error among hundreds and told nobody what it cost. This
+ * one names the count, the group, the breakdown by cause, and — crucially —
+ * that attendance IS recorded, so whoever reads it before a fixture does
+ * not go hand-editing production data. bot-health reports on this line and
+ * on `inboundStats.reactFailures`, and the owner gets the alert by email,
+ * so neither may change shape without the reporting side moving with it.
  *
- *  1. SHOUT. The attendance write is server-side and already happened, so
- *     the database looks perfectly healthy while every player in the group
- *     sees the bot say nothing. The old `[smart] react failed:` line was one
- *     unremarkable error among hundreds and told nobody what it cost. This
- *     one names the count, the group, and — crucially — that attendance IS
- *     recorded, so whoever reads it before a fixture does not go
- *     hand-editing production data. It fires whether or not the text
- *     catch-up is enabled or on cooldown.
+ * ── There is deliberately NO group message here (Kemal, 2026-09-16) ──
+ * Until today a failed batch also produced one text post in the group:
+ * "⚠️ WhatsApp won't let me add my usual reactions right now, so here it
+ * is in words: …" (react-fallback.ts, now deleted along with its
+ * BOT_REACT_TEXT_FALLBACK switch and cooldown). It fired for real on
+ * 2026-09-16, when the whatsapp-web.js 1.34.7 upgrade broke the hand-rolled
+ * react path, in a group that had already had too many bot messages that
+ * day. Kemal's ruling: never that message again. If reactions cannot be
+ * placed, go silent and fix the code so they can. A bot announcing that it
+ * cannot react reads as a broken bot, which is worse than a missing tick.
+ * So: the failure is counted and logged, and the group hears nothing.
  *
- *  2. Tell the PLAYERS, in words, once. Justified in react-fallback.ts:
- *     one post per batch, only for failures, only for players we can name,
- *     behind a cooldown, killable with BOT_REACT_TEXT_FALLBACK=0.
- *
- * Total — a failure in here must never break the flush that produced it.
+ * Synchronous and total — nothing in here can break the flush that
+ * produced it.
  */
-async function handleFailedReacts(
-  client: Client,
+function reportFailedReacts(
   groupId: string,
-  failed: ReactFallbackEntry[],
+  failed: number,
   attempted: number,
   reasons: string[] = [],
-): Promise<void> {
-  if (failed.length === 0) return;
+): void {
+  if (failed === 0) return;
 
   // Break the failures down by cause. "Reactions are broken" was the ONLY
-  // signal available during the outage and it was not enough: a page that
-  // has gone away, a Store method WhatsApp renamed, a message that has
+  // signal available during the August outage and it was not enough: a
+  // page that has gone away, a library API that moved, a message that has
   // fallen out of the cache, and our own synthetic ids all want different
   // responses. Every reason string is defined in react-with-id.ts.
   const tally = new Map<string, number>();
   for (const reason of reasons) tally.set(reason, (tally.get(reason) ?? 0) + 1);
   const breakdown = [...tally.entries()].map(([reason, n]) => `${reason}×${n}`).join(", ");
 
+  // Mitigation wording (2026-09-16): "upgrade whatsapp-web.js" FIRST, and
+  // no WA_WEB_VERSION pin advice. Today proved a pin cannot fix a library
+  // break — 1.34.6's injection was wrong for every build the archive
+  // offered, and only 1.34.7 matched the live one. See
+  // MDs/whatsapp-outage-2026-09-16-runbook.md.
   console.error(
-    `CRITICAL: ${failed.length} of ${attempted} reaction(s) could not be delivered in ` +
+    `CRITICAL: ${failed} of ${attempted} reaction(s) could not be delivered in ` +
       `${groupId}${breakdown ? ` [${breakdown}]` : ""}. The attendance IS recorded ` +
       "server-side — the players simply got no ✅/🪑 confirmation, so they will think " +
       "the bot ignored them. Unless the reason above is `synthetic-id` (a message whose " +
       "real WhatsApp id we could not read at all), this means whatsapp-web.js's injected " +
-      "page code is out of step with the live WhatsApp Web build. Mitigation: pin a " +
-      "known-good build with WA_WEB_VERSION in ~/matchtime-bot/.env, or upgrade " +
-      "whatsapp-web.js. See MDs/whatsapp-web-version-pinning.md.",
+      "page code is out of step with the live WhatsApp Web build. Mitigation: upgrade " +
+      "whatsapp-web.js to the release whose injection matches the live build, then " +
+      "redeploy with scripts/deploy-pi.sh. See MDs/whatsapp-outage-2026-09-16-runbook.md.",
   );
-
-  if (!reactFallbackEnabled(process.env)) return;
-
-  const now = Date.now();
-  if (!shouldSendReactFallback(lastReactFallbackAt.get(groupId) ?? null, now, REACT_FALLBACK_COOLDOWN_MS)) {
-    return;
-  }
-
-  const text = composeReactFallback(failed);
-  if (!text) return; // nothing we can put a name to — silence beats nonsense
-
-  try {
-    await client.sendMessage(groupId, text);
-    lastReactFallbackAt.set(groupId, now);
-    console.log(`[smart] posted a text catch-up for ${failed.length} undelivered reaction(s) in ${groupId}`);
-  } catch (err) {
-    console.error(
-      `[smart] the reaction catch-up post ALSO failed for ${groupId} — the players have ` +
-        "no confirmation at all. Cause:",
-      err instanceof Error ? err.message : err,
-    );
-  }
 }
 
 
@@ -1086,7 +1057,6 @@ export function _test_reset(): void {
   bufferByGroup.clear();
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();
-  lastReactFallbackAt.clear();
   sharedClient = null;
   degradedCapabilities.clear();
   // Reset EVERY counter by rebuilding from the canonical shape, so a
