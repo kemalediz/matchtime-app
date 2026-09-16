@@ -11,22 +11,36 @@ Read this before running a single command.
 
 ## 0. The rule that would have saved the day
 
-**A long-running bot process holds state that a restart cannot recreate.**
+**A long-running bot process holds a session that a restart cannot
+recreate.**
 
-`whatsapp-web.js` injects code into a live WhatsApp Web page ONCE, at
-startup, against whatever build was live at that moment. A process that has
-been up for a week is running an injection against a week-old build. That
-injection keeps working after WhatsApp ships a new build to NEW page loads.
+`whatsapp-web.js` injects code into a live WhatsApp Web page at startup,
+against whatever build was live at that moment. A process that has been up
+for a week is running an injection against a week-old build.
 
-So on 2026-09-16 the bot was in a genuinely mixed state: **inbound analysis
-working, outbound sends failing.** Restarting it destroyed the working half
-and could not restore the broken half, because the fresh injection was made
-against the build that had just broken everything. WhatsApp then ended the
-session outright (`Client disconnected: LOGOUT`), which cost several rounds
-of re-pairing and, eventually, the ability to pair by phone number at all.
+**A WhatsApp Web self-update is a page navigation, and the injection does not
+survive it.** The library registers its inbound listeners INSIDE the page
+during `inject()`: `attachEventListeners()` in
+`whatsapp-web.js/src/Client.js` wires `Store.Msg.on('add')` to
+`window.onAddMessageEvent`. The navigation discards those listeners along
+with everything else in the page. The library's `framenavigated` handler then
+re-runs `inject()` against the NEW build, and that re-injection is what failed
+at 06:57. So when the injection broke, inbound broke with it. **There was no
+working half.**
 
-**Before you restart, write down what currently WORKS.** If anything does,
-the restart is a bet that you can get it back. On 2026-09-16 that bet lost.
+The database confirms it: the last analysed group message is 2026-09-15
+22:35 UTC (`AnalyzedMessage`), and nothing was recorded between 06:57 and the
+13:39 UTC recovery. The Pi's `bot.log` was truncated by the redeploy, so the
+DB is the only surviving evidence.
+
+What the restart DID cost was the **session**. WhatsApp ended it outright
+(`Client disconnected: LOGOUT`), which cost several rounds of re-pairing and,
+eventually, the ability to pair by phone number at all.
+
+**Before you restart, establish which LAYER is broken and write down what the
+restart puts at risk.** Write down what you have VERIFIED works, not what you
+assume works. On 2026-09-16 inbound was assumed to be fine, it was not, and
+the session was spent for nothing.
 
 ---
 
@@ -79,6 +93,13 @@ picture legible.
 `~/matchtime-bot/whatsapp-bot/.wwebjs_cache/` accumulates **every build this
 bot has ever loaded, on local disk.** The build that was working an hour ago
 is almost certainly sitting there.
+
+It is on disk, but it is not a freeze. That cached `<version>.html` is a
+bootstrap page, not the application: it loads WhatsApp's modules lazily from
+WhatsApp's servers at page load, so a pin pins the loader and WhatsApp can
+still serve newer modules into it. Treat a local pin as a mitigation worth one
+attempt, not a way to hold the frontend still. The evidence is in
+`MDs/whatsapp-web-version-pinning.md`, "Why a pin cannot freeze the frontend".
 
 The wppconnect `wa-version` remote archive **prunes**: it holds a rolling
 window (~430 builds, all `-alpha` suffixed as of 2026-09-16) and the exact

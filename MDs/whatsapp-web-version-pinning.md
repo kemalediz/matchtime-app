@@ -30,8 +30,31 @@ Upstream is aware and slow: `Client.getState()`/`getChats()` throwing `r: r`
 is reported against **1.34.7**, the latest release, on WhatsApp Web
 `2.3000.1043270046`
 ([wwebjs/whatsapp-web.js#201845](https://github.com/wwebjs/whatsapp-web.js/issues/201845)).
-So upgrading the library is not a reliable fix. Pinning the WhatsApp Web
-build the library loads is.
+That does not make the library the wrong lever. **The library version is the
+PRIMARY lever whenever the failing call sits inside the library's injected
+code**, meaning the error is thrown from `whatsapp-web.js/src/Client.js` or
+`src/util/Injected/*`. Pinning the WhatsApp Web build is a secondary and
+unreliable mitigation. On 2026-09-16 the fix was `whatsapp-web.js` 1.34.6 to
+1.34.7, and three separate pins did not help.
+
+## Why a pin cannot freeze the frontend
+
+A pin does not hand you yesterday's WhatsApp Web. The cached
+`.wwebjs_cache/<version>.html` and the wa-version archive files are the
+**bootstrap page, not the app.**
+
+Verified on the Pi on 2026-09-16 against `2.3000.1046967158.html` (613 KB):
+it holds 43 script tags, almost all of them inline `data:` URIs of loader
+shims, one static bundle URL under `static.whatsapp.net/rsrc.php`, and
+bootloader configuration (`bootloader-endpoint`, `manifest`,
+`manifest_updates`) through which the rest of the application modules are
+fetched lazily from WhatsApp's servers at load time.
+
+So pinning the HTML pins the loader, not the modules the injected code
+depends on. WhatsApp can and does serve newer modules to an old bootstrap.
+That is why the pin held for the 2026-08-28 and 2026-08-30 incidents and not
+for 2026-09-16, and why "pin first" is the wrong reflex. Identify the failing
+layer first: `MDs/whatsapp-outage-2026-09-16-runbook.md` §1.
 
 ## The lever
 

@@ -150,13 +150,17 @@ NOT a renamed event. It authenticates and then does nothing.
 
 ## Process failures worth more than the technical notes
 
-1. **The restart is what cost the session.** The bot had been running since
-   9 September with a code injection made against an older build, and was
-   still receiving messages. Restarting forced a fresh inject against the new
-   build, which fails, and WhatsApp then ended the session
-   (`Client disconnected: LOGOUT`), forcing repeated re-pairing.
-   **A long-running process can hold state that a restart cannot recreate.
-   Say so before touching it.**
+1. **The restart cost the SESSION, and there was no working inbound half to
+   lose.** The bot had been running since 9 September with a code injection
+   made against an older build. Inbound was almost certainly dead from 06:57
+   too: the self-update is a page navigation, and it took the in-page
+   listeners `inject()` had registered with it, so the re-inject that failed
+   took inbound down alongside outbound. The DB agrees, with nothing analysed
+   after 2026-09-15 22:35. What the restart destroyed was the session:
+   WhatsApp ended it (`Client disconnected: LOGOUT`), forcing repeated
+   re-pairing and eventually the loss of phone-number pairing.
+   **A long-running process can hold a SESSION that a restart cannot
+   recreate. Say so before touching it.**
 2. **The diagnosis chased the wrong layer for hours.** The first error was a
    LIBRARY error. The runbook prescribes pinning the web build, so pinning is
    what got tried — three times, plus a QR/pairing switch and a number
@@ -202,7 +206,8 @@ and is what the Fable agent was dispatched to test first.
   Tuesday 22 Sept; the match sits at 0/14. Those messages are safe in
   WhatsApp and the match is six days out, but `message-recovery` has been
   degraded since July so automatic recovery on reconnect should not be
-  assumed.
+  assumed. It did not run at the 13:39 UTC restart, which logged
+  `message-recovery is unavailable ... Error: r`.
 - **Email is not a fallback.** Only 4 of 14 players have a deliverable
   address; the rest are `@matchday.local` / `@matchtime.local` placeholders.
 - Per-player rating magic links were generated and given to the owner as a
