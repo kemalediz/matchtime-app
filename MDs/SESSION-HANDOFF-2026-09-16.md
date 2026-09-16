@@ -1,9 +1,16 @@
-# Session handoff, 2026-09-10 → 16: six merged fixes, four waiting, and an outage that is still open
+# Session handoff, 2026-09-10 → 16: twelve merged PRs, four waiting, and an outage opened and closed in a day
 
 Follows `SESSION-HANDOFF-2026-09-09.md`. Two halves, and they are unrelated:
 **Part 1** is a week of shipped work. **Part 2** is the 2026-09-16 WhatsApp
-outage, which is UNRESOLVED at the time of writing and is the only thing
-that matters until it is fixed.
+outage, which is **CLOSED** — the bot went down at 06:57 on a WhatsApp Web
+self-update and was live again at 13:39 UTC on `whatsapp-web.js` 1.34.7. The
+day's other five merges all came out of that recovery.
+
+Part 2 was written mid-outage and said the opposite; it has been rewritten
+against what actually happened. The corrected operational account is
+`MDs/whatsapp-outage-2026-09-16-runbook.md` (PR #83), and the Friday
+second-group assessment is
+`MDs/second-group-readiness-erdal-2026-09-16.md`.
 
 Method notes that generalise are in `MDs/llm-pipeline-testing-playbook.md`.
 The router measurement is its own document,
@@ -112,10 +119,14 @@ a router/extractor problem and it is the highest-value open item in Part 1.
 
 ---
 
-# PART 2 — THE 2026-09-16 OUTAGE (OPEN)
+# PART 2 — THE 2026-09-16 OUTAGE (CLOSED)
 
-**Status at handoff: the bot is authenticated but not functional. It has
-recorded nothing since 2026-09-15 22:35. A Fable agent is mid-investigation.**
+**Status at handoff: closed the same day.** Down 06:57 UTC, live again
+**13:39 UTC** on `whatsapp-web.js` **1.34.7**, QR-linked, and the session
+survived all four restarts that followed that afternoon (bot ready 16:27,
+monitoring 1 group). The rating round was recovered inside its window, the
+outage window's attendance was walked back out of WhatsApp, and five PRs plus
+the version bump were merged off the back of it.
 
 ## What broke
 
@@ -130,99 +141,242 @@ Cannot read properties of undefined (reading 'getChat')
 ~1,018 failures. The 13 rating DMs and the group promo, claimed 07:00–07:15,
 were the first casualties. **The Pi acks a failed send as done**
 ("DM send failed …, acking to skip"), so claim-on-dispatch consumed all 14
-permanently: they will never be retried without deleting the
-`SentNotification` rows.
+permanently; they can only come back by deleting the `SentNotification` rows.
 
-Nothing in MatchTime's own code was wrong. `whatsapp-web.js` drives a real
-browser against WhatsApp's minified internals; when those move, the injected
-calls throw.
+The mechanism, established after the fact: a WhatsApp Web self-update is a
+**page navigation**, the library's `framenavigated` handler re-runs
+`inject()` against the new build, and on 1.34.6 that re-injection **failed
+silently** — the rejection happened inside a puppeteer `exposeFunction`
+callback, where rejections are swallowed — leaving `window.WWebJS` undefined.
+Every later send read `getChat` off `undefined`. **Inbound died with the same
+navigation**, because `attachEventListeners()` registers the inbound
+listeners inside the page during `inject()` and the navigation discarded
+them. Nothing in MatchTime's own code was wrong.
 
-## Three library versions, three different walls
+## The fix: 1.34.6 → 1.34.7 (`a2c3769`)
 
-| version | pairing | app init |
+Tested on the Pi against the live build before it was trusted: 1.34.7's
+`ExposeAuthStore` and `LoadUtils` both inject cleanly and
+**`window.WWebJS.getChat` is a function**, which is the exact thing 1.34.6
+could no longer produce. The bot came back on 1.34.7 with **zero crash
+restarts** and delivered DMs the owner confirmed receiving.
+
+The repo bump matters on its own: the Pi was already on 1.34.7 by hand, and
+without `a2c3769` the next deploy that pulls and installs would silently
+reinstall 1.34.6 and take the bot down again.
+
+### What the mid-outage "three versions, three walls" table got wrong
+
+| claim made during the outage | what it actually was |
+|---|---|
+| 1.34.7 throws `t: t` at `requestPairingCode` and crash-loops | not a library wall. `WA_PAIR_PHONE` was set while the client was unpaired; that is what produced the pairing crash loops. On QR, 1.34.7 initialises and runs clean |
+| `2.0.0-alpha.0` was the promising escape hatch | it is a **2023** release. It authenticates, never emits `ready`, and loses phone-number pairing. It was never a candidate |
+| the local-cache pin to `2.3000.1046967158.html` is "the most plausible route back" | **a pin cannot freeze the frontend.** The cached `<version>.html` is a bootstrap page that lazily loads WhatsApp's modules from their servers at load time, so the pin pins the loader and WhatsApp still serves the new modules into it. Verified on the Pi and written up in `MDs/whatsapp-web-version-pinning.md` |
+
+**The library version is the lever when the failing call is inside the
+injected code** (`src/Client.js`, `src/util/Injected/*`). Three build pins
+were tried before anyone tried a library version.
+
+## Ratings: settled inside the window
+
+The 14 consumed claims (`cmtbro26i0003tt9kzarkcd8m:rate-dm:<userId>` plus
+`:rate-promo`) were **deleted at 14:50 UTC**, once sending was proven, and
+MatchTime re-issued **all 13 rating DMs plus the group promo by 15:05 UTC** —
+inside the 36h window that would otherwise have closed at 09:30 London on
+2026-09-17. The owner's precondition ("ratings and money settled first") is
+now met on both halves: the 13 pay links landed 2026-09-15 22:02, the ratings
+on 2026-09-16.
+
+The re-issued promo is what produced the day's next bug: it opened
+**"🎯 Morning all"** at **16:05 London**, because copy written for the 08:00
+window went out in the late afternoon. See **#85** below.
+
+Two facts from the day that outlive it. **Email is not a fallback**: only 4 of
+14 players have a deliverable address, the rest are `@matchday.local` /
+`@matchtime.local` placeholders. And the per-player rating magic links
+generated as a manual route were **never sent** — the owner declined them, to
+avoid signalling to players that MatchTime was broken. Nothing went out by
+hand; everything that reached a player came from the product.
+
+## The outage window's INs: recovered, not lost
+
+~15h of Sutton FC group messages (players saying IN for Tuesday 22 Sept) sat
+unread on the phone, and the 13:39 UTC restart's catch-up walk logged
+`message-recovery is unavailable ... Error: r`.
+
+**#84 (`b39137f`)** fixed the walk: its first injected call was
+`client.getChatById(gid)`, which throws on this build from `getChatModel`, so
+`recoverGroupMessages` now builds a **bare `Chat` handle** from the group id
+and fetches through it (`Chat.fetchMessages` never calls `getChatModel`), with
+`RECOVER_LOOKBACK_HOURS` / `RECOVER_FETCH_LIMIT` making the window
+env-driven. A repeat `ready` from the same process no longer starts a second
+scheduler.
+
+The one-off wide run, `RECOVER_LOOKBACK_HOURS=24` and
+`RECOVER_FETCH_LIMIT=400`: **fetched 400, re-queued 20, 7 actionable, 5 INs
+registered.** The sixth, Idris's lowercase `in`, was dropped by the
+confidence floor (0.6 < 0.7) and **registered by hand**. Tuesday 22 Sept went
+**0/14 → 6/14**.
+
+The 17:00 evening update was **held by an `evening-update` row that had
+already been claimed** during the broken hours, and was released only once the
+recovered INs had landed and the squad count was right. It then fired at
+**17:00 London** with the correct numbers.
+
+## The five merges the recovery produced
+
+| PR | commit | what |
 |---|---|---|
-| **1.34.6** (shipped) | works — owner linked successfully | crashes, `null.Socket` at `Client.inject` |
-| **1.34.7** | worked, then threw `t: t` at `requestPairingCode`, 16 crash-restarts | init clean, never reached |
-| **2.0.0-alpha.0** + `WA_WEB_VERSION_CACHE_TYPE=none` | QR only (ignores `WA_PAIR_PHONE`) | authenticates, survives restart, zero crashes, **never emits `ready`** |
+| — | `a2c3769` | `whatsapp-web.js` 1.34.6 → **1.34.7**, the version whose injection matches live WhatsApp |
+| **#84** | `b39137f` | the restart catch-up reads the group without `getChatById`; a repeat `ready` starts no second scheduler |
+| **#85** | `7e9ec4b` | **no scheduled post greets the group with a time of day** |
+| **#86** | `6f3268f` | reactions go through the library on 1.34.7; a failed reaction no longer speaks in the group |
+| **#87** | `4aa2c6b` | a member's own IN is never dropped by the confidence floor; the catch-up feeds the extractor its context |
+| **#83** | `9a08f97` | the outage runbook and the pinning doc corrected |
 
-The alpha's `Events` constants still use `ready`/`authenticated`, so it is
-NOT a renamed event. It authenticates and then does nothing.
+**#85 — the greeting is gone, not made clock-aware.** Rate promo, match-day
+chase fallback and the `match-day-morning` compose instruction all lost their
+time-of-day opener, and `CHASE_SYSTEM_PROMPT` now bans it outright; the promo
+also stopped saying "last night's", because its window is 6–36h after
+kickoff. Same class as the 2026-09-04 "Quick 5pm update" bug. The old test's
+carve-out — *"a greeting is not a clock stamp"* — was withdrawn deliberately.
+
+**#86 — the reaction fallback text is deleted, by the owner's ruling.** After
+the upgrade every ✅/🪑 failed, five for five on the catch-up, because
+`react-with-id.ts` ran page code of ours against `window.Store`, and **1.34.7
+has no `window.Store` at all** (0 hits in `src`; no `Injected/Store.js`). The
+fix runs no page code of ours: `client.getMessageById(ourId)` then
+`client.sendReaction(ourId, emoji)`, the library's own path. The
+"⚠️ WhatsApp won't let me add my usual reactions right now, so here it is in
+words" post **fired once in the live group** on a day it had already had too
+many bot messages, and the owner's ruling is that **it must never post
+again** — a bot announcing it cannot react reads as a broken bot, which is
+worse than a missing tick. `react-fallback.ts`, its spec, the
+`BOT_REACT_TEXT_FALLBACK` switch and the cooldown are gone; a failed reaction
+now makes **zero** `sendMessage` calls and is only logged and counted
+(`CRITICAL: N of M reaction(s) could not be delivered`,
+`inboundStats.reactFailures`).
+
+**#87 — the owner's hard rule, and the real cause of the 0.6.** The rule,
+verbatim: *"self-declared IN from a known squad member should [n]ever be
+dropped by a confidence floor at all."* `isFloorExempt` implements exactly
+that — `subject === "sender"`, polarity `in`, the sender resolved to a user,
+and that user a current `Membership` of this org. OUT, BENCH and every
+third-party claim keep the floor. The floor had fired **twice in the engine's
+whole production record**: `@Wasim can Najib come please?` (rightly refused)
+and Idris.
+
+The **0.5-versus-0.7 question was measured on the real corpus** (970 batches,
+1,744 messages, 143 days; 617 extractor calls, $4.32) and **0.7 stays
+global**. In the [0.5, 0.7) band, third-party claims are overwhelmingly
+questions, team swaps and corrections (7 wrong to 1 correct on third-party
+IN, 3 wrong to 0 on third-party OUT), and self OUT/BENCH is 3 correct to 2
+wrong, where a wrong OUT silently leaves a paid squad a man short. Self IN is
+the one shape where the asymmetry runs the other way: a wrong IN is one tick
+to undo, in public. The honest description of the trade over 143 days is
+roughly two real INs rescued (three counting Idris) against four wrong INs.
+
+And the 0.6 itself was **context starvation, not the model**:
+`recoverGroupMessages` enqueued replayed messages **without** `recordHistory`
+after a fresh restart, so the extractor saw no recent chat and a stale last
+post about a match that had already been played. Fifteen live runs per
+context: in the live handler's context a bare `in` sits at 0.9 every time; the
+catch-up's starved context is what produced the 0.6. The catch-up now records
+history before enqueueing and replays oldest-first. **A bigger model was
+considered and rejected on the numbers.**
 
 ## Process failures worth more than the technical notes
 
-1. **The restart cost the SESSION, and there was no working inbound half to
-   lose.** The bot had been running since 9 September with a code injection
-   made against an older build. Inbound was almost certainly dead from 06:57
-   too: the self-update is a page navigation, and it took the in-page
-   listeners `inject()` had registered with it, so the re-inject that failed
-   took inbound down alongside outbound. The DB agrees, with nothing analysed
-   after 2026-09-15 22:35. What the restart destroyed was the session:
-   WhatsApp ended it (`Client disconnected: LOGOUT`), forcing repeated
-   re-pairing and eventually the loss of phone-number pairing.
-   **A long-running process can hold a SESSION that a restart cannot
-   recreate. Say so before touching it.**
+1. **The restart cost the SESSION, and there was no working half to lose.**
+   Inbound died at 06:57 with the same failed re-injection that killed
+   outbound; the DB agrees, with nothing analysed between 2026-09-15 22:35
+   and the 13:39 UTC recovery, and `bot.log` was truncated by the redeploy so
+   the DB is the only surviving evidence. Inbound was *assumed* fine, it was
+   not, and the session was spent for nothing: WhatsApp ended it
+   (`Client disconnected: LOGOUT`), which cost several rounds of re-pairing
+   and eventually phone-number pairing itself.
+   **Establish the failing LAYER first, write down what you have VERIFIED
+   works, and say what a restart puts at risk before you touch it.**
 2. **The diagnosis chased the wrong layer for hours.** The first error was a
-   LIBRARY error. The runbook prescribes pinning the web build, so pinning is
-   what got tried — three times, plus a QR/pairing switch and a number
-   hypothesis. The pin cannot help when the injected code is what broke.
+   LIBRARY error — the stack ends inside `whatsapp-web.js/src/Client.js` —
+   and the runbook prescribed pinning the web build, so three pins, a
+   QR/pairing switch and a number hypothesis were tried before a library
+   version was.
 3. **Too many variables at once.** Library version, pin, cache type and login
-   mode all moved inside an hour, which made every result uninterpretable.
-4. **`MDs/whatsapp-web-version-pinning.md` says upgrading the library "is not
-   a reliable fix".** That line is why the library was not tried first. On
-   today's evidence it is wrong, or at least badly incomplete, and the
-   runbook needs rewriting around "identify the failing LAYER first".
+   mode all moved inside an hour, which made every result uninterpretable —
+   including the pairing crash loop that was blamed on 1.34.7 and was
+   actually `WA_PAIR_PHONE` set while unpaired.
+4. **`MDs/whatsapp-web-version-pinning.md` said upgrading the library "is not
+   a reliable fix".** That line is why the library was not tried first. It is
+   now replaced (#83) by the layer test and by "Why a pin cannot freeze the
+   frontend", verified on the Pi against the cached build.
 
-## The lead that was missed for hours
+## The standing recommendation, unchanged
 
-`~/matchtime-bot/whatsapp-bot/.wwebjs_cache/` holds
-**`2.3000.1046967158.html` on local disk** — the exact build that was serving
-this bot until 06:57. The remote pin failed with a 404 because the
-wa-version archive prunes old builds, but `web-version.ts` supports
-`WA_WEB_VERSION_CACHE_TYPE=local`. **Reverting to 1.34.6 plus a local-cache
-pin to that build is the most plausible route back to the pre-outage state**
-and is what the Fable agent was dispatched to test first.
+This was the **third** WhatsApp Web update to take the product down
+(2026-08-28, 2026-08-30, 2026-09-16) and the first where the documented
+pinning workaround did not hold. What ended it was an upstream library
+release that happened to exist; during the outage the only other options were
+an unreleased alpha or waiting. The 2026-08-30 audit named a protocol client
+(Baileys) as the strategic answer and it has now been deferred three times.
+The owner's stated precondition — ratings and money settled — **is now met**,
+so the next deferral has to be argued on its own merits.
 
-## State of the Pi at handoff
+---
 
-- `whatsapp-web.js@2.0.0-alpha.0` installed (backup at
-  `whatsapp-bot/package.json.bak-pre-alpha`); **the repo still declares
-  1.34.6**, so any `git pull && npm install` deploy silently reinstalls the
-  broken version. Do not run a pulling deploy until this is resolved.
-- `.env`: `WA_PAIR_PHONE=447575534985`, `WA_WEB_VERSION_CACHE_TYPE=none`, no
-  `WA_WEB_VERSION`. Backups at `.env.bak-*`.
-- Session linked by QR and it SURVIVES restarts (no QR on restart).
-- `deploy-pi.sh` worked correctly throughout and never touched HomeTenant.
+# WHAT IS OPEN AFTER TODAY
 
-## Deadlines and consequences
+**Four PRs reviewed, gates green, still not merged** (all opened 2026-09-15):
 
-- **The rating window closes 09:30 London on 2026-09-17.** The scheduler only
-  issues rating DMs while `hoursSinceMatch <= 36 && hourNow >= 8`. After that
-  MatchTime will not send them at all, whatever is done with the claims.
-- **The 14 consumed claims** are `SentNotification` rows keyed
-  `cmtbro26i0003tt9kzarkcd8m:rate-dm:<userId>` plus `:rate-promo`. Deleting
-  them is what lets the scheduler re-issue. NOT yet done — pointless while
-  sending is broken, and it would burn them a second time.
-- **Live attendance is being missed right now.** Players began saying IN for
-  Tuesday 22 Sept; the match sits at 0/14. Those messages are safe in
-  WhatsApp and the match is six days out, but `message-recovery` has been
-  degraded since July so automatic recovery on reconnect should not be
-  assumed. It did not run at the 13:39 UTC restart, which logged
-  `message-recovery is unavailable ... Error: r`.
-- **Email is not a fallback.** Only 4 of 14 players have a deliverable
-  address; the rest are `@matchday.local` / `@matchtime.local` placeholders.
-- Per-player rating magic links were generated and given to the owner as a
-  manual option. **He declined to send them**, to avoid signalling to players
-  that MatchTime is broken. Nothing was sent.
+| PR | one line |
+|---|---|
+| **#79** | one team-generation path; the Elo stops picking teams |
+| **#80** | a player who stops turning up leaves the leaderboard, and his rating is never touched |
+| **#81** | one health alert a day, newest thing first — **carries a migration** |
+| **#82** | a replacement takes the dropped player's slot, and the roster stops once the teams are out |
 
-## The standing recommendation
+**#81's migration has NOT been applied. Apply it BEFORE deploying that code**
+or the cron throws on a missing column.
 
-This is the **third** WhatsApp Web update to take the product down, the
-documented workaround did not hold, and the remaining choices are an
-unreleased alpha or waiting for upstream. The 2026-08-30 audit named a
-protocol client (Baileys) as the strategic answer and it has now been
-deferred three times. The owner's position, stated today, is that ratings and
-money must be settled before any migration — **money is settled** (13 pay
-links delivered 2026-09-15 22:02), ratings are not.
+**The second group, Erdal's Turkish group, Friday 2026-09-18 — three NO-GOs.**
+Full measurements and the exact work to reach GO are in
+`MDs/second-group-readiness-erdal-2026-09-16.md`:
+
+1. **Self-onboarding by adding the number.** `ONBOARDING_AUTOSTART=1` has been
+   on in Vercel production for 93 days and the flow has **never run once**
+   (`OnboardingSession`: 0 rows). The Pi never flushes an un-tagged reply from
+   a group that was not a live org at startup, so the player's "YES" sits in
+   the buffer forever; and on this build `getChatById` throws, so the group
+   name and the roster snapshot come back empty.
+2. **Turkish attendance.** Full sentences read 10 of 10, including idioms. The
+   bare forms — "var", "yok", "yokum", the Turkish equivalents of "in" and
+   "out" — are **lost 30 of 30 at the router**, silently, because the floor
+   regex is English-only. Hedges never become a firm IN (0 of 32) but never
+   become a tentative either. All outbound copy is English.
+3. **Two matches from one group.** Every attendance write lands on the soonest
+   open match, org-wide, whatever day the player names; the extractor has no
+   field for "which match". Scheduled posts, rating DMs and pay links do work
+   per match.
+
+The realistic Friday path is manual provisioning by script plus one Pi
+restart, a single Friday fixture only, and the caveats accepted by Erdal in
+advance.
+
+**Carried over from the outage:**
+
+- **Reaction delivery on the new library path is unproven live.** #86's tests
+  drive a storeless fake page, and the fix is the exact code path 1.34.7's own
+  `Message.react()` takes, but no real ✅ has landed in the group since the
+  upgrade. The first real IN is the test.
+- **`group-enumeration` and `participant-sync` are still degraded.**
+  `message-recovery` was the third of that trio and #84 fixed it; the other
+  two still ride on `getChatById`, which throws on the live build. They matter
+  for the lurker-gap backfill and for any new group's roster import.
+
+**Still the highest-value open item in Part 1:** `L1`, the polite hedge that
+only registers 2 times in 10. #87 exempted a member's own IN from the floor,
+which is a different failure — Wasim's drop never produces a claim to floor in
+the first place.
 
 ---
 
