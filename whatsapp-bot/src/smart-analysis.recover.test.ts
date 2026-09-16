@@ -18,8 +18,16 @@ vi.mock("./api.js", () => ({
   postAnalyzeFull: vi.fn(),
 }));
 
-const { recoverGroupMessages, resolveRecoveryWindow, _test_reset, _test_getInboundStats } =
-  await import("./smart-analysis.js");
+const {
+  recoverGroupMessages,
+  resolveRecoveryWindow,
+  recordHistory,
+  _test_flushNow,
+  _test_reset,
+  _test_getInboundStats,
+} = await import("./smart-analysis.js");
+const api = await import("./api.js");
+const postAnalyzeFull = api.postAnalyzeFull as unknown as ReturnType<typeof vi.fn>;
 
 const GID = "447525334985-1607872139@g.us";
 const asClient = (c: unknown) => c as unknown as Client;
@@ -179,5 +187,59 @@ describe("recoverGroupMessages reads the group without getChatById", () => {
     // ...and a later sweep is allowed again.
     await recoverGroupMessages(asClient(client), [GID]);
     expect(evaluate).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── The catch-up feeds the history buffer (2026-09-16) ────────────────
+//
+// The live `message` handler records every inbound message into the
+// group's 15-line history buffer BEFORE enqueueing it, and the server's
+// attendance extractor reads that buffer as "RECENT CHAT". The catch-up
+// enqueued without recording, so a batch replayed after a restart reached
+// the extractor with an EMPTY recent chat. Measured live (15 runs each,
+// scripts in PR #85's report): with the batch's own lines visible, a bare
+// lowercase "in" is extracted at 0.9-0.95 every run; with no recent chat
+// it comes back at 0.6 in 3 of 15 and claimless in 6 more. Idris's "in"
+// on 2026-09-16 was read in exactly that context.
+describe("the catch-up feeds the history buffer, like the live handler", () => {
+  it("a replayed batch reaches the analyzer with its own lines as recent chat, oldest first", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { client } = clientWithBrokenGetChat([
+      // Newest first, as the page can hand them back: the buffer must still
+      // read in chronological order.
+      pageMessage("BBB", "in", nowSec - 60),
+      pageMessage("AAA", "In", nowSec - 120),
+    ]);
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
+    await recoverGroupMessages(asClient(client), [GID]);
+    await _test_flushNow(GID);
+    expect(postAnalyzeFull).toHaveBeenCalledOnce();
+    const payload = postAnalyzeFull.mock.calls[0][0] as {
+      messages: Array<{ body: string }>;
+      history: Array<{ authorName: string | null; body: string; timestamp: string }>;
+    };
+    expect(payload.messages.map((m) => m.body)).toEqual(["In", "in"]);
+    expect(payload.history.map((h) => h.body)).toEqual(["In", "in"]);
+    expect(payload.history.map((h) => h.authorName)).toEqual(["Abid", "Abid"]);
+    expect(payload.history[0].timestamp).toBe(new Date((nowSec - 120) * 1000).toISOString());
+  });
+
+  it("a line the live handler already recorded is not recorded twice", async () => {
+    // The 2026-09-09 incident was the sender's own line appearing twice in
+    // front of the extractor; a replay must not manufacture that shape.
+    const nowSec = Math.floor(Date.now() / 1000);
+    recordHistory(GID, {
+      authorName: "Abid",
+      body: "In",
+      timestamp: new Date((nowSec - 120) * 1000).toISOString(),
+    });
+    const { client } = clientWithBrokenGetChat([pageMessage("AAA", "In", nowSec - 120)]);
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
+    await recoverGroupMessages(asClient(client), [GID]);
+    await _test_flushNow(GID);
+    const payload = postAnalyzeFull.mock.calls[0][0] as { history: Array<{ body: string }> };
+    expect(payload.history.map((h) => h.body)).toEqual(["In"]);
   });
 });
