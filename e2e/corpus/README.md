@@ -61,7 +61,7 @@ Both write a machine-readable report to `.e2e/corpus/report-<mode>.json`.
 > whole sweep changed a single row, and it was S26, doing what it is supposed
 > to.
 
-**61 cases; 35 run in CI.** The other 26 cannot be replayed deterministically and
+**62 cases; 36 run in CI** (2026-09-16: `PR87-idris-bare-in-below-the-confidence-floor` joined, transcribed with its recorded confidence of 0.6 so the stubbed case fails the moment `SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR` is removed). The other 26 cannot be replayed deterministically and
 each must say why (see *Stubbed vs live*). The scoreboard states all three numbers
 on its first two lines — a case that never ran is never counted as a pass.
 

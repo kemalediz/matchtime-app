@@ -287,6 +287,22 @@ let sharedClient: Client | null = null;
 // ─── History buffer ─────────────────────────────────────────────────
 export function recordHistory(groupId: string, entry: AnalyzeInboundHistory) {
   const arr = historyByGroup.get(groupId) ?? [];
+  // The same line, once. The live `message` handler and the restart
+  // catch-up can both see one message (WhatsApp delivers the offline
+  // backlog as ordinary events AND the catch-up re-fetches the last 2h),
+  // and a line shown twice to the extractor is the 2026-09-09 echo shape:
+  // the second copy reads as an acknowledgement of the first and the
+  // claim disappears. Same author, same text, same second: one entry.
+  if (
+    arr.some(
+      (h) =>
+        h.timestamp === entry.timestamp &&
+        h.body === entry.body &&
+        (h.authorName ?? null) === (entry.authorName ?? null),
+    )
+  ) {
+    return;
+  }
   arr.push(entry);
   if (arr.length > HISTORY_PER_GROUP) arr.shift();
   historyByGroup.set(groupId, arr);
@@ -914,7 +930,12 @@ export async function recoverGroupMessages(
     const cutoffSec = nowSec - window.lookbackHours * 60 * 60;
     for (const gid of groupIds) {
       try {
-        const msgs = await fetchRecentGroupMessages(client, gid, window.fetchLimit);
+        const fetched = await fetchRecentGroupMessages(client, gid, window.fetchLimit);
+        // OLDEST FIRST, whatever order the page handed them back in. The
+        // analyzer reasons over the batch in buffer order and the extractor
+        // reads the history buffer as a conversation; a replay that runs
+        // newest-first hands both of them the evening backwards.
+        const msgs = [...fetched].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
         let queued = 0;
         let oldestSec = Number.POSITIVE_INFINITY;
         for (const m of msgs) {
@@ -922,6 +943,34 @@ export async function recoverGroupMessages(
           if (ts > 0 && ts < oldestSec) oldestSec = ts;
           if (m.fromMe) continue;
           if (ts < cutoffSec) continue;
+          // ── THE REPLAY IS NOT ITS OWN CONTEXT UNLESS WE MAKE IT SO ────
+          //
+          // The live `message` handler (index.ts) records every inbound
+          // message into this group's history buffer BEFORE enqueueing
+          // it, and the server's attendance extractor reads that buffer
+          // as "RECENT CHAT". This walk did not, so a batch replayed after
+          // a restart reached the extractor with an EMPTY recent chat —
+          // the process had just come up and the buffer with it.
+          //
+          // 2026-09-16 15:09: six bare INs replayed by this walk. The five
+          // capitalised "In"s were extracted at 0.9 and written; Idris's
+          // lowercase "in" came back at confidence 0.6, the engine's floor
+          // discarded it, and he was not in the squad. Measured afterwards,
+          // 15 runs each: a bare "in" WITH the batch's own lines in the
+          // recent chat is read at 0.9-0.95 every run; with NO recent chat
+          // it is 0.6 in 3 of 15 and claimless in 6 more. The word did not
+          // change. The context did, and this line is the context.
+          //
+          // Same identity the live handler uses for its history line: the
+          // pushname serialised onto the message (`notifyName`), read
+          // without an injected-page call so a broken build cannot strip
+          // it. `recordHistory` drops an exact duplicate, so a message the
+          // live handler already recorded is not shown to the model twice.
+          recordHistory(gid, {
+            authorName: readNotifyName(m),
+            body: readMessageBody(m),
+            timestamp: new Date(safeTimestampSec(m) * 1000).toISOString(),
+          });
           await enqueueForAnalysis(client, m); // server dedupes on waMessageId
           queued++;
         }

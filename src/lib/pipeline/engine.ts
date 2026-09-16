@@ -87,6 +87,82 @@ import type {
 /** §3.2 S37. Applied PER FACT now, not as a blanket verdict-level gate. */
 const CONFIDENCE_FLOOR = 0.7;
 
+/**
+ * Is a squad member's own IN ever dropped by the confidence floor?
+ *
+ * NO. Kemal, 2026-09-16: *"add explicitly 'self-declared IN from a known
+ * squad member should ever be dropped by a confidence floor at all'."*
+ * Not lowered for this shape, not routed elsewhere: the floor does not
+ * apply to it.
+ *
+ * THE INCIDENT. 2026-09-16 15:09, the restart catch-up replayed the
+ * group and six players posted a bare IN for next Tuesday. Five were
+ * written. Idris typed the single word "in" and the extractor returned a
+ * sender claim, polarity in, confidence 0.6; the floor refused it, the
+ * engine planned no tick, the group heard nothing, and the player who
+ * had done exactly what the bot asks of him was not in the squad until
+ * the owner registered him by hand. Replayed 15 times afterwards the
+ * same message came back at 0.9 to 0.95 and registered every time: the
+ * 0.6 was one sample from a model at temperature 1, not a property of
+ * the message, and a floor that turns one bad sample into a lost place
+ * is worse than no floor for this shape.
+ *
+ * WHERE THE FLOOR CAME FROM, AND WHY IT DOES NOT FIT HERE. It was born
+ * with the first LLM analyzer (26cf5e4, 2026-04-20, "low-confidence
+ * outputs (<0.7) are downgraded to unclear... the bot stays silent
+ * rather than guessing") as a blanket verdict-level gate over thirteen
+ * intents, in the days when one verdict could drop a player, ping a
+ * reminder or credit a payment. It was never attached to an incident
+ * (§3.2 S37's incident column is empty) and it was carried into the
+ * engine per fact without the asymmetry being re-argued for each shape.
+ * Argued now:
+ *
+ *   - A WRONG IN costs one tick to undo, in public, by the player who is
+ *     standing right there; and the engine's own affirmation branch
+ *     already prices it that way ("the weaker signal is allowed to ADD a
+ *     player and never to remove one").
+ *   - A DROPPED IN costs a player his place and his trust in the bot,
+ *     silently, and the club finds out at the pitch. §9 calls "message
+ *     understood, action silently not taken" this product's signature
+ *     failure.
+ *
+ * In the engine's whole production record the floor fired twice: once
+ * on a third-party question ("@Wasim can Najib come please?", Najib at
+ * 0.6, rightly refused) and once on Idris. The shape it protected
+ * against is not this one.
+ *
+ * WHAT "A KNOWN SQUAD MEMBER" MEANS, PRECISELY. The sender resolved to a
+ * user (`senderUserId` set) AND that user is in the roster the engine
+ * was given, which `load-state.ts` builds from this org's `Membership`
+ * rows with `leftAt: null`. An unknown pushname, an opaque @lid nobody
+ * has linked, or a user with no current membership here keeps today's
+ * behaviour: the floor applies. So does every other claim shape, in
+ * both directions of the asymmetry: an OUT or a BENCH removes someone,
+ * a third-party claim registers someone else, and for those a wrong
+ * write is the expensive side.
+ *
+ * Set to `false` and a member's "in" at 0.6 is discarded with no tick
+ * again. Do not.
+ */
+export const SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR = true;
+
+/**
+ * The one claim shape `SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR`
+ * exempts: the sender, about themselves, joining, and the sender is a
+ * current member of this club. Everything else is subject to
+ * `CONFIDENCE_FLOOR`.
+ */
+export function isFloorExempt(
+  c: Claim,
+  senderUserId: string | null,
+  roster: readonly Member[],
+): boolean {
+  if (!SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR) return false;
+  if (c.subject !== "sender" || c.polarity !== "in") return false;
+  if (!senderUserId) return false;
+  return roster.some((m) => m.userId === senderUserId);
+}
+
 /** Scores are clamped, never trusted (§9 "value clamps" — survives). */
 const MAX_SCORE = 99;
 
@@ -230,7 +306,13 @@ export function decide(input: EngineInput): EngineResult {
   messages.forEach((m, i) => {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
-    if (!m.facts.claims.some((c) => c.subject === "sender" && wouldWrite(c))) return;
+    const sender = m.senderUserId;
+    if (
+      !m.facts.claims.some(
+        (c) => c.subject === "sender" && wouldWrite(c, isFloorExempt(c, sender, state.roster)),
+      )
+    )
+      return;
     lastSelfIndexByAuthor.set(m.senderUserId, i);
   });
 
@@ -758,12 +840,23 @@ export function decide(input: EngineInput): EngineResult {
       const targets: Target[] = [];
       const guestAsks: Claim[] = [];
       for (const c of ordered) {
+        const floorExempt = isFloorExempt(c, msg.senderUserId, state.roster);
         if (c.confidence < CONFIDENCE_FLOOR) {
+          if (!floorExempt) {
+            out.reasons.push(
+              `claim about "${c.personRef || "sender"}" below the confidence floor ` +
+                `(${c.confidence} < ${CONFIDENCE_FLOOR})`,
+            );
+            continue;
+          }
+          // Say so in the trail: the next reader of an AnalyzedMessage row
+          // must be able to see that the floor was reached AND which rule
+          // let the write through, in one line.
           out.reasons.push(
-            `claim about "${c.personRef || "sender"}" below the confidence floor ` +
-              `(${c.confidence} < ${CONFIDENCE_FLOOR})`,
+            `sender's own IN is below the confidence floor (${c.confidence} < ${CONFIDENCE_FLOOR}) ` +
+              `but a member's own IN is never dropped by it ` +
+              `(SELF_IN_FROM_A_MEMBER_IS_NEVER_DROPPED_BY_THE_FLOOR)`,
           );
-          continue;
         }
         if (c.tense === "past" || c.tense === "hypothetical") {
           out.reasons.push(`claim is ${c.tense}, never a registration`);
@@ -784,7 +877,7 @@ export function decide(input: EngineInput): EngineResult {
           // honest reason ("contingent", "past") rather than being
           // reported as superseded by something that did nothing.
           const lastIdx = lastSelfIndexByAuthor.get(msg.senderUserId);
-          if (wouldWrite(c) && lastIdx !== undefined && lastIdx !== i) {
+          if (wouldWrite(c, floorExempt) && lastIdx !== undefined && lastIdx !== i) {
             out.reasons.push("superseded by a later message from the same author");
             continue;
           }
@@ -2274,9 +2367,14 @@ export function decide(input: EngineInput): EngineResult {
  * earlier one it would have acted on. Kept beside the rules it mirrors —
  * if one moves, this has to move with it, and the collapse tests are
  * what say so.
+ *
+ * `floorExempt` is the one piece of state the floor needs since
+ * 2026-09-16: whether this claim is a member's own IN
+ * (`isFloorExempt`). The caller computes it because only the caller has
+ * the sender and the roster.
  */
-function wouldWrite(c: Claim): boolean {
-  if (c.confidence < CONFIDENCE_FLOOR) return false;
+function wouldWrite(c: Claim, floorExempt: boolean): boolean {
+  if (c.confidence < CONFIDENCE_FLOOR && !floorExempt) return false;
   if (c.tense === "past" || c.tense === "hypothetical") return false;
   if (c.basis === "availability" && c.polarity !== "out") return false;
   if (c.contingent && c.polarity === "out") return false;
