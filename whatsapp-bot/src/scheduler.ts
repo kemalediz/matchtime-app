@@ -62,6 +62,19 @@ const SEND_TIMEOUT_MS = 30_000;
 let tickRunning = false;
 
 export function initScheduler(waClient: Client, orgConfigs: Org[]) {
+  // `ready` fires again, in the SAME process, whenever whatsapp-web.js
+  // re-injects after a page navigation (two `WhatsApp bot is ready!` lines
+  // under one PID on 2026-09-16). A second interval here is the
+  // duplicate-dispatch class that flooded a customer group on 2026-07-19
+  // (scripts/deploy-pi.sh). The server's atomic claim keeps one key from
+  // going out twice, but a doubled poll rate against a 1 DM/min gate is
+  // still wrong. One interval, ever; stopScheduler() is the only reset.
+  if (intervalId) {
+    console.warn("[scheduler] already started; ignoring a repeat initScheduler (repeat `ready`)");
+    client = waClient;
+    orgs = orgConfigs;
+    return;
+  }
   client = waClient;
   orgs = orgConfigs;
 
