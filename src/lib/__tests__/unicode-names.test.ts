@@ -105,12 +105,12 @@ describe("bench-prompt normaliser: non-ASCII letters survive", () => {
     expect(readBenchPromptAnswer("what time is kickoff?")).toBeNull();
   });
 
-  it("Turkish words are not recognised YET (Phase 3b adds the vocabulary), but they are not destroyed", () => {
-    // Documented, not aspired to: today "hayır" is neither yes nor no.
-    // What changed is that the normaliser now hands the word list the
-    // whole word, so Phase 3b can add it.
-    expect(readBenchPromptAnswer("hayır")).toBeNull();
+  it("Turkish words survive the normaliser, so the word lists can read them", () => {
+    // Phase 0 pinned "hayır" as unrecognised; Phase 1 (PR #90, same day)
+    // added the Turkish vocabulary this normaliser change made possible.
     expect(normaliseBenchAnswerText("hayır")).toBe("hayır");
+    expect(readBenchPromptAnswer("hayır")).toBe("no");
+    expect(readBenchPromptAnswer("evet")).toBe("yes");
   });
 });
 

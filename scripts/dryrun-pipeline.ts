@@ -55,6 +55,12 @@
  *                  anything; 15 is the floor for a real question.
  *   FACTS=1        print basis / contingent / conditionOn on every run,
  *                  not just when REPEAT=1
+ *   FLOOR=0        run the router WITHOUT the deterministic floor in
+ *                  front of it — production's setting
+ *                  (`ROUTER_GATE_FLOOR_ENABLED` is unset). The default
+ *                  here is ON, as it always was. Use this to measure
+ *                  what the ROUTER does with a bare "in", "var", "yok":
+ *                  under the floor those are the regex's answer.
  *   CHASES=1       compose all five scheduled-chase kinds instead of
  *                  running the case table (also read-only)
  *   DMS=1          run the DM-INTENT table (N*) through `lib/dm-intent.ts`
@@ -184,8 +190,22 @@ type Case = {
    * the harness cannot drift from the route's choice of clause.
    */
   peel?: (clause: string) => boolean;
+  /** Recent chat shown to the extractor for THIS case, instead of the
+   *  shared English `HISTORY`. A Turkish case needs Turkish neighbours:
+   *  "ben de" (me too) is only a claim in the light of the line before
+   *  it, and the line before it in Erdal's group will not be English. */
+  history?: Array<{ author: string | null; body: string }>;
   expect: string;
 };
+
+/** The two lines of context the Turkish table runs under, mirroring
+ *  `MDs/second-group-readiness-erdal-2026-09-16.md` §2: MatchTime's
+ *  English squad update (every outbound word is English until Phase 2)
+ *  and a Turkish owner chase. */
+const HISTORY_TR = [
+  { author: "MatchTime", body: "🗓 Squad update\n\nWe're short for Tuesday 7-a-side — need more bodies." },
+  { author: "Kemal Ediz", body: "hadi beyler, salı için birkaç kişi daha lazım" },
+];
 
 /** Najib is the player every `fullSquad` incident replay is ABOUT — the
  *  1 Sept "Najib is out" that MatchTime answered with "the squad is
@@ -711,6 +731,52 @@ const CASES: Case[] = [
   { id: "V4", who: "Wasim", body: "David is out, put Mojib on the bench", confirm: ["David", "Mojib"], expect: "THE LIMIT. A NON-admin: NOTHING applied, and MatchTime stays silent. Both clauses are refused, so there is no turn for a refusal sentence to ride" },
   { id: "V5", who: "Kemal", body: "David is out of form since he switched to 5aside. Either Mojib or Najib would walk into the main squad ahead of him", confirm: ["David", "Mojib"], expect: "THE ADVERSARIAL CONTROL. Contains the literal words 'David is out' inside a sentence about FORM, and an either/or about the squad. NO write, nobody dropped, nobody benched" },
   { id: "V6", who: "Kemal", body: "@Match Time David is out, put Mojib on the bench", tagged: true, confirm: ["David", "Mojib"], expect: "the same message TAGGED: DROP David and BENCH Mojib. The control for V2 — the tag is what the bench clause was always missing" },
+
+  // ── TR: Turkish attendance, Phase 1 (READING only) ────────────────
+  //
+  // Erdal's Turkish-speaking group is onboarded on Friday 2026-09-18.
+  // `MDs/second-group-readiness-erdal-2026-09-16.md` §2 measured this
+  // table live, `REPEAT=10`, before any prompt mentioned Turkish: the
+  // full sentences read 10 of 10, the BARE forms ("var", "yok", "yokum")
+  // were lost at the router 30 of 30, and the hedges wrote nothing and
+  // recorded no tentative either. The ids below are that table's ids so
+  // the two can be read side by side.
+  //
+  // Run it the way production runs — `FLOOR=0` — because production has
+  // no floor (`ROUTER_GATE_FLOOR_ENABLED` is unset) and with the floor
+  // ON the bare forms would be the regex's answer, not the router's.
+  //
+  // IN cases are sent as Erdal (not in the squad). OUT cases are sent
+  // as Wasim, force-confirmed in memory so a drop has a target.
+  { id: "TR1", who: "Erdal", body: "varım", history: HISTORY_TR, expect: "I'm in. WRITE Erdal CONFIRMED (read 10/10 before the change)" },
+  { id: "TR2", who: "Erdal", body: "ben varım", history: HISTORY_TR, expect: "I'm in. WRITE Erdal CONFIRMED (10/10 before)" },
+  { id: "TR3", who: "Wasim", body: "yokum", confirm: ["Wasim"], history: HISTORY_TR, expect: "I'm out (bare). DROP Wasim. BEFORE: routed none 10/10, LOST" },
+  { id: "TR4", who: "Wasim", body: "gelemiyorum", confirm: ["Wasim"], history: HISTORY_TR, expect: "I can't come. DROP Wasim (10/10 before)" },
+  { id: "TR5", who: "Erdal", body: "geliyorum", history: HISTORY_TR, expect: "I'm coming. WRITE Erdal CONFIRMED (10/10 before)" },
+  { id: "TR6", who: "Erdal", body: "+1", history: HISTORY_TR, expect: "one guest. NOT fixed here: same as English '+1' (sender registered 2/10 before). Expect a guest-name ask or nothing, never the SENDER confirmed" },
+  { id: "TR7", who: "Erdal", body: "ben de", history: [...HISTORY_TR, { author: "Ilkay", body: "ben varım" }], expect: "me too, after Ilkay's 'ben varım'. WRITE Erdal CONFIRMED (10/10 before)" },
+  { id: "TR8", who: "Erdal", body: "sayın beni", history: HISTORY_TR, expect: "count me. WRITE Erdal CONFIRMED (10/10 before)" },
+  { id: "TR9", who: "Wasim", body: "bu hafta yokum", confirm: ["Wasim"], history: HISTORY_TR, expect: "not this week. DROP Wasim (10/10 before)" },
+  { id: "TR10", who: "Erdal", body: "kaleye geçerim", history: HISTORY_TR, expect: "I'll go in goal. WRITE Erdal CONFIRMED, and the confidence must come OFF the 0.7 floor (was 0.70-0.75, an IN with a position note is not a condition)" },
+  { id: "TR11", who: "Erdal", body: "abi ben varım", history: HISTORY_TR, expect: "bro I'm in. WRITE Erdal CONFIRMED (16/16 before)" },
+  { id: "TR12", who: "Erdal", body: "var", history: HISTORY_TR, expect: "in (bare). WRITE Erdal CONFIRMED. BEFORE: self_att 6, none 3, unsure 1, empty claims 7, registered 0/10, LOST" },
+  { id: "TR13", who: "Wasim", body: "yok", confirm: ["Wasim"], history: HISTORY_TR, expect: "out (bare). DROP Wasim. BEFORE: routed none 10/10, LOST" },
+  { id: "TR14", who: "Erdal", body: "belki", history: HISTORY_TR, expect: "maybe. NO confirmed write, AND a tentative — reasons must say 'tentative (personal uncertainty)' so the 24h follow-up DM fires. BEFORE: unsure 10/10, empty claims, no tentative" },
+  { id: "TR15", who: "Erdal", body: "bakarız", history: HISTORY_TR, expect: "we'll see. NO confirmed write, AND a tentative. BEFORE: none 10/10 (invisible)" },
+  { id: "TR16", who: "Erdal", body: "kesin değil", history: HISTORY_TR, expect: "not certain. NO confirmed write, AND a tentative. BEFORE: unsure, empty claims, no tentative" },
+  { id: "TR17", who: "Erdal", body: "in", history: HISTORY_TR, expect: "ENGLISH CONTROL. WRITE Erdal CONFIRMED" },
+  { id: "TR18", who: "Wasim", body: "out", confirm: ["Wasim"], history: HISTORY_TR, expect: "ENGLISH CONTROL. DROP Wasim" },
+  { id: "TR19", who: "Erdal", body: "cuma varım", history: HISTORY_TR, expect: "in for FRIDAY. OUT OF SCOPE (two-matches problem, §3 of the readiness doc). Recorded only so a change here is seen: before, IN at conf 0.55-0.6 in 6/10, wrote 2/10 to the soonest match" },
+  { id: "TR20", who: "Wasim", body: "ben yokum", confirm: ["Wasim"], history: HISTORY_TR, expect: "I'm out. DROP Wasim (10/10 before)" },
+  { id: "TR21", who: "Erdal", body: "Ali de geliyor", history: HISTORY_TR, expect: "relayed third-party IN: Ali is coming too. route other_att, claim other/in for 'Ali'. A write for Ali is acceptable (C8's rule); never one for Erdal" },
+  // No `confirm` on TR22: the contract holds an untagged non-admin
+  // third-party OUT whether or not Baki holds a slot, so the target adds
+  // nothing, and `forceConfirmed` refuses when the live squad is 14/14
+  // (it was, on the evening of 2026-09-16).
+  { id: "TR22", who: "Erdal", body: "Baki gelemiyor", history: HISTORY_TR, expect: "third-party OUT: Baki can't come. route other_att, claim other/out for 'Baki'. Untagged, from a NON-admin: the contract holds it (K2), so the observable is the route and the claim, not a drop" },
+  { id: "TR23", who: "Erdal", body: "kaç kişiyiz?", history: HISTORY_TR, expect: "how many are we? route question; untagged => SILENT (interaction contract). Must not be attendance" },
+  { id: "TR24", who: "Erdal", body: "hadi be ya 😂😂", history: HISTORY_TR, expect: "banter (oh come on). route none, SILENT, no write" },
+  { id: "TR25", who: "Erdal", body: "maybe", history: HISTORY_TR, expect: "ENGLISH CONTROL for the hedge: NO confirmed write, reasons say 'tentative (personal uncertainty)'. TR14-16 must match this" },
 ];
 
 /**
@@ -1679,6 +1745,15 @@ async function main(): Promise<void> {
   const only = process.env.ONLY?.split(",").map((s) => s.trim());
   const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
   const showFacts = process.env.FACTS === "1" || repeat === 1;
+  // `FLOOR=0` runs the router the way production runs it: with no
+  // deterministic floor in front (`ROUTER_GATE_FLOOR_ENABLED` is unset
+  // in Vercel). The harness default stays ON, which is what it always
+  // was; the knob exists because a bare "in" under the floor is the
+  // regex's answer, and a Turkish "var" needed the ROUTER's.
+  const floor = process.env.FLOOR !== "0";
+  console.log(
+    `FLOOR : ${floor ? "ON (harness default; FLOOR=0 for production's setting)" : "OFF (production's setting)"}\n`,
+  );
   let totalUsd = 0;
   let unstable = 0;
   let ran = 0;
@@ -1743,9 +1818,10 @@ async function main(): Promise<void> {
               taggedExplicitly: c.taggedExplicitly ?? c.tagged ?? false,
             },
           ],
-          history: HISTORY,
+          history: c.history ?? HISTORY,
           state,
           now,
+          floor,
         });
       } catch (err) {
         console.log(`  💥 THREW: ${(err as Error).message}`);

@@ -73,7 +73,9 @@ function normalise(text: string): string {
     .replace(/[‘’'`´]/g, "")
     .replace(/\p{Extended_Pictographic}/gu, " ")
     .replace(/[‍️]/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
+    // Letters, not [a-z]: a Turkish dotless ı has no accent to strip and
+    // used to vanish here, turning "varım" into "varm" (2026-09-16).
+    .replace(/[^\p{L}0-9\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -94,6 +96,10 @@ const IN_CORE = [
   String.raw`(?:ill|i will) (?:play|be there|be playing)`,
   String.raw`i can (?:play|make it)`,
   String.raw`(?:im|i am) playing`,
+  // Turkish (2026-09-16): I'm in / in / I'm coming / count me.
+  String.raw`(?:ben\s+)?var(?:[ıi]m)?`,
+  String.raw`geliyorum`,
+  String.raw`say[ıi]n beni`,
 ];
 
 /** Self-attendance OUT, as a whole message. */
@@ -105,6 +111,9 @@ const OUT_CORE = [
   String.raw`not (?:this week|tonight|tomorrow|today)`,
   String.raw`(?:i )?wont (?:make it|be there|be playing|be able to play)`,
   String.raw`(?:pull|take) me out`,
+  // Turkish (2026-09-16): I'm out / out / I can't come / not this week.
+  String.raw`(?:ben\s+|bu hafta\s+)?yok(?:um)?`,
+  String.raw`gelemiyorum`,
 ];
 
 function whole(cores: string[]): RegExp {

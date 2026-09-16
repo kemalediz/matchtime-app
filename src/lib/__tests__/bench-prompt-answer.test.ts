@@ -225,3 +225,31 @@ describe("readBenchPromptAnswer — the adversarial near-miss table", () => {
     expect(readBenchPromptAnswer(undefined as unknown as string)).toBeNull();
   });
 });
+
+// ── Turkish (2026-09-16) ───────────────────────────────────────────────
+//
+// No model stands behind this module: an answer it does not recognise
+// WHOLE is `null` and nothing happens. A Turkish bencher answering the
+// slot offer in the group with one word must not be that nothing.
+describe("readBenchPromptAnswer — Turkish", () => {
+  it.each(["evet", "Evet", "evet!", "tamam", "olur", "varım", "Varım", "varim", "var", "evet varım", "tamam varım 👍"])(
+    "%s → yes",
+    (body) => {
+      expect(readBenchPromptAnswer(body)).toBe("yes");
+    },
+  );
+
+  it.each(["hayır", "Hayır", "hayir", "yok", "Yok.", "yokum", "ben yokum", "gelemiyorum", "hayır gelemiyorum"])(
+    "%s → no",
+    (body) => {
+      expect(readBenchPromptAnswer(body)).toBe("no");
+    },
+  );
+
+  it.each(["var mı?", "evet ama geç kalırım", "yok artık", "belki", "bakarız", "kesin değil"])(
+    "%s → null (not a whole answer)",
+    (body) => {
+      expect(readBenchPromptAnswer(body)).toBeNull();
+    },
+  );
+});

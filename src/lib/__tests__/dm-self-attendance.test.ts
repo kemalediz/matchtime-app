@@ -171,3 +171,25 @@ describe("decideDmSelfAttendanceFallback — a pending prompt always wins", () =
     ).toBeNull();
   });
 });
+
+// ── Turkish (2026-09-16) ───────────────────────────────────────────────
+describe("classifyDmSelfAttendance — Turkish", () => {
+  it.each(["varım", "Varım", "varim", "ben varım", "var", "geliyorum", "sayın beni", "varım 👍"])(
+    "%s → in",
+    (body) => {
+      expect(classifyDmSelfAttendance(body)).toBe("in");
+    },
+  );
+
+  it.each(["yokum", "Yokum.", "ben yokum", "yok", "gelemiyorum", "bu hafta yokum"])("%s → out", (body) => {
+    expect(classifyDmSelfAttendance(body)).toBe("out");
+  });
+
+  // Hedges and sentences fall through to the model, which reads Turkish.
+  it.each(["belki", "bakarız", "kesin değil", "var mı?", "varım ama geç kalırım", "Ali varım dedi"])(
+    "%s → null",
+    (body) => {
+      expect(classifyDmSelfAttendance(body)).toBeNull();
+    },
+  );
+});

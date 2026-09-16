@@ -658,3 +658,24 @@ describe("the recent chat never contains the message being extracted", () => {
     expect(model.reqs[0].user).not.toContain("RECENT CHAT");
   });
 });
+
+// ── Turkish (2026-09-16) ───────────────────────────────────────────────
+describe("the attendance extractor reads Turkish", () => {
+  it("says the message may be Turkish and names the claim shapes in it", () => {
+    const p = EXTRACTOR_PROMPTS.attendance;
+    expect(p).toMatch(/Turkish/);
+    for (const w of ["varım", "yokum", "belki", "bakarız", "kesin değil", "ben de", "kaleye geçerim"]) {
+      expect(p, w).toContain(w);
+    }
+  });
+
+  it("defines a bare hedge — English or Turkish — as a contingent claim on the sender's own state", () => {
+    // `tentativeUserId` in attendance-engine-batch.ts records a maybe from
+    // exactly this shape: subject sender, contingent true, conditionOn
+    // "self", polarity not out. A hedge the extractor returns as an empty
+    // claims array is a maybe the 24h follow-up DM never chases.
+    const p = EXTRACTOR_PROMPTS.attendance;
+    expect(p).toMatch(/"maybe"/);
+    expect(p).toMatch(/maybe[^\n]*belki[^\n]*contingent/i);
+  });
+});
