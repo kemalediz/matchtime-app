@@ -77,11 +77,11 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // `count_tokens`, claude-haiku-4-5, 2026-09-11: the router prompt was
     // 2,554 tokens and the attendance extractor prompt 1,366.
     // Re-measured 2026-09-16 after the Turkish rule and examples went in
-    // (`count_tokens`, same model): router 2,908 (11,021 chars, 3.79
+    // (`count_tokens`, same model): router 2,962 (11,233 chars, 3.79
     // chars/token), attendance 1,820 (6,846 chars, 3.76 chars/token). On
-    // claude-sonnet-5 the same prompts are 3,928 and 2,381. Turkish
-    // letters tokenise DENSER than English, so the under-count widens.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(2_908);
+    // claude-sonnet-5 the attendance prompt is 2,381. Turkish letters
+    // tokenise DENSER than English, so the under-count widens.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(2_962);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(1_820);
   });
 });

@@ -769,7 +769,11 @@ const CASES: Case[] = [
   { id: "TR19", who: "Erdal", body: "cuma varım", history: HISTORY_TR, expect: "in for FRIDAY. OUT OF SCOPE (two-matches problem, §3 of the readiness doc). Recorded only so a change here is seen: before, IN at conf 0.55-0.6 in 6/10, wrote 2/10 to the soonest match" },
   { id: "TR20", who: "Wasim", body: "ben yokum", confirm: ["Wasim"], history: HISTORY_TR, expect: "I'm out. DROP Wasim (10/10 before)" },
   { id: "TR21", who: "Erdal", body: "Ali de geliyor", history: HISTORY_TR, expect: "relayed third-party IN: Ali is coming too. route other_att, claim other/in for 'Ali'. A write for Ali is acceptable (C8's rule); never one for Erdal" },
-  { id: "TR22", who: "Erdal", body: "Baki gelemiyor", confirm: ["Baki"], history: HISTORY_TR, expect: "third-party OUT: Baki can't come. route other_att, claim other/out for 'Baki'. Untagged, from a NON-admin: the contract holds it (K2), so the observable is the route and the claim, not a drop" },
+  // No `confirm` on TR22: the contract holds an untagged non-admin
+  // third-party OUT whether or not Baki holds a slot, so the target adds
+  // nothing, and `forceConfirmed` refuses when the live squad is 14/14
+  // (it was, on the evening of 2026-09-16).
+  { id: "TR22", who: "Erdal", body: "Baki gelemiyor", history: HISTORY_TR, expect: "third-party OUT: Baki can't come. route other_att, claim other/out for 'Baki'. Untagged, from a NON-admin: the contract holds it (K2), so the observable is the route and the claim, not a drop" },
   { id: "TR23", who: "Erdal", body: "kaç kişiyiz?", history: HISTORY_TR, expect: "how many are we? route question; untagged => SILENT (interaction contract). Must not be attendance" },
   { id: "TR24", who: "Erdal", body: "hadi be ya 😂😂", history: HISTORY_TR, expect: "banter (oh come on). route none, SILENT, no write" },
   { id: "TR25", who: "Erdal", body: "maybe", history: HISTORY_TR, expect: "ENGLISH CONTROL for the hedge: NO confirmed write, reasons say 'tentative (personal uncertainty)'. TR14-16 must match this" },

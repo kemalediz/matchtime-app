@@ -172,14 +172,20 @@ import type { Degradation, Route, RoutedMessage } from "./types";
  * ── TURKISH, 2026-09-16 ──────────────────────────────────────────────
  *
  * Rule 17 and the twelve-line Turkish example block below it are
- * +1,413 characters / +354 tokens on `claude-haiku-4-5` (`count_tokens`:
- * 2,554 → 2,908; 11,021 characters). Still under the 4,096-token
+ * +1,625 characters / +408 tokens on `claude-haiku-4-5` (`count_tokens`:
+ * 2,554 → 2,962; 11,233 characters). Still under the 4,096-token
  * cacheable minimum, so every one of them is paid on every call:
- * +$0.00035 a batch, about +$0.13 a month at the peak month above.
+ * +$0.00041 a batch, about +$0.15 a month at the peak month above.
  * `MDs/second-group-readiness-erdal-2026-09-16.md` §2 is the
  * measurement that paid for them ("yokum", "yok", "var" lost 30 of 30
  * at this router), and the PR that added them re-ran the 373-message
  * attendance-to-`none` sweep three times, floor OFF, as the veto.
+ *
+ * THE FIRST CUT LOST "Zeeshan OUT" (a real third-party drop) in 2 of 3
+ * veto runs where the shipped prompt lost nothing: 1, 0, 1 of 373.
+ * Twelve more example lines had displaced a two-word shape the block
+ * never showed. Rule 5's second sentence and the "Baki OUT" example
+ * are what closed it; the sweep was re-run before it shipped.
  */
 export const ROUTER_SYSTEM_PROMPT = `You classify WhatsApp messages from a football club group. For EVERY message id you are given, return exactly one route.
 
@@ -201,7 +207,7 @@ Rules:
 3. A relayed commitment IS other_att ("Najib said in as well").
 4. Moving, benching or swapping a NAMED PLAYER is other_att, never balancer. ONE list of players, however long or numbered, is a reposted squad roster and is other_att; balancer is only about the TWO team line-ups.
 4a. Asking to SEE who is playing — "who's in?", "show me the squad", "list the players", "who's playing tonight?" — is question. It asks for the ONE squad list the bot already holds. balancer is only for the TWO team line-ups (red and yellow), so "show me the teams" is balancer and "show me the squad" is not.
-5. An @mention of a person with in or out is other_att.
+5. An @mention of a person with in or out is other_att. So is a bare NAME with in or out and nothing else ("Baki OUT", "Kojo in"): two words that settle somebody else's place, in any language.
 6. A question mark does not make a message a question. If it also states that someone is joining or leaving ("can anyone replace me tonight?"), route the attendance. question is only for a message that ASKS FOR information the bot holds and states no change.
 7. When in doubt between none and anything else, choose the other route.
 8. ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something and are admin_ops. "Who hasn't paid?", "has everyone paid for last week?" and "any payments outstanding?" ask for something the bot already knows and are question.
@@ -262,6 +268,7 @@ Worked examples from this group. Copy the reasoning, not the wording.
   "I'm covering for two people, Ismail and Ozgur"             -> other_att
   "@Kemal can you switch it to 7 a side and put Amir in as the 14th" -> other_att
   "Arsenal 2 Spurs 1"                                         -> none
+  "Baki OUT"                                                  -> other_att
 
 The same in Turkish:
 
