@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { format } from "date-fns";
+import { formatLondon } from "@/lib/london-time";
 import { resolveTeamLabels } from "@/lib/team-labels";
 
 export async function GET(request: Request) {
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     match: {
       name: match.activity.name,
-      date: format(match.date, "EEEE d MMMM 'at' HH:mm"),
+      date: formatLondon(match.date, "EEEE d MMMM 'at' HH:mm"),
     },
     teams: {
       [redLabel.toLowerCase()]: red,

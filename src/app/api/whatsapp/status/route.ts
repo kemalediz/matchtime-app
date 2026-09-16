@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { format } from "date-fns";
+import { formatLondon } from "@/lib/london-time";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       id: nextMatch.id,
       name: nextMatch.activity.name,
       sport: nextMatch.activity.sport.name,
-      date: format(nextMatch.date, "EEEE d MMMM 'at' HH:mm"),
+      date: formatLondon(nextMatch.date, "EEEE d MMMM 'at' HH:mm"),
       venue: nextMatch.activity.venue,
       status: nextMatch.status,
       confirmed: confirmed.length,

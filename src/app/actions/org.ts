@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createOrgSchema } from "@/lib/validations";
 import { setCurrentOrgId } from "@/lib/org";
+import { isLang, LANGS } from "@/lib/i18n/lang";
 import { revalidatePath } from "next/cache";
 
 export async function createOrganisation(formData: { name: string; slug: string }) {
@@ -318,4 +319,33 @@ export async function setOrgTeamLabels(
   });
   revalidatePath("/admin/settings");
   return { teamLabels };
+}
+
+/**
+ * The language the bot speaks to this group in (`Organisation.language`,
+ * 2026-09-16). Validated against the languages the string table ships
+ * (`LANGS`); anything else is refused rather than stored, so the column
+ * can only ever hold a code `t()` resolves without falling back.
+ *
+ * Phase 0 of MDs/multi-language-design-2026-09-16.md: the setting round
+ * trips, and NO consumer changes its behaviour on it yet. Setting "tr"
+ * today changes nothing the group sees; the composers follow in Phase 2.
+ */
+export async function setOrgLanguage(orgId: string, language: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const { requireOrgAdmin } = await import("@/lib/org");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const code = language.trim().toLowerCase();
+  if (!isLang(code)) {
+    throw new Error(`Unsupported language: ${language} (one of ${LANGS.join(", ")})`);
+  }
+
+  await db.organisation.update({
+    where: { id: orgId },
+    data: { language: code },
+  });
+  revalidatePath("/admin/settings");
+  return { language: code };
 }

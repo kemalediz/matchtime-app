@@ -43,6 +43,7 @@ import { runPipeline, type PipelineMessage } from "@/lib/pipeline/run";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { totalPlayersFor } from "@/lib/format-switch";
 import type { SquadState } from "@/lib/pipeline/types";
+import { normaliseLang } from "@/lib/i18n/lang";
 import type { SimGroup } from "../sim/group";
 import type { AttStatus, CorpusCase, CorpusMessage, CorpusObservation } from "./grade";
 import type { CorpusMode, CorpusPipeline, PipelineContext } from "./pipeline";
@@ -239,9 +240,10 @@ export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
     paymentTrackingEnabled: boolean;
     featureStatsQa: boolean;
     featureReminders: boolean;
+    language: string;
   }>(
     `SELECT "teamLabels", "featureAttendance", "paymentTrackingEnabled", "featureStatsQa",
-            "featureReminders"
+            "featureReminders", "language"
        FROM "Organisation" WHERE id = $1`,
     [grp.orgId],
   );
@@ -385,6 +387,7 @@ export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
       // here would let the corpus exercise a feature production has off.
       statsQa: org?.featureStatsQa ?? false,
       reminders: org?.featureReminders ?? false,
+      language: normaliseLang(org?.language),
     },
     smallerFormats: formats
       .map((f) => ({ sportName: f.name, totalPlayers: totalPlayersFor(f.playersPerTeam) }))

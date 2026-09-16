@@ -216,6 +216,28 @@ model Organisation {
   /// org admin on /admin/settings.
   teamLabels String[] @default([])
 
+  /// ─── The language this group is spoken to in (2026-09-16) ──────
+  /// Lowercase ISO 639-1 code: "en" (default) or "tr". Read through
+  /// `getOrgFeatures()` (src/lib/org-features.ts) and carried on
+  /// `SquadState.features.language`, so every composer will have it
+  /// with no extra query. Anything the code does not recognise is
+  /// normalised to "en" by `normaliseLang` (src/lib/i18n/lang.ts), so a
+  /// bad value can never produce a blank message.
+  ///
+  /// Per ORG, not per group or per player: an org has exactly one
+  /// WhatsApp group (`whatsappGroupId`) and every scheduler job, DM and
+  /// composer is already keyed on the org. A bilingual player in a
+  /// Turkish group gets Turkish.
+  ///
+  /// Locale only, never timezone: every club plays in London and
+  /// `src/lib/london-time.ts` stays hardcoded to Europe/London.
+  ///
+  /// Phase 0 of MDs/multi-language-design-2026-09-16.md: the column
+  /// exists and is plumbed, and NO consumer changes its behaviour on it
+  /// yet. Sutton FC reads "en" by the default and every English string
+  /// is pinned byte for byte by src/lib/i18n/__tests__/copy-golden.test.ts.
+  language String @default("en")
+
   /// ─── Per-feature module flags ───────────────────────────────────
   /// Each toggles one bot capability independently so a group can run
   /// only the bits it wants (Amir's Thursday group: MoM + rating

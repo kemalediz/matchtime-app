@@ -177,7 +177,13 @@ export function displaysSquadState(text: string): boolean {
 
 type ClaimedStatus = "CONFIRMED" | "BENCH" | "DROPPED";
 
-const CLAIM_NAME = "([A-Z][\\p{L}'-]+)";
+/** A capitalised word followed by letters: the thing a move claim names.
+ *  `\p{Lu}`, not `[A-Z]` (fixed 2026-09-16): the patterns below run
+ *  with the `i` flag, so `[A-Z]` matched any ASCII letter but never Ç,
+ *  Ğ, İ, Ö, Ş or Ü. "Çağrı goes on the bench" captured "ağrı", which
+ *  matches nobody, and the guard was blind to the sentence. Pinned in
+ *  `__tests__/unicode-names.test.ts`; ASCII verdicts are unchanged. */
+const CLAIM_NAME = "(\\p{Lu}[\\p{L}'-]+)";
 const TO_BENCH = "(?:on|onto|to)?\\s*(?:the\\s+)?bench";
 
 /**

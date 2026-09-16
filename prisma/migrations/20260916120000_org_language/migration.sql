@@ -1,0 +1,40 @@
+-- Organisation."language": the language the bot speaks to this group in (2026-09-16).
+--
+-- WHY THIS COLUMN EXISTS
+-- ----------------------
+-- MatchTime's second club (Erdal's group) speaks Turkish. Every one of
+-- the bot's ~185 outbound templates is an English literal in TypeScript,
+-- and nothing in the schema says which language a group expects. This
+-- is Phase 0 of MDs/multi-language-design-2026-09-16.md: the column,
+-- plumbed through `getOrgFeatures()` onto `SquadState.features`, with
+-- NO consumer changing its behaviour on it yet. The string table and
+-- the composers follow in later phases, one composer at a time, with
+-- the English bytes pinned by a snapshot test.
+--
+-- Per organisation, not per player: an org has one WhatsApp group and
+-- every scheduler job, DM and composer is already keyed on the org.
+-- Locale only: timezone stays Europe/London for every club.
+--
+-- WHAT APPLYING THIS DOES TO A LIVE DATABASE
+-- ------------------------------------------
+-- Strictly additive, and a no-op for every existing row: one
+-- ADD COLUMN "language" TEXT NOT NULL DEFAULT 'en'. Sutton FC reads
+-- back "en" and behaves exactly as it does today. The DB-level default
+-- matters (not only the Prisma default): three e2e fixtures insert
+-- "Organisation" rows with raw SQL and never name this column.
+--
+-- No index: "Organisation" holds single-digit rows.
+--
+-- It does NOT: backfill anything, drop or rename anything, or change
+-- the behaviour of any query that does not name the new column.
+--
+-- Rolling back is `ALTER TABLE "Organisation" DROP COLUMN "language"`,
+-- with no data loss outside the new column.
+--
+-- NOTE ON APPLYING: this repo manages schema with `prisma db push`
+-- (there is no full migration history; see the prior migrations). This
+-- file is the canonical, reviewable DDL. `prisma db push` produces an
+-- identical result here.
+
+-- AlterTable
+ALTER TABLE "Organisation" ADD COLUMN "language" TEXT NOT NULL DEFAULT 'en';

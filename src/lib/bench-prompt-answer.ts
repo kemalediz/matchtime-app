@@ -89,6 +89,17 @@ const NO_EMOJI = /[\u{1F44E}\u{274C}\u{1F645}\u{1F6AB}]/gu;
  * Lowercase, strip accents, drop apostrophes ("i'm" → "im", "can't" →
  * "cant"), drop emoji and stray punctuation, collapse whitespace, then
  * drop a leading bot tag. Mirrors `normalise` in lib/dm-self-attendance.
+ *
+ * Keeps every LETTER and DIGIT (`\p{L}\p{N}`), not only `[a-z0-9]`
+ * (fixed 2026-09-16). The NFD fold above only removes the diacritics
+ * that decompose; the dotless ı, and any letter with no decomposition,
+ * used to be deleted outright, so "hayır" reached the word lists as
+ * "hay r" and a Turkish player's name was mangled. ASCII input is
+ * normalised byte for byte as before (pinned in
+ * `__tests__/unicode-names.test.ts`). The word lists themselves are
+ * still English; Phase 3b of the multi-language design adds Turkish.
+ *
+ * Exported as `normaliseBenchAnswerText` for that test only.
  */
 function normalise(text: string): string {
   return (text ?? "")
@@ -98,7 +109,7 @@ function normalise(text: string): string {
     .replace(/[‘’'`´]/g, "")
     .replace(/\p{Extended_Pictographic}/gu, " ")
     .replace(/[‍️⃣⁠​]/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     // A leading "@Match Time" / "@MatchTime" / "@MT" is allowed but not
@@ -106,6 +117,9 @@ function normalise(text: string): string {
     .replace(/^(?:match\s*time|matchtime|mt)\s+/, "")
     .trim();
 }
+
+/** Test-only surface for the normaliser above. */
+export const normaliseBenchAnswerText = normalise;
 
 /** Courtesy / address words that may appear on EITHER side of the answer
  *  without changing it. Deliberately a closed list of words that carry no

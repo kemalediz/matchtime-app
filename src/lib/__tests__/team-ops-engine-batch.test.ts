@@ -79,6 +79,7 @@ const FEATURES_ON: OrgFeatures = {
   paymentTracking: false,
   paymentCollection: false,
   squadFromList: false,
+  language: "en",
 };
 
 /** A model that answers from a table keyed on the message body, and

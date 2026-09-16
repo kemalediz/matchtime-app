@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
+import { normaliseLang } from "@/lib/i18n/lang";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -55,6 +56,9 @@ export async function GET() {
     // "use the defaults") + the defaults themselves for placeholders.
     teamLabels: org.teamLabels,
     defaultTeamLabels,
+    // The language the bot speaks to this group in (Phase 0 of the
+    // multi-language design: read-and-round-trip only, no consumer yet).
+    language: normaliseLang(org.language),
     features: {
       attendance: org.featureAttendance,
       bench: org.featureBench,

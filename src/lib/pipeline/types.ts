@@ -29,6 +29,9 @@ import type { PaymentSnapshot } from "./payment-answer";
 // half of `rating-progress.ts`, split out on 2026-09-11 so the composer
 // can render this answer. See `SquadState.ratingProgress`.
 import type { RatingProgress } from "../rating-progress-answer";
+// Same rule again: `i18n/lang.ts` is client-safe and Prisma-free by
+// design (the admin settings page imports it). See `SquadState.features`.
+import type { Lang } from "../i18n/lang";
 
 export type { PaymentSnapshot, RatingProgress };
 
@@ -588,6 +591,12 @@ export interface SquadState {
      *  onto. A MoM-and-ratings-only org has it off, and MatchTime must
      *  not queue a reminder DM for one. */
     reminders: boolean;
+    /** The language this group is spoken to in (`Organisation.language`,
+     *  2026-09-16), carried from `getOrgFeatures` by the loader so the
+     *  composer has it with no extra query. Phase 0: NO consumer reads
+     *  it yet; `compose()` will take `t(state.features.language)` in
+     *  Phase 2. See MDs/multi-language-design-2026-09-16.md. */
+    language: Lang;
   };
   /** Smaller formats the org has configured, for the options answer.
    *  Totals across both teams (`playersPerTeam * 2`). */
