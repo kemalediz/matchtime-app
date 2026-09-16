@@ -14,6 +14,8 @@
  * match lifetime.
  */
 import { db } from "./db";
+import { getOrgFeatures } from "./org-features";
+import { buildSquadCompleteBenchInvite } from "./bench-offer-copy";
 
 export async function announceSquadFullIfJustFilled(
   matchId: string,
@@ -69,13 +71,27 @@ export async function announceSquadFullIfJustFilled(
           .join("\n")}`
       : "";
 
+  // Keep the INs flowing once the squad is full (Kemal 2026-09-16: "When
+  // squad complete, MT should just show the squad and ask for benchers").
+  // Only with the bench feature on: without it the scheduler never posts
+  // the bench tag, so the promise would be false. Same message, never a
+  // second post. A failed lookup means no invite, not no post: the claim
+  // above is already taken and nothing retries this announcement.
+  const benchOn = await getOrgFeatures(m.activity.orgId)
+    .then((f) => f.bench)
+    .catch((err) => {
+      console.error("[squad-announce] feature lookup failed, posting without bench invite:", err);
+      return false;
+    });
+  const benchInvite = benchOn ? `\n\n${buildSquadCompleteBenchInvite()}` : "";
+
   await db.botJob.create({
     data: {
       orgId: m.activity.orgId,
       kind: "group",
       text:
         `✅ *Squad complete — ${m.maxPlayers}/${m.maxPlayers}* for *${m.activity.name}* on ${kickoffLondon} 🙌\n\n` +
-        `*Playing:*\n${roster}${benchBlock}\n\nSee you all there ⚽`,
+        `*Playing:*\n${roster}${benchBlock}\n\nSee you all there ⚽${benchInvite}`,
     },
   });
 }
