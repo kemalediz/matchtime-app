@@ -1048,4 +1048,71 @@ export const en = {
       ``,
       `Whatever you pick stays between you and the group admin. No drama 🙏`,
     ].join("\n"),
+  // ── the legacy "@Match Time setup" flow (Phase 3c) ──
+  // Group-facing, so the Turkish is in the group's plural register.
+
+  onb_legacy_intro:
+    `👋 *Hey, I'm MatchTime* — the automatic organiser for your football group. ` +
+    `I take the weekly admin off your hands so you can just turn up and play.\n\n` +
+    `Here's what I do:\n` +
+    `⚽ *Attendance* — players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
+    `⚖️ *Fair teams* — auto-balanced sides every week from real player ratings\n` +
+    `🪑 *Smart bench* — squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
+    `🏆 *Man of the Match & ratings* — a quick post-match vote and a one-tap rating link, no app to install\n` +
+    `⏰ *Reminders & stats* — "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
+    `No spreadsheets, no chasing, no admin headaches. ⚡\n\n` +
+    `Let's get you set up — takes about a minute:`,
+
+  /** The seven setup questions; `groupName` is only printed by "side". */
+  onb_legacy_question: (p: {
+    field: "name" | "side" | "day" | "time" | "venue" | "recurrence" | "date";
+    groupName: string;
+  }): string =>
+    ({
+      name: "👋 Let's get MatchTime set up for this group! First — what should I call your club/group? (e.g. *Thursday Ballers*)",
+      side: `Great, *${p.groupName}* it is. How many players per side? (e.g. *7* for 7-a-side, *5* for 5-a-side)`,
+      day: "Which *day of the week* do you usually play? (e.g. Thursday)",
+      time: "What *kickoff time*? (e.g. 9:30pm)",
+      venue: "Where do you play — the *venue* name?",
+      recurrence: "Is this a *weekly* fixture or a *one-off* match?",
+      date: "What *date* is the one-off match? (e.g. 2026-05-28)",
+    })[p.field],
+
+  /** The numbered feature menu under a lead line. */
+  onb_legacy_menu: (p: { lead: string; items: Array<{ label: string; blurb: string }> }): string => {
+    const lines = p.items.map((f, i) => `${i + 1}. *${f.label}* — ${f.blurb}`);
+    return (
+      `${p.lead}:\n\n${lines.join("\n")}\n\n` +
+      `Reply with the ones you want — e.g. "Man of the Match and player ratings", ` +
+      `"everything", or "all except payments".`
+    );
+  },
+
+  /** A feature's one-line description in the menu. */
+  onb_legacy_feature_blurb: (p: { key: string; englishBlurb: string }): string => p.englishBlurb,
+
+  onb_legacy_menu_retry_lead: "I didn't catch which ones — reply with the features you want",
+
+  onb_legacy_provisioned_lead: (p: {
+    groupName: string;
+    playersPerTeam: number;
+    dayName: string;
+    kickoffTime: string | null;
+    venue: string | null;
+  }): string =>
+    `Nice — *${p.groupName}* is set up for *${p.playersPerTeam}-a-side* on *${p.dayName}s ${p.kickoffTime}* at *${p.venue}*.\n\nLast step: which features do you want? Here's everything I can do`,
+
+  /** The legacy flow's "All set" post. */
+  onb_legacy_completion: (p: {
+    onLabels: string[];
+    dayName: string;
+    kickoffTime: string | null;
+    venue: string | null;
+    weekly: boolean;
+    howToUseMe: string;
+  }): string =>
+    `✅ *All set!* I'm now running for this group with: *${p.onLabels.join(", ")}*.\n\n` +
+    `First match: *${p.dayName} ${p.kickoffTime}* at *${p.venue}*` +
+    `${p.weekly ? " (every week)" : ""}.\n\n` +
+    `*How to use me* 👇\n${p.howToUseMe}`,
 };

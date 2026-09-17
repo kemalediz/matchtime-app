@@ -1413,38 +1413,38 @@ Whoever runs this group can claim the admin page any time at matchtime.ai. Every
 Type *"@Match Time help"* any time to see this again.
 
 ### R140 buildLegacyCompletionPost / weekly
-✅ *All set!* I'm now running for this group with: *Attendance tracking, Bench management, Team generation, Man of the Match, Player ratings, Personal reminders*.
+✅ *Hazırız!* Bu grup için şu özelliklerle çalışıyorum: *Yoklama, Yedek listesi, Takım kurma, Maçın adamı, Oyuncu puanları, Hatırlatmalar*.
 
-First match: *Tuesday 21:00* at *Goals Wembley* (every week).
+İlk maç: *Salı 21:00*, yer: *Goals Wembley* (her hafta).
 
-*How to use me* 👇
-✅ Say *"In"* or *"Out"* to mark your own availability — no need to tag me.
-🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • see who's in / how many we've got
-   • make / show the teams
-   • who won last week? / past stats
-🤐 I stay quiet the rest of the time — banter and jokes are safe, I won't butt in.
-🏆 After the game I'll run a quick *Man of the Match* vote.
-⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Say *"@Match Time remind me Thursday"* and I'll nudge you.
+*Beni nasıl kullanırsınız* 👇
+✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, beni etiketlemenize gerek yok.
+🤔 Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce size özelden sorarım.
+💬 Bir şey yapmamı veya söylememi istediğinizde *@Match Time* etiketleyin:
+   • kim var / kaç kişiyiz
+   • takımları kur / takımları göster
+   • geçen hafta kim kazandı? / eski istatistikler
+🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.
+🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.
+⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.
+⏰ Maçtan önce kadroya hatırlatma gönderirim.
 
-Type *"@Match Time help"* any time to see this again.
+Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
 
 ### R140 buildLegacyCompletionPost / one-off, MoM and ratings only
-✅ *All set!* I'm now running for this group with: *Man of the Match, Player ratings*.
+✅ *Hazırız!* Bu grup için şu özelliklerle çalışıyorum: *Maçın adamı, Oyuncu puanları*.
 
-First match: *Tuesday 21:00* at *Goals Wembley*.
+İlk maç: *Salı 21:00*, yer: *Goals Wembley*.
 
-*How to use me* 👇
-📋 Paste your squad list and I'll read who's playing — no need to tag me.
-💬 Tag *@Match Time* when you want me to do or tell you something:
-   • who won last week? / past stats
-🤐 I stay quiet the rest of the time — banter and jokes are safe, I won't butt in.
-🏆 After the game I'll run a quick *Man of the Match* vote.
-⭐ I'll DM you a one-tap *rating* link after the match.
+*Beni nasıl kullanırsınız* 👇
+📋 Kadro listesini yapıştırın, kimin oynadığını okurum, beni etiketlemenize gerek yok.
+💬 Bir şey yapmamı veya söylememi istediğinizde *@Match Time* etiketleyin:
+   • geçen hafta kim kazandı? / eski istatistikler
+🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.
+🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.
+⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.
 
-Type *"@Match Time help"* any time to see this again.
+Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
 
 ### R118 buildAdminMagicLinkDm / no payments
 👋 You're the admin of *Tuesday Ballers FC* on MatchTime.
@@ -1803,74 +1803,74 @@ https://mt.example/s/stats
 Link 48 saat geçerli.
 
 ### R136 buildLegacySetupIntro
-👋 *Hey, I'm MatchTime* — the automatic organiser for your football group. I take the weekly admin off your hands so you can just turn up and play.
+👋 Merhaba, ben *MatchTime*, futbol grubunuzun otomatik organizatörü. Haftalık işleri ben üstlenirim, siz sadece gelip oynarsınız.
 
-Here's what I do:
-⚽ *Attendance* — players just say "in" or "out" right here; I keep the squad list live and chase the stragglers
-⚖️ *Fair teams* — auto-balanced sides every week from real player ratings
-🪑 *Smart bench* — squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep
-🏆 *Man of the Match & ratings* — a quick post-match vote and a one-tap rating link, no app to install
-⏰ *Reminders & stats* — "@MatchTime remind me Thursday", or ask me "who got MoM last week?"
+Neler yaparım:
+⚽ *Katılım*, oyuncular buraya "varım" ya da "yokum" yazar; kadro listesini güncel tutarım, eksik kalınca hatırlatırım
+⚖️ *Dengeli takımlar*, gerçek oyuncu puanlarına göre her hafta dengeli iki takım
+🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri bütün yedeklere sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez
+🏆 *Maçın adamı ve puanlar*, maçtan sonra kısa bir oylama ve tek dokunuşla puanlama linki, uygulama indirmeye gerek yok
+⏰ *Hatırlatmalar ve istatistikler*, maçtan önce herkese hatırlatırım, "geçen hafta maçın adamı kim oldu?" gibi sorulara cevap veririm
 
-No spreadsheets, no chasing, no admin headaches. ⚡
+Tablo yok, kovalamaca yok, organizasyon derdi yok. ⚡
 
-Let's get you set up — takes about a minute:
+Hadi kuralım, yaklaşık bir dakika sürer:
 
 ### R137 legacyEventQuestion / name
-👋 Let's get MatchTime set up for this group! First — what should I call your club/group? (e.g. *Thursday Ballers*)
+👋 MatchTime'ı bu grup için kuralım! Önce şu: kulübünüzün ya da grubunuzun adı ne olsun? (örn. *Cuma Futbolu*)
 
 ### R137 legacyEventQuestion / players per side
-Great, *Tuesday Ballers FC* it is. How many players per side? (e.g. *7* for 7-a-side, *5* for 5-a-side)
+Tamam, adımız *Tuesday Ballers FC*. Takım başına kaç oyuncu oynuyor? (örn. 7'ye 7 için *7*, 5'e 5 için *5*)
 
 ### R137 legacyEventQuestion / day
-Which *day of the week* do you usually play? (e.g. Thursday)
+Genelde haftanın hangi *günü* oynuyorsunuz? (örn. Cuma)
 
 ### R137 legacyEventQuestion / time
-What *kickoff time*? (e.g. 9:30pm)
+Maç *saat kaçta* başlıyor? (örn. 21:30)
 
 ### R137 legacyEventQuestion / venue
-Where do you play — the *venue* name?
+Nerede oynuyorsunuz? *Saha* adını yazın.
 
 ### R137 legacyEventQuestion / recurrence
-Is this a *weekly* fixture or a *one-off* match?
+Bu *her hafta* oynanan bir maç mı, yoksa *tek seferlik* mi?
 
 ### R137 legacyEventQuestion / one-off date
-What *date* is the one-off match? (e.g. 2026-05-28)
+Tek seferlik maç *hangi tarihte*? (örn. 2026-05-28)
 
 ### R139 buildLegacyFeatureMenu / provisioned
-Nice — *Tuesday Ballers FC* is set up for *7-a-side* on *Tuesdays 21:00* at *Goals Wembley*.
+Süper, *Tuesday Ballers FC* hazır: takım başına *7* oyuncu, *her Salı 21:00*, yer: *Goals Wembley*.
 
-Last step: which features do you want? Here's everything I can do:
+Son adım: hangi özellikleri istiyorsunuz? Yapabildiklerimin hepsi burada:
 
-1. *Attendance tracking* — Reads IN/OUT messages, keeps the squad list, chases when short.
-2. *Bench management* — Standby list; when someone drops, asks the next bencher to step up.
-3. *Team generation* — Builds two balanced teams on request.
-4. *Man of the Match* — Posts the MoM vote after the match and announces the winner.
-5. *Player ratings* — DMs each player a quick post-match rating link.
-6. *Personal reminders* — "@MatchTime remind me Monday" — bot DMs you later.
-7. *Stats answers* — Answers history questions (top attenders, past MoMs, scores).
-8. *Payment tracking* — Tracks who has paid and chases the unpaid (opt-in).
-9. *Collect match fees (Stripe)* — After each match, DM each player a link to pay. Needs a connected bank (below).
-10. *  ↳ Pay by Bank* — Cheapest method (~10p). The recommended default.
-11. *  ↳ Card / Apple Pay* — Card payments (~35p on £10).
-12. *  ↳ Pay organiser directly* — Cash/transfer; the money collector confirms receipt. No fee.
+1. *Yoklama*: VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.
+2. *Yedek listesi*: Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.
+3. *Takım kurma*: İstenince dengeli iki takım kurar.
+4. *Maçın adamı*: Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.
+5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
+6. *Hatırlatmalar*: İstenen gün oyuncuya özelden hatırlatma yazar.
+7. *İstatistik cevapları*: Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).
+8. *Ödeme takibi*: Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).
+9. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
+10. *Banka ile ödeme*: En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.
+11. *Kart ile ödeme*: Kartla ödeme (£10 için yaklaşık 35p).
+12. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
 
-Reply with the ones you want — e.g. "Man of the Match and player ratings", "everything", or "all except payments".
+İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". Numaralarını da yazabilirsiniz: "1, 3 ve 4".
 
 ### R139 buildLegacyFeatureMenu / retry
-I didn't catch which ones — reply with the features you want:
+Hangilerini seçtiğinizi anlayamadım, istediğiniz özellikleri yazın:
 
-1. *Attendance tracking* — Reads IN/OUT messages, keeps the squad list, chases when short.
-2. *Bench management* — Standby list; when someone drops, asks the next bencher to step up.
-3. *Team generation* — Builds two balanced teams on request.
-4. *Man of the Match* — Posts the MoM vote after the match and announces the winner.
-5. *Player ratings* — DMs each player a quick post-match rating link.
-6. *Personal reminders* — "@MatchTime remind me Monday" — bot DMs you later.
-7. *Stats answers* — Answers history questions (top attenders, past MoMs, scores).
-8. *Payment tracking* — Tracks who has paid and chases the unpaid (opt-in).
-9. *Collect match fees (Stripe)* — After each match, DM each player a link to pay. Needs a connected bank (below).
-10. *  ↳ Pay by Bank* — Cheapest method (~10p). The recommended default.
-11. *  ↳ Card / Apple Pay* — Card payments (~35p on £10).
-12. *  ↳ Pay organiser directly* — Cash/transfer; the money collector confirms receipt. No fee.
+1. *Yoklama*: VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.
+2. *Yedek listesi*: Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.
+3. *Takım kurma*: İstenince dengeli iki takım kurar.
+4. *Maçın adamı*: Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.
+5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
+6. *Hatırlatmalar*: İstenen gün oyuncuya özelden hatırlatma yazar.
+7. *İstatistik cevapları*: Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).
+8. *Ödeme takibi*: Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).
+9. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
+10. *Banka ile ödeme*: En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.
+11. *Kart ile ödeme*: Kartla ödeme (£10 için yaklaşık 35p).
+12. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
 
-Reply with the ones you want — e.g. "Man of the Match and player ratings", "everything", or "all except payments".
+İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". Numaralarını da yazabilirsiniz: "1, 3 ve 4".

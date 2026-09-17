@@ -61,7 +61,7 @@ import {
 import { findExistingOrgMember } from "./resolve-player";
 import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
-import { langOfConsentReply } from "./i18n/detect";
+import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -132,8 +132,6 @@ export interface OnboardingTurnResult {
   completed: boolean;
 }
 
-const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
 /**
  * Self-introduction the bot leads with the very first time it speaks in
  * a brand-new group (the opening onboarding turn). It sells the core
@@ -141,26 +139,28 @@ const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "
  * setup Q&A. Feature-agnostic on purpose — at this point no org/feature
  * choice exists yet; the post-setup `botIntroMessage` is the
  * feature-accurate one. Kept tight: long enough to be compelling, short
- * enough that nobody scrolls past it.
+ * enough that nobody scrolls past it. In the session's language (the
+ * words live in `i18n/strings.<lang>.ts`, `onb_legacy_intro`).
  */
-export function buildLegacySetupIntro(): string {
-  return LEGACY_INTRO;
+export function buildLegacySetupIntro(lang: Lang | string = "en"): string {
+  return t(lang).onb_legacy_intro;
 }
 
-const LEGACY_INTRO =
-  `👋 *Hey, I'm MatchTime* — the automatic organiser for your football group. ` +
-  `I take the weekly admin off your hands so you can just turn up and play.\n\n` +
-  `Here's what I do:\n` +
-  `⚽ *Attendance* — players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
-  `⚖️ *Fair teams* — auto-balanced sides every week from real player ratings\n` +
-  `🪑 *Smart bench* — squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
-  `🏆 *Man of the Match & ratings* — a quick post-match vote and a one-tap rating link, no app to install\n` +
-  `⏰ *Reminders & stats* — "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
-  `No spreadsheets, no chasing, no admin headaches. ⚡\n\n` +
-  `Let's get you set up — takes about a minute:`;
+/**
+ * The language a LEGACY "@Match Time setup" session speaks, decided when
+ * the trigger creates it (Phase 3c). A Turkish trigger word ("kurulum",
+ * "kuralım") is the strongest signal there is; otherwise the batch that
+ * carried the trigger is scored the way the group-add flow scores a new
+ * group's history. English when nothing points elsewhere, which is what
+ * every legacy session was before this.
+ */
+export function legacySetupLang(bodies: string[]): Lang {
+  if (bodies.some((b) => /(?<!\p{L})(?:kurulum|kural[ıi]m)(?!\p{L})/iu.test(b ?? ""))) return "tr";
+  return detectGroupLang({ subject: null, history: bodies }).lang;
+}
 
-function withIntro(question: string): string {
-  return `${buildLegacySetupIntro()}\n\n${question}`;
+function withIntro(question: string, lang: Lang | string): string {
+  return `${buildLegacySetupIntro(lang)}\n\n${question}`;
 }
 
 /**
@@ -458,6 +458,7 @@ Rules:
 - Extract only what is EXPLICITLY stated across the messages. Unknown → null. Never guess a venue or time.
 - Multiple messages may each contribute different fields; merge them.
 - "tuesdays" → dayOfWeek 2. "every week" → recurrence "weekly". "just this once" / a single date → "oneoff".
+- A Turkish feature pick maps the same way: "hepsi" / "her şey" → all eight keys; "ödeme hariç hepsi" → all except paymentTracking; "maçın adamı" → momVoting; "puan" / "puanlama" / "oyuncu puanları" → playerRating; "katılım" / "yoklama" / "kadro" → attendance; "yedek" → bench; "takım" / "takımlar" → teamBalancing; "hatırlatma" → reminders; "istatistik" → statsQa; "ödeme" → paymentTracking.
 - Messages may be in TURKISH. Read them the same way: "cuma" / "cumaları" → dayOfWeek 5, "salı" → 2, "akşam 9 buçukta" → "21:30", "saat 21:30" → "21:30", "7'ye 7" → playersPerSide 7, "her hafta" → "weekly", "tek seferlik" → "oneoff", "Sim Arena'da" → venue "Sim Arena" (drop the case suffix). The JSON keys and values stay exactly as specified.
 - Be conservative: confidence < 0.5 if it's chit-chat with no concrete answer.`;
 
@@ -541,6 +542,9 @@ export async function handleOnboardingTurn(
     !session.groupName;
 
   const lastWaId = messages[messages.length - 1].waMessageId;
+  // The language this session speaks (set when it was created, from the
+  // trigger or the group-add detection). Every legacy-flow reply uses it.
+  const sessionLang = normaliseLang(session.language);
 
   // ── Stage: introduced (group-add flow) ───────────────────────────
   // The bot has posted its add-time intro and is waiting for a
@@ -849,12 +853,12 @@ export async function handleOnboardingTurn(
 
     // Deterministic: ask for the first still-missing field.
     const ask = nextEventQuestion(merged);
-    if (ask) return { reply: isOpening ? withIntro(ask) : ask, completed: false };
+    if (ask) return { reply: isOpening ? withIntro(ask, sessionLang) : ask, completed: false };
 
     // All event fields gathered → provision the Organisation + Sport,
     // move to the feature menu.
     const reply = await provisionOrgAndAskFeatures(merged);
-    return { reply: isOpening ? withIntro(reply) : reply, completed: false };
+    return { reply: isOpening ? withIntro(reply, sessionLang) : reply, completed: false };
   }
 
   // ── Stage: feature menu ──────────────────────────────────────────
@@ -882,7 +886,7 @@ export async function handleOnboardingTurn(
         data: { lastHandledWaId: messages[messages.length - 1].waMessageId },
       });
       return {
-        reply: featureMenuText(legacyMenuRetryLead()),
+        reply: featureMenuText(legacyMenuRetryLead(sessionLang), sessionLang),
         completed: false,
       };
     }
@@ -909,33 +913,32 @@ export async function handleOnboardingTurn(
 }
 
 function nextEventQuestion(s: Session): string | null {
-  return legacyEventQuestion(s);
+  return legacyEventQuestion(s, normaliseLang(s.language));
 }
 
 /** The legacy flow's seven setup questions, in order: the first field
  *  still missing decides which one is asked. Null when all are known. */
-export function legacyEventQuestion(s: {
-  groupName?: string | null;
-  playersPerSide?: number | null;
-  dayOfWeek?: number | null;
-  kickoffTime?: string | null;
-  venue?: string | null;
-  recurrence?: string | null;
-  oneOffDate?: string | null;
-}): string | null {
-  if (!s.groupName)
-    return "👋 Let's get MatchTime set up for this group! First — what should I call your club/group? (e.g. *Thursday Ballers*)";
-  if (!s.playersPerSide)
-    return `Great, *${s.groupName}* it is. How many players per side? (e.g. *7* for 7-a-side, *5* for 5-a-side)`;
-  if (s.dayOfWeek == null)
-    return "Which *day of the week* do you usually play? (e.g. Thursday)";
-  if (!s.kickoffTime)
-    return "What *kickoff time*? (e.g. 9:30pm)";
-  if (!s.venue) return "Where do you play — the *venue* name?";
-  if (!s.recurrence)
-    return "Is this a *weekly* fixture or a *one-off* match?";
-  if (s.recurrence === "oneoff" && !s.oneOffDate)
-    return "What *date* is the one-off match? (e.g. 2026-05-28)";
+export function legacyEventQuestion(
+  s: {
+    groupName?: string | null;
+    playersPerSide?: number | null;
+    dayOfWeek?: number | null;
+    kickoffTime?: string | null;
+    venue?: string | null;
+    recurrence?: string | null;
+    oneOffDate?: string | null;
+  },
+  lang: Lang | string = "en",
+): string | null {
+  const q = (field: "name" | "side" | "day" | "time" | "venue" | "recurrence" | "date") =>
+    t(lang).onb_legacy_question({ field, groupName: s.groupName ?? "" });
+  if (!s.groupName) return q("name");
+  if (!s.playersPerSide) return q("side");
+  if (s.dayOfWeek == null) return q("day");
+  if (!s.kickoffTime) return q("time");
+  if (!s.venue) return q("venue");
+  if (!s.recurrence) return q("recurrence");
+  if (s.recurrence === "oneoff" && !s.oneOffDate) return q("date");
   return null;
 }
 
@@ -954,34 +957,46 @@ function slugify(s: string): string {
   );
 }
 
-function featureMenuText(lead: string): string {
-  return buildLegacyFeatureMenu(lead);
+function featureMenuText(lead: string, lang: Lang | string = "en"): string {
+  return buildLegacyFeatureMenu(lead, lang);
 }
 
 /** The legacy flow's numbered feature menu under a lead line. */
-export function buildLegacyFeatureMenu(lead: string): string {
-  const lines = FEATURE_META.map((f, i) => `${i + 1}. *${f.label}* — ${f.blurb}`);
-  return (
-    `${lead}:\n\n${lines.join("\n")}\n\n` +
-    `Reply with the ones you want — e.g. "Man of the Match and player ratings", ` +
-    `"everything", or "all except payments".`
-  );
+export function buildLegacyFeatureMenu(lead: string, lang: Lang | string = "en"): string {
+  const s = t(lang);
+  return s.onb_legacy_menu({
+    lead,
+    items: FEATURE_META.map((f) => ({
+      label: s.onbFeatureLabel({ key: f.key, englishLabel: f.label }),
+      blurb: s.onb_legacy_feature_blurb({ key: f.key, englishBlurb: f.blurb }),
+    })),
+  });
 }
 
 /** The lead when the feature pick could not be read. */
-export function legacyMenuRetryLead(): string {
-  return "I didn't catch which ones — reply with the features you want";
+export function legacyMenuRetryLead(lang: Lang | string = "en"): string {
+  return t(lang).onb_legacy_menu_retry_lead;
 }
 
 /** The lead above the menu once the club is provisioned. */
-export function buildLegacyProvisionedLead(p: {
-  groupName: string;
-  playersPerTeam: number;
-  dayOfWeek: number;
-  kickoffTime: string | null;
-  venue: string | null;
-}): string {
-  return `Nice — *${p.groupName}* is set up for *${p.playersPerTeam}-a-side* on *${DOW[p.dayOfWeek]}s ${p.kickoffTime}* at *${p.venue}*.\n\nLast step: which features do you want? Here's everything I can do`;
+export function buildLegacyProvisionedLead(
+  p: {
+    groupName: string;
+    playersPerTeam: number;
+    dayOfWeek: number;
+    kickoffTime: string | null;
+    venue: string | null;
+  },
+  lang: Lang | string = "en",
+): string {
+  const s = t(lang);
+  return s.onb_legacy_provisioned_lead({
+    groupName: p.groupName,
+    playersPerTeam: p.playersPerTeam,
+    dayName: s.onbDayName({ dow: p.dayOfWeek }),
+    kickoffTime: p.kickoffTime,
+    venue: p.venue,
+  });
 }
 
 /** Create the Organisation + Sport for a gathered session and stamp
@@ -1042,14 +1057,19 @@ async function provisionOrgAndAskFeatures(s: Session): Promise<string> {
   });
   const name = (s.groupName || "New Club").trim();
   const preset = presetForSide(s.playersPerSide ?? 7);
+  const lang = normaliseLang(s.language);
   return featureMenuText(
-    buildLegacyProvisionedLead({
-      groupName: name,
-      playersPerTeam: preset.playersPerTeam,
-      dayOfWeek: s.dayOfWeek ?? 0,
-      kickoffTime: s.kickoffTime ?? null,
-      venue: s.venue ?? null,
-    }),
+    buildLegacyProvisionedLead(
+      {
+        groupName: name,
+        playersPerTeam: preset.playersPerTeam,
+        dayOfWeek: s.dayOfWeek ?? 0,
+        kickoffTime: s.kickoffTime ?? null,
+        venue: s.venue ?? null,
+      },
+      lang,
+    ),
+    lang,
   );
 }
 
@@ -1379,7 +1399,7 @@ async function completeOnboarding(
     );
   }
 
-  return buildLegacyCompletionPost(post);
+  return buildLegacyCompletionPost(post, lang);
 }
 
 // ── Completion posts and DMs, as pure builders ────────────────────────
@@ -1416,11 +1436,6 @@ function howToUseMeFor(chosen: ToggleableKey[], lang: Lang | string = "en"): str
   );
 }
 
-function onLabelsFor(chosen: ToggleableKey[]): string[] {
-  const chosenSet = new Set(chosen);
-  return FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
-}
-
 /** The "All set" post for the group-add flow (roster + admin-link
  *  callouts), in the group's language. */
 export function buildGroupAddCompletionPost(
@@ -1453,15 +1468,19 @@ export function buildGroupAddCompletionPost(
 }
 
 /** The "All set" post for the legacy "@MatchTime setup" flow. */
-export function buildLegacyCompletionPost(p: CompletionPostInput): string {
-  const onLabels = onLabelsFor(p.chosen);
-  const howToUseMe = howToUseMeFor(p.chosen);
-  return (
-    `✅ *All set!* I'm now running for this group with: *${onLabels.join(", ")}*.\n\n` +
-    `First match: *${DOW[p.dayOfWeek ?? 2]} ${p.kickoffTime}* at *${p.venue}*` +
-    `${p.weekly ? " (every week)" : ""}.\n\n` +
-    `*How to use me* 👇\n${howToUseMe}`
-  );
+export function buildLegacyCompletionPost(p: CompletionPostInput, lang: Lang | string = "en"): string {
+  const s = t(lang);
+  const chosenSet = new Set(p.chosen);
+  return s.onb_legacy_completion({
+    onLabels: FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) =>
+      s.onbFeatureLabel({ key: f.key, englishLabel: f.label }),
+    ),
+    dayName: s.onbDayName({ dow: p.dayOfWeek ?? 2 }),
+    kickoffTime: p.kickoffTime,
+    venue: p.venue,
+    weekly: p.weekly,
+    howToUseMe: howToUseMeFor(p.chosen, lang),
+  });
 }
 
 /** The magic-link DM to the captured admin at completion. */

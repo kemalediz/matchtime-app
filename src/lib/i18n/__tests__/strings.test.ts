@@ -259,6 +259,13 @@ const SAMPLES: SampleArgs = {
   dm_survey_clarify: { firstName: "Sait", orgName: "Sutton FC" },
   dm_survey_confirm: { category: "maybe", firstName: "Sait" },
   dm_survey_invite: { firstName: "Sait", orgName: "Sutton FC" },
+  onb_legacy_intro: null,
+  onb_legacy_question: { field: "side", groupName: "Tuesday Ballers FC" },
+  onb_legacy_menu: { lead: "LEADLINE", items: [{ label: "LABELONE", blurb: "BLURBONE" }] },
+  onb_legacy_feature_blurb: { key: "bench", englishBlurb: "Standby list" },
+  onb_legacy_menu_retry_lead: null,
+  onb_legacy_provisioned_lead: { groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayName: "DAYNAME", kickoffTime: "21:00", venue: "Goals Wembley" },
+  onb_legacy_completion: { onLabels: ["LABELONE"], dayName: "DAYNAME", kickoffTime: "21:00", venue: "Goals Wembley", weekly: true, howToUseMe: "HOWTOBLOCK" },
 };
 
 /** Render an entry with its sample arguments. */
@@ -407,7 +414,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

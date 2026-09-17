@@ -938,4 +938,66 @@ export const tr: Strings = {
       ``,
       `Seçimin sadece seninle grup yöneticisi arasında kalır 🙏`,
     ].join("\n"),
+  // ── the legacy "@Match Time setup" flow (Phase 3c) ──
+  // Group-facing: plural register ("yazın"), as the group-add flow.
+
+  onb_legacy_intro:
+    `👋 Merhaba, ben *MatchTime*, futbol grubunuzun otomatik organizatörü. ` +
+    `Haftalık işleri ben üstlenirim, siz sadece gelip oynarsınız.\n\n` +
+    `Neler yaparım:\n` +
+    `⚽ *Katılım*, oyuncular buraya "varım" ya da "yokum" yazar; kadro listesini güncel tutarım, eksik kalınca hatırlatırım\n` +
+    `⚖️ *Dengeli takımlar*, gerçek oyuncu puanlarına göre her hafta dengeli iki takım\n` +
+    `🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri bütün yedeklere sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez\n` +
+    `🏆 *Maçın adamı ve puanlar*, maçtan sonra kısa bir oylama ve tek dokunuşla puanlama linki, uygulama indirmeye gerek yok\n` +
+    `⏰ *Hatırlatmalar ve istatistikler*, maçtan önce herkese hatırlatırım, "geçen hafta maçın adamı kim oldu?" gibi sorulara cevap veririm\n\n` +
+    `Tablo yok, kovalamaca yok, organizasyon derdi yok. ⚡\n\n` +
+    `Hadi kuralım, yaklaşık bir dakika sürer:`,
+
+  onb_legacy_question: (p) =>
+    ({
+      name: "👋 MatchTime'ı bu grup için kuralım! Önce şu: kulübünüzün ya da grubunuzun adı ne olsun? (örn. *Cuma Futbolu*)",
+      side: `Tamam, adımız *${p.groupName}*. Takım başına kaç oyuncu oynuyor? (örn. 7'ye 7 için *7*, 5'e 5 için *5*)`,
+      day: "Genelde haftanın hangi *günü* oynuyorsunuz? (örn. Cuma)",
+      time: "Maç *saat kaçta* başlıyor? (örn. 21:30)",
+      venue: "Nerede oynuyorsunuz? *Saha* adını yazın.",
+      recurrence: "Bu *her hafta* oynanan bir maç mı, yoksa *tek seferlik* mi?",
+      date: "Tek seferlik maç *hangi tarihte*? (örn. 2026-05-28)",
+    })[p.field],
+
+  onb_legacy_menu: (p) => {
+    const lines = p.items.map((f, i) => `${i + 1}. *${f.label}*: ${f.blurb}`);
+    return (
+      `${p.lead}:\n\n${lines.join("\n")}\n\n` +
+      `İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". ` +
+      `Numaralarını da yazabilirsiniz: "1, 3 ve 4".`
+    );
+  },
+
+  onb_legacy_feature_blurb: (p) =>
+    ({
+      attendance: "VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.",
+      bench: "Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.",
+      teamBalancing: "İstenince dengeli iki takım kurar.",
+      momVoting: "Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.",
+      playerRating: "Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.",
+      reminders: "İstenen gün oyuncuya özelden hatırlatma yazar.",
+      statsQa: "Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).",
+      paymentTracking: "Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).",
+      paymentCollection: "Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.",
+      payByBank: "En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.",
+      payCard: "Kartla ödeme (£10 için yaklaşık 35p).",
+      payDirect: "Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.",
+    })[p.key] ?? p.englishBlurb,
+
+  onb_legacy_menu_retry_lead: "Hangilerini seçtiğinizi anlayamadım, istediğiniz özellikleri yazın",
+
+  onb_legacy_provisioned_lead: (p) =>
+    `Süper, *${p.groupName}* hazır: takım başına *${p.playersPerTeam}* oyuncu, *her ${p.dayName} ${p.kickoffTime}*, yer: *${p.venue}*.\n\n` +
+    `Son adım: hangi özellikleri istiyorsunuz? Yapabildiklerimin hepsi burada`,
+
+  onb_legacy_completion: (p) =>
+    `✅ *Hazırız!* Bu grup için şu özelliklerle çalışıyorum: *${p.onLabels.join(", ")}*.\n\n` +
+    `İlk maç: *${p.dayName} ${p.kickoffTime}*, yer: *${p.venue}*` +
+    `${p.weekly ? " (her hafta)" : ""}.\n\n` +
+    `*Beni nasıl kullanırsınız* 👇\n${p.howToUseMe}`,
 };

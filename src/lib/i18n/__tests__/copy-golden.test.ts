@@ -640,8 +640,8 @@ function cases(lang: Lang): Case[] {
   add("R140 buildGroupAddCompletionPost / one person, two co-admins, no DM, no name", buildGroupAddCompletionPost({ ...completion, rosterCount: 1, adminsAdded: 2, adminDmQueued: false, adminName: null }));
   add("R140 buildGroupAddCompletionPost / everything, one-off, empty roster, one co-admin", buildGroupAddCompletionPost({ ...completion, chosen: [...EVERYTHING_BUNDLE], weekly: false, rosterCount: 0, adminsAdded: 1, adminDmQueued: true, adminName: "" }));
   add("R140 buildGroupAddCompletionPost / no group name", buildGroupAddCompletionPost({ ...completion, groupName: null, rosterCount: 0, adminsAdded: 0, adminDmQueued: false, adminName: null }));
-  add("R140 buildLegacyCompletionPost / weekly", buildLegacyCompletionPost(completion));
-  add("R140 buildLegacyCompletionPost / one-off, MoM and ratings only", buildLegacyCompletionPost({ ...completion, chosen: ["momVoting", "playerRating"], weekly: false }));
+  add("R140 buildLegacyCompletionPost / weekly", buildLegacyCompletionPost(completion, lang));
+  add("R140 buildLegacyCompletionPost / one-off, MoM and ratings only", buildLegacyCompletionPost({ ...completion, chosen: ["momVoting", "playerRating"], weekly: false }, lang));
   add("R118 buildAdminMagicLinkDm / no payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: false }));
   add("R118 buildAdminMagicLinkDm / payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: true }));
   add("R118 buildAdminMagicLinkDm / no group name", buildAdminMagicLinkDm({ groupName: null, url: "https://mt.example/s/abc", payments: false }));
@@ -713,17 +713,17 @@ function cases(lang: Lang): Case[] {
   add("R122 buildStatsLinkDm / no name", buildStatsLinkDm({ name: null, url: "https://mt.example/s/stats", lang }));
 
   // ── Phase 3c: the legacy "@Match Time setup" flow (pinned before it moved) ──
-  add("R136 buildLegacySetupIntro", buildLegacySetupIntro());
+  add("R136 buildLegacySetupIntro", buildLegacySetupIntro(lang));
   const legacy = { groupName: null as string | null, playersPerSide: null as number | null, dayOfWeek: null as number | null, kickoffTime: null as string | null, venue: null as string | null, recurrence: null as string | null, oneOffDate: null as string | null };
-  add("R137 legacyEventQuestion / name", String(legacyEventQuestion(legacy)));
-  add("R137 legacyEventQuestion / players per side", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC" })));
-  add("R137 legacyEventQuestion / day", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7 })));
-  add("R137 legacyEventQuestion / time", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2 })));
-  add("R137 legacyEventQuestion / venue", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00" })));
-  add("R137 legacyEventQuestion / recurrence", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" })));
-  add("R137 legacyEventQuestion / one-off date", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley", recurrence: "oneoff" })));
-  add("R139 buildLegacyFeatureMenu / provisioned", buildLegacyFeatureMenu(buildLegacyProvisionedLead({ groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" })));
-  add("R139 buildLegacyFeatureMenu / retry", buildLegacyFeatureMenu(legacyMenuRetryLead()));
+  add("R137 legacyEventQuestion / name", String(legacyEventQuestion(legacy, lang)));
+  add("R137 legacyEventQuestion / players per side", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC" }, lang)));
+  add("R137 legacyEventQuestion / day", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7 }, lang)));
+  add("R137 legacyEventQuestion / time", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2 }, lang)));
+  add("R137 legacyEventQuestion / venue", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00" }, lang)));
+  add("R137 legacyEventQuestion / recurrence", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" }, lang)));
+  add("R137 legacyEventQuestion / one-off date", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley", recurrence: "oneoff" }, lang)));
+  add("R139 buildLegacyFeatureMenu / provisioned", buildLegacyFeatureMenu(buildLegacyProvisionedLead({ groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" }, lang), lang));
+  add("R139 buildLegacyFeatureMenu / retry", buildLegacyFeatureMenu(legacyMenuRetryLead(lang), lang));
 
   return c;
 }
@@ -776,6 +776,8 @@ const MIGRATED_ROWS = [
   "R83 ", "R84 ", "R85 ", "R88 ", "R89 ", "R90 ", "R91 ", "R92 ", "R93 ", "R94 ", "R95 ", "R96 ", "R97 ", "R98 ",
   "R99 ", "R100 ", "R101 ", "R102 ", "R103 ", "R104 ", "R105 ", "R106 ", "R107 ", "R108 ", "R109 ", "R109b ", "R110 ",
   "R111 ", "R122 ", "R132 ",
+  // Phase 3c: the legacy setup flow
+  "R136 ", "R137 ", "R139 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {
