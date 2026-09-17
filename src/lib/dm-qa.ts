@@ -21,10 +21,10 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
-import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
+import { loadRecentHistory, formatRecentHistoryBlock, type RecentHistory } from "./match-history";
 import { loadPlayerSeasonStats } from "./player-stats";
 import { buildDmQaApology } from "./dm-copy";
-import { dayTimeLabel } from "./i18n/dates";
+import { dayOfMonthLabel, dayTimeLabel, timeLabel, weekdayLabel } from "./i18n/dates";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { applyHouseStyle } from "./message-analyzer";
 
@@ -88,8 +88,6 @@ async function buildScopedContext(
   });
   if (!org) return "(no data)";
 
-  const lines: string[] = [`GROUP: ${org.name}`];
-
   // Upcoming match — date/venue/squad NAMES only (no contact info), and
   // whether THIS player is currently in/out/bench.
   const match = await db.match.findFirst({
@@ -109,6 +107,7 @@ async function buildScopedContext(
       },
     },
   });
+  let matchInput: ScopedContextInput["match"] = null;
   if (match) {
     const confirmed = match.attendances.filter((a) => a.status === "CONFIRMED");
     const bench = match.attendances.filter((a) => a.status === "BENCH");
@@ -120,40 +119,132 @@ async function buildScopedContext(
       includePhoneFlags && (!a.user.phoneNumber || a.user.phoneNumber.trim() === "")
         ? " 📵 no number on record"
         : "";
-    lines.push("");
-    lines.push("UPCOMING MATCH:");
-    // The date the way the org's language writes it, so the model copies
-    // it rather than translating it ("Tue 8 Sep at 21:30" / "8 Eylül Salı 21:30").
-    lines.push(`- ${match.activity.name} on ${dayTimeLabel(lang, match.date)} (UK time)`);
-    if (match.activity.venue) lines.push(`- Venue: ${match.activity.venue}`);
-    lines.push(`- Squad: ${confirmed.length}/${match.maxPlayers} confirmed, ${bench.length} on the bench`);
-    lines.push(`- You are currently: ${mine ? mine.status : "not signed up"}`);
-    lines.push(`- Confirmed players: ${confirmed.map((a) => `${a.user.name ?? "—"}${phoneFlag(a)}`).join(", ") || "(none yet)"}`);
-    if (bench.length > 0) lines.push(`- Bench: ${bench.map((a) => `${a.user.name ?? "—"}${phoneFlag(a)}`).join(", ")}`);
-  } else {
-    lines.push("", "UPCOMING MATCH: none scheduled right now.");
+    matchInput = {
+      activityName: match.activity.name,
+      date: match.date,
+      venue: match.activity.venue,
+      maxPlayers: match.maxPlayers,
+      confirmed: confirmed.map((a) => `${a.user.name ?? "—"}${phoneFlag(a)}`),
+      bench: bench.map((a) => `${a.user.name ?? "—"}${phoneFlag(a)}`),
+      myStatus: mine ? mine.status : null,
+    };
   }
 
   // The asker's OWN stats (their data — safe to share with them).
   const mineStats = await loadPlayerSeasonStats(orgId, userId);
-  if (mineStats) {
-    lines.push("");
-    lines.push("YOUR STATS:");
-    lines.push(`- Games played: ${mineStats.gamesPlayed}/${mineStats.totalOrgMatches} (${mineStats.attendanceRate}% attendance)`);
-    lines.push(`- Average rating: ${mineStats.avgRating?.toFixed(1) ?? "—"} (squad avg ${mineStats.fieldAvgSeason?.toFixed(1) ?? "—"})`);
-    lines.push(`- Man of the Match: ${mineStats.momCount}`);
-    lines.push(`- Record: ${mineStats.record.w}W ${mineStats.record.d}D ${mineStats.record.l}L`);
-    lines.push(`- Form (last 5): ${mineStats.form.last5Avg?.toFixed(1) ?? "—"} (${mineStats.form.trend})`);
-    if (mineStats.chemistry.bestByWinRate)
-      lines.push(`- Best partnership: ${mineStats.chemistry.bestByWinRate.name}`);
-    if (mineStats.rivalry.nemesis) lines.push(`- Nemesis: ${mineStats.rivalry.nemesis.name}`);
-  }
-
   // Public group history — results, MoM, leaderboards (no contact info).
   const history = await loadRecentHistory(orgId);
-  if (history) {
+
+  return formatScopedContext(
+    {
+      orgName: org.name,
+      match: matchInput,
+      stats: mineStats
+        ? {
+            gamesPlayed: mineStats.gamesPlayed,
+            totalOrgMatches: mineStats.totalOrgMatches,
+            attendanceRate: mineStats.attendanceRate,
+            avgRating: mineStats.avgRating,
+            fieldAvgSeason: mineStats.fieldAvgSeason,
+            momCount: mineStats.momCount,
+            record: mineStats.record,
+            form: { last5Avg: mineStats.form.last5Avg, trend: mineStats.form.trend },
+            bestPartner: mineStats.chemistry.bestByWinRate?.name ?? null,
+            nemesis: mineStats.rivalry.nemesis?.name ?? null,
+          }
+        : null,
+      history: history ?? null,
+    },
+    lang,
+  );
+}
+
+/** What `buildScopedContext` read, with nothing private left in it: names
+ *  (with the admin-only 📵 flag already applied), dates, counts, and the
+ *  asker's own numbers. */
+export interface ScopedContextInput {
+  orgName: string;
+  match: {
+    activityName: string;
+    date: Date;
+    venue: string | null;
+    maxPlayers: number;
+    confirmed: string[];
+    bench: string[];
+    /** The asker's own attendance status, or null when not signed up. */
+    myStatus: string | null;
+  } | null;
+  stats: {
+    gamesPlayed: number;
+    totalOrgMatches: number;
+    attendanceRate: number;
+    avgRating: number | null;
+    fieldAvgSeason: number | null;
+    momCount: number;
+    record: { w: number; d: number; l: number };
+    form: { last5Avg: number | null; trend: string };
+    bestPartner: string | null;
+    nemesis: string | null;
+  } | null;
+  history: RecentHistory | null;
+}
+
+/**
+ * The CONTEXT block, as text. Pure, so the live dry run
+ * (`scripts/dryrun-dm-qa.ts`) feeds the model exactly what production
+ * would, and so English can be pinned byte for byte
+ * (`__tests__/dm-qa-context.test.ts`).
+ *
+ * EVERY DATE IS ALREADY WRITTEN (2026-09-17). A live Turkish dry run
+ * caught the model calling a Friday match "Cumartesi" in one answer of
+ * thirty. The history dates reached it in English ("04 Sept 2026", no
+ * weekday) and the match date as one run of text, so it was translating
+ * and working weekdays out. A non-English org now gets the match's day,
+ * date and kickoff as separate lines in its own language, a ready-made
+ * way to write the match, and history dates in its language with their
+ * weekday. There is nothing left to translate or compute. English is
+ * untouched: its dates were never translated.
+ */
+export function formatScopedContext(input: ScopedContextInput, lang: Lang = "en"): string {
+  const lines: string[] = [`GROUP: ${input.orgName}`];
+  const match = input.match;
+  if (match) {
     lines.push("");
-    lines.push(formatRecentHistoryBlock(history));
+    lines.push("UPCOMING MATCH:");
+    if (lang === "en") {
+      lines.push(`- ${match.activityName} on ${dayTimeLabel(lang, match.date)} (UK time)`);
+    } else {
+      lines.push(`- Match: ${match.activityName}`);
+      lines.push(`- Day: ${weekdayLabel(lang, match.date)}`);
+      lines.push(`- Date: ${dayOfMonthLabel(lang, match.date)}`);
+      lines.push(`- Kickoff: ${timeLabel(match.date)} (UK time)`);
+      lines.push(`- Write this match as: "${dayTimeLabel(lang, match.date)}"`);
+    }
+    if (match.venue) lines.push(`- Venue: ${match.venue}`);
+    lines.push(`- Squad: ${match.confirmed.length}/${match.maxPlayers} confirmed, ${match.bench.length} on the bench`);
+    lines.push(`- You are currently: ${match.myStatus ?? "not signed up"}`);
+    lines.push(`- Confirmed players: ${match.confirmed.join(", ") || "(none yet)"}`);
+    if (match.bench.length > 0) lines.push(`- Bench: ${match.bench.join(", ")}`);
+  } else {
+    lines.push("", "UPCOMING MATCH: none scheduled right now.");
+  }
+
+  const s = input.stats;
+  if (s) {
+    lines.push("");
+    lines.push("YOUR STATS:");
+    lines.push(`- Games played: ${s.gamesPlayed}/${s.totalOrgMatches} (${s.attendanceRate}% attendance)`);
+    lines.push(`- Average rating: ${s.avgRating?.toFixed(1) ?? "—"} (squad avg ${s.fieldAvgSeason?.toFixed(1) ?? "—"})`);
+    lines.push(`- Man of the Match: ${s.momCount}`);
+    lines.push(`- Record: ${s.record.w}W ${s.record.d}D ${s.record.l}L`);
+    lines.push(`- Form (last 5): ${s.form.last5Avg?.toFixed(1) ?? "—"} (${s.form.trend})`);
+    if (s.bestPartner) lines.push(`- Best partnership: ${s.bestPartner}`);
+    if (s.nemesis) lines.push(`- Nemesis: ${s.nemesis}`);
+  }
+
+  if (input.history) {
+    lines.push("");
+    lines.push(formatRecentHistoryBlock(input.history, lang));
   }
 
   return lines.join("\n");
@@ -323,8 +414,11 @@ export function dmQaLanguageLine(lang: Lang, orgName: string): string | null {
     "LANGUAGE:",
     "This player's group speaks TURKISH. Write your whole answer in Turkish, whatever language the question is in.",
     'Address the player as "sen" (informal singular). No "abi", no "beyler", no greeting by time of day.',
-    'Copy every player name and the group name exactly as the CONTEXT spells them. Write dates in Turkish, day before month, 24-hour time ("18 Eylül Cuma 21:00", "11 Eylül"), even where the CONTEXT spells a month in English.',
-    'Put a date, a time, a venue or a name where Turkish needs no suffix on it: after a colon, in brackets, or before "için". Write "Maç: 18 Eylül Cuma 21:00, yer: Sim Arena", not "21:00\'de" or "Sim Arena\'da".',
+    "Copy every player name and the group name exactly as the CONTEXT spells them.",
+    // No example date here (2026-09-17): a date in the instructions is a
+    // date the model can copy into an answer about a different match.
+    'Every date, weekday and time in the CONTEXT is already written in Turkish. Copy them exactly; never translate a date and never work out a weekday yourself. The upcoming match is on the "Day" the CONTEXT gives; write it exactly as its "Write this match as" line. A past match is on the weekday written beside its date.',
+    'Put a date, a time, a venue or a name where Turkish needs no suffix on it: after a colon, in brackets, or before "maçı" or "için". Write "Maç: <the match as written>, yer: <venue>" or "<the match as written> maçı için"; never glue a suffix onto a time or a venue (not "\'de", "\'da" or "\'deki" after them).',
     'The CONTEXT labels are English; the answer is not. Say "maçın adamı" (never "Man of the Match" or "MoM"), "puan" (never "rating"), "form", "galibiyet / beraberlik / mağlubiyet", and for the asker status "kadrodasın" (CONFIRMED), "yedektesin" (BENCH), "kadroda değilsin" (anything else); never copy a status word in capitals. Talk about the squad as "we" ("kadroda 11 kişiyiz"), never "you" plural.',
     `If you decline, say it in Turkish, e.g. "Sadece ${orgName} maçlarıyla ilgili yardımcı olabilirim 🙂".`,
     'The phone-number answers, when the context allows them, are "Kayıtlı numarası olmayanlar: Aaron, Idris." and "Herkesin kayıtlı numarası var 👍".',

@@ -20,9 +20,9 @@
  *
  * `analyzeBatch` and `SYSTEM_PROMPT` are deleted. What replaced them:
  *
- *   0. DETERMINISTIC PEELS — no model at all. Personal stats link,
- *      group→DM Q&A, help, the colour swap, the team swap, a
- *      bench-prompt answer, a pasted roster. Each is a database row or a
+ *   0. DETERMINISTIC PEELS — no model at all. Group→DM Q&A, help, the
+ *      colour swap, the team swap, a bench-prompt answer, a pasted
+ *      roster. Each is a database row or a
  *      whole-message match, and each is peeled before the router so
  *      nothing else can claim it.
  *
@@ -700,61 +700,45 @@ async function handleAnalyzeRequest(request: Request) {
     });
   };
 
-  // ── Fast-path: "my stats" / "wrapped" personal-stats request ────────
-  //   Deterministic (NO LLM cost — Kemal is cost-conscious about
-  //   per-message LLM use). When a resolved sender asks for THEIR OWN
-  //   stats, DM them a 48h magic link straight to /profile/stats and
-  //   react 📊. Peeled off the batch so the LLM never sees it. Requires
-  //   the possessive ("my stats/season/ratings/form/card") or the word
-  //   "wrapped" so it never collides with group-level stats questions
-  //   ("who's most consistent?") which the LLM still answers from the
-  //   Recent History block.
+  // ── DELETED 2026-09-17: the personal-stats REGEX fast path ─────────
+  //   It lived here, was tag-gated and CLAUSE-PEELED, and matched
   //
-  //   CLAUSE-PEELED. The DM is composed from the SENDER, never from the
-  //   body, so which clause carried "my stats" changes nothing about
-  //   what is sent — only about what is left over. "@Match Time my
-  //   stats. Also put me down for Thursday" now DMs the link AND
-  //   registers him.
-  const STATS_REQUEST = /\bwrapped\b|\bmy\s+(stats|season|ratings?|performance|form|card)\b/i;
-  for (const m of fresh) {
-    // Interaction contract: a stats request is an ANSWER-y action MT
-    // performs for a player → requires an @Match Time tag. Untagged
-    // "my stats" is ordinary chat; stay silent (don't DM, don't peel).
-    if (!messageTagsBot(m)) continue;
-    const statsPeel = peelClause(m.body, (c) => STATS_REQUEST.test(c));
-    if (!statsPeel) continue;
-    const sender = senderById.get(m.waMessageId)!;
-    const phone = (sender.phone || m.authorPhone || "").replace(/^\+/, "");
-    if (!sender.userId || !phone) continue; // can't DM an unresolved sender
-    try {
-      const token = signMagicLinkToken({
-        userId: sender.userId,
-        purpose: "sign-in",
-        nextPath: "/profile/stats",
-        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
-      });
-      const { buildStatsLinkDm } = await import("@/lib/dm-copy");
-      await db.botJob.create({
-        data: {
-          orgId: org.id,
-          kind: "dm",
-          phone,
-          // The group's org language (the sender asked in that group).
-          text: buildStatsLinkDm({ name: sender.name, url: await buildShortMagicLinkUrl(token), lang: org.language }),
-        },
-      });
-    } catch (err) {
-      console.error("[analyze] my-stats DM queue failed:", err);
-    }
-    await claimFastPath(m, statsPeel, {
-      handledBy: "fast-path",
-      intent: "stats_link",
-      action: "dm-stats-link",
-      reasoning: "personal stats request — DM'd a magic link to /profile/stats",
-      react: "📊",
-      reply: null,
-    });
-  }
+  //     /\bwrapped\b|\bmy\s+(stats|season|ratings?|performance|form|card)\b/i
+  //
+  //   then DM'd the sender a 48h magic link to /profile/stats and reacted
+  //   📊. It was English only: the Turkish help (Phase 2) advertises
+  //   "@Match Time istatistiklerim", and nothing read it. It was also the
+  //   last pattern in this file deciding what a message MEANS for a DM,
+  //   the class deleted on 2026-09-01, 2026-09-10 and 2026-09-11 (the
+  //   tombstones below). `MDs/router-accuracy-2026-09-11.md` measured it
+  //   at 0 matches in 143 days and recommended this conversion (§2.5).
+  //
+  //   The ask is now an extracted FACT, `QuestionFacts.topic =
+  //   "my_stats"` on the `question` route (not `admin_ops`, which guards
+  //   the mass-DM doors), gated by the engine (the tag, a resolved
+  //   sender), reported by `answer-batch.ts` as `statsLinkRequest`, and
+  //   PERFORMED by this route in the owner loop by `sendOwnStatsLink`
+  //   (`lib/stats-link-request.ts`). The DM, the link, the 📊 react and
+  //   the `stats_link` / `dm-stats-link` labels are unchanged; only the
+  //   classification moved from regex to model.
+  //
+  //   THE RECIPIENT CANNOT MOVE. The flag is a boolean on the asking
+  //   message's outcome; the DM goes to that message's resolved sender.
+  //   Nothing a model extracts names who receives it
+  //   (`e2e/sim/qa.spec.ts` asserts the BotJob's phone).
+  //
+  //   ── WHAT WENT WITH IT, STATED RATHER THAN DISCOVERED ─────────────
+  //
+  //   THE CLAUSE PEEL. "@Match Time my stats. Also I'm out" used to DM
+  //   the link AND drop the sender. `question` is a whole-message route,
+  //   so the OUT is now lost, as it already is for the rating-progress
+  //   ask and the stats blast. Observed in 143 days: zero.
+  //
+  //   NO LONGER BEFORE THE ROUTER. A tagged "my stats" now costs a router
+  //   and an extractor call, and is subject to the router's reading
+  //   ("@Match Time wrapped" was `none` 3/3 before its worked example
+  //   was added to the router prompt).
+
   // ── DELETED 2026-09-10: the stats-blast REGEX fast path ────────────
   //   It lived here, and it was the last bulk-DM command in the product
   //   still classified by a pattern. The trigger was three keyword tests
@@ -821,8 +805,7 @@ async function handleAnalyzeRequest(request: Request) {
   //   game"), answer them PRIVATELY via the scoped Q&A engine instead
   //   of cluttering the group. Same no-leak guardrails as direct DMs
   //   (dm-qa.ts: only group-public + the asker's own data). React 📩 in
-  //   the group so it's clear it was handled. Personal stats requests
-  //   are already handled above (they DM a stats link), so skip those.
+  //   the group so it's clear it was handled.
   //
   //   CLAUSE-PEELED, AND THIS IS THE ONE WHERE THE CONSUMED CLAUSE IS
   //   LOAD-BEARING. Every other peel ignores the body once it has
@@ -2287,6 +2270,39 @@ async function handleAnalyzeRequest(request: Request) {
       if (adminOutcome?.statsBlastRequest) {
         statsBlastRequests.push({ msg });
       }
+      // The asker's own stats link (2026-09-17, `QuestionTopic.my_stats`).
+      // The engine has applied the tag and resolved-sender gates; this
+      // performs it, for the SENDER of this message and nobody else.
+      // `answerBatch` is the only owner that can report it.
+      const answerOutcome = answerBatch?.outcomes.get(msg.waMessageId);
+      let statsLinkFailed: string | null = null;
+      if (answerOutcome?.statsLinkRequest) {
+        const { sendOwnStatsLink } = await import("@/lib/stats-link-request");
+        const sent = await sendOwnStatsLink({
+          sender: { userId: sender.userId, name: sender.name, phone: sender.phone },
+          authorPhone: msg.authorPhone ?? null,
+          // The group's org language (the sender asked in that group).
+          lang: org.language,
+          deps: {
+            linkFor: async (userId) =>
+              buildShortMagicLinkUrl(
+                signMagicLinkToken({
+                  userId,
+                  purpose: "sign-in",
+                  nextPath: "/profile/stats",
+                  ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+                }),
+              ),
+            queueDm: async ({ phone, text }) => {
+              await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text } });
+            },
+          },
+        });
+        if (!sent.queued) {
+          console.error(`[analyze] my-stats DM not queued for ${msg.waMessageId}: ${sent.reason}`);
+          statsLinkFailed = sent.reason;
+        }
+      }
       // A write that threw says nothing at all (§3.2 S7, the 2026-05-15
       // Erdal incident). The runner has already blanked the reply; this
       // only labels the row so the failure is one query away rather than
@@ -2302,9 +2318,13 @@ async function handleAnalyzeRequest(request: Request) {
         msg,
         handledBy: writeFailed ? "error" : ownerOf.get(msg.waMessageId) ?? "llm",
         intent: stepSeven.intent,
-        action: stepSeven.action,
+        // A stats link that was not queued is not reported as sent, and
+        // its 📊 is withheld: the react says "done".
+        action: statsLinkFailed ? "none" : stepSeven.action,
         confidence: 1,
-        reasoning: stepSeven.reasoning,
+        reasoning: statsLinkFailed
+          ? `${stepSeven.reasoning}; ${statsLinkFailed}`
+          : stepSeven.reasoning,
         authorUserId: sender.userId,
         authorName: msg.authorName ?? null,
       });
@@ -2312,7 +2332,7 @@ async function handleAnalyzeRequest(request: Request) {
         waMessageId: msg.waMessageId,
         handledBy: writeFailed ? "error" : "llm",
         intent: stepSeven.intent,
-        react: writeFailed ? null : stepSeven.react,
+        react: writeFailed || statsLinkFailed ? null : stepSeven.react,
         reply,
         reasoning: stepSeven.reasoning,
       });

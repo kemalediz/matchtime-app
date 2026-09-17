@@ -150,6 +150,7 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
                "payments" who has or has not paid their match fee, how many are still outstanding ("who hasn't paid?", "has everyone paid for last week?", "how many still owe?", "any payments outstanding?"). NOT how much the fee IS — that is "other".
                "score" the RESULT of a match that has already been played ("what was the score?", "did we win on tuesday?", "how did we get on last night?", "what did it finish?")
                "rating_progress" how many people have SUBMITTED their ratings or Man-of-the-Match votes for the match just played, or who has not submitted yet ("who hasn't rated yet?", "how many have rated so far?", "who still needs to pick a MoM?", "any ratings outstanding from tuesday?", "is everyone done rating")
+               "my_stats" the ASKER wants to see THEIR OWN stats, ratings, form or season summary ("my stats", "can I see my ratings", "how am I doing this season?", "wrapped", "istatistiklerim", "puanlarımı görebilir miyim"). Only the asker's own numbers: anyone else's, or a ranking of the group, is "stats".
                "stats" how OFTEN someone plays, or how they rate, ACROSS matches — appearances, form over a run of games, most consistent, man of the match. Never the RESULT of a single match: "did we win?" and "what was the score?" are "score", not "stats".
                "options" what to do about being short (smaller format, alternatives)
                "other" anything else
@@ -165,7 +166,18 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
   "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" -> other, it instructs the players
   "lads don't forget to rate each other from tuesday"                        -> other, it instructs the players
   "@Match Time who has the best rating this season"                          -> stats, that is a number across matches
-  "@Match Time can you remind everyone to rate"                              -> other, that asks for a reminder, not for the tally`,
+  "@Match Time can you remind everyone to rate"                              -> other, that asks for a reminder, not for the tally
+
+"my_stats" is the asker asking for THEIR OWN numbers. It is answered privately, so choose it only when the person the numbers are about is the person asking.
+
+  "@Match Time my stats"                                                     -> my_stats
+  "@Match Time wrapped"                                                      -> my_stats, the asker's season summary
+  "@Match Time can I see my ratings"                                         -> my_stats
+  "@Match Time istatistiklerim"                                              -> my_stats (Turkish, "my stats")
+  "@Match Time puanlarımı görebilir miyim"                                   -> my_stats (Turkish, "can I see my ratings")
+  "@Match Time what are Wasim's stats"                                       -> stats, personRef "Wasim": someone else's numbers
+  "@Match Time Ali'nin istatistikleri ne"                                    -> stats, personRef "Ali": someone else's numbers
+  "@Match Time who's played the most this season"                            -> stats, a ranking of the group`,
 
   teams: `You read ONE message about the two team line-ups and report what it asks for. You never pick the teams.
 
@@ -281,6 +293,7 @@ const QUESTION_SCHEMA = {
         "payments",
         "score",
         "rating_progress",
+        "my_stats",
         "stats",
         "options",
         "other",
@@ -379,6 +392,9 @@ const TOPICS: QuestionTopic[] = [
   // 2026-09-11, and it is a regex coming OUT of the product rather than
   // a topic going in. See `lib/rating-progress-answer.ts`.
   "rating_progress",
+  // 2026-09-17, the same kind of change: `STATS_REQUEST` came out of
+  // `analyze/route.ts`. See `QuestionTopic`.
+  "my_stats",
   "stats",
   "options",
   "other",

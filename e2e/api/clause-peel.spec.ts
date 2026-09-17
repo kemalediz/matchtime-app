@@ -264,8 +264,22 @@ test.describe("the answer peels keep the sender's OUT", () => {
     );
   });
 
-  test("my stats — DMs the link AND drops the sender", async ({ request, db }) => {
-    engineOn({ "I'm out": { route: "self_att", facts: selfOut() } });
+  // ── THE PERSONAL-STATS PEEL IS GONE (2026-09-17) ──────────────────
+  //
+  //   It was `STATS_REQUEST`, an English-only regex. The ask is now
+  //   `QuestionFacts.topic = "my_stats"` on the WHOLE-message `question`
+  //   route, so the compound form loses its attendance half: the price
+  //   stated in `lib/stats-link-request.ts`, measured here.
+  const MY_STATS = {
+    route: "question",
+    facts: { topic: "my_stats", personRef: "", statedCount: -1 },
+  };
+
+  test("my stats — the compound form DMs the link and now LOSES the sender's OUT (stated cost)", async ({
+    request,
+    db,
+  }) => {
+    engineOn({ "@Match Time my stats. Also I'm out": MY_STATS });
     const res = await postAnalyze(request, [
       {
         waMessageId: msgId(),
@@ -276,11 +290,12 @@ test.describe("the answer peels keep the sender's OUT", () => {
       },
     ]);
     expect((await dms(db, PHONE.admin)).join("\n")).toContain("MatchTime stats");
-    expect(await statusOf(db, U.admin)).toBe("DROPPED");
+    expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
     expect(speaks(res).length).toBeLessThanOrEqual(1);
   });
 
   test("my stats — single-purpose is unchanged", async ({ request, db }) => {
+    engineOn({ "@Match Time my stats": MY_STATS });
     await postAnalyze(request, [
       {
         waMessageId: msgId(),
