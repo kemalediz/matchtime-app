@@ -48,6 +48,8 @@
  * person means anyway.
  */
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
+import { dayLabel, dayTimeLabel } from "./i18n/dates";
+import { normaliseLang, type Lang } from "./i18n/lang";
 
 const LONDON = "Europe/London";
 
@@ -126,8 +128,66 @@ function londonAt(now: Date, offsetDays: number, hour: number, minute: number): 
   return fromZonedTime(iso, LONDON);
 }
 
-function label(at: Date, statedTime: boolean): string {
+/** What may follow a Turkish weekday: "cuma günü", "cumaya", "salıdan",
+ *  "cumartesileri". A closed list, so a name such as "Salih" is not a day. */
+const DAY_SUFFIX = String.raw`(?:\s*g[üu]n[üu])?(?:ya|ye|a|e|y[ıi]|dan|den|lar[ıi]|leri|ki)?`;
+
+function englishLabel(at: Date, statedTime: boolean): string {
   return formatInTimeZone(at, LONDON, statedTime ? "EEE d MMM 'at' HH:mm" : "EEE d MMM");
+}
+
+/**
+ * TURKISH PHRASES (Phase 3, 2026-09-17). A Turkish org's player asks
+ * "@Match Time yarın akşam hatırlat" and the extractor hands back the
+ * phrase in Turkish. Rather than a second resolver, the Turkish words are
+ * REWRITTEN to the English vocabulary above, and the one resolver below
+ * does the arithmetic. The vocabulary is the same small, stated set, so
+ * the refusal rule is unchanged: "sonra" (later) and "birazdan" (soon)
+ * name no time and are refused, never guessed. Run only for a Turkish
+ * org; an English phrase never passes through it.
+ */
+const TR_REWRITES: Array<[RegExp, string]> = (
+  [
+    // durations first: "2 saat sonra", "bir hafta sonra"
+    [String.raw`(\d{1,3}|bir)\s+(dakika|dk|saat|g[üu]n|hafta)\s+sonra`, "__DURATION__"],
+    [String.raw`[öo]b[üu]r\s+g[üu]n|yar[ıi]ndan\s+sonra`, "day after tomorrow"],
+    [String.raw`bu\s+ak[şs]am`, "this evening"],
+    [String.raw`bu\s+sabah`, "this morning"],
+    [String.raw`bu\s+[öo][ğg]leden\s+sonra`, "this afternoon"],
+    [String.raw`bu\s+gece`, "tonight"],
+    [String.raw`yar[ıi]n`, "tomorrow"],
+    [String.raw`bug[üu]n`, "today"],
+    [String.raw`[öo][ğg]leden\s+sonra`, "afternoon"],
+    [String.raw`ak[şs]am\p{L}*`, "evening"],
+    [String.raw`sabah\p{L}*`, "morning"],
+    [String.raw`gece`, "night"],
+    [`pazartesi${DAY_SUFFIX}`, "monday"],
+    [`sal[ıi]${DAY_SUFFIX}`, "tuesday"],
+    [`[çc]ar[şs]amba${DAY_SUFFIX}`, "wednesday"],
+    [`per[şs]embe${DAY_SUFFIX}`, "thursday"],
+    [`cumartesi${DAY_SUFFIX}`, "saturday"],
+    [`cuma${DAY_SUFFIX}`, "friday"],
+    [`pazar${DAY_SUFFIX}`, "sunday"],
+    [String.raw`saat`, "at"],
+  ] as Array<[string, string]>
+).map(([body, to]) => [new RegExp(`(?<!\\p{L})(?:${body})(?!\\p{L})`, "gu"), to]);
+
+const TR_UNITS: Record<string, string> = { dakika: "minutes", dk: "minutes", saat: "hours", hafta: "weeks" };
+
+function rewriteTurkish(phrase: string): string {
+  // Lower-cased the Turkish way so "PERŞEMBE" and "İKİ" read right; any
+  // dotless ı left once the Turkish words are rewritten came from an
+  // English capital I ("FRIDAY"), so it goes back to i.
+  let out = phrase.toLocaleLowerCase("tr");
+  for (const [re, to] of TR_REWRITES) {
+    out = out.replace(re, (...m: string[]) => {
+      if (to !== "__DURATION__") return to;
+      const n = m[1] === "bir" ? "a" : m[1];
+      const unit = TR_UNITS[m[2]] ?? "days";
+      return `in ${n} ${unit}`;
+    });
+  }
+  return out.replace(/ı/g, "i");
 }
 
 interface ClockTime {
@@ -170,10 +230,19 @@ function parseClock(text: string): ClockTime | null {
   return { hour, minute };
 }
 
-export function resolveReminderPhrase(phrase: string, now: Date): ReminderResolution {
+export function resolveReminderPhrase(
+  phrase: string,
+  now: Date,
+  /** The group's language (`state.features.language`): which words the
+   *  phrase may use and which language the label is written in. */
+  lang?: Lang | string | null,
+): ReminderResolution {
   const raw = (phrase ?? "").trim();
   if (!raw) return { ok: false, reason: "empty time phrase" };
-  const t = raw.toLowerCase().replace(/\s+/g, " ");
+  const l = normaliseLang(lang);
+  const t = (l === "tr" ? rewriteTurkish(raw) : raw.toLowerCase()).replace(/\s+/g, " ");
+  const label = (at: Date, statedTime: boolean): string =>
+    l === "en" ? englishLabel(at, statedTime) : statedTime ? dayTimeLabel(l, at) : dayLabel(l, at);
 
   // ── 1. Durations. "in 2 hours", "in a week". ───────────────────────
   //

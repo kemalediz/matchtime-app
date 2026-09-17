@@ -10,7 +10,6 @@ import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { findExistingOrgMember } from "@/lib/resolve-player";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { formatLondon } from "@/lib/london-time";
 
 /** Default seed rating for newly-created players — a neutral mid-point the
  *  team-balancer uses until they accumulate enough peer ratings. */
@@ -801,6 +800,7 @@ export async function addPlayerToMatch(
       const token = signMagicLinkToken({ userId, purpose: "rate-match", matchId, ttlSeconds: MAGIC_LINK_TTL.rateMatch });
       const statsToken = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: "/profile/stats", ttlSeconds: MAGIC_LINK_TTL.bookmark });
       const { buildRatingDm } = await import("@/lib/dm-copy");
+      const { dayLabel } = await import("@/lib/i18n/dates");
       await db.botJob.create({
         data: {
           orgId,
@@ -808,7 +808,9 @@ export async function addPlayerToMatch(
           phone: u.phoneNumber.replace(/^\+/, ""),
           text: buildRatingDm({
             activityName: match.activity.name,
-            dateLabel: formatLondon(match.date, "EEE d MMM"),
+            // The match's org language (`features` is that org's).
+            dateLabel: dayLabel(features.language, match.date),
+            lang: features.language,
             mvpLabel: match.activity.sport.mvpLabel,
             rateUrl: await buildShortMagicLinkUrl(token),
             statsUrl: await buildShortMagicLinkUrl(statsToken),

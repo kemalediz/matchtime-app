@@ -63,6 +63,13 @@ export function dayTimeLabel(lang: Lang | string | null | undefined, d: Date): s
   return label(lang, d, { en: "EEE d MMM 'at' HH:mm", tr: "d MMMM EEEE HH:mm" });
 }
 
+/** The DM label a player reads for a match they are asked about:
+ *  "Tue 22 Sep, 21:30" / "22 Eylül Salı 21:30" (the recruit invite and
+ *  chase, the self-attendance ack, the admin recruit reply). */
+export function dayCommaTimeLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "EEE d MMM, HH:mm", tr: "d MMMM EEEE HH:mm" });
+}
+
 /**
  * The "Squad complete" post's label. The English one is NOT a date-fns
  * pattern: `squad-announce.ts` has always used `Intl.DateTimeFormat

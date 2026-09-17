@@ -14,6 +14,8 @@
  * apology, not a cheerful tick, and the group hears nothing.
  */
 import { db } from "./db";
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 import { registerAttendance, cancelAttendance } from "./attendance";
 import { announceOutOfBandAttendance } from "./out-of-band-announce";
 import {
@@ -29,8 +31,11 @@ export interface ApplyOutOfBandSelfAttendanceInput {
   /** The player's own decision. Never a third party's. */
   decision: "in" | "out";
   matchName: string;
-  /** "EEE d MMM, HH:mm" London. */
+  /** `dayCommaTimeLabel(lang, date)`: "Tue 8 Sep, 21:30", London. */
   matchWhen: string;
+  /** The match's org language (`Organisation.language`), which the
+   *  player's ack is written in. English when absent. */
+  lang?: Lang | string | null;
   /** How they told us. Drives the group line's wording. */
   source: OutOfBandSource;
   /** Where to send their personal confirmation, E.164 without the `+`.
@@ -104,6 +109,7 @@ export async function applyOutOfBandSelfAttendance(
     status,
     matchName: input.matchName,
     matchWhen: input.matchWhen,
+    lang: input.lang,
   });
 
   if (input.replyPhone) {
@@ -141,25 +147,13 @@ export function buildSelfAttendanceAck(input: {
   status: "CONFIRMED" | "BENCH" | "DROPPED" | null;
   matchName: string;
   matchWhen: string;
+  /** The match's org language (`Organisation.language`); English when absent. */
+  lang?: Lang | string | null;
 }): string {
-  const { matchName, matchWhen } = input;
-  if (input.failed) {
-    return (
-      `Sorry, I couldn't update the squad just now. An admin will sort it — ` +
-      `try again in a bit if you like 🙏`
-    );
-  }
-  if (input.status === "CONFIRMED") {
-    return `✅ You're in for *${matchName}* on ${matchWhen}. See you there ⚽`;
-  }
-  if (input.status === "BENCH") {
-    return (
-      `📋 Squad's full for *${matchName}* on ${matchWhen}, so I've put you ` +
-      `first on the bench. I'll message you the moment a spot opens 🙏`
-    );
-  }
-  if (input.status === "DROPPED") {
-    return `👋 No worries, you're marked out for *${matchName}* on ${matchWhen}. Thanks for letting me know.`;
-  }
-  return `👍 Noted. You weren't down for *${matchName}* on ${matchWhen} anyway, so nothing's changed.`;
+  return t(input.lang).dm_self_ack({
+    failed: input.failed,
+    status: input.status,
+    matchName: input.matchName,
+    matchWhen: input.matchWhen,
+  });
 }

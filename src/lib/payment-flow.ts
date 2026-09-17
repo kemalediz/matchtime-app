@@ -24,6 +24,7 @@ import {
 } from "./dm-copy";
 import { decideCheckoutEvent } from "./payment-outcome";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
+import { normaliseLang, type Lang } from "./i18n/lang";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -35,7 +36,12 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
     where: { id: matchId },
     include: {
       activity: {
-        select: { name: true, orgId: true, org: { select: { paymentHolderId: true } } },
+        select: {
+          name: true,
+          orgId: true,
+          // `language`: the pay links are written in the match's org language.
+          org: { select: { paymentHolderId: true, language: true } },
+        },
       },
       attendances: {
         where: { status: "CONFIRMED" },
@@ -68,6 +74,7 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           activityName: match.activity.name,
           fee: match.feePerPlayer,
           url: await buildShortMagicLinkUrl(token),
+          lang: match.activity.org.language,
         }),
       },
     });
@@ -201,12 +208,22 @@ export async function applyCheckoutEvent(
  *  attributed to it. Long enough to cover "I'll sort it tonight". */
 const FEE_CAPTURE_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
 
+/** Turkish fee units: "kişi başı" (per head), "toplam" (total),
+ *  "bölüş..." (split), "sterlin" / "pound" (the currency). */
+const TR_FEE_UNIT =
+  /(?<!\p{L})(?:ki[şs]i\s+ba[şs][ıi](?:na)?|adam\s+ba[şs][ıi]|toplam|b[öo]l[üu][şs]\p{L}*|sterlin|pound|paund)(?!\p{L})/u;
+
 /** Does this message look like a fee amount (vs. arbitrary chat that
  *  merely contains a number, e.g. "we had 10 players")? Used to gate the
  *  UNPROMPTED capture so a stray number doesn't become a fee. */
-function looksLikeFeeAmount(text: string): boolean {
+function looksLikeFeeAmount(text: string, lang: Lang = "en"): boolean {
   const t = text.trim();
   if (/£/.test(t)) return true;
+  // Turkish (Phase 3): a number with a Turkish fee unit, "8 kişi başı",
+  // "kişi başı 8", "toplam 80", "80 sterlin". Only for a Turkish org, so
+  // the English test below is untouched. `\p{L}` boundaries, because `\b`
+  // does not know that ş and ı are letters.
+  if (lang === "tr" && /\d/.test(t) && TR_FEE_UNIT.test(t.toLocaleLowerCase("tr"))) return true;
   // Bare amount, optionally with a fee unit.
   if (/^\s*\d+(\.\d{1,2})?\s*(each|pp|per|per person|per head|a head|quid|q|pounds?|total|split)?\s*$/i.test(t)) {
     return true;
@@ -242,7 +259,7 @@ async function findCollectorPendingMatch(userId: string) {
     // Prefer a match already awaiting confirmation (feePendingConfirm set);
     // nulls last so an amount-pending match wins over a fee-less one.
     orderBy: [{ feePendingConfirm: { sort: "desc", nulls: "last" } }, { date: "desc" }],
-    include: { activity: { select: { name: true } } },
+    include: { activity: { select: { name: true, org: { select: { language: true } } } } },
   });
   return match;
 }
@@ -262,6 +279,10 @@ export interface CollectorPendingMatch {
   /** An amount awaiting a yes/no. NULL means nothing has been proposed,
    *  and a "yes" is therefore meaningless. */
   feePendingConfirm: number | null;
+  /** The match's org language (`Organisation.language`): the replies are
+   *  written in it, the allowlist accepts its words and the model is told
+   *  which question was asked. English when absent. */
+  lang?: Lang;
 }
 
 /**
@@ -280,7 +301,7 @@ export interface CollectorFeeDeps {
   /** The model's read of the reply. Consulted ONLY when the anchored
    *  allowlist abstains AND the message is not an amount, which on the
    *  measured history is approximately never. */
-  judge: (text: string, amount: number, matchName: string) => Promise<FeeReply>;
+  judge: (text: string, amount: number, matchName: string, lang: Lang) => Promise<FeeReply>;
   /** ⚠️ THE MONEY. Sets the fee and DMs a pay link to the whole
    *  confirmed squad. Returns how many went out. */
   release: (matchId: string, amount: number) => Promise<number>;
@@ -318,17 +339,18 @@ export async function runCollectorFeeReply(
   if (!match) return null;
 
   const headcount = await deps.headcount(match.id);
+  const lang: Lang = match.lang ?? "en";
 
   const releaseNow = async (amount: number): Promise<CollectorReplyResult> => {
     const released = await deps.release(match.id, amount);
-    return { released, reply: buildFeeReleasedAck({ released, fee: amount, matchName: match.name }) };
+    return { released, reply: buildFeeReleasedAck({ released, fee: amount, matchName: match.name, lang }) };
   };
   const cancelNow = async (): Promise<CollectorReplyResult> => {
     await deps.cancel(match.id);
-    return { reply: buildFeeCancelledAck() };
+    return { reply: buildFeeCancelledAck(lang) };
   };
   const stageNow = async (): Promise<CollectorReplyResult | null> => {
-    const parsed = parseFeeReply(text, headcount);
+    const parsed = parseFeeReply(text, headcount, lang);
     if (!parsed) return null;
     await deps.stage(match.id, parsed.perPlayer);
     return {
@@ -337,6 +359,7 @@ export async function runCollectorFeeReply(
         headcount,
         matchName: match.name,
         wasTotal: parsed.wasTotal,
+        lang,
       }),
     };
   };
@@ -344,13 +367,13 @@ export async function runCollectorFeeReply(
   // ── Awaiting confirmation of a previously-proposed amount ──
   const pending = match.feePendingConfirm;
   if (pending != null) {
-    const anchored = anchoredFeeReply(text);
+    const anchored = anchoredFeeReply(text, lang);
     if (anchored === "yes") return releaseNow(pending);
     if (anchored === "no") return cancelNow();
 
     // A fresh amount supersedes the pending one — decided by code, and
     // decided before the model gets a look.
-    if (looksLikeFeeAmount(text)) {
+    if (looksLikeFeeAmount(text, lang)) {
       const staged = await stageNow();
       if (staged) return staged;
     }
@@ -359,7 +382,7 @@ export async function runCollectorFeeReply(
     // that call is `neither`, which does nothing.
     let judged: FeeReply;
     try {
-      judged = await deps.judge(text, pending, match.name);
+      judged = await deps.judge(text, pending, match.name, lang);
     } catch (err) {
       // FAIL CLOSED, in the second place it can matter. `classifyFeeReply`
       // already swallows its own failures; this covers a caller that
@@ -377,7 +400,7 @@ export async function runCollectorFeeReply(
   //   NOTE the asymmetry, and it is deliberate: with nothing proposed
   //   there is nothing for a "yes" to mean, so the model is never asked
   //   here and no reply can release anything.
-  if (!looksLikeFeeAmount(text)) return null;
+  if (!looksLikeFeeAmount(text, lang)) return null;
   return stageNow();
 }
 
@@ -396,13 +419,20 @@ export async function handleCollectorFeeReply(
   return runCollectorFeeReply(text, {
     pendingMatch: async () => {
       const m = await findCollectorPendingMatch(userId);
-      return m ? { id: m.id, name: m.activity.name, feePendingConfirm: m.feePendingConfirm } : null;
+      return m
+        ? {
+            id: m.id,
+            name: m.activity.name,
+            feePendingConfirm: m.feePendingConfirm,
+            lang: normaliseLang(m.activity.org.language),
+          }
+        : null;
     },
     headcount: (matchId) =>
       db.attendance.count({
         where: { matchId, status: "CONFIRMED", userId: { not: userId } },
       }),
-    judge: (reply, amount, matchName) => classifyFeeReply(reply, { amount, matchName }),
+    judge: (reply, amount, matchName, lang) => classifyFeeReply(reply, { amount, matchName, lang }),
     release: async (matchId, amount) => {
       await db.match.update({
         where: { id: matchId },

@@ -48,7 +48,7 @@ import {
   buildBenchIntroLine,
 } from "./bench-offer-copy";
 import { buildRatePromoPost, buildMatchDayChaseFallback } from "./group-copy";
-import { dayLabel, longDayTimeLabel } from "./i18n/dates";
+import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel } from "./i18n/dates";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   buildAnnounceMatchPost,
@@ -483,7 +483,8 @@ export async function computeDuePosts(
             date: true,
             status: true,
             maxPlayers: true,
-            activity: { select: { name: true } },
+            // The match's org language: the follow-up is written in it.
+            activity: { select: { name: true, org: { select: { language: true } } } },
           },
         },
       },
@@ -544,7 +545,8 @@ export async function computeDuePosts(
         text: buildTentativeFollowupDm({
           playerName: row.user.name,
           activityName: row.match.activity.name,
-          whenLabel: format(row.match.date, "EEE d MMM 'at' HH:mm"),
+          whenLabel: dayTimeLabel(row.match.activity.org.language, row.match.date),
+          lang: row.match.activity.org.language,
         }),
       });
     }
@@ -1133,7 +1135,7 @@ async function computeForMatch(
           }
         }
 
-        const when = format(m.date, "EEE d MMM, HH:mm");
+        const when = dayCommaTimeLabel(lang, m.date);
         // Hard cap per tick. The Pi rate-limits DMs to 1/min anyway, and
         // after the duplicate-send incident a bounded batch is cheap
         // insurance; the remainder simply chases on the next poll.
@@ -1163,6 +1165,7 @@ async function computeForMatch(
               activityName: activity.name,
               matchWhen: when,
               need,
+              lang,
             }),
           });
           emitted++;
@@ -1256,7 +1259,8 @@ async function computeForMatch(
             matchId,
             phone: a.user.phoneNumber!.replace(/^\+/, ""),
             targetUser: a.userId,
-            text: buildBenchOfferDm({ firstName: first, context: ctxPlain }),
+            // `ctxPlain` is already in `lang` (buildBenchOfferContext).
+            text: buildBenchOfferDm({ firstName: first, context: ctxPlain, lang }),
           });
         }
       }
@@ -1577,6 +1581,7 @@ async function computeForMatch(
             collectorName,
             activityName: activity.name,
             headcount: confirmed.length,
+            lang,
           }),
         });
       }
@@ -1629,6 +1634,7 @@ async function computeForMatch(
             fee: m.feePerPlayer,
             activityName: activity.name,
             url: await buildShortMagicLinkUrl(token),
+            lang,
           }),
         });
       }
@@ -1665,6 +1671,7 @@ async function computeForMatch(
                 count: pendingDirect.length,
                 activityName: activity.name,
                 url: await buildShortMagicLinkUrl(token),
+                lang,
               }),
             });
           }
@@ -1751,7 +1758,8 @@ async function computeForMatch(
             phone: a.user.phoneNumber.replace(/^\+/, ""),
             text: buildRatingDm({
               activityName: activity.name,
-              dateLabel: format(m.date, "EEE d MMM"),
+              dateLabel: dayLabel(lang, m.date),
+              lang,
               mvpLabel: sport.mvpLabel,
               rateUrl: await buildShortMagicLinkUrl(token),
               statsUrl: await buildShortMagicLinkUrl(statsToken),
@@ -1841,6 +1849,7 @@ async function computeForMatch(
             activityName: activity.name,
             mvpLabel: sport.mvpLabel,
             url: await buildShortMagicLinkUrl(token),
+            lang,
           });
           out.push({
             kind: "dm",

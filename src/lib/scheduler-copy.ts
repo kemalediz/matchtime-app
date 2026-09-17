@@ -173,11 +173,10 @@ export function buildUnpaidTailText(unpaid: number, lang?: Lang | string | null)
  * scheduler only knows the team when the replaced player had a team
  * assignment.
  *
- * `plain` is ALWAYS English in Phase 2: it is only ever read by the
- * bench-offer DM (row 85), which stays English until Phase 3 moves the
- * DMs, and a Turkish clause inside an English sentence is worse than
- * either. The Turkish `_plain` entries exist in the table so the pair
- * moves together then.
+ * `plain` is only ever read by the bench-offer DM (row 85). Since
+ * Phase 3 that DM is written in the org's language too, so both clauses
+ * are in `lang` (in Phase 2 `plain` was forced to English, because a
+ * Turkish clause inside an English sentence is worse than either).
  */
 export function buildBenchOfferContext(
   args: {
@@ -186,7 +185,7 @@ export function buildBenchOfferContext(
   } & WithLang,
 ): { group: string; plain: string } {
   const s = t(args.lang);
-  const dm = t("en");
+  const dm = s;
   if (args.team) {
     const p = { teamLabel: args.team.teamLabel, replacingName: args.team.replacingName ?? "—", activityName: args.activityName };
     return { group: s.bench_offer_context_team(p), plain: dm.bench_offer_context_team_plain(p) };

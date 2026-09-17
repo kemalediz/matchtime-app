@@ -21,10 +21,12 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
-import { formatLondon } from "./london-time";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { loadPlayerSeasonStats } from "./player-stats";
 import { buildDmQaApology } from "./dm-copy";
+import { dayTimeLabel } from "./i18n/dates";
+import { normaliseLang, type Lang } from "./i18n/lang";
+import { applyHouseStyle } from "./message-analyzer";
 
 const SYSTEM_PROMPT = `You are MatchTime, a friendly assistant for a 5/7-a-side football group. You're answering ONE player's private message.
 
@@ -78,6 +80,7 @@ async function buildScopedContext(
   orgId: string,
   userId: string,
   includePhoneFlags = false,
+  lang: Lang = "en",
 ): Promise<string> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
@@ -119,7 +122,9 @@ async function buildScopedContext(
         : "";
     lines.push("");
     lines.push("UPCOMING MATCH:");
-    lines.push(`- ${match.activity.name} on ${formatLondon(match.date, "EEE d MMM 'at' HH:mm")} (UK time)`);
+    // The date the way the org's language writes it, so the model copies
+    // it rather than translating it ("Tue 8 Sep at 21:30" / "8 Eylül Salı 21:30").
+    lines.push(`- ${match.activity.name} on ${dayTimeLabel(lang, match.date)} (UK time)`);
     if (match.activity.venue) lines.push(`- Venue: ${match.activity.venue}`);
     lines.push(`- Squad: ${confirmed.length}/${match.maxPlayers} confirmed, ${bench.length} on the bench`);
     lines.push(`- You are currently: ${mine ? mine.status : "not signed up"}`);
@@ -190,11 +195,13 @@ export async function answerScopedQuestion(args: {
 
   const org = await db.organisation.findUnique({
     where: { id: args.orgId },
-    select: { name: true },
+    // `language`: the org the question is about decides the answer's language.
+    select: { name: true, language: true },
   });
   if (!org) return null;
+  const lang = normaliseLang(org.language);
 
-  const context = await buildScopedContext(args.orgId, args.userId, args.includePhoneFlags ?? false);
+  const context = await buildScopedContext(args.orgId, args.userId, args.includePhoneFlags ?? false, lang);
   if (stubMode) {
     return {
       answer: `[scoped-qa-stub]\n${context}`,
@@ -202,54 +209,126 @@ export async function answerScopedQuestion(args: {
       orgName: org.name,
     };
   }
-  const first = args.askerName?.split(/\s+/)[0] ?? null;
-
-  const userPrompt = [
-    `CONTEXT (everything you're allowed to use — nothing else exists for you):`,
-    context,
-    "",
-    `The player${first ? ` (${first})` : ""} asks:`,
-    args.question.trim(),
-    "",
-    `Answer per your rules.`,
-  ].join("\n");
-
   const anthropic = new Anthropic({ apiKey });
-  const resp = await anthropic.messages.create({
-    model: "claude-sonnet-4-5",
-    max_tokens: 600,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
+  const composed = await composeScopedAnswer({
+    context,
+    question: args.question,
+    askerName: args.askerName ?? null,
+    orgName: org.name,
+    lang,
+    call: async (system, user) => {
+      const resp = await anthropic.messages.create({
+        model: "claude-sonnet-4-5",
+        max_tokens: 600,
+        system,
+        messages: [{ role: "user", content: user }],
+      });
+      const textBlock = resp.content.find((c) => c.type === "text");
+      return {
+        text: textBlock && textBlock.type === "text" ? textBlock.text : null,
+        truncated: resp.stop_reason === "max_tokens",
+      };
+    },
   });
-  const APOLOGY = buildDmQaApology();
-
-  // Truncation guard. This answer is DM'd to a player verbatim, and
-  // unlike the JSON call sites (whose truncation fails closed on a
-  // parse error) nothing else would catch a half-finished sentence.
-  // Degrade to the apology we already send when there's no text at all.
-  if (resp.stop_reason === "max_tokens") {
+  if (composed.truncated) {
     console.error(
       `[dm-qa] BROKEN: answer hit the 600-token cap for org=${args.orgId} — the ` +
         `reply was TRUNCATED mid-sentence and has been discarded. Sending the ` +
         `generic apology instead. If this recurs, the cap is too low.`,
     );
-    return { answer: APOLOGY, orgId: args.orgId, orgName: org.name };
   }
-
-  const textBlock = resp.content.find((c) => c.type === "text");
-  const answer =
-    textBlock && textBlock.type === "text" ? textBlock.text.trim() : APOLOGY;
-
-  return { answer, orgId: args.orgId, orgName: org.name };
+  return { answer: composed.answer, orgId: args.orgId, orgName: org.name };
 }
+
+/** The model, as one function: the text it wrote (null for none) and
+ *  whether it ran out of tokens. */
+export type DmQaCall = (system: string, user: string) => Promise<{ text: string | null; truncated: boolean }>;
+
+/**
+ * The model half of `answerScopedQuestion`, with the database already
+ * read: the prompt, the call, and what is done with the answer. Exported
+ * so the live dry run (`scripts/dryrun-dm-qa.ts`) can drive the REAL
+ * prompt against a fixture context without touching a database.
+ *
+ * The system prompt stays English and identical for every club. A
+ * non-English org gets a LANGUAGE LINE in the user turn (the chase's
+ * pattern, design section 4.3), and its answer is passed through
+ * `applyHouseStyle` (no dashes, WhatsApp bold). The English prompt and
+ * the English answer are byte for byte what they were.
+ */
+export async function composeScopedAnswer(args: {
+  context: string;
+  question: string;
+  askerName: string | null;
+  orgName: string;
+  lang: Lang;
+  call: DmQaCall;
+}): Promise<{ answer: string; truncated: boolean }> {
+  const first = args.askerName?.split(/\s+/)[0] ?? null;
+  const tail = dmQaLanguageLine(args.lang, args.orgName);
+  const userPrompt = [
+    `CONTEXT (everything you're allowed to use — nothing else exists for you):`,
+    args.context,
+    "",
+    `The player${first ? ` (${first})` : ""} asks:`,
+    args.question.trim(),
+    "",
+    `Answer per your rules.`,
+    ...(tail ? ["", tail] : []),
+  ].join("\n");
+  const resp = await args.call(SYSTEM_PROMPT, userPrompt);
+  const APOLOGY = buildDmQaApology(args.lang);
+
+  // Truncation guard. This answer is DM'd to a player verbatim, and
+  // unlike the JSON call sites (whose truncation fails closed on a
+  // parse error) nothing else would catch a half-finished sentence.
+  // Degrade to the apology we already send when there's no text at all.
+  if (resp.truncated) return { answer: APOLOGY, truncated: true };
+  const answer = resp.text ? applyHouseStyle(resp.text.trim(), args.lang) : APOLOGY;
+  return { answer: answer || APOLOGY, truncated: false };
+}
+
+/**
+ * The language line for a non-English org, or null for English. It names
+ * the language, the register ("sen", one person to one person), the
+ * shapes the system prompt quotes in English (the refusal, the phone-flag
+ * answers), and the two house rules the Turkish table follows.
+ */
+export function dmQaLanguageLine(lang: Lang, orgName: string): string | null {
+  if (lang !== "tr") return null;
+  return [
+    "## Language",
+    "This player's group speaks TURKISH. Write your whole answer in Turkish, whatever language the question is in.",
+    'Address the player as "sen" (informal singular). No "abi", no "beyler", no greeting by time of day.',
+    "Copy every player name and the group name exactly as the CONTEXT spells them, and write dates and times the way the CONTEXT writes them.",
+    `If you decline, say it in Turkish, e.g. "Sadece ${orgName} maçlarıyla ilgili yardımcı olabilirim 🙂".`,
+    'The phone-number answers, when the context allows them, are "Kayıtlı numarası olmayanlar: Aaron, Idris." and "Herkesin kayıtlı numarası var 👍".',
+    "WhatsApp formatting: bold is *single asterisks*. NEVER write an em dash (—) or an en dash (–); use a comma or a full stop.",
+  ].join("\n");
+}
+
+/** A bare Turkish acknowledgement: never worth a model call. */
+const TR_ACK =
+  /^(?:tamam(?:d[ıi]r)?|tmm|ok(?:ey)?|sa[ğg]\s?ol|te[şs]ekk[üu]r(?:ler| ederim)?|eyvallah|peki|s[üu]per|harika|g[üu]zel|olur|anlad[ıi]m|👍|👌|🙏)[\s!.]*$/u;
+/** Turkish question words and the topics the Q&A answers. */
+const TR_QUESTION =
+  /(?<!\p{L})(?:ne\s+zaman|nerede|nerde|nereye|kim|kimler|ka[çc]|ka[çc]ta|saat\s+ka[çc]|hangi|neden|nas[ıi]l|var\s+m[ıi]|m[ıi]y[ıi]m|kadro\p{L}*|skor\p{L}*|sonu[çc]\p{L}*|ma[çc][ıi]n\s+adam\p{L}*|istatisti\p{L}*|puan\p{L}*|s[ıi]ralama\p{L}*|saha\p{L}*|ma[çc]\s+ne)(?!\p{L})/u;
 
 /** Cheap heuristic: does this DM look like a question/request worth an
  *  LLM answer, vs a bare ack we should ignore (avoids burning the LLM
  *  on "ok"/"thanks"/"👍"). */
-export function looksLikeQuestion(text: string): boolean {
+export function looksLikeQuestion(text: string, lang?: Lang | string | null): boolean {
   const t = text.trim();
   if (t.length < 3) return false;
   if (/[?]/.test(t)) return true;
+  if (normaliseLang(lang) === "tr") {
+    // A Turkish org (Phase 3). Its players often ask without a "?", so
+    // without this a Turkish question is dropped as an ack. Letter-bounded
+    // (`\p{L}`), after `toLocaleLowerCase("tr")`. English still applies.
+    const l = t.toLocaleLowerCase("tr");
+    if (TR_ACK.test(l)) return false;
+    if (TR_QUESTION.test(l)) return true;
+  }
   // Bare acks / reactions → not a question.
   if (/^(ok(ay)?|k|thanks?|thx|ta|cheers|👍|👌|🙏|nice|cool|great|lol|haha|yes|no|yep|nope)\b[\s!.]*$/i.test(t))
     return false;

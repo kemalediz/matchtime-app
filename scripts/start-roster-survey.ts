@@ -46,7 +46,7 @@ async function main() {
 
   const org = await db.organisation.findFirst({
     where: { slug },
-    select: { id: true, name: true },
+    select: { id: true, name: true, language: true },
   });
   if (!org) {
     console.error(`No org with slug "${slug}"`);
@@ -122,8 +122,9 @@ async function main() {
   let queued = 0;
   for (const m of eligible) {
     const phone = m.user.phoneNumber!.replace(/^\+/, "");
-    const firstName = m.user.name?.split(/\s+/)[0] ?? "mate";
-    const text = buildRosterSurveyInviteDm({ firstName, orgName: org.name });
+    const firstName = m.user.name?.split(/\s+/)[0] ?? null;
+    // In the org's language (`Organisation.language`).
+    const text = buildRosterSurveyInviteDm({ firstName, orgName: org.name, lang: org.language });
 
     const job = await db.botJob.create({
       data: { orgId: org.id, kind: "dm", phone, text },

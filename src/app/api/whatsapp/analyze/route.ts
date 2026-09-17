@@ -731,7 +731,8 @@ async function handleAnalyzeRequest(request: Request) {
           orgId: org.id,
           kind: "dm",
           phone,
-          text: buildStatsLinkDm({ name: sender.name, url: await buildShortMagicLinkUrl(token) }),
+          // The group's org language (the sender asked in that group).
+          text: buildStatsLinkDm({ name: sender.name, url: await buildShortMagicLinkUrl(token), lang: org.language }),
         },
       });
     } catch (err) {
@@ -2809,6 +2810,8 @@ async function handleAnalyzeRequest(request: Request) {
         queueDm: async ({ phone, text }) => {
           await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text } });
         },
+        // The group's org language: every stats DM is written in it.
+        lang: org.language,
       });
       const blastReply = composeStatsBlastReply(queued, org.language);
       const idx = results.findIndex((x) => x.waMessageId === blastMsg.waMessageId);

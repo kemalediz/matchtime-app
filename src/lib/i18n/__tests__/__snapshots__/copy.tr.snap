@@ -592,7 +592,7 @@ Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@MatchTi
 bu akşamki *Tuesday 7-a-side* için, *Kırmızı* takımında (Sait Demir yerine)
 
 ### R81 buildBenchOfferContext / team and replaced player (plain)
-on Kırmızı (replacing Sait Demir) for Tuesday 7-a-side tonight
+bu akşamki Tuesday 7-a-side için, Kırmızı takımında (Sait Demir yerine)
 
 ### R81 buildBenchOfferContext / replaced player unnamed (group)
 bu akşamki *Tuesday 7-a-side* için, *Kırmızı* takımında (— yerine)
@@ -601,7 +601,7 @@ bu akşamki *Tuesday 7-a-side* için, *Kırmızı* takımında (— yerine)
 bu akşamki *Tuesday 7-a-side* için
 
 ### R81 buildBenchOfferContext / fixture only (plain)
-for Tuesday 7-a-side tonight
+bu akşamki Tuesday 7-a-side için
 
 ### R78 buildPaymentPollQuestion
 💳 *Tuesday 7-a-side* ödemeleri, ödeyince işaretleyin
@@ -814,9 +814,9 @@ yeterli onaylı oyuncu yok, 9/14
 Almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; kim önce müsaitse yeri o alır, diğerleri yedekte kalır. 🙏
 
 ### R85 buildBenchOfferDm / reactions off
-👋 Hi Erdal, a slot just opened on Red (replacing Sait Demir) for Tuesday 7-a-side tonight and you're on the bench.
+👋 Erdal, bir yer açıldı: bu akşamki Tuesday 7-a-side için, Kırmızı takımında (Sait Demir yerine). Yedekte olduğun için sana da yazıyorum.
 
-Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
+İster misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
 
 ### R53 buildBenchIntroLine / reactions off
 🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
@@ -838,9 +838,9 @@ Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group.
 Almak için buraya 👍 verin ya da *VARIM* yazın. Acele yok, süre sınırı yok; kim önce müsaitse yeri o alır, diğerleri yedekte kalır. 🙏
 
 ### R85 buildBenchOfferDm / reactions on
-👋 Hi Erdal, a slot just opened on Red (replacing Sait Demir) for Tuesday 7-a-side tonight and you're on the bench.
+👋 Erdal, bir yer açıldı: bu akşamki Tuesday 7-a-side için, Kırmızı takımında (Sait Demir yerine). Yedekte olduğun için sana da yazıyorum.
 
-Want it? Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
+İster misin? Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
 
 ### R53 buildBenchIntroLine / reactions on
 🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk 👍 veren ya da *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
@@ -855,9 +855,9 @@ Want it? Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN
 "<name>, you're up — 👍/👎 above"
 
 ### R85 buildBenchOfferDm / no first name
-👋 Hi, a slot just opened on Red for Tuesday 7-a-side tonight and you're on the bench.
+👋 Bir yer açıldı: bu akşamki Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.
 
-Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
+İster misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
 
 ### R59 formatRatingProgressReply / not ok, no reason
 Şu an kontrol edemedim.
@@ -996,18 +996,18 @@ Dikkat: tanımadığım birinden bir *çıkma* mesajı aldım, o yüzden henüz 
 Süper 🙌 Adları ne? Yaz, kadroya ekleyeyim.
 
 ### R100 composeStatsBlastDm / named
-📊 Hi Sait — here are your MatchTime stats: your ratings over time, Man-of-the-Match games, how you stack up against the squad, your badges and a shareable season card.
+📊 Sait, MatchTime istatistiklerin burada: zaman içindeki puanların, maçın adamı seçildiğin maçlar, kadroyla karşılaştırman, rozetlerin ve paylaşılabilir sezon kartın.
 
 https://mt.example/s/abc
 
-Keep this link — it doesn't expire.
+Bu linki sakla, süresi dolmaz.
 
 ### R100 composeStatsBlastDm / no name
-📊 Hi there — here are your MatchTime stats: your ratings over time, Man-of-the-Match games, how you stack up against the squad, your badges and a shareable season card.
+📊 MatchTime istatistiklerin burada: zaman içindeki puanların, maçın adamı seçildiğin maçlar, kadroyla karşılaştırman, rozetlerin ve paylaşılabilir sezon kartın.
 
 https://mt.example/s/abc
 
-Keep this link — it doesn't expire.
+Bu linki sakla, süresi dolmaz.
 
 ### R51 composeStatsBlastReply / one
 📊 Tamam, 1 oyuncuya kişisel istatistik linkini DM'den gönderdim. Birkaç dakika içinde ulaşır.
@@ -1049,18 +1049,18 @@ Kusura bakma Sait, az önce kaydedemedim, henüz listede değilsin. Abid Hussain
 Kusura bakma, az önce kaydedemedim, henüz listede değilsin. Bir dakika sonra tekrar yazarsan hallederim 🙏
 
 ### R132 composeReminderDm / named
-⏰ Reminder, Sait — you asked me to nudge you:
+⏰ Hatırlatma, Sait: seni dürtmemi istemiştin.
 
 _book the pitch for Thursday_
 
-(reply in the group when you're ready 👍)
+(hazır olunca grupta yazarsın 👍)
 
 ### R132 composeReminderDm / no name
-⏰ Reminder, there — you asked me to nudge you:
+⏰ Hatırlatma: seni dürtmemi istemiştin.
 
 _book the pitch for Thursday_
 
-(reply in the group when you're ready 👍)
+(hazır olunca grupta yazarsın 👍)
 
 ### R133 composePaymentAck / named
 💳 Tamam, *Sait Demir* adına Abid Hussain, Idris Bello, Faris Nasser için ödeme kaydettim, maç: *Tuesday 7-a-side*. Ödemeyen: 6/14.
@@ -1106,80 +1106,80 @@ _(Bob listede bulunamadı, atlandı)_
 _(Jim takım sabitleme için bulunamadı, atlandı)_
 
 ### R93 buildRecruitInviteDm / reactions off, two spots, link
-👋 Sait, we're putting the squad together for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. 2 spots left.
+👋 Sait, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadroyu kuruyoruz. 2 yer kaldı.
 
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
+Oynuyor musun? *VARIM* yazman yeterli.
+Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌
 
-Prefer the app? https://mt.example/m/abc
+Uygulamadan yapmak istersen: https://mt.example/m/abc
 
 ### R93 buildRecruitInviteDm / reactions on, two spots, link
-👋 Sait, we're putting the squad together for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. 2 spots left.
+👋 Sait, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadroyu kuruyoruz. 2 yer kaldı.
 
-Playing? Reply *IN* or tap 👍 on this message.
-Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌
+Oynuyor musun? *VARIM* yaz ya da bu mesaja 👍 ver.
+Gelemiyor musun? *YOKUM* yaz ya da 👎 ver, bir daha sormam 🙌
 
-Prefer the app? https://mt.example/m/abc
+Uygulamadan yapmak istersen: https://mt.example/m/abc
 
 ### R93 buildRecruitInviteDm / one spot, no link
-👋 Sait, we're putting the squad together for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. 1 spot left.
+👋 Sait, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadroyu kuruyoruz. 1 yer kaldı.
 
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
+Oynuyor musun? *VARIM* yazman yeterli.
+Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌
 
 ### R93 buildRecruitInviteDm / spots suppressed
-👋 Sait, we're putting the squad together for *Tuesday 7-a-side* on Tue 8 Sep, 21:30.
+👋 Sait, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadroyu kuruyoruz.
 
-Playing? Just reply *IN*.
-Can't make it? Reply *OUT* and I'll stop asking 🙌
+Oynuyor musun? *VARIM* yazman yeterli.
+Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌
 
 ### R94 buildRecruitGroupInviteDm
-👋 Sait, we're putting the squad together for *Thursday 5-a-side* on Thu 10 Sep, 20:00. Fancy it? Just reply *IN* in the group and you're sorted 🙌
+👋 Sait, *Thursday 5-a-side* (10 Eylül Perşembe 20:00) için kadroyu kuruyoruz. Var mısın? Grupta *VARIM* yazman yeterli 🙌
 
 ### R84 buildRecruitChaseText / one
-👋 Sait, still after 1 player for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. Reply *IN* if you fancy it, or *OUT* and I'll stop asking 🙏
+👋 Sait, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için hâlâ 1 oyuncu arıyoruz. Varsan *VARIM*, yoksan *YOKUM* yaz, bir daha sormam 🙏
 
 ### R84 buildRecruitChaseText / three
-👋 Sait, still after 3 players for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. Reply *IN* if you fancy it, or *OUT* and I'll stop asking 🙏
+👋 Sait, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için hâlâ 3 oyuncu arıyoruz. Varsan *VARIM*, yoksan *YOKUM* yaz, bir daha sormam 🙏
 
 ### R84 buildRecruitChaseText / no name
-👋 there, still after 2 players for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. Reply *IN* if you fancy it, or *OUT* and I'll stop asking 🙏
+👋 *Tuesday 7-a-side* (8 Eylül Salı 21:30) için hâlâ 2 oyuncu arıyoruz. Varsan *VARIM*, yoksan *YOKUM* yaz, bir daha sormam 🙏
 
 ### R102 buildTentativeFollowupAck / in
-✅ Brilliant, you're in! See you there ⚽
+✅ Süper, kadrodasın! Maçta görüşürüz ⚽
 
 ### R102 buildTentativeFollowupAck / out
-👋 No worries, thanks for letting me know. Maybe next time!
+👋 Sorun değil, haber verdiğin için sağ ol. Belki bir dahaki sefere!
 
 ### R102 buildTentativeFollowupAck / failed
-Sorry, I couldn't update the squad just now. An admin will sort it, try again in a bit if you like 🙏
+Kusura bakma, kadroyu şu an güncelleyemedim. Bir yönetici halleder, istersen biraz sonra tekrar dene 🙏
 
 ### R101 buildSelfAttendanceAck / CONFIRMED
-✅ You're in for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. See you there ⚽
+✅ *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadrodasın. Maçta görüşürüz ⚽
 
 ### R101 buildSelfAttendanceAck / BENCH
-📋 Squad's full for *Tuesday 7-a-side* on Tue 8 Sep, 21:30, so I've put you first on the bench. I'll message you the moment a spot opens 🙏
+📋 *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏
 
 ### R101 buildSelfAttendanceAck / DROPPED
-👋 No worries, you're marked out for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. Thanks for letting me know.
+👋 Sorun değil, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için seni çıkardım. Haber verdiğin için sağ ol.
 
 ### R101 buildSelfAttendanceAck / no row
-👍 Noted. You weren't down for *Tuesday 7-a-side* on Tue 8 Sep, 21:30 anyway, so nothing's changed.
+👍 Not aldım. *Tuesday 7-a-side* (8 Eylül Salı 21:30) için zaten kadroda değildin, bir şey değişmedi.
 
 ### R101 buildSelfAttendanceAck / failed
-Sorry, I couldn't update the squad just now. An admin will sort it — try again in a bit if you like 🙏
+Kusura bakma, kadroyu şu an güncelleyemedim. Bir yönetici halleder, istersen biraz sonra tekrar dene 🙏
 
 ### R99 dmSubAckMessage / opt-out-all
-Done — I'll only message you about payments from now on. Text "start messages" anytime to turn the rest back on.
+Tamam, bundan sonra sana yalnızca ödemelerle ilgili yazacağım. Diğer mesajları yeniden açmak için istediğin zaman "mesajları aç" yaz.
 
 ### R99 dmSubAckMessage / opt-out-ratings
-Done — no more rating or Man-of-the-Match messages from me 👍 Text "start ratings" anytime to turn them back on.
+Tamam, artık puanlama ve maçın adamı mesajı göndermeyeceğim 👍 Yeniden açmak için istediğin zaman "puanlamayı aç" yaz.
 
 ### R99 dmSubAckMessage / opt-in-all
-Great — you're back on for all my messages 👍
+Süper, bütün mesajlarım yeniden açık 👍
 
 ### R99 dmSubAckMessage / opt-in-ratings
-Great — I'll send you rating and Man-of-the-Match links again 👍
+Süper, puanlama ve maçın adamı linklerini yeniden göndereceğim 👍
 
 ### R135 BOT_ADDED_INTRO
 👋 Hi, I'm *MatchTime*. I run the weekly admin for a football group: who's in, who's out, fair teams, reminders.
@@ -1500,24 +1500,24 @@ Thanks Erdal 🙌 You're in the squad, and that's us full at 14/14.
 Thanks 🙌 We've got space, so you're straight in the squad: 12/14.
 
 ### R36 resolveReminderPhrase whenLabel / "thursday"
-Thu 10 Sep
+10 Eylül Perşembe
 
 ### R36 resolveReminderPhrase whenLabel / "tomorrow morning"
-Wed 9 Sep at 09:00
+9 Eylül Çarşamba 09:00
 
 ### R36 resolveReminderPhrase whenLabel / "in 2 hours"
-Tue 8 Sep at 13:00
+8 Eylül Salı 13:00
 
 ### R36 resolveReminderPhrase whenLabel / "friday at 6pm"
-Fri 11 Sep at 18:00
+11 Eylül Cuma 18:00
 
 ### R36 resolveReminderPhrase whenLabel / "in a week"
-Tue 15 Sep at 11:00
+15 Eylül Salı 11:00
 
 ### R98 FEE_REPLY_SYSTEM_PROMPT
 You read ONE short private WhatsApp reply from the person who collects match fees for a football club. A moment ago the bot asked them, in writing:
 
-  "Got it — £X per player for <match>, N players to charge. Reply ✅ (or \"yes\") to send everyone their pay link, or send a different amount to change it."
+  "Tamam, <match> için kişi başı £X, N kişiden alınacak. Herkese ödeme linkini göndermek için ✅ (ya da \"evet\") yaz, değiştirmek için başka bir tutar gönder."
 
 You decide whether their reply is a DIRECT ANSWER to that question.
 
@@ -1546,6 +1546,20 @@ THE ONE DISTINCTION THAT MATTERS. A reply is only "yes" or "no" if it ANSWERS th
   "did Wasim turn up in the end?"               -> neither
   "make it £12"                                 -> neither, an amount is handled elsewhere
 
+THE REPLY WILL USUALLY BE IN TURKISH. The rules above apply unchanged:
+
+  "evet gönder"                                 -> yes
+  "tamam, yolla gitsin"                         -> yes
+  "doğru, gönderebilirsin"                      -> yes
+  "şimdilik bekle, parayı sayayım"              -> no
+  "yarına kadar gönderme"                       -> no
+  "harika maç 👍"                               -> neither, it is banter and the 👍 is not an answer
+  "eline sağlık beyler 👍"                      -> neither
+  "tamam yarın hallederim"                      -> neither, that is a plan, not a go-ahead
+  "evet, parayı Elvin topluyor"                 -> neither, it answers a different question
+  "kaç kişi ödüyor?"                            -> neither
+  "£12 yap"                                     -> neither, an amount is handled elsewhere
+
 If you are not at least 80% sure, return "neither" with a low confidence. A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away an amount they already typed. A wrong "neither" costs them one re-typed message, which is the cheapest of the three by a wide margin — when in doubt, choose it.
 
 Output STRICT JSON only — no markdown, no fences:
@@ -1557,233 +1571,233 @@ Output STRICT JSON only — no markdown, no fences:
 }
 
 ### R91 buildRatingDm
-🏆 *Tuesday 7-a-side* — Tue 8 Sep
+🏆 *Tuesday 7-a-side*, 8 Eylül Salı
 
-Rate your teammates and pick Man of the Match. Takes ~1 minute.
+Takım arkadaşlarına puan ver, Man of the Match için de oyunu kullan. Yaklaşık 1 dakika sürer.
 
-Your personal link:
+Kişisel linkin:
 https://mt.example/s/rate
 
-Link expires in 5 days.
+Link 5 gün geçerli.
 
-📊 Your season stats (ratings, MoM, badges, share card) — any time:
+📊 Sezon istatistiklerin (puanlar, maçın adamı, rozetler, paylaşım kartı), istediğin zaman:
 https://mt.example/s/stats
 
 ### R92 buildRatingReminderDm / day 1
-Hey Sait 👋 — hope last night's *Tuesday 7-a-side* was a good one.
+Sait 👋 Umarım dünkü *Tuesday 7-a-side* maçı iyi geçmiştir.
 
-When you have a sec, tap here to rate your teammates and pick Man of the Match. The more of us vote, the better the teams balance next week 🙌
+Bir dakikan olunca buradan takım arkadaşlarına puan ver, Man of the Match için de oyunu kullan. Ne kadar çok kişi oy verirse gelecek haftaki takımlar o kadar dengeli olur 🙌
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / day 2
-Sait, friendly nudge 🙂 — still waiting on your ratings for *Tuesday 7-a-side*.
+Sait, küçük bir hatırlatma 🙂 *Tuesday 7-a-side* için puanlarını hâlâ bekliyorum.
 
-Literally 30 seconds, promise. Helps everyone get fairer teams next week ⚽
+Söz, 30 saniye sürer. Gelecek hafta herkes için daha adil takımlar demek ⚽
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / day 3
-Halfway through the rating window, Sait ⏳
+Puanlama süresinin yarısı geçti, Sait ⏳
 
-Your vote for *Tuesday 7-a-side* actually moves ratings a lot when half the squad has voted and you haven't. Quick tap:
+Kadronun yarısı oy verdi, senin oyun da *Tuesday 7-a-side* puanlarını epey değiştirir. Hızlıca dokun:
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / day 4
-Sait — two days left to rate *Tuesday 7-a-side* and lock in Man of the Match 🏆
+Sait, *Tuesday 7-a-side* için puan vermeye ve Man of the Match oylamasına son iki gün 🏆
 
-30 seconds, then you're done:
+30 saniye, sonra işin biter:
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / day 5
-Last call Sait 🔔 — the rating window for *Tuesday 7-a-side* closes tomorrow.
+Son çağrı Sait 🔔 *Tuesday 7-a-side* için puanlama yarın kapanıyor.
 
-Drop a rating + Man of the Match pick before it shuts. Your voice counts:
+Kapanmadan puanını ver, Man of the Match için de oyunu kullan. Senin oyun da önemli:
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / no name
-Hey mate 👋 — hope last night's *Tuesday 7-a-side* was a good one.
+👋 Umarım dünkü *Tuesday 7-a-side* maçı iyi geçmiştir.
 
-When you have a sec, tap here to rate your teammates and pick Man of the Match. The more of us vote, the better the teams balance next week 🙌
+Bir dakikan olunca buradan takım arkadaşlarına puan ver, Man of the Match için de oyunu kullan. Ne kadar çok kişi oy verirse gelecek haftaki takımlar o kadar dengeli olur 🙌
 https://mt.example/s/rate
 
 ### R83 buildTentativeFollowupDm
-Hi Sait 👋 You were a *maybe* for *Tuesday 7-a-side* on Tue 8 Sep at 21:30.
+Sait 👋 *Tuesday 7-a-side* (8 Eylül Salı 21:30) için *belki* demiştin.
 
-Are you in or out? Just reply *IN* or *OUT* and I'll sort the squad 🙏
+Var mısın, yok musun? *VARIM* ya da *YOKUM* yazman yeterli, kadroyu ben ayarlarım 🙏
 
 ### R83 buildTentativeFollowupDm / no name
-Hi there 👋 You were a *maybe* for *Tuesday 7-a-side* on Tue 8 Sep at 21:30.
+👋 *Tuesday 7-a-side* (8 Eylül Salı 21:30) için *belki* demiştin.
 
-Are you in or out? Just reply *IN* or *OUT* and I'll sort the squad 🙏
+Var mısın, yok musun? *VARIM* ya da *YOKUM* yazman yeterli, kadroyu ben ayarlarım 🙏
 
 ### R88 buildFeeAskDm / fourteen played
-💷 Kemal — how much should each player pay for *Tuesday 7-a-side* (14 played)?
+💷 Kemal, *Tuesday 7-a-side* için oyuncu başı ne kadar alalım (14 kişi oynadı)?
 
-Just reply with the amount — e.g. "£8 each" or "£80 total to split". I'll confirm, then send everyone their pay link.
+Tutarı yazman yeterli, örneğin "kişi başı £8" ya da "toplam £80, bölüşülsün". Önce sana teyit ederim, sonra herkese ödeme linkini gönderirim.
 
 ### R88 buildFeeAskDm / nobody, no name
-💷 there — how much should each player pay for *Tuesday 7-a-side*?
+💷 *Tuesday 7-a-side* için oyuncu başı ne kadar alalım?
 
-Just reply with the amount — e.g. "£8 each" or "£80 total to split". I'll confirm, then send everyone their pay link.
+Tutarı yazman yeterli, örneğin "kişi başı £8" ya da "toplam £80, bölüşülsün". Önce sana teyit ederim, sonra herkese ödeme linkini gönderirim.
 
 ### R89 buildPayChaseDm / day 1
-💷 Quick one Sait — your *£8.50* for *Tuesday 7-a-side* is still outstanding.
+💷 Sait, kısa bir not: *Tuesday 7-a-side* için *£8.50* ödemen hâlâ açık.
 
-Pay by bank, card, Apple or Google Pay, or settle directly:
+Bankayla, kartla, Apple ya da Google Pay ile veya doğrudan organizatöre ödeyebilirsin:
 https://mt.example/s/pay
 
 ### R89 buildPayChaseDm / day 2
-💷 Sait, gentle nudge — your *£8.50* for *Tuesday 7-a-side* is still outstanding.
+💷 Sait, nazik bir hatırlatma: *Tuesday 7-a-side* için *£8.50* ödemen hâlâ açık.
 
-Pay by bank, card, Apple or Google Pay, or settle directly:
+Bankayla, kartla, Apple ya da Google Pay ile veya doğrudan organizatöre ödeyebilirsin:
 https://mt.example/s/pay
 
 ### R89 buildPayChaseDm / day 3
-💷 Sait, still owed — your *£8.50* for *Tuesday 7-a-side* is still outstanding.
+💷 Sait, tekrar hatırlatıyorum: *Tuesday 7-a-side* için *£8.50* ödemen hâlâ açık.
 
-Pay by bank, card, Apple or Google Pay, or settle directly:
+Bankayla, kartla, Apple ya da Google Pay ile veya doğrudan organizatöre ödeyebilirsin:
 https://mt.example/s/pay
 
 ### R89 buildPayChaseDm / no name, whole pounds
-💷 Quick one there — your *£8* for *Tuesday 7-a-side* is still outstanding.
+💷 Kısa bir not: *Tuesday 7-a-side* için *£8* ödemen hâlâ açık.
 
-Pay by bank, card, Apple or Google Pay, or settle directly:
+Bankayla, kartla, Apple ya da Google Pay ile veya doğrudan organizatöre ödeyebilirsin:
 https://mt.example/s/pay
 
 ### R90 buildDirectPayCollectorNudge / one
-🤝 1 player said they'd pay you directly for *Tuesday 7-a-side*. Tick off whoever's settled up:
+🤝 1 oyuncu *Tuesday 7-a-side* için sana doğrudan ödeyeceğini söyledi. Ödeyenleri buradan işaretle:
 https://mt.example/s/collect
 
 ### R90 buildDirectPayCollectorNudge / three
-🤝 3 players said they'd pay you directly for *Tuesday 7-a-side*. Tick off whoever's settled up:
+🤝 3 oyuncu *Tuesday 7-a-side* için sana doğrudan ödeyeceğini söyledi. Ödeyenleri buradan işaretle:
 https://mt.example/s/collect
 
 ### R95 buildPayLinkDm
-💷 Sait — match fee for *Tuesday 7-a-side* is *£8*.
+💷 Sait, *Tuesday 7-a-side* için maç ücreti *£8*.
 
-Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):
+Ödemek için dokun (banka, kart, Apple ya da Google Pay, ya da doğrudan organizatöre):
 https://mt.example/s/pay
 
-You can also pay for anyone you brought along.
+Getirdiğin misafirlerin ücretini de buradan ödeyebilirsin.
 
 ### R95 buildPayLinkDm / no name, pence
-💷 there — match fee for *Tuesday 7-a-side* is *£7.50*.
+💷 *Tuesday 7-a-side* için maç ücreti *£7.50*.
 
-Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):
+Ödemek için dokun (banka, kart, Apple ya da Google Pay, ya da doğrudan organizatöre):
 https://mt.example/s/pay
 
-You can also pay for anyone you brought along.
+Getirdiğin misafirlerin ücretini de buradan ödeyebilirsin.
 
 ### R96 buildFeeReleasedAck / one
-✅ Done — sent 1 pay link at *£8* each for *Tuesday 7-a-side*. Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.
+✅ Tamam, *Tuesday 7-a-side* için kişi başı *£8* üzerinden 1 ödeme linki gönderdim. Oyuncular bankayla, kartla, Apple ya da Google Pay ile veya doğrudan sana ödeyebilir. Ödemeyenlere ben hatırlatırım.
 
 ### R96 buildFeeReleasedAck / thirteen
-✅ Done — sent 13 pay links at *£8.50* each for *Tuesday 7-a-side*. Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.
+✅ Tamam, *Tuesday 7-a-side* için kişi başı *£8.50* üzerinden 13 ödeme linki gönderdim. Oyuncular bankayla, kartla, Apple ya da Google Pay ile veya doğrudan sana ödeyebilir. Ödemeyenlere ben hatırlatırım.
 
 ### R97 buildFeeCancelledAck
-No problem — cancelled. Just tell me the amount per player when you're ready.
+Sorun değil, iptal ettim. Hazır olunca kişi başı tutarı yazman yeterli.
 
 ### R98 buildFeeConfirmPrompt / per player
-Got it — *£8* per player for *Tuesday 7-a-side*, 13 players to charge.
+Tamam, *Tuesday 7-a-side* için kişi başı *£8*, 13 kişiden alınacak.
 
-Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
+Herkese ödeme linkini göndermek için *✅* (ya da "evet") yaz, değiştirmek için başka bir tutar gönder.
 
 ### R98 buildFeeConfirmPrompt / total split
-Got it — *£7.69* per player (split across 13 players) for *Tuesday 7-a-side*, 13 players to charge.
+Tamam, *Tuesday 7-a-side* için kişi başı *£7.69* (13 kişiye bölündü), 13 kişiden alınacak.
 
-Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
+Herkese ödeme linkini göndermek için *✅* (ya da "evet") yaz, değiştirmek için başka bir tutar gönder.
 
 ### R98 buildFeeConfirmPrompt / one player
-Got it — *£8* per player (split across 1 player) for *Tuesday 7-a-side*, 1 player to charge.
+Tamam, *Tuesday 7-a-side* için kişi başı *£8* (1 kişiye bölündü), 1 kişiden alınacak.
 
-Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
+Herkese ödeme linkini göndermek için *✅* (ya da "evet") yaz, değiştirmek için başka bir tutar gönder.
 
 ### R98 buildFeeConfirmPrompt / nobody to charge
-Got it — *£8* per player for *Tuesday 7-a-side*.
+Tamam, *Tuesday 7-a-side* için kişi başı *£8*.
 
-Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
+Herkese ödeme linkini göndermek için *✅* (ya da "evet") yaz, değiştirmek için başka bir tutar gönder.
 
 ### R103 buildBenchDmUnclear
-Want the open slot for tonight? Reply *YES* to grab it. If not, no worries — you stay on the bench either way 🙏
+Bu akşamki boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏
 
 ### R104 buildBenchDmAck / declined
-👍 No worries — you're still on the bench, nothing changes.
+👍 Sorun değil, yedekte kalmaya devam ediyorsun, bir şey değişmedi.
 
 ### R104 buildBenchDmAck / confirmed
-✅ You got it — you're in for tonight! ⚽
+✅ Yer senin, bu akşam oynuyorsun! ⚽
 
 ### R104 buildBenchDmAck / taken
-Ah — someone just grabbed that one first. You're still first in line on the bench if another opens 🙏
+Maalesef biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende 🙏
 
 ### R104 buildBenchDmAck / other
-👍 Got it.
+👍 Tamam.
 
 ### R105 buildTentativeReask
-No worries — just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏
+Sorun değil, oynayabiliyorsan *VARIM*, oynayamıyorsan *YOKUM* yaz, kadroyu güncellerim 🙏
 
 ### R106 buildAdminRecruitDmReply / invited three, two spots
-📣 Done — DM'd 3 recent players who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30 (2 spots left). I'll add anyone who taps in. 🙏
+📣 Tamam, cevap vermemiş 3 oyuncuya *Tuesday 7-a-side* (8 Eylül Salı 21:30) için DM attım (2 yer boş). Varım diyeni ekleyeceğim. 🙏
 
 ### R106 buildAdminRecruitDmReply / invited one, one spot
-📣 Done — DM'd 1 recent player who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30 (1 spot left). I'll add anyone who taps in. 🙏
+📣 Tamam, cevap vermemiş 1 oyuncuya *Tuesday 7-a-side* (8 Eylül Salı 21:30) için DM attım (1 yer boş). Varım diyeni ekleyeceğim. 🙏
 
 ### R106 buildAdminRecruitDmReply / invited, need unknown
-📣 Done — DM'd 2 recent players who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30. I'll add anyone who taps in. 🙏
+📣 Tamam, cevap vermemiş 2 oyuncuya *Tuesday 7-a-side* (8 Eylül Salı 21:30) için DM attım. Varım diyeni ekleyeceğim. 🙏
 
 ### R107 buildAdminRecruitDmReply / nobody new
-Everyone who played recently has already responded to *Tuesday 7-a-side* — nobody new to invite. 👍
+Son maçlarda oynayan herkes *Tuesday 7-a-side* için zaten cevap vermiş, davet edilecek yeni kimse yok. 👍
 
 ### R108 buildAdminRecruitDmReply / not ok, no reason
-Couldn't do that right now.
+Şu an yapamadım.
 
 ### R109 buildRosterSurveyClarification
-Sorry Sait — wasn't sure if that was a reply to the roster check-in for *Sutton FC*.
+Kusura bakma Sait, emin olamadım: bu mesaj *Sutton FC* kadro yoklamasına cevap mıydı?
 
-Was your answer:
-• yes / I'm in
-• maybe / sometimes
-• not for now / out
+Cevabın hangisiydi:
+• evet / varım
+• belki / ara sıra
+• şimdilik yok / bırakıyorum
 
-Quick word back is enough — otherwise no worries, an admin will sort it 🙏
+Kısa bir cevap yeter, yazmazsan da sorun değil, bir yönetici halleder 🙏
 
 ### R109 rosterSurveyClarificationProbe
-Sorry Sait — wasn't sure if that was a reply to the roster check-in
+Kusura bakma Sait, emin olamadım:
 
 ### R110 buildRosterSurveyConfirmation / in
-Got it Sait, marked you as in 👍 — thanks!
+Tamam Sait, seni varım olarak işaretledim 👍 Sağ ol!
 
 ### R110 buildRosterSurveyConfirmation / maybe
-Got it Sait, marked you as maybe 👍 — just say *IN* in the group whenever you want to play that week, no need to confirm in advance.
+Tamam Sait, seni belki olarak işaretledim 👍 Oynamak istediğin hafta grupta *VARIM* yazman yeterli, önceden haber vermene gerek yok.
 
 ### R110 buildRosterSurveyConfirmation / out
-No worries Sait, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏
+Sorun değil Sait, bir süre ara verdiğini not ettim. Yöneticiler haftanın sonunda kadroyu düzenleyecek. O zamana kadar fikrin değişirse buraya yazman yeterli 🙏
 
 ### R109b buildRosterSurveyInviteDm
-Hey Sait 👋
+Sait 👋
 
-This is *Match Time*, the bot that coordinates your *Sutton FC* WhatsApp group (the Tuesday football one).
+Ben *Match Time*, *Sutton FC* WhatsApp grubunu düzenleyen bot.
 
-Quick check-in — attendance's been thin lately, so we're asking everyone if they're still up for Tuesday football going forward.
+Kısa bir yoklama: son zamanlarda katılım az, o yüzden herkese önümüzdeki haftalarda da oynamak isteyip istemediğini soruyoruz.
 
-Just reply here with a word or two:
-• "yes" / "I'm in" — keep me on the roster
-• "maybe" / "depends" — only when I confirm
-• "not for now" / "out" — step me back
+Buraya bir iki kelimeyle cevap vermen yeterli:
+• "evet" / "varım", kadroda kalayım
+• "belki" / "duruma göre", sadece ben onaylarsam
+• "şimdilik yok" / "bırakıyorum", beni kadrodan çıkarın
 
-Whatever you pick stays between you and the group admin. No drama 🙏
+Seçimin sadece seninle grup yöneticisi arasında kalır 🙏
 
 ### R111 buildDmQaApology
-Sorry, I couldn't work that one out — try asking again? 🙂
+Kusura bakma, bunu çıkaramadım, bir daha sorar mısın? 🙂
 
 ### R122 buildStatsLinkDm / named
-📊 Hey Sait — here are your MatchTime stats: ratings over time, your Man-of-the-Match games, how you compare to the squad, your badges, and a shareable season card.
+📊 Sait, MatchTime istatistiklerin burada: zaman içindeki puanların, maçın adamı seçildiğin maçlar, kadroyla karşılaştırman, rozetlerin ve paylaşılabilir sezon kartın.
 
 https://mt.example/s/stats
 
-Link works for 48h.
+Link 48 saat geçerli.
 
 ### R122 buildStatsLinkDm / no name
-📊 Hey there — here are your MatchTime stats: ratings over time, your Man-of-the-Match games, how you compare to the squad, your badges, and a shareable season card.
+📊 MatchTime istatistiklerin burada: zaman içindeki puanların, maçın adamı seçildiğin maçlar, kadroyla karşılaştırman, rozetlerin ve paylaşılabilir sezon kartın.
 
 https://mt.example/s/stats
 
-Link works for 48h.
+Link 48 saat geçerli.
