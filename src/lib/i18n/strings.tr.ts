@@ -716,6 +716,302 @@ export const tr: Strings = {
         `Ödemeyenlere nazik hatırlatmalar gönderirim. Oyuncular kartla ödeyebilir, organizatör nakit ve havaleleri alındı olarak işaretleyebilir.\n` +
         `Bu yalnızca ödeme takibi açıkken çalışır. Son durum için *@Match Time kim ödemedi?* yazın.`,
     })[p.topic],
+
+  // ── private messages (Phase 3) ──────────────────────────────────────
+  // Register: "sen" in every DM (the owner's decision). Names, dates and
+  // match names sit where Turkish needs no suffix on them: before
+  // "için", in brackets, or after a colon. A missing first name is left
+  // out rather than replaced with a stand-in word. The words a player is
+  // told to type are *VARIM* / *YOKUM* (attendance) and *EVET* (the
+  // bench slot); the readers in `dm-reply/route.ts`,
+  // `dm-self-attendance.ts` and `fee-confirm.ts` accept them.
+
+  dm_rating: (p) =>
+    `🏆 *${p.activityName}*, ${p.dateLabel}\n\n` +
+    `Takım arkadaşlarına puan ver, ${p.mvpLabel} için de oyunu kullan. Yaklaşık 1 dakika sürer.\n\n` +
+    `Kişisel linkin:\n${p.rateUrl}\n\n` +
+    `Link 5 gün geçerli.\n\n` +
+    `📊 Sezon istatistiklerin (puanlar, maçın adamı, rozetler, paylaşım kartı), istediğin zaman:\n${p.statsUrl}`,
+
+  dm_rating_reminder: (p) => {
+    const n = p.firstName;
+    const sig = `\n${p.url}`;
+    switch (p.dayNum) {
+      case 1:
+        return (
+          `${n ? `${n} 👋 ` : "👋 "}Umarım dünkü *${p.activityName}* maçı iyi geçmiştir.\n\n` +
+          `Bir dakikan olunca buradan takım arkadaşlarına puan ver, ${p.mvpLabel} için de oyunu kullan. ` +
+          `Ne kadar çok kişi oy verirse gelecek haftaki takımlar o kadar dengeli olur 🙌${sig}`
+        );
+      case 2:
+        return (
+          `${n ? `${n}, küçük` : "Küçük"} bir hatırlatma 🙂 *${p.activityName}* için puanlarını hâlâ bekliyorum.\n\n` +
+          `Söz, 30 saniye sürer. Gelecek hafta herkes için daha adil takımlar demek ⚽${sig}`
+        );
+      case 3:
+        return (
+          `Puanlama süresinin yarısı geçti${n ? `, ${n}` : ""} ⏳\n\n` +
+          `Kadronun yarısı oy verdi, senin oyun da *${p.activityName}* puanlarını epey değiştirir. Hızlıca dokun:${sig}`
+        );
+      case 4:
+        return (
+          `${n ? `${n}, ` : ""}*${p.activityName}* için puan vermeye ve ${p.mvpLabel} oylamasına son iki gün 🏆\n\n` +
+          `30 saniye, sonra işin biter:${sig}`
+        );
+      default:
+        return (
+          `Son çağrı${n ? ` ${n}` : ""} 🔔 *${p.activityName}* için puanlama yarın kapanıyor.\n\n` +
+          `Kapanmadan puanını ver, ${p.mvpLabel} için de oyunu kullan. Senin oyun da önemli:${sig}`
+        );
+    }
+  },
+
+  dm_tentative_followup: (p) =>
+    `${p.firstName ? `${p.firstName} 👋 ` : "👋 "}*${p.activityName}* (${p.whenLabel}) için *belki* demiştin.\n\n` +
+    `Var mısın, yok musun? *VARIM* ya da *YOKUM* yazman yeterli, kadroyu ben ayarlarım 🙏`,
+
+  dm_tentative_reask: "Sorun değil, oynayabiliyorsan *VARIM*, oynayamıyorsan *YOKUM* yaz, kadroyu güncellerim 🙏",
+
+  dm_tentative_ack: (p) => {
+    if (p.failed) {
+      return "Kusura bakma, kadroyu şu an güncelleyemedim. Bir yönetici halleder, istersen biraz sonra tekrar dene 🙏";
+    }
+    return p.decision === "in"
+      ? "✅ Süper, kadrodasın! Maçta görüşürüz ⚽"
+      : "👋 Sorun değil, haber verdiğin için sağ ol. Belki bir dahaki sefere!";
+  },
+
+  dm_bench_offer: (p) => {
+    const claim = p.reactions
+      ? "Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz."
+      : "Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver.";
+    return (
+      `👋 ${p.firstName ? `${p.firstName}, bir` : "Bir"} yer açıldı: ${p.context}. Yedekte olduğun için sana da yazıyorum.\n\n` +
+      `İster misin? ${claim} İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏`
+    );
+  },
+
+  dm_bench_unclear:
+    "Bu akşamki boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏",
+
+  dm_bench_ack: (p) =>
+    ({
+      declined: "👍 Sorun değil, yedekte kalmaya devam ediyorsun, bir şey değişmedi.",
+      confirmed: "✅ Yer senin, bu akşam oynuyorsun! ⚽",
+      taken: "Maalesef biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende 🙏",
+      other: "👍 Tamam.",
+    })[p.kind],
+
+  dm_recruit_invite: (p) => {
+    const spots = p.spotsLeft > 0 ? ` ${p.spotsLeft} yer kaldı.` : "";
+    const lines = [
+      `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.matchName}* (${p.matchWhen}) için kadroyu kuruyoruz.${spots}`,
+      "",
+      p.reactions ? "Oynuyor musun? *VARIM* yaz ya da bu mesaja 👍 ver." : "Oynuyor musun? *VARIM* yazman yeterli.",
+      p.reactions
+        ? "Gelemiyor musun? *YOKUM* yaz ya da 👎 ver, bir daha sormam 🙌"
+        : "Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌",
+    ];
+    if (p.link) lines.push("", `Uygulamadan yapmak istersen: ${p.link}`);
+    return lines.join("\n");
+  },
+  dm_recruit_group_invite: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.matchName}* (${p.matchWhen}) için kadroyu kuruyoruz. ` +
+    `Var mısın? Grupta *VARIM* yazman yeterli 🙌`,
+
+  dm_recruit_chase: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* (${p.matchWhen}) için hâlâ ${p.count} oyuncu arıyoruz. ` +
+    `Varsan *VARIM*, yoksan *YOKUM* yaz, bir daha sormam 🙏`,
+
+  dm_self_ack: (p) => {
+    const m = `*${p.matchName}* (${p.matchWhen})`;
+    if (p.failed) {
+      return "Kusura bakma, kadroyu şu an güncelleyemedim. Bir yönetici halleder, istersen biraz sonra tekrar dene 🙏";
+    }
+    if (p.status === "CONFIRMED") return `✅ ${m} için kadrodasın. Maçta görüşürüz ⚽`;
+    if (p.status === "BENCH") {
+      return `📋 ${m} için kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏`;
+    }
+    if (p.status === "DROPPED") return `👋 Sorun değil, ${m} için seni çıkardım. Haber verdiğin için sağ ol.`;
+    return `👍 Not aldım. ${m} için zaten kadroda değildin, bir şey değişmedi.`;
+  },
+
+  dm_sub_ack: (p) =>
+    ({
+      "opt-out-all":
+        'Tamam, bundan sonra sana yalnızca ödemelerle ilgili yazacağım. ' +
+        'Diğer mesajları yeniden açmak için istediğin zaman "mesajları aç" yaz.',
+      "opt-out-ratings":
+        'Tamam, artık puanlama ve maçın adamı mesajı göndermeyeceğim 👍 ' +
+        'Yeniden açmak için istediğin zaman "puanlamayı aç" yaz.',
+      "opt-in-all": "Süper, bütün mesajlarım yeniden açık 👍",
+      "opt-in-ratings": "Süper, puanlama ve maçın adamı linklerini yeniden göndereceğim 👍",
+    })[p.kind],
+
+  dm_reminder: (p) =>
+    `⏰ Hatırlatma${p.firstName ? `, ${p.firstName}` : ""}: seni dürtmemi istemiştin.\n\n` +
+    `_${p.note}_\n\n` +
+    `(hazır olunca grupta yazarsın 👍)`,
+
+  dm_stats_blast: (p) =>
+    `📊 ${p.firstName ? `${p.firstName}, ` : ""}MatchTime istatistiklerin burada: zaman içindeki puanların, ` +
+    `maçın adamı seçildiğin maçlar, kadroyla karşılaştırman, rozetlerin ve paylaşılabilir sezon kartın.\n\n` +
+    `${p.url}\n\nBu linki sakla, süresi dolmaz.`,
+
+  dm_stats_link: (p) =>
+    `📊 ${p.firstName ? `${p.firstName}, ` : ""}MatchTime istatistiklerin burada: zaman içindeki puanların, ` +
+    `maçın adamı seçildiğin maçlar, kadroyla karşılaştırman, rozetlerin ve paylaşılabilir sezon kartın.\n\n` +
+    `${p.url}\n\nLink 48 saat geçerli.`,
+
+  dm_qa_apology: "Kusura bakma, bunu çıkaramadım, bir daha sorar mısın? 🙂",
+
+  dm_fee_ask: (p) =>
+    `💷 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* için oyuncu başı ne kadar alalım` +
+    (p.headcount > 0 ? ` (${p.headcount} kişi oynadı)` : "") +
+    `?\n\n` +
+    `Tutarı yazman yeterli, örneğin "kişi başı £8" ya da "toplam £80, bölüşülsün". ` +
+    `Önce sana teyit ederim, sonra herkese ödeme linkini gönderirim.`,
+
+  dm_fee_confirm_prompt: (p) => {
+    const split = p.wasTotal ? ` (${p.headcount} kişiye bölündü)` : "";
+    const charge = p.headcount === "N" || p.headcount > 0;
+    return (
+      `Tamam, *${p.matchName}* için kişi başı *${p.fee}*${split}` +
+      (charge ? `, ${p.headcount} kişiden alınacak` : "") +
+      `.\n\nHerkese ödeme linkini göndermek için *✅* (ya da "evet") yaz, değiştirmek için başka bir tutar gönder.`
+    );
+  },
+
+  dm_fee_released: (p) =>
+    `✅ Tamam, *${p.matchName}* için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki gönderdim. ` +
+    `Oyuncular bankayla, kartla, Apple ya da Google Pay ile veya doğrudan sana ödeyebilir. Ödemeyenlere ben hatırlatırım.`,
+
+  dm_fee_cancelled: "Sorun değil, iptal ettim. Hazır olunca kişi başı tutarı yazman yeterli.",
+
+  dm_pay_link: (p) =>
+    `💷 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* için maç ücreti *${p.fee}*.\n\n` +
+    `Ödemek için dokun (banka, kart, Apple ya da Google Pay, ya da doğrudan organizatöre):\n${p.url}\n\n` +
+    `Getirdiğin misafirlerin ücretini de buradan ödeyebilirsin.`,
+
+  dm_pay_chase: (p) => {
+    const phrase = p.dayNum <= 1 ? "kısa bir not" : p.dayNum === 2 ? "nazik bir hatırlatma" : "tekrar hatırlatıyorum";
+    const opener = p.firstName
+      ? `${p.firstName}, ${phrase}`
+      : phrase.charAt(0).toLocaleUpperCase("tr") + phrase.slice(1);
+    return (
+      `💷 ${opener}: *${p.activityName}* için *${p.fee}* ödemen hâlâ açık.\n\n` +
+      `Bankayla, kartla, Apple ya da Google Pay ile veya doğrudan organizatöre ödeyebilirsin:\n${p.url}`
+    );
+  },
+
+  dm_direct_pay_nudge: (p) =>
+    `🤝 ${p.count} oyuncu *${p.activityName}* için sana doğrudan ödeyeceğini söyledi. ` +
+    `Ödeyenleri buradan işaretle:\n${p.url}`,
+
+  dm_admin_recruit_done: (p) =>
+    `📣 Tamam, cevap vermemiş ${p.invited} oyuncuya *${p.matchName}* (${p.matchWhen}) için DM attım${p.need ? ` (${p.need} yer boş)` : ""}. Varım diyeni ekleyeceğim. 🙏`,
+  dm_admin_recruit_nobody_new: (p) =>
+    `Son maçlarda oynayan herkes *${p.matchName}* için zaten cevap vermiş, davet edilecek yeni kimse yok. 👍`,
+
+  dm_survey_clarify_probe: (p) => `Kusura bakma${p.firstName ? ` ${p.firstName}` : ""}, emin olamadım:`,
+  dm_survey_clarify: (p) =>
+    [
+      `Kusura bakma${p.firstName ? ` ${p.firstName}` : ""}, emin olamadım: bu mesaj *${p.orgName}* kadro yoklamasına cevap mıydı?`,
+      ``,
+      `Cevabın hangisiydi:`,
+      `• evet / varım`,
+      `• belki / ara sıra`,
+      `• şimdilik yok / bırakıyorum`,
+      ``,
+      `Kısa bir cevap yeter, yazmazsan da sorun değil, bir yönetici halleder 🙏`,
+    ].join("\n"),
+
+  dm_survey_confirm: (p) => {
+    const n = p.firstName ? ` ${p.firstName}` : "";
+    if (p.category === "in") return `Tamam${n}, seni varım olarak işaretledim 👍 Sağ ol!`;
+    if (p.category === "maybe") {
+      return `Tamam${n}, seni belki olarak işaretledim 👍 Oynamak istediğin hafta grupta *VARIM* yazman yeterli, önceden haber vermene gerek yok.`;
+    }
+    return `Sorun değil${n}, bir süre ara verdiğini not ettim. Yöneticiler haftanın sonunda kadroyu düzenleyecek. O zamana kadar fikrin değişirse buraya yazman yeterli 🙏`;
+  },
+
+  dm_survey_invite: (p) =>
+    [
+      p.firstName ? `${p.firstName} 👋` : "👋",
+      ``,
+      `Ben *Match Time*, *${p.orgName}* WhatsApp grubunu düzenleyen bot.`,
+      ``,
+      `Kısa bir yoklama: son zamanlarda katılım az, o yüzden herkese önümüzdeki haftalarda da oynamak isteyip istemediğini soruyoruz.`,
+      ``,
+      `Buraya bir iki kelimeyle cevap vermen yeterli:`,
+      `• "evet" / "varım", kadroda kalayım`,
+      `• "belki" / "duruma göre", sadece ben onaylarsam`,
+      `• "şimdilik yok" / "bırakıyorum", beni kadrodan çıkarın`,
+      ``,
+      `Seçimin sadece seninle grup yöneticisi arasında kalır 🙏`,
+    ].join("\n"),
+  // ── the legacy "@Match Time setup" flow (Phase 3c) ──
+  // Group-facing: plural register ("yazın"), as the group-add flow.
+
+  onb_legacy_intro:
+    `👋 Merhaba, ben *MatchTime*, futbol grubunuzun otomatik organizatörü. ` +
+    `Haftalık işleri ben üstlenirim, siz sadece gelip oynarsınız.\n\n` +
+    `Neler yaparım:\n` +
+    `⚽ *Katılım*, oyuncular buraya "varım" ya da "yokum" yazar; kadro listesini güncel tutarım, eksik kalınca hatırlatırım\n` +
+    `⚖️ *Dengeli takımlar*, gerçek oyuncu puanlarına göre her hafta dengeli iki takım\n` +
+    `🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri bütün yedeklere sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez\n` +
+    `🏆 *Maçın adamı ve puanlar*, maçtan sonra kısa bir oylama ve tek dokunuşla puanlama linki, uygulama indirmeye gerek yok\n` +
+    `⏰ *Hatırlatmalar ve istatistikler*, maçtan önce herkese hatırlatırım, "geçen hafta maçın adamı kim oldu?" gibi sorulara cevap veririm\n\n` +
+    `Tablo yok, kovalamaca yok, organizasyon derdi yok. ⚡\n\n` +
+    `Hadi kuralım, yaklaşık bir dakika sürer:`,
+
+  onb_legacy_question: (p) =>
+    ({
+      name: "👋 MatchTime'ı bu grup için kuralım! Önce şu: kulübünüzün ya da grubunuzun adı ne olsun? (örn. *Cuma Futbolu*)",
+      side: `Tamam, adımız *${p.groupName}*. Takım başına kaç oyuncu oynuyor? (örn. 7'ye 7 için *7*, 5'e 5 için *5*)`,
+      day: "Genelde haftanın hangi *günü* oynuyorsunuz? (örn. Cuma)",
+      time: "Maç *saat kaçta* başlıyor? (örn. 21:30)",
+      venue: "Nerede oynuyorsunuz? *Saha* adını yazın.",
+      recurrence: "Bu *her hafta* oynanan bir maç mı, yoksa *tek seferlik* mi?",
+      date: "Tek seferlik maç *hangi tarihte*? (örn. 2026-05-28)",
+    })[p.field],
+
+  onb_legacy_menu: (p) => {
+    const lines = p.items.map((f, i) => `${i + 1}. *${f.label}*: ${f.blurb}`);
+    return (
+      `${p.lead}:\n\n${lines.join("\n")}\n\n` +
+      `İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". ` +
+      `Numaralarını da yazabilirsiniz: "1, 3 ve 4".`
+    );
+  },
+
+  onb_legacy_feature_blurb: (p) =>
+    ({
+      attendance: "VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.",
+      bench: "Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.",
+      teamBalancing: "İstenince dengeli iki takım kurar.",
+      momVoting: "Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.",
+      playerRating: "Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.",
+      reminders: "İstenen gün oyuncuya özelden hatırlatma yazar.",
+      statsQa: "Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).",
+      paymentTracking: "Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).",
+      paymentCollection: "Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.",
+      payByBank: "En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.",
+      payCard: "Kartla ödeme (£10 için yaklaşık 35p).",
+      payDirect: "Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.",
+    })[p.key] ?? p.englishBlurb,
+
+  onb_legacy_menu_retry_lead: "Hangilerini seçtiğinizi anlayamadım, istediğiniz özellikleri yazın",
+
+  onb_legacy_provisioned_lead: (p) =>
+    `Süper, *${p.groupName}* hazır: takım başına *${p.playersPerTeam}* oyuncu, *her ${p.dayName} ${p.kickoffTime}*, yer: *${p.venue}*.\n\n` +
+    `Son adım: hangi özellikleri istiyorsunuz? Yapabildiklerimin hepsi burada`,
+
+  onb_legacy_completion: (p) =>
+    `✅ *Hazırız!* Bu grup için şu özelliklerle çalışıyorum: *${p.onLabels.join(", ")}*.\n\n` +
+    `İlk maç: *${p.dayName} ${p.kickoffTime}*, yer: *${p.venue}*` +
+    `${p.weekly ? " (her hafta)" : ""}.\n\n` +
+    `*Beni nasıl kullanırsınız* 👇\n${p.howToUseMe}`,
 };
 
 /**

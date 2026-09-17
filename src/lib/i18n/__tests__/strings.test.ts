@@ -226,6 +226,46 @@ const SAMPLES: SampleArgs = {
   onbHelpTopicLabel: { topic: "teams" },
   onbHelpNotOn: null,
   onbHelpExplainer: { topic: "teams" },
+
+  // ── private messages (Phase 3) ──
+  //   `dayNum`, `kind`, `category` and `decision` are branched on, not printed.
+  dm_rating: { activityName: "Tuesday 7-a-side", dateLabel: "DATELABEL", mvpLabel: "MVPLABEL", rateUrl: "https://mt.example/s/rate", statsUrl: "https://mt.example/s/stats" },
+  dm_rating_reminder: { dayNum: 1, firstName: "Sait", activityName: "Tuesday 7-a-side", mvpLabel: "MVPLABEL", url: "https://mt.example/s/rate" },
+  dm_tentative_followup: { firstName: "Sait", activityName: "Tuesday 7-a-side", whenLabel: "WHENLABEL" },
+  dm_tentative_reask: null,
+  dm_tentative_ack: { decision: "in", failed: false },
+  dm_bench_offer: { firstName: "Erdal", context: "CONTEXTCLAUSE", reactions: false },
+  dm_bench_unclear: null,
+  dm_bench_ack: { kind: "taken" },
+  dm_recruit_invite: { firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: "WHENLABEL", spotsLeft: 2, link: "https://mt.example/m/abc", reactions: false },
+  dm_recruit_group_invite: { firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: "WHENLABEL" },
+  dm_recruit_chase: { firstName: "Sait", count: 3, activityName: "Tuesday 7-a-side", matchWhen: "WHENLABEL" },
+  dm_self_ack: { failed: false, status: "BENCH", matchName: "Tuesday 7-a-side", matchWhen: "WHENLABEL" },
+  dm_sub_ack: { kind: "opt-out-all" },
+  dm_reminder: { firstName: "Sait", note: "book the pitch" },
+  dm_stats_blast: { firstName: "Sait", url: "https://mt.example/s/stats" },
+  dm_stats_link: { firstName: "Sait", url: "https://mt.example/s/stats" },
+  dm_qa_apology: null,
+  dm_fee_ask: { firstName: "Kemal", activityName: "Tuesday 7-a-side", headcount: 14 },
+  dm_fee_confirm_prompt: { fee: "£7.69", headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: true },
+  dm_fee_released: { released: 13, fee: "£8.50", matchName: "Tuesday 7-a-side" },
+  dm_fee_cancelled: null,
+  dm_pay_link: { firstName: "Sait", activityName: "Tuesday 7-a-side", fee: "£8.50", url: "https://mt.example/s/pay" },
+  dm_pay_chase: { firstName: "Sait", dayNum: 2, fee: "£8.50", activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay" },
+  dm_direct_pay_nudge: { count: 3, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect" },
+  dm_admin_recruit_done: { invited: 5, matchName: "Tuesday 7-a-side", matchWhen: "WHENLABEL", need: 2 },
+  dm_admin_recruit_nobody_new: { matchName: "Tuesday 7-a-side" },
+  dm_survey_clarify_probe: { firstName: "Sait" },
+  dm_survey_clarify: { firstName: "Sait", orgName: "Sutton FC" },
+  dm_survey_confirm: { category: "maybe", firstName: "Sait" },
+  dm_survey_invite: { firstName: "Sait", orgName: "Sutton FC" },
+  onb_legacy_intro: null,
+  onb_legacy_question: { field: "side", groupName: "Tuesday Ballers FC" },
+  onb_legacy_menu: { lead: "LEADLINE", items: [{ label: "LABELONE", blurb: "BLURBONE" }] },
+  onb_legacy_feature_blurb: { key: "bench", englishBlurb: "Standby list" },
+  onb_legacy_menu_retry_lead: null,
+  onb_legacy_provisioned_lead: { groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayName: "DAYNAME", kickoffTime: "21:00", venue: "Goals Wembley" },
+  onb_legacy_completion: { onLabels: ["LABELONE"], dayName: "DAYNAME", kickoffTime: "21:00", venue: "Goals Wembley", weekly: true, howToUseMe: "HOWTOBLOCK" },
 };
 
 /** Render an entry with its sample arguments. */
@@ -374,7 +414,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

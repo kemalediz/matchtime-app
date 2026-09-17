@@ -488,7 +488,7 @@ export const en = {
 
   intro_opener: "👋 Hi all — MatchTime bot is live for this group.",
   intro_what_i_do: "Here's what I do:",
-  intro_attendance: `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with 👍 to confirm — no extra messages from me.`,
+  intro_attendance: `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm — no extra messages from me.`,
   intro_daily: `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
   intro_teams: `⚽  *Teams* — Ask me to "generate teams" and I post auto-balanced sides. Objections? Reply \`swap X Y\` — admin will apply it.`,
   intro_rating_bit: "I DM everyone a rating link after each match (no sign-up, just tap)",
@@ -739,4 +739,380 @@ export const en = {
         `I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.\n` +
         `This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.`,
     })[p.topic],
+
+  // ── private messages (Phase 3) ──────────────────────────────────────
+  // Everything a player (or the money collector) receives PRIVATELY,
+  // moved byte for byte from `dm-copy.ts` and from the modules that
+  // already had pure DM builders. The language is the language of the
+  // org the message is ABOUT (the match's org), never a per-user setting.
+  //
+  // `firstName: string | null` means "no usable name": each language
+  // decides what to say instead (English keeps its old "there" / "mate").
+
+  /** Row 91: the rating-link DM, the morning after. */
+  dm_rating: (p: { activityName: string; dateLabel: string; mvpLabel: string; rateUrl: string; statsUrl: string }): string =>
+    `🏆 *${p.activityName}* — ${p.dateLabel}\n\n` +
+    `Rate your teammates and pick ${p.mvpLabel}. Takes ~1 minute.\n\n` +
+    `Your personal link:\n${p.rateUrl}\n\n` +
+    `Link expires in 5 days.\n\n` +
+    `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${p.statsUrl}`,
+
+  /** Row 92: the daily rating reminder, five day-toned variants
+   *  (`dayNum` 1 to 5; anything above 4 is the last call). */
+  dm_rating_reminder: (p: { dayNum: number; firstName: string | null; activityName: string; mvpLabel: string; url: string }): string => {
+    const first = p.firstName ?? "mate";
+    const sig = `\n${p.url}`;
+    switch (p.dayNum) {
+      case 1:
+        return (
+          `Hey ${first} 👋 — hope last night's *${p.activityName}* was a good one.\n\n` +
+          `When you have a sec, tap here to rate your teammates and pick ${p.mvpLabel}. ` +
+          `The more of us vote, the better the teams balance next week 🙌${sig}`
+        );
+      case 2:
+        return (
+          `${first}, friendly nudge 🙂 — still waiting on your ratings for *${p.activityName}*.\n\n` +
+          `Literally 30 seconds, promise. Helps everyone get fairer teams next week ⚽${sig}`
+        );
+      case 3:
+        return (
+          `Halfway through the rating window, ${first} ⏳\n\n` +
+          `Your vote for *${p.activityName}* actually moves ratings a lot when half the squad has voted ` +
+          `and you haven't. Quick tap:${sig}`
+        );
+      case 4:
+        return (
+          `${first} — two days left to rate *${p.activityName}* and lock in ${p.mvpLabel} 🏆\n\n` +
+          `30 seconds, then you're done:${sig}`
+        );
+      default:
+        return (
+          `Last call ${first} 🔔 — the rating window for *${p.activityName}* closes tomorrow.\n\n` +
+          `Drop a rating + ${p.mvpLabel} pick before it shuts. Your voice counts:${sig}`
+        );
+    }
+  },
+
+  /** Row 83: the tentative ("maybe") follow-up, ~24h before kickoff.
+   *  Its answer is read back by the dm-reply route's fast path, then the
+   *  match-availability classifier. */
+  dm_tentative_followup: (p: { firstName: string | null; activityName: string; whenLabel: string }): string =>
+    `Hi ${p.firstName ?? "there"} 👋 You were a *maybe* for *${p.activityName}* on ${p.whenLabel}.\n\n` +
+    `Are you in or out? Just reply *IN* or *OUT* and I'll sort the squad 🙏`,
+
+  /** Row 105: the tentative follow-up's one re-ask. */
+  dm_tentative_reask: "No worries — just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏",
+
+  /** Row 102: the tentative follow-up's ack, built from what the write did. */
+  dm_tentative_ack: (p: { decision: "in" | "out"; failed: boolean }): string => {
+    if (p.failed) {
+      return (
+        "Sorry, I couldn't update the squad just now. An admin will sort it, " +
+        "try again in a bit if you like 🙏"
+      );
+    }
+    return p.decision === "in"
+      ? "✅ Brilliant, you're in! See you there ⚽"
+      : "👋 No worries, thanks for letting me know. Maybe next time!";
+  },
+
+  /** Row 85: the bench-slot offer DM. `context` is the `_plain` context
+   *  clause above; `firstName` is "" when there is no name on record.
+   *  `reactions` is BENCH_PROMPT_MENTION_REACTIONS. */
+  dm_bench_offer: (p: { firstName: string; context: string; reactions: boolean }): string => {
+    const hi = p.firstName ? ` ${p.firstName}` : "";
+    const claim = p.reactions
+      ? "Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there."
+      : "Reply *YES* here, or *IN* on the message I tagged you in, in the group.";
+    return (
+      `👋 Hi${hi}, a slot just opened ${p.context} and you're on the bench.\n\n` +
+      `Want it? ${claim} First to claim plays. No timeout, and if you're ` +
+      `not free no worries, you stay on the bench. 🙏`
+    );
+  },
+
+  /** Row 103: the bench DM's one clarification. */
+  dm_bench_unclear:
+    `Want the open slot for tonight? Reply *YES* to grab it. ` +
+    `If not, no worries — you stay on the bench either way 🙏`,
+
+  /** Row 104: the bench DM's ack, from what the claim did. */
+  dm_bench_ack: (p: { kind: "declined" | "confirmed" | "taken" | "other" }): string =>
+    ({
+      declined: `👍 No worries — you're still on the bench, nothing changes.`,
+      confirmed: `✅ You got it — you're in for tonight! ⚽`,
+      taken: `Ah — someone just grabbed that one first. You're still first in line on the bench if another opens 🙏`,
+      other: `👍 Got it.`,
+    })[p.kind],
+
+  /** Rows 93, 94: the recruit invite. `spotsLeft` 0 omits the count;
+   *  `link` null omits the app line; `reactions` is
+   *  RECRUIT_DM_MENTION_REACTIONS. */
+  dm_recruit_invite: (p: {
+    firstName: string | null;
+    matchName: string;
+    matchWhen: string;
+    spotsLeft: number;
+    link: string | null;
+    reactions: boolean;
+  }): string => {
+    const spots =
+      p.spotsLeft > 0 ? ` ${p.spotsLeft} ${p.spotsLeft === 1 ? "spot" : "spots"} left.` : "";
+    const lines = [
+      `👋 ${p.firstName ?? "there"}, we're putting the squad together for *${p.matchName}* on ${p.matchWhen}.${spots}`,
+      "",
+      p.reactions ? "Playing? Reply *IN* or tap 👍 on this message." : "Playing? Just reply *IN*.",
+      p.reactions
+        ? "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌"
+        : "Can't make it? Reply *OUT* and I'll stop asking 🙌",
+    ];
+    if (p.link) lines.push("", `Prefer the app? ${p.link}`);
+    return lines.join("\n");
+  },
+  dm_recruit_group_invite: (p: { firstName: string | null; matchName: string; matchWhen: string }): string =>
+    `👋 ${p.firstName ?? "there"}, we're putting the squad together for *${p.matchName}* on ${p.matchWhen}. ` +
+    `Fancy it? Just reply *IN* in the group and you're sorted 🙌`,
+
+  /** Row 84: the one recruit chase. `count` is already at least 1. */
+  dm_recruit_chase: (p: { firstName: string | null; count: number; activityName: string; matchWhen: string }): string =>
+    `👋 ${p.firstName ?? "there"}, still after ${p.count} ${p.count === 1 ? "player" : "players"} for *${p.activityName}* on ${p.matchWhen}. ` +
+    `Reply *IN* if you fancy it, or *OUT* and I'll stop asking 🙏`,
+
+  /** Row 101: the ack to a DM "IN"/"OUT" or an invite reaction. `status`
+   *  is what the write left behind (null: no row). */
+  dm_self_ack: (p: {
+    failed: boolean;
+    status: "CONFIRMED" | "BENCH" | "DROPPED" | null;
+    matchName: string;
+    matchWhen: string;
+  }): string => {
+    const { matchName, matchWhen } = p;
+    if (p.failed) {
+      return (
+        `Sorry, I couldn't update the squad just now. An admin will sort it — ` +
+        `try again in a bit if you like 🙏`
+      );
+    }
+    if (p.status === "CONFIRMED") {
+      return `✅ You're in for *${matchName}* on ${matchWhen}. See you there ⚽`;
+    }
+    if (p.status === "BENCH") {
+      return (
+        `📋 Squad's full for *${matchName}* on ${matchWhen}, so I've put you ` +
+        `first on the bench. I'll message you the moment a spot opens 🙏`
+      );
+    }
+    if (p.status === "DROPPED") {
+      return `👋 No worries, you're marked out for *${matchName}* on ${matchWhen}. Thanks for letting me know.`;
+    }
+    return `👍 Noted. You weren't down for *${matchName}* on ${matchWhen} anyway, so nothing's changed.`;
+  },
+
+  /** Row 99: the DM-subscription acks. Each quotes the command that
+   *  undoes it, and `dm-subscriptions.ts` must accept that command. */
+  dm_sub_ack: (p: { kind: "opt-out-all" | "opt-out-ratings" | "opt-in-all" | "opt-in-ratings" }): string =>
+    ({
+      "opt-out-all":
+        'Done — I\'ll only message you about payments from now on. ' +
+        'Text "start messages" anytime to turn the rest back on.',
+      "opt-out-ratings":
+        'Done — no more rating or Man-of-the-Match messages from me 👍 ' +
+        'Text "start ratings" anytime to turn them back on.',
+      "opt-in-all": "Great — you're back on for all my messages 👍",
+      "opt-in-ratings": "Great — I'll send you rating and Man-of-the-Match links again 👍",
+    })[p.kind],
+
+  /** Row 132: the personal reminder a player asked for. */
+  dm_reminder: (p: { firstName: string | null; note: string }): string =>
+    `⏰ Reminder, ${p.firstName ?? "there"} — you asked me to nudge you:\n\n` +
+    `_${p.note}_\n\n` +
+    `(reply in the group when you're ready 👍)`,
+
+  /** Row 100: the stats-blast DM (the link does not expire). */
+  dm_stats_blast: (p: { firstName: string | null; url: string }): string =>
+    `📊 Hi ${p.firstName ?? "there"} — here are your MatchTime stats: your ratings over time, ` +
+    `Man-of-the-Match games, how you stack up against the squad, your badges and a ` +
+    `shareable season card.\n\n${p.url}\n\nKeep this link — it doesn't expire.`,
+
+  /** Row 122: the "@Match Time my stats" DM (a 48h link). */
+  dm_stats_link: (p: { firstName: string | null; url: string }): string =>
+    `📊 Hey ${p.firstName ?? "there"} — here are your MatchTime stats: ratings over time, your ` +
+    `Man-of-the-Match games, how you compare to the squad, your badges, and a ` +
+    `shareable season card.\n\n${p.url}\n\nLink works for 48h.`,
+
+  /** Row 111: the DM Q&A's fallback when the model gave nothing usable. */
+  dm_qa_apology: "Sorry, I couldn't work that one out — try asking again? 🙂",
+
+  /** Row 88: the fee ask to the money collector at match end. The reply
+   *  is parsed by `parseFeeReply` (a £ amount, "each" / "total"). */
+  dm_fee_ask: (p: { firstName: string | null; activityName: string; headcount: number }): string =>
+    `💷 ${p.firstName ?? "there"} — how much should each player pay for *${p.activityName}*` +
+    (p.headcount > 0 ? ` (${p.headcount} played)` : "") +
+    `?\n\n` +
+    `Just reply with the amount — e.g. "£8 each" or "£80 total to split". ` +
+    `I'll confirm, then send everyone their pay link.`,
+
+  /** Row 98: the collector's confirm step. `fee` is formatted (`gbp`).
+   *  `headcount` "N" is the placeholder `fee-confirm.ts` renders when it
+   *  quotes this very question to the model, so that prompt is built
+   *  from this entry and cannot drift from what the collector was sent. */
+  dm_fee_confirm_prompt: (p: { fee: string; headcount: number | "N"; matchName: string; wasTotal: boolean }): string => {
+    const players = (n: number | "N") => `${n} player${n === 1 ? "" : "s"}`;
+    const split = p.wasTotal ? ` (split across ${players(p.headcount)})` : "";
+    const charge = p.headcount === "N" || p.headcount > 0;
+    return (
+      `Got it — *${p.fee}* per player${split} for *${p.matchName}*` +
+      (charge ? `, ${players(p.headcount)} to charge` : "") +
+      `.\n\nReply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.`
+    );
+  },
+
+  /** Row 96: the collector's ack once the links went out. */
+  dm_fee_released: (p: { released: number; fee: string; matchName: string }): string =>
+    `✅ Done — sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*. ` +
+    `Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
+
+  /** Row 97: the collector's ack to a cancel. */
+  dm_fee_cancelled: `No problem — cancelled. Just tell me the amount per player when you're ready.`,
+
+  /** Row 95: the pay link to each confirmed player. */
+  dm_pay_link: (p: { firstName: string | null; activityName: string; fee: string; url: string }): string =>
+    `💷 ${p.firstName ?? "there"} — match fee for *${p.activityName}* is *${p.fee}*.\n\n` +
+    `Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):\n${p.url}\n\n` +
+    `You can also pay for anyone you brought along.`,
+
+  /** Row 89: the daily pay chase; `dayNum` picks the opener. */
+  dm_pay_chase: (p: { firstName: string | null; dayNum: number; fee: string; activityName: string; url: string }): string => {
+    const first = p.firstName ?? "there";
+    const opener =
+      p.dayNum <= 1 ? `Quick one ${first}` : p.dayNum === 2 ? `${first}, gentle nudge` : `${first}, still owed`;
+    return (
+      `💷 ${opener} — your *${p.fee}* for *${p.activityName}* is still outstanding.\n\n` +
+      `Pay by bank, card, Apple or Google Pay, or settle directly:\n${p.url}`
+    );
+  },
+
+  /** Row 90: the collector's daily "tick off the direct payers" nudge. */
+  dm_direct_pay_nudge: (p: { count: number; activityName: string; url: string }): string =>
+    `🤝 ${p.count} player${p.count === 1 ? "" : "s"} said they'd pay you directly for *${p.activityName}*. ` +
+    `Tick off whoever's settled up:\n${p.url}`,
+
+  /** Rows 106, 107: the admin recruit-by-DM reply (the failure is
+   *  `recruit_failed`, shared with the group reply). */
+  dm_admin_recruit_done: (p: { invited: number; matchName: string; matchWhen: string; need: number | null }): string =>
+    `📣 Done — DM'd ${p.invited} recent player${p.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${p.matchName}* on ${p.matchWhen}${p.need ? ` (${p.need} spot${p.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`,
+  dm_admin_recruit_nobody_new: (p: { matchName: string }): string =>
+    `Everyone who played recently has already responded to *${p.matchName}* — nobody new to invite. 👍`,
+
+  /** Row 109: the roster check-in's one clarification. The probe is the
+   *  message's opening, and the route's one-per-person dedupe query
+   *  looks for it (in every language). */
+  dm_survey_clarify_probe: (p: { firstName: string | null }): string =>
+    `Sorry ${p.firstName ?? "mate"} — wasn't sure if that was a reply to the roster check-in`,
+  dm_survey_clarify: (p: { firstName: string | null; orgName: string }): string =>
+    [
+      `Sorry ${p.firstName ?? "mate"} — wasn't sure if that was a reply to the roster check-in for *${p.orgName}*.`,
+      ``,
+      `Was your answer:`,
+      `• yes / I'm in`,
+      `• maybe / sometimes`,
+      `• not for now / out`,
+      ``,
+      `Quick word back is enough — otherwise no worries, an admin will sort it 🙏`,
+    ].join("\n"),
+
+  /** Row 110: the roster check-in confirmations. */
+  dm_survey_confirm: (p: { category: "in" | "maybe" | "out"; firstName: string | null }): string => {
+    const firstName = p.firstName ?? "mate";
+    if (p.category === "in") return `Got it ${firstName}, marked you as in 👍 — thanks!`;
+    if (p.category === "maybe") {
+      return `Got it ${firstName}, marked you as maybe 👍 — just say *IN* in the group whenever you want to play that week, no need to confirm in advance.`;
+    }
+    return `No worries ${firstName}, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏`;
+  },
+
+  /** The roster check-in itself (scripts/start-roster-survey.ts). The
+   *  English names Sutton's Tuesday game: it was written for them. */
+  dm_survey_invite: (p: { firstName: string | null; orgName: string }): string =>
+    [
+      `Hey ${p.firstName ?? "mate"} 👋`,
+      ``,
+      `This is *Match Time*, the bot that coordinates your *${p.orgName}* WhatsApp group (the Tuesday football one).`,
+      ``,
+      `Quick check-in — attendance's been thin lately, so we're asking everyone if they're still up for Tuesday football going forward.`,
+      ``,
+      `Just reply here with a word or two:`,
+      `• "yes" / "I'm in" — keep me on the roster`,
+      `• "maybe" / "depends" — only when I confirm`,
+      `• "not for now" / "out" — step me back`,
+      ``,
+      `Whatever you pick stays between you and the group admin. No drama 🙏`,
+    ].join("\n"),
+  // ── the legacy "@Match Time setup" flow (Phase 3c) ──
+  // Group-facing, so the Turkish is in the group's plural register.
+
+  onb_legacy_intro:
+    `👋 *Hey, I'm MatchTime* — the automatic organiser for your football group. ` +
+    `I take the weekly admin off your hands so you can just turn up and play.\n\n` +
+    `Here's what I do:\n` +
+    `⚽ *Attendance* — players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
+    `⚖️ *Fair teams* — auto-balanced sides every week from real player ratings\n` +
+    `🪑 *Smart bench* — squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
+    `🏆 *Man of the Match & ratings* — a quick post-match vote and a one-tap rating link, no app to install\n` +
+    `⏰ *Reminders & stats* — "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
+    `No spreadsheets, no chasing, no admin headaches. ⚡\n\n` +
+    `Let's get you set up — takes about a minute:`,
+
+  /** The seven setup questions; `groupName` is only printed by "side". */
+  onb_legacy_question: (p: {
+    field: "name" | "side" | "day" | "time" | "venue" | "recurrence" | "date";
+    groupName: string;
+  }): string =>
+    ({
+      name: "👋 Let's get MatchTime set up for this group! First — what should I call your club/group? (e.g. *Thursday Ballers*)",
+      side: `Great, *${p.groupName}* it is. How many players per side? (e.g. *7* for 7-a-side, *5* for 5-a-side)`,
+      day: "Which *day of the week* do you usually play? (e.g. Thursday)",
+      time: "What *kickoff time*? (e.g. 9:30pm)",
+      venue: "Where do you play — the *venue* name?",
+      recurrence: "Is this a *weekly* fixture or a *one-off* match?",
+      date: "What *date* is the one-off match? (e.g. 2026-05-28)",
+    })[p.field],
+
+  /** The numbered feature menu under a lead line. */
+  onb_legacy_menu: (p: { lead: string; items: Array<{ label: string; blurb: string }> }): string => {
+    const lines = p.items.map((f, i) => `${i + 1}. *${f.label}* — ${f.blurb}`);
+    return (
+      `${p.lead}:\n\n${lines.join("\n")}\n\n` +
+      `Reply with the ones you want — e.g. "Man of the Match and player ratings", ` +
+      `"everything", or "all except payments".`
+    );
+  },
+
+  /** A feature's one-line description in the menu. */
+  onb_legacy_feature_blurb: (p: { key: string; englishBlurb: string }): string => p.englishBlurb,
+
+  onb_legacy_menu_retry_lead: "I didn't catch which ones — reply with the features you want",
+
+  onb_legacy_provisioned_lead: (p: {
+    groupName: string;
+    playersPerTeam: number;
+    dayName: string;
+    kickoffTime: string | null;
+    venue: string | null;
+  }): string =>
+    `Nice — *${p.groupName}* is set up for *${p.playersPerTeam}-a-side* on *${p.dayName}s ${p.kickoffTime}* at *${p.venue}*.\n\nLast step: which features do you want? Here's everything I can do`,
+
+  /** The legacy flow's "All set" post. */
+  onb_legacy_completion: (p: {
+    onLabels: string[];
+    dayName: string;
+    kickoffTime: string | null;
+    venue: string | null;
+    weekly: boolean;
+    howToUseMe: string;
+  }): string =>
+    `✅ *All set!* I'm now running for this group with: *${p.onLabels.join(", ")}*.\n\n` +
+    `First match: *${p.dayName} ${p.kickoffTime}* at *${p.venue}*` +
+    `${p.weekly ? " (every week)" : ""}.\n\n` +
+    `*How to use me* 👇\n${p.howToUseMe}`,
 };

@@ -40,6 +40,8 @@
  * if the bot dies before sending. That is deliberately AT-MOST-ONCE: a
  * missed chase beats a duplicate one.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 
 /**
  * How long after a player's OWN invite DM the single chase fires.
@@ -216,17 +218,19 @@ export const ATTENDANCE_ISH_INTENTS: readonly string[] = [
 export function buildRecruitChaseText(args: {
   playerName: string | null;
   activityName: string;
-  /** Pre-formatted London wall clock, e.g. "Tue 2 Sep, 20:00". */
+  /** Pre-formatted London wall clock in the org's language,
+   *  `dayCommaTimeLabel(lang, date)`: "Tue 2 Sep, 20:00". */
   matchWhen: string;
   /** Open slots on the squad right now. */
   need: number;
+  /** The org's language (`Organisation.language`); English when absent. */
+  lang?: Lang | string | null;
 }): string {
   const { playerName, activityName, matchWhen, need } = args;
-  const first = playerName?.trim().split(/\s+/)[0] || "there";
-  const count = Math.max(1, Math.floor(need));
-  const players = count === 1 ? "player" : "players";
-  return (
-    `👋 ${first}, still after ${count} ${players} for *${activityName}* on ${matchWhen}. ` +
-    `Reply *IN* if you fancy it, or *OUT* and I'll stop asking 🙏`
-  );
+  return t(args.lang).dm_recruit_chase({
+    firstName: playerName?.trim().split(/\s+/)[0] || null,
+    count: Math.max(1, Math.floor(need)),
+    activityName,
+    matchWhen,
+  });
 }

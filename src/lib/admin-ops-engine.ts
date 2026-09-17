@@ -144,13 +144,11 @@ export interface ReminderApplyResult {
  * has had one of these before should not be able to tell that anything
  * changed.
  */
-export function composeReminderDm(args: { name: string | null; note: string }): string {
-  const first = (args.name ?? "").split(/\s+/)[0] || "there";
-  return (
-    `⏰ Reminder, ${first} — you asked me to nudge you:\n\n` +
-    `_${args.note}_\n\n` +
-    `(reply in the group when you're ready 👍)`
-  );
+export function composeReminderDm(args: { name: string | null; note: string; lang?: Lang | string | null }): string {
+  return t(args.lang).dm_reminder({
+    firstName: (args.name ?? "").split(/\s+/)[0] || null,
+    note: args.note,
+  });
 }
 
 /**
@@ -280,6 +278,8 @@ export async function applyReminder(args: {
   /** What the reminder is ABOUT, as the message said it. */
   note: string;
   deps: AdminOpsApplyDeps;
+  /** The group's language (`state.features.language`): the DM is written in it. */
+  lang?: Lang | string | null;
 }): Promise<ReminderApplyResult> {
   const { write, deps } = args;
   try {
@@ -295,7 +295,7 @@ export async function applyReminder(args: {
       // The shipped shape: BotJob.phone carries no leading "+"
       // (`route.ts:3954`).
       phone: phone.replace(/^\+/, ""),
-      text: composeReminderDm({ name: args.name, note: args.note }),
+      text: composeReminderDm({ name: args.name, note: args.note, lang: args.lang }),
       sendAt: write.sendAt,
     });
     return { write, ok: true };

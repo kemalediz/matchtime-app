@@ -135,7 +135,10 @@ describe("bare date-fns format() is gone from the match-date sites", () => {
     it(`${rel} imports no bare format from date-fns and uses formatLondon`, () => {
       const src = readFileSync(path.join(ROOT, rel), "utf8");
       expect(src).not.toMatch(/import\s*\{[^}]*\bformat\b[^}]*\}\s*from\s*"date-fns"/);
-      expect(src).toMatch(/\bformatLondon\(/);
+      // `formatLondon` directly, or one of the per-language London labels
+      // in `i18n/dates.ts` (Phase 3 moved the DM sites onto those; every
+      // one of them is `formatLondon` underneath, see dates.test.ts).
+      expect(src).toMatch(/\bformatLondon\(|\b(?:dayLabel|dayTimeLabel|dayCommaTimeLabel|longDayTimeLabel|kickoffLabel)\(/);
     });
   }
 

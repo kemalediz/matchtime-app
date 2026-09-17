@@ -57,7 +57,18 @@ import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
 import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
-import { formatLondon } from "@/lib/london-time";
+import { dayCommaTimeLabel } from "@/lib/i18n/dates";
+import { LANGS } from "@/lib/i18n/lang";
+import { readBenchDmReply, readTentativeFastPath } from "@/lib/dm-reply-words";
+import {
+  buildAdminRecruitDmReply,
+  buildBenchDmAck,
+  buildBenchDmUnclear,
+  buildRosterSurveyClarification,
+  buildRosterSurveyConfirmation,
+  buildTentativeReask,
+  rosterSurveyClarificationProbe,
+} from "@/lib/dm-copy";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -139,19 +150,17 @@ export async function POST(request: Request) {
       }
 
       if (claimant) {
-        const t = text.trim().toLowerCase();
-        const isYes =
-          /^(y|yes+|yep|yeah|ya|sure|ok(ay)?|in|i'?m in|am in|confirm(ed)?|can do|deal|done|grab|i'?ll take|take it|👍|✅|✔️?|🙋)\b/.test(t) ||
-          t === "👍" || t === "✅" || t === "🙋";
-        const isNo =
-          /^(n|no+|nope|nah|can'?t|cannot|cant|pass|sorry|out|not me|next time|unable|👎)\b/.test(t) ||
-          t === "👎";
-
+        // The offered match's org decides the language: of the reply we
+        // read (`readBenchDmReply`) and of the DM we send back.
         const matchOrg = await db.match.findUnique({
           where: { id: claimant.matchId },
-          select: { activity: { select: { orgId: true } } },
+          select: { activity: { select: { orgId: true, org: { select: { language: true } } } } },
         });
         const orgId = matchOrg?.activity.orgId ?? null;
+        const benchLang = matchOrg?.activity.org.language;
+        const benchReply = readBenchDmReply(text, benchLang);
+        const isYes = benchReply === "yes";
+        const isNo = benchReply === "no";
         const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
 
         if (!isYes && !isNo) {
@@ -163,9 +172,7 @@ export async function POST(request: Request) {
                 orgId,
                 kind: "dm",
                 phone: phoneNoPlus,
-                text:
-                  `Want the open slot for tonight? Reply *YES* to grab it. ` +
-                  `If not, no worries — you stay on the bench either way 🙏`,
+                text: buildBenchDmUnclear(benchLang),
               },
             });
           }
@@ -179,16 +186,16 @@ export async function POST(request: Request) {
         });
         // Personal DM ack (group announcement is posted by the lib).
         if (orgId && phoneNoPlus) {
-          let ack: string;
-          if (!isYes) {
-            ack = `👍 No worries — you're still on the bench, nothing changes.`;
-          } else if (result.kind === "confirmed") {
-            ack = `✅ You got it — you're in for tonight! ⚽`;
-          } else if (result.kind === "ignored") {
-            ack = `Ah — someone just grabbed that one first. You're still first in line on the bench if another opens 🙏`;
-          } else {
-            ack = `👍 Got it.`;
-          }
+          const ack = buildBenchDmAck(
+            !isYes
+              ? "declined"
+              : result.kind === "confirmed"
+                ? "confirmed"
+                : result.kind === "ignored"
+                  ? "taken"
+                  : "other",
+            benchLang,
+          );
           await db.botJob.create({
             data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack },
           });
@@ -340,7 +347,15 @@ export async function POST(request: Request) {
   //   touched 0 rows / threw, we do NOT claim they're unsubscribed — fall
   //   through silently rather than lie.
   {
-    const cmd = parseDmSubscriptionCommand(text ?? "");
+    // Any active org the player belongs to works as the BotJob owner (the
+    // DM is addressed by phone). Its language is the language the command
+    // is read in (English words are always read) and the ack is written in.
+    const subMem = await db.membership.findFirst({
+      where: { userId: user.id, leftAt: null },
+      select: { orgId: true, org: { select: { language: true } } },
+    });
+    const subLang = subMem?.org.language;
+    const cmd = parseDmSubscriptionCommand(text ?? "", subLang);
     if (cmd) {
       let written = false;
       try {
@@ -357,15 +372,9 @@ export async function POST(request: Request) {
           select: { phoneNumber: true },
         });
         const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
-        // Any active org the player belongs to works as the BotJob owner —
-        // the DM is addressed by phone, the org just routes which bot sends.
-        const mem = await db.membership.findFirst({
-          where: { userId: user.id, leftAt: null },
-          select: { orgId: true },
-        });
-        if (replyPhone && mem) {
+        if (replyPhone && subMem) {
           await db.botJob.create({
-            data: { orgId: mem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd) },
+            data: { orgId: subMem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd, subLang) },
           });
         }
         return NextResponse.json({ ok: true, handled: "dm-subscription", cmd });
@@ -390,7 +399,7 @@ export async function POST(request: Request) {
             id: true,
             date: true,
             status: true,
-            activity: { select: { orgId: true } },
+            activity: { select: { orgId: true, org: { select: { language: true } } } },
           },
         },
       },
@@ -406,17 +415,17 @@ export async function POST(request: Request) {
       .sort((a, b) => a.match.date.getTime() - b.match.date.getTime());
 
     if (active.length > 0) {
-      const t = (text ?? "").trim().toLowerCase().replace(/[!.\s]+$/g, "");
+      // The soonest match's org decides the language of the fast path and
+      // of every DM below (the follow-up was written in it).
+      const tentLang = active[0].match.activity.org.language;
       // Cheap, instant FAST-PATH for the unambiguous replies. Free, so we
       // use it — but it is NOT the decision (2026-08-31). A player who
       // answers "yeah go on then" or "can't tomorrow sorry" is not
       // ambiguous, they just didn't type a keyword; anything this misses
       // now goes to the LLM below instead of triggering a re-ask.
-      let isIn = /^(in|i'?m in|count me in|in please|yes,?\s*(i'?m )?in|yes|y|👍|✅)\b/.test(t) || t === "in" || t === "yes";
-      let isOut =
-        /^(out|i'?m out|count me out|can'?t make it|cant make it|no,?\s*(i'?m )?out|no|nope|nah|👎)\b/.test(t) ||
-        t === "out" ||
-        t === "no";
+      const fast = readTentativeFastPath(text ?? "", tentLang);
+      let isIn = fast === "in";
+      let isOut = fast === "out";
 
       if (!isIn && !isOut) {
         const row0 = active[0];
@@ -427,7 +436,7 @@ export async function POST(request: Request) {
         const verdict = await classifyMatchAvailability(text ?? "", {
           playerName: user.name,
           clubName: org0?.name ?? null,
-          matchWhen: formatLondon(row0.match.date, "EEE d MMM, HH:mm"),
+          matchWhen: dayCommaTimeLabel(tentLang, row0.match.date),
           // The bot DM'd this player asking for a firm IN/OUT, so a bare
           // "yes"/"👍" here genuinely IS an answer.
           wasAskedToPlay: true,
@@ -449,7 +458,7 @@ export async function POST(request: Request) {
               orgId: row.match.activity.orgId,
               kind: "dm",
               phone: replyPhone,
-              text: "No worries — just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏",
+              text: buildTentativeReask(tentLang),
             },
           });
         }
@@ -530,6 +539,7 @@ export async function POST(request: Request) {
             text: buildTentativeFollowupAck({
               decision: isIn ? "in" : "out",
               failed: writeFailed,
+              lang: tentLang,
             }),
           },
         });
@@ -670,25 +680,14 @@ export async function POST(request: Request) {
         const { inviteRecentPlayers } = await import("@/lib/recruit");
         const r = await inviteRecentPlayers(orgId);
         // Composed from what ACTUALLY landed, never from what was asked
-        // for — the same rule the group blast follows. Byte-for-byte the
-        // sentences the deleted handler sent.
-        const reply = !r.ok
-          ? r.reason ?? "Couldn't do that right now."
-          : r.invited && r.invited > 0
-            ? `📣 Done — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}* on ${r.matchWhen}${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-            : // A `reason` on an ok result means the CAPACITY GUARD stopped
-              // the blast, and the guard has already decided what is true
-              // for this org: the bench invitation when `featureBench` is
-              // on, the old "already full" refusal when it is not. Passing
-              // it through was missing until 2026-09-14, so a full squad
-              // was reported here as "everyone has already responded",
-              // which was never what happened — nobody was asked, and the
-              // bench (the thing the admin could actually be offered) went
-              // unmentioned on this surface entirely. The group reply and
-              // this one are two renderings of ONE RecruitResult and must
-              // not disagree about the state of the squad.
-              r.reason ??
-              `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+        // for — the same rule the group blast follows. A `reason` on an
+        // ok result means the CAPACITY GUARD stopped the blast (the
+        // bench invitation or the "already full" refusal, decided in
+        // `recruit.ts`); the group reply and this one are two renderings
+        // of ONE RecruitResult and must not disagree about the squad.
+        // In the language of the org the blast was for.
+        const { getOrgFeatures } = await import("@/lib/org-features");
+        const reply = buildAdminRecruitDmReply(r, (await getOrgFeatures(orgId)).language);
         return { reply, invited: r.invited ?? 0 };
       },
       ratingProgress: async (orgId) => {
@@ -737,7 +736,7 @@ export async function POST(request: Request) {
       },
     },
     include: {
-      survey: { include: { org: { select: { id: true, name: true } } } },
+      survey: { include: { org: { select: { id: true, name: true, language: true } } } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -819,6 +818,8 @@ export async function POST(request: Request) {
           decision: resolution.decision,
           matchName: target.matchName,
           matchWhen: target.matchWhen,
+          // The match's org language, resolved with the target.
+          lang: target.lang,
           source: "dm",
           replyPhone,
         });
@@ -842,12 +843,18 @@ export async function POST(request: Request) {
     //   their group's football (see dm-qa.ts — the LLM only ever sees
     //   safe, group-public data + the asker's own stats, never contact
     //   details or other groups). Reply via a DM BotJob the Pi sends.
-    if (looksLikeQuestion(text)) {
+    // The org the question is about decides the language the gate reads
+    // (a Turkish question has no "?" often enough to matter).
+    const qaOrgId = await pickRelevantOrgForUser(user.id);
+    const qaLang = qaOrgId
+      ? (await db.organisation.findUnique({ where: { id: qaOrgId }, select: { language: true } }))?.language
+      : null;
+    if (looksLikeQuestion(text, qaLang)) {
       const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
       // Fall back to the user's stored phone for @lid senders.
       const u = await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } });
       const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
-      const orgId = await pickRelevantOrgForUser(user.id);
+      const orgId = qaOrgId;
       if (!orgId || !replyPhone) {
         return NextResponse.json({ ok: true, ignored: "qa-no-org-or-phone" });
       }
@@ -898,9 +905,13 @@ export async function POST(request: Request) {
   const classification = await classifyRosterReply(text, {
     playerName: user.name,
     clubName: dm.survey.org.name,
+    lang: dm.survey.org.language,
   });
 
-  const firstName = user.name?.split(/\s+/)[0] ?? "mate";
+  // The survey's org decides the language of both replies below.
+  const surveyLang = dm.survey.org.language;
+  // Null when there is no name: each language says its own thing instead.
+  const firstName = user.name?.split(/\s+/)[0] ?? null;
   // Resolve a phone for the outbound confirmation/clarification DM.
   // Prefer the User's stored phoneNumber (canonical) over whatever
   // came in on the request — the request may have been an @lid DM
@@ -924,7 +935,9 @@ export async function POST(request: Request) {
       where: {
         orgId: dm.survey.org.id,
         phone: phoneNoPlus ?? "__none__",
-        text: { startsWith: `Sorry ${firstName} — wasn't sure if that was a reply to the roster check-in` },
+        // Either language's opening counts: a clarification sent before
+        // the org's language changed must still suppress the next one.
+        OR: LANGS.map((l) => ({ text: { startsWith: rosterSurveyClarificationProbe(firstName, l) } })),
       },
     });
     if (priorClarif > 0) {
@@ -935,16 +948,11 @@ export async function POST(request: Request) {
         classification,
       });
     }
-    const clarification = [
-      `Sorry ${firstName} — wasn't sure if that was a reply to the roster check-in for *${dm.survey.org.name}*.`,
-      ``,
-      `Was your answer:`,
-      `• yes / I'm in`,
-      `• maybe / sometimes`,
-      `• not for now / out`,
-      ``,
-      `Quick word back is enough — otherwise no worries, an admin will sort it 🙏`,
-    ].join("\n");
+    const clarification = buildRosterSurveyClarification({
+      firstName,
+      orgName: dm.survey.org.name,
+      lang: surveyLang,
+    });
     if (phoneNoPlus) {
       await db.botJob.create({
         data: {
@@ -1002,15 +1010,11 @@ export async function POST(request: Request) {
   });
 
   // Confirmation DM. Tone matches what we drafted with Kemal.
-  let confirmation: string;
-  if (classification.category === "in") {
-    confirmation = `Got it ${firstName}, marked you as in 👍 — thanks!`;
-  } else if (classification.category === "maybe") {
-    confirmation = `Got it ${firstName}, marked you as maybe 👍 — just say *IN* in the group whenever you want to play that week, no need to confirm in advance.`;
-  } else {
-    // "out"
-    confirmation = `No worries ${firstName}, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏`;
-  }
+  const confirmation = buildRosterSurveyConfirmation({
+    category: classification.category,
+    firstName,
+    lang: surveyLang,
+  });
   if (!isNewOrChanged) {
     return NextResponse.json({
       ok: true,

@@ -10,7 +10,6 @@ import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { findExistingOrgMember } from "@/lib/resolve-player";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { formatLondon } from "@/lib/london-time";
 
 /** Default seed rating for newly-created players — a neutral mid-point the
  *  team-balancer uses until they accumulate enough peer ratings. */
@@ -800,18 +799,22 @@ export async function addPlayerToMatch(
       const { buildShortMagicLinkUrl } = await import("@/lib/short-link");
       const token = signMagicLinkToken({ userId, purpose: "rate-match", matchId, ttlSeconds: MAGIC_LINK_TTL.rateMatch });
       const statsToken = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: "/profile/stats", ttlSeconds: MAGIC_LINK_TTL.bookmark });
-      const dlabel = formatLondon(match.date, "EEE d MMM");
+      const { buildRatingDm } = await import("@/lib/dm-copy");
+      const { dayLabel } = await import("@/lib/i18n/dates");
       await db.botJob.create({
         data: {
           orgId,
           kind: "dm",
           phone: u.phoneNumber.replace(/^\+/, ""),
-          text:
-            `🏆 *${match.activity.name}* — ${dlabel}\n\n` +
-            `Rate your teammates and pick ${match.activity.sport.mvpLabel}. Takes ~1 minute.\n\n` +
-            `Your personal link:\n${await buildShortMagicLinkUrl(token)}\n\n` +
-            `Link expires in 5 days.\n\n` +
-            `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${await buildShortMagicLinkUrl(statsToken)}`,
+          text: buildRatingDm({
+            activityName: match.activity.name,
+            // The match's org language (`features` is that org's).
+            dateLabel: dayLabel(features.language, match.date),
+            lang: features.language,
+            mvpLabel: match.activity.sport.mvpLabel,
+            rateUrl: await buildShortMagicLinkUrl(token),
+            statsUrl: await buildShortMagicLinkUrl(statsToken),
+          }),
         },
       });
       await db.sentNotification.create({ data: { key: rateKey, kind: "rate-dm", matchId, targetUser: userId } });
