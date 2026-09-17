@@ -809,7 +809,9 @@ const CASES: Case[] = [
   { id: "SW7", who: "Kemal", body: "swap David and Sait", expect: "UNTAGGED, from an admin: never reaches the fast path, and an admin's OUT needs no tag. NO drop for David" },
   { id: "SW8", who: "Kemal", body: "@Match Time swap David and Zork and I'm out", tagged: true, confirm: ["Kemal"], expect: "refused swap + the sender's own OUT, no comma. DROP Kemal, NO drop for David" },
   // The controls: real third-party drops the swap guard must never touch.
-  { id: "GD1", who: "Kemal", body: "Zeeshan OUT", confirm: ["Zeeshan"], expect: "admin, untagged, bare name + OUT. DROP Zeeshan" },
+  // "Zeeshan OUT" is the veto's real message; Zeeshan has left the live
+  // roster, so the same two-word shape is run on Habib (in the squad).
+  { id: "GD1", who: "Kemal", body: "Habib OUT", confirm: ["Habib"], expect: "admin, untagged, bare name + OUT (the 'Zeeshan OUT' shape). DROP Habib" },
   { id: "GD2", who: "Kemal", body: "@Wasim can't make it", confirm: ["Wasim"], expect: "admin, untagged, @mention. DROP Wasim" },
   { id: "GD3", who: "Kemal", body: "Najib is out", confirm: ["Najib"], expect: "admin, untagged. DROP Najib" },
 ];
