@@ -33,7 +33,7 @@ describe("formatTeamsPost", () => {
     expect(post).toContain("1. Carol");
     expect(post).toContain("2. Dave");
     // Footer.
-    expect(post).toContain("Objections? Reply `swap X Y` — admin will confirm.");
+    expect(post).toContain("Objections? Reply `@Match Time swap X with Y` and an admin will confirm.");
   });
 
   it("flows custom fun-name labels through to the post", () => {
@@ -66,7 +66,7 @@ describe("formatTeamsPost", () => {
       "⚽ *Teams for tonight* — 20:00 at Sim Arena\n\n" +
       "*Red*:\n1. Alice\n2. Bob\n\n" +
       "*Yellow*:\n1. Carol\n2. Dave\n\n" +
-      "Objections? Reply `swap X Y` — admin will confirm.";
+      "Objections? Reply `@Match Time swap X with Y` and an admin will confirm.";
     expect(post).toBe(expected);
   });
 });

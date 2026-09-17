@@ -239,10 +239,10 @@ We're 11 of 14, need 3 more 🙏 If we don't find 3 more, we could switch to Fut
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-Objections? Reply `swap X Y` — admin will confirm.
+Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
 
 ### R32 teams_not_generated
-No teams generated yet — say 'generate the teams' and I'll sort them.
+No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.
 
 ### R33 guest_name_ask / singular
 Nice one Sait 🙌 What's their name? Reply with it and I'll add them to the squad.
@@ -523,7 +523,7 @@ See you tonight 🙌
 ### R70 buildMatchDayLockedPost
 ⚽ *Tonight at 21:30* — *Tuesday 7-a-side* at Goals North Cheam
 
-Squad is locked. Say *@MatchTime generate teams* in the chat to lock in tonight's lineup 👇
+Squad is locked. Say *@Match Time generate the teams* in the chat to lock in tonight's lineup 👇
 
 *Confirmed (14/14):*
 1. Kemal Ediz
@@ -616,7 +616,7 @@ Here's what I do:
 
 🔁  *Bench promotion* — If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
 
-⚽  *Teams* — Ask me to "generate teams" and I post auto-balanced sides. Objections? Reply `swap X Y` — admin will apply it.
+⚽  *Teams* — Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply `@Match Time swap X with Y` and an admin will apply it.
 
 🏆  *Ratings & MoM* — I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest).
 
@@ -665,7 +665,7 @@ Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*,
 ### R49 buildBenchClaimAnnouncement / team and replaced player
 🎟 *Erdal Ozkan* grabbed the slot — taking *Sait Demir*'s place on *Red* 🙌
 
-_Say "regenerate teams" if you want to rebalance with the new line-up._
+_Say "@Match Time regenerate the teams" if you want to rebalance with the new line-up._
 
 ### R49 buildBenchClaimAnnouncement / replaced player, no team
 ✅ *Erdal Ozkan* is in, replacing *Sait Demir* — squad *14/14* 🙌
@@ -749,7 +749,7 @@ No new players to ask for *Tuesday 7-a-side* right now. 👍
 2. Abid Hussain
 
 ### R128 buildSwapDeferredReply
-Both *Kemal Ediz* and *Sait Demir* are already in — nobody's dropped. Teams aren't generated yet; say *generate teams* and I'll build them (then I can put them on opposite sides).
+Both *Kemal Ediz* and *Sait Demir* are already in — nobody's dropped. Teams aren't generated yet; say *@Match Time generate the teams* and I'll build them (then I can put them on opposite sides).
 
 ### R129 buildTeamSwapReply
 🔁 Swapped *Kemal Ediz* and *Elvin Aliyev* — nobody dropped. Updated teams:
