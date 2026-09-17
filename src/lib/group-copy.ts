@@ -73,6 +73,43 @@ export function formatTeamsPost(args: {
   );
 }
 
+/**
+ * Row 43: the "Squad complete" post, the moment the confirmed count
+ * reaches the cap. Extracted VERBATIM from `squad-announce.ts` on
+ * 2026-09-17 so the golden snapshot can pin its bytes; that module still
+ * owns the atomic claim and the `BotJob`, this owns only the words.
+ *
+ * `kickoffLabel` is the London day-and-time label the caller formats
+ * ("Tue 22 Sept 21:30"); `benchInvite` is `buildSquadCompleteBenchInvite()`
+ * when the org's bench feature is on, else null (same message, never a
+ * second post: Kemal 2026-09-16). Names may be missing on a row and are
+ * printed as "(unnamed)", exactly as before.
+ */
+export function buildSquadCompletePost(args: {
+  maxPlayers: number;
+  activityName: string;
+  kickoffLabel: string;
+  confirmed: Array<string | null>;
+  bench: Array<string | null>;
+  benchInvite: string | null;
+}): string {
+  const roster = args.confirmed.map((n, i) => `${i + 1}. ${n ?? "(unnamed)"}`).join("\n");
+  // Bench shown in EVERY squad display, all orgs (Kemal 2026-06-12): a
+  // benched player scanning the "squad complete" post must see their
+  // name rather than wonder if they were dropped.
+  const benchBlock =
+    args.bench.length > 0
+      ? `\n\n*Bench (${args.bench.length}):*\n${args.bench
+          .map((n, i) => `${i + 1}. ${n ?? "(unnamed)"}`)
+          .join("\n")}`
+      : "";
+  const invite = args.benchInvite ? `\n\n${args.benchInvite}` : "";
+  return (
+    `✅ *Squad complete — ${args.maxPlayers}/${args.maxPlayers}* for *${args.activityName}* on ${args.kickoffLabel} 🙌\n\n` +
+    `*Playing:*\n${roster}${benchBlock}\n\nSee you all there ⚽${invite}`
+  );
+}
+
 // ── §10 step 4 — COMPOSITION ───────────────────────────────────────────
 //
 // "Every outgoing message is composed from the database AFTER the writes

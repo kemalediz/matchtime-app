@@ -32,11 +32,17 @@
  *     Until a composer reads `t(lang)`, the Turkish document is
  *     identical to the English one and is not committed.
  *
- *   - Known re-record: `src/lib/squad-announce.ts` (the "Squad
- *     complete" post) is NOT in this file because its text is built
- *     inline in a DB-bound function; it is being changed in parallel
- *     (a bench invite is being added). When a pure builder is
- *     extracted for it, add it here and record it on purpose.
+ *   - Deliberate additions (2026-09-17, Phase 2 slice 1, recorded on
+ *     purpose in their own commit BEFORE any string moved): the "Squad
+ *     complete" post (`buildSquadCompletePost`, extracted verbatim from
+ *     `squad-announce.ts`) and the scheduler's static group posts
+ *     (`scheduler-copy.ts`, extracted verbatim from `bot-scheduler.ts`:
+ *     announce, roster block, match-day teams block, locked post, the
+ *     17:00 fallback, unpaid tail, bench-offer context, poll question).
+ *     Both extractions were proven byte-identical by the exact-string
+ *     tests that already pinned those posts (`squad-announce.test.ts`,
+ *     `announce-suppressed-when-squad-non-empty.test.ts`,
+ *     `payment-suppression.test.ts`) staying green unchanged.
  *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
@@ -49,13 +55,14 @@
  * every template that lives inline in a function that reaches the
  * database or the Pi. The list, with file:line at `main` d049732:
  *
- *   src/lib/bot-scheduler.ts     :191 buildReminderText, :300 buildUnpaidTail,
- *                                :316 buildSquadRosterBlock, :402 botIntroMessage
+ *   src/lib/bot-scheduler.ts     :191 buildReminderText, :402 botIntroMessage
  *                                (pure but not exported), and the inline posts at
- *                                :540, :688, :948, :1049, :1062, :1324, :1433,
- *                                :1474, :1531, :1556, :1581, :1607, :1637, :1688,
- *                                :1746, :1781, :1867
- *   src/lib/squad-announce.ts    :72  the "Squad complete" post (see above)
+ *                                :540, :688, :1433, :1474, :1531, :1556, :1581,
+ *                                :1607, :1688, :1746, :1781, :1867
+ *                                (the group posts at :300, :316, :948, :1049,
+ *                                :1062, :1324 and :1637 are now in
+ *                                `scheduler-copy.ts` and covered, see above)
+ *   src/lib/squad-announce.ts    now covered via `buildSquadCompletePost`
  *   src/lib/bench-confirmation.ts:178 three bench-claim announcements
  *   src/lib/payment-flow.ts      :61 pay link DM, :318 fee confirmed ack,
  *                                :326 fee cancelled ack, :421 confirmPrompt
@@ -87,8 +94,20 @@ import type { Lang } from "../lang";
 import {
   buildMatchDayChaseFallback,
   buildRatePromoPost,
+  buildSquadCompletePost,
   composeSquadStateReply,
 } from "../../group-copy";
+import {
+  buildAnnounceMatchPost,
+  buildBenchOfferContext,
+  buildDailyInListFallback,
+  buildMatchDayLockedPost,
+  buildMatchDayTeamsBlock,
+  buildPaymentPollQuestion,
+  buildSquadRosterBlock,
+  buildUnpaidTailText,
+} from "../../scheduler-copy";
+import { buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
 import {
   benchClaimPhrasingExample,
   buildBenchAskedLine,
@@ -290,6 +309,37 @@ function cases(lang: Lang): Case[] {
   add("R1 composeSquadStateReply / marker with a lead", composeSquadStateReply("Cheers Sait, noted. [SQUAD]", truth).text);
   add("R1 composeSquadStateReply / model roster replaced", composeSquadStateReply("*Playing:*\n1. Kemal\n2. Elvin\n3. Sait", truth).text);
   add("R1 composeSquadStateReply / plain reply kept", composeSquadStateReply("Thanks, noted 👍", truth).text);
+
+  // ── 1.1 group-copy.ts, row 43 (extracted from squad-announce.ts 2026-09-17)
+  const fourteenNames = FOURTEEN.map((k) => full.roster.find((m) => m.userId === `u-${k}`)!.name);
+  add("R43 buildSquadCompletePost / no bench, no invite", buildSquadCompletePost({ maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: "Tue 22 Sept 21:30", confirmed: fourteenNames, bench: [], benchInvite: null }));
+  add("R43 buildSquadCompletePost / bench of two, invite", buildSquadCompletePost({ maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: "Tue 22 Sept 21:30", confirmed: fourteenNames, bench: ["Erdal Ozkan", "Amir Ahmadi"], benchInvite: buildSquadCompleteBenchInvite() }));
+  add("R43 buildSquadCompletePost / unnamed row", buildSquadCompletePost({ maxPlayers: 3, activityName: "Thursday 5-a-side", kickoffLabel: "Thu 24 Sept 20:00", confirmed: ["Kemal Ediz", null, "Sait Demir"], bench: [null], benchInvite: null }));
+
+  // ── 1.2 scheduler-copy.ts (extracted from bot-scheduler.ts 2026-09-17)
+  const named = (names: Array<string | null>) => names.map((name) => ({ name }));
+  add("R68 buildAnnounceMatchPost", buildAnnounceMatchPost({ activityName: "Tuesday 7-a-side", dateLabel: "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14 }));
+  add("R71 buildSquadRosterBlock / empty", buildSquadRosterBlock({ confirmed: [], bench: [], maxPlayers: 14 }));
+  add("R71 buildSquadRosterBlock / short, no bench", buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: [], maxPlayers: 14 }));
+  add("R71 buildSquadRosterBlock / short with bench and an unnamed row", buildSquadRosterBlock({ confirmed: named([...fourteenNames.slice(0, 10), null]), bench: named(["Erdal Ozkan", "Amir Ahmadi"]), maxPlayers: 14 }));
+  add("R71 buildSquadRosterBlock / full", buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14 }));
+  add("R69 buildMatchDayTeamsBlock", buildMatchDayTeamsBlock({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", redLabel: "Red", yellowLabel: "Yellow", red: named(fourteenNames.filter((_, i) => i % 2 === 0)), yellow: named(fourteenNames.filter((_, i) => i % 2 === 1)) }));
+  add("R69 buildMatchDayTeamsBlock / custom labels, unnamed row", buildMatchDayTeamsBlock({ activityName: "Thursday 5-a-side", venue: "Sim Arena", timeLabel: "20:00", redLabel: "Lions", yellowLabel: "Tigers", red: named(["Kemal Ediz", null]), yellow: named(["Sait Demir", "Abid Hussain"]) }));
+  const fullRoster = buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14 });
+  add("R70 buildMatchDayLockedPost", buildMatchDayLockedPost({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", rosterBlock: fullRoster }));
+  add("R72 buildDailyInListFallback", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 3, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: named(["Erdal Ozkan"]), maxPlayers: 14 }) }));
+  add("R72 buildDailyInListFallback / one more", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 1, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 13)), bench: [], maxPlayers: 14 }) }));
+  add("R73 buildUnpaidTailText / one", buildUnpaidTailText(1));
+  add("R73 buildUnpaidTailText / four", buildUnpaidTailText(4));
+  const ctxTeam = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: "Red", replacingName: "Sait Demir" } });
+  add("R81 buildBenchOfferContext / team and replaced player (group)", ctxTeam.group);
+  add("R81 buildBenchOfferContext / team and replaced player (plain)", ctxTeam.plain);
+  const ctxNoName = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: "Red", replacingName: null } });
+  add("R81 buildBenchOfferContext / replaced player unnamed (group)", ctxNoName.group);
+  const ctxFixture = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: null });
+  add("R81 buildBenchOfferContext / fixture only (group)", ctxFixture.group);
+  add("R81 buildBenchOfferContext / fixture only (plain)", ctxFixture.plain);
+  add("R78 buildPaymentPollQuestion", buildPaymentPollQuestion("Tuesday 7-a-side"));
 
   // ── 1.1 bench-offer-copy.ts, both flag branches ─────────────────────
   const ctx = "on *Red* (replacing Sait Demir) for *Tuesday 7-a-side* tonight";
