@@ -101,8 +101,10 @@ export interface ParsedFee {
 }
 
 /** Turkish "this is the total" markers: toplam, bölüş(elim/ülsün/tür),
- *  hepsi, saha (the pitch). Letter-bounded, not `\b` (ş, ü). */
-const TR_TOTAL = /(?<!\p{L})(?:toplam\p{L}*|b[öo]l[üu][şs]\p{L}*|hepsi|saha(?:ya|n[ıi]n)?)(?!\p{L})/u;
+ *  saha (the pitch). Letter-bounded, not `\b` (ş, ü). NOT "hepsi" ("all of
+ *  them"): "hepsi 8" means £8 EACH as often as not, and reading it as a
+ *  total would charge 61p a head. */
+const TR_TOTAL = /(?<!\p{L})(?:toplam\p{L}*|b[öo]l[üu][şs]\p{L}*|saha(?:ya|n[ıi]n)?)(?!\p{L})/u;
 
 /**
  * Parse the money collector's chat reply into a per-player base fee.

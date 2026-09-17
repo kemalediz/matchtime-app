@@ -180,12 +180,19 @@ describe("runCollectorFeeReply, Turkish org", () => {
 });
 
 describe("parseFeeReply, Turkish totals", () => {
-  it("toplam / bölüş / hepsi / saha mean a total for a Turkish org", () => {
+  it("toplam / bölüş / saha mean a total for a Turkish org", () => {
     expect(parseFeeReply("toplam £80", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
     expect(parseFeeReply("80 bölüşelim", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
     expect(parseFeeReply("£80, bölüşülsün", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
     expect(parseFeeReply("saha 80", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
     expect(parseFeeReply("kişi başı £8", 10, "tr")).toEqual({ perPlayer: 8, wasTotal: false });
+  });
+  it('"hepsi" (all of them) is NOT a total: "hepsi 8" is £8 a head, never 61p', () => {
+    expect(parseFeeReply("hepsi 8", 13, "tr")).toEqual({ perPlayer: 8, wasTotal: false });
+    expect(parseFeeReply("hepsi 8 pound", 13, "tr")).toEqual({ perPlayer: 8, wasTotal: false });
+  });
+  it('"toplam 104" still splits', () => {
+    expect(parseFeeReply("toplam 104", 13, "tr")).toEqual({ perPlayer: 8, wasTotal: true });
   });
   it("an English org's parse is unchanged", () => {
     expect(parseFeeReply("toplam £80", 10)).toEqual({ perPlayer: 80, wasTotal: false });
