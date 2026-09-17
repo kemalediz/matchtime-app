@@ -34,6 +34,8 @@
 import { db } from "./db";
 import { getMomSummaries } from "./mom";
 import { resolveTeamLabels } from "./team-labels";
+import { historyDateLabel } from "./i18n/dates";
+import type { Lang } from "./i18n/lang";
 
 export interface RecentMatchRow {
   id: string;
@@ -299,7 +301,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
 /** Format a RecentHistory as the "## Recent History" prompt section.
  *  Returns null when there's no completed match yet (so callers can
  *  omit the block entirely). */
-export function formatRecentHistoryBlock(history: RecentHistory): string {
+export function formatRecentHistoryBlock(history: RecentHistory, lang: Lang = "en"): string {
   const lines: string[] = [];
   lines.push(`## Recent History`);
   lines.push(
@@ -321,12 +323,10 @@ export function formatRecentHistoryBlock(history: RecentHistory): string {
       : `Completed matches (oldest first):`,
   );
   for (const m of history.recentMatches) {
-    const dateStr = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/London",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }).format(m.date);
+    // English is the Intl en-GB "04 Sept 2026" this line always wrote.
+    // A Turkish org's DM Q&A gets "4 Eylül 2026 Cuma" (2026-09-17): the
+    // weekday is written for the model so it never works one out.
+    const dateStr = historyDateLabel(lang, m.date);
     lines.push(`  - ${dateStr}: ${m.scoreLabel} | MoM: ${m.momLabel}`);
   }
   if (history.momLeaderboard.length) {

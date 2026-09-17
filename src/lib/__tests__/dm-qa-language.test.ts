@@ -99,6 +99,17 @@ describe("composeScopedAnswer", () => {
     }
   });
 
+  it("Turkish: the language line says to copy dates, and quotes no date of its own (2026-09-17)", () => {
+    // A concrete example date in the instructions ("18 Eylül Cuma") is a
+    // date the model can copy into an answer about a different match.
+    const line = dmQaLanguageLine("tr", "Cuma Futbol")!;
+    expect(line).toContain("Write this match as");
+    expect(line).toMatch(/never work out a weekday/i);
+    expect(line).not.toMatch(/Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık/);
+    expect(line).not.toMatch(/Pazartesi|Salı|Çarşamba|Perşembe|Cuma(?! Futbol)|Cumartesi|Pazar/);
+    expect(line).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+
   it("English has no language line at all", () => {
     expect(dmQaLanguageLine("en", "Sutton FC")).toBeNull();
   });

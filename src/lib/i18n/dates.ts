@@ -93,6 +93,42 @@ export function squadCompleteLabel(lang: Lang | string | null | undefined, d: Da
     .replace(/,/g, "");
 }
 
+/**
+ * The pieces of a match date, one at a time, for the scoped DM Q&A
+ * (2026-09-17). Its context hands the model the day, the date and the
+ * kickoff already written in the org's language, because a live Turkish
+ * dry run caught the model calling a Friday match "Cumartesi" (1 of 30
+ * answers): it was translating dates, and working weekdays out, from
+ * text it had been given in English.
+ */
+/** The full weekday: "Friday" / "Cuma". */
+export function weekdayLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "EEEE", tr: "EEEE" });
+}
+
+/** Day and month, no weekday and no year: "18 September" / "18 Eylül". */
+export function dayOfMonthLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "d MMMM", tr: "d MMMM" });
+}
+
+/**
+ * A completed match's date in the recent-history block. The English one
+ * is NOT a date-fns pattern: `match-history.ts` has always written
+ * `Intl.DateTimeFormat("en-GB")`'s "04 Sept 2026", and it is kept byte
+ * for byte. Turkish writes the weekday too ("4 Eylül 2026 Cuma"), so a
+ * model answering about "last week's match" copies a weekday rather than
+ * computing one.
+ */
+export function historyDateLabel(lang: Lang | string | null | undefined, d: Date): string {
+  if (normaliseLang(lang) === "tr") return formatLondon(d, "d MMMM yyyy EEEE", trLocale);
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
+
 /** The wall-clock alone, "21:30". Language-free: every language this
  *  product ships writes 24-hour HH:mm. */
 export function timeLabel(d: Date): string {

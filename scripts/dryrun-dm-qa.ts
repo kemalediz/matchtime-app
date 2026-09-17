@@ -11,42 +11,64 @@
  *   REPEAT=5 npx tsx --env-file=<file with ANTHROPIC_API_KEY> scripts/dryrun-dm-qa.ts
  *   LANG_UNDER_TEST=en REPEAT=2 npx tsx ... scripts/dryrun-dm-qa.ts   # English control
  *
- * No database, no DM, no BotJob: the CONTEXT is a fixture in the exact
- * shape `buildScopedContext` produces, and the answers are printed.
+ * No database, no DM, no BotJob: the CONTEXT is built by the real
+ * `formatScopedContext` from fixture rows, and the answers are printed.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { composeScopedAnswer } from "../src/lib/dm-qa.ts";
+import { composeScopedAnswer, formatScopedContext, type ScopedContextInput } from "../src/lib/dm-qa.ts";
 
 const LANG = process.env.LANG_UNDER_TEST === "en" ? "en" : "tr";
 const REPEAT = Number(process.env.REPEAT ?? "5") || 5;
 
-const CONTEXT_TR = [
-  "GROUP: Cuma Futbol",
-  "",
-  "UPCOMING MATCH:",
-  "- Cuma Maçı on 18 Eylül Cuma 21:00 (UK time)",
-  "- Venue: Sim Arena",
-  "- Squad: 11/14 confirmed, 2 on the bench",
-  "- You are currently: CONFIRMED",
-  "- Confirmed players: Erdal Özkan, Mehmet Yılmaz, Ali Çelik, Can Şahin, Emre Doğan, Burak Aydın, Oğuz Kaya, İlker Demir, Serkan Arslan, Hakan Koç, Tolga Güneş",
-  "- Bench: Volkan Erdem, Kerem Aslan",
-  "",
-  "YOUR STATS:",
-  "- Games played: 6/8 (75% attendance)",
-  "- Average rating: 7.2 (squad avg 6.8)",
-  "- Man of the Match: 2",
-  "- Record: 4W 1D 1L",
-  "- Form (last 5): 7.4 (up)",
-  "",
-  "## Recent History",
-  "Completed matches: 8 total.",
-  "",
-  "Completed matches (oldest first):",
-  "  - 04 Sept 2026: Kırmızı 5 - 3 Sarı | MoM: Erdal Özkan",
-  "  - 11 Sept 2026: Kırmızı 2 - 2 Sarı | MoM: Mehmet Yılmaz",
-].join("\n");
+/**
+ * The CONTEXT, built by the REAL formatter (`formatScopedContext`) from
+ * rows in the shape `buildScopedContext` reads. Hand-written context
+ * strings stopped being a fair test on 2026-09-17, when the fix for a
+ * wrong weekday ("Cumartesi" for a Friday match, 1 of 30) became a
+ * change to the context itself. Every date below is a Friday.
+ */
+const FIXTURE: ScopedContextInput = {
+  orgName: "Cuma Futbol",
+  match: {
+    activityName: "Cuma Maçı",
+    // Fri 18 Sep 2026, 21:00 London.
+    date: new Date("2026-09-18T20:00:00.000Z"),
+    venue: "Sim Arena",
+    maxPlayers: 14,
+    confirmed: [
+      "Erdal Özkan", "Mehmet Yılmaz", "Ali Çelik", "Can Şahin", "Emre Doğan", "Burak Aydın",
+      "Oğuz Kaya", "İlker Demir", "Serkan Arslan", "Hakan Koç", "Tolga Güneş",
+    ],
+    bench: ["Volkan Erdem", "Kerem Aslan"],
+    myStatus: "CONFIRMED",
+  },
+  stats: {
+    gamesPlayed: 6,
+    totalOrgMatches: 8,
+    attendanceRate: 75,
+    avgRating: 7.2,
+    fieldAvgSeason: 6.8,
+    momCount: 2,
+    record: { w: 4, d: 1, l: 1 },
+    form: { last5Avg: 7.4, trend: "hot" },
+    bestPartner: null,
+    nemesis: null,
+  },
+  history: {
+    totalCompletedMatches: 8,
+    recentMatches: [
+      { id: "m1", date: new Date("2026-09-04T20:00:00.000Z"), redLabel: "Kırmızı", yellowLabel: "Sarı", redScore: 5, yellowScore: 3, scoreLabel: "Kırmızı 5 - 3 Sarı", momLabel: "Erdal Özkan" },
+      { id: "m2", date: new Date("2026-09-11T20:00:00.000Z"), redLabel: "Kırmızı", yellowLabel: "Sarı", redScore: 2, yellowScore: 2, scoreLabel: "Kırmızı 2 - 2 Sarı", momLabel: "Mehmet Yılmaz" },
+    ],
+    momLeaderboard: [],
+    attendanceLeaderboard: [],
+    eloTop: [],
+    eloBottom: [],
+  },
+};
 
-const CONTEXT_EN = CONTEXT_TR.replace("18 Eylül Cuma 21:00", "Fri 18 Sep at 21:00");
+const CONTEXT_TR = formatScopedContext(FIXTURE, "tr");
+const CONTEXT_EN = formatScopedContext(FIXTURE, "en");
 
 interface Q {
   q: string;
@@ -85,6 +107,12 @@ const GLUED_SUFFIX = /(?:\d{2}:\d{2}\*?|Arena\*?|Cuma\*?|Eylül\*?)'(?:d[ae]|t[a
 const PLURAL_YOU = /\p{L}+(?:s[ıi]n[ıi]z|s[uü]n[uü]z)(?!\p{L})/u;
 /** Words and letters a Turkish answer contains. */
 const TURKISH_SIGNS = /[ğşıİçöü]|\b(maç|için|var|sen|kişi)\b/i;
+/** Any weekday that is not Friday. Every date in the fixture is a Friday,
+ *  so each of these is a wrong day (the 2026-09-17 "Cumartesi"). */
+const WRONG_DAY_TR = /Pazartesi|Salı|Çarşamba|Perşembe|Cumartesi|Pazar(?!tesi)/u;
+const WRONG_DAY_EN = /\b(Mon|Tue|Wed|Thu|Sat|Sun)(day|s|sday|nesday|rsday|urday)?\b/;
+/** English stock phrases a Turkish answer once carried ("keep up the good work!"). */
+const ENGLISH_PHRASE = /\b(keep (it )?up|good work|well done|great job|nice one|cheers|good luck|see you)\b/i;
 /** Plural / formal address a "sen" DM should not use. */
 const FORMAL = /\b(siz|sizin|sizi|sizinle|yapabilirsiniz|görüşürüz beyler)\b/i;
 
@@ -98,8 +126,9 @@ async function main() {
   const questions = LANG === "tr" ? QUESTIONS_TR : QUESTIONS_EN;
   const context = LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;
 
-  const counts = { calls: 0, turkish: 0, englishTells: 0, dashes: 0, formal: 0, abi: 0, gluedSuffix: 0, pluralYou: 0, fakeMarkup: 0, rawFakeMarkup: 0, capsStatus: 0, facts: 0, factChecks: 0, leak: 0, apology: 0 };
+  const counts = { calls: 0, turkish: 0, englishTells: 0, dashes: 0, formal: 0, abi: 0, gluedSuffix: 0, pluralYou: 0, fakeMarkup: 0, rawFakeMarkup: 0, capsStatus: 0, wrongDay: 0, englishPhrase: 0, facts: 0, factChecks: 0, leak: 0, apology: 0 };
   console.log(`── DM Q&A dry run, language=${LANG}, REPEAT=${REPEAT} ──`);
+  console.log(`CONTEXT:\n${context}`);
   for (const item of questions) {
     console.log(`\nQ: ${item.q}`);
     for (let i = 0; i < REPEAT; i++) {
@@ -149,6 +178,14 @@ async function main() {
           counts.pluralYou++;
           flags.push("plural-you");
         }
+      }
+      if ((LANG === "tr" ? WRONG_DAY_TR : WRONG_DAY_EN).test(a)) {
+        counts.wrongDay++;
+        flags.push("WRONG-DAY");
+      }
+      if (LANG === "tr" && ENGLISH_PHRASE.test(a)) {
+        counts.englishPhrase++;
+        flags.push("english-phrase");
       }
       if (LANG !== "en" && /[—–]/.test(a)) {
         counts.dashes++;

@@ -700,6 +700,22 @@ does not share a door with `stats_blast` and `recruit`.
 
 ## 2.5 `STATS_REQUEST` — convert, lowest value
 
+> **DONE 2026-09-17**, by the recommended route rather than the first
+> one: `QuestionTopic.my_stats` on `question`, not an `AdminFacts.action`
+> on `admin_ops`. The engine flags the ASKING message
+> (`MessageOutcome.statsLinkRequested`, a boolean carrying no recipient),
+> `answer-batch.ts` reports it, and `analyze/route.ts` performs the DM to
+> that message's sender via `lib/stats-link-request.ts`. Three worked
+> examples went into the router prompt ("my stats", "wrapped",
+> "istatistiklerim"): before them "@Match Time wrapped" routed `none`
+> 3 of 3 live. Measured, `MYSTATS=1 REPEAT=10`: the five asks (three
+> English, two Turkish) request the link 10 of 10 each; untagged forms
+> and "what are Wasim's stats" 0 of 10 each. The English veto
+> (attendance routed `none` over the 373 gold messages) stayed **0, 0, 0**.
+> The clause peel went with the predicate, as it did for the other three:
+> "@Match Time my stats. Also I'm out" now DMs the link and loses the OUT.
+
+
 **What it owns.** `/\bwrapped\b|\bmy\s+(stats|season|ratings?|
 performance|form|card)\b/i`, tag-gated, clause-peeled. DMs the sender a
 48h magic link to `/profile/stats`, reacts 📊. The DM is composed from

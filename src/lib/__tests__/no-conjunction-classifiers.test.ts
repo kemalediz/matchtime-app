@@ -123,6 +123,23 @@ describe("the deleted conjunction classifiers have ZERO callers", () => {
     expect(fee).toMatch(/A WRONG REFUSAL costs/);
   });
 
+  it("the personal-stats regex is gone from the analyze route, and its tombstone stays (2026-09-17)", () => {
+    // `STATS_REQUEST`: English-only, so "@Match Time istatistiklerim"
+    // did nothing. Now `QuestionTopic.my_stats`, read by the model.
+    const route = fs.readFileSync(
+      path.join(REPO, "src", "app", "api", "whatsapp", "analyze", "route.ts"),
+      "utf8",
+    );
+    const code = route
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"))
+      .join("\n");
+    expect(code).not.toMatch(/STATS_REQUEST/);
+    expect(code).not.toMatch(/\\bwrapped\\b/);
+    expect(code).toContain("sendOwnStatsLink");
+    expect(route).toContain("DELETED 2026-09-17: the personal-stats REGEX fast path");
+  });
+
   it("each deletion left a tombstone naming the incident that caused it", () => {
     const recruit = fs.readFileSync(path.join(REPO, "src", "lib", "recruit.ts"), "utf8");
     const rating = fs.readFileSync(path.join(REPO, "src", "lib", "rating-progress.ts"), "utf8");

@@ -336,6 +336,24 @@ export type QuestionTopic =
    * `rating-progress-answer.ts` carries the whole argument.
    */
   | "rating_progress"
+  /**
+   * The ASKER wants their OWN stats: "my stats", "can I see my ratings",
+   * "wrapped", "istatistiklerim". Answered with a private DM carrying a
+   * magic link to their own stats page, never in the group.
+   *
+   * Added 2026-09-17, and it is a DELETION: `STATS_REQUEST` in
+   * `analyze/route.ts` was an English-only regex fast path, so the
+   * Turkish help's "@Match Time istatistiklerim" did nothing.
+   * `MDs/router-accuracy-2026-09-11.md` §2.5 recommended this topic over
+   * an `admin_ops` action, to keep a personal DM away from the route
+   * that guards the mass-DM doors.
+   *
+   * NEVER A RECIPIENT. The fact names nobody the link goes to: the engine
+   * sets `MessageOutcome.statsLinkRequested` on the ASKING message, and
+   * the route DMs that message's sender. "what are Wasim's stats" is
+   * `stats`, a group question.
+   */
+  | "my_stats"
   | "stats"
   | "options"
   | "other";
@@ -947,6 +965,14 @@ export interface MessageOutcome {
   reasons: string[];
   writes: ProposedWrite[];
   react: string | null;
+  /**
+   * The engine decided this message's SENDER gets their personal stats
+   * link by DM (`QuestionTopic.my_stats`, 2026-09-17). A boolean on
+   * purpose: it names no recipient, so nothing a model extracts can
+   * point the DM at anyone but the person who asked. The analyze route
+   * performs it. Absent means no.
+   */
+  statsLinkRequested?: boolean;
 }
 
 export interface Degradation {
