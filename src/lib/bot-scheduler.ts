@@ -46,6 +46,7 @@ import {
   buildBenchOfferGroupPost,
   buildBenchOfferDm,
   buildBenchIntroLine,
+  buildSquadCompleteBenchInvite,
 } from "./bench-offer-copy";
 import { buildRatePromoPost, buildMatchDayChaseFallback } from "./group-copy";
 import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel } from "./i18n/dates";
@@ -62,6 +63,7 @@ import {
   buildMatchDayTeamsBlock,
   buildPaymentPollQuestion,
   buildPreKickoffShortFallback,
+  buildSquadFullEveningPost,
   buildSquadRosterBlock,
   buildUnpaidTailText,
 } from "./scheduler-copy";
@@ -579,8 +581,17 @@ export async function computeDuePosts(
   const windowStart = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
   const matches = await getMatchesForScheduler(org.id, windowStart);
 
+  // Read ONCE, before the per-match loop, and used twice: the 17:00
+  // full-squad post needs `features.bench` while it composes (a post
+  // that promises to tag the bench where the scheduler never posts a
+  // bench tag would be a lie, and the post-compute filter below can
+  // only drop a whole instruction, not a paragraph of one), and the
+  // filter itself needs the same object. Moved up from the filter on
+  // 2026-09-17; it is a pure read either way, so nothing else changes.
+  const features = await getOrgFeatures(org.id);
+
   for (const m of matches) {
-    await computeForMatch(m, now, sentKeys, out, groupId, matches);
+    await computeForMatch(m, now, sentKeys, out, groupId, matches, features);
   }
 
   // ── Per-org feature gate (post-compute filter) ───────────────────
@@ -593,7 +604,6 @@ export async function computeDuePosts(
   //   NOT classified → always allowed (fail-open; they're not
   //   user-facing match features). This is how Amir's group runs
   //   MoM + ratings only.
-  const features = await getOrgFeatures(org.id);
   const featureForKey = (key: string): keyof typeof features | null => {
     const seg = key.includes(":") ? key.slice(key.indexOf(":") + 1) : key;
     if (
@@ -685,6 +695,7 @@ async function computeForMatch(
   out: DueInstruction[],
   groupId: string,
   siblingMatches: MatchWithIncludes[],
+  features: OrgFeatures,
 ) {
   /**
    * LLM compose with a static fallback. If Claude is unavailable
@@ -829,11 +840,12 @@ async function computeForMatch(
 
   // ── 2. Daily 17:00 evening update ────────────────────────────────────
   //     One post per day at 17:00, content varies by state:
-  //       2a. Squad short (need > 0): chase + unpaid tail appended
-  //       2b. Squad full but bench thin (bench < 3): bench chase +
-  //           unpaid tail appended
-  //       2c. Squad full, bench ≥ 3, but some players unpaid: standalone
-  //           unpaid reminder
+  //       2-pre.     Match day, teams generated: the two line-ups
+  //       2-pre-alt. Match day, squad full, no teams: roster + nudge
+  //       2a.        Squad short (need > 0): chase + unpaid tail
+  //       2b.        Squad full: the roster, the bench, an ask for more
+  //                  benchers while the bench is under
+  //                  `BENCH_THIN_BELOW`, + unpaid tail
   //     Exclusive branches via if/else-if so we never fire two 17:00
   //     group posts in the same day.
   {
@@ -957,29 +969,78 @@ async function computeForMatch(
         });
         text = unpaidTail ? `${chaseText}\n\n${unpaidTail.text}` : chaseText;
         mentions = unpaidTail?.mentions;
-      } else if (beforeDeadline && need === 0 && unpaidTail) {
-        // 2b. Squad full but the org tracks payments AND we still have
-        // unpaid players in the chase window — post the unpaid tail
-        // ALONE (no "full squad, ready to go" preamble, no bench
-        // chase, no roster block). Anyone who needs to know who's
-        // playing can scroll up; the only legitimate reason to post
-        // daily once the squad's locked is to chase money.
-        text = unpaidTail.text;
-        mentions = unpaidTail.mentions;
+      } else if (beforeDeadline && need === 0) {
+        // 2b. SQUAD FULL — list it anyway, and keep the INs flowing
+        // onto the bench.
+        //
+        // This branch used to post the unpaid tail ALONE when the org
+        // tracked payments, and NOTHING at all otherwise: "anyone who
+        // needs to know who's playing can scroll up". Sutton FC does
+        // not track payments, so a squad that filled on a Wednesday
+        // heard nothing from the bot until match day. Kemal, 2026-09-17:
+        // "it is better to still list the squad even though it is full,
+        // listing the benchers and asking for more bench people if
+        // there are less than 3 players on the bench".
+        //
+        // ⚠️ THIS REVERSES A 2026-05-03 DECISION, deliberately. A daily
+        // "🗓 full squad, ready to go ⚽" plus roster used to fire here
+        // and Kemal called it spam, so it was deleted and the branch
+        // went quiet. What he asked for on 2026-09-17 is not that post
+        // back: that one only restated a fact the group already had,
+        // while this one lists the bench and asks for cover, which is
+        // the thing he had been typing into the group by hand. If it
+        // ever reads as noise again, the fix is the same as last time:
+        // delete the branch, do not water down the ask.
+        //
+        // This is the SCHEDULED post and nothing else. It is not the
+        // per-IN roster spam PR #63 removed (the roster is demand-driven
+        // on the reply path) and it is not #78's "a drop opened a slot"
+        // message. It fires at most once a day, on the shared
+        // `eveningKey`, like every other branch here.
+        //
+        // WHY THE `squad-locked` CHECK: `announceSquadFullIfJustFilled`
+        // (squad-announce.ts) posts the "Squad complete" line-up the
+        // moment the last IN lands, from the attendance write path, on
+        // its own `<matchId>:squad-locked` claim and its own BotJob.
+        // `eveningKey` cannot see that, so a squad that filled at 16:50
+        // would read the same roster and the same bench invite twice
+        // inside the hour. Almost always it fired days ago and this post
+        // is the daily reminder the owner asked for; when it fired
+        // TODAY, the squad half is skipped and only the unpaid tail (if
+        // any) goes out, which is exactly what this branch did before.
+        // The claim is cleared on a confirmed drop, so a squad that
+        // empties and refills re-announces and this stays in step.
+        const squadLocked = await db.sentNotification.findFirst({
+          where: { key: `${matchId}:squad-locked` },
+          select: { createdAt: true },
+        });
+        const announcedToday =
+          squadLocked != null && londonDateKey(squadLocked.createdAt) === dayKey;
+
+        if (!announcedToday) {
+          const squadPost = buildSquadFullEveningPost({
+            activityName: activity.name,
+            confirmedCount: confirmed.length,
+            maxPlayers,
+            rosterBlock,
+            benchCount: bench.length,
+            // The approved words, shared with the squad-complete post so
+            // the promise cannot drift. Only with the bench feature on:
+            // without it the bench-slot offer never fires, so "I tag the
+            // bench here" would be false.
+            benchInvite: features.bench ? buildSquadCompleteBenchInvite({ lang }) : null,
+            lang,
+          });
+          text = unpaidTail ? `${squadPost}\n\n${unpaidTail.text}` : squadPost;
+          mentions = unpaidTail?.mentions;
+        } else if (unpaidTail) {
+          text = unpaidTail.text;
+          mentions = unpaidTail.mentions;
+        }
       }
-      // Squad full + no unpaid tail (org doesn't track payments OR
-      // everyone has paid OR we're in the day-before/day-of window
-      // where the chase is suppressed) → stay silent. Previously we
-      // posted "🗓 full squad, ready to go ⚽" + roster every day at
-      // 5pm; Kemal flagged this as spam (2026-05-03). The squad-just-
-      // filled announcement is fired by the analyze route at the
-      // moment the 14th IN lands, which is enough confirmation.
-      // Same for the bench-thin nudge: it was firing every single
-      // 5pm tick once the squad locked, which is more annoying than
-      // useful — bench fills up organically over the week.
-      // else: deadline passed but match not yet happened — leave the
-      // key un-sent so a later tick in the same window can still fire
-      // if state changes (e.g. someone drops out making bench thin).
+      // else: the deadline has passed and the match has not happened
+      // yet — leave the key un-sent so a later tick in the same window
+      // can still fire if state changes (e.g. someone drops out).
 
       if (text) {
         out.push({

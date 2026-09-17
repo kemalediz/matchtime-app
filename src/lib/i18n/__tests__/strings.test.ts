@@ -71,6 +71,7 @@ const SAMPLES: SampleArgs = {
   announce_match: { activityName: "Tuesday 7-a-side", dateLabel: "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14 },
   roster_confirmed_header: { confirmed: 11, maxPlayers: 14 },
   roster_nobody_yet: null,
+  squad_full_evening_lead: { activityName: "Tuesday 7-a-side", confirmed: 14, maxPlayers: 14 },
   match_day_header: { timeLabel: "21:30", activityName: "Tuesday 7-a-side", venue: "Goals North Cheam" },
   match_day_teams_signoff: null,
   match_day_locked_line: null,

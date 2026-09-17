@@ -164,6 +164,16 @@ export const en = {
     `*Confirmed (${p.confirmed}/${p.maxPlayers}):*`,
   roster_nobody_yet: "_nobody yet_",
 
+  // ── row 71b: buildSquadFullEveningPost (scheduler-copy.ts) ───────
+
+  /** The lead of the 17:00 post when the squad is already full. New
+   *  copy (2026-09-17), so it follows house style rather than its
+   *  neighbour `daily_in_list_fallback_lead`: no em dash. It states the
+   *  count because the post below it lists the names, and the group
+   *  should be able to check one against the other. */
+  squad_full_evening_lead: (p: { activityName: string; confirmed: number; maxPlayers: number }): string =>
+    `🗓 *${p.activityName}*: squad is full, *${p.confirmed}/${p.maxPlayers}* ✅`,
+
   // ── rows 69, 70: the match-day 17:00 posts (scheduler-copy.ts) ───
 
   match_day_header: (p: { timeLabel: string; activityName: string; venue: string }): string =>

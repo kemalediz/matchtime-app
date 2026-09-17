@@ -174,6 +174,15 @@ export const tr: Strings = {
   roster_confirmed_header: (p) => `*Onaylananlar (${p.confirmed}/${p.maxPlayers}):*`,
   roster_nobody_yet: "_henüz kimse yok_",
 
+  // ── row 71b: buildSquadFullEveningPost ───────────────────────────
+  //   "kadro tamam" is `squad_complete_header`'s wording: the group has
+  //   read it before, on the post that fired the moment the squad
+  //   filled, and this is the same fact repeated daily. The activity
+  //   name sits before a colon, so it takes no suffix.
+
+  squad_full_evening_lead: (p) =>
+    `🗓 *${p.activityName}*: kadro tamam, *${p.confirmed}/${p.maxPlayers}* ✅`,
+
   // ── rows 69, 70: the match-day 17:00 posts ───────────────────────
 
   match_day_header: (p) => `⚽ *Bu akşam ${p.timeLabel}*, *${p.activityName}*, ${p.venue}`,

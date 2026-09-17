@@ -78,6 +78,94 @@ export function buildSquadRosterBlock(
 }
 
 /**
+ * ── THE FLOOR ON THE BENCH ───────────────────────────────────────────
+ *
+ * Below this many players the bench is THIN, and the 17:00 post for a
+ * full squad closes by asking for more benchers. Kemal, 2026-09-17:
+ * "listing the benchers and asking for more bench people if there are
+ * less than 3 players on the bench".
+ *
+ * ⚠️ It is a floor on the BENCH, never on the squad. It is only ever
+ * read when the squad is already full (`need === 0`), and it counts the
+ * cover standing BEHIND those players. It is not a fifteenth, sixteenth
+ * and seventeenth place in the side, it never changes `maxPlayers`, and
+ * nobody counted here is playing unless somebody drops.
+ *
+ * Why three rather than one: a drop usually lands on match day, when
+ * there is no time left to recruit, and one bencher is one message away
+ * from being none. Sutton FC kicked off 14 of 14 with an empty bench on
+ * 2026-09-14, and on 2026-09-16 the owner had to ask the group for
+ * benchers himself. Three is enough cover for the ordinary week, and
+ * once it is reached the post goes back to listing the squad and saying
+ * nothing else, because the group already gets too many bot messages.
+ */
+export const BENCH_THIN_BELOW = 3;
+
+/**
+ * Row 71b: the 17:00 post when the squad is already FULL.
+ *
+ * Before this existed the evening update simply said nothing to a full
+ * squad unless the org tracked payments, so a club that filled its
+ * fourteen on Wednesday heard nothing until match day. The owner's
+ * call, 2026-09-17: "it is better to still list the squad even though
+ * it is full, listing the benchers and asking for more bench people if
+ * there are less than 3 players on the bench".
+ *
+ * Structure, top to bottom:
+ *
+ *   lead          the count, so the roster below can be checked
+ *                 against it.
+ *   `rosterBlock` `buildSquadRosterBlock`'s output, the SAME block the
+ *                 short-squad branch posts. Names and numbers come from
+ *                 the rows, never from a model. It already carries the
+ *                 "*Bench (N):*" sub-list when the bench is populated.
+ *   empty bench   added here, and only here, when the bench is empty:
+ *                 the roster block omits the sub-list entirely in that
+ *                 case, and "no bench" has to be visible for the ask
+ *                 underneath it to make sense. It is the existing bench
+ *                 header at zero plus the existing "nobody yet" row, so
+ *                 it needs no new words in any language.
+ *   `benchInvite` `buildSquadCompleteBenchInvite()` when the org's bench
+ *                 feature is on, else null. Printed only while the
+ *                 bench is below `BENCH_THIN_BELOW`.
+ *
+ * The caller appends the unpaid tail after all of this, unchanged.
+ */
+export function buildSquadFullEveningPost(
+  args: {
+    activityName: string;
+    confirmedCount: number;
+    maxPlayers: number;
+    /** `buildSquadRosterBlock`'s output for this match. */
+    rosterBlock: string;
+    /** BENCH rows on this match. Decides both blocks below. */
+    benchCount: number;
+    /** `buildSquadCompleteBenchInvite()`, or null when the org's bench
+     *  feature is off. Without the feature the scheduler never posts the
+     *  bench tag, so the invite's promise would be false. */
+    benchInvite: string | null;
+  } & WithLang,
+): string {
+  const s = t(args.lang);
+  const lines: string[] = [
+    s.squad_full_evening_lead({
+      activityName: args.activityName,
+      confirmed: args.confirmedCount,
+      maxPlayers: args.maxPlayers,
+    }),
+    ``,
+    args.rosterBlock,
+  ];
+  if (args.benchCount === 0) {
+    lines.push(``, s.bench_header({ count: 0 }), s.roster_nobody_yet);
+  }
+  if (args.benchInvite && args.benchCount < BENCH_THIN_BELOW) {
+    lines.push(``, args.benchInvite);
+  }
+  return lines.join("\n");
+}
+
+/**
  * Row 69: the match-day 17:00 view when teams have been generated.
  * Replaces the flat squad roster with a Red vs Yellow lineup so each
  * player can scan and confirm what side they're on tonight. Bench is
