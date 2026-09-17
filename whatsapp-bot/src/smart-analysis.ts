@@ -20,6 +20,7 @@ import type { Client, Message } from "whatsapp-web.js";
 import {
   postAnalyzeFull,
   postHeartbeat,
+  type AnalyzeFullResponse,
   type AnalyzeInboundHistory,
   type AnalyzeInboundMessage,
   type AnalyzeResult,
@@ -40,6 +41,8 @@ import {
   shouldLogSyntheticId,
 } from "./message-id.js";
 import { describeReactionFailure, planReaction, reactWithId } from "./react-with-id.js";
+import { isOnboardingGroup, removeOnboardingGroup } from "./handlers.js";
+import { requestOrgRefresh } from "./org-refresh.js";
 
 const HISTORY_PER_GROUP = 15;
 // Ten-minute batches are the cost control: the system prompt and the
@@ -76,11 +79,17 @@ const URGENCY_WINDOW_MS = 60 * 60 * 1000; // within 1h of kickoff → flush imme
  * in isolation.
  *
  * Precedence (highest first):
- *   1. "mention"  — the bot was @-mentioned; a tagged command/question
- *                   should reply within seconds, not after a 10-min wait.
- *   2. "urgency"  — kickoff is within `urgencyWindowMs` from now.
- *   3. "full"     — the buffer has reached its cap.
- *   4. null       — leave it on the 10-min batch (bare In/Out, banter).
+ *   1. "mention"    — the bot was @-mentioned; a tagged command/question
+ *                     should reply within seconds, not after a 10-min wait.
+ *   2. "onboarding" — the group is mid-setup (2026-09-17). A setup is a
+ *                     conversation: "YES" then a question, "just me" then
+ *                     a question. Ten minutes between each would read as
+ *                     a dead bot, and the readiness review found the
+ *                     un-tagged "YES" was never flushed at all. The
+ *                     volume is a handful of messages, once.
+ *   3. "urgency"    — kickoff is within `urgencyWindowMs` from now.
+ *   4. "full"       — the buffer has reached its cap.
+ *   5. null         — leave it on the 10-min batch (bare In/Out, banter).
  */
 export function immediateFlushReason(args: {
   botMentioned: boolean;
@@ -89,9 +98,11 @@ export function immediateFlushReason(args: {
   kickoffMs: number | null;
   nowMs: number;
   urgencyWindowMs: number;
-}): "mention" | "urgency" | "full" | null {
-  const { botMentioned, bufferLen, maxBufferLen, kickoffMs, nowMs, urgencyWindowMs } = args;
+  onboarding?: boolean;
+}): "mention" | "onboarding" | "urgency" | "full" | null {
+  const { botMentioned, bufferLen, maxBufferLen, kickoffMs, nowMs, urgencyWindowMs, onboarding } = args;
   if (botMentioned) return "mention";
+  if (onboarding) return "onboarding";
   if (typeof kickoffMs === "number" && kickoffMs - nowMs <= urgencyWindowMs) return "urgency";
   if (bufferLen >= maxBufferLen) return "full";
   return null;
@@ -483,6 +494,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
     kickoffMs: kickoff,
     nowMs: Date.now(),
     urgencyWindowMs: URGENCY_WINDOW_MS,
+    onboarding: isOnboardingGroup(groupId),
   });
   if (reason) {
     console.log(`[smart] ${reason} flush for ${groupId} (${arr.length} pending)`);
@@ -653,10 +665,12 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
 
     let results: AnalyzeResult[] = [];
     let nextKickoffMs: number | null = null;
+    let onboarding: AnalyzeFullResponse["onboarding"] = undefined;
     try {
       const res = await postAnalyzeFull({ groupId, messages: msgsForAnalyze, history });
       results = res.results;
       nextKickoffMs = res.nextKickoffMs;
+      onboarding = res.onboarding;
     } catch (err) {
       // The buffer was cleared optimistically above, so without this the
       // whole batch of IN/OUT messages is binned on a transient network
@@ -689,6 +703,21 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
 
     if (typeof nextKickoffMs === "number" || nextKickoffMs === null) {
       nextKickoffMsByGroup.set(groupId, nextKickoffMs);
+    }
+
+    // The server says this batch belonged to a setup conversation. When
+    // the setup has just COMPLETED (or was abandoned), the group stops
+    // being flushed immediately and the org list is re-read at once, so
+    // the group's first "in" is handled as a live org's within seconds
+    // (scheduler, participant sync, the lot) rather than after the next
+    // periodic refresh. See org-refresh.ts.
+    if (onboarding && (onboarding.completed || onboarding.stage === "abandoned")) {
+      removeOnboardingGroup(groupId);
+      console.log(
+        `[smart] ${groupId}: setup ${onboarding.completed ? "completed" : "ended"} (${onboarding.stage}, ` +
+          `language=${onboarding.language}); refreshing the org list`,
+      );
+      void requestOrgRefresh(`setup ${onboarding.stage} in ${groupId}`);
     }
 
     // Log EVERY flush, not just ones with actionable results. The 2026-08-28
@@ -861,12 +890,29 @@ function reportFailedReacts(
 
 
 // ─── Timer ──────────────────────────────────────────────────────────
-export function startBatchFlushTimer(client: Client, groupIds: string[]): void {
+/**
+ * `groupIds` may be a function (2026-09-17). The list used to be an
+ * array captured at `ready`, so a group that started being monitored
+ * later (a self-setup, an org enabled by script) was buffered but never
+ * flushed. Now every tick asks for the CURRENT list and, whatever it
+ * says, also flushes any group that has something buffered: the buffer
+ * only ever holds monitored groups, so nothing can sit in it forever.
+ * The heartbeat still reports on the org list alone.
+ */
+export function startBatchFlushTimer(client: Client, groupIds: string[] | (() => string[])): void {
   sharedClient = client;
   if (flushTimer) return; // idempotent
 
+  const current = (): string[] => (typeof groupIds === "function" ? groupIds() : groupIds);
+  const toFlush = (): string[] => {
+    const ids = new Set(current());
+    for (const [g, buf] of bufferByGroup) if (buf.length > 0) ids.add(g);
+    return [...ids];
+  };
+
   flushTimer = setInterval(() => {
-    for (const g of groupIds) {
+    const ids = toFlush();
+    for (const g of ids) {
       flushGroup(client, g).catch((err) => console.error("[smart] scheduled flush failed:", err));
     }
     // AFTER the flushes are dispatched, and UNCONDITIONALLY — including
@@ -881,13 +927,13 @@ export function startBatchFlushTimer(client: Client, groupIds: string[]): void {
     // Not awaited and never allowed to throw: `reportHealth` is total, and
     // the flushes above are already in flight, so a slow or failing report
     // cannot delay or break a single customer message.
-    void reportHealth(groupIds);
+    void reportHealth(current());
   }, FLUSH_INTERVAL_MS);
 
   // Also do one flush a few seconds after startup so any messages that
   // came in right before boot get processed promptly.
   setTimeout(() => {
-    for (const g of groupIds) {
+    for (const g of toFlush()) {
       flushGroup(client, g).catch(() => {
         /* logged inside */
       });
@@ -896,7 +942,7 @@ export function startBatchFlushTimer(client: Client, groupIds: string[]): void {
     // sweep and then sits there says so within seconds rather than waiting
     // out a full flush interval. It is also the first thing that tells the
     // server this org has a heartbeat-capable Pi at all.
-    void reportHealth(groupIds);
+    void reportHealth(current());
   }, 15_000);
 }
 
@@ -1046,7 +1092,7 @@ export function resolveRecoveryWindow(env: Record<string, string | undefined>): 
  * path is kept as the fallback, so a build where the bare handle fails
  * behaves exactly as before.
  */
-async function fetchRecentGroupMessages(
+export async function fetchRecentGroupMessages(
   client: Client,
   gid: string,
   limit: number,

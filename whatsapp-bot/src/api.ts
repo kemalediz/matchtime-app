@@ -34,9 +34,16 @@ export async function postScore(params: {
   return res.json();
 }
 
-export async function getEnabledOrgs() {
+export interface EnabledOrgsResponse {
+  orgs?: Array<{ id?: string; name?: string | null; slug?: string; whatsappGroupId?: string | null }>;
+  /** Groups mid-setup with no bot-enabled org yet (active session, not stale). */
+  onboardingGroups?: string[];
+}
+
+export async function getEnabledOrgs(): Promise<EnabledOrgsResponse> {
   const res = await fetch(`${config.apiUrl}/api/whatsapp/orgs`, { headers });
-  return res.json();
+  if (!res.ok) throw new Error(`GET /api/whatsapp/orgs → ${res.status}`);
+  return (await res.json()) as EnabledOrgsResponse;
 }
 
 // ─────────────────── Scheduler endpoints (new) ───────────────────────
@@ -354,6 +361,9 @@ export interface AnalyzeFullResponse {
   results: AnalyzeResult[];
   /** ms since epoch of the next upcoming match's kickoff, or null if none. */
   nextKickoffMs: number | null;
+  /** Present when a setup conversation owned this batch (2026-09-17).
+   *  `completed` is the Pi's cue to re-read the org list at once. */
+  onboarding?: { stage: string; completed: boolean; language: string };
 }
 
 export async function postAnalyzeFull(params: {
@@ -390,10 +400,20 @@ export async function postAnalyzeFull(params: {
   const json = (await res.json()) as {
     results?: AnalyzeResult[];
     nextKickoffMs?: number | null;
+    onboarding?: { stage?: unknown; completed?: unknown; language?: unknown };
   };
+  const onboarding =
+    json.onboarding && typeof json.onboarding === "object"
+      ? {
+          stage: String(json.onboarding.stage ?? ""),
+          completed: json.onboarding.completed === true,
+          language: String(json.onboarding.language ?? "en"),
+        }
+      : undefined;
   return {
     results: json.results ?? [],
     nextKickoffMs: typeof json.nextKickoffMs === "number" ? json.nextKickoffMs : null,
+    ...(onboarding ? { onboarding } : {}),
   };
 }
 
