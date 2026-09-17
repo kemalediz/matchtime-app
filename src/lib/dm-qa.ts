@@ -273,8 +273,12 @@ export async function composeScopedAnswer(args: {
     `The player${first ? ` (${first})` : ""} asks:`,
     args.question.trim(),
     "",
+    // The language paragraph sits BEFORE the closing instruction, so the
+    // turn still ends where the English one does. With it after, the
+    // model invented a continuation (fake markup, a "User:" turn) in 4
+    // of 60 live Turkish answers, and 0 of 30 English ones.
+    ...(tail ? [tail, ""] : []),
     `Answer per your rules.`,
-    ...(tail ? ["", tail] : []),
   ].join("\n");
   const resp = await args.call(SYSTEM_PROMPT, userPrompt);
   const APOLOGY = buildDmQaApology(args.lang);
@@ -284,8 +288,27 @@ export async function composeScopedAnswer(args: {
   // parse error) nothing else would catch a half-finished sentence.
   // Degrade to the apology we already send when there's no text at all.
   if (resp.truncated) return { answer: APOLOGY, truncated: true };
-  const answer = resp.text ? applyHouseStyle(resp.text.trim(), args.lang) : APOLOGY;
-  return { answer: answer || APOLOGY, truncated: false };
+  // No text block at all is the apology, exactly as before this was
+  // extracted; the house-style pass is a no-op for English.
+  const answer = resp.text !== null ? tidyAnswer(resp.text.trim(), args.lang) : APOLOGY;
+  return { answer, truncated: false };
+}
+
+/**
+ * The non-English answer's clean-up: the house-style pass, and a
+ * fabricated next turn cut off (the Turkish dry run of 2026-09-17 caught
+ * the model appending "User: ..." to one answer in thirty). English is
+ * returned untouched, as it always was.
+ */
+function tidyAnswer(text: string, lang: Lang): string {
+  if (lang === "en") return text;
+  const cut = text
+    // a fabricated next turn
+    .split(/\n+\s*(?:User|Kullanıcı|Oyuncu|Player)\s*:/u)[0]
+    // invented markup after the answer (<rate_limit>, <budget:...>, <tool_call>)
+    .split(/\n+\s*<\/?[a-z_]+[\s>:]/iu)[0]
+    .trim();
+  return applyHouseStyle(cut || text, lang);
 }
 
 /**
@@ -297,10 +320,12 @@ export async function composeScopedAnswer(args: {
 export function dmQaLanguageLine(lang: Lang, orgName: string): string | null {
   if (lang !== "tr") return null;
   return [
-    "## Language",
+    "LANGUAGE:",
     "This player's group speaks TURKISH. Write your whole answer in Turkish, whatever language the question is in.",
     'Address the player as "sen" (informal singular). No "abi", no "beyler", no greeting by time of day.',
-    "Copy every player name and the group name exactly as the CONTEXT spells them, and write dates and times the way the CONTEXT writes them.",
+    'Copy every player name and the group name exactly as the CONTEXT spells them. Write dates in Turkish, day before month, 24-hour time ("18 Eylül Cuma 21:00", "11 Eylül"), even where the CONTEXT spells a month in English.',
+    'Put a date, a time, a venue or a name where Turkish needs no suffix on it: after a colon, in brackets, or before "için". Write "Maç: 18 Eylül Cuma 21:00, yer: Sim Arena", not "21:00\'de" or "Sim Arena\'da".',
+    'The CONTEXT labels are English; the answer is not. Say "maçın adamı" (never "Man of the Match" or "MoM"), "puan" (never "rating"), "form", "galibiyet / beraberlik / mağlubiyet", and for the asker status "kadrodasın" (CONFIRMED), "yedektesin" (BENCH), "kadroda değilsin" (anything else); never copy a status word in capitals. Talk about the squad as "we" ("kadroda 11 kişiyiz"), never "you" plural.',
     `If you decline, say it in Turkish, e.g. "Sadece ${orgName} maçlarıyla ilgili yardımcı olabilirim 🙂".`,
     'The phone-number answers, when the context allows them, are "Kayıtlı numarası olmayanlar: Aaron, Idris." and "Herkesin kayıtlı numarası var 👍".',
     "WhatsApp formatting: bold is *single asterisks*. NEVER write an em dash (—) or an en dash (–); use a comma or a full stop.",
