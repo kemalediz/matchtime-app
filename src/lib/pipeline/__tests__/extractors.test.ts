@@ -384,6 +384,21 @@ describe("parseFacts (other routes)", () => {
     expect(p).toMatch(/keep that word verbatim; do not guess their name/);
   });
 
+  it("the teams prompt reads the Turkish commands the Turkish copy tells a group to type", () => {
+    // `strings.tr.ts` quotes these forms; the teams extractor is the one
+    // that has to read them. One language line and one example per
+    // action, the Phase 1 way (#90).
+    const p = EXTRACTOR_PROMPTS.teams;
+    expect(p).toMatch(/ENGLISH or TURKISH/);
+    expect(p).toMatch(/"takımları kur"[^\n]*-> generate/);
+    expect(p).toMatch(/"takımları yeniden kur"[^\n]*-> generate/);
+    expect(p).toMatch(/"takımları göster"[^\n]*-> show/);
+    expect(p).toMatch(/"Ali ile Can'ı değiştir"[^\n]*-> swap/);
+    // The Turkish first person is written "me" so the engine's closed
+    // list rebinds it; "ben" is also an English name, so it is not on it.
+    expect(p).toMatch(/"beni"[^\n]*"me"/);
+  });
+
   it("admin", () => {
     const { facts } = parseFacts(
       "admin",

@@ -543,6 +543,27 @@ describe("S19 · `generate` is owned; `rename` and `swap` are not", () => {
     ]);
   });
 
+  it("rebinds the Turkish first person (beni, bana) to the sender", () => {
+    // "@Match Time takımları kur, beni ve David'i aynı takıma koy": the
+    // model reports "beni" verbatim 8 of 10 times (measured 2026-09-17),
+    // and before this the pairing resolved only David and pinned nothing.
+    for (const self of ["beni", "Bana"]) {
+      const r = teams({ pairings: [[self, "Sait"]] });
+      expect(genWrite(r)!.pinned, self).toEqual([
+        { userId: "u-kemal", name: "Kemal Ediz", team: "RED" },
+        { userId: "u-sait", name: "Sait Demir", team: "RED" },
+      ]);
+    }
+  });
+
+  it("never rebinds the English NAME Ben to the sender", () => {
+    // "ben" is Turkish for "I", and also a common English first name, so
+    // the bare nominative is deliberately NOT on the closed list.
+    const r = teams({ pairings: [["Ben", "Sait"]] });
+    expect(genWrite(r)!.pinned).toEqual([]);
+    expect(genWrite(r)!.unmatchedPins).toEqual(["Ben"]);
+  });
+
   it("does not pin a pairing that resolved to fewer than two people", () => {
     const r = teams({ pairings: [["me", "Bazza"]] });
     expect(genWrite(r)!.pinned).toEqual([]);

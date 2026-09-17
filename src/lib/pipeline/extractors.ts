@@ -180,7 +180,14 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
 
 Choose the action on what would have to CHANGE. If the line-ups have to be worked out again, it is "generate" — even when the message also asks for new names, and even when it says "again", "once more" or "instead". "rename" is ONLY for a message that wants the SAME two line-ups under different names. A message that asks you to invent names while generating is "generate": leave teamNames empty, because it supplies none.
 
-A person the message says to include ("generate the teams, Ibrahim is playing") goes in includeRefs. A person the message puts on a NAMED side ("put David in Red") goes in swaps. A person the message puts WITH somebody rather than on a side goes in pairings. The sender may refer to themselves as "me", "myself" or "I" — keep that word verbatim; do not guess their name.`,
+A person the message says to include ("generate the teams, Ibrahim is playing") goes in includeRefs. A person the message puts on a NAMED side ("put David in Red") goes in swaps. A person the message puts WITH somebody rather than on a side goes in pairings. The sender may refer to themselves as "me", "myself" or "I" — keep that word verbatim; do not guess their name.
+
+The message may be in ENGLISH or TURKISH. Report the same facts either way:
+  "takımları kur"                    -> generate
+  "takımları yeniden kur"            -> generate
+  "takımları göster"                 -> show
+  "Ali ile Can'ı değiştir"           -> swap (swaps empty when no side is named)
+When the sender refers to themselves in Turkish ("beni", "bana", "ben"), write "me".`,
 
   score: `You read ONE message reporting a football result and return the two numbers, in the order the teams are named in the message. first = the first team mentioned, second = the other. Nothing else.`,
 

@@ -62,13 +62,15 @@ describe("compose(): a Turkish world speaks Turkish", () => {
     expect(text).toContain("*14/14* ✅ kadro tamam.");
   });
 
-  it("teams post: Turkish header, Turkish default labels, the typed swap command kept", () => {
+  it("teams post: Turkish header, Turkish default labels, the Turkish typed swap command", () => {
     const teams: Record<string, "RED" | "YELLOW"> = {};
     FOURTEEN.forEach((k, i) => (teams[k] = i % 2 === 0 ? "RED" : "YELLOW"));
     const text = say(turkish({ confirmed: FOURTEEN, teams }), { kind: "teams_post", messageId: "m" })[0];
     expect(text).toMatch(/^⚽ \*Bu akşamın takımları\*, Salı 21:30, Goals North Cheam\n\n\*Kırmızı\*:\n1\. Kemal Ediz/);
     expect(text).toContain("*Sarı*:\n1. Elvin Aliyev");
-    expect(text).toMatch(/İtirazı olan\? `swap X Y` yazın, admin onaylar\.$/);
+    // The typed command is the Turkish form the bot parses
+    // (`TR_TEAM_COMMANDS.swapPlayers`, `parseSwapNames`), tagged.
+    expect(text).toMatch(/İtirazınız mı var\? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar\.$/);
   });
 
   it("slot opened: names joined with 've', the count spelled out, VARIM as the token", () => {
