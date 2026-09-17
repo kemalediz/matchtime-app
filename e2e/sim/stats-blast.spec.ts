@@ -174,12 +174,20 @@ test("the PERSONAL stats request is untouched — one DM, to the asker", async (
   request,
   db,
 }) => {
-  // The single-recipient path directly above the deleted blast. It is
-  // anchored on a possessive ("my stats"), tag-gated, and it DMs exactly
-  // one person: the sender. Low stakes, and it works.
+  // The single-recipient path. It was a regex fast path above the deleted
+  // blast until 2026-09-17; it is now `QuestionFacts.topic = "my_stats"`
+  // on the `question` route, deliberately NOT on `admin_ops` beside this
+  // blast. Tag-gated, and it DMs exactly one person: the sender.
   const grp = await group(request, db);
-  const before = (await statsDms(grp)).length;
-  const r = await grp.post("pete", "@Match Time my stats", { tag: true });
-  expect((await statsDms(grp)).length).toBe(before + 1);
+  const before = await statsDms(grp);
+  const r = await grp.post("pete", "@Match Time my stats", {
+    tag: true,
+    route: "question",
+    facts: { topic: "my_stats", personRef: "", statedCount: -1 },
+  });
+  const after = await statsDms(grp);
+  expect(after.length).toBe(before.length + 1);
+  const added = after.filter((d) => !before.some((b) => b.phone === d.phone && b.text === d.text));
+  expect(added.map((d) => d.phone)).toEqual([grp.player("pete").phone!.replace(/^\+/, "")]);
   expect(r.react).toBe("📊");
 });

@@ -360,6 +360,11 @@ export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
   // is a topic here rather than an `admin_ops` action like the stats
   // blast. See `lib/rating-progress-answer.ts`.
   "rating_progress",
+  // 2026-09-17. Not a group answer at all: the engine flags the asker
+  // for a DM of their own stats link, which the analyze route sends.
+  // It replaced the English-only `STATS_REQUEST` regex. See
+  // `QuestionTopic.my_stats` and the ownership loop below.
+  "my_stats",
 ];
 
 /**
@@ -588,6 +593,13 @@ export interface AnswerMessageOutcome {
   /** Machine reasons, one per rule that fired. Never prose for a regex
    *  to parse — nothing in this codebase parses it. */
   reasoning: string;
+  /**
+   * The engine decided this message's SENDER gets their personal stats
+   * link by DM (`QuestionTopic.my_stats`). The analyze route performs it,
+   * to the sender of THIS message and nobody else: the flag carries no
+   * recipient, so nothing extracted can point it anywhere.
+   */
+  statsLinkRequest: boolean;
 }
 
 export interface AnswerBatchResult {
@@ -724,11 +736,24 @@ export async function runAnswerBatch(args: {
   }
 
   // ── The carve-outs, all in the "own nothing" direction ─────────────
+  //
+  // ONE TOPIC IS EXEMPT FROM ALL FOUR, AND THAT IS WHY THEY NO LONGER
+  // RETURN (2026-09-17). `my_stats` (the asker's own stats link, by DM)
+  // is not an answer about the upcoming match, and the regex fast path it
+  // replaced (`STATS_REQUEST`) ran before any of these existed for it: it
+  // worked with no match scheduled, which is exactly when "wrapped" is
+  // asked. So each carve-out records its decision in `squadBlock` instead
+  // of returning. When one fired, only `question` messages are extracted,
+  // only `my_stats` is owned, and a window with no such ask returns
+  // `empty(squadBlock)`: the same result, reason for reason, as the
+  // early return that stood here. The one cost is an extractor call on a
+  // tagged question in a group with no usable match.
+  let squadBlock: string[] | null = null;
 
   // Every answer this module composes is about the upcoming match — a
   // count, a bench, a person's place, the two line-ups. With no match
   // to describe, the composer would answer "0/0" from an empty state.
-  if (!state.matchId) return empty();
+  if (!state.matchId) squadBlock = [];
 
   // `!== null` is NOT enough, and this differs from step 6 deliberately.
   // A null expectation means the ROUTE found no registration match while
@@ -736,12 +761,12 @@ export async function runAnswerBatch(args: {
   // that matters most: `route.ts:2353`'s squad-status composition is
   // guarded by `if (nextMatchForReply)`, so with the route seeing no
   // match nothing downstream would re-compose whatever is said here.
-  if (state.matchId !== expectedMatchId) {
+  if (squadBlock === null && state.matchId !== expectedMatchId) {
     const detail =
       `${ANSWER_DEGRADED_PREFIX} the route's registration match (${expectedMatchId ?? "none"}) ` +
       `and the engine's (${state.matchId}) disagree; owning nothing`;
     console.warn(`[answer-engine] ${detail}`);
-    return empty([detail]);
+    squadBlock = [detail];
   }
 
   // A MoM-and-ratings-only org (`featureAttendance` off) must say
@@ -765,7 +790,7 @@ export async function runAnswerBatch(args: {
   // attendance-off row before relying on that: the filtering it
   // describes is not implemented for this axis, so an
   // attendance-off-but-stats-Q&A-on org can still produce a note.)
-  if (!state.features.attendance) return empty();
+  if (squadBlock === null && !state.features.attendance) squadBlock = [];
 
   // Every answer this module composes divides by, or prints, the format
   // total. A `Match` with `maxPlayers` 0 would produce "We're 11/0" and
@@ -776,12 +801,17 @@ export async function runAnswerBatch(args: {
   // "hand it to the path that already handles it" — since §10 step 8
   // there is no such path, so the degradation below is the whole of the
   // handling.)
-  if (state.maxPlayers <= 0) {
-    return empty([
+  if (squadBlock === null && state.maxPlayers <= 0) {
+    squadBlock = [
       `${ANSWER_DEGRADED_PREFIX} match ${state.matchId} has maxPlayers=${state.maxPlayers}; ` +
         `owning nothing rather than composing an answer around it`,
-    ]);
+    ];
   }
+
+  // Blocked: only a question can be the stats-link ask, so nothing else
+  // is extracted (and a window with no question costs nothing, as before).
+  const unblockedCandidates = squadBlock === null ? candidates : candidates.filter((m) => m.route === "question");
+  if (squadBlock !== null && unblockedCandidates.length === 0) return empty(squadBlock);
 
   const matchId = state.matchId;
 
@@ -798,7 +828,7 @@ export async function runAnswerBatch(args: {
   // with. See `batchCarriesAnUnsettledWriter` and `SQUAD_SHAPED_TOPICS`.
   const unsettledTraffic = batchCarriesAnUnsettledWriter(messages);
 
-  const eligible = candidates.filter((m) => {
+  const eligible = unblockedCandidates.filter((m) => {
     if (m.route === "balancer" && !features.teamBalancing) {
       degradations.push(
         `${ANSWER_DEGRADED_PREFIX} ${m.waMessageId}: team balancing is off for this org; ` +
@@ -923,6 +953,26 @@ export async function runAnswerBatch(args: {
         hand(`question topic "${facts.topic}" is not answered from the database`);
         continue;
       }
+      // ── THE PERSONAL STATS LINK (2026-09-17) ───────────────────────
+      //
+      // Owned here, ahead of the mixed-batch hand-back and regardless of
+      // `squadBlock`, because neither is about it: the link is a DM to
+      // the asker with their own page, not a claim about the squad, so a
+      // neighbour's write cannot contradict it and no upcoming match is
+      // needed. The engine applies its gates (tag, resolved sender).
+      //
+      // ⚠️ TERMINAL BRANCH. The `continue` skips the mixed-batch check
+      // and the `person_status` resolution below, neither of which
+      // applies to this topic; like every `continue` in this loop it
+      // skips no write, no send and no state mutation.
+      if (facts.topic === "my_stats") {
+        ownedIds.add(m.waMessageId);
+        continue;
+      }
+      // A carve-out above fired: nothing but the stats link is owned.
+      // No `hand()`, so the degradations are the ones the early return
+      // that stood there produced.
+      if (squadBlock !== null) continue;
       // ── THE MIXED-BATCH HAND-BACK, AND ITS ONE CARVE-OUT ──────────
       //
       // For every topic but two: an answer here is composed from a
@@ -1018,6 +1068,13 @@ export async function runAnswerBatch(args: {
     }
   }
 
+  if (squadBlock !== null) {
+    // Exactly what the early return produced, when there is no stats ask.
+    if (ownedIds.size === 0) return empty(squadBlock);
+    // Otherwise the carve-out's reason still travels with the batch, for
+    // every other message in it that goes unanswered.
+    degradations.push(...squadBlock);
+  }
   if (ownedIds.size === 0) return empty(degradations);
 
   // ── Stage 2b: ONE TARGETED EXTRA READ, and only when asked ─────────
@@ -1214,8 +1271,17 @@ export async function runAnswerBatch(args: {
   // one to a source scanner. The scanner is right to be blunt — the
   // shape it is looking for is the one that can change a squad — so the
   // shape is avoided here rather than the scanner taught an exception.
+  // A stats-link request says nothing in the group BY DESIGN: the link
+  // is the DM and the 📊 react is the acknowledgement. It is an action,
+  // not a silence, so it is not disowned. An owned `my_stats` the engine
+  // refused (an unresolved sender) has neither, and IS disowned below.
+  const statsLinkIds = new Set(
+    result.outcomes
+      .filter((o) => o.statsLinkRequested === true && ownedIds.has(o.messageId))
+      .map((o) => o.messageId),
+  );
   const silentIds = [...ownedIds].filter(
-    (id) => (utteranceByMessageId.get(id) ?? []).length === 0,
+    (id) => !statsLinkIds.has(id) && (utteranceByMessageId.get(id) ?? []).length === 0,
   );
   for (const id of silentIds) {
     // The old line ended "handing this message back to the analyzer
@@ -1243,6 +1309,7 @@ export async function runAnswerBatch(args: {
     const engineOutcome = result.outcomes.find((o) => o.messageId === m.waMessageId);
     const utterances = utteranceByMessageId.get(m.waMessageId) ?? [];
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
+    const statsLink = statsLinkIds.has(m.waMessageId);
     // ONE reply per message. Several speech intents for the same message
     // join into one send; they never become two results.
     const reply = utterances.length > 0 ? utterances.join("\n\n") : null;
@@ -1266,18 +1333,24 @@ export async function runAnswerBatch(args: {
       // including `e2e/replay/router-recall.ts`'s severity map — is
       // unchanged by the move from regex to model. Same decision #72
       // took for `stats_blast`.
+      // `stats_link` / `dm-stats-link`: the labels the deleted
+      // `STATS_REQUEST` fast path wrote (2026-09-17), kept for the same
+      // reason `rating_progress` keeps its own.
       intent:
         m.route === "balancer"
           ? "show_teams_request"
-          : isRatingProgress(factsById.get(m.waMessageId))
-            ? "rating_progress"
-            : "question",
+          : statsLink
+            ? "stats_link"
+            : isRatingProgress(factsById.get(m.waMessageId))
+              ? "rating_progress"
+              : "question",
       // `AnalyzedMessage.action`, derived exactly as `route.ts:2197-2200`
       // derives it for a message with no attendance write. "none" would
       // make every step-7 answer look like a no-op to anything filtering
       // the admin log — including the nightly `none`-bucket sweep.
-      action: react ? "react" : reply ? "reply" : "none",
+      action: statsLink ? "dm-stats-link" : react ? "react" : reply ? "reply" : "none",
       reasoning: `${ANSWER_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}`,
+      statsLinkRequest: statsLink,
     });
   }
 

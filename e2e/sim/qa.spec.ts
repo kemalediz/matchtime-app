@@ -153,16 +153,72 @@ test('group "dm me …" → answered PRIVATELY via scoped Q&A, 📩 react, no gr
   expect(dm!.text).not.toContain(PHONE_MARKER); // group→DM context is flag-free too
 });
 
-test('"my stats" fast-path → 📊 react + personal magic-link DM, no LLM involved', async ({ request, db }) => {
+/* ── THE PERSONAL STATS LINK, READ BY THE MODEL (2026-09-17) ───────────
+ *
+ * This used to be the `STATS_REQUEST` regex fast path ("no LLM
+ * involved"). It is `QuestionFacts.topic = "my_stats"` now: the router
+ * and extractor are stubbed with what the live model returns for these
+ * phrasings (`scripts/dryrun-pipeline.ts MYSTATS=1`), and everything
+ * after that is the real code. The property that matters most is WHO
+ * gets the DM: the asker, and nobody else, whatever the message names.
+ */
+const MY_STATS = { route: "question", facts: { topic: "my_stats", personRef: "", statedCount: -1 } };
+/** The personal stats-link DM, in either language. */
+const statsLinkDms = (dms: Array<{ phone: string | null; text: string }>) =>
+  dms.filter((d) => /MatchTime (stats|istatistiklerin)/.test(d.text));
+const phoneOf = (grp: SimGroup, key: string) => grp.player(key).phone!.replace(/^\+/, "");
+
+test('"my stats" → 📊 react + ONE personal magic-link DM, to the asker only', async ({ request, db }) => {
   const grp = await group(request, db);
   // Interaction contract: a stats request is answer-y → requires a tag.
-  const r = await grp.post("pete", "@Match Time can I see my stats?", { tag: true });
-  expect(r.handledBy).toBe("fast-path");
+  const r = await grp.post("pete", "@Match Time can I see my stats?", { tag: true, ...MY_STATS });
   expect(r.intent).toBe("stats_link");
   expect(r.react).toBe("📊");
-  const petePhone = grp.player("pete").phone!.replace(/^\+/, "");
-  const dm = r.dms.find((d) => d.phone === petePhone);
-  expect(dm).toBeTruthy();
-  expect(dm!.text).toContain("stats");
-  expect(dm!.text).toMatch(/https?:\/\//);
+  expect(r.reply, "the link never goes to the group").toBeNull();
+  const links = statsLinkDms(r.dms);
+  // THE RECIPIENT: exactly one stats DM, and it is Pete's.
+  expect(links.map((d) => d.phone)).toEqual([phoneOf(grp, "pete")]);
+  expect(links[0].text).toMatch(/https?:\/\//);
+  expect(links[0].text).toContain("Hey Pete");
+  // …and its link signs in as Pete (the token's subject is the asker).
+  const row = await db.one<{ action: string }>(
+    `SELECT action FROM "AnalyzedMessage" WHERE body = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+    ["@Match Time can I see my stats?"],
+  );
+  expect(row?.action).toBe("dm-stats-link");
+});
+
+test('"my stats" naming SOMEONE ELSE in the same breath still DMs only the asker', async ({ request, db }) => {
+  // Even if the model called this `my_stats`, the fact names no
+  // recipient: the DM goes to the sender of the message.
+  const grp = await group(request, db);
+  const r = await grp.post("dan", "@Match Time send my stats to Pete and Alice", { tag: true, ...MY_STATS });
+  const links = statsLinkDms(r.dms);
+  expect(links.map((d) => d.phone)).toEqual([phoneOf(grp, "dan")]);
+  expect(links[0].text).toContain("Hey Dan");
+});
+
+test("someone else's stats is a group question: no stats DM to anybody", async ({ request, db }) => {
+  const grp = await group(request, db);
+  const r = await grp.post("dan", "@Match Time what are Pete's stats", {
+    tag: true,
+    route: "question",
+    facts: { topic: "stats", personRef: "Pete", statedCount: -1 },
+  });
+  expect(statsLinkDms(r.dms)).toEqual([]);
+  expect(r.react).not.toBe("📊");
+});
+
+test('untagged "my stats" is ordinary chat: no DM, no react', async ({ request, db }) => {
+  const grp = await group(request, db);
+  const r = await grp.post("pete", "my stats are terrible this season", MY_STATS);
+  expect(statsLinkDms(r.dms)).toEqual([]);
+  expect(r.react ?? null).toBeNull();
+});
+
+test("an @lid sender with no phone on record gets no DM and no 📊", async ({ request, db }) => {
+  const grp = await group(request, db);
+  const r = await grp.post("larry", "@Match Time my stats", { tag: true, ...MY_STATS });
+  expect(statsLinkDms(r.dms)).toEqual([]);
+  expect(r.react ?? null).toBeNull();
 });

@@ -1448,6 +1448,40 @@ export function decide(input: EngineInput): EngineResult {
           );
           break;
         }
+        case "my_stats": {
+          // ═══════════════════════════════════════════════════════════
+          // THE ASKER'S OWN STATS LINK — 2026-09-17, and this IS the fix
+          // ═══════════════════════════════════════════════════════════
+          //
+          // Until today `STATS_REQUEST`, an English-only regex fast path
+          // in `analyze/route.ts`, recognised this ask; the Turkish help
+          // advertised "@Match Time istatistiklerim" and nothing read it.
+          //
+          // ── THE DECISION, AND ONLY THE DECISION. The link is a DM the
+          //    route sends; this branch says whether. It emits no write
+          //    (this route has no apply layer) and no speech (the link
+          //    never goes to the group). The 📊 react is the whole of
+          //    what the group sees, as it was.
+          //
+          // ── NO RECIPIENT. `statsLinkRequested` is a boolean on THIS
+          //    message's outcome. The route DMs the sender of this
+          //    message and nobody else; no fact can name another person.
+          //
+          // ── THE GATES the fast path had, and no more: the tag (checked
+          //    at the top of this function) and a resolved sender. No
+          //    admin gate: it is the asker's own data. The phone gate is
+          //    the route's, which holds the phone. No match gate: the
+          //    link is not about the upcoming match.
+          if (!msg.senderUserId) {
+            out.reasons.push("personal stats link: the sender is unresolved, so there is nobody to DM");
+            out.disposition = "noop";
+            break;
+          }
+          out.statsLinkRequested = true;
+          out.react = "📊";
+          out.reasons.push("personal stats request: DM the sender their own stats link");
+          break;
+        }
         case "bench":
           speech.push({ kind: "answer_bench", messageId: msg.id });
           break;

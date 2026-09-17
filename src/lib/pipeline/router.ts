@@ -246,6 +246,8 @@ Worked examples from this group. Copy the reasoning, not the wording.
   "Where is my name?"                                         -> question
   "@Match Time who has got the most MoM so far?"              -> question
   "@Match Time what is the current squad status?"             -> question
+  "@Match Time my stats"                                      -> question
+  "@Match Time wrapped"                                       -> question
   "Teams?"                                                    -> balancer
   "@Match Time regenerate the teams once more"                -> balancer
   "@Match Time generate the teams, put me and David together" -> balancer
@@ -282,6 +284,7 @@ The same in Turkish:
   "Ali de geliyor"                                            -> other_att
   "Mehmet gelemiyor"                                          -> other_att
   "kaç kişiyiz?"                                              -> question
+  "@Match Time istatistiklerim"                               -> question
   "hadi be ya 😂😂"                                           -> none
   "dünkü maç efsaneydi"                                       -> none
 

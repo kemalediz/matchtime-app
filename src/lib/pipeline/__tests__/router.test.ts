@@ -200,6 +200,16 @@ describe("the router prompt", () => {
     }
   });
 
+  it("teaches the asker's own stats request as a question, in both languages (2026-09-17)", () => {
+    // `STATS_REQUEST` used to catch these before the router ran. Without
+    // a worked example, "@Match Time wrapped" routed `none` 3 of 3 live.
+    for (const body of ["@Match Time my stats", "@Match Time wrapped", "@Match Time istatistiklerim"]) {
+      const line = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.trim().startsWith(`"${body}"`));
+      expect(line, body).toBeDefined();
+      expect(line!).toMatch(/->\s*question\s*$/);
+    }
+  });
+
   it("demands an output shape this file actually parses", () => {
     // The last line of the prompt is the contract between the model and
     // `parseRouterResponse`. Pull it out, fill it in, and run it through

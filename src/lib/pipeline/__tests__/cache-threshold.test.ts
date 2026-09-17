@@ -81,7 +81,10 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // chars/token), attendance 1,820 (6,846 chars, 3.76 chars/token). On
     // claude-sonnet-5 the attendance prompt is 2,381. Turkish letters
     // tokenise DENSER than English, so the under-count widens.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(2_962);
+    // Re-measured 2026-09-17 after the three personal-stats worked
+    // examples (`count_tokens`, claude-haiku-4-5): router 3,003 tokens,
+    // 11,455 chars. Still well under Haiku's 4,096, so still no marker.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_003);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(1_820);
   });
 });
@@ -99,7 +102,19 @@ describe("the prompts this pipeline actually sends", () => {
     expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.attendance)).toBe(true);
   });
 
-  it.each(["question", "teams", "score", "admin"] as const)(
+  it("CLAIMS the cache on the question extractor, which crossed the minimum on 2026-09-17", () => {
+    // The `my_stats` topic and its examples took the prompt from ~3,900
+    // to 4,872 characters. `count_tokens`, claude-sonnet-5, 2026-09-17:
+    // 1,598 tokens, over Sonnet 5's 1,024. Probed the same day, two
+    // back-to-back live extractions: the first paid a cache write
+    // (37 uncached input tokens, $0.0051), the second read it
+    // (1,966 input tokens including the cache read, $0.00075). A real
+    // cache, so the marker is not a fiction.
+    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(1_598);
+    expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
+  });
+
+  it.each(["teams", "score", "admin"] as const)(
     "does not claim a cache for the %s extractor",
     (kind) => {
       expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS[kind])).toBe(false);

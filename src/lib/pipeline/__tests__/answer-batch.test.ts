@@ -234,7 +234,7 @@ describe("shapes that stay with the analyzer", () => {
   });
 
   it("owns nothing when there is no active registration match", async () => {
-    const { model, calls } = stubModel({});
+    const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
     const res = await run({
       messages: [msg({ body: COUNT_Q, route: "question" })],
       model,
@@ -242,18 +242,30 @@ describe("shapes that stay with the analyzer", () => {
       expectedMatchId: null,
     });
     expect([...res.ownedIds]).toEqual([]);
-    expect(calls).toEqual([]);
+    // ONE extractor call, since 2026-09-17: a blocked window still asks
+    // whether a question is the asker's own stats link (`my_stats`),
+    // which none of these carve-outs is about. It found a count, so
+    // nothing is owned, exactly as before.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain(COUNT_Q);
+    expect(res.outcomes.size).toBe(0);
   });
 
   it("owns nothing when the route and the engine disagree about the match", async () => {
-    const { model, calls } = stubModel({});
+    const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
     const res = await run({
       messages: [msg({ body: COUNT_Q, route: "question" })],
       model,
       expectedMatchId: "some-other-match",
     });
     expect([...res.ownedIds]).toEqual([]);
-    expect(calls).toEqual([]);
+    // ONE extractor call, since 2026-09-17: a blocked window still asks
+    // whether a question is the asker's own stats link (`my_stats`),
+    // which none of these carve-outs is about. It found a count, so
+    // nothing is owned, exactly as before.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain(COUNT_Q);
+    expect(res.outcomes.size).toBe(0);
     expect(res.degradations.join(" ")).toMatch(/disagree/i);
   });
 
@@ -263,29 +275,54 @@ describe("shapes that stay with the analyzer", () => {
     // A composer that answered "0/0" would be the 2026-06-08 Sutton Lads
     // incident ("MT told them 0/14 — need 14 players") reintroduced by a
     // path that never read the override.
-    const { model, calls } = stubModel({});
+    const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
     const res = await run({
       messages: [msg({ body: COUNT_Q, route: "question" })],
       model,
       worldOpts: { confirmed: ELEVEN, features: { attendance: false } },
     });
     expect([...res.ownedIds]).toEqual([]);
-    expect(calls).toEqual([]);
+    // ONE extractor call, since 2026-09-17: a blocked window still asks
+    // whether a question is the asker's own stats link (`my_stats`),
+    // which none of these carve-outs is about. It found a count, so
+    // nothing is owned, exactly as before.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain(COUNT_Q);
+    expect(res.outcomes.size).toBe(0);
   });
 
   it("owns nothing when the match has no capacity to divide by", async () => {
     // "We're 11/0, need 0 more" is the 2026-06-08 "0/14" shape reached
     // from the other direction. It should be impossible; the answer to
     // an impossible state is the path that already handles it.
-    const { model, calls } = stubModel({});
+    const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
     const res = await run({
       messages: [msg({ body: COUNT_Q, route: "question" })],
       model,
       worldOpts: { confirmed: ELEVEN, maxPlayers: 0 },
     });
     expect([...res.ownedIds]).toEqual([]);
-    expect(calls).toEqual([]);
+    // ONE extractor call, since 2026-09-17: a blocked window still asks
+    // whether a question is the asker's own stats link (`my_stats`),
+    // which none of these carve-outs is about. It found a count, so
+    // nothing is owned, exactly as before.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain(COUNT_Q);
+    expect(res.outcomes.size).toBe(0);
     expect(res.degradations.join(" ")).toMatch(/maxPlayers=0/);
+  });
+
+  it("a blocked window with no question makes no model call at all", async () => {
+    const { model, calls } = stubModel({});
+    const res = await run({
+      messages: [msg({ body: SHOW_TEAMS, route: "balancer" })],
+      model,
+      worldOpts: { noMatch: true },
+      expectedMatchId: null,
+    });
+    expect([...res.ownedIds]).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(res.degradations).toEqual([]);
   });
 
   it("does not own a team post when team balancing is off for the org", async () => {
@@ -1324,5 +1361,146 @@ describe("rating progress is read only when a rating question is in the window",
     // hand-back with a receipt.
     expect(res.outcomes.has("wa-rate")).toBe(false);
     expect(res.degradations.join(" ")).toMatch(/rating-progress read failed/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// THE PERSONAL STATS LINK (2026-09-17)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// `STATS_REQUEST`, an English-only regex fast path in `analyze/route.ts`,
+// is deleted. The ask is `QuestionFacts.topic = "my_stats"`: this module
+// owns it, the engine decides it, and the outcome carries
+// `statsLinkRequest` for the route to perform. The outcome carries NO
+// recipient: the route DMs the sender of the flagged message, and only
+// that sender (`e2e/sim/qa.spec.ts` asserts the BotJob's phone).
+//
+// The old fast path answered this before any of the carve-outs below
+// existed for it: no upcoming match, attendance off, a busy batch. None
+// of them is about a stats link, so none of them may silence it.
+
+describe("the personal stats link (topic my_stats)", () => {
+  const MY_Q = "@Match Time my stats";
+  const MY_FACTS = { topic: "my_stats", personRef: "", statedCount: -1 };
+  const TR_Q = "@Match Time istatistiklerim";
+  const IN = "in";
+
+  it("is owned, flagged for the route, reacts 📊 and says nothing in the group", async () => {
+    const { model } = stubModel({ [MY_Q]: MY_FACTS });
+    const res = await run({ messages: [msg({ waMessageId: "wa-my", body: MY_Q, route: "question" })], model });
+    const o = res.outcomes.get("wa-my");
+    expect(res.ownedIds.has("wa-my")).toBe(true);
+    expect(o?.statsLinkRequest).toBe(true);
+    expect(o?.react).toBe("📊");
+    expect(o?.reply).toBeNull();
+    // The labels the deleted fast path wrote, so the admin log reads the same.
+    expect(o?.intent).toBe("stats_link");
+    expect(o?.action).toBe("dm-stats-link");
+    expect(res.writes).toEqual([]);
+  });
+
+  it("the Turkish ask is the same fact and the same outcome", async () => {
+    const { model } = stubModel({ [TR_Q]: MY_FACTS });
+    const res = await run({ messages: [msg({ waMessageId: "wa-tr", body: TR_Q, route: "question" })], model });
+    expect(res.outcomes.get("wa-tr")?.statsLinkRequest).toBe(true);
+  });
+
+  it("an untagged ask is not owned and costs no model call", async () => {
+    const { model, calls } = stubModel({ [MY_Q]: MY_FACTS });
+    const res = await run({ messages: [msg({ body: "my stats", route: "question", tagged: false })], model });
+    expect(res.outcomes.size).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("an unresolved sender is not flagged: there is nobody to DM", async () => {
+    const { model } = stubModel({ [MY_Q]: MY_FACTS });
+    const res = await run({
+      messages: [msg({ waMessageId: "wa-anon", body: MY_Q, route: "question", senderUserId: null })],
+      model,
+    });
+    expect(res.outcomes.get("wa-anon")?.statsLinkRequest ?? false).toBe(false);
+  });
+
+  it("someone ELSE's stats is the group topic, never a link", async () => {
+    const q = "@Match Time what are Wasim's stats";
+    const { model } = stubModel({ [q]: { topic: "stats", personRef: "Wasim", statedCount: -1 } });
+    const res = await run({ messages: [msg({ waMessageId: "wa-w", body: q, route: "question" })], model });
+    for (const o of res.outcomes.values()) expect(o.statsLinkRequest ?? false).toBe(false);
+  });
+
+  it("ONLY the asking message is flagged, never a neighbour", async () => {
+    const { model } = stubModel({ [MY_Q]: MY_FACTS, [COUNT_Q]: COUNT_FACTS });
+    const res = await run({
+      messages: [
+        msg({ waMessageId: "wa-my", body: MY_Q, route: "question", senderUserId: "u-sait" }),
+        msg({ waMessageId: "wa-count", body: COUNT_Q, route: "question" }),
+      ],
+      model,
+    });
+    expect(res.outcomes.get("wa-my")?.statsLinkRequest).toBe(true);
+    expect(res.outcomes.get("wa-count")?.statsLinkRequest ?? false).toBe(false);
+    expect(res.outcomes.get("wa-count")?.reply ?? "").toBeTruthy();
+  });
+
+  it("is still sent with NO upcoming match (end of season is when 'wrapped' is asked)", async () => {
+    const { model } = stubModel({ [MY_Q]: MY_FACTS, [COUNT_Q]: COUNT_FACTS });
+    const res = await run({
+      messages: [
+        msg({ waMessageId: "wa-my", body: MY_Q, route: "question" }),
+        msg({ waMessageId: "wa-count", body: COUNT_Q, route: "question" }),
+      ],
+      model,
+      worldOpts: { confirmed: ELEVEN, noMatch: true },
+      expectedMatchId: null,
+    });
+    expect(res.outcomes.get("wa-my")?.statsLinkRequest).toBe(true);
+    // Everything else keeps the no-match carve-out exactly as before.
+    expect(res.outcomes.has("wa-count")).toBe(false);
+  });
+
+  it("is still sent when attendance tracking is off", async () => {
+    const { model } = stubModel({ [MY_Q]: MY_FACTS });
+    const res = await run({
+      messages: [msg({ waMessageId: "wa-my", body: MY_Q, route: "question" })],
+      model,
+      worldOpts: { confirmed: ELEVEN, features: { attendance: false } },
+    });
+    expect(res.outcomes.get("wa-my")?.statsLinkRequest).toBe(true);
+  });
+
+  it("is still sent when the route's match and the state's disagree", async () => {
+    const { model } = stubModel({ [MY_Q]: MY_FACTS });
+    const res = await run({
+      messages: [msg({ waMessageId: "wa-my", body: MY_Q, route: "question" })],
+      model,
+      expectedMatchId: "some-other-match",
+    });
+    expect(res.outcomes.get("wa-my")?.statsLinkRequest).toBe(true);
+  });
+
+  it("is still sent in a batch that also carries an attendance message", async () => {
+    const { model } = stubModel({ [MY_Q]: MY_FACTS });
+    const res = await run({
+      messages: [
+        msg({ waMessageId: "wa-my", body: MY_Q, route: "question" }),
+        msg({ waMessageId: "wa-in", body: IN, route: "admin_ops", tagged: false }),
+      ],
+      model,
+    });
+    expect(res.outcomes.get("wa-my")?.statsLinkRequest).toBe(true);
+  });
+
+  it("with no match, a batch with no stats ask is decided exactly as before: nothing, no reason", async () => {
+    const { model, calls } = stubModel({ [COUNT_Q]: COUNT_FACTS });
+    const res = await run({
+      messages: [msg({ body: COUNT_Q, route: "question" })],
+      model,
+      worldOpts: { confirmed: ELEVEN, noMatch: true },
+      expectedMatchId: null,
+    });
+    expect(res.outcomes.size).toBe(0);
+    expect(res.degradations).toEqual([]);
+    // One extractor call to find out whether it was a stats ask; no more.
+    expect(calls.length).toBeLessThanOrEqual(1);
   });
 });

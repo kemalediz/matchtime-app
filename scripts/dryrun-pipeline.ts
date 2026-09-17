@@ -78,6 +78,11 @@
  *   QUESTIONS=1    run the TAGGED-QUESTION table (Q*) through §10 step
  *                  7's owner instead, and score every phrasing as
  *                  ANSWERED / HANDED BACK / SILENT. See `runQuestions`.
+ *   MYSTATS=1      run the PERSONAL-STATS table (W*): the live router,
+ *                  then `runAnswerBatch`, and count how often the asker
+ *                  would be DM'd their own stats link, and to whom.
+ *                  See `runMyStats`. Nothing is sent: the DM is performed
+ *                  by `analyze/route.ts`, which this file never calls.
  *   TEAMS=1        run the GENERATE-TEAMS table (T*) through §10 step
  *                  8's owner (`runTeamOpsBatch`), with the apply layer's
  *                  three deps replaced by recorders. See `runTeams` —
@@ -119,6 +124,7 @@ import { runAnswerBatch } from "../src/lib/pipeline/answer-batch.ts";
 import { runTeamOpsBatch } from "../src/lib/team-ops-engine-batch.ts";
 import { buildTeamOpsApplyDeps } from "../src/lib/owner-deps.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
+import { messageTagsBot } from "../src/lib/interaction-contract.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
 import { getOrgFeatures } from "../src/lib/org-features.ts";
 import { buildFullSquadBenchInvite } from "../src/lib/bench-offer-copy.ts";
@@ -1722,6 +1728,102 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
 }
 
 /**
+ * ── THE PERSONAL-STATS TABLE (`MYSTATS=1`) ────────────────────────────
+ *
+ * `STATS_REQUEST` (an English-only regex fast path in `analyze/route.ts`)
+ * was deleted on 2026-09-17. The ask is `QuestionFacts.topic =
+ * "my_stats"`; the engine flags the ASKING message and the route DMs its
+ * sender. W1-W5 must request a link on every run, or the conversion
+ * deleted the feature (W4 and W5 are the Turkish forms the help
+ * advertises and the regex never read). W6-W9 must never DM the asker:
+ * untagged chat, and a question about SOMEONE ELSE's numbers.
+ *
+ * The tag is computed from the body with the route's own
+ * `messageTagsBot`, so an untagged case is refused by the real gate, not
+ * by the table. The router runs with no floor, as in production.
+ *
+ * READ-ONLY: `runAnswerBatch` has no apply layer and cannot send; the
+ * DM is performed by `analyze/route.ts`, which is never called here.
+ */
+type MyStatsCase = { id: string; who: string; body: string; expect: "LINK" | "NO LINK"; why: string };
+
+const MY_STATS_CASES: MyStatsCase[] = [
+  { id: "W1", who: "Zair", body: "@Match Time my stats", expect: "LINK", why: "the phrasing the deleted regex was built for" },
+  { id: "W2", who: "Zair", body: "@Match Time can I see my ratings", expect: "LINK", why: "the same ask, as a question" },
+  { id: "W3", who: "Zair", body: "@Match Time wrapped", expect: "LINK", why: "one word; routed `none` 3/3 before its router example" },
+  { id: "W4", who: "Zair", body: "@Match Time istatistiklerim", expect: "LINK", why: "TURKISH, advertised by the help; the regex never read it" },
+  { id: "W5", who: "Zair", body: "@Match Time puanlarımı görebilir miyim", expect: "LINK", why: "TURKISH, 'can I see my ratings'" },
+  { id: "W6", who: "Zair", body: "my stats", expect: "NO LINK", why: "untagged: ordinary chat" },
+  { id: "W7", who: "Zair", body: "can I see my ratings", expect: "NO LINK", why: "untagged" },
+  { id: "W8", who: "Zair", body: "istatistiklerim", expect: "NO LINK", why: "untagged, Turkish" },
+  { id: "W9", who: "Zair", body: "@Match Time what are Wasim's stats", expect: "NO LINK", why: "SOMEONE ELSE's numbers: a group question, never a DM to the asker" },
+];
+
+async function runMyStats(orgId: string, state: SquadState, now: Date): Promise<void> {
+  const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
+  const only = process.env.ONLY?.split(",").map((s) => s.trim());
+  const selected = MY_STATS_CASES.filter((c) => !only || only.includes(c.id));
+  const features = await getOrgFeatures(orgId);
+  const model = anthropicModel();
+  const summary: string[] = [];
+  let mismatched = 0;
+  let runs = 0;
+  let totalUsd = 0;
+  for (const c of selected) {
+    const sender = memberByName(state.roster, c.who);
+    const tagged = messageTagsBot({ body: c.body });
+    console.log(`\n${"─".repeat(72)}\n${c.id}  ${sender.name}${tagged ? " [@tagged]" : ""}: ${JSON.stringify(c.body)}\n  expect : ${c.expect} (${c.why})`);
+    const routes = new Map<string, number>();
+    let links = 0;
+    for (let n = 0; n < repeat; n++) {
+      const id = `${c.id}-${n}`;
+      const routed = await routeBatch(model, [{ id, authorName: sender.name, body: c.body }], { floor: false });
+      const route: Route = routed.routes[0]?.route ?? "unsure";
+      totalUsd += routed.usage?.costUsd ?? 0;
+      routes.set(route, (routes.get(route) ?? 0) + 1);
+      const res = await runAnswerBatch({
+        orgId,
+        now,
+        messages: [
+          {
+            waMessageId: id,
+            body: c.body,
+            authorName: sender.name,
+            senderUserId: sender.userId,
+            senderName: sender.name,
+            tagged,
+            route,
+            gated: route === "none",
+          },
+        ],
+        history: HISTORY,
+        expectedMatchId: state.matchId,
+        enabled: new Set<Route>(["question", "balancer"]),
+        deps: { model, loadState: async () => state, loadFeatures: async () => features },
+      });
+      totalUsd += res.cost.usd;
+      runs++;
+      const o = res.outcomes.get(id);
+      const link = o?.statsLinkRequest === true;
+      if (link) links++;
+      if ((link ? "LINK" : "NO LINK") !== c.expect) mismatched++;
+      console.log(
+        `  run ${n + 1}/${repeat}  route=${route.padEnd(9)} ${link ? `LINK → would DM ${sender.name} (the asker)` : "no link"}` +
+          `${o ? `  intent=${o.intent} react=${o.react ?? "-"} reply=${o.reply ? JSON.stringify(o.reply.slice(0, 60)) : "-"}` : "  (not owned)"}` +
+          `${(link ? "LINK" : "NO LINK") !== c.expect ? "  ⚠️ expected " + c.expect : ""}`,
+      );
+    }
+    const spread = [...routes].map(([r, k]) => `${r} ${k}`).join(" · ");
+    summary.push(`${c.id.padEnd(4)} ${c.expect.padEnd(8)} link ${links} of ${repeat}  [route: ${spread}]  ${JSON.stringify(c.body)}`);
+  }
+  console.log(`\n${"═".repeat(72)}\nPER CASE (N of ${repeat}):\n${summary.join("\n")}`);
+  console.log(
+    `\n${selected.length} case(s) × ${repeat} = ${runs} run(s). Verdicts differing from expect: ${mismatched}.\n` +
+      `Total cost: $${totalUsd.toFixed(4)}. DMs sent: 0 (the route performs the DM; it is never called here).`,
+  );
+}
+
+/**
  * ── THE DM-INTENT TABLE (`DMS=1`) ────────────────────────────────────
  *
  * The 1:1 DM surface has no verdict pipeline, so since 2026-09-11 it has
@@ -1921,6 +2023,12 @@ async function main(): Promise<void> {
 
   if (process.env.QUESTIONS === "1") {
     await runQuestions(org.id, base, now);
+    await db.$disconnect();
+    return;
+  }
+
+  if (process.env.MYSTATS === "1") {
+    await runMyStats(org.id, base, now);
     await db.$disconnect();
     return;
   }
