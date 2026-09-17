@@ -738,33 +738,9 @@ Great — you're back on for all my messages 👍
 Great — I'll send you rating and Man-of-the-Match links again 👍
 
 ### R135 BOT_ADDED_INTRO
-👋 Hi everyone, I'm *MatchTime* — a free assistant that runs the weekly admin for your football group, so the organiser doesn't have to chase everyone every week.
+👋 Hi, I'm *MatchTime*. I run the weekly admin for a football group: who's in, who's out, fair teams, reminders.
 
-Here's what I can do for this group:
-
-⚽ *Squad list* — each week just reply *In* or *Out* and I keep a live, numbered list of who's playing. When you're full I start a *reserve/bench* list, and if someone drops out I nudge the bench to fill the spot.
-
-🤔 *Maybes* — not sure yet? Say *"maybe"* and I'll quietly DM you ~24h before kick-off for a final yes or no.
-
-🟥🟦 *Fair teams* — once the squad's locked I split everyone into balanced teams based on recent form, so games stay even (I can even name the teams).
-
-🏆 *Man of the Match* — after the game I run a quick vote to pick the standout player, then announce the winner.
-
-⭐ *Player ratings* — after each match I DM everyone a private one-tap link to rate the others out of 10. That builds each player's form score over time — which is what makes the teams fair.
-
-⏰ *Reminders* — I chase people who haven't replied and remind the squad before kick-off.
-
-💳 *Payment tracking (optional)* — I can track who's paid the match fee, remind those who haven't, and show the organiser who still owes.
-
-*Want me to run this group?* Whoever organises it, just reply:
-
-• *YES* — switch on the essentials: squad list, fair teams, bench, Man of the Match, ratings & reminders.
-• *EVERYTHING* — all of that *plus* payment tracking.
-• Or name the bits you want — e.g. *"just Man of the Match and ratings"*.
-
-Want more detail first? Type *@Match Time help teams*, *help ratings*, *help mom*, *help payments* or *help availability* and I'll explain.
-
-Not for you? Just ignore me and I'll stay quiet. 🤐
+*Want me to run this group?* Whoever organises it, reply *YES* and I'll ask two quick questions. Not for you? Ignore me and I'll stay quiet. 🤐
 
 ### R141 buildHowToUseMe / everything on
 ✅ Say *"In"* or *"Out"* to mark your own availability — no need to tag me.

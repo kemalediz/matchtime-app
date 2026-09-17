@@ -246,6 +246,12 @@ import {
   buildHelpReply,
   parseHelpTopic,
 } from "@/lib/onboarding-conversation";
+import {
+  ACTIVE_ONBOARDING_STAGES,
+  isCancelRequest,
+  isOnboardingSessionStale,
+} from "@/lib/onboarding-parse";
+import { t as strings } from "@/lib/i18n/t";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { currentAnalyzeBatchId, withAnalyzeBatch } from "@/lib/analyze-batch-context";
 import {
@@ -951,25 +957,35 @@ async function handleAnalyzeRequest(request: Request) {
   //   the same behaviour with an extra call. The one below it, the
   //   bench-prompt answer, is left terminal for the same kind of reason
   //   (a whole-message allowlist); see its own header.
+  //   "yardım" (2026-09-17): the same keyword in Turkish, with the same
+  //   shape. `\b` is ASCII-only so the topic tail allows any letter. The
+  //   body is tested under BOTH lower-casings: the Turkish one turns
+  //   "TIME" into "tıme" (dotless), so an all-caps English "@MATCH TIME
+  //   HELP" only matches under the plain one, and "YARDIM" only under the
+  //   Turkish one.
   const HELP_RE =
-    /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*\bhelp\b(?:\s+[\w &]+?)?\s*$/i;
+    /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})(?:\s+[\p{L}\p{N} &']+?)?\s*$/iu;
   for (const m of fresh) {
     if (fastPathHandledIds.has(m.waMessageId)) continue;
-    if (!HELP_RE.test(m.body)) continue;
+    if (!HELP_RE.test(m.body.toLowerCase()) && !HELP_RE.test(m.body.toLocaleLowerCase("tr"))) continue;
     if (!messageTagsBot(m)) continue;
     fastPathHandledIds.add(m.waMessageId); // peel off the LLM batch
     const feats = await getOrgFeatures(org.id);
     const topic = parseHelpTopic(m.body);
-    const reply = buildHelpReply(topic, {
-      attendance: feats.attendance,
-      teamBalancing: feats.teamBalancing,
-      momVoting: feats.momVoting,
-      playerRating: feats.playerRating,
-      statsQa: feats.statsQa,
-      reminders: feats.reminders,
-      bench: feats.bench,
-      paymentTracking: feats.paymentTracking,
-    });
+    const reply = buildHelpReply(
+      topic,
+      {
+        attendance: feats.attendance,
+        teamBalancing: feats.teamBalancing,
+        momVoting: feats.momVoting,
+        playerRating: feats.playerRating,
+        statsQa: feats.statsQa,
+        reminders: feats.reminders,
+        bench: feats.bench,
+        paymentTracking: feats.paymentTracking,
+      },
+      feats.language,
+    );
     const sender = senderById.get(m.waMessageId)!;
     await recordAnalysis({
       orgId: org.id, groupId: body.groupId, msg: m,
@@ -3473,46 +3489,99 @@ async function storeMessagesForSquadFromList(
  * live group: must address MatchTime AND say set up / get started.
  */
 const SETUP_TRIGGER =
-  /(?:@?\s*match\s*time\b[\s\S]{0,40}\b(?:set\s*up|get\s*started|onboard)\b)|(?:\b(?:set\s*up|onboard)\s+match\s*time\b)/i;
+  /(?:@?\s*match\s*time\b[\s\S]{0,40}(?<!\p{L})(?:set\s*up|get\s*started|onboard|kurulum|kuralım|kuralim)(?!\p{L}))|(?:\b(?:set\s*up|onboard)\s+match\s*time\b)/iu;
+
+/** What the analyze response carries when an onboarding session owned
+ *  the batch. The Pi reads `completed` to refresh its org list at once,
+ *  so the group it has been flushing as "onboarding" becomes a live org
+ *  without waiting for the periodic refresh or a restart. */
+type OnboardingResponse = {
+  ok: true;
+  results: ActionForBot[];
+  onboarding: { stage: string; completed: boolean; language: string };
+};
 
 async function handleOnboardingIfApplicable(
   body: InboundBody,
-): Promise<{ ok: true; results: ActionForBot[] } | null> {
+): Promise<OnboardingResponse | null> {
   const groupId = body.groupId;
 
+  // ── A LIVE ORG ALWAYS WINS (2026-09-17) ──────────────────────────
+  // This used to look the session up first, so an abandoned or stale
+  // session could hijack a group that was later set up another way
+  // (the manual `enable-*.ts` script, the dashboard). Now the live-org
+  // check comes first: if the group has a bot-enabled org, any session
+  // still lying around is marked superseded and the batch goes to the
+  // normal analyzer. The org's own trigger words are unaffected.
+  const liveOrg = await db.organisation.findFirst({
+    where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
+    select: { id: true },
+  });
+  if (liveOrg) {
+    await db.onboardingSession.updateMany({
+      where: { whatsappGroupId: groupId, stage: { in: [...ACTIVE_ONBOARDING_STAGES] } },
+      data: { stage: "abandoned" },
+    });
+    return null;
+  }
+
   let session = await db.onboardingSession.findFirst({
-    // "introduced"/"details" are the Phase 1 group-add stages
-    // (2026-06-12 design); they only ever exist when the flag-gated
-    // /api/whatsapp/bot-added route created them, so this is inert for
-    // every group that never went through a bot-add.
     where: {
       whatsappGroupId: groupId,
-      stage: { in: ["collecting", "features", "introduced", "admins", "details"] },
+      stage: { in: [...ACTIVE_ONBOARDING_STAGES] },
     },
     orderBy: { createdAt: "desc" },
   });
 
+  // A session nobody has touched for ONBOARDING_SESSION_TTL_MS is
+  // stale: it stops owning the group. Marked so the next bot-add
+  // starts a fresh one and the Pi stops monitoring the group.
+  if (session && isOnboardingSessionStale(session)) {
+    await db.onboardingSession.update({
+      where: { id: session.id },
+      data: { stage: "abandoned" },
+    });
+    session = null;
+  }
+
   if (!session) {
-    // No active session — only start one on an explicit trigger AND
-    // only if this group isn't already a live org (don't hijack a
-    // configured group).
+    // No active session — only start one on an explicit trigger (the
+    // live-org case returned above, so this cannot hijack a configured
+    // group).
     const triggered = body.messages.some((m) => SETUP_TRIGGER.test(m.body || ""));
     if (!triggered) return null;
-    const liveOrg = await db.organisation.findFirst({
-      where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
-      select: { id: true },
-    });
-    if (liveOrg) return null; // already set up — ignore the trigger
     session = await db.onboardingSession.create({
       data: { whatsappGroupId: groupId, stage: "collecting" },
     });
   }
 
+  const lastWaId = body.messages[body.messages.length - 1]?.waMessageId ?? null;
+
+  // An explicit, tagged "@Match Time stop" / "iptal" ends the session.
+  // One short reply in the session's language, then silence.
+  if (body.messages.some((m) => isCancelRequest(m.body || ""))) {
+    await db.onboardingSession.update({
+      where: { id: session.id },
+      data: { stage: "abandoned", lastHandledWaId: lastWaId },
+    });
+    const results: ActionForBot[] = lastWaId
+      ? [{ waMessageId: lastWaId, handledBy: "llm", intent: "onboarding", react: null, reply: strings(session.language).onbCancelled() }]
+      : [];
+    return {
+      ok: true,
+      results,
+      onboarding: { stage: "abandoned", completed: false, language: session.language },
+    };
+  }
+
   // Dedupe: if the last message we already handled is the tail of
   // this batch, a flush re-sent it — stay silent.
-  const lastWaId = body.messages[body.messages.length - 1]?.waMessageId ?? null;
   if (lastWaId && session.lastHandledWaId === lastWaId) {
-    return { ok: true, results: [] };
+    return {
+      ok: true,
+      results: [],
+      onboarding: { stage: session.stage, completed: false, language: session.language },
+    };
   }
 
   const result = await handleOnboardingTurn({
@@ -3546,7 +3615,19 @@ async function handleOnboardingIfApplicable(
       reply: result.reply,
     });
   }
-  return { ok: true, results };
+  const after = await db.onboardingSession.findUnique({
+    where: { id: session.id },
+    select: { stage: true, language: true },
+  });
+  return {
+    ok: true,
+    results,
+    onboarding: {
+      stage: after?.stage ?? session.stage,
+      completed: result.completed,
+      language: after?.language ?? session.language,
+    },
+  };
 }
 
 /**

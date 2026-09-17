@@ -12,6 +12,44 @@
  */
 import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
 import { normalisePhone } from "./phone";
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+
+// ─────────────────────────── session lifecycle ─────────────────────────
+
+/** The stages during which a session owns its group's messages. One
+ *  list, read by the analyze route, the bot-added route and the orgs
+ *  route: the Pi's restart list used to omit "admins", so a restart
+ *  during the admins question silently dropped the group. */
+export const ACTIVE_ONBOARDING_STAGES = [
+  "introduced",
+  "admins",
+  "details",
+  "collecting",
+  "features",
+] as const;
+
+/** A session older than this is stale: it stops owning the group, the
+ *  bot-added route starts a fresh one on the next add, and a live org
+ *  set up any other way is never shadowed by it. Measured from
+ *  creation, not from the last write: at the `introduced` stage every
+ *  ordinary chat message bumps `updatedAt` (lastHandledWaId), so a
+ *  group that never consents but keeps chatting would otherwise never
+ *  go stale. */
+export const ONBOARDING_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function isOnboardingSessionStale(
+  s: { createdAt: Date },
+  now: Date = new Date(),
+): boolean {
+  return now.getTime() - s.createdAt.getTime() > ONBOARDING_SESSION_TTL_MS;
+}
+
+/** Lower-case for matching Turkish: "EVET" must become "evet" and "İ"
+ *  must become "i", which a plain toLowerCase() gets wrong. */
+function trLower(s: string): string {
+  return (s ?? "").toLocaleLowerCase("tr").replace(/’/g, "'");
+}
 
 // ─────────────────────────── feature bundles ───────────────────────────
 
@@ -90,6 +128,12 @@ export function parseBundleReply(raw: string): BundleChoice | null {
     return { choice: "yes", features: [...RECOMMENDED_BUNDLE] };
   }
 
+  // The same three shapes in Turkish (2026-09-17). Matched on the
+  // Turkish lower-casing, before the English EVERYTHING / subset checks,
+  // so "hepsi" and "sadece maçın adamı" are read as what they are.
+  const tr = parseBundleReplyTr(raw);
+  if (tr) return tr;
+
   // EVERYTHING (kept reasonably short so "we talked about everything
   // last night" in a long chat message can't trigger).
   if (t.length <= 120 && /\b(everything|the lot|all of (?:it|them)|all features)\b/.test(t)) {
@@ -105,6 +149,56 @@ export function parseBundleReply(raw: string): BundleChoice | null {
   if (picks.length === 0) return null;
   const cue =
     /\b(just|only|want|we'?d like|give us|enable|turn on|switch on|set ?up|start with|go with|please)\b/.test(t);
+  if ((cue || picks.length >= 2) && t.length <= 200) {
+    return { choice: "custom", features: picks };
+  }
+  return null;
+}
+
+// ── the same consent shapes in Turkish ─────────────────────────────────
+
+/** Standalone Turkish affirmatives, whole-string on the cleaned text. */
+const YES_RE_TR =
+  /^(?:evet|evet lütfen|evet lutfen|evet evet|tamam|tamamdır|tamamdir|olur|olur olur|hadi|tabii|tabi|tabii ki|tabi ki|kesinlikle|yapalım|yapalim|başlayalım|baslayalim|kuralım|kuralim|kur|aynen)$/u;
+
+/** "hepsi" / "her şey" and the payment carve-out. */
+const EVERYTHING_RE_TR = /(?<!\p{L})(?:hepsi|hepsini|her şey|herşey|her sey|hersey|tamamı|tamami|tümü|tumu)(?!\p{L})/u;
+const EXCEPT_PAY_RE_TR =
+  /(?:ödeme|odeme|para)\p{L}*\s*(?:hariç|haric|olmasın|olmasin|yok|dışında|disinda|istemiyoruz)|ödemesiz|odemesiz|(?:hariç|haric)\s*\p{L}*\s*(?:ödeme|odeme)/u;
+
+function pickFeatureKeywordsTr(t: string): ToggleableKey[] {
+  const picked = new Set<ToggleableKey>();
+  const has = (re: RegExp) => re.test(t);
+  if (has(/maçın adamı|macin adami|maç adamı|mac adami|(?<!\p{L})mom(?!\p{L})/u)) picked.add("momVoting");
+  if (has(/puanlama|puanlar|(?<!\p{L})puan(?!\p{L})|oylama|değerlendirme|degerlendirme/u)) picked.add("playerRating");
+  if (has(/yoklama|katılım|katilim|(?<!\p{L})kadro(?!\p{L})|kadro listesi/u)) picked.add("attendance");
+  if (has(/(?<!\p{L})yedek/u)) picked.add("bench");
+  if (has(/(?<!\p{L})takım|(?<!\p{L})takim|denge/u)) picked.add("teamBalancing");
+  if (has(/hatırlat|hatirlat/u)) picked.add("reminders");
+  if (has(/istatistik|geçmiş|gecmis|sıralama|siralama/u)) picked.add("statsQa");
+  if (has(/(?<!\p{L})ödeme|(?<!\p{L})odeme|(?<!\p{L})para(?!\p{L})|ücret|ucret/u)) picked.add("paymentTracking");
+  return [...picked];
+}
+
+function parseBundleReplyTr(raw: string): BundleChoice | null {
+  const t = trLower(raw).trim();
+  if (!t) return null;
+  const bare = t
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[!.,…\s]+$/gu, "")
+    .trim();
+  if (bare.length <= 30 && YES_RE_TR.test(bare)) {
+    return { choice: "yes", features: [...RECOMMENDED_BUNDLE] };
+  }
+  if (t.length <= 120 && EVERYTHING_RE_TR.test(t)) {
+    let features = [...EVERYTHING_BUNDLE];
+    if (EXCEPT_PAY_RE_TR.test(t)) features = features.filter((k) => k !== "paymentTracking");
+    return { choice: "everything", features };
+  }
+  const picks = pickFeatureKeywordsTr(t);
+  if (picks.length === 0) return null;
+  const cue =
+    /(?<!\p{L})(?:sadece|sade|yeter|istiyoruz|istiyorum|isteriz|aç|açalım|acalim|olsun|lütfen|lutfen|kur|kuralım|kuralim)(?!\p{L})/u.test(t);
   if ((cue || picks.length >= 2) && t.length <= 200) {
     return { choice: "custom", features: picks };
   }
@@ -142,6 +236,14 @@ const JUST_ME_RE =
  *  admin. Matched as whole-string against the cleaned text. */
 const FILLER_RE =
   /^(lol+|lmao|haha+|hah|hmm+|idk|idk really|dunno|maybe|ok|okay|kk|cool|nice|sure|yeah|yep|yes|nah|nope|no|what|huh|eh|um+|erm|good|great|fine|alright|right|true|wow|omg|wtf|cheers|thanks?|ta)$/i;
+
+/** The Turkish "just me" answers (2026-09-17), on the Turkish lower-casing. */
+const JUST_ME_RE_TR =
+  /^(?:sadece ben|sade ben|tek ben|yalnız ben|yalniz ben|bir tek ben|ben|benim|kimse yok|başka yok|baska yok|başkası yok|baskasi yok|başka kimse yok|baska kimse yok|ben hallederim|ben yaparım|ben yaparim|ben bakarım|ben bakarim|tek başınayım|tek basinayim|yok)(?:\s+(?:teşekkürler|tesekkurler|sağol|sagol|lütfen|lutfen|şimdilik|simdilik|abi))?$/u;
+
+/** Turkish interjections that are not names. */
+const FILLER_RE_TR =
+  /^(?:tamam|tamamdır|ok|okey|bilmem|belki|hayır|hayir|yok|evet|olur|hmm+|haha+|neyse|peki|aynen|iyi|güzel|guzel)$/u;
 
 /** Pull the digit run out of a mention/jid token. "@447700900123",
  *  "447700900123@c.us", "447700900123@lid" → "447700900123". A pure
@@ -215,8 +317,19 @@ export function parseAdmins(text: string, mentions?: string[]): AdminsParse {
   if (cleaned && JUST_ME_RE.test(cleaned)) {
     return { admins: [], justMe: true };
   }
+  const cleanedTr = trLower(raw)
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[!.,…]+$/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleanedTr && JUST_ME_RE_TR.test(cleanedTr)) {
+    return { admins: [], justMe: true };
+  }
   // Whole-string filler/interjection with no number → junk, not a name.
   if (cleaned && !/\d/.test(raw) && FILLER_RE.test(cleaned)) {
+    return { admins: [], justMe: false };
+  }
+  if (cleanedTr && !/\d/.test(raw) && FILLER_RE_TR.test(cleanedTr)) {
     return { admins: [], justMe: false };
   }
 
@@ -237,7 +350,7 @@ export function parseAdmins(text: string, mentions?: string[]): AdminsParse {
 
   // Split the body into chunks on commas / "and" / "&" / newlines.
   const chunks = raw
-    .split(/\s*(?:,|;|\n|&|\band\b)\s*/i)
+    .split(/\s*(?:,|;|\n|&|\band\b|\bve\b)\s*/i)
     .map((c) => c.trim())
     .filter(Boolean);
 
@@ -306,12 +419,28 @@ export interface WhenWhere {
   oneOffDate: string | null;  // "YYYY-MM-DD"
 }
 
-/** Day-of-week from free text ("tuesdays" → 2). */
+/**
+ * Turkish day names, 0 = Sunday, with and without the special letters
+ * (an English keyboard types "sali" and "carsamba"). Longest first, so
+ * "cumartesi" is never read as "cuma" and "pazartesi" never as "pazar".
+ * A day may carry a suffix ("cumaları", "salıya", "pazartesileri"); the
+ * suffix set is closed so a name like "Salih" is not a Tuesday.
+ */
+const DAY_RE_TR =
+  /(?<!\p{L})(pazartesi|cumartesi|çarşamba|carsamba|perşembe|persembe|salı|sali|cuma|pazar)(?:lar[ıi]|ler[ıi]|lar[ıi]n[ıi]|ler[ıi]n[ıi]|ya|ye|y[ıi]|dan|den|s[ıi]|n[ıi])?(?!\p{L})/u;
+const DAY_TR: Record<string, number> = {
+  pazar: 0, pazartesi: 1, salı: 2, sali: 2, çarşamba: 3, carsamba: 3,
+  perşembe: 4, persembe: 4, cuma: 5, cumartesi: 6,
+};
+
+/** Day-of-week from free text ("tuesdays" → 2, "cumaları" → 5). */
 export function extractDayOfWeek(text: string): number | null {
   const t = text.toLowerCase();
   for (const [w, d] of Object.entries(DAY_WORDS)) {
     if (new RegExp(`\\b${w}s?\\b`).test(t)) return d;
   }
+  const tr = trLower(text).match(DAY_RE_TR);
+  if (tr) return DAY_TR[tr[1]] ?? null;
   return null;
 }
 
@@ -321,7 +450,7 @@ export function extractKickoffTime(text: string): string | null {
   const tm =
     t.match(/\b(\d{1,2})[:.](\d{2})\s*(am|pm)?\b/) ||
     t.match(/\b(\d{1,2})\s*(am|pm)\b/);
-  if (!tm) return null;
+  if (!tm) return extractKickoffTimeTr(text);
   let h = parseInt(tm[1], 10);
   const min = tm[2] && /^\d{2}$/.test(tm[2]) ? tm[2] : "00";
   const mer = (tm[3] || tm[2] || "").toString();
@@ -331,15 +460,60 @@ export function extractKickoffTime(text: string): string | null {
   return `${String(h).padStart(2, "0")}:${min}`;
 }
 
-/** Players-per-side ("7-a-side", "5s") — 4..16 or null. */
+/**
+ * Turkish clock forms that carry no colon: "saat 9", "akşam 9'da",
+ * "9 buçukta", "gece 10'da", "öğlen 1'de". A period word decides the
+ * half of the day ("akşam"/"gece" add 12 to an hour under 12, "öğlen"
+ * adds 12 to an hour of 6 or less); with no period word the hour is
+ * taken as written. A number that belongs to a format token ("7'ye 7")
+ * is never a time.
+ */
+function extractKickoffTimeTr(text: string): string | null {
+  const t = trLower(text).replace(FORMAT_RE_TR, " ");
+  const period = /(?<!\p{L})(akşam|aksam|gece|öğlen|oglen|öğle|ogle|öğleden sonra|ogleden sonra|sabah)(?!\p{L})/u.exec(t)?.[1] ?? null;
+  const LOC = "(?:'?\\s*(?:n?d[ae]|n?t[ae]))";
+  const m =
+    // "9 buçuk", "9 buçukta", "9'da buçuk" (with or without "saat")
+    new RegExp(`(?:saat\\s*)?(\\d{1,2})\\s*${LOC}?\\s*(?:buçuk|bucuk)(?:ta|te)?(?!\\p{L})`, "u").exec(t) ||
+    // "saat 9", "saat 20'de"
+    new RegExp(`saat\\s*(\\d{1,2})${LOC}?(?![\\d:.])`, "u").exec(t) ||
+    // "akşam 9", "gece 10'da", "sabah 10"
+    new RegExp(`(?:akşam|aksam|gece|öğlen|oglen|öğle|ogle|sabah)\\s*(\\d{1,2})${LOC}?(?![\\d:.])`, "u").exec(t) ||
+    // a bare hour with a locative: "9'da", "20'de"
+    new RegExp(`(?<![\\d:.])(\\d{1,2})\\s*'\\s*(?:n?d[ae]|n?t[ae])(?!\\p{L})`, "u").exec(t);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  if (Number.isNaN(h) || h > 23) return null;
+  const halfPast = /(?:buçuk|bucuk)/u.test(m[0]);
+  if (period && /^(akşam|aksam|gece)$/u.test(period) && h < 12) h += 12;
+  if (period && /^(öğlen|oglen|öğle|ogle|öğleden sonra|ogleden sonra)$/u.test(period) && h <= 6) h += 12;
+  return `${String(h).padStart(2, "0")}:${halfPast ? "30" : "00"}`;
+}
+
+/** Turkish format tokens: "7'ye 7", "6'ya 6", "5'e 5", "7v7", "7'şer",
+ *  "7 kişilik". Used both to read the format and to keep those digits
+ *  out of the clock reader. */
+const FORMAT_RE_TR =
+  /(?<!\d)(\d{1,2})\s*'?\s*(?:ye|ya|e|a)\s*(\d{1,2})(?!\d)|(?<!\d)(\d{1,2})\s*v\s*(\d{1,2})(?!\d)|(?<!\d)(\d{1,2})\s*'?\s*şer(?!\p{L})|(?<!\d)(\d{1,2})\s*kişilik/u;
+
+/** Players-per-side ("7-a-side", "5s", "7'ye 7") — 4..16 or null. */
 export function extractPlayersPerSide(text: string): number | null {
   const t = text.toLowerCase();
   const ps =
     t.match(/(\d{1,2})\s*[-\s]?\s*a[-\s]?side/) ||
     t.match(/\b(\d{1,2})\s*aside\b/) ||
     t.match(/\b(4|5|6|7|8|9|10|11)s\b/);
-  if (!ps) return null;
-  const n = parseInt(ps[1], 10);
+  if (ps) {
+    const n = parseInt(ps[1], 10);
+    return n >= 4 && n <= 16 ? n : null;
+  }
+  const tr = FORMAT_RE_TR.exec(trLower(text));
+  if (!tr) return null;
+  const a = tr[1] ?? tr[3] ?? tr[5] ?? tr[6];
+  const b = tr[2] ?? tr[4];
+  if (a == null) return null;
+  if (b != null && b !== a) return null; // "7'ye 5" is not a format
+  const n = parseInt(a, 10);
   return n >= 4 && n <= 16 ? n : null;
 }
 
@@ -368,7 +542,109 @@ export function extractVenueFreeText(raw: string): string | null {
     if (/^\d{1,2}([:.]\d{2})?\s*(am|pm)?$/i.test(v)) continue;
     if (v.length >= 2) return v.slice(0, 120);
   }
+  return extractVenueWithoutAt(raw);
+}
+
+/**
+ * The venue when no "at" clause names it (2026-09-17): Turkish has no
+ * "at", it puts a case suffix on the place ("Sim Arena'da"), and both
+ * languages write the combined answer as a comma list ("Cuma 21:30, Sim
+ * Arena, 7'ye 7"). Three shapes, in order:
+ *
+ *   1. an explicit label: "yer: Sim Arena";
+ *   2. a comma-separated chunk that carries no day, time, format or
+ *      recurrence token at all, so it can only be the place;
+ *   3. what is left of a single chunk once the day, time, format and
+ *      recurrence tokens are removed, accepted only when it looks like a
+ *      place: it ends in a Turkish locative suffix ("Sim Arena'da",
+ *      "halı sahada"), or it is capitalised, or it contains a venue word.
+ *
+ * A locative suffix is stripped from the result ("Arena'da" → "Arena",
+ * "sahasında" → "sahası"), so the stored venue reads as a name.
+ */
+function extractVenueWithoutAt(raw: string): string | null {
+  const labelled = /(?:^|[\s,;])(?:yer|yerimiz|saha|sahamız|sahamiz|venue)\s*[:=]\s*([^,.;\n]{2,80})/iu.exec(raw);
+  if (labelled) return stripLocative(labelled[1].trim()).slice(0, 120);
+
+  const chunks = raw.split(/\s*(?:,|;|\n)\s*/).map((c) => c.trim()).filter(Boolean);
+  const residues = chunks.map((c) => ({ chunk: c, residue: stripScheduleTokens(c) }));
+
+  // 2. A pure chunk: nothing schedule-like was in it.
+  if (chunks.length > 1) {
+    for (const { chunk, residue } of residues) {
+      if (residue === chunk.replace(/\s+/g, " ").trim() && looksLikeWords(residue)) {
+        return stripLocative(residue).slice(0, 120);
+      }
+    }
+  }
+
+  // 3. A sentence with the schedule removed.
+  for (const { residue } of residues) {
+    if (!looksLikeWords(residue)) continue;
+    const locative = LOCATIVE_TAIL.test(residue);
+    const capitalised = /^\p{Lu}/u.test(residue);
+    const venueWord = VENUE_WORD.test(residue);
+    if (locative || capitalised || venueWord) return stripLocative(residue).slice(0, 120);
+  }
   return null;
+}
+
+const LOCATIVE_TAIL = /(?:'\s*|\s)?(?:n?d[ae]|n?t[ae])$/iu;
+const VENUE_WORD =
+  /(?<!\p{L})(?:saha|sahası|sahasi|arena|park|parkı|parki|goals|powerleague|league|centre|center|pitch|stadium|stadyum|astro|fc|club|kulüp|kulup|school|okul|leisure|sports|spor|tesis|tesisi|hall|salon)(?!\p{L})/iu;
+
+/** Remove a trailing Turkish locative ("Arena'da" → "Arena", "sahada" →
+ *  "saha", "sahasında" → "sahası"). Only when it is a suffix: an
+ *  apostrophe or a word longer than the suffix itself. */
+function stripLocative(v: string): string {
+  let out = v.trim();
+  // Lazy prefix so the LONGEST suffix wins: "sahasında" → "sahası", not "sahasın".
+  const withApostrophe = /^(.*?\S)\s*'\s*(?:n?d[ae]|n?t[ae])$/iu.exec(out);
+  const bare = withApostrophe ? null : /^(.*?\p{L}{3,}?)(?:n?d[ae]|n?t[ae])$/iu.exec(out);
+  if (withApostrophe) out = withApostrophe[1].trim();
+  else if (bare) out = bare[1].trim();
+  // "X sahası" is "the pitch of X": the name is X. ("halı saha" is a name
+  // in itself and has no possessive, so it stays.)
+  out = out.replace(/\s+sahas[ıi]$/iu, "").trim();
+  return out;
+}
+
+function looksLikeWords(s: string): boolean {
+  return s.length >= 2 && s.length <= 80 && /\p{L}{2,}/u.test(s) && !/^\d+$/.test(s);
+}
+
+/** Strip every day, time, format and recurrence token, and the verbs a
+ *  combined answer wraps them in, leaving whatever could be a place. */
+function stripScheduleTokens(chunk: string): string {
+  let s = chunk;
+  const kill = (re: RegExp) => {
+    s = s.replace(re, " ");
+  };
+  // format tokens (both languages)
+  kill(/\d{1,2}\s*[-\s]?\s*a[-\s]?side/gi);
+  kill(/\b\d{1,2}\s*aside\b/gi);
+  kill(/\b(4|5|6|7|8|9|10|11)s\b/gi);
+  kill(new RegExp(FORMAT_RE_TR.source, "giu"));
+  // times
+  kill(/\b\d{1,2}[:.]\d{2}(?:\s*(?:am|pm))?(?:\s*'?\s*(?:n?d[ae]|n?t[ae])(?!\p{L}))?/giu);
+  kill(/\b\d{1,2}\s*(?:am|pm)\b/gi);
+  // Turkish clock phrases with their hour: "akşam 9 buçukta", "saat 20'de"
+  kill(/(?:saat\s*)?\d{1,2}\s*(?:'?\s*(?:n?d[ae]|n?t[ae]))?\s*(?:buçuk|bucuk)(?:ta|te)?(?!\p{L})/giu);
+  kill(/(?<!\p{L})(?:akşam|aksam|gece|öğlen|oglen|öğle|ogle|sabah|saat)\s*\d{1,2}(?:\s*'?\s*(?:n?d[ae]|n?t[ae]))?(?![\d:.])/giu);
+  kill(/(?<!\p{L})(?:saat|akşam|aksam|gece|öğlen|oglen|öğle|ogle|sabah|buçuk|bucuk|buçukta|bucukta|akşamı|aksami|günü|gunu|günleri|gunleri)(?!\p{L})/giu);
+  kill(/(?<![\d:.])\d{1,2}\s*'\s*(?:n?d[ae]|n?t[ae])(?!\p{L})/giu);
+  // days
+  kill(/\b(?:sunday|sun|monday|mon|tuesday|tues|tue|wednesday|weds|wed|thursday|thurs|thur|thu|friday|fri|saturday|sat)s?\b/gi);
+  kill(new RegExp(DAY_RE_TR.source, "giu"));
+  // recurrence and the verbs around a schedule
+  kill(/\b(?:every|each)\s+(?:week|mon|tue|wed|thu|fri|sat|sun)\w*\b/gi);
+  kill(/\b(?:weekly|recurring|one[-\s]?off|just this once|this week only|we play|we kick off|kick[-\s]?off|kickoff|play|usually|normally|from|to)\b/gi);
+  kill(/(?<!\p{L})(?:her|hafta|haftalık|haftalik|haftada|haftaya|tek sefer\p{L}*|bir kerelik|bir seferlik|sadece|bu|oynuyoruz|oynarız|oynariz|oynıyoruz|oynuyoruz|maç|mac|maçı|maci|maçımız|macimiz|genelde|hep|ve|ile|olarak|için|icin|başlıyoruz|basliyoruz|başlar|baslar|toplanıyoruz|toplaniyoruz)(?!\p{L})/giu);
+  // leftover punctuation and whitespace
+  s = s.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, " ");
+  s = s.replace(/^[\s'".!?:;-]+|[\s'".!?:;-]+$/gu, "");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
 }
 
 /** Recurrence; the group-add flow DEFAULTS to weekly when unstated. */
@@ -378,13 +654,43 @@ export function extractRecurrence(text: string): "weekly" | "oneoff" | null {
     return "oneoff";
   if (/\b(weekly|every week|each week|recurring|every (?:mon|tue|wed|thu|fri|sat|sun))/.test(t))
     return "weekly";
+  const tr = trLower(text);
+  if (/(?<!\p{L})(?:tek sefer\p{L}*|bir kerelik|bir seferlik|sadece bu hafta|bu haftalık|bu haftalik|tek maç|tek mac)(?!\p{L})/u.test(tr))
+    return "oneoff";
+  if (/(?<!\p{L})(?:her hafta|haftalık|haftalik|her (?:pazartesi|salı|sali|çarşamba|carsamba|perşembe|persembe|cuma|cumartesi|pazar))(?!\p{L})/u.test(tr))
+    return "weekly";
   return null;
 }
 
-/** ISO one-off date if present. */
+const MONTHS_TR: Record<string, number> = {
+  ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5, haziran: 6,
+  temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11,
+  aralık: 12, aralik: 12,
+};
+
+/** ISO one-off date if present: "2026-09-18", "18.09.2026", "18/09/2026",
+ *  "18 eylül 2026". Day-first for the numeric forms, as both languages
+ *  write them here. */
 export function extractOneOffDate(text: string): string | null {
-  const dm = text.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
-  return dm ? `${dm[1]}-${dm[2]}-${dm[3]}` : null;
+  const iso = text.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = text.match(/\b(\d{1,2})[./](\d{1,2})[./](20\d{2})\b/);
+  if (dmy) {
+    const d = parseInt(dmy[1], 10);
+    const mo = parseInt(dmy[2], 10);
+    if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12)
+      return `${dmy[3]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  const named = trLower(text).match(
+    /(?<!\d)(\d{1,2})\s+(ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik)\s+(20\d{2})\b/u,
+  );
+  if (named) {
+    const d = parseInt(named[1], 10);
+    const mo = MONTHS_TR[named[2]];
+    if (d >= 1 && d <= 31 && mo)
+      return `${named[3]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  return null;
 }
 
 /**
@@ -501,19 +807,29 @@ export function detailsStillMissing(s: {
 }
 
 /** Static follow-up copy for whatever is still missing after a
- *  details-stage turn (deterministic — never depends on the LLM). */
-export function detailsFollowUpQuestion(missing: DetailsField[]): string {
-  if (missing.length === 3) {
-    return (
-      "One thing I need: *when and where do you play?* One message is fine, " +
-      "like: _\"Thursdays 9pm at PowerLeague Shoreditch, 7-a-side\"_."
-    );
-  }
-  const parts: string[] = [];
-  if (missing.includes("day")) parts.push("which *day of the week* you play");
-  if (missing.includes("time")) parts.push("the *kickoff time* (e.g. 9pm)");
-  if (missing.includes("venue")) parts.push("the *venue* name");
-  return `Almost there — I just need ${parts.join(" and ")}.`;
+ *  details-stage turn (deterministic — never depends on the LLM), in the
+ *  session's language. The English bytes are pinned by copy-golden. */
+export function detailsFollowUpQuestion(missing: DetailsField[], lang: Lang | string = "en"): string {
+  return t(lang).onbDetailsQuestion({ missing });
+}
+
+// ───────────────────────── cancelling a setup ──────────────────────────
+
+/**
+ * "@Match Time stop" / "@Match Time iptal" during a setup ends the
+ * session (2026-09-17). The tag is required, exactly as for every other
+ * command, so a "stop" in ordinary chat cannot end anything; and the
+ * verb must be one of a short list in either language.
+ */
+export function isCancelRequest(body: string): boolean {
+  // The tag is tested on the plain lower-casing ("TIME" must not become
+  // "tıme"); the verbs on both, since "İPTAL" only lowers correctly
+  // under the Turkish rules.
+  const plain = (body ?? "").toLowerCase();
+  const tagged = /(?:@?\s*match\s*time|matchtime|@mt)(?!\p{L})/u.test(plain);
+  if (!tagged) return false;
+  const verb = /(?<!\p{L})(?:stop|cancel|quit|abort|iptal|dur|vazgeç|vazgec)(?!\p{L})/u;
+  return verb.test(plain) || verb.test(trLower(body));
 }
 
 // ───────────────────────── env-flag gate ────────────────────────────────
