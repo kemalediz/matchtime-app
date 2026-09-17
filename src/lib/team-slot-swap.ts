@@ -230,6 +230,23 @@ const SWAP_STOP = new Set([
   "place", "spot", "spots", "slot", "slots", "shirts", "bibs", "colours",
   "colors", "positions", "ends", "halves", "keeper", "keepers", "goal",
   "round", "about",
+  // Time and filler words, English (review of PR #99: a word next to a
+  // real player is read as a player unless it is one of these, whatever
+  // its case)
+  "tonight", "today", "tomorrow", "tmrw", "tmr", "later", "now", "soon",
+  "again", "instead", "too", "also", "then", "first", "next", "week",
+  "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+  "monday", "game", "match", "plz", "pls", "please", "mate", "mates",
+  "bro", "bruv", "lads", "guys", "boys", "all", "both", "yes", "yeah",
+  "no", "ok", "okay", "thanks", "cheers", "if", "possible", "poss",
+  // …and Turkish
+  "abi", "abim", "abiler", "kardeşim", "kardesim", "hocam", "reis",
+  "bu", "akşam", "aksam", "akşamki", "yarın", "yarin", "yarınki",
+  "bugün", "bugun", "bugünkü", "şimdi", "simdi", "sonra", "hemen",
+  "lütfen", "lutfen", "maç", "mac", "maçta", "hafta", "haftaya",
+  // (never "ben": Ben is a player's name, see SWAP_SELF_WORDS)
+  "beni", "bana", "seni", "biz", "bizi", "onu", "bunu",
+  "birini", "biri", "kimse", "herkes", "yerime", "yerine",
 ]);
 
 /**
@@ -590,25 +607,15 @@ function planSwapInner(
   const b = shown(B, names.b);
   const refused = (why: SwapRefusal): SwapPlan => ({ kind: "refused", a, b, why });
 
-  // AN UNKNOWN WORD IS A NAME ONLY IF IT WAS TYPED LIKE ONE. "swap
-  // David and Zork" is a real swap with a name MatchTime does not know,
-  // and must be answered (and must not drop David); "swap David
-  // tonight" is not. Without the raw span (the unit tests) the word is
-  // given the benefit of the doubt.
-  const typedAsName = (word: string): boolean => {
-    if (!names.span) return true;
-    const hit = names.span
-      .split(/[^\p{L}'’-]+/u)
-      .map((t) => (t.toLowerCase() === word.toLowerCase() ? t : t.replace(/['’]\p{L}{1,3}$/u, "")))
-      .find((t) => t.toLowerCase() === word.toLowerCase());
-    return !!hit && hit.charAt(0) !== hit.charAt(0).toLowerCase();
-  };
-  if (
-    (A.kind === "unknown" && !typedAsName(names.a)) ||
-    (B.kind === "unknown" && !typedAsName(names.b))
-  ) {
-    return { kind: "not-a-player-swap" };
-  }
+  // AN UNKNOWN WORD NEXT TO A REAL PLAYER IS A PLAYER. "swap david and
+  // zork" is a real swap with a name MatchTime does not know, and must be
+  // answered and must not drop David, typed in any case: this group
+  // types in lowercase. A first cut asked for a capital letter and
+  // reopened the original bug for exactly that typing. What is NOT a
+  // player is decided by meaning instead: `SWAP_STOP` (the parser) holds
+  // the function, time and filler words ("tonight", "please", "yarın")
+  // that a swap verb can be followed by, so "swap david and tonight"
+  // never reaches here.
 
   // Name problems first, in message order: the owner fixes the first
   // one and asks again.

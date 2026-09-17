@@ -26,10 +26,12 @@
  * so the answer is a table rather than a judgement call.
  */
 import { describe, it, expect } from "vitest";
+import { buildSwapRefusedReply } from "../group-copy";
 import {
   decideSwap,
   isSwapParty,
   parseSwapNames,
+  parseSwapRequest,
   planSwap,
   senderStatesAttendance,
   resolveSwapSide,
@@ -523,6 +525,40 @@ describe("planSwap", () => {
       b: "Zork",
       why: { reason: "unknown-name", name: "Zork" },
     });
+  });
+
+  for (const body of [
+    "swap david and zork",
+    "@Match Time swap david and zork",
+    "@Match Time david ile zork'u değiştir",
+  ]) {
+    it(`"${body}": a lowercase unknown name is still refused, and named`, () => {
+      const req = parseSwapRequest(body)!;
+      const p = planSwap(req, roster, opts);
+      expect(p).toEqual({
+        kind: "refused",
+        a: "David",
+        b: "Zork",
+        why: { reason: "unknown-name", name: "Zork" },
+      });
+      if (p.kind === "refused") {
+        expect(buildSwapRefusedReply({ ...p, lang: "en" })).toContain("*Zork*");
+      }
+    });
+  }
+
+  it("a time or filler word is never a player: 'swap david and tonight' is no swap", () => {
+    for (const body of [
+      "swap david and tonight",
+      "swap david tomorrow",
+      "swap david please",
+      "swap david now mate",
+      "david ile yarın değiştir",
+      "david ile bugün değiştir",
+      "david ve akşam değiştir",
+    ]) {
+      expect(parseSwapRequest(body), body).toBeNull();
+    }
   });
 
   it("refuses an ambiguous name, and lists who it could be", () => {

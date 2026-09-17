@@ -61,6 +61,25 @@ describe("a swap request writes no attendance for the two players it names", () 
     expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
   });
 
+  // Lowercase typing is how this group writes (review of PR #99): an
+  // unknown second name must protect David whatever its case.
+  for (const [body, tagged] of [
+    ["swap david and zork", false],
+    ["@Match Time swap david and zork", true],
+    ["@Match Time david ile zork'u değiştir", true],
+  ] as const) {
+    it(`"${body}" drops nobody`, () => {
+      const r = run(body, [{ ...davidOut, personRef: "david" }], { tagged });
+      expect(r.writes).toEqual([]);
+      expect(statusOf(r.nextState, "david")).toBe("CONFIRMED");
+    });
+  }
+
+  it("'swap david and tonight' is not a swap: a drop of David stays a drop", () => {
+    const r = run("@Match Time swap david and tonight", [{ ...davidOut, confidence: 0.95 }]);
+    expect(statusOf(r.nextState, "david")).toBe("DROPPED");
+  });
+
   it("an UNTAGGED swap from an admin does not drop David either (the admin OUT waiver is not a swap waiver)", () => {
     const r = run("swap David and Sait", [davidOut], { tagged: false });
     expect(r.writes).toEqual([]);
