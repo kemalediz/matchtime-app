@@ -792,6 +792,37 @@ const CASES: Case[] = [
   // whole body goes down the pipeline. TR27 is its English twin.
   { id: "TR26", who: "Kemal", body: "@Match Time David ile Sait'i değiştir", tagged: true, history: HISTORY_TR, expect: "a team swap, not attendance. NO drop and NO add for David or Sait; compare TR27" },
   { id: "TR27", who: "Kemal", body: "@Match Time swap David and Sait", tagged: true, expect: "ENGLISH TWIN of TR26. NO drop and NO add for David or Sait" },
+  // ── SW: the swaps the fast path REFUSES (2026-09-17) ───────────────
+  // Before the fix TR26 / TR27 dropped David 9 and 10 of 10. In the
+  // live state on 2026-09-17 (15 on the roster, no teams, David and
+  // Sait both CONFIRMED) that exact pair is DEFERRED by the fast path
+  // and never reaches here, so these are the shapes that DO: each is a
+  // refusal `planSwap` makes against that state, and a refusal now
+  // sends the WHOLE body down the pipeline beside its reply. The swap
+  // parties must never be written; the engine refuses them by name.
+  { id: "SW1", who: "Kemal", body: "@Match Time swap David and Zork", tagged: true, expect: "unknown name. NO drop for David" },
+  { id: "SW2", who: "Kemal", body: "@Match Time David ile Zork'u değiştir", tagged: true, history: HISTORY_TR, expect: "unknown name, Turkish. NO drop for David" },
+  { id: "SW3", who: "Kemal", body: "@Match Time swap David and Kieran", tagged: true, expect: "teams not generated (Kieran is BENCH). NO drop for David, NO promote for Kieran" },
+  { id: "SW4", who: "Kemal", body: "@Match Time David ile Kieran'ı değiştir", tagged: true, history: HISTORY_TR, expect: "teams not generated, Turkish. NO write for David or Kieran" },
+  { id: "SW5", who: "Kemal", body: "@Match Time swap El and David", tagged: true, expect: "ambiguous name (Elvin / Elnur). NO drop for David, Elvin or Elnur" },
+  { id: "SW6", who: "Kemal", body: "@Match Time El ile David'i değiştir", tagged: true, history: HISTORY_TR, expect: "ambiguous name, Turkish. NO write for anyone" },
+  { id: "SW7", who: "Kemal", body: "swap David and Sait", expect: "UNTAGGED, from an admin: never reaches the fast path, and an admin's OUT needs no tag. NO drop for David" },
+  { id: "SW8", who: "Kemal", body: "@Match Time swap David and Zork and I'm out", tagged: true, confirm: ["Kemal"], expect: "refused swap + the sender's own OUT, no comma. DROP Kemal, NO drop for David" },
+  // Lowercase typing, which is how this group writes (review of PR #99).
+  { id: "SL1", who: "Kemal", body: "@Match Time swap david and zork", tagged: true, expect: "unknown name, lowercase. NO drop for David" },
+  { id: "SL2", who: "Kemal", body: "swap david and zork", expect: "unknown name, lowercase, untagged admin. NO drop for David" },
+  { id: "SL3", who: "Kemal", body: "@Match Time david ile zork'u değiştir", tagged: true, history: HISTORY_TR, expect: "unknown name, lowercase, Turkish. NO drop for David" },
+  // Substitution phrasing that PARSES like a swap naming the sender
+  // (review of PR #99). Each is a genuine drop and must stay one.
+  { id: "SB1", who: "Wasim", body: "swap me out, Kieran can take my place", confirm: ["Wasim"], expect: "a drop with a named replacement. DROP Wasim" },
+  { id: "SB2", who: "Wasim", body: "can someone swap in for me tonight? I'm out", confirm: ["Wasim"], expect: "a drop asking for cover. DROP Wasim" },
+  { id: "SB3", who: "Wasim", body: "swap me with Kieran please, I can't make it", confirm: ["Wasim"], expect: "a drop plus a replacement (Kieran on the bench). DROP Wasim" },
+  // The controls: real third-party drops the swap guard must never touch.
+  // "Zeeshan OUT" is the veto's real message; Zeeshan has left the live
+  // roster, so the same two-word shape is run on Habib (in the squad).
+  { id: "GD1", who: "Kemal", body: "Habib OUT", confirm: ["Habib"], expect: "admin, untagged, bare name + OUT (the 'Zeeshan OUT' shape). DROP Habib" },
+  { id: "GD2", who: "Kemal", body: "@Wasim can't make it", confirm: ["Wasim"], expect: "admin, untagged, @mention. DROP Wasim" },
+  { id: "GD3", who: "Kemal", body: "Najib is out", confirm: ["Najib"], expect: "admin, untagged. DROP Najib" },
 ];
 
 /**

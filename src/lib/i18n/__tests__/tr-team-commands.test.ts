@@ -53,6 +53,7 @@ describe("the Turkish strings quote the chosen forms, tagged", () => {
     ["match_day_locked_line", tr.match_day_locked_line, C.generate],
     ["teams_not_generated", tr.teams_not_generated, C.generate],
     ["swap_deferred", tr.swap_deferred({ a: "Kemal Ediz", b: "Sait Demir" }), C.generate],
+    ["swap_refused_teams_not_generated", tr.swap_refused_teams_not_generated, C.generate],
     ["bench_claim_team", tr.bench_claim_team({ claimer: "Erdal", dropped: "Sait", teamLabel: "Kırmızı" }), C.regenerate],
     ["intro_teams (generate)", tr.intro_teams, C.generate],
     ["intro_teams (swap)", tr.intro_teams, C.swapPlayers],

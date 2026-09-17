@@ -72,7 +72,7 @@ export const en = {
 
   teams_post_header: (p: { kickoff: string; venue: string }): string =>
     `⚽ *Teams for tonight* — ${p.kickoff} at ${p.venue}`,
-  teams_post_footer: "Objections? Reply `swap X Y` — admin will confirm.",
+  teams_post_footer: "Objections? Reply `@Match Time swap X with Y` and an admin will confirm.",
 
   // ── row 43: buildSquadCompletePost (group-copy.ts) ───────────────
 
@@ -170,7 +170,7 @@ export const en = {
     `⚽ *Tonight at ${p.timeLabel}* — *${p.activityName}* at ${p.venue}`,
   match_day_teams_signoff: "See you tonight 🙌",
   match_day_locked_line:
-    "Squad is locked. Say *@MatchTime generate teams* in the chat to lock in tonight's lineup 👇",
+    "Squad is locked. Say *@Match Time generate the teams* in the chat to lock in tonight's lineup 👇",
 
   // ── row 72: buildDailyInListFallback (scheduler-copy.ts) ─────────
 
@@ -245,7 +245,7 @@ export const en = {
 
   // ── rows 32 to 42: the acks (compose.ts) ───────────────────────────
 
-  teams_not_generated: "No teams generated yet — say 'generate the teams' and I'll sort them.",
+  teams_not_generated: "No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.",
   score_ack: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
     `Got it 👍 ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}, recorded.`,
   payment_ack: (p: { firstName: string; count: number }): string =>
@@ -332,7 +332,7 @@ export const en = {
 
   bench_claim_team: (p: { claimer: string; dropped: string; teamLabel: string }): string =>
     `🎟 *${p.claimer}* grabbed the slot — taking *${p.dropped}*'s place on *${p.teamLabel}* 🙌\n\n` +
-    `_Say "regenerate teams" if you want to rebalance with the new line-up._`,
+    `_Say "@Match Time regenerate the teams" if you want to rebalance with the new line-up._`,
   bench_claim_replacing: (p: { claimer: string; dropped: string; confirmed: number; maxPlayers: number }): string =>
     `✅ *${p.claimer}* is in, replacing *${p.dropped}* — squad *${p.confirmed}/${p.maxPlayers}* 🙌`,
   bench_claim_open: (p: { claimer: string; confirmed: number; maxPlayers: number }): string =>
@@ -476,13 +476,31 @@ export const en = {
     `No new players to ask for *${p.matchName}* right now. 👍`,
   swap_deferred: (p: { a: string; b: string }): string =>
     `Both *${p.a}* and *${p.b}* are already in — nobody's dropped. ` +
-    `Teams aren't generated yet; say *generate teams* and I'll build them (then I can put them on opposite sides).`,
+    `Teams aren't generated yet; say *@Match Time generate the teams* and I'll build them (then I can put them on opposite sides).`,
   team_swap_done: (p: { a: string; b: string }): string =>
     `🔁 Swapped *${p.a}* and *${p.b}* — nobody dropped. Updated teams:`,
   slot_transfer_done: (p: { to: string; from: string; teamLabel: string }): string =>
     `🔁 *${p.to}* takes *${p.from}*'s place on *${p.teamLabel}* — ` +
     `same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:`,
   colour_swap_done: "🎨 Swapped the colours — same teams, sides flipped:",
+  // A swap MatchTime could not apply (2026-09-17). Before this the owner
+  // heard nothing, and the message went on to be read as a drop.
+  swap_refused: (p: { a: string; b: string; why: string }): string =>
+    `I haven't swapped *${p.a}* and *${p.b}*. ${p.why} Nothing changed and nobody was dropped.`,
+  swap_refused_unknown: (p: { name: string }): string =>
+    `I can't find a player called *${p.name}* for this match. Use the name they're registered under.`,
+  swap_refused_ambiguous: (p: { name: string; candidates: string[] }): string =>
+    `*${p.name}* could be more than one player (${p.candidates.join(", ")}). Use their full name.`,
+  swap_refused_teams_not_generated:
+    "The teams aren't generated yet. Say *@Match Time generate the teams* first.",
+  swap_refused_same_player: "Both names point to the same player.",
+  swap_refused_nobody_playing: "Neither of them is in the squad.",
+  swap_refused_not_in_squad: (p: { name: string }): string =>
+    `*${p.name}* isn't in the squad, so there's no team place to give them.`,
+  swap_refused_both_hold_slots: (p: { name: string }): string =>
+    `*${p.name}* isn't in the squad but still has a team place, and so does the other player, so I can't tell which move you mean.`,
+  swap_refused_no_slot: (p: { name: string }): string =>
+    `*${p.name}* isn't in the squad and has no team place to hand over.`,
 
   // ── row 67: the bot intro (scheduler-copy.ts) ──────────────────────
 
@@ -490,7 +508,7 @@ export const en = {
   intro_what_i_do: "Here's what I do:",
   intro_attendance: `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm — no extra messages from me.`,
   intro_daily: `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
-  intro_teams: `⚽  *Teams* — Ask me to "generate teams" and I post auto-balanced sides. Objections? Reply \`swap X Y\` — admin will apply it.`,
+  intro_teams: `⚽  *Teams* — Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply \`@Match Time swap X with Y\` and an admin will apply it.`,
   intro_rating_bit: "I DM everyone a rating link after each match (no sign-up, just tap)",
   intro_mom_bit: "vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest)",
   intro_ratings_line: (p: { bits: string[] }): string => `🏆  *Ratings & MoM* — ${p.bits.join("; ")}.`,

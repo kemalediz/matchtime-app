@@ -24,6 +24,7 @@
 import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { GUARD_VOCAB, type ClaimedStatus, type GuardVocab } from "./i18n/guard-vocab";
+import type { SwapRefusal } from "./team-slot-swap";
 
 /**
  * Deterministic, server-composed squad+bench status post. Used for EVERY
@@ -546,6 +547,43 @@ export function buildSlotTransferReply(args: {
   lang?: Lang | string | null;
 }): string {
   return `${t(args.lang).slot_transfer_done({ to: args.to, from: args.from, teamLabel: args.teamLabel })}\n\n${args.sheet}`;
+}
+
+/**
+ * A player swap that was NOT applied, and why (2026-09-17). The
+ * refusals are `planSwap`'s in `lib/team-slot-swap.ts`. Every one ends
+ * by saying nobody was dropped, because the failure this replaces was a
+ * silent drop.
+ */
+export function buildSwapRefusedReply(args: {
+  a: string;
+  b: string;
+  why: SwapRefusal;
+  lang?: Lang | string | null;
+}): string {
+  const s = t(args.lang);
+  const w = args.why;
+  const why = (() => {
+    switch (w.reason) {
+      case "unknown-name":
+        return s.swap_refused_unknown({ name: w.name });
+      case "ambiguous-name":
+        return s.swap_refused_ambiguous({ name: w.name, candidates: w.candidates });
+      case "teams-not-generated":
+        return s.swap_refused_teams_not_generated;
+      case "same-player":
+        return s.swap_refused_same_player;
+      case "nobody-is-playing":
+        return s.swap_refused_nobody_playing;
+      case "receiver-not-confirmed":
+        return s.swap_refused_not_in_squad({ name: w.name });
+      case "both-hold-slots":
+        return s.swap_refused_both_hold_slots({ name: w.name });
+      case "no-slot-to-move":
+        return s.swap_refused_no_slot({ name: w.name });
+    }
+  })();
+  return s.swap_refused({ a: args.a, b: args.b, why });
 }
 
 /** Row 131: the colours flipped, the sides unchanged. */

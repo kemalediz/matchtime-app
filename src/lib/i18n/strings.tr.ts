@@ -469,6 +469,19 @@ export const tr: Strings = {
     `🔁 *${p.to}*, *${p.teamLabel}* takımında *${p.from}* yerine oynuyor; ` +
     `takımlar aynı, yeniden kurulmadı, kimsenin katılımı değişmedi. Güncel takımlar:`,
   colour_swap_done: "🎨 Renkler değişti, takımlar aynı, taraflar ters döndü:",
+  swap_refused: (p) =>
+    `*${p.a}* ve *${p.b}* için değişiklik yapmadım. ${p.why} Hiçbir şey değişmedi, kimse çıkarılmadı.`,
+  swap_refused_unknown: (p) =>
+    `Bu maç için *${p.name}* adında bir oyuncu bulamadım. Kayıtlı olduğu ismi yazın.`,
+  swap_refused_ambiguous: (p) =>
+    `*${p.name}* birden fazla oyuncu olabilir (${p.candidates.join(", ")}). Tam ismini yazın.`,
+  swap_refused_teams_not_generated: "Takımlar henüz kurulmadı. Önce *@Match Time takımları kur* yazın.",
+  swap_refused_same_player: "İki isim de aynı oyuncuyu gösteriyor.",
+  swap_refused_nobody_playing: "İkisi de kadroda değil.",
+  swap_refused_not_in_squad: (p) => `*${p.name}* kadroda değil, o yüzden takımda yer veremem.`,
+  swap_refused_both_hold_slots: (p) =>
+    `*${p.name}* kadroda değil ama takımda hâlâ yeri var, diğer oyuncunun da yeri var. Hangi değişikliği istediğinizi anlayamadım.`,
+  swap_refused_no_slot: (p) => `*${p.name}* kadroda değil ve devredilecek bir takım yeri yok.`,
 
   // ── row 67: the bot intro ──────────────────────────────────────────
   //   The attendance line says what the bot really does (✅ on the

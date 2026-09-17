@@ -582,7 +582,7 @@ describe("a shape the composer cannot answer well is answered by nobody", () => 
     expect([...res.ownedIds]).toHaveLength(1);
     const out = [...res.outcomes.values()][0];
     expect(out.reply).toBe(
-      "No teams generated yet — say 'generate the teams' and I'll sort them.",
+      "No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.",
     );
     expect(out.react).toBe("\u{1F914}");
     expect(out.intent).toBe("show_teams_request");

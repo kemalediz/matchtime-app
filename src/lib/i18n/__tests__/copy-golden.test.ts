@@ -136,6 +136,7 @@ import {
   buildRecruitFullSquadRefusal,
   buildSlotTransferReply,
   buildSwapDeferredReply,
+  buildSwapRefusedReply,
   buildTeamSheet,
   buildTeamSwapReply,
   recruitNoMatchRefusal,
@@ -476,6 +477,15 @@ function cases(lang: Lang): Case[] {
   add("R129 buildTeamSwapReply", buildTeamSwapReply({ a: "Kemal Ediz", b: "Elvin Aliyev", sheet: sheetEn, lang }));
   add("R130 buildSlotTransferReply", buildSlotTransferReply({ to: "Erdal Ozkan", from: "Sait Demir", teamLabel: redLabel, sheet: sheetEn, lang }));
   add("R131 buildColourSwapReply", buildColourSwapReply({ sheet: sheetEn, lang }));
+  // NEW 2026-09-17: the refused player swap. Additions, not changes.
+  add("R131a buildSwapRefusedReply / unknown name", buildSwapRefusedReply({ a: "David", b: "Zork", why: { reason: "unknown-name", name: "Zork" }, lang }));
+  add("R131b buildSwapRefusedReply / ambiguous name", buildSwapRefusedReply({ a: "Omar", b: "Sait Demir", why: { reason: "ambiguous-name", name: "Omar", candidates: ["Omar Farooq", "Omar Khan"] }, lang }));
+  add("R131c buildSwapRefusedReply / teams not generated", buildSwapRefusedReply({ a: "David", b: "Elvin Aliyev", why: { reason: "teams-not-generated" }, lang }));
+  add("R131d buildSwapRefusedReply / same player", buildSwapRefusedReply({ a: "David", b: "David", why: { reason: "same-player" }, lang }));
+  add("R131e buildSwapRefusedReply / nobody playing", buildSwapRefusedReply({ a: "Elvin Aliyev", b: "Baki Aydin", why: { reason: "nobody-is-playing" }, lang }));
+  add("R131f buildSwapRefusedReply / not in squad", buildSwapRefusedReply({ a: "David", b: "Baki Aydin", why: { reason: "receiver-not-confirmed", name: "Baki Aydin" }, lang }));
+  add("R131g buildSwapRefusedReply / both hold slots", buildSwapRefusedReply({ a: "David", b: "Elvin Aliyev", why: { reason: "both-hold-slots", name: "Elvin Aliyev" }, lang }));
+  add("R131h buildSwapRefusedReply / no slot to move", buildSwapRefusedReply({ a: "David", b: "Elvin Aliyev", why: { reason: "no-slot-to-move", name: "Elvin Aliyev" }, lang }));
   add("R61 buildRecruitFullSquadRefusal", buildRecruitFullSquadRefusal({ matchName: "Tuesday 7-a-side", lang }));
   add("R62 RECRUIT_NO_MATCH_REFUSAL", recruitNoMatchRefusal(lang));
   add("R60 RATING_PROGRESS_NO_MATCH_REASON", t(lang).rating_progress_no_match);
