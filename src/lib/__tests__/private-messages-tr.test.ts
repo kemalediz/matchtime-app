@@ -458,6 +458,20 @@ describe("legacy setup: the trigger decides the session language", () => {
   });
 });
 
+// ── 8c. the day-one intro names the reaction the engine really gives ─
+
+describe("the intro's reaction promise matches the engine (Phase 3c)", () => {
+  // `pipeline/engine.ts` `reactFor`: the sender's own row gets ✅ when
+  // confirmed (🪑 benched, 👋 dropped); 👍 is only for a third-party claim
+  // or a score. The English intro said 👍 until 2026-09-17.
+  for (const lang of ["en", "tr"] as const) {
+    it(lang, () => {
+      expect(t(lang).intro_attendance).toContain("✅");
+      expect(t(lang).intro_attendance).not.toContain("👍");
+    });
+  }
+});
+
 // ── 9. no private message tells a Turkish player to type English ─────
 
 describe("the Turkish DMs never ask for an English word", () => {
