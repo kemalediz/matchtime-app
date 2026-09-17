@@ -390,7 +390,9 @@ async function handleAnalyzeRequest(request: Request) {
 
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true },
-    select: { id: true, name: true },
+    // `language`: the squad post composed from the rows below speaks
+    // the group's language (Phase 2 of the multi-language design).
+    select: { id: true, name: true, language: true },
   });
   if (!org) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
@@ -2626,7 +2628,7 @@ async function handleAnalyzeRequest(request: Request) {
         };
         const composedIdx: number[] = [];
         for (const i of candidates) {
-          const out = composeSquadStateReply(results[i].reply!, truth);
+          const out = composeSquadStateReply(results[i].reply!, truth, org.language);
           if (!out.composed) continue;
           results[i].reply = out.text;
           composedIdx.push(i);
@@ -3616,7 +3618,7 @@ async function handleTeamSwapIfApplicable(
       activity: {
         include: {
           sport: { select: { teamLabels: true } },
-          org: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true, language: true } },
         },
       },
       // EVERY attendance row, not only the CONFIRMED ones. The shipped
@@ -3669,7 +3671,7 @@ async function handleTeamSwapIfApplicable(
   // message out of `fresh` and deletes every other clause in it.
   if (decision.kind === "refuse") return null;
 
-  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
+  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
   const sheet = async () => {
     const rows = await db.teamAssignment.findMany({
       where: { matchId: match.id },
@@ -3813,7 +3815,7 @@ async function handleColorSwapIfApplicable(
       activity: {
         include: {
           sport: { select: { teamLabels: true } },
-          org: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true, language: true } },
         },
       },
       teamAssignments: { include: { user: { select: { name: true } } } },
@@ -3827,7 +3829,7 @@ async function handleColorSwapIfApplicable(
   // configured team labels (resolved from Organisation/Sport.teamLabels).
   // Red/Yellow stay covered by the regexes above as a fallback.
   if (!isColourSwap) {
-    const cfgLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
+    const cfgLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
     const labelAlts = cfgLabels
       .map((l) => l.trim())
       .filter((l) => l && !/^(red|yellow)$/i.test(l))
@@ -3854,7 +3856,7 @@ async function handleColorSwapIfApplicable(
     ),
   );
 
-  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
+  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
   const fresh = await db.teamAssignment.findMany({
     where: { matchId: match.id },
     include: { user: { select: { name: true } } },

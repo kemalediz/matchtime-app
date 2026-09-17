@@ -1,38 +1,94 @@
 /**
- * The string-table MECHANISM, proven before any string moves into it.
+ * The string tables: completeness, hygiene and resolution.
  *
- * Phase 0 of MDs/multi-language-design-2026-09-16.md ships the table
- * with exactly one probe entry. These tests pin the contract the later
- * phases build on, so that when Phase 2 moves a hundred strings in, the
- * rules are already enforced:
+ * Phase 0 shipped the mechanism with one probe entry; Phase 2 moves the
+ * real strings in, slice by slice. These rules are enforced for every
+ * entry, in every language, so a slice cannot land half-done:
  *
  *   1. completeness: every key in `en` exists in every other table and
  *      no table carries a key `en` does not (belt and braces over the
- *      `: Strings` type check; it also catches an `any`);
- *   2. hygiene: no entry returns an empty string, and no Turkish entry
- *      contains an em dash or an en dash (house style). The English
- *      table is NOT held to the dash rule: existing English copy uses
- *      em dashes and must move in byte for byte (the golden snapshot
- *      decides English bytes, not this file);
- *   3. resolution: `t()` maps a code to its table, forgives case, region
- *      suffixes and whitespace, and falls back to English for anything
- *      it does not ship.
+ *      `: Strings` type check; it also catches an `any`); every
+ *      parameterised entry has SAMPLE arguments below, so a new key
+ *      without them is a `tsc` error, which is what lets the hygiene
+ *      rules render every entry;
+ *   2. translated: no Turkish entry IS the English entry (the Phase 0
+ *      `untranslated()` wrapper is gone and must not come back: an
+ *      entry moved into the table is translated in the same PR), and no
+ *      Turkish entry renders to the English text;
+ *   3. hygiene: no entry renders to an empty string; no Turkish entry
+ *      contains an em dash or an en dash (house style; the English
+ *      table is NOT held to that rule, existing English copy uses em
+ *      dashes and moves in byte for byte, the golden snapshot decides);
+ *      no entry opens with a time-of-day greeting, in either language,
+ *      and no entry carries a send-time stamp ("5pm update", "17:00
+ *      güncellemesi"); every parameterised entry uses each argument
+ *      it is given;
+ *   4. resolution: `t()` maps a code to its table, forgives case,
+ *      region suffixes and whitespace, and falls back to English for
+ *      anything it does not ship.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { en } from "../strings.en";
 import { tr } from "../strings.tr";
-import { t } from "../t";
+import { t, type Strings } from "../t";
 import { LANGS, LANG_LABELS, DEFAULT_LANG, isLang, normaliseLang } from "../lang";
 
 const TABLES = { en, tr } as const;
 
-/** Render an entry with a throwaway argument so it can be inspected. */
-function render(entry: unknown): string {
+/**
+ * One sample argument per parameterised entry. Typed against the table,
+ * so adding an entry without a sample here fails `tsc`. The values are
+ * deliberately distinctive strings and numbers so the "uses every
+ * argument" rule below can find each one in the rendered text.
+ */
+type SampleArgs = {
+  [K in keyof Strings]: Strings[K] extends (p: infer P) => string ? P : null;
+};
+
+const SAMPLES: SampleArgs = {
+  unnamed: null,
+  no_match_label: null,
+  squad_status_lead: { withBench: true, confirmed: 11, maxPlayers: 14, need: 3 },
+  playing_header: null,
+  bench_header: { count: 2 },
+  teams_post_header: { kickoff: "21:30", venue: "Goals North Cheam" },
+  teams_post_footer: null,
+  squad_complete_header: { maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: "Tue 22 Sept 21:30" },
+  squad_complete_signoff: null,
+  bench_promotion_how: { reactions: false },
+  squad_complete_bench_invite: { how: "HOWCLAUSE" },
+  bench_offer_group_post: { context: "CONTEXTCLAUSE", tagList: "@447700900001", reactions: false },
+  bench_offer_context_team: { teamLabel: "Kırmızı", replacingName: "Sait Demir", activityName: "Tuesday 7-a-side" },
+  bench_offer_context_team_plain: { teamLabel: "Kırmızı", replacingName: "Sait Demir", activityName: "Tuesday 7-a-side" },
+  bench_offer_context_fixture: { activityName: "Tuesday 7-a-side" },
+  bench_offer_context_fixture_plain: { activityName: "Tuesday 7-a-side" },
+  rate_promo: { activityName: "Tuesday 7-a-side", matchDateLabel: "Tue 15 Sep" },
+  match_day_chase_fallback: { need: 3, activityName: "Tuesday 7-a-side" },
+  bench_offer_open: { benchNames: ["Erdal Ozkan", "Amir Ahmadi"] },
+  slot_opened: { outFirstNames: ["Wasim"], confirmed: 13, maxPlayers: 14, kickoffLabel: "Tue 21:30", open: 1 },
+  announce_match: { activityName: "Tuesday 7-a-side", dateLabel: "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14 },
+  roster_confirmed_header: { confirmed: 11, maxPlayers: 14 },
+  roster_nobody_yet: null,
+  match_day_header: { timeLabel: "21:30", activityName: "Tuesday 7-a-side", venue: "Goals North Cheam" },
+  match_day_teams_signoff: null,
+  match_day_locked_line: null,
+  daily_in_list_fallback_lead: { activityName: "Tuesday 7-a-side", need: 3 },
+  unpaid_tail: { unpaid: 4 },
+  payment_poll_question: { activityName: "Tuesday 7-a-side" },
+};
+
+/** Render an entry with its sample arguments. */
+function render(table: Strings, key: keyof Strings): string {
+  const entry = table[key];
   if (typeof entry === "function") {
-    return (entry as (p: Record<string, string>) => string)({ name: "Probe" });
+    return (entry as (p: unknown) => string)(SAMPLES[key]);
   }
   return String(entry);
 }
+
+const KEYS = Object.keys(en) as Array<keyof Strings>;
 
 describe("string tables: completeness", () => {
   it("ships a table for every language in LANGS, and nothing else", () => {
@@ -57,28 +113,128 @@ describe("string tables: completeness", () => {
       }
     }
   });
+
+  it("every key has a sample argument entry (and no extras)", () => {
+    expect(Object.keys(SAMPLES).sort()).toEqual([...KEYS].sort());
+  });
+
+  it("carries the week-one group subset (Phase 2 slice 1)", () => {
+    for (const key of [
+      "announce_match",
+      "squad_status_lead",
+      "playing_header",
+      "bench_header",
+      "roster_confirmed_header",
+      "match_day_header",
+      "match_day_locked_line",
+      "daily_in_list_fallback_lead",
+      "squad_complete_header",
+      "squad_complete_bench_invite",
+      "teams_post_header",
+      "teams_post_footer",
+      "slot_opened",
+      "bench_offer_group_post",
+      "bench_offer_context_team",
+      "rate_promo",
+      "match_day_chase_fallback",
+      "unpaid_tail",
+      "payment_poll_question",
+    ]) {
+      expect(KEYS, key).toContain(key);
+    }
+  });
+});
+
+describe("string tables: the Turkish is translated", () => {
+  /** The Turkish file's CODE lines: the docblocks talk about the rules
+   *  and are allowed to name them. */
+  const source = readFileSync(path.resolve(__dirname, "../strings.tr.ts"), "utf8")
+    .split("\n")
+    .filter((line) => {
+      const l = line.trim();
+      return !(l.startsWith("//") || l.startsWith("*") || l.startsWith("/*"));
+    })
+    .join("\n");
+
+  it("no entry is wrapped in untranslated()", () => {
+    expect(source).not.toMatch(/untranslated\(/);
+  });
+
+  it("no entry delegates to the English table", () => {
+    expect(source).not.toMatch(/\ben\.[a-z_]+/);
+    for (const key of KEYS) {
+      expect(tr[key], `tr.${key} is the very same value as en.${key}`).not.toBe(en[key]);
+    }
+  });
+
+  it("no entry renders to the English text", () => {
+    for (const key of KEYS) {
+      expect(render(tr, key), `tr.${key}`).not.toBe(render(en, key));
+    }
+  });
+
+  it("no Turkish entry contains an English instruction token the group is never told to type", () => {
+    // The Turkish group is told to write *VARIM*; an "*IN*" left in a
+    // Turkish sentence is a half-moved string. (`swap X Y` is allowed:
+    // it is the literal typed command, see teams_post_footer.)
+    for (const key of KEYS) {
+      expect(render(tr, key), `tr.${key}`).not.toMatch(/\*IN\*|\bsay IN\b|\breply IN\b/);
+    }
+  });
 });
 
 describe("string tables: hygiene", () => {
   it("no entry renders to an empty string", () => {
     for (const lang of LANGS) {
-      for (const [key, entry] of Object.entries(TABLES[lang])) {
-        expect(render(entry).trim().length, `${lang}.${key}`).toBeGreaterThan(0);
+      for (const key of KEYS) {
+        expect(render(TABLES[lang], key).trim().length, `${lang}.${key}`).toBeGreaterThan(0);
       }
     }
   });
 
   it("no Turkish entry contains an em dash or an en dash", () => {
-    for (const [key, entry] of Object.entries(tr)) {
-      expect(render(entry), `tr.${key}`).not.toMatch(/[—–]/);
+    for (const key of KEYS) {
+      expect(render(tr, key), `tr.${key}`).not.toMatch(/[—–]/);
     }
   });
 
   it("no entry in any table opens with a time-of-day greeting", () => {
-    const greeting = /^(?:\W*)(?:good\s+)?(?:morning|afternoon|evening)\b|^(?:\W*)(?:günaydın|iyi akşamlar|iyi günler)\b/iu;
+    const greeting =
+      /^(?:\W*)(?:good\s+)?(?:morning|afternoon|evening)\b|^(?:\W*)(?:günaydın|iyi akşamlar|iyi günler|iyi geceler|selamlar|merhabalar)\b/iu;
     for (const lang of LANGS) {
-      for (const [key, entry] of Object.entries(TABLES[lang])) {
-        expect(render(entry), `${lang}.${key}`).not.toMatch(greeting);
+      for (const key of KEYS) {
+        expect(render(TABLES[lang], key), `${lang}.${key}`).not.toMatch(greeting);
+      }
+    }
+  });
+
+  it("no entry carries a send-time stamp", () => {
+    // "5pm update", "17:00 update", "17:00 güncellemesi", "akşam
+    // güncellemesi": a post that names the hour it was scheduled for is
+    // wrong whenever it fires late (the 2026-09-04 incident). The
+    // kickoff TIME is allowed and is passed in as an argument, never
+    // written into an entry.
+    const stamp = /\b\d{1,2}\s*(?:am|pm)\b\s*(?:update|güncelleme)|\b\d{1,2}:\d{2}\s*(?:update|güncelleme)|\b(?:morning|evening|akşam|sabah)\s+(?:update|güncelleme)/iu;
+    for (const lang of LANGS) {
+      for (const key of KEYS) {
+        expect(render(TABLES[lang], key), `${lang}.${key}`).not.toMatch(stamp);
+      }
+    }
+  });
+
+  it("every parameterised entry uses every argument it is given", () => {
+    // A string or number argument must appear in the output; a boolean
+    // or an array only has to be accepted (the entry branches on it).
+    for (const lang of LANGS) {
+      for (const key of KEYS) {
+        const args = SAMPLES[key];
+        if (args === null) continue;
+        const out = render(TABLES[lang], key);
+        for (const [name, value] of Object.entries(args as Record<string, unknown>)) {
+          if (typeof value === "string" || typeof value === "number") {
+            expect(out, `${lang}.${key} ignores its "${name}" argument`).toContain(String(value));
+          }
+        }
       }
     }
   });
@@ -90,15 +246,9 @@ describe("t(): resolution", () => {
     expect(t("tr")).toBe(tr);
   });
 
-  it("the probe entry is wired end to end", () => {
-    expect(t("en").probe({ name: "Kemal" })).toBe("Hello Kemal, this is MatchTime.");
-  });
-
-  it("Phase 0: the Turkish table returns the English (nothing is translated yet)", () => {
-    // Deliberately pinned. When Phase 2 lands the first real Turkish
-    // entry this assertion is REPLACED by the Turkish golden snapshot,
-    // not loosened.
-    expect(t("tr").probe({ name: "Kemal" })).toBe(t("en").probe({ name: "Kemal" }));
+  it("a parameterised entry is wired end to end in both languages", () => {
+    expect(t("en").bench_header({ count: 2 })).toBe("*Bench (2):*");
+    expect(t("tr").bench_header({ count: 2 })).toBe("*Yedekler (2):*");
   });
 
   it("falls back to English for anything the product does not ship", () => {

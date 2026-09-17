@@ -10,6 +10,7 @@
  * Built on date-fns-tz so DST (BST ↔ GMT) is handled automatically.
  */
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
+import type { Locale } from "date-fns";
 
 const LONDON = "Europe/London";
 
@@ -39,9 +40,17 @@ export function londonWallClockToUtc(anchor: Date, time: string): Date {
   return fromZonedTime(iso, LONDON);
 }
 
-/** Format a Date for display in London time. */
-export function formatLondon(d: Date, pattern: string): string {
-  return formatInTimeZone(d, LONDON, pattern);
+/**
+ * Format a Date for display in London time.
+ *
+ * `locale` (optional, 2026-09-17) picks the day and month NAMES for a
+ * non-English group; the zone is London either way. Without it the
+ * output is byte for byte what it always was. Callers should reach for
+ * the named labels in `src/lib/i18n/dates.ts` rather than pass a
+ * locale here directly.
+ */
+export function formatLondon(d: Date, pattern: string, locale?: Locale): string {
+  return locale ? formatInTimeZone(d, LONDON, pattern, { locale }) : formatInTimeZone(d, LONDON, pattern);
 }
 
 /**

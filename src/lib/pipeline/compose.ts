@@ -54,6 +54,8 @@ import { composeSquadStatusPost, formatTeamsPost } from "../group-copy";
 // header for what a Prisma import here does to the corpus spec.
 import { formatRatingProgressReply } from "../rating-progress-answer";
 import { resolvePerson } from "./identity";
+import { t } from "../i18n/t";
+import { joinList as joinListIn } from "../i18n/text";
 import type { EngineResult, SquadState } from "./types";
 
 export interface Utterance {
@@ -82,10 +84,10 @@ export interface ComposedOutput {
 const RAW_PHONE = /(?:\+\d[\d\s().-]{8,}\d)|(?:\b0\d{9,10}\b)|(?:\b\d{11,}\b)/;
 
 function safeName(name: string): string {
-  const t = (name ?? "").trim();
-  if (!t) return "a player";
-  if (RAW_PHONE.test(t) || !/\p{L}/u.test(t)) return "a player";
-  return t;
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "a player";
+  if (RAW_PHONE.test(trimmed) || !/\p{L}/u.test(trimmed)) return "a player";
+  return trimmed;
 }
 
 function firstName(name: string): string {
@@ -100,10 +102,11 @@ function namesByStatus(state: SquadState, status: "CONFIRMED" | "BENCH"): string
     .map((r) => safeName(byId.get(r.userId) ?? ""));
 }
 
+/** "A, B and C". English only: the speech kinds that still compose
+ *  English literals below use it; a kind that has moved into the string
+ *  table joins inside its table entry, in the group's language. */
 function joinList(names: string[]): string {
-  if (names.length === 0) return "";
-  if (names.length === 1) return names[0];
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return joinListIn("en", names);
 }
 
 export function compose(result: EngineResult): ComposedOutput {
@@ -111,29 +114,36 @@ export function compose(result: EngineResult): ComposedOutput {
   const utterances: Utterance[] = [];
   const reacts: Array<{ messageId: string; emoji: string }> = [];
   const operatorNotes: string[] = [];
+  // THE GROUP'S LANGUAGE, once. Carried on the state by `load-state.ts`
+  // from `Organisation.language`; English for every group that has not
+  // set one, and the English bytes are pinned by the golden snapshot.
+  // Speech kinds that read `s.` speak it; the rest still compose
+  // English literals and move in later Phase 2 slices.
+  const lang = state.features.language;
+  const s = t(lang);
 
   const confirmed = namesByStatus(state, "CONFIRMED");
   const bench = namesByStatus(state, "BENCH");
 
-  for (const s of result.speech) {
-    switch (s.kind) {
+  for (const sp of result.speech) {
+    switch (sp.kind) {
       case "squad_status":
         // The composer that already existed and was only ever used as a
         // fallback. Promoted, not rewritten (§13).
         utterances.push({
           messageId: null,
-          text: composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers }),
+          text: composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers, lang }),
         });
         break;
 
       case "answer_count": {
         const need = Math.max(0, state.maxPlayers - confirmed.length);
         const head =
-          s.statedCount !== null && s.statedCount !== confirmed.length
+          sp.statedCount !== null && sp.statedCount !== confirmed.length
             ? `Not quite, we're ${confirmed.length}/${state.maxPlayers} for ${state.kickoffLabel}`
             : `We're ${confirmed.length}/${state.maxPlayers} for ${state.kickoffLabel}`;
         const tail = need > 0 ? `, need ${need} more 🙏` : " ✅ full squad.";
-        utterances.push({ messageId: s.messageId, text: `${head}${tail}` });
+        utterances.push({ messageId: sp.messageId, text: `${head}${tail}` });
         break;
       }
 
@@ -146,8 +156,8 @@ export function compose(result: EngineResult): ComposedOutput {
         // afterwards. §6.4's claim is that the composer writes the final
         // words, so it writes them.
         utterances.push({
-          messageId: s.messageId,
-          text: composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers }),
+          messageId: sp.messageId,
+          text: composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers, lang }),
         });
         break;
 
@@ -165,7 +175,7 @@ export function compose(result: EngineResult): ComposedOutput {
         // See `answer-batch.ts`'s `ANSWERABLE_TOPICS`.
         const where = state.venue.trim();
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text: where
             ? `⚽ ${state.kickoffLabel} at ${where}.`
             : `⚽ ${state.kickoffLabel}.`,
@@ -193,14 +203,14 @@ export function compose(result: EngineResult): ComposedOutput {
         const m = state.completedMatch;
         if (!m) {
           utterances.push({
-            messageId: s.messageId,
+            messageId: sp.messageId,
             text: "I haven't got a played match on record for this group yet.",
           });
           break;
         }
         if (m.redScore === null || m.yellowScore === null) {
           utterances.push({
-            messageId: s.messageId,
+            messageId: sp.messageId,
             text: `No score reported for ${m.kickoffLabel} yet — tell me the result and I'll record it.`,
           });
           break;
@@ -212,7 +222,7 @@ export function compose(result: EngineResult): ComposedOutput {
             ? "A draw."
             : `${m.redScore > m.yellowScore ? redLabel : yellowLabel} won.`;
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text: `⚽ ${m.kickoffLabel}: ${line}. ${verdict}`,
         });
         break;
@@ -238,7 +248,7 @@ export function compose(result: EngineResult): ComposedOutput {
           // message to that module's silent-id check, which disowns it —
           // a hand-back with a receipt rather than an empty answer.
           operatorNotes.push(
-            `compose: answer_payments for ${s.messageId} with no payment snapshot loaded; saying nothing`,
+            `compose: answer_payments for ${sp.messageId} with no payment snapshot loaded; saying nothing`,
           );
           break;
         }
@@ -252,7 +262,7 @@ export function compose(result: EngineResult): ComposedOutput {
                 : p.unpaid === 0
                   ? `💳 All settled for ${p.kickoffLabel} 🙌`
                   : `💳 ${p.unpaid} of ${p.chargeable} still to pay for ${p.kickoffLabel}. I don't put names to that in the group.`;
-        utterances.push({ messageId: s.messageId, text });
+        utterances.push({ messageId: sp.messageId, text });
         break;
       }
 
@@ -275,17 +285,17 @@ export function compose(result: EngineResult): ComposedOutput {
           // disowns it — a hand-back with a receipt rather than an empty
           // answer.
           operatorNotes.push(
-            `compose: answer_rating_progress for ${s.messageId} with no rating snapshot loaded; saying nothing`,
+            `compose: answer_rating_progress for ${sp.messageId} with no rating snapshot loaded; saying nothing`,
           );
           break;
         }
-        utterances.push({ messageId: s.messageId, text: formatRatingProgressReply(p) });
+        utterances.push({ messageId: sp.messageId, text: formatRatingProgressReply(p) });
         break;
       }
 
       case "answer_bench":
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text:
             bench.length === 0
               ? "Nobody's on the bench right now."
@@ -294,17 +304,17 @@ export function compose(result: EngineResult): ComposedOutput {
         break;
 
       case "answer_person_status": {
-        const who = s.userId
-          ? safeName(state.roster.find((m) => m.userId === s.userId)?.name ?? s.personRef)
-          : safeName(s.personRef);
-        const row = s.userId ? state.rows.find((r) => r.userId === s.userId) : undefined;
+        const who = sp.userId
+          ? safeName(state.roster.find((m) => m.userId === sp.userId)?.name ?? sp.personRef)
+          : safeName(sp.personRef);
+        const row = sp.userId ? state.rows.find((r) => r.userId === sp.userId) : undefined;
         const text =
           !row || row.status === "DROPPED"
             ? `${who} isn't down for ${state.kickoffLabel} yet.`
             : row.status === "BENCH"
               ? `${who} is on the bench for ${state.kickoffLabel}.`
               : `Yes, ${who} has a slot for ${state.kickoffLabel}.`;
-        utterances.push({ messageId: s.messageId, text });
+        utterances.push({ messageId: sp.messageId, text });
         break;
       }
 
@@ -330,7 +340,7 @@ export function compose(result: EngineResult): ComposedOutput {
           .filter((r) => byId.get(r.userId)?.hasPhone === false)
           .map((r) => safeName(byId.get(r.userId)?.name ?? ""));
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text:
             missing.length === 0
               ? "Everyone in the squad has a number on record."
@@ -379,7 +389,7 @@ export function compose(result: EngineResult): ComposedOutput {
         const window = `last ${state.appearanceWindowDays} days`;
         if (ranked.length === 0) {
           utterances.push({
-            messageId: s.messageId,
+            messageId: sp.messageId,
             text: `I don't have any completed matches in the ${window} to go on, so I can't call anyone the most consistent.`,
           });
           break;
@@ -391,7 +401,7 @@ export function compose(result: EngineResult): ComposedOutput {
             }`,
         );
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text: `Most appearances in the ${window}:\n${rows.join("\n")}`,
         });
         break;
@@ -438,7 +448,7 @@ export function compose(result: EngineResult): ComposedOutput {
         } else {
           for (const f of viable) lines.push(f.proposal!);
         }
-        utterances.push({ messageId: s.messageId, text: lines.join(" ") });
+        utterances.push({ messageId: sp.messageId, text: lines.join(" ") });
         break;
       }
 
@@ -449,7 +459,7 @@ export function compose(result: EngineResult): ComposedOutput {
             .filter((t) => t.team === team)
             .map((t) => ({ name: safeName(byId.get(t.userId) ?? "") }));
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text: formatTeamsPost({
             redLabel: state.teamLabels[0],
             yellowLabel: state.teamLabels[1],
@@ -457,6 +467,7 @@ export function compose(result: EngineResult): ComposedOutput {
             yellow: side("YELLOW"),
             kickoff: state.kickoffLabel,
             venue: state.venue,
+            lang,
           }),
         });
         break;
@@ -468,29 +479,29 @@ export function compose(result: EngineResult): ComposedOutput {
         // a like-for-like move, and the group should not be able to tell
         // which code path answered it.
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text: "No teams generated yet — say 'generate the teams' and I'll sort them.",
         });
         break;
 
       case "guest_name_ask":
         utterances.push({
-          messageId: s.messageId,
-          text: renderGuestNameAsk({ askerName: s.askerName, body: s.body }),
+          messageId: sp.messageId,
+          text: renderGuestNameAsk({ askerName: sp.askerName, body: sp.body }),
         });
         break;
 
       case "score_ack":
         utterances.push({
-          messageId: s.messageId,
-          text: `Got it 👍 ${state.teamLabels[0]} ${s.red} - ${s.yellow} ${state.teamLabels[1]}, recorded.`,
+          messageId: sp.messageId,
+          text: `Got it 👍 ${state.teamLabels[0]} ${sp.red} - ${sp.yellow} ${state.teamLabels[1]}, recorded.`,
         });
         break;
 
       case "payment_ack":
         utterances.push({
-          messageId: s.messageId,
-          text: `Noted 🙌 ${firstName(s.payerName)} covered ${s.count} ${s.count === 1 ? "player" : "players"}.`,
+          messageId: sp.messageId,
+          text: `Noted 🙌 ${firstName(sp.payerName)} covered ${sp.count} ${sp.count === 1 ? "player" : "players"}.`,
         });
         break;
 
@@ -503,10 +514,10 @@ export function compose(result: EngineResult): ComposedOutput {
         // for the same reason. The phrase is only the fallback for a
         // caller that has not resolved one.
         utterances.push({
-          messageId: s.messageId,
-          text: s.whenLabel
-            ? `👍 Got it — I'll DM you ${s.whenLabel}.`
-            : `Will do 👍 I'll give you a nudge ${s.phrase}.`,
+          messageId: sp.messageId,
+          text: sp.whenLabel
+            ? `👍 Got it — I'll DM you ${sp.whenLabel}.`
+            : `Will do 👍 I'll give you a nudge ${sp.phrase}.`,
         });
         break;
 
@@ -525,8 +536,8 @@ export function compose(result: EngineResult): ComposedOutput {
         // comma where the names should be.
         if (bench.length === 0) break;
         utterances.push({
-          messageId: s.messageId,
-          text: `A slot just opened 🎟 ${joinList(bench)}, first to say IN takes it. Nobody gets dropped.`,
+          messageId: sp.messageId,
+          text: s.bench_offer_open({ benchNames: bench }),
         });
         break;
       }
@@ -577,22 +588,19 @@ export function compose(result: EngineResult): ComposedOutput {
           // than a live condition. Say nothing; the roster post and the
           // 17:00 block both still describe a full squad correctly.
           operatorNotes.push(
-            `compose: slot_opened for ${s.messageId} with a full squad; saying nothing`,
+            `compose: slot_opened for ${sp.messageId} with a full squad; saying nothing`,
           );
           break;
         }
-        const names = s.outNames.map(firstName);
-        const lead =
-          names.length === 0
-            ? "That's"
-            : `${joinList(names)} ${names.length === 1 ? "is" : "are"} out,`;
-        const slots =
-          open === 1
-            ? "One slot open, say *IN* to take it."
-            : `${open} slots open, say *IN* to take one.`;
         utterances.push({
-          messageId: s.messageId,
-          text: `${lead} ${confirmed.length} of ${state.maxPlayers} for ${state.kickoffLabel}. ${slots}`,
+          messageId: sp.messageId,
+          text: s.slot_opened({
+            outFirstNames: sp.outNames.map(firstName),
+            confirmed: confirmed.length,
+            maxPlayers: state.maxPlayers,
+            kickoffLabel: state.kickoffLabel,
+            open,
+          }),
         });
         break;
       }
@@ -607,14 +615,14 @@ export function compose(result: EngineResult): ComposedOutput {
         // It says the REFUSED half only. The applied half is in the
         // squad post one message later, and repeating it here is the
         // two-rosters-one-line-apart shape S36 exists to prevent.
-        const benched = s.entries.filter((e) => e.action === "BENCH").map((e) => safeName(e.name));
-        const dropped = s.entries.filter((e) => e.action === "OUT").map((e) => safeName(e.name));
+        const benched = sp.entries.filter((e) => e.action === "BENCH").map((e) => safeName(e.name));
+        const dropped = sp.entries.filter((e) => e.action === "OUT").map((e) => safeName(e.name));
         const parts: string[] = [];
         if (dropped.length > 0) parts.push(`taken ${joinList(dropped)} out`);
         if (benched.length > 0) parts.push(`moved ${joinList(benched)} to the bench`);
         if (parts.length === 0) break;
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text:
             `One thing I've left alone: I've not ${parts.join(" or ")}. ` +
             `That bit needs an @Match Time tag, so tag me and I'll sort it 👍`,
@@ -624,10 +632,10 @@ export function compose(result: EngineResult): ComposedOutput {
 
       case "bench_claim_too_late": {
         const who = firstName(
-          state.roster.find((m) => m.userId === s.userId)?.name ?? "",
+          state.roster.find((m) => m.userId === sp.userId)?.name ?? "",
         );
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text:
             `Thanks ${who} 🙏 someone got there first, so the squad is back to ` +
             `${confirmed.length}/${state.maxPlayers}. You're still on the bench and ` +
@@ -638,7 +646,7 @@ export function compose(result: EngineResult): ComposedOutput {
 
       case "pending_confirmed_ack": {
         const byId = new Map(state.roster.map((m) => [m.userId, m.name]));
-        const down = s.userIds
+        const down = sp.userIds
           .filter((id) => {
             const row = state.rows.find((r) => r.userId === id);
             return row && row.status !== "DROPPED";
@@ -650,14 +658,14 @@ export function compose(result: EngineResult): ComposedOutput {
         // rather than inventing a cheerful tick.
         if (down.length === 0) break;
         utterances.push({
-          messageId: s.messageId,
+          messageId: sp.messageId,
           text: `Got it 🙌 ${joinList(down)} ${down.length === 1 ? "is" : "are"} down for ${state.kickoffLabel}.`,
         });
         break;
       }
 
       case "degraded":
-        operatorNotes.push(s.reason);
+        operatorNotes.push(sp.reason);
         break;
     }
   }

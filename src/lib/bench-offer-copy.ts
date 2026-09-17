@@ -19,7 +19,12 @@
  * copy constants are set if the prompt still suggests it.
  *
  * House style: no em dashes, no en dashes, no slashes in prose.
+ *
+ * Language (2026-09-17): the group-facing builders read their words from
+ * the string table (`src/lib/i18n/`) via the `lang` on `ReactionGate`.
  * ──────────────────────────────────────────────────────────────────── */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 
 /**
  * Does the bench offer TELL players they can claim the slot with a 👍?
@@ -80,6 +85,11 @@ export const BENCH_PROMPT_MENTION_REACTIONS = false;
 interface ReactionGate {
   /** Override the 👍 instruction gate. Tests only. */
   mentionReactions?: boolean;
+  /** The group's language (`Organisation.language`). English when
+   *  absent; the English bytes are unchanged either way (golden). Only
+   *  the group-facing builders read it in Phase 2 slice 1; the DM and
+   *  the intro line still speak English whatever is passed. */
+  lang?: Lang | string | null;
 }
 
 export interface BenchOfferGroupCopy extends ReactionGate {
@@ -93,15 +103,7 @@ export interface BenchOfferGroupCopy extends ReactionGate {
 /** The group post that offers an open slot to the whole bench at once. */
 export function buildBenchOfferGroupPost(c: BenchOfferGroupCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  const claim = reactions
-    ? "React 👍 here or reply *IN* to take it."
-    : "Just reply *IN* here to take it.";
-  return (
-    `🎟 A slot just opened ${c.context}. *First to claim it plays.*\n\n` +
-    `${c.tagList}\n\n` +
-    `${claim} No rush and no timeout, whoever is free first gets it ` +
-    `and everyone else stays on the bench. 🙏`
-  );
+  return t(c.lang).bench_offer_group_post({ context: c.context, tagList: c.tagList, reactions });
 }
 
 export interface BenchOfferDmCopy extends ReactionGate {
@@ -142,15 +144,16 @@ export function buildBenchOfferDm(c: BenchOfferDmCopy): string {
  */
 function benchPromotionHow(c: ReactionGate): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  return reactions
-    ? "the first to react 👍 or reply *IN* takes the slot"
-    : "the first to reply *IN* takes the slot";
+  return t(c.lang).bench_promotion_how({ reactions });
 }
 
 /** The bench line in the bot's day-one intro post. It is a promise about
  *  how the feature behaves, so it is gated with the feature. */
 export function buildBenchIntroLine(c: ReactionGate = {}): string {
-  const how = benchPromotionHow(c);
+  // English until the intro moves into the table (Phase 2, a later
+  // slice): the sentence around the clause is English, so the clause
+  // must be too, whatever `lang` a caller passes.
+  const how = benchPromotionHow({ ...c, lang: "en" });
   return (
     `🔁  *Bench promotion* — If someone drops, I tag the bench here and ` +
     `${how}. No timeout, and nobody loses their place for missing it.`
@@ -219,10 +222,13 @@ export interface FullSquadBenchInviteCopy extends ReactionGate {
  * believing it has cover.
  */
 export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
+  // English until this answer moves into the table (Phase 2, a later
+  // slice); see buildBenchIntroLine.
+  const how = benchPromotionHow({ ...c, lang: "en" });
   return (
     `*${c.matchName}* is full at ${c.confirmedCount} of ${c.maxPlayers}, but the bench is open. ` +
     `Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group ` +
-    `and ${benchPromotionHow(c)}. 🙏`
+    `and ${how}. 🙏`
   );
 }
 
@@ -259,10 +265,7 @@ export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
  * group. `buildFullSquadBenchInvite` also reaches an admin by DM.
  */
 export function buildSquadCompleteBenchInvite(c: ReactionGate = {}): string {
-  return (
-    `🪑 *Bench is open.* Say *IN* and I'll put you on the bench. ` +
-    `If someone drops out I tag the bench here and ${benchPromotionHow(c)}.`
-  );
+  return t(c.lang).squad_complete_bench_invite({ how: benchPromotionHow(c) });
 }
 
 export interface BenchAskedLineCopy extends ReactionGate {

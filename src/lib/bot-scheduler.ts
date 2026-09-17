@@ -41,6 +41,8 @@ import {
   buildBenchIntroLine,
 } from "./bench-offer-copy";
 import { buildRatePromoPost, buildMatchDayChaseFallback } from "./group-copy";
+import { dayLabel, longDayTimeLabel } from "./i18n/dates";
+import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   buildAnnounceMatchPost,
   buildBenchOfferContext,
@@ -252,6 +254,7 @@ function buildReminderText(args: {
  */
 async function buildUnpaidTail(
   activityId: string,
+  lang: Lang,
 ): Promise<{ text: string; mentions: string[] } | null> {
   const lastCompleted = await db.match.findFirst({
     where: { activityId, status: "COMPLETED", isHistorical: false },
@@ -307,7 +310,7 @@ async function buildUnpaidTail(
   // no shaming — point everyone at the original payment poll. Anyone
   // who's already paid clears themselves by ticking their team. The
   // poll-vote → paidAt wiring takes care of the rest.
-  const text = buildUnpaidTailText(unpaid);
+  const text = buildUnpaidTailText(unpaid, lang);
   // No mentions needed — we don't tag anyone in the poll-only style.
   const mentions: string[] = [];
   return { text, mentions };
@@ -742,6 +745,8 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
               paymentCollectionEnabled: true,
               paymentHolderId: true,
               teamLabels: true,
+              // The group's language: every static post below reads it.
+              language: true,
             },
           },
         },
@@ -800,6 +805,11 @@ async function computeForMatch(
   const matchId = m.id;
   const activity = m.activity;
   const sport = activity.sport;
+  // THE GROUP'S LANGUAGE (`Organisation.language`), once per match. Read
+  // defensively: the unit-test fixtures build `activity.org` by hand and
+  // some omit it; Prisma always selects it. Unknown or missing is English,
+  // and the English bytes are pinned by the golden snapshot.
+  const lang: Lang = normaliseLang(activity.org?.language);
   const hoursUntilMatch = hoursBetween(now, m.date);
   const hoursSinceMatch = -hoursUntilMatch;
 
@@ -892,9 +902,10 @@ async function computeForMatch(
         matchId,
         text: buildAnnounceMatchPost({
           activityName: activity.name,
-          dateLabel: format(m.date, "EEEE d MMMM 'at' HH:mm"),
+          dateLabel: longDayTimeLabel(lang, m.date),
           venue: activity.venue,
           maxPlayers,
+          lang,
         }),
       });
     }
@@ -952,7 +963,7 @@ async function computeForMatch(
       );
       const skipUnpaidChase =
         dayKey === matchDayKey || dayKey === dayBeforeMatchKey;
-      const unpaidTail = skipUnpaidChase ? null : await buildUnpaidTail(activity.id);
+      const unpaidTail = skipUnpaidChase ? null : await buildUnpaidTail(activity.id, lang);
 
       // Roster block listed under every branch — daily reminder so each
       // player sees their own name without scrolling up. Bench gets its
@@ -961,6 +972,7 @@ async function computeForMatch(
         confirmed: confirmed.map((a) => a.user),
         bench: bench.map((a) => a.user),
         maxPlayers: m.maxPlayers,
+        lang,
       });
 
       const isMatchDay = dayKey === matchDayKey;
@@ -976,7 +988,7 @@ async function computeForMatch(
         // want is "am I Red or Yellow tonight?". Bench is omitted on
         // purpose — they're not playing unless someone drops, and
         // naming them on the lineup post is unnecessary noise.
-        const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org ?? null, sport);
+        const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org ?? null, sport, lang);
         text = buildMatchDayTeamsBlock({
           activityName: activity.name,
           venue: activity.venue,
@@ -985,6 +997,7 @@ async function computeForMatch(
           yellowLabel,
           red: m.teamAssignments.filter((t) => t.team === "RED").map((t) => t.user),
           yellow: m.teamAssignments.filter((t) => t.team === "YELLOW").map((t) => t.user),
+          lang,
         });
       } else if (isMatchDay && need === 0 && !teamsReady) {
         // 2-pre-alt. Match day, full squad, but teams haven't been
@@ -998,6 +1011,7 @@ async function computeForMatch(
           venue: activity.venue,
           timeLabel: format(m.date, "HH:mm"),
           rosterBlock,
+          lang,
         });
       } else if (beforeDeadline && need > 0) {
         // 2a. Short squad — chase + unpaid tail. Chase template (LLM
@@ -1020,7 +1034,9 @@ async function computeForMatch(
               confirmed: confirmed.map((a) => a.user),
               bench: bench.map((a) => a.user),
               maxPlayers: m.maxPlayers,
+              lang,
             }),
+            lang,
           });
         });
         text = unpaidTail ? `${chaseText}\n\n${unpaidTail.text}` : chaseText;
@@ -1280,13 +1296,14 @@ async function computeForMatch(
           const repl = m.attendances.find((a) => a.userId === offer.replacingUserId)?.user;
           const ta = m.teamAssignments.find((t) => t.userId === offer.replacingUserId);
           if (repl && ta) {
-            const labels = resolveTeamLabels(m, activity.org, sport);
+            const labels = resolveTeamLabels(m, activity.org, sport, lang);
             team = { teamLabel: ta.team === "RED" ? labels[0] : labels[1], replacingName: repl.name };
           }
         }
         const { group: ctx, plain: ctxPlain } = buildBenchOfferContext({
           activityName: activity.name,
           team,
+          lang,
         });
 
         const mentions = benchAtt.map((a) => a.user.phoneNumber!.replace(/^\+/, ""));
@@ -1309,7 +1326,7 @@ async function computeForMatch(
             // it; pass the first bencher purely to satisfy the type.
             userId: benchAtt[0].userId,
             phone: mentions[0],
-            text: buildBenchOfferGroupPost({ context: ctx, tagList }),
+            text: buildBenchOfferGroupPost({ context: ctx, tagList, lang }),
           });
         }
 
@@ -1467,7 +1484,7 @@ async function computeForMatch(
           "match-day-morning",
           // No "Morning all": the slot is 8-9am but the post can land
           // late (see buildMatchDayChaseFallback's docblock).
-          () => buildMatchDayChaseFallback({ need, activityName: activity.name }),
+          () => buildMatchDayChaseFallback({ need, activityName: activity.name, lang }),
         );
         out.push({ kind: "group-message", key, matchId, text });
       }
@@ -1588,12 +1605,12 @@ async function computeForMatch(
         m.status === "TEAMS_PUBLISHED" ||
         m.status === "COMPLETED")
     ) {
-      const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org, sport);
+      const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org, sport, lang);
       out.push({
         kind: "group-poll",
         key,
         matchId,
-        question: buildPaymentPollQuestion(activity.name),
+        question: buildPaymentPollQuestion(activity.name, lang),
         options: [redLabel, yellowLabel],
       });
     }
@@ -1857,7 +1874,8 @@ async function computeForMatch(
             // Prisma.
             text: buildRatePromoPost({
               activityName: activity.name,
-              matchDateLabel: format(m.date, "EEE d MMM"),
+              matchDateLabel: dayLabel(lang, m.date),
+              lang,
             }),
           });
         }

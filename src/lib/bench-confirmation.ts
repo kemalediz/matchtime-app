@@ -140,7 +140,7 @@ export async function resolveBenchConfirmation(args: {
           where: { id: matchId },
           include: {
             activity: {
-              include: { sport: true, org: { select: { teamLabels: true } } },
+              include: { sport: true, org: { select: { teamLabels: true, language: true } } },
             },
           },
         });
@@ -149,6 +149,7 @@ export async function resolveBenchConfirmation(args: {
             mForLabels,
             mForLabels.activity.org,
             mForLabels.activity.sport,
+            mForLabels.activity.org.language,
           );
           teamLabel = droppedTA.team === "RED" ? labels[0] : labels[1];
         }

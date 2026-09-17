@@ -12,16 +12,22 @@
  *
  * Every builder takes already-formatted labels (dates, times, team
  * names) rather than Dates and rows, so it has no timezone or locale
- * logic of its own and no reason to import anything.
+ * logic of its own; the words come from the string table
+ * (`src/lib/i18n/`) for the `lang` the caller passes, English when
+ * absent, and the English bytes are unchanged (golden).
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 
 /** A player as the scheduler sees one: the name may be missing. */
 export interface NamedRow {
   name: string | null;
 }
 
-function numbered(rows: NamedRow[]): string[] {
-  return rows.map((r, i) => `${i + 1}. ${r.name ?? "(unnamed)"}`);
+type WithLang = { lang?: Lang | string | null };
+
+function numbered(rows: NamedRow[], unnamed: string): string[] {
+  return rows.map((r, i) => `${i + 1}. ${r.name ?? unnamed}`);
 }
 
 /**
@@ -29,13 +35,15 @@ function numbered(rows: NamedRow[]): string[] {
  * 24h out, squad empty. `dateLabel` is the London long date, e.g.
  * "Tuesday 8 September at 21:30".
  */
-export function buildAnnounceMatchPost(args: {
-  activityName: string;
-  dateLabel: string;
-  venue: string;
-  maxPlayers: number;
-}): string {
-  return `📅 *${args.activityName}* — *${args.dateLabel}* at ${args.venue}.\n\nSay *IN* to join. First ${args.maxPlayers} confirmed play.`;
+export function buildAnnounceMatchPost(
+  args: {
+    activityName: string;
+    dateLabel: string;
+    venue: string;
+    maxPlayers: number;
+  } & WithLang,
+): string {
+  return t(args.lang).announce_match(args);
 }
 
 /**
@@ -45,23 +53,26 @@ export function buildAnnounceMatchPost(args: {
  * confirms they're playing without anyone needing to scroll up. Bench
  * gets its own numbered sub-list so the gap to the squad is obvious.
  */
-export function buildSquadRosterBlock(args: {
-  confirmed: NamedRow[];
-  bench: NamedRow[];
-  maxPlayers: number;
-}): string {
+export function buildSquadRosterBlock(
+  args: {
+    confirmed: NamedRow[];
+    bench: NamedRow[];
+    maxPlayers: number;
+  } & WithLang,
+): string {
   const { confirmed, bench, maxPlayers } = args;
+  const s = t(args.lang);
   const lines: string[] = [];
-  lines.push(`*Confirmed (${confirmed.length}/${maxPlayers}):*`);
+  lines.push(s.roster_confirmed_header({ confirmed: confirmed.length, maxPlayers }));
   if (confirmed.length === 0) {
-    lines.push("_nobody yet_");
+    lines.push(s.roster_nobody_yet);
   } else {
-    lines.push(...numbered(confirmed));
+    lines.push(...numbered(confirmed, s.unnamed));
   }
   if (bench.length > 0) {
     lines.push("");
-    lines.push(`*Bench (${bench.length}):*`);
-    lines.push(...numbered(bench));
+    lines.push(s.bench_header({ count: bench.length }));
+    lines.push(...numbered(bench, s.unnamed));
   }
   return lines.join("\n");
 }
@@ -77,25 +88,28 @@ export function buildSquadRosterBlock(args: {
  * were generated; this is a daily reminder, not a fresh announcement.
  * `timeLabel` is the London kickoff wall-clock, "21:30".
  */
-export function buildMatchDayTeamsBlock(args: {
-  activityName: string;
-  venue: string;
-  timeLabel: string;
-  redLabel: string;
-  yellowLabel: string;
-  red: NamedRow[];
-  yellow: NamedRow[];
-}): string {
+export function buildMatchDayTeamsBlock(
+  args: {
+    activityName: string;
+    venue: string;
+    timeLabel: string;
+    redLabel: string;
+    yellowLabel: string;
+    red: NamedRow[];
+    yellow: NamedRow[];
+  } & WithLang,
+): string {
+  const s = t(args.lang);
   return [
-    `⚽ *Tonight at ${args.timeLabel}* — *${args.activityName}* at ${args.venue}`,
+    s.match_day_header({ timeLabel: args.timeLabel, activityName: args.activityName, venue: args.venue }),
     ``,
     `*${args.redLabel}:*`,
-    numbered(args.red).join("\n"),
+    numbered(args.red, s.unnamed).join("\n"),
     ``,
     `*${args.yellowLabel}:*`,
-    numbered(args.yellow).join("\n"),
+    numbered(args.yellow, s.unnamed).join("\n"),
     ``,
-    `See you tonight 🙌`,
+    s.match_day_teams_signoff,
   ].join("\n");
 }
 
@@ -104,15 +118,18 @@ export function buildMatchDayTeamsBlock(args: {
  * Shows the roster AND nudges somebody to trigger team generation so
  * the next 17:00-window tick can show the lineup.
  */
-export function buildMatchDayLockedPost(args: {
-  activityName: string;
-  venue: string;
-  timeLabel: string;
-  rosterBlock: string;
-}): string {
+export function buildMatchDayLockedPost(
+  args: {
+    activityName: string;
+    venue: string;
+    timeLabel: string;
+    rosterBlock: string;
+  } & WithLang,
+): string {
+  const s = t(args.lang);
   const intro =
-    `⚽ *Tonight at ${args.timeLabel}* — *${args.activityName}* at ${args.venue}\n\n` +
-    `Squad is locked. Say *@MatchTime generate teams* in the chat to lock in tonight's lineup 👇`;
+    `${s.match_day_header({ timeLabel: args.timeLabel, activityName: args.activityName, venue: args.venue })}\n\n` +
+    s.match_day_locked_line;
   return `${intro}\n\n${args.rosterBlock}`;
 }
 
@@ -124,12 +141,14 @@ export function buildMatchDayLockedPost(args: {
  * output, which already renders the "*Bench (N):*" sub-list when
  * populated.
  */
-export function buildDailyInListFallback(args: {
-  activityName: string;
-  need: number;
-  rosterBlock: string;
-}): string {
-  return `🗓 *${args.activityName}* — need *${args.need} more*.\n\n` + args.rosterBlock;
+export function buildDailyInListFallback(
+  args: {
+    activityName: string;
+    need: number;
+    rosterBlock: string;
+  } & WithLang,
+): string {
+  return `${t(args.lang).daily_in_list_fallback_lead({ activityName: args.activityName, need: args.need })}\n\n` + args.rosterBlock;
 }
 
 /**
@@ -139,10 +158,8 @@ export function buildDailyInListFallback(args: {
  * Anyone who's already paid clears themselves by ticking their team.
  * The caller has already decided `unpaid >= 1`.
  */
-export function buildUnpaidTailText(unpaid: number): string {
-  return unpaid === 1
-    ? `💳 1 payment still pending for last week's match — if you've already paid, tick your team in the poll above to clear it 🙏`
-    : `💳 *${unpaid}* payments still pending for last week's match — if you've already paid, just tick your team in the poll above to clear it 🙏`;
+export function buildUnpaidTailText(unpaid: number, lang?: Lang | string | null): string {
+  return t(lang).unpaid_tail({ unpaid });
 }
 
 /**
@@ -155,22 +172,27 @@ export function buildUnpaidTailText(unpaid: number): string {
  * `teamLabel` and `replacingName` are set together or not at all: the
  * scheduler only knows the team when the replaced player had a team
  * assignment.
+ *
+ * `plain` is ALWAYS English in Phase 2: it is only ever read by the
+ * bench-offer DM (row 85), which stays English until Phase 3 moves the
+ * DMs, and a Turkish clause inside an English sentence is worse than
+ * either. The Turkish `_plain` entries exist in the table so the pair
+ * moves together then.
  */
-export function buildBenchOfferContext(args: {
-  activityName: string;
-  team: { teamLabel: string; replacingName: string | null } | null;
-}): { group: string; plain: string } {
+export function buildBenchOfferContext(
+  args: {
+    activityName: string;
+    team: { teamLabel: string; replacingName: string | null } | null;
+  } & WithLang,
+): { group: string; plain: string } {
+  const s = t(args.lang);
+  const dm = t("en");
   if (args.team) {
-    const name = args.team.replacingName ?? "—";
-    return {
-      group: `on *${args.team.teamLabel}* (replacing ${name}) for *${args.activityName}* tonight`,
-      plain: `on ${args.team.teamLabel} (replacing ${name}) for ${args.activityName} tonight`,
-    };
+    const p = { teamLabel: args.team.teamLabel, replacingName: args.team.replacingName ?? "—", activityName: args.activityName };
+    return { group: s.bench_offer_context_team(p), plain: dm.bench_offer_context_team_plain(p) };
   }
-  return {
-    group: `for *${args.activityName}* tonight`,
-    plain: `for ${args.activityName} tonight`,
-  };
+  const p = { activityName: args.activityName };
+  return { group: s.bench_offer_context_fixture(p), plain: dm.bench_offer_context_fixture_plain(p) };
 }
 
 /**
@@ -178,6 +200,6 @@ export function buildBenchOfferContext(args: {
  * The options are the two team labels; any vote counts as paid
  * (`poll-vote/route.ts`), so the option text is never parsed.
  */
-export function buildPaymentPollQuestion(activityName: string): string {
-  return `💳 Payments for *${activityName}* — tick when you've paid`;
+export function buildPaymentPollQuestion(activityName: string, lang?: Lang | string | null): string {
+  return t(lang).payment_poll_question({ activityName });
 }

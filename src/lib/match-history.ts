@@ -145,7 +145,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   // Org-level team-label override (falls back to sport labels per slot).
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { teamLabels: true },
+    select: { teamLabels: true, language: true },
   });
 
   /** Every completed match — the aggregates' scope. */
@@ -160,7 +160,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   const momSummaries = await getMomSummaries(detailMatchIds);
 
   const recentMatches: RecentMatchRow[] = matches.map((m) => {
-    const [redLabel, yellowLabel] = resolveTeamLabels(m, org, m.activity.sport);
+    const [redLabel, yellowLabel] = resolveTeamLabels(m, org, m.activity.sport, org?.language);
     const hasScore = m.redScore !== null && m.yellowScore !== null;
     const scoreLabel = hasScore
       ? `${redLabel} ${m.redScore} - ${m.yellowScore} ${yellowLabel}`

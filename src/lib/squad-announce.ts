@@ -17,6 +17,8 @@ import { db } from "./db";
 import { getOrgFeatures } from "./org-features";
 import { buildSquadCompleteBenchInvite } from "./bench-offer-copy";
 import { buildSquadCompletePost } from "./group-copy";
+import { squadCompleteLabel } from "./i18n/dates";
+import { normaliseLang } from "./i18n/lang";
 
 export async function announceSquadFullIfJustFilled(
   matchId: string,
@@ -24,7 +26,8 @@ export async function announceSquadFullIfJustFilled(
   const m = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { select: { name: true, orgId: true } },
+      // `org.language`: the words and the date label are the group's.
+      activity: { select: { name: true, orgId: true, org: { select: { language: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: { user: { select: { name: true } } },
@@ -47,17 +50,10 @@ export async function announceSquadFullIfJustFilled(
     return; // already announced this fill cycle
   }
 
-  const kickoffLondon = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-    .format(m.date)
-    .replace(/,/g, "");
+  // Optional chaining because the unit test's match fixture carries no
+  // org; Prisma always includes it. Unknown or missing is English.
+  const lang = normaliseLang(m.activity.org?.language);
+  const kickoffLondon = squadCompleteLabel(lang, m.date);
 
   // Keep the INs flowing once the squad is full (Kemal 2026-09-16: "When
   // squad complete, MT should just show the squad and ask for benchers").
@@ -83,7 +79,8 @@ export async function announceSquadFullIfJustFilled(
         kickoffLabel: kickoffLondon,
         confirmed: confirmed.map((a) => a.user.name),
         bench: bench.map((a) => a.user.name),
-        benchInvite: benchOn ? buildSquadCompleteBenchInvite() : null,
+        benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang }) : null,
+        lang,
       }),
     },
   });

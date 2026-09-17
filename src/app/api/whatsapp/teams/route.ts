@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     .filter((a) => a.team === "YELLOW")
     .map((a) => ({ name: a.user.name, position: positionFor(a.user) }));
 
-  const [redLabel, yellowLabel] = resolveTeamLabels(match, org, match.activity.sport);
+  const [redLabel, yellowLabel] = resolveTeamLabels(match, org, match.activity.sport, org.language);
 
   return NextResponse.json({
     match: {

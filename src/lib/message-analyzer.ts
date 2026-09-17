@@ -437,7 +437,7 @@ export async function composeChaseText(input: {
 
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: input.groupId },
-    select: { id: true, name: true, teamLabels: true },
+    select: { id: true, name: true, teamLabels: true, language: true },
   });
   if (!org) return null;
 
@@ -493,7 +493,7 @@ export async function composeChaseText(input: {
     kind: input.kind,
     orgName: org.name,
     match,
-    teamLabels: resolveTeamLabels(match, org, match.activity.sport),
+    teamLabels: resolveTeamLabels(match, org, match.activity.sport, org.language),
     alternatives,
     logLabel: `group=${input.groupId}`,
   });

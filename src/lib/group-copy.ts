@@ -14,7 +14,15 @@
  * `composeSquadStatusPost()` under "what must not change": *"Already
  * correct. Promoted, not rewritten."* This is the promotion, and the
  * byte-stability the sim suite asserts on is preserved.
+ *
+ * LANGUAGE (2026-09-17, Phase 2 of MDs/multi-language-design-2026-09-16.md):
+ * every builder here takes an optional `lang` and reads its words from
+ * `t(lang)` (`src/lib/i18n/`). English is the default and the English
+ * bytes are unchanged, which `src/lib/i18n/__tests__/copy-golden.test.ts`
+ * proves. A composer that has not been given a language speaks English.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 
 /**
  * Deterministic, server-composed squad+bench status post. Used for EVERY
@@ -29,20 +37,24 @@ export function composeSquadStatusPost(args: {
   confirmed: string[];
   bench: string[];
   maxPlayers: number;
+  lang?: Lang | string | null;
 }): string {
   const { confirmed, bench, maxPlayers } = args;
+  const s = t(args.lang);
   const need = Math.max(0, maxPlayers - confirmed.length);
-  const count = `*${confirmed.length}/${maxPlayers}*`;
-  const lead =
-    `📋 Based on all the messages I've picked up, here's the latest squad${bench.length > 0 ? " and bench" : ""} — ` +
-    (need > 0 ? `${count}, need *${need} more* 🙏` : `${count} ✅ full squad.`);
+  const lead = s.squad_status_lead({
+    withBench: bench.length > 0,
+    confirmed: confirmed.length,
+    maxPlayers,
+    need,
+  });
   const rows: string[] = [];
   for (let i = 0; i < maxPlayers; i++) {
     rows.push(i < confirmed.length ? `${i + 1}. ${confirmed[i]}` : `${i + 1}. 🥁`);
   }
-  const lines = [lead, "", "*Playing:*", ...rows];
+  const lines = [lead, "", s.playing_header, ...rows];
   if (bench.length > 0) {
-    lines.push("", `*Bench (${bench.length}):*`);
+    lines.push("", s.bench_header({ count: bench.length }));
     bench.forEach((n, i) => lines.push(`${i + 1}. ${n}`));
   }
   return lines.join("\n");
@@ -62,14 +74,16 @@ export function formatTeamsPost(args: {
   yellow: { name: string }[];
   kickoff: string;
   venue: string;
+  lang?: Lang | string | null;
 }): string {
+  const s = t(args.lang);
   const listFor = (arr: { name: string }[]) =>
     arr.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
   return (
-    `⚽ *Teams for tonight* — ${args.kickoff} at ${args.venue}\n\n` +
+    `${s.teams_post_header({ kickoff: args.kickoff, venue: args.venue })}\n\n` +
     `*${args.redLabel}*:\n${listFor(args.red)}\n\n` +
     `*${args.yellowLabel}*:\n${listFor(args.yellow)}\n\n` +
-    `Objections? Reply \`swap X Y\` — admin will confirm.`
+    s.teams_post_footer
   );
 }
 
@@ -92,21 +106,23 @@ export function buildSquadCompletePost(args: {
   confirmed: Array<string | null>;
   bench: Array<string | null>;
   benchInvite: string | null;
+  lang?: Lang | string | null;
 }): string {
-  const roster = args.confirmed.map((n, i) => `${i + 1}. ${n ?? "(unnamed)"}`).join("\n");
+  const s = t(args.lang);
+  const roster = args.confirmed.map((n, i) => `${i + 1}. ${n ?? s.unnamed}`).join("\n");
   // Bench shown in EVERY squad display, all orgs (Kemal 2026-06-12): a
   // benched player scanning the "squad complete" post must see their
   // name rather than wonder if they were dropped.
   const benchBlock =
     args.bench.length > 0
-      ? `\n\n*Bench (${args.bench.length}):*\n${args.bench
-          .map((n, i) => `${i + 1}. ${n ?? "(unnamed)"}`)
+      ? `\n\n${s.bench_header({ count: args.bench.length })}\n${args.bench
+          .map((n, i) => `${i + 1}. ${n ?? s.unnamed}`)
           .join("\n")}`
       : "";
   const invite = args.benchInvite ? `\n\n${args.benchInvite}` : "";
   return (
-    `✅ *Squad complete — ${args.maxPlayers}/${args.maxPlayers}* for *${args.activityName}* on ${args.kickoffLabel} 🙌\n\n` +
-    `*Playing:*\n${roster}${benchBlock}\n\nSee you all there ⚽${invite}`
+    `${s.squad_complete_header({ maxPlayers: args.maxPlayers, activityName: args.activityName, kickoffLabel: args.kickoffLabel })}\n\n` +
+    `${s.playing_header}\n${roster}${benchBlock}\n\n${s.squad_complete_signoff}${invite}`
   );
 }
 
@@ -392,6 +408,7 @@ export function stripSquadPostMarker(text: string): string {
 export function composeSquadStateReply(
   reply: string,
   truth: SquadTruth,
+  lang?: Lang | string | null,
 ): { text: string; composed: boolean } {
   const wanted = wantsSquadPost(reply);
   const lead = wanted ? reply.replace(SQUAD_POST_MARKER_RE, "").trim() : reply;
@@ -402,6 +419,7 @@ export function composeSquadStateReply(
     confirmed: truth.confirmed,
     bench: truth.bench,
     maxPlayers: truth.maxPlayers,
+    lang,
   });
   const keepLead =
     wanted && lead.length > 0 && !displaysSquadState(lead) && !contradictsSquadState(lead, truth);
@@ -446,12 +464,9 @@ export function composeSquadStateReply(
 export function buildRatePromoPost(args: {
   activityName: string;
   matchDateLabel: string;
+  lang?: Lang | string | null;
 }): string {
-  return (
-    `🎯 Just DM'd every player from the *${args.activityName}* on ${args.matchDateLabel} ` +
-    `a personal rating link. The more ratings we get, the better-balanced the ` +
-    `teams get next week. Check your DMs from me 👇`
-  );
+  return t(args.lang).rate_promo({ activityName: args.activityName, matchDateLabel: args.matchDateLabel });
 }
 
 /**
@@ -462,6 +477,7 @@ export function buildRatePromoPost(args: {
 export function buildMatchDayChaseFallback(args: {
   need: number;
   activityName: string;
+  lang?: Lang | string | null;
 }): string {
-  return `☀️ Still *${args.need} short* for tonight's *${args.activityName}*. Any takers? 👀`;
+  return t(args.lang).match_day_chase_fallback({ need: args.need, activityName: args.activityName });
 }

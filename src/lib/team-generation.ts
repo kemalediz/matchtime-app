@@ -154,10 +154,14 @@ export async function generateTeamsForMatch(
   // `match` still carries its pre-update teamLabels, so a prior override
   // survives when no new names are given this run.
   const matchLabelSource = validNames ? { teamLabels: validNames } : match;
+  // The group's language decides the default team names and the words
+  // around them; `org` is the full row here, so it carries `language`.
+  const lang = match.activity.org.language;
   const [redLabel, yellowLabel] = resolveTeamLabels(
     matchLabelSource,
     match.activity.org,
     sport,
+    lang,
   );
   const kickoff = formatLondon(match.date, "HH:mm");
   const groupPost = formatTeamsPost({
@@ -167,6 +171,7 @@ export async function generateTeamsForMatch(
     yellow: result.yellow,
     kickoff,
     venue: match.activity.venue,
+    lang,
   });
 
   return { ok: true, groupPost, matchId };
