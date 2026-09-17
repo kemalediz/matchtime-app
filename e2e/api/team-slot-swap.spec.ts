@@ -199,14 +199,18 @@ test.describe("the replacement transfer — 2026-09-08", () => {
     db,
   }) => {
     // Ben is BENCH with no slot, Pat is DROPPED with one. Neither is in
-    // the squad, so there is no correct occupant to move the slot TO —
-    // `nobody-is-playing`. The peel must NOT own this: owning it would
-    // splice the message out of the batch and delete every other clause
-    // in it. It falls through to the router, stubbed to `none` here so
-    // the assertion is about the peel and not about an owner.
+    // the squad, so there is no correct occupant to move the slot TO:
+    // `nobody-is-playing`.
+    //
+    // CHANGED 2026-09-17. This used to assert the peel did NOT own the
+    // message, and so the owner heard nothing. A refusal is now answered
+    // (the sheet is still untouched), and the WHOLE message still goes
+    // down the pipeline: the router is stubbed to `none` here, so the
+    // refusal is the only thing said.
     const body = `@Match Time swap ${NAME.bench.split(" ")[0]} with ${NAME.player.split(" ")[0]}`;
     engineOn({ [body]: { route: "none" } });
     const before = await sheet(db);
+    const beforeSquad = await squad(db);
 
     const res = await postAnalyze(request, [
       {
@@ -219,9 +223,133 @@ test.describe("the replacement transfer — 2026-09-08", () => {
     ]);
 
     expect(await sheet(db)).toEqual(before);
-    expect(res.results.map((r: { intent: string }) => r.intent)).not.toContain("team_swap");
+    expect(await squad(db)).toEqual(beforeSquad);
+    const speaking = res.results.filter((r: { reply: string | null }) => (r.reply ?? "").length > 0);
+    expect(speaking, JSON.stringify(res.results)).toHaveLength(1);
+    expect(speaking[0].reply).toBe(
+      `I haven't swapped *${NAME.bench}* and *${NAME.player}*. Neither of them is in the squad. ` +
+        `Nothing changed and nobody was dropped.`,
+    );
   });
 });
+
+// ── A SWAP IT CANNOT APPLY IS NEVER A DROP (2026-09-17) ────────────────
+//
+// Dry-run cases TR26 / TR27, live, REPEAT=10, before the fix: a swap the
+// peel refused went down the pipeline whole, and the extractor read
+// "swap David and Sait" as David leaving. David was DROPPED 10 of 10
+// (English) and 9 of 10 (Turkish).
+//
+// The extractor is stubbed below with THAT reading, the one the live
+// model actually gives, so these tests prove the route and the engine
+// refuse it rather than assuming the model will not produce it.
+test.describe("a refused swap drops nobody and says so", () => {
+  const PAT = NAME.player.split(" ")[0];
+  const TOM = NAME.third.split(" ")[0];
+  const patOut = {
+    claims: [
+      {
+        subject: "other",
+        personRef: PAT,
+        personNamed: true,
+        polarity: "out",
+        contingent: false,
+        conditionOn: "none",
+        tense: "present",
+        basis: "decision",
+        reported: false,
+        confidence: 0.7,
+      },
+    ],
+    affirmation: "none",
+    sideRequests: [],
+  };
+
+  test.beforeEach(async ({ db }) => {
+    resetDb();
+    await seedTheIncident(db);
+    await db.run(
+      `UPDATE "Attendance" SET status = 'CONFIRMED' WHERE "matchId" = $1 AND "userId" = $2`,
+      [MATCH.upcoming, U.player],
+    );
+  });
+
+  test("an unknown name: Pat stays in, the owner is told, one reply", async ({ request, db }) => {
+    const body = `@Match Time swap ${PAT} and Zork`;
+    engineOn({ [body]: { route: "other_att", facts: patOut } });
+    const before = await squad(db);
+    const beforeSheet = await sheet(db);
+
+    const id = msgId();
+    const res = await postAnalyze(request, [
+      { waMessageId: id, body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+
+    expect(await squad(db)).toEqual(before);
+    expect(await sheet(db)).toEqual(beforeSheet);
+    const mine = res.results.filter((r: { waMessageId: string }) => r.waMessageId === id);
+    expect(mine, JSON.stringify(res.results)).toHaveLength(1);
+    expect(mine[0].intent).toBe("team_swap");
+    expect(mine[0].reply).toBe(
+      `I haven't swapped *${NAME.player}* and *Zork*. I can't find a player called *Zork* for this match. ` +
+        `Use the name they're registered under. Nothing changed and nobody was dropped.`,
+    );
+  });
+
+  test("the sender's own OUT in the same message still lands, with no comma", async ({ request, db }) => {
+    // The swap clause cannot be split off without a comma, so the whole
+    // body is what the pipeline sees. Pat is refused as a swap party; the
+    // sender is not a party and is dropped.
+    const body = `@Match Time swap ${PAT} and Zork and I'm out`;
+    engineOn({
+      [body]: {
+        route: "other_att",
+        facts: { ...patOut, claims: [...patOut.claims, { ...patOut.claims[0], subject: "sender", personRef: "", personNamed: false, confidence: 0.95 }] },
+      },
+    });
+
+    await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+
+    expect(await squadStatus(db, U.admin)).toBe("DROPPED");
+    expect(await squadStatus(db, U.player)).toBe("CONFIRMED");
+  });
+
+  test("an UNTAGGED swap from an admin drops nobody", async ({ request, db }) => {
+    // Never reaches the peel (no tag). An admin's third-party OUT needs
+    // no tag, so before the engine guard this dropped Pat outright.
+    const body = `swap ${PAT} with ${TOM}`;
+    engineOn({ [body]: { route: "other_att", facts: patOut } });
+    const before = await squad(db);
+
+    await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin },
+    ]);
+
+    expect(await squad(db)).toEqual(before);
+  });
+
+  test("'switch it to 7 a side' is not a player swap and gets no refusal", async ({ request }) => {
+    const body = "@Match Time switch it to 7 a side";
+    engineOn({ [body]: { route: "none" } });
+    const res = await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+    for (const r of res.results as Array<{ reply: string | null; intent: string }>) {
+      expect(r.reply ?? "").not.toContain("haven't swapped");
+      expect(r.intent).not.toBe("team_swap");
+    }
+  });
+});
+
+async function squadStatus(db: TestDb, userId: string): Promise<string | undefined> {
+  const row = await db.one<{ v: string }>(
+    `SELECT status::text AS v FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`,
+    [MATCH.upcoming, userId],
+  );
+  return row?.v;
+}
 
 test.describe("the shipped both-CONFIRMED team swap still works", () => {
   test.beforeEach(async ({ db }) => {

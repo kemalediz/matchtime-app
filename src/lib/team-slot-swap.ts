@@ -42,9 +42,13 @@
  *   slot-transfer  Exactly one side is CONFIRMED and holds NO slot, and
  *                  the other side holds a slot but is NOT CONFIRMED.
  *                  Move the slot from the second to the first. NEW.
- *   refuse         Everything else, with a named reason. The caller
- *                  falls through to ordinary handling, exactly as it
- *                  does today for every non-both-CONFIRMED shape.
+ *   refuse         Everything else, with a named reason. Since
+ *                  2026-09-17 the caller ANSWERS a refusal (`planSwap`
+ *                  below) and still sends the whole message on, and
+ *                  the engine refuses any attendance claim about the
+ *                  two names (`isSwapParty`). Before that a refusal
+ *                  fell through silently, and the pipeline read the
+ *                  swap as a drop.
  *
  * ── WHY `slot-transfer` IS A REPAIR AND NOT A GUESS ──────────────────
  *
@@ -247,11 +251,246 @@ export function resolveSwapSide(
   query: string,
   roster: SwapCandidate[],
 ): SwapCandidate | null {
+  const r = resolveSwapSideDetailed(query, roster);
+  return r.kind === "resolved" ? r.side : null;
+}
+
+/** `resolveSwapSide`, saying WHY it found nobody. The two misses are
+ *  told apart only so the refusal can say which one it was; the rule is
+ *  the same function. */
+type SideResolution =
+  | { kind: "resolved"; side: SwapCandidate }
+  | { kind: "ambiguous"; candidates: SwapCandidate[] }
+  | { kind: "unknown" };
+
+function resolveSwapSideDetailed(query: string, roster: SwapCandidate[]): SideResolution {
   const hits = roster.filter((c) => nameMatches(query, c.name));
   const confirmed = hits.filter((c) => c.status === "CONFIRMED");
-  if (confirmed.length === 1) return confirmed[0];
-  if (confirmed.length > 1) return null; // ambiguous among the playing
-  return hits.length === 1 ? hits[0] : null;
+  if (confirmed.length === 1) return { kind: "resolved", side: confirmed[0] };
+  // Ambiguous among the playing: the candidates are the playing ones.
+  if (confirmed.length > 1) return { kind: "ambiguous", candidates: confirmed };
+  if (hits.length === 1) return { kind: "resolved", side: hits[0] };
+  return hits.length > 1 ? { kind: "ambiguous", candidates: hits } : { kind: "unknown" };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// A SWAP REQUEST IS NEVER ATTENDANCE (2026-09-17)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// THE BUG. A swap this module REFUSES (an unknown or ambiguous name, the
+// teams not built) used to fall through, whole and silent, to the
+// attendance pipeline, and so did every UNTAGGED swap. The extractor
+// reads "swap David and Sait" as David leaving, with the same shape a
+// real drop has (`basis=decision polarity=out`). Measured live on the
+// Sutton squad, REPEAT=10 (`scripts/dryrun-pipeline.ts`, TR26 / TR27):
+//
+//   "@Match Time swap David and Sait"          DROPPED David 10 of 10
+//   "@Match Time David ile Sait'i değiştir"    DROPPED David  9 of 10
+//
+// And an admin needs no tag to drop another player
+// (`ADMIN_REPORTED_OUT_IS_TAG_FREE`), so the untagged form did it too.
+// A player silently removed from a squad he never left.
+//
+// ── WHY THE FIX IS HERE, IN CODE, AND NOT IN A PROMPT ────────────────
+//
+// Three layers could own it. The ROUTER sends a swap to `other_att` on
+// purpose (rule 4: "moving, benching or swapping a named player"), and
+// every edit to that prompt carries the 373-message veto for a reason
+// written at the top of `router.ts`. The EXTRACTOR could be taught a
+// third `basis`, but a sentence of prose asking a model to tell "swap
+// David" from "drop David" is a probability, and the thing it protects
+// is the one error this product cannot afford. The ENGINE already holds
+// the message body and a deterministic parser for exactly this sentence
+// (`parseSwapNames`, the fast path's own), so the answer can be a
+// property of the code: a claim about a person the message asks to
+// SWAP is never an attendance change for that person, whatever the
+// model read. `pipeline/engine.ts` asks `isSwapParty` of every claim.
+//
+// ── WHY PER NAME, AND NEVER PER MESSAGE ──────────────────────────────
+//
+// `parseSwapNames` is a fast-path parser and it is loose on purpose: the
+// fast path then insists both names are real people. "@Kemal switch it
+// to 7 a side and put Amir in as the 14th" parses as a swap of "it" and
+// "to", and it is router rule 15's own example of a message that MUST
+// register Amir. Refusing every claim in a message that parses as a swap
+// would lose him. Refusing only claims about "it" and "to" loses nothing.
+// Likewise "swap David and Sait, and I'm out": the sender is not a
+// party, so his own drop still lands, and "swap David and Sait. Zeeshan
+// is out" still drops Zeeshan.
+//
+// ── HOW A CLAIM IS MATCHED TO A NAME ─────────────────────────────────
+//
+// By TOKEN EQUALITY, not by the prefix match the fast path resolves
+// with. Both strings come from the same message, so the extractor's
+// `personRef` for David IS "David" (verbatim is its contract); a prefix
+// match would only add wrong answers ("to" would swallow "Tony"). The
+// forms normalised away are the ones the same message produces: case,
+// diacritics, a leading "@", the full name the extractor sometimes
+// copies from a mention, and the Turkish case ending after an apostrophe
+// ("Sait'i").
+
+/**
+ * The sender, as a swap names them. English only, and closed.
+ *
+ * NOT the Turkish "ben" / "beni", and the reason is a name: "Ben" is a
+ * common English first name, so "swap Ben with Pat" read the SENDER as a
+ * party (caught by `e2e/api/team-slot-swap.spec.ts`), and in the engine
+ * "swap Ben with Pat, and I'm out" would have refused the sender's own
+ * drop. The Turkish copy never tells anyone to swap themselves, so the
+ * Turkish words buy nothing and cost exactly that.
+ */
+const SWAP_SELF_WORDS = new Set(["me", "myself"]);
+
+function swapToken(s: string): string {
+  return norm(s)
+    .replace(/^@+/, "")
+    .replace(/['’]\p{L}{1,3}$/u, "");
+}
+
+/**
+ * Is this attendance claim about one of the two people a swap request
+ * names? See the block above. `parties` is `parseSwapNames` of the same
+ * message body.
+ */
+export function isSwapParty(
+  claim: { subject: "sender" | "other"; personRef: string },
+  parties: { a: string; b: string },
+): boolean {
+  const a = swapToken(parties.a);
+  const b = swapToken(parties.b);
+  if (claim.subject === "sender") return SWAP_SELF_WORDS.has(a) || SWAP_SELF_WORDS.has(b);
+  const tokens = claim.personRef
+    .split(/[\s,]+/)
+    .map(swapToken)
+    .filter((t) => t.length > 0);
+  return tokens.includes(a) || tokens.includes(b);
+}
+
+// ── THE REFUSAL, NAMED ───────────────────────────────────────────────
+
+/** Why a real swap was not applied, in terms the owner can act on. */
+export type SwapRefusal =
+  | { reason: "unknown-name"; name: string }
+  | { reason: "ambiguous-name"; name: string; candidates: string[] }
+  | { reason: "teams-not-generated" }
+  | { reason: "same-player" }
+  | { reason: "nobody-is-playing" }
+  | { reason: "receiver-not-confirmed"; name: string }
+  | { reason: "both-hold-slots"; name: string }
+  | { reason: "no-slot-to-move"; name: string };
+
+export type SwapPlan =
+  /** `decideSwap` said something other than refuse. Apply it. */
+  | { kind: "decided"; decision: Exclude<SwapDecision, { kind: "refuse" }> }
+  /** A real player swap that cannot be applied. `a` and `b` are the
+   *  roster's names where they resolved, the typed word otherwise. */
+  | { kind: "refused"; a: string; b: string; why: SwapRefusal }
+  /** Neither word is a person ("switch it to 7 a side"). The fast path
+   *  owns nothing, exactly as before. */
+  | { kind: "not-a-player-swap" };
+
+const typed = (w: string) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w);
+
+/**
+ * `handleTeamSwapIfApplicable`'s whole decision, pure.
+ *
+ * WHAT IT ADDS TO `decideSwap`, AND WHY:
+ *
+ *   - It tells a message that is not a player swap at all from a swap it
+ *     cannot apply. The first stays unowned, as it always was. The
+ *     second used to be unowned too, and that is the bug: the owner
+ *     heard nothing, and the pipeline dropped a player. It is now
+ *     answered, and the analyze route still sends the whole message on
+ *     so nothing else in it is lost.
+ *   - The line between them: a swap is REAL when at least one of the two
+ *     words is somebody in this match (resolved or ambiguous). "switch
+ *     it to" names nobody and stays silent; "swap David and Zork" names
+ *     David and is told Zork is unknown.
+ *   - "me" is the sender. Without it, "swap me with David" could only
+ *     ever be refused as an unknown player called "Me". A sender with no
+ *     attendance row is a real side with status NONE, and `decideSwap`
+ *     refuses them for the reason it refuses anyone in that state. This
+ *     widens what the fast path APPLIES by exactly that phrasing, and it
+ *     moves a slot only between people `decideSwap` already allows.
+ *   - `no-slot-to-move` with no team sheet at all is reported as the
+ *     teams not being built, because that is the reason the owner can
+ *     act on. `decideSwap` itself is unchanged.
+ */
+export function planSwap(
+  names: { a: string; b: string },
+  roster: SwapCandidate[],
+  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean },
+): SwapPlan {
+  const side = (word: string): SideResolution => {
+    if (SWAP_SELF_WORDS.has(swapToken(word))) {
+      if (!opts.sender) return { kind: "unknown" };
+      const own = roster.find((c) => c.userId === opts.sender!.userId);
+      return {
+        kind: "resolved",
+        side: own ?? { userId: opts.sender.userId, name: opts.sender.name, status: "NONE", team: null },
+      };
+    }
+    return resolveSwapSideDetailed(word, roster);
+  };
+  // IS THIS A PLAYER SWAP AT ALL? Asked with EXACT names, not with the
+  // prefix match below. `nameMatches` lets "to" find Tom Third, which is
+  // right for resolving a name once we know the message is a swap and
+  // wrong for deciding that it is one: "@Match Time switch it to 7 a
+  // side" was answered "I haven't swapped It and Tom Third" (the e2e
+  // suite caught it). A word counts only when it IS somebody's first or
+  // full name, or "me" from a known sender.
+  const isExactly = (word: string): boolean => {
+    const w = swapToken(word);
+    if (SWAP_SELF_WORDS.has(w)) return opts.sender !== null;
+    return roster.some((c) => {
+      const n = norm(c.name);
+      return n === w || n.split(/\s+/)[0] === w;
+    });
+  };
+  if (!isExactly(names.a) && !isExactly(names.b)) return { kind: "not-a-player-swap" };
+
+  const A = side(names.a);
+  const B = side(names.b);
+
+  const shown = (r: SideResolution, word: string) => (r.kind === "resolved" ? r.side.name : typed(word));
+  const a = shown(A, names.a);
+  const b = shown(B, names.b);
+  const refused = (why: SwapRefusal): SwapPlan => ({ kind: "refused", a, b, why });
+
+  // Name problems first, in message order: the owner fixes the first
+  // one and asks again.
+  for (const [r, word] of [
+    [A, names.a],
+    [B, names.b],
+  ] as const) {
+    if (r.kind === "unknown") return refused({ reason: "unknown-name", name: typed(word) });
+    if (r.kind === "ambiguous") {
+      return refused({
+        reason: "ambiguous-name",
+        name: typed(word),
+        candidates: r.candidates.map((c) => c.name),
+      });
+    }
+  }
+  if (A.kind !== "resolved" || B.kind !== "resolved") return { kind: "not-a-player-swap" }; // unreachable
+
+  const decision = decideSwap(A.side, B.side);
+  if (decision.kind !== "refuse") return { kind: "decided", decision };
+
+  // The side that is NOT playing, for the reasons that are about it.
+  const idle = A.side.status === "CONFIRMED" ? B.side : A.side;
+  switch (decision.reason) {
+    case "same-player":
+    case "nobody-is-playing":
+      return refused({ reason: decision.reason });
+    case "no-slot-to-move":
+      return opts.teamsExist
+        ? refused({ reason: "no-slot-to-move", name: idle.name })
+        : refused({ reason: "teams-not-generated" });
+    case "receiver-not-confirmed":
+    case "both-hold-slots":
+      return refused({ reason: decision.reason, name: idle.name });
+  }
 }
 
 /**

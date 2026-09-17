@@ -68,6 +68,7 @@ import {
 } from "../rating-progress-answer";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
 import { resolveReminderPhrase } from "../reminder-time";
+import { isSwapParty, parseSwapNames } from "../team-slot-swap";
 import { resolvePerson } from "./identity";
 import type {
   AttendanceFacts,
@@ -320,9 +321,16 @@ export function decide(input: EngineInput): EngineResult {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
     const sender = m.senderUserId;
+    // A self claim the swap guard in `handleAttendance` will refuse
+    // ("swap me with David") writes nothing, so it must not supersede
+    // an earlier real "in" from the same author.
+    const swapParties = parseSwapNames(m.body);
     if (
       !m.facts.claims.some(
-        (c) => c.subject === "sender" && wouldWrite(c, isFloorExempt(c, sender, state.roster)),
+        (c) =>
+          c.subject === "sender" &&
+          wouldWrite(c, isFloorExempt(c, sender, state.roster)) &&
+          !(swapParties && isSwapParty(c, swapParties)),
       )
     )
       return;
@@ -537,6 +545,46 @@ export function decide(input: EngineInput): EngineResult {
         }
       }
 
+      // ══════════════════════════════════════════════════════════════
+      // A SWAP REQUEST IS NEVER ATTENDANCE FOR THE TWO IT NAMES
+      // ══════════════════════════════════════════════════════════════
+      //
+      // 2026-09-17, dry-run cases TR26 / TR27: "@Match Time swap David
+      // and Sait", refused by the swap fast path (or sent untagged by an
+      // admin, whose third-party OUT needs no tag), reached this function
+      // and DROPPED David 10 of 10. The model's claim looked exactly like
+      // a real drop (`basis=decision polarity=out`), so no rule below
+      // could tell it apart. The body can: `parseSwapNames` is the fast
+      // path's own parser, and a person the message asks to SWAP is not
+      // being added, dropped or benched by it. The argument for putting
+      // this here rather than in a prompt, and for matching per NAME
+      // rather than refusing the whole message, is in
+      // `lib/team-slot-swap.ts` above `isSwapParty`.
+      //
+      // FILTERED, NOT RETURNED. Every other claim in the message (the
+      // sender's own "and I'm out", a third party the swap does not
+      // name) carries on through every rule below, and so do the side
+      // requests. The one early exit is for a message whose ONLY claims
+      // were about the swap's parties, and it sits after the chase
+      // branch so that branch still speaks.
+      const swapParties = parseSwapNames(msg.body);
+      let refusedAsSwapParty = 0;
+      if (swapParties && claims.length > 0) {
+        const kept: Claim[] = [];
+        for (const c of claims) {
+          if (!isSwapParty(c, swapParties)) {
+            kept.push(c);
+            continue;
+          }
+          refusedAsSwapParty++;
+          out.reasons.push(
+            `"${c.personRef || "sender"}" is named in a team-swap request ` +
+              `(${swapParties.a} / ${swapParties.b}): a swap is never an attendance change`,
+          );
+        }
+        claims = kept;
+      }
+
       // Side requests are facts in their own right and must survive
       // alongside the claims. Today's incident was a fast path claiming
       // a two-intent message and throwing half of it away.
@@ -551,6 +599,10 @@ export function decide(input: EngineInput): EngineResult {
           out.reasons.push("chase nudge: no attendance change");
           return;
         }
+        // Every claim was about a swap party. The reasons above already
+        // say so, per person; "no claims extracted", or the self_att
+        // disagreement below, would each describe a different outcome.
+        if (refusedAsSwapParty > 0) return;
         if (msg.route === "self_att" && facts.affirmation === null) {
           // §11.2 TWO-STAGE DISAGREEMENT, the other way round. The
           // `route === "none"` branch at the top of this loop already

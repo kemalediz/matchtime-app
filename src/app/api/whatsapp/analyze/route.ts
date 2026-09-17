@@ -106,6 +106,7 @@ import {
   buildRecruitAckReply,
   buildTeamSheet,
   buildSwapDeferredReply,
+  buildSwapRefusedReply,
   buildTeamSwapReply,
   buildSlotTransferReply,
   buildColourSwapReply,
@@ -279,9 +280,8 @@ import {
   type ClauseReport,
 } from "@/lib/pipeline/clause-peel";
 import {
-  decideSwap,
   parseSwapNames,
-  resolveSwapSide,
+  planSwap,
   type SwapCandidate,
 } from "@/lib/team-slot-swap";
 import {
@@ -1210,21 +1210,51 @@ async function handleAnalyzeRequest(request: Request) {
     // got at 16:47 on 2026-09-08. Nothing useful is being taken from
     // the pipeline; the pipeline had nothing to give this shape.
     //
-    // EVERY REFUSAL STILL FALLS THROUGH. `handleTeamSwapIfApplicable`
-    // returns null for all five refusal reasons in `team-slot-swap.ts`,
-    // so an ambiguous state reaches the router and the owners exactly
-    // as it does today, and the peel owns no message it cannot act on.
+    // ⚠️ CHANGED 2026-09-17 — A REFUSAL IS ANSWERED, AND THE WHOLE
+    //    MESSAGE STILL GOES ON.
+    //
+    // This paragraph used to say "EVERY REFUSAL STILL FALLS THROUGH":
+    // the handler returned null for every refusal, the message reached
+    // the router whole, and the owner was never told. Measured live
+    // (`scripts/dryrun-pipeline.ts`, TR26 / TR27, REPEAT=10), what the
+    // pipeline then did with "@Match Time swap David and Sait" was DROP
+    // DAVID, 10 of 10, and the Turkish form 9 of 10. Two changes, one
+    // per layer:
+    //
+    //   1. THE ENGINE refuses any claim about a person the message asks
+    //      to swap (`pipeline/engine.ts`, `isSwapParty`). That is the
+    //      fix for the drop, and it holds for every path that reaches
+    //      the engine, including an untagged swap from an admin, which
+    //      never reaches this peel at all.
+    //   2. HERE, a refusal of a REAL swap (at least one name is somebody
+    //      in this match; `planSwap` says which) is claimed with a reply
+    //      saying it was not applied and why. The residual is the WHOLE
+    //      BODY, not `swapPeel.residual`: nothing was done, so nothing is
+    //      taken away, and "swap A with B and I'm out", with no comma,
+    //      still reaches the engine and still drops the sender (the swap
+    //      parties are refused there). Being claimed has two other
+    //      effects, both the ones a successful swap already has: the
+    //      message is kept from the step-7 owners (so `balancer` does
+    //      not answer it too) and from the operator note.
+    //
+    // A message that is not a player swap at all ("switch it to 7 a
+    // side": neither word is a person) is still not owned, exactly as
+    // before.
     //
     // AND THE PEEL SELECTS ITS CLAUSE WITH THE HANDLER'S OWN PARSER.
     // `peelClause` applies `parseSwapNames` to the whole body FIRST and
     // returns null if it finds nothing — which is precisely when
     // `handleTeamSwapIfApplicable` would have returned null on its first
-    // line. The two are equivalent, so this owns not one message more
-    // than it did; only the residual is new.
+    // line.
     const swapPeel = peelClause(m.body, (c) => parseSwapNames(c) !== null);
     if (!swapPeel) continue;
-    const swapResult = await handleTeamSwapIfApplicable(org.id, swapPeel.consumed);
-    if (swapResult) {
+    const sender = senderById.get(m.waMessageId);
+    const swapResult = await handleTeamSwapIfApplicable(
+      org.id,
+      swapPeel.consumed,
+      sender?.userId ? { userId: sender.userId, name: sender.name ?? m.authorName ?? "" } : null,
+    );
+    if (swapResult?.kind === "applied") {
       await claimFastPath(m, swapPeel, {
         handledBy: "fast-path",
         intent: "team_swap",
@@ -1233,6 +1263,19 @@ async function handleAnalyzeRequest(request: Request) {
         react: "✅",
         reply: swapResult.reply,
       });
+    } else if (swapResult?.kind === "refused") {
+      await claimFastPath(
+        m,
+        { consumed: swapPeel.consumed, residual: m.body },
+        {
+          handledBy: "fast-path",
+          intent: "team_swap",
+          action: "team-swap-refused",
+          reasoning: swapResult.logReason,
+          react: null,
+          reply: swapResult.reply,
+        },
+      );
     }
   }
 
@@ -3656,13 +3699,15 @@ async function handleOnboardingIfApplicable(
  *                              declined the message entirely.
  *
  * Returns:
- *   { reply, logReason }  → handled (the caller peels the message)
- *   null                  → not a shape this owns; the ordinary flow
- *                           decides it, exactly as before. EVERY
- *                           refusal comes back this way on purpose:
- *                           owning a message peels it out of the batch,
- *                           and a refusal that owned it would delete
- *                           every other clause in the same message.
+ *   { kind: "applied", … }  → handled (the caller peels the clause)
+ *   { kind: "refused", … }  → a real player swap that was NOT applied,
+ *                             with the reply that says so (2026-09-17).
+ *                             The caller claims it with the WHOLE body
+ *                             as the residual, so no other clause of
+ *                             the message is lost.
+ *   null                    → not a player swap at all, or no upcoming
+ *                             match; the ordinary flow decides it,
+ *                             exactly as before.
  *
  * It writes `TeamAssignment` and nothing else: never attendance, never
  * the balancer.
@@ -3687,7 +3732,8 @@ async function handleOnboardingIfApplicable(
 async function handleTeamSwapIfApplicable(
   orgId: string,
   rawBody: string,
-): Promise<{ reply: string; logReason: string } | null> {
+  sender: { userId: string; name: string } | null,
+): Promise<{ kind: "applied" | "refused"; reply: string; logReason: string } | null> {
   const names = parseSwapNames(rawBody);
   if (!names) return null;
 
@@ -3739,20 +3785,25 @@ async function handleTeamSwapIfApplicable(
     roster.push({ userId: t.userId, name: t.user.name, status: "NONE", team: t.team });
   }
 
-  const A = resolveSwapSide(names.a, roster);
-  const B = resolveSwapSide(names.b, roster);
-  if (!A || !B) return null;
-
-  const decision = decideSwap(A, B);
-
-  // A REFUSAL IS A FALL-THROUGH, NEVER AN OWNED MESSAGE. This is the
-  // same `null` the shipped handler returned for everything that was
-  // not a both-CONFIRMED pair, so the set of messages the peel swallows
-  // grows by exactly one shape (the replacement transfer) and by
-  // nothing else. `lib/team-slot-swap.ts` names each refusal and argues
-  // it; none of them is safe to ANSWER, because answering peels the
-  // message out of `fresh` and deletes every other clause in it.
-  if (decision.kind === "refuse") return null;
+  // THE WHOLE DECISION IS `planSwap`, pure and tested in
+  // `lib/team-slot-swap.ts`. A REAL swap it cannot apply is ANSWERED
+  // (2026-09-17). The old comment here said none was safe to answer
+  // because answering removed every other clause of the message; the
+  // caller now claims a refusal with the whole body as its residual,
+  // so nothing is removed, and the engine refuses the swap's two names.
+  const plan = planSwap(names, roster, {
+    sender,
+    teamsExist: match.teamAssignments.length > 0,
+  });
+  if (plan.kind === "not-a-player-swap") return null;
+  if (plan.kind === "refused") {
+    return {
+      kind: "refused",
+      reply: buildSwapRefusedReply({ a: plan.a, b: plan.b, why: plan.why, lang: match.activity.org.language }),
+      logReason: `team-swap refused (${plan.why.reason}): ${plan.a} <-> ${plan.b}; nothing written`,
+    };
+  }
+  const decision = plan.decision;
 
   const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
   const sheet = async () => {
@@ -3772,8 +3823,9 @@ async function handleTeamSwapIfApplicable(
     // Teams not generated yet — nothing to swap, but make ABSOLUTELY
     // sure nobody is dropped. Acknowledge + defer. Unchanged wording.
     return {
-      reply: buildSwapDeferredReply({ a: A.name, b: B.name, lang: match.activity.org.language }),
-      logReason: `team-swap deferred (no teams yet): ${A.name} <-> ${B.name}`,
+      kind: "applied",
+      reply: buildSwapDeferredReply({ a: decision.a.name, b: decision.b.name, lang: match.activity.org.language }),
+      logReason: `team-swap deferred (no teams yet): ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
 
@@ -3791,6 +3843,7 @@ async function handleTeamSwapIfApplicable(
       }),
     ]);
     return {
+      kind: "applied",
       reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet(), lang: match.activity.org.language }),
       logReason: `team-swap applied: ${decision.a.name} <-> ${decision.b.name}`,
     };
@@ -3822,6 +3875,7 @@ async function handleTeamSwapIfApplicable(
   ]);
   const movedTo = decision.team === "RED" ? labels[0] : labels[1];
   return {
+    kind: "applied",
     reply: buildSlotTransferReply({
       to: decision.to.name,
       from: decision.from.name,

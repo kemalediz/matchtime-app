@@ -28,7 +28,9 @@
 import { describe, it, expect } from "vitest";
 import {
   decideSwap,
+  isSwapParty,
   parseSwapNames,
+  planSwap,
   resolveSwapSide,
   type SwapCandidate,
   type SwapDecision,
@@ -367,5 +369,201 @@ describe("resolveSwapSide", () => {
 
   it("returns null for a name nobody carries", () => {
     expect(resolveSwapSide("kevin", roster)).toBeNull();
+  });
+});
+
+// ── A SWAP REQUEST IS NEVER ATTENDANCE (2026-09-17, TR26 / TR27) ───────
+//
+// The swap check refuses a message it cannot apply (an unknown or
+// ambiguous name, teams not generated) and the message reaches the
+// attendance pipeline. Measured live before this change, REPEAT=10:
+// "@Match Time swap David and Sait" dropped David 10 of 10, and "@Match
+// Time David ile Sait'i değiştir" 9 of 10. `isSwapParty` is the test the
+// engine asks of every claim in such a message: is this claim about one
+// of the two people the message asks to swap?
+describe("isSwapParty", () => {
+  const P = { a: "david", b: "sait" };
+  const other = (personRef: string) => ({ subject: "other" as const, personRef });
+
+  const YES: Array<[string, { a: string; b: string }, string]> = [
+    ["the first name, as typed", P, "David"],
+    ["the second name", P, "Sait"],
+    ["an @mention of the name", P, "@David"],
+    ["the full name the extractor copied", P, "Sait Demir"],
+    ["the Turkish accusative", P, "Sait'i"],
+    ["the curly apostrophe", P, "Sait’i"],
+    ["upper case", P, "DAVID"],
+    ["a dotted capital İ", { a: "idris", b: "can" }, "İdris"],
+    ["a parsed name with its own suffix", { a: "david", b: "ali'yi" }, "Ali"],
+  ];
+  for (const [label, parties, ref] of YES) {
+    it(`claims about "${ref}" are a swap party (${label})`, () => {
+      expect(isSwapParty(other(ref), parties)).toBe(true);
+    });
+  }
+
+  const NO: Array<[string, { a: string; b: string }, string]> = [
+    ["a different player", P, "Zeeshan"],
+    ["a name that merely STARTS with a party", P, "Davidson"],
+    ["an empty reference", P, ""],
+    // "@Kemal switch it to 7 a side and include Amir" parses as a swap of
+    // "it" and "to". Amir is not a party, and his IN must survive: this is
+    // router rule 15's own example, and it is why the guard is per NAME
+    // and never per message.
+    ["the rule-15 message's real player", { a: "it", b: "to" }, "Amir"],
+  ];
+  for (const [label, parties, ref] of NO) {
+    it(`claims about "${ref}" are not (${label})`, () => {
+      expect(isSwapParty(other(ref), parties)).toBe(false);
+    });
+  }
+
+  it("the sender's own claim is a party only when the swap names the sender", () => {
+    const sender = { subject: "sender" as const, personRef: "" };
+    expect(isSwapParty(sender, P)).toBe(false);
+    expect(isSwapParty(sender, { a: "me", b: "david" })).toBe(true);
+    expect(isSwapParty(sender, { a: "david", b: "myself" })).toBe(true);
+  });
+
+  it("'Ben' is a player, not the Turkish 'I': the sender's own claim survives", () => {
+    const sender = { subject: "sender" as const, personRef: "" };
+    expect(isSwapParty(sender, { a: "ben", b: "pat" })).toBe(false);
+    expect(isSwapParty(other("Ben"), { a: "ben", b: "pat" })).toBe(true);
+  });
+});
+
+// ── WHAT THE ROUTE DOES WITH A PARSED SWAP ─────────────────────────────
+//
+// `planSwap` is the pure half of `handleTeamSwapIfApplicable`. It adds
+// two things to `decideSwap`: it separates a message that is not a
+// player swap at all ("switch it to 7 a side": neither word is anybody)
+// from a real swap it cannot apply, and it names WHY it refused, so the
+// owner is told instead of hearing nothing.
+describe("planSwap", () => {
+  const roster: SwapCandidate[] = [
+    { userId: "u-david", name: "David", status: "CONFIRMED", team: "RED" },
+    { userId: "u-sait", name: "Sait Demir", status: "CONFIRMED", team: "YELLOW" },
+    { userId: "u-elvin", name: "Elvin Aliyev", status: "DROPPED", team: null },
+    { userId: "u-baki", name: "Baki Aydin", status: "BENCH", team: null },
+    { userId: "u-omar1", name: "Omar One", status: "DROPPED", team: null },
+    { userId: "u-omar2", name: "Omar Two", status: "BENCH", team: null },
+    { userId: "u-kemal", name: "Kemal Ediz", status: "CONFIRMED", team: "YELLOW" },
+  ];
+  const noTeams = roster.map((r) => ({ ...r, team: null }));
+  const opts = { sender: { userId: "u-kemal", name: "Kemal Ediz" }, teamsExist: true };
+
+  it("applies a swap it can apply, exactly as decideSwap says", () => {
+    const p = planSwap({ a: "david", b: "sait" }, roster, opts);
+    expect(p.kind).toBe("decided");
+    if (p.kind === "decided") expect(p.decision.kind).toBe("team-swap");
+  });
+
+  it("is not a player swap when NEITHER word is a player", () => {
+    expect(planSwap({ a: "it", b: "to" }, roster, opts)).toEqual({ kind: "not-a-player-swap" });
+  });
+
+  it("is not a player swap when a word only PREFIXES a player ('to' and Tom)", () => {
+    // "@Match Time switch it to 7 a side" parses as it / to, and "to"
+    // prefix-matches Tom Third. Caught by the e2e suite: the owner was
+    // told "I haven't swapped It and Tom Third".
+    const withTom: SwapCandidate[] = [
+      ...roster,
+      { userId: "u-tom", name: "Tom Third", status: "CONFIRMED", team: "YELLOW" },
+    ];
+    expect(planSwap({ a: "it", b: "to" }, withTom, opts)).toEqual({ kind: "not-a-player-swap" });
+  });
+
+  it("a prefix still resolves once the other word is exactly a player", () => {
+    const p = planSwap({ a: "dav", b: "sait" }, roster, opts);
+    expect(p.kind).toBe("decided");
+  });
+
+  it("refuses an unknown name, and names it as typed", () => {
+    expect(planSwap({ a: "david", b: "zork" }, roster, opts)).toEqual({
+      kind: "refused",
+      a: "David",
+      b: "Zork",
+      why: { reason: "unknown-name", name: "Zork" },
+    });
+  });
+
+  it("refuses an ambiguous name, and lists who it could be", () => {
+    expect(planSwap({ a: "omar", b: "sait" }, roster, opts)).toEqual({
+      kind: "refused",
+      a: "Omar",
+      b: "Sait Demir",
+      why: { reason: "ambiguous-name", name: "Omar", candidates: ["Omar One", "Omar Two"] },
+    });
+  });
+
+  it("says the teams are not generated when that is the reason", () => {
+    const p = planSwap({ a: "david", b: "elvin" }, noTeams, { ...opts, teamsExist: false });
+    expect(p).toEqual({
+      kind: "refused",
+      a: "David",
+      b: "Elvin Aliyev",
+      why: { reason: "teams-not-generated" },
+    });
+  });
+
+  it("keeps the shipped deferral for two confirmed players and no teams", () => {
+    const p = planSwap({ a: "david", b: "sait" }, noTeams, { ...opts, teamsExist: false });
+    expect(p.kind).toBe("decided");
+    if (p.kind === "decided") expect(p.decision.kind).toBe("defer-no-teams");
+  });
+
+  it("names the player who is not in the squad", () => {
+    expect(planSwap({ a: "david", b: "baki" }, roster, opts)).toEqual({
+      kind: "refused",
+      a: "David",
+      b: "Baki Aydin",
+      why: { reason: "receiver-not-confirmed", name: "Baki Aydin" },
+    });
+  });
+
+  it("refuses when nobody named is playing", () => {
+    const p = planSwap({ a: "elvin", b: "baki" }, roster, opts);
+    expect(p.kind === "refused" && p.why).toEqual({ reason: "nobody-is-playing" });
+  });
+
+  it("reads 'me' as the sender", () => {
+    const p = planSwap({ a: "me", b: "david" }, roster, opts);
+    expect(p.kind).toBe("decided");
+    if (p.kind === "decided" && p.decision.kind === "team-swap") {
+      expect(p.decision.a.userId).toBe("u-kemal");
+      expect(p.decision.b.userId).toBe("u-david");
+    }
+  });
+
+  it("'me' from a sender with no attendance row is a real side, not an unknown name", () => {
+    const p = planSwap({ a: "me", b: "david" }, roster, {
+      sender: { userId: "u-new", name: "New Guy" },
+      teamsExist: true,
+    });
+    expect(p).toEqual({
+      kind: "refused",
+      a: "New Guy",
+      b: "David",
+      why: { reason: "receiver-not-confirmed", name: "New Guy" },
+    });
+  });
+
+  it("'Ben' resolves to the player called Ben, never to the sender", () => {
+    const withBen: SwapCandidate[] = [
+      ...roster,
+      { userId: "u-ben", name: "Ben Bench", status: "BENCH", team: null },
+    ];
+    const p = planSwap({ a: "ben", b: "elvin" }, withBen, opts);
+    expect(p).toEqual({
+      kind: "refused",
+      a: "Ben Bench",
+      b: "Elvin Aliyev",
+      why: { reason: "nobody-is-playing" },
+    });
+  });
+
+  it("'me' from an unresolved sender is not a side at all", () => {
+    const p = planSwap({ a: "me", b: "zork" }, roster, { sender: null, teamsExist: true });
+    expect(p).toEqual({ kind: "not-a-player-swap" });
   });
 });

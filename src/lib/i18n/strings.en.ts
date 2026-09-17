@@ -483,6 +483,24 @@ export const en = {
     `🔁 *${p.to}* takes *${p.from}*'s place on *${p.teamLabel}* — ` +
     `same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:`,
   colour_swap_done: "🎨 Swapped the colours — same teams, sides flipped:",
+  // A swap MatchTime could not apply (2026-09-17). Before this the owner
+  // heard nothing, and the message went on to be read as a drop.
+  swap_refused: (p: { a: string; b: string; why: string }): string =>
+    `I haven't swapped *${p.a}* and *${p.b}*. ${p.why} Nothing changed and nobody was dropped.`,
+  swap_refused_unknown: (p: { name: string }): string =>
+    `I can't find a player called *${p.name}* for this match. Use the name they're registered under.`,
+  swap_refused_ambiguous: (p: { name: string; candidates: string[] }): string =>
+    `*${p.name}* could be more than one player (${p.candidates.join(", ")}). Use their full name.`,
+  swap_refused_teams_not_generated:
+    "The teams aren't generated yet. Say *@Match Time generate the teams* first.",
+  swap_refused_same_player: "Both names point to the same player.",
+  swap_refused_nobody_playing: "Neither of them is in the squad.",
+  swap_refused_not_in_squad: (p: { name: string }): string =>
+    `*${p.name}* isn't in the squad, so there's no team place to give them.`,
+  swap_refused_both_hold_slots: (p: { name: string }): string =>
+    `*${p.name}* isn't in the squad but still has a team place, and so does the other player, so I can't tell which move you mean.`,
+  swap_refused_no_slot: (p: { name: string }): string =>
+    `*${p.name}* isn't in the squad and has no team place to hand over.`,
 
   // ── row 67: the bot intro (scheduler-copy.ts) ──────────────────────
 
