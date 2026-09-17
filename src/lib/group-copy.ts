@@ -481,3 +481,118 @@ export function buildMatchDayChaseFallback(args: {
 }): string {
   return t(args.lang).match_day_chase_fallback({ need: args.need, activityName: args.activityName });
 }
+
+// ── Extracted verbatim on 2026-09-17 (Phase 2 slice 2) so the golden ──
+// snapshot can pin them; the owning modules keep the database work.
+
+/** Row 64: the admin "switch format" announcement (`app/actions/matches.ts`).
+ *  `kickoffLine` is `renderKickoffMoveLine`'s output ("" when the kickoff
+ *  did not move); names missing on a row print as "?", as they always did. */
+export function buildFormatSwitchAnnouncement(args: {
+  sportName: string;
+  maxPlayers: number;
+  kickoffLine: string;
+  playing: Array<string | null>;
+  bench: Array<string | null>;
+}): string {
+  const playerLines = args.playing.map((n, i) => `${i + 1}. ${n ?? "?"}`).join("\n");
+  const benchLines = args.bench.length
+    ? "\n\n*Bench:*\n" + args.bench.map((n, i) => `${i + 1}. ${n ?? "?"}`).join("\n")
+    : "";
+  return (
+    `🔁 *Match switched* — now *${args.sportName}* (${args.maxPlayers} players).\n` +
+    (args.kickoffLine ? `${args.kickoffLine}\n` : "") +
+    `\n*Playing (${args.playing.length}/${args.maxPlayers}):*\n${playerLines || "_nobody yet_"}` +
+    benchLines
+  );
+}
+
+/** Row 65: the admin "cancel match" announcement. `whenLabel` is the
+ *  London "EEE d MMM 'at' HH:mm" label. */
+export function buildMatchCancelledAnnouncement(args: { activityName: string; whenLabel: string }): string {
+  return (
+    `❌ *Match cancelled* — ${args.activityName} on ${args.whenLabel}.\n\n` +
+    `Not enough players this week. See you next week!`
+  );
+}
+
+/** Rows 123 to 126: the group's reply to an admin recruit ask, from what
+ *  `inviteRecentPlayers` actually did (`analyze/route.ts`). `reason` is
+ *  the lib's own sentence for the full-squad and no-match cases. */
+export function buildRecruitAckReply(r: {
+  ok: boolean;
+  reason?: string | null;
+  invited?: number | null;
+  matchName?: string | null;
+  need?: number | null;
+  alreadyInvited?: number | null;
+}): string {
+  if (!r.ok) return r.reason ?? "Couldn't do that right now.";
+  if (r.invited && r.invited > 0) {
+    return `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`;
+  }
+  if (r.reason) return r.reason;
+  if (r.alreadyInvited && r.alreadyInvited > 0) {
+    return `Already pinged the recent players for *${r.matchName}* — just waiting on their replies. 🙏`;
+  }
+  return `No new players to ask for *${r.matchName}* right now. 👍`;
+}
+
+/** Row 127: the two-team sheet the swap replies end with. Unlike
+ *  `formatTeamsPost` the labels carry no colon, and a missing name is "?". */
+export function buildTeamSheet(args: {
+  redLabel: string;
+  yellowLabel: string;
+  red: Array<string | null>;
+  yellow: Array<string | null>;
+}): string {
+  const list = (names: Array<string | null>) => names.map((n, i) => `${i + 1}. ${n ?? "?"}`).join("\n");
+  return `*${args.redLabel}*\n${list(args.red)}\n\n*${args.yellowLabel}*\n${list(args.yellow)}`;
+}
+
+/** Row 128: a swap asked for before the teams exist. */
+export function buildSwapDeferredReply(args: { a: string; b: string }): string {
+  return (
+    `Both *${args.a}* and *${args.b}* are already in — nobody's dropped. ` +
+    `Teams aren't generated yet; say *generate teams* and I'll build them (then I can put them on opposite sides).`
+  );
+}
+
+/** Row 129: two confirmed players swapped sides. */
+export function buildTeamSwapReply(args: { a: string; b: string; sheet: string }): string {
+  return `🔁 Swapped *${args.a}* and *${args.b}* — nobody dropped. Updated teams:\n\n${args.sheet}`;
+}
+
+/** Row 130: a replacement inherits the dropped player's slot. */
+export function buildSlotTransferReply(args: { to: string; from: string; teamLabel: string; sheet: string }): string {
+  return (
+    `🔁 *${args.to}* takes *${args.from}*'s place on *${args.teamLabel}* — ` +
+    `same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:\n\n${args.sheet}`
+  );
+}
+
+/** Row 131: the colours flipped, the sides unchanged. */
+export function buildColourSwapReply(args: { sheet: string }): string {
+  return `🎨 Swapped the colours — same teams, sides flipped:\n\n${args.sheet}`;
+}
+
+/** Row 62: `inviteRecentPlayers` with no upcoming match. */
+export const RECRUIT_NO_MATCH_REFUSAL = "There's no upcoming match to invite players to.";
+
+/** Row 61: `inviteRecentPlayers` into a full squad with the bench feature off. */
+export function buildRecruitFullSquadRefusal(args: { matchName: string }): string {
+  return `The squad for *${args.matchName}* is already full — no open spots to recruit for.`;
+}
+
+/** Row 60: `loadRatingProgress` with no completed match to check. */
+export const RATING_PROGRESS_NO_MATCH_REASON = "There's no recent completed match to check yet.";
+
+/** The balancer's three refusal reasons (`team-generation.ts`), which
+ *  `composeBalancerRefusal` wraps as "Can't build teams right now — <reason>." */
+export const TEAM_GEN_REASON_NOT_FOUND = "match not found";
+export function teamGenReasonStatus(status: string): string {
+  return `match is ${status.toLowerCase()}`;
+}
+export function teamGenReasonNotEnough(args: { confirmed: number; needed: number }): string {
+  return `not enough confirmed players — ${args.confirmed}/${args.needed}`;
+}

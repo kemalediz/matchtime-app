@@ -45,11 +45,16 @@ import { dayLabel, longDayTimeLabel } from "./i18n/dates";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   buildAnnounceMatchPost,
+  buildAskScorePost,
   buildBenchOfferContext,
+  buildBotIntro,
+  buildChasePreKickoffFallback,
   buildDailyInListFallback,
+  buildGearReminder,
   buildMatchDayLockedPost,
   buildMatchDayTeamsBlock,
   buildPaymentPollQuestion,
+  buildPreKickoffShortFallback,
   buildSquadRosterBlock,
   buildUnpaidTailText,
 } from "./scheduler-copy";
@@ -344,56 +349,9 @@ function hoursBetween(a: Date, b: Date): number {
  * become per-group dynamic.
  */
 function botIntroMessage(f: OrgFeatures): string {
-  const lines: string[] = [
-    `👋 Hi all — MatchTime bot is live for this group.`,
-    ``,
-    `Here's what I do:`,
-  ];
-  if (f.attendance) {
-    lines.push(
-      ``,
-      `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with 👍 to confirm — no extra messages from me.`,
-      ``,
-      `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
-    );
-  }
-  if (f.bench) {
-    lines.push(
-      ``,
-      buildBenchIntroLine(),
-    );
-  }
-  if (f.teamBalancing) {
-    lines.push(
-      ``,
-      `⚽  *Teams* — Ask me to "generate teams" and I post auto-balanced sides. Objections? Reply \`swap X Y\` — admin will apply it.`,
-    );
-  }
-  if (f.momVoting || f.playerRating) {
-    const bits: string[] = [];
-    if (f.playerRating)
-      bits.push(`I DM everyone a rating link after each match (no sign-up, just tap)`);
-    if (f.momVoting)
-      bits.push(`vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest)`);
-    lines.push(``, `🏆  *Ratings & MoM* — ${bits.join("; ")}.`);
-  }
-  if (f.reminders) {
-    lines.push(
-      ``,
-      `⏰  *Reminders* — Say "@MatchTime remind me Monday" and I'll DM you then.`,
-    );
-  }
-  if (f.statsQa) {
-    lines.push(
-      ``,
-      `📊  *Stats* — Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
-    );
-  }
-  if (f.paymentTracking) {
-    lines.push(``, `💳  *Payments* — I auto-post "paid?" polls right after each match.`);
-  }
-  lines.push(``, `Questions? Just ask here. Let's go.`);
-  return lines.join("\n");
+  // The words moved verbatim to `scheduler-copy.ts` (pure) on
+  // 2026-09-17 so the golden snapshot can pin them.
+  return buildBotIntro(f, buildBenchIntroLine());
 }
 
 // ─────────────────────────── Main entry point ─────────────────────────────
@@ -1500,10 +1458,12 @@ async function computeForMatch(
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        const text = await composeOrFallback(
-          "chase-pre-kickoff",
-          () =>
-            `⏳ Still *${need} short* for *${activity.name}* at ${format(m.date, "HH:mm")}. Anyone free tonight?`,
+        const text = await composeOrFallback("chase-pre-kickoff", () =>
+          buildChasePreKickoffFallback({
+            need,
+            activityName: activity.name,
+            timeLabel: format(m.date, "HH:mm"),
+          }),
         );
         out.push({ kind: "group-message", key, matchId, text });
       }
@@ -1525,10 +1485,14 @@ async function computeForMatch(
       hoursUntilMatch > 0.5 &&
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
-      const base = `⏰ Tonight *${format(m.date, "HH:mm")}* at *${activity.venue}* · ${confirmed.length}/${maxPlayers}`;
-      const text = await composeOrFallback(
-        "pre-kickoff-short",
-        () => `${base} — *still need ${need}*, last chance to jump in. 🙏`,
+      const text = await composeOrFallback("pre-kickoff-short", () =>
+        buildPreKickoffShortFallback({
+          timeLabel: format(m.date, "HH:mm"),
+          venue: activity.venue,
+          confirmed: confirmed.length,
+          maxPlayers,
+          need,
+        }),
       );
       out.push({ kind: "group-message", key, matchId, text });
     }
@@ -1554,9 +1518,7 @@ async function computeForMatch(
         kind: "group-message",
         key,
         matchId,
-        text:
-          `⚽ *${format(m.date, "HH:mm")} at ${activity.venue}* — see you there!\n\n` +
-          `Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*, and *spare bibs*.`,
+        text: buildGearReminder({ timeLabel: format(m.date, "HH:mm"), venue: activity.venue }),
       });
     }
   }
@@ -1580,9 +1542,7 @@ async function computeForMatch(
         kind: "group-message",
         key,
         matchId,
-        text:
-          `🏁 *${activity.name}* — hope it was a good one. What was the final score? ` +
-          `I'll use it to keep next week's teams balanced.`,
+        text: buildAskScorePost({ activityName: activity.name }),
       });
     }
   }

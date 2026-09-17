@@ -11,6 +11,7 @@
  * the work for a given orgId.
  */
 import { db } from "./db";
+import { RECRUIT_NO_MATCH_REFUSAL, buildRecruitFullSquadRefusal } from "./group-copy";
 import { buildFullSquadBenchInvite } from "./bench-offer-copy";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
@@ -266,7 +267,7 @@ export async function inviteRecentPlayers(
       attendances: { select: { userId: true, status: true } },
     },
   });
-  if (!next) return { ok: false, reason: "There's no upcoming match to invite players to." };
+  if (!next) return { ok: false, reason: RECRUIT_NO_MATCH_REFUSAL };
 
   // Anyone with ANY attendance row has already responded (in / bench /
   // explicitly out) — don't pester them. We only invite recent players
@@ -370,7 +371,7 @@ export async function inviteRecentPlayers(
           // !features.bench`), so promising one would be the silent
           // failure this codebase keeps paying for: a player does as they
           // are told and nothing happens.
-          `The squad for *${next.activity.name}* is already full — no open spots to recruit for.`,
+          buildRecruitFullSquadRefusal({ matchName: next.activity.name }),
     };
   }
 

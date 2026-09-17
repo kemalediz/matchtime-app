@@ -17,6 +17,7 @@
  * happens when it does.
  */
 import { db } from "./db";
+import { RATING_PROGRESS_NO_MATCH_REASON } from "./group-copy";
 import { formatLondon } from "./london-time";
 import type { RatingProgress } from "./rating-progress-answer";
 
@@ -87,7 +88,7 @@ export async function loadRatingProgress(orgId: string): Promise<RatingProgress>
       },
     },
   });
-  if (!match) return { ok: false, reason: "There's no recent completed match to check yet." };
+  if (!match) return { ok: false, reason: RATING_PROGRESS_NO_MATCH_REASON };
 
   const conf = match.attendances;
   const ratingVoters = new Set(

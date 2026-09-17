@@ -30,7 +30,12 @@ export type GenerateTeamsResult =
  * this file imports the Prisma client, and a pure formatter should be
  * reachable from a process that must not load it.
  */
-import { formatTeamsPost } from "./group-copy";
+import {
+  TEAM_GEN_REASON_NOT_FOUND,
+  formatTeamsPost,
+  teamGenReasonNotEnough,
+  teamGenReasonStatus,
+} from "./group-copy";
 export { formatTeamsPost };
 
 export interface GenerateTeamsOptions {
@@ -62,9 +67,9 @@ export async function generateTeamsForMatch(
       },
     },
   });
-  if (!match) return { ok: false, reason: "match not found" };
+  if (!match) return { ok: false, reason: TEAM_GEN_REASON_NOT_FOUND };
   if (match.status === "COMPLETED" || match.status === "CANCELLED") {
-    return { ok: false, reason: `match is ${match.status.toLowerCase()}` };
+    return { ok: false, reason: teamGenReasonStatus(match.status) };
   }
 
   const sport = match.activity.sport;
@@ -72,7 +77,7 @@ export async function generateTeamsForMatch(
   if (match.attendances.length < perTeam * 2) {
     return {
       ok: false,
-      reason: `not enough confirmed players — ${match.attendances.length}/${perTeam * 2}`,
+      reason: teamGenReasonNotEnough({ confirmed: match.attendances.length, needed: perTeam * 2 }),
     };
   }
 

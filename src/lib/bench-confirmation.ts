@@ -18,6 +18,7 @@ import { db } from "./db";
 import { recordAttendanceEvent } from "./attendance-events";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 import { resolveTeamLabels } from "./team-labels";
+import { buildBenchClaimAnnouncement } from "./bench-offer-copy";
 
 export type BenchConfirmationResult =
   | {
@@ -174,16 +175,14 @@ export async function resolveBenchConfirmation(args: {
   const confirmedCount = ctx?.attendances.length ?? 0;
   const maxPlayers = ctx?.maxPlayers ?? 0;
   if (ctx && claimer?.name) {
-    let text: string;
-    if (teamLabel && droppedUserName) {
-      text =
-        `🎟 *${claimer.name}* grabbed the slot — taking *${droppedUserName}*'s place on *${teamLabel}* 🙌\n\n` +
-        `_Say "regenerate teams" if you want to rebalance with the new line-up._`;
-    } else if (droppedUserName) {
-      text = `✅ *${claimer.name}* is in, replacing *${droppedUserName}* — squad *${confirmedCount}/${maxPlayers}* 🙌`;
-    } else {
-      text = `✅ *${claimer.name}* grabbed the open slot — squad *${confirmedCount}/${maxPlayers}* 🙌`;
-    }
+    // The words live in `bench-offer-copy.ts` (pure, golden-pinned).
+    const text = buildBenchClaimAnnouncement({
+      claimerName: claimer.name,
+      droppedName: droppedUserName,
+      teamLabel,
+      confirmedCount,
+      maxPlayers,
+    });
     try {
       await db.botJob.create({
         data: { orgId: ctx.activity.org.id, kind: "group", text },

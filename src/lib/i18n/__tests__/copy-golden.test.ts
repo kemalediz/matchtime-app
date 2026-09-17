@@ -103,15 +103,36 @@ import {
 } from "../../group-copy";
 import {
   buildAnnounceMatchPost,
+  buildAskScorePost,
   buildBenchOfferContext,
+  buildBotIntro,
+  buildChasePreKickoffFallback,
   buildDailyInListFallback,
+  buildGearReminder,
   buildMatchDayLockedPost,
   buildMatchDayTeamsBlock,
   buildPaymentPollQuestion,
+  buildPreKickoffShortFallback,
   buildSquadRosterBlock,
   buildUnpaidTailText,
 } from "../../scheduler-copy";
-import { buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
+import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
+import {
+  RATING_PROGRESS_NO_MATCH_REASON,
+  RECRUIT_NO_MATCH_REFUSAL,
+  TEAM_GEN_REASON_NOT_FOUND,
+  buildColourSwapReply,
+  buildFormatSwitchAnnouncement,
+  buildMatchCancelledAnnouncement,
+  buildRecruitAckReply,
+  buildRecruitFullSquadRefusal,
+  buildSlotTransferReply,
+  buildSwapDeferredReply,
+  buildTeamSheet,
+  buildTeamSwapReply,
+  teamGenReasonNotEnough,
+  teamGenReasonStatus,
+} from "../../group-copy";
 import {
   benchClaimPhrasingExample,
   buildBenchAskedLine,
@@ -365,6 +386,49 @@ function cases(lang: Lang): Case[] {
   add("R81 buildBenchOfferContext / fixture only (group)", ctxFixture.group);
   add("R81 buildBenchOfferContext / fixture only (plain)", ctxFixture.plain);
   add("R78 buildPaymentPollQuestion", buildPaymentPollQuestion("Tuesday 7-a-side", lang));
+
+  // ── 1.2 scheduler-copy.ts, slice 2 (extracted from bot-scheduler.ts 2026-09-17)
+  const INTRO_ALL = { attendance: true, bench: true, teamBalancing: true, momVoting: true, playerRating: true, reminders: true, statsQa: true, paymentTracking: true };
+  const INTRO_MIN = { attendance: true, bench: false, teamBalancing: false, momVoting: false, playerRating: false, reminders: false, statsQa: false, paymentTracking: false };
+  const INTRO_RATINGS = { ...INTRO_MIN, attendance: false, momVoting: true, playerRating: true };
+  add("R67 buildBotIntro / everything on", buildBotIntro(INTRO_ALL, buildBenchIntroLine()));
+  add("R67 buildBotIntro / attendance only", buildBotIntro(INTRO_MIN, buildBenchIntroLine()));
+  add("R67 buildBotIntro / ratings and MoM only", buildBotIntro(INTRO_RATINGS, buildBenchIntroLine()));
+  add("R74 buildChasePreKickoffFallback", buildChasePreKickoffFallback({ need: 2, activityName: "Tuesday 7-a-side", timeLabel: "21:30" }));
+  add("R75 buildPreKickoffShortFallback", buildPreKickoffShortFallback({ timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2 }));
+  add("R76 buildGearReminder", buildGearReminder({ timeLabel: "21:30", venue: "Goals North Cheam" }));
+  add("R77 buildAskScorePost", buildAskScorePost({ activityName: "Tuesday 7-a-side" }));
+
+  // ── 1.1 bench-offer-copy.ts, row 49 (extracted from bench-confirmation.ts 2026-09-17)
+  add("R49 buildBenchClaimAnnouncement / team and replaced player", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: "Sait Demir", teamLabel: "Red", confirmedCount: 14, maxPlayers: 14 }));
+  add("R49 buildBenchClaimAnnouncement / replaced player, no team", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: "Sait Demir", teamLabel: null, confirmedCount: 14, maxPlayers: 14 }));
+  add("R49 buildBenchClaimAnnouncement / open slot", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: null, teamLabel: null, confirmedCount: 13, maxPlayers: 14 }));
+
+  // ── 1.1 group-copy.ts, slice 2 (extracted from app/actions/matches.ts, analyze/route.ts, recruit.ts, rating-progress.ts, team-generation.ts)
+  add("R64 buildFormatSwitchAnnouncement / kickoff moved, bench", buildFormatSwitchAnnouncement({ sportName: "Football 5-a-side", maxPlayers: 10, kickoffLine: "⏰ *Kickoff moves to 21:15* (was 21:30).", playing: fourteenNames.slice(0, 10), bench: fourteenNames.slice(10, 12) }));
+  add("R64 buildFormatSwitchAnnouncement / same time, nobody yet", buildFormatSwitchAnnouncement({ sportName: "Football 5-a-side", maxPlayers: 10, kickoffLine: "", playing: [], bench: [] }));
+  add("R64 buildFormatSwitchAnnouncement / unnamed row", buildFormatSwitchAnnouncement({ sportName: "Futsal", maxPlayers: 10, kickoffLine: "", playing: ["Kemal Ediz", null], bench: [null] }));
+  add("R65 buildMatchCancelledAnnouncement", buildMatchCancelledAnnouncement({ activityName: "Tuesday 7-a-side", whenLabel: "Tue 22 Sep at 21:30" }));
+  add("R123 buildRecruitAckReply / not ok, no reason", buildRecruitAckReply({ ok: false }));
+  add("R123 buildRecruitAckReply / not ok, lib reason", buildRecruitAckReply({ ok: false, reason: RECRUIT_NO_MATCH_REFUSAL }));
+  add("R124 buildRecruitAckReply / invited five, two spots", buildRecruitAckReply({ ok: true, invited: 5, matchName: "Tuesday 7-a-side", need: 2 }));
+  add("R124 buildRecruitAckReply / invited one, one spot", buildRecruitAckReply({ ok: true, invited: 1, matchName: "Tuesday 7-a-side", need: 1 }));
+  add("R124 buildRecruitAckReply / invited, need unknown", buildRecruitAckReply({ ok: true, invited: 3, matchName: "Tuesday 7-a-side", need: null }));
+  add("R124 buildRecruitAckReply / full squad, lib reason", buildRecruitAckReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", reason: buildRecruitFullSquadRefusal({ matchName: "Tuesday 7-a-side" }) }));
+  add("R125 buildRecruitAckReply / already pinged", buildRecruitAckReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", alreadyInvited: 4 }));
+  add("R126 buildRecruitAckReply / nobody new", buildRecruitAckReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", alreadyInvited: 0 }));
+  const sheetEn = buildTeamSheet({ redLabel: "Red", yellowLabel: "Yellow", red: ["Kemal Ediz", "Sait Demir", null], yellow: ["Elvin Aliyev", "Abid Hussain"] });
+  add("R127 buildTeamSheet", sheetEn);
+  add("R128 buildSwapDeferredReply", buildSwapDeferredReply({ a: "Kemal Ediz", b: "Sait Demir" }));
+  add("R129 buildTeamSwapReply", buildTeamSwapReply({ a: "Kemal Ediz", b: "Elvin Aliyev", sheet: sheetEn }));
+  add("R130 buildSlotTransferReply", buildSlotTransferReply({ to: "Erdal Ozkan", from: "Sait Demir", teamLabel: "Red", sheet: sheetEn }));
+  add("R131 buildColourSwapReply", buildColourSwapReply({ sheet: sheetEn }));
+  add("R61 buildRecruitFullSquadRefusal", buildRecruitFullSquadRefusal({ matchName: "Tuesday 7-a-side" }));
+  add("R62 RECRUIT_NO_MATCH_REFUSAL", RECRUIT_NO_MATCH_REFUSAL);
+  add("R60 RATING_PROGRESS_NO_MATCH_REASON", RATING_PROGRESS_NO_MATCH_REASON);
+  add("R66 balancer reasons / not found", TEAM_GEN_REASON_NOT_FOUND);
+  add("R66 balancer reasons / completed", teamGenReasonStatus("COMPLETED"));
+  add("R66 balancer reasons / not enough", teamGenReasonNotEnough({ confirmed: 9, needed: 14 }));
 
   // ── 1.1 bench-offer-copy.ts, both flag branches ─────────────────────
   const ctx = ctxTeam.group;

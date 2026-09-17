@@ -103,6 +103,12 @@ import { answerScopedQuestion } from "@/lib/dm-qa";
 import { enforceProximity } from "@/lib/message-analyzer";
 import {
   composeSquadStateReply,
+  buildRecruitAckReply,
+  buildTeamSheet,
+  buildSwapDeferredReply,
+  buildTeamSwapReply,
+  buildSlotTransferReply,
+  buildColourSwapReply,
   stripSquadPostMarker,
   SQUAD_POST_MARKER,
   type SquadTruth,
@@ -2685,28 +2691,16 @@ async function handleAnalyzeRequest(request: Request) {
       // WhatsApp account gets banned, so the clamp is applied where the
       // number is read and re-applied by `resolveLookbackMatches` here.
       const r = await inviteRecentPlayers(org.id, lookbackMatches ?? undefined);
-      const recruitReply = !r.ok
-        ? r.reason ?? "Couldn't do that right now."
-        : r.invited && r.invited > 0
-          ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-          : r.reason
-            ? // FULL-SQUAD CASE, and the words are the LIB's on purpose.
-              // With the bench feature on this is the bench invitation
-              // (2026-09-14: "is already full, no open spots to recruit
-              // for" was answering an ask for BENCHERS, which are wanted
-              // because the squad is full); with it off it is the old
-              // refusal, which for that org is true. `recruit.ts`'s
-              // capacity guard is the only place holding the squad, the
-              // features and the match at once, and the DM admin path
-              // (`dm-reply/route.ts`) prints the same string — deciding
-              // it here would have fixed one caller of two.
-              r.reason
-            : r.alreadyInvited && r.alreadyInvited > 0
-              ? // Branch 3: candidates existed but were ALL already pinged on a
-                // previous recruit call — they just haven't replied yet.
-                `Already pinged the recent players for *${r.matchName}* — just waiting on their replies. 🙏`
-              : // Branch 2: genuinely nobody recent left to ask.
-                `No new players to ask for *${r.matchName}* right now. 👍`;
+      // The four shapes live in `group-copy.ts` (pure, golden-pinned).
+      // FULL-SQUAD CASE: the words are the LIB's on purpose. With the
+      // bench feature on `r.reason` is the bench invitation (2026-09-14:
+      // "is already full, no open spots to recruit for" was answering an
+      // ask for BENCHERS, which are wanted because the squad is full);
+      // with it off it is the old refusal, which for that org is true.
+      // `recruit.ts`'s capacity guard is the only place holding the
+      // squad, the features and the match at once, and the DM admin path
+      // (`dm-reply/route.ts`) prints the same string.
+      const recruitReply = buildRecruitAckReply(r);
 
       const idx = results.findIndex((x) => x.waMessageId === recruitMsg.waMessageId);
       if (idx >= 0) {
@@ -3677,21 +3671,19 @@ async function handleTeamSwapIfApplicable(
       where: { matchId: match.id },
       include: { user: { select: { name: true } } },
     });
-    const red = rows.filter((t) => t.team === "RED").map((t) => t.user.name);
-    const yel = rows.filter((t) => t.team === "YELLOW").map((t) => t.user.name);
-    return (
-      `*${labels[0]}*\n${red.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n` +
-      `*${labels[1]}*\n${yel.map((n, i) => `${i + 1}. ${n}`).join("\n")}`
-    );
+    return buildTeamSheet({
+      redLabel: labels[0],
+      yellowLabel: labels[1],
+      red: rows.filter((t) => t.team === "RED").map((t) => t.user.name),
+      yellow: rows.filter((t) => t.team === "YELLOW").map((t) => t.user.name),
+    });
   };
 
   if (decision.kind === "defer-no-teams") {
     // Teams not generated yet — nothing to swap, but make ABSOLUTELY
     // sure nobody is dropped. Acknowledge + defer. Unchanged wording.
     return {
-      reply:
-        `Both *${A.name}* and *${B.name}* are already in — nobody's dropped. ` +
-        `Teams aren't generated yet; say *generate teams* and I'll build them (then I can put them on opposite sides).`,
+      reply: buildSwapDeferredReply({ a: A.name, b: B.name }),
       logReason: `team-swap deferred (no teams yet): ${A.name} <-> ${B.name}`,
     };
   }
@@ -3710,9 +3702,7 @@ async function handleTeamSwapIfApplicable(
       }),
     ]);
     return {
-      reply:
-        `🔁 Swapped *${decision.a.name}* and *${decision.b.name}* — nobody dropped. Updated teams:\n\n` +
-        (await sheet()),
+      reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet() }),
       logReason: `team-swap applied: ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
@@ -3743,10 +3733,12 @@ async function handleTeamSwapIfApplicable(
   ]);
   const movedTo = decision.team === "RED" ? labels[0] : labels[1];
   return {
-    reply:
-      `🔁 *${decision.to.name}* takes *${decision.from.name}*'s place on *${movedTo}* — ` +
-      `same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:\n\n` +
-      (await sheet()),
+    reply: buildSlotTransferReply({
+      to: decision.to.name,
+      from: decision.from.name,
+      teamLabel: movedTo,
+      sheet: await sheet(),
+    }),
     logReason:
       `team-slot-transfer applied: ${decision.from.name} (${decision.from.status}) ` +
       `-> ${decision.to.name} on ${decision.team}`,
@@ -3861,13 +3853,15 @@ async function handleColorSwapIfApplicable(
     where: { matchId: match.id },
     include: { user: { select: { name: true } } },
   });
-  const red = fresh.filter((t) => t.team === "RED").map((t) => t.user.name);
-  const yel = fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name);
   return {
-    reply:
-      `🎨 Swapped the colours — same teams, sides flipped:\n\n` +
-      `*${labels[0]}*\n${red.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n` +
-      `*${labels[1]}*\n${yel.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
+    reply: buildColourSwapReply({
+      sheet: buildTeamSheet({
+        redLabel: labels[0],
+        yellowLabel: labels[1],
+        red: fresh.filter((t) => t.team === "RED").map((t) => t.user.name),
+        yellow: fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name),
+      }),
+    }),
     logReason: `colour-swap applied (labels flipped, rosters unchanged)`,
   };
 }

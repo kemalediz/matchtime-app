@@ -297,3 +297,29 @@ export function benchClaimPhrasingExample(c: ReactionGate = {}): string {
     ? `"<name>, you're up — 👍/👎 above"`
     : `"<name>, you're up, just reply IN here to take it"`;
 }
+
+/**
+ * Row 49: what the group is told when a bencher claims the open slot.
+ * Moved verbatim from `bench-confirmation.ts` on 2026-09-17. Three
+ * shapes, in the order that module tries them: a team to take over (the
+ * replaced player had a team assignment), a replaced player with no
+ * team yet, or an open slot with nobody to replace.
+ */
+export function buildBenchClaimAnnouncement(args: {
+  claimerName: string;
+  droppedName: string | null;
+  teamLabel: string | null;
+  confirmedCount: number;
+  maxPlayers: number;
+}): string {
+  if (args.teamLabel && args.droppedName) {
+    return (
+      `🎟 *${args.claimerName}* grabbed the slot — taking *${args.droppedName}*'s place on *${args.teamLabel}* 🙌\n\n` +
+      `_Say "regenerate teams" if you want to rebalance with the new line-up._`
+    );
+  }
+  if (args.droppedName) {
+    return `✅ *${args.claimerName}* is in, replacing *${args.droppedName}* — squad *${args.confirmedCount}/${args.maxPlayers}* 🙌`;
+  }
+  return `✅ *${args.claimerName}* grabbed the open slot — squad *${args.confirmedCount}/${args.maxPlayers}* 🙌`;
+}

@@ -8,6 +8,7 @@ import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { revalidatePath } from "next/cache";
 import { sendRatingEmails } from "@/lib/email";
 import { formatLondon } from "@/lib/london-time";
+import { buildFormatSwitchAnnouncement, buildMatchCancelledAnnouncement } from "@/lib/group-copy";
 import { computeEloDeltas } from "@/lib/elo";
 import {
   planFormatSwitchSchedule,
@@ -140,11 +141,6 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
     orderBy: { position: "asc" },
   });
 
-  const playerLines = fresh.map((a, i) => `${i + 1}. ${a.user.name ?? "?"}`).join("\n");
-  const benchLines = benchList.length
-    ? "\n\n*Bench:*\n" +
-      benchList.map((a, i) => `${i + 1}. ${a.user.name ?? "?"}`).join("\n")
-    : "";
   // The incident was the group being told the wrong kickoff, so when the
   // switch moves it, say so in the same message. Empty when it didn't.
   const kickoffLine = renderKickoffMoveLine(schedule);
@@ -153,11 +149,14 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
     data: {
       orgId: match.activity.orgId,
       kind: "group",
-      text:
-        `🔁 *Match switched* — now *${newActivity.sport.name}* (${newMaxPlayers} players).\n` +
-        (kickoffLine ? `${kickoffLine}\n` : "") +
-        `\n*Playing (${fresh.length}/${newMaxPlayers}):*\n${playerLines || "_nobody yet_"}` +
-        benchLines,
+      // The words live in `group-copy.ts` (pure, golden-pinned).
+      text: buildFormatSwitchAnnouncement({
+        sportName: newActivity.sport.name,
+        maxPlayers: newMaxPlayers,
+        kickoffLine,
+        playing: fresh.map((a) => a.user.name),
+        bench: benchList.map((a) => a.user.name),
+      }),
     },
   });
 
@@ -193,9 +192,10 @@ export async function cancelMatch(matchId: string) {
     data: {
       orgId: match.activity.orgId,
       kind: "group",
-      text:
-        `❌ *Match cancelled* — ${match.activity.name} on ${formatLondon(match.date, "EEE d MMM 'at' HH:mm")}.\n\n` +
-        `Not enough players this week. See you next week!`,
+      text: buildMatchCancelledAnnouncement({
+        activityName: match.activity.name,
+        whenLabel: formatLondon(match.date, "EEE d MMM 'at' HH:mm"),
+      }),
     },
   });
 
