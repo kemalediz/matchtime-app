@@ -289,6 +289,45 @@ describe("parseSwapNames", () => {
   }
 });
 
+// ── THE TURKISH FORM (2026-09-17) ──────────────────────────────────────
+//
+// The Turkish copy tells the group to type "@Match Time X ile Y'yi
+// değiştir". The second name carries the accusative suffix after an
+// apostrophe ('yi, 'ı, 'u, 'ü, 'yı…), which is stripped: the roster knows
+// "Can", not "Can'ı".
+describe("parseSwapNames: Turkish", () => {
+  const YES: Array<[string, string, string]> = [
+    ["@Match Time David ile Ali'yi değiştir", "david", "ali"],
+    ["@Match Time Mustafa ile Idris'i değiştir", "mustafa", "idris"],
+    ["Ali ile Can'ı değiştir", "ali", "can"],
+    ["Ali ile Can’ı değiştir", "ali", "can"], // the phone's curly apostrophe
+    ["ali ile can'ı degistir", "ali", "can"],
+    ["Sait ile Burak'ı değiştirir misin", "sait", "burak"],
+    ["Elvin ve Raihan'ı değiştir", "elvin", "raihan"],
+    ["Elvin ile Raihan değiştir", "elvin", "raihan"],
+  ];
+  for (const [body, a, b] of YES) {
+    it(`reads "${body}"`, () => expect(parseSwapNames(body)).toEqual({ a, b }));
+  }
+
+  const NO = [
+    // Colours are the colour swap's, never two players.
+    "@Match Time kırmızı ile sarıyı değiştir",
+    "@Match Time Kırmızı ile Sarı'yı değiştir",
+    "@Match Time renkleri değiştir",
+    "@Match Time renkleri ve takımları değiştir",
+    // Negated: "do not swap Ali and Can".
+    "Ali ile Can'ı değiştirme",
+    // No pair at all.
+    "@Match Time maç saatini değiştir",
+    "@Match Time takımları kur",
+    "Ali ile Ali'yi değiştir",
+  ];
+  for (const body of NO) {
+    it(`declines "${body}"`, () => expect(parseSwapNames(body)).toBeNull());
+  }
+});
+
 // ── NAME RESOLUTION ────────────────────────────────────────────────────
 //
 // The pool WIDENS from "CONFIRMED only" to "anyone with an attendance
