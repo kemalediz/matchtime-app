@@ -143,7 +143,11 @@ const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "
  * feature-accurate one. Kept tight: long enough to be compelling, short
  * enough that nobody scrolls past it.
  */
-const INTRO =
+export function buildLegacySetupIntro(): string {
+  return LEGACY_INTRO;
+}
+
+const LEGACY_INTRO =
   `👋 *Hey, I'm MatchTime* — the automatic organiser for your football group. ` +
   `I take the weekly admin off your hands so you can just turn up and play.\n\n` +
   `Here's what I do:\n` +
@@ -156,7 +160,7 @@ const INTRO =
   `Let's get you set up — takes about a minute:`;
 
 function withIntro(question: string): string {
-  return `${INTRO}\n\n${question}`;
+  return `${buildLegacySetupIntro()}\n\n${question}`;
 }
 
 /**
@@ -878,9 +882,7 @@ export async function handleOnboardingTurn(
         data: { lastHandledWaId: messages[messages.length - 1].waMessageId },
       });
       return {
-        reply: featureMenuText(
-          "I didn't catch which ones — reply with the features you want",
-        ),
+        reply: featureMenuText(legacyMenuRetryLead()),
         completed: false,
       };
     }
@@ -907,6 +909,20 @@ export async function handleOnboardingTurn(
 }
 
 function nextEventQuestion(s: Session): string | null {
+  return legacyEventQuestion(s);
+}
+
+/** The legacy flow's seven setup questions, in order: the first field
+ *  still missing decides which one is asked. Null when all are known. */
+export function legacyEventQuestion(s: {
+  groupName?: string | null;
+  playersPerSide?: number | null;
+  dayOfWeek?: number | null;
+  kickoffTime?: string | null;
+  venue?: string | null;
+  recurrence?: string | null;
+  oneOffDate?: string | null;
+}): string | null {
   if (!s.groupName)
     return "👋 Let's get MatchTime set up for this group! First — what should I call your club/group? (e.g. *Thursday Ballers*)";
   if (!s.playersPerSide)
@@ -939,12 +955,33 @@ function slugify(s: string): string {
 }
 
 function featureMenuText(lead: string): string {
+  return buildLegacyFeatureMenu(lead);
+}
+
+/** The legacy flow's numbered feature menu under a lead line. */
+export function buildLegacyFeatureMenu(lead: string): string {
   const lines = FEATURE_META.map((f, i) => `${i + 1}. *${f.label}* — ${f.blurb}`);
   return (
     `${lead}:\n\n${lines.join("\n")}\n\n` +
     `Reply with the ones you want — e.g. "Man of the Match and player ratings", ` +
     `"everything", or "all except payments".`
   );
+}
+
+/** The lead when the feature pick could not be read. */
+export function legacyMenuRetryLead(): string {
+  return "I didn't catch which ones — reply with the features you want";
+}
+
+/** The lead above the menu once the club is provisioned. */
+export function buildLegacyProvisionedLead(p: {
+  groupName: string;
+  playersPerTeam: number;
+  dayOfWeek: number;
+  kickoffTime: string | null;
+  venue: string | null;
+}): string {
+  return `Nice — *${p.groupName}* is set up for *${p.playersPerTeam}-a-side* on *${DOW[p.dayOfWeek]}s ${p.kickoffTime}* at *${p.venue}*.\n\nLast step: which features do you want? Here's everything I can do`;
 }
 
 /** Create the Organisation + Sport for a gathered session and stamp
@@ -1006,7 +1043,13 @@ async function provisionOrgAndAskFeatures(s: Session): Promise<string> {
   const name = (s.groupName || "New Club").trim();
   const preset = presetForSide(s.playersPerSide ?? 7);
   return featureMenuText(
-    `Nice — *${name}* is set up for *${preset.playersPerTeam}-a-side* on *${DOW[s.dayOfWeek ?? 0]}s ${s.kickoffTime}* at *${s.venue}*.\n\nLast step: which features do you want? Here's everything I can do`,
+    buildLegacyProvisionedLead({
+      groupName: name,
+      playersPerTeam: preset.playersPerTeam,
+      dayOfWeek: s.dayOfWeek ?? 0,
+      kickoffTime: s.kickoffTime ?? null,
+      venue: s.venue ?? null,
+    }),
   );
 }
 

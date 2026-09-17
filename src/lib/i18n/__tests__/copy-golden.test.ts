@@ -202,6 +202,11 @@ import {
   buildCoAdminMagicLinkDm,
   buildConsentAck,
   buildEnrichmentReviewDm,
+  buildLegacyFeatureMenu,
+  buildLegacyProvisionedLead,
+  buildLegacySetupIntro,
+  legacyEventQuestion,
+  legacyMenuRetryLead,
   buildGroupAddCompletionPost,
   buildHelpReply,
   buildHowToUseMe,
@@ -706,6 +711,19 @@ function cases(lang: Lang): Case[] {
   add("R111 buildDmQaApology", buildDmQaApology(lang));
   add("R122 buildStatsLinkDm / named", buildStatsLinkDm({ name: "Sait Demir", url: "https://mt.example/s/stats", lang }));
   add("R122 buildStatsLinkDm / no name", buildStatsLinkDm({ name: null, url: "https://mt.example/s/stats", lang }));
+
+  // ── Phase 3c: the legacy "@Match Time setup" flow (pinned before it moved) ──
+  add("R136 buildLegacySetupIntro", buildLegacySetupIntro());
+  const legacy = { groupName: null as string | null, playersPerSide: null as number | null, dayOfWeek: null as number | null, kickoffTime: null as string | null, venue: null as string | null, recurrence: null as string | null, oneOffDate: null as string | null };
+  add("R137 legacyEventQuestion / name", String(legacyEventQuestion(legacy)));
+  add("R137 legacyEventQuestion / players per side", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC" })));
+  add("R137 legacyEventQuestion / day", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7 })));
+  add("R137 legacyEventQuestion / time", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2 })));
+  add("R137 legacyEventQuestion / venue", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00" })));
+  add("R137 legacyEventQuestion / recurrence", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" })));
+  add("R137 legacyEventQuestion / one-off date", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley", recurrence: "oneoff" })));
+  add("R139 buildLegacyFeatureMenu / provisioned", buildLegacyFeatureMenu(buildLegacyProvisionedLead({ groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" })));
+  add("R139 buildLegacyFeatureMenu / retry", buildLegacyFeatureMenu(legacyMenuRetryLead()));
 
   return c;
 }
