@@ -26,10 +26,55 @@ import { LANGS, LANG_LABELS, DEFAULT_LANG, isLang, normaliseLang } from "../lang
 
 const TABLES = { en, tr } as const;
 
+/**
+ * The throwaway argument every parameterised entry is rendered with. It
+ * carries one plausible value for every parameter name any entry reads,
+ * so an entry that destructures `missing` or `onLabels` renders instead
+ * of throwing. Add a key here when a new entry reads a new parameter.
+ */
+const PROBE: Record<string, unknown> = {
+  name: "Probe",
+  // onboarding (self-setup)
+  groupName: "Probe FC",
+  adminCaptured: true,
+  adminQuestion: "Q",
+  added: 1,
+  detailsQuestion: "Q",
+  missing: ["day"],
+  onLabels: ["Probe"],
+  dayName: "Probe",
+  kickoffTime: "21:00",
+  venue: "Probe Arena",
+  weekly: true,
+  rosterCount: 1,
+  adminsAdded: 1,
+  adminDmQueued: true,
+  adminName: "Probe",
+  howToUseMe: "Probe",
+  url: "https://mt.example/s/probe",
+  payments: true,
+  messagesAnalyzed: 1,
+  playerCount: 1,
+  key: "attendance",
+  englishLabel: "Probe",
+  dow: 1,
+  attendance: true,
+  teamBalancing: true,
+  momVoting: true,
+  playerRating: true,
+  statsQa: true,
+  reminders: true,
+  bench: true,
+  paymentTracking: true,
+  word: "probe",
+  label: "probe",
+  topic: "teams",
+};
+
 /** Render an entry with a throwaway argument so it can be inspected. */
 function render(entry: unknown): string {
   if (typeof entry === "function") {
-    return (entry as (p: Record<string, string>) => string)({ name: "Probe" });
+    return (entry as (p: Record<string, unknown>) => string)(PROBE);
   }
   return String(entry);
 }

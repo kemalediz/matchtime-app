@@ -13,11 +13,13 @@
 import { describe, it, expect } from "vitest";
 import {
   BOT_ADDED_INTRO,
+  buildBotAddedIntro,
   buildHowToUseMe,
   parseHelpTopic,
   buildHelpReply,
   type HelpTopic,
 } from "@/lib/onboarding-conversation";
+import { parseBundleReply } from "@/lib/onboarding-parse";
 
 const ALL_ON = {
   attendance: true,
@@ -30,36 +32,40 @@ const ALL_ON = {
   paymentTracking: true,
 } as const;
 
-describe("BOT_ADDED_INTRO (descriptive on-add pitch)", () => {
-  it("is a single string carrying both message blocks", () => {
+describe("BOT_ADDED_INTRO (the short on-add intro, 2026-09-17)", () => {
+  it("is a single string: one line on what MatchTime is, one question", () => {
     expect(typeof BOT_ADDED_INTRO).toBe("string");
-    // Two blocks joined by a blank line.
     expect(BOT_ADDED_INTRO).toContain("\n\n");
   });
 
-  it("describes the headline features", () => {
-    expect(BOT_ADDED_INTRO).toContain("Squad list");
-    expect(BOT_ADDED_INTRO.toLowerCase()).toMatch(/maybe/);
-    expect(BOT_ADDED_INTRO).toContain("Fair teams");
-    expect(BOT_ADDED_INTRO).toContain("Man of the Match");
-    expect(BOT_ADDED_INTRO).toContain("Player ratings");
-    expect(BOT_ADDED_INTRO).toContain("Reminders");
-    expect(BOT_ADDED_INTRO).toContain("Payment tracking");
+  it("is short: the owner's rule is that the group gets too many bot words", () => {
+    expect(BOT_ADDED_INTRO.length).toBeLessThan(400);
+    expect(BOT_ADDED_INTRO.split("\n").filter(Boolean).length).toBeLessThanOrEqual(3);
   });
 
-  it("identifies MatchTime and keeps the consent keywords the parser needs", () => {
+  it("identifies MatchTime and keeps the consent keyword the parser needs", () => {
     expect(BOT_ADDED_INTRO).toContain("MatchTime");
-    expect(BOT_ADDED_INTRO).toContain("YES");
-    expect(BOT_ADDED_INTRO).toContain("EVERYTHING");
+    expect(BOT_ADDED_INTRO).toContain("*YES*");
+    expect(parseBundleReply("YES")?.choice).toBe("yes");
   });
 
   it("keeps an opt-out line (falls-open promise)", () => {
     expect(BOT_ADDED_INTRO.toLowerCase()).toMatch(/ignore me|stay quiet/);
   });
 
-  it("mentions the help commands so players can dig deeper", () => {
-    expect(BOT_ADDED_INTRO).toMatch(/help teams/);
-    expect(BOT_ADDED_INTRO).toMatch(/help ratings/);
+  it("carries no feature pitch: that moved to help and the how-to block", () => {
+    expect(BOT_ADDED_INTRO).not.toContain("Payment tracking");
+    expect(BOT_ADDED_INTRO).not.toMatch(/help teams/);
+    expect(buildHelpReply("teams", ALL_ON)).toMatch(/balanced/i);
+  });
+
+  it("the Turkish intro keeps the same contract with EVET", () => {
+    const tr = buildBotAddedIntro("tr");
+    expect(tr).toContain("MatchTime");
+    expect(tr).toContain("*EVET*");
+    expect(tr.length).toBeLessThan(400);
+    expect(tr).not.toMatch(/[—–]/);
+    expect(parseBundleReply("EVET")?.choice).toBe("yes");
   });
 });
 
@@ -150,6 +156,36 @@ describe("parseHelpTopic", () => {
   it("recognises a few aliases (man of the match, player ratings)", () => {
     expect(parseHelpTopic("@Match Time help man of the match")).toBe("mom");
     expect(parseHelpTopic("help player ratings")).toBe("ratings");
+  });
+
+  it("all-caps English still parses (the Turkish lower-casing would dot the I)", () => {
+    expect(parseHelpTopic("@MATCH TIME HELP RATINGS")).toBe("ratings");
+    expect(parseHelpTopic("HELP AVAILABILITY")).toBe("availability");
+    expect(parseHelpTopic("@MATCH TIME YARDIM PUANLAMA")).toBe("ratings");
+  });
+
+  it("reads the Turkish keyword and topic words (2026-09-17)", () => {
+    expect(parseHelpTopic("@Match Time yardım takımlar")).toBe("teams");
+    expect(parseHelpTopic("@Match Time yardim takim")).toBe("teams");
+    expect(parseHelpTopic("@Match Time yardım kadro")).toBe("availability");
+    expect(parseHelpTopic("@Match Time YARDIM maçın adamı")).toBe("mom");
+    expect(parseHelpTopic("@Match Time yardım puanlama")).toBe("ratings");
+    expect(parseHelpTopic("@Match Time yardım hatırlatma")).toBe("reminders");
+    expect(parseHelpTopic("@Match Time yardım ödeme")).toBe("payments");
+    expect(parseHelpTopic("@Match Time yardım")).toBeNull();
+  });
+});
+
+describe("buildHelpReply in Turkish lists the Turkish topic words", () => {
+  it("bare help names each enabled topic by the word a player types", () => {
+    const r = buildHelpReply(null, { ...ALL_ON, paymentTracking: false }, "tr");
+    expect(r).toContain("@Match Time yardım takımlar");
+    expect(r).toContain("@Match Time yardım kadro");
+    expect(r).not.toContain("ödeme");
+    expect(r).not.toMatch(/[—–]/);
+  });
+  it("a topic that is off declines in Turkish", () => {
+    expect(buildHelpReply("payments", { ...ALL_ON, paymentTracking: false }, "tr")).toContain("açık değil");
   });
 });
 

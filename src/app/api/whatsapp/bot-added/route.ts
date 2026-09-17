@@ -5,7 +5,7 @@
  *
  * The Pi bot detects its own JID in a `group_join`'s recipientIds for
  * an unmonitored group and POSTs:
- *   { groupId, groupSubject?, addedByPhone?, participants? }
+ *   { groupId, groupSubject?, addedByPhone?, participants?, enrichmentHistory? }
  *
  * Server behaviour (idempotent):
  *   0. HARD GATE: the ONBOARDING_AUTOSTART env flag must be on,
@@ -16,27 +16,32 @@
  *   2. An active onboarding session exists → idempotent re-add: return
  *      the intro again only if we're still at `introduced` (the bot
  *      was likely kicked + re-added before anyone replied), else stay
- *      silent.
+ *      silent. A STALE session (older than ONBOARDING_SESSION_TTL_MS)
+ *      is abandoned and a fresh one created (2026-09-17).
  *   3. Else create an OnboardingSession (source="group-add",
  *      stage="introduced") seeded with the group subject, the adder's
- *      phone and the participant snapshot, and return the intro text
- *      for the bot to post.
+ *      phone, the participant snapshot and the LANGUAGE detected from
+ *      the subject and the synced history, and return the intro text
+ *      in that language for the bot to post.
  *
  * The conversation continues through the normal /api/whatsapp/analyze
- * path (handleOnboardingIfApplicable routes `introduced`/`details`
- * stages to the onboarding state machine).
+ * path (handleOnboardingIfApplicable routes the active stages to the
+ * onboarding state machine).
  *
  * Auth via WHATSAPP_API_KEY same as the rest of /api/whatsapp/*.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { BOT_ADDED_INTRO } from "@/lib/onboarding-conversation";
-import { isOnboardingAutostartEnabled } from "@/lib/onboarding-parse";
+import { buildBotAddedIntro } from "@/lib/onboarding-conversation";
+import {
+  ACTIVE_ONBOARDING_STAGES,
+  isOnboardingAutostartEnabled,
+  isOnboardingSessionStale,
+} from "@/lib/onboarding-parse";
 import { parseParticipantSnapshot } from "@/lib/participant-sync";
 import { coerceHistoryMessages } from "@/lib/onboarding-enrichment-reconcile";
-
-const ACTIVE_STAGES = ["introduced", "details", "collecting", "features"];
+import { detectGroupLang } from "@/lib/i18n/detect";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -62,7 +67,8 @@ export async function POST(request: Request) {
     // on the OnboardingSession (capturedHistory) so the enrichment pass,
     // which runs later at completion from /api/whatsapp/analyze, can fall
     // back to it when the completing request omits its own
-    // enrichmentHistory. Validated/coerced defensively below.
+    // enrichmentHistory. It is also the evidence for the language
+    // detection below. Validated/coerced defensively.
     enrichmentHistory?: unknown;
   } | null;
   if (!body?.groupId) {
@@ -99,11 +105,18 @@ export async function POST(request: Request) {
 
   // 2. Idempotent re-add while a session is in flight.
   const active = await db.onboardingSession.findFirst({
-    where: { whatsappGroupId: groupId, stage: { in: ACTIVE_STAGES } },
+    where: { whatsappGroupId: groupId, stage: { in: [...ACTIVE_ONBOARDING_STAGES] } },
     orderBy: { createdAt: "desc" },
-    select: { id: true, stage: true, capturedHistory: true },
+    select: { id: true, stage: true, capturedHistory: true, language: true, createdAt: true },
   });
-  if (active) {
+  if (active && isOnboardingSessionStale(active)) {
+    // Nobody answered for two weeks; this add starts over with what the
+    // group looks like today (subject, roster, language).
+    await db.onboardingSession.update({
+      where: { id: active.id },
+      data: { stage: "abandoned" },
+    });
+  } else if (active) {
     // Late-sync rescue: if this re-add finally carries history and the
     // session has none yet, store it. We never CLOBBER existing history —
     // a later re-add could fetch fewer/no messages than the first.
@@ -117,9 +130,10 @@ export async function POST(request: Request) {
       ok: true,
       existing: true,
       stage: active.stage,
+      language: active.language,
       // Still waiting on consent → safe (and useful) to re-post the
       // intro; mid-flow → stay silent, the Q&A continues via analyze.
-      introText: active.stage === "introduced" ? BOT_ADDED_INTRO : null,
+      introText: active.stage === "introduced" ? buildBotAddedIntro(active.language) : null,
     });
   }
 
@@ -134,6 +148,19 @@ export async function POST(request: Request) {
     : null;
   const snapshot = parseParticipantSnapshot(body.participants);
 
+  // The language the group speaks, decided before the first word: from
+  // the subject and whatever history WhatsApp had synced by the time
+  // the Pi read it. English when there is nothing to go on; the consent
+  // reply ("evet" / "yes") corrects it either way. See i18n/detect.ts.
+  const detected = detectGroupLang({
+    subject,
+    history: captured.map((m) => m.text),
+  });
+  console.log(
+    `[bot-added] ${groupId} language=${detected.lang} (${detected.reason}; ` +
+      `subject=${subject ? JSON.stringify(subject) : "none"}, history=${captured.length} msgs)`,
+  );
+
   const session = await db.onboardingSession.create({
     data: {
       whatsappGroupId: groupId,
@@ -147,6 +174,7 @@ export async function POST(request: Request) {
           ? (snapshot.map((p) => ({ ...p })) as Array<Record<string, string | null>>)
           : undefined,
       capturedHistory: capturedJson,
+      language: detected.lang,
     },
     select: { id: true },
   });
@@ -154,6 +182,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     sessionId: session.id,
-    introText: BOT_ADDED_INTRO,
+    language: detected.lang,
+    languageConfident: detected.confident,
+    introText: buildBotAddedIntro(detected.lang),
   });
 }

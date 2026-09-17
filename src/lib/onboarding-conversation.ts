@@ -59,6 +59,9 @@ import {
   type ParsedAdmin,
 } from "./onboarding-parse";
 import { findExistingOrgMember } from "./resolve-player";
+import { t } from "./i18n/t";
+import { normaliseLang, type Lang } from "./i18n/lang";
+import { langOfConsentReply } from "./i18n/detect";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -91,6 +94,10 @@ type Session = {
    *  on read. Used as the enrichment fallback at completion when the
    *  completing /analyze request omits its own enrichmentHistory. */
   capturedHistory?: unknown;
+  /** The language this session speaks (2026-09-17): detected from the
+   *  group subject and history at bot-added time, corrected by the
+   *  consent reply, copied onto the Organisation at completion. */
+  language?: string | null;
 };
 
 export interface OnboardingTurnInput {
@@ -169,47 +176,20 @@ function withIntro(question: string): string {
  * Every line is gated on the relevant feature flag so a group never sees
  * instructions for something they didn't switch on. No raw phone numbers.
  */
-export function buildHowToUseMe(features: {
-  attendance: boolean;
-  teamBalancing: boolean;
-  momVoting: boolean;
-  playerRating: boolean;
-  statsQa: boolean;
-  reminders: boolean;
-  bench: boolean;
-  paymentTracking: boolean;
-}): string {
-  const lines: string[] = [];
-
-  if (features.attendance) {
-    lines.push(`✅ Say *"In"* or *"Out"* to mark your own availability — no need to tag me.`);
-    lines.push(`🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.`);
-  } else {
-    // Squad-from-list shape: no In/Out tracking — the bot reads the squad
-    // off whatever numbered list the group pastes.
-    lines.push(`📋 Paste your squad list and I'll read who's playing — no need to tag me.`);
-  }
-
-  // The tag gate + ONLY the enabled "ask me to do/tell" capabilities.
-  const caps: string[] = [];
-  if (features.attendance) caps.push(`see who's in / how many we've got`);
-  if (features.teamBalancing) caps.push(`make / show the teams`);
-  if (features.statsQa) caps.push(`who won last week? / past stats`);
-  lines.push(`💬 Tag *@Match Time* when you want me to do or tell you something:`);
-  for (const c of caps) lines.push(`   • ${c}`);
-
-  lines.push(`🤐 I stay quiet the rest of the time — banter and jokes are safe, I won't butt in.`);
-
-  // Feature extras — each strictly gated.
-  if (features.momVoting) lines.push(`🏆 After the game I'll run a quick *Man of the Match* vote.`);
-  if (features.playerRating) lines.push(`⭐ I'll DM you a one-tap *rating* link after the match.`);
-  if (features.reminders) lines.push(`⏰ Say *"@Match Time remind me Thursday"* and I'll nudge you.`);
-  if (features.paymentTracking) lines.push(`💳 I keep track of who's *paid*.`);
-
-  // Tip line — only valid because the "@Match Time help" fast-path is wired.
-  lines.push(`\nType *"@Match Time help"* any time to see this again.`);
-
-  return lines.join("\n");
+export function buildHowToUseMe(
+  features: {
+    attendance: boolean;
+    teamBalancing: boolean;
+    momVoting: boolean;
+    playerRating: boolean;
+    statsQa: boolean;
+    reminders: boolean;
+    bench: boolean;
+    paymentTracking: boolean;
+  },
+  lang: Lang | string = "en",
+): string {
+  return t(lang).onbHowToUseMe(features);
 }
 
 /**
@@ -217,46 +197,43 @@ export function buildHowToUseMe(features: {
  * captured at `introduced`; this asks for ADDITIONAL admins. Never
  * blocks the flow — any answer (including junk) advances to `details`.
  */
-const ADMIN_QUESTION =
-  `Who else helps run this group? Reply with their name + number (or @mention) — ` +
-  `you can list a few, separated by commas. Or say *just me* if it's only you.`;
+export const ADMIN_QUESTION = t("en").onbAdminQuestion();
+
+/** The reply to a consent answer (group-add flow): a short lead, then
+ *  the admins question, in the session's language. The English bytes
+ *  are pinned by copy-golden. */
+export function buildConsentAck(adminCaptured: boolean, lang: Lang | string = "en"): string {
+  const s = t(lang);
+  return s.onbConsentAck({ adminCaptured, adminQuestion: s.onbAdminQuestion() });
+}
+
+/** The reply to the admins answer (group-add flow): an optional
+ *  "got it" lead, then the combined when-and-where question. */
+export function buildAdminsAck(added: number, lang: Lang | string = "en"): string {
+  return t(lang).onbAdminsAck({
+    added,
+    detailsQuestion: detailsFollowUpQuestion(["day", "time", "venue"], lang),
+  });
+}
 
 /**
- * Intro posted the moment the bot is ADDED to a group (Phase 1
- * group-add flow — design §B.3). This is now the DESCRIPTIVE full-menu
- * pitch: it walks the group through everything MatchTime can do (so
- * players actually WANT it on), THEN asks the consent question. It is a
- * SINGLE exported string — `introText` is consumed by the out-of-repo
- * Pi bot as one message, so the two logical blocks (Message 1: features;
- * Message 2: the setup choice) are joined with a blank line here, not
- * split into two messages.
+ * Intro posted the moment the bot is ADDED to a group (the group-add
+ * flow). Rewritten 2026-09-17: one line on what MatchTime is and the one
+ * question it needs answered first. The 1,300-character feature pitch
+ * that stood here is gone; the detail lives in `@Match Time help` and
+ * in the "How to use me" block that completion posts. It is a SINGLE
+ * string because `introText` is consumed by the Pi as one message.
  *
- * The consent keywords (YES / EVERYTHING / named features) are
- * load-bearing: the `introduced` stage parser (parseBundleReply) reads
- * them, so they must stay verbatim. The opt-out line keeps the
- * falls-open promise. The `@Match Time help <topic>` pointers route into
- * buildHelpReply once the bot is live.
+ * The consent keyword (YES / EVET) is load-bearing: the `introduced`
+ * stage parser (parseBundleReply) reads it. The opt-out line keeps the
+ * falls-open promise.
  */
-const BOT_ADDED_INTRO_FEATURES =
-  `👋 Hi everyone, I'm *MatchTime* — a free assistant that runs the weekly admin for your football group, so the organiser doesn't have to chase everyone every week.\n\n` +
-  `Here's what I can do for this group:\n\n` +
-  `⚽ *Squad list* — each week just reply *In* or *Out* and I keep a live, numbered list of who's playing. When you're full I start a *reserve/bench* list, and if someone drops out I nudge the bench to fill the spot.\n\n` +
-  `🤔 *Maybes* — not sure yet? Say *"maybe"* and I'll quietly DM you ~24h before kick-off for a final yes or no.\n\n` +
-  `🟥🟦 *Fair teams* — once the squad's locked I split everyone into balanced teams based on recent form, so games stay even (I can even name the teams).\n\n` +
-  `🏆 *Man of the Match* — after the game I run a quick vote to pick the standout player, then announce the winner.\n\n` +
-  `⭐ *Player ratings* — after each match I DM everyone a private one-tap link to rate the others out of 10. That builds each player's form score over time — which is what makes the teams fair.\n\n` +
-  `⏰ *Reminders* — I chase people who haven't replied and remind the squad before kick-off.\n\n` +
-  `💳 *Payment tracking (optional)* — I can track who's paid the match fee, remind those who haven't, and show the organiser who still owes.`;
+export function buildBotAddedIntro(lang: Lang | string): string {
+  return t(lang).onbIntro();
+}
 
-const BOT_ADDED_INTRO_CHOICE =
-  `*Want me to run this group?* Whoever organises it, just reply:\n\n` +
-  `• *YES* — switch on the essentials: squad list, fair teams, bench, Man of the Match, ratings & reminders.\n` +
-  `• *EVERYTHING* — all of that *plus* payment tracking.\n` +
-  `• Or name the bits you want — e.g. *"just Man of the Match and ratings"*.\n\n` +
-  `Want more detail first? Type *@Match Time help teams*, *help ratings*, *help mom*, *help payments* or *help availability* and I'll explain.\n\n` +
-  `Not for you? Just ignore me and I'll stay quiet. 🤐`;
-
-export const BOT_ADDED_INTRO = `${BOT_ADDED_INTRO_FEATURES}\n\n${BOT_ADDED_INTRO_CHOICE}`;
+/** The English intro, for the golden and the legacy imports. */
+export const BOT_ADDED_INTRO = buildBotAddedIntro("en");
 
 // ── Topic-aware help (the "@Match Time help <topic>" router) ───────────
 
@@ -292,42 +269,6 @@ type HelpFeatures = {
   paymentTracking: boolean;
 };
 
-/** The per-topic detailed explainers (warm, plain-English, WhatsApp
- *  markdown). Returned verbatim by buildHelpReply when the gating
- *  feature is ON. */
-const HELP_EXPLAINERS: Record<HelpTopic, string> = {
-  ratings:
-    `⭐ *Player ratings — how it works*\n` +
-    `After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).\n` +
-    `I combine everyone's scores into a form rating for each player that updates after every game — and that's what I use to build *balanced teams*. So the more people rate, the fairer the teams.\n` +
-    `You'll get the link the morning after the game. Type *@Match Time my stats* for yours anytime.`,
-  teams:
-    `🟥🟦 *Fair teams — how it works*\n` +
-    `Once the squad's locked in, any admin can tag *@Match Time generate the teams* and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
-    `I post the line-ups straight into the chat. Not happy with a pairing? Tag me to *swap two players* (e.g. _"@Match Time swap Sam and Alex"_), or ask me to *"@Match Time show the teams"* again any time.\n` +
-    `Want a bit of fun? Ask me to give the teams names and I'll sort it. Tag *@Match Time generate the teams* when you're ready.`,
-  mom:
-    `🏆 *Man of the Match — how it works*\n` +
-    `After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.\n` +
-    `I tally the votes, announce the winner, and it counts towards everyone's season stats — so the MoM race builds up over the year.\n` +
-    `Nothing to set up — I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.`,
-  availability:
-    `⚽ *Squad & availability — how it works*\n` +
-    `Just say *In* or *Out* in the group to mark yourself for the next game — no need to tag me, I read it automatically.\n` +
-    `I keep a live, numbered squad list. When it's full, extra players go on the *bench/reserve* list in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-    `If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.`,
-  reminders:
-    `⏰ *Reminders — how it works*\n` +
-    `I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.\n` +
-    `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll ping you then.\n` +
-    `It all happens automatically — you don't need to chase anyone yourself.`,
-  payments:
-    `💳 *Payment tracking — how it works*\n` +
-    `I keep track of who's paid the match fee. The organiser sets the fee, and I show who's paid and who still owes at a glance.\n` +
-    `I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.\n` +
-    `This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.`,
-};
-
 /** Words/aliases that map a free-text help message to a HelpTopic. Order
  *  matters: longer/more-specific aliases first so "man of the match"
  *  wins over a stray "match". */
@@ -348,6 +289,14 @@ const HELP_TOPIC_ALIASES: Array<[RegExp, HelpTopic]> = [
   [/\bpayments?\b/, "payments"],
   [/\bpaid\b/, "payments"],
   [/\bfees?\b/, "payments"],
+  // Turkish (2026-09-17). `\b` is ASCII-only, so these use the letter
+  // class instead; the text is lower-cased with the Turkish rules.
+  [/maçın adamı|macin adami|maç adamı|mac adami/u, "mom"],
+  [/(?<!\p{L})(?:puan\p{L}*|oylama|değerlendirme|degerlendirme)(?!\p{L})/u, "ratings"],
+  [/(?<!\p{L})(?:takım\p{L}*|takim\p{L}*|denge\p{L}*)(?!\p{L})/u, "teams"],
+  [/(?<!\p{L})(?:kadro\p{L}*|yoklama|katılım|katilim|müsait\p{L}*|musait\p{L}*)(?!\p{L})/u, "availability"],
+  [/(?<!\p{L})(?:hatırlat\p{L}*|hatirlat\p{L}*)(?!\p{L})/u, "reminders"],
+  [/(?<!\p{L})(?:ödeme\p{L}*|odeme\p{L}*|ücret\p{L}*|ucret\p{L}*|para)(?!\p{L})/u, "payments"],
 ];
 
 /**
@@ -358,25 +307,24 @@ const HELP_TOPIC_ALIASES: Array<[RegExp, HelpTopic]> = [
  */
 export function parseHelpTopic(raw: string): HelpTopic | null {
   if (!raw) return null;
-  const lower = raw.toLowerCase();
-  const m = lower.match(/\bhelp\b([\s\S]*)$/);
-  // No "help" keyword at all → nothing to parse (caller gates on this too).
-  const tail = m ? m[1] : lower;
-  for (const [re, topic] of HELP_TOPIC_ALIASES) {
-    if (re.test(tail)) return topic;
+  // Both lower-casings, because they disagree on "I": the Turkish rules
+  // make "RATINGS" into "ratıngs" (dotless) and the plain rules make
+  // "YARDIM" into "yardim" and "MAÇIN" into "maçin". Each alias list is
+  // tested against the lower-casing it was written for.
+  const forms: Array<[string, (re: RegExp) => boolean]> = [
+    [raw.toLowerCase().replace(/’/g, "'"), (re) => !re.unicode],
+    [raw.toLocaleLowerCase("tr").replace(/’/g, "'"), (re) => re.unicode],
+  ];
+  for (const [lower, accepts] of forms) {
+    const m = lower.match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u);
+    // No "help" keyword at all → nothing to parse (caller gates on this too).
+    const tail = m ? m[1] : lower;
+    for (const [re, topic] of HELP_TOPIC_ALIASES) {
+      if (accepts(re) && re.test(tail)) return topic;
+    }
   }
   return null;
 }
-
-/** Human label for each topic, used in the bare-help topic menu. */
-const HELP_TOPIC_LABEL: Record<HelpTopic, string> = {
-  availability: "squad & availability",
-  teams: "fair teams",
-  mom: "Man of the Match",
-  ratings: "player ratings",
-  reminders: "reminders",
-  payments: "payment tracking",
-};
 
 // Stable order for the bare-help topic list.
 const HELP_TOPIC_ORDER: HelpTopic[] = [
@@ -401,24 +349,23 @@ const HELP_TOPIC_ORDER: HelpTopic[] = [
 export function buildHelpReply(
   topic: HelpTopic | null,
   features: HelpFeatures,
+  lang: Lang | string = "en",
 ): string {
+  const s = t(lang);
   if (topic) {
     const flag = HELP_TOPIC_FEATURE[topic];
-    if (!features[flag]) {
-      return `That one isn't switched on for this group. Type *@Match Time help* to see what is.`;
-    }
-    return HELP_EXPLAINERS[topic];
+    if (!features[flag]) return s.onbHelpNotOn();
+    return s.onbHelpExplainer({ topic });
   }
 
   // Bare help: list only the enabled topics, then the how-to block.
-  const enabled = HELP_TOPIC_ORDER.filter((t) => features[HELP_TOPIC_FEATURE[t]]);
-  const topicLines = enabled.map(
-    (t) => `   • *@Match Time help ${t}* — ${HELP_TOPIC_LABEL[t]}`,
+  const enabled = HELP_TOPIC_ORDER.filter((tp) => features[HELP_TOPIC_FEATURE[tp]]);
+  const topicLines = enabled.map((tp) =>
+    s.onbHelpTopicLine({ word: s.onbHelpTopicWord({ topic: tp }), label: s.onbHelpTopicLabel({ topic: tp }) }),
   );
-  const head =
-    `ℹ️ *MatchTime help* — here's what I can explain. Tag me with one of these:`;
+  const head = s.onbHelpHead();
   const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
-  return `${head}${list}\n\n${buildHowToUseMe(features)}`;
+  return `${head}${list}\n\n${buildHowToUseMe(features, lang)}`;
 }
 
 /**
@@ -507,6 +454,7 @@ Rules:
 - Extract only what is EXPLICITLY stated across the messages. Unknown → null. Never guess a venue or time.
 - Multiple messages may each contribute different fields; merge them.
 - "tuesdays" → dayOfWeek 2. "every week" → recurrence "weekly". "just this once" / a single date → "oneoff".
+- Messages may be in TURKISH. Read them the same way: "cuma" / "cumaları" → dayOfWeek 5, "salı" → 2, "akşam 9 buçukta" → "21:30", "saat 21:30" → "21:30", "7'ye 7" → playersPerSide 7, "her hafta" → "weekly", "tek seferlik" → "oneoff", "Sim Arena'da" → venue "Sim Arena" (drop the case suffix). The JSON keys and values stay exactly as specified.
 - Be conservative: confidence < 0.5 if it's chit-chat with no concrete answer.`;
 
 async function extract(
@@ -597,13 +545,14 @@ export async function handleOnboardingTurn(
   // `details`; anything else is ordinary group chat and the bot stays
   // SILENT (falls open — the group is never spammed).
   if (session.stage === "introduced") {
-    let consent: { features: ToggleableKey[]; authorPhone: string | null } | null = null;
+    let consent: { features: ToggleableKey[]; authorPhone: string | null; body: string } | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
       const bundle = parseBundleReply(messages[i].body);
       if (bundle) {
         consent = {
           features: bundle.features,
           authorPhone: messages[i].authorPhone?.trim() || null,
+          body: messages[i].body,
         };
         break;
       }
@@ -626,6 +575,14 @@ export async function handleOnboardingTurn(
       if (adminPhone) adminUserId = await ensureUserForPhone(adminPhone);
     }
 
+    // The consent reply is the strongest language signal there is: an
+    // "evet" to an English intro (the detector had nothing to go on)
+    // flips the session to Turkish before the second question; a "yes"
+    // flips it back. A reply that says nothing about language ("ok",
+    // an emoji) keeps what was detected.
+    const replyLang = langOfConsentReply(consent.body);
+    const lang = replyLang ?? normaliseLang(session.language);
+
     await db.onboardingSession.update({
       where: { id: session.id },
       data: {
@@ -635,15 +592,13 @@ export async function handleOnboardingTurn(
         groupName:
           session.groupName ?? session.groupSubject?.slice(0, 80) ?? null,
         adminUserId,
+        language: lang,
         lastHandledWaId: lastWaId,
       },
     });
 
-    const lead = adminUserId
-      ? "Done — you're the admin 🎽"
-      : "Done ✅";
     return {
-      reply: `${lead} ${ADMIN_QUESTION}`,
+      reply: buildConsentAck(!!adminUserId, lang),
       completed: false,
     };
   }
@@ -674,13 +629,8 @@ export async function handleOnboardingTurn(
       },
     });
 
-    const added = parsed.admins.length;
-    const lead =
-      added > 0
-        ? `Got it — I'll set up ${added === 1 ? "that admin" : `those ${added} admins`} once we're live. `
-        : "";
     return {
-      reply: `${lead}${detailsFollowUpQuestion(["day", "time", "venue"])}`,
+      reply: buildAdminsAck(parsed.admins.length, normaliseLang(session.language)),
       completed: false,
     };
   }
@@ -758,7 +708,10 @@ export async function handleOnboardingTurn(
       if (!contributed && missing.length === 3) {
         return { reply: null, completed: false };
       }
-      return { reply: detailsFollowUpQuestion(missing), completed: false };
+      return {
+        reply: detailsFollowUpQuestion(missing, normaliseLang(session.language)),
+        completed: false,
+      };
     }
 
     // Defaults policy: weekly + 7-a-side unless stated otherwise.
@@ -1015,6 +968,9 @@ async function provisionOrg(s: Session): Promise<string> {
       name,
       slug,
       whatsappGroupId: s.whatsappGroupId,
+      // The language the session spoke is the language the org speaks
+      // from its first scheduled post (editable on /admin/settings).
+      language: normaliseLang(s.language),
       // Stay OFF until completion so the bot doesn't start acting
       // mid-setup.
       whatsappBotEnabled: false,
@@ -1135,6 +1091,8 @@ async function completeOnboarding(
     },
   });
 
+  const lang = normaliseLang(s.language);
+
   await db.$transaction([
     db.organisation.update({
       where: { id: orgId },
@@ -1143,6 +1101,17 @@ async function completeOnboarding(
     db.onboardingSession.update({
       where: { id: s.id },
       data: { stage: "completed", selectedFeatures: chosen, adminUserId },
+    }),
+    // The completion post below IS this group's introduction: it carries
+    // the "How to use me" block in the group's language. Without this
+    // row the scheduler would post its own English `botIntroMessage`
+    // into the group within a minute of going live (bot-scheduler.ts,
+    // key `org-<id>:bot-intro`), a second long bot message right after
+    // the first, in the wrong language for a Turkish group.
+    db.sentNotification.upsert({
+      where: { key: `org-${orgId}:bot-intro` },
+      create: { key: `org-${orgId}:bot-intro`, kind: "bot-intro" },
+      update: {},
     }),
   ]);
 
@@ -1258,9 +1227,7 @@ async function completeOnboarding(
               orgId,
               kind: "dm",
               phone: newAdmin.phoneNumber.replace(/^\+/, ""),
-              text:
-                `👋 You've been made an admin of *${s.groupName || "the club"}* on MatchTime.\n\n` +
-                `Here's your private link to the admin page:\n${url}`,
+              text: buildCoAdminMagicLinkDm({ groupName: s.groupName ?? null, url }, lang),
             },
           });
         }
@@ -1301,13 +1268,7 @@ async function completeOnboarding(
           orgId,
           kind: "dm",
           phone: adminUser.phoneNumber.replace(/^\+/, ""),
-          text:
-            `👋 You're the admin of *${s.groupName || "your club"}* on MatchTime.\n\n` +
-            `Here's your private link to the admin page — player names, ratings` +
-            `${payments ? ", payments" : ""} and settings live there:\n${url}` +
-            (payments
-              ? `\n\nWant me to *collect* the money too? Connect a bank from your admin page — takes 2 minutes.`
-              : ``),
+          text: buildAdminMagicLinkDm({ groupName: s.groupName ?? null, url, payments }, lang),
         },
       });
       adminDmQueued = true;
@@ -1346,55 +1307,142 @@ async function completeOnboarding(
       orgId,
       adminUserId,
       groupName: s.groupName ?? null,
+      lang,
     }).catch((err) => console.error("[onboarding] enrichment+DM failed:", err));
   }
 
-  const onLabels = FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
-
-  // Feature-aware "how to use me" block, appended to the completion post
-  // so players learn the interaction contract the moment the bot goes
-  // live. statsQa is always-on (see featureData above).
-  const howToUseMe = buildHowToUseMe({
-    attendance: chosenSet.has("attendance"),
-    teamBalancing: chosenSet.has("teamBalancing"),
-    momVoting: chosenSet.has("momVoting"),
-    playerRating: chosenSet.has("playerRating"),
-    statsQa: true,
-    reminders: chosenSet.has("reminders"),
-    bench: chosenSet.has("bench"),
-    paymentTracking: chosenSet.has("paymentTracking"),
-  });
+  const post: CompletionPostInput = {
+    groupName: s.groupName ?? null,
+    chosen,
+    dayOfWeek: s.dayOfWeek ?? null,
+    kickoffTime: s.kickoffTime ?? null,
+    venue: s.venue ?? null,
+    weekly,
+  };
 
   // Group-add flow gets the design's completion copy (roster + admin
   // link callouts); the legacy setup-trigger copy is unchanged so the
   // existing QA suite keeps passing byte-identical.
   if (s.source === "group-add") {
-    const adminName = adminUser?.name?.trim();
-    const adminLine = adminDmQueued
-      ? `${adminName || "Admin"}, I've sent you a private link to your admin page — player names, ratings and payments live there. `
-      : `Whoever runs this group can claim the admin page any time at matchtime.ai. `;
-    return (
-      `✅ *All set!* I'm live for *${s.groupName || "this group"}* with: *${onLabels.join(", ")}*.\n\n` +
-      `📅 First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +
-      `${weekly ? ", every week" : ""}.\n` +
-      (rosterCount > 0
-        ? `👥 I've added the *${rosterCount} ${rosterCount === 1 ? "person" : "people"}* in this group to the squad — no need to type anyone in.\n`
-        : ``) +
-      (adminsAdded > 0
-        ? `👮 Added *${adminsAdded} co-admin${adminsAdded === 1 ? "" : "s"}* — I've DM'd them their admin link.\n`
-        : ``) +
-      `\n` +
-      `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽` +
-      `\n\n*How to use me* 👇\n${howToUseMe}`
+    return buildGroupAddCompletionPost(
+      {
+        ...post,
+        rosterCount,
+        adminsAdded,
+        adminDmQueued,
+        adminName: adminUser?.name ?? null,
+      },
+      lang,
     );
   }
 
+  return buildLegacyCompletionPost(post);
+}
+
+// ── Completion posts and DMs, as pure builders ────────────────────────
+// Extracted from completeOnboarding / triggerEnrichmentAndDm so the
+// English bytes can be pinned by copy-golden.test.ts. The literals moved
+// verbatim; nothing about the wording changed in the extraction.
+
+export interface CompletionPostInput {
+  groupName: string | null;
+  /** The features the group switched on (valid ToggleableKeys). */
+  chosen: ToggleableKey[];
+  dayOfWeek: number | null;
+  kickoffTime: string | null;
+  venue: string | null;
+  weekly: boolean;
+}
+
+/** The feature-aware "how to use me" block for a completion post.
+ *  statsQa is always-on (see featureData in completeOnboarding). */
+function howToUseMeFor(chosen: ToggleableKey[], lang: Lang | string = "en"): string {
+  const chosenSet = new Set(chosen);
+  return buildHowToUseMe(
+    {
+      attendance: chosenSet.has("attendance"),
+      teamBalancing: chosenSet.has("teamBalancing"),
+      momVoting: chosenSet.has("momVoting"),
+      playerRating: chosenSet.has("playerRating"),
+      statsQa: true,
+      reminders: chosenSet.has("reminders"),
+      bench: chosenSet.has("bench"),
+      paymentTracking: chosenSet.has("paymentTracking"),
+    },
+    lang,
+  );
+}
+
+function onLabelsFor(chosen: ToggleableKey[]): string[] {
+  const chosenSet = new Set(chosen);
+  return FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
+}
+
+/** The "All set" post for the group-add flow (roster + admin-link
+ *  callouts), in the group's language. */
+export function buildGroupAddCompletionPost(
+  p: CompletionPostInput & {
+    rosterCount: number;
+    adminsAdded: number;
+    adminDmQueued: boolean;
+    adminName: string | null;
+  },
+  lang: Lang | string = "en",
+): string {
+  const s = t(lang);
+  const chosenSet = new Set(p.chosen);
+  const onLabels = FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) =>
+    s.onbFeatureLabel({ key: f.key, englishLabel: f.label }),
+  );
+  return s.onbCompletionPost({
+    groupName: p.groupName,
+    onLabels,
+    dayName: s.onbDayName({ dow: p.dayOfWeek ?? 2 }),
+    kickoffTime: p.kickoffTime,
+    venue: p.venue,
+    weekly: p.weekly,
+    rosterCount: p.rosterCount,
+    adminsAdded: p.adminsAdded,
+    adminDmQueued: p.adminDmQueued,
+    adminName: p.adminName,
+    howToUseMe: howToUseMeFor(p.chosen, lang),
+  });
+}
+
+/** The "All set" post for the legacy "@MatchTime setup" flow. */
+export function buildLegacyCompletionPost(p: CompletionPostInput): string {
+  const onLabels = onLabelsFor(p.chosen);
+  const howToUseMe = howToUseMeFor(p.chosen);
   return (
     `✅ *All set!* I'm now running for this group with: *${onLabels.join(", ")}*.\n\n` +
-    `First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +
-    `${weekly ? " (every week)" : ""}.\n\n` +
+    `First match: *${DOW[p.dayOfWeek ?? 2]} ${p.kickoffTime}* at *${p.venue}*` +
+    `${p.weekly ? " (every week)" : ""}.\n\n` +
     `*How to use me* 👇\n${howToUseMe}`
   );
+}
+
+/** The magic-link DM to the captured admin at completion. */
+export function buildAdminMagicLinkDm(
+  p: { groupName: string | null; url: string; payments: boolean },
+  lang: Lang | string = "en",
+): string {
+  return t(lang).onbAdminDm(p);
+}
+
+/** The magic-link DM to each additional admin named at the admins stage. */
+export function buildCoAdminMagicLinkDm(
+  p: { groupName: string | null; url: string },
+  lang: Lang | string = "en",
+): string {
+  return t(lang).onbCoAdminDm(p);
+}
+
+/** The DM that points the admin at the enrichment review page. */
+export function buildEnrichmentReviewDm(
+  p: { messagesAnalyzed: number; groupName: string | null; playerCount: number; url: string },
+  lang: Lang | string = "en",
+): string {
+  return t(lang).onbEnrichmentDm(p);
 }
 
 /**
@@ -1411,6 +1459,7 @@ async function triggerEnrichmentAndDm(args: {
   orgId: string;
   adminUserId: string | null;
   groupName: string | null;
+  lang: Lang;
 }): Promise<void> {
   const summary = await runOnboardingEnrichment({
     sessionId: args.sessionId,
@@ -1439,10 +1488,15 @@ async function triggerEnrichmentAndDm(args: {
     ttlSeconds: MAGIC_LINK_TTL.actionNudge,
   });
   const url = await buildShortMagicLinkUrl(token);
-  const text =
-    `📋 I read ${summary.messagesAnalyzed} past messages from *${args.groupName || "your group"}* ` +
-    `and drafted positions + seed ratings for ${summary.playerCount} players.\n\n` +
-    `Nothing's applied yet — review & finish setup here:\n${url}`;
+  const text = buildEnrichmentReviewDm(
+    {
+      messagesAnalyzed: summary.messagesAnalyzed,
+      groupName: args.groupName,
+      playerCount: summary.playerCount,
+      url,
+    },
+    args.lang,
+  );
 
   await db.botJob.create({
     data: {

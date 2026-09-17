@@ -368,6 +368,11 @@ model OnboardingSession {
   /// 24h "still here" re-nudge idempotency (group-add flow, Phase 1 cron
   /// sweep — reserved; written by the nudge when it ships).
   introNudgedAt DateTime?
+  /// The language this setup conversation is held in (2026-09-17):
+  /// detected from the group subject and synced history when the bot is
+  /// added, corrected by the consent reply ("evet" / "yes"), and copied
+  /// onto Organisation.language at completion. Lowercase ISO 639-1.
+  language      String    @default("en")
   /// Additional admins parsed at the "admins" stage (group-add flow):
   /// [{name?, phone?, mention?}]. Stashed here because the Organisation
   /// doesn't exist yet at that stage; resolved into ADMIN Memberships at

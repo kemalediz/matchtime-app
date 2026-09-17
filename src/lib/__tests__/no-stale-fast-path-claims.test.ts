@@ -100,13 +100,21 @@ describe("no source file claims a regex fast path still handles attendance", () 
   it("PREMISE: handlers.ts really has no classification left in it", () => {
     const handlers = fs.readFileSync(path.join(REPO, "whatsapp-bot", "src", "handlers.ts"), "utf8");
     expect(handlers).toContain("It was removed on 2026-04-21");
-    // The whole module is now a monitored-groups allow-list; nothing else.
+    // The whole module is now two allow-lists (the monitored groups and,
+    // since 2026-09-17, the subset that is mid-setup and flushed at once)
+    // plus a test accessor; nothing that reads a message body.
     const exported = [...handlers.matchAll(/export function (\w+)/g)].map((m) => m[1]);
     expect(exported.sort()).toEqual([
+      "_test_groupSets",
       "addMonitoredGroup",
+      "addOnboardingGroup",
       "isMonitoredGroup",
+      "isOnboardingGroup",
+      "removeOnboardingGroup",
       "setMonitoredGroups",
+      "setOnboardingGroups",
     ]);
+    expect(handlers).not.toMatch(/\.body\b|RegExp\(|\/\^\(?in\b/);
   });
 });
 
