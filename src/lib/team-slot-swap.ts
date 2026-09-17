@@ -158,6 +158,28 @@ export type SwapDecision =
 const opposite = (t: SwapTeam): SwapTeam => (t === "RED" ? "YELLOW" : "RED");
 
 /**
+ * THE TURKISH FORM (2026-09-17): "A ile B'yi değiştir" (also "A ve B'yi
+ * değiştir", "…değiştirir misin"), which is what the Turkish copy tells a
+ * group to type. Without it the router sent "@Match Time David ile
+ * Ali'yi değiştir" to `other_att` 10 of 10 (rule 4, exactly as it does
+ * the English "swap David and Abid") and nothing moved a slot.
+ *
+ * The second name carries the accusative ending after an apostrophe
+ * ('yi, 'ı, 'u …, straight or curly), which is dropped: the roster knows
+ * "Can", not "Can'ı". An ending typed WITHOUT the apostrophe ("Canı") is
+ * kept, does not resolve, and the handler declines, which is the safe
+ * direction for a terminal pre-peel. The verb list is closed and has no
+ * "değiştirme" ("do not swap").
+ */
+const TR_SWAP =
+  /(?<!\p{L})(\p{L}[\p{L}-]+)\s+(?:ile|ve)\s+(\p{L}[\p{L}-]+)(?:['’]\p{L}{1,3})?\s+de[gğ]i[sş]tir(?:in|elim|sene|ir\s+misin|ebilir\s+misin)?(?!\p{L})/iu;
+/** Words the Turkish form can capture that are never a player: the
+ *  colours (the colour swap owns those, and it runs first) and the
+ *  nouns of "renkleri ve takımları değiştir". */
+const TR_NOT_A_NAME =
+  /^(?:k[ıi]rm[ıi]z[ıi]\p{L}*|sar[ıi](?:y[ıi]|yla|la)?|renk\p{L}*|tak[ıi]m\p{L}*|forma\p{L}*)$/u;
+
+/**
  * Pull two first names out of "swap A with B" / "switch A and B" /
  * "swap A for B" / "swap A & B" / "swap A, B". Lower-cased; the caller
  * resolves them against the roster.
@@ -172,12 +194,15 @@ const opposite = (t: SwapTeam): SwapTeam => (t === "RED" ? "YELLOW" : "RED");
  */
 export function parseSwapNames(rawBody: string): { a: string; b: string } | null {
   const body = (rawBody || "").trim();
-  const m = body.match(
+  const en = body.match(
     /\b(?:swap|switch)\s+([\p{L}'-]{2,})\b\s*(?:with|and|for|&|,|<->|>|\/)?\s*([\p{L}'-]{2,})\b/iu,
   );
+  const m = en ?? body.match(TR_SWAP);
   if (!m) return null;
   const a = m[1].toLowerCase();
   const b = m[2].toLowerCase();
+  // Only for the Turkish form: "Sari" is somebody's name in English.
+  if (!en && (TR_NOT_A_NAME.test(a) || TR_NOT_A_NAME.test(b))) return null;
   if (a === b) return null;
   // Obvious non-name tokens. "swap the colours" must never reach the
   // roster (and the colour peel runs first anyway).

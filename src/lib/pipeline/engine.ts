@@ -183,7 +183,20 @@ const REMINDER_MAX_AHEAD_MS = 60 * 24 * 60 * 60 * 1000;
  * which is right to refuse to match "me" against a roster of names. The
  * shipped path does the same substitution at `route.ts:3846-3850`.
  */
-const SELF_REFS = new Set(["me", "myself", "i", "my self"]);
+const SELF_REFS = new Set([
+  "me", "myself", "i", "my self",
+  // Turkish (2026-09-17): the object and dative "me", and "myself". The
+  // teams extractor is told to write "me", and reported "beni" verbatim
+  // 8 of 10 times anyway. The bare nominative "ben" is deliberately NOT
+  // here: Ben is an English first name, and a closed list that turned
+  // "put Ben with Sait" into the sender would be worse than the gap.
+  "beni", "bana", "kendimi", "kendim",
+]);
+/** Case-folded both ways, so a typed "BENİ" and an English "I" both hit. */
+const isSelfRef = (ref: string): boolean => {
+  const t = ref.trim();
+  return SELF_REFS.has(t.toLowerCase()) || SELF_REFS.has(t.toLocaleLowerCase("tr"));
+};
 
 interface Working {
   rows: Map<string, AttendanceRow>;
@@ -1542,7 +1555,7 @@ export function decide(input: EngineInput): EngineResult {
          *  match "me" against a roster, so the mapping happens here and
          *  never by asking a model who "me" is. */
         const deSelf = (ref: string): string =>
-          SELF_REFS.has(ref.trim().toLowerCase()) && senderFirstRef ? senderFirstRef : ref;
+          isSelfRef(ref) && senderFirstRef ? senderFirstRef : ref;
 
         /** Members with ANY attendance row on the match. The shipped
          *  force-include matches against exactly this set
@@ -1841,7 +1854,7 @@ export function decide(input: EngineInput): EngineResult {
           // `identity.ts` correctly refuses to match "me" against a
           // roster, so the mapping is done here, from a closed list, and
           // never by asking a model who "me" is.
-          if (SELF_REFS.has(ref.trim().toLowerCase())) {
+          if (isSelfRef(ref)) {
             if (msg.senderUserId) {
               covered.push(msg.senderUserId);
               continue;

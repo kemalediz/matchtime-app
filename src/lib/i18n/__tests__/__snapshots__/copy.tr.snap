@@ -240,10 +240,10 @@ Son 30 günde en çok oynayanlar:
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-İtirazı olan? `swap X Y` yazın, admin onaylar.
+İtirazınız mı var? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar.
 
 ### R32 teams_not_generated
-Takımlar henüz oluşturulmadı, 'takımları oluştur' yazın, hallederim.
+Takımlar henüz kurulmadı, *@Match Time takımları kur* yazın, hallederim.
 
 ### R33 guest_name_ask / singular
 Süper Sait 🙌 Adı ne? Yaz, kadroya ekleyeyim.
@@ -524,7 +524,7 @@ Akşam görüşürüz 🙌
 ### R70 buildMatchDayLockedPost
 ⚽ *Bu akşam 21:30*, *Tuesday 7-a-side*, Goals North Cheam
 
-Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@MatchTime takımları oluştur* yazın 👇
+Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@Match Time takımları kur* yazın 👇
 
 *Onaylananlar (14/14):*
 1. Kemal Ediz
@@ -617,11 +617,11 @@ Yaptıklarım:
 
 🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
 
-⚽  *Takımlar*, "takımları oluştur" deyin, dengeli takımları paylaşırım. İtirazı olan `swap X Y` yazsın, admin onaylar.
+⚽  *Takımlar*, "@Match Time takımları kur" deyin, dengeli takımları paylaşırım. İtirazı olan `@Match Time X ile Y'yi değiştir` yazsın, admin onaylar.
 
 🏆  *Puanlama ve maçın adamı*, her maçtan sonra herkese puanlama linkini DM'den gönderirim (kayıt yok, tıklamanız yeterli); maçın adamını uygulamadan ya da paylaştığım anketten seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı açıklarım.
 
-⏰  *Hatırlatmalar*, "@MatchTime pazartesi hatırlat" deyin, o gün size DM atarım.
+⏰  *Hatırlatmalar*, "@Match Time pazartesi hatırlat" deyin, o gün size DM atarım.
 
 📊  *İstatistikler*, "geçen hafta maçın adamı kimdi?" ya da "en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.
 
@@ -666,7 +666,7 @@ Küçük bir hatırlatma: varsa *kaleci eldiveni*, *top* ve *yedek yelek* getiri
 ### R49 buildBenchClaimAnnouncement / team and replaced player
 🎟 *Erdal Ozkan* yeri aldı, *Kırmızı* takımında *Sait Demir* yerine oynuyor 🙌
 
-_Yeni kadroyla takımları yeniden dengelemek isterseniz "takımları yeniden oluştur" yazın._
+_Yeni kadroyla takımları yeniden dengelemek isterseniz "@Match Time takımları yeniden kur" yazın._
 
 ### R49 buildBenchClaimAnnouncement / replaced player, no team
 ✅ *Erdal Ozkan* kadroda, *Sait Demir* yerine geliyor, kadro *14/14* 🙌
@@ -750,7 +750,7 @@ Oyuncu davet edilecek yaklaşan bir maç yok.
 2. Abid Hussain
 
 ### R128 buildSwapDeferredReply
-*Kemal Ediz* ve *Sait Demir* zaten kadroda, kimse çıkarılmadı. Takımlar henüz oluşturulmadı; *takımları oluştur* yazın, kurayım (sonra ikisini farklı takımlara koyabilirim).
+*Kemal Ediz* ve *Sait Demir* zaten kadroda, kimse çıkarılmadı. Takımlar henüz kurulmadı; *@Match Time takımları kur* yazın, kurayım (sonra ikisini farklı takımlara koyabilirim).
 
 ### R129 buildTeamSwapReply
 🔁 *Kemal Ediz* ve *Elvin Aliyev* yer değiştirdi, kimse çıkarılmadı. Güncel takımlar:
@@ -765,7 +765,7 @@ Oyuncu davet edilecek yaklaşan bir maç yok.
 2. Abid Hussain
 
 ### R130 buildSlotTransferReply
-🔁 *Erdal Ozkan*, *Kırmızı* takımında *Sait Demir* yerine oynuyor; takımlar aynı, yeniden oluşturulmadı, kimsenin katılımı değişmedi. Güncel takımlar:
+🔁 *Erdal Ozkan*, *Kırmızı* takımında *Sait Demir* yerine oynuyor; takımlar aynı, yeniden kurulmadı, kimsenin katılımı değişmedi. Güncel takımlar:
 
 *Kırmızı*
 1. Kemal Ediz

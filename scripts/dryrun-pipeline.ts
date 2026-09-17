@@ -112,6 +112,7 @@
  */
 import { peelClause } from "../src/lib/pipeline/clause-peel.ts";
 import { parseSwapNames } from "../src/lib/team-slot-swap.ts";
+import { looksLikeColourSwapPhrase } from "../src/lib/team-colour-swap.ts";
 import { loadSquadState, loadRatingProgressSnapshot } from "../src/lib/pipeline/load-state.ts";
 import { runPipeline } from "../src/lib/pipeline/run.ts";
 import { runAnswerBatch } from "../src/lib/pipeline/answer-batch.ts";
@@ -786,6 +787,11 @@ const CASES: Case[] = [
   { id: "TR23", who: "Erdal", body: "kaç kişiyiz?", history: HISTORY_TR, expect: "how many are we? route question; untagged => SILENT (interaction contract). Must not be attendance" },
   { id: "TR24", who: "Erdal", body: "hadi be ya 😂😂", history: HISTORY_TR, expect: "banter (oh come on). route none, SILENT, no write" },
   { id: "TR25", who: "Erdal", body: "maybe", history: HISTORY_TR, expect: "ENGLISH CONTROL for the hedge: NO confirmed write, reasons say 'tentative (personal uncertainty)'. TR14-16 must match this" },
+  // The Turkish player swap FALLING THROUGH the pre-peel (it only does
+  // when `handleTeamSwapIfApplicable` refuses). No `peel`, like Y2: the
+  // whole body goes down the pipeline. TR27 is its English twin.
+  { id: "TR26", who: "Kemal", body: "@Match Time David ile Sait'i değiştir", tagged: true, history: HISTORY_TR, expect: "a team swap, not attendance. NO drop and NO add for David or Sait; compare TR27" },
+  { id: "TR27", who: "Kemal", body: "@Match Time swap David and Sait", tagged: true, expect: "ENGLISH TWIN of TR26. NO drop and NO add for David or Sait" },
 ];
 
 /**
@@ -931,6 +937,16 @@ type TeamCase = {
   /** Default true. `false` is a real case: the tag is REQUIRED. */
   tagged?: boolean;
   expect: "GENERATES" | "HANDED BACK" | "NOT OWNED";
+  /** The route the router should pick and the action the teams
+   *  extractor should report. Printed and tallied, not asserted. */
+  route?: Route;
+  action?: "show" | "generate" | "rename" | "swap";
+  /** What the deterministic pre-peel in `analyze/route.ts` does with the
+   *  body BEFORE any model sees it: "colour" (the colour swap), "swap"
+   *  (the player swap parser), or null (nothing, the router decides). */
+  fastPath?: "colour" | "swap" | null;
+  /** Chat shown to the extractor. Defaults to `HISTORY`. */
+  history?: Array<{ author: string; body: string }>;
   why: string;
 };
 
@@ -1013,6 +1029,35 @@ const TEAM_CASES: TeamCase[] = [
       "one. Since §10 step 8 that refusal means SILENCE plus an operator note rather than " +
       "the mega-prompt answering — which is why it is in this table rather than assumed",
   },
+];
+
+
+/**
+ * ── THE TURKISH TEAM COMMANDS (2026-09-17) ────────────────────────────
+ *
+ * The Turkish copy tells a group to TYPE these (`strings.tr.ts`:
+ * `match_day_locked_line`, `teams_not_generated`, `swap_deferred`,
+ * `bench_claim_team`, `intro_teams`, the help block). TT1-TT7 are the
+ * one form chosen for each action; TT8-TT9 are UNTAGGED and must never
+ * generate; TT10-TT11 are the rejected alternative ("oluştur") kept so
+ * the choice stays measured rather than asserted.
+ */
+const HISTORY_TR_TEAMS = [
+  { author: "MatchTime", body: "Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@Match Time takımları kur* yazın 👇" },
+  { author: "Kemal Ediz", body: "tamamdır beyler, bu akşam 14 kişiyiz" },
+];
+const TR_TEAM_CASES: TeamCase[] = [
+  { id: "TT1", who: "Kemal", body: "@Match Time takımları kur", history: HISTORY_TR_TEAMS, expect: "GENERATES", route: "balancer", action: "generate", fastPath: null, why: "generate, the chosen form" },
+  { id: "TT2", who: "Kemal", body: "@Match Time takımları yeniden kur", history: HISTORY_TR_TEAMS, expect: "GENERATES", route: "balancer", action: "generate", fastPath: null, why: "regenerate, the chosen form" },
+  { id: "TT3", who: "Kemal", body: "@Match Time takımları göster", history: HISTORY_TR_TEAMS, expect: "HANDED BACK", route: "balancer", action: "show", fastPath: null, why: "show: answer-batch.ts owns it, so this owner hands it back. It must NEVER generate (the c408649 incident)" },
+  { id: "TT4", who: "Kemal", body: "@Match Time David ile Ali'yi değiştir", history: HISTORY_TR_TEAMS, expect: "NOT OWNED", route: "other_att", fastPath: "swap", why: "swap two players: the pre-peel owns it in production (parseSwapNames). If it falls through, the router sends it other_att by rule 4, exactly as it does '@Match Time swap David and Abid', and it must never generate" },
+  { id: "TT5", who: "Kemal", body: "@Match Time renkleri değiştir", history: HISTORY_TR_TEAMS, expect: "HANDED BACK", route: "balancer", fastPath: "colour", why: "swap colours, the chosen form: the colour pre-peel owns it. If it falls through it must never generate; the English 'swap the colors' (T6) reads as rename, so rename or swap are both a hand-back" },
+  { id: "TT6", who: "Kemal", body: "@Match Time kırmızıyla sarıyı değiştir", history: HISTORY_TR_TEAMS, expect: "HANDED BACK", route: "balancer", fastPath: "colour", why: "swap colours by label (Kırmızı / Sarı are the Turkish defaults). The colour pre-peel owns it; must never generate" },
+  { id: "TT7", who: "Kemal", body: "@Match Time takımları kur, beni ve David'i aynı takıma koy", history: HISTORY_TR_TEAMS, expect: "GENERATES", route: "balancer", action: "generate", fastPath: null, why: "generate with a pairing: pairings [[ben, David]]" },
+  { id: "TT8", who: "Kemal", body: "takımları kur", tagged: false, history: HISTORY_TR_TEAMS, expect: "NOT OWNED", fastPath: null, why: "UNTAGGED: the tag is required, like T7" },
+  { id: "TT9", who: "Kemal", body: "takımları kim kuracak bu akşam?", tagged: false, history: HISTORY_TR_TEAMS, expect: "NOT OWNED", fastPath: null, why: "UNTAGGED chat about the teams (who is setting up the teams tonight?)" },
+  { id: "TT10", who: "Kemal", body: "@Match Time takımları oluştur", history: HISTORY_TR_TEAMS, expect: "GENERATES", route: "balancer", action: "generate", fastPath: null, why: "REJECTED ALTERNATIVE for generate, measured for the choice" },
+  { id: "TT11", who: "Kemal", body: "@Match Time takımları yeniden oluştur", history: HISTORY_TR_TEAMS, expect: "GENERATES", route: "balancer", action: "generate", fastPath: null, why: "REJECTED ALTERNATIVE for regenerate, measured for the choice" },
 ];
 
 /** The two lines above every case, so the model sees a group mid-chase. */
@@ -1476,9 +1521,10 @@ async function runQuestions(orgId: string, state: SquadState, now: Date): Promis
 async function runTeams(orgId: string, state: SquadState, now: Date): Promise<void> {
   const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
   const only = process.env.ONLY?.split(",").map((s) => s.trim());
-  const selected = TEAM_CASES.filter((c) => !only || only.includes(c.id));
+  const ALL_TEAM_CASES = [...TEAM_CASES, ...TR_TEAM_CASES];
+  const selected = ALL_TEAM_CASES.filter((c) => !only || only.includes(c.id));
   if (only) {
-    const unknown = only.filter((id) => !TEAM_CASES.some((c) => c.id === id));
+    const unknown = only.filter((id) => !ALL_TEAM_CASES.some((c) => c.id === id));
     if (unknown.length) throw new Error(`ONLY names no such team case: ${unknown.join(", ")}`);
   }
   const features = await getOrgFeatures(orgId);
@@ -1499,13 +1545,34 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
   let runs = 0;
   let totalUsd = 0;
 
+  const summary: string[] = [];
   for (const c of selected) {
     const sender = senders.get(c.id)!;
     const tagged = c.tagged ?? true;
+    // THE DETERMINISTIC PRE-PEEL, as `analyze/route.ts` runs it on a
+    // tagged message before any model: the colour swap first, then the
+    // player swap. No database: the handlers' own body predicates.
+    const fastPath = !tagged
+      ? null
+      : peelClause(c.body, looksLikeColourSwapPhrase)
+        ? "colour"
+        : peelClause(c.body, (b) => parseSwapNames(b) !== null)
+          ? "swap"
+          : null;
     console.log(
       `\n${"─".repeat(72)}\n${c.id}  ${sender.name}${tagged ? " [@tagged]" : " [UNTAGGED]"}: ` +
-        `${JSON.stringify(c.body)}\n  expect : ${c.expect} (${c.why})`,
+        `${JSON.stringify(c.body)}\n  expect : ${c.expect}` +
+        `${c.route ? ` route=${c.route}` : ""}${c.action ? ` action=${c.action}` : ""}` +
+        `${c.fastPath !== undefined ? ` pre-peel=${c.fastPath ?? "none"}` : ""} (${c.why})\n` +
+        `  pre-peel: ${fastPath ?? "none"}` +
+        `${c.fastPath !== undefined && (c.fastPath ?? null) !== fastPath ? "  ⚠️ MISMATCH" : ""}`,
     );
+    const tally = {
+      route: new Map<string, number>(),
+      action: new Map<string, number>(),
+      verdict: new Map<string, number>(),
+    };
+    const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
 
     for (let n = 0; n < repeat; n++) {
       const id = `${c.id}-${n}`;
@@ -1537,7 +1604,7 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
             gated: false,
           },
         ],
-        history: HISTORY,
+        history: c.history ?? HISTORY,
         enabled: new Set<Route>(["balancer"]),
         deps: {
           model,
@@ -1578,6 +1645,16 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
           : res.degradations.length > 0 || outcome
             ? "HANDED BACK"
             : "NOT OWNED";
+      // The extractor's action. A generate is owned and reaches the
+      // balancer; every other action is named in the hand-back reason.
+      const action =
+        balancerCalls.length > 0 || outcome?.teamsGenerated
+          ? "generate"
+          : (res.degradations.join(" ").match(/team action "(\w+)"/)?.[1] ??
+            (!tagged ? "(untagged)" : outcome ? "owned" : "(none)"));
+      bump(tally.route, route);
+      bump(tally.action, action);
+      bump(tally.verdict, verdict);
       if (verdict === "GENERATES") generated++;
       else if (verdict === "HANDED BACK") handedBack++;
       else notOwned++;
@@ -1585,6 +1662,7 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
 
       console.log(
         `  ${repeat > 1 ? `run ${n + 1}/${repeat}  ` : ""}route=${route.padEnd(9)} ` +
+          `action=${action.padEnd(10)} ` +
           `${verdict}${verdict !== c.expect ? `  ⚠️ expected ${c.expect}` : ""}`,
       );
       if (outcome) {
@@ -1614,8 +1692,22 @@ async function runTeams(orgId: string, state: SquadState, now: Date): Promise<vo
         );
       }
     }
+    const fmt = (m: Map<string, number>) =>
+      [...m.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k} ${v}`)
+        .join(", ");
+    const hit = (m: Map<string, number>, k: string | undefined) =>
+      k ? `${m.get(k) ?? 0} of ${repeat}` : "n/a";
+    summary.push(
+      `${c.id.padEnd(5)} pre-peel=${(fastPath ?? "none").padEnd(6)} ` +
+        `route=${c.route ?? "-"} ${hit(tally.route, c.route)} [${fmt(tally.route)}]  ` +
+        `action=${c.action ?? "-"} ${hit(tally.action, c.action)} [${fmt(tally.action)}]  ` +
+        `${c.expect} ${hit(tally.verdict, c.expect)}  ${JSON.stringify(c.body)}`,
+    );
   }
 
+  console.log(`\n${"═".repeat(72)}\nPER CASE (N of ${repeat}):\n${summary.join("\n")}`);
   console.log(
     `\n${"═".repeat(72)}\n` +
       `${selected.length} team case(s) × ${repeat} = ${runs} run(s).\n` +

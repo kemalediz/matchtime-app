@@ -364,8 +364,8 @@ describe("string tables: the Turkish is translated", () => {
 
   it("no Turkish entry contains an English instruction token the group is never told to type", () => {
     // The Turkish group is told to write *VARIM*; an "*IN*" left in a
-    // Turkish sentence is a half-moved string. (`swap X Y` is allowed:
-    // it is the literal typed command, see teams_post_footer.)
+    // Turkish sentence is a half-moved string. (The team commands are
+    // pinned separately, in tr-team-commands.test.ts.)
     for (const key of KEYS) {
       expect(render(tr, key), `tr.${key}`).not.toMatch(/\*IN\*|\bsay IN\b|\breply IN\b/);
     }
