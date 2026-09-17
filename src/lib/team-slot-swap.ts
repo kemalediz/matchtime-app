@@ -197,6 +197,48 @@ const TR_NOT_A_NAME =
  * pre-peel.
  */
 export function parseSwapNames(rawBody: string): { a: string; b: string } | null {
+  const r = parseSwapRequest(rawBody);
+  return r ? { a: r.a, b: r.b } : null;
+}
+
+/**
+ * Words that are never a player, so a "swap" they fill is not a
+ * two-player swap at all.
+ *
+ * WIDENED 2026-09-17, in review of PR #99. Substitution phrasing parses
+ * as a swap: "swap me out, Kieran can take my place" came back as
+ * me / out, "can someone swap in for me tonight? I'm out" as in / me,
+ * and the attendance guard then refused the sender's own OUT. Those are
+ * real drops, and leaving a player IN a squad he has left is the mirror
+ * image of the bug the guard exists for. Function words, pronouns other
+ * than the sender's own, and the indefinites are now refused here, at
+ * the parser, so neither the fast path nor the engine ever sees them as
+ * a party. Narrowing only: every message this drops was one the fast
+ * path could not have applied anyway (none of these is anybody's name).
+ */
+const SWAP_STOP = new Set([
+  // the shipped list
+  "the", "them", "him", "her", "with", "and", "for", "team", "teams",
+  "side", "sides", "please", "pls",
+  // prepositions and particles of "swap in / out / over / off"
+  "in", "out", "to", "into", "on", "off", "over", "up", "back", "around",
+  "from", "of", "at", "by", "or", "but", "so", "then",
+  // pronouns that are not the sender, and the indefinites
+  "it", "its", "us", "we", "you", "your", "his", "they", "their", "this",
+  "that", "these", "those", "my", "mine", "someone", "somebody", "anyone",
+  "anybody", "everyone", "everybody", "one", "another", "other", "places",
+  "place", "spot", "spots", "slot", "slots", "shirts", "bibs", "colours",
+  "colors", "positions", "ends", "halves", "keeper", "keepers", "goal",
+  "round", "about",
+]);
+
+/**
+ * `parseSwapNames`, plus the exact text the swap matched, so a caller
+ * can ask what the REST of the message says.
+ */
+export function parseSwapRequest(
+  rawBody: string,
+): { a: string; b: string; span: string } | null {
   const body = (rawBody || "").trim();
   const en = body.match(
     /\b(?:swap|switch)\s+([\p{L}'-]{2,})\b\s*(?:with|and|for|&|,|<->|>|\/)?\s*([\p{L}'-]{2,})\b/iu,
@@ -208,14 +250,27 @@ export function parseSwapNames(rawBody: string): { a: string; b: string } | null
   // Only for the Turkish form: "Sari" is somebody's name in English.
   if (!en && (TR_NOT_A_NAME.test(a) || TR_NOT_A_NAME.test(b))) return null;
   if (a === b) return null;
-  // Obvious non-name tokens. "swap the colours" must never reach the
-  // roster (and the colour peel runs first anyway).
-  const STOP = new Set([
-    "the", "them", "him", "her", "with", "and", "for", "team", "teams",
-    "side", "sides", "please", "pls",
-  ]);
-  if (STOP.has(a) || STOP.has(b)) return null;
-  return { a, b };
+  if (SWAP_STOP.has(a) || SWAP_STOP.has(b)) return null;
+  return { a, b, span: m[0] };
+}
+
+/**
+ * Does the message, OUTSIDE its swap phrase, carry the sender's own
+ * attendance statement? "swap me with Kieran please, I can't make it"
+ * is a drop plus a replacement, and the drop must apply.
+ *
+ * A pattern, and deliberately a wide one: it can only ever LET a sender
+ * claim through the swap guard, never refuse one, so a false positive
+ * costs exactly the behaviour the pipeline had before the guard existed.
+ */
+const SENDER_STATEMENT =
+  /\b(?:i\s*'?\s*m|i\s+am|im)\s+(?:in|out|not\s+(?:coming|playing|going|able|available|around))\b|\bi\s+(?:can\s*'?\s*t|cannot|can\s+not|won\s*'?\s*t|will\s+not|wont|cant)\s+(?:make|come|play|do|join|be)\b|\b(?:not|no\s+longer)\s+(?:coming|playing)\b|\bcount\s+me\s+(?:in|out)\b|\b(?:drop|take)\s+me\b|\b(?:yokum|varım|gelemiyorum|geliyorum|gelemem|gelirim)\b/iu;
+
+export function senderStatesAttendance(rawBody: string): boolean {
+  const body = rawBody || "";
+  const req = parseSwapRequest(body);
+  const rest = req ? body.replace(req.span, " ") : body;
+  return SENDER_STATEMENT.test(rest);
 }
 
 const norm = (s: string) =>
@@ -366,6 +421,53 @@ export function isSwapParty(
   return tokens.includes(a) || tokens.includes(b);
 }
 
+/**
+ * THE ENGINE'S QUESTION, WHOLE: is this message a genuine TWO-PLAYER
+ * team swap, and if so, which of its attendance claims does it refuse?
+ * Returns null when the guard must not fire at all.
+ *
+ * It asks `planSwap` (the fast path's own decision, over the same
+ * match roster) rather than re-deciding, so the two layers cannot
+ * disagree: whenever the fast path would stay silent, the engine
+ * applies the message's claims as it always did.
+ *
+ *   - not a player swap (function words, no real member, a lowercase
+ *     unknown word, or a self-party swap that is really a substitution
+ *     or carries the sender's own statement) → null.
+ *   - otherwise a claim about either party is refused, EXCEPT a party
+ *     the rest of the message names again ("swap Elvin with Raihan,
+ *     Elvin is out"): that claim may come from the other clause.
+ *   - the sender's own claim is refused only when the sender IS a
+ *     party, which `planSwap` has already limited to a real team swap
+ *     with no statement from the sender.
+ */
+export function swapGuardFor(
+  rawBody: string,
+  roster: SwapCandidate[],
+  opts: { sender: { userId: string; name: string } | null; teamsExist: boolean },
+): { parties: { a: string; b: string }; refuses: (c: { subject: "sender" | "other"; personRef: string }) => boolean } | null {
+  const req = parseSwapRequest(rawBody);
+  if (!req) return null;
+  const plan = planSwap(req, roster, {
+    ...opts,
+    senderStatesAttendance: senderStatesAttendance(rawBody),
+  });
+  if (plan.kind === "not-a-player-swap") return null;
+  const rest = (rawBody || "").replace(req.span, " ");
+  const restTokens = new Set(rest.split(/[^\p{L}'’@-]+/u).map(swapToken).filter(Boolean));
+  const parties = { a: req.a, b: req.b };
+  return {
+    parties,
+    refuses: (c) => {
+      if (!isSwapParty(c, parties)) return false;
+      if (c.subject === "sender") return true;
+      const own = c.personRef.split(/[\s,]+/).map(swapToken);
+      const named = [swapToken(req.a), swapToken(req.b)].filter((p) => own.includes(p));
+      return !named.some((p) => restTokens.has(p));
+    },
+  };
+}
+
 // ── THE REFUSAL, NAMED ───────────────────────────────────────────────
 
 /** Why a real swap was not applied, in terms the owner can act on. */
@@ -417,7 +519,38 @@ const typed = (w: string) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w);
  *     act on. `decideSwap` itself is unchanged.
  */
 export function planSwap(
-  names: { a: string; b: string },
+  names: { a: string; b: string; span?: string },
+  roster: SwapCandidate[],
+  opts: {
+    sender: { userId: string; name: string } | null;
+    teamsExist: boolean;
+    /** `senderStatesAttendance(body)`. See the self-party rule below. */
+    senderStatesAttendance?: boolean;
+  },
+): SwapPlan {
+  const plan = planSwapInner(names, roster, opts);
+  // ── THE SELF-PARTY RULE (review of PR #99) ─────────────────────────
+  //
+  // "swap me with Kieran" is two different requests. When both are in
+  // the squad (teams built or not), nobody is leaving and it is a TEAM
+  // swap: `decideSwap` applies or defers it. In every other state
+  // (Kieran on the bench, the sender not in, no slot to move) it is a
+  // SUBSTITUTION, "Kieran takes my place", and the sender's OUT is the
+  // point of the message. So a swap that names the sender is owned only
+  // when `decideSwap` would act on it; otherwise it is not a two-player
+  // swap at all, the fast path stays silent (a reply saying "nobody was
+  // dropped" would contradict the drop), and the engine guard does not
+  // fire. And when the sender ALSO states their attendance ("…, I can't
+  // make it") the statement wins in every state.
+  const selfParty = [names.a, names.b].some((w) => SWAP_SELF_WORDS.has(swapToken(w)));
+  if (selfParty && (plan.kind === "refused" || opts.senderStatesAttendance)) {
+    return { kind: "not-a-player-swap" };
+  }
+  return plan;
+}
+
+function planSwapInner(
+  names: { a: string; b: string; span?: string },
   roster: SwapCandidate[],
   opts: { sender: { userId: string; name: string } | null; teamsExist: boolean },
 ): SwapPlan {
@@ -456,6 +589,26 @@ export function planSwap(
   const a = shown(A, names.a);
   const b = shown(B, names.b);
   const refused = (why: SwapRefusal): SwapPlan => ({ kind: "refused", a, b, why });
+
+  // AN UNKNOWN WORD IS A NAME ONLY IF IT WAS TYPED LIKE ONE. "swap
+  // David and Zork" is a real swap with a name MatchTime does not know,
+  // and must be answered (and must not drop David); "swap David
+  // tonight" is not. Without the raw span (the unit tests) the word is
+  // given the benefit of the doubt.
+  const typedAsName = (word: string): boolean => {
+    if (!names.span) return true;
+    const hit = names.span
+      .split(/[^\p{L}'’-]+/u)
+      .map((t) => (t.toLowerCase() === word.toLowerCase() ? t : t.replace(/['’]\p{L}{1,3}$/u, "")))
+      .find((t) => t.toLowerCase() === word.toLowerCase());
+    return !!hit && hit.charAt(0) !== hit.charAt(0).toLowerCase();
+  };
+  if (
+    (A.kind === "unknown" && !typedAsName(names.a)) ||
+    (B.kind === "unknown" && !typedAsName(names.b))
+  ) {
+    return { kind: "not-a-player-swap" };
+  }
 
   // Name problems first, in message order: the owner fixes the first
   // one and asks again.

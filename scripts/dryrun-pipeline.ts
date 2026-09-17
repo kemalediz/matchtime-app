@@ -808,6 +808,11 @@ const CASES: Case[] = [
   { id: "SW6", who: "Kemal", body: "@Match Time El ile David'i değiştir", tagged: true, history: HISTORY_TR, expect: "ambiguous name, Turkish. NO write for anyone" },
   { id: "SW7", who: "Kemal", body: "swap David and Sait", expect: "UNTAGGED, from an admin: never reaches the fast path, and an admin's OUT needs no tag. NO drop for David" },
   { id: "SW8", who: "Kemal", body: "@Match Time swap David and Zork and I'm out", tagged: true, confirm: ["Kemal"], expect: "refused swap + the sender's own OUT, no comma. DROP Kemal, NO drop for David" },
+  // Substitution phrasing that PARSES like a swap naming the sender
+  // (review of PR #99). Each is a genuine drop and must stay one.
+  { id: "SB1", who: "Wasim", body: "swap me out, Kieran can take my place", confirm: ["Wasim"], expect: "a drop with a named replacement. DROP Wasim" },
+  { id: "SB2", who: "Wasim", body: "can someone swap in for me tonight? I'm out", confirm: ["Wasim"], expect: "a drop asking for cover. DROP Wasim" },
+  { id: "SB3", who: "Wasim", body: "swap me with Kieran please, I can't make it", confirm: ["Wasim"], expect: "a drop plus a replacement (Kieran on the bench). DROP Wasim" },
   // The controls: real third-party drops the swap guard must never touch.
   // "Zeeshan OUT" is the veto's real message; Zeeshan has left the live
   // roster, so the same two-word shape is run on Habib (in the squad).

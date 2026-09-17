@@ -31,6 +31,7 @@ import {
   isSwapParty,
   parseSwapNames,
   planSwap,
+  senderStatesAttendance,
   resolveSwapSide,
   type SwapCandidate,
   type SwapDecision,
@@ -418,6 +419,43 @@ describe("isSwapParty", () => {
     });
   }
 
+  describe("substitution phrasing is never a swap (review of PR #99)", () => {
+    const NOT_SWAPS = [
+      "swap me out, Kieran can take my place",
+      "can someone swap in for me tonight? I'm out",
+      "@Kemal can you switch it to 7 a side and put Amir in as the 14th",
+      "can anyone swap with me",
+      "happy to swap for someone",
+      "switch me off the list",
+      "can we swap over",
+    ];
+    for (const body of NOT_SWAPS) {
+      it(`"${body}" parses as no swap`, () => expect(parseSwapNames(body)).toBeNull());
+    }
+    it("'swap me with Kieran' still parses (the rule for it lives in the guard)", () => {
+      expect(parseSwapNames("swap me with Kieran please, I can't make it")).toEqual({ a: "me", b: "kieran" });
+    });
+  });
+
+  describe("senderStatesAttendance", () => {
+    const YES = [
+      "swap me with Kieran please, I can't make it",
+      "swap me with Kieran, I'm out",
+      "swap me with Kieran as I cannot make it tonight",
+      "swap me with Kieran, not coming",
+      "swap me with Kieran, count me out",
+      "beni Kieran ile değiştir, yokum",
+    ];
+    for (const body of YES) {
+      it(`"${body}" states attendance outside the swap`, () =>
+        expect(senderStatesAttendance(body)).toBe(true));
+    }
+    const NO = ["@Match Time swap me with Kieran", "@Match Time swap David and Sait", "swap me with Kieran please"];
+    for (const body of NO) {
+      it(`"${body}" does not`, () => expect(senderStatesAttendance(body)).toBe(false));
+    }
+  });
+
   it("the sender's own claim is a party only when the swap names the sender", () => {
     const sender = { subject: "sender" as const, personRef: "" };
     expect(isSwapParty(sender, P)).toBe(false);
@@ -535,17 +573,20 @@ describe("planSwap", () => {
     }
   });
 
-  it("'me' from a sender with no attendance row is a real side, not an unknown name", () => {
+  it("a swap naming the sender that cannot be applied is a substitution, never a refusal", () => {
+    // "swap me with David" from someone not in the squad: the fast path
+    // must not answer "nobody was dropped" while the pipeline reads the
+    // message as the substitution it is.
     const p = planSwap({ a: "me", b: "david" }, roster, {
       sender: { userId: "u-new", name: "New Guy" },
       teamsExist: true,
     });
-    expect(p).toEqual({
-      kind: "refused",
-      a: "New Guy",
-      b: "David",
-      why: { reason: "receiver-not-confirmed", name: "New Guy" },
-    });
+    expect(p).toEqual({ kind: "not-a-player-swap" });
+  });
+
+  it("a swap naming the sender is left to the pipeline when the sender also states attendance", () => {
+    const p = planSwap({ a: "me", b: "david" }, roster, { ...opts, senderStatesAttendance: true });
+    expect(p).toEqual({ kind: "not-a-player-swap" });
   });
 
   it("'Ben' resolves to the player called Ben, never to the sender", () => {

@@ -330,6 +330,25 @@ test.describe("a refused swap drops nobody and says so", () => {
     expect(await squad(db)).toEqual(before);
   });
 
+  test("'swap me with Ben please, I can't make it' drops the sender and says no refusal", async ({ request, db }) => {
+    // Review of PR #99: a substitution naming the sender is a DROP. The
+    // fast path must stay silent and the engine must let the OUT apply.
+    const body = `@Match Time swap me with ${NAME.bench.split(" ")[0]} please, I can't make it`;
+    engineOn({
+      [body]: {
+        route: "self_att",
+        facts: { ...patOut, claims: [{ ...patOut.claims[0], subject: "sender", personRef: "", personNamed: false, confidence: 0.95 }] },
+      },
+    });
+    const res = await postAnalyze(request, [
+      { waMessageId: msgId(), body, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+    expect(await squadStatus(db, U.admin)).toBe("DROPPED");
+    for (const r of res.results as Array<{ reply: string | null }>) {
+      expect(r.reply ?? "").not.toContain("haven't swapped");
+    }
+  });
+
   test("'switch it to 7 a side' is not a player swap and gets no refusal", async ({ request }) => {
     const body = "@Match Time switch it to 7 a side";
     engineOn({ [body]: { route: "none" } });

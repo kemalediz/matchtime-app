@@ -68,7 +68,7 @@ import {
 } from "../rating-progress-answer";
 import { RECRUIT_LOOKBACK_MAX, resolveLookbackMatches } from "../recruit-lookback";
 import { resolveReminderPhrase } from "../reminder-time";
-import { isSwapParty, parseSwapNames } from "../team-slot-swap";
+import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
 import { resolvePerson } from "./identity";
 import type {
   AttendanceFacts,
@@ -317,6 +317,29 @@ export function decide(input: EngineInput): EngineResult {
   // CONFIRMED and said nothing: a phantom player in a paid squad, and
   // "message understood, action silently not taken" (§9).
   const lastSelfIndexByAuthor = new Map<string, number>();
+
+  // ── THE SWAP GUARD'S VIEW OF THE MATCH ──────────────────────────────
+  // The same pool the fast path resolves swap names against
+  // (`handleTeamSwapIfApplicable`): everyone with an attendance row or a
+  // team slot on this match, never the whole org roster, so the engine
+  // and the fast path agree on what a two-player swap is.
+  const statusById = new Map(state.rows.map((r) => [r.userId, r.status]));
+  const teamById = new Map(state.teams.map((t) => [t.userId, t.team]));
+  const swapPool: SwapCandidate[] = state.roster
+    .filter((mem) => statusById.has(mem.userId) || teamById.has(mem.userId))
+    .map((mem) => ({
+      userId: mem.userId,
+      name: mem.name,
+      status: statusById.get(mem.userId) ?? "NONE",
+      team: teamById.get(mem.userId) ?? null,
+    }));
+  const swapGuard = (m: EngineMessage) =>
+    swapGuardFor(m.body, swapPool, {
+      sender: m.senderUserId
+        ? { userId: m.senderUserId, name: m.senderName ?? nameOf(w, m.senderUserId) }
+        : null,
+      teamsExist: state.teams.length > 0,
+    });
   messages.forEach((m, i) => {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
@@ -324,13 +347,13 @@ export function decide(input: EngineInput): EngineResult {
     // A self claim the swap guard in `handleAttendance` will refuse
     // ("swap me with David") writes nothing, so it must not supersede
     // an earlier real "in" from the same author.
-    const swapParties = parseSwapNames(m.body);
+    const guard = swapGuard(m);
     if (
       !m.facts.claims.some(
         (c) =>
           c.subject === "sender" &&
           wouldWrite(c, isFloorExempt(c, sender, state.roster)) &&
-          !(swapParties && isSwapParty(c, swapParties)),
+          !(guard && guard.refuses(c)),
       )
     )
       return;
@@ -567,12 +590,13 @@ export function decide(input: EngineInput): EngineResult {
       // requests. The one early exit is for a message whose ONLY claims
       // were about the swap's parties, and it sits after the chase
       // branch so that branch still speaks.
-      const swapParties = parseSwapNames(msg.body);
+      const guard = swapGuard(msg);
       let refusedAsSwapParty = 0;
-      if (swapParties && claims.length > 0) {
+      if (guard && claims.length > 0) {
+        const swapParties = guard.parties;
         const kept: Claim[] = [];
         for (const c of claims) {
-          if (!isSwapParty(c, swapParties)) {
+          if (!guard.refuses(c)) {
             kept.push(c);
             continue;
           }

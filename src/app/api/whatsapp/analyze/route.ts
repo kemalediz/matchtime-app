@@ -282,7 +282,9 @@ import {
 } from "@/lib/pipeline/clause-peel";
 import {
   parseSwapNames,
+  parseSwapRequest,
   planSwap,
+  senderStatesAttendance,
   type SwapCandidate,
 } from "@/lib/team-slot-swap";
 import {
@@ -1252,6 +1254,7 @@ async function handleAnalyzeRequest(request: Request) {
       org.id,
       swapPeel.consumed,
       sender?.userId ? { userId: sender.userId, name: sender.name ?? m.authorName ?? "" } : null,
+      m.body,
     );
     if (swapResult?.kind === "applied") {
       await claimFastPath(m, swapPeel, {
@@ -3739,8 +3742,9 @@ async function handleTeamSwapIfApplicable(
   orgId: string,
   rawBody: string,
   sender: { userId: string; name: string } | null,
+  wholeBody: string,
 ): Promise<{ kind: "applied" | "refused"; reply: string; logReason: string } | null> {
-  const names = parseSwapNames(rawBody);
+  const names = parseSwapRequest(rawBody);
   if (!names) return null;
 
   const match = await db.match.findFirst({
@@ -3800,6 +3804,10 @@ async function handleTeamSwapIfApplicable(
   const plan = planSwap(names, roster, {
     sender,
     teamsExist: match.teamAssignments.length > 0,
+    // Asked of the WHOLE message, not the peeled clause: "swap me with
+    // Kieran please, I can't make it" is a drop plus a replacement, and
+    // a swap naming the sender is then left to the pipeline.
+    senderStatesAttendance: senderStatesAttendance(wholeBody),
   });
   if (plan.kind === "not-a-player-swap") return null;
   if (plan.kind === "refused") {

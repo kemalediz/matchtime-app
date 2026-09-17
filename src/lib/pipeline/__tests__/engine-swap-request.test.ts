@@ -92,27 +92,95 @@ describe("a swap request writes no attendance for the two players it names", () 
   });
 });
 
+// ── THE MIRROR IMAGE (review of PR #99, 2026-09-17) ────────────────────
+//
+// Substitution phrasing parses as a "swap" involving the sender, and the
+// first cut of the guard refused the sender's own OUT whenever either
+// party was "me". These are genuine drops and must stay drops.
+describe("a substitution involving the sender is a drop, not a swap", () => {
+  const PLAYERS_S = [...PLAYERS, "salman"];
+  function runS(
+    body: string,
+    claims: ReturnType<typeof claim>[],
+    o: { teams?: Record<string, "RED" | "YELLOW">; confirmed?: string[] } = {},
+  ) {
+    const state = world({
+      players: PLAYERS_S,
+      confirmed: o.confirmed ?? CONFIRMED,
+      bench: o.confirmed?.includes("salman") ? [] : ["salman"],
+      teams: o.teams,
+    });
+    return decide({
+      now: NOW,
+      state,
+      messages: [msg({ from: "zair", body, route: "self_att", facts: attendanceFacts(claims) })],
+    });
+  }
+  const senderOut = claim({ subject: "sender", polarity: "out" });
+  const withZair = [...CONFIRMED, "zair"];
+
+  it("'swap me out, Salman can take my place' drops the sender", () => {
+    const r = runS("swap me out, Salman can take my place", [senderOut], { confirmed: withZair });
+    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
+  });
+
+  it("'can someone swap in for me tonight? I'm out' drops the sender", () => {
+    const r = runS("can someone swap in for me tonight? I'm out", [senderOut], { confirmed: withZair });
+    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
+  });
+
+  it("'swap me with Salman please, I can't make it' drops the sender (Salman on the bench)", () => {
+    const r = runS("swap me with Salman please, I can't make it", [senderOut], { confirmed: withZair });
+    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
+  });
+
+  it("…and still drops the sender when both are in and the teams exist: the statement wins", () => {
+    const r = runS("swap me with Salman please, I can't make it", [senderOut], {
+      confirmed: [...withZair, "salman"],
+      teams: { zair: "RED", salman: "YELLOW" },
+    });
+    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
+  });
+
+  it("'swap me with Salman' alone, Salman on the bench, is a substitution: the sender's OUT applies", () => {
+    const r = runS("swap me with Salman", [senderOut], { confirmed: withZair });
+    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
+  });
+
+  it("'swap me with Salman' alone, both in and the teams built, is a team swap: nobody is dropped", () => {
+    const r = runS("@Match Time swap me with Salman", [senderOut], {
+      confirmed: [...withZair, "salman"],
+      teams: { zair: "RED", salman: "YELLOW" },
+    });
+    expect(statusOf(r.nextState, "zair")).toBe("CONFIRMED");
+  });
+});
+
 describe("a refused swap claim supersedes nothing", () => {
-  it("'in' then 'swap me with David' in one batch still registers the sender", () => {
+  it("'out' then a team swap 'swap me with David' in one batch still drops the sender", () => {
     // S35 lets only an author's LATEST self message write. A self claim
     // the swap guard refuses must not count as that latest message, or
-    // the real "in" before it is discarded as superseded.
-    const state = world({ players: PLAYERS, confirmed: ["david"] });
+    // the real "out" before it is discarded as superseded.
+    const state = world({
+      players: PLAYERS,
+      confirmed: ["zair", "david"],
+      teams: { zair: "RED", david: "YELLOW" },
+    });
     const r = decide({
       now: NOW,
       state,
       messages: [
-        msg({ from: "zair", body: "in", route: "self_att", facts: attendanceFacts([claim({ polarity: "in" })]) }),
+        msg({ from: "zair", body: "out", route: "self_att", facts: attendanceFacts([claim({ polarity: "out" })]) }),
         msg({
           from: "zair",
           body: "@Match Time swap me with David",
           tagged: true,
           route: "self_att",
-          facts: attendanceFacts([claim({ polarity: "out" })]),
+          facts: attendanceFacts([claim({ polarity: "out", confidence: 0.7 })]),
         }),
       ],
     });
-    expect(statusOf(r.nextState, "zair")).toBe("CONFIRMED");
+    expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
   });
 });
 
