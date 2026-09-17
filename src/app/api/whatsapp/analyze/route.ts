@@ -725,16 +725,13 @@ async function handleAnalyzeRequest(request: Request) {
         nextPath: "/profile/stats",
         ttlSeconds: MAGIC_LINK_TTL.actionNudge,
       });
-      const first = sender.name?.split(" ")[0] ?? "there";
+      const { buildStatsLinkDm } = await import("@/lib/dm-copy");
       await db.botJob.create({
         data: {
           orgId: org.id,
           kind: "dm",
           phone,
-          text:
-            `📊 Hey ${first} — here are your MatchTime stats: ratings over time, your ` +
-            `Man-of-the-Match games, how you compare to the squad, your badges, and a ` +
-            `shareable season card.\n\n${await buildShortMagicLinkUrl(token)}\n\nLink works for 48h.`,
+          text: buildStatsLinkDm({ name: sender.name, url: await buildShortMagicLinkUrl(token) }),
         },
       });
     } catch (err) {

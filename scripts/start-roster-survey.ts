@@ -25,6 +25,7 @@
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
+import { buildRosterSurveyInviteDm } from "../src/lib/dm-copy.ts";
 
 const SENT_BY_EMAIL = "kemal.ediz@cressoft.io";
 const TEST_PHONE_E164 = "+447525334985"; // Kemal's number for --test-only-me
@@ -122,20 +123,7 @@ async function main() {
   for (const m of eligible) {
     const phone = m.user.phoneNumber!.replace(/^\+/, "");
     const firstName = m.user.name?.split(/\s+/)[0] ?? "mate";
-    const text = [
-      `Hey ${firstName} 👋`,
-      ``,
-      `This is *Match Time*, the bot that coordinates your *${org.name}* WhatsApp group (the Tuesday football one).`,
-      ``,
-      `Quick check-in — attendance's been thin lately, so we're asking everyone if they're still up for Tuesday football going forward.`,
-      ``,
-      `Just reply here with a word or two:`,
-      `• "yes" / "I'm in" — keep me on the roster`,
-      `• "maybe" / "depends" — only when I confirm`,
-      `• "not for now" / "out" — step me back`,
-      ``,
-      `Whatever you pick stays between you and the group admin. No drama 🙏`,
-    ].join("\n");
+    const text = buildRosterSurveyInviteDm({ firstName, orgName: org.name });
 
     const job = await db.botJob.create({
       data: { orgId: org.id, kind: "dm", phone, text },

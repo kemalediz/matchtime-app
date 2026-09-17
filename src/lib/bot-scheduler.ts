@@ -32,7 +32,14 @@ import {
 } from "./recruit-chase";
 import { composeChaseText, type ChaseKind } from "./message-analyzer";
 import { resolveTeamLabels } from "./team-labels";
-import { gbp } from "./payments";
+import {
+  buildDirectPayCollectorNudge,
+  buildFeeAskDm,
+  buildPayChaseDm,
+  buildRatingDm,
+  buildRatingReminderDm,
+  buildTentativeFollowupDm,
+} from "./dm-copy";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { buildMomAnnouncement } from "./mom-announcement";
 import {
@@ -193,57 +200,6 @@ function londonHour(at: Date = new Date()): number {
   }).formatToParts(at);
   const h = parts.find((p) => p.type === "hour")?.value ?? "0";
   return parseInt(h, 10);
-}
-
-/**
- * Copy for the daily 17:00 rating-reminder DM. Varies tone by day so five
- * nudges in a row don't all read the same. Each message:
- *   - Opens warmly (first name if we have it).
- *   - Names the match so they remember which one.
- *   - Reminds them why ratings matter (better-balanced teams next week).
- *   - Signs off with the personal magic link.
- * Never guilty or whiny — the goal is to make it feel like a teammate
- * tapping them on the shoulder, not a debt collector.
- */
-function buildReminderText(args: {
-  dayNum: number;
-  playerName: string | null;
-  activityName: string;
-  mvpLabel: string;
-  url: string;
-}): string {
-  const { dayNum, playerName, activityName, mvpLabel, url } = args;
-  const first = playerName?.split(/\s+/)[0] ?? "mate";
-  const sig = `\n${url}`;
-  switch (dayNum) {
-    case 1:
-      return (
-        `Hey ${first} 👋 — hope last night's *${activityName}* was a good one.\n\n` +
-        `When you have a sec, tap here to rate your teammates and pick ${mvpLabel}. ` +
-        `The more of us vote, the better the teams balance next week 🙌${sig}`
-      );
-    case 2:
-      return (
-        `${first}, friendly nudge 🙂 — still waiting on your ratings for *${activityName}*.\n\n` +
-        `Literally 30 seconds, promise. Helps everyone get fairer teams next week ⚽${sig}`
-      );
-    case 3:
-      return (
-        `Halfway through the rating window, ${first} ⏳\n\n` +
-        `Your vote for *${activityName}* actually moves ratings a lot when half the squad has voted ` +
-        `and you haven't. Quick tap:${sig}`
-      );
-    case 4:
-      return (
-        `${first} — two days left to rate *${activityName}* and lock in ${mvpLabel} 🏆\n\n` +
-        `30 seconds, then you're done:${sig}`
-      );
-    default: // day 5 — last chance
-      return (
-        `Last call ${first} 🔔 — the rating window for *${activityName}* closes tomorrow.\n\n` +
-        `Drop a rating + ${mvpLabel} pick before it shuts. Your voice counts:${sig}`
-      );
-  }
 }
 
 /**
@@ -579,17 +535,17 @@ export async function computeDuePosts(
       // chase) rather than spam the group; don't resolve.
       if (!row.user.phoneNumber) continue;
 
-      const firstName = (row.user.name ?? "there").split(" ")[0];
-      const when = format(row.match.date, "EEE d MMM 'at' HH:mm");
       out.push({
         kind: "dm",
         key,
         targetUser: row.user.id,
         phone: row.user.phoneNumber.replace(/^\+/, ""),
         matchId: row.match.id,
-        text:
-          `Hi ${firstName} 👋 You were a *maybe* for *${row.match.activity.name}* on ${when}.\n\n` +
-          `Are you in or out? Just reply *IN* or *OUT* and I'll sort the squad 🙏`,
+        text: buildTentativeFollowupDm({
+          playerName: row.user.name,
+          activityName: row.match.activity.name,
+          whenLabel: format(row.match.date, "EEE d MMM 'at' HH:mm"),
+        }),
       });
     }
   }
@@ -1611,20 +1567,17 @@ async function computeForMatch(
         collectorName = c?.name ?? collectorName;
       }
       if (collectorPhone) {
-        const first = collectorName?.split(" ")[0] ?? "there";
-        const headcount = confirmed.length;
         out.push({
           kind: "dm",
           key,
           matchId,
           targetUser: collectorId,
           phone: collectorPhone.replace(/^\+/, ""),
-          text:
-            `💷 ${first} — how much should each player pay for *${activity.name}*` +
-            (headcount > 0 ? ` (${headcount} played)` : "") +
-            `?\n\n` +
-            `Just reply with the amount — e.g. "£8 each" or "£80 total to split". ` +
-            `I'll confirm, then send everyone their pay link.`,
+          text: buildFeeAskDm({
+            collectorName,
+            activityName: activity.name,
+            headcount: confirmed.length,
+          }),
         });
       }
     }
@@ -1664,22 +1617,19 @@ async function computeForMatch(
           nextPath: `/pay/${matchId}`,
           ttlSeconds: MAGIC_LINK_TTL.bookmark,
         });
-        const first = a.user.name?.split(" ")[0] ?? "there";
-        const opener =
-          dayNum <= 1
-            ? `Quick one ${first}`
-            : dayNum === 2
-              ? `${first}, gentle nudge`
-              : `${first}, still owed`;
         out.push({
           kind: "dm",
           key,
           matchId,
           targetUser: a.userId,
           phone: a.user.phoneNumber.replace(/^\+/, ""),
-          text:
-            `💷 ${opener} — your *${gbp(m.feePerPlayer)}* for *${activity.name}* is still outstanding.\n\n` +
-            `Pay by bank, card, Apple or Google Pay, or settle directly:\n${await buildShortMagicLinkUrl(token)}`,
+          text: buildPayChaseDm({
+            playerName: a.user.name,
+            dayNum,
+            fee: m.feePerPlayer,
+            activityName: activity.name,
+            url: await buildShortMagicLinkUrl(token),
+          }),
         });
       }
 
@@ -1705,16 +1655,17 @@ async function computeForMatch(
               nextPath: `/collect/${matchId}`,
               ttlSeconds: MAGIC_LINK_TTL.actionNudge,
             });
-            const n = pendingDirect.length;
             out.push({
               kind: "dm",
               key: ckey,
               matchId,
               targetUser: collectorId,
               phone: collectorPhone.replace(/^\+/, ""),
-              text:
-                `🤝 ${n} player${n === 1 ? "" : "s"} said they'd pay you directly for *${activity.name}*. ` +
-                `Tick off whoever's settled up:\n${await buildShortMagicLinkUrl(token)}`,
+              text: buildDirectPayCollectorNudge({
+                count: pendingDirect.length,
+                activityName: activity.name,
+                url: await buildShortMagicLinkUrl(token),
+              }),
             });
           }
         }
@@ -1798,12 +1749,13 @@ async function computeForMatch(
             matchId,
             targetUser: a.userId,
             phone: a.user.phoneNumber.replace(/^\+/, ""),
-            text:
-              `🏆 *${activity.name}* — ${format(m.date, "EEE d MMM")}\n\n` +
-              `Rate your teammates and pick ${sport.mvpLabel}. Takes ~1 minute.\n\n` +
-              `Your personal link:\n${await buildShortMagicLinkUrl(token)}\n\n` +
-              `Link expires in 5 days.\n\n` +
-              `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${await buildShortMagicLinkUrl(statsToken)}`,
+            text: buildRatingDm({
+              activityName: activity.name,
+              dateLabel: format(m.date, "EEE d MMM"),
+              mvpLabel: sport.mvpLabel,
+              rateUrl: await buildShortMagicLinkUrl(token),
+              statsUrl: await buildShortMagicLinkUrl(statsToken),
+            }),
           });
         }
 
@@ -1883,7 +1835,7 @@ async function computeForMatch(
           });
           // Vary tone by day so repeats don't feel like spam.
           const dayNum = Math.min(5, Math.max(1, Math.ceil(hoursSinceMatch / 24)));
-          const text = buildReminderText({
+          const text = buildRatingReminderDm({
             dayNum,
             playerName: a.user.name,
             activityName: activity.name,

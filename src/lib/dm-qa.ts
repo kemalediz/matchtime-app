@@ -24,6 +24,7 @@ import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { loadPlayerSeasonStats } from "./player-stats";
+import { buildDmQaApology } from "./dm-copy";
 
 const SYSTEM_PROMPT = `You are MatchTime, a friendly assistant for a 5/7-a-side football group. You're answering ONE player's private message.
 
@@ -220,7 +221,7 @@ export async function answerScopedQuestion(args: {
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userPrompt }],
   });
-  const APOLOGY = "Sorry, I couldn't work that one out — try asking again? 🙂";
+  const APOLOGY = buildDmQaApology();
 
   // Truncation guard. This answer is DM'd to a player verbatim, and
   // unlike the JSON call sites (whose truncation fails closed on a

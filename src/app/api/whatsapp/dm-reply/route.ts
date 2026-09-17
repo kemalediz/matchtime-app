@@ -58,6 +58,15 @@ import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { formatLondon } from "@/lib/london-time";
+import {
+  buildAdminRecruitDmReply,
+  buildBenchDmAck,
+  buildBenchDmUnclear,
+  buildRosterSurveyClarification,
+  buildRosterSurveyConfirmation,
+  buildTentativeReask,
+  rosterSurveyClarificationProbe,
+} from "@/lib/dm-copy";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -163,9 +172,7 @@ export async function POST(request: Request) {
                 orgId,
                 kind: "dm",
                 phone: phoneNoPlus,
-                text:
-                  `Want the open slot for tonight? Reply *YES* to grab it. ` +
-                  `If not, no worries — you stay on the bench either way 🙏`,
+                text: buildBenchDmUnclear(),
               },
             });
           }
@@ -179,16 +186,15 @@ export async function POST(request: Request) {
         });
         // Personal DM ack (group announcement is posted by the lib).
         if (orgId && phoneNoPlus) {
-          let ack: string;
-          if (!isYes) {
-            ack = `👍 No worries — you're still on the bench, nothing changes.`;
-          } else if (result.kind === "confirmed") {
-            ack = `✅ You got it — you're in for tonight! ⚽`;
-          } else if (result.kind === "ignored") {
-            ack = `Ah — someone just grabbed that one first. You're still first in line on the bench if another opens 🙏`;
-          } else {
-            ack = `👍 Got it.`;
-          }
+          const ack = buildBenchDmAck(
+            !isYes
+              ? "declined"
+              : result.kind === "confirmed"
+                ? "confirmed"
+                : result.kind === "ignored"
+                  ? "taken"
+                  : "other",
+          );
           await db.botJob.create({
             data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack },
           });
@@ -449,7 +455,7 @@ export async function POST(request: Request) {
               orgId: row.match.activity.orgId,
               kind: "dm",
               phone: replyPhone,
-              text: "No worries — just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏",
+              text: buildTentativeReask(),
             },
           });
         }
@@ -670,25 +676,12 @@ export async function POST(request: Request) {
         const { inviteRecentPlayers } = await import("@/lib/recruit");
         const r = await inviteRecentPlayers(orgId);
         // Composed from what ACTUALLY landed, never from what was asked
-        // for — the same rule the group blast follows. Byte-for-byte the
-        // sentences the deleted handler sent.
-        const reply = !r.ok
-          ? r.reason ?? "Couldn't do that right now."
-          : r.invited && r.invited > 0
-            ? `📣 Done — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}* on ${r.matchWhen}${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-            : // A `reason` on an ok result means the CAPACITY GUARD stopped
-              // the blast, and the guard has already decided what is true
-              // for this org: the bench invitation when `featureBench` is
-              // on, the old "already full" refusal when it is not. Passing
-              // it through was missing until 2026-09-14, so a full squad
-              // was reported here as "everyone has already responded",
-              // which was never what happened — nobody was asked, and the
-              // bench (the thing the admin could actually be offered) went
-              // unmentioned on this surface entirely. The group reply and
-              // this one are two renderings of ONE RecruitResult and must
-              // not disagree about the state of the squad.
-              r.reason ??
-              `Everyone who played recently has already responded to *${r.matchName}* — nobody new to invite. 👍`;
+        // for — the same rule the group blast follows. A `reason` on an
+        // ok result means the CAPACITY GUARD stopped the blast (the
+        // bench invitation or the "already full" refusal, decided in
+        // `recruit.ts`); the group reply and this one are two renderings
+        // of ONE RecruitResult and must not disagree about the squad.
+        const reply = buildAdminRecruitDmReply(r);
         return { reply, invited: r.invited ?? 0 };
       },
       ratingProgress: async (orgId) => {
@@ -924,7 +917,7 @@ export async function POST(request: Request) {
       where: {
         orgId: dm.survey.org.id,
         phone: phoneNoPlus ?? "__none__",
-        text: { startsWith: `Sorry ${firstName} — wasn't sure if that was a reply to the roster check-in` },
+        text: { startsWith: rosterSurveyClarificationProbe(firstName) },
       },
     });
     if (priorClarif > 0) {
@@ -935,16 +928,10 @@ export async function POST(request: Request) {
         classification,
       });
     }
-    const clarification = [
-      `Sorry ${firstName} — wasn't sure if that was a reply to the roster check-in for *${dm.survey.org.name}*.`,
-      ``,
-      `Was your answer:`,
-      `• yes / I'm in`,
-      `• maybe / sometimes`,
-      `• not for now / out`,
-      ``,
-      `Quick word back is enough — otherwise no worries, an admin will sort it 🙏`,
-    ].join("\n");
+    const clarification = buildRosterSurveyClarification({
+      firstName,
+      orgName: dm.survey.org.name,
+    });
     if (phoneNoPlus) {
       await db.botJob.create({
         data: {
@@ -1002,15 +989,10 @@ export async function POST(request: Request) {
   });
 
   // Confirmation DM. Tone matches what we drafted with Kemal.
-  let confirmation: string;
-  if (classification.category === "in") {
-    confirmation = `Got it ${firstName}, marked you as in 👍 — thanks!`;
-  } else if (classification.category === "maybe") {
-    confirmation = `Got it ${firstName}, marked you as maybe 👍 — just say *IN* in the group whenever you want to play that week, no need to confirm in advance.`;
-  } else {
-    // "out"
-    confirmation = `No worries ${firstName}, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏`;
-  }
+  const confirmation = buildRosterSurveyConfirmation({
+    category: classification.category,
+    firstName,
+  });
   if (!isNewOrChanged) {
     return NextResponse.json({
       ok: true,

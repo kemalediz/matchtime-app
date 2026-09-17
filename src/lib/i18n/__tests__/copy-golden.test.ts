@@ -48,6 +48,13 @@
  *     `announce-suppressed-when-squad-non-empty.test.ts`,
  *     `payment-suppression.test.ts`) staying green unchanged.
  *
+ *   - Deliberate additions (2026-09-17, Phase 3, recorded in their own
+ *     commit BEFORE any string moved): the private messages that lived
+ *     inline in database-reaching code, extracted verbatim into
+ *     `dm-copy.ts` (rows 83, 88 to 92, 95 to 98, 103 to 111, 122 and
+ *     the roster check-in invite). The only non-additive line in that
+ *     commit's `.snap` diff is the case count in the header.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -163,6 +170,28 @@ import {
 import { buildRecruitGroupInviteDm, buildRecruitInviteDm } from "../../recruit";
 import { buildRecruitChaseText } from "../../recruit-chase";
 import { buildTentativeFollowupAck } from "../../tentative-followup";
+import {
+  buildAdminRecruitDmReply,
+  buildBenchDmAck,
+  buildBenchDmUnclear,
+  buildDirectPayCollectorNudge,
+  buildDmQaApology,
+  buildFeeAskDm,
+  buildFeeCancelledAck,
+  buildFeeConfirmPrompt,
+  buildFeeReleasedAck,
+  buildPayChaseDm,
+  buildPayLinkDm,
+  buildRatingDm,
+  buildRatingReminderDm,
+  buildRosterSurveyClarification,
+  buildRosterSurveyConfirmation,
+  buildRosterSurveyInviteDm,
+  buildStatsLinkDm,
+  buildTentativeFollowupDm,
+  buildTentativeReask,
+  rosterSurveyClarificationProbe,
+} from "../../dm-copy";
 import { buildSelfAttendanceAck } from "../../out-of-band-self-attendance";
 import { dmSubAckMessage } from "../../dm-subscriptions";
 import {
@@ -626,6 +655,53 @@ function cases(lang: Lang): Case[] {
 
   // ── R98 fee-confirm.ts: the prompt that embeds the collector prompt ─
   add("R98 FEE_REPLY_SYSTEM_PROMPT", FEE_REPLY_SYSTEM_PROMPT);
+
+  // ── Phase 3: the private messages, extracted as pure builders
+  //    (dm-copy.ts, 2026-09-17) and pinned HERE, in English, before any
+  //    of them moved into the string table. ────────────────────────────
+  add("R91 buildRatingDm", buildRatingDm({ activityName: "Tuesday 7-a-side", dateLabel: "Tue 8 Sep", mvpLabel: "Man of the Match", rateUrl: "https://mt.example/s/rate", statsUrl: "https://mt.example/s/stats" }));
+  for (const dayNum of [1, 2, 3, 4, 5]) {
+    add(`R92 buildRatingReminderDm / day ${dayNum}`, buildRatingReminderDm({ dayNum, playerName: "Sait Demir", activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate" }));
+  }
+  add("R92 buildRatingReminderDm / no name", buildRatingReminderDm({ dayNum: 1, playerName: null, activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate" }));
+  add("R83 buildTentativeFollowupDm", buildTentativeFollowupDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", whenLabel: "Tue 8 Sep at 21:30" }));
+  add("R83 buildTentativeFollowupDm / no name", buildTentativeFollowupDm({ playerName: null, activityName: "Tuesday 7-a-side", whenLabel: "Tue 8 Sep at 21:30" }));
+  add("R88 buildFeeAskDm / fourteen played", buildFeeAskDm({ collectorName: "Kemal Ediz", activityName: "Tuesday 7-a-side", headcount: 14 }));
+  add("R88 buildFeeAskDm / nobody, no name", buildFeeAskDm({ collectorName: null, activityName: "Tuesday 7-a-side", headcount: 0 }));
+  for (const dayNum of [1, 2, 3]) {
+    add(`R89 buildPayChaseDm / day ${dayNum}`, buildPayChaseDm({ playerName: "Sait Demir", dayNum, fee: 8.5, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay" }));
+  }
+  add("R89 buildPayChaseDm / no name, whole pounds", buildPayChaseDm({ playerName: null, dayNum: 1, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay" }));
+  add("R90 buildDirectPayCollectorNudge / one", buildDirectPayCollectorNudge({ count: 1, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect" }));
+  add("R90 buildDirectPayCollectorNudge / three", buildDirectPayCollectorNudge({ count: 3, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect" }));
+  add("R95 buildPayLinkDm", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay" }));
+  add("R95 buildPayLinkDm / no name, pence", buildPayLinkDm({ playerName: null, activityName: "Tuesday 7-a-side", fee: 7.5, url: "https://mt.example/s/pay" }));
+  add("R96 buildFeeReleasedAck / one", buildFeeReleasedAck({ released: 1, fee: 8, matchName: "Tuesday 7-a-side" }));
+  add("R96 buildFeeReleasedAck / thirteen", buildFeeReleasedAck({ released: 13, fee: 8.5, matchName: "Tuesday 7-a-side" }));
+  add("R97 buildFeeCancelledAck", buildFeeCancelledAck());
+  add("R98 buildFeeConfirmPrompt / per player", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: false }));
+  add("R98 buildFeeConfirmPrompt / total split", buildFeeConfirmPrompt({ perPlayer: 7.69, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: true }));
+  add("R98 buildFeeConfirmPrompt / one player", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Tuesday 7-a-side", wasTotal: true }));
+  add("R98 buildFeeConfirmPrompt / nobody to charge", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 0, matchName: "Tuesday 7-a-side", wasTotal: false }));
+  add("R103 buildBenchDmUnclear", buildBenchDmUnclear());
+  for (const kind of ["declined", "confirmed", "taken", "other"] as const) {
+    add(`R104 buildBenchDmAck / ${kind}`, buildBenchDmAck(kind));
+  }
+  add("R105 buildTentativeReask", buildTentativeReask());
+  add("R106 buildAdminRecruitDmReply / invited three, two spots", buildAdminRecruitDmReply({ ok: true, invited: 3, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", need: 2 }));
+  add("R106 buildAdminRecruitDmReply / invited one, one spot", buildAdminRecruitDmReply({ ok: true, invited: 1, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", need: 1 }));
+  add("R106 buildAdminRecruitDmReply / invited, need unknown", buildAdminRecruitDmReply({ ok: true, invited: 2, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30" }));
+  add("R107 buildAdminRecruitDmReply / nobody new", buildAdminRecruitDmReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30" }));
+  add("R108 buildAdminRecruitDmReply / not ok, no reason", buildAdminRecruitDmReply({ ok: false }));
+  add("R109 buildRosterSurveyClarification", buildRosterSurveyClarification({ firstName: "Sait", orgName: "Sutton FC" }));
+  add("R109 rosterSurveyClarificationProbe", rosterSurveyClarificationProbe("Sait"));
+  for (const category of ["in", "maybe", "out"] as const) {
+    add(`R110 buildRosterSurveyConfirmation / ${category}`, buildRosterSurveyConfirmation({ category, firstName: "Sait" }));
+  }
+  add("R109b buildRosterSurveyInviteDm", buildRosterSurveyInviteDm({ firstName: "Sait", orgName: "Sutton FC" }));
+  add("R111 buildDmQaApology", buildDmQaApology());
+  add("R122 buildStatsLinkDm / named", buildStatsLinkDm({ name: "Sait Demir", url: "https://mt.example/s/stats" }));
+  add("R122 buildStatsLinkDm / no name", buildStatsLinkDm({ name: null, url: "https://mt.example/s/stats" }));
 
   return c;
 }

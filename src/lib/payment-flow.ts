@@ -15,7 +15,13 @@
 import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
-import { gbp, parseFeeReply } from "./payments";
+import { parseFeeReply } from "./payments";
+import {
+  buildFeeCancelledAck,
+  buildFeeConfirmPrompt,
+  buildFeeReleasedAck,
+  buildPayLinkDm,
+} from "./dm-copy";
 import { decideCheckoutEvent } from "./payment-outcome";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
 import type Stripe from "stripe";
@@ -52,16 +58,17 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
       nextPath: `/pay/${matchId}`,
       ttlSeconds: MAGIC_LINK_TTL.bookmark,
     });
-    const first = a.user.name?.split(" ")[0] ?? "there";
     await db.botJob.create({
       data: {
         orgId,
         kind: "dm",
         phone: a.user.phoneNumber.replace(/^\+/, ""),
-        text:
-          `💷 ${first} — match fee for *${match.activity.name}* is *${gbp(match.feePerPlayer)}*.\n\n` +
-          `Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):\n${await buildShortMagicLinkUrl(token)}\n\n` +
-          `You can also pay for anyone you brought along.`,
+        text: buildPayLinkDm({
+          playerName: a.user.name,
+          activityName: match.activity.name,
+          fee: match.feePerPlayer,
+          url: await buildShortMagicLinkUrl(token),
+        }),
       },
     });
     queued++;
@@ -314,22 +321,24 @@ export async function runCollectorFeeReply(
 
   const releaseNow = async (amount: number): Promise<CollectorReplyResult> => {
     const released = await deps.release(match.id, amount);
-    return {
-      released,
-      reply:
-        `✅ Done — sent ${released} pay link${released === 1 ? "" : "s"} at *${gbp(amount)}* each for *${match.name}*. ` +
-        `Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
-    };
+    return { released, reply: buildFeeReleasedAck({ released, fee: amount, matchName: match.name }) };
   };
   const cancelNow = async (): Promise<CollectorReplyResult> => {
     await deps.cancel(match.id);
-    return { reply: `No problem — cancelled. Just tell me the amount per player when you're ready.` };
+    return { reply: buildFeeCancelledAck() };
   };
   const stageNow = async (): Promise<CollectorReplyResult | null> => {
     const parsed = parseFeeReply(text, headcount);
     if (!parsed) return null;
     await deps.stage(match.id, parsed.perPlayer);
-    return { reply: confirmPrompt(parsed.perPlayer, headcount, match.name, parsed.wasTotal) };
+    return {
+      reply: buildFeeConfirmPrompt({
+        perPlayer: parsed.perPlayer,
+        headcount,
+        matchName: match.name,
+        wasTotal: parsed.wasTotal,
+      }),
+    };
   };
 
   // ── Awaiting confirmation of a previously-proposed amount ──
@@ -416,13 +425,4 @@ export async function handleCollectorFeeReply(
       });
     },
   });
-}
-
-function confirmPrompt(perPlayer: number, headcount: number, matchName: string, wasTotal: boolean): string {
-  const split = wasTotal ? ` (split across ${headcount} player${headcount === 1 ? "" : "s"})` : "";
-  return (
-    `Got it — *${gbp(perPlayer)}* per player${split} for *${matchName}*` +
-    (headcount > 0 ? `, ${headcount} player${headcount === 1 ? "" : "s"} to charge` : "") +
-    `.\n\nReply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.`
-  );
 }
