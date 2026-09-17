@@ -30,7 +30,12 @@ export type GenerateTeamsResult =
  * this file imports the Prisma client, and a pure formatter should be
  * reachable from a process that must not load it.
  */
-import { formatTeamsPost } from "./group-copy";
+import {
+  formatTeamsPost,
+  teamGenReasonNotEnough,
+  teamGenReasonNotFound,
+  teamGenReasonStatus,
+} from "./group-copy";
 export { formatTeamsPost };
 
 export interface GenerateTeamsOptions {
@@ -62,9 +67,11 @@ export async function generateTeamsForMatch(
       },
     },
   });
-  if (!match) return { ok: false, reason: "match not found" };
+  // No match means no org to take a language from: the English reason.
+  if (!match) return { ok: false, reason: teamGenReasonNotFound() };
+  const lang = match.activity.org.language;
   if (match.status === "COMPLETED" || match.status === "CANCELLED") {
-    return { ok: false, reason: `match is ${match.status.toLowerCase()}` };
+    return { ok: false, reason: teamGenReasonStatus(match.status, lang) };
   }
 
   const sport = match.activity.sport;
@@ -72,7 +79,7 @@ export async function generateTeamsForMatch(
   if (match.attendances.length < perTeam * 2) {
     return {
       ok: false,
-      reason: `not enough confirmed players — ${match.attendances.length}/${perTeam * 2}`,
+      reason: teamGenReasonNotEnough({ confirmed: match.attendances.length, needed: perTeam * 2, lang }),
     };
   }
 
@@ -154,10 +161,13 @@ export async function generateTeamsForMatch(
   // `match` still carries its pre-update teamLabels, so a prior override
   // survives when no new names are given this run.
   const matchLabelSource = validNames ? { teamLabels: validNames } : match;
+  // The group's language decides the default team names and the words
+  // around them; `org` is the full row here, so it carries `language`.
   const [redLabel, yellowLabel] = resolveTeamLabels(
     matchLabelSource,
     match.activity.org,
     sport,
+    lang,
   );
   const kickoff = formatLondon(match.date, "HH:mm");
   const groupPost = formatTeamsPost({
@@ -167,6 +177,7 @@ export async function generateTeamsForMatch(
     yellow: result.yellow,
     kickoff,
     venue: match.activity.venue,
+    lang,
   });
 
   return { ok: true, groupPost, matchId };

@@ -130,13 +130,20 @@ describe("no source file hard-codes a time-of-day greeting", () => {
     return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || /\bnever\b/i.test(t);
   };
 
-  it("has no '<time of day> all' greeting left in src/", () => {
+  it("has no '<time of day> all' greeting left in src/, in English or Turkish", () => {
+    // Turkish (2026-09-17, the string table under src/lib/i18n/): the
+    // same rule, the same reason. "Günaydın", "İyi akşamlar", "İyi
+    // günler" and "Selam millet" are greetings that claim to know the
+    // hour; a Turkish group's 17:00 post can fire at 20:06 just as the
+    // English one did.
+    const GREETINGS =
+      /\b(Morning|Afternoon|Evening)\s+(all|everyone|folks|lads)\b|(?:Günaydın|İyi\s+akşamlar|İyi\s+günler|İyi\s+geceler|Selam\s+millet|Selam\s+herkese)/iu;
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
       const body = fs.readFileSync(file, "utf8");
       body.split("\n").forEach((line, i) => {
         if (isProseAboutTheRule(line)) return;
-        if (/\b(Morning|Afternoon|Evening)\s+(all|everyone|folks|lads)\b/i.test(line)) {
+        if (GREETINGS.test(line)) {
           offenders.push(`${path.relative(SRC, file)}:${i + 1}: ${line.trim()}`);
         }
       });

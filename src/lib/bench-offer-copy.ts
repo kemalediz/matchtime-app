@@ -19,7 +19,12 @@
  * copy constants are set if the prompt still suggests it.
  *
  * House style: no em dashes, no en dashes, no slashes in prose.
+ *
+ * Language (2026-09-17): the group-facing builders read their words from
+ * the string table (`src/lib/i18n/`) via the `lang` on `ReactionGate`.
  * ──────────────────────────────────────────────────────────────────── */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 
 /**
  * Does the bench offer TELL players they can claim the slot with a 👍?
@@ -80,6 +85,11 @@ export const BENCH_PROMPT_MENTION_REACTIONS = false;
 interface ReactionGate {
   /** Override the 👍 instruction gate. Tests only. */
   mentionReactions?: boolean;
+  /** The group's language (`Organisation.language`). English when
+   *  absent; the English bytes are unchanged either way (golden). Every
+   *  group-facing builder reads it; the DM (`buildBenchOfferDm`) still
+   *  speaks English whatever is passed (Phase 3). */
+  lang?: Lang | string | null;
 }
 
 export interface BenchOfferGroupCopy extends ReactionGate {
@@ -93,15 +103,7 @@ export interface BenchOfferGroupCopy extends ReactionGate {
 /** The group post that offers an open slot to the whole bench at once. */
 export function buildBenchOfferGroupPost(c: BenchOfferGroupCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  const claim = reactions
-    ? "React 👍 here or reply *IN* to take it."
-    : "Just reply *IN* here to take it.";
-  return (
-    `🎟 A slot just opened ${c.context}. *First to claim it plays.*\n\n` +
-    `${c.tagList}\n\n` +
-    `${claim} No rush and no timeout, whoever is free first gets it ` +
-    `and everyone else stays on the bench. 🙏`
-  );
+  return t(c.lang).bench_offer_group_post({ context: c.context, tagList: c.tagList, reactions });
 }
 
 export interface BenchOfferDmCopy extends ReactionGate {
@@ -142,19 +144,13 @@ export function buildBenchOfferDm(c: BenchOfferDmCopy): string {
  */
 function benchPromotionHow(c: ReactionGate): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  return reactions
-    ? "the first to react 👍 or reply *IN* takes the slot"
-    : "the first to reply *IN* takes the slot";
+  return t(c.lang).bench_promotion_how({ reactions });
 }
 
 /** The bench line in the bot's day-one intro post. It is a promise about
  *  how the feature behaves, so it is gated with the feature. */
 export function buildBenchIntroLine(c: ReactionGate = {}): string {
-  const how = benchPromotionHow(c);
-  return (
-    `🔁  *Bench promotion* — If someone drops, I tag the bench here and ` +
-    `${how}. No timeout, and nobody loses their place for missing it.`
-  );
+  return t(c.lang).bench_intro_line({ how: benchPromotionHow(c) });
 }
 
 export interface FullSquadBenchInviteCopy extends ReactionGate {
@@ -219,11 +215,12 @@ export interface FullSquadBenchInviteCopy extends ReactionGate {
  * believing it has cover.
  */
 export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
-  return (
-    `*${c.matchName}* is full at ${c.confirmedCount} of ${c.maxPlayers}, but the bench is open. ` +
-    `Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group ` +
-    `and ${benchPromotionHow(c)}. 🙏`
-  );
+  return t(c.lang).full_squad_bench_invite({
+    matchName: c.matchName,
+    confirmed: c.confirmedCount,
+    maxPlayers: c.maxPlayers,
+    how: benchPromotionHow(c),
+  });
 }
 
 /**
@@ -259,10 +256,7 @@ export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
  * group. `buildFullSquadBenchInvite` also reaches an admin by DM.
  */
 export function buildSquadCompleteBenchInvite(c: ReactionGate = {}): string {
-  return (
-    `🪑 *Bench is open.* Say *IN* and I'll put you on the bench. ` +
-    `If someone drops out I tag the bench here and ${benchPromotionHow(c)}.`
-  );
+  return t(c.lang).squad_complete_bench_invite({ how: benchPromotionHow(c) });
 }
 
 export interface BenchAskedLineCopy extends ReactionGate {
@@ -277,13 +271,12 @@ export interface BenchAskedLineCopy extends ReactionGate {
  *  is right to call that misinformation). */
 export function buildBenchAskedLine(c: BenchAskedLineCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  const how = reactions
-    ? "they've been tagged here with a 👍 prompt"
-    : "they're tagged here and just need to reply *IN*";
-  return (
-    `Asking *${c.benchName}* to step up, ${how}. ` +
-    `Squad is *${c.confirmedCount}/${c.maxPlayers}* until they confirm.`
-  );
+  return t(c.lang).bench_asked_line({
+    benchName: c.benchName,
+    confirmed: c.confirmedCount,
+    maxPlayers: c.maxPlayers,
+    reactions,
+  });
 }
 
 /** The phrasing example handed to the LLM in SYSTEM_PROMPT. Quoted, so
@@ -293,4 +286,34 @@ export function benchClaimPhrasingExample(c: ReactionGate = {}): string {
   return reactions
     ? `"<name>, you're up — 👍/👎 above"`
     : `"<name>, you're up, just reply IN here to take it"`;
+}
+
+/**
+ * Row 49: what the group is told when a bencher claims the open slot.
+ * Moved verbatim from `bench-confirmation.ts` on 2026-09-17. Three
+ * shapes, in the order that module tries them: a team to take over (the
+ * replaced player had a team assignment), a replaced player with no
+ * team yet, or an open slot with nobody to replace.
+ */
+export function buildBenchClaimAnnouncement(args: {
+  claimerName: string;
+  droppedName: string | null;
+  teamLabel: string | null;
+  confirmedCount: number;
+  maxPlayers: number;
+  lang?: Lang | string | null;
+}): string {
+  const s = t(args.lang);
+  if (args.teamLabel && args.droppedName) {
+    return s.bench_claim_team({ claimer: args.claimerName, dropped: args.droppedName, teamLabel: args.teamLabel });
+  }
+  if (args.droppedName) {
+    return s.bench_claim_replacing({
+      claimer: args.claimerName,
+      dropped: args.droppedName,
+      confirmed: args.confirmedCount,
+      maxPlayers: args.maxPlayers,
+    });
+  }
+  return s.bench_claim_open({ claimer: args.claimerName, confirmed: args.confirmedCount, maxPlayers: args.maxPlayers });
 }

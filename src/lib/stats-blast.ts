@@ -122,6 +122,8 @@
  * Set to `false` and an untagged `stats_blast` fires on the model's word
  * alone. Do not.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 export const STATS_BLAST_REQUIRES_TAG = true;
 
 /**
@@ -189,11 +191,8 @@ export function composeStatsBlastDm(name: string | null, url: string): string {
 
 /** The group reply, composed from what LANDED rather than what was asked
  *  for — §6.4's rule, and the reason the engine proposes no speech. */
-export function composeStatsBlastReply(queued: number): string {
-  return (
-    `📊 Done — DM'd ${queued} player${queued === 1 ? "" : "s"} their personal stats link. ` +
-    `They'll arrive over the next few minutes.`
-  );
+export function composeStatsBlastReply(queued: number, lang?: Lang | string | null): string {
+  return t(lang).stats_blast_reply({ queued });
 }
 
 /**

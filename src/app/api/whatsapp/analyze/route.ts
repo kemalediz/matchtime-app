@@ -103,6 +103,12 @@ import { answerScopedQuestion } from "@/lib/dm-qa";
 import { enforceProximity } from "@/lib/message-analyzer";
 import {
   composeSquadStateReply,
+  buildRecruitAckReply,
+  buildTeamSheet,
+  buildSwapDeferredReply,
+  buildTeamSwapReply,
+  buildSlotTransferReply,
+  buildColourSwapReply,
   stripSquadPostMarker,
   SQUAD_POST_MARKER,
   type SquadTruth,
@@ -396,7 +402,9 @@ async function handleAnalyzeRequest(request: Request) {
 
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true },
-    select: { id: true, name: true },
+    // `language`: the squad post composed from the rows below speaks
+    // the group's language (Phase 2 of the multi-language design).
+    select: { id: true, name: true, language: true },
   });
   if (!org) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
@@ -2060,6 +2068,7 @@ async function handleAnalyzeRequest(request: Request) {
         react: engineOutcome.react,
         reply: engineOutcome.reply,
         senderName: sender.name ?? msg.authorName ?? null,
+        lang: org.language,
       });
       if (ack.failed) {
         console.error(attendanceFailureLog(engineOutcome.failures), "for", msg.waMessageId);
@@ -2091,7 +2100,7 @@ async function handleAnalyzeRequest(request: Request) {
       // attached after the whole loop, to whichever message ends up
       // speaking last — see "THE BATCH'S ONE SQUAD POST" below.
       if (engineReply && nextMatchForReply) {
-        engineReply = enforceProximity(engineReply, nextMatchForReply.date);
+        engineReply = enforceProximity(engineReply, nextMatchForReply.date, org.language);
       }
       const engineNudge = await unresolvedSenderNudge({
         senderResolved: !!sender.userId,
@@ -2099,6 +2108,7 @@ async function handleAnalyzeRequest(request: Request) {
         matchId: nextMatchForReply?.id ?? null,
         authorName: msg.authorName,
         dropping: engineOutcome.intent === "out",
+        lang: org.language,
       });
       if (engineNudge.applies) engineReply = engineNudge.reply;
 
@@ -2234,7 +2244,7 @@ async function handleAnalyzeRequest(request: Request) {
       const writeFailed = "writeFailed" in stepSeven && stepSeven.writeFailed;
       let reply = stepSeven.reply;
       if (reply && nextMatchForReply) {
-        reply = enforceProximity(reply, nextMatchForReply.date);
+        reply = enforceProximity(reply, nextMatchForReply.date, org.language);
       }
       await recordAnalysis({
         orgId: org.id,
@@ -2642,7 +2652,7 @@ async function handleAnalyzeRequest(request: Request) {
         };
         const composedIdx: number[] = [];
         for (const i of candidates) {
-          const out = composeSquadStateReply(results[i].reply!, truth);
+          const out = composeSquadStateReply(results[i].reply!, truth, org.language);
           if (!out.composed) continue;
           results[i].reply = out.text;
           composedIdx.push(i);
@@ -2699,28 +2709,16 @@ async function handleAnalyzeRequest(request: Request) {
       // WhatsApp account gets banned, so the clamp is applied where the
       // number is read and re-applied by `resolveLookbackMatches` here.
       const r = await inviteRecentPlayers(org.id, lookbackMatches ?? undefined);
-      const recruitReply = !r.ok
-        ? r.reason ?? "Couldn't do that right now."
-        : r.invited && r.invited > 0
-          ? `📣 On it — DM'd ${r.invited} recent player${r.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${r.matchName}*${r.need ? ` (${r.need} spot${r.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`
-          : r.reason
-            ? // FULL-SQUAD CASE, and the words are the LIB's on purpose.
-              // With the bench feature on this is the bench invitation
-              // (2026-09-14: "is already full, no open spots to recruit
-              // for" was answering an ask for BENCHERS, which are wanted
-              // because the squad is full); with it off it is the old
-              // refusal, which for that org is true. `recruit.ts`'s
-              // capacity guard is the only place holding the squad, the
-              // features and the match at once, and the DM admin path
-              // (`dm-reply/route.ts`) prints the same string — deciding
-              // it here would have fixed one caller of two.
-              r.reason
-            : r.alreadyInvited && r.alreadyInvited > 0
-              ? // Branch 3: candidates existed but were ALL already pinged on a
-                // previous recruit call — they just haven't replied yet.
-                `Already pinged the recent players for *${r.matchName}* — just waiting on their replies. 🙏`
-              : // Branch 2: genuinely nobody recent left to ask.
-                `No new players to ask for *${r.matchName}* right now. 👍`;
+      // The four shapes live in `group-copy.ts` (pure, golden-pinned).
+      // FULL-SQUAD CASE: the words are the LIB's on purpose. With the
+      // bench feature on `r.reason` is the bench invitation (2026-09-14:
+      // "is already full, no open spots to recruit for" was answering an
+      // ask for BENCHERS, which are wanted because the squad is full);
+      // with it off it is the old refusal, which for that org is true.
+      // `recruit.ts`'s capacity guard is the only place holding the
+      // squad, the features and the match at once, and the DM admin path
+      // (`dm-reply/route.ts`) prints the same string.
+      const recruitReply = buildRecruitAckReply(r, org.language);
 
       const idx = results.findIndex((x) => x.waMessageId === recruitMsg.waMessageId);
       if (idx >= 0) {
@@ -2815,7 +2813,7 @@ async function handleAnalyzeRequest(request: Request) {
           await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text } });
         },
       });
-      const blastReply = composeStatsBlastReply(queued);
+      const blastReply = composeStatsBlastReply(queued, org.language);
       const idx = results.findIndex((x) => x.waMessageId === blastMsg.waMessageId);
       if (idx >= 0) {
         // ONE reply, merged — never a second send. The same invariant the
@@ -3029,6 +3027,7 @@ async function unresolvedSenderNudge(args: {
   matchId: string | null;
   authorName: string | null;
   dropping: boolean;
+  lang?: string | null;
 }): Promise<{ applies: boolean; reply: string | null }> {
   // The RULE (does it fire, what does it say, under what key) is pure and
   // unit-tested in `lib/unresolved-nudge.ts`. That is where the 2026-08-30
@@ -3697,7 +3696,7 @@ async function handleTeamSwapIfApplicable(
       activity: {
         include: {
           sport: { select: { teamLabels: true } },
-          org: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true, language: true } },
         },
       },
       // EVERY attendance row, not only the CONFIRMED ones. The shipped
@@ -3750,27 +3749,25 @@ async function handleTeamSwapIfApplicable(
   // message out of `fresh` and deletes every other clause in it.
   if (decision.kind === "refuse") return null;
 
-  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
+  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
   const sheet = async () => {
     const rows = await db.teamAssignment.findMany({
       where: { matchId: match.id },
       include: { user: { select: { name: true } } },
     });
-    const red = rows.filter((t) => t.team === "RED").map((t) => t.user.name);
-    const yel = rows.filter((t) => t.team === "YELLOW").map((t) => t.user.name);
-    return (
-      `*${labels[0]}*\n${red.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n` +
-      `*${labels[1]}*\n${yel.map((n, i) => `${i + 1}. ${n}`).join("\n")}`
-    );
+    return buildTeamSheet({
+      redLabel: labels[0],
+      yellowLabel: labels[1],
+      red: rows.filter((t) => t.team === "RED").map((t) => t.user.name),
+      yellow: rows.filter((t) => t.team === "YELLOW").map((t) => t.user.name),
+    });
   };
 
   if (decision.kind === "defer-no-teams") {
     // Teams not generated yet — nothing to swap, but make ABSOLUTELY
     // sure nobody is dropped. Acknowledge + defer. Unchanged wording.
     return {
-      reply:
-        `Both *${A.name}* and *${B.name}* are already in — nobody's dropped. ` +
-        `Teams aren't generated yet; say *generate teams* and I'll build them (then I can put them on opposite sides).`,
+      reply: buildSwapDeferredReply({ a: A.name, b: B.name, lang: match.activity.org.language }),
       logReason: `team-swap deferred (no teams yet): ${A.name} <-> ${B.name}`,
     };
   }
@@ -3789,9 +3786,7 @@ async function handleTeamSwapIfApplicable(
       }),
     ]);
     return {
-      reply:
-        `🔁 Swapped *${decision.a.name}* and *${decision.b.name}* — nobody dropped. Updated teams:\n\n` +
-        (await sheet()),
+      reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet(), lang: match.activity.org.language }),
       logReason: `team-swap applied: ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
@@ -3822,10 +3817,13 @@ async function handleTeamSwapIfApplicable(
   ]);
   const movedTo = decision.team === "RED" ? labels[0] : labels[1];
   return {
-    reply:
-      `🔁 *${decision.to.name}* takes *${decision.from.name}*'s place on *${movedTo}* — ` +
-      `same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:\n\n` +
-      (await sheet()),
+    reply: buildSlotTransferReply({
+      to: decision.to.name,
+      from: decision.from.name,
+      teamLabel: movedTo,
+      sheet: await sheet(),
+      lang: match.activity.org.language,
+    }),
     logReason:
       `team-slot-transfer applied: ${decision.from.name} (${decision.from.status}) ` +
       `-> ${decision.to.name} on ${decision.team}`,
@@ -3894,7 +3892,7 @@ async function handleColorSwapIfApplicable(
       activity: {
         include: {
           sport: { select: { teamLabels: true } },
-          org: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true, language: true } },
         },
       },
       teamAssignments: { include: { user: { select: { name: true } } } },
@@ -3908,7 +3906,7 @@ async function handleColorSwapIfApplicable(
   // configured team labels (resolved from Organisation/Sport.teamLabels).
   // Red/Yellow stay covered by the regexes above as a fallback.
   if (!isColourSwap) {
-    const cfgLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
+    const cfgLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
     const labelAlts = cfgLabels
       .map((l) => l.trim())
       .filter((l) => l && !/^(red|yellow)$/i.test(l))
@@ -3935,18 +3933,21 @@ async function handleColorSwapIfApplicable(
     ),
   );
 
-  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport);
+  const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
   const fresh = await db.teamAssignment.findMany({
     where: { matchId: match.id },
     include: { user: { select: { name: true } } },
   });
-  const red = fresh.filter((t) => t.team === "RED").map((t) => t.user.name);
-  const yel = fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name);
   return {
-    reply:
-      `🎨 Swapped the colours — same teams, sides flipped:\n\n` +
-      `*${labels[0]}*\n${red.map((n, i) => `${i + 1}. ${n}`).join("\n")}\n\n` +
-      `*${labels[1]}*\n${yel.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
+    reply: buildColourSwapReply({
+      sheet: buildTeamSheet({
+        redLabel: labels[0],
+        yellowLabel: labels[1],
+        red: fresh.filter((t) => t.team === "RED").map((t) => t.user.name),
+        yellow: fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name),
+      }),
+      lang: match.activity.org.language,
+    }),
     logReason: `colour-swap applied (labels flipped, rosters unchanged)`,
   };
 }

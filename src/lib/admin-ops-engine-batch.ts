@@ -628,7 +628,7 @@ export async function runAdminOpsBatch(args: {
     // and it REPLACES the composer's generic `payment_ack`, because the
     // shipped sentence carries the unpaid count the chase depends on and
     // the composer cannot see payment state at all.
-    replyByMessage.set(w.sourceMessageId, composePaymentAck(applied, w.payerName));
+    replyByMessage.set(w.sourceMessageId, composePaymentAck(applied, w.payerName, state.features.language));
     actedIds.add(w.sourceMessageId);
   }
 

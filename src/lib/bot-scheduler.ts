@@ -41,6 +41,23 @@ import {
   buildBenchIntroLine,
 } from "./bench-offer-copy";
 import { buildRatePromoPost, buildMatchDayChaseFallback } from "./group-copy";
+import { dayLabel, longDayTimeLabel } from "./i18n/dates";
+import { normaliseLang, type Lang } from "./i18n/lang";
+import {
+  buildAnnounceMatchPost,
+  buildAskScorePost,
+  buildBenchOfferContext,
+  buildBotIntro,
+  buildChasePreKickoffFallback,
+  buildDailyInListFallback,
+  buildGearReminder,
+  buildMatchDayLockedPost,
+  buildMatchDayTeamsBlock,
+  buildPaymentPollQuestion,
+  buildPreKickoffShortFallback,
+  buildSquadRosterBlock,
+  buildUnpaidTailText,
+} from "./scheduler-copy";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -242,6 +259,7 @@ function buildReminderText(args: {
  */
 async function buildUnpaidTail(
   activityId: string,
+  lang: Lang,
 ): Promise<{ text: string; mentions: string[] } | null> {
   const lastCompleted = await db.match.findFirst({
     where: { activityId, status: "COMPLETED", isHistorical: false },
@@ -297,84 +315,15 @@ async function buildUnpaidTail(
   // no shaming — point everyone at the original payment poll. Anyone
   // who's already paid clears themselves by ticking their team. The
   // poll-vote → paidAt wiring takes care of the rest.
-  const text =
-    unpaid === 1
-      ? `💳 1 payment still pending for last week's match — if you've already paid, tick your team in the poll above to clear it 🙏`
-      : `💳 *${unpaid}* payments still pending for last week's match — if you've already paid, just tick your team in the poll above to clear it 🙏`;
+  const text = buildUnpaidTailText(unpaid, lang);
   // No mentions needed — we don't tag anyone in the poll-only style.
   const mentions: string[] = [];
   return { text, mentions };
 }
 
-/**
- * Render a numbered "Confirmed (N/M):" + "Bench (N):" block for the
- * daily 17:00 announcement. Goal: every day at 5pm, every player can
- * scan the message and see their own name on the list — confirms
- * they're playing without anyone needing to scroll up. Bench gets its
- * own numbered sub-list so the gap to the squad is obvious.
- */
-function buildSquadRosterBlock(args: {
-  confirmed: { user: { name: string | null } }[];
-  bench: { user: { name: string | null } }[];
-  maxPlayers: number;
-}): string {
-  const { confirmed, bench, maxPlayers } = args;
-  const lines: string[] = [];
-  lines.push(`*Confirmed (${confirmed.length}/${maxPlayers}):*`);
-  if (confirmed.length === 0) {
-    lines.push("_nobody yet_");
-  } else {
-    confirmed.forEach((a, i) => {
-      lines.push(`${i + 1}. ${a.user.name ?? "(unnamed)"}`);
-    });
-  }
-  if (bench.length > 0) {
-    lines.push("");
-    lines.push(`*Bench (${bench.length}):*`);
-    bench.forEach((a, i) => {
-      lines.push(`${i + 1}. ${a.user.name ?? "(unnamed)"}`);
-    });
-  }
-  return lines.join("\n");
-}
-
-/**
- * Match-day 17:00 view when teams have been generated. Replaces the
- * flat squad roster with a Red vs Yellow lineup so each player can
- * scan and confirm what side they're on tonight. Bench is
- * intentionally NOT listed — by match day the bench player isn't
- * playing unless someone drops in the next few hours, and naming
- * them on the lineup post is just noise. No "objections / swap X Y"
- * footer here — that's already in the team-publish post that fired
- * when teams were generated; this is a daily reminder, not a fresh
- * announcement.
- */
-function buildMatchDayTeamsBlock(args: {
-  activity: { name: string; venue: string };
-  match: { teamLabels?: string[] | null } | null;
-  org: { teamLabels?: string[] | null } | null;
-  sport: { teamLabels: string[] };
-  matchDate: Date;
-  teamAssignments: { team: "RED" | "YELLOW"; user: { name: string | null } }[];
-}): string {
-  const { activity, match, org, sport, matchDate, teamAssignments } = args;
-  const [redLabel, yellowLabel] = resolveTeamLabels(match, org, sport);
-  const red = teamAssignments.filter((t) => t.team === "RED");
-  const yellow = teamAssignments.filter((t) => t.team === "YELLOW");
-  const numbered = (arr: typeof red) =>
-    arr.map((t, i) => `${i + 1}. ${t.user.name ?? "(unnamed)"}`).join("\n");
-  return [
-    `⚽ *Tonight at ${format(matchDate, "HH:mm")}* — *${activity.name}* at ${activity.venue}`,
-    ``,
-    `*${redLabel}:*`,
-    numbered(red),
-    ``,
-    `*${yellowLabel}:*`,
-    numbered(yellow),
-    ``,
-    `See you tonight 🙌`,
-  ].join("\n");
-}
+// `buildSquadRosterBlock` and `buildMatchDayTeamsBlock` moved verbatim to
+// `./scheduler-copy.ts` (pure, no Prisma) on 2026-09-17 so the golden
+// snapshot can pin their bytes. Same words, same layout.
 
 /** Date-only key for "daily X" idempotency (YYYY-MM-DD in London). */
 function londonDateKey(at: Date = new Date()): string {
@@ -400,56 +349,9 @@ function hoursBetween(a: Date, b: Date): number {
  * become per-group dynamic.
  */
 function botIntroMessage(f: OrgFeatures): string {
-  const lines: string[] = [
-    `👋 Hi all — MatchTime bot is live for this group.`,
-    ``,
-    `Here's what I do:`,
-  ];
-  if (f.attendance) {
-    lines.push(
-      ``,
-      `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with 👍 to confirm — no extra messages from me.`,
-      ``,
-      `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
-    );
-  }
-  if (f.bench) {
-    lines.push(
-      ``,
-      buildBenchIntroLine(),
-    );
-  }
-  if (f.teamBalancing) {
-    lines.push(
-      ``,
-      `⚽  *Teams* — Ask me to "generate teams" and I post auto-balanced sides. Objections? Reply \`swap X Y\` — admin will apply it.`,
-    );
-  }
-  if (f.momVoting || f.playerRating) {
-    const bits: string[] = [];
-    if (f.playerRating)
-      bits.push(`I DM everyone a rating link after each match (no sign-up, just tap)`);
-    if (f.momVoting)
-      bits.push(`vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest)`);
-    lines.push(``, `🏆  *Ratings & MoM* — ${bits.join("; ")}.`);
-  }
-  if (f.reminders) {
-    lines.push(
-      ``,
-      `⏰  *Reminders* — Say "@MatchTime remind me Monday" and I'll DM you then.`,
-    );
-  }
-  if (f.statsQa) {
-    lines.push(
-      ``,
-      `📊  *Stats* — Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
-    );
-  }
-  if (f.paymentTracking) {
-    lines.push(``, `💳  *Payments* — I auto-post "paid?" polls right after each match.`);
-  }
-  lines.push(``, `Questions? Just ask here. Let's go.`);
-  return lines.join("\n");
+  // The words live in `scheduler-copy.ts` (pure, golden-pinned) and
+  // come from the string table for the org's language.
+  return buildBotIntro(f, buildBenchIntroLine({ lang: f.language }), f.language);
 }
 
 // ─────────────────────────── Main entry point ─────────────────────────────
@@ -801,6 +703,8 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
               paymentCollectionEnabled: true,
               paymentHolderId: true,
               teamLabels: true,
+              // The group's language: every static post below reads it.
+              language: true,
             },
           },
         },
@@ -859,6 +763,11 @@ async function computeForMatch(
   const matchId = m.id;
   const activity = m.activity;
   const sport = activity.sport;
+  // THE GROUP'S LANGUAGE (`Organisation.language`), once per match. Read
+  // defensively: the unit-test fixtures build `activity.org` by hand and
+  // some omit it; Prisma always selects it. Unknown or missing is English,
+  // and the English bytes are pinned by the golden snapshot.
+  const lang: Lang = normaliseLang(activity.org?.language);
   const hoursUntilMatch = hoursBetween(now, m.date);
   const hoursSinceMatch = -hoursUntilMatch;
 
@@ -945,12 +854,17 @@ async function computeForMatch(
       isNextUpcoming &&
       squadEmpty
     ) {
-      const dateStr = format(m.date, "EEEE d MMMM 'at' HH:mm");
       out.push({
         kind: "group-message",
         key,
         matchId,
-        text: `📅 *${activity.name}* — *${dateStr}* at ${activity.venue}.\n\nSay *IN* to join. First ${maxPlayers} confirmed play.`,
+        text: buildAnnounceMatchPost({
+          activityName: activity.name,
+          dateLabel: longDayTimeLabel(lang, m.date),
+          venue: activity.venue,
+          maxPlayers,
+          lang,
+        }),
       });
     }
   }
@@ -1007,15 +921,16 @@ async function computeForMatch(
       );
       const skipUnpaidChase =
         dayKey === matchDayKey || dayKey === dayBeforeMatchKey;
-      const unpaidTail = skipUnpaidChase ? null : await buildUnpaidTail(activity.id);
+      const unpaidTail = skipUnpaidChase ? null : await buildUnpaidTail(activity.id, lang);
 
       // Roster block listed under every branch — daily reminder so each
       // player sees their own name without scrolling up. Bench gets its
       // own numbered list when populated.
       const rosterBlock = buildSquadRosterBlock({
-        confirmed,
-        bench,
+        confirmed: confirmed.map((a) => a.user),
+        bench: bench.map((a) => a.user),
         maxPlayers: m.maxPlayers,
+        lang,
       });
 
       const isMatchDay = dayKey === matchDayKey;
@@ -1031,13 +946,16 @@ async function computeForMatch(
         // want is "am I Red or Yellow tonight?". Bench is omitted on
         // purpose — they're not playing unless someone drops, and
         // naming them on the lineup post is unnecessary noise.
+        const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org ?? null, sport, lang);
         text = buildMatchDayTeamsBlock({
-          activity,
-          match: m,
-          org: activity.org ?? null,
-          sport,
-          matchDate: m.date,
-          teamAssignments: m.teamAssignments,
+          activityName: activity.name,
+          venue: activity.venue,
+          timeLabel: format(m.date, "HH:mm"),
+          redLabel,
+          yellowLabel,
+          red: m.teamAssignments.filter((t) => t.team === "RED").map((t) => t.user),
+          yellow: m.teamAssignments.filter((t) => t.team === "YELLOW").map((t) => t.user),
+          lang,
         });
       } else if (isMatchDay && need === 0 && !teamsReady) {
         // 2-pre-alt. Match day, full squad, but teams haven't been
@@ -1046,10 +964,13 @@ async function computeForMatch(
         // generation so the next 17:00-window tick can show the
         // lineup. Most ticks happen every 5 min so nudge is acted on
         // quickly.
-        const intro =
-          `⚽ *Tonight at ${format(m.date, "HH:mm")}* — *${activity.name}* at ${activity.venue}\n\n` +
-          `Squad is locked. Say *@MatchTime generate teams* in the chat to lock in tonight's lineup 👇`;
-        text = `${intro}\n\n${rosterBlock}`;
+        text = buildMatchDayLockedPost({
+          activityName: activity.name,
+          venue: activity.venue,
+          timeLabel: format(m.date, "HH:mm"),
+          rosterBlock,
+          lang,
+        });
       } else if (beforeDeadline && need > 0) {
         // 2a. Short squad — chase + unpaid tail. Chase template (LLM
         // or fallback) produces its own numbered list, so we leave it
@@ -1064,10 +985,17 @@ async function computeForMatch(
           // INCLUDING the bench (bench shows in every squad display,
           // all orgs — Kemal 2026-06-12). buildSquadRosterBlock already
           // renders the "*Bench (N):*" sub-list when populated.
-          return (
-            `🗓 *${activity.name}* — need *${need} more*.\n\n` +
-            buildSquadRosterBlock({ confirmed, bench, maxPlayers: m.maxPlayers })
-          );
+          return buildDailyInListFallback({
+            activityName: activity.name,
+            need,
+            rosterBlock: buildSquadRosterBlock({
+              confirmed: confirmed.map((a) => a.user),
+              bench: bench.map((a) => a.user),
+              maxPlayers: m.maxPlayers,
+              lang,
+            }),
+            lang,
+          });
         });
         text = unpaidTail ? `${chaseText}\n\n${unpaidTail.text}` : chaseText;
         mentions = unpaidTail?.mentions;
@@ -1321,18 +1249,20 @@ async function computeForMatch(
         if (benchAtt.length === 0) continue; // no bench — chase covers it
 
         // Context: which team / who they'd replace, if teams exist.
-        let ctx = `for *${activity.name}* tonight`;
-        let ctxPlain = `for ${activity.name} tonight`;
+        let team: { teamLabel: string; replacingName: string | null } | null = null;
         if (offer.replacingUserId) {
           const repl = m.attendances.find((a) => a.userId === offer.replacingUserId)?.user;
           const ta = m.teamAssignments.find((t) => t.userId === offer.replacingUserId);
           if (repl && ta) {
-            const labels = resolveTeamLabels(m, activity.org, sport);
-            const tl = ta.team === "RED" ? labels[0] : labels[1];
-            ctx = `on *${tl}* (replacing ${repl.name ?? "—"}) for *${activity.name}* tonight`;
-            ctxPlain = `on ${tl} (replacing ${repl.name ?? "—"}) for ${activity.name} tonight`;
+            const labels = resolveTeamLabels(m, activity.org, sport, lang);
+            team = { teamLabel: ta.team === "RED" ? labels[0] : labels[1], replacingName: repl.name };
           }
         }
+        const { group: ctx, plain: ctxPlain } = buildBenchOfferContext({
+          activityName: activity.name,
+          team,
+          lang,
+        });
 
         const mentions = benchAtt.map((a) => a.user.phoneNumber!.replace(/^\+/, ""));
         const tagList = mentions.map((p) => `@${p}`).join(" ");
@@ -1354,7 +1284,7 @@ async function computeForMatch(
             // it; pass the first bencher purely to satisfy the type.
             userId: benchAtt[0].userId,
             phone: mentions[0],
-            text: buildBenchOfferGroupPost({ context: ctx, tagList }),
+            text: buildBenchOfferGroupPost({ context: ctx, tagList, lang }),
           });
         }
 
@@ -1512,7 +1442,7 @@ async function computeForMatch(
           "match-day-morning",
           // No "Morning all": the slot is 8-9am but the post can land
           // late (see buildMatchDayChaseFallback's docblock).
-          () => buildMatchDayChaseFallback({ need, activityName: activity.name }),
+          () => buildMatchDayChaseFallback({ need, activityName: activity.name, lang }),
         );
         out.push({ kind: "group-message", key, matchId, text });
       }
@@ -1528,10 +1458,13 @@ async function computeForMatch(
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        const text = await composeOrFallback(
-          "chase-pre-kickoff",
-          () =>
-            `⏳ Still *${need} short* for *${activity.name}* at ${format(m.date, "HH:mm")}. Anyone free tonight?`,
+        const text = await composeOrFallback("chase-pre-kickoff", () =>
+          buildChasePreKickoffFallback({
+            need,
+            activityName: activity.name,
+            timeLabel: format(m.date, "HH:mm"),
+            lang,
+          }),
         );
         out.push({ kind: "group-message", key, matchId, text });
       }
@@ -1553,10 +1486,15 @@ async function computeForMatch(
       hoursUntilMatch > 0.5 &&
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
-      const base = `⏰ Tonight *${format(m.date, "HH:mm")}* at *${activity.venue}* · ${confirmed.length}/${maxPlayers}`;
-      const text = await composeOrFallback(
-        "pre-kickoff-short",
-        () => `${base} — *still need ${need}*, last chance to jump in. 🙏`,
+      const text = await composeOrFallback("pre-kickoff-short", () =>
+        buildPreKickoffShortFallback({
+          timeLabel: format(m.date, "HH:mm"),
+          venue: activity.venue,
+          confirmed: confirmed.length,
+          maxPlayers,
+          need,
+          lang,
+        }),
       );
       out.push({ kind: "group-message", key, matchId, text });
     }
@@ -1582,9 +1520,7 @@ async function computeForMatch(
         kind: "group-message",
         key,
         matchId,
-        text:
-          `⚽ *${format(m.date, "HH:mm")} at ${activity.venue}* — see you there!\n\n` +
-          `Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*, and *spare bibs*.`,
+        text: buildGearReminder({ timeLabel: format(m.date, "HH:mm"), venue: activity.venue, lang }),
       });
     }
   }
@@ -1608,9 +1544,7 @@ async function computeForMatch(
         kind: "group-message",
         key,
         matchId,
-        text:
-          `🏁 *${activity.name}* — hope it was a good one. What was the final score? ` +
-          `I'll use it to keep next week's teams balanced.`,
+        text: buildAskScorePost({ activityName: activity.name, lang }),
       });
     }
   }
@@ -1633,12 +1567,12 @@ async function computeForMatch(
         m.status === "TEAMS_PUBLISHED" ||
         m.status === "COMPLETED")
     ) {
-      const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org, sport);
+      const [redLabel, yellowLabel] = resolveTeamLabels(m, activity.org, sport, lang);
       out.push({
         kind: "group-poll",
         key,
         matchId,
-        question: `💳 Payments for *${activity.name}* — tick when you've paid`,
+        question: buildPaymentPollQuestion(activity.name, lang),
         options: [redLabel, yellowLabel],
       });
     }
@@ -1902,7 +1836,8 @@ async function computeForMatch(
             // Prisma.
             text: buildRatePromoPost({
               activityName: activity.name,
-              matchDateLabel: format(m.date, "EEE d MMM"),
+              matchDateLabel: dayLabel(lang, m.date),
+              lang,
             }),
           });
         }
@@ -2030,6 +1965,7 @@ async function computeForMatch(
               mvpLabel: sport.mvpLabel,
               activityName: activity.name,
               tally,
+              lang,
             }),
           });
         }

@@ -619,7 +619,7 @@ export interface AnswerBatchDeps {
   /** The OTHER targeted read that does not happen on every batch (2026-
    *  09-11). Injected for the same reason: a test must be able to prove
    *  it is called for a `rating_progress` topic and for nothing else. */
-  loadRatingProgress?: (orgId: string) => Promise<RatingProgress>;
+  loadRatingProgress?: (orgId: string, lang?: string) => Promise<RatingProgress>;
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated engine rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
@@ -1087,11 +1087,11 @@ export async function runAnswerBatch(args: {
     try {
       const load =
         deps.loadRatingProgress ??
-        (async (o: string) => {
+        (async (o: string, l?: string) => {
           const m = await import("./load-state");
-          return m.loadRatingProgressSnapshot(o);
+          return m.loadRatingProgressSnapshot(o, l);
         });
-      state = { ...state, ratingProgress: await load(orgId) };
+      state = { ...state, ratingProgress: await load(orgId, state.features.language) };
     } catch (err) {
       const detail =
         `${ANSWER_DEGRADED_PREFIX} the rating-progress read failed (${

@@ -51,6 +51,8 @@
  *     a test asserts the absence by SCANNING this file, because a
  *     comment saying so is worth nothing.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 import type { ProposedWrite } from "./pipeline/types";
 
 export type EnginePaymentWrite = Extract<ProposedWrite, { kind: "payment_credit" }>;
@@ -159,20 +161,16 @@ export function composeReminderDm(args: { name: string | null; note: string }): 
  * sentence, and this derives it from the same facts without a second
  * round trip. If nothing landed, there is no sentence.
  */
-export function composePaymentAck(r: PaymentApplyResult, payerName: string): string {
-  const credited =
-    r.creditedNames.length > 0
-      ? r.creditedNames.join(", ")
-      : `${r.write.count} payment${r.write.count === 1 ? "" : "s"}`;
-  const tail =
-    r.unmatchedUserIds.length > 0
-      ? `\n\n_(couldn't find ${r.unmatchedUserIds.length} of those names on the squad — ` +
-        `those were ignored)_`
-      : "";
-  return (
-    `💳 Got it — credited *${payerName}* with ${credited} for *${r.matchName}*. ` +
-    `Unpaid: ${r.unpaidAfter}/${r.confirmedCount}.${tail}`
-  );
+export function composePaymentAck(r: PaymentApplyResult, payerName: string, lang?: Lang | string | null): string {
+  return t(lang).payment_credit_ack({
+    payerName,
+    credited: r.creditedNames,
+    count: r.write.count,
+    matchName: r.matchName,
+    unpaid: r.unpaidAfter,
+    confirmed: r.confirmedCount,
+    unmatched: r.unmatchedUserIds.length,
+  });
 }
 
 /**

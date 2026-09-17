@@ -8,6 +8,9 @@ import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { revalidatePath } from "next/cache";
 import { sendRatingEmails } from "@/lib/email";
 import { formatLondon } from "@/lib/london-time";
+import { buildFormatSwitchAnnouncement, buildMatchCancelledAnnouncement } from "@/lib/group-copy";
+import { dayTimeLabel } from "@/lib/i18n/dates";
+import { normaliseLang } from "@/lib/i18n/lang";
 import { computeEloDeltas } from "@/lib/elo";
 import {
   planFormatSwitchSchedule,
@@ -37,11 +40,13 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { include: { sport: true } } },
+    include: { activity: { include: { sport: true, org: { select: { language: true } } } } },
   });
   if (!match) throw new Error("Match not found");
 
   await requireOrgAdmin(session.user.id, match.activity.orgId);
+  // Optional chaining: the unit test mocks the match without its org.
+  const lang = normaliseLang(match.activity.org?.language);
 
   const newActivity = await db.activity.findFirst({
     where: { id: newActivityId, orgId: match.activity.orgId },
@@ -140,24 +145,23 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
     orderBy: { position: "asc" },
   });
 
-  const playerLines = fresh.map((a, i) => `${i + 1}. ${a.user.name ?? "?"}`).join("\n");
-  const benchLines = benchList.length
-    ? "\n\n*Bench:*\n" +
-      benchList.map((a, i) => `${i + 1}. ${a.user.name ?? "?"}`).join("\n")
-    : "";
   // The incident was the group being told the wrong kickoff, so when the
   // switch moves it, say so in the same message. Empty when it didn't.
-  const kickoffLine = renderKickoffMoveLine(schedule);
+  const kickoffLine = renderKickoffMoveLine(schedule, lang);
 
   await db.botJob.create({
     data: {
       orgId: match.activity.orgId,
       kind: "group",
-      text:
-        `🔁 *Match switched* — now *${newActivity.sport.name}* (${newMaxPlayers} players).\n` +
-        (kickoffLine ? `${kickoffLine}\n` : "") +
-        `\n*Playing (${fresh.length}/${newMaxPlayers}):*\n${playerLines || "_nobody yet_"}` +
-        benchLines,
+      // The words live in `group-copy.ts` (pure, golden-pinned).
+      text: buildFormatSwitchAnnouncement({
+        sportName: newActivity.sport.name,
+        maxPlayers: newMaxPlayers,
+        kickoffLine,
+        playing: fresh.map((a) => a.user.name),
+        bench: benchList.map((a) => a.user.name),
+        lang,
+      }),
     },
   });
 
@@ -176,7 +180,7 @@ export async function cancelMatch(matchId: string) {
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true, name: true } } },
+    include: { activity: { select: { orgId: true, name: true, org: { select: { language: true } } } } },
   });
   if (!match) throw new Error("Match not found");
   if (match.status === "CANCELLED") return; // idempotent
@@ -193,9 +197,11 @@ export async function cancelMatch(matchId: string) {
     data: {
       orgId: match.activity.orgId,
       kind: "group",
-      text:
-        `❌ *Match cancelled* — ${match.activity.name} on ${formatLondon(match.date, "EEE d MMM 'at' HH:mm")}.\n\n` +
-        `Not enough players this week. See you next week!`,
+      text: buildMatchCancelledAnnouncement({
+        activityName: match.activity.name,
+        whenLabel: dayTimeLabel(normaliseLang(match.activity.org?.language), match.date),
+        lang: normaliseLang(match.activity.org?.language),
+      }),
     },
   });
 

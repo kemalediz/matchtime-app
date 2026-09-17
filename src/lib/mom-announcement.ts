@@ -6,6 +6,9 @@
  * vote tally and it returns the exact message the bot posts to the group.
  */
 
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+
 export interface MomTallyEntry {
   name: string;
   votes: number;
@@ -21,6 +24,8 @@ export interface BuildMomAnnouncementArgs {
    * by name). Must be non-empty — callers skip the announcement on 0 votes.
    */
   tally: MomTallyEntry[];
+  /** The group's language; English when absent. */
+  lang?: Lang | string | null;
 }
 
 /**
@@ -29,6 +34,7 @@ export interface BuildMomAnnouncementArgs {
  */
 export function buildMomAnnouncement(args: BuildMomAnnouncementArgs): string {
   const { mvpLabel, activityName, tally } = args;
+  const s = t(args.lang);
 
   const totalVotes = tally.reduce((sum, t) => sum + t.votes, 0);
   const topCount = tally[0].votes;
@@ -39,14 +45,14 @@ export function buildMomAnnouncement(args: BuildMomAnnouncementArgs): string {
       ? `${topNames[0]} & ${topNames[1]}`
       : `${topNames.slice(0, -1).join(", ")} & ${topNames.slice(-1)[0]}`
     : topNames[0];
-  const breakdown = tally.map((t) => `• ${t.name} — ${t.votes}`).join("\n");
+  const breakdown = tally.map((e) => s.mom_vote_row({ name: e.name, votes: e.votes })).join("\n");
 
   return (
-    `🏆 *${mvpLabel} — ${activityName}*\n\n` +
+    `${s.mom_header({ mvpLabel, activityName })}\n\n` +
     (sharedHeader
-      ? `Shared between *${namesText}* (${topCount} vote${topCount === 1 ? "" : "s"} each, ${totalVotes} total) 🎉\n\n`
-      : `Congrats *${namesText}* (${topCount}/${totalVotes} vote${totalVotes === 1 ? "" : "s"}) 🎉\n\n`) +
-    `Votes:\n${breakdown}\n\n` +
-    `Your trophy awaits next match.`
+      ? `${s.mom_shared({ names: namesText, top: topCount, total: totalVotes })}\n\n`
+      : `${s.mom_winner({ name: namesText, top: topCount, total: totalVotes })}\n\n`) +
+    `${s.mom_votes_header}\n${breakdown}\n\n` +
+    s.mom_trophy_line
   );
 }

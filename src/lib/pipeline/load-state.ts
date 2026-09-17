@@ -12,7 +12,9 @@
  * module that could break it.
  */
 import { db } from "../db";
-import { formatLondon } from "../london-time";
+import { kickoffLabel } from "../i18n/dates";
+import { t } from "../i18n/t";
+import type { Lang } from "../i18n/lang";
 import { getOrgFeatures } from "../org-features";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { resolveTeamLabels } from "../team-labels";
@@ -196,18 +198,23 @@ export async function loadSquadState(
     orderBy: { createdAt: "desc" },
   });
 
+  // THE LANGUAGE DECIDES THE LABELS AND THE DATE WORDS, so it is read
+  // before anything is formatted (design section 7.7). `features` was
+  // loaded first, above, for exactly this reason.
+  const lang = features.language;
   const [redLabel, yellowLabel] = match
     ? resolveTeamLabels(
         { teamLabels: match.teamLabels },
         org ? { teamLabels: org.teamLabels } : null,
         match.activity.sport,
+        lang,
       )
-    : ["Red", "Yellow"];
+    : resolveTeamLabels(null, null, null, lang);
 
   return {
     matchId: match?.id ?? null,
     maxPlayers: match?.maxPlayers ?? 0,
-    kickoffLabel: match ? formatLondon(match.date, "EEE HH:mm") : "the next match",
+    kickoffLabel: match ? kickoffLabel(lang, match.date) : t(lang).no_match_label,
     venue: match?.activity.venue ?? "",
     rows,
     roster,
@@ -223,7 +230,7 @@ export async function loadSquadState(
           id: completed.id,
           // Same format as the upcoming match's label, so the RESULT
           // answer can name the night it is talking about. See the field.
-          kickoffLabel: formatLondon(completed.date, "EEE HH:mm"),
+          kickoffLabel: kickoffLabel(lang, completed.date),
           status: completed.status as "TEAMS_GENERATED" | "TEAMS_PUBLISHED" | "COMPLETED",
           isHistorical: completed.isHistorical,
           redScore: completed.redScore,
@@ -280,9 +287,12 @@ export async function loadSquadState(
  * what the DM surface still calls. Two selectors for one question is how
  * the group and the DM start disagreeing about the same club.
  */
-export async function loadRatingProgressSnapshot(orgId: string): Promise<RatingProgress> {
+export async function loadRatingProgressSnapshot(
+  orgId: string,
+  lang?: Lang | string | null,
+): Promise<RatingProgress> {
   const { loadRatingProgress } = await import("../rating-progress");
-  return loadRatingProgress(orgId);
+  return loadRatingProgress(orgId, lang);
 }
 
 /**

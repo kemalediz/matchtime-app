@@ -24,7 +24,7 @@ export default async function MatchDetailPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { teamLabels: true } } } },
+      activity: { include: { sport: true, org: { select: { teamLabels: true, language: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -47,7 +47,7 @@ export default async function MatchDetailPage({
   if (!match) redirect("/matches");
 
   const sport = match.activity.sport;
-  const [redLabel, yellowLabel] = resolveTeamLabels(match, match.activity.org, sport);
+  const [redLabel, yellowLabel] = resolveTeamLabels(match, match.activity.org, sport, match.activity.org.language);
 
   // Per-activity positions for the players in this match
   const positionsFor = (u: { activityPositions: { activityId: string; positions: string[] }[] }) =>

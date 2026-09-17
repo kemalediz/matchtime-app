@@ -677,6 +677,7 @@ export async function runTeamOpsBatch(args: {
       write: w,
       actorUserId: sender?.senderUserId ?? null,
       deps,
+      lang: state.features.language,
     });
     if (applied.failed) {
       degradations.push(

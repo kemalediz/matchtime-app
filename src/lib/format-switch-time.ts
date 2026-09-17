@@ -62,6 +62,8 @@
  * (sign-ups close at kickoff). Never `deadlineHours || 5`; the column is
  * a non-nullable `Int @default(5)` and 0 means 0.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 import { londonWallClockToUtc, formatLondon } from "./london-time";
 
 export interface FormatSwitchScheduleInput {
@@ -160,10 +162,10 @@ export function planFormatSwitchSchedule(
  *
  * London wall clock on both sides; the UTC hour must never reach a human.
  */
-export function renderKickoffMoveLine(plan: FormatSwitchSchedule): string {
+export function renderKickoffMoveLine(plan: FormatSwitchSchedule, lang?: Lang | string | null): string {
   if (!plan.move) return "";
-  return (
-    `⏰ *Kickoff moves to ${formatLondon(plan.kickoff, "HH:mm")}* ` +
-    `(was ${formatLondon(plan.previousKickoff, "HH:mm")}).`
-  );
+  return t(lang).kickoff_move_line({
+    newTime: formatLondon(plan.kickoff, "HH:mm"),
+    oldTime: formatLondon(plan.previousKickoff, "HH:mm"),
+  });
 }

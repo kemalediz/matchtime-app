@@ -17,7 +17,9 @@
  * happens when it does.
  */
 import { db } from "./db";
-import { formatLondon } from "./london-time";
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+import { dayLabel } from "./i18n/dates";
 import type { RatingProgress } from "./rating-progress-answer";
 
 export {
@@ -73,7 +75,7 @@ export {
 
 /** Compute rating + MoM completion for the org's most recent completed
  *  match (the one currently in its rating window). */
-export async function loadRatingProgress(orgId: string): Promise<RatingProgress> {
+export async function loadRatingProgress(orgId: string, lang?: Lang | string | null): Promise<RatingProgress> {
   const match = await db.match.findFirst({
     where: { activity: { orgId }, isHistorical: false, status: "COMPLETED" },
     orderBy: { date: "desc" },
@@ -87,7 +89,7 @@ export async function loadRatingProgress(orgId: string): Promise<RatingProgress>
       },
     },
   });
-  if (!match) return { ok: false, reason: "There's no recent completed match to check yet." };
+  if (!match) return { ok: false, reason: t(lang).rating_progress_no_match };
 
   const conf = match.attendances;
   const ratingVoters = new Set(
@@ -101,7 +103,7 @@ export async function loadRatingProgress(orgId: string): Promise<RatingProgress>
   return {
     ok: true,
     matchName: match.activity.name,
-    matchWhen: formatLondon(match.date, "EEE d MMM"),
+    matchWhen: dayLabel(lang, match.date),
     confirmed: conf.length,
     ratedCount: conf.filter((a) => ratingVoters.has(a.userId)).length,
     momCount: conf.filter((a) => momVoters.has(a.userId)).length,

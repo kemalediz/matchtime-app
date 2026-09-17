@@ -64,6 +64,8 @@
 /** Person nouns that are only ever a placeholder when DETERMINED
  *  ("my brother", "a mate", "2 of my guys"). Bare "Guy" / "Kid" are real
  *  first names, so a determiner is always required for these. */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 const DETERMINED_NOUN =
   "brothers?|sisters?|bro|sis|mates?|friends?|cousins?|sons?|dad|father|uncle|nephew|" +
   "colleagues?|boys?|lads?|guys?|pals?|neighbou?rs?|flatmates?|housemates?|team-?mates?|" +
@@ -387,6 +389,8 @@ export interface GuestAskCopyInput {
   askerName: string | null;
   /** The offer, used only to pick singular vs plural phrasing. */
   body: string;
+  /** The group's language; English when absent. */
+  lang?: Lang | string | null;
 }
 
 /**
@@ -396,12 +400,12 @@ export interface GuestAskCopyInput {
  * House style: no em dashes, no slashes.
  */
 export function renderGuestNameAsk(input: GuestAskCopyInput): string {
-  const who = firstName(input.askerName);
-  const opener = who ? `Nice one ${who} 🙌` : "Nice one 🙌";
-  const plural = PLURAL_RE.test(input.body ?? "");
-  return plural
-    ? `${opener} What are their names? Reply with them and I'll add them to the squad.`
-    : `${opener} What's their name? Reply with it and I'll add them to the squad.`;
+  // The plural cue is English (design section 2, Phase 1-adjacent); the
+  // words are the table's.
+  return t(input.lang).guest_name_ask({
+    firstName: firstName(input.askerName),
+    plural: PLURAL_RE.test(input.body ?? ""),
+  });
 }
 
 /** SentNotification key: one ask per player per match, forever. */

@@ -31,6 +31,8 @@
  */
 
 /** Strip case and accents so two spellings of one pushname share a key. */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 function normKey(s: string): string {
   return s
     .trim()
@@ -70,6 +72,8 @@ export function planUnresolvedNudge(args: {
   matchId: string | null;
   authorName: string | null;
   dropping: boolean;
+  /** The group's language; English when absent. */
+  lang?: Lang | string | null;
 }): UnresolvedNudgePlan {
   const { senderResolved, attendanceRelevant, matchId, authorName, dropping } = args;
   // Three guards, and the name is deliberately NOT one of them. A resolved
@@ -95,13 +99,10 @@ export function planUnresolvedNudge(args: {
   // Plain English — describe what to DO next, no "resolver"/"@lid"/
   // "pushname" jargon (per the product copy rule).
   const verb = dropping ? "drop out" : "join";
+  const s = t(args.lang);
   const reply = anonymous
-    ? `Heads up — I got a message to *${verb}* from someone I don't recognise, ` +
-      `so I haven't changed anything yet. Could they reply with the name they're ` +
-      `registered under, or an admin can link it on the dashboard? 🙏`
-    : `Heads up — I got a message to *${verb}* from *${pushname}*, but that name isn't ` +
-      `matching anyone on the squad list, so I haven't changed anything yet. ` +
-      `Could *${pushname}* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏`;
+    ? s.unresolved_nudge_anonymous({ verb })
+    : s.unresolved_nudge_named({ verb, pushname });
 
   return { applies: true, dedupeKey, reply };
 }

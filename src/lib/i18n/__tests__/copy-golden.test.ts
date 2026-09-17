@@ -28,15 +28,25 @@
  *     the table must leave this file's snapshot with an EMPTY diff.
  *
  *   - The renderer takes a language so the same cases produce
- *     `copy.tr.snap` in Phase 2 (the owner's Turkish review artefact).
- *     Until a composer reads `t(lang)`, the Turkish document is
- *     identical to the English one and is not committed.
+ *     `copy.tr.snap` (the owner's Turkish review artefact, committed
+ *     since Phase 2 slice 1). A composer that has not been moved into
+ *     the string table renders English in BOTH documents; the English
+ *     cases in the Turkish snapshot are therefore the remaining Phase 2
+ *     work, and each slice's diff to that file shows exactly what moved.
+ *     Re-recording the Turkish snapshot is expected whenever a Turkish
+ *     string changes; re-recording the English one never is.
  *
- *   - Known re-record: `src/lib/squad-announce.ts` (the "Squad
- *     complete" post) is NOT in this file because its text is built
- *     inline in a DB-bound function; it is being changed in parallel
- *     (a bench invite is being added). When a pure builder is
- *     extracted for it, add it here and record it on purpose.
+ *   - Deliberate additions (2026-09-17, Phase 2 slice 1, recorded on
+ *     purpose in their own commit BEFORE any string moved): the "Squad
+ *     complete" post (`buildSquadCompletePost`, extracted verbatim from
+ *     `squad-announce.ts`) and the scheduler's static group posts
+ *     (`scheduler-copy.ts`, extracted verbatim from `bot-scheduler.ts`:
+ *     announce, roster block, match-day teams block, locked post, the
+ *     17:00 fallback, unpaid tail, bench-offer context, poll question).
+ *     Both extractions were proven byte-identical by the exact-string
+ *     tests that already pinned those posts (`squad-announce.test.ts`,
+ *     `announce-suppressed-when-squad-non-empty.test.ts`,
+ *     `payment-suppression.test.ts`) staying green unchanged.
  *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
@@ -49,13 +59,14 @@
  * every template that lives inline in a function that reaches the
  * database or the Pi. The list, with file:line at `main` d049732:
  *
- *   src/lib/bot-scheduler.ts     :191 buildReminderText, :300 buildUnpaidTail,
- *                                :316 buildSquadRosterBlock, :402 botIntroMessage
+ *   src/lib/bot-scheduler.ts     :191 buildReminderText, :402 botIntroMessage
  *                                (pure but not exported), and the inline posts at
- *                                :540, :688, :948, :1049, :1062, :1324, :1433,
- *                                :1474, :1531, :1556, :1581, :1607, :1637, :1688,
- *                                :1746, :1781, :1867
- *   src/lib/squad-announce.ts    :72  the "Squad complete" post (see above)
+ *                                :540, :688, :1433, :1474, :1531, :1556, :1581,
+ *                                :1607, :1688, :1746, :1781, :1867
+ *                                (the group posts at :300, :316, :948, :1049,
+ *                                :1062, :1324 and :1637 are now in
+ *                                `scheduler-copy.ts` and covered, see above)
+ *   src/lib/squad-announce.ts    now covered via `buildSquadCompletePost`
  *   src/lib/bench-confirmation.ts:178 three bench-claim announcements
  *   src/lib/payment-flow.ts      :61 pay link DM, :318 fee confirmed ack,
  *                                :326 fee cancelled ack, :421 confirmPrompt
@@ -89,7 +100,41 @@ import type { Lang } from "../lang";
 import {
   buildMatchDayChaseFallback,
   buildRatePromoPost,
+  buildSquadCompletePost,
   composeSquadStateReply,
+} from "../../group-copy";
+import {
+  buildAnnounceMatchPost,
+  buildAskScorePost,
+  buildBenchOfferContext,
+  buildBotIntro,
+  buildChasePreKickoffFallback,
+  buildDailyInListFallback,
+  buildGearReminder,
+  buildMatchDayLockedPost,
+  buildMatchDayTeamsBlock,
+  buildPaymentPollQuestion,
+  buildPreKickoffShortFallback,
+  buildSquadRosterBlock,
+  buildUnpaidTailText,
+} from "../../scheduler-copy";
+import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
+import { t } from "../t";
+import { dayTimeLabel } from "../dates";
+import {
+  buildColourSwapReply,
+  buildFormatSwitchAnnouncement,
+  buildMatchCancelledAnnouncement,
+  buildRecruitAckReply,
+  buildRecruitFullSquadRefusal,
+  buildSlotTransferReply,
+  buildSwapDeferredReply,
+  buildTeamSheet,
+  buildTeamSwapReply,
+  recruitNoMatchRefusal,
+  teamGenReasonNotEnough,
+  teamGenReasonNotFound,
+  teamGenReasonStatus,
 } from "../../group-copy";
 import {
   benchClaimPhrasingExample,
@@ -111,9 +156,9 @@ import { buildBulkCancelAnnouncement } from "../../block-booking";
 import { buildAttendanceFailureReply } from "../../attendance-write-outcome";
 import { composePaymentAck, composeReminderDm, type PaymentApplyResult } from "../../admin-ops-engine";
 import {
-  TEAM_OPS_NO_MATCH_REPLY,
   composeBalancerRefusal,
   composeGenerateTeamsReply,
+  teamOpsNoMatchReply,
 } from "../../team-ops-engine";
 import { buildRecruitGroupInviteDm, buildRecruitInviteDm } from "../../recruit";
 import { buildRecruitChaseText } from "../../recruit-chase";
@@ -147,9 +192,27 @@ const ELEVEN = [
 ];
 const FOURTEEN = [...ELEVEN, "karahan", "zair", "wasim"];
 
+/**
+ * A world in the given language. `world()` is the pipeline's English
+ * fixture (Sutton FC); a Turkish world carries `features.language =
+ * "tr"`, and the two values `load-state.ts` formats PER LANGUAGE before
+ * the composer runs (the kickoff label and the default team labels) are
+ * set to what the loader would produce for a Turkish org.
+ */
+function worldIn(lang: Lang, over: Parameters<typeof world>[0] = {}): SquadState {
+  const w = world({ ...over, features: { language: lang, ...(over.features ?? {}) } });
+  if (lang === "tr") {
+    w.kickoffLabel = "Salı 21:30";
+    w.teamLabels = ["Kırmızı", "Sarı"];
+    // The played match's label is formatted by the same loader call.
+    if (w.completedMatch) w.completedMatch = { ...w.completedMatch, kickoffLabel: "Salı 21:30" };
+  }
+  return w;
+}
+
 /** 11 of 14 confirmed, two on the bench, one dropped. */
-function shortWorld(over: Parameters<typeof world>[0] = {}): SquadState {
-  return world({
+function shortWorld(lang: Lang, over: Parameters<typeof world>[0] = {}): SquadState {
+  return worldIn(lang, {
     confirmed: ELEVEN,
     bench: ["erdal", "amir"],
     dropped: ["habib"],
@@ -158,15 +221,15 @@ function shortWorld(over: Parameters<typeof world>[0] = {}): SquadState {
 }
 
 /** 14 of 14 confirmed, one on the bench. */
-function fullWorld(over: Parameters<typeof world>[0] = {}): SquadState {
-  return world({ confirmed: FOURTEEN, bench: ["najib"], ...over });
+function fullWorld(lang: Lang, over: Parameters<typeof world>[0] = {}): SquadState {
+  return worldIn(lang, { confirmed: FOURTEEN, bench: ["najib"], ...over });
 }
 
 /** Full, with teams generated. */
-function teamsWorld(): SquadState {
+function teamsWorld(lang: Lang): SquadState {
   const teams: Record<string, "RED" | "YELLOW"> = {};
   FOURTEEN.forEach((k, i) => (teams[k] = i % 2 === 0 ? "RED" : "YELLOW"));
-  return fullWorld({ teams });
+  return fullWorld(lang, { teams });
 }
 
 const MSG = "wa-1";
@@ -187,9 +250,11 @@ function say(state: SquadState, ...speech: SpeechIntent[]): string {
 
 // ── The renderer ─────────────────────────────────────────────────────
 //
-// `lang` is threaded through so the Turkish document can be produced by
-// the same cases in Phase 2. Nothing reads it yet: Phase 0 has no
-// composer that takes a language, and that is the point of this file.
+// `lang` is threaded through every world and every builder that takes a
+// language, so the same cases produce `copy.en.snap` and `copy.tr.snap`.
+// A builder that has not been moved into the string table yet ignores
+// it and renders English in both documents; those English cases in the
+// Turkish snapshot are the remaining Phase 2 work, visible by diff.
 
 interface Case {
   /** Design inventory row(s), then a short name. */
@@ -198,21 +263,22 @@ interface Case {
 }
 
 function cases(lang: Lang): Case[] {
-  void lang;
   const c: Case[] = [];
   // A builder that returns null or "" on purpose (a line that is omitted)
   // is recorded as such, so the document says what happened.
   const add = (id: string, text: string | null) =>
     c.push({ id, text: text === null ? "(null)" : text === "" ? "(empty string)" : text });
 
-  const short = shortWorld();
-  const full = fullWorld();
-  const teams = teamsWorld();
+  const short = shortWorld(lang);
+  const full = fullWorld(lang);
+  const teams = teamsWorld(lang);
+  const w = (over: Parameters<typeof world>[0] = {}) => worldIn(lang, over);
+  const sw = (over: Parameters<typeof world>[0] = {}) => shortWorld(lang, over);
 
   // ── 1.1 compose.ts, one case per speech kind and branch ─────────────
   add("R1 squad_status / short with bench", say(short, { kind: "squad_status", messageId: null }));
   add("R1 squad_status / full", say(full, { kind: "squad_status", messageId: null }));
-  add("R1 squad_status / empty squad", say(world(), { kind: "squad_status", messageId: null }));
+  add("R1 squad_status / empty squad", say(w(), { kind: "squad_status", messageId: null }));
 
   add("R6 answer_count / short, no stated count", say(short, { kind: "answer_count", messageId: MSG, statedCount: null }));
   add("R6 answer_count / short, stated count wrong", say(short, { kind: "answer_count", messageId: MSG, statedCount: 9 }));
@@ -224,27 +290,27 @@ function cases(lang: Lang): Case[] {
   add("R8 answer_fixture / no venue", say({ ...short, venue: "" }, { kind: "answer_fixture", messageId: MSG }));
 
   add("R9 answer_score / no played match", say(short, { kind: "answer_score", messageId: MSG }));
-  add("R10 answer_score / no score yet", say(shortWorld({ completedMatch: { id: "m-0" } }), { kind: "answer_score", messageId: MSG }));
-  add("R11 answer_score / red won", say(shortWorld({ completedMatch: { id: "m-0", redScore: 4, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
-  add("R11 answer_score / yellow won", say(shortWorld({ completedMatch: { id: "m-0", redScore: 1, yellowScore: 3 } }), { kind: "answer_score", messageId: MSG }));
-  add("R11 answer_score / draw", say(shortWorld({ completedMatch: { id: "m-0", redScore: 2, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
+  add("R10 answer_score / no score yet", say(sw({ completedMatch: { id: "m-0" } }), { kind: "answer_score", messageId: MSG }));
+  add("R11 answer_score / red won", say(sw({ completedMatch: { id: "m-0", redScore: 4, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
+  add("R11 answer_score / yellow won", say(sw({ completedMatch: { id: "m-0", redScore: 1, yellowScore: 3 } }), { kind: "answer_score", messageId: MSG }));
+  add("R11 answer_score / draw", say(sw({ completedMatch: { id: "m-0", redScore: 2, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
 
-  add("R12 answer_payments / not tracked", say(shortWorld({ payments: { kind: "not_tracked" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R13 answer_payments / no settled match", say(shortWorld({ payments: { kind: "no_settled_match" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R14 answer_payments / no signal", say(shortWorld({ payments: { kind: "no_signal", kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R15 answer_payments / all settled", say(shortWorld({ payments: { kind: "counted", chargeable: 13, unpaid: 0, kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
-  add("R16 answer_payments / some unpaid", say(shortWorld({ payments: { kind: "counted", chargeable: 13, unpaid: 4, kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
+  add("R12 answer_payments / not tracked", say(sw({ payments: { kind: "not_tracked" } }), { kind: "answer_payments", messageId: MSG }));
+  add("R13 answer_payments / no settled match", say(sw({ payments: { kind: "no_settled_match" } }), { kind: "answer_payments", messageId: MSG }));
+  add("R14 answer_payments / no signal", say(sw({ payments: { kind: "no_signal", kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
+  add("R15 answer_payments / all settled", say(sw({ payments: { kind: "counted", chargeable: 13, unpaid: 0, kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
+  add("R16 answer_payments / some unpaid", say(sw({ payments: { kind: "counted", chargeable: 13, unpaid: 4, kickoffLabel: "Tue 21:30" } }), { kind: "answer_payments", messageId: MSG }));
   add("R16 answer_payments / not loaded", say(short, { kind: "answer_payments", messageId: MSG }));
 
-  add("R17 answer_rating_progress / in progress", say(shortWorld({ ratingProgress: { ok: true, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep", confirmed: 14, ratedCount: 9, momCount: 7, notRated: ["Abid Hussain", "Idris Bello"], ratedNoMom: ["Faris Nasser"] } }), { kind: "answer_rating_progress", messageId: MSG }));
-  add("R17 answer_rating_progress / everyone rated", say(shortWorld({ ratingProgress: { ok: true, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep", confirmed: 14, ratedCount: 14, momCount: 14, notRated: [], ratedNoMom: [] } }), { kind: "answer_rating_progress", messageId: MSG }));
-  add("R60 answer_rating_progress / no recent match", say(shortWorld({ ratingProgress: { ok: false, reason: "There's no recent completed match to check yet." } }), { kind: "answer_rating_progress", messageId: MSG }));
+  add("R17 answer_rating_progress / in progress", say(sw({ ratingProgress: { ok: true, matchName: "Tuesday 7-a-side", matchWhen: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", confirmed: 14, ratedCount: 9, momCount: 7, notRated: ["Abid Hussain", "Idris Bello"], ratedNoMom: ["Faris Nasser"] } }), { kind: "answer_rating_progress", messageId: MSG }));
+  add("R17 answer_rating_progress / everyone rated", say(sw({ ratingProgress: { ok: true, matchName: "Tuesday 7-a-side", matchWhen: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", confirmed: 14, ratedCount: 14, momCount: 14, notRated: [], ratedNoMom: [] } }), { kind: "answer_rating_progress", messageId: MSG }));
+  add("R60 answer_rating_progress / no recent match", say(sw({ ratingProgress: { ok: false, reason: t(lang).rating_progress_no_match } }), { kind: "answer_rating_progress", messageId: MSG }));
   add("R17 answer_rating_progress / not loaded", say(short, { kind: "answer_rating_progress", messageId: MSG }));
 
-  add("R18 answer_bench / empty", say(world({ confirmed: ELEVEN }), { kind: "answer_bench", messageId: MSG }));
+  add("R18 answer_bench / empty", say(w({ confirmed: ELEVEN }), { kind: "answer_bench", messageId: MSG }));
   add("R19 answer_bench / two", say(short, { kind: "answer_bench", messageId: MSG }));
-  add("R19 answer_bench / one", say(shortWorld({ bench: ["erdal"] }), { kind: "answer_bench", messageId: MSG }));
-  add("R19 answer_bench / three", say(shortWorld({ bench: ["erdal", "amir", "zeeshan"] }), { kind: "answer_bench", messageId: MSG }));
+  add("R19 answer_bench / one", say(sw({ bench: ["erdal"] }), { kind: "answer_bench", messageId: MSG }));
+  add("R19 answer_bench / three", say(sw({ bench: ["erdal", "amir", "zeeshan"] }), { kind: "answer_bench", messageId: MSG }));
 
   add("R20 answer_person_status / not down", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "Zeeshan", userId: "u-zeeshan" }));
   add("R20 answer_person_status / dropped", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "Habib", userId: "u-habib" }));
@@ -254,17 +320,17 @@ function cases(lang: Lang): Case[] {
   add("R5 answer_person_status / pushname is a phone number", say(short, { kind: "answer_person_status", messageId: MSG, personRef: "+44 7700 900123", userId: null }));
 
   add("R23 answer_phones / none missing", say(short, { kind: "answer_phones", messageId: MSG }));
-  add("R24 answer_phones / one missing", say(shortWorld({ noPhone: ["sait"] }), { kind: "answer_phones", messageId: MSG }));
-  add("R24 answer_phones / three missing", say(shortWorld({ noPhone: ["sait", "abid", "erdal"] }), { kind: "answer_phones", messageId: MSG }));
+  add("R24 answer_phones / one missing", say(sw({ noPhone: ["sait"] }), { kind: "answer_phones", messageId: MSG }));
+  add("R24 answer_phones / three missing", say(sw({ noPhone: ["sait", "abid", "erdal"] }), { kind: "answer_phones", messageId: MSG }));
 
   add("R25 answer_stats / nothing to go on", say(short, { kind: "answer_stats", messageId: MSG }));
-  add("R26 answer_stats / three ranked", say(shortWorld({ appearances: [{ userId: "u-kemal", matches: 4 }, { userId: "u-elvin", matches: 3 }, { userId: "u-sait", matches: 1 }, { userId: "u-abid", matches: 1 }] }), { kind: "answer_stats", messageId: MSG }));
+  add("R26 answer_stats / three ranked", say(sw({ appearances: [{ userId: "u-kemal", matches: 4 }, { userId: "u-elvin", matches: 3 }, { userId: "u-sait", matches: 1 }, { userId: "u-abid", matches: 1 }] }), { kind: "answer_stats", messageId: MSG }));
 
   add("R27 answer_options / full", say(full, { kind: "answer_options", messageId: MSG }));
   add("R28 answer_options / no smaller format", say(short, { kind: "answer_options", messageId: MSG }));
-  add("R29 answer_options / none viable", say(shortWorld({ smallerFormats: [{ sportName: "Football 6-a-side", totalPlayers: 12 }] }), { kind: "answer_options", messageId: MSG }));
-  add("R30 answer_options / proposals", say(shortWorld({ smallerFormats: [{ sportName: "Football 5-a-side", totalPlayers: 10 }, { sportName: "Football 6-a-side", totalPlayers: 12 }] }), { kind: "answer_options", messageId: MSG }));
-  add("R30 answer_options / nobody benched", say(shortWorld({ smallerFormats: [{ sportName: "Futsal", totalPlayers: 11 }] }), { kind: "answer_options", messageId: MSG }));
+  add("R29 answer_options / none viable", say(sw({ smallerFormats: [{ sportName: "Football 6-a-side", totalPlayers: 12 }] }), { kind: "answer_options", messageId: MSG }));
+  add("R30 answer_options / proposals", say(sw({ smallerFormats: [{ sportName: "Football 5-a-side", totalPlayers: 10 }, { sportName: "Football 6-a-side", totalPlayers: 12 }] }), { kind: "answer_options", messageId: MSG }));
+  add("R30 answer_options / nobody benched", say(sw({ smallerFormats: [{ sportName: "Futsal", totalPlayers: 11 }] }), { kind: "answer_options", messageId: MSG }));
 
   add("R31 teams_post", say(teams, { kind: "teams_post", messageId: MSG }));
   add("R32 teams_not_generated", say(full, { kind: "teams_not_generated", messageId: MSG }));
@@ -280,10 +346,10 @@ function cases(lang: Lang): Case[] {
   add("R37 reminder_ack / unresolved", say(full, { kind: "reminder_ack", messageId: MSG, phrase: "when the fixture list is out", whenLabel: null }));
 
   add("R38 bench_offer_open / bench of two", say(short, { kind: "bench_offer_open", messageId: MSG, replacingName: "Sait Demir" }));
-  add("R38 bench_offer_open / bench empty", say(world({ confirmed: ELEVEN }), { kind: "bench_offer_open", messageId: MSG, replacingName: "Sait Demir" }));
+  add("R38 bench_offer_open / bench empty", say(w({ confirmed: ELEVEN }), { kind: "bench_offer_open", messageId: MSG, replacingName: "Sait Demir" }));
 
-  const thirteen = world({ confirmed: FOURTEEN.slice(0, 13) });
-  const twelve = world({ confirmed: FOURTEEN.slice(0, 12) });
+  const thirteen = w({ confirmed: FOURTEEN.slice(0, 13) });
+  const twelve = w({ confirmed: FOURTEEN.slice(0, 12) });
   add("R39 slot_opened / one out, one slot", say(thirteen, { kind: "slot_opened", messageId: MSG, outNames: ["Wasim Akhtar"] }));
   add("R39 slot_opened / two out, two slots", say(twelve, { kind: "slot_opened", messageId: MSG, outNames: ["Wasim Akhtar", "Zair Malik"] }));
   add("R39 slot_opened / nobody out (benched), one slot", say(thirteen, { kind: "slot_opened", messageId: MSG, outNames: [] }));
@@ -299,34 +365,111 @@ function cases(lang: Lang): Case[] {
   add("R42 pending_confirmed_ack / nobody has a place (says nothing)", say(short, { kind: "pending_confirmed_ack", messageId: MSG, userIds: ["u-habib"] }));
 
   // ── 1.1 group-copy.ts ───────────────────────────────────────────────
-  add("R3 buildRatePromoPost", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: "Tue 8 Sep" }));
-  add("R4 buildMatchDayChaseFallback", buildMatchDayChaseFallback({ need: 3, activityName: "Tuesday 7-a-side" }));
+  add("R3 buildRatePromoPost", buildRatePromoPost({ activityName: "Tuesday 7-a-side", matchDateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", lang }));
+  add("R4 buildMatchDayChaseFallback", buildMatchDayChaseFallback({ need: 3, activityName: "Tuesday 7-a-side", lang }));
   const truth = { confirmed: ["Kemal Ediz", "Elvin Aliyev"], bench: ["Erdal Ozkan"], maxPlayers: 14 };
-  add("R1 composeSquadStateReply / marker with a lead", composeSquadStateReply("Cheers Sait, noted. [SQUAD]", truth).text);
-  add("R1 composeSquadStateReply / model roster replaced", composeSquadStateReply("*Playing:*\n1. Kemal\n2. Elvin\n3. Sait", truth).text);
-  add("R1 composeSquadStateReply / plain reply kept", composeSquadStateReply("Thanks, noted 👍", truth).text);
+  add("R1 composeSquadStateReply / marker with a lead", composeSquadStateReply("Cheers Sait, noted. [SQUAD]", truth, lang).text);
+  add("R1 composeSquadStateReply / model roster replaced", composeSquadStateReply("*Playing:*\n1. Kemal\n2. Elvin\n3. Sait", truth, lang).text);
+  add("R1 composeSquadStateReply / plain reply kept", composeSquadStateReply("Thanks, noted 👍", truth, lang).text);
+
+  // ── 1.1 group-copy.ts, row 43 (extracted from squad-announce.ts 2026-09-17)
+  const fourteenNames = FOURTEEN.map((k) => full.roster.find((m) => m.userId === `u-${k}`)!.name);
+  const squadCompleteWhen = lang === "tr" ? "22 Eylül Salı 21:30" : "Tue 22 Sept 21:30";
+  add("R43 buildSquadCompletePost / no bench, no invite", buildSquadCompletePost({ maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: squadCompleteWhen, confirmed: fourteenNames, bench: [], benchInvite: null, lang }));
+  add("R43 buildSquadCompletePost / bench of two, invite", buildSquadCompletePost({ maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: squadCompleteWhen, confirmed: fourteenNames, bench: ["Erdal Ozkan", "Amir Ahmadi"], benchInvite: buildSquadCompleteBenchInvite({ lang }), lang }));
+  add("R43 buildSquadCompletePost / unnamed row", buildSquadCompletePost({ maxPlayers: 3, activityName: "Thursday 5-a-side", kickoffLabel: lang === "tr" ? "24 Eylül Perşembe 20:00" : "Thu 24 Sept 20:00", confirmed: ["Kemal Ediz", null, "Sait Demir"], bench: [null], benchInvite: null, lang }));
+
+  // ── 1.2 scheduler-copy.ts (extracted from bot-scheduler.ts 2026-09-17)
+  const named = (names: Array<string | null>) => names.map((name) => ({ name }));
+  const [redLabel, yellowLabel] = lang === "tr" ? ["Kırmızı", "Sarı"] : ["Red", "Yellow"];
+  add("R68 buildAnnounceMatchPost", buildAnnounceMatchPost({ activityName: "Tuesday 7-a-side", dateLabel: lang === "tr" ? "8 Eylül Salı 21:30" : "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14, lang }));
+  add("R71 buildSquadRosterBlock / empty", buildSquadRosterBlock({ confirmed: [], bench: [], maxPlayers: 14, lang }));
+  add("R71 buildSquadRosterBlock / short, no bench", buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: [], maxPlayers: 14, lang }));
+  add("R71 buildSquadRosterBlock / short with bench and an unnamed row", buildSquadRosterBlock({ confirmed: named([...fourteenNames.slice(0, 10), null]), bench: named(["Erdal Ozkan", "Amir Ahmadi"]), maxPlayers: 14, lang }));
+  add("R71 buildSquadRosterBlock / full", buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14, lang }));
+  add("R69 buildMatchDayTeamsBlock", buildMatchDayTeamsBlock({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", redLabel, yellowLabel, red: named(fourteenNames.filter((_, i) => i % 2 === 0)), yellow: named(fourteenNames.filter((_, i) => i % 2 === 1)), lang }));
+  add("R69 buildMatchDayTeamsBlock / custom labels, unnamed row", buildMatchDayTeamsBlock({ activityName: "Thursday 5-a-side", venue: "Sim Arena", timeLabel: "20:00", redLabel: "Lions", yellowLabel: "Tigers", red: named(["Kemal Ediz", null]), yellow: named(["Sait Demir", "Abid Hussain"]), lang }));
+  const fullRoster = buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14, lang });
+  add("R70 buildMatchDayLockedPost", buildMatchDayLockedPost({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", rosterBlock: fullRoster, lang }));
+  add("R72 buildDailyInListFallback", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 3, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: named(["Erdal Ozkan"]), maxPlayers: 14, lang }), lang }));
+  add("R72 buildDailyInListFallback / one more", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 1, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 13)), bench: [], maxPlayers: 14, lang }), lang }));
+  add("R73 buildUnpaidTailText / one", buildUnpaidTailText(1, lang));
+  add("R73 buildUnpaidTailText / four", buildUnpaidTailText(4, lang));
+  const ctxTeam = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: redLabel, replacingName: "Sait Demir" }, lang });
+  add("R81 buildBenchOfferContext / team and replaced player (group)", ctxTeam.group);
+  add("R81 buildBenchOfferContext / team and replaced player (plain)", ctxTeam.plain);
+  const ctxNoName = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: redLabel, replacingName: null }, lang });
+  add("R81 buildBenchOfferContext / replaced player unnamed (group)", ctxNoName.group);
+  const ctxFixture = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: null, lang });
+  add("R81 buildBenchOfferContext / fixture only (group)", ctxFixture.group);
+  add("R81 buildBenchOfferContext / fixture only (plain)", ctxFixture.plain);
+  add("R78 buildPaymentPollQuestion", buildPaymentPollQuestion("Tuesday 7-a-side", lang));
+
+  // ── 1.2 scheduler-copy.ts, slice 2 (extracted from bot-scheduler.ts 2026-09-17)
+  const INTRO_ALL = { attendance: true, bench: true, teamBalancing: true, momVoting: true, playerRating: true, reminders: true, statsQa: true, paymentTracking: true };
+  const INTRO_MIN = { attendance: true, bench: false, teamBalancing: false, momVoting: false, playerRating: false, reminders: false, statsQa: false, paymentTracking: false };
+  const INTRO_RATINGS = { ...INTRO_MIN, attendance: false, momVoting: true, playerRating: true };
+  add("R67 buildBotIntro / everything on", buildBotIntro(INTRO_ALL, buildBenchIntroLine({ lang }), lang));
+  add("R67 buildBotIntro / attendance only", buildBotIntro(INTRO_MIN, buildBenchIntroLine({ lang }), lang));
+  add("R67 buildBotIntro / ratings and MoM only", buildBotIntro(INTRO_RATINGS, buildBenchIntroLine({ lang }), lang));
+  add("R74 buildChasePreKickoffFallback", buildChasePreKickoffFallback({ need: 2, activityName: "Tuesday 7-a-side", timeLabel: "21:30", lang }));
+  add("R75 buildPreKickoffShortFallback", buildPreKickoffShortFallback({ timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2, lang }));
+  add("R76 buildGearReminder", buildGearReminder({ timeLabel: "21:30", venue: "Goals North Cheam", lang }));
+  add("R77 buildAskScorePost", buildAskScorePost({ activityName: "Tuesday 7-a-side", lang }));
+
+  // ── 1.1 bench-offer-copy.ts, row 49 (extracted from bench-confirmation.ts 2026-09-17)
+  add("R49 buildBenchClaimAnnouncement / team and replaced player", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: "Sait Demir", teamLabel: redLabel, confirmedCount: 14, maxPlayers: 14, lang }));
+  add("R49 buildBenchClaimAnnouncement / replaced player, no team", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: "Sait Demir", teamLabel: null, confirmedCount: 14, maxPlayers: 14, lang }));
+  add("R49 buildBenchClaimAnnouncement / open slot", buildBenchClaimAnnouncement({ claimerName: "Erdal Ozkan", droppedName: null, teamLabel: null, confirmedCount: 13, maxPlayers: 14, lang }));
+
+  // ── 1.1 group-copy.ts, slice 2 (extracted from app/actions/matches.ts, analyze/route.ts, recruit.ts, rating-progress.ts, team-generation.ts)
+  const kickoffMoved = renderKickoffMoveLine({ move: true, reason: "moved", previousKickoff: new Date("2026-09-08T20:30:00.000Z"), kickoff: new Date("2026-09-08T20:15:00.000Z"), attendanceDeadline: new Date("2026-09-08T20:15:00.000Z") }, lang);
+  add("R64 buildFormatSwitchAnnouncement / kickoff moved, bench", buildFormatSwitchAnnouncement({ sportName: "Football 5-a-side", maxPlayers: 10, kickoffLine: kickoffMoved, playing: fourteenNames.slice(0, 10), bench: fourteenNames.slice(10, 12), lang }));
+  add("R64 buildFormatSwitchAnnouncement / same time, nobody yet", buildFormatSwitchAnnouncement({ sportName: "Football 5-a-side", maxPlayers: 10, kickoffLine: "", playing: [], bench: [], lang }));
+  add("R64 buildFormatSwitchAnnouncement / unnamed row", buildFormatSwitchAnnouncement({ sportName: "Futsal", maxPlayers: 10, kickoffLine: "", playing: ["Kemal Ediz", null], bench: [null], lang }));
+  add("R65 buildMatchCancelledAnnouncement", buildMatchCancelledAnnouncement({ activityName: "Tuesday 7-a-side", whenLabel: dayTimeLabel(lang, new Date("2026-09-22T20:30:00.000Z")), lang }));
+  add("R123 buildRecruitAckReply / not ok, no reason", buildRecruitAckReply({ ok: false }, lang));
+  add("R123 buildRecruitAckReply / not ok, lib reason", buildRecruitAckReply({ ok: false, reason: recruitNoMatchRefusal(lang) }, lang));
+  add("R124 buildRecruitAckReply / invited five, two spots", buildRecruitAckReply({ ok: true, invited: 5, matchName: "Tuesday 7-a-side", need: 2 }, lang));
+  add("R124 buildRecruitAckReply / invited one, one spot", buildRecruitAckReply({ ok: true, invited: 1, matchName: "Tuesday 7-a-side", need: 1 }, lang));
+  add("R124 buildRecruitAckReply / invited, need unknown", buildRecruitAckReply({ ok: true, invited: 3, matchName: "Tuesday 7-a-side", need: null }, lang));
+  add("R124 buildRecruitAckReply / full squad, lib reason", buildRecruitAckReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", reason: buildRecruitFullSquadRefusal({ matchName: "Tuesday 7-a-side", lang }) }, lang));
+  add("R125 buildRecruitAckReply / already pinged", buildRecruitAckReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", alreadyInvited: 4 }, lang));
+  add("R126 buildRecruitAckReply / nobody new", buildRecruitAckReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", alreadyInvited: 0 }, lang));
+  const sheetEn = buildTeamSheet({ redLabel, yellowLabel, red: ["Kemal Ediz", "Sait Demir", null], yellow: ["Elvin Aliyev", "Abid Hussain"] });
+  add("R127 buildTeamSheet", sheetEn);
+  add("R128 buildSwapDeferredReply", buildSwapDeferredReply({ a: "Kemal Ediz", b: "Sait Demir", lang }));
+  add("R129 buildTeamSwapReply", buildTeamSwapReply({ a: "Kemal Ediz", b: "Elvin Aliyev", sheet: sheetEn, lang }));
+  add("R130 buildSlotTransferReply", buildSlotTransferReply({ to: "Erdal Ozkan", from: "Sait Demir", teamLabel: redLabel, sheet: sheetEn, lang }));
+  add("R131 buildColourSwapReply", buildColourSwapReply({ sheet: sheetEn, lang }));
+  add("R61 buildRecruitFullSquadRefusal", buildRecruitFullSquadRefusal({ matchName: "Tuesday 7-a-side", lang }));
+  add("R62 RECRUIT_NO_MATCH_REFUSAL", recruitNoMatchRefusal(lang));
+  add("R60 RATING_PROGRESS_NO_MATCH_REASON", t(lang).rating_progress_no_match);
+  add("R66 balancer reasons / not found", teamGenReasonNotFound(lang));
+  add("R66 balancer reasons / completed", teamGenReasonStatus("COMPLETED", lang));
+  add("R66 balancer reasons / not enough", teamGenReasonNotEnough({ confirmed: 9, needed: 14, lang }));
 
   // ── 1.1 bench-offer-copy.ts, both flag branches ─────────────────────
-  const ctx = "on *Red* (replacing Sait Demir) for *Tuesday 7-a-side* tonight";
+  const ctx = ctxTeam.group;
   for (const mentionReactions of [false, true]) {
     const tag = mentionReactions ? "reactions on" : "reactions off";
-    add(`R52 buildBenchOfferGroupPost / ${tag}`, buildBenchOfferGroupPost({ context: ctx, tagList: "@447700900001 @447700900002", mentionReactions }));
+    add(`R52 buildBenchOfferGroupPost / ${tag}`, buildBenchOfferGroupPost({ context: ctx, tagList: "@447700900001 @447700900002", mentionReactions, lang }));
     add(`R85 buildBenchOfferDm / ${tag}`, buildBenchOfferDm({ firstName: "Erdal", context: "on Red (replacing Sait Demir) for Tuesday 7-a-side tonight", mentionReactions }));
-    add(`R53 buildBenchIntroLine / ${tag}`, buildBenchIntroLine({ mentionReactions }));
-    add(`R54 buildFullSquadBenchInvite / ${tag}`, buildFullSquadBenchInvite({ matchName: "Tuesday 7-a-side", confirmedCount: 14, maxPlayers: 14, mentionReactions }));
-    add(`R55 buildBenchAskedLine / ${tag}`, buildBenchAskedLine({ benchName: "Erdal Ozkan", confirmedCount: 13, maxPlayers: 14, mentionReactions }));
+    add(`R53 buildBenchIntroLine / ${tag}`, buildBenchIntroLine({ mentionReactions, lang }));
+    add(`R54 buildFullSquadBenchInvite / ${tag}`, buildFullSquadBenchInvite({ matchName: "Tuesday 7-a-side", confirmedCount: 14, maxPlayers: 14, mentionReactions, lang }));
+    add(`R55 buildBenchAskedLine / ${tag}`, buildBenchAskedLine({ benchName: "Erdal Ozkan", confirmedCount: 13, maxPlayers: 14, mentionReactions, lang }));
     add(`R56 benchClaimPhrasingExample / ${tag}`, benchClaimPhrasingExample({ mentionReactions }));
   }
   add("R85 buildBenchOfferDm / no first name", buildBenchOfferDm({ firstName: "", context: "on Red for Tuesday 7-a-side tonight" }));
 
   // ── 1.1 rating-progress-answer.ts ───────────────────────────────────
-  add("R59 formatRatingProgressReply / not ok, no reason", formatRatingProgressReply({ ok: false }));
+  add("R59 formatRatingProgressReply / not ok, no reason", formatRatingProgressReply({ ok: false }, lang));
 
   // ── 1.1 mom-announcement.ts ─────────────────────────────────────────
-  add("R45 buildMomAnnouncement / single winner", buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "Tuesday 7-a-side", tally: [{ name: "Sait Demir", votes: 6 }, { name: "Kemal Ediz", votes: 3 }, { name: "Abid Hussain", votes: 1 }] }));
-  add("R45 buildMomAnnouncement / shared by two", buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "Tuesday 7-a-side", tally: [{ name: "Sait Demir", votes: 4 }, { name: "Kemal Ediz", votes: 4 }, { name: "Abid Hussain", votes: 2 }] }));
-  add("R45 buildMomAnnouncement / shared by three", buildMomAnnouncement({ mvpLabel: "Player of the Match", activityName: "Thursday 5-a-side", tally: [{ name: "Sait Demir", votes: 1 }, { name: "Kemal Ediz", votes: 1 }, { name: "Abid Hussain", votes: 1 }] }));
-  add("R45 buildMomAnnouncement / one vote in total", buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "Tuesday 7-a-side", tally: [{ name: "Sait Demir", votes: 1 }] }));
+  add("R45 buildMomAnnouncement / single winner", buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "Tuesday 7-a-side", tally: [{ name: "Sait Demir", votes: 6 }, { name: "Kemal Ediz", votes: 3 }, { name: "Abid Hussain", votes: 1 }], lang }));
+  add("R45 buildMomAnnouncement / shared by two", buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "Tuesday 7-a-side", tally: [{ name: "Sait Demir", votes: 4 }, { name: "Kemal Ediz", votes: 4 }, { name: "Abid Hussain", votes: 2 }], lang }));
+  add("R45 buildMomAnnouncement / shared by three", buildMomAnnouncement({ mvpLabel: "Player of the Match", activityName: "Thursday 5-a-side", tally: [{ name: "Sait Demir", votes: 1 }, { name: "Kemal Ediz", votes: 1 }, { name: "Abid Hussain", votes: 1 }], lang }));
+  add("R45 buildMomAnnouncement / one vote in total", buildMomAnnouncement({ mvpLabel: "Man of the Match", activityName: "Tuesday 7-a-side", tally: [{ name: "Sait Demir", votes: 1 }], lang }));
 
   // ── 1.1 format-switch.ts ────────────────────────────────────────────
   const facts = buildFormatSwitchFacts({
@@ -338,48 +481,49 @@ function cases(lang: Lang): Case[] {
       { sportName: "Football 7-a-side", totalPlayers: 14 },
       { sportName: "Futsal", totalPlayers: 11 },
     ],
+    lang,
   });
   facts.forEach((f) => add(`R46 format-switch proposal / ${f.sportName}`, f.proposal));
   add("R46 renderFormatSwitchContext (prompt lines)", renderFormatSwitchContext(facts).join("\n"));
 
   // ── 1.1 format-switch-time.ts ───────────────────────────────────────
-  add("R47 renderKickoffMoveLine / moved", renderKickoffMoveLine({ move: true, reason: "moved", previousKickoff: new Date("2026-09-08T20:30:00.000Z"), kickoff: new Date("2026-09-08T20:15:00.000Z"), attendanceDeadline: new Date("2026-09-08T20:15:00.000Z") }));
-  add("R47 renderKickoffMoveLine / not moved", renderKickoffMoveLine({ move: false, reason: "same-time" }));
+  add("R47 renderKickoffMoveLine / moved", renderKickoffMoveLine({ move: true, reason: "moved", previousKickoff: new Date("2026-09-08T20:30:00.000Z"), kickoff: new Date("2026-09-08T20:15:00.000Z"), attendanceDeadline: new Date("2026-09-08T20:15:00.000Z") }, lang));
+  add("R47 renderKickoffMoveLine / not moved", renderKickoffMoveLine({ move: false, reason: "same-time" }, lang));
 
   // ── 1.1 out-of-band-attendance.ts ───────────────────────────────────
   for (const status of ["CONFIRMED", "BENCH", "DROPPED"] as const) {
     for (const source of ["dm", "app", "reaction"] as const) {
-      add(`R48 buildOutOfBandAttendanceLine / ${status} via ${source}`, buildOutOfBandAttendanceLine({ playerName: "Sait Demir", status, source, confirmedCount: 12, maxPlayers: 14 }));
+      add(`R48 buildOutOfBandAttendanceLine / ${status} via ${source}`, buildOutOfBandAttendanceLine({ playerName: "Sait Demir", status, source, confirmedCount: 12, maxPlayers: 14, lang }));
     }
   }
-  add("R48 buildOutOfBandAttendanceLine / no name", buildOutOfBandAttendanceLine({ playerName: null, status: "CONFIRMED", source: "dm", confirmedCount: 12, maxPlayers: 14 }));
+  add("R48 buildOutOfBandAttendanceLine / no name", buildOutOfBandAttendanceLine({ playerName: null, status: "CONFIRMED", source: "dm", confirmedCount: 12, maxPlayers: 14, lang }));
 
   // ── 1.1 unresolved-nudge.ts ─────────────────────────────────────────
-  add("R50 planUnresolvedNudge / named, joining", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "Tommy T", dropping: false }).reply);
-  add("R50 planUnresolvedNudge / named, dropping", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "Tommy T", dropping: true }).reply);
-  add("R50 planUnresolvedNudge / anonymous, joining", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: null, dropping: false }).reply);
-  add("R50 planUnresolvedNudge / anonymous, dropping", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "447700900123", dropping: true }).reply);
+  add("R50 planUnresolvedNudge / named, joining", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "Tommy T", dropping: false, lang }).reply);
+  add("R50 planUnresolvedNudge / named, dropping", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "Tommy T", dropping: true, lang }).reply);
+  add("R50 planUnresolvedNudge / anonymous, joining", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: null, dropping: false, lang }).reply);
+  add("R50 planUnresolvedNudge / anonymous, dropping", planUnresolvedNudge({ senderResolved: false, attendanceRelevant: true, matchId: "m-1", authorName: "447700900123", dropping: true, lang }).reply);
 
   // ── 1.1 guest-name-ask.ts (also reached via compose above) ──────────
-  add("R44 renderGuestNameAsk / plural, no name", renderGuestNameAsk({ askerName: null, body: "bringing 2 friends" }));
+  add("R44 renderGuestNameAsk / plural, no name", renderGuestNameAsk({ askerName: null, body: "bringing 2 friends", lang }));
 
   // ── 1.1 stats-blast.ts ──────────────────────────────────────────────
   add("R100 composeStatsBlastDm / named", composeStatsBlastDm("Sait Demir", "https://mt.example/s/abc"));
   add("R100 composeStatsBlastDm / no name", composeStatsBlastDm(null, "https://mt.example/s/abc"));
-  add("R51 composeStatsBlastReply / one", composeStatsBlastReply(1));
-  add("R51 composeStatsBlastReply / twelve", composeStatsBlastReply(12));
+  add("R51 composeStatsBlastReply / one", composeStatsBlastReply(1, lang));
+  add("R51 composeStatsBlastReply / twelve", composeStatsBlastReply(12, lang));
 
   // ── 1.1 block-booking.ts ────────────────────────────────────────────
-  add("R63 buildBulkCancelAnnouncement / one match", buildBulkCancelAnnouncement({ activityName: "Tuesday 7-a-side", dates: [new Date("2026-09-15T20:30:00.000Z")], announce: true }));
-  add("R63 buildBulkCancelAnnouncement / two matches", buildBulkCancelAnnouncement({ activityName: "Tuesday 7-a-side", dates: [new Date("2026-09-22T20:30:00.000Z"), new Date("2026-09-15T20:30:00.000Z")], announce: true }));
-  add("R63 buildBulkCancelAnnouncement / silent", buildBulkCancelAnnouncement({ activityName: "Tuesday 7-a-side", dates: [new Date("2026-09-15T20:30:00.000Z")], announce: false }));
+  add("R63 buildBulkCancelAnnouncement / one match", buildBulkCancelAnnouncement({ activityName: "Tuesday 7-a-side", dates: [new Date("2026-09-15T20:30:00.000Z")], announce: true, lang }));
+  add("R63 buildBulkCancelAnnouncement / two matches", buildBulkCancelAnnouncement({ activityName: "Tuesday 7-a-side", dates: [new Date("2026-09-22T20:30:00.000Z"), new Date("2026-09-15T20:30:00.000Z")], announce: true, lang }));
+  add("R63 buildBulkCancelAnnouncement / silent", buildBulkCancelAnnouncement({ activityName: "Tuesday 7-a-side", dates: [new Date("2026-09-15T20:30:00.000Z")], announce: false, lang }));
 
   // ── 1.1 attendance-write-outcome.ts ─────────────────────────────────
-  add("R58 buildAttendanceFailureReply / own OUT", buildAttendanceFailureReply([{ action: "OUT", who: null, error: "boom" }], "Sait Demir"));
-  add("R58 buildAttendanceFailureReply / own IN", buildAttendanceFailureReply([{ action: "IN", who: null, error: "boom" }], "Sait Demir"));
-  add("R58 buildAttendanceFailureReply / others only", buildAttendanceFailureReply([{ action: "IN", who: "Abid Hussain", error: "boom" }, { action: "OUT", who: "Idris Bello", error: "boom" }], "Sait Demir"));
-  add("R58 buildAttendanceFailureReply / own and others", buildAttendanceFailureReply([{ action: "IN", who: null, error: "boom" }, { action: "BENCH", who: "Abid Hussain", error: "boom" }], "Sait Demir"));
-  add("R58 buildAttendanceFailureReply / no usable name", buildAttendanceFailureReply([{ action: "IN", who: null, error: "boom" }], "447700900123"));
+  add("R58 buildAttendanceFailureReply / own OUT", buildAttendanceFailureReply([{ action: "OUT", who: null, error: "boom" }], "Sait Demir", lang));
+  add("R58 buildAttendanceFailureReply / own IN", buildAttendanceFailureReply([{ action: "IN", who: null, error: "boom" }], "Sait Demir", lang));
+  add("R58 buildAttendanceFailureReply / others only", buildAttendanceFailureReply([{ action: "IN", who: "Abid Hussain", error: "boom" }, { action: "OUT", who: "Idris Bello", error: "boom" }], "Sait Demir", lang));
+  add("R58 buildAttendanceFailureReply / own and others", buildAttendanceFailureReply([{ action: "IN", who: null, error: "boom" }, { action: "BENCH", who: "Abid Hussain", error: "boom" }], "Sait Demir", lang));
+  add("R58 buildAttendanceFailureReply / no usable name", buildAttendanceFailureReply([{ action: "IN", who: null, error: "boom" }], "447700900123", lang));
 
   // ── 1.4 admin-ops-engine.ts ─────────────────────────────────────────
   add("R132 composeReminderDm / named", composeReminderDm({ name: "Sait Demir", note: "book the pitch for Thursday" }));
@@ -394,16 +538,16 @@ function cases(lang: Lang): Case[] {
     unpaidAfter: 6,
     ...over,
   });
-  add("R133 composePaymentAck / named", composePaymentAck(payment({}), "Sait Demir"));
-  add("R133 composePaymentAck / count only", composePaymentAck(payment({ creditedNames: [] }), "Sait Demir"));
-  add("R133 composePaymentAck / one, some ignored", composePaymentAck(payment({ creditedNames: ["Abid Hussain"], unmatchedUserIds: ["u-x", "u-y"], write: { count: 1 } as PaymentApplyResult["write"] }), "Sait Demir"));
+  add("R133 composePaymentAck / named", composePaymentAck(payment({}), "Sait Demir", lang));
+  add("R133 composePaymentAck / count only", composePaymentAck(payment({ creditedNames: [] }), "Sait Demir", lang));
+  add("R133 composePaymentAck / one, some ignored", composePaymentAck(payment({ creditedNames: ["Abid Hussain"], unmatchedUserIds: ["u-x", "u-y"], write: { count: 1 } as PaymentApplyResult["write"] }), "Sait Demir", lang));
 
   // ── 1.4 team-ops-engine.ts ──────────────────────────────────────────
-  add("R134 TEAM_OPS_NO_MATCH_REPLY", TEAM_OPS_NO_MATCH_REPLY);
-  add("R134 composeBalancerRefusal", composeBalancerRefusal("not enough confirmed players, 9/14"));
+  add("R134 TEAM_OPS_NO_MATCH_REPLY", teamOpsNoMatchReply(lang));
+  add("R134 composeBalancerRefusal", composeBalancerRefusal("not enough confirmed players, 9/14", lang));
   const sheet = "*Red*:\n1. Kemal Ediz\n2. Sait Demir\n\n*Yellow*:\n1. Elvin Aliyev\n2. Abid Hussain";
-  add("R134 composeGenerateTeamsReply / plain", composeGenerateTeamsReply({ groupPost: sheet, includedNames: [], pinnedLog: [], unmatchedIncludes: [], unmatchedPins: [] }));
-  add("R134 composeGenerateTeamsReply / all four notes", composeGenerateTeamsReply({ groupPost: sheet, includedNames: ["Erdal Ozkan"], pinnedLog: ["Kemal Ediz → RED"], unmatchedIncludes: ["Bob"], unmatchedPins: ["Jim"] }));
+  add("R134 composeGenerateTeamsReply / plain", composeGenerateTeamsReply({ groupPost: sheet, includedNames: [], pinnedLog: [], unmatchedIncludes: [], unmatchedPins: [], lang }));
+  add("R134 composeGenerateTeamsReply / all four notes", composeGenerateTeamsReply({ groupPost: sheet, includedNames: ["Erdal Ozkan"], pinnedLog: ["Kemal Ediz → RED"], unmatchedIncludes: ["Bob"], unmatchedPins: ["Jim"], lang }));
 
   // ── 1.3 DM builders ─────────────────────────────────────────────────
   for (const mentionReactions of [false, true]) {
@@ -490,9 +634,51 @@ function render(lang: Lang): string {
   const all = cases(lang);
   const head =
     `# MatchTime outbound copy, language "${lang}"\n` +
-    `# ${all.length} rendered cases. Generated by copy-golden.test.ts; re-record only on purpose.\n`;
+    `# ${all.length} rendered cases. Generated by copy-golden.test.ts; re-record only on purpose.\n` +
+    (lang === "en"
+      ? ""
+      : `# A case that still reads as English here is a composer not yet moved into the string table.\n`);
   return head + all.map((k) => `\n### ${k.id}\n${k.text}\n`).join("");
 }
+
+/** The inventory rows moved into the string table so far. A case with one
+ *  of these prefixes must render DIFFERENTLY in Turkish; every other case
+ *  is allowed to (and today does) render English in both documents.
+ *  Extend it with every slice; the second Turkish test below then proves
+ *  the slice translated what it moved. */
+/** Cases under a migrated row whose text is the SAME in every language by
+ *  design, each with its reason. */
+const LANGUAGE_FREE_CASES = new Set([
+  // The `plain` context is only ever read by the bench-offer DM, which
+  // stays English until Phase 3 moves the DMs; see buildBenchOfferContext.
+  "R81 buildBenchOfferContext / team and replaced player (plain)",
+  "R81 buildBenchOfferContext / fixture only (plain)",
+  // The model's own reply, passed through untouched: it neither shows
+  // nor contradicts squad state, so the composer has nothing to say.
+  "R1 composeSquadStateReply / plain reply kept",
+  // The kickoff-move line is empty when the kickoff did not move.
+  "R47 renderKickoffMoveLine / not moved",
+  // A team sheet is names and labels only (the labels are the org's).
+  "R127 buildTeamSheet",
+  // The prompt lines the chase model copies stay English until slice 3
+  // gives the chase its language line; the proposal inside them is in
+  // the group's language already (`format_switch_proposal`).
+  "R46 renderFormatSwitchContext (prompt lines)",
+  // A generate-teams reply with no notes is the balancer's sheet alone,
+  // which is names and the org's labels.
+  "R134 composeGenerateTeamsReply / plain",
+]);
+
+const MIGRATED_ROWS = [
+  // slice 1
+  "R1 ", "R2 ", "R3 ", "R4 ", "R31 ", "R38 ", "R39 ", "R43 ", "R52 ", "R68 ", "R69 ", "R70 ", "R71 ", "R72 ", "R73 ", "R78 ", "R81 ",
+  // slice 2: every remaining group-facing row of the design's inventory
+  "R5 ", "R6 ", "R7 ", "R8 ", "R9 ", "R10 ", "R11 ", "R12 ", "R13 ", "R14 ", "R15 ", "R16 ", "R17 ", "R18 ", "R19 ", "R20 ",
+  "R21 ", "R22 ", "R23 ", "R24 ", "R25 ", "R26 ", "R27 ", "R28 ", "R29 ", "R30 ", "R32 ", "R33 ", "R34 ", "R35 ", "R36 ", "R37 ",
+  "R40 ", "R41 ", "R42 ", "R44 ", "R45 ", "R46 ", "R47 ", "R48 ", "R49 ", "R50 ", "R51 ", "R53 ", "R54 ", "R55 ", "R58 ", "R59 ",
+  "R60 ", "R61 ", "R62 ", "R63 ", "R64 ", "R65 ", "R66 ", "R67 ", "R74 ", "R75 ", "R76 ", "R77 ", "R123 ", "R124 ", "R125 ",
+  "R126 ", "R128 ", "R129 ", "R130 ", "R131 ", "R133 ", "R134 ",
+];
 
 describe("English copy is byte-identical to the committed snapshot", () => {
   it("every pure composer, rendered", async () => {
@@ -506,6 +692,34 @@ describe("English copy is byte-identical to the committed snapshot", () => {
   it("no case rendered an empty string", () => {
     for (const k of cases("en")) {
       expect(k.text.length, k.id).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("Turkish copy, the owner's review artefact", () => {
+  it("every pure composer, rendered in Turkish where it has been moved", async () => {
+    await expect(render("tr")).toMatchFileSnapshot("./__snapshots__/copy.tr.snap");
+  });
+
+  it("every migrated composer renders differently in Turkish (it is translated)", () => {
+    const enById = new Map(cases("en").map((k) => [k.id, k.text]));
+    for (const k of cases("tr")) {
+      if (!MIGRATED_ROWS.some((r) => k.id.startsWith(r))) continue;
+      if (LANGUAGE_FREE_CASES.has(k.id)) continue;
+      // `reminder-time.ts` labels are English until Phase 3 moves the
+      // reminders (the ack that quotes them, R36 reminder_ack, is moved).
+      if (k.id.startsWith("R36 resolveReminderPhrase")) continue;
+      // A composer that says nothing, or returns null, does so in every language.
+      if (k.text === "(says nothing)" || k.text === "(null)" || k.text === "(empty string)") continue;
+      expect(k.text, k.id).not.toBe(enById.get(k.id));
+    }
+  });
+
+  it("no migrated Turkish case carries an English instruction token", () => {
+    for (const k of cases("tr")) {
+      if (!MIGRATED_ROWS.some((r) => k.id.startsWith(r))) continue;
+      if (LANGUAGE_FREE_CASES.has(k.id)) continue;
+      expect(k.text, k.id).not.toMatch(/\*IN\*|\bsay IN\b|Say \*IN\*|\*Playing|\*Bench \(|\*Confirmed \(/);
     }
   });
 });

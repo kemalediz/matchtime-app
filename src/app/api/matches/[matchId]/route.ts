@@ -14,7 +14,7 @@ export async function GET(
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { teamLabels: true } } } },
+      activity: { include: { sport: true, org: { select: { teamLabels: true, language: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -74,6 +74,6 @@ export async function GET(
     // org override → sport labels → "Red"/"Yellow"). [0] = RED, [1] = YELLOW.
     // NOTE: this overwrites the raw `match.teamLabels` scalar spread from
     // `...match` above (intentional — clients read the resolved pair here).
-    teamLabels: resolveTeamLabels(match, match.activity.org, match.activity.sport),
+    teamLabels: resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language),
   });
 }

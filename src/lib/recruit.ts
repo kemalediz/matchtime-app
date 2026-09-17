@@ -11,6 +11,7 @@
  * the work for a given orgId.
  */
 import { db } from "./db";
+import { recruitNoMatchRefusal, buildRecruitFullSquadRefusal } from "./group-copy";
 import { buildFullSquadBenchInvite } from "./bench-offer-copy";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
@@ -247,6 +248,10 @@ export async function inviteRecentPlayers(
   lookbackMatches?: number,
 ): Promise<RecruitResult> {
   const lookback = resolveLookbackMatches(lookbackMatches);
+  // One features read, three consumers: the refusals' language, and the
+  // two below. Read first because the no-match refusal needs the
+  // language before there is a match to speak about.
+  const features = await getOrgFeatures(orgId);
   // 1. The next upcoming match.
   const startToday = new Date();
   startToday.setUTCHours(0, 0, 0, 0);
@@ -266,7 +271,7 @@ export async function inviteRecentPlayers(
       attendances: { select: { userId: true, status: true } },
     },
   });
-  if (!next) return { ok: false, reason: "There's no upcoming match to invite players to." };
+  if (!next) return { ok: false, reason: recruitNoMatchRefusal(features.language) };
 
   // Anyone with ANY attendance row has already responded (in / bench /
   // explicitly out) — don't pester them. We only invite recent players
@@ -276,12 +281,10 @@ export async function inviteRecentPlayers(
   // Only meaningful when the org actually tracks attendance. For MoM/
   // ratings-only orgs (e.g. Sutton Lads) confirmed is always 0, so the
   // count would falsely read "14 spots left" in every invite — suppress it.
-  // One features read, two consumers. `attendance` suppresses the "N
-  // spots left" phrase for ratings-only orgs; `bench` decides what a
-  // recruit ask into a FULL squad is answered with (the capacity guard
-  // below). Reading both off the same call keeps the query count
-  // unchanged — the bench branch costs nothing.
-  const features = await getOrgFeatures(orgId);
+  // `attendance` suppresses the "N spots left" phrase for ratings-only
+  // orgs; `bench` decides what a recruit ask into a FULL squad is
+  // answered with (the capacity guard below). Both off the one read
+  // above, so the query count is unchanged.
   const attendanceOn = features.attendance;
   // Real capacity, independent of the attendance feature flag. CONFIRMED
   // fills the squad, so open slots = maxPlayers − confirmed. `need` is kept
@@ -363,6 +366,7 @@ export async function inviteRecentPlayers(
             matchName: next.activity.name,
             confirmedCount,
             maxPlayers: next.maxPlayers,
+            lang: features.language,
           })
         : // Bench OFF: the old sentence, unchanged, because for that org
           // it is the truth. `bot-scheduler.ts` refuses to post a bench
@@ -370,7 +374,7 @@ export async function inviteRecentPlayers(
           // !features.bench`), so promising one would be the silent
           // failure this codebase keeps paying for: a player does as they
           // are told and nothing happens.
-          `The squad for *${next.activity.name}* is already full — no open spots to recruit for.`,
+          buildRecruitFullSquadRefusal({ matchName: next.activity.name, lang: features.language }),
     };
   }
 

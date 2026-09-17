@@ -16,6 +16,9 @@
 import { db } from "./db";
 import { getOrgFeatures } from "./org-features";
 import { buildSquadCompleteBenchInvite } from "./bench-offer-copy";
+import { buildSquadCompletePost } from "./group-copy";
+import { squadCompleteLabel } from "./i18n/dates";
+import { normaliseLang } from "./i18n/lang";
 
 export async function announceSquadFullIfJustFilled(
   matchId: string,
@@ -23,7 +26,8 @@ export async function announceSquadFullIfJustFilled(
   const m = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { select: { name: true, orgId: true } },
+      // `org.language`: the words and the date label are the group's.
+      activity: { select: { name: true, orgId: true, org: { select: { language: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: { user: { select: { name: true } } },
@@ -46,30 +50,10 @@ export async function announceSquadFullIfJustFilled(
     return; // already announced this fill cycle
   }
 
-  const kickoffLondon = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-    .format(m.date)
-    .replace(/,/g, "");
-
-  const roster = confirmed
-    .map((a, i) => `${i + 1}. ${a.user.name ?? "(unnamed)"}`)
-    .join("\n");
-  // Bench shown in EVERY squad display, all orgs (Kemal 2026-06-12) —
-  // a benched player scanning the "squad complete" post must see their
-  // name rather than wonder if they were dropped.
-  const benchBlock =
-    bench.length > 0
-      ? `\n\n*Bench (${bench.length}):*\n${bench
-          .map((a, i) => `${i + 1}. ${a.user.name ?? "(unnamed)"}`)
-          .join("\n")}`
-      : "";
+  // Optional chaining because the unit test's match fixture carries no
+  // org; Prisma always includes it. Unknown or missing is English.
+  const lang = normaliseLang(m.activity.org?.language);
+  const kickoffLondon = squadCompleteLabel(lang, m.date);
 
   // Keep the INs flowing once the squad is full (Kemal 2026-09-16: "When
   // squad complete, MT should just show the squad and ask for benchers").
@@ -83,15 +67,21 @@ export async function announceSquadFullIfJustFilled(
       console.error("[squad-announce] feature lookup failed, posting without bench invite:", err);
       return false;
     });
-  const benchInvite = benchOn ? `\n\n${buildSquadCompleteBenchInvite()}` : "";
-
+  // The words live in `group-copy.ts` (pure) so the golden snapshot can
+  // pin them; this module owns the claim and the job.
   await db.botJob.create({
     data: {
       orgId: m.activity.orgId,
       kind: "group",
-      text:
-        `✅ *Squad complete — ${m.maxPlayers}/${m.maxPlayers}* for *${m.activity.name}* on ${kickoffLondon} 🙌\n\n` +
-        `*Playing:*\n${roster}${benchBlock}\n\nSee you all there ⚽${benchInvite}`,
+      text: buildSquadCompletePost({
+        maxPlayers: m.maxPlayers,
+        activityName: m.activity.name,
+        kickoffLabel: kickoffLondon,
+        confirmed: confirmed.map((a) => a.user.name),
+        bench: bench.map((a) => a.user.name),
+        benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang }) : null,
+        lang,
+      }),
     },
   });
 }
