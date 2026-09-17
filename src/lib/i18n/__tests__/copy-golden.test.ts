@@ -48,6 +48,12 @@
  *     `announce-suppressed-when-squad-non-empty.test.ts`,
  *     `payment-suppression.test.ts`) staying green unchanged.
  *
+ *   - Deliberate addition (2026-09-17): row 71b,
+ *     `buildSquadFullEveningPost`, the 17:00 post for a squad that is
+ *     already full. It is NEW copy, not a move, so its four cases are
+ *     added to both snapshots and the only other line in that diff is
+ *     the case count in each header. No existing English case changed.
+ *
  *   - Deliberate additions (2026-09-17, Phase 3, recorded in their own
  *     commit BEFORE any string moved): the private messages that lived
  *     inline in database-reaching code, extracted verbatim into
@@ -122,8 +128,10 @@ import {
   buildMatchDayTeamsBlock,
   buildPaymentPollQuestion,
   buildPreKickoffShortFallback,
+  buildSquadFullEveningPost,
   buildSquadRosterBlock,
   buildUnpaidTailText,
+  BENCH_THIN_BELOW,
 } from "../../scheduler-copy";
 import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
 import { t } from "../t";
@@ -422,6 +430,23 @@ function cases(lang: Lang): Case[] {
   add("R71 buildSquadRosterBlock / short, no bench", buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: [], maxPlayers: 14, lang }));
   add("R71 buildSquadRosterBlock / short with bench and an unnamed row", buildSquadRosterBlock({ confirmed: named([...fourteenNames.slice(0, 10), null]), bench: named(["Erdal Ozkan", "Amir Ahmadi"]), maxPlayers: 14, lang }));
   add("R71 buildSquadRosterBlock / full", buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14, lang }));
+  // Row 71b: the 17:00 post for a squad that is already full. Its bench
+  // ask is `buildSquadCompleteBenchInvite`, shared with R43, and it
+  // stops once the bench reaches `BENCH_THIN_BELOW`.
+  const fullSquadEvening = (benchNames: string[], benchOn: boolean) =>
+    buildSquadFullEveningPost({
+      activityName: "Tuesday 7-a-side",
+      confirmedCount: 14,
+      maxPlayers: 14,
+      rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(benchNames), maxPlayers: 14, lang }),
+      benchCount: benchNames.length,
+      benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang }) : null,
+      lang,
+    });
+  add("R71b buildSquadFullEveningPost / empty bench, asks", fullSquadEvening([], true));
+  add("R71b buildSquadFullEveningPost / bench of two, still asks", fullSquadEvening(["Erdal Ozkan", "Amir Ahmadi"], true));
+  add(`R71b buildSquadFullEveningPost / bench of ${BENCH_THIN_BELOW}, no ask`, fullSquadEvening(["Erdal Ozkan", "Amir Ahmadi", "Najib Ahmadi"], true));
+  add("R71b buildSquadFullEveningPost / bench feature off", fullSquadEvening([], false));
   add("R69 buildMatchDayTeamsBlock", buildMatchDayTeamsBlock({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", redLabel, yellowLabel, red: named(fourteenNames.filter((_, i) => i % 2 === 0)), yellow: named(fourteenNames.filter((_, i) => i % 2 === 1)), lang }));
   add("R69 buildMatchDayTeamsBlock / custom labels, unnamed row", buildMatchDayTeamsBlock({ activityName: "Thursday 5-a-side", venue: "Sim Arena", timeLabel: "20:00", redLabel: "Lions", yellowLabel: "Tigers", red: named(["Kemal Ediz", null]), yellow: named(["Sait Demir", "Abid Hussain"]), lang }));
   const fullRoster = buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14, lang });
@@ -775,7 +800,7 @@ const LANGUAGE_FREE_CASES = new Set([
 
 const MIGRATED_ROWS = [
   // slice 1
-  "R1 ", "R2 ", "R3 ", "R4 ", "R31 ", "R38 ", "R39 ", "R43 ", "R52 ", "R68 ", "R69 ", "R70 ", "R71 ", "R72 ", "R73 ", "R78 ", "R81 ",
+  "R1 ", "R2 ", "R3 ", "R4 ", "R31 ", "R38 ", "R39 ", "R43 ", "R52 ", "R68 ", "R69 ", "R70 ", "R71 ", "R71b ", "R72 ", "R73 ", "R78 ", "R81 ",
   // slice 2: every remaining group-facing row of the design's inventory
   "R5 ", "R6 ", "R7 ", "R8 ", "R9 ", "R10 ", "R11 ", "R12 ", "R13 ", "R14 ", "R15 ", "R16 ", "R17 ", "R18 ", "R19 ", "R20 ",
   "R21 ", "R22 ", "R23 ", "R24 ", "R25 ", "R26 ", "R27 ", "R28 ", "R29 ", "R30 ", "R32 ", "R33 ", "R34 ", "R35 ", "R36 ", "R37 ",
