@@ -349,9 +349,9 @@ function hoursBetween(a: Date, b: Date): number {
  * become per-group dynamic.
  */
 function botIntroMessage(f: OrgFeatures): string {
-  // The words moved verbatim to `scheduler-copy.ts` (pure) on
-  // 2026-09-17 so the golden snapshot can pin them.
-  return buildBotIntro(f, buildBenchIntroLine());
+  // The words live in `scheduler-copy.ts` (pure, golden-pinned) and
+  // come from the string table for the org's language.
+  return buildBotIntro(f, buildBenchIntroLine({ lang: f.language }), f.language);
 }
 
 // ─────────────────────────── Main entry point ─────────────────────────────
@@ -1463,6 +1463,7 @@ async function computeForMatch(
             need,
             activityName: activity.name,
             timeLabel: format(m.date, "HH:mm"),
+            lang,
           }),
         );
         out.push({ kind: "group-message", key, matchId, text });
@@ -1492,6 +1493,7 @@ async function computeForMatch(
           confirmed: confirmed.length,
           maxPlayers,
           need,
+          lang,
         }),
       );
       out.push({ kind: "group-message", key, matchId, text });
@@ -1518,7 +1520,7 @@ async function computeForMatch(
         kind: "group-message",
         key,
         matchId,
-        text: buildGearReminder({ timeLabel: format(m.date, "HH:mm"), venue: activity.venue }),
+        text: buildGearReminder({ timeLabel: format(m.date, "HH:mm"), venue: activity.venue, lang }),
       });
     }
   }
@@ -1542,7 +1544,7 @@ async function computeForMatch(
         kind: "group-message",
         key,
         matchId,
-        text: buildAskScorePost({ activityName: activity.name }),
+        text: buildAskScorePost({ activityName: activity.name, lang }),
       });
     }
   }
@@ -1963,6 +1965,7 @@ async function computeForMatch(
               mvpLabel: sport.mvpLabel,
               activityName: activity.name,
               tally,
+              lang,
             }),
           });
         }

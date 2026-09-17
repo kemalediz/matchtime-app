@@ -36,7 +36,10 @@
  *   played or carries any attendance/rating/vote/team data — those are
  *   DETACHED (blockBookingId → null) instead.
  */
-import { londonDateTimeToUtc, formatLondon } from "./london-time";
+import { londonDateTimeToUtc } from "./london-time";
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+import { dayLabel } from "./i18n/dates";
 import {
   hasMatchForSlot,
   type RecurringFixtureKey,
@@ -261,19 +264,13 @@ export function buildBulkCancelAnnouncement(args: {
   activityName: string;
   dates: Date[];
   announce: boolean;
+  /** The group's language; English when absent. */
+  lang?: Lang | string | null;
 }): string | null {
   const { activityName, dates, announce } = args;
   if (!announce || dates.length === 0) return null;
-  const list = [...dates]
-    .sort((a, b) => a.getTime() - b.getTime())
-    .map((d) => `• ${formatLondon(d, "EEE d MMM")}`)
-    .join("\n");
-  const plural = dates.length === 1 ? "match is" : "matches are";
-  return (
-    `❌ *Schedule update* — the following *${activityName}* ${plural} OFF:\n\n` +
-    `${list}\n\n` +
-    `See you at the next one! 👋`
-  );
+  const dateLabels = [...dates].sort((a, b) => a.getTime() - b.getTime()).map((d) => dayLabel(args.lang, d));
+  return t(args.lang).bulk_cancel({ activityName, dateLabels });
 }
 
 // ─────────────────────────── Block deletion ───────────────────────────────

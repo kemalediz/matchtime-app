@@ -40,6 +40,9 @@
  */
 
 /** One smaller format the org has configured as an Activity. */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+
 export interface SmallerFormat {
   /** Sport display name, e.g. "Football 5-a-side". */
   sportName: string;
@@ -105,10 +108,6 @@ function shortFormatName(sportName: string): string {
   return parts.length > 1 ? parts.slice(1).join(" ") : sportName.trim();
 }
 
-/** "A", "A + B", "A + B + C" — the group-chat house style. */
-function joinNames(names: readonly string[]): string {
-  return names.join(" + ");
-}
 
 /**
  * Compute the code-owned facts for every alternative format.
@@ -121,7 +120,12 @@ export function buildFormatSwitchFacts(args: {
   /** The CURRENT match's maxPlayers (also a total, e.g. 14 for 7-a-side). */
   currentMaxPlayers: number;
   alternatives: readonly SmallerFormat[];
+  /** The group's language; English when absent. The proposal line is
+   *  pasted verbatim by the chase model, so it is composed here in the
+   *  group's language for both the answer path and the prompt path. */
+  lang?: Lang | string | null;
 }): FormatSwitchFact[] {
+  const s = t(args.lang);
   const confirmedCount = args.confirmedNames.length;
   const shortBy = Math.max(0, capacity(args.currentMaxPlayers) - confirmedCount);
 
@@ -134,16 +138,13 @@ export function buildFormatSwitchFacts(args: {
     // Only worth proposing when the squad is actually SHORT and the
     // smaller format would actually be filled.
     if (fills && shortBy > 0) {
-      const lead =
-        `If we don't find ${shortBy} more, we could switch to ` +
-        `${shortFormatName(alt.sportName)} (${total} players) — `;
-      const tail = " Admins can rebook and flip it in the portal.";
-      proposal =
-        benched.length === 0
-          ? `${lead}all ${confirmedCount} of you still play, nobody goes on the bench.${tail}`
-          : `${lead}${joinNames(benched)} ${
-              benched.length === 1 ? "goes" : "go"
-            } on the bench.${tail}`;
+      proposal = s.format_switch_proposal({
+        shortBy,
+        formatName: shortFormatName(alt.sportName),
+        total,
+        confirmed: confirmedCount,
+        benched,
+      });
     }
 
     return {

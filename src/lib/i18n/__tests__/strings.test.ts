@@ -77,6 +77,112 @@ const SAMPLES: SampleArgs = {
   daily_in_list_fallback_lead: { activityName: "Tuesday 7-a-side", need: 3 },
   unpaid_tail: { unpaid: 4 },
   payment_poll_question: { activityName: "Tuesday 7-a-side" },
+
+  // ── slice 2 ──
+  fallback_player: null,
+  answer_count: { stated: true, confirmed: 11, maxPlayers: 14, kickoffLabel: "Tue 21:30", need: 3 },
+  answer_fixture: { kickoffLabel: "Tue 21:30", venue: "Goals North Cheam" },
+  answer_score_no_match: null,
+  answer_score_no_score: { kickoffLabel: "Tue 21:30" },
+  answer_score_result: { kickoffLabel: "Tue 21:30", redLabel: "Kırmızı", red: 4, yellow: 2, yellowLabel: "Sarı", winnerLabel: "Kırmızı" },
+  answer_payments_not_tracked: null,
+  answer_payments_no_settled: null,
+  answer_payments_no_signal: { kickoffLabel: "Tue 21:30" },
+  answer_payments_all_settled: { kickoffLabel: "Tue 21:30" },
+  answer_payments_unpaid: { unpaid: 4, chargeable: 13, kickoffLabel: "Tue 21:30" },
+  answer_bench_empty: null,
+  answer_bench_list: { names: ["Erdal Ozkan", "Amir Ahmadi"] },
+  answer_person_not_down: { who: "Zeeshan Khan", kickoffLabel: "Tue 21:30" },
+  answer_person_bench: { who: "Erdal Ozkan", kickoffLabel: "Tue 21:30" },
+  answer_person_confirmed: { who: "Sait Demir", kickoffLabel: "Tue 21:30" },
+  answer_phones_none: null,
+  answer_phones_missing: { names: ["Sait Demir", "Abid Hussain"] },
+  answer_stats_empty: { windowDays: 30 },
+  answer_stats_head: { windowDays: 30 },
+  answer_stats_row: { rank: 1, name: "Kemal Ediz", matches: 4 },
+  answer_options_lead: { confirmed: 11, maxPlayers: 14, need: 3 },
+  answer_options_no_formats: null,
+  answer_options_none_viable: null,
+  teams_not_generated: null,
+  score_ack: { redLabel: "Kırmızı", red: 3, yellow: 1, yellowLabel: "Sarı" },
+  payment_ack: { firstName: "Sait", count: 3 },
+  reminder_ack_resolved: { whenLabel: "Thu 10 Sep at 09:00" },
+  reminder_ack_unresolved: { phrase: "when the fixture list is out" },
+  needs_tag_for_rest: { dropped: ["Abid Hussain"], benched: ["Idris Bello"] },
+  bench_claim_too_late: { firstName: "Najib", confirmed: 14, maxPlayers: 14 },
+  pending_confirmed_ack: { names: ["Sait Demir", "Abid Hussain"], kickoffLabel: "Tue 21:30" },
+  guest_name_ask: { firstName: "Sait", plural: false },
+  mom_header: { mvpLabel: "Maçın Adamı", activityName: "Tuesday 7-a-side" },
+  mom_winner: { name: "Sait Demir", top: 6, total: 12 },
+  mom_shared: { names: "Sait Demir & Kemal Ediz", top: 4, total: 12 },
+  mom_votes_header: null,
+  mom_vote_row: { name: "Sait Demir", votes: 6 },
+  mom_trophy_line: null,
+  format_switch_proposal: { shortBy: 2, formatName: "5-a-side", total: 10, confirmed: 10, benched: [] },
+  kickoff_move_line: { newTime: "21:15", oldTime: "21:30" },
+  oob_player_fallback: null,
+  oob_in: { name: "Sait Demir", source: "dm", confirmed: 12, maxPlayers: 14 },
+  oob_bench: { name: "Sait Demir", source: "app", confirmed: 14, maxPlayers: 14 },
+  oob_out: { name: "Sait Demir", source: "reaction", confirmed: 11, maxPlayers: 14 },
+  bench_claim_team: { claimer: "Erdal Ozkan", dropped: "Sait Demir", teamLabel: "Kırmızı" },
+  bench_claim_replacing: { claimer: "Erdal Ozkan", dropped: "Sait Demir", confirmed: 14, maxPlayers: 14 },
+  bench_claim_open: { claimer: "Erdal Ozkan", confirmed: 13, maxPlayers: 14 },
+  bench_intro_line: { how: "HOWCLAUSE" },
+  full_squad_bench_invite: { matchName: "Tuesday 7-a-side", confirmed: 14, maxPlayers: 14, how: "HOWCLAUSE" },
+  bench_asked_line: { benchName: "Erdal Ozkan", confirmed: 13, maxPlayers: 14, reactions: false },
+  unresolved_nudge_named: { verb: "join", pushname: "Tommy T" },
+  unresolved_nudge_anonymous: { verb: "drop out" },
+  stats_blast_reply: { queued: 12 },
+  attendance_failure: { firstName: "Sait", self: "IN", others: ["Abid Hussain"] },
+  rating_progress_failed: null,
+  rating_progress_no_match: null,
+  rating_progress_header: { matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep" },
+  rating_progress_rated: { rated: 9, confirmed: 14 },
+  rating_progress_mom: { mom: 7, confirmed: 14 },
+  rating_progress_still_to_rate: { names: ["Abid Hussain", "Idris Bello"] },
+  rating_progress_everyone_rated: null,
+  rating_progress_no_mom_pick: { names: ["Faris Nasser"] },
+  recruit_no_match: null,
+  recruit_full_squad: { matchName: "Tuesday 7-a-side" },
+  bulk_cancel: { activityName: "Tuesday 7-a-side", dateLabels: ["Tue 15 Sep", "Tue 22 Sep"] },
+  format_switch_header: { sportName: "Football 5-a-side", maxPlayers: 10 },
+  format_switch_playing_header: { confirmed: 10, maxPlayers: 10 },
+  format_switch_bench_header: null,
+  match_cancelled: { activityName: "Tuesday 7-a-side", whenLabel: "Tue 22 Sep at 21:30" },
+  team_ops_no_match: null,
+  balancer_refusal: { reason: "REASONCLAUSE" },
+  team_gen_reason_not_found: null,
+  team_gen_reason_status: { status: "COMPLETED" },
+  team_gen_reason_not_enough: { confirmed: 9, needed: 14 },
+  team_gen_note_including: { names: ["Erdal Ozkan"] },
+  team_gen_note_pinned: { pinned: ["Kemal Ediz → RED"] },
+  team_gen_note_unmatched_includes: { names: ["Bob"] },
+  team_gen_note_unmatched_pins: { names: ["Jim"] },
+  payment_credit_ack: { payerName: "Sait Demir", credited: [], count: 2, matchName: "Tuesday 7-a-side", unpaid: 6, confirmed: 14, unmatched: 1 },
+  recruit_failed: null,
+  recruit_invited: { invited: 5, matchName: "Tuesday 7-a-side", need: 2 },
+  recruit_already_pinged: { matchName: "Tuesday 7-a-side" },
+  recruit_nobody_new: { matchName: "Tuesday 7-a-side" },
+  swap_deferred: { a: "Kemal Ediz", b: "Sait Demir" },
+  team_swap_done: { a: "Kemal Ediz", b: "Elvin Aliyev" },
+  slot_transfer_done: { to: "Erdal Ozkan", from: "Sait Demir", teamLabel: "Kırmızı" },
+  colour_swap_done: null,
+  intro_opener: null,
+  intro_what_i_do: null,
+  intro_attendance: null,
+  intro_daily: null,
+  intro_teams: null,
+  intro_rating_bit: null,
+  intro_mom_bit: null,
+  intro_ratings_line: { bits: ["BITONE", "BITTWO"] },
+  intro_reminders: null,
+  intro_stats: null,
+  intro_payments: null,
+  intro_closer: null,
+  chase_pre_kickoff_fallback: { need: 2, activityName: "Tuesday 7-a-side", timeLabel: "21:30" },
+  pre_kickoff_short_fallback: { timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2 },
+  gear_reminder: { timeLabel: "21:30", venue: "Goals North Cheam" },
+  ask_score: { activityName: "Tuesday 7-a-side" },
 };
 
 /** Render an entry with its sample arguments. */
@@ -222,15 +328,21 @@ describe("string tables: hygiene", () => {
     }
   });
 
+  /** Arguments that are a closed set the entry BRANCHES on rather than
+   *  text it prints: the rendered sentence says "replied by DM", never
+   *  the token "dm". */
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status"]);
+
   it("every parameterised entry uses every argument it is given", () => {
-    // A string or number argument must appear in the output; a boolean
-    // or an array only has to be accepted (the entry branches on it).
+    // A string or number argument must appear in the output; a boolean,
+    // an array or an enum only has to be accepted (the entry branches on it).
     for (const lang of LANGS) {
       for (const key of KEYS) {
         const args = SAMPLES[key];
         if (args === null) continue;
         const out = render(TABLES[lang], key);
         for (const [name, value] of Object.entries(args as Record<string, unknown>)) {
+          if (ENUM_ARGS.has(name)) continue;
           if (typeof value === "string" || typeof value === "number") {
             expect(out, `${lang}.${key} ignores its "${name}" argument`).toContain(String(value));
           }

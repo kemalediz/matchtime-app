@@ -31,9 +31,9 @@ export type GenerateTeamsResult =
  * reachable from a process that must not load it.
  */
 import {
-  TEAM_GEN_REASON_NOT_FOUND,
   formatTeamsPost,
   teamGenReasonNotEnough,
+  teamGenReasonNotFound,
   teamGenReasonStatus,
 } from "./group-copy";
 export { formatTeamsPost };
@@ -67,9 +67,11 @@ export async function generateTeamsForMatch(
       },
     },
   });
-  if (!match) return { ok: false, reason: TEAM_GEN_REASON_NOT_FOUND };
+  // No match means no org to take a language from: the English reason.
+  if (!match) return { ok: false, reason: teamGenReasonNotFound() };
+  const lang = match.activity.org.language;
   if (match.status === "COMPLETED" || match.status === "CANCELLED") {
-    return { ok: false, reason: teamGenReasonStatus(match.status) };
+    return { ok: false, reason: teamGenReasonStatus(match.status, lang) };
   }
 
   const sport = match.activity.sport;
@@ -77,7 +79,7 @@ export async function generateTeamsForMatch(
   if (match.attendances.length < perTeam * 2) {
     return {
       ok: false,
-      reason: teamGenReasonNotEnough({ confirmed: match.attendances.length, needed: perTeam * 2 }),
+      reason: teamGenReasonNotEnough({ confirmed: match.attendances.length, needed: perTeam * 2, lang }),
     };
   }
 
@@ -161,7 +163,6 @@ export async function generateTeamsForMatch(
   const matchLabelSource = validNames ? { teamLabels: validNames } : match;
   // The group's language decides the default team names and the words
   // around them; `org` is the full row here, so it carries `language`.
-  const lang = match.activity.org.language;
   const [redLabel, yellowLabel] = resolveTeamLabels(
     matchLabelSource,
     match.activity.org,

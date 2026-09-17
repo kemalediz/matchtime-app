@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { kickoffLabel } from "../i18n/dates";
 import { t } from "../i18n/t";
+import type { Lang } from "../i18n/lang";
 import { getOrgFeatures } from "../org-features";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { resolveTeamLabels } from "../team-labels";
@@ -286,9 +287,12 @@ export async function loadSquadState(
  * what the DM surface still calls. Two selectors for one question is how
  * the group and the DM start disagreeing about the same club.
  */
-export async function loadRatingProgressSnapshot(orgId: string): Promise<RatingProgress> {
+export async function loadRatingProgressSnapshot(
+  orgId: string,
+  lang?: Lang | string | null,
+): Promise<RatingProgress> {
   const { loadRatingProgress } = await import("../rating-progress");
-  return loadRatingProgress(orgId);
+  return loadRatingProgress(orgId, lang);
 }
 
 /**

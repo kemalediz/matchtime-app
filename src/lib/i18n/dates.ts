@@ -57,6 +57,12 @@ export function longDayTimeLabel(lang: Lang | string | null | undefined, d: Date
   return label(lang, d, { en: "EEEE d MMMM 'at' HH:mm", tr: "d MMMM EEEE HH:mm" });
 }
 
+/** The cancel announcement's label: "Tue 22 Sep at 21:30" /
+ *  "22 Eylül Salı 21:30". */
+export function dayTimeLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "EEE d MMM 'at' HH:mm", tr: "d MMMM EEEE HH:mm" });
+}
+
 /**
  * The "Squad complete" post's label. The English one is NOT a date-fns
  * pattern: `squad-announce.ts` has always used `Intl.DateTimeFormat

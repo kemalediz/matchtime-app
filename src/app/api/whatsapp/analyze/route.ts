@@ -2052,6 +2052,7 @@ async function handleAnalyzeRequest(request: Request) {
         react: engineOutcome.react,
         reply: engineOutcome.reply,
         senderName: sender.name ?? msg.authorName ?? null,
+        lang: org.language,
       });
       if (ack.failed) {
         console.error(attendanceFailureLog(engineOutcome.failures), "for", msg.waMessageId);
@@ -2091,6 +2092,7 @@ async function handleAnalyzeRequest(request: Request) {
         matchId: nextMatchForReply?.id ?? null,
         authorName: msg.authorName,
         dropping: engineOutcome.intent === "out",
+        lang: org.language,
       });
       if (engineNudge.applies) engineReply = engineNudge.reply;
 
@@ -2700,7 +2702,7 @@ async function handleAnalyzeRequest(request: Request) {
       // `recruit.ts`'s capacity guard is the only place holding the
       // squad, the features and the match at once, and the DM admin path
       // (`dm-reply/route.ts`) prints the same string.
-      const recruitReply = buildRecruitAckReply(r);
+      const recruitReply = buildRecruitAckReply(r, org.language);
 
       const idx = results.findIndex((x) => x.waMessageId === recruitMsg.waMessageId);
       if (idx >= 0) {
@@ -2795,7 +2797,7 @@ async function handleAnalyzeRequest(request: Request) {
           await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text } });
         },
       });
-      const blastReply = composeStatsBlastReply(queued);
+      const blastReply = composeStatsBlastReply(queued, org.language);
       const idx = results.findIndex((x) => x.waMessageId === blastMsg.waMessageId);
       if (idx >= 0) {
         // ONE reply, merged — never a second send. The same invariant the
@@ -3009,6 +3011,7 @@ async function unresolvedSenderNudge(args: {
   matchId: string | null;
   authorName: string | null;
   dropping: boolean;
+  lang?: string | null;
 }): Promise<{ applies: boolean; reply: string | null }> {
   // The RULE (does it fire, what does it say, under what key) is pure and
   // unit-tested in `lib/unresolved-nudge.ts`. That is where the 2026-08-30
@@ -3683,7 +3686,7 @@ async function handleTeamSwapIfApplicable(
     // Teams not generated yet — nothing to swap, but make ABSOLUTELY
     // sure nobody is dropped. Acknowledge + defer. Unchanged wording.
     return {
-      reply: buildSwapDeferredReply({ a: A.name, b: B.name }),
+      reply: buildSwapDeferredReply({ a: A.name, b: B.name, lang: match.activity.org.language }),
       logReason: `team-swap deferred (no teams yet): ${A.name} <-> ${B.name}`,
     };
   }
@@ -3702,7 +3705,7 @@ async function handleTeamSwapIfApplicable(
       }),
     ]);
     return {
-      reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet() }),
+      reply: buildTeamSwapReply({ a: decision.a.name, b: decision.b.name, sheet: await sheet(), lang: match.activity.org.language }),
       logReason: `team-swap applied: ${decision.a.name} <-> ${decision.b.name}`,
     };
   }
@@ -3738,6 +3741,7 @@ async function handleTeamSwapIfApplicable(
       from: decision.from.name,
       teamLabel: movedTo,
       sheet: await sheet(),
+      lang: match.activity.org.language,
     }),
     logReason:
       `team-slot-transfer applied: ${decision.from.name} (${decision.from.status}) ` +
@@ -3861,6 +3865,7 @@ async function handleColorSwapIfApplicable(
         red: fresh.filter((t) => t.team === "RED").map((t) => t.user.name),
         yellow: fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name),
       }),
+      lang: match.activity.org.language,
     }),
     logReason: `colour-swap applied (labels flipped, rosters unchanged)`,
   };

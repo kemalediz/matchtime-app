@@ -292,11 +292,17 @@ export async function bulkCancelMatches(input: {
   }
 
   // The ONLY group-message path — pure, unit-tested, null unless the
-  // admin explicitly opted in AND something was cancelled.
+  // admin explicitly opted in AND something was cancelled. In the
+  // group's language.
+  const org = await db.organisation.findUnique({
+    where: { id: orgIds[0] },
+    select: { language: true },
+  });
   const announcement = buildBulkCancelAnnouncement({
     activityName: cancellable[0]?.activity.name ?? "",
     dates: cancellable.map((m) => m.date),
     announce: input.announce === true,
+    lang: org?.language,
   });
   if (announcement !== null) {
     await db.botJob.create({

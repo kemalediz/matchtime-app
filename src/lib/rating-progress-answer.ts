@@ -115,6 +115,9 @@
  * the case `payment-answer.ts` says would need an admin, so the gate the
  * fast path already had is the right one and it stays.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+
 export const RATING_PROGRESS_IS_ADMIN_ONLY = true;
 
 /**
@@ -196,18 +199,20 @@ export interface RatingProgress {
  * thing that went wrong, and a rewrite would be an unreviewed change
  * riding along with a fix.
  */
-export function formatRatingProgressReply(p: RatingProgress): string {
-  if (!p.ok) return p.reason ?? "Couldn't check that right now.";
-  const lines = [`📋 *${p.matchName}* (${p.matchWhen}) — rating progress:`];
-  lines.push(`• Rated: ${p.ratedCount}/${p.confirmed}`);
-  lines.push(`• Picked MoM: ${p.momCount}/${p.confirmed}`);
+export function formatRatingProgressReply(p: RatingProgress, lang?: Lang | string | null): string {
+  const s = t(lang);
+  if (!p.ok) return p.reason ?? s.rating_progress_failed;
+  const confirmed = p.confirmed ?? 0;
+  const lines = [s.rating_progress_header({ matchName: p.matchName ?? "", matchWhen: p.matchWhen ?? "" })];
+  lines.push(s.rating_progress_rated({ rated: p.ratedCount ?? 0, confirmed }));
+  lines.push(s.rating_progress_mom({ mom: p.momCount ?? 0, confirmed }));
   lines.push(
     p.notRated && p.notRated.length > 0
-      ? `• Still to rate (${p.notRated.length}): ${p.notRated.join(", ")}`
-      : `• Everyone's rated ✅`,
+      ? s.rating_progress_still_to_rate({ names: p.notRated })
+      : s.rating_progress_everyone_rated,
   );
   if (p.ratedNoMom && p.ratedNoMom.length > 0) {
-    lines.push(`• Rated but no MoM pick (${p.ratedNoMom.length}): ${p.ratedNoMom.join(", ")}`);
+    lines.push(s.rating_progress_no_mom_pick({ names: p.ratedNoMom }));
   }
   return lines.join("\n");
 }

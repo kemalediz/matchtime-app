@@ -182,6 +182,7 @@ export async function resolveBenchConfirmation(args: {
       teamLabel,
       confirmedCount,
       maxPlayers,
+      lang: ctx.activity.org.language,
     });
     try {
       await db.botJob.create({

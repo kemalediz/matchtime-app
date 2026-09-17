@@ -91,6 +91,7 @@ export async function announceOutOfBandAttendance(
     source: input.source,
     confirmedCount,
     maxPlayers: match.maxPlayers,
+    lang: features.language,
   });
 
   // 5. Ledger row FIRST so a crash between the two can only ever LOSE an

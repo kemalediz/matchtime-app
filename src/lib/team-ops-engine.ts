@@ -61,6 +61,8 @@
  * saying so is worth nothing (four seatbelts were found dead on
  * 2026-08-31, all with comments claiming they worked).
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 import type { ProposedWrite } from "./pipeline/types";
 
 export type EngineGenerateTeamsWrite = Extract<ProposedWrite, { kind: "generate_teams" }>;
@@ -91,13 +93,17 @@ export const TEAM_OPS_HANDLED_BY = "team-ops-engine";
 
 // ── The shipped copy, lifted verbatim ────────────────────────────────
 
-/** `route.ts:3565`. Said when no upcoming match qualifies. */
+/** `route.ts:3565`. Said when no upcoming match qualifies. English;
+ *  the language-aware form is `teamOpsNoMatchReply(lang)`. */
 export const TEAM_OPS_NO_MATCH_REPLY = "No match lined up to build teams for.";
+export function teamOpsNoMatchReply(lang?: Lang | string | null): string {
+  return t(lang).team_ops_no_match;
+}
 
 /** `route.ts:3690`. The balancer declined — not enough confirmed
  *  players, or the match is completed or cancelled. */
-export function composeBalancerRefusal(reason: string): string {
-  return `Can't build teams right now — ${reason}.`;
+export function composeBalancerRefusal(reason: string, lang?: Lang | string | null): string {
+  return t(lang).balancer_refusal({ reason });
 }
 
 /**
@@ -116,19 +122,21 @@ export function composeGenerateTeamsReply(args: {
   pinnedLog: string[];
   unmatchedIncludes: string[];
   unmatchedPins: string[];
+  lang?: Lang | string | null;
 }): string {
+  const s = t(args.lang);
   let text = args.groupPost;
   if (args.includedNames.length > 0) {
-    text = `_Including ${args.includedNames.join(", ")} as CONFIRMED per the request._\n\n${text}`;
+    text = `${s.team_gen_note_including({ names: args.includedNames })}\n\n${text}`;
   }
   if (args.pinnedLog.length > 0) {
-    text = `_Pinned per the request: ${args.pinnedLog.join(", ")}._\n\n${text}`;
+    text = `${s.team_gen_note_pinned({ pinned: args.pinnedLog })}\n\n${text}`;
   }
   if (args.unmatchedIncludes.length > 0) {
-    text += `\n\n_(couldn't find ${args.unmatchedIncludes.join(", ")} in the roster — ignored)_`;
+    text += `\n\n${s.team_gen_note_unmatched_includes({ names: args.unmatchedIncludes })}`;
   }
   if (args.unmatchedPins.length > 0) {
-    text += `\n\n_(couldn't find ${args.unmatchedPins.join(", ")} for team pinning — ignored)_`;
+    text += `\n\n${s.team_gen_note_unmatched_pins({ names: args.unmatchedPins })}`;
   }
   return text;
 }
@@ -254,8 +262,10 @@ export async function applyGenerateTeams(args: {
   /** The member who typed the message, for `AttendanceEvent.actorUserId`. */
   actorUserId: string | null;
   deps: TeamOpsApplyDeps;
+  /** The group's language; English when absent. */
+  lang?: Lang | string | null;
 }): Promise<GenerateTeamsApplyResult> {
-  const { matchId, write, actorUserId, deps } = args;
+  const { matchId, write, actorUserId, deps, lang } = args;
   const includedNames = write.forceInclude.map((f) => f.name);
   const pinnedLog = write.pinned.map((p) => `${p.name} → ${p.team}`);
   const base = {
@@ -273,7 +283,7 @@ export async function applyGenerateTeams(args: {
       ...base,
       generated: false,
       failed: false,
-      reply: TEAM_OPS_NO_MATCH_REPLY,
+      reply: teamOpsNoMatchReply(lang),
       react: "🤔",
     };
   }
@@ -309,7 +319,7 @@ export async function applyGenerateTeams(args: {
         ...base,
         generated: false,
         failed: false,
-        reply: composeBalancerRefusal(result.reason),
+        reply: composeBalancerRefusal(result.reason, lang),
         react: "🤔",
       };
     }
@@ -324,6 +334,7 @@ export async function applyGenerateTeams(args: {
         pinnedLog,
         unmatchedIncludes: write.unmatchedIncludes,
         unmatchedPins: write.unmatchedPins,
+        lang,
       }),
       react: "⚽",
     };

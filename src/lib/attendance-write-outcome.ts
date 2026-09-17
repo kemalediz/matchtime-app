@@ -24,6 +24,9 @@
  * Both are normal, and apologising for them would be its own bug.
  */
 
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+
 export type AttendanceWriteAction = "IN" | "OUT" | "BENCH";
 
 export interface AttendanceWriteFailure {
@@ -44,6 +47,8 @@ export interface AttendanceAckInput {
   reply: string | null;
   /** The sender's display name, for warmth. May be a raw phone number. */
   senderName: string | null;
+  /** The group's language; English when absent. */
+  lang?: Lang | string | null;
 }
 
 export interface AttendanceAck {
@@ -62,10 +67,6 @@ function usableFirstName(raw: string | null): string | null {
   return first.length >= 2 ? first : null;
 }
 
-function joinNames(names: string[]): string {
-  if (names.length === 1) return names[0];
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
 
 /**
  * The single decision: does this verdict's ack survive contact with
@@ -82,7 +83,7 @@ export function resolveAttendanceAck(input: AttendanceAckInput): AttendanceAck {
   }
   return {
     react: null,
-    reply: buildAttendanceFailureReply(input.failures, input.senderName),
+    reply: buildAttendanceFailureReply(input.failures, input.senderName, input.lang),
     failed: true,
   };
 }
@@ -95,25 +96,15 @@ export function resolveAttendanceAck(input: AttendanceAckInput): AttendanceAck {
 export function buildAttendanceFailureReply(
   failures: AttendanceWriteFailure[],
   senderName: string | null,
+  lang?: Lang | string | null,
 ): string {
   const self = failures.find((f) => f.who === null);
   const others = [...new Set(failures.filter((f) => f.who).map((f) => f.who as string))];
-  const first = usableFirstName(senderName);
-  const greeting = first ? `Sorry ${first}, ` : "Sorry, ";
-
-  let clause: string;
-  if (self && self.action === "OUT") {
-    clause = "I couldn't save that just now, so you're still down as playing";
-  } else if (self) {
-    clause = "I couldn't save that just now, so you're not on the list yet";
-  } else {
-    clause = `I couldn't save that change for ${joinNames(others)} just now, so the squad hasn't changed`;
-  }
-
-  const extra =
-    self && others.length > 0 ? ` I couldn't update ${joinNames(others)} either.` : "";
-
-  return `${greeting}${clause}.${extra} Please send it again in a minute and I'll sort it 🙏`;
+  return t(lang).attendance_failure({
+    firstName: usableFirstName(senderName),
+    self: self ? (self.action === "OUT" ? "OUT" : "IN") : null,
+    others,
+  });
 }
 
 /**

@@ -228,89 +228,67 @@ export interface IntroFeatures {
  * `benchLine` is `buildBenchIntroLine()` (bench-offer-copy.ts), passed
  * in so this module stays free of that one's flag.
  */
-export function buildBotIntro(f: IntroFeatures, benchLine: string): string {
-  const lines: string[] = [
-    `👋 Hi all — MatchTime bot is live for this group.`,
-    ``,
-    `Here's what I do:`,
-  ];
+export function buildBotIntro(f: IntroFeatures, benchLine: string, lang?: Lang | string | null): string {
+  const s = t(lang);
+  const lines: string[] = [s.intro_opener, ``, s.intro_what_i_do];
   if (f.attendance) {
-    lines.push(
-      ``,
-      `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with 👍 to confirm — no extra messages from me.`,
-      ``,
-      `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
-    );
+    lines.push(``, s.intro_attendance, ``, s.intro_daily);
   }
   if (f.bench) {
     lines.push(``, benchLine);
   }
   if (f.teamBalancing) {
-    lines.push(
-      ``,
-      `⚽  *Teams* — Ask me to "generate teams" and I post auto-balanced sides. Objections? Reply \`swap X Y\` — admin will apply it.`,
-    );
+    lines.push(``, s.intro_teams);
   }
   if (f.momVoting || f.playerRating) {
     const bits: string[] = [];
-    if (f.playerRating)
-      bits.push(`I DM everyone a rating link after each match (no sign-up, just tap)`);
-    if (f.momVoting)
-      bits.push(`vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest)`);
-    lines.push(``, `🏆  *Ratings & MoM* — ${bits.join("; ")}.`);
+    if (f.playerRating) bits.push(s.intro_rating_bit);
+    if (f.momVoting) bits.push(s.intro_mom_bit);
+    lines.push(``, s.intro_ratings_line({ bits }));
   }
   if (f.reminders) {
-    lines.push(
-      ``,
-      `⏰  *Reminders* — Say "@MatchTime remind me Monday" and I'll DM you then.`,
-    );
+    lines.push(``, s.intro_reminders);
   }
   if (f.statsQa) {
-    lines.push(
-      ``,
-      `📊  *Stats* — Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
-    );
+    lines.push(``, s.intro_stats);
   }
   if (f.paymentTracking) {
-    lines.push(``, `💳  *Payments* — I auto-post "paid?" polls right after each match.`);
+    lines.push(``, s.intro_payments);
   }
-  lines.push(``, `Questions? Just ask here. Let's go.`);
+  lines.push(``, s.intro_closer);
   return lines.join("\n");
 }
 
 /** Row 74: the 3-4h-before-kickoff chase, static fallback. */
-export function buildChasePreKickoffFallback(args: {
-  need: number;
-  activityName: string;
-  timeLabel: string;
-}): string {
-  return `⏳ Still *${args.need} short* for *${args.activityName}* at ${args.timeLabel}. Anyone free tonight?`;
+export function buildChasePreKickoffFallback(
+  args: {
+    need: number;
+    activityName: string;
+    timeLabel: string;
+  } & WithLang,
+): string {
+  return t(args.lang).chase_pre_kickoff_fallback(args);
 }
 
 /** Row 75: the 0.5-2h-before-kickoff last-chance plea, static fallback. */
-export function buildPreKickoffShortFallback(args: {
-  timeLabel: string;
-  venue: string;
-  confirmed: number;
-  maxPlayers: number;
-  need: number;
-}): string {
-  const base = `⏰ Tonight *${args.timeLabel}* at *${args.venue}* · ${args.confirmed}/${args.maxPlayers}`;
-  return `${base} — *still need ${args.need}*, last chance to jump in. 🙏`;
+export function buildPreKickoffShortFallback(
+  args: {
+    timeLabel: string;
+    venue: string;
+    confirmed: number;
+    maxPlayers: number;
+    need: number;
+  } & WithLang,
+): string {
+  return t(args.lang).pre_kickoff_short_fallback(args);
 }
 
 /** Row 76: the football gear reminder, 1.5-2h before kickoff. */
-export function buildGearReminder(args: { timeLabel: string; venue: string }): string {
-  return (
-    `⚽ *${args.timeLabel} at ${args.venue}* — see you there!\n\n` +
-    `Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*, and *spare bibs*.`
-  );
+export function buildGearReminder(args: { timeLabel: string; venue: string } & WithLang): string {
+  return t(args.lang).gear_reminder(args);
 }
 
 /** Row 77: the score ask, 1h after the match ends. */
-export function buildAskScorePost(args: { activityName: string }): string {
-  return (
-    `🏁 *${args.activityName}* — hope it was a good one. What was the final score? ` +
-    `I'll use it to keep next week's teams balanced.`
-  );
+export function buildAskScorePost(args: { activityName: string } & WithLang): string {
+  return t(args.lang).ask_score(args);
 }

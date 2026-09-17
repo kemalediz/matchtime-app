@@ -18,6 +18,9 @@
  * because "replied by DM" would be a small lie about a message that was
  * never typed.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
+
 export type OutOfBandSource = "dm" | "app" | "reaction";
 
 /** The attendance states an out-of-band write can land on. */
@@ -72,11 +75,8 @@ export interface OutOfBandLineInput {
    *  never an LLM count. */
   confirmedCount: number;
   maxPlayers: number;
-}
-
-function sourceLabel(source: OutOfBandSource, status: OutOfBandStatus): string {
-  if (source === "reaction") return status === "DROPPED" ? "👎 on their invite" : "👍 on their invite";
-  return source === "dm" ? "replied by DM" : "from the app";
+  /** The group's language; English when absent. */
+  lang?: Lang | string | null;
 }
 
 /**
@@ -84,20 +84,14 @@ function sourceLabel(source: OutOfBandSource, status: OutOfBandStatus): string {
  * name and bold count. The "N/M" is a squad ratio, not prose punctuation.
  */
 export function buildOutOfBandAttendanceLine(input: OutOfBandLineInput): string {
-  const name = input.playerName?.trim() || "A player";
-  const squad = `Squad *${input.confirmedCount}/${input.maxPlayers}*.`;
-
-  if (input.status === "BENCH") {
-    const how =
-      input.source === "reaction"
-        ? "gave a 👍 on their invite"
-        : input.source === "dm"
-          ? "replied IN by DM"
-          : "marked IN on the app";
-    return `📋 *${name}* ${how} and goes to the bench. ${squad}`;
-  }
-  if (input.status === "DROPPED") {
-    return `❌ *${name}* is OUT (${sourceLabel(input.source, input.status)}). ${squad}`;
-  }
-  return `✅ *${name}* is IN (${sourceLabel(input.source, input.status)}). ${squad}`;
+  const s = t(input.lang);
+  const p = {
+    name: input.playerName?.trim() || s.oob_player_fallback,
+    source: input.source,
+    confirmed: input.confirmedCount,
+    maxPlayers: input.maxPlayers,
+  };
+  if (input.status === "BENCH") return s.oob_bench(p);
+  if (input.status === "DROPPED") return s.oob_out(p);
+  return s.oob_in(p);
 }

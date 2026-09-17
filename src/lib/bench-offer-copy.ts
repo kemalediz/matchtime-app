@@ -86,9 +86,9 @@ interface ReactionGate {
   /** Override the 👍 instruction gate. Tests only. */
   mentionReactions?: boolean;
   /** The group's language (`Organisation.language`). English when
-   *  absent; the English bytes are unchanged either way (golden). Only
-   *  the group-facing builders read it in Phase 2 slice 1; the DM and
-   *  the intro line still speak English whatever is passed. */
+   *  absent; the English bytes are unchanged either way (golden). Every
+   *  group-facing builder reads it; the DM (`buildBenchOfferDm`) still
+   *  speaks English whatever is passed (Phase 3). */
   lang?: Lang | string | null;
 }
 
@@ -150,14 +150,7 @@ function benchPromotionHow(c: ReactionGate): string {
 /** The bench line in the bot's day-one intro post. It is a promise about
  *  how the feature behaves, so it is gated with the feature. */
 export function buildBenchIntroLine(c: ReactionGate = {}): string {
-  // English until the intro moves into the table (Phase 2, a later
-  // slice): the sentence around the clause is English, so the clause
-  // must be too, whatever `lang` a caller passes.
-  const how = benchPromotionHow({ ...c, lang: "en" });
-  return (
-    `🔁  *Bench promotion* — If someone drops, I tag the bench here and ` +
-    `${how}. No timeout, and nobody loses their place for missing it.`
-  );
+  return t(c.lang).bench_intro_line({ how: benchPromotionHow(c) });
 }
 
 export interface FullSquadBenchInviteCopy extends ReactionGate {
@@ -222,14 +215,12 @@ export interface FullSquadBenchInviteCopy extends ReactionGate {
  * believing it has cover.
  */
 export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
-  // English until this answer moves into the table (Phase 2, a later
-  // slice); see buildBenchIntroLine.
-  const how = benchPromotionHow({ ...c, lang: "en" });
-  return (
-    `*${c.matchName}* is full at ${c.confirmedCount} of ${c.maxPlayers}, but the bench is open. ` +
-    `Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group ` +
-    `and ${how}. 🙏`
-  );
+  return t(c.lang).full_squad_bench_invite({
+    matchName: c.matchName,
+    confirmed: c.confirmedCount,
+    maxPlayers: c.maxPlayers,
+    how: benchPromotionHow(c),
+  });
 }
 
 /**
@@ -280,13 +271,12 @@ export interface BenchAskedLineCopy extends ReactionGate {
  *  is right to call that misinformation). */
 export function buildBenchAskedLine(c: BenchAskedLineCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  const how = reactions
-    ? "they've been tagged here with a 👍 prompt"
-    : "they're tagged here and just need to reply *IN*";
-  return (
-    `Asking *${c.benchName}* to step up, ${how}. ` +
-    `Squad is *${c.confirmedCount}/${c.maxPlayers}* until they confirm.`
-  );
+  return t(c.lang).bench_asked_line({
+    benchName: c.benchName,
+    confirmed: c.confirmedCount,
+    maxPlayers: c.maxPlayers,
+    reactions,
+  });
 }
 
 /** The phrasing example handed to the LLM in SYSTEM_PROMPT. Quoted, so
@@ -311,15 +301,19 @@ export function buildBenchClaimAnnouncement(args: {
   teamLabel: string | null;
   confirmedCount: number;
   maxPlayers: number;
+  lang?: Lang | string | null;
 }): string {
+  const s = t(args.lang);
   if (args.teamLabel && args.droppedName) {
-    return (
-      `🎟 *${args.claimerName}* grabbed the slot — taking *${args.droppedName}*'s place on *${args.teamLabel}* 🙌\n\n` +
-      `_Say "regenerate teams" if you want to rebalance with the new line-up._`
-    );
+    return s.bench_claim_team({ claimer: args.claimerName, dropped: args.droppedName, teamLabel: args.teamLabel });
   }
   if (args.droppedName) {
-    return `✅ *${args.claimerName}* is in, replacing *${args.droppedName}* — squad *${args.confirmedCount}/${args.maxPlayers}* 🙌`;
+    return s.bench_claim_replacing({
+      claimer: args.claimerName,
+      dropped: args.droppedName,
+      confirmed: args.confirmedCount,
+      maxPlayers: args.maxPlayers,
+    });
   }
-  return `✅ *${args.claimerName}* grabbed the open slot — squad *${args.confirmedCount}/${args.maxPlayers}* 🙌`;
+  return s.bench_claim_open({ claimer: args.claimerName, confirmed: args.confirmedCount, maxPlayers: args.maxPlayers });
 }
