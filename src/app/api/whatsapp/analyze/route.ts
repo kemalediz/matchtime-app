@@ -2084,7 +2084,7 @@ async function handleAnalyzeRequest(request: Request) {
       // attached after the whole loop, to whichever message ends up
       // speaking last — see "THE BATCH'S ONE SQUAD POST" below.
       if (engineReply && nextMatchForReply) {
-        engineReply = enforceProximity(engineReply, nextMatchForReply.date);
+        engineReply = enforceProximity(engineReply, nextMatchForReply.date, org.language);
       }
       const engineNudge = await unresolvedSenderNudge({
         senderResolved: !!sender.userId,
@@ -2228,7 +2228,7 @@ async function handleAnalyzeRequest(request: Request) {
       const writeFailed = "writeFailed" in stepSeven && stepSeven.writeFailed;
       let reply = stepSeven.reply;
       if (reply && nextMatchForReply) {
-        reply = enforceProximity(reply, nextMatchForReply.date);
+        reply = enforceProximity(reply, nextMatchForReply.date, org.language);
       }
       await recordAnalysis({
         orgId: org.id,

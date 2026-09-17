@@ -183,6 +183,14 @@ const SAMPLES: SampleArgs = {
   pre_kickoff_short_fallback: { timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2 },
   gear_reminder: { timeLabel: "21:30", venue: "Goals North Cheam" },
   ask_score: { activityName: "Tuesday 7-a-side" },
+
+  // ── slice 3 ──
+  roster_header_past: null,
+  roster_header_tonight: null,
+  roster_header_tomorrow: null,
+  roster_header_day: { dayLabel: "Tue 8 Sept" },
+  chase_tentative_line: { name: "Erdal Ozkan" },
+  chase_opener_example: null,
 };
 
 /** Render an entry with its sample arguments. */

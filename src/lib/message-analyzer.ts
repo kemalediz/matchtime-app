@@ -66,6 +66,9 @@ import { db } from "./db";
 import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
 import { getOrgFeatures } from "./org-features";
 import { resolveTeamLabels } from "./team-labels";
+import { t } from "./i18n/t";
+import { normaliseLang, type Lang } from "./i18n/lang";
+import { dayLabel as i18nDayLabel, longDayTimeLabel } from "./i18n/dates";
 import {
   BENCH_PROMPT_MENTION_REACTIONS,
   benchClaimPhrasingExample,
@@ -223,6 +226,10 @@ export function buildMatchContextBlock(args: {
     benchNames: string[];
     replacingNames: string[];
   } | null;
+  /** The group's language. Only the format-switch proposal line (which
+   *  the model pastes verbatim) is language-dependent in this block;
+   *  the block is byte-identical for English with or without it. */
+  lang?: Lang | string | null;
 }): string {
   if (!args.match) {
     return `## Organisation\n${args.orgName}\n\n## Current Match\nNo upcoming match within the attendance window.`;
@@ -293,6 +300,7 @@ export function buildMatchContextBlock(args: {
       confirmedNames: confirmed.map((a) => a.user.name ?? "(unnamed)"),
       currentMaxPlayers: m.maxPlayers,
       alternatives: args.alternatives,
+      lang: args.lang,
     });
     lines.push("", ...renderFormatSwitchContext(facts));
   }
@@ -349,8 +357,13 @@ function londonTimeLabel(date: Date): string {
  * Everything here is recomputed from `Date.now()` on every call, which
  * is precisely why it cannot live in the cached prefix.
  */
-export function buildMatchClockBlock(matchDate: Date | null | undefined): string {
+export function buildMatchClockBlock(
+  matchDate: Date | null | undefined,
+  lang?: Lang | string | null,
+): string {
   if (!matchDate) return "";
+  const l = normaliseLang(lang);
+  const s = t(l);
   const hoursToKickoff = (matchDate.getTime() - Date.now()) / (1000 * 60 * 60);
   const daysToKickoff = Math.floor(hoursToKickoff / 24);
   const kickoffHint =
@@ -359,8 +372,11 @@ export function buildMatchClockBlock(matchDate: Date | null | undefined): string
       : `${Math.abs(hoursToKickoff).toFixed(1)}h since kickoff`;
   // Pre-format the kickoff in London time so the LLM doesn't have to
   // do TZ math and guess at BST/GMT. Format: "Tue 28 Apr at 21:30".
-  const dayLabel = londonDayLabel(matchDate);
-  const kickoffLocal = `${dayLabel} at ${londonTimeLabel(matchDate)}`;
+  // The day label the ROSTER HEADER carries is the group's language's
+  // ("Tue 8 Sept" / "8 Eylül Salı"); the "Kickoff (London)" line stays
+  // English because the prompt's rules refer to it by that shape.
+  const dayLabel = l === "en" ? londonDayLabel(matchDate) : i18nDayLabel(l, matchDate);
+  const kickoffLocal = `${londonDayLabel(matchDate)} at ${londonTimeLabel(matchDate)}`;
   // Proximity token drives how the LLM should title the roster block.
   const proximity =
     hoursToKickoff < 0
@@ -373,15 +389,18 @@ export function buildMatchClockBlock(matchDate: Date | null | undefined): string
       ? "this-week"
       : "future";
   const rosterHeader = {
-    past: "*Squad:*",
-    tonight: "*Playing tonight:*",
-    tomorrow: "*Playing tomorrow:*",
-    "this-week": `*Playing ${dayLabel}:*`,
-    future: `*Playing ${dayLabel}:*`,
+    past: s.roster_header_past,
+    tonight: s.roster_header_tonight,
+    tomorrow: s.roster_header_tomorrow,
+    "this-week": s.roster_header_day({ dayLabel }),
+    future: s.roster_header_day({ dayLabel }),
   }[proximity];
   return [
     `## Current Match — timing (live, part of the Match Context above)`,
     `Kickoff (London): ${kickoffLocal}  (${kickoffHint}, proximity=${proximity})`,
+    // A non-English group gets the kickoff written the way its
+    // language writes it, so the model copies a date it can use.
+    ...(l === "en" ? [] : [`Kickoff (${l}): ${longDayTimeLabel(l, matchDate)}`]),
     `Use roster header: ${rosterHeader}`,
   ].join("\n");
 }
@@ -431,6 +450,11 @@ export type ChaseKind =
 export async function composeChaseText(input: {
   groupId: string;
   kind: ChaseKind;
+  /** HARNESS ONLY (`scripts/dryrun-pipeline.ts LANG=tr`): compose in this
+   *  language instead of the org's column, so a Turkish chase can be
+   *  dry-run against an English club's live state without touching
+   *  the row. Production never passes it. */
+  langOverride?: Lang | string | null;
 }): Promise<string | null> {
   const anthropic = getAnthropic();
   if (!anthropic) return null;
@@ -489,13 +513,15 @@ export async function composeChaseText(input: {
   }
   alternatives.sort((x, y) => y.totalPlayers - x.totalPlayers);
 
+  const lang = normaliseLang(input.langOverride ?? org.language);
   return composeChaseFromMatch({
     kind: input.kind,
     orgName: org.name,
     match,
-    teamLabels: resolveTeamLabels(match, org, match.activity.sport, org.language),
+    teamLabels: resolveTeamLabels(match, org, match.activity.sport, lang),
     alternatives,
     logLabel: `group=${input.groupId}`,
+    lang,
   });
 }
 
@@ -531,17 +557,24 @@ export async function composeChaseFromMatch(input: {
   alternatives?: Array<{ sportName: string; totalPlayers: number }>;
   /** Identifies the caller in the two BROKEN log lines. */
   logLabel?: string;
+  /** The group's language (`Organisation.language`); English when absent.
+   *  Decides the roster header the server hands the model, the language
+   *  line in the uncached tail, and whether the English proximity
+   *  rewrite runs on the result. */
+  lang?: Lang | string | null;
 }): Promise<string | null> {
   const anthropic = getAnthropic();
   if (!anthropic) return null;
   const { match } = input;
   const label = input.logLabel ?? input.orgName;
+  const lang = normaliseLang(input.lang);
 
   const matchContext = buildMatchContextBlock({
     orgName: input.orgName,
     match,
     teamLabels: input.teamLabels,
     alternatives: input.alternatives,
+    lang,
   });
 
   // AT RISK — decided HERE, in code, and only ever handed to the model
@@ -569,8 +602,12 @@ export async function composeChaseFromMatch(input: {
   // The at-risk block goes in the SAME uncached tail, for exactly that
   // reason: it appears and disappears as the clock crosses 48h, so it is
   // volatile content by definition and may never sit in a cached prefix.
-  const matchClock = buildMatchClockBlock(match.date);
-  const chasePrompt = buildChaseComposePrompt(input.kind, { atRisk });
+  // THE LANGUAGE LINE RIDES IN THE UNCACHED TAIL (design section 4.3,
+  // seam 1): the system prompt and the Match Context are cached for an
+  // hour and are byte-identical for every language, so an English
+  // club's cache is untouched by a Turkish club existing.
+  const matchClock = buildMatchClockBlock(match.date, lang);
+  const chasePrompt = buildChaseComposePrompt(input.kind, { atRisk, lang, matchDate: match.date });
   const composePrompt = matchClock ? `${matchClock}\n\n${chasePrompt}` : chasePrompt;
 
   try {
@@ -636,7 +673,7 @@ export async function composeChaseFromMatch(input: {
     // "tonight"/"this evening" in the lead text to match the actual
     // proximity. Regex is narrow: it only fires when we're confident
     // the LLM got it wrong.
-    return enforceProximity(cleaned, match.date);
+    return applyHouseStyle(enforceProximity(cleaned, match.date, lang), lang);
   } catch (err) {
     // Degrade LOUDLY. This threw on every invocation for months
     // (max_tokens was 64000, which the SDK refuses) and nobody noticed,
@@ -663,7 +700,10 @@ function londonDateKey(at: Date): string {
   return parts; // en-CA formats as YYYY-MM-DD
 }
 
-function computeProximity(date: Date): {
+function computeProximity(
+  date: Date,
+  lang: Lang = "en",
+): {
   proximity: "past" | "tonight" | "tomorrow" | "this-week" | "future";
   rosterHeader: string;
   friendlyDay: string; // "tonight" | "tomorrow" | "on Tue 28 Apr"
@@ -672,11 +712,12 @@ function computeProximity(date: Date): {
    *  possessive. See `replaceRelativeDay`. */
   dayLabel: string;
 } {
+  const s = t(lang);
   const hoursToKickoff = (date.getTime() - Date.now()) / (1000 * 60 * 60);
   // See `londonDayLabel`: the day and the time are formatted separately
   // because the old single-formatter-plus-split produced a "day part"
   // that still had the kickoff time glued to it.
-  const dayPart = londonDayLabel(date);
+  const dayPart = lang === "en" ? londonDayLabel(date) : i18nDayLabel(lang, date);
 
   // Proximity bucket is calendar-day based, not raw hours: "tonight"
   // means the match is later today (London), "tomorrow" means
@@ -704,11 +745,11 @@ function computeProximity(date: Date): {
     proximity = "future";
   }
   const rosterHeader = {
-    past: "*Squad:*",
-    tonight: "*Playing tonight:*",
-    tomorrow: "*Playing tomorrow:*",
-    "this-week": `*Playing ${dayPart}:*`,
-    future: `*Playing ${dayPart}:*`,
+    past: s.roster_header_past,
+    tonight: s.roster_header_tonight,
+    tomorrow: s.roster_header_tomorrow,
+    "this-week": s.roster_header_day({ dayLabel: dayPart }),
+    future: s.roster_header_day({ dayLabel: dayPart }),
   }[proximity];
   const friendlyDay = {
     past: `on ${dayPart}`,
@@ -765,16 +806,30 @@ function replaceRelativeDay(
  *     friendly day form when proximity isn't tonight. Leaves "tomorrow"
  *     alone unless proximity is further out.
  */
-export function enforceProximity(text: string, matchDate: Date): string {
-  const { proximity, rosterHeader, friendlyDay, dayLabel } = computeProximity(matchDate);
+export function enforceProximity(
+  text: string,
+  matchDate: Date,
+  lang?: Lang | string | null,
+): string {
+  const l = normaliseLang(lang);
+  const { proximity, rosterHeader, friendlyDay, dayLabel } = computeProximity(matchDate, l);
 
-  // Swap any "*Playing …:*" roster header to the correct one.
-  let out = text.replace(/\*Playing [^*\n]+?:\*/gi, rosterHeader);
+  // Swap any "*Playing …:*" roster header to the correct one. In any
+  // language: a Turkish model that writes the English header out of
+  // habit gets the Turkish one the server chose, and a Turkish header
+  // with the wrong day is corrected the same way.
+  let out = text.replace(/\*(?:Playing [^*\n]+?|[^*\n]*?oynayanlar|Kadro):\*/giu, rosterHeader);
   // If that didn't match, also try a variant without asterisks (in case
   // the LLM returned plain-text header).
   if (!out.includes(rosterHeader)) {
     out = out.replace(/Playing (tonight|tomorrow|this (?:evening|week))\s*:/i, rosterHeader);
   }
+
+  // THE RELATIVE-DAY REWRITE IS ENGLISH GRAMMAR (`DAY_PREPOSITION`,
+  // possessives) and cannot be translated, only bypassed: for any other
+  // language the model is told the day label and the header up front
+  // (design section 4.3, seam 3) and nothing below rewrites its prose.
+  if (l !== "en") return fixUtcTime(out, matchDate);
 
   if (proximity !== "tonight") {
     // Replace "tonight" / "this evening" with friendly-day phrasing
@@ -789,10 +844,17 @@ export function enforceProximity(text: string, matchDate: Date): string {
     out = replaceRelativeDay(out, "tomorrow", dayLabel, friendlyDay);
   }
 
-  // Catch "off-by-1h" mistakes in HH:MM times. The LLM occasionally
-  // outputs the UTC offset (20:30) when it should output the London
-  // wall-clock (21:30) — usually because it "helpfully" applied the
-  // timezone offset itself. Replace the UTC HH:MM with the London one.
+  return fixUtcTime(out, matchDate);
+}
+
+/**
+ * Catch "off-by-1h" mistakes in HH:MM times. The LLM occasionally outputs
+ * the UTC offset (20:30) when it should output the London wall-clock
+ * (21:30), usually because it "helpfully" applied the timezone offset
+ * itself. Replace the UTC HH:MM with the London one. Language-free: a
+ * time is a time.
+ */
+function fixUtcTime(text: string, matchDate: Date): string {
   const londonHm = londonTimeLabel(matchDate);
   const utcHm = new Intl.DateTimeFormat("en-GB", {
     timeZone: "UTC",
@@ -800,12 +862,35 @@ export function enforceProximity(text: string, matchDate: Date): string {
     minute: "2-digit",
     hour12: false,
   }).format(matchDate);
-  if (londonHm !== utcHm) {
-    // Replace bare "20:30" instances (only when followed by non-digit
-    // boundary so we don't mangle other numbers).
-    out = out.replace(new RegExp(`\\b${utcHm.replace(":", ":")}\\b`, "g"), londonHm);
-  }
-  return out;
+  if (londonHm === utcHm) return text;
+  // Replace bare "20:30" instances (only when followed by non-digit
+  // boundary so we don't mangle other numbers).
+  return text.replace(new RegExp(`\\b${utcHm.replace(":", ":")}\\b`, "g"), londonHm);
+}
+
+/**
+ * The Turkish table's house style has no em or en dashes, and the model
+ * keeps writing them however firmly the tail asks (measured 2026-09-17:
+ * 5 of 25 Turkish chases carried one). A dash between two clauses reads
+ * as a comma in Turkish, so it becomes one, and markdown `**bold**` (which
+ * WhatsApp renders with its asterisks showing) becomes `*bold*`. English
+ * output is untouched (the English club's copy has always carried them).
+ */
+export function applyHouseStyle(text: string, lang?: Lang | string | null): string {
+  if (normaliseLang(lang) === "en") return text;
+  return text
+    // Markdown bold is not WhatsApp bold: `**x**` shows its asterisks.
+    .replace(/\*\*([^*\n]+?)\*\*/g, "*$1*")
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/,\s*,/g, ",")
+    .replace(/\s+,/g, ",");
+}
+
+/** The roster header the server would hand the model for this kickoff,
+ *  right now, in this language. Exported for the dry-run harness, which
+ *  checks a composed chase copied it. */
+export function rosterHeaderFor(matchDate: Date, lang?: Lang | string | null): string {
+  return computeProximity(matchDate, normaliseLang(lang)).rosterHeader;
 }
 
 /**
@@ -889,7 +974,50 @@ function buildChaseComposePrompt(
     /** Server-computed verdict from `computeChaseRisk`. `daily-in-list`
      *  only; every other kind ignores it. */
     atRisk?: boolean;
+    /** The group's language. English adds NOTHING to the prompt (the
+     *  bytes are the ones every English chase has always been sent);
+     *  any other language appends `buildLanguageTail`. */
+    lang?: Lang | string | null;
+    /** For the tail's worked date example. */
+    matchDate?: Date;
   },
+): string {
+  const body = chaseKindInstruction(kind, opts);
+  const l = normaliseLang(opts?.lang);
+  return l === "en" ? body : `${body}\n\n${buildLanguageTail(l, opts?.matchDate)}`;
+}
+
+/**
+ * THE LANGUAGE LINE, in the uncached tail (design section 4.3, seam 1).
+ *
+ * The system prompt's rules stay English and stay cached; this block
+ * tells the model which language the GROUP reads, hands it the exact
+ * headers the server chose (the bench header, the tentative line, the
+ * opener example), and restates the two style rules the group's own
+ * table follows so a model-written lead cannot drift from the
+ * deterministic posts around it. Names are never translated.
+ */
+function buildLanguageTail(lang: Lang, matchDate?: Date): string {
+  const s = t(lang);
+  const languageName = lang === "tr" ? "TURKISH" : lang;
+  const lines = [
+    "## Language",
+    `Write the WHOLE message in ${languageName}: the group reads ${languageName}, not English. Do not translate any player name; copy every name exactly as the Match Context spells it.`,
+    `Copy the roster header from "Use roster header:" exactly. For the bench block use the header "${s.bench_header({ count: 0 }).replace("(0)", "(N)")}" (N = bench size), not "*Bench (N):*".`,
+    `If you write a tentative line, its shape is "${s.chase_tentative_line({ name: "<Name>" })}".`,
+    `The scene-setting opener, where the chase type asks for one, is e.g. '${s.chase_opener_example}'.`,
+    ...(matchDate ? [`Write the kickoff date and time the way the "Kickoff (${lang})" line does: "${longDayTimeLabel(lang, matchDate)}".`] : []),
+    `Every number comes from the Match Context and nowhere else: say the squad is short ONLY if its "Confirmed:" line says "need N more", with that N; if it says "full squad", nobody is missing and you ask for nobody. Never propose a format switch unless the Match Context hands you a line marked ✅ VIABLE to copy.`,
+    lang === "tr"
+      ? `Register: address the group in the plural ("yazın", "haber verin"), warm and informal. No "abi", no "beyler". The ONLY two words the group types are "VARIM" (to join) and "YOKUM" (to drop out); ask for them in bold, *VARIM* or *YOKUM*, and never invent another command. No greeting, no time-of-day, no send-time stamp. NEVER write an em dash (—) or an en dash (–): use a comma, a colon or a full stop instead.`
+      : "",
+  ].filter((l) => l.length > 0);
+  return lines.join("\n");
+}
+
+function chaseKindInstruction(
+  kind: ChaseKind,
+  opts?: { atRisk?: boolean },
 ): string {
   const header = "## Chase type";
   switch (kind) {

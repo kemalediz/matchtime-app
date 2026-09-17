@@ -22,7 +22,8 @@
  * proves. A composer that has not been given a language speaks English.
  */
 import { t } from "./i18n/t";
-import type { Lang } from "./i18n/lang";
+import { normaliseLang, type Lang } from "./i18n/lang";
+import { GUARD_VOCAB, type ClaimedStatus, type GuardVocab } from "./i18n/guard-vocab";
 
 /**
  * Deterministic, server-composed squad+bench status post. Used for EVERY
@@ -201,13 +202,14 @@ function isLeaderboardLine(s: string): boolean {
  * now it selects the replies that are composed from the database — of
  * which there is at most one per batch either way.
  */
-export function displaysSquadState(text: string): boolean {
+export function displaysSquadState(text: string, lang?: Lang | string | null): boolean {
+  const v: GuardVocab = GUARD_VOCAB[normaliseLang(lang)];
   const lines = text.split("\n");
   // Stats/leaderboard replies — never squad state, never composed over.
   if (lines.some((l) => /^\s*\d+\.\s+\S/.test(l) && isLeaderboardLine(l))) {
     return false;
   }
-  // (a) A numbered roster run of 2+ lines.
+  // (a) A numbered roster run of 2+ lines. Language-free.
   let run = 0;
   for (const l of lines) {
     if (/^\s*\d+\.\s+\S/.test(l)) {
@@ -217,60 +219,19 @@ export function displaysSquadState(text: string): boolean {
       run = 0;
     }
   }
-  // (b) Squad/bench display headers.
-  if (
-    /\*(?:Playing\b[^*\n]*|Squad\b[^*\n]*|Confirmed\s*\(\d+\/\d+\)[^*\n]*|Bench\s*\(\d+\)[^*\n]*):?\*/i.test(
-      text,
-    )
-  ) {
-    return true;
-  }
+  // (b) Squad/bench display headers, in the group's language.
+  if (v.headers.test(text)) return true;
   // (c) A count claim alongside squad vocabulary.
-  if (/\b\d+\/\d+\b/.test(text) && /\b(?:squad|bench|slot|full|need|player)/i.test(text)) {
-    return true;
-  }
-  if (/\bbench is empty\b/i.test(text)) return true;
+  if (/\b\d+\/\d+\b/.test(text) && v.squadWords.test(text)) return true;
+  if (v.benchEmpty.test(text)) return true;
   return false;
 }
 
-type ClaimedStatus = "CONFIRMED" | "BENCH" | "DROPPED";
-
-/** A capitalised word followed by letters: the thing a move claim names.
- *  `\p{Lu}`, not `[A-Z]` (fixed 2026-09-16): the patterns below run
- *  with the `i` flag, so `[A-Z]` matched any ASCII letter but never Ç,
- *  Ğ, İ, Ö, Ş or Ü. "Çağrı goes on the bench" captured "ağrı", which
- *  matches nobody, and the guard was blind to the sentence. Pinned in
- *  `__tests__/unicode-names.test.ts`; ASCII verdicts are unchanged. */
-const CLAIM_NAME = "(\\p{Lu}[\\p{L}'-]+)";
-const TO_BENCH = "(?:on|onto|to)?\\s*(?:the\\s+)?bench";
-
-/**
- * Announcements of a move, as text shapes. The first seven mirror the
- * corpus grader's `claimedMoves` (`e2e/corpus/grade.ts`) — deliberately,
- * so the property the corpus judges ("never announce a move the database
- * did not make", S7/Erdal, `bef5252`) is the property enforced here —
- * with the verbs made case-insensitive, which the grader's are not. The
- * rest are the promotion phrasings `rewriteOverconfidentPromotion` used
- * to strip after the fact (Sutton, 2026-05-18 and 2026-05-26).
- */
-const MOVE_CLAIM_PATTERNS: Array<[RegExp, ClaimedStatus]> = [
-  [
-    new RegExp(`${CLAIM_NAME}\\s+(?:goes|go|is going|will go|moves|drops)\\s+${TO_BENCH}`, "giu"),
-    "BENCH",
-  ],
-  [new RegExp(`${CLAIM_NAME}\\s+is\\s+(?:now\\s+)?on\\s+the\\s+bench`, "giu"), "BENCH"],
-  [new RegExp(`(?:moving|putting|benching|demoting)\\s+${CLAIM_NAME}\\b`, "giu"), "BENCH"],
-  [new RegExp(`${CLAIM_NAME}\\s+is\\s+(?:now\\s+)?(?:in|confirmed|playing)\\b`, "giu"), "CONFIRMED"],
-  [new RegExp(`(?:adding|added|registering|registered)\\s+${CLAIM_NAME}\\b`, "giu"), "CONFIRMED"],
-  [new RegExp(`${CLAIM_NAME}\\s+is\\s+(?:now\\s+)?out\\b`, "giu"), "DROPPED"],
-  [new RegExp(`(?:dropping|dropped|marking)\\s+${CLAIM_NAME}\\s+(?:as\\s+)?out\\b`, "giu"), "DROPPED"],
-  // Promotion phrasings — a claim that a bench player now has a slot.
-  [new RegExp(`${CLAIM_NAME}\\s+(?:moves?|comes?|steps?)\\s+(?:up|in)\\b`, "giu"), "CONFIRMED"],
-  [new RegExp(`${CLAIM_NAME}\\s+(?:stepped|stepping)\\s+in\\b`, "giu"), "CONFIRMED"],
-  [new RegExp(`${CLAIM_NAME}\\s+is\\s+replacing\\b`, "giu"), "CONFIRMED"],
-  [new RegExp(`${CLAIM_NAME}\\s+is\\s+promoted\\b`, "giu"), "CONFIRMED"],
-  [new RegExp(`(?:promoting|promoted)\\s+${CLAIM_NAME}\\b`, "giu"), "CONFIRMED"],
-];
+// `CLAIM_NAME` and the move-claim patterns moved to `./i18n/guard-vocab.ts`
+// on 2026-09-17 (Phase 2 slice 3), one entry per language. The English
+// entry is those patterns byte for byte; the first seven still mirror the
+// corpus grader's `claimedMoves` (`e2e/corpus/grade.ts`), which gained
+// Turkish patterns in the same change.
 
 /** Which row does the database have for the person this claim names?
  *  `null` when the claim is not about anyone the group knows.
@@ -305,7 +266,12 @@ function statusOfClaimedName(name: string, truth: SquadTruth): ClaimedStatus | n
  * into a trigger. It never edits the sentence; it decides that the
  * database, not the model, gets to describe the squad.
  */
-export function contradictsSquadState(text: string, truth: SquadTruth): boolean {
+export function contradictsSquadState(
+  text: string,
+  truth: SquadTruth,
+  lang?: Lang | string | null,
+): boolean {
+  const v: GuardVocab = GUARD_VOCAB[normaliseLang(lang)];
   // A stats answer's numbers are not squad claims. "Kemal — 4/14 (29%)"
   // is an attendance record, and on a 14-a-side match the count check
   // below would read it as a squad count that disagrees with the rows —
@@ -317,7 +283,7 @@ export function contradictsSquadState(text: string, truth: SquadTruth): boolean 
     .split("\n")
     .some((l) => /^\s*\d+\.\s+\S/.test(l) && isLeaderboardLine(l));
 
-  for (const [re, claimed] of MOVE_CLAIM_PATTERNS) {
+  for (const [re, claimed] of v.moveClaims) {
     re.lastIndex = 0;
     for (const m of text.matchAll(re)) {
       const name = m[1];
@@ -335,36 +301,33 @@ export function contradictsSquadState(text: string, truth: SquadTruth): boolean 
   }
   // "need 2 more" / "need *2 more*" against the real shortfall.
   const need = Math.max(0, truth.maxPlayers - truth.confirmed.length);
-  const needRe = /\bneed\s+\*?\s*(\d+|one|two|three|four|five)\s*\*?\s+more\b/gi;
-  const WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5 };
-  for (const m of text.matchAll(needRe)) {
-    const raw = m[1].toLowerCase();
-    const n = WORDS[raw] ?? Number(raw);
+  // Number words in the group's language; `toLocaleLowerCase("tr")` so
+  // a Turkish "Üç" folds to "üç" and never to "üc" or "üç" with a dot.
+  const lower = (raw: string) => raw.toLocaleLowerCase(normaliseLang(lang) === "tr" ? "tr" : "en");
+  v.need.lastIndex = 0;
+  for (const m of text.matchAll(v.need)) {
+    const raw = lower(m[1]);
+    const n = v.numberWords[raw] ?? Number(raw);
     if (n !== need) return true;
   }
   // Slot prose against the same shortfall (RC3 of 2026-06-12: the count
   // was patched to "14/14" and "— one slot open" survived next to it).
   if (need > 0) {
-    if (
-      /\b(?:full\s+squad|squad\s+(?:is\s+)?(?:now\s+)?(?:complete|full|locked)|we'?re\s+(?:now\s+)?full)\b/i.test(
-        text,
-      )
-    ) {
-      return true;
-    }
+    if (v.full.test(text)) return true;
   }
-  const slotRe = /\b(one|a|an|two|three|\d+)\s+(?:more\s+)?slots?\s+(?:still\s+)?open\b/gi;
-  for (const m of text.matchAll(slotRe)) {
-    const raw = m[1].toLowerCase();
-    const n = raw === "a" || raw === "an" ? 1 : (WORDS[raw] ?? Number(raw));
+  v.slots.lastIndex = 0;
+  for (const m of text.matchAll(v.slots)) {
+    const raw = lower(m[1]);
+    const n = v.oneWords.includes(raw) ? 1 : (v.numberWords[raw] ?? Number(raw));
     if (n !== need) return true;
   }
   // A total that cannot be true — "15 players" on a 14-player match.
   // The old cap rewrote these numbers in place; the composer replaces
   // the whole reply, so it asks for squad vocabulary too: "covered 6
   // players" in a payment ack is not a claim about the squad.
-  if (/\b(?:squad|playing|turnout|confirmed|bench|lineup)\b/i.test(text)) {
-    for (const m of text.matchAll(/\b(\d+)\s+(?:players?|total)\b/gi)) {
+  if (v.totalContext.test(text)) {
+    v.total.lastIndex = 0;
+    for (const m of text.matchAll(v.total)) {
       if (Number(m[1]) > truth.maxPlayers) return true;
     }
   }
@@ -417,7 +380,7 @@ export function composeSquadStateReply(
 ): { text: string; composed: boolean } {
   const wanted = wantsSquadPost(reply);
   const lead = wanted ? reply.replace(SQUAD_POST_MARKER_RE, "").trim() : reply;
-  if (!wanted && !displaysSquadState(reply) && !contradictsSquadState(reply, truth)) {
+  if (!wanted && !displaysSquadState(reply, lang) && !contradictsSquadState(reply, truth, lang)) {
     return { text: reply, composed: false };
   }
   const post = composeSquadStatusPost({
@@ -427,7 +390,10 @@ export function composeSquadStateReply(
     lang,
   });
   const keepLead =
-    wanted && lead.length > 0 && !displaysSquadState(lead) && !contradictsSquadState(lead, truth);
+    wanted &&
+    lead.length > 0 &&
+    !displaysSquadState(lead, lang) &&
+    !contradictsSquadState(lead, truth, lang);
   return { text: keepLead ? `${lead}\n\n${post}` : post, composed: true };
 }
 

@@ -10,11 +10,13 @@
  * Turkish and every GROUP-facing deterministic composer in the design's
  * inventory reads it. There is no `untranslated()` wrapper and no entry
  * delegates to the English one; `__tests__/strings.test.ts` enforces
- * both. What a Turkish group still hears in English: the DMs (Phase 3),
- * onboarding and help (Phase 3c), the reminder-time labels the reminder
- * ack quotes (Phase 3), and the model-composed chases until slice 3
- * gives them their language line. `copy.tr.snap` shows exactly which:
- * its English cases are the remaining work.
+ * both. Slice 3 gave the model-composed chases their language line and
+ * the server-computed headers below (`roster_header_*`), and taught the
+ * composition guards this file's vocabulary (`guard-vocab.ts`). What a
+ * Turkish group still hears in English: the DMs (Phase 3), onboarding
+ * and help (Phase 3c) and the reminder-time labels the reminder ack
+ * quotes (Phase 3). `copy.tr.snap` shows exactly which: its English
+ * cases are the remaining work.
  *
  * Three Turkish sentences quote a command the group would TYPE:
  * "takımları oluştur" (match_day_locked_line, teams_not_generated,
@@ -486,4 +488,15 @@ export const tr: Strings = {
   ask_score: (p) =>
     `🏁 *${p.activityName}*, umarım iyi geçmiştir. Skor ne oldu? ` +
     `Gelecek haftaki takımları dengeli kurmak için kullanacağım.`,
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Phase 2, slice 3: the chase model's server-computed headers.
+  // ═══════════════════════════════════════════════════════════════════
+
+  roster_header_past: "*Kadro:*",
+  roster_header_tonight: "*Bu akşam oynayanlar:*",
+  roster_header_tomorrow: "*Yarın oynayanlar:*",
+  roster_header_day: (p) => `*${p.dayLabel} oynayanlar:*`,
+  chase_tentative_line: (p) => `Belki: ${p.name} (kimse çıkmazsa oynar)`,
+  chase_opener_example: "🗓 Kadro durumu",
 };

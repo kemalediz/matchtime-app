@@ -406,6 +406,13 @@ export function claimedMoves(text: string): Array<{ name: string; status: AttSta
   const out: Array<{ name: string; status: AttStatus }> = [];
   const name = "([A-Z][\\p{L}'-]+)";
   const toBench = "(?:on|onto|to)?\\s*(?:the\\s+)?bench";
+  // Turkish (2026-09-17, Phase 2 slice 3): the same property in the
+  // second language the product ships, so a Turkish corpus case cannot
+  // pass vacuously (design section 7, item 15). `\p{Lu}` because Turkish
+  // names start with Ç, İ, Ö, Ş, Ü too; the English patterns above keep
+  // `[A-Z]` so their verdicts on the existing corpus are unchanged.
+  const trName = "(\\p{Lu}[\\p{L}'-]+)";
+  const R = "(?!\\p{L})";
   const patterns: Array<[RegExp, AttStatus]> = [
     [new RegExp(`${name}\\s+(?:goes|go|is going|will go|moves)\\s+${toBench}`, "gu"), "BENCH"],
     [new RegExp(`${name}\\s+is\\s+(?:now\\s+)?on\\s+the\\s+bench`, "gu"), "BENCH"],
@@ -414,6 +421,13 @@ export function claimedMoves(text: string): Array<{ name: string; status: AttSta
     [new RegExp(`(?:adding|added|registering|registered)\\s+${name}\\b`, "gu"), "CONFIRMED"],
     [new RegExp(`${name}\\s+is\\s+(?:now\\s+)?out\\b`, "gu"), "DROPPED"],
     [new RegExp(`(?:dropping|dropped|marking)\\s+${name}\\s+(?:as\\s+)?out\\b`, "gu"), "DROPPED"],
+    // Turkish
+    [new RegExp(`${trName}\\s+yedeğe\\s+(?:geçti|geçer|alındı|gidiyor|geçiyor|düştü)`, "gu"), "BENCH"],
+    [new RegExp(`${trName}\\s+(?:artık\\s+)?yedekte${R}`, "gu"), "BENCH"],
+    [new RegExp(`${trName}\\s+(?:artık\\s+)?kadroda${R}`, "gu"), "CONFIRMED"],
+    [new RegExp(`${trName}\\s+kadroya\\s+(?:eklendi|alındı|geçti|girdi)`, "gu"), "CONFIRMED"],
+    [new RegExp(`${trName}\\s+(?:onaylandı|eklendi)${R}`, "gu"), "CONFIRMED"],
+    [new RegExp(`${trName}\\s+(?:çıktı|çıkarıldı|gelmiyor|kadrodan\\s+(?:çıktı|çıkarıldı|düştü))${R}`, "gu"), "DROPPED"],
   ];
   for (const [re, status] of patterns) {
     for (const m of text.matchAll(re)) {

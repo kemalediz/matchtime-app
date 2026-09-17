@@ -61,6 +61,13 @@
  *                  here is ON, as it always was. Use this to measure
  *                  what the ROUTER does with a bare "in", "var", "yok":
  *                  under the floor those are the regex's answer.
+ *   LANG=tr        (with CHASES=1; CHASE_LANG=tr is the same and does not
+ *                  shadow the shell locale) compose the chases in Turkish against
+ *                  the same live state, without touching the org's row,
+ *                  and check them with the Turkish check set: the roster
+ *                  header equals the server's, no English token from a
+ *                  short blocklist, no greeting, no send-time stamp.
+ *                  REPEAT=N runs each kind N times and reports counts.
  *   CHASES=1       compose all five scheduled-chase kinds instead of
  *                  running the case table (also read-only)
  *   DMS=1          run the DM-INTENT table (N*) through `lib/dm-intent.ts`
@@ -114,7 +121,9 @@ import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
 import { getOrgFeatures } from "../src/lib/org-features.ts";
 import { buildFullSquadBenchInvite } from "../src/lib/bench-offer-copy.ts";
-import { composeChaseText, type ChaseKind } from "../src/lib/message-analyzer.ts";
+import { composeChaseText, rosterHeaderFor, type ChaseKind } from "../src/lib/message-analyzer.ts";
+import { normaliseLang } from "../src/lib/i18n/lang.ts";
+import { contradictsSquadState, type SquadTruth } from "../src/lib/group-copy.ts";
 import { db } from "../src/lib/db.ts";
 import type { AttendanceRow, Member, Route, SquadState } from "../src/lib/pipeline/types.ts";
 
@@ -1153,53 +1162,141 @@ const KICKOFF_TIME_REQUIRED: ChaseKind[] = [
  * scheduler and WhatsApp are not involved.
  */
 async function runChases(groupId: string): Promise<void> {
-  const KINDS: ChaseKind[] = [
+  const ALL_KINDS: ChaseKind[] = [
     "daily-in-list",
     "match-day-morning",
     "chase-pre-kickoff",
     "pre-kickoff-full",
     "pre-kickoff-short",
   ];
+  // CHASE_KINDS=chase-pre-kickoff,pre-kickoff-short narrows the run.
+  const only = (process.env.CHASE_KINDS ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+  const KINDS = only.length ? ALL_KINDS.filter((k) => only.includes(k)) : ALL_KINDS;
   /** A preposition immediately followed by another one. */
   const DOUBLED_PREPOSITION = /\b(?:for|at|on|by|from|until|before|after)\s+on\s/i;
+  const lang = normaliseLang(process.env.CHASE_LANG ?? process.env.LANG);
+  const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
+
+  // The kickoff the header is computed against: the same match
+  // `composeChaseText` reads (the next one with an open deadline).
+  const org = await db.organisation.findFirst({
+    where: { whatsappGroupId: groupId },
+    select: { id: true },
+  });
+  const match = org
+    ? await db.match.findFirst({
+        where: {
+          activity: { orgId: org.id },
+          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+          attendanceDeadline: { gt: new Date() },
+        },
+        orderBy: { date: "asc" },
+        select: {
+          date: true,
+          maxPlayers: true,
+          attendances: {
+            where: { status: { in: ["CONFIRMED", "BENCH"] } },
+            orderBy: { position: "asc" },
+            select: { status: true, user: { select: { name: true } } },
+          },
+        },
+      })
+    : null;
+  // THE SAME GUARD THE ANALYZE PATH APPLIES (`composeSquadStateReply`),
+  // read-only here: a chase that states a count, a shortfall, a full
+  // squad or a move the rows do not back is a problem, in either
+  // language. The chase path itself has no such guard (design PR 2d
+  // proposes one), so this is the harness's job.
+  const truth: SquadTruth | null = match
+    ? {
+        confirmed: match.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.user.name ?? "(unnamed)"),
+        bench: match.attendances.filter((a) => a.status === "BENCH").map((a) => a.user.name ?? "(unnamed)"),
+        maxPlayers: match.maxPlayers,
+        knownNames: match.attendances.map((a) => a.user.name).filter((n): n is string => !!n),
+      }
+    : null;
+
+  /** The Turkish check set (design section 4.5, point 4). */
+  const TR_ENGLISH_TOKENS = /\b(?:Playing|Bench|need|tonight|tomorrow|squad|players?|kickoff)\b/;
+  const TR_GREETING = /^(?:\W*)(?:günaydın|iyi akşamlar|iyi günler|selam(?:lar)?|merhaba(?:lar)?|good\s+(?:morning|evening)|morning|evening)/iu;
+  const SEND_TIME_STAMP = /\b\d{1,2}:\d{2}\s*(?:güncelleme|update)|\b(?:akşam|sabah|morning|evening)\s+(?:güncelleme|update)/iu;
+
   let failures = 0;
+  let calls = 0;
+  const counts: Record<string, { ok: number; bad: number; nulls: number }> = {};
 
   for (const kind of KINDS) {
-    const text = await composeChaseText({ groupId, kind });
-    console.log(`══════════════════ ${kind} ══════════════════\n${text ?? "(null — fell back to static text)"}\n`);
-    if (!text) {
-      console.log("  ⚠️  null — the scheduler would post the STATIC fallback\n");
-      failures++;
-      continue;
+    counts[kind] = { ok: 0, bad: 0, nulls: 0 };
+    for (let n = 0; n < repeat; n++) {
+      calls++;
+      const text = await composeChaseText({ groupId, kind, ...(lang === "en" ? {} : { langOverride: lang }) });
+      const runLabel = repeat > 1 ? ` (run ${n + 1}/${repeat})` : "";
+      console.log(`══════════════════ ${kind}${runLabel} [${lang}] ══════════════════\n${text ?? "(null — fell back to static text)"}\n`);
+      if (!text) {
+        console.log("  ⚠️  null — the scheduler would post the STATIC fallback\n");
+        failures++;
+        counts[kind].nulls++;
+        continue;
+      }
+      const problems: string[] = [];
+      if (lang === "en") {
+        const doubled = text.match(DOUBLED_PREPOSITION);
+        if (doubled) problems.push(`doubled preposition: ${JSON.stringify(doubled[0].trim())}`);
+      }
+      // Only the LEAD is checked for a repeated time — the roster block
+      // below it never contains one. The lead ends at the roster header.
+      const header = match ? rosterHeaderFor(match.date, lang) : null;
+      const lead = header && text.includes(header) ? text.split(header)[0] : text.split(/\n\s*\*?Playing/)[0];
+      for (const [time, hits] of Object.entries(
+        [...lead.matchAll(/\b\d{1,2}:\d{2}\b/g)].reduce<Record<string, number>>(
+          (acc, m) => ({ ...acc, [m[0]]: (acc[m[0]] ?? 0) + 1 }),
+          {},
+        ),
+      )) {
+        if (hits > 1) problems.push(`"${time}" appears ${hits}× in the lead`);
+      }
+      if (KICKOFF_TIME_REQUIRED.includes(kind) && !/\b\d{1,2}:\d{2}\b/.test(lead)) {
+        problems.push("no kickoff time, and this kind requires one");
+      }
+      if (truth && contradictsSquadState(lead, truth, lang)) {
+        problems.push("the lead contradicts the squad state (count, shortfall, full claim or move)");
+      }
+      if (lang !== "en") {
+        if (header && !text.includes(header)) {
+          problems.push(`roster header is not the server's ${JSON.stringify(header)}`);
+        }
+        const english = text.match(TR_ENGLISH_TOKENS);
+        if (english) problems.push(`English token: ${JSON.stringify(english[0])}`);
+        if (TR_GREETING.test(text)) problems.push("opens with a greeting");
+        if (SEND_TIME_STAMP.test(text)) problems.push("carries a send-time stamp");
+        if (/[—–]/.test(text)) problems.push("contains an em or en dash");
+        if (lang === "tr" && /\*Bench \(/.test(text)) problems.push("English bench header");
+        // A bold ALL-CAPS token that is not one of the two commands the
+        // group is told about is an invented command ("*VARIM'dan
+        // ÇIKIYORUM*" appeared once on 2026-09-17).
+        for (const m of text.matchAll(/\*([A-ZÇĞİÖŞÜ' ]{4,})\*/g)) {
+          if (m[1] !== "VARIM" && m[1] !== "YOKUM") problems.push(`invented command: ${JSON.stringify(m[0])}`);
+        }
+      }
+      if (problems.length) {
+        failures++;
+        counts[kind].bad++;
+        console.log(`  ❌ ${problems.join(" | ")}\n`);
+      } else {
+        counts[kind].ok++;
+        console.log(lang === "en" ? "  ✅ reads as English, kickoff time as expected\n" : `  ✅ reads as ${lang}, header and kickoff time as expected\n`);
+      }
     }
-    const problems: string[] = [];
-    const doubled = text.match(DOUBLED_PREPOSITION);
-    if (doubled) problems.push(`doubled preposition: ${JSON.stringify(doubled[0].trim())}`);
-    // Only the LEAD is checked for a repeated time — the roster block
-    // below it never contains one.
-    const lead = text.split(/\n\s*\*?Playing/)[0];
-    for (const [time, hits] of Object.entries(
-      [...lead.matchAll(/\b\d{1,2}:\d{2}\b/g)].reduce<Record<string, number>>(
-        (acc, m) => ({ ...acc, [m[0]]: (acc[m[0]] ?? 0) + 1 }),
-        {},
-      ),
-    )) {
-      if (hits > 1) problems.push(`"${time}" appears ${hits}× in the lead`);
-    }
-    if (KICKOFF_TIME_REQUIRED.includes(kind) && !/\b\d{1,2}:\d{2}\b/.test(lead)) {
-      problems.push("no kickoff time, and this kind requires one");
-    }
-    if (problems.length) {
-      failures++;
-      console.log(`  ❌ ${problems.join(" | ")}\n`);
-    } else {
-      console.log("  ✅ reads as English, kickoff time as expected\n");
-    }
+  }
+  console.log(`── counts [${lang}], ${repeat} run(s) per kind ──`);
+  for (const kind of KINDS) {
+    const c = counts[kind];
+    console.log(`  ${kind.padEnd(20)} ok ${c.ok}/${repeat}   problems ${c.bad}/${repeat}   null ${c.nulls}/${repeat}`);
   }
   console.log(
     failures === 0
-      ? "All five chase kinds pass. Writes performed: 0."
-      : `⚠️  ${failures} of ${KINDS.length} chase kinds have a problem. Writes performed: 0.`,
+      ? `All ${calls} chase compositions pass. Writes performed: 0.`
+      : `⚠️  ${failures} of ${calls} chase compositions have a problem. Writes performed: 0.`,
   );
 }
 

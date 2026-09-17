@@ -511,4 +511,23 @@ export const en = {
   ask_score: (p: { activityName: string }): string =>
     `🏁 *${p.activityName}* — hope it was a good one. What was the final score? ` +
     `I'll use it to keep next week's teams balanced.`,
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Phase 2, slice 3: the chase model's server-computed headers.
+  // ═══════════════════════════════════════════════════════════════════
+  //   The chase system prompt orders the model to copy these verbatim
+  //   ("Use roster header:"), so a Turkish chase copies a Turkish header
+  //   the server chose. `buildMatchClockBlock` and `computeProximity`
+  //   (message-analyzer.ts) read them. English is byte for byte what
+  //   those functions carried inline.
+
+  roster_header_past: "*Squad:*",
+  roster_header_tonight: "*Playing tonight:*",
+  roster_header_tomorrow: "*Playing tomorrow:*",
+  roster_header_day: (p: { dayLabel: string }): string => `*Playing ${p.dayLabel}:*`,
+  /** The line the model writes below the roster for a dropped player who
+   *  may still turn up; the system prompt quotes the English one. */
+  chase_tentative_line: (p: { name: string }): string => `Tentative: ${p.name} (will play if nobody steps in)`,
+  /** The scene-setting opener the daily chase is shown as an example. */
+  chase_opener_example: "🗓 Squad update",
 };
