@@ -217,9 +217,26 @@ export function buildHowToUseMe(features: {
  * captured at `introduced`; this asks for ADDITIONAL admins. Never
  * blocks the flow — any answer (including junk) advances to `details`.
  */
-const ADMIN_QUESTION =
+export const ADMIN_QUESTION =
   `Who else helps run this group? Reply with their name + number (or @mention) — ` +
   `you can list a few, separated by commas. Or say *just me* if it's only you.`;
+
+/** The reply to a consent answer (group-add flow): a short lead, then
+ *  the admins question. Pure; the bytes are pinned by copy-golden. */
+export function buildConsentAck(adminCaptured: boolean): string {
+  const lead = adminCaptured ? "Done — you're the admin 🎽" : "Done ✅";
+  return `${lead} ${ADMIN_QUESTION}`;
+}
+
+/** The reply to the admins answer (group-add flow): an optional
+ *  "got it" lead, then the combined when-and-where question. Pure. */
+export function buildAdminsAck(added: number): string {
+  const lead =
+    added > 0
+      ? `Got it — I'll set up ${added === 1 ? "that admin" : `those ${added} admins`} once we're live. `
+      : "";
+  return `${lead}${detailsFollowUpQuestion(["day", "time", "venue"])}`;
+}
 
 /**
  * Intro posted the moment the bot is ADDED to a group (Phase 1
@@ -639,11 +656,8 @@ export async function handleOnboardingTurn(
       },
     });
 
-    const lead = adminUserId
-      ? "Done — you're the admin 🎽"
-      : "Done ✅";
     return {
-      reply: `${lead} ${ADMIN_QUESTION}`,
+      reply: buildConsentAck(!!adminUserId),
       completed: false,
     };
   }
@@ -674,13 +688,8 @@ export async function handleOnboardingTurn(
       },
     });
 
-    const added = parsed.admins.length;
-    const lead =
-      added > 0
-        ? `Got it — I'll set up ${added === 1 ? "that admin" : `those ${added} admins`} once we're live. `
-        : "";
     return {
-      reply: `${lead}${detailsFollowUpQuestion(["day", "time", "venue"])}`,
+      reply: buildAdminsAck(parsed.admins.length),
       completed: false,
     };
   }
@@ -1258,9 +1267,7 @@ async function completeOnboarding(
               orgId,
               kind: "dm",
               phone: newAdmin.phoneNumber.replace(/^\+/, ""),
-              text:
-                `👋 You've been made an admin of *${s.groupName || "the club"}* on MatchTime.\n\n` +
-                `Here's your private link to the admin page:\n${url}`,
+              text: buildCoAdminMagicLinkDm({ groupName: s.groupName ?? null, url }),
             },
           });
         }
@@ -1301,13 +1308,7 @@ async function completeOnboarding(
           orgId,
           kind: "dm",
           phone: adminUser.phoneNumber.replace(/^\+/, ""),
-          text:
-            `👋 You're the admin of *${s.groupName || "your club"}* on MatchTime.\n\n` +
-            `Here's your private link to the admin page — player names, ratings` +
-            `${payments ? ", payments" : ""} and settings live there:\n${url}` +
-            (payments
-              ? `\n\nWant me to *collect* the money too? Connect a bank from your admin page — takes 2 minutes.`
-              : ``),
+          text: buildAdminMagicLinkDm({ groupName: s.groupName ?? null, url, payments }),
         },
       });
       adminDmQueued = true;
@@ -1349,12 +1350,51 @@ async function completeOnboarding(
     }).catch((err) => console.error("[onboarding] enrichment+DM failed:", err));
   }
 
-  const onLabels = FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
+  const post: CompletionPostInput = {
+    groupName: s.groupName ?? null,
+    chosen,
+    dayOfWeek: s.dayOfWeek ?? null,
+    kickoffTime: s.kickoffTime ?? null,
+    venue: s.venue ?? null,
+    weekly,
+  };
 
-  // Feature-aware "how to use me" block, appended to the completion post
-  // so players learn the interaction contract the moment the bot goes
-  // live. statsQa is always-on (see featureData above).
-  const howToUseMe = buildHowToUseMe({
+  // Group-add flow gets the design's completion copy (roster + admin
+  // link callouts); the legacy setup-trigger copy is unchanged so the
+  // existing QA suite keeps passing byte-identical.
+  if (s.source === "group-add") {
+    return buildGroupAddCompletionPost({
+      ...post,
+      rosterCount,
+      adminsAdded,
+      adminDmQueued,
+      adminName: adminUser?.name ?? null,
+    });
+  }
+
+  return buildLegacyCompletionPost(post);
+}
+
+// ── Completion posts and DMs, as pure builders ────────────────────────
+// Extracted from completeOnboarding / triggerEnrichmentAndDm so the
+// English bytes can be pinned by copy-golden.test.ts. The literals moved
+// verbatim; nothing about the wording changed in the extraction.
+
+export interface CompletionPostInput {
+  groupName: string | null;
+  /** The features the group switched on (valid ToggleableKeys). */
+  chosen: ToggleableKey[];
+  dayOfWeek: number | null;
+  kickoffTime: string | null;
+  venue: string | null;
+  weekly: boolean;
+}
+
+/** The feature-aware "how to use me" block for a completion post.
+ *  statsQa is always-on (see featureData in completeOnboarding). */
+function howToUseMeFor(chosen: ToggleableKey[]): string {
+  const chosenSet = new Set(chosen);
+  return buildHowToUseMe({
     attendance: chosenSet.has("attendance"),
     teamBalancing: chosenSet.has("teamBalancing"),
     momVoting: chosenSet.has("momVoting"),
@@ -1364,36 +1404,91 @@ async function completeOnboarding(
     bench: chosenSet.has("bench"),
     paymentTracking: chosenSet.has("paymentTracking"),
   });
+}
 
-  // Group-add flow gets the design's completion copy (roster + admin
-  // link callouts); the legacy setup-trigger copy is unchanged so the
-  // existing QA suite keeps passing byte-identical.
-  if (s.source === "group-add") {
-    const adminName = adminUser?.name?.trim();
-    const adminLine = adminDmQueued
-      ? `${adminName || "Admin"}, I've sent you a private link to your admin page — player names, ratings and payments live there. `
-      : `Whoever runs this group can claim the admin page any time at matchtime.ai. `;
-    return (
-      `✅ *All set!* I'm live for *${s.groupName || "this group"}* with: *${onLabels.join(", ")}*.\n\n` +
-      `📅 First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +
-      `${weekly ? ", every week" : ""}.\n` +
-      (rosterCount > 0
-        ? `👥 I've added the *${rosterCount} ${rosterCount === 1 ? "person" : "people"}* in this group to the squad — no need to type anyone in.\n`
-        : ``) +
-      (adminsAdded > 0
-        ? `👮 Added *${adminsAdded} co-admin${adminsAdded === 1 ? "" : "s"}* — I've DM'd them their admin link.\n`
-        : ``) +
-      `\n` +
-      `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽` +
-      `\n\n*How to use me* 👇\n${howToUseMe}`
-    );
-  }
+function onLabelsFor(chosen: ToggleableKey[]): string[] {
+  const chosenSet = new Set(chosen);
+  return FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) => f.label);
+}
 
+/** The "All set" post for the group-add flow (roster + admin-link callouts). */
+export function buildGroupAddCompletionPost(
+  p: CompletionPostInput & {
+    rosterCount: number;
+    adminsAdded: number;
+    adminDmQueued: boolean;
+    adminName: string | null;
+  },
+): string {
+  const onLabels = onLabelsFor(p.chosen);
+  const howToUseMe = howToUseMeFor(p.chosen);
+  const adminName = p.adminName?.trim();
+  const adminLine = p.adminDmQueued
+    ? `${adminName || "Admin"}, I've sent you a private link to your admin page — player names, ratings and payments live there. `
+    : `Whoever runs this group can claim the admin page any time at matchtime.ai. `;
+  return (
+    `✅ *All set!* I'm live for *${p.groupName || "this group"}* with: *${onLabels.join(", ")}*.\n\n` +
+    `📅 First match: *${DOW[p.dayOfWeek ?? 2]} ${p.kickoffTime}* at *${p.venue}*` +
+    `${p.weekly ? ", every week" : ""}.\n` +
+    (p.rosterCount > 0
+      ? `👥 I've added the *${p.rosterCount} ${p.rosterCount === 1 ? "person" : "people"}* in this group to the squad — no need to type anyone in.\n`
+      : ``) +
+    (p.adminsAdded > 0
+      ? `👮 Added *${p.adminsAdded} co-admin${p.adminsAdded === 1 ? "" : "s"}* — I've DM'd them their admin link.\n`
+      : ``) +
+    `\n` +
+    `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽` +
+    `\n\n*How to use me* 👇\n${howToUseMe}`
+  );
+}
+
+/** The "All set" post for the legacy "@MatchTime setup" flow. */
+export function buildLegacyCompletionPost(p: CompletionPostInput): string {
+  const onLabels = onLabelsFor(p.chosen);
+  const howToUseMe = howToUseMeFor(p.chosen);
   return (
     `✅ *All set!* I'm now running for this group with: *${onLabels.join(", ")}*.\n\n` +
-    `First match: *${DOW[s.dayOfWeek ?? 2]} ${s.kickoffTime}* at *${s.venue}*` +
-    `${weekly ? " (every week)" : ""}.\n\n` +
+    `First match: *${DOW[p.dayOfWeek ?? 2]} ${p.kickoffTime}* at *${p.venue}*` +
+    `${p.weekly ? " (every week)" : ""}.\n\n` +
     `*How to use me* 👇\n${howToUseMe}`
+  );
+}
+
+/** The magic-link DM to the captured admin at completion. */
+export function buildAdminMagicLinkDm(p: {
+  groupName: string | null;
+  url: string;
+  payments: boolean;
+}): string {
+  return (
+    `👋 You're the admin of *${p.groupName || "your club"}* on MatchTime.\n\n` +
+    `Here's your private link to the admin page — player names, ratings` +
+    `${p.payments ? ", payments" : ""} and settings live there:\n${p.url}` +
+    (p.payments
+      ? `\n\nWant me to *collect* the money too? Connect a bank from your admin page — takes 2 minutes.`
+      : ``)
+  );
+}
+
+/** The magic-link DM to each additional admin named at the admins stage. */
+export function buildCoAdminMagicLinkDm(p: { groupName: string | null; url: string }): string {
+  return (
+    `👋 You've been made an admin of *${p.groupName || "the club"}* on MatchTime.\n\n` +
+    `Here's your private link to the admin page:\n${p.url}`
+  );
+}
+
+/** The DM that points the admin at the enrichment review page. */
+export function buildEnrichmentReviewDm(p: {
+  messagesAnalyzed: number;
+  groupName: string | null;
+  playerCount: number;
+  url: string;
+}): string {
+  return (
+    `📋 I read ${p.messagesAnalyzed} past messages from *${p.groupName || "your group"}* ` +
+    `and drafted positions + seed ratings for ${p.playerCount} players.\n\n` +
+    `Nothing's applied yet — review & finish setup here:\n${p.url}`
   );
 }
 
@@ -1439,10 +1534,12 @@ async function triggerEnrichmentAndDm(args: {
     ttlSeconds: MAGIC_LINK_TTL.actionNudge,
   });
   const url = await buildShortMagicLinkUrl(token);
-  const text =
-    `📋 I read ${summary.messagesAnalyzed} past messages from *${args.groupName || "your group"}* ` +
-    `and drafted positions + seed ratings for ${summary.playerCount} players.\n\n` +
-    `Nothing's applied yet — review & finish setup here:\n${url}`;
+  const text = buildEnrichmentReviewDm({
+    messagesAnalyzed: summary.messagesAnalyzed,
+    groupName: args.groupName,
+    playerCount: summary.playerCount,
+    url,
+  });
 
   await db.botJob.create({
     data: {
