@@ -1,9 +1,28 @@
 import pkg from "whatsapp-web.js";
+import type { Client as WAClient, Message } from "whatsapp-web.js";
 const { Client, LocalAuth } = pkg;
 import qrcode from "qrcode-terminal";
-import { setMonitoredGroups, isMonitoredGroup, addMonitoredGroup } from "./handlers.js";
+import {
+  setMonitoredGroups,
+  isMonitoredGroup,
+  addMonitoredGroup,
+  setOnboardingGroups,
+  addOnboardingGroup,
+} from "./handlers.js";
 import { degradedMessage } from "./degraded.js";
-import { asString, readInboundHeadline, safePath, safeRead } from "./wa-read.js";
+import { asString, readInboundHeadline, readMessageBody, readNotifyName, safePath, safeRead } from "./wa-read.js";
+import { handleGroupJoinForSelfAdd, resolveSelfIds, type HistoryMessageForServer } from "./bot-added.js";
+import { readGroupSnapshot } from "./group-snapshot.js";
+import {
+  describeOrgSnapshotDiff,
+  diffOrgSnapshot,
+  parseOrgSnapshot,
+  setOrgRefresher,
+  startOrgRefreshTimer,
+  stopOrgRefreshTimer,
+  type OrgConfig,
+  type OrgSnapshot,
+} from "./org-refresh.js";
 import { initScheduler, stopScheduler } from "./scheduler.js";
 import {
   getEnabledOrgs,
@@ -17,6 +36,7 @@ import {
 } from "./api.js";
 import {
   enqueueForAnalysis,
+  fetchRecentGroupMessages,
   recordDegradedCapability,
   recordHistory,
   recoverGroupMessages,
@@ -139,6 +159,37 @@ async function main() {
     console.log(formatPairingCodeBanner(code, pairing.intervalMs));
   });
 
+  // ── The Pi's picture of its groups, and how it stays current ──────────
+  // Read at `ready`, every few minutes, and the moment a setup completes
+  // (org-refresh.ts). Every consumer below reads the CURRENT snapshot:
+  // the monitored set, the onboarding set, the scheduler's org list and
+  // the flush timer's group list, so a group that becomes a live org
+  // mid-run needs no restart.
+  let currentSnapshot: OrgSnapshot | null = null;
+  const currentOrgConfigs = (): OrgConfig[] => currentSnapshot?.orgConfigs ?? [];
+  const currentOrgGroupIds = (): string[] => currentOrgConfigs().map((o) => o.groupId);
+
+  async function refreshOrgs(reason: string): Promise<OrgSnapshot> {
+    const data = await getEnabledOrgs();
+    const next = parseOrgSnapshot(data);
+    const diff = diffOrgSnapshot(currentSnapshot, next);
+    currentSnapshot = next;
+    setMonitoredGroups([...next.orgConfigs.map((o) => o.groupId), ...next.onboardingGroups]);
+    setOnboardingGroups(next.onboardingGroups);
+    // initScheduler is idempotent: a repeat call only replaces its org list.
+    initScheduler(client, next.orgConfigs);
+    if (diff.changed || reason === "ready") {
+      console.log(
+        `[org-refresh] (${reason}) ${next.orgConfigs.length} org(s), ${next.onboardingGroups.length} onboarding group(s): ` +
+          describeOrgSnapshotDiff(diff),
+      );
+    }
+    return next;
+  }
+  setOrgRefresher(async (reason) => {
+    await refreshOrgs(reason);
+  });
+
   client.on("ready", async () => {
     console.log("\nWhatsApp bot is ready!");
 
@@ -170,43 +221,27 @@ async function main() {
       // only ever starts here. A single transient failure used to leave the
       // bot connected to WhatsApp but permanently deaf and mute — no polling,
       // no analysis — until someone noticed and restarted it.
-      const data = await withRetry(getEnabledOrgs, 3, 5_000, "getEnabledOrgs");
-      const orgConfigs = (data.orgs || [])
-        .filter((o: { whatsappGroupId: string | null }) => o.whatsappGroupId)
-        .map((o: { whatsappGroupId: string; name: string }) => ({
-          groupId: o.whatsappGroupId,
-          orgName: o.name,
-        }));
-
-      // Phase 2: groups mid-onboarding have no bot-enabled org yet but
-      // must stay monitored so a restart doesn't stall an in-progress
-      // setup.
-      const onboardingGroups: string[] = Array.isArray(data.onboardingGroups)
-        ? data.onboardingGroups
-        : [];
-      setMonitoredGroups([
-        ...orgConfigs.map((o: { groupId: string }) => o.groupId),
-        ...onboardingGroups,
-      ]);
+      const snapshot = await withRetry(() => refreshOrgs("ready"), 3, 5_000, "getEnabledOrgs");
+      const orgConfigs = snapshot.orgConfigs;
+      const onboardingGroups = snapshot.onboardingGroups;
       if (onboardingGroups.length)
-        console.log(`Also monitoring ${onboardingGroups.length} onboarding group(s)`);
+        console.log(
+          `Also monitoring ${onboardingGroups.length} onboarding group(s) (flushed immediately): ${onboardingGroups.join(", ")}`,
+        );
 
       console.log(`Monitoring ${orgConfigs.length} group(s):`);
-      orgConfigs.forEach((o: { orgName: string; groupId: string }) =>
-        console.log(`  - ${o.orgName} (${o.groupId})`),
-      );
-
-      initScheduler(client, orgConfigs);
+      orgConfigs.forEach((o) => console.log(`  - ${o.orgName} (${o.groupId})`));
 
       // Start the batch-flush timer. Every inbound group message is
       // buffered in-memory and flushed every 10 min (or immediately
-      // when the next match is within an hour of kickoff), at which
-      // point the server-side analyser classifies the batch and the
-      // bot executes the returned reacts/replies.
-      startBatchFlushTimer(
-        client,
-        orgConfigs.map((o: { groupId: string }) => o.groupId),
-      );
+      // when the next match is within an hour of kickoff, or when the
+      // group is mid-setup), at which point the server-side analyser
+      // classifies the batch and the bot executes the returned
+      // reacts/replies. The group list is read fresh on every tick.
+      startBatchFlushTimer(client, currentOrgGroupIds);
+
+      // And keep the org picture current without a restart.
+      startOrgRefreshTimer();
 
       // Catch-up on reconnect: whatsapp-web.js silently DROPS messages
       // that arrive while the socket is down (during a deploy/restart).
@@ -215,10 +250,9 @@ async function main() {
       // missed messages reach the LLM. Fixes the gap that lost Ibrahim's
       // "in" during a restart (Kemal 2026-06-06). Fire-and-forget; the
       // re-queued messages get classified by the startup flush above.
-      recoverGroupMessages(
-        client,
-        orgConfigs.map((o: { groupId: string }) => o.groupId),
-      ).catch((err) => console.error("[recover-group] sweep failed:", err));
+      recoverGroupMessages(client, currentOrgGroupIds()).catch((err) =>
+        console.error("[recover-group] sweep failed:", err),
+      );
 
       // Backfill the "lurker gap": members who were in the WhatsApp
       // group before the bot joined, who haven't typed since (so
@@ -226,7 +260,7 @@ async function main() {
       // every startup; idempotent on the server side. Ignores @lid
       // privacy participants — they're picked up by pushname-based
       // resolution the moment they message.
-      for (const o of orgConfigs as { groupId: string; orgName: string }[]) {
+      for (const o of orgConfigs) {
         try {
           const chat = await client.getChatById(o.groupId);
           // wweb.js types — GroupChat has participants[]; non-group
@@ -569,7 +603,9 @@ async function main() {
         const mentionsBot = !!selfId && mentionedIds.includes(selfId);
         const looksLikeSetup =
           (mentionsBot || /match\s*time/.test(t)) &&
-          /\b(set\s*up|setup|get\s*started|onboard)\b/.test(t);
+          /(?<!\p{L})(set\s*up|setup|get\s*started|onboard|kurulum|kuralım|kuralim)(?!\p{L})/u.test(
+            effectiveBody.toLocaleLowerCase("tr"),
+          );
         if (!looksLikeSetup) return;
         addMonitoredGroup(head.from);
         console.log(
@@ -714,164 +750,67 @@ async function main() {
       .filter((p) => p.length > 0);
   }
 
-  // Phase 1 autonomous onboarding helper: snapshot a group's current
-  // participants with the SAME phone/lid/pushname extraction as the
-  // startup sync sweep (index.ts ready-handler). Used only by the
-  // self-add branch below; the startup sweep is deliberately untouched.
-  async function collectGroupParticipants(
+  // Self-setup history capture (2026-09-17): the group's recent messages,
+  // shaped for the server, WITHOUT getChatById (the bare Chat handle from
+  // PR #84). WhatsApp may not have synced history to a freshly-joined
+  // member yet, so this retries a couple of times. Best-effort: any
+  // failure returns [] and the intro still goes out.
+  async function collectHistoryForServer(
+    waClient: WAClient,
     groupId: string,
-    selfId: string | undefined,
-  ): Promise<Array<{ phone?: string; lidId?: string; pushname?: string }>> {
-    const chat = await client.getChatById(groupId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const participants = (chat as any).participants ?? [];
-    const out: Array<{ phone?: string; lidId?: string; pushname?: string }> = [];
-    for (const p of participants as Array<{ id: { _serialized: string } }>) {
-      const id = p.id._serialized;
-      if (selfId && id === selfId) continue; // skip the bot itself
-      let phone: string | undefined;
-      let lidId: string | undefined;
-      if (id.endsWith("@c.us")) {
-        phone = id.replace("@c.us", "").replace(/^\+/, "");
-      } else if (id.endsWith("@lid")) {
-        lidId = id;
-        try {
-          const contact = await client.getContactById(id);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const num = (contact as any).number;
-          if (typeof num === "string" && num.length > 0) phone = num;
-        } catch {
-          /* ignore — server skips lid-only participants */
-        }
-      }
-      let pushname: string | undefined;
-      try {
-        const contact = await client.getContactById(id);
-        pushname = contact.pushname || contact.name || undefined;
-      } catch {
-        /* non-fatal */
-      }
-      out.push({ phone, lidId, pushname });
-    }
-    return out;
-  }
-
-  // Phase-2 onboarding enrichment helper: capture the group's recent chat
-  // history shortly after the bot is added, so the server can mine player
-  // positions / seed ratings / schedule LATER at onboarding completion
-  // (the bot can only reliably fetch WhatsApp history around JOIN time).
-  //
-  // WhatsApp may not have synced history to a freshly-joined member yet,
-  // so we RETRY a couple of times. Whole thing is best-effort: any failure
-  // returns [] and the caller proceeds without history (degrade
-  // gracefully — never block the intro/onboarding).
-  async function collectGroupHistory(
-    groupId: string,
-    _selfId: string | undefined,
-  ): Promise<
-    Array<{ author: string; authorPhone: string | null; text: string; timestamp: string }>
-  > {
+    selfIds: string[],
+  ): Promise<HistoryMessageForServer[]> {
     const LIMIT = 600;
     const ATTEMPTS = 3;
     const RETRY_MS = 4000;
-    const MIN_USEFUL = 5; // < this many → assume history hasn't synced yet
+    const MIN_USEFUL = 5; // fewer → assume history hasn't synced yet
+    const self = new Set(selfIds);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let raw: any[] = [];
+    let raw: Message[] = [];
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       try {
-        const chat = await client.getChatById(groupId);
-        try {
-          raw = await chat.fetchMessages({ limit: LIMIT });
-        } catch {
-          // fetchMessages can throw for a chat not fully loaded in the
-          // headless session — fall back to the cached last message.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const lm = (chat as any).lastMessage;
-          raw = lm ? [lm] : [];
-        }
-      } catch {
+        raw = await fetchRecentGroupMessages(waClient, groupId, LIMIT);
+      } catch (err) {
         raw = [];
+        console.warn(
+          `[bot-added] history fetch attempt ${attempt} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-      console.log(
-        `[bot-added] history fetch attempt ${attempt}: got ${raw.length} msgs`,
-      );
+      console.log(`[bot-added] history fetch attempt ${attempt}: got ${raw.length} msgs`);
       if (raw.length >= MIN_USEFUL) break;
       if (attempt < ATTEMPTS) await new Promise((r) => setTimeout(r, RETRY_MS));
     }
-
     if (raw.length === 0) return [];
 
-    // Sort oldest→newest (fetchMessages usually returns oldest-first, but
-    // don't rely on it).
-    raw.sort((a, b) => (a?.timestamp ?? 0) - (b?.timestamp ?? 0));
+    // Oldest → newest; never rely on the page's order.
+    const dated = raw.map((m) => ({ m, t: Number(safeRead(m, "timestamp") ?? 0) || 0 }));
+    dated.sort((a, b) => a.t - b.t);
 
-    const out: Array<{
-      author: string;
-      authorPhone: string | null;
-      text: string;
-      timestamp: string;
-    }> = [];
-    for (const m of raw) {
+    const out: HistoryMessageForServer[] = [];
+    for (const { m, t } of dated) {
       try {
-        if (m.fromMe) continue; // never include the bot's own messages
-        // Skip system / notification events: keep only normal chat
-        // messages (type "chat") OR anything carrying a non-empty body.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const dataBody = (m as any)._data?.body;
-        const text =
-          typeof m.body === "string" && m.body.length > 0
-            ? m.body
-            : typeof dataBody === "string"
-              ? dataBody
-              : "";
-        if (m.type !== "chat" && !text) continue;
-        if (!text.trim()) continue; // blank text → server drops it anyway
-
-        // Author display name (best-effort; skip nameless rows — the
-        // server drops blank-author rows regardless).
-        let author: string | null = null;
-        try {
-          const contact = await m.getContact();
-          author = contact?.pushname || contact?.name || null;
-        } catch {
-          /* non-fatal */
-        }
-        if (!author) continue;
-
-        // authorPhone: E.164 digits without "+", or null. @c.us → digits;
-        // @lid → resolve via the contact's .number; else null.
+        if (safeRead(m, "fromMe") === true) continue;
+        const author = asString(safeRead(m, "author")) ?? asString(safeRead(m, "from")) ?? "";
+        if (self.has(author)) continue;
+        const text = readMessageBody(m);
+        if (!text.trim()) continue;
+        // The pushname is on the serialised message (no page call), which
+        // is what survives a broken build. Nameless rows are dropped by the
+        // server anyway.
+        const name = readNotifyName(m);
+        if (!name) continue;
         let authorPhone: string | null = null;
-        const id: string | undefined = m.author ?? m.from;
-        if (id?.endsWith("@c.us")) {
-          authorPhone = id.replace("@c.us", "").replace(/^\+/, "") || null;
-        } else if (id?.endsWith("@lid")) {
-          try {
-            const contact = await client.getContactById(id);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const num = (contact as any)?.number;
-            if (typeof num === "string" && num.length > 0) {
-              authorPhone = num.replace(/^\+/, "");
-            }
-          } catch {
-            /* non-fatal — leave null */
-          }
-        }
-        if (authorPhone) authorPhone = authorPhone.replace(/\D/g, "") || null;
-
+        if (author.endsWith("@c.us")) authorPhone = author.replace("@c.us", "").replace(/\D/g, "") || null;
         out.push({
-          author,
+          author: name,
           authorPhone,
           text,
-          timestamp: new Date(
-            (m.timestamp ?? Date.now() / 1000) * 1000,
-          ).toISOString(),
+          timestamp: new Date((t || Date.now() / 1000) * 1000).toISOString(),
         });
       } catch {
         /* skip this message; never abort the whole capture */
       }
     }
-
     console.log(
       `[bot-added] history fetched ${raw.length} msgs (mapped ${out.length} after filtering) for ${groupId}`,
     );
@@ -886,88 +825,40 @@ async function main() {
         if (!groupId) return;
         const selfId = client.info?.wid?._serialized;
 
-        // ── Self-add detection (Phase 1 autonomous onboarding) ─────
+        // ── Self-add detection (self-setup) ────────────────────────
         // The bot itself was just ADDED to a group it isn't monitoring
         // → tell the server. The server is fully authoritative: the
-        // ONBOARDING_AUTOSTART flag gate and the live-org
-        // short-circuit both live there; the bot only posts the intro
-        // (and starts monitoring) when the server hands text back.
-        // Monitored groups and human joins are untouched below.
-        const recipientIds = notification.recipientIds ?? [];
-        const isSelfAdd = !!selfId && recipientIds.includes(selfId);
-        if (isSelfAdd && !isMonitoredGroup(groupId)) {
-          console.log(
-            `[bot-added] self-add detected in ${groupId} (author=${notification.author ?? "?"})`,
-          );
-          let groupSubject: string | undefined;
-          let participants: Array<{ phone?: string; lidId?: string; pushname?: string }> = [];
-          try {
-            const chat = await client.getChatById(groupId);
-            groupSubject = chat?.name || undefined;
-          } catch (err) {
-            console.error("[bot-added] getChatById failed:", err);
-          }
-          try {
-            participants = await collectGroupParticipants(groupId, selfId);
-          } catch (err) {
-            console.error("[bot-added] participant snapshot failed:", err);
-          }
-          // The adder's JID → phone. @lid adders: try the contact record.
-          let addedByPhone: string | undefined;
-          const author = notification.author;
-          if (author?.endsWith("@c.us")) {
-            addedByPhone = author.replace("@c.us", "").replace(/^\+/, "");
-          } else if (author?.endsWith("@lid")) {
-            try {
-              const contact = await client.getContactById(author);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const num = (contact as any)?.number;
-              if (typeof num === "string" && num.length > 0) addedByPhone = num;
-            } catch {
-              /* non-fatal — server falls back to the consent replier */
-            }
-          }
-          // Capture chat history for the onboarding enrichment pass. The
-          // server persists it and uses it later at completion. Best-effort
-          // — any failure leaves history undefined and onboarding proceeds.
-          let enrichmentHistory:
-            | Array<{ author: string; authorPhone: string | null; text: string; timestamp: string }>
-            | undefined;
-          try {
-            const hist = await collectGroupHistory(groupId, selfId);
-            if (hist.length > 0) {
-              enrichmentHistory = hist;
-              console.log(
-                `[bot-added] sending ${hist.length} history msgs to server`,
-              );
-            }
-          } catch (err) {
-            console.error("[bot-added] history capture failed:", err);
-          }
-          const res = await postBotAdded({
-            groupId,
-            groupSubject,
-            addedByPhone,
-            participants,
-            enrichmentHistory,
-          });
-          if (res?.introText) {
-            addMonitoredGroup(groupId);
-            await client.sendMessage(groupId, res.introText);
-            console.log(
-              `[bot-added] intro posted in ${groupId} ("${groupSubject ?? "?"}") — now monitoring`,
-            );
-          } else {
-            console.log(
-              `[bot-added] server says stay silent for ${groupId} (${res?.ignored ?? res?.existing ?? "no-intro"})`,
-            );
-          }
-          return;
-        }
+        // ONBOARDING_AUTOSTART flag gate and the live-org short-circuit
+        // both live there; the bot only posts the intro (and starts
+        // monitoring + immediate flushing) when the server hands text
+        // back. Identity matching, the snapshot and the history live in
+        // bot-added.ts / group-snapshot.ts (2026-09-17), tested against
+        // a client whose page calls throw like the live build's.
+        const outcome = await handleGroupJoinForSelfAdd(
+          {
+            client,
+            isMonitoredGroup,
+            addMonitoredGroup,
+            addOnboardingGroup,
+            resolveSelfIds,
+            readGroupSnapshot,
+            fetchHistory: collectHistoryForServer,
+            postBotAdded,
+          },
+          notification,
+        );
+        if (outcome.kind !== "not-self-add") return;
 
         // ── Existing human-join path (byte-identical behaviour) ────
         if (!isMonitoredGroup(groupId)) return;
-        const phones = extractPhones(notification.recipientIds, selfId);
+        const phones = extractPhones(
+          Array.isArray(notification.recipientIds)
+            ? (notification.recipientIds as unknown[]).map((r) =>
+                typeof r === "string" ? r : ((r as { _serialized?: string })?._serialized ?? ""),
+              )
+            : undefined,
+          selfId,
+        );
         if (phones.length === 0) return;
         console.log(`group_join in ${groupId}: ${phones.join(", ")}`);
         await postGroupJoin({ groupId, phones });
@@ -998,12 +889,14 @@ async function main() {
     console.log("Client disconnected:", reason);
     stopScheduler();
     stopBatchFlushTimer();
+    stopOrgRefreshTimer();
   });
 
   process.on("SIGINT", async () => {
     console.log("\nShutting down...");
     stopScheduler();
     stopBatchFlushTimer();
+    stopOrgRefreshTimer();
     await client.destroy();
     process.exit(0);
   });
@@ -1011,6 +904,7 @@ async function main() {
   process.on("SIGTERM", async () => {
     stopScheduler();
     stopBatchFlushTimer();
+    stopOrgRefreshTimer();
     await client.destroy();
     process.exit(0);
   });

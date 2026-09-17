@@ -73,10 +73,12 @@
  *   src/lib/rating-progress.ts   :90  the "no recent completed match" reason
  *   src/lib/recruit.ts           :269, :373 the two recruit refusals
  *   src/lib/dm-qa.ts             :223 APOLOGY (a local const inside the model call)
- *   src/lib/onboarding-conversation.ts :139 INTRO, :220 ADMIN_QUESTION,
- *                                :956 nextEventQuestion, :988 featureMenuText,
- *                                :1177 and :1376 completion, :1256/:1299/:1447 DMs
- *                                (pure but not exported, except the DMs)
+ *   src/lib/onboarding-conversation.ts :139 INTRO (legacy setup opener),
+ *                                :956 nextEventQuestion, :988 featureMenuText
+ *                                (the legacy "@MatchTime setup" flow; the
+ *                                group-add flow's turns, completion posts and
+ *                                DMs were extracted as pure builders and pinned
+ *                                on 2026-09-17)
  *   src/app/actions/matches.ts   :152 format-switch announcement, :192 cancel
  *   src/app/actions/payments.ts  :304 direct-pay notice
  *   src/app/actions/claim.ts :92, phone-signup.ts :79  verification codes
@@ -163,7 +165,20 @@ import { buildRecruitChaseText } from "../../recruit-chase";
 import { buildTentativeFollowupAck } from "../../tentative-followup";
 import { buildSelfAttendanceAck } from "../../out-of-band-self-attendance";
 import { dmSubAckMessage } from "../../dm-subscriptions";
-import { BOT_ADDED_INTRO, buildHelpReply, buildHowToUseMe } from "../../onboarding-conversation";
+import {
+  ADMIN_QUESTION,
+  BOT_ADDED_INTRO,
+  buildAdminMagicLinkDm,
+  buildAdminsAck,
+  buildCoAdminMagicLinkDm,
+  buildConsentAck,
+  buildEnrichmentReviewDm,
+  buildGroupAddCompletionPost,
+  buildHelpReply,
+  buildHowToUseMe,
+  buildLegacyCompletionPost,
+} from "../../onboarding-conversation";
+import { RECOMMENDED_BUNDLE, EVERYTHING_BUNDLE } from "../../onboarding-parse";
 import { detailsFollowUpQuestion } from "../../onboarding-parse";
 import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { resolveReminderPhrase } from "../../reminder-time";
@@ -573,6 +588,29 @@ function cases(lang: Lang): Case[] {
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
   add("R138 detailsFollowUpQuestion / time and venue", detailsFollowUpQuestion(["time", "venue"]));
+
+  // ── 1.4 the group-add flow's other turns (pinned 2026-09-17, before
+  //    the self-setup rework; extracted as pure builders for the pin) ──
+  add("R138 ADMIN_QUESTION", ADMIN_QUESTION);
+  add("R138 buildConsentAck / admin captured", buildConsentAck(true));
+  add("R138 buildConsentAck / no admin", buildConsentAck(false));
+  add("R138 buildAdminsAck / none", buildAdminsAck(0));
+  add("R138 buildAdminsAck / one", buildAdminsAck(1));
+  add("R138 buildAdminsAck / two", buildAdminsAck(2));
+  const completion = { groupName: "Tuesday Ballers FC", chosen: [...RECOMMENDED_BUNDLE], dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley", weekly: true };
+  add("R140 buildGroupAddCompletionPost / roster, no co-admins, DM queued", buildGroupAddCompletionPost({ ...completion, rosterCount: 12, adminsAdded: 0, adminDmQueued: true, adminName: "Adam Admin" }));
+  add("R140 buildGroupAddCompletionPost / one person, two co-admins, no DM, no name", buildGroupAddCompletionPost({ ...completion, rosterCount: 1, adminsAdded: 2, adminDmQueued: false, adminName: null }));
+  add("R140 buildGroupAddCompletionPost / everything, one-off, empty roster, one co-admin", buildGroupAddCompletionPost({ ...completion, chosen: [...EVERYTHING_BUNDLE], weekly: false, rosterCount: 0, adminsAdded: 1, adminDmQueued: true, adminName: "" }));
+  add("R140 buildGroupAddCompletionPost / no group name", buildGroupAddCompletionPost({ ...completion, groupName: null, rosterCount: 0, adminsAdded: 0, adminDmQueued: false, adminName: null }));
+  add("R140 buildLegacyCompletionPost / weekly", buildLegacyCompletionPost(completion));
+  add("R140 buildLegacyCompletionPost / one-off, MoM and ratings only", buildLegacyCompletionPost({ ...completion, chosen: ["momVoting", "playerRating"], weekly: false }));
+  add("R118 buildAdminMagicLinkDm / no payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: false }));
+  add("R118 buildAdminMagicLinkDm / payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: true }));
+  add("R118 buildAdminMagicLinkDm / no group name", buildAdminMagicLinkDm({ groupName: null, url: "https://mt.example/s/abc", payments: false }));
+  add("R118 buildCoAdminMagicLinkDm", buildCoAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc" }));
+  add("R118 buildCoAdminMagicLinkDm / no group name", buildCoAdminMagicLinkDm({ groupName: null, url: "https://mt.example/s/abc" }));
+  add("R119 buildEnrichmentReviewDm", buildEnrichmentReviewDm({ messagesAnalyzed: 340, groupName: "Tuesday Ballers FC", playerCount: 17, url: "https://mt.example/s/abc" }));
+  add("R119 buildEnrichmentReviewDm / no group name", buildEnrichmentReviewDm({ messagesAnalyzed: 12, groupName: null, playerCount: 3, url: "https://mt.example/s/abc" }));
 
   // ── 1.1 bench-upgrade-ack.ts (dead since 2026-09-06, still pure) ────
   add("R57 buildBenchUpgradeReply / space", buildBenchUpgradeReply({ name: "Erdal Ozkan", confirmedCount: 12, maxPlayers: 14 }));

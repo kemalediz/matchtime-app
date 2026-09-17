@@ -1,5 +1,9 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import {
+  ACTIVE_ONBOARDING_STAGES,
+  ONBOARDING_SESSION_TTL_MS,
+} from "@/lib/onboarding-parse";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -20,23 +24,28 @@ export async function GET(request: Request) {
     },
   });
 
-  // Phase 2: groups mid-onboarding (no bot-enabled org yet) must stay
-  // monitored across a bot restart, otherwise an in-progress setup
-  // stalls until the moderator re-triggers. Surface their group ids;
-  // the bot adds them to the monitored set so onboarding answers keep
-  // flowing through /analyze (which routes them to the onboarding
-  // handler until the session completes).
+  // Groups mid-onboarding (no bot-enabled org yet) must stay monitored
+  // across a bot restart, otherwise an in-progress setup stalls until
+  // the moderator re-triggers. The Pi adds them to its monitored set and
+  // flushes them immediately (a setup conversation cannot wait for the
+  // 10-minute batch), and re-reads this list every few minutes, so a
+  // group that completes setup becomes a live org without a restart.
+  //
+  // One shared stage list (2026-09-17): this used to spell the stages
+  // out and omitted "admins", so a restart during the admins question
+  // silently dropped the group. Stale sessions are excluded the same way
+  // the analyze route ignores them.
   const onboarding = await db.onboardingSession.findMany({
-    // "introduced"/"details" are the Phase 1 group-add stages — a group
-    // mid-way through add-triggered onboarding must survive a Pi
-    // restart too.
-    where: { stage: { in: ["collecting", "features", "introduced", "details"] } },
+    where: {
+      stage: { in: [...ACTIVE_ONBOARDING_STAGES] },
+      createdAt: { gt: new Date(Date.now() - ONBOARDING_SESSION_TTL_MS) },
+    },
     select: { whatsappGroupId: true, groupName: true },
   });
   const known = new Set(orgs.map((o) => o.whatsappGroupId));
-  const onboardingGroups = onboarding
-    .map((s) => s.whatsappGroupId)
-    .filter((g) => !known.has(g));
+  const onboardingGroups = [
+    ...new Set(onboarding.map((s) => s.whatsappGroupId).filter((g) => !known.has(g))),
+  ];
 
   return NextResponse.json({ orgs, onboardingGroups });
 }

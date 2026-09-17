@@ -191,6 +191,41 @@ const SAMPLES: SampleArgs = {
   roster_header_day: { dayLabel: "Tue 8 Sept" },
   chase_tentative_line: { name: "Erdal Ozkan" },
   chase_opener_example: null,
+
+  // ── onboarding (self-setup), merged from main (#94) ──
+  //   Zero-argument entries take `null`; the enum-like arguments
+  //   (`key`, `englishLabel`, `dow`, `topic`) are branched on, not printed.
+  onbIntro: null,
+  onbAdminQuestion: null,
+  onbConsentAck: { adminCaptured: true, adminQuestion: "ADMINQUESTION" },
+  onbAdminsAck: { added: 2, detailsQuestion: "DETAILSQUESTION" },
+  onbDetailsQuestion: { missing: ["day", "venue"] },
+  onbCompletionPost: {
+    groupName: "Tuesday Ballers FC",
+    onLabels: ["Attendance tracking", "Team generation"],
+    dayName: "Tuesday",
+    kickoffTime: "21:00",
+    venue: "Goals Wembley",
+    weekly: true,
+    rosterCount: 12,
+    adminsAdded: 2,
+    adminDmQueued: true,
+    adminName: "Adam Admin",
+    howToUseMe: "HOWTOBLOCK",
+  },
+  onbAdminDm: { groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: true },
+  onbCoAdminDm: { groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc" },
+  onbEnrichmentDm: { messagesAnalyzed: 340, groupName: "Tuesday Ballers FC", playerCount: 17, url: "https://mt.example/s/abc" },
+  onbCancelled: null,
+  onbFeatureLabel: { key: "attendance", englishLabel: "Attendance tracking" },
+  onbDayName: { dow: 2 },
+  onbHowToUseMe: { attendance: true, teamBalancing: true, momVoting: true, playerRating: true, statsQa: true, reminders: true, bench: true, paymentTracking: true },
+  onbHelpHead: null,
+  onbHelpTopicLine: { word: "teams", label: "fair teams" },
+  onbHelpTopicWord: { topic: "teams" },
+  onbHelpTopicLabel: { topic: "teams" },
+  onbHelpNotOn: null,
+  onbHelpExplainer: { topic: "teams" },
 };
 
 /** Render an entry with its sample arguments. */
@@ -339,7 +374,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

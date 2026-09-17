@@ -1,0 +1,26 @@
+-- OnboardingSession."language": the language a self-setup conversation is
+-- held in (2026-09-17).
+--
+-- WHY THIS COLUMN EXISTS
+-- ----------------------
+-- The bot must know a group's language BEFORE it speaks its first word,
+-- and the Organisation row (which carries Organisation."language") does not
+-- exist until the setup completes. So the session carries the language
+-- from the moment the bot is added: detected from the group subject and
+-- the synced history, corrected by the consent reply ("evet" flips to
+-- Turkish, "yes" to English), and copied onto the Organisation when it is
+-- created.
+--
+-- WHAT APPLYING THIS DOES TO A LIVE DATABASE
+-- ------------------------------------------
+-- Strictly additive and a no-op for existing rows (production has zero
+-- OnboardingSession rows as of 2026-09-16): one ADD COLUMN with a DB-level
+-- default of 'en'. Nothing is backfilled, dropped or renamed.
+--
+-- Rolling back is `ALTER TABLE "OnboardingSession" DROP COLUMN "language"`.
+--
+-- NOTE ON APPLYING: this repo manages schema with `prisma db push`; this
+-- file is the canonical, reviewable DDL and produces the identical result.
+
+-- AlterTable
+ALTER TABLE "OnboardingSession" ADD COLUMN "language" TEXT NOT NULL DEFAULT 'en';
