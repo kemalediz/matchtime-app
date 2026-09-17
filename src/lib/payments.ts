@@ -100,6 +100,12 @@ export interface ParsedFee {
   wasTotal: boolean;
 }
 
+/** Turkish "this is the total" markers: toplam, bölüş(elim/ülsün/tür),
+ *  saha (the pitch). Letter-bounded, not `\b` (ş, ü). NOT "hepsi" ("all of
+ *  them"): "hepsi 8" means £8 EACH as often as not, and reading it as a
+ *  total would charge 61p a head. */
+const TR_TOTAL = /(?<!\p{L})(?:toplam\p{L}*|b[öo]l[üu][şs]\p{L}*|saha(?:ya|n[ıi]n)?)(?!\p{L})/u;
+
 /**
  * Parse the money collector's chat reply into a per-player base fee.
  * Handles: "£8", "8", "8 each", "8 per person", "£8.50", "8 quid",
@@ -107,7 +113,7 @@ export interface ParsedFee {
  * by `headcount` (the players who'll be charged) — caller supplies it.
  * Returns null if no sensible amount found.
  */
-export function parseFeeReply(text: string, headcount: number): ParsedFee | null {
+export function parseFeeReply(text: string, headcount: number, lang: "en" | "tr" = "en"): ParsedFee | null {
   const t = text.toLowerCase().trim();
   // Grab the first money-looking number (allow £ and decimals).
   const numMatch = t.match(/£?\s*(\d+(?:\.\d{1,2})?)/);
@@ -115,7 +121,11 @@ export function parseFeeReply(text: string, headcount: number): ParsedFee | null
   const amount = parseFloat(numMatch[1]);
   if (!isFinite(amount) || amount <= 0 || amount > 1000) return null;
 
-  const isTotal = /\b(total|split|altogether|in total|the pitch|pitch (was|cost))\b/.test(t);
+  const isTotal =
+    /\b(total|split|altogether|in total|the pitch|pitch (was|cost))\b/.test(t) ||
+    // Turkish (Phase 3, a Turkish org only): "toplam £80", "80 bölüşelim",
+    // "saha 80". Without this a Turkish TOTAL would be charged PER HEAD.
+    (lang === "tr" && TR_TOTAL.test(text.toLocaleLowerCase("tr")));
   if (isTotal) {
     if (headcount <= 0) return null;
     const per = Math.round((amount / headcount) * 100) / 100;

@@ -173,6 +173,9 @@ export interface StatsBlastDeps {
   /** That member's OWN never-expiring magic link to /profile/stats. */
   linkFor: (userId: string) => Promise<string>;
   queueDm: (args: { phone: string; text: string }) => Promise<void>;
+  /** The org's language (`Organisation.language`): every DM in the blast
+   *  is written in it. English when absent. */
+  lang?: Lang | string | null;
 }
 
 /**
@@ -180,13 +183,8 @@ export interface StatsBlastDeps {
  * the thing that went wrong and a rewrite would be an unreviewed change
  * riding along with a fix.
  */
-export function composeStatsBlastDm(name: string | null, url: string): string {
-  const first = name?.split(" ")[0] ?? "there";
-  return (
-    `📊 Hi ${first} — here are your MatchTime stats: your ratings over time, ` +
-    `Man-of-the-Match games, how you stack up against the squad, your badges and a ` +
-    `shareable season card.\n\n${url}\n\nKeep this link — it doesn't expire.`
-  );
+export function composeStatsBlastDm(name: string | null, url: string, lang?: Lang | string | null): string {
+  return t(lang).dm_stats_blast({ firstName: name?.split(" ")[0] ?? null, url });
 }
 
 /** The group reply, composed from what LANDED rather than what was asked
@@ -220,7 +218,7 @@ export async function runStatsBlast(
       const url = await deps.linkFor(p.userId);
       await deps.queueDm({
         phone: p.phone.replace(/^\+/, ""),
-        text: composeStatsBlastDm(p.name, url),
+        text: composeStatsBlastDm(p.name, url, deps.lang),
       });
       queued++;
     } catch (err) {

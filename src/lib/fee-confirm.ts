@@ -111,6 +111,8 @@
  */
 
 import { readFileSync } from "node:fs";
+import { feeConfirmQuestionForPrompt } from "./dm-copy";
+import { normaliseLang, type Lang } from "./i18n/lang";
 
 /**
  * ⚠️ THE ARGUED DESIGN, IN ONE FLAG. The deterministic allowlist decides
@@ -261,6 +263,39 @@ const NO_WORDS: ReadonlySet<string> = new Set([
   "one sec", "one moment", "later", "ignore", "ignore that", "scrap that", "forget it",
 ]);
 
+/**
+ * THE TURKISH HALF (Phase 3, 2026-09-17). Consulted ONLY for an org whose
+ * language is Turkish, and IN ADDITION to the English sets above (a
+ * Turkish collector types "ok" too); an English org never sees these, so
+ * the English behaviour is byte for byte what it was.
+ *
+ * Same rule as the English: WHOLE messages, never prefixes, and short.
+ * The Turkish prompt tells the collector to type *✅* or "evet", so
+ * those two are the happy path; the rest are the literal ways a Turkish
+ * speaker says "yes, send them" / "not yet". Left out on purpose, for
+ * the reason the English list leaves out "great": "e" and "he" (bare
+ * interjections as often as a yes), "süper", "harika", "güzel", "iyi"
+ * (assent to something else as often as to this). They fall to the
+ * model, which fails closed.
+ *
+ * Matched after `toLocaleLowerCase("tr")`, with letters kept (`\p{L}`),
+ * so "HAYIR" is "hayır" and "hayır" is not reduced to "hay r".
+ */
+const YES_WORDS_TR: ReadonlySet<string> = new Set([
+  "evet", "evt", "evet lütfen", "evet gönder", "evet gönderebilirsin", "evet doğru",
+  "tamam", "tamamdır", "tmm", "tamam gönder", "olur", "olur gönder",
+  "gönder", "gönder gitsin", "gönderebilirsin", "yolla", "yolla gitsin",
+  "onay", "onayla", "onaylı", "onaylıyorum", "doğru", "aynen", "hadi", "hadi gönder",
+  "tabii", "tabi",
+]);
+
+const NO_WORDS_TR: ReadonlySet<string> = new Set([
+  "hayır", "hayir", "yok", "yok gönderme", "gönderme", "henüz gönderme", "daha gönderme",
+  "bekle", "biraz bekle", "bi bekle", "bir dakika", "dur", "dur bekle",
+  "iptal", "iptal et", "vazgeç", "vazgeçtim", "boşver",
+  "şimdi değil", "henüz değil", "daha değil", "sonra",
+]);
+
 /** Everything that is not a letter, a digit or a space, collapsed. The
  *  digits are KEPT so "12" and "ok 12" stay out of the word sets and
  *  fall to the amount test instead. */
@@ -276,6 +311,17 @@ function words(text: string): string {
     .trim();
 }
 
+/** `words`, for Turkish: dotted and dotless i lower-cased the Turkish
+ *  way, and letters kept rather than reduced to a-z. */
+function wordsTr(text: string): string {
+  return text
+    .toLocaleLowerCase("tr")
+    .replace(/['’‘`]/g, "")
+    .replace(/[^\p{L}\p{N} ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * The whole-body allowlist. Returns `null` — ABSTAIN, not "no" — for
  * anything it does not recognise, which is what lets the model have the
@@ -287,23 +333,30 @@ function words(text: string): string {
  * prose, abstains — it is exactly the "great game 👍" shape and the
  * whole reason this function exists.
  */
-export function anchoredFeeReply(text: string): "yes" | "no" | null {
+export function anchoredFeeReply(text: string, lang: Lang | string | null = "en"): "yes" | "no" | null {
   if (!text) return null;
+  const tr = normaliseLang(lang) === "tr";
   const hasYes = AFFIRM_EMOJI.test(text);
   AFFIRM_EMOJI.lastIndex = 0;
   const hasNo = DENY_EMOJI.test(text);
   DENY_EMOJI.lastIndex = 0;
   if (hasYes && hasNo) return null; // "👍❌" is a conversation, not an answer
 
-  const rest = words(
-    text.replace(AFFIRM_EMOJI, " ").replace(DENY_EMOJI, " ").replace(EMOJI_MODIFIERS, " "),
-  );
+  const stripped = text.replace(AFFIRM_EMOJI, " ").replace(DENY_EMOJI, " ").replace(EMOJI_MODIFIERS, " ");
+  const rest = words(stripped);
+  // A Turkish org's reply is ALSO read with the Turkish normaliser and
+  // sets. For an English org `restTr` is never consulted.
+  const restTr = tr ? wordsTr(stripped) : null;
+  const isYes = (r: string) => YES_WORDS.has(r) || (restTr !== null && YES_WORDS_TR.has(restTr));
+  const isNo = (r: string) => NO_WORDS.has(r) || (restTr !== null && NO_WORDS_TR.has(restTr));
+  // Empty means empty in BOTH readings: "✅ ğ" is not a bare tick.
+  const empty = rest === "" && (restTr === null || restTr === "");
 
-  if (hasYes) return rest === "" || YES_WORDS.has(rest) ? "yes" : null;
-  if (hasNo) return rest === "" || NO_WORDS.has(rest) ? "no" : null;
-  if (rest === "") return null;
-  if (YES_WORDS.has(rest)) return "yes";
-  if (NO_WORDS.has(rest)) return "no";
+  if (hasYes) return empty || isYes(rest) ? "yes" : null;
+  if (hasNo) return empty || isNo(rest) ? "no" : null;
+  if (empty) return null;
+  if (isYes(rest)) return "yes";
+  if (isNo(rest)) return "no";
   return null;
 }
 
@@ -321,9 +374,11 @@ const MODEL = "claude-haiku-4-5";
  * amount and never decides whether the sender is allowed to do this.
  * It answers one closed question about one reply.
  */
-export const FEE_REPLY_SYSTEM_PROMPT = `You read ONE short private WhatsApp reply from the person who collects match fees for a football club. A moment ago the bot asked them, in writing:
+export function buildFeeReplySystemPrompt(lang?: Lang | string | null): string {
+  const l = normaliseLang(lang);
+  return `You read ONE short private WhatsApp reply from the person who collects match fees for a football club. A moment ago the bot asked them, in writing:
 
-  "Got it — £X per player for <match>, N players to charge. Reply ✅ (or \\"yes\\") to send everyone their pay link, or send a different amount to change it."
+  "${feeConfirmQuestionForPrompt(l)}"
 
 You decide whether their reply is a DIRECT ANSWER to that question.
 
@@ -352,7 +407,7 @@ THE ONE DISTINCTION THAT MATTERS. A reply is only "yes" or "no" if it ANSWERS th
   "did Wasim turn up in the end?"               -> neither
   "make it £12"                                 -> neither, an amount is handled elsewhere
 
-If you are not at least 80% sure, return "neither" with a low confidence. A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away an amount they already typed. A wrong "neither" costs them one re-typed message, which is the cheapest of the three by a wide margin — when in doubt, choose it.
+${l === "tr" ? FEE_REPLY_TURKISH_BLOCK : ""}If you are not at least 80% sure, return "neither" with a low confidence. A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away an amount they already typed. A wrong "neither" costs them one re-typed message, which is the cheapest of the three by a wide margin — when in doubt, choose it.
 
 Output STRICT JSON only — no markdown, no fences:
 
@@ -361,6 +416,32 @@ Output STRICT JSON only — no markdown, no fences:
   "confidence": <number 0..1>,
   "reasoning": "<short justification, max 100 chars>"
 }`;
+}
+
+/**
+ * For a Turkish org the question above is the Turkish one (built from the
+ * same table entry the collector was sent), and the reply is Turkish.
+ * Same rules, Turkish examples, the "great game 👍" case named again.
+ */
+const FEE_REPLY_TURKISH_BLOCK = `THE REPLY WILL USUALLY BE IN TURKISH. The rules above apply unchanged:
+
+  "evet gönder"                                 -> yes
+  "tamam, yolla gitsin"                         -> yes
+  "doğru, gönderebilirsin"                      -> yes
+  "şimdilik bekle, parayı sayayım"              -> no
+  "yarına kadar gönderme"                       -> no
+  "harika maç 👍"                               -> neither, it is banter and the 👍 is not an answer
+  "eline sağlık beyler 👍"                      -> neither
+  "tamam yarın hallederim"                      -> neither, that is a plan, not a go-ahead
+  "evet, parayı Elvin topluyor"                 -> neither, it answers a different question
+  "kaç kişi ödüyor?"                            -> neither
+  "£12 yap"                                     -> neither, an amount is handled elsewhere
+
+`;
+
+/** The English prompt, byte for byte what it always was (pinned by
+ *  `copy.en.snap`, case "R98 FEE_REPLY_SYSTEM_PROMPT"). */
+export const FEE_REPLY_SYSTEM_PROMPT = buildFeeReplySystemPrompt("en");
 
 /** The model, as one function, so a test can drive the real parse
  *  without a key. */
@@ -372,6 +453,9 @@ export interface FeeReplyContext {
   /** The match it belongs to, so the model can see it is answering
    *  about a specific game. */
   matchName: string;
+  /** The match's org language: which question the collector was asked,
+   *  and in which language the reply is likely to be. */
+  lang?: Lang | string | null;
 }
 
 export interface FeeReplyClassification {
@@ -494,7 +578,7 @@ export async function classifyFeeReply(
     `${REPLY_HEADER}\n${text.trim()}`,
   ].join("\n");
   try {
-    return parseFeeReplyIntent(await fn(FEE_REPLY_SYSTEM_PROMPT, user)).intent;
+    return parseFeeReplyIntent(await fn(buildFeeReplySystemPrompt(ctx.lang), user)).intent;
   } catch (err) {
     // FAIL CLOSED. An overloaded API, a network blip, a revoked key —
     // all of them are "we did not understand this reply", and the thing

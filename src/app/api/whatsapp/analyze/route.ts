@@ -252,6 +252,7 @@ import {
   handleOnboardingTurn,
   buildHelpReply,
   parseHelpTopic,
+  legacySetupLang,
 } from "@/lib/onboarding-conversation";
 import {
   ACTIVE_ONBOARDING_STAGES,
@@ -730,16 +731,14 @@ async function handleAnalyzeRequest(request: Request) {
         nextPath: "/profile/stats",
         ttlSeconds: MAGIC_LINK_TTL.actionNudge,
       });
-      const first = sender.name?.split(" ")[0] ?? "there";
+      const { buildStatsLinkDm } = await import("@/lib/dm-copy");
       await db.botJob.create({
         data: {
           orgId: org.id,
           kind: "dm",
           phone,
-          text:
-            `📊 Hey ${first} — here are your MatchTime stats: ratings over time, your ` +
-            `Man-of-the-Match games, how you compare to the squad, your badges, and a ` +
-            `shareable season card.\n\n${await buildShortMagicLinkUrl(token)}\n\nLink works for 48h.`,
+          // The group's org language (the sender asked in that group).
+          text: buildStatsLinkDm({ name: sender.name, url: await buildShortMagicLinkUrl(token), lang: org.language }),
         },
       });
     } catch (err) {
@@ -2860,6 +2859,8 @@ async function handleAnalyzeRequest(request: Request) {
         queueDm: async ({ phone, text }) => {
           await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text } });
         },
+        // The group's org language: every stats DM is written in it.
+        lang: org.language,
       });
       const blastReply = composeStatsBlastReply(queued, org.language);
       const idx = results.findIndex((x) => x.waMessageId === blastMsg.waMessageId);
@@ -3598,7 +3599,12 @@ async function handleOnboardingIfApplicable(
     const triggered = body.messages.some((m) => SETUP_TRIGGER.test(m.body || ""));
     if (!triggered) return null;
     session = await db.onboardingSession.create({
-      data: { whatsappGroupId: groupId, stage: "collecting" },
+      data: {
+        whatsappGroupId: groupId,
+        stage: "collecting",
+        // The legacy flow speaks the language the trigger was written in.
+        language: legacySetupLang(body.messages.map((m) => m.body || "")),
+      },
     });
   }
 

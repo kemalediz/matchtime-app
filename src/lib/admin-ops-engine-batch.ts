@@ -639,6 +639,7 @@ export async function runAdminOpsBatch(args: {
       name: sender?.senderName ?? sender?.authorName ?? null,
       note: w.note,
       deps,
+      lang: state.features.language,
     });
     if (!applied.ok) {
       degradations.push(

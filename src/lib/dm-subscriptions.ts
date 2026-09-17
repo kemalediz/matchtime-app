@@ -16,6 +16,8 @@
  * (all default true = subscribed). PAYMENT DMs have NO flag: someone who
  * owes money is always sent their pay link + chases.
  */
+import { t } from "./i18n/t";
+import { normaliseLang, type Lang } from "./i18n/lang";
 
 /** The per-category subscription boolean fields on `Membership`. Payment
  *  is intentionally absent — it is never opt-out-able. */
@@ -84,9 +86,16 @@ const OPT_IN_VERB_OBJ =
  *      "do not message me on any topic but payment" to opt-out-all.
  *   3. narrow ratings.
  */
-export function parseDmSubscriptionCommand(text: string): DmSubCommandKind | null {
+export function parseDmSubscriptionCommand(text: string, lang?: Lang | string | null): DmSubCommandKind | null {
   const t = (text ?? "").trim();
   if (!t) return null;
+
+  // A Turkish org's player may use either language. The Turkish reading
+  // runs first and only for that org; English text is never read by it.
+  if (normaliseLang(lang) === "tr") {
+    const tr = parseTurkishDmSubscriptionCommand(t);
+    if (tr) return tr;
+  }
 
   // 1. Opt back IN.
   const isOptIn = OPT_IN_BARE.test(t) || OPT_IN_VERB_OBJ.test(t);
@@ -116,6 +125,40 @@ export function parseDmSubscriptionCommand(text: string): DmSubCommandKind | nul
   return null;
 }
 
+// ── Turkish (Phase 3, 2026-09-17) ──────────────────────────────────────
+// Same shape and the same caution as the English: a clear verb AND a
+// clear object, or the command the Turkish ack quotes ("mesajları aç",
+// "puanlamayı aç"). A bare "dur" is NOT a stop: it is what a collector
+// types to hold a fee, and this reader runs before the fee reader.
+// Letter-bounded (`\p{L}`), after `toLocaleLowerCase("tr")`.
+
+const TR = (body: string) => new RegExp(`(?<!\\p{L})(?:${body})(?!\\p{L})`, "u");
+/** "turn on / start". */
+const TR_ON = TR(String.raw`a[çc]|a[çc]abilirsin|ba[şs]lat|tekrar\s+g[öo]nder`);
+/** "don't send / don't write / don't want / stop / switch off". */
+const TR_STOP = TR(
+  String.raw`atma|atmay[ıi]n|g[öo]nderme|g[öo]ndermeyin|yazma|yazmay[ıi]n|istemiyorum|durdur|kapat|rahats[ıi]z\s+etme`,
+);
+/** Messages in general. */
+const TR_MESSAGES = TR(String.raw`mesaj\p{L}*|bildirim\p{L}*|dm\p{L}*|hepsini|t[üu]m[üu]n[üu]|her\s*[şs]eyi`);
+/** The rating / Man-of-the-Match category. */
+const TR_RATINGS = TR(String.raw`puan\p{L}*|ma[çc][ıi]n\s+adam\p{L}*|oylama\p{L}*`);
+/** "only / except ... payment". */
+const TR_ONLY_PAYMENT = TR(String.raw`(?:sadece|yaln[ıi]zca|bir\s+tek)\s+[öo]deme\p{L}*|[öo]deme\p{L}*\s+(?:d[ıi][şs][ıi]nda|hari[çc])`);
+
+function parseTurkishDmSubscriptionCommand(raw: string): DmSubCommandKind | null {
+  const t = raw.toLocaleLowerCase("tr");
+  if (TR_ON.test(t) && !TR_STOP.test(t)) {
+    if (TR_RATINGS.test(t)) return "opt-in-ratings";
+    if (TR_MESSAGES.test(t)) return "opt-in-all";
+    return null;
+  }
+  if (TR_ONLY_PAYMENT.test(t)) return "opt-out-all";
+  if (TR_STOP.test(t) && TR_RATINGS.test(t)) return "opt-out-ratings";
+  if (TR_STOP.test(t) && TR_MESSAGES.test(t)) return "opt-out-all";
+  return null;
+}
+
 /** The flag patch a command applies. opt-out-all / opt-in-all touch every
  *  category; the ratings commands touch only subRatingDm. */
 export function dmSubPatchForCommand(kind: DmSubCommandKind): DmSubPatch {
@@ -132,24 +175,12 @@ export function dmSubPatchForCommand(kind: DmSubCommandKind): DmSubPatch {
 }
 
 /** Player-facing acknowledgement copy for a command. Only ever sent AFTER
- *  the DB write succeeds (see the fast-path's GOLDEN RULE). */
-export function dmSubAckMessage(kind: DmSubCommandKind): string {
-  switch (kind) {
-    case "opt-out-all":
-      return (
-        'Done — I\'ll only message you about payments from now on. ' +
-        'Text "start messages" anytime to turn the rest back on.'
-      );
-    case "opt-out-ratings":
-      return (
-        'Done — no more rating or Man-of-the-Match messages from me 👍 ' +
-        'Text "start ratings" anytime to turn them back on.'
-      );
-    case "opt-in-all":
-      return "Great — you're back on for all my messages 👍";
-    case "opt-in-ratings":
-      return "Great — I'll send you rating and Man-of-the-Match links again 👍";
-  }
+ *  the DB write succeeds (see the fast-path's GOLDEN RULE). `lang` is the
+ *  language of the org the reply is routed through; each ack quotes the
+ *  command that undoes it, in that language, and the parser above
+ *  accepts it. */
+export function dmSubAckMessage(kind: DmSubCommandKind, lang?: Lang | string | null): string {
+  return t(lang).dm_sub_ack({ kind });
 }
 
 /**

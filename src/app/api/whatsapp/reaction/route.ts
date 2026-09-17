@@ -29,7 +29,7 @@ import { normalisePhone } from "@/lib/phone";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { classifyReactionAttendance, resolveRecruitDmReaction } from "@/lib/recruit-reaction";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
-import { formatLondon } from "@/lib/london-time";
+import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 
 const norm = (s: string) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -185,7 +185,7 @@ async function handleRecruitDmReaction(input: {
     select: {
       status: true,
       date: true,
-      activity: { select: { name: true, orgId: true } },
+      activity: { select: { name: true, orgId: true, org: { select: { language: true } } } },
     },
   });
   // A reaction on a stale invite (match played, or called off) changes
@@ -202,7 +202,9 @@ async function handleRecruitDmReaction(input: {
     orgId: match.activity.orgId,
     decision,
     matchName: match.activity.name,
-    matchWhen: formatLondon(match.date, "EEE d MMM, HH:mm"),
+    // The ack is written in the language of the match's org.
+    matchWhen: dayCommaTimeLabel(match.activity.org.language, match.date),
+    lang: match.activity.org.language,
     source: "reaction",
     replyPhone: target.phone,
   });

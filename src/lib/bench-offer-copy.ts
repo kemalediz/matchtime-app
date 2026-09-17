@@ -87,8 +87,8 @@ interface ReactionGate {
   mentionReactions?: boolean;
   /** The group's language (`Organisation.language`). English when
    *  absent; the English bytes are unchanged either way (golden). Every
-   *  group-facing builder reads it; the DM (`buildBenchOfferDm`) still
-   *  speaks English whatever is passed (Phase 3). */
+   *  builder reads it, the DM (`buildBenchOfferDm`) included since
+   *  Phase 3: it is the language of the match's org. */
   lang?: Lang | string | null;
 }
 
@@ -110,7 +110,8 @@ export interface BenchOfferDmCopy extends ReactionGate {
   /** First name, or "" when we have no name on record. */
   firstName: string;
   /** Plain-text context (no WhatsApp bold), e.g.
-   *  "on Reds (replacing Ehtisham Ekin) for Tuesday 7-a-side tonight". */
+   *  "on Reds (replacing Ehtisham Ekin) for Tuesday 7-a-side tonight".
+   *  In the same language as `lang` (`buildBenchOfferContext().plain`). */
   context: string;
 }
 
@@ -118,15 +119,7 @@ export interface BenchOfferDmCopy extends ReactionGate {
  *  thinking they are not playing, so the DM carries the same offer. */
 export function buildBenchOfferDm(c: BenchOfferDmCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
-  const hi = c.firstName ? ` ${c.firstName}` : "";
-  const claim = reactions
-    ? "Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there."
-    : "Reply *YES* here, or *IN* on the message I tagged you in, in the group.";
-  return (
-    `👋 Hi${hi}, a slot just opened ${c.context} and you're on the bench.\n\n` +
-    `Want it? ${claim} First to claim plays. No timeout, and if you're ` +
-    `not free no worries, you stay on the bench. 🙏`
-  );
+  return t(c.lang).dm_bench_offer({ firstName: c.firstName, context: c.context, reactions });
 }
 
 /**

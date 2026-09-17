@@ -2014,7 +2014,8 @@ export function decide(input: EngineInput): EngineResult {
         // resolves it. Neither the model nor this file does calendar
         // arithmetic — `resolveReminderPhrase` is a pure function of
         // (phrase, now) and refuses anything it is not sure about.
-        const when = resolveReminderPhrase(phrase, input.now);
+        // In the group's language: its day words, and its label.
+        const when = resolveReminderPhrase(phrase, input.now, state.features.language);
         if (!when.ok) {
           degrade(`reminder time could not be resolved: ${when.reason}`);
           return;

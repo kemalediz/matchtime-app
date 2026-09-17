@@ -12,6 +12,7 @@
  * worst).
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { normaliseLang } from "./i18n/lang";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -48,6 +49,24 @@ Output STRICT JSON only — no markdown, no fences:
   "reasoning": "<short justification, max 100 chars>"
 }`;
 
+/**
+ * The language line for a Turkish org's reply (Phase 3), or null. It
+ * rides in the uncached user turn, so the English system prompt, and
+ * therefore the English club's classification, is unchanged. It maps the
+ * Turkish check-in menu (`dm_survey_invite`) onto the same categories.
+ */
+export function rosterReplyLanguageLine(lang: string | null | undefined): string | null {
+  if (normaliseLang(lang) !== "tr") return null;
+  return (
+    `Language: the club speaks TURKISH, and the check-in was sent in Turkish with the menu ` +
+    `"evet / varım" (in), "belki / duruma göre" (maybe), "şimdilik yok / bırakıyorum" (out). ` +
+    `Apply the same rules to a Turkish reply: "evet", "varım", "devam", "tabii ki" are in; ` +
+    `"belki", "ara sıra", "duruma göre", "şimdilik yok", "bir süre ara vereceğim", "sonra bakarız" are maybe ` +
+    `(a future window or a hedge is never out); only a clear, permanent stop ("bırakıyorum", ` +
+    `"artık oynamayacağım", "beni çıkarın", "taşındım") is out; questions, "tamam" alone, emoji and chat are unclear.`
+  );
+}
+
 export interface RosterClassification {
   category: "in" | "maybe" | "out" | "unclear";
   confidence: number;
@@ -56,7 +75,7 @@ export interface RosterClassification {
 
 export async function classifyRosterReply(
   replyBody: string,
-  context?: { playerName?: string | null; clubName?: string },
+  context?: { playerName?: string | null; clubName?: string; lang?: string | null },
 ): Promise<RosterClassification> {
   const fallback: RosterClassification = {
     category: "unclear",
@@ -69,6 +88,7 @@ export async function classifyRosterReply(
     const userText = [
       context?.clubName ? `Club: ${context.clubName}` : null,
       context?.playerName ? `Player: ${context.playerName}` : null,
+      rosterReplyLanguageLine(context?.lang),
       `Reply: ${JSON.stringify(replyBody)}`,
     ]
       .filter(Boolean)

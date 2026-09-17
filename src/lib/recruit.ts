@@ -15,7 +15,9 @@ import { recruitNoMatchRefusal, buildRecruitFullSquadRefusal } from "./group-cop
 import { buildFullSquadBenchInvite } from "./bench-offer-copy";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
-import { formatLondon } from "./london-time";
+import { dayCommaTimeLabel } from "./i18n/dates";
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 import { getOrgFeatures } from "./org-features";
 import { recruitDmLinkKey, RECRUIT_DM_LINK_KIND } from "./recruit-reaction";
 import { resolveLookbackMatches } from "./recruit-lookback";
@@ -174,9 +176,10 @@ export {
 export const RECRUIT_DM_MENTION_REACTIONS = false;
 
 export interface RecruitInviteCopy {
-  firstName: string;
+  /** First name, or null when there is none (English says "there"). */
+  firstName: string | null;
   matchName: string;
-  /** "EEE d MMM, HH:mm" London. */
+  /** `dayCommaTimeLabel(lang, date)`: "Tue 8 Sep, 21:30", London. */
   matchWhen: string;
   /** Open slots. 0 means "suppressed or full" and the phrase is omitted. */
   spotsLeft: number;
@@ -186,23 +189,20 @@ export interface RecruitInviteCopy {
    *  read RECRUIT_DM_MENTION_REACTIONS so the copy cannot drift from
    *  what the bot can actually receive. */
   mentionReactions?: boolean;
+  /** The org's language (`Organisation.language`); English when absent. */
+  lang?: Lang | string | null;
 }
 
 /** The invite for an org that tracks attendance in-app. */
 export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
-  const spots =
-    c.spotsLeft > 0 ? ` ${c.spotsLeft} ${c.spotsLeft === 1 ? "spot" : "spots"} left.` : "";
-  const reactions = c.mentionReactions ?? RECRUIT_DM_MENTION_REACTIONS;
-  const lines = [
-    `👋 ${c.firstName}, we're putting the squad together for *${c.matchName}* on ${c.matchWhen}.${spots}`,
-    "",
-    reactions ? "Playing? Reply *IN* or tap 👍 on this message." : "Playing? Just reply *IN*.",
-    reactions
-      ? "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌"
-      : "Can't make it? Reply *OUT* and I'll stop asking 🙌",
-  ];
-  if (c.link) lines.push("", `Prefer the app? ${c.link}`);
-  return lines.join("\n");
+  return t(c.lang).dm_recruit_invite({
+    firstName: c.firstName,
+    matchName: c.matchName,
+    matchWhen: c.matchWhen,
+    spotsLeft: c.spotsLeft,
+    link: c.link,
+    reactions: c.mentionReactions ?? RECRUIT_DM_MENTION_REACTIONS,
+  });
 }
 
 /**
@@ -210,14 +210,16 @@ export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
  * RSVP link would do nothing and the group is where they join.
  */
 export function buildRecruitGroupInviteDm(c: {
-  firstName: string;
+  firstName: string | null;
   matchName: string;
   matchWhen: string;
+  lang?: Lang | string | null;
 }): string {
-  return (
-    `👋 ${c.firstName}, we're putting the squad together for *${c.matchName}* on ${c.matchWhen}. ` +
-    `Fancy it? Just reply *IN* in the group and you're sorted 🙌`
-  );
+  return t(c.lang).dm_recruit_group_invite({
+    firstName: c.firstName,
+    matchName: c.matchName,
+    matchWhen: c.matchWhen,
+  });
 }
 
 export interface RecruitResult {
@@ -293,9 +295,10 @@ export async function inviteRecentPlayers(
   const openSlots = Math.max(0, next.maxPlayers - confirmedCount);
   const need = attendanceOn ? openSlots : 0;
 
-  // formatLondon needed both by the capacity-guard early return and the
-  // normal return paths — compute it once, up front.
-  const matchWhen = formatLondon(next.date, "EEE d MMM, HH:mm");
+  // Needed both by the capacity-guard early return and the normal return
+  // paths — compute it once, up front, in the org's language: it is
+  // quoted in every invite DM and in the admin's DM reply.
+  const matchWhen = dayCommaTimeLabel(features.language, next.date);
 
   // ── CAPACITY GUARD ──────────────────────────────────────────────────
   //
@@ -436,7 +439,7 @@ export async function inviteRecentPlayers(
       alreadyInvited++; // candidate existed but was pinged on an earlier call
       continue;
     }
-    const first = c.name?.split(" ")[0] ?? "there";
+    const first = c.name?.split(" ")[0] ?? null;
     let text: string;
     if (attendanceOn) {
       // Org tracks attendance in-app → the magic link is worth offering,
@@ -453,6 +456,7 @@ export async function inviteRecentPlayers(
         matchWhen,
         spotsLeft: need,
         link: await buildShortMagicLinkUrl(token),
+        lang: features.language,
       });
     } else {
       // MoM/ratings-only org (no in-app squad) → an RSVP link does nothing.
@@ -461,6 +465,7 @@ export async function inviteRecentPlayers(
         firstName: first,
         matchName: next.activity.name,
         matchWhen,
+        lang: features.language,
       });
     }
     const job = await db.botJob.create({

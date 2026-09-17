@@ -14,16 +14,21 @@
 import { db } from "./db";
 import { getOrgFeatures } from "./org-features";
 import { selectRegistrationMatch } from "./registration-match-select";
-import { formatLondon } from "./london-time";
+import { dayCommaTimeLabel } from "./i18n/dates";
+import type { Lang } from "./i18n/lang";
 
 export interface DmRegistrationTarget {
   matchId: string;
   orgId: string;
   clubName: string;
   matchName: string;
-  /** "EEE d MMM, HH:mm" London. */
+  /** `dayCommaTimeLabel(lang, date)`: "Tue 8 Sep, 21:30", London, in the
+   *  org's language. */
   matchWhen: string;
   maxPlayers: number;
+  /** The org's language (`Organisation.language`): the ack to the player
+   *  is written in it. */
+  lang: Lang;
 }
 
 /**
@@ -72,8 +77,9 @@ export async function findDmRegistrationTarget(
         orgId: mem.orgId,
         clubName: mem.org.name,
         matchName: picked.activity.name,
-        matchWhen: formatLondon(picked.date, "EEE d MMM, HH:mm"),
+        matchWhen: dayCommaTimeLabel(features.language, picked.date),
         maxPlayers: picked.maxPlayers,
+        lang: features.language,
       };
     }
   }

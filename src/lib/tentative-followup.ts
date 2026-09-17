@@ -14,6 +14,8 @@
  * — the route + scheduler load rows and delegate the decisions here, the
  * same "code decides" pattern as registration-match-select.ts.
  */
+import { t } from "./i18n/t";
+import type { Lang } from "./i18n/lang";
 
 /**
  * How far before kickoff the follow-up DM fires. SINGLE source of truth —
@@ -126,14 +128,8 @@ export function buildTentativeFollowupAck(args: {
   decision: "in" | "out";
   /** Did the attendance write throw? Then we promise nothing. */
   failed: boolean;
+  /** The match's org language (`Organisation.language`); English when absent. */
+  lang?: Lang | string | null;
 }): string {
-  if (args.failed) {
-    return (
-      "Sorry, I couldn't update the squad just now. An admin will sort it, " +
-      "try again in a bit if you like 🙏"
-    );
-  }
-  return args.decision === "in"
-    ? "✅ Brilliant, you're in! See you there ⚽"
-    : "👋 No worries, thanks for letting me know. Maybe next time!";
+  return t(args.lang).dm_tentative_ack({ decision: args.decision, failed: args.failed });
 }

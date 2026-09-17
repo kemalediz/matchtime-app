@@ -48,6 +48,13 @@
  *     `announce-suppressed-when-squad-non-empty.test.ts`,
  *     `payment-suppression.test.ts`) staying green unchanged.
  *
+ *   - Deliberate additions (2026-09-17, Phase 3, recorded in their own
+ *     commit BEFORE any string moved): the private messages that lived
+ *     inline in database-reaching code, extracted verbatim into
+ *     `dm-copy.ts` (rows 83, 88 to 92, 95 to 98, 103 to 111, 122 and
+ *     the roster check-in invite). The only non-additive line in that
+ *     commit's `.snap` diff is the case count in the header.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -164,6 +171,28 @@ import {
 import { buildRecruitGroupInviteDm, buildRecruitInviteDm } from "../../recruit";
 import { buildRecruitChaseText } from "../../recruit-chase";
 import { buildTentativeFollowupAck } from "../../tentative-followup";
+import {
+  buildAdminRecruitDmReply,
+  buildBenchDmAck,
+  buildBenchDmUnclear,
+  buildDirectPayCollectorNudge,
+  buildDmQaApology,
+  buildFeeAskDm,
+  buildFeeCancelledAck,
+  buildFeeConfirmPrompt,
+  buildFeeReleasedAck,
+  buildPayChaseDm,
+  buildPayLinkDm,
+  buildRatingDm,
+  buildRatingReminderDm,
+  buildRosterSurveyClarification,
+  buildRosterSurveyConfirmation,
+  buildRosterSurveyInviteDm,
+  buildStatsLinkDm,
+  buildTentativeFollowupDm,
+  buildTentativeReask,
+  rosterSurveyClarificationProbe,
+} from "../../dm-copy";
 import { buildSelfAttendanceAck } from "../../out-of-band-self-attendance";
 import { dmSubAckMessage } from "../../dm-subscriptions";
 import {
@@ -174,6 +203,11 @@ import {
   buildCoAdminMagicLinkDm,
   buildConsentAck,
   buildEnrichmentReviewDm,
+  buildLegacyFeatureMenu,
+  buildLegacyProvisionedLead,
+  buildLegacySetupIntro,
+  legacyEventQuestion,
+  legacyMenuRetryLead,
   buildGroupAddCompletionPost,
   buildHelpReply,
   buildHowToUseMe,
@@ -183,7 +217,7 @@ import { RECOMMENDED_BUNDLE, EVERYTHING_BUNDLE } from "../../onboarding-parse";
 import { detailsFollowUpQuestion } from "../../onboarding-parse";
 import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { resolveReminderPhrase } from "../../reminder-time";
-import { FEE_REPLY_SYSTEM_PROMPT } from "../../fee-confirm";
+import { FEE_REPLY_SYSTEM_PROMPT, buildFeeReplySystemPrompt } from "../../fee-confirm";
 
 // ── The three worlds ─────────────────────────────────────────────────
 
@@ -464,13 +498,13 @@ function cases(lang: Lang): Case[] {
   for (const mentionReactions of [false, true]) {
     const tag = mentionReactions ? "reactions on" : "reactions off";
     add(`R52 buildBenchOfferGroupPost / ${tag}`, buildBenchOfferGroupPost({ context: ctx, tagList: "@447700900001 @447700900002", mentionReactions, lang }));
-    add(`R85 buildBenchOfferDm / ${tag}`, buildBenchOfferDm({ firstName: "Erdal", context: "on Red (replacing Sait Demir) for Tuesday 7-a-side tonight", mentionReactions }));
+    add(`R85 buildBenchOfferDm / ${tag}`, buildBenchOfferDm({ firstName: "Erdal", context: lang === "en" ? "on Red (replacing Sait Demir) for Tuesday 7-a-side tonight" : ctxTeam.plain, mentionReactions, lang }));
     add(`R53 buildBenchIntroLine / ${tag}`, buildBenchIntroLine({ mentionReactions, lang }));
     add(`R54 buildFullSquadBenchInvite / ${tag}`, buildFullSquadBenchInvite({ matchName: "Tuesday 7-a-side", confirmedCount: 14, maxPlayers: 14, mentionReactions, lang }));
     add(`R55 buildBenchAskedLine / ${tag}`, buildBenchAskedLine({ benchName: "Erdal Ozkan", confirmedCount: 13, maxPlayers: 14, mentionReactions, lang }));
     add(`R56 benchClaimPhrasingExample / ${tag}`, benchClaimPhrasingExample({ mentionReactions }));
   }
-  add("R85 buildBenchOfferDm / no first name", buildBenchOfferDm({ firstName: "", context: "on Red for Tuesday 7-a-side tonight" }));
+  add("R85 buildBenchOfferDm / no first name", buildBenchOfferDm({ firstName: "", context: lang === "en" ? "on Red for Tuesday 7-a-side tonight" : ctxFixture.plain, lang }));
 
   // ── 1.1 rating-progress-answer.ts ───────────────────────────────────
   add("R59 formatRatingProgressReply / not ok, no reason", formatRatingProgressReply({ ok: false }, lang));
@@ -518,8 +552,8 @@ function cases(lang: Lang): Case[] {
   add("R44 renderGuestNameAsk / plural, no name", renderGuestNameAsk({ askerName: null, body: "bringing 2 friends", lang }));
 
   // ── 1.1 stats-blast.ts ──────────────────────────────────────────────
-  add("R100 composeStatsBlastDm / named", composeStatsBlastDm("Sait Demir", "https://mt.example/s/abc"));
-  add("R100 composeStatsBlastDm / no name", composeStatsBlastDm(null, "https://mt.example/s/abc"));
+  add("R100 composeStatsBlastDm / named", composeStatsBlastDm("Sait Demir", "https://mt.example/s/abc", lang));
+  add("R100 composeStatsBlastDm / no name", composeStatsBlastDm(null, "https://mt.example/s/abc", lang));
   add("R51 composeStatsBlastReply / one", composeStatsBlastReply(1, lang));
   add("R51 composeStatsBlastReply / twelve", composeStatsBlastReply(12, lang));
 
@@ -536,8 +570,8 @@ function cases(lang: Lang): Case[] {
   add("R58 buildAttendanceFailureReply / no usable name", buildAttendanceFailureReply([{ action: "IN", who: null, error: "boom" }], "447700900123", lang));
 
   // ── 1.4 admin-ops-engine.ts ─────────────────────────────────────────
-  add("R132 composeReminderDm / named", composeReminderDm({ name: "Sait Demir", note: "book the pitch for Thursday" }));
-  add("R132 composeReminderDm / no name", composeReminderDm({ name: null, note: "book the pitch for Thursday" }));
+  add("R132 composeReminderDm / named", composeReminderDm({ name: "Sait Demir", note: "book the pitch for Thursday", lang }));
+  add("R132 composeReminderDm / no name", composeReminderDm({ name: null, note: "book the pitch for Thursday", lang }));
   const payment = (over: Partial<PaymentApplyResult>): PaymentApplyResult => ({
     write: { count: 3 } as PaymentApplyResult["write"],
     ok: true,
@@ -560,25 +594,29 @@ function cases(lang: Lang): Case[] {
   add("R134 composeGenerateTeamsReply / all four notes", composeGenerateTeamsReply({ groupPost: sheet, includedNames: ["Erdal Ozkan"], pinnedLog: ["Kemal Ediz → RED"], unmatchedIncludes: ["Bob"], unmatchedPins: ["Jim"], lang }));
 
   // ── 1.3 DM builders ─────────────────────────────────────────────────
+  //    Dates are pre-formatted by the callers, so each language gets its
+  //    own shape here (`dayCommaTimeLabel`).
+  const W = lang === "tr" ? "8 Eylül Salı 21:30" : "Tue 8 Sep, 21:30";
+  const W2 = lang === "tr" ? "10 Eylül Perşembe 20:00" : "Thu 10 Sep, 20:00";
   for (const mentionReactions of [false, true]) {
     const tag = mentionReactions ? "reactions on" : "reactions off";
-    add(`R93 buildRecruitInviteDm / ${tag}, two spots, link`, buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", spotsLeft: 2, link: "https://mt.example/m/abc", mentionReactions }));
+    add(`R93 buildRecruitInviteDm / ${tag}, two spots, link`, buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: W, spotsLeft: 2, link: "https://mt.example/m/abc", mentionReactions, lang }));
   }
-  add("R93 buildRecruitInviteDm / one spot, no link", buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", spotsLeft: 1, link: null }));
-  add("R93 buildRecruitInviteDm / spots suppressed", buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", spotsLeft: 0, link: null }));
-  add("R94 buildRecruitGroupInviteDm", buildRecruitGroupInviteDm({ firstName: "Sait", matchName: "Thursday 5-a-side", matchWhen: "Thu 10 Sep, 20:00" }));
-  add("R84 buildRecruitChaseText / one", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", need: 1 }));
-  add("R84 buildRecruitChaseText / three", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", need: 3 }));
-  add("R84 buildRecruitChaseText / no name", buildRecruitChaseText({ playerName: null, activityName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30", need: 2 }));
-  add("R102 buildTentativeFollowupAck / in", buildTentativeFollowupAck({ decision: "in", failed: false }));
-  add("R102 buildTentativeFollowupAck / out", buildTentativeFollowupAck({ decision: "out", failed: false }));
-  add("R102 buildTentativeFollowupAck / failed", buildTentativeFollowupAck({ decision: "in", failed: true }));
+  add("R93 buildRecruitInviteDm / one spot, no link", buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: W, spotsLeft: 1, link: null, lang }));
+  add("R93 buildRecruitInviteDm / spots suppressed", buildRecruitInviteDm({ firstName: "Sait", matchName: "Tuesday 7-a-side", matchWhen: W, spotsLeft: 0, link: null, lang }));
+  add("R94 buildRecruitGroupInviteDm", buildRecruitGroupInviteDm({ firstName: "Sait", matchName: "Thursday 5-a-side", matchWhen: W2, lang }));
+  add("R84 buildRecruitChaseText / one", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: W, need: 1, lang }));
+  add("R84 buildRecruitChaseText / three", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: W, need: 3, lang }));
+  add("R84 buildRecruitChaseText / no name", buildRecruitChaseText({ playerName: null, activityName: "Tuesday 7-a-side", matchWhen: W, need: 2, lang }));
+  add("R102 buildTentativeFollowupAck / in", buildTentativeFollowupAck({ decision: "in", failed: false, lang }));
+  add("R102 buildTentativeFollowupAck / out", buildTentativeFollowupAck({ decision: "out", failed: false, lang }));
+  add("R102 buildTentativeFollowupAck / failed", buildTentativeFollowupAck({ decision: "in", failed: true, lang }));
   for (const status of ["CONFIRMED", "BENCH", "DROPPED", null] as const) {
-    add(`R101 buildSelfAttendanceAck / ${status ?? "no row"}`, buildSelfAttendanceAck({ failed: false, status, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30" }));
+    add(`R101 buildSelfAttendanceAck / ${status ?? "no row"}`, buildSelfAttendanceAck({ failed: false, status, matchName: "Tuesday 7-a-side", matchWhen: W, lang }));
   }
-  add("R101 buildSelfAttendanceAck / failed", buildSelfAttendanceAck({ failed: true, status: null, matchName: "Tuesday 7-a-side", matchWhen: "Tue 8 Sep, 21:30" }));
+  add("R101 buildSelfAttendanceAck / failed", buildSelfAttendanceAck({ failed: true, status: null, matchName: "Tuesday 7-a-side", matchWhen: W, lang }));
   for (const kind of ["opt-out-all", "opt-out-ratings", "opt-in-all", "opt-in-ratings"] as const) {
-    add(`R99 dmSubAckMessage / ${kind}`, dmSubAckMessage(kind));
+    add(`R99 dmSubAckMessage / ${kind}`, dmSubAckMessage(kind, lang));
   }
 
   // ── 1.4 onboarding and help ─────────────────────────────────────────
@@ -612,8 +650,8 @@ function cases(lang: Lang): Case[] {
   add("R140 buildGroupAddCompletionPost / one person, two co-admins, no DM, no name", buildGroupAddCompletionPost({ ...completion, rosterCount: 1, adminsAdded: 2, adminDmQueued: false, adminName: null }));
   add("R140 buildGroupAddCompletionPost / everything, one-off, empty roster, one co-admin", buildGroupAddCompletionPost({ ...completion, chosen: [...EVERYTHING_BUNDLE], weekly: false, rosterCount: 0, adminsAdded: 1, adminDmQueued: true, adminName: "" }));
   add("R140 buildGroupAddCompletionPost / no group name", buildGroupAddCompletionPost({ ...completion, groupName: null, rosterCount: 0, adminsAdded: 0, adminDmQueued: false, adminName: null }));
-  add("R140 buildLegacyCompletionPost / weekly", buildLegacyCompletionPost(completion));
-  add("R140 buildLegacyCompletionPost / one-off, MoM and ratings only", buildLegacyCompletionPost({ ...completion, chosen: ["momVoting", "playerRating"], weekly: false }));
+  add("R140 buildLegacyCompletionPost / weekly", buildLegacyCompletionPost(completion, lang));
+  add("R140 buildLegacyCompletionPost / one-off, MoM and ratings only", buildLegacyCompletionPost({ ...completion, chosen: ["momVoting", "playerRating"], weekly: false }, lang));
   add("R118 buildAdminMagicLinkDm / no payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: false }));
   add("R118 buildAdminMagicLinkDm / payments", buildAdminMagicLinkDm({ groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: true }));
   add("R118 buildAdminMagicLinkDm / no group name", buildAdminMagicLinkDm({ groupName: null, url: "https://mt.example/s/abc", payments: false }));
@@ -630,12 +668,72 @@ function cases(lang: Lang): Case[] {
   // ── R36 reminder-time.ts: the label the reminder ack interpolates ───
   const now = new Date("2026-09-08T10:00:00.000Z"); // Tue 8 Sep 11:00 London
   for (const phrase of ["thursday", "tomorrow morning", "in 2 hours", "friday at 6pm", "in a week"]) {
-    const r = resolveReminderPhrase(phrase, now);
+    const r = resolveReminderPhrase(phrase, now, lang);
     add(`R36 resolveReminderPhrase whenLabel / "${phrase}"`, r.ok ? r.whenLabel : `(not resolved: ${r.reason})`);
   }
 
   // ── R98 fee-confirm.ts: the prompt that embeds the collector prompt ─
-  add("R98 FEE_REPLY_SYSTEM_PROMPT", FEE_REPLY_SYSTEM_PROMPT);
+  add("R98 FEE_REPLY_SYSTEM_PROMPT", lang === "en" ? FEE_REPLY_SYSTEM_PROMPT : buildFeeReplySystemPrompt(lang));
+
+  // ── Phase 3: the private messages, extracted as pure builders
+  //    (dm-copy.ts, 2026-09-17) and pinned HERE, in English, before any
+  //    of them moved into the string table. ────────────────────────────
+  add("R91 buildRatingDm", buildRatingDm({ activityName: "Tuesday 7-a-side", dateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", mvpLabel: "Man of the Match", rateUrl: "https://mt.example/s/rate", statsUrl: "https://mt.example/s/stats", lang }));
+  for (const dayNum of [1, 2, 3, 4, 5]) {
+    add(`R92 buildRatingReminderDm / day ${dayNum}`, buildRatingReminderDm({ dayNum, playerName: "Sait Demir", activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate", lang }));
+  }
+  add("R92 buildRatingReminderDm / no name", buildRatingReminderDm({ dayNum: 1, playerName: null, activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate", lang }));
+  add("R83 buildTentativeFollowupDm", buildTentativeFollowupDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", whenLabel: lang === "tr" ? "8 Eylül Salı 21:30" : "Tue 8 Sep at 21:30", lang }));
+  add("R83 buildTentativeFollowupDm / no name", buildTentativeFollowupDm({ playerName: null, activityName: "Tuesday 7-a-side", whenLabel: lang === "tr" ? "8 Eylül Salı 21:30" : "Tue 8 Sep at 21:30", lang }));
+  add("R88 buildFeeAskDm / fourteen played", buildFeeAskDm({ collectorName: "Kemal Ediz", activityName: "Tuesday 7-a-side", headcount: 14, lang }));
+  add("R88 buildFeeAskDm / nobody, no name", buildFeeAskDm({ collectorName: null, activityName: "Tuesday 7-a-side", headcount: 0, lang }));
+  for (const dayNum of [1, 2, 3]) {
+    add(`R89 buildPayChaseDm / day ${dayNum}`, buildPayChaseDm({ playerName: "Sait Demir", dayNum, fee: 8.5, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", lang }));
+  }
+  add("R89 buildPayChaseDm / no name, whole pounds", buildPayChaseDm({ playerName: null, dayNum: 1, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", lang }));
+  add("R90 buildDirectPayCollectorNudge / one", buildDirectPayCollectorNudge({ count: 1, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect", lang }));
+  add("R90 buildDirectPayCollectorNudge / three", buildDirectPayCollectorNudge({ count: 3, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect", lang }));
+  add("R95 buildPayLinkDm", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", lang }));
+  add("R95 buildPayLinkDm / no name, pence", buildPayLinkDm({ playerName: null, activityName: "Tuesday 7-a-side", fee: 7.5, url: "https://mt.example/s/pay", lang }));
+  add("R96 buildFeeReleasedAck / one", buildFeeReleasedAck({ released: 1, fee: 8, matchName: "Tuesday 7-a-side", lang }));
+  add("R96 buildFeeReleasedAck / thirteen", buildFeeReleasedAck({ released: 13, fee: 8.5, matchName: "Tuesday 7-a-side", lang }));
+  add("R97 buildFeeCancelledAck", buildFeeCancelledAck(lang));
+  add("R98 buildFeeConfirmPrompt / per player", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: false, lang }));
+  add("R98 buildFeeConfirmPrompt / total split", buildFeeConfirmPrompt({ perPlayer: 7.69, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: true, lang }));
+  add("R98 buildFeeConfirmPrompt / one player", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Tuesday 7-a-side", wasTotal: true, lang }));
+  add("R98 buildFeeConfirmPrompt / nobody to charge", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 0, matchName: "Tuesday 7-a-side", wasTotal: false, lang }));
+  add("R103 buildBenchDmUnclear", buildBenchDmUnclear(lang));
+  for (const kind of ["declined", "confirmed", "taken", "other"] as const) {
+    add(`R104 buildBenchDmAck / ${kind}`, buildBenchDmAck(kind, lang));
+  }
+  add("R105 buildTentativeReask", buildTentativeReask(lang));
+  add("R106 buildAdminRecruitDmReply / invited three, two spots", buildAdminRecruitDmReply({ ok: true, invited: 3, matchName: "Tuesday 7-a-side", matchWhen: W, need: 2 }, lang));
+  add("R106 buildAdminRecruitDmReply / invited one, one spot", buildAdminRecruitDmReply({ ok: true, invited: 1, matchName: "Tuesday 7-a-side", matchWhen: W, need: 1 }, lang));
+  add("R106 buildAdminRecruitDmReply / invited, need unknown", buildAdminRecruitDmReply({ ok: true, invited: 2, matchName: "Tuesday 7-a-side", matchWhen: W }, lang));
+  add("R107 buildAdminRecruitDmReply / nobody new", buildAdminRecruitDmReply({ ok: true, invited: 0, matchName: "Tuesday 7-a-side", matchWhen: W }, lang));
+  add("R108 buildAdminRecruitDmReply / not ok, no reason", buildAdminRecruitDmReply({ ok: false }, lang));
+  add("R109 buildRosterSurveyClarification", buildRosterSurveyClarification({ firstName: "Sait", orgName: "Sutton FC", lang }));
+  add("R109 rosterSurveyClarificationProbe", rosterSurveyClarificationProbe("Sait", lang));
+  for (const category of ["in", "maybe", "out"] as const) {
+    add(`R110 buildRosterSurveyConfirmation / ${category}`, buildRosterSurveyConfirmation({ category, firstName: "Sait", lang }));
+  }
+  add("R109b buildRosterSurveyInviteDm", buildRosterSurveyInviteDm({ firstName: "Sait", orgName: "Sutton FC", lang }));
+  add("R111 buildDmQaApology", buildDmQaApology(lang));
+  add("R122 buildStatsLinkDm / named", buildStatsLinkDm({ name: "Sait Demir", url: "https://mt.example/s/stats", lang }));
+  add("R122 buildStatsLinkDm / no name", buildStatsLinkDm({ name: null, url: "https://mt.example/s/stats", lang }));
+
+  // ── Phase 3c: the legacy "@Match Time setup" flow (pinned before it moved) ──
+  add("R136 buildLegacySetupIntro", buildLegacySetupIntro(lang));
+  const legacy = { groupName: null as string | null, playersPerSide: null as number | null, dayOfWeek: null as number | null, kickoffTime: null as string | null, venue: null as string | null, recurrence: null as string | null, oneOffDate: null as string | null };
+  add("R137 legacyEventQuestion / name", String(legacyEventQuestion(legacy, lang)));
+  add("R137 legacyEventQuestion / players per side", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC" }, lang)));
+  add("R137 legacyEventQuestion / day", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7 }, lang)));
+  add("R137 legacyEventQuestion / time", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2 }, lang)));
+  add("R137 legacyEventQuestion / venue", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00" }, lang)));
+  add("R137 legacyEventQuestion / recurrence", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" }, lang)));
+  add("R137 legacyEventQuestion / one-off date", String(legacyEventQuestion({ ...legacy, groupName: "Tuesday Ballers FC", playersPerSide: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley", recurrence: "oneoff" }, lang)));
+  add("R139 buildLegacyFeatureMenu / provisioned", buildLegacyFeatureMenu(buildLegacyProvisionedLead({ groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" }, lang), lang));
+  add("R139 buildLegacyFeatureMenu / retry", buildLegacyFeatureMenu(legacyMenuRetryLead(lang), lang));
 
   return c;
 }
@@ -659,10 +757,6 @@ function render(lang: Lang): string {
 /** Cases under a migrated row whose text is the SAME in every language by
  *  design, each with its reason. */
 const LANGUAGE_FREE_CASES = new Set([
-  // The `plain` context is only ever read by the bench-offer DM, which
-  // stays English until Phase 3 moves the DMs; see buildBenchOfferContext.
-  "R81 buildBenchOfferContext / team and replaced player (plain)",
-  "R81 buildBenchOfferContext / fixture only (plain)",
   // The model's own reply, passed through untouched: it neither shows
   // nor contradicts squad state, so the composer has nothing to say.
   "R1 composeSquadStateReply / plain reply kept",
@@ -688,6 +782,12 @@ const MIGRATED_ROWS = [
   "R40 ", "R41 ", "R42 ", "R44 ", "R45 ", "R46 ", "R47 ", "R48 ", "R49 ", "R50 ", "R51 ", "R53 ", "R54 ", "R55 ", "R58 ", "R59 ",
   "R60 ", "R61 ", "R62 ", "R63 ", "R64 ", "R65 ", "R66 ", "R67 ", "R74 ", "R75 ", "R76 ", "R77 ", "R123 ", "R124 ", "R125 ",
   "R126 ", "R128 ", "R129 ", "R130 ", "R131 ", "R133 ", "R134 ",
+  // Phase 3: the private messages
+  "R83 ", "R84 ", "R85 ", "R88 ", "R89 ", "R90 ", "R91 ", "R92 ", "R93 ", "R94 ", "R95 ", "R96 ", "R97 ", "R98 ",
+  "R99 ", "R100 ", "R101 ", "R102 ", "R103 ", "R104 ", "R105 ", "R106 ", "R107 ", "R108 ", "R109 ", "R109b ", "R110 ",
+  "R111 ", "R122 ", "R132 ",
+  // Phase 3c: the legacy setup flow
+  "R136 ", "R137 ", "R139 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {
@@ -716,9 +816,9 @@ describe("Turkish copy, the owner's review artefact", () => {
     for (const k of cases("tr")) {
       if (!MIGRATED_ROWS.some((r) => k.id.startsWith(r))) continue;
       if (LANGUAGE_FREE_CASES.has(k.id)) continue;
-      // `reminder-time.ts` labels are English until Phase 3 moves the
-      // reminders (the ack that quotes them, R36 reminder_ack, is moved).
-      if (k.id.startsWith("R36 resolveReminderPhrase")) continue;
+      // A reminder phrase the resolver refuses says so in the same words
+      // in every language (it is a log reason, not copy).
+      if (k.id.startsWith("R36 resolveReminderPhrase") && k.text.startsWith("(not resolved")) continue;
       // A composer that says nothing, or returns null, does so in every language.
       if (k.text === "(says nothing)" || k.text === "(null)" || k.text === "(empty string)") continue;
       expect(k.text, k.id).not.toBe(enById.get(k.id));

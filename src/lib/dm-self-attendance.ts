@@ -83,10 +83,20 @@ function normalise(text: string): string {
 /** Leading social filler we allow before the statement itself. Note that
  *  a message consisting ONLY of filler ("yes", "ok", "sorry") normalises
  *  to an empty core and is therefore rejected. */
-const LEAD = String.raw`(?:(?:yes|yeah|yep|yup|yh|ya|ok|okay|sure|sorry|hi|hey|hello|alright|right|ah)\s+)*`;
+const LEAD = String.raw`(?:(?:yes|yeah|yep|yup|yh|ya|ok|okay|sure|sorry|hi|hey|hello|alright|right|ah|evet|tamam|tmm|olur|selam|merhaba|abi|kanka)\s+)*`;
+
+/** Turkish trailing words (Phase 3), in their NORMALISED form (accents
+ *  stripped by `normalise`, so "teşekkürler" is "tesekkurler"; the
+ *  dotless ı has no accent and stays). Courtesy, then the day words a
+ *  Turkish player puts after "varım" / "yokum". */
+const TAIL_TR = [
+  "abi", "kanka", "hocam", "lutfen", "sagol", "sag ol", "tesekkurler", "tesekkur ederim", "eyvallah",
+  "bu aksam", "bu gece", "bugun", "yarın", "yarin", "bu hafta", "haftaya",
+  "pazartesi", "salı", "sali", "carsamba", "persembe", "cuma", "cumartesi", "pazar",
+].join("|");
 
 /** Trailing courtesy + match-reference filler. */
-const TAIL = String.raw`(?:\s+(?:please|pls|plz|mate|m8|bro|bruv|lads|thanks|thank you|thanx|thx|cheers|ta|definitely|deffo|for (?:it|tonight|tomorrow|today|this one|the game|the match|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tonight|tomorrow|today|this one|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday))*`;
+const TAIL = String.raw`(?:\s+(?:please|pls|plz|mate|m8|bro|bruv|lads|thanks|thank you|thanx|thx|cheers|ta|definitely|deffo|for (?:it|tonight|tomorrow|today|this one|the game|the match|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tonight|tomorrow|today|this one|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|${TAIL_TR}))*`;
 
 /** Self-attendance IN, as a whole message. */
 const IN_CORE = [
