@@ -78,7 +78,20 @@ model User {
   image         String?
   password      String?
   phoneNumber   String?   @unique
+  /// @deprecated 2026-09-18: SUPERSEDED by Membership.seedRating.
+  /// A seed is one club's admin opinion of a player, and this column made
+  /// it global, so one club's admin was overwriting another's. See
+  /// MDs/club-scoped-ratings-design-2026-09-18.md section 3.5 for what
+  /// that was costing Sutton FC.
+  /// Kept, NOT dropped: `prisma db push` drops a column removed from this
+  /// file, and this one is the SOURCE the backfill reads
+  /// (scripts/backfill-membership-ratings.ts). Same precedent as
+  /// Membership.ratingDmOptOut below. Drop in slice 7, after the backfill
+  /// is confirmed in prod and nothing reads it.
   seedRating    Float?
+  /// @deprecated 2026-09-18: SUPERSEDED by Membership.matchRating.
+  /// Same reasoning and the same slice 7 removal as seedRating above.
+  ///
   /// Elo-style; updated after each completed match with a score.
   /// LEADERBOARD ONLY: `lib/match-history.ts` ranks from it and nothing
   /// else reads it. No code that builds a team sheet consults it. The
@@ -520,6 +533,25 @@ model Membership {
   /// Last time any of the sub* flags above was changed (audit). Null =
   /// never touched since creation (still on all defaults).
   subPrefsUpdatedAt DateTime?
+
+  /// PER-CLUB RATING STATE (2026-09-18)
+  /// Moved off User, where both of these were global. A player in two
+  /// clubs had one seed and one Elo doing duty for both; see
+  /// MDs/club-scoped-ratings-design-2026-09-18.md section 3.5 for what
+  /// that was costing Sutton FC. Nothing reads these yet: slice 1 lands
+  /// the columns and the backfill, slice 2 onward moves the readers.
+  ///
+  /// This club's admin opinion of the player, 1 to 10. NULL means the
+  /// club has no opinion yet, which is the correct state for a new
+  /// member: the blend then shrinks toward the CLUB's own mean rating,
+  /// never toward another club's number and never toward the overall.
+  /// Do NOT default this. A default is a carried-over opinion.
+  seedRating  Float?
+
+  /// This club's Elo. Leaderboard only (see lib/elo.ts). 1000 is the
+  /// genuine "no information" value for Elo, so unlike seedRating it
+  /// keeps a default.
+  matchRating Int @default(1000)
 
   createdAt DateTime @default(now())
 
@@ -1276,6 +1308,10 @@ model Rating {
   createdAt DateTime @default(now())
 
   @@unique([matchId, raterId, playerId])
+  /// The club rating reads "this player's ratings, newest first, capped
+  /// at 60", then filters by org through match to activity. The unique
+  /// above is left-prefixed on matchId and cannot serve that. 2026-09-18.
+  @@index([playerId, createdAt])
 }
 
 model MoMVote {

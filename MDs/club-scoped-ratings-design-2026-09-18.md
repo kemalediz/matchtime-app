@@ -170,7 +170,9 @@ So the prior becomes the club's own centre of gravity, which requires no seed, n
 
 At peerCount 1 and 2 the average of one or two scores is noisy, and shrinking it 75% and 60% toward the club mean is exactly the right amount of distrust. This is the same Bayesian shape the file already documents at `src/lib/player-rating.ts:1-20`; only the identity of the prior changes.
 
-**A club with zero ratings anywhere** (the Turkish club on day one) has `clubMeanRating = null`, so every player gets `prior = 5.0`, so every player gets 5.0, so the balancer's rating term is constant and it falls through to position composition and its hill-climb. That is the honest answer to "we know nothing about anybody" and it is what the club would get from a coin toss, which is what they are doing by hand today. It is also self-correcting: after one match and one round of rating DMs, `clubMeanRating` becomes real and every subsequent sheet is informed.
+**The club-mean prior is a FALLBACK, not the expected path for a new club** (Kemal, 2026-09-18, answering open question 5 below). A new club's admin is offered the seed editor during setup, exactly as Sutton FC was set up, so the normal case on day one is that the club HAS seeds and `seed ?? clubMean` selects the seed. The club mean catches the member nobody seeded: the mid-season joiner, the auto-provisioned unknown sender, the guest who turns into a regular. Read the table above that way round.
+
+**A club with zero ratings anywhere** (the Turkish club on day one, if its admin declines the seed editor) has `clubMeanRating = null`, so every player gets `prior = 5.0`, so every player gets 5.0, so the balancer's rating term is constant and it falls through to position composition and its hill-climb. That is the honest answer to "we know nothing about anybody" and it is what the club would get from a coin toss, which is what they are doing by hand today. It is also self-correcting: after one match and one round of rating DMs, `clubMeanRating` becomes real and every subsequent sheet is informed.
 
 **The proposed signature**, replacing `computePlayerRating`:
 
@@ -448,6 +450,13 @@ SAMPLE (10 rows)
 NO ROWS WRITTEN. Re-run with --apply to write.
 ```
 
+**MEASURED, 2026-09-18, slice 1 dry run against prod** (the numbers above were the estimate; two of them were wrong, and both errors were the same mistake, a USER count written on a MEMBERSHIP line):
+
+- `will receive seedRating` is **155**, not 143, and `source user has no seed` is **0**, not 12. All 143 users carry a seed, so every one of the 155 memberships has a source. The 12 was 155 memberships minus 143 users, which is not a seed gap.
+- `will receive a moved Elo` is **53**, not 36. 36 USERS have a moved Elo; 17 of them hold more than one membership, and 36 + 17 = 53 rows.
+- All 155 memberships are active (`leftAt` null), so the "left rows keep history" clause costs nothing today. It still has to be in the query, because slice 1 can be re-run later.
+- Memberships are spread over four orgs, not the five the sample above guessed: Sutton Football Club 74, Sutton Lads 62, Friday Night Football 16, FNF 3. `BenchTest mpl6m779` holds no memberships.
+
 Then `--apply`, then the same script re-run dry as the verification: it must report `will receive seedRating 0`.
 
 **Idempotent by construction:** it only writes where `Membership.seedRating IS NULL`, so a second `--apply` is a no-op and a partial failure is safe to resume.
@@ -580,6 +589,8 @@ Genuine ones only. The five decisions in section 2 are not re-asked.
 
 1. **On the day slice 2 ships, is the group told?** Nine Sutton players' ratings change, Amir's by 0.6, and the draft order changes visibly. Options: say nothing (the ratings are not posted, only the sheet is), tell the two admins privately, or one line in the group. My recommendation is telling the admins, because a player who has been watching his own dashboard tile will notice it move and the admins should not be surprised by the question.
 
+   **ANSWERED (Kemal, 2026-09-18): tell the two admins, not the group.** No group post on the day slice 2 ships.
+
 2. **What is a club rating with only one or two ratings allowed to do?** The design shrinks it 75% and 60% toward the club mean, so a single 10 lands at 7.5 at Sutton rather than 10. That is the right call for the balancer. But the stats page shows a number too, and `loadRatingLeaderboard` already has a `provisional` flag it sets at `games < 2` (`src/lib/player-stats.ts:519`). Should a player with 1 or 2 club ratings see their raw average, the shrunk one, or be told it is provisional? I have designed the balancer and the display to use the same shrunk number, on the "one number per player per club" principle, but it is a display choice you may want the other way.
 
 3. **Does a player who LEFT a club keep those ratings in their overall?** I have designed yes (section 5.2), reading "all of the player's ratings" literally, which means Sutton Lads scores stay in the overall of the ten players who have both. The alternative is that leaving a club retires its ratings from the overall. Yes is simpler and matches the wording; no is arguably what a player would expect.
@@ -587,3 +598,7 @@ Genuine ones only. The five decisions in section 2 are not re-asked.
 4. **Is the Elo worth keeping per club, or worth retiring?** After PR #79 it drives one leaderboard section and nothing else, only 36 of 143 users have ever moved off 1000, and slice 5 exists purely to give it a per-club home. If the Elo leaderboard is not something the club looks at, deleting `matchRating` in slice 7 alongside the deprecated columns is less code than moving it. I have designed the move, not the deletion, because deleting a leaderboard people might be reading is your call and not mine.
 
 5. **The Turkish club's first team sheet will be built from nothing** (section 4.2: every player at 5.0, so the balancer falls through to position composition and its hill-climb). That is correct and self-correcting after one match. Is it acceptable as a first impression, or do you want their admin offered the seed editor during onboarding so week one has some signal? The onboarding analyser already proposes seeds (`src/lib/onboarding-analyzer.ts:226-238`) and `finish-setup` already has a seed column in its UI, so the machinery exists; it is a question of whether we point them at it.
+
+   **ANSWERED (Kemal, 2026-09-18): yes, offer it.** A new club's admin IS offered the seed editor during setup, exactly as Sutton FC was set up. Those seeds live on that club's `Membership`, so nothing leaks between clubs: the same human seeded in two clubs carries two independent numbers, and neither club can see or move the other's. The club-mean prior of section 4.2 therefore stops being the day-one path for a new club and becomes what it should be, the fallback for a member nobody has seeded.
+
+**Still open: 2, 3 and 4.** 1 and 5 are answered above.
