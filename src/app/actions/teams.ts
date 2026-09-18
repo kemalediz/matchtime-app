@@ -51,10 +51,24 @@ import { revalidatePath } from "next/cache";
  * Matching only the number would have left two implementations that
  * happen to agree today and drift the next time either is touched, and
  * it would NOT have fixed the adjuster, the pins, the names or the
- * duplicated write. There is now exactly one implementation of "build
- * the team sheet" and this action is a thin, authenticated door into
- * it. The rule for anything added here later: if it changes WHO IS ON
- * WHICH TEAM, it belongs in `lib/team-generation.ts`, not in this file.
+ * duplicated write. The two paths a human can trigger, the WhatsApp
+ * command and this button, now share one implementation, and this
+ * action is a thin, authenticated door into it. The rule for anything
+ * added here later: if it changes WHO IS ON WHICH TEAM, it belongs in
+ * `lib/team-generation.ts`, not in this file.
+ *
+ * ── ONE RIVAL FORMULA IS STILL STANDING, AND THIS IS NOT IT ──────────
+ *
+ * `app/api/cron/generate-teams/route.ts:57-92` computes its own rating
+ * inline (`ratings.length >= 3 ? mean of the last 60 peer scores :
+ * seedRating ?? 5.0`), calls `balanceTeams`, writes `TeamAssignment`
+ * rows and flips `Match.status`, and `vercel.json` schedules it live at
+ * `0 12 * * *`. It never calls `generateTeamsForMatch`. There were
+ * THREE implementations before this change and there are two after it,
+ * so do not read the paragraph above as "nothing else picks teams".
+ * Slice 3 of `MDs/club-scoped-ratings-design-2026-09-18.md` deletes
+ * that formula and makes the cron delegate to the shared helper; it is
+ * deliberately out of scope here.
  *
  * The Elo is not deleted and did not lose a job. It still updates after
  * every scored match and still drives the leaderboard. It simply has no
@@ -66,13 +80,13 @@ import { revalidatePath } from "next/cache";
 /**
  * Build the team sheet from the admin dashboard.
  *
- * Authenticates, checks the admin seat, then hands off to the ONE
+ * Authenticates, checks the admin seat, then hands off to the shared
  * implementation. Three things are deliberate:
  *
  *  1. AUTH FIRST, THEN THE ADMIN SEAT, THEN DELEGATE.
- *     `generateTeamsForMatch` has no authorisation of its own — its
- *     other callers (the cron, the analysed-message pipeline) are
- *     trusted contexts that authorised earlier. This action is reachable
+ *     `generateTeamsForMatch` has no authorisation of its own. Its only
+ *     other caller, the analysed-message pipeline, is a trusted context
+ *     that authorised earlier. This action is reachable
  *     from a browser, so it keeps both checks, in this order, ahead of
  *     every read and write.
  *

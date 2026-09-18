@@ -25,6 +25,14 @@
  *            Deleted 2026-09-15; reproduced here so the divergence it
  *            caused stays measurable after the fact.
  *
+ * A THIRD formula exists and is NOT compared here.
+ * `app/api/cron/generate-teams/route.ts:57-92` uses a plain mean of the
+ * last 60 peer scores, falling back to the seed under 3 ratings, with
+ * no seed prior and no Elo. It is scheduled live at `0 12 * * *`. This
+ * script answers the blended-vs-elo-mix question only; slice 3 of
+ * `MDs/club-scoped-ratings-design-2026-09-18.md` is where the cron's
+ * formula goes.
+ *
  * The LLM rating adjuster is deliberately NOT run. Post-unification both
  * entry points run the same adjuster over the same base vector, so it is
  * a separate axis from the formula question this script answers, and
@@ -253,7 +261,7 @@ async function main() {
         `  ${x}\n  vs\n  ${y}`,
     );
   };
-  show("blended  (WhatsApp path — now BOTH paths)", blendedRun);
+  show("blended  (WhatsApp path, now the dashboard too)", blendedRun);
   show("elo-mix  (old dashboard button)", eloMixRun);
 
   const sideOf = (key: string) => {

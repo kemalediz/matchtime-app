@@ -1,21 +1,35 @@
 /**
- * THE team-generation helper — since 2026-09-15 the only code in
- * MatchTime that decides who is on which team.
+ * THE team-generation helper for the two paths a human can trigger.
+ * Since 2026-09-15 a WhatsApp "@Match Time generate the teams" and the
+ * admin dashboard's Generate/Regenerate button share this one
+ * implementation: the LLM-adjusted blend of seed and peer ratings
+ * (`computePlayerRating`, then `runRatingAdjuster` on top).
  *
- * Callers: the legacy `/api/cron/generate-teams` (which still runs for
- * maintenance — auto-publish + auto-complete), the LLM analyse route
- * when a player asks the bot to generate teams, and the admin
- * dashboard's Generate/Regenerate button via
- * `app/actions/teams.ts#generateTeams`. That last one used to be a
- * SECOND implementation with its own rating formula, so the same squad
- * got different teams depending on which button was pressed; the
- * tombstone at the top of `app/actions/teams.ts` records what it did
- * and why it went.
+ * Callers: the LLM analyse route via `lib/owner-deps.ts` when a player
+ * asks the bot to generate teams, and the admin dashboard's
+ * Generate/Regenerate button via `app/actions/teams.ts#generateTeams`.
+ * That second one used to be a SECOND implementation with its own
+ * rating formula, so the same squad got different teams depending on
+ * which button was pressed; the tombstone at the top of
+ * `app/actions/teams.ts` records what it did and why it went.
  *
- * NO AUTHORISATION LIVES HERE. Every caller authorises first — the cron
- * by being the cron, the analyse route by its own gates, the server
- * action by `auth()` then `requireOrgAdmin`. A new caller must do the
- * same before it calls in.
+ * THIS IS NOT YET THE ONLY CODE THAT PICKS TEAMS, and a comment here
+ * saying so would send the next reader past a live rival.
+ * `app/api/cron/generate-teams/route.ts:57-92` carries its own rating
+ * formula (`ratings.length >= 3 ? mean of the last 60 peer scores :
+ * seedRating ?? 5.0`), calls `balanceTeams` itself, writes
+ * `TeamAssignment` rows and flips `Match.status` to TEAMS_GENERATED.
+ * It does NOT call in here, it skips the rating adjuster,
+ * `pinnedToTeam` and `teamNames`, and `vercel.json` schedules it live
+ * at `0 12 * * *`. It can still produce a different sheet from this
+ * one. Slice 3 of `MDs/club-scoped-ratings-design-2026-09-18.md`
+ * deletes that formula and makes the cron delegate here; until it
+ * does, "one team-generation path" means the two human-triggered
+ * paths, not every path.
+ *
+ * NO AUTHORISATION LIVES HERE. Every caller authorises first: the
+ * analyse route by its own gates, the server action by `auth()` then
+ * `requireOrgAdmin`. A new caller must do the same before it calls in.
  *
  * IT DOES NOT POST. The ready-to-send group message comes back as
  * `groupPost` and nothing in this file queues a `BotJob`. Whether the

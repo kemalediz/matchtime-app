@@ -16,10 +16,14 @@
  * ── `matchRating` DOES NOT PICK TEAMS. THAT IS DELIBERATE ────────────
  *
  * It is a LEADERBOARD number. `lib/match-history.ts` ranks the Elo top
- * and bottom from it, and that is the whole of its job. The balancer
- * never sees it: `lib/team-generation.ts` — since 2026-09-15 the only
- * implementation of "build the team sheet" — rates players with
- * `computePlayerRating`, a seed-and-peer blend with no Elo term.
+ * and bottom from it, and that is the whole of its job. No code that
+ * builds a team sheet reads it any more. `lib/team-generation.ts`, the
+ * path the WhatsApp bot and the admin dashboard have shared since
+ * 2026-09-15, rates players with `computePlayerRating`, a seed-and-peer
+ * blend with no Elo term. The one rival formula still standing,
+ * `app/api/cron/generate-teams/route.ts:57-92`, has no Elo term either
+ * (it is a plain peer mean falling back to the seed), so `matchRating`
+ * reaches no team sheet on any path.
  *
  * If you are here because the Elo "isn't being used", that is not a bug
  * and please do not wire it back in. Until 2026-09-15 the admin

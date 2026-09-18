@@ -1,7 +1,8 @@
 /**
- * ONE TEAM SHEET, WHICHEVER BUTTON YOU PRESS.
+ * ONE TEAM SHEET, WHICHEVER BUTTON A HUMAN PRESSES.
  *
- * MatchTime had two ways to build a team sheet and they disagreed:
+ * MatchTime had two human-triggered ways to build a team sheet and they
+ * disagreed:
  *
  *   "@Match Time generate the teams"   → lib/team-generation.ts
  *   the admin dashboard's Generate     → app/actions/teams.ts
@@ -22,6 +23,15 @@
  * and it tests the two ENTRY POINTS against the same squad rather than
  * asserting things about arithmetic — matching numbers would still have
  * left the two buttons producing different teams.
+ *
+ * WHAT THIS FILE DOES NOT COVER. A third writer of team sheets exists
+ * and is untouched here: `app/api/cron/generate-teams/route.ts:57-92`
+ * has its own inline rating formula, calls `balanceTeams` directly, and
+ * runs live at `0 12 * * *`. Nothing below asserts anything about it,
+ * and nothing below should be read as evidence that only one formula
+ * remains. Slice 3 of `MDs/club-scoped-ratings-design-2026-09-18.md`
+ * takes the cron; that is when this file's two entry points become all
+ * of them.
  *
  * ── WHY Math.random IS STUBBED ───────────────────────────────────────
  *

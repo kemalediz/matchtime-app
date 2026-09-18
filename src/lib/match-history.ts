@@ -262,11 +262,14 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //
   //    THIS IS THE ONLY PLACE `matchRating` IS READ FOR ANYTHING A
   //    PLAYER SEES. It is a leaderboard number and not a team-selection
-  //    input: the balancer rates players with `computePlayerRating`
-  //    (seed + peer ratings, no Elo term) on every path since
-  //    2026-09-15. Don't "fix" that by feeding this number back into
-  //    team generation — the reasoning is in `lib/elo.ts`'s header and
-  //    the tombstone at the top of `app/actions/teams.ts`.
+  //    input: no code that builds a team sheet consults it. The two
+  //    human-triggered paths share `computePlayerRating` (seed + peer
+  //    ratings, no Elo term) through `lib/team-generation.ts` since
+  //    2026-09-15, and `api/cron/generate-teams/route.ts` still runs a
+  //    rival formula of its own but that one has no Elo term either.
+  //    Don't "fix" this by feeding the number back into team
+  //    generation. The reasoning is in `lib/elo.ts`'s header and the
+  //    tombstone at the top of `app/actions/teams.ts`.
   const teamAssignmentUserIds = await db.teamAssignment.findMany({
     where: { match: { activity: { orgId }, status: "COMPLETED", isHistorical: false } },
     select: { userId: true },
