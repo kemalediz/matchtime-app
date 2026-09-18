@@ -53,9 +53,13 @@
  * ── WHY `slot-transfer` IS A REPAIR AND NOT A GUESS ──────────────────
  *
  * Teams are only ever built from CONFIRMED attendance — `team-
- * generation.ts` and `actions/teams.ts` both feed the balancer from
- * `status: CONFIRMED` rows and then `deleteMany` + `createMany` the
- * whole sheet. So "holds a slot but is not CONFIRMED" is not a state
+ * generation.ts` feeds the balancer from `status: CONFIRMED` rows and
+ * then `deleteMany` + `createMany` the whole sheet, and since
+ * 2026-09-15 the admin dashboard's Generate button delegates to it
+ * rather than keeping its own copy. The one other place that still
+ * builds a sheet, `api/cron/generate-teams/route.ts`, selects
+ * `status: CONFIRMED` too, so the argument below holds whichever wrote
+ * the rows. So "holds a slot but is not CONFIRMED" is not a state
  * the system can create; it is only ever a STALE sheet, a player
  * dropped or benched after the teams were built. Meanwhile "CONFIRMED
  * and holds no slot" is the other half of the same staleness: someone

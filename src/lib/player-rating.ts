@@ -14,9 +14,24 @@
  *   - 60 peer ratings: peer ~95%
  *
  * Used by:
- *   - team-generation.ts (balancer input)
+ *   - team-generation.ts (balancer input). Since 2026-09-15 that is the
+ *     route BOTH human-triggered paths take, so this is the formula
+ *     that picks teams whether the request arrives from WhatsApp or
+ *     from the admin dashboard's Generate button. The dashboard's own
+ *     rival formula, which blended the Elo `matchRating` in, was
+ *     deleted; `app/actions/teams.ts` carries the tombstone.
+ *
+ *     It is NOT the only route into the balancer yet.
+ *     `app/api/cron/generate-teams/route.ts:57-92` computes its own
+ *     rating inline (mean of the last 60 peer scores once there are at
+ *     least 3, otherwise the seed), calls `balanceTeams` directly and
+ *     writes the sheet itself, on a live `0 12 * * *` schedule. Slice 3
+ *     of `MDs/club-scoped-ratings-design-2026-09-18.md` removes it.
  *   - dashboard rating tile
  *   - player profile pages (any future "show my rating" surface)
+ *
+ * The Elo `matchRating` is NOT an input here and is not meant to be.
+ * It is a leaderboard number: see the header of `lib/elo.ts`.
  */
 
 const PRIOR_WEIGHT = 3;
