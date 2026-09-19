@@ -108,9 +108,16 @@ export default async function DashboardPage() {
     },
   });
 
-  // THE CLUB RATING. The same number `generateTeamsForMatch` uses to
-  // pick the sides, read the same way, so this tile and the team sheet
-  // cannot disagree.
+  // THE CLUB RATING. Read exactly the way `generateTeamsForMatch`
+  // reads it, from this club's rows and no others.
+  //
+  // The tile shows `myRating.rating`, the RAW mean of what this club
+  // gave the player, not `myRating.balancerRating`, the shrunk figure
+  // the team sheet is built from. Kemal, 2026-09-19: "whatever ratings
+  // are given the player should see but yeah for team setup shrunk
+  // number should be used initially". While the player has only a
+  // rating or two the two differ, and `rating_club_balance_note` is the
+  // sentence that says why before anybody has to ask.
   //
   // Until 2026-09-19 this block was the last player-visible read of the
   // global rating: `rating.findMany({ where: { playerId } })` with no
@@ -178,6 +185,12 @@ export default async function DashboardPage() {
     : myRating.provisional
     ? s.rating_club_provisional({ count: myRating.peerCount })
     : s.rating_club_peers({ count: myRating.peerCount });
+  // The tile has room for one sub-line, so the balancer caveat rides in
+  // the tooltip beside the club-scope note. The stats page, which has
+  // the room, shows it as its own line.
+  const ratingTileTitle = myRating.provisional
+    ? `${s.rating_club_note} ${s.rating_club_balance_note}`
+    : s.rating_club_note;
 
   const myAttendBadge = myAttendance?.status === "CONFIRMED"
     ? { label: "You're in", cls: "bg-green-100 text-green-700" }
@@ -229,13 +242,13 @@ export default async function DashboardPage() {
             )}
           </div>
         </div>
-        <div className={`p-5 rounded-xl border ${TILE.green} transition-colors`} title={s.rating_club_note}>
+        <div className={`p-5 rounded-xl border ${TILE.green} transition-colors`} title={ratingTileTitle}>
           <div className="flex items-center gap-2 opacity-75">
             <Users className="w-4 h-4" />
             <p className="text-xs font-medium uppercase tracking-wider">{s.rating_club_tile}</p>
           </div>
           <p className="text-3xl font-bold mt-2">
-            {myRating.hasOwnNumber ? myRating.rating.toFixed(1) : "\u2014"}
+            {myRating.rating !== null ? myRating.rating.toFixed(1) : "\u2014"}
           </p>
           <p className="text-[11px] opacity-70 mt-0.5">{ratingSubLine}</p>
         </div>

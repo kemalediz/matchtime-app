@@ -1214,13 +1214,27 @@ export const en = {
   rating_seed_club_hint:
     "Seed ratings apply to this club only. A player who also turns out somewhere else keeps a separate rating there, and nothing you type here changes it.",
 
-  /** One or two ratings in, the prior still outweighs the player's own
-   *  scores (75% and 60% of the number respectively), so the figure is
-   *  real but not yet theirs. `loadRatingLeaderboard` already flags a
-   *  one-game player the same way; this says it in words rather than
-   *  showing a bare shrunk figure with no explanation. */
+  /** One or two ratings in, the number above is a real average of a
+   *  very small number of scores, so the next one moves it a long way.
+   *
+   *  CHANGED 2026-09-19 with Kemal's answer to open question 2. It used
+   *  to read "so it sits close to the club average until more arrive",
+   *  which described a shrinking that is no longer applied to the
+   *  figure on the screen: the player now sees their own raw average.
+   *  The old line was not stale, it was false, and false in the
+   *  direction that matters (it told a player their number had been
+   *  moved when it had not). The caveat is about confidence now. */
   rating_club_provisional: (p: { count: number }): string =>
-    `Provisional: ${p.count} rating${p.count === 1 ? "" : "s"} so far, so it sits close to the club average until more arrive.`,
+    `Provisional: ${p.count} rating${p.count === 1 ? "" : "s"} so far, so this number will move a lot as more arrive.`,
+
+  /** The sentence that pre-empts "it says I'm 9, why am I on the weaker
+   *  team". The player's number is theirs and is not shrunk; the team
+   *  sheet is built from a shrunk one while the evidence is this thin,
+   *  and saying so once in plain words is cheaper than the question.
+   *  One sentence, no jargon, and the word "Bayesian" is never going to
+   *  appear on a football club's dashboard. */
+  rating_club_balance_note:
+    "While you have only a rating or two, MatchTime is careful with it when picking teams, so one early score does not decide a side.",
 
   /** The settled case. Wording moved byte for byte from the dashboard
    *  tile it replaces. */

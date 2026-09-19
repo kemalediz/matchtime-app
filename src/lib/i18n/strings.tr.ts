@@ -1063,8 +1063,15 @@ export const tr: Strings = {
   rating_seed_club_hint:
     "Başlangıç puanları sadece bu kulüp için geçerli. Başka bir yerde de oynayan bir oyuncunun orada ayrı bir puanı olur, buraya yazdığınız hiçbir şey onu değiştirmez.",
 
+  // 2026-09-19: eski satır "kulüp ortalamasına yakın durur" diyordu.
+  // Artık oyuncu kendi ham ortalamasını görüyor, yani o cümle yanlıştı.
+  // Yeni cümle sayının oynatılmasından değil, elde az veri olmasından
+  // bahsediyor.
   rating_club_provisional: (p) =>
-    `Geçici: şimdilik ${p.count} puan var, yenileri gelene kadar kulüp ortalamasına yakın durur.`,
+    `Geçici: şimdilik ${p.count} puan var, yenileri geldikçe bu sayı çok oynayacak.`,
+
+  rating_club_balance_note:
+    "Sadece bir iki puanın varken MatchTime takımları kurarken bu sayıya temkinli yaklaşır, böylece tek bir erken puan takımı belirlemez.",
 
   rating_club_peers: (p) => `takım arkadaşlarından ${p.count} puan`,
 };

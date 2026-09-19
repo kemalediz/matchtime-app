@@ -19,6 +19,16 @@
  * mocked: what is under test is the QUERY SHAPE (does the org filter
  * exist, and does `take` sit next to it) and the display decisions
  * layered on top of `computeClubRating`, not Prisma.
+ *
+ * ── TWO NUMBERS SINCE 2026-09-19 ─────────────────────────────────────
+ *
+ * `rating` is what a human is shown: the raw mean of the ratings this
+ * club actually gave this player. `balancerRating` is what team
+ * generation uses: the same scores shrunk toward the club's own mean
+ * while there are only one or two of them. Kemal answered the design's
+ * open question 2 that way round, and the arithmetic of each is pinned
+ * in `club-rating-shown-vs-balanced.test.ts`. Here we only check that
+ * one call produces both and that the right one reaches each field.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -104,16 +114,19 @@ describe("the dashboard tile reads THIS club's ratings", () => {
   it("another club's ratings cannot move the number", async () => {
     clubSeed = 6;
     for (let i = 0; i < 3; i++) push(ME, ORG, 7);
-    const withoutForeign = (await load()).rating;
+    const withoutForeign = await load();
 
     // Ten 9s arrive at a club this player has left. Nothing may move.
     for (let i = 0; i < 10; i++) push(ME, OTHER_ORG, 9);
     findManyCalls = [];
-    const withForeign = (await load()).rating;
+    const withForeign = await load();
 
-    expect(withForeign).toBe(withoutForeign);
-    // (sum 21 + prior 6 x 3) / (3 + 3) = 6.5
-    expect(withForeign).toBe(6.5);
+    expect(withForeign.rating).toBe(withoutForeign.rating);
+    expect(withForeign.balancerRating).toBe(withoutForeign.balancerRating);
+    // Shown: the mean of the three 7s he was actually given here.
+    expect(withForeign.rating).toBe(7);
+    // Balanced: (sum 21 + prior 6 x 3) / (3 + 3) = 6.5
+    expect(withForeign.balancerRating).toBe(6.5);
   });
 
   it("a player with no global seed still gets their club's number", async () => {
@@ -122,17 +135,22 @@ describe("the dashboard tile reads THIS club's ratings", () => {
     clubSeed = 8;
     for (let i = 0; i < 2; i++) push(ME, ORG, 9);
     const r = await load();
-    // (9 + 9 + 8 x 3) / (2 + 3) = 8.4
-    expect(r.rating).toBeCloseTo(8.4, 10);
+    // Shown: the mean of the two 9s.
+    expect(r.rating).toBe(9);
+    // Balanced: (9 + 9 + 8 x 3) / (2 + 3) = 8.4
+    expect(r.balancerRating).toBeCloseTo(8.4, 10);
     expect(r.source).toBe("blended");
   });
 });
 
 /**
- * Kemal's open question 2, defaulted to the design's answer: one number
- * per player per club, so the player sees the SAME shrunk figure the
- * balancer uses, and is TOLD it is provisional rather than being handed
- * a bare shrunk number with no explanation.
+ * Kemal's open question 2, ANSWERED 2026-09-19: the player sees their
+ * own raw average, the balancer keeps the shrunk one. `provisional` is
+ * what survives of the old answer and it changes meaning with it. It no
+ * longer warns that the number has been adjusted, because it has not.
+ * It warns that one or two ratings is thin evidence, so the number will
+ * move a lot, and that MatchTime is correspondingly careful with it
+ * when it picks the teams. Same flag, same threshold, honest sentence.
  */
 describe("provisional while the prior still outweighs the player's own scores", () => {
   it("one club rating is provisional", async () => {
@@ -181,8 +199,10 @@ describe("a player this club has never rated is shown the empty state", () => {
     const r = await load();
     expect(r.source).toBe("club-average");
     expect(r.hasOwnNumber).toBe(false);
+    // Nothing to show: the club's average is not this player's number.
+    expect(r.rating).toBeNull();
     // The balancer still gets a usable prior out of the same call.
-    expect(r.rating).toBe(7);
+    expect(r.balancerRating).toBe(7);
   });
 
   it("seeded but unrated: the seed IS the club's own opinion, so it shows", async () => {
@@ -192,13 +212,15 @@ describe("a player this club has never rated is shown the empty state", () => {
     expect(r.source).toBe("seed");
     expect(r.hasOwnNumber).toBe(true);
     expect(r.rating).toBe(7.5);
+    expect(r.balancerRating).toBe(7.5);
   });
 
   it("a club that has never rated anybody gives nobody a number", async () => {
     const r = await load();
     expect(r.source).toBe("club-average");
     expect(r.hasOwnNumber).toBe(false);
-    expect(r.rating).toBe(5);
+    expect(r.rating).toBeNull();
+    expect(r.balancerRating).toBe(5);
   });
 });
 
@@ -213,8 +235,41 @@ describe("a clubmate's club rating is reachable", () => {
     clubSeed = 6;
     for (let i = 0; i < 5; i++) push("u-clubmate", ORG, 8);
     const r = await load(ORG, "u-clubmate");
-    // (40 + 18) / 8 = 7.25
-    expect(r.rating).toBe(7.25);
+    // Shown: the mean of the five 8s the club gave them.
+    expect(r.rating).toBe(8);
+    // Balanced: (40 + 18) / 8 = 7.25
+    expect(r.balancerRating).toBe(7.25);
     expect(r.hasOwnNumber).toBe(true);
+  });
+});
+
+/**
+ * KEMAL'S EXAMPLE, END TO END THROUGH THE LOADER.
+ *
+ * One rating of 9 at a club whose mean is 6.674. The player is shown
+ * 9.0 because that is what his team-mates gave him; the balancer reads
+ * 7.3 because one rating is not yet evidence. Both come out of the one
+ * call, so no surface can reach for the wrong one by accident.
+ */
+describe("one rating of 9 at a club whose mean is about 6.7", () => {
+  it("shows 9.0 and balances at roughly 7.3", async () => {
+    // Twenty rows from the rest of the squad, sitting where Sutton FC
+    // really sits (6.674, measured against production on 2026-09-18),
+    // then this player's single 9 on top.
+    const others = [7, 7, 7, 7, 6, 7, 6, 6, 7, 6, 7, 6, 7, 7, 6, 7, 6, 7, 7, 6];
+    for (const score of others) push("u-other", ORG, score);
+    push(ME, ORG, 9);
+    const clubMean = ratingRows.reduce((s2, r) => s2 + r.score, 0) / ratingRows.length;
+
+    const r = await load();
+    expect(r.peerCount).toBe(1);
+    expect(r.rating).toBe(9);
+    expect(r.rating!.toFixed(1)).toBe("9.0");
+    expect(clubMean).toBeCloseTo(6.714, 3);
+    expect(r.balancerRating).toBeCloseTo((9 + clubMean * 3) / 4, 10);
+    expect(r.balancerRating.toFixed(1)).toBe("7.3");
+    expect(r.provisional).toBe(true);
+    // The two are allowed to differ, and here they must.
+    expect(r.rating).toBeGreaterThan(r.balancerRating);
   });
 });

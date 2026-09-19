@@ -56,10 +56,34 @@
  * constant, and the balancer falls through to position composition. It
  * is self-correcting after one match and one round of rating DMs.
  *
+ * ── TWO NUMBERS SINCE 2026-09-19, AND WHY ────────────────────────────
+ *
+ * `computeClubRating` above is the BALANCER's number. It is not the
+ * number a player is shown. `clubDisplayRating`, at the foot of this
+ * file, is: the raw mean of the ratings this club actually gave them,
+ * with no prior and no shrinking.
+ *
+ * Kemal answered the design's open question 2 that way round:
+ *
+ *   "i think the latter is a better one as whatever ratings are given
+ *    the player should see but yeah for team setup shrunk number should
+ *    be used initially"
+ *
+ * They answer two different questions. "What did people give me" is the
+ * player's question and it has a factual answer, so shrinking it was
+ * answering a question nobody asked. "How confident is MatchTime in
+ * that yet" is team generation's question, and at one or two ratings
+ * the honest answer is "not very", which is what the prior encodes.
+ * A single 9 is the player's 9 on his own page and is worth about 7.3
+ * to the draft, and both of those statements are true at once.
+ *
+ * Nothing about the arithmetic above changed when this was decided.
+ * `clubDisplayRating` was ADDED beside it.
+ *
  * Used by:
- *   - team-generation.ts (balancer input)
- *   - player-stats.ts `loadClubRating`, which is what every
- *     player-visible tile reads (dashboard, /profile/stats)
+ *   - team-generation.ts (`computeClubRating`, the balancer input)
+ *   - player-stats.ts `loadClubRating`, which returns BOTH and is what
+ *     every player-visible tile reads (dashboard, /profile/stats)
  *
  * There is no global counterpart any more. `computePlayerRating`, the
  * deprecated shim slice 2 left behind so the surfaces slice 6 owned
@@ -103,4 +127,50 @@ export function computeClubRating(args: {
   else if (peerCount >= PRIOR_WEIGHT * 3) source = "peer";
   else source = "blended";
   return { rating, source, peerCount };
+}
+
+/**
+ * THE NUMBER A HUMAN IS SHOWN. The raw mean of the ratings this club
+ * gave this player, and nothing else.
+ *
+ * ── WHAT IT DELIBERATELY DOES NOT TAKE ───────────────────────────────
+ *
+ * There is no `clubMeanRating` parameter. That is the point, and it is
+ * the same trick `computeClubRating` uses to make another club's number
+ * unrepresentable: a display figure cannot be shrunk toward anything if
+ * the thing it would shrink toward cannot be passed in.
+ * `__tests__/club-rating-shown-vs-balanced.test.ts` asserts it by type.
+ *
+ * ── THE SEED, AND THE ONE CASE THAT IS NOT A MEAN ────────────────────
+ *
+ * With no peer ratings at all, there is no mean to take, and what the
+ * club does or does not have is its seed:
+ *
+ *   seeded    the seed, which IS this club's own stated opinion of the
+ *             player, so it is theirs to be shown. Unchanged behaviour.
+ *   unseeded  null. The club has never said anything about this player,
+ *             and the club's AVERAGE is a fine prior for the balancer
+ *             and a lie on the player's own dashboard. The UI renders
+ *             the empty state instead of a number.
+ *
+ * A peer rating always wins over a seed: once team-mates have said
+ * something, the admin's guess is not what the player was given.
+ *
+ * Clamped to [1, 10] like the balancer, for the same reason: somebody
+ * can seed outside the band. Peer scores are 1 to 10 by the schema, so
+ * the clamp never bites on a mean.
+ */
+export function clubDisplayRating(args: {
+  /** `Membership.seedRating` for THIS club. Null when unseeded. */
+  clubSeedRating: number | null;
+  /** `Rating.score` rows from THIS club only, newest first, capped at 60. */
+  clubPeerRatings: number[];
+}): number | null {
+  const { clubPeerRatings, clubSeedRating } = args;
+  if (clubPeerRatings.length > 0) {
+    const mean = clubPeerRatings.reduce((s, r) => s + r, 0) / clubPeerRatings.length;
+    return Math.max(1, Math.min(10, mean));
+  }
+  if (clubSeedRating === null) return null;
+  return Math.max(1, Math.min(10, clubSeedRating));
 }

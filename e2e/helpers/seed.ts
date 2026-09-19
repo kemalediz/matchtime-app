@@ -192,10 +192,21 @@ export async function seedAll(db: PrismaClient): Promise<void> {
     ],
   });
   // Pre-existing ratings RECEIVED by Riley Rater so /profile/stats has data.
+  //
+  // The third row is Pat's, not Riley's, and it is a 4 on purpose. It
+  // pulls the CLUB's mean below Riley's own average, which is what makes
+  // the two rating numbers differ on the rendered page: Riley is shown
+  // the raw mean of his own two scores (7.5) while the balancer reads
+  // those two scores shrunk toward a club mean of 6.33 (6.8). With only
+  // Riley's rows the club mean was his own average and the two numbers
+  // coincided, so `stats.spec.ts` could not have told them apart.
+  // Nothing else keys off it: both assertions in `rate.spec.ts` filter
+  // on `raterId = U.rater`, and this row's rater is Trudy.
   await db.rating.createMany({
     data: [
       { matchId: MATCH.rate, raterId: U.player, playerId: U.rater, score: 8 },
       { matchId: MATCH.rate, raterId: U.third, playerId: U.rater, score: 7 },
+      { matchId: MATCH.rate, raterId: U.third, playerId: U.player, score: 4 },
     ],
   });
   await db.teamAssignment.createMany({
