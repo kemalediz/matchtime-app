@@ -156,7 +156,10 @@ export default async function MyStatsPage() {
             big={myClubRating.rating !== null ? myClubRating.rating.toFixed(1) : "—"}
             label={s.rating_club_tile}
             sub={
-              myClubRating.peerCount === 0
+              // `hasOwnNumber`, not `peerCount === 0`: the same fact as
+              // the `rating !== null` above it, so the caption and the
+              // number cannot disagree about whether there is one.
+              !myClubRating.hasOwnNumber
                 ? s.rating_club_empty
                 : myClubRating.provisional
                 ? s.rating_club_provisional({ count: myClubRating.peerCount })

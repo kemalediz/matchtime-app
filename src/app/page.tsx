@@ -180,7 +180,13 @@ export default async function DashboardPage() {
   // holds the membership can do `t(org.language)` exactly like any
   // WhatsApp composer.
   const s = t(membership.org.language);
-  const ratingSubLine = myRating.peerCount === 0
+  // `hasOwnNumber`, not `peerCount === 0`: it is the same fact as the
+  // `rating !== null` the tile renders below, so the sub-line and the
+  // number can never disagree about whether there is one. They were two
+  // spellings of one condition until 2026-09-19, when a seeded but
+  // unrated player made them briefly capable of differing (a seed drawn
+  // as the number, over a line saying there were no ratings).
+  const ratingSubLine = !myRating.hasOwnNumber
     ? s.rating_club_empty
     : myRating.provisional
     ? s.rating_club_provisional({ count: myRating.peerCount })

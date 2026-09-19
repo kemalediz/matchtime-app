@@ -1203,10 +1203,19 @@ export const en = {
   rating_overall_note:
     "Every rating you have ever had, from every club, counted once each. Only you can see this.",
 
-  /** A player this club has never rated. Shown INSTEAD of a number when
-   *  the only thing available is the club's own average, which is a
-   *  usable prior for the balancer and would be a lie on the player's
-   *  own dashboard. */
+  /** A player this club has never rated. Shown INSTEAD of a number
+   *  whenever the only things available are the club's own average and
+   *  the admin's seed. Both are usable priors for the balancer and both
+   *  would be a lie on the player's own dashboard, the seed doubly so:
+   *  it is a guess typed before anybody had played, and read under
+   *  "your rating" it sounds like a verdict from team-mates who have
+   *  not spoken yet.
+   *
+   *  The sentence is deliberately unchanged from the version that
+   *  covered only the unseeded case, because it was already true of the
+   *  seeded one: there are no ratings, and team-mates do set this after
+   *  the first game. Kemal, 2026-09-19: "i prefer them to see nothing,
+   *  better not to show seed". */
   rating_club_empty: "No ratings at this club yet. Your team-mates set this after your first game.",
 
   /** Admin seed editor. The seed is one club's opinion and the editor
