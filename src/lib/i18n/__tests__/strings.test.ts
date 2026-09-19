@@ -286,6 +286,7 @@ const SAMPLES: SampleArgs = {
   rating_club_empty: null,
   rating_seed_club_hint: null,
   rating_club_provisional: { count: 2 },
+  rating_club_balance_note: null,
   rating_club_peers: { count: 7 },
 };
 

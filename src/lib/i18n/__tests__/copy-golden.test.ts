@@ -687,6 +687,7 @@ function cases(lang: Lang): Case[] {
   add("R144 rating_club_empty", ratings.rating_club_empty);
   add("R144 rating_club_provisional / one", ratings.rating_club_provisional({ count: 1 }));
   add("R144 rating_club_provisional / two", ratings.rating_club_provisional({ count: 2 }));
+  add("R144 rating_club_balance_note", ratings.rating_club_balance_note);
   add("R144 rating_club_peers / one", ratings.rating_club_peers({ count: 1 }));
   add("R144 rating_club_peers / many", ratings.rating_club_peers({ count: 24 }));
   add("R145 rating_overall_label", ratings.rating_overall_label);
