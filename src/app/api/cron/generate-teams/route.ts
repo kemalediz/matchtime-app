@@ -1,9 +1,34 @@
+/**
+ * The daily maintenance sweep: generate, auto-publish, auto-complete.
+ *
+ * IT NO LONGER HAS A RATING FORMULA. Until 2026-09-19 this route
+ * computed its own number inline (`ratings.length >= 3 ? mean of the
+ * last 60 peer scores : User.seedRating ?? 5.0`), called `balanceTeams`
+ * itself, and kept its own copy of the deleteMany, createMany and
+ * status write. That was a global, un-club-scoped step function and a
+ * THIRD implementation of team selection, running live at `0 12 * * *`
+ * (`vercel.json`), so a squad whose attendance deadline fell before
+ * noon UTC could get a sheet neither human button could reproduce.
+ *
+ * It now calls `lib/team-generation.ts#generateTeamsForMatch`, the same
+ * club-scoped, LLM-adjusted implementation behind "@Match Time generate
+ * the teams" and the admin dashboard's Generate button. With this
+ * change that helper really is the only code in MatchTime that decides
+ * who is on which team. Slice 3 of
+ * `MDs/club-scoped-ratings-design-2026-09-18.md`.
+ *
+ * IT STILL DOES NOT POST. `generateTeamsForMatch` RETURNS a
+ * ready-to-send group message and queues no `BotJob`; whether the club
+ * hears about it is the caller's decision. The WhatsApp route posts it,
+ * the dashboard discards it, and this cron discards it too. A silent
+ * maintenance job must not start announcing line-ups at noon just
+ * because it changed which function builds them.
+ */
 import { db } from "@/lib/db";
-import { balanceTeams, type BalancingStrategy } from "@/lib/team-balancer";
-import { PlayerWithRating } from "@/types";
 import { NextResponse } from "next/server";
 import { completeFinishedMatches } from "@/lib/match-completion";
 import { getOrgFeatures } from "@/lib/org-features";
+import { generateTeamsForMatch } from "@/lib/team-generation";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -21,13 +46,13 @@ export async function GET(request: Request) {
     },
     include: {
       activity: { include: { sport: true } },
+      // Only the COUNT is needed here now, for the squad-size guard
+      // below. The players, their positions and their ratings are read
+      // by `generateTeamsForMatch`, which is the only thing entitled to
+      // an opinion about them.
       attendances: {
         where: { status: "CONFIRMED" },
-        include: {
-          user: {
-            include: { activityPositions: true },
-          },
-        },
+        select: { userId: true },
       },
     },
   });
@@ -48,54 +73,28 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const sport = match.activity.sport;
-    const perTeam = sport.playersPerTeam;
+    // Cheap local guard, kept even though `generateTeamsForMatch`
+    // refuses a short squad too. The count is already in hand from the
+    // sweep above, so skipping here saves the helper's reads and its
+    // LLM adjuster call on a match that was never going to produce a
+    // sheet. A sweep over every club runs this on every unplayed match
+    // in the estate, most of which are short.
+    const perTeam = match.activity.sport.playersPerTeam;
     if (match.attendances.length < perTeam * 2) continue;
 
-    const players: PlayerWithRating[] = await Promise.all(
-      match.attendances.map(async (a) => {
-        const ratings = await db.rating.findMany({
-          where: { playerId: a.userId },
-          orderBy: { createdAt: "desc" },
-          take: 60,
-        });
-        const avgRating =
-          ratings.length >= 3
-            ? ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length
-            : a.user.seedRating ?? 5.0;
-
-        const pap = a.user.activityPositions.find((p) => p.activityId === match.activityId);
-
-        return {
-          id: a.userId,
-          name: a.user.name ?? "Unknown",
-          positions: pap?.positions ?? [],
-          rating: avgRating,
-          image: a.user.image,
-        };
-      })
-    );
-
-    const composition = sport.positionComposition as Record<string, number> | null;
-    const result = balanceTeams({
-      players,
-      perTeam,
-      strategy: sport.balancingStrategy as BalancingStrategy,
-      composition: composition ?? undefined,
-    });
-
-    await db.teamAssignment.deleteMany({ where: { matchId: match.id } });
-    await db.teamAssignment.createMany({
-      data: [
-        ...result.red.map((p) => ({ matchId: match.id, userId: p.id, team: "RED" as const })),
-        ...result.yellow.map((p) => ({ matchId: match.id, userId: p.id, team: "YELLOW" as const })),
-      ],
-    });
-
-    await db.match.update({
-      where: { id: match.id },
-      data: { status: "TEAMS_GENERATED" },
-    });
+    // The group post comes back in `result.groupPost` and is
+    // DELIBERATELY DISCARDED. See the header: the cron has never
+    // announced a line-up and this refactor does not make it start.
+    const result = await generateTeamsForMatch(match.id);
+    if (!result.ok) {
+      // The helper's own guards (match vanished, already COMPLETED or
+      // CANCELLED between the sweep and its read, squad short after a
+      // late drop-out). Nothing to fix here, but a silent skip on a job
+      // nobody watches is how the PJR cron failed every morning for two
+      // days, so it gets a line in the log.
+      console.warn(`[cron/generate-teams] ${match.id} skipped: ${result.reason}`);
+      continue;
+    }
 
     generated++;
   }
