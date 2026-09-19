@@ -264,7 +264,8 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //    THIS IS THE ONLY PLACE `matchRating` IS READ FOR ANYTHING A
   //    PLAYER SEES. It is a leaderboard number and not a team-selection
   //    input: no code that builds a team sheet consults it. The two
-  //    human-triggered paths share `computePlayerRating` (seed + peer
+  //    human-triggered paths share `computeClubRating` (club seed +
+  //    that club's peer
   //    ratings, no Elo term) through `lib/team-generation.ts` since
   //    2026-09-15, and `api/cron/generate-teams/route.ts` still runs a
   //    rival formula of its own but that one has no Elo term either.

@@ -58,8 +58,14 @@
  *
  * Used by:
  *   - team-generation.ts (balancer input)
- *   - dashboard rating tile, via the shim below until slice 6
- *   - player profile pages (any future "show my rating" surface)
+ *   - player-stats.ts `loadClubRating`, which is what every
+ *     player-visible tile reads (dashboard, /profile/stats)
+ *
+ * There is no global counterpart any more. `computePlayerRating`, the
+ * deprecated shim slice 2 left behind so the surfaces slice 6 owned
+ * kept compiling, was deleted on 2026-09-19 once the dashboard tile
+ * became club-scoped. Nothing in the product can now ask for a rating
+ * without naming the club it is asking about.
  */
 
 const PRIOR_WEIGHT = 3;
@@ -97,43 +103,4 @@ export function computeClubRating(args: {
   else if (peerCount >= PRIOR_WEIGHT * 3) source = "peer";
   else source = "blended";
   return { rating, source, peerCount };
-}
-
-/**
- * @deprecated The GLOBAL rating. Kept only so the surfaces slice 6 owns
- * keep compiling while slice 2 lands, and removed by that slice.
- *
- * Do NOT add a caller. It cannot tell you which club it is answering
- * about, which is the bug the design is fixing; the dashboard tile in
- * `app/page.tsx` and the two read-only scripts are the last callers and
- * they are on slice 6's list. New code calls `computeClubRating`.
- *
- * Behaviour is unchanged from what this file shipped before 2026-09-19,
- * to the last bit, and `__tests__/club-rating.test.ts` asserts that a
- * single-club seeded player gets the identical number from both. That
- * matters: 34 of Sutton's 43 rated members must not move at all.
- */
-export function computePlayerRating(args: {
-  seedRating: number | null;
-  peerRatings: number[];
-}): {
-  rating: number;
-  source: "peer" | "blended" | "seed";
-  peerCount: number;
-} {
-  const r = computeClubRating({
-    clubSeedRating: args.seedRating,
-    clubPeerRatings: args.peerRatings,
-    // No club, so no club mean: the old hardcoded 5.0 is what the final
-    // fallback gives, which is exactly what this function used to do.
-    clubMeanRating: null,
-  });
-  return {
-    rating: r.rating,
-    // The old union had no "club-average". An unseeded player with no
-    // ratings used to be labelled "seed" (on the default of 5.0), and
-    // the tile that reads this still renders that wording.
-    source: r.source === "club-average" ? "seed" : r.source,
-    peerCount: r.peerCount,
-  };
 }

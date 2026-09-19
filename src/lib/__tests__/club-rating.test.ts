@@ -1,6 +1,6 @@
 /**
- * `computeClubRating`, the club-scoped replacement for
- * `computePlayerRating`, per section 4.2 of
+ * `computeClubRating`, the club-scoped replacement for the global
+ * `computePlayerRating` (deleted by slice 6), per section 4.2 of
  * `MDs/club-scoped-ratings-design-2026-09-18.md`.
  *
  * Pure arithmetic, no DB, no network. The shape is unchanged from the
@@ -22,7 +22,31 @@
  * `club-rating-isolation.test.ts`. This file proves the arithmetic.
  */
 import { describe, it, expect } from "vitest";
-import { computeClubRating, computePlayerRating } from "@/lib/player-rating";
+import { computeClubRating } from "@/lib/player-rating";
+
+/**
+ * THE GLOBAL FORMULA, as it stood before 2026-09-19, reproduced here
+ * verbatim. `computePlayerRating` itself was deleted by slice 6 once
+ * its last caller (the dashboard tile) became club-scoped, and a
+ * deleted function cannot be compared against. Keeping the arithmetic
+ * local is the same move `scripts/compare-rating-formulas.ts` makes for
+ * the elo-mix formula it outlived: the comparison stays a comparison
+ * and not a paraphrase.
+ */
+function legacyGlobalRating(args: { seedRating: number | null; peerRatings: number[] }): {
+  rating: number;
+  source: "peer" | "blended" | "seed";
+  peerCount: number;
+} {
+  const PRIOR_WEIGHT = 3;
+  const seed = args.seedRating ?? 5;
+  const peerCount = args.peerRatings.length;
+  const sumPeer = args.peerRatings.reduce((s, r) => s + r, 0);
+  const blended = (sumPeer + seed * PRIOR_WEIGHT) / (peerCount + PRIOR_WEIGHT);
+  const rating = Math.max(1, Math.min(10, blended));
+  const source = peerCount === 0 ? "seed" : peerCount >= PRIOR_WEIGHT * 3 ? "peer" : "blended";
+  return { rating, source, peerCount };
+}
 
 /** Sutton FC's real club mean, measured read-only on 2026-09-18
  *  (design section 3.5). Used so the numbers below are the numbers the
@@ -165,7 +189,7 @@ describe("computeClubRating matches the old formula for a single-club seeded pla
   ];
   for (const { seed, peers } of cases) {
     it(`seed ${seed} with ${peers.length} peer ratings`, () => {
-      const old = computePlayerRating({ seedRating: seed, peerRatings: peers });
+      const old = legacyGlobalRating({ seedRating: seed, peerRatings: peers });
       const now = computeClubRating({
         clubSeedRating: seed,
         clubPeerRatings: peers,

@@ -12,6 +12,8 @@ import {
   X,
 } from "lucide-react";
 import { seedPlayerRating } from "@/app/actions/players";
+import { t } from "@/lib/i18n/t";
+import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
 
 interface Player {
   id: string;
@@ -27,6 +29,10 @@ type RowState = "idle" | "dirty" | "saving" | "saved" | "error";
 export default function BulkRatingsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
+  // The seed is one club's opinion, so the sentence that says so is in
+  // the string table with the rest of the ratings copy and follows the
+  // club's own language.
+  const [lang, setLang] = useState<Lang>(DEFAULT_LANG);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"active" | "all">("active");
   const [search, setSearch] = useState("");
@@ -38,7 +44,10 @@ export default function BulkRatingsPage() {
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
+    fetch("/api/org/settings").then((r) => r.json()).then((d) => {
+      setOrgId(d.id);
+      if (d.language) setLang(d.language as Lang);
+    });
     load();
   }, []);
 
@@ -143,9 +152,7 @@ export default function BulkRatingsPage() {
           1–10 scale. Autosaves 1.2s after you stop typing, or on blur.
         </p>
         <p className="text-sm text-slate-500 mt-1">
-          These seeds belong to this club only. A player who also turns out
-          somewhere else keeps a separate rating there, and nothing you
-          type here changes it.
+          {t(lang).rating_seed_club_hint}
         </p>
       </div>
 

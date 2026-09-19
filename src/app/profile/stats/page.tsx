@@ -8,9 +8,11 @@ import {
   loadRatingLeaderboard,
   loadTeamOfSeason,
   loadAllClubsOverview,
+  loadClubRating,
 } from "@/lib/player-stats";
 import { RatingTimeline } from "@/components/stats/rating-timeline";
 import { InfoButton } from "@/components/stats/info-button";
+import { t } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
 
@@ -22,13 +24,24 @@ export default async function MyStatsPage() {
   if (!membership) redirect("/create-org");
 
   const meId = session.user.id;
-  const [stats, leaderboard, tots, allClubs] = await Promise.all([
+  const [stats, leaderboard, tots, allClubs, myClubRating] = await Promise.all([
     loadPlayerSeasonStats(membership.orgId, meId),
     loadRatingLeaderboard(membership.orgId, { minGames: 1, limit: 20 }),
     loadTeamOfSeason(membership.orgId, { minGames: 2 }),
-    loadAllClubsOverview(meId),
+    // The overall rating is the ONE number in this product with an
+    // access rule: it is built from every club this player has ever
+    // played for, so only they may see it. The loader throws if the two
+    // ids differ, which is why the session id is named twice rather
+    // than passed once. Never hand it a `[playerId]` route parameter.
+    loadAllClubsOverview({ userId: meId, viewerId: meId }),
+    loadClubRating(membership.orgId, meId),
   ]);
   if (!stats) redirect("/profile");
+
+  // This page now shows two different ratings, so both have to say
+  // which they are. The club's language, read from the same membership
+  // the rest of the page already holds.
+  const s = t(membership.org.language);
 
   const earnedBadges = stats.badges.filter((b) => b.earned);
   const vsField = stats.vsFieldPct;
@@ -57,23 +70,24 @@ export default async function MyStatsPage() {
 
         {/* All clubs overview — only when they play for more than one. The
             club-specific sections below stay scoped to {stats.orgName}. */}
-        {allClubs.clubCount > 1 && (
+        {(allClubs.clubCount > 1 || allClubs.overallClubCount > 1) && (
           <div className="mt-4 rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50 p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-indigo-900 flex items-center gap-1.5">
-                🌍 Across all your clubs
+                🌍 {s.rating_overall_label}
               </p>
-              <InfoButton title="Across all your clubs">
+              <InfoButton title={s.rating_overall_label}>
+                <p>{s.rating_overall_note}</p>
                 <p>
-                  Combined totals from every club you play for ({allClubs.clubCount}).
                   One profile follows your phone number across groups, so your
-                  games, MoMs and ratings add up everywhere you play.
+                  games, MoMs and ratings add up everywhere you play, including
+                  at clubs you have since left. The per-club rows below list the
+                  clubs you are in now, so they will not always add up to the
+                  number above.
                 </p>
                 <p>
-                  Each club rates on its own scale, so the blended average is
-                  indicative — the per-club breakdown is the precise picture.
-                  The leaderboard, Team of the Season and rivalries below stay
-                  specific to {stats.orgName}.
+                  Each club rates on its own scale. The leaderboard, Team of the
+                  Season and rivalries below stay specific to {stats.orgName}.
                 </p>
               </InfoButton>
             </div>
@@ -90,7 +104,7 @@ export default async function MyStatsPage() {
                 <p className="text-2xl font-extrabold text-slate-900">
                   {allClubs.overallAvg !== null ? allClubs.overallAvg.toFixed(1) : "—"}
                 </p>
-                <p className="text-[11px] text-slate-500">Avg rating</p>
+                <p className="text-[11px] text-slate-500">{s.rating_overall_label}</p>
               </div>
             </div>
             <div className="mt-3 space-y-1.5">
@@ -115,17 +129,35 @@ export default async function MyStatsPage() {
           </div>
         )}
 
+        {/* The club rating, named, with the boundary stated once. Two
+            different ratings now appear on this page and a player shown
+            a bare number cannot tell which one they are reading. */}
+        <div className="mt-5">
+          <h2 className="text-sm font-semibold text-slate-800">
+            {s.rating_club_label({ orgName: stats.orgName })}
+          </h2>
+          <p className="text-[11px] text-slate-400 mt-0.5">{s.rating_club_note}</p>
+        </div>
+
         {/* Headline tiles */}
-        <div className="grid grid-cols-2 gap-3 mt-4">
+        <div className="grid grid-cols-2 gap-3 mt-3">
           <Tile
-            big={stats.avgRating?.toFixed(1) ?? "—"}
-            label="Avg rating"
+            big={myClubRating.hasOwnNumber ? myClubRating.rating.toFixed(1) : "—"}
+            label={s.rating_club_tile}
             sub={
-              vsField !== null
+              myClubRating.peerCount === 0
+                ? s.rating_club_empty
+                : myClubRating.provisional
+                ? s.rating_club_provisional({ count: myClubRating.peerCount })
+                : vsField !== null
                 ? `${vsField >= 0 ? "+" : ""}${vsField.toFixed(0)}% vs squad`
                 : undefined
             }
-            tone={vsField !== null && vsField >= 0 ? "green" : "slate"}
+            tone={
+              myClubRating.hasOwnNumber && vsField !== null && vsField >= 0 && !myClubRating.provisional
+                ? "green"
+                : "slate"
+            }
           />
           <Tile big={`${stats.momCount}`} label="Man of the Match" tone="amber" sub={stats.momCount > 0 ? "👑" : undefined} />
           <Tile

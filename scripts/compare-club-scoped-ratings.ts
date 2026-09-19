@@ -8,7 +8,7 @@
  * question (blended vs the deleted elo-mix). This one answers slice 2's
  * question, from `MDs/club-scoped-ratings-design-2026-09-18.md`:
  *
- *   TODAY   `computePlayerRating(User.seedRating, the player's 60 most
+ *   BEFORE  the global blend (`User.seedRating`, the player's 60 most
  *           recent ratings FROM ANY CLUB)`, the global window.
  *   AFTER   `computeClubRating(Membership.seedRating for this org, the
  *           player's 60 most recent ratings FROM THIS ORG, the mean of
@@ -42,7 +42,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 import { balanceTeams, type BalancingStrategy } from "../src/lib/team-balancer.ts";
-import { computeClubRating, computePlayerRating } from "../src/lib/player-rating.ts";
+import { computeClubRating } from "../src/lib/player-rating.ts";
 import type { PlayerWithRating } from "../src/types/index.ts";
 
 /** How many times each vector is balanced, to find its modal sheet. */
@@ -96,9 +96,17 @@ async function bothRatings(userId: string, orgId: string, clubMeanRating: number
     where: { userId_orgId: { userId, orgId } },
     select: { seedRating: true },
   });
-  const before = computePlayerRating({
-    seedRating: user?.seedRating ?? null,
-    peerRatings: globalRows.map((r) => r.score),
+  // The OLD global number. `computePlayerRating` was deleted on
+  // 2026-09-19 once the dashboard tile stopped calling it, and the same
+  // arithmetic is reached by handing `computeClubRating` the inputs the
+  // global formula used: the global seed and a rating window drawn from
+  // every club. `clubMeanRating: null` restores the old hardcoded 5.0
+  // fallback. This is what the shim did, and `club-rating.test.ts`
+  // still pins the two against each other.
+  const before = computeClubRating({
+    clubSeedRating: user?.seedRating ?? null,
+    clubPeerRatings: globalRows.map((r) => r.score),
+    clubMeanRating: null,
   });
   const after = computeClubRating({
     clubSeedRating: membership?.seedRating ?? null,
