@@ -309,8 +309,27 @@ export async function answerScopedQuestion(args: {
     lang,
     call: async (system, user) => {
       const resp = await anthropic.messages.create({
-        model: "claude-sonnet-4-5",
+        // Sonnet 5 since 2026-09-19. The 4.5 pin was inherited from
+        // the deleted `analyzeBatch`, not chosen
+        // (`MDs/llm-spend-september-2026.md` §4); Sonnet 5 is newer
+        // and $2/$10 per MTok against $3/$15. Sonnet-class stays:
+        // this answer has to be faithful to the facts in `context`
+        // and, for a Turkish club, in Turkish, with a long list of
+        // regressions already caught (GLUED_SUFFIX, WRONG_DAY_TR,
+        // FORMAL).
+        model: "claude-sonnet-5",
         max_tokens: 600,
+        // REQUIRED, not tidiness. Sonnet 5 thinks adaptively when
+        // `thinking` is omitted and Sonnet 4.5 did not, and 600
+        // tokens is a budget sized for a short WhatsApp answer, not
+        // for deliberation. Measured 2026-09-06, 5 runs of 5: the
+        // model can spend the whole budget thinking and return no
+        // text block (see `ModelRequest.thinking` in
+        // pipeline/llm.ts). The failure is silent by design here:
+        // `composeScopedAnswer` falls back to the generic APOLOGY, so
+        // a player asking a real question gets "I can only help with
+        // match stuff" and nothing logs a model problem.
+        thinking: { type: "disabled" },
         system,
         messages: [{ role: "user", content: user }],
       });

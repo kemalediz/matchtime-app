@@ -83,23 +83,30 @@ export const KEY_ENV = "ANTHROPIC_API_KEY";
 /**
  * EVERY model a live sweep can bill, and the reason this is a list.
  *
- * It was a single string — `claude-sonnet-4-5`, the model `analyzeBatch`
- * called — and probing one model is only sound while one model exists.
- * §10 step 8 deleted `analyzeBatch` and left the pipeline, which calls
- * THREE, on two different families:
+ * It was a single string, the model `analyzeBatch` called, and probing
+ * one model is only sound while one model exists. §10 step 8 deleted
+ * `analyzeBatch` and left the pipeline on two different families:
  *
  *   claude-haiku-4-5   the router          (`pipeline/llm.ts:54`)
  *   claude-sonnet-5    every extractor     (`pipeline/llm.ts:55`)
- *   claude-sonnet-4-5  the scheduled-chase composer
+ *                      AND the scheduled-chase composer
  *                      (`message-analyzer.ts`'s surviving `MODEL`)
  *
- * A key entitled to `sonnet-4-5` and not to `sonnet-5` would have sailed
+ * A key entitled to one family and not the other would have sailed
  * through the old single probe and then failed EVERY extractor call —
  * which lands as `attendance-engine: degraded —` on each message and, per
  * `route.ts`'s catch-all, as silence. That is precisely the "runs, looks
  * plausible, measured nothing" shape this whole file exists to refuse,
- * reintroduced by a deletion that had nothing to do with it. Probing all
- * three costs three tokens.
+ * reintroduced by a deletion that had nothing to do with it. Probing
+ * both costs two tokens.
+ *
+ * THE LIST IS BACK TO TWO ENTRIES, NOT BACK TO ONE. On 2026-09-19 the
+ * chase composer moved from `claude-sonnet-4-5` to `claude-sonnet-5`
+ * (`MDs/llm-spend-september-2026.md` §4: every 4.5 pin was inherited
+ * from `analyzeBatch`, not chosen), so it now shares the extractors'
+ * model and there is nothing left for a third entry to probe. The
+ * structure stays a LIST because the reasoning above has not changed:
+ * the day a site picks a different family again, one line goes back in.
  *
  * `live-llm.test.ts` reads the model constants out of
  * `src/lib/pipeline/llm.ts` and `src/lib/message-analyzer.ts` and fails
@@ -108,7 +115,6 @@ export const KEY_ENV = "ANTHROPIC_API_KEY";
 export const PROBE_MODELS: readonly string[] = [
   "claude-haiku-4-5",
   "claude-sonnet-5",
-  "claude-sonnet-4-5",
 ];
 
 /**
@@ -119,7 +125,7 @@ export const PROBE_MODELS: readonly string[] = [
  * and the drift test still reads from there. Callers that care about
  * the whole surface use `PROBE_MODELS`.
  */
-export const PROBE_MODEL = "claude-sonnet-4-5";
+export const PROBE_MODEL = "claude-sonnet-5";
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const ANTHROPIC_VERSION = "2023-06-01";

@@ -13,13 +13,20 @@
  *   - LLM never picks teams. It only suggests rating tweaks.
  *   - Every decision is persisted to RatingAdjustment with an evidence
  *     line, so admins can audit "why was Wasim on Yellow tonight?".
- *   - Sonnet 4.5 — accuracy beats cost on a one-shot per match.
+ *   - Sonnet-class, on purpose: this is a judgement call, and it is one
+ *     shot per match. Sonnet 5 since 2026-09-19 (see MODEL below).
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import { MAX_TOKENS_CEILING } from "./message-analyzer";
 
-const MODEL = "claude-sonnet-4-5";
+// `claude-sonnet-4-5` here was inherited from the deleted
+// `analyzeBatch`, not chosen (`MDs/llm-spend-september-2026.md` §4).
+// Sonnet 5 is newer, 1M context, $2/$10 per MTok against $3/$15.
+// The call site sends `thinking: { type: "disabled" }`, which is
+// required: Sonnet 5 thinks adaptively when the parameter is omitted
+// and Sonnet 4.5 did not.
+const MODEL = "claude-sonnet-5";
 const MAX_DELTA = 2;
 const HISTORY_DAYS = 7;
 const MAX_HISTORY_MESSAGES = 300;
@@ -156,6 +163,13 @@ export async function adjustRatings(
       // message-analyzer.ts). No realistic roster gets near this, but
       // "no call site picks its own unbounded number" is the rule.
       max_tokens: Math.min(MAX_TOKENS_CEILING, 200 + 80 * input.players.length),
+      // Sonnet 5 runs adaptive thinking unless told not to, and can
+      // spend the whole max_tokens budget on it and return no text
+      // block at all (measured 2026-09-06, 5 runs of 5; see
+      // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
+      // cap sized for its OUTPUT, so leaving it adaptive would turn a
+      // price change into a silent degradation.
+      thinking: { type: "disabled" },
       system: [
         {
           type: "text",

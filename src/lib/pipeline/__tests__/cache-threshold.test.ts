@@ -64,8 +64,17 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // A model id nobody has measured must never be told "we cached" on
     // the strength of a guess. 2,000 tokens clears Sonnet and Opus and
     // does not clear Haiku; the unknown gets Haiku's answer.
-    expect(shouldCachePrompt("claude-something-7", prose(2_000))).toBe(false);
-    expect(shouldCachePrompt("claude-something-7", prose(6_000))).toBe(true);
+    //
+    // THE ID BELOW IS FICTIONAL ON PURPOSE and must stay that way: the
+    // test is only meaningful while the id is absent from
+    // `MIN_CACHEABLE_TOKENS`. It used to read `claude-something-7`,
+    // which `MDs/llm-spend-september-2026.md` §1 had to stop and
+    // investigate because it reads like a real model id somebody
+    // mistyped. Named so nobody spends that time again.
+    const UNMEASURED = "not-a-real-model-id";
+    expect(MIN_CACHEABLE_TOKENS[UNMEASURED]).toBeUndefined();
+    expect(shouldCachePrompt(UNMEASURED, prose(2_000))).toBe(false);
+    expect(shouldCachePrompt(UNMEASURED, prose(6_000))).toBe(true);
   });
 
   it("under-counts rather than over-counts, so a marker is never a fiction", () => {

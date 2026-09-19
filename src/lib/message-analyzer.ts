@@ -92,7 +92,21 @@ import { computeChaseRisk } from "./chase-risk";
 // it predates the shadow analyzer and the prompt-cache buster. See
 // analyzer-redesign-2026-08-31.md §8.2/§8.4 for the modelled numbers,
 // and read `WindowVerdict.costUsd` for real ones.
-const MODEL = "claude-sonnet-4-5";
+//
+// ── SONNET 5 SINCE 2026-09-19, AND THE PIN IS NOW A CHOICE ──────────
+//
+// This said `claude-sonnet-4-5` because that is what `analyzeBatch`
+// called; the composer inherited the id rather than picking it, and
+// `analyzeBatch` was deleted on 2026-09-06 (`8dc64fb`).
+// `MDs/llm-spend-september-2026.md` §4 found the whole $65 Sonnet 4.5
+// line sitting behind that fossil. Sonnet 5 is newer, has a 1M context
+// window and costs $2/$10 per MTok against $3/$15.
+//
+// The call below sends `thinking: { type: "disabled" }` and that is not
+// optional: Sonnet 5 runs ADAPTIVE THINKING when the parameter is
+// omitted, Sonnet 4.5 never did, and this call has 1,024 tokens to
+// spend. See the call site for the measurement.
+const MODEL = "claude-sonnet-5";
 
 // ─── max_tokens — READ BEFORE ADDING ANY messages.create CALL ────────
 //
@@ -617,6 +631,21 @@ export async function composeChaseFromMatch(input: {
       // shipped 64000 and therefore threw on EVERY invocation since it
       // was written — every scheduled chase used the static fallback.
       max_tokens: CHASE_COMPOSE_MAX_TOKENS,
+      // NOT OPTIONAL ON SONNET 5. Omitting `thinking` gets adaptive
+      // thinking, and `ModelRequest.thinking` in pipeline/llm.ts
+      // records what that does: measured 2026-09-06, 5 runs of 5, the
+      // model can spend the ENTIRE max_tokens budget deliberating and
+      // return `stop_reason: max_tokens` with thinking blocks and no
+      // text block at all, probed at 1,024, 2,048 and 4,096 tokens.
+      // This call has 1,024. Its failure mode is not a crash: the
+      // truncation guard below discards the post and every scheduled
+      // chase in Kemal's one real group quietly reverts to static copy.
+      //
+      // Sonnet 4.5 thought only when handed `budget_tokens`, so sending
+      // this is what keeps the model move a PRICE change. The file
+      // header says the model "keeps exactly one job: tone", and tone
+      // is not a thing to deliberate about.
+      thinking: { type: "disabled" },
       system: [
         {
           type: "text",
