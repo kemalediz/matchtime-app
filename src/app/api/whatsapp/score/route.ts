@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { computeEloDeltas } from "@/lib/elo";
+import { applyMembershipEloDeltas, loadMembershipEloInputs } from "@/lib/membership-elo";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -63,7 +64,10 @@ export async function POST(request: Request) {
       yellowScore: null,
       status: { in: ["TEAMS_PUBLISHED", "COMPLETED", "TEAMS_GENERATED"] },
     },
-    include: { activity: true, teamAssignments: { include: { user: { select: { matchRating: true } } } } },
+    include: {
+      activity: true,
+      teamAssignments: { select: { userId: true, team: true } },
+    },
     orderBy: { date: "desc" },
     take: 10,
   });
@@ -101,19 +105,17 @@ export async function POST(request: Request) {
     data: { redScore, yellowScore, status: "COMPLETED" },
   });
 
-  // Apply Elo deltas.
+  // Apply Elo deltas onto THIS club's memberships. `org` is already
+  // resolved from the request, and the match was selected by
+  // `activity: { orgId: org.id }` above, so the two cannot disagree.
+  // See lib/membership-elo.ts.
   try {
-    const eloInputs = target.teamAssignments.map((t) => ({
-      userId: t.userId,
-      team: t.team,
-      matchRating: t.user.matchRating,
-    }));
-    const deltas = computeEloDeltas(eloInputs, redScore, yellowScore);
-    await db.$transaction(
-      deltas.map((d) =>
-        db.user.update({ where: { id: d.userId }, data: { matchRating: d.after } }),
-      ),
-    );
+    const { inputs } = await loadMembershipEloInputs({
+      orgId: org.id,
+      assignments: target.teamAssignments,
+    });
+    const deltas = computeEloDeltas(inputs, redScore, yellowScore);
+    await applyMembershipEloDeltas({ orgId: org.id, deltas });
   } catch (err) {
     console.error("Elo update failed after WhatsApp score submission:", err);
   }

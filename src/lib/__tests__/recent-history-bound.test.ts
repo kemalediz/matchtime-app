@@ -28,6 +28,7 @@ const matchFindMany = vi.fn();
 const orgFindUnique = vi.fn();
 const attendanceFindMany = vi.fn();
 const userFindMany = vi.fn();
+const membershipFindMany = vi.fn();
 const teamAssignmentFindMany = vi.fn();
 
 vi.mock("@/lib/db", () => ({
@@ -36,6 +37,7 @@ vi.mock("@/lib/db", () => ({
     organisation: { findUnique: (...a: unknown[]) => orgFindUnique(...a) },
     attendance: { findMany: (...a: unknown[]) => attendanceFindMany(...a) },
     user: { findMany: (...a: unknown[]) => userFindMany(...a) },
+    membership: { findMany: (...a: unknown[]) => membershipFindMany(...a) },
     teamAssignment: { findMany: (...a: unknown[]) => teamAssignmentFindMany(...a) },
   },
 }));
@@ -112,7 +114,9 @@ function seed(matchCount: number, opts: { attendanceRows?: number } = {}) {
       matchId: `m${i + 1}`,
     })),
   );
-  userFindMany.mockResolvedValue([{ id: "u1", name: "Kemal", matchRating: 1000 }]);
+  userFindMany.mockResolvedValue([{ id: "u1", name: "Kemal" }]);
+  // The Elo is per club now, so its value comes off Membership.
+  membershipFindMany.mockResolvedValue([{ userId: "u1", matchRating: 1000 }]);
   teamAssignmentFindMany.mockResolvedValue([{ userId: "u1" }]);
 }
 

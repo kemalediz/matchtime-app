@@ -3,6 +3,12 @@
  * via WhatsApp). LLM classified the message correctly but couldn't
  * resolve Kemal's @lid sender id to a User, so the score didn't
  * persist. Writing directly + applying Elo.
+ *
+ * SPENT. It ran once and is kept only as a record of what was done.
+ * DO NOT COPY IT: the Elo moved to `Membership.matchRating` on
+ * 2026-09-19 and `User.matchRating` is a deprecated column awaiting
+ * slice 7's drop. A replacement for this script goes through
+ * `src/lib/membership-elo.ts`, which needs the match's org.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";

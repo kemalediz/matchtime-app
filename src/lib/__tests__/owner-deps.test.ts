@@ -40,14 +40,31 @@ describe("the score apply deps", () => {
     expect(arg.data).toMatchObject({ redScore: 5, yellowScore: 3, status: "COMPLETED" });
   });
 
-  it("reads the Elo inputs off TeamAssignment with the player's CURRENT rating", async () => {
+  // Since 2026-09-19 the rating is `Membership.matchRating`, so both
+  // Elo methods first resolve the match's club. `lib/membership-elo.ts`
+  // owns that; these keep pinning the queries THIS file issues.
+  const matchInOrg = (orgId: string) => ({
+    findUnique: async (_a: unknown) => ({ activity: { orgId } }),
+  });
+
+  it("reads the Elo inputs off TeamAssignment with the player's CURRENT rating AT THAT CLUB", async () => {
     const findMany = vi.fn(async (_a: unknown) => [
-      { userId: "u1", team: "RED", user: { matchRating: 1200 } },
-      { userId: "u2", team: "YELLOW", user: { matchRating: 1300 } },
+      { userId: "u1", team: "RED" },
+      { userId: "u2", team: "YELLOW" },
+    ]);
+    const membershipFindMany = vi.fn(async (_a: unknown) => [
+      { userId: "u1", matchRating: 1200 },
+      { userId: "u2", matchRating: 1300 },
     ]);
     const deps = buildScoreApplyDeps({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db: { match: {}, teamAssignment: { findMany }, $transaction: async () => [], user: {} } as any,
+      db: {
+        match: matchInOrg("org-a"),
+        teamAssignment: { findMany },
+        membership: { findMany: membershipFindMany },
+        $transaction: async () => [],
+        user: {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
     });
     const inputs = await deps.loadEloInputs("m1");
     expect(inputs).toEqual([
@@ -55,23 +72,32 @@ describe("the score apply deps", () => {
       { userId: "u2", team: "YELLOW", matchRating: 1300 },
     ]);
     expect(findMany.mock.calls[0][0]).toMatchObject({ where: { matchId: "m1" } });
+    expect(membershipFindMany.mock.calls[0][0]).toMatchObject({
+      where: { orgId: "org-a", userId: { in: ["u1", "u2"] } },
+    });
   });
 
   it("applies every Elo delta in ONE transaction, as route.ts:3526 did", async () => {
-    const tx = vi.fn(async (ops: unknown[]) => ops);
-    const userUpdate = vi.fn((a: unknown) => a as never);
+    const tx = vi.fn(async (ops: unknown[]) => ops.map(() => ({ count: 1 })));
+    const membershipUpdateMany = vi.fn((a: unknown) => a as never);
     const deps = buildScoreApplyDeps({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db: { match: {}, teamAssignment: {}, $transaction: tx, user: { update: userUpdate } } as any,
+      db: {
+        match: matchInOrg("org-a"),
+        teamAssignment: {},
+        membership: { updateMany: membershipUpdateMany },
+        $transaction: tx,
+        user: {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
     });
-    await deps.applyEloDeltas([
+    await deps.applyEloDeltas("m1", [
       { userId: "u1", before: 1200, after: 1210, delta: 10 },
       { userId: "u2", before: 1300, after: 1290, delta: -10 },
     ]);
     expect(tx).toHaveBeenCalledOnce();
-    expect(userUpdate).toHaveBeenCalledTimes(2);
-    expect(userUpdate.mock.calls[0][0]).toEqual({
-      where: { id: "u1" },
+    expect(membershipUpdateMany).toHaveBeenCalledTimes(2);
+    expect(membershipUpdateMany.mock.calls[0][0]).toEqual({
+      where: { userId: "u1", orgId: "org-a" },
       data: { matchRating: 1210 },
     });
   });
@@ -79,10 +105,34 @@ describe("the score apply deps", () => {
   it("writes nothing at all when there are no deltas", async () => {
     const tx = vi.fn(async (ops: unknown[]) => ops);
     const deps = buildScoreApplyDeps({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db: { match: {}, teamAssignment: {}, $transaction: tx, user: { update: vi.fn() } } as any,
+      db: {
+        match: matchInOrg("org-a"),
+        teamAssignment: {},
+        membership: { updateMany: vi.fn() },
+        $transaction: tx,
+        user: {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
     });
-    await deps.applyEloDeltas([]);
+    await deps.applyEloDeltas("m1", []);
+    expect(tx).not.toHaveBeenCalled();
+  });
+
+  it("moves no Elo at all for a match whose org cannot be resolved", async () => {
+    const tx = vi.fn(async (ops: unknown[]) => ops);
+    const teamFindMany = vi.fn(async (_a: unknown) => [{ userId: "u1", team: "RED" }]);
+    const deps = buildScoreApplyDeps({
+      db: {
+        match: { findUnique: async () => null },
+        teamAssignment: { findMany: teamFindMany },
+        membership: { findMany: vi.fn(), updateMany: vi.fn() },
+        $transaction: tx,
+        user: {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    });
+    expect(await deps.loadEloInputs("gone")).toEqual([]);
+    await deps.applyEloDeltas("gone", [{ userId: "u1", before: 1, after: 2, delta: 1 }]);
     expect(tx).not.toHaveBeenCalled();
   });
 });

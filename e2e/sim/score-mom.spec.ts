@@ -61,10 +61,11 @@ const matchRow = (grp: SimGroup) =>
     [grp.completedMatchId],
   );
 
+// Per club since 2026-09-19: the Elo lives on `Membership`, not `User`.
 const ratingOf = async (grp: SimGroup, key: string) => {
   const row = await grp.db.one<{ matchRating: number }>(
-    `SELECT "matchRating" FROM "User" WHERE id = $1`,
-    [grp.player(key).userId],
+    `SELECT "matchRating" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
+    [grp.player(key).userId, grp.orgId],
   );
   return row!.matchRating;
 };

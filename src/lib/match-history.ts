@@ -33,6 +33,7 @@
  */
 import { db } from "./db";
 import { getMomSummaries } from "./mom";
+import { MEMBERSHIP_ELO_DEFAULT } from "./membership-elo";
 import { resolveTeamLabels } from "./team-labels";
 import { historyDateLabel } from "./i18n/dates";
 import type { Lang } from "./i18n/lang";
@@ -270,6 +271,13 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //    Don't "fix" this by feeding the number back into team
   //    generation. The reasoning is in `lib/elo.ts`'s header and the
   //    tombstone at the top of `app/actions/teams.ts`.
+  //
+  //    The player SET was always org-scoped. The VALUE was not until
+  //    2026-09-19: it came off `User.matchRating`, one global integer,
+  //    so a result at one club ranked the player at another. It now
+  //    comes off `Membership.matchRating` for the org being asked
+  //    about. Slice 1's backfill copied the old value onto every
+  //    membership, so this is the same board on the day it ships.
   const teamAssignmentUserIds = await db.teamAssignment.findMany({
     where: { match: { activity: { orgId }, status: "COMPLETED", isHistorical: false } },
     select: { userId: true },
@@ -278,8 +286,17 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   const eloUserIds = teamAssignmentUserIds.map((t) => t.userId);
   const eloUsers = await db.user.findMany({
     where: { id: { in: eloUserIds } },
-    select: { id: true, name: true, matchRating: true },
+    select: { id: true, name: true },
   });
+  const eloMemberships = await db.membership.findMany({
+    where: { orgId, userId: { in: eloUserIds } },
+    select: { userId: true, matchRating: true },
+  });
+  // A player who has a team assignment here but no membership row is
+  // shown at the Elo default rather than dropped: dropping them would
+  // silently shrink the board, and 1000 is the honest "no club opinion".
+  // Measured 2026-09-19 against prod: zero such players in any org.
+  const eloByUser = new Map(eloMemberships.map((m) => [m.userId, m.matchRating]));
   // Per-player matches-played (for the bottom-N min threshold).
   const matchesPlayedByUser = new Map<string, number>();
   for (const a of attendanceRows) {
@@ -288,7 +305,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   const eloRows: LeaderboardRow[] = eloUsers.map((u) => ({
     userId: u.id,
     name: u.name ?? "(unnamed)",
-    value: u.matchRating,
+    value: eloByUser.get(u.id) ?? MEMBERSHIP_ELO_DEFAULT,
     detail: `${matchesPlayedByUser.get(u.id) ?? 0} matches`,
   }));
   const eloTop = [...eloRows]

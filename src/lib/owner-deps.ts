@@ -47,6 +47,11 @@ import type { EloDelta, PlayerEloInput } from "./elo";
 import type { ScoreApplyDeps } from "./score-engine";
 import type { AdminOpsApplyDeps, PaidState } from "./admin-ops-engine";
 import type { TeamOpsApplyDeps } from "./team-ops-engine";
+import {
+  applyMembershipEloDeltas,
+  loadMembershipEloInputs,
+  orgIdForMatch,
+} from "./membership-elo";
 import { recordAttendanceEvent } from "./attendance-events";
 import { generateTeamsForMatch } from "./team-generation";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "./guest-name-ask";
@@ -79,32 +84,34 @@ export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
     },
 
     async loadEloInputs(matchId): Promise<PlayerEloInput[]> {
-      // The player's CURRENT rating, read at apply time rather than
-      // carried from the state load — `route.ts:3520-3524` reads it off
-      // the same include for the same reason. A rating that moved
-      // between the two would make the delta compound.
+      // The player's CURRENT rating AT THIS CLUB, read at apply time
+      // rather than carried from the state load. `route.ts:3520-3524`
+      // read it off the same include for the same reason. A rating that
+      // moved between the two would make the delta compound.
+      //
+      // Since 2026-09-19 the rating is `Membership.matchRating`, so the
+      // club has to be resolved first. A match with no org left (it was
+      // deleted under us) has no club Elo to move, and the derived half
+      // of a score write must never unmake the score.
+      const orgId = await orgIdForMatch(db, matchId);
+      if (!orgId) return [];
       const rows = await db.teamAssignment.findMany({
         where: { matchId },
-        include: { user: { select: { matchRating: true } } },
+        select: { userId: true, team: true },
       });
-      return rows.map((t) => ({
-        userId: t.userId,
-        team: t.team,
-        matchRating: t.user.matchRating,
-      }));
+      const { inputs } = await loadMembershipEloInputs({ db, orgId, assignments: rows });
+      return inputs;
     },
 
-    async applyEloDeltas(deltas: EloDelta[]) {
+    async applyEloDeltas(matchId: string, deltas: EloDelta[]) {
       // `computeEloDeltas` returns [] for a match whose teams were never
       // generated, and an empty `$transaction([])` is a pointless round
       // trip. `route.ts` did not guard this because it was inside a
-      // try/catch nobody read; here it is one line.
-      if (deltas.length === 0) return;
-      await db.$transaction(
-        deltas.map((d) =>
-          db.user.update({ where: { id: d.userId }, data: { matchRating: d.after } }),
-        ),
-      );
+      // try/catch nobody read; the guard now lives in
+      // `applyMembershipEloDeltas` so all four call sites share it.
+      const orgId = await orgIdForMatch(db, matchId);
+      if (!orgId) return;
+      await applyMembershipEloDeltas({ db, orgId, deltas });
     },
   };
 }

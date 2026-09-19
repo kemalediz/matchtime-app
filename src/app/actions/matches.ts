@@ -12,6 +12,7 @@ import { buildFormatSwitchAnnouncement, buildMatchCancelledAnnouncement } from "
 import { dayTimeLabel } from "@/lib/i18n/dates";
 import { normaliseLang } from "@/lib/i18n/lang";
 import { computeEloDeltas } from "@/lib/elo";
+import { applyMembershipEloDeltas, loadMembershipEloInputs } from "@/lib/membership-elo";
 import {
   planFormatSwitchSchedule,
   renderKickoffMoveLine,
@@ -224,14 +225,13 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
 
   const parsed = matchScoreSchema.parse(formData);
 
-  // Pull team assignments + current matchRatings so we can compute Elo
-  // deltas in the same transaction that persists the score.
+  // Pull the team assignments so we can compute Elo deltas alongside
+  // the update that persists the score. The ratings themselves come
+  // from this club's memberships at apply time, not from the user.
   const before = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      teamAssignments: {
-        include: { user: { select: { id: true, matchRating: true } } },
-      },
+      teamAssignments: { select: { userId: true, team: true } },
     },
   });
 
@@ -256,20 +256,15 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
   // assigned). Fails open: log and continue if something's off.
   try {
     if (before?.teamAssignments?.length) {
-      const eloInputs = before.teamAssignments.map((t) => ({
-        userId: t.userId,
-        team: t.team,
-        matchRating: t.user.matchRating,
-      }));
-      const deltas = computeEloDeltas(eloInputs, parsed.redScore, parsed.yellowScore);
-      await db.$transaction(
-        deltas.map((d) =>
-          db.user.update({
-            where: { id: d.userId },
-            data: { matchRating: d.after },
-          }),
-        ),
-      );
+      // The club is the one already authorised against a few lines up,
+      // so an admin at one club can never move another club's Elo.
+      const orgId = match.activity.orgId;
+      const { inputs } = await loadMembershipEloInputs({
+        orgId,
+        assignments: before.teamAssignments,
+      });
+      const deltas = computeEloDeltas(inputs, parsed.redScore, parsed.yellowScore);
+      await applyMembershipEloDeltas({ orgId, deltas });
     }
   } catch (err) {
     console.error("Elo update failed (match will still be COMPLETED):", err);
