@@ -27,10 +27,12 @@
  * used to recognise is indistinguishable from one that never saw it.
  * They are joined by tests for the shape the same misconfiguration takes
  * NOW — a table full of `no owner: route=…` rows and a bot that said
- * nothing — and by a drift test over all three models the pipeline
- * calls, because probing one model stopped being sufficient the day the
+ * nothing, and by a drift test over every model the pipeline calls,
+ * because probing one model stopped being sufficient the day the
  * mega-prompt was replaced by a router on Haiku and extractors on
- * Sonnet 5.
+ * Sonnet 5. (The list was three entries until 2026-09-19, when the
+ * chase composer left Sonnet 4.5 and joined the extractors on Sonnet
+ * 5. It is the drift test, not the count, that does the work.)
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";

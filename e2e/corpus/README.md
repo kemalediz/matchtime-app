@@ -92,13 +92,13 @@ A live sweep that cannot reach the model does not degrade, it **fails**.
 missing, blank, or rejected (401/403/404/429), when a "live" run would still see
 `MT_TEST_ROUTER_STUB_FILE`, `MT_TEST_EXTRACTOR_STUB_FILE` or
 `MT_TEST_LLM_STUB_FILE`, or when a "stubbed" run carries a real key and could
-quietly spend money. It spends one token on **each of the three models the
-pipeline calls** — `claude-haiku-4-5` (the router), `claude-sonnet-5` (every
-extractor) and `claude-sonnet-4-5` (the scheduled-chase composer) — and says so:
+quietly spend money. It spends one token on **each model the pipeline calls**:
+`claude-haiku-4-5` (the router) and `claude-sonnet-5` (every extractor, and
+since 2026-09-19 the scheduled-chase composer too). It says so:
 
 ```
-[e2e] LLM: LIVE — probe OK on 3 model(s): claude-haiku-4-5 (612ms, 8 in / 1 out),
-      claude-sonnet-5 (901ms, 8 in / 1 out), claude-sonnet-4-5 (4273ms, 8 in / 1 out);
+[e2e] LLM: LIVE — probe OK on 2 model(s): claude-haiku-4-5 (612ms, 8 in / 1 out),
+      claude-sonnet-5 (901ms, 8 in / 1 out);
       billed to key ...uQAA.
 [e2e] LLM: metering every model call through http://127.0.0.1:56590
 ...
@@ -106,10 +106,12 @@ extractor) and `claude-sonnet-4-5` (the scheduled-chase composer) — and says s
 [e2e] LLM: LIVE confirmed - 141 model call(s) billed: ... $2.05 across claude-sonnet-5.
 ```
 
-**Three models, not one, since §10 step 8.** A key entitled to `sonnet-4-5` and
-not to `sonnet-5` used to pass the old single-model probe and then fail every
+**A list, not one string, since §10 step 8.** A key entitled to one model family
+and not the other used to pass the old single-model probe and then fail every
 extractor call — which lands as `attendance-engine: degraded —` per message and,
-after step 8, as silence.
+after step 8, as silence. The list was three entries until the chase composer
+left Sonnet 4.5 on 2026-09-19; `live-llm.test.ts` reads the model constants out
+of the source, so it is the drift test that keeps this honest, not the count.
 
 Every live run goes through the metering proxy, so "how many calls did this
 actually make and what did they cost" is a fact the run states rather than a

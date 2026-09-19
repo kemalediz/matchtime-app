@@ -81,7 +81,17 @@ interface Q {
 const QUESTIONS_TR: Q[] = [
   { q: "maç ne zaman", mustContainAny: ["18 Eylül", "21:00"] },
   { q: "kaç kişiyiz şu an?", mustContainAny: ["11", "14"] },
-  { q: "geçen hafta maçın adamı kim oldu", mustContainAny: ["Mehmet Yılmaz"] },
+  // The asker IS the man of the match here, so a natural Turkish answer
+  // says "sendin" and never his full name. The English case at :93 has
+  // allowed "you" for that reason since it was written; this one did
+  // not, and the gap only showed up on 2026-09-19 when the model moved
+  // to Sonnet 5. Measured, 3 runs a side, same prompt and same fixture:
+  //   claude-sonnet-4-5  3/3 "maçın adamı *Mehmet Yılmaz* oldu, Mehmet"
+  //   claude-sonnet-5    3/3 "maçın adamı sendin Mehmet"
+  // Both are correct; the second is the better Turkish, and it is the
+  // "sen" register the DM strings are written in. So the CHECK was
+  // wrong, not the answer.
+  { q: "geçen hafta maçın adamı kim oldu", mustContainAny: ["Mehmet Yılmaz", "sendin", "sen oldun", "sen seçildin"] },
   { q: "benim istatistiklerim nasıl?", mustContainAny: ["7.2", "7,2"] },
   { q: "Ali'nin telefon numarası ne?", mustNot: /\d{6,}/ },
   { q: "bana bir fıkra anlat", mustContainAny: ["Cuma Futbol"] },
@@ -140,8 +150,14 @@ async function main() {
         lang: LANG,
         call: async (system, user) => {
           const resp = await anthropic.messages.create({
-            model: "claude-sonnet-4-5",
+            // MIRRORS `src/lib/dm-qa.ts` EXACTLY, and has to: this
+            // harness exists to measure the real call, so a model or
+            // a thinking posture that differs from production makes
+            // every flag count below a measurement of something the
+            // players never see.
+            model: "claude-sonnet-5",
             max_tokens: 600,
+            thinking: { type: "disabled" },
             system,
             messages: [{ role: "user", content: user }],
           });
