@@ -141,36 +141,52 @@ export function computeClubRating(args: {
  * the thing it would shrink toward cannot be passed in.
  * `__tests__/club-rating-shown-vs-balanced.test.ts` asserts it by type.
  *
- * ── THE SEED, AND THE ONE CASE THAT IS NOT A MEAN ────────────────────
+ * ── NO RATINGS MEANS NO NUMBER, SEEDED OR NOT ────────────────────────
  *
- * With no peer ratings at all, there is no mean to take, and what the
- * club does or does not have is its seed:
+ * With no peer ratings at all there is no mean to take, and the answer
+ * is null whatever the club's seed says. Kemal, 2026-09-19:
  *
- *   seeded    the seed, which IS this club's own stated opinion of the
- *             player, so it is theirs to be shown. Unchanged behaviour.
- *   unseeded  null. The club has never said anything about this player,
- *             and the club's AVERAGE is a fine prior for the balancer
- *             and a lie on the player's own dashboard. The UI renders
- *             the empty state instead of a number.
+ *   "i prefer them to see nothing, better not to show seed, the ratings
+ *    are important to the player, not the seed and it can be
+ *    discouraging too."
  *
- * A peer rating always wins over a seed: once team-mates have said
- * something, the admin's guess is not what the player was given.
+ * Slice 6 shipped it the other way, showing a seeded player their seed
+ * on the grounds that it is the club's own stated opinion. It is, but
+ * it is an admin's guess typed before anybody had played, and under the
+ * heading "your rating" a player reads it as what their team-mates
+ * think of them. When the guess is low that is discouraging, and it is
+ * discouraging about something nobody actually said.
  *
- * Clamped to [1, 10] like the balancer, for the same reason: somebody
- * can seed outside the band. Peer scores are 1 to 10 by the schema, so
- * the clamp never bites on a mean.
+ * So the seeded-but-unrated player and the never-mentioned player are
+ * ONE state on screen: the empty state, whose copy
+ * (`rating_club_empty`) already says the true thing, that team-mates
+ * set this after the first game. `clubSeedRating` survives in the
+ * signature only to be refused, which is deliberate: a caller that
+ * holds a seed can still hand it over and still get null, so nobody has
+ * to route around this function to do the right thing.
+ *
+ * The BALANCER is untouched. `computeClubRating` above still takes the
+ * seed and still leans on it with no peer ratings present, because a
+ * seed is exactly how a new club gets sensible teams in week one. The
+ * two functions now disagree by the whole seed for these players, and
+ * that is the decision:
+ *
+ *   shown     nothing, until a team-mate says something
+ *   balanced  the seed, from the moment an admin types it
+ *
+ * Clamped to [1, 10] like the balancer. Peer scores are 1 to 10 by the
+ * schema so the clamp never bites on a mean, and it is kept as the
+ * cheap guard against a future caller passing something else.
  */
 export function clubDisplayRating(args: {
-  /** `Membership.seedRating` for THIS club. Null when unseeded. */
+  /** `Membership.seedRating` for THIS club. Null when unseeded. Read
+   *  only to be ignored: see the header. */
   clubSeedRating: number | null;
   /** `Rating.score` rows from THIS club only, newest first, capped at 60. */
   clubPeerRatings: number[];
 }): number | null {
-  const { clubPeerRatings, clubSeedRating } = args;
-  if (clubPeerRatings.length > 0) {
-    const mean = clubPeerRatings.reduce((s, r) => s + r, 0) / clubPeerRatings.length;
-    return Math.max(1, Math.min(10, mean));
-  }
-  if (clubSeedRating === null) return null;
-  return Math.max(1, Math.min(10, clubSeedRating));
+  const { clubPeerRatings } = args;
+  if (clubPeerRatings.length === 0) return null;
+  const mean = clubPeerRatings.reduce((s, r) => s + r, 0) / clubPeerRatings.length;
+  return Math.max(1, Math.min(10, mean));
 }

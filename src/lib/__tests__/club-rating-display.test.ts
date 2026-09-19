@@ -205,14 +205,48 @@ describe("a player this club has never rated is shown the empty state", () => {
     expect(r.balancerRating).toBe(7);
   });
 
-  it("seeded but unrated: the seed IS the club's own opinion, so it shows", async () => {
+  /**
+   * Kemal, 2026-09-19: "i prefer them to see nothing, better not to
+   * show seed, the ratings are important to the player, not the seed
+   * and it can be discouraging too."
+   *
+   * So this is the SAME screen as the case above. One call still
+   * produces both numbers and they now disagree by the whole seed: the
+   * player is shown nothing, the balancer is handed 7.5.
+   */
+  it("seeded but unrated: the player sees nothing, the balancer still gets the seed", async () => {
     clubSeed = 7.5;
     for (const other of ["u-a"]) for (let i = 0; i < 4; i++) push(other, ORG, 4);
     const r = await load();
     expect(r.source).toBe("seed");
-    expect(r.hasOwnNumber).toBe(true);
-    expect(r.rating).toBe(7.5);
+    expect(r.hasOwnNumber).toBe(false);
+    expect(r.rating).toBeNull();
+    expect(r.peerCount).toBe(0);
     expect(r.balancerRating).toBe(7.5);
+  });
+
+  it("a low seed is hidden too, and the balancer still reads it", async () => {
+    clubSeed = 3;
+    for (let i = 0; i < 4; i++) push("u-a", ORG, 8);
+    const r = await load();
+    expect(r.rating).toBeNull();
+    expect(r.hasOwnNumber).toBe(false);
+    expect(r.balancerRating).toBe(3);
+  });
+
+  it("one team-mate rating, and the number appears", async () => {
+    clubSeed = 4;
+    const before = await load();
+    expect(before.rating).toBeNull();
+
+    findManyCalls = [];
+    push(ME, ORG, 9);
+    const after = await load();
+    // What he was GIVEN, not the 4 he was guessed at.
+    expect(after.rating).toBe(9);
+    expect(after.hasOwnNumber).toBe(true);
+    // Balanced: (9 + 4 x 3) / (1 + 3) = 5.25
+    expect(after.balancerRating).toBe(5.25);
   });
 
   it("a club that has never rated anybody gives nobody a number", async () => {

@@ -82,6 +82,65 @@ test("a player this club has never rated is shown the empty state, not an averag
   await expect(page.getByText("No ratings at this club yet", { exact: false }).first()).toBeVisible();
 });
 
+/**
+ * A SEED IS NOT A RATING, SO NEITHER SURFACE SHOWS IT.
+ *
+ * Kemal, 2026-09-19: "i prefer them to see nothing, better not to show
+ * seed, the ratings are important to the player, not the seed and it
+ * can be discouraging too."
+ *
+ * Gary Guest has no ratings at this club. Give his membership a seed and
+ * NOTHING on either surface may change: the same placeholder in
+ * the tile, the same "No ratings at this club yet" line. These are the
+ * same two assertions as the unseeded test above, which is the point:
+ * seeded and unseeded are one state on screen now.
+ *
+ * That the page is not simply blind to every number is covered by the
+ * Riley cases above, where one real rating does put 7.5 on both
+ * surfaces. The balancer half, that `computeClubRating` still reads the
+ * seed the player cannot see, is pinned in
+ * `src/lib/__tests__/club-rating-display.test.ts`.
+ *
+ * The seed is written and removed inside these tests. The fixture world
+ * deliberately has no seeded membership, which is what every member
+ * created since slice 4 looks like.
+ */
+const SET_GUEST_SEED = `UPDATE "Membership" SET "seedRating" = $1 WHERE "userId" = $2`;
+/** A value that appears nowhere else in the fixture world, so "it is not
+ *  on the page" means the seed and not a coincidence. Riley's 7.5 and
+ *  Pat's 4.0 are both real leaderboard rows on the stats page. It is
+ *  also a LOW seed, which is the case Kemal called discouraging. */
+const GUEST_SEED = 2.4;
+
+test("a seeded but unrated player sees the empty state on the stats page", async ({ page, db }) => {
+  await db.run(SET_GUEST_SEED, [GUEST_SEED, U.guest]);
+  try {
+    await signInAs(page, U.guest, "/profile/stats");
+    await page.waitForURL("**/profile/stats", { timeout: 30_000 });
+    await expect(page.getByText("No ratings at this club yet", { exact: false }).first()).toBeVisible();
+    // The seed itself must be nowhere on the page. The rating
+    // leaderboard below shares this page and legitimately prints other
+    // players' club ratings, which is why the seed is a value no real
+    // rating here produces.
+    await expect(page.getByText("2.4", { exact: false })).toHaveCount(0);
+  } finally {
+    await db.run(SET_GUEST_SEED, [null, U.guest]);
+  }
+});
+
+test("a seeded but unrated player sees the empty state on the dashboard too", async ({ page, db }) => {
+  await db.run(SET_GUEST_SEED, [GUEST_SEED, U.guest]);
+  try {
+    await signInAs(page, U.guest, "/");
+    await page.waitForURL(/\/$/, { timeout: 30_000 });
+    await expect(page.getByText("Club rating", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("No ratings at this club yet", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("2.4", { exact: false })).toHaveCount(0);
+  } finally {
+    await db.run(SET_GUEST_SEED, [null, U.guest]);
+  }
+});
+
 test("the dashboard tile is the CLUB rating, and it is the raw one", async ({ page }) => {
   await signInAs(page, U.rater, "/");
   await page.waitForURL(/\/$/, { timeout: 30_000 });

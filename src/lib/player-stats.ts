@@ -707,13 +707,17 @@ const PROVISIONAL_BELOW_PEER_COUNT = 3;
 export interface ClubRatingView {
   /**
    * WHAT A HUMAN IS SHOWN. 1 to 10: the raw mean of the ratings this
-   * club gave this player, or this club's seed for them when it has
-   * given none, or NULL when the club has never said anything about
-   * them at all and the UI must render the empty state.
+   * club gave this player, or NULL when this club has not rated them,
+   * in which case the UI must render the empty state.
+   *
+   * A seed does NOT produce a number here, as of 2026-09-19. Kemal: "i
+   * prefer them to see nothing, better not to show seed, the ratings
+   * are important to the player, not the seed and it can be
+   * discouraging too." Only a real peer rating makes this non-null.
    *
    * Nullable on purpose. It is the one thing that makes a surface
-   * handle the empty case instead of printing a club average under a
-   * player's name.
+   * handle the empty case instead of printing a club average, or an
+   * admin's week-one guess, under a player's name.
    */
   rating: number | null;
   /**
@@ -731,9 +735,12 @@ export interface ClubRatingView {
    *  UI says so instead of showing a bare shrunk figure. */
   provisional: boolean;
   /**
-   * False when this club has never rated and never seeded the player,
-   * so there is no number of theirs to show. Exactly `rating !== null`,
-   * kept as a named field because the UI reads better for it.
+   * False when this club has never rated the player, so there is no
+   * number of theirs to show. A seed does not make it true: since
+   * 2026-09-19 a seeded but unrated player is in exactly the same state
+   * on screen as one nobody has ever mentioned. Exactly
+   * `rating !== null`, and equivalently `peerCount > 0`, kept as a
+   * named field because the UI reads better for it.
    */
   hasOwnNumber: boolean;
 }

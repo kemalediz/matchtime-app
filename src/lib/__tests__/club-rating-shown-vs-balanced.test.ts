@@ -157,11 +157,31 @@ describe("one rating of 9 at a club averaging 6.674", () => {
 });
 
 /**
- * Design section 3: a player this club has never rated AND never seeded
- * has no number of their own. The club's mean is a fine prior for the
- * balancer and would be a lie on the player's own dashboard, so the
- * display returns null and the UI renders the empty state. Unchanged by
- * this decision.
+ * A SEED IS NOT A RATING, SO IT IS NOT SHOWN.
+ *
+ * Kemal, 2026-09-19, after slice 6 shipped the seed as a visible club
+ * rating:
+ *
+ *   "i prefer them to see nothing, better not to show seed, the ratings
+ *    are important to the player, not the seed and it can be
+ *    discouraging too."
+ *
+ * So the display has ONE input that can produce a number: the ratings
+ * this club's players actually gave. A seed is an admin's guess typed
+ * before anybody had played, it is not something a team-mate said about
+ * this player, and shown as "your rating" it is both wrong and, when
+ * the guess is low, discouraging.
+ *
+ * The seeded-but-unrated player and the unseeded-and-unrated player are
+ * therefore the SAME state on screen: the empty state, which already
+ * says the true thing ("No ratings at this club yet"). Design section 3
+ * and section 8.5.
+ *
+ * The BALANCER is untouched. `computeClubRating` still takes the seed
+ * and still leans on it, because a seed is exactly how a new club gets
+ * sensible teams in week one. Every case below asserts both halves so
+ * nobody can "simplify" the seed out of team generation on the strength
+ * of this decision.
  */
 describe("a player with no club ratings", () => {
   it("unseeded and unrated: nothing to show", () => {
@@ -178,13 +198,47 @@ describe("a player with no club ratings", () => {
     expect(b.source).toBe("club-average");
   });
 
-  it("seeded but unrated: the seed IS this club's own opinion, so it shows", () => {
-    expect(clubDisplayRating({ clubSeedRating: 7.5, clubPeerRatings: [] })).toBe(7.5);
+  it("seeded but unrated: nothing to show either, because a seed is not a rating", () => {
+    expect(clubDisplayRating({ clubSeedRating: 7.5, clubPeerRatings: [] })).toBeNull();
   });
 
-  it("an out of band seed is clamped for display, as it is for the balancer", () => {
-    expect(clubDisplayRating({ clubSeedRating: 99, clubPeerRatings: [] })).toBe(10);
-    expect(clubDisplayRating({ clubSeedRating: -4, clubPeerRatings: [] })).toBe(1);
+  it("and the balancer still uses that seed, which is the whole point of seeding", () => {
+    const b = computeClubRating({
+      clubSeedRating: 7.5,
+      clubPeerRatings: [],
+      clubMeanRating: SUTTON_MEAN,
+    });
+    expect(b.rating).toBe(7.5);
+    expect(b.source).toBe("seed");
+  });
+
+  it("a low seed is not shown either: that is the discouraging case Kemal named", () => {
+    expect(clubDisplayRating({ clubSeedRating: 3, clubPeerRatings: [] })).toBeNull();
+    // The balancer still reads the 3. A weak week-one guess is still the
+    // best information the draft has.
+    expect(
+      computeClubRating({ clubSeedRating: 3, clubPeerRatings: [], clubMeanRating: SUTTON_MEAN }).rating,
+    ).toBe(3);
+  });
+
+  it("an out of band seed is shown as nothing, not clamped into a number", () => {
+    expect(clubDisplayRating({ clubSeedRating: 99, clubPeerRatings: [] })).toBeNull();
+    expect(clubDisplayRating({ clubSeedRating: -4, clubPeerRatings: [] })).toBeNull();
+    // The balancer clamps it, as it always has.
+    expect(
+      computeClubRating({ clubSeedRating: 99, clubPeerRatings: [], clubMeanRating: SUTTON_MEAN }).rating,
+    ).toBe(10);
+    expect(
+      computeClubRating({ clubSeedRating: -4, clubPeerRatings: [], clubMeanRating: SUTTON_MEAN }).rating,
+    ).toBe(1);
+  });
+
+  it("one peer rating is all it takes for a number to appear", () => {
+    // Seeded at 4, then a single team-mate says 9. Before that rating he
+    // saw nothing; now he sees the 9 he was given, not the 4 he was
+    // guessed at, and not a blend of the two.
+    expect(clubDisplayRating({ clubSeedRating: 4, clubPeerRatings: [] })).toBeNull();
+    expect(clubDisplayRating({ clubSeedRating: 4, clubPeerRatings: [9] })).toBe(9);
   });
 });
 
