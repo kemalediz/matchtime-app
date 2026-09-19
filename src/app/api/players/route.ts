@@ -81,7 +81,13 @@ export async function GET(request: Request) {
     phoneNumber: m.user.phoneNumber,
     role: m.role,
     positions: m.user.activityPositions?.[0]?.positions ?? [],
-    seedRating: m.user.seedRating,
+    // THIS club's seed, off the membership we are already iterating.
+    // It used to be `m.user.seedRating`, the global column, so the admin
+    // seed editor this endpoint feeds could show a number another club
+    // had typed (MDs/club-scoped-ratings-design-2026-09-18.md, 8.3).
+    // Null means this club has no opinion of them yet, which is the
+    // correct state for a new member and must not borrow one.
+    seedRating: m.seedRating,
     isActive: m.user.isActive,
     leftAt: m.leftAt ? m.leftAt.toISOString() : null,
     provisionallyAddedAt: m.provisionallyAddedAt ? m.provisionallyAddedAt.toISOString() : null,

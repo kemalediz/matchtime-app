@@ -79,12 +79,15 @@ test("mobile render + edit seed + add phone + apply writes to the DB", async ({ 
   await expect(page.getByText(/setup complete|already completed/i)).toBeVisible({ timeout: 30_000 });
 
   // ── DB assertions ──
-  // Seed rating written (overwrites the proposed value with the admin edit).
+  // Seed rating written (overwrites the proposed value with the admin edit),
+  // onto the MEMBERSHIP at this session's org. The seed is one club's
+  // opinion and stopped living on `User` in slice 4 of
+  // MDs/club-scoped-ratings-design-2026-09-18.md.
   await expect
     .poll(async () => {
       const row = await db.one<{ seedRating: number | null }>(
-        `SELECT "seedRating" FROM "User" WHERE id = $1`,
-        [U.player],
+        `SELECT "seedRating" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
+        [U.player, ORG_ID],
       );
       return row?.seedRating ?? null;
     })
@@ -120,7 +123,10 @@ test("mobile render + edit seed + add phone + apply writes to the DB", async ({ 
 
 test("re-opening an applied session short-circuits (idempotent)", async ({ page, db }) => {
   const seedBefore = (
-    await db.one<{ seedRating: number | null }>(`SELECT "seedRating" FROM "User" WHERE id = $1`, [U.player])
+    await db.one<{ seedRating: number | null }>(
+      `SELECT "seedRating" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
+      [U.player, ORG_ID],
+    )
   )?.seedRating;
   const posBefore = await db.count(
     `SELECT COUNT(*) FROM "PlayerActivityPosition" WHERE "userId" = $1 AND "activityId" = $2`,
@@ -135,7 +141,10 @@ test("re-opening an applied session short-circuits (idempotent)", async ({ page,
 
   // Nothing re-written.
   const seedAfter = (
-    await db.one<{ seedRating: number | null }>(`SELECT "seedRating" FROM "User" WHERE id = $1`, [U.player])
+    await db.one<{ seedRating: number | null }>(
+      `SELECT "seedRating" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
+      [U.player, ORG_ID],
+    )
   )?.seedRating;
   expect(seedAfter).toBe(seedBefore);
   expect(seedAfter).toBe(9);

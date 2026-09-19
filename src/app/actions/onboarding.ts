@@ -137,7 +137,9 @@ export interface WizardSubmission {
     name: string;
     phone?: string;
     /** Optional seed rating 1-10 the admin sets manually at wizard time.
-     *  LLM-powered suggestions arrive in a later slice. */
+     *  Lands on this org's `Membership`, never on the player's `User`
+     *  row: a player who also turns out at another club keeps two
+     *  independent numbers and neither club can move the other's. */
     seedRating?: number;
   }>;
   activity: {
@@ -271,7 +273,6 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
               name: p.name,
               email: `onboarding+${emailSlug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}@matchtime.local`,
               phoneNumber: p.phone,
-              seedRating: p.seedRating ?? undefined,
               onboarded: false,
               isActive: true,
             },
@@ -279,26 +280,42 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
           player = { id: user.id, name: user.name };
           playersCreated += 1;
         } else {
-          // Existing user — nudge their seed rating only if blank.
-          if (p.seedRating != null) {
-            await tx.user.updateMany({
-              where: { id: player.id, seedRating: null },
-              data: { seedRating: p.seedRating },
-            });
-          }
+          // An EXISTING user here is somebody who already plays
+          // somewhere else: we found them by phone number, across every
+          // org. The old code nudged their global `User.seedRating` when
+          // it was blank, which let a club being set up today write the
+          // number another club's balancer reads. The seed this admin
+          // typed is their club's opinion and goes on their club's
+          // membership, below, with everybody else's.
           playersLinkedExisting += 1;
         }
 
-        // Skip if the current admin's userId shows up as a player too —
-        // they already have an OWNER membership. Avoid creating a second
-        // PLAYER row for the same (user, org) pair (the @@unique would
-        // throw).
-        if (player.id === userId) continue;
+        // The current admin's userId can show up as a player too, and
+        // they already have an OWNER membership created with the org. A
+        // second PLAYER row for the same (user, org) pair would break
+        // the @@unique, so seed the row they already have and move on
+        // rather than dropping the number they typed for themselves.
+        if (player.id === userId) {
+          if (p.seedRating != null) {
+            await tx.membership.update({
+              where: { userId_orgId: { userId, orgId: org.id } },
+              data: { seedRating: p.seedRating },
+            });
+          }
+          continue;
+        }
 
         await tx.membership.upsert({
           where: { userId_orgId: { userId: player.id, orgId: org.id } },
-          create: { userId: player.id, orgId: org.id, role: "PLAYER" },
-          update: {},
+          create: {
+            userId: player.id,
+            orgId: org.id,
+            role: "PLAYER",
+            // Null when the admin left the box blank, which is the
+            // correct "this club has no opinion yet" state, not a 6.
+            seedRating: p.seedRating,
+          },
+          update: p.seedRating != null ? { seedRating: p.seedRating } : {},
         });
       }
 

@@ -624,7 +624,7 @@ export default function PlayersPage() {
                     min={1}
                     max={10}
                     step={1}
-                    title="Seed rating (1–10). Used by the team-balancer until peer ratings accumulate."
+                    title="Seed rating (1–10) for this club. Used by the team-balancer until peer ratings accumulate. A player at another club keeps a separate rating there."
                     onBlur={(e) => e.target.value && handleSeedRating(p.id, e.target.value)}
                     className="w-20 h-10 px-2 rounded-lg border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
