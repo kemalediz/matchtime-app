@@ -47,7 +47,13 @@ import { normalisePhone } from "./phone";
 import { normaliseName } from "./name-normalise";
 export { normaliseName };
 
-const MODEL = "claude-sonnet-4-5";
+// `claude-sonnet-4-5` here was inherited from the deleted
+// `analyzeBatch`, not chosen (`MDs/llm-spend-september-2026.md` §4).
+// Sonnet 5 is newer, 1M context, $2/$10 per MTok against $3/$15.
+// The call site sends `thinking: { type: "disabled" }`, which is
+// required: Sonnet 5 thinks adaptively when the parameter is omitted
+// and Sonnet 4.5 did not.
+const MODEL = "claude-sonnet-5";
 
 /** Hard CAP on how far back the squad-extraction window can stretch,
  *  regardless of when the previous match ended. The window normally
@@ -274,6 +280,13 @@ export async function extractSquadListsFromWindow(
     const res = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 4000,
+      // Sonnet 5 runs adaptive thinking unless told not to, and can
+      // spend the whole max_tokens budget on it and return no text
+      // block at all (measured 2026-09-06, 5 runs of 5; see
+      // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
+      // cap sized for its OUTPUT, so leaving it adaptive would turn a
+      // price change into a silent degradation.
+      thinking: { type: "disabled" },
       system: [
         {
           type: "text",

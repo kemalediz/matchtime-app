@@ -14,7 +14,7 @@
  *      wrong numbers without either run erroring — see PR #34.
  *   0b. Checks the MODEL seam against the mode (helpers/live-llm.ts).
  *      A live run proves it can reach Anthropic — and spends one token
- *      on EACH of the three models the pipeline calls — before any work
+ *      on EACH model the pipeline calls, before any work
  *      starts; a stubbed run proves it cannot. A keyless
  *      `test:corpus:live` used to score 8/47 in four seconds and PASS,
  *      every case having fallen through to `offlineVerdict`. Since §10
