@@ -225,8 +225,8 @@ describe("the provisional caveat is about confidence, not adjustment", () => {
       expect(note.split(".").length - 1).toBe(1);
       // No jargon, and nothing that reads as AI punctuation.
       expect(note.toLowerCase()).not.toContain("bayes");
-      expect(note).not.toContain("—");
-      expect(note).not.toContain("–");
+      expect(note).not.toContain(String.fromCharCode(0x2014));
+      expect(note).not.toContain(String.fromCharCode(0x2013));
     });
   }
 
