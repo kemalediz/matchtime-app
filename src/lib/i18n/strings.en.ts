@@ -736,10 +736,19 @@ export const en = {
   /** The per-topic explainers. */
   onbHelpExplainer: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
     ({
+      // Third line CHANGED 2026-09-19, deliberately, and the golden
+      // snapshot is re-recorded with it. The old line promised "a form
+      // rating for each player" built from "everyone's scores" with no
+      // club boundary at all. Since the ratings became club-scoped that
+      // sentence is false for anybody who plays for two groups, and
+      // false in the direction that matters: it implies their other
+      // club's scores count here. They do not. Lines 1, 2 and 4 are
+      // untouched. See section 8.5 of
+      // MDs/club-scoped-ratings-design-2026-09-18.md.
       ratings:
         `⭐ *Player ratings — how it works*\n` +
         `After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).\n` +
-        `I combine everyone's scores into a form rating for each player that updates after every game — and that's what I use to build *balanced teams*. So the more people rate, the fairer the teams.\n` +
+        `I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never touch this one. So the more people rate, the fairer the teams.\n` +
         `You'll get the link the morning after the game. Type *@Match Time my stats* for yours anytime.`,
       teams:
         `🟥🟦 *Fair teams — how it works*\n` +
@@ -1143,4 +1152,78 @@ export const en = {
     `First match: *${p.dayName} ${p.kickoffTime}* at *${p.venue}*` +
     `${p.weekly ? " (every week)" : ""}.\n\n` +
     `*How to use me* 👇\n${p.howToUseMe}`,
+
+  // ── the two ratings, on the WEB (slice 6, 2026-09-19) ───────────────
+  //
+  // The first strings in this table that are read by a browser rather
+  // than by WhatsApp, so: no `*bold*`, no emoji, plain sentences. They
+  // belong here all the same. The dashboard and `/profile/stats` are
+  // server components that already hold the membership, so they can do
+  // `t(org.language)` like any composer, and a Turkish club should not
+  // have to read its own ratings in English.
+  //
+  // They exist because there are now TWO ratings and a player who is
+  // shown a bare number cannot tell which one they are looking at:
+  //
+  //   the CLUB rating    built only from ratings given inside one club.
+  //                      This is what the balancer uses and what picks
+  //                      the teams. Visible to the club, admins
+  //                      included.
+  //   the OVERALL rating the simple mean of every rating the player has
+  //                      ever received anywhere, each counted once.
+  //                      Visible to that player and to nobody else,
+  //                      ever. Enforced in `player-stats.ts`, pinned by
+  //                      `__tests__/overall-rating-visibility.test.ts`.
+  //
+  // Sections 8.1, 8.2 and 8.5 of
+  // MDs/club-scoped-ratings-design-2026-09-18.md.
+
+  /** The dashboard's stat tile has room for two words, so the club name
+   *  goes in the tooltip (`rating_club_note`) rather than the label. It
+   *  says "club" because the tile used to say "Rating" while showing a
+   *  number computed across every club the player was in. */
+  rating_club_tile: "Club rating",
+
+  /** Headline for the club rating, wherever it is shown. The club name
+   *  is interpolated after a colon so Turkish needs no case suffix on
+   *  a proper noun it has never seen. */
+  rating_club_label: (p: { orgName: string }): string => `Your rating at ${p.orgName}`,
+
+  /** The one sentence that makes the boundary visible. Without it the
+   *  club rating and the overall are two unexplained numbers on the
+   *  same screen. */
+  rating_club_note: "From this club's ratings only. Other clubs never count here.",
+
+  rating_overall_label: "Your overall rating",
+
+  /** Says both halves of decision 1 and decision 4 in a breath: every
+   *  rating counts once whichever club it came from, and nobody else
+   *  can see this number. The second half is not decoration; it is the
+   *  only place the product tells the player the rule it enforces. */
+  rating_overall_note:
+    "Every rating you have ever had, from every club, counted once each. Only you can see this.",
+
+  /** A player this club has never rated. Shown INSTEAD of a number when
+   *  the only thing available is the club's own average, which is a
+   *  usable prior for the balancer and would be a lie on the player's
+   *  own dashboard. */
+  rating_club_empty: "No ratings at this club yet. Your team-mates set this after your first game.",
+
+  /** Admin seed editor. The seed is one club's opinion and the editor
+   *  gives no other hint of that. */
+  rating_seed_club_hint:
+    "Seed ratings apply to this club only. A player who also turns out somewhere else keeps a separate rating there, and nothing you type here changes it.",
+
+  /** One or two ratings in, the prior still outweighs the player's own
+   *  scores (75% and 60% of the number respectively), so the figure is
+   *  real but not yet theirs. `loadRatingLeaderboard` already flags a
+   *  one-game player the same way; this says it in words rather than
+   *  showing a bare shrunk figure with no explanation. */
+  rating_club_provisional: (p: { count: number }): string =>
+    `Provisional: ${p.count} rating${p.count === 1 ? "" : "s"} so far, so it sits close to the club average until more arrive.`,
+
+  /** The settled case. Wording moved byte for byte from the dashboard
+   *  tile it replaces. */
+  rating_club_peers: (p: { count: number }): string =>
+    `${p.count} peer rating${p.count === 1 ? "" : "s"}`,
 };

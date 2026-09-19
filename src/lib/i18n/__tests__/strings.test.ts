@@ -276,6 +276,17 @@ const SAMPLES: SampleArgs = {
   onb_legacy_menu_retry_lead: null,
   onb_legacy_provisioned_lead: { groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayName: "DAYNAME", kickoffTime: "21:00", venue: "Goals Wembley" },
   onb_legacy_completion: { onLabels: ["LABELONE"], dayName: "DAYNAME", kickoffTime: "21:00", venue: "Goals Wembley", weekly: true, howToUseMe: "HOWTOBLOCK" },
+
+  // ── slice 6: the two ratings, on the web ──
+  rating_club_tile: null,
+  rating_club_label: { orgName: "Sutton Football Club" },
+  rating_club_note: null,
+  rating_overall_label: null,
+  rating_overall_note: null,
+  rating_club_empty: null,
+  rating_seed_club_hint: null,
+  rating_club_provisional: { count: 2 },
+  rating_club_peers: { count: 7 },
 };
 
 /** Render an entry with its sample arguments. */
