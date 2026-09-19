@@ -87,6 +87,14 @@ coordination and no ritual.
   401 every API spec and reject every test-minted magic link.
 - All seeded phones are in the UK reserved-fictitious range
   (`07700 900xxx`); all emails end `@e2e-test.invalid`.
+- **A live run spends the DEVELOPER's key, never production's.** With
+  `MT_SIM_LIVE_LLM=1`, `buildTestEnv()` resolves `ANTHROPIC_API_KEY_DEV`
+  into the `ANTHROPIC_API_KEY` the server under test reads, and
+  `run.ts` drops the production key from its own process right after
+  loading `.env` so no child can inherit it. A live run with no dev key
+  refuses; it does not fall back. A stubbed run needs no key at all.
+  Why the two are separate, and what to put in `.env`:
+  `MDs/dev-vs-production-api-keys.md`.
 
 ### Test-only seams in prod code (inert unless the env flag is set)
 

@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template. It holds names and placeholders, never values,
+# and the two Anthropic keys it documents are the whole point of it being
+# readable in the repo. See MDs/dev-vs-production-api-keys.md.
+!.env.example
 
 # vercel
 .vercel

@@ -45,8 +45,8 @@
  * the model and nothing else; it cannot read or write production data.
  *
  * ── IT COSTS REAL MONEY ───────────────────────────────────────────────
- * Every run is a real extractor call billed to the live
- * ANTHROPIC_API_KEY, roughly $0.003 each. The default sweep is 16
+ * Every run is a real extractor call billed to the DEVELOPER's key,
+ * ANTHROPIC_API_KEY_DEV, roughly $0.003 each. The default sweep is 16
  * phrasings x 20 runs = 320 calls, about $1. The total is printed.
  *
  * ── HOW TO RUN ────────────────────────────────────────────────────────
@@ -68,6 +68,7 @@
  *                   that decides whether the fallback is safe.
  * ═══════════════════════════════════════════════════════════════════════
  */
+import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
@@ -304,7 +305,12 @@ async function measureRoutes(runs: number, concurrency: number) {
 }
 
 async function main() {
-  if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
+  // The DEVELOPER's key, assigned over ANTHROPIC_API_KEY for this
+  // process so `routeBatch` and `extractForRoute`, the same code
+  // production runs, pick it up unchanged. Refuses rather than falling
+  // back: this sweep is 16+ real calls and they belong on the
+  // development bill (MDs/llm-spend-september-2026.md).
+  spendDevApiKeyOrExit("scripts/measure-claimless.ts");
   const runs = Math.max(1, Number(process.env.RUNS ?? 20));
   if (process.env.ROUTES === "1") {
     await measureRoutes(runs, Math.max(1, Number(process.env.CONCURRENCY ?? 8)));

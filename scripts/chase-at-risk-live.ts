@@ -18,7 +18,8 @@
  * and mutating a customer's data to force it is not on the table.
  *
  * ── IT COSTS REAL MONEY ──────────────────────────────────────────────
- * Every compose is a real Sonnet call on the live ANTHROPIC_API_KEY.
+ * Every compose is a real Sonnet call on ANTHROPIC_API_KEY_DEV, the
+ * developer's key. It refuses to run without one.
  * The default sweep is 25 calls, a few cents.
  *
  * ── HOW TO RUN ───────────────────────────────────────────────────────
@@ -29,6 +30,7 @@
  *   FULL=1      print every composed message, not just the failures
  * ═══════════════════════════════════════════════════════════════════════
  */
+import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import {
   composeChaseFromMatch,
   type ChaseComposeMatch,
@@ -123,6 +125,15 @@ const BLAME =
   /\b(?:let(?:ting)?\s+(?:us|the\s+lads|everyone)\s+down|no thanks to|blame|because\s+\w+\s+(?:bailed|dropped out|pulled out))\b/i;
 
 async function run(): Promise<void> {
+  // Development model calls go on the DEVELOPER's key. This assigns
+  // ANTHROPIC_API_KEY_DEV over ANTHROPIC_API_KEY for this process, so the
+  // library code below, the same modules production runs, picks it up
+  // unchanged. It must happen before the first model call, because some
+  // call sites cache their SDK client (message-analyzer.ts keeps a
+  // module-level `_anthropic`). No fallback: see
+  // MDs/llm-spend-september-2026.md.
+  spendDevApiKeyOrExit("scripts/chase-at-risk-live.ts");
+
   const runs = Math.max(1, Number(process.env.RUNS ?? 10));
   const printAll = process.env.FULL === "1";
   let failures = 0;

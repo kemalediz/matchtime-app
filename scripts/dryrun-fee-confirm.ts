@@ -22,6 +22,7 @@
  * allowlist abstains on, and the `neither` ones are lifted verbatim from
  * the live group — they are real messages this collector has written.
  */
+import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "../src/lib/fee-confirm.ts";
 
 interface Case {
@@ -108,10 +109,13 @@ const MODEL_RUN = LANG === "tr" ? MODEL_TR : MODEL;
 
 async function main() {
   const repeats = Number(process.argv[2] ?? "3") || 3;
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("REFUSING: no ANTHROPIC_API_KEY — a run that cannot reach the model proves nothing.");
-    process.exit(1);
-  }
+  // The DEVELOPER's key, assigned over ANTHROPIC_API_KEY for this
+  // process so `classifyFeeReply`, the same code production runs,
+  // picks it up unchanged. Refuses rather than falling back: a run that
+  // cannot reach the model proves nothing, and a run on the production
+  // key hides what MatchTime actually costs
+  // (MDs/llm-spend-september-2026.md).
+  spendDevApiKeyOrExit("scripts/dryrun-fee-confirm.ts");
   if (process.env.MT_TEST_FEE_REPLY_STUB_FILE) {
     console.error("REFUSING: MT_TEST_FEE_REPLY_STUB_FILE is set — this would measure the stub.");
     process.exit(1);

@@ -23,6 +23,7 @@
  */
 import { config as loadEnv } from "dotenv";
 import { probeAnthropic } from "../helpers/live-llm";
+import { spendDevApiKey } from "../helpers/dev-api-key";
 import { anthropicModel, ROUTER_MODEL } from "../../src/lib/pipeline/llm";
 import { routeBatch } from "../../src/lib/pipeline/router";
 import {
@@ -37,14 +38,16 @@ import type { Route } from "../../src/lib/pipeline/types";
 loadEnv();
 
 async function main(): Promise<number> {
-  const key = (process.env.ANTHROPIC_API_KEY ?? "").trim();
-  if (!key) {
-    console.error(
-      `[regress] REFUSING to run — ANTHROPIC_API_KEY is empty.\n` +
-        `  routeBatch routes a failed call \`unsure\`, which satisfies every attendance\n` +
-        `  case here, so a keyless run would pass in a second and prove nothing.\n` +
-        `  Fix:  set -a; source .env; set +a`,
-    );
+  // The developer's key, assigned over ANTHROPIC_API_KEY for this
+  // process so `routeBatch` picks it up unchanged. Refuses if it is not
+  // set: `routeBatch` routes a failed call `unsure`, which satisfies
+  // every attendance case here, so a keyless run would pass in a second
+  // and prove nothing. It does NOT fall back to the production key.
+  let key: string;
+  try {
+    key = spendDevApiKey("the router regression sweep");
+  } catch (err) {
+    console.error(`[regress] ${(err as Error).message}`);
     return 1;
   }
 
