@@ -3,7 +3,14 @@
  * Since 2026-09-15 a WhatsApp "@Match Time generate the teams" and the
  * admin dashboard's Generate/Regenerate button share this one
  * implementation: the LLM-adjusted blend of seed and peer ratings
- * (`computePlayerRating`, then `runRatingAdjuster` on top).
+ * (`computeClubRating`, then `runRatingAdjuster` on top).
+ *
+ * THE RATING IT BALANCES ON IS CLUB-SCOPED as of 2026-09-19. The seed
+ * is `Membership.seedRating` for this match's org and the peer scores
+ * are this player's 60 most recent ratings FROM THIS ORG, so no other
+ * club can move a number here. It used to read the global
+ * `User.seedRating` and a global 60-row window, which is how a club
+ * that left MatchTime in June kept picking Sutton FC's Tuesday sides.
  *
  * Callers: the LLM analyse route via `lib/owner-deps.ts` when a player
  * asks the bot to generate teams, and the admin dashboard's
@@ -46,7 +53,7 @@ import { balanceTeams, type BalancingStrategy } from "./team-balancer";
 import type { PlayerWithRating } from "@/types";
 import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
-import { computePlayerRating } from "./player-rating";
+import { computeClubRating } from "./player-rating";
 import { resolveTeamLabels } from "./team-labels";
 import { sanitiseTeamNames } from "./message-analyzer";
 
@@ -115,20 +122,60 @@ export async function generateTeamsForMatch(
     };
   }
 
+  // ── THE BALANCER'S INPUT IS CLUB-SCOPED ──────────────────────────
+  //
+  // Everything below is scoped to THIS match's org. Until 2026-09-19
+  // it was not: the seed came from the global `User.seedRating` and the
+  // peer ratings were this player's 60 most recent FROM ANY CLUB, so
+  // Sutton FC's Tuesday sides were partly picked by Sutton Lads, a club
+  // that removed MatchTime in June 2026 and whose ratings will
+  // therefore never correct themselves. Slice 2 of
+  // `MDs/club-scoped-ratings-design-2026-09-18.md`.
+  const orgId = match.activity.org.id;
+
+  // ONE aggregate per generation, not one per player. It is the same
+  // number for all fourteen of them, and fourteen identical aggregates
+  // per team sheet would be a bug even though each returns the right
+  // answer. Null when the club has never rated anybody.
+  const clubMean = await db.rating.aggregate({
+    _avg: { score: true },
+    where: { match: { activity: { orgId } } },
+  });
+  const clubMeanRating = clubMean._avg.score ?? null;
+
+  // ONE query for the seeds, for the same reason. `Membership` is the
+  // club-scoped seed since slice 1; `User.seedRating` still exists and
+  // still holds the same values, but reading it here is what let one
+  // club's opinion decide another club's draft. A squad member with no
+  // membership row for this org simply has no club seed and falls to
+  // the club mean, which is the right answer for a guest.
+  const seedRows = await db.membership.findMany({
+    where: { orgId, userId: { in: match.attendances.map((a) => a.userId) } },
+    select: { userId: true, seedRating: true },
+  });
+  const clubSeedByUser = new Map(seedRows.map((m) => [m.userId, m.seedRating]));
+
   const basePlayers: PlayerWithRating[] = await Promise.all(
     match.attendances.map(async (a) => {
+      // `take: 60` sits NEXT TO the org filter on purpose: sixty of
+      // THIS club's rows, not sixty rows from anywhere then filtered.
+      // The difference is not cosmetic. Ehtisham has 65 ratings, so a
+      // global window truncated at 60 was letting a dead club's rows
+      // EVICT his own club's before the code ever saw them.
       const ratings = await db.rating.findMany({
-        where: { playerId: a.userId },
+        where: { playerId: a.userId, match: { activity: { orgId } } },
         orderBy: { createdAt: "desc" },
         take: 60,
       });
-      // Bayesian blend: seed acts as a prior with weight 3, smoothly
+      // Bayesian blend: the prior acts with weight 3, smoothly
       // dominated by peer ratings as more arrive. Replaces the old
       // step function (which jumped from pure-seed → pure-peer at
-      // exactly 3 ratings).
-      const { rating } = computePlayerRating({
-        seedRating: a.user.seedRating ?? null,
-        peerRatings: ratings.map((r) => r.score),
+      // exactly 3 ratings). The prior is this club's seed, else this
+      // club's mean, else 5.0.
+      const { rating } = computeClubRating({
+        clubSeedRating: clubSeedByUser.get(a.userId) ?? null,
+        clubPeerRatings: ratings.map((r) => r.score),
+        clubMeanRating,
       });
       const pap = a.user.activityPositions.find((p) => p.activityId === match.activityId);
       return {
