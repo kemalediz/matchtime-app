@@ -225,8 +225,8 @@ export async function createGroup(
     const lid = spec.lid === true;
     const phone = lid || spec.hasPhone === false ? null : nextSimPhone();
     await db.run(
-      `INSERT INTO "User" (id, name, email, "phoneNumber", "seedRating", onboarded, "isActive", "updatedAt")
-       VALUES ($1, $2, $3, $4, 6, true, true, now())`,
+      `INSERT INTO "User" (id, name, email, "phoneNumber", onboarded, "isActive", "updatedAt")
+       VALUES ($1, $2, $3, $4, true, true, now())`,
       [userId, spec.name, `sim-${spec.key}-${nonce}@e2e-test.invalid`, phone],
     );
     players.set(spec.key, {
@@ -267,8 +267,16 @@ export async function createGroup(
 
   for (const p of players.values()) {
     await db.run(
-      `INSERT INTO "Membership" (id, "userId", "orgId", role)
-       VALUES ($1, $2, $3, $4)`,
+      // The 6 used to sit on `User.seedRating`, where nothing had read
+      // it since slice 2, so this roster reached the balancer unseeded
+      // and every player fell through to the club mean. It belongs on
+      // the membership, which is where `generateTeamsForMatch` looks.
+      // The same value for everybody keeps the sim deterministic: a
+      // uniform prior ranks the roster exactly as a uniform fall-through
+      // did, so no sheet moves, but the club-seed lookup is now
+      // genuinely exercised instead of always missing.
+      `INSERT INTO "Membership" (id, "userId", "orgId", role, "seedRating")
+       VALUES ($1, $2, $3, $4, 6)`,
       [`sim-mem-${nonce}-${p.key}`, p.userId, orgId, p.role],
     );
   }

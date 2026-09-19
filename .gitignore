@@ -52,3 +52,7 @@ next-env.d.ts
 .env.e2e
 /playwright-report/
 /test-results/
+
+# slice 7 rating-column backup (carries player names; see
+# scripts/export-global-rating-columns.ts)
+/user-global-ratings-backup-*.json

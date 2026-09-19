@@ -14,9 +14,14 @@ async function main() {
   for (const u of all) {
     console.log(`\n${u.id}  name="${u.name}"  phone=${u.phoneNumber}  email=${u.email}`);
     console.log(`  attendance=${u._count.attendances}  ratingsGiven=${u._count.ratingsGiven}  ratingsReceived=${u._count.ratingsReceived}`);
-    console.log(`  seedRating=${u.seedRating}  matchRating=${u.matchRating}  createdAt=${u.createdAt.toISOString()}`);
+    console.log(`  createdAt=${u.createdAt.toISOString()}`);
     for (const m of u.memberships) {
-      console.log(`  org=${m.org.name} role=${m.role} leftAt=${m.leftAt} provAt=${m.provisionallyAddedAt}`);
+      // seed and Elo are per club since 2026-09-19; `User.seedRating`
+      // and `User.matchRating` were dropped in slice 7.
+      console.log(
+        `  org=${m.org.name} role=${m.role} seed=${m.seedRating ?? "none"} elo=${m.matchRating}` +
+          ` leftAt=${m.leftAt} provAt=${m.provisionallyAddedAt}`,
+      );
     }
   }
   await db.$disconnect();

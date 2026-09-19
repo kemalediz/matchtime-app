@@ -48,7 +48,6 @@ export async function seedAll(db: PrismaClient): Promise<void> {
     name: NAME[k],
     email: `${k}@e2e-test.invalid`,
     phoneNumber: k === "guest" ? null : PHONE[k as keyof typeof PHONE],
-    seedRating: 6,
     onboarded: true,
     isActive: true,
   }));
@@ -73,6 +72,23 @@ export async function seedAll(db: PrismaClient): Promise<void> {
     },
   });
 
+  // NO `seedRating` HERE, ON PURPOSE. Until slice 7 these users carried
+  // `User.seedRating: 6`, a column nothing had read since slice 2, so
+  // the fixture world was already unseeded in every way that counted.
+  // It stays unseeded now that the column is gone, for two reasons.
+  //
+  // It is what a member created since slice 4 actually looks like: the
+  // club has no opinion until an admin types one, and the balancer
+  // shrinks toward the CLUB MEAN instead.
+  //
+  // And the two specs that need a seed write one themselves, on the
+  // membership, which is the real path: `stats.spec.ts` sets and clears
+  // `GUEST_SEED` inside each test, and `finish-setup.spec.ts` reads back
+  // what the form wrote. Handing every member a blanket 6 here would
+  // replace the club mean (6.33) as the balancer's prior and turn
+  // `stats.spec.ts`'s "6.8 is nowhere on the page" from a real
+  // assertion into a vacuous one, because 6.8 would no longer be a
+  // number this fixture can produce.
   await db.membership.createMany({
     data: (Object.keys(U) as Array<keyof typeof U>).map((k) => ({
       id: `e2e-mem-${k}`,

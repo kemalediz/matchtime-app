@@ -1,4 +1,14 @@
 /**
+ * SPENT, AND NO LONGER RUNNABLE. This script reads or writes
+ * `User.seedRating` / `User.matchRating`, and both columns were DROPPED
+ * on 2026-09-19 (slice 7 of
+ * MDs/club-scoped-ratings-design-2026-09-18.md). It will throw.
+ *
+ * Kept as a record of what was done, not as something to re-run or copy.
+ * The seed and the Elo are per club now: `Membership.seedRating`, and
+ * `src/lib/membership-elo.ts` for the Elo, which needs the match's org.
+ */
+/**
  * One-off: complete the MJA swthree → Michael Allen merge that
  * silently rolled back back on 2026-05-01 (FK violation on
  * RosterSurveyDM/Response, pre c4f98bc fix). Mirrors mergePlayers()

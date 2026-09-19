@@ -1,4 +1,14 @@
 /**
+ * SPENT, AND NO LONGER RUNNABLE. This script reads or writes
+ * `User.seedRating` / `User.matchRating`, and both columns were DROPPED
+ * on 2026-09-19 (slice 7 of
+ * MDs/club-scoped-ratings-design-2026-09-18.md). It will throw.
+ *
+ * Kept as a record of what was done, not as something to re-run or copy.
+ * The seed and the Elo are per club now: `Membership.seedRating`, and
+ * `src/lib/membership-elo.ts` for the Elo, which needs the match's org.
+ */
+/**
  * One-off: record Tuesday 7-a-side final score 7–7 (Kemal confirmed
  * via WhatsApp). LLM classified the message correctly but couldn't
  * resolve Kemal's @lid sender id to a User, so the score didn't
@@ -6,8 +16,7 @@
  *
  * SPENT. It ran once and is kept only as a record of what was done.
  * DO NOT COPY IT: the Elo moved to `Membership.matchRating` on
- * 2026-09-19 and `User.matchRating` is a deprecated column awaiting
- * slice 7's drop. A replacement for this script goes through
+ * 2026-09-19. A replacement for this script goes through
  * `src/lib/membership-elo.ts`, which needs the match's org.
  */
 import { PrismaPg } from "@prisma/adapter-pg";

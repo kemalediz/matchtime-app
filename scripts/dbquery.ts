@@ -7,10 +7,14 @@ async function main() {
 
   const orgs = await db.organisation.findMany();
   const users = await db.user.findMany({
-    select: { id: true, email: true, name: true, phoneNumber: true, positions: true, seedRating: true },
+    select: { id: true, email: true, name: true, phoneNumber: true, positions: true },
     orderBy: { name: "asc" },
   });
-  const memberships = await db.membership.findMany({ select: { userId: true, orgId: true, role: true } });
+  // The seed is per club since 2026-09-19, so it comes back on the
+  // membership. `User.seedRating` was dropped in slice 7.
+  const memberships = await db.membership.findMany({
+    select: { userId: true, orgId: true, role: true, seedRating: true, matchRating: true },
+  });
   const activities = await db.activity.findMany();
   const matchCount = await db.match.count();
 
