@@ -20,19 +20,16 @@
  * which button was pressed; the tombstone at the top of
  * `app/actions/teams.ts` records what it did and why it went.
  *
- * THIS IS NOT YET THE ONLY CODE THAT PICKS TEAMS, and a comment here
- * saying so would send the next reader past a live rival.
- * `app/api/cron/generate-teams/route.ts:57-92` carries its own rating
+ * THIS IS NOW THE ONLY CODE THAT PICKS TEAMS, as of 2026-09-19.
+ * `app/api/cron/generate-teams/route.ts` used to carry a third rating
  * formula (`ratings.length >= 3 ? mean of the last 60 peer scores :
- * seedRating ?? 5.0`), calls `balanceTeams` itself, writes
- * `TeamAssignment` rows and flips `Match.status` to TEAMS_GENERATED.
- * It does NOT call in here, it skips the rating adjuster,
- * `pinnedToTeam` and `teamNames`, and `vercel.json` schedules it live
- * at `0 12 * * *`. It can still produce a different sheet from this
- * one. Slice 3 of `MDs/club-scoped-ratings-design-2026-09-18.md`
- * deletes that formula and makes the cron delegate here; until it
- * does, "one team-generation path" means the two human-triggered
- * paths, not every path.
+ * seedRating ?? 5.0`), call `balanceTeams` itself, write
+ * `TeamAssignment` rows and flip `Match.status`, on a live `0 12 * * *`
+ * schedule. Slice 3 deleted that and the cron delegates here, so the
+ * noon sweep, the WhatsApp command and the dashboard button cannot
+ * disagree any more. If you add a fourth caller, it calls in here; a
+ * rating formula outside this file is a bug, and the history in
+ * `app/actions/teams.ts`'s tombstone says why.
  *
  * NO AUTHORISATION LIVES HERE. Every caller authorises first: the
  * analyse route by its own gates, the server action by `auth()` then

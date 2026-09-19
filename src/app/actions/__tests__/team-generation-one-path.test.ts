@@ -24,14 +24,13 @@
  * asserting things about arithmetic — matching numbers would still have
  * left the two buttons producing different teams.
  *
- * WHAT THIS FILE DOES NOT COVER. A third writer of team sheets exists
- * and is untouched here: `app/api/cron/generate-teams/route.ts:57-92`
- * has its own inline rating formula, calls `balanceTeams` directly, and
- * runs live at `0 12 * * *`. Nothing below asserts anything about it,
- * and nothing below should be read as evidence that only one formula
- * remains. Slice 3 of `MDs/club-scoped-ratings-design-2026-09-18.md`
- * takes the cron; that is when this file's two entry points become all
- * of them.
+ * WHAT THIS FILE DOES NOT COVER. The third writer of team sheets, the
+ * noon cron at `app/api/cron/generate-teams/route.ts`, lost its inline
+ * formula in slice 3 (2026-09-19) and now delegates to the same helper.
+ * Its own delegation tests live next to it in
+ * `app/api/cron/generate-teams/__tests__/cron-delegates.test.ts`, so
+ * the two entry points below really are the two a human can press, and
+ * all three callers now share one formula.
  *
  * ── WHY Math.random IS STUBBED ───────────────────────────────────────
  *
