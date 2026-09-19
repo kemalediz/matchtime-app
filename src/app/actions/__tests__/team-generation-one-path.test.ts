@@ -131,7 +131,17 @@ vi.mock("@/lib/db", () => ({
       createMany: record("teamAssignment.createMany"),
     },
     rating: {
-      findMany: (args: { where: { playerId: string } }) => {
+      findMany: (args: {
+        where: { playerId: string; match?: { activity?: { orgId?: string } } };
+      }) => {
+        // The rating read is club-scoped since 2026-09-19 (slice 2 of
+        // the club-scoped-ratings design). One org in this fixture, so
+        // an unfiltered read would return the same rows; the filter is
+        // honoured anyway so the fake cannot quietly hide a regression,
+        // and `lib/__tests__/team-generation-club-scope.test.ts` is
+        // where the filter itself is asserted.
+        const orgId = args.where.match?.activity?.orgId;
+        if (orgId && orgId !== ORG_ID) return Promise.resolve([]);
         const p = SQUAD.find((s) => s.id === args.where.playerId);
         // Three peer ratings each — enough that the DELETED formula was
         // past its own 3-rating threshold and on its peer/Elo branch.
@@ -139,6 +149,22 @@ vi.mock("@/lib/db", () => ({
           p ? [{ score: p.peer }, { score: p.peer }, { score: p.peer }] : [],
         );
       },
+      // The club mean, the prior of last resort when a member has no
+      // club seed. Every player here HAS one, so it never reaches the
+      // arithmetic; it is read once per generation regardless.
+      aggregate: () => Promise.resolve({ _avg: { score: 6 } }),
+    },
+    membership: {
+      // Where the seed lives now. `User.seedRating` still carries the
+      // same values and is still on the attendance rows below, but the
+      // balancer stopped reading it: one club's opinion must not decide
+      // another club's draft.
+      findMany: (args: { where: { orgId?: string } }) =>
+        Promise.resolve(
+          args.where.orgId === ORG_ID
+            ? SQUAD.map((p) => ({ userId: p.id, seedRating: p.seed }))
+            : [],
+        ),
     },
     analyzedMessage: { findMany: () => Promise.resolve([]) },
     user: {
