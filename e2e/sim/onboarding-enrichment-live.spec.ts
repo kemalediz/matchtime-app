@@ -13,7 +13,9 @@
  *
  * Under `MT_SIM_LIVE_LLM=1 tsx e2e/run.ts ...`, run.ts loads the
  * repo-root .env into process.env, then helpers/env.ts buildTestEnv()
- * propagates the real ANTHROPIC_API_KEY into the Playwright worker that
+ * propagates the DEVELOPER's key (ANTHROPIC_API_KEY_DEV, resolved by
+ * `buildTestEnv` into the ANTHROPIC_API_KEY the product reads) into the
+ * Playwright worker that
  * runs this spec. We call the analyzer in-process (no DB, no group, no
  * HTTP) since it only needs process.env.ANTHROPIC_API_KEY + its args.
  *

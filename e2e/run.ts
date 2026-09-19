@@ -36,7 +36,22 @@
  *   6. Stops the embedded Postgres (data dir persists for fast re-runs).
  */
 import { config as loadEnv } from "dotenv";
-loadEnv(); // load repo-root .env so process.env.ANTHROPIC_API_KEY is set before helpers/env reads it
+import { DevApiKeyMissingError, forgetProductionApiKey } from "./helpers/dev-api-key";
+
+// Load the repo-root .env so ANTHROPIC_API_KEY_DEV is in scope before
+// helpers/env builds the child overlay.
+//
+// THEN DROP THE PRODUCTION KEY. That `.env` also holds the key Vercel
+// and the Pi use, and every child below is spawned with
+// `{ ...process.env, ...overlay }`, so leaving it in scope is how the
+// suite came to bill development calls to production: `helpers/env.ts`
+// used to forward the orchestrator's own production key verbatim on a
+// live run. A live run resolves ANTHROPIC_API_KEY_DEV instead (see
+// `buildTestEnv`), and a stubbed run pins the key empty, so nothing
+// here needs the production key for any purpose. See
+// MDs/llm-spend-september-2026.md §6 item 1.
+loadEnv();
+forgetProductionApiKey();
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -339,7 +354,11 @@ main().then(
   (err) => {
     // A preflight refusal is a decision, not a crash: print the message
     // it was written to be read, not a stack trace nobody needs.
-    if (err instanceof E2EPreflightError || err instanceof NotActuallyLiveError)
+    if (
+      err instanceof E2EPreflightError ||
+      err instanceof NotActuallyLiveError ||
+      err instanceof DevApiKeyMissingError
+    )
       console.error(`\n${err.message}\n`);
     else console.error("[e2e] fatal:", err);
     process.exit(1);

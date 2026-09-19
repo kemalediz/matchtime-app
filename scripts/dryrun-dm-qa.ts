@@ -8,12 +8,13 @@
  * leaking a phone number. So this drives the REAL prompt
  * (`composeScopedAnswer`) against the real model, repeatedly, and counts.
  *
- *   REPEAT=5 npx tsx --env-file=<file with ANTHROPIC_API_KEY> scripts/dryrun-dm-qa.ts
+ *   REPEAT=5 npx tsx --env-file=.env scripts/dryrun-dm-qa.ts   # needs ANTHROPIC_API_KEY_DEV
  *   LANG_UNDER_TEST=en REPEAT=2 npx tsx ... scripts/dryrun-dm-qa.ts   # English control
  *
  * No database, no DM, no BotJob: the CONTEXT is built by the real
  * `formatScopedContext` from fixture rows, and the answers are printed.
  */
+import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { composeScopedAnswer, formatScopedContext, type ScopedContextInput } from "../src/lib/dm-qa.ts";
 
@@ -127,11 +128,13 @@ const ENGLISH_PHRASE = /\b(keep (it )?up|good work|well done|great job|nice one|
 const FORMAL = /\b(siz|sizin|sizi|sizinle|yapabilirsiniz|görüşürüz beyler)\b/i;
 
 async function main() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    console.error("REFUSING: no ANTHROPIC_API_KEY — a run that cannot reach the model proves nothing.");
-    process.exit(1);
-  }
+  // The DEVELOPER's key, not production's. This harness builds its own
+  // SDK client, so it takes the key by value; the resolver also puts
+  // it on ANTHROPIC_API_KEY for anything under `src/` this file reaches.
+  // It refuses rather than falling back: a run that cannot reach the
+  // model proves nothing, and a run on the production key hides what
+  // MatchTime actually costs (MDs/llm-spend-september-2026.md).
+  const key = spendDevApiKeyOrExit("scripts/dryrun-dm-qa.ts");
   const anthropic = new Anthropic({ apiKey: key });
   const questions = LANG === "tr" ? QUESTIONS_TR : QUESTIONS_EN;
   const context = LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;

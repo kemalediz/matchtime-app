@@ -24,9 +24,9 @@
  * Opt-in: only runs when MT_SIM_LIVE_LLM=1. Default suites SKIP it.
  *
  * Run:
- *   ANTHROPIC_API_KEY=<key> MT_SIM_LIVE_LLM=1 \
+ *   ANTHROPIC_API_KEY_DEV=<dev key> MT_SIM_LIVE_LLM=1 \
  *     npx tsx e2e/run.ts sim/format-switch-live.spec.ts
- *   (or: npm run test:sim:live:format  with ANTHROPIC_API_KEY exported)
+ *   (or: npm run test:sim:live:format  with ANTHROPIC_API_KEY_DEV in .env)
  *
  * NEVER weaken these assertions — tighten the prompt (or move more of the
  * sentence into code) until they hold.

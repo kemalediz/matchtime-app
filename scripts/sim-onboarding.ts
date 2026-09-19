@@ -16,6 +16,7 @@
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
+import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { handleOnboardingTurn } from "../src/lib/onboarding-conversation.ts";
 
 const WIPE = process.argv.includes("--wipe");
@@ -35,6 +36,15 @@ const SCRIPT: string[] = [
 ];
 
 async function main() {
+  // Development model calls go on the DEVELOPER's key. This assigns
+  // ANTHROPIC_API_KEY_DEV over ANTHROPIC_API_KEY for this process, so the
+  // library code below, the same modules production runs, picks it up
+  // unchanged. It must happen before the first model call, because some
+  // call sites cache their SDK client (message-analyzer.ts keeps a
+  // module-level `_anthropic`). No fallback: see
+  // MDs/llm-spend-september-2026.md.
+  spendDevApiKeyOrExit("scripts/sim-onboarding.ts");
+
   const db = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
   } as any);
