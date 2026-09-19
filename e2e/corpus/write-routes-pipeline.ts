@@ -319,19 +319,31 @@ function sqlScoreDeps(grp: SimGroup): ScoreApplyDeps {
         [matchId, red, yellow],
       );
     },
+    // The Elo is per club (`src/lib/membership-elo.ts`), so both halves
+    // go through `Membership` joined on the match's own org. A player
+    // with no membership there reads at the 1000 default and is not
+    // written, which is what the production path does too.
     loadEloInputs: async (matchId) =>
       grp.db.all<{ userId: string; team: "RED" | "YELLOW"; matchRating: number }>(
-        `SELECT t."userId", t.team, u."matchRating"
-           FROM "TeamAssignment" t JOIN "User" u ON u.id = t."userId"
+        `SELECT t."userId", t.team, COALESCE(ms."matchRating", 1000) AS "matchRating"
+           FROM "TeamAssignment" t
+           JOIN "Match" mt ON mt.id = t."matchId"
+           JOIN "Activity" ac ON ac.id = mt."activityId"
+           LEFT JOIN "Membership" ms
+             ON ms."userId" = t."userId" AND ms."orgId" = ac."orgId"
           WHERE t."matchId" = $1`,
         [matchId],
       ),
-    applyEloDeltas: async (deltas) => {
+    applyEloDeltas: async (matchId, deltas) => {
       for (const d of deltas) {
-        await grp.db.run(`UPDATE "User" SET "matchRating" = $2 WHERE id = $1`, [
-          d.userId,
-          d.after,
-        ]);
+        await grp.db.run(
+          `UPDATE "Membership" SET "matchRating" = $3
+            WHERE "userId" = $2
+              AND "orgId" = (SELECT ac."orgId" FROM "Match" mt
+                               JOIN "Activity" ac ON ac.id = mt."activityId"
+                              WHERE mt.id = $1)`,
+          [matchId, d.userId, d.after],
+        );
       }
     },
   };

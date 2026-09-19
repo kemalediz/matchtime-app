@@ -1,8 +1,9 @@
 /**
  * Lightweight Elo for pickup sport matches.
  *
- * Each player has a `matchRating` (starts at 1000). After every match with
- * a known score we update it as follows:
+ * Each player has a `matchRating` PER CLUB (starts at 1000), stored on
+ * `Membership`. After every match with a known score we update it as
+ * follows:
  *
  *   expectedProb = 1 / (1 + 10^((oppTeamAvg - myTeamAvg) / 400))
  *   actual       = 1 (won) | 0 (lost) | 0.5 (draw)
@@ -12,6 +13,16 @@
  * Small margins → small nudge. Blowouts → big nudge. Over time, players
  * who consistently win against stronger teams climb; players who lose
  * against weaker teams drop. Self-calibrating, no tuning required.
+ *
+ * ── IT IS THE CLUB'S NUMBER, NOT THE PLAYER'S ────────────────────────
+ *
+ * Until 2026-09-19 it lived on `User.matchRating`, one integer for the
+ * whole person, so a result at one club moved them up another club's
+ * leaderboard. It now lives on `Membership.matchRating`, and
+ * `lib/membership-elo.ts` is the only place it is read or written. This
+ * file stayed pure: `PlayerEloInput.matchRating` below is just "this
+ * player's rating at the club this match belongs to", and the function
+ * never learns where that came from.
  *
  * ── `matchRating` DOES NOT PICK TEAMS. THAT IS DELIBERATE ────────────
  *

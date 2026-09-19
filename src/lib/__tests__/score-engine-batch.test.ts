@@ -100,7 +100,7 @@ function recorder(
         recorded.push(a);
       },
       loadEloInputs: async () => eloInputs,
-      applyEloDeltas: async (d) => {
+      applyEloDeltas: async (_matchId, d) => {
         elo.push(d);
       },
       ...over,

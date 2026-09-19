@@ -80,12 +80,19 @@ export interface ScoreApplyDeps {
    *  update. The ONE way a score is written on this path. */
   recordScore: (args: { matchId: string; red: number; yellow: number }) => Promise<void>;
   /** Every `TeamAssignment` on the match, with the player's current
-   *  `matchRating`. Empty is a legitimate answer — a match whose teams
-   *  were never generated has no Elo to compute. */
+   *  `matchRating` AT THAT MATCH'S CLUB. Empty is a legitimate answer:
+   *  a match whose teams were never generated has no Elo to compute. */
   loadEloInputs: (matchId: string) => Promise<PlayerEloInput[]>;
   /** Persist the computed deltas. One transaction, as
-   *  `route.ts:3526-3530` does it. */
-  applyEloDeltas: (deltas: EloDelta[]) => Promise<void>;
+   *  `route.ts:3526-3530` does it.
+   *
+   *  `matchId` is here and not inferred because since 2026-09-19 the
+   *  Elo lives on `Membership`, so a write needs a club as well as a
+   *  player. The match is the only thing that knows which club, and the
+   *  caller has it in hand. Passing it beats the implementation
+   *  remembering the org from the preceding `loadEloInputs` call, which
+   *  would make two independent methods secretly ordered. */
+  applyEloDeltas: (matchId: string, deltas: EloDelta[]) => Promise<void>;
 }
 
 export interface ScoreWriteResult {
@@ -143,7 +150,7 @@ export async function applyScoreWrites(args: {
       const inputs = await deps.loadEloInputs(write.matchId);
       const deltas = computeEloDeltas(inputs, write.red, write.yellow);
       if (deltas.length > 0) {
-        await deps.applyEloDeltas(deltas);
+        await deps.applyEloDeltas(write.matchId, deltas);
         eloApplied = deltas.length;
       }
     } catch (err) {
