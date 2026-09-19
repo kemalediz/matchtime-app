@@ -17,7 +17,7 @@
 
 import { db } from "./db";
 import { formatLondon } from "./london-time";
-import { computeClubRating, type ClubRatingSource } from "./player-rating";
+import { computeClubRating, clubDisplayRating, type ClubRatingSource } from "./player-rating";
 
 export interface TimelinePoint {
   matchId: string;
@@ -651,11 +651,17 @@ export interface ClubStat {
 // functions with deliberately different signatures.
 //
 //   loadClubRating(orgId, userId)
-//     Built from ratings given inside that club and nothing else. It is
-//     the number the balancer uses, so it is the number that picks the
-//     teams. Visible to the club, admins included (decision 4), which
-//     is why it takes no viewer argument: there is nobody in the club
-//     it needs to be hidden from.
+//     Built from ratings given inside that club and nothing else.
+//     Visible to the club, admins included (decision 4), which is why
+//     it takes no viewer argument: there is nobody in the club it needs
+//     to be hidden from.
+//
+//     It returns TWO figures out of one set of queries, because there
+//     are two questions (see `player-rating.ts`): `rating` is the raw
+//     mean of what the club gave the player, which is what a human is
+//     shown, and `balancerRating` is the shrunk figure team generation
+//     uses. Both come from the same call so no surface can reach for
+//     the wrong one by accident.
 //
 //   loadAllClubsOverview({ userId, viewerId })
 //     The simple mean of EVERY rating the player has ever received,
@@ -672,31 +678,52 @@ export interface ClubStat {
 const CLUB_RATING_WINDOW = 60;
 
 /**
- * Below this many of a player's own club ratings the prior still
- * outweighs them (at PRIOR_WEIGHT 3: 75% of the number at one rating,
- * 60% at two), so the figure is honest but not yet theirs. Three is the
- * 50/50 crossover.
+ * Below this many of a player's own club ratings the BALANCER's prior
+ * still outweighs them (at PRIOR_WEIGHT 3: 75% of that number at one
+ * rating, 60% at two). Three is the 50/50 crossover.
  *
- * ── A DISPLAY DECISION, DEFAULTED, AND WHERE TO FLIP IT ──────────────
+ * ── WHAT THE FLAG MEANS SINCE 2026-09-19 ─────────────────────────────
  *
- * Kemal's open question 2 (design section 11) is unanswered: should a
- * player with one or two club ratings see their RAW average, the SHRUNK
- * number, or be told it is provisional? The design's answer is built
- * here: one number per player per club, the shrunk one, the same figure
- * the balancer uses, flagged as provisional so nobody is handed a
- * shrunk number with no explanation. `loadRatingLeaderboard` already
- * flags a one-game player the same way (`provisional`, :519).
+ * Kemal answered open question 2 (design section 11) on 2026-09-19:
+ * "whatever ratings are given the player should see but yeah for team
+ * setup shrunk number should be used initially". So `rating` is now the
+ * player's raw average and this flag stopped meaning "the number above
+ * has been pulled toward the club average".
  *
- * To show the RAW average instead, this constant is not the lever;
- * `computeClubRating` is, and the balancer would move with it, which is
- * the point of having one number. To change only WHEN the warning
- * appears, change this.
+ * It means what it should have meant all along: one or two ratings is
+ * thin evidence, so the number will move a lot, and MatchTime is
+ * correspondingly careful with it when it picks the teams. The copy
+ * says both halves (`rating_club_provisional` and
+ * `rating_club_balance_note`), which is what pre-empts "it says I'm 9,
+ * why am I on the weaker team". `loadRatingLeaderboard` flags a
+ * one-game player the same way (`provisional`, :519).
+ *
+ * Change this to move WHEN the warning appears. It is not the lever for
+ * either number: `clubDisplayRating` owns the shown one and
+ * `computeClubRating` owns the balancer's.
  */
 const PROVISIONAL_BELOW_PEER_COUNT = 3;
 
 export interface ClubRatingView {
-  /** 1 to 10. The same value `generateTeamsForMatch` would compute. */
-  rating: number;
+  /**
+   * WHAT A HUMAN IS SHOWN. 1 to 10: the raw mean of the ratings this
+   * club gave this player, or this club's seed for them when it has
+   * given none, or NULL when the club has never said anything about
+   * them at all and the UI must render the empty state.
+   *
+   * Nullable on purpose. It is the one thing that makes a surface
+   * handle the empty case instead of printing a club average under a
+   * player's name.
+   */
+  rating: number | null;
+  /**
+   * WHAT PICKS THE TEAMS. `computeClubRating`, unchanged: the same
+   * scores shrunk toward this club's own mean while there are only one
+   * or two of them. Always a number, because the balancer always needs
+   * one. It is allowed to differ from `rating` and usually does while
+   * `provisional` is true; that is the decision, not a bug.
+   */
+  balancerRating: number;
   source: ClubRatingSource;
   /** How many of this player's own ratings at this club fed the number. */
   peerCount: number;
@@ -704,20 +731,19 @@ export interface ClubRatingView {
    *  UI says so instead of showing a bare shrunk figure. */
   provisional: boolean;
   /**
-   * False when `rating` is the CLUB's average standing in for a player
-   * the club has never rated and never seeded. The number is a fine
-   * prior for the balancer and would be a lie on the player's own
-   * dashboard, so the UI renders the empty state instead of it.
+   * False when this club has never rated and never seeded the player,
+   * so there is no number of theirs to show. Exactly `rating !== null`,
+   * kept as a named field because the UI reads better for it.
    */
   hasOwnNumber: boolean;
 }
 
 /**
- * One player's rating AT ONE CLUB, for display.
+ * One player's rating AT ONE CLUB: both figures, from one set of reads.
  *
  * Reads exactly what `src/lib/team-generation.ts` reads, in the same
- * shape, so the dashboard tile, the stats page and the team sheet can
- * never disagree. Until 2026-09-19 they did: the dashboard blended
+ * shape, so the dashboard tile, the stats page and the team sheet are
+ * looking at the same rows. Until 2026-09-19 they did: the dashboard blended
  * `User.seedRating` with this player's sixty most recent ratings FROM
  * ANY CLUB (design section 3.1, site G4) while `/profile/stats` on the
  * next screen was club-scoped, and nothing told the player why the two
@@ -753,18 +779,26 @@ export async function loadClubRating(orgId: string, userId: string): Promise<Clu
     }),
   ]);
 
-  const { rating, source, peerCount } = computeClubRating({
-    clubSeedRating: membership?.seedRating ?? null,
-    clubPeerRatings: ratings.map((r) => r.score),
+  const clubSeedRating = membership?.seedRating ?? null;
+  const clubPeerRatings = ratings.map((r) => r.score);
+
+  // The balancer's number and the player's number, off the same rows.
+  // Note what `clubDisplayRating` is NOT handed: the club mean. It
+  // cannot shrink what it cannot see.
+  const { rating: balancerRating, source, peerCount } = computeClubRating({
+    clubSeedRating,
+    clubPeerRatings,
     clubMeanRating: clubMean._avg.score ?? null,
   });
+  const rating = clubDisplayRating({ clubSeedRating, clubPeerRatings });
 
   return {
     rating,
+    balancerRating,
     source,
     peerCount,
     provisional: peerCount > 0 && peerCount < PROVISIONAL_BELOW_PEER_COUNT,
-    hasOwnNumber: source !== "club-average",
+    hasOwnNumber: rating !== null,
   };
 }
 

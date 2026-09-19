@@ -131,18 +131,29 @@ export default async function MyStatsPage() {
 
         {/* The club rating, named, with the boundary stated once. Two
             different ratings now appear on this page and a player shown
-            a bare number cannot tell which one they are reading. */}
+            a bare number cannot tell which one they are reading.
+
+            The tile below shows the RAW mean of what this club gave
+            them (`myClubRating.rating`), never the shrunk figure the
+            balancer uses (`myClubRating.balancerRating`). Kemal,
+            2026-09-19. While those two differ, which is exactly while
+            `provisional` is true, the third line says so, because "it
+            says I'm 9, why am I on the weaker team" is otherwise a fair
+            question with no answer on the page. */}
         <div className="mt-5">
           <h2 className="text-sm font-semibold text-slate-800">
             {s.rating_club_label({ orgName: stats.orgName })}
           </h2>
           <p className="text-[11px] text-slate-400 mt-0.5">{s.rating_club_note}</p>
+          {myClubRating.provisional && (
+            <p className="text-[11px] text-slate-400 mt-0.5">{s.rating_club_balance_note}</p>
+          )}
         </div>
 
         {/* Headline tiles */}
         <div className="grid grid-cols-2 gap-3 mt-3">
           <Tile
-            big={myClubRating.hasOwnNumber ? myClubRating.rating.toFixed(1) : "—"}
+            big={myClubRating.rating !== null ? myClubRating.rating.toFixed(1) : "—"}
             label={s.rating_club_tile}
             sub={
               myClubRating.peerCount === 0
@@ -154,7 +165,7 @@ export default async function MyStatsPage() {
                 : undefined
             }
             tone={
-              myClubRating.hasOwnNumber && vsField !== null && vsField >= 0 && !myClubRating.provisional
+              myClubRating.rating !== null && vsField !== null && vsField >= 0 && !myClubRating.provisional
                 ? "green"
                 : "slate"
             }
