@@ -61,6 +61,20 @@
  *     the roster check-in invite). The only non-additive line in that
  *     commit's `.snap` diff is the case count in the header.
  *
+ *   - Deliberate additions AND one deliberate CHANGE (2026-09-19, slice
+ *     6 of MDs/club-scoped-ratings-design-2026-09-18.md). The additions
+ *     are rows R144 to R146, the first WEB copy in the table: the club
+ *     rating and the overall rating, which a player now sees side by
+ *     side on `/profile/stats` and could not otherwise tell apart. The
+ *     change is `R142 buildHelpReply / ratings`, third line only, and it
+ *     is the ONE non-additive line in the English diff besides the case
+ *     count. The old line promised "a form rating for each player" from
+ *     "everyone's scores" with no club boundary. Ratings became
+ *     club-scoped on 2026-09-19, so that sentence is now false for
+ *     anybody who plays for two groups, and false in the direction that
+ *     matters: it implies their other club's scores count here. Lines 1,
+ *     2 and 4 of the explainer are untouched.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -658,6 +672,27 @@ function cases(lang: Lang): Case[] {
     add(`R142 buildHelpReply / ${topic}`, buildHelpReply(topic, ALL_ON));
   }
   add("R143 buildHelpReply / topic switched off", buildHelpReply("payments", MINIMAL));
+  // ── 1.5 the web surfaces (slice 6, 2026-09-19) ──────────────────────
+  //    NEW copy, not a move, so these cases are additive to both
+  //    snapshots and the only other line in the English diff is the
+  //    case count in the header. They are read straight off the table
+  //    because their surfaces are React pages, not pure composers: the
+  //    dashboard tile and `/profile/stats` do `t(org.language)` and
+  //    render these strings. Recording them here is what gives Kemal
+  //    the Turkish to review, which is the whole point of `copy.tr.snap`.
+  const ratings = t(lang);
+  add("R144 rating_club_tile", ratings.rating_club_tile);
+  add("R144 rating_club_label", ratings.rating_club_label({ orgName: "Sutton Football Club" }));
+  add("R144 rating_club_note", ratings.rating_club_note);
+  add("R144 rating_club_empty", ratings.rating_club_empty);
+  add("R144 rating_club_provisional / one", ratings.rating_club_provisional({ count: 1 }));
+  add("R144 rating_club_provisional / two", ratings.rating_club_provisional({ count: 2 }));
+  add("R144 rating_club_peers / one", ratings.rating_club_peers({ count: 1 }));
+  add("R144 rating_club_peers / many", ratings.rating_club_peers({ count: 24 }));
+  add("R145 rating_overall_label", ratings.rating_overall_label);
+  add("R145 rating_overall_note", ratings.rating_overall_note);
+  add("R146 rating_seed_club_hint", ratings.rating_seed_club_hint);
+
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
   add("R138 detailsFollowUpQuestion / time and venue", detailsFollowUpQuestion(["time", "venue"]));
@@ -813,6 +848,8 @@ const MIGRATED_ROWS = [
   "R111 ", "R122 ", "R132 ",
   // Phase 3c: the legacy setup flow
   "R136 ", "R137 ", "R139 ",
+  // slice 6 of the club-scoped ratings design: the web ratings copy
+  "R144 ", "R145 ", "R146 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

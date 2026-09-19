@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import { LandingPage } from "@/components/landing/landing-page";
 import { getMomSummaries } from "@/lib/mom";
-import { computePlayerRating } from "@/lib/player-rating";
+import { loadClubRating } from "@/lib/player-stats";
+import { t } from "@/lib/i18n/t";
 
 function getGreeting(hour: number): string {
   if (hour < 5) return "Good night";
@@ -107,22 +108,22 @@ export default async function DashboardPage() {
     },
   });
 
-  // Display rating — same Bayesian blend the team balancer uses
-  // (computePlayerRating). Seed acts as a prior with weight 3, so
-  // ratings move smoothly from the first peer rating instead of
-  // jumping at a threshold. The user.seedRating tile that was here
-  // before never moved despite weeks of peer ratings flowing in.
-  const myRatings = await db.rating.findMany({
-    where: { playerId: session.user.id },
-    orderBy: { createdAt: "desc" },
-    take: 60,
-    select: { score: true },
-  });
-  const { rating: displayRating, source: ratingSource, peerCount: myPeerCount } =
-    computePlayerRating({
-      seedRating: user.seedRating ?? null,
-      peerRatings: myRatings.map((r) => r.score),
-    });
+  // THE CLUB RATING. The same number `generateTeamsForMatch` uses to
+  // pick the sides, read the same way, so this tile and the team sheet
+  // cannot disagree.
+  //
+  // Until 2026-09-19 this block was the last player-visible read of the
+  // global rating: `rating.findMany({ where: { playerId } })` with no
+  // org filter at all, blended with `User.seedRating`, on a dashboard
+  // whose every other word is about ONE club. It disagreed with the
+  // "Avg rating" tile on /profile/stats, which has been club-scoped all
+  // along, by up to 0.613 for the nine Sutton FC members who also
+  // played for Sutton Lads, and nothing told the player why. Worse,
+  // since slice 4 stopped writing `User.seedRating`, every member who
+  // joined after that date had no global seed for it to fall back on,
+  // so the tile was actively degrading for new players. Site G4 of
+  // MDs/club-scoped-ratings-design-2026-09-18.md.
+  const myRating = await loadClubRating(orgId, session.user.id);
   // "MoM wins" = matches where this user had the highest vote count
   // (ties count as a shared win for everyone tied at the top). Plain
   // count-of-matches-with-any-vote was misleading — a single sympathy
@@ -166,6 +167,17 @@ export default async function DashboardPage() {
 
   const greeting = getGreeting(new Date().getHours());
   const firstName = (user.name ?? "").split(" ")[0];
+
+  // The tile speaks the club's language. The web UI had no route into
+  // the string table before this slice; a server component that already
+  // holds the membership can do `t(org.language)` exactly like any
+  // WhatsApp composer.
+  const s = t(membership.org.language);
+  const ratingSubLine = myRating.peerCount === 0
+    ? s.rating_club_empty
+    : myRating.provisional
+    ? s.rating_club_provisional({ count: myRating.peerCount })
+    : s.rating_club_peers({ count: myRating.peerCount });
 
   const myAttendBadge = myAttendance?.status === "CONFIRMED"
     ? { label: "You're in", cls: "bg-green-100 text-green-700" }
@@ -217,19 +229,15 @@ export default async function DashboardPage() {
             )}
           </div>
         </div>
-        <div className={`p-5 rounded-xl border ${TILE.green} transition-colors`}>
+        <div className={`p-5 rounded-xl border ${TILE.green} transition-colors`} title={s.rating_club_note}>
           <div className="flex items-center gap-2 opacity-75">
             <Users className="w-4 h-4" />
-            <p className="text-xs font-medium uppercase tracking-wider">Rating</p>
+            <p className="text-xs font-medium uppercase tracking-wider">{s.rating_club_tile}</p>
           </div>
-          <p className="text-3xl font-bold mt-2">{displayRating.toFixed(1)}</p>
-          <p className="text-[11px] opacity-70 mt-0.5">
-            {ratingSource === "peer"
-              ? `${myPeerCount} peer rating${myPeerCount === 1 ? "" : "s"}`
-              : ratingSource === "blended"
-              ? `blended (${myPeerCount} peer + seed)`
-              : "seed · waiting for peer ratings"}
+          <p className="text-3xl font-bold mt-2">
+            {myRating.hasOwnNumber ? myRating.rating.toFixed(1) : "\u2014"}
           </p>
+          <p className="text-[11px] opacity-70 mt-0.5">{ratingSubLine}</p>
         </div>
       </div>
 

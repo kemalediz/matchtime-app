@@ -14,7 +14,7 @@
  *
  * The two vectors:
  *
- *   blended  `computePlayerRating` — (sumPeer + seed x 3) / (peerCount + 3).
+ *   blended  the global blend: (sumPeer + seed x 3) / (peerCount + 3).
  *            The formula `lib/team-generation.ts` has always used, i.e.
  *            what the WhatsApp "generate the teams" request produces.
  *            Elo is not consulted.
@@ -55,7 +55,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 import { balanceTeams, type BalancingStrategy } from "../src/lib/team-balancer.ts";
-import { computePlayerRating } from "../src/lib/player-rating.ts";
+import { computeClubRating } from "../src/lib/player-rating.ts";
 import type { PlayerWithRating } from "../src/types/index.ts";
 
 /** The formula this change deleted, kept verbatim so the comparison is
@@ -155,9 +155,14 @@ async function main() {
       const pap = a.user.activityPositions.find(
         (p) => p.activityId === match.activityId,
       );
-      const blended = computePlayerRating({
-        seedRating: a.user.seedRating ?? null,
-        peerRatings: peer,
+      // The global blend, as it stood before 2026-09-19: the global
+      // seed and a window drawn from every club. `computePlayerRating`
+      // is gone; `computeClubRating` with `clubMeanRating: null` is the
+      // same arithmetic, which is all this historical comparison needs.
+      const blended = computeClubRating({
+        clubSeedRating: a.user.seedRating ?? null,
+        clubPeerRatings: peer,
+        clubMeanRating: null,
       }).rating;
       const eloMix = eloMixRating({
         seedRating: a.user.seedRating ?? null,

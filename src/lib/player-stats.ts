@@ -17,6 +17,7 @@
 
 import { db } from "./db";
 import { formatLondon } from "./london-time";
+import { computeClubRating, type ClubRatingSource } from "./player-rating";
 
 export interface TimelinePoint {
   matchId: string;
@@ -640,26 +641,223 @@ export interface ClubStat {
   momCount: number;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// THE TWO RATINGS
+// ══════════════════════════════════════════════════════════════════════
+//
+// A player has a CLUB rating at each club they play for and ONE overall
+// rating. They are different numbers answering different questions and
+// they have different audiences, so they are loaded by different
+// functions with deliberately different signatures.
+//
+//   loadClubRating(orgId, userId)
+//     Built from ratings given inside that club and nothing else. It is
+//     the number the balancer uses, so it is the number that picks the
+//     teams. Visible to the club, admins included (decision 4), which
+//     is why it takes no viewer argument: there is nobody in the club
+//     it needs to be hidden from.
+//
+//   loadAllClubsOverview({ userId, viewerId })
+//     The simple mean of EVERY rating the player has ever received,
+//     from every club they have ever played for, each counted once. It
+//     therefore carries information from clubs the viewer has nothing
+//     to do with, so it is visible to that player and to nobody else,
+//     ever, including admins. That is what the viewer argument is for
+//     and why it throws rather than filtering quietly.
+//
+// Sections 4, 5 and 8 of MDs/club-scoped-ratings-design-2026-09-18.md.
+
+/** The 60-rating window the balancer reads. Same constant, same reason:
+ *  the display and the balancer must not be able to disagree. */
+const CLUB_RATING_WINDOW = 60;
+
+/**
+ * Below this many of a player's own club ratings the prior still
+ * outweighs them (at PRIOR_WEIGHT 3: 75% of the number at one rating,
+ * 60% at two), so the figure is honest but not yet theirs. Three is the
+ * 50/50 crossover.
+ *
+ * ── A DISPLAY DECISION, DEFAULTED, AND WHERE TO FLIP IT ──────────────
+ *
+ * Kemal's open question 2 (design section 11) is unanswered: should a
+ * player with one or two club ratings see their RAW average, the SHRUNK
+ * number, or be told it is provisional? The design's answer is built
+ * here: one number per player per club, the shrunk one, the same figure
+ * the balancer uses, flagged as provisional so nobody is handed a
+ * shrunk number with no explanation. `loadRatingLeaderboard` already
+ * flags a one-game player the same way (`provisional`, :519).
+ *
+ * To show the RAW average instead, this constant is not the lever;
+ * `computeClubRating` is, and the balancer would move with it, which is
+ * the point of having one number. To change only WHEN the warning
+ * appears, change this.
+ */
+const PROVISIONAL_BELOW_PEER_COUNT = 3;
+
+export interface ClubRatingView {
+  /** 1 to 10. The same value `generateTeamsForMatch` would compute. */
+  rating: number;
+  source: ClubRatingSource;
+  /** How many of this player's own ratings at this club fed the number. */
+  peerCount: number;
+  /** True when the prior still outweighs the player's own scores, so the
+   *  UI says so instead of showing a bare shrunk figure. */
+  provisional: boolean;
+  /**
+   * False when `rating` is the CLUB's average standing in for a player
+   * the club has never rated and never seeded. The number is a fine
+   * prior for the balancer and would be a lie on the player's own
+   * dashboard, so the UI renders the empty state instead of it.
+   */
+  hasOwnNumber: boolean;
+}
+
+/**
+ * One player's rating AT ONE CLUB, for display.
+ *
+ * Reads exactly what `src/lib/team-generation.ts` reads, in the same
+ * shape, so the dashboard tile, the stats page and the team sheet can
+ * never disagree. Until 2026-09-19 they did: the dashboard blended
+ * `User.seedRating` with this player's sixty most recent ratings FROM
+ * ANY CLUB (design section 3.1, site G4) while `/profile/stats` on the
+ * next screen was club-scoped, and nothing told the player why the two
+ * numbers differed. For the nine Sutton FC members with Sutton Lads
+ * history they differed by up to 0.613.
+ *
+ * Three queries, all indexed, all tiny. It is a page load, not a loop.
+ */
+export async function loadClubRating(orgId: string, userId: string): Promise<ClubRatingView> {
+  const [ratings, membership, clubMean] = await Promise.all([
+    // `take` sits NEXT TO the org filter on purpose: sixty of THIS
+    // club's rows, not sixty rows from anywhere and then filtered.
+    // Ehtisham has 65 ratings, so a global window truncated at 60 was
+    // letting a dead club's rows evict his own club's before the code
+    // ever saw them.
+    db.rating.findMany({
+      where: { playerId: userId, match: { activity: { orgId } } },
+      orderBy: { createdAt: "desc" },
+      take: CLUB_RATING_WINDOW,
+      select: { score: true },
+    }),
+    // `Membership.seedRating` is the club-scoped seed since slice 1.
+    // `User.seedRating` still exists and still holds the old values;
+    // reading it here is exactly what let one club's opinion decide
+    // another club's number, and slice 7 deletes the column.
+    db.membership.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { seedRating: true },
+    }),
+    db.rating.aggregate({
+      _avg: { score: true },
+      where: { match: { activity: { orgId } } },
+    }),
+  ]);
+
+  const { rating, source, peerCount } = computeClubRating({
+    clubSeedRating: membership?.seedRating ?? null,
+    clubPeerRatings: ratings.map((r) => r.score),
+    clubMeanRating: clubMean._avg.score ?? null,
+  });
+
+  return {
+    rating,
+    source,
+    peerCount,
+    provisional: peerCount > 0 && peerCount < PROVISIONAL_BELOW_PEER_COUNT,
+    hasOwnNumber: source !== "club-average",
+  };
+}
+
 export interface AllClubsOverview {
   clubCount: number;
   totalGames: number;
   totalMom: number;
-  /** Mean of every rating received across all clubs. Different clubs rate
-   *  on their own scales, so treat as an indicative blended number. */
+  /**
+   * THE OVERALL RATING. The simple mean of every `Rating.score` this
+   * player has ever received, every rating weighted equally whichever
+   * club it came from. No seed, no per-club normalisation, no
+   * weighting: a player with a thousand ratings at one club and three
+   * at another gets a number that is essentially the first club's, and
+   * that is the decision, not an oversight (design section 5.1).
+   *
+   * Null when they have never been rated anywhere.
+   */
   overallAvg: number | null;
+  /** How many ratings went into it. The overall of a player with two
+   *  ratings should not be presented like the overall of one with two
+   *  hundred. */
+  overallCount: number;
+  /**
+   * How many DISTINCT clubs those ratings came from, counting clubs the
+   * player has left. This is what decides whether the overall is worth
+   * showing at all: with one club it is the club rating's raw average
+   * under a grander name, and a second unexplained number on the page
+   * is worse than no number. `clubs.length` cannot answer this, because
+   * it lists current memberships and the overall pools left ones too.
+   */
+  overallClubCount: number;
   clubs: ClubStat[]; // sorted by games desc
 }
 
-export async function loadAllClubsOverview(userId: string): Promise<AllClubsOverview> {
+/**
+ * THIS PLAYER'S OWN overall rating, and the per-club breakdown beside it.
+ *
+ * ── WHY IT TAKES A VIEWER ────────────────────────────────────────────
+ *
+ * Decision 4: nobody ever sees another player's overall rating,
+ * including club admins. Before 2026-09-19 this function took a bare
+ * `userId` with no viewer and no authorisation, and the only thing
+ * keeping it honest was that exactly one page happened to call it with
+ * the session user. A page with a `[playerId]` route parameter in scope
+ * is one line away from leaking a number built out of clubs the viewer
+ * has nothing to do with, and the leak would look like a feature.
+ *
+ * So the rule lives in the data layer and it throws. Filtering the
+ * overall out quietly for a non-owner was considered and rejected: a
+ * caller that asks for somebody else's overall has a bug, and a bug
+ * that returns a plausible object is a bug that ships.
+ *
+ * `__tests__/overall-rating-visibility.test.ts` pins both this and the
+ * static half of the rule, which is that no other file in `src/` may
+ * mention this function at all.
+ *
+ * ── WHAT IS POOLED, AND WHAT IS LISTED ───────────────────────────────
+ *
+ * The OVERALL pools every rating row, with no membership join at all,
+ * so a club the player has LEFT keeps counting. "Every rating you have
+ * ever had" is read literally (Kemal's open question 3, defaulted to
+ * the design's answer, section 5.2). The BREAKDOWN keeps the
+ * active-membership join, so it lists clubs they are currently in.
+ *
+ * The two therefore do not reconcile: a player who left Sutton Lads in
+ * June 2026 keeps those 458-pool ratings in their overall and sees no
+ * Sutton Lads row. That is deliberate and `rating_overall_note` owns it
+ * in the copy ("from every club"). To retire a left club's ratings
+ * instead, add `match: { activity: { orgId: { in: orgIds } } }` back to
+ * the ratings query below and nothing else changes.
+ */
+export async function loadAllClubsOverview(args: {
+  /** The player the overall is ABOUT. */
+  userId: string;
+  /** Who is asking. Must be the same person. */
+  viewerId: string;
+}): Promise<AllClubsOverview> {
+  const { userId, viewerId } = args;
+  if (userId !== viewerId) {
+    throw new Error(
+      "loadAllClubsOverview: a player may only load their own overall rating. " +
+        "It is built from every club they have ever played for, so it is theirs alone " +
+        "(club-scoped ratings design, decision 4). A clubmate's CLUB rating is what is " +
+        "visible: use loadClubRating or loadRatingLeaderboard.",
+    );
+  }
+
   const memberships = await db.membership.findMany({
     where: { userId, leftAt: null },
     select: { org: { select: { id: true, name: true } } },
   });
   const orgs = memberships.map((m) => m.org);
   const orgIds = orgs.map((o) => o.id);
-  if (orgIds.length === 0) {
-    return { clubCount: 0, totalGames: 0, totalMom: 0, overallAvg: null, clubs: [] };
-  }
 
   const matchScope = {
     status: "COMPLETED" as const,
@@ -667,29 +865,37 @@ export async function loadAllClubsOverview(userId: string): Promise<AllClubsOver
     activity: { orgId: { in: orgIds } },
   };
 
-  const [atts, ratings, matchesWithVotes] = await Promise.all([
-    db.attendance.findMany({
-      where: { userId, status: "CONFIRMED", match: matchScope },
-      select: { match: { select: { activity: { select: { orgId: true } } } } },
-    }),
+  const [atts, allRatings, matchesWithVotes] = await Promise.all([
+    orgIds.length === 0
+      ? Promise.resolve([])
+      : db.attendance.findMany({
+          where: { userId, status: "CONFIRMED", match: matchScope },
+          select: { match: { select: { activity: { select: { orgId: true } } } } },
+        }),
+    // NO membership join and NO org filter. This is the overall.
     db.rating.findMany({
-      where: { playerId: userId, match: matchScope },
+      where: { playerId: userId },
       select: { score: true, match: { select: { activity: { select: { orgId: true } } } } },
     }),
     // MoM is WINS, not votes received: fetch each match's full vote set,
     // resolve the winner(s), and count matches this user won. (Counting
     // MoMVote rows would tally every vote cast for them — Kemal saw "9
     // MoM" which was really 9 votes across fewer wins. 2026-06-05.)
-    db.match.findMany({
-      where: matchScope,
-      select: { activity: { select: { orgId: true } }, momVotes: { select: { playerId: true } } },
-    }),
+    orgIds.length === 0
+      ? Promise.resolve([])
+      : db.match.findMany({
+          where: matchScope,
+          select: { activity: { select: { orgId: true } }, momVotes: { select: { playerId: true } } },
+        }),
   ]);
 
   const byOrg = new Map<string, { games: number; scores: number[]; mom: number }>();
   for (const o of orgs) byOrg.set(o.id, { games: 0, scores: [], mom: 0 });
   for (const a of atts) byOrg.get(a.match.activity.orgId)!.games++;
-  for (const r of ratings) byOrg.get(r.match.activity.orgId)!.scores.push(r.score);
+  // The BREAKDOWN is club-scoped, so a rating from a club they have
+  // left has no row to land in and is skipped here. It is still in the
+  // overall above; see the header.
+  for (const r of allRatings) byOrg.get(r.match.activity.orgId)?.scores.push(r.score);
   let totalMom = 0;
   for (const m of matchesWithVotes) {
     if (momWinners(m.momVotes).has(userId)) {
@@ -717,7 +923,9 @@ export async function loadAllClubsOverview(userId: string): Promise<AllClubsOver
     clubCount: clubs.length,
     totalGames: atts.length,
     totalMom,
-    overallAvg: mean(ratings.map((r) => r.score)),
+    overallAvg: mean(allRatings.map((r) => r.score)),
+    overallCount: allRatings.length,
+    overallClubCount: new Set(allRatings.map((r) => r.match.activity.orgId)).size,
     clubs,
   };
 }

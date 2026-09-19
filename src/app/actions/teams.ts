@@ -20,11 +20,11 @@ import { revalidatePath } from "next/cache";
  *     peers >= 3 ? 0.5 * peerAvg + 0.5 * eloScaled
  *                : 0.7 * seedRating + 0.3 * eloScaled
  *
- * `lib/team-generation.ts` — the path a WhatsApp "@Match Time generate
+ * `lib/team-generation.ts` is the path a WhatsApp "@Match Time generate
  * the teams" takes, and the path that had in fact built every recent
- * Sutton team sheet — used `computePlayerRating` instead: a Bayesian
- * blend of seed and peer ratings, `(sumPeer + seed * 3) / (peerCount +
- * 3)`, with the Elo not consulted at all.
+ * Sutton team sheet. It used the seed-and-peer blend instead (today's
+ * `computeClubRating`): `(sumPeer + prior * 3) / (peerCount + 3)`,
+ * with the Elo not consulted at all.
  *
  * So MatchTime had two buttons that meant "build the teams" and they
  * disagreed, and nobody could tell which sheet they were looking at.
@@ -35,7 +35,8 @@ import { revalidatePath } from "next/cache";
  *
  * Kemal, 2026-09-15: "what you explained above for team generation
  * which was blended should be the one used for team generation
- * everywhere." The blended one is `computePlayerRating`.
+ * everywhere." The blended one is `computeClubRating` (it was
+ * `computePlayerRating` until the ratings became club-scoped).
  *
  * WHAT THE OLD FORMULA WAS ACTUALLY DOING, measured on the live Sutton
  * squad the day it was deleted (`scripts/compare-rating-formulas.ts`):

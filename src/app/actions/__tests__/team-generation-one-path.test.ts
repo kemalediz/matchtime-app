@@ -16,7 +16,8 @@
  *
  * Kemal, 2026-09-15: "what you explained above for team generation which
  * was blended should be the one used for team generation everywhere."
- * The blended one is `computePlayerRating`.
+ * The blended one is `computeClubRating` (it was `computePlayerRating`
+ * until the ratings became club-scoped on 2026-09-19).
  *
  * So the action no longer HAS a formula. It authenticates, checks the
  * admin seat, and calls `generateTeamsForMatch`. This file is the proof,

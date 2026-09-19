@@ -711,7 +711,7 @@ export const tr: Strings = {
       ratings:
         `⭐ *Oyuncu puanları nasıl çalışır*\n` +
         `Her maçtan sonra oynayan herkese özelden bir bağlantı gönderirim. Diğer oyunculara 10 üzerinden puan verirsiniz (kendinize veremezsiniz, puanlarınız gizli kalır).\n` +
-        `Herkesin puanlarını birleştirip her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.\n` +
+        `Herkesin puanlarını birleştirip bu kulüpteki her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Puanlar kulübün içinde kalır: başka bir grupta da oynuyorsanız oradaki puanlarınız buraya karışmaz. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.\n` +
         `Bağlantı maçın ertesi günü gelir. Kendi puanlarınız için istediğiniz zaman *@Match Time istatistiklerim* yazın.`,
       teams:
         `🟥🟦 *Dengeli takımlar nasıl çalışır*\n` +
@@ -1034,6 +1034,39 @@ export const tr: Strings = {
     `İlk maç: *${p.dayName} ${p.kickoffTime}*, yer: *${p.venue}*` +
     `${p.weekly ? " (her hafta)" : ""}.\n\n` +
     `*Beni nasıl kullanırsınız* 👇\n${p.howToUseMe}`,
+
+  // ── iki puan, web arayüzünde (slice 6, 2026-09-19) ──────────────────
+  //
+  // Bu tablodaki ilk web metinleri. WhatsApp değil tarayıcı okuyor, o
+  // yüzden `*kalın*` yok, emoji yok. Oyuncunun kendi sayfasında iki ayrı
+  // puan var ve hangisine baktığını ancak bu satırlar söylüyor:
+  // KULÜP PUANI sadece o kulüpte alınan puanlardan çıkar ve takımları o
+  // kurar; GENEL PUAN oyuncunun bugüne kadar her kulüpte aldığı bütün
+  // puanların ortalamasıdır ve onu sadece oyuncunun kendisi görür.
+  //
+  // Kayıt: DM metinlerinde olduğu gibi burada da "sen" kullanılıyor,
+  // çünkü bunlar oyuncunun kendi sayfasında ona söylenen şeyler.
+
+  rating_club_tile: "Kulüp puanı",
+
+  rating_club_label: (p) => `Kulüp puanın: ${p.orgName}`,
+
+  rating_club_note: "Sadece bu kulüpte aldığın puanlardan. Başka kulüpler buraya karışmaz.",
+
+  rating_overall_label: "Genel puanın",
+
+  rating_overall_note:
+    "Bugüne kadar aldığın bütün puanlar, hangi kulüpten olursa olsun, hepsi bir kez sayılır. Bunu sadece sen görüyorsun.",
+
+  rating_club_empty: "Bu kulüpte henüz puanın yok. İlk maçından sonra takım arkadaşların puan verecek.",
+
+  rating_seed_club_hint:
+    "Başlangıç puanları sadece bu kulüp için geçerli. Başka bir yerde de oynayan bir oyuncunun orada ayrı bir puanı olur, buraya yazdığınız hiçbir şey onu değiştirmez.",
+
+  rating_club_provisional: (p) =>
+    `Geçici: şimdilik ${p.count} puan var, yenileri gelene kadar kulüp ortalamasına yakın durur.`,
+
+  rating_club_peers: (p) => `takım arkadaşlarından ${p.count} puan`,
 };
 
 /**

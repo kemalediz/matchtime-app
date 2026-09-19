@@ -258,7 +258,7 @@ Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. 
 ### help / ratings
 ⭐ *Oyuncu puanları nasıl çalışır*
 Her maçtan sonra oynayan herkese özelden bir bağlantı gönderirim. Diğer oyunculara 10 üzerinden puan verirsiniz (kendinize veremezsiniz, puanlarınız gizli kalır).
-Herkesin puanlarını birleştirip her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.
+Herkesin puanlarını birleştirip bu kulüpteki her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Puanlar kulübün içinde kalır: başka bir grupta da oynuyorsanız oradaki puanlarınız buraya karışmaz. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.
 Bağlantı maçın ertesi günü gelir. Kendi puanlarınız için istediğiniz zaman *@Match Time istatistiklerim* yazın.
 
 ### help / reminders
