@@ -32,8 +32,8 @@
  * live squad days before a real match.
  *
  * ── IT COSTS REAL MONEY ──────────────────────────────────────────────
- * Every run is real router + extractor calls billed to the live
- * ANTHROPIC_API_KEY. One case is roughly $0.003–$0.01. `REPEAT=15` over
+ * Every run is real router + extractor calls billed to the DEVELOPER's
+ * key, ANTHROPIC_API_KEY_DEV. One case is roughly $0.003–$0.01. `REPEAT=15` over
  * the whole table is a few dollars. The per-run cost is printed, and so
  * is the total.
  *
@@ -44,7 +44,9 @@
  *   set -a; source .env; set +a
  *   npx tsx scripts/dryrun-pipeline.ts
  *
- * Needs DATABASE_URL and ANTHROPIC_API_KEY.
+ * Needs DATABASE_URL and ANTHROPIC_API_KEY_DEV. It refuses without the
+ * latter and never falls back to the production key. See
+ * MDs/dev-vs-production-api-keys.md.
  *
  *   ONLY=C1,K1     run only these case ids (comma-separated)
  *   REPEAT=15      run each case N times and report DECISION stability
@@ -115,6 +117,7 @@
  * graded, CI-runnable version of this idea is `e2e/corpus/`.)
  * ═══════════════════════════════════════════════════════════════════════
  */
+import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { peelClause } from "../src/lib/pipeline/clause-peel.ts";
 import { parseSwapNames } from "../src/lib/team-slot-swap.ts";
 import { looksLikeColourSwapPhrase } from "../src/lib/team-colour-swap.ts";
@@ -1978,6 +1981,15 @@ async function runDmIntents(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Development model calls go on the DEVELOPER's key. This assigns
+  // ANTHROPIC_API_KEY_DEV over ANTHROPIC_API_KEY for this process, so the
+  // library code below, the same modules production runs, picks it up
+  // unchanged. It must happen before the first model call, because some
+  // call sites cache their SDK client (message-analyzer.ts keeps a
+  // module-level `_anthropic`). No fallback: see
+  // MDs/llm-spend-september-2026.md.
+  spendDevApiKeyOrExit("scripts/dryrun-pipeline.ts");
+
   const groupId = process.env.ORG_GROUP ?? DEFAULT_GROUP;
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId },

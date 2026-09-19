@@ -21,7 +21,7 @@
  * catches the error and falls back to routing everything `unsure`, which
  * reads as a perfect 0% miss rate. So this script:
  *
- *   1. refuses without a usable ANTHROPIC_API_KEY;
+ *   1. refuses without a usable ANTHROPIC_API_KEY_DEV;
  *   2. spends one token proving the EXACT router model is reachable;
  *   3. counts every call and every fallback route, and FAILS if the
  *      model was never reached or if the fallback rate is high enough
@@ -33,6 +33,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import { keyFingerprint, probeAnthropic } from "../helpers/live-llm";
+import { spendDevApiKey } from "../helpers/dev-api-key";
 import { anthropicModel, ROUTER_MODEL } from "../../src/lib/pipeline/llm";
 import { routeBatch } from "../../src/lib/pipeline/router";
 import { batchMessages, groupRefOf } from "./reconstruct";
@@ -68,15 +69,17 @@ async function main(): Promise<number> {
   const capped = Number(process.env.MT_RECALL_LIMIT ?? "") > 0;
   const label = `${floor ? "floor ON" : "floor OFF"}${capped ? " · PARTIAL RUN" : ""}`;
 
-  const key = (process.env.ANTHROPIC_API_KEY ?? "").trim();
-  if (!key) {
-    console.error(
-      `[recall] REFUSING to run — ANTHROPIC_API_KEY is empty.\n` +
-        `  routeBatch catches a failed call and routes the whole batch \`unsure\`, so a\n` +
-        `  keyless run would report a perfect 0% miss rate and prove nothing. That is the\n` +
-        `  same defect PR #38 fixed in the corpus and replay sweeps.\n` +
-        `  Fix:  set -a; source .env; set +a`,
-    );
+  // The developer's key, assigned over ANTHROPIC_API_KEY for this
+  // process so `routeBatch` picks it up unchanged. Refuses if it is not
+  // set: `routeBatch` catches a failed call and routes the whole batch
+  // `unsure`, so a keyless run would report a perfect 0% miss rate and
+  // prove nothing. That is the same defect PR #38 fixed in the corpus
+  // and replay sweeps. It does NOT fall back to the production key.
+  let key: string;
+  try {
+    key = spendDevApiKey("the router recall sweep");
+  } catch (err) {
+    console.error(`[recall] ${(err as Error).message}`);
     return 1;
   }
 

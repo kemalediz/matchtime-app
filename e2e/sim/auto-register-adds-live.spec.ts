@@ -34,7 +34,7 @@
  * of them moved.
  *
  * Run:
- *   ANTHROPIC_API_KEY=<key> MT_SIM_LIVE_LLM=1 \
+ *   ANTHROPIC_API_KEY_DEV=<dev key> MT_SIM_LIVE_LLM=1 \
  *     npx tsx e2e/run.ts sim/auto-register-adds-live.spec.ts
  *   (or: npm run test:sim:live:adds  with the key exported)
  *

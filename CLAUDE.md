@@ -22,11 +22,18 @@ their size. The seven-slice club-scoped ratings rebuild needed zero live runs.
 
 **Why:** September 2026 billed $184.60, and `MDs/llm-spend-september-2026.md` MEASURED that 98%
 of it was our own harnesses, not the live bot. Production made **77** router calls all month;
-the suites made about **18,500**. They share the production API key, so the real cost of running
-MatchTime (about $4 per club per month) was invisible underneath our testing.
+the suites made about **18,500**. They shared the production API key, so the real cost of running
+MatchTime (about $4 per club per month) was invisible underneath our testing. (The keys are
+separate now, see the note at the end of this section. The approval rule stands regardless:
+a separate key makes the spend visible, it does not make it free.)
 
 **When a run is approved:** smallest subset that exercises the change, `REPEAT=3` while iterating,
 a full pass only as a final gate, and report the number of model calls made.
 
 **Unit tests and the Playwright web suite make no model calls, cost nothing, and stay mandatory
 on every change.** Do not confuse the two kinds of suite.
+
+**When a run IS approved, it spends `ANTHROPIC_API_KEY_DEV`, not `ANTHROPIC_API_KEY`.** Every
+harness in this repo resolves the dev key and refuses to run without it; it never falls back to
+the production key, which is what Vercel sets and the only name anything under `src/` reads.
+Put the dev key in the repo-root `.env`. See `MDs/dev-vs-production-api-keys.md`.

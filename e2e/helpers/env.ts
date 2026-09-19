@@ -7,6 +7,7 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { APP_PORT_ENV, DB_PORT_ENV, resolvePorts } from "./ports";
+import { requireDevApiKey } from "./dev-api-key";
 
 // All entry points (npm scripts, the Playwright runner and its workers)
 // run with cwd = repo root. Verified rather than assumed — this file is
@@ -144,11 +145,11 @@ export function buildTestEnv(): Record<string, string> {
   // Opt-in "live LLM" seam: when MT_SIM_LIVE_LLM=1, the group-simulator
   // harness exercises the real Anthropic model instead of the deterministic
   // stubs. It pins all three stub-file vars empty (so the router, the
-  // extractors and dm-qa all fall through to a real model), passes the real
-  // ANTHROPIC_API_KEY from the orchestrator's env, and propagates the flag
-  // into the Playwright workers (where group.ts runs). When the flag is OFF
-  // (the default), the returned env is byte-identical to the original
-  // stubbed configuration.
+  // extractors and dm-qa all fall through to a real model), resolves the
+  // DEVELOPER's key (ANTHROPIC_API_KEY_DEV) into the ANTHROPIC_API_KEY the
+  // server under test reads, and propagates the flag into the Playwright
+  // workers (where group.ts runs). When the flag is OFF (the default), the
+  // returned env is byte-identical to the original stubbed configuration.
   const live = process.env.MT_SIM_LIVE_LLM === "1";
   const env: Record<string, string> = {
     // Pin the resolved ports for every child process (Playwright and its
@@ -232,7 +233,20 @@ export function buildTestEnv(): Record<string, string> {
     // grading its own answer key in front of a mass DM. Pinned empty,
     // not deleted, for the same reason as the three above.
     env.MT_TEST_DM_INTENT_STUB_FILE = "";
-    env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
+    // THE KEY A LIVE SWEEP SPENDS IS THE DEVELOPER'S, NOT PRODUCTION'S.
+    //
+    // This line used to forward the orchestrator's own production key,
+    // and that single forward is how ~18,500 harness calls landed on the
+    // same bill as the 77 the live bot made in September
+    // (MDs/llm-spend-september-2026.md). The server under test still
+    // reads ANTHROPIC_API_KEY, and nothing in `src/` changes, because the
+    // same modules serve production. The VALUE behind that name is
+    // resolved here, by the caller, from ANTHROPIC_API_KEY_DEV.
+    //
+    // It refuses rather than falling back. A live run with no dev key
+    // stops here, loudly, instead of quietly spending the production
+    // key and hiding the cost of running MatchTime all over again.
+    env.ANTHROPIC_API_KEY = requireDevApiKey("a LIVE e2e run (MT_SIM_LIVE_LLM=1)");
     env.MT_SIM_LIVE_LLM = "1";
     // The pipeline's remaining flags, forwarded ONLY on a live run.
     //
