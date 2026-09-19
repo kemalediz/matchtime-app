@@ -78,29 +78,16 @@ model User {
   image         String?
   password      String?
   phoneNumber   String?   @unique
-  /// @deprecated 2026-09-18: SUPERSEDED by Membership.seedRating.
-  /// A seed is one club's admin opinion of a player, and this column made
-  /// it global, so one club's admin was overwriting another's. See
-  /// MDs/club-scoped-ratings-design-2026-09-18.md section 3.5 for what
-  /// that was costing Sutton FC.
-  /// Kept, NOT dropped: `prisma db push` drops a column removed from this
-  /// file, and this one is the SOURCE the backfill reads
-  /// (scripts/backfill-membership-ratings.ts). Same precedent as
-  /// Membership.ratingDmOptOut below. Drop in slice 7, after the backfill
-  /// is confirmed in prod and nothing reads it.
-  seedRating    Float?
-  /// @deprecated 2026-09-18: SUPERSEDED by Membership.matchRating.
-  /// Same reasoning and the same slice 7 removal as seedRating above.
-  ///
-  /// Elo-style; updated after each completed match with a score.
-  /// LEADERBOARD ONLY: `lib/match-history.ts` ranks from it and nothing
-  /// else reads it. No code that builds a team sheet consults it. The
-  /// WhatsApp bot and the admin dashboard have shared
-  /// `computePlayerRating` (seed + peer ratings, no Elo term) since
-  /// 2026-09-15, and `api/cron/generate-teams` still runs its own rival
-  /// formula but that one has no Elo term either. See the tombstone at
-  /// the top of `app/actions/teams.ts`.
-  matchRating   Int       @default(1000)
+  // DROPPED 2026-09-19: `seedRating` and `matchRating` used to sit here.
+  // They were GLOBAL, so one club's admin opinion and one club's Elo
+  // followed a player into every other club he played for. Both live on
+  // `Membership` now (see that model), backfilled for all 155
+  // memberships on 2026-09-18 and sole source of truth since.
+  // Slice 7 of MDs/club-scoped-ratings-design-2026-09-18.md.
+  // DO NOT RE-ADD EITHER NAME TO THIS MODEL. A global rating column is
+  // the bug, not the storage.
+  // `src/lib/__tests__/no-global-rating-columns.test.ts` fails if one
+  // comes back.
   isSuperadmin  Boolean   @default(false) // platform-level operator; see all orgs
   isActive      Boolean   @default(true)
   onboarded     Boolean   @default(false)

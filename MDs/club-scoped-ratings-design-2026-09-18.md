@@ -1,7 +1,9 @@
 # Club-scoped ratings: one player, one rating per club
 
 **Date:** 2026-09-18
-**Status:** Design. No application code, no schema edit, no migration, no production write was made for this document. The production database was READ (organisation, membership, rating, user rows; counts and averages only) to measure what the change actually does to Sutton FC. Every code claim is cited `file:line` against `main` at `86cd195`.
+**Status: COMPLETE, 2026-09-19.** All seven slices shipped. See section 14 for what actually shipped against what is designed below, including the four places the design was wrong. Everything from here to section 13 is the design AS WRITTEN on 2026-09-18 and is deliberately not rewritten with hindsight: section 14 carries the corrections, so the two can be read against each other.
+
+**Status when written:** Design. No application code, no schema edit, no migration, no production write was made for this document. The production database was READ (organisation, membership, rating, user rows; counts and averages only) to measure what the change actually does to Sutton FC. Every code claim is cited `file:line` against `main` at `86cd195`.
 **Decisions being designed to:** Kemal, 2026-09-18, five settled points restated in section 2. They are not re-argued here.
 
 ---
@@ -561,6 +563,8 @@ Each is independently shippable and independently revertible. Sutton FC is live 
 | **6** | Read paths and copy. Dashboard tile (`page.tsx:115`) club-scoped. `loadAllClubsOverview` pools all ratings (section 5.2). New i18n keys, the one changed help string, the stats page reading them. Snapshot re-recorded in its own commit. | none | The dashboard tile changes value for the 9. The overall rating changes for anyone who has left a club. Pure UI and copy otherwise. |
 | **7** | Drop `User.seedRating` and `User.matchRating`. | yes, and it is destructive | Only after a live confirmation that nothing reads them (`grep`, plus one week of slice 4 and 5 running). `db push` will drop the columns; there is no undo short of a database restore. |
 
+**ALL SEVEN ARE SHIPPED** (2026-09-18 and 2026-09-19): 0 = #79, 1 = #103, 2 = #104, 3 = #106, 4 = #107, 5 = #105, 6 = #108, with #110 and #111 revising slice 6's display after Kemal answered open question 2, and 7 = this PR. Slice 5 went out before slice 4 and before slice 3; the ordering constraints below permit that and nothing turned on it.
+
 **Ordering constraints that are not negotiable:** 0 before 2 (section 6). 1 before 2, 4 and 5, with the schema pushed before the code deploys (section 7.4). 4 and 5 before 7. 3 is independent of everything after 0 and can be taken whenever.
 
 ---
@@ -602,3 +606,39 @@ Genuine ones only. The five decisions in section 2 are not re-asked.
    **ANSWERED (Kemal, 2026-09-18): yes, offer it.** A new club's admin IS offered the seed editor during setup, exactly as Sutton FC was set up. Those seeds live on that club's `Membership`, so nothing leaks between clubs: the same human seeded in two clubs carries two independent numbers, and neither club can see or move the other's. The club-mean prior of section 4.2 therefore stops being the day-one path for a new club and becomes what it should be, the fallback for a member nobody has seeded.
 
 **Still open: 2, 3 and 4.** 1 and 5 are answered above.
+
+---
+
+## 14. Closing note: what shipped, and where the design was wrong
+
+Written 2026-09-19 as slice 7 lands. Sections 1 to 13 above are the design as written on 2026-09-18 and have not been edited with hindsight, so this section is the only place the two are reconciled.
+
+### 14.1 What shipped, and it is what was designed
+
+The shape held. A `Rating` still belongs to exactly one org through the immutable `matchId` to `Match.activityId` to `Activity.orgId` chain, so no `Rating.orgId` column was added (7.2), no materialised aggregate was added (7.3), and the fix really was a scope rather than a new number. `Membership.seedRating` and `Membership.matchRating` are the only home for a seed and an Elo. The blend is `(sumPeer + prior * 3) / (peerCount + 3)` with `prior = thisClub'sSeed ?? thisClub'sMean ?? 5.0`, exactly as section 4.2 tabulated it. The three rival formulas are one formula: #79 deleted `actions/teams.ts`'s, #106 deleted the cron's, #104 replaced the survivor.
+
+Measured, not asserted: 9 of Sutton FC's 43 rated members moved and the other 34 did not move at all, reproducing section 3.5 to three decimal places and to the draft rank. The 22 Sept squad contained none of the nine, so no live sheet changed on the day.
+
+### 14.2 The four corrections
+
+**1. The foreign-rating counts in section 3.5 were computed by subtraction, and subtraction cannot answer this question.** The table's "foreign ratings in window" column is each player's total ratings at the other club, not the number of that club's rows actually sitting inside the 60-row window. Ehtisham Ul Haq's row gives that away: 39 plus 26 is 65, and the window holds 60. Slice 2's `scripts/compare-club-scoped-ratings.ts` selects every row's org instead, and its header says why: a player with 60 rows in BOTH clubs would report zero foreign ratings under subtraction while his global window was entirely foreign. Counting properly also produces a number subtraction cannot produce at all, the count of a player's OWN club rows EVICTED from the window by foreign ones, which is the mechanism section 3.5 correctly identified in prose and could not measure in its own table. The deltas and draft ranks in the table were right. The two count columns were the wrong quantity.
+
+**2. Slice 5's list of Elo write sites was missing the live bot path.** Section 11 named three: `match-completion.ts`, the WhatsApp `/score` route, and `actions/matches.ts`. There is a fourth, `ScoreApplyDeps` in `src/lib/owner-deps.ts`, and it is the one the bot actually runs when a score arrives in the group. Had slice 5 moved only the three, a score posted to WhatsApp would have kept writing the global column while everything else read the per-club one. `src/lib/membership-elo.ts` is now the single reader and writer and its signatures require an `orgId`, so forgetting the club does not compile; that is the guard that makes a missed call site an error rather than a silent divergence. `applyEloDeltas` gained a `matchId` for the same reason.
+
+**3. Kemal reversed open question 2, after slice 6 had already shipped the other answer.** The design recommended, and slice 6 shipped, one number per player per club: the shrunk figure both balanced the teams and appeared on the player's page. On 2026-09-19 he chose otherwise, "whatever ratings are given the player should see but yeah for team setup shrunk number should be used initially", so #110 split them. `clubDisplayRating` is the raw mean of what this club actually gave the player; `computeClubRating` is untouched and stays the balancer's input. The "one number per player per club" principle in the design is therefore superseded: there is one number per player per club per PURPOSE, and the purposes are allowed to disagree. Kemal's own example is pinned in the tests: one rating of 9 at a club averaging 6.674 shows 9.0 and balances at 7.3.
+
+**4. A seed is not a rating, and must not be shown at all.** #110 still showed a seeded but unrated player their seed. #111 removed that: "i prefer them to see nothing, better not to show seed, the ratings are important to the player, not the seed and it can be discouraging too." A seed is an admin's guess typed before anyone had played, and under the heading "your rating" a player reads it as what their team-mates think of them. `clubDisplayRating` now returns null whenever the club has given no peer ratings, seed or no seed, so the seeded player and the never-mentioned player are one state on screen. The balancer still leans on the seed, because that is how a new club gets sensible teams in week one, so for these players the two numbers now differ by the whole seed. That is the decision, not a bug. This also settles open question 5 in practice: a new club's admin is still offered the seed editor, and those seeds still pick week one's teams, they are just never shown back to the player as a rating.
+
+### 14.3 Slice 7 itself, and what it cost to make safe
+
+Nothing read either column by the time this slice ran: `tsc` over `src` and `e2e` was clean the moment they were deleted from the schema, which is a stronger statement than a grep because it covers every alias and destructure.
+
+Three things the compiler could NOT say, each found by reading call sites:
+
+- `e2e/helpers/seed.ts` passed `seedRating: 6` to `db.user.createMany` through a mapped variable, and TypeScript's excess-property check does not apply to a variable, only to an object literal at the call. It type-checked and would have thrown at runtime, taking the whole web suite with it.
+- `e2e/sim/group.ts` wrote the column in raw SQL, which no type ever checks.
+- `scripts/` is excluded from `tsconfig.json`, so eleven spent operator one-offs referenced the columns with no gate to notice. They are tombstoned rather than deleted, matching the convention already in `scripts/record-score.ts`: a spent script is a record of what was done.
+
+The backfill was DELETED rather than tombstoned, which is the opposite call and deliberate. `scripts/backfill-membership-ratings.ts` and `src/lib/membership-rating-backfill.ts` existed to copy FROM the two columns. Once the columns are gone there is nothing left to re-run them from, so keeping them is not insurance, it is an uncompilable module sitting in `src/lib` for a future reader to work out is dead. The only route to a re-run is a database restore, and a restore point old enough to hold the columns is old enough that `git show d08774e` holds the code.
+
+`src/lib/__tests__/no-global-rating-writes.test.ts` is retired as `no-global-rating-columns.test.ts`. Its source scan for `db.user.update({ data: { seedRating } })` was worth having while the columns existed and type-checked; now the compiler catches the same thing at every call site, including the ones a 400-character regex window would miss. What replaced it is the one check the compiler cannot make: that `prisma/schema.prisma` does not grow either field back on `User`, which is the only door they can return through.
