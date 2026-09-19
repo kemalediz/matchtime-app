@@ -75,6 +75,23 @@
  *     matters: it implies their other club's scores count here. Lines 1,
  *     2 and 4 of the explainer are untouched.
  *
+ *   - One deliberate ADDITION and two deliberate CHANGES (2026-09-19,
+ *     later the same day). Kemal answered the design's open question 2
+ *     the other way from the way slice 6 shipped it: a player now sees
+ *     the RAW mean of the ratings their club gave them, while team
+ *     generation keeps the shrunk figure. The addition is
+ *     `R144 rating_club_balance_note`, the one sentence that says teams
+ *     are built cautiously on one or two ratings, which is what stops
+ *     "it says I'm 9, why am I on the weaker team" being a fair question
+ *     with no answer on the page. The changes are the two
+ *     `R144 rating_club_provisional` cases, and they are the only
+ *     non-additive lines in that commit's English diff besides the case
+ *     count. The old line read "so it sits close to the club average
+ *     until more arrive", describing a shrinking that is no longer
+ *     applied to the number on the screen: not stale, false, and false
+ *     in the direction that matters, because it told a player their
+ *     number had been moved when it had not.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
