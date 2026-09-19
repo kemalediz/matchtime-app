@@ -142,6 +142,11 @@ export default function BulkRatingsPage() {
         <p className="text-sm text-slate-500 mt-1">
           1–10 scale. Autosaves 1.2s after you stop typing, or on blur.
         </p>
+        <p className="text-sm text-slate-500 mt-1">
+          These seeds belong to this club only. A player who also turns out
+          somewhere else keeps a separate rating there, and nothing you
+          type here changes it.
+        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -270,6 +275,14 @@ function InfoModal({ onClose }: { onClose: () => void }) {
             <span className="font-medium text-slate-800">Seed rating (1–10):</span>{" "}
             your guess at a player&apos;s skill. Used by the team-balancing algorithm
             until they&apos;ve collected at least 3 peer ratings from completed matches.
+            It is your club&apos;s number: the same player at another club has their
+            own, and neither club can see or move the other&apos;s.
+          </p>
+          <p>
+            <span className="font-medium text-slate-800">A blank seed is fine.</span>{" "}
+            A new member starts with no rating here at all, and the balancer
+            treats them as an average player for this club until their first
+            peer ratings arrive.
           </p>
           <p>
             <span className="font-medium text-slate-800">Peer rating:</span>{" "}

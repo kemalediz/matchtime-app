@@ -11,9 +11,18 @@ import { findExistingOrgMember } from "@/lib/resolve-player";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-/** Default seed rating for newly-created players — a neutral mid-point the
- *  team-balancer uses until they accumulate enough peer ratings. */
-const DEFAULT_SEED_RATING = 6;
+/* A NEW PLAYER CARRIES NO RATING (2026-09-19).
+ *
+ * There used to be a default seed constant of 6 here, stamped onto every
+ * user this file created. It was a number somebody picked in March doing
+ * duty as a club's opinion of a person it had never seen play, and on
+ * the global `User.seedRating` it was the same number at every club.
+ *
+ * A membership is now created unseeded. The balancer already handles
+ * that: with no `Membership.seedRating` it shrinks toward the CLUB's own
+ * mean rating, which at Sutton is 6.674 and at a brand new club is 5.0.
+ * See MDs/club-scoped-ratings-design-2026-09-18.md sections 4.2 and 4.3.
+ */
 
 export async function completeOnboarding(formData: { name: string; phoneNumber?: string }) {
   const session = await auth();
@@ -166,10 +175,24 @@ export async function seedPlayerRating(userId: string, orgId: string, rating: nu
 
   if (rating < 1 || rating > 10) throw new Error("Rating must be between 1 and 10");
 
-  await db.user.update({
-    where: { id: userId },
+  // The seed is THIS club's opinion, so it lives on THIS club's
+  // membership. It used to be written to `User.seedRating`, one global
+  // column, which meant an admin correcting a number in their own seed
+  // editor moved the balancer input at every other club the same person
+  // plays for (MDs/club-scoped-ratings-design-2026-09-18.md, section 2
+  // decision 5). `orgId` was already in the signature and already
+  // authorised against above; only the write target was global.
+  //
+  // `updateMany` rather than `update`: `Membership` is unique on
+  // [userId, orgId] so it can match at most one row, and a miss comes
+  // back as `count: 0` instead of a raw Prisma P2025 for the admin to
+  // read. A miss is a real condition worth naming, not a no-op: it means
+  // the player is not a member of the club being seeded.
+  const { count } = await db.membership.updateMany({
+    where: { userId, orgId },
     data: { seedRating: rating },
   });
+  if (count === 0) throw new Error("That player is not a member of this club");
 
   revalidatePath("/admin/players");
 }
@@ -185,10 +208,11 @@ export async function seedPlayerRating(userId: string, orgId: string, rating: nu
 /**
  * Admin: merge two duplicate user records into one. Keeps `keepUserId`,
  * drops `dropUserId`. Re-attributes attendance, ratings, MoM votes,
- * analyzed messages, and team assignments. Backfills `phoneNumber`,
- * `seedRating`, and `matchRating` from the drop record only when the
- * keep record is missing them. The drop user + memberships are deleted
- * at the end. Transactional — partial failures roll back.
+ * analyzed messages, and team assignments. Backfills `phoneNumber` and
+ * the rest of a real identity from the drop record only when the keep
+ * record is missing them, and carries the per-club seed and Elo across
+ * one membership at a time. The drop user + memberships are deleted at
+ * the end. Transactional, so partial failures roll back.
  */
 export async function mergePlayers(
   orgId: string,
@@ -321,7 +345,7 @@ export async function createPlayer(
     if (!name) return { ok: false, error: "Please enter a name" };
     const placeholderEmail = `wa-${phone.replace(/^\+/, "")}@placeholder.matchtime`;
     const user = await db.user.create({
-      data: { name, email: placeholderEmail, phoneNumber: phone, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
+      data: { name, email: placeholderEmail, phoneNumber: phone, onboarded: false, isActive: true },
       select: { id: true },
     });
     await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
@@ -354,7 +378,7 @@ export async function createPlayer(
   }
   const email = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@placeholder.matchtime`;
   const user = await db.user.create({
-    data: { name, email, phoneNumber: null, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
+    data: { name, email, phoneNumber: null, onboarded: false, isActive: true },
     select: { id: true },
   });
   await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
@@ -651,7 +675,8 @@ export async function removePlayerAlias(userId: string, orgId: string, rawAlias:
 //   window closes. Removes the need to hand-fix recovered squads.
 
 /** Find or create a player in `orgId` from {userId|phone|name}, ensuring
- *  an active membership. New users default to seedRating 6. */
+ *  an active membership. A new player is created UNSEEDED: see the note
+ *  at the top of this file. */
 async function ensureOrgPlayer(
   orgId: string,
   input: { userId?: string; name?: string; phone?: string },
@@ -677,7 +702,7 @@ async function ensureOrgPlayer(
     }
     if (!name) return { ok: false, error: "Please enter a name" };
     const user = await db.user.create({
-      data: { name, email: `wa-${phone.replace(/^\+/, "")}@placeholder.matchtime`, phoneNumber: phone, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
+      data: { name, email: `wa-${phone.replace(/^\+/, "")}@placeholder.matchtime`, phoneNumber: phone, onboarded: false, isActive: true },
       select: { id: true },
     });
     await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });
@@ -695,7 +720,7 @@ async function ensureOrgPlayer(
   }
   const email = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@placeholder.matchtime`;
   const user = await db.user.create({
-    data: { name, email, seedRating: DEFAULT_SEED_RATING, onboarded: false, isActive: true },
+    data: { name, email, onboarded: false, isActive: true },
     select: { id: true },
   });
   await db.membership.create({ data: { userId: user.id, orgId, role: "PLAYER" } });

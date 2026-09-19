@@ -24,6 +24,17 @@ type TxClient = any;
 
 import { recordAttendanceEvent } from "./attendance-events";
 
+/**
+ * `Membership.matchRating`'s schema default, and Elo's genuine "no
+ * information" value. Owned by `membership-elo.ts`, which exports the
+ * same constant, and deliberately restated rather than imported: this
+ * file runs from `scripts/normalise-phones-migration.ts`, which builds
+ * its own PrismaClient and never loads `lib/db.ts`. Importing from
+ * `membership-elo.ts` would drag that module in and stand a second
+ * client up inside a migration.
+ */
+const MEMBERSHIP_ELO_DEFAULT = 1000;
+
 const ATT_RANK = { CONFIRMED: 3, BENCH: 2, DROPPED: 1 } as const;
 const ROLE_RANK = { OWNER: 3, ADMIN: 2, PLAYER: 1 } as const;
 
@@ -55,10 +66,16 @@ export async function mergePlayersCore(
   if (!keep || !drop) throw new Error("Player not found");
 
   // 1. Backfill missing fields on `keep` from `drop`.
+  //
+  // The seed and the Elo used to be in this patch, as `User.seedRating`
+  // and `User.matchRating`. They are not identity fields and they never
+  // were: they are one club's opinion of a player, and taking ONE of
+  // each off the dropped record applied it to the person at every club
+  // they play for. Merging a duplicate at Sutton could set the number
+  // the Lads' balancer reads. Both now travel per membership in step 9
+  // (MDs/club-scoped-ratings-design-2026-09-18.md, slice 4).
   const patch: {
     phoneNumber?: string;
-    seedRating?: number;
-    matchRating?: number;
     name?: string;
     email?: string;
     image?: string;
@@ -67,10 +84,6 @@ export async function mergePlayersCore(
     onboarded?: boolean;
   } = {};
   if (!keep.phoneNumber && drop.phoneNumber) patch.phoneNumber = drop.phoneNumber;
-  if (keep.seedRating == null && drop.seedRating != null) patch.seedRating = drop.seedRating;
-  if ((!keep.matchRating || keep.matchRating === 1000) && drop.matchRating && drop.matchRating !== 1000) {
-    patch.matchRating = drop.matchRating;
-  }
   if (!keep.name && drop.name) patch.name = drop.name;
   // 2026-06-12: carry the rest of a real identity over too. If the keeper
   // is a synthetic record (wa-sync/provisional placeholder email) but the
@@ -382,6 +395,25 @@ export async function mergePlayersCore(
   await tx.session.updateMany({ where: { userId: dropUserId }, data: { userId: keepUserId } });
 
   // 9. Membership — merge per org, drop's row deleted.
+  //
+  // This is where the per-club seed and Elo are resolved, and the reason
+  // they have to be resolved HERE rather than on the user is the case
+  // this whole design exists for: a person who plays at two clubs, and
+  // is duplicated at one of them. Each club's opinion is settled against
+  // the other row AT THAT CLUB and nowhere else, so a merge at Sutton
+  // can never move a number the Lads' balancer reads.
+  //
+  //   - seed: the keeper's row wins whenever it HAS one. The dropped
+  //     row's seed is carried over only into a membership with none.
+  //     This is the same rule the global column used, and the same
+  //     "the keeper is the row with the real history" convention step 4
+  //     already applies to a colliding rating.
+  //   - Elo: the keeper wins unless its number is still the untouched
+  //     1000 default, which means "no information" and loses to a number
+  //     that was actually played for.
+  //   - a club where only the DROPPED row is a member: its row is
+  //     re-pointed whole, below, so both numbers travel with it and
+  //     neither is recomputed.
   const dropMemberships = await tx.membership.findMany({ where: { userId: dropUserId } });
   for (const dm of dropMemberships) {
     const km = await tx.membership.findUnique({
@@ -414,9 +446,21 @@ export async function mergePlayersCore(
           ? km.lastSeenInGroupAt
           : dm.lastSeenInGroupAt
         : (km.lastSeenInGroupAt ?? dm.lastSeenInGroupAt);
+    const newSeedRating = km.seedRating == null ? dm.seedRating : km.seedRating;
+    const newMatchRating =
+      km.matchRating === MEMBERSHIP_ELO_DEFAULT && dm.matchRating !== MEMBERSHIP_ELO_DEFAULT
+        ? dm.matchRating
+        : km.matchRating;
     await tx.membership.update({
       where: { id: km.id },
-      data: { role: newRole, leftAt: newLeftAt, provisionallyAddedAt: newProvisional, lastSeenInGroupAt: newLastSeen },
+      data: {
+        role: newRole,
+        leftAt: newLeftAt,
+        provisionallyAddedAt: newProvisional,
+        lastSeenInGroupAt: newLastSeen,
+        seedRating: newSeedRating,
+        matchRating: newMatchRating,
+      },
     });
     await tx.membership.delete({ where: { id: dm.id } });
   }

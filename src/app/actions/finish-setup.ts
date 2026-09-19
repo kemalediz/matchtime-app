@@ -80,11 +80,23 @@ export async function applyEnrichment(
     if (!uid) continue;
 
     // ── 3. Seed ratings ──
+    // Onto the membership at THIS session's org. The analyser read one
+    // club's group chat, so its opinion is one club's opinion; on the
+    // global `User.seedRating` it used to land on the person and follow
+    // them to every other club they play for. `orgId` comes off the
+    // OnboardingSession above and is already authorised against.
+    //
+    // `updateMany` keeps a proposal for somebody who is not a member
+    // here from throwing P2025 mid-apply and stranding the rest of the
+    // roster: it reports `count: 0` and we simply do not count it.
     if (player.seedRating != null) {
       const v = seedFromAnalyzerRating(player.seedRating);
       if (v != null) {
-        await db.user.update({ where: { id: uid }, data: { seedRating: v } });
-        seeds++;
+        const { count } = await db.membership.updateMany({
+          where: { userId: uid, orgId },
+          data: { seedRating: v },
+        });
+        if (count > 0) seeds++;
       }
     }
 
