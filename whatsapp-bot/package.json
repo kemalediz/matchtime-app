@@ -6,9 +6,12 @@
   "scripts": {
     "start": "node --env-file=.env --import tsx src/index.ts",
     "dev": "node --env-file=.env --import tsx --watch src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start:baileys": "node --env-file=.env --import tsx src/baileys/main.ts",
+    "dev:baileys": "node --env-file=.env --import tsx --watch src/baileys/main.ts"
   },
   "dependencies": {
+    "baileys": "7.0.0-rc14",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.34.7"
   },
