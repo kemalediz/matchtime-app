@@ -89,3 +89,128 @@ describe("ids stay in the format the database already holds (§2.5)", () => {
     expect(helper).toBeLessThan(serialise);
   });
 });
+
+// ── Phase 3b: lifecycle, identity and inbound ────────────────────────
+
+function source(rel: string): string {
+  return stripComments(readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8"));
+}
+
+const lifecycle = source("../baileys/lifecycle.ts");
+const ledger = source("../baileys/session-ledger.ts");
+const reaction = source("../baileys/reaction.ts");
+const contacts = source("../baileys/contacts.ts");
+const inboundView = source("../baileys/inbound-view.ts");
+
+describe("Phase 3b never destroys the session either (§2.10)", () => {
+  it("has no logout() anywhere in the lifecycle", () => {
+    expect(lifecycle).not.toMatch(/\.logout\s*\(/);
+  });
+
+  it("deletes nothing from disk: not the auth folder, not the ledger", () => {
+    for (const [name, text] of [
+      ["driver", driver],
+      ["lifecycle", lifecycle],
+      ["session-ledger", ledger],
+    ] as const) {
+      expect(text, name).not.toMatch(/\brmSync\b|\brmdir\b|\bunlink(Sync)?\b|\brm\s*\(/);
+    }
+  });
+});
+
+describe("names and numbers are harvested, never looked up (§2.2, §2.9)", () => {
+  it("no Phase 3b module asks WhatsApp about a number or a profile", () => {
+    const banned = [
+      /onWhatsApp\s*\(/,
+      /executeUSyncQuery\s*\(/,
+      /getLIDForPN\s*\(/,
+      /getLIDsForPNs\s*\(/,
+      /fetchStatus\s*\(/,
+      /profilePictureUrl\s*\(/,
+      /getBusinessProfile\s*\(/,
+    ];
+    for (const [name, text] of [
+      ["driver", driver],
+      ["lifecycle", lifecycle],
+      ["reaction", reaction],
+      ["contacts", contacts],
+      ["inbound-view", inboundView],
+    ] as const) {
+      for (const b of banned) expect(text, `${name} ${b}`).not.toMatch(b);
+    }
+  });
+
+  it("reads LID mappings only through getPNForLID, the local-only direction", () => {
+    expect(driver).toMatch(/getPNForLID\(/);
+  });
+});
+
+describe("the socket options that are wrong by default (§2.13)", () => {
+  it("does not flip the account online, which would steal the phone's notifications", () => {
+    expect(driver).toMatch(/markOnlineOnConnect:\s*false/);
+  });
+
+  it("chooses syncFullHistory explicitly rather than taking the default of true", () => {
+    expect(driver).toMatch(/syncFullHistory:\s*false/);
+  });
+
+  it("wires getMessage, without which a recipient's retry shows 'waiting for this message'", () => {
+    expect(driver).toMatch(/getMessage:\s*\(/);
+  });
+
+  it("does not use the deprecated printQRInTerminal", () => {
+    expect(driver).not.toMatch(/printQRInTerminal/);
+  });
+
+  it("passes the redacting logger, never a raw pino", () => {
+    expect(driver).toMatch(/makeBaileysLogger\(/);
+    expect(driver).not.toMatch(/from\s+["']pino["']/);
+  });
+});
+
+describe("the offline-replay measurement stays possible (§2.15)", () => {
+  it("never filters inbound messages on the upsert type", () => {
+    // HomeTenant's `if (type !== "notify") return;` is exactly the line that
+    // makes its production experience useless as evidence. Not here.
+    expect(driver).not.toMatch(/["']notify["']/);
+    expect(driver).not.toMatch(/["']append["']/);
+  });
+
+  it("logs the upsert type", () => {
+    expect(driver).toMatch(/upsert=\$\{/);
+  });
+});
+
+describe("pairing is rationed (runbook §5)", () => {
+  it("calls requestPairingCode in exactly one place, after the ledger has said yes", () => {
+    expect(lifecycle.match(/\.requestPairingCode\s*\(/g) ?? []).toHaveLength(1);
+    expect(driver).not.toMatch(/\.requestPairingCode\s*\(/);
+    const ask = lifecycle.indexOf(".requestPairingCode(");
+    const budget = lifecycle.indexOf("tryPairingRequest(");
+    expect(budget).toBeGreaterThan(-1);
+    expect(budget).toBeLessThan(ask);
+  });
+
+  it("delegates the close decision to decideOnClose and guards stale sockets", () => {
+    expect(lifecycle).toMatch(/decideOnClose\(/);
+    expect(lifecycle).toMatch(/gen\s*!==\s*generation/);
+  });
+});
+
+describe("a reaction's target is resolved BEFORE it is serialised", () => {
+  it("serialises only after the LID-to-phone step, with the tested serialiser", () => {
+    // Slice mapReaction out by name: inside it, the target must go through
+    // resolveTarget (where the LID becomes a phone) before serializeKey.
+    const start = reaction.indexOf("export async function mapReaction");
+    const end = reaction.indexOf("async function resolveTarget");
+    const map = reaction.slice(start, end);
+    expect(start).toBeGreaterThan(-1);
+    expect(map.indexOf("resolveTarget(")).toBeGreaterThan(-1);
+    expect(map.indexOf("resolveTarget(")).toBeLessThan(map.indexOf("serializeKey(resolved.key)"));
+    // And inside resolveTarget, the DM key's remote is replaced by the phone.
+    const target = reaction.slice(end, reaction.indexOf("async function reactorId"));
+    expect(target).toMatch(/phoneForLid\(/);
+    expect(target).toMatch(/remoteJid:\s*toUserJid\(phone\)/);
+    expect(reaction).not.toMatch(/\$\{[^}]*fromMe[^}]*\}_/);
+  });
+});

@@ -362,25 +362,18 @@ describe("members this driver refuses, by name", () => {
     expect((err as Error).message).toMatch(/BOT_RECOVER_DM_REPLIES/);
   });
 
-  // Everything not built in Phase 3. Each must fail by name, sync or
-  // async according to how its callers call it, and none may send.
+  // Everything still not built after Phase 3b: groups, polls and the
+  // restart replay (Phase 4, and Phase 5's measurement). Lifecycle,
+  // identity and inbound moved out of this list in Phase 3b and are tested
+  // in `baileys.inbound.test.ts`. Each must fail by name, sync or async
+  // according to how its callers call it, and none may send.
   const NOT_YET: Array<[keyof WaDriver, (d: WaDriver) => unknown]> = [
-    ["start", (d) => d.start()],
-    ["onOpen", (d) => d.onOpen(() => {})],
-    ["onClose", (d) => d.onClose(() => {})],
-    ["selfId", (d) => d.selfId()],
-    ["selfIdentities", (d) => d.selfIdentities()],
-    ["selfIds", (d) => d.selfIds()],
-    ["onMessage", (d) => d.onMessage(() => {})],
-    ["onReaction", (d) => d.onReaction(() => {})],
     ["onPollVote", (d) => d.onPollVote(() => {})],
     ["onGroupJoin", (d) => d.onGroupJoin(() => {})],
     ["onGroupLeave", (d) => d.onGroupLeave(() => {})],
     ["listGroups", (d) => d.listGroups()],
     ["groupParticipants", (d) => d.groupParticipants(GROUP)],
     ["groupSnapshot", (d) => d.groupSnapshot(GROUP, [])],
-    ["getContact", (d) => d.getContact("447700900123@c.us")],
-    ["contactOf", (d) => d.contactOf({})],
     ["fetchRecentGroupMessages", (d) => d.fetchRecentGroupMessages(GROUP, 10)],
   ];
 

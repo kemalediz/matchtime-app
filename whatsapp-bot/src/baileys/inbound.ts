@@ -175,3 +175,34 @@ function readMentions(content: Record<string, unknown>, contentType: string): st
   const list = node?.contextInfo?.mentionedJid;
   return Array.isArray(list) ? list.filter((j): j is string => typeof j === "string") : [];
 }
+
+/**
+ * Why `mapInboundMessage` returned null for this message, in words, for
+ * the log line the driver writes for EVERY upsert.
+ *
+ * Nothing that arrives may disappear without a line: whether messages
+ * sent while the bot was down come back, and as which upsert type, is the
+ * measurement Phase 5 depends on (plan §2.15), and a message that was
+ * received but not handed up has to be countable in that measurement.
+ * Never throws.
+ */
+export function skipReason(msg: WAMessage): string {
+  try {
+    if (!msg?.message) {
+      const stub = (msg as { messageStubType?: unknown })?.messageStubType;
+      return stub
+        ? `a system notice (stub type ${String(stub)})`
+        : "no content (a stub, or a message that failed to decrypt)";
+    }
+    const content = normalizeMessageContent(msg.message);
+    const type = content ? getContentType(content) : undefined;
+    if (!type) return "no content type";
+    if (type === "reactionMessage") return "a reaction (handled on messages.reaction)";
+    if (type === "protocolMessage") return "a protocol message (an edit, a delete or a key share)";
+    if (type.startsWith("poll")) return `${type} (polls are Phase 4)`;
+    if (type === "conversation" || type === "extendedTextMessage") return "an empty text";
+    return `${type} is not a type this bot reads`;
+  } catch {
+    return "unreadable";
+  }
+}

@@ -684,6 +684,82 @@ and reactions against the interface. Every text through one helper that sets
 
 **Rollback:** the driver is selected by env and defaults to whatsapp-web.js.
 
+### Phase 3b: startup, identity and inbound on the Baileys driver (PR `feat/baileys-lifecycle-inbound`)
+
+**Why this phase exists.** Phase 3's author found a gap: no phase owned the
+driver's startup, its identity checks or message receipt. Phase 1 built those
+pieces for a watch-only observer (`src/baileys/main.ts`), Phase 3 built the
+sends, and Phase 4 covers groups. Nothing moved the socket lifecycle and the
+inbound path into the driver itself, and without them a bot on Baileys could
+send but never hear anybody. This is that phase.
+
+Scope, all against the Phase 2 interface in `src/driver.ts`:
+
+- **Lifecycle.** `start`, `close` (`end(undefined)`, never `logout()`),
+  `onOpen` (fires on EVERY open, as `ready` already did: every reconnect and
+  the `515` straight after pairing), `onClose` (fires on every close, so the
+  timers stop and restart around a blip). The reconnect policy of §2.8,
+  unchanged from Phase 1's `connection.ts`, now owned by the driver behind
+  the generation counter. Two additions whatsapp-web.js never needed:
+  - **a logged-out latch.** A `401` exits without reconnecting AND writes a
+    marker into the auth folder, so the next start refuses to connect with
+    the dead session instead of looping through systemd. Recovery is the
+    re-pair runbook: move the folder aside, never delete it.
+  - **a pairing-code budget**, persisted in the auth folder so it survives
+    restarts: one request per socket (Phase 1's rule), at least a minute
+    apart, at most five in any hour. Past the budget the bot shows the QR
+    instead. Hammering `requestPairingCode` risks the number itself.
+- **Identity.** `selfId`, `selfIdentities` and `selfIds` from `sock.user`,
+  device suffix stripped, in whatsapp-web.js spelling (`@c.us`, `@lid`) so
+  every comparison above the seam still compares like with like. Kept as
+  three members, not collapsed (see the driver's header for why).
+- **Inbound.** `onMessage` hands up a whatsapp-web.js-shaped view of each
+  `WAMessage` (so `wa-read.ts`, `message-id.ts` and `enqueueForAnalysis`
+  read it unchanged) with the raw message kept for `replyTo`. `onReaction`
+  hands up `{ msgId, senderId, reaction }`, with a DM target converted to
+  the phone form the database stored before it is serialised.
+  `contactOf` and `getContact` answer from names HARVESTED off inbound
+  messages and `contacts.upsert`, never from a network lookup (§2.2, §2.9).
+- **The `degraded.ts` contract.** A reaction whose target cannot be mapped
+  to the stored id is handed up with no `msgId`, which is exactly the shape
+  `index.ts` already records as `reaction-forwarding` degraded, so it
+  reaches the heartbeat like a whatsapp-web.js failure does.
+
+Still refused: groups, participants, join and leave, polls (Phase 4) and the
+restart replay (Phase 5 decides). `WA_DRIVER=baileys` stays unselectable.
+
+**The offline-replay measurement, to be run FIRST in Phase 5.** This phase
+logs one `[baileys][msg] upsert=<notify|append>` line for every message,
+including duplicates and skipped types, with its `age=` in seconds, and
+filters nothing on `type`. So the measurement is a reading, not a build:
+
+1. Link the throwaway number with the Baileys driver (or the Phase 1
+   observer) in the Phase 5 test group. Post one control message and confirm
+   its `upsert=notify age=0s` line.
+2. Stop the process with SIGTERM (it calls `end`, never `logout`). Note the
+   time.
+3. While it is down, post three numbered texts ("offline 1", "offline 2",
+   "offline 3") from two different phones, at least one of them a
+   privacy-mode (`@lid`) member; react to one of the bot's earlier messages;
+   and send the bot a DM.
+4. Wait **two minutes**, start the process, and capture every
+   `[baileys][msg]` and `[baileys][reaction]` line for five minutes.
+5. Record, per message: did it arrive, with which `upsert=`, with what
+   `age=`, and did it arrive more than once. Same for the reaction and the
+   DM.
+6. Repeat with a **30-minute** gap and a **3-hour** gap (beyond
+   `recoverGroupMessages`' two-hour window).
+
+Decision rule. All three arrive every time: `recoverGroupMessages` retires
+under Baileys. They arrive as `append`: keep forwarding `append` (this phase
+does) and decide whether old `append` messages need an age gate before the
+analyzer. Any go missing: rebuild the replay on `fetchMessageHistory`. Until
+this is measured, every Baileys `open` records `message-recovery` degraded,
+because the driver refuses `fetchRecentGroupMessages`, which is the honest
+signal.
+
+**Rollback:** as Phase 3. The driver is still unselectable.
+
 ### Phase 4: groups, participants, join and leave, polls
 
 `groupFetchAllParticipating`, `groupMetadata` with our own
@@ -701,7 +777,8 @@ off, sends hard-disabled at the driver.** It logs what it would have done.
 
 The measurements that only exist here:
 
-1. **the offline-replay question and its `type`** (§2.15);
+1. **the offline-replay question and its `type`** (§2.15), by the exact
+   experiment written out under Phase 3b, run before anything else;
 2. `@lid` to phone resolution through all four paths of §2.7, with a real
    privacy-mode member;
 3. a reaction round-trip, both directions, including on a message from before
@@ -855,6 +932,7 @@ Large. This is not a week.
 | 1, connection, auth, inbound | 1 to 2 days | mostly pure helpers and their tests; the logger and reconnect modules are near-copies of HomeTenant's |
 | 2, driver seam | 2 to 3 days | a refactor across `index.ts`, `scheduler.ts`, `smart-analysis.ts`; the riskiest *code* change, because it touches the working bot |
 | 3, outbound, key serialiser, link previews, `getMessage` | 2 days | |
+| 3b, lifecycle, identity, inbound | 1 to 2 days | the gap Phase 3 found; added 2026-09-22 |
 | 4, groups, participants, LID seeding, polls | 3 to 4 days | **no HomeTenant precedent for any of it**; the poll path is the fiddly part |
 | 5, shadow run | **1 week of wall-clock**, a day of work | the calendar, not the code, is the constraint |
 | 6, cutover | half a day, plus 24h watching | needs a human for the link |

@@ -25,12 +25,14 @@ describe("selectDriver", () => {
   });
 
   it("refuses baileys with the reason, rather than silently running wwebjs", () => {
-    // Phase 3 built the Baileys driver's OUTBOUND half only. With no
-    // lifecycle, inbound or group wiring, a bot that came up on it could
-    // not hear anybody, and deaf looks like healthy. It stays unselectable
-    // until those land.
-    expect(() => selectDriver("baileys")).toThrow(/outbound half only/);
-    expect(() => selectDriver("  Baileys ")).toThrow(/outbound half only/);
+    // Phase 3b gave the Baileys driver its lifecycle, identity and inbound
+    // path, but it still cannot list its groups, sweep a roster, see a
+    // join or count a MoM vote (Phase 4). A bot on it would come up
+    // hearing messages and blind to its own groups, and blind looks like
+    // healthy. It stays unselectable until Phase 4 lands.
+    expect(() => selectDriver("baileys")).toThrow(/Phase 4/);
+    expect(() => selectDriver("  Baileys ")).toThrow(/groups/);
+    expect(() => selectDriver("baileys")).not.toThrow(/outbound half only/);
   });
 
   it("refuses a typo instead of defaulting", () => {

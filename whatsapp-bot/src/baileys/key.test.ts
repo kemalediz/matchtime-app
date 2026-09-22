@@ -15,7 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { jidNormalizedUser } from "baileys";
-import { parseKey, serializeKey, type ParsedKey } from "./key.js";
+import { legacyJid, parseKey, serializeKey, type ParsedKey } from "./key.js";
 
 describe("serializeKey: the whatsapp-web.js string, from a Baileys key", () => {
   it("writes a DM key as fromMe_remote_id, with the person in @c.us form", () => {
@@ -332,5 +332,33 @@ describe("where the mapping is NOT a round trip, named rather than hidden", () =
     });
     const asLid = serializeKey({ remoteJid: "120363000@g.us", id: "ID", participant: "99@lid" });
     expect(asPhone).not.toBe(asLid);
+  });
+});
+
+describe("legacyJid: one JID in the spelling everything above the seam compares", () => {
+  // The inbound view, the identity members and the reaction payload all
+  // hand JIDs up to code written against whatsapp-web.js, which compares
+  // them as strings (`.endsWith("@c.us")`, `mentionedIds.includes(selfId)`).
+  // They must use the SAME rule the stored ids use, so it is this one.
+  it("spells a person @c.us and drops the device suffix", () => {
+    expect(legacyJid("447700900123@s.whatsapp.net")).toBe("447700900123@c.us");
+    expect(legacyJid("447700900123:12@s.whatsapp.net")).toBe("447700900123@c.us");
+    expect(legacyJid("447700900123@c.us")).toBe("447700900123@c.us");
+  });
+
+  it("leaves LIDs and groups in their own spelling, minus any device", () => {
+    expect(legacyJid("158055467598020:12@lid")).toBe("158055467598020@lid");
+    expect(legacyJid("120363000000000000@g.us")).toBe("120363000000000000@g.us");
+  });
+
+  it("returns null for anything that is not a JID", () => {
+    expect(legacyJid("")).toBeNull();
+    expect(legacyJid(undefined)).toBeNull();
+    expect(legacyJid("447700900123")).toBeNull();
+  });
+
+  it("agrees with serializeKey on the remote it writes", () => {
+    const id = serializeKey({ remoteJid: "447700900123:4@s.whatsapp.net", fromMe: true, id: "ABC" });
+    expect(id).toBe(`true_${legacyJid("447700900123:4@s.whatsapp.net")}_ABC`);
   });
 });

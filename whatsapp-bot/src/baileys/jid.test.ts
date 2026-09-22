@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { jidDecode } from "baileys";
+// Deep import on purpose: the class is not re-exported from the package
+// root, and the test must run the REAL lookup rather than a fake of it.
+import { LIDMappingStore } from "baileys/lib/Signal/lid-mapping.js";
 import {
   parseJid,
   isPhoneJid,
@@ -154,6 +157,16 @@ describe("inboundDropReason", () => {
     );
   });
 
+  it("keeps our own messages when asked to, and still filters everything else", () => {
+    // The driver's onMessage contract is "including our own"; index.ts
+    // does the fromMe skip itself. Phase 1's observer still drops them.
+    expect(inboundDropReason({ remoteJid: group, fromMe: true, id: "A" }, { keepOwn: true })).toBeNull();
+    expect(inboundDropReason({ remoteJid: group, fromMe: true, id: "A" })).toBe("own message");
+    expect(
+      inboundDropReason({ remoteJid: "status@broadcast", fromMe: true, id: "A" }, { keepOwn: true }),
+    ).toBe("status update");
+  });
+
   it("drops anything with no chat or no id", () => {
     expect(inboundDropReason({ fromMe: false, id: "A" })).toBe("no remoteJid");
     expect(inboundDropReason({ remoteJid: group, fromMe: false })).toBe("no message id");
@@ -201,14 +214,41 @@ describe("resolveInboundSender", () => {
     expect(got).toEqual({ phone: "447700900123", source: "alt" });
   });
 
-  it("falls back to the local LID mapping store", async () => {
+  it("falls back to the local LID mapping store, asking with the full LID JID", async () => {
     const store = vi.fn(async (lid: string) =>
-      lid === "158055467598020" ? "447700900123@s.whatsapp.net" : null,
+      lid === "158055467598020@lid" ? "447700900123@s.whatsapp.net" : null,
     );
-    const got = await resolveInboundSender({ remoteJid: "158055467598020@lid" }, store);
+    const got = await resolveInboundSender({ remoteJid: "158055467598020:3@lid" }, store);
     expect(got).toEqual({ phone: "447700900123", source: "lid-mapping" });
-    // The BARE lid, not the full JID: getPNForLID keys on the user part.
-    expect(store).toHaveBeenCalledWith("158055467598020");
+    // The FULL JID, device suffix stripped. Phase 1 passed the bare user
+    // part ("158055467598020"), and Baileys' getPNForLID opens with
+    // `if (!isLidUser(lid)) continue`, which is `jid.endsWith("@lid")`, so
+    // the store path returned null for every LID ever asked about. The
+    // test below proves this against Baileys' own store, not a fake.
+    expect(store).toHaveBeenCalledWith("158055467598020@lid");
+  });
+
+  it("finds a stored mapping through Baileys' REAL LIDMappingStore", async () => {
+    // The real class, over an in-memory key store: no socket, no network.
+    // This is the test that would have caught Phase 1's bare-user key.
+    const data: Record<string, Record<string, unknown>> = {};
+    const keys = {
+      get: async (type: string, ids: string[]) =>
+        Object.fromEntries(ids.filter((id) => data[type]?.[id]).map((id) => [id, data[type][id]])),
+      set: async (patch: Record<string, Record<string, unknown>>) => {
+        for (const [type, rows] of Object.entries(patch)) data[type] = { ...data[type], ...rows };
+      },
+      transaction: async <T>(fn: () => Promise<T>) => fn(),
+      isInTransaction: () => false,
+    };
+    const quiet = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, child: () => quiet, level: "silent" };
+    const store = new LIDMappingStore(keys as never, quiet as never);
+    await store.storeLIDPNMappings([{ lid: "158055467598020@lid", pn: "447700900123@s.whatsapp.net" }]);
+
+    const got = await resolveInboundSender({ remoteJid: "158055467598020@lid" }, (lid) =>
+      store.getPNForLID(lid),
+    );
+    expect(got).toEqual({ phone: "447700900123", source: "lid-mapping" });
   });
 
   it("gives up with the lid recorded, and NEVER guesses a phone from LID digits", async () => {
