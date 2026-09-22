@@ -576,7 +576,11 @@ minutes of work on a throwaway number, and it decides whether
 `recoverGroupMessages` can be retired or must be rebuilt on
 `fetchMessageHistory`.
 
-**Do not cut over before this measurement exists.**
+**Do not cut over before this measurement exists.** The Phase 5 PR
+(2026-09-22) built the version that works IF the replay happens, and left the
+`fetchMessageHistory` rebuild unbuilt on purpose, because nobody knows yet
+whether it is needed. The runbook under Phase 5 says exactly what to read and
+what each reading decides.
 
 ### 2.16 The dependency itself
 
@@ -725,8 +729,11 @@ Scope, all against the Phase 2 interface in `src/driver.ts`:
   `index.ts` already records as `reaction-forwarding` degraded, so it
   reaches the heartbeat like a whatsapp-web.js failure does.
 
-Still refused: groups, participants, join and leave, polls (Phase 4) and the
-restart replay (Phase 5 decides). `WA_DRIVER=baileys` stays unselectable.
+Still refused at the time of Phase 3b: groups, participants, join and leave,
+polls (Phase 4) and the restart replay (Phase 5 decides).
+`WA_DRIVER=baileys` stays unselectable. **All three have since landed:**
+Phase 4 built the groups half, and the Phase 5 PR built the restart replay
+and made `WA_DRIVER=baileys` selectable **in shadow mode only**.
 
 **The offline-replay measurement, to be run FIRST in Phase 5.** This phase
 logs one `[baileys][msg] upsert=<notify|append>` line for every message,
@@ -753,10 +760,16 @@ filters nothing on `type`. So the measurement is a reading, not a build:
 Decision rule. All three arrive every time: `recoverGroupMessages` retires
 under Baileys. They arrive as `append`: keep forwarding `append` (this phase
 does) and decide whether old `append` messages need an age gate before the
-analyzer. Any go missing: rebuild the replay on `fetchMessageHistory`. Until
-this is measured, every Baileys `open` records `message-recovery` degraded,
-because the driver refuses `fetchRecentGroupMessages`, which is the honest
-signal.
+analyzer. Any go missing: rebuild the replay on `fetchMessageHistory`.
+
+**Corrected 2026-09-22, in the Phase 5 PR.** The sentence that used to close
+this paragraph said every Baileys `open` records `message-recovery` degraded
+because the driver refuses `fetchRecentGroupMessages`. That is no longer
+true and would have been the wrong design anyway: a CRITICAL line on every
+quiet restart, which on a club that plays once a week is most of them, is how
+a log stops being read. The member now answers from the live delivery buffer
+(`src/baileys/replay.ts`) after a settle window, and the honest signal is the
+numbers it reports rather than a throw. See the decision table under Phase 5.
 
 **Rollback:** as Phase 3. The driver is still unselectable.
 
@@ -796,6 +809,9 @@ A second WhatsApp number, linked to a Baileys process, in a test group with
 Kemal and one or two willing testers. **Receive-only: scheduler off, flush
 off, sends hard-disabled at the driver.** It logs what it would have done.
 
+**The mode is built (PR `feat/baileys-shadow-mode`, 2026-09-22).** Nothing
+below needs code work; it needs a SIM.
+
 The measurements that only exist here:
 
 1. **the offline-replay question and its `type`** (§2.15), by the exact
@@ -814,6 +830,265 @@ The measurements that only exist here:
 Run it for at least one full week, including a deliberate stop and start.
 
 **Rollback:** turn it off. It never touched Sutton.
+
+---
+
+#### How shadow mode is enforced
+
+Two environment variables, and a refusal that lives below every caller.
+
+| variable | meaning |
+|---|---|
+| `WA_SHADOW=1` | receive-only. Required. |
+| `WA_DRIVER=baileys` | use Baileys. **Refused unless `WA_SHADOW` is also on.** |
+| `WA_SHADOW_GROUP=<jid>@g.us` | optional; the group the one diagnostic read asks about. |
+| `BAILEYS_AUTH_DIR=<path>` | the throwaway session. Never the live one. |
+| `WA_PAIR_PHONE=<digits>` | optional; pair by code instead of QR. |
+
+- **Sends are refused at the driver**, not at the caller.
+  `driver-select.ts` wraps whatever driver it builds in `shadowGuard`
+  (`src/shadow.ts`), a Proxy that intercepts every member named in
+  `SHADOW_SEND_MEMBERS`. Six of the seven throw `ShadowModeSendRefused`;
+  `sendReaction` returns `{ok:false, reason:"shadow-mode"}`, because its
+  contract is that it never throws. Every refusal is counted and logged as
+  `[shadow] REFUSED <member>: <what it would have done>`.
+- **It cannot be outgrown.** `shadow.source.test.ts` reads the `Outbound`
+  section of `src/driver.ts` and fails if a member exists there that the
+  guard does not name. Adding a send to the interface without covering it
+  is a red test, not a silent hole.
+- **It cannot be gone around.** The unwrapped driver never leaves
+  `createDriver`, and `driver-seam.test.ts` already forbids every module
+  outside `src/drivers/` and `src/baileys/` from importing a WhatsApp
+  library or touching a client.
+- **Server writes are refused too**, at `api.ts`'s single `apiFetch`. This
+  matters more than it sounds: a reaction, a poll vote, a DM reply and above
+  all a self-add (`bot-added`) are forwarded straight from their inbound
+  handlers, so a shadow number added to a throwaway group would otherwise
+  create a real onboarding session in production. A refused write returns a
+  200 carrying `{"shadowMode":true}`, so callers take their ordinary quiet
+  path. GETs are left alone.
+- **`index.ts` starts nothing that acts**: no scheduler, no batch-flush timer
+  (and so no heartbeat, which would otherwise pollute the live Pi's health
+  signal), no org refresh, no participant sweep, no restart catch-up. Inbound
+  is fully wired, which is the entire point.
+- **`WA_DRIVER=baileys` without `WA_SHADOW` throws**, naming the shadow run
+  and the phone gate. Running Baileys for real is a deliberate edit to
+  `driver-select.ts` after this week, not an env var.
+
+#### Running it: the steps
+
+Do this on a machine that is **not** the Raspberry Pi serving Sutton FC. A
+laptop is fine. If it has to be the Pi, use a second checkout, a second auth
+directory and a different `MT_BAILEYS_LOCK_PATH`, and never
+`scripts/deploy-pi.sh`.
+
+1. **Get the second number onto a phone** and install WhatsApp on it. Add
+   Kemal and one or two testers to a new group, e.g. "MT shadow". At least
+   one member must have **privacy mode on** (so they appear as `@lid`), or
+   measurement 2 is not measured.
+2. **Check out and install:**
+   ```bash
+   git clone git@github.com:kemalediz/matchtime-app.git mt-shadow
+   cd mt-shadow/whatsapp-bot
+   npm install       # NOT npm ci, and never --omit=dev: tsx is a runtime need
+   ```
+   **§2.16 says "`npm ci`, never `npm install`", and that is not currently
+   followable**: `whatsapp-bot/package-lock.json` is listed in
+   `whatsapp-bot/.gitignore`, so a fresh clone has no lockfile and `npm ci`
+   refuses outright. `npm install` is the only option today. `baileys` is
+   pinned exactly (`7.0.0-rc14`) in `package.json`, so the thing that matters
+   most is still reproducible; `whatsapp-web.js` carries a caret and will
+   float, which does not affect a Baileys shadow run. **Committing that
+   lockfile is worth doing before the cutover**, so the Pi and the shadow box
+   demonstrably install the same tree.
+3. **Write `whatsapp-bot/.env`:**
+   ```bash
+   WA_DRIVER=baileys
+   WA_SHADOW=1
+   BAILEYS_AUTH_DIR=/absolute/path/to/.baileys_shadow_auth
+   WA_BAILEYS_LOG_LEVEL=info
+   # Optional: pair by code instead of QR. Digits only, no "+".
+   # WA_PAIR_PHONE=447700900123
+   # Optional: the group the one diagnostic read asks about (step 7).
+   # WA_SHADOW_GROUP=120363000000000000@g.us
+   # API_URL / API_KEY can point at production. Every write is refused.
+   ```
+4. **Start it and watch for the banner:**
+   ```bash
+   npm start 2>&1 | tee shadow.log
+   ```
+   The first lines must include `SHADOW MODE IS ON (WA_SHADOW=1). Driver:
+   baileys.` **If that banner is absent, stop.** Something is wrong and the
+   process is not guarded.
+5. **Link the device.** A QR appears in the terminal, or a pairing-code
+   banner if `WA_PAIR_PHONE` is set. WhatsApp on the second phone: Settings,
+   Linked devices, Link a device (or Link with phone number). Codes expire in
+   a couple of minutes; a restart issues a new one, and the budget is one per
+   socket, a minute apart, five an hour.
+6. **Confirm it is alive.** Expect `connection: "open"`, then
+   `WhatsApp bot is ready!`, then the group listing with the shadow group in
+   it, then `[shadow] receive-only: not starting the scheduler…`.
+7. **Put the group JID in `WA_SHADOW_GROUP` and restart** once you can read
+   it off the listing. That is what arms the one diagnostic read in step 4 of
+   the first experiment.
+
+#### The experiments, in order
+
+**Experiment 1 comes first and everything else waits for it.** It is the only
+one that can change what still has to be built.
+
+---
+
+**1. The offline replay (§2.15). Does WhatsApp give us the gap, and as what?**
+
+This is the plan's single most important unknown. Run it three times, with a
+gap of **2 minutes**, then **30 minutes**, then **3 hours** (past the
+catch-up's two-hour window).
+
+1. With the bot running, post one control message in the shadow group.
+   Confirm a line like
+   `[baileys][msg] upsert=notify chat=…@g.us id=… age=0s`.
+2. Stop the process with `SIGTERM` (Ctrl-C once, or `kill <pid>`; it calls
+   `end`, never `logout`). **Note the time.**
+3. While it is down: post **three numbered texts** ("offline 1", "offline 2",
+   "offline 3") from **two different phones**, at least one of them the
+   privacy-mode member; **react** to one of the bot's earlier messages; and
+   send the bot a **DM**.
+4. Wait out the gap, start the process again, and capture five minutes of log.
+5. Read, per message: **did it arrive**, with **which `upsert=`**, with what
+   **`age=`**, and **did it arrive more than once**. Same for the reaction and
+   the DM.
+
+What to grep for, and what each line means:
+
+```bash
+grep '\[baileys\]\[msg\]' shadow.log        # every message, type and age, nothing filtered
+grep '\[baileys\]\[reaction\]' shadow.log   # every reaction
+grep '\[baileys\]\[history\]' shadow.log    # what the restart catch-up was handed
+grep '\[shadow\] REFUSED' shadow.log        # anything that tried to send or write
+```
+
+The `[baileys][history]` line is the same question answered in the shape the
+real catch-up sees. With `WA_SHADOW_GROUP` set it is printed once per open:
+
+```
+[baileys][history] <group>: served N of the last 50 from the live buffer
+  (holding M) | since this open: notify=… append=… | whether WhatsApp replays
+  messages sent while the bot was down is the plan's open measurement (§2.15) …
+[shadow] the restart catch-up would have been handed N message(s) for <group>.
+```
+
+**The decision rule.** It is unchanged from Phase 3b, and it decides code:
+
+| what the log shows | what it means | what to do |
+|---|---|---|
+| all three arrive every time, `upsert=notify` | WhatsApp replays as live traffic | `recoverGroupMessages` can retire under Baileys; the live buffer serves it anyway |
+| all three arrive, `upsert=append` | replay is a distinct type | keep forwarding `append` (the driver does), and decide whether OLD `append` messages need an age gate before the analyser |
+| some or all missing, `served 0`, `since this open: none` | **WhatsApp replays nothing** | the catch-up must be rebuilt on `sock.fetchMessageHistory` before cutover |
+| anything arrives twice | duplicate delivery | check `duplicates` in `stats()`; the driver dedupes by `chat|id`, so this should already be counted and not handed up again |
+
+**What was built for the "rebuild" branch, and what was not.**
+`fetchRecentGroupMessages` now answers from `src/baileys/replay.ts`, a
+bounded per-chat buffer of everything the socket delivered, after a
+**10-second settle window** measured from the last open (the catch-up runs
+inside `index.ts`'s open handler, so an immediate answer would race the very
+delivery it is collecting). That is the version that works **if** the replay
+happens. It does **not** call `fetchMessageHistory`, deliberately, because
+nobody knows yet whether it is needed. If the table above sends us down the
+rebuild branch, the mechanism in rc14 is:
+`sock.fetchMessageHistory(count, oldestMsgKey, oldestMsgTimestamp)` returns a
+**request id** and delivers **asynchronously** on `messaging-history.set`
+with `syncType = ON_DEMAND` and `peerDataRequestSessionId` set to that id.
+`processHistoryMessage` also carries LID/PN mappings out of it. That path
+fetches messages **older** than the anchor key, so the anchor is the newest
+message we hold, or a synthetic anchor at "now".
+
+`fetchRecentGroupMessages` deliberately does **not** throw when it has
+nothing. Throwing would record `message-recovery` degraded on every quiet
+restart, which on a club that plays once a week is most of them, and a
+CRITICAL line that cries wolf every deploy is how a log stops being read. The
+honest signals are the numbers: `historyServed`, `historyEmpty` and
+`sinceOpen` on the driver's `stats()`, and the `[baileys][history]` line.
+
+---
+
+**2. `@lid` to phone resolution (§2.7).** Have the privacy-mode member post.
+Expect `[baileys][msg] … sender=<lid> phone=<digits>(<source>)`, where
+`<source>` names which of the four paths answered. A line reading
+`sender UNRESOLVED` is the failure, and it is logged CRITICAL. Then add and
+remove that member (experiment 6) and see whether a roster read resolves them.
+
+**3. Reactions, both directions.** Have a tester react to a message. Expect
+`[baileys][reaction] <emoji> from=… on=<id>`. `on=UNRESOLVED` is the failure
+and is logged CRITICAL. Outbound reactions cannot be observed in shadow mode:
+they appear as `[shadow] REFUSED sendReaction: react ✅ on <id>`, which proves
+the id was parsed and the emoji chosen but not that WhatsApp accepts it.
+**Outbound reactions and mentions are the two things this week cannot fully
+prove; they are proved on the cutover morning, Phase 6 step 5.**
+
+**4. Outbound mentions.** Same limitation: the log shows
+`[shadow] REFUSED sendTextWithMentions: post in … tagging N (…)`. What it
+does prove is that the bot picked the right people.
+
+**5. Poll votes.** A poll cannot be sent in shadow mode, so this one needs a
+poll that already exists: have a human post a poll in the shadow group and
+vote. The driver decrypts votes only against polls **it** sent, so expect the
+CRITICAL `a vote on poll … could not be read` line. That is correct
+behaviour, not a bug, and it means **poll decryption is the one measurement
+Phase 5 cannot make.** It is made on the cutover morning instead, or by a
+deliberate one-off with the guard lifted by hand and a human watching.
+
+**6. Joins and leaves.** Add somebody to the shadow group, then remove them.
+Expect `[baileys][groups]` lines and the roster cache staying exact. Confirm
+`[shadow] REFUSED server write /api/whatsapp/group-join` rather than a real
+POST.
+
+**7. History on join (item 45).** Remove the bot from the group and add it
+back while it is connected. Read the `[baileys][history]` line that follows.
+A probable loss; this is where it is confirmed.
+
+**8. Memory and CPU.** `ps -o pid,rss,%cpu -p <pid>` daily. Compare with the
+whatsapp-web.js process on the Pi (which carries Chromium). Expect a large
+drop; record the number, because it is the argument for the migration.
+
+#### The phone gate, and where it fits
+
+`whatsapp-bot/scripts/measure-group-phones.ts` is a **separate, one-off
+read**, and it is about **Sutton's** group, not the shadow group. It answers
+the question the shadow week cannot: when Baileys reads Sutton's roster, does
+it get a phone for every member MatchTime already knows, or do some come back
+as `@lid` with no mapping? A member who comes back unresolved is a player
+whose attendance would stop being attributed after the cutover.
+
+It takes the Baileys process lock and it never sends, so it is safe to run
+beside the live whatsapp-web.js bot (a different linked device), but **not**
+beside the shadow process or the Phase 1 observer on the same auth directory.
+
+Run it **after the shadow week and before Phase 6**, from a checkout that has
+a paired Baileys session:
+
+```bash
+cd whatsapp-bot
+# One phone per line, E.164 digits. Export with a READ-ONLY query.
+node --env-file=.env --import tsx scripts/measure-group-phones.ts \
+  --group=<Sutton's group JID> --known-phones=sutton-phones.txt
+```
+
+Exit codes: 0 report printed, 1 bad arguments or the group read failed, 2 the
+line never opened. **Any unresolved member is a cutover blocker until it is
+explained.**
+
+#### Finishing the week
+
+- Keep `shadow.log`. The §2.15 verdict, the memory numbers and the unresolved
+  count are the evidence Phase 6 rests on.
+- Write the verdict into this document, under §2.15, as a fact with a date.
+- If the replay did not happen, **build the `fetchMessageHistory` path before
+  the cutover**. It is the one thing that can still be missing.
+- Then, and only then, edit `driver-select.ts` so Baileys can run without
+  `WA_SHADOW`. That edit is Kemal's decision and it is the last thing before
+  Phase 6.
+
 
 ### Phase 6: cutover
 
@@ -978,6 +1253,9 @@ be restored at all.
 1. **The throwaway number for Phase 5.** Do we have a spare SIM or eSIM we can
    link? If not, Phase 5 would have to run against the MatchTime number in a
    throwaway group after the cutover, which means no shadow week.
+   **Status 2026-09-22: this is the only thing left.** Shadow mode is built,
+   `WA_DRIVER=baileys` is selectable with `WA_SHADOW=1`, and the runbook under
+   Phase 5 is written. A SIM, and the week can start the same day.
 2. **Poll votes.** If they slip past the cutover, is MoM voting degrading to
    app-only for a week acceptable?
 3. **The self-setup history capture** (item 45) is a probable loss and the

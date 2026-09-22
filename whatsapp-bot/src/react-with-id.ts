@@ -105,6 +105,12 @@ export const REACTION_FAILURE_REASONS = [
   // back into one is a failure of its own.
   "not-connected",
   "unparseable-id",
+  // Not a failure at all: the Phase 5 shadow bot refusing to send
+  // (`shadow.ts`). It is a reason rather than a throw because
+  // `sendReaction` must never throw, and it is named rather than folded
+  // into "send-threw" so a shadow run's log cannot be mistaken for a
+  // broken reaction path.
+  "shadow-mode",
 ] as const;
 
 export type ReactionFailureReason = (typeof REACTION_FAILURE_REASONS)[number];
@@ -189,6 +195,11 @@ export function describeReactionFailure(reason: ReactionFailureReason): string {
       return (
         "the stored waMessageId is not one parseKey can turn back into a message key " +
         "(baileys/key.ts), so there is no message to react to"
+      );
+    case "shadow-mode":
+      return (
+        "this process is running in shadow mode (WA_SHADOW), so it sends nothing at all; " +
+        "the reaction was logged and counted rather than placed, which is expected"
       );
   }
 }

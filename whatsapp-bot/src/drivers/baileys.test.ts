@@ -362,14 +362,25 @@ describe("members this driver refuses, by name", () => {
     expect((err as Error).message).toMatch(/BOT_RECOVER_DM_REPLIES/);
   });
 
-  // Everything still not built after Phase 4: only the restart replay,
-  // which waits on Phase 5's offline-replay measurement. Groups, rosters,
-  // joins, leaves and poll votes moved out of this list in Phase 4 and are
-  // tested in `baileys.groups.test.ts`. What is left must fail by name and
-  // must not send.
-  const NOT_YET: Array<[keyof WaDriver, (d: WaDriver) => unknown]> = [
-    ["fetchRecentGroupMessages", (d) => d.fetchRecentGroupMessages(GROUP, 10)],
-  ];
+  // NOTHING is "not built yet" any more. Phase 4 built groups, rosters,
+  // joins, leaves and poll votes; Phase 5 built the restart replay on the
+  // live delivery buffer (`baileys.history.test.ts`). The list is kept,
+  // empty, because the next member that has to fail by name belongs in it
+  // rather than in a fresh pattern.
+  const NOT_YET: Array<[keyof WaDriver, (d: WaDriver) => unknown]> = [];
+
+  it("no longer refuses the restart replay as not built: it answers, and sends nothing", async () => {
+    // Phase 5 turned `fetchRecentGroupMessages` from a refusal into a read
+    // of what the socket delivered. With no connection wired it has heard
+    // nothing, so the honest answer is [] rather than a throw. The settle
+    // window is set to zero here so the test does not sit out ten real
+    // seconds; `baileys.history.test.ts` is where the window itself is
+    // pinned, against an injected clock.
+    const sock = fakeSocket();
+    const driver = driverWith(sock, { historySettleMs: 0 });
+    await expect(driver.fetchRecentGroupMessages(GROUP, 10)).resolves.toEqual([]);
+    expect(sock.sendMessage).not.toHaveBeenCalled();
+  });
 
   it("no longer refuses the Phase 4 members as not built: they are built", async () => {
     // With no connection and a Phase 3 socket they still cannot work, and
