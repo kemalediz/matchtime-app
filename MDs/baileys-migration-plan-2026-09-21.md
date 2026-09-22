@@ -888,10 +888,19 @@ directory and a different `MT_BAILEYS_LOCK_PATH`, and never
    measurement 2 is not measured.
 2. **Check out and install:**
    ```bash
-   git clone git@github.com:kemalediz/matchtime.git mt-shadow
+   git clone git@github.com:kemalediz/matchtime-app.git mt-shadow
    cd mt-shadow/whatsapp-bot
-   npm ci            # never npm install, never --omit=dev: tsx is a runtime need
+   npm install       # NOT npm ci, and never --omit=dev: tsx is a runtime need
    ```
+   **§2.16 says "`npm ci`, never `npm install`", and that is not currently
+   followable**: `whatsapp-bot/package-lock.json` is listed in
+   `whatsapp-bot/.gitignore`, so a fresh clone has no lockfile and `npm ci`
+   refuses outright. `npm install` is the only option today. `baileys` is
+   pinned exactly (`7.0.0-rc14`) in `package.json`, so the thing that matters
+   most is still reproducible; `whatsapp-web.js` carries a caret and will
+   float, which does not affect a Baileys shadow run. **Committing that
+   lockfile is worth doing before the cutover**, so the Pi and the shadow box
+   demonstrably install the same tree.
 3. **Write `whatsapp-bot/.env`:**
    ```bash
    WA_DRIVER=baileys
