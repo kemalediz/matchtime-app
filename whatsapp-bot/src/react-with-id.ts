@@ -99,6 +99,12 @@ export const REACTION_FAILURE_REASONS = [
   "lookup-threw",
   "message-not-found",
   "send-threw",
+  // The Baileys driver's two (drivers/baileys.ts). It has no page, so
+  // "no-page" would send an operator looking for a browser that is not
+  // there, and it needs the whole message key, so an id it cannot turn
+  // back into one is a failure of its own.
+  "not-connected",
+  "unparseable-id",
 ] as const;
 
 export type ReactionFailureReason = (typeof REACTION_FAILURE_REASONS)[number];
@@ -173,6 +179,16 @@ export function describeReactionFailure(reason: ReactionFailureReason): string {
       return (
         "client.sendReaction threw — WhatsApp rejected the reaction, or the injected send " +
         "path is out of step with the live build (upgrade whatsapp-web.js)"
+      );
+    case "not-connected":
+      return (
+        "the Baileys socket is not connected, so nothing was sent; the line is down or " +
+        "reconnecting"
+      );
+    case "unparseable-id":
+      return (
+        "the stored waMessageId is not one parseKey can turn back into a message key " +
+        "(baileys/key.ts), so there is no message to react to"
       );
   }
 }
