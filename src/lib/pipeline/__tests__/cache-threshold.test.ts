@@ -93,8 +93,31 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // Re-measured 2026-09-17 after the three personal-stats worked
     // examples (`count_tokens`, claude-haiku-4-5): router 3,003 tokens,
     // 11,455 chars. Still well under Haiku's 4,096, so still no marker.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_003);
-    expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(1_820);
+    //
+    // ⚠️ 2026-09-22, THE REPLACEMENT RULES: these two bounds are DERIVED
+    // and NOT measured, and that is said out loud rather than dressed up
+    // as another `count_tokens` reading. The repo-root `.env` carried no
+    // development API key when this shipped, every harness refuses
+    // without one, and the production key is not a substitute
+    // (`MDs/dev-vs-production-api-keys.md`).
+    //
+    // The DERIVATION, and why it keeps the property this test is for.
+    // Every measurement in the history of these two prompts has run
+    // 3.76 to 3.82 chars/token on Haiku, the last pair exactly: router
+    // 11,455/3,003 = 3.814 and attendance 6,846/1,820 = 3.762. The
+    // estimator divides by 4. While the real ratio stays under 4 the
+    // estimate is BELOW the real count by construction, whatever the
+    // prompt says, and Turkish letters (which both additions carry)
+    // tokenise denser, pushing the ratio further down rather than up.
+    // So each bound below is chars / (that prompt's own last measured
+    // ratio): a conservative floor for the real count, not a guess at
+    // it. Router 12,412 chars -> >= 3,254 real against a 3,103 estimate;
+    // attendance 8,562 -> >= 2,275 real against a 2,141 estimate.
+    //
+    // RE-MEASURE THESE with `count_tokens` on the next change that has a
+    // dev key to hand, and put the real figures back.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_254);
+    expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_275);
   });
 });
 
