@@ -11,10 +11,12 @@
  * library" have to be distinguishable. Same rule HomeTenant's
  * `driver-select.ts` follows, for the same reason.
  *
- * `baileys` is deliberately NOT a known value yet. `src/baileys/` today is
- * Phase 1: a socket that watches and sends nothing. Accepting the name
- * here before Phase 3 has built the driver would turn a hopeful env var
- * into a bot that comes up mute.
+ * `baileys` is deliberately NOT a known value yet. Phase 3 built the
+ * Baileys driver's OUTBOUND half (`src/drivers/baileys.ts`): it can send,
+ * but it has no socket lifecycle, no inbound path and no groups, so a bot
+ * on it could not hear anybody. Accepting the name before those land
+ * would turn a hopeful env var into a bot that comes up deaf, and deaf
+ * looks like healthy.
  */
 import type { WaDriver } from "./driver.js";
 import { createWwebjsDriver } from "./drivers/wwebjs.js";
@@ -29,9 +31,10 @@ export function selectDriver(raw: string | undefined): DriverName {
   if ((DRIVERS as readonly string[]).includes(value)) return value as DriverName;
   if (value === "baileys") {
     throw new Error(
-      "WA_DRIVER=baileys is not available yet. src/baileys/ is Phase 1 of " +
-        "MDs/baileys-migration-plan-2026-09-21.md and only watches; the driver arrives in " +
-        "Phase 3. Unset WA_DRIVER to run whatsapp-web.js.",
+      "WA_DRIVER=baileys is not available yet. The Baileys driver is the outbound half only " +
+        "(Phase 3 of MDs/baileys-migration-plan-2026-09-21.md): it cannot receive messages or " +
+        "see groups until the inbound wiring and Phase 4 land. Unset WA_DRIVER to run " +
+        "whatsapp-web.js.",
     );
   }
   throw new Error(

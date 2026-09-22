@@ -191,6 +191,17 @@ describe("describeReactionFailure — every reason is explained", () => {
     expect(REACTION_FAILURE_REASONS).not.toContain("store-unavailable");
     expect(REACTION_FAILURE_REASONS).not.toContain("send-reaction-unavailable");
   });
+
+  it("knows the two ways a reaction fails under Baileys that have no whatsapp-web.js name", () => {
+    // Baileys has no page, so "no-page" would send an operator looking for
+    // a browser that is not there. Its two real failures before a send:
+    // the socket is down, or the stored id is not one parseKey can turn
+    // back into a message key (baileys/key.ts).
+    expect(REACTION_FAILURE_REASONS).toContain("not-connected");
+    expect(REACTION_FAILURE_REASONS).toContain("unparseable-id");
+    expect(describeReactionFailure("not-connected")).toMatch(/socket/i);
+    expect(describeReactionFailure("unparseable-id")).toMatch(/parseKey|message key/i);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

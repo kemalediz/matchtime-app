@@ -25,9 +25,12 @@ describe("selectDriver", () => {
   });
 
   it("refuses baileys with the reason, rather than silently running wwebjs", () => {
-    // src/baileys/ is Phase 1: a socket that watches and sends nothing. A
-    // bot that came up on it would be mute, and mute looks like healthy.
-    expect(() => selectDriver("baileys")).toThrow(/Phase 3/);
+    // Phase 3 built the Baileys driver's OUTBOUND half only. With no
+    // lifecycle, inbound or group wiring, a bot that came up on it could
+    // not hear anybody, and deaf looks like healthy. It stays unselectable
+    // until those land.
+    expect(() => selectDriver("baileys")).toThrow(/outbound half only/);
+    expect(() => selectDriver("  Baileys ")).toThrow(/outbound half only/);
   });
 
   it("refuses a typo instead of defaulting", () => {

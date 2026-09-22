@@ -73,4 +73,10 @@ socket**:
 | `logging.ts` | redaction and caps, because Baileys logs key material. |
 | `config.ts` | environment, and the pairing decision. |
 | `dedupe.ts` | Baileys can deliver the same message twice. |
+| `key.ts` | Phase 3. `serializeKey` / `parseKey`: a Baileys message key as the whatsapp-web.js id string the database already holds, and back (plan §2.5). A bijection on canonical keys; the header names the three places it is not. |
+| `outbound.ts` | Phase 3. What the driver hands to `sendMessage`: texts with `linkPreview: null` (§2.6), mentions, polls, reactions, and `completeOwnKey`, which keeps our own group posts' ids in the four-part form reactions join on. |
+| `sent-store.ts` | Phase 3. The bounded store of what we sent, for `getMessage` (§2.12), with polls pinned. |
+
+The Baileys **driver** (`src/drivers/baileys.ts`, Phase 3) uses the last three.
+It is the outbound half only and `WA_DRIVER=baileys` is still refused.
 | `main.source.test.ts` | asserts on `main.ts`'s source text. Brittle on purpose: each test is a named past incident. |
