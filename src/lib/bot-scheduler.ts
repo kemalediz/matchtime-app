@@ -41,6 +41,7 @@ import {
   buildTentativeFollowupDm,
 } from "./dm-copy";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
+import { isSameRecurringFixture } from "./match-slot";
 import { buildMomAnnouncement } from "./mom-announcement";
 import {
   buildBenchOfferGroupPost,
@@ -190,6 +191,73 @@ export interface DuePostsResult {
   waGroupId: string;
   orgId: string;
 }
+
+// ───────────── Post-match deadlines, and the lookback they need ───────────
+//
+// READ BOTH SIDES BEFORE CHANGING EITHER. The scheduler can only act on a
+// match while `getMatchesForScheduler` still loads it, and a COMPLETED
+// match is loaded for `POST_MATCH_LOOKBACK_DAYS` after kickoff. Every
+// deadline below is measured from kickoff as well, so the invariant is:
+//
+//     every post-match deadline  <  POST_MATCH_LOOKBACK_DAYS
+//
+// Break it and the work does not fail, it becomes unreachable: no error,
+// no log, nothing posted, ever. That is exactly how Sutton FC's 15 Sept
+// 2026 Man of the Match result was lost. The lookback was 6 days, the
+// backstop fired 5 days after the match inside a single 15:00 to 16:00
+// hour, the bot was down across the only window, and by the time it came
+// back the match had dropped out of the query. One day of margin between
+// two numbers nobody had written down together.
+// `src/lib/__tests__/mom-announcement-recovery.test.ts` pins the
+// relationship, so narrowing one side alone turns the suite red.
+
+/** Days after kickoff at which the MoM backstop becomes due. */
+export const MOM_BACKSTOP_DAYS = 5;
+/**
+ * London hours the backstop may speak in, 15:00 up to 20:59. It used to
+ * be 15:00 to 15:59, one chance a day; an outage across it lost the
+ * announcement. 15:00 is still the earliest it will ever speak, and 21:00
+ * is the same civil cutoff the early trigger uses, so the group is never
+ * woken up by a result.
+ */
+export const MOM_BACKSTOP_FROM_HOUR = 15;
+export const MOM_BACKSTOP_TO_HOUR = 21;
+/** Civil hours for the EARLY trigger, 09:00 up to 20:59. Unchanged. */
+const MOM_EARLY_FROM_HOUR = 9;
+const MOM_EARLY_TO_HOUR = 21;
+/**
+ * Hard stop for a MoM announcement, in days after kickoff.
+ *
+ * Why 9. It has to be comfortably more than `MOM_BACKSTOP_DAYS` or the
+ * backstop gets no second chance at all, which is the bug this constant
+ * exists to close; 9 leaves four clear days of retry after the first
+ * backstop afternoon, against a real outage of 46 hours. It cannot be
+ * open ended either: a fortnight-old result is not news, and the club
+ * plays weekly so the group would read it as this week's match. The
+ * common weekly case is handled more precisely by the next-fixture stop
+ * in section 6e (we go quiet as soon as the following fixture has been
+ * played, usually day 7); this cap is the outer bound for a club whose
+ * next fixture is further off or not scheduled at all.
+ */
+export const MOM_ANNOUNCE_MAX_AGE_DAYS = 9;
+/**
+ * Deadline for the match-end money flow (the payment poll, the
+ * collector's fee ask, the daily pay chase), in days after kickoff.
+ *
+ * 6 is not a new rule: it is the bound the old 6 day lookback imposed on
+ * these three by accident. It is written down so that widening the
+ * lookback for the MoM announcement does not silently start posting a
+ * payment poll for a week-old match or extend the chase to the 10 days
+ * its own comment claims. Extending how long we chase people for money is
+ * a product decision, not a side effect of a scheduling fix.
+ */
+export const POST_MATCH_END_FLOW_MAX_AGE_DAYS = 6;
+/**
+ * How far back `getMatchesForScheduler` loads COMPLETED matches. One day
+ * of slack past the longest deadline above, so a match is still in hand
+ * for the whole life of its last piece of work.
+ */
+export const POST_MATCH_LOOKBACK_DAYS = MOM_ANNOUNCE_MAX_AGE_DAYS + 1;
 
 // ────────────────────────────── Time helpers ──────────────────────────────
 
@@ -576,9 +644,12 @@ export async function computeDuePosts(
     }
   }
 
-  // Load all matches we care about: upcoming + anything still within 5 days
-  // of completion (MoM announcement window).
-  const windowStart = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+  // Load all matches we care about: everything still upcoming, plus every
+  // COMPLETED match young enough that post-match work (MoM announcement,
+  // rating reminders, the money flow) can still be due on it. The length
+  // of this lookback is not free-standing: see the deadline block near
+  // the top of this file for the invariant it has to satisfy.
+  const windowStart = new Date(now.getTime() - POST_MATCH_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const matches = await getMatchesForScheduler(org.id, windowStart);
 
   // Read ONCE, before the per-match loop, and used twice: the 17:00
@@ -1583,6 +1654,10 @@ async function computeForMatch(
     if (
       !sentKeys.has(key) &&
       now >= endedAt &&
+      // Explicit deadline. This block had no upper bound of its own and
+      // relied on the scheduler's lookback dropping the match; see
+      // POST_MATCH_END_FLOW_MAX_AGE_DAYS.
+      hoursSinceMatch <= POST_MATCH_END_FLOW_MAX_AGE_DAYS * 24 &&
       (m.status === "UPCOMING" ||
         m.status === "TEAMS_GENERATED" ||
         m.status === "TEAMS_PUBLISHED" ||
@@ -1616,7 +1691,14 @@ async function computeForMatch(
   ) {
     const endedAt = new Date(m.date.getTime() + activity.matchDurationMins * 60 * 1000);
     const key = `${matchId}:fee-ask`;
-    if (!sentKeys.has(key) && now >= endedAt) {
+    // The age bound is the same explicit deadline the payment poll now
+    // carries: asking a collector for a fee is only useful while the
+    // match is recent (POST_MATCH_END_FLOW_MAX_AGE_DAYS).
+    if (
+      !sentKeys.has(key) &&
+      now >= endedAt &&
+      hoursSinceMatch <= POST_MATCH_END_FLOW_MAX_AGE_DAYS * 24
+    ) {
       const collectorId = activity.org.paymentHolderId;
       // Prefer a phone already loaded on the squad; else look it up.
       let collectorPhone =
@@ -1665,7 +1747,19 @@ async function computeForMatch(
     const daysSinceRelease =
       (now.getTime() - m.paymentLinksReleasedAt.getTime()) / (24 * 60 * 60 * 1000);
     const hourNow = londonHour(now);
-    if (daysSinceRelease <= 10 && hourNow >= 18 && hourNow < 19) {
+    // Two caps, and the kickoff one is the binding one. "capped at 10
+    // days" above has never been reachable: the scheduler stopped
+    // loading the match at 6 days, so the chase always died there. That
+    // deadline is now stated (POST_MATCH_END_FLOW_MAX_AGE_DAYS) instead
+    // of being a side effect of the lookback, so widening the lookback
+    // for the MoM announcement does not quietly add four more days of
+    // chasing people for money.
+    if (
+      daysSinceRelease <= 10 &&
+      hoursSinceMatch <= POST_MATCH_END_FLOW_MAX_AGE_DAYS * 24 &&
+      hourNow >= 18 &&
+      hourNow < 19
+    ) {
       const dayKey = londonDateKey(now);
       const dayNum = Math.max(1, Math.ceil(daysSinceRelease));
 
@@ -1924,22 +2018,65 @@ async function computeForMatch(
       }
     }
 
-    // 6e. MoM announcement. Two triggers (whichever comes first):
+    // 6e. MoM announcement. Two triggers and two stops.
+    //
+    //   TRIGGERS (whichever comes first)
     //   • EARLY — as soon as every confirmed player with a phone has
     //     engaged (cast a MoM vote OR submitted ratings). No point making
     //     the group wait 5 days once everyone's voted (Kemal 2026-06-02).
     //     Civil hours only (09:00–21:00 London) so we never announce
     //     overnight.
-    //   • BACKSTOP — 5 days after the match at 15:00 London, for matches
-    //     where some players never vote.
+    //   • BACKSTOP: from MOM_BACKSTOP_DAYS after the match, on ANY tick
+    //     between 15:00 and 21:00 London, every day until a stop below
+    //     bites. This used to be the single hour 15:00 to 16:00, which
+    //     gave a match one or two chances in its whole life; the bot was
+    //     down across the only one on 2026-09-21 and Sutton FC never
+    //     heard who won. A recovery now catches the same afternoon or
+    //     the next one, and 15:00 is still the earliest it will speak.
+    //
+    //   STOPS (after either, we stop carrying it, deliberately and for
+    //   good; a result nobody can place is worse than silence)
+    //   • the result is older than MOM_ANNOUNCE_MAX_AGE_DAYS;
+    //   • the club's NEXT fixture has already been played, so this would
+    //     read as that match's result.
     {
       const key = `${matchId}:mom-announcement`;
-      const fiveDaysLater = new Date(m.date.getTime() + 5 * 24 * 60 * 60 * 1000);
       const lh = londonHour(now);
-      const backstopWindow = now >= fiveDaysLater && lh >= 15 && lh < 16;
+      const ageDays = hoursSinceMatch / 24;
+
+      // Too old to be news. See MOM_ANNOUNCE_MAX_AGE_DAYS for the number
+      // and why it sits where it does relative to the lookback.
+      const tooStale = ageDays > MOM_ANNOUNCE_MAX_AGE_DAYS;
+
+      // The club plays weekly, so once the next fixture has kicked off
+      // "here is your Man of the Match" reads as tonight's result. A
+      // sibling only counts when it starts at least a day later: a format
+      // switch can leave a co-timed ghost match under the other format's
+      // activity (the 2026-06-27 ghost bug), and a ghost must never
+      // silence a real announcement. Fixture identity is the same one the
+      // announce/evening rollover guard uses, so a format-switched
+      // successor still counts.
+      const supersededByNextFixture = siblingMatches.some(
+        (s) =>
+          s.id !== m.id &&
+          s.status !== "CANCELLED" &&
+          (s.activityId === m.activityId ||
+            isSameRecurringFixture(s.activity, m.activity)) &&
+          s.date.getTime() >= m.date.getTime() + 24 * 60 * 60 * 1000 &&
+          s.date.getTime() <= now.getTime(),
+      );
+
+      const canAnnounce =
+        !sentKeys.has(key) && !tooStale && !supersededByNextFixture;
+
+      const backstopWindow =
+        canAnnounce &&
+        ageDays >= MOM_BACKSTOP_DAYS &&
+        lh >= MOM_BACKSTOP_FROM_HOUR &&
+        lh < MOM_BACKSTOP_TO_HOUR;
 
       let earlyReady = false;
-      if (!sentKeys.has(key) && !backstopWindow && lh >= 9 && lh < 21) {
+      if (canAnnounce && !backstopWindow && lh >= MOM_EARLY_FROM_HOUR && lh < MOM_EARLY_TO_HOUR) {
         const expected = confirmed.filter((a) => a.user.phoneNumber);
         if (expected.length > 0) {
           const [momVoters, ratingVoters] = await Promise.all([
@@ -1961,7 +2098,7 @@ async function computeForMatch(
         }
       }
 
-      if (!sentKeys.has(key) && (backstopWindow || earlyReady)) {
+      if (canAnnounce && (backstopWindow || earlyReady)) {
         const votes = await db.moMVote.groupBy({
           by: ["playerId"],
           where: { matchId },
