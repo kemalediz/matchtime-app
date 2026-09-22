@@ -5,15 +5,15 @@
  * `MDs/baileys-migration-plan-2026-09-21.md`. Phase 3 built the six sends
  * the bot makes (`sendText`, `sendTextWithMentions`, `sendDirectText`,
  * `sendPoll`, `sendReaction`, `replyTo`), the key serialiser they rest on
- * and the bounded store Baileys' `getMessage` reads. Phase 3b (this file's
- * second half) adds what Phase 3 found no phase owned: the socket
- * lifecycle, the bot's three notions of itself, and message receipt.
+ * and the bounded store Baileys' `getMessage` reads. Phase 3b added what
+ * Phase 3 found no phase owned: the socket lifecycle, the bot's three
+ * notions of itself, and message receipt. Phase 4 adds groups, rosters,
+ * joins and leaves, poll votes, and the LID-to-phone bridge.
  *
  * It is still NOT reachable. `driver-select.ts` refuses `WA_DRIVER=baileys`
- * until Phase 4 (groups, participants, join and leave, polls) lands,
- * because a bot that can hear messages but cannot see its own groups would
- * come up blind, and blind looks like healthy. Nothing here changes what
- * the Pi runs.
+ * until the Phase 5 shadow run has exercised all of this against a real
+ * WhatsApp group and Kemal has decided to switch. Nothing here changes
+ * what the Pi runs.
  *
  * ── The socket is owned by a connection, and injected ───────────────
  * `baileys/lifecycle.ts` builds, pairs, watches and rebuilds the socket
@@ -91,10 +91,39 @@
  *                    when the first send got out before it threw, post the
  *                    reply twice (the 2026-07-19 flood was 30+ copies).
  *   listDmChats      No Baileys equivalent: there is no chat store (§2.14).
- *   groups, polls,   Phase 4, and the restart replay is Phase 5's call.
- *   history          Each throws by name, never returns an empty value:
- *                    several callers read an empty roster as "healthy",
- *                    and those throws are how `degraded.ts` hears about it.
+ *   history          The restart replay is Phase 5's call. It throws by
+ *                    name, never returns an empty value, and that throw is
+ *                    how `degraded.ts` hears about it.
+ *
+ * ── Groups and the LID-to-phone bridge (Phase 4) ─────────────────────
+ * `listGroups` reads `groupFetchAllParticipating`; `groupParticipants` and
+ * `groupSnapshot` read `groupMetadata`, which is the only NETWORK path from
+ * a LID to a phone (§2.7). Every roster read, and every join, feeds
+ * `seedFrom`: the pairs go into the harvested directory AND into Baileys'
+ * own mapping store via `storeLIDPNMappings`, because rc14 ships
+ * `// TODO: Store LID MAPPINGS` and never seeds it itself. Rosters go up in
+ * PHONE form wherever a phone is known, so `index.ts` posts phones exactly
+ * as it did under whatsapp-web.js. `baileys/groups.ts` has the detail.
+ *
+ * Both listing members honour the throw contract in `driver.ts`: a failed
+ * read throws, so `group-enumeration` and `participant-sync` still reach
+ * the heartbeat. A read younger than `GROUP_SWEEP_INTERVAL_MS` (15 min) is
+ * served from the cache instead of asking WhatsApp again, so a flapping
+ * line does not re-read every roster on every reconnect; the cache is kept
+ * exact by `group-participants.update` while connected. The same cache
+ * answers Baileys' `cachedGroupMetadata`, but only for a read made in the
+ * CURRENT connection: across a reconnect Baileys fetches for itself,
+ * because a stale roster would encrypt a group post for the wrong people.
+ * The cache also knows each group's addressing mode, which decides which
+ * of our ids goes on our own group posts (`ownJidFor`).
+ *
+ * ── Poll votes (Phase 4) ─────────────────────────────────────────────
+ * rc14 does not decrypt votes (the branch is commented out), so
+ * `baileys/polls.ts` does it from the `messages.upsert` that carries the
+ * encrypted `pollUpdateMessage`, against the poll we sent. Polls are kept
+ * in memory AND in an archive beside the auth state, because a MoM vote
+ * can arrive a day and a half after the poll and a restart in between must
+ * not cost it.
  *
  * ── Two rules, never broken ─────────────────────────────────────────
  * `close()` ends the socket and never calls `logout()`, which unlinks the
@@ -108,6 +137,7 @@ import makeWASocket, {
   // and reads any `useX()` as a hook. See `baileys/main.ts`.
   useMultiFileAuthState as loadMultiFileAuthState,
   type AnyMessageContent,
+  type GroupMetadata,
   type MiscMessageGenerationOptions,
   type WAMessage,
   type WAMessageKey,
@@ -117,7 +147,7 @@ import qrcode from "qrcode-terminal";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { InboundMessage, WaDriver } from "../driver.js";
+import type { GroupMembershipEvent, InboundMessage, InboundPollVote, WaDriver } from "../driver.js";
 import type { ReactionOutcome } from "../react-with-id.js";
 import { acquireInstanceLock } from "../instance-lock.js";
 import { legacyJid, parseKey, serializeKey } from "../baileys/key.js";
@@ -145,6 +175,24 @@ import { mapReaction, type ReactionEvent } from "../baileys/reaction.js";
 import { createContactDirectory, type ContactDirectory } from "../baileys/contacts.js";
 import { createBaileysConnection, type BaileysConnection, type LifecycleSocket } from "../baileys/lifecycle.js";
 import { createSessionLedger, fileLedgerIO } from "../baileys/session-ledger.js";
+import {
+  authorId,
+  createGroupCache,
+  handedUpId,
+  lidPnPairs,
+  membershipEvent,
+  participantPhone,
+  resolveParticipantPhone,
+  snapshotFromMetadata,
+  type GroupCache,
+  type GroupMetaLike,
+  type LidPnPair,
+  type ParticipantLike,
+  type ParticipantsUpdateLike,
+} from "../baileys/groups.js";
+import { decodePollMessage, describeVia, encodePollMessage, mapPollVote, pollUpdateOf } from "../baileys/polls.js";
+import { createPollArchive, type PollArchive } from "../baileys/poll-store.js";
+import { createDebouncedWriter, jsonFileIO, type DebouncedWriter } from "../baileys/json-file.js";
 import { resolveBaileysConfig } from "../baileys/config.js";
 import { makeBaileysLogger } from "../baileys/logging.js";
 
@@ -156,8 +204,20 @@ export interface BaileysSocketLike extends LifecycleSocket {
     options?: MiscMessageGenerationOptions,
   ): Promise<WAMessage | undefined>;
   end(error: Error | undefined): void;
-  /** LOCAL mapping store only; `getPNForLID` has no network path. */
-  signalRepository?: { lidMapping?: { getPNForLID(lid: string): Promise<string | null> } };
+  /**
+   * Baileys' LOCAL mapping store. `getPNForLID` has no network path;
+   * `storeLIDPNMappings` is how a roster read seeds it (rc14 never does).
+   */
+  signalRepository?: {
+    lidMapping?: {
+      getPNForLID(lid: string): Promise<string | null>;
+      storeLIDPNMappings?(pairs: LidPnPair[]): Promise<void>;
+    };
+  };
+  /** One IQ for every group we are in. Its participants may lack phones. */
+  groupFetchAllParticipating?(): Promise<Record<string, GroupMetaLike>>;
+  /** The roster, with `phoneNumber` for LID-addressed members. */
+  groupMetadata?(jid: string): Promise<GroupMetaLike>;
 }
 
 export interface BaileysDriverDeps {
@@ -175,13 +235,21 @@ export interface BaileysDriverDeps {
    * reactions to them: the LID in a LID-addressed group, the phone JID
    * otherwise, as whatsapp-web.js did.
    *
-   * Phase 4 supplies this from its `cachedGroupMetadata`
-   * (`GroupMetadata.addressingMode`). Until then it is absent and the
-   * phone form is used on BOTH sides, so reactions to our own posts made
-   * under Baileys still join; what can miss is a reaction on a post the
-   * whatsapp-web.js bot made in a LID-addressed group before the cutover.
+   * Defaults to the group cache (`GroupMetadata.addressingMode`, from the
+   * listing or a roster read), so a LID-addressed group gets our LID,
+   * exactly as whatsapp-web.js chose (`isLidAddressingMode ? lidUser :
+   * meUser`), and pre-cutover ids in such a group keep joining. A group not
+   * read yet falls back to the phone form on BOTH sides, which still joins
+   * for anything sent under Baileys.
    */
   groupAddressingMode?(groupJid: string): "lid" | "pn" | undefined;
+  /** Rosters, the group list and addressing modes. Defaults to a fresh cache. */
+  groupCache?: GroupCache;
+  /** Polls we sent, on disk. Defaults to an in-memory archive. */
+  pollArchive?: PollArchive;
+  /** Write any pending harvested state to disk. Called on every close. */
+  flushState?(): void;
+  now?(): number;
   /** Injected for tests; defaults to a fresh bounded store. */
   store?: SentMessageStore<proto.IMessage>;
   /** Injected for tests; defaults to a fresh bounded directory. */
@@ -214,6 +282,19 @@ export interface BaileysInboundStats {
   /** Real reactions whose target could not be turned into the stored id. */
   unresolvedReactionTargets: number;
   ownReactionsIgnored: number;
+  /** Group lists read from WhatsApp, and served from the cache. */
+  listings: number;
+  listingsFromCache: number;
+  /** Rosters read from WhatsApp (`groupMetadata`), and served from the cache. */
+  rosterReads: number;
+  rostersFromCache: number;
+  /** LID-to-phone pairs written into Baileys' own store. */
+  lidPairsStored: number;
+  joins: number;
+  leaves: number;
+  pollVotesForwarded: number;
+  /** Votes on a poll we cannot decrypt (sent before the cutover, or lost). */
+  pollVotesUndecryptable: number;
 }
 
 export interface BaileysDriver extends WaDriver {
@@ -223,6 +304,11 @@ export interface BaileysDriver extends WaDriver {
    * Phase 4 can decrypt votes on a poll.
    */
   getMessage(key: Pick<WAMessageKey, "id"> | null | undefined): Promise<proto.IMessage | undefined>;
+  /**
+   * For `makeWASocket({ cachedGroupMetadata })`: a roster read in THIS
+   * connection and still fresh, or undefined so Baileys fetches its own.
+   */
+  cachedGroupMetadata(jid: string): Promise<GroupMetadata | undefined>;
   stats(): BaileysInboundStats;
 }
 
@@ -249,17 +335,17 @@ export class BaileysDriverUnsupportedError extends Error {
   }
 }
 
-/** The socket is down: nothing was sent. */
+/** The socket is down: nothing was sent, or read. */
 class NotConnectedError extends Error {
   override readonly name = "NotConnectedError";
-  constructor() {
-    super("[baileys driver] WhatsApp is not connected, so nothing was sent");
+  constructor(what = "nothing was sent") {
+    super(`[baileys driver] WhatsApp is not connected, so ${what}`);
   }
 }
 
-const PHASE_4 =
-  "Groups, participants, join and leave, and polls are Phase 4 of " +
-  "MDs/baileys-migration-plan-2026-09-21.md.";
+/** A self-add reported by both `groups.upsert` and a participant add is handed up once. */
+const SELF_JOIN_DEDUPE_MS = 2 * 60 * 1000;
+
 const HISTORY =
   "Whether the restart replay is needed at all under Baileys is the plan's open measurement " +
   "(§2.15, the experiment under Phase 3b, run first in Phase 5); build it after that, on " +
@@ -290,6 +376,15 @@ function emptyStats(): BaileysInboundStats {
     reactionsForwarded: 0,
     unresolvedReactionTargets: 0,
     ownReactionsIgnored: 0,
+    listings: 0,
+    listingsFromCache: 0,
+    rosterReads: 0,
+    rostersFromCache: 0,
+    lidPairsStored: 0,
+    joins: 0,
+    leaves: 0,
+    pollVotesForwarded: 0,
+    pollVotesUndecryptable: 0,
   };
 }
 
@@ -304,6 +399,16 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const firstSighting = createSeenIds();
   const messageHandlers: Array<(msg: InboundMessage) => void | Promise<void>> = [];
   const reactionHandlers: Array<(reaction: unknown) => void | Promise<void>> = [];
+  const pollHandlers: Array<(vote: InboundPollVote) => void | Promise<void>> = [];
+  const joinHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
+  const leaveHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
+  const now = deps.now ?? Date.now;
+  const groupCache = deps.groupCache ?? createGroupCache({ now });
+  const pollArchive = deps.pollArchive ?? createPollArchive({ io: { load: () => null, save: () => {} }, now });
+  const addressingMode = deps.groupAddressingMode ?? ((jid: string) => groupCache.addressingMode(jid));
+  /** Bumped on every open: `cachedGroupMetadata` trusts only this connection's reads. */
+  let epoch = 0;
+  const recentSelfJoins = new Map<string, number>();
   let cachedSelfIds: string[] | null = null;
 
   function requireConnection(member: keyof WaDriver): BaileysConnection<BaileysSocketLike> {
@@ -355,7 +460,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
    */
   function ownJidFor(user: SelfUser, chatJid: string): string | undefined {
     if (!user) return undefined;
-    const mode = deps.groupAddressingMode?.(chatJid);
+    const mode = addressingMode(chatJid);
     if (mode === "lid" && user.lid) return user.lid;
     return user.id ?? undefined;
   }
@@ -412,6 +517,157 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     };
   }
 
+  /** Our ids in legacy spelling, for self checks against rosters. */
+  function selfLegacy(): Set<string> {
+    const self = me();
+    return new Set([self.pn, self.lid].filter((s): s is string => !!s));
+  }
+
+  function pollMessage(id: string): proto.IMessage | undefined {
+    return store.get({ id }) ?? decodePollMessage(pollArchive.get(id)) ?? undefined;
+  }
+
+  // ── Groups and the LID-to-phone bridge ─────────────────────────────────
+
+  /**
+   * Learn every LID-to-phone pair these participants carry, and write them
+   * into Baileys' OWN store, which rc14 never seeds from group metadata.
+   * The pairs are full wire JIDs (`lidPnPairs`): a bare user part or an
+   * `@c.us` phone would be skipped by the store without a word. A failed
+   * write is logged and does not fail the read: the roster is still good,
+   * and the harvested directory already has the pairs.
+   */
+  async function seedFrom(participants: ReadonlyArray<ParticipantLike | string>, where: string): Promise<number> {
+    const pairs = lidPnPairs(participants);
+    for (const p of pairs) contacts.learnPair(p.lid, p.pn);
+    if (pairs.length === 0) return 0;
+    const repo = anySocket()?.signalRepository?.lidMapping;
+    if (!repo?.storeLIDPNMappings) {
+      error(`[baileys][groups] no mapping store to seed for ${where}; ${pairs.length} pair(s) kept in memory only`);
+      return 0;
+    }
+    try {
+      await repo.storeLIDPNMappings(pairs);
+      stats.lidPairsStored += pairs.length;
+      return pairs.length;
+    } catch (err) {
+      error(
+        `[baileys][groups] storeLIDPNMappings failed for ${where}: ${errorText(err)}. ` +
+          `${pairs.length} pair(s) kept in the harvested directory only.`,
+      );
+      return 0;
+    }
+  }
+
+  /** A roster from the cache when fresh, else ONE `groupMetadata`. Throws on failure. */
+  async function readRoster(groupId: string, member: keyof WaDriver): Promise<GroupMetaLike> {
+    const sock = getSocket();
+    if (!sock) throw new NotConnectedError(`${member} could not read ${groupId}`);
+    const cached = groupCache.verified(groupId);
+    if (cached) {
+      stats.rostersFromCache++;
+      const age = Math.round((groupCache.verifiedAgeMs(groupId) ?? 0) / 1000);
+      log(`[baileys][groups] ${groupId} roster served from cache (read ${age}s ago; re-read after 15 min)`);
+      return cached;
+    }
+    if (!sock.groupMetadata) throw new Error(`[baileys driver] ${member}: this socket has no groupMetadata`);
+    const meta = await sock.groupMetadata(groupId);
+    groupCache.putVerified(meta, epoch);
+    stats.rosterReads++;
+    const stored = await seedFrom(meta.participants ?? [], groupId);
+    let phones = 0;
+    let lidOnly = 0;
+    for (const p of meta.participants ?? []) {
+      if (participantPhone(p)) phones++;
+      else lidOnly++;
+    }
+    log(
+      `[baileys][groups] ${groupId} ${JSON.stringify(meta.subject ?? "")} (addressing ${meta.addressingMode ?? "?"}): ` +
+        `${(meta.participants ?? []).length} participant(s), ${phones} with a phone from WhatsApp, ` +
+        `${lidOnly} LID only; ${stored} LID-phone pair(s) stored`,
+    );
+    return meta;
+  }
+
+  function handJoin(event: GroupMembershipEvent, self: boolean): void {
+    if (self && event.chatId) {
+      const last = recentSelfJoins.get(event.chatId);
+      if (last !== undefined && now() - last < SELF_JOIN_DEDUPE_MS) {
+        log(`[baileys][groups] self-add in ${event.chatId} already handed up; not twice`);
+        return;
+      }
+      recentSelfJoins.set(event.chatId, now());
+    }
+    stats.joins++;
+    hand(joinHandlers, event, "onGroupJoin");
+  }
+
+  async function receiveParticipants(update: ParticipantsUpdateLike): Promise<void> {
+    if (!update?.id) return;
+    await seedFrom(update.participants ?? [], `${update.action} in ${update.id}`);
+    const self = selfLegacy();
+    groupCache.applyParticipants(update, self);
+    const mapped = await membershipEvent(update, { phoneForLid });
+    if (!mapped) return;
+    const ids = mapped.event.recipientIds ?? [];
+    log(
+      `[baileys][groups] ${mapped.kind} in ${update.id}: [${ids.join(", ")}] author=${mapped.event.author ?? "?"}`,
+    );
+    if (mapped.kind === "join") {
+      handJoin(mapped.event, ids.some((id) => self.has(id)));
+    } else {
+      stats.leaves++;
+      hand(leaveHandlers, mapped.event, "onGroupLeave");
+    }
+  }
+
+  /** A group created with us in it. Reported as one self-add join. */
+  async function receiveGroupUpsert(meta: GroupMetaLike): Promise<void> {
+    if (!meta?.id) return;
+    groupCache.putVerified(meta, epoch);
+    await seedFrom(meta.participants ?? [], `new group ${meta.id}`);
+    const self = me();
+    const mine = self.pn ?? self.lid;
+    if (!mine) return;
+    const event: GroupMembershipEvent = { chatId: meta.id, recipientIds: [mine] };
+    const author = await authorId(meta.author, meta.authorPn, phoneForLid);
+    if (author) event.author = author;
+    log(`[baileys][groups] added to a new group ${meta.id} ${JSON.stringify(meta.subject ?? "")} by ${author ?? "?"}`);
+    handJoin(event, true);
+  }
+
+  async function receivePollVote(m: WAMessage): Promise<void> {
+    const key = m?.key ?? {};
+    if (!firstSighting(`${key.remoteJid ?? "?"}|${key.id ?? "?"}`)) {
+      stats.duplicates++;
+      return;
+    }
+    const mapped = await mapPollVote(m, {
+      pollMessage,
+      self: () => {
+        const u = currentUser();
+        return { pn: u?.id ?? null, lid: u?.lid ?? null };
+      },
+      ownJidFor: (chat) => ownJidFor(currentUser(), chat),
+      phoneForLid,
+    });
+    if (mapped.kind === "forward") {
+      stats.pollVotesForwarded++;
+      log(
+        `[baileys][poll] vote from ${mapped.payload.voter} on ${mapped.payload.parentMessage?.id?._serialized} ` +
+          `options=[${(mapped.payload.selectedOptions ?? []).map((o) => o.name).join(", ")}] ${describeVia(mapped.via)}`,
+      );
+      hand(pollHandlers, mapped.payload, "onPollVote");
+    } else if (mapped.kind === "undecryptable") {
+      stats.pollVotesUndecryptable++;
+      error(
+        `CRITICAL: [baileys][poll] a vote on poll ${mapped.pollId} could not be read: ${mapped.reason}. ` +
+          "It is not counted; MoM for that poll falls back to app voting. " +
+          `Occurrence #${stats.pollVotesUndecryptable}.`,
+      );
+    }
+  }
+
   // ── Inbound wiring ───────────────────────────────────────────────────
 
   /** A batch at a time, in order, so a replay reaches the analyzer oldest first. */
@@ -451,6 +707,13 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     if (drop) {
       stats.skipped++;
       log(`${line} skipped: ${drop}`);
+      return;
+    }
+    // A poll vote is not a chat message: it is decrypted and handed to
+    // onPollVote, and never reaches the analyzer.
+    if (pollUpdateOf(m)) {
+      log(`${line} poll vote`);
+      await receivePollVote(m);
       return;
     }
     const mapped = mapInboundMessage(m);
@@ -561,6 +824,35 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       for (const c of Array.isArray(list) ? list : []) contacts.learnContact(c);
     });
     conn.on("lid-mapping.update", (m) => contacts.learnPair(m?.lid, m?.pn));
+
+    // Group events on one chain, in order: a create and the add that may
+    // follow it must be seen in the order WhatsApp sent them.
+    let groupChain: Promise<void> = Promise.resolve();
+    const onGroupChain = (what: string, work: () => Promise<void>) => {
+      groupChain = groupChain
+        .then(work)
+        .catch((err) => error(`[baileys][groups] ${what} failed: ${errorText(err)}`));
+    };
+    conn.on("group-participants.update", (update) =>
+      onGroupChain("group-participants.update", () => receiveParticipants(update as ParticipantsUpdateLike)),
+    );
+    conn.on("groups.upsert", (metas) =>
+      onGroupChain("groups.upsert", async () => {
+        for (const meta of Array.isArray(metas) ? metas : []) await receiveGroupUpsert(meta as GroupMetaLike);
+      }),
+    );
+    conn.on("groups.update", (partials) => {
+      for (const p of Array.isArray(partials) ? partials : []) {
+        groupCache.applyGroupUpdate(p as Partial<GroupMetaLike> & { id?: string | null });
+      }
+    });
+
+    // Registered here, at construction, so it runs before any handler
+    // index.ts adds: every read after this open belongs to the new epoch.
+    conn.onOpen(() => {
+      epoch++;
+    });
+    conn.onClose(() => deps.flushState?.());
   }
 
   /**
@@ -594,6 +886,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     },
 
     async close() {
+      deps.flushState?.();
       // end(), never logout(). logout() unlinks the device.
       if (conn) {
         await conn.close();
@@ -644,16 +937,19 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       reactionHandlers.push(handler);
     },
 
-    onPollVote() {
-      notYet("onPollVote", PHASE_4);
+    onPollVote(handler) {
+      requireConnection("onPollVote");
+      pollHandlers.push(handler);
     },
 
-    onGroupJoin() {
-      notYet("onGroupJoin", PHASE_4);
+    onGroupJoin(handler) {
+      requireConnection("onGroupJoin");
+      joinHandlers.push(handler);
     },
 
-    onGroupLeave() {
-      notYet("onGroupLeave", PHASE_4);
+    onGroupLeave(handler) {
+      requireConnection("onGroupLeave");
+      leaveHandlers.push(handler);
     },
 
     // ── Outbound ─────────────────────────────────────────────────────
@@ -676,15 +972,22 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       return send(jid, textContent(text));
     },
 
-    sendPoll(chatId, question, options, allowMultipleAnswers) {
+    async sendPoll(chatId, question, options, allowMultipleAnswers) {
       // Pinned: votes are decrypted against this message for a day and a
-      // half after kickoff (§2.12).
-      return send(
-        wireChatJid(chatId),
-        pollContent(question, options, allowMultipleAnswers),
-        undefined,
-        true,
-      );
+      // half after kickoff (§2.12). And archived on disk, so a restart in
+      // that window does not cost the votes still to come.
+      const chat = wireChatJid(chatId);
+      const result = await send(chat, pollContent(question, options, allowMultipleAnswers), undefined, true);
+      const sent = result?.message?.message;
+      const id = result?.key?.id;
+      if (sent && id) {
+        try {
+          pollArchive.remember(id, chat, encodePollMessage(sent));
+        } catch (err) {
+          error(`[baileys][poll] could not archive poll ${id}: ${errorText(err)}`);
+        }
+      }
+      return result;
     },
 
     async sendReaction(waMessageId, emoji): Promise<ReactionOutcome> {
@@ -736,15 +1039,63 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     // ── Groups and roster ────────────────────────────────────────────
     async listGroups() {
-      return notYet("listGroups", PHASE_4);
+      // MAY THROW, and must: the throw records group-enumeration degraded.
+      const sock = getSocket();
+      if (!sock) throw new NotConnectedError("no group list was read");
+      const cached = groupCache.listing();
+      if (cached) {
+        stats.listingsFromCache++;
+        const age = Math.round((groupCache.listingAgeMs() ?? 0) / 1000);
+        log(`[baileys][groups] group list served from cache (read ${age}s ago; re-read after 15 min)`);
+        return cached;
+      }
+      if (!sock.groupFetchAllParticipating) {
+        throw new Error("[baileys driver] listGroups: this socket has no groupFetchAllParticipating");
+      }
+      const all = Object.values((await sock.groupFetchAllParticipating()) ?? {});
+      groupCache.putListing(all);
+      stats.listings++;
+      // Whatever pairs the listing does carry are genuine. It is never
+      // used as a roster: Baileys marks its LID/PN parsing as a TODO.
+      for (const g of all) await seedFrom(g.participants ?? [], `listing of ${g.id}`);
+      return groupCache.listing() ?? all.map((g) => ({ id: g.id, name: g.subject ?? "" }));
     },
 
-    async groupParticipants() {
-      return notYet("groupParticipants", PHASE_4);
+    async groupParticipants(groupId) {
+      // MAY THROW, and must: the throw records participant-sync degraded.
+      // Phone form wherever a phone is known, so index.ts's sweep posts
+      // phones; a LID nobody can resolve stays a LID, never its digits.
+      const meta = await readRoster(groupId, "groupParticipants");
+      const out: string[] = [];
+      for (const p of meta.participants ?? []) {
+        const id = handedUpId(p, await resolveParticipantPhone(p, phoneForLid));
+        if (id) out.push(id);
+      }
+      return out;
     },
 
-    async groupSnapshot() {
-      return notYet("groupSnapshot", PHASE_4);
+    async groupSnapshot(groupId, selfIds) {
+      // Total: whatever fails goes into notes, as the contract says.
+      try {
+        const meta = await readRoster(groupId, "groupSnapshot");
+        return await snapshotFromMetadata(meta, selfIds.length ? selfIds : [...selfLegacy()], {
+          phoneForLid,
+          pushnameFor: (ids) => {
+            for (const id of ids) {
+              const n = contacts.namesFor(id);
+              if (n.pushname || n.name) return n.pushname ?? n.name;
+            }
+            return undefined;
+          },
+        });
+      } catch (err) {
+        return {
+          subject: groupCache.subject(groupId),
+          participants: [],
+          source: "none",
+          notes: [`groupMetadata failed: ${errorText(err)}`],
+        };
+      }
     },
 
     getContact(jid) {
@@ -786,7 +1137,12 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     // ── Not on WaDriver ──────────────────────────────────────────────
     async getMessage(key) {
-      return store.get(key);
+      // Memory first; a poll sent before a restart comes back from disk.
+      return store.get(key) ?? (key?.id ? decodePollMessage(pollArchive.get(key.id)) ?? undefined : undefined);
+    },
+
+    async cachedGroupMetadata(jid) {
+      return groupCache.forSend(jid, epoch) as GroupMetadata | undefined;
     },
 
     stats() {
@@ -811,8 +1167,21 @@ const DEFAULT_BAILEYS_LOCK_PATH = "/tmp/matchtime-baileys.pid";
 const LEDGER_FILE = "matchtime-session-ledger.json";
 
 /**
+ * Harvested names and LID-to-phone pairs (`baileys/contacts.ts`), so a
+ * restart no longer forgets who everyone is. Beside the keys for the same
+ * reasons as the ledger: `0700`, never deleted, moved aside as a unit on a
+ * re-pair. Written `0600`, at most once a minute, and on every close.
+ */
+const CONTACTS_FILE = "matchtime-contacts.json";
+const CONTACTS_SAVE_DELAY_MS = 60_000;
+
+/** Polls we sent, so votes after a restart can still be decrypted. */
+const POLLS_FILE = "matchtime-polls.json";
+
+/**
  * Build the real Baileys driver. NOT reachable yet: `driver-select.ts`
- * refuses `WA_DRIVER=baileys` until Phase 4. Building it opens nothing;
+ * refuses `WA_DRIVER=baileys` until the Phase 5 shadow run and Kemal's
+ * decision. Building it opens nothing;
  * the first socket is built, and connects, only in `start()`.
  *
  * No test calls this: `makeWASocket` connects the moment it is called.
@@ -846,8 +1215,18 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
   let prepared: ReturnType<typeof prepare> | null = null;
 
   // Declared before the connection so the socket factory can reach
-  // getMessage; assigned straight after.
+  // getMessage and cachedGroupMetadata; assigned straight after.
   let driver: BaileysDriver | null = null;
+
+  // A missing file (first run, or before the folder exists) reads as empty.
+  const contactsIO = jsonFileIO(join(config.authDir, CONTACTS_FILE));
+  let contactsWriter: DebouncedWriter | null = null;
+  const contacts = createContactDirectory(undefined, { onChange: () => contactsWriter?.markDirty() });
+  contacts.importState(contactsIO.load());
+  contactsWriter = createDebouncedWriter(() => contactsIO.save(contacts.exportState()), {
+    delayMs: CONTACTS_SAVE_DELAY_MS,
+  });
+  const pollArchive = createPollArchive({ io: jsonFileIO(join(config.authDir, POLLS_FILE)) });
 
   const connection = createBaileysConnection<BaileysSocketLike>({
     makeSocket: async () => {
@@ -862,6 +1241,10 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
         // whether we need any of it.
         syncFullHistory: false,
         getMessage: (key) => driver?.getMessage(key) ?? Promise.resolve(undefined),
+        // Ours, because Baileys ships none: without it every group send
+        // costs a groupMetadata round trip. Answers only for a roster read
+        // in the current connection (see the header).
+        cachedGroupMetadata: (jid) => driver?.cachedGroupMetadata(jid) ?? Promise.resolve(undefined),
       });
       sock.ev.on("creds.update", () => void saveCreds());
       return sock as unknown as BaileysSocketLike;
@@ -871,6 +1254,11 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
     printQr: (qr) => qrcode.generate(qr, { small: true }),
   });
 
-  driver = makeBaileysDriver({ connection });
+  driver = makeBaileysDriver({
+    connection,
+    contacts,
+    pollArchive,
+    flushState: () => contactsWriter?.flush(),
+  });
   return driver;
 }

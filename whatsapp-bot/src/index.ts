@@ -157,7 +157,7 @@ async function main() {
       // 10-minute heartbeat. This particular one is the canary for the
       // whole injected layer.
       recordDegradedCapability("group-enumeration");
-      console.error(degradedMessage("group-enumeration", err));
+      console.error(degradedMessage("group-enumeration", err, undefined, driver.name));
     }
 
     try {
@@ -219,6 +219,7 @@ async function main() {
                 "participant-sync",
                 "the chat resolved but its participants list was empty",
                 `${o.orgName} (${o.groupId})`,
+                driver.name,
               ),
             );
             // NOTE: this `continue` skips only the sync POST for THIS org
@@ -273,7 +274,7 @@ async function main() {
           // nobody the web app's self-IN gate was about to start rejecting
           // real players. Say what it costs.
           recordDegradedCapability("participant-sync");
-          console.error(degradedMessage("participant-sync", err, `${o.orgName} (${o.groupId})`));
+          console.error(degradedMessage("participant-sync", err, `${o.orgName} (${o.groupId})`, driver.name));
         }
       }
     } catch (err) {
@@ -607,6 +608,8 @@ async function main() {
           degradedMessage(
             "reaction-forwarding",
             `msgId=${waMessageId || "?"} senderId=${fromId || "?"} emoji=${emoji}`,
+            undefined,
+            driver.name,
           ),
         );
         return;

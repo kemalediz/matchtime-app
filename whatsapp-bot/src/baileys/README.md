@@ -92,3 +92,30 @@ The driver's lifecycle keeps one more file in the auth folder,
 latches the session and the next start refuses to connect. The recovery is
 the re-pair: stop the bot, move the auth folder aside (keep it), start, link.
 | `main.source.test.ts` | asserts on `main.ts`'s source text. Brittle on purpose: each test is a named past incident. |
+
+## Phase 4: groups, the LID-to-phone bridge, polls, and the phone gate
+
+`groups.ts`, `polls.ts`, `poll-store.ts` and `json-file.ts` are pure or
+IO-injected and unit-tested; the driver wires them in
+`src/drivers/baileys.ts`. Two files now live beside the keys in
+`BAILEYS_AUTH_DIR`, both `0600`, both moved aside with the folder on a
+re-pair and never deleted by us:
+
+| File | What it holds |
+|---|---|
+| `matchtime-contacts.json` | Harvested names and LID-to-phone pairs, so a restart no longer forgets them. Written at most once a minute, and on every close. |
+| `matchtime-polls.json` | Every poll we sent (question, options, secret), so a MoM vote after a restart can still be decrypted. Two hundred polls, fourteen days at most. |
+
+### The phone gate, before any cutover
+
+```bash
+cd whatsapp-bot
+npm run measure:group-phones -- --group=<id>@g.us --known-phones=<file>
+```
+
+One `groupMetadata` read and nothing else: no send, no mapping write, no
+database, no directory lookup. `--known-phones` is the org's phones, one
+per line, exported with a read-only query. It prints fixed lines (phones
+masked), a `VERDICT:` line (`PASS` only when every known phone came back),
+and a final `RESULT {json}` line. It takes the Baileys process lock, so stop
+the observer or any Baileys bot on the same session first.

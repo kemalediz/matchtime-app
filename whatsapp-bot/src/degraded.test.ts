@@ -113,3 +113,35 @@ describe("the specific consequences we care about", () => {
     expect(m.toLowerCase()).toContain("bench");
   });
 });
+
+// ── Driver-aware mitigation (Baileys migration, Phase 4) ─────────────
+
+describe("degradedMessage under the Baileys driver", () => {
+  for (const cap of ALL) {
+    it(`${cap}: never tells the operator to pin WA_WEB_VERSION, which does nothing under Baileys`, () => {
+      const msg = degradedMessage(cap, new Error("timed out"), undefined, "baileys");
+      expect(msg.startsWith("CRITICAL:")).toBe(true);
+      expect(msg).toContain(DEGRADED_CAPABILITIES[cap].consequence);
+      expect(msg).not.toContain("WA_WEB_VERSION");
+      expect(msg).not.toContain("injected page code");
+      expect(msg).toContain("Baileys");
+      expect(msg).toContain("timed out");
+    });
+  }
+
+  it("says plainly when the cause is a member the Baileys driver has not built yet", () => {
+    const err = Object.assign(new Error("[baileys driver] fetchRecentGroupMessages: not built yet."), {
+      name: "BaileysDriverUnsupportedError",
+    });
+    const msg = degradedMessage("message-recovery", err, "120363@g.us", "baileys");
+    expect(msg).toMatch(/not built yet/);
+    expect(msg).toMatch(/expected until/);
+  });
+
+  it("is byte-identical to before for whatsapp-web.js, named or defaulted", () => {
+    expect(degradedMessage("participant-sync", "r", "Sutton FC", "wwebjs")).toBe(
+      degradedMessage("participant-sync", "r", "Sutton FC"),
+    );
+    expect(degradedMessage("participant-sync", "r")).toContain("WA_WEB_VERSION");
+  });
+});

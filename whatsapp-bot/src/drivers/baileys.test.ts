@@ -362,20 +362,40 @@ describe("members this driver refuses, by name", () => {
     expect((err as Error).message).toMatch(/BOT_RECOVER_DM_REPLIES/);
   });
 
-  // Everything still not built after Phase 3b: groups, polls and the
-  // restart replay (Phase 4, and Phase 5's measurement). Lifecycle,
-  // identity and inbound moved out of this list in Phase 3b and are tested
-  // in `baileys.inbound.test.ts`. Each must fail by name, sync or async
-  // according to how its callers call it, and none may send.
+  // Everything still not built after Phase 4: only the restart replay,
+  // which waits on Phase 5's offline-replay measurement. Groups, rosters,
+  // joins, leaves and poll votes moved out of this list in Phase 4 and are
+  // tested in `baileys.groups.test.ts`. What is left must fail by name and
+  // must not send.
   const NOT_YET: Array<[keyof WaDriver, (d: WaDriver) => unknown]> = [
-    ["onPollVote", (d) => d.onPollVote(() => {})],
-    ["onGroupJoin", (d) => d.onGroupJoin(() => {})],
-    ["onGroupLeave", (d) => d.onGroupLeave(() => {})],
-    ["listGroups", (d) => d.listGroups()],
-    ["groupParticipants", (d) => d.groupParticipants(GROUP)],
-    ["groupSnapshot", (d) => d.groupSnapshot(GROUP, [])],
     ["fetchRecentGroupMessages", (d) => d.fetchRecentGroupMessages(GROUP, 10)],
   ];
+
+  it("no longer refuses the Phase 4 members as not built: they are built", async () => {
+    // With no connection and a Phase 3 socket they still cannot work, and
+    // they must still THROW (the degraded contract), but not by claiming
+    // to be unbuilt, which would send an operator looking for a phase that
+    // has already landed.
+    const phase4: Array<[keyof WaDriver, (d: WaDriver) => unknown]> = [
+      ["onPollVote", (d) => d.onPollVote(() => {})],
+      ["onGroupJoin", (d) => d.onGroupJoin(() => {})],
+      ["onGroupLeave", (d) => d.onGroupLeave(() => {})],
+      ["listGroups", (d) => d.listGroups()],
+      ["groupParticipants", (d) => d.groupParticipants(GROUP)],
+    ];
+    for (const [member, call] of phase4) {
+      const sock = fakeSocket();
+      let err: unknown;
+      try {
+        await call(driverWith(sock));
+      } catch (e) {
+        err = e;
+      }
+      expect(err, member).toBeInstanceOf(Error);
+      expect(err, member).not.toBeInstanceOf(BaileysDriverUnsupportedError);
+      expect(sock.sendMessage).not.toHaveBeenCalled();
+    }
+  });
 
   for (const [member, call] of NOT_YET) {
     it(`${member} fails by name as not built yet`, async () => {

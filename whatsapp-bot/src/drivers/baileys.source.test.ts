@@ -214,3 +214,107 @@ describe("a reaction's target is resolved BEFORE it is serialised", () => {
     expect(reaction).not.toMatch(/\$\{[^}]*fromMe[^}]*\}_/);
   });
 });
+
+// ── Phase 4: groups, participants, the LID bridge, polls ─────────────
+
+const groups = source("../baileys/groups.ts");
+const polls = source("../baileys/polls.ts");
+const pollStore = source("../baileys/poll-store.ts");
+const jsonFile = source("../baileys/json-file.ts");
+const phoneGate = source("../baileys/phone-gate.ts");
+const gateScript = stripComments(
+  readFileSync(fileURLToPath(new URL("../../scripts/measure-group-phones.ts", import.meta.url)), "utf8"),
+);
+
+describe("Phase 4 still never asks WhatsApp about a number (§2.2)", () => {
+  it("no Phase 4 module, nor the gate script, makes a directory lookup", () => {
+    const banned = [/onWhatsApp\s*\(/, /executeUSyncQuery\s*\(/, /getLIDForPN\s*\(/, /getLIDsForPNs\s*\(/];
+    for (const [name, text] of [
+      ["groups", groups],
+      ["polls", polls],
+      ["poll-store", pollStore],
+      ["json-file", jsonFile],
+      ["phone-gate", phoneGate],
+      ["measure-group-phones", gateScript],
+    ] as const) {
+      for (const b of banned) expect(text, `${name} ${b}`).not.toMatch(b);
+      expect(text, name).not.toMatch(/\.logout\s*\(/);
+      expect(text, name).not.toMatch(/\brmSync\b|\brmdir\b|\bunlink(Sync)?\b|\brm\s*\(/);
+    }
+  });
+});
+
+describe("the LID-to-phone bridge is seeded on every sweep (§2.7)", () => {
+  it("the driver calls storeLIDPNMappings with pairs from lidPnPairs, where the roster is read", () => {
+    // Baileys ships `// TODO: Store LID MAPPINGS` and never seeds its own store.
+    expect(driver).toMatch(/storeLIDPNMappings\(/);
+    expect(driver).toMatch(/lidPnPairs\(/);
+    const seed = driver.indexOf("async function seedFrom");
+    expect(seed).toBeGreaterThan(-1);
+    const body = driver.slice(seed, driver.indexOf("\n  }\n", seed));
+    expect(body.indexOf("lidPnPairs(")).toBeGreaterThan(-1);
+    expect(body.indexOf("lidPnPairs(")).toBeLessThan(body.indexOf("storeLIDPNMappings("));
+  });
+
+  it("builds pairs in the wire form Baileys' store accepts, never a bare user or an @c.us phone", () => {
+    expect(groups).toMatch(/toUserJid\(/);
+    expect(groups).not.toMatch(/pn:\s*`\$\{[^}]*\}@c\.us`/);
+  });
+
+  it("uses groupMetadata for the roster; the participating listing is for the group list only", () => {
+    const read = driver.slice(driver.indexOf("async function readRoster"), driver.indexOf("function handJoin"));
+    expect(read).toMatch(/\.groupMetadata\(/);
+    expect(read).not.toMatch(/groupFetchAllParticipating/);
+    // and it seeds the bridge from what it read, every time it reads.
+    expect(read.indexOf(".groupMetadata(")).toBeLessThan(read.indexOf("seedFrom("));
+    const sweep = driver.slice(driver.indexOf("async groupParticipants("), driver.indexOf("async groupSnapshot("));
+    expect(sweep).toMatch(/readRoster\(/);
+    expect(sweep).not.toMatch(/groupFetchAllParticipating/);
+  });
+
+  it("wires our own cachedGroupMetadata into the socket", () => {
+    expect(driver).toMatch(/cachedGroupMetadata:\s*\(/);
+  });
+});
+
+describe("poll votes are decrypted by us, from the upsert", () => {
+  it("does not wait for messages.update pollUpdates, which rc14 never emits", () => {
+    expect(driver).not.toMatch(/["']messages\.update["']/);
+    expect(driver).toMatch(/mapPollVote\(/);
+  });
+
+  it("archives every poll it sends, so a restart does not cost the remaining votes", () => {
+    const sendPoll = driver.slice(driver.indexOf("async sendPoll("), driver.indexOf("async sendReaction("));
+    expect(sendPoll).toMatch(/pollArchive\.remember\(/);
+  });
+});
+
+describe("the phone gate script is read-only", () => {
+  it("never sends, never writes a mapping, never touches the database or the API", () => {
+    for (const [name, text] of [
+      ["phone-gate", phoneGate],
+      ["measure-group-phones", gateScript],
+    ] as const) {
+      expect(text, name).not.toMatch(/\.sendMessage\s*\(/);
+      expect(text, name).not.toMatch(/storeLIDPNMappings/);
+      expect(text, name).not.toMatch(/prisma|@prisma\/client/i);
+      expect(text, name).not.toMatch(/\bfetch\s*\(/);
+      expect(text, name).not.toMatch(/from\s+["'][^"']*\/api(\.js)?["']/);
+      expect(text, name).not.toMatch(/groupFetchAllParticipating/);
+      expect(text, name).not.toMatch(/requestPairingCode/);
+    }
+  });
+
+  it("reads the group exactly once", () => {
+    expect(phoneGate.match(/\.groupMetadata\s*\(/g) ?? []).toHaveLength(1);
+    expect(gateScript).not.toMatch(/\.groupMetadata\s*\(/);
+  });
+
+  it("closes with end, and chooses the same safe socket options as the driver", () => {
+    expect(gateScript).toMatch(/markOnlineOnConnect:\s*false/);
+    expect(gateScript).toMatch(/syncFullHistory:\s*false/);
+    expect(gateScript).toMatch(/makeBaileysLogger\(/);
+    expect(gateScript).toMatch(/acquireInstanceLock\(/);
+    expect(gateScript).toMatch(/\.close\(\)/);
+  });
+});

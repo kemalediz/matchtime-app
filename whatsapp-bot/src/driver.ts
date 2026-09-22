@@ -114,8 +114,12 @@ export interface SnapshotParticipant {
 export interface GroupSnapshot {
   subject: string | null;
   participants: SnapshotParticipant[];
-  /** Which path produced the result. */
-  source: "page" | "getChatById" | "none";
+  /**
+   * Which path produced the result. `page` and `getChatById` are
+   * whatsapp-web.js's; `groupMetadata` is the Baileys driver's one read.
+   * Logged, never sent to the server.
+   */
+  source: "page" | "getChatById" | "groupMetadata" | "none";
   /** Human-readable reasons for anything that degraded, for the log. */
   notes: string[];
 }
