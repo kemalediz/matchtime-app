@@ -71,7 +71,20 @@ export interface ParsedKey {
 /** A canonical JID: `user@server`, with no device, no agent, no underscore. */
 const CANONICAL_JID = /^[^@_:\s]+@[a-z]+(\.[a-z]+)*$/;
 
-/** `x@s.whatsapp.net` or `x:3@c.us` to `x@c.us`; other servers as they are. */
+/**
+ * `x@s.whatsapp.net` or `x:3@c.us` to `x@c.us`; other servers as they are,
+ * minus any device suffix. Null for anything that is not a canonical JID.
+ *
+ * Exported because it is the spelling EVERYTHING above the seam compares
+ * against: `index.ts` and `smart-analysis.ts` were written for
+ * whatsapp-web.js and test `.endsWith("@c.us")`, and the bot's own ids,
+ * mentions and senders must be written by the same rule the stored ids
+ * are, or a comparison that worked yesterday quietly stops matching.
+ */
+export function legacyJid(jid: string | null | undefined): string | null {
+  return toLegacyJid(jid);
+}
+
 function toLegacyJid(jid: string | null | undefined): string | null {
   const p = parseJid(jid);
   if (!p || !p.user || !p.server) return null;

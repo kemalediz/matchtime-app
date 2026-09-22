@@ -76,7 +76,19 @@ socket**:
 | `key.ts` | Phase 3. `serializeKey` / `parseKey`: a Baileys message key as the whatsapp-web.js id string the database already holds, and back (plan §2.5). A bijection on canonical keys; the header names the three places it is not. |
 | `outbound.ts` | Phase 3. What the driver hands to `sendMessage`: texts with `linkPreview: null` (§2.6), mentions, polls, reactions, and `completeOwnKey`, which keeps our own group posts' ids in the four-part form reactions join on. |
 | `sent-store.ts` | Phase 3. The bounded store of what we sent, for `getMessage` (§2.12), with polls pinned. |
+| `lifecycle.ts` | Phase 3b. Builds, pairs, watches and rebuilds the socket for the driver: `decideOnClose`, the generation counter, `onOpen` on every open, `onClose` on every close. |
+| `session-ledger.ts` | Phase 3b. Kept in the auth folder so it survives restarts: the pairing-code budget (once per socket, a minute apart, five an hour) and the logged-out latch that stops a `401` looping through systemd. |
+| `inbound-view.ts` | Phase 3b. A `WAMessage` as the whatsapp-web.js-shaped message `wa-read.ts` and `message-id.ts` already read, with the raw message behind it for `replyTo`. |
+| `reaction.ts` | Phase 3b. A `messages.reaction` event as `{ msgId, senderId, reaction }`, with a LID DM target turned back into the phone form the database stored. Unresolvable targets go up with no id, which `index.ts` records as `reaction-forwarding` degraded. |
+| `contacts.ts` | Phase 3b. Names and LID-to-phone pairs harvested from inbound messages and `contacts.upsert`. Never fetched (§2.2, §2.9). |
+| `fake-socket.ts` | Phase 3b. A stand-in `WASocket` for tests. Never used in production. |
 
-The Baileys **driver** (`src/drivers/baileys.ts`, Phase 3) uses the last three.
-It is the outbound half only and `WA_DRIVER=baileys` is still refused.
+The Baileys **driver** (`src/drivers/baileys.ts`) uses all of these. Since
+Phase 3b it can connect, send and receive; `WA_DRIVER=baileys` is still
+refused until Phase 4 gives it groups, participants and polls.
+
+The driver's lifecycle keeps one more file in the auth folder,
+`matchtime-session-ledger.json`. If the bot logged out (`401`), that file
+latches the session and the next start refuses to connect. The recovery is
+the re-pair: stop the bot, move the auth folder aside (keep it), start, link.
 | `main.source.test.ts` | asserts on `main.ts`'s source text. Brittle on purpose: each test is a named past incident. |

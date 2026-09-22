@@ -84,9 +84,22 @@ export function bareUser(jid: string | null | undefined): string | null {
   return p ? `${p.user}@${p.server}` : null;
 }
 
-/** The bare user part of a LID, which is the key `getPNForLID` expects. */
+/** The bare user part of a LID. NOT what `getPNForLID` takes; see `lidLookupJid`. */
 export function bareLid(jid: string | null | undefined): string | null {
   return isLidJid(jid) ? (parseJid(jid) as ParsedJid).user : null;
+}
+
+/**
+ * A LID as Baileys' `getPNForLID` wants it: the full JID, device stripped.
+ *
+ * Phase 1 passed the bare user part, and `lid-mapping.js` opens its lookup
+ * with `if (!isLidUser(lid)) continue`, where `isLidUser` is
+ * `jid.endsWith("@lid")`. So the local store answered null for every LID
+ * it was ever asked about, and path 3 of §2.7 was silently dead.
+ * `jid.test.ts` now proves the form against Baileys' real store.
+ */
+export function lidLookupJid(jid: string | null | undefined): string | null {
+  return isLidJid(jid) ? bareUser(jid) : null;
 }
 
 /**
@@ -139,10 +152,16 @@ export interface InboundKeyLike {
  *
  * Unlike HomeTenant's version, groups are KEPT: MatchTime lives in them.
  */
-export function inboundDropReason(key: InboundKeyLike): string | null {
+export function inboundDropReason(
+  key: InboundKeyLike,
+  options: { keepOwn?: boolean } = {},
+): string | null {
   const jid = key.remoteJid;
   if (!jid) return "no remoteJid";
-  if (key.fromMe) return "own message";
+  // The observer drops our own messages. The driver keeps them: the
+  // `onMessage` contract is "including our own", and `index.ts` does the
+  // fromMe skip itself, after its `[msg]` log line.
+  if (key.fromMe && !options.keepOwn) return "own message";
   if (jid === "status@broadcast") return "status update";
   if (jid.endsWith("@broadcast")) return "broadcast list";
   if (jid.endsWith("@newsletter")) return "newsletter";
@@ -166,7 +185,8 @@ export type SenderResolution =
  *   2. a phone JID on `participantAlt` / `remoteJidAlt`. The server puts
  *      the other addressing form on the stanza itself, so this works for a
  *      sender we have never seen before and needs no local state;
- *   3. the local LID mapping store. NOTE this has no network fallback in
+ *   3. the local LID mapping store, asked with the FULL LID JID
+ *      (`lidLookupJid`). NOTE this has no network fallback in
  *      Baileys (`lib/Signal/lid-mapping.js`): it is a cache read and it
  *      returns null in about a millisecond for an unknown LID. It is not a
  *      lookup and must never be mistaken for one.
@@ -192,12 +212,13 @@ export async function resolveInboundSender(
   if (fromAlt) return { phone: fromAlt, source: "alt" };
 
   const lid = bareLid(sender) ?? bareLid(alt);
-  if (!lid) {
+  const lookup = lidLookupJid(sender) ?? lidLookupJid(alt);
+  if (!lid || !lookup) {
     return { phone: null, reason: `sender ${sender ?? "?"} is neither a phone JID nor a LID` };
   }
 
   try {
-    const mapped = phoneFromJid(await getPNForLID(lid));
+    const mapped = phoneFromJid(await getPNForLID(lookup));
     if (mapped) return { phone: mapped, source: "lid-mapping" };
   } catch (err) {
     return {

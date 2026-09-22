@@ -12,11 +12,14 @@
  * `driver-select.ts` follows, for the same reason.
  *
  * `baileys` is deliberately NOT a known value yet. Phase 3 built the
- * Baileys driver's OUTBOUND half (`src/drivers/baileys.ts`): it can send,
- * but it has no socket lifecycle, no inbound path and no groups, so a bot
- * on it could not hear anybody. Accepting the name before those land
- * would turn a hopeful env var into a bot that comes up deaf, and deaf
- * looks like healthy.
+ * Baileys driver's outbound half and Phase 3b its lifecycle, identity and
+ * inbound path (`src/drivers/baileys.ts`), so it can now connect, send and
+ * hear messages. It still cannot list its groups, sweep a roster, see a
+ * join or a leave, or count a MoM vote: that is Phase 4. A bot on it would
+ * come up hearing messages and blind to its own groups (and would record
+ * `group-enumeration` and `participant-sync` degraded on every open), and
+ * blind looks like healthy to everyone but the heartbeat. `createBaileysDriver`
+ * is deliberately not imported here until then.
  */
 import type { WaDriver } from "./driver.js";
 import { createWwebjsDriver } from "./drivers/wwebjs.js";
@@ -31,10 +34,11 @@ export function selectDriver(raw: string | undefined): DriverName {
   if ((DRIVERS as readonly string[]).includes(value)) return value as DriverName;
   if (value === "baileys") {
     throw new Error(
-      "WA_DRIVER=baileys is not available yet. The Baileys driver is the outbound half only " +
-        "(Phase 3 of MDs/baileys-migration-plan-2026-09-21.md): it cannot receive messages or " +
-        "see groups until the inbound wiring and Phase 4 land. Unset WA_DRIVER to run " +
-        "whatsapp-web.js.",
+      "WA_DRIVER=baileys is not available yet. The Baileys driver can connect, send and receive " +
+        "messages (Phases 3 and 3b of MDs/baileys-migration-plan-2026-09-21.md), but it cannot " +
+        "list its groups, sync participants, see joins and leaves or read poll votes until " +
+        "Phase 4 lands, and the offline-replay measurement (Phase 5) has not been taken. Unset " +
+        "WA_DRIVER to run whatsapp-web.js.",
     );
   }
   throw new Error(
