@@ -29,9 +29,13 @@
  * A fortnight of uptime must not grow it without limit. Both maps evict
  * their oldest entry past `max`; a re-learned entry moves to the back.
  *
- * In memory only, for now. Persisting it (plan §2.9 suggests a small JSON
- * file) would let a restart keep the names, and is worth doing once the
- * Phase 5 shadow run shows how often a name is missing.
+ * ── Persisted (Phase 4) ─────────────────────────────────────────────
+ * 3b kept this in memory only, so a restart forgot every name and every
+ * pair, and a player who never types was nameless again until app-state
+ * sync happened to mention them. `exportState` / `importState` let the
+ * driver keep it in `matchtime-contacts.json` beside the auth state
+ * (`json-file.ts`), and `onChange` fires only when something NEW was
+ * learned, so a chatty group does not rewrite the file on every message.
  *
  * Pure: no Baileys import, no I/O.
  */
@@ -67,6 +71,16 @@ export interface ContactDirectory {
   namesFor(jid: string | null | undefined): HarvestedNames;
   /** Entries in the name map. */
   size(): number;
+  /** Everything learned, as plain JSON, oldest first. */
+  exportState(): ContactDirectoryState;
+  /** Load a saved state. Anything malformed is skipped, never thrown. */
+  importState(state: unknown): void;
+}
+
+export interface ContactDirectoryState {
+  names: Array<[string, HarvestedNames]>;
+  /** [legacy LID JID, phone digits] */
+  pairs: Array<[string, string]>;
 }
 
 export const DEFAULT_DIRECTORY_MAX = 5000;
@@ -88,7 +102,17 @@ function touch<V>(map: Map<string, V>, key: string, value: V, max: number): void
   }
 }
 
-export function createContactDirectory(max = DEFAULT_DIRECTORY_MAX): ContactDirectory {
+export function createContactDirectory(
+  max = DEFAULT_DIRECTORY_MAX,
+  opts: { onChange?(): void } = {},
+): ContactDirectory {
+  const changed = () => {
+    try {
+      opts.onChange?.();
+    } catch {
+      /* a persistence hook must never break learning */
+    }
+  };
   /** legacy JID -> names */
   const names = new Map<string, HarvestedNames>();
   /** legacy LID JID -> phone digits */
@@ -105,7 +129,12 @@ export function createContactDirectory(max = DEFAULT_DIRECTORY_MAX): ContactDire
       if (v) incoming[f] = v;
     }
     if (Object.keys(incoming).length === 0) return;
-    touch(names, key, { ...names.get(key), ...incoming }, max);
+    const before = names.get(key);
+    const after = { ...before, ...incoming };
+    touch(names, key, after, max);
+    if (!before || (["pushname", "name", "verifiedName"] as const).some((f) => before[f] !== after[f])) {
+      changed();
+    }
   }
 
   function learnPair(a: string | null | undefined, b: string | null | undefined): void {
@@ -113,8 +142,10 @@ export function createContactDirectory(max = DEFAULT_DIRECTORY_MAX): ContactDire
     const lidKey = legacyJid(lid);
     const phone = phoneFromJid(pn);
     if (!lidKey || !phone) return;
+    const known = lidToPhone.get(lidKey) === phone;
     touch(lidToPhone, lidKey, phone, max);
     touch(phoneToLid, phone, lidKey, max);
+    if (!known) changed();
   }
 
   function counterpart(key: string): string | null {
@@ -171,6 +202,31 @@ export function createContactDirectory(max = DEFAULT_DIRECTORY_MAX): ContactDire
 
     size() {
       return names.size;
+    },
+
+    exportState() {
+      return {
+        names: [...names.entries()].map(([k, v]) => [k, { ...v }] as [string, HarvestedNames]),
+        pairs: [...lidToPhone.entries()],
+      };
+    },
+
+    importState(state) {
+      if (!state || typeof state !== "object") return;
+      const s = state as { names?: unknown; pairs?: unknown };
+      if (Array.isArray(s.pairs)) {
+        for (const row of s.pairs) {
+          if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "string") continue;
+          // Stored as legacy LID + digits; learnPair re-validates both.
+          learnPair(row[0], `${row[1]}@c.us`);
+        }
+      }
+      if (Array.isArray(s.names)) {
+        for (const row of s.names) {
+          if (!Array.isArray(row) || typeof row[0] !== "string" || !row[1] || typeof row[1] !== "object") continue;
+          learnName(row[0], row[1] as HarvestedNames);
+        }
+      }
     },
   };
 }

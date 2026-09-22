@@ -21,6 +21,15 @@
  *
  * Pure strings, no I/O, so the wording is pinned by tests rather than
  * drifting per call site.
+ *
+ * ── Which library is underneath (Baileys migration, Phase 4) ────────
+ * The cause and mitigation above are whatsapp-web.js's: a WhatsApp Web
+ * build out of step with the injected page code, fixed by pinning
+ * `WA_WEB_VERSION`. Under the Baileys driver there is no web build, and
+ * telling an operator to pin one during the shadow run would send them
+ * the wrong way. So `degradedMessage` takes the driver's name and words
+ * the cause and mitigation for that driver. Omitted, or `wwebjs`, the text
+ * is byte-for-byte what it always was.
  */
 
 export type DegradedCapability =
@@ -102,13 +111,43 @@ export function degradedMessage(
   capability: DegradedCapability,
   cause: unknown,
   scope?: string,
+  driverName?: string,
 ): string {
   const info = DEGRADED_CAPABILITIES[capability];
   return (
     `CRITICAL: ${capability} is unavailable${scope ? ` for ${scope}` : ""} — ` +
     `${info.rule} is not working. Consequence: ${info.consequence}. ` +
-    "Cause: whatsapp-web.js's injected page code is out of step with the live WhatsApp Web " +
-    "build. Mitigation: pin a known-good build with WA_WEB_VERSION in ~/matchtime-bot/.env, " +
-    `or upgrade whatsapp-web.js. See MDs/whatsapp-web-version-pinning.md. Error: ${causeText(cause)}`
+    `${driverName === "baileys" ? baileysCause(cause) : WWEBJS_CAUSE} Error: ${causeText(cause)}`
+  );
+}
+
+const WWEBJS_CAUSE =
+  "Cause: whatsapp-web.js's injected page code is out of step with the live WhatsApp Web " +
+  "build. Mitigation: pin a known-good build with WA_WEB_VERSION in ~/matchtime-bot/.env, " +
+  "or upgrade whatsapp-web.js. See MDs/whatsapp-web-version-pinning.md.";
+
+/** The Baileys driver's own refusal, by class name (no import: this module stays pure). */
+function isNotBuiltYet(cause: unknown): boolean {
+  return (
+    !!cause &&
+    typeof cause === "object" &&
+    (cause as { name?: unknown }).name === "BaileysDriverUnsupportedError" &&
+    /not built yet/.test(String((cause as { message?: unknown }).message ?? ""))
+  );
+}
+
+function baileysCause(cause: unknown): string {
+  if (isNotBuiltYet(cause)) {
+    return (
+      "Cause: the Baileys driver does not implement this yet (named in the error below). That is " +
+      "expected until the phase that builds it lands, and is not a fault on the line. " +
+      "See MDs/baileys-migration-plan-2026-09-21.md."
+    );
+  }
+  return (
+    "Cause: under the Baileys driver there is no WhatsApp Web build, so this is the socket: " +
+    "WhatsApp refused the request, it timed out, or the line dropped mid-call. Mitigation: read " +
+    "the [baileys] connection lines just before this one; if the socket is not reconnecting by " +
+    "itself, restart the bot with scripts/deploy-pi.sh. See MDs/baileys-migration-plan-2026-09-21.md."
   );
 }

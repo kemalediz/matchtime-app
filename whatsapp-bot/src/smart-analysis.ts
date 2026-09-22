@@ -1029,7 +1029,7 @@ export async function recoverGroupMessages(
         // registered). When it fails, that gap is silently back open — and it
         // fails on exactly the deploys where it matters most.
         recordDegradedCapability("message-recovery");
-        console.error(degradedMessage("message-recovery", err, gid));
+        console.error(degradedMessage("message-recovery", err, gid, driver.name));
       }
     }
   } finally {

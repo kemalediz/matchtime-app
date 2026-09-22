@@ -11,15 +11,18 @@
  * library" have to be distinguishable. Same rule HomeTenant's
  * `driver-select.ts` follows, for the same reason.
  *
- * `baileys` is deliberately NOT a known value yet. Phase 3 built the
- * Baileys driver's outbound half and Phase 3b its lifecycle, identity and
- * inbound path (`src/drivers/baileys.ts`), so it can now connect, send and
- * hear messages. It still cannot list its groups, sweep a roster, see a
- * join or a leave, or count a MoM vote: that is Phase 4. A bot on it would
- * come up hearing messages and blind to its own groups (and would record
- * `group-enumeration` and `participant-sync` degraded on every open), and
- * blind looks like healthy to everyone but the heartbeat. `createBaileysDriver`
- * is deliberately not imported here until then.
+ * `baileys` is deliberately NOT a known value yet. Phases 3, 3b and 4 have
+ * built the whole Baileys driver (`src/drivers/baileys.ts`): it connects,
+ * sends, hears messages, lists its groups, sweeps rosters, sees joins and
+ * leaves and decrypts poll votes. What it has not done is run against a
+ * real WhatsApp group: the Phase 5 shadow run, on a throwaway number, is
+ * where the offline replay, the LID-to-phone paths, reactions, mentions,
+ * poll votes and participant events are measured for the first time; the
+ * restart replay (`fetchRecentGroupMessages`) waits on that measurement;
+ * and the phone gate (`scripts/measure-group-phones.ts`) has not been run on
+ * Sutton's group. Switching is Kemal's decision after those, not a side
+ * effect of a PR. `createBaileysDriver` is deliberately not imported here
+ * until then.
  */
 import type { WaDriver } from "./driver.js";
 import { createWwebjsDriver } from "./drivers/wwebjs.js";
@@ -34,11 +37,13 @@ export function selectDriver(raw: string | undefined): DriverName {
   if ((DRIVERS as readonly string[]).includes(value)) return value as DriverName;
   if (value === "baileys") {
     throw new Error(
-      "WA_DRIVER=baileys is not available yet. The Baileys driver can connect, send and receive " +
-        "messages (Phases 3 and 3b of MDs/baileys-migration-plan-2026-09-21.md), but it cannot " +
-        "list its groups, sync participants, see joins and leaves or read poll votes until " +
-        "Phase 4 lands, and the offline-replay measurement (Phase 5) has not been taken. Unset " +
-        "WA_DRIVER to run whatsapp-web.js.",
+      "WA_DRIVER=baileys is not available yet. The Baileys driver is built (Phases 3, 3b and 4 of " +
+        "MDs/baileys-migration-plan-2026-09-21.md: connect, send, receive, groups, participants, " +
+        "joins and leaves, poll votes), but nothing in it has run against a real WhatsApp group. " +
+        "Still to do before it may be selected: the Phase 5 shadow run on a throwaway number " +
+        "(offline replay, LID-to-phone resolution, reactions, mentions, poll votes, participant " +
+        "events), the restart replay that measurement decides, and the phone gate " +
+        "(scripts/measure-group-phones.ts) on Sutton's group. Unset WA_DRIVER to run whatsapp-web.js.",
     );
   }
   throw new Error(

@@ -16,7 +16,13 @@
  * It lives beside the code rather than in a `.test.ts` file so several
  * test files can share it; `tsc` checks it like everything else.
  */
-import { generateWAMessage, type AnyMessageContent, type WAMessage } from "baileys";
+import { generateWAMessage, type AnyMessageContent, type GroupMetadata, type WAMessage } from "baileys";
+// Deep import on purpose, as in `jid.test.ts`: the class is not re-exported
+// from the package root, and the fake must validate and store LID-to-phone
+// pairs with Baileys' REAL rules (a bare user part or an `@c.us` phone is
+// silently skipped by `isLidUser` / `isPnUser`, which is the bug class
+// Phase 1 had and 3b fixed).
+import { LIDMappingStore } from "baileys/lib/Signal/lid-mapping.js";
 
 type Listener = (arg: unknown) => void;
 
@@ -39,6 +45,24 @@ export class FakeSocket {
   /** Full LID JID to phone JID, standing in for Baileys' local mapping store. */
   readonly storedPnForLid = new Map<string, string>();
   readonly pnLookups: string[] = [];
+  /** Every batch handed to `storeLIDPNMappings`, as given. */
+  readonly storedPairBatches: Array<Array<{ lid: string; pn: string }>> = [];
+  /** Baileys' real store over an in-memory key store: no socket, no network. */
+  readonly realLidStore = makeRealLidStore();
+
+  // ── groups ─────────────────────────────────────────────────────────
+  /** What `groupMetadata` / `groupFetchAllParticipating` answer from. */
+  groups: Record<string, GroupMetadata> = {};
+  /** When set, both group calls throw it, as a refused IQ would. */
+  groupError: Error | null = null;
+  /**
+   * Whether the `participating` listing drops `phoneNumber`. Baileys marks
+   * that path "TODO: properly parse LID / PN DATA", so the driver must not
+   * depend on it for phones; the default makes a test prove it does not.
+   */
+  participatingOmitsPhones = true;
+  readonly metadataCalls: string[] = [];
+  fetchAllCalls = 0;
 
   readonly ev = {
     on: (event: string, listener: Listener): void => {
@@ -52,10 +76,36 @@ export class FakeSocket {
     lidMapping: {
       getPNForLID: async (lid: string): Promise<string | null> => {
         this.pnLookups.push(lid);
-        return this.storedPnForLid.get(lid) ?? null;
+        return this.storedPnForLid.get(lid) ?? (await this.realLidStore.getPNForLID(lid));
+      },
+      storeLIDPNMappings: async (pairs: Array<{ lid: string; pn: string }>): Promise<void> => {
+        this.storedPairBatches.push(pairs.map((p) => ({ ...p })));
+        await this.realLidStore.storeLIDPNMappings(pairs);
       },
     },
   };
+
+  async groupMetadata(jid: string): Promise<GroupMetadata> {
+    this.metadataCalls.push(jid);
+    if (this.groupError) throw this.groupError;
+    const g = this.groups[jid];
+    if (!g) throw Object.assign(new Error("item-not-found"), { output: { statusCode: 404 } });
+    return structuredClone(g);
+  }
+
+  async groupFetchAllParticipating(): Promise<Record<string, GroupMetadata>> {
+    this.fetchAllCalls++;
+    if (this.groupError) throw this.groupError;
+    const out: Record<string, GroupMetadata> = {};
+    for (const [jid, g] of Object.entries(this.groups)) {
+      const copy = structuredClone(g);
+      if (this.participatingOmitsPhones) {
+        for (const p of copy.participants) delete p.phoneNumber;
+      }
+      out[jid] = copy;
+    }
+    return out;
+  }
 
   emit(event: string, arg: unknown): void {
     for (const l of this.listeners.get(event) ?? []) l(arg);
@@ -111,6 +161,29 @@ export class FakeSocket {
       },
     } as never);
   }
+}
+
+function makeRealLidStore(): LIDMappingStore {
+  const data: Record<string, Record<string, unknown>> = {};
+  const keys = {
+    get: async (type: string, ids: string[]) =>
+      Object.fromEntries(ids.filter((id) => data[type]?.[id]).map((id) => [id, data[type][id]])),
+    set: async (patch: Record<string, Record<string, unknown>>) => {
+      for (const [type, rows] of Object.entries(patch)) data[type] = { ...data[type], ...rows };
+    },
+    transaction: async <T>(fn: () => Promise<T>) => fn(),
+    isInTransaction: () => false,
+  };
+  const quiet = {
+    level: "silent",
+    trace() {},
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    child: () => quiet,
+  };
+  return new LIDMappingStore(keys as never, quiet as never);
 }
 
 /** A scheduler the test drives by hand, so reconnect delays are observable. */

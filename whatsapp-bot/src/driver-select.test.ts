@@ -25,14 +25,18 @@ describe("selectDriver", () => {
   });
 
   it("refuses baileys with the reason, rather than silently running wwebjs", () => {
-    // Phase 3b gave the Baileys driver its lifecycle, identity and inbound
-    // path, but it still cannot list its groups, sweep a roster, see a
-    // join or count a MoM vote (Phase 4). A bot on it would come up
-    // hearing messages and blind to its own groups, and blind looks like
-    // healthy. It stays unselectable until Phase 4 lands.
-    expect(() => selectDriver("baileys")).toThrow(/Phase 4/);
-    expect(() => selectDriver("  Baileys ")).toThrow(/groups/);
-    expect(() => selectDriver("baileys")).not.toThrow(/outbound half only/);
+    // Phase 4 gave the Baileys driver groups, participants, joins, leaves
+    // and poll votes, so it is no longer blind to its own groups. It is
+    // still unselectable: nothing in it has run against a real WhatsApp
+    // group (the Phase 5 shadow run), the restart replay does not exist
+    // yet, and the phone gate has not been measured on Sutton's group.
+    // Making it selectable is Kemal's decision, not a side effect of a PR.
+    expect(() => selectDriver("baileys")).toThrow(/Phase 5/);
+    expect(() => selectDriver("baileys")).toThrow(/shadow run/);
+    expect(() => selectDriver("baileys")).toThrow(/phone gate/);
+    expect(() => selectDriver("  Baileys ")).toThrow(/not available yet/);
+    // It no longer claims groups are missing: they are built.
+    expect(() => selectDriver("baileys")).not.toThrow(/cannot list its groups/);
   });
 
   it("refuses a typo instead of defaulting", () => {

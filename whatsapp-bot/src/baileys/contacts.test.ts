@@ -139,3 +139,45 @@ describe("bounded", () => {
     expect(d.namesFor(undefined as unknown as string)).toEqual({});
   });
 });
+
+// ── Phase 4: harvested names survive a restart ─────────────────────────
+
+describe("persisting the directory", () => {
+  it("exports and re-imports names and LID pairs", () => {
+    const a = createContactDirectory();
+    a.learnFromMessage(
+      { remoteJid: "120363@g.us", participant: "158055467598020@lid", participantAlt: "447700900123@s.whatsapp.net", id: "X" },
+      "Sam",
+    );
+    const b = createContactDirectory();
+    b.importState(JSON.parse(JSON.stringify(a.exportState())));
+    expect(b.namesFor("447700900123@c.us")).toEqual({ pushname: "Sam" });
+    expect(b.phoneForLid("158055467598020@lid")).toBe("447700900123");
+  });
+
+  it("imports a corrupt or hostile state as nothing, without throwing", () => {
+    const d = createContactDirectory();
+    for (const bad of [null, 1, "x", { names: "x" }, { names: [[1, 2]], pairs: [["a"]] }]) {
+      expect(() => d.importState(bad)).not.toThrow();
+    }
+    expect(d.size()).toBe(0);
+    d.importState({ names: [["158055467598020@lid", { pushname: "Sam" }]], pairs: [["158055467598020@lid", "12"]] });
+    // A pair with a phone that is not a phone is refused.
+    expect(d.phoneForLid("158055467598020@lid")).toBeNull();
+  });
+
+  it("reports a change only when something new was learned, so a chatty group does not rewrite the file", () => {
+    let changes = 0;
+    const d = createContactDirectory(undefined, { onChange: () => changes++ });
+    const key = { remoteJid: "447700900123@s.whatsapp.net", id: "X" };
+    d.learnFromMessage(key, "Sam");
+    d.learnFromMessage(key, "Sam");
+    d.learnFromMessage(key, "Sam");
+    expect(changes).toBe(1);
+    d.learnFromMessage(key, "Samuel");
+    expect(changes).toBe(2);
+    d.learnPair("158055467598020@lid", "447700900123@s.whatsapp.net");
+    d.learnPair("158055467598020@lid", "447700900123@s.whatsapp.net");
+    expect(changes).toBe(3);
+  });
+});

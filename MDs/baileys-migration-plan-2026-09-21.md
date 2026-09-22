@@ -767,6 +767,27 @@ signal.
 `storeLIDPNMappings` call on every sweep (§2.7), and the poll decryption path
 (§2.12).
 
+**As built (PR `feat/baileys-groups-polls`), and two corrections to this
+plan found in rc14's source:**
+
+- **§2.12 is wrong about how votes arrive.** rc14's vote decryption in
+  `lib/Utils/process-message.js` is commented out; nothing ever emits
+  `pollUpdates` on `messages.update`. A vote is an ordinary
+  `messages.upsert` carrying an encrypted `pollUpdateMessage`, and we
+  decrypt it (`baileys/polls.ts`) against the poll we sent. Which JIDs the
+  voter's phone signs with (phone or LID) cannot be read from code, so all
+  candidate pairs are tried; GCM authentication makes that safe. Polls are
+  archived on disk so a restart does not cost the votes still to come.
+- **§2.9 point 2 is wrong about names.** `extractGroupMetadata` gives each
+  participant `id`, `phoneNumber`, `lid`, `username` and `admin`, and no
+  `name` or `notify`. Names still come only from `pushName` and
+  `contacts.upsert`; they now persist across restarts.
+- Rosters reach `index.ts` in phone form wherever WhatsApp gave a phone. A
+  roster read younger than 15 minutes is served from a cache kept exact by
+  `group-participants.update`, so a flapping line does not re-read every
+  roster on every reconnect.
+- The pre-cutover phone gate is `whatsapp-bot/scripts/measure-group-phones.ts`.
+
 **Rollback:** as Phase 3.
 
 ### Phase 5: shadow run, on a throwaway number, in a throwaway group
