@@ -10,10 +10,13 @@
  * notions of itself, and message receipt. Phase 4 adds groups, rosters,
  * joins and leaves, poll votes, and the LID-to-phone bridge.
  *
- * It is still NOT reachable. `driver-select.ts` refuses `WA_DRIVER=baileys`
- * until the Phase 5 shadow run has exercised all of this against a real
- * WhatsApp group and Kemal has decided to switch. Nothing here changes
- * what the Pi runs.
+ * It is reachable ONLY in shadow mode. `driver-select.ts` refuses
+ * `WA_DRIVER=baileys` unless `WA_SHADOW=1` is set too, and shadow mode
+ * (`src/shadow.ts`) refuses every send at the driver, so the Phase 5
+ * week on a throwaway number cannot post anywhere. Running Baileys for
+ * real is a deliberate edit to `driver-select.ts` after that week and
+ * after the phone gate, and it is Kemal's decision. Nothing here changes
+ * what the Pi runs today.
  *
  * ── The socket is owned by a connection, and injected ───────────────
  * `baileys/lifecycle.ts` builds, pairs, watches and rebuilds the socket
@@ -91,9 +94,17 @@
  *                    when the first send got out before it threw, post the
  *                    reply twice (the 2026-07-19 flood was 30+ copies).
  *   listDmChats      No Baileys equivalent: there is no chat store (§2.14).
- *   history          The restart replay is Phase 5's call. It throws by
- *                    name, never returns an empty value, and that throw is
- *                    how `degraded.ts` hears about it.
+ *
+ * ── The restart replay (Phase 5) ─────────────────────────────────────
+ * `fetchRecentGroupMessages` no longer refuses. It is served from
+ * `baileys/replay.ts`, a bounded per-chat buffer of what the socket
+ * actually delivered, after a short settle window so it does not race
+ * WhatsApp's own reconnect delivery. That is the version that works IF
+ * the offline replay happens, which is still the plan's open measurement
+ * (§2.15). It reports what it served rather than throwing when it has
+ * nothing, because a CRITICAL line on every quiet restart is how a log
+ * stops being read; the signal is in `stats()` (`historyServed`,
+ * `historyEmpty`, `sinceOpen`) and in the `[baileys][history]` line.
  *
  * ── Groups and the LID-to-phone bridge (Phase 4) ─────────────────────
  * `listGroups` reads `groupFetchAllParticipating`; `groupParticipants` and
@@ -169,6 +180,7 @@ import {
   type InboundKeyLike,
 } from "../baileys/jid.js";
 import { createSeenIds } from "../baileys/dedupe.js";
+import { createReplayBuffer, type ReplayBuffer } from "../baileys/replay.js";
 import { mapInboundMessage, skipReason, toNumber } from "../baileys/inbound.js";
 import { buildInboundView, rawOf, type BaileysInboundView } from "../baileys/inbound-view.js";
 import { mapReaction, type ReactionEvent } from "../baileys/reaction.js";
@@ -249,6 +261,20 @@ export interface BaileysDriverDeps {
   pollArchive?: PollArchive;
   /** Write any pending harvested state to disk. Called on every close. */
   flushState?(): void;
+  /**
+   * The messages the socket delivered, per chat, bounded. What the
+   * restart catch-up (`fetchRecentGroupMessages`) is served from.
+   * Defaults to a fresh buffer.
+   */
+  replay?: ReplayBuffer<InboundMessage>;
+  /**
+   * How long after an open `fetchRecentGroupMessages` waits before
+   * answering, so it does not race WhatsApp's reconnect delivery. See the
+   * member for why this exists at all.
+   */
+  historySettleMs?: number;
+  /** Injected for tests, so no test ever sleeps. Defaults to setTimeout. */
+  wait?(ms: number): Promise<void>;
   now?(): number;
   /** Injected for tests; defaults to a fresh bounded store. */
   store?: SentMessageStore<proto.IMessage>;
@@ -273,6 +299,23 @@ export interface BaileysSendResult {
 export interface BaileysInboundStats {
   /** Messages seen, by upsert type. The Phase 5 measurement reads this. */
   upserts: Record<string, number>;
+  /**
+   * The same tally, CLEARED ON EVERY OPEN.
+   *
+   * This is the §2.15 measurement in a number rather than a log grep:
+   * stop the process, have somebody post, start it, read this. If the
+   * offline messages are replayed at all they land in the seconds after
+   * an open, and this says how many arrived and under which
+   * `messages.upsert` type. An empty record after a reconnect that
+   * followed a busy gap is the answer "WhatsApp replayed nothing".
+   */
+  sinceOpen: Record<string, number>;
+  /** Calls to `fetchRecentGroupMessages`. */
+  historyRequests: number;
+  /** Messages those calls handed back. */
+  historyServed: number;
+  /** Calls that found nothing to hand back. */
+  historyEmpty: number;
   delivered: number;
   skipped: number;
   duplicates: number;
@@ -346,13 +389,29 @@ class NotConnectedError extends Error {
 /** A self-add reported by both `groups.upsert` and a participant add is handed up once. */
 const SELF_JOIN_DEDUPE_MS = 2 * 60 * 1000;
 
-const HISTORY =
-  "Whether the restart replay is needed at all under Baileys is the plan's open measurement " +
-  "(§2.15, the experiment under Phase 3b, run first in Phase 5); build it after that, on " +
-  "fetchMessageHistory if at all.";
+/**
+ * How long after an open the catch-up waits before answering.
+ *
+ * `index.ts` runs `recoverGroupMessages` inside its open handler, which
+ * fires the instant the socket opens. Anything WhatsApp replays arrives
+ * in the seconds AFTER that, so an answer given immediately would report
+ * "nothing to catch up on" every single time, whatever the truth turns
+ * out to be. Ten seconds is long enough for a reconnect burst and short
+ * enough that a deploy does not feel stuck.
+ */
+const HISTORY_SETTLE_MS = 10_000;
 
-function notYet(member: keyof WaDriver, detail: string): never {
-  throw new BaileysDriverUnsupportedError(member, "not-built-yet", detail);
+/** What the `[baileys][history]` line tells the reader to go and check. */
+const HISTORY_OPEN_QUESTION =
+  "whether WhatsApp replays messages sent while the bot was down is the plan's open " +
+  "measurement (§2.15, the experiment under Phase 3b, run FIRST in Phase 5). If this served " +
+  "0 after a restart that spanned real traffic, the replay did not happen and the catch-up " +
+  "has to be rebuilt on sock.fetchMessageHistory";
+
+/** `{notify: 3, append: 1}` as `notify=3 append=1`, or `none`. */
+function describeUpserts(counts: Record<string, number>): string {
+  const parts = Object.entries(counts).map(([k, v]) => `${k}=${v}`);
+  return parts.length ? parts.join(" ") : "none";
 }
 
 function errorText(err: unknown): string {
@@ -369,6 +428,10 @@ type SelfUser = { id?: string | null; lid?: string | null } | null | undefined;
 function emptyStats(): BaileysInboundStats {
   return {
     upserts: {},
+    sinceOpen: {},
+    historyRequests: 0,
+    historyServed: 0,
+    historyEmpty: 0,
     delivered: 0,
     skipped: 0,
     duplicates: 0,
@@ -410,6 +473,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   let epoch = 0;
   const recentSelfJoins = new Map<string, number>();
   let cachedSelfIds: string[] | null = null;
+  const replay = deps.replay ?? createReplayBuffer<InboundMessage>();
+  const settleMs = Math.max(0, deps.historySettleMs ?? HISTORY_SETTLE_MS);
+  const wait = deps.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  /** When this connection last opened, so the settle window can be measured. */
+  let lastOpenAt = now();
 
   function requireConnection(member: keyof WaDriver): BaileysConnection<BaileysSocketLike> {
     if (!conn) {
@@ -693,6 +761,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
   async function receive(m: WAMessage, upsertType: string, requestId?: string): Promise<void> {
     stats.upserts[upsertType] = (stats.upserts[upsertType] ?? 0) + 1;
+    stats.sinceOpen[upsertType] = (stats.sinceOpen[upsertType] ?? 0) + 1;
     const key = m?.key ?? {};
     // Learn first, from every message, including the ones not handed up: a
     // reaction arrives as a message too, and its pushName names a reactor
@@ -746,6 +815,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     }
 
     const view: BaileysInboundView = buildInboundView(m, mapped, { upsertType, senderPhone });
+    // Remembered BEFORE it is handed up, and whatever the upsert type
+    // was: if WhatsApp does replay an offline gap, this is where the
+    // restart catch-up finds it. Keyed on the view's own `from`, which is
+    // the spelling `index.ts` passes back in (baileys/replay.ts).
+    if (mapped.isGroup) replay.remember(view.from, view as InboundMessage);
     stats.delivered++;
     log(
       `${line} group=${mapped.isGroup} fromMe=${mapped.fromMe} ` +
@@ -851,6 +925,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // index.ts adds: every read after this open belongs to the new epoch.
     conn.onOpen(() => {
       epoch++;
+      lastOpenAt = now();
+      // The §2.15 measurement is "what arrived after THIS open", so the
+      // tally starts again here. The process total in `upserts` does not.
+      for (const k of Object.keys(stats.sinceOpen)) delete stats.sinceOpen[k];
     });
     conn.onClose(() => deps.flushState?.());
   }
@@ -1122,8 +1200,58 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     },
 
     // ── History and recovery ─────────────────────────────────────────
-    async fetchRecentGroupMessages() {
-      return notYet("fetchRecentGroupMessages", HISTORY);
+    /**
+     * The restart catch-up, served from what the socket actually
+     * delivered (`baileys/replay.ts`).
+     *
+     * ── This is the version that works IF the replay happens ────────
+     * whatsapp-web.js answered this out of the browser's own message
+     * store. Baileys keeps no store, but it is a real linked device, so
+     * the theory is that WhatsApp buffers an offline gap and delivers it
+     * on reconnect, which would mean the catch-up can simply read what
+     * has already arrived. Nobody has measured that (§2.15), and this
+     * member does not pretend otherwise: it hands back what came in,
+     * says how much that was, and says in the same line what to conclude
+     * if the answer is nothing.
+     *
+     * It does NOT throw when it has nothing. Throwing would record
+     * `message-recovery` degraded on every quiet restart, which on a club
+     * that plays once a week is most of them, and a CRITICAL line that
+     * cries wolf every deploy is how a log stops being read. The honest
+     * signal is the number, and the numbers travel: `historyServed`,
+     * `historyEmpty` and `sinceOpen` are all on `stats()`.
+     *
+     * If the shadow run shows the replay does not happen, the rebuild is
+     * `sock.fetchMessageHistory(count, oldestMsgKey, oldestMsgTimestamp)`,
+     * which in rc14 returns a request id and delivers asynchronously on
+     * `messaging-history.set` with `syncType = ON_DEMAND` and
+     * `peerDataRequestSessionId` set to that id. See Phase 5 in the plan.
+     */
+    async fetchRecentGroupMessages(groupId, limit) {
+      // Wait out the rest of the window after an open before answering,
+      // so this does not race the very delivery it exists to collect.
+      const elapsed = now() - lastOpenAt;
+      const remaining = Math.max(0, settleMs - elapsed);
+      if (remaining > 0) {
+        log(
+          `[baileys][history] ${groupId}: the line opened ${Math.round(elapsed / 1000)}s ago, ` +
+            `waiting ${Math.round(remaining / 1000)}s for anything WhatsApp replays before ` +
+            "answering the catch-up",
+        );
+        await wait(remaining);
+      }
+
+      const held = replay.count(groupId);
+      const out = replay.recent(groupId, limit);
+      stats.historyRequests++;
+      stats.historyServed += out.length;
+      if (out.length === 0) stats.historyEmpty++;
+      log(
+        `[baileys][history] ${groupId}: served ${out.length} of the last ${limit} from the ` +
+          `live buffer (holding ${held}) | since this open: ${describeUpserts(stats.sinceOpen)} | ` +
+          `${HISTORY_OPEN_QUESTION}`,
+      );
+      return out;
     },
 
     async listDmChats() {
@@ -1146,7 +1274,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     },
 
     stats() {
-      return { ...stats, upserts: { ...stats.upserts } };
+      return { ...stats, upserts: { ...stats.upserts }, sinceOpen: { ...stats.sinceOpen } };
     },
   };
 }

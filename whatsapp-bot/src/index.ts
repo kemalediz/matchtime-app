@@ -42,6 +42,7 @@ import {
 import { config } from "./config.js";
 import { resolveWaMessageId } from "./message-id.js";
 import { acquireInstanceLock } from "./instance-lock.js";
+import { resolveShadowMode, shadowBanner, shadowGroup, shadowOpenNotice } from "./shadow.js";
 
 /**
  * Retry an async call a few times with a fixed delay. Used for the ONE
@@ -101,8 +102,17 @@ async function main() {
   // construction, the WhatsApp Web version pin, the QR and the pairing
   // code all moved into src/drivers/wwebjs.ts, in the same order and with
   // the same log lines they had here.
-  const driver = createDriver(process.env);
+  // ── Shadow mode (Phase 5 of the Baileys migration) ─────────────────
+  // Read BEFORE the driver, because it decides what createDriver hands
+  // back: with WA_SHADOW=1 the driver is wrapped so every send refuses,
+  // and everything below that would have acted does not start. Unset, and
+  // nothing here does anything at all.
+  const shadow = resolveShadowMode(process.env);
+  // Async since Phase 5: the Baileys driver is imported only when it is
+  // actually selected, so an unset WA_DRIVER never loads the library.
+  const driver = await createDriver(process.env);
   console.log(`WhatsApp driver: ${driver.name}`);
+  if (shadow.enabled) console.log(shadowBanner(driver.name, shadow));
 
   // ── The Pi's picture of its groups, and how it stays current ──────────
   // Read at `ready`, every few minutes, and the moment a setup completes
@@ -122,7 +132,10 @@ async function main() {
     setMonitoredGroups([...next.orgConfigs.map((o) => o.groupId), ...next.onboardingGroups]);
     setOnboardingGroups(next.onboardingGroups);
     // initScheduler is idempotent: a repeat call only replaces its org list.
-    initScheduler(driver, next.orgConfigs);
+    // Belt and braces in shadow mode: the open handler already returns
+    // before anything calls this, and the scheduler must not start even if
+    // some future path does.
+    if (!shadow.enabled) initScheduler(driver, next.orgConfigs);
     if (diff.changed || reason === "ready") {
       console.log(
         `[org-refresh] (${reason}) ${next.orgConfigs.length} org(s), ${next.onboardingGroups.length} onboarding group(s): ` +
@@ -158,6 +171,38 @@ async function main() {
       // whole injected layer.
       recordDegradedCapability("group-enumeration");
       console.error(degradedMessage("group-enumeration", err, undefined, driver.name));
+    }
+
+    // ── Shadow mode stops here ───────────────────────────────────────
+    // Everything below acts: it starts the scheduler and the flush timer
+    // (and with it the heartbeat, which would pollute the real Pi's health
+    // signal), POSTs a roster to the server and replays messages into the
+    // analyser. A receive-only run wants none of it. Inbound stays fully
+    // wired, which is the whole point of the week.
+    if (shadow.enabled) {
+      console.log(shadowOpenNotice());
+      // The one read a shadow run makes. WA_SHADOW_GROUP names the
+      // throwaway group; this asks the driver what the restart catch-up
+      // WOULD have been handed, and logs it. Nothing is enqueued, POSTed
+      // or sent. It is how §2.15 gets its answer in the shape the real
+      // catch-up sees, not only in the raw inbound lines.
+      const watching = shadowGroup(process.env);
+      if (watching) {
+        try {
+          const seen = await driver.fetchRecentGroupMessages(watching, 50);
+          console.log(
+            `[shadow] the restart catch-up would have been handed ${seen.length} message(s) ` +
+              `for ${watching}. Zero after a restart that spanned real traffic means WhatsApp ` +
+              "replayed nothing; see Phase 5 in MDs/baileys-migration-plan-2026-09-21.md.",
+          );
+        } catch (err) {
+          console.error(
+            `[shadow] the catch-up read for ${watching} failed: ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      return;
     }
 
     try {

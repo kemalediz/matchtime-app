@@ -1,10 +1,40 @@
 import { config } from "./config.js";
 import type { HeartbeatPayload } from "./heartbeat.js";
+import { refuseServerWriteInShadow } from "./shadow.js";
 
 const headers = {
   "Content-Type": "application/json",
   "x-api-key": config.apiKey,
 };
+
+/**
+ * THE ONLY PLACE THIS MODULE TOUCHES THE NETWORK.
+ *
+ * Every call below goes through here so that shadow mode (`shadow.ts`,
+ * Phase 5 of the Baileys migration) can refuse a WRITE in one place
+ * instead of in fourteen. Switching off the scheduler and the flush is not
+ * enough on its own: a reaction, a poll vote, a DM reply and above all a
+ * self-add are forwarded straight from their inbound handlers, and a
+ * shadow number added to a throwaway group would otherwise create a real
+ * onboarding session in the production database.
+ *
+ * A refused write returns a 200 carrying `{"shadowMode":true}`, so every
+ * caller takes its ordinary "the server had nothing to say" path: no
+ * CRITICAL line, no retry, no `introText` to post. Reads (GET) are left
+ * alone, because knowing which orgs exist changes nothing.
+ *
+ * `shadow.source.test.ts` fails if a second `fetch(` appears in this file.
+ */
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && refuseServerWriteInShadow(url, init?.body)) {
+    return new Response('{"shadowMode":true}', {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return fetch(url, init);
+}
 
 export async function postAttendance(
   phoneNumber: string,
@@ -12,7 +42,7 @@ export async function postAttendance(
   groupId: string,
   displayName?: string,
 ) {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/attendance`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/attendance`, {
     method: "POST",
     headers,
     body: JSON.stringify({ phoneNumber, action, groupId, displayName }),
@@ -26,7 +56,7 @@ export async function postScore(params: {
   yellowScore: number;
   groupId: string;
 }) {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/score`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/score`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -41,7 +71,7 @@ export interface EnabledOrgsResponse {
 }
 
 export async function getEnabledOrgs(): Promise<EnabledOrgsResponse> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/orgs`, { headers });
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/orgs`, { headers });
   if (!res.ok) throw new Error(`GET /api/whatsapp/orgs → ${res.status}`);
   return (await res.json()) as EnabledOrgsResponse;
 }
@@ -91,7 +121,7 @@ export async function getDuePosts(groupId: string): Promise<{
   waGroupId: string;
   orgId: string;
 } | null> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${config.apiUrl}/api/whatsapp/due-posts?groupId=${encodeURIComponent(groupId)}`,
     { headers },
   );
@@ -111,7 +141,7 @@ export async function ackInstruction(ack: {
   waMessageId?: string;
   benchUserId?: string;
 }): Promise<void> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/ack`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/ack`, {
     method: "POST",
     headers,
     body: JSON.stringify(ack),
@@ -133,7 +163,7 @@ export async function ackInstruction(ack: {
  * waMessageId, i.e. that were never actually sent.
  */
 export async function releaseInstruction(key: string): Promise<void> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/ack`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/ack`, {
     method: "POST",
     headers,
     body: JSON.stringify({ key, release: true }),
@@ -149,7 +179,7 @@ export async function postDmReply(params: {
   waMessageId: string;
   authorName?: string; // pushname — server uses for @lid fallback
 }): Promise<void> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/dm-reply`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/dm-reply`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -168,7 +198,7 @@ export async function postReaction(params: {
    *  is the expected bench player. Mirrors postPollVote's fallback. */
   fromAuthorName?: string;
 }): Promise<void> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/reaction`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/reaction`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -186,7 +216,7 @@ export async function postPollVote(params: {
   voterName?: string;
   optionName: string | null;
 }): Promise<void> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/poll-vote`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/poll-vote`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -210,7 +240,7 @@ export async function postSyncParticipants(params: {
   restoredMembership?: number;
   total?: number;
 } | null> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/sync-participants`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/sync-participants`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -259,7 +289,7 @@ export async function postBotAdded(params: {
   existing?: boolean;
   introText?: string | null;
 } | null> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/bot-added`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/bot-added`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -280,7 +310,7 @@ export async function postGroupJoin(params: {
   groupId: string;
   phones: string[]; // E.164 without the leading "+"
 }): Promise<void> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/group-join`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/group-join`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -294,7 +324,7 @@ export async function postGroupLeave(params: {
   groupId: string;
   phones: string[];
 }): Promise<void> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/group-leave`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/group-leave`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -371,7 +401,7 @@ export async function postAnalyzeFull(params: {
   messages: AnalyzeInboundMessage[];
   history?: AnalyzeInboundHistory[];
 }): Promise<AnalyzeFullResponse> {
-  const res = await fetch(`${config.apiUrl}/api/whatsapp/analyze`, {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/analyze`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -448,7 +478,7 @@ let heartbeatFailureLogged = false;
 
 export async function postHeartbeat(payload: HeartbeatPayload): Promise<void> {
   try {
-    const res = await fetch(`${config.apiUrl}/api/whatsapp/heartbeat`, {
+    const res = await apiFetch(`${config.apiUrl}/api/whatsapp/heartbeat`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
