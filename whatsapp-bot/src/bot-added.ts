@@ -21,8 +21,7 @@
  * the flow is unit-tested against a fake client whose page calls throw
  * the way the live build does.
  */
-import type { Client } from "whatsapp-web.js";
-import type { GroupSnapshot } from "./group-snapshot.js";
+import type { GroupSnapshot, WaDriver } from "./driver.js";
 
 /** Recipient ids as strings, whatever shape the page handed over. */
 export function normaliseRecipientIds(raw: unknown): string[] {
@@ -46,52 +45,15 @@ export function isSelfAdd(recipientIds: string[], selfIds: string[]): boolean {
 }
 
 /**
- * The bot's own ids: the phone JID from `client.info.wid` and, when the
- * page can say, its LID. Read once per process; both reads are guarded
- * because on a broken build `client.info` can be a throwing getter.
+ * `resolveSelfIds` and its page function MOVED to `src/drivers/wwebjs.ts`
+ * in Phase 2 of the Baileys migration
+ * (`MDs/baileys-migration-plan-2026-09-21.md`), where they are the
+ * driver's `selfIds()`. They were pure whatsapp-web.js: `client.info.wid`
+ * and a `pupPage.evaluate` of `WAWebUserPrefsMeUser`. The RULE they serve,
+ * which is to match the bot by ANY of its ids because groups are
+ * `@lid`-addressed now, is `isSelfAdd` above: it stayed here, where it is
+ * tested.
  */
-let cachedSelfIds: string[] | null = null;
-export async function resolveSelfIds(client: Client): Promise<string[]> {
-  if (cachedSelfIds && cachedSelfIds.length > 0) return cachedSelfIds;
-  const ids = new Set<string>();
-  try {
-    const wid = client.info?.wid?._serialized;
-    if (typeof wid === "string" && wid) ids.add(wid);
-  } catch {
-    /* throwing getter on a broken build */
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const page = (client as any).pupPage as { evaluate: (fn: unknown) => Promise<unknown> } | undefined;
-    if (page) {
-      const res = (await page.evaluate(readMeIdsInPage)) as { pn: string | null; lid: string | null } | null;
-      if (res?.pn) ids.add(res.pn);
-      if (res?.lid) ids.add(res.lid);
-    }
-  } catch {
-    /* the phone JID alone is still a valid match on a pn-addressed group */
-  }
-  cachedSelfIds = [...ids];
-  return cachedSelfIds;
-}
-
-/** Runs in the page. */
-function readMeIdsInPage(): { pn: string | null; lid: string | null } {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = (globalThis as any).window;
-    const me = w.require("WAWebUserPrefsMeUser");
-    const pn = me.getMaybeMePnUser?.();
-    const lid = me.getMaybeMeLidUser?.();
-    return { pn: pn?._serialized ?? null, lid: lid?._serialized ?? null };
-  } catch {
-    return { pn: null, lid: null };
-  }
-}
-
-export function _test_resetSelfIds(): void {
-  cachedSelfIds = null;
-}
 
 // ── The handler ────────────────────────────────────────────────────────
 
@@ -109,14 +71,14 @@ export interface HistoryMessageForServer {
 }
 
 export interface BotAddedDeps {
-  client: Client;
+  driver: WaDriver;
   isMonitoredGroup: (gid: string) => boolean;
   addMonitoredGroup: (gid: string) => void;
   addOnboardingGroup: (gid: string) => void;
-  resolveSelfIds: (client: Client) => Promise<string[]>;
-  readGroupSnapshot: (client: Client, gid: string, selfIds: string[]) => Promise<GroupSnapshot>;
+  resolveSelfIds: () => Promise<string[]>;
+  readGroupSnapshot: (gid: string, selfIds: string[]) => Promise<GroupSnapshot>;
   /** Recent messages, oldest first, already shaped for the server; [] on failure. */
-  fetchHistory: (client: Client, gid: string, selfIds: string[]) => Promise<HistoryMessageForServer[]>;
+  fetchHistory: (gid: string, selfIds: string[]) => Promise<HistoryMessageForServer[]>;
   postBotAdded: (params: {
     groupId: string;
     groupSubject?: string | null;
@@ -149,7 +111,7 @@ export async function handleGroupJoinForSelfAdd(
   if (!gid) return { kind: "not-self-add" };
 
   const recipients = normaliseRecipientIds(notification.recipientIds);
-  const selfIds = await deps.resolveSelfIds(deps.client);
+  const selfIds = await deps.resolveSelfIds();
   // Logged for every join, so the live test can see the comparison even
   // when it fails: the group JID, who was added, and who the bot is.
   log(
@@ -164,7 +126,7 @@ export async function handleGroupJoinForSelfAdd(
   // Subject + participants, without getChatModel.
   let snapshot: GroupSnapshot = { subject: null, participants: [], source: "none", notes: [] };
   try {
-    snapshot = await deps.readGroupSnapshot(deps.client, gid, selfIds);
+    snapshot = await deps.readGroupSnapshot(gid, selfIds);
   } catch (err) {
     snapshot.notes.push(`snapshot threw: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -181,7 +143,7 @@ export async function handleGroupJoinForSelfAdd(
     addedByPhone = author.replace("@c.us", "").replace(/^\+/, "");
   } else if (author?.endsWith("@lid")) {
     try {
-      const contact = await deps.client.getContactById(author);
+      const contact = await deps.driver.getContact(author);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const num = (contact as any)?.number;
       if (typeof num === "string" && num.length > 0) addedByPhone = num.replace(/\D/g, "");
@@ -193,7 +155,7 @@ export async function handleGroupJoinForSelfAdd(
   // Recent history: the language evidence and the enrichment source.
   let history: HistoryMessageForServer[] = [];
   try {
-    history = await deps.fetchHistory(deps.client, gid, selfIds);
+    history = await deps.fetchHistory(gid, selfIds);
   } catch (err) {
     error(`[bot-added] ${gid} history capture failed:`, err);
   }
@@ -228,7 +190,7 @@ export async function handleGroupJoinForSelfAdd(
   deps.addMonitoredGroup(gid);
   deps.addOnboardingGroup(gid);
   try {
-    await deps.client.sendMessage(gid, res.introText);
+    await deps.driver.sendText(gid, res.introText);
     log(
       `[bot-added] intro posted in ${gid} ("${snapshot.subject ?? "?"}", language=${res.language ?? "?"}) — now monitoring`,
     );

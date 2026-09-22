@@ -1,7 +1,5 @@
-import pkg from "whatsapp-web.js";
-import type { Client as WAClient, Message } from "whatsapp-web.js";
-const { Client, LocalAuth } = pkg;
-import qrcode from "qrcode-terminal";
+import type { GroupMembershipEvent, InboundMessage, InboundPollVote } from "./driver.js";
+import { createDriver } from "./driver-select.js";
 import {
   setMonitoredGroups,
   isMonitoredGroup,
@@ -11,8 +9,7 @@ import {
 } from "./handlers.js";
 import { degradedMessage } from "./degraded.js";
 import { asString, readInboundHeadline, readMessageBody, readNotifyName, safePath, safeRead } from "./wa-read.js";
-import { handleGroupJoinForSelfAdd, resolveSelfIds, type HistoryMessageForServer } from "./bot-added.js";
-import { readGroupSnapshot } from "./group-snapshot.js";
+import { handleGroupJoinForSelfAdd, type HistoryMessageForServer } from "./bot-added.js";
 import {
   describeOrgSnapshotDiff,
   diffOrgSnapshot,
@@ -36,7 +33,6 @@ import {
 } from "./api.js";
 import {
   enqueueForAnalysis,
-  fetchRecentGroupMessages,
   recordDegradedCapability,
   recordHistory,
   recoverGroupMessages,
@@ -46,16 +42,6 @@ import {
 import { config } from "./config.js";
 import { resolveWaMessageId } from "./message-id.js";
 import { acquireInstanceLock } from "./instance-lock.js";
-import {
-  resolveWebVersionOptions,
-  describeWebVersionOptions,
-  warnIfPinUnreachable,
-} from "./web-version.js";
-import {
-  resolvePairingOptions,
-  describePairingOptions,
-  formatPairingCodeBanner,
-} from "./pair-phone.js";
 
 /**
  * Retry an async call a few times with a fixed delay. Used for the ONE
@@ -106,58 +92,17 @@ async function main() {
 
   console.log(`API URL: ${config.apiUrl}`);
 
-  // WhatsApp Web version pinning — see src/web-version.ts. Resolves to {}
-  // when the WA_WEB_VERSION* env vars are unset, so the client is built
-  // exactly as before unless someone opts in on the Pi. This is the escape
-  // hatch for the next time WhatsApp ships a frontend change that breaks
-  // whatsapp-web.js's injected code: pin a known-good build in
-  // ~/matchtime-bot/.env and redeploy, no code change needed.
-  const webVersionOptions = resolveWebVersionOptions(process.env);
-  console.log(describeWebVersionOptions(webVersionOptions));
-  // Warn-only: a pin to a build the archive doesn't have is ignored SILENTLY
-  // by whatsapp-web.js, which would look identical to a working pin.
-  // Fire-and-forget so a slow GitHub can't delay startup.
-  void warnIfPinUnreachable(webVersionOptions);
-
-  // Mobile-friendly login — see src/pair-phone.ts. Resolves to {} when
-  // WA_PAIR_PHONE is unset, so the client is built exactly as before and the
-  // QR flow is untouched. When it IS set, whatsapp-web.js asks WhatsApp for
-  // an 8-character pairing code instead, which can be typed into the burner
-  // phone with no second screen — the QR needed a terminal AND the phone,
-  // which repeatedly left the bot logged out and the product dead.
-  //
-  // Note the library treats QR and pairing code as mutually exclusive
-  // (Client.js:161), so no QR is printed while WA_PAIR_PHONE is set. Unset it
-  // and redeploy to get the QR route back.
-  const pairing = resolvePairingOptions(process.env);
-  if (pairing.criticalLog) console.error(pairing.criticalLog);
-  console.log(describePairingOptions(pairing));
-
-  const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-      headless: true,
-      executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    },
-    ...webVersionOptions,
-    ...pairing.clientOptions,
-  });
-
-  // Still registered unconditionally: harmless when pairing is on (the
-  // library simply never emits 'qr' in that mode) and the sole auth path
-  // when it is off.
-  client.on("qr", (qr: string) => {
-    console.log("\nScan this QR code with WhatsApp on the burner phone:\n");
-    qrcode.generate(qr, { small: true });
-  });
-
-  // whatsapp-web.js emits 'code' each time a pairing code is generated —
-  // once immediately and again on every refresh, so a lapsed code is
-  // replaced without anyone touching the Pi.
-  client.on("code", (code: string) => {
-    console.log(formatPairingCodeBanner(code, pairing.intervalMs));
-  });
+  // ── The WhatsApp line ────────────────────────────────────────────────
+  // Everything below this point talks to a `WaDriver` and nothing else
+  // (see src/driver.ts). Which library is underneath is one env var,
+  // WA_DRIVER, defaulting to whatsapp-web.js, so today nothing changes;
+  // Phase 3 of MDs/baileys-migration-plan-2026-09-21.md adds the
+  // Baileys implementation behind the same interface. The client
+  // construction, the WhatsApp Web version pin, the QR and the pairing
+  // code all moved into src/drivers/wwebjs.ts, in the same order and with
+  // the same log lines they had here.
+  const driver = createDriver(process.env);
+  console.log(`WhatsApp driver: ${driver.name}`);
 
   // ── The Pi's picture of its groups, and how it stays current ──────────
   // Read at `ready`, every few minutes, and the moment a setup completes
@@ -177,7 +122,7 @@ async function main() {
     setMonitoredGroups([...next.orgConfigs.map((o) => o.groupId), ...next.onboardingGroups]);
     setOnboardingGroups(next.onboardingGroups);
     // initScheduler is idempotent: a repeat call only replaces its org list.
-    initScheduler(client, next.orgConfigs);
+    initScheduler(driver, next.orgConfigs);
     if (diff.changed || reason === "ready") {
       console.log(
         `[org-refresh] (${reason}) ${next.orgConfigs.length} org(s), ${next.onboardingGroups.length} onboarding group(s): ` +
@@ -190,15 +135,14 @@ async function main() {
     await refreshOrgs(reason);
   });
 
-  client.on("ready", async () => {
+  driver.onOpen(async () => {
     console.log("\nWhatsApp bot is ready!");
 
     try {
-      const chats = await client.getChats();
-      const groups = chats.filter((c) => c.isGroup);
+      const groups = await driver.listGroups();
       console.log(`\n=== Groups this account is a member of (${groups.length}) ===`);
       groups.forEach((g) => {
-        console.log(`  ${g.id._serialized}   "${g.name}"`);
+        console.log(`  ${g.id}   "${g.name}"`);
       });
       console.log(`=== end groups ===\n`);
     } catch (err) {
@@ -238,7 +182,7 @@ async function main() {
       // group is mid-setup), at which point the server-side analyser
       // classifies the batch and the bot executes the returned
       // reacts/replies. The group list is read fresh on every tick.
-      startBatchFlushTimer(client, currentOrgGroupIds);
+      startBatchFlushTimer(driver, currentOrgGroupIds);
 
       // And keep the org picture current without a restart.
       startOrgRefreshTimer();
@@ -250,7 +194,7 @@ async function main() {
       // missed messages reach the LLM. Fixes the gap that lost Ibrahim's
       // "in" during a restart (Kemal 2026-06-06). Fire-and-forget; the
       // re-queued messages get classified by the startup flush above.
-      recoverGroupMessages(client, currentOrgGroupIds()).catch((err) =>
+      recoverGroupMessages(driver, currentOrgGroupIds()).catch((err) =>
         console.error("[recover-group] sweep failed:", err),
       );
 
@@ -262,11 +206,7 @@ async function main() {
       // resolution the moment they message.
       for (const o of orgConfigs) {
         try {
-          const chat = await client.getChatById(o.groupId);
-          // wweb.js types — GroupChat has participants[]; non-group
-          // chats don't.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const participants = (chat as any).participants ?? [];
+          const participants = await driver.groupParticipants(o.groupId);
           // A chat object that resolves but carries no participants is the
           // QUIET version of the same breakage: nothing throws, we POST an
           // empty roster, the server reports "0 added, total=0" and everyone
@@ -288,11 +228,9 @@ async function main() {
             // it still reaches the server on the next heartbeat.
             continue;
           }
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const selfId = client.info?.wid?._serialized;
+          const selfId = driver.selfId();
           const out: Array<{ phone?: string; lidId?: string; pushname?: string }> = [];
-          for (const p of participants as Array<{ id: { _serialized: string } }>) {
-            const id = p.id._serialized;
+          for (const id of participants) {
             if (selfId && id === selfId) continue; // skip the bot itself
             let phone: string | undefined;
             let lidId: string | undefined;
@@ -300,12 +238,12 @@ async function main() {
               phone = id.replace("@c.us", "").replace(/^\+/, "");
             } else if (id.endsWith("@lid")) {
               lidId = id;
-              // wweb.js sometimes resolves the underlying phone via
-              // getContactById; try once, swallow any failure.
+              // The contact record sometimes resolves the underlying phone;
+              // try once, swallow any failure.
               try {
-                const contact = await client.getContactById(id);
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const num = (contact as any).number;
+                const contact = (await driver.getContact(id)) as any;
+                const num = contact.number;
                 if (typeof num === "string" && num.length > 0) phone = num;
               } catch {
                 /* ignore — server falls back to lurker-skipped */
@@ -313,7 +251,8 @@ async function main() {
             }
             let pushname: string | undefined;
             try {
-              const contact = await client.getContactById(id);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const contact = (await driver.getContact(id)) as any;
               pushname = contact.pushname || contact.name || undefined;
             } catch {
               /* non-fatal */
@@ -358,8 +297,7 @@ async function main() {
     if (process.env.BOT_RECOVER_DM_REPLIES === "1") {
       try {
         console.log("[recover] BOT_RECOVER_DM_REPLIES=1 — replaying recent DM replies");
-        const allChats = await client.getChats();
-        const dms = allChats.filter((c) => !c.isGroup);
+        const dms = await driver.listDmChats();
         const cutoffSec = Math.floor(Date.now() / 1000) - 48 * 60 * 60;
         let replayed = 0;
         let skippedNoLast = 0;
@@ -425,7 +363,7 @@ async function main() {
             errored += 1;
             console.error(
               "[recover] chat replay failed for",
-              chat.id?._serialized,
+              chat.id,
               innerErr instanceof Error ? innerErr.message : innerErr,
             );
           }
@@ -449,7 +387,7 @@ async function main() {
   // / noise / unclear. The server executes side effects (attendance,
   // scoring, Elo, replies) and hands back the WhatsApp-side actions
   // (react, reply) for the bot to perform.
-  client.on("message", async (msg) => {
+  driver.onMessage(async (msg) => {
     try {
       // Read EVERY headline field through one total helper.
       //
@@ -499,7 +437,8 @@ async function main() {
             ["audio", "ptt", "image", "video", "sticker", "document"].includes(head.type);
           if (isMediaReply) {
             try {
-              await msg.reply(
+              await driver.replyTo(
+                msg,
                 "Hey 👋 I can only read text replies for the check-in. Could you type a quick word or two?\n\n" +
                   "• \"yes\" / \"I'm in\" — keep me on the roster\n" +
                   "• \"maybe\" / \"depends\"\n" +
@@ -525,11 +464,11 @@ async function main() {
         // Recover the real number (and name) from the contact record.
         if (!phone || !authorName) {
           try {
-            const contact = await msg.getContact();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const contact = (await driver.contactOf(msg)) as any;
             if (!phone) {
               // Contact.number is the real phone even when the JID is @lid.
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const num = (contact as any)?.number;
+              const num = contact?.number;
               if (num && String(num).trim()) {
                 phone = String(num).replace(/[^\d]/g, "");
               }
@@ -583,20 +522,21 @@ async function main() {
       // this, every Amir-group setup attempt got silently dropped.
       if (!isMonitoredGroup(head.from)) {
         const t = effectiveBody.toLowerCase();
-        // Both reads below go through whatsapp-web.js's injected page code and
-        // can THROW on a build mismatch. Unguarded they'd escape to the outer
-        // catch and drop the message entirely, so the setup trigger could
-        // never fire while the library was broken. Degrade to the text regex.
+        // Both reads below go through the driver into whatsapp-web.js's
+        // injected page code and can THROW on a build mismatch. Unguarded
+        // they'd escape to the outer catch and drop the message entirely, so
+        // the setup trigger could never fire while the library was broken.
+        // Degrade to the text regex. (This is the one caller of `selfId()`
+        // that survives the throw; the other three deliberately do not.)
         let selfId: string | undefined;
         try {
-          selfId = client.info?.wid?._serialized; // e.g. "447...@c.us"
+          selfId = driver.selfId(); // e.g. "447...@c.us"
         } catch {
           /* non-fatal — fall back to the literal "match time" regex below */
         }
         let mentionedIds: string[] = [];
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          mentionedIds = ((msg as any).mentionedIds ?? []) as string[];
+          mentionedIds = msg.mentionedIds ?? [];
         } catch {
           /* non-fatal */
         }
@@ -619,7 +559,8 @@ async function main() {
       let authorName: string | undefined = head.notifyName ?? undefined;
       if (!authorName) {
         try {
-          const contact = await msg.getContact();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const contact = (await driver.contactOf(msg)) as any;
           const pn = contact.pushname || contact.name;
           if (pn && pn.trim()) authorName = pn.trim();
         } catch {
@@ -634,7 +575,7 @@ async function main() {
         timestamp: new Date(head.timestampSec * 1000).toISOString(),
       });
 
-      await enqueueForAnalysis(client, msg);
+      await enqueueForAnalysis(driver, msg);
     } catch (err) {
       console.error("message handler failed:", err);
     }
@@ -642,7 +583,7 @@ async function main() {
 
   // Reactions on any tracked message (bench-prompt 👍/👎). Forward to server
   // and let it decide the outcome.
-  client.on("message_reaction", async (reaction) => {
+  driver.onReaction(async (reaction) => {
     try {
       // Total reads — `msgId` is an id object built by the injected page
       // code, so on a broken build it is a throwing getter, not merely
@@ -681,11 +622,12 @@ async function main() {
       const phone = isCus ? fromId.replace("@c.us", "").replace(/^\+/, "") : "";
       let fromAuthorName: string | undefined;
       try {
-        const contact = await client!.getContactById(fromId);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const contact = (await driver.getContact(fromId)) as any;
         fromAuthorName =
           contact?.pushname ||
           contact?.name ||
-          (contact as unknown as { verifiedName?: string })?.verifiedName ||
+          (contact as { verifiedName?: string })?.verifiedName ||
           undefined;
       } catch {
         // best-effort — server falls back to phone match if unavailable
@@ -699,39 +641,33 @@ async function main() {
   // Poll votes — forwarded to the server so MoM polls can merge with app
   // votes. The wweb.js event delivers a PollVote object with the voter
   // and the selected option names.
-  client.on(
-    "vote_update" as Parameters<typeof client.on>[0],
-    async (vote: {
-      parentMessage?: { id?: { _serialized?: string } };
-      voter?: string;
-      selectedOptions?: Array<{ name?: string; localId?: number }>;
-    }) => {
+  driver.onPollVote(async (vote: InboundPollVote) => {
+    try {
+      const waMessageId = vote.parentMessage?.id?._serialized;
+      const voterId = vote.voter;
+      if (!waMessageId || !voterId) return;
+      const phone = voterId.replace("@c.us", "").replace(/^\+/, "");
+      // selectedOptions can be empty (un-vote).
+      const picked = vote.selectedOptions?.[0]?.name ?? null;
+      // Pull the voter's pushname so the server can fuzzy-match as a
+      // fallback when WhatsApp's @lid privacy hides the phone.
+      let voterName: string | undefined;
       try {
-        const waMessageId = vote.parentMessage?.id?._serialized;
-        const voterId = vote.voter;
-        if (!waMessageId || !voterId) return;
-        const phone = voterId.replace("@c.us", "").replace(/^\+/, "");
-        // selectedOptions can be empty (un-vote).
-        const picked = vote.selectedOptions?.[0]?.name ?? null;
-        // Pull the voter's pushname so the server can fuzzy-match as a
-        // fallback when WhatsApp's @lid privacy hides the phone.
-        let voterName: string | undefined;
-        try {
-          const contact = await client!.getContactById(voterId);
-          voterName =
-            contact?.pushname ||
-            contact?.name ||
-            (contact as unknown as { verifiedName?: string })?.verifiedName ||
-            undefined;
-        } catch {
-          // best-effort — server falls back to phone match if unavailable
-        }
-        await postPollVote({ waMessageId, voterPhone: phone, voterName, optionName: picked });
-      } catch (err) {
-        console.error("Error forwarding poll vote:", err);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const contact = (await driver.getContact(voterId)) as any;
+        voterName =
+          contact?.pushname ||
+          contact?.name ||
+          (contact as { verifiedName?: string })?.verifiedName ||
+          undefined;
+      } catch {
+        // best-effort — server falls back to phone match if unavailable
       }
-    },
-  );
+      await postPollVote({ waMessageId, voterPhone: phone, voterName, optionName: picked });
+    } catch (err) {
+      console.error("Error forwarding poll vote:", err);
+    }
+  });
 
   // Group-membership events — someone joined or left a monitored group.
   // We forward the phone numbers (minus `@c.us`, minus any `@lid`
@@ -756,7 +692,6 @@ async function main() {
   // member yet, so this retries a couple of times. Best-effort: any
   // failure returns [] and the intro still goes out.
   async function collectHistoryForServer(
-    waClient: WAClient,
     groupId: string,
     selfIds: string[],
   ): Promise<HistoryMessageForServer[]> {
@@ -766,10 +701,10 @@ async function main() {
     const MIN_USEFUL = 5; // fewer → assume history hasn't synced yet
     const self = new Set(selfIds);
 
-    let raw: Message[] = [];
+    let raw: InboundMessage[] = [];
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       try {
-        raw = await fetchRecentGroupMessages(waClient, groupId, LIMIT);
+        raw = await driver.fetchRecentGroupMessages(groupId, LIMIT);
       } catch (err) {
         raw = [];
         console.warn(
@@ -817,75 +752,69 @@ async function main() {
     return out;
   }
 
-  client.on(
-    "group_join" as Parameters<typeof client.on>[0],
-    async (notification: { chatId?: string; recipientIds?: string[]; author?: string }) => {
-      try {
-        const groupId = notification.chatId;
-        if (!groupId) return;
-        const selfId = client.info?.wid?._serialized;
+  driver.onGroupJoin(async (notification: GroupMembershipEvent) => {
+    try {
+      const groupId = notification.chatId;
+      if (!groupId) return;
+      const selfId = driver.selfId();
 
-        // ── Self-add detection (self-setup) ────────────────────────
-        // The bot itself was just ADDED to a group it isn't monitoring
-        // → tell the server. The server is fully authoritative: the
-        // ONBOARDING_AUTOSTART flag gate and the live-org short-circuit
-        // both live there; the bot only posts the intro (and starts
-        // monitoring + immediate flushing) when the server hands text
-        // back. Identity matching, the snapshot and the history live in
-        // bot-added.ts / group-snapshot.ts (2026-09-17), tested against
-        // a client whose page calls throw like the live build's.
-        const outcome = await handleGroupJoinForSelfAdd(
-          {
-            client,
-            isMonitoredGroup,
-            addMonitoredGroup,
-            addOnboardingGroup,
-            resolveSelfIds,
-            readGroupSnapshot,
-            fetchHistory: collectHistoryForServer,
-            postBotAdded,
-          },
-          notification,
-        );
-        if (outcome.kind !== "not-self-add") return;
+      // ── Self-add detection (self-setup) ────────────────────────
+      // The bot itself was just ADDED to a group it isn't monitoring
+      // → tell the server. The server is fully authoritative: the
+      // ONBOARDING_AUTOSTART flag gate and the live-org short-circuit
+      // both live there; the bot only posts the intro (and starts
+      // monitoring + immediate flushing) when the server hands text
+      // back. Identity matching, the snapshot and the history live in
+      // bot-added.ts / group-snapshot.ts (2026-09-17), tested against
+      // a client whose page calls throw like the live build's.
+      const outcome = await handleGroupJoinForSelfAdd(
+        {
+          driver,
+          isMonitoredGroup,
+          addMonitoredGroup,
+          addOnboardingGroup,
+          resolveSelfIds: () => driver.selfIds(),
+          readGroupSnapshot: (gid, selfIds) => driver.groupSnapshot(gid, selfIds),
+          fetchHistory: collectHistoryForServer,
+          postBotAdded,
+        },
+        notification,
+      );
+      if (outcome.kind !== "not-self-add") return;
 
-        // ── Existing human-join path (byte-identical behaviour) ────
-        if (!isMonitoredGroup(groupId)) return;
-        const phones = extractPhones(
-          Array.isArray(notification.recipientIds)
-            ? (notification.recipientIds as unknown[]).map((r) =>
-                typeof r === "string" ? r : ((r as { _serialized?: string })?._serialized ?? ""),
-              )
-            : undefined,
-          selfId,
-        );
-        if (phones.length === 0) return;
-        console.log(`group_join in ${groupId}: ${phones.join(", ")}`);
-        await postGroupJoin({ groupId, phones });
-      } catch (err) {
-        console.error("Error forwarding group_join:", err);
-      }
-    },
-  );
+      // ── Existing human-join path (byte-identical behaviour) ────
+      if (!isMonitoredGroup(groupId)) return;
+      const phones = extractPhones(
+        Array.isArray(notification.recipientIds)
+          ? (notification.recipientIds as unknown[]).map((r) =>
+              typeof r === "string" ? r : ((r as { _serialized?: string })?._serialized ?? ""),
+            )
+          : undefined,
+        selfId,
+      );
+      if (phones.length === 0) return;
+      console.log(`group_join in ${groupId}: ${phones.join(", ")}`);
+      await postGroupJoin({ groupId, phones });
+    } catch (err) {
+      console.error("Error forwarding group_join:", err);
+    }
+  });
 
-  client.on(
-    "group_leave" as Parameters<typeof client.on>[0],
-    async (notification: { chatId?: string; recipientIds?: string[] }) => {
-      try {
-        const groupId = notification.chatId;
-        if (!groupId || !isMonitoredGroup(groupId)) return;
-        const selfId = client.info?.wid?._serialized;
-        const phones = extractPhones(notification.recipientIds, selfId);
-        if (phones.length === 0) return;
-        console.log(`group_leave in ${groupId}: ${phones.join(", ")}`);
-        await postGroupLeave({ groupId, phones });
-      } catch (err) {
-        console.error("Error forwarding group_leave:", err);
-      }
-    },
-  );
+  driver.onGroupLeave(async (notification: GroupMembershipEvent) => {
+    try {
+      const groupId = notification.chatId;
+      if (!groupId || !isMonitoredGroup(groupId)) return;
+      const selfId = driver.selfId();
+      const phones = extractPhones(notification.recipientIds, selfId);
+      if (phones.length === 0) return;
+      console.log(`group_leave in ${groupId}: ${phones.join(", ")}`);
+      await postGroupLeave({ groupId, phones });
+    } catch (err) {
+      console.error("Error forwarding group_leave:", err);
+    }
+  });
 
-  client.on("disconnected", (reason: string) => {
+  driver.onClose((reason: string) => {
     console.log("Client disconnected:", reason);
     stopScheduler();
     stopBatchFlushTimer();
@@ -897,7 +826,7 @@ async function main() {
     stopScheduler();
     stopBatchFlushTimer();
     stopOrgRefreshTimer();
-    await client.destroy();
+    await driver.close();
     process.exit(0);
   });
 
@@ -905,11 +834,11 @@ async function main() {
     stopScheduler();
     stopBatchFlushTimer();
     stopOrgRefreshTimer();
-    await client.destroy();
+    await driver.close();
     process.exit(0);
   });
 
-  await client.initialize();
+  await driver.start();
 }
 
 main().catch(console.error);

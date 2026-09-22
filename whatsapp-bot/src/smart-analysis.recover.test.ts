@@ -12,7 +12,7 @@
  * against a fake page (`pupPage.evaluate`) and the real enqueue buffer.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Client } from "whatsapp-web.js";
+import { makeWwebjsDriver, type WwebjsClientLike } from "./drivers/wwebjs.js";
 
 vi.mock("./api.js", () => ({
   postAnalyzeFull: vi.fn(),
@@ -30,7 +30,15 @@ const api = await import("./api.js");
 const postAnalyzeFull = api.postAnalyzeFull as unknown as ReturnType<typeof vi.fn>;
 
 const GID = "447525334985-1607872139@g.us";
-const asClient = (c: unknown) => c as unknown as Client;
+/**
+ * `asClient` now wraps the fake in the REAL whatsapp-web.js driver
+ * (Phase 2, MDs/baileys-migration-plan-2026-09-21.md). The fakes and every
+ * assertion below are unchanged: the driver is a pass-through, so a test
+ * that watched `client.sendMessage` still watches `client.sendMessage`.
+ * That is the point: these tests are the proof the refactor changed no
+ * behaviour, and they only prove it while they run through the seam.
+ */
+const asClient = (c: unknown) => makeWwebjsDriver(c as unknown as WwebjsClientLike);
 
 /** What `Chat.fetchMessages` gets back from the page: serialised models. */
 function pageMessage(id: string, body: string, tSec: number, fromMe = false) {

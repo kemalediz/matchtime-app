@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Client } from "whatsapp-web.js";
-import { readGroupSnapshot } from "./group-snapshot.js";
+import { readGroupSnapshot } from "./wwebjs-group-snapshot.js";
 
 const asClient = (c: unknown) => c as unknown as Client;
 const GID = "120363999999999999@g.us";

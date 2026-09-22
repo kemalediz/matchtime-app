@@ -46,7 +46,8 @@
  * 6. On the healthy path this machinery is completely silent.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { Client, Message } from "whatsapp-web.js";
+import type { InboundMessage } from "./driver.js";
+import { makeWwebjsDriver, type WwebjsClientLike } from "./drivers/wwebjs.js";
 
 const postAnalyzeFull = vi.fn();
 
@@ -58,8 +59,16 @@ const { enqueueForAnalysis, _test_flushNow, _test_reset, _test_getInboundStats }
   "./smart-analysis.js"
 );
 
-const asClient = (c: unknown) => c as unknown as Client;
-const asMessage = (m: unknown) => m as unknown as Message;
+/**
+ * `asClient` now wraps the fake in the REAL whatsapp-web.js driver
+ * (Phase 2, MDs/baileys-migration-plan-2026-09-21.md). The fakes and every
+ * assertion below are unchanged: the driver is a pass-through, so a test
+ * that watched `client.sendMessage` still watches `client.sendMessage`.
+ * That is the point: these tests are the proof the refactor changed no
+ * behaviour, and they only prove it while they run through the seam.
+ */
+const asClient = (c: unknown) => makeWwebjsDriver(c as unknown as WwebjsClientLike);
+const asMessage = (m: unknown) => m as unknown as InboundMessage;
 
 const GID = "120363000000007001@g.us";
 

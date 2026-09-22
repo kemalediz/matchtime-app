@@ -47,15 +47,15 @@
  * 5. EVERY failure is named and distinguishable. Nothing in here throws.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { Client } from "whatsapp-web.js";
 import {
   planReaction,
-  reactWithId,
   reactAndReport,
   describeReactionFailure,
   REACTION_FAILURE_REASONS,
+  type ReactionCapableDriver,
   type ReactionFailureReason,
 } from "./react-with-id.js";
+import { makeWwebjsDriver, type WwebjsClientLike } from "./drivers/wwebjs.js";
 
 const REAL_ID = "false_447525334985-1607872139@g.us_3B0B7E9";
 /** The 4-part form `Chat.fetchMessages` hands back for a group message (the recovery walk). */
@@ -63,7 +63,17 @@ const RECOVERED_ID =
   "false_447525334985-1607872139@g.us_AC7E5E8D85C46B15C947935009390D7D_76643825668299@lid";
 const SYNTH_ID = "synthetic:9f2c1ab34d5e6f70";
 
-const asClient = (c: unknown) => c as unknown as Client;
+/**
+ * Phase 2 (MDs/baileys-migration-plan-2026-09-21.md) moved the adapter
+ * (the `pupPage` check, `getMessageById`, `sendReaction` and the `.call(c)`
+ * both of those need) into the whatsapp-web.js driver, where it is
+ * `sendReaction`. It moved without being rewritten, so this spec is
+ * UNCHANGED below: same fake clients, same assertions, now reached through
+ * the seam. `reactWithId` is a two-line shim so that stays visibly true.
+ */
+const asClient = (c: unknown) => makeWwebjsDriver(c as unknown as WwebjsClientLike);
+const reactWithId = (driver: ReactionCapableDriver, messageId: string, emoji: string) =>
+  driver.sendReaction(messageId, emoji);
 
 /**
  * The 1.34.7 page: any hand-rolled evaluate that reaches for `window.Store`
