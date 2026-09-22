@@ -675,6 +675,82 @@ describe("the recent chat never contains the message being extracted", () => {
 });
 
 // ── Turkish (2026-09-16) ───────────────────────────────────────────────
+describe("a replacement is two claims with a direction (2026-09-22)", () => {
+  const attendanceClaim = (over: Record<string, unknown>) => ({
+    subject: "other",
+    personRef: "Mojib",
+    personNamed: true,
+    polarity: "in",
+    contingent: false,
+    conditionOn: "none",
+    tense: "present",
+    basis: "decision",
+    reported: false,
+    replaces: "",
+    confidence: 0.95,
+    ...over,
+  });
+
+  it("asks the model which way the replacement runs, in both languages", () => {
+    const p = EXTRACTOR_PROMPTS.attendance;
+    expect(p).toMatch(/replaces\s+ONLY on an "in" claim/);
+    expect(p).toMatch(/is replacing/i);
+    expect(p).toMatch(/in for/i);
+    expect(p).toMatch(/takes .*place/i);
+    expect(p).toContain("yerine geliyor");
+    expect(p).toContain("yerini aliyor");
+  });
+
+  it("tells it to report NOTHING rather than guess a direction", () => {
+    // The whole safety argument in one sentence: a wrong guess drops a
+    // real player, and silence costs one retyped message.
+    expect(EXTRACTOR_PROMPTS.attendance).toMatch(
+      /CANNOT TELL WHICH OF THE TWO IS ARRIVING[^]*REPORT NO CLAIMS AT ALL/,
+    );
+  });
+
+  it("carries `replaces` through on an arrival", () => {
+    const body = JSON.stringify({
+      claims: [attendanceClaim({ replaces: "Najib" })],
+      affirmation: "none",
+      sideRequests: [],
+    });
+    const { facts, degradations } = parseFacts("attendance", body, "wa-1");
+    expect(degradations).toHaveLength(0);
+    expect((facts as AttendanceFacts).claims[0].replaces).toBe("Najib");
+  });
+
+  it("trims it, and defaults it to empty when the model omits it", () => {
+    const body = JSON.stringify({
+      claims: [attendanceClaim({ replaces: "  Najib  " }), attendanceClaim({ replaces: undefined })],
+      affirmation: "none",
+      sideRequests: [],
+    });
+    const claims = (parseFacts("attendance", body, "wa-1").facts as AttendanceFacts).claims;
+    expect(claims[0].replaces).toBe("Najib");
+    expect(claims[1].replaces).toBe("");
+  });
+
+  it("DROPS it from an out or a bench claim: only an arrival replaces anyone", () => {
+    const body = JSON.stringify({
+      claims: [
+        attendanceClaim({ polarity: "out", personRef: "Najib", replaces: "Mojib" }),
+        attendanceClaim({ polarity: "bench", personRef: "Amir", replaces: "Mojib" }),
+      ],
+      affirmation: "none",
+      sideRequests: [],
+    });
+    const claims = (parseFacts("attendance", body, "wa-1").facts as AttendanceFacts).claims;
+    expect(claims.map((c) => c.replaces)).toEqual(["", ""]);
+  });
+
+  it("is a required field of the schema, so the model always answers it", () => {
+    const claim = (ATTENDANCE_SCHEMA.properties.claims as { items: { properties: Record<string, unknown>; required: readonly string[] } }).items;
+    expect(claim.properties.replaces).toEqual({ type: "string" });
+    expect(claim.required).toContain("replaces");
+  });
+});
+
 describe("the attendance extractor reads Turkish", () => {
   it("says the message may be Turkish and names the claim shapes in it", () => {
     const p = EXTRACTOR_PROMPTS.attendance;

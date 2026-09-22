@@ -210,6 +210,40 @@ describe("the router prompt", () => {
     }
   });
 
+  // ── THE 2026-09-22 REPLACEMENT RULES ──────────────────────────────
+  //
+  // "Hi guys, Mojib is replacing Najib on the list. We can change" went
+  // to `none`. These pin the worked examples that were added for it,
+  // AND the direction of the change: rule 18 and its examples only ever
+  // push a message TOWARDS attendance. That is what makes them safe for
+  // the veto metric (attendance-routed-`none` must stay at 0 over the
+  // 373-message gold corpus) without a live run: nothing was added that
+  // could teach `none`, and no existing example moved.
+  it("teaches every replacement shape as attendance, in both languages", () => {
+    for (const body of [
+      "Hi guys, Mojib is replacing Najib on the list. We can change",
+      "Amir in for Zeeshan",
+      "Najib is out, Mojib is in",
+      "Zair takes Abid's place tonight",
+      "Mojib, Najib'in yerine geliyor",
+      "Najib çıkıyor, Mojib giriyor",
+    ]) {
+      const line = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.trim().startsWith(`"${body}"`));
+      expect(line, body).toBeDefined();
+      expect(line!, body).toMatch(/->\s*other_att\s*$/);
+    }
+  });
+
+  it("states the replacement rule itself, and never as a reason to stay quiet", () => {
+    const rule = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("18."));
+    expect(rule).toBeDefined();
+    expect(rule!).toMatch(/replacing/i);
+    expect(rule!).toMatch(/other_att/);
+    // The one property that protects the veto: this rule cannot send
+    // anything to `none`.
+    expect(rule!).not.toMatch(/\bnone\b/);
+  });
+
   it("demands an output shape this file actually parses", () => {
     // The last line of the prompt is the contract between the model and
     // `parseRouterResponse`. Pull it out, fill it in, and run it through

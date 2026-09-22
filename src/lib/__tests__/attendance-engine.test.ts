@@ -210,6 +210,10 @@ function stubDeps(over: Partial<EngineApplyDeps> = {}): {
         maxPlayers: 14,
       };
     },
+    async transferTeamSlot({ matchId, fromUserId, toUserId }) {
+      calls.push(`transferSlot(${matchId},${fromUserId}->${toUserId})`);
+      return "moved" as const;
+    },
     async cancelAttendance(userId, matchId, event) {
       calls.push(`cancel(${userId},${matchId},cause=${event.cause})`);
       return { status: "DROPPED" as const };
@@ -401,6 +405,80 @@ describe("applyEngineWrites", () => {
 });
 
 // ── the structural guarantee ────────────────────────────────────────
+
+describe("a replacement's team slot (2026-09-22)", () => {
+  const slotWrite = {
+    kind: "inherit_team_slot" as const,
+    fromUserId: "u-najib",
+    fromName: "Najib Ahmadi",
+    toUserId: "u-mojib",
+    toName: "Mojib Sadat",
+    team: "YELLOW" as const,
+    sourceMessageId: "m1",
+    reason: "Mojib Sadat replaces Najib Ahmadi and takes their YELLOW slot",
+  };
+
+  it("moves the slot through the injected transaction, and reports nothing on success", async () => {
+    const { deps, calls } = stubDeps();
+    const res = await applyEngineWrites({
+      matchId: "match-1",
+      writes: [slotWrite],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(calls).toEqual(["transferSlot(match-1,u-najib->u-mojib)"]);
+    // No attendance row moved, so there is no result for the action
+    // label, the intent or the react to read.
+    expect(res).toEqual([]);
+  });
+
+  it("applies it AFTER both attendance writes, in the order the engine emitted them", async () => {
+    const { deps, calls } = stubDeps();
+    await applyEngineWrites({
+      matchId: "match-1",
+      writes: [
+        write({ userId: "u-najib", name: "Najib Ahmadi", status: "DROPPED", sourceMessageId: "m1" }),
+        write({ userId: "u-mojib", name: "Mojib Sadat", status: "CONFIRMED", sourceMessageId: "m1" }),
+        slotWrite,
+      ],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(calls.at(-1)).toBe("transferSlot(match-1,u-najib->u-mojib)");
+  });
+
+  it("never swallows a failure: the group has already been told who is on which side", async () => {
+    const { deps } = stubDeps({
+      async transferTeamSlot() {
+        throw new Error("deadlock");
+      },
+    });
+    const res = await applyEngineWrites({
+      matchId: "match-1",
+      writes: [slotWrite],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(res).toHaveLength(1);
+    expect(res[0].ok).toBe(false);
+    expect(res[0].error).toMatch(/could not move Najib Ahmadi's YELLOW slot to Mojib Sadat.*deadlock/);
+    // Reported as the RECEIVER's row, so the failure reads as a real
+    // attendance failure downstream rather than as an undefined status.
+    expect(res[0].write.status).toBe("CONFIRMED");
+    expect(res[0].write.name).toBe("Mojib Sadat");
+  });
+
+  it("provisions nobody: both ids are already resolved members", async () => {
+    const { deps, calls } = stubDeps();
+    await applyEngineWrites({
+      matchId: "match-1",
+      writes: [slotWrite],
+      actorByMessageId: ACTORS,
+      deps,
+    });
+    expect(calls.some((c) => c.startsWith("provision"))).toBe(false);
+  });
+});
 
 describe("registerAttendance / cancelAttendance stay the only way in", () => {
   const SRC = fs.readFileSync(

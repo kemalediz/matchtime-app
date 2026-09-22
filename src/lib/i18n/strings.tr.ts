@@ -164,6 +164,14 @@ export const tr: Strings = {
     return `${lead}${p.kickoffLabel} için ${p.confirmed} kişiyiz, kadro ${p.maxPlayers} kişilik. ${slots}`;
   },
 
+  // ── row 39b: replacement_applied ─────────────────────────────────
+  //   "yerine geliyor" is the phrase the Turkish extractor examples are
+  //   written around, so the group reads back the words it typed. Same
+  //   rule as the English: the team LABEL, and no "N/M".
+
+  replacement_applied: (p) =>
+    `🔁 *${p.from}* yerine *${p.to}* oynuyor, *${p.teamLabel}* takımındaki yerini alıyor. Takımlarda başka değişiklik yok.`,
+
   // ── row 68: buildAnnounceMatchPost ───────────────────────────────
 
   announce_match: (p) =>

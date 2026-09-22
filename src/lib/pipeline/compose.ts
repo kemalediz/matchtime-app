@@ -521,6 +521,30 @@ export function compose(result: EngineResult): ComposedOutput {
         break;
       }
 
+      case "replacement_applied": {
+        // ── ONE PLAYER TOOK ANOTHER'S PLACE ON THE TEAM SHEET ───────
+        //
+        // Only ever composed when the teams already exist, because the
+        // batch's squad post carries no colours and this is therefore
+        // the only place the group would learn that the sheet changed.
+        // With no sheet the engine emits nothing here at all, because
+        // two posts one line apart is the 2026-06-12 shape S36 exists
+        // to prevent.
+        //
+        // The team LABEL rather than the colour word: this club renames
+        // its sides, and `state.teamLabels` is what every other team
+        // post prints.
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.replacement_applied({
+            to: name(sp.toName),
+            from: name(sp.fromName),
+            teamLabel: sp.team === "RED" ? state.teamLabels[0] : state.teamLabels[1],
+          }),
+        });
+        break;
+      }
+
       case "slot_opened": {
         // ── A COMPLETE SQUAD IS NOT COMPLETE ANY MORE ───────────────
         //

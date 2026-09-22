@@ -429,6 +429,12 @@ function cases(lang: Lang): Case[] {
   add("R39 slot_opened / nobody out (benched), one slot", say(thirteen, { kind: "slot_opened", messageId: MSG, outNames: [] }));
   add("R39 slot_opened / full (says nothing)", say(full, { kind: "slot_opened", messageId: MSG, outNames: ["Wasim Akhtar"] }));
 
+  // Row 39b, NEW copy (2026-09-22): a replacement took a place on the
+  // team sheet. Additive (no existing case changes), and only ever
+  // composed when the teams exist, which is what `teams` is here.
+  add("R39b replacement_applied / yellow", say(teams, { kind: "replacement_applied", messageId: MSG, toName: "Mojib Sadat", fromName: "Najib Ahmadi", team: "YELLOW" }));
+  add("R39b replacement_applied / red", say(teams, { kind: "replacement_applied", messageId: MSG, toName: "Mojib Sadat", fromName: "Najib Ahmadi", team: "RED" }));
+
   add("R40 needs_tag_for_rest / out only", say(short, { kind: "needs_tag_for_rest", messageId: MSG, entries: [{ name: "Abid Hussain", action: "OUT" }] }));
   add("R40 needs_tag_for_rest / bench only", say(short, { kind: "needs_tag_for_rest", messageId: MSG, entries: [{ name: "Abid Hussain", action: "BENCH" }, { name: "Idris Bello", action: "BENCH" }] }));
   add("R40 needs_tag_for_rest / both", say(short, { kind: "needs_tag_for_rest", messageId: MSG, entries: [{ name: "Abid Hussain", action: "OUT" }, { name: "Idris Bello", action: "BENCH" }] }));

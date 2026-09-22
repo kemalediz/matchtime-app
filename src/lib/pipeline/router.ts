@@ -186,6 +186,44 @@ import type { Degradation, Route, RoutedMessage } from "./types";
  * Twelve more example lines had displaced a two-word shape the block
  * never showed. Rule 5's second sentence and the "Baki OUT" example
  * are what closed it; the sweep was re-run before it shipped.
+ *
+ * ── REPLACEMENTS, 2026-09-22 ─────────────────────────────────────────
+ *
+ * Rule 18 and six worked examples (four English, two Turkish), added
+ * for the incident that night: at 28 minutes to kickoff a player posted
+ *
+ *   "Hi guys, Mojib is replacing Najib on the list. We can change"
+ *
+ * untagged, and this router sent it to `none`. Mojib played, Najib did
+ * not, the team sheet named Najib, and the fee was about to be charged
+ * to him. Rule 0 already covers the sentence in principle, since it
+ * plainly states a place for two people, but a greeting in front and an
+ * afterthought behind read as chat, and no worked example showed the
+ * shape. Now four do.
+ *
+ * THE VETO, AND HOW IT IS ARGUED WITHOUT A LIVE RUN. The metric with the
+ * veto is attendance-routed-`none` over the 373-message gold corpus,
+ * which must stay at 0. Everything added here is ONE-DIRECTIONAL: rule
+ * 18 says a shape IS attendance, its six examples all teach `other_att`,
+ * and no existing rule or example was touched. Nothing was added that
+ * could teach `none`, so the count of attendance messages sent to `none`
+ * cannot rise from these lines. `__tests__/router.test.ts` pins both
+ * halves of that (every new example routes `other_att`, and rule 18
+ * does not contain the word `none`), so the argument is a test rather
+ * than a paragraph.
+ *
+ * WHAT IS NOT ARGUED, said out loud: banter-escaping-`none` can only get
+ * WORSE from a rule that pushes towards attendance, and by how much is
+ * NOT measured here, because the repo-root `.env` carried no development
+ * API key and every harness refuses without one. The direction
+ * is the cheap one (an extra extractor call costs ~$0.002, a lost
+ * attendance message costs a player his place), but re-run the three
+ * sweeps on the next change that has a key.
+ *
+ * +1,157 characters / ~290 tokens on `claude-haiku-4-5` by the
+ * estimator, taking the prompt to 12,412 characters. Still a long way
+ * under the 4,096-token cacheable minimum, so still paid on every call:
+ * roughly +$0.0003 a batch, +$0.11 a month at the peak month above.
  */
 export const ROUTER_SYSTEM_PROMPT = `You classify WhatsApp messages from a football club group. For EVERY message id you are given, return exactly one route.
 
@@ -221,6 +259,7 @@ Rules:
 15. AN INSTRUCTION TO AN ADMIN OR TO ANOTHER MEMBER TO ADD OR DROP SOMEBODY IS ATTENDANCE, NOT none. Rule 11 is about members ASKING each other things that settle nothing. "@Kemal please put Amir in as the 14th", "@Youssef can you take me off the list", "@Kemal switch it to 7 a side and include Amir" all SETTLE a place, so they are other_att (or self_att about the sender) even when they also ask for a setting to be changed. Where one message carries both a setting change and a place, the place wins.
 16. score IS THE RESULT OF THIS GROUP'S OWN MATCH. A scoreline about a professional or international fixture somebody is watching — "Arsenal 2 Spurs 1", "Brazil 1 France 1" — is football chat and is none. Our own results are reported with our team names, our colours or a bare scoreline ("5-3 to Yellows", "10-10").
 17. MESSAGES MAY BE IN ENGLISH OR TURKISH. Route on meaning, and every rule above applies in both. A bare Turkish "var", "varım", "ben varım" or "geliyorum" is the sender joining, exactly like a bare "in"; a bare "yok", "yokum", "ben yokum" or "gelemiyorum" is the sender leaving, exactly like a bare "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are a tentative commitment: offer. "X de geliyor" / "X de var" adds X and "X gelemiyor" / "X yok" drops X: other_att.
+18. A REPLACEMENT IS AN ATTENDANCE STATEMENT ABOUT TWO PEOPLE, AND IT IS other_att. "X is replacing Y", "X replaces Y", "X in for Y", "Y is out, X is in", "X takes Y's place", "swap Y for X" each put one more person in this squad and take one out. Chatter wrapped around it changes nothing: a greeting in front, an afterthought behind, a question mark, not one of those makes the sentence banter. The same in Turkish: "X, Y'nin yerine geliyor", "Y yerine X", "X, Y'nin yerini aliyor", "Y cikiyor X giriyor".
 
 Worked examples from this group. Copy the reasoning, not the wording.
 
@@ -271,6 +310,10 @@ Worked examples from this group. Copy the reasoning, not the wording.
   "@Kemal can you switch it to 7 a side and put Amir in as the 14th" -> other_att
   "Arsenal 2 Spurs 1"                                         -> none
   "Baki OUT"                                                  -> other_att
+  "Hi guys, Mojib is replacing Najib on the list. We can change" -> other_att
+  "Amir in for Zeeshan"                                       -> other_att
+  "Najib is out, Mojib is in"                                 -> other_att
+  "Zair takes Abid's place tonight"                           -> other_att
 
 The same in Turkish:
 
@@ -285,6 +328,8 @@ The same in Turkish:
   "Mehmet gelemiyor"                                          -> other_att
   "kaç kişiyiz?"                                              -> question
   "@Match Time istatistiklerim"                               -> question
+  "Mojib, Najib'in yerine geliyor"                            -> other_att
+  "Najib çıkıyor, Mojib giriyor"                              -> other_att
   "hadi be ya 😂😂"                                           -> none
   "dünkü maç efsaneydi"                                       -> none
 

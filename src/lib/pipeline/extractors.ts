@@ -111,6 +111,7 @@ For each attendance claim in the message, return:
                When a message carries BOTH, the place verb wins: "I'm free Tuesday, put me down" is a decision.
                Naming a day settles nothing either way: "I'm in for next Tuesday" names a day and is a decision; "I will be back Tuesday week" names a day and is not.
   reported     true when relaying what someone else said ("Najib said he's in")
+  replaces     ONLY on an "in" claim, and only when the message SAYS this person is taking somebody else's place: the words used for that other person, VERBATIM ("Najib", "@Najib", "me"). "" everywhere else
   confidence   0 to 1
 
 Also return:
@@ -132,6 +133,15 @@ The message may be in ENGLISH or TURKISH. Report the same facts either way. The 
   "Mehmet gelemiyor" (Mehmet can't come)                            -> other, personRef "Mehmet", out
 
 "+1", "+2" or "plus one", on its own or after a sender's own claim, is a GUEST the sender is bringing, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, polarity in. "ben de" is the sender; "+1" is not.
+
+A REPLACEMENT IS TWO CLAIMS, AND WHICH WAY ROUND IT RUNS IS THE POINT. "Mojib is replacing Najib", "Mojib replaces Najib", "Mojib in for Najib", "Najib is out, Mojib is in", "Mojib takes Najib's place", "swap Najib for Mojib" all say ONE person arrives and ONE leaves. Report BOTH: an "in" claim for the arriving person and an "out" claim for the leaving one, and set replaces on the "in" claim to the leaving person's words. Chatter around it changes nothing: "Hi guys, Mojib is replacing Najib on the list. We can change" is still exactly those two claims.
+Set replaces ONLY for a stated replacement. Two separate statements in one message ("Ali is coming, Mehmet can't make it") are two ordinary claims and replaces is "" on both: nobody said one was taking the other's place.
+IF YOU CANNOT TELL WHICH OF THE TWO IS ARRIVING AND WHICH IS LEAVING, REPORT NO CLAIMS AT ALL. Never guess a direction. A wrong guess takes a real player out of a real squad, and saying nothing costs one message somebody can retype.
+The Turkish shapes, and which way each runs:
+  "Mojib, Najib'in yerine geliyor" / "Najib yerine Mojib"            -> Mojib in (replaces "Najib"), Najib out
+  "Mojib, Najib'in yerini aliyor"                                     -> Mojib in (replaces "Najib"), Najib out
+  "Najib cikiyor, Mojib giriyor" / "Najib yok, Mojib var"             -> Mojib in (replaces "Najib"), Najib out
+  "benim yerime Mojib oynayacak" (Mojib will play in my place)        -> Mojib in (replaces "me"), the sender out
 
 A bare hedge is a claim, not silence. "maybe", "50/50", "not sure yet", "I'll see", and in Turkish "belki", "bakarız", "kesin değil", "bakacağım" all say the SENDER might play and has not decided: report subject sender, polarity in, contingent TRUE, conditionOn "self", basis decision, tense future. That shape is what gets the person asked again nearer the match; an empty claims array for a hedge is a maybe nobody ever follows up.
 
@@ -248,6 +258,10 @@ export const ATTENDANCE_SCHEMA = {
           tense: { type: "string", enum: ["present", "future", "past", "hypothetical"] },
           basis: { type: "string", enum: ["decision", "availability"] },
           reported: { type: "boolean" },
+          // "" rather than a nullable string, the same convention
+          // `affirmation` and `statedCount` already use here: the API
+          // rejects a nullable type outright, at request time.
+          replaces: { type: "string" },
           confidence: { type: "number" },
         },
         required: [
@@ -260,6 +274,7 @@ export const ATTENDANCE_SCHEMA = {
           "tense",
           "basis",
           "reported",
+          "replaces",
           "confidence",
         ],
         additionalProperties: false,
@@ -488,6 +503,13 @@ export function parseFacts(
           tense,
           basis,
           reported: bool(r.reported),
+          // Only ever meaningful on an arrival. A `replaces` on an out
+          // or a bench claim is model drift and is dropped here rather
+          // than travelling on to be misread: `replacement.ts` reads it
+          // only from an `in` claim, and this keeps the FACTS honest for
+          // everything else that reads a claim (the `none`-bucket
+          // shadow, the dry run, the operator log).
+          replaces: polarity === "in" ? str(r.replaces).trim() : "",
           confidence: clamp01(r.confidence),
         });
       }

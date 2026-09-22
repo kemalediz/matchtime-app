@@ -153,6 +153,18 @@ export const en = {
     return `${lead} ${p.confirmed} of ${p.maxPlayers} for ${p.kickoffLabel}. ${slots}`;
   },
 
+  // ── row 39b: replacement_applied (compose.ts) ────────────────────
+  //   NEW copy, 2026-09-22, for the "Mojib is replacing Najib" incident.
+  //   Composed ONLY when a team sheet exists, so it says the one thing
+  //   the batch's squad post cannot: which side the arriving player is
+  //   on. It names the team LABEL, not the colour, because this club
+  //   renames its sides. No "N/M" anywhere near it: an "N/M" beside
+  //   squad vocabulary is what `displaysSquadState` replaces with the
+  //   whole roster, which would delete this line (see `slot_opened`).
+
+  replacement_applied: (p: { to: string; from: string; teamLabel: string }): string =>
+    `🔁 *${p.to}* is in for *${p.from}* and takes their place on *${p.teamLabel}*. Teams are otherwise unchanged.`,
+
   // ── row 68: buildAnnounceMatchPost (scheduler-copy.ts) ───────────
 
   announce_match: (p: { activityName: string; dateLabel: string; venue: string; maxPlayers: number }): string =>

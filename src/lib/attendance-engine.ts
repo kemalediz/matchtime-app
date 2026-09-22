@@ -202,6 +202,22 @@ export interface EngineApplyDeps {
    *  provisioning policy (`resolveOrProvisionByName`) and this module
    *  must not grow a second one. */
   resolveOrProvision: (name: string) => Promise<{ userId: string } | null>;
+  /**
+   * MOVE ONE `TeamAssignment` ROW from the player who left to the player
+   * who replaced him (2026-09-22). Returns whether there was a row to
+   * move.
+   *
+   * Injected for the same reason `resolveOrProvision` is: this module
+   * decides nothing and reaches nothing, and the delete-plus-upsert
+   * transaction already exists twice (`bench-confirmation.ts`,
+   * `analyze/route.ts`'s slot transfer). The caller passes the one it
+   * already owns rather than a third copy being written here.
+   */
+  transferTeamSlot: (args: {
+    matchId: string;
+    fromUserId: string;
+    toUserId: string;
+  }) => Promise<"moved" | "no-slot">;
 }
 
 export interface EngineWriteResult {
@@ -229,6 +245,61 @@ export async function applyEngineWrites(args: {
     // Bench-offer bookkeeping belongs to `attendance.ts` (see the
     // header). Proposals are recorded by the dry run and ignored here.
     if (w.kind === "open_bench_offer" || w.kind === "resolve_bench_offer") continue;
+
+    // ── THE REPLACEMENT'S TEAM SLOT ────────────────────────────────
+    //
+    // The engine emits this only after BOTH attendance writes, and the
+    // loop is in order, so by the time it lands the donor is DROPPED
+    // and the receiver is CONFIRMED. Both ids are resolved members (the
+    // pairing refuses anything else), so nothing is provisioned here.
+    //
+    // A FAILURE IS REPORTED, NEVER SWALLOWED. The attendance half has
+    // already landed, so the squad is right either way; what a silent
+    // catch would hide is a team sheet still naming a man who is not
+    // coming, which is the incident this whole change is about.
+    if (w.kind === "inherit_team_slot") {
+      try {
+        await deps.transferTeamSlot({
+          matchId,
+          fromUserId: w.fromUserId,
+          toUserId: w.toUserId,
+        });
+        // Nothing to report on success, for the same reason the bench
+        // offers report nothing: no attendance row moved, so there is
+        // no row for `intentFor`, `analyzedActionFor` or the react to
+        // read. The squad is already right and the composer has already
+        // said who is on which side.
+      } catch (err) {
+        // NEVER SWALLOWED (the 9f19040 rule). The composer has ALREADY
+        // told the group that this player takes that side, so a caught
+        // exception here would leave a cheerful line standing over a
+        // team sheet that still names a man who is not coming, which
+        // is the 2026-09-22 incident rebuilt inside the fix for it.
+        //
+        // Reported as a failure about the RECEIVER's row, which is what
+        // it is: his attendance landed, his place on the sheet did not.
+        // `attendance-write-outcome.ts` replaces the reply with the
+        // truth from here.
+        out.push({
+          write: {
+            kind: "attendance",
+            userId: w.toUserId,
+            name: w.toName,
+            status: "CONFIRMED",
+            explicitBench: false,
+            promote: false,
+            sourceMessageId: w.sourceMessageId,
+            reason: w.reason,
+          },
+          userId: w.toUserId,
+          ok: false,
+          error: `could not move ${w.fromName}'s ${w.team} slot to ${w.toName}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        });
+      }
+      continue;
+    }
 
     if (w.kind !== "attendance") {
       // Unreachable: the engine only produces these from `question`,

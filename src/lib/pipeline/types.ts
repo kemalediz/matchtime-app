@@ -190,6 +190,26 @@ export interface Claim {
   /** Relaying what someone else said ("Najib said he's in"). */
   reported: boolean;
   confidence: number;
+  /**
+   * WHO THIS ARRIVING PLAYER IS TAKING THE PLACE OF, verbatim, when the
+   * message says so ("Mojib is replacing Najib" -> "Najib" on Mojib's
+   * `in` claim). Empty or absent everywhere else, which is almost
+   * everywhere.
+   *
+   * A FACT ABOUT THE SENTENCE, like every other field here: it says the
+   * message stated a direction, and nothing about what should happen.
+   * It is the ONLY signal `pipeline/replacement.ts` will read a
+   * replacement from, because one `in` beside one `out` is never
+   * enough, or "Ali is coming, Mehmet can't make it" would start moving
+   * slots around. It can never on its own remove anybody, because the
+   * pairing also insists on a real `out` claim about the same person.
+   *
+   * OPTIONAL IN TYPESCRIPT, REQUIRED IN THE SCHEMA. The extractor always
+   * returns it and `parseFacts` always sets it; the `?` is so the 144
+   * claim literals in the test suites and the older callers that never
+   * heard of it keep meaning what they meant.
+   */
+  replaces?: string;
 }
 
 /** Something the message ALSO asks for, alongside its claims. A message
@@ -698,6 +718,44 @@ export type ProposedWrite =
     }
   | {
       /**
+       * ONE `TeamAssignment` ROW MOVES FROM THE PLAYER WHO LEFT TO THE
+       * PLAYER WHO REPLACED HIM (2026-09-22).
+       *
+       * The team-sheet half of a stated replacement. The attendance
+       * writes beside it have already dropped one and confirmed the
+       * other; this carries the colour across so the sheet names the man
+       * who is actually going to be standing there.
+       *
+       * IT IS THE SAME MOVE `bench-confirmation.ts` HAS MADE SINCE THE
+       * BENCH REDESIGN (delete the donor's row, upsert the receiver's,
+       * in one transaction so the sheet is never briefly a player short
+       * nor briefly holding two people in one seat), and the same one
+       * `team-slot-swap.ts` calls `slot-transfer`. A THIRD copy of that
+       * transaction is not written; the apply layer takes this write to
+       * the same place.
+       *
+       * NO BALANCER. Not one branch here proposes regenerating, for the
+       * reason `team-slot-swap.ts` gives at length: re-running the
+       * balancer over a hand-made line-up on match night is the
+       * 2026-06-18 incident (`c408649`).
+       *
+       * Emitted ONLY when the donor actually held a slot and the
+       * receiver actually landed CONFIRMED. Both user ids are resolved
+       * members, because `pipeline/replacement.ts` refuses a pairing
+       * where either side is not, so a provisional `new:` id can never
+       * appear here and a ghost can never inherit a place on the sheet.
+       */
+      kind: "inherit_team_slot";
+      fromUserId: string;
+      fromName: string;
+      toUserId: string;
+      toName: string;
+      team: "RED" | "YELLOW";
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
        * RUN THE BALANCER AND POST THE LINE-UPS — §10 step 8's carve-out
        * for the club's most-used command. 23 occurrences in 120 days on
        * Sutton FC, more than every question shape combined, so deleting
@@ -904,6 +962,25 @@ export type SpeechIntent =
    *  resolved label out loud for exactly that reason. */
   | { kind: "reminder_ack"; messageId: string; phrase: string; whenLabel: string | null }
   | { kind: "bench_offer_open"; messageId: string; replacingName: string }
+  /**
+   * A REPLACEMENT TOOK OVER A SLOT ON THE TEAM SHEET (2026-09-22).
+   *
+   * Emitted ONLY beside an `inherit_team_slot` write, which means only
+   * when the teams already exist. With no team sheet the batch's squad
+   * post says everything there is to say and this stays silent: two
+   * posts one line apart is the 2026-06-12 Sutton Lads shape that S36
+   * exists to prevent. With a sheet it is NEW information, because the
+   * squad post carries no colours, so it earns the line it costs.
+   *
+   * Names are RESOLVED ROSTER NAMES, never a string a model produced.
+   */
+  | {
+      kind: "replacement_applied";
+      messageId: string;
+      toName: string;
+      fromName: string;
+      team: "RED" | "YELLOW";
+    }
   /**
    * A COMPLETE SQUAD IS NOT COMPLETE ANY MORE, and there is no bench to
    * absorb it (2026-09-15). One post per batch however many rows moved.

@@ -68,6 +68,7 @@ const SAMPLES: SampleArgs = {
   match_day_chase_fallback: { need: 3, activityName: "Tuesday 7-a-side" },
   bench_offer_open: { benchNames: ["Erdal Ozkan", "Amir Ahmadi"] },
   slot_opened: { outFirstNames: ["Wasim"], confirmed: 13, maxPlayers: 14, kickoffLabel: "Tue 21:30", open: 1 },
+  replacement_applied: { to: "Mojib", from: "Najib", teamLabel: "Yellow" },
   announce_match: { activityName: "Tuesday 7-a-side", dateLabel: "Tuesday 8 September at 21:30", venue: "Goals North Cheam", maxPlayers: 14 },
   roster_confirmed_header: { confirmed: 11, maxPlayers: 14 },
   roster_nobody_yet: null,

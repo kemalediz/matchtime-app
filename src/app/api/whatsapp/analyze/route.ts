@@ -1701,6 +1701,31 @@ async function handleAnalyzeRequest(request: Request) {
             registerAttendance,
             cancelAttendance,
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
+            // ── A REPLACEMENT'S TEAM SLOT (2026-09-22) ─────────────
+            //
+            // The SAME delete-plus-upsert transaction as
+            // `bench-confirmation.ts` and as the slot transfer in
+            // `handleTeamSwapIfApplicable` below: atomic, so the sheet
+            // is never briefly a player short nor briefly holding two
+            // people in one seat. `pipeline/engine.ts` decides whether
+            // to ask for it; this only does it.
+            transferTeamSlot: async ({ matchId, fromUserId, toUserId }) => {
+              const donor = await db.teamAssignment.findUnique({
+                where: { matchId_userId: { matchId, userId: fromUserId } },
+              });
+              if (!donor) return "no-slot";
+              await db.$transaction([
+                db.teamAssignment.delete({
+                  where: { matchId_userId: { matchId, userId: fromUserId } },
+                }),
+                db.teamAssignment.upsert({
+                  where: { matchId_userId: { matchId, userId: toUserId } },
+                  create: { matchId, userId: toUserId, team: donor.team },
+                  update: { team: donor.team },
+                }),
+              ]);
+              return "moved";
+            },
             openBenchPromptUserIds: async (matchId) =>
               (
                 await db.pendingBenchConfirmation.findMany({
