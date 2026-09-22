@@ -73,11 +73,12 @@
  * to internals the library had moved on from.
  *
  * ── Shape of the module ──────────────────────────────────────────────
- * The DECISION logic (`planReaction`) is pure. `reactWithId` is the thin,
- * total adapter over the two library calls, and every way it can fail is
- * a named reason. Nothing here ever throws.
+ * The DECISION logic (`planReaction`) is pure, and every way a reaction
+ * can fail is a named reason. The thin, total adapter over the two
+ * library calls now lives in `src/drivers/wwebjs.ts` as the driver's
+ * `sendReaction`; see the note where it used to be. Nothing here ever
+ * throws.
  */
-import type { Client } from "whatsapp-web.js";
 import { isSyntheticWaMessageId } from "./message-id.js";
 
 // ─── Vocabulary ─────────────────────────────────────────────────────
@@ -176,70 +177,30 @@ export function describeReactionFailure(reason: ReactionFailureReason): string {
   }
 }
 
-// ─── The adapter ────────────────────────────────────────────────────
-
-/** The two library methods this module relies on, and the page they need. */
-type ReactionClient = {
-  pupPage?: unknown;
-  getMessageById?: (messageId: string) => Promise<unknown>;
-  sendReaction?: (messageId: string, reaction: string) => Promise<unknown>;
-};
+// ─── The adapter, and where it went ─────────────────────────────────
 
 /**
- * Place `emoji` on the message with `messageId`, through the library's own
- * `getMessageById` + `sendReaction`, handing OUR id to both.
+ * `reactWithId` MOVED to `src/drivers/wwebjs.ts` in Phase 2 of the
+ * Baileys migration (`MDs/baileys-migration-plan-2026-09-21.md`).
  *
- * Deliberately does NOT go through `Message.react()`: that re-reads
- * `this.id._serialized`, the read that went unreadable in August, and its
- * page code then resolves without doing anything. And `sendReaction` is
- * never fired for an id the lookup could not find, because it too resolves
- * silently in that case — the exact fake success this module exists to
- * eliminate. A named failure beats a fake success every time.
+ * It was the one function in this module that touched the library: the
+ * `client.pupPage` presence check, `client.getMessageById`,
+ * `client.sendReaction` and the `.call(c)` that both of them need because
+ * they read `this.pupPage`. All of that is whatsapp-web.js, none of it is
+ * a MatchTime decision, and it is exactly what Baileys replaces with a
+ * single `sock.sendMessage(jid, { react })`. It is now the driver's
+ * `sendReaction`, unchanged line for line, and the failure reasons below
+ * are still the vocabulary it answers in.
  *
- * Never throws.
+ * What stayed here is the part that is ours: WHEN to react
+ * (`planReaction`), what each failure MEANS to an operator
+ * (`describeReactionFailure`), and the one-call form the scheduler and
+ * the flush use (`reactAndReport`).
  */
-export async function reactWithId(
-  client: Client,
-  messageId: string,
-  emoji: string,
-): Promise<ReactionOutcome> {
-  let c: ReactionClient;
-  let page: unknown;
-  let lookup: ReactionClient["getMessageById"];
-  let send: ReactionClient["sendReaction"];
-  try {
-    c = client as unknown as ReactionClient;
-    page = c?.pupPage;
-    lookup = c?.getMessageById;
-    send = c?.sendReaction;
-  } catch {
-    // A throwing getter on the client must not take the flush down.
-    return { ok: false, reason: "no-page", detail: "the client threw while being inspected" };
-  }
-  if (!page) return { ok: false, reason: "no-page" };
-  if (typeof lookup !== "function" || typeof send !== "function") {
-    return { ok: false, reason: "library-api-unavailable" };
-  }
 
-  let found: unknown;
-  try {
-    // `.call(c)`: both library methods read `this.pupPage`.
-    found = await lookup.call(c, messageId);
-  } catch (err) {
-    return { ok: false, reason: "lookup-threw", detail: errorText(err) };
-  }
-  if (!found) return { ok: false, reason: "message-not-found" };
-
-  try {
-    await send.call(c, messageId, emoji);
-  } catch (err) {
-    return { ok: false, reason: "send-threw", detail: errorText(err) };
-  }
-  return { ok: true };
-}
-
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+/** The one thing `reactAndReport` needs from a driver. */
+export interface ReactionCapableDriver {
+  sendReaction(waMessageId: string, emoji: string): Promise<ReactionOutcome>;
 }
 
 /**
@@ -255,7 +216,7 @@ function errorText(err: unknown): string {
  * Never throws: a missing emoji must never endanger the surrounding work.
  */
 export async function reactAndReport(
-  client: Client,
+  driver: ReactionCapableDriver,
   waMessageId: string,
   emoji: string,
   context: string,
@@ -272,7 +233,7 @@ export async function reactAndReport(
     return { delivered: false, reason: plan.reason };
   }
 
-  const outcome = await reactWithId(client, plan.messageId, plan.emoji);
+  const outcome = await driver.sendReaction(plan.messageId, plan.emoji);
   if (outcome.ok) return { delivered: true, reason: null };
 
   console.error(

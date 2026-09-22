@@ -20,26 +20,18 @@
  * The page function below is serialised by puppeteer and runs INSIDE the
  * page: it may use only `window.require` and its own argument, never a
  * closure over this module.
+ *
+ * Moved under `src/drivers/` in Phase 2 of the Baileys migration
+ * (`MDs/baileys-migration-plan-2026-09-21.md`): every line of it is
+ * whatsapp-web.js page code, so it belongs on the library side of the
+ * seam. `GroupSnapshot` and `SnapshotParticipant` moved the other way,
+ * into `driver.ts`, because they are the shape the server is POSTed and
+ * both drivers have to produce them.
  */
 import type { Client } from "whatsapp-web.js";
+import type { GroupSnapshot, SnapshotParticipant } from "../driver.js";
 
-export interface SnapshotParticipant {
-  /** E.164 digits without "+", when the id (or its lid → pn mapping) is a phone. */
-  phone?: string;
-  /** The `@lid` privacy id, when that is all the page has. */
-  lidId?: string;
-  pushname?: string;
-  isAdmin?: boolean;
-}
-
-export interface GroupSnapshot {
-  subject: string | null;
-  participants: SnapshotParticipant[];
-  /** Which path produced the result. */
-  source: "page" | "getChatById" | "none";
-  /** Human-readable reasons for anything that degraded, for the log. */
-  notes: string[];
-}
+export type { GroupSnapshot, SnapshotParticipant };
 
 /** What the page function returns. Plain data only. */
 interface PageResult {

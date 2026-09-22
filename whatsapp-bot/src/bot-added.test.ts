@@ -2,19 +2,17 @@
  * Self-add detection and the bot-added flow, against a client whose
  * page calls throw the way the live build's do (2026-09-17).
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Client } from "whatsapp-web.js";
+import { describe, it, expect, vi } from "vitest";
 import {
   handleGroupJoinForSelfAdd,
   isSelfAdd,
   normaliseRecipientIds,
-  resolveSelfIds,
-  _test_resetSelfIds,
   type BotAddedDeps,
 } from "./bot-added.js";
-import type { GroupSnapshot } from "./group-snapshot.js";
+import type { GroupSnapshot } from "./driver.js";
+import { makeWwebjsDriver, type WwebjsClientLike } from "./drivers/wwebjs.js";
 
-const asClient = (c: unknown) => c as unknown as Client;
+const asDriver = (c: unknown) => makeWwebjsDriver(c as unknown as WwebjsClientLike);
 const GID = "120363999999999999@g.us";
 const PN = "447525334985@c.us";
 const LID = "88813579246810@lid";
@@ -47,39 +45,11 @@ describe("isSelfAdd: the bot is matched by ANY of its ids", () => {
   });
 });
 
-describe("resolveSelfIds", () => {
-  beforeEach(() => _test_resetSelfIds());
-
-  it("collects the phone JID from client.info and the LID from the page", async () => {
-    const client = {
-      info: { wid: { _serialized: PN } },
-      pupPage: { evaluate: vi.fn(async () => ({ pn: PN, lid: LID })) },
-    };
-    expect(await resolveSelfIds(asClient(client))).toEqual([PN, LID]);
-  });
-
-  it("survives a throwing info getter and a throwing page (the broken build)", async () => {
-    const client = {
-      get info(): never {
-        throw new Error("r");
-      },
-      pupPage: {
-        evaluate: vi.fn(async () => {
-          throw new Error("r");
-        }),
-      },
-    };
-    expect(await resolveSelfIds(asClient(client))).toEqual([]);
-  });
-
-  it("caches a non-empty answer", async () => {
-    const evaluate = vi.fn(async () => ({ pn: null, lid: LID }));
-    const client = { info: { wid: { _serialized: PN } }, pupPage: { evaluate } };
-    await resolveSelfIds(asClient(client));
-    await resolveSelfIds(asClient(client));
-    expect(evaluate).toHaveBeenCalledTimes(1);
-  });
-});
+// `resolveSelfIds` moved to the whatsapp-web.js driver in Phase 2 of
+// MDs/baileys-migration-plan-2026-09-21.md (it was `client.info.wid` plus a
+// `pupPage.evaluate`, i.e. all library and no rule). Its four cases moved with
+// it, unchanged, to `drivers/wwebjs.test.ts` under "selfIds". What stayed
+// here is the RULE it serves: `isSelfAdd`, above.
 
 // ── The handler ────────────────────────────────────────────────────────
 
@@ -103,9 +73,10 @@ function deps(over: Partial<BotAddedDeps> = {}) {
       throw new Error("r");
     }),
   };
+  const driver = asDriver(client);
   const postBotAdded = vi.fn(async () => ({ introText: "👋 Merhaba", language: "tr" }));
   const d: BotAddedDeps = {
-    client: asClient(client),
+    driver,
     isMonitoredGroup: (g) => monitored.has(g),
     addMonitoredGroup: (g) => void monitored.add(g),
     addOnboardingGroup: (g) => void onboarding.add(g),

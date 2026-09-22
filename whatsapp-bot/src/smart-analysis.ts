@@ -16,7 +16,7 @@
  * next tick — we don't want slow answers to "can I still join?" at
  * kickoff-0:30.
  */
-import type { Client, Message } from "whatsapp-web.js";
+import type { InboundMessage, WaDriver } from "./driver.js";
 import {
   postAnalyzeFull,
   postHeartbeat,
@@ -40,7 +40,7 @@ import {
   resolveWaMessageId,
   shouldLogSyntheticId,
 } from "./message-id.js";
-import { describeReactionFailure, planReaction, reactWithId } from "./react-with-id.js";
+import { describeReactionFailure, planReaction } from "./react-with-id.js";
 import { isOnboardingGroup, removeOnboardingGroup } from "./handlers.js";
 import { requestOrgRefresh } from "./org-refresh.js";
 
@@ -276,13 +276,13 @@ function digitsOnlyPhone(v: unknown): string {
 }
 
 /** `msg.timestamp` in seconds, falling back to now when unreadable. */
-function safeTimestampSec(msg: Message): number {
+function safeTimestampSec(msg: InboundMessage): number {
   const ts = safeRead(msg, "timestamp");
   return typeof ts === "number" && Number.isFinite(ts) ? ts : Date.now() / 1000;
 }
 
 /** `msg.from`, or null when it is unreadable/not a string. */
-function safeGroupId(msg: Message): string | null {
+function safeGroupId(msg: InboundMessage): string | null {
   const from = safeRead(msg, "from");
   return typeof from === "string" && from.length > 0 ? from : null;
 }
@@ -293,7 +293,7 @@ const bufferByGroup = new Map<string, Pending[]>();
 const nextKickoffMsByGroup = new Map<string, number | null>();
 const inFlightFlush = new Set<string>(); // prevent two flushes running in parallel per group
 let flushTimer: NodeJS.Timeout | null = null;
-let sharedClient: Client | null = null;
+let sharedDriver: WaDriver | null = null;
 
 // ─── History buffer ─────────────────────────────────────────────────
 export function recordHistory(groupId: string, entry: AnalyzeInboundHistory) {
@@ -339,8 +339,8 @@ function phoneFromAuthor(authorId: string | undefined, fromId: string): string {
  * and either (a) triggers an urgent flush if kickoff is close, or (b)
  * flushes immediately if the buffer is full.
  */
-export async function enqueueForAnalysis(client: Client, msg: Message): Promise<void> {
-  sharedClient = client;
+export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage): Promise<void> {
+  sharedDriver = driver;
   inboundStats.seen++;
 
   const groupId = safeGroupId(msg);
@@ -424,7 +424,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
 
   const enriched = await enrichOrDegrade(
     fallbackIdentity,
-    () => enrichInbound(client, msg, rawBody, fallbackIdentity),
+    () => enrichInbound(driver, msg, rawBody, fallbackIdentity),
     (err) => {
       // Counted BEFORE the log, because the log is the half that has never
       // worked: this exact CRITICAL has been printing into `bot.log` on the
@@ -499,7 +499,7 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
   if (reason) {
     console.log(`[smart] ${reason} flush for ${groupId} (${arr.length} pending)`);
     // flushGroup's inFlightFlush guard prevents double-running per group.
-    await flushGroup(client, groupId);
+    await flushGroup(driver, groupId);
   }
 }
 
@@ -510,13 +510,13 @@ export async function enqueueForAnalysis(client: Client, msg: Message): Promise<
  * page code is out of step with the live WhatsApp Web build.
  */
 async function enrichInbound(
-  client: Client,
-  msg: Message,
+  driver: WaDriver,
+  msg: InboundMessage,
   rawBody: string,
   fallback: InboundEnrichment,
 ): Promise<InboundEnrichment> {
   const contact = await Promise.resolve()
-    .then(() => msg.getContact())
+    .then(() => driver.contactOf(msg))
     .catch(() => null);
   // Every read off `contact` is total: on the broken build these are
   // throwing getters, and one throw here used to take the whole enrichment
@@ -579,14 +579,13 @@ async function enrichInbound(
   // rewrite performed here is the bot's OWN mention, to the literal
   // "@Match Time". Everything else keeps its raw token and travels as
   // `mentionNames` for the server to check against the org roster.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mentionedIds: string[] = ((msg as any).mentionedIds ?? []) as string[];
+  const mentionedIds: string[] = msg.mentionedIds ?? [];
   // Resolve each mentioned contact ONCE: `isMe` for the self-mention
   // signal, and the display name for the server-side roster lookup.
   const mentionedContacts: RawMentionContact[] = [];
   for (const jid of mentionedIds) {
     try {
-      const c = await client.getContactById(jid);
+      const c = await driver.getContact(jid);
       // Every read is total — on the broken build these are throwing
       // getters and one throw used to lose the whole enrichment.
       mentionedContacts.push({
@@ -615,15 +614,7 @@ async function enrichInbound(
   // real admin add in prod). Detect via the resolved Contact.isMe and match
   // against EVERY known bot identity form (wid @c.us, the deprecated .me,
   // and any .lid the wweb.js build exposes) — true under ANY of them.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const info = client.info as any;
-  const botIdentities: Array<string | null | undefined> = [
-    client.info?.wid?._serialized,
-    info?.me?._serialized,
-    info?.lid?._serialized,
-    info?.wid?.lid,
-    info?.lid,
-  ];
+  const botIdentities: Array<string | null | undefined> = driver.selfIdentities();
 
   const { body, mentionNames, botMentioned } = rewriteMentions({
     body: rawBody,
@@ -635,7 +626,7 @@ async function enrichInbound(
 }
 
 // ─── Flush mechanics ────────────────────────────────────────────────
-async function flushGroup(client: Client, groupId: string): Promise<void> {
+async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
   if (inFlightFlush.has(groupId)) return;
   inFlightFlush.add(groupId);
   try {
@@ -780,7 +771,7 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
           failedReacts++;
           failureReasons.push(plan.reason);
         } else {
-          const outcome = await reactWithId(client, plan.messageId, plan.emoji);
+          const outcome = await driver.sendReaction(plan.messageId, plan.emoji);
           if (!outcome.ok) {
             console.error(
               `[smart] react ${plan.emoji} failed for ${plan.messageId} in ${groupId}: ` +
@@ -793,18 +784,17 @@ async function flushGroup(client: Client, groupId: string): Promise<void> {
         }
       }
       if (r.reply) {
-        // Prefer client.sendMessage: `getChatById` goes through
-        // `window.WWebJS.getChat`, which is precisely the injected call that
-        // started throwing `r: r` on 2026-08-28 while sends still worked.
-        // Keep the chat path as a fallback so nothing regresses if
-        // sendMessage is the one that breaks next time.
+        // Prefer the driver's plain send: under whatsapp-web.js the chat
+        // path goes through `window.WWebJS.getChat`, which is precisely the
+        // injected call that started throwing `r: r` on 2026-08-28 while
+        // sends still worked. Keep the chat path as a fallback so nothing
+        // regresses if the plain send is the one that breaks next time.
         try {
-          await client.sendMessage(groupId, r.reply);
+          await driver.sendText(groupId, r.reply);
         } catch (err) {
           console.error("[smart] reply via client.sendMessage failed, trying chat:", err);
           try {
-            const chat = await client.getChatById(groupId);
-            await chat.sendMessage(r.reply);
+            await driver.sendTextViaChat(groupId, r.reply);
           } catch (err2) {
             console.error("[smart] reply failed:", err2);
           }
@@ -899,8 +889,8 @@ function reportFailedReacts(
  * only ever holds monitored groups, so nothing can sit in it forever.
  * The heartbeat still reports on the org list alone.
  */
-export function startBatchFlushTimer(client: Client, groupIds: string[] | (() => string[])): void {
-  sharedClient = client;
+export function startBatchFlushTimer(driver: WaDriver, groupIds: string[] | (() => string[])): void {
+  sharedDriver = driver;
   if (flushTimer) return; // idempotent
 
   const current = (): string[] => (typeof groupIds === "function" ? groupIds() : groupIds);
@@ -913,7 +903,7 @@ export function startBatchFlushTimer(client: Client, groupIds: string[] | (() =>
   flushTimer = setInterval(() => {
     const ids = toFlush();
     for (const g of ids) {
-      flushGroup(client, g).catch((err) => console.error("[smart] scheduled flush failed:", err));
+      flushGroup(driver, g).catch((err) => console.error("[smart] scheduled flush failed:", err));
     }
     // AFTER the flushes are dispatched, and UNCONDITIONALLY — including
     // the tick where every buffer was empty.
@@ -934,7 +924,7 @@ export function startBatchFlushTimer(client: Client, groupIds: string[] | (() =>
   // came in right before boot get processed promptly.
   setTimeout(() => {
     for (const g of toFlush()) {
-      flushGroup(client, g).catch(() => {
+      flushGroup(driver, g).catch(() => {
         /* logged inside */
       });
     }
@@ -957,7 +947,7 @@ export function startBatchFlushTimer(client: Client, groupIds: string[] | (() =>
  * any per-group failure is logged and skipped.
  */
 export async function recoverGroupMessages(
-  client: Client,
+  driver: WaDriver,
   groupIds: string[],
   window: RecoveryWindow = resolveRecoveryWindow(process.env),
 ): Promise<void> {
@@ -976,7 +966,7 @@ export async function recoverGroupMessages(
     const cutoffSec = nowSec - window.lookbackHours * 60 * 60;
     for (const gid of groupIds) {
       try {
-        const fetched = await fetchRecentGroupMessages(client, gid, window.fetchLimit);
+        const fetched = await driver.fetchRecentGroupMessages(gid, window.fetchLimit);
         // OLDEST FIRST, whatever order the page handed them back in. The
         // analyzer reasons over the batch in buffer order and the extractor
         // reads the history buffer as a conversation; a replay that runs
@@ -1017,7 +1007,7 @@ export async function recoverGroupMessages(
             body: readMessageBody(m),
             timestamp: new Date(safeTimestampSec(m) * 1000).toISOString(),
           });
-          await enqueueForAnalysis(client, m); // server dedupes on waMessageId
+          await enqueueForAnalysis(driver, m); // server dedupes on waMessageId
           queued++;
         }
         console.log(
@@ -1076,58 +1066,19 @@ export function resolveRecoveryWindow(env: Record<string, string | undefined>): 
 }
 
 /**
- * The group's most recent messages, WITHOUT `client.getChatById`.
+ * `fetchRecentGroupMessages` MOVED to `src/drivers/wwebjs.ts` in Phase 2
+ * of the Baileys migration (`MDs/baileys-migration-plan-2026-09-21.md`),
+ * where it is the driver's `fetchRecentGroupMessages`.
  *
- * On the live WhatsApp Web build (2026-09-16, whatsapp-web.js 1.34.7)
- * `getChatById` throws the minified `r` from `getChatModel` (group
- * metadata refresh + lid migration), and so does `getChats`. The message
- * read itself, `Chat.fetchMessages`, never calls `getChatModel`: it asks
- * the page for the chat with `getAsModel: false`, the same lookup every
- * successful `sendMessage` makes. The walk only ever failed because the
- * one way it knew to get a `Chat` object was the broken one.
- *
- * `Chat`'s constructor is a plain `_patch(data)`, and `fetchMessages`
- * reads nothing off the instance but `id._serialized` and the client's
- * page, so a handle built from the group id alone is enough. The old
- * path is kept as the fallback, so a build where the bare handle fails
- * behaves exactly as before.
+ * It was the sharpest piece of whatsapp-web.js knowledge in this file:
+ * build a bare `Chat` handle from the group id alone so the read never
+ * goes near `getChatModel`, and fall back to `getChatById` (and then to
+ * the cached `lastMessage`) only if that fails. All three legs, and the
+ * warning line between the first two, moved unchanged. Whether the walk
+ * still needs to exist at all under Baileys is the highest-uncertainty
+ * question in the migration (plan §1.5 item 44) and is measured in
+ * Phase 5, not decided here.
  */
-export async function fetchRecentGroupMessages(
-  client: Client,
-  gid: string,
-  limit: number,
-): Promise<Message[]> {
-  try {
-    // CommonJS module: the structures hang off `default` under ESM import.
-    const wweb = (await import("whatsapp-web.js")) as unknown as {
-      default?: Record<string, unknown>;
-      Chat?: unknown;
-    };
-    const ChatCtor = (wweb.default?.Chat ?? wweb.Chat) as new (
-      c: Client,
-      data: unknown,
-    ) => { fetchMessages(o: { limit: number }): Promise<Message[]> };
-    if (typeof ChatCtor !== "function") throw new Error("whatsapp-web.js exports no Chat");
-    const handle = new ChatCtor(client, { id: { _serialized: gid } });
-    return await handle.fetchMessages({ limit });
-  } catch (err) {
-    console.warn(
-      `[recover-group] ${gid}: fetchMessages via a bare chat handle failed ` +
-        `(${err instanceof Error ? err.message : String(err)}); falling back to getChatById`,
-    );
-  }
-  const chat = await client.getChatById(gid);
-  try {
-    return await chat.fetchMessages({ limit });
-  } catch {
-    // fetchMessages can throw for chats not yet fully loaded in the
-    // headless session — fall back to the cached last message so we
-    // at least catch the most recent.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lm = (chat as any).lastMessage as Message | undefined;
-    return lm ? [lm] : [];
-  }
-}
 
 export function stopBatchFlushTimer(): void {
   if (flushTimer) {
@@ -1137,8 +1088,8 @@ export function stopBatchFlushTimer(): void {
 }
 
 export function _test_flushNow(groupId: string): Promise<void> {
-  if (!sharedClient) return Promise.resolve();
-  return flushGroup(sharedClient, groupId);
+  if (!sharedDriver) return Promise.resolve();
+  return flushGroup(sharedDriver, groupId);
 }
 
 /** Test-only: snapshot of the inbound counters. */
@@ -1152,7 +1103,7 @@ export function _test_reset(): void {
   bufferByGroup.clear();
   nextKickoffMsByGroup.clear();
   inFlightFlush.clear();
-  sharedClient = null;
+  sharedDriver = null;
   degradedCapabilities.clear();
   // Reset EVERY counter by rebuilding from the canonical shape, so a
   // counter added to `BotCounters` later cannot silently leak between test
