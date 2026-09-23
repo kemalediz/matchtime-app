@@ -17,14 +17,22 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import type { WaDriver } from "./driver.js";
-import { createDriver, selectDriver } from "./driver-select.js";
+import {
+  BAILEYS_LIVE_ENV,
+  baileysLiveBanner,
+  createDriver,
+  resolveBaileysLive,
+  selectDriver,
+} from "./driver-select.js";
 import { SHADOW_ENV, resolveShadowMode, _test_resetShadow } from "./shadow.js";
 
 const SHADOW_ON = { [SHADOW_ENV]: "1" };
+const LIVE_ON = { WA_BAILEYS_LIVE: "1" };
 
 beforeEach(() => {
   _test_resetShadow();
   delete process.env[SHADOW_ENV];
+  delete process.env.WA_BAILEYS_LIVE;
 });
 
 describe("selectDriver", () => {
@@ -39,13 +47,23 @@ describe("selectDriver", () => {
     expect(selectDriver("  WWebJS  ")).toBe("wwebjs");
   });
 
-  it("refuses baileys WITHOUT the shadow switch, and says the shadow run comes first", () => {
-    expect(() => selectDriver("baileys")).toThrow(/shadow run/);
-    expect(() => selectDriver("baileys")).toThrow(/WA_SHADOW/);
-    expect(() => selectDriver("baileys")).toThrow(/Phase 5/);
-    expect(() => selectDriver("  Baileys ")).toThrow(/shadow run/);
+  it("refuses baileys with NEITHER switch, and names both of them", () => {
+    expect(() => selectDriver("baileys")).toThrow(/WA_SHADOW=1/);
+    expect(() => selectDriver("baileys")).toThrow(/WA_BAILEYS_LIVE=1/);
+    expect(() => selectDriver("  Baileys ")).toThrow(/WA_BAILEYS_LIVE=1/);
+    expect(() => selectDriver("baileys", resolveShadowMode({}), false)).toThrow(/WA_BAILEYS_LIVE=1/);
     // It no longer claims groups are missing: they are built.
     expect(() => selectDriver("baileys")).not.toThrow(/cannot list its groups/);
+  });
+
+  it("accepts baileys WITH the explicit live switch and no shadow", () => {
+    expect(selectDriver("baileys", resolveShadowMode({}), true)).toBe("baileys");
+    expect(selectDriver("  BAILEYS ", resolveShadowMode({}), true)).toBe("baileys");
+  });
+
+  it("the live switch changes nothing for whatsapp-web.js or a typo", () => {
+    expect(selectDriver(undefined, resolveShadowMode({}), true)).toBe("wwebjs");
+    expect(() => selectDriver("wweb", resolveShadowMode({}), true)).toThrow(/not a known driver/);
   });
 
   it("accepts baileys WITH the shadow switch", () => {
@@ -103,9 +121,38 @@ describe("createDriver", () => {
     expect((driver as unknown as { sent: string[] }).sent).toEqual(["120363@g.us:hello"]);
   });
 
-  it("never even constructs the Baileys driver without the shadow switch", async () => {
+  it("never even constructs the Baileys driver with neither switch", async () => {
     const f = factories();
-    await expect(createDriver({ WA_DRIVER: "baileys" }, f)).rejects.toThrow(/shadow run/);
+    await expect(createDriver({ WA_DRIVER: "baileys" }, f)).rejects.toThrow(/WA_BAILEYS_LIVE/);
+    await expect(createDriver({ WA_DRIVER: "baileys", WA_BAILEYS_LIVE: "0" }, f)).rejects.toThrow(
+      /WA_BAILEYS_LIVE/,
+    );
+    expect(f.built).toEqual([]);
+  });
+
+  it("builds Baileys LIVE with WA_BAILEYS_LIVE=1: UNGUARDED, so a send goes through", async () => {
+    const f = factories();
+    const driver = await createDriver({ WA_DRIVER: "baileys", ...LIVE_ON }, f);
+    expect(f.built).toEqual(["baileys"]);
+    expect(driver.name).toBe("baileys");
+    expect((driver as unknown as { shadowGuarded?: boolean }).shadowGuarded).toBeUndefined();
+    await driver.sendText("120363@g.us", "hello");
+    expect((driver as unknown as { sent: string[] }).sent).toEqual(["120363@g.us:hello"]);
+  });
+
+  it("shadow WINS over the live switch: both set means guarded, sends refused", async () => {
+    const f = factories();
+    const driver = await createDriver({ WA_DRIVER: "baileys", ...SHADOW_ON, ...LIVE_ON }, f);
+    expect(f.built).toEqual(["baileys"]);
+    expect((driver as unknown as { shadowGuarded?: boolean }).shadowGuarded).toBe(true);
+    await expect(driver.sendText("120363@g.us", "hello")).rejects.toThrow(/shadow mode/i);
+  });
+
+  it("refuses a WA_BAILEYS_LIVE typo instead of guessing", async () => {
+    const f = factories();
+    await expect(createDriver({ WA_DRIVER: "baileys", WA_BAILEYS_LIVE: "yes please" }, f)).rejects.toThrow(
+      /WA_BAILEYS_LIVE/,
+    );
     expect(f.built).toEqual([]);
   });
 
@@ -123,5 +170,49 @@ describe("createDriver", () => {
     const driver = await createDriver({ ...SHADOW_ON }, f);
     expect(f.built).toEqual(["wwebjs"]);
     await expect(driver.sendText("120363@g.us", "hello")).rejects.toThrow(/shadow mode/i);
+  });
+});
+
+// ── WA_BAILEYS_LIVE and the startup banner ──────────────────────────
+
+describe("resolveBaileysLive", () => {
+  it("is off when unset, blank or a no", () => {
+    expect(BAILEYS_LIVE_ENV).toBe("WA_BAILEYS_LIVE");
+    expect(resolveBaileysLive({})).toBe(false);
+    expect(resolveBaileysLive({ WA_BAILEYS_LIVE: "  " })).toBe(false);
+    for (const v of ["0", "false", "no", "off", "OFF"]) expect(resolveBaileysLive({ WA_BAILEYS_LIVE: v })).toBe(false);
+  });
+
+  it("is on for a yes", () => {
+    for (const v of ["1", "true", "yes", "on", " TRUE "]) expect(resolveBaileysLive({ WA_BAILEYS_LIVE: v })).toBe(true);
+  });
+
+  it("throws on anything else", () => {
+    expect(() => resolveBaileysLive({ WA_BAILEYS_LIVE: "2" })).toThrow(/WA_BAILEYS_LIVE/);
+  });
+});
+
+describe("baileysLiveBanner", () => {
+  const off = resolveShadowMode({});
+  const on = resolveShadowMode(SHADOW_ON);
+
+  it("says, unmistakably, that a live Baileys run SENDS", () => {
+    const banner = baileysLiveBanner("baileys", off, LIVE_ON);
+    expect(banner).toMatch(/Baileys LIVE: sends ENABLED/);
+    expect(banner).toMatch(/WA_BAILEYS_LIVE/);
+    expect(banner).not.toMatch(/SHADOW MODE IS ON/);
+  });
+
+  it("says the live switch is IGNORED when shadow is on too", () => {
+    const banner = baileysLiveBanner("baileys", on, LIVE_ON);
+    expect(banner).toMatch(/IGNORED/);
+    expect(banner).toMatch(/WA_SHADOW/);
+    expect(banner).not.toMatch(/sends ENABLED/);
+  });
+
+  it("says nothing for whatsapp-web.js, or for a shadow run that did not ask for live", () => {
+    expect(baileysLiveBanner("whatsapp-web.js", off, {})).toBeNull();
+    expect(baileysLiveBanner("whatsapp-web.js", off, LIVE_ON)).toBeNull();
+    expect(baileysLiveBanner("baileys", on, {})).toBeNull();
   });
 });
