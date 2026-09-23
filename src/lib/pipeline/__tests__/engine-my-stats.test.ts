@@ -52,10 +52,13 @@ const ask = (
 const outcome = (r: ReturnType<typeof decide>) => r.outcomes.find((o) => o.messageId === "wa-ask")!;
 
 describe("the personal stats link is decided by the engine", () => {
-  it("a tagged, resolved sender gets the link, and the 📊 react", () => {
+  // 2026-09-23: no 📊 react any more. The group hears a line saying the
+  // stats went by DM instead, and the ROUTE writes it, because only the
+  // route knows whether the DM was actually queued.
+  it("a tagged, resolved sender gets the link, and NO react", () => {
     const r = ask("sait");
     expect(outcome(r).statsLinkRequested).toBe(true);
-    expect(outcome(r).react).toBe("📊");
+    expect(outcome(r).react).toBeNull();
     expect(outcome(r).disposition).toBe("acted");
   });
 

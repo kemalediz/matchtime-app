@@ -1468,10 +1468,12 @@ export async function runAnswerBatch(args: {
   // one to a source scanner. The scanner is right to be blunt — the
   // shape it is looking for is the one that can change a squad — so the
   // shape is avoided here rather than the scanner taught an exception.
-  // A stats-link request says nothing in the group BY DESIGN: the link
-  // is the DM and the 📊 react is the acknowledgement. It is an action,
-  // not a silence, so it is not disowned. An owned `my_stats` the engine
-  // refused (an unresolved sender) has neither, and IS disowned below.
+  // A stats-link request composes nothing HERE by design: the link is
+  // the DM, and the group's line ("Erdal, I'm sending your stats to you
+  // privately by DM", which replaced a 📊 react on 2026-09-23) is posted
+  // by the route once the DM is queued. It is an action, not a silence,
+  // so it is not disowned. An owned `my_stats` the engine refused (an
+  // unresolved sender) has no flag, and IS disowned below.
   const statsLinkIds = new Set(
     result.outcomes
       .filter((o) => o.statsLinkRequested === true && ownedIds.has(o.messageId))

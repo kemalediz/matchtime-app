@@ -180,6 +180,7 @@ const SAMPLES: SampleArgs = {
   unresolved_nudge_named: { verb: "join", pushname: "Tommy T" },
   unresolved_nudge_anonymous: { verb: "drop out" },
   stats_blast_reply: { queued: 12 },
+  stats_link_sent: { firstName: "Erdal" },
   attendance_failure: { firstName: "Sait", self: "IN", others: ["Abid Hussain"] },
   rating_progress_failed: null,
   rating_progress_no_match: null,

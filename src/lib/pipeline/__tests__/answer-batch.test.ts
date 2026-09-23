@@ -1415,13 +1415,15 @@ describe("the personal stats link (topic my_stats)", () => {
   const TR_Q = "@Match Time istatistiklerim";
   const IN = "in";
 
-  it("is owned, flagged for the route, reacts 📊 and says nothing in the group", async () => {
+  // 2026-09-23: no 📊 react. The route posts the "sending your stats by
+  // DM" line once the DM is queued; this module has nothing to say.
+  it("is owned, flagged for the route, with no react and no reply of its own", async () => {
     const { model } = stubModel({ [MY_Q]: MY_FACTS });
     const res = await run({ messages: [msg({ waMessageId: "wa-my", body: MY_Q, route: "question" })], model });
     const o = res.outcomes.get("wa-my");
     expect(res.ownedIds.has("wa-my")).toBe(true);
     expect(o?.statsLinkRequest).toBe(true);
-    expect(o?.react).toBe("📊");
+    expect(o?.react).toBeNull();
     expect(o?.reply).toBeNull();
     // The labels the deleted fast path wrote, so the admin log reads the same.
     expect(o?.intent).toBe("stats_link");

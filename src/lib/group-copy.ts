@@ -269,12 +269,20 @@ function isLeaderboardLine(s: string): boolean {
  * answer is model-written, so nothing guarantees its rows carry a
  * leaderboard marker. "Top 3 most consistent" becoming the squad list
  * is the 2026-05-14 incident.
+ *
+ * `stats_link` joined later the same day, when "@Match Time my stats"
+ * started saying a line in the group (`buildStatsLinkSentLine`) instead
+ * of only reacting 📊. The line names the asker and holds no list, so the
+ * shape checks leave it alone today (pinned in
+ * `stats-link-sent-line.test.ts`); it is skipped by intent as well so
+ * that stays true whatever the wording becomes.
  */
 export const STATS_ANSWER_INTENTS: ReadonlySet<string> = new Set([
   "stats_table",
   "stats_generic",
   "stats_clarification",
   "stats_clarified",
+  "stats_link",
 ]);
 
 const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request", "show_teams_request"]);
@@ -283,6 +291,32 @@ const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request"
 export function skipsSquadComposition(intent: string | null | undefined): boolean {
   if (!intent) return false;
   return TEAM_POST_INTENTS.has(intent) || STATS_ANSWER_INTENTS.has(intent);
+}
+
+/**
+ * THE GROUP LINE FOR "@Match Time my stats" (2026-09-23, row 164).
+ *
+ * The asker's stats link goes to them by DM. The group used to see only
+ * a 📊 react, and Kemal, an admin, did not realise a DM had gone out:
+ * "It's better to say a line that the stats went by DM rather than a
+ * stats icon." So the group hears this line instead, and no react.
+ *
+ * Addressed to the asker by FIRST name. A name that is really a phone
+ * number is never printed in the group (the same rule as
+ * `guest-name-ask.ts`), so it falls back to the line without a name.
+ *
+ * It says "I'm sending", not "I've sent": the DM is a queued `BotJob`
+ * the Pi sends a moment after this posts. The analyze route only calls
+ * this once the job is queued (`sendOwnStatsLink` returns it then and
+ * only then), so the line never promises a DM that was not going to go.
+ *
+ * No number, rating or stat, ever: those are the asker's, and stay in
+ * the DM.
+ */
+export function buildStatsLinkSentLine(p: { name: string | null; lang?: Lang | string | null }): string {
+  const first = (p.name ?? "").trim().split(/\s+/)[0] ?? "";
+  const usable = first && !/^[+\d][\d\s()+-]*$/.test(first) ? first : null;
+  return t(p.lang).stats_link_sent({ firstName: usable });
 }
 
 export function displaysSquadState(text: string, lang?: Lang | string | null): boolean {

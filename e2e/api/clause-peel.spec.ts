@@ -294,9 +294,9 @@ test.describe("the answer peels keep the sender's OUT", () => {
     expect(speaks(res).length).toBeLessThanOrEqual(1);
   });
 
-  test("my stats — single-purpose is unchanged", async ({ request, db }) => {
+  test("my stats: single-purpose DMs the link and says so in the group", async ({ request, db }) => {
     engineOn({ "@Match Time my stats": MY_STATS });
-    await postAnalyze(request, [
+    const res = await postAnalyze(request, [
       {
         waMessageId: msgId(),
         body: "@Match Time my stats",
@@ -307,6 +307,12 @@ test.describe("the answer peels keep the sender's OUT", () => {
     ]);
     expect((await dms(db, PHONE.admin)).join("\n")).toContain("MatchTime stats");
     expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
+    // 2026-09-23: the group hears a line addressed to the asker (it used
+    // to see only a 📊 react), with no number in it, and no react.
+    const said = speaks(res);
+    expect(said).toHaveLength(1);
+    expect(said[0].reply).toBe(`📊 ${NAME.admin.split(" ")[0]}, I'm sending your stats to you privately by DM.`);
+    expect((said[0] as { react?: string | null }).react ?? null).toBeNull();
   });
 
   test("dm me — answers privately AND drops the sender", async ({ request, db }) => {
