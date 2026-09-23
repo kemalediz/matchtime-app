@@ -92,251 +92,245 @@ import type { Degradation, Route, RoutedMessage } from "./types";
 
 /**
  * ─────────────────────────────────────────────────────────────────────
- * "SMALL ON PURPOSE: ITS SIZE IS THE ARGUMENT (§6.1)" — THAT WAS WRONG,
- * AND ON 2026-09-11 IT WAS MEASURED
+ * THE ROUTER PROMPT, AND WHAT EVERY EDIT TO IT MUST PROVE
  * ─────────────────────────────────────────────────────────────────────
  *
- * `MDs/router-accuracy-2026-09-11.md` took the 2,501-character prompt
- * that stood here, ran it live over **1,748 real Sutton FC messages in
- * their real analyze batches**, and scored it against 445 hand-labelled
- * bodies. It reached **83.3% owner accuracy**: `admin_ops` fired on six
- * wrong messages for every right one, `balancer` on three, and **21.5%
- * of banter escaped the `none` bucket** and bought an extractor call.
- * Size was never what made it cheap. Being right is what makes it
- * cheap, and it was not right.
+ * ⚠️ READ THIS BEFORE EDITING A RULE BELOW. The metric with a veto is
+ * gold-labelled ATTENDANCE messages routed `none` over the 373-message
+ * corpus (`npm run replay:router-attendance`, floor OFF, three live
+ * runs). It must stay 0, 0, 0. `MDs/router-accuracy-2026-09-11.md` §3.1
+ * is why it is three runs over the WHOLE corpus: a candidate that scored
+ * higher overall TRIPLED the attendance it threw away, and a held-out
+ * split did not catch it. Run `npm run replay:router-regressions` first;
+ * it is cheap and every message in it is one a prompt has already lost.
  *
- * Re-measured on the same corpus, same model, same batching — one full
- * live sweep per arm, and **three** for the row that matters:
+ * And per `CLAUDE.md`: when the router needs to understand something new,
+ * REWRITE this prompt as a whole. Do not append a rule or an example
+ * block to the end.
  *
- *              owner acc   att→none (3 runs)  banter escaping  admin_ops P   $/batch
- *   was            83.3%     3, 2, 4 of 373            21.5%         13.4%   $0.00128
- *   this           93.4%     0, 0, 0 of 373             8.1%         82.5%   $0.00317
+ * ── HOW IT GOT HERE ──────────────────────────────────────────────────
  *
- * **NOT ONE of 373 real attendance messages in 143 days was called
- * banter, in any of three live runs.** The prompt that shipped lost
- * three per run, and §1.4 names them.
+ * 2026-09-11. A 2,501-character prompt reached 83.3% owner accuracy over
+ * 1,748 real Sutton FC messages and lost 3, 2 and 4 of the 373
+ * attendance messages to `none`. Its replacement reached 93.4% and lost
+ * 0, 0, 0; banter escaping `none` fell from 21.5% to 8.1%. The trade
+ * said out loud: gold-labelled questions routed `none` rose from 1 to 5
+ * of 641, four of them untagged (and `answer-batch` refuses an untagged
+ * question anyway).
  *
- * ⚠️ READ THIS BEFORE EDITING A RULE BELOW. §3.1's FIRST candidate
- * scored **higher overall** than the one that shipped and **TRIPLED**
- * the attendance it threw away — nine messages against three — because
- * a person-to-person rule swallowed commitments that happened to be
- * addressed to a person. **The held-out 220-message split did not catch
- * it**, because the offending messages were in the train half. So:
+ * 2026-09-16, Turkish. The bare "var", "yok" and "yokum" were lost 30 of
+ * 30 (`MDs/second-group-readiness-erdal-2026-09-16.md` §2). The first
+ * cut lost "Zeeshan OUT" in 2 of 3 veto runs, which is why the two-word
+ * "Baki OUT" shape is taught explicitly.
  *
- *   1. evaluate on the WHOLE corpus, never on a split;
- *   2. run the attendance slice three times, not once — the metric that
- *      can cost a player their place is the only one with a veto;
- *   3. `npm run replay:router-regressions` first. It is cheap, it is
- *      live, and every message in it is one a prompt has already lost.
+ * 2026-09-22, replacements. "Hi guys, Mojib is replacing Najib on the
+ * list. We can change", untagged, went to `none` 28 minutes before
+ * kickoff; the replacement ruling and its examples exist for it.
  *
- * Rule 0 and rule 11a exist because of that first candidate: 11a's five
- * counter-examples are five real messages it deleted. Rules 10 (the ask
- * buried in praise), 14 (a correction is still attendance), 15 (an
- * instruction to an admin settles a place) and 16 (a score is OUR
- * result, not the one on television) close the four failures the second
- * candidate had left, each of which was byte-identical on every run —
- * a prompt gap, not sampling noise.
+ * 2026-09-23, THE REWRITE. After three patches the prompt had grown to
+ * eighteen numbered rules, some stating the same thing twice (rules 0,
+ * 11a and 15 were one idea), two example blocks split by language, and
+ * no idea of what a TAG means. Measured live (single message, floor
+ * OFF, three runs each) on the prompt it replaced, short tagged stats
+ * asks were thrown away as banter: "@Match Time Zork's chemistry",
+ * "@Match Time Mehmet's chemistry" and "@Match Time who's the worst"
+ * routed `none` 0 of 3 each, so MatchTime never got to ask "who do you
+ * mean?". It is now one document: what is at stake, three questions in
+ * a fixed order (a place in the squad first, then the tag, then
+ * everything else), each route defined once, each ruling stated once,
+ * and the worked examples grouped by what they teach with the Turkish
+ * beside the English. The order is the safety argument: a tagged
+ * attendance message stops at the first question and never reaches the
+ * second.
  *
- * ── WHAT GOT WORSE, SAID OUT LOUD ────────────────────────────────────
+ * Measured on the rewrite, dev key, floor OFF:
+ *   - the three targets 3/3 each (0/3 each before), and seven held-out
+ *     shapes of the same kind 21/21 (15/21 before: "@Match Time Idris
+ *     chemistry" and "@Match Time Mehmet'in kimyası" were 0/3);
+ *   - every stats case from PRs #126 and #129, 48 cases x 3: 144/144,
+ *     same as before;
+ *   - Turkish bare forms and sentences 30/30, replacements RP1 to RP8
+ *     24/24, other attendance 57/57 ("Zeeshan OUT" 9/9 alone), all
+ *     unchanged;
+ *   - untagged banter controls 66/66 (was 64/66: "£8.6 per person to
+ *     Elvin" no longer reads as a payment credit), tagged thanks and
+ *     emoji still `none` 9/9;
+ *   - `replay:router-regressions` 57/60, identical to the old prompt;
+ *   - the veto. The first cut lost 2, 0, 0 of 373: "@Jordan IN" (sent
+ *     straight after a message explaining how to say IN) and "I will be
+ *     back Tuesday week", once each. The away-or-back ruling and the
+ *     "@Kojo IN" and "back after my holiday" examples are what closed
+ *     them, and the size trims that paid for them were wording only. The
+ *     final prompt then read 0, 0, 0 of 373, with ONE attendance message
+ *     routed by fallback (`unsure`, never counted as lost), which made
+ *     the harness refuse to certify the run; it now names the message and
+ *     the cause. Re-run it to certify.
  *
- * Rule 11 buys the drop in banter-escaping-`none` and it is not free.
- * Gold-labelled QUESTIONS routed `none` go from 1 to 5 of 641 labelled
- * messages. Four of the five do not tag the bot, and `answer-batch`
- * refuses an untagged question before it spends anything
- * (`answer-batch.ts:682` filters on `m.tagged`), so those four cost
- * nothing that was ever going to happen. **The fifth does tag the bot**
- * — *"you are hallucinating @Match Time, that was @Ehtisham sharing MoM
- * with Hasan, not @Zair. Please confirm"* — and is now silence where it
- * was an answer. One message in 143 days, `speech` severity in
- * `router-recall.ts`'s own table, against three attendance messages a
- * run at `squad_place`. That is the trade, and it is the one
- * `gate.ts` says to take.
+ * The probe figures above are from the first cut. The final prompt
+ * differs by that ruling, those two examples and three trimmed phrases,
+ * all pushing toward attendance, and a five-case spot check (the three
+ * targets, a chemistry banter control, a tagged thanks) came back 5/5.
  *
- * One balancer message also moved to attendance (*"me on the red as
- * well, I have my red Arsenal shirt"*), which is a colour preference
- * read as a registration. Visible, one message to undo.
+ * SIZE. 12,416 characters / 3,289 tokens before, 11,315 / 3,280 after
+ * (`count_tokens`, claude-haiku-4-5). Still under Haiku's 4,096-token
+ * cacheable minimum, so every token is paid on every call, and it is
+ * deliberately not padded over it: the Pi buffers about ten minutes and
+ * a five-minute cache entry would expire first
+ * (`MDs/llm-spend-september-2026.md`). `__tests__/cache-threshold.test.ts`
+ * pins the size.
  *
- * IT IS 9,608 CHARACTERS AND IT DOES NOT CACHE. 2,554 tokens on
- * `claude-haiku-4-5`, whose minimum cacheable prefix is 4,096 — probed
- * directly, `cache_creation=0` with a marker attached. That is why §3.3
- * travels with this change: the old `MIN_CACHEABLE_CHARS = 4_000` would
- * have reported `cacheAttempted: true` on every router call from here
- * on and cached nothing. See `llm.ts`. Every token below is paid on
- * every call, knowingly.
- *
- * WHAT THAT COSTS, measured over the same 974 batches rather than
- * modelled: $0.00317 a batch against $0.00128. At the peak month in the
- * history (June, 656 messages ≈ 366 batches) the router goes from
- * $0.47 to $1.16 a month. The attendance extractor's share is flat —
- * 486 attendance routes per 1,748 messages against the old prompt's 492
- * — so the whole of the change is **+$0.69 a month at peak traffic**,
- * and §8.4 of `MDs/analyzer-redesign-2026-08-31.md` is the standing
- * model this sits inside. Latency +0.45 s a batch, against a Pi that
- * buffers for ten minutes.
- *
- * ── TURKISH, 2026-09-16 ──────────────────────────────────────────────
- *
- * Rule 17 and the twelve-line Turkish example block below it are
- * +1,625 characters / +408 tokens on `claude-haiku-4-5` (`count_tokens`:
- * 2,554 → 2,962; 11,233 characters). Still under the 4,096-token
- * cacheable minimum, so every one of them is paid on every call:
- * +$0.00041 a batch, about +$0.15 a month at the peak month above.
- * `MDs/second-group-readiness-erdal-2026-09-16.md` §2 is the
- * measurement that paid for them ("yokum", "yok", "var" lost 30 of 30
- * at this router), and the PR that added them re-ran the 373-message
- * attendance-to-`none` sweep three times, floor OFF, as the veto.
- *
- * THE FIRST CUT LOST "Zeeshan OUT" (a real third-party drop) in 2 of 3
- * veto runs where the shipped prompt lost nothing: 1, 0, 1 of 373.
- * Twelve more example lines had displaced a two-word shape the block
- * never showed. Rule 5's second sentence and the "Baki OUT" example
- * are what closed it; the sweep was re-run before it shipped.
- *
- * ── REPLACEMENTS, 2026-09-22 ─────────────────────────────────────────
- *
- * Rule 18 and six worked examples (four English, two Turkish), added
- * for the incident that night: at 28 minutes to kickoff a player posted
- *
- *   "Hi guys, Mojib is replacing Najib on the list. We can change"
- *
- * untagged, and this router sent it to `none`. Mojib played, Najib did
- * not, the team sheet named Najib, and the fee was about to be charged
- * to him. Rule 0 already covers the sentence in principle, since it
- * plainly states a place for two people, but a greeting in front and an
- * afterthought behind read as chat, and no worked example showed the
- * shape. Now four do.
- *
- * THE VETO, AND HOW IT IS ARGUED WITHOUT A LIVE RUN. The metric with the
- * veto is attendance-routed-`none` over the 373-message gold corpus,
- * which must stay at 0. Everything added here is ONE-DIRECTIONAL: rule
- * 18 says a shape IS attendance, its six examples all teach `other_att`,
- * and no existing rule or example was touched. Nothing was added that
- * could teach `none`, so the count of attendance messages sent to `none`
- * cannot rise from these lines. `__tests__/router.test.ts` pins both
- * halves of that (every new example routes `other_att`, and rule 18
- * does not contain the word `none`), so the argument is a test rather
- * than a paragraph.
- *
- * WHAT IS NOT ARGUED, said out loud: banter-escaping-`none` can only get
- * WORSE from a rule that pushes towards attendance, and by how much is
- * NOT measured here, because the repo-root `.env` carried no development
- * API key and every harness refuses without one. The direction
- * is the cheap one (an extra extractor call costs ~$0.002, a lost
- * attendance message costs a player his place), but re-run the three
- * sweeps on the next change that has a key.
- *
- * +1,157 characters / ~290 tokens on `claude-haiku-4-5` by the
- * estimator, taking the prompt to 12,412 characters. Still a long way
- * under the 4,096-token cacheable minimum, so still paid on every call:
- * roughly +$0.0003 a batch, +$0.11 a month at the peak month above.
+ * Comments elsewhere that cite "router rule 8" or "rule 15" mean the
+ * numbered prompt before this rewrite (3781d2b). Both rulings survive,
+ * unnumbered: "ASKING is question; INSTRUCTING is admin_ops" word for
+ * word, and "the place wins" for an instruction that carries a setting
+ * change and a place.
  */
-export const ROUTER_SYSTEM_PROMPT = `You classify WhatsApp messages from a football club group. For EVERY message id you are given, return exactly one route.
+export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp group: who is playing this week, the two teams, results, payments, reminders and the players' stats. You read each message and send it to the part of MatchTime that handles it, or to none if it is chat for the players and not for the bot. For EVERY message id you are given, return exactly one route.
 
-0. READ THIS FIRST, AND LET NOTHING BELOW OVERRIDE IT. If a message states, promises, withdraws, offers or asks for a PLACE IN THIS SQUAD for anybody at all — the sender, a named player, an @mention, a relative, a friend, a guest, a phone number — it is an attendance route (self_att, other_att, offer or unsure) and it must NEVER be none. A message the group would read as "one more person is playing" or "one fewer person is playing" is attendance, however casually it is worded and whoever it is addressed to.
+WHAT IS AT STAKE. A message routed none is gone: nothing is written, nobody replies, and a player who said they are playing loses their place without knowing. A wrong route to anything else costs a few pence and is caught later. So when in doubt between none and anything else, choose the other route.
 
-none        banter, jokes, memes, links, emoji, greetings, off-topic chat
-self_att    the SENDER is joining or leaving THIS match themselves
-other_att   the message adds, drops, benches, swaps or replaces SOMEONE ELSE
-offer       a contingent or tentative commitment by anyone ("if you're short", "if my back holds up")
-question    a question the bot could answer
-balancer    asks the bot to generate, show, shuffle or rename the two teams
-score       reports a final result
-admin_ops   payment credit, reminder request, other bot admin instruction
-unsure      attendance-shaped but you genuinely cannot tell
+HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three questions, in this order, and stop at the first yes.
 
-Rules:
-1. Route on what a message DOES, not what it is about. "Great game last night" is none.
-2. A completed join stated about someone else IS other_att ("Ayoub snatched that spot").
-3. A relayed commitment IS other_att ("Najib said in as well").
-4. Moving, benching or swapping a NAMED PLAYER is other_att, never balancer. ONE list of players, however long or numbered, is a reposted squad roster and is other_att; balancer is only about the TWO team line-ups.
-4a. Asking to SEE who is playing — "who's in?", "show me the squad", "list the players", "who's playing tonight?" — is question. It asks for the ONE squad list the bot already holds. balancer is only for the TWO team line-ups (red and yellow), so "show me the teams" is balancer and "show me the squad" is not.
-5. An @mention of a person with in or out is other_att. So is a bare NAME with in or out and nothing else ("Baki OUT", "Kojo in"): two words that settle somebody else's place, in any language.
-6. A question mark does not make a message a question. If it also states that someone is joining or leaving ("can anyone replace me tonight?"), route the attendance. question is only for a message that ASKS FOR information the bot holds and states no change.
-7. When in doubt between none and anything else, choose the other route.
-8. ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something and are admin_ops. "Who hasn't paid?", "has everyone paid for last week?" and "any payments outstanding?" ask for something the bot already knows and are question.
-9. A question about a match that has ALREADY BEEN PLAYED is question, not none: "what was the score?", "did we win on tuesday?", "how did we get on last night?", "who's played the most this season?". Reporting a result ("we won 5-3") is still score.
-10. ASKING THE GROUP FOR A PLAYER IS ATTENDANCE, NOT question. "anyone able to replace me?", "is anyone available to take my dad's place?", "we need one more player, anyone interested?", "@all we need more players", "can we have more INs please?" all ask PEOPLE to fill a gap in this squad. Route them other_att when they name or imply a specific person leaving, otherwise offer. A question mark does not make them question. question is only for information the BOT already holds. THE ASK IS OFTEN BURIED: praise, reassurance, an apology or a pitch wrapped around it changes nothing — "great bunch of lads, same standard as us, come on, one player please" is a chase, not banter.
-11. A MESSAGE ONE MEMBER SENDS TO ANOTHER, WHICH STATES NO CHANGE TO THIS SQUAD AND ASKS THE BOT FOR NOTHING IT HOLDS, IS none: "are you injured?", "are you available to play @Enayem?", "@Amir you are coming, right?", "which two of you can play tomorrow?". These ASK; they settle nothing.
-11a. ⚠️ RULE 11 NEVER OVERRIDES RULE 0. Being addressed to a person, or speaking on someone else's behalf, does NOT make a stated commitment banter. "@Ehtisham in sha Allah I'll play", "Talha is coming please add him", "@Kemal my brother can play if needed", "add these 2 boys pl", "Rashad my cousin to add if poss", "I can play @Kemal, your bot is spamming me" all STATE that somebody will play. Every one is attendance.
-12. admin_ops IS AN INSTRUCTION ADDRESSED TO THE BOT. Talk ABOUT the bot, about settings, about the pitch, about money owed between members, or plans the sender is going to carry out themselves ("I will change it to 7aside", "please add Talha to this group", "matchtime should suggest 5aside") is none. If nobody is telling the BOT to do something now, it is not admin_ops.
-13. WHEN A MESSAGE IS ATTENDANCE-SHAPED BUT YOU CANNOT TELL WHAT IT DOES, RETURN unsure RATHER THAN GUESSING BETWEEN self_att AND other_att. unsure is a real route with a real handler; it is not a failure. Never use unsure for a message that is plainly banter — that is none.
-14. A CORRECTION IS STILL ATTENDANCE, AND THE APOLOGY AROUND IT IS NOT BANTER. "oops, sorry, I got the name wrong — it should be Zair not Baki", "ignore my last message, I am in after all", "I meant Thursday not Tuesday" all fix WHO IS PLAYING and are attendance. So is standing in for more than one person: "I am covering for two people, Ismail and Ozgur" adds two players and is other_att.
-15. AN INSTRUCTION TO AN ADMIN OR TO ANOTHER MEMBER TO ADD OR DROP SOMEBODY IS ATTENDANCE, NOT none. Rule 11 is about members ASKING each other things that settle nothing. "@Kemal please put Amir in as the 14th", "@Youssef can you take me off the list", "@Kemal switch it to 7 a side and include Amir" all SETTLE a place, so they are other_att (or self_att about the sender) even when they also ask for a setting to be changed. Where one message carries both a setting change and a place, the place wins.
-16. score IS THE RESULT OF THIS GROUP'S OWN MATCH. A scoreline about a professional or international fixture somebody is watching — "Arsenal 2 Spurs 1", "Brazil 1 France 1" — is football chat and is none. Our own results are reported with our team names, our colours or a bare scoreline ("5-3 to Yellows", "10-10").
-17. MESSAGES MAY BE IN ENGLISH OR TURKISH. Route on meaning, and every rule above applies in both. A bare Turkish "var", "varım", "ben varım" or "geliyorum" is the sender joining, exactly like a bare "in"; a bare "yok", "yokum", "ben yokum" or "gelemiyorum" is the sender leaving, exactly like a bare "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are a tentative commitment: offer. "X de geliyor" / "X de var" adds X and "X gelemiyor" / "X yok" drops X: other_att.
-18. A REPLACEMENT IS AN ATTENDANCE STATEMENT ABOUT TWO PEOPLE, AND IT IS other_att. "X is replacing Y", "X replaces Y", "X in for Y", "Y is out, X is in", "X takes Y's place", "swap Y for X" each put one more person in this squad and take one out. Chatter wrapped around it changes nothing: a greeting in front, an afterthought behind, a question mark, not one of those makes the sentence banter. The same in Turkish: "X, Y'nin yerine geliyor", "Y yerine X", "X, Y'nin yerini aliyor", "Y cikiyor X giriyor".
+1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a friend, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. It is never none, however casually it is worded, whoever it is addressed to, and whatever chat, greeting, apology, joke or question mark surrounds it. Nothing below overrides this.
 
-Worked examples from this group. Copy the reasoning, not the wording.
+2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word. Send it to the owner of what it asks for. A tagged name, stat or table with nothing else ("@Match Time Burak's chemistry", "@Match Time who's top") is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. Saying "Match Time" or "matchtime" without the @, while talking about the bot, is not a tag.
 
-  "In"                                                        -> self_att
-  "Yep in"                                                    -> self_att
-  "Bench"                                                     -> self_att
-  "I'm not playing"                                           -> self_att
-  "I can't join due to work n dint bring kit"                 -> self_att
-  "Hey gents, I am in just in case someone drops."            -> offer
-  "Lemme know if we need more to make it 14. I can find another" -> offer
-  "Will confirm shortly"                                      -> unsure
-  "@Youssef is IN"                                            -> other_att
-  "@Match Time Kojo IN, Aaron IN"                             -> other_att
-  "Najib said in as well so we should be at 13 players"       -> other_att
-  "Trevell got injured today so he had to drop out"           -> other_att
-  "@Match Time move @Aydin from bench to squad to replace @Ehtisham" -> other_att
-  "@Match Time swap David and Abid"                           -> other_att
-  "Hi guys, does anyone wants to take my place for tonight?"  -> other_att
-  "We need one more player guys, anyone interested?"          -> offer
-  "@all we need one more player otherwise Salman will move to squad from bench" -> other_att
-  "@Match Time how many players so far?"                      -> question
-  "Pitch number ?"                                            -> question
-  "Where is my name?"                                         -> question
-  "@Match Time who has got the most MoM so far?"              -> question
-  "@Match Time what is the current squad status?"             -> question
-  "@Match Time my stats"                                      -> question
-  "@Match Time wrapped"                                       -> question
-  "Teams?"                                                    -> balancer
-  "@Match Time regenerate the teams once more"                -> balancer
-  "@Match Time generate the teams, put me and David together" -> balancer
-  "5-3 to Yellows"                                            -> score
-  "10-10"                                                     -> score
-  "remind me on Tuesday morning at 9am instead please"        -> admin_ops
-  "@Match Time DM me the link for switching to 7aside"        -> admin_ops
-  "Are you injured ?"                                         -> none
-  "Are you available to play @Enayem ?"                       -> none
-  "@Youssef @Ehtisham , Talha is coming, right?"              -> none
-  "Oops, didn't realise @Mojib Jalali is in"                  -> none
-  "I think we are still waiting for the poll result."         -> none
-  "Get the rating done"                                       -> none
-  "Eid Mubarak everyone"                                      -> none
-  "Crazy statistics"                                          -> none
-  "wait guys sorry by mistake I enabled the tracking of squad in Match Time" -> none
-  "Are we adding them to the group?"                          -> none
-  "great bunch of lads, same standard as us, come on — one player please" -> offer
-  "Sorry, I got it wrong — it should be Zair not Baki"        -> other_att
-  "I'm covering for two people, Ismail and Ozgur"             -> other_att
+3. Is it for the bot at all? An untagged message can still be a question the bot answers, an instruction, a team request or our result. If it is none of those, it is none: banter, jokes, memes, links, emoji, greetings, football chat, and members talking to each other in a way that settles no place and asks the bot for nothing.
+
+THE ROUTES.
+self_att    the SENDER joins or leaves this match, bench included.
+other_att   the message adds, drops, benches, moves, swaps or replaces SOMEONE ELSE, or reposts one list of players (the squad roster, however long or numbered).
+offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
+unsure      clearly about a place, but you cannot tell who or what it does. A real route with a real handler, not a failure. Never use it for plain banter.
+question    asks for something the bot already holds: the squad list and how many are in, the pitch, who has paid, a past result, and every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, team of the season, best and worst, a player's own stats or wrapped).
+balancer    asks the bot to generate, show, shuffle or rename the TWO team line-ups (red and yellow).
+score       reports the final result of this group's own match.
+admin_ops   an instruction addressed to the bot to do something now: credit a payment, set a reminder, send a link, change a setting.
+none        everything else, as defined in question 3.
+
+RULINGS. Each one settles a confusion that has really happened in this group.
+
+About a place in the squad:
+- A named person or an @mention with in or out is other_att, even as two bare words ("Baki OUT", "@Kojo IN"), in any language, and even straight after a message explaining how to say IN.
+- Saying when you will be away or back ("not this week", "I will be back next month") settles the sender's place for the coming match: self_att.
+- A relayed or completed place is other_att: "Najib said in as well", "Ayoub snatched that spot", "Trevell got injured so he had to drop out".
+- Addressed to a person is still attendance. "@Ehtisham in sha Allah I'll play", "Talha is coming please add him", "Rashad my cousin to add if poss", "I can play @Kemal, your bot is spamming me" all state that somebody will play. An instruction to an admin or member to add or drop somebody ("@Youssef can you take me off the list") settles a place too. When one message carries both a setting change and a place, the place wins.
+- A replacement is an attendance statement about two people and is other_att: "X is replacing Y", "X in for Y", "Y is out, X is in", "X takes Y's place", "swap Y for X".
+- A correction is still attendance and the apology around it is not banter: "oops, it should be Zair not Baki", "ignore my last message, I am in after all", "I meant Thursday not Tuesday".
+- Asking the group for a player is attendance, not question, question mark or not: "anyone able to replace me?", "we need one more player, anyone interested?", "can we have more INs please?". It is other_att when a named or implied person is leaving, otherwise offer. The ask is often buried in praise, reassurance or a pitch, and that changes nothing.
+- One list of players is the squad roster, other_att. balancer is only about the TWO teams.
+
+About questions and instructions:
+- ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
+- Asking to SEE the squad ("who's in?", "list the players", "show me the squad") is question. "show me the teams" is balancer.
+- A question about a match already played ("what was the score?", "did we win on tuesday?") is question. Reporting a result ("we won 5-3") is score.
+- A question mark alone does not make a question. question is only for information the bot holds, with no change to anyone's place.
+
+About none:
+- A member asking another member something that settles nothing is none: "are you injured?", "@Amir you are coming, right?", "which two of you can play tomorrow?". This never overrides question 1: as soon as a message STATES that somebody plays or does not, it is attendance.
+- Talk ABOUT the bot, settings, the pitch, money owed between members, or plans the sender will carry out themselves ("I will change it to 7aside", "matchtime should suggest 5aside") is none. admin_ops needs somebody telling the BOT to act now.
+- Untagged talk about players or stats ("crazy statistics", "his chemistry with that ball is zero") is none. The same words tagged are a question.
+- score is only our own result, given with our team names, our colours or a bare scoreline ("5-3 to Yellows", "10-10"). A professional or international scoreline somebody is watching ("Arsenal 2 Spurs 1") is none.
+
+LANGUAGE. Messages may be in English or Turkish. Route on meaning; every rule applies in both. In Turkish, "var", "varım", "ben varım" and "geliyorum" are the sender joining, like "in"; "yok", "yokum", "ben yokum" and "gelemiyorum" are the sender leaving, like "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are offer. "X de geliyor" or "X de var" adds X and "X gelemiyor" or "X yok" drops X: other_att. "X, Y'nin yerine geliyor", "Y yerine X" and "Y çıkıyor X giriyor" are replacements.
+
+WORKED EXAMPLES from this group, grouped by what they teach, Turkish beside English. Copy the reasoning, not the wording.
+
+The sender's own place:
+  "In" -> self_att
+  "Yep in" -> self_att
+  "Bench" -> self_att
+  "I'm not playing" -> self_att
+  "I can't join due to work n dint bring kit" -> self_att
+  "Not this week lads, back after my holiday" -> self_att
+  "@Ehtisham Ul Haq in sha Allah I'll play" -> self_att
+  "var" -> self_att
+  "varım" -> self_att
+  "yok" -> self_att
+  "yokum" -> self_att
+  "gelemiyorum" -> self_att
+
+Somebody else's place, however it is addressed:
+  "@Youssef is IN" -> other_att
+  "@Kojo IN" -> other_att
+  "Baki OUT" -> other_att
+  "@Match Time Kojo IN, Aaron IN" -> other_att
+  "Najib said in as well so we should be at 13 players" -> other_att
+  "Trevell got injured today so he had to drop out" -> other_att
+  "Talha is coming please add him" -> other_att
+  "Add these 2 boys pl" -> other_att
   "@Kemal can you switch it to 7 a side and put Amir in as the 14th" -> other_att
-  "Arsenal 2 Spurs 1"                                         -> none
-  "Baki OUT"                                                  -> other_att
+  "Ali de geliyor" -> other_att
+  "Mehmet gelemiyor" -> other_att
+
+Replacements, swaps and corrections:
   "Hi guys, Mojib is replacing Najib on the list. We can change" -> other_att
-  "Amir in for Zeeshan"                                       -> other_att
-  "Najib is out, Mojib is in"                                 -> other_att
-  "Zair takes Abid's place tonight"                           -> other_att
+  "Amir in for Zeeshan" -> other_att
+  "Najib is out, Mojib is in" -> other_att
+  "Zair takes Abid's place tonight" -> other_att
+  "@Match Time move @Aydin from bench to squad to replace @Ehtisham" -> other_att
+  "@Match Time swap David and Abid" -> other_att
+  "Sorry, I got it wrong, it should be Zair not Baki" -> other_att
+  "I'm covering for two people, Ismail and Ozgur" -> other_att
+  "Mojib, Najib'in yerine geliyor" -> other_att
+  "Najib çıkıyor, Mojib giriyor" -> other_att
 
-The same in Turkish:
+Maybe, if needed, and asking the group for a player:
+  "Hey gents, I am in just in case someone drops." -> offer
+  "Lemme know if we need more to make it 14. I can find another" -> offer
+  "@Kemal my brother can play if needed" -> offer
+  "We need one more player guys, anyone interested?" -> offer
+  "great bunch of lads, same standard as us, come on, one player please" -> offer
+  "Hi guys, does anyone wants to take my place for tonight?" -> other_att
+  "@all we need one more player otherwise Salman will move to squad from bench" -> other_att
+  "Will confirm shortly" -> unsure
+  "belki" -> offer
+  "bakarız" -> offer
 
-  "var"                                                       -> self_att
-  "varım"                                                     -> self_att
-  "yok"                                                       -> self_att
-  "yokum"                                                     -> self_att
-  "gelemiyorum"                                               -> self_att
-  "belki"                                                     -> offer
-  "bakarız"                                                   -> offer
-  "Ali de geliyor"                                            -> other_att
-  "Mehmet gelemiyor"                                          -> other_att
-  "kaç kişiyiz?"                                              -> question
-  "@Match Time istatistiklerim"                               -> question
-  "Mojib, Najib'in yerine geliyor"                            -> other_att
-  "Najib çıkıyor, Mojib giriyor"                              -> other_att
-  "hadi be ya 😂😂"                                           -> none
-  "dünkü maç efsaneydi"                                       -> none
+A tagged message asks the bot, however short:
+  "@Match Time Burak's chemistry" -> question
+  "@Match Time who's top" -> question
+  "@Match Time who has got the most MoM so far?" -> question
+  "@Match Time my stats" -> question
+  "@Match Time wrapped" -> question
+  "@Match Time Ali'nin kimyası" -> question
+  "@Match Time istatistiklerim" -> question
+  "@Match Time cheers 👍" -> none
+
+Questions about the squad and the matches:
+  "@Match Time how many players so far?" -> question
+  "@Match Time what is the current squad status?" -> question
+  "Pitch number ?" -> question
+  "Where is my name?" -> question
+  "kaç kişiyiz?" -> question
+
+The two teams:
+  "Teams?" -> balancer
+  "@Match Time regenerate the teams once more" -> balancer
+  "@Match Time generate the teams, put me and David together" -> balancer
+
+Results:
+  "5-3 to Yellows" -> score
+  "10-10" -> score
+  "Arsenal 2 Spurs 1" -> none
+
+Instructions to the bot:
+  "remind me on Tuesday morning at 9am instead please" -> admin_ops
+  "@Match Time DM me the link for switching to 7aside" -> admin_ops
+
+Chat for the players, not the bot:
+  "Are you injured ?" -> none
+  "Are you available to play @Enayem ?" -> none
+  "@Youssef @Ehtisham , Talha is coming, right?" -> none
+  "Oops, didn't realise @Mojib Jalali is in" -> none
+  "I think we are still waiting for the poll result." -> none
+  "Get the rating done" -> none
+  "Crazy statistics" -> none
+  "wait guys sorry by mistake I enabled the tracking of squad in Match Time" -> none
+  "Are we adding them to the group?" -> none
+  "Eid Mubarak everyone" -> none
+  "hadi be ya 😂😂" -> none
+  "dünkü maç efsaneydi" -> none
 
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 

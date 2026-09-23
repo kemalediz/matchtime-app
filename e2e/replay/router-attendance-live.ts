@@ -132,6 +132,7 @@ async function main(): Promise<number> {
   let cost = 0;
   let calls = 0;
   let fallbacks = 0;
+  const fallbackDetail: string[] = [];
 
   for (let rep = 0; rep < repeats; rep++) {
     let lost = 0;
@@ -155,7 +156,18 @@ async function main(): Promise<number> {
         if (!isA(m.body)) continue;
         seen += 1;
         const r = by.get(m.waMessageId);
-        if (r?.source === "fallback") fallbacks += 1;
+        if (r?.source === "fallback") {
+          fallbacks += 1;
+          // Say WHICH message and WHY. On 2026-09-23 the rewrite's sweep
+          // read 0, 0, 0 with one fallback, and this refusal could not say
+          // whether that was the model skipping an id or the API failing,
+          // so a $3.42 sweep ended uncertified.
+          const why = res.degradations
+            .filter((d) => d.messageId === m.waMessageId || d.messageId === null)
+            .map((d) => d.detail)
+            .join("; ");
+          fallbackDetail.push(`run ${rep + 1}: ${JSON.stringify((m.body ?? "").slice(0, 80))} (${why})`);
+        }
         if (r?.route === "none") {
           lost += 1;
           const body = (m.body ?? "").replace(/\n/g, " ");
@@ -172,6 +184,7 @@ async function main(): Promise<number> {
       `[att] REFUSING to report — ${calls} billed calls and ${fallbacks} fallback routes. ` +
         `A fallback is \`unsure\`, which never counts as lost, so the number would flatter.`,
     );
+    for (const line of fallbackDetail) console.error(`[att]   fallback ${line}`);
     return 1;
   }
 

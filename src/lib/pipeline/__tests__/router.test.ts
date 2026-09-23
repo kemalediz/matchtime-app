@@ -214,7 +214,8 @@ describe("the router prompt", () => {
   //
   // "Hi guys, Mojib is replacing Najib on the list. We can change" went
   // to `none`. These pin the worked examples that were added for it,
-  // AND the direction of the change: rule 18 and its examples only ever
+  // AND the direction of the change: rule 18 (since the 2026-09-23
+  // rewrite, the unnumbered replacement ruling) and its examples only ever
   // push a message TOWARDS attendance. That is what makes them safe for
   // the veto metric (attendance-routed-`none` must stay at 0 over the
   // 373-message gold corpus) without a live run: nothing was added that
@@ -235,13 +236,69 @@ describe("the router prompt", () => {
   });
 
   it("states the replacement rule itself, and never as a reason to stay quiet", () => {
-    const rule = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("18."));
+    // It was rule 18 until the 2026-09-23 rewrite dropped the numbering;
+    // it is found by what it says now, not by where it sits.
+    const rule = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("- A replacement"));
     expect(rule).toBeDefined();
     expect(rule!).toMatch(/replacing/i);
     expect(rule!).toMatch(/other_att/);
     // The one property that protects the veto: this rule cannot send
     // anything to `none`.
     expect(rule!).not.toMatch(/\bnone\b/);
+  });
+
+  // ── THE 2026-09-23 REWRITE: A TAGGED ASK IS NEVER BANTER ──────────
+  //
+  // "@Match Time Zork's chemistry", "@Match Time Mehmet's chemistry" and
+  // "@Match Time who's the worst" routed `none` 0 of 3 each on the old
+  // prompt (single message, floor off), so the stats owner never got the
+  // chance to ask "who do you mean?". These pin the three properties the
+  // rewrite rests on. Whether the model obeys them is a live question,
+  // answered by the router probe in the PR, not here.
+  const decisionStep = (n: number) =>
+    ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith(`${n}. `)) ?? "";
+
+  it("asks about a place in the squad BEFORE it asks about the tag", () => {
+    // The order is the veto's protection: a tagged "@Match Time Najib is
+    // out" must stop at the first question and never reach the second.
+    expect(decisionStep(1)).toMatch(/place in THIS squad/);
+    expect(decisionStep(1)).toMatch(/never none/);
+    expect(decisionStep(1)).toMatch(/Nothing below overrides this/);
+    expect(decisionStep(2)).toMatch(/tag/i);
+    expect(ROUTER_SYSTEM_PROMPT.indexOf(decisionStep(1))).toBeLessThan(
+      ROUTER_SYSTEM_PROMPT.indexOf(decisionStep(2)),
+    );
+  });
+
+  it("says a tagged message is never none for being short, and names what is", () => {
+    const step = decisionStep(2);
+    expect(step).toMatch(/@Match Time/);
+    expect(step).toMatch(/never none because it is short/);
+    // Only a tagged message that asks for nothing at all is still none,
+    // and talking ABOUT the bot without the @ is not a tag.
+    expect(step).toMatch(/asks for nothing at all/);
+    expect(step).toMatch(/without the @/);
+  });
+
+  it("teaches the short tagged stats ask as question, in both languages", () => {
+    const taught = new Map(
+      [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
+    );
+    expect(taught.get("@Match Time Burak's chemistry")).toBe("question");
+    expect(taught.get("@Match Time who's top")).toBe("question");
+    expect(taught.get("@Match Time Ali'nin kimyası")).toBe("question");
+    // The tagged thanks is the control: tagged, asks nothing, stays none.
+    expect(taught.get("@Match Time cheers 👍")).toBe("none");
+  });
+
+  it("keeps the three measured targets OUT of the prompt, so the live check is held out", () => {
+    for (const body of ["Zork's chemistry", "Mehmet's chemistry", "who's the worst"]) {
+      expect(ROUTER_SYSTEM_PROMPT, body).not.toContain(body);
+    }
+  });
+
+  it("writes no em or en dashes", () => {
+    expect(ROUTER_SYSTEM_PROMPT).not.toMatch(/[\u2013\u2014]/);
   });
 
   it("demands an output shape this file actually parses", () => {
