@@ -23,7 +23,7 @@ import { STATS_ANSWER_INTENTS, displaysSquadState, skipsSquadComposition } from 
 describe("by intent", () => {
   it("every stats-answer intent is skipped", () => {
     expect([...STATS_ANSWER_INTENTS].sort()).toEqual(
-      ["stats_clarification", "stats_clarified", "stats_generic", "stats_table"].sort(),
+      ["stats_clarification", "stats_clarified", "stats_generic", "stats_link", "stats_table"].sort(),
     );
     for (const i of STATS_ANSWER_INTENTS) expect(skipsSquadComposition(i), i).toBe(true);
   });

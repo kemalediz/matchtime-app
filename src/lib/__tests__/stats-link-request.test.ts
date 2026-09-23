@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { sendOwnStatsLink } from "../stats-link-request";
 import { buildStatsLinkDm } from "../dm-copy";
+import { buildStatsLinkSentLine } from "../group-copy";
 
 function recorder() {
   const dms: Array<{ phone: string; text: string }> = [];
@@ -100,4 +101,42 @@ describe("sendOwnStatsLink", () => {
     expect(out.reason).toMatch(/db down/);
   });
 
+  // 2026-09-23: the group hears a line, addressed to the asker, saying the
+  // stats are coming by DM (it used to see only a 📊 react). The line is
+  // returned only when the DM was actually queued, so the group is never
+  // told "I'm sending" about a DM that was never going to go.
+  it("returns the group line for a queued DM, in the org's language, addressed to the asker", async () => {
+    for (const lang of ["en", "tr"] as const) {
+      const r = recorder();
+      const out = await sendOwnStatsLink({
+        sender: { userId: "u-erdal", name: "Erdal Yilmaz", phone: "905551112233" },
+        authorPhone: null,
+        lang,
+        deps: r.deps,
+      });
+      expect(out.queued).toBe(true);
+      expect(out.groupLine).toBe(buildStatsLinkSentLine({ name: "Erdal Yilmaz", lang }));
+    }
+  });
+
+  it("returns NO group line when nothing was queued", async () => {
+    const cases = [
+      { sender: { userId: null, name: "Someone", phone: "447700900009" }, deps: recorder().deps },
+      { sender: { userId: "u-x", name: "No Phone", phone: null }, deps: recorder().deps },
+      {
+        sender: { userId: "u-pete", name: "Pete", phone: "447700900003" },
+        deps: {
+          linkFor: async () => "https://mt.test/l",
+          queueDm: async () => {
+            throw new Error("db down");
+          },
+        },
+      },
+    ];
+    for (const c of cases) {
+      const out = await sendOwnStatsLink({ sender: c.sender, authorPhone: null, lang: "en", deps: c.deps });
+      expect(out.queued).toBe(false);
+      expect(out.groupLine).toBeNull();
+    }
+  });
 });

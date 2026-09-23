@@ -189,5 +189,7 @@ test("the PERSONAL stats request is untouched — one DM, to the asker", async (
   expect(after.length).toBe(before.length + 1);
   const added = after.filter((d) => !before.some((b) => b.phone === d.phone && b.text === d.text));
   expect(added.map((d) => d.phone)).toEqual([grp.player("pete").phone!.replace(/^\+/, "")]);
-  expect(r.react).toBe("📊");
+  // 2026-09-23: a "sending your stats by DM" line replaced the 📊 react.
+  expect(r.react ?? null).toBeNull();
+  expect(r.reply).toMatch(/sending your stats to you privately by DM/);
 });

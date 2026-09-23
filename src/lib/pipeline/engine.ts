@@ -1754,9 +1754,13 @@ export function decide(input: EngineInput): EngineResult {
           //
           // ── THE DECISION, AND ONLY THE DECISION. The link is a DM the
           //    route sends; this branch says whether. It emits no write
-          //    (this route has no apply layer) and no speech (the link
-          //    never goes to the group). The 📊 react is the whole of
-          //    what the group sees, as it was.
+          //    (this route has no apply layer), no speech and no react.
+          //    Until 2026-09-23 the group saw a 📊 react and nothing
+          //    else, and an admin read that as nothing happening. The
+          //    group now hears "Erdal, I'm sending your stats to you
+          //    privately by DM", and the ROUTE posts it, because only the
+          //    route knows whether the DM was actually queued
+          //    (`sendOwnStatsLink` returns the line then and only then).
           //
           // ── NO RECIPIENT. `statsLinkRequested` is a boolean on THIS
           //    message's outcome. The route DMs the sender of this
@@ -1773,7 +1777,6 @@ export function decide(input: EngineInput): EngineResult {
             break;
           }
           out.statsLinkRequested = true;
-          out.react = "📊";
           out.reasons.push("personal stats request: DM the sender their own stats link");
           break;
         }

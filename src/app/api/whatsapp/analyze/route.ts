@@ -727,7 +727,9 @@ async function handleAnalyzeRequest(request: Request) {
   //   PERFORMED by this route in the owner loop by `sendOwnStatsLink`
   //   (`lib/stats-link-request.ts`). The DM, the link, the 📊 react and
   //   the `stats_link` / `dm-stats-link` labels are unchanged; only the
-  //   classification moved from regex to model.
+  //   classification moved from regex to model. (2026-09-23: the 📊
+  //   react is gone. The group hears a line saying the stats are coming
+  //   by DM instead, `buildStatsLinkSentLine`.)
   //
   //   THE RECIPIENT CANNOT MOVE. The flag is a boolean on the asking
   //   message's outcome; the DM goes to that message's resolved sender.
@@ -2325,6 +2327,9 @@ async function handleAnalyzeRequest(request: Request) {
       // `answerBatch` is the only owner that can report it.
       const answerOutcome = answerBatch?.outcomes.get(msg.waMessageId);
       let statsLinkFailed: string | null = null;
+      // The group's line for a queued stats-link DM (2026-09-23; it was
+      // a bare 📊 react). Null unless the DM was actually queued.
+      let statsLinkLine: string | null = null;
       if (answerOutcome?.statsLinkRequest) {
         const { sendOwnStatsLink } = await import("@/lib/stats-link-request");
         const sent = await sendOwnStatsLink({
@@ -2351,6 +2356,7 @@ async function handleAnalyzeRequest(request: Request) {
           console.error(`[analyze] my-stats DM not queued for ${msg.waMessageId}: ${sent.reason}`);
           statsLinkFailed = sent.reason;
         }
+        statsLinkLine = sent.groupLine;
       }
       // A write that threw says nothing at all (§3.2 S7, the 2026-05-15
       // Erdal incident). The runner has already blanked the reply; this
@@ -2361,6 +2367,10 @@ async function handleAnalyzeRequest(request: Request) {
       if (reply && nextMatchForReply) {
         reply = enforceProximity(reply, nextMatchForReply.date, org.language);
       }
+      // A stats-link ask composes no reply of its own, so this is the
+      // whole of what the group hears for it. When the DM was not queued
+      // the line is null and the group hears nothing, as before.
+      if (answerOutcome?.statsLinkRequest) reply = statsLinkLine;
       await recordAnalysis({
         orgId: org.id,
         groupId: body.groupId,
@@ -2368,7 +2378,7 @@ async function handleAnalyzeRequest(request: Request) {
         handledBy: writeFailed ? "error" : ownerOf.get(msg.waMessageId) ?? "llm",
         intent: stepSeven.intent,
         // A stats link that was not queued is not reported as sent, and
-        // its 📊 is withheld: the react says "done".
+        // its group line is withheld (`statsLinkLine` is null then).
         action: statsLinkFailed ? "none" : stepSeven.action,
         confidence: 1,
         reasoning: statsLinkFailed

@@ -120,6 +120,11 @@
  *     (Kemal's exact question), and the notes that say a table cannot
  *     be cut to a period. No other existing case moved.
  *
+ *   - Deliberate addition (2026-09-23, "@Match Time my stats"): row R164,
+ *     `buildStatsLinkSentLine`, the group line saying the asker's stats
+ *     are coming by DM. It is NEW copy: it replaces a bare 📊 react, which
+ *     had no text to pin. Additive only; no existing case moved.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -173,6 +178,7 @@ import {
   buildMatchDayChaseFallback,
   buildRatePromoPost,
   buildSquadCompletePost,
+  buildStatsLinkSentLine,
   composeSquadStateReply,
 } from "../../group-copy";
 import {
@@ -804,6 +810,8 @@ function cases(lang: Lang): Case[] {
   add("R100 composeStatsBlastDm / no name", composeStatsBlastDm(null, "https://mt.example/s/abc", lang));
   add("R51 composeStatsBlastReply / one", composeStatsBlastReply(1, lang));
   add("R51 composeStatsBlastReply / twelve", composeStatsBlastReply(12, lang));
+  add("R164 buildStatsLinkSentLine / named", buildStatsLinkSentLine({ name: "Erdal Yilmaz", lang }));
+  add("R164 buildStatsLinkSentLine / no name", buildStatsLinkSentLine({ name: null, lang }));
 
   // ── 1.1 block-booking.ts ────────────────────────────────────────────
   add("R63 buildBulkCancelAnnouncement / one match", buildBulkCancelAnnouncement({ activityName: "Tuesday 7-a-side", dates: [new Date("2026-09-15T20:30:00.000Z")], announce: true, lang }));

@@ -34,8 +34,15 @@
  * blast. Observed occurrences of that shape in 143 days: zero.
  *
  * The DM copy and the 48h link are unchanged from the fast path.
+ *
+ * THE GROUP LINE (2026-09-23). The group used to see only a 📊 react.
+ * It now hears one line addressed to the asker, saying the stats are
+ * coming by DM (`buildStatsLinkSentLine`). It is returned here, as
+ * `groupLine`, only when the DM was queued: this is the one place that
+ * knows, so the route cannot post the line for a DM that never went.
  */
 import { buildStatsLinkDm } from "./dm-copy";
+import { buildStatsLinkSentLine } from "./group-copy";
 import type { Lang } from "./i18n/lang";
 
 export interface StatsLinkSender {
@@ -58,16 +65,24 @@ export async function sendOwnStatsLink(args: {
   authorPhone: string | null;
   lang: Lang | string | null | undefined;
   deps: StatsLinkDeps;
-}): Promise<{ queued: boolean; reason: string }> {
+}): Promise<{ queued: boolean; reason: string; groupLine: string | null }> {
   const { sender, deps } = args;
   const phone = (sender.phone || args.authorPhone || "").replace(/^\+/, "");
-  if (!sender.userId) return { queued: false, reason: "unresolved sender: nobody to DM" };
-  if (!phone) return { queued: false, reason: "the sender has no phone on record" };
+  if (!sender.userId) return { queued: false, reason: "unresolved sender: nobody to DM", groupLine: null };
+  if (!phone) return { queued: false, reason: "the sender has no phone on record", groupLine: null };
   try {
     const url = await deps.linkFor(sender.userId);
     await deps.queueDm({ phone, text: buildStatsLinkDm({ name: sender.name, url, lang: args.lang }) });
-    return { queued: true, reason: "personal stats request: DM'd a magic link to /profile/stats" };
+    return {
+      queued: true,
+      reason: "personal stats request: DM'd a magic link to /profile/stats",
+      groupLine: buildStatsLinkSentLine({ name: sender.name, lang: args.lang }),
+    };
   } catch (err) {
-    return { queued: false, reason: `the stats-link DM could not be queued (${err instanceof Error ? err.message : String(err)})` };
+    return {
+      queued: false,
+      reason: `the stats-link DM could not be queued (${err instanceof Error ? err.message : String(err)})`,
+      groupLine: null,
+    };
   }
 }

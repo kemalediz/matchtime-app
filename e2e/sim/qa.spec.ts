@@ -12,7 +12,7 @@
  *   structurally via the test-only stub in dm-qa.ts, which returns the
  *   scoped context itself instead of calling Anthropic.
  * - Group → DM ("dm me …") answers privately with 📩.
- * - "my stats" fast-path DMs a personal magic link with 📊.
+ * - "my stats" DMs a personal magic link and says so in the group (2026-09-23; it was a 📊 react).
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
@@ -180,13 +180,15 @@ const statsLinkDms = (dms: Array<{ phone: string | null; text: string }>) =>
   dms.filter((d) => /MatchTime (stats|istatistiklerin)/.test(d.text));
 const phoneOf = (grp: SimGroup, key: string) => grp.player(key).phone!.replace(/^\+/, "");
 
-test('"my stats" → 📊 react + ONE personal magic-link DM, to the asker only', async ({ request, db }) => {
+test('"my stats" → a "sending by DM" line + ONE personal magic-link DM, to the asker only', async ({ request, db }) => {
   const grp = await group(request, db);
   // Interaction contract: a stats request is answer-y → requires a tag.
   const r = await grp.post("pete", "@Match Time can I see my stats?", { tag: true, ...MY_STATS });
   expect(r.intent).toBe("stats_link");
-  expect(r.react).toBe("📊");
-  expect(r.reply, "the link never goes to the group").toBeNull();
+  // 2026-09-23: a line addressed to the asker replaced the 📊 react.
+  expect(r.react ?? null).toBeNull();
+  expect(r.reply).toBe("📊 Pete, I'm sending your stats to you privately by DM.");
+  expect(r.reply, "the link never goes to the group").not.toMatch(/https?:\/\//);
   const links = statsLinkDms(r.dms);
   // THE RECIPIENT: exactly one stats DM, and it is Pete's.
   expect(links.map((d) => d.phone)).toEqual([phoneOf(grp, "pete")]);
@@ -228,9 +230,10 @@ test('untagged "my stats" is ordinary chat: no DM, no react', async ({ request, 
   expect(r.react ?? null).toBeNull();
 });
 
-test("an @lid sender with no phone on record gets no DM and no 📊", async ({ request, db }) => {
+test("an @lid sender with no phone on record gets no DM, no react and no group line", async ({ request, db }) => {
   const grp = await group(request, db);
   const r = await grp.post("larry", "@Match Time my stats", { tag: true, ...MY_STATS });
   expect(statsLinkDms(r.dms)).toEqual([]);
   expect(r.react ?? null).toBeNull();
+  expect(r.reply ?? null).toBeNull();
 });

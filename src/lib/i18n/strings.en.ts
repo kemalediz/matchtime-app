@@ -542,6 +542,18 @@ export const en = {
     `📊 Done — DM'd ${p.queued} player${p.queued === 1 ? "" : "s"} their personal stats link. ` +
     `They'll arrive over the next few minutes.`,
 
+  // ── row 164: buildStatsLinkSentLine (group-copy.ts), 2026-09-23 ─────
+  //   The group's acknowledgement of "@Match Time my stats". It replaced a
+  //   bare 📊 react that an admin read as nothing happening. "I'm sending"
+  //   and not "I've sent": the DM is a queued job the Pi sends a moment
+  //   later, so at the time this posts it has not been delivered. No
+  //   number, rating or stat ever goes in it; those stay in the DM.
+
+  stats_link_sent: (p: { firstName: string | null }): string =>
+    p.firstName
+      ? `📊 ${p.firstName}, I'm sending your stats to you privately by DM.`
+      : `📊 I'm sending your stats to you privately by DM.`,
+
   // ── row 58: buildAttendanceFailureReply (attendance-write-outcome.ts)
 
   attendance_failure: (p: { firstName: string | null; self: "IN" | "OUT" | null; others: string[] }): string => {

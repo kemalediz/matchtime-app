@@ -505,6 +505,16 @@ export const tr: Strings = {
     `📊 Tamam, ${p.queued} oyuncuya kişisel istatistik linkini DM'den gönderdim. ` +
     `Birkaç dakika içinde ulaşır.`,
 
+  // ── row 164: buildStatsLinkSentLine ────────────────────────────────
+  //   "gönderiyorum" (I'm sending), not "gönderdim" (I sent): the DM is
+  //   queued and goes out a moment later. "özel mesajla" says private in
+  //   plain words. Addressed to the one asker, so "sen" and no plural.
+
+  stats_link_sent: (p) =>
+    p.firstName
+      ? `📊 ${p.firstName}, istatistiklerini sana özel mesajla gönderiyorum.`
+      : `📊 İstatistiklerini sana özel mesajla gönderiyorum.`,
+
   // ── row 58: buildAttendanceFailureReply ────────────────────────────
 
   attendance_failure: (p) => {
