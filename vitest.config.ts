@@ -13,7 +13,11 @@
  *   - `e2e/replay/**\/*.test.ts` — the history-replay harness's pure
  *     half: reconstruction rules, the differ, the noise floor, the
  *     sampler and the resume ledger.
- * so it never collides with the Playwright e2e harness
+ * Every file runs behind `e2e/helpers/unit-model-guard.setup.ts`: no
+ * model call is possible unless MT_UNIT_LIVE_LLM=1, whatever keys the
+ * environment or `.env` hold.
+ *
+ * It never collides with the Playwright e2e harness
  * (e2e/{api,web,sim}/**\/*.spec.ts, run via `npm run test:e2e` + its
  * embedded Postgres orchestrator).
  */
@@ -29,6 +33,10 @@ export default defineConfig({
       "e2e/replay/**/*.test.ts",
     ],
     environment: "node",
+    // No unit test reaches a model unless MT_UNIT_LIVE_LLM=1. Pins every
+    // key empty and refuses anthropic.com in fetch. Guarded by
+    // e2e/helpers/unit-tests-never-call-the-model.test.ts.
+    setupFiles: ["./e2e/helpers/unit-model-guard.setup.ts"],
   },
   resolve: {
     alias: {
