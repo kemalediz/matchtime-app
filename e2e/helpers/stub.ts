@@ -161,6 +161,27 @@ export function clearDmIntentStub(): void {
   setDmIntentStub({});
 }
 
+/**
+ * The PAYMENT-CLAIM stub (2026-09-23): what `lib/payment-claim.ts`'s
+ * model would have said about a player's DM. `{}` means every body is
+ * `other`, which writes nothing.
+ */
+export interface PaymentClaimStub {
+  /** Trimmed DM body → "paid" | "paid_for_others" | "other". */
+  bodies?: Record<string, string>;
+  /** Bodies whose model CALL throws. */
+  fail?: string[];
+}
+
+export function setPaymentClaimStub(stub: PaymentClaimStub): void {
+  mkdirSync(path.dirname(E2E.PAYMENT_CLAIM_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.PAYMENT_CLAIM_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearPaymentClaimStub(): void {
+  setPaymentClaimStub({});
+}
+
 /** Every seam back to its empty state. `resetDb()` calls it, so a spec
  *  can never inherit the routes, the facts or the DM intents of the spec
  *  that ran before it — the files are per-checkout and long-lived, and a
@@ -169,6 +190,7 @@ export function clearPipelineStubs(): void {
   clearRouterStub();
   clearExtractorStub();
   clearDmIntentStub();
+  clearPaymentClaimStub();
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

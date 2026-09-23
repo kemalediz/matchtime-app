@@ -78,6 +78,9 @@ export const EXTRACTOR_STUB_FILE_ENV = "MT_TEST_EXTRACTOR_STUB_FILE";
 /** The DM surface's only classifier (2026-09-11). Mirrors
  *  `DM_INTENT_STUB_FILE_ENV` in `src/lib/dm-intent.ts`. */
 export const DM_INTENT_STUB_FILE_ENV = "MT_TEST_DM_INTENT_STUB_FILE";
+/** The player payment-claim classifier (2026-09-23). Mirrors
+ *  `PAYMENT_CLAIM_STUB_FILE_ENV` in `src/lib/payment-claim.ts`. */
+export const PAYMENT_CLAIM_STUB_FILE_ENV = "MT_TEST_PAYMENT_CLAIM_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -225,6 +228,17 @@ export function assertSeamMatchesMode(
           `"live" sweep reading a canned intent out of it would be grading its own answer ` +
           `key in the one place this product cannot afford it.\n` +
           `  Fix:  unset ${DM_INTENT_STUB_FILE_ENV} in your shell — the suite sets it itself ` +
+          `for stubbed runs and pins it empty for live ones.`,
+      );
+    }
+    if (!blank(childEnv[PAYMENT_CLAIM_STUB_FILE_ENV])) {
+      throw new E2EPreflightError(
+        `e2e: REFUSING to run: ${LIVE_ENV_FLAG}=1 asks for a LIVE model run, but the ` +
+          `server under test would still see ${PAYMENT_CLAIM_STUB_FILE_ENV}=${childEnv[PAYMENT_CLAIM_STUB_FILE_ENV]}.\n` +
+          `  That file answers for lib/payment-claim.ts, which decides whether a player's DM ` +
+          `tells the money collector they have paid. A "live" sweep reading a canned intent ` +
+          `out of it would be grading its own answer key.\n` +
+          `  Fix:  unset ${PAYMENT_CLAIM_STUB_FILE_ENV} in your shell; the suite sets it itself ` +
           `for stubbed runs and pins it empty for live ones.`,
       );
     }

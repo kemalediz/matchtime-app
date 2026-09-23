@@ -99,6 +99,13 @@ export const E2E = {
    *  `other`, which DMs nobody. */
   DM_INTENT_STUB_FILE: path.join(REPO_ROOT, ".e2e", "dm-intent-stub.json"),
 
+  /** The PAYMENT-CLAIM stub file (2026-09-23). Body → the intent
+   *  `lib/payment-claim.ts` would have returned for a player's DM ("paid",
+   *  "paid_for_others", "other"). Behind "paid" sits the settle-directly
+   *  write and a DM to the money collector. Absent or `{}` → `other`,
+   *  which writes nothing. */
+  PAYMENT_CLAIM_STUB_FILE: path.join(REPO_ROOT, ".e2e", "payment-claim-stub.json"),
+
   /** WhatsApp group id of the seeded test org. */
   GROUP_ID: "e2e-test-group@g.us",
 } as const;
@@ -174,6 +181,7 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_ROUTER_STUB_FILE: E2E.ROUTER_STUB_FILE,
     MT_TEST_EXTRACTOR_STUB_FILE: E2E.EXTRACTOR_STUB_FILE,
     MT_TEST_DM_INTENT_STUB_FILE: E2E.DM_INTENT_STUB_FILE,
+    MT_TEST_PAYMENT_CLAIM_STUB_FILE: E2E.PAYMENT_CLAIM_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
@@ -233,6 +241,10 @@ export function buildTestEnv(): Record<string, string> {
     // grading its own answer key in front of a mass DM. Pinned empty,
     // not deleted, for the same reason as the three above.
     env.MT_TEST_DM_INTENT_STUB_FILE = "";
+    // And for the player payment-claim classifier (2026-09-23), which
+    // sits in front of a DM to the money collector. Pinned empty, not
+    // deleted, for the same reason.
+    env.MT_TEST_PAYMENT_CLAIM_STUB_FILE = "";
     // THE KEY A LIVE SWEEP SPENDS IS THE DEVELOPER'S, NOT PRODUCTION'S.
     //
     // This line used to forward the orchestrator's own production key,

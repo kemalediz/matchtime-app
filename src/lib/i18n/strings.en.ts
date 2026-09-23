@@ -1137,6 +1137,44 @@ export const en = {
     `🤝 ${p.count} player${p.count === 1 ? "" : "s"} said they'd pay you directly for *${p.activityName}*. ` +
     `Tick off whoever's settled up:\n${p.url}`,
 
+  /** Row 157: the collector's notice that a player is settling directly.
+   *  Sent once per player per match, by `markDirectPaymentPending`, from
+   *  either the pay page's button (`claimedPaid: false`, "they'll pay") or
+   *  a player DMing "Paid" (`claimedPaid: true`, "they've paid"). Nothing
+   *  is marked paid until the collector taps the link and confirms.
+   *  Moved from app/actions/payments.ts on 2026-09-23; the one English
+   *  change is ":" where it had a dash. */
+  dm_direct_pay_notice: (p: {
+    playerName: string | null;
+    activityName: string;
+    amount: string;
+    quantity: number;
+    url: string;
+    claimedPaid: boolean;
+  }): string =>
+    `💸 *${p.playerName ?? "A player"}* ${p.claimedPaid ? "says they've paid you directly" : "says they'll pay you directly"} ` +
+    `for *${p.activityName}*: *${p.amount}*${p.quantity > 1 ? ` (${p.quantity} players)` : ""}.\n\n` +
+    `Mark it paid once it lands:\n${p.url}`,
+
+  /** Row 158: the player's reply when their "Paid" DM was passed to the
+   *  collector. `collectorName` is the collector's first name. */
+  dm_paid_claim_ack: (p: { firstName: string | null; collectorName: string | null; amount: string; activityName: string }): string =>
+    `Thanks${p.firstName ? ` ${p.firstName}` : ""}, I've told ${p.collectorName ?? "the organiser"} you've paid ` +
+    `*${p.amount}* for *${p.activityName}*. ${p.collectorName ?? "The organiser"} will confirm once it lands 👍`,
+
+  /** Row 159: the same, when the collector already knew (a second "paid",
+   *  or a "paid" after tapping "Pay the collector directly"). */
+  dm_paid_claim_already: (p: { firstName: string | null; collectorName: string | null; amount: string; activityName: string }): string =>
+    `Already done${p.firstName ? ` ${p.firstName}` : ""}: ${p.collectorName ?? "the organiser"} knows about your ` +
+    `*${p.amount}* for *${p.activityName}* and will confirm once it lands 👍`,
+
+  /** Row 160: "paid for me and my mate". Nothing is recorded (MatchTime
+   *  does not guess how many people a payment covered); the pay page has
+   *  the guest count and the "Pay the collector directly" button. */
+  dm_paid_for_others: (p: { firstName: string | null; collectorName: string | null; url: string }): string =>
+    `Thanks${p.firstName ? ` ${p.firstName}` : ""}! So ${p.collectorName ?? "the organiser"} gets the right amount to confirm, ` +
+    `open your pay link, set how many people you paid for and choose *Pay the collector directly*:\n${p.url}`,
+
   /** Rows 106, 107: the admin recruit-by-DM reply (the failure is
    *  `recruit_failed`, shared with the group reply). */
   dm_admin_recruit_done: (p: { invited: number; matchName: string; matchWhen: string; need: number | null }): string =>

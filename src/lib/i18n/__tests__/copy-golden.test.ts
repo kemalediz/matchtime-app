@@ -92,6 +92,17 @@
  *     in the direction that matters, because it told a player their
  *     number had been moved when it had not.
  *
+ *   - Deliberate additions (2026-09-23, a player DMs "Paid"): rows R157
+ *     to R160. R158 to R160 are NEW copy, the player's replies to a
+ *     payment claim. R157 is the collector's "paying you directly"
+ *     notice, which lived inline in `app/actions/payments.ts` (listed
+ *     below as not covered until now) and moved into the table so the DM
+ *     claim and the pay page share it. It is additive to this snapshot,
+ *     but the live English it renders changed in one character: the old
+ *     inline text had a dash between the match name and the amount, and
+ *     it now has a colon ("... for *X*: *£8*."), house style. The
+ *     "they've paid you" variant is new, for the DM claim.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -124,7 +135,6 @@
  *                                DMs were extracted as pure builders and pinned
  *                                on 2026-09-17)
  *   src/app/actions/matches.ts   :152 format-switch announcement, :192 cancel
- *   src/app/actions/payments.ts  :304 direct-pay notice
  *   src/app/actions/claim.ts :92, phone-signup.ts :79  verification codes
  *   src/app/api/whatsapp/analyze/route.ts :721, :2687, :2689, :2705, :2707,
  *                                :3681, :3690, :3711, :3744, :3865
@@ -214,8 +224,11 @@ import {
   buildAdminRecruitDmReply,
   buildBenchDmAck,
   buildBenchDmUnclear,
+  buildDirectPayCollectorNotice,
   buildDirectPayCollectorNudge,
   buildDmQaApology,
+  buildPaidClaimAck,
+  buildPaidForOthersReply,
   buildFeeAskDm,
   buildFeeCancelledAck,
   buildFeeConfirmPrompt,
@@ -892,6 +905,16 @@ function cases(lang: Lang): Case[] {
   add("R89 buildPayChaseDm / no name, whole pounds", buildPayChaseDm({ playerName: null, dayNum: 1, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", lang }));
   add("R90 buildDirectPayCollectorNudge / one", buildDirectPayCollectorNudge({ count: 1, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect", lang }));
   add("R90 buildDirectPayCollectorNudge / three", buildDirectPayCollectorNudge({ count: 3, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect", lang }));
+  add("R157 buildDirectPayCollectorNotice / pay page, one", buildDirectPayCollectorNotice({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", amount: 8, quantity: 1, url: "https://mt.example/s/collect", claimedPaid: false, lang }));
+  add("R157 buildDirectPayCollectorNotice / pay page, three", buildDirectPayCollectorNotice({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", amount: 24, quantity: 3, url: "https://mt.example/s/collect", claimedPaid: false, lang }));
+  add("R157 buildDirectPayCollectorNotice / a Paid DM", buildDirectPayCollectorNotice({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", amount: 8, quantity: 1, url: "https://mt.example/s/collect", claimedPaid: true, lang }));
+  add("R157 buildDirectPayCollectorNotice / no name", buildDirectPayCollectorNotice({ playerName: null, activityName: "Tuesday 7-a-side", amount: 8.5, quantity: 1, url: "https://mt.example/s/collect", claimedPaid: true, lang }));
+  add("R158 buildPaidClaimAck", buildPaidClaimAck({ playerName: "Sait Demir", collectorName: "Kemal Ediz", amount: 8, activityName: "Tuesday 7-a-side", alreadyPending: false, lang }));
+  add("R158 buildPaidClaimAck / no names", buildPaidClaimAck({ playerName: null, collectorName: null, amount: 8.5, activityName: "Tuesday 7-a-side", alreadyPending: false, lang }));
+  add("R159 buildPaidClaimAck / already told", buildPaidClaimAck({ playerName: "Sait Demir", collectorName: "Kemal Ediz", amount: 8, activityName: "Tuesday 7-a-side", alreadyPending: true, lang }));
+  add("R159 buildPaidClaimAck / already told, no names", buildPaidClaimAck({ playerName: null, collectorName: null, amount: 8, activityName: "Tuesday 7-a-side", alreadyPending: true, lang }));
+  add("R160 buildPaidForOthersReply", buildPaidForOthersReply({ playerName: "Sait Demir", collectorName: "Kemal Ediz", url: "https://mt.example/s/pay", lang }));
+  add("R160 buildPaidForOthersReply / no names", buildPaidForOthersReply({ playerName: null, collectorName: null, url: "https://mt.example/s/pay", lang }));
   add("R95 buildPayLinkDm", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", lang }));
   add("R95 buildPayLinkDm / no name, pence", buildPayLinkDm({ playerName: null, activityName: "Tuesday 7-a-side", fee: 7.5, url: "https://mt.example/s/pay", lang }));
   add("R96 buildFeeReleasedAck / one", buildFeeReleasedAck({ released: 1, fee: 8, matchName: "Tuesday 7-a-side", lang }));
@@ -994,6 +1017,8 @@ const MIGRATED_ROWS = [
   "R144 ", "R145 ", "R146 ",
   // the stats tables in the group (2026-09-23)
   "R26b ", "R147 ", "R148 ", "R149 ", "R150 ", "R151 ", "R152 ", "R153 ", "R154 ", "R155 ", "R156 ",
+  // a player DMs "Paid" (2026-09-23): the collector's notice and the player's replies
+  "R157 ", "R158 ", "R159 ", "R160 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

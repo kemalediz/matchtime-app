@@ -997,6 +997,24 @@ export const tr: Strings = {
     `🤝 ${p.count} oyuncu *${p.activityName}* için sana doğrudan ödeyeceğini söyledi. ` +
     `Ödeyenleri buradan işaretle:\n${p.url}`,
 
+  dm_direct_pay_notice: (p) =>
+    `💸 *${p.playerName ?? "Bir oyuncu"}*, *${p.activityName}* için ` +
+    `${p.claimedPaid ? "sana doğrudan ödeme yaptığını yazdı" : "sana doğrudan ödeyeceğini söyledi"}: ` +
+    `*${p.amount}*${p.quantity > 1 ? ` (${p.quantity} kişi)` : ""}.\n\n` +
+    `Para eline geçince ödendi olarak işaretle:\n${p.url}`,
+
+  dm_paid_claim_ack: (p) =>
+    `Teşekkürler${p.firstName ? ` ${p.firstName}` : ""}! *${p.activityName}* için *${p.amount}* ödediğini ilettim. ` +
+    `${p.collectorName ?? "Organizatör"} para eline geçince onaylayacak 👍`,
+
+  dm_paid_claim_already: (p) =>
+    `Tamamdır${p.firstName ? ` ${p.firstName}` : ""}, *${p.activityName}* için *${p.amount}* ödemeni zaten ilettim. ` +
+    `${p.collectorName ?? "Organizatör"} para eline geçince onaylayacak 👍`,
+
+  dm_paid_for_others: (p) =>
+    `Teşekkürler${p.firstName ? ` ${p.firstName}` : ""}! ${p.collectorName ?? "Organizatör"} doğru tutarı görüp onaylayabilsin diye ` +
+    `ödeme linkini aç, kaç kişi için ödediğini seç ve *Pay the collector directly* seçeneğine dokun:\n${p.url}`,
+
   dm_admin_recruit_done: (p) =>
     `📣 Tamam, cevap vermemiş ${p.invited} oyuncuya *${p.matchName}* (${p.matchWhen}) için DM attım${p.need ? ` (${p.need} yer boş)` : ""}. Varım diyeni ekleyeceğim. 🙏`,
   dm_admin_recruit_nobody_new: (p) =>
