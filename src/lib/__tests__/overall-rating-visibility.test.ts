@@ -246,12 +246,36 @@ describe("only one surface in the whole product loads an overall rating", () => 
  * it is meant to be visible to the club.
  */
 describe("a clubmate's CLUB rating stays visible, including to admins", () => {
-  it("the squad leaderboard is club-scoped and has no viewer argument", () => {
+  it("the squad leaderboard is club-scoped and never reaches for the overall", () => {
     const text = readFileSync(path.join(SRC, "lib/player-stats.ts"), "utf8");
     const sig = /export async function loadRatingLeaderboard\(([\s\S]*?)\)/.exec(text);
     expect(sig).not.toBeNull();
     expect(sig![1]).toMatch(/orgId/);
-    expect(sig![1]).not.toMatch(/viewerId/);
+
+    // This used to also assert `not.toMatch(/viewerId/)`, and that
+    // clause was RETIRED on 2026-09-23 rather than satisfied.
+    //
+    // It was a static proxy for the property this describe block is
+    // actually about: the squad leaderboard must not start personalising
+    // what one club member is allowed to see of another. When it was
+    // written, a viewer argument could only have meant that.
+    //
+    // The three-month inactivity rule then needed the viewer's id for
+    // the opposite reason — to show him MORE, his own unranked row on
+    // his own stats page, so a returning player is not told by a page
+    // with his name at the top that he does not exist
+    // (`ranked-table-activity.ts`, VIEWER_IS_EXEMPT_ON_OWN_STATS_PAGE).
+    // Banning the parameter would have blocked that while still not
+    // catching a genuinely restrictive option under any other name.
+    //
+    // So the proxy is replaced by two checks of the real thing: the
+    // function still cannot see an overall rating (below), and
+    // "the viewer argument is purely additive" in
+    // `rating-leaderboard-inactive.test.ts` proves at RUNTIME that
+    // passing a viewer leaves every other player's row identical.
+    const body = /export async function loadRatingLeaderboard[\s\S]*?\n}/.exec(text);
+    expect(body).not.toBeNull();
+    expect(body![0]).not.toMatch(/loadAllClubsOverview|overallAvg/);
   });
 
   it("the admin stats page scopes ratings to the org and shows them", () => {

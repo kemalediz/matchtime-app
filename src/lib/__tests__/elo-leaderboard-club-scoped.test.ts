@@ -45,6 +45,25 @@ const OTHER_ORG = "org-sutton-lads";
 /** Six completed matches, so everyone clears the bottom-N threshold. */
 const MATCH_IDS = ["m1", "m2", "m3", "m4", "m5", "m6"];
 
+/**
+ * The fixture's matches are dated RELATIVE TO NOW, ending two days ago.
+ *
+ * They used to be pinned at 6 Jan 2026. That was harmless until the
+ * leaderboards started dropping players with no appearance in the last
+ * three months (`ranked-table-activity.ts`): with every fixture nine
+ * months old, every player in this file is inactive, all four tables
+ * come back empty, and tests about which Elo VALUE is ranked would be
+ * asserting over nothing. The dates are not what this file is about, so
+ * they are anchored to the clock rather than to a calendar date that
+ * ages out of the window as soon as it is written.
+ */
+const MATCH_DATES = new Map(
+  MATCH_IDS.map((id, i) => [
+    id,
+    new Date(Date.now() - (2 + (MATCH_IDS.length - 1 - i) * 7) * 86_400_000),
+  ]),
+);
+
 function seed(args: {
   players: Array<{ id: string; name: string }>;
   /** `Membership.matchRating` rows, keyed by org. */
@@ -55,12 +74,17 @@ function seed(args: {
       a.include
         ? {
             id,
-            date: new Date(2026, 0, 6),
+            date: MATCH_DATES.get(id),
             redScore: 3,
             yellowScore: 2,
             activity: { sport: { teamLabels: null } },
           }
-        : { id },
+        : // `date` as well as `id`: the aggregate query selects both,
+          // because the inactivity filter needs to know when each
+          // appearance happened. A mock that returns bare ids makes
+          // every last-played date undefined, which empties all four
+          // tables rather than failing loudly.
+          { id, date: MATCH_DATES.get(id) },
     ),
   );
   orgFindUnique.mockResolvedValue({ teamLabels: null, language: "en" });

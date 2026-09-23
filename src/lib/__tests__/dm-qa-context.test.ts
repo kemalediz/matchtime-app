@@ -71,6 +71,10 @@ const INPUT: ScopedContextInput = {
     attendanceLeaderboard: [],
     eloTop: [],
     eloBottom: [],
+    // Nobody hidden by the three-month inactivity rule, so the block
+    // this fixture pins carries no "tables are filtered" note. The
+    // filtered case is covered in leaderboard-inactive-filter.test.ts.
+    inactivePlayersHidden: 0,
   },
 };
 

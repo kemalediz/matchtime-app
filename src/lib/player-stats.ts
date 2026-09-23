@@ -18,6 +18,7 @@
 import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { computeClubRating, clubDisplayRating, type ClubRatingSource } from "./player-rating";
+import { buildRankedRoster, loadLastPlayedByUser } from "./ranked-table-activity";
 
 export interface TimelinePoint {
   matchId: string;
@@ -432,7 +433,9 @@ export interface LeaderboardRow {
   name: string;
   avg: number;
   games: number;
-  rank: number;
+  /** Position in the table, or null for the viewer's own unranked row
+   *  when they have aged out — see `viewerId` below. */
+  rank: number | null;
   /** Rank as of the previous completed match (null if new this week). */
   prevRank: number | null;
   /** prevRank - rank: positive = climbed, negative = dropped, 0 = same. */
@@ -440,6 +443,12 @@ export interface LeaderboardRow {
   /** Only one rated match so far — ranking is provisional/noisy. UI marks
    *  these so a young squad still shows everyone who's played. */
   provisional: boolean;
+  /** True only on the viewer's own courtesy row: they are out of the
+   *  ranked table because they haven't played in three months. */
+  inactive: boolean;
+  /** When this player last played. Present so the UI can say WHY an
+   *  inactive row is unranked instead of leaving it a mystery. */
+  lastPlayed: Date | null;
 }
 
 /**
@@ -448,10 +457,27 @@ export interface LeaderboardRow {
  * then re-ranks excluding the most recent completed match to compute
  * the movement since last week. Min `minGames` appearances to rank
  * (one lucky game shouldn't top the table).
+ *
+ * PLAYERS WHO HAVE STOPPED TURNING UP ARE NOT RANKED. Same rule as the
+ * chat leaderboards: no CONFIRMED appearance in the last three months
+ * and you are out of the table until you play again, with your number
+ * untouched the whole time. The argument for removal over a decayed
+ * rating is in `ranked-table-activity.ts`; the short version is that a
+ * decayed number is one the player never earned and reads to him as a
+ * bug.
+ *
+ * `viewerId` is the ONE exemption. This function backs `/profile/stats`,
+ * a page with the reader's own name at the top which promises to show
+ * "how you stack up against the squad". Showing a returning player
+ * nothing there is hostile, and it is also the most likely way anybody
+ * discovers the rule exists. So the viewer always gets a row — appended
+ * LAST, with `rank: null` and `inactive: true`, never slotted back into
+ * the ordering, because inventing a position for him would be the decay
+ * problem wearing a different hat.
  */
 export async function loadRatingLeaderboard(
   orgId: string,
-  opts: { minGames?: number; limit?: number } = {},
+  opts: { minGames?: number; limit?: number; viewerId?: string } = {},
 ): Promise<LeaderboardRow[]> {
   const minGames = opts.minGames ?? 2;
   const limit = opts.limit ?? 20;
@@ -493,20 +519,26 @@ export async function loadRatingLeaderboard(
   });
   const names = new Map(nameRows.map((u) => [u.id, u.name ?? "(unknown)"]));
 
-  const rank = (map: Map<string, Acc>) => {
+  // Who is still in the table. Ranks are assigned AFTER the filter, so
+  // the list reads 1, 2, 3 with no gap where a departed player used to
+  // sit. Movement arrows are computed the same way in both passes, so a
+  // player's arrow never jumps because somebody else aged out.
+  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId));
+  const rankActive = (map: Map<string, Acc>) => {
     const rows = [...map.entries()]
       .map(([id, a]) => ({ id, avg: mean(a.scores)!, games: a.matches.size }))
       .filter((r) => r.games >= minGames)
+      .filter((r) => roster.isRanked(r.id))
       .sort((a, b) => b.avg - a.avg);
     const rankMap = new Map<string, number>();
     rows.forEach((r, i) => rankMap.set(r.id, i + 1));
     return { rows, rankMap };
   };
 
-  const now = rank(all);
-  const priorRanked = rank(prior);
+  const now = rankActive(all);
+  const priorRanked = rankActive(prior);
 
-  return now.rows.slice(0, limit).map((r) => {
+  const ranked: LeaderboardRow[] = now.rows.slice(0, limit).map((r) => {
     const prevRank = priorRanked.rankMap.get(r.id) ?? null;
     const rankNow = now.rankMap.get(r.id)!;
     return {
@@ -518,8 +550,39 @@ export async function loadRatingLeaderboard(
       prevRank,
       delta: prevRank !== null ? prevRank - rankNow : null,
       provisional: r.games < 2,
+      inactive: false,
+      lastPlayed: roster.lastPlayed(r.id),
     };
   });
+
+  // The viewer's courtesy row. Only when they have actually been rated
+  // (a stranger gets nothing rather than an empty row), and only when
+  // the filter is what removed them — someone held out by `minGames`
+  // is a different situation the UI already explains with its "1 game"
+  // tag, and is not this rule's business.
+  const viewerId = opts.viewerId;
+  if (
+    viewerId &&
+    !roster.isRanked(viewerId) &&
+    all.has(viewerId) &&
+    !ranked.some((r) => r.userId === viewerId)
+  ) {
+    const a = all.get(viewerId)!;
+    ranked.push({
+      userId: viewerId,
+      name: names.get(viewerId) ?? "(unknown)",
+      avg: mean(a.scores)!,
+      games: a.matches.size,
+      rank: null,
+      prevRank: null,
+      delta: null,
+      provisional: a.matches.size < 2,
+      inactive: true,
+      lastPlayed: roster.lastPlayed(viewerId),
+    });
+  }
+
+  return ranked;
 }
 
 export interface TeamOfSeasonSlot {
@@ -537,6 +600,24 @@ export interface TeamOfSeasonSlot {
  * highest-rated eligible player fills each slot for the position they
  * list. Slots that can't be filled by a position specialist fall back
  * to the best remaining player. Returns [] if there isn't enough data.
+ *
+ * ⚠️ DELIBERATELY NOT FILTERED BY THE THREE-MONTH INACTIVITY RULE, and
+ * this is the one surface that opts out. Do not "make it consistent"
+ * with the leaderboard above it without reading
+ * TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE in `ranked-table-activity.ts`.
+ *
+ * The short version: the leaderboards answer "where do I stand NOW",
+ * which is a question about the present, so a man who is no longer
+ * around does not belong in the answer. This answers "who was best THIS
+ * SEASON", which is a question about a closed period. A best XI that
+ * quietly drops half the players who actually played the season is not
+ * the team of the season — it is the team of whoever is still here,
+ * published under the wrong name.
+ *
+ * The visible consequence, so nobody files it as a bug: a player can
+ * appear in Team of the Season and not in the squad leaderboard
+ * directly above it on `/profile/stats`. That is correct. The page says
+ * so.
  */
 export async function loadTeamOfSeason(
   orgId: string,
