@@ -79,6 +79,10 @@ export interface PayGuardInput {
   matchStatus: string;
 }
 
+/** The already-paid sentence, exported so the settle-directly write can
+ *  say it when a confirmation lands between its read and its write. */
+export const ALREADY_PAID_REASON = "You're already paid for this match — nothing more to do. Thanks!";
+
 /**
  * Why this player may NOT start a payment right now — a short, human
  * sentence to show them — or null when they may.
@@ -92,9 +96,7 @@ export interface PayGuardInput {
  * message and a second charge.
  */
 export function payBlockedReason(input: PayGuardInput): string | null {
-  if (input.paidAt) {
-    return "You're already paid for this match — nothing more to do. Thanks!";
-  }
+  if (input.paidAt) return ALREADY_PAID_REASON;
   if (input.matchStatus === "CANCELLED") {
     return "That match was cancelled, so there's nothing to pay.";
   }

@@ -202,6 +202,8 @@ const TRUNCATION_FAILS_CLOSED: Record<string, string> = {
     "parseDmIntent JSON.parse fails on a truncated body → `other`, which DMs nobody.",
   "lib/fee-confirm.ts":
     "parseFeeReplyIntent JSON.parse fails on a truncated body → `neither`, which releases no pay links and cancels no fee.",
+  "lib/payment-claim-classifier.ts":
+    "parsePaymentClaim JSON.parse fails on a truncated body → `other`, which marks nothing pending and DMs nobody.",
   // ── `lib/window-analyzer.ts` REMOVED FROM THIS LIST (§10 step 8) ──
   //
   //   Its exemption read "Shadow analysis only — off by default (#28),

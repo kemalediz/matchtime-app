@@ -141,6 +141,62 @@ export function buildDirectPayCollectorNudge(
   return t(p.lang).dm_direct_pay_nudge({ count: p.count, activityName: p.activityName, url: p.url });
 }
 
+// ── row 157: the collector's "settling directly" notice ────────────────
+
+export function buildDirectPayCollectorNotice(
+  p: {
+    playerName: string | null;
+    activityName: string;
+    /** Base fee times quantity, in pounds. */
+    amount: number;
+    quantity: number;
+    url: string;
+    /** True when the player SAID they have paid (a "Paid" DM); false when
+     *  they chose to pay directly on the pay page. */
+    claimedPaid: boolean;
+  } & WithLang,
+): string {
+  return t(p.lang).dm_direct_pay_notice({
+    playerName: p.playerName,
+    activityName: p.activityName,
+    amount: gbp(p.amount),
+    quantity: p.quantity,
+    url: p.url,
+    claimedPaid: p.claimedPaid,
+  });
+}
+
+// ── rows 158 to 160: the player's reply to a "Paid" DM ─────────────────
+
+export function buildPaidClaimAck(
+  p: {
+    playerName: string | null;
+    collectorName: string | null;
+    amount: number;
+    activityName: string;
+    /** The collector already knew (a repeat): a different, shorter reply. */
+    alreadyPending: boolean;
+  } & WithLang,
+): string {
+  const args = {
+    firstName: firstOf(p.playerName),
+    collectorName: firstOf(p.collectorName),
+    amount: gbp(p.amount),
+    activityName: p.activityName,
+  };
+  return p.alreadyPending ? t(p.lang).dm_paid_claim_already(args) : t(p.lang).dm_paid_claim_ack(args);
+}
+
+export function buildPaidForOthersReply(
+  p: { playerName: string | null; collectorName: string | null; url: string } & WithLang,
+): string {
+  return t(p.lang).dm_paid_for_others({
+    firstName: firstOf(p.playerName),
+    collectorName: firstOf(p.collectorName),
+    url: p.url,
+  });
+}
+
 // ── row 95: the pay link ───────────────────────────────────────────────
 
 export function buildPayLinkDm(

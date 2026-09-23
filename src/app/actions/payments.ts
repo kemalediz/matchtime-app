@@ -23,7 +23,7 @@ import {
   createCheckoutSession,
 } from "@/lib/stripe";
 import { totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
-import { payBlockedReason } from "@/lib/payment-outcome";
+import { markDirectPaymentPending, resolvePayContext } from "@/lib/direct-payment";
 import { formatLondon } from "@/lib/london-time";
 
 // ── Connect onboarding (money collector links their bank) ────────────
@@ -160,49 +160,13 @@ export async function resetCollectorConnect(orgId: string): Promise<{ ok: true }
 
 // ── Player pays ──────────────────────────────────────────────────────
 
+/** The pay guards, as a throw: the pay page shows the message as a
+ *  toast. The guards themselves live in lib/direct-payment.ts, shared
+ *  with settle-directly and the "Paid" DM. */
 async function loadPayContext(userId: string, matchId: string) {
-  const match = await db.match.findUnique({
-    where: { id: matchId },
-    include: {
-      activity: {
-        select: {
-          name: true,
-          orgId: true,
-          org: {
-            select: {
-              id: true,
-              name: true,
-              stripeConnectAccountId: true,
-              stripeChargesEnabled: true,
-              payMethodPayByBank: true,
-              payMethodCard: true,
-              payMethodDirect: true,
-              paymentHolderId: true,
-            },
-          },
-        },
-      },
-    },
-  });
-  if (!match) throw new Error("Match not found");
-  if (match.feePerPlayer == null) throw new Error("No fee set for this match yet");
-  const attendance = await db.attendance.findUnique({
-    where: { matchId_userId: { matchId, userId } },
-  });
-  if (!attendance) throw new Error("You weren't in this squad");
-  // Money guards, shared by every way a player can start paying
-  // (2026-08-31). The pay link is a PERMANENT magic link sent over
-  // WhatsApp, so these are the only thing between an old message and a
-  // second charge — the pay page's "you're all paid" screen is a display,
-  // not a guard. Blocked reasons are human sentences (payment-outcome.ts)
-  // that surface as a toast on the pay page.
-  const blocked = payBlockedReason({
-    paidAt: attendance.paidAt,
-    attendanceStatus: attendance.status,
-    matchStatus: match.status,
-  });
-  if (blocked) throw new Error(blocked);
-  return { match, org: match.activity.org, attendance, base: match.feePerPlayer };
+  const ctx = await resolvePayContext(userId, matchId);
+  if (!ctx.ok) throw new Error(ctx.reason);
+  return ctx;
 }
 
 /** Card / Pay by Bank → create a Checkout session on the connected
@@ -254,63 +218,15 @@ export async function payByMethod(
   return { url };
 }
 
-/** "Pay the collector directly" → flag pending + DM the collector to confirm. */
+/** "Pay the collector directly" → flag pending + DM the collector to
+ *  confirm. The whole behaviour is `markDirectPaymentPending`, shared with
+ *  a player who DMs MatchTime "Paid" (lib/payment-claim.ts). Never sets
+ *  paidAt: only `confirmDirectPayment` below does, for a direct payment. */
 export async function payDirect(matchId: string, quantity = 1): Promise<{ ok: true }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
-  const userId = session.user.id;
-  const { match, org, base, attendance } = await loadPayContext(userId, matchId);
-  if (!org.payMethodDirect) throw new Error("Direct payment is off");
-
-  // Was this player ALREADY in "will pay directly" (unpaid) before this tap?
-  // If so, this is a repeat tap — refresh state silently, don't re-DM the
-  // collector (one nudge per player per match). A fresh selection (no prior
-  // pending, or after the state cleared) still notifies.
-  const alreadyPending = attendance.directPendingAt != null && attendance.paidAt == null;
-
-  const qty = Math.max(1, Math.min(10, Math.floor(quantity)));
-  const amount = base * qty;
-  await db.attendance.update({
-    where: { matchId_userId: { matchId, userId } },
-    data: {
-      paymentMethod: "direct",
-      paymentAmount: amount,
-      paymentQuantity: qty,
-      directPendingAt: new Date(),
-    },
-  });
-
-  // Notify the collector so they can confirm when the cash/transfer lands —
-  // but only on a NEW direct selection, not a repeat tap while still pending.
-  if (org.paymentHolderId && !alreadyPending) {
-    const me = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
-    const holder = await db.user.findUnique({
-      where: { id: org.paymentHolderId },
-      select: { phoneNumber: true },
-    });
-    if (holder?.phoneNumber) {
-      const { signMagicLinkToken, MAGIC_LINK_TTL } = await import("@/lib/magic-link");
-      const { buildShortMagicLinkUrl } = await import("@/lib/short-link");
-      const token = signMagicLinkToken({
-        userId: org.paymentHolderId,
-        purpose: "sign-in",
-        nextPath: `/collect/${matchId}`,
-        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
-      });
-      const { gbp } = await import("@/lib/payments");
-      await db.botJob.create({
-        data: {
-          orgId: org.id,
-          kind: "dm",
-          phone: holder.phoneNumber.replace(/^\+/, ""),
-          text:
-            `💸 *${me?.name ?? "A player"}* says they'll pay you directly for *${match.activity.name}* — ` +
-            `*${gbp(amount)}*${qty > 1 ? ` (${qty} players)` : ""}.\n\n` +
-            `Mark it paid once it lands:\n${await buildShortMagicLinkUrl(token)}`,
-        },
-      });
-    }
-  }
+  const r = await markDirectPaymentPending({ userId: session.user.id, matchId, quantity, via: "pay-page" });
+  if (!r.ok) throw new Error(r.reason);
   return { ok: true };
 }
 

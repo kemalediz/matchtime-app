@@ -609,6 +609,15 @@ describe("a live run cannot be secretly gated", () => {
       assertSeamMatchesMode("live", { ...liveOkNoRouterStub, MT_TEST_ROUTER_STUB_FILE: "" }),
     ).not.toThrow();
   });
+
+  it("refuses a live run that can still see the payment-claim stub file", () => {
+    expect(() =>
+      assertSeamMatchesMode("live", {
+        ...liveOkNoRouterStub,
+        MT_TEST_PAYMENT_CLAIM_STUB_FILE: "/tmp/payment-claim-stub.json",
+      }),
+    ).toThrow(/MT_TEST_PAYMENT_CLAIM_STUB_FILE/);
+  });
 });
 
 describe("the router gate is visible to the reach guard", () => {

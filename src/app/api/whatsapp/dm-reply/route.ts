@@ -7,16 +7,19 @@
  *
  *   1. bench-slot offer reply           (an open BenchSlotOffer)
  *   2. DM subscription command          ("stop messaging me about ratings")
- *   3. tentative-availability follow-up (an open TentativeAvailability)
- *   4. money-collector fee reply        (a match awaiting its fee)
- *   5. admin recruit blast / rating progress  (admin-gated, and
+ *   3. player payment claim             (2026-09-23: "Paid" from a player
+ *      who owes a released fee; the pay page's settle-directly, see
+ *      lib/payment-claim.ts)
+ *   4. tentative-availability follow-up (an open TentativeAvailability)
+ *   5. money-collector fee reply        (a match awaiting its fee)
+ *   6. admin recruit blast / rating progress  (admin-gated, and
  *      MODEL-classified since 2026-09-11 — the two regexes that
  *      used to select it are deleted; see lib/dm-intent.ts)
- *   6. roster check-in survey           (an open RosterSurveyDM)
- *   7. COLD self-attendance fallback    (2026-08-31 — a player replying
+ *   7. roster check-in survey           (an open RosterSurveyDM)
+ *   8. COLD self-attendance fallback    (2026-08-31 — a player replying
  *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
  *      it to; registers against the active match)
- *   8. scoped Q&A, else ignore
+ *   9. scoped Q&A, else ignore
  *
  * Adding a handler means slotting it by SPECIFICITY, never in front of a
  * prompt that knows which question is being answered.
@@ -383,6 +386,43 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── Player payment claim: "Paid" (2026-09-23) ────────────────────────
+  //   A player who owes a released match fee DMs "Paid" / "sent it" /
+  //   "ödedim" instead of using the pay link. It does EXACTLY what the pay
+  //   page's "Pay the collector directly" button does (one shared
+  //   function, lib/direct-payment.ts): a PENDING state and a DM to the
+  //   collector to confirm. It NEVER marks anyone paid.
+  //
+  //   PLACEMENT. Ahead of the tentative follow-up and the roster survey on
+  //   purpose: both of those answer anything they cannot read with a
+  //   re-ask, so a "Paid" that reached them was swallowed exactly the way
+  //   Abid Kazmi's was. It costs nothing for everyone else: the model is
+  //   asked ONLY when the sender currently owes a released fee (one
+  //   indexed query first), and any verdict but a claim falls through to
+  //   the handlers below unchanged. The bench-offer reply stays first; it
+  //   resolves its own sender and owns the DM while an offer is open.
+  {
+    const { handlePaymentClaimDm } = await import("@/lib/payment-claim");
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    const replyPhone =
+      phoneNoPlus ??
+      (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(
+        /^\+/,
+        "",
+      ) ??
+      null;
+    const claim = await handlePaymentClaimDm({
+      userId: user.id,
+      userName: user.name,
+      text,
+      waMessageId,
+      replyPhone,
+    });
+    if (claim.handled) {
+      return NextResponse.json({ ok: true, ...claim });
+    }
+  }
+
   // ── Tentative-availability follow-up reply (IN/OUT) ─────────────────
   //   The bot DMs a player who was a MAYBE ~24h before kickoff asking for
   //   a firm IN/OUT. Their reply lands here. If they have an OPEN
@@ -619,9 +659,9 @@ export async function POST(request: Request) {
   //   confidence below the floor — yields `other`, which DMs nobody.
   //
   //   ── PLACEMENT IS UNCHANGED, AND THE MODEL CALL IS NOT PAID FOR ON
-  //      EVERY DM. Still fifth, behind every handler that knows WHICH
-  //      question is being answered (bench offer, subscription command,
-  //      tentative follow-up, collector fee) and ahead of the roster
+  //      EVERY DM. Still behind every handler that knows WHICH question
+  //      is being answered (bench offer, subscription command, payment
+  //      claim, tentative follow-up, collector fee) and ahead of the roster
   //      survey, the cold self-attendance fallback and scoped Q&A. And
   //      `adminOrgIds` runs BEFORE the classifier: a club has one or two
   //      admins and dozens of players, so the overwhelming majority of

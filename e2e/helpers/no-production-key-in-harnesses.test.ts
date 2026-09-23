@@ -110,6 +110,7 @@ const LIVE_HARNESSES: Array<[file: string, owes: RegExp]> = [
   ["scripts/chase-at-risk-live.ts", RESOLVER_CALL],
   ["scripts/dryrun-dm-qa.ts", RESOLVER_CALL],
   ["scripts/dryrun-fee-confirm.ts", RESOLVER_CALL],
+  ["scripts/dryrun-payment-claim.ts", RESOLVER_CALL],
   ["scripts/dryrun-pipeline.ts", RESOLVER_CALL],
   ["scripts/measure-claimless.ts", RESOLVER_CALL],
   ["scripts/sim-onboarding.ts", RESOLVER_CALL],
