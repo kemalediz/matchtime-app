@@ -1856,6 +1856,45 @@ async function computeForMatch(
       ).map((mem) => mem.userId),
     );
 
+    // Who has already done the thing the rating DM asks for.
+    //
+    // ENGAGED = at least one Rating row for this match, OR a MoMVote.
+    // Either half counts, deliberately: 6d has always stopped reminding
+    // on that test and 6e has always counted a player as engaged on it,
+    // so a third, stricter definition here would mean the first DM
+    // nagging someone the reminder has already written off and the MoM
+    // announcement has already counted. One definition, three readers.
+    //
+    // A player who did exactly half is therefore left alone. The DM asks
+    // for both in one breath, so there is no message that asks only for
+    // the missing half, and re-sending the whole ask to someone who has
+    // rated all 13 teammates is precisely the 2026-09-22 complaint.
+    //
+    // COST: one pair of indexed reads per match per tick, and only when
+    // a section below actually needs the answer. Memoised here rather
+    // than queried per player, and never touched at all once the rating
+    // DMs and the promo are done for this match.
+    let engagementCache: { engaged: Set<string>; momVoteCount: number } | null = null;
+    const loadRatingEngagement = async () => {
+      if (engagementCache) return engagementCache;
+      const [momVoters, ratingVoters] = await Promise.all([
+        db.moMVote.findMany({ where: { matchId }, select: { voterId: true } }),
+        db.rating.findMany({
+          where: { matchId },
+          select: { raterId: true },
+          distinct: ["raterId"],
+        }),
+      ]);
+      engagementCache = {
+        engaged: new Set<string>([
+          ...momVoters.map((v) => v.voterId),
+          ...ratingVoters.map((r) => r.raterId),
+        ]),
+        momVoteCount: momVoters.length,
+      };
+      return engagementCache;
+    };
+
     // 6b + 6c. Rating DMs + group promo — HOLD until 08:00 London, then
     //          fire any time from 08:00 onward the morning/day AFTER match
     //          day (no upper bound). Previously these
@@ -1884,10 +1923,32 @@ async function computeForMatch(
         hoursSinceMatch <= 36 &&
         hourNow >= 8;
 
-      if (isMorningAfter) {
+      // Everyone this match could DM about ratings, before asking the
+      // database anything. The engagement lookup below is skipped
+      // entirely once every one of them has a breadcrumb and the promo
+      // has gone out, so a match sitting out the rest of its 36h window
+      // costs no queries at all.
+      const promoKey = `${matchId}:rate-promo`;
+      const rateDmCandidates = confirmed.filter(
+        (a) => a.user.phoneNumber && !optedOut.has(a.userId),
+      );
+      const anyRateDmOutstanding = rateDmCandidates.some(
+        (a) => !sentKeys.has(`${matchId}:rate-dm:${a.userId}`),
+      );
+
+      if (isMorningAfter && (anyRateDmOutstanding || !sentKeys.has(promoKey))) {
+        // One lookup for the whole match, in the style of `optedOut`
+        // above. Players rate through the web app at any hour, so by
+        // 08:00 some of the squad is typically already done: on
+        // 2026-09-22 Kemal finished at 23:42 and Sait at 23:10, and both
+        // were DMed at 08:06 anyway.
+        const { engaged } = await loadRatingEngagement();
+
         for (const a of confirmed) {
           if (!a.user.phoneNumber) continue;
           if (optedOut.has(a.userId)) continue;
+          // Already rated, or already voted: nothing left to ask them for.
+          if (engaged.has(a.userId)) continue;
           const key = `${matchId}:rate-dm:${a.userId}`;
           if (sentKeys.has(key)) continue;
           const token = signMagicLinkToken({
@@ -1931,9 +1992,15 @@ async function computeForMatch(
         // breadcrumb. The promo then fires on the NEXT tick after the
         // last DM lands — typically 08:13-08:14 for a 14-player squad
         // — by which point all DMs really are in players' chats.
-        const promoKey = `${matchId}:rate-promo`;
-        const expectedRateDmKeys = confirmed
-          .filter((a) => a.user.phoneNumber && !optedOut.has(a.userId))
+        //
+        // Players who had already rated are excluded from the wait as
+        // well as from the DM: they never get a breadcrumb, so counting
+        // them would hold the promo back for ever. If that leaves nobody
+        // (the whole squad rated overnight) the promo does not post at
+        // all, which is right: it announces DMs that in that case nobody
+        // received.
+        const expectedRateDmKeys = rateDmCandidates
+          .filter((a) => !engaged.has(a.userId))
           .map((a) => `${matchId}:rate-dm:${a.userId}`);
         const allRateDmsSent =
           expectedRateDmKeys.length > 0 &&
@@ -1966,20 +2033,10 @@ async function computeForMatch(
       const isReminderHour = hourNow >= 18 && hourNow < 19;
       const withinWindow = hoursSinceMatch <= 5 * 24;
       if (isReminderHour && withinWindow) {
-        // Figure out who has already rated (MoMVote OR at least 1 Rating).
-        const ratersMom = await db.moMVote.findMany({
-          where: { matchId },
-          select: { voterId: true },
-        });
-        const ratersRating = await db.rating.findMany({
-          where: { matchId },
-          select: { raterId: true },
-          distinct: ["raterId"],
-        });
-        const rated = new Set<string>([
-          ...ratersMom.map((r) => r.voterId),
-          ...ratersRating.map((r) => r.raterId),
-        ]);
+        // Who has already rated (MoMVote OR at least 1 Rating). Shared
+        // with the first DM in 6b and the early trigger in 6e, so the
+        // three paths cannot disagree about the same player.
+        const { engaged: rated } = await loadRatingEngagement();
         const dayKey = londonDateKey(now);
         for (const a of confirmed) {
           if (!a.user.phoneNumber) continue;
@@ -2079,22 +2136,13 @@ async function computeForMatch(
       if (canAnnounce && !backstopWindow && lh >= MOM_EARLY_FROM_HOUR && lh < MOM_EARLY_TO_HOUR) {
         const expected = confirmed.filter((a) => a.user.phoneNumber);
         if (expected.length > 0) {
-          const [momVoters, ratingVoters] = await Promise.all([
-            db.moMVote.findMany({ where: { matchId }, select: { voterId: true } }),
-            db.rating.findMany({
-              where: { matchId },
-              select: { raterId: true },
-              distinct: ["raterId"],
-            }),
-          ]);
-          const engaged = new Set<string>([
-            ...momVoters.map((v) => v.voterId),
-            ...ratingVoters.map((r) => r.raterId),
-          ]);
+          // Same engagement set the rating DM in 6b and the reminder in
+          // 6d read, loaded once per match per tick.
+          const { engaged, momVoteCount } = await loadRatingEngagement();
           // Everyone we asked has engaged, AND at least one real MoM vote
           // exists (players can rate without picking MoM).
           earlyReady =
-            momVoters.length > 0 && expected.every((a) => engaged.has(a.userId));
+            momVoteCount > 0 && expected.every((a) => engaged.has(a.userId));
         }
       }
 
