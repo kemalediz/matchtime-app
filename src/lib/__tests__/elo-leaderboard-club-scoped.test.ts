@@ -37,7 +37,8 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/mom", () => ({ getMomSummaries: async () => new Map() }));
 vi.mock("@/lib/team-labels", () => ({ resolveTeamLabels: () => ["Reds", "Yellows"] }));
 
-import { loadRecentHistory } from "@/lib/match-history";
+import { ELO_TOP_MIN_MATCHES, loadRecentHistory } from "@/lib/match-history";
+import { ELO_TOP_MIN_MATCHES_SHOWN } from "@/lib/pipeline/stats-answer";
 
 const ORG = "org-sutton-fc";
 const OTHER_ORG = "org-sutton-lads";
@@ -208,5 +209,39 @@ describe("the Elo leaderboard", () => {
       ["Ann", 980],
       ["Bob", 1120],
     ]);
+  });
+});
+
+describe("the Elo TOP board has a minimum too (2026-09-23)", () => {
+  // The bottom board has always required ELO_BOTTOM_MIN_MATCHES = 3 so one
+  // bad night does not put a newcomer at the foot of the club. The top
+  // board had none, so one good night put a guest above the regulars. The
+  // group's Elo answer reads this board, so the minimum is applied here,
+  // once, for the group and the DM Q&A alike.
+  it("a one-match guest with a big Elo is not on the top board", async () => {
+    seed({
+      players: [
+        { id: "u-ann", name: "Ann" },
+        { id: "u-guest", name: "Guest" },
+      ],
+      memberships: [
+        { userId: "u-ann", orgId: ORG, matchRating: 1040 },
+        { userId: "u-guest", orgId: ORG, matchRating: 1016 + 100 },
+      ],
+    });
+    attendanceFindMany.mockResolvedValue([
+      ...MATCH_IDS.map((matchId) => ({ userId: "u-ann", matchId })),
+      { userId: "u-guest", matchId: "m6" },
+    ]);
+
+    const history = await loadRecentHistory(ORG);
+
+    expect(history?.eloTop.map((r) => r.name)).toEqual(["Ann"]);
+  });
+});
+
+describe("the group's Elo answer states the minimum the board applies", () => {
+  it("the printed minimum is the applied one", () => {
+    expect(ELO_TOP_MIN_MATCHES_SHOWN).toBe(ELO_TOP_MIN_MATCHES);
   });
 });

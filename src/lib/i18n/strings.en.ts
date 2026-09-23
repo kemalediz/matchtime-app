@@ -297,6 +297,65 @@ export const en = {
   answer_options_no_formats: "There's no smaller format set up for this group, so it's more players or nothing.",
   answer_options_none_viable: "No smaller format would be filled by the squad we have, so it's more players.",
 
+  // ── the stats tables (2026-09-23), rendered by `pipeline/stats-answer.ts` ──
+  // Every row carries one of `isLeaderboardLine`'s markers ("matches",
+  // "wins", "%"), so none of these is ever mistaken for the squad list;
+  // the route also skips them by intent (`skipsSquadComposition`).
+  stats_ratings_head: (p: { n: number; minGames: number }): string =>
+    `Top ${p.n} club ratings (players with ${p.minGames}+ rated matches):`,
+  stats_ratings_row: (p: { rank: number; name: string; avg: string; games: number }): string =>
+    `${p.rank}. ${p.name}: ${p.avg} (${p.games} ${p.games === 1 ? "match" : "matches"})`,
+  stats_ratings_empty: (p: { minGames: number; url: string }): string =>
+    `Nobody has ${p.minGames} rated matches yet, so there's no ratings table to share. The full stats are on the website: ${p.url}`,
+  stats_capped: (p: { cap: number; url: string }): string =>
+    `I list the top ${p.cap} in the group. The full table is on the website: ${p.url}`,
+  stats_bottom: (p: { url: string }): string =>
+    `I only share the top of the tables in the group, never the bottom. The full tables are on the website: ${p.url}`,
+  stats_mom_head: "Most Man of the Match wins:",
+  stats_mom_row: (p: { rank: number; name: string; wins: number }): string =>
+    `${p.rank}. ${p.name}: ${p.wins} ${p.wins === 1 ? "win" : "wins"}`,
+  stats_mom_empty: "Nobody has won Man of the Match yet.",
+  stats_elo_head: (p: { n: number; minMatches: number }): string =>
+    `Top ${p.n} by Elo (${p.minMatches}+ matches played):`,
+  stats_elo_row: (p: { rank: number; name: string; rating: number; matches: number }): string =>
+    `${p.rank}. ${p.name}: ${p.rating} (${p.matches} ${p.matches === 1 ? "match" : "matches"})`,
+  stats_elo_empty: (p: { minMatches: number }): string =>
+    `Nobody has played ${p.minMatches} matches yet, so there's no Elo table to share.`,
+  stats_tots_head: (p: { sportName: string; minGames: number }): string =>
+    `Team of the Season (${p.sportName}), the best average rating in each position (${p.minGames}+ rated matches):`,
+  stats_tots_row: (p: { n: number; name: string; position: string | null; avg: string; games: number }): string =>
+    `${p.n}. ${p.name}${p.position ? ` (${p.position})` : ""}: ${p.avg} (${p.games} ${p.games === 1 ? "match" : "matches"})`,
+  stats_tots_empty: (p: { minGames: number }): string =>
+    `There's no Team of the Season yet: nobody has ${p.minGames} rated matches.`,
+  stats_movers_head:
+    "I track rating movement match by match, so these are the biggest climbers in the club ratings since the last match:",
+  /** `rank` is null outside the top ten: the group is never told a
+   *  position below the top of the table, even a climber's. */
+  stats_movers_row: (p: { n: number; name: string; delta: number; rank: number | null; games: number }): string =>
+    `${p.n}. ${p.name}: up ${p.delta} ${p.delta === 1 ? "place" : "places"}${p.rank !== null ? ` to no. ${p.rank}` : ""} (${p.games} ${p.games === 1 ? "match" : "matches"})`,
+  stats_movers_empty: "Nobody climbed the club ratings table after the last match.",
+  stats_reliable_head: (p: { minAvg: string; minGames: number }): string =>
+    `Mr Reliable, the badge on the stats page (an average of ${p.minAvg} or more, little variation, ${p.minGames}+ rated matches), most consistent first:`,
+  stats_reliable_row: (p: { n: number; name: string; avg: string; games: number }): string =>
+    `${p.n}. ${p.name}: ${p.avg} average (${p.games} ${p.games === 1 ? "match" : "matches"})`,
+  stats_reliable_empty: (p: { minAvg: string; minGames: number }): string =>
+    `Nobody holds the Mr Reliable badge yet (an average of ${p.minAvg} or more, little variation, ${p.minGames}+ rated matches).`,
+  stats_chem_head: (p: { name: string }): string => `${p.name}'s best team-mates:`,
+  stats_chem_winrate: (p: { partner: string; wins: number; games: number; pct: number }): string =>
+    `• By win rate: ${p.partner}, ${p.wins} ${p.wins === 1 ? "win" : "wins"} in ${p.games} matches together (${p.pct}%)`,
+  stats_chem_rating: (p: { partner: string; player: string; avg: string }): string =>
+    `• By rating: ${p.partner}, ${p.player} averages ${p.avg} alongside them`,
+  stats_chem_nemesis: (p: { name: string; player: string; wins: number; games: number }): string =>
+    `• Nemesis: ${p.name}, ${p.player} has won ${p.wins} of ${p.games} against them`,
+  stats_chem_empty: (p: { name: string }): string =>
+    `${p.name} hasn't played 2 matches with the same team-mate yet, so there's no chemistry to show.`,
+  stats_generic_safe: (p: { url: string }): string =>
+    `I can't answer that one exactly from here. All the stats are on the website: ${p.url}`,
+  stats_ask_unknown: (p: { asker: string | null; ref: string }): string =>
+    `${p.asker ? `${p.asker}, I` : "I"} don't have a ${p.ref} in the squad. Who do you mean?`,
+  stats_ask_ambiguous: (p: { asker: string | null; choices: string }): string =>
+    `${p.asker ? `${p.asker}, do` : "Do"} you mean ${p.choices}?`,
+
   // ── rows 32 to 42: the acks (compose.ts) ───────────────────────────
 
   teams_not_generated: "No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.",

@@ -137,7 +137,7 @@
  *   not templates and are measured by live dry runs, not snapshots.
  */
 import { describe, it, expect } from "vitest";
-import type { EngineResult, SpeechIntent, SquadState } from "../../pipeline/types";
+import type { EngineResult, SpeechIntent, SquadState, StatsSnapshot } from "../../pipeline/types";
 import { compose } from "../../pipeline/compose";
 import { world, fullName } from "../../pipeline/__tests__/helpers";
 import type { Lang } from "../lang";
@@ -326,6 +326,55 @@ function replacedWorld(lang: Lang, outKey: string, inKey: string): SquadState {
 
 const MSG = "wa-1";
 
+/** The stats tables as `load-stats.ts` would hand them over (2026-09-23). */
+function statsFixture(over: Partial<StatsSnapshot> = {}): StatsSnapshot {
+  const ranked = ["mustafa", "habib", "mojib", "sait", "kemal", "idris", "abid", "faris", "elvin", "shaz", "adam", "efat"];
+  return {
+    fullTableUrl: "https://matchtime.ai/profile/stats",
+    ratings: ranked.map((k, i) => ({
+      userId: `u-${k}`,
+      name: fullName(k),
+      avg: 8.3 - i * 0.17,
+      games: 12 - (i % 5),
+      rank: i + 1,
+      delta: i === 3 ? 4 : i === 6 ? 2 : i === 1 ? -1 : 0,
+    })),
+    mom: [
+      { userId: "u-sait", name: fullName("sait"), wins: 4 },
+      { userId: "u-mustafa", name: fullName("mustafa"), wins: 3 },
+      { userId: "u-kemal", name: fullName("kemal"), wins: 1 },
+    ],
+    elo: [
+      { userId: "u-kemal", name: fullName("kemal"), rating: 1042, matches: 12 },
+      { userId: "u-idris", name: fullName("idris"), rating: 1016, matches: 5 },
+    ],
+    teamOfSeason: {
+      sportName: "Football 7-a-side",
+      slots: [
+        { position: "GK", userId: "u-abid", name: fullName("abid"), avg: 7.9, games: 6 },
+        { position: "ANY", userId: "u-mustafa", name: fullName("mustafa"), avg: 8.3, games: 12 },
+        { position: "ANY", userId: "u-habib", name: fullName("habib"), avg: 8.13, games: 11 },
+      ],
+    },
+    mrReliable: [
+      { userId: "u-sait", name: fullName("sait"), avg: 7.34, games: 9, spread: 0.4 },
+      { userId: "u-kemal", name: fullName("kemal"), avg: 7.1, games: 12, spread: 0.7 },
+    ],
+    aliases: [],
+    chemistry: {
+      "u-idris": {
+        userId: "u-idris",
+        name: fullName("idris"),
+        bestByWinRate: { name: fullName("kemal"), gamesTogether: 7, wins: 5, winRate: 5 / 7 },
+        bestByRating: { name: fullName("sait"), myAvgWith: 7.94, sameAsWinRate: false },
+        nemesis: { name: fullName("zeeshan"), gamesAgainst: 5, wins: 1 },
+      },
+    },
+    generic: { [MSG]: { text: "Mustafa Kaya tops the club ratings on 8.3 from 12 matches." } },
+    ...over,
+  };
+}
+
 /** Everything MatchTime would SAY for one speech intent, in order. */
 function say(state: SquadState, ...speech: SpeechIntent[]): string {
   const result: EngineResult = {
@@ -448,6 +497,29 @@ function cases(lang: Lang): Case[] {
 
   add("R25 answer_stats / nothing to go on", say(short, { kind: "answer_stats", messageId: MSG }));
   add("R26 answer_stats / three ranked", say(sw({ appearances: [{ userId: "u-kemal", matches: 4 }, { userId: "u-elvin", matches: 3 }, { userId: "u-sait", matches: 1 }, { userId: "u-abid", matches: 1 }] }), { kind: "answer_stats", messageId: MSG }));
+
+  // ── The stats tables (2026-09-23): additions only, no existing case moved ──
+  const sa = (over: Partial<StatsSnapshot> = {}): SquadState => ({ ...short, stats: statsFixture(over) });
+  const table = (t: "ratings" | "mom" | "elo" | "team_of_season" | "movers" | "mr_reliable" | "chemistry", o: { size?: number; requested?: number | null; person?: string | null; self?: boolean } = {}) =>
+    ({ kind: "answer_stats_table", messageId: MSG, table: t, size: o.size ?? 10, requested: o.requested ?? null, personUserId: o.person ?? null, self: o.self ?? false }) as const;
+  add("R26b answer_stats / appearances, five asked for", say(sw({ appearances: [{ userId: "u-kemal", matches: 4 }, { userId: "u-elvin", matches: 3 }, { userId: "u-sait", matches: 2 }, { userId: "u-abid", matches: 1 }, { userId: "u-idris", matches: 1 }, { userId: "u-faris", matches: 1 }] }), { kind: "answer_stats", messageId: MSG, size: 5 }));
+  add("R147 answer_stats_table / ratings, the 2026-09-23 incident (top 10)", say(sa(), table("ratings", { requested: 10 })));
+  add("R147 answer_stats_table / ratings, top 20 served as 10", say(sa(), table("ratings", { requested: 20 })));
+  add("R147 answer_stats_table / ratings, nobody has three rated matches", say(sa({ ratings: [] }), table("ratings")));
+  add("R148 answer_stats_bottom / who's the worst", say(sa(), { kind: "answer_stats_bottom", messageId: MSG }));
+  add("R149 answer_stats_table / Man of the Match", say(sa(), table("mom")));
+  add("R150 answer_stats_table / Elo", say(sa(), table("elo")));
+  add("R151 answer_stats_table / Team of the Season", say(sa(), table("team_of_season")));
+  add("R152 answer_stats_table / biggest climbers", say(sa(), table("movers", { size: 5 })));
+  add("R152 answer_stats_table / nobody climbed", say(sa({ ratings: [] }), table("movers", { size: 5 })));
+  add("R153 answer_stats_table / Mr Reliable", say(sa(), table("mr_reliable")));
+  add("R153 answer_stats_table / nobody holds Mr Reliable", say(sa({ mrReliable: [] }), table("mr_reliable")));
+  add("R154 answer_stats_table / chemistry, another player (no nemesis)", say(sa(), table("chemistry", { person: "u-idris" })));
+  add("R154 answer_stats_table / chemistry, the asker about themselves", say(sa(), table("chemistry", { person: "u-idris", self: true })));
+  add("R155 answer_stats_generic / grounded answer, said as written", say(sa(), { kind: "answer_stats_generic", messageId: MSG }));
+  add("R155 answer_stats_generic / rejected, the safe line", say(sa({ generic: { [MSG]: { rejected: "grounding check failed" } } }), { kind: "answer_stats_generic", messageId: MSG }));
+  add("R156 ask_stats_person / a name nobody has", say(short, { kind: "ask_stats_person", messageId: MSG, askerName: "Kemal Ediz", ref: "Zork", candidates: [] }));
+  add("R156 ask_stats_person / a name two members have", say(short, { kind: "ask_stats_person", messageId: MSG, askerName: "Kemal Ediz", ref: "Idris", candidates: ["Idris Bello", "Idris Musa"] }));
 
   add("R27 answer_options / full", say(full, { kind: "answer_options", messageId: MSG }));
   add("R28 answer_options / no smaller format", say(short, { kind: "answer_options", messageId: MSG }));
@@ -898,6 +970,9 @@ const LANGUAGE_FREE_CASES = new Set([
   // A generate-teams reply with no notes is the balancer's sheet alone,
   // which is names and the org's labels.
   "R134 composeGenerateTeamsReply / plain",
+  // A grounded generic stats answer is the model's own text, already in
+  // the group's language when it was written; the fixture is one string.
+  "R155 answer_stats_generic / grounded answer, said as written",
 ]);
 
 const MIGRATED_ROWS = [
@@ -917,6 +992,8 @@ const MIGRATED_ROWS = [
   "R136 ", "R137 ", "R139 ",
   // slice 6 of the club-scoped ratings design: the web ratings copy
   "R144 ", "R145 ", "R146 ",
+  // the stats tables in the group (2026-09-23)
+  "R26b ", "R147 ", "R148 ", "R149 ", "R150 ", "R151 ", "R152 ", "R153 ", "R154 ", "R155 ", "R156 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

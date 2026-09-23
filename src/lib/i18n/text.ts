@@ -18,3 +18,19 @@ export function joinList(lang: Lang | string | null | undefined, names: string[]
   const and = normaliseLang(lang) === "tr" ? "ve" : "and";
   return `${names.slice(0, -1).join(", ")} ${and} ${names[names.length - 1]}`;
 }
+
+/** "A, B or C" / "A, B ya da C": the choice form of `joinList`, for a
+ *  question that offers the reader candidates. */
+export function joinChoice(lang: Lang | string | null | undefined, names: string[]): string {
+  if (names.length === 0) return "";
+  if (names.length === 1) return names[0];
+  const or = normaliseLang(lang) === "tr" ? "ya da" : "or";
+  return `${names.slice(0, -1).join(", ")} ${or} ${names[names.length - 1]}`;
+}
+
+/** One decimal place, with the language's own decimal mark ("7.8" /
+ *  "7,8"). The stats answers print every rating through this. */
+export function oneDecimal(lang: Lang | string | null | undefined, x: number): string {
+  const s = x.toFixed(1);
+  return normaliseLang(lang) === "tr" ? s.replace(".", ",") : s;
+}

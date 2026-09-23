@@ -103,6 +103,7 @@ import { answerScopedQuestion } from "@/lib/dm-qa";
 import { enforceProximity } from "@/lib/message-analyzer";
 import {
   composeSquadStateReply,
+  skipsSquadComposition,
   buildRecruitAckReply,
   buildTeamSheet,
   buildSwapDeferredReply,
@@ -143,7 +144,7 @@ import {
   buildTeamOpsApplyDeps,
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
-import { loadOpenQuestion } from "@/lib/pipeline/load-awaiting-answer";
+import { loadOpenQuestion, loadOpenStatsClarifications } from "@/lib/pipeline/load-awaiting-answer";
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -1592,6 +1593,18 @@ async function handleAnalyzeRequest(request: Request) {
   //      `AnalyzedMessage.action`", and this is what makes "did the gate
   //      eat an IN?" a query. That row matters MORE now that it is the
   //      nightly `none`-bucket sweep's only input.
+  // The "who do you mean?" questions MatchTime has open about a stats
+  // question (2026-09-23). One indexed read, and an empty list on almost
+  // every batch. The router lets the asker's reply through as an answer
+  // and the answer owner reads it against the original question. See
+  // the essay at the foot of `pipeline/awaiting-answer.ts`.
+  const statsClarifications =
+    fresh.length > 0
+      ? await loadOpenStatsClarifications(org.id).catch((err) => {
+          console.error("[analyze] stats clarification read failed:", err);
+          return [];
+        })
+      : [];
   const gate =
     fresh.length > 0 && routerIsNeeded()
       ? await gateBatch(
@@ -1615,7 +1628,7 @@ async function handleAnalyzeRequest(request: Request) {
           // `PendingBenchConfirmation` / `TentativeAvailability` on the
           // board right now? See `src/lib/pipeline/awaiting-answer.ts`.
           // Null 99% of the time, and with it nothing changes at all.
-          { awaiting: await loadOpenQuestion(org.id) },
+          { awaiting: await loadOpenQuestion(org.id), clarifications: statsClarifications },
         )
       : null;
   const gatedIds = new Set(gate?.skipped ?? []);
@@ -1875,6 +1888,7 @@ async function handleAnalyzeRequest(request: Request) {
           expectedMatchId: activeMatchForReply?.id ?? null,
           enabled: stepSevenEnabled,
           deps: {},
+          clarifications: statsClarifications,
         })
       : null;
 
@@ -2721,7 +2735,11 @@ async function handleAnalyzeRequest(request: Request) {
         const pastedRosterAck = r.handledBy === "fast-path" && r.intent === "pasted_roster";
         if (!r.reply) continue;
         if (r.handledBy !== "llm" && !pastedRosterAck) continue;
-        if (r.intent === "generate_teams_request" || r.intent === "show_teams_request") continue;
+        // The two team posts, and since 2026-09-23 every stats answer: a
+        // leaderboard is a numbered list of players, which this pass
+        // would otherwise replace with the squad. See
+        // `STATS_ANSWER_INTENTS` in `group-copy.ts`.
+        if (skipsSquadComposition(r.intent)) continue;
         // The 2026-09-15 replacement post — a team sheet with a lead this
         // pass would strip. Excluded on the same argument as the two
         // intents above, on a flag because the message's own intent is

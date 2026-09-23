@@ -172,3 +172,156 @@ export function describeQuestion(q: AwaitingQuestion): string {
   return `${q.kind} ${q.id} opened ${q.askedAt.toISOString()}`;
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════
+// A STATS CLARIFICATION IS AN OPEN QUESTION TOO (2026-09-23)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Kemal: "if it can't recognise a name or something, i think it should
+// honestly ask the person who posted that message in the group". When a
+// stats question names somebody who is not in the squad, or who could be
+// two members, MatchTime asks the poster instead of guessing
+// (`stats-answer.ts`, `ask_stats_person`). The poster's reply has to be
+// understood as the answer, and this is the mechanism that already knows
+// how: a ROW saying MatchTime asked, the one-hour TTL above, and the
+// router's override site with its `awaiting` source label.
+//
+// ── THE ROW. No new table. The asking message is recorded like every
+// owned message, as an `AnalyzedMessage`, with the intent
+// `stats_clarification`; its `body` IS the original question and its
+// `authorUserId` / `authorName` ARE the asker. The reply that answers it
+// is recorded with `stats_clarified`, which closes it. So "is a
+// clarification open?" is one indexed read (`[orgId, createdAt]`) of
+// rows the route writes anyway.
+//
+// ── TWO NARROWINGS against the bench-offer rescue, both deliberate:
+//
+//   1. ONLY THE ASKER. A bench offer is answered by whoever claims the
+//      slot, so it widens to the group. A "who do you mean?" is answered
+//      by the person it was put to, and anybody else's "Idris" is
+//      ordinary chat.
+//   2. ONLY A REPLY THAT READS AS A NAME (`clarificationSubject`). The
+//      asker's "I'm in" an hour later is attendance, and must stay so.
+//
+// ── WHY THESE ARE NOT `AwaitingQuestion`s. `openQuestionAt` picks ONE
+// question for the whole group and rescues everybody's `none`. Folding a
+// clarification into that list would let the asker's question displace a
+// real bench offer (or the reverse) as "the" open question. Kept as a
+// separate list, both rescues run, and the bench behaviour is byte for
+// byte what it was.
+
+export const STATS_CLARIFICATION_INTENT = "stats_clarification";
+export const STATS_CLARIFIED_INTENT = "stats_clarified";
+
+/** The `AnalyzedMessage` columns a clarification is read from. */
+export interface StatsClarificationRow {
+  id: string;
+  orgId: string;
+  intent: string | null;
+  authorUserId: string | null;
+  authorName: string | null;
+  body: string | null;
+  createdAt: Date;
+}
+
+/** One "who do you mean?" MatchTime is still waiting on. */
+export interface StatsClarification {
+  /** The `AnalyzedMessage` row of the ORIGINAL question. */
+  id: string;
+  orgId: string;
+  askerUserId: string | null;
+  askerName: string | null;
+  /** The original question, verbatim. Re-read when the answer arrives. */
+  questionBody: string;
+  askedAt: Date;
+}
+
+function askerKey(userId: string | null, name: string | null): string | null {
+  if (userId) return `u:${userId}`;
+  if (name) return `n:${name}`;
+  return null;
+}
+
+/** PURE. The clarifications still open at `now`, at most one per asker
+ *  (a newer question from the same person replaces the older one). */
+export function openStatsClarifications(
+  rows: StatsClarificationRow[],
+  orgId: string,
+  now: Date,
+): StatsClarification[] {
+  const latest = new Map<string, StatsClarificationRow>();
+  const answeredAt = new Map<string, number>();
+  for (const r of rows) {
+    if (r.orgId !== orgId) continue;
+    const key = askerKey(r.authorUserId, r.authorName);
+    if (!key) continue;
+    if (r.intent === STATS_CLARIFIED_INTENT) {
+      answeredAt.set(key, Math.max(answeredAt.get(key) ?? 0, r.createdAt.getTime()));
+    } else if (r.intent === STATS_CLARIFICATION_INTENT) {
+      const cur = latest.get(key);
+      if (!cur || r.createdAt.getTime() > cur.createdAt.getTime()) latest.set(key, r);
+    }
+  }
+  const out: StatsClarification[] = [];
+  for (const [key, r] of latest) {
+    const q = { id: r.id, orgId, kind: "tentative-followup" as const, askedAt: r.createdAt, closesAt: null };
+    if (!isAnswerWindowOpen(q, now)) continue;
+    if ((answeredAt.get(key) ?? 0) > r.createdAt.getTime()) continue;
+    out.push({
+      id: r.id,
+      orgId,
+      askerUserId: r.authorUserId,
+      askerName: r.authorName,
+      questionBody: r.body ?? "",
+      askedAt: r.createdAt,
+    });
+  }
+  return out.sort((a, b) => a.askedAt.getTime() - b.askedAt.getTime());
+}
+
+/** PURE. Is this message from the person the clarification was put to? */
+export function isFromAsker(
+  c: StatsClarification,
+  m: { senderUserId?: string | null; authorName: string | null },
+): boolean {
+  if (c.askerUserId && m.senderUserId !== undefined) return m.senderUserId === c.askerUserId;
+  return !!c.askerName && m.authorName === c.askerName;
+}
+
+const LEADING_TAG = /^\s*@\s*match\s*time\b[\s,:]*/iu;
+const LEADING_FILLER =
+  /^(?:(?:oh|ah|sorry|no|nope|i\s+mean|i\s+meant|meant|i\s+mean\s+to\s+say|the\s+one\s+i\s+mean\s+is|it'?s|yani|pardon|özür\s+dilerim)[\s,!.:]+)+/iu;
+const TRAILING_FILLER_TR = /\s+(?:demek\s+istedim|demek\s+istiyorum|kastettim|kastediyorum)\s*$/iu;
+/** A Turkish case suffix after an apostrophe: "Mojib'i", "Idris'in". */
+const APOSTROPHE_SUFFIX = /['’]\p{L}+$/u;
+/** Words that make a short reply something other than a name. */
+const NOT_A_NAME = new Set([
+  "in", "out", "im", "i'm", "i", "me", "yes", "no", "yeah", "yep", "nope", "ok", "okay", "k", "thanks", "thank",
+  "you", "cheers", "ta", "lol", "haha", "hahaha", "maybe", "sure", "bench", "is", "for", "the", "and", "a", "all",
+  "everyone", "nobody", "never", "mind", "nevermind", "var", "yok", "evet", "hayır", "hayir", "tamam", "tmm",
+  "belki", "ben", "beni", "benim", "sağol", "sagol", "teşekkürler", "tesekkurler", "herkes", "kimse",
+]);
+
+/**
+ * PURE. The name a reply gives, when the whole reply reads as naming
+ * somebody ("Idris", "I mean Mojib Jalali", "Mojib'i kastettim"), else
+ * null. Deliberately strict: it is what lets the asker's reply past the
+ * router, so "I'm in" and "Mojib is in for Tuesday" must come back null.
+ */
+export function clarificationSubject(body: string): string | null {
+  let s = (body ?? "").trim().replace(LEADING_TAG, "");
+  s = s.replace(LEADING_FILLER, "").replace(TRAILING_FILLER_TR, "");
+  s = s.replace(/^[\s"'“”‘’(]+|[\s"'“”‘’).,!?]+$/gu, "").trim();
+  if (!s) return null;
+  const tokens = s.split(/\s+/);
+  if (tokens.length > 3) return null;
+  const cleaned: string[] = [];
+  for (const raw of tokens) {
+    const tok = raw.replace(APOSTROPHE_SUFFIX, "");
+    if (!/^\p{L}[\p{L}.-]*$/u.test(tok)) return null;
+    if (NOT_A_NAME.has(tok.toLocaleLowerCase("tr")) || NOT_A_NAME.has(tok.toLowerCase())) return null;
+    cleaned.push(tok);
+  }
+  const out = cleaned.join(" ");
+  return out.length >= 2 ? out : null;
+}

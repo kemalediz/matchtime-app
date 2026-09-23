@@ -278,6 +278,47 @@ export const tr: Strings = {
   answer_options_no_formats: "Bu grup için daha küçük bir format tanımlı değil, o yüzden ya oyuncu bulacağız ya da hiç.",
   answer_options_none_viable: "Elimizdeki kadroyla daha küçük bir format da dolmuyor, o yüzden oyuncu bulmamız lazım.",
 
+  // ── istatistik tabloları (2026-09-23), `pipeline/stats-answer.ts` ──
+  // Her satırda `isLeaderboardLine` işaretlerinden biri var ("maç", "kez",
+  // "%"), bu yüzden hiçbiri kadro listesi sanılmaz.
+  stats_ratings_head: (p) => `Kulüp puanında ilk ${p.n} (en az ${p.minGames} puanlı maçı olanlar):`,
+  stats_ratings_row: (p) => `${p.rank}. ${p.name}: ${p.avg} (${p.games} maç)`,
+  stats_ratings_empty: (p) =>
+    `Henüz ${p.minGames} puanlı maçı olan kimse yok, o yüzden paylaşacak bir puan tablosu yok. Tüm istatistikler sitede: ${p.url}`,
+  stats_capped: (p) => `Grupta en fazla ${p.cap} kişiyi listeliyorum. Tablonun tamamı sitede: ${p.url}`,
+  stats_bottom: (p) =>
+    `Grupta tabloların sadece üst kısmını paylaşıyorum, alt sıraları değil. Tabloların tamamı sitede: ${p.url}`,
+  stats_mom_head: "En çok maçın adamı seçilenler:",
+  stats_mom_row: (p) => `${p.rank}. ${p.name}: ${p.wins} kez`,
+  stats_mom_empty: "Henüz kimse maçın adamı seçilmedi.",
+  stats_elo_head: (p) => `Elo puanında ilk ${p.n} (en az ${p.minMatches} maç oynayanlar):`,
+  stats_elo_row: (p) => `${p.rank}. ${p.name}: ${p.rating} (${p.matches} maç)`,
+  stats_elo_empty: (p) => `Henüz ${p.minMatches} maç oynayan kimse yok, o yüzden paylaşacak bir Elo tablosu yok.`,
+  stats_tots_head: (p) =>
+    `Sezonun takımı (${p.sportName}), her mevkide en yüksek ortalama puan (en az ${p.minGames} puanlı maç):`,
+  stats_tots_row: (p) => `${p.n}. ${p.name}${p.position ? ` (${p.position})` : ""}: ${p.avg} (${p.games} maç)`,
+  stats_tots_empty: (p) => `Henüz sezonun takımı yok: ${p.minGames} puanlı maçı olan kimse yok.`,
+  stats_movers_head:
+    "Puan hareketini maç maç takip ediyorum, son maçtan beri kulüp puan tablosunda en çok yükselenler:",
+  stats_movers_row: (p) =>
+    `${p.n}. ${p.name}: ${p.delta} sıra yükseldi${p.rank !== null ? `, şu an ${p.rank}. sırada` : ""} (${p.games} maç)`,
+  stats_movers_empty: "Son maçtan sonra kulüp puan tablosunda yükselen olmadı.",
+  stats_reliable_head: (p) =>
+    `Mr Reliable rozeti olanlar, istatistik sayfasındaki rozet (ortalama ${p.minAvg} ve üzeri, az dalgalanma, en az ${p.minGames} puanlı maç), en istikrarlıdan başlayarak:`,
+  stats_reliable_row: (p) => `${p.n}. ${p.name}: ortalama ${p.avg} (${p.games} maç)`,
+  stats_reliable_empty: (p) =>
+    `Henüz Mr Reliable rozeti olan kimse yok (ortalama ${p.minAvg} ve üzeri, az dalgalanma, en az ${p.minGames} puanlı maç).`,
+  stats_chem_head: (p) => `${p.name} için en iyi takım arkadaşları:`,
+  stats_chem_winrate: (p) => `• Galibiyet oranına göre: ${p.partner}, birlikte ${p.games} maçta ${p.wins} galibiyet (%${p.pct})`,
+  stats_chem_rating: (p) => `• Puana göre: ${p.partner}, ${p.player} onunla aynı takımdayken ortalama ${p.avg} alıyor`,
+  stats_chem_nemesis: (p) =>
+    `• ${p.player} için en zorlu rakip: ${p.name} (karşı karşıya ${p.games} maç, ${p.wins} galibiyet)`,
+  stats_chem_empty: (p) =>
+    `${p.name} henüz aynı takım arkadaşıyla 2 maç oynamadı, o yüzden gösterilecek bir uyum yok.`,
+  stats_generic_safe: (p) => `Bunu buradan tam olarak cevaplayamıyorum. Tüm istatistikler sitede: ${p.url}`,
+  stats_ask_unknown: (p) => `${p.asker ? `${p.asker}, k` : "K"}adroda ${p.ref} diye biri yok. Kimi kastettiniz?`,
+  stats_ask_ambiguous: (p) => `${p.asker ? `${p.asker}, h` : "H"}angisini kastettiniz: ${p.choices}?`,
+
   // ── rows 32 to 42: the acks ────────────────────────────────────────
 
   teams_not_generated: "Takımlar henüz kurulmadı, *@Match Time takımları kur* yazın, hallederim.",

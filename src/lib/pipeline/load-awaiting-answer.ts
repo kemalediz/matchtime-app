@@ -16,7 +16,15 @@
  * `findMany`. The gate never writes.
  */
 import { db } from "../db";
-import { openQuestionAt, type AwaitingQuestion } from "./awaiting-answer";
+import {
+  GROUP_QUESTION_TTL_MS,
+  STATS_CLARIFICATION_INTENT,
+  STATS_CLARIFIED_INTENT,
+  openQuestionAt,
+  openStatsClarifications,
+  type AwaitingQuestion,
+  type StatsClarification,
+} from "./awaiting-answer";
 
 /** How far back to look for rows worth considering at all. Any question
  *  older than this is outside the TTL anyway; the bound is here so the
@@ -94,4 +102,27 @@ export async function loadOpenQuestion(
   now: Date = new Date(),
 ): Promise<AwaitingQuestion | null> {
   return openQuestionAt(await loadAwaitingQuestions(orgId, now), orgId, now);
+}
+
+/**
+ * READ-ONLY. The stats clarifications this org has open right now: the
+ * "who do you mean?" questions MatchTime put to individual posters in
+ * the last hour and has not had answered. One indexed read of
+ * `AnalyzedMessage` (`[orgId, createdAt]`), rows the analyze route
+ * writes for every owned message anyway. See the essay at the foot of
+ * `awaiting-answer.ts`.
+ */
+export async function loadOpenStatsClarifications(
+  orgId: string,
+  now: Date = new Date(),
+): Promise<StatsClarification[]> {
+  const rows = await db.analyzedMessage.findMany({
+    where: {
+      orgId,
+      intent: { in: [STATS_CLARIFICATION_INTENT, STATS_CLARIFIED_INTENT] },
+      createdAt: { gte: new Date(now.getTime() - GROUP_QUESTION_TTL_MS) },
+    },
+    select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, createdAt: true },
+  });
+  return openStatsClarifications(rows, orgId, now);
 }

@@ -40,6 +40,7 @@ import type {
   Route,
   ScoreFacts,
   SideRequest,
+  StatsTable,
   TeamFacts,
   Tense,
 } from "./types";
@@ -166,6 +167,18 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
                "other" anything else
   personRef    the person the question is about, verbatim, or "" when it names nobody
   statedCount  a number the message ASSERTS about the squad, or -1 when it asserts none
+  table        for "stats" only, WHICH table the question is about; "none" for every other topic:
+               "ratings" players' ratings. A bare "leaderboard", "the table", "rankings", "standings", "best players" or "top N players" with no other measure named is "ratings"
+               "appearances" who plays or turns up the most, attendance, who has been most consistent at turning up
+               "mom" Man of the Match awards or wins
+               "elo" Elo
+               "team_of_season" the team, XI or line-up of the season
+               "movers" whose rating or position is improving or climbing, who is in form lately, who moved up the table
+               "chemistry" who a player plays best with, their best team-mates or partnerships, their chemistry, their nemesis or toughest opponent
+               "mr_reliable" "Mr Reliable" or "Mr. Reliable", the most reliable player, consistently strong ratings (the badge on the stats page)
+               "other" a stats question none of those answers
+  listSize     how many the question asks for ("top 10" -> 10, "top five" -> 5, "top 20" -> 20), or -1 when it names no number
+  listEnd      "bottom" when the question asks for the worst, the lowest or the bottom of a table ("who's the worst", "bottom 5"); otherwise "top"
 
 "squad" and "count" are the same subject asked two ways, and the answers look nothing alike: "squad" gets a list of names, "count" gets a number. Choose on what the asker wants BACK, not on what the question is about. If it asks WHO, it is "squad"; if it asks HOW MANY, it is "count".
 
@@ -187,7 +200,39 @@ Report nothing (an empty claims array) only when the message genuinely makes no 
   "@Match Time puanlarımı görebilir miyim"                                   -> my_stats (Turkish, "can I see my ratings")
   "@Match Time what are Wasim's stats"                                       -> stats, personRef "Wasim": someone else's numbers
   "@Match Time Ali'nin istatistikleri ne"                                    -> stats, personRef "Ali": someone else's numbers
-  "@Match Time who's played the most this season"                            -> stats, a ranking of the group`,
+  "@Match Time who's played the most this season"                            -> stats, a ranking of the group
+
+"stats" questions and their table. Kemal's rulings: "leaderboard" on its own is RATINGS; appearances is only for playing most, turning up, consistency of attendance; "Mr Reliable" is mr_reliable, never appearances.
+
+  "@Match Time please share the leaderboard of ratings, top 10"              -> stats, table ratings, listSize 10
+  "@Match Time leaderboard"                                                  -> stats, table ratings
+  "@Match Time top 5 players"                                                -> stats, table ratings, listSize 5
+  "@Match Time top 20"                                                       -> stats, table ratings, listSize 20
+  "@Match Time who's the worst player"                                       -> stats, table ratings, listEnd bottom
+  "@Match Time bottom 5 on elo"                                              -> stats, table elo, listSize 5, listEnd bottom
+  "@Match Time most appearances"                                             -> stats, table appearances
+  "@Match Time who's been most consistent this season"                       -> stats, table appearances
+  "@Match Time who's got the most MoMs"                                      -> stats, table mom
+  "@Match Time what's the elo table"                                         -> stats, table elo
+  "@Match Time what is the team of the season?"                              -> stats, table team_of_season
+  "@Match Time whose performance is improving most based on the last 3 matches?" -> stats, table movers
+  "@Match Time who is the most Mr. Reliable?"                                -> stats, table mr_reliable
+  "@Match Time who's the most reliable player?"                              -> stats, table mr_reliable
+  "@Match Time Who is Idris's Chemistry list?"                               -> stats, table chemistry, personRef "Idris"
+  "@Match Time who does Wasim play best with"                                -> stats, table chemistry, personRef "Wasim"
+  "@Match Time who's my nemesis" / "my chemistry"                            -> stats, table chemistry, personRef "me": the asker's own pairings are a group answer
+  "@Match Time what's Sait's rating"                                         -> stats, table ratings, personRef "Sait"
+  "@Match Time who has the best win rate"                                    -> stats, table other
+  "@Match Time sıralama"                                                     -> stats, table ratings (Turkish, "the standings")
+  "@Match Time en iyi 10"                                                    -> stats, table ratings, listSize 10 (Turkish, "the best 10")
+  "@Match Time en kötü oyuncu kim"                                           -> stats, table ratings, listEnd bottom (Turkish, "who is the worst player")
+  "@Match Time en çok maçın adamı kim"                                       -> stats, table mom (Turkish, "who has the most Man of the Match")
+  "@Match Time en çok maça gelen kim"                                        -> stats, table appearances (Turkish, "who comes to the most matches")
+  "@Match Time sezonun takımı ne"                                            -> stats, table team_of_season (Turkish)
+  "@Match Time en güvenilir oyuncu kim?"                                     -> stats, table mr_reliable (Turkish, "the most reliable player")
+  "@Match Time son maçlarda en çok kim yükseldi"                             -> stats, table movers (Turkish)
+  "@Match Time Idris'in kimyası nasıl" / "Idris en iyi kiminle anlaşıyor"    -> stats, table chemistry, personRef "Idris"
+Keep personRef as the name the message uses, without any possessive or suffix: "Idris's" and "Idris'in" are "Idris".`,
 
   teams: `You read ONE message about the two team line-ups and report what it asks for. You never pick the teams.
 
@@ -316,8 +361,16 @@ const QUESTION_SCHEMA = {
     },
     personRef: { type: "string" },
     statedCount: { type: "number" },
+    // "none" and -1 are the stand-ins for null, as for `statedCount`:
+    // the API rejects a nullable type at request time.
+    table: {
+      type: "string",
+      enum: ["ratings", "appearances", "mom", "elo", "team_of_season", "movers", "chemistry", "mr_reliable", "other", "none"],
+    },
+    listSize: { type: "number" },
+    listEnd: { type: "string", enum: ["top", "bottom"] },
   },
-  required: ["topic", "personRef", "statedCount"],
+  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd"],
   additionalProperties: false,
 } as const;
 
@@ -412,6 +465,18 @@ const TOPICS: QuestionTopic[] = [
   "my_stats",
   "stats",
   "options",
+  "other",
+];
+
+const STATS_TABLES: StatsTable[] = [
+  "ratings",
+  "appearances",
+  "mom",
+  "elo",
+  "team_of_season",
+  "movers",
+  "chemistry",
+  "mr_reliable",
   "other",
 ];
 
@@ -541,6 +606,21 @@ export function parseFacts(
             ? raw.statedCount
             : null,
       };
+      // The table, the size and the end: for `stats` only, so every other
+      // topic's facts keep exactly the shape they had (2026-09-23).
+      if (topic === "stats") {
+        const tableRaw = str(raw.table).toLowerCase();
+        let table: StatsTable | null = null;
+        if (STATS_TABLES.includes(tableRaw as StatsTable)) table = tableRaw as StatsTable;
+        else if (tableRaw && tableRaw !== "none") bad(`unknown stats table "${str(raw.table)}"; answered as no table`);
+        const size =
+          typeof raw.listSize === "number" && Number.isFinite(raw.listSize) && raw.listSize >= 1
+            ? Math.floor(raw.listSize)
+            : null;
+        facts.table = table;
+        facts.listSize = size;
+        facts.listEnd = str(raw.listEnd).toLowerCase() === "bottom" ? "bottom" : "top";
+      }
       return { facts, degradations };
     }
 

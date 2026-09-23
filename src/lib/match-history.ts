@@ -73,6 +73,9 @@ export interface LeaderboardRow {
   value: number;
   /** Optional context (e.g. "24/25 (96%)" for attendance). */
   detail?: string;
+  /** Matches played, as a number, on the Elo rows (the group's Elo
+   *  answer prints it; `detail` is the prompt's prose of the same). */
+  matches?: number;
 }
 
 export interface RecentHistory {
@@ -123,6 +126,15 @@ const ELO_BOTTOM_LIMIT = 5;
 /** Minimum matches played before a user qualifies for the Elo
  *  bottom-N list — otherwise a player with one bad match dominates. */
 const ELO_BOTTOM_MIN_MATCHES = 3;
+/**
+ * And for the TOP list (2026-09-23). The bottom list has always needed
+ * three matches so one bad night does not put a newcomer at the foot of
+ * the club; the top list needed nothing, so one good night put a guest
+ * above the regulars. Found when the group started answering "who's top
+ * on Elo?" from this board. Three, for the same reason as the bottom
+ * board and as the group's ratings list (`GROUP_RATINGS_MIN_GAMES`).
+ */
+export const ELO_TOP_MIN_MATCHES = 3;
 
 export async function loadRecentHistory(orgId: string): Promise<RecentHistory | null> {
   const completedWhere = {
@@ -369,6 +381,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     name: u.name ?? "(unnamed)",
     value: eloByUser.get(u.id) ?? MEMBERSHIP_ELO_DEFAULT,
     detail: `${matchesPlayedByUser.get(u.id) ?? 0} matches`,
+    matches: matchesPlayedByUser.get(u.id) ?? 0,
   }));
   // Both Elo tables take the inactivity filter. The bottom table stacks
   // it on top of ELO_BOTTOM_MIN_MATCHES, which is the same idea on a
@@ -377,6 +390,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   // Neither changes anybody's rating; `matchRating` is read, never
   // written, anywhere in this file.
   const eloTop = [...eloRows]
+    .filter((r) => (matchesPlayedByUser.get(r.userId) ?? 0) >= ELO_TOP_MIN_MATCHES)
     .filter((r) => roster.isRanked(r.userId))
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
     .slice(0, LEADERBOARD_LIMIT);

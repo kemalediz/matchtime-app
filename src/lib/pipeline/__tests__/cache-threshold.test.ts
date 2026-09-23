@@ -142,7 +142,15 @@ describe("the prompts this pipeline actually sends", () => {
     // (37 uncached input tokens, $0.0051), the second read it
     // (1,966 input tokens including the cache read, $0.00075). A real
     // cache, so the marker is not a fiction.
-    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(1_598);
+    //
+    // 2026-09-23: the stats `table` / `listSize` / `listEnd` fields and
+    // their English and Turkish examples took it to 9,839 characters.
+    // The bound follows the convention the router and attendance bounds
+    // above use: chars / this prompt's own last measured ratio
+    // (4,872 / 1,598 = 3.049), a conservative floor for the real count:
+    // 9,839 -> >= 3,227 real, against a 2,459 estimate. Still cached,
+    // and further over Sonnet 5's minimum than before.
+    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(3_227);
     expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
   });
 

@@ -128,7 +128,7 @@ function seed(s: Seed) {
 
 /** The live shape at Sutton FC, reduced: one regular, one leaver whose
  *  last game is just over the line, one leaver just inside it. */
-function suttonShaped() {
+function suttonShaped(opts: { stayerPlayedThree?: boolean } = {}) {
   seed({
     matches: [
       { id: "old", date: ago(RANKED_TABLE_INACTIVE_AFTER_MONTHS * 31 + 10) },
@@ -139,7 +139,7 @@ function suttonShaped() {
     attendance: {
       regular: ["old", "justOut", "justIn", "recent"],
       leaver: ["old", "justOut"],
-      stayer: ["old", "justIn"],
+      stayer: opts.stayerPlayedThree ? ["old", "justOut", "justIn"] : ["old", "justIn"],
     },
     users: [
       { id: "regular", name: "Kemal", matchRating: 927 },
@@ -158,7 +158,12 @@ beforeEach(() => {
 
 describe("the three-month boundary, across all four tables", () => {
   it("keeps a player whose last match is three months LESS a day ago", async () => {
-    suttonShaped();
+    // Najib plays a third match here (2026-09-23). The Elo TOP board now
+    // needs three matches (`ELO_TOP_MIN_MATCHES`), and with his original
+    // two he would be off it for that reason, so this test would stop
+    // being about the three-month boundary. His last match is still the
+    // one just inside the line.
+    suttonShaped({ stayerPlayedThree: true });
     const h = (await loadRecentHistory(ORG))!;
     const names = (rows: { name: string }[]) => rows.map((r) => r.name);
     expect(names(h.momLeaderboard)).toContain("Najib");
