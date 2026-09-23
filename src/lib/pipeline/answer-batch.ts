@@ -182,7 +182,8 @@ import {
   isFromAsker,
   type StatsClarification,
 } from "./awaiting-answer";
-import { planStatsQuestion, type StatsPlan } from "./stats-answer";
+import { TABLES_CUT_BY_PERIOD, planStatsQuestion, type StatsPlan } from "./stats-answer";
+import { cutsTheRecord, periodKey, periodSince } from "./stats-period";
 import { answerGenericStats } from "./stats-generic";
 import {
   ANSWER_ENGINE_ROUTES,
@@ -202,6 +203,7 @@ import type {
   Route,
   SquadState,
   StatsChemistry,
+  StatsPeriodTables,
   StatsSnapshot,
 } from "./types";
 
@@ -276,6 +278,13 @@ export const ANSWER_ROUTES = ANSWER_ENGINE_ROUTES;
  * mega-prompt gave, and a narrower answer that is always right is the
  * trade §6.4 asks for. (The deterministic stats-link and stats-blast
  * peels in `route.ts` are a separate path and were never affected.)
+ *
+ * SUPERSEDED FOR STATS (2026-09-23). Every `stats` question is now a
+ * code-rendered TABLE (`stats-answer.ts`) read from the website's own
+ * loaders, appearances included, on the club's full record and cut to
+ * the period asked for; the 30-day `SquadState.appearances` and its
+ * em-dash row are gone. The route skips those answers by intent
+ * (`skipsSquadComposition`) and their rows still carry a marker.
  *
  * ─────────────────────────────────────────────────────────────────────
  * `score` JOINED ON 2026-09-09, AND IT COST NO NEW I/O
@@ -645,10 +654,14 @@ export interface AnswerBatchDeps {
   loadRatingProgress?: (orgId: string, lang?: string) => Promise<RatingProgress>;
   /** The THIRD targeted read (2026-09-23): the stats tables, only when a
    *  `stats` question named one. Injected so a test can prove both. */
-  loadStats?: (orgId: string) => Promise<Omit<StatsSnapshot, "chemistry" | "generic">>;
+  loadStats?: (orgId: string) => Promise<Omit<StatsSnapshot, "chemistry" | "generic" | "periods">>;
   /** One named player's chemistry, only for a player a stats question
    *  named and the roster resolved to exactly one member. */
   loadChemistry?: (orgId: string, userId: string) => Promise<StatsChemistry | null>;
+  /** The tables the data can cut (appearances, ratings, Man of the
+   *  Match), cut to the matches since `since` (2026-09-23). Once per
+   *  distinct period a question in the batch asked about. */
+  loadStatsPeriod?: (orgId: string, since: Date) => Promise<Omit<StatsPeriodTables, "since">>;
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated engine rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
@@ -1027,13 +1040,18 @@ export async function runAnswerBatch(args: {
       // or its Team of the Season are not claims about the upcoming
       // squad, so a neighbour's write cannot contradict them, no match
       // is needed to answer, and a ratings-only club with attendance
-      // off is exactly who asks. `appearances` and the no-table answer
-      // are NOT here: they read the squad state, and keep every rule
-      // they had.
+      // off is exactly who asks.
+      //
+      // EVERY stats question since the period change (2026-09-23),
+      // appearances and "no table named" included. Those two used to
+      // read the 30-day `SquadState.appearances` and so kept the squad
+      // rules; they read the club's completed-match record now, which no
+      // write in this batch can change (a write lands on the UPCOMING
+      // match), so the same argument covers them.
       //
       // ⚠️ TERMINAL BRANCH, like the one above: it skips no write, no
       // send and no state mutation, only the checks that do not apply.
-      if (facts.topic === "stats" && facts.table != null && facts.table !== "appearances") {
+      if (facts.topic === "stats") {
         ownedIds.add(m.waMessageId);
         continue;
       }
@@ -1248,7 +1266,7 @@ export async function runAnswerBatch(args: {
   const statsPlans = new Map<string, StatsPlan>();
   const statsIds = [...ownedIds].filter((id) => {
     const f = factsById.get(id);
-    return f?.kind === "question" && f.topic === "stats" && f.table != null && f.table !== "appearances";
+    return f?.kind === "question" && f.topic === "stats";
   });
   if (statsIds.length > 0) {
     const byId = new Map(messages.map((m) => [m.waMessageId, m]));
@@ -1262,11 +1280,32 @@ export async function runAnswerBatch(args: {
       const tables = await load(orgId);
       const chemistry: Record<string, StatsChemistry> = {};
       const generic: StatsSnapshot["generic"] = {};
-      const snap: StatsSnapshot = { ...tables, chemistry, generic };
+      const periods: StatsSnapshot["periods"] = {};
+      const snap: StatsSnapshot = { ...tables, chemistry, generic, periods };
       for (const id of statsIds) {
         const f = factsById.get(id);
         if (f?.kind !== "question") continue;
         statsPlans.set(id, planStatsQuestion(f, state.roster, tables.aliases, byId.get(id)?.senderUserId ?? null));
+      }
+      // THE PERIODS (2026-09-23). Only a table the data can cut, and only
+      // a period that cuts the record, is read again; each distinct period
+      // once. Its start is computed HERE, from this batch's clock, never
+      // by the model. A read that throws fails the whole stats read below,
+      // exactly like the tables themselves: never a silently different
+      // table.
+      const loadPeriod =
+        deps.loadStatsPeriod ??
+        (async (o: string, since: Date) => {
+          const mod = await import("./load-stats");
+          return mod.loadStatsPeriod(o, since);
+        });
+      for (const plan of statsPlans.values()) {
+        if (plan.kind !== "table" || !TABLES_CUT_BY_PERIOD.has(plan.table) || !cutsTheRecord(plan.period)) continue;
+        const key = periodKey(plan.period);
+        if (periods[key]) continue;
+        const since = periodSince(plan.period, now);
+        if (!since) continue;
+        periods[key] = { since, ...(await loadPeriod(orgId, since)) };
       }
       const loadChem =
         deps.loadChemistry ??
@@ -1518,13 +1557,15 @@ export async function runAnswerBatch(args: {
    * leaderboard is never replaced by the squad list; and
    * `stats_clarification` / `stats_clarified` are the row that opens
    * and closes a "who do you mean?" (`awaiting-answer.ts`). A stats
-   * question with no table keeps "question", as it always had.
+   * question with no table named is the appearances TABLE since
+   * 2026-09-23, so it carries "stats_table" too and is skipped by the
+   * composition pass like every other.
    */
   function statsIntent(id: string, asked: boolean): string {
     if (asked) return STATS_CLARIFICATION_INTENT;
     if (clarificationFor.has(id)) return STATS_CLARIFIED_INTENT;
     const f = factsById.get(id);
-    if (f?.kind !== "question" || f.topic !== "stats" || f.table == null) return "question";
+    if (f?.kind !== "question" || f.topic !== "stats") return "question";
     const plan = statsPlans.get(id);
     return plan?.kind === "generic" ? "stats_generic" : "stats_table";
   }

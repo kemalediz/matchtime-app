@@ -31,6 +31,7 @@ import { ELO_TOP_MIN_MATCHES_SHOWN, GROUP_LIST_CAP, GROUP_RATINGS_MIN_GAMES, TEA
 import { groundingCheck, type GroundingContext } from "./stats-grounding";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
 import type { Lang } from "../i18n/lang";
+import { monthYearLabel } from "../i18n/dates";
 import type { Member, StatsSnapshot } from "./types";
 
 export const STATS_GENERIC_SYSTEM = `You answer ONE question about a football club's stats, asked in the club's WhatsApp group. You are given TABLES that have already been computed. They are everything you know.
@@ -84,6 +85,14 @@ export function buildGenericStatsContext(args: {
     const move = r.delta === null ? "new since the last match" : r.delta > 0 ? `up ${r.delta} since the last match` : r.delta < 0 ? "down since the last match" : "no change since the last match";
     L.push(`${r.rank}. ${r.name}: ${d(r.avg)} from ${r.games} rated matches (${move})`);
   }
+  if (s.appearances.length) {
+    // 2026-09-23: the full appearances record, the same rows the
+    // appearances table is rendered from. The start month is written in
+    // so a model asked about a period can see what the table covers.
+    const start = s.recordsStart.matches;
+    L.push("", `APPEARANCES (top ${GROUP_LIST_CAP}, completed matches played${start ? `, every match since ${monthYearLabel("en", start)}` : ""}):`);
+    s.appearances.slice(0, GROUP_LIST_CAP).forEach((r, i) => L.push(`${i + 1}. ${r.name}: ${r.matches} matches`));
+  }
   if (s.mom.length) {
     L.push("", `MAN OF THE MATCH WINS (top ${GROUP_LIST_CAP}):`);
     s.mom.slice(0, GROUP_LIST_CAP).forEach((r, i) => L.push(`${i + 1}. ${r.name}: ${r.wins}`));
@@ -114,6 +123,9 @@ export function buildGenericStatsContext(args: {
       L.push(r ? `- club rating: ${d(r.avg)} from ${r.games} rated matches, no. ${r.rank}` : "- club rating: not in the top of the table, so not shared here");
       const mom = s.mom.find((x) => x.userId === args.personUserId);
       if (mom) L.push(`- Man of the Match wins: ${mom.wins}`);
+      // Top of the table only, as for the rating above.
+      const apps = s.appearances.slice(0, GROUP_LIST_CAP).find((x) => x.userId === args.personUserId);
+      if (apps) L.push(`- appearances: ${apps.matches}`);
       const c = s.chemistry[args.personUserId];
       if (c?.bestByWinRate) {
         const b = c.bestByWinRate;
@@ -134,6 +146,7 @@ export function buildGenericStatsContext(args: {
   for (const extra of [
     ...s.ratings.map((r) => r.name),
     ...s.mom.map((r) => r.name),
+    ...s.appearances.map((r) => r.name),
     ...s.elo.map((r) => r.name),
     ...s.mrReliable.map((r) => r.name),
     ...(s.teamOfSeason?.slots.map((x) => x.name) ?? []),

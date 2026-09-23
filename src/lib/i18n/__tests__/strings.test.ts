@@ -107,9 +107,17 @@ const SAMPLES: SampleArgs = {
   answer_person_confirmed: { who: "Sait Demir", kickoffLabel: "Tue 21:30" },
   answer_phones_none: null,
   answer_phones_missing: { names: ["Sait Demir", "Abid Hussain"] },
-  answer_stats_empty: { windowDays: 30 },
-  answer_stats_head: { windowDays: 30 },
-  answer_stats_row: { rank: 1, name: "Kemal Ediz", matches: 4 },
+  // The appearances table and the period (2026-09-23), which retired
+  // `answer_stats_empty` / `_head` / `_row` and their 30-day window.
+  stats_apps_head: { when: "since my records began in April 2026" },
+  stats_apps_row: { rank: 1, name: "Kemal Ediz", matches: 4 },
+  stats_apps_empty: { when: "in the last month" },
+  stats_when: { period: { kind: "season" }, since: "April 2026" },
+  stats_span: { period: { kind: "last", count: 3, unit: "month" } },
+  stats_period_unreached: { since: "April 2026", span: "the last year" },
+  stats_period_not_cut: { table: "team_of_season", since: "April 2026", span: "the last month" },
+  stats_mom_head_when: { when: "in the last month" },
+  stats_mom_empty_when: { when: "in the last month" },
   // The stats tables (2026-09-23).
   stats_ratings_head: { n: 7, minGames: 3 },
   stats_ratings_row: { rank: 2, name: "Mustafa Kaya", avg: "7.8", games: 9 },
@@ -478,7 +486,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

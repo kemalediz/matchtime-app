@@ -56,6 +56,7 @@ import { formatRatingProgressReply } from "../rating-progress-answer";
 import { resolvePerson } from "./identity";
 import {
   renderAskPerson,
+  genericPeriodNote,
   renderStatsBottom,
   renderStatsGenericSafeLine,
   renderStatsTable,
@@ -462,60 +463,6 @@ export function compose(result: EngineResult): ComposedOutput {
         break;
       }
 
-      case "answer_stats": {
-        // Deterministic, from appearances. §3.2 S16 is the heaviest
-        // section of the prompt at 2,091 tokens and its worst failure
-        // ("top 3 most consistent" returning the squad roster) is a
-        // composition bug, not a reasoning one.
-        //
-        // ⚠️ THE ROW FORMAT IS LOAD-BEARING AND IT IS NOT COSMETIC.
-        // `route.ts:2480` runs `composeSquadStateReply` over every reply
-        // this module produces (they reach `results` with
-        // `handledBy: "llm"`, `route.ts:2126`), and anything
-        // `displaysSquadState` recognises is REPLACED by the
-        // upcoming-squad roster. A numbered run of two or more lines is
-        // rule (a). The one thing that exempts it is
-        // `isLeaderboardLine`, which wants an em-dash separator, a
-        // percentage, the word "wins"/"votes"/"matches", or an "N/M ("
-        // pattern.
-        //
-        // `1. Kemal Ediz (24)` had NONE of them — so the correct answer
-        // was composed and then thrown away for the squad list, which is
-        // the 2026-05-14 incident, which is why the topic was refused
-        // for months rather than fixed. This is the house leaderboard
-        // format (`match-history.ts:336`, `  1. Name — 4 wins`) and it
-        // carries two of the four markers. Change the punctuation here
-        // and the answer silently becomes a roster again;
-        // `__tests__/answer-batch.test.ts` section 6 fails first.
-        const byId = new Map(state.roster.map((m) => [m.userId, m.name]));
-        const ranked = [...state.appearances]
-          .filter((a) => byId.has(a.userId))
-          .sort((a, b) => b.matches - a.matches)
-          // Three, as it always was, unless the question asked for a
-          // number (2026-09-23, already capped at ten by the engine).
-          .slice(0, sp.size ?? 3);
-        // NAME THE WINDOW, ALWAYS. `state.appearances` is counted over
-        // `load-state.ts`'s 30-day lookback, and the question the group
-        // actually asks is "who's been most consistent this SEASON?"
-        // (measured live, 2026-09-09). Answering a season question with
-        // a month's data and not saying so is a quiet wrong answer —
-        // the number is right and the claim is not. `state` carries the
-        // window so this sentence cannot drift from what was counted.
-        const windowDays = state.appearanceWindowDays;
-        if (ranked.length === 0) {
-          utterances.push({ messageId: sp.messageId, text: s.answer_stats_empty({ windowDays }) });
-          break;
-        }
-        const rows = ranked.map((a, i) =>
-          s.answer_stats_row({ rank: i + 1, name: name(byId.get(a.userId) ?? ""), matches: a.matches }),
-        );
-        utterances.push({
-          messageId: sp.messageId,
-          text: `${s.answer_stats_head({ windowDays })}\n${rows.join("\n")}`,
-        });
-        break;
-      }
-
       // ── THE STATS TABLES (2026-09-23). Rendered by `stats-answer.ts`
       // from `state.stats`, which `answer-batch.ts` loads only when one
       // of these was asked for. Not loaded means say nothing, which
@@ -537,8 +484,12 @@ export function compose(result: EngineResult): ComposedOutput {
           // A rejected answer is OUR error: the group is never asked
           // about it.
           const g = snap.generic[sp.messageId];
-          if (g && "text" in g) text = g.text;
-          else {
+          if (g && "text" in g) {
+            // A period the tables do not cut to is said after the answer,
+            // by code (2026-09-23): the model was given the whole record.
+            const note = genericPeriodNote(sp.period, snap, lang);
+            text = note ? `${g.text}\n${note}` : g.text;
+          } else {
             if (g) operatorNotes.push(`compose: generic stats answer for ${sp.messageId} rejected (${g.rejected}); said the safe line`);
             text = renderStatsGenericSafeLine(snap, lang);
           }

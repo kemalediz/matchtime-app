@@ -29,6 +29,24 @@ const SNAP: StatsSnapshot = {
     },
   },
   generic: { "wa-gen": { text: "Mustafa Kaya leads on 8.1." }, "wa-bad": { rejected: "number 9.9 is not in the tables" } },
+  appearances: [
+    { userId: "u-kemal", name: "Kemal Ediz", matches: 24 },
+    { userId: "u-elvin", name: "Elvin Aliyev", matches: 22 },
+    { userId: "u-sait", name: "Sait Demir", matches: 20 },
+    { userId: "u-abid", name: "Abid Hussain", matches: 9 },
+  ],
+  recordsStart: { matches: new Date("2026-04-14T20:00:00.000Z"), mom: new Date("2026-04-14T20:00:00.000Z") },
+  periods: {
+    "last:1:year": {
+      since: new Date("2025-09-15T12:00:00.000Z"),
+      appearances: [
+        { userId: "u-kemal", name: "Kemal Ediz", matches: 24 },
+        { userId: "u-elvin", name: "Elvin Aliyev", matches: 22 },
+      ],
+      ratings: [],
+      mom: [],
+    },
+  },
 };
 
 const stats = (over: Partial<QuestionFacts>): QuestionFacts => ({
@@ -45,15 +63,7 @@ const stats = (over: Partial<QuestionFacts>): QuestionFacts => ({
 function run(facts: QuestionFacts, opts: { id?: string; from?: string | null; state?: Partial<SquadState> } = {}) {
   const id = opts.id ?? "wa-q";
   const state: SquadState = {
-    ...world({
-      confirmed: ["kemal"],
-      appearances: [
-        { userId: "u-kemal", matches: 4 },
-        { userId: "u-elvin", matches: 3 },
-        { userId: "u-sait", matches: 2 },
-        { userId: "u-abid", matches: 1 },
-      ],
-    }),
+    ...world({ confirmed: ["kemal"] }),
     stats: SNAP,
     ...opts.state,
   };
@@ -79,16 +89,27 @@ describe("the incident, end to end through the engine and composer", () => {
   });
 });
 
-describe("what did not change", () => {
-  it("a stats question with no table is still the appearances top three, byte for byte", () => {
-    const { text } = run(stats({ table: null }));
+describe("appearances, on the full record (2026-09-23)", () => {
+  it("Kemal's question: the last year, which the records do not reach, said plainly", () => {
+    const { text, r } = run(stats({ table: "appearances", period: { kind: "last", count: 1, unit: "year" } }));
     expect(text).toBe(
-      "Most appearances in the last 30 days:\n1. Kemal Ediz — 4 matches\n2. Elvin Aliyev — 3 matches\n3. Sait Demir — 2 matches",
+      "My records for this club start in April 2026, so for the last year this is everything I have.\n" +
+        "Most appearances since my records began in April 2026:\n1. Kemal Ediz: 24 matches\n2. Elvin Aliyev: 22 matches",
     );
+    expect(r.speech).toContainEqual(expect.objectContaining({ kind: "answer_stats_table", table: "appearances", period: { kind: "last", count: 1, unit: "year" } }));
+  });
+  it("a stats question with no table is the appearances table, and says its period", () => {
+    const { text } = run(stats({ table: null }));
+    expect(text.split("\n")[0]).toBe("Most appearances since my records began in April 2026:");
+    expect(text).not.toMatch(/30 days|—/);
   });
   it("an appearances question with a size serves that many", () => {
-    const { text } = run(stats({ table: "appearances", listSize: 4 }));
-    expect(text.split("\n")).toHaveLength(5);
+    const { text } = run(stats({ table: "appearances", listSize: 3 }));
+    expect(text.split("\n")).toHaveLength(4);
+  });
+  it("the old 30-day intent is gone: nothing in the engine emits it", () => {
+    const { r } = run(stats({ table: null }));
+    expect(r.speech.map((s) => s.kind)).not.toContain("answer_stats");
   });
   it("stats Q&A switched off still answers nothing", () => {
     const { text, outcome } = run(stats({ table: "ratings" }), {

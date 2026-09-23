@@ -134,3 +134,10 @@ export function historyDateLabel(lang: Lang | string | null | undefined, d: Date
 export function timeLabel(d: Date): string {
   return formatLondon(d, "HH:mm");
 }
+
+/** The month a club's records begin (2026-09-23): "April 2026" /
+ *  "Nisan 2026". Read from the data by the stats answer, never
+ *  hardcoded, and always placed where Turkish needs no suffix on it. */
+export function monthYearLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "MMMM yyyy", tr: "MMMM yyyy" });
+}

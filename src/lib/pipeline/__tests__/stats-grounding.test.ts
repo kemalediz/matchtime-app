@@ -42,6 +42,9 @@ const SNAP: StatsSnapshot = {
     },
   },
   generic: {},
+  appearances: [],
+  recordsStart: { matches: null, mom: null },
+  periods: {},
 };
 
 const ctx = (personUserId: string | null = null, self = false) =>
@@ -61,6 +64,21 @@ describe("the context the generic prompt is given", () => {
   });
   it("carries the asker's own nemesis when they asked about themselves", () => {
     expect(ctx("u-idris", true).text).toContain("Zeeshan");
+  });
+  it("carries the appearances table, top ten, and a named player's count when he is in it (2026-09-23)", () => {
+    const snap: StatsSnapshot = {
+      ...SNAP,
+      appearances: [
+        { userId: "u-idris", name: "Idris Bello", matches: 21 },
+        { userId: "u-sait", name: "Sait Demir", matches: 19 },
+      ],
+      recordsStart: { matches: new Date("2026-04-14T20:00:00.000Z"), mom: null },
+    };
+    const c = buildGenericStatsContext({ snapshot: snap, lang: "en", personUserId: "u-idris", self: false, roster: ROSTER });
+    expect(c.text).toMatch(/APPEARANCES[^\n]*since April 2026/);
+    expect(c.text).toContain("1. Idris Bello: 21 matches");
+    expect(c.text).toContain("- appearances: 21");
+    expect(c.grounding.numbers).toContain("21");
   });
 });
 

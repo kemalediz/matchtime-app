@@ -64,6 +64,39 @@
  *   The nemesis is only ever told to the player it is about, in the
  *   group too, unless `NEMESIS_IN_GROUP_FOR_OTHERS` is flipped.
  *
+ *
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE PERIOD (2026-09-23)
+ * ═══════════════════════════════════════════════════════════════════════
+ *
+ * "@Match Time who has played most matches in the last 1 year?" was
+ * answered "Most appearances in the last 30 days", three names: the
+ * appearances answer read a fixed 30-day window and had nowhere to put a
+ * period. Appearances is now a table like the others, on the club's full
+ * record, and every table takes the question's `period`:
+ *
+ *   CUT BY THE PERIOD: appearances, ratings, Man of the Match. The data
+ *   is per match, so the table is recomputed over the period's matches
+ *   (`load-stats.ts`'s `loadStatsPeriod`) and the header names it.
+ *   NOT CUT, AND SAYS SO: Elo (a running rating), Team of the Season and
+ *   Mr Reliable (whole-record awards), chemistry (the page's pairings).
+ *   A first line says what IS shown and why. The climbers already say
+ *   they are "since the last match" whatever was asked.
+ *   OLDER THAN THE RECORDS: a period that starts before the club's first
+ *   recorded match says where the records start, by month, read from the
+ *   data, and the header says "since my records began".
+ *   NO PERIOD: the whole record, and appearances SAYS "since my records
+ *   began in <month>". Ratings and the rest keep the header they had.
+ *
+ * NEVER A DIFFERENT PERIOD WITHOUT SAYING SO. That is the rule this
+ * section exists for (Kemal, 2026-09-23).
+ *
+ * Appearances follows the three-month inactivity rule, exactly as the
+ * attendance leaderboard in `match-history.ts` does
+ * (`ATTENDANCE_TABLE_FOLLOWS_ACTIVITY_RULE`): the same counting function
+ * feeds both. Inactivity is judged on the whole record, never on the
+ * period: a period changes the count, not who is still here.
+ *
  * PURE. No Prisma, no clock: `compose.ts` imports this, and it has to
  * stay loadable in the Playwright worker.
  */
@@ -72,8 +105,10 @@ import { normaliseName } from "../name-normalise";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
 import { t } from "../i18n/t";
 import { joinChoice, oneDecimal } from "../i18n/text";
+import { monthYearLabel } from "../i18n/dates";
 import type { Lang } from "../i18n/lang";
-import type { Member, QuestionFacts, SpeechIntent, StatsSnapshot, StatsTable } from "./types";
+import { cutsTheRecord, periodKey } from "./stats-period";
+import type { Member, QuestionFacts, SpeechIntent, StatsPeriod, StatsSnapshot, StatsTable } from "./types";
 
 export { clarificationSubject } from "./awaiting-answer";
 
@@ -103,9 +138,13 @@ const DEFAULT_SIZE: Record<Exclude<StatsTable, "other" | "chemistry" | "team_of_
   elo: 10,
   mr_reliable: 10,
   movers: 5,
-  // The top three the appearances answer has always given.
-  appearances: 3,
+  // Ten, like every other table (2026-09-23). The old top three was the
+  // 30-day answer's, retired the same day.
+  appearances: 10,
 };
+
+/** The tables whose data is per match and can be cut to a period. */
+export const TABLES_CUT_BY_PERIOD: ReadonlySet<StatsTable> = new Set(["appearances", "ratings", "mom"]);
 
 /** PURE. How many rows the group gets for `table`, given what was asked. */
 export function groupListSize(table: keyof typeof DEFAULT_SIZE, requested: number | null | undefined): number {
@@ -157,19 +196,17 @@ export function resolveStatsPerson(
 // ── What to do with a stats question ──────────────────────────────────
 
 export type StatsPlan =
-  /** No table named: the answer that existed before 2026-09-23, unchanged. */
-  | { kind: "legacy" }
-  | { kind: "appearances"; size: number }
   | { kind: "bottom" }
   | {
       kind: "table";
-      table: Exclude<StatsTable, "appearances" | "other">;
+      table: Exclude<StatsTable, "other">;
       size: number;
       requested: number | null;
       personUserId: string | null;
       self: boolean;
+      period: StatsPeriod | null;
     }
-  | { kind: "generic"; personUserId: string | null; self: boolean }
+  | { kind: "generic"; personUserId: string | null; self: boolean; period: StatsPeriod | null }
   | { kind: "ask"; ref: string; candidates: string[] }
   | { kind: "none"; why: string };
 
@@ -185,10 +222,12 @@ export function planStatsQuestion(
   aliases: StatsSnapshot["aliases"],
   senderUserId: string | null,
 ): StatsPlan {
-  const table = facts.table ?? null;
-  if (table === null) return { kind: "legacy" };
+  // No table named is the appearances table: what a stats question with
+  // no measure has always been answered with, now on the full record and
+  // saying its period (2026-09-23).
+  const table = facts.table ?? "appearances";
+  const period = facts.period ?? null;
   if (facts.listEnd === "bottom") return { kind: "bottom" };
-  if (table === "appearances") return { kind: "appearances", size: groupListSize("appearances", facts.listSize) };
 
   const ref = (facts.personRef ?? "").trim();
   let personUserId: string | null = null;
@@ -207,12 +246,12 @@ export function planStatsQuestion(
   // A named player on a club-wide table ("what's Sait's rating?") is not
   // a table: printing the top ten would not answer it. Grounded prompt.
   if (table === "other" || (personUserId !== null && table !== "chemistry")) {
-    return { kind: "generic", personUserId, self };
+    return { kind: "generic", personUserId, self, period };
   }
   const requested = typeof facts.listSize === "number" && facts.listSize >= 1 ? Math.floor(facts.listSize) : null;
   const size =
     table === "chemistry" || table === "team_of_season" ? GROUP_LIST_CAP : groupListSize(table, requested);
-  return { kind: "table", table, size, requested, personUserId, self };
+  return { kind: "table", table, size, requested, personUserId, self, period };
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────
@@ -223,31 +262,116 @@ function firstToken(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
 }
 
+/**
+ * PURE. The span one table's answer covers, and the line that goes above
+ * it: which rows to use, what the header says about the period, and the
+ * honest first line when the period asked for is not the one shown.
+ * `null` when a cut period was asked for and was not loaded, which the
+ * composer turns into an operator note: never a silently different table.
+ */
+function periodView(
+  sp: TableSpeech,
+  snap: StatsSnapshot,
+  lang: Lang,
+): { rows: { appearances: StatsSnapshot["appearances"]; ratings: StatsSnapshot["ratings"]; mom: StatsSnapshot["mom"] }; when: string; lead: string | null } | null {
+  const s = t(lang);
+  const period = sp.period ?? null;
+  const start = sp.table === "mom" ? snap.recordsStart.mom : snap.recordsStart.matches;
+  const since = start ? monthYearLabel(lang, start) : null;
+  const whole = { appearances: snap.appearances, ratings: snap.ratings, mom: snap.mom };
+
+  if (!TABLES_CUT_BY_PERIOD.has(sp.table)) {
+    // Whole-record by nature. A cut period is answered with the whole
+    // table and a first line that says so; the climbers' header already
+    // says what they are, whatever was asked.
+    const lead =
+      cutsTheRecord(period) && sp.table !== "movers"
+        ? s.stats_period_not_cut({ table: sp.table as "elo" | "team_of_season" | "mr_reliable" | "chemistry", since, span: s.stats_span({ period }) })
+        : null;
+    return { rows: whole, when: "", lead };
+  }
+  if (cutsTheRecord(period)) {
+    const cut = snap.periods[periodKey(period)];
+    if (!cut) return null;
+    // Asked further back than the records go: say where they start, and
+    // head the table with that, not with the period asked for.
+    const unreached = start !== null && start.getTime() > cut.since.getTime();
+    return {
+      rows: cut,
+      when: unreached ? s.stats_when({ period: null, since }) : s.stats_when({ period, since: null }),
+      lead: unreached && since ? s.stats_period_unreached({ since, span: s.stats_span({ period }) }) : null,
+    };
+  }
+  // The whole record. Appearances always says so; ratings and Man of the
+  // Match only when a period was asked for, so an answer to a question
+  // with no period reads exactly as it did before this change.
+  const when = period !== null || sp.table === "appearances" ? s.stats_when({ period, since }) : "";
+  return { rows: whole, when, lead: null };
+}
+
+/** PURE. The honest line after a grounded generic answer when the
+ *  question asked for a period the tables it was given do not cut to.
+ *  `null` when there is nothing to say. */
+export function genericPeriodNote(period: StatsPeriod | null | undefined, snap: StatsSnapshot, lang: Lang): string | null {
+  if (!cutsTheRecord(period)) return null;
+  const s = t(lang);
+  const start = snap.recordsStart.matches;
+  return s.stats_period_not_cut({ table: "generic", since: start ? monthYearLabel(lang, start) : null, span: s.stats_span({ period }) });
+}
+
 /** PURE. The exact text for one known table. "" when there is nothing
  *  loaded to render (the composer turns that into an operator note). */
 export function renderStatsTable(sp: TableSpeech, snap: StatsSnapshot, lang: Lang): string {
+  const view = periodView(sp, snap, lang);
+  if (!view) return "";
+  const body = renderTableBody(sp, snap, lang, view);
+  return body && view.lead ? `${view.lead}\n${body}` : body;
+}
+
+function renderTableBody(
+  sp: TableSpeech,
+  snap: StatsSnapshot,
+  lang: Lang,
+  view: NonNullable<ReturnType<typeof periodView>>,
+): string {
   const s = t(lang);
   const url = snap.fullTableUrl;
   const capped = sp.requested !== null && sp.requested > GROUP_LIST_CAP;
   const withCap = (text: string) => (capped ? `${text}\n\n${s.stats_capped({ cap: GROUP_LIST_CAP, url })}` : text);
   const d = (x: number) => oneDecimal(lang, x);
+  const when = view.when;
 
   switch (sp.table) {
-    case "ratings": {
-      const rows = snap.ratings.slice(0, sp.size);
-      if (rows.length === 0) return s.stats_ratings_empty({ minGames: GROUP_RATINGS_MIN_GAMES, url });
+    case "appearances": {
+      const rows = view.rows.appearances.slice(0, sp.size);
+      // Nothing to count over the whole record is "nothing yet"; nothing
+      // in a period says the period.
+      if (rows.length === 0) return s.stats_apps_empty({ when: cutsTheRecord(sp.period) ? when : "" });
       return withCap(
         [
-          s.stats_ratings_head({ n: rows.length, minGames: GROUP_RATINGS_MIN_GAMES }),
+          s.stats_apps_head({ when }),
+          ...rows.map((r, i) => s.stats_apps_row({ rank: i + 1, name: r.name, matches: r.matches })),
+        ].join("\n"),
+      );
+    }
+    case "ratings": {
+      const rows = view.rows.ratings.slice(0, sp.size);
+      if (rows.length === 0) return s.stats_ratings_empty({ minGames: GROUP_RATINGS_MIN_GAMES, url, when: when || undefined });
+      return withCap(
+        [
+          s.stats_ratings_head({ n: rows.length, minGames: GROUP_RATINGS_MIN_GAMES, when: when || undefined }),
           ...rows.map((r) => s.stats_ratings_row({ rank: r.rank, name: r.name, avg: d(r.avg), games: r.games })),
         ].join("\n"),
       );
     }
     case "mom": {
-      const rows = snap.mom.slice(0, sp.size);
-      if (rows.length === 0) return s.stats_mom_empty;
+      const rows = view.rows.mom.slice(0, sp.size);
+      if (rows.length === 0) return when ? s.stats_mom_empty_when({ when }) : s.stats_mom_empty;
       return withCap(
-        [s.stats_mom_head, ...rows.map((r, i) => s.stats_mom_row({ rank: i + 1, name: r.name, wins: r.wins }))].join("\n"),
+        [
+          when ? s.stats_mom_head_when({ when }) : s.stats_mom_head,
+          ...rows.map((r, i) => s.stats_mom_row({ rank: i + 1, name: r.name, wins: r.wins })),
+        ].join("\n"),
       );
     }
     case "elo": {

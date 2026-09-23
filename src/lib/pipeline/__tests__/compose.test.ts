@@ -23,6 +23,29 @@ import {
 import { NOW, SUTTON, attendanceFacts, claim, fullName, msg, world } from "./helpers";
 import type { EngineResult, SquadState } from "../types";
 
+/** The stats tables a stats question reads (2026-09-23): appearances on
+ *  the club's full record, since the 30-day `SquadState.appearances`
+ *  was retired. */
+function withAppearances(state: SquadState, rows: Array<{ key: string; matches: number }>): SquadState {
+  return {
+    ...state,
+    stats: {
+      fullTableUrl: "https://matchtime.ai/profile/stats",
+      ratings: [],
+      mom: [],
+      elo: [],
+      teamOfSeason: null,
+      mrReliable: [],
+      aliases: [],
+      chemistry: {},
+      generic: {},
+      appearances: rows.map((r) => ({ userId: `u-${r.key}`, name: fullName(r.key), matches: r.matches })),
+      recordsStart: { matches: rows.length ? new Date("2026-04-14T20:00:00.000Z") : null, mom: null },
+      periods: {},
+    },
+  };
+}
+
 function composeFor(state: SquadState, messages: Parameters<typeof decide>[0]["messages"]) {
   const result: EngineResult = decide({ now: NOW, state, messages });
   return { result, out: compose(result) };
@@ -197,14 +220,11 @@ describe("questions are answered from state, not from the model", () => {
   });
 
   it("answers a stats question with NO squad block appended (§3.2 S16, cf6ed22)", () => {
-    const state = world({
-      confirmed: TEN.slice(0, 6),
-      appearances: [
-        { userId: "u-kemal", matches: 9 },
-        { userId: "u-elvin", matches: 7 },
-        { userId: "u-sait", matches: 2 },
-      ],
-    });
+    const state = withAppearances(world({ confirmed: TEN.slice(0, 6) }), [
+      { key: "kemal", matches: 9 },
+      { key: "elvin", matches: 7 },
+      { key: "sait", matches: 2 },
+    ]);
     const { out } = composeFor(state, [
       msg({
         from: "shaz",
@@ -257,14 +277,11 @@ describe("questions are answered from state, not from the model", () => {
   // two must be invisible to that composer, in the two states that
   // matter (a real answer, and the empty-data answer).
   it("the composed STATS answer is not mistaken for squad state (2026-05-14)", () => {
-    const state = world({
-      confirmed: TEN.slice(0, 6),
-      appearances: [
-        { userId: "u-kemal", matches: 9 },
-        { userId: "u-elvin", matches: 7 },
-        { userId: "u-sait", matches: 2 },
-      ],
-    });
+    const state = withAppearances(world({ confirmed: TEN.slice(0, 6) }), [
+      { key: "kemal", matches: 9 },
+      { key: "elvin", matches: 7 },
+      { key: "sait", matches: 2 },
+    ]);
     const { out } = composeFor(state, [
       msg({
         from: "shaz",
@@ -280,7 +297,7 @@ describe("questions are answered from state, not from the model", () => {
   });
 
   it("the STATS answer with no appearances yet is not mistaken for squad state", () => {
-    const state = world({ confirmed: TEN.slice(0, 6), appearances: [] });
+    const state = withAppearances(world({ confirmed: TEN.slice(0, 6) }), []);
     const { out } = composeFor(state, [
       msg({
         from: "shaz",

@@ -480,13 +480,31 @@ export interface LeaderboardRow {
  */
 export async function loadRatingLeaderboard(
   orgId: string,
-  opts: { minGames?: number; limit?: number; viewerId?: string } = {},
+  opts: {
+    minGames?: number;
+    limit?: number;
+    viewerId?: string;
+    /**
+     * Rank on the matches played on or after this instant only
+     * (2026-09-23, the group's "top 5 ratings in the last month").
+     * `minGames` then counts rated matches inside the period. The
+     * inactivity rule still reads the whole record: it is about who is
+     * still here, not about the period. Absent is the whole record,
+     * which is what `/profile/stats` shows.
+     */
+    since?: Date;
+  } = {},
 ): Promise<LeaderboardRow[]> {
   const minGames = opts.minGames ?? 2;
   const limit = opts.limit ?? 20;
 
   const matches = await db.match.findMany({
-    where: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
+    where: {
+      activity: { orgId },
+      status: "COMPLETED",
+      isHistorical: false,
+      ...(opts.since ? { date: { gte: opts.since } } : {}),
+    },
     orderBy: { date: "asc" },
     select: {
       id: true,

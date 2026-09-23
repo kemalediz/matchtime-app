@@ -45,6 +45,25 @@
  * See MDs/multi-language-design-2026-09-16.md section 4.2.
  */
 import { joinList } from "./text";
+import type { StatsPeriod } from "../pipeline/types";
+
+/** The tables whose answer says it cannot be cut to a period. */
+type UncutTable = "elo" | "team_of_season" | "mr_reliable" | "chemistry" | "generic";
+
+/** "the last year" / "the last 3 months" / "this month": the period as a
+ *  noun phrase. */
+function spanEn(p: StatsPeriod): string {
+  switch (p.kind) {
+    case "last":
+      return p.count === 1 ? `the last ${p.unit}` : `the last ${p.count} ${p.unit}s`;
+    case "this":
+      return `this ${p.unit}`;
+    case "season":
+      return "this season";
+    case "all_time":
+      return "all time";
+  }
+}
 
 export const en = {
   // ── shared fragments ─────────────────────────────────────────────
@@ -281,15 +300,6 @@ export const en = {
   answer_person_confirmed: (p: { who: string; kickoffLabel: string }): string => `Yes, ${p.who} has a slot for ${p.kickoffLabel}.`,
   answer_phones_none: "Everyone in the squad has a number on record.",
   answer_phones_missing: (p: { names: string[] }): string => `No number on record for ${joinList("en", p.names)}.`,
-  answer_stats_empty: (p: { windowDays: number }): string =>
-    `I don't have any completed matches in the last ${p.windowDays} days to go on, so I can't call anyone the most consistent.`,
-  answer_stats_head: (p: { windowDays: number }): string => `Most appearances in the last ${p.windowDays} days:`,
-  /** ⚠️ The em dash separator is load-bearing: `isLeaderboardLine`
-   *  (group-copy.ts) keys on it so a stats answer is never mistaken
-   *  for a roster. Any language's row must carry one of that function's
-   *  markers. */
-  answer_stats_row: (p: { rank: number; name: string; matches: number }): string =>
-    `${p.rank}. ${p.name} — ${p.matches} ${p.matches === 1 ? "match" : "matches"}`,
   answer_options_lead: (p: { confirmed: number; maxPlayers: number; need: number }): string =>
     p.need > 0
       ? `We're ${p.confirmed} of ${p.maxPlayers}, need ${p.need} more 🙏`
@@ -301,12 +311,55 @@ export const en = {
   // Every row carries one of `isLeaderboardLine`'s markers ("matches",
   // "wins", "%"), so none of these is ever mistaken for the squad list;
   // the route also skips them by intent (`skipsSquadComposition`).
-  stats_ratings_head: (p: { n: number; minGames: number }): string =>
-    `Top ${p.n} club ratings (players with ${p.minGames}+ rated matches):`,
+  // ── the period (2026-09-23): what every table says about its span ──
+  // NEVER A DIFFERENT PERIOD WITHOUT SAYING SO (Kemal). `stats_when` is
+  // the span a table covers, as it reads after the table's name; `since`
+  // is the month the club's records begin, read from the data.
+  stats_when: (p: { period: StatsPeriod | null; since: string | null }): string => {
+    const q = p.period;
+    if (q === null) return p.since ? `since my records began in ${p.since}` : "";
+    if (q.kind === "last") return `in ${spanEn(q)}`;
+    if (q.kind === "this") return spanEn(q);
+    if (q.kind === "season") return p.since ? `this season, since ${p.since}` : "this season";
+    return p.since ? `of all time, since my records began in ${p.since}` : "of all time";
+  },
+  stats_span: (p: { period: StatsPeriod }): string => spanEn(p.period),
+  /** Asked further back than the records go. */
+  stats_period_unreached: (p: { since: string; span: string }): string =>
+    `My records for this club start in ${p.since}, so for ${p.span} this is everything I have.`,
+  /** A table the data cannot cut to a period says what it shows, and why. */
+  stats_period_not_cut: (p: { table: UncutTable; since: string | null; span: string }): string => {
+    const every = p.since ? `every match since ${p.since}` : "every match";
+    switch (p.table) {
+      case "elo":
+        return `Elo is a running rating, so this is the table as it stands now, not one for ${p.span}.`;
+      case "team_of_season":
+        return `Team of the Season is picked from ${every}, so I can't cut it to ${p.span}.`;
+      case "mr_reliable":
+        return `Mr Reliable is the stats page badge, earned over ${every}, so I can't cut it to ${p.span}.`;
+      case "chemistry":
+        return `Chemistry is worked out over ${every}, so I can't cut it to ${p.span}.`;
+      case "generic":
+        return `These figures cover ${every}, not only ${p.span}.`;
+    }
+  },
+  // The appearances table (2026-09-23), which replaced the 30-day
+  // `answer_stats_*` answer and its em-dash row.
+  stats_apps_head: (p: { when: string }): string => (p.when ? `Most appearances ${p.when}:` : "Most appearances:"),
+  stats_apps_row: (p: { rank: number; name: string; matches: number }): string =>
+    `${p.rank}. ${p.name}: ${p.matches} ${p.matches === 1 ? "match" : "matches"}`,
+  stats_apps_empty: (p: { when: string }): string =>
+    p.when ? `I have no completed matches ${p.when} to count.` : "I have no completed matches to count yet.",
+  stats_ratings_head: (p: { n: number; minGames: number; when?: string }): string =>
+    p.when
+      ? `Top ${p.n} club ratings ${p.when} (players with ${p.minGames}+ rated matches):`
+      : `Top ${p.n} club ratings (players with ${p.minGames}+ rated matches):`,
   stats_ratings_row: (p: { rank: number; name: string; avg: string; games: number }): string =>
     `${p.rank}. ${p.name}: ${p.avg} (${p.games} ${p.games === 1 ? "match" : "matches"})`,
-  stats_ratings_empty: (p: { minGames: number; url: string }): string =>
-    `Nobody has ${p.minGames} rated matches yet, so there's no ratings table to share. The full stats are on the website: ${p.url}`,
+  stats_ratings_empty: (p: { minGames: number; url: string; when?: string }): string =>
+    p.when
+      ? `Nobody has ${p.minGames} rated matches ${p.when}, so there's no ratings table to share for that. The full stats are on the website: ${p.url}`
+      : `Nobody has ${p.minGames} rated matches yet, so there's no ratings table to share. The full stats are on the website: ${p.url}`,
   stats_capped: (p: { cap: number; url: string }): string =>
     `I list the top ${p.cap} in the group. The full table is on the website: ${p.url}`,
   stats_bottom: (p: { url: string }): string =>
@@ -315,6 +368,8 @@ export const en = {
   stats_mom_row: (p: { rank: number; name: string; wins: number }): string =>
     `${p.rank}. ${p.name}: ${p.wins} ${p.wins === 1 ? "win" : "wins"}`,
   stats_mom_empty: "Nobody has won Man of the Match yet.",
+  stats_mom_head_when: (p: { when: string }): string => `Most Man of the Match wins ${p.when}:`,
+  stats_mom_empty_when: (p: { when: string }): string => `Nobody has won Man of the Match ${p.when}.`,
   stats_elo_head: (p: { n: number; minMatches: number }): string =>
     `Top ${p.n} by Elo (${p.minMatches}+ matches played):`,
   stats_elo_row: (p: { rank: number; name: string; rating: number; matches: number }): string =>

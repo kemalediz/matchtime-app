@@ -107,6 +107,19 @@ function deps(
     loadFeatures: async () => ({ ...FEATURES_ON, ...features }),
     loadPayments,
     loadRatingProgress,
+    // Every stats question reads the club's tables since 2026-09-23 (the
+    // appearances answer moved onto them). A small, fixed record.
+    loadStats: async () => ({
+      fullTableUrl: "https://matchtime.ai/profile/stats",
+      ratings: [],
+      mom: [],
+      elo: [],
+      teamOfSeason: null,
+      mrReliable: [],
+      aliases: [],
+      appearances: [{ userId: "u-kemal", name: fullName("kemal"), matches: 24 }],
+      recordsStart: { matches: new Date("2026-04-14T20:00:00.000Z"), mom: null },
+    }),
   };
 }
 
@@ -994,34 +1007,51 @@ describe("the format fix that let the last two built answers speak", () => {
     return out.utterances[0].text;
   }
 
-  const APPEARANCES = world({
-    confirmed: ELEVEN,
-    appearances: [
-      { userId: "u-kemal", matches: 24 },
-      { userId: "u-elvin", matches: 22 },
-      { userId: "u-sait", matches: 21 },
-    ],
-  });
+  const APPEARANCES: SquadState = {
+    ...world({ confirmed: ELEVEN }),
+    stats: {
+      fullTableUrl: "https://matchtime.ai/profile/stats",
+      ratings: [],
+      mom: [],
+      elo: [],
+      teamOfSeason: null,
+      mrReliable: [],
+      aliases: [],
+      chemistry: {},
+      generic: {},
+      appearances: [
+        { userId: "u-kemal", name: fullName("kemal"), matches: 24 },
+        { userId: "u-elvin", name: fullName("elvin"), matches: 22 },
+        { userId: "u-sait", name: fullName("sait"), matches: 21 },
+      ],
+      recordsStart: { matches: new Date("2026-04-14T20:00:00.000Z"), mom: null },
+      periods: {},
+    },
+  };
 
   it("the composed STATS answer reads as a LEADERBOARD, not as squad state (2026-05-14)", () => {
     // THE FIX, AND WHAT IT REPLACED. `compose.ts`'s `answer_stats` used
     // to render "1. Kemal Ediz (24)" lines. `isLeaderboardLine`
-    // (`group-copy.ts:129`) recognises a leaderboard by an em dash, a
+    // (`group-copy.ts`) recognises a leaderboard by an em dash, a
     // percentage, "wins/votes/matches" or an "N/M (" pattern, and that
     // shape carried NONE of them — so `displaysSquadState` saw a
-    // numbered run of 2+ lines and said yes, and `route.ts:2480` would
-    // have swapped a "most consistent" answer for the upcoming-squad
-    // roster. That is the exact incident §3.2 S16 cites for 2026-05-14,
-    // and it is why the topic was refused rather than answered.
+    // numbered run of 2+ lines and said yes, and `route.ts` would have
+    // swapped a "most consistent" answer for the upcoming-squad roster.
+    // That is the exact incident §3.2 S16 cites for 2026-05-14.
     //
-    // The answer now uses the house leaderboard format
-    // (`match-history.ts:336`), which carries both an em dash and the
-    // word "matches". The refusal could then be dropped. This test is
-    // the reason it can be: it fails the day the format regresses.
-    const text = say({ kind: "answer_stats", messageId: "wa-1" }, APPEARANCES);
-    expect(text).toContain("Kemal Ediz");
-    expect(text).toMatch(/1\. Kemal Ediz — 24 matches/);
-    expect(text).toContain("last 30 days");
+    // 2026-09-23: the appearances answer is a stats TABLE now, on the
+    // full record, and its row is "1. Name: 24 matches" (the house style
+    // bans the em dash it used to carry). The word "matches" is still a
+    // leaderboard marker, and the route skips the answer by intent as
+    // well (`skipsSquadComposition`). This test fails the day the row
+    // loses its marker.
+    const text = say(
+      { kind: "answer_stats_table", messageId: "wa-1", table: "appearances", size: 10, requested: null, personUserId: null, self: false, period: null },
+      APPEARANCES,
+    );
+    expect(text).toContain("1. Kemal Ediz: 24 matches");
+    expect(text).toContain("since my records began in April 2026");
+    expect(text).not.toMatch(/[—–]/);
     expect(displaysSquadState(text)).toBe(false);
   });
 
