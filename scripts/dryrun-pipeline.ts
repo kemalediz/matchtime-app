@@ -80,7 +80,7 @@
  *   QUESTIONS=1    run the TAGGED-QUESTION table (Q*) through §10 step
  *                  7's owner instead, and score every phrasing as
  *                  ANSWERED / HANDED BACK / SILENT. See `runQuestions`.
- *   STATS=1        run the STATS-TABLES table (L*, K*, N*, G*, T*, A1, C1,
+ *   STATS=1        run the STATS-TABLES table (L*, K*, N*, G*, T*, P*, A1, C1,
  *                  2026-09-23): the live router, then `runAnswerBatch`
  *                  over the real tables, read once. Read-only. See
  *                  `runStats`. STATS_BUDGET_USD caps the spend (0.95).
@@ -1043,7 +1043,7 @@ const QUESTION_CASES: QuestionCase[] = [
   { id: "Q19", who: "Amir", body: "@Match Time is Zair in?", expect: "ANSWERED", wants: /Zair/, why: "person_status, resolvable" },
   { id: "Q20", who: "Amir", body: "@Match Time is my mate down for tuesday", expect: "HANDED BACK", why: "person_status that cannot resolve to one member" },
   { id: "Q21", who: "Amir", body: "@Match Time anyone in the squad without a number?", expect: "ANSWERED", why: "phones" },
-  { id: "Q22", who: "Amir", body: "@Match Time who's been most consistent this season?", expect: "ANSWERED", wants: /—\s\d+\smatch/, why: "stats — the leaderboard row shape must survive displaysSquadState (2026-05-14)" },
+  { id: "Q22", who: "Amir", body: "@Match Time who's been most consistent this season?", expect: "ANSWERED", wants: /: \d+ match/, why: "stats — the appearances table on the full record (2026-09-23; the em-dash row was retired), still not the squad list (2026-05-14)" },
   { id: "Q23", who: "Amir", body: "@Match Time we're short, what are our options?", expect: "ANSWERED", wants: /\bof \d+\b/, why: "options — the lead spells the count out so rule (c) cannot fire" },
   { id: "Q24", who: "Elvin", body: "@Match Time show me the teams", expect: "ANSWERED", why: "balancer/show — a real post if teams exist, the shipped 'no teams generated yet' if not" },
 
@@ -1074,6 +1074,14 @@ const QUESTION_CASES: QuestionCase[] = [
   { id: "Q33", who: "Ali", body: "@Match Time who's in for tuesday", expect: "ANSWERED", wants: /Playing:/, why: "NEGATIVE CONTROL — a roster question phrased near payment vocabulary must stay a roster question" },
   { id: "Q34", who: "Ali", body: "@Match Time how much do we pay each", expect: "HANDED BACK", why: "NEGATIVE CONTROL — the FEE, which is not in SquadState. Naming who has not paid would be answering a different question" },
   { id: "Q35", who: "Amir", body: "@Match Time is my mate down for tuesday", expect: "HANDED BACK", why: "TIER 4 CONTROL — an unresolvable person_status. Nothing can answer it; the hand-back is correct and must survive this change" },
+
+  // ── 2026-09-23: the rewritten question prompt, the two topics above
+  //    had no case for. Rating progress is a count, never a name list
+  //    in the answer's lead; its negative control is the instruction.
+  { id: "Q36", who: "Kemal", body: "@Match Time who hasn't rated yet?", expect: "ANSWERED", why: "rating_progress (admin-only by design, so an admin asks)" },
+  { id: "Q37", who: "Kemal", body: "@Match Time kimler puan vermedi?", expect: "ANSWERED", why: "rating_progress, Turkish (admin-only, so an admin asks)" },
+  { id: "Q38", who: "Ali", body: "@Match Time maç kaçta?", expect: "ANSWERED", wants: /\d{1,2}:\d{2}/, why: "fixture, Turkish" },
+  { id: "Q39", who: "Ali", body: "@Match Time kimler var?", expect: "ANSWERED", why: "squad, Turkish" },
 ];
 
 /**
@@ -1650,6 +1658,7 @@ async function runQuestions(orgId: string, state: SquadState, now: Date): Promis
           `${wrong ? `  ⚠️ answer does not match ${c.wants}` : ""}`,
       );
       if (reply) console.log(`  says   : ${JSON.stringify(reply.slice(0, 160))}`);
+      if (outcome?.reasoning) console.log(`  reason : ${outcome.reasoning.slice(0, 200)}`);
       else if (!routeIsOurs) console.log(`  reason : the router sent it to "${route}", which step 7 does not own`);
       else if (res.degradations.length) console.log(`  reason : ${res.degradations.join(" | ")}`);
     }
@@ -2173,7 +2182,16 @@ async function runDmIntents(): Promise<void> {
  * could take the total past STATS_BUDGET_USD (default 0.95).
  * ═══════════════════════════════════════════════════════════════════════
  */
-type StatsCase = { id: string; lang: "en" | "tr"; body: string; expect: RegExp; why: string };
+type StatsCase = {
+  id: string;
+  lang: "en" | "tr";
+  body: string;
+  expect: RegExp;
+  why: string;
+  /** What the REPLY must say (2026-09-23, the period): printed and
+   *  counted as a MISS when it does not. */
+  says?: RegExp;
+};
 
 function statsCases(ambiguousRef: string | null): StatsCase[] {
   const c: StatsCase[] = [
@@ -2205,6 +2223,24 @@ function statsCases(ambiguousRef: string | null): StatsCase[] {
     { id: "T7", lang: "tr", body: "@Match Time en kötü oyuncu kim?", expect: /bottom of a table/, why: "names nobody" },
     { id: "T8", lang: "tr", body: "@Match Time son 3 maçta en çok kim gelişti?", expect: /movers table/, why: "" },
     { id: "T9", lang: "tr", body: "@Match Time en çok maça gelen kim?", expect: /appearances table/, why: "" },
+    // ── THE PERIOD (2026-09-23). The engine's reason carries the period
+    //    as it was read ("period last:1:year"), and `says` checks the
+    //    group is TOLD the period: honoured in the header, or said plainly
+    //    when the records do not reach it or the table cannot be cut.
+    { id: "P1", lang: "en", body: "@Match Time who has played most matches in the last 1 year?", expect: /appearances table, 10 rows, period last:1:year/, says: /My records for this club start in \w+ \d{4}|Most appearances in the last year/, why: "the incident, Kemal's exact words" },
+    { id: "P2", lang: "en", body: "@Match Time most appearances this season", expect: /appearances table, \d+ rows, period season/, says: /Most appearances this season, since \w+ \d{4}:/, why: "" },
+    { id: "P3", lang: "en", body: "@Match Time top 5 ratings in the last month", expect: /ratings table, 5 rows, period last:1:month/, says: /club ratings in the last month|rated matches in the last month/, why: "" },
+    { id: "P4", lang: "en", body: "@Match Time who played most last month", expect: /appearances table, \d+ rows, period last:1:month/, says: /in the last month/, why: "" },
+    { id: "P5", lang: "en", body: "@Match Time all-time most MoMs", expect: /mom table, \d+ rows, period all_time/, says: /of all time, since my records began in \w+ \d{4}/, why: "" },
+    { id: "P6", lang: "en", body: "@Match Time who's played the most?", expect: /appearances table, 10 rows(?!, period)/, says: /Most appearances since my records began in \w+ \d{4}:/, why: "no period: the whole record, and it SAYS so" },
+    { id: "P7", lang: "en", body: "@Match Time who has played the most in the last 5 years?", expect: /appearances table, \d+ rows, period last:5:year/, says: /My records for this club start in \w+ \d{4}, so for the last 5 years/, why: "a period the records cannot reach" },
+    { id: "P8", lang: "en", body: "@Match Time what's the elo table for the last month?", expect: /elo table, \d+ rows, period last:1:month/, says: /Elo is a running rating/, why: "a table the data cannot cut says so" },
+    { id: "P9", lang: "tr", body: "@Match Time son 1 yılda en çok maç oynayan kim?", expect: /appearances table, 10 rows, period last:1:year/, says: /kayıtlarım \S+ \d{4} itibarıyla başlıyor|son 1 yıl/, why: "Kemal's question, Turkish" },
+    { id: "P10", lang: "tr", body: "@Match Time bu sezon en çok maç oynayanlar", expect: /appearances table, \d+ rows, period season/, says: /bu sezon, \S+ \d{4} itibarıyla/, why: "" },
+    { id: "P11", lang: "tr", body: "@Match Time geçen ay en iyi 5 puan kimde?", expect: /ratings table, 5 rows, period last:1:month/, says: /son 1 ay/, why: "" },
+    { id: "P12", lang: "tr", body: "@Match Time tüm zamanların en çok maçın adamı kim?", expect: /mom table, \d+ rows, period all_time/, says: /tüm zamanlar/, why: "" },
+    { id: "P13", lang: "tr", body: "@Match Time son 5 yılda en çok maça gelen kim?", expect: /appearances table, \d+ rows, period last:5:year/, says: /kayıtlarım \S+ \d{4} itibarıyla başlıyor/, why: "a period the records cannot reach, Turkish" },
+    { id: "P14", lang: "tr", body: "@Match Time en çok kim oynadı?", expect: /appearances table, 10 rows(?!, period)/, says: /\(\S+ \d{4} itibarıyla\)/, why: "no period, Turkish" },
   ];
   if (ambiguousRef) {
     c.push({ id: "A1", lang: "en", body: `@Match Time ${ambiguousRef}'s chemistry`, expect: /fits \d+ members: asked which/, why: "an ambiguous name names the candidates" });
@@ -2223,7 +2259,7 @@ function pickAmbiguousRef(roster: Member[]): string | null {
 }
 
 async function runStats(orgId: string, state: SquadState, now: Date): Promise<void> {
-  const { loadStatsTables, loadStatsChemistry } = await import("../src/lib/pipeline/load-stats.ts");
+  const { loadStatsTables, loadStatsChemistry, loadStatsPeriod } = await import("../src/lib/pipeline/load-stats.ts");
   const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
   const budget = Number(process.env.STATS_BUDGET_USD ?? 0.95);
   const only = process.env.ONLY?.split(",").map((x) => x.trim());
@@ -2234,6 +2270,7 @@ async function runStats(orgId: string, state: SquadState, now: Date): Promise<vo
   const ambiguous = pickAmbiguousRef(state.roster);
   const selected = statsCases(ambiguous).filter((c) => !only || only.includes(c.id));
   console.log(
+    `RECORDS START : matches ${tables.recordsStart.matches?.toISOString() ?? "none"}, Man of the Match ${tables.recordsStart.mom?.toISOString() ?? "none"}; ${tables.appearances.length} players with appearances\n` +
     `STATS : ${tables.ratings.length} ranked (3+ rated), ${tables.mom.length} MoM, ${tables.elo.length} Elo, ` +
       `TOTS ${tables.teamOfSeason?.slots.length ?? 0} slots, ${tables.mrReliable.length} Mr Reliable, ${tables.aliases.length} aliases\n` +
       `ASKER : ${asker.name}   AMBIGUOUS REF : ${ambiguous ?? "(none in this roster, A1 skipped)"}`,
@@ -2284,6 +2321,7 @@ async function runStats(orgId: string, state: SquadState, now: Date): Promise<vo
         loadFeatures: async () => features,
         loadStats: async () => tables,
         loadChemistry: loadStatsChemistry,
+        loadStatsPeriod,
       },
     });
     calls += res.cost.calls;
@@ -2301,7 +2339,9 @@ async function runStats(orgId: string, state: SquadState, now: Date): Promise<vo
       }
       const { route, res, outcome } = await one({ id: `${c.id}-${n}`, lang: c.lang, body: c.body, tagged: true });
       const reasons = `${outcome?.intent ?? "(unowned)"} | ${outcome?.reasoning ?? res.degradations.join(" | ")}`;
-      const ok = c.expect.test(reasons);
+      const saysOk = !c.says || c.says.test(outcome?.reply ?? "");
+      const ok = c.expect.test(reasons) && saysOk;
+      if (!saysOk) console.log(`  ⚠️ the reply does not say ${c.says}`);
       const key = `${route} ${ok ? "PASS" : "MISS"} ${outcome?.intent ?? "unowned"}`;
       const t = tally.get(c.id) ?? new Map<string, number>();
       t.set(key, (t.get(key) ?? 0) + 1);

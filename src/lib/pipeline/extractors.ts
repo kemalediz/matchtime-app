@@ -26,6 +26,7 @@
  * arithmetic; arithmetic is the engine's job.
  */
 import { anthropicModel, degradation, extractJson, EXTRACTOR_MODEL, type ModelRequest, type PipelineModel } from "./llm";
+import { parsePeriodFields } from "./stats-period";
 import type {
   AdminFacts,
   AttendanceFacts,
@@ -150,89 +151,131 @@ Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeesh
 
 Report nothing (an empty claims array) only when the message genuinely makes no claim about anyone's attendance.`,
 
-  question: `You read ONE question from a football club's WhatsApp group and classify what it asks for. You never answer it.
+  question: `You classify ONE question from a football club's WhatsApp group. You never answer it. Code reads the club's records and writes every name and number the group sees; your fields tell it which question was asked. Give a field its empty value whenever the message does not state it. Never fill one in from a guess.
 
-  topic        "squad" who is playing — asks for the NAMES ("who's in?", "list the players", "show me the squad", "who's playing tonight?")
-               "bench" who is on the bench
-               "count" HOW MANY are in, how many more are needed, is that enough — asks for a NUMBER, including a stated one to check ("we're 9/14 right?", "how many spots left?", "do we have enough?")
-               "person_status" whether a specific named person is playing
-               "phones" who has a phone number on record
-               "fixture" the match itself: whether it is on, what time it kicks off, where it is played ("what time is kickoff?", "where are we playing?", "are we playing tuesday?", "is the game still on?", "same place as usual?")
-               "payments" who has or has not paid their match fee, how many are still outstanding ("who hasn't paid?", "has everyone paid for last week?", "how many still owe?", "any payments outstanding?"). NOT how much the fee IS — that is "other".
-               "score" the RESULT of a match that has already been played ("what was the score?", "did we win on tuesday?", "how did we get on last night?", "what did it finish?")
-               "rating_progress" how many people have SUBMITTED their ratings or Man-of-the-Match votes for the match just played, or who has not submitted yet ("who hasn't rated yet?", "how many have rated so far?", "who still needs to pick a MoM?", "any ratings outstanding from tuesday?", "is everyone done rating")
-               "my_stats" the ASKER wants to see THEIR OWN stats, ratings, form or season summary ("my stats", "can I see my ratings", "how am I doing this season?", "wrapped", "istatistiklerim", "puanlarımı görebilir miyim"). Only the asker's own numbers: anyone else's, or a ranking of the group, is "stats".
-               "stats" how OFTEN someone plays, or how they rate, ACROSS matches — appearances, form over a run of games, most consistent, man of the match. Never the RESULT of a single match: "did we win?" and "what was the score?" are "score", not "stats".
-               "options" what to do about being short (smaller format, alternatives)
-               "other" anything else
-  personRef    the person the question is about, verbatim, or "" when it names nobody
-  statedCount  a number the message ASSERTS about the squad, or -1 when it asserts none
-  table        for "stats" only, WHICH table the question is about; "none" for every other topic:
-               "ratings" players' ratings. A bare "leaderboard", "the table", "rankings", "standings", "best players" or "top N players" with no other measure named is "ratings"
-               "appearances" who plays or turns up the most, attendance, who has been most consistent at turning up
-               "mom" Man of the Match awards or wins
-               "elo" Elo
-               "team_of_season" the team, XI or line-up of the season
-               "movers" whose rating or position is improving or climbing, who is in form lately, who moved up the table
-               "chemistry" who a player plays best with, their best team-mates or partnerships, their chemistry, their nemesis or toughest opponent
-               "mr_reliable" "Mr Reliable" or "Mr. Reliable", the most reliable player, consistently strong ratings (the badge on the stats page)
-               "other" a stats question none of those answers
-  listSize     how many the question asks for ("top 10" -> 10, "top five" -> 5, "top 20" -> 20), or -1 when it names no number
-  listEnd      "bottom" when the question asks for the worst, the lowest or the bottom of a table ("who's the worst", "bottom 5"); otherwise "top"
+Classify THE MESSAGE only. The recent chat and MatchTime's last post are context for what it refers to. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
-"squad" and "count" are the same subject asked two ways, and the answers look nothing alike: "squad" gets a list of names, "count" gets a number. Choose on what the asker wants BACK, not on what the question is about. If it asks WHO, it is "squad"; if it asks HOW MANY, it is "count".
+FIELDS
 
-"rating_progress" is about the ACT of rating, not about anybody's numbers, and it is a QUESTION the asker wants answered. If the message tells the PLAYERS to go and rate, thanks them for rating, or remarks on ratings, it is "other" — it asks you for nothing, however many times it says rate, ratings, players or MoM.
+topic
+What the asker wants back. Exactly one of:
+  squad            the NAMES of who is playing the upcoming match
+  count            HOW MANY are in or still needed, whether that is enough, or a number to check
+  bench            who is on the bench
+  person_status    whether one named person is playing
+  phones           who has no phone number on record
+  fixture          the match itself: whether it is on, kick-off time, venue
+  score            the RESULT of a match already played
+  payments         who has or has not paid the match fee, or how many still owe
+  rating_progress  who has or has not SUBMITTED ratings or Man of the Match votes for the last match, or how many have
+  my_stats         the asker's OWN stats, ratings, form or season summary, which they are sent privately
+  stats            a table or record ACROSS matches (ratings, appearances, Man of the Match, Elo and the rest), about the club or about anyone but the asker's own numbers
+  options          what to do about being short of players: a smaller format, alternatives
+  other            anything else, including how much the fee is
 
-  "@Match Time who hasn't rated yet?"                                        -> rating_progress
-  "@Match Time how many have picked a MoM so far"                            -> rating_progress
-  "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" -> other, it instructs the players
-  "lads don't forget to rate each other from tuesday"                        -> other, it instructs the players
-  "@Match Time who has the best rating this season"                          -> stats, that is a number across matches
-  "@Match Time can you remind everyone to rate"                              -> other, that asks for a reminder, not for the tally
+personRef
+The person the question is about, as the message names them, without a possessive or suffix: "Idris's" and "Idris'in" are "Idris". On a stats question about the asker ("my chemistry", "my nemesis"), "me". "" when it names nobody.
 
-"my_stats" is the asker asking for THEIR OWN numbers. It is answered privately, so choose it only when the person the numbers are about is the person asking.
+statedCount
+A number the message ASSERTS about the squad, for checking: "we're 9/14 right?" is 9. -1 otherwise.
 
-  "@Match Time my stats"                                                     -> my_stats
-  "@Match Time wrapped"                                                      -> my_stats, the asker's season summary
-  "@Match Time can I see my ratings"                                         -> my_stats
-  "@Match Time istatistiklerim"                                              -> my_stats (Turkish, "my stats")
-  "@Match Time puanlarımı görebilir miyim"                                   -> my_stats (Turkish, "can I see my ratings")
-  "@Match Time what are Wasim's stats"                                       -> stats, personRef "Wasim": someone else's numbers
-  "@Match Time Ali'nin istatistikleri ne"                                    -> stats, personRef "Ali": someone else's numbers
-  "@Match Time who's played the most this season"                            -> stats, a ranking of the group
+The fields below describe a stats question. For every other topic: table "none", listSize -1, listEnd "top", period "none", periodCount -1, periodUnit "none".
 
-"stats" questions and their table. Kemal's rulings: "leaderboard" on its own is RATINGS; appearances is only for playing most, turning up, consistency of attendance; "Mr Reliable" is mr_reliable, never appearances.
+table
+Which stats table:
+  ratings          players' ratings. A bare "leaderboard", "the table", "rankings", "standings", "best players" or "top N" with no other measure named is ratings.
+  appearances      who plays, turns up or attends the most. "Most consistent" on its own means turning up.
+  mom              Man of the Match awards
+  elo              Elo
+  team_of_season   the team, XI or line-up of the season
+  movers           whose rating or position is improving, climbing or in form
+  chemistry        who a player plays best with, their best team-mates, their nemesis or toughest opponent
+  mr_reliable      "Mr Reliable" or the most reliable player: the stats page badge for steady, strong ratings, never appearances
+  other            a stats question none of those answers, such as win rate or a comparison
+  none             the question names no measure at all
 
-  "@Match Time please share the leaderboard of ratings, top 10"              -> stats, table ratings, listSize 10
-  "@Match Time leaderboard"                                                  -> stats, table ratings
-  "@Match Time top 5 players"                                                -> stats, table ratings, listSize 5
-  "@Match Time top 20"                                                       -> stats, table ratings, listSize 20
-  "@Match Time who's the worst player"                                       -> stats, table ratings, listEnd bottom
-  "@Match Time bottom 5 on elo"                                              -> stats, table elo, listSize 5, listEnd bottom
-  "@Match Time most appearances"                                             -> stats, table appearances
-  "@Match Time who's been most consistent this season"                       -> stats, table appearances
-  "@Match Time who's got the most MoMs"                                      -> stats, table mom
-  "@Match Time what's the elo table"                                         -> stats, table elo
-  "@Match Time what is the team of the season?"                              -> stats, table team_of_season
-  "@Match Time whose performance is improving most based on the last 3 matches?" -> stats, table movers
-  "@Match Time who is the most Mr. Reliable?"                                -> stats, table mr_reliable
-  "@Match Time who's the most reliable player?"                              -> stats, table mr_reliable
-  "@Match Time Who is Idris's Chemistry list?"                               -> stats, table chemistry, personRef "Idris"
-  "@Match Time who does Wasim play best with"                                -> stats, table chemistry, personRef "Wasim"
-  "@Match Time who's my nemesis" / "my chemistry"                            -> stats, table chemistry, personRef "me": the asker's own pairings are a group answer
-  "@Match Time what's Sait's rating"                                         -> stats, table ratings, personRef "Sait"
-  "@Match Time who has the best win rate"                                    -> stats, table other
-  "@Match Time sıralama"                                                     -> stats, table ratings (Turkish, "the standings")
-  "@Match Time en iyi 10"                                                    -> stats, table ratings, listSize 10 (Turkish, "the best 10")
-  "@Match Time en kötü oyuncu kim"                                           -> stats, table ratings, listEnd bottom (Turkish, "who is the worst player")
-  "@Match Time en çok maçın adamı kim"                                       -> stats, table mom (Turkish, "who has the most Man of the Match")
-  "@Match Time en çok maça gelen kim"                                        -> stats, table appearances (Turkish, "who comes to the most matches")
-  "@Match Time sezonun takımı ne"                                            -> stats, table team_of_season (Turkish)
-  "@Match Time en güvenilir oyuncu kim?"                                     -> stats, table mr_reliable (Turkish, "the most reliable player")
-  "@Match Time son maçlarda en çok kim yükseldi"                             -> stats, table movers (Turkish)
-  "@Match Time Idris'in kimyası nasıl" / "Idris en iyi kiminle anlaşıyor"    -> stats, table chemistry, personRef "Idris"
-Keep personRef as the name the message uses, without any possessive or suffix: "Idris's" and "Idris'in" are "Idris".`,
+listSize
+How many rows were asked for, as written: "top 10" is 10, "top five" is 5, "top 20" is 20. -1 when no number is named.
+
+listEnd
+"bottom" when the question asks for the worst, the lowest or the foot of a table; otherwise "top".
+
+period
+The stretch of time the question asks about, with periodCount and periodUnit:
+  last             a rolling span back from today: "in the last year", "past 3 months", "last month", "son 1 yılda", "geçen ay". periodCount is the number written, 1 when none is ("last month" is 1). periodUnit is day, week, month or year.
+  this             the current calendar week, month or year: "this month", "this year", "bu ay", "bu yıl". periodUnit is week, month or year; periodCount -1.
+  season           "this season", "the season", "bu sezon". periodCount -1, periodUnit "none".
+  all_time         "ever", "all-time", "of all time", "tüm zamanlar", "bugüne kadar". periodCount -1, periodUnit "none".
+  none             no time span stated
+"The last 3 matches" counts matches, not time: period "none".
+
+CLOSE CALLS
+- squad or count: WHO is playing is squad, a list of names. HOW MANY is count, a number. Choose on what the asker wants back.
+- score or stats: the result of one match is score. Anything counted across matches is stats.
+- my_stats or stats: my_stats only when the numbers are the asker's own and they ask to see them. Anyone else's numbers, a ranking of the group, and the asker's own pairings are stats.
+- rating_progress or other: rating_progress asks who has submitted ratings. A message that tells the players to rate, thanks them, or remarks on ratings asks for nothing: other.
+- payments or other: who owes is payments. What the fee is, is other.
+
+EXAMPLES
+Each line is a message, then the fields that are not empty.
+
+The upcoming match:
+  "@Match Time who's in?" / "@Match Time kimler var?" -> squad
+  "@Match Time list the players" / "@Match Time show me the squad" -> squad
+  "@Match Time how many spots left?" / "@Match Time kaç kişiyiz?" -> count
+  "@Match Time do we have enough?" -> count
+  "@Match Time we're 9/14 right?" -> count, statedCount 9
+  "@Match Time who's on the bench?" / "@Match Time yedekte kim var?" -> bench
+  "@Match Time is Zair in?" / "@Match Time Zair geliyor mu?" -> person_status, personRef "Zair"
+  "@Match Time anyone in the squad without a number?" -> phones
+  "@Match Time what time is kickoff?" / "@Match Time maç kaçta?" -> fixture
+  "@Match Time where are we playing?" / "@Match Time is the game still on?" -> fixture
+  "@Match Time we're short, what are our options?" / "@Match Time eksiğiz, ne yapabiliriz?" -> options
+
+After a match:
+  "@Match Time did we win on tuesday?" / "@Match Time how did we get on last night" -> score
+  "@Match Time skor ne oldu?" -> score
+  "@Match Time who hasn't paid?" / "@Match Time kim ödemedi?" -> payments
+  "@Match Time has everyone paid for last week?" -> payments
+  "@Match Time how much do we pay each?" -> other: the fee
+  "@Match Time who hasn't rated yet?" / "@Match Time kimler puan vermedi?" -> rating_progress
+  "@Match Time who still needs to pick a MoM?" -> rating_progress
+  "please do not forget to rate the players via the link from Matchtime DM'ed to you" -> other: it tells the players to rate
+  "@Match Time can you remind everyone to rate" -> other: a reminder, not the tally
+
+The asker's own numbers:
+  "@Match Time my stats" / "@Match Time istatistiklerim" -> my_stats
+  "@Match Time can I see my ratings" / "@Match Time puanlarımı görebilir miyim" -> my_stats
+  "@Match Time wrapped" / "@Match Time how am I doing this season?" -> my_stats
+  "@Match Time what are Wasim's stats" / "@Match Time Ali'nin istatistikleri ne" -> stats, personRef "Wasim" / "Ali"
+
+Which table:
+  "@Match Time please share the leaderboard of ratings, top 10" -> stats, ratings, listSize 10
+  "@Match Time leaderboard" / "@Match Time sıralama" -> stats, ratings
+  "@Match Time top 5 players" / "@Match Time en iyi 10" -> stats, ratings, listSize 5 / 10
+  "@Match Time top 20" -> stats, ratings, listSize 20
+  "@Match Time what's Sait's rating" -> stats, ratings, personRef "Sait"
+  "@Match Time who's the worst player" / "@Match Time en kötü oyuncu kim" -> stats, ratings, listEnd bottom
+  "@Match Time bottom 5 on elo" -> stats, elo, listSize 5, listEnd bottom
+  "@Match Time most appearances" / "@Match Time en çok maça gelen kim" -> stats, appearances
+  "@Match Time who's been most consistent" -> stats, appearances
+  "@Match Time who's got the most MoMs" / "@Match Time en çok maçın adamı kim" -> stats, mom
+  "@Match Time what's the elo table" -> stats, elo
+  "@Match Time what is the team of the season?" / "@Match Time sezonun takımı ne" -> stats, team_of_season
+  "@Match Time whose performance is improving most based on the last 3 matches?" -> stats, movers
+  "@Match Time son maçlarda en çok kim yükseldi" -> stats, movers
+  "@Match Time who is the most Mr. Reliable?" / "@Match Time en güvenilir oyuncu kim?" -> stats, mr_reliable
+  "@Match Time who does Wasim play best with" / "@Match Time Idris'in kimyası nasıl" -> stats, chemistry, personRef "Wasim" / "Idris"
+  "@Match Time who's my nemesis" -> stats, chemistry, personRef "me"
+  "@Match Time who has the best win rate" -> stats, other
+
+Which period:
+  "@Match Time who has played most matches in the last 1 year?" / "@Match Time son 1 yılda en çok maç oynayan kim?" -> stats, appearances, period last, periodCount 1, periodUnit year
+  "@Match Time top 5 ratings in the last month" / "@Match Time geçen ay en iyi 5" -> stats, ratings, listSize 5, period last, periodCount 1, periodUnit month
+  "@Match Time most appearances this season" / "@Match Time bu sezon en çok maç oynayanlar" -> stats, appearances, period season
+  "@Match Time who has the best rating this season" -> stats, ratings, period season
+  "@Match Time all-time most MoMs" / "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time
+  "@Match Time who played most this month" / "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month`,
 
   teams: `You read ONE message about the two team line-ups and report what it asks for. You never pick the teams.
 
@@ -369,8 +412,13 @@ const QUESTION_SCHEMA = {
     },
     listSize: { type: "number" },
     listEnd: { type: "string", enum: ["top", "bottom"] },
+    // The period (2026-09-23). Three flat fields rather than an object,
+    // with "none" and -1 as the null stand-ins, like the fields above.
+    period: { type: "string", enum: ["none", "last", "this", "season", "all_time"] },
+    periodCount: { type: "number" },
+    periodUnit: { type: "string", enum: ["none", "day", "week", "month", "year"] },
   },
-  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd"],
+  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit"],
   additionalProperties: false,
 } as const;
 
@@ -620,6 +668,12 @@ export function parseFacts(
         facts.table = table;
         facts.listSize = size;
         facts.listEnd = str(raw.listEnd).toLowerCase() === "bottom" ? "bottom" : "top";
+        // The period (2026-09-23): turned into a date by code, later, in
+        // `stats-period.ts`. An unreadable one is dropped loudly and the
+        // question is answered for the whole record, which it then says.
+        const period = parsePeriodFields(raw);
+        if (period.problem) bad(period.problem);
+        facts.period = period.period;
       }
       return { facts, degradations };
     }

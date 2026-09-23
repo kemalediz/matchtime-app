@@ -236,3 +236,17 @@ describe("Team of the Season is an award, not a table, and is NOT filtered", () 
     expect(tots!.formation[0]!.name).toBe("Ehtisham");
   });
 });
+
+describe("loadRatingLeaderboard cut to a period (2026-09-23)", () => {
+  it("asks the database only for the matches on or after `since`", async () => {
+    await loadRatingLeaderboard(ORG, { minGames: 1, since: ago(90) });
+    const where = (matchFindMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(where.date).toEqual({ gte: ago(90) });
+  });
+
+  it("with no `since` the whole record is read, exactly as before", async () => {
+    await loadRatingLeaderboard(ORG, { minGames: 1 });
+    const where = (matchFindMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
+    expect(where).not.toHaveProperty("date");
+  });
+});

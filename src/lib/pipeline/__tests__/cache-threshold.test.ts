@@ -150,7 +150,20 @@ describe("the prompts this pipeline actually sends", () => {
     // (4,872 / 1,598 = 3.049), a conservative floor for the real count:
     // 9,839 -> >= 3,227 real, against a 2,459 estimate. Still cached,
     // and further over Sonnet 5's minimum than before.
-    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(3_227);
+    //
+    // 2026-09-23, later: the prompt was REWRITTEN as one document rather
+    // than extended (Kemal: "redo the entire prompt and make it clearer"),
+    // adding the `period` fields: each field defined once, the rulings
+    // stated once, examples grouped with English and Turkish side by side
+    // and no alignment padding. MEASURED this time (`count_tokens`,
+    // claude-sonnet-5, dev key, 2026-09-23): the old prompt was 9,839
+    // characters / 3,231 tokens, the new one 9,077 characters / 3,468
+    // tokens. Fewer characters, MORE tokens: every example group now has
+    // its Turkish beside it, and Turkish tokenises denser (2.62 chars per
+    // token here against the old prompt's 3.05). The bound is the real
+    // count; the estimator's 2,269 sits under it, as it must. More than
+    // three times Sonnet 5's 1,024, so the cache stands.
+    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(3_468);
     expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
   });
 

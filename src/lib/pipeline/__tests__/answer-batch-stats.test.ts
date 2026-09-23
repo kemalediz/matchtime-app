@@ -24,7 +24,7 @@ const FEATURES: OrgFeatures = {
   squadFromList: false,
 } as OrgFeatures;
 
-type Tables = Omit<StatsSnapshot, "chemistry" | "generic">;
+type Tables = Omit<StatsSnapshot, "chemistry" | "generic" | "periods">;
 const TABLES: Tables = {
   fullTableUrl: "https://matchtime.ai/profile/stats",
   ratings: [
@@ -36,6 +36,11 @@ const TABLES: Tables = {
   teamOfSeason: null,
   mrReliable: [],
   aliases: [],
+  appearances: [
+    { userId: "u-mojib", name: "Mojib Jalali", matches: 21 },
+    { userId: "u-sait", name: "Sait Demir", matches: 19 },
+  ],
+  recordsStart: { matches: new Date("2026-04-14T20:00:00.000Z"), mom: new Date("2026-04-14T20:00:00.000Z") },
 };
 const IDRIS_CHEM: StatsChemistry = {
   userId: "u-idris",
@@ -88,10 +93,12 @@ async function run(args: {
   clarifications?: StatsClarification[];
   loadStats?: AnswerBatchDeps["loadStats"];
   loadChemistry?: AnswerBatchDeps["loadChemistry"];
+  loadStatsPeriod?: AnswerBatchDeps["loadStatsPeriod"];
 }) {
   const state = args.state ?? world({ confirmed: ["kemal", "elvin"] });
   const statsLoads: string[] = [];
   const chemLoads: string[] = [];
+  const periodLoads: string[] = [];
   const res = await runAnswerBatch({
     orgId: "org-1",
     now: NOW,
@@ -116,9 +123,19 @@ async function run(args: {
           chemLoads.push(userId);
           return userId === "u-idris" ? IDRIS_CHEM : null;
         }),
+      loadStatsPeriod:
+        args.loadStatsPeriod ??
+        (async (_orgId, since) => {
+          periodLoads.push(since.toISOString());
+          return {
+            appearances: [{ userId: "u-sait", name: "Sait Demir", matches: 4 }],
+            ratings: [],
+            mom: [],
+          };
+        }),
     },
   });
-  return { res, statsLoads, chemLoads };
+  return { res, statsLoads, chemLoads, periodLoads };
 }
 
 const RATINGS_Q = "@Match Time please share the leaderboard of ratings, top 10";
@@ -147,16 +164,24 @@ describe("the incident message, through the whole batch", () => {
   });
 });
 
-describe("the targeted read happens only when a table was asked for", () => {
-  it("not for a count question, and not for the legacy stats answer", async () => {
+describe("the targeted read happens only for a stats question", () => {
+  it("not for a count question", async () => {
     const { model } = stubModel({
       "@Match Time how many are we?": { topic: "count", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top" },
+    });
+    const { statsLoads } = await run({ messages: [msg({ body: "@Match Time how many are we?" })], model });
+    expect(statsLoads).toEqual([]);
+  });
+
+  it("a stats question naming no table reads the tables too: it is the appearances table now", async () => {
+    const { model } = stubModel({
       "@Match Time who's been most consistent": { topic: "stats", personRef: "", statedCount: -1, table: "none", listSize: -1, listEnd: "top" },
     });
-    for (const body of ["@Match Time how many are we?", "@Match Time who's been most consistent"]) {
-      const { statsLoads } = await run({ messages: [msg({ body })], model });
-      expect(statsLoads, body).toEqual([]);
-    }
+    const { res, statsLoads } = await run({ messages: [msg({ body: "@Match Time who's been most consistent" })], model });
+    expect(statsLoads).toEqual(["org-1"]);
+    const o = res.outcomes.get("wa-1")!;
+    expect(o.reply).toBe("Most appearances since my records began in April 2026:\n1. Mojib Jalali: 21 matches\n2. Sait Demir: 19 matches");
+    expect(o.intent).toBe("stats_table");
   });
 
   it("a failed read disowns the message with a receipt, and costs its neighbours nothing", async () => {
@@ -272,5 +297,67 @@ describe("asking, and understanding the answer", () => {
     const { res } = await run({ messages: [msg({ body: "Zork", tagged: false })], model, clarifications: [ASKED] });
     expect(res.outcomes.get("wa-1")?.reply).toBe("Kemal, I don't have a Zork in the squad. Who do you mean?");
     expect(res.outcomes.get("wa-1")?.intent).toBe("stats_clarification");
+  });
+});
+
+describe("the period (2026-09-23)", () => {
+  const KEMAL_Q = "@Match Time who has played most matches in the last 1 year?";
+  const KEMAL_FACTS = {
+    topic: "stats", personRef: "", statedCount: -1, table: "appearances", listSize: -1, listEnd: "top",
+    period: "last", periodCount: 1, periodUnit: "year",
+  };
+
+  it("Kemal's message: owned as a stats table, the year read from now, and the records' start said", async () => {
+    const { model } = stubModel({ [KEMAL_Q]: KEMAL_FACTS });
+    const { res, periodLoads } = await run({ messages: [msg({ body: KEMAL_Q })], model });
+    // One year back from NOW, computed by code, never by the model.
+    expect(NOW.toISOString()).toBe("2026-09-01T18:00:00.000Z");
+    expect(periodLoads).toEqual(["2025-09-01T18:00:00.000Z"]);
+    const o = res.outcomes.get("wa-1")!;
+    expect(o.intent).toBe("stats_table");
+    expect(o.reply).toContain("My records for this club start in April 2026, so for the last year this is everything I have.");
+    expect(o.reply).toContain("1. Sait Demir: 4 matches");
+  });
+
+  it("is answered with no upcoming match: appearances are a record of the past, not the squad", async () => {
+    const { model } = stubModel({ [KEMAL_Q]: KEMAL_FACTS });
+    const { res } = await run({ messages: [msg({ body: KEMAL_Q })], model, state: world({ noMatch: true }) });
+    expect(res.outcomes.get("wa-1")?.reply).toContain("Sait Demir");
+  });
+
+  it("two questions on the same period read it once", async () => {
+    const { model } = stubModel({ [KEMAL_Q]: KEMAL_FACTS });
+    const { periodLoads } = await run({
+      messages: [msg({ body: KEMAL_Q, waMessageId: "wa-1" }), msg({ body: KEMAL_Q, waMessageId: "wa-2" })],
+      model,
+    });
+    expect(periodLoads).toHaveLength(1);
+  });
+
+  it("the season and a table the data cannot cut read no period at all", async () => {
+    const q1 = "@Match Time most appearances this season";
+    const q2 = "@Match Time elo table last month";
+    const { model } = stubModel({
+      [q1]: { ...KEMAL_FACTS, period: "season", periodCount: -1, periodUnit: "none" },
+      [q2]: { ...KEMAL_FACTS, table: "elo", period: "last", periodCount: 1, periodUnit: "month" },
+    });
+    for (const body of [q1, q2]) {
+      const { periodLoads, res } = await run({ messages: [msg({ body })], model });
+      expect(periodLoads, body).toEqual([]);
+      expect(res.outcomes.get("wa-1")?.reply, body).toBeTruthy();
+    }
+  });
+
+  it("a failed period read disowns the message with a receipt", async () => {
+    const { model } = stubModel({ [KEMAL_Q]: KEMAL_FACTS });
+    const { res } = await run({
+      messages: [msg({ body: KEMAL_Q })],
+      model,
+      loadStatsPeriod: async () => {
+        throw new Error("db down");
+      },
+    });
+    expect(res.outcomes.get("wa-1")).toBeUndefined();
+    expect(res.degradations.join(" ")).toMatch(/stats read failed/);
   });
 });

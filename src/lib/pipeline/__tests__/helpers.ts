@@ -113,8 +113,6 @@ export interface WorldOpts {
    *  to a real COMPLETED match; a test that cares (the score route
    *  accepts three statuses, a payment credit accepts one) says so. */
   completedMatch?: Partial<NonNullable<SquadState["completedMatch"]>> & { id: string };
-  appearances?: SquadState["appearances"];
-  appearanceWindowDays?: number;
   features?: Partial<SquadState["features"]>;
   smallerFormats?: SquadState["smallerFormats"];
   guestAskedUserIds?: string[];
@@ -156,8 +154,6 @@ export function world(opts: WorldOpts = {}): SquadState {
           ...opts.completedMatch,
         }
       : null,
-    appearances: opts.appearances ?? [],
-    appearanceWindowDays: opts.appearanceWindowDays ?? 30,
     lastBotPost: opts.lastBotPost ?? null,
     features: {
       attendance: true,

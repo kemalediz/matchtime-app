@@ -76,6 +76,7 @@ import { decideSlotInherits } from "../team-slot-inherit";
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { resolvePerson } from "./identity";
 import { planStatsQuestion } from "./stats-answer";
+import { periodKey } from "./stats-period";
 import type {
   AttendanceFacts,
   AttendanceRow,
@@ -89,6 +90,7 @@ import type {
   ProposedWrite,
   SpeechIntent,
   SquadState,
+  StatsPeriod,
 } from "./types";
 
 /** §3.2 S37. Applied PER FACT now, not as a blanket verdict-level gate. */
@@ -1806,15 +1808,10 @@ export function decide(input: EngineInput): EngineResult {
           // `stats-answer.ts` for every rule behind it. The engine only
           // turns the plan into speech; the composer renders it.
           const plan = planStatsQuestion(facts, w.roster, state.stats?.aliases ?? [], msg.senderUserId);
+          // A period rides the speech; the reason names it, so a wrong
+          // period is visible in the log even when the reply reads well.
+          const periodNote = (p: StatsPeriod | null) => (p ? `, period ${periodKey(p)}` : "");
           switch (plan.kind) {
-            case "legacy":
-              // No table named: exactly the answer that existed before.
-              speech.push({ kind: "answer_stats", messageId: msg.id });
-              break;
-            case "appearances":
-              speech.push({ kind: "answer_stats", messageId: msg.id, size: plan.size });
-              out.reasons.push(`appearances table, ${plan.size} rows`);
-              break;
             case "bottom":
               speech.push({ kind: "answer_stats_bottom", messageId: msg.id });
               out.reasons.push("asked for the bottom of a table: nobody is named in the group");
@@ -1828,17 +1825,19 @@ export function decide(input: EngineInput): EngineResult {
                 requested: plan.requested,
                 personUserId: plan.personUserId,
                 self: plan.self,
+                period: plan.period,
               });
               out.reasons.push(
-                plan.table === "chemistry" || plan.table === "team_of_season"
+                (plan.table === "chemistry" || plan.table === "team_of_season"
                   ? `${plan.table} table`
                   : `${plan.table} table, ${plan.size} rows` +
-                      (plan.requested !== null && plan.requested > plan.size ? ` (asked for ${plan.requested})` : ""),
+                    (plan.requested !== null && plan.requested > plan.size ? ` (asked for ${plan.requested})` : "")) +
+                  periodNote(plan.period),
               );
               break;
             case "generic":
-              speech.push({ kind: "answer_stats_generic", messageId: msg.id });
-              out.reasons.push("no known table answers it: the grounded generic answer");
+              speech.push({ kind: "answer_stats_generic", messageId: msg.id, period: plan.period });
+              out.reasons.push(`no known table answers it: the grounded generic answer${periodNote(plan.period)}`);
               break;
             case "ask":
               // ASK, DO NOT GUESS (Kemal, 2026-09-23). A wrong name in a

@@ -24,11 +24,21 @@
  *   Mr Reliable      `loadMrReliableHolders`, the page badge's own rule
  *   chemistry        `loadPlayerSeasonStats`, the page's two cards and
  *                    the nemesis card, for one named player
+ *   appearances      `loadClubRecordTables` (2026-09-23), counted by the
+ *                    same function as `loadRecentHistory`'s attendance
+ *                    leaderboard, three-month inactivity rule included,
+ *                    over the whole record; and where the records begin
+ *
+ * A PERIOD (2026-09-23): `loadStatsPeriod` cuts the three tables the
+ * data genuinely supports (appearances, ratings, Man of the Match) to
+ * the matches since a date, with the same loaders and the same rules.
+ * Elo, Team of the Season, Mr Reliable and chemistry are whole-record by
+ * nature and are never cut; the answer says so instead.
  *
  * READ-ONLY BY CONSTRUCTION: every statement is a find.
  */
 import { db } from "../db";
-import { loadRecentHistory } from "../match-history";
+import { loadClubRecordTables, loadRecentHistory } from "../match-history";
 import {
   loadMrReliableHolders,
   loadPlayerSeasonStats,
@@ -36,10 +46,10 @@ import {
   loadTeamOfSeason,
 } from "../player-stats";
 import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-answer";
-import type { StatsChemistry, StatsSnapshot } from "./types";
+import type { StatsChemistry, StatsPeriodTables, StatsRatingRow, StatsSnapshot } from "./types";
 
 /** Everything but the per-question parts, which `answer-batch.ts` adds. */
-export type StatsTables = Omit<StatsSnapshot, "chemistry" | "generic">;
+export type StatsTables = Omit<StatsSnapshot, "chemistry" | "generic" | "periods">;
 
 /** Enough to hold every ranked player at club scale; the group prints
  *  ten, and the climbers are ranked over the whole table. */
@@ -52,19 +62,27 @@ export function fullStatsTableUrl(): string {
   return `${base}/profile/stats`;
 }
 
+/** The ranked rows of `loadRatingLeaderboard`, as the group reads them. */
+function rankedRows(rows: Awaited<ReturnType<typeof loadRatingLeaderboard>>): StatsRatingRow[] {
+  return rows
+    .filter((r) => r.rank !== null && !r.inactive)
+    .map((r) => ({ userId: r.userId, name: r.name, avg: r.avg, games: r.games, rank: r.rank!, delta: r.delta }));
+}
+
 export async function loadStatsTables(orgId: string): Promise<StatsTables> {
-  const [ratings, history, tots, reliable, aliases] = await Promise.all([
+  const [ratings, history, tots, reliable, aliases, record] = await Promise.all([
     loadRatingLeaderboard(orgId, { minGames: GROUP_RATINGS_MIN_GAMES, limit: WHOLE_TABLE }),
     loadRecentHistory(orgId),
     loadTeamOfSeason(orgId, { minGames: TEAM_OF_SEASON_MIN_GAMES }),
     loadMrReliableHolders(orgId),
     db.userAlias.findMany({ where: { orgId }, select: { alias: true, userId: true } }),
+    loadClubRecordTables(orgId),
   ]);
   return {
     fullTableUrl: fullStatsTableUrl(),
-    ratings: ratings
-      .filter((r) => r.rank !== null && !r.inactive)
-      .map((r) => ({ userId: r.userId, name: r.name, avg: r.avg, games: r.games, rank: r.rank!, delta: r.delta })),
+    ratings: rankedRows(ratings),
+    appearances: record.appearances,
+    recordsStart: record.recordsStart,
     mom: (history?.momLeaderboard ?? []).map((r) => ({ userId: r.userId, name: r.name, wins: r.value })),
     elo: (history?.eloTop ?? []).map((r) => ({
       userId: r.userId,
@@ -107,4 +125,18 @@ export async function loadStatsChemistry(orgId: string, userId: string): Promise
         : null,
     nemesis: n ? { name: n.name, gamesAgainst: n.gamesAgainst, wins: n.wins } : null,
   };
+}
+
+/**
+ * The three tables the data can cut, cut to the matches since `since`
+ * (2026-09-23). The same loaders and rules as the whole-record tables;
+ * the group's ratings minimum of three rated matches applies within the
+ * period.
+ */
+export async function loadStatsPeriod(orgId: string, since: Date): Promise<Omit<StatsPeriodTables, "since">> {
+  const [record, ratings] = await Promise.all([
+    loadClubRecordTables(orgId, { since }),
+    loadRatingLeaderboard(orgId, { minGames: GROUP_RATINGS_MIN_GAMES, limit: WHOLE_TABLE, since }),
+  ]);
+  return { appearances: record.appearances, ratings: rankedRows(ratings), mom: record.mom };
 }

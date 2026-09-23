@@ -6,9 +6,10 @@
  * reply with the squad post. A stats answer is a numbered list too, and
  * `isLeaderboardLine` is the one thing that tells them apart: an em
  * dash separator, a percentage, an "N/M (" pattern, or the words
- * wins / votes / matches. The English stats row carries the em dash.
+ * wins / votes / matches. The English stats row carries "matches" (its
+ * em dash was retired on 2026-09-23, house style).
  *
- * The Turkish stats row (`answer_stats_row` in strings.tr.ts) carries
+ * The Turkish stats row (`stats_apps_row` in strings.tr.ts) carries
  * no dash, by house style, and so must carry the Turkish noun instead:
  * "4 maç". This file pins that `isLeaderboardLine` knows "maç",
  * "galibiyet" and "oy", written with `\p{L}` lookarounds rather than
@@ -29,10 +30,10 @@ describe("isLeaderboardLine knows the Turkish stats nouns", () => {
   it("a Turkish stats answer is not squad state", () => {
     const tr = t("tr");
     const text = [
-      tr.answer_stats_head({ windowDays: 30 }),
-      tr.answer_stats_row({ rank: 1, name: "Kemal Ediz", matches: 4 }),
-      tr.answer_stats_row({ rank: 2, name: "Elvin Aliyev", matches: 3 }),
-      tr.answer_stats_row({ rank: 3, name: "Çağrı Yılmaz", matches: 1 }),
+      tr.stats_apps_head({ when: "son 1 ay" }),
+      tr.stats_apps_row({ rank: 1, name: "Kemal Ediz", matches: 4 }),
+      tr.stats_apps_row({ rank: 2, name: "Elvin Aliyev", matches: 3 }),
+      tr.stats_apps_row({ rank: 3, name: "Çağrı Yılmaz", matches: 1 }),
     ].join("\n");
     expect(displaysSquadState(text)).toBe(false);
     expect(composeSquadStateReply(text, truth, "tr")).toEqual({ text, composed: false });
@@ -49,13 +50,14 @@ describe("isLeaderboardLine knows the Turkish stats nouns", () => {
     expect(displaysSquadState("1. Maçka Spor\n2. Elvin Aliyev")).toBe(true);
   });
 
-  it("the English stats answer still relies on its em dash", () => {
+  it("the English stats answer relies on the word 'matches', not a dash", () => {
     const en = t("en");
     const text = [
-      en.answer_stats_head({ windowDays: 30 }),
-      en.answer_stats_row({ rank: 1, name: "Kemal Ediz", matches: 4 }),
-      en.answer_stats_row({ rank: 2, name: "Elvin Aliyev", matches: 1 }),
+      en.stats_apps_head({ when: "in the last month" }),
+      en.stats_apps_row({ rank: 1, name: "Kemal Ediz", matches: 4 }),
+      en.stats_apps_row({ rank: 2, name: "Elvin Aliyev", matches: 1 }),
     ].join("\n");
+    expect(text).not.toMatch(/[—–]/);
     expect(displaysSquadState(text)).toBe(false);
   });
 

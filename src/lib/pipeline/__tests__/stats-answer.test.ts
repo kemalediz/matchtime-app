@@ -12,6 +12,7 @@ import {
   GROUP_LIST_CAP,
   NEMESIS_IN_GROUP_FOR_OTHERS,
   clarificationSubject,
+  genericPeriodNote,
   groupListSize,
   planStatsQuestion,
   renderAskPerson,
@@ -21,7 +22,8 @@ import {
   resolveStatsPerson,
 } from "../stats-answer";
 import { displaysSquadState } from "../../group-copy";
-import type { Member, QuestionFacts, StatsSnapshot } from "../types";
+import { periodKey } from "../stats-period";
+import type { Member, QuestionFacts, StatsPeriod, StatsSnapshot } from "../types";
 
 const m = (userId: string, name: string): Member => ({ userId, name, isAdmin: false, hasPhone: true });
 const ROSTER: Member[] = [
@@ -75,8 +77,62 @@ function snapshot(over: Partial<StatsSnapshot> = {}): StatsSnapshot {
       },
     },
     generic: {},
+    appearances: APPEARANCES,
+    recordsStart: { matches: RECORDS_START, mom: MOM_START },
+    periods: {},
     ...over,
   };
+}
+
+/** MatchTime's records for this club begin mid-April 2026 (Sutton's
+ *  real shape); the Man of the Match record reaches further back, through
+ *  the backfilled historical awards. */
+const RECORDS_START = new Date("2026-04-14T20:00:00.000Z");
+const MOM_START = new Date("2025-11-04T20:00:00.000Z");
+const APPEARANCES = [
+  ["u-mojib", "Mojib Jalali", 21],
+  ["u-sait", "Sait Demir", 19],
+  ["u-idris", "Idris Bello", 18],
+  ["u-kemal", "Kemal Ediz", 17],
+  ["u-baki", "Baki Aydin", 15],
+  ["u-zeeshan", "Zeeshan Khan", 12],
+  ["u-mohammed", "Mohammed Ali", 11],
+  ["u-a8", "Player H", 9],
+  ["u-a9", "Player I", 8],
+  ["u-a10", "Player J", 7],
+  ["u-a11", "Player K", 5],
+  ["u-a12", "Player L", 2],
+].map(([userId, name, matches]) => ({ userId: userId as string, name: name as string, matches: matches as number }));
+
+const LAST_YEAR: StatsPeriod = { kind: "last", count: 1, unit: "year" };
+const LAST_MONTH: StatsPeriod = { kind: "last", count: 1, unit: "month" };
+/** What `load-stats.ts` hands over for a period the batch asked about. */
+function withPeriods(): StatsSnapshot {
+  return snapshot({
+    periods: {
+      // Reaches back before the records began: the same rows as the whole record.
+      [periodKey(LAST_YEAR)]: {
+        since: new Date("2025-09-23T20:30:00.000Z"),
+        appearances: APPEARANCES,
+        ratings: snapshot().ratings,
+        mom: snapshot().mom,
+      },
+      // Inside the records: a genuinely smaller table.
+      [periodKey(LAST_MONTH)]: {
+        since: new Date("2026-08-23T20:30:00.000Z"),
+        appearances: [
+          { userId: "u-sait", name: "Sait Demir", matches: 4 },
+          { userId: "u-mojib", name: "Mojib Jalali", matches: 3 },
+          { userId: "u-baki", name: "Baki Aydin", matches: 1 },
+        ],
+        ratings: [
+          { userId: "u-sait", name: "Sait Demir", avg: 8.1, games: 4, rank: 1, delta: null },
+          { userId: "u-idris", name: "Idris Bello", avg: 7.45, games: 3, rank: 2, delta: null },
+        ],
+        mom: [{ userId: "u-baki", name: "Baki Aydin", wins: 2 }],
+      },
+    },
+  });
 }
 
 const q = (over: Partial<QuestionFacts>): QuestionFacts => ({
@@ -102,9 +158,9 @@ describe("how many rows the group gets", () => {
   it("uses the table's default when no number was asked for", () => {
     expect(groupListSize("ratings", null)).toBe(10);
     expect(groupListSize("movers", null)).toBe(5);
-    // Unchanged from before the field existed: the appearances answer
-    // has always been a top three.
-    expect(groupListSize("appearances", null)).toBe(3);
+    // 2026-09-23: appearances is a table like the others now, so its
+    // default is ten. The old top three was the 30-day answer's.
+    expect(groupListSize("appearances", null)).toBe(10);
     expect(groupListSize("ratings", 0)).toBe(10);
   });
 });
@@ -300,11 +356,24 @@ describe("who a stats question is about", () => {
 describe("planning a stats question", () => {
   const plan = (f: Partial<QuestionFacts>, sender = "u-kemal") => planStatsQuestion(q(f), ROSTER, [], sender);
 
-  it("no table: the answer that existed before this change", () => {
-    expect(plan({ table: null })).toEqual({ kind: "legacy" });
+  it("no table named is the appearances table, over the whole record, and says so", () => {
+    expect(plan({ table: null })).toMatchObject({ kind: "table", table: "appearances", size: 10, period: null });
   });
-  it("appearances keeps the original composer, now with a size", () => {
-    expect(plan({ table: "appearances", listSize: 5 })).toEqual({ kind: "appearances", size: 5 });
+  it("appearances is a table like the others, with its size and its period", () => {
+    expect(plan({ table: "appearances", listSize: 5, period: LAST_YEAR })).toMatchObject({
+      kind: "table",
+      table: "appearances",
+      size: 5,
+      requested: 5,
+      period: LAST_YEAR,
+    });
+  });
+  it("Kemal's question, planned: appearances, the last year, ten", () => {
+    expect(plan({ table: "appearances", period: LAST_YEAR })).toMatchObject({ kind: "table", table: "appearances", size: 10, period: LAST_YEAR });
+  });
+  it("the period rides every plan that answers, the grounded one included", () => {
+    expect(plan({ table: "elo", period: LAST_MONTH })).toMatchObject({ kind: "table", period: LAST_MONTH });
+    expect(plan({ table: "other", period: LAST_MONTH })).toMatchObject({ kind: "generic", period: LAST_MONTH });
   });
   it("bottom names nobody, whatever the table", () => {
     expect(plan({ table: "ratings", listEnd: "bottom" })).toEqual({ kind: "bottom" });
@@ -388,4 +457,190 @@ describe("reading the poster's answer to a clarification", () => {
       expect(clarificationSubject(body)).toBeNull();
     },
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// THE PERIOD (2026-09-23). "@Match Time who has played most matches in
+// the last 1 year?" was answered "Most appearances in the last 30 days",
+// three names. The rule Kemal cares about most: NEVER silently answer a
+// different period from the one asked. Honoured, the header says it. Not
+// honoured, the answer says what it IS showing and why. Asked further
+// back than the records go, it says where the records start.
+// ═══════════════════════════════════════════════════════════════════════
+
+type TableSp = Parameters<typeof renderStatsTable>[0];
+const tbl = (table: TableSp["table"], o: { size?: number; requested?: number | null; period?: StatsPeriod | null; person?: string; self?: boolean } = {}): TableSp => ({
+  kind: "answer_stats_table",
+  messageId: "m",
+  table,
+  size: o.size ?? 10,
+  requested: o.requested ?? null,
+  personUserId: o.person ?? null,
+  self: o.self ?? false,
+  period: o.period ?? null,
+});
+
+describe("appearances: the full record, not the last 30 days", () => {
+  it("Kemal's exact question, in English: the records do not reach a year back, and it says so", () => {
+    const text = renderStatsTable(tbl("appearances", { period: LAST_YEAR }), withPeriods(), "en");
+    const lines = text.split("\n");
+    expect(lines[0]).toBe("My records for this club start in April 2026, so for the last year this is everything I have.");
+    expect(lines[1]).toBe("Most appearances since my records began in April 2026:");
+    expect(lines[2]).toBe("1. Mojib Jalali: 21 matches");
+    expect(lines.filter((l) => /^\d+\. /.test(l))).toHaveLength(10);
+    expect(text).not.toMatch(/30 days/);
+  });
+
+  it("the same, in Turkish", () => {
+    const text = renderStatsTable(tbl("appearances", { period: LAST_YEAR }), withPeriods(), "tr");
+    const lines = text.split("\n");
+    expect(lines[0]).toBe("Bu kulüp için kayıtlarım Nisan 2026 itibarıyla başlıyor, yani son 1 yıl için elimdeki her şey bu.");
+    expect(lines[1]).toBe("En çok maça çıkanlar (Nisan 2026 itibarıyla):");
+    expect(lines[2]).toBe("1. Mojib Jalali: 21 maç");
+  });
+
+  it("a period the records DO reach is honoured and named in the header", () => {
+    expect(renderStatsTable(tbl("appearances", { period: LAST_MONTH }), withPeriods(), "en")).toBe(
+      "Most appearances in the last month:\n1. Sait Demir: 4 matches\n2. Mojib Jalali: 3 matches\n3. Baki Aydin: 1 match",
+    );
+    expect(renderStatsTable(tbl("appearances", { period: LAST_MONTH }), withPeriods(), "tr")).toBe(
+      "En çok maça çıkanlar (son 1 ay):\n1. Sait Demir: 4 maç\n2. Mojib Jalali: 3 maç\n3. Baki Aydin: 1 maç",
+    );
+  });
+
+  it("no period stated: the whole record, and the header SAYS the period", () => {
+    const text = renderStatsTable(tbl("appearances"), snapshot(), "en");
+    expect(text.split("\n")[0]).toBe("Most appearances since my records began in April 2026:");
+    expect(renderStatsTable(tbl("appearances"), snapshot(), "tr").split("\n")[0]).toBe("En çok maça çıkanlar (Nisan 2026 itibarıyla):");
+  });
+
+  it("this season and all time are the whole record, each said as asked", () => {
+    expect(renderStatsTable(tbl("appearances", { period: { kind: "season" } }), snapshot(), "en").split("\n")[0]).toBe(
+      "Most appearances this season, since April 2026:",
+    );
+    expect(renderStatsTable(tbl("appearances", { period: { kind: "all_time" } }), snapshot(), "en").split("\n")[0]).toBe(
+      "Most appearances of all time, since my records began in April 2026:",
+    );
+    expect(renderStatsTable(tbl("appearances", { period: { kind: "season" } }), snapshot(), "tr").split("\n")[0]).toBe(
+      "En çok maça çıkanlar (bu sezon, Nisan 2026 itibarıyla):",
+    );
+  });
+
+  it("honours the size, capped at ten, and says when it capped", () => {
+    expect(renderStatsTable(tbl("appearances", { size: 5, requested: 5 }), snapshot(), "en").split("\n")).toHaveLength(6);
+    const capped = renderStatsTable(tbl("appearances", { size: 10, requested: 20 }), snapshot(), "en");
+    expect(capped.split("\n").filter((l) => /^\d+\. /.test(l))).toHaveLength(10);
+    expect(capped).toContain(`I list the top 10 in the group. The full table is on the website: ${URL}`);
+  });
+
+  it("the em-dash row is retired: the new tables' row format, no dash in either language", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const text = renderStatsTable(tbl("appearances", { period: LAST_YEAR }), withPeriods(), lang);
+      expect(text).not.toMatch(/[—–]/);
+      expect(displaysSquadState(text, lang), text).toBe(false);
+    }
+  });
+
+  it("a period that was not loaded renders nothing (the composer's operator note), never the wrong table", () => {
+    expect(renderStatsTable(tbl("appearances", { period: { kind: "last", count: 2, unit: "week" } }), withPeriods(), "en")).toBe("");
+  });
+
+  it("nobody played in the period: said, with the period", () => {
+    const s = withPeriods();
+    s.periods[periodKey(LAST_MONTH)].appearances = [];
+    expect(renderStatsTable(tbl("appearances", { period: LAST_MONTH }), s, "en")).toBe("I have no completed matches in the last month to count.");
+    expect(renderStatsTable(tbl("appearances", { period: LAST_MONTH }), s, "tr")).toBe("Bu dönemde (son 1 ay) sayılacak tamamlanmış maç yok.");
+  });
+});
+
+describe("the other tables the data can cut: ratings and Man of the Match", () => {
+  it("top 5 ratings in the last month, from that month's matches only", () => {
+    expect(renderStatsTable(tbl("ratings", { size: 5, requested: 5, period: LAST_MONTH }), withPeriods(), "en")).toBe(
+      "Top 2 club ratings in the last month (players with 3+ rated matches):\n1. Sait Demir: 8.1 (4 matches)\n2. Idris Bello: 7.5 (3 matches)",
+    );
+    expect(renderStatsTable(tbl("ratings", { size: 5, requested: 5, period: LAST_MONTH }), withPeriods(), "tr")).toBe(
+      "Kulüp puanında ilk 2 (son 1 ay; en az 3 puanlı maçı olanlar):\n1. Sait Demir: 8,1 (4 maç)\n2. Idris Bello: 7,5 (3 maç)",
+    );
+  });
+
+  it("ratings with no period are exactly what they were before this change", () => {
+    expect(renderStatsTable(tbl("ratings", { size: 3 }), snapshot(), "en").split("\n")[0]).toBe(
+      "Top 3 club ratings (players with 3+ rated matches):",
+    );
+  });
+
+  it("all-time Man of the Match reaches back to the backfilled awards, and says from when", () => {
+    expect(renderStatsTable(tbl("mom", { period: { kind: "all_time" } }), snapshot(), "en").split("\n")[0]).toBe(
+      "Most Man of the Match wins of all time, since my records began in November 2025:",
+    );
+  });
+
+  it("Man of the Match in the last month", () => {
+    expect(renderStatsTable(tbl("mom", { period: LAST_MONTH }), withPeriods(), "en")).toBe(
+      "Most Man of the Match wins in the last month:\n1. Baki Aydin: 2 wins",
+    );
+    const s = withPeriods();
+    s.periods[periodKey(LAST_MONTH)].mom = [];
+    expect(renderStatsTable(tbl("mom", { period: LAST_MONTH }), s, "en")).toBe("Nobody has won Man of the Match in the last month.");
+  });
+
+  it("nobody with three rated matches in the period is said with the period", () => {
+    const s = withPeriods();
+    s.periods[periodKey(LAST_MONTH)].ratings = [];
+    expect(renderStatsTable(tbl("ratings", { period: LAST_MONTH }), s, "en")).toContain("Nobody has 3 rated matches in the last month");
+  });
+});
+
+describe("the tables the data CANNOT cut say so, and say what they show", () => {
+  it("Elo is a running rating: the table as it stands, and it says so", () => {
+    const text = renderStatsTable(tbl("elo", { period: LAST_MONTH }), snapshot(), "en");
+    expect(text.split("\n")[0]).toBe("Elo is a running rating, so this is the table as it stands now, not one for the last month.");
+    expect(text.split("\n")[1]).toBe("Top 2 by Elo (3+ matches played):");
+  });
+
+  it("Team of the Season is never faked for a shorter span", () => {
+    expect(renderStatsTable(tbl("team_of_season", { period: LAST_MONTH }), snapshot(), "en").split("\n")[0]).toBe(
+      "Team of the Season is picked from every match since April 2026, so I can't cut it to the last month.",
+    );
+  });
+
+  it("Mr Reliable is the page badge, over the whole record", () => {
+    expect(renderStatsTable(tbl("mr_reliable", { period: LAST_MONTH }), snapshot(), "en").split("\n")[0]).toBe(
+      "Mr Reliable is the stats page badge, earned over every match since April 2026, so I can't cut it to the last month.",
+    );
+  });
+
+  it("chemistry is worked out over every match", () => {
+    expect(renderStatsTable(tbl("chemistry", { period: { kind: "this", unit: "month" }, person: "u-idris" }), snapshot(), "en").split("\n")[0]).toBe(
+      "Chemistry is worked out over every match since April 2026, so I can't cut it to this month.",
+    );
+  });
+
+  it("the climbers already say what they are, so a period adds nothing to them", () => {
+    expect(renderStatsTable(tbl("movers", { size: 5, period: LAST_MONTH }), snapshot(), "en")).toBe(
+      renderStatsTable(tbl("movers", { size: 5 }), snapshot(), "en"),
+    );
+  });
+
+  it("the season or all time on a whole-record table needs no note", () => {
+    for (const t of ["elo", "team_of_season", "mr_reliable"] as const) {
+      expect(renderStatsTable(tbl(t, { period: { kind: "season" } }), snapshot(), "en"), t).toBe(renderStatsTable(tbl(t), snapshot(), "en"));
+    }
+  });
+
+  it("every one of those notes, in Turkish, carries no dash and no English", () => {
+    for (const t of ["elo", "team_of_season", "mr_reliable", "chemistry"] as const) {
+      const text = renderStatsTable(tbl(t, { period: LAST_MONTH, person: "u-idris" }), snapshot(), "tr");
+      const lead = text.split("\n")[0];
+      expect(lead, t).toMatch(/son 1 ay/);
+      expect(lead, t).not.toMatch(/[—–]|\bcut\b|\bmatch\b/);
+    }
+  });
+
+  it("the grounded answer gets the same honesty, as a line after it", () => {
+    expect(genericPeriodNote(LAST_MONTH, snapshot(), "en")).toBe("These figures cover every match since April 2026, not only the last month.");
+    expect(genericPeriodNote(LAST_MONTH, snapshot(), "tr")).toBe("Bu rakamlar Nisan 2026 itibarıyla oynanan tüm maçları kapsıyor, sadece son 1 ay değil.");
+    expect(genericPeriodNote({ kind: "season" }, snapshot(), "en")).toBeNull();
+    expect(genericPeriodNote(null, snapshot(), "en")).toBeNull();
+  });
 });

@@ -320,17 +320,6 @@ export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
       )
     : [];
 
-  const appearances = await grp.db.all<{ userId: string; matches: string }>(
-    `SELECT att."userId", COUNT(*) AS matches
-       FROM "Attendance" att
-       JOIN "Match" m ON m.id = att."matchId"
-       JOIN "Activity" a ON a.id = m."activityId"
-      WHERE a."orgId" = $1 AND m.status = 'COMPLETED' AND att.status = 'CONFIRMED'
-        AND m.date >= $2
-      GROUP BY att."userId"`,
-    [grp.orgId, new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)],
-  );
-
   const formats = await grp.db.all<{ name: string; playersPerTeam: number }>(
     `SELECT s.name, s."playersPerTeam"
        FROM "Activity" a JOIN "Sport" s ON s.id = a."sportId"
@@ -371,11 +360,6 @@ export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
           participantUserIds: participants.map((p) => p.userId),
         }
       : null,
-    appearances: appearances.map((a) => ({ userId: a.userId, matches: Number(a.matches) })),
-    // The window the query above uses. Same 30 days as
-    // `load-state.ts`'s `LOOKBACK_DAYS`; carried so the stats answer
-    // names what it counted rather than implying "all time".
-    appearanceWindowDays: 30,
     payments: null,
     ratingProgress: null,
     lastBotPost: null,

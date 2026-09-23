@@ -3,8 +3,9 @@
  *
  * - "who's on the bench?" → the bench section is composed from the
  *   database (bench always shown, correctly).
- * - A `stats` question is one the answer engine does NOT own, so it
- *   reaches nobody and MatchTime stays silent (§10 step 7's carve-out).
+ * - A `stats` question is answered from the club's completed-match
+ *   record (2026-09-23), even in a batch that also carries a write: no
+ *   write in the batch can change that record, and the write still lands.
  * - DM Q&A (scoped, no-leak): the context the model sees NEVER contains a
  *   raw phone number; the 📵 "no number on record" flags appear ONLY for
  *   admins (so "who's missing a number?" is admin-only in DMs). Asserted
@@ -97,8 +98,16 @@ test('"who\'s on the bench?" → answered from the DB, not from anyone\'s claim'
  * about it — while the write still lands and still gets its own reply.
  * That is the honest successor: not "the leaderboard survives" but "the
  * batch does not invent one", and the write beside it is untouched.
+ *
+ * SUPERSEDED 2026-09-23. Every `stats` question is now a code-rendered
+ * TABLE read from the club's completed-match record (`stats-answer.ts`,
+ * `load-stats.ts`); a question naming no table is the appearances table,
+ * which says the period it covers. A write in the same batch lands on
+ * the UPCOMING match and cannot change that record, so the question is
+ * owned and answered beside it. What this test still pins: the write
+ * lands, and the answer is the stats table, never the squad list.
  */
-test("a stats question in a writing batch is unowned, and the write beside it still lands", async ({ request, db }) => {
+test("a stats question in a writing batch is answered from the record, and the write beside it still lands", async ({ request, db }) => {
   const grp = await group(request, db);
   const batch = await grp.postBatch([
     { player: "felix", body: "in", route: "self_att", facts: selfIn() },
@@ -111,8 +120,11 @@ test("a stats question in a writing batch is unowned, and the write beside it st
     },
   ]);
   expect((await grp.attendanceOf("felix"))?.status).toBe("CONFIRMED");
-  expect(batch.results[1].reply, "nobody owns a stats question").toBeNull();
-  expect(batch.results[1].handledBy).toBe("ignored");
+  const reply = batch.results[1].reply ?? "";
+  // The appearances table or its honest empty line, never the roster.
+  expect(reply, "the stats question is answered").toMatch(/Most appearances|no completed matches/);
+  expect(reply).not.toMatch(/Playing:/);
+  expect(reply).not.toMatch(/[—–]/);
 });
 
 test('DM "what\'s X\'s number?" — context physically contains NO phone digits and no 📵 flags for a non-admin', async ({ request, db }) => {

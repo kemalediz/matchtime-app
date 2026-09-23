@@ -405,6 +405,37 @@ export type StatsTable =
   | "mr_reliable"
   | "other";
 
+/**
+ * THE STRETCH OF TIME A STATS QUESTION ASKS ABOUT (2026-09-23).
+ *
+ * The incident: "@Match Time who has played most matches in the last 1
+ * year?" was answered "Most appearances in the last 30 days", three
+ * names. There was no field for a period, so "the last 1 year" was
+ * discarded by construction, the class of bug #126 fixed for WHICH table
+ * and HOW MANY.
+ *
+ * The model names the period in words it read; `stats-period.ts` turns
+ * it into a date, from the clock, in code. The model never does date
+ * arithmetic.
+ *
+ *   last      a rolling span back from now ("the last year", "son 3 ay")
+ *   this      the current calendar week, month or year ("bu ay")
+ *   season    "this season": the club's whole record, which is what the
+ *             website's season tables (Team of the Season, the season
+ *             rating leaderboard) already mean by it
+ *   all_time  the whole record too, and said as "all time"
+ *
+ * `null` means the question named no period. The answer then covers the
+ * whole record and SAYS so: the rule Kemal cares about most is that the
+ * group is never answered for a different period without being told.
+ */
+export type StatsPeriodUnit = "day" | "week" | "month" | "year";
+export type StatsPeriod =
+  | { kind: "last"; count: number; unit: StatsPeriodUnit }
+  | { kind: "this"; unit: "week" | "month" | "year" }
+  | { kind: "season" }
+  | { kind: "all_time" };
+
 export interface QuestionFacts {
   kind: "question";
   topic: QuestionTopic;
@@ -428,6 +459,9 @@ export interface QuestionFacts {
   /** "bottom" when the question asks for the worst or the foot of a
    *  table. The group never names anybody for that (Kemal, 2026-09-23). */
   listEnd?: "top" | "bottom";
+  /** The period the question asks about (see `StatsPeriod`), or null
+   *  when it names none. For `topic: "stats"` only. */
+  period?: StatsPeriod | null;
 }
 
 export interface TeamFacts {
@@ -638,28 +672,6 @@ export interface SquadState {
     yellowScore: number | null;
     participantUserIds: string[];
   } | null;
-  /** Appearances per user across completed matches, for stats answers
-   *  that today cost a whole extra LLM call. */
-  appearances: Array<{ userId: string; matches: number }>;
-  /**
-   * How many days back `appearances` was counted over.
-   *
-   * CARRIED RATHER THAN ASSUMED, because the composer has to SAY it. The
-   * loader's window is 30 days (`load-state.ts`'s `LOOKBACK_DAYS`) and
-   * the question people actually ask is "who's been most consistent this
-   * SEASON?" — measured live on 2026-09-09, where the answer was three
-   * players tied on two appearances each. Counting a month and calling
-   * it a season is a quiet wrong answer, and the fix is to name the
-   * window in the sentence.
-   *
-   * It is a FIELD and not a constant in `compose.ts` because that module
-   * cannot import `load-state.ts` (Prisma; see its header), so the only
-   * two ways to print the number are to carry it or to duplicate it. A
-   * duplicated window would drift the day the loader's changes, and the
-   * drift would be invisible: a correct-looking sentence about the wrong
-   * month.
-   */
-  appearanceWindowDays: number;
   /** MatchTime's own most recent post in the group, verbatim. A known
    *  object, not a guess: it is how a bare "Confirmed" resolves. */
   lastBotPost: string | null;
@@ -748,6 +760,29 @@ export interface StatsRatingRow {
   delta: number | null;
 }
 
+/** One row of the club APPEARANCES table: CONFIRMED appearances in
+ *  completed matches, over the whole record or a period. */
+export interface StatsAppearanceRow {
+  userId: string;
+  name: string;
+  matches: number;
+}
+
+/**
+ * The tables the data CAN cut to a period (appearances, ratings, Man of
+ * the Match), cut to one. Loaded by `answer-batch.ts` only for a period
+ * a question in the batch asked about, keyed by `periodKey`.
+ */
+export interface StatsPeriodTables {
+  /** Where the period starts, computed from the clock by code. */
+  since: Date;
+  appearances: StatsAppearanceRow[];
+  /** Ranked over the period's matches only, the group's minimum of
+   *  three rated matches applied within it. */
+  ratings: StatsRatingRow[];
+  mom: Array<{ userId: string; name: string; wins: number }>;
+}
+
 /** What a named player's chemistry answer may say. Mirrors the two
  *  cards on `/profile/stats`, plus the nemesis, which only the player
  *  themselves may be shown (see `NEMESIS_IN_GROUP_FOR_OTHERS`). */
@@ -789,6 +824,21 @@ export interface StatsSnapshot {
   aliases: Array<{ alias: string; userId: string }>;
   /** Chemistry for the players named in this batch's questions, by id. */
   chemistry: Record<string, StatsChemistry>;
+  /** APPEARANCES over the club's whole record, most first, the
+   *  three-month inactivity rule applied, uncapped (the group prints ten). */
+  appearances: StatsAppearanceRow[];
+  /**
+   * WHERE THE CLUB'S RECORDS BEGIN, read from the data, never hardcoded.
+   * `matches` is the first completed match MatchTime recorded (the start
+   * of appearances, ratings, Elo and everything built on them); `mom`
+   * reaches further back when the club backfilled historical awards.
+   * A period that starts before these is answered as "since my records
+   * began", and says so.
+   */
+  recordsStart: { matches: Date | null; mom: Date | null };
+  /** The cut tables, for the periods this batch's questions asked
+   *  about, by `periodKey`. Filled by `answer-batch.ts`. */
+  periods: Record<string, StatsPeriodTables>;
   /**
    * The grounded generic answers composed for this batch, by message id.
    * `text` passed the grounding check; `rejected` did not, or the model
@@ -1026,28 +1076,37 @@ export type SpeechIntent =
   | { kind: "answer_fixture"; messageId: string }
   | { kind: "answer_person_status"; messageId: string; personRef: string; userId: string | null }
   | { kind: "answer_phones"; messageId: string }
-  /** `size` is how many rows to show; absent means the original three. */
-  | { kind: "answer_stats"; messageId: string; size?: number }
   /**
    * One of the known stats tables, rendered EXACTLY by code from
    * `state.stats` (`stats-answer.ts`). `size` is already capped at the
    * group's ten; `requested` is what was asked, so the answer can say
    * when it was capped. `personUserId` is the resolved player for a
    * chemistry answer, and `self` says the asker asked about themselves.
+   *
+   * `period` is what the question asked for (2026-09-23). The renderer
+   * honours it where the data can be cut and says so in the header, and
+   * says plainly what it shows where it cannot. Optional so fixtures that
+   * predate it keep their shape; absent is "no period stated".
+   *
+   * (`answer_stats`, the 30-day appearances answer with an em-dash row,
+   * was retired the same day: appearances is one of these tables now.)
    */
   | {
       kind: "answer_stats_table";
       messageId: string;
-      table: Exclude<StatsTable, "appearances" | "other">;
+      table: Exclude<StatsTable, "other">;
       size: number;
       requested: number | null;
       personUserId: string | null;
       self: boolean;
+      period?: StatsPeriod | null;
     }
   /** A request for the bottom of a table: names nobody, points at the site. */
   | { kind: "answer_stats_bottom"; messageId: string }
-  /** The grounded generic answer (or its safe line), from `state.stats.generic`. */
-  | { kind: "answer_stats_generic"; messageId: string }
+  /** The grounded generic answer (or its safe line), from
+   *  `state.stats.generic`. A period the tables cannot be cut to is
+   *  said after it, by code. */
+  | { kind: "answer_stats_generic"; messageId: string; period?: StatsPeriod | null }
   /**
    * MatchTime could not tell WHO the question means, and asks the poster
    * rather than guessing (Kemal, 2026-09-23). `candidates` are resolved

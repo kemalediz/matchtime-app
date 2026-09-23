@@ -74,6 +74,26 @@
  */
 import type { Strings } from "./t";
 import { joinList } from "./text";
+import type { StatsPeriod } from "../pipeline/types";
+
+const UNIT_TR = { day: "gün", week: "hafta", month: "ay", year: "yıl" } as const;
+
+/** "son 1 yıl" / "son 3 ay" / "bu ay": the period as a noun phrase, in
+ *  the nominative, so it sits in brackets or before "için" with no
+ *  suffix to compute. Digits always, as the group writes it ("son 1
+ *  yılda"). */
+function spanTr(p: StatsPeriod): string {
+  switch (p.kind) {
+    case "last":
+      return `son ${p.count} ${UNIT_TR[p.unit]}`;
+    case "this":
+      return `bu ${UNIT_TR[p.unit]}`;
+    case "season":
+      return "bu sezon";
+    case "all_time":
+      return "tüm zamanlar";
+  }
+}
 
 export const tr: Strings = {
   // ── shared fragments ─────────────────────────────────────────────
@@ -265,12 +285,6 @@ export const tr: Strings = {
   answer_person_confirmed: (p) => `Evet, ${p.who} ${p.kickoffLabel} için kadroda.`,
   answer_phones_none: "Kadrodaki herkesin kayıtlı numarası var.",
   answer_phones_missing: (p) => `Kayıtlı numarası olmayanlar: ${joinList("tr", p.names)}.`,
-  answer_stats_empty: (p) =>
-    `Son ${p.windowDays} günde tamamlanmış maç yok, o yüzden en istikrarlı oyuncuyu söyleyemem.`,
-  answer_stats_head: (p) => `Son ${p.windowDays} günde en çok oynayanlar:`,
-  // "maç" is one of `isLeaderboardLine`'s markers (group-copy.ts), so
-  // this row is never mistaken for a squad roster. See the English note.
-  answer_stats_row: (p) => `${p.rank}. ${p.name}: ${p.matches} maç`,
   answer_options_lead: (p) =>
     p.need > 0
       ? `${p.maxPlayers} kişilik kadroda ${p.confirmed} kişiyiz, ${p.need} kişi daha lazım 🙏`
@@ -281,16 +295,58 @@ export const tr: Strings = {
   // ── istatistik tabloları (2026-09-23), `pipeline/stats-answer.ts` ──
   // Her satırda `isLeaderboardLine` işaretlerinden biri var ("maç", "kez",
   // "%"), bu yüzden hiçbiri kadro listesi sanılmaz.
-  stats_ratings_head: (p) => `Kulüp puanında ilk ${p.n} (en az ${p.minGames} puanlı maçı olanlar):`,
+  // ── dönem (2026-09-23) ──
+  // Dönem ve kayıtların başladığı ay hep parantez içinde ya da "için"
+  // önünde, yalın halde: hiçbir ada ya da sayıya ek gelmiyor. "Nisan
+  // 2026 itibarıyla" ekten kaçınmanın yolu ("2026'dan" yazmak yerine).
+  stats_when: (p) => {
+    const q = p.period;
+    if (q === null) return p.since ? `${p.since} itibarıyla` : "";
+    if (q.kind === "last" || q.kind === "this") return spanTr(q);
+    if (q.kind === "season") return p.since ? `bu sezon, ${p.since} itibarıyla` : "bu sezon";
+    return p.since ? `tüm zamanlar, kayıtlarım ${p.since} itibarıyla` : "tüm zamanlar";
+  },
+  stats_span: (p) => spanTr(p.period),
+  stats_period_unreached: (p) =>
+    `Bu kulüp için kayıtlarım ${p.since} itibarıyla başlıyor, yani ${p.span} için elimdeki her şey bu.`,
+  stats_period_not_cut: (p) => {
+    const every = p.since ? `${p.since} itibarıyla oynanan tüm maçlar` : "tüm maçlar";
+    switch (p.table) {
+      case "elo":
+        return `Elo sürekli güncellenen bir puan, o yüzden bu tablo ${p.span} için değil, şu anki durum.`;
+      case "team_of_season":
+        return `Sezonun takımı ${every} üzerinden seçiliyor, o yüzden ${p.span} için ayrıca çıkaramıyorum.`;
+      case "mr_reliable":
+        return `Mr Reliable istatistik sayfasındaki rozet ve ${every} üzerinden veriliyor, o yüzden ${p.span} için ayrıca çıkaramıyorum.`;
+      case "chemistry":
+        return `Uyum ${every} üzerinden hesaplanıyor, o yüzden ${p.span} için ayrıca çıkaramıyorum.`;
+      case "generic":
+        return `Bu rakamlar ${p.since ? `${p.since} itibarıyla oynanan tüm maçları` : "tüm maçları"} kapsıyor, sadece ${p.span} değil.`;
+    }
+  },
+  // "maç" is one of `isLeaderboardLine`'s markers (group-copy.ts), so
+  // this row is never mistaken for a squad roster.
+  stats_apps_head: (p) => (p.when ? `En çok maça çıkanlar (${p.when}):` : "En çok maça çıkanlar:"),
+  stats_apps_row: (p) => `${p.rank}. ${p.name}: ${p.matches} maç`,
+  stats_apps_empty: (p) =>
+    p.when ? `Bu dönemde (${p.when}) sayılacak tamamlanmış maç yok.` : "Henüz sayılacak tamamlanmış maç yok.",
+  stats_ratings_head: (p) =>
+    p.when
+      ? `Kulüp puanında ilk ${p.n} (${p.when}; en az ${p.minGames} puanlı maçı olanlar):`
+      : `Kulüp puanında ilk ${p.n} (en az ${p.minGames} puanlı maçı olanlar):`,
   stats_ratings_row: (p) => `${p.rank}. ${p.name}: ${p.avg} (${p.games} maç)`,
   stats_ratings_empty: (p) =>
-    `Henüz ${p.minGames} puanlı maçı olan kimse yok, o yüzden paylaşacak bir puan tablosu yok. Tüm istatistikler sitede: ${p.url}`,
+    p.when
+      ? `Bu dönemde (${p.when}) en az ${p.minGames} puanlı maçı olan kimse yok, o yüzden paylaşacak bir puan tablosu yok. Tüm istatistikler sitede: ${p.url}`
+      : `Henüz ${p.minGames} puanlı maçı olan kimse yok, o yüzden paylaşacak bir puan tablosu yok. Tüm istatistikler sitede: ${p.url}`,
   stats_capped: (p) => `Grupta en fazla ${p.cap} kişiyi listeliyorum. Tablonun tamamı sitede: ${p.url}`,
   stats_bottom: (p) =>
     `Grupta tabloların sadece üst kısmını paylaşıyorum, alt sıraları değil. Tabloların tamamı sitede: ${p.url}`,
   stats_mom_head: "En çok maçın adamı seçilenler:",
   stats_mom_row: (p) => `${p.rank}. ${p.name}: ${p.wins} kez`,
   stats_mom_empty: "Henüz kimse maçın adamı seçilmedi.",
+  stats_mom_head_when: (p) => `En çok maçın adamı seçilenler (${p.when}):`,
+  stats_mom_empty_when: (p) => `Bu dönemde (${p.when}) kimse maçın adamı seçilmedi.`,
   stats_elo_head: (p) => `Elo puanında ilk ${p.n} (en az ${p.minMatches} maç oynayanlar):`,
   stats_elo_row: (p) => `${p.rank}. ${p.name}: ${p.rating} (${p.matches} maç)`,
   stats_elo_empty: (p) => `Henüz ${p.minMatches} maç oynayan kimse yok, o yüzden paylaşacak bir Elo tablosu yok.`,

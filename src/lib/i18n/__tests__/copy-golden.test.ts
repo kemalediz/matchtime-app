@@ -103,6 +103,23 @@
  *     it now has a colon ("... for *X*: *£8*."), house style. The
  *     "they've paid you" variant is new, for the DM claim.
  *
+ *   - Three deliberate CHANGES and additions (2026-09-23, the stats
+ *     period). "@Match Time who has played most matches in the last 1
+ *     year?" was answered "Most appearances in the last 30 days", three
+ *     names: the old appearances answer (`answer_stats`) read a fixed
+ *     30-day window and had nowhere to put a period. It is RETIRED, and
+ *     its three cases are replaced, each for the same reason: the answer
+ *     now reads the club's full appearances record and says which period
+ *     it covers, and its em-dash row ("1. Kemal Ediz — 4 matches") breaks
+ *     the house style's no-dash rule. R25 (nothing to go on) became
+ *     "I have no completed matches to count yet."; R26 (three ranked)
+ *     became a ten-row table headed "Most appearances since my records
+ *     began in April 2026:" with "1. Name: 4 matches" rows; R26b (five
+ *     asked for) keeps its five rows in the new format. The additions
+ *     are R161 to R163: a period the records reach, one they do not
+ *     (Kemal's exact question), and the notes that say a table cannot
+ *     be cut to a period. No other existing case moved.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -147,7 +164,8 @@
  *   not templates and are measured by live dry runs, not snapshots.
  */
 import { describe, it, expect } from "vitest";
-import type { EngineResult, SpeechIntent, SquadState, StatsSnapshot } from "../../pipeline/types";
+import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
+import { periodKey } from "../../pipeline/stats-period";
 import { compose } from "../../pipeline/compose";
 import { world, fullName } from "../../pipeline/__tests__/helpers";
 import type { Lang } from "../lang";
@@ -384,6 +402,31 @@ function statsFixture(over: Partial<StatsSnapshot> = {}): StatsSnapshot {
       },
     },
     generic: { [MSG]: { text: "Mustafa Kaya tops the club ratings on 8.3 from 12 matches." } },
+    appearances: ranked.map((k, i) => ({ userId: `u-${k}`, name: fullName(k), matches: 24 - i * 2 })),
+    recordsStart: { matches: new Date("2026-04-14T20:00:00.000Z"), mom: new Date("2025-11-04T20:00:00.000Z") },
+    periods: {
+      [periodKey({ kind: "last", count: 1, unit: "year" })]: {
+        since: new Date("2025-09-23T20:30:00.000Z"),
+        appearances: ranked.map((k, i) => ({ userId: `u-${k}`, name: fullName(k), matches: 24 - i * 2 })),
+        ratings: [],
+        mom: [],
+      },
+      [periodKey({ kind: "last", count: 1, unit: "month" })]: {
+        since: new Date("2026-08-23T20:30:00.000Z"),
+        appearances: [
+          { userId: "u-sait", name: fullName("sait"), matches: 4 },
+          { userId: "u-mustafa", name: fullName("mustafa"), matches: 4 },
+          { userId: "u-habib", name: fullName("habib"), matches: 3 },
+          { userId: "u-kemal", name: fullName("kemal"), matches: 1 },
+        ],
+        ratings: [
+          { userId: "u-sait", name: fullName("sait"), avg: 8.1, games: 4, rank: 1, delta: null },
+          { userId: "u-mustafa", name: fullName("mustafa"), avg: 7.9, games: 4, rank: 2, delta: null },
+          { userId: "u-habib", name: fullName("habib"), avg: 7.3, games: 3, rank: 3, delta: null },
+        ],
+        mom: [{ userId: "u-habib", name: fullName("habib"), wins: 2 }],
+      },
+    },
     ...over,
   };
 }
@@ -508,14 +551,29 @@ function cases(lang: Lang): Case[] {
   add("R24 answer_phones / one missing", say(sw({ noPhone: ["sait"] }), { kind: "answer_phones", messageId: MSG }));
   add("R24 answer_phones / three missing", say(sw({ noPhone: ["sait", "abid", "erdal"] }), { kind: "answer_phones", messageId: MSG }));
 
-  add("R25 answer_stats / nothing to go on", say(short, { kind: "answer_stats", messageId: MSG }));
-  add("R26 answer_stats / three ranked", say(sw({ appearances: [{ userId: "u-kemal", matches: 4 }, { userId: "u-elvin", matches: 3 }, { userId: "u-sait", matches: 1 }, { userId: "u-abid", matches: 1 }] }), { kind: "answer_stats", messageId: MSG }));
-
-  // ── The stats tables (2026-09-23): additions only, no existing case moved ──
+  // ── The stats tables (2026-09-23) ──
   const sa = (over: Partial<StatsSnapshot> = {}): SquadState => ({ ...short, stats: statsFixture(over) });
-  const table = (t: "ratings" | "mom" | "elo" | "team_of_season" | "movers" | "mr_reliable" | "chemistry", o: { size?: number; requested?: number | null; person?: string | null; self?: boolean } = {}) =>
-    ({ kind: "answer_stats_table", messageId: MSG, table: t, size: o.size ?? 10, requested: o.requested ?? null, personUserId: o.person ?? null, self: o.self ?? false }) as const;
-  add("R26b answer_stats / appearances, five asked for", say(sw({ appearances: [{ userId: "u-kemal", matches: 4 }, { userId: "u-elvin", matches: 3 }, { userId: "u-sait", matches: 2 }, { userId: "u-abid", matches: 1 }, { userId: "u-idris", matches: 1 }, { userId: "u-faris", matches: 1 }] }), { kind: "answer_stats", messageId: MSG, size: 5 }));
+  const table = (t: "ratings" | "appearances" | "mom" | "elo" | "team_of_season" | "movers" | "mr_reliable" | "chemistry", o: { size?: number; requested?: number | null; person?: string | null; self?: boolean; period?: StatsPeriod | null } = {}) =>
+    ({ kind: "answer_stats_table", messageId: MSG, table: t, size: o.size ?? 10, requested: o.requested ?? null, personUserId: o.person ?? null, self: o.self ?? false, period: o.period ?? null }) as const;
+  const LAST_YEAR: StatsPeriod = { kind: "last", count: 1, unit: "year" };
+  const LAST_MONTH: StatsPeriod = { kind: "last", count: 1, unit: "month" };
+  // R25, R26 and R26b: the appearances answer, retired from its 30-day
+  // window and em-dash row onto the full record (see the header).
+  add("R25 answer_stats_table / appearances, nothing to go on", say(sa({ appearances: [], recordsStart: { matches: null, mom: null } }), table("appearances")));
+  add("R26 answer_stats_table / appearances, no period stated", say(sa(), table("appearances")));
+  add("R26b answer_stats_table / appearances, five asked for", say(sa(), table("appearances", { size: 5, requested: 5 })));
+  add("R161 answer_stats_table / appearances, the last month (the records reach it)", say(sa(), table("appearances", { period: LAST_MONTH })));
+  add("R161 answer_stats_table / appearances, this season", say(sa(), table("appearances", { period: { kind: "season" } })));
+  add("R161 answer_stats_table / appearances, all time", say(sa(), table("appearances", { period: { kind: "all_time" } })));
+  add("R161 answer_stats_table / ratings, top 5 in the last month", say(sa(), table("ratings", { size: 5, requested: 5, period: LAST_MONTH })));
+  add("R161 answer_stats_table / Man of the Match, the last month", say(sa(), table("mom", { period: LAST_MONTH })));
+  add("R161 answer_stats_table / Man of the Match, all time", say(sa(), table("mom", { period: { kind: "all_time" } })));
+  add("R162 answer_stats_table / appearances, the last 1 year (Kemal's question, before the records)", say(sa(), table("appearances", { period: LAST_YEAR })));
+  add("R163 answer_stats_table / Elo, the last month cannot be cut", say(sa(), table("elo", { period: LAST_MONTH })));
+  add("R163 answer_stats_table / Team of the Season, the last month cannot be cut", say(sa(), table("team_of_season", { period: LAST_MONTH })));
+  add("R163 answer_stats_table / Mr Reliable, the last month cannot be cut", say(sa(), table("mr_reliable", { period: LAST_MONTH })));
+  add("R163 answer_stats_table / chemistry, this month cannot be cut", say(sa(), table("chemistry", { person: "u-idris", period: { kind: "this", unit: "month" } })));
+  add("R163 answer_stats_generic / grounded answer, the last month noted", say(sa(), { kind: "answer_stats_generic", messageId: MSG, period: LAST_MONTH }));
   add("R147 answer_stats_table / ratings, the 2026-09-23 incident (top 10)", say(sa(), table("ratings", { requested: 10 })));
   add("R147 answer_stats_table / ratings, top 20 served as 10", say(sa(), table("ratings", { requested: 20 })));
   add("R147 answer_stats_table / ratings, nobody has three rated matches", say(sa({ ratings: [] }), table("ratings")));
@@ -1017,6 +1075,8 @@ const MIGRATED_ROWS = [
   "R144 ", "R145 ", "R146 ",
   // the stats tables in the group (2026-09-23)
   "R26b ", "R147 ", "R148 ", "R149 ", "R150 ", "R151 ", "R152 ", "R153 ", "R154 ", "R155 ", "R156 ",
+  // the stats period (2026-09-23)
+  "R161 ", "R162 ", "R163 ",
   // a player DMs "Paid" (2026-09-23): the collector's notice and the player's replies
   "R157 ", "R158 ", "R159 ", "R160 ",
 ];

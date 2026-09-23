@@ -153,19 +153,6 @@ export async function loadSquadState(
         now.getTime(),
     ) ?? null;
 
-  // Appearances across completed matches, for the stats answer that
-  // today costs a whole extra LLM call and once returned the squad
-  // roster instead (§3.2 S16, 2026-05-14).
-  const appearanceRows = await db.attendance.findMany({
-    where: {
-      status: "CONFIRMED",
-      match: { activity: { orgId }, status: "COMPLETED", date: { gte: since } },
-    },
-    select: { userId: true },
-  });
-  const counts = new Map<string, number>();
-  for (const a of appearanceRows) counts.set(a.userId, (counts.get(a.userId) ?? 0) + 1);
-
   // Alternative formats the org has configured, for the options answer.
   // TOTALS across both teams — never per-team. That units confusion IS
   // the 2026-08-30 incident.
@@ -238,13 +225,6 @@ export async function loadSquadState(
           participantUserIds: completed.attendances.map((a) => a.userId),
         }
       : null,
-    appearances: [...counts.entries()].map(([userId, matchesPlayed]) => ({
-      userId,
-      matches: matchesPlayed,
-    })),
-    // The window the line above was counted over, carried so the stats
-    // answer can name it rather than imply "all time". See the field.
-    appearanceWindowDays: LOOKBACK_DAYS,
     lastBotPost: lastBotJob?.text ?? null,
     features: {
       attendance: features.attendance,

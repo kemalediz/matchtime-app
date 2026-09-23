@@ -52,6 +52,7 @@ import {
   lastPlayedFromRows,
   type RankedRoster,
 } from "./ranked-table-activity";
+import { countAppearances, countMomWins, earliestDate, type DatedMomWin } from "./club-record-tables";
 
 export interface RecentMatchRow {
   id: string;
@@ -296,39 +297,38 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //
   //    `attendanceRows` is fetched at step 1c, because the inactivity
   //    filter needs it before the MoM table above.
-  const perPlayer = new Map<string, { count: number }>();
-  for (const a of attendanceRows) {
-    const cur = perPlayer.get(a.userId);
-    if (!cur) perPlayer.set(a.userId, { count: 1 });
-    else cur.count += 1;
-  }
+  //
+  //    The counting and the ordering are `countAppearances`, the same
+  //    function the group's appearances answer uses (2026-09-23), so the
+  //    two cannot rank the same club differently.
   const totalMatches = allCompleted.length;
-  const attendanceUserIds = [...perPlayer.keys()];
+  const attendanceUserIds = [...new Set(attendanceRows.map((a) => a.userId))];
   const attendanceUsers = await db.user.findMany({
     where: { id: { in: attendanceUserIds } },
     select: { id: true, name: true },
   });
   const attendanceNameById = new Map(attendanceUsers.map((u) => [u.id, u.name ?? "(unnamed)"]));
-  const attendanceLeaderboard: LeaderboardRow[] = [...perPlayer.entries()]
-    .map(([userId, v]) => {
-      const pct = totalMatches > 0 ? Math.round((v.count / totalMatches) * 100) : 0;
-      return {
-        userId,
-        name: attendanceNameById.get(userId) ?? "(unnamed)",
-        value: v.count,
-        detail: `${v.count}/${totalMatches} (${pct}%)`,
-      };
-    })
-    // Inactive players out — see ATTENDANCE_TABLE_FOLLOWS_ACTIVITY_RULE
-    // for why the one table that is literally ABOUT turning up still
-    // follows the rule. Note the denominator above is computed from
-    // `allCompleted` and is untouched by this: removing a leaver must
-    // never inflate everyone else's percentage.
-    .filter((r) => roster.isRanked(r.userId))
-    // Sort by raw count desc — with a fixed denominator that's the
-    // same ordering as % desc. Stable name tiebreaker.
-    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
-    .slice(0, LEADERBOARD_LIMIT);
+  const attendanceLeaderboard: LeaderboardRow[] = countAppearances(
+    attendanceRows.map((a) => ({ userId: a.userId, date: matchDateById.get(a.matchId) as Date })),
+    {
+      // The whole record. Inactive players out: see
+      // ATTENDANCE_TABLE_FOLLOWS_ACTIVITY_RULE for why the one table that
+      // is literally ABOUT turning up still follows the rule. The
+      // denominator above is computed from `allCompleted` and is
+      // untouched by this: removing a leaver must never inflate everyone
+      // else's percentage. Sorted by raw count desc, which with a fixed
+      // denominator is the same ordering as % desc; a stable name
+      // tiebreaker.
+      since: null,
+      isRanked: (id) => roster.isRanked(id),
+      nameOf: (id) => attendanceNameById.get(id) ?? "(unnamed)",
+    },
+  )
+    .slice(0, LEADERBOARD_LIMIT)
+    .map((r) => {
+      const pct = totalMatches > 0 ? Math.round((r.matches / totalMatches) * 100) : 0;
+      return { userId: r.userId, name: r.name, value: r.matches, detail: `${r.matches}/${totalMatches} (${pct}%)` };
+    });
 
   // 5. Elo top + bottom — only players who've actually been assigned
   //    to a team in a completed match (rules out provisional ghosts
@@ -408,6 +408,82 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     eloTop,
     eloBottom,
     inactivePlayersHidden: roster.hiddenCount,
+  };
+}
+
+export interface ClubRecordTables {
+  /** CONFIRMED appearances in completed matches, most first, uncapped. */
+  appearances: Array<{ userId: string; name: string; matches: number }>;
+  /** Man of the Match wins, most first, uncapped. */
+  mom: Array<{ userId: string; name: string; wins: number }>;
+  /** Where the records begin: the first completed match MatchTime
+   *  recorded, and the first Man of the Match award (which the club may
+   *  have backfilled from before MatchTime). */
+  recordsStart: { matches: Date | null; mom: Date | null };
+}
+
+/**
+ * THE APPEARANCES AND MAN OF THE MATCH TABLES, WHOLE OR CUT TO A PERIOD
+ * (2026-09-23), for the group's stats answer.
+ *
+ * The same data and rules as `loadRecentHistory`'s tables: appearances
+ * are CONFIRMED rows on completed, non-historical matches; Man of the
+ * Match counts every match the org has, historical anchors included
+ * (their whole point); both drop players with no appearance in three
+ * months (`ranked-table-activity.ts`), judged on the WHOLE record, so a
+ * player who played last week is in a "last year" table and one who left
+ * in May is not, whatever the period. `since` cuts the counting only.
+ *
+ * READ-ONLY: every statement is a find.
+ */
+export async function loadClubRecordTables(
+  orgId: string,
+  opts: { since?: Date | null } = {},
+): Promise<ClubRecordTables> {
+  const since = opts.since ?? null;
+  const completed = await db.match.findMany({
+    where: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
+    orderBy: { date: "asc" },
+    select: { id: true, date: true },
+  });
+  const dateById = new Map(completed.map((m) => [m.id, m.date]));
+  const attendanceRows =
+    completed.length === 0
+      ? []
+      : await db.attendance.findMany({
+          where: { matchId: { in: completed.map((m) => m.id) }, status: "CONFIRMED" },
+          select: { userId: true, matchId: true },
+        });
+  const dated = attendanceRows
+    .map((a) => ({ userId: a.userId, date: dateById.get(a.matchId) }))
+    .filter((a): a is { userId: string; date: Date } => a.date instanceof Date);
+  const roster = buildRankedRoster(lastPlayedFromRows(dated));
+  const users = await db.user.findMany({
+    where: { id: { in: [...new Set(dated.map((a) => a.userId))] } },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(users.map((u) => [u.id, u.name ?? "(unnamed)"]));
+  const appearances = countAppearances(dated, {
+    since,
+    isRanked: (id) => roster.isRanked(id),
+    nameOf: (id) => nameById.get(id) ?? "(unnamed)",
+  });
+
+  const allMatches = await db.match.findMany({ where: { activity: { orgId } }, select: { id: true, date: true } });
+  const momDateById = new Map(allMatches.map((m) => [m.id, m.date]));
+  const summaries = await getMomSummaries(allMatches.map((m) => m.id));
+  const wins: DatedMomWin[] = [];
+  for (const [matchId, summary] of summaries) {
+    const date = momDateById.get(matchId);
+    if (!date) continue;
+    for (const w of summary.topPlayers) wins.push({ userId: w.playerId, name: w.name, date });
+  }
+  const mom = countMomWins(wins, { since, isRanked: (id) => roster.isRanked(id) });
+
+  return {
+    appearances,
+    mom,
+    recordsStart: { matches: completed[0]?.date ?? null, mom: earliestDate(wins.map((w) => w.date)) },
   };
 }
 
