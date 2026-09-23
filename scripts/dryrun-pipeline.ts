@@ -2194,6 +2194,8 @@ function statsCases(ambiguousRef: string | null): StatsCase[] {
     { id: "N1", lang: "en", body: "@Match Time Zork's chemistry", expect: /not in the squad: asked who they mean/, why: "an unknown name is asked about" },
     { id: "G1", lang: "en", body: "@Match Time who has the best win rate?", expect: /grounded generic/, why: "long tail" },
     { id: "G2", lang: "en", body: "@Match Time is anyone in both the Elo top ten and the Man of the Match table?", expect: /grounded generic/, why: "long tail" },
+    { id: "G3", lang: "en", body: "@Match Time how many Man of the Match wins does Kieran have?", expect: /grounded generic/, why: "a named player on a club table: the grounded path" },
+    { id: "G4", lang: "en", body: "@Match Time is Wasim in the team of the season?", expect: /grounded generic/, why: "a named player on a club table: the grounded path" },
     { id: "T1", lang: "tr", body: "@Match Time sıralama", expect: /ratings table/, why: "" },
     { id: "T2", lang: "tr", body: "@Match Time en iyi 10", expect: /ratings table, 10 rows/, why: "" },
     { id: "T3", lang: "tr", body: "@Match Time en çok maçın adamı kim", expect: /mom table/, why: "" },
@@ -2305,7 +2307,11 @@ async function runStats(orgId: string, state: SquadState, now: Date): Promise<vo
       t.set(key, (t.get(key) ?? 0) + 1);
       tally.set(c.id, t);
       console.log(`  run ${n + 1}/${repeat}  route=${route}  ${ok ? "PASS" : "MISS"}  ${reasons.slice(0, 220)}`);
-      if (n === 0 || !ok) console.log(`  says   :\n${(outcome?.reply ?? "(nothing)").replace(/^/gm, "    ")}`);
+      if (n === 0 || !ok || outcome?.intent === "stats_generic") {
+        console.log(`  says   :\n${(outcome?.reply ?? "(nothing)").replace(/^/gm, "    ")}`);
+      }
+      const generic = res.degradations.find((d) => d.includes("generic stats answer not used"));
+      if (generic) console.log(`  generic: ${generic}`);
     }
     if (stopped) break;
   }

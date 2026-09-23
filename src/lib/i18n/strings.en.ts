@@ -329,11 +329,13 @@ export const en = {
     `There's no Team of the Season yet: nobody has ${p.minGames} rated matches.`,
   stats_movers_head:
     "I track rating movement match by match, so these are the biggest climbers in the club ratings since the last match:",
-  stats_movers_row: (p: { n: number; name: string; delta: number; rank: number; games: number }): string =>
-    `${p.n}. ${p.name}: up ${p.delta} ${p.delta === 1 ? "place" : "places"} to no. ${p.rank} (${p.games} ${p.games === 1 ? "match" : "matches"})`,
+  /** `rank` is null outside the top ten: the group is never told a
+   *  position below the top of the table, even a climber's. */
+  stats_movers_row: (p: { n: number; name: string; delta: number; rank: number | null; games: number }): string =>
+    `${p.n}. ${p.name}: up ${p.delta} ${p.delta === 1 ? "place" : "places"}${p.rank !== null ? ` to no. ${p.rank}` : ""} (${p.games} ${p.games === 1 ? "match" : "matches"})`,
   stats_movers_empty: "Nobody climbed the club ratings table after the last match.",
   stats_reliable_head: (p: { minAvg: string; minGames: number }): string =>
-    `Mr Reliable, the badge on the stats page (an average of ${p.minAvg} or more, little variation, ${p.minGames}+ rated matches):`,
+    `Mr Reliable, the badge on the stats page (an average of ${p.minAvg} or more, little variation, ${p.minGames}+ rated matches), most consistent first:`,
   stats_reliable_row: (p: { n: number; name: string; avg: string; games: number }): string =>
     `${p.n}. ${p.name}: ${p.avg} average (${p.games} ${p.games === 1 ? "match" : "matches"})`,
   stats_reliable_empty: (p: { minAvg: string; minGames: number }): string =>

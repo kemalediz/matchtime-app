@@ -195,6 +195,11 @@ describe("the other known tables", () => {
     expect(text.split("\n")[0]).toMatch(/match by match/);
     expect(text).toContain("1. Player D: up 4 places to no. 4 (6 matches)");
     expect(text).toContain("2. Player G: up 2 places to no. 7 (9 matches)");
+    // A climber outside the top ten is named, never given his position.
+    const deep = snapshot();
+    deep.ratings[11].delta = 6;
+    expect(renderStatsTable(sp("movers", 5), deep, "en")).toContain("1. Player L: up 6 places (14 matches)");
+    expect(renderStatsTable(sp("movers", 5), deep, "tr")).toContain("1. Player L: 6 sıra yükseldi (14 maç)");
     // A faller, a non-mover and a newcomer are not climbers.
     expect(text).not.toContain("Player B");
     expect(text).not.toContain("Player J");
@@ -203,6 +208,7 @@ describe("the other known tables", () => {
   it("Mr Reliable is the stats page badge, not appearances", () => {
     const text = renderStatsTable(sp("mr_reliable"), snapshot(), "en");
     expect(text).toMatch(/badge/);
+    expect(text.split("\n")[0]).toMatch(/most consistent first:$/);
     expect(text).toContain("1. Sait Demir: 7.3 average (9 matches)");
   });
 

@@ -1830,8 +1830,10 @@ export function decide(input: EngineInput): EngineResult {
                 self: plan.self,
               });
               out.reasons.push(
-                `${plan.table} table, ${plan.size} rows` +
-                  (plan.requested !== null && plan.requested > plan.size ? ` (asked for ${plan.requested})` : ""),
+                plan.table === "chemistry" || plan.table === "team_of_season"
+                  ? `${plan.table} table`
+                  : `${plan.table} table, ${plan.size} rows` +
+                      (plan.requested !== null && plan.requested > plan.size ? ` (asked for ${plan.requested})` : ""),
               );
               break;
             case "generic":

@@ -300,10 +300,11 @@ export const tr: Strings = {
   stats_tots_empty: (p) => `Henüz sezonun takımı yok: ${p.minGames} puanlı maçı olan kimse yok.`,
   stats_movers_head:
     "Puan hareketini maç maç takip ediyorum, son maçtan beri kulüp puan tablosunda en çok yükselenler:",
-  stats_movers_row: (p) => `${p.n}. ${p.name}: ${p.delta} sıra yükseldi, şu an ${p.rank}. sırada (${p.games} maç)`,
+  stats_movers_row: (p) =>
+    `${p.n}. ${p.name}: ${p.delta} sıra yükseldi${p.rank !== null ? `, şu an ${p.rank}. sırada` : ""} (${p.games} maç)`,
   stats_movers_empty: "Son maçtan sonra kulüp puan tablosunda yükselen olmadı.",
   stats_reliable_head: (p) =>
-    `Mr Reliable rozeti olanlar, istatistik sayfasındaki rozet (ortalama ${p.minAvg} ve üzeri, az dalgalanma, en az ${p.minGames} puanlı maç):`,
+    `Mr Reliable rozeti olanlar, istatistik sayfasındaki rozet (ortalama ${p.minAvg} ve üzeri, az dalgalanma, en az ${p.minGames} puanlı maç), en istikrarlıdan başlayarak:`,
   stats_reliable_row: (p) => `${p.n}. ${p.name}: ortalama ${p.avg} (${p.games} maç)`,
   stats_reliable_empty: (p) =>
     `Henüz Mr Reliable rozeti olan kimse yok (ortalama ${p.minAvg} ve üzeri, az dalgalanma, en az ${p.minGames} puanlı maç).`,

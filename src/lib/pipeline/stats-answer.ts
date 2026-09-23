@@ -290,7 +290,15 @@ export function renderStatsTable(sp: TableSpeech, snap: StatsSnapshot, lang: Lan
         [
           s.stats_movers_head,
           ...climbers.map((r, i) =>
-            s.stats_movers_row({ n: i + 1, name: r.name, delta: r.delta ?? 0, rank: r.rank, games: r.games }),
+            s.stats_movers_row({
+              n: i + 1,
+              name: r.name,
+              delta: r.delta ?? 0,
+              // Top of the table only: a climber still outside the top
+              // ten is named for climbing, never given his position.
+              rank: r.rank <= GROUP_LIST_CAP ? r.rank : null,
+              games: r.games,
+            }),
           ),
         ].join("\n"),
       );
