@@ -37,3 +37,15 @@ on every change.** Do not confuse the two kinds of suite.
 harness in this repo resolves the dev key and refuses to run without it; it never falls back to
 the production key, which is what Vercel sets and the only name anything under `src/` reads.
 Put the dev key in the repo-root `.env`. See `MDs/dev-vs-production-api-keys.md`.
+
+## RULE: rewrite a prompt when you change it, never append to it (Kemal, 2026-09-23)
+
+**When a change needs a prompt to understand something new, rewrite that prompt as a whole. Do not bolt the new rule or examples onto the end.** Kemal: *"do not make the prompt bigger and huge by always adding to the end, no, redo the entire prompt and make it clearer and explain what is needed much better."*
+
+**Why:** a prompt grown by patches ends up with each field explained in several places, rulings that contradict each other, and examples piled up at the bottom by date rather than grouped by meaning. That is part of why the model keeps discarding things (e.g. "ratings" and "top 10" on 2026-09-22, "the last 1 year" on 2026-09-23).
+
+**How to apply:**
+- One coherent explanation of the task; every field defined once, in one place, with when to leave it empty; each ruling stated once.
+- Examples grouped by what they teach, deduplicated, English and Turkish side by side.
+- Shorter if clarity allows, but clarity wins over length. Report before and after size, and keep it above the model's prompt-cache floor (`src/lib/pipeline/__tests__/cache-threshold.test.ts`).
+- **A rewrite widens the regression risk, so the approved live check must cover every behaviour the prompt already handles, not just the new one.** Say so when asking Kemal to approve the run, and size the budget accordingly. Any case that passed before and fails after is a regression to fix before merging.
