@@ -190,6 +190,26 @@ export interface Claim {
   /** Relaying what someone else said ("Najib said he's in"). */
   reported: boolean;
   confidence: number;
+  /**
+   * WHO THIS ARRIVING PLAYER IS TAKING THE PLACE OF, verbatim, when the
+   * message says so ("Mojib is replacing Najib" -> "Najib" on Mojib's
+   * `in` claim). Empty or absent everywhere else, which is almost
+   * everywhere.
+   *
+   * A FACT ABOUT THE SENTENCE, like every other field here: it says the
+   * message stated a direction, and nothing about what should happen.
+   * It is the ONLY signal `pipeline/replacement.ts` will read a
+   * replacement from, because one `in` beside one `out` is never
+   * enough, or "Ali is coming, Mehmet can't make it" would start moving
+   * slots around. It can never on its own remove anybody, because the
+   * pairing also insists on a real `out` claim about the same person.
+   *
+   * OPTIONAL IN TYPESCRIPT, REQUIRED IN THE SCHEMA. The extractor always
+   * returns it and `parseFacts` always sets it; the `?` is so the 144
+   * claim literals in the test suites and the older callers that never
+   * heard of it keep meaning what they meant.
+   */
+  replaces?: string;
 }
 
 /** Something the message ALSO asks for, alongside its claims. A message

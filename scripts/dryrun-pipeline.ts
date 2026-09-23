@@ -935,6 +935,25 @@ const CASES: Case[] = [
   { id: "GD1", who: "Kemal", body: "Habib OUT", confirm: ["Habib"], expect: "admin, untagged, bare name + OUT (the 'Zeeshan OUT' shape). DROP Habib" },
   { id: "GD2", who: "Kemal", body: "@Wasim can't make it", confirm: ["Wasim"], expect: "admin, untagged, @mention. DROP Wasim" },
   { id: "GD3", who: "Kemal", body: "Najib is out", confirm: ["Najib"], expect: "admin, untagged. DROP Najib" },
+  // ── RP: the untagged REPLACEMENT (2026-09-22) ──────────────────────
+  //
+  // RP1 is the incident verbatim: Sutton FC, 28 minutes to kickoff, an
+  // ORDINARY MEMBER, no tag. It routed `none` and MatchTime did nothing;
+  // Mojib played, Najib did not, and the fee was about to be charged to
+  // Najib. Both writes must land, in that order, and Mojib must inherit
+  // Najib's place and colour.
+  //
+  // RP4 to RP7 are the refusals, and they matter as much as RP1: a false
+  // positive DROPS A REAL PLAYER. `who` is Wasim throughout, a non-admin,
+  // so nothing here can be carried by the admin-OUT waiver instead.
+  { id: "RP1", who: "Wasim", body: "Hi guys, Mojib is replacing Najib on the list. We can change", confirm: ["Najib"], expect: "THE INCIDENT, verbatim. Untagged, non-admin. DROP Najib and ADD Mojib, Mojib inheriting Najib's position and team slot" },
+  { id: "RP2", who: "Wasim", body: "Mojib in for Najib", confirm: ["Najib"], expect: "the short form. DROP Najib, ADD Mojib" },
+  { id: "RP3", who: "Erdal", body: "Mojib, Najib'in yerine geliyor", history: HISTORY_TR, confirm: ["Najib"], expect: "TURKISH TWIN of RP1. DROP Najib, ADD Mojib" },
+  { id: "RP4", who: "Wasim", body: "Mojib is replacing Zork", confirm: [], expect: "the leaving name is not a member. NO drop for anyone; Mojib may still be added" },
+  { id: "RP5", who: "Wasim", body: "Zork is replacing Najib", confirm: ["Najib"], expect: "the ARRIVING name is not a member. NO drop for Najib (untagged, non-admin)" },
+  { id: "RP6", who: "Wasim", body: "Najib is out 😂 Mojib is replacing him lads", confirm: ["Najib"], expect: "banter markers from a non-admin. NO drop for Najib" },
+  { id: "RP7", who: "Wasim", body: "Mojib is in, Najib can't make it", confirm: ["Najib"], expect: "TWO STATEMENTS, no direction stated. Mojib may be added; Najib's drop still needs a tag, so NO drop" },
+  { id: "RP8", who: "Wasim", body: "I'm out, Mojib is replacing me", confirm: ["Wasim"], expect: "the SENDER is the one leaving. DROP Wasim, ADD Mojib, Mojib inheriting Wasim's slot" },
 ];
 
 /**

@@ -19,6 +19,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ADMIN_REPORTED_OUT_IS_TAG_FREE,
+  REPLACEMENT_OUT_IS_TAG_FREE,
   messageTagsBot,
   messageMentionsBotExplicitly,
   actionRequiresTag,
@@ -459,26 +460,112 @@ describe("registerForEntryRequiresTag — the gate, asked one entry at a time", 
   });
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// REPLACEMENT_OUT_IS_TAG_FREE: the 2026-09-22 Mojib/Najib incident.
+// ══════════════════════════════════════════════════════════════════════
+//
+// "Hi guys, Mojib is replacing Najib on the list. We can change", from
+// an ordinary member, tagging nobody, 28 minutes before kickoff. Najib
+// stayed in the squad he had left: wrong team sheet, wrong rating DM,
+// and the fee about to be charged to the wrong man.
+//
+// The flag is set by a deterministic pairing over the roster
+// (`pipeline/replacement.ts`) and by nothing else. These tests are about
+// what the CONTRACT does once it is set.
+describe("REPLACEMENT_OUT_IS_TAG_FREE", () => {
+  it("is a boolean that can be reverted on its own line", () => {
+    expect(typeof REPLACEMENT_OUT_IS_TAG_FREE).toBe("boolean");
+    expect(REPLACEMENT_OUT_IS_TAG_FREE).toBe(true);
+  });
+
+  it("waives the tag on the leaving half, for ANY sender", () => {
+    for (const sender of [{ senderIsAdmin: true }, { senderIsAdmin: false }, {}, undefined]) {
+      expect(
+        registerForEntryRequiresTag(
+          { name: "Najib", action: "OUT", isStatedReplacement: true },
+          sender,
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("does NOT waive a BENCH, however the pairing is flagged", () => {
+    for (const sender of [{ senderIsAdmin: true }, { senderIsAdmin: false }, undefined]) {
+      expect(
+        registerForEntryRequiresTag(
+          { name: "Najib", action: "BENCH", isStatedReplacement: true },
+          sender,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("leaves an ordinary third-party OUT exactly where it was", () => {
+    for (const flag of [undefined, false] as const) {
+      expect(
+        registerForEntryRequiresTag(
+          { name: "Najib", action: "OUT", isStatedReplacement: flag },
+          { senderIsAdmin: false },
+        ),
+      ).toBe(true);
+      expect(
+        registerForEntryRequiresTag(
+          { name: "Najib", action: "OUT", isStatedReplacement: flag },
+          { senderIsAdmin: true },
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("the incident's message no longer needs a tag at the message level", () => {
+    const v: GateVerdict = {
+      intent: "in",
+      registerAttendance: null,
+      registerFor: [
+        { name: "Najib", action: "OUT", isStatedReplacement: true },
+        { name: "Mojib", action: "IN" },
+      ],
+    };
+    expect(actionRequiresTag(v, { senderIsAdmin: false })).toBe(false);
+  });
+
+  it("but the same message with an extra BENCH clause still does", () => {
+    const v: GateVerdict = {
+      intent: "in",
+      registerAttendance: null,
+      registerFor: [
+        { name: "Najib", action: "OUT", isStatedReplacement: true },
+        { name: "Mojib", action: "IN" },
+        { name: "Amir", action: "BENCH" },
+      ],
+    };
+    expect(actionRequiresTag(v, { senderIsAdmin: false })).toBe(true);
+  });
+});
+
 describe("actionRequiresTag is EXACTLY the OR of the per-entry answers", () => {
   // The message-level answer must stay derivable from the per-entry one,
   // or the engine's "is anything at all permitted?" check and the gate
   // itself can disagree, and the split leaks. Enumerated over every
   // combination of up to three entries, for every seat.
+  //
+  // Enumerated over `isStatedReplacement` too since 2026-09-22: the
+  // engine sets it on ONE entry and asks the per-claim question itself,
+  // and its own seatbelt compares the two answers. A combination where
+  // they could differ is the drift that seatbelt exists to catch.
   const ACTIONS = ["IN", "OUT", "BENCH"] as const;
+  const FLAGS = [undefined, false, true] as const;
   const combos: GateRegisterForEntry[][] = [];
   for (const a of ACTIONS) {
-    combos.push([{ name: "A", action: a }]);
-    for (const b of ACTIONS) {
-      combos.push([
-        { name: "A", action: a },
-        { name: "B", action: b },
-      ]);
-      for (const c of ACTIONS) {
-        combos.push([
-          { name: "A", action: a },
-          { name: "B", action: b },
-          { name: "C", action: c },
-        ]);
+    for (const fa of FLAGS) {
+      combos.push([{ name: "A", action: a, isStatedReplacement: fa }]);
+      for (const b of ACTIONS) {
+        for (const fb of FLAGS) {
+          combos.push([
+            { name: "A", action: a, isStatedReplacement: fa },
+            { name: "B", action: b, isStatedReplacement: fb },
+          ]);
+        }
       }
     }
   }

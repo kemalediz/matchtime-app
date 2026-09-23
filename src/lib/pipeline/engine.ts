@@ -73,6 +73,7 @@ import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
 // built out of (§13) rather than inlined here — its header carries the
 // incident, the state-check argument and the pairing order.
 import { decideSlotInherits } from "../team-slot-inherit";
+import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { resolvePerson } from "./identity";
 import type {
   AttendanceFacts,
@@ -319,6 +320,36 @@ export function decide(input: EngineInput): EngineResult {
   }> = [];
   /** Question speech that the squad post would subsume (§3.2 S36). */
   const deferredSquadQuestions: SpeechIntent[] = [];
+  /**
+   * Team slots a STATED replacement took inside the claim loop
+   * ("Mojib is replacing Najib", 2026-09-22), in the order they were
+   * taken.
+   *
+   * The sheet itself (`w.teams`) is changed in place at the moment the
+   * arrival lands, exactly as the state check at the bottom of `decide`
+   * changes it, so that check then finds no vacancy for the same pair and
+   * cannot seat anybody twice. The WRITE and the POST are not made here:
+   * both are made once, at the bottom, for the stated moves and the
+   * state-check moves together. One write kind (`team_slot_inherit`), one
+   * apply-layer dep (`moveTeamSlot`, an in-place update that keeps the
+   * row's place on the sheet) and one group post (`replacement_teams_post`)
+   * for the whole batch, however each pair was found.
+   */
+  const statedSlotMoves: Array<{ fromUserId: string; toUserId: string; team: "RED" | "YELLOW" }> =
+    [];
+  /**
+   * Bench offers OPENED BY THIS BATCH, with the exact write, speech and
+   * outcome that opened each, keyed by the player whose slot it offers.
+   *
+   * Kept so the state check at the bottom can take an offer back when the
+   * same batch refills that slot from somewhere other than the bench
+   * (2026-09-23; see `retractRefilledOffers` below). Removal is by
+   * reference, never by name, so it cannot take back anything else.
+   */
+  const offersOpenedThisBatch = new Map<
+    string,
+    { write: ProposedWrite; speech: SpeechIntent; outcome: MessageOutcome }
+  >();
 
   // ── S35 · state collapse ─────────────────────────────────────────────
   // Only an author's LATEST self-attendance message writes. Computed up
@@ -733,7 +764,46 @@ export function decide(input: EngineInput): EngineResult {
         (a, b) => (a.polarity === "out" ? 0 : 1) - (b.polarity === "out" ? 0 : 1),
       );
 
-      const gate = toGateVerdict(collapsed, facts);
+      // ══════════════════════════════════════════════════════════════
+      // DOES THIS MESSAGE STATE A REPLACEMENT? (2026-09-22)
+      // ══════════════════════════════════════════════════════════════
+      //
+      // "Hi guys, Mojib is replacing Najib on the list. We can change",
+      // untagged, 28 minutes before kickoff. MatchTime did nothing;
+      // Mojib played, Najib did not, and the fee was about to be
+      // charged to Najib. `lib/pipeline/replacement.ts` carries the
+      // whole argument and every refusal.
+      //
+      // ASKED HERE, BEFORE THE GATE, because the gate's answer depends
+      // on it: the leaving half of a stated replacement is tag-free
+      // (`REPLACEMENT_OUT_IS_TAG_FREE`). Asked over `collapsed` rather
+      // than over the raw claims, for the same reason the gate is: a
+      // person's LAST claim is the one this message makes about them.
+      //
+      // IT CANNOT WIDEN ANYTHING ON ITS OWN. It resolves names, it
+      // returns a pair, and every write below still runs the whole
+      // ladder: the confidence floor, tense, the availability hold, the
+      // contingency holds, identity resolution, `banterRefusal`,
+      // capacity and `applyClaim`. The one thing it changes is whether
+      // the OUT needs a tag, and the one thing it adds is the slot.
+      const memberSide = (ref: string) => {
+        const r = resolvePerson(ref, w.roster);
+        return r.kind === "resolved"
+          ? { userId: r.member.userId, name: r.member.name }
+          : null;
+      };
+      const senderSide = () =>
+        msg.senderUserId
+          ? { userId: msg.senderUserId, name: msg.senderName ?? nameOf(w, msg.senderUserId) }
+          : null;
+      const replacement: StatedReplacement | null = findStatedReplacement({
+        claims: collapsed,
+        targetOf: (c) => (c.subject === "sender" ? senderSide() : memberSide(c.personRef)),
+        refersTo: (ref) => (isSelfRef(ref) ? senderSide() : memberSide(ref)),
+        confidenceFloor: CONFIDENCE_FLOOR,
+      });
+
+      const gate = toGateVerdict(collapsed, facts, replacement);
       const needsTag = actionRequiresTag(gate, { senderIsAdmin });
 
       // ── THE GATE, ASKED ONCE PER CLAIM (2026-09-08) ──────────────────
@@ -772,7 +842,15 @@ export function decide(input: EngineInput): EngineResult {
         c.subject === "sender"
           ? false
           : registerForEntryRequiresTag(
-              { name: c.personRef, action: polarityToAction(c.polarity) },
+              {
+                name: c.personRef,
+                action: polarityToAction(c.polarity),
+                // Reference equality against the very claim the pairing
+                // chose, so `toGateVerdict` above and this cannot
+                // disagree about which OUT was waived. The seatbelt
+                // twelve lines down is what would catch it if they did.
+                isStatedReplacement: !!replacement && c === replacement.outClaim,
+              },
               { senderIsAdmin },
             );
       /** May this claim be acted on, given how the message was (or was
@@ -842,6 +920,11 @@ export function decide(input: EngineInput): EngineResult {
         (c) =>
           c.subject === "other" &&
           !claimNeedsTag(c) &&
+          // The leaving half of a stated replacement was waived by
+          // REPLACEMENT_OUT_IS_TAG_FREE, named on its own line below.
+          // Without this the admin waiver was named too, for a sender
+          // who is not an admin (seen in the 2026-09-23 RP dry run).
+          !(replacement && c === replacement.outClaim) &&
           // The same question with NO sender: "would anyone else have
           // needed a tag for this?" Absence means "not an admin".
           registerForEntryRequiresTag({
@@ -913,6 +996,18 @@ export function decide(input: EngineInput): EngineResult {
         }
       }
 
+      if (replacement && !msg.tagged && ordered.includes(replacement.outClaim)) {
+        // Name WHICH waiver let an untagged roster change through. Same
+        // reason as the admin line below it: the reason trail is the
+        // only place a wrong drop can be traced back to a policy rather
+        // than to a model, and there are now three waivers that can
+        // carry the same message.
+        out.reasons.push(
+          `untagged, but "${replacement.inClaim.personRef}" is stated as replacing ` +
+            `${replacement.outgoing.name} and both are members, so the drop rides ` +
+            `the replacement (REPLACEMENT_OUT_IS_TAG_FREE)`,
+        );
+      }
       if (waivedByAdminOut && !msg.tagged) {
         // Name WHICH waiver let an untagged roster change through. The
         // reason trail is the only place a wrong drop can be traced back
@@ -1091,6 +1186,42 @@ export function decide(input: EngineInput): EngineResult {
 
       if (targets.length === 0) return;
 
+      // ── THE TWO HALVES OF THE REPLACEMENT, AS TARGETS ───────────────
+      //
+      // A pairing only earns the slot when BOTH its claims survived
+      // everything above: the tag gate, the confidence floor, tense.
+      // If either was dropped on the way here the pairing is inert:
+      // the surviving half is an ordinary claim and behaves like one.
+      //
+      // AND both must have landed on the SAME people the pairing
+      // resolved. The two resolutions run the same `resolvePerson` over
+      // the same roster, so they cannot differ today; asserting it
+      // rather than assuming it is what stops a future change to either
+      // path from silently moving somebody else's slot. A mismatch is
+      // simply not a live pairing, which is the same answer as no
+      // pairing at all.
+      const targetFor = (c: Claim, side: { userId: string }) => {
+        const t = targets.find((x) => x.claim === c) ?? null;
+        return t && t.userId === side.userId && !t.provisional ? t : null;
+      };
+      const replacementOut = replacement
+        ? targetFor(replacement.outClaim, replacement.outgoing)
+        : null;
+      const replacementIn = replacement
+        ? targetFor(replacement.inClaim, replacement.incoming)
+        : null;
+      const replacementIsLive: boolean = !!replacementOut && !!replacementIn;
+      /** Najib's row as it stood BEFORE this message: the position and
+       *  the colour Mojib inherits. Read here because `applyClaim`
+       *  mutates the row in place a few lines down. */
+      const vacatedSlot =
+        replacementOut && replacementIn
+          ? {
+              position: w.rows.get(replacementOut.userId!)?.position ?? null,
+              team: w.teams.find((x) => x.userId === replacementOut.userId)?.team ?? null,
+            }
+          : null;
+
       // ── Authorisation for the privileged moves ──────────────────────
       const promoteEntries: PromoteRegisterEntry[] = targets.map((t) => ({
         userId: t.userId,
@@ -1249,6 +1380,12 @@ export function decide(input: EngineInput): EngineResult {
           self,
           promoteAuthorized,
           messageId: msg.id,
+          // A replacement stands where the man he replaced stood.
+          // Kemal's hand correction on the night of the incident put
+          // Mojib at Najib's position 5 rather than at the end of the
+          // list, and the squad post reads in position order.
+          inheritPosition:
+            replacementIsLive && t === replacementIn ? (vacatedSlot?.position ?? null) : null,
         });
         if (!write) {
           // A bench player answering an open offer when the slot has
@@ -1319,10 +1456,65 @@ export function decide(input: EngineInput): EngineResult {
           });
         }
 
+        // ── THE REPLACEMENT TAKES THE SLOT ON THE SHEET ────────────
+        //
+        // The slot moves only when all five of these hold: the pairing
+        // survived to here, this is its arriving half, he actually
+        // landed CONFIRMED (a full squad would have benched him, and a
+        // bench player is not on the sheet), the man he replaced was
+        // really holding a colour, and the arrival holds no slot of his
+        // own already (a dropped player coming back as a replacement
+        // keeps the slot he never gave up; handing him a second one
+        // would be two rows for one man). Otherwise the sheet is left
+        // exactly as it was, and the state check at the bottom of
+        // `decide` still gets its say.
+        //
+        // THE SAME MOVE AS THAT STATE CHECK (2026-09-23 reconciliation
+        // with #82): the row CHANGES HANDS in place, so the replacement
+        // stands where the man he replaced stood on the sheet rather
+        // than at the bottom of his side. It is done HERE rather than
+        // left to the state check because the message named WHO he
+        // replaces, and the state check can only zip vacancies against
+        // arrivals by order: with two vacancies on the sheet it could
+        // hand Mojib the wrong one. Recorded, not emitted: the write and
+        // the post are made once, at the bottom.
+        //
+        // NO ATTENDANCE HERE and NO BALANCER: the two rows have already
+        // moved above, and re-running the balancer over a hand-made
+        // line-up on match night is 2026-06-18 (`c408649`).
+        if (
+          replacementOut?.userId &&
+          t === replacementIn &&
+          t.userId &&
+          write.status === "CONFIRMED" &&
+          vacatedSlot?.team &&
+          !w.teams.some((x) => x.userId === t.userId)
+        ) {
+          const fromUserId = replacementOut.userId;
+          const toUserId = t.userId;
+          w.teams = w.teams.map((x) => (x.userId === fromUserId ? { ...x, userId: toUserId } : x));
+          statedSlotMoves.push({ fromUserId, toUserId, team: vacatedSlot.team });
+          out.reasons.push(
+            `${t.name} replaces ${replacementOut.name} and takes their ${vacatedSlot.team} slot`,
+          );
+        }
+
         // A drop with a bench behind it opens ONE offer to the WHOLE
         // bench. Nobody is dropped; first claim wins; daytime gating and
         // the copy live in bench-offer-copy.ts (§13 "preserve exactly").
-        if (write.status === "DROPPED" && t.userId) {
+        //
+        // ⚠️ NOT FOR A SLOT A REPLACEMENT IS ABOUT TO FILL (2026-09-22).
+        // "Mojib is replacing Najib" would otherwise drop Najib, invite
+        // the whole bench to claim his place, and then give it to Mojib
+        // anyway: a broadcast and a round of DMs for a slot that was
+        // never open. The arriving half is already in `targets` and is
+        // applied a few iterations later, OUT-first ordering having put
+        // this one ahead of it.
+        const replacementWillFill =
+          !!replacementIn?.userId &&
+          t === replacementOut &&
+          w.rows.get(replacementIn.userId)?.status !== "CONFIRMED";
+        if (write.status === "DROPPED" && t.userId && !replacementWillFill) {
           const bench = benchUserIds(w);
           const alreadyOpen = w.offers.some((o) => o.replacingUserId === t.userId);
           if (bench.length > 0 && !alreadyOpen) {
@@ -1332,17 +1524,24 @@ export function decide(input: EngineInput): EngineResult {
               offeredToUserIds: bench,
             };
             w.offers.push(offer);
-            emit({
+            const offerWrite: ProposedWrite = {
               kind: "open_bench_offer",
               replacingUserId: t.userId,
               offeredToUserIds: bench,
               sourceMessageId: msg.id,
               reason: `${t.name} dropped out with ${bench.length} on the bench`,
-            });
-            speech.push({
+            };
+            const offerSpeech: SpeechIntent = {
               kind: "bench_offer_open",
               messageId: msg.id,
               replacingName: t.name,
+            };
+            emit(offerWrite);
+            speech.push(offerSpeech);
+            offersOpenedThisBatch.set(t.userId, {
+              write: offerWrite,
+              speech: offerSpeech,
+              outcome: out,
             });
           }
         }
@@ -2520,8 +2719,65 @@ export function decide(input: EngineInput): EngineResult {
   /** The message a replacement post would ride. Non-null exactly when
    *  `squadChanged` is, and narrowed once here so neither the write nor
    *  the speech below needs a non-null assertion. */
+  //
+  // ── A SLOT REFILLED IN THE SAME BATCH IS NOT OFFERED TO THE BENCH ──
+  //
+  // (2026-09-23.) #123 stops a STATED replacement from opening a bench
+  // offer at all ("Mojib is replacing Najib": the slot is never vacant).
+  // The state check reaches the same situation by another road: a drop
+  // with a bench behind it opens an offer on one message, and a later
+  // message IN THE SAME BATCH brings a replacement who takes that slot.
+  // Left alone, the group would read "a slot is open, bench, first to
+  // say IN" on the drop and "Shahrokh takes Wasim's place" on the
+  // arrival, two posts contradicting each other by a line, which is the
+  // 2026-06-12 shape S36 exists to prevent.
+  //
+  // So an offer this batch opened for a slot this batch then refilled is
+  // TAKEN BACK: its proposed write, its speech and the working offer,
+  // each removed by reference. Only while the offer is still open: if a
+  // bench player claimed it in between, the offer did its job and stands.
+  //
+  // WHAT THIS CANNOT REACH, stated: an offer opened by an EARLIER request
+  // has already been created and broadcast. `attendance.ts` closes it the
+  // moment the arrival fills the squad (the squad-full close), which is
+  // what stops further prompts; nothing in the engine can recall a DM
+  // that has gone. And the real `BenchSlotOffer` row is created by
+  // `cancelAttendance`, not from this write (the apply layer skips
+  // `open_bench_offer`), so what this retracts is the group line and the
+  // dry run's account of it; the row is opened and then closed by that
+  // same squad-full close inside the same apply pass.
+  const retractRefilledOffers = (moves: Array<{ fromUserId: string }>) => {
+    for (const m of moves) {
+      const opened = offersOpenedThisBatch.get(m.fromUserId);
+      if (!opened) continue;
+      const stillOpen = w.offers.some(
+        (o) => o.replacingUserId === m.fromUserId && o.id === `proposed-offer-${m.fromUserId}`,
+      );
+      if (!stillOpen) continue;
+      w.offers = w.offers.filter((o) => o.id !== `proposed-offer-${m.fromUserId}`);
+      const drop = <T,>(xs: T[], x: T) => {
+        const i = xs.indexOf(x);
+        if (i >= 0) xs.splice(i, 1);
+      };
+      drop(writes, opened.write);
+      drop(opened.outcome.writes, opened.write);
+      drop(speech, opened.speech);
+      opened.outcome.reasons.push(
+        `bench offer for ${nameOf(w, m.fromUserId)}'s slot taken back: the same batch refilled it`,
+      );
+    }
+  };
+  //
+  // ── STATED REPLACEMENTS RIDE THE SAME WRITE AND THE SAME POST ──────
+  //
+  // "Mojib is replacing Najib" (2026-09-22) already moved its slot in
+  // the claim loop, because the message named the pair; see
+  // `statedSlotMoves`. Those moves come FIRST, in the order they were
+  // made, and the state check then runs over the sheet they left, so it
+  // can only ever add pairs the message did not name. One write kind and
+  // one post for both, never a one-liner beside a teams post.
   const rideOn = lastSquadChangeMessageId;
-  const inherits = rideOn
+  const foundByState = rideOn
     ? decideSlotInherits({
         rows: [...w.rows.values()].map((r) => ({
           userId: r.userId,
@@ -2531,14 +2787,19 @@ export function decide(input: EngineInput): EngineResult {
         teams: w.teams,
       })
     : [];
+  const inherits = rideOn ? [...statedSlotMoves, ...foundByState] : [];
   if (rideOn) {
-    for (const m of inherits) {
+    for (const m of foundByState) {
       // The row CHANGES HANDS rather than being deleted and re-created,
       // so the replacement appears where the dropped player stood. Sheet
       // order is `id: asc` in `load-state.ts` and the apply layer
       // updates in place, so "takes his spot" is literal on both sides
-      // of the seam.
+      // of the seam. (Stated moves were applied to `w.teams` the same
+      // way when they were made.)
       w.teams = w.teams.map((t) => (t.userId === m.fromUserId ? { ...t, userId: m.toUserId } : t));
+    }
+    retractRefilledOffers(inherits);
+    for (const m of inherits) {
       writes.push({
         kind: "team_slot_inherit",
         fromUserId: m.fromUserId,
@@ -2642,11 +2903,23 @@ function polarityToAction(p: Claim["polarity"]): "IN" | "OUT" | "BENCH" {
  * tag gate is REUSED rather than reimplemented. §13: "The interaction
  * contract … moves into the engine unchanged in meaning."
  */
-export function toGateVerdict(claims: Claim[], facts: AttendanceFacts): GateVerdict {
+export function toGateVerdict(
+  claims: Claim[],
+  facts: AttendanceFacts,
+  /** The pairing `findStatedReplacement` found, when there is one. It
+   *  marks ONE entry, the leaving half, so the contract can waive its
+   *  tag. `handleAttendance` asks the identical question per claim; the
+   *  seatbelt there compares the two answers. */
+  replacement?: { outClaim: Claim } | null,
+): GateVerdict {
   const selfClaim = claims.find((c) => c.subject === "sender");
   const others: GateRegisterForEntry[] = claims
     .filter((c) => c.subject === "other")
-    .map((c) => ({ name: c.personRef, action: polarityToAction(c.polarity) }));
+    .map((c) => ({
+      name: c.personRef,
+      action: polarityToAction(c.polarity),
+      isStatedReplacement: !!replacement && c === replacement.outClaim,
+    }));
 
   let intent: string;
   if (selfClaim) {
@@ -2759,6 +3032,20 @@ function applyClaim(args: {
   self: boolean;
   promoteAuthorized: boolean;
   messageId: string;
+  /**
+   * THE POSITION A REPLACEMENT INHERITS from the player he is replacing
+   * (2026-09-22), or null, which is every other claim in the product.
+   *
+   * Only ever read for a BRAND-NEW row. A player who already has a row
+   * keeps his own position, which is the rule the CONFIRMED→BENCH
+   * demote below already follows and for the same reason: we do not
+   * shuffle the slot list under people.
+   *
+   * `position` is not unique on `Attendance`, so the vacated row keeps
+   * the number too. That is correct rather than merely tolerated: it is
+   * DROPPED, so nothing that renders a squad reads it.
+   */
+  inheritPosition?: number | null;
 }): (ProposedWrite & { kind: "attendance" }) | null {
   const { w, state, target, self, promoteAuthorized, messageId } = args;
   const polarity = target.claim.polarity;
@@ -2822,7 +3109,9 @@ function applyClaim(args: {
   }
 
   const status = explicitBench || !squadHasRoom ? "BENCH" : "CONFIRMED";
-  const position = existing ? existing.position : w.nextPosition++;
+  const position = existing
+    ? existing.position
+    : (args.inheritPosition ?? w.nextPosition++);
   w.rows.set(userId, { userId, status, position });
   return {
     kind: "attendance",

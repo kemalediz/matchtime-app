@@ -16,11 +16,13 @@
  *   benching/replacing OTHER players, reminders, payment queries, etc.
  *   Untagged → noise: no action, no reply, no reaction, DB unchanged.
  *
- *   TWO NAMED EXCEPTIONS have been argued and added on top, each as one
- *   revertable constant: a third-party ADD is tag-free for anyone, and
+ *   THREE NAMED EXCEPTIONS have been argued and added on top, each as
+ *   one revertable constant: a third-party ADD is tag-free for anyone,
  *   an OWNER/ADMIN reporting another player OUT is tag-free for them
- *   (`ADMIN_REPORTED_OUT_IS_TAG_FREE`, 2026-09-07). A BENCH still needs
- *   a tag from everyone, including the owner.
+ *   (`ADMIN_REPORTED_OUT_IS_TAG_FREE`, 2026-09-07), and the LEAVING half
+ *   of a stated, fully resolved replacement is tag-free for anyone
+ *   (`REPLACEMENT_OUT_IS_TAG_FREE`, 2026-09-22). A BENCH still needs a
+ *   tag from everyone, including the owner.
  *
  *   AND THE QUESTION IS ASKED PER ENTRY, NOT PER MESSAGE (2026-09-08).
  *   `registerForEntryRequiresTag` is the whole rule; `actionRequiresTag`
@@ -133,6 +135,16 @@ export function messageMentionsBotExplicitly(msg: TagInput): boolean {
 export interface GateRegisterForEntry {
   name: string;
   action: "IN" | "OUT" | "BENCH";
+  /**
+   * Is this OUT the leaving half of a replacement the message STATES,
+   * with both people resolved to current members?
+   *
+   * Set by `pipeline/engine.ts` from `findStatedReplacement`, never by a
+   * model and never from the text. Read by
+   * `registerForEntryRequiresTag` and by nothing else. Absent means no,
+   * so every existing caller keeps the old, stricter answer.
+   */
+  isStatedReplacement?: boolean;
 }
 
 export interface GateVerdict {
@@ -260,6 +272,75 @@ export function isSelfAttendanceVerdict(v: GateVerdict): boolean {
  */
 export const ADMIN_REPORTED_OUT_IS_TAG_FREE = true;
 
+/**
+ * MAY ANYONE REPORT THE LEAVING HALF OF A STATED REPLACEMENT WITHOUT
+ * TAGGING @Match Time?
+ *
+ * ⚠️ THE SECOND ARGUED WIDENING OF THE THIRD-PARTY RULE, and like the
+ * first it is one named constant read in exactly one place. Set it to
+ * `false` and the gate behaves as it did before 2026-09-22.
+ *
+ * ── THE INCIDENT (2026-09-22, Sutton FC, 28 minutes to kickoff) ──────
+ *
+ * A player posted, untagged:
+ *
+ *   "Hi guys, Mojib is replacing Najib on the list. We can change"
+ *
+ * Mojib played. Najib did not. The team sheet named Najib, the rating
+ * DMs would have gone to Najib, and the match fee was about to be
+ * charged to Najib. Kemal fixed the rows by hand that night.
+ *
+ * The router lost it first and the extractor was never told that a
+ * replacement is two claims, both of which are fixed alongside this. But
+ * even with both of those right, the OUT half would have been refused:
+ * the sender is an ordinary member, the message tags nobody, and a
+ * third-party OUT needs a tag from everyone except an admin.
+ *
+ * ── THE ARGUMENT ────────────────────────────────────────────────────
+ *
+ * The contract's own line is that a tag is required for REQUESTS and
+ * free for ATTENDANCE STATEMENTS. "Najib's in" has always been free.
+ * "Mojib is replacing Najib" is the same kind of sentence with two
+ * people in it, and the third-party ADD half of it has been tag-free for
+ * everybody since the third-party-add change. Refusing only the other
+ * half leaves the squad holding a man who is not coming AND the man who
+ * is, which is worse than either answer taken whole.
+ *
+ * It is also the direction the club's own money runs. A stale CONFIRMED
+ * row is what the fee is charged against and what the rating DM is sent
+ * to, so "do nothing" is not the neutral option it looks like.
+ *
+ * ── THE SCOPE, AND IT IS NARROWER THAN THE ADMIN WAIVER ─────────────
+ *
+ *   WHO   anyone. The seat is not consulted: the person who knows a
+ *         replacement has arrived is usually the player who arranged it,
+ *         which is the same reasoning `team-slot-swap.ts` gives for not
+ *         putting an admin gate on a slot transfer.
+ *   WHAT  ONE OUT, and only as the far end of an `in` claim about a
+ *         DIFFERENT current member that the message says is taking this
+ *         person's place. `pipeline/replacement.ts` decides that, against
+ *         the roster, and refuses an unknown name, an unstated
+ *         direction, two replacements at once, a claim below the
+ *         confidence floor, and every claim the engine would have held
+ *         anyway. No pairing, no waiver.
+ *   NOT   BENCH, for the same reason the admin waiver excludes it: a
+ *         demote is roster surgery, not the recording of a fact.
+ *   NOT   an OUT on its own. A replacement that names nobody arriving is
+ *         an ordinary third-party drop and needs a tag exactly as it
+ *         does today.
+ *   NOT   anything else in the message. It is one entry's answer, the
+ *         2026-09-08 David incident's whole lesson.
+ *
+ * ── WHAT DOES NOT MOVE ──────────────────────────────────────────────
+ *
+ * `banterRefusal` still runs, so "Najib is out 😂 Mojib is replacing him
+ * lads" from a non-admin is still refused for want of corroboration. So
+ * does the confidence floor, on BOTH claims, with no exemption: the
+ * self-IN exemption is about a member's own place and a third party
+ * moving two other people is precisely what the floor was kept for.
+ */
+export const REPLACEMENT_OUT_IS_TAG_FREE = true;
+
 /** Everything the gate is allowed to know about WHO sent the message.
  *  One field, read from the membership table, never from a model. */
 export interface GateSender {
@@ -276,11 +357,14 @@ export interface GateSender {
  *   IN     never. A third-party ADD has been tag-free for everyone since
  *          the third-party-add change: registering a friend somebody
  *          names in ordinary group chat is not a directed op.
- *   OUT    tag-free for an OWNER/ADMIN only
- *          (`ADMIN_REPORTED_OUT_IS_TAG_FREE`, and the seat comes from the
- *          membership table, never from a model). For anyone else it
- *          stays an explicit, tagged op, or the group can remove each
- *          other by typing a sentence.
+ *   OUT    tag-free for an OWNER/ADMIN (`ADMIN_REPORTED_OUT_IS_TAG_FREE`,
+ *          and the seat comes from the membership table, never from a
+ *          model), and tag-free for ANYONE when it is the leaving half
+ *          of a stated replacement (`REPLACEMENT_OUT_IS_TAG_FREE`, and
+ *          `isStatedReplacement` is set by a deterministic pairing over
+ *          the roster, never by a model). For anyone else it stays an
+ *          explicit, tagged op, or the group can remove each other by
+ *          typing a sentence.
  *   BENCH  always, from everybody, the owner included. See the NOT
  *          clause on `ADMIN_REPORTED_OUT_IS_TAG_FREE`: a demote leaves
  *          the player in the squad in a worse position, it is roster
@@ -326,6 +410,10 @@ export function registerForEntryRequiresTag(
 ): boolean {
   if (entry.action === "IN") return false;
   if (entry.action === "OUT") {
+    // The leaving half of a stated, fully resolved replacement. See
+    // `REPLACEMENT_OUT_IS_TAG_FREE`; the pairing that sets this flag is
+    // `pipeline/replacement.ts` and it is the only thing allowed to.
+    if (REPLACEMENT_OUT_IS_TAG_FREE && entry.isStatedReplacement === true) return false;
     return !(ADMIN_REPORTED_OUT_IS_TAG_FREE && sender?.senderIsAdmin === true);
   }
   return true;
