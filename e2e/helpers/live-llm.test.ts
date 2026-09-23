@@ -59,10 +59,17 @@ import { readFileSync } from "node:fs";
 const REPO_ROOT = process.cwd();
 
 /** Run the real orchestrator, keyless-live, and report what it did.
- *  `ANTHROPIC_API_KEY: ""` rather than deleted on purpose: dotenv leaves
- *  an already-present key alone, so this is deterministic whether or not
- *  the checkout has a `.env` — and an empty string is exactly the value
- *  `buildTestEnv()` hands the server when there is no key at all. */
+ *  BOTH key names are pinned "" rather than deleted, on purpose: dotenv
+ *  leaves an already-present name alone, so this is deterministic whether
+ *  or not the checkout has a `.env`.
+ *
+ *  Until 2026-09-23 only `ANTHROPIC_API_KEY` was pinned. A live run has
+ *  resolved `ANTHROPIC_API_KEY_DEV` since the key split, so the child's
+ *  own `loadEnv()` filled that one from `.env`, the pre-flight probed
+ *  both PROBE_MODELS for real, and a plain `vitest run` spent money. The
+ *  dev key pin is what makes this test free; the unit-model guard
+ *  (`unit-model-guard.setup.ts`) is the second lock, and
+ *  `unit-tests-never-call-the-model.test.ts` fails if this pin goes. */
 function runOrchestratorKeylessLive(): { status: number | null; output: string } {
   const res = spawnSync("npx", ["tsx", "e2e/run.ts", "sim/corpus-live.spec.ts"], {
     cwd: REPO_ROOT,
@@ -72,6 +79,7 @@ function runOrchestratorKeylessLive(): { status: number | null; output: string }
       ...process.env,
       MT_SIM_LIVE_LLM: "1",
       ANTHROPIC_API_KEY: "",
+      ANTHROPIC_API_KEY_DEV: "",
       // Never fight a real run for this checkout's lock file.
       MT_E2E_RUN_LOCK: path.join(REPO_ROOT, ".e2e", "live-llm-test.lock"),
     },
@@ -86,7 +94,10 @@ describe("a live run with no usable key", () => {
       const { status, output } = runOrchestratorKeylessLive();
       expect(status, `orchestrator exited ${status}\n${output}`).not.toBe(0);
       expect(output).toMatch(/REFUSING to run/);
-      expect(output).toMatch(/ANTHROPIC_API_KEY/);
+      // The key a live run actually resolves, named in the refusal.
+      expect(output).toMatch(/ANTHROPIC_API_KEY_DEV/);
+      // Refused before the pre-flight probe, so no model was called.
+      expect(output).not.toMatch(/pre-flight call|probe OK/);
       // The refusal must come BEFORE any work: no Postgres, no schema
       // push, no Playwright. A run that gets as far as a scoreboard has
       // already produced the numbers nobody should trust.
