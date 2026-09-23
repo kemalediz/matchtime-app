@@ -55,6 +55,15 @@ const SAMPLES: SampleArgs = {
   bench_header: { count: 2 },
   teams_post_header: { kickoff: "21:30", venue: "Goals North Cheam" },
   teams_post_footer: null,
+  // Row 2b, the 2026-09-15 replacement post. `outNames` and `swaps` are
+  // ARRAYS, so the "uses every argument" rule only requires that the
+  // entry accept them; the single-swap branch below is the live shape.
+  replacement_note: { from: "Wasim" },
+  replacement_lead: {
+    outNames: ["Wasim"],
+    swaps: [{ inName: "Shahrokh", outName: "Wasim", teamLabel: "Yellow" }],
+  },
+  teams_post_footer_after_replacement: null,
   squad_complete_header: { maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: "Tue 22 Sept 21:30" },
   squad_complete_signoff: null,
   bench_promotion_how: { reactions: false },

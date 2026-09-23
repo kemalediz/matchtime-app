@@ -74,6 +74,50 @@ export const en = {
     `⚽ *Teams for tonight* — ${p.kickoff} at ${p.venue}`,
   teams_post_footer: "Objections? Reply `@Match Time swap X with Y` and an admin will confirm.",
 
+  // ── row 2b: replacement_teams_post (pipeline/compose.ts) ─────────
+  //   NEW copy, 2026-09-15, for the Wasim/Shahrokh incident: a
+  //   replacement arrived an hour after the teams had been announced
+  //   and the sheet was never touched, so the last line-up standing in
+  //   the group named a man who was at home with a fever.
+  //
+  //   The lead says who left and who took their place; `formatTeamsPost`
+  //   prints the sheet under it with `replacement_note` marking the line
+  //   it happened on, and `teams_post_footer_after_replacement` replaces
+  //   the standing footer, because "reply swap X with Y" is the wrong
+  //   instruction on a post whose whole subject is a swap already made.
+  //
+  //   It names the team LABEL, never the colour: this club renames its
+  //   sides and `resolveTeamLabels` is what decides.
+
+  replacement_note: (p: { from: string }): string => `replacing ${p.from}`,
+  replacement_lead: (p: {
+    /** Only those who actually went OUT. A confirmed player demoted to
+     *  the bench vacates a slot without being out, and this must not say
+     *  otherwise. Empty is a normal case. */
+    outNames: string[];
+    swaps: { inName: string; outName: string; teamLabel: string }[];
+  }): string => {
+    if (p.swaps.length === 1 && p.outNames.length === 1) {
+      return (
+        `🔁 *${p.outNames[0]} is out* — *${p.swaps[0].inName}* takes his place ` +
+        `and his spot in *${p.swaps[0].teamLabel}*.`
+      );
+    }
+    const head =
+      p.outNames.length > 0
+        ? `🔁 *${joinList("en", p.outNames)} ${p.outNames.length === 1 ? "is" : "are"} out* — `
+        : "🔁 ";
+    return (
+      head +
+      p.swaps
+        .map((x) => `*${x.inName}* takes ${x.outName}'s spot in *${x.teamLabel}*`)
+        .join(", ") +
+      "."
+    );
+  },
+  teams_post_footer_after_replacement:
+    "Objections? An admin can ask me to regenerate the teams.",
+
   // ── row 43: buildSquadCompletePost (group-copy.ts) ───────────────
 
   squad_complete_header: (p: { maxPlayers: number; activityName: string; kickoffLabel: string }): string =>

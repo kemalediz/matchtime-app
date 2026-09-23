@@ -57,6 +57,12 @@ function matchRow(bench: string[] = []) {
       ...NAMES.map((name, i) => ({ status: "CONFIRMED", position: i + 1, user: { name } })),
       ...bench.map((name, i) => ({ status: "BENCH", position: 20 + i, user: { name } })),
     ],
+    // No team sheet: every case in THIS file is the squad filling before
+    // the teams are generated, which is the only time this function has
+    // ever spoken. The 2026-09-15 rule ("once the teams are out, nobody
+    // posts the roster") is exercised in
+    // `no-roster-after-teams.test.ts`, where this array is non-empty.
+    teamAssignments: [],
   };
 }
 

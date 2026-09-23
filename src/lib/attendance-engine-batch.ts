@@ -198,6 +198,26 @@ export interface EngineMessageOutcome {
   /** The sender's own row moved, so the post-batch react audit should
    *  reconcile this react against the database. */
   senderOwnRowMoved: boolean;
+  /**
+   * THIS REPLY IS A TEAM SHEET, AND MUST NOT BE RE-COMPOSED (2026-09-15).
+   *
+   * `route.ts`'s §10-step-4 pass replaces anything `displaysSquadState`
+   * recognises with a post built from a fresh snapshot, and two numbered
+   * lists under two headings is rule (a). The replacement post is
+   * already composed from the database — by `pipeline/compose.ts`, on
+   * the projected state, with the swap named in its lead — so passing it
+   * through would strip the lead and the regenerate footer and leave a
+   * plain teams post: the group would be told the line-ups again with no
+   * word about who had been replaced.
+   *
+   * It is the SAME exclusion that pass already makes for
+   * `generate_teams_request` / `show_teams_request` ("team posts
+   * intentionally carry two numbered lists (Red + Yellow) and are
+   * already deterministic"), on a flag rather than on an intent string
+   * because this message's intent is still the attendance one that
+   * caused it.
+   */
+  deterministicTeamPost: boolean;
   /** An admin asked for a replacement in this same message (PR #33). */
   recruitRequest: boolean;
   /** Personal-uncertainty conditional: record a MAYBE and chase later
@@ -845,6 +865,17 @@ export async function runAttendanceEngineBatch(args: {
     actorByMessageId,
     deps,
   });
+  // A TEAM-SLOT MOVE THAT DID NOT LAND IS AN OPERATOR PROBLEM, and it has
+  // nowhere else to go: `failures` below speaks only IN / OUT / BENCH, and
+  // the composed post is about to declare a sheet that the database did
+  // not accept. Loud rather than quiet — four seatbelts were found dead on
+  // 2026-08-31, all silent.
+  for (const a of applied) {
+    if (a.write.kind !== "team_slot_inherit" || a.ok) continue;
+    degradations.push(
+      `team slot ${a.write.fromName} → ${a.write.toName} did not move: ${a.error ?? "unknown"}`,
+    );
+  }
 
   // ── Stage 4: composition ───────────────────────────────────────────
   const composed = compose(result);
@@ -861,6 +892,14 @@ export async function runAttendanceEngineBatch(args: {
     utteranceByMessageId.set(u.messageId, list);
   }
   const reactByMessageId = new Map(composed.reacts.map((r) => [r.messageId, r.emoji]));
+  // Which replies are already-composed TEAM SHEETS. See
+  // `EngineMessageOutcome.deterministicTeamPost` for why the analyze
+  // route has to be told.
+  const teamPostMessageIds = new Set(
+    result.speech
+      .filter((s) => s.kind === "replacement_teams_post")
+      .map((s) => s.messageId),
+  );
   for (const n of composed.operatorNotes) degradations.push(n);
 
   // ── Per-message outcomes ───────────────────────────────────────────
@@ -886,7 +925,14 @@ export async function runAttendanceEngineBatch(args: {
     // outcome built here would be built out of nothing.
     if (!ownedIds.has(m.waMessageId)) continue;
     const engineOutcome = result.outcomes.find((o) => o.messageId === m.waMessageId);
-    const writes = appliedByMessage.get(m.waMessageId) ?? [];
+    // ATTENDANCE ONLY. Since 2026-09-15 `applyEngineWrites` also returns
+    // team-slot moves, and they are not attendance: they carry no status
+    // for `intentFor`/`analyzedActionFor` to read and no player whose row
+    // moved. A failed one is reported through `degradations` below rather
+    // than through `failures`, whose whole vocabulary is IN / OUT / BENCH.
+    const writes = (appliedByMessage.get(m.waMessageId) ?? []).filter(
+      (w) => w.write.kind === "attendance",
+    ) as Array<EngineWriteResult & { write: EngineAttendanceWrite }>;
     const landed = writes.filter((w) => w.ok).map((w) => w.write);
     const failures = writes
       .filter((w) => !w.ok)
@@ -936,6 +982,7 @@ export async function runAttendanceEngineBatch(args: {
       reasoning,
       failures,
       senderOwnRowMoved,
+      deterministicTeamPost: teamPostMessageIds.has(m.waMessageId),
       // PR #33: a recruit ask alongside a drop must do BOTH, and the
       // blast has to run after the drop lands, so the route defers it to
       // the batch-final pass. It used to share that pass with the

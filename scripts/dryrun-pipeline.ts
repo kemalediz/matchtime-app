@@ -195,6 +195,46 @@ type Case = {
    *  nobody checks. */
   alreadyAskedForGuestName?: boolean;
   /**
+   * Force these roster members DROPPED on the CLONED state, BEFORE
+   * `confirm` and before any sheet is built.
+   *
+   * The mirror of `confirm`, and it exists for the same reason: the live
+   * squad moves. The 15 September replacement can only be replayed with
+   * Shahrokh OUT of the squad, and he is CONFIRMED in production because
+   * the incident was repaired by hand that night.
+   */
+  drop?: string[];
+  /**
+   * BUILD A TEAM SHEET IN MEMORY before the run — the first half of the
+   * CONFIRMED squad on RED, the rest on YELLOW, in position order.
+   *
+   * IN MEMORY ONLY, like every other knob here: it edits the
+   * `structuredClone` this iteration throws away. Nothing in this file
+   * calls `create`, `update` or `delete`.
+   *
+   * It exists because the 2026-09-15 replacement incident is only
+   * reachable WITH a sheet — a confirmed player holding no slot is the
+   * normal state of the world before the teams are generated — and the
+   * live sheet has since moved: Kemal repaired the night by hand, so the
+   * row that would prove the bug is already correct in production.
+   *
+   * `false` is NOT the same as leaving it out. The live Sutton match is
+   * `TEAMS_GENERATED` with fourteen assignments on it, so "no sheet" has
+   * to be said explicitly: `false` CLEARS the sheet, and that is how the
+   * before-the-teams regression control is expressed.
+   */
+  teamsGenerated?: boolean;
+  /**
+   * Drop these players AFTER the sheet is built, leaving their slot on
+   * it. That is exactly the state the group was in at 19:15 on 15
+   * September: Wasim DROPPED and still listed in Yellow.
+   *
+   * Separate from `confirm` because the ORDER is the whole point.
+   * Dropping BEFORE the sheet is built produces a sheet with a different
+   * occupant and tests nothing.
+   */
+  dropAfterTeams?: string[];
+  /**
    * RUN THE CLAUSE PEEL FIRST, exactly as `api/whatsapp/analyze/route.ts`
    * does, and hand the PIPELINE the residual.
    *
@@ -365,6 +405,15 @@ const CASES: Case[] = [
     body: "Guys im really sorry but i have a foot injury sustained on the weekend. Was hopingvit would get better but it hasnt so I am out today",
     fullSquad: true,
     benched: null,
+    // `drop` MAKES ROOM for the `confirm` below, and without it this case
+    // silently stopped testing anything on 2026-09-15: Shahrokh joined the
+    // live squad that evening, so confirming Abid on top took the
+    // projection to 15 of 14 and `slotJustOpened` — which fires on the
+    // edge from COMPLETE to not — could not be true. The case went
+    // silent for a reason that had nothing to do with the rule it exists
+    // to check. A replay against live state has to be pinned to the
+    // world the incident happened in.
+    drop: ["Shahrokh"],
     confirm: ["Abid Kazmi"],
     expect:
       "THE 15 SEPT INCIDENT. DROP Abid, and SPEAK once: \"Abid is out, 13 of 14 for <kickoff>. One slot open, say IN to take it.\" Before the fix: the drop landed and the group heard nothing",
@@ -374,6 +423,8 @@ const CASES: Case[] = [
     who: "Abid Kazmi",
     body: "Guys im really sorry but i have a foot injury sustained on the weekend. Was hopingvit would get better but it hasnt so I am out today",
     fullSquad: true,
+    // Same room-making as Z1 — see the comment there.
+    drop: ["Shahrokh"],
     confirm: ["Abid Kazmi"],
     expect:
       "THE SAME DROP WITH A BENCH. DROP Abid and speak the BENCH OFFER only — the offer broadcast (group tag + a DM per bencher) already announces it, so no open-slot line on top",
@@ -384,6 +435,58 @@ const CASES: Case[] = [
     body: "in",
     expect:
       "THE CONTROL. WRITE Zair CONFIRMED and say NOTHING — an IN closes a gap and the ✅ is the whole acknowledgement (PR #63). If this ever speaks, the fix has reopened the overmessaging Kemal asked to stop",
+  },
+
+  // ── L: THE REPLACEMENT, AND THE LINE-UP IT LANDS ON ───────────────
+  //
+  // The second incident of 15 September.
+  //
+  // Teams generated 16:41, announced. Then, at 19:14 with kickoff at
+  // 21:30 and NOBODY on the bench:
+  //
+  //   19:14  Wasim  "…I feel a fever… If there is someone who can take
+  //                  my place, then please do."            → OUT
+  //   19:15  Amir   "Shahrokh can play in sha Allah"       → Shahrokh IN
+  //
+  // Both writes were right. The TEAM SHEET was never touched — Wasim
+  // kept his Yellow slot, Shahrokh had none, and Yellow would have
+  // turned up with six — and the fourteen-name roster went out TWICE on
+  // top, an hour after the line-ups.
+  //
+  // L1 and L2 are those two messages, verbatim, in the order they were
+  // sent. Read the `writes :` line for the `team_slot_inherit` and the
+  // `says :` line for the one post. L3 is the regression that matters:
+  // the same replacement BEFORE the teams exist must move nobody and
+  // must still post the roster.
+  {
+    id: "L1",
+    who: "Wasim",
+    body: "Salam guys, I know this is very late but I had a cold yesterday which was fine but today I feel a fever as well and it has been getting worse. It's only started affecting me now. If there is someone who can take my place, then please do.\n\nIf not, I can still come and just play in goal no worries.",
+    drop: ["Shahrokh"],
+    confirm: ["Wasim"],
+    teamsGenerated: true,
+    expect:
+      "BATCH 1, 19:14. DROP Wasim, NO team move (nobody has arrived yet), and speak ONCE with the open-slot sentence — \"Wasim is out, 13 of 14 for <kickoff>. One slot open, say IN to take it.\" No roster: the teams are already out",
+  },
+  {
+    id: "L2",
+    who: "Amir",
+    body: "Shahrokh can play in sha Allah",
+    drop: ["Shahrokh"],
+    confirm: ["Wasim"],
+    teamsGenerated: true,
+    dropAfterTeams: ["Wasim"],
+    expect:
+      "BATCH 2, 19:15, on the stale sheet batch 1 left behind. CONFIRM Shahrokh, move Wasim's YELLOW slot to him (team_slot_inherit), and speak ONCE: \"🔁 Wasim is out — Shahrokh takes his place and his spot in Yellow\" followed by both line-ups with \"(replacing Wasim)\" on his row. NOT the fourteen-name roster",
+  },
+  {
+    id: "L3",
+    who: "Amir",
+    body: "Shahrokh can play in sha Allah",
+    drop: ["Shahrokh", "Wasim"],
+    teamsGenerated: false,
+    expect:
+      "THE REGRESSION CONTROL — the same message with NO teams generated. CONFIRM Shahrokh, move NO slot, and post the roster exactly as today. A confirmed player holding no slot is the normal state of the world before the teams exist",
   },
 
   // ── Y: THE CLAUSE PEEL — incident #6 and its control ──────────────
@@ -1172,6 +1275,50 @@ function forceConfirmed(s: SquadState, names: string[]): void {
       throw new Error(`confirm: no room for "${n}" — the squad is already ${s.maxPlayers}/${s.maxPlayers}`);
     }
     s.rows.push({ userId: m.userId, status: "CONFIRMED", position: s.rows.length + 1 });
+  }
+}
+
+/** The mirror of `forceConfirmed`. See `Case.drop`. */
+function forceDropped(s: SquadState, names: string[]): void {
+  for (const n of names) {
+    const m = memberByName(s.roster, n);
+    const row = s.rows.find((r) => r.userId === m.userId);
+    if (row) row.status = "DROPPED";
+  }
+}
+
+/**
+ * A TEAM SHEET OVER THE CONFIRMED SQUAD, in position order: the first
+ * half RED, the rest YELLOW. NOT the balancer's split, and it does not
+ * need to be — what the 2026-09-15 replacement rule reads is "who holds
+ * a slot and who does not", and any deterministic seating answers that.
+ *
+ * In memory, on the clone. See `Case.teamsGenerated`.
+ */
+function generateTeamsInMemory(s: SquadState): void {
+  const confirmed = s.rows
+    .filter((r) => r.status === "CONFIRMED")
+    .sort((a, b) => a.position - b.position);
+  const half = Math.ceil(confirmed.length / 2);
+  s.teams = confirmed.map((r, i) => ({
+    userId: r.userId,
+    team: (i < half ? "RED" : "YELLOW") as "RED" | "YELLOW",
+  }));
+}
+
+/** Drop a player who is ALREADY on the sheet, leaving their slot there —
+ *  the stale line-up the incident happened in. See `Case.dropAfterTeams`. */
+function dropAfterTeams(s: SquadState, names: string[]): void {
+  for (const n of names) {
+    const m = memberByName(s.roster, n);
+    const row = s.rows.find((r) => r.userId === m.userId);
+    if (!row) throw new Error(`dropAfterTeams: "${n}" has no row to drop`);
+    if (!s.teams.some((t) => t.userId === m.userId)) {
+      throw new Error(
+        `dropAfterTeams: "${n}" holds no team slot, so the replay would test nothing`,
+      );
+    }
+    row.status = "DROPPED";
   }
 }
 
@@ -2100,6 +2247,15 @@ async function main(): Promise<void> {
 
   // Resolve every sender up front so a stale name fails before any
   // money is spent, not two minutes into a 15-repeat sweep.
+  // A DUPLICATE ID IS A SILENT DOUBLE-RUN, and it bit this file on
+  // 2026-09-15: a new W1/W2/W3 block sat beside the existing one, both
+  // ran under `ONLY=W1`, and the output read as one case answering two
+  // different ways. Cheap to assert, impossible to notice otherwise.
+  const seenIds = new Set<string>();
+  for (const c of CASES) {
+    if (seenIds.has(c.id)) throw new Error(`duplicate case id "${c.id}"`);
+    seenIds.add(c.id);
+  }
   const selected = CASES.filter((c) => !only || only.includes(c.id));
   if (only) {
     const unknown = only.filter((id) => !CASES.some((c) => c.id === id));
@@ -2143,7 +2299,14 @@ async function main(): Promise<void> {
           )
         : structuredClone(base);
       if (c.alreadyAskedForGuestName) state.guestAskedUserIds = [sender.userId];
+      // DROP BEFORE CONFIRM, and the order is load-bearing: a squad that
+      // is already at capacity would otherwise be pushed to 15 by a
+      // `confirm` of somebody who is currently out.
+      if (c.drop) forceDropped(state, c.drop);
       if (c.confirm) forceConfirmed(state, c.confirm);
+      if (c.teamsGenerated === true) generateTeamsInMemory(state);
+      if (c.teamsGenerated === false) state.teams = [];
+      if (c.dropAfterTeams) dropAfterTeams(state, c.dropAfterTeams);
       let r;
       try {
         r = await runPipeline({

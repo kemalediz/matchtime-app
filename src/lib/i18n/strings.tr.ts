@@ -98,6 +98,32 @@ export const tr: Strings = {
   teams_post_header: (p) => `⚽ *Bu akşamın takımları*, ${p.kickoff}, ${p.venue}`,
   teams_post_footer: "İtirazınız mı var? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar.",
 
+  // ── row 2b: replacement_teams_post ───────────────────────────────
+  //   "yerine" is the word the Turkish attendance examples are written
+  //   around, so the group reads back the phrasing it types. No dash
+  //   punctuation here (house style for the Turkish table); the clause
+  //   break is a comma or a colon.
+
+  replacement_note: (p) => `${p.from} yerine`,
+  replacement_lead: (p) => {
+    if (p.swaps.length === 1 && p.outNames.length === 1) {
+      return (
+        `🔁 *${p.outNames[0]} yok*, yerine *${p.swaps[0].inName}* geliyor ` +
+        `ve *${p.swaps[0].teamLabel}* takımındaki yerini alıyor.`
+      );
+    }
+    const head = p.outNames.length > 0 ? `🔁 *${joinList("tr", p.outNames)}* yok: ` : "🔁 ";
+    return (
+      head +
+      p.swaps
+        .map((x) => `*${x.inName}*, *${x.teamLabel}* takımında ${x.outName} yerine geçiyor`)
+        .join(", ") +
+      "."
+    );
+  },
+  teams_post_footer_after_replacement:
+    "İtirazınız mı var? Admin benden takımları yeniden kurmamı isteyebilir.",
+
   // ── row 43: buildSquadCompletePost ───────────────────────────────
 
   squad_complete_header: (p) =>
