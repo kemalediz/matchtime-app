@@ -176,6 +176,15 @@ import { extractorStubFromEnv } from "./extractor-stub";
 import { resolvePerson } from "./identity";
 import { anthropicModel, type PipelineModel } from "./llm";
 import {
+  STATS_CLARIFICATION_INTENT,
+  STATS_CLARIFIED_INTENT,
+  clarificationSubject,
+  isFromAsker,
+  type StatsClarification,
+} from "./awaiting-answer";
+import { planStatsQuestion, type StatsPlan } from "./stats-answer";
+import { answerGenericStats } from "./stats-generic";
+import {
   ANSWER_ENGINE_ROUTES,
   ANSWER_TEAM_ACTIONS,
   TEAM_OPS_TEAM_ACTIONS,
@@ -192,6 +201,8 @@ import type {
   RatingProgress,
   Route,
   SquadState,
+  StatsChemistry,
+  StatsSnapshot,
 } from "./types";
 
 /**
@@ -632,6 +643,12 @@ export interface AnswerBatchDeps {
    *  09-11). Injected for the same reason: a test must be able to prove
    *  it is called for a `rating_progress` topic and for nothing else. */
   loadRatingProgress?: (orgId: string, lang?: string) => Promise<RatingProgress>;
+  /** The THIRD targeted read (2026-09-23): the stats tables, only when a
+   *  `stats` question named one. Injected so a test can prove both. */
+  loadStats?: (orgId: string) => Promise<Omit<StatsSnapshot, "chemistry" | "generic">>;
+  /** One named player's chemistry, only for a player a stats question
+   *  named and the roster resolved to exactly one member. */
+  loadChemistry?: (orgId: string, userId: string) => Promise<StatsChemistry | null>;
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated engine rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
@@ -685,13 +702,41 @@ export async function runAnswerBatch(args: {
    *  also knows about the test-only per-request override). */
   enabled: Set<Route>;
   deps: AnswerBatchDeps;
+  /**
+   * The "who do you mean?" questions MatchTime has open (2026-09-23),
+   * from `loadOpenStatsClarifications`. A reply from the person asked,
+   * that reads as a name, is the answer to the ORIGINAL question: the
+   * original is re-read and the reply's name put where the unclear one
+   * was. See the essay at the foot of `awaiting-answer.ts`.
+   */
+  clarifications?: StatsClarification[];
 }): Promise<AnswerBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, enabled, deps } = args;
   const t0 = Date.now();
 
+  // ── A REPLY TO MATCHTIME'S OWN QUESTION ────────────────────────────
+  //
+  // Untagged, and owned anyway: the tag requirement below exists so
+  // MatchTime never acts on chatter it was not addressed in, and a
+  // direct answer to a question MatchTime put to this person IS
+  // addressed to it. Narrow by construction: the router only moves such
+  // a reply to `question` for the asker (`router.ts`), and this matches
+  // the resolved sender, not just the pushname, and only a reply that
+  // reads as a name.
+  const clarificationFor = new Map<string, { c: StatsClarification; subject: string }>();
+  for (const m of messages) {
+    if (m.gated || m.route !== "question") continue;
+    const c = (args.clarifications ?? []).find((q) => isFromAsker(q, m));
+    const subject = c ? clarificationSubject(m.body) : null;
+    if (c && subject) clarificationFor.set(m.waMessageId, { c, subject });
+  }
+
   // ── Ownership, part 1: everything knowable without a model ─────────
   const candidates = messages.filter(
-    (m) => !m.gated && stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES) && m.tagged,
+    (m) =>
+      !m.gated &&
+      stepSevenOwnsRoute(m.route, enabled, ANSWER_ROUTES) &&
+      (m.tagged || clarificationFor.has(m.waMessageId)),
   );
   if (candidates.length === 0) return empty();
 
@@ -858,14 +903,20 @@ export async function runAnswerBatch(args: {
   const factsById = new Map<string, Facts>();
   await Promise.all(
     eligible.map(async (m) => {
+      // A reply to a clarification is not itself a question: the ORIGINAL
+      // question is re-read, and the reply supplies the name below.
+      const clar = clarificationFor.get(m.waMessageId);
       const res = await extractForRoute(model, m.route as Route, {
         id: m.waMessageId,
-        body: m.body,
+        body: clar ? clar.c.questionBody : m.body,
         authorName: m.authorName,
-        tagged: m.tagged,
+        tagged: clar ? true : m.tagged,
         history,
         lastBotPost,
       });
+      if (clar && res.facts.kind === "question" && res.facts.topic === "stats") {
+        res.facts.personRef = clar.subject;
+      }
       for (const d of res.degradations) {
         degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);
       }
@@ -967,6 +1018,29 @@ export async function runAnswerBatch(args: {
       // skips no write, no send and no state mutation.
       if (facts.topic === "my_stats") {
         ownedIds.add(m.waMessageId);
+        continue;
+      }
+      // ── A STATS TABLE (2026-09-23) ─────────────────────────────────
+      //
+      // Owned on the same argument as `my_stats` above, ahead of the
+      // match carve-outs and the mixed-batch hand-back: a club's ratings
+      // or its Team of the Season are not claims about the upcoming
+      // squad, so a neighbour's write cannot contradict them, no match
+      // is needed to answer, and a ratings-only club with attendance
+      // off is exactly who asks. `appearances` and the no-table answer
+      // are NOT here: they read the squad state, and keep every rule
+      // they had.
+      //
+      // ⚠️ TERMINAL BRANCH, like the one above: it skips no write, no
+      // send and no state mutation, only the checks that do not apply.
+      if (facts.topic === "stats" && facts.table != null && facts.table !== "appearances") {
+        ownedIds.add(m.waMessageId);
+        continue;
+      }
+      // A reply to a clarification that did not re-read as a stats
+      // table is not something this module can answer.
+      if (clarificationFor.has(m.waMessageId)) {
+        hand("a reply to a stats clarification whose original question no longer reads as a stats table");
         continue;
       }
       // A carve-out above fired: nothing but the stats link is owned.
@@ -1159,13 +1233,97 @@ export async function runAnswerBatch(args: {
     }
   }
 
+  // ── Stage 2d: THE STATS TABLES, and only when asked (2026-09-23) ──
+  //
+  // The third targeted read, the same shape as the two above and the
+  // same fail-open: a read that throws leaves `state.stats` null, the
+  // composer says nothing under the table intents, and the silent-id
+  // check below disowns the message with a receipt. A question back to
+  // the poster needs no tables and still goes out.
+  //
+  // `planStatsQuestion` is computed HERE as well as in the engine, from
+  // the same inputs, because this is where the chemistry read and the
+  // generic model call happen and both depend on the plan. It is pure,
+  // so the two cannot come out differently.
+  const statsPlans = new Map<string, StatsPlan>();
+  const statsIds = [...ownedIds].filter((id) => {
+    const f = factsById.get(id);
+    return f?.kind === "question" && f.topic === "stats" && f.table != null && f.table !== "appearances";
+  });
+  if (statsIds.length > 0) {
+    const byId = new Map(messages.map((m) => [m.waMessageId, m]));
+    try {
+      const load =
+        deps.loadStats ??
+        (async (o: string) => {
+          const mod = await import("./load-stats");
+          return mod.loadStatsTables(o);
+        });
+      const tables = await load(orgId);
+      const chemistry: Record<string, StatsChemistry> = {};
+      const generic: StatsSnapshot["generic"] = {};
+      const snap: StatsSnapshot = { ...tables, chemistry, generic };
+      for (const id of statsIds) {
+        const f = factsById.get(id);
+        if (f?.kind !== "question") continue;
+        statsPlans.set(id, planStatsQuestion(f, state.roster, tables.aliases, byId.get(id)?.senderUserId ?? null));
+      }
+      const loadChem =
+        deps.loadChemistry ??
+        (async (o: string, u: string) => {
+          const mod = await import("./load-stats");
+          return mod.loadStatsChemistry(o, u);
+        });
+      const people = new Set<string>();
+      for (const plan of statsPlans.values()) {
+        if ((plan.kind === "table" || plan.kind === "generic") && plan.personUserId) people.add(plan.personUserId);
+      }
+      for (const u of people) {
+        const c = await loadChem(orgId, u);
+        if (c) chemistry[u] = c;
+      }
+      for (const [id, plan] of statsPlans) {
+        if (plan.kind !== "generic") continue;
+        const g = await answerGenericStats({
+          model,
+          snapshot: snap,
+          lang: state.features.language,
+          question: clarificationFor.get(id)?.c.questionBody ?? byId.get(id)?.body ?? "",
+          personUserId: plan.personUserId,
+          self: plan.self,
+          roster: state.roster,
+        });
+        generic[id] = g.result;
+        if (g.called) cost = { usd: cost.usd + g.costUsd, calls: cost.calls + 1, ms: Math.max(cost.ms, g.ms) };
+        if ("rejected" in g.result) {
+          degradations.push(`${ANSWER_DEGRADED_PREFIX} ${id}: generic stats answer not used (${g.result.rejected}); the safe line was said instead`);
+        }
+      }
+      state = { ...state, stats: snap };
+    } catch (err) {
+      const detail =
+        `${ANSWER_DEGRADED_PREFIX} the stats read failed (${
+          err instanceof Error ? err.message : String(err)
+        }); the stats question in this batch goes unanswered and onto this note`;
+      console.error("[answer-engine] stats load failed:", err);
+      degradations.push(detail);
+      for (const id of statsIds) {
+        const f = factsById.get(id);
+        if (f?.kind !== "question" || statsPlans.has(id)) continue;
+        statsPlans.set(id, planStatsQuestion(f, state.roster, [], byId.get(id)?.senderUserId ?? null));
+      }
+    }
+  }
+
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => ({
     id: m.waMessageId,
     body: m.body,
     senderUserId: m.senderUserId,
     senderName: m.senderName ?? m.authorName,
-    tagged: m.tagged,
+    // A reply to MatchTime's own clarification is addressed to it; see
+    // `clarificationFor` above.
+    tagged: m.tagged || clarificationFor.has(m.waMessageId),
     // A message this module does not own still carries its real route so
     // its outcome says why nothing happened. `none` is honest for an id
     // the router never mentioned.
@@ -1343,7 +1501,7 @@ export async function runAnswerBatch(args: {
             ? "stats_link"
             : isRatingProgress(factsById.get(m.waMessageId))
               ? "rating_progress"
-              : "question",
+              : statsIntent(m.waMessageId, engineOutcome?.statsClarificationAsked === true),
       // `AnalyzedMessage.action`, derived exactly as `route.ts:2197-2200`
       // derives it for a message with no attendance write. "none" would
       // make every step-7 answer look like a no-op to anything filtering
@@ -1352,6 +1510,23 @@ export async function runAnswerBatch(args: {
       reasoning: `${ANSWER_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}`,
       statsLinkRequest: statsLink,
     });
+  }
+
+  /**
+   * The stats intents (2026-09-23). They do two jobs: the route's
+   * squad-composition pass skips them (`skipsSquadComposition`), so a
+   * leaderboard is never replaced by the squad list; and
+   * `stats_clarification` / `stats_clarified` are the row that opens
+   * and closes a "who do you mean?" (`awaiting-answer.ts`). A stats
+   * question with no table keeps "question", as it always had.
+   */
+  function statsIntent(id: string, asked: boolean): string {
+    if (asked) return STATS_CLARIFICATION_INTENT;
+    if (clarificationFor.has(id)) return STATS_CLARIFIED_INTENT;
+    const f = factsById.get(id);
+    if (f?.kind !== "question" || f.topic !== "stats" || f.table == null) return "question";
+    const plan = statsPlans.get(id);
+    return plan?.kind === "generic" ? "stats_generic" : "stats_table";
   }
 
   // §3.2 S36/S37 — de-duplicate replies within a batch. Two people

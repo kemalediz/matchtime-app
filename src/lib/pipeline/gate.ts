@@ -133,7 +133,7 @@ import { readFileSync } from "node:fs";
 //   STILL DOES: this module must stay loadable outside Next, so any
 //   future import of `message-analyzer` or a Prisma-touching module
 //   from here has to be type-only for the same reason.
-import type { AwaitingQuestion } from "./awaiting-answer";
+import type { AwaitingQuestion, StatsClarification } from "./awaiting-answer";
 import { anthropicModel, degradation, type PipelineModel } from "./llm";
 import { routeBatch, routeFloor, type RouterMessage } from "./router";
 import type { Degradation, Route, RoutedMessage } from "./types";
@@ -545,6 +545,9 @@ export interface GateOptions {
    * behaves exactly as it did on `b03d96b`.
    */
   awaiting?: AwaitingQuestion | null;
+  /** Open stats clarifications, passed straight to the router. See
+   *  `RouteBatchOptions.clarifications`. */
+  clarifications?: StatsClarification[];
 }
 
 /**
@@ -621,6 +624,7 @@ export async function gateBatch(
     const routed = await routeBatch(model, routerMessages, {
       floor,
       awaiting: opts.awaiting ?? null,
+      clarifications: opts.clarifications ?? [],
     });
     const p = partition(messages, routed.routes, { floor });
     return {

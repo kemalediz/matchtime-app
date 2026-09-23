@@ -54,6 +54,12 @@ import { composeSquadStatusPost, formatTeamsPost } from "../group-copy";
 // header for what a Prisma import here does to the corpus spec.
 import { formatRatingProgressReply } from "../rating-progress-answer";
 import { resolvePerson } from "./identity";
+import {
+  renderAskPerson,
+  renderStatsBottom,
+  renderStatsGenericSafeLine,
+  renderStatsTable,
+} from "./stats-answer";
 import { t } from "../i18n/t";
 import type { EngineResult, SquadState } from "./types";
 
@@ -485,7 +491,9 @@ export function compose(result: EngineResult): ComposedOutput {
         const ranked = [...state.appearances]
           .filter((a) => byId.has(a.userId))
           .sort((a, b) => b.matches - a.matches)
-          .slice(0, 3);
+          // Three, as it always was, unless the question asked for a
+          // number (2026-09-23, already capped at ten by the engine).
+          .slice(0, sp.size ?? 3);
         // NAME THE WINDOW, ALWAYS. `state.appearances` is counted over
         // `load-state.ts`'s 30-day lookback, and the question the group
         // actually asks is "who's been most consistent this SEASON?"
@@ -504,6 +512,61 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({
           messageId: sp.messageId,
           text: `${s.answer_stats_head({ windowDays })}\n${rows.join("\n")}`,
+        });
+        break;
+      }
+
+      // ── THE STATS TABLES (2026-09-23). Rendered by `stats-answer.ts`
+      // from `state.stats`, which `answer-batch.ts` loads only when one
+      // of these was asked for. Not loaded means say nothing, which
+      // makes that module disown the message with a receipt: the same
+      // contract as `answer_payments`.
+      case "answer_stats_table":
+      case "answer_stats_bottom":
+      case "answer_stats_generic": {
+        const snap = state.stats;
+        if (!snap) {
+          operatorNotes.push(`compose: ${sp.kind} for ${sp.messageId} with no stats snapshot loaded; saying nothing`);
+          break;
+        }
+        let text = "";
+        if (sp.kind === "answer_stats_table") text = renderStatsTable(sp, snap, lang);
+        else if (sp.kind === "answer_stats_bottom") text = renderStatsBottom(snap, lang);
+        else {
+          // The grounded answer when it passed; otherwise the safe line.
+          // A rejected answer is OUR error: the group is never asked
+          // about it.
+          const g = snap.generic[sp.messageId];
+          if (g && "text" in g) text = g.text;
+          else {
+            if (g) operatorNotes.push(`compose: generic stats answer for ${sp.messageId} rejected (${g.rejected}); said the safe line`);
+            text = renderStatsGenericSafeLine(snap, lang);
+          }
+        }
+        if (!text) {
+          operatorNotes.push(`compose: ${sp.kind} for ${sp.messageId} had nothing loaded to render; saying nothing`);
+          break;
+        }
+        utterances.push({ messageId: sp.messageId, text });
+        break;
+      }
+
+      case "ask_stats_person": {
+        // The reference is the poster's own words, echoed back. A phone
+        // number or a paragraph is not echoed into the group.
+        const ref = safeName(sp.ref, "");
+        if (!ref || ref.length > 40) {
+          operatorNotes.push(`compose: ask_stats_person for ${sp.messageId} with an unprintable reference; saying nothing`);
+          break;
+        }
+        utterances.push({
+          messageId: sp.messageId,
+          // A pushname that is a phone number is never printed: the
+          // question is then asked without a name in front of it.
+          text: renderAskPerson(
+            { askerName: sp.askerName ? safeName(sp.askerName, "") || null : null, ref, candidates: sp.candidates },
+            lang,
+          ),
         });
         break;
       }

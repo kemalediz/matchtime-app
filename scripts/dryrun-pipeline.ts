@@ -80,6 +80,10 @@
  *   QUESTIONS=1    run the TAGGED-QUESTION table (Q*) through §10 step
  *                  7's owner instead, and score every phrasing as
  *                  ANSWERED / HANDED BACK / SILENT. See `runQuestions`.
+ *   STATS=1        run the STATS-TABLES table (L*, K*, N*, G*, T*, A1, C1,
+ *                  2026-09-23): the live router, then `runAnswerBatch`
+ *                  over the real tables, read once. Read-only. See
+ *                  `runStats`. STATS_BUDGET_USD caps the spend (0.95).
  *   MYSTATS=1      run the PERSONAL-STATS table (W*): the live router,
  *                  then `runAnswerBatch`, and count how often the asker
  *                  would be DM'd their own stats link, and to whom.
@@ -2146,6 +2150,208 @@ async function runDmIntents(): Promise<void> {
   );
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * THE STATS TABLES (`STATS=1`, 2026-09-23). READ-ONLY.
+ *
+ * The 2026-09-23 incident and every table the group can now be asked
+ * for, in English and Turkish, through the REAL router and the REAL
+ * `runAnswerBatch`: the question extractor's new `table` / `listSize` /
+ * `listEnd` fields, the code-rendered tables, the grounded generic path
+ * and the "who do you mean?" round trip. Approved by Kemal for this
+ * change, REPEAT=3, hard cap $1.00.
+ *
+ * ZERO WRITES. The tables are read once with `loadStatsTables` (finds
+ * only) and chemistry with `loadStatsChemistry` (finds only);
+ * `runAnswerBatch` has no apply layer at all (`zero-writes.test.ts`).
+ * The clarification round trip uses an IN-MEMORY `StatsClarification`,
+ * never an `AnalyzedMessage` row. Nothing is sent: replies are printed.
+ *
+ * `expect` is matched against the outcome's intent and machine reasons
+ * (e.g. "ratings table, 10 rows"), so a wrong TABLE is visible even when
+ * the reply looks plausible. The harness stops before any run that
+ * could take the total past STATS_BUDGET_USD (default 0.95).
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+type StatsCase = { id: string; lang: "en" | "tr"; body: string; expect: RegExp; why: string };
+
+function statsCases(ambiguousRef: string | null): StatsCase[] {
+  const c: StatsCase[] = [
+    { id: "L1", lang: "en", body: "@Match Time please share the leaderboard of ratings, top 10", expect: /ratings table, 10 rows/, why: "the incident, Kemal's exact words" },
+    { id: "L2", lang: "en", body: "@Match Time leaderboard", expect: /ratings table/, why: "a bare leaderboard is ratings" },
+    { id: "L3", lang: "en", body: "@Match Time top 10 ratings", expect: /ratings table, 10 rows/, why: "" },
+    { id: "L4", lang: "en", body: "@Match Time top 5 players", expect: /ratings table, 5 rows/, why: "" },
+    { id: "L5", lang: "en", body: "@Match Time who's got the most MoMs", expect: /mom table/, why: "" },
+    { id: "L6", lang: "en", body: "@Match Time most appearances", expect: /appearances table/, why: "" },
+    { id: "L7", lang: "en", body: "@Match Time who's the worst", expect: /bottom of a table/, why: "names nobody" },
+    { id: "L8", lang: "en", body: "@Match Time top 20", expect: /ratings table, 10 rows \(asked for 20\)/, why: "served as 10" },
+    { id: "L9", lang: "en", body: "@Match Time what's the elo table", expect: /elo table/, why: "" },
+    { id: "K1", lang: "en", body: "@Match Time who is the most Mr. Reliable?", expect: /mr_reliable table/, why: "Kemal's exact words; the badge" },
+    { id: "K2", lang: "en", body: "@Match Time who's the most reliable player?", expect: /mr_reliable table/, why: "" },
+    { id: "K3", lang: "en", body: "@Match Time whose performance is improving most based on the last 3 matches?", expect: /movers table/, why: "Kemal's exact words" },
+    { id: "K4", lang: "en", body: "@Match Time what is the team of the season?", expect: /team_of_season table/, why: "Kemal's exact words" },
+    { id: "K5", lang: "en", body: "@Match Time Who is Idris's Chemistry list?", expect: /chemistry table|asked (who|which)/, why: "Kemal's exact words" },
+    { id: "N1", lang: "en", body: "@Match Time Zork's chemistry", expect: /not in the squad: asked who they mean/, why: "an unknown name is asked about" },
+    { id: "G1", lang: "en", body: "@Match Time who has the best win rate?", expect: /grounded generic/, why: "long tail" },
+    { id: "G2", lang: "en", body: "@Match Time is anyone in both the Elo top ten and the Man of the Match table?", expect: /grounded generic/, why: "long tail" },
+    { id: "T1", lang: "tr", body: "@Match Time sıralama", expect: /ratings table/, why: "" },
+    { id: "T2", lang: "tr", body: "@Match Time en iyi 10", expect: /ratings table, 10 rows/, why: "" },
+    { id: "T3", lang: "tr", body: "@Match Time en çok maçın adamı kim", expect: /mom table/, why: "" },
+    { id: "T4", lang: "tr", body: "@Match Time sezonun takımı ne?", expect: /team_of_season table/, why: "" },
+    { id: "T5", lang: "tr", body: "@Match Time Idris'in kimyası nasıl?", expect: /chemistry table|asked (who|which)/, why: "" },
+    { id: "T6", lang: "tr", body: "@Match Time en güvenilir oyuncu kim?", expect: /mr_reliable table/, why: "" },
+    { id: "T7", lang: "tr", body: "@Match Time en kötü oyuncu kim?", expect: /bottom of a table/, why: "names nobody" },
+    { id: "T8", lang: "tr", body: "@Match Time son 3 maçta en çok kim gelişti?", expect: /movers table/, why: "" },
+    { id: "T9", lang: "tr", body: "@Match Time en çok maça gelen kim?", expect: /appearances table/, why: "" },
+  ];
+  if (ambiguousRef) {
+    c.push({ id: "A1", lang: "en", body: `@Match Time ${ambiguousRef}'s chemistry`, expect: /fits \d+ members: asked which/, why: "an ambiguous name names the candidates" });
+  }
+  return c;
+}
+
+/** A first name two or more live members share, for the ambiguous case. */
+function pickAmbiguousRef(roster: Member[]): string | null {
+  const firsts = new Map<string, number>();
+  for (const m of roster) {
+    const f = m.name.trim().split(/\s+/)[0];
+    if (f && f.length >= 3 && /^\p{L}+$/u.test(f)) firsts.set(f, (firsts.get(f) ?? 0) + 1);
+  }
+  return [...firsts.entries()].find(([, n]) => n >= 2)?.[0] ?? null;
+}
+
+async function runStats(orgId: string, state: SquadState, now: Date): Promise<void> {
+  const { loadStatsTables, loadStatsChemistry } = await import("../src/lib/pipeline/load-stats.ts");
+  const repeat = Math.max(1, Number(process.env.REPEAT ?? 1));
+  const budget = Number(process.env.STATS_BUDGET_USD ?? 0.95);
+  const only = process.env.ONLY?.split(",").map((x) => x.trim());
+  const features = await getOrgFeatures(orgId);
+  const model = anthropicModel();
+  const tables = await loadStatsTables(orgId);
+  const asker = memberByName(state.roster, process.env.STATS_ASKER ?? "Kemal");
+  const ambiguous = pickAmbiguousRef(state.roster);
+  const selected = statsCases(ambiguous).filter((c) => !only || only.includes(c.id));
+  console.log(
+    `STATS : ${tables.ratings.length} ranked (3+ rated), ${tables.mom.length} MoM, ${tables.elo.length} Elo, ` +
+      `TOTS ${tables.teamOfSeason?.slots.length ?? 0} slots, ${tables.mrReliable.length} Mr Reliable, ${tables.aliases.length} aliases\n` +
+      `ASKER : ${asker.name}   AMBIGUOUS REF : ${ambiguous ?? "(none in this roster, A1 skipped)"}`,
+  );
+
+  let total = 0;
+  let calls = 0;
+  let runs = 0;
+  let stopped = false;
+  const tally = new Map<string, Map<string, number>>();
+
+  const one = async (args: {
+    id: string;
+    lang: "en" | "tr";
+    body: string;
+    tagged: boolean;
+    clarifications?: import("../src/lib/pipeline/awaiting-answer.ts").StatsClarification[];
+  }) => {
+    const st: SquadState = { ...state, features: { ...state.features, language: args.lang } };
+    const routed = await routeBatch(model, [{ id: args.id, authorName: asker.name, body: args.body }], {
+      clarifications: args.clarifications ?? [],
+    });
+    calls += 1;
+    total += routed.usage?.costUsd ?? 0;
+    const route: Route = routed.routes[0]?.route ?? "unsure";
+    const res = await runAnswerBatch({
+      orgId,
+      now,
+      messages: [
+        {
+          waMessageId: args.id,
+          body: args.body,
+          authorName: asker.name,
+          senderUserId: asker.userId,
+          senderName: asker.name,
+          tagged: args.tagged,
+          route,
+          gated: false,
+        },
+      ],
+      history: HISTORY,
+      expectedMatchId: st.matchId,
+      enabled: new Set<Route>(["question", "balancer"]),
+      clarifications: args.clarifications,
+      deps: {
+        model,
+        loadState: async () => st,
+        loadFeatures: async () => features,
+        loadStats: async () => tables,
+        loadChemistry: loadStatsChemistry,
+      },
+    });
+    calls += res.cost.calls;
+    total += res.cost.usd;
+    runs++;
+    return { route, source: routed.routes[0]?.source ?? "?", res, outcome: res.outcomes.get(args.id) };
+  };
+
+  for (const c of selected) {
+    console.log(`\n${"─".repeat(72)}\n${c.id} [${c.lang}] ${JSON.stringify(c.body)}\n  expect : ${c.expect}${c.why ? `  (${c.why})` : ""}`);
+    for (let n = 0; n < repeat; n++) {
+      if (total >= budget) {
+        stopped = true;
+        break;
+      }
+      const { route, res, outcome } = await one({ id: `${c.id}-${n}`, lang: c.lang, body: c.body, tagged: true });
+      const reasons = `${outcome?.intent ?? "(unowned)"} | ${outcome?.reasoning ?? res.degradations.join(" | ")}`;
+      const ok = c.expect.test(reasons);
+      const key = `${route} ${ok ? "PASS" : "MISS"} ${outcome?.intent ?? "unowned"}`;
+      const t = tally.get(c.id) ?? new Map<string, number>();
+      t.set(key, (t.get(key) ?? 0) + 1);
+      tally.set(c.id, t);
+      console.log(`  run ${n + 1}/${repeat}  route=${route}  ${ok ? "PASS" : "MISS"}  ${reasons.slice(0, 220)}`);
+      if (n === 0 || !ok) console.log(`  says   :\n${(outcome?.reply ?? "(nothing)").replace(/^/gm, "    ")}`);
+    }
+    if (stopped) break;
+  }
+
+  // ── The clarification round trip, end to end ─────────────────────────
+  // 1. "Zork's chemistry" is asked about (N1 above).  2. The asker replies
+  // "Idris", untagged. The router is told a clarification is open (the
+  // in-memory row below), and the answer owner re-reads the ORIGINAL
+  // question with the reply's name in it.
+  if (!stopped && (!only || only.includes("C1"))) {
+    console.log(`\n${"─".repeat(72)}\nC1 [en] clarification round trip: "@Match Time Zork's chemistry" then the reply "Idris"`);
+    const open = [
+      {
+        id: "dryrun-clarification",
+        orgId,
+        askerUserId: asker.userId,
+        askerName: asker.name,
+        questionBody: "@Match Time Zork's chemistry",
+        askedAt: new Date(now.getTime() - 2 * 60 * 1000),
+      },
+    ];
+    for (let n = 0; n < repeat; n++) {
+      if (total >= budget) {
+        stopped = true;
+        break;
+      }
+      const { route, source, outcome, res } = await one({ id: `C1-${n}`, lang: "en", body: "Idris", tagged: false, clarifications: open });
+      const ok = outcome?.intent === "stats_clarified" && /chemistry table/.test(outcome.reasoning);
+      const key = `${route}/${source} ${ok ? "PASS" : "MISS"} ${outcome?.intent ?? "unowned"}`;
+      const t = tally.get("C1") ?? new Map<string, number>();
+      t.set(key, (t.get(key) ?? 0) + 1);
+      tally.set("C1", t);
+      console.log(`  run ${n + 1}/${repeat}  route=${route} (${source})  ${ok ? "PASS" : "MISS"}  ${outcome?.intent ?? "(unowned)"} | ${outcome?.reasoning ?? res.degradations.join(" | ")}`);
+      if (n === 0 || !ok) console.log(`  says   :\n${(outcome?.reply ?? "(nothing)").replace(/^/gm, "    ")}`);
+    }
+  }
+
+  console.log(`\n${"═".repeat(72)}\nPER CASE (route PASS/MISS intent : count)`);
+  for (const [id, t] of tally) console.log(`  ${id.padEnd(3)} ${[...t.entries()].map(([k, v]) => `${k} : ${v}`).join("   ")}`);
+  console.log(
+    `\n${runs} run(s), ${calls} model call(s), total $${total.toFixed(4)} on the dev key.` +
+      (stopped ? `  ⚠️ STOPPED at the $${budget} budget before finishing.` : "") +
+      `\nWrites performed: 0 (this harness cannot write).`,
+  );
+}
+
 async function main(): Promise<void> {
   // Development model calls go on the DEVELOPER's key. This assigns
   // ANTHROPIC_API_KEY_DEV over ANTHROPIC_API_KEY for this process, so the
@@ -2232,6 +2438,12 @@ async function main(): Promise<void> {
 
   if (process.env.QUESTIONS === "1") {
     await runQuestions(org.id, base, now);
+    await db.$disconnect();
+    return;
+  }
+
+  if (process.env.STATS === "1") {
+    await runStats(org.id, base, now);
     await db.$disconnect();
     return;
   }

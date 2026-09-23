@@ -378,6 +378,33 @@ export type QuestionTopic =
   | "options"
   | "other";
 
+/**
+ * WHICH STATS TABLE a `stats` question is about (2026-09-23).
+ *
+ * The incident: "@Match Time please share the leaderboard of ratings,
+ * top 10" was answered with the three most frequent attenders of the
+ * last 30 days. `QuestionFacts` had no field for WHICH table and none
+ * for HOW MANY, so "ratings" and "10" were discarded by construction and
+ * the composer answered from the only stats data it held.
+ *
+ * The model still only CLASSIFIES. It names a table; every name and
+ * number in the answer is rendered by code from the loaders the website
+ * uses (`lib/pipeline/stats-answer.ts`). `other` is the one table the
+ * code cannot render exactly: it goes to the grounded generic prompt,
+ * whose reply is rejected unless every name and number in it appears
+ * in the tables it was given (`stats-grounding.ts`).
+ */
+export type StatsTable =
+  | "ratings"
+  | "appearances"
+  | "mom"
+  | "elo"
+  | "team_of_season"
+  | "movers"
+  | "chemistry"
+  | "mr_reliable"
+  | "other";
+
 export interface QuestionFacts {
   kind: "question";
   topic: QuestionTopic;
@@ -386,6 +413,21 @@ export interface QuestionFacts {
   /** A number the message ASSERTS about the squad ("we're 9/14 right?").
    *  §3.2 S24: the engine compares it to the database. */
   statedCount: number | null;
+  /**
+   * For `topic: "stats"` only: which table (see `StatsTable`). ABSENT or
+   * null means the question named none, and the engine answers exactly
+   * what it answered before this field existed (the appearances list).
+   * Optional so the stubs and fixtures that predate it keep their shape;
+   * the parser always sets it.
+   */
+  table?: StatsTable | null;
+  /** How many rows the question asked for ("top 10" is 10), or null.
+   *  Verbatim from the message: the group cap is applied by the engine,
+   *  never asked of the model. */
+  listSize?: number | null;
+  /** "bottom" when the question asks for the worst or the foot of a
+   *  table. The group never names anybody for that (Kemal, 2026-09-23). */
+  listEnd?: "top" | "bottom";
 }
 
 export interface TeamFacts {
@@ -682,6 +724,77 @@ export interface SquadState {
    * nothing, which makes `answer-batch.ts` disown the message.
    */
   ratingProgress: RatingProgress | null;
+  /**
+   * THE STATS TABLES, and `null` on almost every batch, for the reasons
+   * on `payments` above (2026-09-23). Loaded by `answer-batch.ts` only
+   * when a `stats` question with a table survived ownership, from the
+   * SAME loaders `/profile/stats` reads, so the group and the website
+   * cannot disagree about the same table. Optional so every state
+   * fixture that predates it keeps its shape; absent means NOT LOADED.
+   */
+  stats?: StatsSnapshot | null;
+}
+
+/** One ranked row of the club RATINGS table (`loadRatingLeaderboard`). */
+export interface StatsRatingRow {
+  userId: string;
+  name: string;
+  /** The raw mean of the club ratings this player received. */
+  avg: number;
+  /** Distinct rated matches. */
+  games: number;
+  rank: number;
+  /** Places climbed since the previous completed match; null when new. */
+  delta: number | null;
+}
+
+/** What a named player's chemistry answer may say. Mirrors the two
+ *  cards on `/profile/stats`, plus the nemesis, which only the player
+ *  themselves may be shown (see `NEMESIS_IN_GROUP_FOR_OTHERS`). */
+export interface StatsChemistry {
+  userId: string;
+  name: string;
+  bestByWinRate: { name: string; gamesTogether: number; wins: number; winRate: number } | null;
+  bestByRating: { name: string; myAvgWith: number; sameAsWinRate: boolean } | null;
+  nemesis: { name: string; gamesAgainst: number; wins: number } | null;
+}
+
+/**
+ * Everything a stats answer in the group is allowed to say, already
+ * VISIBILITY-FILTERED: each table holds only what the group may see.
+ * The generic prompt is fed exactly this and nothing else, so what it
+ * cannot see it cannot leak.
+ */
+export interface StatsSnapshot {
+  /** Where the full tables live, for the bottom-of-table and over-cap
+   *  answers. The website is a signed-in page for the club's members. */
+  fullTableUrl: string;
+  /** Every RANKED row (3+ rated matches, active in the last three
+   *  months), best first. The group only ever prints the top ten; the
+   *  rest are here so the climbers can be ranked over the whole table. */
+  ratings: StatsRatingRow[];
+  /** Man of the Match wins, top ten, inactive players out. */
+  mom: Array<{ userId: string; name: string; wins: number }>;
+  /** Elo, top ten, 3+ matches played, inactive players out. */
+  elo: Array<{ userId: string; name: string; rating: number; matches: number }>;
+  /** `loadTeamOfSeason` with the website's own minimum. */
+  teamOfSeason: {
+    sportName: string;
+    slots: Array<{ position: string; userId: string; name: string; avg: number; games: number }>;
+  } | null;
+  /** Holders of the stats page's Mr Reliable badge, most consistent first. */
+  mrReliable: Array<{ userId: string; name: string; avg: number; games: number; spread: number }>;
+  /** `UserAlias` rows for the org: the admin-curated nicknames a name in
+   *  a question may be using. `alias` is already `normaliseName`d. */
+  aliases: Array<{ alias: string; userId: string }>;
+  /** Chemistry for the players named in this batch's questions, by id. */
+  chemistry: Record<string, StatsChemistry>;
+  /**
+   * The grounded generic answers composed for this batch, by message id.
+   * `text` passed the grounding check; `rejected` did not, or the model
+   * said it could not answer, and the composer then says the safe line.
+   */
+  generic: Record<string, { text: string } | { rejected: string }>;
 }
 
 // ── What the engine hands back ─────────────────────────────────────────
@@ -913,7 +1026,42 @@ export type SpeechIntent =
   | { kind: "answer_fixture"; messageId: string }
   | { kind: "answer_person_status"; messageId: string; personRef: string; userId: string | null }
   | { kind: "answer_phones"; messageId: string }
-  | { kind: "answer_stats"; messageId: string }
+  /** `size` is how many rows to show; absent means the original three. */
+  | { kind: "answer_stats"; messageId: string; size?: number }
+  /**
+   * One of the known stats tables, rendered EXACTLY by code from
+   * `state.stats` (`stats-answer.ts`). `size` is already capped at the
+   * group's ten; `requested` is what was asked, so the answer can say
+   * when it was capped. `personUserId` is the resolved player for a
+   * chemistry answer, and `self` says the asker asked about themselves.
+   */
+  | {
+      kind: "answer_stats_table";
+      messageId: string;
+      table: Exclude<StatsTable, "appearances" | "other">;
+      size: number;
+      requested: number | null;
+      personUserId: string | null;
+      self: boolean;
+    }
+  /** A request for the bottom of a table: names nobody, points at the site. */
+  | { kind: "answer_stats_bottom"; messageId: string }
+  /** The grounded generic answer (or its safe line), from `state.stats.generic`. */
+  | { kind: "answer_stats_generic"; messageId: string }
+  /**
+   * MatchTime could not tell WHO the question means, and asks the poster
+   * rather than guessing (Kemal, 2026-09-23). `candidates` are resolved
+   * roster names when the name fits several members, empty when it fits
+   * nobody. The poster's reply is matched to this by the open-question
+   * mechanism (`awaiting-answer.ts`, kind `stats-clarification`).
+   */
+  | {
+      kind: "ask_stats_person";
+      messageId: string;
+      askerName: string | null;
+      ref: string;
+      candidates: string[];
+    }
   /**
    * The RESULT of the last match played. Carries no numbers: the
    * composer reads `state.completedMatch` and renders one of three
@@ -1057,6 +1205,12 @@ export interface MessageOutcome {
    * performs it. Absent means no.
    */
   statsLinkRequested?: boolean;
+  /**
+   * The engine asked the poster who they meant instead of answering
+   * (`ask_stats_person`). The route records the message with the
+   * `stats_clarification` intent, which is what opens the question.
+   */
+  statsClarificationAsked?: boolean;
 }
 
 export interface Degradation {

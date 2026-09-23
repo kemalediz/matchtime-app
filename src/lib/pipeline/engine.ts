@@ -75,6 +75,7 @@ import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
 import { decideSlotInherits } from "../team-slot-inherit";
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { resolvePerson } from "./identity";
+import { planStatsQuestion } from "./stats-answer";
 import type {
   AttendanceFacts,
   AttendanceRow,
@@ -1792,14 +1793,76 @@ export function decide(input: EngineInput): EngineResult {
         case "phones":
           speech.push({ kind: "answer_phones", messageId: msg.id });
           break;
-        case "stats":
+        case "stats": {
           if (!state.features.statsQa) {
             out.reasons.push("stats Q&A is off for this org");
             out.disposition = "noop";
             break;
           }
-          speech.push({ kind: "answer_stats", messageId: msg.id });
+          // ── WHICH TABLE (2026-09-23) ─────────────────────────────────
+          // `planStatsQuestion` is the whole decision and it is shared
+          // with `answer-batch.ts`, which loaded the snapshot this reads
+          // and made the generic call on the same plan. See
+          // `stats-answer.ts` for every rule behind it. The engine only
+          // turns the plan into speech; the composer renders it.
+          const plan = planStatsQuestion(facts, w.roster, state.stats?.aliases ?? [], msg.senderUserId);
+          switch (plan.kind) {
+            case "legacy":
+              // No table named: exactly the answer that existed before.
+              speech.push({ kind: "answer_stats", messageId: msg.id });
+              break;
+            case "appearances":
+              speech.push({ kind: "answer_stats", messageId: msg.id, size: plan.size });
+              out.reasons.push(`appearances table, ${plan.size} rows`);
+              break;
+            case "bottom":
+              speech.push({ kind: "answer_stats_bottom", messageId: msg.id });
+              out.reasons.push("asked for the bottom of a table: nobody is named in the group");
+              break;
+            case "table":
+              speech.push({
+                kind: "answer_stats_table",
+                messageId: msg.id,
+                table: plan.table,
+                size: plan.size,
+                requested: plan.requested,
+                personUserId: plan.personUserId,
+                self: plan.self,
+              });
+              out.reasons.push(
+                `${plan.table} table, ${plan.size} rows` +
+                  (plan.requested !== null && plan.requested > plan.size ? ` (asked for ${plan.requested})` : ""),
+              );
+              break;
+            case "generic":
+              speech.push({ kind: "answer_stats_generic", messageId: msg.id });
+              out.reasons.push("no known table answers it: the grounded generic answer");
+              break;
+            case "ask":
+              // ASK, DO NOT GUESS (Kemal, 2026-09-23). A wrong name in a
+              // public answer is a claim about a real person; a question
+              // back costs one message.
+              speech.push({
+                kind: "ask_stats_person",
+                messageId: msg.id,
+                askerName: msg.senderName,
+                ref: plan.ref,
+                candidates: plan.candidates,
+              });
+              out.statsClarificationAsked = true;
+              out.reasons.push(
+                plan.candidates.length > 0
+                  ? `"${plan.ref}" fits ${plan.candidates.length} members: asked which`
+                  : `"${plan.ref}" is not in the squad: asked who they mean`,
+              );
+              break;
+            case "none":
+              out.reasons.push(plan.why);
+              out.disposition = "noop";
+              break;
+          }
           break;
+        }
         case "options":
           speech.push({ kind: "answer_options", messageId: msg.id });
           break;

@@ -74,7 +74,12 @@
  *      trigger. See `awaiting-answer.ts`.
  */
 import { messageTagsBot } from "../interaction-contract";
-import { describeQuestion, type AwaitingQuestion } from "./awaiting-answer";
+import {
+  clarificationSubject,
+  describeQuestion,
+  type AwaitingQuestion,
+  type StatsClarification,
+} from "./awaiting-answer";
 import {
   anthropicModel,
   degradation,
@@ -556,6 +561,13 @@ export interface RouteBatchOptions {
    * history bar 18 windows, and with it nothing here changes anything.
    */
   awaiting?: AwaitingQuestion | null;
+  /**
+   * The "who do you mean?" questions MatchTime has put to individual
+   * posters about a stats question (2026-09-23). See the essay at the
+   * foot of `awaiting-answer.ts`. Empty or absent, the default, and
+   * nothing below changes anything.
+   */
+  clarifications?: StatsClarification[];
 }
 
 export async function routeBatch(
@@ -717,7 +729,43 @@ export async function routeBatch(
         return { ...r, route: "unsure" as const, source: "awaiting" as const, overrodeRoute: "none" as const };
       });
 
-  return { routes, degradations: result.degradations, usage };
+  // ── AND WHILE MATCHTIME IS WAITING FOR A NAME FROM ONE PERSON ──────
+  //
+  // The same override, narrowed twice (2026-09-23). It fires only for
+  // the person the clarification was put to, and only on a reply that
+  // reads as a name (`clarificationSubject`: "Idris", "I mean Mojib").
+  // It moves the message to `question`, the route whose owner holds the
+  // original question, from wherever the model put it: a bare "Idris"
+  // read as an attendance claim is the dangerous misreading here, not
+  // the harmless one. A `fallback` route is still left alone.
+  const clarifications = opts.clarifications ?? [];
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const finalRoutes =
+    clarifications.length === 0
+      ? routes
+      : routes.map((r) => {
+          if (r.route === "question" || r.source === "fallback") return r;
+          const m = byId.get(r.messageId);
+          if (!m) return r;
+          const c = clarifications.find((q) => !!q.askerName && q.askerName === m.authorName);
+          if (!c || clarificationSubject(m.body) === null) return r;
+          result.degradations.push(
+            degradation(
+              "router",
+              r.messageId,
+              `MatchTime asked ${c.askerName} who they meant (stats clarification ${c.id}); ` +
+                `${r.route} → question so the answer reaches the question it answers`,
+            ),
+          );
+          return {
+            ...r,
+            route: "question" as const,
+            source: "awaiting" as const,
+            overrodeRoute: r.overrodeRoute ?? r.route,
+          };
+        });
+
+  return { routes: finalRoutes, degradations: result.degradations, usage };
 }
 
 /** Convenience for callers that do not inject a model. */

@@ -240,7 +240,9 @@ function isLeaderboardLine(s: string): boolean {
     // `(?<!\p{L})…(?!\p{L})` and not `\b`: `\b` is ASCII-only, so "maç"
     // (ç is not a `\w`) would never end on a boundary. Added 2026-09-17
     // for the Turkish stats answer; `unicode-guards.test.ts` pins it.
-    /(?<!\p{L})(?:maç|galibiyet|oy)(?!\p{L})/iu.test(s) ||
+    // "kez" (times) joined on 2026-09-23 for the Man of the Match row
+    // ("1. Sait Demir: 4 kez").
+    /(?<!\p{L})(?:maç|galibiyet|oy|kez)(?!\p{L})/iu.test(s) ||
     /\b\d+\/\d+\s*\(/.test(s) // "4/4 (100%)" — attendance pattern
   );
 }
@@ -255,6 +257,34 @@ function isLeaderboardLine(s: string): boolean {
  * now it selects the replies that are composed from the database — of
  * which there is at most one per batch either way.
  */
+/**
+ * THE INTENTS THE SQUAD-COMPOSITION PASS NEVER TOUCHES.
+ *
+ * `route.ts` runs `composeSquadStateReply` over every owner reply and
+ * replaces anything that looks like a roster with the upcoming squad.
+ * The two team posts have always been skipped by intent, because two
+ * numbered lists under two headings ARE a roster to that check. The
+ * stats answers join them on 2026-09-23 for the same reason: a
+ * leaderboard is a numbered list of players, and the grounded generic
+ * answer is model-written, so nothing guarantees its rows carry a
+ * leaderboard marker. "Top 3 most consistent" becoming the squad list
+ * is the 2026-05-14 incident.
+ */
+export const STATS_ANSWER_INTENTS: ReadonlySet<string> = new Set([
+  "stats_table",
+  "stats_generic",
+  "stats_clarification",
+  "stats_clarified",
+]);
+
+const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request", "show_teams_request"]);
+
+/** PURE. Does the squad-composition pass skip a reply with this intent? */
+export function skipsSquadComposition(intent: string | null | undefined): boolean {
+  if (!intent) return false;
+  return TEAM_POST_INTENTS.has(intent) || STATS_ANSWER_INTENTS.has(intent);
+}
+
 export function displaysSquadState(text: string, lang?: Lang | string | null): boolean {
   const v: GuardVocab = GUARD_VOCAB[normaliseLang(lang)];
   const lines = text.split("\n");

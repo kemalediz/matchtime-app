@@ -19,6 +19,14 @@ import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { computeClubRating, clubDisplayRating, type ClubRatingSource } from "./player-rating";
 import { buildRankedRoster, loadLastPlayedByUser } from "./ranked-table-activity";
+import { earnsMrReliable, ratingSpread } from "./mr-reliable";
+
+export {
+  MR_RELIABLE_MAX_SPREAD,
+  MR_RELIABLE_MIN_AVG,
+  MR_RELIABLE_MIN_GAMES,
+  earnsMrReliable,
+} from "./mr-reliable";
 
 export interface TimelinePoint {
   matchId: string;
@@ -111,13 +119,6 @@ export interface PlayerSeasonStats {
 function mean(xs: number[]): number | null {
   if (xs.length === 0) return null;
   return xs.reduce((a, b) => a + b, 0) / xs.length;
-}
-
-function stddev(xs: number[]): number | null {
-  const m = mean(xs);
-  if (m === null || xs.length < 2) return null;
-  const v = xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length;
-  return Math.sqrt(v);
 }
 
 /** Resolve the MoM winner(s) for a match from its vote rows: the
@@ -341,7 +342,6 @@ export async function loadPlayerSeasonStats(
 
   // Badges (milestones).
   const playedEvery = eligibleMatches > 0 && gamesPlayed === eligibleMatches;
-  const sd = stddev(timeline.map((p) => p.myAvg!).filter((x) => x != null));
   const hadMasterclass = timeline.some((p) => p.myAvg !== null && p.myAvg >= 9);
   const badges: Badge[] = [
     { key: "first-game", emoji: "👟", label: "On the board", hint: "Played your first game", earned: gamesPlayed >= 1 },
@@ -350,7 +350,10 @@ export async function loadPlayerSeasonStats(
     { key: "first-mom", emoji: "🏆", label: "Man of the Match", hint: "Won MoM at least once", earned: momCount >= 1 },
     { key: "mom-machine", emoji: "👑", label: "MoM Machine", hint: "Won MoM 3+ times", earned: momCount >= 3 },
     { key: "masterclass", emoji: "🌟", label: "Masterclass", hint: "Averaged 9+ in a game", earned: hadMasterclass },
-    { key: "reliable", emoji: "🧱", label: "Mr Reliable", hint: "Consistently strong ratings", earned: sd !== null && sd < 1 && (avgRating ?? 0) >= 6.5 && timeline.length >= 4 },
+    // The rule lives in `mr-reliable.ts` so the group's "who is Mr
+    // Reliable?" answer (`loadMrReliableHolders`) can never disagree
+    // with this badge. Same thresholds, moved, not changed.
+    { key: "reliable", emoji: "🧱", label: "Mr Reliable", hint: "Consistently strong ratings", earned: earnsMrReliable({ perGameAverages: timeline.map((p) => p.myAvg!).filter((x) => x != null), avgRating }) },
     { key: "above-field", emoji: "📈", label: "Above the Curve", hint: "Season rating above the squad average", earned: vsFieldPct !== null && vsFieldPct > 0 && timeline.length >= 3 },
   ];
 
@@ -583,6 +586,70 @@ export async function loadRatingLeaderboard(
   }
 
   return ranked;
+}
+
+export interface MrReliableHolder {
+  userId: string;
+  name: string;
+  /** Mean of every rating received, as the page shows it. */
+  avg: number;
+  /** Rated matches. */
+  games: number;
+  /** Spread of the per-match averages; lower is more consistent. */
+  spread: number;
+}
+
+/**
+ * Everyone at this club who holds the Mr Reliable badge (2026-09-23),
+ * most consistent first. The group answer to "who is the most Mr.
+ * Reliable?".
+ *
+ * THE SAME RULE AS THE BADGE, BY CONSTRUCTION: `earnsMrReliable` over the
+ * same inputs `loadPlayerSeasonStats` hands it (the per-match averages
+ * of the matches a player was rated in, and the mean of every rating
+ * they received, over this club's completed non-historical matches).
+ * One read for the whole club rather than one `loadPlayerSeasonStats`
+ * per player.
+ *
+ * Players who have not played in three months are left out, as they are
+ * from every other table the group is shown (`ranked-table-activity.ts`).
+ * Their badge on their own page is untouched: this removes rows, it
+ * does not decide anything about the badge.
+ */
+export async function loadMrReliableHolders(orgId: string): Promise<MrReliableHolder[]> {
+  const matches = await db.match.findMany({
+    where: { activity: { orgId }, status: "COMPLETED", isHistorical: false },
+    orderBy: { date: "asc" },
+    select: { id: true, ratings: { select: { playerId: true, score: true } } },
+  });
+  const perPlayer = new Map<string, { all: number[]; perGame: number[] }>();
+  for (const m of matches) {
+    const byPlayer = new Map<string, number[]>();
+    for (const r of m.ratings) {
+      const list = byPlayer.get(r.playerId) ?? [];
+      list.push(r.score);
+      byPlayer.set(r.playerId, list);
+    }
+    for (const [pid, scores] of byPlayer) {
+      const acc = perPlayer.get(pid) ?? { all: [], perGame: [] };
+      acc.all.push(...scores);
+      acc.perGame.push(mean(scores)!);
+      perPlayer.set(pid, acc);
+    }
+  }
+  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId));
+  const earned = [...perPlayer.entries()]
+    .filter(([pid, a]) => roster.isRanked(pid) && earnsMrReliable({ perGameAverages: a.perGame, avgRating: mean(a.all) }))
+    .map(([pid, a]) => ({ userId: pid, avg: mean(a.all)!, games: a.perGame.length, spread: ratingSpread(a.perGame)! }));
+  if (earned.length === 0) return [];
+  const nameRows = await db.user.findMany({
+    where: { id: { in: earned.map((e) => e.userId) } },
+    select: { id: true, name: true },
+  });
+  const names = new Map(nameRows.map((u) => [u.id, u.name ?? "(unknown)"]));
+  return earned
+    .map((e) => ({ ...e, name: names.get(e.userId) ?? "(unknown)" }))
+    .sort((a, b) => a.spread - b.spread || b.avg - a.avg);
 }
 
 export interface TeamOfSeasonSlot {
