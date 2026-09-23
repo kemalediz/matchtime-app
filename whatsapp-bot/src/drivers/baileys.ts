@@ -10,13 +10,10 @@
  * notions of itself, and message receipt. Phase 4 adds groups, rosters,
  * joins and leaves, poll votes, and the LID-to-phone bridge.
  *
- * It is reachable ONLY in shadow mode. `driver-select.ts` refuses
- * `WA_DRIVER=baileys` unless `WA_SHADOW=1` is set too, and shadow mode
- * (`src/shadow.ts`) refuses every send at the driver, so the Phase 5
- * week on a throwaway number cannot post anywhere. Running Baileys for
- * real is a deliberate edit to `driver-select.ts` after that week and
- * after the phone gate, and it is Kemal's decision. Nothing here changes
- * what the Pi runs today.
+ * `driver-select.ts` refuses `WA_DRIVER=baileys` unless a second switch
+ * is set: `WA_SHADOW=1` (receive-only, every send refused at the driver
+ * by `src/shadow.ts`) or `WA_BAILEYS_LIVE=1` (sends enabled, the Phase 6
+ * cutover, Kemal's decision after the shadow run on the real number).
  *
  * ── The socket is owned by a connection, and injected ───────────────
  * `baileys/lifecycle.ts` builds, pairs, watches and rebuilds the socket
@@ -1307,9 +1304,8 @@ const CONTACTS_SAVE_DELAY_MS = 60_000;
 const POLLS_FILE = "matchtime-polls.json";
 
 /**
- * Build the real Baileys driver. NOT reachable yet: `driver-select.ts`
- * refuses `WA_DRIVER=baileys` until the Phase 5 shadow run and Kemal's
- * decision. Building it opens nothing;
+ * Build the real Baileys driver. Reachable only through `driver-select.ts`
+ * with `WA_SHADOW=1` or `WA_BAILEYS_LIVE=1`. Building it opens nothing;
  * the first socket is built, and connects, only in `start()`.
  *
  * No test calls this: `makeWASocket` connects the moment it is called.

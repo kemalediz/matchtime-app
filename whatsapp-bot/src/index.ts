@@ -1,5 +1,5 @@
 import type { GroupMembershipEvent, InboundMessage, InboundPollVote } from "./driver.js";
-import { createDriver } from "./driver-select.js";
+import { baileysLiveBanner, createDriver } from "./driver-select.js";
 import {
   setMonitoredGroups,
   isMonitoredGroup,
@@ -113,6 +113,8 @@ async function main() {
   const driver = await createDriver(process.env);
   console.log(`WhatsApp driver: ${driver.name}`);
   if (shadow.enabled) console.log(shadowBanner(driver.name, shadow));
+  const liveBanner = baileysLiveBanner(driver.name, shadow, process.env);
+  if (liveBanner) console.log(liveBanner);
 
   // ── The Pi's picture of its groups, and how it stays current ──────────
   // Read at `ready`, every few minutes, and the moment a setup completes
