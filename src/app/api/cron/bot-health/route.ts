@@ -90,7 +90,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const now = new Date();
+  // TEST-ONLY clock override (e2e suite), gated on MT_TEST_MODE=1 exactly
+  // like /api/whatsapp/due-posts and never set in prod. Whether a digest
+  // DMs depends on the London hour (quiet hours, on this tick and on the
+  // previous alert's), so without it the DM specs passed or failed by the
+  // time of day the suite happened to run.
+  let now = new Date();
+  if (process.env.MT_TEST_MODE === "1") {
+    const pinned = new Date(request.headers.get("x-test-now") ?? "");
+    if (!Number.isNaN(pinned.getTime())) now = pinned;
+  }
   const orgs = await db.organisation.findMany({
     where: { whatsappBotEnabled: true, whatsappGroupId: { not: null } },
     // `lastParticipantSweepAt` is the sweep's own clock (2026-09-09). It

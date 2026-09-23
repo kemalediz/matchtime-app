@@ -13,7 +13,7 @@
  * second one.
  */
 import { test, expect, resetDb } from "../fixtures";
-import { ORG_ID } from "../helpers/constants";
+import { ORG_ID, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
@@ -44,13 +44,36 @@ async function heartbeat(
   });
 }
 
-async function runHealthCron(request: APIRequestContext) {
+async function runHealthCron(request: APIRequestContext, at?: Date) {
   const res = await request.get("/api/cron/bot-health", {
-    headers: { authorization: `Bearer ${E2E.CRON_SECRET}` },
+    headers: {
+      authorization: `Bearer ${E2E.CRON_SECRET}`,
+      // Test-only clock (honoured under MT_TEST_MODE=1). See `DAYTIME`.
+      ...(at ? { "x-test-now": at.toISOString() } : {}),
+    },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
 }
+
+/**
+ * The daily-digest tests below judge DMs, and a DM depends on the London
+ * hour twice: `dmAllowedNow` gates the dispatch on the cron's own clock,
+ * and `planHealthAlert` DMs the digest when the PREVIOUS alert landed in
+ * quiet hours (22:00 to 07:00), because that alert's DM was dropped.
+ * With the real clock and a `now() - 48 hours` wind-back, a suite run
+ * after 22:00 put the previous alert in quiet hours, so the plan rightly
+ * said DM, and a run before 07:00 could not queue one at all. So these
+ * tests pin the cron to yesterday noon London and write every timestamp
+ * they wind back relative to that, as UTC wall-clock (the columns are
+ * naive and Prisma reads them as UTC; the test DB session is London).
+ * Yesterday, not today, so the heartbeat the route stamped with the real
+ * clock is never older than the pinned instant and cannot read as
+ * `pi-silent`.
+ */
+const DAYTIME = () => londonAt(-1, 12, 0);
+const HOUR_MS = 60 * 60 * 1000;
+const asUtcWallClock = (d: Date) => d.toISOString().replace("T", " ").replace("Z", "");
 
 test.beforeAll(async () => {
   resetDb();
@@ -342,27 +365,34 @@ test("a day later, an unchanged WARNING emails but does not DM", async ({ reques
     counters: CLEAN_COUNTERS,
     degradedCapabilities: ["participant-sync"],
   });
-  await runHealthCron(request); // the first alert: new, so it DOES DM
+  const now = DAYTIME();
+  const first = await runHealthCron(request, now); // the first alert: new, so it DOES DM
+  expect(first.report.find((r: { org: string }) => r.org === "E2E Test FC").dm).toBe(true);
   const afterFirst = await db.all<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm'`,
     [ORG_ID],
   );
+  expect(afterFirst[0].n).toBeGreaterThan(0);
 
   // Wind the row back two days, both the alert clock and the ledger, so
-  // the finding is older than COLLAPSE_AFTER_MS and the digest is due
-  // whatever hour the suite happens to be running at.
+  // the finding is older than COLLAPSE_AFTER_MS and the digest is due.
+  // The previous alert lands at noon, outside quiet hours, so the digest
+  // has no dropped DM to make up for.
   await db.run(
     `UPDATE "BotHealth"
-        SET "lastAlertAt" = now() - interval '48 hours',
-            "codeFirstSeenAt" = jsonb_build_object(
-              'capability-degraded', to_char(now() - interval '10 days',
-                                             'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+        SET "lastAlertAt" = $2::timestamp,
+            "codeFirstSeenAt" = jsonb_build_object('capability-degraded', $3::text)
       WHERE "orgId" = $1`,
-    [ORG_ID],
+    [
+      ORG_ID,
+      asUtcWallClock(new Date(now.getTime() - 48 * HOUR_MS)),
+      new Date(now.getTime() - 10 * 24 * HOUR_MS).toISOString(),
+    ],
   );
 
-  const out = await runHealthCron(request);
+  const out = await runHealthCron(request, now);
   const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.reason).toBe("daily digest");
   expect(row.sent).toBe(true); // the email still goes, once
   expect(row.dm).toBe(false); // the phone does not buzz for ten-day-old news
 
@@ -381,18 +411,20 @@ test("a CRITICAL that is still broken tomorrow does still buzz the phone", async
     groupId: E2E.GROUP_ID,
     counters: { ...CLEAN_COUNTERS, droppedMessages: 3 },
   });
-  await runHealthCron(request);
+  const now = DAYTIME();
+  await runHealthCron(request, now);
   const afterFirst = await db.all<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm'`,
     [ORG_ID],
   );
 
-  await db.run(
-    `UPDATE "BotHealth" SET "lastAlertAt" = now() - interval '48 hours' WHERE "orgId" = $1`,
-    [ORG_ID],
-  );
-  const out = await runHealthCron(request);
+  await db.run(`UPDATE "BotHealth" SET "lastAlertAt" = $2::timestamp WHERE "orgId" = $1`, [
+    ORG_ID,
+    asUtcWallClock(new Date(now.getTime() - 48 * HOUR_MS)),
+  ]);
+  const out = await runHealthCron(request, now);
   const row = out.report.find((r: { org: string }) => r.org === "E2E Test FC");
+  expect(row.reason).toBe("daily digest");
   expect(row.sent).toBe(true);
   expect(row.dm).toBe(true);
 

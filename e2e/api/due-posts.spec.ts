@@ -8,6 +8,14 @@
  *
  * Asserts that members with Membership.subRatingDm=false are skipped
  * in BOTH personal-DM loops while everyone else still gets theirs.
+ *
+ * Since #124 (2026-09-23) the morning DM also skips a player who has
+ * already ENGAGED with the match: GIVEN at least one Rating (`raterId`)
+ * or cast a MoMVote (`voterId`). The seed has Pat and Tom as RATERS of
+ * MATCH.rate, so they are engaged. Riley has only RECEIVED ratings, and
+ * Sam has neither, so both of them are still owed the DM. Riley is the
+ * case that matters: keying on the wrong column (`playerId`) would skip
+ * everyone who was rated, which is most of a real squad.
  */
 import { test, expect, resetDb } from "../fixtures";
 import { U, ORG_ID, MATCH, londonAt } from "../helpers/constants";
@@ -61,20 +69,52 @@ async function duePostsAt(request: APIRequestContext, now: Date): Promise<Instru
 
 const rateDmKey = (userId: string) => `${MATCH.rate}:rate-dm:${userId}`;
 
-test("morning-after rate DMs go to every confirmed player EXCEPT the opted-out one", async ({ request }) => {
+// Who the seed makes owed a morning DM, and who not. See the header.
+const NOT_YET_ENGAGED = [U.rater, U.stale]; // Riley: rated BY others only. Sam: nothing.
+const ALREADY_RATED = [U.player, U.third]; // both GAVE ratings in the seed
+
+function expectMorningRateDmRecipients(keys: (string | undefined)[]) {
+  for (const uid of NOT_YET_ENGAGED) expect(keys).toContain(rateDmKey(uid));
+  for (const uid of ALREADY_RATED) expect(keys).not.toContain(rateDmKey(uid));
+  expect(keys).not.toContain(rateDmKey(U.opt)); // opted out, never
+}
+
+test("morning-after rate DMs go to every confirmed player who has not rated yet, EXCEPT the opted-out one", async ({ request, db }) => {
   // The match was seeded at 20:00 London yesterday; 08:30 London today is
   // the morning after, hour >= 8 → inside the window (12.5h since kickoff).
   // (Computed via londonAt, NOT from the pg-returned timestamp — naive
   // timestamps come back parsed in machine-local time.)
   const fakeNow = londonAt(0, 8, 30);
 
+  // Pin the direction of the engagement check against the fixture, so a
+  // seed change cannot quietly turn this into a test of nothing: Riley
+  // has RECEIVED ratings and GIVEN none, the two raters have given some.
+  const given = await db.count(
+    `SELECT COUNT(*) FROM "Rating" WHERE "matchId" = $1 AND "raterId" = $2`,
+    [MATCH.rate, U.rater],
+  );
+  const received = await db.count(
+    `SELECT COUNT(*) FROM "Rating" WHERE "matchId" = $1 AND "playerId" = $2`,
+    [MATCH.rate, U.rater],
+  );
+  expect(given).toBe(0);
+  expect(received).toBeGreaterThan(0);
+  for (const uid of ALREADY_RATED) {
+    expect(
+      await db.count(`SELECT COUNT(*) FROM "Rating" WHERE "matchId" = $1 AND "raterId" = $2`, [
+        MATCH.rate,
+        uid,
+      ]),
+    ).toBeGreaterThan(0);
+  }
+
   const instructions = await duePostsAt(request, fakeNow);
   const keys = instructions.map((i) => i.key);
 
-  for (const uid of [U.rater, U.player, U.third, U.stale]) {
-    expect(keys).toContain(rateDmKey(uid));
-  }
-  expect(keys).not.toContain(rateDmKey(U.opt));
+  // Riley only RECEIVED ratings, so he is still asked (inside the helper).
+  // He is the one who would go silent in production if the check read
+  // `playerId`; Pat and Tom GAVE ratings, so they are not asked again.
+  expectMorningRateDmRecipients(keys);
 
   // The rate DM carries the rating magic link — sanity-check shape.
   const dm = instructions.find((i) => i.key === rateDmKey(U.rater));
@@ -91,10 +131,7 @@ test("morning-after rate DMs STILL fire at 11:00 — no 10:00 upper bound", asyn
   const instructions = await duePostsAt(request, fakeNow);
   const keys = instructions.map((i) => i.key);
 
-  for (const uid of [U.rater, U.player, U.third, U.stale]) {
-    expect(keys).toContain(rateDmKey(uid));
-  }
-  expect(keys).not.toContain(rateDmKey(U.opt));
+  expectMorningRateDmRecipients(keys);
 });
 
 test("rate DMs do NOT fire before 08:00 (07:00 the day after)", async ({ request }) => {
