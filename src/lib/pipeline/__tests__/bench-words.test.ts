@@ -23,6 +23,13 @@ describe("namesTheBench", () => {
     "stick me on the waiting list",
     "waitlist me",
     "🪑",
+    // Backup and spare (PR #134 review).
+    "put me down as backup",
+    "put me down as back up",
+    "happy to be a back-up",
+    "Backups: me",
+    "I'm a spare if needed",
+    "spares list",
     // Turkish: yedek, and its softened forms (yedeğe, yedeğim).
     "yedekte kalayım",
     "Yedek olarak varım",
@@ -43,6 +50,9 @@ describe("namesTheBench", () => {
     "subject to work, in",
     "benchmark",
     "reservation at 9",
+    "I'm back for Tuesday",
+    "in, back from holiday",
+    "sparerib night after",
     "",
   ])("does not name the bench: %s", (body) => {
     expect(namesTheBench(body)).toBe(false);

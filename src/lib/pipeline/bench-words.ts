@@ -24,11 +24,16 @@
  * there is not. Both are recoverable with one message. The failure it
  * closes, a player losing his place silently, was not.
  *
+ * "Backup" / "back up" / "back-up" and "spare" joined the list in the
+ * PR #134 review ("put me down as back up", "I'm a spare if needed"):
+ * common ways to ask for the bench, and a broader list only ever lets
+ * through a bench the model already read.
+ *
  * English and Turkish, because the group speaks both. Turkish "yedek"
  * softens to "yedeğ-" before a vowel ("yedeğe", "yedeğim").
  */
 const BENCH_WORDS =
-  /(?<![\p{L}\p{N}])(?:bench(?:ed|es|ing)?|reserves?|subs?|substitutes?|stand-?by|wait(?:ing)?[\s-]?list(?:ed)?|yede[kğ]\p{L}*)(?![\p{L}\p{N}])|🪑/iu;
+  /(?<![\p{L}\p{N}])(?:bench(?:ed|es|ing)?|reserves?|subs?|substitutes?|stand-?by|back[\s-]?ups?|spares?|wait(?:ing)?[\s-]?list(?:ed)?|yede[kğ]\p{L}*)(?![\p{L}\p{N}])|🪑/iu;
 
 export function namesTheBench(body: string): boolean {
   return BENCH_WORDS.test(body);

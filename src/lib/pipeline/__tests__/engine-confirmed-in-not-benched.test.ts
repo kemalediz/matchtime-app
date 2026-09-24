@@ -260,4 +260,39 @@ describe("a bench the message DOES name is still honoured", () => {
     expect(statusOf(r.nextState, "erdal")).toBe("BENCH");
     expect(attWrites(r.writes)[0]).toMatchObject({ explicitBench: true });
   });
+
+  it("'put me down as backup' from a newcomer at 14/14 is an explicit bench", () => {
+    const r = decide({
+      now: NOW,
+      state: afterThePaste(),
+      messages: [
+        msg({
+          from: "habib",
+          body: "put me down as backup",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "bench" })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "habib")).toBe("BENCH");
+    expect(attWrites(r.writes)[0]).toMatchObject({ status: "BENCH", explicitBench: true });
+  });
+
+  it("'put me down as backup' from a newcomer at 13/14 stays an explicit bench, not promoted", () => {
+    const r = decide({
+      now: NOW,
+      state: world({ players: PLAYERS, maxPlayers: 14, confirmed: THIRTEEN }),
+      messages: [
+        msg({
+          from: "habib",
+          body: "put me down as backup",
+          route: "self_att",
+          facts: attendanceFacts([claim({ polarity: "bench" })]),
+        }),
+      ],
+    });
+    expect(statusOf(r.nextState, "habib")).toBe("BENCH");
+    expect(confirmedCount(r.nextState)).toBe(13);
+    expect(attWrites(r.writes)[0]).toMatchObject({ status: "BENCH", explicitBench: true });
+  });
 });
