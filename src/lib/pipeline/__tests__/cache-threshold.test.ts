@@ -121,15 +121,15 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // (`count_tokens`, claude-haiku-4-5, dev key). The prompt on main
     // before the rewrite was 12,416 characters / 3,289 tokens (so the
     // derived 3,254 above was 35 short: the floor it claimed was not
-    // quite a floor). The rewrite is 11,315 characters / 3,280 tokens,
+    // quite a floor). The rewrite is 11,443 characters / 3,311 tokens,
     // 3.45 chars/token, denser because the Turkish now sits beside the
     // English and the alignment padding is gone. The bound is the real
-    // count; the estimator's 2,828 sits under it, as it must. Still under
+    // count; the estimator's 2,860 sits under it, as it must. Still under
     // Haiku's 4,096, and deliberately NOT padded over it: the Pi buffers
     // about ten minutes and a five-minute cache entry expires first
     // (`MDs/llm-spend-september-2026.md`). The attendance bound is
     // untouched by this change.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_280);
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_311);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_275);
   });
 });

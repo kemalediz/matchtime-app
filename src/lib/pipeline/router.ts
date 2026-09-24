@@ -161,17 +161,22 @@ import type { Degradation, Route, RoutedMessage } from "./types";
  *     back Tuesday week", once each. The away-or-back ruling and the
  *     "@Kojo IN" and "back after my holiday" examples are what closed
  *     them, and the size trims that paid for them were wording only. The
- *     final prompt then read 0, 0, 0 of 373, with ONE attendance message
- *     routed by fallback (`unsure`, never counted as lost), which made
- *     the harness refuse to certify the run; it now names the message and
- *     the cause. Re-run it to certify.
+ *     next prompt read 0, 0, 0 with one fallback route (uncertified;
+ *     the harness now names a fallback's message and cause), and its
+ *     certifying re-run read 0, 0, 1: a bare "Confirmed", alone in its
+ *     batch, routed none. Ten repeats of that batch: none 2/10 on this
+ *     prompt, 0/10 on the old one, a real regression. The old prompt's
+ *     "return unsure rather than guessing" rule had been carrying it.
+ *     The unsure route now says a bare "confirmed" is unsure, never
+ *     none: 0/20 after. That fix was verified by the batch repeat and a
+ *     non-stats probe re-run, NOT by another full three-run sweep.
  *
- * The probe figures above are from the first cut. The final prompt
- * differs by that ruling, those two examples and three trimmed phrases,
- * all pushing toward attendance, and a five-case spot check (the three
- * targets, a chemistry banter control, a tagged thanks) came back 5/5.
+ * On the final prompt: the full 118-case probe ran clean (360/360)
+ * before the "confirmed" line went in, and the attendance, Turkish,
+ * replacement, target, banter and tagged groups (210 calls) ran clean
+ * again after it.
  *
- * SIZE. 12,416 characters / 3,289 tokens before, 11,315 / 3,280 after
+ * SIZE. 12,416 characters / 3,289 tokens before, 11,443 / 3,311 after
  * (`count_tokens`, claude-haiku-4-5). Still under Haiku's 4,096-token
  * cacheable minimum, so every token is paid on every call, and it is
  * deliberately not padded over it: the Pi buffers about ten minutes and
@@ -201,7 +206,7 @@ THE ROUTES.
 self_att    the SENDER joins or leaves this match, bench included.
 other_att   the message adds, drops, benches, moves, swaps or replaces SOMEONE ELSE, or reposts one list of players (the squad roster, however long or numbered).
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
-unsure      clearly about a place, but you cannot tell who or what it does. A real route with a real handler, not a failure. Never use it for plain banter.
+unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" with nothing to show what it confirms is unsure, never none: it may be somebody confirming their place. A real route with a real handler, not a failure. Never use it for plain banter.
 question    asks for something the bot already holds: the squad list and how many are in, the pitch, who has paid, a past result, and every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, team of the season, best and worst, a player's own stats or wrapped).
 balancer    asks the bot to generate, show, shuffle or rename the TWO team line-ups (red and yellow).
 score       reports the final result of this group's own match.

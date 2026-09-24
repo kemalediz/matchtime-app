@@ -297,6 +297,16 @@ describe("the router prompt", () => {
     }
   });
 
+  it("calls a bare \"confirmed\" unsure, never none (the 2026-09-24 veto loss)", () => {
+    // The rewrite's certifying veto sweep lost a bare "Confirmed" (gold
+    // attendance) in 1 of 3 runs; ten repeats of its batch read none 2/10
+    // against 0/10 on the old prompt. The unsure route now names it.
+    const unsure = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("unsure "));
+    expect(unsure).toBeDefined();
+    expect(unsure!).toMatch(/"confirmed"/);
+    expect(unsure!).toMatch(/is unsure, never none/);
+  });
+
   it("writes no em or en dashes", () => {
     expect(ROUTER_SYSTEM_PROMPT).not.toMatch(/[\u2013\u2014]/);
   });
