@@ -19,11 +19,11 @@
  *     It reverse-engineers a write from `verdict.reply`; the model no
  *     longer writes replies.
  *
- * WHAT THE EXTRACTOR IS DELIBERATELY NOT TOLD: the squad state. If it
- * could see that the squad is full it could infer `polarity: "bench"`
- * from capacity, and PR #27's invariant ("a BENCH row means FULL or
- * ASKED, never inferred") would be back inside the model. Capacity is
- * arithmetic; arithmetic is the engine's job.
+ * THE SQUAD STATE IS NOT PASSED, BUT IT CAN STILL BE SEEN: recent chat
+ * and MatchTime's last post can show a full squad, so the prompt forbids
+ * using either for `polarity` (a "bench" inferred from capacity breaks
+ * PR #27's invariant, "a BENCH row means FULL or ASKED, never inferred").
+ * Capacity is arithmetic; arithmetic is the engine's job.
  */
 import { anthropicModel, degradation, extractJson, EXTRACTOR_MODEL, type ModelRequest, type PipelineModel } from "./llm";
 import { parsePeriodFields } from "./stats-period";
