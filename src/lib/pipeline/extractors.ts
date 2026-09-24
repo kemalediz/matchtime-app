@@ -92,19 +92,33 @@ export function extractorFor(route: Route): ExtractorKind {
 // ── Prompts ────────────────────────────────────────────────────────────
 
 export const EXTRACTOR_PROMPTS: Record<Exclude<ExtractorKind, "none">, string> = {
-  attendance: `You read ONE message from a football club's WhatsApp group and report what it SAYS about who is playing. You report facts about the text. You never decide what should happen.
+  attendance: `You read ONE message from a football club's WhatsApp group and report what it SAYS about who is playing. You report facts about the text. You never decide what happens next: code does that, from the club's records.
 
-For each attendance claim in the message, return:
+WHAT YOU ARE SHOWN
+Up to three blocks. RECENT CHAT is the last few messages before this one. MATCHTIME'S LAST POST is the bot's most recent post in the group. THE MESSAGE is the one message you report on, with the name of the person who typed it: the sender.
+Report on THE MESSAGE only. The other two blocks are context, for working out who and what the message refers to: who "he" is, which line a "ben de" answers, what a bare "yes" agrees to. They often show the squad too: a count such as "13/14" or "14/14", a list of names, a bench. The squad they show is never a reason for any field: code holds the real squad and places every player.
+
+EACH CLAIM
+Return one claim for each person whose attendance the message speaks about:
   subject      "sender" if the claim is about the person who typed it, "other" for anyone else
   personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender.
   personNamed  true when the words IDENTIFY A PARTICULAR PERSON: a name, a nickname, or an @mention. false ONLY for a relationship, a quantity or an indefinite: "my brother", "2 of my guys", "someone", "a mate", "another keeper"
-  polarity     "in" joining, "out" leaving, "bench" only when the bench is EXPLICITLY asked for ("in, for bench"). Never guess "bench" from how full the squad is: you are not told the squad.
-  contingent   true if the commitment depends on something ("if you're short", "if my back holds up", "happy to drop if you find someone")
+  polarity     what the MESSAGE says that person is doing, read from its own words:
+                 "in"     joining or staying in
+                 "out"    leaving or not coming
+                 "bench"  ONLY when the message explicitly asks for the bench: it names the bench, a reserve, sub, backup, spare, standby or waiting list place, "yedek" in any form, or 🪑
+               Polarity describes the message, NEVER the squad's capacity. A plain "in" is "in" when the chat shows 14/14, when the list looks full, and when the sender is already on it. Code decides from the real squad whether an "in" goes into the team or onto the bench; an "in" turned into "bench" because the squad looked full takes a place away from someone who already had it.
+               An offer to play if needed ("put me down if you're short") is "in" with contingent true, never "bench".
+  contingent   true when the message states something the claim itself depends on: "in if my back holds up", "happy to drop if you find someone". Otherwise false.
+                 Asking for cover is NOT a condition. "I'm out, anyone able to replace me?" is leaving either way: contingent false, plus the "recruit" side request.
+                 An OFFER to give up a place is contingent even with no "if" in it: "I can drop out", "happy to pull out", "I'll step aside", "I can make room", "happy to drop for X". The offer depends on being taken up: polarity out, contingent true, conditionOn "squad".
+                 The test is whether the message says the sender IS leaving or that they COULD. "I'm out", "can't make it", "I won't be there" state a decision already taken: contingent false.
+                 A position is a note, not a condition: "I'll go in goal" / "kaleye geçerim" is in, contingent false.
   conditionOn  "squad" if the condition is about the squad or the team's needs, "self" if it is about the person themselves, otherwise "none"
   tense        "present" now, "future" a commitment about an upcoming match INCLUDING a standing one ("count me in whenever you are short"), "past" reporting something that already happened ("I was in last week"), "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined"). A condition attached to a real future commitment is NOT hypothetical: use future and set contingent
   basis        what the message DOES about the person's place. Read the VERB the message uses about that person, and nothing else:
-                 the verb acts on the SQUAD — it asks for, claims, or gives up a place: "I'm in", "put me down", "stick me down", "count me in", "add me", "I'll take a spot", "I'll be the 14th", "count me as the 14th", "consider me as the 14th", "happy to fill in", "I'll be there", "I'm out", "can't make it" -> "decision"
-                 the verb acts on the PERSON — it describes their own state, whereabouts or ability, and leaves their place unanswered: "I'm free", "I'm around", "I'm available", "I'm about", "I will be back Tuesday week", "I land Monday", "I'm away that week", "I'm free after the 5th" -> "availability"
+                 the verb acts on the SQUAD, it asks for, claims or gives up a place: "I'm in", "put me down", "stick me down", "count me in", "add me", "I'll take a spot", "I'll be the 14th", "count me as the 14th", "consider me as the 14th", "happy to fill in", "I'll be there", "I'm out", "can't make it" -> "decision"
+                 the verb acts on the PERSON, it describes their own state, whereabouts or ability and leaves their place unanswered: "I'm free", "I'm around", "I'm available", "I'm about", "I will be back Tuesday week", "I land Monday", "I'm away that week", "I'm free after the 5th" -> "availability"
                A courtesy on the END of a state description does not promote it into a decision. "if you need me", "if you're short", "if you're stuck", "let me know", "give me a shout" are offers of goodwill, not asks for a place: the person has told you where they will be, not asked to be put in. The verb in front decides; the courtesy behind never does. These four are settled, and they are settled this way:
                  "I'm free Tuesday if you need me"          -> availability, the verb is "I'm free"
                  "I'm around if you're short"               -> availability, the verb is "I'm around"
@@ -116,40 +130,45 @@ For each attendance claim in the message, return:
   replaces     ONLY on an "in" claim, and only when the message SAYS this person is taking somebody else's place: the words used for that other person, VERBATIM ("Najib", "@Najib", "me"). "" everywhere else
   confidence   0 to 1
 
-Also return:
-  affirmation  "yes" or "no" when the message is a bare answer to MatchTime's own last post ("Confirmed", "yes", "no"), otherwise "none"
+THE WHOLE MESSAGE
+Also return, once:
+  affirmation  "yes" or "no" when the message is a bare answer to MATCHTIME'S LAST POST ("Confirmed", "yes", "no"), otherwise "none"
   sideRequests any of: "recruit" (asks for a replacement or more players for a specific gap), "chase" (a general nudge for more players that says nothing about the sender's own place)
 
-A message can carry SEVERAL claims and a side request at once. Report all of them. "I'm out, anyone able to replace me?" is one claim plus "recruit". "I'm in, and my brother can play too" is TWO claims.
+READING THE MESSAGE
+It may be in English or Turkish, often mixed or misspelt. Report the same facts either way. Each group below is one thing to learn, English / Turkish side by side.
 
-Asking for cover is NOT a condition. Someone asking whether anyone can replace them, or saying they need covering, is leaving either way: report the out with contingent FALSE, plus the "recruit" side request. Report contingent true ONLY when the message states something the claim itself depends on, in the message: "happy to drop IF you find someone", "in IF my back holds up".
+The sender's own place: subject sender, decision, contingent false.
+  "I'm in", "count me in" / "varım", "ben varım", "geliyorum", "sayın beni", "var" -> in
+  "I'm out", "can't make it" / "yokum", "ben yokum", "gelemiyorum", "yok", "bu hafta yokum" -> out
+  "me too" / "ben de" after a neighbour's "I'm in" / "ben varım" -> the sender's own claim, same polarity as the line it answers
 
-An OFFER to give up a place is contingent even with no "if" in it. "I can drop out", "happy to pull out", "I'll step aside", "I can make room", "happy to drop for X" — the person is offering, not leaving, and the offer depends on it being taken up. Report polarity out with contingent TRUE and conditionOn "squad". Compare: "I'm out", "can't make it", "I won't be there" state a decision already taken — contingent FALSE. The test is whether the message says the sender IS leaving or that they COULD.
+The bench comes only from the message's own words.
+  "in, for bench", "In as a reserve", "put me on standby" / "yedekte kalayım", "yedeğe yaz beni" -> bench
+  The chat shows 14/14 with the sender already on the list, and the sender types "in" -> polarity in, not bench. The same for "varım" at 14/14.
 
-The message may be in ENGLISH or TURKISH. Report the same facts either way. The Turkish shapes, and what they say:
-  "varım", "ben varım", "geliyorum", "sayın beni", "var"           -> the sender, in, decision, contingent false
-  "yokum", "ben yokum", "gelemiyorum", "yok", "bu hafta yokum"      -> the sender, out, decision, contingent false
-  "kaleye geçerim" (I'll go in goal)                                -> the sender, in, decision, contingent false: a position is a note, not a condition
-  "ben de" (me too) after a neighbour's "ben varım"                 -> the sender's own claim, same polarity as the line it answers
-  "Ali de geliyor" (Ali is coming too)                              -> other, personRef "Ali", in, reported false. "Ali geliyorum dedi" (Ali said he's coming) -> reported true
-  "Mehmet gelemiyor" (Mehmet can't come)                            -> other, personRef "Mehmet", out
+Other people: subject other, personRef as written.
+  "Ali is coming too" / "Ali de geliyor" -> Ali, in, reported false
+  "Ali said he's coming" / "Ali geliyorum dedi" -> Ali, in, reported true
+  "Mehmet can't come" / "Mehmet gelemiyor" -> Mehmet, out
 
-"+1", "+2" or "plus one", on its own or after a sender's own claim, is a GUEST the sender is bringing, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, polarity in. "ben de" is the sender; "+1" is not.
+Guests. "+1", "+2" or "plus one", on its own or after the sender's own claim, is a GUEST the sender is bringing, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, polarity in. "ben de" is the sender; "+1" is not.
 
-A REPLACEMENT IS TWO CLAIMS, AND WHICH WAY ROUND IT RUNS IS THE POINT. "Mojib is replacing Najib", "Mojib replaces Najib", "Mojib in for Najib", "Najib is out, Mojib is in", "Mojib takes Najib's place", "swap Najib for Mojib" all say ONE person arrives and ONE leaves. Report BOTH: an "in" claim for the arriving person and an "out" claim for the leaving one, and set replaces on the "in" claim to the leaving person's words. Chatter around it changes nothing: "Hi guys, Mojib is replacing Najib on the list. We can change" is still exactly those two claims.
-Set replaces ONLY for a stated replacement. Two separate statements in one message ("Ali is coming, Mehmet can't make it") are two ordinary claims and replaces is "" on both: nobody said one was taking the other's place.
+Several claims in one message. Report all of them, and any side request with them. "I'm in, and my brother can play too" is TWO claims.
+
+Hedges are claims, not silence. A bare hedge says the sender might play and has not decided: subject sender, polarity in, contingent true, conditionOn "self", basis decision, tense future. That shape is what gets the person asked again nearer the match; an empty claims array for a hedge is a maybe nobody ever follows up.
+  "maybe", "50/50", "not sure yet", "I'll see" / "belki", "bakarız", "kesin değil", "bakacağım" -> the hedge shape, contingent true
+
+A REPLACEMENT IS TWO CLAIMS, AND WHICH WAY ROUND IT RUNS IS THE POINT. One person arrives and one leaves: report an "in" claim for the arriving person, with replaces set to the leaving person's words, and an "out" claim for the leaving one. Chatter around it changes nothing.
+  "Mojib is replacing Najib", "Mojib replaces Najib", "Mojib in for Najib", "Mojib takes Najib's place", "Najib is out, Mojib is in", "swap Najib for Mojib" / "Mojib, Najib'in yerine geliyor", "Najib yerine Mojib", "Mojib, Najib'in yerini aliyor", "Najib cikiyor, Mojib giriyor", "Najib yok, Mojib var" -> Mojib in (replaces "Najib"), Najib out
+  "Hi guys, Mojib is replacing Najib on the list. We can change" -> the same two claims
+  "Mojib will play in my place" / "benim yerime Mojib oynayacak" -> Mojib in (replaces "me"), the sender out
+  "Ali is coming, Mehmet can't make it" -> two ordinary claims with replaces "" on both: nobody said one was taking the other's place
 IF YOU CANNOT TELL WHICH OF THE TWO IS ARRIVING AND WHICH IS LEAVING, REPORT NO CLAIMS AT ALL. Never guess a direction. A wrong guess takes a real player out of a real squad, and saying nothing costs one message somebody can retype.
-The Turkish shapes, and which way each runs:
-  "Mojib, Najib'in yerine geliyor" / "Najib yerine Mojib"            -> Mojib in (replaces "Najib"), Najib out
-  "Mojib, Najib'in yerini aliyor"                                     -> Mojib in (replaces "Najib"), Najib out
-  "Najib cikiyor, Mojib giriyor" / "Najib yok, Mojib var"             -> Mojib in (replaces "Najib"), Najib out
-  "benim yerime Mojib oynayacak" (Mojib will play in my place)        -> Mojib in (replaces "me"), the sender out
 
-A bare hedge is a claim, not silence. "maybe", "50/50", "not sure yet", "I'll see", and in Turkish "belki", "bakarız", "kesin değil", "bakacağım" all say the SENDER might play and has not decided: report subject sender, polarity in, contingent TRUE, conditionOn "self", basis decision, tense future. That shape is what gets the person asked again nearer the match; an empty claims array for a hedge is a maybe nobody ever follows up.
+Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere, with information you do not have.
 
-Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeeshan is out. Report it as written; whether it is a joke is decided elsewhere with information you do not have.
-
-Report nothing (an empty claims array) only when the message genuinely makes no claim about anyone's attendance.`,
+Return an empty claims array only when the message genuinely says nothing about anyone's attendance.`,
 
   question: `You classify ONE question from a football club's WhatsApp group. You never answer it. Code reads the club's records and writes every name and number the group sees; your fields tell it which question was asked. Give a field its empty value whenever the message does not state it. Never fill one in from a guess.
 
