@@ -27,8 +27,15 @@ MatchTime (about $4 per club per month) was invisible underneath our testing. (T
 separate now, see the note at the end of this section. The approval rule stands regardless:
 a separate key makes the spend visible, it does not make it free.)
 
-**When a run is approved:** smallest subset that exercises the change, `REPEAT=3` while iterating,
-a full pass only as a final gate, and report the number of model calls made.
+**When a run is approved:** smallest subset that exercises the change, and report the number of
+model calls made.
+
+**Propose the cheap test plan by default (Kemal, 2026-09-24: "goingforward pick these test plans to
+keep the costs low").** The shape: (1) the known failing case repeated about 20 times, which costs
+pennies; (2) ONE full pass of the relevant gate, not three; (3) the other affected groups once. Say
+plainly what a single pass cannot prove (an occasional miss can slip through and would be caught
+live). Propose three-run certification only if Kemal asks for it. On the router rewrite (#132) this
+turned a $4.10 plan into a $1.45 one.
 
 **Unit tests and the Playwright web suite make no model calls, cost nothing, and stay mandatory
 on every change.** Do not confuse the two kinds of suite.
