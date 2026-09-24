@@ -27,6 +27,7 @@
  * Postgres itself. Never `new Date(row.date)`.
  */
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
+import { testDb } from "../helpers/test-db";
 import { ORG_ID, MATCH } from "../helpers/constants";
 
 test.describe.configure({ mode: "serial" });
@@ -60,8 +61,52 @@ const MATCH_SQL = `
 const readMatch = (db: { one: <T>(sql: string, p: unknown[]) => Promise<T | null> }) =>
   db.one<MatchRow>(MATCH_SQL, [MATCH.upcoming]);
 
+/**
+ * THE ANNOUNCEMENT LANDS AFTER THE ROW. `switchMatchFormat` updates the
+ * Match first, then recuts the squad, reads the roster twice and only
+ * then inserts the BotJob. So the moment the poll above sees the new
+ * Match row, the announcement may not exist yet: read once, and the
+ * first test gets null and the second gets the PREVIOUS test's message.
+ * On an unloaded machine that window is milliseconds and the spec passed;
+ * on a busy one it failed 4 runs in 7.
+ *
+ * To make that deterministic rather than a matter of machine load, each
+ * test holds the action's BotJob INSERT back by LATE_MS with a trigger,
+ * so the Match row is always visible well before the announcement is.
+ * The trigger function goes quiet on its own after a minute, so a run
+ * killed mid-test cannot leave every later spec's BotJob inserts slow.
+ */
+const LATE_MS = 3_000;
+
+async function armLateBotJob(db: { run: (sql: string, p?: unknown[]) => Promise<void> }) {
+  const expires = new Date(Date.now() + 60_000).toISOString();
+  await db.run(`
+    CREATE OR REPLACE FUNCTION e2e_late_botjob() RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF clock_timestamp() < '${expires}'::timestamptz THEN
+        PERFORM pg_sleep(${LATE_MS / 1000});
+      END IF;
+      RETURN NEW;
+    END $fn$`);
+  await db.run(`DROP TRIGGER IF EXISTS e2e_late_botjob ON "BotJob"`);
+  await db.run(
+    `CREATE TRIGGER e2e_late_botjob BEFORE INSERT ON "BotJob"
+       FOR EACH ROW EXECUTE FUNCTION e2e_late_botjob()`,
+  );
+}
+
+async function disarmLateBotJob(db: { run: (sql: string, p?: unknown[]) => Promise<void> }) {
+  await db.run(`DROP TRIGGER IF EXISTS e2e_late_botjob ON "BotJob"`);
+  await db.run(`DROP FUNCTION IF EXISTS e2e_late_botjob()`);
+}
+
 test.beforeAll(async () => {
   resetDb();
+  await disarmLateBotJob(testDb());
+});
+
+test.afterEach(async ({ db }) => {
+  await disarmLateBotJob(db);
 });
 
 test("switching format moves the kickoff to the new activity's London time", async ({
@@ -92,6 +137,7 @@ test("switching format moves the kickoff to the new activity's London time", asy
   const select = page.locator("select");
   await expect(select).toBeVisible({ timeout: 30_000 });
   await select.selectOption(ACTIVITY_7);
+  await armLateBotJob(db);
   await page.getByRole("button", { name: /Confirm switch/ }).click();
 
   // ── the row, not the toast ─────────────────────────────────────────
@@ -137,6 +183,7 @@ test("switching back to a same-time format leaves the kickoff exactly where it i
   const select = page.locator("select");
   await expect(select).toBeVisible({ timeout: 30_000 });
   await select.selectOption(ACTIVITY_5);
+  await armLateBotJob(db);
   await page.getByRole("button", { name: /Confirm switch/ }).click();
 
   await expect
