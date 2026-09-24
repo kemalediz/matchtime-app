@@ -4,6 +4,17 @@
  *
  *   npm run replay:router-attendance                 # 3 live runs
  *   MT_ATT_REPEATS=5 npm run replay:router-attendance
+ *   ROUTER_VETO_FLOOR=1 MT_ATT_REPEATS=1 npm run replay:router-attendance
+ *
+ * FLOOR OFF BY DEFAULT, ON BY OPT-IN (2026-09-24). Off measures the
+ * MODEL: every gold message is the router's call, which is what a
+ * prompt change is cleared on. `ROUTER_VETO_FLOOR=1` measures what
+ * PRODUCTION does once `ROUTER_GATE_FLOOR_ENABLED` is on: the floor
+ * claims the bare shapes first and overrides the model on them. Both
+ * are wanted, so the default does not move; the opt-in also reports
+ * how many gold messages the floor claimed, and how many of those the
+ * model would have routed `none` (knowable only when the batch still
+ * went to the model).
  *
  * `gate.ts`: *"Missing a saving costs pennies. Missing a player's IN
  * costs them their place."* This is the number that sentence is about,
@@ -45,7 +56,7 @@ import { config as loadEnv } from "dotenv";
 import { probeAnthropic } from "../helpers/live-llm";
 import { spendDevApiKey } from "../helpers/dev-api-key";
 import { anthropicModel, ROUTER_MODEL } from "../../src/lib/pipeline/llm";
-import { routeBatch } from "../../src/lib/pipeline/router";
+import { routeBatch, routeFloor } from "../../src/lib/pipeline/router";
 import { batchMessages } from "./reconstruct";
 import type { ReplaySource } from "./types";
 
@@ -116,6 +127,7 @@ async function main(): Promise<number> {
   }
 
   const repeats = Math.max(1, Number(process.env.MT_ATT_REPEATS ?? 3));
+  const floorOn = process.env.ROUTER_VETO_FLOOR === "1";
   const probe = await probeAnthropic({ key, model: ROUTER_MODEL });
   console.log(
     `[att] LLM: LIVE — probe OK. ${probe.model} answered in ${probe.ms}ms and billed ` +
@@ -123,7 +135,7 @@ async function main(): Promise<number> {
   );
   console.log(
     `[att] ${batches.length} of ${all.length} batches carry a gold-attendance message; ` +
-      `${population} such messages. ${repeats} live run(s), floor OFF.`,
+      `${population} such messages. ${repeats} live run(s), floor ${floorOn ? "ON" : "OFF"}.`,
   );
 
   const model = anthropicModel({ apiKey: key });
@@ -133,6 +145,9 @@ async function main(): Promise<number> {
   let calls = 0;
   let fallbacks = 0;
   const fallbackDetail: string[] = [];
+  // Floor accounting, gold messages only, summed over runs. Meaningful
+  // only with the floor on; all zero otherwise.
+  const floorTally = { claimed: 0, noModelCall: 0, modelAgreed: 0, overrodeNone: 0, overrodeOther: 0 };
 
   for (let rep = 0; rep < repeats; rep++) {
     let lost = 0;
@@ -145,7 +160,7 @@ async function main(): Promise<number> {
           authorName: m.authorName,
           body: m.body ?? "",
         })),
-        { floor: false, awaiting: null },
+        { floor: floorOn, awaiting: null },
       );
       if (res.usage) {
         calls += 1;
@@ -156,6 +171,13 @@ async function main(): Promise<number> {
         if (!isA(m.body)) continue;
         seen += 1;
         const r = by.get(m.waMessageId);
+        if (floorOn && routeFloor(m.body ?? "") !== null) {
+          floorTally.claimed += 1;
+          if (!res.usage) floorTally.noModelCall += 1;
+          else if (r?.overrodeRoute === "none") floorTally.overrodeNone += 1;
+          else if (r?.overrodeRoute) floorTally.overrodeOther += 1;
+          else floorTally.modelAgreed += 1;
+        }
         if (r?.source === "fallback") {
           fallbacks += 1;
           // Say WHICH message and WHY. On 2026-09-23 the rewrite's sweep
@@ -201,6 +223,16 @@ async function main(): Promise<number> {
       const shape = runs === repeats ? "PROMPT GAP — same message every run" : "sampling";
       console.log(`    ${runs}/${repeats}  ${shape}  ${JSON.stringify(body.slice(0, 110))}`);
     }
+  }
+  if (floorOn) {
+    console.log("");
+    console.log(
+      `  floor claimed ${floorTally.claimed} gold message(s) over ${repeats} run(s): ` +
+        `${floorTally.noModelCall} in batches that made no model call (model verdict unknown), ` +
+        `${floorTally.modelAgreed} the model agreed with, ` +
+        `${floorTally.overrodeNone} rescued from none, ` +
+        `${floorTally.overrodeOther} relabelled from another route.`,
+    );
   }
   console.log("");
   console.log(
