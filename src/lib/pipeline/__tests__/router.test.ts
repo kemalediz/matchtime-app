@@ -520,6 +520,62 @@ describe("the floor reads the bare Turkish forms, same shape as the English ones
   });
 });
 
+// ── Emoji (2026-09-24): in a display name, and after the declaration ──
+//
+// The floor goes ON in production with the router rewrite, and a group
+// types emoji everywhere: in display names ("Jesse👑") and after the
+// token ("IN ✌️"). An emoji is never a word, so it can neither make a
+// bare declaration a sentence nor end a mentioned name. It is matched as
+// an emoji SEQUENCE, not a hand list: "✌️" carries U+FE0F (a nonspacing
+// mark, not a symbol), "🤷‍♂️" joins with U+200D (a format character).
+describe("the floor reads emoji in a name and after the declaration", () => {
+  it.each([
+    // In the mentioned display name: attached, leading, or its own word.
+    ["@Jesse👑 IN", "other_att"],
+    ["@👑Jesse in", "other_att"],
+    ["@Jesse 👑 IN", "other_att"],
+    ["@Ehtisham Ul Haq 🔥 In", "other_att"],
+    // After the declaration, self and mention alike.
+    ["In 👍", "self_att"],
+    ["IN ✌️", "self_att"],
+    ["In 💪🏽", "self_att"],
+    ["Out 🤷‍♂️", "self_att"],
+    ["In 🇬🇧", "self_att"],
+    ["In 🏴󠁧󠁢󠁥󠁮󠁧󠁿", "self_att"],
+    ["var ✅", "self_att"],
+    ["IN 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥", "self_att"],
+    ["@Jordan IN 🙏", "other_att"],
+    ["@Ali var 👍", "other_att"],
+    ["@Jesse👑 out 🤷‍♂️", "other_att"],
+  ])("%s → %s", (body, route) => {
+    expect(routeFloor(body)).toBe(route);
+  });
+
+  it.each([
+    // Emoji widen the floor; they never widen it into sentences.
+    "Hi @Jordan going forward we need to say IN",
+    "@Jordan in the car",
+    "@Jordan 👑 in the car",
+    "in 20 mins",
+    "in 20",
+    "Confirmed",
+    "Confirmed 👍",
+    // The bot is never a player, however it is decorated.
+    "@Match Time in",
+    "@Match Time 👍 in",
+    // Only emoji: no token, so nothing to claim.
+    "👍",
+    "🔥🔥🔥",
+    "@👑",
+    "@Jesse👑",
+    // Still deliberately unmatched: "+1" offers a guest.
+    "+1",
+    "+1 👍",
+  ])("does not claim %s", (body) => {
+    expect(routeFloor(body)).toBeNull();
+  });
+});
+
 describe("the router prompt reads Turkish", () => {
   it("says a message may be Turkish, and that a bare var/yok is attendance like a bare in/out", () => {
     expect(ROUTER_SYSTEM_PROMPT).toMatch(/Turkish/);

@@ -403,9 +403,22 @@ const FLOOR_OUT_TR = /^(?:ben\s+)?(?:yokum|yok|gelemiyorum)(?!\p{L})/iu;
  * `+N` as a placeholder guest, so the rest of the codebase agrees.
  * The router decides this one.
  */
+/**
+ * ONE CHARACTER OF AN EMOJI SEQUENCE (2026-09-24). The pictograph itself
+ * plus everything a sequence is built from: skin tones, regional
+ * indicators (flags), U+200D (the ZWJ in "🤷‍♂️", a format character),
+ * U+FE0F (the variation selector in "✌️", a nonspacing mark, so `\p{S}`
+ * alone missed both), the keycap U+20E3 and the tag characters of the
+ * subdivision flags ("🏴󠁧󠁢󠁥󠁮󠁧󠁿"). NOT `\p{Emoji_Component}`: that property
+ * includes the digits 0-9, and "in 20" is a sentence.
+ */
+const EMOJI_CHAR =
+  "\\p{Extended_Pictographic}\\p{Emoji_Modifier}\\p{Regional_Indicator}\\u200D\\uFE0F\\u20E3\\u{E0020}-\\u{E007F}";
+const EMOJI_RUN = new RegExp(`[${EMOJI_CHAR}]+`, "gu");
+
 /** Anything left after the token that is not punctuation or an emoji
  *  means this is a sentence, not a bare declaration. */
-const FLOOR_TAIL = /^[\s\p{P}\p{S}]*$/u;
+const FLOOR_TAIL = new RegExp(`^[\\s\\p{P}\\p{S}${EMOJI_CHAR}]*$`, "u");
 
 /**
  * The MENTION half of the floor: `@Someone in`, `@Zair Malik out`.
@@ -420,12 +433,16 @@ const FLOOR_TAIL = /^[\s\p{P}\p{S}]*$/u;
  * "@Match Time in" would try to register a member called "Match Time",
  * which is the ghost-user class of bug one layer up.
  */
-const MENTION_TOKEN = /^@[\p{L}\d._'-]+/u;
+const MENTION_TOKEN = new RegExp(`^@[\\p{L}\\d._'${EMOJI_CHAR}-]+`, "u");
 /** A capitalised word after a mention is part of the mentioned display
  *  name ("@Ehtisham Ul Haq") — the Pi expands a mention to the display
  *  name. A lower-case word is the sentence starting, and ends the
- *  subject. */
-const NAME_WORD = /^\p{Lu}[\p{L}'-]*$/u;
+ *  subject. An emoji is part of a name too, attached ("Jesse👑") or as a
+ *  word of its own ("@Jesse 👑 IN"): it is never the sentence starting. */
+const NAME_WORD = new RegExp(
+  `^[${EMOJI_CHAR}]*(?:\\p{Lu}[\\p{L}'-]*)?[${EMOJI_CHAR}]*$`,
+  "u",
+);
 
 export function routeFloor(body: string): Route | null {
   const t = (body ?? "").trim();
@@ -461,9 +478,11 @@ function isFloorToken(word: string): boolean {
   return /^(?:in|out|var|var[ıi]m|yok|yokum|gelemiyorum)$/iu.test(word.replace(/[^\p{L}]/gu, ""));
 }
 
-/** Is the whole of `t` a bare IN/OUT declaration and nothing else? */
+/** Is the whole of `t` a bare IN/OUT declaration and nothing else? The
+ *  length cap bounds the WORDS, so a run of emoji after "IN" never
+ *  pushes a bare declaration over it. */
 function isBareDeclaration(t: string): boolean {
-  if (!t || t.length > 24) return false;
+  if (!t || t.replace(EMOJI_RUN, "").length > 24) return false;
   for (const re of [FLOOR_IN, FLOOR_OUT, FLOOR_IN_TR, FLOOR_OUT_TR]) {
     const m = re.exec(t);
     if (!m) continue;
