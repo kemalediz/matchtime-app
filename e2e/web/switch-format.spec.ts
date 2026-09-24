@@ -65,10 +65,13 @@ const readMatch = (db: { one: <T>(sql: string, p: unknown[]) => Promise<T | null
  * THE ANNOUNCEMENT LANDS AFTER THE ROW. `switchMatchFormat` updates the
  * Match first, then recuts the squad, reads the roster twice and only
  * then inserts the BotJob. So the moment the poll above sees the new
- * Match row, the announcement may not exist yet: read once, and the
- * first test gets null and the second gets the PREVIOUS test's message.
- * On an unloaded machine that window is milliseconds and the spec passed;
- * on a busy one it failed 4 runs in 7.
+ * Match row, the announcement may not exist yet. This spec used to read
+ * the org's newest BotJob once at that moment, and the first test got
+ * null and the second got the PREVIOUS test's message. On an unloaded
+ * machine the window is milliseconds and it passed; on a busy one it
+ * failed 7 runs in 21, on main and on an unrelated branch alike.
+ * `newJobsSince` below is the fix: it waits for the job THIS click
+ * queued, identified by not existing before the click.
  *
  * To make that deterministic rather than a matter of machine load, each
  * test holds the action's BotJob INSERT back by LATE_MS with a trigger,
@@ -98,6 +101,39 @@ async function armLateBotJob(db: { run: (sql: string, p?: unknown[]) => Promise<
 async function disarmLateBotJob(db: { run: (sql: string, p?: unknown[]) => Promise<void> }) {
   await db.run(`DROP TRIGGER IF EXISTS e2e_late_botjob ON "BotJob"`);
   await db.run(`DROP FUNCTION IF EXISTS e2e_late_botjob()`);
+}
+
+type Db = {
+  all: <T>(sql: string, p?: unknown[]) => Promise<T[]>;
+};
+
+/** Every BotJob id the org has right now: what a click must not be credited with. */
+async function botJobIds(db: Db): Promise<string[]> {
+  const rows = await db.all<{ id: string }>(`SELECT id FROM "BotJob" WHERE "orgId" = $1`, [ORG_ID]);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Wait for the BotJobs queued since `before` was taken, and return them.
+ * Exactly one is expected: the switch queues a single announcement, and
+ * a second would be a duplicate group post.
+ */
+async function newJobsSince(db: Db, before: string[]) {
+  let jobs: Array<{ kind: string; text: string }> = [];
+  await expect
+    .poll(
+      async () => {
+        jobs = await db.all<{ kind: string; text: string }>(
+          `SELECT kind, text FROM "BotJob"
+            WHERE "orgId" = $1 AND NOT (id = ANY($2::text[]))`,
+          [ORG_ID, before],
+        );
+        return jobs.length;
+      },
+      { timeout: 30_000, message: "the switch should queue exactly one group announcement" },
+    )
+    .toBe(1);
+  return jobs;
 }
 
 test.beforeAll(async () => {
@@ -137,6 +173,7 @@ test("switching format moves the kickoff to the new activity's London time", asy
   const select = page.locator("select");
   await expect(select).toBeVisible({ timeout: 30_000 });
   await select.selectOption(ACTIVITY_7);
+  const jobsBefore = await botJobIds(db);
   await armLateBotJob(db);
   await page.getByRole("button", { name: /Confirm switch/ }).click();
 
@@ -158,13 +195,11 @@ test("switching format moves the kickoff to the new activity's London time", asy
     });
 
   // The group is told the new kickoff, in London wall clock.
-  const job = await db.one<{ text: string }>(
-    `SELECT text FROM "BotJob" WHERE "orgId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
-    [ORG_ID],
-  );
-  expect(job!.text).toContain("Football 7-a-side");
-  expect(job!.text).toContain(NEW_TIME);
-  expect(job!.text).toContain("20:00");
+  const [job] = await newJobsSince(db, jobsBefore);
+  expect(job.kind).toBe("group");
+  expect(job.text).toContain("Football 7-a-side");
+  expect(job.text).toContain(NEW_TIME);
+  expect(job.text).toContain("20:00");
 });
 
 test("switching back to a same-time format leaves the kickoff exactly where it is", async ({
@@ -183,6 +218,7 @@ test("switching back to a same-time format leaves the kickoff exactly where it i
   const select = page.locator("select");
   await expect(select).toBeVisible({ timeout: 30_000 });
   await select.selectOption(ACTIVITY_5);
+  const jobsBefore = await botJobIds(db);
   await armLateBotJob(db);
   await page.getByRole("button", { name: /Confirm switch/ }).click();
 
@@ -196,9 +232,8 @@ test("switching back to a same-time format leaves the kickoff exactly where it i
       deadlineMs: before!.deadlineMs,
     });
 
-  const job = await db.one<{ text: string }>(
-    `SELECT text FROM "BotJob" WHERE "orgId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
-    [ORG_ID],
-  );
-  expect(job!.text).not.toMatch(/kickoff/i);
+  // Still announced (the format changed), but with no kickoff line.
+  const [job] = await newJobsSince(db, jobsBefore);
+  expect(job.kind).toBe("group");
+  expect(job.text).not.toMatch(/kickoff/i);
 });
