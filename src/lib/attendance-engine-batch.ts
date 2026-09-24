@@ -137,7 +137,9 @@
  */
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
 import { clampPastedRosterFacts } from "./pasted-roster-registration";
-import { extractForRoute } from "./pipeline/extractors";
+// Traced: the extractor's facts are kept on the message's AnalyzedMessage
+// row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
+import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import { compose } from "./pipeline/compose";
@@ -579,7 +581,7 @@ export async function runAttendanceEngineBatch(args: {
   const factsById = new Map<string, { facts: Facts; degraded: string | null }>();
   await Promise.all(
     owned.map(async (m) => {
-      const res = await extractForRoute(model, m.route as Route, {
+      const res = await extractForRouteTraced("attendance", model, m.route as Route, {
         id: m.waMessageId,
         body: m.body,
         authorName: m.authorName,
