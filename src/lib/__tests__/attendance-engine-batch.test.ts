@@ -1158,3 +1158,73 @@ describe("a drop off a full squad reaches the group; an IN still does not", () =
     expect(Object.keys(d).filter((k) => /dm|send|notify|blast/i.test(k))).toEqual([]);
   });
 });
+
+// ── 2026-09-24, Sutton FC: a confirmed player's "in" demoted to BENCH ─
+
+describe("a plain 'in' from a confirmed player never reaches the apply layer as a bench", () => {
+  /** The extractor's production answer to the body "in": an
+   *  uncontingent BENCH. Returned for every call, so the paste in the
+   *  same batch gets it too and the pasted-roster clamp must discard it. */
+  const SELF_BENCH = {
+    claims: [{ ...SELF_IN.claims[0], polarity: "bench" }],
+    affirmation: "none",
+    sideRequests: [],
+  };
+
+  /** The squad AFTER the paste's registration landed: Pete is the 4th of
+   *  4, which is Erdal at 14/14 scaled down. */
+  const fullWithPete = async () =>
+    state({
+      roster: [
+        ...state().roster,
+        { userId: "u-sam", name: "Sam Striker", isAdmin: false, hasPhone: true },
+      ],
+      rows: [
+        { userId: "u-alice", status: "CONFIRMED", position: 1 },
+        { userId: "u-dan", status: "CONFIRMED", position: 2 },
+        { userId: "u-sam", status: "CONFIRMED", position: 3 },
+        { userId: "u-pete", status: "CONFIRMED", position: 4 },
+      ],
+    });
+
+  const PASTE =
+    "Squad update — 3/4 in, just need 1\n1. Alice Admin\n2. Dan Drummer\n3. Sam Striker\n4. Pete";
+
+  it("THE INCIDENT: paste then 'in' in one batch writes nothing and benches nobody", async () => {
+    const calls: Array<{ userId: string; benchIntent: unknown }> = [];
+    const d = deps({
+      model: modelReturning(SELF_BENCH),
+      loadState: fullWithPete,
+      async registerAttendance(userId, _matchId, opts) {
+        calls.push({ userId, benchIntent: opts?.benchIntent });
+        return { status: "BENCH" as const, position: 4, slot: 1, confirmedCount: 3, maxPlayers: 4 };
+      },
+    });
+    const r = await run(
+      [
+        msg({ waMessageId: "wa-paste", body: PASTE, route: "other_att" }),
+        msg({ waMessageId: "wa-in", body: "in" }),
+      ],
+      d,
+    );
+    expect(calls).toEqual([]);
+    expect(d.cancelled).toEqual([]);
+    const out = r.outcomes.get("wa-in");
+    expect(out?.action).toBe("none");
+    expect(out?.reasoning).toMatch(/never names the bench/);
+  });
+
+  it("a real bench request in words still reaches the apply layer as EXPLICIT", async () => {
+    const calls: Array<{ userId: string; benchIntent: unknown }> = [];
+    const d = deps({
+      model: modelReturning(SELF_BENCH),
+      loadState: fullWithPete,
+      async registerAttendance(userId, _matchId, opts) {
+        calls.push({ userId, benchIntent: opts?.benchIntent });
+        return { status: "BENCH" as const, position: 4, slot: 1, confirmedCount: 3, maxPlayers: 4 };
+      },
+    });
+    await run([msg({ body: "put me on the bench, let someone else play" })], d);
+    expect(calls).toEqual([{ userId: "u-pete", benchIntent: "explicit" }]);
+  });
+});
