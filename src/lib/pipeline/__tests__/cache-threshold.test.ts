@@ -116,7 +116,27 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     //
     // RE-MEASURE THESE with `count_tokens` on the next change that has a
     // dev key to hand, and put the real figures back.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_254);
+    //
+    // 2026-09-23, THE ROUTER REWRITE: re-measured, not derived
+    // (`count_tokens`, claude-haiku-4-5, dev key). The prompt on main
+    // before the rewrite was 12,416 characters / 3,289 tokens (so the
+    // derived 3,254 above was 35 short: the floor it claimed was not
+    // quite a floor). The rewrite is 11,443 characters / 3,311 tokens,
+    // 3.45 chars/token, denser because the Turkish now sits beside the
+    // English and the alignment padding is gone. The bound is the real
+    // count; the estimator's 2,860 sits under it, as it must. Still under
+    // Haiku's 4,096, and deliberately NOT padded over it: the Pi buffers
+    // about ten minutes and a five-minute cache entry expires first
+    // (`MDs/llm-spend-september-2026.md`). The attendance bound is
+    // untouched by this change.
+    //
+    // 2026-09-24, the "@Jordan IN" fix: the name-plus-in/out rule moved
+    // into the first decision question and gained its Turkish examples.
+    // Measured (`count_tokens`, claude-haiku-4-5, dev key): 11,734
+    // characters / 3,386 tokens, from 11,443 / 3,311. The estimator's
+    // 2,933 sits under it. Still under Haiku's 4,096, for the reason
+    // above.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_386);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_275);
   });
 });

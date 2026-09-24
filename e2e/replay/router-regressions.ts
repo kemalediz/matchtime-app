@@ -75,7 +75,9 @@ export interface RegressionCase {
 }
 
 export const ROUTER_REGRESSIONS: RegressionCase[] = [
-  // ── Broken by candidate v1, and the reason v2 has Rule 0 and 11a ────
+  // ── Broken by candidate v1, and the reason the prompt puts "does it
+  //    settle a place?" first and says addressed-to-a-person is still
+  //    attendance (rules 0 and 11a before the 2026-09-23 rewrite) ────
   // §3.1: v1 scored 92.0% overall — higher than the prompt that shipped
   // — while routing NINE real attendance messages `none` against the
   // baseline's three. Its person-to-person rule was swallowing stated
@@ -114,7 +116,8 @@ export const ROUTER_REGRESSIONS: RegressionCase[] = [
   // ── Broken by candidate v2, byte-identical on all three of its runs ──
   // Named in §3.1 as prompt gaps rather than sampling noise. v3's rules
   // 10 (the buried ask), 14 (a correction) and 15 (an instruction to an
-  // admin) exist for these three, and the worked examples added with
+  // admin) exist for these three (all three survive the 2026-09-23
+  // rewrite as unnumbered rulings), and the worked examples added with
   // them are PARAPHRASES — the sentences below are not in the prompt, so
   // this is a held-out test of the rules and not a lookup.
   {
@@ -130,7 +133,7 @@ export const ROUTER_REGRESSIONS: RegressionCase[] = [
   {
     body: "@Kemal Ediz please switch to 7 a side and include Amir as 14th player",
     allow: ["A", "D"],
-    why: "A format change AND a 14th player. v2 let rule 12 (talk about settings) swallow the place.",
+    why: "A format change AND a 14th player. v2 let the talk-about-settings ruling swallow the place.",
   },
 
   // ── The shapes the baseline prompt loses, from §1.4 ─────────────────
@@ -157,7 +160,7 @@ export const ROUTER_REGRESSIONS: RegressionCase[] = [
     inPrompt: true,
   },
 
-  // ── The `A → Q` class: asking the group for a player (rule 10) ──────
+  // ── The `A → Q` class: asking the group for a player ───────────────
   // §1.3's second-order finding and the 2026-09-01 incident class: a
   // replacement request routed `question` never reaches the attendance
   // extractor, so its `sideRequests` fact is never produced, and
@@ -165,43 +168,43 @@ export const ROUTER_REGRESSIONS: RegressionCase[] = [
   {
     body: "Hi, is there anyone who can replace me in today's match?",
     allow: ["A"],
-    why: "Rule 10. Routed `question` by the shipped prompt; nothing happens at all.",
+    why: "Asking the group for a player. Routed `question` by the shipped prompt; nothing happens at all.",
   },
   {
     body: "anybody would be willing to replace me ? my ankle is still a bit sore",
     allow: ["A"],
-    why: "Rule 10. A question mark does not make it a question.",
+    why: "Asking the group for a player. A question mark does not make it a question.",
   },
 
-  // ── Rule 11: members talking to each other, settling nothing ────────
+  // ── Members talking to each other, settling nothing ────────────────
   {
     body: "Are you available to play @Enayem ?",
     allow: ["N"],
-    why: "Rule 11. One member asking another. Nobody is in or out yet.",
+    why: "Member to member. One member asking another. Nobody is in or out yet.",
     inPrompt: true,
   },
   {
     body: "@Zeeshan they asked can anyone step in I said in you can check up the messages",
     allow: ["N"],
-    why: "Rule 11. A member narrating a past exchange to another member.",
+    why: "Member to member. A member narrating a past exchange to another member.",
   },
 
-  // ── Rule 12: admin_ops is an instruction ADDRESSED TO THE BOT ───────
+  // ── admin_ops is an instruction ADDRESSED TO THE BOT ───────────────
   // §1.3 ranks `N → D` the largest confusion pair in the system, and it
   // is the one pointed at the two mass-DM doors.
   {
     body: "£8.6 per person to Elvin",
     allow: ["N"],
-    why: "Rule 12. Money between members. Routed admin_ops by the shipped prompt.",
+    why: "Money between members is not admin_ops. Routed admin_ops by the shipped prompt.",
   },
   {
     body: "wait guys sorry by mistake I enabled the tracking of squad in Match Time",
     allow: ["N"],
-    why: "Rule 12. Talk ABOUT the bot, and about something already done.",
+    why: "admin_ops needs an instruction. Talk ABOUT the bot, and about something already done.",
     inPrompt: true,
   },
 
-  // ── Rule 16: a score is OUR result, not the one on television ───────
+  // ── A score is OUR result, not the one on television ───────────────
   {
     body: "DRC 1 Portugal 1",
     allow: ["N"],
@@ -210,7 +213,7 @@ export const ROUTER_REGRESSIONS: RegressionCase[] = [
   {
     body: "10-10",
     allow: ["S"],
-    why: "Our own result, bare. Rule 16 must not take this with it.",
+    why: "Our own result, bare. The professional-scoreline ruling must not take this with it.",
     inPrompt: true,
   },
 ];

@@ -214,7 +214,8 @@ describe("the router prompt", () => {
   //
   // "Hi guys, Mojib is replacing Najib on the list. We can change" went
   // to `none`. These pin the worked examples that were added for it,
-  // AND the direction of the change: rule 18 and its examples only ever
+  // AND the direction of the change: rule 18 (since the 2026-09-23
+  // rewrite, the unnumbered replacement ruling) and its examples only ever
   // push a message TOWARDS attendance. That is what makes them safe for
   // the veto metric (attendance-routed-`none` must stay at 0 over the
   // 373-message gold corpus) without a live run: nothing was added that
@@ -235,13 +236,124 @@ describe("the router prompt", () => {
   });
 
   it("states the replacement rule itself, and never as a reason to stay quiet", () => {
-    const rule = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("18."));
+    // It was rule 18 until the 2026-09-23 rewrite dropped the numbering;
+    // it is found by what it says now, not by where it sits.
+    const rule = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("- A replacement"));
     expect(rule).toBeDefined();
     expect(rule!).toMatch(/replacing/i);
     expect(rule!).toMatch(/other_att/);
     // The one property that protects the veto: this rule cannot send
     // anything to `none`.
     expect(rule!).not.toMatch(/\bnone\b/);
+  });
+
+  // ── THE 2026-09-23 REWRITE: A TAGGED ASK IS NEVER BANTER ──────────
+  //
+  // "@Match Time Zork's chemistry", "@Match Time Mehmet's chemistry" and
+  // "@Match Time who's the worst" routed `none` 0 of 3 each on the old
+  // prompt (single message, floor off), so the stats owner never got the
+  // chance to ask "who do you mean?". These pin the three properties the
+  // rewrite rests on. Whether the model obeys them is a live question,
+  // answered by the router probe in the PR, not here.
+  const decisionStep = (n: number) =>
+    ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith(`${n}. `)) ?? "";
+
+  it("asks about a place in the squad BEFORE it asks about the tag", () => {
+    // The order is the veto's protection: a tagged "@Match Time Najib is
+    // out" must stop at the first question and never reach the second.
+    expect(decisionStep(1)).toMatch(/place in THIS squad/);
+    expect(decisionStep(1)).toMatch(/never none/);
+    expect(decisionStep(1)).toMatch(/Nothing below overrides this/);
+    expect(decisionStep(2)).toMatch(/tag/i);
+    expect(ROUTER_SYSTEM_PROMPT.indexOf(decisionStep(1))).toBeLessThan(
+      ROUTER_SYSTEM_PROMPT.indexOf(decisionStep(2)),
+    );
+  });
+
+  it("says a tagged message is never none for being short, and names what is", () => {
+    const step = decisionStep(2);
+    expect(step).toMatch(/@Match Time/);
+    expect(step).toMatch(/never none because it is short/);
+    // Only a tagged message that asks for nothing at all is still none,
+    // and talking ABOUT the bot without the @ is not a tag.
+    expect(step).toMatch(/asks for nothing at all/);
+    expect(step).toMatch(/without the @/);
+  });
+
+  it("teaches the short tagged stats ask as question, in both languages", () => {
+    const taught = new Map(
+      [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
+    );
+    expect(taught.get("@Match Time Burak's chemistry")).toBe("question");
+    expect(taught.get("@Match Time who's top")).toBe("question");
+    expect(taught.get("@Match Time Ali'nin kimyası")).toBe("question");
+    // The tagged thanks is the control: tagged, asks nothing, stays none.
+    expect(taught.get("@Match Time cheers 👍")).toBe("none");
+  });
+
+  it("keeps the three measured targets OUT of the prompt, so the live check is held out", () => {
+    for (const body of ["Zork's chemistry", "Mehmet's chemistry", "who's the worst"]) {
+      expect(ROUTER_SYSTEM_PROMPT, body).not.toContain(body);
+    }
+  });
+
+  it("calls a bare \"confirmed\" unsure, never none (the 2026-09-24 veto loss)", () => {
+    // The rewrite's certifying veto sweep lost a bare "Confirmed" (gold
+    // attendance) in 1 of 3 runs; ten repeats of its batch read none 2/10
+    // against 0/10 on the old prompt. The unsure route now names it.
+    const unsure = ROUTER_SYSTEM_PROMPT.split("\n").find((l) => l.startsWith("unsure "));
+    expect(unsure).toBeDefined();
+    expect(unsure!).toMatch(/"confirmed"/);
+    expect(unsure!).toMatch(/is unsure, never none/);
+  });
+
+  // ── THE 2026-09-24 "@Jordan IN" LOSS ───────────────────────────────
+  //
+  // The certifying veto read 0, 0, 1 on 415481a: "@Jordan IN", sent by
+  // an admin straight after telling Jordan off for pasting the bot's
+  // squad list and explaining how to say IN, routed `none`. The rule
+  // that a name plus in/out is other_att used to be a ruling further
+  // down; it now lives in the first decision question, stated once, with
+  // the reason it failed (the surrounding telling-off read as the
+  // context, the sign-in as a demonstration) answered in so many words.
+  it("settles a name or @mention plus in/out in the FIRST question, whatever surrounds it", () => {
+    const step = decisionStep(1);
+    expect(step).toMatch(/a name or an @mention followed by in or out/);
+    expect(step).toMatch(/var or yok/);
+    expect(step).toMatch(/other_att, always/);
+    expect(step).toMatch(/whoever sends it/);
+    expect(step).toMatch(/never a demonstration/);
+    expect(step).toMatch(/pasted copy of the list/);
+    // Stated once: the old ruling that said the same thing is gone.
+    expect(ROUTER_SYSTEM_PROMPT).not.toMatch(/^- A named person or an @mention/m);
+  });
+
+  it("teaches the bare name-plus-in/out shape in the other_att group, English and Turkish side by side", () => {
+    const lines = ROUTER_SYSTEM_PROMPT.split("\n");
+    const start = lines.findIndex((l) => l.startsWith("Somebody else's place"));
+    const end = lines.findIndex((l, i) => i > start && l.trim() === "");
+    const group = lines.slice(start + 1, end).map((l) => l.trim());
+    const at = (body: string) => group.indexOf(`"${body}" -> other_att`);
+    for (const body of ["@Kojo IN", "@Ali var", "Baki OUT", "Veli yok"]) {
+      expect(at(body), body).toBeGreaterThanOrEqual(0);
+    }
+    // Side by side: each Turkish line directly follows its English twin.
+    expect(at("@Ali var")).toBe(at("@Kojo IN") + 1);
+    expect(at("Veli yok")).toBe(at("Baki OUT") + 1);
+    // Deduplicated: each taught once in the whole prompt.
+    for (const body of ["@Kojo IN", "Baki OUT"]) {
+      expect(ROUTER_SYSTEM_PROMPT.split(`"${body}" ->`).length - 1, body).toBe(1);
+    }
+  });
+
+  it("keeps the two lost sign-ins OUT of the prompt, so the live check is held out", () => {
+    for (const body of ["@Jordan IN", "@Jesse"]) {
+      expect(ROUTER_SYSTEM_PROMPT, body).not.toContain(body);
+    }
+  });
+
+  it("writes no em or en dashes", () => {
+    expect(ROUTER_SYSTEM_PROMPT).not.toMatch(/[\u2013\u2014]/);
   });
 
   it("demands an output shape this file actually parses", () => {
@@ -403,6 +515,62 @@ describe("the floor reads the bare Turkish forms, same shape as the English ones
     "kesin değil",
     // A mention of the bot is never a player.
     "@Match Time var",
+  ])("does not claim %s", (body) => {
+    expect(routeFloor(body)).toBeNull();
+  });
+});
+
+// ── Emoji (2026-09-24): in a display name, and after the declaration ──
+//
+// The floor goes ON in production with the router rewrite, and a group
+// types emoji everywhere: in display names ("Jesse👑") and after the
+// token ("IN ✌️"). An emoji is never a word, so it can neither make a
+// bare declaration a sentence nor end a mentioned name. It is matched as
+// an emoji SEQUENCE, not a hand list: "✌️" carries U+FE0F (a nonspacing
+// mark, not a symbol), "🤷‍♂️" joins with U+200D (a format character).
+describe("the floor reads emoji in a name and after the declaration", () => {
+  it.each([
+    // In the mentioned display name: attached, leading, or its own word.
+    ["@Jesse👑 IN", "other_att"],
+    ["@👑Jesse in", "other_att"],
+    ["@Jesse 👑 IN", "other_att"],
+    ["@Ehtisham Ul Haq 🔥 In", "other_att"],
+    // After the declaration, self and mention alike.
+    ["In 👍", "self_att"],
+    ["IN ✌️", "self_att"],
+    ["In 💪🏽", "self_att"],
+    ["Out 🤷‍♂️", "self_att"],
+    ["In 🇬🇧", "self_att"],
+    ["In 🏴󠁧󠁢󠁥󠁮󠁧󠁿", "self_att"],
+    ["var ✅", "self_att"],
+    ["IN 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥", "self_att"],
+    ["@Jordan IN 🙏", "other_att"],
+    ["@Ali var 👍", "other_att"],
+    ["@Jesse👑 out 🤷‍♂️", "other_att"],
+  ])("%s → %s", (body, route) => {
+    expect(routeFloor(body)).toBe(route);
+  });
+
+  it.each([
+    // Emoji widen the floor; they never widen it into sentences.
+    "Hi @Jordan going forward we need to say IN",
+    "@Jordan in the car",
+    "@Jordan 👑 in the car",
+    "in 20 mins",
+    "in 20",
+    "Confirmed",
+    "Confirmed 👍",
+    // The bot is never a player, however it is decorated.
+    "@Match Time in",
+    "@Match Time 👍 in",
+    // Only emoji: no token, so nothing to claim.
+    "👍",
+    "🔥🔥🔥",
+    "@👑",
+    "@Jesse👑",
+    // Still deliberately unmatched: "+1" offers a guest.
+    "+1",
+    "+1 👍",
   ])("does not claim %s", (body) => {
     expect(routeFloor(body)).toBeNull();
   });
