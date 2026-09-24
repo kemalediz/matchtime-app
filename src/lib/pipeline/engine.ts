@@ -74,6 +74,7 @@ import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
 // incident, the state-check argument and the pairing order.
 import { decideSlotInherits } from "../team-slot-inherit";
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
+import { namesTheBench } from "./bench-words";
 import { resolvePerson } from "./identity";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
@@ -657,6 +658,35 @@ export function decide(input: EngineInput): EngineResult {
           );
         }
         claims = kept;
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // "BENCH" IS EXPLICIT ONLY WHEN THE MESSAGE SAYS IT (2026-09-24)
+      // ══════════════════════════════════════════════════════════════
+      //
+      // Sutton FC: Erdal, CONFIRMED at 14/14 by his own pasted roster a
+      // moment earlier, typed "in". The extractor returned an
+      // uncontingent `polarity: "bench"`, `applyClaim` took that as a
+      // human naming the bench, and he went CONFIRMED@14 -> BENCH@14
+      // with the note "explicit bench request". The posted 14/14 list was
+      // wrong from then on and nobody was told.
+      //
+      // `explicitBench` is the one signal that may take a confirmed
+      // place off somebody, so it needs the words, not only the model's
+      // reading of them. `namesTheBench` is a necessary condition, never
+      // a classifier (see its header): without the word, the claim is
+      // read as the IN it came from and capacity decides, which is how
+      // an inferred bench has always been treated (PR #27). For a player
+      // already in the squad that is a no-op.
+      if (!namesTheBench(msg.body) && claims.some((c) => c.polarity === "bench")) {
+        claims = claims.map((c) => {
+          if (c.polarity !== "bench") return c;
+          out.reasons.push(
+            `"${c.personRef || "sender"}": the extractor read "bench" but the message never ` +
+              `names the bench; read as "in" and capacity decides`,
+          );
+          return { ...c, polarity: "in" as const };
+        });
       }
 
       // Side requests are facts in their own right and must survive
