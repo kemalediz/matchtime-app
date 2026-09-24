@@ -307,6 +307,51 @@ describe("the router prompt", () => {
     expect(unsure!).toMatch(/is unsure, never none/);
   });
 
+  // ── THE 2026-09-24 "@Jordan IN" LOSS ───────────────────────────────
+  //
+  // The certifying veto read 0, 0, 1 on 415481a: "@Jordan IN", sent by
+  // an admin straight after telling Jordan off for pasting the bot's
+  // squad list and explaining how to say IN, routed `none`. The rule
+  // that a name plus in/out is other_att used to be a ruling further
+  // down; it now lives in the first decision question, stated once, with
+  // the reason it failed (the surrounding telling-off read as the
+  // context, the sign-in as a demonstration) answered in so many words.
+  it("settles a name or @mention plus in/out in the FIRST question, whatever surrounds it", () => {
+    const step = decisionStep(1);
+    expect(step).toMatch(/a name or an @mention followed by in or out/);
+    expect(step).toMatch(/var or yok/);
+    expect(step).toMatch(/other_att, always/);
+    expect(step).toMatch(/whoever sends it/);
+    expect(step).toMatch(/never a demonstration/);
+    expect(step).toMatch(/pasted copy of the list/);
+    // Stated once: the old ruling that said the same thing is gone.
+    expect(ROUTER_SYSTEM_PROMPT).not.toMatch(/^- A named person or an @mention/m);
+  });
+
+  it("teaches the bare name-plus-in/out shape in the other_att group, English and Turkish side by side", () => {
+    const lines = ROUTER_SYSTEM_PROMPT.split("\n");
+    const start = lines.findIndex((l) => l.startsWith("Somebody else's place"));
+    const end = lines.findIndex((l, i) => i > start && l.trim() === "");
+    const group = lines.slice(start + 1, end).map((l) => l.trim());
+    const at = (body: string) => group.indexOf(`"${body}" -> other_att`);
+    for (const body of ["@Kojo IN", "@Ali var", "Baki OUT", "Veli yok"]) {
+      expect(at(body), body).toBeGreaterThanOrEqual(0);
+    }
+    // Side by side: each Turkish line directly follows its English twin.
+    expect(at("@Ali var")).toBe(at("@Kojo IN") + 1);
+    expect(at("Veli yok")).toBe(at("Baki OUT") + 1);
+    // Deduplicated: each taught once in the whole prompt.
+    for (const body of ["@Kojo IN", "Baki OUT"]) {
+      expect(ROUTER_SYSTEM_PROMPT.split(`"${body}" ->`).length - 1, body).toBe(1);
+    }
+  });
+
+  it("keeps the two lost sign-ins OUT of the prompt, so the live check is held out", () => {
+    for (const body of ["@Jordan IN", "@Jesse"]) {
+      expect(ROUTER_SYSTEM_PROMPT, body).not.toContain(body);
+    }
+  });
+
   it("writes no em or en dashes", () => {
     expect(ROUTER_SYSTEM_PROMPT).not.toMatch(/[\u2013\u2014]/);
   });

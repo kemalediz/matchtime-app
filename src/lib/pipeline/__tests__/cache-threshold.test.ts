@@ -129,7 +129,14 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // about ten minutes and a five-minute cache entry expires first
     // (`MDs/llm-spend-september-2026.md`). The attendance bound is
     // untouched by this change.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_311);
+    //
+    // 2026-09-24, the "@Jordan IN" fix: the name-plus-in/out rule moved
+    // into the first decision question and gained its Turkish examples.
+    // Measured (`count_tokens`, claude-haiku-4-5, dev key): 11,734
+    // characters / 3,386 tokens, from 11,443 / 3,311. The estimator's
+    // 2,933 sits under it. Still under Haiku's 4,096, for the reason
+    // above.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_386);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_275);
   });
 });

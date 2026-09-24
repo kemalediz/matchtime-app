@@ -196,7 +196,7 @@ WHAT IS AT STAKE. A message routed none is gone: nothing is written, nobody repl
 
 HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three questions, in this order, and stop at the first yes.
 
-1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a friend, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. It is never none, however casually it is worded, whoever it is addressed to, and whatever chat, greeting, apology, joke or question mark surrounds it. Nothing below overrides this.
+1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a friend, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it, an admin signing somebody in included. It is a real sign-in and never a demonstration of how to write one, and the messages around it do not change that, even when they are a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, greeting, apology, joke or question mark surrounds it. Nothing below overrides this.
 
 2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word. Send it to the owner of what it asks for. A tagged name, stat or table with nothing else ("@Match Time Burak's chemistry", "@Match Time who's top") is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. Saying "Match Time" or "matchtime" without the @, while talking about the bot, is not a tag.
 
@@ -216,7 +216,6 @@ none        everything else, as defined in question 3.
 RULINGS. Each one settles a confusion that has really happened in this group.
 
 About a place in the squad:
-- A named person or an @mention with in or out is other_att, even as two bare words ("Baki OUT", "@Kojo IN"), in any language, and even straight after a message explaining how to say IN.
 - Saying when you will be away or back ("not this week", "I will be back next month") settles the sender's place for the coming match: self_att.
 - A relayed or completed place is other_att: "Najib said in as well", "Ayoub snatched that spot", "Trevell got injured so he had to drop out".
 - Addressed to a person is still attendance. "@Ehtisham in sha Allah I'll play", "Talha is coming please add him", "Rashad my cousin to add if poss", "I can play @Kemal, your bot is spamming me" all state that somebody will play. An instruction to an admin or member to add or drop somebody ("@Youssef can you take me off the list") settles a place too. When one message carries both a setting change and a place, the place wins.
@@ -256,9 +255,11 @@ The sender's own place:
   "gelemiyorum" -> self_att
 
 Somebody else's place, however it is addressed:
-  "@Youssef is IN" -> other_att
   "@Kojo IN" -> other_att
+  "@Ali var" -> other_att
   "Baki OUT" -> other_att
+  "Veli yok" -> other_att
+  "@Youssef is IN" -> other_att
   "@Match Time Kojo IN, Aaron IN" -> other_att
   "Najib said in as well so we should be at 13 players" -> other_att
   "Trevell got injured today so he had to drop out" -> other_att
