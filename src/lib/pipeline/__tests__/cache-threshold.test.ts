@@ -136,8 +136,20 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // characters / 3,386 tokens, from 11,443 / 3,311. The estimator's
     // 2,933 sits under it. Still under Haiku's 4,096, for the reason
     // above.
+    //
+    // 2026-09-24, THE ATTENDANCE PROMPT REWRITE (the Sutton FC 14/14
+    // "in" that came back "bench"): the prompt now says what the model is
+    // shown, and that polarity is the message's, never the squad's
+    // capacity. Rewritten as one document, not appended to. Measured
+    // (`count_tokens`, dev key; the free counting endpoint, no model
+    // call). Before: 8,561 characters / 2,340 tokens on claude-haiku-4-5,
+    // 3,101 on claude-sonnet-5. After: 9,719 characters / 2,699 on Haiku,
+    // 3,522 on Sonnet. The bound is the real Haiku count, which is itself
+    // under the Sonnet count the extractor actually runs on; the
+    // estimator's 2,429 sits under both, as it must. More than three
+    // times Sonnet 5's 1,024, so the cache stands.
     expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_386);
-    expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_275);
+    expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_699);
   });
 });
 
