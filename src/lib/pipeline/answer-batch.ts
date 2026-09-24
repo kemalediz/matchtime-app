@@ -171,7 +171,9 @@
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
 import { decide as decideDefault } from "./engine";
-import { extractForRoute } from "./extractors";
+// Traced: the extractor's facts are kept on the message's AnalyzedMessage
+// row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
+import { extractForRouteTraced } from "./trace";
 import { extractorStubFromEnv } from "./extractor-stub";
 import { resolvePerson } from "./identity";
 import { anthropicModel, type PipelineModel } from "./llm";
@@ -919,7 +921,7 @@ export async function runAnswerBatch(args: {
       // A reply to a clarification is not itself a question: the ORIGINAL
       // question is re-read, and the reply supplies the name below.
       const clar = clarificationFor.get(m.waMessageId);
-      const res = await extractForRoute(model, m.route as Route, {
+      const res = await extractForRouteTraced("answer", model, m.route as Route, {
         id: m.waMessageId,
         body: clar ? clar.c.questionBody : m.body,
         authorName: m.authorName,

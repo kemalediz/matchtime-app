@@ -1374,6 +1374,19 @@ model AnalyzedMessage {
   /// before this shipped, and null-safe everywhere it is read.
   batchId      String?
 
+  /// WHAT THE MODEL SAID about this message (2026-09-24): the router's
+  /// route and each extractor's FACTS, with the model that produced them
+  /// and the stage's degradations. The columns above record what the
+  /// ENGINE decided; this records what it was told, so "was it the
+  /// extractor or the engine?" is answerable from the row. Written once
+  /// at the end of the analyze request by `pipeline/trace.ts`, which
+  /// also defines the shape (`PipelineTrace`, versioned by `v`) and the
+  /// bounds: clipped strings, capped arrays, at most 16k characters, no
+  /// phone numbers. NULL for rows written before it shipped and for
+  /// messages that never reached the router. Read with
+  /// `scripts/trace-message.ts`.
+  pipelineTrace Json?
+
   createdAt    DateTime @default(now())
 
   @@index([orgId, createdAt])

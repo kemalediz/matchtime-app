@@ -264,6 +264,12 @@ import { t as strings } from "@/lib/i18n/t";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { currentAnalyzeBatchId, withAnalyzeBatch } from "@/lib/analyze-batch-context";
 import {
+  persistPipelineTraces,
+  traceRouting,
+  withPipelineTrace,
+  type TraceWriter,
+} from "@/lib/pipeline/trace";
+import {
   resolveAttendanceAck,
   attendanceFailureAction,
   attendanceFailureLog,
@@ -390,7 +396,19 @@ type ActionForBot = {
  * Purely additive: the column is nullable and nothing branches on it.
  */
 export async function POST(request: Request) {
-  return withAnalyzeBatch(() => handleAnalyzeRequest(request));
+  return withAnalyzeBatch(() =>
+    withPipelineTrace(async () => {
+      try {
+        return await handleAnalyzeRequest(request);
+      } finally {
+        // What the router and each extractor said about every message,
+        // onto its `AnalyzedMessage.pipelineTrace`. Once, at the end, so
+        // every row is written by now whichever path wrote it. Never
+        // throws: see `pipeline/trace.ts`.
+        await persistPipelineTraces(writePipelineTrace);
+      }
+    }),
+  );
 }
 
 async function handleAnalyzeRequest(request: Request) {
@@ -1633,6 +1651,7 @@ async function handleAnalyzeRequest(request: Request) {
           { awaiting: await loadOpenQuestion(org.id), clarifications: statsClarifications },
         )
       : null;
+  if (gate) traceRouting(gate);
   const gatedIds = new Set(gate?.skipped ?? []);
   const gateRouteById = new Map((gate?.routes ?? []).map((r) => [r.messageId, r.route]));
   if (gate) {
@@ -3579,6 +3598,23 @@ async function recordAnalysis(args: {
     }
   }
 }
+
+/**
+ * Put one message's pipeline trace on its AnalyzedMessage row. Handed to
+ * `persistPipelineTraces` at the end of the request (see `POST`), which
+ * logs and swallows a failure here: a lost trace never fails a batch.
+ *
+ * `updateMany`, not `update`: a message whose row was never written
+ * updates nothing rather than throwing P2025. The trace is JSON by
+ * construction (`buildPipelineTrace` builds it from primitives), and
+ * Prisma's `InputJsonValue` will not take the interface, hence the cast.
+ */
+const writePipelineTrace: TraceWriter = async (waMessageId, trace) => {
+  await db.analyzedMessage.updateMany({
+    where: { waMessageId },
+    data: { pipelineTrace: trace as unknown as object },
+  });
+};
 
 /**
  * Add an outcome to an AnalyzedMessage row that already exists.

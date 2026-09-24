@@ -229,7 +229,9 @@
 import type { OrgFeatures } from "./org-features";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
-import { extractForRoute } from "./pipeline/extractors";
+// Traced: the extractor's facts are kept on the message's AnalyzedMessage
+// row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
+import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import {
@@ -457,7 +459,7 @@ export async function runTeamOpsBatch(args: {
   const factsById = new Map<string, Facts>();
   await Promise.all(
     candidates.map(async (m) => {
-      const res = await extractForRoute(model, m.route as Route, {
+      const res = await extractForRouteTraced("team_ops", model, m.route as Route, {
         id: m.waMessageId,
         body: m.body,
         authorName: m.authorName,
