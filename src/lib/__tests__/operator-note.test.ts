@@ -137,6 +137,18 @@ describe("what the note says", () => {
     expect(note.text).toContain("rename");
   });
 
+  it("reads in house style on the owner's health page: no em or en dashes, even from a runner's reason", () => {
+    const note = composeOperatorNote({
+      orgName: "Sutton FC",
+      messages: [m({ waMessageId: "a", route: "balancer", body: "@Match Time rename the teams" })],
+      degradations: [
+        'answer-batch: degraded — a: team action "rename" — still belongs to the balancer',
+      ],
+    });
+    expect(note.text).not.toMatch(/[—–]/);
+    expect(note.text).toContain("still belongs to the balancer");
+  });
+
   it("truncates a long body rather than pasting an essay into a DM", () => {
     const note = composeOperatorNote({
       orgName: "Sutton FC",

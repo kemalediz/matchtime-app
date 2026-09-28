@@ -120,63 +120,6 @@ export async function sendRatingEmails(
   return { sent, failed };
 }
 
-/**
- * THE ALERT CHANNEL THAT DOES NOT RUN THROUGH THE THING BEING ALERTED ON.
- *
- * A WhatsApp DM about the WhatsApp layer being broken is worthless, and
- * the specific failure this whole mechanism exists for — a dead Pi — is
- * precisely the one where no DM can be delivered, because the Pi is what
- * delivers DMs. So the guaranteed channel is email: `/api/cron/bot-health`
- * runs on Vercel, this call goes to Resend over HTTPS, and nothing in
- * that path touches the Pi, whatsapp-web.js, or WhatsApp at all.
- *
- * `BOT_HEALTH_ALERT_EMAIL` (comma-separated) chooses the recipients.
- * With it unset there is no default address invented here: an alert
- * silently mailed nowhere is worse than one that says out loud that it
- * has nowhere to go, so that case logs CRITICAL and returns `false`, and
- * the caller then relies on the WhatsApp DM.
- */
-export async function sendBotHealthAlertEmail(args: {
-  subject: string;
-  text: string;
-}): Promise<boolean> {
-  const to = (process.env.BOT_HEALTH_ALERT_EMAIL || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (to.length === 0) {
-    console.error(
-      "CRITICAL: MatchTime's WhatsApp layer needs attention but BOT_HEALTH_ALERT_EMAIL " +
-        "is not set, so the only off-Pi alert channel has nowhere to send. Set it in the " +
-        `Vercel environment. The alert was: ${args.subject}`,
-    );
-    return false;
-  }
-  if (!process.env.RESEND_API_KEY) {
-    console.error(
-      "CRITICAL: MatchTime's WhatsApp layer needs attention but RESEND_API_KEY is not " +
-        `set, so no email can be sent. The alert was: ${args.subject}\n\n${args.text}`,
-    );
-    return false;
-  }
-
-  try {
-    await getResend().emails.send({
-      from: FROM_EMAIL,
-      to,
-      subject: args.subject,
-      // Plain text on purpose. This is an operational alert read on a
-      // phone at speed, it must survive being forwarded, and an HTML
-      // template is one more thing that can render wrong at the exact
-      // moment somebody needs to read it.
-      text: args.text,
-    });
-    return true;
-  } catch (err) {
-    // Last resort. If Resend is down too, the server log is all that is
-    // left — but this line at least says so explicitly rather than
-    // leaving the caller to assume the alert landed.
-    console.error("CRITICAL: bot-health alert email failed to send:", err);
-    return false;
-  }
-}
+// `sendBotHealthAlertEmail` was deleted on 2026-09-28. Routine health
+// alerts are recorded for the owner's /admin/health page instead of being
+// emailed; see src/lib/ops-alerts.ts. BOT_HEALTH_ALERT_EMAIL is unused.

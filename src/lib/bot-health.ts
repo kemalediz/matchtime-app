@@ -28,50 +28,39 @@
  * with tests.
  *
  * The impure halves live elsewhere:
- *   - `POST /api/whatsapp/heartbeat` — the Pi's 10-minute report.
- *   - `GET  /api/cron/bot-health`    — the hourly server-side sweep that
+ *   - `POST /api/whatsapp/heartbeat`: the Pi's 10-minute report.
+ *   - `GET  /api/cron/bot-health`: the hourly server-side sweep that
  *     notices ABSENCE, which is the half a Pi-driven heartbeat can never
- *     report, and mails the alert.
+ *     report, and RECORDS what it finds (`src/lib/ops-alerts.ts`).
+ *
+ * ── WHERE THE FINDINGS GO (2026-09-28) ───────────────────────────────
+ *
+ * Nowhere that buzzes. From 2026-09-09 to 2026-09-28 these findings were
+ * emailed to the owner and sent to him as WhatsApp DMs, first every six
+ * hours and then once a day. He read none of them, they buried the
+ * messages he does need, and the last one (a quiet Sunday night reported
+ * as "the WhatsApp layer is degraded") was wrong. His words: "Only put
+ * them into a dashboard on the website where i can click and see
+ * whenever i want."
+ *
+ * So the cron writes one `OpsAlert` row per condition, keeps it open
+ * while the rule holds and closes it when it stops, and the owner reads
+ * them at /admin/health. The scheduling, digest and collapsing logic
+ * that used to live here (`planHealthAlert`, `composeHealthAlert`,
+ * `trackFirstSeen`) is gone with the messages it existed to pace.
  *
  * ── THE ONE RULE THAT MATTERS MORE THAN CATCHING EVERYTHING ──────────
  *
- * A noisy alert gets muted, and a muted alert is the August silence with
- * extra steps. So every threshold below is set to clear the loudest
+ * A dashboard that is always red gets ignored exactly like an inbox that
+ * is always full. So every threshold below is set to clear the loudest
  * HEALTHY situation it could be confused with, and the tests in
  * `__tests__/bot-health.test.ts` lead with the false-alarm cases:
  * a genuinely quiet group, a week with no fixture, a dormant club whose
- * matches keep being generated, an overnight gap, an older Pi build that
- * has never sent a heartbeat at all. Those matter more than the positive
- * cases. If a rule cannot be stated so that it is silent on all of them,
+ * matches keep being generated, an overnight gap, a quiet weekend before
+ * a Tuesday game, an older Pi build that has never sent a heartbeat at
+ * all. If a rule cannot be stated so that it is silent on all of them,
  * it does not belong here.
- *
- * ── AND THE RULE THAT CAME BACK TO COLLECT (2026-09-15) ──────────────
- *
- * The paragraph above was written on 2026-09-09 and then immediately
- * violated by this file's own repeat timer. Every THRESHOLD cleared its
- * loudest healthy case; the CADENCE did not. An unchanged set of
- * problems re-fired every six hours down both channels, and Sutton FC's
- * set had not changed since 2026-07-07, so in the six days after this
- * shipped the owner received 24 emails and 15 WhatsApp DMs of which
- * three carried a sentence he had not already read. On 2026-09-14 a live
- * 40-hour inbound outage, 35 hours before a fixture, was the THIRD line
- * of one of them.
- *
- * So the decision this module makes is no longer just "is anything
- * wrong". It is three:
- *
- *   IS ANYTHING WRONG            `assessBotHealth`, unchanged.
- *   SINCE WHEN                   `trackFirstSeen`, from the ledger on
- *                                `BotHealth`. New, and it is what makes
- *                                the other two possible.
- *   IS IT WORTH SAYING, TO WHOM  `planHealthAlert`: once a day at
- *                                08:00 London by email, immediately and
- *                                on WhatsApp for anything that changed.
- *   AND IN WHAT ORDER            `composeHealthAlert`: what changed
- *                                first, in full; what has been true for
- *                                days last, in one dated line.
  */
-import { formatLondon } from "./london-time";
 import { GROUP_SYNC_FRESHNESS_DAYS } from "./group-membership-gate";
 
 const MINUTE = 60 * 1000;
@@ -100,15 +89,25 @@ export const HEARTBEAT_SILENT_MS = 45 * MINUTE;
 
 /**
  * How long a LIVE group may produce no analysed message before that is
- * treated as a broken pipe rather than a quiet evening.
+ * worth a line on the health page.
  *
- * 18 hours, and only under the three guards in `inbound-silent` below.
- * The number has to span a full night: 23:00 to 12:00 the next day is 13
- * hours of entirely ordinary silence, and a group that only wakes up
- * after work can stretch that further. 18 hours cannot be reached by an
- * overnight gap alone — it requires a night AND most of a day.
+ * 30 hours, and only under the guards in `inbound-silent` below.
+ *
+ * It was 18 hours until 2026-09-28, and on that day it fired on nothing:
+ * Sutton FC's last message was Sunday 13:25, the check ran Monday 09:00
+ * with the match 35 hours away, the Pi was alive and had buffered every
+ * message it had been sent, and Kemal posted at 10:54. A small club goes
+ * quiet from Sunday afternoon to Monday lunchtime, which 18 hours cannot
+ * clear.
+ *
+ * MEASURED, over Sutton's last six fixtures: the longest silence inside
+ * the 36 hours before kickoff was 9.7h, 15.7h and 21.5h in normal weeks.
+ * The two weeks above that were real outages, 40.7 hours (14 Sep) and
+ * 3.8 days (20 to 22 Sep, the Pi was down and `pi-silent` covered it).
+ * 30 hours sits above every normal week with room to spare and well
+ * below the smallest real outage.
  */
-export const INBOUND_SILENT_MS = 18 * HOUR;
+export const INBOUND_SILENT_MS = 30 * HOUR;
 
 /**
  * How close a fixture has to be for silence to count as a fault.
@@ -138,88 +137,6 @@ export const MATCH_IMMINENT_MS = 36 * HOUR;
 export const GROUP_ALIVE_WINDOW_MS = 14 * DAY;
 
 /**
- * The London hour the daily "still broken" digest lands at.
- *
- * ── What this replaced, and why ──────────────────────────────────────
- *
- * Until 2026-09-15 this was `ALERT_REPEAT_MS = 6 * HOUR`: an unchanged
- * set of problems re-fired roughly four times a day, by email AND by
- * WhatsApp DM. The argument for six hours was written above and it was
- * wrong in one specific way, which production then demonstrated for
- * sixty-eight days: it reasoned about how long a fault takes to FIX,
- * and said nothing about how long a fault takes to READ. Sutton FC's
- * `degradedCapabilities` has held the same four strings since
- * 2026-07-07 and the participant sweep last succeeded the same day, so
- * the owner received 24 emails and 15 DMs between 2026-09-09 and
- * 2026-09-15 and three of those 39 messages contained a sentence he had
- * not already read. He asked for one a day. He was right to.
- *
- * ── Why an HOUR and not a duration ───────────────────────────────────
- *
- * "24 hours after the last one" drifts. The cron is hourly and its ticks
- * jitter by a second or two either side, so a 24-hour sliding window
- * lands the digest an hour later every few days and a reader cannot
- * build a habit around it. Worse, one unlucky 03:00 alert (a new fault
- * breaking through at night) captures the schedule and anchors every
- * subsequent digest at 03:00, where `dmAllowedNow` then suppresses it.
- *
- * A wall-clock hour cannot drift. 08:00 London is the first plausible
- * moment somebody is reading, it is inside `dmAllowedNow`'s window, and
- * for a Tuesday 21:30 kickoff it leaves the whole working day to act.
- *
- * A NEW condition still bypasses this entirely, at any hour, including
- * the middle of the night. See `planHealthAlert`.
- */
-export const DAILY_DIGEST_HOUR = 8;
-
-/**
- * The longest MatchTime will stay silent about an unchanged set that is
- * still broken.
- *
- * 30 hours, and its only job is to survive a missed digest tick. Vercel
- * does not promise a scheduled invocation and a deploy can eat one; if
- * the 08:00 tick simply does not happen, the wall-clock rule above would
- * push the next word to 08:00 TOMORROW, which is two days of silence on
- * something known to be broken.
- *
- * 30 rather than 24 for the same reason `NONE_SHADOW_SILENT_MS` is 30:
- * one cadence plus room for ordinary scheduler jitter. A 24-hour
- * backstop would fire a second or two before the 08:00 tick on most
- * days, which is precisely the drift the wall-clock rule exists to
- * prevent. At 30 hours the backstop can only ever fire on a day where
- * the digest did not, so it adds a floor without touching the schedule.
- */
-export const ALERT_MAX_SILENCE_MS = 30 * HOUR;
-
-/**
- * How long a finding must have been continuously present before it stops
- * getting a paragraph and becomes one word in the "still broken" line.
- *
- * 72 hours.
- *
- * The number has to clear THE WEEKEND, and that is the whole argument. A
- * fault that first appears on a Friday evening must still be rendered in
- * full in Monday morning's digest, because Saturday's and Sunday's
- * digests are the two a club owner is least likely to read properly. A
- * Friday 19:00 fault collapses at Monday 19:00 under 72 hours, so the
- * Monday 08:00 digest still carries its paragraph. At 48 hours it would
- * have folded away before he sat down on Monday, and the detail of a
- * fault he never read would be gone.
- *
- * It is also, deliberately, longer than the longest gap between two
- * alerts: with a daily digest a finding is rendered in full at least
- * three times (the immediate alert when it appears, plus two or three
- * digests) before it ever collapses.
- *
- * COLLAPSING IS NOT HIDING, and this is the thing to keep true if the
- * number is ever changed. Every collapsed finding is still NAMED and
- * DATED on the line, in every single alert, forever. What is dropped is
- * the paragraph explaining what it costs, which by definition the reader
- * has now had three days and at least three copies of.
- */
-export const COLLAPSE_AFTER_MS = 72 * HOUR;
-
-/**
  * How long the server waits for the nightly `none`-bucket shadow sweep
  * to file a row before calling it dead.
  *
@@ -237,8 +154,7 @@ export const COLLAPSE_AFTER_MS = 72 * HOUR;
  *     too late to re-read.
  *   - 30 hours clears every plausible delay and still reports a missed
  *     night by 09:00 UTC the following morning, in daylight, which is
- *     when somebody could act on it. The DM is suppressed before 07:00
- *     London anyway, so a tighter number would buy no earlier a reader.
+ *     when somebody could act on it.
  *
  * Unlike every other threshold here this one guards a MONITOR rather
  * than the pipeline, so the finding is a warning: nothing about the
@@ -247,10 +163,6 @@ export const COLLAPSE_AFTER_MS = 72 * HOUR;
  * rests its entire containment argument on exactly that.
  */
 export const NONE_SHADOW_SILENT_MS = 30 * HOUR;
-
-/** London wall-clock hours in which a WhatsApp DM is not sent. */
-export const DM_QUIET_START_HOUR = 22;
-export const DM_QUIET_END_HOUR = 7;
 
 export type HealthCode =
   | "pi-silent"
@@ -474,21 +386,6 @@ export interface HealthFinding {
    * wrongness that stops the rest of the message being believed.
    */
   brokenSince?: Date;
-  /**
-   * When this code was first seen in an unbroken run of alerts, from the
-   * ledger on `BotHealth` and `brokenSince` (see `trackFirstSeen`).
-   * Undefined means "this monitor cannot say", and nothing may be
-   * collapsed on a guess.
-   */
-  firstSeenAt?: Date;
-}
-
-/** A code that was in the last alert and is not in this one. */
-export interface ResolvedFinding {
-  code: string;
-  label: string;
-  /** When it started, so the alert can say how long it lasted. */
-  firstSeenAt: Date;
 }
 
 /**
@@ -638,10 +535,10 @@ export function assessBotHealth(input: HealthInput): HealthFinding[] {
         label: labelForCode("synthetic-ids"),
         headline: `${c.synthetic} message(s) arrived with an unreadable WhatsApp id.`,
         detail:
-          "whatsapp-web.js's injected page code is out of step with the live WhatsApp " +
-          "Web build. Reactions cannot be placed on those messages, and bench 👍/👎 " +
-          "and MoM poll votes on them cannot be matched back. Consider pinning " +
-          "WA_WEB_VERSION (see MDs/whatsapp-web-version-pinning.md).",
+          "The bot had to invent an id for those messages because it could not read the " +
+          "real one from WhatsApp. Reactions cannot be placed on them, and bench 👍/👎 " +
+          "and MoM poll votes on them cannot be matched back. Read the Pi's journal for " +
+          "the [baileys] lines around the time it happened.",
       });
     }
 
@@ -802,7 +699,7 @@ export function assessBotHealth(input: HealthInput): HealthFinding[] {
           : `The nightly \`none\`-bucket sweep last filed a result ${ageText(now - shadowAt.getTime())} ago.`,
       detail:
         "It runs at 03:00 and files a row every night whether or not it finds anything, so " +
-        "no row means it did not run. Nothing is broken for the club today — but while it " +
+        "no row means it did not run. Nothing is broken for the club today, but while it " +
         "is down, a message the router dismissed as banter when it was really somebody's " +
         "IN will never be found by anybody, because nothing else ever re-reads the `none` " +
         "bucket. Check the Vercel cron for /api/cron/none-bucket-shadow, and that " +
@@ -812,15 +709,18 @@ export function assessBotHealth(input: HealthInput): HealthFinding[] {
 
   // ── 11. A live group has gone silent before a fixture ──────────────
   //
-  // The one rule here that could plausibly fire on a healthy club, so it
-  // carries FOUR guards, every one of which exists because of a specific
+  // The one rule here that is a GUESS rather than a measurement: silence
+  // looks the same whether the group is quiet or the bot has gone deaf.
+  // So it is a warning, never a critical, and its copy says both. It
+  // carries four guards, every one of which exists because of a specific
   // false alarm:
   //
-  //   a. a fixture within 36h        — no match, never fires (a break)
-  //   b. 18h of silence              — spans a night plus a working day
-  //   c. the group spoke in the last 14 days — a dormant/churned club is
-  //      silent because it is gone, not because we cannot hear it
-  //   d. `pi-silent` is not already firing — one outage, one alert
+  //   a. a fixture within 36h        : no match, never fires (a break)
+  //   b. 30h of silence              : clears a quiet weekend before a
+  //      Tuesday game (see `INBOUND_SILENT_MS`, 2026-09-28)
+  //   c. the group spoke in the last 14 days: a dormant or churned club
+  //      is silent because it is gone, not because we cannot hear it
+  //   d. `pi-silent` is not already firing: one outage, one finding
   //
   // Guard (d) is what stops a dead Pi producing two findings for one
   // cause. It reads a value computed above; nothing below this block
@@ -835,401 +735,17 @@ export function assessBotHealth(input: HealthInput): HealthFinding[] {
     if (matchImminent && groupIsLive && sinceMsg > INBOUND_SILENT_MS) {
       findings.push({
         code: "inbound-silent",
-        severity: "critical",
+        severity: "warning",
         label: labelForCode("inbound-silent"),
         brokenSince: lastMsg,
-        headline: `Nothing from this group has been analysed for ${ageText(sinceMsg)}, with a match in ${ageText(untilMatch)}.`,
+        headline: `No message from this group has reached MatchTime for ${ageText(sinceMsg)}, with a match in ${ageText(untilMatch)}.`,
         detail:
-          "The group is active in normal weeks and a fixture is close, so this is far " +
-          "more likely to be a broken inbound path than a quiet week. Check that the " +
-          "bot is still paired with WhatsApp and that /api/whatsapp/analyze is " +
-          "answering.",
+          "The group may simply be quiet. If people have been posting in it, the bot is " +
+          "not hearing them: check that it is still linked to WhatsApp and that the Pi's " +
+          "heartbeat is fresh.",
       });
     }
   }
 
   return findings;
-}
-
-/**
- * The per-code first-seen ledger, as it is stored on `BotHealth`.
- *
- * `{ "sweep-stale": "2026-07-07T15:08:13.683Z" }`. A plain object in a
- * `Json?` column rather than a table, because it is at most eleven
- * entries, it is only ever read and written as a whole, alongside
- * `lastAlertCodes` which is already a bare array on the same row, and
- * nothing will ever query it.
- */
-export type FirstSeenLedger = Record<string, string>;
-
-/**
- * Give every finding the date it started, and name what has stopped.
- *
- * Pure, and separate from `assessBotHealth` on purpose: the assessor
- * answers "what is wrong NOW" from live signals and must not have to
- * care that the answer is also being remembered. This is the memory.
- *
- * `fallbackFirstSeen` is the honest answer for a code that the row was
- * already alerting on before this ledger existed. For Sutton FC on the
- * day this ships, that is `BotHealth.createdAt` (2026-09-09), which is
- * not when the fault started (2026-07-07) but IS the earliest moment
- * this monitor could have known about it. Stamping `now` instead would
- * restart the clock on a 70-day-old fault and hold the roll-up line
- * hostage for three more days for no reason.
- */
-export function trackFirstSeen(args: {
-  findings: HealthFinding[];
-  /** Whatever is in the `Json?` column. The type system guarantees nothing. */
-  ledger: unknown;
-  /** `BotHealth.lastAlertCodes` — what the previous alert reported. */
-  knownCodes: string[];
-  /** Earliest instant this monitor could have known. */
-  fallbackFirstSeen: Date;
-  now: Date;
-}): {
-  findings: HealthFinding[];
-  ledger: FirstSeenLedger;
-  resolved: ResolvedFinding[];
-} {
-  const { findings, knownCodes, fallbackFirstSeen, now } = args;
-
-  // A monitoring job that throws on its own bookkeeping reports nothing,
-  // which is the exact failure this module exists to end. So the column
-  // is read TOTALLY: anything that is not an object of parseable dates
-  // is simply absent, and an absent entry falls through to the rules
-  // below rather than to an exception.
-  const stored: FirstSeenLedger = {};
-  const raw = args.ledger;
-  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
-    for (const [code, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (typeof value !== "string") continue;
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) continue;
-      stored[code] = d.toISOString();
-    }
-  }
-
-  const known = new Set(knownCodes);
-  const ledger: FirstSeenLedger = {};
-  const stamped = findings.map((f) => {
-    // DELIBERATELY NOT `brokenSince`. This is the monitor's own clock:
-    // how long the OWNER has been hearing about it, which is the only
-    // thing that licenses dropping the explanation. A fault whose
-    // `brokenSince` is seventy days old but which is being reported for
-    // the first time must get its paragraph in full; folding it away on
-    // its first alert would mean the reason was never sent to anybody.
-    // `composeHealthAlert` prints `brokenSince` as the DATE, which is a
-    // different question and is answered separately.
-    //
-    //   the ledger    we have been alerting on it since then;
-    //   the fallback  it was in the last alert but the ledger predates
-    //                 the column, so: not later than the moment the row
-    //                 was created;
-    //   `now`         brand new, nothing older to appeal to.
-    const firstSeenAt = stored[f.code]
-      ? new Date(stored[f.code])
-      : known.has(f.code)
-        ? fallbackFirstSeen
-        : now;
-    ledger[f.code] = firstSeenAt.toISOString();
-    return { ...f, firstSeenAt };
-  });
-
-  // `string`, not `HealthCode`: the ledger and `lastAlertCodes` are
-  // both free-form columns, so a row written by a build that had a code
-  // this one has dropped must still be readable and reportable.
-  const present = new Set<string>(findings.map((f) => f.code));
-  const resolved: ResolvedFinding[] = [];
-  for (const code of new Set([...Object.keys(stored), ...knownCodes])) {
-    if (present.has(code)) continue;
-    resolved.push({
-      code,
-      label: labelForCode(code),
-      firstSeenAt: stored[code] ? new Date(stored[code]) : fallbackFirstSeen,
-    });
-  }
-
-  return { findings: stamped, ledger, resolved };
-}
-
-export interface HealthAlert {
-  subject: string;
-  text: string;
-}
-
-const icons = { critical: "🚨", warning: "⚠️" } as const;
-
-function worstIcon(findings: HealthFinding[]): string | null {
-  if (findings.length === 0) return null;
-  return findings.some((f) => f.severity === "critical") ? icons.critical : icons.warning;
-}
-
-/**
- * Turn findings into the sentence a human reads.
- *
- * ── THE ORDER IS THE POINT ───────────────────────────────────────────
- *
- * On 2026-09-14 at 09:00 the live alert read, in this order:
- *
- *   ⚠️ The bot reported 4 degraded capability/capabilities.      (July)
- *   ⚠️ The group's member list was last read 69 days ago.        (July)
- *   🚨 Nothing from this group has been analysed for 40 hours,
- *      with a match in 35 hours.                            (that hour)
- *
- * A live outage on the eve of a fixture, third, under two paragraphs the
- * owner had by then read twenty-two times. That is backwards, and it is
- * backwards in the way that makes a channel get muted.
- *
- * So the composition is: anything NEW or recent in full and first, then
- * anything that has been fixed, then everything that has been true for
- * longer than `COLLAPSE_AFTER_MS` on ONE line that names and dates it
- * but spends no paragraphs on it.
- *
- * Returns null when there is genuinely nothing to say, so the caller
- * never has to ask twice.
- */
-export function composeHealthAlert(
-  orgName: string,
-  findings: HealthFinding[],
-  opts: {
-    now: Date;
-    resolved?: ResolvedFinding[];
-    /**
-     * Codes that were NOT in the last alert, which is exactly the set
-     * `planHealthAlert` calls a new condition. Only the subject uses it,
-     * and only so that it can say "nothing new" honestly.
-     *
-     * It is a parameter rather than something derived from
-     * `firstSeenAt` because "has the reader been told about this
-     * already" is a fact about the last alert, and the last alert is not
-     * something this function can see. Deriving it from an age would be
-     * a guess: on day two of a fault it would still say "new".
-     */
-    freshCodes?: string[];
-  },
-): HealthAlert | null {
-  const now = opts.now.getTime();
-  const resolved = opts.resolved ?? [];
-  const fresh = new Set(opts.freshCodes ?? []);
-
-  // Nothing is collapsed on a guess: a finding with no `firstSeenAt`
-  // (an org whose first alert this is, or a row written before the
-  // ledger column existed) is rendered in full.
-  const ongoing = findings.filter(
-    (f) => f.firstSeenAt !== undefined && now - f.firstSeenAt.getTime() >= COLLAPSE_AFTER_MS,
-  );
-  const ongoingSet = new Set(ongoing);
-  const current = findings.filter((f) => !ongoingSet.has(f));
-
-  if (current.length === 0 && ongoing.length === 0 && resolved.length === 0) return null;
-
-  // Criticals first inside the "what changed" block. `Array.sort` is
-  // stable, so declaration order (the order every threshold is argued
-  // in, above) survives within a severity.
-  const lead = [...current].sort((a, b) =>
-    a.severity === b.severity ? 0 : a.severity === "critical" ? -1 : 1,
-  );
-
-  const blocks: string[] = [];
-
-  if (lead.length > 0) {
-    blocks.push(lead.map((f) => `${icons[f.severity]} ${f.headline}\n   ${f.detail}`).join("\n\n"));
-  }
-
-  if (resolved.length > 0) {
-    // "first reported X ago", never "lasted X". The cron looks once an
-    // hour and now speaks once a day, so the moment a fault ENDED is
-    // not something this module knows, and the resolved entry carries
-    // only the monitor's own clock. A duration for the fault itself
-    // would be made up.
-    const ran = (r: ResolvedFinding) =>
-      `first reported ${ageText(Math.max(0, now - r.firstSeenAt.getTime()))} ago`;
-    blocks.push(
-      resolved.length === 1
-        ? `✅ Fixed: ${resolved[0].label}, ${ran(resolved[0])}.`
-        : `✅ Fixed: ${resolved.map((r) => `${r.label} (${ran(r)})`).join(", ")}.`,
-    );
-  }
-
-  if (ongoing.length > 0) {
-    // One line, always naming and always dating every item. See
-    // `COLLAPSE_AFTER_MS`: this is a summary, never a disappearance.
-    //
-    // The date is `brokenSince` where the rule knows it, NOT the day
-    // this monitor started saying so. Sutton FC's sweep last succeeded
-    // on 2026-07-07 and the alert only started on 2026-09-09; "still
-    // broken since 9 Sep" about a fault the owner dates to July is the
-    // kind of small wrongness that costs the rest of the message its
-    // credibility. A `brokenSince` in the future is a clock bug and is
-    // ignored rather than printed.
-    const since = (f: HealthFinding) =>
-      f.brokenSince && f.brokenSince.getTime() <= now ? f.brokenSince : f.firstSeenAt!;
-    const day = (f: HealthFinding) => formatLondon(since(f), "d MMM");
-    const sameDay = new Set(ongoing.map((f) => formatLondon(since(f), "yyyy-MM-dd")));
-    const icon = worstIcon(ongoing);
-    blocks.push(
-      sameDay.size === 1
-        ? `${icon} Still broken since ${day(ongoing[0])}: ${ongoing.map((f) => f.label).join(", ")}.`
-        : `${icon} Still broken: ${ongoing.map((f) => `${f.label} (since ${day(f)})`).join(", ")}.`,
-    );
-  }
-
-  const headline =
-    lead.length > 0
-      ? `${worstIcon(lead)} MatchTime's WhatsApp layer is degraded for *${orgName}*.`
-      : ongoing.length > 0
-        ? `${worstIcon(ongoing)} MatchTime's WhatsApp layer for *${orgName}*: nothing new since yesterday.`
-        : `✅ MatchTime's WhatsApp layer for *${orgName}* is clear again.`;
-
-  const footer =
-    lead.length > 0
-      ? "This alert exists because these faults used to be a console.error in bot.log " +
-        "on the Pi that nobody read. Nothing here is self-healing: each one needs someone " +
-        "to look."
-      : ongoing.length > 0
-        ? "Nothing above is new. Each one was reported in full when it first appeared, " +
-          "and none of them is self-healing."
-        : "";
-
-  const text = [headline, ...blocks, footer].filter(Boolean).join("\n\n");
-
-  // The subject alone has to be enough to decide whether to open it,
-  // because half the complaint was about the inbox, not the message.
-  const parts: string[] = [];
-  const newCount = findings.filter((f) => fresh.has(f.code)).length;
-  // Nothing left wrong at all is the one fact worth the whole subject.
-  if (findings.length === 0) parts.push("all clear");
-  else parts.push(newCount > 0 ? `${newCount} new` : "nothing new");
-  if (resolved.length > 0) parts.push(`${resolved.length} fixed`);
-  // Everything still wrong that is NOT new, whether or not it collapsed.
-  // Splitting those two in a subject line would be describing the
-  // rendering rather than the club's situation.
-  const ongoingCount = findings.length - newCount;
-  if (ongoingCount > 0) parts.push(`${ongoingCount} ongoing`);
-  const subjectIcon = worstIcon(lead) ?? worstIcon(ongoing) ?? "✅";
-  const subject = `${subjectIcon} MatchTime WhatsApp health: ${orgName} (${parts.join(", ")})`;
-
-  return { subject, text };
-}
-
-/**
- * Whether to actually send, and down which channels.
- *
- * ── WHAT ─────────────────────────────────────────────────────────────
- *
- *   - nothing wrong and nothing notable fixed → never send;
- *   - a NEW condition → send NOW, at any hour, because a second fault
- *     landing on top of the first is news and waiting for the morning
- *     would have delayed 2026-09-14's 40-hour inbound outage;
- *   - a LONG-RUNNING condition clearing → send, see below;
- *   - otherwise → once a day, at `DAILY_DIGEST_HOUR` London.
- *
- * ── RECOVERY: A CHANGED JUDGEMENT, AND WHY ───────────────────────────
- *
- * This function used to say, categorically, that a condition clearing is
- * not news: "recovery is what is supposed to happen, and an alert channel
- * that also announces good outcomes is one whose alerts stop being read."
- * That is still true of a blip, and a blip clearing is still silent.
- *
- * It stopped being true of a fault old enough to have been collapsed
- * into the "Still broken since 7 Jul" line. That line appears in every
- * single digest. When it silently gets shorter, the reader cannot tell a
- * fix from a monitoring bug, and "the alert stopped mentioning it" is
- * exactly what a broken assessor looks like. So a finding that had run
- * past `COLLAPSE_AFTER_MS` earns one sentence when it ends. Nothing
- * shorter-lived does.
- *
- * ── WHICH CHANNEL: EMAIL DAILY, DM ONLY FOR NEWS ─────────────────────
- *
- * `send` governs the email; `dm` additionally governs the WhatsApp DM.
- * They are not the same schedule, and the split is the second half of
- * the fix:
- *
- *   an email is cheap, archivable, searchable, and sits in an inbox
- *   until it is read. A DM makes a phone buzz in a meeting.
- *
- * So the daily digest always emails, and only buzzes when it is carrying
- * something that deserves an interruption:
- *
- *   a. the set CHANGED (a new fault, or a long-running one fixed);
- *   b. something CRITICAL is still unfixed. A warning that has been true
- *      for seventy days does not deserve a daily interruption. A
- *      critical that is still broken tomorrow morning does;
- *   c. the previous alert landed inside `dmAllowedNow`'s quiet hours,
- *      so its DM was dropped. Under the old six-hourly repeat the next
- *      re-fire delivered it a few hours later; with one alert a day that
- *      second chance is gone unless the digest takes it. Without this
- *      clause a 03:00 outage would reach WhatsApp never.
- *
- * The cost of (b) and (c) is stated plainly: a long-running WARNING now
- * reaches WhatsApp once and then only by email. The channel that must
- * never be missed is the email, which shares nothing with the WhatsApp
- * layer it is reporting on. See the header of `api/cron/bot-health`.
- */
-export function planHealthAlert(args: {
-  findings: HealthFinding[];
-  /** Codes in the last alert that are gone now (see `trackFirstSeen`). */
-  resolved: ResolvedFinding[];
-  lastAlertAt: Date | null;
-  lastAlertCodes: string[];
-  now: Date;
-}): { send: boolean; reason: string; dm: boolean } {
-  const { findings, resolved, lastAlertAt, lastAlertCodes, now } = args;
-  const codes = findings.map((f) => f.code);
-  const notable = resolved.filter(
-    (r) => now.getTime() - r.firstSeenAt.getTime() >= COLLAPSE_AFTER_MS,
-  );
-
-  const quiet = lastAlertAt !== null && !dmAllowedNow(lastAlertAt);
-  const hasCritical = findings.some((f) => f.severity === "critical");
-  const out = (send: boolean, reason: string, dm: boolean) => ({ send, reason, dm: send && dm });
-
-  if (codes.length === 0 && notable.length === 0) return out(false, "healthy", false);
-  if (lastAlertAt === null) return out(true, "first alert", true);
-
-  const known = new Set(lastAlertCodes);
-  const fresh = codes.filter((c) => !known.has(c));
-  if (fresh.length > 0) return out(true, `new condition(s): ${fresh.join(", ")}`, true);
-  if (notable.length > 0) {
-    return out(true, `fixed after a long run: ${notable.map((r) => r.code).join(", ")}`, true);
-  }
-  // Only short-lived things cleared, and nothing else is wrong.
-  if (codes.length === 0) return out(false, "healthy", false);
-
-  // Unchanged. One a day, on the wall clock.
-  const sameDay = formatLondon(now, "yyyy-MM-dd") === formatLondon(lastAlertAt, "yyyy-MM-dd");
-  const hour = Number(formatLondon(now, "H"));
-  // A clock bug must never silence us: an unreadable hour reads as "yes".
-  const pastDigestHour = !Number.isFinite(hour) || hour >= DAILY_DIGEST_HOUR;
-  if (!sameDay && pastDigestHour) return out(true, "daily digest", hasCritical || quiet);
-  if (now.getTime() - lastAlertAt.getTime() >= ALERT_MAX_SILENCE_MS) {
-    return out(true, "daily digest, catching up after a missed tick", hasCritical || quiet);
-  }
-  return out(
-    false,
-    `already alerted today; the next digest is ${DAILY_DIGEST_HOUR}:00 London`,
-    false,
-  );
-}
-
-/**
- * May a WhatsApp DM be sent right now?
- *
- * The email is never suppressed — mail waiting in an inbox is what mail
- * is for — but a 03:00 WhatsApp message is how a channel gets muted, and
- * nothing here is actionable at 03:00 anyway. The DM is a convenience on
- * top of the guaranteed channel, so losing one to quiet hours costs
- * only a delay.
- *
- * It used to cost nothing at all, because the six-hourly repeat re-fired
- * the DM a few hours later on its own. With one alert a day that is no
- * longer true, so `planHealthAlert` reads this function against the
- * PREVIOUS alert's timestamp and DMs the next digest when the last one
- * landed in the dark. Without that, a 03:00 fault would reach WhatsApp
- * never. This function itself is unchanged, and deliberately so.
- */
-export function dmAllowedNow(now: Date): boolean {
-  const hour = Number(formatLondon(now, "H"));
-  if (!Number.isFinite(hour)) return true; // never let a clock bug silence us
-  return hour >= DM_QUIET_END_HOUR && hour < DM_QUIET_START_HOUR;
 }

@@ -104,9 +104,9 @@ const group = async (request: APIRequestContext, db: TestDb) =>
   })).attach(request);
 
 /** The stats-link DMs inside ONE request's outbound batch. The blast is
- *  the only thing in the product that sends these; an operator note (the
- *  deduped ⚠️ DM to admins when nobody owned a message) is a DM too, and
- *  is not what this file is about. */
+ *  the only thing in the product that sends these. (An operator note, the
+ *  record made when nobody owned a message, used to be a DM to admins
+ *  too; since 2026-09-28 it is an `OpsAlert` row and not a DM at all.) */
 const statsDmsIn = (dms: Array<{ phone: string | null; text: string }>) =>
   dms.filter((d) => d.text.includes("MatchTime stats"));
 
@@ -123,9 +123,9 @@ test("THE INCIDENT — the 18:38 sentence queues NOT ONE DM", async ({ request, 
   expect(statsDmsIn(r.dms), JSON.stringify(r.dms)).toHaveLength(0);
   expect(await statsDms(grp)).toHaveLength(0);
   // What DOES happen: nobody owns the message, so it is silence in the
-  // group plus one line on the deduped operator note. That is the
+  // group plus one operator note on the owner's health page. That is the
   // documented treatment for an `admin_ops` message with no handler, and
-  // it is a DM to the ADMINS about a message, not 69 DMs to the club.
+  // it is a record about a message, not 69 DMs to the club.
   expect(r.reply ?? "").toBe("");
 });
 

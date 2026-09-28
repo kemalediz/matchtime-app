@@ -987,21 +987,26 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     expect(row?.reasoning).toContain("extractor");
     expect(row?.reasoning).toMatch(/could not be parsed|degraded|failed/i);
 
-    // And the operator hears about it — `lib/operator-note.ts`, the
-    // typed successor to the "LLM dropped N messages" DM. Matched on
-    // `OPERATOR_NOTE_MARKER` rather than on "some DM was sent", because
-    // this world also queues bench and squad DMs and "a DM exists" would
-    // pass for the wrong reason.
+    // And the operator hears about it: `lib/operator-note.ts`, the typed
+    // successor to the "LLM dropped N messages" DM. Since 2026-09-28 the
+    // note is RECORDED as an `OpsAlert` event for the owner's
+    // /admin/health page and sent to nobody, so this checks both halves:
+    // the row exists, and no admin's phone was buzzed.
     //
-    // The note's 1-hour dedupe is scoped to `orgId` and `createGroup`
-    // mints a fresh org per test, so an earlier test's note in this file
-    // cannot suppress this one.
-    const dms = res.dms.map((d) => d.text).join("\n");
+    // `createGroup` mints a fresh org per test, so an earlier test's note
+    // in this file cannot stand in for this one.
+    const notes = await db.all<{ title: string; detail: string }>(
+      `SELECT title, detail FROM "OpsAlert" WHERE "orgId" = $1 AND kind = 'operator-note'`,
+      [g.orgId],
+    );
     expect(
-      dms,
-      "an unowned attendance message must raise the operator note — silence with no " +
+      notes.map((n) => n.title).join("\n"),
+      "an unowned attendance message must raise the operator note: silence with no " +
         "signal is §9's signature failure and is the only thing making this loss survivable",
     ).toContain("routed to an action but nothing handled");
+    expect(res.dms.map((d) => d.text).join("\n")).not.toContain(
+      "routed to an action but nothing handled",
+    );
   });
 
   // ── the two defects the first live sweep found ────────────────────

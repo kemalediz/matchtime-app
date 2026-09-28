@@ -113,6 +113,12 @@
  * to. The new one selects on a typed fact: an id that reached the end of
  * the batch with no owner. Same DM, same 1-hour dedupe, same audience;
  * the input stopped being prose.
+ *
+ * ⚠️ AMENDED 2026-09-28: IT IS NO LONGER A DM. The owner never read these
+ * and they buried the messages he does need, so the note is now RECORDED
+ * (an `OpsAlert` event, shown at /admin/health) and sent to nobody. The
+ * selection and the sentence below are unchanged; only where it lands
+ * moved. See `src/lib/ops-alerts.ts`.
  */
 /**
  * ─────────────────────────────────────────────────────────────────────
@@ -145,14 +151,13 @@
 import type { Disposition, Route } from "./pipeline/types";
 
 /**
- * The substring the 1-hour dedupe query matches on.
+ * The phrase every note carries, so it can be found by text.
  *
- * The old net searched `BotJob.text` for the literal `"LLM dropped"`,
- * which coupled the dedupe to a sentence somebody could reword. This is
- * the same trick with the coupling made explicit: the note is REQUIRED
- * to contain this string (asserted in `__tests__/operator-note.test.ts`),
- * so rewording the copy cannot silently turn one DM per hour into one
- * DM per batch.
+ * It used to be what the 1-hour DM dedupe searched `BotJob.text` for.
+ * Since 2026-09-28 the note is not a DM at all: it is recorded as an
+ * `OpsAlert` event for the owner's /admin/health page (see
+ * `src/lib/ops-alerts.ts`), deduped on `dedupeKey`. The phrase stays
+ * pinned by the tests because the e2e specs find the note by it.
  */
 export const OPERATOR_NOTE_MARKER = "routed to an action but nothing handled";
 
@@ -395,6 +400,15 @@ function stripOwnerPrefix(why: string): string {
   return why.replace(/^[a-z][a-z0-9 _-]*\([a-z_]+\):\s*/i, "");
 }
 
+/**
+ * House style for the owner's health page, where this note is shown: no
+ * em or en dashes. The reason lines come from other modules' prose, so
+ * the rule is applied here, at the one place they are printed.
+ */
+function noDashes(s: string): string {
+  return s.replace(/\s*[—–]\s*/g, ": ");
+}
+
 export function composeOperatorNote(input: OperatorNoteInput): OperatorNote {
   const noted = input.messages.filter((m) => worthNoting(m.route, input.features));
   // The SAME feature suppression the unowned list gets. Both routes in
@@ -433,7 +447,7 @@ export function composeOperatorNote(input: OperatorNoteInput): OperatorNote {
     const who = m.authorName ?? "?";
     const why = reasonFor(m.waMessageId, input.degradations) ?? m.fallbackWhy;
     const routeLabel = m.route ?? "no route";
-    return `• "${clip(m.body, MAX_BODY_CHARS)}" by ${who} [${routeLabel}]${why ? ` — ${why}` : ""}`;
+    return `• "${clip(m.body, MAX_BODY_CHARS)}" by ${who} [${routeLabel}]${why ? `: ${noDashes(why)}` : ""}`;
   });
   if (n > MAX_LISTED) lines.push(`• …and ${n - MAX_LISTED} more`);
 

@@ -59,7 +59,17 @@ import { test, expect, resetDb } from "../fixtures";
 import { createGroup, type BatchItem } from "./group";
 import { claim, clearExtractorStub, clearRouterStub, facts, otherFacts, selfIn } from "../helpers/stub";
 
+import type { TestDb } from "../helpers/test-db";
+
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
+
+/** The operator notes recorded for one org (the owner's /admin/health
+ *  page). Since 2026-09-28 they are rows, never DMs. */
+const operatorNotes = (db: TestDb, orgId: string) =>
+  db.all<{ title: string; detail: string }>(
+    `SELECT title, detail FROM "OpsAlert" WHERE "orgId" = $1 AND kind = 'operator-note'`,
+    [orgId],
+  );
 
 // Skipped under MT_SIM_LIVE_LLM=1 for the same reason as the rest of the
 // step-6 specs: that flag pins both stub seams empty on purpose, so
@@ -196,13 +206,18 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
       expect(failed[0].reasoning).toContain("no owner:");
       expect(failed[0].reasoning).toMatch(/extractor|degraded|failed|Overloaded/i);
 
-      // …and the operator hears about it, once for the batch.
-      const dms = res.dms.map((d) => d.text).join("\n");
+      // …and the operator hears about it, once for the batch, on the
+      // owner's /admin/health page (2026-09-28), never as a DM.
+      const notes = await operatorNotes(db, g.orgId);
       expect(
-        dms,
-        "an unowned attendance message must raise the operator note — silence with no " +
+        notes,
+        "an unowned attendance message must raise the operator note: silence with no " +
           "signal is §9's signature failure and is the only thing making this loss survivable",
-      ).toContain("routed to an action but nothing handled");
+      ).toHaveLength(1);
+      expect(notes[0].title).toContain("routed to an action but nothing handled");
+      expect(res.dms.map((d) => d.text).join("\n")).not.toContain(
+        "routed to an action but nothing handled",
+      );
 
       // NO AttendanceEvent rows, because there were no transitions. This
       // used to assert four. It is the same assertion — one event per
@@ -282,9 +297,12 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
       // The banter around it raises NOTHING — `composeOperatorNote` drops
       // every `none` route — so the note that does fire is about the one
       // message that mattered, and is not buried in six lines of noise.
-      const dms = res.dms.map((d) => d.text).join("\n");
-      expect(dms).toContain("routed to an action but nothing handled");
-      expect(dms).not.toContain("wembley was better");
+      const notes = await operatorNotes(db, g.orgId);
+      expect(notes).toHaveLength(1);
+      expect(notes[0].title).toContain("routed to an action but nothing handled");
+      expect(notes[0].detail).toContain("im in lads");
+      expect(notes[0].detail).not.toContain("wembley was better");
+      expect(res.dms.map((d) => d.text).join("\n")).not.toContain("routed to an action");
     });
 
     test("a failure on a message the engine does NOT own changes nothing", async ({
