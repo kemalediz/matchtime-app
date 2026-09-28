@@ -159,7 +159,7 @@ export function LandingPage() {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Check className="w-4 h-4 text-emerald-400" />
-              Card payments optional (1% fee)
+              Card or bank payments, if you want them
             </span>
           </div>
         </div>
@@ -231,7 +231,7 @@ export function LandingPage() {
               color="teal"
               icon={<CreditCard className="w-6 h-6" />}
               title="Payments, if you want them"
-              body="Switch on card or bank payments and each player gets a pay link after the game. MatchTime chases whoever hasn&apos;t paid. Players cover a 1% MatchTime fee and the card fee, so you receive the full match fee."
+              body="Switch on card or bank payments and each player gets a pay link after the game. MatchTime chases whoever hasn&apos;t paid, so you stop doing the money chase yourself."
             />
             <FeatureCard
               color="green"
@@ -555,8 +555,8 @@ export function LandingPage() {
           </h2>
           <p className="mt-5 text-lg text-slate-200 leading-relaxed">
             MatchTime is free to use. Add it to your group, and if you
-            don&apos;t like it, remove it. Card payments are optional, with a
-            1% fee.
+            don&apos;t like it, remove it. Card and bank payments are there
+            if you want them.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center">
             <Link
@@ -631,7 +631,7 @@ export function LandingPage() {
             applicationCategory: "SportsApplication",
             operatingSystem: "Web, WhatsApp",
             description:
-              "MatchTime lives in your WhatsApp group and runs your weekly game: attendance, the bench, chasing, balanced teams, ratings, Man of the Match and optional payments. Free to use; optional card payments carry a 1% fee.",
+              "MatchTime lives in your WhatsApp group and runs your weekly game: attendance, the bench, chasing, balanced teams, ratings, Man of the Match and optional card or bank payments. Free to use.",
             url: "https://matchtime.ai",
             offers: {
               "@type": "Offer",

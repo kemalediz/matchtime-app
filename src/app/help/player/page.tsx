@@ -201,10 +201,8 @@ export default function PlayerGuidePage() {
       <h3>Paying</h3>
       <p>
         If your organiser has switched on payments, you get a pay link by DM
-        after the game: card, Apple Pay, Google Pay or pay by bank. The price
-        includes a 1% MatchTime fee and the payment fee, so the organiser
-        receives the full match fee. If you haven&apos;t paid, you&apos;ll get
-        a reminder.
+        after the game: card, Apple Pay, Google Pay or pay by bank. If you
+        haven&apos;t paid, you&apos;ll get a reminder.
       </p>
 
       {/* ───────────────────────────────────────────────── */}

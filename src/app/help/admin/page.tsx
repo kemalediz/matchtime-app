@@ -7,8 +7,7 @@ export default function AdminGuidePage() {
       <p>
         You run the group. This guide walks through what MatchTime does for
         you each week, and what you can check or fix from the dashboard.
-        MatchTime is free to use. If you switch on card payments, players pay
-        a 1% MatchTime fee on top of the match fee.
+        MatchTime is free to use.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
@@ -290,9 +289,7 @@ export default function AdminGuidePage() {
         pay the collector directly, and the collector confirms it.
       </p>
       <p>
-        Players pay a 1% MatchTime fee plus the payment fee on top of the
-        match fee, so the collector receives the full amount. Cash only?
-        Leave payments off and MatchTime costs nothing.
+        Collecting cash instead? Just leave payments off.
       </p>
 
       {/* ───────────────────────────────────────────────── */}

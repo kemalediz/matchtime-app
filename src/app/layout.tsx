@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     template: "%s · MatchTime",
   },
   description:
-    "MatchTime lives in your WhatsApp group and runs your weekly game: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes. Free to use; optional card payments carry a 1% fee.",
+    "MatchTime lives in your WhatsApp group and runs your weekly game: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes. Free to use.",
   keywords: [
     "sports team management",
     "5-a-side attendance",
