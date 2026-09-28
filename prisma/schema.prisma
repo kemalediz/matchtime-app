@@ -920,6 +920,12 @@ model BotHealth {
   /// the server needing to know about it.
   degradedCapabilities String[]
 
+  /// UNUSED SINCE 2026-09-28, kept (not dropped) so nothing destructive
+  /// runs against prod. Health alerts are no longer sent, so there is no
+  /// dedupe to keep; the record lives in `OpsAlert`. The three columns
+  /// below (`lastAlertAt`, `lastAlertCodes`, `codeFirstSeenAt`) hold their
+  /// last values from before that date and are written by nothing.
+  ///
   /// Alert dedupe, kept HERE rather than in SentNotification because it
   /// is a property of this org's health, not of a match. `alertedCodes`
   /// is what makes "a NEW condition appeared" distinguishable from "the
@@ -945,6 +951,42 @@ model BotHealth {
   updatedAt DateTime @updatedAt
 
   @@index([lastHeartbeatAt])
+}
+
+/// Routine ops alerts, for the platform owner's /admin/health page.
+///
+/// Until 2026-09-28 every one of these was sent to the owner as a
+/// WhatsApp DM and an email (bot-health) or a DM to every club admin
+/// (operator notes). He never read them, they buried the messages he
+/// does need, and some were false alarms. They are now RECORDED here
+/// and nowhere else; see `src/lib/ops-alerts.ts`.
+///
+/// Two shapes share the table:
+///   - a CONDITION (`kind` starts with "health:"): one row per stretch
+///     of time a health rule held for a club. `lastSeenAt` moves on
+///     every hourly check, `resolvedAt` is set when it stops holding.
+///   - an EVENT (`kind` = "operator-note"): one row per occurrence,
+///     created with `resolvedAt` already set, so it is never "active".
+///
+/// `orgId` is a plain column, not a relation, on purpose: this table is
+/// written by monitoring code and must never block deleting a club.
+model OpsAlert {
+  id          String    @id @default(cuid())
+  orgId       String?
+  kind        String
+  /// "critical" | "warning" | "info"
+  severity    String
+  title       String    @db.Text
+  detail      String    @db.Text
+  /// Events only: stops the same note being recorded twice.
+  dedupeKey   String?
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([orgId, kind, resolvedAt])
+  @@index([createdAt])
 }
 
 model BotJob {

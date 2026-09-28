@@ -65,11 +65,9 @@ const NOT_A_QUESTION = {
 
 /** The rating-progress ANSWER inside one request's outbound batch.
  *
- *  An operator note is a DM too — the deduped ⚠️ message to admins when
- *  nobody owned a message — and it is not what this file is about. It is
- *  the documented treatment for an unowned message and the thin
- *  difference between this and a silent shrug: a human is told, once an
- *  hour, that a message went unanswered. */
+ *  (An operator note, the record made when nobody owned a message, used
+ *  to be a DM to admins as well. Since 2026-09-28 it is an `OpsAlert` row
+ *  on the owner's health page, so it can no longer appear here.) */
 const answerDmsIn = (dms: Array<{ phone: string | null; text: string }>) =>
   dms.filter((d) => d.text.includes("rating progress"));
 

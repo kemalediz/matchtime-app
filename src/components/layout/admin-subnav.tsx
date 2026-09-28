@@ -16,12 +16,28 @@ const TABS = [
   { label: "Settings", href: "/admin/settings" },
 ];
 
+/** Shown only to the platform owner (`User.isSuperadmin`). The page itself
+ *  answers 404 to anybody else; hiding the tab just keeps club admins from
+ *  seeing a link that goes nowhere. */
+const OWNER_TABS = [{ label: "Health", href: "/admin/health" }];
+
 export function AdminSubnav() {
   const pathname = usePathname();
   // Live count of unresolved attendance messages — the whole point of
   // #1 is that silent drops are impossible to MISS, so the badge sits
   // in the nav on every admin page.
   const [unresolved, setUnresolved] = useState(0);
+  const [owner, setOwner] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/memberships")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { isSuperadmin?: boolean } | null) => alive && setOwner(d?.isSuperadmin === true))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   useEffect(() => {
     let alive = true;
     const load = () =>
@@ -38,7 +54,7 @@ export function AdminSubnav() {
 
   return (
     <nav className="flex gap-1 p-1 bg-slate-100 rounded-lg max-w-full overflow-x-auto">
-      {TABS.map((t) => {
+      {(owner ? [...TABS, ...OWNER_TABS] : TABS).map((t) => {
         const active =
           t.href === "/admin"
             ? pathname === "/admin"

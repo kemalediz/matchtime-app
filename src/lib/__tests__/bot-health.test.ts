@@ -9,16 +9,10 @@
 import { describe, it, expect } from "vitest";
 import {
   assessBotHealth,
-  composeHealthAlert,
-  dmAllowedNow,
   HEARTBEAT_SILENT_MS,
-  labelForCode,
   NONE_SHADOW_SILENT_MS,
   parseHeartbeat,
-  planHealthAlert,
-  type HealthCode,
   type HealthCounters,
-  type HealthFinding,
   type HealthInput,
 } from "../bot-health";
 
@@ -68,15 +62,6 @@ function healthy(over: Partial<HealthInput> = {}): HealthInput {
 }
 
 const codes = (i: HealthInput) => assessBotHealth(i).map((f) => f.code).sort();
-
-/** A minimal finding, for the rules that only care about its code. */
-const mkFinding = (code: HealthCode): HealthFinding => ({
-  code,
-  severity: "warning",
-  label: labelForCode(code),
-  headline: `${code}.`,
-  detail: `${code} detail.`,
-});
 
 describe("assessBotHealth — the healthy baseline", () => {
   it("says nothing at all about a healthy org", () => {
@@ -388,43 +373,60 @@ describe("assessBotHealth — the `none`-bucket shadow sweep", () => {
     });
     expect(codes(offAndStale)).not.toContain("none-shadow-stale");
   });
-
-  it("rides the EXISTING dedupe rather than a channel of its own", () => {
-    // New condition on top of a long-running one → speaks immediately.
-    const known = ["capability-degraded", "sweep-stale"];
-    const all = [...known, "none-shadow-stale"] as HealthCode[];
-    const fresh = planHealthAlert({
-      findings: all.map(mkFinding),
-      resolved: [],
-      lastAlertAt: new Date(NOW.getTime() - 10 * 60 * 1000),
-      lastAlertCodes: known,
-      now: NOW,
-    });
-    expect(fresh.send).toBe(true);
-    expect(fresh.reason).toContain("none-shadow-stale");
-
-    // …and from then on it is one more line inside the same daily
-    // digest, never its own email.
-    const repeat = planHealthAlert({
-      findings: all.map(mkFinding),
-      resolved: [],
-      lastAlertAt: new Date(NOW.getTime() - 10 * 60 * 1000),
-      lastAlertCodes: all,
-      now: NOW,
-    });
-    expect(repeat.send).toBe(false);
-    expect(repeat.reason).toContain("already alerted today");
-  });
 });
 
 describe("assessBotHealth — the pipe is silent before a match", () => {
-  it("raises inbound-silent when a live group goes quiet close to kickoff", () => {
+  it("raises inbound-silent when a live group goes quiet for longer than a normal weekend", () => {
     const silent = healthy({
-      lastAnalyzedMessageAt: new Date(NOW.getTime() - 19 * HOUR),
+      lastAnalyzedMessageAt: new Date(NOW.getTime() - 31 * HOUR),
       nextMatchAt: new Date(NOW.getTime() + 10 * HOUR),
     });
     const f = assessBotHealth(silent).find((x) => x.code === "inbound-silent");
-    expect(f?.severity).toBe("critical");
+    expect(f).toBeDefined();
+    // A guess from silence, not a measured fault, so never red on its own.
+    expect(f?.severity).toBe("warning");
+  });
+
+  it("does NOT raise it for Sutton's quiet Sunday night before a Tuesday game (2026-09-28)", () => {
+    // The false alarm Kemal asked about. Last message Sunday 13:25, the
+    // check ran Monday 09:00 with the match 35 hours away. The Pi was
+    // alive and had heard and buffered every message it was sent
+    // (seen 19, buffered 19), and Kemal posted at 10:54. Quiet, not broken.
+    const monday = new Date("2026-09-28T09:00:30.000Z");
+    const quietSunday = healthy({
+      now: monday,
+      heartbeat: {
+        at: new Date(monday.getTime() - 5 * 60 * 1000),
+        processStartedAt: new Date("2026-09-26T06:41:41.913Z"),
+        counters: counters({ seen: 19, buffered: 19 }),
+        degradedCapabilities: [],
+      },
+      lastAnalyzedMessageAt: new Date("2026-09-27T13:24:58.332Z"),
+      lastParticipantSweepAt: new Date(monday.getTime() - 2 * HOUR),
+      lastNoneShadowAt: new Date(monday.getTime() - 5 * HOUR),
+      nextMatchAt: new Date("2026-09-29T20:30:00.000Z"),
+    });
+    expect(codes(quietSunday)).not.toContain("inbound-silent");
+  });
+
+  it("does NOT raise it for the longest normal pre-match gap in six weeks of Sutton data", () => {
+    // Measured 2026-09-28 over the last six Sutton fixtures: in normal
+    // weeks the longest silence inside the 36 hours before kickoff was
+    // 9.7h, 15.7h and 21.5h. The two longer ones (40.7h on 14 Sep and
+    // 3.8 days on 20 to 22 Sep) were real outages.
+    const normal = healthy({
+      lastAnalyzedMessageAt: new Date(NOW.getTime() - 22 * HOUR),
+      nextMatchAt: new Date(NOW.getTime() + 12 * HOUR),
+    });
+    expect(codes(normal)).not.toContain("inbound-silent");
+  });
+
+  it("still catches the real 40 hour outage of 2026-09-14", () => {
+    const outage = healthy({
+      lastAnalyzedMessageAt: new Date(NOW.getTime() - 40 * HOUR),
+      nextMatchAt: new Date(NOW.getTime() + 35 * HOUR),
+    });
+    expect(codes(outage)).toContain("inbound-silent");
   });
 
   it("does NOT raise it when the group has never been analysed at all", () => {
@@ -436,34 +438,21 @@ describe("assessBotHealth — the pipe is silent before a match", () => {
     });
     expect(codes(brandNew)).not.toContain("inbound-silent");
   });
+
+  it("does not claim the WhatsApp layer is broken: it says the group may just be quiet", () => {
+    const f = assessBotHealth(
+      healthy({
+        lastAnalyzedMessageAt: new Date(NOW.getTime() - 31 * HOUR),
+        nextMatchAt: new Date(NOW.getTime() + 10 * HOUR),
+      }),
+    ).find((x) => x.code === "inbound-silent")!;
+    expect(f.detail.toLowerCase()).toContain("quiet");
+    expect(`${f.headline} ${f.detail}`.toLowerCase()).not.toContain("degraded");
+  });
 });
 
-describe("composeHealthAlert", () => {
-  it("returns null when there is nothing wrong", () => {
-    expect(composeHealthAlert("Sutton FC", [], { now: NOW })).toBeNull();
-  });
-
-  it("names the club, the worst severity and every finding", () => {
-    const findings = assessBotHealth(
-      healthy({
-        heartbeat: {
-          at: new Date(NOW.getTime() - 60 * 1000),
-          processStartedAt: new Date(NOW.getTime() - 2 * DAY),
-          counters: counters({ seen: 340, buffered: 0, notGroup: 12, synthetic: 4 }),
-          degradedCapabilities: [],
-        },
-      }),
-    );
-    const alert = composeHealthAlert("Sutton FC", findings, { now: NOW });
-    expect(alert).not.toBeNull();
-    expect(alert!.subject).toContain("Sutton FC");
-    expect(alert!.text).toContain("Sutton FC");
-    for (const f of findings) expect(alert!.text).toContain(f.headline);
-  });
-
-  it("follows house style: no em dashes and no slashes in the prose", () => {
-    // Same rule the group-sync warning is held to. This lands in Kemal's
-    // inbox and in a WhatsApp DM, so it is copy, not a log line.
+describe("assessBotHealth — copy shown on the owner's health page", () => {
+  it("follows house style: no em dashes or en dashes in any headline or detail", () => {
     const findings = assessBotHealth(
       healthy({
         heartbeat: {
@@ -481,114 +470,28 @@ describe("composeHealthAlert", () => {
           degradedCapabilities: ["participant-sync"],
         },
         lastParticipantSweepAt: null,
+        lastNoneShadowAt: null,
         namelessUnattributed24h: 1,
       }),
     );
-    const alert = composeHealthAlert("Sutton FC", findings, { now: NOW })!;
-    expect(alert.subject).not.toContain("—");
-    expect(alert.subject).not.toContain("–");
-    expect(alert.text).not.toContain("—");
-    expect(alert.text).not.toContain("–");
+    expect(findings.length).toBeGreaterThan(5);
+    for (const f of findings) {
+      expect(`${f.headline} ${f.detail}`).not.toMatch(/[—–]/);
+    }
   });
 
-  it("does not read as a template — it says what to do next", () => {
-    const findings = assessBotHealth(
+  it("does not blame whatsapp-web.js: the bot runs on Baileys since 2026-09-23", () => {
+    const f = assessBotHealth(
       healthy({
         heartbeat: {
-          at: new Date(NOW.getTime() - 3 * HOUR),
-          processStartedAt: new Date(NOW.getTime() - 2 * DAY),
-          counters: counters({ seen: 10, buffered: 10 }),
+          at: new Date(NOW.getTime() - 5 * 60 * 1000),
+          processStartedAt: new Date(NOW.getTime() - DAY),
+          counters: counters({ seen: 10, buffered: 10, synthetic: 1 }),
           degradedCapabilities: [],
         },
       }),
-    );
-    const alert = composeHealthAlert("Sutton FC", findings, { now: NOW })!;
-    expect(alert.text.toLowerCase()).toContain("bot.log");
-  });
-});
-
-describe("planHealthAlert — dedupe", () => {
-  // NOW is 2026-09-09T12:00Z, which is 13:00 London: a new London day
-  // with the digest hour already passed.
-  const two: HealthCode[] = ["pi-silent", "sweep-stale"];
-  const findings = two.map(mkFinding);
-
-  it("sends the first time anything is wrong", () => {
-    const p = planHealthAlert({
-      findings,
-      resolved: [],
-      lastAlertAt: null,
-      lastAlertCodes: [],
-      now: NOW,
-    });
-    expect(p.send).toBe(true);
-  });
-
-  it("stays silent when nothing is wrong", () => {
-    const p = planHealthAlert({
-      findings: [],
-      resolved: [],
-      lastAlertAt: null,
-      lastAlertCodes: [],
-      now: NOW,
-    });
-    expect(p.send).toBe(false);
-  });
-
-  it("stays silent on the same conditions when it has already spoken today", () => {
-    const p = planHealthAlert({
-      findings,
-      resolved: [],
-      lastAlertAt: new Date(NOW.getTime() - HOUR),
-      lastAlertCodes: two,
-      now: NOW,
-    });
-    expect(p.send).toBe(false);
-  });
-
-  it("repeats once the next day's digest hour arrives and it is still broken", () => {
-    const p = planHealthAlert({
-      findings,
-      resolved: [],
-      lastAlertAt: new Date("2026-09-08T07:00:00.000Z"), // yesterday, 08:00 London
-      lastAlertCodes: two,
-      now: NOW,
-    });
-    expect(p.send).toBe(true);
-    expect(p.reason).toContain("digest");
-  });
-
-  it("speaks immediately when a NEW condition appears, digest hour or not", () => {
-    const p = planHealthAlert({
-      findings: [...findings, mkFinding("messages-dropped")],
-      resolved: [],
-      lastAlertAt: new Date(NOW.getTime() - 60_000),
-      lastAlertCodes: two,
-      now: NOW,
-    });
-    expect(p.send).toBe(true);
-    expect(p.reason).toContain("new");
-  });
-
-  it("does NOT speak when a SHORT-LIVED condition clears", () => {
-    // Unchanged judgement: recovery from a blip is what is supposed to
-    // happen, and a channel that announces good outcomes stops being
-    // read. A LONG-running one clearing is different, and has its own
-    // tests in bot-health-digest.test.ts.
-    const p = planHealthAlert({
-      findings: [mkFinding("pi-silent")],
-      resolved: [
-        {
-          code: "sweep-stale",
-          label: labelForCode("sweep-stale"),
-          firstSeenAt: new Date(NOW.getTime() - HOUR),
-        },
-      ],
-      lastAlertAt: new Date(NOW.getTime() - 60_000),
-      lastAlertCodes: two,
-      now: NOW,
-    });
-    expect(p.send).toBe(false);
+    ).find((x) => x.code === "synthetic-ids")!;
+    expect(f.detail).not.toMatch(/whatsapp-web\.js|WA_WEB_VERSION/);
   });
 });
 
@@ -652,26 +555,5 @@ describe("parseHeartbeat — the wire", () => {
   it("drops non-string capabilities", () => {
     const p = parseHeartbeat({ groupId: "g@g.us", degradedCapabilities: ["ok", 5, null, ""] });
     expect(p!.degradedCapabilities).toEqual(["ok"]);
-  });
-});
-
-describe("dmAllowedNow — quiet hours", () => {
-  it("allows a DM during the day", () => {
-    expect(dmAllowedNow(new Date("2026-09-09T13:00:00.000Z"))).toBe(true);
-  });
-
-  it("refuses a DM in the middle of the night, London time", () => {
-    // 02:30 UTC in September is 03:30 BST.
-    expect(dmAllowedNow(new Date("2026-09-09T02:30:00.000Z"))).toBe(false);
-  });
-
-  it("refuses a DM just before midnight, London time", () => {
-    // 22:30 UTC is 23:30 BST.
-    expect(dmAllowedNow(new Date("2026-09-09T22:30:00.000Z"))).toBe(false);
-  });
-
-  it("allows a DM from 07:00 London", () => {
-    // 06:30 UTC is 07:30 BST.
-    expect(dmAllowedNow(new Date("2026-09-09T06:30:00.000Z"))).toBe(true);
   });
 });

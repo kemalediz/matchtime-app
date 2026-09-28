@@ -121,6 +121,7 @@ import {
   type OwnedMessage,
   type UnownedMessage,
 } from "@/lib/operator-note";
+import { OPERATOR_NOTE_KIND, recordOpsEvent } from "@/lib/ops-alerts";
 import {
   gateBatch,
   routerIsNeeded,
@@ -2533,6 +2534,11 @@ async function handleAnalyzeRequest(request: Request) {
   //   wanted to be." The typed fact is that an id reached the end of the
   //   batch with no owner.
   //
+  //   ⚠️ SINCE 2026-09-28 THE NOTE IS RECORDED, NOT SENT: it is an
+  //   `OpsAlert` event on the owner's /admin/health page and nobody's
+  //   phone buzzes. The paragraph below describes the selection, which
+  //   is unchanged.
+  //
   //   Same audience, same 1-hour dedupe, same "act manually if any were
   //   attendance changes" close. Two things changed and both are
   //   improvements: it can no longer be defeated by the model phrasing
@@ -2606,33 +2612,24 @@ async function handleAnalyzeRequest(request: Request) {
             `[analyze] ${note.noteIds.length} message(s) in this batch went unanswered: ` +
               note.noteIds.join(", "),
           );
-          const admins = await db.membership.findMany({
-            where: { orgId: org.id, role: { in: ["ADMIN", "OWNER"] }, leftAt: null },
-            include: { user: { select: { id: true, phoneNumber: true, name: true } } },
+          // RECORDED, NOT SENT (2026-09-28). This used to DM every
+          // admin of the club, deduped to one an hour. The owner never
+          // read them and they buried the messages he does need, so the
+          // note now lands on /admin/health and nowhere else. Deduped on
+          // the set of message ids, so a re-posted batch records once.
+          const n = note.noteIds.length;
+          await recordOpsEvent({
+            orgId: org.id,
+            kind: OPERATOR_NOTE_KIND,
+            severity: "warning",
+            title: `${n} message${n === 1 ? "" : "s"} ${OPERATOR_NOTE_MARKER} ${n === 1 ? "it" : "them"}`,
+            detail: note.text,
+            dedupeKey: note.dedupeKey,
           });
-          const since = new Date(Date.now() - 60 * 60 * 1000); // 1h dedupe window
-          for (const m of admins) {
-            if (!m.user.phoneNumber) continue;
-            const phone = m.user.phoneNumber.replace(/^\+/, "");
-            const recentlySent = await db.botJob.findFirst({
-              where: {
-                orgId: org.id,
-                kind: "dm",
-                phone,
-                text: { contains: OPERATOR_NOTE_MARKER },
-                createdAt: { gte: since },
-              },
-              select: { id: true },
-            });
-            if (recentlySent) continue; // already told this admin in the last hour
-            await db.botJob.create({
-              data: { orgId: org.id, kind: "dm", phone, text: note.text },
-            });
-          }
         }
       }
     } catch (err) {
-      console.error("[analyze] failed to dispatch the operator note:", err);
+      console.error("[analyze] failed to record the operator note:", err);
     }
   }
 
