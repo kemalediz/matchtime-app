@@ -6,52 +6,62 @@ export default function PlayerGuidePage() {
       <h2 className="!mt-0">Player guide</h2>
       <p>
         You&apos;re in a WhatsApp group where MatchTime runs the admin.
-        Everything you need to do, you can do right from the chat — no
-        app required (though there&apos;s one if you want it).
+        Everything you need to do, you do right in the chat. There&apos;s no
+        app to install.
+      </p>
+
+      <h3>The one rule: tag it for anything but In or Out</h3>
+      <p>
+        MatchTime picks up <code>IN</code> and <code>OUT</code> on its own.
+        For anything else (questions, teams, stats) start your message with{" "}
+        <strong>@Match Time</strong>. Everything else in the group, like the
+        jokes and the arguments about last week&apos;s penalty, it leaves
+        alone. Tagged messages are answered straight away; plain In and Out
+        messages are picked up within about 10 minutes (straight away in the
+        last hour before kickoff).
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="signup">1. Signing up for a match</h2>
+      <h2 id="signup">1. Saying you&apos;re in</h2>
 
-      <p>Any of these work — type naturally:</p>
+      <p>Type it the way you normally would:</p>
       <ul>
         <li><code>IN</code></li>
-        <li><code>I&apos;m in</code> / <code>count me in</code></li>
+        <li><code>I&apos;m in</code> or <code>count me in</code></li>
         <li><code>I&apos;ll play</code></li>
-        <li><code>yes playing</code></li>
       </ul>
 
       <p>
-        MatchTime reacts to your message with your squad number: <strong>1️⃣</strong>{" "}
-        if you&apos;re the first in, <strong>2️⃣</strong> second, and so on.
-        If the squad is already full you get <strong>🪑</strong> (bench).
+        MatchTime reacts to your message with <strong>✅</strong> when
+        you&apos;re in the squad. If the squad is already full you get{" "}
+        <strong>🪑</strong>: you&apos;re on the bench (see below).
       </p>
 
-      <h3>Tentative</h3>
+      <h3>Maybe</h3>
       <p>
-        If you&apos;re not 100%, say so — MatchTime keeps you off the
-        confirmed list but tracks you as a backstop:
+        Not sure yet? Say so (<code>maybe</code>,{" "}
+        <code>in if my back holds up</code>). A maybe doesn&apos;t take a
+        squad spot and gets no reaction. A day before kickoff MatchTime DMs
+        you to ask whether you&apos;re in or out, unless you&apos;ve already
+        decided. Just reply <code>IN</code> or <code>OUT</code>.
       </p>
-      <ul>
-        <li><code>probably, will confirm later</code></li>
-        <li><code>in if my back holds up</code></li>
-        <li><code>maybe</code></li>
-      </ul>
-      <p>Reaction: <strong>🤔</strong>.</p>
 
-      <h3>Signing up someone else</h3>
-      <p>
-        Useful when a mate can&apos;t message right now:
-      </p>
+      <h3>Bringing a mate</h3>
       <ul>
-        <li><code>my dad Najib is also in, he&apos;s busy</code></li>
-        <li><code>bringing Ahmet with me</code></li>
+        <li><code>my brother Dan is in too</code></li>
         <li><code>me and Steve both in</code></li>
       </ul>
       <p>
-        If the named person is already in the group, their squad spot is
-        taken. If they aren&apos;t yet, MatchTime provisionally adds them
-        and the admin reviews later.
+        MatchTime reacts 👍 and posts the updated squad. If your mate
+        isn&apos;t known yet, they&apos;re added and the organiser checks them
+        later.
+      </p>
+
+      <h3>Adding names to the list</h3>
+      <p>
+        If your group likes copying the squad list and adding names at the
+        bottom, that works too: forward MatchTime&apos;s latest list with the
+        new names on the end and they&apos;re signed up.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
@@ -63,109 +73,98 @@ export default function PlayerGuidePage() {
         <li><code>can&apos;t make it</code></li>
         <li><code>not playing tonight, work</code></li>
       </ul>
-      <p>Reaction: <strong>👋</strong>.</p>
-
-      <h3>Asking for a replacement</h3>
       <p>
-        When you drop with a reason, MatchTime names you in the chase
-        post so others know who&apos;s looking for cover:
+        Reaction: <strong>👋</strong>. If there&apos;s a bench, the spot is
+        offered to the bench straight away. If not, MatchTime asks the group for a
+        replacement.
       </p>
-      <ul>
-        <li><code>I&apos;m out, ankle sore, can anyone step in?</code></li>
-        <li><code>sorry guys, work ran late — anyone free?</code></li>
-      </ul>
 
-      <h3>Tentative drop</h3>
+      <h3>Replacements</h3>
       <p>
-        If you&apos;ll play only if nobody else steps in, say it:
-      </p>
-      <ul>
-        <li><code>feeling rough, will play if no one replaces me</code></li>
-        <li><code>anyone else who can replace me too? If not I&apos;ll still join</code></li>
-      </ul>
-      <p>
-        MatchTime keeps you on the roster as a <strong>Tentative</strong>{" "}
-        under the numbered list. Reaction: <strong>🤔</strong>.
+        Found someone in the group to take your place? Say it:{" "}
+        <code>I&apos;m out, Sam is replacing me</code>, or for someone else,{" "}
+        <code>Sam is replacing Joe</code>. The replacement takes the leaving
+        player&apos;s place in the squad.
+        If the teams are already out, they step into that player&apos;s team
+        as well, so nobody has to redo the teams.
       </p>
 
       <h3>Dropping someone else</h3>
-      <ul>
-        <li><code>Ibrahim can&apos;t make it tonight</code></li>
-        <li><code>Karahan just told me he&apos;s out</code></li>
-      </ul>
-
-      {/* ───────────────────────────────────────────────── */}
-      <h2 id="questions">3. Asking MatchTime questions</h2>
-
-      <p>MatchTime answers short questions about the next match:</p>
-      <ul>
-        <li><code>how many are we?</code></li>
-        <li><code>who&apos;s playing?</code></li>
-        <li><code>where tonight?</code></li>
-        <li><code>what time is kickoff?</code></li>
-      </ul>
       <p>
-        It replies with a numbered roster showing exactly who&apos;s
-        confirmed and how many spots are open (shown as 🥁). If someone
-        is tentative, they&apos;re listed separately below the roster.
+        The organiser and admins can drop someone who&apos;s told them
+        they&apos;re out (<code>Joe can&apos;t make it tonight</code>). Anyone
+        else needs to tag it: <code>@Match Time Joe is out tonight</code>.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="format-switch">4. Format switch (7-a-side ↔ 5-a-side)</h2>
+      <h2 id="bench">3. The bench</h2>
 
       <p>
-        If numbers are short and an alternative format exists for your
-        group, MatchTime proactively proposes it — for example:
-      </p>
-      <blockquote>
-        <p>
-          If we don&apos;t find 2 more, we could switch to 5-a-side (10
-          players) — Mauricio + Ersin go on the bench. Admins can rebook
-          and flip it in the portal.
-        </p>
-      </blockquote>
-      <p>
-        You can also ask directly: <code>@MatchTime 5-a-side?</code>.
+        When the squad is full, late Ins go on the bench 🪑 in the order they
+        came in. When a confirmed player drops, MatchTime posts in the group,
+        tags everyone on the bench and DMs them too.{" "}
+        <strong>The first to claim the spot plays.</strong> Reply{" "}
+        <code>IN</code> in the group, or <code>YES</code> to the DM.
       </p>
       <p>
-        The <strong>admin</strong> makes the actual call (rebooking the
-        venue) — MatchTime only recommends and displays.
+        If someone beat you to it, you stay on the bench and you&apos;re first
+        in line for the next spot. Saying no, or not replying, never takes
+        you off the bench.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="teams">5. Team generation</h2>
+      <h2 id="questions">4. Asking MatchTime questions</h2>
 
-      <p>Ask MatchTime to split the confirmed squad:</p>
+      <p>Tag it and ask. The answer is posted in the group:</p>
       <ul>
-        <li><code>@MatchTime generate teams</code></li>
-        <li><code>teams please</code></li>
-        <li><code>balance the teams</code></li>
+        <li><code>@Match Time how many are we?</code></li>
+        <li><code>@Match Time who&apos;s playing?</code></li>
+        <li><code>@Match Time what time is kickoff?</code></li>
+        <li><code>@Match Time top 5 rated players this season</code></li>
+        <li><code>@Match Time who&apos;s played the most?</code></li>
+        <li><code>@Match Time most Man of the Match awards all time</code></li>
       </ul>
       <p>
-        MatchTime considers everyone&apos;s rating + preferred position,
-        runs a balancing algorithm, and posts the two team lineups.
+        Stats questions work for &quot;this season&quot;, &quot;all
+        time&quot; or a period like &quot;the last 3 months&quot;. Say{" "}
+        <code>@Match Time my stats</code> and your own stats page link comes
+        to you by DM.
       </p>
-      <p>
-        You can also include people who haven&apos;t confirmed yet:
-      </p>
-      <ul>
-        <li><code>@MatchTime generate teams and count Ibrahim and Ehtisham as IN</code></li>
-        <li><code>teams please, count Baki in</code></li>
-      </ul>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="match-day">6. Match day</h2>
-      <p>MatchTime posts:</p>
+      <h2 id="teams">5. Teams</h2>
+
+      <p>Anyone can ask MatchTime to split the confirmed squad:</p>
+      <ul>
+        <li><code>@Match Time generate the teams</code></li>
+      </ul>
+      <p>
+        It uses everyone&apos;s rating and preferred position to make two
+        even sides, and posts both line-ups. You can also count someone in who
+        already replied for this match:{" "}
+        <code>@Match Time generate the teams including Dan</code>.
+      </p>
+      <p>
+        Want a change? <code>@Match Time swap Dan with Leo</code> swaps two
+        players, and <code>@Match Time swap the colours</code> swaps the
+        bibs. The organiser can also edit the teams from the dashboard.
+      </p>
+
+      {/* ───────────────────────────────────────────────── */}
+      <h2 id="match-day">6. Before the match</h2>
       <ul>
         <li>
-          <strong>Morning check-in</strong> — if the squad is short, asks
-          who can step in.
+          <strong>Daily update at 17:00.</strong> The squad so far, and a call
+          for players if you&apos;re short.
         </li>
         <li>
-          <strong>~2h before kickoff</strong> — gear reminder with kickoff
-          time and venue. &quot;⚽ 21:30 at [Venue] — see you there!
-          Bring goalie gloves, a ball, and spare bibs if you&apos;ve got
-          them.&quot;
+          <strong>Extra calls if you&apos;re short</strong> on match morning
+          and in the last few hours before kickoff. Once the squad is full
+          they stop.
+        </li>
+        <li>
+          <strong>About 2 hours before kickoff</strong> (football): a reminder
+          to bring goalie gloves, a ball and spare bibs.
         </li>
       </ul>
 
@@ -174,115 +173,103 @@ export default function PlayerGuidePage() {
 
       <h3>Score</h3>
       <p>
-        As soon as the match time-window ends, MatchTime asks for the
-        score. Any confirmed player can type:
+        About an hour after the match ends, MatchTime asks for the score.
+        Anyone who played can post it:
       </p>
       <ul>
         <li><code>7-3</code></li>
         <li><code>we won 5-4</code></li>
-        <li><code>Final 2:1</code></li>
       </ul>
+
+      <h3>Ratings and Man of the Match</h3>
       <p>
-        MatchTime records it, updates everyone&apos;s rating (Elo with
-        margin-of-victory — 7-3 shifts more than 5-4), and thanks the
-        group.
+        From <strong>08:00 the next morning</strong>, everyone who played gets
+        a personal link by DM. Tap it and you&apos;re signed in, no password.
+        Rate the other players from 1 to 10 and pick your Man of the Match.
+        It takes about a minute, and the link works for 5 days.
+      </p>
+      <p>
+        If you haven&apos;t rated yet you get a friendly nudge at 18:00 each
+        day, for up to 5 days. It stops the moment you submit.
+      </p>
+      <p>
+        <strong>Man of the Match</strong> is announced in the group as soon
+        as everyone has voted (between 09:00 and 21:00), or from day 5 at the
+        latest.
       </p>
 
-      <h3>Payment poll</h3>
+      <h3>Paying</h3>
       <p>
-        Right after the match ends (not at midnight), MatchTime posts a
-        payment poll so people can pay pitch fees while it&apos;s fresh.
-      </p>
-
-      <h3>Rating DM — the morning after</h3>
-      <p>
-        From <strong>08:00 the next day</strong> onward, every confirmed
-        player with a phone gets a personal DM with a magic link:
-      </p>
-      <blockquote>
-        <p>
-          🏆 Tuesday 7-a-side — Mon 21 Apr.<br />
-          Rate your teammates and pick Man of the Match. Takes ~1 minute.<br />
-          Your personal link: https://matchtime.ai/r/…<br />
-          Link expires in 5 days.
-        </p>
-      </blockquote>
-      <p>Tap the link — you&apos;re signed in, no password.</p>
-
-      <h3>Daily reminder at 18:00</h3>
-      <p>
-        If you haven&apos;t rated yet, you&apos;ll get a friendly nudge
-        at 18:00 each day for up to 5 days. Tone varies — day 1 warm,
-        day 5 last call. Stops the moment you submit.
-      </p>
-
-      <h3>Man of the Match</h3>
-      <p>
-        Announced <strong>5 days after the match at 15:00 London</strong>.
-        Most votes wins; ties are ties.
+        If your organiser has switched on payments, you get a pay link by DM
+        after the game: card, Apple Pay, Google Pay or pay by bank. If you
+        haven&apos;t paid, you&apos;ll get a reminder.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="emoji-reference">8. Bot reactions quick reference</h2>
+      <h2 id="emoji-reference">8. Reactions quick reference</h2>
 
       <ul>
-        <li><strong>1️⃣ – 🔟</strong> — you&apos;re confirmed at that slot</li>
-        <li><strong>✅</strong> — confirmed, past slot 10 (Unicode keycaps stop at 🔟)</li>
-        <li><strong>🪑</strong> — bench (squad was full)</li>
-        <li><strong>👋</strong> — you dropped out</li>
-        <li><strong>🤔</strong> — tentative, MatchTime is keeping an eye on you</li>
-        <li><strong>⚽</strong> on a &quot;generate teams&quot; message — balancer is running</li>
-        <li><strong>👍</strong> — acknowledged (often replaced by the actual slot a few seconds later once the batch runs)</li>
+        <li><strong>✅</strong>: you&apos;re in the squad</li>
+        <li><strong>🪑</strong>: you&apos;re on the bench (squad was full)</li>
+        <li><strong>👋</strong>: you&apos;ve dropped out</li>
+        <li><strong>👍</strong>: got it, for a message about someone else or a score</li>
+        <li><strong>⚽</strong>: teams posted</li>
+        <li>No reaction on a maybe: you&apos;ll get a DM before kickoff</li>
       </ul>
 
       <p>
-        Reactions can lag by up to ~10 minutes because MatchTime batches
-        messages to save cost. Don&apos;t re-send — your message is
-        already queued.
+        A plain In or Out can take up to about 10 minutes to get its reaction.
+        Don&apos;t send it again: it&apos;s already queued.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="profile">9. Your profile</h2>
+      <h2 id="profile">9. Your stats page and profile</h2>
 
       <p>
-        Sign in on <a href="https://matchtime.ai" className="text-blue-600 underline">matchtime.ai</a>{" "}
-        to:
+        Every rating and result builds into your own stats page: your rating
+        over time, Man of the Match awards, games played, wins, form, who you
+        play best with, your rivalries, badges, the squad leaderboard and the
+        Team of the Season. Open it from any link MatchTime sends you, or sign
+        in at{" "}
+        <a href="https://matchtime.ai" className="text-blue-600 underline">matchtime.ai</a>.
       </p>
+      <p>On your profile you can also:</p>
       <ul>
-        <li>Set your preferred positions per sport</li>
-        <li>Add your phone number (so you get rating DMs)</li>
-        <li>See your ratings history and leaderboard standing</li>
+        <li>Set your preferred positions</li>
+        <li>Add your phone number (so you get rating links by DM)</li>
       </ul>
-      <p>You can sign in with Google, or any magic link we send you.</p>
+
+      <h3>Too many DMs?</h3>
+      <p>
+        DM MatchTime <code>stop</code> to turn off everything except payment
+        messages, or <code>stop ratings</code> to turn off just the rating
+        links and reminders. Send <code>start messages</code> or{" "}
+        <code>start ratings</code> to turn them back on.
+      </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="tips">10. Tips</h2>
 
       <ul>
         <li>
-          <strong>Say IN early</strong> — the squad fills in the order
-          people commit, so first in = first on the pitch if numbers are
-          tight.
+          <strong>Say IN early.</strong> The squad fills in the order people
+          commit, so first in means first on the pitch.
         </li>
         <li>
-          <strong>One message is enough</strong> — don&apos;t repeat
-          &quot;count me in&quot; then &quot;IN&quot;. MatchTime will pick
-          it up on the next batch.
+          <strong>One message is enough.</strong> No need to say &quot;count
+          me in&quot; and then &quot;IN&quot;.
         </li>
         <li>
-          <strong>Use real words, not codes</strong> — &quot;I&apos;ll
-          play&quot;, &quot;can&apos;t make it&quot;, &quot;who&apos;s in
-          tonight?&quot; all work. MatchTime understands natural
-          language.
+          <strong>Use real words.</strong> &quot;I&apos;ll play&quot; and
+          &quot;can&apos;t make it&quot; both work.
         </li>
         <li>
-          <strong>Nicknames are fine</strong> — MatchTime fuzzy-matches
-          first names, so &quot;Kara&quot; resolves to &quot;Karahan&quot;
-          if they&apos;re already in the roster.
+          <strong>Nicknames are fine.</strong> MatchTime matches short names
+          and nicknames to players it already knows.
         </li>
         <li>
-          <strong>Rate when the DM lands</strong> — 60 seconds, keeps
-          teams balanced for next week. Low turnout = noisier ratings.
+          <strong>Rate when the link lands.</strong> It takes a minute and
+          keeps next week&apos;s teams fair.
         </li>
       </ul>
     </>

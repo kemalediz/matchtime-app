@@ -70,14 +70,13 @@ export default function CreateOrgPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">URL</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Short name</label>
             <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
-              <span className="px-3 text-sm text-slate-500">matchtime.app/join/</span>
               <input
                 type="text"
                 value={slug}
                 readOnly
-                className="flex-1 h-11 bg-white border-l border-slate-200 px-3 text-slate-800"
+                className="flex-1 h-11 bg-white px-3 text-slate-800"
               />
             </div>
           </div>

@@ -8,11 +8,13 @@ export default function HelpLandingPage() {
     <>
       <h2 className="!mt-0">Welcome</h2>
       <p>
-        MatchTime runs your group&apos;s matches from WhatsApp. It handles
-        attendance, reminds people before kickoff, balances the teams,
-        records scores and collects ratings — you just play.
+        MatchTime runs your group&apos;s weekly match from WhatsApp. It
+        tracks who&apos;s in, runs the bench, chases when you&apos;re short,
+        balances the teams when you ask and collects ratings after the game.
+        It&apos;s free to use: add it to your group, and if you don&apos;t like
+        it, remove it.
       </p>
-      <p>Two guides depending on your role in the group:</p>
+      <p>Two guides, depending on your role in the group:</p>
 
       <div className="grid sm:grid-cols-2 gap-4 not-prose mt-6">
         <Link
@@ -20,13 +22,13 @@ export default function HelpLandingPage() {
           className="group block p-6 rounded-2xl border border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm transition-all"
         >
           <UserCog className="w-6 h-6 text-blue-600 mb-3" />
-          <p className="font-semibold text-slate-900">For admins</p>
+          <p className="font-semibold text-slate-900">For organisers</p>
           <p className="text-sm text-slate-500 mt-1">
-            Setting up an organisation, managing players, activities, the
-            weekly match lifecycle, and what you can correct from the dashboard.
+            Setting up your club, managing players, what happens each week,
+            payments, and what you can fix from the dashboard.
           </p>
           <span className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 mt-3 group-hover:gap-2 transition-all">
-            Read the admin guide <ArrowRight className="w-3.5 h-3.5" />
+            Read the organiser guide <ArrowRight className="w-3.5 h-3.5" />
           </span>
         </Link>
         <Link
@@ -36,8 +38,8 @@ export default function HelpLandingPage() {
           <Users className="w-6 h-6 text-purple-600 mb-3" />
           <p className="font-semibold text-slate-900">For players</p>
           <p className="text-sm text-slate-500 mt-1">
-            What to say in the group to sign up, drop out, ask questions,
-            sign up a mate, post the score — and how ratings &amp; MoM work.
+            What to say in the group to play, drop out, bring a mate, ask
+            questions and post the score, plus how ratings and MoM work.
           </p>
           <span className="inline-flex items-center gap-1 text-sm font-medium text-purple-600 mt-3 group-hover:gap-2 transition-all">
             Read the player guide <ArrowRight className="w-3.5 h-3.5" />
@@ -48,36 +50,42 @@ export default function HelpLandingPage() {
       <h2>What MatchTime does, in one minute</h2>
       <ul>
         <li>
-          <strong>Reads your group chat</strong> — detects <code>IN</code>,{" "}
-          <code>OUT</code>, questions, scores, team-generation requests.
+          <strong>Tracks who&apos;s in.</strong> Players say <code>IN</code> or{" "}
+          <code>OUT</code> as normal. MatchTime reacts ✅ when you&apos;re in the
+          squad, 🪑 when you&apos;re on the bench and 👋 when you&apos;ve dropped.
         </li>
         <li>
-          <strong>Reacts with slot emojis</strong> — 1️⃣–🔟 when you&apos;re in
-          the squad, 🪑 bench, 👋 dropped, 🤔 tentative.
+          <strong>Runs the bench.</strong> When someone drops, the bench is
+          offered the spot and the first to claim it plays.
         </li>
         <li>
-          <strong>Chases a short squad</strong> — asks the group when
-          numbers drop below max, proposes a format switch if there&apos;s
-          enough for a smaller game.
+          <strong>Chases when short, stops when full.</strong> It asks the
+          group for players at set points before kickoff, and goes quiet once
+          the squad is full.
         </li>
         <li>
-          <strong>Generates balanced teams</strong> — position-aware,
-          rating-aware, posted to the group before kickoff.
+          <strong>Balances the teams when asked.</strong> Tag it with{" "}
+          <code>@Match Time generate the teams</code> and it splits the squad
+          using ratings and positions.
         </li>
         <li>
-          <strong>Collects ratings after</strong> — DMs everyone a personal
-          link the morning after, nudges daily at 18:00 until they vote or
-          the window closes (5 days).
+          <strong>Collects ratings after.</strong> Everyone gets a personal
+          rating link the morning after, with a daily reminder at 18:00 for
+          up to 5 days.
         </li>
         <li>
-          <strong>Announces Man of the Match</strong> — 5 days after the
-          game so everyone&apos;s had time to vote.
+          <strong>Announces Man of the Match</strong> as soon as everyone has
+          voted, or on day 5 at the latest.
+        </li>
+        <li>
+          <strong>Stays quiet during banter.</strong> It only replies when
+          tagged, or when someone says In or Out.
         </li>
       </ul>
 
       <p className="text-sm text-slate-500 not-prose mt-8">
-        Have a question that isn&apos;t covered? Ask your org admin, or
-        reach out via{" "}
+        Have a question that isn&apos;t covered? Ask your group&apos;s
+        organiser, or email{" "}
         <a href="mailto:hello@matchtime.ai" className="text-blue-600 underline">
           hello@matchtime.ai
         </a>

@@ -32,11 +32,11 @@ const SITE_URL = process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "https://matcht
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "MatchTime — Run your weekly match on autopilot",
+    default: "MatchTime: run your weekly match on autopilot",
     template: "%s · MatchTime",
   },
   description:
-    "MatchTime is the sports-group autopilot: WhatsApp-first attendance, auto-balanced teams, player ratings, Man-of-the-Match voting and payment polls — built for recurring 5-a-side, 7-a-side, basketball and any weekly sports group.",
+    "MatchTime lives in your WhatsApp group and runs your weekly game: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes. Free to use.",
   keywords: [
     "sports team management",
     "5-a-side attendance",
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
     "5v5 basketball manager",
     "sports group organiser",
     "man of the match voting",
-    "elo rating football",
+    "free football organiser",
   ],
   authors: [{ name: "Cressoft", url: "https://cressoft.io" }],
   creator: "Cressoft",
@@ -57,15 +57,15 @@ export const metadata: Metadata = {
     type: "website",
     url: SITE_URL,
     siteName: "MatchTime",
-    title: "MatchTime — Run your weekly match on autopilot",
+    title: "MatchTime: run your weekly match on autopilot",
     description:
-      "WhatsApp-first attendance, auto-balanced teams, player ratings and MoM voting for recurring sports groups.",
+      "Free WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "MatchTime — Run your weekly match on autopilot",
+    title: "MatchTime: run your weekly match on autopilot",
     description:
-      "WhatsApp-first attendance, auto-balanced teams, player ratings and MoM voting for recurring sports groups.",
+      "Free WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match.",
   },
   robots: {
     index: true,

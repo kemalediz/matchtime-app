@@ -16,17 +16,22 @@ export default function HelpLayout({ children }: { children: React.ReactNode }) 
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Help & guides</h1>
-            <p className="text-sm text-slate-500">How MatchTime works, end to end.</p>
+            <p className="text-sm text-slate-500">
+              How MatchTime works, end to end.{" "}
+              <Link href="/" className="text-blue-600 hover:underline">
+                Back to MatchTime
+              </Link>
+            </p>
           </div>
         </div>
 
         <div className="flex gap-2 mb-8 border-b border-slate-200">
           <TabLink href="/help" icon={<BookOpen className="w-4 h-4" />} label="Overview" />
-          <TabLink href="/help/admin" icon={<UserCog className="w-4 h-4" />} label="For admins" />
+          <TabLink href="/help/admin" icon={<UserCog className="w-4 h-4" />} label="For organisers" />
           <TabLink href="/help/player" icon={<Users className="w-4 h-4" />} label="For players" />
         </div>
 
-        <article className="prose prose-slate max-w-none prose-headings:scroll-mt-20 prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-3 prose-h3:text-base prose-h3:mt-6 prose-h3:mb-2 prose-p:text-[15px] prose-p:leading-relaxed prose-li:text-[15px] prose-li:leading-relaxed prose-code:text-[13px] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:bg-slate-100 prose-code:text-slate-800 prose-code:before:content-none prose-code:after:content-none prose-strong:text-slate-900">
+        <article className="help-article prose prose-slate max-w-none prose-headings:scroll-mt-20 prose-headings:font-semibold prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-3 prose-h3:text-base prose-h3:mt-6 prose-h3:mb-2 prose-p:text-[15px] prose-p:leading-relaxed prose-li:text-[15px] prose-li:leading-relaxed prose-code:text-[13px] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:bg-slate-100 prose-code:text-slate-800 prose-code:before:content-none prose-code:after:content-none prose-strong:text-slate-900">
           {children}
         </article>
       </div>

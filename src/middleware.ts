@@ -1,45 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isPublicPath } from "@/lib/public-paths";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Public routes - no auth check needed. The root path serves the
-  // marketing landing page for signed-out visitors and the dashboard
-  // for signed-in ones (branching lives in app/page.tsx).
-  if (
-    pathname === "/" ||
-    pathname === "/login" ||
-    pathname === "/signup" ||
-    pathname === "/verify-email" ||
-    pathname === "/sitemap.xml" ||
-    pathname === "/robots.txt" ||
-    pathname.startsWith("/join/") ||
-    pathname.startsWith("/r/") || // magic-link landing page does its own sign-in
-    pathname.startsWith("/api/r/") || // short-code → token resolver (code is the secret)
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/cron") ||
-    pathname.startsWith("/api/whatsapp") ||
-    // Wrapped share card is a public image artifact — it must render
-    // without a session so it can be shared straight into WhatsApp.
-    // Shows only aggregate season stats the bot already posts to the
-    // group as leaderboards. Keyed by an opaque cuid.
-    pathname.startsWith("/api/wrapped") ||
-    // Public brand / icon / social-preview assets must be reachable
-    // without a session — they appear on the signed-out landing & login
-    // pages and are fetched by social scrapers. (Kemal 2026-06-02: the
-    // matcher only excluded favicon.ico, so /icon.svg, /apple-icon.png,
-    // /opengraph-image.png and /matchtime-*.svg were 307-redirecting to
-    // /login → broken logos on public pages + no social preview.)
-    pathname.startsWith("/icon") ||
-    pathname.startsWith("/apple-icon") ||
-    pathname.startsWith("/opengraph-image") ||
-    pathname.startsWith("/twitter-image") ||
-    pathname.startsWith("/matchtime-") ||
-    pathname === "/manifest.webmanifest" ||
-    // Stripe webhook is server-to-server (Stripe's signature is the auth).
-    pathname.startsWith("/api/stripe")
-  ) {
+  // Public routes: no auth check needed. See src/lib/public-paths.ts.
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 

@@ -1,396 +1,380 @@
-export const metadata = { title: "Admin guide" };
+export const metadata = { title: "Organiser guide" };
 
 export default function AdminGuidePage() {
   return (
     <>
-      <h2 className="!mt-0">Admin guide</h2>
+      <h2 className="!mt-0">Organiser guide</h2>
       <p>
-        You&apos;re running a group. This walks through everything MatchTime
-        does on your behalf and what you control from{" "}
-        <code>/admin</code>.
+        You run the group. This guide walks through what MatchTime does for
+        you each week, and what you can check or fix from the dashboard.
+        MatchTime is free to use.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="setup">1. Setting up your organisation</h2>
+      <h2 id="setup">1. Getting started</h2>
 
-      <h3>Create the org</h3>
+      <h3>Sign up and create your club</h3>
       <p>
-        After signing in, hit <strong>Create organisation</strong>. Give it
-        the same name as your WhatsApp group so it&apos;s obvious when the
-        MatchTime posts there (e.g. &quot;Sutton FC&quot;).
+        Sign up and hit <strong>Create organisation</strong>. Give it the same
+        name as your WhatsApp group so it&apos;s obvious when MatchTime posts
+        there. If you have a WhatsApp chat export, the setup wizard can read it
+        and suggest your player list and schedule.
       </p>
 
-      <h3>Connect MatchTime to your group chat</h3>
+      <h3>We&apos;ll help you add MatchTime to your WhatsApp group</h3>
       <p>
-        MatchTime reads and posts in your group chat on your behalf — that&apos;s
-        how attendance, reminders, scores and team line-ups all flow through
-        the chat everyone already uses. Nothing else changes.
+        Sign up and we&apos;ll get your group connected, usually the same day.
+        Nothing else changes for your players: they keep saying In and Out as
+        they always have. Once it&apos;s in your group, MatchTime:
       </p>
       <ul>
-        <li>Reads messages in your group (and nothing else)</li>
-        <li>Posts reminders and DMs on a schedule you configure</li>
-        <li>Reacts to attendance messages with slot-number emojis</li>
+        <li>Reads messages in your group, and only acts on In, Out and messages that tag <strong>@Match Time</strong></li>
+        <li>Reacts ✅ (in the squad), 🪑 (bench) or 👋 (dropped) to attendance messages</li>
+        <li>Posts updates and sends DMs around each match</li>
       </ul>
       <p>
-        Setup is a one-time handshake with your group, done from{" "}
-        <code>/admin/settings</code>. You can pause MatchTime any time —
-        it keeps tracking your matches internally but stops posting to the
-        group.
+        Don&apos;t like it? Remove it from the group. You can also switch
+        individual features off in <strong>Settings</strong>.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="activities">2. Activities (the sports you play)</h2>
+      <h2 id="activities">2. Your weekly match</h2>
 
       <p>
-        An <strong>activity</strong> is one kind of match your group
-        plays — e.g. &quot;Tuesday 7-a-side&quot;, &quot;Saturday 5-a-side&quot;,
-        &quot;Sunday basketball 5v5&quot;. Each activity defines:
+        Each regular game is an <strong>activity</strong>, for example
+        &quot;Tuesday 7-a-side&quot;. For each one you set:
       </p>
       <ul>
-        <li>The sport (football 7-a-side, 5-a-side, basketball 5v5, custom)</li>
-        <li>Day of week, kickoff time, duration, venue</li>
-        <li>Max players (2× players-per-team + bench)</li>
-        <li>Attendance deadline (when the squad is locked)</li>
+        <li>The sport and format (football 5, 7 or 11-a-side, futsal, basketball and more), which sets the squad size</li>
+        <li>Day, kickoff time, how long the match lasts, and the venue</li>
+        <li>The match fee, if you collect one</li>
       </ul>
-
-      <h3>Alternative formats</h3>
       <p>
-        If you run 7-a-side on Tuesdays but occasionally switch to 5-a-side
-        when numbers are short, set up <strong>both</strong> activities.
-        MatchTime then automatically proposes the switch when confirmed players
-        drop below the 7-a-side max and there&apos;s enough for a smaller
-        game. You — the admin — do the actual rebooking (e.g. call Goals)
-        and flip the match in the app.
+        Upcoming matches are created for you automatically, so there&apos;s
+        always a next match for players to say In to.
       </p>
 
-      <h3>Match generation</h3>
+      <h3>Book the whole season</h3>
       <p>
-        The system generates matches <strong>daily</strong> via a cron job.
-        Every active activity has its next upcoming match visible on the
-        dashboard. When one match completes, the next is scheduled
-        automatically.
+        Under <strong>Block bookings</strong> you can create a season of
+        weekly matches in one go (up to 60). Nothing is posted to the group
+        when you do. Going away for a couple of weeks? Cancel a date range in
+        bulk, with or without a message to the group, and restore it later if
+        plans change.
+      </p>
+
+      <h3>A smaller format for short weeks</h3>
+      <p>
+        If you usually play 7-a-side but drop to 5-a-side when numbers are
+        short, set up both as activities. MatchTime will suggest the switch
+        in its call for players, and DM you the day before if you&apos;re
+        short (see below). You book the smaller pitch and switch the match
+        in the dashboard.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="players">3. Players</h2>
 
       <h3>Adding players</h3>
-      <p>Three ways a player ends up in your roster:</p>
       <ol>
         <li>
-          <strong>You add them manually</strong> via{" "}
-          <code>/admin/players</code> — name, phone (optional), position,
-          seed rating.
+          <strong>Add them yourself</strong> under <strong>Players</strong>:
+          a name, and a phone number so they get DMs.
         </li>
         <li>
-          <strong>They post in the group</strong> and MatchTime auto-creates
-          them as a <em>provisional</em> member (see below).
+          <strong>They post in the group.</strong> Someone MatchTime
+          doesn&apos;t know yet is added straight away (so their In
+          isn&apos;t lost) and flagged <strong>NEW</strong> for you to check.
         </li>
         <li>
-          <strong>They&apos;re mentioned in a third-party sign-up</strong>{" "}
-          like &quot;my dad Najib is also in&quot; — resolved to an existing
-          player or auto-provisioned.
+          <strong>Someone brings them</strong> (&quot;my brother Dan is in
+          too&quot;). Same as above: added and flagged for you.
         </li>
       </ol>
 
-      <h3>Provisional members</h3>
+      <h3>Checking new players</h3>
       <p>
-        When an unknown WhatsApp name posts in your group, MatchTime creates
-        a lightweight user + membership flagged as <strong>provisional</strong>.
-        Their attendance lands immediately so the message isn&apos;t lost, and
-        your dashboard shows:
+        New players show with a <strong>NEW</strong> badge and a banner at the
+        top of the Players page. Press <strong>Confirm</strong> once
+        you&apos;re happy, or <strong>Remove</strong> if they shouldn&apos;t be
+        there. Removing someone keeps their past games and ratings but takes
+        them off future matches. While anyone is waiting, you get one DM a day
+        reminding you.
+      </p>
+      <p>
+        If the same person ends up on the list twice under different names,
+        use <strong>Merge</strong>. You can also add nicknames, so
+        &quot;Danny&quot; and &quot;Dan&quot; always mean the same player.
+      </p>
+
+      <h3>Starting ratings</h3>
+      <p>
+        Give each player a starting rating from 1 to 10 so the first teams
+        are fair:
       </p>
       <ul>
-        <li>An amber banner at the top of <code>/admin/players</code></li>
-        <li>A <strong>NEW</strong> badge next to their name</li>
-        <li>Green <strong>✓ Confirm</strong> button once you&apos;ve reviewed</li>
-        <li>Grey <strong>✕ Remove</strong> button if they shouldn&apos;t be in the roster</li>
+        <li><strong>9</strong>: carries a team</li>
+        <li><strong>7 or 8</strong>: strong regular</li>
+        <li><strong>5 or 6</strong>: steady contributor</li>
+        <li><strong>3 or 4</strong>: still learning</li>
       </ul>
       <p>
-        You&apos;ll also receive a <strong>WhatsApp DM</strong> (once a day,
-        deduped) listing the pending ones, with a magic-link that signs you
-        in and jumps straight to the review screen.
+        As team-mates rate each other after games, their ratings take over
+        from yours. Players never see the starting rating you gave them; they
+        only see what team-mates have said.
       </p>
 
-      <h3>Seed ratings</h3>
+      <h3>Positions and phones</h3>
       <p>
-        A 1–10 starting skill score. Used by the team-balancer until the
-        player has accumulated enough peer ratings. Rule of thumb:
-      </p>
-      <ul>
-        <li><strong>9</strong> — elite, carries a team</li>
-        <li><strong>7–8</strong> — strong regular</li>
-        <li><strong>5–6</strong> — steady contributor (neutral default)</li>
-        <li><strong>3–4</strong> — still learning</li>
-      </ul>
-      <p>
-        Once real ratings pile up, the system smoothly shifts from seed
-        to earned ratings — no manual crossover.
+        Set each player&apos;s positions per activity under{" "}
+        <strong>Players</strong>, or players can set their own on their
+        profile. A phone number is what lets MatchTime DM someone their
+        rating link, bench offers and reminders. Without one they can still
+        say In and Out in the group.
       </p>
 
-      <h3>Positions</h3>
+      <h3>More admins</h3>
       <p>
-        Per sport, not per player globally. A player&apos;s &quot;I play
-        goalkeeper in football&quot; applies to every football activity in
-        the org (7-a-side and 5-a-side share it). Basketball positions
-        are separate.
-      </p>
-
-      <h3>Phones</h3>
-      <p>
-        Optional but recommended — MatchTime uses phone numbers to send
-        personal DMs (rating links, reminders, admin nudges). Without a
-        phone, a player can still sign up via the group but won&apos;t
-        receive DMs.
+        Change anyone&apos;s role from Player to Admin on the Players page.
+        Admins can use the dashboard and get the organiser DMs.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="match-lifecycle">4. Match lifecycle</h2>
+      <h2 id="match-lifecycle">4. What happens each week</h2>
 
-      <p>Walkthrough of one week for a typical 7-a-side Tuesday 21:30:</p>
-
-      <h3>Wednesday–Sunday: attendance opens</h3>
       <p>
-        The next match is visible. Players start saying <code>IN</code> or{" "}
-        <code>OUT</code>. Bot reacts with slot emojis (1️⃣, 2️⃣, …). A daily
-        17:00 roll-call chase goes out if the squad is short.
+        The steps follow your match day, so this works the same whether you
+        play on a Tuesday night or a Sunday morning. Anything tagged{" "}
+        <strong>@Match Time</strong> is answered straight away, whenever it
+        comes in.
       </p>
 
-      <h3>Monday: chase day</h3>
-      <p>
-        Morning chase if still short. Afternoon chase if very short. Bot
-        names who can&apos;t make it (from explicit drop messages) and asks
-        for covers.
-      </p>
-
-      <h3>Monday night &amp; Tuesday: admin nudges</h3>
+      <h3>In the days before</h3>
       <ul>
         <li>
-          <strong>10:00 Monday</strong> — if short, you get a DM proposing
-          a format switch (7-a-side → 5-a-side).
+          Players say In or Out. When the squad is full, late Ins go on the
+          bench.
         </li>
         <li>
-          <strong>18:00 Monday</strong> — if below the minimum to play at
-          all, you get a DM to cancel.
+          <strong>Every day at 17:00</strong> MatchTime posts the squad so far,
+          with a call for players if you&apos;re short.
+        </li>
+        <li>
+          If a confirmed player drops and there&apos;s a bench, the bench is
+          offered the spot in the group and by DM. The first to claim it plays.
+        </li>
+        <li>
+          Anyone who said maybe gets a DM a day before kickoff asking if
+          they&apos;re in or out.
+        </li>
+        <li>
+          Short of players? As an admin, ask it:{" "}
+          <code>@Match Time we need 2 more, invite the recent players</code>.
+          It DMs people who played in your last few matches but haven&apos;t
+          replied yet, and follows up once if they don&apos;t answer.
         </li>
       </ul>
 
-      <h3>Tuesday morning: roll-call + teams</h3>
-      <p>
-        Morning check-in. When someone types{" "}
-        <code>@MatchTime generate teams</code> (or similar), MatchTime
-        balances and posts the two team lineups with positions.
-      </p>
-
-      <h3>Tuesday ~19:00: gear reminder</h3>
-      <p>
-        MatchTime posts a short reminder with kickoff time + venue, asks people
-        to bring goalie gloves, a ball, and spare bibs.
-      </p>
-
-      <h3>21:30–22:30: match plays</h3>
-      <p>
-        Nothing happens in the app during the match.
-      </p>
-
-      <h3>Just after kickoff ends</h3>
+      <h3>The day before</h3>
       <ul>
         <li>
-          <strong>Payment poll</strong> fires as soon as the match
-          time-window ends (not at midnight) — collect pitch fees.
+          <strong>Around 10:00</strong>, if you&apos;re short and you have a
+          smaller format set up, you get a DM suggesting the switch.
         </li>
         <li>
-          <strong>Score ask</strong> posted to the group —
-          <em>&quot;🏁 hope it was a good one. What was the final score?&quot;</em>
-          Any player posting <code>7-3</code> or <code>we won 5-4</code>{" "}
-          records it.
+          <strong>Around 18:00</strong>, if you&apos;re below the minimum to
+          play at all, you get a DM suggesting you cancel.
         </li>
       </ul>
 
-      <h3>Wednesday morning: ratings</h3>
+      <h3>Match day</h3>
       <ul>
         <li>
-          <strong>08:00</strong> — every confirmed player with a phone
-          gets a personal rating DM (magic link, no login friction).
+          If you&apos;re still short, more calls for players go out on match
+          morning and in the last few hours before kickoff. They stop the
+          moment the squad is full.
         </li>
         <li>
-          <strong>08:05</strong> — group post: &quot;Just DM&apos;d every
-          player a rating link&quot;. It waits for the last DM to land, so
-          after an outage it can go out later in the day.
+          Teams are made when anyone asks:{" "}
+          <code>@Match Time generate the teams</code>. You can also generate
+          them from the dashboard.
+        </li>
+        <li>
+          About 2 hours before kickoff (football), a reminder to bring goalie
+          gloves, a ball and spare bibs.
         </li>
       </ul>
 
-      <h3>Wed–Sun: daily reminder at 18:00</h3>
+      <h3>After the match</h3>
+      <ul>
+        <li>
+          About an hour after the end, MatchTime asks for the score. Anyone who
+          played, or an admin, can post it (<code>7-3</code>,{" "}
+          <code>we won 5-4</code>).
+        </li>
+        <li>
+          From <strong>08:00 the next morning</strong>, everyone who played
+          gets a personal rating link by DM, then a reminder at 18:00 each day
+          for up to 5 days until they&apos;ve rated.
+        </li>
+        <li>
+          <strong>Man of the Match</strong> is announced in the group as soon
+          as everyone has voted (between 09:00 and 21:00), or from day 5 at the
+          latest.
+        </li>
+        <li>
+          Want to know who hasn&apos;t rated yet? It&apos;s on your dashboard,
+          or ask <code>@Match Time who hasn&apos;t rated?</code>
+        </li>
+      </ul>
+
+      {/* ───────────────────────────────────────────────── */}
+      <h2 id="team-balancing">5. How teams are picked</h2>
+
       <p>
-        Non-voters get a personal DM each day (day 1 warm, day 5 last
-        call). Stops the moment they rate.
+        MatchTime uses each player&apos;s rating at your club: your starting
+        rating at first, then more and more the ratings team-mates give after
+        each game. It also takes a quick look at the week&apos;s chat for
+        anything that matters tonight (someone carrying a knock, say) and
+        nudges ratings a little. Then it splits the squad into two sides with
+        the closest total rating, keeping positions like goalkeepers spread
+        evenly where it can.
+      </p>
+      <p>
+        Only confirmed players are included. To count in someone who has
+        already replied for this match, ask{" "}
+        <code>@Match Time generate the teams including Dan</code>.
       </p>
 
-      <h3>Sunday 15:00: Man of the Match announcement</h3>
+      <h3>Changing the teams</h3>
       <p>
-        MatchTime announces the winner(s) based on peer votes + a short
-        well-done post.
+        From the match page, choose <strong>Manage teams</strong> to swap two
+        players, move someone to the other side, swap colours, add or remove
+        players, or bring someone up from the bench. In the group,{" "}
+        <code>@Match Time swap Dan with Leo</code> and{" "}
+        <code>@Match Time swap the colours</code> work too.
+      </p>
+      <p>
+        If someone drops after the teams are out, whoever replaces them (a
+        bench player who claims the spot, or &quot;Sam is replacing
+        Joe&quot;) goes straight into the same team, so you don&apos;t have to
+        redo them.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="team-balancing">5. Team balancing</h2>
+      <h2 id="scores-ratings">6. Scores, ratings and Man of the Match</h2>
 
-      <p>
-        Default strategy is <strong>position-aware</strong>: snake-draft
-        by rating, then 1000 hill-climb iterations to minimise the
-        per-position rating gap between teams. Alternative:{" "}
-        <strong>rating-only</strong> if you prefer simplicity.
-      </p>
-      <p>
-        You or any player can trigger balancing from the group chat with{" "}
-        <code>@MatchTime generate teams</code>. You can also force-include
-        missing confirmations in the same message:{" "}
-        <em>&quot;generate teams and count Ibrahim and Ehtisham as IN&quot;</em>.
-      </p>
-
-      {/* ───────────────────────────────────────────────── */}
-      <h2 id="scores-ratings">6. Scores &amp; ratings</h2>
-
-      <h3>Recording the score</h3>
-      <p>
-        Any player can post the score in the group and MatchTime records
-        it automatically. If MatchTime can&apos;t resolve the sender to a
-        real user (rare — WhatsApp hides some phones), it still writes
-        the score. You can correct it in{" "}
-        <code>/admin/matches/[id]</code> if needed.
-      </p>
-
-      <h3>How ratings are computed</h3>
       <ul>
         <li>
-          Each player rates each teammate 1–10 after the match.
+          Each player rates everyone else who played, from 1 to 10, and picks
+          one Man of the Match.
         </li>
         <li>
-          <strong>Elo-style</strong> updates with margin-of-victory:
-          a 7–3 shifts ratings more than a 5–4.
+          Every score also moves a separate results-based ranking, where a big
+          win counts for more than a narrow one. Players see it on the
+          leaderboard; it isn&apos;t used to pick teams.
         </li>
         <li>
-          Your match rating converges toward your true skill over time;
-          seed ratings fade in influence.
+          A wrong score can be corrected from the team page for that match.
         </li>
       </ul>
 
-      <h3>MoM voting</h3>
+      {/* ───────────────────────────────────────────────── */}
+      <h2 id="payments">7. Payments (optional)</h2>
       <p>
-        Everyone picks one teammate (or multi-pick depending on activity
-        config). Most votes wins. Announced 5 days after the match at
-        15:00 London.
+        Switch on <strong>Collect match fees</strong> in Settings, choose who
+        collects the money and connect their bank. After each game players
+        get a pay link: card, Apple Pay, Google Pay or pay by bank. Players
+        who haven&apos;t paid are reminded by DM. Players can also choose to
+        pay the collector directly, and the collector confirms it.
+      </p>
+      <p>
+        Collecting cash instead? Just leave payments off.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="admin-dms">7. Admin DMs you&apos;ll receive</h2>
+      <h2 id="admin-dms">8. DMs you&apos;ll get as an admin</h2>
 
-      <p>Automated messages that go only to org admins with a phone number:</p>
       <ul>
         <li>
-          <strong>Provisional-review</strong> — once per day while there
-          are unreviewed auto-provisioned players.
+          <strong>New players to check</strong>: once a day while anyone is
+          waiting.
         </li>
         <li>
-          <strong>Format switch</strong> — Monday 10:00 when the squad is
-          short and a smaller format is configured.
+          <strong>Switch format</strong>: the day before, around 10:00, when
+          you&apos;re short and a smaller format is set up.
         </li>
         <li>
-          <strong>Cancel</strong> — Monday 18:00 when even the smallest
-          format can&apos;t fill.
+          <strong>Cancel</strong>: the day before, around 18:00, when even the
+          smallest format can&apos;t fill.
         </li>
       </ul>
       <p>
-        Every DM includes a <strong>magic link</strong> that signs you in
-        and lands you on the right admin screen. Valid for 1 hour, single
-        use.
+        Each DM has a link that signs you straight in and opens the right
+        page. Links are valid for 48 hours.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="corrections">8. Common corrections</h2>
+      <h2 id="corrections">9. Fixing things</h2>
 
-      <h3>Add a missed player</h3>
+      <h3>Someone&apos;s attendance is wrong</h3>
       <p>
-        Go to <code>/admin/players</code> → Add player. Or: ask someone
-        to say &quot;[Name] is IN&quot; in the group — MatchTime resolves or
-        auto-provisions them.
-      </p>
-
-      <h3>Fix attendance</h3>
-      <p>
-        Open the match in <code>/admin/matches/[id]</code>. Each player
-        row has status controls.
-      </p>
-
-      <h3>Correct a wrong score</h3>
-      <p>
-        Match detail page → edit score. Elo deltas recalculate
-        automatically and all affected player ratings are updated.
+        Open the match. You can add a player, take someone out, or move
+        someone up from the bench.
       </p>
 
       <h3>Switch format</h3>
       <p>
-        Match detail → <strong>Switch format</strong>. Pick the smaller
-        activity, confirm who goes to the bench. MatchTime announces the
-        switch to the group.
+        Match page, then <strong>Switch format</strong>. Pick the smaller
+        activity and confirm who goes to the bench.
       </p>
 
       <h3>Cancel a match</h3>
       <p>
-        Match detail → <strong>Cancel</strong>. MatchTime posts the cancellation
-        and any pending rating/MoM flows are skipped.
+        Match page, then <strong>Cancel</strong>. MatchTime posts the
+        cancellation, and there are no ratings or Man of the Match that week.
       </p>
 
-      <h3>Remove a player from the roster</h3>
+      <h3>A message wasn&apos;t understood</h3>
       <p>
-        Set <code>leftAt</code> on their membership — preserves all
-        historical attendance and ratings, just excludes them from future
-        matches and rosters. Done via the <strong>Remove</strong> button
-        on <code>/admin/players</code>.
-      </p>
-
-      {/* ───────────────────────────────────────────────── */}
-      <h2 id="historical">9. Historical data</h2>
-      <p>
-        If you imported chat history from before MatchTime existed, the
-        system can create <strong>synthetic</strong> matches to anchor
-        old MoMs and leaderboard data. These are flagged{" "}
-        <code>isHistorical=true</code> and excluded from current stats
-        (Completed tile, Recent results, past matches list) so they
-        don&apos;t pollute &quot;what happened recently&quot;.
+        If someone said In or Out and MatchTime couldn&apos;t tell who they
+        meant, it appears under <strong>Unresolved</strong>. Link it to the
+        right player once and that name is remembered from then on.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="faq">10. FAQ</h2>
 
-      <h3>Someone&apos;s name didn&apos;t resolve — why?</h3>
+      <h3>How do I get MatchTime into my group?</h3>
       <p>
-        MatchTime tries phone match first, then exact name match, then a
-        fuzzy first-name match (which handles nicknames and short display
-        names — &quot;Kara&quot; will resolve to &quot;Karahan&quot; for
-        example). If none of those match, it creates a provisional entry
-        for you to review.
+        Sign up and create your club, and we&apos;ll help you add MatchTime to
+        your WhatsApp group, usually the same day. Questions? Email{" "}
+        <a href="mailto:hello@matchtime.ai">hello@matchtime.ai</a>.
       </p>
 
-      <h3>Duplicate player?</h3>
+      <h3>Does MatchTime reply to everything?</h3>
       <p>
-        If a player got auto-provisioned as a new user when they already
-        existed under a different name, you&apos;ll see two rows on{" "}
-        <code>/admin/players</code>. Remove the provisional one (✕). The
-        next time the real player posts, fuzzy matching will route to
-        the correct user.
+        No. It only acts on In, Out and messages that tag{" "}
+        <strong>@Match Time</strong>. The rest of the chat is left alone.
       </p>
 
-      <h3>Why 18:00 for rating reminders?</h3>
+      <h3>Can I run two games from one group?</h3>
       <p>
-        Empirically, end-of-workday beats morning or evening — people tap
-        the link while wrapping up. Adjustable per-org in the future.
+        MatchTime handles one weekly game per WhatsApp group. If you run a
+        second game, give it its own group.
       </p>
 
-      <h3>Can I pause MatchTime for a week?</h3>
+      <h3>Can players turn off DMs?</h3>
       <p>
-        Yes — pause it in <code>/admin/settings</code>. Existing matches
-        stay put; scheduled posts don&apos;t go out while paused.
+        Yes. A player can DM MatchTime <code>stop</code> to turn off
+        everything except payment messages, or <code>stop ratings</code> for
+        just the rating links. <code>start messages</code> turns them back on.
+      </p>
+
+      <h3>How do I stop using it?</h3>
+      <p>
+        Remove MatchTime from your WhatsApp group. Your matches, ratings and
+        stats stay on the dashboard.
       </p>
     </>
   );
