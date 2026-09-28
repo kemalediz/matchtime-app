@@ -1457,4 +1457,12 @@ export const en = {
    *  tile it replaces. */
   rating_club_peers: (p: { count: number }): string =>
     `${p.count} peer rating${p.count === 1 ? "" : "s"}`,
+
+  /** THE ONE LINE A CLUB HEARS AT ITS DAILY AI CAP (2026-09-29). Sent at
+   *  most once per club per London day, and only to a message that tags
+   *  MatchTime; see `ai-budget.ts`. It names no limit and no money: a
+   *  player has no reason to know there is a budget, only that tomorrow
+   *  works. Plain IN and OUT keep working all day, so it must not suggest
+   *  MatchTime has stopped. */
+  ai_daily_cap_reached: (): string => "I've answered a lot of questions today, ask me again tomorrow.",
 };

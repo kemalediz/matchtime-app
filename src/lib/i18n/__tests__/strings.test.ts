@@ -339,6 +339,7 @@ const SAMPLES: SampleArgs = {
   rating_club_provisional: { count: 2 },
   rating_club_balance_note: null,
   rating_club_peers: { count: 7 },
+  ai_daily_cap_reached: null,
 };
 
 /** Render an entry with its sample arguments. */

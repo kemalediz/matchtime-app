@@ -1225,6 +1225,8 @@ export const tr: Strings = {
     "Sadece bir iki puanın varken MatchTime takımları kurarken bu sayıya temkinli yaklaşır, böylece tek bir erken puan takımı belirlemez.",
 
   rating_club_peers: (p) => `takım arkadaşlarından ${p.count} puan`,
+
+  ai_daily_cap_reached: () => "Bugün çok soru yanıtladım, yarın tekrar sor.",
 };
 
 /**
