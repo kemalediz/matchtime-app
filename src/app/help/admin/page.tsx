@@ -13,7 +13,7 @@ export default function AdminGuidePage() {
       {/* ───────────────────────────────────────────────── */}
       <h2 id="setup">1. Getting started</h2>
 
-      <h3>Create your club</h3>
+      <h3>Sign up and create your club</h3>
       <p>
         Sign up and hit <strong>Create organisation</strong>. Give it the same
         name as your WhatsApp group so it&apos;s obvious when MatchTime posts
@@ -21,11 +21,11 @@ export default function AdminGuidePage() {
         and suggest your player list and schedule.
       </p>
 
-      <h3>Add MatchTime to your WhatsApp group</h3>
+      <h3>We&apos;ll help you add MatchTime to your WhatsApp group</h3>
       <p>
-        Add the MatchTime number to your group and we connect it to your
-        club. Nothing else changes for your players: they keep saying In and
-        Out as they always have. MatchTime:
+        Sign up and we&apos;ll get your group connected, usually the same day.
+        Nothing else changes for your players: they keep saying In and Out as
+        they always have. Once it&apos;s in your group, MatchTime:
       </p>
       <ul>
         <li>Reads messages in your group, and only acts on In, Out and messages that tag <strong>@Match Time</strong></li>
@@ -344,6 +344,13 @@ export default function AdminGuidePage() {
 
       {/* ───────────────────────────────────────────────── */}
       <h2 id="faq">10. FAQ</h2>
+
+      <h3>How do I get MatchTime into my group?</h3>
+      <p>
+        Sign up and create your club, and we&apos;ll help you add MatchTime to
+        your WhatsApp group, usually the same day. Questions? Email{" "}
+        <a href="mailto:hello@matchtime.ai">hello@matchtime.ai</a>.
+      </p>
 
       <h3>Does MatchTime reply to everything?</h3>
       <p>

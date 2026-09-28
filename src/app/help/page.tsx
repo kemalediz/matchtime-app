@@ -86,8 +86,8 @@ export default function HelpLandingPage() {
       <p className="text-sm text-slate-500 not-prose mt-8">
         Have a question that isn&apos;t covered? Ask your group&apos;s
         organiser, or email{" "}
-        <a href="mailto:admin@cressoft.io" className="text-blue-600 underline">
-          admin@cressoft.io
+        <a href="mailto:hello@matchtime.ai" className="text-blue-600 underline">
+          hello@matchtime.ai
         </a>
         .
       </p>

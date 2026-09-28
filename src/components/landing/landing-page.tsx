@@ -421,18 +421,18 @@ export function LandingPage() {
           <ol className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
             <Step
               n={1}
-              title="Create your club"
+              title="Sign up and create your club"
               body="Sign up and set your weekly match: sport and format, day, kickoff time, venue and squad size."
             />
             <Step
               n={2}
-              title="Add MatchTime to your WhatsApp group"
-              body="Add the MatchTime number to your group and we connect it to your club. Players don&apos;t install anything; they keep saying In and Out as normal."
+              title="We&apos;ll help you add MatchTime to your WhatsApp group"
+              body="Sign up and we&apos;ll get your group connected, usually the same day."
             />
             <Step
               n={3}
               title="Play &amp; rate"
-              body="Ask for teams when you want them, post the score after the game, and everyone gets a rating link. Man of the Match is announced, and it all starts again next week."
+              body="Players just say In or Out as normal, with nothing to install. Ask for teams when you want them, post the score after the game, and everyone gets a rating link. Man of the Match is announced, and it all starts again next week."
             />
           </ol>
 
@@ -600,7 +600,7 @@ export function LandingPage() {
               Organiser guide
             </Link>
             <a
-              href="mailto:admin@cressoft.io"
+              href="mailto:hello@matchtime.ai"
               className="hover:text-white transition-colors"
             >
               Contact

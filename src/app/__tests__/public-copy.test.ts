@@ -6,7 +6,8 @@ import path from "node:path";
  * House rules for the public website copy (Kemal): no em dashes or en
  * dashes anywhere a visitor can read them, the real domain is
  * matchtime.ai (never matchtime.app), the bot is tagged as "@Match Time",
- * no fee talk, and no real club or player names on public pages.
+ * no fee talk, hello@matchtime.ai as the contact email, no published
+ * MatchTime number, and no real club or player names on public pages.
  *
  * Checks the source of every public page with comments stripped, so the
  * rendered strings, metadata and JSON-LD are all covered.
@@ -53,6 +54,17 @@ describe("public website copy", () => {
   // no platform, card or processing fee talk on public pages.
   it.each(sources)("$file does not talk about fees", ({ text }) => {
     expect(text).not.toMatch(/(^|[^\d])1\s?%|MatchTime fee|card fee|payment fee|processing fee|platform fee/i);
+  });
+
+  // Kemal: the public contact address is hello@matchtime.ai, and the
+  // MatchTime WhatsApp number is never published or implied.
+  it.each(sources)("$file uses hello@matchtime.ai as the only contact email", ({ text }) => {
+    const emails = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/g) ?? [];
+    expect(emails.filter((e) => e !== "hello@matchtime.ai")).toEqual([]);
+  });
+
+  it.each(sources)("$file never asks visitors to add a MatchTime number", ({ text }) => {
+    expect(text).not.toMatch(/MatchTime number|MatchTime's number|MatchTime&apos;s number|our number|bot's number/i);
   });
 
   it.each(sources)("$file names no real club, player or venue", ({ text }) => {
