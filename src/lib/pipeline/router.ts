@@ -88,7 +88,8 @@ import {
   type ModelRequest,
   type PipelineModel,
 } from "./llm";
-import type { Degradation, Route, RoutedMessage } from "./types";
+import type { AttendanceFacts, Claim, Degradation, Route, RoutedMessage } from "./types";
+import { isAiBudgetExceeded } from "../ai-budget-context";
 
 /**
  * ─────────────────────────────────────────────────────────────────────
@@ -445,6 +446,22 @@ const NAME_WORD = new RegExp(
 );
 
 export function routeFloor(body: string): Route | null {
+  return parseFloor(body)?.route ?? null;
+}
+
+/**
+ * What the floor read: the route, which way, and (for a mention) whose
+ * names. One parser behind both `routeFloor` and `floorAttendanceFacts`,
+ * so the two can never disagree about which messages are bare.
+ */
+interface FloorReading {
+  route: "self_att" | "other_att";
+  polarity: "in" | "out";
+  /** The mentioned display names, verbatim, for `other_att`. */
+  names: string[];
+}
+
+function parseFloor(body: string): FloorReading | null {
   const t = (body ?? "").trim();
   if (!t) return null;
 
@@ -453,24 +470,68 @@ export function routeFloor(body: string): Route | null {
     // of "this message tags MatchTime"; it is reused, not re-derived.
     if (messageTagsBot({ body: t })) return null;
     let rest = t;
-    let sawMention = false;
+    const names: string[] = [];
     for (;;) {
       const m = MENTION_TOKEN.exec(rest);
       if (!m) break;
-      sawMention = true;
+      const words = [m[0].slice(1)];
       rest = rest.slice(m[0].length).trimStart();
       // Consume the rest of the mentioned display name.
       for (;;) {
         const word = rest.split(/\s+/)[0] ?? "";
         if (!word || !NAME_WORD.test(word) || isFloorToken(word)) break;
+        words.push(word);
         rest = rest.slice(word.length).trimStart();
       }
+      names.push(words.join(" "));
     }
-    if (!sawMention) return null;
-    return isBareDeclaration(rest) ? "other_att" : null;
+    if (names.length === 0) return null;
+    const polarity = bareDeclaration(rest);
+    return polarity ? { route: "other_att", polarity, names } : null;
   }
 
-  return isBareDeclaration(t) ? "self_att" : null;
+  const polarity = bareDeclaration(t);
+  return polarity ? { route: "self_att", polarity, names: [] } : null;
+}
+
+/**
+ * THE FACTS A BARE DECLARATION STATES, READ WITHOUT A MODEL (2026-09-29).
+ *
+ * For the daily AI cap. Below the cap the floor only ROUTES a message and
+ * the attendance extractor still reads it; at the cap there is no
+ * extractor, and a bare "in" must still put the player in the squad. So
+ * the floor states what it already proved about the text, as `Facts`,
+ * and the engine decides exactly as it would on the extractor's answer.
+ *
+ * It claims no more than the floor does: ONLY a message that is entirely
+ * a bare IN/OUT token (with optional mentions, punctuation and emoji).
+ * "in if we get 10", "who's in?" and "in, bringing my brother" are null,
+ * and at the cap they are simply not handled rather than guessed at.
+ * Every field is what the words say: present tense, not contingent, a
+ * decision, not reported, and a mention is a named person.
+ */
+export function floorAttendanceFacts(body: string): AttendanceFacts | null {
+  const f = parseFloor(body);
+  if (!f) return null;
+  const claim = (subject: "sender" | "other", personRef: string): Claim => ({
+    subject,
+    personRef,
+    personNamed: subject === "other",
+    polarity: f.polarity,
+    contingent: false,
+    conditionOn: "none",
+    tense: "present",
+    basis: "decision",
+    reported: false,
+    confidence: 1,
+    replaces: "",
+  });
+  return {
+    kind: "attendance",
+    claims: f.route === "self_att" ? [claim("sender", "")] : f.names.map((n) => claim("other", n)),
+    affirmation: null,
+    sideRequests: [],
+  };
 }
 
 /** Is this single word one of the bare tokens the floor recognises? */
@@ -478,17 +539,22 @@ function isFloorToken(word: string): boolean {
   return /^(?:in|out|var|var[ıi]m|yok|yokum|gelemiyorum)$/iu.test(word.replace(/[^\p{L}]/gu, ""));
 }
 
-/** Is the whole of `t` a bare IN/OUT declaration and nothing else? The
- *  length cap bounds the WORDS, so a run of emoji after "IN" never
- *  pushes a bare declaration over it. */
-function isBareDeclaration(t: string): boolean {
-  if (!t || t.replace(EMOJI_RUN, "").length > 24) return false;
-  for (const re of [FLOOR_IN, FLOOR_OUT, FLOOR_IN_TR, FLOOR_OUT_TR]) {
+/** Is the whole of `t` a bare IN/OUT declaration and nothing else? Which
+ *  way, or null. The length cap bounds the WORDS, so a run of emoji after
+ *  "IN" never pushes a bare declaration over it. */
+function bareDeclaration(t: string): "in" | "out" | null {
+  if (!t || t.replace(EMOJI_RUN, "").length > 24) return null;
+  for (const [re, polarity] of [
+    [FLOOR_IN, "in"],
+    [FLOOR_OUT, "out"],
+    [FLOOR_IN_TR, "in"],
+    [FLOOR_OUT_TR, "out"],
+  ] as const) {
     const m = re.exec(t);
     if (!m) continue;
-    return FLOOR_TAIL.test(t.slice(m[0].length));
+    return FLOOR_TAIL.test(t.slice(m[0].length)) ? polarity : null;
   }
-  return false;
+  return null;
 }
 
 export interface RouterMessage {
@@ -587,6 +653,24 @@ export interface RouteBatchOptions {
    * nothing below changes anything.
    */
   clarifications?: StatsClarification[];
+  /**
+   * The club is at its daily AI cap: route with the floor alone and make
+   * no model call. See `ai-budget.ts`.
+   */
+  capped?: boolean;
+}
+
+/** The routes a batch gets when the model may not be asked: the floor's
+ *  reading where it has one, `none` (source `capped`) everywhere else. */
+function cappedRoutes(messages: RouterMessage[], floor: Map<string, Route>, why: string): RouterResult {
+  const degradations: Degradation[] = [];
+  const routes: RoutedMessage[] = messages.map((m) => {
+    const f = floor.get(m.id);
+    if (f) return { messageId: m.id, route: f, source: "floor" as const };
+    degradations.push(degradation("router", m.id, `${why}; not handled`));
+    return { messageId: m.id, route: "none" as const, source: "capped" as const };
+  });
+  return { routes, degradations };
 }
 
 export async function routeBatch(
@@ -598,12 +682,23 @@ export async function routeBatch(
 
   const floorEnabled = opts.floor ?? true;
   const floor = new Map<string, Route>();
-  if (floorEnabled) {
-    for (const m of messages) {
-      const f = routeFloor(m.body);
-      if (f) floor.set(m.id, f);
-    }
+  const floorAll = new Map<string, Route>();
+  for (const m of messages) {
+    const f = routeFloor(m.body);
+    if (!f) continue;
+    floorAll.set(m.id, f);
+    if (floorEnabled) floor.set(m.id, f);
   }
+
+  // ── AT THE DAILY AI CAP (2026-09-29) ───────────────────────────────
+  //
+  // No model call at all. The floor routes what it can read, whatever
+  // `ROUTER_GATE_FLOOR_ENABLED` says, because at the cap it is the ONLY
+  // reader left; everything else is `none`. NOT `unsure`, which is what a
+  // failed router call gets below: `unsure` goes to the attendance
+  // extractor, which is another model call the cap has just refused. No
+  // open-question or clarification rescue either, for the same reason.
+  if (opts.capped) return cappedRoutes(messages, floorAll, "the club is at its daily AI cap");
 
   // Every message hit the floor: there is nothing left to ask about, so
   // the batch costs nothing at all.
@@ -662,6 +757,11 @@ export async function routeBatch(
       outputTokens: resp.usage.outputTokens,
     };
   } catch (err) {
+    // The cap was reached between the up-front check and this call (a
+    // concurrent request spent the rest): the same as `opts.capped`.
+    if (isAiBudgetExceeded(err)) {
+      return cappedRoutes(messages, floorAll, "the router call was refused by the daily AI cap");
+    }
     // §11.4: on router failure, route EVERYTHING to the attendance
     // extractor. Expensive, correct, and self-limiting because batches
     // are small. The alternative — routing everything to `none` — is

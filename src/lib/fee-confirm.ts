@@ -603,13 +603,16 @@ function liveCall(): FeeReplyCall | null {
     // Imported lazily so a unit test that never reaches the live path
     // does not pay for loading the SDK.
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const { guardedAnthropicCall } = await import("./pipeline/llm");
     const anthropic = new Anthropic({ apiKey: key });
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 200,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
-      messages: [{ role: "user", content: user }],
-    });
+    const response = await guardedAnthropicCall("fee-confirm", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 200,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        messages: [{ role: "user", content: user }],
+      }),
+    );
     const block = response.content.find((b) => b.type === "text");
     return block && block.type === "text" ? block.text : "";
   };

@@ -23,6 +23,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import type { Degradation } from "./types";
+import { guardedModelCall } from "../ai-budget-context";
 
 /**
  * The project ceiling, MIRRORED rather than imported.
@@ -205,6 +206,9 @@ export interface ModelUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** The part of `cacheWriteTokens` written with the 1-hour TTL, which
+   *  bills at 2x rather than 1.25x. Absent means none. */
+  cacheWrite1hTokens?: number;
 }
 
 export interface ModelResponse {
@@ -224,11 +228,86 @@ export interface PipelineModel {
 export function costOf(model: string, usage: ModelUsage): number | null {
   const rate = RATES[model];
   if (!rate) return null;
-  // Cache reads bill at 0.1x input, 1-hour writes at 2x. We use the
-  // default 5-minute TTL, which writes at 1.25x.
+  // Cache reads bill at 0.1x input, 1-hour writes at 2x, 5-minute writes
+  // at 1.25x. The pipeline uses the default 5-minute TTL; the raw call
+  // sites outside it mostly ask for 1 hour, and `anthropicMessageCost`
+  // tells the two apart from the usage the API reports.
+  const write1h = Math.min(usage.cacheWrite1hTokens ?? 0, usage.cacheWriteTokens);
   const input =
-    usage.inputTokens + usage.cacheReadTokens * 0.1 + usage.cacheWriteTokens * 1.25;
+    usage.inputTokens +
+    usage.cacheReadTokens * 0.1 +
+    (usage.cacheWriteTokens - write1h) * 1.25 +
+    write1h * 2;
   return (input / 1_000_000) * rate.input + (usage.outputTokens / 1_000_000) * rate.output;
+}
+
+/**
+ * What an unpriced call is booked at by the daily cap: an Opus-class call
+ * at this pipeline's token ceiling. Deliberately pessimistic. A model id
+ * nobody has priced can only make the cap STRICTER, never looser.
+ */
+export const UNPRICED_CALL_USD = 0.12;
+
+/**
+ * THE DOLLAR COST OF ONE RAW SDK RESPONSE, from the usage it reports.
+ * For the call sites outside this pipeline that use `messages.create`
+ * directly; the pipeline itself goes through `anthropicModel`. Null for a
+ * model with no entry in the rate table.
+ */
+export function anthropicMessageCost(resp: {
+  model?: string;
+  usage?: {
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
+    cache_creation_input_tokens?: number | null;
+    cache_creation?: { ephemeral_1h_input_tokens?: number | null; ephemeral_5m_input_tokens?: number | null } | null;
+  } | null;
+}): number | null {
+  if (!resp?.model || !resp.usage) return null;
+  const u = resp.usage;
+  return costOf(resp.model, {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheReadTokens: u.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
+    cacheWrite1hTokens: u.cache_creation?.ephemeral_1h_input_tokens ?? 0,
+  });
+}
+
+/**
+ * THE DAILY CAP'S GUARD FOR A RAW `messages.create` CALL SITE.
+ *
+ *     const response = await guardedAnthropicCall("dm-intent", () =>
+ *       anthropic.messages.create({...}),
+ *     );
+ *
+ * Inside a club's budget scope (`ai-budget.ts`) it reserves before the
+ * call and books the real cost after, and throws `AiBudgetExceededError`
+ * WITHOUT calling the model when the club's cap for today is reached.
+ * Outside a scope it is a pass-through. Every call site that uses it
+ * already fails closed on a thrown call.
+ */
+export function guardedAnthropicCall<T extends Parameters<typeof anthropicMessageCost>[0]>(
+  label: string,
+  call: () => Promise<T>,
+): Promise<T> {
+  return guardedModelCall(label, call, (r) => anthropicMessageCost(r), UNPRICED_CALL_USD);
+}
+
+/**
+ * Any `PipelineModel` behind the daily cap: the e2e stub models use it,
+ * so the stubbed suite can prove that a capped request makes NO model
+ * call at all, stub or real. `anthropicModel` guards itself (it has to
+ * price the response before its truncation check throws), so it is never
+ * wrapped in this as well.
+ */
+export function budgetedModel(inner: PipelineModel): PipelineModel {
+  return {
+    name: inner.name,
+    complete: (req) =>
+      guardedModelCall(req.label, () => inner.complete(req), (r) => r.costUsd, UNPRICED_CALL_USD),
+  };
 }
 
 /** Thrown when the model ran out of room. Callers degrade; they never
@@ -298,7 +377,13 @@ export function anthropicModel(opts?: {
         opts?.client ?? new Anthropic({ apiKey, maxRetries: 4 });
       const cacheAttempted = shouldCachePrompt(req.model, req.system);
       const t0 = Date.now();
-      const resp = await client.messages.create({
+      // THE DAILY CAP (2026-09-29). Inside a club's budget scope this
+      // reserves before the request and books the priced usage after it,
+      // and throws `AiBudgetExceededError` without touching the SDK when
+      // the club's cap for today is reached. The response is priced HERE,
+      // before the truncation check below can throw, because a truncated
+      // response was still billed.
+      const resp = await guardedAnthropicCall(req.label, () => client.messages.create({
         model: req.model,
         // Clamped here rather than trusted from the caller, so a new
         // stage cannot reintroduce the 64000 bug by passing its own
@@ -320,7 +405,7 @@ export function anthropicModel(opts?: {
         // thing on sonnet-5, and sending nothing keeps this layer honest
         // about which callers made a decision and which did not.
         ...(req.thinking === "off" ? { thinking: { type: "disabled" as const } } : {}),
-      });
+      }));
       const ms = Date.now() - t0;
 
       // TRUNCATION — the companion guard's requirement, and a real risk

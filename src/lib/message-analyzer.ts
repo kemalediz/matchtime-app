@@ -78,6 +78,8 @@ import {
   renderFormatSwitchContext,
 } from "./format-switch";
 import { computeChaseRisk } from "./chase-risk";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { withOrgAiBudget } from "./ai-budget";
 
 // Sonnet (2026-05-19, Kemal): the per-message analyzer makes nuanced
 // calls (team-swap vs drop, conditional vs standing, "is X
@@ -528,15 +530,20 @@ export async function composeChaseText(input: {
   alternatives.sort((x, y) => y.totalPlayers - x.totalPlayers);
 
   const lang = normaliseLang(input.langOverride ?? org.language);
-  return composeChaseFromMatch({
-    kind: input.kind,
-    orgName: org.name,
-    match,
-    teamLabels: resolveTeamLabels(match, org, match.activity.sport, lang),
-    alternatives,
-    logLabel: `group=${input.groupId}`,
-    lang,
-  });
+  // Spent from this club (the daily AI cap, lib/ai-budget.ts). At the cap
+  // the composer's call is refused, it returns null like any other
+  // failure, and the scheduler sends its static chase copy instead.
+  return withOrgAiBudget(org.id, () =>
+    composeChaseFromMatch({
+      kind: input.kind,
+      orgName: org.name,
+      match,
+      teamLabels: resolveTeamLabels(match, org, match.activity.sport, lang),
+      alternatives,
+      logLabel: `group=${input.groupId}`,
+      lang,
+    }),
+  );
 }
 
 /** The squad state one chase is composed against. Structural on purpose:
@@ -625,51 +632,53 @@ export async function composeChaseFromMatch(input: {
   const composePrompt = matchClock ? `${matchClock}\n\n${chasePrompt}` : chasePrompt;
 
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      // See MAX_TOKENS_CEILING at the top of this file. This site
-      // shipped 64000 and therefore threw on EVERY invocation since it
-      // was written — every scheduled chase used the static fallback.
-      max_tokens: CHASE_COMPOSE_MAX_TOKENS,
-      // NOT OPTIONAL ON SONNET 5. Omitting `thinking` gets adaptive
-      // thinking, and `ModelRequest.thinking` in pipeline/llm.ts
-      // records what that does: measured 2026-09-06, 5 runs of 5, the
-      // model can spend the ENTIRE max_tokens budget deliberating and
-      // return `stop_reason: max_tokens` with thinking blocks and no
-      // text block at all, probed at 1,024, 2,048 and 4,096 tokens.
-      // This call has 1,024. Its failure mode is not a crash: the
-      // truncation guard below discards the post and every scheduled
-      // chase in Kemal's one real group quietly reverts to static copy.
-      //
-      // Sonnet 4.5 thought only when handed `budget_tokens`, so sending
-      // this is what keeps the model move a PRICE change. The file
-      // header says the model "keeps exactly one job: tone", and tone
-      // is not a thing to deliberate about.
-      thinking: { type: "disabled" },
-      system: [
-        {
-          type: "text",
-          text: CHASE_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: matchContext,
-              cache_control: { type: "ephemeral", ttl: "1h" },
-            },
-            {
-              type: "text",
-              text: composePrompt,
-            },
-          ],
-        },
-      ],
-    });
+    const response = await guardedAnthropicCall("chase-composer", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        // See MAX_TOKENS_CEILING at the top of this file. This site
+        // shipped 64000 and therefore threw on EVERY invocation since it
+        // was written — every scheduled chase used the static fallback.
+        max_tokens: CHASE_COMPOSE_MAX_TOKENS,
+        // NOT OPTIONAL ON SONNET 5. Omitting `thinking` gets adaptive
+        // thinking, and `ModelRequest.thinking` in pipeline/llm.ts
+        // records what that does: measured 2026-09-06, 5 runs of 5, the
+        // model can spend the ENTIRE max_tokens budget deliberating and
+        // return `stop_reason: max_tokens` with thinking blocks and no
+        // text block at all, probed at 1,024, 2,048 and 4,096 tokens.
+        // This call has 1,024. Its failure mode is not a crash: the
+        // truncation guard below discards the post and every scheduled
+        // chase in Kemal's one real group quietly reverts to static copy.
+        //
+        // Sonnet 4.5 thought only when handed `budget_tokens`, so sending
+        // this is what keeps the model move a PRICE change. The file
+        // header says the model "keeps exactly one job: tone", and tone
+        // is not a thing to deliberate about.
+        thinking: { type: "disabled" },
+        system: [
+          {
+            type: "text",
+            text: CHASE_SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: matchContext,
+                cache_control: { type: "ephemeral", ttl: "1h" },
+              },
+              {
+                type: "text",
+                text: composePrompt,
+              },
+            ],
+          },
+        ],
+      }),
+    );
     // Truncation guard. This text is posted VERBATIM to a customer's
     // WhatsApp group, and it is the only call site here whose output is
     // not JSON (a truncated JSON site fails closed when the parse

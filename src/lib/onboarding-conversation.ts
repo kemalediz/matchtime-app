@@ -62,6 +62,7 @@ import { findExistingOrgMember } from "./resolve-player";
 import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -487,17 +488,19 @@ async function extract(
     .map((m) => `${m.authorName ?? "?"}: ${m.body.slice(0, 400)}`)
     .join("\n");
   try {
-    const res = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 400,
-      system: [{ type: "text", text: EXTRACT_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
-      messages: [
-        {
-          role: "user",
-          content: `Already collected (do not re-ask, but you may overwrite if they correct it):\n${JSON.stringify(known)}\n\nNew messages:\n${convo}\n\nReturn the JSON.`,
-        },
-      ],
-    });
+    const res = await guardedAnthropicCall("onboarding-extract", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 400,
+        system: [{ type: "text", text: EXTRACT_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        messages: [
+          {
+            role: "user",
+            content: `Already collected (do not re-ask, but you may overwrite if they correct it):\n${JSON.stringify(known)}\n\nNew messages:\n${convo}\n\nReturn the JSON.`,
+          },
+        ],
+      }),
+    );
     const block = res.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!block) return regexExtract(messages);
     const json = block.text.slice(block.text.indexOf("{"), block.text.lastIndexOf("}") + 1);

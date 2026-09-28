@@ -13,6 +13,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { normaliseLang } from "./i18n/lang";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -93,18 +94,20 @@ export async function classifyRosterReply(
     ]
       .filter(Boolean)
       .join("\n");
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 200,
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [{ role: "user", content: userText }],
-    });
+    const response = await guardedAnthropicCall("roster-survey", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 200,
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+        messages: [{ role: "user", content: userText }],
+      }),
+    );
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );

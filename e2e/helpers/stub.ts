@@ -84,6 +84,9 @@ export interface RouterStub {
   /** Trimmed body → route. The sim harness mints its own message ids, so
    *  a spec addresses the router by what was said. */
   bodies?: Record<string, string>;
+  /** What each stubbed router call reports it cost, in dollars (default
+   *  0). Drives the daily AI cap (`src/lib/ai-budget.ts`) for real. */
+  costUsd?: number;
 }
 
 export function setRouterStub(stub: RouterStub): void {
@@ -119,6 +122,9 @@ export interface ExtractorStub {
   fail?: string[];
   /** Every extractor call fails — the total-overload edge. */
   failAll?: boolean;
+  /** What each stubbed extractor call reports it cost, in dollars
+   *  (default 0). Drives the daily AI cap for real. */
+  costUsd?: number;
 }
 
 export function setExtractorStub(stub: ExtractorStub): void {
@@ -292,7 +298,15 @@ export interface BodyRouting {
  */
 export function engineOn(
   map: Record<string, BodyRouting>,
-  opts: { floor?: boolean; engineRoutes?: string[]; fail?: string[]; failAll?: boolean } = {},
+  opts: {
+    floor?: boolean;
+    engineRoutes?: string[];
+    fail?: string[];
+    failAll?: boolean;
+    /** Dollars each stubbed router / extractor call reports it cost. */
+    routerCostUsd?: number;
+    extractorCostUsd?: number;
+  } = {},
 ): void {
   const bodies: Record<string, string> = {};
   const factBodies: Record<string, Record<string, unknown>> = {};
@@ -303,11 +317,13 @@ export function engineOn(
   setRouterStub({
     floor: opts.floor ?? false,
     ...(opts.engineRoutes ? { engineRoutes: opts.engineRoutes } : {}),
+    ...(opts.routerCostUsd !== undefined ? { costUsd: opts.routerCostUsd } : {}),
     bodies,
   });
   setExtractorStub({
     bodies: factBodies,
     ...(opts.fail ? { fail: opts.fail } : {}),
     ...(opts.failAll ? { failAll: true } : {}),
+    ...(opts.extractorCostUsd !== undefined ? { costUsd: opts.extractorCostUsd } : {}),
   });
 }

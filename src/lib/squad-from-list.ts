@@ -45,6 +45,8 @@ import { db } from "./db";
 import { recordAttendanceEvent } from "./attendance-events";
 import { normalisePhone } from "./phone";
 import { normaliseName } from "./name-normalise";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { withOrgAiBudget } from "./ai-budget";
 export { normaliseName };
 
 // `claude-sonnet-4-5` here was inherited from the deleted
@@ -277,32 +279,37 @@ export async function extractSquadListsFromWindow(
 
   let parsed: LLMResponse | null = null;
   try {
-    const res = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 4000,
-      // Sonnet 5 runs adaptive thinking unless told not to, and can
-      // spend the whole max_tokens budget on it and return no text
-      // block at all (measured 2026-09-06, 5 runs of 5; see
-      // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
-      // cap sized for its OUTPUT, so leaving it adaptive would turn a
-      // price change into a silent degradation.
-      thinking: { type: "disabled" },
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content:
-            `Inspect these ${input.length} WhatsApp messages and return the squad lists in the JSON shape above.\n\n` +
-            JSON.stringify(input),
-        },
-      ],
-    });
+    // Spent from this club (the daily AI cap, lib/ai-budget.ts). At the
+    // cap the call is refused and the extraction returns no lists, like
+    // any other failure; the next run tries again.
+    const res = await withOrgAiBudget(orgId, () => guardedAnthropicCall("squad-from-list", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 4000,
+        // Sonnet 5 runs adaptive thinking unless told not to, and can
+        // spend the whole max_tokens budget on it and return no text
+        // block at all (measured 2026-09-06, 5 runs of 5; see
+        // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
+        // cap sized for its OUTPUT, so leaving it adaptive would turn a
+        // price change into a silent degradation.
+        thinking: { type: "disabled" },
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+        messages: [
+          {
+            role: "user",
+            content:
+              `Inspect these ${input.length} WhatsApp messages and return the squad lists in the JSON shape above.\n\n` +
+              JSON.stringify(input),
+          },
+        ],
+      }),
+    ));
     const block = res.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!block) return [];
     const json = block.text.slice(block.text.indexOf("{"), block.text.lastIndexOf("}") + 1);

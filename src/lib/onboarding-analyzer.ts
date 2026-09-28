@@ -21,6 +21,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { ParsedChat } from "./whatsapp-parser";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 
 // Onboarding is a one-shot per org — a few cents vs pennies difference
 // is worth paying for noticeably better player-evidence quality. Using
@@ -140,25 +141,27 @@ export async function analyzeForOnboarding(args: AnalyzeArgs): Promise<Onboardin
   ].join("\n\n");
 
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 6000,
-      // Sonnet 5 runs adaptive thinking unless told not to, and can
-      // spend the whole max_tokens budget on it and return no text
-      // block at all (measured 2026-09-06, 5 runs of 5; see
-      // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
-      // cap sized for its OUTPUT, so leaving it adaptive would turn a
-      // price change into a silent degradation.
-      thinking: { type: "disabled" },
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [{ role: "user", content: userContent }],
-    });
+    const response = await guardedAnthropicCall("onboarding-analyzer", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 6000,
+        // Sonnet 5 runs adaptive thinking unless told not to, and can
+        // spend the whole max_tokens budget on it and return no text
+        // block at all (measured 2026-09-06, 5 runs of 5; see
+        // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
+        // cap sized for its OUTPUT, so leaving it adaptive would turn a
+        // price change into a silent degradation.
+        thinking: { type: "disabled" },
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+        messages: [{ role: "user", content: userContent }],
+      }),
+    );
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );

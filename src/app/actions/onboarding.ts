@@ -2,6 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { onboardingUserKey, withOrgAiBudget } from "@/lib/ai-budget";
 import { parseWhatsAppChat, type ParsedChat } from "@/lib/whatsapp-parser";
 import { SPORT_PRESETS, findPreset } from "@/lib/sport-presets";
 import { setCurrentOrgId } from "@/lib/org";
@@ -401,10 +402,15 @@ export async function analyzeOnboardingChat(
   if (!preset) throw new Error("Unknown sport");
 
   const parsed = parseWhatsAppChat(fileText, { recentMessageLimit: 15_000 });
-  return analyzeForOnboarding({
-    parsed,
-    sportName: preset.name,
-    validPositions: [...preset.positions],
-    candidateNames,
-  });
+  // No club exists yet: the analysis is spent from this user's own
+  // new-club allowance (the daily AI cap, lib/ai-budget.ts). At the cap it
+  // returns null, and the wizard carries on with the manual defaults.
+  return withOrgAiBudget(onboardingUserKey(session.user.id), () =>
+    analyzeForOnboarding({
+      parsed,
+      sportName: preset.name,
+      validPositions: [...preset.positions],
+      candidateNames,
+    }),
+  );
 }

@@ -28,6 +28,7 @@
  * One-shot Haiku call per unmatched reply. Cheap, and DM volume is low.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -104,18 +105,20 @@ export async function classifyMatchAvailability(
     ]
       .filter(Boolean)
       .join("\n");
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 200,
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [{ role: "user", content: userText }],
-    });
+    const response = await guardedAnthropicCall("match-availability", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 200,
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+        messages: [{ role: "user", content: userText }],
+      }),
+    );
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );

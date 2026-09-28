@@ -50,6 +50,7 @@ import { balanceTeams, type BalancingStrategy } from "./team-balancer";
 import type { PlayerWithRating } from "@/types";
 import { formatLondon } from "./london-time";
 import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
+import { withOrgAiBudget } from "./ai-budget";
 import { computeClubRating } from "./player-rating";
 import { resolveTeamLabels } from "./team-labels";
 import { sanitiseTeamNames } from "./message-analyzer";
@@ -320,12 +321,17 @@ async function runRatingAdjuster(args: {
     baseRating: p.rating,
   }));
 
-  const adjustments = await adjustRatings({
-    players: adjusterPlayers,
-    messages,
-    sportName: args.sportName,
-    matchDate: args.matchDate,
-  });
+  // Spent from this match's club (the daily AI cap, lib/ai-budget.ts).
+  // At the cap the adjuster returns no adjustments and the deterministic
+  // balancer runs on the base ratings, as it does on any adjuster failure.
+  const adjustments = await withOrgAiBudget(args.orgId, () =>
+    adjustRatings({
+      players: adjusterPlayers,
+      messages,
+      sportName: args.sportName,
+      matchDate: args.matchDate,
+    }),
+  );
 
   // Persist audit rows. Upsert so re-running team generation for the
   // same match overwrites prior adjustments cleanly.

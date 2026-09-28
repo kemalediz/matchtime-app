@@ -19,6 +19,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { MAX_TOKENS_CEILING } from "./message-analyzer";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 
 // `claude-sonnet-4-5` here was inherited from the deleted
 // `analyzeBatch`, not chosen (`MDs/llm-spend-september-2026.md` §4).
@@ -156,29 +157,31 @@ export async function adjustRatings(
 
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      // Clamped: an unbounded expression can drift past the SDK's
-      // non-streaming limit with no warning (see MAX_TOKENS_CEILING in
-      // message-analyzer.ts). No realistic roster gets near this, but
-      // "no call site picks its own unbounded number" is the rule.
-      max_tokens: Math.min(MAX_TOKENS_CEILING, 200 + 80 * input.players.length),
-      // Sonnet 5 runs adaptive thinking unless told not to, and can
-      // spend the whole max_tokens budget on it and return no text
-      // block at all (measured 2026-09-06, 5 runs of 5; see
-      // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
-      // cap sized for its OUTPUT, so leaving it adaptive would turn a
-      // price change into a silent degradation.
-      thinking: { type: "disabled" },
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [{ role: "user", content: userContent }],
-    });
+    const response = await guardedAnthropicCall("rating-adjuster", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        // Clamped: an unbounded expression can drift past the SDK's
+        // non-streaming limit with no warning (see MAX_TOKENS_CEILING in
+        // message-analyzer.ts). No realistic roster gets near this, but
+        // "no call site picks its own unbounded number" is the rule.
+        max_tokens: Math.min(MAX_TOKENS_CEILING, 200 + 80 * input.players.length),
+        // Sonnet 5 runs adaptive thinking unless told not to, and can
+        // spend the whole max_tokens budget on it and return no text
+        // block at all (measured 2026-09-06, 5 runs of 5; see
+        // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
+        // cap sized for its OUTPUT, so leaving it adaptive would turn a
+        // price change into a silent degradation.
+        thinking: { type: "disabled" },
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+        messages: [{ role: "user", content: userContent }],
+      }),
+    );
     const textBlock = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === "text",
     );

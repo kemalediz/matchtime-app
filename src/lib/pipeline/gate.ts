@@ -134,7 +134,7 @@ import { readFileSync } from "node:fs";
 //   future import of `message-analyzer` or a Prisma-touching module
 //   from here has to be type-only for the same reason.
 import type { AwaitingQuestion, StatsClarification } from "./awaiting-answer";
-import { anthropicModel, degradation, type PipelineModel } from "./llm";
+import { anthropicModel, budgetedModel, degradation, type PipelineModel } from "./llm";
 import { routeBatch, routeFloor, type RouterMessage } from "./router";
 import type { Degradation, Route, RoutedMessage } from "./types";
 
@@ -548,6 +548,13 @@ export interface GateOptions {
   /** Open stats clarifications, passed straight to the router. See
    *  `RouteBatchOptions.clarifications`. */
   clarifications?: StatsClarification[];
+  /**
+   * The club is at its daily AI cap (`ai-budget.ts`). The router is not
+   * asked: the floor routes what it can read, ON regardless of the floor
+   * flag because it is the only reader left, and everything else is
+   * skipped. No model is constructed, so no model can be called.
+   */
+  capped?: boolean;
 }
 
 /**
@@ -610,12 +617,23 @@ export async function gateBatch(
   }
 
   try {
-    const model = opts.model ?? defaultGateModel();
     const routerMessages: RouterMessage[] = messages.map((m) => ({
       id: m.waMessageId,
       authorName: m.authorName,
       body: m.body,
     }));
+    if (opts.capped) {
+      const routed = await routeBatch(NO_MODEL, routerMessages, { floor: true, capped: true });
+      return {
+        ...partition(messages, routed.routes, { floor: true }),
+        routes: routed.routes,
+        degradations: routed.degradations,
+        modelCalled: false,
+        floorEnabled: true,
+        awaitingForced: [],
+      };
+    }
+    const model = opts.model ?? defaultGateModel();
     // `floor: false` at the ROUTER when the floor flag is off, so the
     // router's own answer is what we partition on and its recall is
     // measurable. When the flag is on, the router-level floor and the
@@ -648,6 +666,14 @@ export async function gateBatch(
   }
 }
 
+/** What the capped path hands `routeBatch`: a model it must never call. */
+const NO_MODEL: PipelineModel = {
+  name: "none (daily AI cap)",
+  complete: async () => {
+    throw new Error("the router was asked to call a model at the daily AI cap");
+  },
+};
+
 /** The stub seam is checked BEFORE the real model is constructed, so a
  *  stubbed e2e run never needs a key. A missing key in production
  *  surfaces as a throw inside `gateBatch`'s try, where it degrades to
@@ -656,6 +682,11 @@ export async function gateBatch(
  *  behind it. */
 function defaultGateModel(): PipelineModel {
   return routerStubFromEnv() ?? anthropicModel();
+}
+
+/** Money a stub reports it cost: 0 unless the spec says otherwise. */
+function stubCost(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
 }
 
 /**
@@ -692,6 +723,9 @@ export interface RouterStubConfig {
   /** Trimmed message body → route, for specs that cannot know the ids
    *  the sim harness mints. `routes` wins where both match. */
   bodies?: Record<string, string>;
+  /** What each stubbed router call reports it cost, in dollars. Default
+   *  0. Lets the stubbed suite drive the daily AI cap for real. */
+  costUsd?: number;
 }
 
 /** Read fresh on every call, like the extractor stub, so a spec can
@@ -713,7 +747,9 @@ function routerStubConfig(env: Env = process.env): RouterStubConfig | null {
 
 function routerStubFromEnv(): PipelineModel | null {
   if (!process.env[ROUTER_STUB_FILE_ENV]) return null;
-  return {
+  // Behind the daily cap like the real model, so a stubbed e2e run proves
+  // that a capped request makes no call at all.
+  return budgetedModel({
     name: "router-stub",
     async complete(req) {
       const cfg = routerStubConfig() ?? {};
@@ -730,9 +766,9 @@ function routerStubFromEnv(): PipelineModel | null {
         text: JSON.stringify({ routes }),
         stopReason: "end_turn",
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        costUsd: 0,
+        costUsd: stubCost(cfg.costUsd),
         ms: 0,
       };
     },
-  };
+  });
 }

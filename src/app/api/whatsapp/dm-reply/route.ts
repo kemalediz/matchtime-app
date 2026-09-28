@@ -39,6 +39,7 @@
  *
  * If no active survey applies, the DM is silently ignored.
  */
+import { withOrgAiBudget } from "@/lib/ai-budget";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
@@ -473,14 +474,15 @@ export async function POST(request: Request) {
           where: { id: row0.match.activity.orgId },
           select: { name: true },
         });
-        const verdict = await classifyMatchAvailability(text ?? "", {
+        // Spent from the match's club (the daily AI cap, lib/ai-budget.ts).
+        const verdict = await withOrgAiBudget(row0.match.activity.orgId, () => classifyMatchAvailability(text ?? "", {
           playerName: user.name,
           clubName: org0?.name ?? null,
           matchWhen: dayCommaTimeLabel(tentLang, row0.match.date),
           // The bot DM'd this player asking for a firm IN/OUT, so a bare
           // "yes"/"👍" here genuinely IS an answer.
           wasAskedToPlay: true,
-        });
+        }));
         if (verdict.decision === "in") isIn = true;
         else if (verdict.decision === "out") isOut = true;
       }
@@ -676,6 +678,7 @@ export async function POST(request: Request) {
   {
     const { classifyDmIntent, runDmAdminIntent } = await import("@/lib/dm-intent");
     const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    let dmAdminOrgIds: string[] = [];
     const outcome = await runDmAdminIntent({
       adminOrgIds: async () => {
         const { isSuperadmin } = await import("@/lib/org");
@@ -688,10 +691,18 @@ export async function POST(request: Request) {
           },
           select: { orgId: true },
         });
-        return mems.map((mem) => mem.orgId);
+        dmAdminOrgIds = mems.map((mem) => mem.orgId).sort();
+        return dmAdminOrgIds;
       },
+      // Spent from the first club this admin runs (the daily AI cap,
+      // lib/ai-budget.ts): which club the DM is about is only known
+      // after it is classified. `runDmAdminIntent` reads the org ids
+      // first, so the list is filled by the time this runs.
       classify: async () =>
-        (await classifyDmIntent(text, { senderName: authorName ?? null })).intent,
+        dmAdminOrgIds[0]
+          ? (await withOrgAiBudget(dmAdminOrgIds[0], () => classifyDmIntent(text, { senderName: authorName ?? null })))
+              .intent
+          : (await classifyDmIntent(text, { senderName: authorName ?? null })).intent,
       orgWithUpcomingMatch: async (orgIds) => {
         const startToday = new Date();
         startToday.setUTCHours(0, 0, 0, 0);
@@ -823,7 +834,10 @@ export async function POST(request: Request) {
         where: { key: `${target.matchId}:recruit-dm:${user.id}` },
         select: { id: true },
       });
-      const resolution = await resolveDmSelfAttendance({
+      // Spent from the match's club (the daily AI cap). At the cap the
+      // regex fast path still registers a plain IN/OUT; only the model
+      // fallback is refused, which reads as "unclear".
+      const resolution = await withOrgAiBudget(target.orgId, () => resolveDmSelfAttendance({
         text,
         hasPendingPrompt: !!dm,
         context: {
@@ -833,7 +847,7 @@ export async function POST(request: Request) {
           matchWhen: target.matchWhen,
           wasAskedToPlay: !!invited,
         },
-      });
+      }));
 
       if (resolution.decision) {
         // The write + personal ack + group announcement all live in
@@ -942,11 +956,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "no-open-survey" });
   }
 
-  const classification = await classifyRosterReply(text, {
-    playerName: user.name,
-    clubName: dm.survey.org.name,
-    lang: dm.survey.org.language,
-  });
+  const classification = await withOrgAiBudget(dm.survey.org.id, () =>
+    classifyRosterReply(text, {
+      playerName: user.name,
+      clubName: dm.survey.org.name,
+      lang: dm.survey.org.language,
+    }),
+  );
 
   // The survey's org decides the language of both replies below.
   const surveyLang = dm.survey.org.language;

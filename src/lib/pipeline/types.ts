@@ -95,8 +95,12 @@ export const ALL_ROUTES: readonly Route[] = [
  * `TentativeAvailability`) rather than on the text of the message. See
  * `awaiting-answer.ts` for why the two `👍`s PR #42 found need a fact and
  * not a pattern.
+ *
+ * `capped` (2026-09-29) is a `none` the MODEL never gave: the club was at
+ * its daily AI cap, the router was not asked, and the floor could not
+ * read the message. See `ai-budget.ts`.
  */
-export type RouteSource = "floor" | "awaiting" | "model" | "fallback";
+export type RouteSource = "floor" | "awaiting" | "model" | "fallback" | "capped";
 
 export interface RoutedMessage {
   messageId: string;

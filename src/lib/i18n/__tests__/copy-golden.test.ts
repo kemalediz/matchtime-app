@@ -125,6 +125,12 @@
  *     are coming by DM. It is NEW copy: it replaces a bare 📊 react, which
  *     had no text to pin. Additive only; no existing case moved.
  *
+ *   - Deliberate addition (2026-09-29, the daily AI spend cap): row R165,
+ *     `ai_daily_cap_reached`, the one line a club hears when it reaches
+ *     its daily AI allowance and somebody tags MatchTime. NEW copy, sent
+ *     at most once per club per London day. Additive only; no existing
+ *     case moved.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -910,6 +916,7 @@ function cases(lang: Lang): Case[] {
   add("R145 rating_overall_label", ratings.rating_overall_label);
   add("R145 rating_overall_note", ratings.rating_overall_note);
   add("R146 rating_seed_club_hint", ratings.rating_seed_club_hint);
+  add("R165 ai_daily_cap_reached", ratings.ai_daily_cap_reached());
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
@@ -1085,6 +1092,8 @@ const MIGRATED_ROWS = [
   "R26b ", "R147 ", "R148 ", "R149 ", "R150 ", "R151 ", "R152 ", "R153 ", "R154 ", "R155 ", "R156 ",
   // the stats period (2026-09-23)
   "R161 ", "R162 ", "R163 ",
+  // the daily AI spend cap (2026-09-29)
+  "R165 ",
   // a player DMs "Paid" (2026-09-23): the collector's notice and the player's replies
   "R157 ", "R158 ", "R159 ", "R160 ",
 ];

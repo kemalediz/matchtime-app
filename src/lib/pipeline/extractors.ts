@@ -26,6 +26,7 @@
  * Capacity is arithmetic; arithmetic is the engine's job.
  */
 import { anthropicModel, degradation, extractJson, EXTRACTOR_MODEL, type ModelRequest, type PipelineModel } from "./llm";
+import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
 import type {
   AdminFacts,
@@ -784,6 +785,13 @@ export interface ExtractionResult {
   facts: Facts;
   degradations: Degradation[];
   usage?: { costUsd: number | null; ms: number; inputTokens: number; outputTokens: number };
+  /**
+   * The call was REFUSED by the club's daily AI cap (`ai-budget.ts`) and
+   * never made. Not a failure of the model and not retried: a second
+   * attempt would be refused the same way. The attendance engine reads
+   * this to fall back to the floor's deterministic facts.
+   */
+  budgetRefused?: boolean;
 }
 
 export async function extractForRoute(
@@ -910,6 +918,13 @@ export async function extractForRoute(
         },
       };
     } catch (err) {
+      if (isAiBudgetExceeded(err)) {
+        return {
+          facts: { kind: "none" },
+          degradations: [degradation("extractor", msg.id, `${kind} extractor not called: ${(err as Error).message}`)],
+          budgetRefused: true,
+        };
+      }
       failures.push((err as Error).message);
     }
   }

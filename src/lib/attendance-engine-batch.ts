@@ -142,6 +142,7 @@ import { clampPastedRosterFacts } from "./pasted-roster-registration";
 import { extractForRouteTraced } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
+import { floorAttendanceFacts } from "./pipeline/router";
 import { compose } from "./pipeline/compose";
 import { decide } from "./pipeline/engine";
 import { engineOwnsRoute } from "./pipeline/gate";
@@ -351,6 +352,19 @@ export interface EngineBatchDeps extends EngineApplyDeps {
   claimGuestNameAsk: (args: { matchId: string; userId: string }) => Promise<boolean>;
   /** Injected so tests can drive the whole batch without a key. */
   model?: PipelineModel;
+  /**
+   * THE CLUB IS AT ITS DAILY AI CAP (`ai-budget.ts`), known before the
+   * batch started. No extractor is called: a message the floor can read
+   * (a bare IN/OUT, with or without mentions) is decided from the floor's
+   * facts (`floorAttendanceFacts`), and anything else is owned by nobody,
+   * with no write. Absent or false, nothing changes.
+   *
+   * The cap can also be reached PART-WAY through a batch, when a
+   * concurrent request spends the last of it. That case needs no flag:
+   * the extractor reports `budgetRefused` and the same floor fallback
+   * applies per message.
+   */
+  aiCapped?: boolean;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
 }
@@ -581,6 +595,26 @@ export async function runAttendanceEngineBatch(args: {
   const factsById = new Map<string, { facts: Facts; degraded: string | null }>();
   await Promise.all(
     owned.map(async (m) => {
+      // ── THE DAILY AI CAP: A BARE IN/OUT NEEDS NO MODEL ──────────────
+      // Only the two routes the floor itself produces. A floor reading
+      // of a message routed anywhere else is not what the router said,
+      // and the floor never overrules a route at the cap.
+      const floorFacts =
+        m.route === "self_att" || m.route === "other_att" ? floorAttendanceFacts(m.body) : null;
+      const useFloor = (why: string) => {
+        if (floorFacts) {
+          factsById.set(m.waMessageId, { facts: floorFacts, degraded: null });
+          console.log(`[attendance-engine] ${m.waMessageId}: ${why}; decided from the floor's facts, no model call`);
+        } else {
+          // Not a failure and not an operator note: the club is at its
+          // cap and this message is not one the floor can read.
+          ownedIds.delete(m.waMessageId);
+        }
+      };
+      if (deps.aiCapped) {
+        useFloor("the club is at its daily AI cap");
+        return;
+      }
       const res = await extractForRouteTraced("attendance", model, m.route as Route, {
         id: m.waMessageId,
         body: m.body,
@@ -589,6 +623,10 @@ export async function runAttendanceEngineBatch(args: {
         history,
         lastBotPost,
       });
+      if (res.budgetRefused) {
+        useFloor("the extractor was refused by the daily AI cap");
+        return;
+      }
       for (const d of res.degradations) degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);
       if (res.usage) {
         cost = {

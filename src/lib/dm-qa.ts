@@ -27,6 +27,8 @@ import { buildDmQaApology } from "./dm-copy";
 import { dayOfMonthLabel, dayTimeLabel, timeLabel, weekdayLabel } from "./i18n/dates";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { applyHouseStyle } from "./message-analyzer";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { isAiBudgetExceeded, withOrgAiBudget } from "@/lib/ai-budget";
 
 const SYSTEM_PROMPT = `You are MatchTime, a friendly assistant for a 5/7-a-side football group. You're answering ONE player's private message.
 
@@ -301,45 +303,61 @@ export async function answerScopedQuestion(args: {
     };
   }
   const anthropic = new Anthropic({ apiKey });
-  const composed = await composeScopedAnswer({
-    context,
-    question: args.question,
-    askerName: args.askerName ?? null,
-    orgName: org.name,
-    lang,
-    call: async (system, user) => {
-      const resp = await anthropic.messages.create({
-        // Sonnet 5 since 2026-09-19. The 4.5 pin was inherited from
-        // the deleted `analyzeBatch`, not chosen
-        // (`MDs/llm-spend-september-2026.md` §4); Sonnet 5 is newer
-        // and $2/$10 per MTok against $3/$15. Sonnet-class stays:
-        // this answer has to be faithful to the facts in `context`
-        // and, for a Turkish club, in Turkish, with a long list of
-        // regressions already caught (GLUED_SUFFIX, WRONG_DAY_TR,
-        // FORMAL).
-        model: "claude-sonnet-5",
-        max_tokens: 600,
-        // REQUIRED, not tidiness. Sonnet 5 thinks adaptively when
-        // `thinking` is omitted and Sonnet 4.5 did not, and 600
-        // tokens is a budget sized for a short WhatsApp answer, not
-        // for deliberation. Measured 2026-09-06, 5 runs of 5: the
-        // model can spend the whole budget thinking and return no
-        // text block (see `ModelRequest.thinking` in
-        // pipeline/llm.ts). The failure is silent by design here:
-        // `composeScopedAnswer` falls back to the generic APOLOGY, so
-        // a player asking a real question gets "I can only help with
-        // match stuff" and nothing logs a model problem.
-        thinking: { type: "disabled" },
-        system,
-        messages: [{ role: "user", content: user }],
-      });
-      const textBlock = resp.content.find((c) => c.type === "text");
-      return {
-        text: textBlock && textBlock.type === "text" ? textBlock.text : null,
-        truncated: resp.stop_reason === "max_tokens",
-      };
-    },
-  });
+  // THE DAILY AI CAP (2026-09-29): spent from the club the question is
+  // about. At the cap there is no answer and nothing is sent; a
+  // canned apology would be a reply the player did not need.
+  let composed: Awaited<ReturnType<typeof composeScopedAnswer>>;
+  try {
+    composed = await withOrgAiBudget(args.orgId, () =>
+      composeScopedAnswer({
+        context,
+        question: args.question,
+        askerName: args.askerName ?? null,
+        orgName: org.name,
+        lang,
+        call: async (system, user) => {
+          const resp = await guardedAnthropicCall("dm-qa", () =>
+            anthropic.messages.create({
+              // Sonnet 5 since 2026-09-19. The 4.5 pin was inherited from
+              // the deleted `analyzeBatch`, not chosen
+              // (`MDs/llm-spend-september-2026.md` §4); Sonnet 5 is newer
+              // and $2/$10 per MTok against $3/$15. Sonnet-class stays:
+              // this answer has to be faithful to the facts in `context`
+              // and, for a Turkish club, in Turkish, with a long list of
+              // regressions already caught (GLUED_SUFFIX, WRONG_DAY_TR,
+              // FORMAL).
+              model: "claude-sonnet-5",
+              max_tokens: 600,
+              // REQUIRED, not tidiness. Sonnet 5 thinks adaptively when
+              // `thinking` is omitted and Sonnet 4.5 did not, and 600
+              // tokens is a budget sized for a short WhatsApp answer, not
+              // for deliberation. Measured 2026-09-06, 5 runs of 5: the
+              // model can spend the whole budget thinking and return no
+              // text block (see `ModelRequest.thinking` in
+              // pipeline/llm.ts). The failure is silent by design here:
+              // `composeScopedAnswer` falls back to the generic APOLOGY, so
+              // a player asking a real question gets "I can only help with
+              // match stuff" and nothing logs a model problem.
+              thinking: { type: "disabled" },
+              system,
+              messages: [{ role: "user", content: user }],
+            }),
+          );
+          const textBlock = resp.content.find((c) => c.type === "text");
+          return {
+            text: textBlock && textBlock.type === "text" ? textBlock.text : null,
+            truncated: resp.stop_reason === "max_tokens",
+          };
+        },
+      }),
+    );
+  } catch (err) {
+    if (isAiBudgetExceeded(err)) {
+      console.log(`[dm-qa] org=${args.orgId} is at its daily AI cap; no answer composed`);
+      return null;
+    }
+    throw err;
+  }
   if (composed.truncated) {
     console.error(
       `[dm-qa] BROKEN: answer hit the 600-token cap for org=${args.orgId} — the ` +
