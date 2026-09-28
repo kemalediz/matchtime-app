@@ -25,6 +25,7 @@ import {
 import { decideCheckoutEvent } from "./payment-outcome";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
 import { normaliseLang, type Lang } from "./i18n/lang";
+import { withOrgAiBudget } from "./ai-budget";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -259,7 +260,7 @@ async function findCollectorPendingMatch(userId: string) {
     // Prefer a match already awaiting confirmation (feePendingConfirm set);
     // nulls last so an amount-pending match wins over a fee-less one.
     orderBy: [{ feePendingConfirm: { sort: "desc", nulls: "last" } }, { date: "desc" }],
-    include: { activity: { select: { name: true, org: { select: { language: true } } } } },
+    include: { activity: { select: { name: true, orgId: true, org: { select: { language: true } } } } },
   });
   return match;
 }
@@ -416,9 +417,14 @@ export async function handleCollectorFeeReply(
   userId: string,
   text: string,
 ): Promise<CollectorReplyResult | null> {
+  // The club the fee is for pays for reading the reply (the daily AI cap,
+  // lib/ai-budget.ts). Known once the pending match is found, which
+  // `runCollectorFeeReply` does before it ever asks the model.
+  let feeOrgId: string | null = null;
   return runCollectorFeeReply(text, {
     pendingMatch: async () => {
       const m = await findCollectorPendingMatch(userId);
+      feeOrgId = m?.activity.orgId ?? null;
       return m
         ? {
             id: m.id,
@@ -432,7 +438,10 @@ export async function handleCollectorFeeReply(
       db.attendance.count({
         where: { matchId, status: "CONFIRMED", userId: { not: userId } },
       }),
-    judge: (reply, amount, matchName, lang) => classifyFeeReply(reply, { amount, matchName, lang }),
+    judge: (reply, amount, matchName, lang) =>
+      feeOrgId
+        ? withOrgAiBudget(feeOrgId, () => classifyFeeReply(reply, { amount, matchName, lang }))
+        : classifyFeeReply(reply, { amount, matchName, lang }),
     release: async (matchId, amount) => {
       await db.match.update({
         where: { id: matchId },

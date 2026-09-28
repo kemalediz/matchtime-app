@@ -29,6 +29,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { withOrgAiBudget } from "@/lib/ai-budget";
 import { isNoneBucketShadowEnabled } from "@/lib/pipeline/gate";
 import {
   noneShadowBatchHash,
@@ -65,6 +66,8 @@ export async function GET(request: Request) {
     const result = await runNoneBucketShadow({
       db: db as unknown as NoneBucketDb,
       force,
+      // Each re-examination is spent from its own club's daily AI cap.
+      budget: withOrgAiBudget,
       ...(limit ? { limit } : {}),
       ...(lookbackHours ? { lookbackHours } : {}),
     });

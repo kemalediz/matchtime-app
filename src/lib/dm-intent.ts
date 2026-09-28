@@ -83,6 +83,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
+import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -263,12 +264,14 @@ function liveCall(): DmIntentCall | null {
   if (!key) return null;
   return async (system, user) => {
     const anthropic = new Anthropic({ apiKey: key });
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 200,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
-      messages: [{ role: "user", content: user }],
-    });
+    const response = await guardedAnthropicCall("dm-intent", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 200,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        messages: [{ role: "user", content: user }],
+      }),
+    );
     const block = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     return block?.text ?? "";
   };

@@ -38,11 +38,15 @@ import { db } from "./db";
 
 export const HEALTH_KIND_PREFIX = "health:";
 export const OPERATOR_NOTE_KIND = "operator-note";
+/** A club reached its daily AI allowance (`ai-budget.ts`). An event,
+ *  recorded once per club per London day, info severity: nothing is
+ *  broken, the cap did its job. */
+export const AI_CAP_ALERT_KIND = "ai-daily-cap";
 
 export type OpsAlertSeverity = "critical" | "warning" | "info";
 
 /** Kinds that are one-off occurrences rather than conditions that hold. */
-const EVENT_KINDS: ReadonlySet<string> = new Set([OPERATOR_NOTE_KIND]);
+const EVENT_KINDS: ReadonlySet<string> = new Set([OPERATOR_NOTE_KIND, AI_CAP_ALERT_KIND]);
 
 export function healthKind(code: string): string {
   return `${HEALTH_KIND_PREFIX}${code}`;
@@ -140,6 +144,7 @@ const KIND_LABELS: Record<string, string> = {
   "health:none-shadow-stale": "Nightly re-check not running",
   "health:inbound-silent": "Group quiet before a match",
   [OPERATOR_NOTE_KIND]: "Message not handled",
+  [AI_CAP_ALERT_KIND]: "AI daily cap reached",
 };
 
 export function alertKindLabel(kind: string): string {

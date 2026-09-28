@@ -24,7 +24,7 @@
  * itself is unchanged and still covers this one and the router's.
  */
 import { readFileSync } from "node:fs";
-import type { PipelineModel } from "./llm";
+import { budgetedModel, type PipelineModel } from "./llm";
 
 export const EXTRACTOR_STUB_FILE_ENV = "MT_TEST_EXTRACTOR_STUB_FILE";
 
@@ -56,6 +56,9 @@ export interface ExtractorStubConfig {
    *  degradations through the empty return so the reasons survive, and
    *  this flag is what proves it. */
   failAll?: boolean;
+  /** What each stubbed extractor call reports it cost, in dollars.
+   *  Default 0. Lets the stubbed suite drive the daily AI cap for real. */
+  costUsd?: number;
 }
 
 /**
@@ -93,7 +96,9 @@ function config(env: NodeJS.ProcessEnv = process.env): ExtractorStubConfig | nul
  */
 export function extractorStubFromEnv(env: NodeJS.ProcessEnv = process.env): PipelineModel | null {
   if (!env[EXTRACTOR_STUB_FILE_ENV]) return null;
-  return {
+  // Behind the daily cap like the real model, so a stubbed e2e run proves
+  // that a capped request makes no call at all.
+  return budgetedModel({
     name: "extractor-stub",
     async complete(req) {
       const cfg = config(env) ?? {};
@@ -106,11 +111,12 @@ export function extractorStubFromEnv(env: NodeJS.ProcessEnv = process.env): Pipe
         text: JSON.stringify(canned),
         stopReason: "end_turn",
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        costUsd: 0,
+        costUsd:
+          typeof cfg.costUsd === "number" && Number.isFinite(cfg.costUsd) && cfg.costUsd >= 0 ? cfg.costUsd : 0,
         ms: 0,
       };
     },
-  };
+  });
 }
 
 /** Everything after the "THE MESSAGE (from …):" header, trimmed. */

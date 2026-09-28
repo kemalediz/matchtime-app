@@ -312,6 +312,20 @@ model Organisation {
   /// + receive payouts (onboarding fully complete).
   stripeChargesEnabled     Boolean @default(false)
 
+  /// ─── The daily AI spend cap (2026-09-29) ───────────────────────
+  /// The platform owner's per-club override, in US dollars per London
+  /// calendar day. NULL (the default, and every club today) means the
+  /// rule in `src/lib/ai-budget.ts`: $0.25 a day for the first four
+  /// weeks, $1.00 a day after. Set it to lift or lower one club's cap.
+  /// Read by `aiAllowanceUsd()`, the one place the cap is decided.
+  aiDailyCapUsd   Float?
+  /// When the club's first-four-weeks window starts. NULL means
+  /// `createdAt`, which is every club today. It exists so the club
+  /// approval flow (self-join, PR #138) can start the window at the
+  /// moment a club is approved or goes live rather than when its row
+  /// was created.
+  aiWindowStartAt DateTime?
+
   memberships    Membership[]
   activities     Activity[]
   sports         Sport[]
@@ -1383,6 +1397,49 @@ model MoMVote {
  * - "ignored":   skipped on purpose (bot's own msg, non-c.us author, empty body)
  * - "error":     analyzer call failed; don't re-try this exact message
  */
+/// ─── What each club spent on AI, per London calendar day (2026-09-29) ──
+/// One row per (orgId, day), written only by `src/lib/ai-budget.ts`.
+/// `costUsd` is REAL spend, priced from the model's own usage report by
+/// `costOf()` in `src/lib/pipeline/llm.ts`. `reservedUsd` is money held
+/// for calls still in flight (see `ai-budget.ts` for why a reservation
+/// makes the cap safe under concurrency); it drains to 0 as each call
+/// settles, so a non-zero value at the end of a day means a process died
+/// mid-call and only ever made that day's cap stricter.
+///
+/// `orgId` is NOT a foreign key. It is an `Organisation.id` for every
+/// club, and a prefixed key for the two kinds of AI spend that happen
+/// before a club exists: `onboarding-group:<groupId>` (the in-group
+/// setup conversation) and `onboarding-user:<userId>` (the web wizard's
+/// chat analysis). The prefixes cannot collide with a cuid.
+///
+/// Read by the owner dashboard. Nobody is ever DMed or emailed about a
+/// cap hit: `cappedAt` is the record.
+model OrgAiUsage {
+  orgId           String
+  /// The London calendar day, midnight to midnight Europe/London.
+  day             DateTime  @db.Date
+  costUsd         Float     @default(0)
+  reservedUsd     Float     @default(0)
+  /// Model calls that completed and were billed.
+  calls           Int       @default(0)
+  /// Model calls refused because the cap was reached.
+  refusedCalls    Int       @default(0)
+  /// Group messages that got no AI handling today because of the cap
+  /// (the ones the deterministic floor could not handle).
+  skippedMessages Int       @default(0)
+  /// The cap in force the last time it was evaluated, for the dashboard.
+  capUsd          Float?
+  /// The first moment today that a call was refused. NULL = never capped.
+  cappedAt        DateTime?
+  /// When the one polite "ask me tomorrow" line went to the group today.
+  capReplySentAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  @@id([orgId, day])
+  @@index([day])
+}
+
 model AnalyzedMessage {
   id           String   @id @default(cuid())
   waMessageId  String   @unique

@@ -93,6 +93,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { buildPaidClaimAck, buildPaidForOthersReply } from "./dm-copy";
 import { markDirectPaymentPending, type DirectPendingOutcome } from "./direct-payment";
 import { gbp } from "./payments";
+import { withOrgAiBudget } from "./ai-budget";
 import { classifyPaymentClaim, type PaymentClaimIntent } from "./payment-claim-classifier";
 
 export {
@@ -324,11 +325,14 @@ export async function handlePaymentClaimDm(input: {
         orderBy: { createdAt: "desc" },
         select: { text: true },
       });
-      return classifyPaymentClaim(text, {
-        playerName: input.userName,
-        owes: `${gbp(owed.fee)} for ${owed.activityName}`,
-        lastBotDm: last?.text ?? null,
-      });
+      // Spent from the club the player owes (the daily AI cap).
+      return withOrgAiBudget(owed.orgId, () =>
+        classifyPaymentClaim(text, {
+          playerName: input.userName,
+          owes: `${gbp(owed.fee)} for ${owed.activityName}`,
+          lastBotDm: last?.text ?? null,
+        }),
+      );
     },
     firstSighting: async (matchId) => {
       try {

@@ -184,6 +184,14 @@ export interface NoneBucketOptions {
   /** Bypasses the flag. Used by the tests, and by an operator running
    *  the sweep by hand from the cron route with `?force=1`. */
   force?: boolean;
+  /**
+   * Runs one row's re-examination inside that row's club's daily AI
+   * budget (`withOrgAiBudget` from `ai-budget.ts`, passed in by the cron
+   * route: this module stays free of Prisma). A club at its cap gets no
+   * re-examination tonight; the refusal is recorded as a row error.
+   * Absent (tests, harnesses), nothing is guarded.
+   */
+  budget?: <T>(orgId: string, fn: () => Promise<T>) => Promise<T>;
 }
 
 export async function runNoneBucketShadow(
@@ -250,7 +258,8 @@ export async function runNoneBucketShadow(
     const org = coverage(row.orgId);
     org.checked += 1;
     const rowStart = Date.now();
-    const res = await extractForRoute(model, REEXAMINE_AS, {
+    const inBudget = opts.budget ?? (<T>(_orgId: string, fn: () => Promise<T>) => fn());
+    const res = await inBudget(row.orgId, () => extractForRoute(model, REEXAMINE_AS, {
       id: row.waMessageId,
       body: row.body ?? "",
       authorName: row.authorName,
@@ -261,7 +270,7 @@ export async function runNoneBucketShadow(
       tagged: false,
       history: [],
       lastBotPost: null,
-    });
+    }));
     org.ms += Date.now() - rowStart;
     result.costUsd += res.usage?.costUsd ?? 0;
     org.costUsd += res.usage?.costUsd ?? 0;

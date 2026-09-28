@@ -15,6 +15,7 @@
 
 import { db } from "@/lib/db";
 import { analyzeForOnboarding } from "@/lib/onboarding-analyzer";
+import { withOrgAiBudget } from "@/lib/ai-budget";
 import {
   buildParsedChatFromHistory,
   reconcileProposals,
@@ -75,12 +76,15 @@ export async function runOnboardingEnrichment(
   const parsed = buildParsedChatFromHistory(args.history);
   const messagesAnalyzed = parsed.recentMessages.length;
 
-  const analysis = await analyzeForOnboarding({
-    parsed,
-    sportName,
-    validPositions,
-    candidateNames,
-  });
+  // Spent from the new club (the daily AI cap, lib/ai-budget.ts).
+  const analysis = await withOrgAiBudget(orgId, () =>
+    analyzeForOnboarding({
+      parsed,
+      sportName,
+      validPositions,
+      candidateNames,
+    }),
+  );
 
   // Analyser unavailable / failed → still "ready", just with no proposals.
   if (!analysis) {

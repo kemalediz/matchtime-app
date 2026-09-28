@@ -150,6 +150,21 @@ import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { getOrgFeatures } from "@/lib/org-features";
+import {
+  bindAiBudgetKey,
+  claimCapReply,
+  getAiBudgetStatus,
+  onboardingGroupKey,
+  pickCapReplyMessage,
+  recordCapSkips,
+  withDeferredOrgAiBudget,
+} from "@/lib/ai-budget";
+
+/** `AnalyzedMessage.handledBy` for a message the daily AI cap left
+ *  unhandled. Distinct from `router-gate` so the nightly none-bucket
+ *  sweep and the dashboard can tell "the router called it banter" from
+ *  "nobody was allowed to ask". */
+const AI_CAP_HANDLED_BY = "ai-daily-cap";
 // ── SEVENTEEN IMPORTS LEFT THIS FILE WITH THE MEGA-PROMPT (§10 step 8) ─
 //
 //   Each was the input to, or the correction of, a field on
@@ -400,7 +415,10 @@ export async function POST(request: Request) {
   return withAnalyzeBatch(() =>
     withPipelineTrace(async () => {
       try {
-        return await handleAnalyzeRequest(request);
+        // THE DAILY AI CAP (2026-09-29): every model call this request
+        // makes spends from ONE club's budget, named below as soon as the
+        // group resolves (`bindAiBudgetKey`). See `lib/ai-budget.ts`.
+        return await withDeferredOrgAiBudget(() => handleAnalyzeRequest(request));
       } finally {
         // What the router and each extractor said about every message,
         // onto its `AnalyzedMessage.pipelineTrace`. Once, at the end, so
@@ -430,6 +448,8 @@ async function handleAnalyzeRequest(request: Request) {
   //   While a session is active every batch routes here (not the
   //   normal analyzer) until it completes/abandons.
   {
+    // A group with no club yet spends from its own new-club allowance.
+    bindAiBudgetKey(onboardingGroupKey(body.groupId));
     const onb = await handleOnboardingIfApplicable(body);
     if (onb) return NextResponse.json(onb);
   }
@@ -443,6 +463,7 @@ async function handleAnalyzeRequest(request: Request) {
   if (!org) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
   }
+  bindAiBudgetKey(org.id);
 
   // Name every @-mention the roster can vouch for BEFORE anything reads a
   // body: the squad-from-list archive, the dedupe's empty-body check, the
@@ -547,6 +568,29 @@ async function handleAnalyzeRequest(request: Request) {
       continue;
     }
     fresh.push(msg);
+  }
+
+  // ── THE DAILY AI CAP, DECIDED ONCE, UP FRONT (2026-09-29) ─────────
+  //
+  // At the cap the whole batch runs WITHOUT A MODEL: the router is not
+  // asked (the floor routes a bare IN/OUT, everything else is `none`),
+  // the attendance engine decides floor-read messages from the floor's
+  // own facts, and a message that TAGS MatchTime gets one polite line, at
+  // most once per club per day. Everything deterministic (fast paths,
+  // scheduled posts) is untouched. Reading the state fails OPEN.
+  //
+  // The cap can also be reached PART-WAY through this batch (a concurrent
+  // flush spent the rest). Every model call is guarded individually, and
+  // the router and the attendance extractor fall back to exactly this
+  // behaviour when they are refused; see `pipeline/router.ts` and
+  // `attendance-engine-batch.ts`.
+  const aiBudget = fresh.length > 0 ? await getAiBudgetStatus(org.id) : null;
+  const aiCapped = aiBudget?.capped ?? false;
+  if (aiCapped) {
+    console.log(
+      `[analyze] org ${org.id} is at its daily AI cap ($${aiBudget!.spentUsd.toFixed(4)} of ` +
+        `$${aiBudget!.capUsd.toFixed(2)}): this batch runs without a model`,
+    );
   }
 
   // 2. Resolve senders + hand the whole fresh batch to Claude in one call.
@@ -849,6 +893,10 @@ async function handleAnalyzeRequest(request: Request) {
     // Interaction contract: "DM me <question>" is an answer MT gives →
     // requires an @Match Time tag. Untagged → ordinary chat, stay silent.
     if (!messageTagsBot(m)) continue;
+    // The answer is a model call. At the daily AI cap the message is
+    // left for the capped path below, which gives a tagged message its
+    // one polite line.
+    if (aiCapped) continue;
     const dmPeel = peelClause(m.body, (c) => DM_ME.test(c));
     if (!dmPeel) continue;
     const sender = senderById.get(m.waMessageId)!;
@@ -1649,11 +1697,38 @@ async function handleAnalyzeRequest(request: Request) {
           // `PendingBenchConfirmation` / `TentativeAvailability` on the
           // board right now? See `src/lib/pipeline/awaiting-answer.ts`.
           // Null 99% of the time, and with it nothing changes at all.
-          { awaiting: await loadOpenQuestion(org.id), clarifications: statsClarifications },
+          {
+            awaiting: await loadOpenQuestion(org.id),
+            clarifications: statsClarifications,
+            // At the daily AI cap: floor only, no router call.
+            capped: aiCapped,
+          },
         )
       : null;
   if (gate) traceRouting(gate);
   const gatedIds = new Set(gate?.skipped ?? []);
+
+  // ── WHAT THE CAP COST THIS BATCH, AND THE ONE LINE IT MAY SAY ──────
+  //
+  // Every message the cap left unhandled (routed `none` with source
+  // `capped`: the router was not asked and the floor could not read it)
+  // is counted on today's `OrgAiUsage` row. If any of them TAGS
+  // MatchTime, the first one gets today's one polite line, claimed
+  // atomically so two racing flushes cannot both send it. Untagged ones
+  // stay silent, as banter always does. No DM, no email, to anyone.
+  const cappedIds = new Set(
+    (gate?.routes ?? []).filter((r) => r.source === "capped").map((r) => r.messageId),
+  );
+  let capReplyMessageId: string | null = null;
+  if (cappedIds.size > 0) {
+    await recordCapSkips(org.id, cappedIds.size, new Date(), aiBudget?.capUsd ?? null);
+    capReplyMessageId = await pickCapReplyMessage(
+      fresh
+        .filter((m) => cappedIds.has(m.waMessageId) && !fastPathHandledIds.has(m.waMessageId))
+        .map((m) => ({ waMessageId: m.waMessageId, tagged: messageTagsBot(m) })),
+      () => claimCapReply(org.id),
+    );
+  }
   const gateRouteById = new Map((gate?.routes ?? []).map((r) => [r.messageId, r.route]));
   if (gate) {
     for (const d of gate.degradations) {
@@ -1739,6 +1814,9 @@ async function handleAnalyzeRequest(request: Request) {
             };
           }),
           deps: {
+            // At the daily AI cap a bare IN/OUT is decided from the
+            // floor's facts, with no extractor call.
+            aiCapped,
             registerAttendance,
             cancelAttendance,
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
@@ -2492,6 +2570,36 @@ async function handleAnalyzeRequest(request: Request) {
     // message was spliced out and no note was raised either. The
     // `AnalyzedMessage` row is still written, so the nightly sweep can
     // still see it.
+    // ── AT THE DAILY AI CAP: THE ONE POLITE LINE, OR SILENCE ─────────
+    //
+    // Not an operator note: nothing went wrong, the club spent its
+    // allowance. The row says so, and today's usage row counts it.
+    if (cappedIds.has(msg.waMessageId)) {
+      const capReply =
+        capReplyMessageId === msg.waMessageId ? strings(org.language).ai_daily_cap_reached() : null;
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: AI_CAP_HANDLED_BY,
+        intent: "noise",
+        action: capReply ? "ai-cap-reply" : null,
+        confidence: 1,
+        reasoning: capReply
+          ? "the club is at its daily AI cap; today's one polite line"
+          : "the club is at its daily AI cap; not handled",
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      results.push({
+        waMessageId: msg.waMessageId,
+        handledBy: capReply ? "fast-path" : "ignored",
+        intent: "noise",
+        react: null,
+        reply: capReply,
+      });
+      continue;
+    }
     if (!clauseResidualById.has(msg.waMessageId)) {
       unowned.push({
         waMessageId: msg.waMessageId,

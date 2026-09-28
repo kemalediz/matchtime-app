@@ -178,13 +178,16 @@ function liveCall(): PaymentClaimCall | null {
   if (!key) return null;
   return async (system, user) => {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const { guardedAnthropicCall } = await import("./pipeline/llm");
     const anthropic = new Anthropic({ apiKey: key });
-    const response = await anthropic.messages.create({
-      model: PAYMENT_CLAIM_MODEL,
-      max_tokens: 200,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
-      messages: [{ role: "user", content: user }],
-    });
+    const response = await guardedAnthropicCall("payment-claim", () =>
+      anthropic.messages.create({
+        model: PAYMENT_CLAIM_MODEL,
+        max_tokens: 200,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        messages: [{ role: "user", content: user }],
+      }),
+    );
     const block = response.content.find((b) => b.type === "text");
     return block && block.type === "text" ? block.text : "";
   };

@@ -52,7 +52,19 @@ vi.mock("@anthropic-ai/sdk", () => {
 // ── DB seam ───────────────────────────────────────────────────────
 // Mutable so one test can move the clock or the squad and re-compose.
 const KICKOFF = new Date("2026-09-08T20:30:00.000Z");
-const ORG = { id: "org-1", name: "Sutton Football Club", teamLabels: null };
+// A live club well past its first four weeks, so the daily AI cap
+// (lib/ai-budget.ts) allows the composer's call; the usage table's
+// statements below always grant.
+const ORG = {
+  id: "org-1",
+  name: "Sutton Football Club",
+  teamLabels: null,
+  whatsappBotEnabled: true,
+  whatsappGroupId: "g1",
+  createdAt: new Date("2026-04-01T00:00:00Z"),
+  aiDailyCapUsd: null,
+  aiWindowStartAt: null,
+};
 
 function squad(n: number) {
   return Array.from({ length: n }, (_, i) => ({
@@ -77,6 +89,8 @@ const MATCH = {
 vi.mock("@/lib/db", () => ({
   db: {
     organisation: { findFirst: async () => ORG, findUnique: async () => ORG },
+    $queryRaw: async () => [{ ok: 1 }],
+    $executeRaw: async () => 1,
     match: { findFirst: async () => MATCH },
     activity: { findMany: async () => [] },
     benchSlotOffer: { findMany: async () => [] },
