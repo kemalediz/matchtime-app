@@ -63,11 +63,11 @@ function RatingsChart() {
 }
 
 const LEADERBOARD: Array<[number, string, string, string]> = [
-  [1, "Marcus Bell", "—", "8.1"],
-  [2, "Danny Cole", "—", "7.9"],
+  [1, "Marcus Bell", "=", "8.1"],
+  [2, "Danny Cole", "=", "7.9"],
   [3, "Alex (you)", "↑3", "7.4"],
   [4, "Ryan Park", "new", "7.4"],
-  [5, "Sam Reid", "—", "7.4"],
+  [5, "Sam Reid", "=", "7.4"],
   [6, "Jay Patel", "↓2", "7.3"],
   [7, "Chris Adeyemi", "↑1", "7.2"],
   [8, "Luca Romano", "new", "7.1"],
@@ -114,7 +114,7 @@ export function StatsShowcase() {
             <StatCard value="7.4" label="Avg rating" sub="+11% vs squad" subClass="text-emerald-600" valueClass="text-emerald-600" />
             <StatCard value="1" label="Man of the Match" sub="🏆" valueClass="text-amber-500" />
             <StatCard value="7" label="Games played" sub="100% attendance" valueClass="text-blue-600" />
-            <StatCard value="2-2-3" label="W–D–L" sub="GD -3" />
+            <StatCard value="2-2-3" label="W-D-L" sub="GD -3" />
           </div>
           <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3">
             <div>
@@ -131,7 +131,7 @@ export function StatsShowcase() {
             <p className="mb-1 text-[10px] text-slate-400">Tap a point for that game&apos;s detail.</p>
             <RatingsChart />
             <div className="mt-1 flex justify-center gap-3 text-[9px] text-slate-500">
-              <span>— You</span><span className="text-slate-400">--- Squad avg</span><span>🔥 MoM</span>
+              <span>━ You</span><span className="text-slate-400">--- Squad avg</span><span>🔥 MoM</span>
             </div>
           </div>
         </div>
@@ -224,7 +224,7 @@ export function WrappedCard() {
         <div className="mt-5 space-y-1 text-sm text-slate-200">
           <p>➡️ Steady · last 5: 7.4</p>
           <p>📈 Above the Curve</p>
-          <p className="text-xs text-blue-300">Best game: 21 Apr — 8.0 ⭐</p>
+          <p className="text-xs text-blue-300">Best game: 8.0 ⭐</p>
         </div>
       </div>
       <div className="absolute -bottom-3 -right-2 flex rotate-3 items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-xl">
