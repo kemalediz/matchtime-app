@@ -69,7 +69,8 @@ import { revalidatePath } from "next/cache";
  * so do not read the paragraph above as "nothing else picks teams".
  * Slice 3 of `MDs/club-scoped-ratings-design-2026-09-18.md` deletes
  * that formula and makes the cron delegate to the shared helper; it is
- * deliberately out of scope here.
+ * deliberately out of scope here. (Slice 3 landed on 2026-09-19, and
+ * on 2026-09-29 the cron stopped building or publishing teams entirely.)
  *
  * The Elo is not deleted and did not lose a job. It still updates after
  * every scored match and still drives the leaderboard. It simply has no

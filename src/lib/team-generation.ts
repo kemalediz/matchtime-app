@@ -25,9 +25,10 @@
  * formula (`ratings.length >= 3 ? mean of the last 60 peer scores :
  * seedRating ?? 5.0`), call `balanceTeams` itself, write
  * `TeamAssignment` rows and flip `Match.status`, on a live `0 12 * * *`
- * schedule. Slice 3 deleted that and the cron delegates here, so the
- * noon sweep, the WhatsApp command and the dashboard button cannot
- * disagree any more. If you add a fourth caller, it calls in here; a
+ * schedule. Slice 3 deleted that and the cron delegated here, and on
+ * 2026-09-29 the cron stopped building teams at all: teams are built
+ * only when a human asks, so the WhatsApp command and the dashboard
+ * button are the only callers and they cannot disagree. If you add a fourth caller, it calls in here; a
  * rating formula outside this file is a bug, and the history in
  * `app/actions/teams.ts`'s tombstone says why.
  *
