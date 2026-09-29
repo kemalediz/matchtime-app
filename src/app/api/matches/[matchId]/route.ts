@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { isSuperadmin } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { NextResponse } from "next/server";
 
@@ -42,6 +43,18 @@ export async function GET(
 
   if (!match) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // Club scope (PR #148 review audit). Only someone who is or was a
+  // member of the match's club (a left member can still hold a rating
+  // link) or the platform superadmin may read it; to anyone else the
+  // match does not exist. It used to be any signed-in user, any club.
+  const viewerMembership = await db.membership.findFirst({
+    where: { userId: session.user.id, orgId: match.activity.orgId },
+    select: { id: true },
+  });
+  if (!viewerMembership && !(await isSuperadmin(session.user.id))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   // Flatten: project each user's positions for THIS match's activity.
   const flatten = (u: {
     id: string; name: string | null; image: string | null;
@@ -54,7 +67,18 @@ export async function GET(
     };
   };
 
-  const flatAttendances = match.attendances.map((a) => ({ ...a, user: flatten(a.user) }));
+  // Attendance rows go out WITHOUT their payment fields (amount, method,
+  // Stripe session id, who paid or confirmed a cash payment). No page
+  // that reads this route uses them, and the rate page is member-facing.
+  const flatAttendances = match.attendances.map((a) => ({
+    id: a.id,
+    matchId: a.matchId,
+    userId: a.userId,
+    status: a.status,
+    position: a.position,
+    respondedAt: a.respondedAt,
+    user: flatten(a.user),
+  }));
   const flatTeamAssignments = match.teamAssignments.map((t) => ({ ...t, user: flatten(t.user) }));
 
   const existingRatings = await db.rating.findMany({

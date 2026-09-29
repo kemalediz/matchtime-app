@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
 import { loadClubDisplayRatings } from "@/lib/player-stats";
+import { seesAdminFields } from "@/lib/admin-view";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -11,9 +12,16 @@ export async function GET(request: Request) {
   const membership = await getUserOrg(session.user.id);
   if (!membership) return NextResponse.json({ error: "No organisation" }, { status: 404 });
 
+  // Phone numbers, emails, seeds, club ratings and aliases are for the
+  // club's OWNER/ADMIN (and the platform superadmin) only. A plain member
+  // who calls this directly gets names, ids and positions, current
+  // members only (PR #148 review: it used to hand every member the whole
+  // roster's phone numbers).
+  const isAdmin = await seesAdminFields(session.user.id, membership.role);
+
   const { searchParams } = new URL(request.url);
   const activityIdParam = searchParams.get("activityId");
-  const includeFormer = searchParams.get("includeFormer") === "1";
+  const includeFormer = isAdmin && searchParams.get("includeFormer") === "1";
 
   // If admin passed a specific activityId, scope positions to THAT activity.
   // Otherwise fall back to the org's primary active activity.
@@ -53,6 +61,22 @@ export async function GET(request: Request) {
     orderBy: { user: { name: "asc" } },
   });
 
+  // A plain member stops here: names, ids and positions only.
+  if (!isAdmin) {
+    return NextResponse.json({
+      players: memberships.map((m) => ({
+        id: m.user.id,
+        name: m.user.name,
+        image: m.user.image,
+        role: m.role,
+        positions: m.user.activityPositions?.[0]?.positions ?? [],
+        isActive: m.user.isActive,
+        leftAt: m.leftAt ? m.leftAt.toISOString() : null,
+      })),
+      activityId: targetActivityId,
+    });
+  }
+
   // Aliases — per-org UserAlias rows for these users. Surfaced on the
   // admin player list so admins can see (and edit) the nickname/short
   // pushname mappings the analyzer uses to resolve ambiguous senders.
@@ -79,13 +103,10 @@ export async function GET(request: Request) {
   // team-mate has rated them). Owners and admins only: it is the admin
   // roster's column, and a plain member has no business reading a
   // team-mate's number here. Filtered by this club inside the loader.
-  const canSeeRatings = membership.role === "OWNER" || membership.role === "ADMIN";
-  const clubRatings = canSeeRatings
-    ? await loadClubDisplayRatings(
-        membership.orgId,
-        memberships.map((m) => m.user.id),
-      )
-    : null;
+  const clubRatings = await loadClubDisplayRatings(
+    membership.orgId,
+    memberships.map((m) => m.user.id),
+  );
 
   const players = memberships.map((m) => ({
     id: m.user.id,
@@ -102,7 +123,7 @@ export async function GET(request: Request) {
     // Null means this club has no opinion of them yet, which is the
     // correct state for a new member and must not borrow one.
     seedRating: m.seedRating,
-    clubRating: clubRatings ? (clubRatings[m.user.id] ?? { rating: null, ratedGames: 0 }) : null,
+    clubRating: clubRatings[m.user.id] ?? { rating: null, ratedGames: 0 },
     isActive: m.user.isActive,
     leftAt: m.leftAt ? m.leftAt.toISOString() : null,
     provisionallyAddedAt: m.provisionallyAddedAt ? m.provisionallyAddedAt.toISOString() : null,

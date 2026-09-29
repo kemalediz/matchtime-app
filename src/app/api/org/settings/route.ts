@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { normaliseLang } from "@/lib/i18n/lang";
+import { seesAdminFields } from "@/lib/admin-view";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -25,10 +26,16 @@ export async function GET() {
     return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
   }
 
+  // The invite code, WhatsApp group id, Stripe status, money collector
+  // and member list are for the club's OWNER/ADMIN (and the platform
+  // superadmin). Every caller is an admin page; a plain member calling
+  // this directly gets the club's name, language and features only.
+  const isAdmin = await seesAdminFields(session.user.id, membership.role);
+
   // Members eligible to be the money collector — must have a phone (so they
   // can receive the "how much?" + confirm-direct DMs). Used by the collector
   // picker in the Payments section.
-  const members = await db.membership.findMany({
+  const members = !isAdmin ? [] : await db.membership.findMany({
     where: { orgId: org.id, leftAt: null, user: { phoneNumber: { not: null } } },
     select: { user: { select: { id: true, name: true } } },
     orderBy: { user: { name: "asc" } },
@@ -44,13 +51,10 @@ export async function GET() {
   });
   const defaultTeamLabels = resolveTeamLabels(null, null, firstSport, org.language);
 
-  return NextResponse.json({
+  const publicView = {
     id: org.id,
     name: org.name,
     slug: org.slug,
-    inviteCode: org.inviteCode,
-    whatsappGroupId: org.whatsappGroupId,
-    whatsappBotEnabled: org.whatsappBotEnabled,
     memberCount: org._count.memberships,
     // Team-name override (raw — empty array / empty strings mean
     // "use the defaults") + the defaults themselves for placeholders.
@@ -73,6 +77,14 @@ export async function GET() {
       payCard: org.payMethodCard,
       payDirect: org.payMethodDirect,
     },
+  };
+  if (!isAdmin) return NextResponse.json(publicView);
+
+  return NextResponse.json({
+    ...publicView,
+    inviteCode: org.inviteCode,
+    whatsappGroupId: org.whatsappGroupId,
+    whatsappBotEnabled: org.whatsappBotEnabled,
     // Stripe Connect status — drives the "connect bank" button.
     stripeConnected: !!org.stripeConnectAccountId,
     stripeChargesEnabled: org.stripeChargesEnabled,
