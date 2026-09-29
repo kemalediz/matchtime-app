@@ -160,7 +160,9 @@
  *     and its periods, shortfalls and empties (`results_*`). NEW copy,
  *     English and Turkish, after the Sutton FC incident that evening
  *     where the question was answered with the last match only.
- *     Additive only; no existing case moved.
+ *     Additive only; no existing case moved. And one deliberate English
+ *     CHANGE the same day: R10 (`answer_score_no_score`) loses its em
+ *     dash ("... yet. Tell me the result ..."), house style.
  *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no

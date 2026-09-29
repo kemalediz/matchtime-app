@@ -200,9 +200,9 @@ describe("the prompts this pipeline actually sends", () => {
     // the last 5 matches"): `listSize` and `period` now serve `score` as
     // well as `stats`, and results got their own English and Turkish
     // example group. MEASURED (`count_tokens`, claude-sonnet-5, dev key,
-    // 2026-09-29): 9,077 characters / 3,468 tokens before, 10,420
-    // characters / 3,994 tokens after. The estimator's 2,605 sits under it.
-    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(3_994);
+    // 2026-09-29): 9,077 characters / 3,468 tokens before, 10,688
+    // characters / 4,071 tokens after. The estimator's 2,672 sits under it.
+    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(4_071);
     expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
   });
 

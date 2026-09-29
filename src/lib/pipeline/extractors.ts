@@ -211,7 +211,7 @@ Which stats table:
   movers           whose rating or position is improving, climbing or in form
   chemistry        who a player plays best with, their best team-mates, their nemesis or toughest opponent
   mr_reliable      "Mr Reliable" or the most reliable player: the stats page badge for steady, strong ratings, never appearances
-  other            a stats question none of those answers, such as win rate or a comparison
+  other            a stats question no single table above answers, such as win rate or a comparison
   none             the question names no measure at all
 
 listSize
@@ -234,6 +234,7 @@ A score question that points at ONE match ("last night", "on Tuesday", "last wee
 CLOSE CALLS
 - squad or count: WHO is playing is squad, a list of names. HOW MANY is count, a number. Choose on what the asker wants back.
 - score or stats: scores, results and who won are score, for one match or several. Anything counted about players across matches is stats.
+- one table or other: a question that needs two or more tables together ("is anyone in both the Elo top ten and the Man of the Match table?", a comparison across tables) is other, even when it names a table. Name a table only when that table alone answers it.
 - my_stats or stats: my_stats only when the numbers are the asker's own and they ask to see them. Anyone else's numbers, a ranking of the group, and the asker's own pairings are stats.
 - rating_progress or other: rating_progress asks who has submitted ratings. A message that tells the players to rate, thanks them, or remarks on ratings asks for nothing: other.
 - payments or other: who owes is payments. What the fee is, is other.

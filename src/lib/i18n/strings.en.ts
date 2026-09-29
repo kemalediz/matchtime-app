@@ -303,7 +303,7 @@ export const en = {
     p.venue ? `⚽ ${p.kickoffLabel} at ${p.venue}.` : `⚽ ${p.kickoffLabel}.`,
   answer_score_no_match: "I haven't got a played match on record for this group yet.",
   answer_score_no_score: (p: { kickoffLabel: string }): string =>
-    `No score reported for ${p.kickoffLabel} yet — tell me the result and I'll record it.`,
+    `No score reported for ${p.kickoffLabel} yet. Tell me the result and I'll record it.`,
   answer_score_result: (p: { kickoffLabel: string; redLabel: string; red: number; yellow: number; yellowLabel: string; winnerLabel: string | null }): string =>
     `⚽ ${p.kickoffLabel}: ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}. ${p.winnerLabel === null ? "A draw." : `${p.winnerLabel} won.`}`,
   // ── recent results (2026-09-29), rendered by `pipeline/results-answer.ts` ──
