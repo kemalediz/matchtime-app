@@ -22,10 +22,20 @@
  * therefore releases the claim (deleting the row, but only while it has
  * no waMessageId — i.e. was never actually sent) and the instruction is
  * re-emitted normally next tick.
+ *
+ * ── `platform-<id>` keys (self-join slice 3) ──────────────────────────
+ * A Pi built before slice 3 does not poll /api/whatsapp/platform-jobs, so
+ * due-posts bridges platform DMs (sign-up codes) to it under this key
+ * class. Their acks move the PlatformJob row and write NO SentNotification:
+ *   ack with a waMessageId  sent
+ *   ack without one         unconfirmed. That build acks a DM whose send
+ *                           FAILED exactly like this, so "sent" would lie.
+ *   release                 back to queued (the Pi's DM pacing)
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { planAckSideEffects } from "@/lib/dispatch-claim";
+import { parsePlatformJobKey, recordPlatformJobOutcome } from "@/lib/platform-jobs";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -46,6 +56,27 @@ export async function POST(request: Request) {
 
   if (!key) {
     return NextResponse.json({ error: "key required" }, { status: 400 });
+  }
+
+  // ── Platform jobs bridged through due-posts to an older Pi ──────────
+  const platformJobId = parsePlatformJobKey(key);
+  if (platformJobId) {
+    if (release) {
+      const { updated } = await recordPlatformJobOutcome(platformJobId, { outcome: "release" });
+      return NextResponse.json({ ok: true, released: updated });
+    }
+    const { updated } = await recordPlatformJobOutcome(
+      platformJobId,
+      waMessageId
+        ? { outcome: "sent", waMessageId }
+        : {
+            outcome: "unconfirmed",
+            reason:
+              "acked without a message id by a bot build older than self-join slice 3, which acks a " +
+              "failed DM the same way: delivery unconfirmed",
+          },
+    );
+    return NextResponse.json({ ok: true, updated });
   }
 
   // ── Release path: the bot claimed this but chose not to send it ─────

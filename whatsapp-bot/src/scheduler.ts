@@ -7,9 +7,23 @@
  *
  * After every successful action we POST to /api/whatsapp/ack so the server
  * writes a SentNotification row and the same instruction doesn't fire again.
+ *
+ * Each tick FIRST runs the platform channel (self-join slice 3,
+ * platform-jobs.ts): sends that belong to no club, sign-up codes above
+ * all. It runs with zero clubs, before the clubs, and takes the same
+ * one-DM-a-minute slot (`takeDmSlot`).
  */
 import type { WaDriver } from "./driver.js";
-import { getDuePosts, ackInstruction, releaseInstruction, type DueInstruction } from "./api.js";
+import {
+  getDuePosts,
+  ackInstruction,
+  releaseInstruction,
+  getPlatformJobs,
+  reportPlatformJob,
+  type DueInstruction,
+} from "./api.js";
+import { runPlatformJobs } from "./platform-jobs.js";
+import { withTimeout } from "./with-timeout.js";
 import { config } from "./config.js";
 import { reactAndReport } from "./react-with-id.js";
 import {
@@ -37,6 +51,23 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 // chat and don't trigger anti-spam).
 const DM_GAP_MS = 60_000;
 let lastDmAtMs = 0;
+
+/**
+ * Take the shared DM slot if it is open. Reserving BEFORE the (awaited)
+ * send means a slow or hung send cannot be double-gated by a later
+ * instruction, and the timer only advances when we commit to a DM, never
+ * merely on holding one back. Club DMs and platform DMs share it.
+ */
+function takeDmSlot(label: string): boolean {
+  const sinceLast = Date.now() - lastDmAtMs;
+  if (sinceLast < DM_GAP_MS) {
+    const remainingS = Math.ceil((DM_GAP_MS - sinceLast) / 1000);
+    console.log(`[rate-limit] ${label} held — ${remainingS}s until next DM allowed`);
+    return false;
+  }
+  lastDmAtMs = Date.now();
+  return true;
+}
 
 // Max time we'll wait for a single outbound send before giving up on it.
 // 2026-06-12: a send to an invalid / not-on-WhatsApp number can hang
@@ -107,6 +138,20 @@ async function tick(): Promise<void> {
   if (tickRunning) return;
   tickRunning = true;
   try {
+    // The platform channel first: no club needed, and a sign-up code beats
+    // a reminder to the minute's DM slot. Never allowed to stop the clubs.
+    try {
+      await runPlatformJobs({
+        driver,
+        fetchJobs: getPlatformJobs,
+        report: reportPlatformJob,
+        takeDmSlot,
+        sendTimeoutMs: SEND_TIMEOUT_MS,
+      });
+    } catch (err) {
+      console.error("[platform] platform-jobs tick failed:", err);
+    }
+
     for (const org of orgs) {
       try {
         const result = await getDuePosts(org.groupId);
@@ -114,12 +159,7 @@ async function tick(): Promise<void> {
         console.log(`[${org.orgName}] ${result.instructions.length} due instruction(s)`);
         for (const instr of result.instructions) {
           if (instr.kind === "dm") {
-            const sinceLast = Date.now() - lastDmAtMs;
-            if (sinceLast < DM_GAP_MS) {
-              const remainingS = Math.ceil((DM_GAP_MS - sinceLast) / 1000);
-              console.log(
-                `[rate-limit] DM ${instr.key} held — ${remainingS}s until next DM allowed`,
-              );
+            if (!takeDmSlot(`DM ${instr.key}`)) {
               // Since claim-on-dispatch (2026-07-19) the server has
               // ALREADY written this key's dedupe row, so simply skipping
               // would drop the DM permanently. Release the claim so the
@@ -130,11 +170,6 @@ async function tick(): Promise<void> {
               );
               continue;
             }
-            // Reserve the rate-limit window BEFORE the (awaited) send so a
-            // slow/hung send can't be double-gated by a later instruction,
-            // and so the timer only ever advances when we actually commit
-            // to sending a DM — never merely on holding/deferring one.
-            lastDmAtMs = Date.now();
           }
           await executeInstruction(instr, org.groupId);
         }
@@ -145,26 +180,6 @@ async function tick(): Promise<void> {
   } finally {
     tickRunning = false;
   }
-}
-
-// Reject if a promise hasn't settled within ms. 2026-06-12: guards the
-// single serialized send queue against a send that never resolves (an
-// invalid / not-on-WhatsApp number can hang forever in whatsapp-web.js),
-// which would otherwise freeze ALL outbound traffic for every group.
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      },
-    );
-  });
 }
 
 /**

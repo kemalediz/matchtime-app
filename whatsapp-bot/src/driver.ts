@@ -285,6 +285,19 @@ export interface WaDriver {
    */
   sendTextViaChat(chatId: string, text: string): Promise<unknown>;
 
+  /**
+   * Leave a group (self-join slice 3: a rejected or suspended club, a group
+   * somebody added MatchTime to with no code). Driven only by a
+   * `leave-group` platform job; the server refuses to queue or dispatch one
+   * for any group an approved club owns.
+   *
+   * Under Outbound because it acts on the real account: shadow mode
+   * refuses it like a send. MAY THROW, and must: the throw is what the
+   * platform poller reports as a FAILED job. Refuses a JID that is not a
+   * group rather than guessing.
+   */
+  leaveGroup(groupId: string): Promise<void>;
+
   // ── Groups and roster ──────────────────────────────────────────────
 
   /**

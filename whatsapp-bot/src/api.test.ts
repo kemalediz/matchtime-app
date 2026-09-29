@@ -3,7 +3,7 @@
  * silently depends on.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { postAnalyzeFull, postHeartbeat } from "./api.js";
+import { getDuePosts, getPlatformJobs, postAnalyzeFull, postHeartbeat, reportPlatformJob } from "./api.js";
 import { emptyCounters } from "./heartbeat.js";
 
 const fetchMock = vi.fn();
@@ -112,5 +112,45 @@ describe("postHeartbeat", () => {
     await postHeartbeat(payload);
     await postHeartbeat(payload);
     expect(spy.mock.calls.length).toBe(afterFirst);
+  });
+});
+
+describe("platform channel (self-join slice 3)", () => {
+  it("every due-posts poll says this build polls platform jobs itself", async () => {
+    fetchMock.mockResolvedValue(res(200, { instructions: [] }));
+    await getDuePosts("g@g.us");
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>)["x-mt-platform-jobs"]).toBe("1");
+    expect((init.headers as Record<string, string>)["x-api-key"]).toBeDefined();
+  });
+
+  it("returns the jobs the server claimed for us", async () => {
+    fetchMock.mockResolvedValue(res(200, { jobs: [{ id: "pj1", kind: "dm", phone: "447700900123", text: "x" }] }));
+    expect(await getPlatformJobs()).toEqual([{ id: "pj1", kind: "dm", phone: "447700900123", text: "x" }]);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/api\/whatsapp\/platform-jobs$/);
+  });
+
+  it("an OLDER server's 404 is a quiet no-op, logged once", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fetchMock.mockResolvedValue(res(404, "not found"));
+    expect(await getPlatformJobs()).toBeNull();
+    expect(await getPlatformJobs()).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("a 500 or an unreachable server is 'nothing this tick', never a throw", async () => {
+    fetchMock.mockResolvedValueOnce(res(500, { error: "boom" }));
+    expect(await getPlatformJobs()).toBeNull();
+    fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    expect(await getPlatformJobs()).toBeNull();
+  });
+
+  it("reports an outcome as a POST with the job id", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true }));
+    await reportPlatformJob({ id: "pj1", outcome: "failed", error: "not on WhatsApp" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/api\/whatsapp\/platform-jobs$/);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ id: "pj1", outcome: "failed", error: "not on WhatsApp" });
   });
 });

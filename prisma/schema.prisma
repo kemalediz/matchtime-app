@@ -820,8 +820,15 @@ model PhoneOtp {
   usedAt    DateTime?
   attempts  Int       @default(0)
   createdAt DateTime  @default(now())
+  /// The requesting client's IP (first `x-forwarded-for` hop), for the
+  /// per-IP sign-up cap (self-join plan section 7, cap 3). NULL for codes
+  /// issued before 2026-09-29, for claim-account codes, and whenever the
+  /// request carried no forwarding header.
+  requestIp String?
 
   @@index([phone, createdAt])
+  @@index([requestIp, createdAt])
+  @@index([createdAt])
 }
 
 /**
@@ -1791,4 +1798,57 @@ model UnsolicitedGroup {
   leftAt       DateTime?
 
   @@index([groupId, leftAt])
+}
+
+/// A DM or an action that belongs to NO live club (self-join slice 3,
+/// plan section 3.3): sign-up codes, the connect reply, the one approval
+/// DM to the owner, the organiser's decision DM, leaving a group.
+///
+/// Why not `BotJob`: `BotJob.orgId` is required and BotJobs only go out
+/// through `due-posts`, which 404s for any club whose bot is off. Sign-up
+/// codes used to borrow "the first bot-enabled org" as a sender, so muting
+/// Sutton FC silently stopped every sign-up.
+///
+/// Dispatched by `GET /api/whatsapp/platform-jobs`, which CLAIMS each job
+/// as it hands it out (status queued -> claimed, compare-and-set), the
+/// same at-most-once rule as `due-posts`. The Pi reports the outcome to
+/// `POST /api/whatsapp/platform-jobs`:
+///   sent     the send resolved (waMessageId when the library gave one)
+///   failed   the send threw; `failReason` says why. NOT retried, and
+///            never recorded as sent.
+///   release  the Pi's DM pacing held it back; it goes back to queued.
+/// "unconfirmed" is only written for a job an OLDER Pi took through the
+/// due-posts bridge and acked without a message id, which that build
+/// also does when the send failed.
+///
+/// Writers: `src/lib/platform-jobs.ts` and `src/lib/owner-dm.ts` only
+/// (`__tests__/platform-jobs-source-guard.test.ts`).
+model PlatformJob {
+  id          String    @id @default(cuid())
+  /// "dm" | "leave-group"
+  kind        String
+  /// For "dm": digits, no "+".
+  phone       String?
+  /// For "leave-group".
+  groupId     String?
+  text        String?   @db.Text
+  /// "otp" | "connect-reply" | "organiser-decision" | "owner-approval" | "owner-ack" | "leave-group"
+  purpose     String
+  /// ClubConnect.id and the like, for dedupe and the owner page.
+  refId       String?
+  /// "queued" | "claimed" | "sent" | "failed" | "unconfirmed"
+  status      String    @default("queued")
+  /// Not dispatched before this instant (the owner DM's quiet hours).
+  sendAfter   DateTime?
+  claimedAt   DateTime?
+  sentAt      DateTime?
+  failedAt    DateTime?
+  failReason  String?   @db.Text
+  waMessageId String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, sendAfter])
+  @@index([purpose, refId])
+  @@index([kind, groupId])
 }

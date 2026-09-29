@@ -116,6 +116,15 @@ export type DueInstruction =
       emoji: string;
     };
 
+/**
+ * Sent on every due-posts poll: "this build polls /platform-jobs itself".
+ * Without it (a Pi built before self-join slice 3) the server bridges
+ * sign-up codes through due-posts instead. The server reads the same
+ * literal (`PLATFORM_JOBS_CAPABLE_HEADER` in src/lib/platform-jobs.ts); an
+ * older server ignores it.
+ */
+export const PLATFORM_JOBS_CAPABLE_HEADER = "x-mt-platform-jobs";
+
 export async function getDuePosts(groupId: string): Promise<{
   instructions: DueInstruction[];
   waGroupId: string;
@@ -123,7 +132,7 @@ export async function getDuePosts(groupId: string): Promise<{
 } | null> {
   const res = await apiFetch(
     `${config.apiUrl}/api/whatsapp/due-posts?groupId=${encodeURIComponent(groupId)}`,
-    { headers },
+    { headers: { ...headers, [PLATFORM_JOBS_CAPABLE_HEADER]: "1" } },
   );
   if (!res.ok) {
     const body = await res.text();
@@ -170,6 +179,66 @@ export async function releaseInstruction(key: string): Promise<void> {
   });
   if (!res.ok) {
     console.error("release failed:", res.status, await res.text());
+  }
+}
+
+// ─────────────── Platform channel (self-join slice 3) ────────────────
+
+/** A job that belongs to no club, already CLAIMED by the server for us. */
+export type PlatformJob =
+  | { id: string; kind: "dm"; phone: string; text: string; purpose?: string }
+  | { id: string; kind: "leave-group"; groupId: string };
+
+export type PlatformJobReport =
+  | { id: string; outcome: "sent"; waMessageId?: string }
+  | { id: string; outcome: "failed"; error: string }
+  | { id: string; outcome: "release" };
+
+/**
+ * The platform jobs due now, or null.
+ *
+ * TOTAL, like the heartbeat: a server that predates slice 3 answers 404,
+ * which is logged ONCE per process and is otherwise a no-op (that server
+ * still sends sign-up codes through due-posts). Any other failure is
+ * logged and means "nothing this tick"; the jobs stay queued server side.
+ */
+let platformJobs404Logged = false;
+
+export async function getPlatformJobs(): Promise<PlatformJob[] | null> {
+  try {
+    const res = await apiFetch(`${config.apiUrl}/api/whatsapp/platform-jobs`, { headers });
+    if (res.status === 404) {
+      if (!platformJobs404Logged) {
+        platformJobs404Logged = true;
+        console.warn(
+          "[platform] the server has no /api/whatsapp/platform-jobs yet (404): it predates " +
+            "self-join slice 3 and still sends sign-up codes through due-posts. Not logged again.",
+        );
+      }
+      return null;
+    }
+    if (!res.ok) {
+      console.error("[platform] platform-jobs request failed:", res.status, await res.text().catch(() => ""));
+      return null;
+    }
+    platformJobs404Logged = false;
+    const body = (await res.json()) as { jobs?: unknown };
+    return Array.isArray(body?.jobs) ? (body.jobs as PlatformJob[]) : [];
+  } catch (err) {
+    console.error("[platform] could not reach platform-jobs:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** Report one job's outcome. Throws on transport failure; the poller catches. */
+export async function reportPlatformJob(report: PlatformJobReport): Promise<void> {
+  const res = await apiFetch(`${config.apiUrl}/api/whatsapp/platform-jobs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(report),
+  });
+  if (!res.ok) {
+    console.error(`[platform] report for ${report.id} failed:`, res.status, await res.text().catch(() => ""));
   }
 }
 

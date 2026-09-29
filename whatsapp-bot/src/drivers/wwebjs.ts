@@ -255,6 +255,16 @@ export function makeWwebjsDriver(client: WwebjsClientLike): WaDriver {
       return await chat.sendMessage(text);
     },
 
+    async leaveGroup(groupId) {
+      // GroupChat.leave(). Only a group chat has one, and a DM chat must
+      // never be "left" by accident, so refuse anything else.
+      const chat = await client.getChatById(groupId);
+      if (!chat || chat.isGroup !== true || typeof chat.leave !== "function") {
+        throw new Error(`[wwebjs driver] leaveGroup: ${JSON.stringify(groupId)} is not a group chat`);
+      }
+      await chat.leave();
+    },
+
     // ── Groups and roster ────────────────────────────────────────────
     async listGroups() {
       const chats = await client.getChats();

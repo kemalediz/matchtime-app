@@ -63,6 +63,10 @@ export class FakeSocket {
   participatingOmitsPhones = true;
   readonly metadataCalls: string[] = [];
   fetchAllCalls = 0;
+  /** Every `groupLeave`, in order. */
+  readonly leftGroups: string[] = [];
+  /** When set, `groupLeave` throws it, as a refused IQ would. */
+  leaveError: Error | null = null;
 
   readonly ev = {
     on: (event: string, listener: Listener): void => {
@@ -105,6 +109,12 @@ export class FakeSocket {
       out[jid] = copy;
     }
     return out;
+  }
+
+  async groupLeave(jid: string): Promise<void> {
+    this.leftGroups.push(jid);
+    if (this.leaveError) throw this.leaveError;
+    delete this.groups[jid];
   }
 
   emit(event: string, arg: unknown): void {

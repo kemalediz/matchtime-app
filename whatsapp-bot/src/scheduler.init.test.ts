@@ -17,6 +17,8 @@ vi.mock("./api.js", () => ({
   getDuePosts: (...a: unknown[]) => getDuePosts(...a),
   ackInstruction: vi.fn(),
   releaseInstruction: vi.fn(),
+  getPlatformJobs: vi.fn(async () => null),
+  reportPlatformJob: vi.fn(),
 }));
 
 const { initScheduler, stopScheduler } = await import("./scheduler.js");

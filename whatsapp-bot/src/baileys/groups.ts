@@ -236,6 +236,7 @@ export interface GroupCache {
   applyParticipants(update: ParticipantsUpdateLike, selfIds: ReadonlySet<string>): void;
   /** Apply a `groups.update` partial: subject and addressing only, never its roster. */
   applyGroupUpdate(partial: Partial<GroupMetaLike> & { id?: string | null }): void;
+  /** Drop a group we left: its roster, and any listing that still names it. */
   forget(jid: string): void;
 }
 
@@ -363,6 +364,8 @@ export function createGroupCache(
 
     forget(jid) {
       verifiedByJid.delete(jid);
+      // A listing that still names a group we have left is wrong; read it again.
+      if (listed?.ids.includes(jid)) listed = null;
     },
   };
 }
