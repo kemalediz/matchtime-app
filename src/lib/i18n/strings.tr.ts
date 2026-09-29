@@ -1238,7 +1238,80 @@ export const tr: Strings = {
   rating_club_peers: (p) => `takım arkadaşlarından ${p.count} puan`,
 
   ai_daily_cap_reached: () => "Bugün çok soru yanıtladım, yarın tekrar sor.",
+
+  // ── Self-join, 4. dilim: organizatörün web sayfaları (2026-09-29) ──
+  // Sayılara gelen ek (7'ye, 5'e, 6'ya...) sayının okunuşuna göre
+  // seçilir: yedi, beş, altı. Kulüp adı hep eksiz bir yerde durur
+  // ("Riverside FC kulübünü bağla"), grup adı da tırnak içinde
+  // "grubuna/grubunda" ile.
+  sj_activity_name: (p) => `${perSideTr(p.perSide)} futbol`,
+  sj_per_side_option: (p) => perSideTr(p.perSide),
+
+  sj_form_title: "Kulübünüzü kurun",
+  sj_form_lead: "Bize kulübünüzü ve haftalık maçınızı anlatın. Ardından MatchTime'ı WhatsApp grubunuza bağlayacaksınız.",
+  sj_form_club_name: "Kulüp adı",
+  sj_form_club_name_placeholder: "örn. Riverside FC",
+  sj_form_language: "MatchTime'ın grubunuzda konuşacağı dil",
+  sj_form_game_heading: "Haftalık maçınız",
+  sj_form_day: "Gün",
+  sj_form_time: "Başlama saati",
+  sj_form_venue: "Saha",
+  sj_form_venue_placeholder: "örn. Goals Wembley",
+  sj_form_per_side: "Takım başına oyuncu",
+  sj_form_submit: "Kulübü kur",
+  sj_form_submitting: "Kuruluyor...",
+
+  sj_err_invalid: "Lütfen tüm alanları doldurun.",
+  sj_err_verify_phone: "Lütfen önce WhatsApp numaranızı doğrulayın, böylece MatchTime sizi tanır.",
+  sj_verify_phone_link: "Numaramı doğrula",
+  sj_err_one_club: "MatchTime'da zaten bir kulübünüz var. Profilinizden açabilirsiniz.",
+  sj_open_my_club: "Kulübümü aç",
+  sj_err_site_cap: "Her gün birkaç yeni kulüp alıyoruz. Lütfen yarın tekrar deneyin.",
+  sj_err_generic: "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+
+  sj_connect_prefill: (p) => `${p.club} kulübünü bağla, kod ${p.code}`,
+
+  sj_card_title: "MatchTime'ı WhatsApp'a bağlayın",
+  sj_button: "MatchTime'ı WhatsApp'a ekle",
+  sj_button_again: "WhatsApp'ı tekrar aç",
+  sj_card_draft: "Aşağıdaki düğmeye dokunun. WhatsApp, MatchTime'a gönderilmeye hazır kısa bir mesajla açılır.",
+  sj_card_issued: "1. adım: WhatsApp'ta açılan mesajı gönderin. Bu kod 60 dakika geçerli.",
+  sj_card_code: (p) => `Kodunuz: ${p.code}`,
+  sj_card_wrong_number: (p) =>
+    `Kodunuz ${p.seen} numarasından geldi. Lütfen kayıt olduğunuz numaradan, yani ${p.expected} numarasından gönderin.`,
+  sj_card_dm_verified:
+    "2. adım: MatchTime'ı futbol grubunuza ekleyin. Aşağıdaki numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.",
+  sj_card_number_label: "MatchTime'ın WhatsApp numarası",
+  sj_card_pending: "3. adım: grubunuzu kontrol ediyoruz, genellikle bir gün içinde. O zamana kadar MatchTime grupta sessiz kalır.",
+  sj_card_pending_other: (p) =>
+    `MatchTime "${p.group}" grubuna başka biri tarafından eklendi. Açmadan önce kontrol edeceğiz.`,
+  sj_card_approved: (p) => `Aktifsiniz. MatchTime "${p.group}" grubunda herkese merhaba dedi.`,
+  sj_card_rejected: "Bu grubu şu an alamıyoruz.",
+  sj_card_expired: "Bu kodun süresi doldu. Yeni bir kod için düğmeye tekrar dokunun.",
+  sj_card_code_cap: "Bugünkü kodlarınızı kullandınız. Lütfen yarın tekrar deneyin.",
+  sj_card_unavailable: "MatchTime şu an yeni grup alamıyor. Lütfen kısa süre sonra tekrar bakın.",
+  sj_card_already_connected: "Zaten bağlısınız. Şimdi MatchTime'ı grubunuza eklemeniz yeterli.",
 };
+
+/**
+ * "7'ye 7", "5'e 5", "6'ya 6": the dative suffix a number takes depends
+ * on how the number is READ (yedi, beş, altı), so it is tabulated for
+ * the sizes the setup form offers (4 to 11) rather than computed.
+ */
+const PER_SIDE_SUFFIX_TR: Record<number, string> = {
+  4: "'e", // dört
+  5: "'e", // beş
+  6: "'ya", // altı
+  7: "'ye", // yedi
+  8: "'e", // sekiz
+  9: "'a", // dokuz
+  10: "'a", // on
+  11: "'e", // on bir
+};
+
+function perSideTr(n: number): string {
+  return `${n}${PER_SIDE_SUFFIX_TR[n] ?? "'e"} ${n}`;
+}
 
 /**
  * The team commands the Turkish copy quotes, one form per action (see

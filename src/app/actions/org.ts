@@ -4,12 +4,23 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createOrgSchema } from "@/lib/validations";
 import { setCurrentOrgId } from "@/lib/org";
-import { isLang, LANGS } from "@/lib/i18n/lang";
+import { isLang, LANGS, normaliseLang } from "@/lib/i18n/lang";
+import { t } from "@/lib/i18n/t";
+import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
+import { createSelfJoinClub, type SelfJoinClubInput, type SelfJoinRefusal } from "@/lib/self-join-club";
 import { revalidatePath } from "next/cache";
 
+/**
+ * Today's club creation (/create-org with SELF_JOIN_ENABLED off).
+ *
+ * With self-join ON it refuses: a club made here would be approved by
+ * the column default, around the one-club and daily caps. The setup form
+ * posts to `createSelfJoinClubAction` instead.
+ */
 export async function createOrganisation(formData: { name: string; slug: string }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
+  if (await selfJoinEnabledForRequest()) throw new Error("Please use the club setup form.");
 
   const parsed = createOrgSchema.parse(formData);
 
@@ -32,6 +43,38 @@ export async function createOrganisation(formData: { name: string; slug: string 
   await setCurrentOrgId(org.id);
   revalidatePath("/");
   return { orgId: org.id, slug: org.slug };
+}
+
+/**
+ * Self-join slice 4: create a DRAFT club with its weekly game
+ * (plan section 5.1, decision 2). Only with SELF_JOIN_ENABLED on.
+ *
+ * Returns rather than throws: Next replaces a thrown server-action
+ * message with a generic one in production, and the organiser has to
+ * read why they were refused, in the language they picked.
+ */
+export async function createSelfJoinClubAction(
+  input: SelfJoinClubInput,
+): Promise<{ ok: true; orgId: string } | { ok: false; reason: SelfJoinRefusal | "off" | "signed-out"; error: string }> {
+  const s = t(normaliseLang(input?.language));
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, reason: "signed-out", error: s.sj_err_generic };
+  if (!(await selfJoinEnabledForRequest())) return { ok: false, reason: "off", error: s.sj_err_generic };
+
+  const res = await createSelfJoinClub(session.user.id, input, new Date());
+  if (!res.ok) {
+    const error = {
+      invalid: s.sj_err_invalid,
+      "verify-phone": s.sj_err_verify_phone,
+      "one-club": s.sj_err_one_club,
+      "site-cap": s.sj_err_site_cap,
+    }[res.reason];
+    return { ok: false, reason: res.reason, error };
+  }
+  await setCurrentOrgId(res.orgId);
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { ok: true, orgId: res.orgId };
 }
 
 export async function joinOrganisation(inviteCode: string) {

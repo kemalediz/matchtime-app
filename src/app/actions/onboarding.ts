@@ -8,6 +8,7 @@ import { SPORT_PRESETS, findPreset } from "@/lib/sport-presets";
 import { setCurrentOrgId } from "@/lib/org";
 import { normalisePhone } from "@/lib/phone";
 import { analyzeForOnboarding, type OnboardingAnalysis } from "@/lib/onboarding-analyzer";
+import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -171,6 +172,10 @@ export interface WizardResult {
 export async function createOrgFromWizard(data: WizardSubmission): Promise<WizardResult> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
+  // Self-join (slice 4): with the flag on, a club is created only
+  // through the setup form, as a draft. This wizard would make an
+  // approved club around the one-club and daily caps.
+  if (await selfJoinEnabledForRequest()) throw new Error("Please use the club setup form.");
   const userId = session.user.id;
 
   // Validate inputs cheaply up-front.
@@ -395,6 +400,11 @@ export async function analyzeOnboardingChat(
 ): Promise<OnboardingAnalysis | null> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
+  // Self-join on: the wizard is closed (see createOrgFromWizard), and a
+  // signed-up organiser whose club nobody has approved must not reach a
+  // model through it. No analysis, no spend; the wizard's manual
+  // defaults are what null already means.
+  if (await selfJoinEnabledForRequest()) return null;
   if (fileText.length > 5 * 1024 * 1024) {
     throw new Error("Chat export too large");
   }

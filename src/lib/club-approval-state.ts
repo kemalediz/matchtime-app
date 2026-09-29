@@ -13,6 +13,18 @@ export const APPROVED_CLUB_WHERE = { approvalStatus: "approved" } as const;
 /** Its complement, for the silent-group loader. */
 export const UNAPPROVED_CLUB_WHERE = { approvalStatus: { not: "approved" } } as const;
 
+/**
+ * The clubs that came in through self-join (slice 4, 2026-09-29): any
+ * club not approved, or one approved THROUGH the flow (`approvedAt` is
+ * set only by an approval decision). Every club that existed before
+ * self-join is approved with a NULL `approvedAt`, so none of them is
+ * ever counted, which is what lets an existing admin still set up one
+ * self-join club, and keeps Sutton FC out of the daily new-club cap.
+ */
+export const SELF_JOIN_CLUB_WHERE = {
+  OR: [{ approvalStatus: { not: "approved" } }, { approvedAt: { not: null } }],
+};
+
 export function isClubApproved(org: { approvalStatus: string | null | undefined }): boolean {
   return org.approvalStatus === "approved";
 }

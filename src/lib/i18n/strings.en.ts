@@ -1483,4 +1483,64 @@ export const en = {
    *  works. Plain IN and OUT keep working all day, so it must not suggest
    *  MatchTime has stopped. */
   ai_daily_cap_reached: (): string => "I've answered a lot of questions today, ask me again tomorrow.",
+
+  // ── Self-join, slice 4: the organiser web (2026-09-29) ────────────
+  // MDs/self-join-and-approval-plan-2026-09-28.md sections 5.1 to 5.3.
+  // The website a new organiser reads while creating a club and
+  // connecting MatchTime to WhatsApp: the club setup form (with the
+  // weekly game, decision 2), the prefilled connect message and the
+  // status card on the club's admin home. NEW copy, not a move, so it
+  // follows house style: plain, friendly, no em dashes.
+
+  /** The weekly game's name, which the group reads in every post
+   *  ("Football 7-a-side"). Also the size picker's option label. */
+  sj_activity_name: (p: { perSide: number }): string => `Football ${p.perSide}-a-side`,
+  sj_per_side_option: (p: { perSide: number }): string => `${p.perSide}-a-side`,
+
+  sj_form_title: "Set up your club",
+  sj_form_lead: "Tell us about your club and your weekly game. Then you'll connect MatchTime to your WhatsApp group.",
+  sj_form_club_name: "Club name",
+  sj_form_club_name_placeholder: "e.g. Riverside FC",
+  sj_form_language: "Language MatchTime speaks in your group",
+  sj_form_game_heading: "Your weekly game",
+  sj_form_day: "Day",
+  sj_form_time: "Kick-off time",
+  sj_form_venue: "Venue",
+  sj_form_venue_placeholder: "e.g. Goals Wembley",
+  sj_form_per_side: "Players per side",
+  sj_form_submit: "Create club",
+  sj_form_submitting: "Creating...",
+
+  sj_err_invalid: "Please fill in every field.",
+  sj_err_verify_phone: "Please confirm your WhatsApp number first, so MatchTime knows it's you.",
+  sj_verify_phone_link: "Confirm my number",
+  sj_err_one_club: "You already have a club on MatchTime. Open it from your profile.",
+  sj_open_my_club: "Open my club",
+  sj_err_site_cap: "We're taking on a few new clubs each day. Please try again tomorrow.",
+  sj_err_generic: "Something went wrong. Please try again.",
+
+  /** The message WhatsApp opens with. The server reads only the code
+   *  after "code", so an organiser who edits the rest still gets in. */
+  sj_connect_prefill: (p: { club: string; code: string }): string => `Connect ${p.club}, code ${p.code}`,
+
+  sj_card_title: "Connect MatchTime to WhatsApp",
+  sj_button: "Add MatchTime to WhatsApp",
+  sj_button_again: "Open WhatsApp again",
+  sj_card_draft: "Tap the button below. WhatsApp opens with a short message ready to send to MatchTime.",
+  sj_card_issued: "Step 1: send the message that opens in WhatsApp. This code works for 60 minutes.",
+  sj_card_code: (p: { code: string }): string => `Your code: ${p.code}`,
+  sj_card_wrong_number: (p: { seen: string; expected: string }): string =>
+    `We got your code from ${p.seen}. Please send it from ${p.expected}, the number you signed up with.`,
+  sj_card_dm_verified:
+    "Step 2: add MatchTime to your football group. Save the number below as a contact called MatchTime, then open the group, tap Add participant and pick MatchTime.",
+  sj_card_number_label: "MatchTime's WhatsApp number",
+  sj_card_pending: "Step 3: we're checking your group, usually within a day. MatchTime stays quiet in the group until then.",
+  sj_card_pending_other: (p: { group: string }): string =>
+    `MatchTime was added to "${p.group}" by someone else. We'll check it before switching on.`,
+  sj_card_approved: (p: { group: string }): string => `You're live. MatchTime said hello in "${p.group}".`,
+  sj_card_rejected: "We can't take this group on right now.",
+  sj_card_expired: "That code expired. Tap the button again for a new one.",
+  sj_card_code_cap: "You've used today's codes. Please try again tomorrow.",
+  sj_card_unavailable: "MatchTime can't take new groups at the moment. Please check back soon.",
+  sj_card_already_connected: "You're already connected. Now just add MatchTime to your group.",
 };
