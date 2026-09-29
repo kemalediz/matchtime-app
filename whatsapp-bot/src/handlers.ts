@@ -21,13 +21,47 @@
 let monitoredGroups = new Set<string>();
 let onboardingGroups = new Set<string>();
 
-/** Replace the monitored set: the live orgs plus the groups mid-setup. */
+/**
+ * SILENT groups (self-join slice 1, 2026-09-29): groups the bot is in
+ * but must never forward or speak in (a club waiting for approval,
+ * rejected or suspended, or a group nobody asked MatchTime into). Read
+ * from the server's `/orgs` on every refresh. A silent group is never
+ * monitored, whatever tries to add it; the server refuses it too.
+ */
+let silentGroups = new Set<string>();
+/** Server-controlled: false retires the "@MatchTime setup" trigger. An
+ *  older server never sends it, which reads as true (today's behaviour). */
+let legacySetupTrigger = true;
+
+/** Replace the silent set. Call BEFORE setMonitoredGroups on a refresh. */
+export function setSilentGroups(groupIds: string[]) {
+  silentGroups = new Set(groupIds);
+  for (const g of silentGroups) {
+    monitoredGroups.delete(g);
+    onboardingGroups.delete(g);
+  }
+}
+
+export function isSilentGroup(groupId: string): boolean {
+  return silentGroups.has(groupId);
+}
+
+export function setLegacySetupTrigger(on: boolean) {
+  legacySetupTrigger = on;
+}
+
+export function isLegacySetupTriggerEnabled(): boolean {
+  return legacySetupTrigger;
+}
+
+/** Replace the monitored set: the live orgs plus the groups mid-setup,
+ *  never a silent group. */
 export function setMonitoredGroups(groupIds: string[]) {
-  monitoredGroups = new Set(groupIds);
+  monitoredGroups = new Set(groupIds.filter((g) => !silentGroups.has(g)));
 }
 
 export function isMonitoredGroup(groupId: string): boolean {
-  return monitoredGroups.has(groupId);
+  return monitoredGroups.has(groupId) && !silentGroups.has(groupId);
 }
 
 /**
@@ -37,12 +71,13 @@ export function isMonitoredGroup(groupId: string): boolean {
  * the server handed back an intro.
  */
 export function addMonitoredGroup(groupId: string): void {
+  if (silentGroups.has(groupId)) return;
   monitoredGroups.add(groupId);
 }
 
 /** Replace the mid-setup set (a subset of the monitored set). */
 export function setOnboardingGroups(groupIds: string[]) {
-  onboardingGroups = new Set(groupIds);
+  onboardingGroups = new Set(groupIds.filter((g) => !silentGroups.has(g)));
 }
 
 export function isOnboardingGroup(groupId: string): boolean {
@@ -50,6 +85,7 @@ export function isOnboardingGroup(groupId: string): boolean {
 }
 
 export function addOnboardingGroup(groupId: string): void {
+  if (silentGroups.has(groupId)) return;
   onboardingGroups.add(groupId);
   monitoredGroups.add(groupId);
 }

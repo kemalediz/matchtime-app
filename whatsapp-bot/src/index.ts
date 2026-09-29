@@ -6,6 +6,10 @@ import {
   addMonitoredGroup,
   setOnboardingGroups,
   addOnboardingGroup,
+  setSilentGroups,
+  isSilentGroup,
+  setLegacySetupTrigger,
+  isLegacySetupTriggerEnabled,
 } from "./handlers.js";
 import { degradedMessage } from "./degraded.js";
 import { asString, readInboundHeadline, readMessageBody, readNotifyName, safePath, safeRead } from "./wa-read.js";
@@ -131,6 +135,10 @@ async function main() {
     const next = parseOrgSnapshot(data);
     const diff = diffOrgSnapshot(currentSnapshot, next);
     currentSnapshot = next;
+    // Silent groups first, so the monitored set below can never include
+    // one (self-join slice 1). An older server sends none: nothing changes.
+    setSilentGroups(next.silentGroups);
+    setLegacySetupTrigger(next.legacySetupTrigger);
     setMonitoredGroups([...next.orgConfigs.map((o) => o.groupId), ...next.onboardingGroups]);
     setOnboardingGroups(next.onboardingGroups);
     // initScheduler is idempotent: a repeat call only replaces its org list.
@@ -569,6 +577,12 @@ async function main() {
       // literal-text-only regex misses every real @-mention. Without
       // this, every Amir-group setup attempt got silently dropped.
       if (!isMonitoredGroup(head.from)) {
+        // Self-join slice 1: the server can retire the trigger outright
+        // (self-join on), and a SILENT group (a club waiting for approval,
+        // or nobody asked MatchTime in) can never talk its way into being
+        // monitored. Before today this trigger would have monitored a
+        // pending group on the spot and forwarded its messages.
+        if (!isLegacySetupTriggerEnabled() || isSilentGroup(head.from)) return;
         const t = effectiveBody.toLowerCase();
         // Both reads below go through the driver into whatsapp-web.js's
         // injected page code and can THROW on a build mismatch. Unguarded
@@ -823,6 +837,7 @@ async function main() {
           isMonitoredGroup,
           addMonitoredGroup,
           addOnboardingGroup,
+          isSilentGroup,
           resolveSelfIds: () => driver.selfIds(),
           readGroupSnapshot: (gid, selfIds) => driver.groupSnapshot(gid, selfIds),
           fetchHistory: collectHistoryForServer,

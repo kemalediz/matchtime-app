@@ -3,7 +3,7 @@
  * failure mode. The SQL itself (atomic reservation under concurrency) is
  * exercised against a real Postgres by `e2e/api/ai-daily-cap.spec.ts`.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
@@ -11,12 +11,19 @@ const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+const silentMock = vi.hoisted(() => ({ isSilentGroup: vi.fn(async (_g: string) => false) }));
+vi.mock("../club-approval", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../club-approval")>()),
+  isSilentGroup: (g: string) => silentMock.isSilentGroup(g),
+}));
 
 import {
   aiAllowanceUsd,
   londonDay,
   prismaAiBudgetLedger,
   getAiBudgetStatus,
+  onboardingGroupKey,
+  onboardingUserKey,
   pickCapReplyMessage,
   DAILY_CAP_USD,
   NEW_CLUB_CAP_USD,
@@ -28,13 +35,16 @@ import { AiBudgetExceededError } from "../ai-budget-context";
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-09-29T12:00:00Z");
 
-/** Sutton FC's real shape: created in the spring, live, no override. */
+/** Sutton FC's real shape: created in the spring, live, no override,
+ *  approved by the migration's default with no `approvedAt`. */
 const sutton = {
   createdAt: new Date("2026-04-06T10:00:00Z"),
-  aiDailyCapUsd: null,
-  aiWindowStartAt: null,
+  aiDailyCapUsd: null as number | null,
+  aiWindowStartAt: null as Date | null,
   whatsappBotEnabled: true,
   whatsappGroupId: "120363000000000000@g.us",
+  approvalStatus: "approved",
+  approvedAt: null as Date | null,
 };
 
 describe("aiAllowanceUsd: how much a club may spend today", () => {
@@ -85,6 +95,85 @@ describe("aiAllowanceUsd: how much a club may spend today", () => {
 
   it("spend before a club exists (onboarding) gets the new-club allowance", () => {
     expect(aiAllowanceUsd(null, NOW)).toBe(0.25);
+  });
+});
+
+describe("aiAllowanceUsd and club approval (self-join slice 1)", () => {
+  it("Sutton FC's real prod shape is unchanged: approved, no approvedAt, its $1.50 override", () => {
+    expect(aiAllowanceUsd({ ...sutton, aiDailyCapUsd: 1.5 }, NOW)).toBe(1.5);
+    expect(aiAllowanceUsd(sutton, NOW)).toBe(1);
+  });
+
+  it("a club that is not approved spends $0, whatever the override and whatever else is set", () => {
+    for (const approvalStatus of ["draft", "pending", "rejected", "suspended"]) {
+      // Even in a shape the CHECK constraint forbids (bot on, not approved).
+      expect(aiAllowanceUsd({ ...sutton, approvalStatus }, NOW)).toBe(0);
+      expect(aiAllowanceUsd({ ...sutton, approvalStatus, aiDailyCapUsd: 5 }, NOW)).toBe(0);
+    }
+  });
+
+  it("the 4-week window starts at approvedAt when set, before aiWindowStartAt and createdAt", () => {
+    // Created 60 days ago, waited in pending, approved yesterday: full new-club window.
+    const approvedYesterday = {
+      ...sutton,
+      createdAt: new Date(NOW.getTime() - 60 * DAY),
+      approvedAt: new Date(NOW.getTime() - DAY),
+    };
+    expect(aiAllowanceUsd(approvedYesterday, NOW)).toBe(0.25);
+    // approvedAt wins over a stale aiWindowStartAt in either direction.
+    expect(aiAllowanceUsd({ ...approvedYesterday, aiWindowStartAt: new Date(NOW.getTime() - 90 * DAY) }, NOW)).toBe(0.25);
+    const approvedLongAgo = { ...sutton, approvedAt: new Date(NOW.getTime() - 30 * DAY) };
+    expect(aiAllowanceUsd({ ...approvedLongAgo, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(1);
+  });
+
+  it("with approvedAt null the old rule holds: aiWindowStartAt, else createdAt", () => {
+    expect(aiAllowanceUsd({ ...sutton, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(0.25);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(0.25);
+  });
+});
+
+describe("the ledger's cap for spend with no club yet", () => {
+  const ENV = process.env.SELF_JOIN_ENABLED;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    silentMock.isSilentGroup.mockResolvedValue(false);
+    dbMock.$queryRaw.mockResolvedValue([{ ok: 1 }]);
+    delete process.env.SELF_JOIN_ENABLED;
+  });
+  afterAll(() => {
+    if (ENV === undefined) delete process.env.SELF_JOIN_ENABLED;
+    else process.env.SELF_JOIN_ENABLED = ENV;
+  });
+
+  it("an ordinary unknown group's onboarding still gets the new-club allowance", async () => {
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    const hold = await ledger.reserve(onboardingGroupKey("g-new"), "onboarding");
+    expect(hold.reservedUsd).toBe(CALL_RESERVE_USD);
+  });
+
+  it("a SILENT group's onboarding key is allowed $0", async () => {
+    silentMock.isSilentGroup.mockImplementation(async (g: string) => g === "g-pending");
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await expect(ledger.reserve(onboardingGroupKey("g-pending"), "onboarding")).rejects.toBeInstanceOf(
+      AiBudgetExceededError,
+    );
+  });
+
+  it("with self-join on, the retired in-group setup is allowed $0 for every group", async () => {
+    process.env.SELF_JOIN_ENABLED = "1";
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await expect(ledger.reserve(onboardingGroupKey("g-new"), "onboarding")).rejects.toBeInstanceOf(
+      AiBudgetExceededError,
+    );
+  });
+
+  it("the web wizard's user key is unaffected by the group rules", async () => {
+    process.env.SELF_JOIN_ENABLED = "1";
+    silentMock.isSilentGroup.mockResolvedValue(true);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    const hold = await ledger.reserve(onboardingUserKey("u-1"), "wizard");
+    expect(hold.reservedUsd).toBe(CALL_RESERVE_USD);
   });
 });
 

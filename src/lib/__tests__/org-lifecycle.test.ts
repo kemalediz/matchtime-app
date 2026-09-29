@@ -41,7 +41,7 @@ const CHURNED = new Date("2026-06-18T12:00:00Z"); // the day Sutton Lads went
 
 const candidate = (over: Partial<FixtureCandidate> = {}): FixtureCandidate => ({
   isActive: true,
-  org: { dormantAt: null },
+  org: { dormantAt: null, approvalStatus: "approved" },
   ...over,
 });
 
@@ -74,24 +74,40 @@ describe("fixtureSkipReason", () => {
   });
 
   it("a dormant org's active activity does NOT generate", () => {
-    expect(fixtureSkipReason(candidate({ org: { dormantAt: CHURNED } }))).toBe("org-dormant");
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: CHURNED, approvalStatus: "approved" } }))).toBe("org-dormant");
   });
 
   it("a MUTED but live org still generates — muting is not churn", () => {
     // The regression that matters most. Mute is `whatsappBotEnabled`,
     // which this rule deliberately cannot see; the only way to be
     // skipped is `dormantAt`.
-    expect(fixtureSkipReason(candidate({ org: { dormantAt: null } }))).toBeNull();
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus: "approved" } }))).toBeNull();
   });
 
   it("an inactive activity in a live org does NOT generate — unchanged behaviour", () => {
     expect(fixtureSkipReason(candidate({ isActive: false }))).toBe("activity-inactive");
   });
 
+  it("an unapproved club's active activity does NOT generate (self-join slice 1)", () => {
+    for (const approvalStatus of ["draft", "pending", "rejected", "suspended"]) {
+      expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus } }))).toBe("org-not-approved");
+    }
+  });
+
+  it("Sutton FC's shape (approved by the migration default, live) still generates", () => {
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus: "approved" } }))).toBeNull();
+  });
+
+  it("dormancy is reported before approval: the club being gone is the bigger fact", () => {
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: CHURNED, approvalStatus: "suspended" } }))).toBe(
+      "org-dormant",
+    );
+  });
+
   it("reports the org, not the activity, when both are off", () => {
     // The club being gone is the bigger fact and the one worth counting.
     expect(
-      fixtureSkipReason(candidate({ isActive: false, org: { dormantAt: CHURNED } })),
+      fixtureSkipReason(candidate({ isActive: false, org: { dormantAt: CHURNED, approvalStatus: "approved" } })),
     ).toBe("org-dormant");
   });
 });
@@ -99,7 +115,7 @@ describe("fixtureSkipReason", () => {
 describe("partitionGeneratable", () => {
   const live = { id: "sutton-fc", ...candidate() };
   const muted = { id: "sutton-fc-muted", ...candidate() };
-  const dormant = { id: "sutton-lads", ...candidate({ org: { dormantAt: CHURNED } }) };
+  const dormant = { id: "sutton-lads", ...candidate({ org: { dormantAt: CHURNED, approvalStatus: "approved" } }) };
   const inactive = { id: "old-7aside-format", ...candidate({ isActive: false }) };
 
   it("splits generatable from skipped and keeps the reason for each skip", () => {
@@ -114,6 +130,14 @@ describe("partitionGeneratable", () => {
   it("counts dormant-org skips separately so the cron can report them", () => {
     const out = partitionGeneratable([live, dormant, dormant, inactive]);
     expect(out.skippedDormantOrgs).toBe(2);
+  });
+
+  it("counts unapproved-org skips separately too", () => {
+    const pending = { id: "self-join-pending", ...candidate({ org: { dormantAt: null, approvalStatus: "pending" } }) };
+    const out = partitionGeneratable([live, pending, dormant]);
+    expect(out.generate.map((a) => a.id)).toEqual(["sutton-fc"]);
+    expect(out.skippedNotApprovedOrgs).toBe(1);
+    expect(out.skippedDormantOrgs).toBe(1);
   });
 
   it("an empty list is not an error", () => {

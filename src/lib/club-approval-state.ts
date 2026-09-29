@@ -1,0 +1,30 @@
+/**
+ * The PURE half of club approval (no database import), so pure modules
+ * such as org-lifecycle.ts can share the one definition of "approved".
+ * Everything here is re-exported from club-approval.ts, which is the
+ * module every other caller should import. See that file for the design.
+ */
+export const APPROVAL_STATUSES = ["draft", "pending", "approved", "rejected", "suspended"] as const;
+export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+/** The one Prisma `where` fragment for "this club is approved". */
+export const APPROVED_CLUB_WHERE = { approvalStatus: "approved" } as const;
+
+/** Its complement, for the silent-group loader. */
+export const UNAPPROVED_CLUB_WHERE = { approvalStatus: { not: "approved" } } as const;
+
+export function isClubApproved(org: { approvalStatus: string | null | undefined }): boolean {
+  return org.approvalStatus === "approved";
+}
+
+/**
+ * May MatchTime act for this club on its own initiative? Approved AND
+ * not dormant. Deliberately blind to the mute switch, for the reason in
+ * org-lifecycle.ts: muting a live club must never cost it a fixture.
+ */
+export function isClubOperational(org: {
+  approvalStatus: string | null | undefined;
+  dormantAt: Date | null | undefined;
+}): boolean {
+  return isClubApproved(org) && (org.dormantAt === null || org.dormantAt === undefined);
+}

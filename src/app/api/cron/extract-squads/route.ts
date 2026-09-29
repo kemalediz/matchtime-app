@@ -33,6 +33,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { APPROVED_CLUB_WHERE } from "@/lib/club-approval";
 import { runSquadExtraction } from "@/lib/squad-from-list";
 
 const FINALISE_WINDOW_HOURS = 12;
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
   const finaliseCutoff = new Date(now.getTime() + FINALISE_WINDOW_HOURS * 60 * 60 * 1000);
 
   const orgs = await db.organisation.findMany({
-    where: { featureSquadFromList: true, whatsappBotEnabled: true },
+    where: { ...APPROVED_CLUB_WHERE, featureSquadFromList: true, whatsappBotEnabled: true },
     select: { id: true, name: true },
   });
 

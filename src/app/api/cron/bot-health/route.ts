@@ -39,6 +39,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { APPROVED_CLUB_WHERE } from "@/lib/club-approval";
 import { assessBotHealth, type HealthCounters, type HeartbeatSnapshot } from "@/lib/bot-health";
 import { HEALTH_KIND_PREFIX, recordHealthFindings } from "@/lib/ops-alerts";
 import { isNoneBucketShadowEnabled } from "@/lib/pipeline/gate";
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
     if (!Number.isNaN(pinned.getTime())) now = pinned;
   }
   const orgs = await db.organisation.findMany({
-    where: { whatsappBotEnabled: true, whatsappGroupId: { not: null } },
+    where: { ...APPROVED_CLUB_WHERE, whatsappBotEnabled: true, whatsappGroupId: { not: null } },
     // `lastParticipantSweepAt` is the sweep's own clock (2026-09-09). It
     // replaces the `MAX(Membership.lastSeenInGroupAt)` aggregate that used
     // to be in the Promise.all below: a group message now refreshes the

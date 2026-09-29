@@ -326,7 +326,36 @@ model Organisation {
   /// was created.
   aiWindowStartAt DateTime?
 
+  /// ─── Club approval, for clubs that join themselves (2026-09-29) ──
+  /// Plan: MDs/self-join-and-approval-plan-2026-09-28.md, slice 1.
+  /// Values: "draft" | "pending" | "approved" | "rejected" | "suspended".
+  /// The DEFAULT is "approved", so every club that existed before
+  /// self-join (Sutton FC included) is approved by the migration and
+  /// nothing changes for it. Only the self-join flow (later slices)
+  /// creates a club in "draft".
+  ///
+  /// Silence is still enforced by `whatsappBotEnabled`; this column
+  /// records WHY a club is off. A Postgres CHECK constraint
+  /// (prisma/sql/org-approval-check.sql) forbids `whatsappBotEnabled`
+  /// true on a club that is not approved, so no route that already
+  /// requires the bot to be on can ever act for an unapproved group.
+  ///
+  /// Read through `src/lib/club-approval.ts` (`APPROVED_CLUB_WHERE`,
+  /// `isClubOperational`); a source guard test keeps every write there.
+  /// NOT the mute switch and NOT dormancy: `whatsappBotEnabled` and
+  /// `dormantAt` keep their meanings.
+  approvalStatus    String    @default("approved")
+  /// When the club was approved. NULL for every club that existed
+  /// before self-join. When set, it starts the new-club AI window
+  /// (`aiAllowanceUsd` in src/lib/ai-budget.ts).
+  approvedAt        DateTime?
+  /// When, and by whom ("whatsapp:<phone>" or a userId), the last
+  /// approval decision was made.
+  approvalDecidedAt DateTime?
+  approvalDecidedBy String?
+
   memberships    Membership[]
+  clubConnects   ClubConnect[]
   activities     Activity[]
   sports         Sport[]
   userAliases    UserAlias[]
@@ -1681,4 +1710,85 @@ model ShortLink {
   createdAt DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+/// One "Add MatchTime to WhatsApp" attempt by a self-join organiser
+/// (2026-09-29, slice 1 of MDs/self-join-and-approval-plan-2026-09-28.md,
+/// section 3.2). Created and advanced by later slices; slice 1 only
+/// READS it, to keep the group it names silent until the club is
+/// approved (`loadSilentGroupIds` in src/lib/club-approval.ts).
+///
+/// The 4-character code is a pointer, not the security: the proof is
+/// the organiser's phone (or LID) matching the person who added
+/// MatchTime to the group.
+model ClubConnect {
+  id                      String    @id @default(cuid())
+  orgId                   String
+  org                     Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// The organiser: OWNER of the draft club.
+  userId                  String
+  /// Their verified signup phone, digits only.
+  phone                   String
+  /// 4 chars, alphabet without 0 O 1 I L.
+  code                    String
+  /// "issued" | "dm_verified" | "group_linked" | "expired" | "superseded" | "closed"
+  status                  String    @default("issued")
+  issuedAt                DateTime  @default(now())
+  /// issuedAt + 60 minutes.
+  expiresAt               DateTime
+
+  // The connect DM
+  dmAt                    DateTime?
+  dmPhone                 String?
+  dmLid                   String?
+  dmPhoneMatched          Boolean?
+  /// Idempotency for a re-forwarded DM.
+  dmWaMessageId           String?   @unique
+  lastMismatchAt          DateTime?
+  lastMismatchPhoneMasked String?
+  /// dmAt + 24 hours.
+  addWindowEndsAt         DateTime?
+
+  // The group add
+  groupId                 String?
+  groupSubject            String?
+  memberCount             Int?
+  addedByPhone            String?
+  addedByLid              String?
+  /// "phone" | "lid" | "other-organiser-present" | "unknown" | "mismatch"
+  adderMatch              String?
+  /// Participant snapshot at add time, imported at approval.
+  participants            Json?
+  detectedLang            String?
+  linkedAt                DateTime?
+  /// The one DM to the platform owner, once.
+  ownerDmQueuedAt         DateTime?
+  /// MatchTime was removed from the group while pending.
+  botRemovedAt            DateTime?
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([code, status])
+  @@index([orgId, status])
+  @@index([groupId])
+}
+
+/// A group MatchTime was added to with no connect code behind it
+/// (2026-09-29, plan section 5.6). MatchTime never speaks in it and never
+/// forwards its messages: it is in `silentGroups` from the moment the
+/// row exists until `leftAt`. Recorded by a later slice; slice 1 only
+/// reads it.
+model UnsolicitedGroup {
+  id           String    @id @default(cuid())
+  groupId      String
+  subject      String?
+  memberCount  Int?
+  addedByPhone String?
+  addedByLid   String?
+  addedAt      DateTime  @default(now())
+  /// Set when MatchTime has left the group.
+  leftAt       DateTime?
+
+  @@index([groupId, leftAt])
 }

@@ -4,6 +4,12 @@ import {
   ACTIVE_ONBOARDING_STAGES,
   ONBOARDING_SESSION_TTL_MS,
 } from "@/lib/onboarding-parse";
+import {
+  APPROVED_CLUB_WHERE,
+  isLegacySetupTriggerEnabled,
+  isSelfJoinEnabled,
+  loadSilentGroupIds,
+} from "@/lib/club-approval";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -13,6 +19,9 @@ export async function GET(request: Request) {
 
   const orgs = await db.organisation.findMany({
     where: {
+      // The CHECK constraint already forbids a bot-enabled club that is
+      // not approved; this is the second lock on the same door.
+      ...APPROVED_CLUB_WHERE,
       whatsappBotEnabled: true,
       whatsappGroupId: { not: null },
     },
@@ -23,6 +32,16 @@ export async function GET(request: Request) {
       whatsappGroupId: true,
     },
   });
+  const known = new Set(orgs.map((o) => o.whatsappGroupId));
+
+  // ── Silent groups (self-join slice 1, 2026-09-29) ─────────────────
+  // Groups MatchTime is in but must never speak in or forward: a club
+  // waiting for approval, rejected or suspended, or a group somebody
+  // added MatchTime to with no connect code. The Pi drops their messages
+  // and never lets the "@MatchTime setup" trigger monitor them. A live
+  // club's group is never silent (belt and braces over the loader).
+  const silentGroups = (await loadSilentGroupIds()).filter((g) => !known.has(g));
+  const silent = new Set(silentGroups);
 
   // Groups mid-onboarding (no bot-enabled org yet) must stay monitored
   // across a bot restart, otherwise an in-progress setup stalls until
@@ -35,17 +54,31 @@ export async function GET(request: Request) {
   // out and omitted "admins", so a restart during the admins question
   // silently dropped the group. Stale sessions are excluded the same way
   // the analyze route ignores them.
-  const onboarding = await db.onboardingSession.findMany({
-    where: {
-      stage: { in: [...ACTIVE_ONBOARDING_STAGES] },
-      createdAt: { gt: new Date(Date.now() - ONBOARDING_SESSION_TTL_MS) },
-    },
-    select: { whatsappGroupId: true, groupName: true },
-  });
-  const known = new Set(orgs.map((o) => o.whatsappGroupId));
+  //
+  // With self-join on, the in-group setup is retired (decision 4 of the
+  // self-join plan): nothing is monitored for it.
+  const selfJoin = isSelfJoinEnabled();
+  const onboarding = selfJoin
+    ? []
+    : await db.onboardingSession.findMany({
+        where: {
+          stage: { in: [...ACTIVE_ONBOARDING_STAGES] },
+          createdAt: { gt: new Date(Date.now() - ONBOARDING_SESSION_TTL_MS) },
+        },
+        select: { whatsappGroupId: true, groupName: true },
+      });
   const onboardingGroups = [
-    ...new Set(onboarding.map((s) => s.whatsappGroupId).filter((g) => !known.has(g))),
+    ...new Set(
+      onboarding.map((s) => s.whatsappGroupId).filter((g) => !known.has(g) && !silent.has(g)),
+    ),
   ];
 
-  return NextResponse.json({ orgs, onboardingGroups });
+  return NextResponse.json({
+    orgs,
+    onboardingGroups,
+    silentGroups,
+    // false tells the Pi to ignore "@MatchTime setup" in any group it is
+    // not already monitoring. Absent (an older server) means true.
+    legacySetupTrigger: isLegacySetupTriggerEnabled(),
+  });
 }

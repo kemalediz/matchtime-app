@@ -13,6 +13,9 @@
  *      until the flag is deliberately flipped.
  *   1. A bot-enabled org already exists for the group → ignore (re-add
  *      of the bot to a LIVE group must never restart onboarding).
+ *   1b. The group is SILENT (club not approved, or nobody asked for
+ *      MatchTime there), or self-join is on → no intro, no session
+ *      (self-join plan, section 4.3 layer 4).
  *   2. An active onboarding session exists → idempotent re-add: return
  *      the intro again only if we're still at `introduced` (the bot
  *      was likely kicked + re-added before anyone replied), else stay
@@ -42,6 +45,7 @@ import {
 import { parseParticipantSnapshot } from "@/lib/participant-sync";
 import { coerceHistoryMessages } from "@/lib/onboarding-enrichment-reconcile";
 import { detectGroupLang } from "@/lib/i18n/detect";
+import { inGroupSetupRefusal } from "@/lib/club-approval";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -101,6 +105,19 @@ export async function POST(request: Request) {
       orgId: liveOrg.id,
       introText: null,
     });
+  }
+
+  // 1b. SILENCE RAILS (self-join slice 1, 2026-09-29). A group whose club
+  //     is waiting for approval, was rejected or suspended, or that nobody
+  //     asked MatchTime into, never gets an intro and never starts a
+  //     session. With self-join on, the in-group setup is retired
+  //     altogether (decision 4); the self-join branch that links a pending
+  //     club lands here in a later slice. Placed after the live-org check,
+  //     so a live club is answered exactly as before.
+  const refusal = await inGroupSetupRefusal(groupId);
+  if (refusal) {
+    console.log(`[bot-added] ${groupId}: no intro (${refusal})`);
+    return NextResponse.json({ ok: true, ignored: refusal, introText: null });
   }
 
   // 2. Idempotent re-add while a session is in flight.

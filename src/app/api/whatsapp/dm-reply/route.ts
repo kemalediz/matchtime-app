@@ -40,6 +40,7 @@
  * If no active survey applies, the DM is silently ignored.
  */
 import { withOrgAiBudget } from "@/lib/ai-budget";
+import { onlyUnapprovedClubs } from "@/lib/club-approval";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
@@ -333,6 +334,17 @@ export async function POST(request: Request) {
       );
     }
     return NextResponse.json({ ok: true, ignored: "unknown-sender" });
+  }
+
+  // ── Silence rails (self-join slice 1, 2026-09-29) ──────────────────────
+  //   A sender whose every club is waiting for approval (or was rejected
+  //   or suspended) gets nothing from here on: no model call, no reply.
+  //   The deterministic connect handler that will answer such an
+  //   organiser lands ahead of this in a later slice. Every club that
+  //   predates self-join is approved, so a Sutton FC member is untouched.
+  if (await onlyUnapprovedClubs(user.memberships.map((m) => m.orgId))) {
+    console.log(`[dm-reply] sender ${user.id} belongs only to unapproved clubs; ignoring`);
+    return NextResponse.json({ ok: true, ignored: "club-not-approved" });
   }
 
   // ── DM subscription-preference fast-path (2026-06-11; per-category

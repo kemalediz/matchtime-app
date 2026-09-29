@@ -33,6 +33,11 @@ export interface OrgConfig {
 export interface OrgSnapshot {
   orgConfigs: OrgConfig[];
   onboardingGroups: string[];
+  /** Self-join slice 1: groups the bot must never forward or speak in.
+   *  [] from an older server. Never contains a live org's group. */
+  silentGroups: string[];
+  /** false retires the "@MatchTime setup" trigger. true from an older server. */
+  legacySetupTrigger: boolean;
 }
 
 /** Read the `/api/whatsapp/orgs` body defensively into a snapshot. */
@@ -40,15 +45,32 @@ export function parseOrgSnapshot(data: unknown): OrgSnapshot {
   const d = (data ?? {}) as {
     orgs?: Array<{ whatsappGroupId?: string | null; name?: string | null }>;
     onboardingGroups?: unknown;
+    silentGroups?: unknown;
+    legacySetupTrigger?: unknown;
   };
   const orgConfigs: OrgConfig[] = (Array.isArray(d.orgs) ? d.orgs : [])
     .filter((o) => typeof o?.whatsappGroupId === "string" && o.whatsappGroupId.length > 0)
     .map((o) => ({ groupId: o.whatsappGroupId as string, orgName: String(o.name ?? "?") }));
   const known = new Set(orgConfigs.map((o) => o.groupId));
+  // A live org is never silenced on the Pi, whatever the list says: the
+  // failure to avoid is Sutton FC going quiet because of a stale row.
+  const silentGroups = [
+    ...new Set(
+      (Array.isArray(d.silentGroups) ? d.silentGroups : [])
+        .filter((g): g is string => typeof g === "string" && g.length > 0)
+        .filter((g) => !known.has(g)),
+    ),
+  ];
+  const silent = new Set(silentGroups);
   const onboardingGroups = (Array.isArray(d.onboardingGroups) ? d.onboardingGroups : [])
     .filter((g): g is string => typeof g === "string" && g.length > 0)
-    .filter((g) => !known.has(g));
-  return { orgConfigs, onboardingGroups: [...new Set(onboardingGroups)] };
+    .filter((g) => !known.has(g) && !silent.has(g));
+  return {
+    orgConfigs,
+    onboardingGroups: [...new Set(onboardingGroups)],
+    silentGroups,
+    legacySetupTrigger: d.legacySetupTrigger !== false,
+  };
 }
 
 export interface OrgSnapshotDiff {
@@ -56,6 +78,8 @@ export interface OrgSnapshotDiff {
   removedOrgs: OrgConfig[];
   addedOnboarding: string[];
   removedOnboarding: string[];
+  addedSilent: string[];
+  removedSilent: string[];
   changed: boolean;
 }
 
@@ -65,15 +89,25 @@ export function diffOrgSnapshot(prev: OrgSnapshot | null, next: OrgSnapshot): Or
   const nextOrgs = new Map(next.orgConfigs.map((o) => [o.groupId, o]));
   const prevOnb = new Set(prev?.onboardingGroups ?? []);
   const nextOnb = new Set(next.onboardingGroups);
+  const prevSilent = new Set(prev?.silentGroups ?? []);
+  const nextSilent = new Set(next.silentGroups ?? []);
   const diff: OrgSnapshotDiff = {
     addedOrgs: [...nextOrgs.values()].filter((o) => !prevOrgs.has(o.groupId)),
     removedOrgs: [...prevOrgs.values()].filter((o) => !nextOrgs.has(o.groupId)),
     addedOnboarding: [...nextOnb].filter((g) => !prevOnb.has(g)),
     removedOnboarding: [...prevOnb].filter((g) => !nextOnb.has(g)),
+    addedSilent: [...nextSilent].filter((g) => !prevSilent.has(g)),
+    removedSilent: [...prevSilent].filter((g) => !nextSilent.has(g)),
     changed: false,
   };
   diff.changed =
-    diff.addedOrgs.length + diff.removedOrgs.length + diff.addedOnboarding.length + diff.removedOnboarding.length > 0;
+    diff.addedOrgs.length +
+      diff.removedOrgs.length +
+      diff.addedOnboarding.length +
+      diff.removedOnboarding.length +
+      diff.addedSilent.length +
+      diff.removedSilent.length >
+    0;
   return diff;
 }
 
@@ -83,6 +117,8 @@ export function describeOrgSnapshotDiff(diff: OrgSnapshotDiff): string {
   if (diff.removedOrgs.length) parts.push(`-org ${diff.removedOrgs.map((o) => `${o.orgName} (${o.groupId})`).join(", ")}`);
   if (diff.addedOnboarding.length) parts.push(`+onboarding ${diff.addedOnboarding.join(", ")}`);
   if (diff.removedOnboarding.length) parts.push(`-onboarding ${diff.removedOnboarding.join(", ")}`);
+  if (diff.addedSilent.length) parts.push(`+silent ${diff.addedSilent.join(", ")}`);
+  if (diff.removedSilent.length) parts.push(`-silent ${diff.removedSilent.join(", ")}`);
   return parts.length ? parts.join("; ") : "no change";
 }
 
