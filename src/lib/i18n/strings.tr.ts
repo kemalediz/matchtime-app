@@ -1363,6 +1363,21 @@ export const tr: Strings = {
     `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim. Haftalık maçınızı buradan ayarlayabilir ya da değiştirebilirsiniz: ${p.link}`,
   sj_dm_rejected: (p) =>
     `MatchTime'ı denediğiniz için teşekkürler. ${p.group ? `"${p.group}" grubunu` : "Grubunuzu"} şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.`,
+
+  dm_admin_join_new: (p) =>
+    `🆕 *${p.club}* WhatsApp grubuna yeni bir oyuncu katıldı.\n\nTelefon: ${p.phone}\nOnu geçici oyuncu olarak ekledim. Lütfen adını gir:\n/admin/players/phones`,
+  dm_admin_join_first: (p) =>
+    `🆕 *${p.name}*, *${p.club}* WhatsApp grubuna katıldı ve artık oyuncu listende.`,
+  dm_admin_join_rejoined: (p) =>
+    `🔁 *${p.name}*, *${p.club}* WhatsApp grubuna geri döndü.\n\nÜyeliği yeniden etkinleştirildi. Başka bir şey yapmana gerek yok.`,
+  dm_admin_join_linked: (p) =>
+    `🔗 Onu ${p.addedOn} tarihinde eklenen *${p.placeholder}* kaydıyla birleştirdim, maçları ve takımdaki yeri korunuyor.`,
+  dm_admin_join_possible_duplicate: (p) =>
+    `❓ Bu kişi daha önce adıyla eklenen ${joinList("tr", p.names.map((n) => `*${n}*`))} olabilir. Öyleyse /admin/players sayfasından birleştir.`,
+
+  admin_players_duplicates_heading: "Olası çift kayıtlar",
+  admin_players_duplicate_row: (p) => `Adıyla eklenen ${p.placeholder}, ${p.keeper} ile aynı kişi olabilir.`,
+  admin_players_duplicate_merge: (p) => `Birleştir: ${p.keeper}`,
 };
 
 /**

@@ -24,6 +24,7 @@
  */
 import { db } from "./db";
 import { findExistingOrgMember } from "./resolve-player";
+import { linkJoinerToPlaceholder } from "./placeholder-link";
 import {
   snapshotPhone,
   parseParticipantSnapshot,
@@ -38,6 +39,8 @@ export interface ImportResult {
   alreadyKnown: number;
   skippedNoPhone: number;
   restoredMembership: number;
+  /** Phoneless placeholders merged into a participant known by phone. */
+  linkedPlaceholders: number;
   total: number;
 }
 
@@ -50,6 +53,7 @@ export async function importParticipants(
   let alreadyKnown = 0;
   let skippedNoPhone = 0;
   let restoredMembership = 0;
+  let linkedPlaceholders = 0;
 
   for (const p of participants) {
     const phone = snapshotPhone(p);
@@ -63,6 +67,11 @@ export async function importParticipants(
       where: { phoneNumber: phone },
       select: { id: true, name: true },
     });
+    // A user who already existed BY PHONE (another club, a web sign-up) is
+    // the one case the pushname dedupe below cannot reach: they may have
+    // a phoneless placeholder here from a third party's "X in". See the
+    // link step after the membership write.
+    const knownByPhone = user !== null;
     if (!user && pushname) {
       // No phone-keyed record — but a phone-less record (e.g. a provisional
       // member the analyzer/squad-list created earlier by NAME) may already
@@ -124,6 +133,7 @@ export async function importParticipants(
     const existing = await db.membership.findUnique({
       where: { userId_orgId: { userId: user.id, orgId } },
     });
+    let membershipChanged = false;
     if (!existing) {
       await db.membership.create({
         data: {
@@ -133,6 +143,7 @@ export async function importParticipants(
           lastSeenInGroupAt: now,
         },
       });
+      membershipChanged = true;
     } else {
       await db.membership.update({
         where: { id: existing.id },
@@ -141,7 +152,19 @@ export async function importParticipants(
           ...(existing.leftAt !== null ? { leftAt: null } : {}),
         },
       });
-      if (existing.leftAt !== null) restoredMembership += 1;
+      if (existing.leftAt !== null) {
+        restoredMembership += 1;
+        membershipChanged = true;
+      }
+    }
+
+    // Same link group-join makes (2026-09-29): a person known by phone
+    // whose membership here is new or restored takes over the one
+    // phoneless placeholder of their name, if there is exactly one. No DM
+    // from the sweep; an ambiguous match shows on /admin/players instead.
+    if (knownByPhone && membershipChanged) {
+      const link = await linkJoinerToPlaceholder(orgId, user.id, { extraNames: [pushname] });
+      if (link.kind === "linked") linkedPlaceholders += 1;
     }
   }
 
@@ -174,6 +197,7 @@ export async function importParticipants(
     alreadyKnown,
     skippedNoPhone,
     restoredMembership,
+    linkedPlaceholders,
     total: participants.length,
   };
 }

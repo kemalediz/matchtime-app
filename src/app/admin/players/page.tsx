@@ -30,7 +30,8 @@ import {
 import { groupSyncAdminWarning } from "@/lib/group-membership-gate";
 import { t } from "@/lib/i18n/t";
 import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
-import { ProvisionalPlayersBanner, ClubRatingCell } from "./player-row-bits";
+import { ProvisionalPlayersBanner, ClubRatingCell, DuplicateSuggestionsBanner } from "./player-row-bits";
+import type { DuplicateSuggestion } from "@/lib/placeholder-link-rules";
 
 interface Player {
   id: string;
@@ -67,6 +68,8 @@ export default function PlayersPage() {
   // quiet the app's self-IN gate starts turning real players away, so the
   // roster page says so rather than leaving it to the server log.
   const [lastGroupSyncAt, setLastGroupSyncAt] = useState<string | null | undefined>(undefined);
+  // Placeholders that may be a phone member under another row (2026-09-29).
+  const [duplicates, setDuplicates] = useState<DuplicateSuggestion[]>([]);
 
   useEffect(() => {
     fetch("/api/org/settings").then((r) => r.json()).then((d) => {
@@ -87,6 +90,7 @@ export default function PlayersPage() {
       const data = await res.json();
       setPlayers(Array.isArray(data) ? data : data.players ?? []);
       setLastGroupSyncAt(Array.isArray(data) ? undefined : (data.groupSync?.lastSyncAt ?? null));
+      setDuplicates(Array.isArray(data) ? [] : (data.duplicateSuggestions ?? []));
     }
     setLoading(false);
   }
@@ -426,6 +430,8 @@ export default function PlayersPage() {
         count={provisionalPlayers.length}
         lang={lang}
       />
+
+      <DuplicateSuggestionsBanner suggestions={duplicates} lang={lang} onMerge={handleMerge} />
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">

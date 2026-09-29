@@ -411,6 +411,14 @@ const SAMPLES: SampleArgs = {
   sj_group_hello: { organiser: "Aliyah" },
   sj_dm_approved: { club: "Riverside FC", group: "Riverside Tuesday 5s", link: "https://matchtime.ai/admin/activities" },
   sj_dm_rejected: { group: "Riverside Tuesday 5s" },
+  dm_admin_join_new: { club: "Sutton FC", phone: "+447376548222" },
+  dm_admin_join_first: { name: "Hamzah", club: "Sutton FC" },
+  dm_admin_join_rejoined: { name: "Hamzah", club: "Sutton FC" },
+  dm_admin_join_linked: { placeholder: "Hamza", addedOn: "ADDEDON" },
+  dm_admin_join_possible_duplicate: { names: ["Hamza", "Hamzo"] },
+  admin_players_duplicates_heading: null,
+  admin_players_duplicate_row: { placeholder: "Hamza", keeper: "Hamzah Khan" },
+  admin_players_duplicate_merge: { keeper: "Hamzah Khan" },
 };
 
 /** Render an entry with its sample arguments. */
