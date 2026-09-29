@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { proto, type WAMessage } from "baileys";
-import { createUndecryptableTracker, isCiphertextStub, UNDECRYPTABLE_GRACE_MS } from "./undecryptable.js";
+import {
+  createUndecryptableTracker,
+  isCiphertextStub,
+  UNDECRYPTABLE_GRACE_MS,
+  withStubAuthor,
+  type UndecryptableEntry,
+} from "./undecryptable.js";
 import { manualScheduler } from "./fake-socket.js";
 
 const GROUP = "447525334985-1607872139@g.us";
@@ -122,5 +128,50 @@ describe("the undecryptable tracker", () => {
     expect(tracker.pendingCount()).toBe(2);
     await scheduler.runAll();
     expect(lost).toEqual(["B", "C"]);
+  });
+});
+
+describe("withStubAuthor: a recovered copy's author, from its stub", () => {
+  const entry: UndecryptableEntry = {
+    id: "A",
+    chat: GROUP,
+    sender: "89485761081551:59@lid",
+    senderAlt: "447525334985@s.whatsapp.net",
+    pushName: "Kaan",
+    reason: "No session found to decrypt message",
+    firstSeenAt: 0,
+    upsertType: "notify",
+  };
+  const copy = (key: Record<string, unknown>, pushName?: string): WAMessage =>
+    ({ key: { remoteJid: GROUP, fromMe: false, id: "A", ...key }, message: { conversation: "x" }, pushName }) as WAMessage;
+
+  it("fills a missing participant, participantAlt and pushName from the stub", () => {
+    const out = withStubAuthor(copy({}), entry);
+    expect(out.key.participant).toBe("89485761081551:59@lid");
+    expect(out.key.participantAlt).toBe("447525334985@s.whatsapp.net");
+    expect(out.pushName).toBe("Kaan");
+  });
+
+  it("never overrides what the copy itself says", () => {
+    const own = copy({ participant: "447700900123@s.whatsapp.net" }, "Zed");
+    const out = withStubAuthor(own, entry);
+    expect(out.key.participant).toBe("447700900123@s.whatsapp.net");
+    expect(out.pushName).toBe("Zed");
+  });
+
+  it("is a no-op outside a group, and for a stub from another chat", () => {
+    const dm = { ...copy({}), key: { remoteJid: "447700900123@s.whatsapp.net", fromMe: false, id: "A" } } as WAMessage;
+    expect(withStubAuthor(dm, entry)).toBe(dm);
+    const elsewhere = { ...copy({}), key: { remoteJid: "999-1@g.us", fromMe: false, id: "A" } } as WAMessage;
+    expect(withStubAuthor(elsewhere, entry)).toBe(elsewhere);
+  });
+
+  it("the tracker records the stub's alt address and pushName", () => {
+    const t = setup();
+    const m = stub("Z");
+    (m.key as Record<string, unknown>).participantAlt = "447525334985@s.whatsapp.net";
+    (m as { pushName?: string }).pushName = "Kaan";
+    const e = t.tracker.noteStub(m, "notify");
+    expect(e).toMatchObject({ senderAlt: "447525334985@s.whatsapp.net", pushName: "Kaan" });
   });
 });

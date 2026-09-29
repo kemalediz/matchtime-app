@@ -45,6 +45,11 @@ export interface UndecryptableEntry {
   chat: string;
   /** The author as the envelope named it (often a device LID). */
   sender: string | null;
+  /** The envelope's alternate address for the author (usually the phone
+   *  JID when `sender` is a LID). */
+  senderAlt: string | null;
+  /** The author's pushName on the stub, when it carried one. */
+  pushName: string | null;
   /** Baileys' decrypt error, e.g. "No session found to decrypt message". */
   reason: string;
   firstSeenAt: number;
@@ -107,6 +112,8 @@ export function createUndecryptableTracker(opts: {
         id,
         chat: m.key?.remoteJid ?? "?",
         sender: m.key?.participant || null,
+        senderAlt: m.key?.participantAlt || null,
+        pushName: m.pushName?.trim() || null,
         reason: Array.isArray(params) && params.length > 0 ? String(params[0]) : "unknown",
         firstSeenAt: now(),
         upsertType,
@@ -150,4 +157,38 @@ export function createUndecryptableTracker(opts: {
       return pending.size;
     },
   };
+}
+
+/**
+ * The recovered copy's author, taken from its stub when the copy has none.
+ *
+ * Sutton FC, 2026-09-29: the stub for the admin's "generate the teams"
+ * named `participant` 89485761081551:59@lid and `participantAlt`
+ * 447525334985@s.whatsapp.net, and the readable copy that arrived 10.5
+ * hours later carried NEITHER, and no pushName (the Pi logged "sender=?
+ * phone=? name=?"). The server could not tell who sent it. A stub and its
+ * copy are the same message (same chat, same id), so the stub's author is
+ * the copy's author.
+ *
+ * Only fills what is missing; never overrides what the copy says. A
+ * no-op outside a group (a DM's author is its chat) and when the chat
+ * differs. Returns the same object when nothing changes.
+ */
+export function withStubAuthor(m: WAMessage, entry: UndecryptableEntry): WAMessage {
+  const key = m.key ?? {};
+  const chat = key.remoteJid ?? "";
+  if (!chat.endsWith("@g.us") || chat !== entry.chat) return m;
+  const needParticipant = !key.participant && !!entry.sender;
+  const needAlt = !key.participantAlt && !!entry.senderAlt;
+  const needName = !m.pushName?.trim() && !!entry.pushName;
+  if (!needParticipant && !needAlt && !needName) return m;
+  return {
+    ...m,
+    key: {
+      ...key,
+      ...(needParticipant ? { participant: entry.sender } : {}),
+      ...(needAlt ? { participantAlt: entry.senderAlt } : {}),
+    },
+    ...(needName ? { pushName: entry.pushName } : {}),
+  } as WAMessage;
 }

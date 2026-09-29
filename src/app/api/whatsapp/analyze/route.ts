@@ -122,7 +122,15 @@ import {
   type OwnedMessage,
   type UnownedMessage,
 } from "@/lib/operator-note";
-import { OPERATOR_NOTE_KIND, recordOpsEvent } from "@/lib/ops-alerts";
+import { LATE_MESSAGE_KIND, OPERATOR_NOTE_KIND, recordOpsEvent } from "@/lib/ops-alerts";
+import {
+  composeLateMessageAlert,
+  formatDelay,
+  LATE_HANDLED_BY,
+  planLateMessages,
+  silenceLateResult,
+  type LateEntry,
+} from "@/lib/late-message";
 import {
   gateBatch,
   routerIsNeeded,
@@ -576,6 +584,77 @@ async function handleAnalyzeRequest(request: Request) {
     fresh.push(msg);
   }
 
+  // ── A MESSAGE THAT ARRIVES LATE IS NOT A REQUEST MADE NOW (2026-09-29) ─
+  //
+  // Sutton FC: an admin's "generate the teams" could not be decrypted and
+  // a readable copy arrived 10.5 hours later, after the match, and was
+  // answered as if it had just been sent. `lib/late-message.ts` has the
+  // rule and its reasons. In this handler it is FOUR touches, and a new
+  // path through it must keep all four true:
+  //
+  //   1. HERE: a late message overtaken by a kickoff is recorded and
+  //      removed. Nothing about it is acted on, attendance included.
+  //   2. The remaining late messages are HELD OUT of every deterministic
+  //      peel below (they are put back before the router), so no fast
+  //      path can execute one.
+  //   3. `ownerBase` excludes them, so question / balancer / score /
+  //      admin_ops never see one. The attendance engine does, and its
+  //      writes land; its words, recruit asks, tentative chases, nudges
+  //      and squad post do not.
+  //   4. Before the response: `silenceLateResult` on every late result
+  //      (the backstop: no reply, a registration react at most), and one
+  //      `late-message` ops event for the batch. Never a DM.
+  //
+  // The age is the ORIGINAL WhatsApp timestamp the Pi forwards on every
+  // path (flush, tagged flush, restart catch-up, undecryptable recovery).
+  const lateNow = new Date();
+  let latePlan = planLateMessages({ messages: fresh, now: lateNow, kickoffs: [] });
+  if (latePlan.late.size > 0) {
+    const earliest = Math.min(...[...latePlan.late.values()].map((l) => l.sentAt.getTime()));
+    const kicked = await db.match.findMany({
+      where: {
+        activity: { orgId: org.id },
+        status: { not: "CANCELLED" },
+        date: { gt: new Date(earliest), lte: lateNow },
+      },
+      select: { date: true },
+    });
+    latePlan = planLateMessages({
+      messages: fresh,
+      now: lateNow,
+      kickoffs: kicked.map((k) => k.date),
+    });
+  }
+  const lateById = latePlan.late;
+  const lateEntries: LateEntry[] = [];
+  for (let i = fresh.length - 1; i >= 0; i--) {
+    const m = fresh[i];
+    const late = lateById.get(m.waMessageId);
+    if (!late?.kickedOffAt) continue;
+    await recordAnalysis({
+      orgId: org.id,
+      groupId: body.groupId,
+      msg: m,
+      handledBy: LATE_HANDLED_BY,
+      intent: "late_message",
+      action: null,
+      confidence: 1,
+      reasoning:
+        `late message: arrived ${formatDelay(late.ageMs)} after it was sent, and a match ` +
+        `kicked off at ${late.kickedOffAt.toISOString()} in between; nothing acted on`,
+    });
+    results.push({ waMessageId: m.waMessageId, handledBy: "ignored", intent: "late_message", react: null, reply: null });
+    lateEntries.unshift({
+      waMessageId: m.waMessageId,
+      authorName: m.authorName,
+      body: m.body,
+      ageMs: late.ageMs,
+      outcome: "match-kicked-off",
+      route: undefined,
+    });
+    fresh.splice(i, 1);
+  }
+
   // ── THE DAILY AI CAP, DECIDED ONCE, UP FRONT (2026-09-29) ─────────
   //
   // At the cap the whole batch runs WITHOUT A MODEL: the router is not
@@ -639,6 +718,13 @@ async function handleAnalyzeRequest(request: Request) {
   // write — identity comes from the author, not the id, and a message
   // replayed under a fresh id lands inside the throttle window anyway.
   await recordGroupSightings(org.id, sightedUserIds(senderById.values()));
+
+  // LATE MESSAGES SKIP EVERY PEEL (touch 2 of 4, see the late-message
+  // block above). Put back, in arrival order, right before the router.
+  const lateHeldOut: InboundMessage[] = [];
+  for (let i = fresh.length - 1; i >= 0; i--) {
+    if (lateById.has(fresh[i].waMessageId)) lateHeldOut.unshift(...fresh.splice(i, 1));
+  }
 
   // ═══════════════════════════════════════════════════════════════════
   // A FAST PATH CLAIMS A CLAUSE, NOT A MESSAGE (2026-09-09)
@@ -1669,6 +1755,11 @@ async function handleAnalyzeRequest(request: Request) {
     const id = fresh[i].waMessageId;
     if (fastPathHandledIds.has(id) && !clauseResidualById.has(id)) fresh.splice(i, 1);
   }
+  if (lateHeldOut.length > 0) {
+    const arrival = new Map(all.map((m, i) => [m.waMessageId, i]));
+    fresh.push(...lateHeldOut);
+    fresh.sort((a, b) => (arrival.get(a.waMessageId) ?? 0) - (arrival.get(b.waMessageId) ?? 0));
+  }
 
   const history = (body.history ?? []).map((h) => ({
     authorName: h.authorName,
@@ -1786,7 +1877,12 @@ async function handleAnalyzeRequest(request: Request) {
     await recordCapSkips(org.id, cappedIds.size, new Date(), aiBudget?.capUsd ?? null);
     capReplyMessageId = await pickCapReplyMessage(
       fresh
-        .filter((m) => cappedIds.has(m.waMessageId) && !fastPathHandledIds.has(m.waMessageId))
+        .filter(
+          (m) =>
+            cappedIds.has(m.waMessageId) &&
+            !fastPathHandledIds.has(m.waMessageId) &&
+            !lateById.has(m.waMessageId),
+        )
         .map((m) => ({ waMessageId: m.waMessageId, tagged: messageTagsBot(m) })),
       () => claimCapReply(org.id),
     );
@@ -2021,7 +2117,11 @@ async function handleAnalyzeRequest(request: Request) {
   // swap A with B. What time is kickoff?" still answers only the swap.
   const ownerBase = fresh
     .filter(
-      (m) => !pastedRosterIds.has(m.waMessageId) && !clauseResidualById.has(m.waMessageId),
+      (m) =>
+        !pastedRosterIds.has(m.waMessageId) &&
+        !clauseResidualById.has(m.waMessageId) &&
+        // A late message executes nothing but attendance (touch 3 of 4).
+        !lateById.has(m.waMessageId),
     )
     .map((m) => {
       const s = senderById.get(m.waMessageId)!;
@@ -2278,8 +2378,20 @@ async function handleAnalyzeRequest(request: Request) {
   //   `admin_ops` needs its own predicate and its own production table.
   const ownedByEngine: OwnedMessage[] = [];
 
+  // The last message whose attendance the engine CHANGED and that is not
+  // late: where the batch's squad post goes when the engine's own choice
+  // was a late message (a late write is silent, see below).
+  let lastFreshActedId: string | null = null;
+
   for (const msg of fresh) {
     const sender = senderById.get(msg.waMessageId)!;
+    // Touch 3 of 4 (see the late-message block at the top): a late
+    // message's attendance is written by the engine, and nothing it would
+    // SAY or TRIGGER happens.
+    const late = lateById.get(msg.waMessageId) ?? null;
+    const lateNote = late
+      ? `; late message (arrived ${formatDelay(late.ageMs)} after it was sent): recorded silently`
+      : "";
 
     // ── §10 STEP 6 — THE ATTENDANCE ENGINE DECIDED THIS MESSAGE ──────
     //
@@ -2288,10 +2400,29 @@ async function handleAnalyzeRequest(request: Request) {
     // that there is no longer anything below it to skip.
     const engineOutcome = engineBatch?.outcomes.get(msg.waMessageId);
     if (engineOutcome) {
-      if (engineOutcome.recruitRequest) {
+      if (late) {
+        lateEntries.push({
+          waMessageId: msg.waMessageId,
+          authorName: sender.name ?? msg.authorName,
+          body: msg.body,
+          ageMs: late.ageMs,
+          outcome: engineOutcome.action !== "none" ? "attendance-recorded" : "attendance-unchanged",
+          route: engineOutcome.route,
+        });
+      } else if (engineOutcome.action !== "none") {
+        lastFreshActedId = msg.waMessageId;
+      }
+      // A recruit blast is a mass DM: never for a late message.
+      if (engineOutcome.recruitRequest && !late) {
         recruitRequests.push({ msg, sender, lookbackMatches: null });
       }
-      if (engineOutcome.recordTentativeForUserId && engineBatch?.matchId && nextMatchForReply) {
+      // The tentative follow-up is a DM 24 hours on: never for a late one.
+      if (
+        engineOutcome.recordTentativeForUserId &&
+        engineBatch?.matchId &&
+        nextMatchForReply &&
+        !late
+      ) {
         // conditional_in flavour (b) — personal uncertainty. The engine
         // declines the write; the 24h chase is a shipped product
         // behaviour and step 6 must not lose it. Best-effort.
@@ -2327,7 +2458,7 @@ async function handleAnalyzeRequest(request: Request) {
           intent: engineOutcome.intent,
           action: attendanceFailureAction(engineOutcome.failures),
           confidence: 1,
-          reasoning: attendanceFailureLog(engineOutcome.failures).slice(0, 2000),
+          reasoning: (attendanceFailureLog(engineOutcome.failures) + lateNote).slice(0, 2000),
           authorUserId: sender.userId,
           authorName: msg.authorName ?? null,
         });
@@ -2349,14 +2480,18 @@ async function handleAnalyzeRequest(request: Request) {
       if (engineReply && nextMatchForReply) {
         engineReply = enforceProximity(engineReply, nextMatchForReply.date, org.language);
       }
-      const engineNudge = await unresolvedSenderNudge({
-        senderResolved: !!sender.userId,
-        attendanceRelevant: engineOutcome.action !== "none",
-        matchId: nextMatchForReply?.id ?? null,
-        authorName: msg.authorName,
-        dropping: engineOutcome.intent === "out",
-        lang: org.language,
-      });
+      // Not for a late message: it would claim the once-per-match nudge
+      // slot for a reply that is never sent.
+      const engineNudge = late
+        ? { applies: false, reply: null }
+        : await unresolvedSenderNudge({
+            senderResolved: !!sender.userId,
+            attendanceRelevant: engineOutcome.action !== "none",
+            matchId: nextMatchForReply?.id ?? null,
+            authorName: msg.authorName,
+            dropping: engineOutcome.intent === "out",
+            lang: org.language,
+          });
       if (engineNudge.applies) engineReply = engineNudge.reply;
 
       await recordAnalysis({
@@ -2367,7 +2502,7 @@ async function handleAnalyzeRequest(request: Request) {
         intent: engineOutcome.intent,
         action: engineOutcome.action,
         confidence: 1,
-        reasoning: engineOutcome.reasoning,
+        reasoning: engineOutcome.reasoning + lateNote,
         authorUserId: sender.userId,
         authorName: msg.authorName ?? null,
       });
@@ -2396,7 +2531,10 @@ async function handleAnalyzeRequest(request: Request) {
       // the group saying it did not land. It is the loudest path in this
       // function, and adding it here would double-report the one failure
       // that is already impossible to miss.
-      ownedByEngine.push({
+      //
+      // A LATE message is not pushed: it is silent on purpose, and it is
+      // reported on its own `late-message` event instead.
+      if (!late) ownedByEngine.push({
         waMessageId: msg.waMessageId,
         body: msg.body,
         authorName: msg.authorName,
@@ -2419,10 +2557,10 @@ async function handleAnalyzeRequest(request: Request) {
       // told the line-ups again with no word about the swap. Same
       // exclusion that pass already makes for the two team intents; see
       // `EngineMessageOutcome.deterministicTeamPost`.
-      if (engineOutcome.deterministicTeamPost) {
+      if (engineOutcome.deterministicTeamPost && !late) {
         deterministicTeamPostIds.add(msg.waMessageId);
       }
-      results.push({
+      const engineResult: ActionForBot = {
         waMessageId: msg.waMessageId,
         // The WIRE field, which `whatsapp-bot/src/api.ts:325` types as a
         // closed union the Pi only special-cases for `deduped` and
@@ -2434,7 +2572,9 @@ async function handleAnalyzeRequest(request: Request) {
         react: ack.react,
         reply: engineReply,
         reasoning: engineOutcome.reasoning,
-      });
+      };
+      // Late: the registration react stays (it was counted), the words go.
+      results.push(late ? silenceLateResult(engineResult) : engineResult);
       continue;
     }
 
@@ -2650,6 +2790,46 @@ async function handleAnalyzeRequest(request: Request) {
     //
     // Not an operator note: nothing went wrong, the club spent its
     // allowance. The row says so, and today's usage row counts it.
+    // ── A LATE MESSAGE NOBODY OWNED: NOT EXECUTED, NOT PAGED ─────────
+    //
+    // Every late message on a non-attendance route lands here, because
+    // `ownerBase` never showed it to the four step-7 owners. It is not
+    // an operator note (nothing went wrong) and not a cap reply (it gets
+    // no words at all): one row, and a line on the batch's `late-message`
+    // event.
+    if (late) {
+      const route = gateRouteById.get(msg.waMessageId);
+      await recordAnalysis({
+        orgId: org.id,
+        groupId: body.groupId,
+        msg,
+        handledBy: LATE_HANDLED_BY,
+        intent: "late_message",
+        action: null,
+        confidence: 1,
+        reasoning:
+          `late message: arrived ${formatDelay(late.ageMs)} after it was sent; ` +
+          `route=${route ?? "(none returned)"} not executed, no reply`,
+        authorUserId: sender.userId,
+        authorName: msg.authorName ?? null,
+      });
+      results.push({
+        waMessageId: msg.waMessageId,
+        handledBy: "ignored",
+        intent: "late_message",
+        react: null,
+        reply: null,
+      });
+      lateEntries.push({
+        waMessageId: msg.waMessageId,
+        authorName: sender.name ?? msg.authorName,
+        body: msg.body,
+        ageMs: late.ageMs,
+        outcome: "not-executed",
+        route,
+      });
+      continue;
+    }
     if (cappedIds.has(msg.waMessageId)) {
       const capReply =
         capReplyMessageId === msg.waMessageId ? strings(org.language).ai_daily_cap_reached() : null;
@@ -2884,12 +3064,22 @@ async function handleAnalyzeRequest(request: Request) {
   //   engine composed from its PROJECTED state, and the writes have
   //   landed since. The database is the later, truer fact, and the
   //   marker is the existing way of saying "put the real post here".
-  if (engineBatch?.squadPostForMessageId) {
-    const speaks = results.filter((r) => (r.reply ?? "").length > 0);
+  // A LATE message never carries it (touch 3 of 4). When the engine's
+  // choice is a late one, the post goes to the last fresh message whose
+  // attendance changed; with none, a batch whose only change was late
+  // says nothing, which is the rule.
+  const squadPostId =
+    engineBatch?.squadPostForMessageId && lateById.has(engineBatch.squadPostForMessageId)
+      ? lastFreshActedId
+      : (engineBatch?.squadPostForMessageId ?? null);
+  if (squadPostId) {
+    const speaks = results.filter(
+      (r) => (r.reply ?? "").length > 0 && !lateById.has(r.waMessageId),
+    );
     const target =
       speaks.length > 0
         ? speaks[speaks.length - 1]
-        : results.find((r) => r.waMessageId === engineBatch.squadPostForMessageId);
+        : results.find((r) => r.waMessageId === squadPostId);
     if (target) {
       target.reply = target.reply
         ? `${target.reply}\n\n${SQUAD_POST_MARKER}`
@@ -3341,6 +3531,32 @@ async function handleAnalyzeRequest(request: Request) {
     if (registrationReacts.has(r.react)) continue;
     const fill = latestInReactByUser.get(uid);
     if (fill) r.react = fill;
+  }
+
+  // ── LATE MESSAGES: THE BACKSTOP AND THE ONE EVENT (touch 4 of 4) ───
+  //
+  //   Every late result loses its words and keeps only a registration
+  //   react, whatever above produced it: this is the last pass that can
+  //   change a result, so no future branch can make a late message speak.
+  //   Then ONE `late-message` event for the batch on /admin/health, info
+  //   severity, deduped on the message ids so a re-posted batch records
+  //   once. Never a DM. Best-effort: it must not cost the batch its reply.
+  if (lateById.size > 0) {
+    for (let i = 0; i < results.length; i++) {
+      if (lateById.has(results[i].waMessageId)) results[i] = silenceLateResult(results[i]);
+    }
+    const alert = composeLateMessageAlert(lateEntries);
+    if (alert) {
+      console.warn(`[analyze] ${alert.title}: ${lateEntries.map((e) => e.waMessageId).join(", ")}`);
+      await recordOpsEvent({
+        orgId: org.id,
+        kind: LATE_MESSAGE_KIND,
+        severity: "info",
+        title: alert.title,
+        detail: alert.detail,
+        dedupeKey: alert.dedupeKey,
+      });
+    }
   }
 
   // 4. Return + include next-kickoff so the bot can urgency-flush.

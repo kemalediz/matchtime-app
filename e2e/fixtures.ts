@@ -90,13 +90,16 @@ export async function postAnalyze(
     /** Per-JID display names the Pi's contact lookup produced. UNVERIFIED
      *  — the route checks each against the org roster. */
     mentionNames?: Array<{ jid: string; name: string }>;
+    /** The message's ORIGINAL WhatsApp send time, ISO. Defaults to now;
+     *  set it to replay a copy that arrived late. */
+    timestamp?: string;
   }>,
 ) {
   const res = await request.post("/api/whatsapp/analyze", {
     headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
     data: {
       groupId: E2E.GROUP_ID,
-      messages: messages.map((m) => ({ ...m, timestamp: new Date().toISOString() })),
+      messages: messages.map((m) => ({ ...m, timestamp: m.timestamp ?? new Date().toISOString() })),
     },
   });
   expect(res.status(), await res.text()).toBe(200);
