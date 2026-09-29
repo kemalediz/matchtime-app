@@ -8,7 +8,12 @@
  * nowhere else), the same double gate as the other test seams.
  */
 import { describe, expect, it } from "vitest";
-import { SELF_JOIN_TEST_COOKIE, selfJoinEnabledFrom } from "../self-join-flag";
+import {
+  SELF_JOIN_TEST_COOKIE,
+  SELF_JOIN_TEST_HEADER,
+  selfJoinEnabledForApiRequest,
+  selfJoinEnabledFrom,
+} from "../self-join-flag";
 
 describe("selfJoinEnabledFrom", () => {
   it("is the env flag, off by default", () => {
@@ -32,5 +37,27 @@ describe("selfJoinEnabledFrom", () => {
 
   it("names its cookie", () => {
     expect(SELF_JOIN_TEST_COOKIE).toBe("mt-test-self-join");
+  });
+});
+
+describe("selfJoinEnabledForApiRequest (the Pi's routes, slice 5)", () => {
+  const req = (h?: string) =>
+    new Request("http://x/api/whatsapp/dm-reply", { headers: h === undefined ? {} : { [SELF_JOIN_TEST_HEADER]: h } });
+
+  it("is the env flag, and the test header is ignored outside test mode", () => {
+    expect(selfJoinEnabledForApiRequest(req(), {})).toBe(false);
+    expect(selfJoinEnabledForApiRequest(req(), { SELF_JOIN_ENABLED: "1" })).toBe(true);
+    expect(selfJoinEnabledForApiRequest(req("1"), {})).toBe(false);
+    expect(selfJoinEnabledForApiRequest(req("0"), { SELF_JOIN_ENABLED: "1" })).toBe(true);
+  });
+
+  it("in test mode the header decides", () => {
+    expect(selfJoinEnabledForApiRequest(req("1"), { MT_TEST_MODE: "1" })).toBe(true);
+    expect(selfJoinEnabledForApiRequest(req("0"), { MT_TEST_MODE: "1", SELF_JOIN_ENABLED: "1" })).toBe(false);
+    expect(selfJoinEnabledForApiRequest(req(), { MT_TEST_MODE: "1" })).toBe(false);
+  });
+
+  it("names its header", () => {
+    expect(SELF_JOIN_TEST_HEADER).toBe("x-mt-test-self-join");
   });
 });

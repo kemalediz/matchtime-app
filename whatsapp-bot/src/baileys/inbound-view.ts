@@ -34,6 +34,7 @@
 import type { WAMessage } from "baileys";
 import type { InboundMessage } from "../driver.js";
 import { legacyJid, serializeKey } from "./key.js";
+import { bareLid, phoneFromJid } from "./jid.js";
 import type { MappedInbound } from "./inbound.js";
 
 export const BAILEYS_RAW: unique symbol = Symbol.for("matchtime.baileys.raw") as never;
@@ -57,6 +58,11 @@ export interface BaileysInboundView extends InboundMessage {
     /** Digits, when resolved. */
     senderPhone: string | null;
     pushName: string | null;
+    /** The sender's LID, bare digits, off the address or its alt
+     *  (self-join slice 5: the connect DM keeps it). */
+    senderLid: string | null;
+    /** The phone on the envelope's alt address, digits, when there was one. */
+    altPhone: string | null;
   };
   [BAILEYS_RAW]: WAMessage;
 }
@@ -68,6 +74,7 @@ export function buildInboundView(
 ): BaileysInboundView {
   const serialized = serializeKey(mapped.key);
   const senderJid = legacyJid(mapped.senderJid);
+  const altJid = (mapped.isGroup ? mapped.key.participantAlt : mapped.key.remoteJidAlt) ?? null;
   const view: BaileysInboundView = {
     from: legacyJid(mapped.chatJid) ?? mapped.chatJid,
     fromMe: mapped.fromMe,
@@ -81,6 +88,8 @@ export function buildInboundView(
       senderJid,
       senderPhone: extra.senderPhone,
       pushName: mapped.pushName,
+      senderLid: bareLid(mapped.senderJid) ?? bareLid(altJid),
+      altPhone: phoneFromJid(altJid),
     },
     [BAILEYS_RAW]: raw,
   };

@@ -117,6 +117,7 @@ export async function loadLatestConnect(orgId: string): Promise<ConnectRow | nul
       lastMismatchPhoneMasked: true,
       groupSubject: true,
       adderMatch: true,
+      siteCapAt: true,
     },
   });
 }

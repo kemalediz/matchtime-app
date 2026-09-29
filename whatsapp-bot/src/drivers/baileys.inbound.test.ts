@@ -371,6 +371,39 @@ describe("contactOf and getContact: harvested, never fetched", () => {
     expect(safeRead(contact, "pushname")).toBe("Sam");
   });
 
+  it("contactOf carries the DM sender's LID and alt phone off the envelope (self-join slice 5)", async () => {
+    const t = await started();
+    const got = collect(t.driver);
+    // LID-addressed, phone on the alt.
+    t.sock().emit("messages.upsert", {
+      messages: [wa({ conversation: "Connect Riverside FC, code 7KQ2" }, { remoteJid: PLAYER_LID, remoteJidAlt: PLAYER_PN, participant: undefined, id: "A1" })],
+      type: "notify",
+    });
+    // Phone-addressed, LID on the alt.
+    t.sock().emit("messages.upsert", {
+      messages: [wa({ conversation: "code 7KQ2" }, { remoteJid: PLAYER_PN, remoteJidAlt: PLAYER_LID, participant: undefined, id: "A2" })],
+      type: "notify",
+    });
+    // Phone-addressed, no alt.
+    t.sock().emit("messages.upsert", {
+      messages: [wa({ conversation: "code 7KQ2" }, { remoteJid: PLAYER_PN, participant: undefined, id: "A3" })],
+      type: "notify",
+    });
+    await tick();
+    const [a, b, c] = await Promise.all(got.map((m) => t.driver.contactOf(m)));
+    expect({ lid: safeRead(a, "lid"), altPhone: safeRead(a, "altPhone"), number: safeRead(a, "number") }).toEqual({
+      lid: "158055467598020",
+      altPhone: "447700900123",
+      number: "447700900123",
+    });
+    expect({ lid: safeRead(b, "lid"), altPhone: safeRead(b, "altPhone"), number: safeRead(b, "number") }).toEqual({
+      lid: "158055467598020",
+      altPhone: undefined,
+      number: "447700900123",
+    });
+    expect({ lid: safeRead(c, "lid"), altPhone: safeRead(c, "altPhone") }).toEqual({ lid: undefined, altPhone: undefined });
+  });
+
   it("getContact knows a name it has seen on a message, under either addressing", async () => {
     const t = await started();
     t.sock().emit("messages.upsert", {

@@ -247,6 +247,10 @@ export async function postDmReply(params: {
   body: string;
   waMessageId: string;
   authorName?: string; // pushname — server uses for @lid fallback
+  /** Self-join slice 5: the sender's LID and the envelope's alt phone
+   *  (dm-identity.ts). Absent when unknown; an older server ignores them. */
+  senderLid?: string;
+  senderAltPhone?: string;
 }): Promise<void> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/dm-reply`, {
     method: "POST",

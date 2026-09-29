@@ -396,6 +396,10 @@ const SAMPLES: SampleArgs = {
   admin_players_club_rating_hint: null,
   admin_players_not_rated_yet: null,
   admin_players_rated_games: { count: 4 },
+  sj_site_cap_groups: null,
+  sj_dm_connected: { name: "Aliyah", club: "Riverside FC" },
+  sj_dm_already_connected: null,
+  sj_dm_code_expired: null,
 };
 
 /** Render an entry with its sample arguments. */

@@ -45,6 +45,8 @@ import {
 } from "./smart-analysis.js";
 import { config } from "./config.js";
 import { resolveWaMessageId } from "./message-id.js";
+import { dmSenderExtras, type DmSenderExtras } from "./dm-identity.js";
+import { withTimeout } from "./with-timeout.js";
 import { acquireInstanceLock } from "./instance-lock.js";
 import { resolveShadowMode, shadowBanner, shadowGroup, shadowOpenNotice } from "./shadow.js";
 
@@ -518,24 +520,31 @@ async function main() {
         // sender to a user and drops the reply as "unknown sender" — which
         // silently broke collector fee replies ("£10 each"), DM Q&A, etc.
         // Recover the real number (and name) from the contact record.
-        if (!phone || !authorName) {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const contact = (await driver.contactOf(msg)) as any;
-            if (!phone) {
-              // Contact.number is the real phone even when the JID is @lid.
-              const num = contact?.number;
-              if (num && String(num).trim()) {
-                phone = String(num).replace(/[^\d]/g, "");
-              }
+        //
+        // Self-join slice 5: the record is now read for EVERY DM, because
+        // it also carries the sender's LID and the envelope's alt phone
+        // (dmSenderExtras), which the connect DM needs even when the chat
+        // id already gave a phone. Under Baileys it is built locally from
+        // the envelope (no network); the timeout guards whatsapp-web.js,
+        // where it is a page call. A failure costs the extras, not the DM.
+        let extras: DmSenderExtras = dmSenderExtras(head.from, null);
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const contact = (await withTimeout(driver.contactOf(msg), 5000, "contactOf")) as any;
+          extras = dmSenderExtras(head.from, contact);
+          if (!phone) {
+            // Contact.number is the real phone even when the JID is @lid.
+            const num = contact?.number;
+            if (num && String(num).trim()) {
+              phone = String(num).replace(/[^\d]/g, "");
             }
-            if (!authorName) {
-              const pn = contact.pushname || contact.name;
-              if (pn && pn.trim()) authorName = pn.trim();
-            }
-          } catch {
-            /* non-fatal */
           }
+          if (!authorName) {
+            const pn = contact.pushname || contact.name;
+            if (pn && pn.trim()) authorName = pn.trim();
+          }
+        } catch {
+          /* non-fatal */
         }
         console.log(
           `[dm] resolved from=${head.from} phone=${phone || "?"} name=${authorName ?? "?"}`,
@@ -552,9 +561,11 @@ async function main() {
             authorName,
             body: text,
             waMessageId: resolveWaMessageId(msg).waMessageId,
+            ...extras,
           });
           console.log(
-            `[dm] forwarded reply from=${head.from} authorName=${authorName ?? "?"}`,
+            `[dm] forwarded reply from=${head.from} authorName=${authorName ?? "?"}` +
+              `${extras.senderLid ? ` lid=${extras.senderLid}` : ""}${extras.senderAltPhone ? " alt=phone" : ""}`,
           );
         } catch (err) {
           console.error("dm-reply forward failed:", err);

@@ -131,12 +131,14 @@ export interface ConnectRow {
   lastMismatchPhoneMasked: string | null;
   groupSubject: string | null;
   adderMatch: string | null;
+  /** Set by the connect DM (slice 5) when cap 6 was full. */
+  siteCapAt: Date | null;
 }
 
 export type ConnectCard =
   | { kind: "hidden" }
   | { kind: "draft" }
-  | { kind: "issued"; code: string; mismatchFrom: string | null }
+  | { kind: "issued"; code: string; mismatchFrom: string | null; siteCap: boolean }
   | { kind: "expired" }
   | { kind: "dm_verified" }
   | { kind: "pending"; group: string | null; addedByOther: boolean }
@@ -183,7 +185,13 @@ export function deriveConnectCard(args: {
   switch (latest.status) {
     case "issued":
       return latest.expiresAt.getTime() > t
-        ? { kind: "issued", code: latest.code, mismatchFrom: latest.lastMismatchAt ? latest.lastMismatchPhoneMasked : null }
+        ? {
+            kind: "issued",
+            code: latest.code,
+            mismatchFrom: latest.lastMismatchAt ? latest.lastMismatchPhoneMasked : null,
+            // Cap 6 resets at London midnight; so does the line.
+            siteCap: !!latest.siteCapAt && latest.siteCapAt.getTime() >= londonMidnight(now).getTime(),
+          }
         : { kind: "expired" };
     case "dm_verified":
       return !latest.addWindowEndsAt || latest.addWindowEndsAt.getTime() > t ? { kind: "dm_verified" } : { kind: "expired" };

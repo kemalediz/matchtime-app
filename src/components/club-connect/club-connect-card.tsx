@@ -84,6 +84,14 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
           <p className="text-sm font-mono font-semibold text-slate-900" data-testid="club-connect-code">
             {s.sj_card_code({ code: card.code })}
           </p>
+          {card.siteCap && (
+            <p
+              data-testid="club-connect-site-cap"
+              className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3"
+            >
+              {s.sj_site_cap_groups}
+            </p>
+          )}
           {card.mismatchFrom && owner?.phoneNumber && (
             <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
               {s.sj_card_wrong_number({ seen: card.mismatchFrom, expected: formatPhoneForDisplay(owner.phoneNumber) })}

@@ -1303,6 +1303,17 @@ export const tr: Strings = {
     "Bu kulübün oyuncularının verdiği puanların ortalaması, oyuncunun kendi sayfasında gördüğü sayının aynısı. Takım dengeleyici, daha fazla puan gelene kadar başlangıç puanını da hesaba katar.",
   admin_players_not_rated_yet: "Henüz puan yok",
   admin_players_rated_games: (p: { count: number }): string => `${p.count} puanlanmış maç`,
+
+  // ── Self-join slice 5: the connect DM replies ──
+  sj_site_cap_groups: "Her gün birkaç yeni grup alıyoruz. Lütfen yarın tekrar deneyin.",
+
+  sj_dm_connected: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, tamamdır: ${p.club} bu sohbete bağlandı.\n` +
+    "Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.\n" +
+    "Sizin için açana kadar grupta sessiz kalacağım, genellikle bir gün içinde.",
+  sj_dm_already_connected: "Zaten bağlısınız. Şimdi beni grubunuza eklemeniz yeterli.",
+  sj_dm_code_expired:
+    "Bu kodun süresi doldu. matchtime.ai'de kulübünüzü açın ve MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun.",
 };
 
 /**

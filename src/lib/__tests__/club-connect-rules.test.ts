@@ -164,6 +164,7 @@ function row(p: Partial<ConnectRow>): ConnectRow {
     lastMismatchPhoneMasked: null,
     groupSubject: null,
     adderMatch: null,
+    siteCapAt: null,
     ...p,
   };
 }
@@ -180,7 +181,15 @@ describe("deriveConnectCard", () => {
       kind: "issued",
       code: "7KQ2",
       mismatchFrom: null,
+      siteCap: false,
     });
+  });
+
+  it("a live code whose DM came while cap 6 was full: the cap line, that London day only (slice 5)", () => {
+    const latest = row({ siteCapAt: new Date(NOW.getTime() - 60 * MIN) });
+    expect(deriveConnectCard({ org: draft, latest, now: NOW })).toMatchObject({ kind: "issued", siteCap: true });
+    const yesterday = row({ siteCapAt: new Date("2026-09-28T22:00:00Z") });
+    expect(deriveConnectCard({ org: draft, latest: yesterday, now: NOW })).toMatchObject({ kind: "issued", siteCap: false });
   });
 
   it("a live code sent from another number: the masked number is shown", () => {
@@ -189,6 +198,7 @@ describe("deriveConnectCard", () => {
       kind: "issued",
       code: "7KQ2",
       mismatchFrom: "+44 77** ***123",
+      siteCap: false,
     });
   });
 
