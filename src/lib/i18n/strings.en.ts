@@ -1579,4 +1579,20 @@ export const en = {
    *  connect DM's WhatsApp id). `group` is the group's subject, when read. */
   sj_dm_in_group: (p: { group: string | null }): string =>
     `Thanks, I'm in ${p.group ? `"${p.group}"` : "your group"}. I'll stay quiet there until we switch you on, and I'll message you here when it's done.`,
+
+  // ── Self-join slice 7: the decision (plan 5.4, 6.3) ──
+  /** The first thing MatchTime ever says in a newly approved group. Short,
+   *  friendly, explains IN and OUT. `organiser` is the organiser's first
+   *  name, when known. */
+  sj_group_hello: (p: { organiser: string | null }): string =>
+    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."}\n` +
+    "Playing? Just write *IN*. Can't make it? Write *OUT*. I'll tick your message and keep the squad list up to date.\n" +
+    "Anything else, tag me: *@Match Time help*",
+  /** To the organiser, once, when the owner approves. */
+  sj_dm_approved: (p: { club: string; group: string | null; link: string }): string =>
+    `Good news: ${p.club} is live. I've said hello in ${p.group ? `"${p.group}"` : "your group"}. You can set or change your weekly game here: ${p.link}`,
+  /** To the organiser, once, when the owner rejects. MatchTime has left the
+   *  group without a word in it (decision 1). */
+  sj_dm_rejected: (p: { group: string | null }): string =>
+    `Thanks for trying MatchTime. We can't take ${p.group ? `"${p.group}"` : "your group"} on right now, so I've left the group. We'll be in touch if that changes.`,
 };

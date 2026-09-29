@@ -46,11 +46,22 @@
  * `platform-<id>`, claimed on the PlatformJob row (not SentNotification),
  * first in the list so the Pi's DM pacing serves a waiting sign-up first.
  * A new Pi sends the header and gets none. See src/lib/platform-jobs.ts.
+ *
+ * ── Cap 8: DMs from a new self-join club (slice 7, 2026-09-29) ─────────
+ * A club approved through self-join sends its members at most
+ * NEW_CLUB_MEMBER_DMS_PER_DAY (20) DMs per London day for its first 28
+ * days from approval. DMs over the allowance are simply not claimed, so
+ * they come back on a later poll (tomorrow, once today's are spent). Group
+ * posts are untouched. A club that predates self-join (Sutton FC) has a
+ * NULL `approvedAt` and is never capped. Fails open, like the guards above.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations } from "@/lib/bot-scheduler";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
+import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
+import { londonMidnight } from "@/lib/club-connect-rules";
+import { countOrgDmsSince } from "@/lib/org-dm-count";
 import {
   CIRCUIT_BREAKER_WINDOW_MS,
   GROUP_DIRECTED_KINDS,
@@ -160,7 +171,7 @@ export async function GET(request: Request) {
   // the expired one gets posted in this same cycle.
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
-    select: { id: true },
+    select: { id: true, approvedAt: true },
   });
   if (!org) {
     return NextResponse.json({ error: "Organisation not found / bot disabled" }, { status: 404 });
@@ -207,7 +218,27 @@ export async function GET(request: Request) {
 
   const recentTexts = await fetchRecentGroupTexts(org.id, now);
 
-  const selection = await selectDispatchable(result.instructions, {
+  // Cap 8 (see the header). Only a club approved through self-join, in
+  // its first 28 days.
+  let instructions = result.instructions;
+  const dmCap = newClubDmCap(org, now);
+  if (dmCap !== null && instructions.some((i) => i.kind === "dm")) {
+    try {
+      const sentToday = await countOrgDmsSince(org.id, londonMidnight(now));
+      const { keep, held } = holdDmsOverAllowance(instructions, dmCap - sentToday);
+      if (held.length > 0) {
+        console.warn(
+          `[due-posts] org ${org.id}: new-club DM cap (${dmCap} a day) reached with ${sentToday} sent today; ` +
+            `${held.length} DM(s) held for a later poll: ${held.map((i) => i.key).join(", ")}`,
+        );
+      }
+      instructions = keep;
+    } catch (err) {
+      console.error(`[due-posts] org ${org.id}: new-club DM cap could not be read; allowing the DMs:`, err);
+    }
+  }
+
+  const selection = await selectDispatchable(instructions, {
     recentGroupSends,
     recentTexts,
     now,

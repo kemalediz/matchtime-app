@@ -19,7 +19,10 @@ const TABS = [
 /** Shown only to the platform owner (`User.isSuperadmin`). The page itself
  *  answers 404 to anybody else; hiding the tab just keeps club admins from
  *  seeing a link that goes nowhere. */
-const OWNER_TABS = [{ label: "Health", href: "/admin/health" }];
+const OWNER_TABS = [
+  { label: "Clubs", href: "/admin/clubs" },
+  { label: "Health", href: "/admin/health" },
+];
 
 export function AdminSubnav() {
   const pathname = usePathname();

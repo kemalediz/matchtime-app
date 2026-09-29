@@ -1030,6 +1030,14 @@ function cases(lang: Lang): Case[] {
   add("R184 group add / organiser ack", sj.sj_dm_in_group({ group: "Riverside Tuesday 5s" }));
   add("R184 group add / organiser ack, no group name", sj.sj_dm_in_group({ group: null }));
 
+  // ── self-join slice 7: the decision (2026-09-29) ──
+  add("R185 group hello / organiser named", sj.sj_group_hello({ organiser: "Ali" }));
+  add("R185 group hello / no organiser name", sj.sj_group_hello({ organiser: null }));
+  add("R185 organiser DM / approved", sj.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", link: "https://matchtime.ai/admin/activities" }));
+  add("R185 organiser DM / approved, no group name", sj.sj_dm_approved({ club: "Riverside FC", group: null, link: "https://matchtime.ai/admin/activities" }));
+  add("R185 organiser DM / rejected", sj.sj_dm_rejected({ group: "Riverside Tuesday 5s" }));
+  add("R185 organiser DM / rejected, no group name", sj.sj_dm_rejected({ group: null }));
+
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
   add("R138 detailsFollowUpQuestion / time and venue", detailsFollowUpQuestion(["time", "venue"]));

@@ -22,26 +22,44 @@
  * ONE WRITER. Nothing outside this module (and its pure half,
  * club-approval-state.ts) may use `approvalStatus` as an object key
  * except `approvalStatus: true` in a select or a type annotation
- * (`__tests__/club-approval-source-guard.test.ts`). Later slices add the
- * writer (`decideClub`) here.
+ * (`__tests__/club-approval-source-guard.test.ts`). Slice 7 adds the
+ * owner's decision here: `decideClub` (approve, reject, suspend), used by
+ * the owner's WhatsApp reply (`handleApproverDm`) and /admin/clubs alike.
  *
  * NOT the mute switch (`whatsappBotEnabled`) and NOT dormancy
  * (`dormantAt`). Both keep their meanings (see org-lifecycle.ts).
  */
 import { db } from "./db";
+import { t } from "./i18n/t";
+import { e164Digits } from "./phone";
+import { parseParticipantSnapshot } from "./participant-snapshot";
+import { parseApproverPhones, queueOwnerDm } from "./owner-dm";
+import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
+import {
+  isApproverSender,
+  ownerAckText,
+  parseApproverCommand,
+  resolveApproverTarget,
+  suspendRefusal,
+  type DecidedClub,
+  type OwnerAck,
+  type WaitingClub,
+} from "./club-decision-rules";
 
 export {
   APPROVAL_STATUSES,
   APPROVED_CLUB_WHERE,
   DRAFT_CLUB_WHERE,
   PENDING_CLUB_WHERE,
+  REJECTED_CLUB_WHERE,
+  SUSPENDED_CLUB_WHERE,
   UNAPPROVED_CLUB_WHERE,
   SELF_JOIN_CLUB_WHERE,
   isClubApproved,
   isClubOperational,
   type ApprovalStatus,
 } from "./club-approval-state";
-import { APPROVED_CLUB_WHERE, UNAPPROVED_CLUB_WHERE } from "./club-approval-state";
+import { APPROVED_CLUB_WHERE, PENDING_CLUB_WHERE, UNAPPROVED_CLUB_WHERE } from "./club-approval-state";
 
 // ── Flags ───────────────────────────────────────────────────────────────
 
@@ -201,4 +219,449 @@ export async function onlyUnapprovedClubs(orgIds: string[]): Promise<boolean> {
   if (orgIds.length === 0) return false;
   const approved = await db.organisation.count({ where: { id: { in: orgIds }, ...APPROVED_CLUB_WHERE } });
   return approved === 0;
+}
+
+// ── The decision (slice 7) ──────────────────────────────────────────────
+
+export type ClubDecision = "approve" | "reject" | "suspend";
+
+export type DecideClubResult =
+  | {
+      ok: true;
+      decision: ClubDecision;
+      orgId: string;
+      club: string;
+      /** The connect request's code (the ref in the owner's DM), when there was one. */
+      code: string | null;
+      groupId: string | null;
+      groupSubject: string | null;
+    }
+  | { ok: false; reason: "not-found" }
+  | {
+      ok: false;
+      reason: "not-pending" | "not-approved";
+      club: string;
+      status: string;
+      decidedAt: Date | null;
+    }
+  | { ok: false; reason: "not-self-join" | "confirm-mismatch" | "no-linked-group"; club: string }
+  | { ok: false; reason: "group-taken"; club: string; takenBy: string };
+
+class DecisionRaceLost extends Error {}
+
+/** The organiser's weekly-game page, linked from the "approved" DM. */
+function weeklyGameLink(): string {
+  const base = (process.env.NEXTAUTH_URL ?? "https://matchtime.ai").replace(/\/$/, "");
+  return `${base}/admin/activities`;
+}
+
+function firstName(name: string | null | undefined): string | null {
+  const first = (name ?? "").trim().split(/\s+/)[0];
+  return first ? first : null;
+}
+
+/**
+ * THE ONE WRITER OF A DECISION. Approve, reject or suspend a club, from
+ * the owner's WhatsApp reply or from /admin/clubs. Every move is a
+ * compare-and-set inside one transaction, so a DM and a button press at
+ * the same moment cannot both act: the loser is told the club was already
+ * decided, and queues nothing.
+ *
+ *   approve  pending -> approved. Refused when another approved club owns
+ *            the group. Sets `whatsappGroupId` (from the connect request;
+ *            it is never set while pending, plan 3.1), `approvedAt` (the
+ *            start of the club's first four weeks, see ai-budget.ts
+ *            `aiWindowStart`), and turns the bot ON (the CHECK constraint
+ *            allows it now). Queues the hello as the club's first group
+ *            BotJob; the Pi picks the group up on its next org refresh.
+ *            Then imports the roster from the add's snapshot and DMs the
+ *            organiser.
+ *   reject   pending -> rejected. The bot stays off. MatchTime leaves the
+ *            group without a word in it, and the organiser gets one polite
+ *            DM (decision 1).
+ *   suspend  approved -> suspended, the owner page's off switch. ONLY a
+ *            club that came in through self-join (`approvedAt` set) and
+ *            only with its name typed: Sutton FC (approved by the column
+ *            default, `approvedAt` NULL) can never be turned off or left
+ *            from here. The bot goes off in the same write, then MatchTime
+ *            leaves the group. Nobody is messaged.
+ *
+ * `decidedBy` is "whatsapp:<phone>" or a user id. No model, anywhere.
+ */
+export async function decideClub(
+  orgId: string,
+  decision: ClubDecision,
+  decidedBy: string,
+  opts: { now?: Date; confirmName?: string | null } = {},
+): Promise<DecideClubResult> {
+  const now = opts.now ?? new Date();
+
+  type Done = {
+    result: DecideClubResult;
+    after?: {
+      language: string | null;
+      link: {
+        id: string;
+        phone: string;
+        groupId: string | null;
+        groupSubject: string | null;
+        participants: unknown;
+      } | null;
+      leaveGroupId: string | null;
+    };
+  };
+
+  let done: Done;
+  try {
+    done = await db.$transaction(async (tx): Promise<Done> => {
+      const org = await tx.organisation.findUnique({
+        where: { id: orgId },
+        select: {
+          id: true,
+          name: true,
+          language: true,
+          approvalStatus: true,
+          approvedAt: true,
+          approvalDecidedAt: true,
+          whatsappGroupId: true,
+        },
+      });
+      if (!org) return { result: { ok: false, reason: "not-found" } };
+      const refusedAs = (reason: "not-pending" | "not-approved"): Done => ({
+        result: { ok: false, reason, club: org.name, status: org.approvalStatus, decidedAt: org.approvalDecidedAt },
+      });
+      const decided = { approvalDecidedAt: now, approvalDecidedBy: decidedBy };
+
+      if (decision === "suspend") {
+        const refusal = suspendRefusal(org, opts.confirmName);
+        if (refusal === "not-approved") return refusedAs("not-approved");
+        if (refusal) return { result: { ok: false, reason: refusal, club: org.name } };
+        const { count } = await tx.organisation.updateMany({
+          where: { id: orgId, approvalStatus: "approved", approvedAt: { not: null } },
+          data: { approvalStatus: "suspended", whatsappBotEnabled: false, ...decided },
+        });
+        if (count !== 1) throw new DecisionRaceLost();
+        return {
+          result: {
+            ok: true,
+            decision,
+            orgId,
+            club: org.name,
+            code: null,
+            groupId: org.whatsappGroupId,
+            groupSubject: null,
+          },
+          after: { language: org.language, link: null, leaveGroupId: org.whatsappGroupId },
+        };
+      }
+
+      if (org.approvalStatus !== "pending") return refusedAs("not-pending");
+      const link = await tx.clubConnect.findFirst({
+        where: { orgId, status: "group_linked", botRemovedAt: null, groupId: { not: null } },
+        orderBy: { linkedAt: "desc" },
+        select: {
+          id: true,
+          userId: true,
+          code: true,
+          phone: true,
+          groupId: true,
+          groupSubject: true,
+          participants: true,
+        },
+      });
+
+      if (decision === "reject") {
+        const { count } = await tx.organisation.updateMany({
+          where: { id: orgId, approvalStatus: "pending" },
+          data: { approvalStatus: "rejected", ...decided },
+        });
+        if (count !== 1) throw new DecisionRaceLost();
+        if (link) {
+          await tx.clubConnect.updateMany({ where: { id: link.id, status: "group_linked" }, data: { status: "closed" } });
+        }
+        return {
+          result: {
+            ok: true,
+            decision,
+            orgId,
+            club: org.name,
+            code: link?.code ?? null,
+            groupId: link?.groupId ?? null,
+            groupSubject: link?.groupSubject ?? null,
+          },
+          after: { language: org.language, link, leaveGroupId: link?.groupId ?? null },
+        };
+      }
+
+      // approve
+      if (!link || !link.groupId) return { result: { ok: false, reason: "no-linked-group", club: org.name } };
+      const groupId = link.groupId;
+      // The same lock the group add takes, so two clubs can never both end
+      // up owning one group.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`group-add:${groupId}`}))`;
+      const taken = await tx.organisation.findFirst({
+        where: { ...APPROVED_CLUB_WHERE, whatsappGroupId: groupId, id: { not: orgId } },
+        select: { id: true, name: true },
+      });
+      if (taken) return { result: { ok: false, reason: "group-taken", club: org.name, takenBy: taken.name } };
+
+      const { count } = await tx.organisation.updateMany({
+        where: { id: orgId, approvalStatus: "pending" },
+        data: {
+          approvalStatus: "approved",
+          approvedAt: now,
+          whatsappBotEnabled: true,
+          whatsappGroupId: groupId,
+          ...decided,
+        },
+      });
+      if (count !== 1) throw new DecisionRaceLost();
+      await tx.clubConnect.updateMany({ where: { id: link.id, status: "group_linked" }, data: { status: "closed" } });
+
+      // The hello: the first thing MatchTime ever says in this group. A
+      // plain group BotJob, so it goes out through due-posts with every
+      // guard every other post has.
+      const organiser = await tx.user.findUnique({ where: { id: link.userId }, select: { name: true } });
+      await tx.botJob.create({
+        data: { orgId, kind: "group", text: t(org.language).sj_group_hello({ organiser: firstName(organiser?.name) }) },
+      });
+      return {
+        result: {
+          ok: true,
+          decision,
+          orgId,
+          club: org.name,
+          code: link.code,
+          groupId,
+          groupSubject: link.groupSubject,
+        },
+        after: { language: org.language, link, leaveGroupId: null },
+      };
+    });
+  } catch (err) {
+    if (!(err instanceof DecisionRaceLost)) throw err;
+    // Somebody else decided between our read and our write. Report what
+    // they decided, from a fresh read.
+    const org = await db.organisation.findUnique({
+      where: { id: orgId },
+      select: { name: true, approvalStatus: true, approvalDecidedAt: true },
+    });
+    if (!org) return { ok: false, reason: "not-found" };
+    return {
+      ok: false,
+      reason: decision === "suspend" ? "not-approved" : "not-pending",
+      club: org.name,
+      status: org.approvalStatus,
+      decidedAt: org.approvalDecidedAt,
+    };
+  }
+
+  const { result, after } = done;
+  if (!result.ok || !after) return result;
+  console.log(
+    `[club-approval] ${result.decision} ${orgId} ("${result.club}") by ${decidedBy}` +
+      `${result.groupId ? `, group ${result.groupId}` : ""}`,
+  );
+
+  // Everything below happens after the decision is committed. A failure
+  // here is logged and never undoes the decision.
+  const s = t(after.language);
+  if (result.decision === "approve" && after.link) {
+    const snapshot = parseParticipantSnapshot(after.link.participants);
+    try {
+      // Imported here, not at the top: participant-sync pulls in the squad
+      // extractor, which imports ai-budget, which imports this module.
+      const { importParticipants } = await import("./participant-sync");
+      const imported = await importParticipants(orgId, snapshot);
+      console.log(`[club-approval] ${orgId}: roster imported (${imported.added} new, ${imported.alreadyKnown} known)`);
+    } catch (err) {
+      console.error(`[club-approval] ${orgId}: roster import FAILED; the next participant sweep fills it:`, err);
+    }
+    await queueOrganiserDecisionDm(
+      `${after.link.id}:approved`,
+      after.link.phone,
+      s.sj_dm_approved({ club: result.club, group: after.link.groupSubject, link: weeklyGameLink() }),
+    );
+  }
+  if (result.decision === "reject" && after.link) {
+    await queueOrganiserDecisionDm(
+      `${after.link.id}:rejected`,
+      after.link.phone,
+      s.sj_dm_rejected({ group: after.link.groupSubject }),
+    );
+  }
+  if (after.leaveGroupId) {
+    const leave = await queuePlatformLeaveGroup({ groupId: after.leaveGroupId, refId: after.link?.id ?? orgId });
+    if ("refused" in leave) {
+      console.error(`[club-approval] ${orgId}: leaving ${after.leaveGroupId} refused (${leave.refused})`);
+    }
+  }
+  return result;
+}
+
+/** One decision DM per request and outcome, ever. */
+async function queueOrganiserDecisionDm(refId: string, phone: string, text: string): Promise<void> {
+  const already = await db.platformJob.findFirst({ where: { purpose: "organiser-decision", refId }, select: { id: true } });
+  if (already) return;
+  try {
+    await queuePlatformDm({ phone, text, purpose: "organiser-decision", refId });
+  } catch (err) {
+    if (err instanceof PlatformDmRefused) {
+      console.error(`[club-approval] organiser DM ${refId} not queued: ${err.reason}`);
+      return;
+    }
+    throw err;
+  }
+}
+
+// ── The Leave button for an unsolicited group (slice 7) ─────────────────
+
+export type LeaveUnsolicitedResult =
+  | { ok: true }
+  | { ok: false; reason: "not-found" | "already-left" | "approved-club-group" | "not-a-group" };
+
+/**
+ * Leave a group somebody added MatchTime to with no code. Goes through
+ * `queuePlatformLeaveGroup`, which refuses any group an approved club owns
+ * (Sutton FC's included), at queue time and again at dispatch.
+ */
+export async function leaveUnsolicitedGroup(id: string): Promise<LeaveUnsolicitedResult> {
+  const row = await db.unsolicitedGroup.findUnique({ where: { id }, select: { id: true, groupId: true, leftAt: true } });
+  if (!row) return { ok: false, reason: "not-found" };
+  if (row.leftAt) return { ok: false, reason: "already-left" };
+  const r = await queuePlatformLeaveGroup({ groupId: row.groupId, refId: row.id });
+  if ("refused" in r) return { ok: false, reason: r.refused };
+  console.log(`[club-approval] leaving unsolicited group ${row.groupId} (${row.id}) from the owner page`);
+  return { ok: true };
+}
+
+// ── The owner's WhatsApp reply (slice 7, plan 6.2) ──────────────────────
+
+export interface ApproverDmInput {
+  text: string;
+  /** The sender's phone as the Pi forwarded it. */
+  phone?: string | null;
+  /** The phone on the envelope's alt address, when there was one. */
+  senderAltPhone?: string | null;
+  waMessageId: string;
+  now?: Date;
+}
+
+export interface ApproverDmOutcome {
+  handled: "approver-dm";
+  result:
+    | "not-approver"
+    | "approved"
+    | "rejected"
+    | "ambiguous"
+    | "none-waiting"
+    | "unknown-ref"
+    | "already"
+    | "group-taken";
+}
+
+/** Clubs waiting for a decision, oldest first, one per club. */
+async function loadWaitingClubs(): Promise<WaitingClub[]> {
+  const rows = await db.clubConnect.findMany({
+    where: { status: "group_linked", botRemovedAt: null, org: PENDING_CLUB_WHERE },
+    orderBy: { linkedAt: "asc" },
+    select: { code: true, orgId: true, org: { select: { name: true } } },
+  });
+  const out: WaitingClub[] = [];
+  for (const r of rows) {
+    if (!out.some((w) => w.orgId === r.orgId)) out.push({ orgId: r.orgId, code: r.code, club: r.org.name });
+  }
+  return out;
+}
+
+const DECIDED = new Set(["approved", "rejected", "suspended"]);
+
+/** Decided clubs whose request carried this ref, newest first. */
+async function loadDecidedForRef(ref: string): Promise<DecidedClub[]> {
+  const rows = await db.clubConnect.findMany({
+    where: { code: ref, status: "closed" },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+    select: { code: true, org: { select: { name: true, approvalStatus: true, approvalDecidedAt: true } } },
+  });
+  return rows
+    .filter((r) => DECIDED.has(r.org.approvalStatus))
+    .map((r) => ({
+      code: r.code,
+      club: r.org.name,
+      status: r.org.approvalStatus as DecidedClub["status"],
+      decidedAt: r.org.approvalDecidedAt,
+    }));
+}
+
+/**
+ * "APPROVE 7KQ2" / "REJECT 7KQ2" from the owner's phone. Runs at the TOP
+ * of /api/whatsapp/dm-reply while SELF_JOIN_ENABLED is on, before every
+ * other handler and every model path. Deterministic.
+ *
+ *   - not a command (the whole message must be one): null, today's
+ *     handling, untouched;
+ *   - a command WITH a ref from anybody who is not an approver: swallowed,
+ *     logged, nothing decided, nothing sent, no model (a bare "approve"
+ *     from anybody else is left to today's handling);
+ *   - from an approver: resolved, decided through `decideClub`, and
+ *     answered with one line through `queueOwnerDm`, keyed on the WhatsApp
+ *     message id, so a re-forwarded DM is never answered twice.
+ */
+export async function handleApproverDm(input: ApproverDmInput): Promise<ApproverDmOutcome | null> {
+  const cmd = parseApproverCommand(input.text);
+  if (!cmd) return null;
+  const now = input.now ?? new Date();
+  const approvers = parseApproverPhones(process.env.SELF_JOIN_APPROVER_PHONES);
+  if (!isApproverSender(input, approvers)) {
+    if (cmd.ref === null) return null;
+    console.warn(
+      `[club-approval] "${cmd.verb.toUpperCase()} ${cmd.ref}" from a number that is not an approver ` +
+        `(phone=${input.phone ?? "-"}, alt=${input.senderAltPhone ?? "-"}); ignored`,
+    );
+    return { handled: "approver-dm", result: "not-approver" };
+  }
+  const approver =
+    [input.phone, input.senderAltPhone]
+      .map((p) => (typeof p === "string" && p.trim() ? e164Digits(p) : null))
+      .find((d): d is string => !!d && approvers.includes(d)) ?? "unknown";
+
+  const [waiting, decided] = await Promise.all([
+    loadWaitingClubs(),
+    cmd.ref ? loadDecidedForRef(cmd.ref) : Promise.resolve([] as DecidedClub[]),
+  ]);
+  const target = resolveApproverTarget(cmd, waiting, decided);
+
+  let ack: OwnerAck;
+  switch (target.kind) {
+    case "ambiguous":
+    case "none-waiting":
+    case "unknown-ref":
+    case "already":
+      ack = target;
+      break;
+    case "decide": {
+      const r = await decideClub(target.target.orgId, cmd.verb, `whatsapp:${approver}`, { now });
+      if (r.ok) ack = { kind: r.decision === "approve" ? "approved" : "rejected", club: r.club };
+      else if (r.reason === "group-taken") ack = { kind: "group-taken", club: r.club, takenBy: r.takenBy };
+      else if ((r.reason === "not-pending" || r.reason === "not-approved") && DECIDED.has(r.status)) {
+        ack = {
+          kind: "already",
+          decided: {
+            code: target.target.code,
+            club: r.club,
+            status: r.status as DecidedClub["status"],
+            decidedAt: r.decidedAt,
+          },
+        };
+      } else {
+        ack = { kind: "unknown-ref", ref: target.target.code, waiting: waiting.filter((w) => w.orgId !== target.target.orgId) };
+      }
+      break;
+    }
+  }
+
+  await queueOwnerDm(ownerAckText(ack), "owner-ack", `dm:${input.waMessageId}`, now);
+  console.log(`[club-approval] owner DM "${input.text.trim()}" -> ${ack.kind}`);
+  return { handled: "approver-dm", result: ack.kind };
 }

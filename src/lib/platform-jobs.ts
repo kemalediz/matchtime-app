@@ -49,7 +49,7 @@
  * be left through this channel, whatever row somebody writes.
  */
 import { db } from "./db";
-import { normalisePhone } from "./phone";
+import { e164Digits } from "./phone";
 // The pure half, not club-approval.ts: slice 7 makes club-approval import
 // owner-dm, which imports this file, and a cycle there would be silent.
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
@@ -140,18 +140,9 @@ export class PlatformDmRefused extends Error {
   }
 }
 
-/** E.164 digits without "+", or null. */
-export function platformPhoneDigits(raw: string): string | null {
-  if (typeof raw !== "string") return null;
-  // Queued phones are stored as bare digits ("905321234567"), which
-  // normalisePhone only accepts for UK numbers, so bare international
-  // digits get their "+" back first. "00…" and "07…" keep their meaning.
-  const cleaned = raw.replace(/[\s\-()]/g, "");
-  const phone = normalisePhone(/^[1-9]\d{7,14}$/.test(cleaned) ? `+${cleaned}` : raw);
-  if (!phone) return null;
-  const digits = phone.replace(/^\+/, "");
-  return /^\d{8,15}$/.test(digits) ? digits : null;
-}
+/** E.164 digits without "+", or null. Lives in phone.ts (no database), so
+ *  pure modules can share it; re-exported here for its existing callers. */
+export const platformPhoneDigits = e164Digits;
 
 /**
  * Queue a DM on the platform channel. Throws `PlatformDmRefused` when the

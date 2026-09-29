@@ -43,3 +43,20 @@ export function normalisePhone(raw: string | null | undefined): string | null {
   if (!/^[1-9]\d{6,14}$/.test(digits)) return null;
   return "+" + digits;
 }
+
+/**
+ * E.164 digits without "+", or null. For phones stored as bare digits
+ * (the platform channel, the approver list, the Pi's DM forward):
+ * `normalisePhone` only accepts bare digits for UK numbers, so bare
+ * international digits get their "+" back first. "00…" and "07…" keep
+ * their meaning. (Moved here from platform-jobs.ts in self-join slice 7 so
+ * pure modules can use it without importing the database.)
+ */
+export function e164Digits(raw: string): string | null {
+  if (typeof raw !== "string") return null;
+  const cleaned = raw.replace(/[\s\-()]/g, "");
+  const phone = normalisePhone(/^[1-9]\d{7,14}$/.test(cleaned) ? `+${cleaned}` : raw);
+  if (!phone) return null;
+  const digits = phone.replace(/^\+/, "");
+  return /^\d{8,15}$/.test(digits) ? digits : null;
+}
