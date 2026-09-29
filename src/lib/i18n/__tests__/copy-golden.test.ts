@@ -138,6 +138,15 @@
  *     `team_sheet_open_slot` string. Additive only; no existing case
  *     moved.
  *
+ *   - Deliberate additions (2026-09-29, teams only on request and only
+ *     on match day, and an admin can clear them): row R170, seven one-line
+ *     replies (`team_ops_not_match_day`, `team_ops_not_a_build_request`, `team_ops_say_generate`,
+ *     `teams_cleared`, `teams_clear_nothing`, `teams_clear_admin_only`,
+ *     `request_not_handled`). NEW copy, after the Sutton FC incident of
+ *     24 Sep where a pairing joke built the teams five days early and
+ *     "delete these teams" was met with silence. Additive only; no
+ *     existing case moved.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -253,7 +262,11 @@ import { composePaymentAck, composeReminderDm, type PaymentApplyResult } from ".
 import {
   composeBalancerRefusal,
   composeGenerateTeamsReply,
+  requestNotHandledReply,
   teamOpsNoMatchReply,
+  teamOpsNotABuildRequestReply,
+  teamOpsNotMatchDayReply,
+  teamOpsSayGenerateReply,
 } from "../../team-ops-engine";
 import { buildRecruitGroupInviteDm, buildRecruitInviteDm } from "../../recruit";
 import { buildRecruitChaseText } from "../../recruit-chase";
@@ -949,6 +962,13 @@ function cases(lang: Lang): Case[] {
   add("R145 rating_overall_note", ratings.rating_overall_note);
   add("R146 rating_seed_club_hint", ratings.rating_seed_club_hint);
   add("R165 ai_daily_cap_reached", ratings.ai_daily_cap_reached());
+  add("R170 teamOpsNotMatchDayReply", teamOpsNotMatchDayReply(lang));
+  add("R170 teamOpsNotABuildRequestReply", teamOpsNotABuildRequestReply(lang));
+  add("R170 teamOpsSayGenerateReply", teamOpsSayGenerateReply(lang));
+  add("R170 requestNotHandledReply", requestNotHandledReply(lang));
+  add("R170 teams_cleared", ratings.teams_cleared);
+  add("R170 teams_clear_nothing", ratings.teams_clear_nothing);
+  add("R170 teams_clear_admin_only", ratings.teams_clear_admin_only);
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
@@ -1126,6 +1146,8 @@ const MIGRATED_ROWS = [
   "R161 ", "R162 ", "R163 ",
   // the daily AI spend cap (2026-09-29)
   "R165 ",
+  // teams only on request, on match day; an admin can clear them (2026-09-29)
+  "R170 ",
   // a player DMs "Paid" (2026-09-23): the collector's notice and the player's replies
   "R157 ", "R158 ", "R159 ", "R160 ",
 ];

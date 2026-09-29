@@ -573,12 +573,67 @@ describe("every failure hands the message back to the analyzer", () => {
     expect(res.degradations.join(" ")).not.toMatch(/analyzer/i);
   });
 
-  it('admin action "other" is owned by nobody, and says so', async () => {
+  // CHANGED 2026-09-29. "@Match Time delete these teams, early to form
+  // them, there is still 5 days" (Sutton FC, 24 Sep 22:52 BST) came back
+  // `other`, and the admin got SILENCE while the early teams stood.
+  // Kemal: a tagged request that cannot be handled is answered in one
+  // line, never swallowed. (The clear itself is now a deterministic
+  // pre-peel in route.ts, `lib/team-clear.ts`; this is the backstop for
+  // every other `other`.)
+  it('a TAGGED admin action "other" is answered in one line, and nothing is written', async () => {
     const { model } = stubModel({ [PAY]: { ...PAY_FACTS, action: "other" } });
     const r = recorder(model, paidWorld());
     const res = await run({ messages: [msg({ body: PAY })], deps: r.deps });
+    expect(res.ownedIds.size).toBe(1);
+    const out = [...res.outcomes.values()][0];
+    expect(out.reply).toBe("Sorry, I can't do that one yet.");
+    expect(out.react).toBeNull();
+    expect(out.recruitRequest).toBe(false);
+    expect(out.statsBlastRequest).toBe(false);
+    expect(r.credits).toEqual([]);
+    expect(res.degradations.join(" ")).toMatch(/has no deterministic handler/);
+  });
+
+  it('the Turkish group hears the "can\'t do that" line in Turkish', async () => {
+    const tr = paidWorld();
+    const trState = { ...tr, features: { ...tr.features, language: "tr" as const } };
+    const { model } = stubModel({ [PAY]: { ...PAY_FACTS, action: "other" } });
+    const r = recorder(model, trState);
+    const res = await run({ messages: [msg({ body: PAY })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe("Kusura bakmayın, bunu henüz yapamıyorum.");
+  });
+
+  it('a message that only NAMES MatchTime, without an @-tag, is not answered (2026-09-10 sentence)', async () => {
+    const body =
+      "please do not forget to rate the players via the link from Matchtime DM'ed to you. " +
+      "the more accurate ratings, the more balanced teams next time";
+    const { model } = stubModel({ [body]: { ...PAY_FACTS, action: "other" } });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body, tagged: true, taggedExplicitly: false })],
+      deps: r.deps,
+    });
+    expect(res.ownedIds.size).toBe(0);
+  });
+
+  it('an UNTAGGED admin action "other" is still owned by nobody (no reply to banter)', async () => {
+    const { model } = stubModel({ [PAY]: { ...PAY_FACTS, action: "other" } });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: PAY, tagged: false })], deps: r.deps });
     expect(res.ownedIds.size).toBe(0);
     expect(res.degradations.join(" ")).toMatch(/has no deterministic handler/);
+  });
+
+  it('an "other" answered in one line does not stop a neighbour\'s payment being credited', async () => {
+    const OTHER = "@Match Time do the thing";
+    const { model } = stubModel({ [PAY]: PAY_FACTS, [OTHER]: { ...PAY_FACTS, action: "other" } });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ waMessageId: "wa-o", body: OTHER }), msg({ waMessageId: "wa-p", body: PAY })],
+      deps: r.deps,
+    });
+    expect(res.outcomes.get("wa-o")!.reply).toBe("Sorry, I can't do that one yet.");
+    expect(r.credits.length).toBeGreaterThan(0);
   });
 
   it("an engine that throws owns nothing rather than 500ing the request", async () => {

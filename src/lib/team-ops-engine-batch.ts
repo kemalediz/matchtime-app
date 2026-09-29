@@ -35,7 +35,20 @@
  *
  *   • `show`     → `answer-batch.ts`  (`ANSWER_TEAM_ACTIONS`)
  *   • `generate` → HERE              (`TEAM_OPS_TEAM_ACTIONS`)
- *   • `rename`, `swap` → neither; both are handed back, see below.
+ *   • `rename`, `swap` → neither runs the balancer, see below. Since
+ *     2026-09-29 both are OWNED here and answered in one line
+ *     ("Sorry, I can't do that one yet.") instead of going silent.
+ *
+ * AND SINCE 2026-09-29, TWO GATES IN CODE ON `generate` (the Sutton FC
+ * incident of 24 Sep, where a pairing joke built the teams five days
+ * early; `lib/team-requests.ts` has the full story):
+ *
+ *   • the WORDS must clearly ask for the teams to be built
+ *     (`isExplicitTeamBuildRequest`), or the message is owned and told
+ *     teams are built on request, on match day;
+ *   • the target match must be TODAY in London (`isMatchDay`), or the
+ *     asker is told "I'll build the teams on match day, just ask me
+ *     then." and nothing is written, force-includes included.
  *
  * `__tests__/route-flags.test.ts` asserts the two lists are DISJOINT,
  * which is the property that makes two owners safe rather than merely
@@ -143,13 +156,19 @@
  *                                             retries the four
  *                                             attendance routes only.
  *   • the facts are not team facts          → SILENCE + note
- *   • the action is not `generate`          → SILENCE + note (`show`
- *                                             belongs to
- *                                             `answer-batch.ts`;
- *                                             `swap` to the
- *                                             deterministic pre-peel;
- *                                             `rename` to nobody, on
- *                                             purpose — see above)
+ *   • the action is `show`                  → not owned here;
+ *                                             `answer-batch.ts` answers
+ *                                             it
+ *   • the action is `rename` or `swap`      → owned; one line saying it
+ *                                             cannot be done (2026-09-29)
+ *   • `generate` with no clear ask in the
+ *     words                                 → owned; one line saying
+ *                                             teams are built on request,
+ *                                             on match day (2026-09-29)
+ *   • `generate` before match day           → owned; "I'll build the
+ *                                             teams on match day, just
+ *                                             ask me then." Nothing is
+ *                                             written (2026-09-29)
  *   • the engine threw                      → owns nothing → SILENCE +
  *                                             note, and no retry
  *                                             (`decide()` is pure)
@@ -247,10 +266,16 @@ import type {
   Route,
   SquadState,
 } from "./pipeline/types";
+import { isExplicitTeamBuildRequest, isMatchDay } from "./team-requests";
+import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
   TEAM_OPS_APPLY_DEGRADED_PREFIX,
   TEAM_OPS_HANDLED_BY,
   applyGenerateTeams,
+  requestNotHandledReply,
+  teamOpsNotABuildRequestReply,
+  teamOpsNotMatchDayReply,
+  teamOpsSayGenerateReply,
   type EngineGenerateTeamsWrite,
   type TeamOpsApplyDeps,
 } from "./team-ops-engine";
@@ -276,6 +301,11 @@ export interface TeamOpsBatchMessage {
   senderName: string | null;
   /** Did this message @-mention the bot? The interaction-contract signal. */
   tagged: boolean;
+  /** `messageMentionsBotExplicitly`, the STRICT tag. Read only to decide
+   *  whether a declined request is answered out loud (2026-09-29): a
+   *  message that merely names MatchTime is never told "I can't". Omitted
+   *  → derived from the body. */
+  taggedExplicitly?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then this never sees it. */
@@ -504,7 +534,27 @@ export async function runTeamOpsBatch(args: {
   // outcome per input id and the window is intact for its neighbours),
   // it gets no entry in `outcomes`, and its reason is already in
   // `degradations` before the `continue` runs.
+  //
+  // 2026-09-29: the loop also sorts owned messages into DECLINED ones,
+  // which is still pure bookkeeping (a map entry, no write): a declined
+  // message is owned, reaches `decide()` with `{kind:"none"}` like any
+  // non-firing neighbour, and gets a one-line reply in the outcomes loop.
+  //
+  //   • `rename`, `swap` → "unsupported". They used to be handed back,
+  //     which since §10 step 8 is silence plus an operator note. Kemal,
+  //     2026-09-29: a tagged team request that cannot be handled is
+  //     answered in one line, never swallowed. The balancer still never
+  //     runs for them (see the header for why each is not a generate).
+  //   • `generate` whose WORDS hold no clear ask to build the teams →
+  //     "not_a_build". THE 2026-09-24 INCIDENT: "@Match Time put me in
+  //     the same team with these guys in the match 😀" was extracted as
+  //     `generate` with a pairing and built the teams five days early.
+  //     `isExplicitTeamBuildRequest` is a second, independent gate in
+  //     code: the model must say `generate` AND the text must ask.
+  //
+  // `show` is still handed on: `answer-batch.ts` owns it and answers it.
   const ownedIds = new Set<string>();
+  const declined = new Map<string, "unsupported" | "not_a_build">();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -518,16 +568,28 @@ export async function runTeamOpsBatch(args: {
       hand(`the teams extractor returned "${facts.kind}" facts`);
       continue;
     }
-    if (!TEAM_OPS_ACTIONS.includes(facts.action)) {
-      // `show` is `answer-batch.ts`'s and is expected here on every
-      // "show the teams again"; `rename` and `swap` are nobody's, for
-      // the reasons in the header. All three are one line in the log
-      // rather than three shapes of silence.
-      hand(
-        `team action "${facts.action}" is not owned here ` +
-          `(${facts.action === "show" ? "answer-batch.ts owns show" : "see this module's header"})`,
-      );
+    if (facts.action === "show") {
+      hand(`team action "show" is not owned here (answer-batch.ts owns show)`);
       continue;
+    }
+    const decline: "unsupported" | "not_a_build" | null = !TEAM_OPS_ACTIONS.includes(facts.action)
+      ? "unsupported"
+      : !isExplicitTeamBuildRequest(m.body)
+        ? "not_a_build"
+        : null;
+    if (decline) {
+      // Answered out loud only when MatchTime was ADDRESSED. A message
+      // that merely names it ("rate the players via the link from
+      // Matchtime") keeps the old treatment: silence plus the note.
+      if (!(m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body }))) {
+        hand(
+          decline === "unsupported"
+            ? `team action "${facts.action}" has no handler on this path`
+            : "extracted as generate, but the words hold no clear ask to build the teams",
+        );
+        continue;
+      }
+      declined.set(m.waMessageId, decline);
     }
     ownedIds.add(m.waMessageId);
   }
@@ -542,7 +604,9 @@ export async function runTeamOpsBatch(args: {
   // proposing a second `generate_teams` write — two balancer runs one
   // line apart, with two different line-ups, is the worst possible
   // answer to "generate the teams" asked twice.
-  const orderedOwned = messages.filter((m) => ownedIds.has(m.waMessageId));
+  const orderedOwned = messages.filter(
+    (m) => ownedIds.has(m.waMessageId) && !declined.has(m.waMessageId),
+  );
   const firingId = orderedOwned[orderedOwned.length - 1]?.waMessageId ?? null;
   const supersededIds = new Set(
     orderedOwned.slice(0, -1).map((m) => m.waMessageId),
@@ -656,9 +720,12 @@ export async function runTeamOpsBatch(args: {
     return empty([...degradations, detail]);
   }
 
+  let targetMatchDate: Date | null = null;
   if (teamWrites.length > 0) {
     try {
-      targetMatchId = (await deps.selectTeamsMatch(orgId, now))?.id ?? null;
+      const target = await deps.selectTeamsMatch(orgId, now);
+      targetMatchId = target?.id ?? null;
+      targetMatchDate = target?.date ?? null;
     } catch (err) {
       // A selector that threw is not "no match lined up" — saying the
       // shipped no-match sentence over a database error would be a
@@ -672,7 +739,24 @@ export async function runTeamOpsBatch(args: {
     }
   }
 
+  // ── ONLY ON MATCH DAY (2026-09-29) ─────────────────────────────────
+  //
+  // The London calendar date of the match. Before it, nothing is
+  // written at all, force-includes included (they are part of the
+  // build), and the asker is told when to ask. The 2026-09-24 sheet was
+  // built on a Thursday for a Tuesday match and then patched all match
+  // day as people dropped out; a sheet built on the day is built from
+  // the squad that actually turns up.
+  const notMatchDayIds = new Set<string>();
+  if (targetMatchId && targetMatchDate && !isMatchDay(targetMatchDate, now)) {
+    for (const w of teamWrites) {
+      notMatchDayIds.add(w.sourceMessageId);
+      replyByMessage.set(w.sourceMessageId, teamOpsNotMatchDayReply(state.features.language));
+    }
+  }
+
   for (const w of teamWrites) {
+    if (notMatchDayIds.has(w.sourceMessageId)) continue;
     const sender = messages.find((m) => m.waMessageId === w.sourceMessageId);
     const applied = await applyGenerateTeams({
       matchId: targetMatchId,
@@ -735,6 +819,28 @@ export async function runTeamOpsBatch(args: {
     if (!degradations.includes(n)) degradations.push(n);
   }
 
+  // ── IS IT MATCH DAY, FOR A DECLINED NON-BUILD? ─────────────────────
+  //
+  // On match day the decline must not say "I only build the teams on
+  // match day"; it says how to ask instead. Reuses the lookup above when
+  // there was one; otherwise one query, only when a non-build was
+  // declined. A lookup that throws falls back to the generic line (it is
+  // true on any day) and the operator hears why.
+  let notABuildOnMatchDay = false;
+  if ([...declined.values()].includes("not_a_build")) {
+    try {
+      const date =
+        targetMatchDate ?? (await deps.selectTeamsMatch(orgId, now))?.date ?? null;
+      notABuildOnMatchDay = date !== null && isMatchDay(date, now);
+    } catch (err) {
+      degradations.push(
+        `${TEAM_OPS_APPLY_DEGRADED_PREFIX} the match lookup for a declined non-build failed (${
+          err instanceof Error ? err.message : String(err)
+        }); the generic line was used`,
+      );
+    }
+  }
+
   // ── Per-message outcomes ───────────────────────────────────────────
   const outcomes = new Map<string, TeamOpsMessageOutcome>();
   for (const m of messages) {
@@ -743,6 +849,36 @@ export async function runTeamOpsBatch(args: {
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
     const superseded = supersededIds.has(m.waMessageId);
     const failed = failedIds.has(m.waMessageId);
+
+    const declinedAs = declined.get(m.waMessageId);
+    if (declinedAs) {
+      outcomes.set(m.waMessageId, {
+        waMessageId: m.waMessageId,
+        route: m.route as Route,
+        reply:
+          declinedAs === "not_a_build"
+            ? notABuildOnMatchDay
+              ? teamOpsSayGenerateReply(state.features.language)
+              : teamOpsNotABuildRequestReply(state.features.language)
+            : requestNotHandledReply(state.features.language),
+        react: null,
+        // NOT `generate_teams_request`: nothing was built, and that
+        // label is the cross-module contract for a team POST.
+        intent: declinedAs === "not_a_build" ? "team_request_not_a_build" : "team_request_unsupported",
+        action: "reply",
+        reasoning:
+          `${TEAM_OPS_HANDLED_BY} (${m.route}): ` +
+          (declinedAs === "not_a_build"
+            ? "extracted as generate, but the words hold no clear ask to build the teams " +
+              "(a pairing or preference is not a build); nothing was built"
+            : `team action "${(factsById.get(m.waMessageId) as { action?: string } | undefined)?.action ?? "?"}" ` +
+              "has no handler on this path; said so in one line"),
+        matchId: null,
+        teamsGenerated: false,
+        writeFailed: false,
+      });
+      continue;
+    }
 
     if (superseded) {
       // `route.ts:2088-2100` verbatim: intent `noise`, react ⚽, no
@@ -786,7 +922,10 @@ export async function runTeamOpsBatch(args: {
       action: generated ? "generate_teams" : react ? "react" : reply ? "reply" : "none",
       reasoning:
         `${TEAM_OPS_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}` +
-        (failed ? "; the team generation FAILED and nothing was posted" : ""),
+        (failed ? "; the team generation FAILED and nothing was posted" : "") +
+        (notMatchDayIds.has(m.waMessageId)
+          ? "; not match day (London date), so nothing was built and the asker was told"
+          : ""),
       matchId: targetMatchId,
       teamsGenerated: generated,
       writeFailed: failed,

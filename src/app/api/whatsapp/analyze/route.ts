@@ -139,10 +139,13 @@ import { SCORE_HANDLED_BY } from "@/lib/score-engine";
 import { runAdminOpsBatch } from "@/lib/admin-ops-engine-batch";
 import { ADMIN_OPS_HANDLED_BY } from "@/lib/admin-ops-engine";
 import { runTeamOpsBatch } from "@/lib/team-ops-engine-batch";
+import { applyClearTeams } from "@/lib/team-clear";
+import { isClearTeamsRequest } from "@/lib/team-requests";
 import { TEAM_OPS_HANDLED_BY } from "@/lib/team-ops-engine";
 import {
   buildScoreApplyDeps,
   buildAdminOpsApplyDeps,
+  buildTeamClearDeps,
   buildTeamOpsApplyDeps,
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
@@ -1175,6 +1178,62 @@ async function handleAnalyzeRequest(request: Request) {
   // Judged acceptable because the corroboration policy looks for a
   // SELF-DROP, and a bench answer is neither, but it is a genuine
   // narrowing and it is written down here rather than left to be found.
+
+  // ── 0. "@MATCH TIME CLEAR THE TEAMS" (2026-09-29) ──────────────────
+  //
+  //   Sutton FC, Thu 24 Sep 22:52 BST: "@Match Time delete these teams,
+  //   early to form them, there is still 5 days". The router sent it to
+  //   `admin_ops`, the admin extractor said `other`, and NOTHING
+  //   happened and nobody was told: the sheet built a minute earlier
+  //   from a joke stood until match day.
+  //
+  //   A clear is recognised on the RAW BODY by `isClearTeamsRequest`
+  //   (English and Turkish, negation-aware, and never when the same
+  //   message also asks to build: "scrap the teams and generate new
+  //   teams" is a regenerate and goes on to the balancer). Admins only;
+  //   anyone else is told so in one line. `lib/team-clear.ts` has the
+  //   rest. WHOLE-MESSAGE, not clause-peeled: the residual of a clear is
+  //   the reason for it ("early to form them, there is still 5 days"),
+  //   never a second request, and sending it on to the router is how it
+  //   got lost the first time.
+  //
+  //   Not claimed when team balancing is off for the org: such a club
+  //   picks its teams by hand and `team-ops-engine-batch.ts` owns that
+  //   silence.
+  {
+    const clearCandidates = fresh.filter(
+      (m) =>
+        !fastPathHandledIds.has(m.waMessageId) &&
+        // The STRICT tag: clearing is destructive, so MatchTime must be
+        // addressed, not merely named.
+        messageMentionsBotExplicitly(m) &&
+        isClearTeamsRequest(m.body),
+    );
+    if (clearCandidates.length > 0 && (await getOrgFeatures(org.id)).teamBalancing) {
+      const clearDeps = buildTeamClearDeps({ orgId: org.id, now: new Date() });
+      for (const m of clearCandidates) {
+        const sender = senderById.get(m.waMessageId);
+        const res = await applyClearTeams({
+          senderUserId: sender?.userId ?? null,
+          lang: org.language,
+          deps: clearDeps,
+        });
+        await claimFastPath(m, null, {
+          handledBy: res.kind === "failed" ? "error" : "fast-path",
+          intent: "clear_teams_request",
+          action:
+            res.kind === "cleared"
+              ? "clear-teams"
+              : res.kind === "not_admin"
+                ? "clear-teams-refused"
+                : "none",
+          reasoning: res.logReason,
+          react: null,
+          reply: res.reply,
+        });
+      }
+    }
+  }
 
   // ── 1 + 2. COLOUR SWAP and TEAM SWAP ───────────────────────────────
   //

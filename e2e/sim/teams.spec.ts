@@ -109,6 +109,8 @@ test('(b) control: plain "generate teams" → Match.teamLabels stays empty, post
     await createGroup(request, db, {
       maxPlayers: 8,
       attendance: FULL_ATTENDANCE,
+      // Teams are built only on match day (2026-09-29), so the match is today.
+      upcomingMatch: { daysFromNow: 0 },
     })
   ).attach(request);
 
