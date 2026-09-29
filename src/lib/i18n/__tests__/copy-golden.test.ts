@@ -147,6 +147,14 @@
  *     "delete these teams" was met with silence. Additive only; no
  *     existing case moved.
  *
+ *   - Deliberate additions (2026-09-29, self-join slice 4, the organiser
+ *     web): rows R180 (the club setup form, its refusals, the weekly
+ *     game's name per size), R181 (the prefilled "Connect <club>, code
+ *     XXXX" WhatsApp message) and R182 (every state of the status card).
+ *     NEW website copy for a new organiser, English and Turkish; the
+ *     number in R182 is a placeholder. Additive only; no existing case
+ *     moved.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -970,6 +978,46 @@ function cases(lang: Lang): Case[] {
   add("R170 teams_clear_nothing", ratings.teams_clear_nothing);
   add("R170 teams_clear_admin_only", ratings.teams_clear_admin_only);
 
+  // ── self-join slice 4: the organiser web (2026-09-29) ──
+  const sj = ratings;
+  add(
+    "R180 club setup form",
+    [
+      sj.sj_form_title,
+      sj.sj_form_lead,
+      `${sj.sj_form_club_name} [${sj.sj_form_club_name_placeholder}]`,
+      sj.sj_form_language,
+      sj.sj_form_game_heading,
+      `${sj.sj_form_day} / ${sj.sj_form_time} / ${sj.sj_form_venue} [${sj.sj_form_venue_placeholder}] / ${sj.sj_form_per_side}`,
+      `${sj.sj_form_submit} (${sj.sj_form_submitting})`,
+    ].join("\n"),
+  );
+  add(
+    "R180 players per side, option and weekly game name",
+    [4, 5, 6, 7, 8, 9, 10, 11].map((n) => `${sj.sj_per_side_option({ perSide: n })} = ${sj.sj_activity_name({ perSide: n })}`).join("\n"),
+  );
+  add("R180 refusal / invalid", sj.sj_err_invalid);
+  add("R180 refusal / verify phone", `${sj.sj_err_verify_phone} [${sj.sj_verify_phone_link}]`);
+  add("R180 refusal / one club per phone", `${sj.sj_err_one_club} [${sj.sj_open_my_club}]`);
+  add("R180 refusal / new clubs today", sj.sj_err_site_cap);
+  add("R180 refusal / anything else", sj.sj_err_generic);
+  add("R181 sj_connect_prefill", sj.sj_connect_prefill({ club: "Riverside FC", code: "7KQ2" }));
+  add("R182 card / draft", `${sj.sj_card_title}\n${sj.sj_card_draft}\n[${sj.sj_button}]`);
+  add(
+    "R182 card / waiting for your DM",
+    `${sj.sj_card_issued}\n${sj.sj_card_code({ code: "7KQ2" })}\n[${sj.sj_button_again}]`,
+  );
+  add("R182 card / code sent from another number", sj.sj_card_wrong_number({ seen: "+44 77** ***123", expected: "+44 7700 900123" }));
+  add("R182 card / add me to your group", `${sj.sj_card_dm_verified}\n${sj.sj_card_number_label}: +44 7700 900777`);
+  add("R182 card / pending approval", sj.sj_card_pending);
+  add("R182 card / pending, added by someone else", sj.sj_card_pending_other({ group: "Riverside Tuesday 5s" }));
+  add("R182 card / approved", sj.sj_card_approved({ group: "Riverside Tuesday 5s" }));
+  add("R182 card / rejected", sj.sj_card_rejected);
+  add("R182 card / expired", `${sj.sj_card_expired}\n[${sj.sj_button}]`);
+  add("R182 card / three codes today", sj.sj_card_code_cap);
+  add("R182 card / no number configured", sj.sj_card_unavailable);
+  add("R182 card / already connected", sj.sj_card_already_connected);
+
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
   add("R138 detailsFollowUpQuestion / time and venue", detailsFollowUpQuestion(["time", "venue"]));
@@ -1148,6 +1196,8 @@ const MIGRATED_ROWS = [
   "R165 ",
   // teams only on request, on match day; an admin can clear them (2026-09-29)
   "R170 ",
+  // self-join slice 4: the organiser web (2026-09-29)
+  "R180 ", "R181 ", "R182 ",
   // a player DMs "Paid" (2026-09-23): the collector's notice and the player's replies
   "R157 ", "R158 ", "R159 ", "R160 ",
 ];

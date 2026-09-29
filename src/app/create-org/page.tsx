@@ -1,106 +1,74 @@
-"use client";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
+import { selfJoinEligibility } from "@/lib/self-join-club";
+import { langFromAcceptLanguage, PLAYERS_PER_SIDE_OPTIONS } from "@/lib/club-connect-rules";
+import { LANGS, LANG_LABELS } from "@/lib/i18n/lang";
+import { t } from "@/lib/i18n/t";
+import { LegacyCreateOrgForm } from "./legacy-form";
+import { SelfJoinForm, type SelfJoinFormCopy } from "./self-join-form";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { toast } from "sonner";
-import { createOrganisation } from "@/app/actions/org";
+/**
+ * /create-org.
+ *
+ * SELF_JOIN_ENABLED off: today's form, unchanged (legacy-form.tsx).
+ *
+ * SELF_JOIN_ENABLED on (self-join slice 4, plan section 5.1 and
+ * decision 2): the club setup form. Club name, the language MatchTime
+ * speaks in the group, and the weekly game (day, kick-off, venue,
+ * players per side). The club is created as a draft; the "Add MatchTime
+ * to WhatsApp" button appears on the club's admin home only after that.
+ *
+ * Nothing on this page carries the MatchTime number: the club does not
+ * exist yet.
+ */
+export default async function CreateOrgPage() {
+  if (!(await selfJoinEnabledForRequest())) return <LegacyCreateOrgForm />;
 
-function nameToSlug(name: string) {
-  return name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-}
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login?callbackUrl=/create-org");
 
-export default function CreateOrgPage() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const refusal = await selfJoinEligibility(session.user.id, new Date());
+  const defaultLang = langFromAcceptLanguage((await headers()).get("accept-language"));
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      await createOrganisation({ name, slug });
-      toast.success("Organisation created!");
-      router.push("/admin/activities");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const copy = Object.fromEntries(
+    LANGS.map((lang) => {
+      const s = t(lang);
+      const c: SelfJoinFormCopy = {
+        title: s.sj_form_title,
+        lead: s.sj_form_lead,
+        clubName: s.sj_form_club_name,
+        clubNamePlaceholder: s.sj_form_club_name_placeholder,
+        language: s.sj_form_language,
+        gameHeading: s.sj_form_game_heading,
+        day: s.sj_form_day,
+        time: s.sj_form_time,
+        venue: s.sj_form_venue,
+        venuePlaceholder: s.sj_form_venue_placeholder,
+        perSide: s.sj_form_per_side,
+        submit: s.sj_form_submit,
+        submitting: s.sj_form_submitting,
+        generic: s.sj_err_generic,
+        verifyPhone: s.sj_err_verify_phone,
+        verifyPhoneLink: s.sj_verify_phone_link,
+        oneClub: s.sj_err_one_club,
+        openMyClub: s.sj_open_my_club,
+        siteCap: s.sj_err_site_cap,
+        days: [0, 1, 2, 3, 4, 5, 6].map((dow) => s.onbDayName({ dow })),
+        perSideOptions: PLAYERS_PER_SIDE_OPTIONS.map((perSide) => s.sj_per_side_option({ perSide })),
+      };
+      return [lang, c];
+    }),
+  ) as Record<(typeof LANGS)[number], SelfJoinFormCopy>;
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-slate-800">Create your organisation</h1>
-          <p className="text-sm text-slate-500 mt-1">Set up your club, team, or group</p>
-        </div>
-
-        <Link
-          href="/onboarding"
-          className="block mb-6 p-4 rounded-xl border-2 border-blue-200 bg-blue-50 hover:border-blue-300 hover:bg-blue-100 transition-colors"
-        >
-          <p className="font-semibold text-blue-900 text-sm">
-            ✨ Already running a WhatsApp group? Try the setup wizard →
-          </p>
-          <p className="text-xs text-blue-800/80 mt-1">
-            Import your chat history to auto-detect players and get set up in a couple of minutes.
-          </p>
-        </Link>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Organisation name
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setSlug(nameToSlug(e.target.value));
-              }}
-              placeholder="e.g. Sunday League FC"
-              className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Short name</label>
-            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
-              <input
-                type="text"
-                value={slug}
-                readOnly
-                className="flex-1 h-11 bg-white px-3 text-slate-800"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || !name.trim()}
-            className="w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {loading ? "Creating…" : "Create organisation"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-slate-500">
-          Or{" "}
-          <Link href="/" className="font-medium text-blue-600 hover:text-blue-700">
-            join an existing organisation
-          </Link>
-        </p>
-      </div>
-    </div>
+    <SelfJoinForm
+      copy={copy}
+      defaultLang={defaultLang}
+      langLabels={LANG_LABELS}
+      perSideValues={[...PLAYERS_PER_SIDE_OPTIONS]}
+      refusal={refusal}
+    />
   );
 }

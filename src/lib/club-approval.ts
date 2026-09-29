@@ -34,6 +34,7 @@ export {
   APPROVAL_STATUSES,
   APPROVED_CLUB_WHERE,
   UNAPPROVED_CLUB_WHERE,
+  SELF_JOIN_CLUB_WHERE,
   isClubApproved,
   isClubOperational,
   type ApprovalStatus,
@@ -57,6 +58,19 @@ export function isLegacySetupTriggerEnabled(
   value: string | undefined = process.env.SELF_JOIN_ENABLED,
 ): boolean {
   return !isSelfJoinEnabled(value);
+}
+
+// ── The draft state (slice 4) ─────────────────────────────────────────
+
+/**
+ * The fields a club created on the website through self-join starts
+ * with: DRAFT. It stays silent (the bot is off, and the CHECK constraint
+ * forbids turning it on) until the organiser connects a group and the
+ * platform owner approves it. The one place a club is BORN unapproved;
+ * spread into `organisation.create` by src/lib/self-join-club.ts.
+ */
+export function draftClubFields(): { approvalStatus: "draft" } {
+  return { approvalStatus: "draft" };
 }
 
 // ── Silent groups ───────────────────────────────────────────────────────

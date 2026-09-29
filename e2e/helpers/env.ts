@@ -108,6 +108,12 @@ export const E2E = {
 
   /** WhatsApp group id of the seeded test org. */
   GROUP_ID: "e2e-test-group@g.us",
+
+  /** The MatchTime WhatsApp number the server under test is given
+   *  (self-join slice 4). Server-only in the app; the organiser spec
+   *  asserts it never reaches a signed-out page, the sitemap or a JS
+   *  bundle, and appears only on the signed-in owner's club page. */
+  MATCHTIME_WA_NUMBER: "447700900555",
 } as const;
 
 export const E2E_DB_URL = `postgresql://${E2E.DB_USER}:${E2E.DB_PASSWORD}@127.0.0.1:${E2E.DB_PORT}/${E2E.DB_NAME}`;
@@ -177,6 +183,7 @@ export function buildTestEnv(): Record<string, string> {
     WHATSAPP_API_KEY: E2E.WHATSAPP_API_KEY,
     CRON_SECRET: E2E.CRON_SECRET,
     MT_TEST_MODE: "1",
+    MATCHTIME_WA_NUMBER: E2E.MATCHTIME_WA_NUMBER,
     MT_TEST_DM_QA_STUB: E2E.DM_QA_STUB,
     MT_TEST_ROUTER_STUB_FILE: E2E.ROUTER_STUB_FILE,
     MT_TEST_EXTRACTOR_STUB_FILE: E2E.EXTRACTOR_STUB_FILE,

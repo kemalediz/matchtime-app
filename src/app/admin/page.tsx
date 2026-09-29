@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Users, Calendar, Clock, CheckCircle, ChevronRight, Star } from "lucide-react";
 import { format } from "date-fns";
+import { ClubConnectCard } from "@/components/club-connect/club-connect-card";
 
 const TILE = {
   blue: "bg-blue-50 text-blue-700 border-blue-200",
@@ -66,6 +67,9 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Self-join (slice 4): renders nothing unless the flag is on, this
+          is the club's OWNER, and the club came through self-join. */}
+      <ClubConnectCard orgId={orgId} userId={session.user.id} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Link href="/admin/players" className={`p-5 rounded-xl border ${TILE.purple} hover:shadow-md transition-shadow`}>
           <div className="flex items-center gap-2 opacity-75">
