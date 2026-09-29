@@ -8,12 +8,18 @@ import {
   addOnboardingGroup,
   setSilentGroups,
   isSilentGroup,
+  addSilentGroup,
   setLegacySetupTrigger,
   isLegacySetupTriggerEnabled,
 } from "./handlers.js";
 import { degradedMessage } from "./degraded.js";
 import { asString, readInboundHeadline, readMessageBody, readNotifyName, safePath, safeRead } from "./wa-read.js";
-import { handleGroupJoinForSelfAdd, type HistoryMessageForServer } from "./bot-added.js";
+import {
+  handleGroupJoinForSelfAdd,
+  handleGroupLeaveForSelfRemoval,
+  sweepForMissedSelfAdds,
+  type HistoryMessageForServer,
+} from "./bot-added.js";
 import {
   describeOrgSnapshotDiff,
   diffOrgSnapshot,
@@ -34,6 +40,7 @@ import {
   postDmReply,
   postSyncParticipants,
   postBotAdded,
+  postBotRemoved,
 } from "./api.js";
 import {
   enqueueForAnalysis,
@@ -156,6 +163,9 @@ async function main() {
     }
     return next;
   }
+  /** Groups a self-join sweep already settled in this process (slice 6). */
+  const sweptForSelfJoin = new Set<string>();
+
   setOrgRefresher(async (reason) => {
     await refreshOrgs(reason);
   });
@@ -232,6 +242,27 @@ async function main() {
 
       console.log(`Monitoring ${orgConfigs.length} group(s):`);
       orgConfigs.forEach((o) => console.log(`  - ${o.orgName} (${o.groupId})`));
+
+      // ── Self-join slice 6: the reconnect sweep (plan 8) ─────────────
+      // While an organiser is waiting for their add, look for groups this
+      // account was added to while the Pi was offline and let the server
+      // match them. Reads only groups the server does not know, posts
+      // them as `discovered`, and never sends anything to a group. Absent
+      // from /orgs (self-join off, older server): nothing runs.
+      if (snapshot.selfJoinSweep) {
+        const sweep = snapshot.selfJoinSweep;
+        sweepForMissedSelfAdds({
+          listGroups: () => driver.listGroups(),
+          knownGroups: new Set(sweep.knownGroups),
+          isMonitoredGroup,
+          isSilentGroup,
+          addSilentGroup,
+          resolveSelfIds: () => driver.selfIds(),
+          readGroupSnapshot: (gid, selfIds) => driver.groupSnapshot(gid, selfIds),
+          postBotAdded,
+          alreadySwept: sweptForSelfJoin,
+        }).catch((err) => console.error("[self-join-sweep] failed:", err));
+      }
 
       // Start the batch-flush timer. Every inbound group message is
       // buffered in-memory and flushed every 10 min (or immediately
@@ -857,6 +888,7 @@ async function main() {
           addMonitoredGroup,
           addOnboardingGroup,
           isSilentGroup,
+          addSilentGroup,
           resolveSelfIds: () => driver.selfIds(),
           readGroupSnapshot: (gid, selfIds) => driver.groupSnapshot(gid, selfIds),
           fetchHistory: collectHistoryForServer,
@@ -887,7 +919,18 @@ async function main() {
   driver.onGroupLeave(async (notification: GroupMembershipEvent) => {
     try {
       const groupId = notification.chatId;
-      if (!groupId || !isMonitoredGroup(groupId)) return;
+      if (!groupId) return;
+      // Self-join slice 6: MatchTime removed from a SILENT group (a club
+      // waiting for approval, an unsolicited group). A silent group is
+      // never monitored, so the path below is untouched for live clubs.
+      if (isSilentGroup(groupId)) {
+        await handleGroupLeaveForSelfRemoval(
+          { isSilentGroup, resolveSelfIds: () => driver.selfIds(), postBotRemoved },
+          notification,
+        );
+        return;
+      }
+      if (!isMonitoredGroup(groupId)) return;
       const selfId = driver.selfId();
       const phones = extractPhones(notification.recipientIds, selfId);
       if (phones.length === 0) return;

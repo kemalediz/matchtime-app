@@ -3,7 +3,16 @@
  * silently depends on.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { getDuePosts, getPlatformJobs, postAnalyzeFull, postDmReply, postHeartbeat, reportPlatformJob } from "./api.js";
+import {
+  getDuePosts,
+  getPlatformJobs,
+  postAnalyzeFull,
+  postBotAdded,
+  postBotRemoved,
+  postDmReply,
+  postHeartbeat,
+  reportPlatformJob,
+} from "./api.js";
 import { emptyCounters } from "./heartbeat.js";
 
 const fetchMock = vi.fn();
@@ -176,5 +185,30 @@ describe("postDmReply (self-join slice 5)", () => {
       senderLid: "158055467598020",
       senderAltPhone: "447700900123",
     });
+  });
+});
+
+describe("self-join slice 6: bot-added and bot-removed", () => {
+  it("bot-added carries the adder's LID and the discovered flag, and hands back the silent answer", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true, ignored: "self-join-pending", selfJoin: "linked", silent: true, introText: null }));
+    const out = await postBotAdded({ groupId: "g@g.us", addedByPhone: "447700900123", addedByLid: "158055467598961", discovered: true });
+    expect(out).toMatchObject({ silent: true, selfJoin: "linked" });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/whatsapp\/bot-added$/);
+    expect(JSON.parse(init.body)).toMatchObject({ addedByLid: "158055467598961", discovered: true });
+  });
+
+  it("bot-removed POSTs the group", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true }));
+    expect(await postBotRemoved({ groupId: "g@g.us" })).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/api\/whatsapp\/bot-removed$/);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ groupId: "g@g.us" });
+  });
+
+  it("an OLDER server's 404 on bot-removed is false, never a throw", async () => {
+    fetchMock.mockResolvedValue(res(404, { error: "not found" }));
+    expect(await postBotRemoved({ groupId: "g@g.us" })).toBe(false);
   });
 });

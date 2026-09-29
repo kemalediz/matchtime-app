@@ -33,6 +33,8 @@ import { db } from "./db";
 export {
   APPROVAL_STATUSES,
   APPROVED_CLUB_WHERE,
+  DRAFT_CLUB_WHERE,
+  PENDING_CLUB_WHERE,
   UNAPPROVED_CLUB_WHERE,
   SELF_JOIN_CLUB_WHERE,
   isClubApproved,
@@ -71,6 +73,45 @@ export function isLegacySetupTriggerEnabled(
  */
 export function draftClubFields(): { approvalStatus: "draft" } {
   return { approvalStatus: "draft" };
+}
+
+// ── The group add (slice 6) ─────────────────────────────────────────
+
+/** The one method both writers need, so a transaction client or `db`
+ *  itself can be passed. */
+type OrgWriter = {
+  organisation: { updateMany(args: { where: object; data: object }): Promise<{ count: number }> };
+};
+
+/**
+ * draft -> pending: MatchTime was added to a group and the add was linked
+ * to this club's connect request (plan 4.1). Compare-and-set on "draft",
+ * so it can never move an approved club (Sutton FC), a rejected one or a
+ * suspended one. The bot stays OFF: `whatsappBotEnabled` is not touched
+ * here, and the CHECK constraint forbids it on a pending club anyway.
+ * `whatsappGroupId` is not set either; that happens at approval (3.1).
+ * True when this call moved the club.
+ */
+export async function markClubPendingOnLink(orgId: string, client: OrgWriter = db): Promise<boolean> {
+  const { count } = await client.organisation.updateMany({
+    where: { id: orgId, approvalStatus: "draft" },
+    data: { approvalStatus: "pending" },
+  });
+  return count === 1;
+}
+
+/**
+ * pending -> draft: MatchTime was removed from the group before the
+ * owner decided (plan 4.1, 5.7). Compare-and-set on "pending": an
+ * approved club removing MatchTime is today's business (a mute, a
+ * churn), never this.
+ */
+export async function returnPendingClubToDraft(orgId: string, client: OrgWriter = db): Promise<boolean> {
+  const { count } = await client.organisation.updateMany({
+    where: { id: orgId, approvalStatus: "pending" },
+    data: { approvalStatus: "draft" },
+  });
+  return count === 1;
 }
 
 // ── Silent groups ───────────────────────────────────────────────────────

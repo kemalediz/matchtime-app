@@ -10,6 +10,8 @@ import {
   isSelfJoinEnabled,
   loadSilentGroupIds,
 } from "@/lib/club-approval";
+import { loadSelfJoinSweep } from "@/lib/group-add";
+import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -73,12 +75,31 @@ export async function GET(request: Request) {
     ),
   ];
 
-  return NextResponse.json({
+  const response: Record<string, unknown> = {
     orgs,
     onboardingGroups,
     silentGroups,
     // false tells the Pi to ignore "@MatchTime setup" in any group it is
     // not already monitoring. Absent (an older server) means true.
     legacySetupTrigger: isLegacySetupTriggerEnabled(),
-  });
+  };
+
+  // ── The reconnect sweep (self-join slice 6, plan 8) ────────────────
+  // While an organiser's DM-verified request waits for its add, the Pi
+  // looks, after a reconnect, for groups it is in that the server does not
+  // know (an add it missed while offline) and posts each to bot-added with
+  // `discovered: true`. `knownGroups` is every group the server already
+  // knows, so the Pi reads none of them. null: nothing to look for. Absent
+  // entirely while self-join is off, so the response is today's.
+  if (selfJoinEnabledForApiRequest(request)) {
+    let sweep: { knownGroups: string[] } | null = null;
+    try {
+      sweep = await loadSelfJoinSweep();
+    } catch (err) {
+      console.error("[orgs] self-join sweep query failed; no sweep this time:", err);
+    }
+    response.selfJoinSweep = sweep;
+  }
+
+  return NextResponse.json(response);
 }

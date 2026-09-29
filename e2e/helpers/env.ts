@@ -114,6 +114,11 @@ export const E2E = {
    *  asserts it never reaches a signed-out page, the sitemap or a JS
    *  bundle, and appears only on the signed-in owner's club page. */
   MATCHTIME_WA_NUMBER: "447700900555",
+
+  /** SELF_JOIN_APPROVER_PHONES for the server under test (self-join slice
+   *  6): the owner's approval DM for a linked group is queued to this
+   *  number. A test number, never a real one. */
+  APPROVER_PHONE: "447700900444",
 } as const;
 
 export const E2E_DB_URL = `postgresql://${E2E.DB_USER}:${E2E.DB_PASSWORD}@127.0.0.1:${E2E.DB_PORT}/${E2E.DB_NAME}`;
@@ -184,6 +189,7 @@ export function buildTestEnv(): Record<string, string> {
     CRON_SECRET: E2E.CRON_SECRET,
     MT_TEST_MODE: "1",
     MATCHTIME_WA_NUMBER: E2E.MATCHTIME_WA_NUMBER,
+    SELF_JOIN_APPROVER_PHONES: E2E.APPROVER_PHONE,
     MT_TEST_DM_QA_STUB: E2E.DM_QA_STUB,
     MT_TEST_ROUTER_STUB_FILE: E2E.ROUTER_STUB_FILE,
     MT_TEST_EXTRACTOR_STUB_FILE: E2E.EXTRACTOR_STUB_FILE,

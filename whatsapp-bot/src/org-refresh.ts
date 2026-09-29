@@ -38,6 +38,14 @@ export interface OrgSnapshot {
   silentGroups: string[];
   /** false retires the "@MatchTime setup" trigger. true from an older server. */
   legacySetupTrigger: boolean;
+  /**
+   * Self-join slice 6: look, after a reconnect, for groups this account was
+   * added to while offline. null (no sweep) from an older server, with
+   * self-join off, or when no organiser is waiting for an add. `knownGroups`
+   * are the groups the server already knows, never read; every live org's
+   * group is added to them here too.
+   */
+  selfJoinSweep: { knownGroups: string[] } | null;
 }
 
 /** Read the `/api/whatsapp/orgs` body defensively into a snapshot. */
@@ -47,6 +55,7 @@ export function parseOrgSnapshot(data: unknown): OrgSnapshot {
     onboardingGroups?: unknown;
     silentGroups?: unknown;
     legacySetupTrigger?: unknown;
+    selfJoinSweep?: unknown;
   };
   const orgConfigs: OrgConfig[] = (Array.isArray(d.orgs) ? d.orgs : [])
     .filter((o) => typeof o?.whatsappGroupId === "string" && o.whatsappGroupId.length > 0)
@@ -65,11 +74,21 @@ export function parseOrgSnapshot(data: unknown): OrgSnapshot {
   const onboardingGroups = (Array.isArray(d.onboardingGroups) ? d.onboardingGroups : [])
     .filter((g): g is string => typeof g === "string" && g.length > 0)
     .filter((g) => !known.has(g) && !silent.has(g));
+  let selfJoinSweep: OrgSnapshot["selfJoinSweep"] = null;
+  if (d.selfJoinSweep && typeof d.selfJoinSweep === "object") {
+    const listed = (d.selfJoinSweep as { knownGroups?: unknown }).knownGroups;
+    const knownGroups = new Set<string>(known);
+    for (const g of Array.isArray(listed) ? listed : []) {
+      if (typeof g === "string" && g.length > 0) knownGroups.add(g);
+    }
+    selfJoinSweep = { knownGroups: [...knownGroups] };
+  }
   return {
     orgConfigs,
     onboardingGroups: [...new Set(onboardingGroups)],
     silentGroups,
     legacySetupTrigger: d.legacySetupTrigger !== false,
+    selfJoinSweep,
   };
 }
 

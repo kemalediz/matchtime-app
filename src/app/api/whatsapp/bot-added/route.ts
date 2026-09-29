@@ -7,7 +7,22 @@
  * an unmonitored group and POSTs:
  *   { groupId, groupSubject?, addedByPhone?, participants?, enrichmentHistory? }
  *
- * Server behaviour (idempotent):
+ * SELF-JOIN (slice 6, 2026-09-29). While SELF_JOIN_ENABLED is on, the
+ * add goes to the self-join linker (src/lib/group-add.ts) FIRST, before
+ * the ONBOARDING_AUTOSTART gate below (decision 4 switches autostart off
+ * once self-join is on), and nothing further down runs:
+ *   - a group an approved club owns (Sutton FC): ignored, as today;
+ *   - an add matching an organiser's connect request: the request is
+ *     linked, the club goes PENDING, the organiser gets a one-line ack
+ *     if they were the adder, and the owner gets ONE approval DM
+ *     (queueOwnerDm, purpose owner-approval);
+ *   - anything else: recorded as unsolicited (silent, left after 48h).
+ * It never returns an intro. `silent: true` tells the Pi to treat the
+ * group as silent at once, before its next /orgs refresh. The Pi's
+ * reconnect sweep posts `discovered: true` for groups it found itself
+ * in; with self-join off such a post is ignored outright.
+ *
+ * Server behaviour (idempotent), self-join off:
  *   0. HARD GATE: the ONBOARDING_AUTOSTART env flag must be on,
  *      otherwise this route is a no-op — nothing can fire in prod
  *      until the flag is deliberately flipped.
@@ -46,12 +61,64 @@ import { parseParticipantSnapshot } from "@/lib/participant-sync";
 import { coerceHistoryMessages } from "@/lib/onboarding-enrichment-reconcile";
 import { detectGroupLang } from "@/lib/i18n/detect";
 import { inGroupSetupRefusal } from "@/lib/club-approval";
+import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
+import {
+  handleSelfJoinGroupAdd,
+  isSilentOutcome,
+  markOwnerDmQueued,
+  type GroupAddOutcome,
+} from "@/lib/group-add";
+import { queueOwnerDm } from "@/lib/owner-dm";
+
+/** The `ignored` word the Pi logs for each self-join outcome. */
+const SELF_JOIN_IGNORED: Record<GroupAddOutcome["kind"], string> = {
+  "live-org": "live-org",
+  "club-group": "silent-group",
+  "already-linked": "self-join-pending",
+  linked: "self-join-pending",
+  unsolicited: "unsolicited",
+  "discovered-no-match": "discovered-no-match",
+  "race-lost": "self-join-race-lost",
+};
+
+async function selfJoinAdd(request: Request): Promise<NextResponse> {
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const groupId = typeof body?.groupId === "string" && body.groupId ? body.groupId : null;
+  if (!body || !groupId) {
+    return NextResponse.json({ error: "groupId required" }, { status: 400 });
+  }
+  const outcome = await handleSelfJoinGroupAdd({
+    groupId,
+    groupSubject: body.groupSubject,
+    addedByPhone: body.addedByPhone,
+    addedByLid: body.addedByLid,
+    participants: body.participants,
+    enrichmentHistory: body.enrichmentHistory,
+    discovered: body.discovered,
+  });
+  if (outcome.kind === "linked") {
+    // The ONE DM to the owner about this request. queueOwnerDm is also
+    // once per (purpose, refId, phone), so a retry cannot DM twice.
+    const dm = await queueOwnerDm(outcome.ownerDm.text, "owner-approval", outcome.ownerDm.refId);
+    if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(outcome.connectId);
+  }
+  console.log(`[bot-added] ${groupId}: self-join ${outcome.kind}`);
+  return NextResponse.json({
+    ok: true,
+    ignored: SELF_JOIN_IGNORED[outcome.kind],
+    selfJoin: outcome.kind,
+    silent: isSilentOutcome(outcome),
+    introText: null,
+  });
+}
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
   if (apiKey !== process.env.WHATSAPP_API_KEY) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  if (selfJoinEnabledForApiRequest(request)) return selfJoinAdd(request);
 
   if (!isOnboardingAutostartEnabled()) {
     return NextResponse.json({
@@ -74,9 +141,15 @@ export async function POST(request: Request) {
     // enrichmentHistory. It is also the evidence for the language
     // detection below. Validated/coerced defensively.
     enrichmentHistory?: unknown;
+    /** Self-join's reconnect sweep. Only a Pi told to sweep (by a server
+     *  with self-join on) sends it; the in-group setup never starts from one. */
+    discovered?: unknown;
   } | null;
   if (!body?.groupId) {
     return NextResponse.json({ error: "groupId required" }, { status: 400 });
+  }
+  if (body.discovered === true) {
+    return NextResponse.json({ ok: true, ignored: "discovered", introText: null });
   }
   const groupId = body.groupId;
 

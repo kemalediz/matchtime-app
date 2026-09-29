@@ -4,6 +4,8 @@
  * src/lib/platform-jobs.ts.
  *
  *   GET   Claim up to MAX_JOBS_PER_POLL due jobs and hand them over.
+ *         While self-join is on, first queue the 48-hour leave of any
+ *         unsolicited group that is due (slice 6).
  *         Claim-on-dispatch, as due-posts: the job is marked claimed as it
  *         leaves, so a second poller (a duplicate Pi process) gets nothing
  *         for it. Response: { jobs: PlatformJobInstruction[] }.
@@ -19,6 +21,8 @@
  */
 import { NextResponse } from "next/server";
 import { claimDuePlatformJobs, recordPlatformJobOutcome, type PlatformJobOutcome } from "@/lib/platform-jobs";
+import { queueUnsolicitedAutoLeaves } from "@/lib/group-add";
+import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 
 function authorised(request: Request): boolean {
   return request.headers.get("x-api-key") === process.env.WHATSAPP_API_KEY;
@@ -26,6 +30,17 @@ function authorised(request: Request): boolean {
 
 export async function GET(request: Request) {
   if (!authorised(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Self-join slice 6 (decision 3): a group somebody added MatchTime to
+  // with no connect code is left after 48 hours. Queued here, before the
+  // claim, because this is the one endpoint the Pi polls whatever the
+  // clubs' switches say. Never allowed to cost the poll its jobs.
+  if (selfJoinEnabledForApiRequest(request)) {
+    try {
+      await queueUnsolicitedAutoLeaves();
+    } catch (err) {
+      console.error("[platform-jobs] unsolicited auto-leave check failed; the next poll tries again:", err);
+    }
+  }
   const jobs = await claimDuePlatformJobs();
   if (jobs.length > 0) {
     console.log(`[platform-jobs] handed out ${jobs.length}: ${jobs.map((j) => `${j.kind}:${j.id}`).join(", ")}`);

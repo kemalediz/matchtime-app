@@ -341,7 +341,7 @@ describe("onGroupJoin / onGroupLeave", () => {
     await tick();
     await tick();
     expect(joins).toEqual([
-      { chatId: GROUP, recipientIds: ["447700900777@c.us"], author: "447700900124@c.us" },
+      { chatId: GROUP, recipientIds: ["447700900777@c.us"], author: "447700900124@c.us", authorLid: "158055467598021" },
     ]);
     expect(leaves).toEqual([{ chatId: GROUP, recipientIds: ["447700900555@c.us"] }]);
   });
@@ -391,7 +391,7 @@ describe("onGroupJoin / onGroupLeave", () => {
     await tick();
     await tick();
     expect(joins).toHaveLength(1);
-    expect(joins[0]).toMatchObject({ chatId: created.id, author: "447700900123@c.us" });
+    expect(joins[0]).toMatchObject({ chatId: created.id, author: "447700900123@c.us", authorLid: "158055467598020" });
     expect(isSelfAdd(joins[0].recipientIds ?? [], await t.driver.selfIds())).toBe(true);
   });
 

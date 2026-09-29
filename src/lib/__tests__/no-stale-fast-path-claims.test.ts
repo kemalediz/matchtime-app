@@ -105,12 +105,14 @@ describe("no source file claims a regex fast path still handles attendance", () 
     // plus a test accessor; nothing that reads a message body. Since
     // 2026-09-29 (self-join slice 1) also the silent-group set and the
     // server's switch for the "@MatchTime setup" trigger: still group ids
-    // and a boolean, never a message.
+    // and a boolean, never a message. Slice 6 adds `addSilentGroup` (a
+    // group id the server just called silent).
     const exported = [...handlers.matchAll(/export function (\w+)/g)].map((m) => m[1]);
     expect(exported.sort()).toEqual([
       "_test_groupSets",
       "addMonitoredGroup",
       "addOnboardingGroup",
+      "addSilentGroup",
       "isLegacySetupTriggerEnabled",
       "isMonitoredGroup",
       "isOnboardingGroup",

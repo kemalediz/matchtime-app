@@ -30,6 +30,9 @@ vi.mock("@/lib/club-approval", async (importOriginal) => ({
   loadSilentGroupIds: () => silentMock.loadSilentGroupIds(),
 }));
 
+const sweepMock = vi.hoisted(() => ({ loadSelfJoinSweep: vi.fn() }));
+vi.mock("@/lib/group-add", () => ({ loadSelfJoinSweep: (...a: unknown[]) => sweepMock.loadSelfJoinSweep(...a) }));
+
 import { GET } from "../route";
 
 const ENV = { key: process.env.WHATSAPP_API_KEY, selfJoin: process.env.SELF_JOIN_ENABLED };
@@ -53,6 +56,7 @@ describe("GET /api/whatsapp/orgs", () => {
       { whatsappGroupId: "g-pending", groupName: null },
     ]);
     silentMock.loadSilentGroupIds.mockResolvedValue(["g-pending", "g-stranger"]);
+    sweepMock.loadSelfJoinSweep.mockResolvedValue(null);
   });
   afterAll(() => {
     process.env.WHATSAPP_API_KEY = ENV.key;
@@ -93,6 +97,27 @@ describe("GET /api/whatsapp/orgs", () => {
     const body = await call();
     expect(body.onboardingGroups).toEqual([]);
     expect(body.legacySetupTrigger).toBe(false);
+    expect(body.orgs).toHaveLength(1);
+  });
+
+  it("self-join off: no reconnect sweep, and the response carries no sweep field at all", async () => {
+    const body = await call();
+    expect("selfJoinSweep" in body).toBe(false);
+    expect(sweepMock.loadSelfJoinSweep).not.toHaveBeenCalled();
+  });
+
+  it("self-join on: the sweep instruction (slice 6), or null when no organiser is waiting for an add", async () => {
+    process.env.SELF_JOIN_ENABLED = "1";
+    expect((await call()).selfJoinSweep).toBeNull();
+    sweepMock.loadSelfJoinSweep.mockResolvedValue({ knownGroups: [SUTTON_GROUP, "g-pending"] });
+    expect((await call()).selfJoinSweep).toEqual({ knownGroups: [SUTTON_GROUP, "g-pending"] });
+  });
+
+  it("a failing sweep query never costs the Pi its org list", async () => {
+    process.env.SELF_JOIN_ENABLED = "1";
+    sweepMock.loadSelfJoinSweep.mockRejectedValue(new Error("db hiccup"));
+    const body = await call();
+    expect(body.selfJoinSweep).toBeNull();
     expect(body.orgs).toHaveLength(1);
   });
 

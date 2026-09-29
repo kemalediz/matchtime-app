@@ -49,6 +49,18 @@ describe("we never ask WhatsApp about a number (§2.2)", () => {
     }
   });
 
+  it("the group-add path (self-join slice 6) resolves the adder from local knowledge only", () => {
+    // The adder's LID is matched against the organiser's connect DM, and a
+    // LID the event could not map is re-read from the store the group
+    // snapshot seeded. Asking WhatsApp instead is the banned lookup.
+    for (const f of ["../bot-added.ts", "../baileys/groups.ts", "../index.ts", "../handlers.ts", "../org-refresh.ts"]) {
+      const src = stripComments(readFileSync(fileURLToPath(new URL(f, import.meta.url)), "utf8"));
+      for (const banned of [/onWhatsApp\s*\(/, /executeUSyncQuery\s*\(/, /getLIDForPN\s*\(/, /getLIDsForPNs\s*\(/]) {
+        expect(src, f).not.toMatch(banned);
+      }
+    }
+  });
+
   it("has no directory lookup of any kind", () => {
     // About a hundred of these from HomeTenant's production account got
     // every linked device on the number unlinked on 2026-09-17.

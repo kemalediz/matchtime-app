@@ -42,6 +42,19 @@ export function setSilentGroups(groupIds: string[]) {
   }
 }
 
+/**
+ * Self-join slice 6: the server just answered a group add with `silent:
+ * true`. Silent now, not at the next /orgs refresh (which then carries it).
+ * A group the Pi is MONITORING is a live club's and is never silenced from
+ * here: the server never answers silent for one, and a stray answer must
+ * not be able to mute Sutton FC.
+ */
+export function addSilentGroup(groupId: string): void {
+  if (monitoredGroups.has(groupId)) return;
+  silentGroups.add(groupId);
+  onboardingGroups.delete(groupId);
+}
+
 export function isSilentGroup(groupId: string): boolean {
   return silentGroups.has(groupId);
 }

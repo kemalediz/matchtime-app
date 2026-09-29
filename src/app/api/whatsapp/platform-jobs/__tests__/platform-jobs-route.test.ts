@@ -22,10 +22,15 @@ vi.mock("@/lib/platform-jobs", async (importOriginal) => ({
   recordPlatformJobOutcome: (...a: unknown[]) => libMock.recordPlatformJobOutcome(...a),
 }));
 vi.mock("@/lib/db", () => ({ db: {} }));
+const groupAdd = vi.hoisted(() => ({ queueUnsolicitedAutoLeaves: vi.fn() }));
+vi.mock("@/lib/group-add", () => ({
+  queueUnsolicitedAutoLeaves: (...a: unknown[]) => groupAdd.queueUnsolicitedAutoLeaves(...a),
+}));
 
 import { GET, POST } from "../route";
 
 const ENV = process.env.WHATSAPP_API_KEY;
+const SELF_JOIN = process.env.SELF_JOIN_ENABLED;
 
 function post(body: unknown, key = KEY) {
   return POST(
@@ -45,9 +50,13 @@ beforeEach(() => {
     { id: "pj2", kind: "leave-group", groupId: "g1" },
   ]);
   libMock.recordPlatformJobOutcome.mockResolvedValue({ updated: true });
+  groupAdd.queueUnsolicitedAutoLeaves.mockResolvedValue({ queued: 0, markedLeft: 0 });
+  delete process.env.SELF_JOIN_ENABLED;
 });
 afterAll(() => {
   process.env.WHATSAPP_API_KEY = ENV;
+  if (SELF_JOIN === undefined) delete process.env.SELF_JOIN_ENABLED;
+  else process.env.SELF_JOIN_ENABLED = SELF_JOIN;
 });
 
 describe("GET", () => {
@@ -67,6 +76,38 @@ describe("GET", () => {
       ],
     });
     expect(libMock.claimDuePlatformJobs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GET: the 48-hour auto-leave of unsolicited groups (self-join slice 6)", () => {
+  const get = () => GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": KEY } }));
+
+  it("self-join off: never looked at", async () => {
+    await get();
+    expect(groupAdd.queueUnsolicitedAutoLeaves).not.toHaveBeenCalled();
+  });
+
+  it("self-join on: queued BEFORE the claim, so a due leave goes out on this very poll", async () => {
+    process.env.SELF_JOIN_ENABLED = "1";
+    const order: string[] = [];
+    groupAdd.queueUnsolicitedAutoLeaves.mockImplementation(async () => {
+      order.push("leaves");
+      return { queued: 1, markedLeft: 0 };
+    });
+    libMock.claimDuePlatformJobs.mockImplementation(async () => {
+      order.push("claim");
+      return [];
+    });
+    await get();
+    expect(order).toEqual(["leaves", "claim"]);
+  });
+
+  it("a failure there never costs the poll its jobs", async () => {
+    process.env.SELF_JOIN_ENABLED = "1";
+    groupAdd.queueUnsolicitedAutoLeaves.mockRejectedValue(new Error("db hiccup"));
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect((await res.json()).jobs).toHaveLength(2);
   });
 });
 

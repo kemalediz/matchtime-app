@@ -43,7 +43,7 @@
  */
 import type { GroupMembershipEvent, GroupSnapshot, GroupSummary, SnapshotParticipant } from "../driver.js";
 import { legacyJid } from "./key.js";
-import { bareUser, isLidJid, parseJid, phoneFromJid, toUserJid } from "./jid.js";
+import { bareLid, bareUser, isLidJid, parseJid, phoneFromJid, toUserJid } from "./jid.js";
 
 /**
  * How long a roster read (and the group listing) is trusted before the
@@ -396,7 +396,19 @@ export async function membershipEvent(
   const event: GroupMembershipEvent = { chatId: update.id, recipientIds };
   const author = await authorId(update.author, update.authorPn, deps.phoneForLid);
   if (author) event.author = author;
+  const lid = authorLid(update.author);
+  if (lid) event.authorLid = lid;
   return { kind, event };
+}
+
+/**
+ * The bare LID digits the author was addressed by, or undefined (self-join
+ * slice 6). Kept even when `authorId` found a phone: the server matches a
+ * group adder against the organiser's connect DM by phone OR by LID, and
+ * the phone alone throws the LID away.
+ */
+export function authorLid(author: string | null | undefined): string | undefined {
+  return bareLid(author) ?? undefined;
 }
 
 export async function authorId(

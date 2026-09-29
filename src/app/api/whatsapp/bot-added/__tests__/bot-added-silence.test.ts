@@ -22,6 +22,13 @@ const dbMock = vi.hoisted(() => ({
   onboardingSession: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+// Slice 6: with self-join on, an add goes to the self-join linker (its own
+// tests are bot-added-self-join.test.ts and lib/__tests__/group-add.test.ts).
+const linker = vi.hoisted(() => ({ handleSelfJoinGroupAdd: vi.fn() }));
+vi.mock("@/lib/group-add", async (orig) => ({
+  ...(await orig<typeof import("@/lib/group-add")>()),
+  handleSelfJoinGroupAdd: (...a: unknown[]) => linker.handleSelfJoinGroupAdd(...a),
+}));
 
 import { POST } from "../route";
 
@@ -75,11 +82,13 @@ describe("bot-added and silent groups", () => {
     expect(dbMock.onboardingSession.update).not.toHaveBeenCalled();
   });
 
-  it("with self-join on, no group gets the in-group setup intro", async () => {
+  it("with self-join on, no group gets the in-group setup intro (the add goes to the self-join linker)", async () => {
     process.env.SELF_JOIN_ENABLED = "1";
+    linker.handleSelfJoinGroupAdd.mockResolvedValue({ kind: "unsolicited", recorded: true, id: "ug-1" });
     const body = await post("g-new");
     expect(body.introText).toBeNull();
-    expect(body.ignored).toBe("self-join-mode");
+    expect(body.ignored).toBe("unsolicited");
+    expect(linker.handleSelfJoinGroupAdd).toHaveBeenCalledOnce();
     expect(dbMock.onboardingSession.create).not.toHaveBeenCalled();
   });
 

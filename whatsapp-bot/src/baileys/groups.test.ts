@@ -221,8 +221,30 @@ describe("membershipEvent: group-participants.update as the bot's join and leave
         chatId: GROUP,
         recipientIds: ["447700900123@c.us", "447700900666@c.us"],
         author: "447700900555@c.us",
+        // Self-join slice 6: the LID the author was addressed by, kept even
+        // though a phone was found, so the server can match it against the
+        // organiser's connect DM.
+        authorLid: "158077777777777",
       },
     });
+  });
+
+  it("a phone-addressed author carries no authorLid", async () => {
+    const out = await membershipEvent(
+      { id: GROUP, action: "add", author: "447700900555@s.whatsapp.net", participants: [PN_ONLY] },
+      noLookup,
+    );
+    expect(out?.event.author).toBe("447700900555@c.us");
+    expect(out?.event).not.toHaveProperty("authorLid");
+  });
+
+  it("a LID author nobody can map: the LID is both the author and the authorLid", async () => {
+    const out = await membershipEvent(
+      { id: GROUP, action: "add", author: "158077777777777:12@lid", participants: [PN_ONLY] },
+      noLookup,
+    );
+    expect(out?.event.author).toBe("158077777777777@lid");
+    expect(out?.event.authorLid).toBe("158077777777777");
   });
 
   it("maps remove to a leave", async () => {
