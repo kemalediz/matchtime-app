@@ -102,17 +102,24 @@ describe("no source file claims a regex fast path still handles attendance", () 
     expect(handlers).toContain("It was removed on 2026-04-21");
     // The whole module is now two allow-lists (the monitored groups and,
     // since 2026-09-17, the subset that is mid-setup and flushed at once)
-    // plus a test accessor; nothing that reads a message body.
+    // plus a test accessor; nothing that reads a message body. Since
+    // 2026-09-29 (self-join slice 1) also the silent-group set and the
+    // server's switch for the "@MatchTime setup" trigger: still group ids
+    // and a boolean, never a message.
     const exported = [...handlers.matchAll(/export function (\w+)/g)].map((m) => m[1]);
     expect(exported.sort()).toEqual([
       "_test_groupSets",
       "addMonitoredGroup",
       "addOnboardingGroup",
+      "isLegacySetupTriggerEnabled",
       "isMonitoredGroup",
       "isOnboardingGroup",
+      "isSilentGroup",
       "removeOnboardingGroup",
+      "setLegacySetupTrigger",
       "setMonitoredGroups",
       "setOnboardingGroups",
+      "setSilentGroups",
     ]);
     expect(handlers).not.toMatch(/\.body\b|RegExp\(|\/\^\(?in\b/);
   });

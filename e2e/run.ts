@@ -308,6 +308,12 @@ async function runSuite(): Promise<number> {
     console.log("[e2e] arming the AttendanceEvent append-only trigger…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "attendance-event-append-only.sql"));
 
+    // Same reason: the club-approval invariant ("the bot can only be ON
+    // for an approved club") is a CHECK constraint, which db push never
+    // creates. Idempotent; the same DDL as the production migration.
+    console.log("[e2e] arming the club-approval CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "org-approval-check.sql"));
+
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {
       MT_E2E_DATABASE_URL: E2E_DB_URL,

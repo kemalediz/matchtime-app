@@ -10,17 +10,23 @@
  * ─────────────────────────────────────────────────────────────────────
  * THE RULE (`aiAllowanceUsd`, the one place it is decided)
  * ─────────────────────────────────────────────────────────────────────
+ *   - a club that is not APPROVED (`approvalStatus`, see club-approval.ts:
+ *     draft, pending, rejected, suspended) may spend NOTHING, and no
+ *     override lifts that (self-join plan, section 9, rule 1);
  *   - a club that is not live (`whatsappBotEnabled` false, or no linked
  *     group) may spend NOTHING, and no override lifts that;
  *   - the platform owner's per-club override, `Organisation.aiDailyCapUsd`,
  *     when set;
- *   - $0.25 a day for the first 28 days from `aiWindowStartAt` (NULL means
- *     `createdAt`; the club approval flow will set it at go-live);
+ *   - $0.25 a day for the first 28 days from the window start, which is
+ *     `approvedAt ?? aiWindowStartAt ?? createdAt` (see `aiWindowStart`);
  *   - $1.00 a day after that. Sutton FC is long past its first four weeks.
  *
  * Spend that happens before a club exists (the in-group setup
  * conversation, the web wizard's chat analysis) is keyed on the group or
- * the user instead of an org and gets the new-club $0.25.
+ * the user instead of an org and gets the new-club $0.25. Two exceptions
+ * for a GROUP key, both $0: the group is silent (it belongs to a club
+ * waiting for approval, or nobody asked for MatchTime there), or
+ * self-join is on, which retires the in-group setup altogether.
  *
  * "Money" is `costOf()` in `pipeline/llm.ts` applied to the usage each
  * response reports, not a count of calls.
@@ -77,6 +83,7 @@
 import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { AI_CAP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
+import { isClubApproved, isSelfJoinEnabled, isSilentGroup } from "./club-approval";
 import {
   AiBudgetExceededError,
   runWithAiBudget,
@@ -98,6 +105,7 @@ export const CALL_RESERVE_USD = 0.01;
 export const onboardingGroupKey = (groupId: string): string => `onboarding-group:${groupId}`;
 export const onboardingUserKey = (userId: string): string => `onboarding-user:${userId}`;
 const isPseudoKey = (key: string): boolean => key.startsWith("onboarding-");
+const ONBOARDING_GROUP_PREFIX = onboardingGroupKey("");
 
 export interface AllowanceOrg {
   createdAt: Date;
@@ -105,20 +113,52 @@ export interface AllowanceOrg {
   aiWindowStartAt: Date | null;
   whatsappBotEnabled: boolean;
   whatsappGroupId: string | null;
+  /** club-approval.ts. Anything but "approved" spends nothing. */
+  approvalStatus: string;
+  /** When the platform owner approved a self-join club. NULL for every
+   *  club that existed before self-join. */
+  approvedAt: Date | null;
+}
+
+/**
+ * When the club's first-four-weeks window starts:
+ * `approvedAt ?? aiWindowStartAt ?? createdAt`.
+ *
+ * Why `approvedAt` first. It is a FACT, written once, by the approval
+ * itself: the moment a self-join club was allowed to act. A club that
+ * waited a week in pending must still get its full four weeks at $0.25
+ * once live (decision 5), and no other column can know that moment.
+ *
+ * Why `aiWindowStartAt` stays. It was added by the cap slice as a manual
+ * lever, "start this club's window later than its row", for a club that
+ * goes live some time after it was created. Every club that predates
+ * self-join has `approvedAt` NULL, so for them the rule is exactly what
+ * it was before this slice. For a self-join club the approval is the
+ * go-live, so the approval flow does not ALSO write `aiWindowStartAt`
+ * (one fact, one column), and the lever to change what such a club may
+ * spend is the per-club override, `aiDailyCapUsd`.
+ */
+export function aiWindowStart(
+  org: Pick<AllowanceOrg, "approvedAt" | "aiWindowStartAt" | "createdAt">,
+): Date {
+  return org.approvedAt ?? org.aiWindowStartAt ?? org.createdAt;
 }
 
 /**
  * How many dollars this club may spend on the model today. `null` is
- * spend that has no club yet (onboarding). The self-join approval slice
- * extends this, and only this, when it adds a pending state.
+ * spend that has no club yet (onboarding).
  */
 export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date): number {
   if (!org) return NEW_CLUB_CAP_USD;
+  // Not approved: $0 before anything else is even read. The silence
+  // rails already keep such a club from reaching a model; this is the
+  // defence in depth for a future path that forgets them.
+  if (!isClubApproved(org)) return 0;
   if (!org.whatsappBotEnabled || !org.whatsappGroupId) return 0;
   if (org.aiDailyCapUsd !== null && org.aiDailyCapUsd !== undefined) {
     return Number.isFinite(org.aiDailyCapUsd) ? Math.max(0, org.aiDailyCapUsd) : 0;
   }
-  const start = org.aiWindowStartAt ?? org.createdAt;
+  const start = aiWindowStart(org);
   const ageMs = now.getTime() - start.getTime();
   return ageMs < NEW_CLUB_WINDOW_DAYS * 24 * 60 * 60 * 1000 ? NEW_CLUB_CAP_USD : DAILY_CAP_USD;
 }
@@ -134,11 +174,21 @@ const ALLOWANCE_SELECT = {
   aiWindowStartAt: true,
   whatsappBotEnabled: true,
   whatsappGroupId: true,
+  approvalStatus: true,
+  approvedAt: true,
 } as const;
 
 /** The cap for a key today. Throws on a database error (callers fail open). */
 async function capFor(key: string, now: Date): Promise<number> {
-  if (isPseudoKey(key)) return aiAllowanceUsd(null, now);
+  if (isPseudoKey(key)) {
+    if (key.startsWith(ONBOARDING_GROUP_PREFIX)) {
+      // The in-group setup is retired while self-join is on (decision 4),
+      // and a silent group must never reach a model, whatever any cap says.
+      if (isSelfJoinEnabled()) return 0;
+      if (await isSilentGroup(key.slice(ONBOARDING_GROUP_PREFIX.length))) return 0;
+    }
+    return aiAllowanceUsd(null, now);
+  }
   const org = await db.organisation.findUnique({ where: { id: key }, select: ALLOWANCE_SELECT });
   // An org id that does not exist is not a club that may spend.
   return org ? aiAllowanceUsd(org, now) : 0;

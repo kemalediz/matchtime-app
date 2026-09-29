@@ -64,6 +64,9 @@ const ORG = {
   createdAt: new Date("2026-04-01T00:00:00Z"),
   aiDailyCapUsd: null,
   aiWindowStartAt: null,
+  // Approved by the migration default, like every club that predates self-join.
+  approvalStatus: "approved",
+  approvedAt: null,
 };
 
 function squad(n: number) {

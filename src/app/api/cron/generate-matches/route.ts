@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   // identical in the cron log, which is how this bug survived a quarter.
   const candidates = await db.activity.findMany({
     where: { isActive: true },
-    include: { sport: true, org: { select: { name: true, dormantAt: true } } },
+    include: { sport: true, org: { select: { name: true, dormantAt: true, approvalStatus: true } } },
   });
 
   // Filtered BEFORE the loop, not with a `continue` inside it: this repo
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
   // added near the top of a loop silently deleted the guards beneath it,
   // and the guard beneath this one is the ghost-match slot dedupe. An
   // activity that reaches the loop has already cleared both axes.
-  const { generate: activities, skipped, skippedDormantOrgs } =
+  const { generate: activities, skipped, skippedDormantOrgs, skippedNotApprovedOrgs } =
     partitionGeneratable(candidates);
 
   // Dormant skips are logged; `activity-inactive` skips are routine and
@@ -55,6 +55,15 @@ export async function GET(request: Request) {
     console.log(
       `[generate-matches] skipping "${s.item.name}" — org "${s.item.org.name}" is dormant ` +
         `(since ${s.item.org.dormantAt?.toISOString()})`,
+    );
+  }
+
+  // A club that is not approved (self-join: waiting, rejected or
+  // suspended) gets no fixture: nothing may post or spend for it.
+  for (const s of skipped.filter((x) => x.reason === "org-not-approved")) {
+    console.log(
+      `[generate-matches] skipping "${s.item.name}" — org "${s.item.org.name}" is not approved ` +
+        `(${s.item.org.approvalStatus})`,
     );
   }
 
@@ -132,5 +141,5 @@ export async function GET(request: Request) {
     created++;
   }
 
-  return NextResponse.json({ created, skippedDormantOrgs });
+  return NextResponse.json({ created, skippedDormantOrgs, skippedNotApprovedOrgs });
 }

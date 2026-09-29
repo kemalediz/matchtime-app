@@ -281,6 +281,7 @@ import {
   isCancelRequest,
   isOnboardingSessionStale,
 } from "@/lib/onboarding-parse";
+import { inGroupSetupRefusal } from "@/lib/club-approval";
 import { t as strings } from "@/lib/i18n/t";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { currentAnalyzeBatchId, withAnalyzeBatch } from "@/lib/analyze-batch-context";
@@ -3908,9 +3909,17 @@ type OnboardingResponse = {
   onboarding: { stage: string; completed: boolean; language: string };
 };
 
+/** The onboarding gate refused the group outright (self-join slice 1):
+ *  no session, no reply, no model call, and nothing falls through. */
+type OnboardingRefusedResponse = {
+  ok: true;
+  ignored: "self-join-mode" | "silent-group";
+  results: [];
+};
+
 async function handleOnboardingIfApplicable(
   body: InboundBody,
-): Promise<OnboardingResponse | null> {
+): Promise<OnboardingResponse | OnboardingRefusedResponse | null> {
   const groupId = body.groupId;
 
   // ── A LIVE ORG ALWAYS WINS (2026-09-17) ──────────────────────────
@@ -3930,6 +3939,20 @@ async function handleOnboardingIfApplicable(
       data: { stage: "abandoned" },
     });
     return null;
+  }
+
+  // ── SILENCE RAILS (self-join slice 1, 2026-09-29) ──────────────────
+  // After the live-club check, so a live club is untouched. A SILENT group
+  // (its club is waiting for approval, was rejected or suspended, or
+  // nobody asked MatchTime into it) never starts or continues a setup:
+  // no session, no reply, and never the Haiku call inside the turn. With
+  // self-join on, the in-group setup is retired for every group
+  // (decision 4). The Pi should not have forwarded such a batch at all;
+  // this is the server's own refusal (plan section 4.3, layer 3).
+  const refusal = await inGroupSetupRefusal(groupId);
+  if (refusal) {
+    console.log(`[analyze] onboarding refused for ${groupId} (${refusal})`);
+    return { ok: true, ignored: refusal, results: [] };
   }
 
   let session = await db.onboardingSession.findFirst({

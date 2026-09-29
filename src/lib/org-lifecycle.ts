@@ -61,6 +61,8 @@
  * delegate the decision here (and so it is unit-testable).
  */
 
+import { isClubApproved } from "./club-approval-state";
+
 /** The only field of an Organisation that says whether the club exists. */
 export interface OrgLifecycle {
   /** NULL = live. A timestamp = a human declared this club dormant then. */
@@ -92,7 +94,9 @@ export function isOrgLive(org: OrgLifecycle): boolean {
 export interface FixtureCandidate {
   /** `Activity.isActive` — the per-fixture switch. Unchanged semantics. */
   isActive: boolean;
-  org: OrgLifecycle;
+  /** Lifecycle plus club approval (self-join, 2026-09-29): a club that
+   *  is not approved gets no fixtures either. See club-approval.ts. */
+  org: OrgLifecycle & { approvalStatus: string };
 }
 
 /**
@@ -100,7 +104,7 @@ export interface FixtureCandidate {
  * `activity-inactive` because they mean completely different things to
  * whoever reads the cron's output: one club is gone, one fixture is off.
  */
-export type FixtureSkipReason = "org-dormant" | "activity-inactive";
+export type FixtureSkipReason = "org-dormant" | "org-not-approved" | "activity-inactive";
 
 /**
  * The rule. Returns null when a fixture SHOULD be generated, or the
@@ -115,6 +119,10 @@ export type FixtureSkipReason = "org-dormant" | "activity-inactive";
  */
 export function fixtureSkipReason(candidate: FixtureCandidate): FixtureSkipReason | null {
   if (isOrgDormant(candidate.org)) return "org-dormant";
+  // A self-join club waiting for approval (or rejected, or suspended)
+  // must cost nothing and post nothing, so it gets no fixture. Every
+  // club that predates self-join is "approved" by the column default.
+  if (!isClubApproved(candidate.org)) return "org-not-approved";
   if (!candidate.isActive) return "activity-inactive";
   return null;
 }
@@ -126,6 +134,8 @@ export interface GeneratablePartition<T> {
   skipped: Array<{ item: T; reason: FixtureSkipReason }>;
   /** Convenience count for the cron's response body / logs. */
   skippedDormantOrgs: number;
+  /** Activities skipped because their club is not approved. */
+  skippedNotApprovedOrgs: number;
 }
 
 /**
@@ -157,5 +167,6 @@ export function partitionGeneratable<T extends FixtureCandidate>(
     generate,
     skipped,
     skippedDormantOrgs: skipped.filter((s) => s.reason === "org-dormant").length,
+    skippedNotApprovedOrgs: skipped.filter((s) => s.reason === "org-not-approved").length,
   };
 }

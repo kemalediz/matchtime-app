@@ -161,3 +161,23 @@ describe("handleGroupJoinForSelfAdd", () => {
     expect(out).toEqual({ kind: "silent", reason: "server-call-failed" });
   });
 });
+
+describe("handleGroupJoinForSelfAdd: silent groups (self-join slice 1)", () => {
+  it("still tells the server (it decides), but NEVER posts in a silent group, even if handed an intro", async () => {
+    const { d, monitored, onboarding, sendMessage, postBotAdded } = deps({ isSilentGroup: (g) => g === GID });
+    const out = await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: [LID], author: "447700900001@c.us" });
+    expect(postBotAdded).toHaveBeenCalledOnce();
+    expect(out).toEqual({ kind: "silent", reason: "silent-group" });
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(monitored.has(GID)).toBe(false);
+    expect(onboarding.has(GID)).toBe(false);
+  });
+
+  it("a Pi wired without the check (or a group not silent) behaves exactly as before", async () => {
+    const { d, sendMessage } = deps({ isSilentGroup: () => false });
+    const out = await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: [LID], author: "447700900001@c.us" });
+    expect(out.kind).toBe("posted");
+    expect(sendMessage).toHaveBeenCalledOnce();
+  });
+});
+

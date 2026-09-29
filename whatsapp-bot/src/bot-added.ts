@@ -75,6 +75,10 @@ export interface BotAddedDeps {
   isMonitoredGroup: (gid: string) => boolean;
   addMonitoredGroup: (gid: string) => void;
   addOnboardingGroup: (gid: string) => void;
+  /** Self-join slice 1: a silent group never gets a post from here, even
+   *  if a server hands back an intro. Optional so an older wiring still
+   *  compiles; absent means nothing is silent. */
+  isSilentGroup?: (gid: string) => boolean;
   resolveSelfIds: () => Promise<string[]>;
   readGroupSnapshot: (gid: string, selfIds: string[]) => Promise<GroupSnapshot>;
   /** Recent messages, oldest first, already shaped for the server; [] on failure. */
@@ -183,6 +187,13 @@ export async function handleGroupJoinForSelfAdd(
     const reason = res?.ignored ?? (res?.existing ? "existing-session-mid-flow" : "no-intro");
     log(`[bot-added] server says stay silent for ${gid} (${reason})`);
     return { kind: "silent", reason };
+  }
+
+  // The server already refuses a silent group; this is the Pi's own lock
+  // on the same door, for a server that got it wrong.
+  if (deps.isSilentGroup?.(gid)) {
+    log(`[bot-added] ${gid} is a silent group; not posting the intro the server returned`);
+    return { kind: "silent", reason: "silent-group" };
   }
 
   // Monitored AND onboarding before the send, so a reply that races the

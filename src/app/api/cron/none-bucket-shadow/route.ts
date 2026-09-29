@@ -29,6 +29,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { APPROVED_CLUB_WHERE } from "@/lib/club-approval";
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { isNoneBucketShadowEnabled } from "@/lib/pipeline/gate";
 import {
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
     const batchHash = noneShadowBatchHash(result.windowEnd);
     const orgIds = new Set(result.byOrg.map((o) => o.orgId));
     for (const o of await db.organisation.findMany({
-      where: { whatsappBotEnabled: true, whatsappGroupId: { not: null } },
+      where: { ...APPROVED_CLUB_WHERE, whatsappBotEnabled: true, whatsappGroupId: { not: null } },
       select: { id: true },
     })) {
       orgIds.add(o.id);
