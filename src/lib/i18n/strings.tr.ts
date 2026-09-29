@@ -1317,6 +1317,16 @@ export const tr: Strings = {
 
   sj_dm_in_group: (p) =>
     `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Sizi açana kadar orada sessiz kalacağım, bitince size buradan yazacağım.`,
+
+  // ── Self-join slice 7: the decision ──
+  sj_group_hello: (p) =>
+    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."}\n` +
+    "Oynuyor musun? *VARIM* yazman yeterli. Gelemiyorsan *YOKUM* yaz. Mesajına ✅ koyar, kadro listesini güncel tutarım.\n" +
+    "Başka bir şey için beni etiketle: *@Match Time yardım*",
+  sj_dm_approved: (p) =>
+    `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim. Haftalık maçınızı buradan ayarlayabilir ya da değiştirebilirsiniz: ${p.link}`,
+  sj_dm_rejected: (p) =>
+    `MatchTime'ı denediğiniz için teşekkürler. ${p.group ? `"${p.group}" grubunu` : "Grubunuzu"} şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.`,
 };
 
 /**

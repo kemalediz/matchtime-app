@@ -401,6 +401,9 @@ const SAMPLES: SampleArgs = {
   sj_dm_already_connected: null,
   sj_dm_code_expired: null,
   sj_dm_in_group: { group: "Riverside Tuesday 5s" },
+  sj_group_hello: { organiser: "Aliyah" },
+  sj_dm_approved: { club: "Riverside FC", group: "Riverside Tuesday 5s", link: "https://matchtime.ai/admin/activities" },
+  sj_dm_rejected: { group: "Riverside Tuesday 5s" },
 };
 
 /** Render an entry with its sample arguments. */

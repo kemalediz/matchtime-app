@@ -5,7 +5,12 @@
  * HANDLER ORDER IS THE CONTRACT. The most SPECIFIC pending prompt wins,
  * and the general fallback runs last:
  *
- *   0. self-join connect DM             ("Connect Riverside FC, code 7KQ2";
+ *   0a. self-join owner decision        ("APPROVE 7KQ2" / "REJECT 7KQ2" from a
+ *      number in SELF_JOIN_APPROVER_PHONES; only while SELF_JOIN_ENABLED is
+ *      on; deterministic, no model; a command with a ref from anybody else
+ *      is swallowed, anything that is not a command falls through. See
+ *      handleApproverDm in lib/club-approval.ts)
+ *   0b. self-join connect DM            ("Connect Riverside FC, code 7KQ2";
  *      only while SELF_JOIN_ENABLED is on; deterministic, no model; a DM
  *      with no code, or a code that names no connect request, falls
  *      through untouched. See lib/connect-dm.ts)
@@ -44,7 +49,7 @@
  * If no active survey applies, the DM is silently ignored.
  */
 import { withOrgAiBudget } from "@/lib/ai-budget";
-import { onlyUnapprovedClubs } from "@/lib/club-approval";
+import { handleApproverDm, onlyUnapprovedClubs } from "@/lib/club-approval";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
@@ -106,13 +111,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
   }
 
-  // ── Self-join connect DM (slice 5, 2026-09-29) ──────────────────────────
+  // ── Self-join: the owner's decision (slice 7), then the connect DM (slice 5) ──
   //   The organiser's prefilled "Connect Riverside FC, code 7KQ2" (Turkish:
   //   "... kulübünü bağla, kod 7KQ2"). FIRST, ahead of the bench reply and
   //   the sender lookup: the organiser of a draft club may be known only by
   //   the LID on the envelope, and nothing below may answer this DM with a
   //   model. Deterministic. Off with the flag: then not even called.
   if (selfJoinEnabledForApiRequest(request)) {
+    // The owner's APPROVE / REJECT (slice 7) comes first of all: it is the
+    // most specific thing a DM can be, and it must never reach a model.
+    const decision = await handleApproverDm({ text, phone, senderAltPhone, waMessageId });
+    if (decision) return NextResponse.json({ ok: true, ...decision });
     const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId });
     if (connect) return NextResponse.json({ ok: true, ...connect });
   }

@@ -17,6 +17,12 @@ export const DRAFT_CLUB_WHERE = { approvalStatus: "draft" } as const;
 /** A club linked to a group and waiting for the owner's decision. Slice 6. */
 export const PENDING_CLUB_WHERE = { approvalStatus: "pending" } as const;
 
+/** Turned down by the owner (slice 7). */
+export const REJECTED_CLUB_WHERE = { approvalStatus: "rejected" } as const;
+
+/** Turned off by the owner's off switch (slice 7). */
+export const SUSPENDED_CLUB_WHERE = { approvalStatus: "suspended" } as const;
+
 /** Its complement, for the silent-group loader. */
 export const UNAPPROVED_CLUB_WHERE = { approvalStatus: { not: "approved" } } as const;
 
