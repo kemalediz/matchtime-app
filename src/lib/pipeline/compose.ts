@@ -127,13 +127,25 @@ export function compose(result: EngineResult): ComposedOutput {
   const confirmed = namesByStatus(state, "CONFIRMED", s.fallback_player);
   const bench = namesByStatus(state, "BENCH", s.fallback_player);
 
+  /**
+   * The name printed on a team-sheet line. A holder who is no longer
+   * CONFIRMED is printed as an open slot, never by name: Sutton FC,
+   * 2026-09-29, re-declared a sheet naming Abid on Red forty minutes
+   * after he had said he was out, because his slot had not been
+   * inherited yet. The slot is real (the next arrival takes it); the
+   * name on it is not.
+   */
+  const playingIds = new Set(state.rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId));
+  const rosterName = new Map(state.roster.map((m) => [m.userId, m.name]));
+  const sheetName = (userId: string) =>
+    playingIds.has(userId) ? name(rosterName.get(userId) ?? "") : s.team_sheet_open_slot;
+
   /** Names on each side of the sheet, in sheet order, or null when the
    *  teams have not been generated. */
   const sheet = (): { red: string[]; yellow: string[] } | null => {
     if (state.teams.length === 0) return null;
-    const byId = new Map(state.roster.map((m) => [m.userId, m.name]));
     const side = (team: "RED" | "YELLOW") =>
-      state.teams.filter((x) => x.team === team).map((x) => name(byId.get(x.userId) ?? ""));
+      state.teams.filter((x) => x.team === team).map((x) => sheetName(x.userId));
     const red = side("RED");
     const yellow = side("YELLOW");
     // Two empty sides render a team post with empty headings — the
@@ -565,11 +577,8 @@ export function compose(result: EngineResult): ComposedOutput {
       }
 
       case "teams_post": {
-        const byId = new Map(state.roster.map((m) => [m.userId, m.name]));
         const side = (team: "RED" | "YELLOW") =>
-          state.teams
-            .filter((t) => t.team === team)
-            .map((t) => ({ name: name(byId.get(t.userId) ?? "") }));
+          state.teams.filter((t) => t.team === team).map((t) => ({ name: sheetName(t.userId) }));
         utterances.push({
           messageId: sp.messageId,
           text: formatTeamsPost({

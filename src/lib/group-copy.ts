@@ -678,6 +678,32 @@ export function buildRecruitAckReply(
 
 /** Row 127: the two-team sheet the swap replies end with. Unlike
  *  `formatTeamsPost` the labels carry no colon, and a missing name is "?". */
+/**
+ * The names on each side of a team sheet read from `TeamAssignment`
+ * rows, in the order given (sheet order is `id: asc`).
+ *
+ * A holder who is not CONFIRMED is printed as an OPEN SLOT, never by
+ * name. Sutton FC, 2026-09-29: the sheet re-declared at 07:57 still
+ * named Abid on Red forty minutes after he had said he was out, because
+ * nobody had inherited his slot yet and every printer read the row's
+ * name. The slot is real and the next arrival takes it; the name on it
+ * is not. `pipeline/compose.ts` applies the same rule to the projected
+ * state.
+ */
+export function teamSheetNames(
+  rows: Array<{ userId: string; team: "RED" | "YELLOW" | string; name: string | null }>,
+  playingIds: ReadonlySet<string>,
+  lang?: Lang | string | null,
+): { red: string[]; yellow: string[] } {
+  const s = t(lang);
+  const shown = (r: { userId: string; name: string | null }) =>
+    playingIds.has(r.userId) ? (r.name ?? s.unnamed) : s.team_sheet_open_slot;
+  return {
+    red: rows.filter((r) => r.team === "RED").map(shown),
+    yellow: rows.filter((r) => r.team === "YELLOW").map(shown),
+  };
+}
+
 export function buildTeamSheet(args: {
   redLabel: string;
   yellowLabel: string;

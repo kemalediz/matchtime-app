@@ -1120,6 +1120,78 @@ describe("the replacement post says who is out, who is in, and the teams", () =>
 // the teams again with the swapped replacement and the person that is
 // out. That's it. There is no point listing all the 14 players after the
 // teams were announced."
+describe("a sheet never lists a player who is not playing (Sutton, 2026-09-29)", () => {
+  // 07:57 on the day: Elnur, Burak and Abid had all dropped; Mojib had
+  // already inherited Burak's slot; Hamzah arrived and took Elnur's. The
+  // re-declared sheet still printed ABID on Red, a man who had said he
+  // was not coming. A vacated slot nobody has inherited is an OPEN SLOT
+  // on the sheet, not the name of the person who left it.
+  const SHEET: Record<string, "RED" | "YELLOW"> = {
+    mojib: "RED",
+    elnur: "RED",
+    abid: "RED",
+    kemal: "RED",
+    mustafa: "RED",
+    idris: "RED",
+    efat: "RED",
+    elvin: "YELLOW",
+    adam: "YELLOW",
+    erdal: "YELLOW",
+    sait: "YELLOW",
+    habib: "YELLOW",
+    faris: "YELLOW",
+    wasim: "YELLOW",
+  };
+  const ROSTER = [...SUTTON, "hamzah", "elnur"];
+  const hamzahIn = () =>
+    msg({
+      from: "wasim",
+      body: "Hamzah in",
+      route: "other_att",
+      facts: attendanceFacts([
+        claim({ subject: "other", personRef: "Hamzah", personNamed: true, polarity: "in" }),
+      ]),
+    });
+  const at0757 = (language: "en" | "tr" = "en") =>
+    world({
+      players: ROSTER,
+      confirmed: Object.keys(SHEET).filter((k) => k !== "elnur" && k !== "abid"),
+      dropped: ["elnur", "abid"],
+      teams: SHEET,
+      features: { language },
+    });
+
+  it("the replacement post names Hamzah in Elnur's slot and shows Abid's as open", () => {
+    const { out } = composeFor(at0757(), [hamzahIn()]);
+    expect(out.utterances).toHaveLength(1);
+    const text = out.utterances[0].text;
+    expect(text).toContain("🔁 *Elnur is out* — *Hamzah* takes his place and his spot in *Red*.");
+    expect(text).toContain("2. Hamzah  (replacing Elnur)");
+    expect(text).toContain("3. (open slot)");
+    expect(text).not.toContain("Abid");
+  });
+
+  it("Turkish: the open slot is said in Turkish", () => {
+    const { out } = composeFor(at0757("tr"), [hamzahIn()]);
+    expect(out.utterances[0].text).toContain("3. (boş yer)");
+    expect(out.utterances[0].text).not.toContain("Abid");
+  });
+
+  it("a squad question answered with the line-ups shows the open slot too", () => {
+    const state = world({
+      players: ROSTER,
+      confirmed: Object.keys(SHEET).filter((k) => k !== "abid"),
+      dropped: ["abid"],
+      teams: SHEET,
+    });
+    const { out } = composeFor(state, [rosterAsk("amir")]);
+    const said = out.utterances.map((u) => u.text).join("\n");
+    expect(said).toContain("⚽ *Teams for");
+    expect(said).toContain("(open slot)");
+    expect(said).not.toContain("Abid");
+  });
+});
+
 describe("a squad post with a team sheet on the table is the TEAMS", () => {
   const SHEET: Record<string, "RED" | "YELLOW"> = {
     kemal: "RED",

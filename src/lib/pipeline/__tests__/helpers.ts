@@ -78,6 +78,7 @@ const FULL_NAMES: Record<string, string> = {
   aydin: "Aydin Celik",
   izzet: "Izzet Erdogan",
   elnur: "Elnur Mammadov",
+  hamzah: "Hamzah",
   rashad: "Rashad Ali",
   nabeel: "Nabeel Ahmed",
   omar: "Omar Farooq",

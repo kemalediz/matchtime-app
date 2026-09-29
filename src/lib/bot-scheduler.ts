@@ -49,7 +49,7 @@ import {
   buildBenchIntroLine,
   buildSquadCompleteBenchInvite,
 } from "./bench-offer-copy";
-import { buildRatePromoPost, buildMatchDayChaseFallback } from "./group-copy";
+import { buildRatePromoPost, buildMatchDayChaseFallback, teamSheetNames } from "./group-copy";
 import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel } from "./i18n/dates";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
@@ -994,8 +994,19 @@ async function computeForMatch(
           timeLabel: format(m.date, "HH:mm"),
           redLabel,
           yellowLabel,
-          red: m.teamAssignments.filter((t) => t.team === "RED").map((t) => t.user),
-          yellow: m.teamAssignments.filter((t) => t.team === "YELLOW").map((t) => t.user),
+          // A holder who is out is an open slot, never a name
+          // (2026-09-29). See `teamSheetNames`.
+          ...(() => {
+            const sh = teamSheetNames(
+              m.teamAssignments.map((t) => ({ userId: t.userId, team: t.team, name: t.user.name })),
+              new Set(m.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.userId)),
+              lang,
+            );
+            return {
+              red: sh.red.map((name) => ({ name })),
+              yellow: sh.yellow.map((name) => ({ name })),
+            };
+          })(),
           lang,
         });
       } else if (isMatchDay && need === 0 && !teamsReady) {

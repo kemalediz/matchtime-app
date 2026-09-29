@@ -99,6 +99,7 @@ export const tr: Strings = {
   // ── shared fragments ─────────────────────────────────────────────
 
   unnamed: "(isimsiz)",
+  team_sheet_open_slot: "(boş yer)",
   no_match_label: "bir sonraki maç",
 
   // ── row 1: composeSquadStatusPost ────────────────────────────────
