@@ -566,3 +566,39 @@ describe("onPollVote", () => {
     expect(votes).toHaveLength(1);
   });
 });
+
+describe("leaveGroup (self-join slice 3: reject, suspend, an unsolicited add)", () => {
+  it("leaves with ONE groupLeave and forgets the group's roster and the listing", async () => {
+    const t = await started();
+    await t.driver.listGroups();
+    await t.driver.groupParticipants(GROUP);
+    const reads = t.sock().metadataCalls.length;
+    await t.driver.leaveGroup(GROUP);
+    expect(t.sock().leftGroups).toEqual([GROUP]);
+    // The roster is no longer served from the cache, and the next listing
+    // is read fresh rather than still naming the group we left.
+    await t.driver.groupParticipants(OTHER);
+    await expect(t.driver.groupParticipants(GROUP)).rejects.toThrow();
+    expect(t.sock().metadataCalls.length).toBeGreaterThan(reads + 1);
+    expect(await t.driver.listGroups()).toEqual([{ id: OTHER, name: "Erdal" }]);
+    expect(t.sock().fetchAllCalls).toBe(2);
+  });
+
+  it("propagates a refused leave, so the platform job is reported failed", async () => {
+    const t = await started();
+    t.sock().leaveError = new Error("not-authorized");
+    await expect(t.driver.leaveGroup(GROUP)).rejects.toThrow(/not-authorized/);
+  });
+
+  it("refuses to 'leave' anything that is not a group JID", async () => {
+    const t = await started();
+    await expect(t.driver.leaveGroup("447700900123@s.whatsapp.net")).rejects.toThrow(/not a group/);
+    await expect(t.driver.leaveGroup("")).rejects.toThrow(/not a group/);
+    expect(t.sock().leftGroups).toEqual([]);
+  });
+
+  it("throws when not connected, and leaves nothing", async () => {
+    const t = setup();
+    await expect(t.driver.leaveGroup(GROUP)).rejects.toThrow(/not connected/i);
+  });
+});

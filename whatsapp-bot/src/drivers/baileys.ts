@@ -227,6 +227,8 @@ export interface BaileysSocketLike extends LifecycleSocket {
   groupFetchAllParticipating?(): Promise<Record<string, GroupMetaLike>>;
   /** The roster, with `phoneNumber` for LID-addressed members. */
   groupMetadata?(jid: string): Promise<GroupMetaLike>;
+  /** Leave a group. One IQ about a group we are in; no directory lookup. */
+  groupLeave?(jid: string): Promise<void>;
 }
 
 export interface BaileysDriverDeps {
@@ -1110,6 +1112,22 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
           "path could only fail again or, if the first send got out, post the reply twice, so " +
           "this refuses instead.",
       );
+    },
+
+    async leaveGroup(groupId) {
+      // MAY THROW: the platform poller reports the throw as a failed job.
+      const jid = typeof groupId === "string" ? groupId.trim() : "";
+      if (!jid.endsWith("@g.us")) {
+        throw new Error(`[baileys driver] leaveGroup: ${JSON.stringify(groupId)} is not a group JID`);
+      }
+      const sock = getSocket();
+      if (!sock) throw new NotConnectedError(`the group ${jid} was not left`);
+      if (!sock.groupLeave) throw new Error("[baileys driver] leaveGroup: this socket has no groupLeave");
+      await sock.groupLeave(jid);
+      // Stop serving what we no longer see: the roster, and the listing
+      // that still names the group (re-read on the next listGroups).
+      groupCache.forget(jid);
+      log(`[baileys][groups] left ${jid}`);
     },
 
     // ── Groups and roster ────────────────────────────────────────────

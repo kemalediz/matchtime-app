@@ -4,6 +4,14 @@ import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
 import { randomInt } from "node:crypto";
+import { headers } from "next/headers";
+import { queuePlatformDm } from "@/lib/platform-jobs";
+import { formatLondon, londonDateTimeToUtc } from "@/lib/london-time";
+import {
+  SIGNUP_ATTEMPTS_PER_IP_PER_HOUR,
+  SITE_BUSY_MESSAGE,
+  SITE_SIGNUP_CODES_PER_DAY,
+} from "@/lib/signup-caps";
 
 /**
  * Phone-number signup via WhatsApp OTP.
@@ -19,15 +27,40 @@ import { randomInt } from "node:crypto";
  *      which signs them in via the existing magic-link credentials
  *      provider and lands them on /onboarding.
  *
- * Rate limits (best-effort, per-phone):
- *   - ≤ 3 outstanding codes in the last hour
+ * Rate limits (best-effort):
+ *   - ≤ 3 outstanding codes per phone in the last hour
+ *   - ≤ SIGNUP_ATTEMPTS_PER_IP_PER_HOUR codes per requesting IP in the
+ *     last hour (self-join plan section 7, cap 3; first x-forwarded-for
+ *     hop; no header, no IP cap)
+ *   - ≤ SITE_SIGNUP_CODES_PER_DAY codes per London day, whole site (cap 2).
+ *     Counted from PhoneOtp, which claim-account codes share, so the cap
+ *     is conservative.
  *   - Code expires in 10 minutes
  *   - ≤ 5 verify attempts per code
+ *
+ * The code DM is a PlatformJob (purpose "otp"), polled by the Pi whatever
+ * any club's bot switch says (self-join slice 3). It used to be a BotJob
+ * under "the first bot-enabled org", borrowed as a sender, so muting the
+ * only live club stopped every sign-up.
  */
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const MAX_OUTSTANDING_PER_HOUR = 3;
 const MAX_ATTEMPTS = 5;
+const SITE_BUSY = SITE_BUSY_MESSAGE;
+
+/** The requesting client's IP: the first x-forwarded-for hop, else x-real-ip. */
+async function requestIp(): Promise<string | null> {
+  try {
+    const h = await headers();
+    const first = (h.get("x-forwarded-for") ?? "").split(",")[0]?.trim();
+    const ip = first || (h.get("x-real-ip") ?? "").trim();
+    return ip ? ip.slice(0, 64) : null;
+  } catch {
+    // Outside a request (a script, a test harness): nothing to attribute.
+    return null;
+  }
+}
 
 function generateCode(): string {
   return randomInt(100_000, 1_000_000).toString();
@@ -51,41 +84,43 @@ export async function startPhoneSignup(args: {
     return { ok: false, error: "Too many requests. Please wait a bit and try again." };
   }
 
+  // Cap 3: per requesting IP, per hour.
+  const ip = await requestIp();
+  if (ip) {
+    const fromIp = await db.phoneOtp.count({
+      where: { requestIp: ip, createdAt: { gte: hourAgo } },
+    });
+    if (fromIp >= SIGNUP_ATTEMPTS_PER_IP_PER_HOUR) return { ok: false, error: SITE_BUSY };
+  }
+
+  // Cap 2: whole site, per London day.
+  const now = new Date();
+  const londonMidnight = londonDateTimeToUtc(formatLondon(now, "yyyy-MM-dd"), "00:00");
+  const today = await db.phoneOtp.count({ where: { createdAt: { gte: londonMidnight } } });
+  if (today >= SITE_SIGNUP_CODES_PER_DAY) {
+    console.warn(
+      `[phone-signup] site cap reached: ${today} sign-up codes today (cap ${SITE_SIGNUP_CODES_PER_DAY}); refusing.`,
+    );
+    return { ok: false, error: SITE_BUSY };
+  }
+
   const code = generateCode();
   await db.phoneOtp.create({
     data: {
       phone: digits,
       code,
       expiresAt: new Date(Date.now() + CODE_TTL_MS),
+      requestIp: ip,
     },
   });
 
-  // Queue a WhatsApp DM. We don't need an orgId here — BotJob requires
-  // one, so we reuse the first bot-enabled org purely as a sender. The
-  // shared Pi bot DMs any JID; the orgId on BotJob is just a dispatch
-  // pointer. If none exists the DM never lands — client surfaces that.
-  const senderOrg = await db.organisation.findFirst({
-    where: { whatsappBotEnabled: true },
-    select: { id: true },
-  });
-  if (!senderOrg) {
-    return {
-      ok: false,
-      error:
-        "MatchTime is still warming up — no active sender right now. Try again in a few minutes.",
-    };
-  }
-
-  await db.botJob.create({
-    data: {
-      orgId: senderOrg.id,
-      kind: "dm",
-      phone: digits,
-      text:
-        `👋 Welcome to MatchTime${name ? `, ${name}` : ""}!\n\n` +
-        `Your verification code: *${code}*\n\n` +
-        `It expires in 10 minutes. If you didn't ask for this, just ignore the message.`,
-    },
+  await queuePlatformDm({
+    phone: digits,
+    purpose: "otp",
+    text:
+      `👋 Welcome to MatchTime${name ? `, ${name}` : ""}!\n\n` +
+      `Your verification code: *${code}*\n\n` +
+      `It expires in 10 minutes. If you didn't ask for this, just ignore the message.`,
   });
 
   return { ok: true };

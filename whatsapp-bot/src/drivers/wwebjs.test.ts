@@ -312,3 +312,28 @@ describe("the calls that hang off one message", () => {
     expect(getContactById).toHaveBeenCalledWith(LID);
   });
 });
+
+// ─── Leaving a group (self-join slice 3) ─────────────────────────────
+describe("leaveGroup", () => {
+  it("leaves through the group chat's own leave()", async () => {
+    const leave = vi.fn(async () => undefined);
+    const getChatById = vi.fn(async () => ({ isGroup: true, leave }));
+    await wrap({ getChatById }).leaveGroup(GID);
+    expect(getChatById).toHaveBeenCalledWith(GID);
+    expect(leave).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a chat that is not a group, and leaves nothing", async () => {
+    const leave = vi.fn(async () => undefined);
+    const getChatById = vi.fn(async () => ({ isGroup: false, leave }));
+    await expect(wrap({ getChatById }).leaveGroup(PN)).rejects.toThrow(/not a group/);
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it("lets the library's failure out, so the job is reported failed", async () => {
+    const getChatById = vi.fn(async () => {
+      throw new Error("r");
+    });
+    await expect(wrap({ getChatById }).leaveGroup(GID)).rejects.toThrow("r");
+  });
+});

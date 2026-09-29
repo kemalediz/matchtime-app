@@ -26,6 +26,9 @@ vi.mock("./api.js", () => ({
   getDuePosts: (...a: unknown[]) => getDuePosts(...a),
   ackInstruction: (...a: unknown[]) => ackInstruction(...a),
   releaseInstruction: (...a: unknown[]) => releaseInstruction(...a),
+  // Self-join slice 3: the tick asks the platform channel first. Nothing here.
+  getPlatformJobs: async () => null,
+  reportPlatformJob: async () => undefined,
 }));
 
 const { initScheduler, stopScheduler } = await import("./scheduler.js");

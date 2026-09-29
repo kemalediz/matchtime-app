@@ -36,10 +36,21 @@
  * always a bug) plus a raised sanity ceiling of 40/hour. DMs are gated by
  * neither. Both are best-effort: if the guard's own queries fail we allow
  * the send, because a broken guard must never silence a customer's group.
+ *
+ * ── Platform DM bridge (self-join slice 3, 2026-09-29) ────────────────
+ * Sign-up codes moved off BotJob onto PlatformJob, which a Pi built with
+ * slice 3 polls at /api/whatsapp/platform-jobs. A Pi built before it does
+ * not, and the server ships on merge while the Pi is deployed by hand. So
+ * when a poll arrives WITHOUT the `x-mt-platform-jobs: 1` header, a couple
+ * of due platform DMs ride along here as ordinary `dm` instructions keyed
+ * `platform-<id>`, claimed on the PlatformJob row (not SentNotification),
+ * first in the list so the Pi's DM pacing serves a waiting sign-up first.
+ * A new Pi sends the header and gets none. See src/lib/platform-jobs.ts.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations } from "@/lib/bot-scheduler";
+import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import {
   CIRCUIT_BREAKER_WINDOW_MS,
   GROUP_DIRECTED_KINDS,
@@ -170,9 +181,13 @@ export async function GET(request: Request) {
     }
   }
 
+  // TEST-ONLY preview mode, see below. Read here too, so a preview never
+  // claims a platform job through the bridge.
+  const previewOnly = process.env.MT_TEST_MODE === "1" && request.headers.get("x-no-claim") === "1";
+
   const result = await computeDuePosts(groupId, nowOverride);
   if (!result) {
-    return NextResponse.json({ instructions: [] });
+    return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
   }
 
   // TEST-ONLY preview mode (e2e suite): return the computed list WITHOUT
@@ -180,7 +195,7 @@ export async function GET(request: Request) {
   // same window repeatedly. Gated on MT_TEST_MODE exactly like x-test-now
   // — never set in prod. Claim behaviour itself is covered by its own
   // spec (which does not send this header) and by the unit tests.
-  if (process.env.MT_TEST_MODE === "1" && request.headers.get("x-no-claim") === "1") {
+  if (previewOnly) {
     return NextResponse.json(result);
   }
 
@@ -268,5 +283,6 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({ ...result, instructions: selection.dispatch });
+  const bridged = await bridgePlatformDmsForLegacyPi(request);
+  return NextResponse.json({ ...result, instructions: [...bridged, ...selection.dispatch] });
 }

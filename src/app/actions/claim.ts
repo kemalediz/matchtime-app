@@ -27,6 +27,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
+import { queuePlatformDm } from "@/lib/platform-jobs";
 import { randomInt } from "node:crypto";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -74,31 +75,16 @@ export async function startClaimAccount(
     },
   });
 
-  // BotJob requires an orgId — pick the first bot-enabled org as a
-  // dispatch pointer (the Pi DMs any JID, the orgId is just where
-  // the queued job lives). Same pattern as phone-signup.
-  const senderOrg = await db.organisation.findFirst({
-    where: { whatsappBotEnabled: true },
-    select: { id: true },
-  });
-  if (!senderOrg) {
-    return {
-      ok: false,
-      error:
-        "MatchTime is still warming up — no active sender right now. Try again in a few minutes.",
-    };
-  }
-
-  await db.botJob.create({
-    data: {
-      orgId: senderOrg.id,
-      kind: "dm",
-      phone: digits,
-      text:
-        `🔐 *MatchTime — Claim your account*\n\n` +
-        `Your verification code: *${code}*\n\n` +
-        `It expires in 10 minutes. If you didn't request this, just ignore this message.`,
-    },
+  // A PlatformJob, not a BotJob under a borrowed bot-enabled org: the code
+  // must go out even when every club's bot is switched off (self-join
+  // slice 3; src/lib/platform-jobs.ts).
+  await queuePlatformDm({
+    phone: digits,
+    purpose: "otp",
+    text:
+      `🔐 *MatchTime — Claim your account*\n\n` +
+      `Your verification code: *${code}*\n\n` +
+      `It expires in 10 minutes. If you didn't request this, just ignore this message.`,
   });
 
   return { ok: true };

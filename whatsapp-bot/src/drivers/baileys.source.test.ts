@@ -37,6 +37,18 @@ describe("the session is never destroyed by us (§2.10)", () => {
 });
 
 describe("we never ask WhatsApp about a number (§2.2)", () => {
+  it("the platform channel (self-join slice 3) has no directory lookup either", () => {
+    // It DMs numbers nobody in a group has vouched for yet (sign-up codes).
+    // Checking them against WhatsApp first is exactly the lookup that got
+    // HomeTenant's devices unlinked.
+    for (const f of ["../platform-jobs.ts", "../scheduler.ts", "../with-timeout.ts"]) {
+      const src = stripComments(readFileSync(fileURLToPath(new URL(f, import.meta.url)), "utf8"));
+      for (const banned of [/onWhatsApp\s*\(/, /executeUSyncQuery\s*\(/, /getLIDForPN\s*\(/, /getLIDsForPNs\s*\(/]) {
+        expect(src, f).not.toMatch(banned);
+      }
+    }
+  });
+
   it("has no directory lookup of any kind", () => {
     // About a hundred of these from HomeTenant's production account got
     // every linked device on the number unlinked on 2026-09-17.
