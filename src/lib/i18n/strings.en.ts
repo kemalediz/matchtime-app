@@ -1631,4 +1631,29 @@ export const en = {
    *  group without a word in it (decision 1). */
   sj_dm_rejected: (p: { group: string | null }): string =>
     `Thanks for trying MatchTime. We can't take ${p.group ? `"${p.group}"` : "your group"} on right now, so I've left the group. We'll be in touch if that changes.`,
+
+  // ── Admin DM: somebody was added to the club's WhatsApp group (2026-09-29) ──
+  /** A number MatchTime has never seen. */
+  dm_admin_join_new: (p: { club: string; phone: string }): string =>
+    `🆕 New player joined *${p.club}* on WhatsApp.\n\nPhone: ${p.phone}\nI've added them as a placeholder player. Please set their name:\n/admin/players/phones`,
+  /** A known MatchTime user's FIRST membership of this club. Never
+   *  "rejoined": Sutton's admin read that for Hamzah's first join. */
+  dm_admin_join_first: (p: { name: string; club: string }): string =>
+    `🆕 *${p.name}* joined *${p.club}*'s WhatsApp group and is now on your player list.`,
+  /** Only when a membership that had LEFT was re-activated. */
+  dm_admin_join_rejoined: (p: { name: string; club: string }): string =>
+    `🔁 *${p.name}* rejoined *${p.club}*'s WhatsApp group.\n\nTheir membership has been re-activated. No further action needed.`,
+  /** The joiner was merged with the placeholder a third party's "X in"
+   *  created. `addedOn` is already a date label. */
+  dm_admin_join_linked: (p: { placeholder: string; addedOn: string }): string =>
+    `🔗 Linked to the *${p.placeholder}* added on ${p.addedOn}, so their games and team place carry over.`,
+  /** More than one placeholder, or only a partial name match: not merged. */
+  dm_admin_join_possible_duplicate: (p: { names: string[] }): string =>
+    `❓ They might be the same person as ${joinList("en", p.names.map((n) => `*${n}*`))}, added earlier by name. If so, merge them on /admin/players.`,
+
+  // ── /admin/players: possible duplicates (2026-09-29) ──
+  admin_players_duplicates_heading: "Possible duplicates",
+  admin_players_duplicate_row: (p: { placeholder: string; keeper: string }): string =>
+    `${p.placeholder}, added by name, may be the same person as ${p.keeper}.`,
+  admin_players_duplicate_merge: (p: { keeper: string }): string => `Merge into ${p.keeper}`,
 };

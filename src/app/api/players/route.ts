@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
 import { loadClubDisplayRatings } from "@/lib/player-stats";
 import { seesAdminFields } from "@/lib/admin-view";
+import { findDuplicateSuggestions } from "@/lib/placeholder-link-rules";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -51,7 +52,15 @@ export async function GET(request: Request) {
     include: {
       user: {
         include: {
-          _count: { select: { attendances: { where: { status: "CONFIRMED" } } } },
+          _count: {
+            select: {
+              attendances: { where: { status: "CONFIRMED" } },
+              // Every club's, for the duplicate suggestions below: a
+              // placeholder that also belongs to another club is never
+              // offered for a merge.
+              memberships: true,
+            },
+          },
           activityPositions: targetActivityId
             ? { where: { activityId: targetActivityId } }
             : false,
@@ -128,8 +137,27 @@ export async function GET(request: Request) {
     leftAt: m.leftAt ? m.leftAt.toISOString() : null,
     provisionallyAddedAt: m.provisionallyAddedAt ? m.provisionallyAddedAt.toISOString() : null,
     aliases: aliasesByUser.get(m.user.id) ?? [],
-    _count: m.user._count,
+    _count: { attendances: m.user._count.attendances },
   }));
+
+  // Possible duplicates (2026-09-29): a phoneless placeholder made by a
+  // third party's "X in" next to a member with a phone and a matching
+  // name. group-join merges the unambiguous case by itself; everything
+  // else is offered here for a one-tap merge. Rules:
+  // src/lib/placeholder-link-rules.ts.
+  const duplicateSuggestions = findDuplicateSuggestions(
+    memberships.map((m) => ({
+      id: m.user.id,
+      name: m.user.name,
+      phoneNumber: m.user.phoneNumber,
+      email: m.user.email,
+      provisionallyAddedAt: m.provisionallyAddedAt,
+      leftAt: m.leftAt,
+      createdAt: m.user.createdAt,
+      clubCount: m.user._count.memberships,
+      aliases: (aliasesByUser.get(m.user.id) ?? []).map((a) => a.alias),
+    })),
+  );
 
   // Participant-sweep freshness (2026-08-31; re-based 2026-09-09). When
   // the sweep stops, the app's self-IN gate quietly starts turning real
@@ -153,5 +181,6 @@ export async function GET(request: Request) {
     players,
     activityId: targetActivityId,
     groupSync: { lastSyncAt: lastSyncAt ? lastSyncAt.toISOString() : null },
+    duplicateSuggestions,
   });
 }

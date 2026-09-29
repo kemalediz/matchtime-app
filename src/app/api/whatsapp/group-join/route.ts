@@ -14,9 +14,16 @@
  *      proof of presence in exactly the sense the self-IN gate needs. If
  *      one already existed with `leftAt` set, clear it (a left member has
  *      rejoined).
- *   5. Queue a `BotJob` DM to every org admin ONLY on state change —
- *      brand-new user or rejoin after leaving. Already-active members
- *      don't spam admins.
+ *   5. Link a phoneless placeholder (2026-09-29). When a KNOWN user gets
+ *      a first or restored membership and this club holds exactly one
+ *      phoneless placeholder of the same name (made by a third party's
+ *      "X in"), merge it into them so their games and team place follow.
+ *      Ambiguous or partial matches are only suggested. Rules:
+ *      src/lib/placeholder-link-rules.ts.
+ *   6. Queue a `BotJob` DM to every org admin ONLY on state change: a
+ *      brand-new number, a known user's FIRST membership here ("joined"),
+ *      or a membership that had left ("rejoined"). Already-active members
+ *      don't spam admins. In the club's language (src/lib/join-dm.ts).
  *
  * Accepts `{ groupId, phones: string[] }` so a single event carrying
  * several added recipients gets one round-trip.
@@ -25,6 +32,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { findOrgAdminsWithPhone } from "@/lib/org";
+import { linkJoinerToPlaceholder, type LinkOutcome } from "@/lib/placeholder-link";
+import { composeJoinDm, type JoinLinkNote } from "@/lib/join-dm";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -47,7 +56,7 @@ export async function POST(request: Request) {
 
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
-    select: { id: true, name: true },
+    select: { id: true, name: true, language: true },
   });
   if (!org) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group" });
@@ -60,6 +69,7 @@ export async function POST(request: Request) {
     created: boolean;
     rejoined: boolean;
     alreadyActive: boolean;
+    link?: LinkOutcome["kind"];
     skipped?: string;
     userId?: string;
     name?: string | null;
@@ -139,23 +149,31 @@ export async function POST(request: Request) {
       alreadyActive = true;
     }
 
-    // Step 5: queue admin DM only on state change.
+    // Step 5: link a placeholder a third party's "X in" created for this
+    // person. Only for a KNOWN user whose membership here is new or
+    // restored: a brand-new number has no name to match, and an
+    // already-active member is no state change.
+    let link: LinkOutcome = { kind: "none" };
+    if (!created && !alreadyActive) {
+      link = await linkJoinerToPlaceholder(org.id, user.id);
+    }
+    const linkNote: JoinLinkNote | undefined =
+      link.kind === "linked"
+        ? { kind: "linked", placeholderName: link.placeholderName, addedAt: link.addedAt }
+        : link.kind === "suggest"
+          ? { kind: "suggest", names: link.candidates.map((c) => c.name).filter(Boolean) }
+          : undefined;
+
+    // Step 6: queue admin DM only on state change.
     if (!alreadyActive && admins.length > 0) {
-      const displayName = user.name?.trim() || normalised;
-      const lines = created
-        ? [
-            `🆕 New player joined *${org.name}* on WhatsApp.`,
-            ``,
-            `Phone: ${normalised}`,
-            `I've added them as a placeholder player — please set their name:`,
-            `/admin/players/phones`,
-          ]
-        : [
-            `🔁 *${displayName}* rejoined *${org.name}*'s WhatsApp group.`,
-            ``,
-            `Their membership has been re-activated. No further action needed.`,
-          ];
-      const text = lines.join("\n");
+      const displayName =
+        user.name?.trim() || (link.kind === "linked" ? link.placeholderName : "") || normalised;
+      const text = composeJoinDm(
+        org.language,
+        created
+          ? { kind: "new", club: org.name, phone: normalised, link: linkNote }
+          : { kind: rejoined ? "rejoined" : "first", club: org.name, name: displayName, link: linkNote },
+      );
 
       for (const admin of admins) {
         // Same-person admin getting DM'd about themselves would be silly.
@@ -176,6 +194,7 @@ export async function POST(request: Request) {
       created,
       rejoined,
       alreadyActive,
+      link: link.kind,
       userId: user.id,
       name: user.name,
     });
