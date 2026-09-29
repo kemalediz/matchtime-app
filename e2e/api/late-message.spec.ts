@@ -66,19 +66,55 @@ const status = (db: TestDb, userId: string) =>
     userId,
   ]);
 
-/** The seed's completed pay match kicked off 3 hours ago. Move it back
- *  two days so a 10.5-hour-old message is late but NOT overtaken by a
- *  kickoff, which is the incident's own path through the gate. */
+/** The longest delay any test in the first block sends (the incident's
+ *  10.5 hours), plus a margin. */
+const LATE_WINDOW = 11 * HOUR;
+
+/**
+ * Keep every kickoff out of the late window, so a late message takes the
+ * incident's own path through the gate ("not executed") and never the
+ * "a match kicked off after it was sent" one, WHATEVER THE TIME OF DAY.
+ *
+ * The seed has two finished matches: the pay match (3 hours ago) and the
+ * rate match (YESTERDAY at 20:00 London). Moving only the pay match left
+ * the rate match inside the 10.5-hour window from 00:00 to 06:30 London,
+ * so the incident test failed just after midnight and passed by day
+ * (reported 2026-09-30 00:30 BST). Both go back two days now, and the
+ * precondition below fails loudly if a future seed adds another.
+ */
 async function noRecentKickoff(db: TestDb): Promise<void> {
-  await db.run(`UPDATE "Match" SET date = $2 WHERE id = $1`, [
-    MATCH.pay,
+  await db.run(`UPDATE "Match" SET date = $2 WHERE id = ANY($1)`, [
+    [MATCH.pay, MATCH.rate],
     new Date(Date.now() - 48 * HOUR).toISOString(),
   ]);
+  const now = Date.now();
+  expect(
+    await db.count(`SELECT COUNT(*) FROM "Match" WHERE date > $1 AND date <= $2`, [
+      new Date(now - LATE_WINDOW).toISOString(),
+      new Date(now).toISOString(),
+    ]),
+    "a match kicked off inside the late window; this block's late messages would take the kicked-off path",
+  ).toBe(0);
+}
+
+/**
+ * Today's London date, with a kickoff that is NOT in (now - 45 minutes,
+ * now], so the 45-minute-late message below is "not executed" rather
+ * than overtaken by this very kickoff. 23:30 London (the original
+ * fixture) until 23:30; after that 22:00, which is still today and
+ * earlier than the late message's send time. (`selectTeamsMatch` takes a
+ * live match whose deadline is within 24 hours, so a kickoff an hour or
+ * two ago is still the match the teams are built for, as on a real match
+ * night.)
+ */
+function matchDayKickoff(now = Date.now()): Date {
+  const evening = londonAt(0, 23, 30);
+  return evening.getTime() > now ? evening : londonAt(0, 22, 0);
 }
 
 async function makeItMatchDay(db: TestDb): Promise<void> {
   await db.run(`UPDATE "Sport" SET "playersPerTeam" = 2 WHERE id = $1`, [SPORT_ID]);
-  const kickoff = londonAt(0, 23, 30);
+  const kickoff = matchDayKickoff();
   await db.run(`UPDATE "Match" SET date = $2, "attendanceDeadline" = $3 WHERE id = $1`, [
     MATCH.upcoming,
     kickoff.toISOString(),
@@ -156,6 +192,11 @@ test.describe("a message that arrives more than 30 minutes late", () => {
     ]);
     expect(resultFor(lateRes, late).reply).toBeNull();
     expect(await teamRows(db)).toBe(0);
+    // The gate's own reason, not the kickoff one: nothing kicked off
+    // since it was sent, it was simply not executed.
+    const alerts = await lateAlerts(db);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].detail).toContain("not executed");
 
     const fresh = msgId();
     const freshRes = await postAnalyze(request, [
