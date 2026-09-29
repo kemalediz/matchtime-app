@@ -34,6 +34,7 @@ describe("every degraded-capability message", () => {
         "participant-sync",
         "message-recovery",
         "reaction-forwarding",
+        "message-decryption",
       ]),
     );
   });
