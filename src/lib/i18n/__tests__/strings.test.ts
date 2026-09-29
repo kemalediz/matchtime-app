@@ -49,6 +49,7 @@ type SampleArgs = {
 
 const SAMPLES: SampleArgs = {
   unnamed: null,
+  team_sheet_open_slot: null,
   no_match_label: null,
   squad_status_lead: { withBench: true, confirmed: 11, maxPlayers: 14, need: 3 },
   playing_header: null,

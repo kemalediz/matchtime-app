@@ -106,6 +106,7 @@ import {
   skipsSquadComposition,
   buildRecruitAckReply,
   buildTeamSheet,
+  teamSheetNames,
   buildSwapDeferredReply,
   buildSwapRefusedReply,
   buildTeamSwapReply,
@@ -149,6 +150,7 @@ import { loadOpenQuestion, loadOpenStatsClarifications } from "@/lib/pipeline/lo
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
+import { moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
 import {
   bindAiBudgetKey,
@@ -1827,11 +1829,25 @@ async function handleAnalyzeRequest(request: Request) {
             // the replacement at the bottom instead of in the spot they
             // took. `@@unique([matchId, userId])` is what the composite
             // where clause names.
+            //
+            // UNDER THE PER-MATCH SLOT LOCK, and re-checked there
+            // (2026-09-29). The engine decided this move from a snapshot
+            // taken at the start of the request; a bench claim or another
+            // batch may have seated somebody in that slot since. A move
+            // that is no longer true is refused, the sheet is healed with
+            // whatever slot really is free, and the refusal is thrown so
+            // `attendance-engine-batch.ts` reports it as a degradation.
+            // See `lib/team-slot-fill.ts`.
             moveTeamSlot: async (matchId, fromUserId, toUserId) => {
-              await db.teamAssignment.update({
-                where: { matchId_userId: { matchId, userId: fromUserId } },
-                data: { userId: toUserId },
-              });
+              const res = await db.$transaction((tx) =>
+                moveNamedSlot(tx, matchId, fromUserId, toUserId),
+              );
+              if (res.kind === "refused") {
+                const healed = res.healed.map((m) => `${m.fromUserId}->${m.toUserId}`).join(", ");
+                throw new Error(
+                  `slot move refused (${res.reason}); sheet healed with [${healed || "nothing"}]`,
+                );
+              }
             },
             openBenchPromptUserIds: async (matchId) =>
               (
@@ -2924,7 +2940,7 @@ async function handleAnalyzeRequest(request: Request) {
               },
             },
             teamAssignments: {
-              select: { team: true, user: { select: { name: true } } },
+              select: { userId: true, team: true, user: { select: { name: true } } },
               orderBy: { id: "asc" },
             },
           },
@@ -2951,12 +2967,13 @@ async function handleAnalyzeRequest(request: Request) {
           teams:
             sheetMatch && sheetRows.length > 0
               ? {
-                  red: sheetRows
-                    .filter((t) => t.team === "RED")
-                    .map((t) => t.user.name ?? "(unnamed)"),
-                  yellow: sheetRows
-                    .filter((t) => t.team === "YELLOW")
-                    .map((t) => t.user.name ?? "(unnamed)"),
+                  // A holder who is out is an open slot, never a name
+                  // (2026-09-29). See `teamSheetNames`.
+                  ...teamSheetNames(
+                    sheetRows.map((t) => ({ userId: t.userId, team: t.team, name: t.user.name })),
+                    new Set(finalAtt.filter((a) => a.status === "CONFIRMED").map((a) => a.userId)),
+                    org.language,
+                  ),
                   labels: [teamLabels[0], teamLabels[1]],
                   kickoff: kickoffLabel(org.language, sheetMatch.date),
                   venue: sheetMatch.activity.venue,
@@ -4101,15 +4118,10 @@ async function handleTeamSwapIfApplicable(
 
   const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
   const sheet = async () => {
-    const rows = await db.teamAssignment.findMany({
-      where: { matchId: match.id },
-      include: { user: { select: { name: true } } },
-    });
     return buildTeamSheet({
       redLabel: labels[0],
       yellowLabel: labels[1],
-      red: rows.filter((t) => t.team === "RED").map((t) => t.user.name),
-      yellow: rows.filter((t) => t.team === "YELLOW").map((t) => t.user.name),
+      ...(await honestSheetNames(match.id, match.activity.org.language)),
     });
   };
 
@@ -4181,6 +4193,30 @@ async function handleTeamSwapIfApplicable(
       `team-slot-transfer applied: ${decision.from.name} (${decision.from.status}) ` +
       `-> ${decision.to.name} on ${decision.team}`,
   };
+}
+
+/**
+ * The team sheet as the swap replies print it: sheet order (`id: asc`),
+ * and a holder who is no longer CONFIRMED shown as an open slot rather
+ * than by name (2026-09-29, see `teamSheetNames`).
+ */
+async function honestSheetNames(
+  matchId: string,
+  lang: string | null | undefined,
+): Promise<{ red: string[]; yellow: string[] }> {
+  const [rows, playing] = await Promise.all([
+    db.teamAssignment.findMany({
+      where: { matchId },
+      orderBy: { id: "asc" },
+      select: { userId: true, team: true, user: { select: { name: true } } },
+    }),
+    db.attendance.findMany({ where: { matchId, status: "CONFIRMED" }, select: { userId: true } }),
+  ]);
+  return teamSheetNames(
+    rows.map((r) => ({ userId: r.userId, team: r.team, name: r.user.name })),
+    new Set(playing.map((p) => p.userId)),
+    lang,
+  );
 }
 
 /**
@@ -4258,17 +4294,12 @@ async function handleColorSwapIfApplicable(
   );
 
   const labels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
-  const fresh = await db.teamAssignment.findMany({
-    where: { matchId: match.id },
-    include: { user: { select: { name: true } } },
-  });
   return {
     reply: buildColourSwapReply({
       sheet: buildTeamSheet({
         redLabel: labels[0],
         yellowLabel: labels[1],
-        red: fresh.filter((t) => t.team === "RED").map((t) => t.user.name),
-        yellow: fresh.filter((t) => t.team === "YELLOW").map((t) => t.user.name),
+        ...(await honestSheetNames(match.id, match.activity.org.language)),
       }),
       lang: match.activity.org.language,
     }),

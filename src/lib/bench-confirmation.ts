@@ -19,6 +19,7 @@ import { recordAttendanceEvent } from "./attendance-events";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 import { resolveTeamLabels } from "./team-labels";
 import { buildBenchClaimAnnouncement } from "./bench-offer-copy";
+import { fillVacatedSlots, lockTeamSlots, type AppliedSlotMove } from "./team-slot-fill";
 
 export type BenchConfirmationResult =
   | {
@@ -52,37 +53,62 @@ export async function resolveBenchConfirmation(args: {
     return { kind: "ignored", reason: "claimant-not-on-bench" };
   }
 
-  // Oldest open offer for this match (FIFO if several slots are open).
-  const offer = await db.benchSlotOffer.findFirst({
+  // Oldest open offer first (FIFO if several slots are open), and on to
+  // the next one if a near-simultaneous claim took it: two bench players
+  // answering two open offers at the same moment must BOTH get in, not
+  // one of them be told "just missed it" while an offer is still open.
+  const open = await db.benchSlotOffer.findMany({
     where: { matchId, resolvedAt: null },
     orderBy: { createdAt: "asc" },
   });
-  if (!offer) return { kind: "ignored", reason: "no-open-offer" };
+  if (open.length === 0) return { kind: "ignored", reason: "no-open-offer" };
 
   // Atomic first-come claim: only the first writer flips resolvedAt.
   const now = new Date();
-  const claim = await db.benchSlotOffer.updateMany({
-    where: { id: offer.id, resolvedAt: null },
-    data: { resolvedAt: now, claimedByUserId: userId, outcome: "claimed" },
-  });
-  if (claim.count === 0) {
-    // Someone beat them to it in a near-simultaneous claim.
+  let offer: (typeof open)[number] | null = null;
+  for (const candidate of open) {
+    const claim = await db.benchSlotOffer.updateMany({
+      where: { id: candidate.id, resolvedAt: null },
+      data: { resolvedAt: now, claimedByUserId: userId, outcome: "claimed" },
+    });
+    if (claim.count > 0) {
+      offer = candidate;
+      break;
+    }
+  }
+  if (!offer) {
+    // Someone beat them to every open offer.
     return { kind: "ignored", reason: "already-claimed" };
   }
+  const claimed = offer;
 
-  // Promote the claimant — in the same transaction as the record of it.
+  // Promote the claimant AND seat them, in ONE transaction with the
+  // record of it.
   //
-  // This is the transition the log most needs to be able to name. The
-  // row that comes out of it is indistinguishable from an ordinary IN,
-  // and a replay that cannot tell "a bench player claimed a vacated
-  // slot" from "this player said they were coming" is reconstructing
-  // the wrong world. `sourceRef` is the offer, so the slot it came from
-  // (and whose drop opened it) is one join away.
-  await db.$transaction(async (tx) => {
+  // The seat is NOT the offer's `replacingUserId`. That is the slot that
+  // was vacant when the offer was opened, and by the time somebody claims
+  // it another path may have filled it: Sutton FC, 29 September 2026,
+  // Ozgur claimed Elnur's offer at 08:05, but Hamzah had inherited
+  // Elnur's slot at 07:57, so the old `findUnique` for Elnur's
+  // `TeamAssignment` found nothing. Ozgur was seated nowhere, the group
+  // was told he replaced Elnur, and ABID's slot, the one actually free,
+  // kept Abid's name all day. `fillVacatedSlots` answers the question
+  // from the sheet as it stands under the per-match lock, which is the
+  // only answer that stays true. See `team-slot-fill.ts`.
+  //
+  // `sourceRef` is still the offer, and the note names the slot that was
+  // really inherited, so the log can tell "claimed a vacated slot" from
+  // "said they were coming" and knows whose slot it was.
+  const { seat, sheetExists } = await db.$transaction(async (tx) => {
+    await lockTeamSlots(tx, matchId);
     await tx.attendance.update({
       where: { matchId_userId: { matchId, userId } },
       data: { status: "CONFIRMED" },
     });
+    const moves = await fillVacatedSlots(tx, matchId);
+    const mine: AppliedSlotMove | null = moves.find((m) => m.toUserId === userId) ?? null;
+    const hasSheet = moves.length > 0 || (await tx.teamAssignment.count({ where: { matchId } })) > 0;
+    const vacatedBy = mine ? mine.fromUserId : hasSheet ? null : claimed.replacingUserId;
     await recordAttendanceEvent(
       tx,
       {
@@ -98,12 +124,13 @@ export async function resolveBenchConfirmation(args: {
         cause: "bench-claim",
         actorKind: "player",
         actorUserId: userId,
-        sourceRef: offer.id,
-        note: offer.replacingUserId
-          ? `claimed the slot vacated by ${offer.replacingUserId}`
+        sourceRef: claimed.id,
+        note: vacatedBy
+          ? `claimed the slot vacated by ${vacatedBy}`
           : "claimed an open slot offered to the bench",
       },
     );
+    return { seat: mine, sheetExists: hasSheet };
   });
 
   // If this claim completes the squad, fire the full-line-up
@@ -113,50 +140,39 @@ export async function resolveBenchConfirmation(args: {
     console.error("[bench-claim] squad-full announce failed:", err),
   );
 
-  // Transfer the dropped player's TeamAssignment (when teams exist).
+  // WHO THE GROUP IS TOLD THIS PLAYER REPLACED. With a sheet, only the
+  // holder of the slot they actually inherited, or nobody ("grabbed the
+  // open slot") when there was none to inherit: naming the offer's
+  // player there is the 29 September lie. Without a sheet there are no
+  // slots, and the offer's player is who they replaced in the squad.
   let teamLabel: string | null = null;
   let droppedUserName: string | null = null;
-  if (offer.replacingUserId) {
+  const replacedId = seat ? seat.fromUserId : sheetExists ? null : claimed.replacingUserId;
+  if (replacedId) {
+    const dropped = await db.user.findUnique({ where: { id: replacedId }, select: { name: true } });
+    droppedUserName = dropped?.name ?? null;
+  }
+  if (seat) {
     try {
-      const droppedTA = await db.teamAssignment.findUnique({
-        where: { matchId_userId: { matchId, userId: offer.replacingUserId } },
-      });
-      const dropped = await db.user.findUnique({
-        where: { id: offer.replacingUserId },
-        select: { name: true },
-      });
-      droppedUserName = dropped?.name ?? null;
-      if (droppedTA) {
-        await db.$transaction([
-          db.teamAssignment.delete({
-            where: { matchId_userId: { matchId, userId: offer.replacingUserId } },
-          }),
-          db.teamAssignment.upsert({
-            where: { matchId_userId: { matchId, userId } },
-            create: { matchId, userId, team: droppedTA.team },
-            update: { team: droppedTA.team },
-          }),
-        ]);
-        const mForLabels = await db.match.findUnique({
-          where: { id: matchId },
-          include: {
-            activity: {
-              include: { sport: true, org: { select: { teamLabels: true, language: true } } },
-            },
+      const mForLabels = await db.match.findUnique({
+        where: { id: matchId },
+        include: {
+          activity: {
+            include: { sport: true, org: { select: { teamLabels: true, language: true } } },
           },
-        });
-        if (mForLabels) {
-          const labels = resolveTeamLabels(
-            mForLabels,
-            mForLabels.activity.org,
-            mForLabels.activity.sport,
-            mForLabels.activity.org.language,
-          );
-          teamLabel = droppedTA.team === "RED" ? labels[0] : labels[1];
-        }
+        },
+      });
+      if (mForLabels) {
+        const labels = resolveTeamLabels(
+          mForLabels,
+          mForLabels.activity.org,
+          mForLabels.activity.sport,
+          mForLabels.activity.org.language,
+        );
+        teamLabel = seat.team === "RED" ? labels[0] : labels[1];
       }
     } catch (err) {
-      console.error("[bench-claim] team-swap failed (non-fatal):", err);
+      console.error("[bench-claim] team label lookup failed (non-fatal):", err);
     }
   }
 

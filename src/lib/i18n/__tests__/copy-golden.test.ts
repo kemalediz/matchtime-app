@@ -131,6 +131,13 @@
  *     at most once per club per London day. Additive only; no existing
  *     case moved.
  *
+ *   - Deliberate addition (2026-09-29, several drops and joins after the
+ *     teams are out): one R69 case, a match-day sheet whose Red side
+ *     holds a player who has dropped out. The line reads "(open slot)"
+ *     ("(boş yer)" in Turkish) instead of his name, the new
+ *     `team_sheet_open_slot` string. Additive only; no existing case
+ *     moved.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -186,6 +193,7 @@ import {
   buildSquadCompletePost,
   buildStatsLinkSentLine,
   composeSquadStateReply,
+  teamSheetNames,
 } from "../../group-copy";
 import {
   buildAnnounceMatchPost,
@@ -364,7 +372,16 @@ function replacedWorld(lang: Lang, outKey: string, inKey: string): SquadState {
     if (k !== outKey) teams[k] = i % 2 === 0 ? "RED" : "YELLOW";
   });
   teams[inKey] = FOURTEEN.indexOf(outKey) % 2 === 0 ? "RED" : "YELLOW";
-  return fullWorld(lang, { teams });
+  // The squad matches the sheet: the replacement is CONFIRMED and the
+  // player whose slot he took is not. Since 2026-09-29 a sheet prints a
+  // holder who is not confirmed as an open slot, so a fixture that seated
+  // a bench player would render a world the engine cannot produce.
+  return fullWorld(lang, {
+    teams,
+    confirmed: [...FOURTEEN.filter((k) => k !== outKey), inKey],
+    bench: [],
+    dropped: [outKey],
+  });
 }
 
 const MSG = "wa-1";
@@ -684,6 +701,21 @@ function cases(lang: Lang): Case[] {
   add("R71b buildSquadFullEveningPost / bench feature off", fullSquadEvening([], false));
   add("R69 buildMatchDayTeamsBlock", buildMatchDayTeamsBlock({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", redLabel, yellowLabel, red: named(fourteenNames.filter((_, i) => i % 2 === 0)), yellow: named(fourteenNames.filter((_, i) => i % 2 === 1)), lang }));
   add("R69 buildMatchDayTeamsBlock / custom labels, unnamed row", buildMatchDayTeamsBlock({ activityName: "Thursday 5-a-side", venue: "Sim Arena", timeLabel: "20:00", redLabel: "Lions", yellowLabel: "Tigers", red: named(["Kemal Ediz", null]), yellow: named(["Sait Demir", "Abid Hussain"]), lang }));
+  {
+    // 2026-09-29: a holder who has dropped out and whose slot nobody has
+    // inherited is an open slot on the sheet, never his name.
+    const sh = teamSheetNames(
+      [
+        { userId: "a", team: "RED", name: "Kemal Ediz" },
+        { userId: "b", team: "RED", name: "Abid Hussain" },
+        { userId: "c", team: "YELLOW", name: "Sait Demir" },
+        { userId: "d", team: "YELLOW", name: "Mojib Sadat" },
+      ],
+      new Set(["a", "c", "d"]),
+      lang,
+    );
+    add("R69 buildMatchDayTeamsBlock / a dropped holder is an open slot", buildMatchDayTeamsBlock({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", redLabel, yellowLabel, red: named(sh.red), yellow: named(sh.yellow), lang }));
+  }
   const fullRoster = buildSquadRosterBlock({ confirmed: named(fourteenNames), bench: named(["Najib Ahmadi"]), maxPlayers: 14, lang });
   add("R70 buildMatchDayLockedPost", buildMatchDayLockedPost({ activityName: "Tuesday 7-a-side", venue: "Goals North Cheam", timeLabel: "21:30", rosterBlock: fullRoster, lang }));
   add("R72 buildDailyInListFallback", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 3, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 11)), bench: named(["Erdal Ozkan"]), maxPlayers: 14, lang }), lang }));

@@ -71,6 +71,11 @@ export const en = {
   /** A roster row whose user has no name on record. */
   unnamed: "(unnamed)",
 
+  /** A team-sheet line whose holder is no longer playing and whose slot
+   *  nobody has inherited yet (2026-09-29). Printed in place of the
+   *  dropped player's name: a sheet never lists somebody who is out. */
+  team_sheet_open_slot: "(open slot)",
+
   /** What `state.kickoffLabel` says when the group has no upcoming
    *  match to put a day and time on (load-state.ts). */
   no_match_label: "the next match",
