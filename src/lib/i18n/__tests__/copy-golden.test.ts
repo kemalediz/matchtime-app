@@ -139,8 +139,8 @@
  *     moved.
  *
  *   - Deliberate additions (2026-09-29, teams only on request and only
- *     on match day, and an admin can clear them): row R170, six one-line
- *     replies (`team_ops_not_match_day`, `team_ops_not_a_build_request`,
+ *     on match day, and an admin can clear them): row R170, seven one-line
+ *     replies (`team_ops_not_match_day`, `team_ops_not_a_build_request`, `team_ops_say_generate`,
  *     `teams_cleared`, `teams_clear_nothing`, `teams_clear_admin_only`,
  *     `request_not_handled`). NEW copy, after the Sutton FC incident of
  *     24 Sep where a pairing joke built the teams five days early and
@@ -266,6 +266,7 @@ import {
   teamOpsNoMatchReply,
   teamOpsNotABuildRequestReply,
   teamOpsNotMatchDayReply,
+  teamOpsSayGenerateReply,
 } from "../../team-ops-engine";
 import { buildRecruitGroupInviteDm, buildRecruitInviteDm } from "../../recruit";
 import { buildRecruitChaseText } from "../../recruit-chase";
@@ -963,6 +964,7 @@ function cases(lang: Lang): Case[] {
   add("R165 ai_daily_cap_reached", ratings.ai_daily_cap_reached());
   add("R170 teamOpsNotMatchDayReply", teamOpsNotMatchDayReply(lang));
   add("R170 teamOpsNotABuildRequestReply", teamOpsNotABuildRequestReply(lang));
+  add("R170 teamOpsSayGenerateReply", teamOpsSayGenerateReply(lang));
   add("R170 requestNotHandledReply", requestNotHandledReply(lang));
   add("R170 teams_cleared", ratings.teams_cleared);
   add("R170 teams_clear_nothing", ratings.teams_clear_nothing);

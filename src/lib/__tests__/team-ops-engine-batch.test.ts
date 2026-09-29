@@ -887,6 +887,25 @@ describe("teams are built only on a clear ask, and only on match day", () => {
     const { r, out } = await runAt(TUE_MORNING, JOKE, JOKE_FACTS);
     expect(r.generated).toEqual([]);
     expect(out.teamsGenerated).toBe(false);
+    // On match day the line must NOT say "I only build the teams on
+    // match day": it is match day. It says how to ask instead.
+    expect(out.reply).toBe(`Say "@Match Time generate the teams" and I'll build them.`);
+    expect(out.reply).not.toMatch(/match day/i);
+  });
+
+  it("if the match lookup throws, a non-build still gets the generic line, and the operator hears why", async () => {
+    const { model } = stubModel({ [JOKE]: JOKE_FACTS });
+    const r = recorder(model, squadWorld(), {
+      selectTeamsMatch: async () => {
+        throw new Error("timeout");
+      },
+    });
+    const res = await run({ messages: [msg({ body: JOKE })], deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toBe(
+      "I only build the teams on match day, when someone asks me to generate them.",
+    );
+    expect(res.degradations.join(" ")).toMatch(/timeout/);
+    expect(r.generated).toEqual([]);
   });
 
   it("'generate the teams' five days early gets the polite reply and builds nothing", async () => {
@@ -932,6 +951,10 @@ describe("teams are built only on a clear ask, and only on match day", () => {
 
     const onTheDay = await runAt(TUE_MORNING, "@Match Time takımları kur", teamsFacts(), trState);
     expect(onTheDay.r.generated).toEqual([{ matchId: "match-tue" }]);
+
+    const jokeOnTheDay = await runAt(TUE_MORNING, "@Match Time beni Sait ile aynı takıma koy", JOKE_FACTS, trState);
+    expect(jokeOnTheDay.r.generated).toEqual([]);
+    expect(jokeOnTheDay.out.reply).toBe(`"@Match Time takımları kur" yazın, takımları kurayım.`);
   });
 });
 

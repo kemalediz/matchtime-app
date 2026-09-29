@@ -209,6 +209,7 @@ const SAMPLES: SampleArgs = {
   team_gen_note_unmatched_pins: { names: ["Jim"] },
   team_ops_not_match_day: null,
   team_ops_not_a_build_request: null,
+  team_ops_say_generate: null,
   teams_cleared: null,
   teams_clear_nothing: null,
   teams_clear_admin_only: null,

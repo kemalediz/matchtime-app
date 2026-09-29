@@ -641,6 +641,7 @@ export const en = {
 
   team_ops_not_match_day: "I'll build the teams on match day, just ask me then.",
   team_ops_not_a_build_request: "I only build the teams on match day, when someone asks me to generate them.",
+  team_ops_say_generate: `Say "@Match Time generate the teams" and I'll build them.`,
   teams_cleared: "Teams cleared. I'll build new ones on match day when asked.",
   teams_clear_nothing: "There are no teams to clear.",
   teams_clear_admin_only: "Only an admin can clear the teams.",

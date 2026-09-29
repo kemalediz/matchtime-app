@@ -67,6 +67,14 @@ describe("isExplicitTeamBuildRequest: English asks the club really makes", () =>
     "@Match Time make 2 teams",
     "@Match Time generate the line-ups",
     "@Match Time GENERATE THE TEAMS",
+    // The coordinator's pre-merge list (2026-09-29).
+    "@Match Time teams please",
+    "@Match Time teams pls",
+    "@Match Time can you do the teams",
+    "@Match Time do the teams please",
+    "@Match Time sort the teams",
+    "@Match Time create teams",
+    "@Match Time regenerate the teams",
   ];
   for (const body of yes) {
     it(`builds: ${body}`, () => expect(isExplicitTeamBuildRequest(body)).toBe(true));
@@ -89,6 +97,11 @@ describe("isExplicitTeamBuildRequest: English asks the club really makes", () =>
     // "do" is deliberately not a build verb: a question about the sheet
     // must never regenerate it.
     "@Match Time do these teams look fair?",
+    "@Match Time put me in the same team with these guys",
+    "@Match Time who is in my team",
+    "@Match Time delete these teams",
+    "@Match Time don't do the teams yet",
+    "@Match Time teams were unfair last week",
   ];
   for (const body of no) {
     it(`does not build: ${body}`, () => expect(isExplicitTeamBuildRequest(body)).toBe(false));
@@ -105,6 +118,7 @@ describe("isExplicitTeamBuildRequest: Turkish", () => {
     "@Match Time takımları ayarla lütfen",
     "@Match Time takımları dengele",
     "@Match Time TAKIMLARI KUR",
+    "@Match Time takım yap",
   ];
   for (const body of yes) {
     it(`builds: ${body}`, () => expect(isExplicitTeamBuildRequest(body)).toBe(true));

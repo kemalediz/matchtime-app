@@ -111,6 +111,12 @@ export function teamOpsNotABuildRequestReply(lang?: Lang | string | null): strin
   return t(lang).team_ops_not_a_build_request;
 }
 
+/** The same, ON match day (2026-09-29): it must not say "I only build
+ *  the teams on match day" on the day itself. It says how to ask. */
+export function teamOpsSayGenerateReply(lang?: Lang | string | null): string {
+  return t(lang).team_ops_say_generate;
+}
+
 /** A tagged team request nothing on this path can carry out (`rename`,
  *  a `swap` the pre-peel could not apply). Said rather than swallowed. */
 export function requestNotHandledReply(lang?: Lang | string | null): string {

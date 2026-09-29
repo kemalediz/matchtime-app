@@ -140,10 +140,23 @@ function turkishVerbAfterTeams(text: string, stems: string[]): boolean {
  * negated ask ("do not regenerate the teams"), a read ("show the
  * teams"), a rename or a swap.
  */
+/** "teams please" as the WHOLE message: nothing else in it, so it can
+ *  only be the ask. (A bare "teams?" is left out: it reads as "what are
+ *  the teams?" as easily as "build them".) */
+const EN_TEAMS_PLEASE = /^(?:the\s+)?(?:new\s+)?teams(?:\s+(?:please|pls|plz|now|asap|mate|guys))+\s*[.!]*$/;
+
+/** "do the teams": "do" is too common a verb for the general list ("do
+ *  these teams look fair?" must never rebuild), so it counts only as
+ *  "do (the) teams" ending the clause or followed by a polite word. */
+const EN_DO_THE_TEAMS = /\bdo\s+(?:the\s+)?(?:teams|line-?ups)\s*(?:$|[.,!?]|please\b|pls\b|now\b|again\b|for\b|tonight\b|today\b)/;
+
 export function isExplicitTeamBuildRequest(body: string): boolean {
   const n = normalise(body);
   const en = englishView(n);
   if (englishVerbNounMatch(en, EN_BUILD_VERBS)) return true;
+  if (EN_TEAMS_PLEASE.test(en)) return true;
+  const doMatch = EN_DO_THE_TEAMS.exec(en);
+  if (doMatch && !EN_NEGATION.test(en.slice(0, doMatch.index))) return true;
   if (new RegExp(String.raw`\b${EN_TEAMS}\b`).test(en) && EN_ALTERNATIVE.test(en)) {
     // Not negated: "we don't need an alternative" is not an ask.
     const m = EN_ALTERNATIVE.exec(en);

@@ -122,11 +122,14 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
   test("the pairing joke builds nothing on match day either", async ({ request, db }) => {
     await makeItMatchDay(db);
     engineOn({ [JOKE]: JOKE_ROUTING });
-    await postAnalyze(request, [
-      { waMessageId: msgId(), body: JOKE, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    const id = msgId();
+    const res = await postAnalyze(request, [
+      { waMessageId: id, body: JOKE, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
     ]);
     expect(await teamRows(db)).toBe(0);
     expect(await matchStatus(db)).toBe("UPCOMING");
+    // It IS match day, so the line says how to ask, never "on match day".
+    expect(resultFor(res, id).reply).toBe(`Say "@Match Time generate the teams" and I'll build them.`);
   });
 
   test("'generate the teams' before match day gets the polite reply and builds nothing", async ({

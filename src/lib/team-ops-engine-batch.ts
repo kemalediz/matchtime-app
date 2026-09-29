@@ -275,6 +275,7 @@ import {
   requestNotHandledReply,
   teamOpsNotABuildRequestReply,
   teamOpsNotMatchDayReply,
+  teamOpsSayGenerateReply,
   type EngineGenerateTeamsWrite,
   type TeamOpsApplyDeps,
 } from "./team-ops-engine";
@@ -818,6 +819,28 @@ export async function runTeamOpsBatch(args: {
     if (!degradations.includes(n)) degradations.push(n);
   }
 
+  // ── IS IT MATCH DAY, FOR A DECLINED NON-BUILD? ─────────────────────
+  //
+  // On match day the decline must not say "I only build the teams on
+  // match day"; it says how to ask instead. Reuses the lookup above when
+  // there was one; otherwise one query, only when a non-build was
+  // declined. A lookup that throws falls back to the generic line (it is
+  // true on any day) and the operator hears why.
+  let notABuildOnMatchDay = false;
+  if ([...declined.values()].includes("not_a_build")) {
+    try {
+      const date =
+        targetMatchDate ?? (await deps.selectTeamsMatch(orgId, now))?.date ?? null;
+      notABuildOnMatchDay = date !== null && isMatchDay(date, now);
+    } catch (err) {
+      degradations.push(
+        `${TEAM_OPS_APPLY_DEGRADED_PREFIX} the match lookup for a declined non-build failed (${
+          err instanceof Error ? err.message : String(err)
+        }); the generic line was used`,
+      );
+    }
+  }
+
   // ── Per-message outcomes ───────────────────────────────────────────
   const outcomes = new Map<string, TeamOpsMessageOutcome>();
   for (const m of messages) {
@@ -834,7 +857,9 @@ export async function runTeamOpsBatch(args: {
         route: m.route as Route,
         reply:
           declinedAs === "not_a_build"
-            ? teamOpsNotABuildRequestReply(state.features.language)
+            ? notABuildOnMatchDay
+              ? teamOpsSayGenerateReply(state.features.language)
+              : teamOpsNotABuildRequestReply(state.features.language)
             : requestNotHandledReply(state.features.language),
         react: null,
         // NOT `generate_teams_request`: nothing was built, and that

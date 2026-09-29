@@ -587,6 +587,7 @@ export const tr: Strings = {
 
   team_ops_not_match_day: "Takımları maç günü kuracağım, o gün benden isteyin yeter.",
   team_ops_not_a_build_request: "Takımları sadece maç günü, biri benden istediğinde kuruyorum.",
+  team_ops_say_generate: `"@Match Time takımları kur" yazın, takımları kurayım.`,
   teams_cleared: "Takımlar silindi. Maç günü istenince yenilerini kurarım.",
   teams_clear_nothing: "Silinecek takım yok.",
   teams_clear_admin_only: "Takımları sadece bir admin silebilir.",
