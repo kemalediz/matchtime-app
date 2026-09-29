@@ -45,6 +45,7 @@ import type {
   RoutedMessage,
   SquadState,
 } from "./types";
+import { extractorCacheKey, fanOutWarmFirst } from "./fan-out";
 
 export interface PipelineMessage {
   id: string;
@@ -143,8 +144,12 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     null;
 
   // ── Stage 2 (parallel) ─────────────────────────────────────────────
-  const extractions = await Promise.all(
-    input.messages.map(async (m) => {
+  // The first call per cacheable prompt runs alone, so the rest read the
+  // prompt cache instead of all writing it (`fan-out.ts`).
+  const extractions = await fanOutWarmFirst(
+    input.messages,
+    (m) => extractorCacheKey(routeById.get(m.id) ?? "unsure"),
+    async (m) => {
       const route = routeById.get(m.id) ?? "unsure";
       if (extractorFor(route) === "none") {
         return { messageId: m.id, facts: { kind: "none" } as Facts, degraded: null as string | null };
@@ -173,7 +178,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
         facts: res.facts,
         degraded: failure ? failure.detail : null,
       };
-    }),
+    },
   );
 
   // ── THE PASTED-ROSTER CLAMP, so the dry run tells the truth ────────

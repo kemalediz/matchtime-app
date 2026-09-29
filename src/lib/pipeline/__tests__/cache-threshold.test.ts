@@ -26,7 +26,7 @@
  * 5 / Sonnet 4.5 1,024, Haiku 4.5 4,096. They are NOT monotone across
  * generations, which is exactly why one constant cannot serve.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   EXTRACTOR_MODEL,
   MIN_CACHEABLE_TOKENS,
@@ -235,8 +235,59 @@ describe("the marker reaches the request, or does not", () => {
       maxTokens: 64,
       label: "probe",
     });
-    expect(bodies[0].system[0].cache_control).toEqual({ type: "ephemeral" });
+    // ONE HOUR, not the default five minutes (2026-09-29). The Pi
+    // flushes every ten minutes, so a five-minute entry had always
+    // expired before the next batch: Sutton's 13 extractions on the
+    // morning of 2026-09-29 each paid a fresh write and read nothing.
+    expect(bodies[0].system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
     expect(res.cacheAttempted).toBe(true);
+  });
+
+  it("needs no beta header for the 1-hour TTL: the body is the whole request", async () => {
+    // `ttl` is GA in @anthropic-ai/sdk 0.90 (`CacheControlEphemeral.ttl`),
+    // so nothing but the body is sent: no `betas`, no extra headers.
+    const { client, bodies } = spyClient();
+    const create = vi.spyOn(client.messages, "create");
+    await anthropicModel({ apiKey: "test", client }).complete({
+      model: "claude-sonnet-5",
+      system: prose(2_000),
+      user: "hi",
+      maxTokens: 64,
+      label: "probe",
+    });
+    expect(create.mock.calls[0]).toHaveLength(1);
+    expect(bodies[0]).not.toHaveProperty("betas");
+  });
+
+  it("reports the 1-hour write it was billed for, and prices it at 2x", async () => {
+    const client: MessagesCreateClient = {
+      messages: {
+        async create() {
+          return {
+            model: "claude-sonnet-5",
+            content: [{ type: "text", text: "{}" }],
+            stop_reason: "end_turn",
+            usage: {
+              input_tokens: 500,
+              output_tokens: 100,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 3_500,
+              cache_creation: { ephemeral_1h_input_tokens: 3_500, ephemeral_5m_input_tokens: 0 },
+            },
+          } as any;
+        },
+      },
+    };
+    const res = await anthropicModel({ apiKey: "test", client }).complete({
+      model: "claude-sonnet-5",
+      system: prose(2_000),
+      user: "hi",
+      maxTokens: 64,
+      label: "probe",
+    });
+    expect(res.usage).toMatchObject({ cacheWriteTokens: 3_500, cacheWrite1hTokens: 3_500 });
+    // Sonnet 5 at $2/$10 per MTok: 500 + 3,500 x 2 input, 100 output.
+    expect(res.costUsd).toBeCloseTo(((500 + 3_500 * 2) * 2 + 100 * 10) / 1_000_000, 10);
   });
 
   it("attaches nothing when it does not", async () => {

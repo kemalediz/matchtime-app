@@ -279,6 +279,7 @@ import {
   type EngineGenerateTeamsWrite,
   type TeamOpsApplyDeps,
 } from "./team-ops-engine";
+import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 
 export { TEAM_OPS_APPLY_DEGRADED_PREFIX, TEAM_OPS_HANDLED_BY };
 
@@ -473,7 +474,9 @@ export async function runTeamOpsBatch(args: {
     };
   }
 
-  // ── Stage 2: extractors, in parallel ───────────────────────────────
+  // ── Stage 2: extractors: the cache warmed first, then in parallel ──
+  // (`pipeline/fan-out.ts`: one call per cacheable prompt runs alone so
+  // the rest READ the prompt cache rather than all writing it)
   //
   // MatchTime's own last post comes from the HISTORY the Pi forwards,
   // falling back to the last queued group `BotJob` the state loader
@@ -487,8 +490,10 @@ export async function runTeamOpsBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
-  await Promise.all(
-    candidates.map(async (m) => {
+  await fanOutWarmFirst(
+    candidates,
+    (m) => extractorCacheKey(m.route as Route),
+    async (m) => {
       const res = await extractForRouteTraced("team_ops", model, m.route as Route, {
         id: m.waMessageId,
         body: m.body,
@@ -518,7 +523,7 @@ export async function runTeamOpsBatch(args: {
         return;
       }
       factsById.set(m.waMessageId, res.facts);
-    }),
+    },
   );
 
   // ── Ownership, part 2: shapes only visible after extraction ────────

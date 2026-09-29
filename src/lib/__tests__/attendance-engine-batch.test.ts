@@ -1228,3 +1228,91 @@ describe("a plain 'in' from a confirmed player never reaches the apply layer as 
     expect(calls).toEqual([{ userId: "u-pete", benchIntent: "explicit" }]);
   });
 });
+
+// ── the prompt cache is warmed before the batch fans out (2026-09-29) ──
+
+/** Wraps a model to log when each call starts and ends and how many
+ *  were in flight at once. The call id is the message body. */
+function concurrencyProbe(inner: PipelineModel, ms = 5) {
+  const log: string[] = [];
+  let active = 0;
+  const probe = { log, maxActive: 0, calls: 0 };
+  const model: PipelineModel = {
+    name: inner.name,
+    async complete(req) {
+      const id = req.user.split("\n").slice(-1)[0];
+      probe.calls++;
+      log.push(`start:${id}`);
+      active++;
+      probe.maxActive = Math.max(probe.maxActive, active);
+      await new Promise((r) => setTimeout(r, ms));
+      try {
+        return await inner.complete(req);
+      } finally {
+        active--;
+        log.push(`end:${id}`);
+      }
+    },
+  };
+  return { model, probe };
+}
+
+describe("the prompt cache is warmed before the batch fans out", () => {
+  // Sutton FC, 2026-09-29: 13 attendance extractions in seven batches and
+  // not one cache read. Parallel calls all WRITE the cache; only a call
+  // that starts after the first has finished can READ it.
+  it("runs the first extraction alone, then the rest together", async () => {
+    const { model, probe } = concurrencyProbe(modelReturning(SELF_IN));
+    const d = deps({ model });
+    await run(
+      [
+        msg({ waMessageId: "a", body: "in a" }),
+        msg({ waMessageId: "b", body: "in b", senderUserId: "u-dan" }),
+        msg({ waMessageId: "c", body: "in c", senderUserId: "u-alice" }),
+      ],
+      d,
+    );
+    expect(probe.log.slice(0, 2)).toEqual(["start:in a", "end:in a"]);
+    expect(probe.log.slice(2, 4).sort()).toEqual(["start:in b", "start:in c"]);
+    expect(probe.maxActive).toBe(2);
+    expect(probe.calls).toBe(3);
+  });
+
+  it("a mixed batch of self_att, other_att, offer and unsure still warms ONCE: they share one prompt", async () => {
+    const { model, probe } = concurrencyProbe(modelReturning(SELF_IN));
+    await run(
+      [
+        msg({ waMessageId: "a", body: "in a", route: "self_att" }),
+        msg({ waMessageId: "b", body: "in b", route: "unsure", senderUserId: "u-dan" }),
+        msg({ waMessageId: "c", body: "in c", route: "offer", senderUserId: "u-alice" }),
+      ],
+      deps({ model }),
+    );
+    expect(probe.log.slice(0, 2)).toEqual(["start:in a", "end:in a"]);
+    expect(probe.maxActive).toBe(2);
+  });
+
+  it("a batch of one message is one call, unchanged", async () => {
+    const { model, probe } = concurrencyProbe(modelReturning(SELF_IN));
+    const d = deps({ model });
+    const r = await run([msg()], d);
+    expect(probe.log).toEqual(["start:in", "end:in"]);
+    expect(d.registered).toEqual(["u-pete"]);
+    expect(r.cost.calls).toBe(1);
+  });
+
+  it("still decides every message and books every call's cost", async () => {
+    const { model } = concurrencyProbe(modelReturning(SELF_IN));
+    const d = deps({ model });
+    const r = await run(
+      [
+        msg({ waMessageId: "a", body: "in a" }),
+        msg({ waMessageId: "b", body: "in b", senderUserId: "u-dan" }),
+      ],
+      d,
+    );
+    expect([...r.ownedIds].sort()).toEqual(["a", "b"]);
+    expect(d.registered.sort()).toEqual(["u-dan", "u-pete"]);
+    expect(r.cost.calls).toBe(2);
+  });
+});

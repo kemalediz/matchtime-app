@@ -214,6 +214,7 @@ import type {
   Route,
   SquadState,
 } from "./pipeline/types";
+import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 
 export { ADMIN_OPS_APPLY_DEGRADED_PREFIX, ADMIN_OPS_HANDLED_BY };
 
@@ -358,7 +359,9 @@ export async function runAdminOpsBatch(args: {
     return empty([detail]);
   }
 
-  // ── Stage 2: extractors, in parallel ───────────────────────────────
+  // ── Stage 2: extractors: the cache warmed first, then in parallel ──
+  // (`pipeline/fan-out.ts`: one call per cacheable prompt runs alone so
+  // the rest READ the prompt cache rather than all writing it)
   const model = deps.model ?? extractorStubFromEnv() ?? anthropicModel();
   const lastBotPost =
     [...history].reverse().find((h) => (h.author ?? "").toLowerCase() === "matchtime")?.body ??
@@ -368,8 +371,10 @@ export async function runAdminOpsBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
-  await Promise.all(
-    candidates.map(async (m) => {
+  await fanOutWarmFirst(
+    candidates,
+    (m) => extractorCacheKey(m.route as Route),
+    async (m) => {
       const res = await extractForRouteTraced("admin_ops", model, m.route as Route, {
         id: m.waMessageId,
         body: m.body,
@@ -402,7 +407,7 @@ export async function runAdminOpsBatch(args: {
         return;
       }
       factsById.set(m.waMessageId, res.facts);
-    }),
+    },
   );
 
   // ── The payment target, decided once, before anything is owned ─────

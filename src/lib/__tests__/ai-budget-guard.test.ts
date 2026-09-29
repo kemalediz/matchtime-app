@@ -163,6 +163,26 @@ describe("anthropicModel and the stub models go through the guard", () => {
     expect(row.calls).toBe(1);
   });
 
+  it("books a 1-hour cache write at 2x and a cache read at 0.1x, and the model reports the same figure", async () => {
+    // 2026-09-29: the pipeline's cached prompts moved to the 1-hour TTL.
+    // The cap and the model's own `costUsd` must both see the 2x write,
+    // or the cap under-books the day's first call of every prompt.
+    const { ledger, row } = memoryLedger(1);
+    const { client } = fakeClient({
+      input_tokens: 1000,
+      output_tokens: 100,
+      cache_read_input_tokens: 2000,
+      cache_creation_input_tokens: 3000,
+      cache_creation: { ephemeral_1h_input_tokens: 3000, ephemeral_5m_input_tokens: 0 },
+    });
+    const model = anthropicModel({ apiKey: "k", client });
+    const res = await runWithAiBudget("org-1", ledger, () => model.complete(req));
+    // haiku-4-5 $1/M: (1000 + 2000 x 0.1 + 3000 x 2) input + 100 x $5/M output
+    const expected = (1000 + 200 + 6000) / 1_000_000 + 0.0005;
+    expect(row.costUsd).toBeCloseTo(expected, 9);
+    expect(res.costUsd).toBeCloseTo(expected, 9);
+  });
+
   it("at the cap the SDK is never touched", async () => {
     const { ledger, row } = memoryLedger(1);
     row.costUsd = 1;

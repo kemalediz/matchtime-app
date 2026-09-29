@@ -208,6 +208,7 @@ import type {
   StatsPeriodTables,
   StatsSnapshot,
 } from "./types";
+import { extractorCacheKey, fanOutWarmFirst } from "./fan-out";
 
 /**
  * The routes this module can own. Re-exported from `route-flags.ts` so
@@ -900,7 +901,9 @@ export async function runAnswerBatch(args: {
   });
   if (eligible.length === 0) return empty(degradations);
 
-  // ── Stage 2: extractors, in parallel ───────────────────────────────
+  // ── Stage 2: extractors: the cache warmed first, then in parallel ──
+  // (`pipeline/fan-out.ts`: one call per cacheable prompt runs alone so
+  // the rest READ the prompt cache rather than all writing it)
   //
   // MatchTime's own last post comes from the HISTORY the Pi forwards,
   // falling back to the last queued group `BotJob` the state loader
@@ -916,8 +919,10 @@ export async function runAnswerBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
-  await Promise.all(
-    eligible.map(async (m) => {
+  await fanOutWarmFirst(
+    eligible,
+    (m) => extractorCacheKey(m.route as Route),
+    async (m) => {
       // A reply to a clarification is not itself a question: the ORIGINAL
       // question is re-read, and the reply supplies the name below.
       const clar = clarificationFor.get(m.waMessageId);
@@ -969,7 +974,7 @@ export async function runAnswerBatch(args: {
         return;
       }
       factsById.set(m.waMessageId, res.facts);
-    }),
+    },
   );
 
   // ── Ownership, part 2: shapes only visible after extraction ────────
