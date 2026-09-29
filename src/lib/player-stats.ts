@@ -17,7 +17,12 @@
 
 import { db } from "./db";
 import { formatLondon } from "./london-time";
-import { computeClubRating, clubDisplayRating, type ClubRatingSource } from "./player-rating";
+import {
+  computeClubRating,
+  clubDisplayRating,
+  summariseClubDisplayRatings,
+  type ClubRatingSource,
+} from "./player-rating";
 import { buildRankedRoster, loadLastPlayedByUser } from "./ranked-table-activity";
 import { earnsMrReliable, ratingSpread } from "./mr-reliable";
 
@@ -973,6 +978,28 @@ export async function loadClubRating(orgId: string, userId: string): Promise<Clu
     provisional: peerCount > 0 && peerCount < PROVISIONAL_BELOW_PEER_COUNT,
     hasOwnNumber: rating !== null,
   };
+}
+
+/**
+ * Every listed member's shown club rating, for the admin players page.
+ *
+ * One query, filtered by THIS club next to the player filter, so a
+ * member's ratings at any other club never enter it (design section 3).
+ * Newest first, so `summariseClubDisplayRatings` can take the same
+ * 60-rating window `loadClubRating` reads. The caller decides who may
+ * see the result: `GET /api/players` hands it to OWNER and ADMIN only.
+ */
+export async function loadClubDisplayRatings(
+  orgId: string,
+  userIds: readonly string[],
+): Promise<Record<string, { rating: number | null; ratedGames: number }>> {
+  if (userIds.length === 0) return {};
+  const rows = await db.rating.findMany({
+    where: { playerId: { in: [...userIds] }, match: { activity: { orgId } } },
+    orderBy: { createdAt: "desc" },
+    select: { playerId: true, matchId: true, score: true },
+  });
+  return summariseClubDisplayRatings(userIds, rows, CLUB_RATING_WINDOW);
 }
 
 export interface AllClubsOverview {

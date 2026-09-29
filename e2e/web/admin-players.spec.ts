@@ -7,7 +7,11 @@
  *     ambiguous name still creates a fresh player
  *   - merge flow: duplicate merged away
  *   - mobile-width render: no horizontal overflow (incl. admin subnav)
+ *   - the banner keeps the space after the name ("Hamzahposted", 2026-09-29)
+ *   - each row shows the club rating beside the seed: the raw club mean
+ *     the player sees, "Not rated yet" when nobody has rated them
  */
+import { mkdirSync } from "node:fs";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { NAME, ORG_ID } from "../helpers/constants";
 
@@ -42,6 +46,48 @@ test("provisional NEW row shows the player's name at mobile width", async ({ pag
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("banner spaces the name, and each row shows the club rating beside the seed", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await signInAs(page, U.admin, "/admin/players");
+  await page.waitForURL("**/admin/players");
+
+  await expect(page.getByText(`${NAME.walt} posted in the group and got auto-added.`, { exact: false })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText(`${NAME.walt}posted`)).toHaveCount(0);
+  // Same collapse, same page: "Seed ratingis the player's".
+  await expect(page.getByText(/Seed rating is the player's starting skill score/)).toBeVisible();
+  await expect(page.getByText(/Seed ratingis/)).toHaveCount(0);
+
+  await expect(page.getByText("Club rating", { exact: true }).first()).toBeVisible();
+
+  // Riley: rated 8 and 7 in one game (seed fixture), so 7.5 over 1 game.
+  const rowOf = (name: string) =>
+    page
+      .locator("div")
+      .filter({ has: page.locator(`input[value="${name}"]`) })
+      .filter({ has: page.getByTestId("club-rating") })
+      .last();
+  await expect(rowOf(NAME.rater).getByTestId("club-rating")).toContainText("7.5");
+  await expect(rowOf(NAME.rater).getByTestId("club-rating")).toContainText("1 rated game");
+  // Pat: one 4.
+  await expect(rowOf(NAME.player).getByTestId("club-rating")).toContainText("4.0");
+  // Walt: nobody has rated him.
+  await expect(rowOf(NAME.walt).getByTestId("club-rating")).toContainText("Not rated yet");
+
+  // No em dash anywhere in the page's copy.
+  const bodyText = await page.locator("main, body").first().innerText();
+  expect(bodyText).not.toContain("\u2014");
+
+  const shotDir = process.env.MT_E2E_SHOT_DIR;
+  if (shotDir) {
+    mkdirSync(shotDir, { recursive: true });
+    await page.screenshot({ path: `${shotDir}/admin-players-desktop.png`, fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: `${shotDir}/admin-players-mobile.png`, fullPage: true });
+  }
 });
 
 test("adding an existing unique name reuses the member — no ghost", async ({ page, db }) => {
@@ -89,6 +135,7 @@ test("merge flow folds a duplicate into the kept player", async ({ page, db }) =
     .filter({ has: page.getByRole("button", { name: /merge/i }) })
     .last();
   await dannyRow.getByRole("button", { name: /^merge$/i }).click();
+  await expect(page.getByText(`Merge ${NAME.dup} into another player.`, { exact: false })).toBeVisible();
 
   // Accept the confirm() dialog, then pick the merge target. The target
   // picker renders OUTSIDE the tight name-cell container, so locate the

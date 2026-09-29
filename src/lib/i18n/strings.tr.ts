@@ -1291,6 +1291,18 @@ export const tr: Strings = {
   sj_card_code_cap: "Bugünkü kodlarınızı kullandınız. Lütfen yarın tekrar deneyin.",
   sj_card_unavailable: "MatchTime şu an yeni grup alamıyor. Lütfen kısa süre sonra tekrar bakın.",
   sj_card_already_connected: "Zaten bağlısınız. Şimdi MatchTime'ı grubunuza eklemeniz yeterli.",
+
+  // ── /admin/players (2026-09-29) ─────────────────────────────────────
+  admin_players_new_heading: (p: { count: number }): string =>
+    `${p.count} yeni oyuncu WhatsApp üzerinden katıldı`,
+  admin_players_new_body: (p: { names: string[] }): string =>
+    `${p.names.length > 0 ? p.names.join(", ") : "Bu oyuncular"} grupta mesaj yazdı ve otomatik eklendi. ` +
+    `Aşağıdan telefon, pozisyon ve başlangıç puanını kontrol edin. Onaylamak için ✓, oyuncu değilse kaldırmak için ✕ tuşuna basın.`,
+  admin_players_club_rating_header: "Kulüp puanı",
+  admin_players_club_rating_hint:
+    "Bu kulübün oyuncularının verdiği puanların ortalaması, oyuncunun kendi sayfasında gördüğü sayının aynısı. Takım dengeleyici, daha fazla puan gelene kadar başlangıç puanını da hesaba katar.",
+  admin_players_not_rated_yet: "Henüz puan yok",
+  admin_players_rated_games: (p: { count: number }): string => `${p.count} puanlanmış maç`,
 };
 
 /**
