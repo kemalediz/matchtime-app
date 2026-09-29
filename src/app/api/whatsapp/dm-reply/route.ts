@@ -5,6 +5,10 @@
  * HANDLER ORDER IS THE CONTRACT. The most SPECIFIC pending prompt wins,
  * and the general fallback runs last:
  *
+ *   0. self-join connect DM             ("Connect Riverside FC, code 7KQ2";
+ *      only while SELF_JOIN_ENABLED is on; deterministic, no model; a DM
+ *      with no code, or a code that names no connect request, falls
+ *      through untouched. See lib/connect-dm.ts)
  *   1. bench-slot offer reply           (an open BenchSlotOffer)
  *   2. DM subscription command          ("stop messaging me about ratings")
  *   3. player payment claim             (2026-09-23: "Paid" from a player
@@ -41,6 +45,8 @@
  */
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { onlyUnapprovedClubs } from "@/lib/club-approval";
+import { handleConnectDm } from "@/lib/connect-dm";
+import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
@@ -85,14 +91,30 @@ export async function POST(request: Request) {
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
-  const { phone, body: text, waMessageId, authorName } = body as {
+  const { phone, body: text, waMessageId, authorName, senderLid, senderAltPhone } = body as {
     phone?: string;
     body?: string;
     waMessageId?: string;
     authorName?: string;
+    /** The sender's WhatsApp LID, when the envelope carried one. Sent by a
+     *  Pi built with self-join slice 5; absent from an older one. */
+    senderLid?: string;
+    /** The phone on the envelope's alternate address, when there was one. */
+    senderAltPhone?: string;
   };
   if (!text || !waMessageId) {
     return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
+  }
+
+  // ── Self-join connect DM (slice 5, 2026-09-29) ──────────────────────────
+  //   The organiser's prefilled "Connect Riverside FC, code 7KQ2" (Turkish:
+  //   "... kulübünü bağla, kod 7KQ2"). FIRST, ahead of the bench reply and
+  //   the sender lookup: the organiser of a draft club may be known only by
+  //   the LID on the envelope, and nothing below may answer this DM with a
+  //   model. Deterministic. Off with the flag: then not even called.
+  if (selfJoinEnabledForApiRequest(request)) {
+    const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId });
+    if (connect) return NextResponse.json({ ok: true, ...connect });
   }
 
   // ── Bench-confirmation DM reply ──────────────────────────────────
@@ -339,8 +361,8 @@ export async function POST(request: Request) {
   // ── Silence rails (self-join slice 1, 2026-09-29) ──────────────────────
   //   A sender whose every club is waiting for approval (or was rejected
   //   or suspended) gets nothing from here on: no model call, no reply.
-  //   The deterministic connect handler that will answer such an
-  //   organiser lands ahead of this in a later slice. Every club that
+  //   The deterministic connect handler at the top of this route is the
+  //   only thing that answers such an organiser. Every club that
   //   predates self-join is approved, so a Sutton FC member is untouched.
   if (await onlyUnapprovedClubs(user.memberships.map((m) => m.orgId))) {
     console.log(`[dm-reply] sender ${user.id} belongs only to unapproved clubs; ignoring`);

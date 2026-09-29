@@ -1755,6 +1755,10 @@ model ClubConnect {
   lastMismatchPhoneMasked String?
   /// dmAt + 24 hours.
   addWindowEndsAt         DateTime?
+  /// The organiser's connect DM arrived while cap 6 (new groups linked
+  /// across the site per day) was full. The card shows the cap line that
+  /// day; the code stays issued. Self-join slice 5.
+  siteCapAt               DateTime?
 
   // The group add
   groupId                 String?
@@ -1779,6 +1783,10 @@ model ClubConnect {
   @@index([code, status])
   @@index([orgId, status])
   @@index([groupId])
+  /// Slice 6 resolves a LID-only group adder through the connect DM's LID.
+  @@index([dmLid])
+  /// Cap 6 counts today's connect DMs.
+  @@index([dmAt])
 }
 
 /// A group MatchTime was added to with no connect code behind it

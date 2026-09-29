@@ -1561,4 +1561,16 @@ export const en = {
   admin_players_not_rated_yet: "Not rated yet",
   admin_players_rated_games: (p: { count: number }): string =>
     `${p.count} rated ${p.count === 1 ? "game" : "games"}`,
+  /** Cap 6 (plan section 7): new groups linked across the whole site. The
+   *  same line on the card and, once, in WhatsApp. */
+  sj_site_cap_groups: "We're taking on a few new groups each day. Please try again tomorrow.",
+
+  // ── Self-join slice 5: the replies to the connect DM (plan 5.3, 5.4) ──
+  /** After the organiser's connect DM, from the number they signed up with. */
+  sj_dm_connected: (p: { name: string | null; club: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, got it: ${p.club} is connected to this chat.\n` +
+    "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n" +
+    "I'll stay quiet in the group until we've switched it on for you, usually within a day.",
+  sj_dm_already_connected: "You're already connected. Now just add me to your group.",
+  sj_dm_code_expired: "That code has expired. Open your club on matchtime.ai and tap Add MatchTime to WhatsApp again.",
 };

@@ -617,7 +617,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   /** A contact record in the shape the callers read. Never throws, never asks WhatsApp. */
   async function contactRecord(
     jid: string | null | undefined,
-    hint: { phone?: string | null; pushname?: string | null } = {},
+    hint: { phone?: string | null; pushname?: string | null; lid?: string | null; altPhone?: string | null } = {},
   ): Promise<Record<string, unknown>> {
     const key = legacyJid(jid);
     const names = contacts.namesFor(key);
@@ -638,6 +638,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       verifiedName: names.verifiedName,
       shortName: undefined,
       isMe: !!key && (key === self.pn || key === self.lid),
+      // Only for an inbound message's sender (contactOf), and only when the
+      // envelope said so: the DM forward's senderLid / senderAltPhone.
+      ...(hint.lid ? { lid: hint.lid } : {}),
+      ...(hint.altPhone ? { altPhone: hint.altPhone } : {}),
     };
   }
 
@@ -1290,7 +1294,12 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     async contactOf(msg) {
       const facts = (msg as Partial<BaileysInboundView> | null | undefined)?.baileys;
       if (facts) {
-        return contactRecord(facts.senderJid, { phone: facts.senderPhone, pushname: facts.pushName });
+        return contactRecord(facts.senderJid, {
+          phone: facts.senderPhone,
+          pushname: facts.pushName,
+          lid: facts.senderLid,
+          altPhone: facts.altPhone,
+        });
       }
       // A bare WAMessage (the history path, one day): resolve it the same way.
       const raw = rawOf(msg);

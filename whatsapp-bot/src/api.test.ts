@@ -3,7 +3,7 @@
  * silently depends on.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { getDuePosts, getPlatformJobs, postAnalyzeFull, postHeartbeat, reportPlatformJob } from "./api.js";
+import { getDuePosts, getPlatformJobs, postAnalyzeFull, postDmReply, postHeartbeat, reportPlatformJob } from "./api.js";
 import { emptyCounters } from "./heartbeat.js";
 
 const fetchMock = vi.fn();
@@ -152,5 +152,29 @@ describe("platform channel (self-join slice 3)", () => {
     expect(url).toMatch(/\/api\/whatsapp\/platform-jobs$/);
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({ id: "pj1", outcome: "failed", error: "not on WhatsApp" });
+  });
+});
+
+describe("postDmReply (self-join slice 5)", () => {
+  it("forwards the sender's LID and alt phone alongside today's fields", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true }));
+    await postDmReply({
+      phone: "447700900123",
+      body: "Connect Riverside FC, code 7KQ2",
+      waMessageId: "wa-1",
+      authorName: "Ali",
+      senderLid: "158055467598020",
+      senderAltPhone: "447700900123",
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/api\/whatsapp\/dm-reply$/);
+    expect(JSON.parse(String(init.body))).toEqual({
+      phone: "447700900123",
+      body: "Connect Riverside FC, code 7KQ2",
+      waMessageId: "wa-1",
+      authorName: "Ali",
+      senderLid: "158055467598020",
+      senderAltPhone: "447700900123",
+    });
   });
 });

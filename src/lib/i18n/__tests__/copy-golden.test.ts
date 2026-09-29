@@ -1017,6 +1017,14 @@ function cases(lang: Lang): Case[] {
   add("R182 card / three codes today", sj.sj_card_code_cap);
   add("R182 card / no number configured", sj.sj_card_unavailable);
   add("R182 card / already connected", sj.sj_card_already_connected);
+  add("R182 card / new groups today (cap 6)", sj.sj_site_cap_groups);
+
+  // ── self-join slice 5: the replies to the connect DM (2026-09-29) ──
+  add("R183 connect DM / connected", sj.sj_dm_connected({ name: "Ali", club: "Riverside FC" }));
+  add("R183 connect DM / connected, no name", sj.sj_dm_connected({ name: null, club: "Riverside FC" }));
+  add("R183 connect DM / already connected", sj.sj_dm_already_connected);
+  add("R183 connect DM / code expired", sj.sj_dm_code_expired);
+  add("R183 connect DM / new groups today (cap 6)", sj.sj_site_cap_groups);
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));

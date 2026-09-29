@@ -37,3 +37,17 @@ export async function selfJoinEnabledForRequest(): Promise<boolean> {
   }
   return selfJoinEnabledFrom(value);
 }
+
+/**
+ * The same seam for the Pi's API routes (dm-reply, slice 5), which carry
+ * no cookie: a header, honoured only in test mode. The Pi never sends it,
+ * and outside `MT_TEST_MODE=1` it is ignored in both directions.
+ */
+export const SELF_JOIN_TEST_HEADER = "x-mt-test-self-join";
+
+export function selfJoinEnabledForApiRequest(
+  request: Request,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return selfJoinEnabledFrom(request.headers.get(SELF_JOIN_TEST_HEADER) ?? undefined, env);
+}
