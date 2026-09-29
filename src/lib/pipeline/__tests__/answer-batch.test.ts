@@ -1536,3 +1536,34 @@ describe("the personal stats link (topic my_stats)", () => {
     expect(calls.length).toBeLessThanOrEqual(1);
   });
 });
+
+// ── The question prompt's cache is warmed before the fan-out (2026-09-29) ──
+
+describe("two questions in one batch: the first warms the cache, the second reads it", () => {
+  it("runs the first question extraction alone, then the rest", async () => {
+    const Q2 = "@Match Time how many are we now?";
+    const { model: inner } = stubModel({ [COUNT_Q]: COUNT_FACTS, [Q2]: COUNT_FACTS });
+    const log: string[] = [];
+    const model: PipelineModel = {
+      name: "probe",
+      async complete(req) {
+        const body = req.user.split("\n").slice(-1)[0];
+        log.push(`start:${body}`);
+        await new Promise((r) => setTimeout(r, 5));
+        try {
+          return await inner.complete(req);
+        } finally {
+          log.push(`end:${body}`);
+        }
+      },
+    };
+    await run({
+      messages: [
+        msg({ waMessageId: "q1", body: COUNT_Q, route: "question" }),
+        msg({ waMessageId: "q2", body: Q2, route: "question" }),
+      ],
+      model,
+    });
+    expect(log).toEqual([`start:${COUNT_Q}`, `end:${COUNT_Q}`, `start:${Q2}`, `end:${Q2}`]);
+  });
+});

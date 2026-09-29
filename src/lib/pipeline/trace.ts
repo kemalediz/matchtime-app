@@ -96,8 +96,18 @@ export interface RouterTrace {
 export interface ExtractionCall {
   ms?: number;
   stopReason?: string | null;
+  /** The WHOLE prompt: uncached input + cache reads + cache writes.
+   *  Until 2026-09-29 this left the writes out and read ~500 for calls
+   *  billed a ~3,500-token write. */
   inputTokens?: number;
+  /** Of `inputTokens`, read from the prompt cache (billed 0.1x). */
+  cacheReadTokens?: number;
+  /** Of `inputTokens`, written to the prompt cache (1.25x, or 2x for a
+   *  1-hour entry). The number a cost investigation needs first. */
+  cacheWriteTokens?: number;
   outputTokens?: number;
+  /** What the call cost, as booked against the daily cap. */
+  costUsd?: number | null;
   /** Only when the output did not parse cleanly. */
   raw?: string;
   /** The attempt threw (transport, truncation). */
@@ -228,8 +238,11 @@ export async function extractForRouteTraced(
         calls.push({
           ms: resp.ms,
           stopReason: resp.stopReason,
-          inputTokens: resp.usage.inputTokens + resp.usage.cacheReadTokens,
+          inputTokens: resp.usage.inputTokens + resp.usage.cacheReadTokens + resp.usage.cacheWriteTokens,
+          cacheReadTokens: resp.usage.cacheReadTokens,
+          cacheWriteTokens: resp.usage.cacheWriteTokens,
           outputTokens: resp.usage.outputTokens,
+          costUsd: resp.costUsd,
           raw: resp.text,
         });
       });

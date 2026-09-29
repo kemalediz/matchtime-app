@@ -520,3 +520,33 @@ describe("the apply layer's dependencies are injected, asserted by scanning it",
     expect(SRC).not.toMatch(/Math\.pow/);
   });
 });
+
+// ── A prompt too short to cache is not sequenced (2026-09-29) ──────────
+
+describe("the score prompt is under Sonnet's cache minimum, so its calls stay fully parallel", () => {
+  it("starts both extractions before either ends", async () => {
+    const LOST = "Yellow won 4-2";
+    const { model: inner } = stubModel({ [WON]: WON_FACTS, [LOST]: { first: 2, second: 4 } });
+    const log: string[] = [];
+    const model: PipelineModel = {
+      name: "probe",
+      async complete(req) {
+        const body = req.user.split("\n").slice(-1)[0];
+        log.push(`start:${body}`);
+        await new Promise((r) => setTimeout(r, 5));
+        try {
+          return await inner.complete(req);
+        } finally {
+          log.push(`end:${body}`);
+        }
+      },
+    };
+    const r = recorder(model, playedWorld());
+    await run({
+      messages: [msg({ waMessageId: "s1", body: WON }), msg({ waMessageId: "s2", body: LOST })],
+      model,
+      deps: r.deps,
+    });
+    expect(log.slice(0, 2).sort()).toEqual([`start:${WON}`, `start:${LOST}`]);
+  });
+});

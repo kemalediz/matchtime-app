@@ -160,6 +160,25 @@ export function shouldCachePrompt(model: string, system: string): boolean {
   return estimateTokens(system) >= min;
 }
 
+/**
+ * THE PIPELINE'S CACHE MARKER: ONE HOUR, NOT FIVE MINUTES (2026-09-29).
+ *
+ * The Pi flushes each group every ten minutes, so a five-minute entry has
+ * always expired by the next batch. Sutton FC on 2026-09-29: seven
+ * batches 10 to 22 minutes apart, 13 extractions, 13 cache writes, zero
+ * reads. A one-hour write costs 2x input rather than 1.25x, and every
+ * read inside the hour costs 0.1x and refreshes the entry at no charge,
+ * so one busy morning pays for ONE write per prompt instead of one per
+ * call. It loses only when a prompt is used once and then not again for
+ * an hour: 0.75x the prompt, about $0.005 on the attendance extractor.
+ *
+ * `ttl` is GA in @anthropic-ai/sdk 0.90 (`CacheControlEphemeral.ttl`), no
+ * beta header. The router is unaffected: its prompt is under Haiku 4.5's
+ * 4,096-token minimum, so it carries no marker at all
+ * (`__tests__/cache-threshold.test.ts`), and it is not padded to reach it.
+ */
+export const PIPELINE_CACHE_CONTROL = { type: "ephemeral", ttl: "1h" } as const;
+
 export interface ModelRequest {
   model: string;
   /** The stable prefix. Cached when long enough to be cacheable. */
@@ -234,9 +253,9 @@ export function costOf(model: string, usage: ModelUsage): number | null {
   const rate = RATES[model] ?? RATES[model.replace(/-\d{8}$/, "")];
   if (!rate) return null;
   // Cache reads bill at 0.1x input, 1-hour writes at 2x, 5-minute writes
-  // at 1.25x. The pipeline uses the default 5-minute TTL; the raw call
-  // sites outside it mostly ask for 1 hour, and `anthropicMessageCost`
-  // tells the two apart from the usage the API reports.
+  // at 1.25x. The pipeline asks for 1 hour (`PIPELINE_CACHE_CONTROL`), as
+  // do most raw call sites; both `anthropicModel` and
+  // `anthropicMessageCost` read the split from the usage the API reports.
   const write1h = Math.min(usage.cacheWrite1hTokens ?? 0, usage.cacheWriteTokens);
   const input =
     usage.inputTokens +
@@ -398,7 +417,7 @@ export function anthropicModel(opts?: {
           {
             type: "text" as const,
             text: req.system,
-            ...(cacheAttempted ? { cache_control: { type: "ephemeral" as const } } : {}),
+            ...(cacheAttempted ? { cache_control: PIPELINE_CACHE_CONTROL } : {}),
           },
         ],
         messages: [{ role: "user" as const, content: req.user }],
@@ -430,6 +449,9 @@ export function anthropicModel(opts?: {
         outputTokens: resp.usage.output_tokens ?? 0,
         cacheReadTokens: resp.usage.cache_read_input_tokens ?? 0,
         cacheWriteTokens: resp.usage.cache_creation_input_tokens ?? 0,
+        // Without this a 1-hour write is priced at 1.25x instead of 2x,
+        // and the daily cap and this response's `costUsd` would disagree.
+        cacheWrite1hTokens: resp.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
       };
 
       return {

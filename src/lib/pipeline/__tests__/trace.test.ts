@@ -107,9 +107,58 @@ describe("what is recorded", () => {
       claims: [{ polarity: "bench", subject: "sender", contingent: false, confidence: 0.62 }],
       affirmation: null,
     });
-    expect(x.calls).toEqual([{ ms: 7, stopReason: "end_turn", inputTokens: 10, outputTokens: 5 }]);
+    expect(x.calls).toEqual([
+      {
+        ms: 7,
+        stopReason: "end_turn",
+        inputTokens: 10,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        outputTokens: 5,
+        costUsd: 0.001,
+      },
+    ]);
     // A clean parse: the facts ARE the output, so the raw text is not kept.
     expect(x.calls[0]).not.toHaveProperty("raw");
+  });
+
+  it("counts the cache WRITE in the prompt size and says how much was read and written", async () => {
+    // 2026-09-29: the trace said ~500 input tokens for calls that were
+    // billed a ~3,500-token cache write each, because `inputTokens` was
+    // input + cache reads and left the write out. A cost investigation
+    // read off the trace was off by a factor of eight.
+    const saved = await capture(async () => {
+      await extractForRouteTraced(
+        "attendance",
+        modelReturning(BENCH_FOR_PLAIN_IN, {
+          usage: { inputTokens: 500, outputTokens: 105, cacheReadTokens: 0, cacheWriteTokens: 3_522 },
+          costUsd: 0.0109,
+        }),
+        "self_att",
+        msg("wa-1"),
+      );
+      await extractForRouteTraced(
+        "attendance",
+        modelReturning(BENCH_FOR_PLAIN_IN, {
+          usage: { inputTokens: 480, outputTokens: 100, cacheReadTokens: 3_522, cacheWriteTokens: 0 },
+          costUsd: 0.0027,
+        }),
+        "self_att",
+        msg("wa-2"),
+      );
+    });
+    expect(saved.get("wa-1")!.extractions[0].calls[0]).toMatchObject({
+      inputTokens: 4_022,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 3_522,
+      costUsd: 0.0109,
+    });
+    expect(saved.get("wa-2")!.extractions[0].calls[0]).toMatchObject({
+      inputTokens: 4_002,
+      cacheReadTokens: 3_522,
+      cacheWriteTokens: 0,
+      costUsd: 0.0027,
+    });
   });
 
   it("says no model was asked when the floor routed the message", async () => {

@@ -165,6 +165,7 @@ import {
   type EngineAttendanceWrite,
   type EngineWriteResult,
 } from "./attendance-engine";
+import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 
 export interface EngineBatchMessage {
   waMessageId: string;
@@ -566,7 +567,9 @@ export async function runAttendanceEngineBatch(args: {
   if (owned.length === 0) return empty();
   const ownedIds = new Set(owned.map((m) => m.waMessageId));
 
-  // ── Stage 2: extractors, in parallel ───────────────────────────────
+  // ── Stage 2: extractors: the cache warmed first, then in parallel ──
+  // (`pipeline/fan-out.ts`: one call per cacheable prompt runs alone so
+  // the rest READ the prompt cache rather than all writing it)
   const model = deps.model ?? extractorStubFromEnv() ?? anthropicModel();
   // MatchTime's own last post, from the HISTORY the Pi forwards on every
   // call, falling back to the last queued group `BotJob` that
@@ -593,8 +596,10 @@ export async function runAttendanceEngineBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, { facts: Facts; degraded: string | null }>();
-  await Promise.all(
-    owned.map(async (m) => {
+  await fanOutWarmFirst(
+    owned,
+    (m) => (deps.aiCapped ? null : extractorCacheKey(m.route as Route)),
+    async (m) => {
       // ── THE DAILY AI CAP: A BARE IN/OUT NEEDS NO MODEL ──────────────
       // Only the two routes the floor itself produces. A floor reading
       // of a message routed anywhere else is not what the router said,
@@ -642,7 +647,7 @@ export async function runAttendanceEngineBatch(args: {
         facts: res.facts,
         degraded: failure ? failure.detail : null,
       });
-    }),
+    },
   );
 
   // ── A FAILED EXTRACTION GOES SILENT, PER MESSAGE. SAY IT PLAINLY. ──

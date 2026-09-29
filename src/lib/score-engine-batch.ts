@@ -145,6 +145,7 @@ import {
   type EngineScoreWrite,
   type ScoreApplyDeps,
 } from "./score-engine";
+import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
 
 export { SCORE_APPLY_DEGRADED_PREFIX, SCORE_HANDLED_BY };
 
@@ -274,7 +275,9 @@ export async function runScoreBatch(args: {
   // a score against") but it would cost an extractor call to hear it.
   if (!state.completedMatch) return empty();
 
-  // ── Stage 2: extractors, in parallel ───────────────────────────────
+  // ── Stage 2: extractors: the cache warmed first, then in parallel ──
+  // (`pipeline/fan-out.ts`: one call per cacheable prompt runs alone so
+  // the rest READ the prompt cache rather than all writing it)
   const model = deps.model ?? extractorStubFromEnv() ?? anthropicModel();
   const lastBotPost =
     [...history].reverse().find((h) => (h.author ?? "").toLowerCase() === "matchtime")?.body ??
@@ -284,8 +287,10 @@ export async function runScoreBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
-  await Promise.all(
-    candidates.map(async (m) => {
+  await fanOutWarmFirst(
+    candidates,
+    (m) => extractorCacheKey(m.route as Route),
+    async (m) => {
       const res = await extractForRouteTraced("score", model, m.route as Route, {
         id: m.waMessageId,
         body: m.body,
@@ -333,7 +338,7 @@ export async function runScoreBatch(args: {
         return;
       }
       factsById.set(m.waMessageId, res.facts);
-    }),
+    },
   );
 
   // ── Ownership, part 2: shapes only visible after extraction ────────
