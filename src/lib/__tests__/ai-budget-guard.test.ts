@@ -16,7 +16,15 @@ import {
   type AiBudgetHold,
   type AiBudgetLedger,
 } from "../ai-budget-context";
-import { anthropicModel, budgetedModel, anthropicMessageCost, type PipelineModel } from "../pipeline/llm";
+import {
+  anthropicModel,
+  budgetedModel,
+  anthropicMessageCost,
+  costOf,
+  guardedAnthropicCall,
+  UNPRICED_CALL_USD,
+  type PipelineModel,
+} from "../pipeline/llm";
 
 const RESERVE = 0.01;
 
@@ -219,6 +227,35 @@ describe("anthropicMessageCost: pricing a raw SDK response", () => {
 
   it("an unknown model is unpriced (null), so the guard books it at the unpriced rate", () => {
     expect(anthropicMessageCost({ model: "claude-new-thing", usage: { input_tokens: 5, output_tokens: 5 } })).toBeNull();
+  });
+
+  // The API answers a request for `claude-haiku-4-5` with the DATED
+  // snapshot in `resp.model`: `claude-haiku-4-5-20251001`. The rate table
+  // is keyed by the alias, so every raw Haiku call site was priced null
+  // and booked at UNPRICED_CALL_USD ($0.12) instead of about $0.0015.
+  it("a dated snapshot name is priced as its alias", () => {
+    const usage = { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    expect(costOf("claude-haiku-4-5-20251001", usage)).toBeCloseTo(0.0015, 9);
+    expect(costOf("claude-haiku-4-5-20251001", usage)).toBe(costOf("claude-haiku-4-5", usage));
+  });
+
+  it("a dated snapshot of a model nobody priced is still unpriced", () => {
+    const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    expect(costOf("claude-new-thing-20251001", usage)).toBeNull();
+  });
+
+  it("through the guard, a dated Haiku response books its real price, not the unpriced rate", async () => {
+    const { ledger, row } = memoryLedger(1);
+    await runWithAiBudget("org-1", ledger, () =>
+      guardedAnthropicCall("dm-intent", async () => ({
+        model: "claude-haiku-4-5-20251001",
+        usage: { input_tokens: 1000, output_tokens: 100 },
+      })),
+    );
+    // haiku-4-5: $1/M in, $5/M out -> 0.001 + 0.0005
+    expect(row.costUsd).toBeCloseTo(0.0015, 9);
+    expect(row.costUsd).not.toBe(UNPRICED_CALL_USD);
+    expect(row.calls).toBe(1);
   });
 });
 
