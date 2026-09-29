@@ -28,6 +28,9 @@ import {
   createPlayer,
 } from "@/app/actions/players";
 import { groupSyncAdminWarning } from "@/lib/group-membership-gate";
+import { t } from "@/lib/i18n/t";
+import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
+import { ProvisionalPlayersBanner, ClubRatingCell } from "./player-row-bits";
 
 interface Player {
   id: string;
@@ -37,6 +40,9 @@ interface Player {
   role: string;
   positions: string[];
   seedRating: number | null;
+  /** This club's rating of them, the number they see on their own page.
+   *  Null only when the caller is not an owner or admin. */
+  clubRating: { rating: number | null; ratedGames: number } | null;
   phoneNumber: string | null;
   isActive: boolean;
   leftAt: string | null;
@@ -49,6 +55,9 @@ export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
+  // The banner and the club-rating column follow the club's language,
+  // like the seed editor's hint on /admin/players/ratings.
+  const [lang, setLang] = useState<Lang>(DEFAULT_LANG);
   const [includeFormer, setIncludeFormer] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
@@ -60,7 +69,10 @@ export default function PlayersPage() {
   const [lastGroupSyncAt, setLastGroupSyncAt] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
+    fetch("/api/org/settings").then((r) => r.json()).then((d) => {
+      setOrgId(d.id);
+      if (d.language) setLang(d.language as Lang);
+    });
   }, []);
 
   useEffect(() => {
@@ -138,7 +150,7 @@ export default function PlayersPage() {
         if ("redirectToUserId" in res && res.redirectToUserId) {
           toast.success("Merged into the existing player record with that phone");
         } else {
-          toast.success("Phone updated — merged a duplicate placeholder");
+          toast.success("Phone updated. Merged a duplicate placeholder.");
         }
         return;
       }
@@ -394,7 +406,7 @@ export default function PlayersPage() {
             </div>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Adding a phone is recommended — it links them across groups and lets
+            Adding a phone is recommended: it links them across groups and lets
             the bot recognise them automatically. If that number already exists
             anywhere, we&apos;ll reuse it instead of creating a duplicate.
           </p>
@@ -402,36 +414,31 @@ export default function PlayersPage() {
       )}
 
       <p className="text-sm text-slate-500">
-        <span className="font-medium text-slate-700">Seed rating</span> is the player&apos;s
-        starting skill score (1–10) used by the team-balancer until they&apos;ve
+        {/* {" "} on purpose: a text run that ends in a line break loses its
+            leading space in this build ("Seed ratingis", 2026-09-29). */}
+        <span className="font-medium text-slate-700">Seed rating</span>{" "}is the player&apos;s
+        starting skill score (1 to 10) used by the team-balancer until they&apos;ve
         accumulated enough peer ratings from completed matches.
       </p>
 
-      {provisionalPlayers.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <p className="font-semibold text-amber-900">
-              {provisionalPlayers.length} new {provisionalPlayers.length === 1 ? "player" : "players"} joined via WhatsApp
-            </p>
-          </div>
-          <p className="text-sm text-amber-800">
-            {provisionalPlayers.map((p) => p.name).filter(Boolean).join(", ")} posted in the group and got auto-added. Review phone, position and seed rating below, then hit ✓ to confirm — or ✕ to remove if they&apos;re not a player.
-          </p>
-        </div>
-      )}
+      <ProvisionalPlayersBanner
+        names={provisionalPlayers.map((p) => p.name).filter((n): n is string => Boolean(n))}
+        count={provisionalPlayers.length}
+        lang={lang}
+      />
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="hidden sm:grid grid-cols-[1fr_auto_auto] gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
           <span>Player</span>
           <span className="w-24 text-center">Seed rating</span>
+          <span className="w-24 text-center">{t(lang).admin_players_club_rating_header}</span>
           <span className="w-28 text-center">Role</span>
         </div>
         <div className="divide-y divide-slate-100">
           {players.map((p) => (
             <div
               key={p.id}
-              className={`flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_auto] sm:gap-4 px-4 sm:px-6 py-4 sm:items-center ${
+              className={`flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_auto_auto] sm:gap-4 px-4 sm:px-6 py-4 sm:items-center ${
                 p.leftAt ? "bg-slate-50/70 opacity-70" : p.provisionallyAddedAt ? "bg-amber-50/50" : ""
               }`}
             >
@@ -497,7 +504,7 @@ export default function PlayersPage() {
                       <button
                         onClick={() => handleRemove(p.id)}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-semibold"
-                        title="Not a player — remove"
+                        title="Not a player? Remove"
                       >
                         <X className="w-3 h-3" /> Remove
                       </button>
@@ -506,7 +513,7 @@ export default function PlayersPage() {
                   {mergeFrom === p.id && (
                     <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-200 text-xs">
                       <p className="text-slate-700 mb-1.5">
-                        Merge <strong>{p.name ?? p.email}</strong> into another player. Pick the one to keep:
+                        Merge{" "}<strong>{p.name ?? p.email}</strong>{" "}into another player. Pick the one to keep:
                       </p>
                       <div className="flex flex-wrap gap-1">
                         {players
@@ -537,7 +544,7 @@ export default function PlayersPage() {
                           key={a.alias}
                           onClick={() => handleRemoveAlias(p.id, a.alias)}
                           className="group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 text-[11px] font-medium transition-colors"
-                          title={`Alias "${a.alias}" — click to remove (source: ${a.source})`}
+                          title={`Alias "${a.alias}". Click to remove (source: ${a.source})`}
                         >
                           {a.alias}
                           <X className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100" />
@@ -604,15 +611,15 @@ export default function PlayersPage() {
                         }
                       }}
                       className="text-xs text-slate-500 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none w-32 px-0 py-0.5 rounded-none"
-                      title="Phone number — used for personal DMs (rating links, reminders)"
+                      title="Phone number, used for personal DMs (rating links, reminders)"
                     />
                   </div>
                 </div>
               </div>
-              {/* Mobile: seed + role sit in one row below the player block.
-                  sm:contents dissolves this wrapper at ≥sm so the two boxes
-                  become direct grid children again (preserving the desktop
-                  3-column layout). */}
+              {/* Mobile: seed, club rating and role sit in one row below the
+                  player block. sm:contents dissolves this wrapper at >=sm so
+                  the three boxes become direct grid children again
+                  (preserving the desktop 4-column layout). */}
               <div className="flex gap-4 sm:contents">
                 <div className="w-24 flex flex-col items-center">
                   <label className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
@@ -624,10 +631,22 @@ export default function PlayersPage() {
                     min={1}
                     max={10}
                     step={1}
-                    title="Seed rating (1–10) for this club. Used by the team-balancer until peer ratings accumulate. A player at another club keeps a separate rating there."
+                    title="Seed rating (1 to 10) for this club. Used by the team-balancer until peer ratings accumulate. A player at another club keeps a separate rating there."
                     onBlur={(e) => e.target.value && handleSeedRating(p.id, e.target.value)}
                     className="w-20 h-10 px-2 rounded-lg border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+                {/* Always rendered so the desktop grid keeps its four
+                    columns; empty only if the API withheld the rating. */}
+                <div className="w-24 flex flex-col items-center" data-testid="club-rating">
+                  {p.clubRating && (
+                    <>
+                      <span className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
+                        {t(lang).admin_players_club_rating_header}
+                      </span>
+                      <ClubRatingCell rating={p.clubRating.rating} ratedGames={p.clubRating.ratedGames} lang={lang} />
+                    </>
+                  )}
                 </div>
                 <div className="w-28 flex flex-col items-center">
                   <label className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">

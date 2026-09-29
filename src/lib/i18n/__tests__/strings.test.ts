@@ -390,6 +390,12 @@ const SAMPLES: SampleArgs = {
   sj_card_code_cap: null,
   sj_card_unavailable: null,
   sj_card_already_connected: null,
+  admin_players_new_heading: { count: 3 },
+  admin_players_new_body: { names: ["Hamzah", "Ayoub"] },
+  admin_players_club_rating_header: null,
+  admin_players_club_rating_hint: null,
+  admin_players_not_rated_yet: null,
+  admin_players_rated_games: { count: 4 },
 };
 
 /** Render an entry with its sample arguments. */

@@ -1543,4 +1543,22 @@ export const en = {
   sj_card_code_cap: "You've used today's codes. Please try again tomorrow.",
   sj_card_unavailable: "MatchTime can't take new groups at the moment. Please check back soon.",
   sj_card_already_connected: "You're already connected. Now just add MatchTime to your group.",
+
+  // ── /admin/players (2026-09-29) ─────────────────────────────────────
+  /** Heading of the banner over auto-added members. */
+  admin_players_new_heading: (p: { count: number }): string =>
+    `${p.count} new ${p.count === 1 ? "player" : "players"} joined via WhatsApp`,
+  /** Its body. ONE string with the names inside it, so the space after
+   *  the last name cannot be lost the way JSX lost it ("Hamzahposted"). */
+  admin_players_new_body: (p: { names: string[] }): string =>
+    `${p.names.length > 0 ? p.names.join(", ") : "They"} posted in the group and got auto-added. ` +
+    `Review phone, position and seed rating below, then hit ✓ to confirm, or ✕ to remove if they're not a player.`,
+  /** Column beside the seed: the club's rating of the player, the same
+   *  number the player sees on their own page. */
+  admin_players_club_rating_header: "Club rating",
+  admin_players_club_rating_hint:
+    "The average of the ratings this club's players have given them, the same number they see on their own page. The team balancer also leans on the seed until more ratings come in.",
+  admin_players_not_rated_yet: "Not rated yet",
+  admin_players_rated_games: (p: { count: number }): string =>
+    `${p.count} rated ${p.count === 1 ? "game" : "games"}`,
 };

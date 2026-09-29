@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
+import { loadClubDisplayRatings } from "@/lib/player-stats";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -73,6 +74,19 @@ export async function GET(request: Request) {
     aliasesByUser.set(a.userId, arr);
   }
 
+  // THIS club's rating of each member, the same number the player sees
+  // on their own page (raw mean of this club's ratings, null until a
+  // team-mate has rated them). Owners and admins only: it is the admin
+  // roster's column, and a plain member has no business reading a
+  // team-mate's number here. Filtered by this club inside the loader.
+  const canSeeRatings = membership.role === "OWNER" || membership.role === "ADMIN";
+  const clubRatings = canSeeRatings
+    ? await loadClubDisplayRatings(
+        membership.orgId,
+        memberships.map((m) => m.user.id),
+      )
+    : null;
+
   const players = memberships.map((m) => ({
     id: m.user.id,
     name: m.user.name,
@@ -88,6 +102,7 @@ export async function GET(request: Request) {
     // Null means this club has no opinion of them yet, which is the
     // correct state for a new member and must not borrow one.
     seedRating: m.seedRating,
+    clubRating: clubRatings ? (clubRatings[m.user.id] ?? { rating: null, ratedGames: 0 }) : null,
     isActive: m.user.isActive,
     leftAt: m.leftAt ? m.leftAt.toISOString() : null,
     provisionallyAddedAt: m.provisionallyAddedAt ? m.provisionallyAddedAt.toISOString() : null,

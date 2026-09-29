@@ -82,7 +82,7 @@ export function validateWeeklyGame(
 }
 
 /** The Sport row for a size: the football preset when there is one
- *  (5, 7, 11), otherwise plain football balanced on rating alone. */
+ *  (5, 7, 8, 11), otherwise plain football balanced on rating alone. */
 export function sportForPlayersPerSide(n: number): Omit<SportPreset, "key" | "name"> & { preset: string | null } {
   const preset = findPreset(`football-${n}aside`);
   if (preset) {

@@ -190,3 +190,48 @@ export function clubDisplayRating(args: {
   const mean = clubPeerRatings.reduce((s, r) => s + r, 0) / clubPeerRatings.length;
   return Math.max(1, Math.min(10, mean));
 }
+
+/**
+ * `clubDisplayRating` for a whole roster at once, for the ADMIN players
+ * page (Kemal, 2026-09-29: "shouldn't the admin be able to see their
+ * current rating?").
+ *
+ * The admin is shown exactly what each player is shown on their own
+ * page, not the balancer's shrunk figure and never the seed: the seed
+ * already has its own editable column beside it. `rating` is
+ * `clubDisplayRating` over the newest `window` rows; `ratedGames` is how
+ * many distinct games this club has rated the player in, so the admin
+ * can tell a 9 from one game apart from a 9 over a season.
+ *
+ * `rows` MUST already be scoped to one club (the loader filters by
+ * `match.activity.orgId`) and ordered newest first, which is the same
+ * contract `loadClubRating` keeps for a single player. There is no org
+ * argument here to get wrong. Rows for players not in `userIds` are
+ * ignored, and every id in `userIds` gets an entry.
+ */
+export function summariseClubDisplayRatings(
+  userIds: readonly string[],
+  rows: ReadonlyArray<{ playerId: string; matchId: string; score: number }>,
+  window: number,
+): Record<string, { rating: number | null; ratedGames: number }> {
+  const scores = new Map<string, number[]>();
+  const games = new Map<string, Set<string>>();
+  for (const id of userIds) {
+    scores.set(id, []);
+    games.set(id, new Set());
+  }
+  for (const r of rows) {
+    const s = scores.get(r.playerId);
+    if (!s) continue;
+    if (s.length < window) s.push(r.score);
+    games.get(r.playerId)!.add(r.matchId);
+  }
+  const out: Record<string, { rating: number | null; ratedGames: number }> = {};
+  for (const id of userIds) {
+    out[id] = {
+      rating: clubDisplayRating({ clubSeedRating: null, clubPeerRatings: scores.get(id)! }),
+      ratedGames: games.get(id)!.size,
+    };
+  }
+  return out;
+}
