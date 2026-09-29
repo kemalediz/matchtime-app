@@ -170,6 +170,18 @@ describe("the socket options that are wrong by default (§2.13)", () => {
     expect(driver).toMatch(/getMessage:\s*\(/);
   });
 
+  it("hands Baileys a retry-counter cache built ONCE, outside the socket factory", () => {
+    // Baileys builds a fresh per-socket cache when none is given
+    // (messages-recv.js), so every reconnect would forget how often a
+    // message had already been retried. Baileys' own docs say to keep it
+    // outside the socket.
+    expect(driver).toMatch(/msgRetryCounterCache[,\s]/);
+    const factoryAt = driver.indexOf("makeSocket:");
+    const cacheAt = driver.search(/const msgRetryCounterCache\s*=\s*createRetryCounterCache\(/);
+    expect(cacheAt).toBeGreaterThan(-1);
+    expect(cacheAt).toBeLessThan(factoryAt);
+  });
+
   it("does not use the deprecated printQRInTerminal", () => {
     expect(driver).not.toMatch(/printQRInTerminal/);
   });

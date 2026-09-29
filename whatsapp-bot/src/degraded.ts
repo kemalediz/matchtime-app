@@ -46,7 +46,9 @@ export type DegradedCapability =
   /** `recoverGroupMessages` — the 2h catch-up replay after a restart. */
   | "message-recovery"
   /** The `message_reaction` event's message id — bench-prompt 👍/👎. */
-  | "reaction-forwarding";
+  | "reaction-forwarding"
+  /** A group message Baileys could not decrypt and never got back. */
+  | "message-decryption";
 
 interface CapabilityInfo {
   /** The product rule this capability serves. */
@@ -85,6 +87,13 @@ export const DEGRADED_CAPABILITIES: Record<DegradedCapability, CapabilityInfo> =
     consequence:
       "a benched player's 👍/👎 answer is dropped, so the bench slot is never filled and " +
       "the team turns up short",
+  },
+  "message-decryption": {
+    rule: "decrypting every group message, retrying through WhatsApp when the first attempt fails",
+    consequence:
+      "a message the bot could not decrypt, and whose re-send never arrived, was never read: " +
+      "an IN, an OUT or a request to the bot such as generating the teams went unanswered, " +
+      "and the sender does not know it needs posting again",
   },
 };
 

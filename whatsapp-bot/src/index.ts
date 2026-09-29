@@ -643,6 +643,14 @@ async function main() {
     }
   });
 
+  // A message that could not be decrypted and never came back (Baileys
+  // only). The driver has already logged the CRITICAL line with the id,
+  // chat and sender; this puts it on the heartbeat, so it shows on
+  // /admin/health. Never a DM: it is a routine ops alert.
+  driver.onUndecryptable?.(() => {
+    recordDegradedCapability("message-decryption");
+  });
+
   // Reactions on any tracked message (bench-prompt 👍/👎). Forward to server
   // and let it decide the outcome.
   driver.onReaction(async (reaction) => {

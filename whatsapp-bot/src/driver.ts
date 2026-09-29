@@ -214,6 +214,16 @@ export interface WaDriver {
   onPollVote(handler: (vote: InboundPollVote) => void | Promise<void>): void;
 
   /**
+   * A message arrived that could not be decrypted, and its content never
+   * turned up within the driver's grace period: it is lost unless the
+   * sender posts it again. Optional because only Baileys can see this;
+   * whatsapp-web.js shows the phone's "waiting for this message" instead.
+   */
+  onUndecryptable?(
+    handler: (event: { id: string; chat: string; sender: string | null; reason: string }) => void | Promise<void>,
+  ): void;
+
+  /**
    * Somebody (possibly the bot) was added to a group.
    *
    * Deliberately NOT merged with `onGroupLeave` into one

@@ -177,6 +177,13 @@ import {
   type InboundKeyLike,
 } from "../baileys/jid.js";
 import { createSeenIds } from "../baileys/dedupe.js";
+import {
+  createUndecryptableTracker,
+  isCiphertextStub,
+  UNDECRYPTABLE_GRACE_MS,
+  type UndecryptableEntry,
+} from "../baileys/undecryptable.js";
+import { createRetryCounterCache } from "../baileys/retry-cache.js";
 import { createReplayBuffer, type ReplayBuffer } from "../baileys/replay.js";
 import { mapInboundMessage, skipReason, toNumber } from "../baileys/inbound.js";
 import { buildInboundView, rawOf, type BaileysInboundView } from "../baileys/inbound-view.js";
@@ -274,6 +281,11 @@ export interface BaileysDriverDeps {
   historySettleMs?: number;
   /** Injected for tests, so no test ever sleeps. Defaults to setTimeout. */
   wait?(ms: number): Promise<void>;
+  /**
+   * A cancellable timer, for the undecryptable-message grace period.
+   * Injected for tests; defaults to an unref'd setTimeout.
+   */
+  schedule?(fn: () => void, ms: number): { cancel(): void };
   now?(): number;
   /** Injected for tests; defaults to a fresh bounded store. */
   store?: SentMessageStore<proto.IMessage>;
@@ -337,7 +349,20 @@ export interface BaileysInboundStats {
   pollVotesForwarded: number;
   /** Votes on a poll we cannot decrypt (sent before the cutover, or lost). */
   pollVotesUndecryptable: number;
+  /** CIPHERTEXT stubs: messages Baileys could not decrypt on arrival. */
+  undecryptable: number;
+  /** Of those, how many had their content arrive later and were handed up. */
+  decryptRecovered: number;
+  /** Of those, how many were still missing after the grace period. */
+  decryptLost: number;
 }
+
+/**
+ * A message Baileys could not decrypt, whose content never arrived within
+ * the grace period. What `onUndecryptable` hands to `index.ts`, which
+ * records `message-decryption` degraded for the heartbeat.
+ */
+export type UndecryptableEvent = UndecryptableEntry;
 
 export interface BaileysDriver extends WaDriver {
   /**
@@ -352,6 +377,11 @@ export interface BaileysDriver extends WaDriver {
    */
   cachedGroupMetadata(jid: string): Promise<GroupMetadata | undefined>;
   stats(): BaileysInboundStats;
+  /**
+   * A message stayed undecryptable past the grace period: its content is
+   * lost unless the sender posts it again. Fired once per message.
+   */
+  onUndecryptable(handler: (event: UndecryptableEvent) => void | Promise<void>): void;
 }
 
 /** Why a member will not do its job under Baileys. */
@@ -447,6 +477,9 @@ function emptyStats(): BaileysInboundStats {
     leaves: 0,
     pollVotesForwarded: 0,
     pollVotesUndecryptable: 0,
+    undecryptable: 0,
+    decryptRecovered: 0,
+    decryptLost: 0,
   };
 }
 
@@ -464,7 +497,31 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const pollHandlers: Array<(vote: InboundPollVote) => void | Promise<void>> = [];
   const joinHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
   const leaveHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
+  const undecryptableHandlers: Array<(e: UndecryptableEvent) => void | Promise<void>> = [];
   const now = deps.now ?? Date.now;
+  const schedule =
+    deps.schedule ??
+    ((fn: () => void, ms: number) => {
+      const t = setTimeout(fn, ms);
+      // Never the reason the process stays up.
+      (t as { unref?: () => void }).unref?.();
+      return { cancel: () => clearTimeout(t) };
+    });
+  const undecryptable = createUndecryptableTracker({
+    now,
+    schedule,
+    onUnrecovered(entry) {
+      stats.decryptLost++;
+      error(
+        `CRITICAL: [baileys][msg] ${entry.id} in ${entry.chat} from ${entry.sender ?? "?"} could not ` +
+          `be decrypted ("${entry.reason}") and neither the sender's re-send nor our phone's ` +
+          `placeholder resend arrived within ${Math.round(UNDECRYPTABLE_GRACE_MS / 1000)}s. Its ` +
+          "content is lost unless the sender posts it again. If a copy still turns up it will " +
+          `be handed up and logged as recovered late. Occurrence #${stats.decryptLost}.`,
+      );
+      hand(undecryptableHandlers, entry, "onUndecryptable");
+    },
+  });
   const groupCache = deps.groupCache ?? createGroupCache({ now });
   const pollArchive = deps.pollArchive ?? createPollArchive({ io: { load: () => null, save: () => {} }, now });
   const addressingMode = deps.groupAddressingMode ?? ((jid: string) => groupCache.addressingMode(jid));
@@ -777,6 +834,36 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       log(`${line} skipped: ${drop}`);
       return;
     }
+    // A message Baileys could not decrypt. NOT a system notice and NOT
+    // marked seen: Baileys has asked the sender and our phone for it, and
+    // the content arrives later as its own upsert with this same id
+    // (baileys/undecryptable.ts). Held until then, or reported lost.
+    if (isCiphertextStub(m)) {
+      const entry = undecryptable.noteStub(m, upsertType);
+      if (!entry) {
+        log(`${line} skipped: an undecryptable copy of a message already handed up`);
+      } else if (entry.repeat) {
+        log(`${line} could not be decrypted again (still waiting for its content)`);
+      } else {
+        stats.undecryptable++;
+        log(
+          `${line} could not be decrypted ("${entry.reason}", sender ${entry.sender ?? "?"}); ` +
+            "Baileys has asked for a re-send. Waiting up to " +
+            `${Math.round(UNDECRYPTABLE_GRACE_MS / 1000)}s for its content`,
+        );
+      }
+      return;
+    }
+    if (key.id && m?.message) {
+      const recovered = undecryptable.resolve(key.id);
+      if (recovered) {
+        stats.decryptRecovered++;
+        log(
+          `${line} recovered${recovered.late ? " late" : ""}: the content of a message that ` +
+            `failed to decrypt arrived after ${Math.round(recovered.waitedMs / 1000)}s`,
+        );
+      }
+    }
     // A poll vote is not a chat message: it is decrypted and handed to
     // onPollVote, and never reaches the analyzer.
     if (pollUpdateOf(m)) {
@@ -795,6 +882,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       log(`${line} duplicate delivery, not handed up again`);
       return;
     }
+    undecryptable.delivered(mapped.id);
 
     let senderPhone: string | null = null;
     let source = "";
@@ -1017,6 +1105,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     onPollVote(handler) {
       requireConnection("onPollVote");
       pollHandlers.push(handler);
+    },
+
+    onUndecryptable(handler) {
+      undecryptableHandlers.push(handler);
     },
 
     onGroupJoin(handler) {
@@ -1370,6 +1462,9 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
   });
   const pollArchive = createPollArchive({ io: jsonFileIO(join(config.authDir, POLLS_FILE)) });
 
+  // Once per process, not per socket: see baileys/retry-cache.ts.
+  const msgRetryCounterCache = createRetryCounterCache();
+
   const connection = createBaileysConnection<BaileysSocketLike>({
     makeSocket: async () => {
       prepared ??= prepare();
@@ -1383,6 +1478,9 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
         // whether we need any of it.
         syncFullHistory: false,
         getMessage: (key) => driver?.getMessage(key) ?? Promise.resolve(undefined),
+        // Retry counts survive a reconnect (Baileys otherwise builds a
+        // fresh cache inside every socket).
+        msgRetryCounterCache,
         // Ours, because Baileys ships none: without it every group send
         // costs a groupMetadata round trip. Answers only for a roster read
         // in the current connection (see the header).
