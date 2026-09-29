@@ -21,7 +21,10 @@ const membershipFindMany = vi.fn();
 const ratingFindMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }));
-vi.mock("@/lib/org", () => ({ getUserOrg: (...a: unknown[]) => getUserOrg(...a) }));
+vi.mock("@/lib/org", () => ({
+  getUserOrg: (...a: unknown[]) => getUserOrg(...a),
+  isSuperadmin: vi.fn().mockResolvedValue(false),
+}));
 vi.mock("next/server", () => ({
   NextResponse: { json: (body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 }) },
 }));
@@ -104,7 +107,8 @@ describe("GET /api/players: club rating", () => {
   it("gives a plain member no ratings and runs no rating query", async () => {
     getUserOrg.mockResolvedValue({ orgId: CLUB, role: "PLAYER" });
     const body = await call();
-    expect(body.players.every((p) => p.clubRating === null)).toBe(true);
+    // Since the member view was split off, the field is absent altogether.
+    expect(body.players.every((p) => !("clubRating" in p) && !("seedRating" in p))).toBe(true);
     expect(ratingFindMany).not.toHaveBeenCalled();
   });
 });

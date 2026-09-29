@@ -20,7 +20,10 @@ const getUserOrg = vi.fn();
 const membershipFindMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }));
-vi.mock("@/lib/org", () => ({ getUserOrg: (...a: unknown[]) => getUserOrg(...a) }));
+vi.mock("@/lib/org", () => ({
+  getUserOrg: (...a: unknown[]) => getUserOrg(...a),
+  isSuperadmin: vi.fn().mockResolvedValue(false),
+}));
 vi.mock("next/server", () => ({
   NextResponse: { json: (body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 }) },
 }));
@@ -30,6 +33,7 @@ vi.mock("@/lib/db", () => ({
     membership: { findMany: (...a: unknown[]) => membershipFindMany(...a) },
     userAlias: { findMany: vi.fn().mockResolvedValue([]) },
     organisation: { findUnique: vi.fn().mockResolvedValue({ lastParticipantSweepAt: null }) },
+    rating: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 
@@ -40,7 +44,8 @@ const SUTTON = "org-sutton";
 beforeEach(() => {
   vi.clearAllMocks();
   authMock.mockResolvedValue({ user: { id: "admin-1" } });
-  getUserOrg.mockResolvedValue({ orgId: SUTTON });
+  // The seed editor is an admin surface; a plain member gets no seeds.
+  getUserOrg.mockResolvedValue({ orgId: SUTTON, role: "ADMIN" });
 });
 
 /** A two-club player: 7 at this club, 3 on the deprecated global column
