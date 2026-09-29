@@ -65,6 +65,21 @@ function spanEn(p: StatsPeriod): string {
   }
 }
 
+/** The period after "Results" or "Last 5 results": "in the last 3
+ *  months", "this month", "this season", "on record". */
+function resultsWhenEn(p: StatsPeriod): string {
+  switch (p.kind) {
+    case "last":
+      return `in ${spanEn(p)}`;
+    case "this":
+      return spanEn(p);
+    case "season":
+      return "this season";
+    case "all_time":
+      return "on record";
+  }
+}
+
 export const en = {
   // ── shared fragments ─────────────────────────────────────────────
 
@@ -288,9 +303,30 @@ export const en = {
     p.venue ? `⚽ ${p.kickoffLabel} at ${p.venue}.` : `⚽ ${p.kickoffLabel}.`,
   answer_score_no_match: "I haven't got a played match on record for this group yet.",
   answer_score_no_score: (p: { kickoffLabel: string }): string =>
-    `No score reported for ${p.kickoffLabel} yet — tell me the result and I'll record it.`,
+    `No score reported for ${p.kickoffLabel} yet. Tell me the result and I'll record it.`,
   answer_score_result: (p: { kickoffLabel: string; redLabel: string; red: number; yellow: number; yellowLabel: string; winnerLabel: string | null }): string =>
     `⚽ ${p.kickoffLabel}: ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}. ${p.winnerLabel === null ? "A draw." : `${p.winnerLabel} won.`}`,
+  // ── recent results (2026-09-29), rendered by `pipeline/results-answer.ts` ──
+  // Bulleted, never numbered: a numbered run of two lines reads as the
+  // squad list to `displaysSquadState`.
+  /** The header. `byCount` is "Last N results"; otherwise the period
+   *  heads it ("Results this month"). */
+  results_head: (p: { n: number; period: StatsPeriod | null; byCount: boolean }): string => {
+    const when = p.period ? resultsWhenEn(p.period) : "";
+    if (!p.byCount) return `⚽ Results ${when}:`;
+    const what = p.n === 1 ? "Last result" : `Last ${p.n} results`;
+    return `⚽ ${what}${when ? ` ${when}` : ""}:`;
+  },
+  results_row: (p: { dayLabel: string; redLabel: string; red: number; yellow: number; yellowLabel: string; winnerLabel: string | null }): string =>
+    `• ${p.dayLabel}: ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}. ${p.winnerLabel === null ? "A draw." : `${p.winnerLabel} won.`}`,
+  /** Asked for more than the record holds. */
+  results_all_i_have: "That's every scored match I have on record.",
+  /** Asked for more than the group cap. */
+  results_capped: (p: { max: number }): string => `I post up to ${p.max} results in the group.`,
+  /** A period holding more than the cap. */
+  results_latest: (p: { n: number }): string => `These are the latest ${p.n}.`,
+  results_none: "I haven't got a scored match on record for this group yet.",
+  results_none_when: (p: { period: StatsPeriod }): string => `No scored matches ${resultsWhenEn(p.period)}.`,
   answer_payments_not_tracked: "I don't track payments for this group, so I can't say who's settled up.",
   answer_payments_no_settled: "There's no settled match for me to check payments against yet.",
   answer_payments_no_signal: (p: { kickoffLabel: string }): string =>

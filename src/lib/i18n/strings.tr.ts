@@ -95,6 +95,29 @@ function spanTr(p: StatsPeriod): string {
   }
 }
 
+/** The locative of each unit: "son 3 ayda", "son 2 haftada". */
+const UNIT_TR_LOC = { day: "günde", week: "haftada", month: "ayda", year: "yılda" } as const;
+
+/** The period of a results answer: "son 3 ayda", "bu ay", "bu sezon",
+ *  "kayıtlarda". */
+function resultsWhenTr(p: StatsPeriod): string {
+  switch (p.kind) {
+    case "last":
+      return `son ${p.count} ${UNIT_TR_LOC[p.unit]}`;
+    case "this":
+      return `bu ${UNIT_TR[p.unit]}`;
+    case "season":
+      return "bu sezon";
+    case "all_time":
+      return "kayıtlarda";
+  }
+}
+
+/** Upper-case the first letter, the Turkish way. */
+function capTr(s: string): string {
+  return s ? s.charAt(0).toLocaleUpperCase("tr") + s.slice(1) : s;
+}
+
 export const tr: Strings = {
   // ── shared fragments ─────────────────────────────────────────────
 
@@ -272,6 +295,19 @@ export const tr: Strings = {
   answer_score_no_score: (p) => `${p.kickoffLabel} için henüz skor bildirilmedi, sonucu yazın, kaydedeyim.`,
   answer_score_result: (p) =>
     `⚽ ${p.kickoffLabel}: ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}. ${p.winnerLabel === null ? "Berabere." : `${p.winnerLabel} kazandı.`}`,
+  results_head: (p) => {
+    const when = p.period ? resultsWhenTr(p.period) : "";
+    if (!p.byCount) return `⚽ ${capTr(when)} oynanan maçların sonuçları:`;
+    const what = p.n === 1 ? "son sonuç" : `son ${p.n} sonuç`;
+    return `⚽ ${capTr(when ? `${when} ${what}` : what)}:`;
+  },
+  results_row: (p) =>
+    `• ${p.dayLabel}: ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}. ${p.winnerLabel === null ? "Berabere." : `${p.winnerLabel} kazandı.`}`,
+  results_all_i_have: "Skoru kayıtlı maçların hepsi bu.",
+  results_capped: (p) => `Grupta en fazla ${p.max} sonuç paylaşıyorum.`,
+  results_latest: (p) => `Bunlar en son ${p.n} tanesi.`,
+  results_none: "Bu grup için skoru kayıtlı bir maç henüz yok.",
+  results_none_when: (p) => `${capTr(resultsWhenTr(p.period))} skoru kayıtlı maç yok.`,
   answer_payments_not_tracked: "Bu grup için ödemeleri takip etmiyorum, o yüzden kimin ödediğini söyleyemem.",
   answer_payments_no_settled: "Ödemeleri kontrol edebileceğim tamamlanmış bir maç henüz yok.",
   answer_payments_no_signal: (p) =>

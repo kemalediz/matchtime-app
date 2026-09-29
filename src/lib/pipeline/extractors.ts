@@ -171,7 +171,7 @@ Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeesh
 
 Return an empty claims array only when the message genuinely says nothing about anyone's attendance.`,
 
-  question: `You classify ONE question from a football club's WhatsApp group. You never answer it. Code reads the club's records and writes every name and number the group sees; your fields tell it which question was asked. Give a field its empty value whenever the message does not state it. Never fill one in from a guess.
+  question: `You classify ONE question from a football club's WhatsApp group. You never answer it. Code reads the club's records and writes every name, date and number the group sees; your fields only tell it which question was asked. A field the message does not state gets its empty value. Never fill one in from a guess.
 
 Classify THE MESSAGE only. The recent chat and MatchTime's last post are context for what it refers to. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
@@ -184,12 +184,12 @@ What the asker wants back. Exactly one of:
   bench            who is on the bench
   person_status    whether one named person is playing
   phones           who has no phone number on record
-  fixture          the match itself: whether it is on, kick-off time, venue
-  score            the RESULT of a match already played
+  fixture          the upcoming match itself: whether it is on, kick-off time, venue
+  score            RESULTS of matches already played: the score, who won, for one match or for several
   payments         who has or has not paid the match fee, or how many still owe
   rating_progress  who has or has not SUBMITTED ratings or Man of the Match votes for the last match, or how many have
   my_stats         the asker's OWN stats, ratings, form or season summary, which they are sent privately
-  stats            a table or record ACROSS matches (ratings, appearances, Man of the Match, Elo and the rest), about the club or about anyone but the asker's own numbers
+  stats            a table or record about PLAYERS across matches (ratings, appearances, Man of the Match, Elo and the rest), about the club or about anyone but the asker's own numbers
   options          what to do about being short of players: a smaller format, alternatives
   other            anything else, including how much the fee is
 
@@ -199,7 +199,7 @@ The person the question is about, as the message names them, without a possessiv
 statedCount
 A number the message ASSERTS about the squad, for checking: "we're 9/14 right?" is 9. -1 otherwise.
 
-The fields below describe a stats question. For every other topic: table "none", listSize -1, listEnd "top", period "none", periodCount -1, periodUnit "none".
+The remaining fields describe a LIST. table and listEnd belong to stats only; listSize and period belong to stats and score. Every other topic leaves them all empty: table "none", listSize -1, listEnd "top", period "none", periodCount -1, periodUnit "none".
 
 table
 Which stats table:
@@ -211,27 +211,30 @@ Which stats table:
   movers           whose rating or position is improving, climbing or in form
   chemistry        who a player plays best with, their best team-mates, their nemesis or toughest opponent
   mr_reliable      "Mr Reliable" or the most reliable player: the stats page badge for steady, strong ratings, never appearances
-  other            a stats question none of those answers, such as win rate or a comparison
+  other            a stats question no single table above answers, such as win rate or a comparison
   none             the question names no measure at all
 
 listSize
-How many rows were asked for, as written: "top 10" is 10, "top five" is 5, "top 20" is 20. -1 when no number is named.
+How many were asked for, as written. On stats, rows of the table: "top 10" is 10, "top five" is 5. On score, how many results: "the last 5 matches" is 5, "son 3 maç" is 3. -1 when no number is named.
 
 listEnd
 "bottom" when the question asks for the worst, the lowest or the foot of a table; otherwise "top".
 
 period
-The stretch of time the question asks about, with periodCount and periodUnit:
+A stretch of time the question asks about, on stats or score, with periodCount and periodUnit:
   last             a rolling span back from today: "in the last year", "past 3 months", "last month", "son 1 yılda", "geçen ay". periodCount is the number written, 1 when none is ("last month" is 1). periodUnit is day, week, month or year.
   this             the current calendar week, month or year: "this month", "this year", "bu ay", "bu yıl". periodUnit is week, month or year; periodCount -1.
   season           "this season", "the season", "bu sezon". periodCount -1, periodUnit "none".
   all_time         "ever", "all-time", "of all time", "tüm zamanlar", "bugüne kadar". periodCount -1, periodUnit "none".
-  none             no time span stated
-"The last 3 matches" counts matches, not time: period "none".
+  none             no stretch of time stated
+"Last" and "this" never swap: "last month", "last year", "geçen ay", "geçen yıl" are last, periodCount 1; "this month", "bu ay" are this.
+"The last 3 matches" counts matches, not time: period "none" (on score it is listSize 3).
+A score question that points at ONE match ("last night", "on Tuesday", "last week", "geçen hafta") names that match, not a stretch: period "none", listSize -1.
 
 CLOSE CALLS
 - squad or count: WHO is playing is squad, a list of names. HOW MANY is count, a number. Choose on what the asker wants back.
-- score or stats: the result of one match is score. Anything counted across matches is stats.
+- score or stats: scores, results and who won are score, for one match or several. Anything counted about players across matches is stats.
+- one table or other: a question that needs two or more tables together ("is anyone in both the Elo top ten and the Man of the Match table?", a comparison across tables) is other, even when it names a table. Name a table only when that table alone answers it.
 - my_stats or stats: my_stats only when the numbers are the asker's own and they ask to see them. Anyone else's numbers, a ranking of the group, and the asker's own pairings are stats.
 - rating_progress or other: rating_progress asks who has submitted ratings. A message that tells the players to rate, thanks them, or remarks on ratings asks for nothing: other.
 - payments or other: who owes is payments. What the fee is, is other.
@@ -252,9 +255,17 @@ The upcoming match:
   "@Match Time where are we playing?" / "@Match Time is the game still on?" -> fixture
   "@Match Time we're short, what are our options?" / "@Match Time eksiğiz, ne yapabiliriz?" -> options
 
+Results:
+  "@Match Time did we win on tuesday?" / "@Match Time salı kim kazandı?" -> score
+  "@Match Time how did we get on last night" / "@Match Time skor ne oldu?" -> score
+  "@Match Time what was the score last week" / "@Match Time geçen hafta skor kaç kaçtı?" -> score: one match
+  "@Match Time give us the scores of the last 5 matches" / "@Match Time son 5 maçın skorları" -> score, listSize 5
+  "@Match Time last 3 results" / "@Match Time son 3 maçın sonuçları" -> score, listSize 3
+  "@Match Time results this season" / "@Match Time bu sezonun sonuçları" -> score, period season
+  "@Match Time scores this month" / "@Match Time bu ayki skorlar" -> score, period this, periodUnit month
+  "@Match Time results from the last 2 months" / "@Match Time son 2 ayın sonuçları" -> score, period last, periodCount 2, periodUnit month
+
 After a match:
-  "@Match Time did we win on tuesday?" / "@Match Time how did we get on last night" -> score
-  "@Match Time skor ne oldu?" -> score
   "@Match Time who hasn't paid?" / "@Match Time kim ödemedi?" -> payments
   "@Match Time has everyone paid for last week?" -> payments
   "@Match Time how much do we pay each?" -> other: the fee
@@ -691,6 +702,17 @@ export function parseFacts(
         // The period (2026-09-23): turned into a date by code, later, in
         // `stats-period.ts`. An unreadable one is dropped loudly and the
         // question is answered for the whole record, which it then says.
+        const period = parsePeriodFields(raw);
+        if (period.problem) bad(period.problem);
+        facts.period = period.period;
+      } else if (topic === "score") {
+        // HOW MANY RESULTS and WHICH PERIOD (2026-09-29), in the same two
+        // fields a stats question uses. Both null is the last match,
+        // today's answer. No table: a result is not a stats table.
+        facts.listSize =
+          typeof raw.listSize === "number" && Number.isFinite(raw.listSize) && raw.listSize >= 1
+            ? Math.floor(raw.listSize)
+            : null;
         const period = parsePeriodFields(raw);
         if (period.problem) bad(period.problem);
         facts.period = period.period;

@@ -84,6 +84,10 @@
  *                  2026-09-23): the live router, then `runAnswerBatch`
  *                  over the real tables, read once. Read-only. See
  *                  `runStats`. STATS_BUDGET_USD caps the spend (0.95).
+ *   RESULTS=1      run the RESULTS table (R*, 2026-09-29) through the
+ *                  STATS runner: "the scores of the last 5 matches", a
+ *                  period, and the one-match questions that must keep
+ *                  today's answer. Read-only. STATS_BUDGET_USD caps it.
  *   MYSTATS=1      run the PERSONAL-STATS table (W*): the live router,
  *                  then `runAnswerBatch`, and count how often the asker
  *                  would be DM'd their own stats link, and to whom.
@@ -2248,6 +2252,32 @@ function statsCases(ambiguousRef: string | null): StatsCase[] {
   return c;
 }
 
+/**
+ * THE RESULTS TABLE (`RESULTS=1`, 2026-09-29). READ-ONLY, the same runner
+ * as `STATS=1`. "@Match Time give us the scores of the last 5 matches" was
+ * answered with the last match only; the question extractor now reads a
+ * count and a period on a `score` question. The engine's reason carries
+ * what was read ("results question: the last 5 results, period season"),
+ * or "answered from the last match played" when neither was.
+ */
+function resultsCases(): StatsCase[] {
+  const last = /result question answered from the last match played/;
+  return [
+    { id: "R1", lang: "en", body: "@Match Time give us the scores of the last 5 matches", expect: /results question: the last 5 results(?!, period)/, says: /^⚽ Last (\d+ results|result):/, why: "the incident, verbatim" },
+    { id: "R2", lang: "tr", body: "@Match Time son 5 maçın skorları", expect: /results question: the last 5 results(?!, period)/, says: /^⚽ Son (\d+ sonuç|sonuç):/, why: "the incident, Turkish" },
+    { id: "R3", lang: "en", body: "@Match Time results this season", expect: /results question: the last 10 results, period season/, says: /this season:/, why: "a period, no count" },
+    { id: "R4", lang: "tr", body: "@Match Time bu sezonun sonuçları", expect: /results question: the last 10 results, period season/, says: /^⚽ Bu sezon/, why: "" },
+    { id: "R5", lang: "en", body: "@Match Time what was the score last week", expect: last, says: /\d+ - \d+|No score reported/, why: "ONE match: today's answer, unchanged" },
+    { id: "R6", lang: "tr", body: "@Match Time geçen haftaki maç kaç kaç bitti?", expect: last, why: "ONE match, Turkish" },
+    { id: "R7", lang: "en", body: "@Match Time scores of the last 3 games please", expect: /results question: the last 3 results(?!, period)/, why: "" },
+    { id: "R8", lang: "en", body: "@Match Time what were the results this month?", expect: /period this:month/, why: "" },
+    { id: "R9", lang: "tr", body: "@Match Time bu ayki maçların skorları neydi?", expect: /period this:month/, why: "" },
+    { id: "R10", lang: "en", body: "@Match Time last 20 results", expect: /the last 10 results \(asked for 20\)/, says: /I post up to 10 results|every scored match/, why: "capped at ten" },
+    { id: "R11", lang: "en", body: "@Match Time results from the last 2 months", expect: /period last:2:month/, why: "a rolling period" },
+    { id: "R12", lang: "en", body: "@Match Time did we win on tuesday?", expect: last, why: "ONE match, a yes/no" },
+  ];
+}
+
 /** A first name two or more live members share, for the ambiguous case. */
 function pickAmbiguousRef(roster: Member[]): string | null {
   const firsts = new Map<string, number>();
@@ -2268,7 +2298,8 @@ async function runStats(orgId: string, state: SquadState, now: Date): Promise<vo
   const tables = await loadStatsTables(orgId);
   const asker = memberByName(state.roster, process.env.STATS_ASKER ?? "Kemal");
   const ambiguous = pickAmbiguousRef(state.roster);
-  const selected = statsCases(ambiguous).filter((c) => !only || only.includes(c.id));
+  const results = process.env.RESULTS === "1";
+  const selected = (results ? resultsCases() : statsCases(ambiguous)).filter((c) => !only || only.includes(c.id));
   console.log(
     `RECORDS START : matches ${tables.recordsStart.matches?.toISOString() ?? "none"}, Man of the Match ${tables.recordsStart.mom?.toISOString() ?? "none"}; ${tables.appearances.length} players with appearances\n` +
     `STATS : ${tables.ratings.length} ranked (3+ rated), ${tables.mom.length} MoM, ${tables.elo.length} Elo, ` +
@@ -2361,7 +2392,7 @@ async function runStats(orgId: string, state: SquadState, now: Date): Promise<vo
   // "Idris", untagged. The router is told a clarification is open (the
   // in-memory row below), and the answer owner re-reads the ORIGINAL
   // question with the reply's name in it.
-  if (!stopped && (!only || only.includes("C1"))) {
+  if (!stopped && !results && (!only || only.includes("C1"))) {
     console.log(`\n${"─".repeat(72)}\nC1 [en] clarification round trip: "@Match Time Zork's chemistry" then the reply "Idris"`);
     const open = [
       {
@@ -2488,7 +2519,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (process.env.STATS === "1") {
+  if (process.env.STATS === "1" || process.env.RESULTS === "1") {
     await runStats(org.id, base, now);
     await db.$disconnect();
     return;

@@ -195,7 +195,14 @@ describe("the prompts this pipeline actually sends", () => {
     // token here against the old prompt's 3.05). The bound is the real
     // count; the estimator's 2,269 sits under it, as it must. More than
     // three times Sonnet 5's 1,024, so the cache stands.
-    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(3_468);
+    //
+    // 2026-09-29: rewritten again for RESULTS questions ("the scores of
+    // the last 5 matches"): `listSize` and `period` now serve `score` as
+    // well as `stats`, and results got their own English and Turkish
+    // example group. MEASURED (`count_tokens`, claude-sonnet-5, dev key,
+    // 2026-09-29): 9,077 characters / 3,468 tokens before, 10,688
+    // characters / 4,071 tokens after. The estimator's 2,672 sits under it.
+    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(4_071);
     expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
   });
 

@@ -155,6 +155,15 @@
  *     number in R182 is a placeholder. Additive only; no existing case
  *     moved.
  *
+ *   - Deliberate additions (2026-09-29, recent results): row R183, the
+ *     answer to "@Match Time give us the scores of the last 5 matches"
+ *     and its periods, shortfalls and empties (`results_*`). NEW copy,
+ *     English and Turkish, after the Sutton FC incident that evening
+ *     where the question was answered with the last match only.
+ *     Additive only; no existing case moved. And one deliberate English
+ *     CHANGE the same day: R10 (`answer_score_no_score`) loses its em
+ *     dash ("... yet. Tell me the result ..."), house style.
+ *
  * WHAT IS COVERED: every deterministic composer the design inventories
  * (sections 1.1 to 1.4) that is reachable as a PURE function with no
  * database, no model and no clock, against three fixed worlds (a short
@@ -572,6 +581,30 @@ function cases(lang: Lang): Case[] {
   add("R11 answer_score / red won", say(sw({ completedMatch: { id: "m-0", redScore: 4, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
   add("R11 answer_score / yellow won", say(sw({ completedMatch: { id: "m-0", redScore: 1, yellowScore: 3 } }), { kind: "answer_score", messageId: MSG }));
   add("R11 answer_score / draw", say(sw({ completedMatch: { id: "m-0", redScore: 2, yellowScore: 2 } }), { kind: "answer_score", messageId: MSG }));
+
+  // ── R183 answer_results (2026-09-29) ──
+  const resRow = (i: number, red: number, yellow: number) => ({
+    dayLabel: lang === "tr" ? `${29 - 3 * i} Eylül` : `${29 - 3 * i} Sep`,
+    redLabel: lang === "tr" ? "Kırmızı" : "Red",
+    yellowLabel: lang === "tr" ? "Sarı" : "Yellow",
+    red,
+    yellow,
+  });
+  const FIVE_RES = [resRow(0, 5, 4), resRow(1, 2, 6), resRow(2, 3, 3), resRow(3, 7, 1)];
+  const withRes = (key: string, rows: typeof FIVE_RES, more = false): SquadState => ({ ...short, results: { [key]: { since: null, rows, more } } });
+  const res = (limit: number, asked: number | null, period: StatsPeriod | null = null) =>
+    ({ kind: "answer_results", messageId: MSG, limit, asked, period }) as const;
+  add("R183 answer_results / the last 3", say(withRes("all", FIVE_RES), res(3, 3)));
+  add("R183 answer_results / asked 5, the record holds 4", say(withRes("all", FIVE_RES), res(5, 5)));
+  add("R183 answer_results / asked 20, capped at 10", say(withRes("all", Array.from({ length: 10 }, (_, i) => resRow(i, i, 2)), true), res(10, 20)));
+  add("R183 answer_results / this season", say(withRes("all", FIVE_RES), res(10, null, { kind: "season" })));
+  add("R183 answer_results / all time", say(withRes("all", FIVE_RES), res(10, null, { kind: "all_time" })));
+  add("R183 answer_results / this month", say(withRes("this:month", FIVE_RES.slice(0, 2)), res(10, null, { kind: "this", unit: "month" })));
+  add("R183 answer_results / the last 3 months, more than 10", say(withRes("last:3:month", Array.from({ length: 10 }, (_, i) => resRow(i, i, 2)), true), res(10, null, { kind: "last", count: 3, unit: "month" })));
+  add("R183 answer_results / one result", say(withRes("all", FIVE_RES.slice(0, 1)), res(5, 5)));
+  add("R183 answer_results / nothing on record", say(withRes("all", []), res(5, 5)));
+  add("R183 answer_results / nothing this month", say(withRes("this:month", []), res(10, null, { kind: "this", unit: "month" })));
+  add("R183 answer_results / not loaded", say(short, res(5, 5)));
 
   add("R12 answer_payments / not tracked", say(sw({ payments: { kind: "not_tracked" } }), { kind: "answer_payments", messageId: MSG }));
   add("R13 answer_payments / no settled match", say(sw({ payments: { kind: "no_settled_match" } }), { kind: "answer_payments", messageId: MSG }));
