@@ -27,11 +27,10 @@
  *
  * WHAT THIS FILE DOES NOT COVER. The third writer of team sheets, the
  * noon cron at `app/api/cron/generate-teams/route.ts`, lost its inline
- * formula in slice 3 (2026-09-19) and now delegates to the same helper.
- * Its own delegation tests live next to it in
- * `app/api/cron/generate-teams/__tests__/cron-delegates.test.ts`, so
- * the two entry points below really are the two a human can press, and
- * all three callers now share one formula.
+ * formula in slice 3 (2026-09-19) and on 2026-09-29 stopped building
+ * teams at all (`app/api/cron/generate-teams/__tests__/cron-never-builds-teams.test.ts`),
+ * so the two entry points below are the only two, and both are a human
+ * pressing something.
  *
  * ── WHY Math.random IS STUBBED ───────────────────────────────────────
  *

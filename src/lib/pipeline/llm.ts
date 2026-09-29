@@ -226,7 +226,12 @@ export interface PipelineModel {
 }
 
 export function costOf(model: string, usage: ModelUsage): number | null {
-  const rate = RATES[model];
+  // The API reports the DATED snapshot in `resp.model` even when the
+  // request named the alias: ask for `claude-haiku-4-5`, get back
+  // `claude-haiku-4-5-20251001`. The table is keyed by alias, so strip a
+  // trailing `-YYYYMMDD` before giving up. Without this every raw Haiku
+  // call site was booked at UNPRICED_CALL_USD, about 80x its real cost.
+  const rate = RATES[model] ?? RATES[model.replace(/-\d{8}$/, "")];
   if (!rate) return null;
   // Cache reads bill at 0.1x input, 1-hour writes at 2x, 5-minute writes
   // at 1.25x. The pipeline uses the default 5-minute TTL; the raw call

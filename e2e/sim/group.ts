@@ -205,7 +205,7 @@ export interface CreateGroupOpts {
    * A TEAM SHEET ON THE UPCOMING MATCH, key → team, in the order given.
    *
    * Sets `Match.status = TEAMS_GENERATED` too, because in production the
-   * two arrive together (`actions/teams.ts`, `cron/generate-teams`) and a
+   * two arrive together (`lib/team-generation.ts`) and a
    * world where one exists without the other is not one the bot can
    * reach. Insertion order matters: `load-state.ts` reads the sheet
    * `id: asc` so a re-post renders the players in the order the balancer

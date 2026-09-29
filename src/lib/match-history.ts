@@ -340,8 +340,9 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //    human-triggered paths share `computeClubRating` (club seed +
   //    that club's peer
   //    ratings, no Elo term) through `lib/team-generation.ts` since
-  //    2026-09-15, and `api/cron/generate-teams/route.ts` still runs a
-  //    rival formula of its own but that one has no Elo term either.
+  //    2026-09-15. `api/cron/generate-teams/route.ts` once ran a rival
+  //    formula (no Elo term either) and has built no teams since
+  //    2026-09-29.
   //    Don't "fix" this by feeding the number back into team
   //    generation. The reasoning is in `lib/elo.ts`'s header and the
   //    tombstone at the top of `app/actions/teams.ts`.
