@@ -179,6 +179,7 @@ import {
 import { createSeenIds } from "../baileys/dedupe.js";
 import {
   createUndecryptableTracker,
+  withStubAuthor,
   isCiphertextStub,
   UNDECRYPTABLE_GRACE_MS,
   type UndecryptableEntry,
@@ -825,7 +826,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   async function receive(m: WAMessage, upsertType: string, requestId?: string): Promise<void> {
     stats.upserts[upsertType] = (stats.upserts[upsertType] ?? 0) + 1;
     stats.sinceOpen[upsertType] = (stats.sinceOpen[upsertType] ?? 0) + 1;
-    const key = m?.key ?? {};
+    let key = m?.key ?? {};
     // Learn first, from every message, including the ones not handed up: a
     // reaction arrives as a message too, and its pushName names a reactor
     // who may never type.
@@ -865,9 +866,19 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       const recovered = undecryptable.resolve(key.id);
       if (recovered) {
         stats.decryptRecovered++;
+        // The copy can arrive with no author at all (2026-09-29); its
+        // stub named one. See `withStubAuthor`.
+        const filled = withStubAuthor(m, recovered.entry);
+        const authorFilled = filled !== m;
+        if (authorFilled) {
+          m = filled;
+          key = m.key ?? {};
+          contacts.learnFromMessage(key, m.pushName);
+        }
         log(
           `${line} recovered${recovered.late ? " late" : ""}: the content of a message that ` +
-            `failed to decrypt arrived after ${Math.round(recovered.waitedMs / 1000)}s`,
+            `failed to decrypt arrived after ${Math.round(recovered.waitedMs / 1000)}s` +
+            (authorFilled ? `; its author was missing and was taken from the stub (${recovered.entry.sender ?? "?"})` : ""),
         );
       }
     }

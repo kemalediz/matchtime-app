@@ -42,11 +42,19 @@ export const OPERATOR_NOTE_KIND = "operator-note";
  *  recorded once per club per London day, info severity: nothing is
  *  broken, the cap did its job. */
 export const AI_CAP_ALERT_KIND = "ai-daily-cap";
+/** A message reached analysis more than 30 minutes after it was sent
+ *  (`late-message.ts`): attendance recorded silently, nothing else
+ *  executed. An event, info severity, never a DM. */
+export const LATE_MESSAGE_KIND = "late-message";
 
 export type OpsAlertSeverity = "critical" | "warning" | "info";
 
 /** Kinds that are one-off occurrences rather than conditions that hold. */
-const EVENT_KINDS: ReadonlySet<string> = new Set([OPERATOR_NOTE_KIND, AI_CAP_ALERT_KIND]);
+const EVENT_KINDS: ReadonlySet<string> = new Set([
+  OPERATOR_NOTE_KIND,
+  AI_CAP_ALERT_KIND,
+  LATE_MESSAGE_KIND,
+]);
 
 export function healthKind(code: string): string {
   return `${HEALTH_KIND_PREFIX}${code}`;
@@ -145,6 +153,7 @@ const KIND_LABELS: Record<string, string> = {
   "health:inbound-silent": "Group quiet before a match",
   [OPERATOR_NOTE_KIND]: "Message not handled",
   [AI_CAP_ALERT_KIND]: "AI daily cap reached",
+  [LATE_MESSAGE_KIND]: "Late message",
 };
 
 export function alertKindLabel(kind: string): string {

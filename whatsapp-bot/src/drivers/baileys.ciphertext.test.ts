@@ -182,6 +182,57 @@ describe("a message that failed to decrypt at first", () => {
     expect(t.lost).toEqual([]);
   });
 
+  // THE INCIDENT COPY HAD NO AUTHOR. Pi log, 2026-09-29 22:00:38: the
+  // stub named `participant` 89485761081551:59@lid with `participantAlt`
+  // 447525334985@s.whatsapp.net, and the readable copy arrived with
+  // neither and no pushName ("sender=? phone=? name=?"). The server
+  // resolved nobody. The stub's author is the message's author.
+  it("a recovered copy with no author takes the stub's author, phone and name", async () => {
+    const t = await started();
+    t.emit([stub()], "notify");
+    await tick();
+    t.emit(
+      [
+        decrypted({
+          key: { remoteJid: GROUP, fromMe: false, id: ID },
+          pushName: undefined,
+          messageTimestamp: nowSec() - 37_390,
+        }),
+      ],
+      "notify",
+    );
+    await tick();
+    expect(t.got).toHaveLength(1);
+    const view = t.got[0] as unknown as {
+      author?: string;
+      timestamp?: number;
+      _data: { notifyName?: string };
+      baileys: { senderPhone: string | null; pushName: string | null };
+    };
+    expect(view.baileys.senderPhone).toBe("447525334985");
+    expect(view.author).toBe("447525334985@c.us");
+    expect(view._data.notifyName).toBe("Kaan");
+    // The ORIGINAL send time travels unchanged: the server's late gate
+    // reads it.
+    expect(view.timestamp).toBeLessThan(nowSec() - 37_000);
+    expect(t.errors.filter((e) => e.includes("UNRESOLVED"))).toEqual([]);
+  });
+
+  it("a recovered copy that names its own author keeps it", async () => {
+    const t = await started();
+    t.emit([stub()], "notify");
+    await tick();
+    const OTHER_PN = "447700900123@s.whatsapp.net";
+    t.emit(
+      [decrypted({ key: { remoteJid: GROUP, fromMe: false, id: ID, participant: OTHER_PN }, pushName: "Zed" })],
+      "notify",
+    );
+    await tick();
+    const view = t.got[0] as unknown as { baileys: { senderPhone: string | null; pushName: string | null } };
+    expect(view.baileys.senderPhone).toBe("447700900123");
+    expect(view.baileys.pushName).toBe("Zed");
+  });
+
   it("a second stub for the same id (a retry that failed again) does not double the alert", async () => {
     const t = await started();
     t.emit([stub()], "notify");
