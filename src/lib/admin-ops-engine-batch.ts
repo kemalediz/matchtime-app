@@ -94,7 +94,13 @@
  *                                              retries the four
  *                                              attendance routes only.
  *   • the facts are not admin facts          → SILENCE + note
- *   • admin action `other`                   → SILENCE + note. This row
+ *   • admin action `other`, TAGGED           → owned; one line, "Sorry,
+ *                                              I can't do that one yet."
+ *                                              (2026-09-29, Kemal: never
+ *                                              fail silently; "delete
+ *                                              these teams" went silent
+ *                                              here on 24 Sep)
+ *   • admin action `other`, untagged         → SILENCE + note. This row
  *                                              used to add "the
  *                                              mega-prompt still has
  *                                              intents this route does
@@ -179,6 +185,8 @@
  * so there is ONE place in the codebase where a bulk DM is performed,
  * and one shape to review when the next one arrives.
  */
+import { requestNotHandledReply } from "./team-ops-engine";
+import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
   ADMIN_OPS_APPLY_DEGRADED_PREFIX,
   ADMIN_OPS_HANDLED_BY,
@@ -439,6 +447,8 @@ export async function runAdminOpsBatch(args: {
   // §10 step 8 deleted the verdict it used to leave alone), and its
   // reason is already in `degradations` before the `continue` runs.
   const ownedIds = new Set<string>();
+  /** Tagged `other`: answered in one line, outside the engine. */
+  const unhandled = new Set<string>();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -471,7 +481,28 @@ export async function runAdminOpsBatch(args: {
       // thing separating it from §9's signature failure. `other` is the
       // widest hole this file has, and it is deliberately a wide hole
       // rather than a guess.
-      hand("admin action \"other\" has no deterministic handler on this path");
+      //
+      // CHANGED 2026-09-29: A TAGGED `other` IS ANSWERED IN ONE LINE.
+      // "@Match Time delete these teams, early to form them, there is
+      // still 5 days" (Sutton FC, 24 Sep 22:52 BST) landed here and the
+      // admin heard nothing while the early teams stood. Kemal: never
+      // fail silently. The note line is still written (the operator
+      // still learns what was not modelled); the group now hears
+      // "Sorry, I can't do that one yet." An UNTAGGED `other` stays
+      // silent: the interaction contract does not answer banter.
+      // The STRICT tag (`messageMentionsBotExplicitly`), not the loose
+      // one: "rate the players via the link from Matchtime DM'ed to you"
+      // (2026-09-10) names MatchTime without addressing it, and must not
+      // be answered with "I can't do that".
+      if (m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body }))) {
+        degradations.push(
+          `${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${m.waMessageId}: admin action "other" has no ` +
+            `deterministic handler on this path — the group was told in one line that it cannot be done`,
+        );
+        unhandled.add(m.waMessageId);
+      } else {
+        hand("admin action \"other\" has no deterministic handler on this path");
+      }
       continue;
     }
 
@@ -519,7 +550,33 @@ export async function runAdminOpsBatch(args: {
 
     ownedIds.add(m.waMessageId);
   }
-  if (ownedIds.size === 0) return empty(degradations);
+
+  /** Adds the one-line answers for tagged `other`s to whatever the rest
+   *  of this function returns, on EVERY path below: they depend on
+   *  nothing the engine or the apply layer does. */
+  const finish = (r: AdminOpsBatchResult): AdminOpsBatchResult => {
+    for (const id of unhandled) {
+      const m = messages.find((x) => x.waMessageId === id)!;
+      r.ownedIds.add(id);
+      r.outcomes.set(id, {
+        waMessageId: id,
+        route: m.route as Route,
+        reply: requestNotHandledReply(state.features.language),
+        react: null,
+        intent: "noise",
+        action: "reply",
+        reasoning:
+          `${ADMIN_OPS_HANDLED_BY} (${m.route}): admin action "other" has no handler; ` +
+          `said so in one line rather than going silent`,
+        recruitRequest: false,
+        recruitLookbackMatches: null,
+        statsBlastRequest: false,
+        writeFailed: false,
+      });
+    }
+    return r;
+  };
+  if (ownedIds.size === 0) return finish(empty(degradations));
 
   // ── Stage 3: the engine, over the WHOLE window ─────────────────────
   const engineMessages: EngineMessage[] = messages.map((m) => ({
@@ -549,7 +606,7 @@ export async function runAdminOpsBatch(args: {
       err instanceof Error ? err.message : String(err)
     }); nobody handles these messages — they go silent and onto this note`;
     console.error("[admin-ops-engine] the engine threw:", err);
-    return empty([...degradations, detail]);
+    return finish(empty([...degradations, detail]));
   }
   for (const d of result.degradations) {
     degradations.push(`[${d.stage}${d.messageId ? ` ${d.messageId}` : ""}] ${d.detail}`);
@@ -586,7 +643,7 @@ export async function runAdminOpsBatch(args: {
       `path cannot apply (${[...new Set(foreign)].join(", ")}); owning nothing — these ` +
       `messages go silent and onto this note`;
     console.error(`[admin-ops-engine] ${detail}`);
-    return empty([...degradations, detail]);
+    return finish(empty([...degradations, detail]));
   }
 
   // ── Stage 3b: APPLY ────────────────────────────────────────────────
@@ -740,7 +797,7 @@ export async function runAdminOpsBatch(args: {
     });
   }
 
-  return { ownedIds, outcomes, degradations, cost: { ...cost, ms: Date.now() - t0 } };
+  return finish({ ownedIds, outcomes, degradations, cost: { ...cost, ms: Date.now() - t0 } });
 }
 
 /**

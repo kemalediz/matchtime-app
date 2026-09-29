@@ -149,7 +149,7 @@ function recorder(
       model,
       loadState: async () => state,
       loadFeatures: async () => FEATURES_ON,
-      selectTeamsMatch: async () => ({ id: "match-1" }),
+      selectTeamsMatch: async () => ({ id: "match-1", date: NOW }),
       forceConfirm: async (a) => {
         confirmed.push({
           matchId: a.matchId,
@@ -176,6 +176,7 @@ function msg(o: Partial<TeamOpsBatchMessage> & { body: string }): TeamOpsBatchMe
     senderName: o.senderName ?? fullName("kemal"),
     // TAGGED by default: every real generate request is.
     tagged: o.tagged ?? true,
+    ...(o.taggedExplicitly === undefined ? {} : { taggedExplicitly: o.taggedExplicitly }),
     // `"route" in o` and not `?? "balancer"`: an EXPLICIT `undefined` is
     // the shape of a message the router never mentioned, and it has to
     // survive the builder or the "never owned" test tests nothing.
@@ -301,7 +302,7 @@ describe("a tagged generate request builds and posts the teams", () => {
     // precisely the evening somebody asks for the teams.
     const { model } = stubModel({ [GEN]: teamsFacts() });
     const r = recorder(model, squadWorld({ noMatch: true }), {
-      selectTeamsMatch: async () => ({ id: "match-99" }),
+      selectTeamsMatch: async () => ({ id: "match-99", date: NOW }),
     });
     const res = await run({ messages: [msg({ body: GEN })], deps: r.deps });
     expect(r.generated).toEqual([{ matchId: "match-99" }]);
@@ -541,7 +542,7 @@ describe("several generate requests in one window produce ONE team post", () => 
   it("does not look the match up at all when nothing will fire", async () => {
     // A `show` in the window is handed on before the selector is
     // reached, so a batch this module owns nothing in costs no query.
-    const lookup = vi.fn(async () => ({ id: "match-1" }));
+    const lookup = vi.fn(async () => ({ id: "match-1", date: NOW }));
     const { model } = stubModel({ [SHOW_BODY]: teamsFacts({ action: "show" }) });
     const r = recorder(model, squadWorld(), { selectTeamsMatch: lookup });
     await run({ messages: [msg({ body: SHOW_BODY })], deps: r.deps });
@@ -563,25 +564,35 @@ describe("actions this module does not own are handed on, with a reason", () => 
     expect(res.degradations.join(" ")).toMatch(/answer-batch\.ts owns show/);
   });
 
-  it("does not own `swap` — route.ts's deterministic pre-peel already does", async () => {
+  // CHANGED 2026-09-29 (Kemal: "never fail silently"). A tagged `swap`
+  // or `rename` that reaches this module used to be handed back, which
+  // since §10 step 8 means SILENCE plus an operator note. They are now
+  // OWNED with one honest line. The balancer still never runs for them:
+  // a swap that route.ts's pre-peel could apply never reaches here, and
+  // regenerating over a manual swap is c408649.
+  it("owns a `swap` the pre-peel could not apply, says so in one line, and builds nothing", async () => {
     const body = "@Match Time swap Kemal and Sait";
     const { model } = stubModel({
       [body]: teamsFacts({ action: "swap", swaps: [{ personRef: "Kemal", team: "YELLOW" }] }),
     });
     const r = recorder(model, squadWorld());
     const res = await run({ messages: [msg({ body })], deps: r.deps });
-    expect(res.ownedIds.size).toBe(0);
+    expect(res.ownedIds.size).toBe(1);
+    const out = [...res.outcomes.values()][0];
+    expect(out.reply).toBe("Sorry, I can't do that one yet.");
+    expect(out.teamsGenerated).toBe(false);
     expect(r.generated).toEqual([]);
   });
 
-  it("does not own `rename` — regenerating over a manual swap is c408649", async () => {
+  it("owns a `rename`, says so in one line, and never regenerates (c408649)", async () => {
     const body = "@Match Time rename the teams to Sharks and Wolves";
     const { model } = stubModel({
       [body]: teamsFacts({ action: "rename", teamNames: ["Sharks", "Wolves"] }),
     });
     const r = recorder(model, squadWorld());
     const res = await run({ messages: [msg({ body })], deps: r.deps });
-    expect(res.ownedIds.size).toBe(0);
+    expect(res.ownedIds.size).toBe(1);
+    expect([...res.outcomes.values()][0].reply).toBe("Sorry, I can't do that one yet.");
     expect(r.generated).toEqual([]);
   });
 
@@ -823,5 +834,117 @@ describe("the apply layer's dependencies are injected, asserted by scanning it",
     // must not have it.
     expect(SRC).not.toMatch(/from ["']\.\/team-generation["']/);
     expect(SRC).toMatch(/generateTeams:/);
+  });
+});
+
+// ── 9. THE 2026-09-24 SUTTON FC INCIDENT ───────────────────────────────
+//
+// Thu 24 Sep 22:51 BST, after a chemistry table, the admin joked "@Match
+// Time put me in the same team with these guys in the match 😀". The
+// router said `balancer`, the teams extractor said `generate` with the
+// pairing ["me", "these guys"] (verbatim from the prod AnalyzedMessage
+// row), and the balancer built the teams for Tue 29 Sep, five days
+// early. Kemal's rule: teams are built only on a CLEAR ask, and only on
+// match day. Both halves are enforced in code, after the extractor.
+
+describe("teams are built only on a clear ask, and only on match day", () => {
+  const JOKE = "@Match Time put me in the same team with these guys in the match 😀";
+  // The extractor's real output for the joke, from production.
+  const JOKE_FACTS = teamsFacts({ pairings: [["me", "these guys"]], teamNames: null });
+  const THU_2251 = new Date("2026-09-24T21:51:00Z");
+  const TUE_KICKOFF = new Date("2026-09-29T19:30:00Z");
+  const TUE_MORNING = new Date("2026-09-29T08:00:00Z");
+
+  async function runAt(now: Date, body: string, facts: unknown, state = squadWorld()) {
+    const { model } = stubModel({ [body]: facts });
+    const r = recorder(model, state, {
+      selectTeamsMatch: async () => ({ id: "match-tue", date: TUE_KICKOFF }),
+    });
+    const res = await runTeamOpsBatch({
+      orgId: "org-1",
+      now,
+      messages: [msg({ body })],
+      history: [],
+      enabled: new Set<Route>(["balancer"]),
+      deps: r.deps,
+    });
+    return { r, res, out: [...res.outcomes.values()][0] };
+  }
+
+  it("THE INCIDENT: the pairing joke builds nothing and says teams are built on request", async () => {
+    const { r, res, out } = await runAt(THU_2251, JOKE, JOKE_FACTS);
+    expect(r.generated).toEqual([]);
+    expect(r.confirmed).toEqual([]);
+    expect(res.ownedIds.size).toBe(1);
+    expect(out.teamsGenerated).toBe(false);
+    expect(out.reply).toBe(
+      "I only build the teams on match day, when someone asks me to generate them.",
+    );
+    expect(out.intent).not.toBe("generate_teams_request");
+  });
+
+  it("the pairing joke builds nothing ON MATCH DAY either: a preference is not a build", async () => {
+    const { r, out } = await runAt(TUE_MORNING, JOKE, JOKE_FACTS);
+    expect(r.generated).toEqual([]);
+    expect(out.teamsGenerated).toBe(false);
+  });
+
+  it("'generate the teams' five days early gets the polite reply and builds nothing", async () => {
+    const { r, out } = await runAt(THU_2251, GEN, teamsFacts());
+    expect(r.generated).toEqual([]);
+    expect(r.confirmed).toEqual([]);
+    expect(out.teamsGenerated).toBe(false);
+    expect(out.reply).toBe("I'll build the teams on match day, just ask me then.");
+    expect(out.writeFailed).toBe(false);
+  });
+
+  it("a force-include is NOT applied before match day either (it is part of the build)", async () => {
+    const body = "@Match Time generate the teams, Zair is playing";
+    const { r } = await runAt(THU_2251, body, teamsFacts({ includeRefs: ["Zair"] }));
+    expect(r.confirmed).toEqual([]);
+    expect(r.generated).toEqual([]);
+  });
+
+  it("'generate the teams' ON match day builds them", async () => {
+    const { r, out } = await runAt(TUE_MORNING, GEN, teamsFacts());
+    expect(r.generated).toEqual([{ matchId: "match-tue" }]);
+    expect(out.teamsGenerated).toBe(true);
+    expect(out.intent).toBe("generate_teams_request");
+  });
+
+  it("regenerating on match day still runs the balancer (it replaces the existing sheet)", async () => {
+    const body = "@Match Time regenerate the teams once more";
+    const { r, out } = await runAt(TUE_MORNING, body, teamsFacts());
+    expect(r.generated).toEqual([{ matchId: "match-tue" }]);
+    expect(out.teamsGenerated).toBe(true);
+  });
+
+  it("a Turkish group hears the Turkish lines", async () => {
+    const tr = squadWorld();
+    const trState = { ...tr, features: { ...tr.features, language: "tr" as const } };
+    const early = await runAt(THU_2251, "@Match Time takımları kur", teamsFacts(), trState);
+    expect(early.r.generated).toEqual([]);
+    expect(early.out.reply).toBe("Takımları maç günü kuracağım, o gün benden isteyin yeter.");
+
+    const joke = await runAt(THU_2251, "@Match Time beni Sait ile aynı takıma koy", JOKE_FACTS, trState);
+    expect(joke.r.generated).toEqual([]);
+    expect(joke.out.reply).toBe("Takımları sadece maç günü, biri benden istediğinde kuruyorum.");
+
+    const onTheDay = await runAt(TUE_MORNING, "@Match Time takımları kur", teamsFacts(), trState);
+    expect(onTheDay.r.generated).toEqual([{ matchId: "match-tue" }]);
+  });
+});
+
+describe("a declined team request is answered only when MatchTime was addressed", () => {
+  it("a message that merely NAMES MatchTime is not told anything", async () => {
+    const body = "the more balanced teams next time, thanks to Matchtime";
+    const { model } = stubModel({ [body]: teamsFacts() });
+    const r = recorder(model, squadWorld());
+    const res = await run({
+      messages: [msg({ body, tagged: true, taggedExplicitly: false })],
+      deps: r.deps,
+    });
+    expect(res.ownedIds.size).toBe(0);
+    expect(r.generated).toEqual([]);
   });
 });

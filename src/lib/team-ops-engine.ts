@@ -100,6 +100,23 @@ export function teamOpsNoMatchReply(lang?: Lang | string | null): string {
   return t(lang).team_ops_no_match;
 }
 
+/** Asked to build the teams before match day (2026-09-29). */
+export function teamOpsNotMatchDayReply(lang?: Lang | string | null): string {
+  return t(lang).team_ops_not_match_day;
+}
+
+/** The extractor said `generate` but the words hold no clear ask to
+ *  build the teams: a pairing preference, a joke (2026-09-24). */
+export function teamOpsNotABuildRequestReply(lang?: Lang | string | null): string {
+  return t(lang).team_ops_not_a_build_request;
+}
+
+/** A tagged team request nothing on this path can carry out (`rename`,
+ *  a `swap` the pre-peel could not apply). Said rather than swallowed. */
+export function requestNotHandledReply(lang?: Lang | string | null): string {
+  return t(lang).request_not_handled;
+}
+
 /** `route.ts:3690`. The balancer declined — not enough confirmed
  *  players, or the match is completed or cancelled. */
 export function composeBalancerRefusal(reason: string, lang?: Lang | string | null): string {
@@ -163,8 +180,11 @@ export interface TeamOpsApplyDeps {
    * pick a match at all while a previous one is still in flight —
    * precisely the evening somebody asks for the teams. The two are kept
    * apart on purpose and the runner never substitutes one for the other.
+   *
+   * `date` is the kickoff (2026-09-29): the runner builds teams only on
+   * the London calendar date of the match (`lib/team-requests.ts`).
    */
-  selectTeamsMatch: (orgId: string, now: Date) => Promise<{ id: string } | null>;
+  selectTeamsMatch: (orgId: string, now: Date) => Promise<{ id: string; date: Date } | null>;
   /**
    * Flip ONE attendance row to CONFIRMED, in the SAME transaction as the
    * `AttendanceEvent` that records it. `route.ts:3591-3617`:

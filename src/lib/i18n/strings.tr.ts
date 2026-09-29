@@ -583,6 +583,15 @@ export const tr: Strings = {
   team_gen_note_unmatched_includes: (p) => `_(${p.names.join(", ")} listede bulunamadı, atlandı)_`,
   team_gen_note_unmatched_pins: (p) => `_(${p.names.join(", ")} takım sabitleme için bulunamadı, atlandı)_`,
 
+  // ── row R170 (2026-09-29): teams only on request, on match day ─────
+
+  team_ops_not_match_day: "Takımları maç günü kuracağım, o gün benden isteyin yeter.",
+  team_ops_not_a_build_request: "Takımları sadece maç günü, biri benden istediğinde kuruyorum.",
+  teams_cleared: "Takımlar silindi. Maç günü istenince yenilerini kurarım.",
+  teams_clear_nothing: "Silinecek takım yok.",
+  teams_clear_admin_only: "Takımları sadece bir admin silebilir.",
+  request_not_handled: "Kusura bakmayın, bunu henüz yapamıyorum.",
+
   // ── row 133: composePaymentAck ─────────────────────────────────────
 
   payment_credit_ack: (p) => {

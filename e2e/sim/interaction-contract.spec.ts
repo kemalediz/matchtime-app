@@ -214,6 +214,8 @@ test.describe("positive controls", () => {
     const grp = (
       await createGroup(request, db, {
         maxPlayers: 8,
+        // Teams are built only on match day (2026-09-29), so the match is today.
+        upcomingMatch: { daysFromNow: 0 },
         attendance: [
           { key: "owner", status: "CONFIRMED" },
           { key: "alice", status: "CONFIRMED" },

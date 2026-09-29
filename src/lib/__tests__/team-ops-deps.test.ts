@@ -20,7 +20,7 @@
  * answer and a live database cannot without a fixture per case.
  */
 import { describe, expect, it, vi } from "vitest";
-import { buildTeamOpsApplyDeps } from "../owner-deps";
+import { buildTeamClearDeps, buildTeamOpsApplyDeps } from "../owner-deps";
 
 const NOW = new Date("2026-09-01T18:00:00.000Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -51,7 +51,7 @@ describe("selecting the match to build teams for", () => {
     });
     // The SOONEST qualifying match, never the most recently created.
     expect(arg.orderBy).toEqual({ date: "asc" });
-    expect(arg.select).toEqual({ id: true });
+    expect(arg.select).toEqual({ id: true, date: true });
   });
 
   it("does NOT ask for the registration match's shape", async () => {
@@ -202,5 +202,67 @@ describe("force-including a named player", () => {
     const { db, create } = stub({ id: "a1", status: "DROPPED", position: 4 });
     await buildTeamOpsApplyDeps({ orgId: "org-sutton", db }).forceConfirm(call);
     expect((create.mock.calls[0][0] as { data: { orgId: string } }).data.orgId).toBe("org-sutton");
+  });
+});
+
+// ── "@Match Time clear the teams" (2026-09-29) ─────────────────────────
+
+
+describe("buildTeamClearDeps", () => {
+  it("an admin is an OWNER or ADMIN membership that has not left, in THIS org", async () => {
+    const findFirst = vi.fn(async (_a: unknown) => ({ id: "mem-1" }));
+    const deps = buildTeamClearDeps({
+      orgId: "org-1",
+      now: NOW,
+      db: { membership: { findFirst } } as AnyDb,
+    });
+    expect(await deps.isAdmin("u-1")).toBe(true);
+    expect((findFirst.mock.calls[0][0] as { where: unknown }).where).toEqual({
+      orgId: "org-1",
+      userId: "u-1",
+      role: { in: ["OWNER", "ADMIN"] },
+      leftAt: null,
+    });
+  });
+
+  it("a member without that role is not an admin", async () => {
+    const deps = buildTeamClearDeps({
+      orgId: "org-1",
+      now: NOW,
+      db: { membership: { findFirst: async () => null } } as AnyDb,
+    });
+    expect(await deps.isAdmin("u-2")).toBe(false);
+  });
+
+  it("clears on the SAME match the balancer would build for", async () => {
+    const findFirst = vi.fn(async (_a: unknown) => ({ id: "m1", date: NOW }));
+    const deps = buildTeamClearDeps({
+      orgId: "org-1",
+      now: NOW,
+      db: { match: { findFirst } } as AnyDb,
+    });
+    expect(await deps.selectTeamsMatch()).toEqual({ id: "m1", date: NOW });
+    const arg = findFirst.mock.calls[0][0] as { where: unknown; orderBy: unknown };
+    expect(arg.where).toEqual({
+      activity: { orgId: "org-1" },
+      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+      attendanceDeadline: { gt: new Date(NOW.getTime() - DAY_MS) },
+    });
+    expect(arg.orderBy).toEqual({ date: "asc" });
+  });
+
+  it("deletes the rows and resets the status in ONE transaction, and reports both", async () => {
+    const deleteMany = vi.fn(async (_a: unknown) => ({ count: 14 }));
+    const updateMany = vi.fn(async (_a: unknown) => ({ count: 1 }));
+    const tx = { teamAssignment: { deleteMany }, match: { updateMany } };
+    const $transaction = vi.fn(async (fn: (t: unknown) => unknown) => fn(tx));
+    const deps = buildTeamClearDeps({ orgId: "org-1", now: NOW, db: { $transaction } as AnyDb });
+    expect(await deps.clearTeams("m1")).toEqual({ deleted: 14, statusReset: true });
+    expect($transaction).toHaveBeenCalledTimes(1);
+    expect(deleteMany.mock.calls[0][0]).toEqual({ where: { matchId: "m1" } });
+    expect(updateMany.mock.calls[0][0]).toEqual({
+      where: { id: "m1", status: { in: ["TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
+      data: { status: "UPCOMING" },
+    });
   });
 });

@@ -634,6 +634,18 @@ export const en = {
   team_gen_note_unmatched_pins: (p: { names: string[] }): string =>
     `_(couldn't find ${p.names.join(", ")} for team pinning — ignored)_`,
 
+  // ── row R170 (2026-09-29): teams only on request, on match day, and
+  //    an admin can clear them. The Sutton FC incident of 24 Sep: a
+  //    pairing joke built the teams five days early and "delete these
+  //    teams" was met with silence. See lib/team-requests.ts.
+
+  team_ops_not_match_day: "I'll build the teams on match day, just ask me then.",
+  team_ops_not_a_build_request: "I only build the teams on match day, when someone asks me to generate them.",
+  teams_cleared: "Teams cleared. I'll build new ones on match day when asked.",
+  teams_clear_nothing: "There are no teams to clear.",
+  teams_clear_admin_only: "Only an admin can clear the teams.",
+  request_not_handled: "Sorry, I can't do that one yet.",
+
   // ── row 133: composePaymentAck (admin-ops-engine.ts) ───────────────
 
   payment_credit_ack: (p: { payerName: string; credited: string[]; count: number; matchName: string; unpaid: number; confirmed: number; unmatched: number }): string => {

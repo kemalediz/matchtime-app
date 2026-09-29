@@ -47,6 +47,7 @@ import type { EloDelta, PlayerEloInput } from "./elo";
 import type { ScoreApplyDeps } from "./score-engine";
 import type { AdminOpsApplyDeps, PaidState } from "./admin-ops-engine";
 import type { TeamOpsApplyDeps } from "./team-ops-engine";
+import type { TeamClearDeps } from "./team-clear";
 import {
   applyMembershipEloDeltas,
   loadMembershipEloInputs,
@@ -271,7 +272,8 @@ export function buildTeamOpsApplyDeps(args: {
           attendanceDeadline: { gt: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
         },
         orderBy: { date: "asc" },
-        select: { id: true },
+        // `date` for the match-day gate (lib/team-requests.ts).
+        select: { id: true, date: true },
       });
     },
 
@@ -315,6 +317,37 @@ export function buildTeamOpsApplyDeps(args: {
     },
 
     generateTeams: (matchId, opts) => generateTeamsForMatch(matchId, opts),
+  };
+}
+
+/**
+ * The real deps for "@Match Time clear the teams" (`lib/team-clear.ts`,
+ * 2026-09-29). The match is chosen by EXACTLY the balancer's selector
+ * above, so "clear" and "generate" always mean the same match.
+ */
+export function buildTeamClearDeps(args: { orgId: string; now: Date; db?: Db }): TeamClearDeps {
+  const db = args.db ?? defaultDb;
+  const { orgId, now } = args;
+  const teamOps = buildTeamOpsApplyDeps({ orgId, db });
+  return {
+    async isAdmin(userId) {
+      const row = await db.membership.findFirst({
+        where: { orgId, userId, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
+        select: { id: true },
+      });
+      return row !== null;
+    },
+    selectTeamsMatch: () => teamOps.selectTeamsMatch(orgId, now),
+    async clearTeams(matchId) {
+      return db.$transaction(async (tx) => {
+        const { count: deleted } = await tx.teamAssignment.deleteMany({ where: { matchId } });
+        const { count } = await tx.match.updateMany({
+          where: { id: matchId, status: { in: ["TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
+          data: { status: "UPCOMING" },
+        });
+        return { deleted, statusReset: count > 0 };
+      });
+    },
   };
 }
 
