@@ -1314,6 +1314,9 @@ export const tr: Strings = {
   sj_dm_already_connected: "Zaten bağlısınız. Şimdi beni grubunuza eklemeniz yeterli.",
   sj_dm_code_expired:
     "Bu kodun süresi doldu. matchtime.ai'de kulübünüzü açın ve MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun.",
+
+  sj_dm_in_group: (p) =>
+    `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Sizi açana kadar orada sessiz kalacağım, bitince size buradan yazacağım.`,
 };
 
 /**

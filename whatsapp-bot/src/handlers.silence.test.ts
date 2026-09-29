@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addMonitoredGroup,
+  addSilentGroup,
   addOnboardingGroup,
   isLegacySetupTriggerEnabled,
   isMonitoredGroup,
@@ -62,5 +63,21 @@ describe("silent groups on the Pi", () => {
     expect(isLegacySetupTriggerEnabled()).toBe(true);
     setLegacySetupTrigger(false);
     expect(isLegacySetupTriggerEnabled()).toBe(false);
+  });
+
+  it("slice 6: a group the server just called silent is silent at once, until the next refresh says otherwise", () => {
+    setMonitoredGroups([SUTTON]);
+    addSilentGroup(PENDING);
+    expect(isSilentGroup(PENDING)).toBe(true);
+    addMonitoredGroup(PENDING);
+    expect(isMonitoredGroup(PENDING)).toBe(false);
+    expect(isMonitoredGroup(SUTTON)).toBe(true);
+  });
+
+  it("slice 6: a LIVE (monitored) group is never silenced by a stray answer", () => {
+    setMonitoredGroups([SUTTON]);
+    addSilentGroup(SUTTON);
+    expect(isSilentGroup(SUTTON)).toBe(false);
+    expect(isMonitoredGroup(SUTTON)).toBe(true);
   });
 });

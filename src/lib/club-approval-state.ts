@@ -10,6 +10,13 @@ export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 /** The one Prisma `where` fragment for "this club is approved". */
 export const APPROVED_CLUB_WHERE = { approvalStatus: "approved" } as const;
 
+/** A club created through self-join that has not been linked to a group
+ *  yet (or was removed from it while pending). Slice 6. */
+export const DRAFT_CLUB_WHERE = { approvalStatus: "draft" } as const;
+
+/** A club linked to a group and waiting for the owner's decision. Slice 6. */
+export const PENDING_CLUB_WHERE = { approvalStatus: "pending" } as const;
+
 /** Its complement, for the silent-group loader. */
 export const UNAPPROVED_CLUB_WHERE = { approvalStatus: { not: "approved" } } as const;
 

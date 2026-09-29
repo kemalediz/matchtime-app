@@ -98,6 +98,13 @@ export interface GroupMembershipEvent {
   chatId?: string;
   recipientIds?: string[];
   author?: string;
+  /**
+   * The bare LID digits the author was addressed by, when it was a LID,
+   * even if `author` was resolved to a phone (self-join slice 6: the
+   * server can match the adder against the organiser's connect DM by
+   * LID). Only the Baileys driver can say; whatsapp-web.js never sets it.
+   */
+  authorLid?: string;
 }
 
 /** One member of a group, as the snapshot reads them. */

@@ -68,6 +68,9 @@ export interface EnabledOrgsResponse {
   orgs?: Array<{ id?: string; name?: string | null; slug?: string; whatsappGroupId?: string | null }>;
   /** Groups mid-setup with no bot-enabled org yet (active session, not stale). */
   onboardingGroups?: string[];
+  /** Self-join slice 6: the reconnect sweep instruction, or null. Parsed
+   *  defensively by org-refresh.ts. */
+  selfJoinSweep?: unknown;
 }
 
 export async function getEnabledOrgs(): Promise<EnabledOrgsResponse> {
@@ -356,12 +359,13 @@ export async function postBotAdded(params: {
     text: string;
     timestamp: string | number;
   }>;
-}): Promise<{
-  ok?: boolean;
-  ignored?: string;
-  existing?: boolean;
-  introText?: string | null;
-} | null> {
+  /** Self-join slice 6: the adder's LID, bare digits, when it was LID-addressed
+   *  (even if a phone was found too). An older server ignores it. */
+  addedByLid?: string | null;
+  /** Self-join slice 6: found by the reconnect sweep, not by an add event.
+   *  Only sent when /orgs asked for a sweep. */
+  discovered?: boolean;
+}): Promise<BotAddedResult | null> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/bot-added`, {
     method: "POST",
     headers,
@@ -371,12 +375,44 @@ export async function postBotAdded(params: {
     console.error("bot-added post failed:", res.status, await res.text());
     return null;
   }
-  return res.json() as Promise<{
-    ok?: boolean;
-    ignored?: string;
-    existing?: boolean;
-    introText?: string | null;
-  }>;
+  return res.json() as Promise<BotAddedResult>;
+}
+
+export interface BotAddedResult {
+  ok?: boolean;
+  ignored?: string;
+  existing?: boolean;
+  introText?: string | null;
+  language?: string;
+  /** Self-join slice 6: stay silent in this group from now on. */
+  silent?: boolean;
+  /** Self-join slice 6: what the linker decided ("linked", "unsolicited", ...). */
+  selfJoin?: string;
+}
+
+/**
+ * Self-join slice 6: MatchTime was removed from a group it was SILENT in
+ * (a club waiting for approval, an unsolicited group). The server returns
+ * a pending club to draft and marks an unsolicited group left. False on
+ * any failure, a 404 from a server built before slice 6 included. Never
+ * throws.
+ */
+export async function postBotRemoved(params: { groupId: string }): Promise<boolean> {
+  try {
+    const res = await apiFetch(`${config.apiUrl}/api/whatsapp/bot-removed`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      console.error("bot-removed post failed:", res.status, await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("bot-removed post failed:", err instanceof Error ? err.message : err);
+    return false;
+  }
 }
 
 export async function postGroupJoin(params: {

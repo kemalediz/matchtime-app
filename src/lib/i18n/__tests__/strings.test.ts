@@ -400,6 +400,7 @@ const SAMPLES: SampleArgs = {
   sj_dm_connected: { name: "Aliyah", club: "Riverside FC" },
   sj_dm_already_connected: null,
   sj_dm_code_expired: null,
+  sj_dm_in_group: { group: "Riverside Tuesday 5s" },
 };
 
 /** Render an entry with its sample arguments. */

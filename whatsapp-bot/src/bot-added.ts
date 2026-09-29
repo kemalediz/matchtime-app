@@ -21,7 +21,7 @@
  * the flow is unit-tested against a fake client whose page calls throw
  * the way the live build does.
  */
-import type { GroupSnapshot, WaDriver } from "./driver.js";
+import type { GroupSnapshot, GroupSummary, WaDriver } from "./driver.js";
 
 /** Recipient ids as strings, whatever shape the page handed over. */
 export function normaliseRecipientIds(raw: unknown): string[] {
@@ -61,6 +61,8 @@ export interface GroupJoinNotification {
   chatId?: string;
   recipientIds?: unknown;
   author?: string;
+  /** Bare LID digits the author was addressed by (Baileys only). */
+  authorLid?: string;
 }
 
 export interface HistoryMessageForServer {
@@ -79,6 +81,10 @@ export interface BotAddedDeps {
    *  if a server hands back an intro. Optional so an older wiring still
    *  compiles; absent means nothing is silent. */
   isSilentGroup?: (gid: string) => boolean;
+  /** Self-join slice 6: the server answered `silent: true` (a club waiting
+   *  for approval, a group nobody asked MatchTime into). Treat the group as
+   *  silent now, not at the next /orgs refresh. */
+  addSilentGroup?: (gid: string) => void;
   resolveSelfIds: () => Promise<string[]>;
   readGroupSnapshot: (gid: string, selfIds: string[]) => Promise<GroupSnapshot>;
   /** Recent messages, oldest first, already shaped for the server; [] on failure. */
@@ -87,11 +93,26 @@ export interface BotAddedDeps {
     groupId: string;
     groupSubject?: string | null;
     addedByPhone?: string | null;
+    /** Self-join slice 6: bare LID digits of the adder. */
+    addedByLid?: string | null;
     participants?: Array<{ phone?: string | null; lidId?: string | null; pushname?: string | null }>;
     enrichmentHistory?: HistoryMessageForServer[];
-  }) => Promise<{ introText?: string | null; ignored?: string; existing?: boolean; language?: string } | null>;
+    /** Self-join slice 6: found by the reconnect sweep, not by an add event. */
+    discovered?: boolean;
+  }) => Promise<BotAddedResponse | null>;
   log?: (line: string) => void;
   error?: (line: string, err?: unknown) => void;
+}
+
+/** What the server answers. `silent` and `selfJoin` come from a server
+ *  with self-join on; an older server never sends them. */
+export interface BotAddedResponse {
+  introText?: string | null;
+  ignored?: string;
+  existing?: boolean;
+  language?: string;
+  silent?: boolean;
+  selfJoin?: string;
 }
 
 export type BotAddedOutcome =
@@ -140,21 +161,15 @@ export async function handleGroupJoinForSelfAdd(
       (snapshot.notes.length ? ` (${snapshot.notes.join("; ")})` : ""),
   );
 
-  // The adder's JID → phone. @lid adders: try the contact record.
-  let addedByPhone: string | undefined;
-  const author = notification.author;
-  if (author?.endsWith("@c.us")) {
-    addedByPhone = author.replace("@c.us", "").replace(/^\+/, "");
-  } else if (author?.endsWith("@lid")) {
-    try {
-      const contact = await deps.driver.getContact(author);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const num = (contact as any)?.number;
-      if (typeof num === "string" && num.length > 0) addedByPhone = num.replace(/\D/g, "");
-    } catch {
-      /* the server falls back to the consent replier */
-    }
-  }
+  // The adder: phone and LID. Resolved AFTER the snapshot on purpose: its
+  // groupMetadata read seeds every participant's LID-to-phone pair, so a
+  // LID author the event could not map may map now (plan 2.3).
+  const adder = await resolveAdder(deps.driver, notification);
+  const { addedByPhone, addedByLid } = adder;
+  log(
+    `[bot-added] ${gid} adder: phone=${addedByPhone ?? "-"} lid=${addedByLid ?? "-"} via=${adder.via} ` +
+      `(event author=${notification.author ?? "?"})`,
+  );
 
   // Recent history: the language evidence and the enrichment source.
   let history: HistoryMessageForServer[] = [];
@@ -171,6 +186,7 @@ export async function handleGroupJoinForSelfAdd(
       groupId: gid,
       groupSubject: snapshot.subject,
       addedByPhone,
+      addedByLid,
       participants: snapshot.participants.map((p) => ({
         phone: p.phone ?? null,
         lidId: p.lidId ?? null,
@@ -182,6 +198,8 @@ export async function handleGroupJoinForSelfAdd(
     error(`[bot-added] ${gid} server call failed:`, err);
     return { kind: "silent", reason: "server-call-failed" };
   }
+
+  if (res?.silent) deps.addSilentGroup?.(gid);
 
   if (!res?.introText) {
     const reason = res?.ignored ?? (res?.existing ? "existing-session-mid-flow" : "no-intro");
@@ -209,4 +227,167 @@ export async function handleGroupJoinForSelfAdd(
     error(`[bot-added] ${gid} intro send failed (group stays monitored; the server re-sends on re-add):`, err);
   }
   return { kind: "posted", language: res.language ?? null, snapshot, historyCount: history.length };
+}
+
+// ── Self-join slice 6: who added MatchTime ────────────────────────────
+
+/**
+ * The adder's phone and LID, from the event and, for a LID the event could
+ * not map, from the driver's LOCAL knowledge (`getContact`, which on
+ * Baileys reads the harvested directory and Baileys' own store, never the
+ * network). Call it after the group snapshot, which seeds that store.
+ * Total: never throws.
+ */
+export async function resolveAdder(
+  driver: WaDriver,
+  notification: Pick<GroupJoinNotification, "author" | "authorLid">,
+): Promise<{ addedByPhone?: string; addedByLid?: string; via: "event" | "re-resolve" | "none" }> {
+  const author = notification.author;
+  let lid: string | undefined =
+    typeof notification.authorLid === "string" && /^\d{6,20}$/.test(notification.authorLid)
+      ? notification.authorLid
+      : undefined;
+  if (!lid && author?.endsWith("@lid")) {
+    const m = /^(\d{6,20})(?::\d+)?@lid$/.exec(author);
+    if (m) lid = m[1];
+  }
+  const withLid = <T extends object>(o: T) => (lid ? { ...o, addedByLid: lid } : o);
+
+  if (author?.endsWith("@c.us")) {
+    const phone = author.replace("@c.us", "").replace(/^\+/, "");
+    if (/^\d{8,15}$/.test(phone)) return withLid({ addedByPhone: phone, via: "event" as const });
+  }
+  if (lid) {
+    try {
+      const contact = await driver.getContact(`${lid}@lid`);
+      const num = (contact as { number?: unknown } | null)?.number;
+      const phone = typeof num === "string" ? num.replace(/\D/g, "") : "";
+      if (/^\d{8,15}$/.test(phone)) return withLid({ addedByPhone: phone, via: "re-resolve" as const });
+    } catch {
+      /* unknown adder: the server labels it so for the owner */
+    }
+  }
+  return withLid({ via: "none" as const });
+}
+
+// ── Self-join slice 6: MatchTime removed from a silent group ──────────
+
+export interface SelfRemovalDeps {
+  isSilentGroup: (gid: string) => boolean;
+  resolveSelfIds: () => Promise<string[]>;
+  postBotRemoved: (params: { groupId: string }) => Promise<boolean>;
+  log?: (line: string) => void;
+}
+
+/**
+ * A `group_leave` in a SILENT group that removed MatchTime itself: tell
+ * the server (a pending club goes back to draft, an unsolicited group is
+ * marked left). Anything else returns without a call, so a live club's
+ * group never reaches here. Never throws.
+ */
+export async function handleGroupLeaveForSelfRemoval(
+  deps: SelfRemovalDeps,
+  notification: GroupJoinNotification,
+): Promise<"not-silent" | "not-self" | "forwarded" | "failed"> {
+  const log = deps.log ?? ((l) => console.log(l));
+  const gid = notification.chatId;
+  if (!gid || !deps.isSilentGroup(gid)) return "not-silent";
+  try {
+    const selfIds = await deps.resolveSelfIds();
+    if (!isSelfAdd(normaliseRecipientIds(notification.recipientIds), selfIds)) return "not-self";
+    await deps.postBotRemoved({ groupId: gid });
+    log(`[bot-removed] MatchTime removed from silent group ${gid}; server told`);
+    return "forwarded";
+  } catch (err) {
+    log(`[bot-removed] ${gid}: could not tell the server: ${err instanceof Error ? err.message : String(err)}`);
+    return "failed";
+  }
+}
+
+// ── Self-join slice 6: the reconnect sweep (plan 8) ───────────────────
+
+/** Groups read per reconnect, at most: each costs one groupMetadata call. */
+export const SWEEP_MAX_GROUPS = 10;
+
+export interface SweepDeps {
+  listGroups: () => Promise<GroupSummary[]>;
+  /** From /orgs `selfJoinSweep.knownGroups`: never read. */
+  knownGroups: ReadonlySet<string>;
+  isMonitoredGroup: (gid: string) => boolean;
+  isSilentGroup: (gid: string) => boolean;
+  addSilentGroup: (gid: string) => void;
+  resolveSelfIds: () => Promise<string[]>;
+  readGroupSnapshot: (gid: string, selfIds: string[]) => Promise<GroupSnapshot>;
+  postBotAdded: BotAddedDeps["postBotAdded"];
+  /** This process's memory of groups already settled by a sweep. */
+  alreadySwept: Set<string>;
+  limit?: number;
+  log?: (line: string) => void;
+  error?: (line: string, err?: unknown) => void;
+}
+
+/**
+ * After a reconnect, while some organiser is waiting for their add: post
+ * every group this account is in that the server does not know to
+ * bot-added with `discovered: true`, so an add made while the Pi was
+ * offline is still linked. NEVER sends anything to a group, whatever the
+ * server answers. Never throws.
+ */
+export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked: number; linked: number }> {
+  const log = deps.log ?? ((l) => console.log(l));
+  const error = deps.error ?? ((l, e) => console.error(l, e));
+  let groups: GroupSummary[];
+  try {
+    groups = await deps.listGroups();
+  } catch (err) {
+    error("[self-join-sweep] could not list groups; no sweep this time:", err);
+    return { checked: 0, linked: 0 };
+  }
+  const unknown = groups.filter(
+    (g) =>
+      !deps.knownGroups.has(g.id) &&
+      !deps.isMonitoredGroup(g.id) &&
+      !deps.isSilentGroup(g.id) &&
+      !deps.alreadySwept.has(g.id),
+  );
+  const todo = unknown.slice(0, deps.limit ?? SWEEP_MAX_GROUPS);
+  let checked = 0;
+  let linked = 0;
+  if (todo.length === 0) return { checked, linked };
+  const selfIds = await deps.resolveSelfIds().catch(() => [] as string[]);
+  for (const g of todo) {
+    let snapshot: GroupSnapshot;
+    try {
+      snapshot = await deps.readGroupSnapshot(g.id, selfIds);
+    } catch (err) {
+      error(`[self-join-sweep] ${g.id} snapshot failed:`, err);
+      continue;
+    }
+    let res: BotAddedResponse | null = null;
+    try {
+      res = await deps.postBotAdded({
+        groupId: g.id,
+        groupSubject: snapshot.subject ?? (g.name || null),
+        participants: snapshot.participants.map((p) => ({
+          phone: p.phone ?? null,
+          lidId: p.lidId ?? null,
+          pushname: p.pushname ?? null,
+        })),
+        discovered: true,
+      });
+    } catch (err) {
+      error(`[self-join-sweep] ${g.id} server call failed:`, err);
+      continue;
+    }
+    checked++;
+    if (!res) continue;
+    if (res.silent) deps.addSilentGroup(g.id);
+    if (res.selfJoin === "linked") linked++;
+    // A group that matched nothing is looked at again next time: the
+    // organiser it belongs to may not have sent their DM yet.
+    if (res.ignored !== "discovered-no-match") deps.alreadySwept.add(g.id);
+    log(`[self-join-sweep] ${g.id} ("${snapshot.subject ?? g.name}"): ${res.selfJoin ?? res.ignored ?? "?"}`);
+  }
+  log(`[self-join-sweep] ${unknown.length} unknown group(s), ${checked} checked, ${linked} linked`);
+  return { checked, linked };
 }

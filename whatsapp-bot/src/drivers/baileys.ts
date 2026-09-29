@@ -193,6 +193,7 @@ import { createBaileysConnection, type BaileysConnection, type LifecycleSocket }
 import { createSessionLedger, fileLedgerIO } from "../baileys/session-ledger.js";
 import {
   authorId,
+  authorLid,
   createGroupCache,
   handedUpId,
   lidPnPairs,
@@ -760,6 +761,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     const event: GroupMembershipEvent = { chatId: meta.id, recipientIds: [mine] };
     const author = await authorId(meta.author, meta.authorPn, phoneForLid);
     if (author) event.author = author;
+    const lid = authorLid(meta.author);
+    if (lid) event.authorLid = lid;
     log(`[baileys][groups] added to a new group ${meta.id} ${JSON.stringify(meta.subject ?? "")} by ${author ?? "?"}`);
     handJoin(event, true);
   }

@@ -1573,4 +1573,10 @@ export const en = {
     "I'll stay quiet in the group until we've switched it on for you, usually within a day.",
   sj_dm_already_connected: "You're already connected. Now just add me to your group.",
   sj_dm_code_expired: "That code has expired. Open your club on matchtime.ai and tap Add MatchTime to WhatsApp again.",
+
+  // ── Self-join slice 6: the organiser's ack after a matched group add (plan 5.4) ──
+  /** Sent only when the adder WAS the organiser (matched by phone or by the
+   *  connect DM's WhatsApp id). `group` is the group's subject, when read. */
+  sj_dm_in_group: (p: { group: string | null }): string =>
+    `Thanks, I'm in ${p.group ? `"${p.group}"` : "your group"}. I'll stay quiet there until we switch you on, and I'll message you here when it's done.`,
 };

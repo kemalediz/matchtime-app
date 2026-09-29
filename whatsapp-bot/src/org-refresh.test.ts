@@ -24,10 +24,11 @@ describe("parseOrgSnapshot", () => {
       onboardingGroups: ["b@g.us"],
       silentGroups: [],
       legacySetupTrigger: true,
+      selfJoinSweep: null,
     });
   });
   it("garbage in, empty out", () => {
-    const empty = { orgConfigs: [], onboardingGroups: [], silentGroups: [], legacySetupTrigger: true };
+    const empty = { orgConfigs: [], onboardingGroups: [], silentGroups: [], legacySetupTrigger: true, selfJoinSweep: null };
     expect(parseOrgSnapshot(null)).toEqual(empty);
     expect(parseOrgSnapshot({ orgs: "x", onboardingGroups: "y", silentGroups: "z" })).toEqual(empty);
   });
@@ -66,12 +67,33 @@ describe("parseOrgSnapshot: silence rails (self-join slice 1)", () => {
   });
 });
 
+describe("parseOrgSnapshot: the reconnect sweep (self-join slice 6)", () => {
+  it("an older server, or self-join off, sends none: no sweep", () => {
+    expect(parseOrgSnapshot({ orgs: [] }).selfJoinSweep).toBeNull();
+    expect(parseOrgSnapshot({ selfJoinSweep: null }).selfJoinSweep).toBeNull();
+    expect(parseOrgSnapshot({ selfJoinSweep: "yes" }).selfJoinSweep).toBeNull();
+  });
+
+  it("reads the known groups, and adds every live org's group to them", () => {
+    const s = parseOrgSnapshot({
+      orgs: [{ name: "Sutton FC", whatsappGroupId: "a@g.us" }],
+      selfJoinSweep: { knownGroups: ["p@g.us", 7, "", "p@g.us"] },
+    });
+    expect(s.selfJoinSweep?.knownGroups.sort()).toEqual(["a@g.us", "p@g.us"]);
+  });
+
+  it("a sweep with no list still sweeps, knowing only the live orgs", () => {
+    const s = parseOrgSnapshot({ orgs: [{ name: "Sutton FC", whatsappGroupId: "a@g.us" }], selfJoinSweep: {} });
+    expect(s.selfJoinSweep).toEqual({ knownGroups: ["a@g.us"] });
+  });
+});
+
 function snap(
   orgConfigs: Array<{ groupId: string; orgName: string }>,
   onboardingGroups: string[] = [],
   silentGroups: string[] = [],
 ) {
-  return { orgConfigs, onboardingGroups, silentGroups, legacySetupTrigger: true };
+  return { orgConfigs, onboardingGroups, silentGroups, legacySetupTrigger: true, selfJoinSweep: null };
 }
 
 describe("diffOrgSnapshot", () => {

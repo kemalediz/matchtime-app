@@ -1026,6 +1026,10 @@ function cases(lang: Lang): Case[] {
   add("R183 connect DM / code expired", sj.sj_dm_code_expired);
   add("R183 connect DM / new groups today (cap 6)", sj.sj_site_cap_groups);
 
+  // ── self-join slice 6: the organiser's ack after a matched add (2026-09-29) ──
+  add("R184 group add / organiser ack", sj.sj_dm_in_group({ group: "Riverside Tuesday 5s" }));
+  add("R184 group add / organiser ack, no group name", sj.sj_dm_in_group({ group: null }));
+
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
   add("R138 detailsFollowUpQuestion / time and venue", detailsFollowUpQuestion(["time", "venue"]));
