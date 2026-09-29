@@ -54,6 +54,7 @@ import { composeSquadStatusPost, formatTeamsPost } from "../group-copy";
 // header for what a Prisma import here does to the corpus spec.
 import { formatRatingProgressReply } from "../rating-progress-answer";
 import { resolvePerson } from "./identity";
+import { renderResults, resultsKey } from "./results-answer";
 import {
   renderAskPerson,
   genericPeriodNote,
@@ -356,6 +357,23 @@ export function compose(result: EngineResult): ComposedOutput {
               m.redScore === m.yellowScore ? null : m.redScore > m.yellowScore ? redLabel : yellowLabel,
           }),
         });
+        break;
+      }
+
+      case "answer_results": {
+        // SEVERAL RESULTS, or a period's (2026-09-29). Rendered by
+        // `results-answer.ts` from `state.results`, which `answer-batch.ts`
+        // loads only when such a question survived ownership. Every date
+        // and score is the database's; the count and period are the
+        // extractor's fields, capped by the engine.
+        const text = renderResults(sp, state.results?.[resultsKey(sp.period)], state.features.language);
+        if (text === null) {
+          // NOT LOADED: say nothing, and the batch disowns the message
+          // with a receipt, exactly like the payment answer above.
+          operatorNotes.push(`compose: answer_results for ${sp.messageId} with no results loaded; saying nothing`);
+          break;
+        }
+        utterances.push({ messageId: sp.messageId, text });
         break;
       }
 

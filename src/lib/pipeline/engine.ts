@@ -76,6 +76,7 @@ import { decideSlotInherits } from "../team-slot-inherit";
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { namesTheBench } from "./bench-words";
 import { resolvePerson } from "./identity";
+import { planResultsQuestion } from "./results-answer";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
 import type {
@@ -1690,6 +1691,23 @@ export function decide(input: EngineInput): EngineResult {
           // composer renders all three from the same field it is about
           // to read anyway. Splitting the decision across two modules
           // is how one of them ends up printing a `null` as a number.
+          //
+          // SEVERAL RESULTS, OR A PERIOD (2026-09-29). "the scores of the
+          // last 5 matches" was answered with the last match only. The
+          // count and the period are the extractor's fields, never read
+          // from the text here; with neither, the answer is unchanged.
+          {
+            const plan = planResultsQuestion(facts);
+            if (plan.kind === "list") {
+              speech.push({ kind: "answer_results", messageId: msg.id, limit: plan.limit, asked: plan.asked, period: plan.period });
+              out.reasons.push(
+                `results question: the last ${plan.limit} results` +
+                  (plan.period ? `, period ${periodKey(plan.period)}` : "") +
+                  (plan.asked !== null && plan.asked > plan.limit ? ` (asked for ${plan.asked})` : ""),
+              );
+              break;
+            }
+          }
           speech.push({ kind: "answer_score", messageId: msg.id });
           out.reasons.push("result question answered from the last match played");
           break;

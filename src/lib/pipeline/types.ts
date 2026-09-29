@@ -458,13 +458,15 @@ export interface QuestionFacts {
   table?: StatsTable | null;
   /** How many rows the question asked for ("top 10" is 10), or null.
    *  Verbatim from the message: the group cap is applied by the engine,
-   *  never asked of the model. */
+   *  never asked of the model. On a `score` question (2026-09-29) it is
+   *  how many RESULTS were asked for ("the last 5 matches" is 5). */
   listSize?: number | null;
   /** "bottom" when the question asks for the worst or the foot of a
    *  table. The group never names anybody for that (Kemal, 2026-09-23). */
   listEnd?: "top" | "bottom";
   /** The period the question asks about (see `StatsPeriod`), or null
-   *  when it names none. For `topic: "stats"` only. */
+   *  when it names none. For `topic: "stats"` and, since 2026-09-29,
+   *  `topic: "score"` ("results this season"). */
   period?: StatsPeriod | null;
 }
 
@@ -749,6 +751,39 @@ export interface SquadState {
    * fixture that predates it keeps its shape; absent means NOT LOADED.
    */
   stats?: StatsSnapshot | null;
+  /**
+   * RECENT RESULTS (2026-09-29), keyed by `resultsKey` (the period, or
+   * "all" for the whole record). Loaded by `answer-batch.ts` only when a
+   * `score` question asked for several results or a period, for the same
+   * reasons as `payments` above. Optional; absent means NOT LOADED.
+   */
+  results?: Record<string, RecentResults> | null;
+}
+
+/**
+ * THE CLUB'S RECENT RESULTS (2026-09-29): the scored, ended matches of
+ * ONE club, most recent first, at most `RESULTS_MAX` of them.
+ *
+ * The incident: "@Match Time give us the scores of the last 5 matches"
+ * was answered with the last match only. The question extractor now
+ * reads a count (`listSize`) and a period on a `score` question, and
+ * this is the data the answer is rendered from, by code.
+ */
+export interface ResultRow {
+  /** Pre-formatted match day: "Tue 22 Sep" / "22 Eylül Salı". */
+  dayLabel: string;
+  redLabel: string;
+  yellowLabel: string;
+  red: number;
+  yellow: number;
+}
+export interface RecentResults {
+  /** Where the period starts, or null for the whole record. */
+  since: Date | null;
+  /** Most recent first, at most `RESULTS_MAX`. */
+  rows: ResultRow[];
+  /** More scored matches exist in the span than `rows` holds. */
+  more: boolean;
 }
 
 /** One ranked row of the club RATINGS table (`loadRatingLeaderboard`). */
@@ -1133,6 +1168,13 @@ export type SpeechIntent =
    * engine's `case "score"`.
    */
   | { kind: "answer_score"; messageId: string }
+  /**
+   * SEVERAL RESULTS, or the results of a period (2026-09-29). The
+   * composer reads `state.results[resultsKey(period)]`; `limit` is
+   * already capped at `RESULTS_MAX`, `asked` is the number the question
+   * named (or null), so the answer can say when it posted fewer.
+   */
+  | { kind: "answer_results"; messageId: string; limit: number; asked: number | null; period: StatsPeriod | null }
   /**
    * How many have not paid for the last settled match. Carries no count
    * and no name: the composer reads `state.payments`, which is a

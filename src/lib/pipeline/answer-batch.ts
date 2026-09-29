@@ -184,6 +184,7 @@ import {
   isFromAsker,
   type StatsClarification,
 } from "./awaiting-answer";
+import { planResultsQuestion, resultsKey } from "./results-answer";
 import { TABLES_CUT_BY_PERIOD, planStatsQuestion, type StatsPlan } from "./stats-answer";
 import { cutsTheRecord, periodKey, periodSince } from "./stats-period";
 import { answerGenericStats } from "./stats-generic";
@@ -202,6 +203,7 @@ import type {
   ProposedWrite,
   QuestionTopic,
   RatingProgress,
+  RecentResults,
   Route,
   SquadState,
   StatsChemistry,
@@ -665,6 +667,10 @@ export interface AnswerBatchDeps {
    *  Match), cut to the matches since `since` (2026-09-23). Once per
    *  distinct period a question in the batch asked about. */
   loadStatsPeriod?: (orgId: string, since: Date) => Promise<Omit<StatsPeriodTables, "since">>;
+  /** The FOURTH targeted read (2026-09-29): the club's recent scored
+   *  results, only when a `score` question asked for several results or
+   *  a period. Once per distinct span (`since` null is the whole record). */
+  loadResults?: (orgId: string, since: Date | null, now: Date, lang: string) => Promise<RecentResults>;
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated engine rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
@@ -1358,6 +1364,45 @@ export async function runAnswerBatch(args: {
         if (f?.kind !== "question" || statsPlans.has(id)) continue;
         statsPlans.set(id, planStatsQuestion(f, state.roster, [], byId.get(id)?.senderUserId ?? null));
       }
+    }
+  }
+
+  // ── Stage 2e: RECENT RESULTS, and only when asked (2026-09-29) ────
+  //
+  // "@Match Time give us the scores of the last 5 matches" was answered
+  // with the last match only. A `score` question whose extractor fields
+  // name a count or a period plans a LIST (`planResultsQuestion`, pure,
+  // the same call the engine makes), and its results are read here, once
+  // per distinct span, from this club's matches. The period's start is
+  // computed from this batch's clock, never by the model. Fails open like
+  // the reads above: a throw leaves the span unloaded, the composer says
+  // nothing, and the silent-id check disowns the message with a receipt.
+  const resultSpans = new Map<string, Date | null>();
+  for (const id of ownedIds) {
+    const f = factsById.get(id);
+    if (f?.kind !== "question" || f.topic !== "score") continue;
+    const plan = planResultsQuestion(f);
+    if (plan.kind !== "list") continue;
+    resultSpans.set(resultsKey(plan.period), cutsTheRecord(plan.period) ? periodSince(plan.period, now) : null);
+  }
+  if (resultSpans.size > 0) {
+    try {
+      const load =
+        deps.loadResults ??
+        (async (o: string, since: Date | null, n: Date, lang: string) => {
+          const mod = await import("./load-results");
+          return mod.loadRecentResults(o, since, n, lang);
+        });
+      const results: Record<string, RecentResults> = {};
+      for (const [key, since] of resultSpans) results[key] = await load(orgId, since, now, state.features.language);
+      state = { ...state, results };
+    } catch (err) {
+      const detail =
+        `${ANSWER_DEGRADED_PREFIX} the results read failed (${
+          err instanceof Error ? err.message : String(err)
+        }); the results question in this batch goes unanswered and onto this note`;
+      console.error("[answer-engine] results load failed:", err);
+      degradations.push(detail);
     }
   }
 
