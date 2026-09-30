@@ -20,7 +20,9 @@
  *   Man of the Match `loadRecentHistory().momLeaderboard`
  *   Elo              `loadRecentHistory().eloTop` (three matches, since
  *                    2026-09-23, applied at the source)
- *   Team of Season   `loadTeamOfSeason` with the page's own `minGames: 2`
+ *   Team of Season   `loadTeamOfSeason`: the ratings list's minimum of
+ *                    three rated matches and the three-month inactivity
+ *                    rule, the same as the page
  *   Mr Reliable      `loadMrReliableHolders`, the page badge's own rule
  *   chemistry        `loadPlayerSeasonStats`, the page's two cards and
  *                    the nemesis card, for one named player
@@ -45,7 +47,7 @@ import {
   loadRatingLeaderboard,
   loadTeamOfSeason,
 } from "../player-stats";
-import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-answer";
+import { GROUP_RATINGS_MIN_GAMES } from "./stats-answer";
 import type { StatsChemistry, StatsPeriodTables, StatsRatingRow, StatsSnapshot } from "./types";
 
 /** Everything but the per-question parts, which `answer-batch.ts` adds. */
@@ -73,7 +75,7 @@ export async function loadStatsTables(orgId: string): Promise<StatsTables> {
   const [ratings, history, tots, reliable, aliases, record] = await Promise.all([
     loadRatingLeaderboard(orgId, { minGames: GROUP_RATINGS_MIN_GAMES, limit: WHOLE_TABLE }),
     loadRecentHistory(orgId),
-    loadTeamOfSeason(orgId, { minGames: TEAM_OF_SEASON_MIN_GAMES }),
+    loadTeamOfSeason(orgId),
     loadMrReliableHolders(orgId),
     db.userAlias.findMany({ where: { orgId }, select: { alias: true, userId: true } }),
     loadClubRecordTables(orgId),

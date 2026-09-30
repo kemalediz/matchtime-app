@@ -9,9 +9,9 @@
  * ranked table is filtered, and the viewer gets his own row underneath
  * it: unranked, with the date he last played.
  *
- * Team of the Season deliberately does NOT follow the rule — it is an
- * award over a closed season, not a statement about who is here now.
- * See TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE.
+ * Team of the Season follows the same rule, and the same minimum of
+ * rated matches as the squad leaderboard (Kemal, 2026-09-30). See
+ * TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -35,6 +35,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { loadRatingLeaderboard, loadTeamOfSeason } from "@/lib/player-stats";
+import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "@/lib/pipeline/stats-answer";
 
 const ORG = "org-1";
 const NOW = new Date("2026-09-15T12:00:00.000Z");
@@ -225,15 +226,45 @@ describe("the viewer argument is purely additive", () => {
   });
 });
 
-describe("Team of the Season is an award, not a table, and is NOT filtered", () => {
-  it("still picks a player who has stopped turning up", async () => {
+describe("Team of the Season follows the squad leaderboard's rules (Kemal, 2026-09-30)", () => {
+  it("leaves out a player who has not played in three months, however well rated", async () => {
     const tots = await loadTeamOfSeason(ORG, { minGames: 1 });
-    expect(tots!.formation.map((s) => s.name)).toContain("Ehtisham");
+    expect(tots!.formation.map((s) => s.name)).not.toContain("Ehtisham");
   });
 
-  it("picks him on merit — he is the highest-rated, so he leads the XI", async () => {
+  it("keeps a player whose last match is inside the window", async () => {
+    const tots = await loadTeamOfSeason(ORG, { minGames: 1 });
+    expect(tots!.formation.map((s) => s.name)).toEqual(expect.arrayContaining(["Kemal", "Najib"]));
+  });
+
+  it("gives the vacated slot to the best active player, not to nobody", async () => {
+    // Ehtisham was the only GK. With him out, the GK slot falls back to
+    // the best remaining player rather than coming back empty.
+    const tots = await loadTeamOfSeason(ORG, { minGames: 1 });
+    expect(tots!.formation.find((s) => s.position === "GK")).toBeDefined();
+    expect(tots!.formation.every((s) => s.userId !== "leaver")).toBe(true);
+  });
+
+  it("brings him back the moment he plays again", async () => {
+    attendanceFindMany.mockResolvedValue([
+      { userId: "regular", match: { date: ago(5) } },
+      { userId: "leaver", match: { date: ago(2) } },
+      { userId: "stayer", match: { date: ago(80) } },
+    ]);
     const tots = await loadTeamOfSeason(ORG, { minGames: 1 });
     expect(tots!.formation[0]!.name).toBe("Ehtisham");
+  });
+
+  it("by default needs the squad leaderboard's minimum of rated matches", async () => {
+    // Kemal has 4 rated matches, Najib 2. With the leaderboard's minimum
+    // of three, only Kemal qualifies.
+    const tots = await loadTeamOfSeason(ORG);
+    expect(tots!.formation.map((s) => s.name)).toEqual(["Kemal"]);
+  });
+
+  it("uses exactly the group ratings list's minimum, not a second copy of it", () => {
+    expect(TEAM_OF_SEASON_MIN_GAMES).toBe(GROUP_RATINGS_MIN_GAMES);
+    expect(TEAM_OF_SEASON_MIN_GAMES).toBe(3);
   });
 });
 

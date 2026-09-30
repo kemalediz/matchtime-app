@@ -14,6 +14,7 @@ import { RatingTimeline } from "@/components/stats/rating-timeline";
 import { InfoButton } from "@/components/stats/info-button";
 import { t } from "@/lib/i18n/t";
 import { formatLastPlayed } from "@/lib/ranked-table-activity";
+import { TEAM_OF_SEASON_MIN_GAMES } from "@/lib/pipeline/stats-answer";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function MyStatsPage() {
     // sees his own row on his own page — see
     // VIEWER_IS_EXEMPT_ON_OWN_STATS_PAGE in `ranked-table-activity.ts`.
     loadRatingLeaderboard(membership.orgId, { minGames: 1, limit: 20, viewerId: meId }),
-    loadTeamOfSeason(membership.orgId, { minGames: 2 }),
+    loadTeamOfSeason(membership.orgId),
     // The overall rating is the ONE number in this product with an
     // access rule: it is built from every club this player has ever
     // played for, so only they may see it. The loader throws if the two
@@ -353,9 +354,7 @@ export default async function MyStatsPage() {
                 </p>
                 <p className="text-slate-400">
                   A <span className="font-semibold">1 game</span> tag means it&apos;s
-                  early days for them — their position will settle as they play more.
-                  Team of the Season below is an award for the whole season, so it can
-                  still name someone who isn&apos;t in this table.
+                  early days for them. Their position will settle as they play more.
                 </p>
               </InfoButton>
             </div>
@@ -438,10 +437,15 @@ export default async function MyStatsPage() {
               <span className="[&_svg]:text-emerald-200">
                 <InfoButton title="Team of the Season">
                   <p>
-                    The best line-up of the season so far — the highest season-average-rated player
+                    The best line-up of the season so far: the highest season-average-rated player
                     in each position ({tots.sportName}).
                   </p>
-                  <p className="text-slate-400">Players need at least 2 games to be eligible.</p>
+                  <p className="text-slate-400">
+                    Players need at least {TEAM_OF_SEASON_MIN_GAMES} rated games and a game in the
+                    last three months to be picked. The three-month rule is the same one the squad
+                    leaderboard uses: anyone away longer is back in contention the moment they play
+                    again.
+                  </p>
                 </InfoButton>
               </span>
             </div>

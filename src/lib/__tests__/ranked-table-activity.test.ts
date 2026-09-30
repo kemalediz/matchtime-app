@@ -127,8 +127,8 @@ describe("the documented decisions are pinned, so a silent flip fails a test", (
     expect(ATTENDANCE_TABLE_FOLLOWS_ACTIVITY_RULE).toBe(true);
   });
 
-  it("does NOT apply the rule to Team of the Season", () => {
-    expect(TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE).toBe(false);
+  it("applies the rule to Team of the Season (Kemal, 2026-09-30)", () => {
+    expect(TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE).toBe(true);
   });
 
   it("shows a player their own row on their own stats page", () => {
