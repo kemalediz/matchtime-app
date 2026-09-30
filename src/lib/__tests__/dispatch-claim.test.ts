@@ -106,9 +106,11 @@ describe("volume ceiling (last-resort sanity bound)", () => {
     expect(isGroupDirected("group-message")).toBe(true);
     expect(isGroupDirected("group-poll")).toBe(true);
     expect(isGroupDirected("bench-prompt")).toBe(true);
+    // Slice 2a: a post in the admin group is a group post too.
+    expect(isGroupDirected("admin-group-message")).toBe(true);
     expect(isGroupDirected("dm")).toBe(false);
     expect(isGroupDirected("update-reaction")).toBe(false);
-    expect(GROUP_DIRECTED_KINDS.size).toBe(3);
+    expect(GROUP_DIRECTED_KINDS.size).toBe(4);
   });
 });
 

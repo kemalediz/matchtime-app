@@ -21,10 +21,9 @@
  *   group again they need a fresh auto-onboard (or a group_join event,
  *   which does the same thing).
  */
-import { buildAdminLink } from "@/lib/admin-link";
 import { db } from "@/lib/db";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
-import { findOrgAdminsWithPhone } from "@/lib/org";
+import { sendAdminNotice } from "@/lib/admin-channel";
 import { NextResponse } from "next/server";
 
 function verifyApiKey(request: Request) {
@@ -195,41 +194,35 @@ export async function POST(request: Request) {
   // Fire admin DMs on state change — after we know the match exists so
   // we don't DM admins for someone typing "IN" with no match to join.
   if (autoEnrolled || autoReactivated) {
-    const admins = await findOrgAdminsWithPhone(orgId);
     const displayFor = user.name?.trim() || normalized;
-    const textFor = (url: string) =>
-      autoReactivated
-        ? [
-            `🔁 *${displayFor}* rejoined *${orgName}*'s WhatsApp group (said IN).`,
-            ``,
-            `Their membership has been re-activated automatically.`,
-          ].join("\n")
-        : [
-            `🆕 New player on *${orgName}*, just said IN on WhatsApp.`,
-            ``,
-            `Name:  ${user.name ?? "(none yet, please set it)"}`,
-            `Phone: ${normalized}`,
-            ``,
-            `I've enrolled them as a placeholder player. Set or update their name here:`,
-            // A signed-in link for this admin, in this club (2026-09-30):
-            // this used to be a bare "/admin/players/phones", not tappable.
-            url,
-          ].join("\n");
-
-    for (const admin of admins) {
-      if (admin.id === user.id) continue;
-      const url = autoReactivated
-        ? ""
-        : await buildAdminLink({ userId: admin.id, orgId, nextPath: "/admin/players/phones" });
-      await db.botJob.create({
-        data: {
-          orgId,
-          kind: "dm",
-          phone: admin.phoneNumber.replace(/^\+/, ""),
-          text: textFor(url),
-        },
-      });
-    }
+    // Through the club's admin channel (slice 2a, 2026-09-30). A club on
+    // "each-admin" (Sutton FC) gets exactly the DMs it got before.
+    await sendAdminNotice({
+      orgId,
+      // Always sent at once, as before the admin channel.
+      holdOvernight: false,
+      excludeUserId: user.id,
+      nextPath: autoReactivated ? null : "/admin/players/phones",
+      text: (url) =>
+        autoReactivated
+          ? [
+              `🔁 *${displayFor}* rejoined *${orgName}*'s WhatsApp group (said IN).`,
+              ``,
+              `Their membership has been re-activated automatically.`,
+            ].join("\n")
+          : [
+              `🆕 New player on *${orgName}*, just said IN on WhatsApp.`,
+              ``,
+              `Name:  ${user.name ?? "(none yet, please set it)"}`,
+              `Phone: ${normalized}`,
+              ``,
+              `I've enrolled them as a placeholder player. Set or update their name here:`,
+              // A signed-in link for this admin, in this club (2026-09-30):
+              // this used to be a bare "/admin/players/phones", not tappable.
+              // In an admin group it is the plain URL.
+              url,
+            ].join("\n"),
+    });
   }
 
   try {

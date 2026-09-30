@@ -195,7 +195,7 @@ export async function queuePlatformDm(args: {
 export async function queuePlatformLeaveGroup(args: {
   groupId: string;
   refId?: string | null;
-}): Promise<{ id: string } | { refused: "approved-club-group" | "not-a-group" }> {
+}): Promise<{ id: string } | { refused: "approved-club-group" | "admin-group" | "not-a-group" }> {
   const groupId = typeof args.groupId === "string" ? args.groupId.trim() : "";
   if (!/@g\.us$/.test(groupId)) return { refused: "not-a-group" };
 
@@ -204,6 +204,10 @@ export async function queuePlatformLeaveGroup(args: {
     select: { id: true },
   });
   if (owner) return { refused: "approved-club-group" };
+  // Slice 2a: a club's linked admin group is never left from here (the
+  // 48-hour auto-leave, the owner page). Unlinking clears the link first.
+  const adminOwner = await db.organisation.findFirst({ where: { adminGroupId: groupId }, select: { id: true } });
+  if (adminOwner) return { refused: "admin-group" };
 
   const outstanding = await db.platformJob.findFirst({
     where: { kind: "leave-group", groupId, status: { in: ["queued", "claimed"] } },
@@ -255,7 +259,7 @@ export interface PlatformDispatchPlan {
  */
 export function planPlatformDispatch(
   rows: PlatformJobRow[],
-  opts: { now: Date; approvedGroupIds: ReadonlySet<string>; limit: number },
+  opts: { now: Date; approvedGroupIds: ReadonlySet<string>; limit: number; adminGroupIds?: ReadonlySet<string> },
 ): PlatformDispatchPlan {
   const refuse: PlatformDispatchPlan["refuse"] = [];
   const ok: PlatformDispatchPlan["dispatch"] = [];
@@ -282,6 +286,10 @@ export function planPlatformDispatch(
       }
       if (opts.approvedGroupIds.has(row.groupId)) {
         refuse.push({ id: row.id, reason: "refused: an approved club owns this group now" });
+        continue;
+      }
+      if (opts.adminGroupIds?.has(row.groupId)) {
+        refuse.push({ id: row.id, reason: "refused: this group is a club's linked admin group now" });
         continue;
       }
       ok.push({ ...row, instruction: { id: row.id, kind: "leave-group", groupId: row.groupId } });
@@ -327,7 +335,22 @@ export async function claimDuePlatformJobs(
     approved.map((o) => o.whatsappGroupId).filter((g): g is string => typeof g === "string"),
   );
 
-  const plan = planPlatformDispatch(rows, { now, approvedGroupIds, limit: opts.limit ?? MAX_JOBS_PER_POLL });
+  const adminLinked = leaveGroups.length
+    ? ((await db.organisation.findMany({
+        where: { adminGroupId: { in: leaveGroups } },
+        select: { adminGroupId: true },
+      })) ?? [])
+    : [];
+  const adminGroupIds = new Set(
+    adminLinked.map((o) => o.adminGroupId).filter((g): g is string => typeof g === "string"),
+  );
+
+  const plan = planPlatformDispatch(rows, {
+    now,
+    approvedGroupIds,
+    adminGroupIds,
+    limit: opts.limit ?? MAX_JOBS_PER_POLL,
+  });
 
   for (const r of plan.refuse) {
     console.warn(`[platform-jobs] job ${r.id} not dispatched: ${r.reason}`);

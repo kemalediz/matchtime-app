@@ -208,3 +208,34 @@ describe("the ack contract survives the seam", () => {
     expect(releaseInstruction).toHaveBeenCalledWith("k10");
   });
 });
+
+describe("slice 2a: admin-group-message", () => {
+  const HQ = "120363900000000001@g.us";
+
+  it("is sent to its OWN group id (not the polled group) when that is a known admin group, and acked", async () => {
+    const { setAdminGroups } = await import("./handlers.js");
+    setAdminGroups([{ groupId: HQ, orgId: "org-fnf" }]);
+    try {
+      const calls = await dispatch({ kind: "admin-group-message", key: "pick-1:admin-group", groupId: HQ, text: "Waiting list: 1. Wasim" });
+      expect(calls).toEqual([["sendText", HQ, "Waiting list: 1. Wasim"]]);
+      expect(ackInstruction).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "pick-1:admin-group", kind: "admin-group-message", waMessageId: "sent-1" }),
+      );
+      expect(releaseInstruction).not.toHaveBeenCalled();
+    } finally {
+      setAdminGroups([]);
+    }
+  });
+
+  it("a group this Pi does not know as an admin group is never sent to: the claim is released", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const calls = await dispatch({ kind: "admin-group-message", key: "k-ag", groupId: GID, text: "hi" });
+      expect(calls).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+    expect(releaseInstruction).toHaveBeenCalledWith("k-ag");
+    expect(ackInstruction).not.toHaveBeenCalled();
+  });
+});

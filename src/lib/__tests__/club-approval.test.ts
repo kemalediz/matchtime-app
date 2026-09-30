@@ -98,6 +98,19 @@ describe("computeSilentGroups", () => {
     expect(out).toEqual([]);
   });
 
+  it("slice 2a: a linked admin group is never silent, and a candidate still waiting for its code is", () => {
+    const out = computeSilentGroups({
+      unapprovedOrgGroups: [],
+      unapprovedConnectGroups: [],
+      // The candidate row of a linked group was closed at link time; a
+      // stale open one must still not silence it.
+      unsolicitedGroups: ["g-hq-linked", "g-hq-candidate"],
+      approvedOrgGroups: [SUTTON_GROUP],
+      adminGroups: ["g-hq-linked"],
+    });
+    expect(out).toEqual(["g-hq-candidate"]);
+  });
+
   it("blank ids are dropped", () => {
     expect(
       computeSilentGroups({

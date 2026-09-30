@@ -162,6 +162,15 @@ describe("queuePlatformLeaveGroup", () => {
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
   });
 
+  it("slice 2a: refuses to queue leaving a club's linked admin group", async () => {
+    dbMock.organisation.findFirst.mockImplementation(async (a: { where: Record<string, unknown> }) =>
+      a.where.adminGroupId ? { id: "org-fnf" } : null,
+    );
+    const out = await queuePlatformLeaveGroup({ groupId: "120363900000000001@g.us" });
+    expect(out).toEqual({ refused: "admin-group" });
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
   it("does not queue a second leave for the same group while one is outstanding", async () => {
     dbMock.platformJob.findFirst.mockResolvedValue({ id: "existing" });
     const out = await queuePlatformLeaveGroup({ groupId: "120363900000000001@g.us" });
@@ -194,6 +203,18 @@ describe("planPlatformDispatch (pure)", () => {
     const plan = planPlatformDispatch([leave], { now: NOW, approvedGroupIds: new Set(["g-live"]), limit: 5 });
     expect(plan.dispatch).toEqual([]);
     expect(plan.refuse).toEqual([{ id: "leave", reason: expect.stringMatching(/approved club/i) }]);
+  });
+
+  it("slice 2a: refuses at dispatch a leave for a group that is now a club's admin group", () => {
+    const leave = job({ id: "leave", kind: "leave-group", phone: null, text: null, groupId: "g-hq", purpose: "leave-group" });
+    const plan = planPlatformDispatch([leave], {
+      now: NOW,
+      approvedGroupIds: new Set(),
+      adminGroupIds: new Set(["g-hq"]),
+      limit: 5,
+    });
+    expect(plan.dispatch).toEqual([]);
+    expect(plan.refuse).toEqual([{ id: "leave", reason: expect.stringMatching(/admin group/i) }]);
   });
 
   it("refuses a malformed row rather than handing the Pi nothing to send", () => {

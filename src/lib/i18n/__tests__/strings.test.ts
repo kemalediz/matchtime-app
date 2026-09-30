@@ -499,6 +499,32 @@ const SAMPLES: SampleArgs = {
   wd_err_outside_hours: null,
   wd_err_order: null,
   wd_err_after_kickoff: null,
+  // ── slice 2a: the admin channel (2026-09-30) ──
+  admin_group_linked: { club: "Friday FNF" },
+  admin_group_bad_code: null,
+  admin_group_main_group: { club: "Friday FNF" },
+  admin_group_removed_dm: { club: "Friday FNF" },
+  settings_admin_channel_heading: null,
+  settings_admin_channel_info: null,
+  settings_admin_channel_mode_one_person: null,
+  settings_admin_channel_mode_admin_group: null,
+  settings_admin_channel_mode_each_admin: null,
+  settings_admin_channel_person_label: null,
+  settings_admin_channel_person_owner: { name: "Hamzah" },
+  settings_admin_channel_link_button: null,
+  settings_admin_channel_link_again: null,
+  settings_admin_channel_link_info_title: null,
+  settings_admin_channel_link_info: null,
+  settings_admin_channel_step_code: { code: "K7P3QX" },
+  settings_admin_channel_step_add: null,
+  settings_admin_channel_step_send: null,
+  settings_admin_channel_command: { code: "K7P3QX" },
+  settings_admin_channel_validity: null,
+  settings_admin_channel_linked: { group: "FNF HQ" },
+  settings_admin_channel_unlink: null,
+  settings_admin_channel_pending_note: null,
+  settings_admin_channel_saved: null,
+  settings_admin_channel_unlinked: null,
 };
 
 /** Render an entry with its sample arguments. */
@@ -628,7 +654,7 @@ describe("string tables: hygiene", () => {
   // help, the setup DMs and the join DM.
   it("no onboarding, help or organiser-setup entry carries an em or en dash, in any language", () => {
     const onboarding = KEYS.filter((k) =>
-      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled)/.test(String(k)),
+      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled|admin_group_|settings_admin_channel_)/.test(String(k)),
     );
     expect(onboarding.length).toBeGreaterThan(40);
     for (const lang of LANGS) {

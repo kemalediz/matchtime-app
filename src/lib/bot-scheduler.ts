@@ -16,10 +16,15 @@
  */
 import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
-import { buildAdminLink } from "./admin-link";
 import { appUrl } from "./app-url";
 import { buildShortMagicLinkUrl } from "./short-link";
-import { findOrgAdminsWithPhone } from "./org";
+import {
+  adminGroupJobInstruction,
+  adminNoticeInstructions,
+  loadAdminChannel,
+  type LoadedAdminChannel,
+} from "./admin-channel";
+import type { PiCaps } from "./admin-channel-rules";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
 import { evaluateFollowupGuard } from "./tentative-followup";
@@ -197,6 +202,18 @@ export type DueInstruction =
       key: string;            // `retro-react-<id>`
       waMessageId: string;
       emoji: string;
+    }
+  | {
+      // Slice 2a (2026-09-30): a post in the club's linked ADMIN group,
+      // not its community group, so it carries its own group id. Emitted
+      // only when the polling Pi sent `x-mt-pi-caps: admin-group`; the Pi
+      // sends it only to a group in its admin-group set. Built by
+      // src/lib/admin-channel.ts, never here.
+      kind: "admin-group-message";
+      key: string;
+      groupId: string;
+      text: string;
+      matchId?: string;
     };
 
 export interface DuePostsResult {
@@ -402,6 +419,10 @@ export async function computeDuePosts(
    *  MT_TEST_MODE) so time-of-day windows (rate-dm from 08:00 onward,
    *  reminder 18-19) are deterministic. Never set in prod. */
   nowOverride?: Date,
+  /** What the polling Pi said it can do (`x-mt-pi-caps`, slice 2a). An
+   *  older Pi sends nothing: no admin-group posts are emitted for it, and
+   *  admin notices fall back to the owner by DM. */
+  piCaps: PiCaps = { adminGroup: false },
 ): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
@@ -410,6 +431,16 @@ export async function computeDuePosts(
 
   const now = nowOverride ?? new Date();
   const out: DueInstruction[] = [];
+
+  // The club's admin channel (slice 2a), read at most once per poll and
+  // only when an admin notice is actually due, exactly as the admin list
+  // used to be.
+  let adminChannel: LoadedAdminChannel | null | undefined;
+  const getAdminChannel = async (): Promise<LoadedAdminChannel | null> => {
+    if (adminChannel === undefined) adminChannel = await loadAdminChannel(org.id);
+    return adminChannel;
+  };
+  const admin: AdminNoticeContext = { piCaps, getChannel: getAdminChannel };
 
   // Pull every already-sent notification we might care about: those linked
   // to this org's matches, plus any org-wide notifications (matchId=null)
@@ -459,36 +490,40 @@ export async function computeDuePosts(
       orderBy: { provisionallyAddedAt: "desc" },
       take: 10,
     });
-    if (provisional.length > 0) {
-      const admins = await findOrgAdminsWithPhone(org.id);
+    const channel = provisional.length > 0 ? await getAdminChannel() : null;
+    if (channel) {
       const todayKey = formatLondon(now, "yyyy-MM-dd");
-      for (const admin of admins) {
-        const key = `org-${org.id}:provisional-review:${admin.id}:${todayKey}`;
-        if (sentKeys.has(key)) continue;
-        // Names the club so a multi-club admin lands in this one (2026-09-30).
-        const signInUrl = await buildAdminLink({
-          userId: admin.id,
-          orgId: org.id,
-          nextPath: "/admin/players",
-        });
-        const names = provisional
-          .map((p) => p.user.name)
-          .filter(Boolean)
-          .slice(0, 5)
-          .join(", ");
-        const more = provisional.length > 5 ? ` (+${provisional.length - 5} more)` : "";
-        out.push({
-          kind: "dm",
-          key,
-          targetUser: admin.id,
-          phone: admin.phoneNumber.replace(/^\+/, ""),
-          text:
-            `✨ *New players to review* — ${provisional.length} ${provisional.length === 1 ? "person was" : "people were"} auto-added after posting in the group:\n\n` +
-            `${names}${more}\n\n` +
-            `Tap to review and set phone/position/rating, or remove:\n${signInUrl}\n\n` +
-            `Or open: ${appUrl("/admin/players")}`,
-        });
-      }
+      const names = provisional
+        .map((p) => p.user.name)
+        .filter(Boolean)
+        .slice(0, 5)
+        .join(", ");
+      const more = provisional.length > 5 ? ` (+${provisional.length - 5} more)` : "";
+      const count = `${provisional.length} ${provisional.length === 1 ? "person was" : "people were"}`;
+      // Through the admin channel (slice 2a). The DM is today's text, byte
+      // for byte, with each admin's own signed-in link that names the club
+      // (2026-09-30). In an admin group: the plain URL, once.
+      out.push(
+        ...(await adminNoticeInstructions({
+          channel,
+          piCaps,
+          sentKeys,
+          now,
+          key: (who) => `org-${org.id}:provisional-review:${who}:${todayKey}`,
+          notice: {
+            nextPath: "/admin/players",
+            text: (link, audience) =>
+              audience === "dm"
+                ? `✨ *New players to review* — ${count} auto-added after posting in the group:\n\n` +
+                  `${names}${more}\n\n` +
+                  `Tap to review and set phone/position/rating, or remove:\n${link}\n\n` +
+                  `Or open: ${appUrl("/admin/players")}`
+                : `✨ *New players to review*: ${count} auto-added after posting in the group:\n\n` +
+                  `${names}${more}\n\n` +
+                  `Review them and set phone, position and rating, or remove them:\n${link}`,
+          },
+        })),
+      );
     }
   }
 
@@ -525,6 +560,14 @@ export async function computeDuePosts(
           key,
           text: job.text,
         });
+      } else if (job.kind === "admin-group") {
+        // An admin notice queued for the admin group (slice 2a,
+        // `sendAdminNotice`). Where it goes is decided now, when we know
+        // whether this Pi can post there; held overnight; otherwise the
+        // owner by DM, so it is never swallowed.
+        const channel = await getAdminChannel();
+        const instr = channel ? adminGroupJobInstruction(job, channel, piCaps, now) : null;
+        if (instr) out.push(instr);
       } else if (job.kind === "group-poll" && job.pollQuestion && job.pollOptions.length >= 2) {
         // Ad-hoc admin-queued poll (e.g. feedback polls). Reuses the
         // same `botjob-<id>` ack key so sentAt clears on delivery.
@@ -674,7 +717,7 @@ export async function computeDuePosts(
   const features = await getOrgFeatures(org.id);
 
   for (const m of matches) {
-    await computeForMatch(m, now, sentKeys, out, groupId, matches, features);
+    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin);
   }
 
   // ── Per-org feature gate (post-compute filter) ───────────────────
@@ -736,6 +779,13 @@ export async function computeDuePosts(
 
 type MatchWithIncludes = Awaited<ReturnType<typeof getMatchesForScheduler>>[number];
 
+/** What a scheduled admin notice needs: the Pi's capabilities and the
+ *  club's admin channel, loaded lazily once per poll (slice 2a). */
+interface AdminNoticeContext {
+  piCaps: PiCaps;
+  getChannel: () => Promise<LoadedAdminChannel | null>;
+}
+
 async function getMatchesForScheduler(orgId: string, windowStart: Date) {
   return db.match.findMany({
     where: {
@@ -788,6 +838,7 @@ async function computeForMatch(
   groupId: string,
   siblingMatches: MatchWithIncludes[],
   features: OrgFeatures,
+  admin: AdminNoticeContext,
 ) {
   /**
    * LLM compose with a static fallback. If Claude is unavailable
@@ -1620,31 +1671,33 @@ async function computeForMatch(
         activity.sportId,
         sport.playersPerTeam,
       );
-      if (candidate) {
-        const admins = await findOrgAdminsWithPhone(activity.orgId);
-        for (const admin of admins) {
-          const key = `${matchId}:switch-nudge:${admin.id}`;
-          if (sentKeys.has(key)) continue;
-          // It had no destination (2026-09-30): "Tap to open the admin
-          // panel" landed on the dashboard. Now the page, in the club.
-          const signInUrl = await buildAdminLink({
-            userId: admin.id,
-            orgId: activity.orgId,
-            nextPath: `/admin/matches/${matchId}/switch-format`,
-          });
-          out.push({
-            kind: "dm",
-            key,
+      const channel = candidate ? await admin.getChannel() : null;
+      if (candidate && channel) {
+        // Through the admin channel (slice 2a). Each admin's DM is today's,
+        // keyed `…:switch-nudge:<adminId>`, with their own signed-in link
+        // (2026-09-30: it had no destination and landed on the dashboard).
+        out.push(
+          ...(await adminNoticeInstructions({
+            channel,
+            piCaps: admin.piCaps,
+            sentKeys,
+            now,
             matchId,
-            targetUser: admin.id,
-            phone: admin.phoneNumber.replace(/^\+/, ""),
-            text:
-              `⚠️ *Low numbers* — ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
-              `Switch to *${candidate.sport.name}* (${candidate.sport.playersPerTeam * 2} players) before the deadline?\n\n` +
-              `Tap to open the admin panel (auto signs you in):\n${signInUrl}\n\n` +
-              `Or open: ${appUrl(`/admin/matches/${matchId}/switch-format`)}`,
-          });
-        }
+            key: (who) => `${matchId}:switch-nudge:${who}`,
+            notice: {
+              nextPath: `/admin/matches/${matchId}/switch-format`,
+              text: (signInUrl, audience) =>
+                audience === "dm"
+                  ? `⚠️ *Low numbers* — ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
+                    `Switch to *${candidate.sport.name}* (${candidate.sport.playersPerTeam * 2} players) before the deadline?\n\n` +
+                    `Tap to open the admin panel (auto signs you in):\n${signInUrl}\n\n` +
+                    `Or open: ${appUrl(`/admin/matches/${matchId}/switch-format`)}`
+                  : `⚠️ *Low numbers*: ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
+                    `Switch to *${candidate.sport.name}* (${candidate.sport.playersPerTeam * 2} players) before the deadline?\n\n` +
+                    `Open the switch page:\n${signInUrl}`,
+            },
+          })),
+        );
       }
     }
 
@@ -1662,30 +1715,32 @@ async function computeForMatch(
         sport.playersPerTeam,
       );
       const minViable = smallestPpt * 2;
-      if (confirmed.length < minViable) {
-        const admins = await findOrgAdminsWithPhone(activity.orgId);
-        for (const admin of admins) {
-          const key = `${matchId}:cancel-nudge:${admin.id}`;
-          if (sentKeys.has(key)) continue;
-          // Same fix: "Tap to open the cancel page" now opens it.
-          const signInUrl = await buildAdminLink({
-            userId: admin.id,
-            orgId: activity.orgId,
-            nextPath: `/admin/matches/${matchId}/cancel`,
-          });
-          out.push({
-            kind: "dm",
-            key,
+      const channel = confirmed.length < minViable ? await admin.getChannel() : null;
+      if (channel) {
+        // Same door, same keys (`…:cancel-nudge:<adminId>`), and "Tap to
+        // open the cancel page" opens it.
+        out.push(
+          ...(await adminNoticeInstructions({
+            channel,
+            piCaps: admin.piCaps,
+            sentKeys,
+            now,
             matchId,
-            targetUser: admin.id,
-            phone: admin.phoneNumber.replace(/^\+/, ""),
-            text:
-              `🚨 *Match in trouble* — only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
-              `Cancel and refund the booking?\n\n` +
-              `Tap to open the cancel page:\n${signInUrl}\n\n` +
-              `Or open: ${appUrl(`/admin/matches/${matchId}/cancel`)}`,
-          });
-        }
+            key: (who) => `${matchId}:cancel-nudge:${who}`,
+            notice: {
+              nextPath: `/admin/matches/${matchId}/cancel`,
+              text: (signInUrl, audience) =>
+                audience === "dm"
+                  ? `🚨 *Match in trouble* — only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
+                    `Cancel and refund the booking?\n\n` +
+                    `Tap to open the cancel page:\n${signInUrl}\n\n` +
+                    `Or open: ${appUrl(`/admin/matches/${matchId}/cancel`)}`
+                  : `🚨 *Match in trouble*: only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
+                    `Cancel and refund the booking?\n\n` +
+                    `Open the cancel page:\n${signInUrl}`,
+            },
+          })),
+        );
       }
     }
   }

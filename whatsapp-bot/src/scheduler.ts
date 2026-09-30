@@ -26,6 +26,7 @@ import { runPlatformJobs } from "./platform-jobs.js";
 import { withTimeout } from "./with-timeout.js";
 import { config } from "./config.js";
 import { reactAndReport } from "./react-with-id.js";
+import { isAdminGroup } from "./handlers.js";
 import {
   waMessageIdFrom,
   isMissingSendResult,
@@ -330,6 +331,33 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
       await ackInstruction({
         key: instr.key,
         kind: instr.kind,
+      });
+      return;
+    }
+
+    if (instr.kind === "admin-group-message") {
+      // Slice 2a: a post in a club's linked ADMIN group. It names its own
+      // group, so the Pi only ever sends it to a group it knows as an
+      // admin group. Anything else is released (not sent, not lost): the
+      // server re-emits it after this Pi's next /orgs refresh has caught
+      // up with a link, or sends it elsewhere once the link is gone.
+      if (!isAdminGroup(instr.groupId)) {
+        console.warn(
+          `[admin-group] ${instr.key}: ${instr.groupId} is not a known admin group on this Pi; releasing the claim`,
+        );
+        await releaseInstruction(instr.key);
+        return;
+      }
+      const msg = await withTimeout(
+        driver.sendText(instr.groupId, instr.text),
+        SEND_TIMEOUT_MS,
+        `admin-group send to ${instr.groupId}`,
+      );
+      await ackInstruction({
+        key: instr.key,
+        kind: instr.kind,
+        matchId: instr.matchId,
+        waMessageId: ackMessageId(instr.kind, instr.key, msg),
       });
       return;
     }

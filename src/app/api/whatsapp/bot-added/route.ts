@@ -28,6 +28,9 @@
  *      until the flag is deliberately flipped.
  *   1. A bot-enabled org already exists for the group → ignore (re-add
  *      of the bot to a LIVE group must never restart onboarding).
+ *   1a. Slice 2a: the group is a club's linked admin group → ignore; an
+ *      add by an owner or admin of an approved club → an admin group
+ *      waiting for its code: silent, no session, no intro.
  *   1b. The group is SILENT (club not approved, or nobody asked for
  *      MatchTime there), or self-join is on → no intro, no session
  *      (self-join plan, section 4.3 layer 4).
@@ -69,6 +72,7 @@ import {
   type GroupAddOutcome,
 } from "@/lib/group-add";
 import { queueOwnerDm } from "@/lib/owner-dm";
+import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "@/lib/admin-group-link";
 
 /** The `ignored` word the Pi logs for each self-join outcome. */
 const SELF_JOIN_IGNORED: Record<GroupAddOutcome["kind"], string> = {
@@ -79,6 +83,8 @@ const SELF_JOIN_IGNORED: Record<GroupAddOutcome["kind"], string> = {
   unsolicited: "unsolicited",
   "discovered-no-match": "discovered-no-match",
   "race-lost": "self-join-race-lost",
+  "admin-group": "admin-group",
+  "admin-group-candidate": "admin-group-awaiting-code",
 };
 
 async function selfJoinAdd(request: Request): Promise<NextResponse> {
@@ -144,6 +150,8 @@ export async function POST(request: Request) {
     /** Self-join's reconnect sweep. Only a Pi told to sweep (by a server
      *  with self-join on) sends it; the in-group setup never starts from one. */
     discovered?: unknown;
+    /** The adder's LID, bare digits, when it was LID-addressed. */
+    addedByLid?: unknown;
   } | null;
   if (!body?.groupId) {
     return NextResponse.json({ error: "groupId required" }, { status: 400 });
@@ -178,6 +186,47 @@ export async function POST(request: Request) {
       orgId: liveOrg.id,
       introText: null,
     });
+  }
+
+  // 1a. THE ADMINS' HQ GROUP (slice 2a, 2026-09-30). ONBOARDING_AUTOSTART
+  //     is on in production, so without this an organiser adding MatchTime
+  //     to his admins' group would start the in-group setup there. An add
+  //     by an owner or admin of an approved club (or to a group one of
+  //     their admins is in, while that club has a link code open) waits
+  //     silently for "@Match Time admin group CODE" instead: no session,
+  //     no intro. A group that is already a club's admin group is left
+  //     alone. Placed after the live-org check and before every setup path.
+  const linkedAdminGroup = await db.organisation.findFirst({
+    where: { adminGroupId: groupId },
+    select: { id: true },
+  });
+  if (linkedAdminGroup) {
+    return NextResponse.json({
+      ok: true,
+      ignored: "admin-group",
+      adminGroup: { groupId, orgId: linkedAdminGroup.id },
+      introText: null,
+    });
+  }
+  const addedByLid = typeof body.addedByLid === "string" ? body.addedByLid : null;
+  if (
+    await detectAdminGroupCandidate({
+      addedByPhone: body.addedByPhone,
+      addedByLid,
+      participants: body.participants,
+      now: new Date(),
+    })
+  ) {
+    const snapshotSize = parseParticipantSnapshot(body.participants).length;
+    await recordAdminGroupCandidate({
+      groupId,
+      subject: body.groupSubject?.trim() || null,
+      memberCount: snapshotSize || null,
+      addedByPhone: typeof body.addedByPhone === "string" ? body.addedByPhone : null,
+      addedByLid,
+      now: new Date(),
+    });
+    return NextResponse.json({ ok: true, ignored: "admin-group-awaiting-code", silent: true, introText: null });
   }
 
   // 1b. SILENCE RAILS (self-join slice 1, 2026-09-29). A group whose club

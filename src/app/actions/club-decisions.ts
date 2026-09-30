@@ -95,6 +95,8 @@ export async function leaveUnsolicitedAction(id: string): Promise<ClubActionResu
   switch (r.reason) {
     case "approved-club-group":
       return { ok: false, message: "A live club owns that group now, so MatchTime will not leave it from here." };
+    case "admin-group":
+      return { ok: false, message: "That group is a club's admin group now, so MatchTime will not leave it from here." };
     case "already-left":
       return { ok: false, message: "MatchTime has already left that group." };
     default:

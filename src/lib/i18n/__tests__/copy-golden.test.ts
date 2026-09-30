@@ -1126,6 +1126,34 @@ function cases(lang: Lang): Case[] {
   add("R185 organiser DM / rejected", sj.sj_dm_rejected({ group: "Riverside Tuesday 5s" }));
   add("R185 organiser DM / rejected, no group name", sj.sj_dm_rejected({ group: null }));
 
+  // ── slice 2a: the admin channel (2026-09-30), new copy ──
+  add("R186 admin group / L1 linked", sj.admin_group_linked({ club: "Friday FNF" }));
+  add("R186 admin group / L2 wrong or expired code", sj.admin_group_bad_code);
+  add("R186 admin group / L3 the club's main group", sj.admin_group_main_group({ club: "Friday FNF" }));
+  add("R186 admin group / L4 removed, DM to the owner", sj.admin_group_removed_dm({ club: "Friday FNF" }));
+  add("R187 settings / admin messages heading and info", `${sj.settings_admin_channel_heading}\n${sj.settings_admin_channel_info}`);
+  add(
+    "R187 settings / the three choices",
+    [sj.settings_admin_channel_mode_one_person, sj.settings_admin_channel_mode_admin_group, sj.settings_admin_channel_mode_each_admin].join("\n"),
+  );
+  add("R187 settings / one person picker", `${sj.settings_admin_channel_person_label}: ${sj.settings_admin_channel_person_owner({ name: "Hamzah" })}`);
+  add(
+    "R187 settings / link flow",
+    [
+      `[${sj.settings_admin_channel_link_button}] [${sj.settings_admin_channel_link_again}]`,
+      `${sj.settings_admin_channel_link_info_title}: ${sj.settings_admin_channel_link_info}`,
+      `1. ${sj.settings_admin_channel_step_code({ code: "K7P3QX" })}`,
+      `2. ${sj.settings_admin_channel_step_add}`,
+      `3. ${sj.settings_admin_channel_step_send} ${sj.settings_admin_channel_command({ code: "K7P3QX" })}`,
+      sj.settings_admin_channel_validity,
+      sj.settings_admin_channel_pending_note,
+    ].join("\n"),
+  );
+  add(
+    "R187 settings / linked",
+    `${sj.settings_admin_channel_linked({ group: "FNF HQ" })} [${sj.settings_admin_channel_unlink}]\n${sj.settings_admin_channel_saved}\n${sj.settings_admin_channel_unlinked}`,
+  );
+
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));
   add("R138 detailsFollowUpQuestion / time and venue", detailsFollowUpQuestion(["time", "venue"]));

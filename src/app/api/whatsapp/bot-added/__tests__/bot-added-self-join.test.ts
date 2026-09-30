@@ -31,6 +31,13 @@ const dbMock = vi.hoisted(() => ({
   onboardingSession: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+// Slice 2a: the admins' HQ group check has its own tests
+// (lib/__tests__/admin-group-link.test.ts). Not a candidate unless a test says so.
+const adminGroupLink = vi.hoisted(() => ({ detect: vi.fn(async () => false), record: vi.fn(async () => ({ id: "ug-1" })) }));
+vi.mock("@/lib/admin-group-link", () => ({
+  detectAdminGroupCandidate: (...a: unknown[]) => adminGroupLink.detect(...(a as [])),
+  recordAdminGroupCandidate: (...a: unknown[]) => adminGroupLink.record(...(a as [])),
+}));
 
 import { POST } from "../route";
 

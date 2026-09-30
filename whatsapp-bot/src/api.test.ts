@@ -4,6 +4,9 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
+  PI_CAPS_HEADER,
+  postAdminGroupLink,
+  postAdminGroupMessage,
   getDuePosts,
   getPlatformJobs,
   postAnalyzeFull,
@@ -210,5 +213,34 @@ describe("self-join slice 6: bot-added and bot-removed", () => {
   it("an OLDER server's 404 on bot-removed is false, never a throw", async () => {
     fetchMock.mockResolvedValue(res(404, { error: "not found" }));
     expect(await postBotRemoved({ groupId: "g@g.us" })).toBe(false);
+  });
+});
+
+describe("slice 2a: the capability header and the admin-group forwards", () => {
+  it("every due-posts poll says this Pi can post in admin groups", async () => {
+    fetchMock.mockResolvedValue(res(200, { instructions: [] }));
+    await getDuePosts("g@g.us");
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(PI_CAPS_HEADER).toBe("x-mt-pi-caps");
+    expect(init.headers[PI_CAPS_HEADER]).toBe("admin-group");
+    // The slice 3 platform header is still there.
+    expect(init.headers["x-mt-platform-jobs"]).toBe("1");
+  });
+
+  const fwd = { groupId: "hq@g.us", messageId: "m1", text: "2", botMentioned: false, senderPhone: "447700900102", timestamp: "t" };
+
+  it("an admin-group message goes to /admin-group, flagged as the admin channel", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true, replyText: null }));
+    await postAdminGroupMessage(fwd);
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/whatsapp\/admin-group$/);
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body)).toMatchObject({ channel: "admin-group", groupId: "hq@g.us", text: "2" });
+  });
+
+  it("the link command goes to /admin-group-link; a server without it (404) means null, never a throw", async () => {
+    fetchMock.mockResolvedValue(res(404, { error: "not found" }));
+    expect(await postAdminGroupLink(fwd)).toBeNull();
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/whatsapp\/admin-group-link$/);
+    fetchMock.mockRejectedValue(new Error("ECONNRESET"));
+    expect(await postAdminGroupLink(fwd)).toBeNull();
   });
 });

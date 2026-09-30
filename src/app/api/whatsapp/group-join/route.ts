@@ -33,10 +33,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { findOrgAdminsWithPhone } from "@/lib/org";
+import { sendAdminNotice } from "@/lib/admin-channel";
 import { linkJoinerToPlaceholder, type LinkOutcome } from "@/lib/placeholder-link";
 import { composeJoinDm, joinDmPath, type JoinDmInput, type JoinLinkNote } from "@/lib/join-dm";
-import { buildAdminLink } from "@/lib/admin-link";
 import { usableWhatsAppName } from "@/lib/resolve-sender";
 
 export async function POST(request: Request) {
@@ -70,8 +69,6 @@ export async function POST(request: Request) {
   if (!org) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group" });
   }
-
-  const admins = await findOrgAdminsWithPhone(org.id);
 
   type Result = {
     phone: string;
@@ -181,31 +178,26 @@ export async function POST(request: Request) {
           ? { kind: "suggest", names: link.candidates.map((c) => c.name).filter(Boolean) }
           : undefined;
 
-    // Step 6: queue admin DM only on state change.
-    if (!alreadyActive && admins.length > 0) {
+    // Step 6: tell the admins, only on a state change, through the
+    // club's admin channel (slice 2a, 2026-09-30). A club on "each-admin"
+    // (Sutton FC) gets exactly the DMs it got before: each admin their own
+    // signed-in link, in this club (2026-09-30: the DM used to end in a
+    // bare "/admin/players/phones"). An admin group gets the plain URL.
+    if (!alreadyActive) {
       const displayName =
         user.name?.trim() || (link.kind === "linked" ? link.placeholderName : "") || normalised;
       const input: JoinDmInput = created
         ? { kind: "new", club: org.name, phone: normalised, name: user.name, link: linkNote }
         : { kind: rejoined ? "rejoined" : "first", club: org.name, name: displayName, link: linkNote };
-      const path = joinDmPath(input);
-
-      for (const admin of admins) {
+      await sendAdminNotice({
+        orgId: org.id,
+        // Always sent at once, as before the admin channel.
+        holdOvernight: false,
         // Same-person admin getting DM'd about themselves would be silly.
-        if (admin.id === user.id) continue;
-        // Each admin gets their OWN signed-in link, in this club (2026-09-30:
-        // the DM used to end in a bare "/admin/players/phones").
-        const url = path ? await buildAdminLink({ userId: admin.id, orgId: org.id, nextPath: path }) : "";
-        const text = composeJoinDm(org.language, input, url);
-        await db.botJob.create({
-          data: {
-            orgId: org.id,
-            kind: "dm",
-            phone: admin.phoneNumber.replace(/^\+/, ""),
-            text,
-          },
-        });
-      }
+        excludeUserId: user.id,
+        nextPath: joinDmPath(input),
+        text: (url) => composeJoinDm(org.language, input, url),
+      });
     }
 
     results.push({

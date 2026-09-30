@@ -1611,6 +1611,38 @@ export const tr: Strings = {
   wd_err_outside_hours: "08:00 ile 21:30 arasında bir saat seçin.",
   wd_err_order: "Son çıkış saati, listenin yayınlanmasından önce olmalı.",
   wd_err_after_kickoff: "Maç günü için maç saatinden önce bir saat seçin.",
+  // ── Slice 2a: yönetici kanalı (2026-09-30) ──
+  admin_group_linked: (p: { club: string }): string => `✅ *${p.club}* için yönetici grubu olarak bağlandı.`,
+  admin_group_bad_code:
+    "Bu kod artık geçerli değil. Sitede Ayarlar sayfasını açıp yeni kod için *Yönetici grubunu bağla* düğmesine basın.",
+  admin_group_main_group: (p: { club: string }): string =>
+    `Bu, *${p.club}* kulübünün ana grubu; yönetici grubu olamaz. Beni yöneticiler için ayrı bir gruba ekleyin.`,
+  admin_group_removed_dm: (p: { club: string }): string =>
+    `*${p.club}* yönetici grubundan çıkarıldım, bu yüzden yönetici mesajları artık size DM olarak gelecek. Ayarlar'dan yeniden bir grup bağlayabilirsiniz.`,
+  settings_admin_channel_heading: "Yönetici mesajları",
+  settings_admin_channel_info:
+    "MatchTime'ın yalnızca yöneticilerin görmesi gereken mesajları nereye gönderdiği: seçim için yedek listesi, son çıkış özeti, geç çıkanlar, ödemeyenler ve kontrol edilecek yeni oyuncular. Tek kişi: seçtiğiniz kişiye DM. Yönetici WhatsApp grubu: yöneticilerin grubuna tek mesaj; yöneticiler orada numara, isim ya da etiketle oyuncu seçebilir. MatchTime o grupta başka hiçbir şeyi okumaz. Her yöneticiye DM: her yönetici kendi kopyasını alır.",
+  settings_admin_channel_mode_one_person: "Tek kişi",
+  settings_admin_channel_mode_admin_group: "Yönetici WhatsApp grubu",
+  settings_admin_channel_mode_each_admin: "Her yöneticiye DM",
+  settings_admin_channel_person_label: "Kim",
+  settings_admin_channel_person_owner: (p: { name: string }): string => `${p.name} (kulüp sahibi)`,
+  settings_admin_channel_link_button: "Yönetici grubunu bağla",
+  settings_admin_channel_link_again: "Yeni kod",
+  settings_admin_channel_link_info_title: "Yönetici grubunu bağla",
+  settings_admin_channel_link_info:
+    "Düğmeye basın, sonra MatchTime'ı yöneticilerin WhatsApp grubuna ekleyip burada görünen kodu o gruba gönderin. Kod bir kez çalışır ve 48 saat geçerlidir. MatchTime o grupta kulüp kurulumu başlatmaz.",
+  settings_admin_channel_step_code: (p: { code: string }): string => `Bu sayfayı açık tutun. Kodunuz: ${p.code}`,
+  settings_admin_channel_step_add: "MatchTime'ı yöneticilerin WhatsApp grubuna ekleyin.",
+  settings_admin_channel_step_send: "O grupta şunu gönderin:",
+  settings_admin_channel_command: (p: { code: string }): string => `@Match Time yönetici grubu ${p.code}`,
+  settings_admin_channel_validity: "Kod bir kez çalışır ve 48 saat geçerlidir.",
+  settings_admin_channel_linked: (p: { group: string }): string => `Bağlı: ${p.group}`,
+  settings_admin_channel_unlink: "Bağlantıyı kaldır",
+  settings_admin_channel_pending_note:
+    "Bir grup bağlanana kadar yönetici mesajları şu an gittiği yere gitmeye devam eder.",
+  settings_admin_channel_saved: "Kaydedildi",
+  settings_admin_channel_unlinked: "Bağlantı kaldırıldı. Yönetici mesajları artık kulüp sahibine DM olarak gidiyor.",
 };
 
 /**

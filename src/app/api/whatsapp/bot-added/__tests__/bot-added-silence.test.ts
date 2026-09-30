@@ -22,6 +22,13 @@ const dbMock = vi.hoisted(() => ({
   onboardingSession: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
+// Slice 2a: the admins' HQ group check has its own tests
+// (lib/__tests__/admin-group-link.test.ts). Not a candidate unless a test says so.
+const adminGroupLink = vi.hoisted(() => ({ detect: vi.fn(async () => false), record: vi.fn(async () => ({ id: "ug-1" })) }));
+vi.mock("@/lib/admin-group-link", () => ({
+  detectAdminGroupCandidate: (...a: unknown[]) => adminGroupLink.detect(...(a as [])),
+  recordAdminGroupCandidate: (...a: unknown[]) => adminGroupLink.record(...(a as [])),
+}));
 // Slice 6: with self-join on, an add goes to the self-join linker (its own
 // tests are bot-added-self-join.test.ts and lib/__tests__/group-add.test.ts).
 const linker = vi.hoisted(() => ({ handleSelfJoinGroupAdd: vi.fn() }));
@@ -72,6 +79,23 @@ describe("bot-added and silent groups", () => {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
+  });
+
+  it("slice 2a: an add by an owner or admin of an approved club (their HQ group) gets no intro and no session; silent, waiting for the code", async () => {
+    adminGroupLink.detect.mockResolvedValueOnce(true);
+    const body = await post("g-hq");
+    expect(body).toMatchObject({ ignored: "admin-group-awaiting-code", silent: true, introText: null });
+    expect(adminGroupLink.record).toHaveBeenCalledWith(expect.objectContaining({ groupId: "g-hq", addedByPhone: "447700900123" }));
+    expect(dbMock.onboardingSession.create).not.toHaveBeenCalled();
+  });
+
+  it("slice 2a: a group already linked as a club's admin group is left alone, never a new club", async () => {
+    dbMock.organisation.findFirst.mockImplementation(async (a: { where: Record<string, unknown> }) =>
+      a.where.adminGroupId === "g-hq" ? { id: "org-fnf" } : null,
+    );
+    const body = await post("g-hq");
+    expect(body).toMatchObject({ ignored: "admin-group", introText: null, adminGroup: { groupId: "g-hq", orgId: "org-fnf" } });
+    expect(dbMock.onboardingSession.create).not.toHaveBeenCalled();
   });
 
   it("a silent group gets no intro and no onboarding session", async () => {

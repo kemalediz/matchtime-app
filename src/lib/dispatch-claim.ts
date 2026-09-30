@@ -133,6 +133,9 @@ export const GROUP_DIRECTED_KINDS: ReadonlySet<string> = new Set([
   "group-message",
   "group-poll",
   "bench-prompt",
+  // Slice 2a: a post in the club's admin group is still a group post, so
+  // a loop re-emitting one is caught by the same two guards.
+  "admin-group-message",
 ]);
 
 export function isGroupDirected(kind: string): boolean {

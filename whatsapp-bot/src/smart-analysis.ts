@@ -508,6 +508,68 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
   }
 }
 
+// ─── Slice 2a: a message read for a server route, NOT for analysis ───
+/**
+ * One group message, read exactly as `enqueueForAnalysis` reads it (the
+ * same total reads, the same synthetic-id fallback, the same enrichment
+ * with the bot's own mention rewritten to "@Match Time" and every other
+ * mention kept raw with its phone and name beside it), but NOTHING is
+ * buffered, recorded in the history or counted. Used for the admin group
+ * and the link command (index.ts, admin-group.ts), which go to their own
+ * routes and never to analyze.
+ */
+export interface GroupMessageForServer {
+  groupId: string;
+  messageId: string;
+  text: string;
+  botMentioned: boolean;
+  senderPhone: string;
+  /** The sender's LID, bare digits, when the author is LID-addressed. */
+  senderLid?: string;
+  timestamp: string;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+}
+
+export async function readGroupMessageForServer(
+  driver: WaDriver,
+  msg: InboundMessage,
+): Promise<GroupMessageForServer | null> {
+  const groupId = safeGroupId(msg);
+  if (!groupId || !groupId.endsWith("@g.us")) return null;
+  const author = safeRead(msg, "author");
+  const authorId = typeof author === "string" ? author : undefined;
+  const phone = phoneFromAuthor(authorId, groupId);
+  const { waMessageId } = resolveWaMessageId(msg);
+  const rawBody = readMessageBody(msg);
+  const fallback: InboundEnrichment = {
+    body: rawBody,
+    authorName: readNotifyName(msg),
+    authorPhone: phone,
+    botMentioned: false,
+    mentionNames: [],
+  };
+  const enriched = await enrichOrDegrade(
+    fallback,
+    () => enrichInbound(driver, msg, rawBody, fallback, groupId),
+    (err) =>
+      console.error(
+        `[admin-group] enrichment failed for ${waMessageId} in ${groupId}; forwarding the raw text:`,
+        err instanceof Error ? err.message : err,
+      ),
+  );
+  const lid = authorId && authorId.endsWith("@lid") ? authorId.replace(/@lid$/, "").replace(/:\d+$/, "") : undefined;
+  return {
+    groupId,
+    messageId: waMessageId,
+    text: enriched.body,
+    botMentioned: enriched.botMentioned,
+    senderPhone: enriched.authorPhone,
+    ...(lid ? { senderLid: lid } : {}),
+    timestamp: new Date(safeTimestampSec(msg) * 1000).toISOString(),
+    ...(enriched.mentionNames.length > 0 ? { mentionNames: enriched.mentionNames } : {}),
+  };
+}
+
 /**
  * The WhatsApp-client-dependent half of enqueue: pushname, @-mention
  * resolution, self-mention detection. Extracted so `enrichOrDegrade` can

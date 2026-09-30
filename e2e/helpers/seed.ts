@@ -69,6 +69,9 @@ export async function seedAll(db: PrismaClient): Promise<void> {
       payMethodDirect: true,
       stripeChargesEnabled: true, // renders card/bank buttons; no Connect acct
       paymentHolderId: U.collector,
+      // Every club that existed before the admin-channel migration was put
+      // on "each-admin" by it (slice 2a); the fixture club is one of them.
+      adminChannelMode: "each-admin",
     },
   });
 

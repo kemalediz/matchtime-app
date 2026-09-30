@@ -108,16 +108,22 @@ describe("no source file claims a regex fast path still handles attendance", () 
     // and a boolean, never a message. Slice 6 adds `addSilentGroup` (a
     // group id the server just called silent).
     const exported = [...handlers.matchAll(/export function (\w+)/g)].map((m) => m[1]);
+    // Slice 2a (2026-09-30) adds the admin-group set: group ids and the
+    // club they belong to, never a message.
     expect(exported.sort()).toEqual([
       "_test_groupSets",
+      "addAdminGroup",
       "addMonitoredGroup",
       "addOnboardingGroup",
       "addSilentGroup",
+      "isAdminGroup",
       "isLegacySetupTriggerEnabled",
       "isMonitoredGroup",
       "isOnboardingGroup",
       "isSilentGroup",
+      "removeAdminGroup",
       "removeOnboardingGroup",
+      "setAdminGroups",
       "setLegacySetupTrigger",
       "setMonitoredGroups",
       "setOnboardingGroups",

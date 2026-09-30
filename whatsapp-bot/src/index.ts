@@ -12,7 +12,12 @@ import {
   addSilentGroup,
   setLegacySetupTrigger,
   isLegacySetupTriggerEnabled,
+  setAdminGroups,
+  addAdminGroup,
+  isAdminGroup,
+  removeAdminGroup,
 } from "./handlers.js";
+import { reactionChatId, routeAdminGroupInbound } from "./admin-group.js";
 import { degradedMessage } from "./degraded.js";
 import { asString, readInboundHeadline, readMessageBody, readNotifyName, safePath, safeRead } from "./wa-read.js";
 import {
@@ -42,11 +47,14 @@ import {
   postSyncParticipants,
   postBotAdded,
   postBotRemoved,
+  postAdminGroupMessage,
+  postAdminGroupLink,
 } from "./api.js";
 import {
   enqueueForAnalysis,
   recordDegradedCapability,
   recordHistory,
+  readGroupMessageForServer,
   recoverGroupMessages,
   startBatchFlushTimer,
   stopBatchFlushTimer,
@@ -145,8 +153,11 @@ async function main() {
     const next = parseOrgSnapshot(data);
     const diff = diffOrgSnapshot(currentSnapshot, next);
     currentSnapshot = next;
-    // Silent groups first, so the monitored set below can never include
-    // one (self-join slice 1). An older server sends none: nothing changes.
+    // Admin groups first (slice 2a), then silent groups, so neither the
+    // silent set nor the monitored set can ever include an admin group, and
+    // the monitored set can never include a silent one (self-join slice 1).
+    // An older server sends neither: nothing changes.
+    setAdminGroups(next.adminGroups);
     setSilentGroups(next.silentGroups);
     setLegacySetupTrigger(next.legacySetupTrigger);
     setMonitoredGroups([...next.orgConfigs.map((o) => o.groupId), ...next.onboardingGroups]);
@@ -605,6 +616,26 @@ async function main() {
         return;
       }
 
+      // ── Slice 2a: admin groups and the link command ────────────────
+      // A message in a club's linked admin group goes to its own route at
+      // once and NEVER into the analysis history or batch (no model). A
+      // message shaped like "@Match Time admin group CODE" in any other
+      // group, a silent one included, goes to the link route, and is not
+      // analysed either. Everything else carries on below, unchanged.
+      // Returns early only for those two.
+      const adminRoute = await routeAdminGroupInbound(
+        {
+          isAdminGroup,
+          addAdminGroup,
+          read: () => readGroupMessageForServer(driver, msg),
+          postAdminGroupMessage,
+          postAdminGroupLink,
+          reply: (text) => driver.sendText(head.from, text),
+        },
+        { from: head.from, body: effectiveBody },
+      );
+      if (adminRoute !== "not-handled") return;
+
       // Phase 2: a group the bot isn't monitoring yet can bootstrap
       // itself with an explicit "@MatchTime setup". Loose pre-filter
       // here (server has the authoritative tight regex); on a hit we
@@ -698,6 +729,10 @@ async function main() {
   // and let it decide the outcome.
   driver.onReaction(async (reaction) => {
     try {
+      // Slice 2a: a reaction in an admin group is not forwarded; nothing
+      // there is anybody's attendance or bench answer.
+      const chat = reactionChatId(reaction);
+      if (chat && isAdminGroup(chat)) return;
       // Total reads — `msgId` is an id object built by the injected page
       // code, so on a broken build it is a throwing getter, not merely
       // absent.
@@ -932,6 +967,17 @@ async function main() {
           { isSilentGroup, resolveSelfIds: () => driver.selfIds(), postBotRemoved },
           notification,
         );
+        return;
+      }
+      // Slice 2a: in an admin group only MatchTime's own removal is told to
+      // the server (it unlinks the group and tells the owner). Nobody else
+      // leaving an HQ group means anything to the club.
+      if (isAdminGroup(groupId)) {
+        const outcome = await handleGroupLeaveForSelfRemoval(
+          { isSilentGroup: isAdminGroup, resolveSelfIds: () => driver.selfIds(), postBotRemoved },
+          notification,
+        );
+        if (outcome === "forwarded") removeAdminGroup(groupId);
         return;
       }
       if (!isMonitoredGroup(groupId)) return;
