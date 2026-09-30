@@ -851,7 +851,7 @@ export interface StatsSnapshot {
   mom: Array<{ userId: string; name: string; wins: number }>;
   /** Elo, top ten, 3+ matches played, inactive players out. */
   elo: Array<{ userId: string; name: string; rating: number; matches: number }>;
-  /** `loadTeamOfSeason` with the website's own minimum. */
+  /** `loadTeamOfSeason`: three rated matches, inactive players out. */
   teamOfSeason: {
     sportName: string;
     slots: Array<{ position: string; userId: string; name: string; avg: number; games: number }>;

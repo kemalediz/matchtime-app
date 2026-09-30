@@ -143,22 +143,25 @@ export const ATTENDANCE_TABLE_FOLLOWS_ACTIVITY_RULE = true;
 /**
  * Does TEAM OF THE SEASON follow the rule?
  *
- * NO, AND THIS IS THE ONE DELIBERATE EXCEPTION.
+ * YES. Kemal decided it on 2026-09-30, looking at Team of the Season on
+ * Sutton FC's stats page:
  *
- * Team of the Season is not a table, it is an AWARD. The leaderboards
- * answer "where do I stand now" — a question about the present, which is
- * why a man who is no longer around does not belong in the answer. Team
- * of the Season answers "who was best this season", which is a question
- * about a closed period. A best XI that quietly drops half the players
- * who actually played the season is not the team of the season; it is
- * the team of whoever is still here, presented under the wrong name.
+ *   "there are players in this list who joined ages ago, what can we do
+ *    about this? can we use same algo as we did for squad leaderboard?"
  *
- * The visible consequence, stated plainly so it is not mistaken for a
- * bug: a player can appear in Team of the Season and NOT in the squad
- * leaderboard directly above it. That is correct — he earned the award
- * and he is not currently ranked — and the surface says so.
+ * The page puts Team of the Season directly under the squad leaderboard,
+ * and a best XI that names people the club has not seen for months reads
+ * as stale, not as an award. So it uses the same rule as every other
+ * table: no match in the last three months and a player is not picked;
+ * one match back and he is eligible again with his rating untouched. It
+ * also needs the same minimum of rated matches as the group's ratings
+ * list (`TEAM_OF_SEASON_MIN_GAMES` in `pipeline/stats-answer.ts`).
+ *
+ * One rule, one implementation: `loadTeamOfSeason` filters through
+ * `buildRankedRoster` exactly as `loadRatingLeaderboard` does, and every
+ * caller (the stats page, the group's stats answer) goes through it.
  */
-export const TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE = false;
+export const TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE = true;
 
 /**
  * Does a player still see THEMSELVES on their own stats page when they

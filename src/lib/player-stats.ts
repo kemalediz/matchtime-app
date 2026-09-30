@@ -25,6 +25,7 @@ import {
 } from "./player-rating";
 import { buildRankedRoster, loadLastPlayedByUser } from "./ranked-table-activity";
 import { earnsMrReliable, ratingSpread } from "./mr-reliable";
+import { TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-answer";
 
 export {
   MR_RELIABLE_MAX_SPREAD,
@@ -691,29 +692,26 @@ export interface TeamOfSeasonSlot {
  * list. Slots that can't be filled by a position specialist fall back
  * to the best remaining player. Returns [] if there isn't enough data.
  *
- * ⚠️ DELIBERATELY NOT FILTERED BY THE THREE-MONTH INACTIVITY RULE, and
- * this is the one surface that opts out. Do not "make it consistent"
- * with the leaderboard above it without reading
- * TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE in `ranked-table-activity.ts`.
+ * THE SAME TWO RULES AS THE SQUAD LEADERBOARD (Kemal, 2026-09-30):
  *
- * The short version: the leaderboards answer "where do I stand NOW",
- * which is a question about the present, so a man who is no longer
- * around does not belong in the answer. This answers "who was best THIS
- * SEASON", which is a question about a closed period. A best XI that
- * quietly drops half the players who actually played the season is not
- * the team of the season — it is the team of whoever is still here,
- * published under the wrong name.
+ *   The three-month inactivity rule from `ranked-table-activity.ts`, read
+ *   through the same `buildRankedRoster`: a player with no match in the
+ *   last three months is not picked, and is eligible again the moment he
+ *   plays. His rating is never touched.
  *
- * The visible consequence, so nobody files it as a bug: a player can
- * appear in Team of the Season and not in the squad leaderboard
- * directly above it on `/profile/stats`. That is correct. The page says
- * so.
+ *   The same minimum of rated matches as the group's ratings list
+ *   (`TEAM_OF_SEASON_MIN_GAMES`, which IS `GROUP_RATINGS_MIN_GAMES`).
+ *
+ * Kemal, looking at the Sutton FC stats page: "there are players in this
+ * list who joined ages ago, what can we do about this? can we use same
+ * algo as we did for squad leaderboard?" See
+ * TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE for the reasoning.
  */
 export async function loadTeamOfSeason(
   orgId: string,
   opts: { minGames?: number } = {},
 ): Promise<{ formation: TeamOfSeasonSlot[]; sportName: string } | null> {
-  const minGames = opts.minGames ?? 2;
+  const minGames = opts.minGames ?? TEAM_OF_SEASON_MIN_GAMES;
 
   const sport = await db.sport.findFirst({
     where: { orgId },
@@ -736,9 +734,11 @@ export async function loadTeamOfSeason(
       acc.set(r.playerId, a);
     }
   }
+  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId));
   const eligible = [...acc.entries()]
     .map(([id, a]) => ({ id, avg: mean(a.scores)!, games: a.matches.size }))
     .filter((r) => r.games >= minGames)
+    .filter((r) => roster.isRanked(r.id))
     .sort((a, b) => b.avg - a.avg);
   if (eligible.length === 0) return null;
 

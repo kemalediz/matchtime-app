@@ -62,7 +62,7 @@ function snapshot(over: Partial<StatsSnapshot> = {}): StatsSnapshot {
       sportName: "Football 7-a-side",
       slots: [
         { position: "GK", userId: "u-baki", name: "Baki Aydin", avg: 7.9, games: 6 },
-        { position: "ANY", userId: "u-sait", name: "Sait Demir", avg: 7.75, games: 2 },
+        { position: "ANY", userId: "u-sait", name: "Sait Demir", avg: 7.75, games: 3 },
       ],
     },
     mrReliable: [{ userId: "u-sait", name: "Sait Demir", avg: 7.34, games: 9, spread: 0.4 }],
@@ -239,10 +239,10 @@ describe("the other known tables", () => {
     );
   });
 
-  it("Team of the Season, with the website's own two-match minimum and no 'ANY' label", () => {
+  it("Team of the Season, with the ratings list's three-match minimum and no 'ANY' label", () => {
     expect(renderStatsTable(sp("team_of_season"), snapshot(), "en")).toBe(
-      "Team of the Season (Football 7-a-side), the best average rating in each position (2+ rated matches):\n" +
-        "1. Baki Aydin (GK): 7.9 (6 matches)\n2. Sait Demir: 7.8 (2 matches)",
+      "Team of the Season (Football 7-a-side), the best average rating in each position (3+ rated matches):\n" +
+        "1. Baki Aydin (GK): 7.9 (6 matches)\n2. Sait Demir: 7.8 (3 matches)",
     );
   });
 
