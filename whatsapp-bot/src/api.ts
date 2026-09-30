@@ -465,8 +465,12 @@ export interface AnalyzeInboundMessage {
    * was lost). The server matches it against the org roster and only then
    * writes a name into the text. Absent from older Pi builds, and absent
    * whenever no mention had a usable name.
+   *
+   * `phone` (2026-09-30): the phone behind a LID mention, digits only,
+   * when the Pi has been told it (group metadata, message envelopes). The
+   * server's exact key. An entry carries a name, a phone, or both.
    */
-  mentionNames?: Array<{ jid: string; name: string }>;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
   /** Did this message @-mention the bot's own JID? Computed on the Pi
    *  (only it knows the bot's selfId). PRIMARY signal for the server's
    *  @Match Time interaction-contract gate; the server falls back to body

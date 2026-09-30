@@ -78,12 +78,33 @@ export interface RawMentionContact {
   isMe?: boolean;
   /** `pushname || name || shortName`. UNTRUSTED and possibly not a string. */
   name?: unknown;
+  /**
+   * The phone behind a LID mention, when the driver has been TOLD it
+   * (the harvested directory or Baileys' local mapping store, both fed by
+   * group metadata and message envelopes; never a directory lookup).
+   * Possibly absent or the wrong type.
+   */
+  phone?: unknown;
 }
 
-/** A mention's display name, forwarded for the SERVER to verify. */
+/**
+ * What the Pi knows about one mention, forwarded for the SERVER to verify.
+ *
+ * `name` is the contact's display name (untrusted, a lookup key only).
+ * `phone` (2026-09-30) is the phone behind a LID mention, digits only.
+ * A phone JID ("447…@c.us") never carries one: the JID already is the
+ * phone, and the server reads it from there. At least one of the two is
+ * always present; an entry with neither is not sent.
+ *
+ * Why the phone travels: under Baileys every mention is a LID, and the
+ * server's exact key is the phone. On 2026-09-30 "@David is IN" reached
+ * the server as "@252012071493723 is IN" with nothing beside it, so the
+ * engine refused a member it knows by phone.
+ */
 export interface MentionName {
   jid: string;
-  name: string;
+  name?: string;
+  phone?: string;
 }
 
 /** Shortest run of digits that can plausibly be a WhatsApp id. */
@@ -135,6 +156,42 @@ export function sanitiseMentionName(raw: unknown): string | null {
   if (/^[+@]?[\d\s()+-]{5,}$/.test(cleaned)) return null;
   if (/^[\d\s()+-]{5,}@?(lid|c\.us|s\.whatsapp\.net)$/i.test(cleaned)) return null;
   return cleaned;
+}
+
+/** A phone number's digits, or undefined when the value is not one. */
+export function sanitiseMentionPhone(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const digits = raw.replace(/\D/g, "");
+  // E.164 allows up to 15 digits; nothing real is shorter than 7.
+  if (digits.length < 7 || digits.length > 15) return undefined;
+  if (/[\p{L}]/u.test(raw)) return undefined;
+  return digits;
+}
+
+/** A LID JID, in any of the spellings the drivers hand up. */
+function isLidMention(jid: string): boolean {
+  return /@lid$/i.test(jid);
+}
+
+/**
+ * The LID mentions nobody could tie to a phone: the ones worth ONE
+ * re-read of the group's metadata before the message is forwarded
+ * (`WaDriver.refreshGroupRoster`). The bot is never listed.
+ */
+export function lidMentionsWithoutPhone(
+  contacts: RawMentionContact[],
+  botIdentities: Array<string | null | undefined>,
+): string[] {
+  const botIds = botIdentitySet(botIdentities);
+  const out: string[] = [];
+  for (const c of Array.isArray(contacts) ? contacts : []) {
+    if (!c || typeof c.jid !== "string" || !isLidMention(c.jid)) continue;
+    if (contactIsBot(c, botIds)) continue;
+    if (mentionDigits(c.jid).length < MIN_MENTION_DIGITS) continue;
+    if (sanitiseMentionPhone(c.phone)) continue;
+    out.push(c.jid);
+  }
+  return out;
 }
 
 /** Every non-empty identity string the bot might be known by. */
@@ -212,7 +269,9 @@ export function rewriteMentions(args: {
     }
     if (digits.length < MIN_MENTION_DIGITS) continue;
     const name = sanitiseMentionName(c.name);
-    if (name) mentionNames.push({ jid: c.jid, name });
+    const phone = isLidMention(c.jid) ? sanitiseMentionPhone(c.phone) : undefined;
+    if (!name && !phone) continue;
+    mentionNames.push({ jid: c.jid, ...(name ? { name } : {}), ...(phone ? { phone } : {}) });
   }
 
   return { body, mentionNames, botMentioned };

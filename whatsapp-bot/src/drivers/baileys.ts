@@ -139,6 +139,7 @@
  * about a number (§2.2): a hundred such lookups got every linked device on
  * HomeTenant's account unlinked on 2026-09-17.
  */
+import { createRosterRefreshLimiter } from "../baileys/roster-refresh.js";
 import makeWASocket, {
   makeCacheableSignalKeyStore,
   // Aliased: the repo's eslint runs React's rules-of-hooks over everything
@@ -525,6 +526,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     },
   });
   const groupCache = deps.groupCache ?? createGroupCache({ now });
+  /** One forced roster re-read per group per ten minutes (mention LIDs). */
+  const rosterRefresh = createRosterRefreshLimiter({ now });
   const pollArchive = deps.pollArchive ?? createPollArchive({ io: { load: () => null, save: () => {} }, now });
   const addressingMode = deps.groupAddressingMode ?? ((jid: string) => groupCache.addressingMode(jid));
   /** Bumped on every open: `cachedGroupMetadata` trusts only this connection's reads. */
@@ -1298,6 +1301,25 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
           source: "none",
           notes: [`groupMetadata failed: ${errorText(err)}`],
         };
+      }
+    },
+
+    async refreshGroupRoster(groupId) {
+      // Total: false for "did not read", never a throw. ONE groupMetadata,
+      // the same request readRoster makes every fifteen minutes; the
+      // cache is dropped first so the read is real. Never a directory
+      // lookup (§2.2).
+      if (!rosterRefresh.tryAcquire(groupId)) {
+        log(`[baileys][groups] ${groupId} roster re-read for a mention refused: one per 10 min`);
+        return false;
+      }
+      try {
+        groupCache.forget(groupId);
+        await readRoster(groupId, "refreshGroupRoster");
+        return true;
+      } catch (err) {
+        error(`[baileys][groups] ${groupId} roster re-read for a mention failed: ${errorText(err)}`);
+        return false;
       }
     },
 
