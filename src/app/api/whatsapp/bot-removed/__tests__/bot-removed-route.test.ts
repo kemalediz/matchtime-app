@@ -10,6 +10,12 @@ const KEY = "test-wa-key";
 const lib = vi.hoisted(() => ({ handleBotRemoved: vi.fn() }));
 vi.mock("@/lib/group-add", () => ({ handleBotRemoved: (...a: unknown[]) => lib.handleBotRemoved(...a) }));
 vi.mock("@/lib/db", () => ({ db: {} }));
+// Slice 2a: removal from a linked admin group is handled first (its own
+// tests are lib/__tests__/admin-group-link.test.ts).
+const adminGroup = vi.hoisted(() => ({ removed: vi.fn() }));
+vi.mock("@/lib/admin-group-link", () => ({
+  handleAdminGroupRemoved: (...a: unknown[]) => adminGroup.removed(...a),
+}));
 
 import { POST } from "../route";
 
@@ -30,6 +36,7 @@ beforeEach(() => {
   process.env.WHATSAPP_API_KEY = KEY;
   process.env.SELF_JOIN_ENABLED = "1";
   lib.handleBotRemoved.mockResolvedValue({ returnedToDraft: 1, unsolicitedLeft: 0 });
+  adminGroup.removed.mockResolvedValue({ unlinked: false });
 });
 afterAll(() => {
   for (const [k, v] of [
@@ -39,6 +46,16 @@ afterAll(() => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+});
+
+describe("slice 2a: removed from a linked admin group", () => {
+  it("is unlinked whatever the self-join switch says, and the self-join handler is not called", async () => {
+    delete process.env.SELF_JOIN_ENABLED;
+    adminGroup.removed.mockResolvedValue({ unlinked: true, orgId: "org-fnf" });
+    const res = await post({ groupId: "hq@g.us" });
+    expect(await res.json()).toEqual({ ok: true, adminGroup: "unlinked", orgId: "org-fnf" });
+    expect(lib.handleBotRemoved).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/whatsapp/bot-removed", () => {
