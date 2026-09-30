@@ -221,6 +221,7 @@ const SAMPLES: SampleArgs = {
   teams_clear_nothing: null,
   teams_clear_admin_only: null,
   request_not_handled: null,
+  request_not_handled_admin: { url: "https://mt.example/admin" },
   payment_credit_ack: { payerName: "Sait Demir", credited: [], count: 2, matchName: "Tuesday 7-a-side", unpaid: 6, confirmed: 14, unmatched: 1 },
   recruit_failed: null,
   recruit_invited: { invited: 5, matchName: "Tuesday 7-a-side", need: 2 },
@@ -285,7 +286,14 @@ const SAMPLES: SampleArgs = {
     adminName: "Adam Admin",
     howToUseMe: "HOWTOBLOCK",
   },
-  onbAdminDm: { groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: true },
+  onbAdminDm: {
+    groupName: "Tuesday Ballers FC",
+    url: "https://mt.example/s/abc",
+    payments: true,
+    seedUrl: "https://mt.example/s/seeds",
+    blockBookingsUrl: "https://mt.example/s/blocks",
+    matchesUrl: "https://mt.example/s/matches",
+  },
   onbCoAdminDm: { groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc" },
   onbEnrichmentDm: { messagesAnalyzed: 340, groupName: "Tuesday Ballers FC", playerCount: 17, url: "https://mt.example/s/abc" },
   onbCancelled: null,
@@ -297,6 +305,14 @@ const SAMPLES: SampleArgs = {
   onbHelpTopicWord: { topic: "teams" },
   onbHelpTopicLabel: { topic: "teams" },
   onbHelpNotOn: null,
+  onbHelpSchedule: { audience: "group", activities: "https://mt.example/a", blockBookings: "https://mt.example/b", bulk: "https://mt.example/c", matches: "https://mt.example/d" },
+  onbHelpOffLead: null,
+  onbHelpSettingLabel: { topic: "ratings" },
+  onbHelpPaymentsOff: null,
+  onbHelpSwitchOn: { topic: "mom", audience: "group", url: "https://mt.example/admin/settings", word: "motmword", label: "Motm Label" },
+  onbHelpAdminSettings: { url: "https://mt.example/s/settings" },
+  onbHelpAdminPage: { url: "https://mt.example/s/page" },
+  onbHelpForClub: { club: "Riverside FC" },
   onbHelpExplainer: { topic: "teams" },
 
   // ── private messages (Phase 3) ──
@@ -425,11 +441,12 @@ const SAMPLES: SampleArgs = {
   sj_group_hello: { organiser: "Aliyah" },
   sj_dm_approved: { club: "Riverside FC", group: "Riverside Tuesday 5s", link: "https://matchtime.ai/admin/activities" },
   sj_dm_rejected: { group: "Riverside Tuesday 5s" },
-  dm_admin_join_new: { club: "Sutton FC", phone: "+447376548222" },
+  dm_admin_join_new: { club: "Sutton FC", phone: "+447376548222", url: "https://mt.example/r/phones" },
+  dm_admin_join_new_named: { name: "Ali Veli", club: "Sutton FC", phone: "+447376548222", url: "https://mt.example/r/players" },
   dm_admin_join_first: { name: "Hamzah", club: "Sutton FC" },
   dm_admin_join_rejoined: { name: "Hamzah", club: "Sutton FC" },
   dm_admin_join_linked: { placeholder: "Hamza", addedOn: "ADDEDON" },
-  dm_admin_join_possible_duplicate: { names: ["Hamza", "Hamzo"] },
+  dm_admin_join_possible_duplicate: { names: ["Hamza", "Hamzo"], url: "https://mt.example/r/merge" },
   admin_players_duplicates_heading: null,
   admin_players_duplicate_row: { placeholder: "Hamza", keeper: "Hamzah Khan" },
   admin_players_duplicate_merge: { keeper: "Hamzah Khan" },
@@ -540,6 +557,38 @@ describe("string tables: the Turkish is translated", () => {
 });
 
 describe("string tables: hygiene", () => {
+  // 2026-09-30, MT Test: the organiser's join DM ended in a bare
+  // "/admin/players/phones". WhatsApp does not make a path tappable, and
+  // typed into a browser it lands on a sign-in page. A link to a page is
+  // always a full URL (an admin's own signed-in link, or the public URL).
+  it("no entry sends a bare /admin path: every page is a full URL", () => {
+    for (const lang of LANGS) {
+      for (const key of KEYS) {
+        const out = render(TABLES[lang], key);
+        expect(out, `${lang}.${key}`).not.toMatch(/(^|[\s:(])\/admin\b/m);
+      }
+    }
+  });
+
+  // 2026-09-30, Kemal's second setup on "MT Test": the completion post
+  // and the how-to still read "squad — no need to type anyone in",
+  // "availability — no need to tag me". The ENGLISH table is not held to
+  // the dash rule in general (it moved in byte for byte), but everything
+  // a new club reads while setting up, and every organiser DM about it,
+  // is: the setup questions and acks, the completion posts, the how-to,
+  // help, the setup DMs and the join DM.
+  it("no onboarding, help or organiser-setup entry carries an em or en dash, in any language", () => {
+    const onboarding = KEYS.filter((k) =>
+      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled)/.test(String(k)),
+    );
+    expect(onboarding.length).toBeGreaterThan(40);
+    for (const lang of LANGS) {
+      for (const key of onboarding) {
+        expect(render(TABLES[lang], key), `${lang}.${key}`).not.toMatch(/[—–]/);
+      }
+    }
+  });
+
   it("no entry renders to an empty string", () => {
     for (const lang of LANGS) {
       for (const key of KEYS) {
@@ -581,7 +630,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table", "audience"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

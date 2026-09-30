@@ -8,7 +8,9 @@
  *   2. Normalise phone to E.164. Silently ignore anything that doesn't
  *      parse — @lid recipients, weird numbers, etc.
  *   3. Upsert a `User` row keyed by phone. Brand-new users are created
- *      with `name=null`; admin fills it in later via the portal.
+ *      with the WhatsApp name when the Pi knew it (`names`, 2026-09-30),
+ *      else `name=null`, filled from their first post (resolve-sender.ts)
+ *      or by an admin.
  *   4. Upsert a `Membership` as PLAYER and stamp `lastSeenInGroupAt` —
  *      WhatsApp has just told us this person is in the group, which is
  *      proof of presence in exactly the sense the self-IN gate needs. If
@@ -33,7 +35,9 @@ import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { findOrgAdminsWithPhone } from "@/lib/org";
 import { linkJoinerToPlaceholder, type LinkOutcome } from "@/lib/placeholder-link";
-import { composeJoinDm, type JoinLinkNote } from "@/lib/join-dm";
+import { composeJoinDm, joinDmPath, type JoinDmInput, type JoinLinkNote } from "@/lib/join-dm";
+import { buildAdminLink } from "@/lib/admin-link";
+import { usableWhatsAppName } from "@/lib/resolve-sender";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -42,9 +46,14 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  const { groupId, phones } = (body ?? {}) as {
+  const { groupId, phones, names } = (body ?? {}) as {
     groupId?: string;
     phones?: string[];
+    /** Optional (2026-09-30): the WhatsApp name the Pi already knew for a
+     *  joiner, keyed by the same string as in `phones`. A Pi that does not
+     *  send it changes nothing; the name is filled on their first post
+     *  instead (`resolve-sender.ts`). */
+    names?: Record<string, string>;
   };
 
   if (!groupId || !Array.isArray(phones) || phones.length === 0) {
@@ -83,6 +92,10 @@ export async function POST(request: Request) {
       continue;
     }
 
+    const knownName = usableWhatsAppName(
+      names && typeof names === "object" ? (names[raw] ?? names[normalised] ?? names[normalised.replace(/^\+/, "")]) : null,
+    );
+
     // Step 3: find or create the user.
     let user = await db.user.findUnique({
       where: { phoneNumber: normalised },
@@ -96,7 +109,7 @@ export async function POST(request: Request) {
       const placeholderEmail = `wa-${normalised.replace(/^\+/, "")}@placeholder.matchtime`;
       user = await db.user.create({
         data: {
-          name: null,
+          name: knownName,
           email: placeholderEmail,
           phoneNumber: normalised,
           onboarded: false,
@@ -105,6 +118,10 @@ export async function POST(request: Request) {
         select: { id: true, name: true, email: true },
       });
       created = true;
+    } else if (!user.name && knownName) {
+      // A nameless row we already had: the Pi knows their WhatsApp name.
+      await db.user.updateMany({ where: { id: user.id, name: null }, data: { name: knownName } });
+      user = { ...user, name: knownName };
     }
 
     // Step 4: upsert membership.
@@ -168,16 +185,18 @@ export async function POST(request: Request) {
     if (!alreadyActive && admins.length > 0) {
       const displayName =
         user.name?.trim() || (link.kind === "linked" ? link.placeholderName : "") || normalised;
-      const text = composeJoinDm(
-        org.language,
-        created
-          ? { kind: "new", club: org.name, phone: normalised, link: linkNote }
-          : { kind: rejoined ? "rejoined" : "first", club: org.name, name: displayName, link: linkNote },
-      );
+      const input: JoinDmInput = created
+        ? { kind: "new", club: org.name, phone: normalised, name: user.name, link: linkNote }
+        : { kind: rejoined ? "rejoined" : "first", club: org.name, name: displayName, link: linkNote };
+      const path = joinDmPath(input);
 
       for (const admin of admins) {
         // Same-person admin getting DM'd about themselves would be silly.
         if (admin.id === user.id) continue;
+        // Each admin gets their OWN signed-in link, in this club (2026-09-30:
+        // the DM used to end in a bare "/admin/players/phones").
+        const url = path ? await buildAdminLink({ userId: admin.id, orgId: org.id, nextPath: path }) : "";
+        const text = composeJoinDm(org.language, input, url);
         await db.botJob.create({
           data: {
             orgId: org.id,

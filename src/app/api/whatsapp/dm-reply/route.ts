@@ -14,7 +14,11 @@
  *      only while SELF_JOIN_ENABLED is on; deterministic, no model; a DM
  *      with no code, or a code that names no connect request, falls
  *      through untouched. See lib/connect-dm.ts)
- *   1. bench-slot offer reply           (an open BenchSlotOffer)
+ *   1. bench-slot offer reply           (an open BenchSlotOffer; skips a
+ *      help request, which is never a YES/NO)
+ *   1b. help                            (2026-09-30: "help", "help payments",
+ *      "yardım ödeme"; deterministic, the group's own builder, for the
+ *      sender's club; see lib/dm-help.ts)
  *   2. DM subscription command          ("stop messaging me about ratings")
  *   3. player payment claim             (2026-09-23: "Paid" from a player
  *      who owes a released fee; the pay page's settle-directly, see
@@ -76,6 +80,7 @@ import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance"
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 import { LANGS } from "@/lib/i18n/lang";
 import { readBenchDmReply, readTentativeFastPath } from "@/lib/dm-reply-words";
+import { readHelpRequest } from "@/lib/onboarding-conversation";
 import {
   buildAdminRecruitDmReply,
   buildBenchDmAck,
@@ -126,6 +131,11 @@ export async function POST(request: Request) {
     if (connect) return NextResponse.json({ ok: true, ...connect });
   }
 
+  // A help request ("help", "help payments", "yardım ödeme") is answered
+  // further down, deterministically (handleDmHelp). Read once here so the
+  // bench-offer reply below does not swallow it as an unclear YES/NO.
+  const isHelpRequest = readHelpRequest(text, { dm: true }) !== null;
+
   // ── Bench-confirmation DM reply ──────────────────────────────────
   //   Added 2026-05-18 (Kemal): when a slot opens we now DM the
   //   bencher as well as tagging them in the group, because benchers
@@ -141,7 +151,7 @@ export async function POST(request: Request) {
       where: { resolvedAt: null },
       select: { matchId: true },
     });
-    if (openOffers.length > 0) {
+    if (openOffers.length > 0 && !isHelpRequest) {
       const matchIds = [...new Set(openOffers.map((o) => o.matchId))];
       const benchAtt = await db.attendance.findMany({
         where: { matchId: { in: matchIds }, status: "BENCH" },
@@ -376,6 +386,28 @@ export async function POST(request: Request) {
   if (await onlyUnapprovedClubs(user.memberships.map((m) => m.orgId))) {
     console.log(`[dm-reply] sender ${user.id} belongs only to unapproved clubs; ignoring`);
     return NextResponse.json({ ok: true, ignored: "club-not-approved" });
+  }
+
+  // ── Help by DM (2026-09-30) ──────────────────────────────────────────
+  //   "help", "help payments", "@Match Time help teams", "yardım ödeme":
+  //   the SAME deterministic help the group gets (one builder,
+  //   buildHelpReply), for the sender's club, worded for an organiser or a
+  //   player. No model call. See lib/dm-help.ts for which club and why.
+  //
+  //   PLACEMENT. After the silence rails (an organiser of a club waiting
+  //   for approval still gets nothing) and ahead of every handler that
+  //   answers what it cannot read with a re-ask (tentative follow-up,
+  //   roster survey) or asks a model (payment claim, admin commands, Q&A).
+  //   It cannot take anything from them: `readHelpRequest` with dm: true
+  //   accepts only the keyword alone or with a KNOWN topic in at most four
+  //   words, so "Paid", "IN", "£8" and "help me, I can't make it" all fall
+  //   through untouched. The self-join commands above never reach here
+  //   when they are commands, and the bench-offer reply skips a help
+  //   request (see `isHelpRequest` above).
+  if (isHelpRequest) {
+    const { handleDmHelp } = await import("@/lib/dm-help");
+    const help = await handleDmHelp({ userId: user.id, text, envelopePhone: phone });
+    if (help) return NextResponse.json({ ok: true, ...help });
   }
 
   // ── DM subscription-preference fast-path (2026-06-11; per-category

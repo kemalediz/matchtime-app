@@ -61,6 +61,7 @@
  * saying so is worth nothing (four seatbelts were found dead on
  * 2026-08-31, all with comments claiming they worked).
  */
+import { appUrl } from "./app-url";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import type { ProposedWrite } from "./pipeline/types";
@@ -121,6 +122,12 @@ export function teamOpsSayGenerateReply(lang?: Lang | string | null): string {
  *  a `swap` the pre-peel could not apply). Said rather than swallowed. */
 export function requestNotHandledReply(lang?: Lang | string | null): string {
   return t(lang).request_not_handled;
+}
+
+/** The same, for an admin (2026-09-30): points at the admin page and
+ *  "help schedule". Public URL: this is posted in the group. */
+export function requestNotHandledAdminReply(lang?: Lang | string | null): string {
+  return t(lang).request_not_handled_admin({ url: appUrl("/admin") });
 }
 
 /** `route.ts:3690`. The balancer declined — not enough confirmed

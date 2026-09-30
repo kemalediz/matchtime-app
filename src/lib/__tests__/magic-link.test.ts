@@ -171,6 +171,37 @@ describe("magic-link: legacy tokens (no iat) sunset instead of living forever", 
   });
 });
 
+describe("magic-link: an admin link can name the club it opens (2026-09-30)", () => {
+  // An organiser in two clubs (Kemal: Sutton FC and MT Test) opened MT
+  // Test's setup link and could land on Sutton's admin page, because the
+  // admin pages read the club from a cookie and fall back to the OLDEST
+  // membership. The token now carries the club, and sign-in pins it.
+  it("round-trips an orgId", async () => {
+    const t = signMagicLinkToken({
+      userId: "u1",
+      purpose: "sign-in",
+      nextPath: "/admin/players/ratings",
+      orgId: "org-mt-test",
+      ttlSeconds: 3600,
+    });
+    const p = await verifyMagicLinkToken(t);
+    expect(p?.orgId).toBe("org-mt-test");
+    expect(p?.nextPath).toBe("/admin/players/ratings");
+  });
+
+  it("a token without an orgId still verifies (every link already in a chat)", async () => {
+    const t = signMagicLinkToken({ userId: "u1", purpose: "sign-in", ttlSeconds: 3600 });
+    const p = await verifyMagicLinkToken(t);
+    expect(p).not.toBeNull();
+    expect(p?.orgId).toBeUndefined();
+  });
+
+  it("rejects a signed payload whose orgId is not a string", async () => {
+    const t = forge({ userId: "u1", purpose: "sign-in", orgId: 42, iat: nowSec(), exp: nowSec() + 60 });
+    expect(await verifyMagicLinkToken(t)).toBeNull();
+  });
+});
+
 function nowSec(): number {
   return Math.floor(Date.now() / 1000);
 }

@@ -39,7 +39,7 @@ export const FEATURE_META: Array<{
   { key: "teamBalancing", label: "Team generation", blurb: "Builds two balanced teams on request." },
   { key: "momVoting", label: "Man of the Match", blurb: "Posts the MoM vote after the match and announces the winner." },
   { key: "playerRating", label: "Player ratings", blurb: "DMs each player a quick post-match rating link." },
-  { key: "reminders", label: "Personal reminders", blurb: '"@MatchTime remind me Monday" — bot DMs you later.' },
+  { key: "reminders", label: "Personal reminders", blurb: '"@MatchTime remind me Monday" and the bot DMs you then.' },
   { key: "statsQa", label: "Stats answers", blurb: "Answers history questions (top attenders, past MoMs, scores)." },
   { key: "paymentTracking", label: "Payment tracking", blurb: "Tracks who has paid and chases the unpaid (opt-in)." },
   { key: "paymentCollection", label: "Collect match fees (Stripe)", blurb: "After each match, DM each player a link to pay. Needs a connected bank (below)." },

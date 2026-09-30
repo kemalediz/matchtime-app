@@ -526,7 +526,29 @@ export function extractPlayersPerSide(text: string): number | null {
  * skips captures that are just a time, and strips a trailing format
  * fragment ("…, 7-a-side").
  */
+/**
+ * A venue as a NAME (2026-09-30): the leading "at", "on", "in", "@" and
+ * "the" are the sentence around it ("Friday 8pm on Sutton Goals" was
+ * stored as "on Sutton Goals" and posted as "at on Sutton Goals"). Also
+ * collapses spaces. Null when nothing is left. A Turkish locative suffix
+ * is handled where it is read (`stripLocative`).
+ */
+export function cleanVenue(raw: string | null | undefined): string | null {
+  let v = (raw ?? "").replace(/\s+/g, " ").trim();
+  for (let i = 0; i < 4; i++) {
+    const next = v.replace(/^(?:@\s*|(?:at|on|in|the)\s+)/i, "").trim();
+    if (next === v) break;
+    v = next;
+  }
+  if (/^(?:at|on|in|the|@)$/i.test(v)) return null;
+  return v.length >= 2 ? v.slice(0, 120) : null;
+}
+
 export function extractVenueFreeText(raw: string): string | null {
+  return cleanVenue(extractVenueFreeTextRaw(raw));
+}
+
+function extractVenueFreeTextRaw(raw: string): string | null {
   // Collect the start offsets of every "at "/"@ " token (a single
   // matchAll over a capture would consume "9 at Goals" in one greedy
   // match and hide the later, real venue clause).

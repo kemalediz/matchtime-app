@@ -185,7 +185,7 @@
  * so there is ONE place in the codebase where a bulk DM is performed,
  * and one shape to review when the next one arrives.
  */
-import { requestNotHandledReply } from "./team-ops-engine";
+import { requestNotHandledAdminReply, requestNotHandledReply } from "./team-ops-engine";
 import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
   ADMIN_OPS_APPLY_DEGRADED_PREFIX,
@@ -566,7 +566,11 @@ export async function runAdminOpsBatch(args: {
       r.outcomes.set(id, {
         waMessageId: id,
         route: m.route as Route,
-        reply: requestNotHandledReply(state.features.language),
+        // An admin is pointed at the admin page (2026-09-30); a player
+        // keeps the one line. Same verdict, no extra model call.
+        reply: state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin)
+          ? requestNotHandledAdminReply(state.features.language)
+          : requestNotHandledReply(state.features.language),
         react: null,
         intent: "noise",
         action: "reply",

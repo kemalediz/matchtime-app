@@ -212,7 +212,7 @@ test("two 'Yusuf' placeholders: no merge, the DM and /admin/players both suggest
   const dm = await lastAdminDm(db);
   expect(dm).toContain("*Yusuf* joined *E2E Test FC*'s WhatsApp group");
   expect(dm).toContain("They might be the same person as *Yusuf* and *Yusuf*");
-  expect(dm).toContain("/admin/players");
+  expect(dm).toMatch(/merge them here:\n\S+\/r\/\S+/);
 
   await asAdmin(page);
   const body = (await (await page.request.get("/api/players")).json()) as {

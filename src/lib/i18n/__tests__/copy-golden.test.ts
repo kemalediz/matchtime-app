@@ -206,6 +206,22 @@
  *   whatsapp-bot/src/index.ts    :467 the Pi's one string
  *   The model-composed paths (message-analyzer.ts chases, dm-qa.ts) are
  *   not templates and are measured by live dry runs, not snapshots.
+ *
+ *   - Deliberate CHANGES and additions (2026-09-30, PR
+ *     feat/onboarding-help-and-seeds, Kemal's first real in-group
+ *     setup). CHANGED, on purpose, every one read by a reviewer:
+ *     the how-to block (R141: the reminders line says what it is for,
+ *     "I'll DM you then"; a 💷 line when payments are off; the em dashes
+ *     in its lines are gone), the help explainers and bare help (R142,
+ *     R143: "Topic: how it works" headings and ": " for the dashes, the
+ *     reminders explainer "DM you then", the schedule topic in the bare
+ *     menu, and "a topic switched off" now explains itself and how to
+ *     switch it on instead of declining), the admin setup DM (R118: no
+ *     dash, "takes 2 minutes" after a comma) and the setup acks,
+ *     questions and completion posts (no dash). ADDED: R147 to R151 (help
+ *     by audience, schedule help, the admin's "can't do that by message"
+ *     pointer, the setup DM's seed, block-booking and match-list links,
+ *     the join DMs with a link). No other English case changed.
  */
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
@@ -279,6 +295,7 @@ import { composePaymentAck, composeReminderDm, type PaymentApplyResult } from ".
 import {
   composeBalancerRefusal,
   composeGenerateTeamsReply,
+  requestNotHandledAdminReply,
   requestNotHandledReply,
   teamOpsNoMatchReply,
   teamOpsNotABuildRequestReply,
@@ -334,6 +351,7 @@ import {
   buildLegacyCompletionPost,
 } from "../../onboarding-conversation";
 import { RECOMMENDED_BUNDLE, EVERYTHING_BUNDLE } from "../../onboarding-parse";
+import { composeJoinDm } from "../../join-dm";
 import { detailsFollowUpQuestion } from "../../onboarding-parse";
 import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { resolveReminderPhrase } from "../../reminder-time";
@@ -981,6 +999,34 @@ function cases(lang: Lang): Case[] {
     add(`R142 buildHelpReply / ${topic}`, buildHelpReply(topic, ALL_ON));
   }
   add("R143 buildHelpReply / topic switched off", buildHelpReply("payments", MINIMAL));
+  // ── 1.4b help by audience, schedule help, admin pointers (2026-09-30) ──
+  //    NEW cases. Public URLs are the test host's default
+  //    (https://matchtime.ai); signed-in links are fixed strings.
+  const SIGNED = {
+    settings: "https://mt.example/r/settings",
+    activities: "https://mt.example/r/activities",
+    blockBookings: "https://mt.example/r/blocks",
+    bulk: "https://mt.example/r/bulk",
+    matches: "https://mt.example/r/matches",
+  };
+  add("R147 buildHowToUseMe / fee collection on", buildHowToUseMe({ ...ALL_ON, paymentCollection: true }, lang));
+  add("R147 buildHowToUseMe / payments off", buildHowToUseMe({ ...ALL_ON, paymentTracking: false }, lang));
+  for (const audience of ["group", "admin", "player"] as const) {
+    const ctx = { audience, links: audience === "admin" ? SIGNED : undefined };
+    add(`R148 buildHelpReply / payments off / ${audience}`, buildHelpReply("payments", MINIMAL, lang, ctx));
+    add(`R148 buildHelpReply / mom off / ${audience}`, buildHelpReply("mom", MINIMAL, lang, ctx));
+    add(`R148 buildHelpReply / schedule / ${audience}`, buildHelpReply("schedule", ALL_ON, lang, ctx));
+  }
+  add("R148 buildHelpReply / payments on / admin", buildHelpReply("payments", ALL_ON, lang, { audience: "admin", links: SIGNED }));
+  add("R148 buildHelpReply / bare / admin", buildHelpReply(null, ALL_ON, lang, { audience: "admin", links: SIGNED }));
+  add("R149 requestNotHandledAdminReply", requestNotHandledAdminReply(lang));
+  add("R150 buildAdminMagicLinkDm / seeds, blocks, matches", buildAdminMagicLinkDm({
+    groupName: "Tuesday Ballers FC", url: "https://mt.example/s/abc", payments: false,
+    seedUrl: "https://mt.example/s/seeds", blockBookingsUrl: "https://mt.example/s/blocks", matchesUrl: "https://mt.example/s/matches",
+  }, lang));
+  add("R151 composeJoinDm / new, unnamed", composeJoinDm(lang, { kind: "new", club: "MT Test", phone: "+447546111893" }, "https://mt.example/r/phones"));
+  add("R151 composeJoinDm / new, named", composeJoinDm(lang, { kind: "new", club: "MT Test", phone: "+447546111893", name: "Ali" }, "https://mt.example/r/players"));
+  add("R151 composeJoinDm / possible duplicate", composeJoinDm(lang, { kind: "first", club: "MT Test", name: "Hamzah Khan", link: { kind: "suggest", names: ["Hamzah", "Hamza"] } }, "https://mt.example/r/players"));
   // ── 1.5 the web surfaces (slice 6, 2026-09-19) ──────────────────────
   //    NEW copy, not a move, so these cases are additive to both
   //    snapshots and the only other line in the English diff is the

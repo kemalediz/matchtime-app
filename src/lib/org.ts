@@ -17,6 +17,30 @@ export async function setCurrentOrgId(orgId: string) {
   });
 }
 
+/**
+ * Make the club a magic link names the active one (2026-09-30).
+ *
+ * Called at magic-link sign-in. Only for an ACTIVE member of that club, or
+ * the platform superadmin; anybody else keeps whatever club they had, and
+ * the page's own admin gate still decides what they may see. Never throws:
+ * a failure here must not break signing in. Returns whether it pinned.
+ */
+export async function pinOrgFromMagicLink(userId: string, orgId: string): Promise<boolean> {
+  try {
+    const membership = await db.membership.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { leftAt: true },
+    });
+    const allowed = (membership && membership.leftAt === null) || (await isSuperadmin(userId));
+    if (!allowed) return false;
+    await setCurrentOrgId(orgId);
+    return true;
+  } catch (err) {
+    console.error("[org] could not pin the club from a magic link:", err);
+    return false;
+  }
+}
+
 /** Is this user a superadmin? Cached per request via db call. */
 export async function isSuperadmin(userId: string): Promise<boolean> {
   const user = await db.user.findUnique({

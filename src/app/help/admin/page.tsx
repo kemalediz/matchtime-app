@@ -46,21 +46,12 @@ export default function AdminGuidePage() {
       </p>
       <ul>
         <li>The sport and format (football 5, 7 or 11-a-side, futsal, basketball and more), which sets the squad size</li>
-        <li>Day, kickoff time, how long the match lasts, and the venue</li>
-        <li>The match fee, if you collect one</li>
+        <li>Day, kickoff time and venue</li>
+        <li>How many hours before kickoff sign-ups close, and how long the match lasts</li>
       </ul>
       <p>
         Upcoming matches are created for you automatically, so there&apos;s
         always a next match for players to say In to.
-      </p>
-
-      <h3>Book the whole season</h3>
-      <p>
-        Under <strong>Block bookings</strong> you can create a season of
-        weekly matches in one go (up to 60). Nothing is posted to the group
-        when you do. Going away for a couple of weeks? Cancel a date range in
-        bulk, with or without a message to the group, and restore it later if
-        plans change.
       </p>
 
       <h3>A smaller format for short weeks</h3>
@@ -69,11 +60,136 @@ export default function AdminGuidePage() {
         short, set up both as activities. MatchTime will suggest the switch
         in its call for players, and DM you the day before if you&apos;re
         short (see below). You book the smaller pitch and switch the match
-        in the dashboard.
+        yourself (see the next section).
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="players">3. Players</h2>
+      <h2 id="schedule">3. Changing the schedule</h2>
+
+      <p>
+        Schedule changes are made on the dashboard, not by messaging
+        MatchTime. Open <strong>Admin</strong> in the menu; the tabs along the
+        top take you to each screen.
+      </p>
+
+      <h3>Add or change your weekly game</h3>
+      <ol>
+        <li>Go to <strong>Admin</strong>, then the <strong>Activities</strong> tab.</li>
+        <li>
+          For a new game, press <strong>Create activity</strong>, fill in the
+          name, sport, day, time, venue, sign-up deadline and match length,
+          then press Create.
+        </li>
+        <li>
+          To change a game, press <strong>Edit</strong> next to it, change the
+          name, day, time or venue, then press <strong>Save changes</strong>.
+        </li>
+      </ol>
+      <p>
+        <em>What the group is told:</em> Nothing is posted. A new day or time
+        applies to matches created from then on; matches already created keep
+        their date and time.
+      </p>
+
+      <h3>Book a run of weeks</h3>
+      <ol>
+        <li>On the <strong>Block bookings</strong> tab, press <strong>New block booking</strong>.</li>
+        <li>
+          Pick the activity and the start date. The kickoff time defaults to
+          the activity&apos;s; change it only if this booking is different.
+        </li>
+        <li>
+          Under Block length, choose an end date or a number of matches (up
+          to 60). Cost per match and notes are optional, for your own records.
+        </li>
+        <li>
+          Press <strong>Preview dates</strong> and check the list. A date that
+          already has a match is added to the block, not duplicated.
+        </li>
+        <li>Press <strong>Create block</strong>.</li>
+      </ol>
+      <p>
+        <em>What the group is told:</em> Nothing is posted. MatchTime carries
+        on announcing only the next match that&apos;s on.
+      </p>
+
+      <h3>Cancel or restore a range of dates</h3>
+      <p>
+        For a holiday, or weeks when the pitch isn&apos;t available. It works
+        for any match, booked in a block or not.
+      </p>
+      <ol>
+        <li>On the <strong>Block bookings</strong> tab, press <strong>Bulk cancel / restore</strong>.</li>
+        <li>
+          Set From and To (both dates included), choose{" "}
+          <strong>Cancel matches</strong> or{" "}
+          <strong>Restore cancelled matches</strong> under Action, then press{" "}
+          <strong>Find matches</strong>.
+        </li>
+        <li>
+          Untick any match you want to leave alone. Matches that already have
+          players in show how many.
+        </li>
+        <li>
+          When cancelling, tick <strong>Announce to the group</strong> if you
+          want players told. Then press the button at the bottom to confirm.
+        </li>
+      </ol>
+      <p>
+        <em>What the group is told:</em> Nothing, unless you ticked Announce
+        to the group. Then MatchTime posts one &quot;❌ Schedule update&quot;
+        message listing the dates that are off. Restoring is always silent.
+      </p>
+      <p>
+        Each block on the Block bookings tab also has{" "}
+        <strong>Cancel remaining</strong> (every future match in that block,
+        silently) and <strong>Restore cancelled</strong>.
+      </p>
+
+      <h3>Cancel one match</h3>
+      <ol>
+        <li>Open <strong>Matches</strong> in the menu and pick the match.</li>
+        <li>
+          Press <strong>Manage teams</strong>, or <strong>Generate teams</strong>{" "}
+          if sign-ups have closed and the teams aren&apos;t made yet.
+        </li>
+        <li>
+          Press <strong>Cancel match</strong>, check the details, then press
+          Cancel match again to confirm.
+        </li>
+      </ol>
+      <p>
+        <em>What the group is told:</em> MatchTime posts
+        &quot;❌ Match cancelled&quot; with the date and time, saying there
+        aren&apos;t enough players this week. Reminders and DMs for that match stop, and
+        there are no ratings or Man of the Match that week.
+      </p>
+      <p>
+        Before sign-ups close, the match page has no teams button. To cancel
+        then, use Bulk cancel / restore with the same date in From and To.
+      </p>
+
+      <h3>Switch one match to a smaller format</h3>
+      <p>The smaller format needs its own activity first (see above).</p>
+      <ol>
+        <li>Open <strong>Matches</strong> in the menu and pick the match.</li>
+        <li>Press <strong>Switch format</strong>.</li>
+        <li>
+          Under <strong>Switch to</strong>, pick the smaller activity. The page
+          shows how many players stay in and how many move to the bench (the
+          earliest Ins keep their places).
+        </li>
+        <li>Press <strong>Confirm switch</strong>.</li>
+      </ol>
+      <p>
+        <em>What the group is told:</em> MatchTime posts
+        &quot;🔁 Match switched&quot; with the new format, who&apos;s playing and who&apos;s on
+        the bench. If the smaller format kicks off at a different time, the
+        match moves to that time and the post says so.
+      </p>
+
+      {/* ───────────────────────────────────────────────── */}
+      <h2 id="players">4. Players</h2>
 
       <h3>Adding players</h3>
       <ol>
@@ -140,7 +256,7 @@ export default function AdminGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="match-lifecycle">4. What happens each week</h2>
+      <h2 id="match-lifecycle">5. What happens each week</h2>
 
       <p>
         The steps follow your match day, so this works the same whether you
@@ -229,7 +345,7 @@ export default function AdminGuidePage() {
       </ul>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="team-balancing">5. How teams are picked</h2>
+      <h2 id="team-balancing">6. How teams are picked</h2>
 
       <p>
         MatchTime uses each player&apos;s rating at your club: your starting
@@ -262,7 +378,7 @@ export default function AdminGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="scores-ratings">6. Scores, ratings and Man of the Match</h2>
+      <h2 id="scores-ratings">7. Scores, ratings and Man of the Match</h2>
 
       <ul>
         <li>
@@ -280,7 +396,7 @@ export default function AdminGuidePage() {
       </ul>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="payments">7. Payments (optional)</h2>
+      <h2 id="payments">8. Payments (optional)</h2>
       <p>
         Switch on <strong>Collect match fees</strong> in Settings, choose who
         collects the money and connect their bank. After each game players
@@ -293,7 +409,7 @@ export default function AdminGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="admin-dms">8. DMs you&apos;ll get as an admin</h2>
+      <h2 id="admin-dms">9. DMs you&apos;ll get as an admin</h2>
 
       <ul>
         <li>
@@ -311,28 +427,17 @@ export default function AdminGuidePage() {
       </ul>
       <p>
         Each DM has a link that signs you straight in and opens the right
-        page. Links are valid for 48 hours.
+        page. Links are valid for
+        48 hours.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="corrections">9. Fixing things</h2>
+      <h2 id="corrections">10. Fixing things</h2>
 
       <h3>Someone&apos;s attendance is wrong</h3>
       <p>
         Open the match. You can add a player, take someone out, or move
         someone up from the bench.
-      </p>
-
-      <h3>Switch format</h3>
-      <p>
-        Match page, then <strong>Switch format</strong>. Pick the smaller
-        activity and confirm who goes to the bench.
-      </p>
-
-      <h3>Cancel a match</h3>
-      <p>
-        Match page, then <strong>Cancel</strong>. MatchTime posts the
-        cancellation, and there are no ratings or Man of the Match that week.
       </p>
 
       <h3>A message wasn&apos;t understood</h3>
@@ -343,7 +448,7 @@ export default function AdminGuidePage() {
       </p>
 
       {/* ───────────────────────────────────────────────── */}
-      <h2 id="faq">10. FAQ</h2>
+      <h2 id="faq">11. FAQ</h2>
 
       <h3>How do I get MatchTime into my group?</h3>
       <p>

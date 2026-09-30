@@ -1,3 +1,4 @@
+import { namesForJoiners } from "./join-names.js";
 import type { GroupMembershipEvent, InboundMessage, InboundPollVote } from "./driver.js";
 import { baileysLiveBanner, createDriver } from "./driver-select.js";
 import {
@@ -909,8 +910,11 @@ async function main() {
         selfId,
       );
       if (phones.length === 0) return;
-      console.log(`group_join in ${groupId}: ${phones.join(", ")}`);
-      await postGroupJoin({ groupId, phones });
+      // The names the bot already knows (2026-09-30), so the server can
+      // name the new player instead of asking the organiser to.
+      const names = await namesForJoiners(phones, (jid) => driver.getContact(jid));
+      console.log(`group_join in ${groupId}: ${phones.join(", ")} (named ${Object.keys(names).length})`);
+      await postGroupJoin({ groupId, phones, names });
     } catch (err) {
       console.error("Error forwarding group_join:", err);
     }

@@ -28,12 +28,14 @@ const membershipFindMany = vi.fn();
 const membershipUpdate = vi.fn();
 const membershipUpsert = vi.fn();
 const userAliasFindUnique = vi.fn();
+const userUpdateMany = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
     user: {
       findUnique: (...a: unknown[]) => userFindUnique(...a),
       create: (...a: unknown[]) => userCreate(...a),
+      updateMany: (...a: unknown[]) => userUpdateMany(...a),
     },
     membership: {
       findMany: (...a: unknown[]) => membershipFindMany(...a),
@@ -92,6 +94,43 @@ describe("THE HOLE: a sender with neither a phone nor a name", () => {
     });
     expect(out.userId).toBeNull();
     expect(out.name).toBeNull();
+  });
+});
+
+describe("a nameless placeholder takes its WhatsApp name on its first post (2026-09-30)", () => {
+  // Someone added to the group arrives as a phone with no name (the join
+  // event carries none). The organiser was asked to type the name in. When
+  // that person first posts, their WhatsApp name is on the message: use it.
+  it("phone matches a user with NO name → the pushname is written and returned", async () => {
+    userFindUnique.mockResolvedValue({ id: "u9", name: null });
+    userUpdateMany.mockResolvedValue({ count: 1 });
+    const out = await resolveSender(ORG, { authorPhone: "447546111893", authorName: "  Ali Veli " });
+    expect(userUpdateMany).toHaveBeenCalledWith({ where: { id: "u9", name: null }, data: { name: "Ali Veli" } });
+    expect(out).toEqual({ userId: "u9", name: "Ali Veli", phone: "+447546111893" });
+  });
+
+  it("a user who HAS a name keeps it, whatever their WhatsApp name says", async () => {
+    userFindUnique.mockResolvedValue({ id: "u9", name: "Ali" });
+    const out = await resolveSender(ORG, { authorPhone: "447546111893", authorName: "Ali the Wall" });
+    expect(userUpdateMany).not.toHaveBeenCalled();
+    expect(out.name).toBe("Ali");
+  });
+
+  it.each([["447546111893"], ["+44 7546 111893"], ["x"], ["Match Time"], [""]])(
+    "never writes %j as a name",
+    async (pushname) => {
+      userFindUnique.mockResolvedValue({ id: "u9", name: null });
+      const out = await resolveSender(ORG, { authorPhone: "447546111893", authorName: pushname });
+      expect(userUpdateMany).not.toHaveBeenCalled();
+      expect(out.name).toBeNull();
+    },
+  );
+
+  it("a failed write still resolves the sender (attendance must not be lost)", async () => {
+    userFindUnique.mockResolvedValue({ id: "u9", name: null });
+    userUpdateMany.mockRejectedValue(new Error("db"));
+    const out = await resolveSender(ORG, { authorPhone: "447546111893", authorName: "Ali" });
+    expect(out.userId).toBe("u9");
   });
 });
 
