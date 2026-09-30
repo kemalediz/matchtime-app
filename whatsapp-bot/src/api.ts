@@ -418,6 +418,8 @@ export async function postBotRemoved(params: { groupId: string }): Promise<boole
 export async function postGroupJoin(params: {
   groupId: string;
   phones: string[]; // E.164 without the leading "+"
+  /** Known WhatsApp names, keyed as in `phones` (2026-09-30). Optional. */
+  names?: Record<string, string>;
 }): Promise<void> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/group-join`, {
     method: "POST",

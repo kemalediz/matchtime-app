@@ -281,7 +281,8 @@ const AI_CAP_HANDLED_BY = "ai-daily-cap";
 import {
   handleOnboardingTurn,
   buildHelpReply,
-  parseHelpTopic,
+  helpFeaturesFrom,
+  readHelpRequest,
   legacySetupLang,
 } from "@/lib/onboarding-conversation";
 import {
@@ -1128,29 +1129,20 @@ async function handleAnalyzeRequest(request: Request) {
   //   "TIME" into "tıme" (dotless), so an all-caps English "@MATCH TIME
   //   HELP" only matches under the plain one, and "YARDIM" only under the
   //   Turkish one.
-  const HELP_RE =
-    /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})(?:\s+[\p{L}\p{N} &']+?)?\s*$/iu;
+  //   The pattern itself lives in onboarding-conversation.ts
+  //   (`HELP_REQUEST_RE`, 2026-09-30) so the DM route reads help the
+  //   same way; byte for byte the regex that stood here.
   for (const m of fresh) {
     if (fastPathHandledIds.has(m.waMessageId)) continue;
-    if (!HELP_RE.test(m.body.toLowerCase()) && !HELP_RE.test(m.body.toLocaleLowerCase("tr"))) continue;
+    const helpReq = readHelpRequest(m.body, { dm: false });
+    if (!helpReq) continue;
     if (!messageTagsBot(m)) continue;
     fastPathHandledIds.add(m.waMessageId); // peel off the LLM batch
     const feats = await getOrgFeatures(org.id);
-    const topic = parseHelpTopic(m.body);
-    const reply = buildHelpReply(
-      topic,
-      {
-        attendance: feats.attendance,
-        teamBalancing: feats.teamBalancing,
-        momVoting: feats.momVoting,
-        playerRating: feats.playerRating,
-        statsQa: feats.statsQa,
-        reminders: feats.reminders,
-        bench: feats.bench,
-        paymentTracking: feats.paymentTracking,
-      },
-      feats.language,
-    );
+    const topic = helpReq.topic;
+    // The group reply is public: plain URLs, never a signed-in link. The
+    // DM route calls the same builder (lib/dm-help.ts).
+    const reply = buildHelpReply(topic, helpFeaturesFrom(feats), feats.language, { audience: "group" });
     const sender = senderById.get(m.waMessageId)!;
     await recordAnalysis({
       orgId: org.id, groupId: body.groupId, msg: m,

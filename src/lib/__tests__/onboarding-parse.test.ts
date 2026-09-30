@@ -268,9 +268,11 @@ describe("extractVenueFreeText — venue stays FREE TEXT (no geocoding)", () => 
     );
   });
 
-  it("keeps the raw string (no normalisation/geocoding)", () => {
+  it("keeps the raw string (no geocoding); only a leading 'the' goes (2026-09-30, cleanVenue)", () => {
+    // CHANGED on purpose: the leading "at", "on", "in" and "the" are the
+    // sentence around the name (Kemal: "at on Sutton Goals").
     expect(extractVenueFreeText("9pm at the cage behind Tesco")).toBe(
-      "the cage behind Tesco",
+      "cage behind Tesco",
     );
   });
 });

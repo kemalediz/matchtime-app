@@ -47,16 +47,19 @@ test('tagged "help ratings" → the ratings explainer', async ({ request, db }) 
   expect(r.reply).toMatch(/rate the other players out of 10/i);
 });
 
-test('tagged "help payments" (payments OFF) → decline, not the explainer', async ({
+test('tagged "help payments" (payments OFF) → how fee collection works and how to switch it on (2026-09-30)', async ({
   request,
   db,
 }) => {
   const sim = await group(request, db);
   const r = await sim.post("pete", "@Match Time help payments", { tag: true });
   expect(r.intent).toBe("help");
-  expect(r.reply?.toLowerCase()).toMatch(/isn.t switched on/);
-  // The full payments explainer must NOT leak for a disabled feature.
-  expect(r.reply).not.toMatch(/match fee/i);
+  // It used to decline; an organiser learned nothing about a feature
+  // that is off by default. Now it explains and says how to turn it on.
+  expect(r.reply).toMatch(/isn't switched on for this group yet/);
+  expect(r.reply).toMatch(/\*Match fees: how it works\*/);
+  expect(r.reply).toMatch(/\*Collect match fees\*/);
+  expect(r.reply).not.toContain("/r/");
 });
 
 test('tagged bare "help" → topic menu, omits the disabled payments topic', async ({
@@ -68,7 +71,9 @@ test('tagged bare "help" → topic menu, omits the disabled payments topic', asy
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/MatchTime help/);
   expect(r.reply).toMatch(/help ratings/); // an enabled topic
-  expect(r.reply).not.toMatch(/help payments/); // payments off → omitted
+  // payments off → not in the topic menu (the how-to's 💷 line still
+  // points at it, 2026-09-30)
+  expect(r.reply).not.toMatch(/• \*@Match Time help payments\*/);
 });
 
 test('UNtagged "help" → ignored (no help reply produced)', async ({

@@ -628,6 +628,9 @@ export const tr: Strings = {
   teams_clear_nothing: "Silinecek takım yok.",
   teams_clear_admin_only: "Takımları sadece bir admin silebilir.",
   request_not_handled: "Kusura bakmayın, bunu henüz yapamıyorum.",
+  request_not_handled_admin: (p: { url: string }): string =>
+    `Bunu mesajla değiştiremiyorum, ama yönetici sayfasından birkaç dokunuşla yapabilirsiniz: ${p.url}\n` +
+    `Ya da bana sorun: *@Match Time yardım program*`,
 
   // ── row 133: composePaymentAck ─────────────────────────────────────
 
@@ -795,10 +798,25 @@ export const tr: Strings = {
     );
   },
 
-  onbAdminDm: (p: { groupName: string | null; url: string; payments: boolean }): string =>
+  onbAdminDm: (p: {
+    groupName: string | null;
+    url: string;
+    payments: boolean;
+    seedUrl?: string | null;
+    blockBookingsUrl?: string | null;
+    matchesUrl?: string | null;
+  }): string =>
     `👋 MatchTime'da ${p.groupName ? `*${p.groupName}* grubunun` : "grubunun"} yöneticisi sensin.\n\n` +
     `Yönetici sayfanın özel bağlantısı burada, oyuncu adları, puanlar` +
     `${p.payments ? ", ödemeler" : ""} ve ayarlar orada:\n${p.url}` +
+    (p.seedUrl
+      ? `\n\n⭐ *Başlangıç puanları:* ilk takımlarım dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan ver. ` +
+        `Oyuncular bunları hiç görmez, maçlardan sonra oyuncular birbirine puan verince gerçek puanlar bunların yerini alır:\n${p.seedUrl}`
+      : ``) +
+    (p.blockBookingsUrl ? `\n\n📅 Sezonluk blok rezervasyonun mu var? Tarihleri buradan ekle:\n${p.blockBookingsUrl}` : ``) +
+    (p.matchesUrl
+      ? `\n\n🗓️ Bir haftayı iptal etmen ya da formatını değiştirmen mi gerekiyor? O maçı maç listenden aç:\n${p.matchesUrl}`
+      : ``) +
     (p.payments
       ? `\n\nParayı da ben *toplayayım* mı? Yönetici sayfandan bir banka hesabı bağla, 2 dakika sürer.`
       : ``),
@@ -843,6 +861,7 @@ export const tr: Strings = {
     reminders: boolean;
     bench: boolean;
     paymentTracking: boolean;
+    paymentCollection?: boolean;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
@@ -860,8 +879,10 @@ export const tr: Strings = {
     lines.push(`🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.`);
     if (f.momVoting) lines.push(`🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.`);
     if (f.playerRating) lines.push(`⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.`);
-    if (f.reminders) lines.push(`⏰ Maçtan önce kadroya hatırlatma gönderirim.`);
+    if (f.reminders) lines.push(`⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`);
+    if (f.paymentCollection) lines.push(`💷 Her maçtan sonra size özelden bir ödeme bağlantısı gönderirim: kart, Apple veya Google Pay ya da banka.`);
     if (f.paymentTracking) lines.push(`💳 Kimin *ödediğini* takip ederim.`);
+    if (!f.paymentTracking && !f.paymentCollection) lines.push(`💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*`);
     lines.push(`\nBunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.`);
     return lines.join("\n");
   },
@@ -871,7 +892,7 @@ export const tr: Strings = {
   onbHelpTopicLine: (p: { word: string; label: string }): string =>
     `   • *@Match Time yardım ${p.word}*, ${p.label}`,
 
-  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
+  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
     ({
       availability: "kadro",
       teams: "takımlar",
@@ -879,9 +900,10 @@ export const tr: Strings = {
       ratings: "puanlama",
       reminders: "hatırlatma",
       payments: "ödeme",
+      schedule: "program",
     })[p.topic],
 
-  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
     ({
       availability: "kadro ve katılım",
       teams: "dengeli takımlar",
@@ -889,10 +911,93 @@ export const tr: Strings = {
       ratings: "oyuncu puanları",
       reminders: "hatırlatmalar",
       payments: "ödeme takibi",
+      schedule: "program ve rezervasyonlar",
     })[p.topic],
 
   onbHelpNotOn: (): string =>
     `Bu özellik bu grupta açık değil. Açık olanları görmek için *@Match Time yardım* yazın.`,
+
+  // The admin pages are English only, so their button names are quoted
+  // as they appear there; the steps read as a short path, which suits
+  // both the group ("siz") and a DM ("sen").
+  onbHelpSchedule: (p: {
+    audience: "group" | "admin" | "player";
+    activities: string;
+    blockBookings: string;
+    bulk: string;
+    matches: string;
+  }): string => {
+    if (p.audience === "player") {
+      return `🗓️ Maç günlerini, saatleri, iptalleri ve blok rezervasyonları organizatör yönetici sayfasından ayarlar. Bir şeyin değişmesi gerekiyorsa ona söyle.`;
+    }
+    return (
+      `🗓️ *Programı değiştirmek*\n` +
+      `Program değişiklikleri mesajla değil, yönetici sayfasından yapılır, her biri birkaç dokunuş sürer. Sayfa İngilizce, düğme adları aşağıdaki gibi.\n\n` +
+      `1️⃣ *Haftalık maç (gün, başlama saati, saha):* *Activities* › maçta *Edit* › *Save changes*. Yalnızca ileriki maçlar değişir, gruba bir şey yazılmaz.\n${p.activities}\n\n` +
+      `2️⃣ *Sezonluk blok rezervasyon:* *Block bookings* › *New block booking* › başlangıç tarihi ile bitiş tarihi ya da maç sayısı › *Preview dates* › *Create block*. Gruba bir şey yazılmaz.\n${p.blockBookings}\n\n` +
+      `3️⃣ *Bir haftayı (ya da birkaç tarihi) iptal etmek:* *Block bookings* › *Bulk cancel / restore* › *From* ve *To* alanlarına o tarih › *Find matches* › gruba duyurmamı istiyorsanız *Announce to the group* › onay. Geri almak da aynı şekilde.\n${p.bulk}\n\n` +
+      `4️⃣ *Bir maçı başka bir formata çevirmek:* maç listesinden maçı aç › *Switch format* › formatı seç › *Confirm switch*. Yeni kadroyu gruba ben yazarım.\n${p.matches}\n\n` +
+      `Tek bir haftanın başlama saati henüz ayrıca değiştirilemiyor: ileriki haftalar için haftalık maçı değiştirmek gerekiyor.` +
+      (p.audience === "group"
+        ? `\nYöneticiler: bana özelden *yardım program* yazın, bunları sizi doğrudan giriş yapmış olarak açan bağlantılar olarak göndereyim.`
+        : ``)
+    );
+  },
+
+  onbHelpOffLead: (): string => `ℹ️ Bu özellik bu grupta henüz açık değil, ama nasıl çalıştığı şöyle.`,
+
+  // The Settings page is English only, so the setting is named as it
+  // appears there, with the Turkish in brackets.
+  onbHelpSettingLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
+    ({
+      availability: "Attendance tracking (yoklama)",
+      teams: "Team generation (takım kurma)",
+      mom: "Man of the Match (maçın adamı)",
+      ratings: "Player ratings (oyuncu puanları)",
+      reminders: "Personal reminders (kişisel hatırlatmalar)",
+      payments: "Payment tracking (ödeme takibi)",
+    })[p.topic],
+
+  onbHelpPaymentsOff: (): string =>
+    `💷 *Maç ücretleri nasıl çalışır*\n` +
+    `Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını kartla veya bankadan ödemesi için özelden bir bağlantı gönderirim. Para doğrudan parayı toplayan kişinin banka hesabına gider.\n` +
+    `Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.\n` +
+    `Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.`,
+
+  onbHelpSwitchOn: (p: {
+    topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments";
+    audience: "group" | "admin" | "player";
+    url: string;
+    word: string;
+    label: string;
+  }): string => {
+    if (p.audience === "player") {
+      return p.topic === "payments"
+        ? `🔧 Bunu organizatör yönetici sayfasından açar. Bu şekilde ödemek istersen ona söyle.`
+        : `🔧 Bunu organizatör yönetici sayfasından açabilir. İstersen ona söyle.`;
+    }
+    if (p.audience === "admin") {
+      const what =
+        p.topic === "payments"
+          ? `*Bot features* altında *Payment tracking* ve *Collect match fees* ayarlarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika)`
+          : `*Bot features* altında *${p.label}* ayarını aç`;
+      return `🔧 Açmak için yönetici sayfanda *Settings* bölümüne gir, ${what}:\n${p.url}`;
+    }
+    const what =
+      p.topic === "payments"
+        ? `*Bot features* altında *Payment tracking* ve *Collect match fees* ayarlarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika)`
+        : `*Bot features* altında *${p.label}* ayarını açar`;
+    return (
+      `🔧 Açmak için bir yönetici, yönetici sayfasında (${p.url}) *Settings* bölümüne girer, ${what}.\n` +
+      `Yöneticiler: bana özelden *yardım ${p.word}* yazın, sizi doğrudan giriş yapmış olarak açan bir bağlantı göndereyim.`
+    );
+  },
+
+  onbHelpAdminSettings: (p: { url: string }): string => `⚙️ Ayarları yönetici sayfanda:\n${p.url}`,
+
+  onbHelpAdminPage: (p: { url: string }): string => `⚙️ Kulübünün ayarları, giriş yapmış olarak:\n${p.url}`,
+
+  onbHelpForClub: (p: { club: string }): string => `🏟️ *${p.club}* için:`,
 
   onbHelpExplainer: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
     ({
@@ -1395,7 +1500,10 @@ export const tr: Strings = {
     `MatchTime'ı denediğiniz için teşekkürler. ${p.group ? `"${p.group}" grubunu` : "Grubunuzu"} şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.`,
 
   dm_admin_join_new: (p) =>
-    `🆕 *${p.club}* WhatsApp grubuna yeni bir oyuncu katıldı.\n\nTelefon: ${p.phone}\nOnu geçici oyuncu olarak ekledim. Lütfen adını gir:\n/admin/players/phones`,
+    `🆕 *${p.club}* WhatsApp grubuna yeni bir oyuncu katıldı.\n\nTelefon: ${p.phone}\n` +
+    `Onu oyuncu listene ekledim. Grupta ilk yazdığında WhatsApp adını kendim eklerim, istersen şimdi de girebilirsin:\n${p.url}`,
+  dm_admin_join_new_named: (p) =>
+    `🆕 *${p.name}*, *${p.club}* WhatsApp grubuna katıldı ve oyuncu listende.\n\nTelefon: ${p.phone}\nBilgilerine bakmak için dokun:\n${p.url}`,
   dm_admin_join_first: (p) =>
     `🆕 *${p.name}*, *${p.club}* WhatsApp grubuna katıldı ve artık oyuncu listende.`,
   dm_admin_join_rejoined: (p) =>
@@ -1403,7 +1511,7 @@ export const tr: Strings = {
   dm_admin_join_linked: (p) =>
     `🔗 Onu ${p.addedOn} tarihinde eklenen *${p.placeholder}* kaydıyla birleştirdim, maçları ve takımdaki yeri korunuyor.`,
   dm_admin_join_possible_duplicate: (p) =>
-    `❓ Bu kişi daha önce adıyla eklenen ${joinList("tr", p.names.map((n) => `*${n}*`))} olabilir. Öyleyse /admin/players sayfasından birleştir.`,
+    `❓ Bu kişi daha önce adıyla eklenen ${joinList("tr", p.names.map((n) => `*${n}*`))} olabilir. Öyleyse buradan birleştir:\n${p.url}`,
 
   admin_players_duplicates_heading: "Olası çift kayıtlar",
   admin_players_duplicate_row: (p) => `Adıyla eklenen ${p.placeholder}, ${p.keeper} ile aynı kişi olabilir.`,

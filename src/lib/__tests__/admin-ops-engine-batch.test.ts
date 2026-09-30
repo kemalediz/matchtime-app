@@ -580,10 +580,13 @@ describe("every failure hands the message back to the analyzer", () => {
   // line, never swallowed. (The clear itself is now a deterministic
   // pre-peel in route.ts, `lib/team-clear.ts`; this is the backstop for
   // every other `other`.)
-  it('a TAGGED admin action "other" is answered in one line, and nothing is written', async () => {
+  it('a TAGGED admin action "other" from a player is answered in one line, and nothing is written', async () => {
     const { model } = stubModel({ [PAY]: { ...PAY_FACTS, action: "other" } });
     const r = recorder(model, paidWorld());
-    const res = await run({ messages: [msg({ body: PAY })], deps: r.deps });
+    const res = await run({
+      messages: [msg({ body: PAY, senderUserId: "u-zair", senderName: fullName("zair") })],
+      deps: r.deps,
+    });
     expect(res.ownedIds.size).toBe(1);
     const out = [...res.outcomes.values()][0];
     expect(out.reply).toBe("Sorry, I can't do that one yet.");
@@ -599,8 +602,42 @@ describe("every failure hands the message back to the analyzer", () => {
     const trState = { ...tr, features: { ...tr.features, language: "tr" as const } };
     const { model } = stubModel({ [PAY]: { ...PAY_FACTS, action: "other" } });
     const r = recorder(model, trState);
-    const res = await run({ messages: [msg({ body: PAY })], deps: r.deps });
+    const res = await run({
+      messages: [msg({ body: PAY, senderUserId: "u-zair", senderName: fullName("zair") })],
+      deps: r.deps,
+    });
     expect([...res.outcomes.values()][0].reply).toBe("Kusura bakmayın, bunu henüz yapamıyorum.");
+  });
+
+  // 2026-09-30, Kemal: schedule changes (block bookings, cancelling a
+  // week, kick-off, format, the weekly game) are made in the admin
+  // screens, not by WhatsApp command. An ADMIN whose request lands here
+  // is pointed at the admin page and at "help schedule" instead of a
+  // dead end. No model call is added and no prompt changes: this is the
+  // same `other` verdict, answered differently for an admin. The link is
+  // the public URL: the reply is posted in the group.
+  it('a TAGGED "other" from an ADMIN points at the admin page and "help schedule"', async () => {
+    const { model } = stubModel({ [PAY]: { ...PAY_FACTS, action: "other" } });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: PAY, senderUserId: "u-elvin" })], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out.reply).toBe(
+      "I can't change that by message, but you can do it on the admin page in a few taps: https://matchtime.ai/admin\n" +
+        "Or ask me: *@Match Time help schedule*",
+    );
+    expect(r.credits).toEqual([]);
+  });
+
+  it("the same for an admin in Turkish", async () => {
+    const tr = paidWorld();
+    const trState = { ...tr, features: { ...tr.features, language: "tr" as const } };
+    const { model } = stubModel({ [PAY]: { ...PAY_FACTS, action: "other" } });
+    const r = recorder(model, trState);
+    const res = await run({ messages: [msg({ body: PAY, senderUserId: "u-elvin" })], deps: r.deps });
+    const reply = [...res.outcomes.values()][0].reply!;
+    expect(reply).toContain("https://matchtime.ai/admin");
+    expect(reply).toContain("*@Match Time yardım program*");
+    expect(reply).not.toMatch(/[—–]/);
   });
 
   it('a message that only NAMES MatchTime, without an @-tag, is not answered (2026-09-10 sentence)', async () => {
@@ -632,7 +669,7 @@ describe("every failure hands the message back to the analyzer", () => {
       messages: [msg({ waMessageId: "wa-o", body: OTHER }), msg({ waMessageId: "wa-p", body: PAY })],
       deps: r.deps,
     });
-    expect(res.outcomes.get("wa-o")!.reply).toBe("Sorry, I can't do that one yet.");
+    expect(res.outcomes.get("wa-o")!.reply).toMatch(/^I can't change that by message/);
     expect(r.credits.length).toBeGreaterThan(0);
   });
 

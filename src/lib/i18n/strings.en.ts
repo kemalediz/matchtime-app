@@ -682,6 +682,12 @@ export const en = {
   teams_clear_nothing: "There are no teams to clear.",
   teams_clear_admin_only: "Only an admin can clear the teams.",
   request_not_handled: "Sorry, I can't do that one yet.",
+  /** The same, for an ADMIN (2026-09-30): schedule and settings changes
+   *  live in the admin screens, so point there instead of a dead end.
+   *  Posted in the group, so `url` is the public URL, never a sign-in. */
+  request_not_handled_admin: (p: { url: string }): string =>
+    `I can't change that by message, but you can do it on the admin page in a few taps: ${p.url}\n` +
+    `Or ask me: *@Match Time help schedule*`,
 
   // ── row 133: composePaymentAck (admin-ops-engine.ts) ───────────────
 
@@ -811,17 +817,17 @@ export const en = {
 
   /** The admins question, asked right after consent. */
   onbAdminQuestion: (): string =>
-    `Who else helps run this group? Reply with their name + number (or @mention) — ` +
+    `Who else helps run this group? Reply with their name + number (or @mention). ` +
     `you can list a few, separated by commas. Or say *just me* if it's only you.`,
 
   /** The reply to a consent answer: a short lead, then the admins question. */
   onbConsentAck: (p: { adminCaptured: boolean; adminQuestion: string }): string =>
-    `${p.adminCaptured ? "Done — you're the admin 🎽" : "Done ✅"} ${p.adminQuestion}`,
+    `${p.adminCaptured ? "Done, you're the admin 🎽" : "Done ✅"} ${p.adminQuestion}`,
 
   /** The reply to the admins answer: an optional lead, then the details question. */
   onbAdminsAck: (p: { added: number; detailsQuestion: string }): string =>
     (p.added > 0
-      ? `Got it — I'll set up ${p.added === 1 ? "that admin" : `those ${p.added} admins`} once we're live. `
+      ? `Got it, I'll set up ${p.added === 1 ? "that admin" : `those ${p.added} admins`} once we're live. `
       : "") + p.detailsQuestion,
 
   /** The combined "when and where" question, or the follow-up for the gaps. */
@@ -836,7 +842,7 @@ export const en = {
     if (p.missing.includes("day")) parts.push("which *day of the week* you play");
     if (p.missing.includes("time")) parts.push("the *kickoff time* (e.g. 9pm)");
     if (p.missing.includes("venue")) parts.push("the *venue* name");
-    return `Almost there — I just need ${parts.join(" and ")}.`;
+    return `Almost there, I just need ${parts.join(" and ")}.`;
   },
 
   /** The "All set" post for the group-add flow. `dayName` and `onLabels`
@@ -856,17 +862,17 @@ export const en = {
   }): string => {
     const adminName = p.adminName?.trim();
     const adminLine = p.adminDmQueued
-      ? `${adminName || "Admin"}, I've sent you a private link to your admin page — player names, ratings and payments live there. `
+      ? `${adminName || "Admin"}, I've sent you a private link to your admin page, where player names, ratings and payments live. `
       : `Whoever runs this group can claim the admin page any time at matchtime.ai. `;
     return (
       `✅ *All set!* I'm live for *${p.groupName || "this group"}* with: *${p.onLabels.join(", ")}*.\n\n` +
       `📅 First match: *${p.dayName} ${p.kickoffTime}* at *${p.venue}*` +
       `${p.weekly ? ", every week" : ""}.\n` +
       (p.rosterCount > 0
-        ? `👥 I've added the *${p.rosterCount} ${p.rosterCount === 1 ? "person" : "people"}* in this group to the squad — no need to type anyone in.\n`
+        ? `👥 I've added the *${p.rosterCount} ${p.rosterCount === 1 ? "person" : "people"}* in this group to the squad, no need to type anyone in.\n`
         : ``) +
       (p.adminsAdded > 0
-        ? `👮 Added *${p.adminsAdded} co-admin${p.adminsAdded === 1 ? "" : "s"}* — I've DM'd them their admin link.\n`
+        ? `👮 Added *${p.adminsAdded} co-admin${p.adminsAdded === 1 ? "" : "s"}*, I've DM'd them their admin link.\n`
         : ``) +
       `\n` +
       `${adminLine}Everyone else: just chat normally, say *"in"* when you're playing, and I'll handle the rest. ⚽` +
@@ -875,12 +881,33 @@ export const en = {
   },
 
   /** The magic-link DM to the captured admin at completion. */
-  onbAdminDm: (p: { groupName: string | null; url: string; payments: boolean }): string =>
+  onbAdminDm: (p: {
+    groupName: string | null;
+    url: string;
+    payments: boolean;
+    /** Signed-in link to the seed editor; null leaves the line out (team
+     *  generation off: nothing reads a seed). */
+    seedUrl?: string | null;
+    blockBookingsUrl?: string | null;
+    matchesUrl?: string | null;
+  }): string =>
     `👋 You're the admin of *${p.groupName || "your club"}* on MatchTime.\n\n` +
-    `Here's your private link to the admin page — player names, ratings` +
-    `${p.payments ? ", payments" : ""} and settings live there:\n${p.url}` +
+    `Here's your private link to the admin page, where player names, ratings` +
+    `${p.payments ? ", payments" : ""} and settings live:\n${p.url}` +
+    // 2026-09-30: the club-scoped ratings design offers a new club's
+    // admin the seed editor at setup; this DM never said so.
+    (p.seedUrl
+      ? `\n\n⭐ *Starting ratings:* give each player a rough score out of 10 so my first teams are balanced. ` +
+        `Players never see these, and the real ratings take over once players rate each other after games:\n${p.seedUrl}`
+      : ``) +
+    // Schedule changes live in the admin screens, not WhatsApp commands
+    // (Kemal, 2026-09-30).
+    (p.blockBookingsUrl ? `\n\n📅 Got a block booking for the season? Add the dates here:\n${p.blockBookingsUrl}` : ``) +
+    (p.matchesUrl
+      ? `\n\n🗓️ Need to cancel one week or switch its format? Open that match from your match list:\n${p.matchesUrl}`
+      : ``) +
     (p.payments
-      ? `\n\nWant me to *collect* the money too? Connect a bank from your admin page — takes 2 minutes.`
+      ? `\n\nWant me to *collect* the money too? Connect a bank from your admin page, takes 2 minutes.`
       : ``),
 
   /** The magic-link DM to each additional admin named at the admins stage. */
@@ -892,7 +919,7 @@ export const en = {
   onbEnrichmentDm: (p: { messagesAnalyzed: number; groupName: string | null; playerCount: number; url: string }): string =>
     `📋 I read ${p.messagesAnalyzed} past messages from *${p.groupName || "your group"}* ` +
     `and drafted positions + seed ratings for ${p.playerCount} players.\n\n` +
-    `Nothing's applied yet — review & finish setup here:\n${p.url}`,
+    `Nothing's applied yet. Review and finish setup here:\n${p.url}`,
 
   /** The reply when someone tagged the bot and asked it to stop the setup. */
   onbCancelled: (): string =>
@@ -915,13 +942,14 @@ export const en = {
     reminders: boolean;
     bench: boolean;
     paymentTracking: boolean;
+    paymentCollection?: boolean;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
-      lines.push(`✅ Say *"In"* or *"Out"* to mark your own availability — no need to tag me.`);
+      lines.push(`✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.`);
       lines.push(`🤔 Not sure? Just say *"maybe"* and I'll check with you ~24h before.`);
     } else {
-      lines.push(`📋 Paste your squad list and I'll read who's playing — no need to tag me.`);
+      lines.push(`📋 Paste your squad list and I'll read who's playing, no need to tag me.`);
     }
     const caps: string[] = [];
     if (f.attendance) caps.push(`see who's in / how many we've got`);
@@ -929,30 +957,39 @@ export const en = {
     if (f.statsQa) caps.push(`who won last week? / past stats`);
     lines.push(`💬 Tag *@Match Time* when you want me to do or tell you something:`);
     for (const c of caps) lines.push(`   • ${c}`);
-    lines.push(`🤐 I stay quiet the rest of the time — banter and jokes are safe, I won't butt in.`);
+    lines.push(`🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.`);
     if (f.momVoting) lines.push(`🏆 After the game I'll run a quick *Man of the Match* vote.`);
     if (f.playerRating) lines.push(`⭐ I'll DM you a one-tap *rating* link after the match.`);
-    if (f.reminders) lines.push(`⏰ Say *"@Match Time remind me Thursday"* and I'll nudge you.`);
+    // Reworded 2026-09-30: "and I'll nudge you" left people guessing what
+    // the command was for. It is a personal DM at the time you name.
+    if (f.reminders) lines.push(`⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.`);
+    // Payments are off after setup (2026-09-30): the off state now points
+    // the organiser at how fee collection works instead of saying nothing.
+    // Players learn they can pay through MatchTime (2026-09-30); an
+    // organiser whose club does not collect yet learns that it can.
+    if (f.paymentCollection) lines.push(`💷 After each game I'll DM you a pay link: card, Apple or Google Pay, or bank.`);
     if (f.paymentTracking) lines.push(`💳 I keep track of who's *paid*.`);
+    if (!f.paymentTracking && !f.paymentCollection) lines.push(`💷 Want to collect match fees? Ask me: *@Match Time help payments*`);
     lines.push(`\nType *"@Match Time help"* any time to see this again.`);
     return lines.join("\n");
   },
 
   /** Bare "@Match Time help": the lead line above the topic list. */
-  onbHelpHead: (): string => `ℹ️ *MatchTime help* — here's what I can explain. Tag me with one of these:`,
+  onbHelpHead: (): string => `ℹ️ *MatchTime help*: here's what I can explain. Tag me with one of these:`,
 
   /** One line of the bare-help topic list. `word` is what the player
    *  types after "help" in this language; `label` names the topic. */
   onbHelpTopicLine: (p: { word: string; label: string }): string =>
-    `   • *@Match Time help ${p.word}* — ${p.label}`,
+    `   • *@Match Time help ${p.word}*: ${p.label}`,
 
   /** The word a player types after "help" for each topic, in this language. */
-  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
+  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
     p.topic,
 
   /** Human label for each topic, used in the bare-help topic menu. */
-  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
     ({
+      schedule: "schedule & bookings",
       availability: "squad & availability",
       teams: "fair teams",
       mom: "Man of the Match",
@@ -961,9 +998,106 @@ export const en = {
       payments: "payment tracking",
     })[p.topic],
 
-  /** "help <topic>" for a topic whose feature is off. */
+  /** "help <topic>" for a topic whose feature is off. Unused since
+   *  2026-09-30 (an off topic now explains itself, see onbHelpOffLead);
+   *  kept because the Turkish table mirrors this one key for key. */
   onbHelpNotOn: (): string =>
     `That one isn't switched on for this group. Type *@Match Time help* to see what is.`,
+
+  /** "help <topic>" for a topic whose feature is OFF (2026-09-30): the
+   *  line above the explainer. */
+  /** "help schedule" (2026-09-30): schedule changes are made in the admin
+   *  screens, not by WhatsApp command (Kemal). Labels are the screens' own
+   *  (verified against src/app/admin/activities, block-bookings,
+   *  matches/bulk and matches/[id]/switch-format). A single week's
+   *  kick-off cannot be moved anywhere in the UI, and this says so. */
+  onbHelpSchedule: (p: {
+    audience: "group" | "admin" | "player";
+    activities: string;
+    blockBookings: string;
+    bulk: string;
+    matches: string;
+  }): string => {
+    if (p.audience === "player") {
+      return `🗓️ Match days, kick-off times, cancellations and block bookings are set by your organiser on the admin page. Ask them if something needs changing.`;
+    }
+    return (
+      `🗓️ *Changing the schedule*\n` +
+      `Schedule changes are made on the admin page, not by message. Each takes a few taps.\n\n` +
+      `1️⃣ *Weekly game (day, kick-off time, venue):* on *Activities*, tap *Edit* on the game, change it, then *Save changes*. Only future matches change. The group isn't told.\n${p.activities}\n\n` +
+      `2️⃣ *Block booking for the season:* on *Block bookings*, tap *New block booking*, pick the start date and an end date or a number of matches, tap *Preview dates*, then *Create block*. The group isn't told.\n${p.blockBookings}\n\n` +
+      `3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Bulk cancel / restore*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.\n${p.bulk}\n\n` +
+      `4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. I post the new line-up in the group.\n${p.matches}\n\n` +
+      `One week's kick-off time can't be moved on its own yet: change the weekly game instead, for the weeks ahead.` +
+      (p.audience === "group"
+        ? `\nAdmins: DM me *help schedule* and I'll send these as links that sign you straight in.`
+        : ``)
+    );
+  },
+
+  onbHelpOffLead: (): string => `ℹ️ This isn't switched on for this group yet, but here's how it works.`,
+
+  /** The setting's name on the admin Settings page (an English-only page,
+   *  so both languages quote these words as they appear there). */
+  onbHelpSettingLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
+    ({
+      availability: "Attendance tracking",
+      teams: "Team generation",
+      mom: "Man of the Match",
+      ratings: "Player ratings",
+      reminders: "Personal reminders",
+      payments: "Payment tracking",
+    })[p.topic],
+
+  /** How fee collection works, for "help payments" while it is off. The
+   *  on-state explainer (onbHelpExplainer) is about tracking; this is the
+   *  thing an organiser has not got yet. */
+  onbHelpPaymentsOff: (): string =>
+    `💷 *Match fees: how it works*\n` +
+    `After each game I ask your money collector for the fee per player, then DM everyone who played a link to pay their share, by card or bank. The money goes straight to the money collector's bank.\n` +
+    `I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.\n` +
+    `Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.`,
+
+  /** How to switch an off topic on, worded for who asked. `url` is the
+   *  public settings URL (group) or the admin's signed-in link (admin).
+   *  `word` is the topic word in this language. */
+  onbHelpSwitchOn: (p: {
+    topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments";
+    audience: "group" | "admin" | "player";
+    url: string;
+    word: string;
+    label: string;
+  }): string => {
+    if (p.audience === "player") {
+      return p.topic === "payments"
+        ? `🔧 Your organiser switches this on from the admin page. Ask them if you'd like to pay this way.`
+        : `🔧 Your organiser can switch this on from the admin page. Ask them if you'd like it.`;
+    }
+    if (p.audience === "admin") {
+      const what =
+        p.topic === "payments"
+          ? `turn on *Payment tracking* and *Collect match fees* under Bot features, pick the money collector, then connect their bank with Stripe once (about 2 minutes)`
+          : `turn on *${p.label}* under Bot features`;
+      return `🔧 To switch it on, open *Settings* on your admin page and ${what}:\n${p.url}`;
+    }
+    const what =
+      p.topic === "payments"
+        ? `turns on *Payment tracking* and *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes)`
+        : `turns on *${p.label}* under Bot features`;
+    return (
+      `🔧 To switch it on, an admin opens *Settings* on the admin page (${p.url}) and ${what}.\n` +
+      `Admins: DM me *help ${p.word}* and I'll send you a link that signs you straight in.`
+    );
+  },
+
+  /** An admin's DM help: where a topic's settings live (topic ON). */
+  onbHelpAdminSettings: (p: { url: string }): string => `⚙️ Its settings are on your admin page:\n${p.url}`,
+
+  /** An admin's DM help: bare help's closing link. */
+  onbHelpAdminPage: (p: { url: string }): string => `⚙️ Your club's settings, signed in:\n${p.url}`,
+
+  /** DM help for somebody in more than one club: which club it answers for. */
+  onbHelpForClub: (p: { club: string }): string => `🏟️ For *${p.club}*:`,
 
   /** The per-topic explainers. */
   onbHelpExplainer: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" }): string =>
@@ -978,32 +1112,32 @@ export const en = {
       // untouched. See section 8.5 of
       // MDs/club-scoped-ratings-design-2026-09-18.md.
       ratings:
-        `⭐ *Player ratings — how it works*\n` +
+        `⭐ *Player ratings: how it works*\n` +
         `After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).\n` +
         `I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never touch this one. So the more people rate, the fairer the teams.\n` +
         `You'll get the link the morning after the game. Type *@Match Time my stats* for yours anytime.`,
       teams:
-        `🟥🟦 *Fair teams — how it works*\n` +
+        `🟥🟦 *Fair teams: how it works*\n` +
         `Once the squad's locked in, any admin can tag *@Match Time generate the teams* and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
         `I post the line-ups straight into the chat. Not happy with a pairing? Tag me to *swap two players* (e.g. _"@Match Time swap Sam and Alex"_), or ask me to *"@Match Time show the teams"* again any time.\n` +
         `Want a bit of fun? Ask me to give the teams names and I'll sort it. Tag *@Match Time generate the teams* when you're ready.`,
       mom:
-        `🏆 *Man of the Match — how it works*\n` +
+        `🏆 *Man of the Match: how it works*\n` +
         `After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.\n` +
-        `I tally the votes, announce the winner, and it counts towards everyone's season stats — so the MoM race builds up over the year.\n` +
-        `Nothing to set up — I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.`,
+        `I tally the votes, announce the winner, and it counts towards everyone's season stats, so the MoM race builds up over the year.\n` +
+        `Nothing to set up: I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.`,
       availability:
-        `⚽ *Squad & availability — how it works*\n` +
-        `Just say *In* or *Out* in the group to mark yourself for the next game — no need to tag me, I read it automatically.\n` +
+        `⚽ *Squad & availability: how it works*\n` +
+        `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
         `I keep a live, numbered squad list. When it's full, extra players go on the *bench/reserve* list in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
         `If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.`,
       reminders:
-        `⏰ *Reminders — how it works*\n` +
+        `⏰ *Reminders: how it works*\n` +
         `I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.\n` +
-        `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll ping you then.\n` +
-        `It all happens automatically — you don't need to chase anyone yourself.`,
+        `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
+        `It all happens automatically, so you don't need to chase anyone yourself.`,
       payments:
-        `💳 *Payment tracking — how it works*\n` +
+        `💳 *Payment tracking: how it works*\n` +
         `I keep track of who's paid the match fee. The organiser sets the fee, and I show who's paid and who still owes at a glance.\n` +
         `I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.\n` +
         `This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.`,
@@ -1359,16 +1493,16 @@ export const en = {
   // Group-facing, so the Turkish is in the group's plural register.
 
   onb_legacy_intro:
-    `👋 *Hey, I'm MatchTime* — the automatic organiser for your football group. ` +
+    `👋 *Hey, I'm MatchTime*, the automatic organiser for your football group. ` +
     `I take the weekly admin off your hands so you can just turn up and play.\n\n` +
     `Here's what I do:\n` +
-    `⚽ *Attendance* — players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
-    `⚖️ *Fair teams* — auto-balanced sides every week from real player ratings\n` +
-    `🪑 *Smart bench* — squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
-    `🏆 *Man of the Match & ratings* — a quick post-match vote and a one-tap rating link, no app to install\n` +
-    `⏰ *Reminders & stats* — "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
+    `⚽ *Attendance:* players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
+    `⚖️ *Fair teams:* auto-balanced sides every week from real player ratings\n` +
+    `🪑 *Smart bench:* squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
+    `🏆 *Man of the Match & ratings:* a quick post-match vote and a one-tap rating link, no app to install\n` +
+    `⏰ *Reminders & stats:* "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
     `No spreadsheets, no chasing, no admin headaches. ⚡\n\n` +
-    `Let's get you set up — takes about a minute:`,
+    `Let's get you set up, it takes about a minute:`,
 
   /** The seven setup questions; `groupName` is only printed by "side". */
   onb_legacy_question: (p: {
@@ -1376,21 +1510,21 @@ export const en = {
     groupName: string;
   }): string =>
     ({
-      name: "👋 Let's get MatchTime set up for this group! First — what should I call your club/group? (e.g. *Thursday Ballers*)",
+      name: "👋 Let's get MatchTime set up for this group! First, what should I call your club/group? (e.g. *Thursday Ballers*)",
       side: `Great, *${p.groupName}* it is. How many players per side? (e.g. *7* for 7-a-side, *5* for 5-a-side)`,
       day: "Which *day of the week* do you usually play? (e.g. Thursday)",
       time: "What *kickoff time*? (e.g. 9:30pm)",
-      venue: "Where do you play — the *venue* name?",
+      venue: "Where do you play? The *venue* name, please.",
       recurrence: "Is this a *weekly* fixture or a *one-off* match?",
       date: "What *date* is the one-off match? (e.g. 2026-05-28)",
     })[p.field],
 
   /** The numbered feature menu under a lead line. */
   onb_legacy_menu: (p: { lead: string; items: Array<{ label: string; blurb: string }> }): string => {
-    const lines = p.items.map((f, i) => `${i + 1}. *${f.label}* — ${f.blurb}`);
+    const lines = p.items.map((f, i) => `${i + 1}. *${f.label}*: ${f.blurb}`);
     return (
       `${p.lead}:\n\n${lines.join("\n")}\n\n` +
-      `Reply with the ones you want — e.g. "Man of the Match and player ratings", ` +
+      `Reply with the ones you want, e.g. "Man of the Match and player ratings", ` +
       `"everything", or "all except payments".`
     );
   },
@@ -1398,7 +1532,7 @@ export const en = {
   /** A feature's one-line description in the menu. */
   onb_legacy_feature_blurb: (p: { key: string; englishBlurb: string }): string => p.englishBlurb,
 
-  onb_legacy_menu_retry_lead: "I didn't catch which ones — reply with the features you want",
+  onb_legacy_menu_retry_lead: "I didn't catch which ones. Reply with the features you want",
 
   onb_legacy_provisioned_lead: (p: {
     groupName: string;
@@ -1407,7 +1541,7 @@ export const en = {
     kickoffTime: string | null;
     venue: string | null;
   }): string =>
-    `Nice — *${p.groupName}* is set up for *${p.playersPerTeam}-a-side* on *${p.dayName}s ${p.kickoffTime}* at *${p.venue}*.\n\nLast step: which features do you want? Here's everything I can do`,
+    `Nice, *${p.groupName}* is set up for *${p.playersPerTeam}-a-side* on *${p.dayName}s ${p.kickoffTime}* at *${p.venue}*.\n\nLast step: which features do you want? Here's everything I can do`,
 
   /** The legacy flow's "All set" post. */
   onb_legacy_completion: (p: {
@@ -1672,9 +1806,17 @@ export const en = {
     `Thanks for trying MatchTime. We can't take ${p.group ? `"${p.group}"` : "your group"} on right now, so I've left the group. We'll be in touch if that changes.`,
 
   // ── Admin DM: somebody was added to the club's WhatsApp group (2026-09-29) ──
-  /** A number MatchTime has never seen. */
-  dm_admin_join_new: (p: { club: string; phone: string }): string =>
-    `🆕 New player joined *${p.club}* on WhatsApp.\n\nPhone: ${p.phone}\nI've added them as a placeholder player. Please set their name:\n/admin/players/phones`,
+  /** A number MatchTime has never seen, name unknown. `url` is the admin's
+   *  own signed-in link (2026-09-30: this ended in a bare
+   *  "/admin/players/phones", which WhatsApp does not make tappable). The
+   *  name is filled in from their WhatsApp name when they first post
+   *  (`resolve-sender.ts`). */
+  dm_admin_join_new: (p: { club: string; phone: string; url: string }): string =>
+    `🆕 New player joined *${p.club}* on WhatsApp.\n\nPhone: ${p.phone}\n` +
+    `I've added them to your player list. I'll fill in their WhatsApp name when they first post in the group, or you can set it now:\n${p.url}`,
+  /** A number MatchTime has never seen, whose WhatsApp name the bot knew. */
+  dm_admin_join_new_named: (p: { name: string; club: string; phone: string; url: string }): string =>
+    `🆕 *${p.name}* joined *${p.club}* on WhatsApp and is on your player list.\n\nPhone: ${p.phone}\nTap to check their details:\n${p.url}`,
   /** A known MatchTime user's FIRST membership of this club. Never
    *  "rejoined": Sutton's admin read that for Hamzah's first join. */
   dm_admin_join_first: (p: { name: string; club: string }): string =>
@@ -1687,8 +1829,8 @@ export const en = {
   dm_admin_join_linked: (p: { placeholder: string; addedOn: string }): string =>
     `🔗 Linked to the *${p.placeholder}* added on ${p.addedOn}, so their games and team place carry over.`,
   /** More than one placeholder, or only a partial name match: not merged. */
-  dm_admin_join_possible_duplicate: (p: { names: string[] }): string =>
-    `❓ They might be the same person as ${joinList("en", p.names.map((n) => `*${n}*`))}, added earlier by name. If so, merge them on /admin/players.`,
+  dm_admin_join_possible_duplicate: (p: { names: string[]; url: string }): string =>
+    `❓ They might be the same person as ${joinList("en", p.names.map((n) => `*${n}*`))}, added earlier by name. If so, merge them here:\n${p.url}`,
 
   // ── /admin/players: possible duplicates (2026-09-29) ──
   admin_players_duplicates_heading: "Possible duplicates",

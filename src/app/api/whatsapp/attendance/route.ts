@@ -21,6 +21,7 @@
  *   group again they need a fresh auto-onboard (or a group_join event,
  *   which does the same thing).
  */
+import { buildAdminLink } from "@/lib/admin-link";
 import { db } from "@/lib/db";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { findOrgAdminsWithPhone } from "@/lib/org";
@@ -196,30 +197,36 @@ export async function POST(request: Request) {
   if (autoEnrolled || autoReactivated) {
     const admins = await findOrgAdminsWithPhone(orgId);
     const displayFor = user.name?.trim() || normalized;
-    const text = autoReactivated
-      ? [
-          `🔁 *${displayFor}* rejoined *${orgName}*'s WhatsApp group (said IN).`,
-          ``,
-          `Their membership has been re-activated automatically.`,
-        ].join("\n")
-      : [
-          `🆕 New player on *${orgName}* — just said IN on WhatsApp.`,
-          ``,
-          `Name:  ${user.name ?? "(none yet — please set it)"}`,
-          `Phone: ${normalized}`,
-          ``,
-          `I've enrolled them as a placeholder player. Set or update their name here:`,
-          `/admin/players/phones`,
-        ].join("\n");
+    const textFor = (url: string) =>
+      autoReactivated
+        ? [
+            `🔁 *${displayFor}* rejoined *${orgName}*'s WhatsApp group (said IN).`,
+            ``,
+            `Their membership has been re-activated automatically.`,
+          ].join("\n")
+        : [
+            `🆕 New player on *${orgName}*, just said IN on WhatsApp.`,
+            ``,
+            `Name:  ${user.name ?? "(none yet, please set it)"}`,
+            `Phone: ${normalized}`,
+            ``,
+            `I've enrolled them as a placeholder player. Set or update their name here:`,
+            // A signed-in link for this admin, in this club (2026-09-30):
+            // this used to be a bare "/admin/players/phones", not tappable.
+            url,
+          ].join("\n");
 
     for (const admin of admins) {
       if (admin.id === user.id) continue;
+      const url = autoReactivated
+        ? ""
+        : await buildAdminLink({ userId: admin.id, orgId, nextPath: "/admin/players/phones" });
       await db.botJob.create({
         data: {
           orgId,
           kind: "dm",
           phone: admin.phoneNumber.replace(/^\+/, ""),
-          text,
+          text: textFor(url),
         },
       });
     }

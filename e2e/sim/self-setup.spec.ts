@@ -122,7 +122,9 @@ test("EN 1: added to an English group, the intro is short and in English", async
   });
   expect(res.language).toBe("en");
   expect(res.introText).toContain("*YES*");
-  expect(res.introText.length).toBeLessThan(400);
+  // 0185484 (2026-09-30) made the intro list what MatchTime does: no
+  // longer under 400 characters, still one WhatsApp message.
+  expect(res.introText.length).toBeLessThan(1000);
   expect(res.introText).not.toContain("Payment tracking"); // no pitch
   const s = await session(db, EN_GROUP);
   expect(s?.stage).toBe("introduced");
@@ -233,7 +235,9 @@ test("TR 1: added to a Turkish group, the intro is short and in Turkish", async 
   expect(res.introText).toContain("*EVET*");
   expect(res.introText).toContain("MatchTime");
   expect(res.introText).not.toMatch(/[—–]/);
-  expect(res.introText.length).toBeLessThan(400);
+  // 0185484 (2026-09-30) made the intro list what MatchTime does: no
+  // longer under 400 characters, still one WhatsApp message.
+  expect(res.introText.length).toBeLessThan(1000);
   expect((await session(db, TR_GROUP))?.language).toBe("tr");
 });
 

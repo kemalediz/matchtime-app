@@ -16,6 +16,8 @@
  */
 import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
+import { buildAdminLink } from "./admin-link";
+import { appUrl } from "./app-url";
 import { buildShortMagicLinkUrl } from "./short-link";
 import { findOrgAdminsWithPhone } from "./org";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
@@ -452,13 +454,12 @@ export async function computeDuePosts(
       for (const admin of admins) {
         const key = `org-${org.id}:provisional-review:${admin.id}:${todayKey}`;
         if (sentKeys.has(key)) continue;
-        const token = signMagicLinkToken({
+        // Names the club so a multi-club admin lands in this one (2026-09-30).
+        const signInUrl = await buildAdminLink({
           userId: admin.id,
-          purpose: "sign-in",
+          orgId: org.id,
           nextPath: "/admin/players",
-          ttlSeconds: MAGIC_LINK_TTL.actionNudge,
         });
-        const signInUrl = await buildShortMagicLinkUrl(token);
         const names = provisional
           .map((p) => p.user.name)
           .filter(Boolean)
@@ -474,7 +475,7 @@ export async function computeDuePosts(
             `✨ *New players to review* — ${provisional.length} ${provisional.length === 1 ? "person was" : "people were"} auto-added after posting in the group:\n\n` +
             `${names}${more}\n\n` +
             `Tap to review and set phone/position/rating, or remove:\n${signInUrl}\n\n` +
-            `Or navigate manually: /admin/players`,
+            `Or open: ${appUrl("/admin/players")}`,
         });
       }
     }
@@ -1464,12 +1465,13 @@ async function computeForMatch(
         for (const admin of admins) {
           const key = `${matchId}:switch-nudge:${admin.id}`;
           if (sentKeys.has(key)) continue;
-          const token = signMagicLinkToken({
+          // It had no destination (2026-09-30): "Tap to open the admin
+          // panel" landed on the dashboard. Now the page, in the club.
+          const signInUrl = await buildAdminLink({
             userId: admin.id,
-            purpose: "sign-in",
-            ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+            orgId: activity.orgId,
+            nextPath: `/admin/matches/${matchId}/switch-format`,
           });
-          const signInUrl = await buildShortMagicLinkUrl(token);
           out.push({
             kind: "dm",
             key,
@@ -1480,7 +1482,7 @@ async function computeForMatch(
               `⚠️ *Low numbers* — ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
               `Switch to *${candidate.sport.name}* (${candidate.sport.playersPerTeam * 2} players) before the deadline?\n\n` +
               `Tap to open the admin panel (auto signs you in):\n${signInUrl}\n\n` +
-              `Or navigate manually: /admin/matches/${matchId}/switch-format`,
+              `Or open: ${appUrl(`/admin/matches/${matchId}/switch-format`)}`,
           });
         }
       }
@@ -1505,12 +1507,12 @@ async function computeForMatch(
         for (const admin of admins) {
           const key = `${matchId}:cancel-nudge:${admin.id}`;
           if (sentKeys.has(key)) continue;
-          const token = signMagicLinkToken({
+          // Same fix: "Tap to open the cancel page" now opens it.
+          const signInUrl = await buildAdminLink({
             userId: admin.id,
-            purpose: "sign-in",
-            ttlSeconds: MAGIC_LINK_TTL.actionNudge,
+            orgId: activity.orgId,
+            nextPath: `/admin/matches/${matchId}/cancel`,
           });
-          const signInUrl = await buildShortMagicLinkUrl(token);
           out.push({
             kind: "dm",
             key,
@@ -1521,7 +1523,7 @@ async function computeForMatch(
               `🚨 *Match in trouble* — only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
               `Cancel and refund the booking?\n\n` +
               `Tap to open the cancel page:\n${signInUrl}\n\n` +
-              `Or navigate manually: /admin/matches/${matchId}/cancel`,
+              `Or open: ${appUrl(`/admin/matches/${matchId}/cancel`)}`,
           });
         }
       }

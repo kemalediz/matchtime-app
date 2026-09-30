@@ -27,6 +27,13 @@ export interface MagicLinkPayload {
    *  Must start with "/" and be same-origin — the landing page ignores anything
    *  that doesn't match. Used by admin DMs that link to specific review pages. */
   nextPath?: string;
+  /** Optional club the link opens (2026-09-30). The admin pages read the
+   *  active club from the `orgId` cookie and otherwise fall back to the
+   *  OLDEST membership, so an organiser in two clubs could open one
+   *  club's setup link and land on the other club's admin page. Sign-in
+   *  pins this club when the user may act in it (`pinOrgFromMagicLink`).
+   *  Build admin links with `buildAdminLink` (`admin-link.ts`). */
+  orgId?: string;
   exp: number;     // Unix seconds
   /** Issued-at, Unix seconds. Added 2026-08-31 so the verifier can tell
    *  how long a token was minted for and reject anything that outlives
@@ -112,6 +119,7 @@ export async function verifyMagicLinkToken(
     if (typeof payload?.exp !== "number" || !isFinite(payload.exp)) return null;
     if (!KNOWN_PURPOSES.includes(payload.purpose)) return null;
     if (payload.purpose === "rate-match" && !payload.matchId) return null;
+    if (payload.orgId !== undefined && (typeof payload.orgId !== "string" || !payload.orgId)) return null;
 
     // ── Purpose: enforced at the consumer, not just carried along.
     const allowed = opts.purposes ?? KNOWN_PURPOSES;

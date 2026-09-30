@@ -163,7 +163,9 @@ test("bot-added creates an introduced session and returns the intro", async ({
   expect(res.introText).toContain("*YES*");
   // The short intro (2026-09-17): one line on what it is, one question.
   // The feature pitch moved to "@Match Time help" and the how-to block.
-  expect(res.introText.length).toBeLessThan(400);
+  // 0185484 (2026-09-30) made the intro list what MatchTime does, so it
+  // is no longer under 400 characters; it is still one WhatsApp message.
+  expect(res.introText.length).toBeLessThan(1000);
   expect(res.introText).not.toContain("Payment tracking");
   expect(res.language).toBe("en");
 
@@ -344,6 +346,24 @@ test('"Tuesdays 9pm at Goals Wembley" → org live: OWNER, activity, match, rost
   expect(dm?.phone).toBe(ADMIN_PHONE);
   expect(dm?.text).toContain("admin");
   expect(dm?.text).toMatch(/https?:\/\//);
+  // 2026-09-30: the setup DM offers the seed editor (why, and a link that
+  // signs the organiser in), then block bookings and the match list.
+  // Every link names THIS club, so an organiser in two clubs lands here.
+  expect(dm?.text).toMatch(/\*Starting ratings:\*/);
+  expect(dm?.text).toMatch(/first teams are balanced/);
+  expect(dm?.text).toMatch(/block booking/);
+  const codes = [...(dm?.text ?? "").matchAll(/\/r\/([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
+  expect(codes.length).toBe(4);
+  const paths: string[] = [];
+  for (const code of codes) {
+    const row = await db.one<{ token: string }>(`SELECT token FROM "ShortLink" WHERE code = $1`, [code]);
+    const p = JSON.parse(
+      Buffer.from(row!.token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
+    );
+    expect(p.orgId).toBe(org!.id);
+    paths.push(p.nextPath);
+  }
+  expect(paths).toEqual(["/admin", "/admin/players/ratings", "/admin/block-bookings", "/matches"]);
 
   // The completion post mentions the imported roster.
   expect(reply).toContain("squad");

@@ -66,6 +66,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const user = await db.user.findUnique({ where: { id: payload.userId } });
         if (!user) return null;
 
+        // An admin link names the club it opens (2026-09-30), so an
+        // organiser in two clubs lands in the right one.
+        if (payload.orgId) {
+          const { pinOrgFromMagicLink } = await import("./org");
+          await pinOrgFromMagicLink(user.id, payload.orgId);
+        }
+
         return {
           id: user.id,
           email: user.email,

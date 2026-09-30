@@ -37,8 +37,8 @@ import { SPORT_PRESETS } from "./sport-presets";
 import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
 import { londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
 import { normalisePhone } from "./phone";
-import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
-import { buildShortMagicLinkUrl } from "./short-link";
+import { appUrl } from "./app-url";
+import { buildAdminLink } from "./admin-link";
 import { runOnboardingEnrichment } from "./onboarding-enrichment";
 import {
   coerceHistoryMessages,
@@ -55,6 +55,7 @@ import {
   extractWhenWhere,
   detailsStillMissing,
   detailsFollowUpQuestion,
+  cleanVenue,
   type Extracted,
   type ParsedAdmin,
 } from "./onboarding-parse";
@@ -191,6 +192,8 @@ export function buildHowToUseMe(
     reminders: boolean;
     bench: boolean;
     paymentTracking: boolean;
+    /** Stripe fee collection; a missing value reads as off. */
+    paymentCollection?: boolean;
   },
   lang: Lang | string = "en",
 ): string {
@@ -250,11 +253,14 @@ export type HelpTopic =
   | "mom"
   | "availability"
   | "reminders"
-  | "payments";
+  | "payments"
+  // 2026-09-30: how to change the schedule in the admin screens. Not
+  // behind a feature flag: every club has a schedule.
+  | "schedule";
 
 /** The org-feature flag each topic is gated behind. A topic is only
  *  explained (and only listed in bare help) when its flag is ON. */
-const HELP_TOPIC_FEATURE: Record<HelpTopic, keyof HelpFeatures> = {
+const HELP_TOPIC_FEATURE: Record<Exclude<HelpTopic, "schedule">, keyof HelpFeatures> = {
   ratings: "playerRating",
   teams: "teamBalancing",
   mom: "momVoting",
@@ -263,7 +269,7 @@ const HELP_TOPIC_FEATURE: Record<HelpTopic, keyof HelpFeatures> = {
   payments: "paymentTracking",
 };
 
-type HelpFeatures = {
+export type HelpFeatures = {
   attendance: boolean;
   teamBalancing: boolean;
   momVoting: boolean;
@@ -272,7 +278,36 @@ type HelpFeatures = {
   reminders: boolean;
   bench: boolean;
   paymentTracking: boolean;
+  /** Stripe fee collection. Optional: most callers only know the tracking
+   *  flag, and a missing value reads as off. */
+  paymentCollection?: boolean;
 };
+
+/** The help builder's view of a club's live flags. One mapping, so the
+ *  group and the DM answer from the same facts. */
+export function helpFeaturesFrom(f: {
+  attendance: boolean;
+  teamBalancing: boolean;
+  momVoting: boolean;
+  playerRating: boolean;
+  statsQa: boolean;
+  reminders: boolean;
+  bench: boolean;
+  paymentTracking: boolean;
+  paymentCollection: boolean;
+}): HelpFeatures {
+  return {
+    attendance: f.attendance,
+    teamBalancing: f.teamBalancing,
+    momVoting: f.momVoting,
+    playerRating: f.playerRating,
+    statsQa: f.statsQa,
+    reminders: f.reminders,
+    bench: f.bench,
+    paymentTracking: f.paymentTracking,
+    paymentCollection: f.paymentCollection,
+  };
+}
 
 /** Words/aliases that map a free-text help message to a HelpTopic. Order
  *  matters: longer/more-specific aliases first so "man of the match"
@@ -294,6 +329,14 @@ const HELP_TOPIC_ALIASES: Array<[RegExp, HelpTopic]> = [
   [/\bpayments?\b/, "payments"],
   [/\bpaid\b/, "payments"],
   [/\bfees?\b/, "payments"],
+  // Schedule (2026-09-30). After every other topic, so "help teams" and
+  // "help payments" keep their own answers.
+  [/\b(?:re)?schedul\w*\b/, "schedule"],
+  [/\bblock bookings?\b/, "schedule"],
+  [/\bcancel\w*\b/, "schedule"],
+  [/\bkick-?\s?offs?\b/, "schedule"],
+  [/\bformats?\b/, "schedule"],
+  [/\bfixtures?\b/, "schedule"],
   // Turkish (2026-09-17). `\b` is ASCII-only, so these use the letter
   // class instead; the text is lower-cased with the Turkish rules.
   [/maçın adamı|macin adami|maç adamı|mac adami/u, "mom"],
@@ -302,6 +345,7 @@ const HELP_TOPIC_ALIASES: Array<[RegExp, HelpTopic]> = [
   [/(?<!\p{L})(?:kadro\p{L}*|yoklama|katılım|katilim|müsait\p{L}*|musait\p{L}*)(?!\p{L})/u, "availability"],
   [/(?<!\p{L})(?:hatırlat\p{L}*|hatirlat\p{L}*)(?!\p{L})/u, "reminders"],
   [/(?<!\p{L})(?:ödeme\p{L}*|odeme\p{L}*|ücret\p{L}*|ucret\p{L}*|para)(?!\p{L})/u, "payments"],
+  [/(?<!\p{L})(?:program\p{L}*|blok|rezervasyon\p{L}*|iptal\p{L}*|saat\p{L}*|format\p{L}*|fikstür\p{L}*|fikstur\p{L}*)(?!\p{L})/u, "schedule"],
 ];
 
 /**
@@ -331,6 +375,41 @@ export function parseHelpTopic(raw: string): HelpTopic | null {
   return null;
 }
 
+/**
+ * The help keyword, alone or with a short tail: "@Match Time help",
+ * "help teams", "yardım ödeme". Anchored over the WHOLE body, so a
+ * message that matches cannot carry a second clause ("help, and I'm out"
+ * fails on the comma). Moved here from analyze/route.ts on 2026-09-30 so
+ * the group and the DM read help with the same pattern. "yardım"
+ * (2026-09-17): `\b` is ASCII-only so the tail allows any letter; the
+ * body is tested under BOTH lower-casings (the Turkish one turns "TIME"
+ * into "tıme", and "YARDIM" only matches under the Turkish one).
+ */
+export const HELP_REQUEST_RE =
+  /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})(?:\s+[\p{L}\p{N} &']+?)?\s*$/iu;
+
+/**
+ * Is this message a help request, and for which topic?
+ *
+ * In the GROUP (dm: false) this is the shape the analyzer has always
+ * accepted; the tag requirement is the caller's. In a DM there is no tag
+ * to gate on, so the bar is higher: the keyword alone, or the keyword and
+ * a KNOWN topic in at most four words. "help me I can't make Tuesday" is
+ * not a help request by DM; it goes to the handlers that read it.
+ */
+export function readHelpRequest(body: string, opts: { dm: boolean }): { topic: HelpTopic | null } | null {
+  if (!body) return null;
+  if (!HELP_REQUEST_RE.test(body.toLowerCase()) && !HELP_REQUEST_RE.test(body.toLocaleLowerCase("tr"))) return null;
+  const topic = parseHelpTopic(body);
+  if (!opts.dm) return { topic };
+  const tail = (body.toLocaleLowerCase("tr").match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u)?.[1] ??
+    body.toLowerCase().match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u)?.[1] ??
+    "").trim();
+  if (tail === "") return { topic: null };
+  if (topic && tail.split(/\s+/).length <= 4) return { topic };
+  return null;
+}
+
 // Stable order for the bare-help topic list.
 const HELP_TOPIC_ORDER: HelpTopic[] = [
   "availability",
@@ -339,38 +418,113 @@ const HELP_TOPIC_ORDER: HelpTopic[] = [
   "ratings",
   "reminders",
   "payments",
+  "schedule",
 ];
 
+/** Who a help answer is for (2026-09-30). The group reply is public, so
+ *  it never carries a signed-in link; an admin's DM does; a player's DM
+ *  gets the player-facing text. */
+export type HelpAudience = "group" | "admin" | "player";
+
+/** The admin pages a help answer can point at. */
+export type HelpAdminPage = "settings" | "activities" | "blockBookings" | "bulk" | "matches";
+
+export const HELP_ADMIN_PAGE_PATH: Record<HelpAdminPage, string> = {
+  settings: "/admin/settings",
+  activities: "/admin/activities",
+  blockBookings: "/admin/block-bookings",
+  bulk: "/admin/matches/bulk",
+  matches: "/matches",
+};
+
+export interface HelpContext {
+  audience: HelpAudience;
+  /** The URL for each admin page this answer names: the public URL in the
+   *  group, the admin's own signed-in link in their DM. A missing page
+   *  falls back to its public URL. */
+  links?: Partial<Record<HelpAdminPage, string>>;
+}
+
+/** The admin pages a given answer links to, so a DM caller mints only the
+ *  signed-in links it will actually send. */
+export function helpPagesNeeded(topic: HelpTopic | null, audience: HelpAudience): HelpAdminPage[] {
+  if (audience === "player") return [];
+  if (topic === "schedule") return ["activities", "blockBookings", "bulk", "matches"];
+  if (audience === "group" && topic === null) return [];
+  return ["settings"];
+}
+
+function helpLink(ctx: HelpContext, page: HelpAdminPage): string {
+  return ctx.links?.[page] ?? appUrl(HELP_ADMIN_PAGE_PATH[page]);
+}
+
+function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
+  if (topic === "schedule") return true;
+  // Payments count as on when either payment flag is: a club that
+  // collects fees without the tracking flag still has the feature.
+  if (topic === "payments") return features.paymentTracking || features.paymentCollection === true;
+  return features[HELP_TOPIC_FEATURE[topic]] === true;
+}
+
 /**
- * The "@Match Time help [topic]" reply.
+ * The "help [topic]" reply, in the group and by DM. ONE builder for both,
+ * so the two can never disagree (2026-09-30); `ctx` only decides which
+ * lines are added for an organiser.
  *
  *   - topic === null (bare help): a short lead line + the list of
  *     AVAILABLE topics (only those whose gating feature is ON), a blank
- *     line, then the feature-aware buildHowToUseMe(features) block.
- *   - topic with its feature ON → that topic's detailed explainer.
- *   - topic with its feature OFF → a one-line decline (NOT the
- *     explainer for a feature this group didn't switch on).
+ *     line, then the feature-aware buildHowToUseMe(features) block. An
+ *     admin's DM adds a signed-in link to the club's settings.
+ *   - topic with its feature ON → that topic's explainer. An admin's DM
+ *     adds where its settings live.
+ *   - topic with its feature OFF → how it works and how to switch it on,
+ *     worded for the audience (2026-09-30; it used to decline, so an
+ *     organiser asking "help payments" after setup learned nothing about
+ *     a feature that is off by default).
  */
 export function buildHelpReply(
   topic: HelpTopic | null,
   features: HelpFeatures,
   lang: Lang | string = "en",
+  ctx: HelpContext = { audience: "group" },
 ): string {
   const s = t(lang);
+  const adminTail = (line: string) => (ctx.audience === "admin" ? `\n\n${line}` : "");
+  if (topic === "schedule") {
+    return s.onbHelpSchedule({
+      audience: ctx.audience,
+      activities: helpLink(ctx, "activities"),
+      blockBookings: helpLink(ctx, "blockBookings"),
+      bulk: helpLink(ctx, "bulk"),
+      matches: helpLink(ctx, "matches"),
+    });
+  }
   if (topic) {
-    const flag = HELP_TOPIC_FEATURE[topic];
-    if (!features[flag]) return s.onbHelpNotOn();
-    return s.onbHelpExplainer({ topic });
+    if (topicIsOn(topic, features)) {
+      return s.onbHelpExplainer({ topic }) + adminTail(s.onbHelpAdminSettings({ url: helpLink(ctx, "settings") }));
+    }
+    const body = topic === "payments" ? s.onbHelpPaymentsOff() : s.onbHelpExplainer({ topic });
+    const switchOn = s.onbHelpSwitchOn({
+      topic,
+      audience: ctx.audience,
+      url: helpLink(ctx, "settings"),
+      word: s.onbHelpTopicWord({ topic }),
+      label: s.onbHelpSettingLabel({ topic }),
+    });
+    return `${s.onbHelpOffLead()}\n\n${body}\n\n${switchOn}`;
   }
 
   // Bare help: list only the enabled topics, then the how-to block.
-  const enabled = HELP_TOPIC_ORDER.filter((tp) => features[HELP_TOPIC_FEATURE[tp]]);
+  const enabled = HELP_TOPIC_ORDER.filter((tp) => topicIsOn(tp, features));
   const topicLines = enabled.map((tp) =>
     s.onbHelpTopicLine({ word: s.onbHelpTopicWord({ topic: tp }), label: s.onbHelpTopicLabel({ topic: tp }) }),
   );
   const head = s.onbHelpHead();
   const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
-  return `${head}${list}\n\n${buildHowToUseMe(features, lang)}`;
+  return (
+    `${head}${list}\n\n${buildHowToUseMe(features, lang)}` +
+    adminTail(s.onbHelpAdminPage({ url: helpLink(ctx, "settings") }))
+  );
 }
 
 /**
@@ -672,7 +826,7 @@ export async function handleOnboardingTurn(
     }
     {
       const v = ww.venue ?? ex?.venue ?? null;
-      if (!session.venue && v) data.venue = v.slice(0, 120);
+      if (!session.venue && v) data.venue = cleanVenue(v) ?? undefined;
     }
     {
       const p = ww.playersPerSide ?? ex?.playersPerSide ?? null;
@@ -704,7 +858,7 @@ export async function handleOnboardingTurn(
       lastBody.length <= 80 &&
       !/^\d+$/.test(lastBody)
     ) {
-      data.venue = lastBody.slice(0, 120);
+      data.venue = cleanVenue(lastBody) ?? undefined;
     }
 
     data.lastHandledWaId = lastWaId;
@@ -768,7 +922,7 @@ export async function handleOnboardingTurn(
     if (ex) {
       if (ex.groupName && !session.groupName && ex.confidence >= 0.5)
         data.groupName = ex.groupName.slice(0, 80);
-      if (ex.venue && !session.venue) data.venue = ex.venue.slice(0, 120);
+      if (ex.venue && !session.venue) data.venue = cleanVenue(ex.venue) ?? undefined;
       if (
         ex.dayOfWeek != null && ex.dayOfWeek >= 0 && ex.dayOfWeek <= 6 &&
         canSet(session.dayOfWeek)
@@ -846,7 +1000,7 @@ export async function handleOnboardingTurn(
       !looksLikeTrigger
     ) {
       if (lastBody.length >= 2 && lastBody.length <= 80 && !/^\d+$/.test(lastBody)) {
-        data.venue = lastBody.slice(0, 120);
+        data.venue = cleanVenue(lastBody) ?? undefined;
       }
     }
 
@@ -1281,13 +1435,9 @@ async function completeOnboarding(
           select: { phoneNumber: true },
         });
         if (madeAdmin && newAdmin?.phoneNumber) {
-          const token = signMagicLinkToken({
-            userId,
-            purpose: "sign-in",
-            nextPath: "/admin",
-            ttlSeconds: MAGIC_LINK_TTL.actionNudge,
-          });
-          const url = await buildShortMagicLinkUrl(token);
+          // Names the club, so a co-admin who is in another club too
+          // lands in this one (2026-09-30).
+          const url = await buildAdminLink({ userId, orgId, nextPath: "/admin" });
           await db.botJob.create({
             data: {
               orgId,
@@ -1321,20 +1471,26 @@ async function completeOnboarding(
   let adminDmQueued = false;
   if (adminUser?.phoneNumber) {
     try {
-      const token = signMagicLinkToken({
-        userId: adminUser.id,
-        purpose: "sign-in",
-        nextPath: "/admin",
-        ttlSeconds: MAGIC_LINK_TTL.actionNudge,
-      });
-      const url = await buildShortMagicLinkUrl(token);
+      // Every link names the club (2026-09-30): Kemal is in Sutton FC
+      // and MT Test, and MT Test's setup link opened Sutton's admin page.
+      const link = (nextPath: string) => buildAdminLink({ userId: adminUser.id, orgId, nextPath });
+      const url = await link("/admin");
+      // The seed editor, offered at setup as the club-scoped ratings
+      // design decided. Only when teams are generated: nothing else reads
+      // a seed.
+      const seedUrl = chosenSet.has("teamBalancing") ? await link("/admin/players/ratings") : null;
+      const blockBookingsUrl = await link("/admin/block-bookings");
+      const matchesUrl = await link("/matches");
       const payments = chosenSet.has("paymentTracking");
       await db.botJob.create({
         data: {
           orgId,
           kind: "dm",
           phone: adminUser.phoneNumber.replace(/^\+/, ""),
-          text: buildAdminMagicLinkDm({ groupName: s.groupName ?? null, url, payments }, lang),
+          text: buildAdminMagicLinkDm(
+            { groupName: s.groupName ?? null, url, payments, seedUrl, blockBookingsUrl, matchesUrl },
+            lang,
+          ),
         },
       });
       adminDmQueued = true;
@@ -1434,6 +1590,7 @@ function howToUseMeFor(chosen: ToggleableKey[], lang: Lang | string = "en"): str
       reminders: chosenSet.has("reminders"),
       bench: chosenSet.has("bench"),
       paymentTracking: chosenSet.has("paymentTracking"),
+      paymentCollection: chosenSet.has("paymentCollection"),
     },
     lang,
   );
@@ -1460,7 +1617,8 @@ export function buildGroupAddCompletionPost(
     onLabels,
     dayName: s.onbDayName({ dow: p.dayOfWeek ?? 2 }),
     kickoffTime: p.kickoffTime,
-    venue: p.venue,
+    // Never "at on Sutton Goals" (2026-09-30), whatever was stored.
+    venue: cleanVenue(p.venue) ?? p.venue,
     weekly: p.weekly,
     rosterCount: p.rosterCount,
     adminsAdded: p.adminsAdded,
@@ -1480,7 +1638,7 @@ export function buildLegacyCompletionPost(p: CompletionPostInput, lang: Lang | s
     ),
     dayName: s.onbDayName({ dow: p.dayOfWeek ?? 2 }),
     kickoffTime: p.kickoffTime,
-    venue: p.venue,
+    venue: cleanVenue(p.venue) ?? p.venue,
     weekly: p.weekly,
     howToUseMe: howToUseMeFor(p.chosen, lang),
   });
@@ -1488,7 +1646,14 @@ export function buildLegacyCompletionPost(p: CompletionPostInput, lang: Lang | s
 
 /** The magic-link DM to the captured admin at completion. */
 export function buildAdminMagicLinkDm(
-  p: { groupName: string | null; url: string; payments: boolean },
+  p: {
+    groupName: string | null;
+    url: string;
+    payments: boolean;
+    seedUrl?: string | null;
+    blockBookingsUrl?: string | null;
+    matchesUrl?: string | null;
+  },
   lang: Lang | string = "en",
 ): string {
   return t(lang).onbAdminDm(p);
@@ -1546,13 +1711,11 @@ async function triggerEnrichmentAndDm(args: {
     return;
   }
 
-  const token = signMagicLinkToken({
+  const url = await buildAdminLink({
     userId: args.adminUserId,
-    purpose: "sign-in",
+    orgId: args.orgId,
     nextPath: `/finish-setup/${args.sessionId}`,
-    ttlSeconds: MAGIC_LINK_TTL.actionNudge,
   });
-  const url = await buildShortMagicLinkUrl(token);
   const text = buildEnrichmentReviewDm(
     {
       messagesAnalyzed: summary.messagesAnalyzed,

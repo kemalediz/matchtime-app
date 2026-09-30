@@ -9,17 +9,37 @@
  * that had actually left.
  */
 import { describe, it, expect } from "vitest";
-import { composeJoinDm } from "@/lib/join-dm";
+import { composeJoinDm, joinDmPath } from "@/lib/join-dm";
 
 const CLUB = "Sutton Football Club";
 const ADDED = new Date("2026-09-29T07:57:00Z");
+const URL = "https://matchtime.ai/r/k7Qp2m9";
 
 describe("composeJoinDm: which sentence", () => {
-  it("a brand new number: the placeholder note with the phone", () => {
-    const text = composeJoinDm("en", { kind: "new", club: CLUB, phone: "+447376548222" });
+  it("a brand new number, name unknown: the phone, a TAPPABLE signed-in link, and the promise to fill the name", () => {
+    // 2026-09-30, MT Test: this DM ended "Please set their name:\n/admin/players/phones",
+    // a bare path WhatsApp does not make tappable.
+    const text = composeJoinDm("en", { kind: "new", club: CLUB, phone: "+447376548222" }, URL);
     expect(text).toContain("New player joined *Sutton Football Club*");
     expect(text).toContain("+447376548222");
-    expect(text).toContain("/admin/players/phones");
+    expect(text).toContain(`\n${URL}`);
+    expect(text).toMatch(/fill in their WhatsApp name when they first post/);
+    expect(text).not.toMatch(/(^|\s)\/admin/);
+  });
+
+  it("a brand new number whose WhatsApp name we know: named, and 'tap to check their details'", () => {
+    const text = composeJoinDm("en", { kind: "new", club: "MT Test", phone: "+447546111893", name: "Ali" }, URL);
+    expect(text).toContain("🆕 *Ali* joined *MT Test* on WhatsApp");
+    expect(text).toContain("Tap to check their details");
+    expect(text).toContain(URL);
+    expect(text).not.toMatch(/set their name|placeholder/i);
+  });
+
+  it("joinDmPath: which admin page each shape links to", () => {
+    expect(joinDmPath({ kind: "new", club: CLUB, phone: "+44" })).toBe("/admin/players/phones");
+    expect(joinDmPath({ kind: "new", club: CLUB, phone: "+44", name: "Ali" })).toBe("/admin/players");
+    expect(joinDmPath({ kind: "first", club: CLUB, name: "H" })).toBeNull();
+    expect(joinDmPath({ kind: "first", club: CLUB, name: "H", link: { kind: "suggest", names: ["Hamza"] } })).toBe("/admin/players");
   });
 
   it("THE INCIDENT: a known user's FIRST membership says joined, never rejoined", () => {
@@ -52,9 +72,10 @@ describe("composeJoinDm: the link line", () => {
       club: CLUB,
       name: "Hamzah Khan",
       link: { kind: "suggest", names: ["Hamzah", "Hamza"] },
-    });
+    }, URL);
     expect(text).toContain("*Hamzah* and *Hamza*");
-    expect(text).toContain("/admin/players");
+    expect(text).toContain(`merge them here:\n${URL}`);
+    expect(text).not.toMatch(/(^|\s)\/admin/);
   });
 
   it("Turkish: every shape renders in Turkish with the club and the date", () => {
@@ -74,12 +95,25 @@ describe("composeJoinDm: the link line", () => {
   it("no em or en dashes in any shape, in either language", () => {
     for (const lang of ["en", "tr"] as const) {
       for (const msg of [
-        composeJoinDm(lang, { kind: "new", club: CLUB, phone: "+447376548222" }),
-        composeJoinDm(lang, { kind: "first", club: CLUB, name: "H", link: { kind: "suggest", names: ["Hamzah"] } }),
+        composeJoinDm(lang, { kind: "new", club: CLUB, phone: "+447376548222" }, URL),
+        composeJoinDm(lang, { kind: "new", club: CLUB, phone: "+447376548222", name: "Ali" }, URL),
+        composeJoinDm(lang, { kind: "first", club: CLUB, name: "H", link: { kind: "suggest", names: ["Hamzah"] } }, URL),
         composeJoinDm(lang, { kind: "rejoined", club: CLUB, name: "H", link: { kind: "linked", placeholderName: "H", addedAt: ADDED } }),
       ]) {
         expect(msg).not.toMatch(/[–—]/);
       }
     }
+  });
+});
+
+describe("composeJoinDm: Turkish, the new shapes", () => {
+  it("unnamed and named, both with the link", () => {
+    const a = composeJoinDm("tr", { kind: "new", club: "Kartallar", phone: "+905551112233" }, URL);
+    expect(a).toContain(URL);
+    expect(a).toContain("WhatsApp adını");
+    const b = composeJoinDm("tr", { kind: "new", club: "Kartallar", phone: "+905551112233", name: "Ali" }, URL);
+    expect(b).toContain("*Ali*");
+    expect(b).toContain(URL);
+    expect(b).not.toMatch(/[—–]/);
   });
 });

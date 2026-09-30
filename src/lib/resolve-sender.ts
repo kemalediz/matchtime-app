@@ -90,6 +90,20 @@ export function isRawDigitName(raw: string): boolean {
     .replace(/[@\s+().-]/g, "");
   return /^\d{5,}$/.test(cleaned);
 }
+/**
+ * A WhatsApp display name fit to become a player's name, or null: trimmed,
+ * 2 to 60 characters, not a raw number (RC4, see `isRawDigitName`), not
+ * the bot or a system author. Used for a nameless placeholder's first
+ * post and for a joiner the Pi could name (2026-09-30).
+ */
+export function usableWhatsAppName(raw: string | null | undefined): string | null {
+  const name = raw?.trim().replace(/\s+/g, " ") ?? "";
+  if (name.length < 2 || name.length > 60) return null;
+  if (isRawDigitName(name)) return null;
+  if (/^(match ?time|whatsapp|system)$/i.test(name)) return null;
+  return name;
+}
+
 export async function resolveSender(orgId: string, msg: SenderIdentity): Promise<ResolvedSender> {
   // Phone first (most accurate). Accept raw digits — prepend '+' if the
   // bot didn't. @lid senders arrive with empty phone: that's the signal
@@ -102,6 +116,24 @@ export async function resolveSender(orgId: string, msg: SenderIdentity): Promise
         where: { phoneNumber: norm },
         select: { id: true, name: true },
       });
+      if (user && !user.name) {
+        // A nameless placeholder (added to the group by phone, 2026-09-30):
+        // its first post carries the WhatsApp name, so use it. Only when
+        // the row has NO name (`name: null` in the where, so a name an
+        // admin typed in the meantime always wins), and never a number.
+        const pushname = usableWhatsAppName(msg.authorName);
+        if (pushname) {
+          try {
+            const res = await db.user.updateMany({ where: { id: user.id, name: null }, data: { name: pushname } });
+            if (res.count > 0) {
+              console.log(`[resolve-sender] named placeholder ${user.id} "${pushname}" from their first post`);
+              return { userId: user.id, name: pushname, phone: norm };
+            }
+          } catch (err) {
+            console.error(`[resolve-sender] could not name placeholder ${user.id}:`, err);
+          }
+        }
+      }
       if (user) return { userId: user.id, name: user.name, phone: norm };
     }
   }
