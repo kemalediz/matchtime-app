@@ -23,3 +23,13 @@ Things Kemal has noted that are NOT being worked on yet. Each entry says what, w
 **Related wording fix to fold in:** the confidence badge "low" should read as a guess ("Guess: low confidence" or "Please check"), and the evidence note "No clear signal in chat — defaulting to neutral" should become "Nothing in the chat about this player, so I've set a neutral starting point." (the note comes from `src/lib/onboarding-analyzer.ts`; change it on the display side to avoid a prompt change).
 
 **When:** after the Hamzah demo (2026-09-30).
+
+---
+
+## F2. Deleting a club should update the Pi straight away (2026-09-30)
+
+**What:** after a club is deleted, the Pi keeps it in its club list until its next refresh (up to 5 minutes, `REFRESH_INTERVAL_MS` in `whatsapp-bot/src/org-refresh.ts`). Re-adding MatchTime to that group within those minutes does NOT start the in-group setup, because the Pi still thinks the group is set up.
+
+**Why it matters:** it cost a few confused minutes during the Hamzah demo ("MT Test" re-added, no setup questions). Only hits when a club is deleted and its group re-added quickly, which is exactly what testing and demos do.
+
+**How:** either the Pi re-checks with the server when it is added to a group it believes is already a club (one `/api/whatsapp/orgs` refresh before deciding), or deleting a club triggers the same "refresh now" signal that setup completion already uses. The first is simpler and also covers any other stale case.
