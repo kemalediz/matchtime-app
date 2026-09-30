@@ -226,3 +226,43 @@ test("MatchTime removed from the admin group: unlinked, back to the owner, and t
   const orgs = await (await request.get("/api/whatsapp/orgs", { headers: KEY })).json();
   expect(orgs.adminGroups).toEqual([]);
 });
+
+test("slice 3's deadline summary follows the channel: one post in the admin group, not a DM", async ({ request, db }) => {
+  // A Friday club with a Monday 21:00 drop-out deadline, its HQ group linked.
+  const G = "e2e-ag-weekly@g.us";
+  const HQ2 = "120363777000000021@g.us";
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled",
+       "dropOutDeadlineDay", "dropOutDeadlineTime", "adminChannelMode", "adminGroupId", "adminGroupSubject", "updatedAt")
+     VALUES ('e2e-ag-org', 'Friday FNF', 'e2e-ag-fnf', 'e2e-ag-invite', $1, true, 1, '21:00', 'admin-group', $2, 'FNF HQ', now())`,
+    [G, HQ2],
+  );
+  await db.run(
+    `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt")
+     VALUES ('e2e-ag-sport', 'e2e-ag-org', 'Football 9-a-side', 9, ARRAY['GK','DEF','MID','FWD'], ARRAY['Red','Yellow'], now())`,
+  );
+  await db.run(
+    `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt")
+     VALUES ('e2e-ag-act', 'e2e-ag-org', 'e2e-ag-sport', 'Friday 9-a-side', 5, '20:30', 'Powerleague', 5, now())`,
+  );
+  await db.run(`INSERT INTO "User" (id, email, name, "phoneNumber", "updatedAt") VALUES ('e2e-ag-hamzah', 'e2e-ag-hamzah@e2e.test', 'Hamzah', '+447700930001', now())`);
+  await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ('e2e-ag-mem', 'e2e-ag-hamzah', 'e2e-ag-org', 'OWNER')`);
+  const kickoff = new Date("2027-01-15T20:30:00.000Z");
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
+     VALUES ('e2e-ag-match', 'e2e-ag-act', $1, 18, 'UPCOMING', $2, now())`,
+    [kickoff.toISOString(), new Date(kickoff.getTime() - 5 * 3600_000).toISOString()],
+  );
+
+  // Monday 21:05 London (GMT), a Pi that can post in admin groups.
+  const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(G)}`, {
+    headers: { ...KEY, "x-test-now": "2027-01-11T21:05:00.000Z", "x-mt-pi-caps": "admin-group" },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  const instructions = (await res.json()).instructions as Array<{ kind: string; groupId?: string; text?: string }>;
+  const summary = instructions.filter((i) => (i.text ?? "").startsWith("Drop-out deadline passed"));
+  expect(summary).toHaveLength(1);
+  expect(summary[0]).toMatchObject({ kind: "admin-group-message", groupId: HQ2 });
+  const jobs = await db.all<{ kind: string }>(`SELECT kind FROM "BotJob" WHERE "orgId" = 'e2e-ag-org'`);
+  expect(jobs.map((j) => j.kind)).toEqual(["admin-group"]);
+});
