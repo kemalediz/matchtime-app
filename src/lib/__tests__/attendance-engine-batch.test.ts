@@ -1316,3 +1316,98 @@ describe("the prompt cache is warmed before the batch fans out", () => {
     expect(r.cost.calls).toBe(2);
   });
 });
+
+// ── 2026-09-30, MT Test: an admin's report of a maybe, and a mention
+//    nobody could name ────────────────────────────────────────────────
+describe("an admin reports a member's maybe: the member is recorded tentative", () => {
+  const otherClaim = (over: Record<string, unknown>) => ({
+    claims: [
+      {
+        subject: "other",
+        personRef: "Dan",
+        personNamed: true,
+        polarity: "in",
+        contingent: true,
+        conditionOn: "self",
+        tense: "future",
+        reported: true,
+        confidence: 0.9,
+        ...over,
+      },
+    ],
+    affirmation: "none",
+    sideRequests: [],
+  });
+  const fromAlice = {
+    waMessageId: "wa-maybe",
+    body: "@Dan is a maybe, he will decide on Thursday, just remind him",
+    authorName: "Alice Admin",
+    senderUserId: "u-alice",
+    senderName: "Alice Admin",
+    senderIsAdmin: true,
+    route: "offer" as const,
+  };
+
+  it("hands the route the member to record, and registers nobody", async () => {
+    const d = deps({ model: modelReturning(otherClaim({})) });
+    const r = await run([msg(fromAlice)], d);
+    expect(d.registered).toEqual([]);
+    expect(r.outcomes.get("wa-maybe")?.recordTentativeForUserIds).toEqual(["u-dan"]);
+  });
+
+  it("a player's report of a teammate's maybe records nothing", async () => {
+    const d = deps({ model: modelReturning(otherClaim({})) });
+    const r = await run(
+      [msg({ ...fromAlice, senderUserId: "u-pete", senderName: "Pete Power", authorName: "Pete Power", senderIsAdmin: false, tagged: true })],
+      d,
+    );
+    expect(r.outcomes.get("wa-maybe")?.recordTentativeForUserIds).toEqual([]);
+  });
+
+  it("the sender's own maybe is still recorded, through the same list", async () => {
+    const d = deps({ model: modelReturning(otherClaim({ subject: "sender", personRef: "", personNamed: false })) });
+    const r = await run([msg({ waMessageId: "wa-self", route: "offer", body: "in if my back holds up" })], d);
+    expect(r.outcomes.get("wa-self")?.recordTentativeForUserIds).toEqual(["u-pete"]);
+  });
+});
+
+describe("a mention nobody could name gets one 'who is that?'", () => {
+  it("an admin's '@<digits> is IN' is answered with the ask, and nothing is written", async () => {
+    const d = deps({
+      model: modelReturning({
+        claims: [
+          {
+            subject: "other",
+            personRef: "@252012071493723",
+            personNamed: true,
+            polarity: "in",
+            contingent: false,
+            conditionOn: "none",
+            tense: "present",
+            reported: true,
+            confidence: 0.9,
+          },
+        ],
+        affirmation: "none",
+        sideRequests: [],
+      }),
+    });
+    const r = await run(
+      [
+        msg({
+          waMessageId: "wa-raw",
+          body: "@252012071493723 is IN",
+          authorName: "Alice Admin",
+          senderUserId: "u-alice",
+          senderName: "Alice Admin",
+          senderIsAdmin: true,
+          route: "other_att",
+        }),
+      ],
+      d,
+    );
+    expect(d.registered).toEqual([]);
+    expect(d.guestAsksClaimed).toEqual([]);
+    expect(r.outcomes.get("wa-raw")?.reply).toBe("I couldn't tell who that is, can you say their name?");
+  });
+});

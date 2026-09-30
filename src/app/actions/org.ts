@@ -8,6 +8,7 @@ import { isLang, LANGS, normaliseLang } from "@/lib/i18n/lang";
 import { t } from "@/lib/i18n/t";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { createSelfJoinClub, type SelfJoinClubInput, type SelfJoinRefusal } from "@/lib/self-join-club";
+import { announcePaymentsLiveIfJustLive, readPaymentLiveState } from "@/lib/payments-live-announce";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -321,10 +322,23 @@ export async function setOrgFeature(
   const column = FEATURE_COLUMN[feature];
   if (!column) throw new Error(`Unknown feature: ${feature}`);
 
+  // Switching payment collection ON may be the second of the two
+  // switches that make it live; the group is then told how it works,
+  // once (`lib/payments-live-announce.ts`, 2026-09-30). Read BEFORE the
+  // write. A failed read counts as "already live": say nothing rather
+  // than risk a repeat.
+  const announcing = feature === "paymentCollection" && enabled;
+  const wasLive = announcing ? await readPaymentLiveState(orgId).catch(() => true) : true;
+
   await db.organisation.update({
     where: { id: orgId },
     data: { [column]: enabled },
   });
+  if (announcing) {
+    await Promise.resolve(announcePaymentsLiveIfJustLive(orgId, { wasLive })).catch((err) =>
+      console.error("[org] payments-live announcement failed:", err),
+    );
+  }
   revalidatePath("/admin/settings");
   return { feature, enabled };
 }

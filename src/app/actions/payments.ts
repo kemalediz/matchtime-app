@@ -25,6 +25,7 @@ import {
 import { totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
 import { markDirectPaymentPending, resolvePayContext } from "@/lib/direct-payment";
 import { formatLondon } from "@/lib/london-time";
+import { announcePaymentsLiveIfJustLive, readPaymentLiveState } from "@/lib/payments-live-announce";
 
 // ── Connect onboarding (money collector links their bank) ────────────
 
@@ -75,10 +76,21 @@ export async function refreshCollectorStatus(orgId: string): Promise<{ chargesEn
   if (!org?.stripeConnectAccountId || !isStripeConfigured()) return { chargesEnabled: false };
 
   const enabled = await accountChargesEnabled(org.stripeConnectAccountId);
+  // Read BEFORE the write: if this refresh is what makes the club live
+  // (collection already switched on, Stripe only now able to charge),
+  // the group is told how payments work, once (2026-09-30). This runs on
+  // every settings page load, so a club already live passes `wasLive`
+  // and nothing is posted.
+  const wasLive = await readPaymentLiveState(orgId).catch(() => true);
   await db.organisation.update({
     where: { id: orgId },
     data: { stripeChargesEnabled: enabled },
   });
+  if (enabled) {
+    await Promise.resolve(announcePaymentsLiveIfJustLive(orgId, { wasLive })).catch((err) =>
+      console.error("[payments] payments-live announcement failed:", err),
+    );
+  }
   revalidatePath("/admin/settings");
   return { chargesEnabled: enabled };
 }

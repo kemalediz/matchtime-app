@@ -75,7 +75,7 @@ import { swapGuardFor, type SwapCandidate } from "../team-slot-swap";
 import { decideSlotInherits } from "../team-slot-inherit";
 import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { namesTheBench } from "./bench-words";
-import { resolvePerson } from "./identity";
+import { isRawDigitName, resolvePerson } from "./identity";
 import { planResultsQuestion } from "./results-answer";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
@@ -264,6 +264,8 @@ export function decide(input: EngineInput): EngineResult {
   const writes: ProposedWrite[] = [];
   const speech: SpeechIntent[] = [];
   const degradations: Degradation[] = [];
+  /** One "who is that?" per batch at most (see `ask_who_mentioned`). */
+  let askedWhoMentioned = false;
   /** Did anything change the squad? Drives the single status post. */
   let squadChanged = false;
   /**
@@ -1147,8 +1149,28 @@ export function decide(input: EngineInput): EngineResult {
           );
         }
 
+        // ── A MENTION NOBODY COULD NAME (2026-09-30, MT Test) ──────────
+        //
+        // "@252012071493723 is IN": a WhatsApp mention whose LID neither
+        // the Pi nor the server could tie to a member, so the reference
+        // is raw digits. Refused as a person below, as always. What is
+        // new is that the sender is TOLD, once per batch: the owner who
+        // posted it otherwise sees nothing happen and cannot tell a
+        // refusal from a lost message. Only for a tagged message or an
+        // admin's: an untagged player's message about someone else is
+        // not addressed to MatchTime. It is not a guest-name ask (that
+        // one says "I'll add them to the squad", and this person may
+        // already be in it).
+        const rawDigitsOnly = isRawDigitName((c.personRef ?? "").trim());
+        if (rawDigitsOnly && (msg.tagged || senderIsAdmin) && !askedWhoMentioned) {
+          askedWhoMentioned = true;
+          speech.push({ kind: "ask_who_mentioned", messageId: msg.id });
+          out.reasons.push(`"${c.personRef}" is a mention nobody could name: asked who it is`);
+          if (out.disposition !== "degraded") out.disposition = "acted";
+        }
+
         if (!personNamed || resolution.kind === "not-a-person") {
-          if (c.polarity === "in") {
+          if (c.polarity === "in" && !rawDigitsOnly) {
             guestAsks.push(c);
             out.reasons.push(`unnamed third party ("${c.personRef}") cannot register anyone`);
           } else {
@@ -1311,6 +1333,25 @@ export function decide(input: EngineInput): EngineResult {
             // No literal "if" is required to reach this branch, which is
             // what route.ts:3095 got wrong.
             out.reasons.push(`contingent drop for ${t.name}: holding, no write`);
+            continue;
+          }
+          if (!self && senderIsAdmin && c.conditionOn === "self" && t.userId && !t.provisional) {
+            // ── AN ORGANISER REPORTS A MEMBER'S MAYBE (2026-09-30) ─────
+            //
+            // MT Test, Kemal: "@Sait is a may be, he will decide on
+            // Thursday, just remind him if he wants to come". The
+            // condition is Sait's own decision (`conditionOn: self`),
+            // reported by the owner. Kemal's rule: treat it exactly as
+            // Sait's own "maybe": record him TENTATIVE so the follow-up
+            // DM chases him before kickoff, and register nobody. The
+            // rule below (a contingent claim about someone else never
+            // registers them) still holds: this writes no attendance.
+            //
+            // Admins only. A player's report of a teammate's maybe is
+            // hearsay about someone else's intentions and keeps holding.
+            out.reasons.push(`admin reports ${t.name} as a maybe: recording tentative, no write`);
+            out.tentativeUserIds = [...(out.tentativeUserIds ?? []), t.userId];
+            if (out.disposition !== "degraded") out.disposition = "acted";
             continue;
           }
           if (!self) {

@@ -1097,6 +1097,12 @@ export type SpeechIntent =
   /** The one authoritative squad post for the batch (§3.2 S36). */
   | { kind: "squad_status"; messageId: string | null }
   | { kind: "guest_name_ask"; messageId: string; askerName: string | null; body: string }
+  /**
+   * A third-party claim named nobody but raw digits: a WhatsApp mention
+   * neither the Pi nor the server could put a name to (2026-09-30). Asks
+   * the sender who they meant. At most one per batch.
+   */
+  | { kind: "ask_who_mentioned"; messageId: string }
   | { kind: "answer_bench"; messageId: string }
   | { kind: "answer_count"; messageId: string; statedCount: number | null }
   /**
@@ -1316,6 +1322,13 @@ export interface MessageOutcome {
    * `stats_clarification` intent, which is what opens the question.
    */
   statsClarificationAsked?: boolean;
+  /**
+   * Members an ADMIN reported as a maybe (2026-09-30): "@Sait is a maybe,
+   * remind him". The route records each as `TentativeAvailability`, the
+   * same row a member's own maybe creates, so the follow-up DM chases
+   * them. Never a write. Absent means none.
+   */
+  tentativeUserIds?: string[];
 }
 
 export interface Degradation {

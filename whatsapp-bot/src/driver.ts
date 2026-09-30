@@ -343,6 +343,20 @@ export interface WaDriver {
   groupSnapshot(groupId: string, selfIds: string[]): Promise<GroupSnapshot>;
 
   /**
+   * Re-read this group's roster from WhatsApp NOW, bypassing the roster
+   * cache, so the LID-to-phone pairs it carries are learned (2026-09-30).
+   *
+   * Called when an inbound message @-mentions a LID nobody can tie to a
+   * phone: typically a player added after the last roster read. ONE
+   * `groupMetadata`, never a directory lookup. The driver rate-limits it
+   * per group and returns false when it did not read (limited, not
+   * connected, failed). Optional: whatsapp-web.js resolves contacts
+   * through the page and has nothing to refresh. May throw; the caller
+   * catches.
+   */
+  refreshGroupRoster?(groupId: string): Promise<boolean>;
+
+  /**
    * The contact record for a JID, RAW.
    *
    * Raw on purpose. Six call sites read different fields off it

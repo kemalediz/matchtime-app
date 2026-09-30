@@ -32,7 +32,12 @@ import {
   type BotCounters,
 } from "./heartbeat.js";
 import { enrichOrDegrade, planFlushRetry, type InboundEnrichment } from "./inbound-enrich.js";
-import { rewriteMentions, type MentionName, type RawMentionContact } from "./mentions.js";
+import {
+  lidMentionsWithoutPhone,
+  rewriteMentions,
+  type MentionName,
+  type RawMentionContact,
+} from "./mentions.js";
 import { firstUsableName, readMessageBody, readNotifyName, safeRead } from "./wa-read.js";
 import { degradedMessage } from "./degraded.js";
 import {
@@ -424,7 +429,7 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
 
   const enriched = await enrichOrDegrade(
     fallbackIdentity,
-    () => enrichInbound(driver, msg, rawBody, fallbackIdentity),
+    () => enrichInbound(driver, msg, rawBody, fallbackIdentity, groupId),
     (err) => {
       // Counted BEFORE the log, because the log is the half that has never
       // worked: this exact CRITICAL has been printing into `bot.log` on the
@@ -514,6 +519,7 @@ async function enrichInbound(
   msg: InboundMessage,
   rawBody: string,
   fallback: InboundEnrichment,
+  groupId: string,
 ): Promise<InboundEnrichment> {
   const contact = await Promise.resolve()
     .then(() => driver.contactOf(msg))
@@ -581,26 +587,11 @@ async function enrichInbound(
   // `mentionNames` for the server to check against the org roster.
   const mentionedIds: string[] = msg.mentionedIds ?? [];
   // Resolve each mentioned contact ONCE: `isMe` for the self-mention
-  // signal, and the display name for the server-side roster lookup.
+  // signal, the display name for the server-side roster lookup, and
+  // (2026-09-30) the phone behind a LID mention, the server's exact key.
   const mentionedContacts: RawMentionContact[] = [];
   for (const jid of mentionedIds) {
-    try {
-      const c = await driver.getContact(jid);
-      // Every read is total — on the broken build these are throwing
-      // getters and one throw used to lose the whole enrichment.
-      mentionedContacts.push({
-        jid,
-        isMe: safeRead(c, "isMe") === true,
-        name:
-          asOptionalString(safeRead(c, "pushname")) ??
-          asOptionalString(safeRead(c, "name")) ??
-          asOptionalString(safeRead(c, "shortName")),
-      });
-    } catch {
-      /* non-fatal — the raw @<digits> token survives for this mention,
-         and a jid-only entry still matches for self-mention detection. */
-      mentionedContacts.push({ jid });
-    }
+    mentionedContacts.push(await readMentionContact(driver, jid));
   }
 
   // Did this message @-mention the bot itself? Only the Pi knows its own
@@ -616,6 +607,40 @@ async function enrichInbound(
   // and any .lid the wweb.js build exposes) — true under ANY of them.
   const botIdentities: Array<string | null | undefined> = driver.selfIdentities();
 
+  // ── A LID NOBODY CAN TIE TO A PHONE: ONE ROSTER RE-READ (2026-09-30) ──
+  //
+  // MT Test, 14:12: "@David is IN" and "@Hilal is IN" reached the server
+  // as raw LID digits with nothing beside them, and the engine refused
+  // both. David is a member by phone; his LID was simply in no store,
+  // because he was added to the group after the bot last read its
+  // roster. A fresh `groupMetadata` is where WhatsApp tells us that pair.
+  // The driver rate-limits it per group; directory lookups stay banned.
+  // Whatever is still unknown afterwards travels as it is.
+  const unknownLids = lidMentionsWithoutPhone(mentionedContacts, botIdentities);
+  if (unknownLids.length > 0 && typeof driver.refreshGroupRoster === "function") {
+    let refreshed = false;
+    try {
+      refreshed = await driver.refreshGroupRoster(groupId);
+    } catch (err) {
+      console.warn(
+        `[smart] roster re-read for ${unknownLids.length} unknown LID mention(s) in ${groupId} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+    if (refreshed) {
+      for (let i = 0; i < mentionedContacts.length; i++) {
+        if (unknownLids.includes(mentionedContacts[i].jid)) {
+          mentionedContacts[i] = await readMentionContact(driver, mentionedContacts[i].jid);
+        }
+      }
+      const still = lidMentionsWithoutPhone(mentionedContacts, botIdentities).length;
+      console.log(
+        `[smart] roster re-read for ${groupId}: ${unknownLids.length - still} of ` +
+          `${unknownLids.length} LID mention(s) now tied to a phone`,
+      );
+    }
+  }
+
   const { body, mentionNames, botMentioned } = rewriteMentions({
     body: rawBody,
     contacts: mentionedContacts,
@@ -623,6 +648,29 @@ async function enrichInbound(
   });
 
   return { body, authorName, authorPhone, botMentioned, mentionNames };
+}
+
+/**
+ * One mentioned contact, read total: every field is a possibly-throwing
+ * getter on the broken whatsapp-web.js build, and a failed lookup is a
+ * jid-only entry (the raw token survives, and self-mention detection
+ * still matches on the jid).
+ */
+async function readMentionContact(driver: WaDriver, jid: string): Promise<RawMentionContact> {
+  try {
+    const c = await driver.getContact(jid);
+    return {
+      jid,
+      isMe: safeRead(c, "isMe") === true,
+      name:
+        asOptionalString(safeRead(c, "pushname")) ??
+        asOptionalString(safeRead(c, "name")) ??
+        asOptionalString(safeRead(c, "shortName")),
+      phone: asOptionalString(safeRead(c, "number")),
+    };
+  } catch {
+    return { jid };
+  }
 }
 
 // ─── Flush mechanics ────────────────────────────────────────────────

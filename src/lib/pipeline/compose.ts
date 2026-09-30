@@ -627,6 +627,10 @@ export function compose(result: EngineResult): ComposedOutput {
         });
         break;
 
+      case "ask_who_mentioned":
+        utterances.push({ messageId: sp.messageId, text: s.ask_who_mentioned });
+        break;
+
       case "score_ack":
         utterances.push({
           messageId: sp.messageId,

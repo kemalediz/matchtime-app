@@ -340,7 +340,9 @@ import { decidePastedRosterRegistration } from "@/lib/pasted-roster-registration
 import {
   describeMentionOutcomes,
   resolveMentionNames,
+  type KnownLid,
 } from "@/lib/pipeline/mention-names";
+import { parseParticipantSnapshot } from "@/lib/participant-snapshot";
 // Sender resolution moved OUT of this file on 2026-09-09. It could not be
 // tested here — a Next.js route module may export only its HTTP handlers,
 // so nothing in it can be imported by a test — and the 2026-08-30 audit
@@ -373,7 +375,9 @@ interface InboundMessage {
    * own. Absent from Pi builds before 2026-09-08 (which pasted the
    * pushname into `body` themselves — see that function's header).
    */
-  mentionNames?: Array<{ jid: string; name: string }>;
+  /** `phone` (2026-09-30): the phone behind a LID mention, when the Pi
+   *  was told it. An entry carries a name, a phone, or both. */
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
   /** Did this message @-mention the bot's own JID? Computed on the Pi
    *  (only it knows the bot's selfId) and forwarded as a structured
    *  signal. PRIMARY input to the @Match Time interaction-contract gate;
@@ -2409,20 +2413,20 @@ async function handleAnalyzeRequest(request: Request) {
         recruitRequests.push({ msg, sender, lookbackMatches: null });
       }
       // The tentative follow-up is a DM 24 hours on: never for a late one.
-      if (
-        engineOutcome.recordTentativeForUserId &&
-        engineBatch?.matchId &&
-        nextMatchForReply &&
-        !late
-      ) {
+      if (engineBatch?.matchId && nextMatchForReply && !late) {
         // conditional_in flavour (b) — personal uncertainty. The engine
         // declines the write; the 24h chase is a shipped product
-        // behaviour and step 6 must not lose it. Best-effort.
-        await recordTentative({
-          matchId: engineBatch.matchId,
-          userId: engineOutcome.recordTentativeForUserId,
-          kickoff: nextMatchForReply.date,
-        }).catch((err) => console.error("[analyze] engine recordTentative failed:", err));
+        // behaviour and step 6 must not lose it. Best-effort. Since
+        // 2026-09-30 the list also carries members an ADMIN reported as
+        // a maybe ("@Sait is a maybe, remind him"): the same row, the
+        // same chase.
+        for (const userId of engineOutcome.recordTentativeForUserIds) {
+          await recordTentative({
+            matchId: engineBatch.matchId,
+            userId,
+            kickoff: nextMatchForReply.date,
+          }).catch((err) => console.error("[analyze] engine recordTentative failed:", err));
+        }
       }
       if (engineOutcome.resolveTentativeForUserId && engineBatch?.matchId) {
         await resolveTentative({
@@ -3715,12 +3719,16 @@ async function nameMentionsFromRoster(
   );
   if (!relevant) return messages;
 
-  const [members, aliases] = await Promise.all([
+  const [members, aliases, knownLids] = await Promise.all([
     db.membership.findMany({
       where: { orgId },
       select: { user: { select: { id: true, name: true, phoneNumber: true } } },
     }),
     db.userAlias.findMany({ where: { orgId }, select: { alias: true, userId: true } }),
+    loadKnownLids(orgId).catch((err) => {
+      console.error("[analyze] stored LID lookup failed (mentions named without it):", err);
+      return [];
+    }),
   ]);
   // Soft-removed members are INCLUDED. Naming someone correctly is not a
   // write, and whether they may actually play is decided later by code
@@ -3738,6 +3746,7 @@ async function nameMentionsFromRoster(
       mentionNames: m.mentionNames,
       roster,
       aliases,
+      knownLids,
     });
     const described = describeMentionOutcomes(outcomes);
     // One line per message that carried a mention. A run of "LEFT RAW"
@@ -3745,6 +3754,33 @@ async function nameMentionsFromRoster(
     if (described) console.log(`[analyze] mentions ${m.waMessageId}: ${described}`);
     return body === m.body ? m : { ...m, body };
   });
+}
+
+/**
+ * Every LID this org's own records tie to a phone or a member
+ * (2026-09-30): the participant snapshots taken when MatchTime joined the
+ * group (`OnboardingSession`, `ClubConnect`) and the organiser's connect
+ * DM (`ClubConnect.dmLid`). Read only for a batch that carries a raw
+ * mention token, alongside the roster. The server stores no other LID.
+ */
+async function loadKnownLids(orgId: string): Promise<KnownLid[]> {
+  const [sessions, connects] = await Promise.all([
+    db.onboardingSession.findMany({ where: { orgId }, select: { participants: true } }),
+    db.clubConnect.findMany({
+      where: { orgId },
+      select: { userId: true, dmLid: true, participants: true },
+    }),
+  ]);
+  const out: KnownLid[] = [];
+  for (const row of [...sessions, ...connects]) {
+    for (const p of parseParticipantSnapshot(row.participants)) {
+      if (p.lidId && p.phone) out.push({ lid: p.lidId, phone: p.phone });
+    }
+  }
+  for (const c of connects) {
+    if (c.dmLid) out.push({ lid: c.dmLid, userId: c.userId });
+  }
+  return out;
 }
 
 /**

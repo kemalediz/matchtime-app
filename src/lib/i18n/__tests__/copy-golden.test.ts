@@ -705,6 +705,7 @@ function cases(lang: Lang): Case[] {
   add("R33 guest_name_ask / singular", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in and bringing a mate" }));
   add("R33 guest_name_ask / plural", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in with two of my guys" }));
   add("R33 guest_name_ask / no asker name", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: null, body: "+1" }));
+  add("R33b ask_who_mentioned", say(short, { kind: "ask_who_mentioned", messageId: MSG }));
 
   add("R34 score_ack", say(full, { kind: "score_ack", messageId: MSG, red: 3, yellow: 1 }));
   add("R35 payment_ack / one", say(full, { kind: "payment_ack", messageId: MSG, payerName: "Sait Demir", count: 1 }));
@@ -744,6 +745,8 @@ function cases(lang: Lang): Case[] {
   const squadCompleteWhen = lang === "tr" ? "22 Eylül Salı 21:30" : "Tue 22 Sept 21:30";
   add("R43 buildSquadCompletePost / no bench, no invite", buildSquadCompletePost({ maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: squadCompleteWhen, confirmed: fourteenNames, bench: [], benchInvite: null, lang }));
   add("R43 buildSquadCompletePost / bench of two, invite", buildSquadCompletePost({ maxPlayers: 14, activityName: "Tuesday 7-a-side", kickoffLabel: squadCompleteWhen, confirmed: fourteenNames, bench: ["Erdal Ozkan", "Amir Ahmadi"], benchInvite: buildSquadCompleteBenchInvite({ lang }), lang }));
+  add("R186 payments_live_announcement / every method", t(lang).payments_live_announcement({ collector: "Kemal", card: true, bank: true, direct: true }));
+  add("R186 payments_live_announcement / card only, no collector", t(lang).payments_live_announcement({ collector: null, card: true, bank: false, direct: false }));
   add("R43 buildSquadCompletePost / unnamed row", buildSquadCompletePost({ maxPlayers: 3, activityName: "Thursday 5-a-side", kickoffLabel: lang === "tr" ? "24 Eylül Perşembe 20:00" : "Thu 24 Sept 20:00", confirmed: ["Kemal Ediz", null, "Sait Demir"], bench: [null], benchInvite: null, lang }));
 
   // ── 1.2 scheduler-copy.ts (extracted from bot-scheduler.ts 2026-09-17)

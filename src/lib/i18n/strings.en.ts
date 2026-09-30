@@ -457,6 +457,32 @@ export const en = {
   teams_not_generated: "No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.",
   score_ack: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
     `Got it 👍 ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}, recorded.`,
+  /** ONE group post when payment collection goes live (2026-09-30,
+   *  `payments-live-announce.ts`). Follows the club's pay methods;
+   *  `collector` is the collector's first name, or null. */
+  payments_live_announcement: (p: { collector: string | null; card: boolean; bank: boolean; direct: boolean }): string => {
+    const who = p.collector ?? "the organiser";
+    const lines = [
+      "💳 *Match fees now go through MatchTime*",
+      "",
+      "Here's how it works:",
+      "• After each game I'll DM everyone who played a link to pay their share.",
+    ];
+    if (p.card || p.bank) {
+      lines.push(
+        p.card && p.bank
+          ? "• You can pay by card, Apple Pay, Google Pay or straight from your bank."
+          : p.card
+            ? "• You can pay by card, Apple Pay or Google Pay."
+            : "• You can pay straight from your bank.",
+      );
+      const fee = p.card && p.bank ? "card or bank fee" : p.card ? "card fee" : "bank fee";
+      lines.push(`• The amount is the match fee split between the players, with the ${fee} added on top.`);
+    }
+    lines.push("• If you haven't paid, I'll send you a reminder.");
+    if (p.direct) lines.push(`• Paying ${who} directly is fine too. Just DM me *Paid* and ${who} will confirm it.`);
+    return lines.join("\n");
+  },
   payment_ack: (p: { firstName: string; count: number }): string =>
     `Noted 🙌 ${p.firstName} covered ${p.count} ${p.count === 1 ? "player" : "players"}.`,
   reminder_ack_resolved: (p: { whenLabel: string }): string => `👍 Got it — I'll DM you ${p.whenLabel}.`,
@@ -485,6 +511,10 @@ export const en = {
       ? `${opener} What are their names? Reply with them and I'll add them to the squad.`
       : `${opener} What's their name? Reply with it and I'll add them to the squad.`;
   },
+
+  /** A third-party claim named only a WhatsApp mention nobody could put
+   *  a name to (2026-09-30). Once per batch. */
+  ask_who_mentioned: "I couldn't tell who that is, can you say their name?",
 
   // ── row 45: buildMomAnnouncement (mom-announcement.ts) ─────────────
 
