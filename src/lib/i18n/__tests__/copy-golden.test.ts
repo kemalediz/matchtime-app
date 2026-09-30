@@ -705,6 +705,7 @@ function cases(lang: Lang): Case[] {
   add("R33 guest_name_ask / singular", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in and bringing a mate" }));
   add("R33 guest_name_ask / plural", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: "Sait Demir", body: "I'm in with two of my guys" }));
   add("R33 guest_name_ask / no asker name", say(short, { kind: "guest_name_ask", messageId: MSG, askerName: null, body: "+1" }));
+  add("R33b ask_who_mentioned", say(short, { kind: "ask_who_mentioned", messageId: MSG }));
 
   add("R34 score_ack", say(full, { kind: "score_ack", messageId: MSG, red: 3, yellow: 1 }));
   add("R35 payment_ack / one", say(full, { kind: "payment_ack", messageId: MSG, payerName: "Sait Demir", count: 1 }));

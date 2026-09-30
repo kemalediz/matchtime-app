@@ -443,6 +443,8 @@ export const tr: Strings = {
       : `${opener} Adı ne? Yaz, kadroya ekleyeyim.`;
   },
 
+  ask_who_mentioned: "Bunun kim olduğunu anlayamadım, adını yazar mısın?",
+
   // ── row 45: buildMomAnnouncement ───────────────────────────────────
 
   mom_header: (p) => `🏆 *${p.mvpLabel}, ${p.activityName}*`,

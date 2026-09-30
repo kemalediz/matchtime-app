@@ -167,6 +167,7 @@ const SAMPLES: SampleArgs = {
   bench_claim_too_late: { firstName: "Najib", confirmed: 14, maxPlayers: 14 },
   pending_confirmed_ack: { names: ["Sait Demir", "Abid Hussain"], kickoffLabel: "Tue 21:30" },
   guest_name_ask: { firstName: "Sait", plural: false },
+  ask_who_mentioned: null,
   mom_header: { mvpLabel: "Maçın Adamı", activityName: "Tuesday 7-a-side" },
   mom_winner: { name: "Sait Demir", top: 6, total: 12 },
   mom_shared: { names: "Sait Demir & Kemal Ediz", top: 4, total: 12 },

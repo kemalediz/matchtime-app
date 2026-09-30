@@ -227,8 +227,12 @@ export interface EngineMessageOutcome {
   /** Personal-uncertainty conditional: record a MAYBE and chase later
    *  (`tentative-followup.ts`). Preserved from `executeVerdict`, which
    *  was itself deleted in §10 step 8 — this path is now the only one
-   *  that records a tentative from a group message. */
-  recordTentativeForUserId: string | null;
+   *  that records a tentative from a group message.
+   *
+   *  A list since 2026-09-30: the sender's own maybe, plus every member
+   *  an ADMIN reported as a maybe ("@Sait is a maybe, remind him"),
+   *  which the engine returns as `MessageOutcome.tentativeUserIds`. */
+  recordTentativeForUserIds: string[];
   /** A firm IN/OUT answers any open tentative follow-up. */
   resolveTentativeForUserId: string | null;
   /**
@@ -1037,7 +1041,16 @@ export async function runAttendanceEngineBatch(args: {
       // still share `route.ts`'s one list, one implementation and one
       // dedupe — "only the last one fires" holds across both.
       recruitRequest: !!attendanceFacts?.sideRequests.includes("recruit") && m.senderIsAdmin,
-      recordTentativeForUserId: tentativeUserId(attendanceFacts, m.senderUserId, landed),
+      recordTentativeForUserIds: [
+        ...new Set(
+          [
+            tentativeUserId(attendanceFacts, m.senderUserId, landed),
+            ...(engineOutcome?.tentativeUserIds ?? []).filter(
+              (id) => !landed.some((w) => w.userId === id),
+            ),
+          ].filter((id): id is string => !!id),
+        ),
+      ],
       resolveTentativeForUserId: senderOwnRowMoved ? m.senderUserId : null,
       // `engineOutcome` cannot actually be missing — `assertCoverage`
       // throws unless there is exactly one outcome per input id — but

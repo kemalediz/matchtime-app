@@ -219,3 +219,93 @@ describe("resolveMentionNames", () => {
     ).toBe("");
   });
 });
+
+// ── 2026-09-30, MT Test: a LID mention named by PHONE ────────────────
+//
+// "@David is IN" arrived as "@252012071493723 is IN". David is a member
+// by phone (+447881432810); under Baileys every mention is a LID, so the
+// @c.us phone rule above never fired. The Pi now forwards the phone it
+// was told for the LID, and the server also consults the LID-to-phone
+// pairs it has stored itself (participant snapshots, the connect DM).
+describe("resolveMentionNames: a LID mention named by phone", () => {
+  const MT = [
+    { userId: "u-david", name: "David", phone: "+447881432810" },
+    { userId: "u-elvin", name: "Elvin", phone: "+447423203409" },
+  ];
+
+  it("the Pi's forwarded phone names a LID mention", () => {
+    const out = resolveMentionNames({
+      roster: MT,
+      body: "@252012071493723 is IN",
+      mentions: ["252012071493723@lid"],
+      mentionNames: [{ jid: "252012071493723@lid", phone: "447881432810" }],
+    });
+    expect(out.body).toBe("@David is IN");
+    expect(out.outcomes[0].via).toBe("phone");
+  });
+
+  it("the phone outranks a pushname that points somewhere else", () => {
+    const out = resolveMentionNames({
+      roster: MT,
+      body: "@252012071493723 is IN",
+      mentions: ["252012071493723@lid"],
+      mentionNames: [{ jid: "252012071493723@lid", name: "Elvin", phone: "447881432810" }],
+    });
+    expect(out.body).toBe("@David is IN");
+  });
+
+  it("an unknown forwarded phone falls back to the name, as before", () => {
+    const out = resolveMentionNames({
+      roster: MT,
+      body: "@252012071493723 is IN",
+      mentions: ["252012071493723@lid"],
+      mentionNames: [{ jid: "252012071493723@lid", name: "Elvin", phone: "447000000000" }],
+    });
+    expect(out.body).toBe("@Elvin is IN");
+    expect(out.outcomes[0].via).toBe("roster");
+  });
+
+  it("a LID the SERVER has stored against a phone names the mention", () => {
+    const out = resolveMentionNames({
+      roster: MT,
+      body: "@252012071493723 is IN",
+      mentions: ["252012071493723@lid"],
+      knownLids: [{ lid: "252012071493723@lid", phone: "+447881432810" }],
+    });
+    expect(out.body).toBe("@David is IN");
+    expect(out.outcomes[0].via).toBe("stored-lid");
+  });
+
+  it("a LID the SERVER has stored against a user names the mention", () => {
+    const out = resolveMentionNames({
+      roster: MT,
+      body: "@252012071493723 is IN",
+      mentions: ["252012071493723@lid"],
+      knownLids: [{ lid: "252012071493723", userId: "u-david" }],
+    });
+    expect(out.body).toBe("@David is IN");
+  });
+
+  it("a stored LID that points at two different people names nobody", () => {
+    const out = resolveMentionNames({
+      roster: MT,
+      body: "@252012071493723 is IN",
+      mentions: ["252012071493723@lid"],
+      knownLids: [
+        { lid: "252012071493723@lid", userId: "u-david" },
+        { lid: "252012071493723@lid", userId: "u-elvin" },
+      ],
+    });
+    expect(out.body).toBe("@252012071493723 is IN");
+  });
+
+  it("a stored user who is not on this roster names nobody", () => {
+    const out = resolveMentionNames({
+      roster: MT,
+      body: "@46179639369730 is IN",
+      mentions: ["46179639369730@lid"],
+      knownLids: [{ lid: "46179639369730@lid", userId: "u-stranger" }],
+    });
+    expect(out.body).toBe("@46179639369730 is IN");
+  });
+});

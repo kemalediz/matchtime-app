@@ -39,7 +39,14 @@
  *
  *   1. PHONE  — a "<digits>@c.us" mention IS the person's phone number.
  *               A unique key, needing no contact lookup and nothing the
- *               mentioned person can edit. Always tried first.
+ *               mentioned person can edit. Always tried first. Since
+ *               2026-09-30 a LID mention reaches this rung too, with the
+ *               phone the Pi was told for it (group metadata, message
+ *               envelopes: WhatsApp's data, not the person's), and then
+ *               through the LID-to-phone and LID-to-user pairs the
+ *               server stored itself (`knownLids`: participant
+ *               snapshots, the connect DM). Under Baileys every mention
+ *               is a LID, so without this the rung never fired.
  *   2. ALIAS  — `UserAlias`, admin-curated (or merge-derived) and unique
  *               per (orgId, alias). This is what already knew about David.
  *   3. ROSTER — `resolvePerson()`, the same ambiguity-bailing matcher the
@@ -63,10 +70,23 @@ export interface MentionRosterMember {
   phone?: string | null;
 }
 
-/** A mention's display name as reported by the Pi. UNVERIFIED. */
+/**
+ * What the Pi reported about a mention. `name` is UNVERIFIED (a lookup
+ * key); `phone` is the phone behind a LID mention, digits only, from
+ * WhatsApp's own group metadata. Either may be absent.
+ */
 export interface MentionNameInput {
   jid: string;
-  name: string;
+  name?: string;
+  phone?: string;
+}
+
+/** A LID the server has stored against a phone or a member. */
+export interface KnownLid {
+  /** "<digits>@lid" or bare digits. */
+  lid: string;
+  phone?: string | null;
+  userId?: string | null;
 }
 
 export interface MentionOutcome {
@@ -75,7 +95,7 @@ export interface MentionOutcome {
   /** The member the mention was named from, or null — token left raw. */
   member: { userId: string; name: string } | null;
   /** Which trust level answered. null when nothing did. */
-  via: "phone" | "alias" | "roster" | null;
+  via: "phone" | "stored-lid" | "alias" | "roster" | null;
   /** Why nothing did, for the ops log. */
   why?: string;
 }
@@ -117,6 +137,8 @@ export function resolveMentionNames(args: {
   roster: MentionRosterMember[];
   /** `UserAlias` rows for this org (alias already folded on write). */
   aliases?: Array<{ alias: string; userId: string }>;
+  /** LIDs the server has stored against a phone or a member. */
+  knownLids?: KnownLid[];
 }): { body: string; outcomes: MentionOutcome[] } {
   let body = typeof args?.body === "string" ? args.body : "";
   const jids = Array.isArray(args?.mentions) ? args.mentions : [];
@@ -152,10 +174,30 @@ export function resolveMentionNames(args: {
   );
 
   const nameByJid = new Map<string, string>();
+  const phoneByJid = new Map<string, string>();
   for (const mn of args?.mentionNames ?? []) {
-    if (mn && typeof mn.jid === "string" && typeof mn.name === "string" && mn.name.trim()) {
-      nameByJid.set(mn.jid, mn.name);
+    if (!mn || typeof mn.jid !== "string") continue;
+    if (typeof mn.name === "string" && mn.name.trim()) nameByJid.set(mn.jid, mn.name);
+    const d = typeof mn.phone === "string" ? mn.phone.replace(/\D/g, "") : "";
+    if (d.length >= 7) phoneByJid.set(mn.jid, d);
+  }
+
+  // Stored LID pairs, keyed on the LID's digits. A LID that points at two
+  // different people is refused outright rather than guessed.
+  const storedByLid = new Map<string, Set<string>>();
+  for (const k of args?.knownLids ?? []) {
+    if (!k || typeof k.lid !== "string") continue;
+    const lidDigits = digitsOf(k.lid);
+    if (lidDigits.length < MIN_MENTION_DIGITS) continue;
+    let userId: string | null = null;
+    if (typeof k.userId === "string" && nameByUserId.has(k.userId)) {
+      userId = k.userId;
+    } else if (typeof k.phone === "string") {
+      const hits = byPhone.get(k.phone.replace(/\D/g, "")) ?? [];
+      if (hits.length === 1) userId = hits[0].userId;
     }
+    if (!userId) continue;
+    storedByLid.set(lidDigits, new Set([...(storedByLid.get(lidDigits) ?? []), userId]));
   }
 
   for (const jid of jids) {
@@ -165,11 +207,24 @@ export function resolveMentionNames(args: {
     const outcome: MentionOutcome = { jid, digits, member: null, via: null };
 
     // ── 1. Phone. The JID itself is the identity; nothing to verify. ──
-    if (typeof jid === "string" && PHONE_JID.test(jid)) {
-      const hits = byPhone.get(digits) ?? [];
+    //    For a LID, the phone the Pi was told for it.
+    const phoneDigits =
+      typeof jid === "string" && PHONE_JID.test(jid) ? digits : (phoneByJid.get(jid) ?? null);
+    if (phoneDigits) {
+      const hits = byPhone.get(phoneDigits) ?? [];
       if (hits.length === 1) {
         outcome.member = { userId: hits[0].userId, name: hits[0].name };
         outcome.via = "phone";
+      }
+    }
+
+    // ── 1b. A LID the server stored itself. ───────────────────────────
+    if (!outcome.member) {
+      const users = storedByLid.get(digits);
+      if (users && users.size === 1) {
+        const userId = [...users][0];
+        outcome.member = { userId, name: nameByUserId.get(userId)! };
+        outcome.via = "stored-lid";
       }
     }
 

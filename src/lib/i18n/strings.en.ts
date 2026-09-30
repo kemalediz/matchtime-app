@@ -486,6 +486,10 @@ export const en = {
       : `${opener} What's their name? Reply with it and I'll add them to the squad.`;
   },
 
+  /** A third-party claim named only a WhatsApp mention nobody could put
+   *  a name to (2026-09-30). Once per batch. */
+  ask_who_mentioned: "I couldn't tell who that is, can you say their name?",
+
   // ── row 45: buildMomAnnouncement (mom-announcement.ts) ─────────────
 
   mom_header: (p: { mvpLabel: string; activityName: string }): string => `🏆 *${p.mvpLabel} — ${p.activityName}*`,
