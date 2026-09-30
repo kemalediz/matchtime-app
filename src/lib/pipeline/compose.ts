@@ -732,6 +732,16 @@ export function compose(result: EngineResult): ComposedOutput {
           );
           break;
         }
+        // An organiser-pick club (slice 2b, P13): the place is not first
+        // come. The engine only lets this through with an empty waiting
+        // list; the admins are asked to pick otherwise.
+        if (state.features.benchPickMode === "organiser") {
+          utterances.push({
+            messageId: sp.messageId,
+            text: s.slot_opened_organiser({ kickoffLabel: state.kickoffLabel }),
+          });
+          break;
+        }
         utterances.push({
           messageId: sp.messageId,
           text: s.slot_opened({

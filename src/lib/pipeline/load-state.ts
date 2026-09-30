@@ -16,6 +16,7 @@ import { kickoffLabel } from "../i18n/dates";
 import { t } from "../i18n/t";
 import type { Lang } from "../i18n/lang";
 import { getOrgFeatures } from "../org-features";
+import { loadReclaimUserIds } from "../squad-reclaim";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { resolveTeamLabels } from "../team-labels";
 import { totalPlayersFor } from "../format-switch";
@@ -95,6 +96,15 @@ export async function loadSquadState(
     : [];
 
   const benchIds = rows.filter((r) => r.status === "BENCH").map((r) => r.userId);
+
+  // Slice 2b: in an organiser-pick club, who may take a free place back
+  // ("sorry, wrong group, I'm in"). One read, only for such a club and
+  // only when somebody on this match is DROPPED.
+  const droppedIds = rows.filter((r) => r.status === "DROPPED").map((r) => r.userId);
+  const reclaimUserIds =
+    match && features.benchPickMode === "organiser" && droppedIds.length > 0
+      ? await loadReclaimUserIds(match.id, droppedIds)
+      : [];
   const offers = match
     ? await db.benchSlotOffer.findMany({
         where: { matchId: match.id, resolvedAt: null },
@@ -233,7 +243,9 @@ export async function loadSquadState(
       reminders: features.reminders ?? false,
       // Already normalised to a shipped language by `getOrgFeatures`.
       language: features.language,
+      benchPickMode: features.benchPickMode,
     },
+    reclaimUserIds,
     smallerFormats,
     guestAskedUserIds: guestAsked,
     // NOT LOADED HERE, on purpose — see `SquadState.payments` and
@@ -360,3 +372,4 @@ export async function loadPaymentSnapshot(
       : null,
   });
 }
+

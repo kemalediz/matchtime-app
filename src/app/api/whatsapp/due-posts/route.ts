@@ -60,6 +60,7 @@ import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations } from "@/lib/bot-scheduler";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
+import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
@@ -203,6 +204,19 @@ export async function GET(request: Request) {
   // `sendAdminNotice` BEFORE compute, so it goes out in this same poll.
   // A side effect, so never in preview mode; its own try/catch, so a
   // failure here can never cost the group its posts.
+  // ORGANISER PICK (slice 2b, 2026-10-01): open, supersede, close and fall
+  // back the club's pick rounds, and queue the pick message through the
+  // admin channel. BEFORE the deadline summary: the first round after the
+  // drop-out deadline IS that summary and claims its key. A first-come
+  // club (Sutton FC) returns at once. Its own try/catch, like the summary.
+  if (!previewOnly) {
+    try {
+      await sweepOrganiserPicks(org.id, nowOverride ?? new Date());
+    } catch (err) {
+      console.error(`[due-posts] org ${org.id}: organiser pick sweep failed:`, err);
+    }
+  }
+
   if (!previewOnly) {
     try {
       await sendDueDeadlineSummaries(org.id, nowOverride ?? new Date());

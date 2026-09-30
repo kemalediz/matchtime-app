@@ -2025,4 +2025,113 @@ export const en = {
     "Until a group is linked, admin messages keep going where they go now.",
   settings_admin_channel_saved: "Saved",
   settings_admin_channel_unlinked: "Unlinked. Admin messages now go to the owner by DM.",
+
+
+  // ── Organiser pick (2026-10-01), slice 2b of
+  //    MDs/friday-group-features-plan-2026-09-30.md, sections 2.7 to 2.13.
+  //    New copy, house style: no em or en dashes. Rows OPK1 to OPK9 in
+  //    copy-golden. ──
+
+  /** P13: the engine's "a place just opened" post for an organiser-pick
+   *  club with an empty waiting list. */
+  slot_opened_organiser: (p: { kickoffLabel: string }): string =>
+    `A place just opened for ${p.kickoffLabel}. Say *IN* to go on the waiting list, and the organisers will pick who plays.`,
+  /** P1 first line: one or more drops (`late`: after the drop-out deadline). */
+  pick_lead_drop: (p: { names: string[]; activityName: string; whenLabel: string; late: boolean }): string =>
+    `${joinList("en", p.names.map((n) => `*${n}*`))} dropped out of *${p.activityName}* (${p.whenLabel})${p.late ? " after the deadline" : ""}.`,
+  /** P1 first line: the deadline summary opens the first round (slice 3). */
+  pick_lead_deadline: (p: { activityName: string; whenLabel: string }): string =>
+    `Drop-out deadline passed for *${p.activityName}* (${p.whenLabel}).`,
+  /** P1 first line: a place that was never filled. */
+  pick_lead_open_place: (p: { open: number; activityName: string; whenLabel: string; confirmed: number; maxPlayers: number }): string =>
+    p.open === 1
+      ? `There is 1 place open in *${p.activityName}* (${p.whenLabel}), squad ${p.confirmed}/${p.maxPlayers}.`
+      : `There are ${p.open} places open in *${p.activityName}* (${p.whenLabel}), squad ${p.confirmed}/${p.maxPlayers}.`,
+  /** P1: the count, after a drop or deadline lead. */
+  pick_places_line: (p: { open: number; confirmed: number; maxPlayers: number }): string =>
+    `${p.open === 1 ? "1 place open" : `${p.open} places open`}, squad ${p.confirmed}/${p.maxPlayers}.`,
+  pick_waiting_header: "Waiting list:",
+  /** P1: one numbered row. `rating` is the club rating players see, or null. */
+  pick_list_row: (p: { n: number; name: string; position: string | null; rating: string | null }): string =>
+    `${p.n}. ${p.name} (${p.position ?? "no position"}, ${p.rating ?? "new"})`,
+  pick_instructions_dm:
+    "Reply with a number or a name to bring someone in, e.g. *2*, or *2 3* for two. Reply *NONE* to leave it open.",
+  pick_instructions_group:
+    "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+  pick_fallback_offer: (p: { when: string }): string =>
+    `If nobody picks by ${p.when}, I'll offer the place to the whole waiting list.`,
+  pick_fallback_leave: (p: { when: string }): string => `If nobody picks by ${p.when}, the place stays open.`,
+  /** A1: to the admin channel. `pickerName` null in a DM to the picker himself. */
+  pick_done_admin: (p: { name: string; replacedName: string | null; pickerName: string | null }): string =>
+    `✅ Done: *${p.name}* is in${p.replacedName ? `, replacing *${p.replacedName}*` : ""}${p.pickerName ? ` (picked by ${p.pickerName})` : ""}.`,
+  /** A2: to the community group, one per picked player. */
+  pick_group_post: (p: { name: string; replacedName: string | null; team: string | null; confirmed: number; maxPlayers: number }): string =>
+    `✅ *${p.name}* is in${p.replacedName ? `, replacing *${p.replacedName}*${p.team ? ` on *${p.team}*` : ""}` : ""}. Squad *${p.confirmed}/${p.maxPlayers}*.`,
+  /** A3: DM to the picked player. `dayTime` e.g. "Friday 20:30". */
+  pick_player_dm: (p: { dayTime: string; venue: string }): string =>
+    `You're in for ${p.dayTime} at ${p.venue} ⚽ Can't make it after all? Just say *OUT*.`,
+  /** E1 */
+  pick_not_on_list: (p: { name: string }): string =>
+    `*${p.name}* isn't on the waiting list. Bring them in anyway? Reply *YES*.`,
+  /** E2 */
+  pick_already_in: (p: { name: string }): string => `*${p.name}* is already in. Pick someone else?`,
+  /** E3 */
+  pick_already_filled: (p: { name: string; pickerName: string }): string =>
+    `Already filled: *${p.name}* is in (picked by ${p.pickerName}).`,
+  /** E3, when the place was filled some other way. */
+  pick_already_filled_full: (p: { confirmed: number; maxPlayers: number }): string =>
+    `Already filled: the squad is full (${p.confirmed}/${p.maxPlayers}).`,
+  /** E4 */
+  pick_unresolved_tag: "I couldn't tell who that is, can you type their name?",
+  /** E5 */
+  pick_ambiguous: (p: { first: string; names: string[] }): string =>
+    `${p.names.length === 2 ? "Two" : p.names.length === 3 ? "Three" : String(p.names.length)} players are called *${p.first}*: ${joinList("en", p.names.map((n) => `*${n}*`))}. Which one? Reply with the full name.`,
+  /** P5 lead; the list and the instructions follow. */
+  pick_list_changed: "The waiting list has changed since my last message. Here it is again:",
+  /** P6 (DM only) */
+  pick_not_understood:
+    "I couldn't match that to the waiting list. Reply with a number from the list (e.g. *2*) or a full name. *NONE* leaves the place open.",
+  /** P7 */
+  pick_only_k: (p: { k: number; names: string[] }): string =>
+    `Only ${p.k} ${p.k === 1 ? "place was" : "places were"} open, so I brought in your first ${p.names.length === 1 ? "pick" : "picks"}: ${joinList("en", p.names.map((n) => `*${n}*`))}.`,
+  /** P8 */
+  pick_none_ack: "OK, I'll leave the place open. You can still pick from the waiting list on the match page.",
+  /** P11 */
+  pick_fallback_offered: (p: { activityName: string }): string =>
+    `Nobody picked for *${p.activityName}*, so I've offered the place to the waiting list: the first to say IN gets it.`,
+  /** P12 */
+  pick_fallback_left: (p: { activityName: string; confirmed: number; maxPlayers: number }): string =>
+    `Nobody picked for *${p.activityName}*, so the place stays open. Squad ${p.confirmed}/${p.maxPlayers}.`,
+  /** D7: the line at the end of the in-group setup. */
+  onb_weekly_routine_tip:
+    "Tip: to carry the squad over each week, to pick replacements from a waiting list yourself, or to get admin messages in your admins' group, open Settings on the website.",
+
+  // ── OPK8: /admin/settings "Weekly routine", who fills an open place. ──
+  wr_pick_label: "Who fills an open place",
+  wr_pick_blurb: "First to say IN, or the organisers pick from the waiting list.",
+  wr_pick_info:
+    "First to say IN: when a place opens, MatchTime offers it to the waiting list and the first to say IN gets it. " +
+    "The organisers pick: MatchTime never fills a place by itself. Anyone who says IN goes on the waiting list, and your admin messages " +
+    "(see Admin messages go to) get the waiting list with positions and club ratings. The first admin to reply with a number, a name or a tag brings that player in.",
+  wr_pick_first_come: "First to say IN",
+  wr_pick_organiser: "The organisers pick",
+  wr_fallback_label: "If nobody picks in time",
+  wr_fallback_info:
+    "If no admin replies within a day, or 4 hours before kickoff at the latest, MatchTime either offers the place to the whole waiting list " +
+    "(first to say IN gets it) or leaves it open.",
+  wr_fallback_offer: "Offer it to the waiting list",
+  wr_fallback_leave: "Leave it open",
+  wr_pick_saved: "Saved",
+
+  // ── OPK9: the waiting list on the match page (organiser-pick clubs). ──
+  wl_title: (p: { count: number }): string => `Waiting list (${p.count})`,
+  wl_hint: "The organisers pick who plays. Reorder the list, or bring someone in.",
+  wl_bring_in: "Bring in",
+  wl_move_up: "Move up",
+  wl_move_down: "Move down",
+  wl_no_position: "no position",
+  wl_new: "new",
+  wl_brought_in: (p: { name: string }): string => `${p.name} is in`,
+  wl_full: "The squad is full",
+  wl_failed: "Couldn't save that. Try again.",
 };

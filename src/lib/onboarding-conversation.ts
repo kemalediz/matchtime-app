@@ -1613,7 +1613,7 @@ export function buildGroupAddCompletionPost(
   const onLabels = FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) =>
     s.onbFeatureLabel({ key: f.key, englishLabel: f.label }),
   );
-  return s.onbCompletionPost({
+  const post = s.onbCompletionPost({
     groupName: p.groupName,
     onLabels,
     dayName: s.onbDayName({ dow: p.dayOfWeek ?? 2 }),
@@ -1627,13 +1627,16 @@ export function buildGroupAddCompletionPost(
     adminName: p.adminName,
     howToUseMe: howToUseMeFor(p.chosen, lang),
   });
+  // D7 (2026-10-01): the Weekly routine features live on the settings
+  // page, not in this conversation; one line says where.
+  return `${post}\n\n${s.onb_weekly_routine_tip}`;
 }
 
 /** The "All set" post for the legacy "@MatchTime setup" flow. */
 export function buildLegacyCompletionPost(p: CompletionPostInput, lang: Lang | string = "en"): string {
   const s = t(lang);
   const chosenSet = new Set(p.chosen);
-  return s.onb_legacy_completion({
+  const post = s.onb_legacy_completion({
     onLabels: FEATURE_META.filter((f) => chosenSet.has(f.key)).map((f) =>
       s.onbFeatureLabel({ key: f.key, englishLabel: f.label }),
     ),
@@ -1643,6 +1646,7 @@ export function buildLegacyCompletionPost(p: CompletionPostInput, lang: Lang | s
     weekly: p.weekly,
     howToUseMe: howToUseMeFor(p.chosen, lang),
   });
+  return `${post}\n\n${s.onb_weekly_routine_tip}`;
 }
 
 /** The magic-link DM to the captured admin at completion. */

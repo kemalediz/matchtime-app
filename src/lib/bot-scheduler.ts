@@ -1001,6 +1001,9 @@ async function computeForMatch(
               confirmed: confirmed.map((a) => a.user),
               bench: bench.map((a) => a.user),
               maxPlayers,
+              // Slice 2b: an organiser-pick club says IN puts you on the
+              // waiting list, and the organisers pick.
+              organiserPicks: features.benchPickMode === "organiser",
               lang,
             }),
           });
@@ -2566,9 +2569,14 @@ export async function requestBenchConfirmationOnDrop(
 ): Promise<void> {
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { attendances: true },
+    include: { attendances: true, activity: { select: { org: { select: { benchPickMode: true } } } } },
   });
   if (!match) return;
+
+  // An organiser-pick club (slice 2b) opens no offer on a drop: the admins
+  // pick (`organiser-pick.ts`), and only their fallback, when nobody picks
+  // in time, offers the place to the waiting list.
+  if (match.activity?.org?.benchPickMode === "organiser") return;
 
   const hasBench = match.attendances.some((a) => a.status === "BENCH");
   if (!hasBench) return; // nobody on the bench — chase handles it

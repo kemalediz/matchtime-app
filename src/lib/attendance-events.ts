@@ -87,6 +87,11 @@ export const ATTENDANCE_EVENT_CAUSES = [
    *  (actorKind `scheduler`), or by an admin's "Carry over last squad"
    *  button (actorKind `admin`). `sourceRef` is the source match id. */
   "rolling-squad",
+  /** Organiser pick (2026-10-01, slice 2b): an admin brought a player in
+   *  from the waiting list, by a reply in the admin channel or the match
+   *  page's "Bring in" (actorKind `admin`, `actorUserId` the admin).
+   *  `sourceRef` is the pick round id, or "admin:web". */
+  "organiser-pick",
   /** A posted squad list was extracted and written to the DB
    *  (`featureSquadFromList` orgs). */
   "pasted-roster",

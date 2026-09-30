@@ -27,12 +27,16 @@ export function AttendanceList({
   maxPlayers,
   admin = false,
   matchId,
+  hideBench = false,
 }: {
   attendances: AttendancePlayer[];
   maxPlayers: number;
   /** When true (and matchId given), show an admin remove (×) per row. */
   admin?: boolean;
   matchId?: string;
+  /** An organiser-pick club shows its waiting list to admins with the
+   *  pick controls instead (`waiting-list-controls.tsx`). */
+  hideBench?: boolean;
 }) {
   const confirmed = attendances
     .filter((a) => a.status === "CONFIRMED")
@@ -74,7 +78,7 @@ export function AttendanceList({
         </ul>
       </div>
 
-      {bench.length > 0 && (
+      {bench.length > 0 && !hideBench && (
         <div className="pt-6 border-t border-slate-100">
           <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
             Bench ({bench.length})

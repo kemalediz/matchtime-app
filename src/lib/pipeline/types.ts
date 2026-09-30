@@ -695,7 +695,21 @@ export interface SquadState {
      *  it yet; `compose()` will take `t(state.features.language)` in
      *  Phase 2. See MDs/multi-language-design-2026-09-16.md. */
     language: Lang;
+    /** Who fills an open place (slice 2b, 2026-10-01): "first-come"
+     *  (today) or "organiser". Read by `applyClaim` through
+     *  `canTakeFreePlace`, the same rule `registerAttendance` uses.
+     *  Optional so every state fixture that predates it keeps its shape;
+     *  absent means "first-come". */
+    benchPickMode?: "first-come" | "organiser";
   };
+  /**
+   * RECLAIMS (slice 2b, 2026-10-01): players whose last move on this
+   * match was CONFIRMED to DROPPED. In an organiser-pick club such a
+   * player saying IN again while a place is free gets it back ("sorry,
+   * wrong group, I'm in"). Loaded only for an organiser-pick club;
+   * absent or empty everywhere else.
+   */
+  reclaimUserIds?: string[];
   /** Smaller formats the org has configured, for the options answer.
    *  Totals across both teams (`playersPerTeam * 2`). */
   smallerFormats: Array<{ sportName: string; totalPlayers: number }>;

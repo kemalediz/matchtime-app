@@ -9,9 +9,9 @@
  *     senderLid, senderAltPhone, timestamp }
  *
  * Never analysed, never a model call: this route imports no model path
- * (`src/lib/__tests__/admin-group-no-model.source.test.ts`). In slice 2a
- * nothing is open to act on, so the answer is always "ignored" with no
- * reply; slice 2b reads the organisers' picks here.
+ * (`src/lib/__tests__/admin-group-no-model.source.test.ts`). Slice 2b
+ * reads the organisers' picks here, deterministically, and only while a
+ * pick round is open; everything else is "ignored" with no reply.
  */
 import { NextResponse } from "next/server";
 import { handleAdminGroupMessage } from "@/lib/admin-group";
@@ -35,6 +35,15 @@ export async function POST(request: Request) {
     senderLid: str(body.senderLid),
     senderAltPhone: str(body.senderAltPhone),
     timestamp: str(body.timestamp),
+    mentionNames: Array.isArray(body.mentionNames)
+      ? (body.mentionNames as unknown[])
+          .filter((m): m is { jid: string; name?: string; phone?: string } => !!m && typeof (m as { jid?: unknown }).jid === "string")
+          .map((m) => ({
+            jid: m.jid,
+            ...(typeof m.name === "string" ? { name: m.name } : {}),
+            ...(typeof m.phone === "string" ? { phone: m.phone } : {}),
+          }))
+      : undefined,
   });
   return NextResponse.json({ ok: true, ...result });
 }

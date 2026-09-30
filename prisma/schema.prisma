@@ -393,6 +393,17 @@ model Organisation {
   adminGroupLinkCode          String?   @unique
   adminGroupLinkCodeExpiresAt DateTime?
 
+  /// ─── Organiser pick (2026-10-01, slice 2b) ────────────────────────
+  /// Plan: MDs/friday-group-features-plan-2026-09-30.md, sections 2.6 to 2.13.
+  /// Who fills an open place: "first-come" (today, default) or
+  /// "organiser" (MatchTime never fills a place by itself; the admins
+  /// pick from the waiting list). Sutton FC and every existing club read
+  /// "first-come", so nothing changes for them.
+  benchPickMode     String @default("first-come")
+  /// When no admin picks in time: "bench-offer" (default, D5: offer the
+  /// place to the whole waiting list, first to say IN) or "leave-empty".
+  benchPickFallback String @default("bench-offer")
+
   memberships    Membership[]
   clubConnects   ClubConnect[]
   activities     Activity[]
@@ -815,6 +826,7 @@ model Match {
   ratingAdjustments       RatingAdjustment[]
   paymentCredits          PaymentCredit[]
   tentativeAvailabilities TentativeAvailability[]
+  organiserPickRounds     OrganiserPickRound[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1231,6 +1243,49 @@ model PendingBenchConfirmation {
  * `claimedByUserId` = who won it (audit). `resolvedAt` set when
  * claimed or auto-closed at kickoff.
  */
+/// One ask to the admin channel to fill open places from the waiting list
+/// (slice 2b, 2026-10-01). Plan: MDs/friday-group-features-plan-2026-09-30.md,
+/// sections 2.7 to 2.11. At most one open round (resolvedAt NULL) per match,
+/// guarded by a SentNotification claim when it opens. Only organiser-pick
+/// clubs ever have rows.
+model OrganiserPickRound {
+  id                          String    @id @default(cuid())
+  matchId                     String
+  match                       Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  orgId                       String
+  /// "dm" | "admin-group", fixed when the round opens.
+  channel                     String
+  /// Whose DM replies are read. For "dm", the recipients; for
+  /// "admin-group", the one person a notice falls back to by DM when the
+  /// Pi cannot post in the group (the owner).
+  recipientUserIds            String[]  @default([])
+  /// The numbered waiting list exactly as sent. Reply numbers resolve here.
+  listUserIds                 String[]
+  /// The drops this round is about (wording only).
+  vacatedByUserIds            String[]  @default([])
+  /// Of those, which were after the drop-out deadline (wording only).
+  lateDropUserIds             String[]  @default([])
+  openPlaces                  Int
+  /// "drop" | "open-place" | "deadline-summary"
+  reason                      String
+  fallbackAt                  DateTime
+  /// E1: a "not on the waiting list, YES?" question waiting for an answer.
+  pendingConfirmUserId        String?
+  pendingConfirmAskedByUserId String?
+  pendingConfirmAskedAt       DateTime?
+  resolvedAt                  DateTime?
+  /// "filled" | "none-by-admin" | "fallback-bench-offer" |
+  /// "fallback-left-open" | "superseded" | "closed-at-kickoff"
+  outcome                     String?
+  pickedUserIds               String[]  @default([])
+  lastPickedByUserId          String?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@index([matchId, resolvedAt])
+  @@index([orgId, resolvedAt])
+}
+
 model BenchSlotOffer {
   id              String    @id @default(cuid())
   matchId         String

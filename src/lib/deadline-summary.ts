@@ -21,8 +21,13 @@
  * (Sutton FC), a club that is not operational (not approved or dormant)
  * and a club with the attendance feature off get nothing.
  *
- * With organiser pick (slice 2b) this summary becomes the first pick
- * round; that slice changes this module, not its callers.
+ * With organiser pick (slice 2b) and something to pick (a free place and
+ * somebody waiting), this summary IS the first pick round:
+ * `sweepOrganiserPicks` (src/lib/organiser-pick.ts) runs first in the same
+ * poll, sends the pick message with the "Drop-out deadline passed" lead,
+ * and claims `<matchId>:deadline-summary`, so the claim below finds it
+ * taken and nothing is sent twice. With nothing to pick, this summary goes
+ * out as for any club.
  */
 import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
