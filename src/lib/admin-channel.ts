@@ -5,8 +5,9 @@
  * admin notice (a late drop-out, R4) through here, and so must every
  * later "tell the organisers" message. Today it DMs the club's OWNER
  * (every OWNER membership with a phone). Slice 2 adds the club setting
- * "Admin messages go to" and changes ONLY this function to route by it;
- * no caller should ever pick recipients itself.
+ * "Admin messages go to" and turns ONLY this function into the channel
+ * router the plan describes (section 2.2, same file and name); no caller
+ * should ever pick recipients itself.
  *
  * Not `owner-dm.ts`: that module DMs the PLATFORM owner (Kemal) about
  * club approvals, and its import allowlist forbids anything else. This
@@ -20,7 +21,7 @@
 import { db } from "./db";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 
-export async function sendClubAdminNotice(args: {
+export async function sendAdminNotice(args: {
   orgId: string;
   /** Already in the club's language. */
   text: string;

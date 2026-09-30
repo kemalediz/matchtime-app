@@ -8,7 +8,7 @@ import {
 } from "./attendance-events";
 import { dropOutDeadlineFor } from "./weekly-deadlines";
 import { isLateDrop } from "./rolling-squad-rules";
-import { sendClubAdminNotice } from "./admin-notice";
+import { sendAdminNotice } from "./admin-channel";
 import { buildLateDropAdminNotice } from "./dm-copy";
 import { dayTimeLabel, timeLabel, weekdayTimeLabel } from "./i18n/dates";
 
@@ -552,7 +552,7 @@ async function notifyLateDrop(p: {
     db.user.findUnique({ where: { id: p.userId }, select: { name: true } }),
     db.attendance.count({ where: { matchId: p.matchId, status: "CONFIRMED" } }),
   ]);
-  await sendClubAdminNotice({
+  await sendAdminNotice({
     orgId: p.orgId,
     text: buildLateDropAdminNotice({
       name: user?.name ?? "?",

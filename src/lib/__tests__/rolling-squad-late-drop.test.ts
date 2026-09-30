@@ -6,7 +6,7 @@
  *     when it reached us;
  *   - the AttendanceEvent note says it was late;
  *   - the club's admins get ONE notice, through the one function slice 2
- *     will re-route (`sendClubAdminNotice`);
+ *     will re-route (`sendAdminNotice`);
  *   - a club without the setting (Sutton) is untouched: no note, no DM.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -67,8 +67,8 @@ vi.mock("../bot-scheduler", () => ({
   queueSlotEmojiRefresh: async () => {},
 }));
 vi.mock("../squad-announce", () => ({ announceSquadFullIfJustFilled: async () => {} }));
-vi.mock("../admin-notice", () => ({
-  sendClubAdminNotice: async (a: { orgId: string; text: string }) => {
+vi.mock("../admin-channel", () => ({
+  sendAdminNotice: async (a: { orgId: string; text: string }) => {
     h.state.notices.push(a);
     return { queued: 1 };
   },
