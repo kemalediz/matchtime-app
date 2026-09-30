@@ -50,6 +50,18 @@ export const SPORT_PRESETS: readonly SportPreset[] = [
     positionComposition: { GK: 1, DEF: 3, MID: 2, FWD: 2 },
   },
   {
+    // Same positions, labels and MoM label as the 7- and 8-a-side
+    // presets: 1 GK plus a 3-3-2 outfield.
+    key: "football-9aside",
+    name: "Football 9-a-side",
+    playersPerTeam: 9,
+    positions: ["GK", "DEF", "MID", "FWD"],
+    teamLabels: ["Red", "Yellow"],
+    mvpLabel: "Man of the Match",
+    balancingStrategy: "position-aware",
+    positionComposition: { GK: 1, DEF: 3, MID: 3, FWD: 2 },
+  },
+  {
     key: "football-11aside",
     name: "Football 11-a-side",
     playersPerTeam: 11,

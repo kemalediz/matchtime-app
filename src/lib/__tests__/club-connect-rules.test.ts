@@ -103,10 +103,11 @@ describe("the weekly game", () => {
     expect([...PLAYERS_PER_SIDE_OPTIONS]).toEqual([4, 5, 6, 7, 8, 9, 10, 11]);
   });
 
-  it("5, 7, 8 and 11 use the football presets", () => {
+  it("5, 7, 8, 9 and 11 use the football presets", () => {
     expect(sportForPlayersPerSide(5).preset).toBe("football-5aside");
     expect(sportForPlayersPerSide(7).preset).toBe("football-7aside");
     expect(sportForPlayersPerSide(8).preset).toBe("football-8aside");
+    expect(sportForPlayersPerSide(9).preset).toBe("football-9aside");
     expect(sportForPlayersPerSide(11).preset).toBe("football-11aside");
     expect(sportForPlayersPerSide(7).playersPerTeam).toBe(7);
   });
