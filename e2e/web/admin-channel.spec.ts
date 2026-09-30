@@ -59,7 +59,7 @@ test("Admin WhatsApp group: code and steps, linked by the command, then Unlink",
   await expect(section.getByText(/Until a group is linked/)).toBeVisible();
   expect((await mode(db))?.adminChannelMode).toBe("one-person");
 
-  await section.getByRole("button", { name: "Link admin group" }).click();
+  await section.getByRole("button", { name: "Link admin group", exact: true }).click();
   const steps = section.getByTestId("admin-group-steps");
   await expect(steps).toBeVisible();
   await expect(steps).toContainText(/Your code: [ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}/);
@@ -82,7 +82,7 @@ test("Admin WhatsApp group: code and steps, linked by the command, then Unlink",
   await expect(section.getByTestId("admin-group-linked")).toHaveText("Linked: E2E HQ", { timeout: 20_000 });
   expect((await mode(db))?.adminChannelMode).toBe("admin-group");
 
-  await section.getByRole("button", { name: "Unlink" }).click();
+  await section.getByRole("button", { name: "Unlink", exact: true }).click();
   await expect.poll(async () => (await mode(db))?.adminGroupId).toBeNull();
   await expect(section.getByLabel("One person")).toBeChecked();
   const leave = await db.one<{ n: string }>(
