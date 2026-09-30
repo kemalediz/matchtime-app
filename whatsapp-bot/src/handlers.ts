@@ -35,7 +35,7 @@ let legacySetupTrigger = true;
 
 /** Replace the silent set. Call BEFORE setMonitoredGroups on a refresh. */
 export function setSilentGroups(groupIds: string[]) {
-  silentGroups = new Set(groupIds);
+  silentGroups = new Set(groupIds.filter((g) => !adminGroups.has(g)));
   for (const g of silentGroups) {
     monitoredGroups.delete(g);
     onboardingGroups.delete(g);
@@ -50,7 +50,7 @@ export function setSilentGroups(groupIds: string[]) {
  * not be able to mute Sutton FC.
  */
 export function addSilentGroup(groupId: string): void {
-  if (monitoredGroups.has(groupId)) return;
+  if (monitoredGroups.has(groupId) || adminGroups.has(groupId)) return;
   silentGroups.add(groupId);
   onboardingGroups.delete(groupId);
 }
@@ -70,7 +70,7 @@ export function isLegacySetupTriggerEnabled(): boolean {
 /** Replace the monitored set: the live orgs plus the groups mid-setup,
  *  never a silent group. */
 export function setMonitoredGroups(groupIds: string[]) {
-  monitoredGroups = new Set(groupIds.filter((g) => !silentGroups.has(g)));
+  monitoredGroups = new Set(groupIds.filter((g) => !silentGroups.has(g) && !adminGroups.has(g)));
 }
 
 export function isMonitoredGroup(groupId: string): boolean {
@@ -84,13 +84,13 @@ export function isMonitoredGroup(groupId: string): boolean {
  * the server handed back an intro.
  */
 export function addMonitoredGroup(groupId: string): void {
-  if (silentGroups.has(groupId)) return;
+  if (silentGroups.has(groupId) || adminGroups.has(groupId)) return;
   monitoredGroups.add(groupId);
 }
 
 /** Replace the mid-setup set (a subset of the monitored set). */
 export function setOnboardingGroups(groupIds: string[]) {
-  onboardingGroups = new Set(groupIds.filter((g) => !silentGroups.has(g)));
+  onboardingGroups = new Set(groupIds.filter((g) => !silentGroups.has(g) && !adminGroups.has(g)));
 }
 
 export function isOnboardingGroup(groupId: string): boolean {
@@ -98,7 +98,7 @@ export function isOnboardingGroup(groupId: string): boolean {
 }
 
 export function addOnboardingGroup(groupId: string): void {
-  if (silentGroups.has(groupId)) return;
+  if (silentGroups.has(groupId) || adminGroups.has(groupId)) return;
   onboardingGroups.add(groupId);
   monitoredGroups.add(groupId);
 }
@@ -108,6 +108,51 @@ export function addOnboardingGroup(groupId: string): void {
  *  is a live org now. */
 export function removeOnboardingGroup(groupId: string): void {
   onboardingGroups.delete(groupId);
+}
+
+// ── Admin groups (slice 2a, 2026-09-30) ─────────────────────────────────
+//
+// A club's linked admin WhatsApp group (its organisers' HQ group). A third
+// set, disjoint from the other two: an admin group is never monitored (its
+// messages never enter the analysis history or the analyze batch), never
+// mid-setup, and never silent. Every message in it is forwarded at once to
+// /api/whatsapp/admin-group, and its joins and leaves are not forwarded at
+// all: an HQ group must never enrol anybody into a club. Rebuilt from the
+// server's /orgs on every refresh; `addAdminGroup` covers the moments
+// between (the link command's answer).
+
+let adminGroups = new Map<string, string>(); // groupId -> orgId
+
+/** Replace the admin-group set. Call BEFORE the silent and monitored sets. */
+export function setAdminGroups(list: Array<{ groupId: string; orgId: string }>): void {
+  adminGroups = new Map(list.map((a) => [a.groupId, a.orgId]));
+  for (const g of adminGroups.keys()) {
+    monitoredGroups.delete(g);
+    onboardingGroups.delete(g);
+    silentGroups.delete(g);
+  }
+}
+
+/**
+ * The server just linked this group (the link command's answer): an admin
+ * group now, not at the next refresh. A group MatchTime is monitoring is a
+ * live club's own group and is never turned into an admin group from
+ * here, whatever an answer says.
+ */
+export function addAdminGroup(groupId: string, orgId: string): void {
+  if (monitoredGroups.has(groupId) && !onboardingGroups.has(groupId)) return;
+  adminGroups.set(groupId, orgId);
+  monitoredGroups.delete(groupId);
+  onboardingGroups.delete(groupId);
+  silentGroups.delete(groupId);
+}
+
+export function isAdminGroup(groupId: string): boolean {
+  return adminGroups.has(groupId);
+}
+
+export function removeAdminGroup(groupId: string): void {
+  adminGroups.delete(groupId);
 }
 
 /** Test-only: a copy of both sets. */

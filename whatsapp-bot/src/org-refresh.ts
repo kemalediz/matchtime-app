@@ -46,6 +46,11 @@ export interface OrgSnapshot {
    * group is added to them here too.
    */
   selfJoinSweep: { knownGroups: string[] } | null;
+  /**
+   * Slice 2a: each approved club's linked admin WhatsApp group. [] from an
+   * older server. Never a live org's group, never silent, never onboarding.
+   */
+  adminGroups: Array<{ groupId: string; orgId: string }>;
 }
 
 /** Read the `/api/whatsapp/orgs` body defensively into a snapshot. */
@@ -56,6 +61,7 @@ export function parseOrgSnapshot(data: unknown): OrgSnapshot {
     silentGroups?: unknown;
     legacySetupTrigger?: unknown;
     selfJoinSweep?: unknown;
+    adminGroups?: unknown;
   };
   const orgConfigs: OrgConfig[] = (Array.isArray(d.orgs) ? d.orgs : [])
     .filter((o) => typeof o?.whatsappGroupId === "string" && o.whatsappGroupId.length > 0)
@@ -63,21 +69,33 @@ export function parseOrgSnapshot(data: unknown): OrgSnapshot {
   const known = new Set(orgConfigs.map((o) => o.groupId));
   // A live org is never silenced on the Pi, whatever the list says: the
   // failure to avoid is Sutton FC going quiet because of a stale row.
+  // Slice 2a: admin groups. A live org's group is never one, whatever the
+  // list says (the same protection as the silent list below).
+  const adminSeen = new Set<string>();
+  const adminGroups: OrgSnapshot["adminGroups"] = [];
+  for (const a of Array.isArray(d.adminGroups) ? d.adminGroups : []) {
+    const groupId = (a as { groupId?: unknown })?.groupId;
+    const orgId = (a as { orgId?: unknown })?.orgId;
+    if (typeof groupId !== "string" || !groupId.endsWith("@g.us") || typeof orgId !== "string" || !orgId) continue;
+    if (known.has(groupId) || adminSeen.has(groupId)) continue;
+    adminSeen.add(groupId);
+    adminGroups.push({ groupId, orgId });
+  }
   const silentGroups = [
     ...new Set(
       (Array.isArray(d.silentGroups) ? d.silentGroups : [])
         .filter((g): g is string => typeof g === "string" && g.length > 0)
-        .filter((g) => !known.has(g)),
+        .filter((g) => !known.has(g) && !adminSeen.has(g)),
     ),
   ];
   const silent = new Set(silentGroups);
   const onboardingGroups = (Array.isArray(d.onboardingGroups) ? d.onboardingGroups : [])
     .filter((g): g is string => typeof g === "string" && g.length > 0)
-    .filter((g) => !known.has(g) && !silent.has(g));
+    .filter((g) => !known.has(g) && !silent.has(g) && !adminSeen.has(g));
   let selfJoinSweep: OrgSnapshot["selfJoinSweep"] = null;
   if (d.selfJoinSweep && typeof d.selfJoinSweep === "object") {
     const listed = (d.selfJoinSweep as { knownGroups?: unknown }).knownGroups;
-    const knownGroups = new Set<string>(known);
+    const knownGroups = new Set<string>([...known, ...adminSeen]);
     for (const g of Array.isArray(listed) ? listed : []) {
       if (typeof g === "string" && g.length > 0) knownGroups.add(g);
     }
@@ -89,6 +107,7 @@ export function parseOrgSnapshot(data: unknown): OrgSnapshot {
     silentGroups,
     legacySetupTrigger: d.legacySetupTrigger !== false,
     selfJoinSweep,
+    adminGroups,
   };
 }
 
@@ -99,6 +118,8 @@ export interface OrgSnapshotDiff {
   removedOnboarding: string[];
   addedSilent: string[];
   removedSilent: string[];
+  addedAdmin: string[];
+  removedAdmin: string[];
   changed: boolean;
 }
 
@@ -110,6 +131,8 @@ export function diffOrgSnapshot(prev: OrgSnapshot | null, next: OrgSnapshot): Or
   const nextOnb = new Set(next.onboardingGroups);
   const prevSilent = new Set(prev?.silentGroups ?? []);
   const nextSilent = new Set(next.silentGroups ?? []);
+  const prevAdmin = new Set((prev?.adminGroups ?? []).map((a) => a.groupId));
+  const nextAdmin = new Set((next.adminGroups ?? []).map((a) => a.groupId));
   const diff: OrgSnapshotDiff = {
     addedOrgs: [...nextOrgs.values()].filter((o) => !prevOrgs.has(o.groupId)),
     removedOrgs: [...prevOrgs.values()].filter((o) => !nextOrgs.has(o.groupId)),
@@ -117,6 +140,8 @@ export function diffOrgSnapshot(prev: OrgSnapshot | null, next: OrgSnapshot): Or
     removedOnboarding: [...prevOnb].filter((g) => !nextOnb.has(g)),
     addedSilent: [...nextSilent].filter((g) => !prevSilent.has(g)),
     removedSilent: [...prevSilent].filter((g) => !nextSilent.has(g)),
+    addedAdmin: [...nextAdmin].filter((g) => !prevAdmin.has(g)),
+    removedAdmin: [...prevAdmin].filter((g) => !nextAdmin.has(g)),
     changed: false,
   };
   diff.changed =
@@ -125,7 +150,9 @@ export function diffOrgSnapshot(prev: OrgSnapshot | null, next: OrgSnapshot): Or
       diff.addedOnboarding.length +
       diff.removedOnboarding.length +
       diff.addedSilent.length +
-      diff.removedSilent.length >
+      diff.removedSilent.length +
+      diff.addedAdmin.length +
+      diff.removedAdmin.length >
     0;
   return diff;
 }
@@ -138,6 +165,8 @@ export function describeOrgSnapshotDiff(diff: OrgSnapshotDiff): string {
   if (diff.removedOnboarding.length) parts.push(`-onboarding ${diff.removedOnboarding.join(", ")}`);
   if (diff.addedSilent.length) parts.push(`+silent ${diff.addedSilent.join(", ")}`);
   if (diff.removedSilent.length) parts.push(`-silent ${diff.removedSilent.join(", ")}`);
+  if (diff.addedAdmin.length) parts.push(`+admin-group ${diff.addedAdmin.join(", ")}`);
+  if (diff.removedAdmin.length) parts.push(`-admin-group ${diff.removedAdmin.join(", ")}`);
   return parts.length ? parts.join("; ") : "no change";
 }
 

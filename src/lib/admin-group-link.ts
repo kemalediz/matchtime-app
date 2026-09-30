@@ -277,7 +277,18 @@ export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminG
   // A real code for a club this sender does not run: silence.
   if (!linker) return ignored("not-this-clubs-admin");
 
-  const subject = typeof input.groupSubject === "string" && input.groupSubject.trim() ? input.groupSubject.trim() : null;
+  // The Pi does not look the subject up (no directory reads); the add
+  // recorded it on the candidate row, so use that when none is sent.
+  const subject =
+    typeof input.groupSubject === "string" && input.groupSubject.trim()
+      ? input.groupSubject.trim()
+      : ((
+          await db.unsolicitedGroup.findFirst({
+            where: { groupId: input.groupId, subject: { not: null } },
+            orderBy: { addedAt: "desc" },
+            select: { subject: true },
+          })
+        )?.subject ?? null);
   let linked: boolean;
   try {
     linked = await db.$transaction(async (tx) => {

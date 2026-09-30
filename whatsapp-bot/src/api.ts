@@ -117,6 +117,17 @@ export type DueInstruction =
       key: string;
       waMessageId: string;
       emoji: string;
+    }
+  | {
+      // Slice 2a: a post in a club's linked ADMIN group, which is not the
+      // group being polled, so it carries its own group id. Sent only to a
+      // group in this Pi's admin-group set (handlers.ts). The server emits
+      // it only to a Pi that sends PI_CAPS_HEADER with "admin-group".
+      kind: "admin-group-message";
+      key: string;
+      groupId: string;
+      text: string;
+      matchId?: string;
     };
 
 /**
@@ -128,6 +139,17 @@ export type DueInstruction =
  */
 export const PLATFORM_JOBS_CAPABLE_HEADER = "x-mt-platform-jobs";
 
+/**
+ * Slice 2a: what this build can do, on every due-posts poll. "admin-group":
+ * it knows the admin groups (/orgs `adminGroups`) and posts
+ * `admin-group-message` instructions there. Without it (an older or
+ * rolled-back Pi) the server sends admin notices to the owner by DM
+ * instead. The server reads the same literals (src/lib/admin-channel-rules.ts);
+ * an older server ignores the header.
+ */
+export const PI_CAPS_HEADER = "x-mt-pi-caps";
+export const PI_CAPS = "admin-group";
+
 export async function getDuePosts(groupId: string): Promise<{
   instructions: DueInstruction[];
   waGroupId: string;
@@ -135,7 +157,7 @@ export async function getDuePosts(groupId: string): Promise<{
 } | null> {
   const res = await apiFetch(
     `${config.apiUrl}/api/whatsapp/due-posts?groupId=${encodeURIComponent(groupId)}`,
-    { headers: { ...headers, [PLATFORM_JOBS_CAPABLE_HEADER]: "1" } },
+    { headers: { ...headers, [PLATFORM_JOBS_CAPABLE_HEADER]: "1", [PI_CAPS_HEADER]: PI_CAPS } },
   );
   if (!res.ok) {
     const body = await res.text();
@@ -413,6 +435,56 @@ export async function postBotRemoved(params: { groupId: string }): Promise<boole
     console.error("bot-removed post failed:", err instanceof Error ? err.message : err);
     return false;
   }
+}
+
+// ─────────────── Admin groups (slice 2a, 2026-09-30) ──────────────────
+
+/** What the Pi forwards from an admin group or a link command. */
+export interface AdminGroupForward {
+  groupId: string;
+  messageId: string;
+  text: string;
+  botMentioned: boolean;
+  senderPhone: string;
+  senderLid?: string;
+  timestamp: string;
+  mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  groupSubject?: string;
+}
+
+export interface AdminGroupAnswer {
+  replyText?: string | null;
+  adminGroup?: { groupId?: unknown; orgId?: unknown } | null;
+  outcome?: string;
+}
+
+/**
+ * POST a forward and read the answer. TOTAL: a 404 (a server built before
+ * slice 2a), any other error or a network failure is logged and returns
+ * null, and the Pi posts nothing. Never throws into the message handler.
+ */
+async function postAdminGroupForward(path: string, body: Record<string, unknown>): Promise<AdminGroupAnswer | null> {
+  try {
+    const res = await apiFetch(`${config.apiUrl}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+    if (!res.ok) {
+      console.error(`${path} post failed:`, res.status, await res.text());
+      return null;
+    }
+    return (await res.json()) as AdminGroupAnswer;
+  } catch (err) {
+    console.error(`${path} post failed:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** A message in a linked admin group, forwarded at once and never analysed. */
+export function postAdminGroupMessage(msg: AdminGroupForward): Promise<AdminGroupAnswer | null> {
+  return postAdminGroupForward("/api/whatsapp/admin-group", { channel: "admin-group", ...msg });
+}
+
+/** "@Match Time admin group CODE" from a group that is not an admin group. */
+export function postAdminGroupLink(msg: AdminGroupForward): Promise<AdminGroupAnswer | null> {
+  return postAdminGroupForward("/api/whatsapp/admin-group-link", { ...msg });
 }
 
 export async function postGroupJoin(params: {

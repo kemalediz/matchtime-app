@@ -137,6 +137,13 @@ describe("linkAdminGroup", () => {
     expect(dbMock.onboardingSession.updateMany.mock.calls[0][0].data).toEqual({ stage: "abandoned" });
   });
 
+  it("with no subject from the Pi, the subject recorded at the add is used", async () => {
+    world();
+    dbMock.unsolicitedGroup.findFirst.mockResolvedValue({ subject: "FNF HQ (from the add)" });
+    await send("@Match Time admin group K7P3QX", { groupSubject: undefined });
+    expect(dbMock.organisation.updateMany.mock.calls[0][0].data.adminGroupSubject).toBe("FNF HQ (from the add)");
+  });
+
   it("the sender is resolved by a stored LID pair when the phone is hidden", async () => {
     world();
     dbMock.clubConnect.findMany.mockResolvedValue([{ userId: "u-raihan", dmLid: RAIHAN_LID, participants: null }]);

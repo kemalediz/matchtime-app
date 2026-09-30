@@ -25,10 +25,11 @@ describe("parseOrgSnapshot", () => {
       silentGroups: [],
       legacySetupTrigger: true,
       selfJoinSweep: null,
+      adminGroups: [],
     });
   });
   it("garbage in, empty out", () => {
-    const empty = { orgConfigs: [], onboardingGroups: [], silentGroups: [], legacySetupTrigger: true, selfJoinSweep: null };
+    const empty = { orgConfigs: [], onboardingGroups: [], silentGroups: [], legacySetupTrigger: true, selfJoinSweep: null, adminGroups: [] };
     expect(parseOrgSnapshot(null)).toEqual(empty);
     expect(parseOrgSnapshot({ orgs: "x", onboardingGroups: "y", silentGroups: "z" })).toEqual(empty);
   });
@@ -173,5 +174,45 @@ describe("requestOrgRefresh", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("parseOrgSnapshot: admin groups (slice 2a)", () => {
+  it("an older server sends none: no admin groups", () => {
+    expect(parseOrgSnapshot({ orgs: [{ name: "Sutton FC", whatsappGroupId: "a@g.us" }] }).adminGroups).toEqual([]);
+  });
+
+  it("reads them defensively, deduped; a live org's group is never one; an admin group is never silent or onboarding", () => {
+    const s = parseOrgSnapshot({
+      orgs: [{ name: "Sutton FC", whatsappGroupId: "a@g.us" }],
+      silentGroups: ["hq@g.us", "u@g.us"],
+      onboardingGroups: ["hq@g.us"],
+      adminGroups: [
+        { groupId: "hq@g.us", orgId: "org-fnf" },
+        { groupId: "hq@g.us", orgId: "org-fnf" },
+        { groupId: "a@g.us", orgId: "org-sutton" },
+        { groupId: "not-a-group", orgId: "x" },
+        { groupId: "b@g.us" },
+        "junk",
+      ],
+    });
+    expect(s.adminGroups).toEqual([{ groupId: "hq@g.us", orgId: "org-fnf" }]);
+    expect(s.silentGroups).toEqual(["u@g.us"]);
+    expect(s.onboardingGroups).toEqual([]);
+    expect(s.orgConfigs).toEqual([{ groupId: "a@g.us", orgName: "Sutton FC" }]);
+  });
+
+  it("the reconnect sweep counts an admin group as known", () => {
+    const s = parseOrgSnapshot({ orgs: [], adminGroups: [{ groupId: "hq@g.us", orgId: "o" }], selfJoinSweep: { knownGroups: [] } });
+    expect(s.selfJoinSweep?.knownGroups).toEqual(["hq@g.us"]);
+  });
+
+  it("a linked or unlinked admin group is a change worth logging", () => {
+    const before = parseOrgSnapshot({ orgs: [] });
+    const after = parseOrgSnapshot({ orgs: [], adminGroups: [{ groupId: "hq@g.us", orgId: "o" }] });
+    const diff = diffOrgSnapshot(before, after);
+    expect(diff.changed).toBe(true);
+    expect(describeOrgSnapshotDiff(diff)).toBe("+admin-group hq@g.us");
+    expect(describeOrgSnapshotDiff(diffOrgSnapshot(after, before))).toBe("-admin-group hq@g.us");
   });
 });

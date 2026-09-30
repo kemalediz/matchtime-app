@@ -5,6 +5,10 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  addAdminGroup,
+  isAdminGroup,
+  removeAdminGroup,
+  setAdminGroups,
   addMonitoredGroup,
   addSilentGroup,
   addOnboardingGroup,
@@ -79,5 +83,50 @@ describe("silent groups on the Pi", () => {
     addSilentGroup(SUTTON);
     expect(isSilentGroup(SUTTON)).toBe(false);
     expect(isMonitoredGroup(SUTTON)).toBe(true);
+  });
+});
+
+describe("admin groups on the Pi (slice 2a)", () => {
+  const HQ = "hq@g.us";
+  beforeEach(() => {
+    setAdminGroups([]);
+    setSilentGroups([]);
+    setMonitoredGroups([]);
+    setOnboardingGroups([]);
+  });
+
+  it("an admin group is never monitored, onboarding or silent, whatever the other lists say", () => {
+    setAdminGroups([{ groupId: HQ, orgId: "org-fnf" }]);
+    setSilentGroups([HQ]);
+    setMonitoredGroups([SUTTON, HQ]);
+    setOnboardingGroups([HQ]);
+    addSilentGroup(HQ);
+    addMonitoredGroup(HQ);
+    addOnboardingGroup(HQ);
+    expect(isAdminGroup(HQ)).toBe(true);
+    expect(isMonitoredGroup(HQ)).toBe(false);
+    expect(isSilentGroup(HQ)).toBe(false);
+    expect(_test_groupSets().onboarding).toEqual([]);
+    expect(isMonitoredGroup(SUTTON)).toBe(true);
+  });
+
+  it("linking a silent candidate makes it an admin group at once", () => {
+    setSilentGroups([HQ]);
+    addAdminGroup(HQ, "org-fnf");
+    expect(isAdminGroup(HQ)).toBe(true);
+    expect(isSilentGroup(HQ)).toBe(false);
+  });
+
+  it("a live club's group can never be turned into an admin group by an answer", () => {
+    setMonitoredGroups([SUTTON]);
+    addAdminGroup(SUTTON, "org-x");
+    expect(isAdminGroup(SUTTON)).toBe(false);
+    expect(isMonitoredGroup(SUTTON)).toBe(true);
+  });
+
+  it("removal forgets it", () => {
+    setAdminGroups([{ groupId: HQ, orgId: "org-fnf" }]);
+    removeAdminGroup(HQ);
+    expect(isAdminGroup(HQ)).toBe(false);
   });
 });
