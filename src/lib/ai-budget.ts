@@ -148,13 +148,29 @@ export function aiWindowStart(
  * How many dollars this club may spend on the model today. `null` is
  * spend that has no club yet (onboarding).
  */
+/**
+ * The global off switch (Kemal, 2026-09-30: "remove the AI allowance
+ * globally for now"). With `AI_DAILY_CAP_DISABLED=1` every club that may
+ * spend at all spends without a daily limit. The $0 rules above the caps
+ * (unapproved clubs, bot off, silent groups) still hold: they are the
+ * anti-abuse rails, not the cost ceiling. Spend is still recorded.
+ */
+/** Stands in for "no limit": finite, so it stores cleanly in OrgAiUsage.capUsd. */
+export const UNCAPPED_USD = 1_000_000;
+
+export function isAiCapDisabled(env: Record<string, string | undefined> = process.env): boolean {
+  const v = env.AI_DAILY_CAP_DISABLED?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date): number {
-  if (!org) return NEW_CLUB_CAP_USD;
+  if (!org) return isAiCapDisabled() ? UNCAPPED_USD : NEW_CLUB_CAP_USD;
   // Not approved: $0 before anything else is even read. The silence
   // rails already keep such a club from reaching a model; this is the
   // defence in depth for a future path that forgets them.
   if (!isClubApproved(org)) return 0;
   if (!org.whatsappBotEnabled || !org.whatsappGroupId) return 0;
+  if (isAiCapDisabled()) return UNCAPPED_USD;
   if (org.aiDailyCapUsd !== null && org.aiDailyCapUsd !== undefined) {
     return Number.isFinite(org.aiDailyCapUsd) ? Math.max(0, org.aiDailyCapUsd) : 0;
   }
