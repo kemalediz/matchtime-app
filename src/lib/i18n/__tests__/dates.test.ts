@@ -129,3 +129,14 @@ describe("joinList", () => {
     expect(joinList("tr", ["Ali", "Veli", "Can"])).toBe("Ali, Veli ve Can");
   });
 });
+
+describe("lastPlayedLabel (stats page, 2026-09-30)", () => {
+  it("writes English exactly as formatLastPlayed does, and Turkish with the full month", async () => {
+    const { lastPlayedLabel } = await import("../dates");
+    const { formatLastPlayed } = await import("../../ranked-table-activity");
+    const d = new Date("2026-07-07T19:00:00.000Z");
+    expect(lastPlayedLabel("en", d)).toBe(formatLastPlayed(d));
+    expect(lastPlayedLabel("en", d)).toBe("7 Jul 2026");
+    expect(lastPlayedLabel("tr", d)).toBe("7 Temmuz 2026");
+  });
+});

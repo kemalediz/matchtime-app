@@ -180,6 +180,12 @@ export const TEAM_OF_SEASON_FOLLOWS_ACTIVITY_RULE = true;
  * him back in the ordering would be the decay problem again in a
  * different costume, inventing a position he has not earned.
  *
+ * Since 2026-09-30 the squad leaderboard also needs the group's minimum
+ * of rated matches (`GROUP_RATINGS_MIN_GAMES`, the Team of the Season
+ * rule; Kemal: "i like the rule for the leaderboard, implement it"). A
+ * viewer held out by THAT half of the rule gets the same unranked row,
+ * with "play N rated matches to join the table" instead of a date.
+ *
  * The exemption is for the VIEWER ON HIS OWN PAGE only. A group-chat
  * leaderboard has no viewer, and the admin dashboard's reader is an
  * operator rather than a subject — that surface solves the same problem

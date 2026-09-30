@@ -1275,6 +1275,28 @@ export const tr: Strings = {
 
   ai_daily_cap_reached: () => "Bugün çok soru yanıtladım, yarın tekrar sor.",
 
+  // ── /profile/stats: kadro sıralaması ve sezonun takımı panelleri
+  // (2026-09-30). İki panel aynı kuralı kullanıyor, kural tek bir
+  // metinden (`stats_table_rule`) okunuyor.
+  stats_leaderboard_title: "Kadro sıralaması",
+  stats_leaderboard_info_lead: "Tablodaki herkes bu sezonki ortalama puanına göre sıralanır.",
+  stats_leaderboard_info_arrows_lead: "Ok, her oyuncunun geçen haftaki maçtan beri nasıl hareket ettiğini gösterir:",
+  stats_leaderboard_arrow_up: "yükseldi",
+  stats_leaderboard_arrow_down: "düştü",
+  stats_leaderboard_arrow_same: "değişmedi",
+  stats_leaderboard_new: "yeni",
+  stats_leaderboard_you: " (sen)",
+  stats_leaderboard_not_ranked: "sıralamada değil",
+  stats_table_rule: (p) =>
+    `Kadro sıralaması ve sezonun takımı aynı kuralı kullanır: bir oyuncunun en az ${p.minGames} puanlı maçı ve son üç ayda oynadığı bir maç olmalı. Daha uzun süre oynamayan biri tekrar oynayana kadar listeden çıkar, oynadığı an aynı puanla geri döner, çünkü uzaktayken puanı hiç düşürülmez.`,
+  stats_leaderboard_join: (p) =>
+    `Tabloya girmek için ${p.minGames} puanlı maç oynaman gerekiyor. Şimdiye kadar ${p.games} maçın var, ${p.minGames - p.games} maç daha kaldı.`,
+  stats_leaderboard_away: (p) =>
+    `Şu an sıralamada değilsin${p.lastPlayed ? `, son maçın ${p.lastPlayed} tarihindeydi` : ""}. ${p.avg} puanın olduğu gibi duruyor, bir maç daha oynarsan aynı puanla hemen tabloya dönersin.`,
+  stats_tots_title: "Sezonun takımı",
+  stats_tots_info_lead: (p) =>
+    `Sezonun şimdiye kadarki en iyi kadrosu: her mevkide sezon ortalama puanı en yüksek oyuncu (${p.sportName}).`,
+
   // ── Self-join, 4. dilim: organizatörün web sayfaları (2026-09-29) ──
   // Sayılara gelen ek (7'ye, 5'e, 6'ya...) sayının okunuşuna göre
   // seçilir: yedi, beş, altı. Kulüp adı hep eksiz bir yerde durur

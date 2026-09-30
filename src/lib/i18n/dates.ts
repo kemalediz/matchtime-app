@@ -19,6 +19,7 @@
 import { tr as trLocale } from "date-fns/locale";
 import type { Locale } from "date-fns";
 import { formatLondon } from "../london-time";
+import { formatLastPlayed } from "../ranked-table-activity";
 import { normaliseLang, type Lang } from "./lang";
 
 /** The date-fns locale for a language, or undefined for English (date-fns'
@@ -140,4 +141,15 @@ export function timeLabel(d: Date): string {
  *  hardcoded, and always placed where Turkish needs no suffix on it. */
 export function monthYearLabel(lang: Lang | string | null | undefined, d: Date): string {
   return label(lang, d, { en: "MMMM yyyy", tr: "MMMM yyyy" });
+}
+
+/**
+ * A player's last appearance on the stats page: "7 Jul 2026" /
+ * "7 Temmuz 2026". The English one is `formatLastPlayed` in
+ * `ranked-table-activity.ts`, byte for byte, which every other surface
+ * that names a last appearance uses.
+ */
+export function lastPlayedLabel(lang: Lang | string | null | undefined, d: Date): string {
+  if (normaliseLang(lang) === "tr") return formatLondon(d, "d MMMM yyyy", trLocale);
+  return formatLastPlayed(d);
 }
