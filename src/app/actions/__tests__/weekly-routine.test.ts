@@ -19,6 +19,7 @@ vi.mock("@/lib/db", () => ({
     organisation: {
       update: (...a: unknown[]) => orgUpdate(...a),
       findUnique: (...a: unknown[]) => orgFindUnique(...a),
+      findUniqueOrThrow: (...a: unknown[]) => orgFindUnique(...a),
     },
     activity: { findMany: (...a: unknown[]) => activityFindMany(...a) },
   },
@@ -30,6 +31,10 @@ vi.mock("@/lib/org", () => ({
   requireOrgAdmin: (...a: unknown[]) => requireOrgAdmin(...a),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+const saveAdminChannelChoice = vi.fn();
+vi.mock("@/lib/admin-channel", () => ({
+  saveAdminChannelChoice: (...a: unknown[]) => saveAdminChannelChoice(...a),
+}));
 
 const { setWeeklyRoutine } = await import("../org");
 
@@ -144,5 +149,36 @@ describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
       "Admin access required",
     );
     expect(orgFindUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("setWeeklyRoutine: slice 2a, where admin messages go", () => {
+  it("saves the admin channel through the same action, with the admin check first", async () => {
+    saveAdminChannelChoice.mockResolvedValue({ ok: true });
+    const res = await setWeeklyRoutine("org-fnf", { adminChannel: { mode: "one-person", userId: "u-wasim" } });
+    expect(requireOrgAdmin).toHaveBeenCalledWith("u-hamzah", "org-fnf");
+    expect(saveAdminChannelChoice).toHaveBeenCalledWith("org-fnf", "one-person", "u-wasim");
+    expect(res).toMatchObject({ ok: true, adminChannel: { ok: true } });
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("passes on 'needs-link' for the admin group before a group is linked", async () => {
+    saveAdminChannelChoice.mockResolvedValue({ ok: false, reason: "needs-link" });
+    const res = await setWeeklyRoutine("org-fnf", { adminChannel: { mode: "admin-group", userId: null } });
+    expect(res).toMatchObject({ ok: true, adminChannel: { ok: false, reason: "needs-link" } });
+  });
+
+  it("both keys in one patch", async () => {
+    saveAdminChannelChoice.mockResolvedValue({ ok: true });
+    const res = await setWeeklyRoutine("org-fnf", { rollingSquad: true, adminChannel: { mode: "each-admin", userId: null } });
+    expect(res).toMatchObject({ ok: true, rollingSquad: true, adminChannel: { ok: true } });
+  });
+
+  it("a malformed admin channel is refused, nothing written", async () => {
+    await expect(
+      setWeeklyRoutine("org-fnf", { adminChannel: "group" } as unknown as { adminChannel: { mode: string; userId: null } }),
+    ).rejects.toThrow();
+    expect(saveAdminChannelChoice).not.toHaveBeenCalled();
+    expect(orgUpdate).not.toHaveBeenCalled();
   });
 });

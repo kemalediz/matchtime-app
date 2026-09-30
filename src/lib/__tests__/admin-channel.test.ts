@@ -233,3 +233,60 @@ describe("adminGroupJobInstruction (a queued admin-group BotJob at emit time)", 
     }
   });
 });
+
+describe("the settings page: saveAdminChannelChoice and loadAdminChannelStatus", () => {
+  beforeEach(() => {
+    (dbMock.organisation as Record<string, unknown>).updateMany = vi.fn().mockResolvedValue({ count: 1 });
+  });
+  const updates = () => (dbMock.organisation as unknown as { updateMany: ReturnType<typeof vi.fn> }).updateMany.mock.calls.map((c) => c[0].data);
+
+  it("admin-group only takes effect once a group is linked", async () => {
+    const { saveAdminChannelChoice } = await import("../admin-channel");
+    dbMock.organisation.findUnique.mockResolvedValue({ adminGroupId: null });
+    expect(await saveAdminChannelChoice(ORG, "admin-group", null)).toEqual({ ok: false, reason: "needs-link" });
+    expect(updates()).toEqual([]);
+    dbMock.organisation.findUnique.mockResolvedValue({ adminGroupId: GROUP });
+    expect(await saveAdminChannelChoice(ORG, "admin-group", null)).toEqual({ ok: true });
+    expect(updates()).toEqual([{ adminChannelMode: "admin-group" }]);
+  });
+
+  it("one person must be an owner or admin with a phone; null is the owner", async () => {
+    const { saveAdminChannelChoice } = await import("../admin-channel");
+    expect(await saveAdminChannelChoice(ORG, "one-person", "u-nophone")).toEqual({ ok: false, reason: "not-an-admin-with-phone" });
+    expect(await saveAdminChannelChoice(ORG, "one-person", "u-player")).toEqual({ ok: false, reason: "not-an-admin-with-phone" });
+    expect(await saveAdminChannelChoice(ORG, "one-person", "u-wasim")).toEqual({ ok: true });
+    expect(await saveAdminChannelChoice(ORG, "one-person", null)).toEqual({ ok: true });
+    expect(await saveAdminChannelChoice(ORG, "each-admin", "u-wasim")).toEqual({ ok: true });
+    expect(updates()).toEqual([
+      { adminChannelMode: "one-person", adminChannelUserId: "u-wasim" },
+      { adminChannelMode: "one-person", adminChannelUserId: null },
+      { adminChannelMode: "each-admin", adminChannelUserId: null },
+    ]);
+    expect(await saveAdminChannelChoice(ORG, "everyone", null)).toEqual({ ok: false, reason: "bad-mode" });
+  });
+
+  it("the status shows the linked group, a live code only, and the people who can be chosen", async () => {
+    const { loadAdminChannelStatus } = await import("../admin-channel");
+    dbMock.organisation.findUnique.mockResolvedValue({
+      adminChannelMode: "admin-group",
+      adminChannelUserId: null,
+      adminGroupId: GROUP,
+      adminGroupSubject: "FNF HQ",
+      adminGroupLinkedAt: NOON,
+      adminGroupLinkCode: "K7P3QX",
+      adminGroupLinkCodeExpiresAt: new Date(NOON.getTime() - 1),
+    });
+    const s = await loadAdminChannelStatus(ORG, NOON);
+    expect(s).toEqual({
+      mode: "admin-group",
+      channelUserId: null,
+      adminGroup: { subject: "FNF HQ", linkedAt: NOON.toISOString() },
+      code: null,
+      people: [
+        { id: "u-owner", name: "Hamzah", role: "OWNER" },
+        { id: "u-raihan", name: "Raihan", role: "ADMIN" },
+        { id: "u-wasim", name: "Wasim", role: "ADMIN" },
+      ],
+    });
+  });
+});

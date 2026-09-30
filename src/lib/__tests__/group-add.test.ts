@@ -25,9 +25,11 @@ const dbMock = vi.hoisted(() => {
   const m = {
     organisation: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
     clubConnect: { findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
-    unsolicitedGroup: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
-    user: { findUnique: vi.fn(), findFirst: vi.fn() },
+    unsolicitedGroup: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    user: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
     membership: { findMany: vi.fn() },
+    // Slice 2a: the admin-group candidate check resolves a LID-only adder.
+    onboardingSession: { findMany: vi.fn() },
     platformJob: { findFirst: vi.fn(), create: vi.fn() },
     $executeRaw: vi.fn(),
     $transaction: vi.fn(),
@@ -102,6 +104,9 @@ beforeEach(() => {
   dbMock.user.findUnique.mockResolvedValue({ name: "Ali Demir" });
   dbMock.user.findFirst.mockResolvedValue({ id: "u-ali" });
   dbMock.membership.findMany.mockResolvedValue([]);
+  dbMock.user.findMany.mockResolvedValue([]);
+  dbMock.onboardingSession.findMany.mockResolvedValue([]);
+  dbMock.organisation.findMany.mockResolvedValue([]);
   dbMock.platformJob.findFirst.mockResolvedValue(null);
   dbMock.platformJob.create.mockResolvedValue({ id: "pj-1" });
 });
@@ -446,6 +451,57 @@ describe("loadSelfJoinSweep: does the Pi need to look for adds it missed?", () =
       org: { approvalStatus: "draft" },
     });
     // Every club's group, whatever its status: approved (muted too), dormant or not.
-    expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({ whatsappGroupId: { not: null } });
+    // Slice 2a: and every club's linked admin group.
+    expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({
+      OR: [{ whatsappGroupId: { not: null } }, { adminGroupId: { not: null } }],
+    });
+  });
+
+  it("a linked admin group is known, so the sweep never reads it", async () => {
+    dbMock.clubConnect.count.mockResolvedValue(1);
+    dbMock.organisation.findMany.mockResolvedValue([{ whatsappGroupId: SUTTON_GROUP, adminGroupId: "120363400000000077@g.us" }]);
+    dbMock.clubConnect.findMany.mockResolvedValue([]);
+    dbMock.unsolicitedGroup.findMany.mockResolvedValue([]);
+    const out = await loadSelfJoinSweep(NOW);
+    expect(out?.knownGroups.sort()).toEqual([SUTTON_GROUP, "120363400000000077@g.us"].sort());
+  });
+});
+
+describe("slice 2a: the admins' HQ group (plan 2.4)", () => {
+  const RAIHAN = "447700900555";
+
+  it("an add by an owner or admin of an approved club, with no connect request matching: a silent candidate, no approval DM, no ack", async () => {
+    dbMock.user.findMany.mockImplementation(async (a: { where: { phoneNumber: { in: string[] } } }) =>
+      a.where.phoneNumber.in.includes(`+${RAIHAN}`) ? [{ id: "u-raihan" }] : [],
+    );
+    dbMock.membership.findMany.mockImplementation(async (a: { where: { userId?: { in: string[] } } }) =>
+      a.where.userId?.in.includes("u-raihan") ? [{ userId: "u-raihan", orgId: "org-fnf", org: { id: "org-fnf", name: "FNF", language: "en" } }] : [],
+    );
+    const out = await add({ addedByPhone: RAIHAN, participants: [{ phone: RAIHAN }] });
+    expect(out).toEqual({ kind: "admin-group-candidate", id: "ug-1" });
+    expect(dbMock.unsolicitedGroup.create.mock.calls[0][0].data).toMatchObject({ groupId: GROUP, awaitingAdminLink: true });
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    const { isSilentOutcome } = await import("../group-add");
+    expect(isSilentOutcome(out)).toBe(true);
+  });
+
+  it("a matching connect request wins over the candidate rule", async () => {
+    // Ali is the organiser with a DM-verified request AND (here) an admin
+    // of an approved club: he said what he wants, so the request is linked.
+    dbMock.user.findMany.mockResolvedValue([{ id: "u-ali" }]);
+    dbMock.membership.findMany.mockResolvedValue([{ userId: "u-ali", orgId: "org-x", org: { id: "org-x", name: "X", language: "en" } }]);
+    const out = await add();
+    expect(out.kind).toBe("linked");
+  });
+
+  it("a group that is already a club's admin group is not a new club, and not silent", async () => {
+    dbMock.organisation.findFirst.mockImplementation(async (a: { where: Record<string, unknown> }) =>
+      a.where.adminGroupId === GROUP ? { id: "org-fnf" } : null,
+    );
+    const out = await add();
+    expect(out).toEqual({ kind: "admin-group", orgId: "org-fnf" });
+    const { isSilentOutcome } = await import("../group-add");
+    expect(isSilentOutcome(out)).toBe(false);
   });
 });

@@ -12,11 +12,15 @@
  * live club owns, and the handler only reads requests whose club is
  * PENDING, so an approved club (Sutton FC) cannot be moved from here.
  *
+ * Slice 2a (2026-09-30): also a club's linked ADMIN group, which is not
+ * silent. That case is handled first and whatever the self-join switch.
+ *
  * Behind SELF_JOIN_ENABLED. A Pi built before slice 6 never calls it; a
  * server built before it answers 404, which the Pi logs and ignores.
  */
 import { NextResponse } from "next/server";
 import { handleBotRemoved } from "@/lib/group-add";
+import { handleAdminGroupRemoved } from "@/lib/admin-group-link";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 
 export async function POST(request: Request) {
@@ -26,6 +30,11 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { groupId?: unknown } | null;
   const groupId = typeof body?.groupId === "string" && body.groupId.endsWith("@g.us") ? body.groupId : null;
   if (!groupId) return NextResponse.json({ error: "groupId required" }, { status: 400 });
+  // Slice 2a: removed from a club's linked admin group. Whatever the
+  // self-join switch says: the link is cleared, the club goes back to the
+  // owner by DM, and the owner is told (L4).
+  const adminGroup = await handleAdminGroupRemoved(groupId);
+  if (adminGroup.unlinked) return NextResponse.json({ ok: true, adminGroup: "unlinked", orgId: adminGroup.orgId });
   if (!selfJoinEnabledForApiRequest(request)) {
     return NextResponse.json({ ok: true, ignored: "self-join-disabled" });
   }

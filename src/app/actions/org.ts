@@ -17,6 +17,7 @@ import {
   type WeeklyDeadlinesData,
   type WeeklyDeadlinesPatch,
 } from "@/lib/weekly-deadlines-settings";
+import { saveAdminChannelChoice, type SaveAdminChannelResult } from "@/lib/admin-channel";
 
 /**
  * Today's club creation (/create-org with SELF_JOIN_ENABLED off).
@@ -426,9 +427,15 @@ export async function setOrgLanguage(orgId: string, language: string) {
  * Slice 3: `dropOutDeadline` and `listPublish` (day + time, or null to
  * clear), validated in `weekly-deadlines-settings.ts`; a refusal comes
  * back as `{ error }` for the page to show, and nothing is written.
+ * Slice 2a: `adminChannel` ("Admin messages go to"), saved through
+ * `saveAdminChannelChoice`, which refuses "admin-group" until a group is
+ * linked ("needs-link") and a chosen person who is not an admin with a
+ * phone. Linking and unlinking the group are flows, not settings, and have
+ * their own actions (src/app/actions/admin-channel.ts).
  */
 export interface WeeklyRoutinePatch extends WeeklyDeadlinesPatch {
   rollingSquad?: boolean;
+  adminChannel?: { mode: string; userId: string | null };
 }
 
 export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch) {
@@ -447,19 +454,31 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     if (deadlines.error) return { ok: false as const, error: deadlines.error };
     Object.assign(data, deadlines.data);
   }
-  if (Object.keys(data).length === 0) throw new Error("Nothing to change");
+  let adminChannel: { mode: string; userId: string | null } | null = null;
+  if (patch && "adminChannel" in patch) {
+    const a = patch.adminChannel;
+    if (!a || typeof a !== "object" || typeof a.mode !== "string" || (a.userId !== null && typeof a.userId !== "string")) {
+      throw new Error("adminChannel must be { mode, userId }");
+    }
+    adminChannel = { mode: a.mode, userId: a.userId };
+  }
+  if (Object.keys(data).length === 0 && !adminChannel) throw new Error("Nothing to change");
 
-  const row = await db.organisation.update({
-    where: { id: orgId },
-    data,
-    select: {
-      rollingSquadEnabled: true,
-      dropOutDeadlineDay: true,
-      dropOutDeadlineTime: true,
-      listPublishDay: true,
-      listPublishTime: true,
-    },
-  });
+  const select = {
+    rollingSquadEnabled: true,
+    dropOutDeadlineDay: true,
+    dropOutDeadlineTime: true,
+    listPublishDay: true,
+    listPublishTime: true,
+  } as const;
+  // A patch with only `adminChannel` writes nothing here; the row is read
+  // so the answer has the same shape either way.
+  const row =
+    Object.keys(data).length > 0
+      ? await db.organisation.update({ where: { id: orgId }, data, select })
+      : await db.organisation.findUniqueOrThrow({ where: { id: orgId }, select });
+  const saved: { adminChannel?: SaveAdminChannelResult } = {};
+  if (adminChannel) saved.adminChannel = await saveAdminChannelChoice(orgId, adminChannel.mode, adminChannel.userId);
   revalidatePath("/admin/settings");
-  return { ok: true as const, rollingSquad: row.rollingSquadEnabled, ...weeklyDeadlinesView(row) };
+  return { ok: true as const, rollingSquad: row.rollingSquadEnabled, ...weeklyDeadlinesView(row), ...saved };
 }

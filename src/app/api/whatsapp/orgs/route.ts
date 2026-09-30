@@ -12,6 +12,7 @@ import {
 } from "@/lib/club-approval";
 import { loadSelfJoinSweep } from "@/lib/group-add";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
+import { loadAdminGroups } from "@/lib/admin-group-link";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -75,10 +76,24 @@ export async function GET(request: Request) {
     ),
   ];
 
+  // ── Admin groups (slice 2a, 2026-09-30) ───────────────────────────
+  // Each approved club's linked admin WhatsApp group. The Pi forwards a
+  // message there to /api/whatsapp/admin-group at once (never into the
+  // analysis history), forwards no joins or leaves, and posts only the
+  // admin-group-message instructions. Never silent, never monitored as a
+  // club group. An older Pi ignores the field.
+  let adminGroups: Array<{ groupId: string; orgId: string }> = [];
+  try {
+    adminGroups = (await loadAdminGroups()).filter((a) => !known.has(a.groupId));
+  } catch (err) {
+    console.error("[orgs] admin groups query failed; none listed this time:", err);
+  }
+
   const response: Record<string, unknown> = {
     orgs,
     onboardingGroups,
     silentGroups,
+    adminGroups,
     // false tells the Pi to ignore "@MatchTime setup" in any group it is
     // not already monitoring. Absent (an older server) means true.
     legacySetupTrigger: isLegacySetupTriggerEnabled(),

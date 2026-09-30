@@ -143,6 +143,10 @@ export interface SilentGroupSources {
   unsolicitedGroups: Array<string | null>;
   /** `whatsappGroupId` of APPROVED clubs, muted or not. Never silent. */
   approvedOrgGroups: Array<string | null>;
+  /** Slice 2a: every club's linked admin group. Never silent: the Pi
+   *  forwards its messages to the admin-group route (never to analyze).
+   *  Absent means none. */
+  adminGroups?: Array<string | null>;
 }
 
 /**
@@ -152,7 +156,7 @@ export interface SilentGroupSources {
  */
 export function computeSilentGroups(src: SilentGroupSources): string[] {
   const ok = (g: string | null): g is string => typeof g === "string" && g.length > 0;
-  const approved = new Set(src.approvedOrgGroups.filter(ok));
+  const approved = new Set([...src.approvedOrgGroups, ...(src.adminGroups ?? [])].filter(ok));
   const silent = new Set<string>();
   for (const g of [...src.unapprovedOrgGroups, ...src.unapprovedConnectGroups, ...src.unsolicitedGroups]) {
     if (ok(g) && !approved.has(g)) silent.add(g);
@@ -160,9 +164,9 @@ export function computeSilentGroups(src: SilentGroupSources): string[] {
   return [...silent];
 }
 
-/** Read the sources and compute the silent set. Four small queries. */
+/** Read the sources and compute the silent set. Five small queries. */
 export async function loadSilentGroupIds(): Promise<string[]> {
-  const [approvedOrgs, unapprovedOrgs, connects, unsolicited] = await Promise.all([
+  const [approvedOrgs, unapprovedOrgs, connects, unsolicited, adminGroups] = await Promise.all([
     db.organisation.findMany({
       where: { ...APPROVED_CLUB_WHERE, whatsappGroupId: { not: null } },
       select: { whatsappGroupId: true },
@@ -179,12 +183,17 @@ export async function loadSilentGroupIds(): Promise<string[]> {
       where: { leftAt: null },
       select: { groupId: true },
     }),
+    db.organisation.findMany({
+      where: { adminGroupId: { not: null } },
+      select: { adminGroupId: true },
+    }),
   ]);
   return computeSilentGroups({
     approvedOrgGroups: approvedOrgs.map((o) => o.whatsappGroupId),
     unapprovedOrgGroups: unapprovedOrgs.map((o) => o.whatsappGroupId),
     unapprovedConnectGroups: connects.map((c) => c.groupId),
     unsolicitedGroups: unsolicited.map((u) => u.groupId),
+    adminGroups: (adminGroups ?? []).map((o) => o.adminGroupId),
   });
 }
 
@@ -518,7 +527,7 @@ async function queueOrganiserDecisionDm(refId: string, phone: string, text: stri
 
 export type LeaveUnsolicitedResult =
   | { ok: true }
-  | { ok: false; reason: "not-found" | "already-left" | "approved-club-group" | "not-a-group" };
+  | { ok: false; reason: "not-found" | "already-left" | "approved-club-group" | "admin-group" | "not-a-group" };
 
 /**
  * Leave a group somebody added MatchTime to with no code. Goes through

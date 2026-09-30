@@ -268,3 +268,77 @@ export function adminGroupJobInstruction(
   if (!user) return null;
   return { kind: "dm", key, phone: bare(user.phoneNumber), text: job.text, targetUser: user.id };
 }
+
+// ── The settings page (plan section 5) ──────────────────────────────────
+
+export interface AdminChannelStatus {
+  mode: "one-person" | "admin-group" | "each-admin";
+  /** one-person: who. null = the owner. */
+  channelUserId: string | null;
+  adminGroup: { subject: string | null; linkedAt: string | null } | null;
+  /** The code on screen, while it is still valid. */
+  code: { code: string; expiresAt: string } | null;
+  /** Who can be "one person": owners and admins with a phone. */
+  people: Array<{ id: string; name: string | null; role: "OWNER" | "ADMIN" }>;
+}
+
+export async function loadAdminChannelStatus(orgId: string, now: Date = new Date()): Promise<AdminChannelStatus | null> {
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: {
+      adminChannelMode: true,
+      adminChannelUserId: true,
+      adminGroupId: true,
+      adminGroupSubject: true,
+      adminGroupLinkedAt: true,
+      adminGroupLinkCode: true,
+      adminGroupLinkCodeExpiresAt: true,
+    },
+  });
+  if (!org) return null;
+  const admins = await loadChannelAdmins(orgId);
+  const codeLive =
+    !!org.adminGroupLinkCode && !!org.adminGroupLinkCodeExpiresAt && org.adminGroupLinkCodeExpiresAt.getTime() > now.getTime();
+  return {
+    mode: normaliseAdminChannelMode(org.adminChannelMode),
+    channelUserId: org.adminChannelUserId ?? null,
+    adminGroup: org.adminGroupId
+      ? { subject: org.adminGroupSubject ?? null, linkedAt: org.adminGroupLinkedAt?.toISOString() ?? null }
+      : null,
+    code: codeLive ? { code: org.adminGroupLinkCode!, expiresAt: org.adminGroupLinkCodeExpiresAt!.toISOString() } : null,
+    people: admins.filter((a) => !!a.phoneNumber).map((a) => ({ id: a.id, name: a.name, role: a.role })),
+  };
+}
+
+export type SaveAdminChannelResult =
+  | { ok: true }
+  | { ok: false; reason: "needs-link" | "not-an-admin-with-phone" | "bad-mode" };
+
+/**
+ * Save the "Admin messages go to" choice. "admin-group" only takes effect
+ * once a group is linked: until then the saved mode stays what it was and
+ * the page shows the link steps ("needs-link"). A chosen person must be an
+ * owner or admin of this club with a phone; null means the owner.
+ */
+export async function saveAdminChannelChoice(
+  orgId: string,
+  mode: string,
+  channelUserId: string | null,
+): Promise<SaveAdminChannelResult> {
+  if (mode !== "one-person" && mode !== "admin-group" && mode !== "each-admin") return { ok: false, reason: "bad-mode" };
+  if (mode === "admin-group") {
+    const org = await db.organisation.findUnique({ where: { id: orgId }, select: { adminGroupId: true } });
+    if (!org?.adminGroupId) return { ok: false, reason: "needs-link" };
+    await db.organisation.updateMany({ where: { id: orgId }, data: { adminChannelMode: "admin-group" } });
+    return { ok: true };
+  }
+  if (mode === "one-person" && channelUserId) {
+    const admins = await loadChannelAdmins(orgId);
+    if (!admins.some((a) => a.id === channelUserId && !!a.phoneNumber)) return { ok: false, reason: "not-an-admin-with-phone" };
+  }
+  await db.organisation.updateMany({
+    where: { id: orgId },
+    data: { adminChannelMode: mode, adminChannelUserId: mode === "one-person" ? channelUserId : null },
+  });
+  return { ok: true };
+}

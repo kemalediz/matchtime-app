@@ -10,6 +10,7 @@ import { t } from "@/lib/i18n/t";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
+import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
 
 type FeatureKey = ToggleableKey;
 
@@ -477,6 +478,8 @@ export default function SettingsPage() {
                   dropOutDeadline={org.weeklyRoutine?.dropOutDeadline ?? null}
                   listPublish={org.weeklyRoutine?.listPublish ?? null}
                 />
+                {/* Slice 2a: where admin messages go. */}
+                <AdminChannelSettings orgId={org.id} lang={normaliseLang(org.language)} />
               </div>
             </div>
           </section>

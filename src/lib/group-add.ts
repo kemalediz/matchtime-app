@@ -44,6 +44,7 @@ import {
   type AdderMatch,
 } from "./group-add-rules";
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
+import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
 
 export interface GroupAddInput {
   groupId: string;
@@ -77,11 +78,16 @@ export type GroupAddOutcome =
   /** The reconnect sweep found a group that matches no request. */
   | { kind: "discovered-no-match" }
   /** The request or the club moved while we linked. */
-  | { kind: "race-lost" };
+  | { kind: "race-lost" }
+  /** Slice 2a: already a club's linked admin group. Not silent. */
+  | { kind: "admin-group"; orgId: string }
+  /** Slice 2a: added by an owner or admin of an approved club: an admin
+   *  group waiting for its code. Silent, no approval DM, no ack. */
+  | { kind: "admin-group-candidate"; id: string };
 
 /** Must MatchTime stay silent in the group after this outcome? */
 export function isSilentOutcome(o: GroupAddOutcome): boolean {
-  return o.kind !== "live-org" && o.kind !== "discovered-no-match";
+  return o.kind !== "live-org" && o.kind !== "discovered-no-match" && o.kind !== "admin-group";
 }
 
 class LinkAborted extends Error {}
@@ -108,6 +114,9 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   if (approvedOwner) return { kind: "live-org", orgId: approvedOwner.id };
   const otherOwner = await db.organisation.findFirst({ where: { whatsappGroupId: groupId }, select: { id: true } });
   if (otherOwner) return { kind: "club-group", orgId: otherOwner.id };
+  // Slice 2a: a club's linked admin group is not a new club either.
+  const adminGroupOwner = await db.organisation.findFirst({ where: { adminGroupId: groupId }, select: { id: true } });
+  if (adminGroupOwner) return { kind: "admin-group", orgId: adminGroupOwner.id };
 
   // 2. A re-add of a group already linked and waiting.
   const existing = await db.clubConnect.findFirst({ where: LINKED_AND_WAITING(groupId), select: { id: true } });
@@ -143,6 +152,29 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     // A group the reconnect sweep found may be one MatchTime was in long
     // before self-join. It is never recorded, so it is never auto-left.
     if (ev.discovered) return { kind: "discovered-no-match" };
+    // Slice 2a (plan 2.4): after every connect-request match has failed,
+    // an add by an owner or admin of an approved club is their admins' HQ
+    // group, waiting for "@Match Time admin group CODE". Still silent, and
+    // still left after 48 hours if no code comes, but no approval DM and
+    // no organiser ack. A matching connect request (above) wins.
+    if (
+      await detectAdminGroupCandidate({
+        addedByPhone: ev.addedByPhone,
+        addedByLid: ev.addedByLid,
+        participants: input.participants,
+        now,
+      })
+    ) {
+      const row = await recordAdminGroupCandidate({
+        groupId,
+        subject,
+        memberCount: snapshot.length,
+        addedByPhone: ev.addedByPhone,
+        addedByLid: ev.addedByLid,
+        now,
+      });
+      return { kind: "admin-group-candidate", id: row.id };
+    }
     return recordUnsolicited(groupId, subject, snapshot.length, ev.addedByPhone, ev.addedByLid, now);
   }
 
@@ -382,13 +414,18 @@ export async function loadSelfJoinSweep(now: Date = new Date()): Promise<{ known
   });
   if (open === 0) return null;
   const [orgs, connects, unsolicited] = await Promise.all([
-    db.organisation.findMany({ where: { whatsappGroupId: { not: null } }, select: { whatsappGroupId: true } }),
+    db.organisation.findMany({
+      where: { OR: [{ whatsappGroupId: { not: null } }, { adminGroupId: { not: null } }] },
+      select: { whatsappGroupId: true, adminGroupId: true },
+    }),
     db.clubConnect.findMany({ where: { groupId: { not: null }, botRemovedAt: null }, select: { groupId: true } }),
     db.unsolicitedGroup.findMany({ where: { leftAt: null }, select: { groupId: true } }),
   ]);
   const known = new Set<string>();
   for (const g of [
     ...orgs.map((o) => o.whatsappGroupId),
+    // Slice 2a: a linked admin group is known too.
+    ...orgs.map((o) => (o as { adminGroupId?: string | null }).adminGroupId ?? null),
     ...connects.map((c) => c.groupId),
     ...unsolicited.map((u) => u.groupId),
   ]) {
