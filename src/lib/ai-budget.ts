@@ -151,12 +151,12 @@ export function aiWindowStart(
 /**
  * The global off switch (Kemal, 2026-09-30: "remove the AI allowance
  * globally for now"). With `AI_DAILY_CAP_DISABLED=1` every club that may
- * spend at all spends without a daily limit. The $0 rules above the caps
+ * spend at all gets $50 a day instead of its usual cap. The $0 rules above the caps
  * (unapproved clubs, bot off, silent groups) still hold: they are the
  * anti-abuse rails, not the cost ceiling. Spend is still recorded.
  */
-/** Stands in for "no limit": finite, so it stores cleanly in OrgAiUsage.capUsd. */
-export const UNCAPPED_USD = 1_000_000;
+/** The daily limit while the switch is on (Kemal, 2026-09-30: "just write $50 per day"). */
+export const UNCAPPED_USD = 50;
 
 export function isAiCapDisabled(env: Record<string, string | undefined> = process.env): boolean {
   const v = env.AI_DAILY_CAP_DISABLED?.trim().toLowerCase();
