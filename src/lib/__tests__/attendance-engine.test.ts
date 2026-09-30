@@ -247,6 +247,24 @@ describe("applyEngineWrites", () => {
     ]);
   });
 
+  it("hands an OUT's WhatsApp send time to cancelAttendance (rolling squad lateness, 2026-09-30)", async () => {
+    const sentAt = new Date("2026-10-09T14:25:00.000Z");
+    const seen: Array<unknown> = [];
+    const { deps } = stubDeps({
+      async cancelAttendance(_u, _m, _e, options) {
+        seen.push(options);
+        return { status: "DROPPED" as const };
+      },
+    });
+    await applyEngineWrites({
+      matchId: "m",
+      writes: [write({ userId: "u-x", name: "X", status: "DROPPED", sourceMessageId: "m1" })],
+      actorByMessageId: new Map<string, EngineActor>([["m1", { ...SENDER, sentAt }]]),
+      deps,
+    });
+    expect(seen).toEqual([{ occurredAt: sentAt }]);
+  });
+
   it("applies writes in the order the engine emitted them — OUT before IN", async () => {
     // The engine orders a replacement OUT-first so the slot is free
     // before it is filled. Re-ordering here would put the incoming

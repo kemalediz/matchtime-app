@@ -6,6 +6,11 @@ import {
   recordAttendanceEvent,
   type AttendanceEventContext,
 } from "./attendance-events";
+import { dropOutDeadlineFor } from "./weekly-deadlines";
+import { isLateDrop } from "./rolling-squad-rules";
+import { sendClubAdminNotice } from "./admin-notice";
+import { buildLateDropAdminNotice } from "./dm-copy";
+import { dayTimeLabel, timeLabel, weekdayTimeLabel } from "./i18n/dates";
 
 /**
  * Why a caller is asking for BENCH.
@@ -402,11 +407,30 @@ export async function cancelAttendance(
    *  claim and a player's own OUT leave an identical row behind; the
    *  replay has to be able to tell them apart. */
   event: AttendanceEventContext,
+  options: {
+    /**
+     * When the player SENT this OUT, for a rolling-squad club's lateness
+     * (2026-09-30, plan 1.6): "sorry can't make it" typed at 20:55 and
+     * delivered at 21:40 is on time for a 21:00 deadline. Callers that
+     * know the WhatsApp send time pass it; the web button and DM paths
+     * pass nothing, which means "now". Changes nothing for a club
+     * without the rolling squad.
+     */
+    occurredAt?: Date;
+  } = {},
 ) {
   const eventContext = event ?? UNATTRIBUTED_ATTENDANCE_CONTEXT;
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true } } },
+    include: {
+      activity: {
+        select: {
+          orgId: true,
+          name: true,
+          org: { select: { rollingSquadEnabled: true, language: true } },
+        },
+      },
+    },
   });
   if (!match) throw new Error("Match not found");
 
@@ -422,6 +446,26 @@ export async function cancelAttendance(
   if (!attendance) throw new Error("Not attending this match");
 
   const wasConfirmed = attendance.status === "CONFIRMED";
+
+  // ── Rolling squad: an OUT after the drop-out deadline (plan 1.6) ────
+  // Still recorded (a squad that lists someone who has told us they are
+  // not coming is the worst state this product can be in); the event
+  // says it was late and the organisers are told once, below. Only a
+  // CONFIRMED player's OUT changes the squad, so only that one is late.
+  // Optional chaining: unit-test doubles build the match without its org.
+  const rollingClub = match.activity.org?.rollingSquadEnabled === true;
+  const dropOutDeadline = rollingClub ? dropOutDeadlineFor(match) : null;
+  const sentAt = options?.occurredAt ?? new Date();
+  // A player's own OUT, or a member's "X can't make it". An admin taking
+  // a no-show off the squad is roster surgery, not a drop-out, and the
+  // admins already know about it.
+  const playerDrop =
+    eventContext.cause === "self-attendance" || eventContext.cause === "third-party-attendance";
+  const lateDrop =
+    !!dropOutDeadline && wasConfirmed && playerDrop && isLateDrop(sentAt, dropOutDeadline);
+  const lateNote = lateDrop
+    ? `after the drop-out deadline (${weekdayTimeLabel("en", dropOutDeadline!)})`
+    : null;
 
   // One transaction with the record of it — see registerAttendance.
   await db.$transaction(async (tx) => {
@@ -440,7 +484,9 @@ export async function cancelAttendance(
         fromPosition: attendance.position,
         toPosition: attendance.position,
       },
-      eventContext,
+      lateNote
+        ? { ...eventContext, note: eventContext.note ? `${eventContext.note}; ${lateNote}` : lateNote }
+        : eventContext,
     );
   });
 
@@ -473,5 +519,51 @@ export async function cancelAttendance(
     await queueSlotEmojiRefresh(matchId);
   }
 
+  if (lateDrop) {
+    await notifyLateDrop({
+      orgId: match.activity.orgId,
+      matchId,
+      userId,
+      activityName: match.activity.name,
+      matchDate: match.date,
+      maxPlayers: match.maxPlayers,
+      deadline: dropOutDeadline!,
+      sentAt,
+      lang: match.activity.org?.language,
+    }).catch((err) => console.error("[attendance] late drop-out notice failed:", err));
+  }
+
   return { status: "DROPPED" as const };
+}
+
+/** R4: one notice to the club's organisers, in the club's language. */
+async function notifyLateDrop(p: {
+  orgId: string;
+  matchId: string;
+  userId: string;
+  activityName: string;
+  matchDate: Date;
+  maxPlayers: number;
+  deadline: Date;
+  sentAt: Date;
+  lang: string | null | undefined;
+}): Promise<void> {
+  const [user, confirmed] = await Promise.all([
+    db.user.findUnique({ where: { id: p.userId }, select: { name: true } }),
+    db.attendance.count({ where: { matchId: p.matchId, status: "CONFIRMED" } }),
+  ]);
+  await sendClubAdminNotice({
+    orgId: p.orgId,
+    text: buildLateDropAdminNotice({
+      name: user?.name ?? "?",
+      activityName: p.activityName,
+      whenLabel: dayTimeLabel(p.lang, p.matchDate),
+      time: timeLabel(p.sentAt),
+      deadline: weekdayTimeLabel(p.lang, p.deadline),
+      confirmed,
+      maxPlayers: p.maxPlayers,
+      lang: p.lang,
+    }),
+    now: new Date(),
+  });
 }

@@ -57,6 +57,9 @@ export interface EngineActor {
   userId: string | null;
   name: string | null;
   isAdmin: boolean;
+  /** When the message was SENT (its WhatsApp timestamp), when known.
+   *  A rolling-squad club judges a late drop-out by it (2026-09-30). */
+  sentAt?: Date;
 }
 
 /**
@@ -326,11 +329,12 @@ export async function applyEngineWrites(args: {
 
     try {
       if (w.status === "DROPPED") {
-        await deps.cancelAttendance(
-          userId,
-          matchId,
-          eventContextFor(w, actor, isSelf, w.sourceMessageId),
-        );
+        const event = eventContextFor(w, actor, isSelf, w.sourceMessageId);
+        if (actor.sentAt) {
+          await deps.cancelAttendance(userId, matchId, event, { occurredAt: actor.sentAt });
+        } else {
+          await deps.cancelAttendance(userId, matchId, event);
+        }
         out.push({ write: w, userId, ok: true, status: "DROPPED" });
       } else {
         const res = await deps.registerAttendance(userId, matchId, {

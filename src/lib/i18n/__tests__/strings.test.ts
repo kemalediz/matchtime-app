@@ -452,6 +452,28 @@ const SAMPLES: SampleArgs = {
   admin_players_duplicates_heading: null,
   admin_players_duplicate_row: { placeholder: "Hamza", keeper: "Hamzah Khan" },
   admin_players_duplicate_merge: { keeper: "Hamzah Khan" },
+  // Rolling squad (2026-09-30)
+  rolling_announce_lead: { activityName: "Friday 9-a-side", dateLabel: "Friday 9 October at 20:30", venue: "Powerleague Shoreditch", deadline: "Thursday 15:30" },
+  rolling_in_header: { confirmed: 16, maxPlayers: 18 },
+  rolling_waiting_header: { count: 3 },
+  rolling_tail_open: { open: 2 },
+  rolling_tail_open_organiser: { open: 2 },
+  rolling_tail_full: null,
+  rolling_deadline_line: { deadline: "Thursday 15:30" },
+  intro_rolling_squad: null,
+  late_drop_admin_notice: { name: "Wasim Ali", activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", time: "16:05", deadline: "Thursday 15:30", confirmed: 17, maxPlayers: 18 },
+  wr_section_title: null,
+  wr_section_lead: null,
+  wr_rolling_label: null,
+  wr_rolling_blurb: null,
+  wr_rolling_info: null,
+  wr_rolling_on: null,
+  wr_rolling_off: null,
+  wr_save_failed: null,
+  carry_over_button: null,
+  carry_over_hint: { dateLabel: "Fri 2 Oct" },
+  carry_over_done: { count: 16 },
+  carry_over_nothing: null,
 };
 
 /** Render an entry with its sample arguments. */

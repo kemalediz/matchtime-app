@@ -284,10 +284,11 @@ async function loadFeaturesViaSql(ctx: PipelineContext, orgId: string): Promise<
     paymentCollectionEnabled: boolean;
     featureSquadFromList: boolean;
     language: string;
+    rollingSquadEnabled: boolean;
   }>(
     `SELECT "whatsappBotEnabled", "featureAttendance", "featureBench", "featureTeamBalancing",
             "featureMomVoting", "featurePlayerRating", "featureReminders", "featureStatsQa",
-            "paymentTrackingEnabled", "paymentCollectionEnabled", "featureSquadFromList", "language"
+            "paymentTrackingEnabled", "paymentCollectionEnabled", "featureSquadFromList", "language", "rollingSquadEnabled"
        FROM "Organisation" WHERE id = $1`,
     [orgId],
   );
@@ -310,6 +311,7 @@ async function loadFeaturesViaSql(ctx: PipelineContext, orgId: string): Promise<
     paymentCollection: row.paymentCollectionEnabled,
     squadFromList: row.featureSquadFromList,
     language: normaliseLang(row.language),
+    rollingSquad: row.rollingSquadEnabled === true,
   };
 }
 

@@ -80,6 +80,7 @@ const FEATURES_ON: OrgFeatures = {
   paymentCollection: false,
   squadFromList: false,
   language: "en",
+  rollingSquad: false,
 };
 
 /** A model that answers from a table keyed on the message body, and

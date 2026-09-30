@@ -1541,6 +1541,38 @@ export const tr: Strings = {
   admin_players_duplicates_heading: "Olası çift kayıtlar",
   admin_players_duplicate_row: (p) => `Adıyla eklenen ${p.placeholder}, ${p.keeper} ile aynı kişi olabilir.`,
   admin_players_duplicate_merge: (p) => `Birleştir: ${p.keeper}`,
+
+  // ── Kadro devam eder (2026-09-30) ──
+  rolling_announce_lead: (p) =>
+    `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
+    `Geçen maçta oynayan herkes yine kadroda. Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
+  rolling_in_header: (p) => `*Kadroda (${p.confirmed}/${p.maxPlayers}):*`,
+  rolling_waiting_header: (p) => `*Yedek listesi (${p.count}):*`,
+  rolling_tail_open: (p) => `${p.open} yer boş: almak için *VARIM* yazın.`,
+  rolling_tail_open_organiser: (p) =>
+    `${p.open} yer boş: *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
+  rolling_tail_full: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın.",
+  rolling_deadline_line: (p) => `Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
+  intro_rolling_squad:
+    "🔁 *Kadro devam eder*: geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz son çıkış saatinden önce *YOKUM* yazın.",
+  late_drop_admin_notice: (p) =>
+    `Geç çıkış: *${p.name}*, *${p.activityName}* (${p.whenLabel}) için ${p.time} saatinde YOKUM dedi, son çıkış ${p.deadline} idi. Kadro şimdi ${p.confirmed}/${p.maxPlayers}.`,
+  wr_section_title: "Haftalık düzen",
+  wr_section_lead: "Kadronun her hafta nasıl oluştuğu. Her ayar siz açana kadar kapalı kalır.",
+  wr_rolling_label: "Kadro devam eder",
+  wr_rolling_blurb: "Geçen maçta oynayan herkes, YOKUM demedikçe yine kadroda.",
+  wr_rolling_info:
+    "Bu açıkken, son maçta oynayan herkes bir sonraki maçta otomatik olarak kadroda olur; gelemeyecekse sadece YOKUM yazması yeterli. " +
+    "Yedek listesindekiler, telefon numarası olmayan misafirler ve gruptan ayrılanlar aktarılmaz. " +
+    "Kadro her maçtan sonraki sabah 08:00'de aktarılır, böylece gelmeyenleri o gece listeden çıkarabilirsiniz. " +
+    "Maç bittiğinde listede olan herkes ödeme ve puanlama için oynamış sayılır.",
+  wr_rolling_on: "Kadro devam eder: açık",
+  wr_rolling_off: "Kadro devam eder: kapalı",
+  wr_save_failed: "Ayar kaydedilemedi",
+  carry_over_button: "Geçen kadroyu aktar",
+  carry_over_hint: (p) => `${p.dateLabel} maçında oynayan herkesi bu maça ekler. Yine de YOKUM diyebilirler.`,
+  carry_over_done: (p) => `${p.count} oyuncu aktarıldı`,
+  carry_over_nothing: "Aktarılacak kimse yok",
 };
 
 /**

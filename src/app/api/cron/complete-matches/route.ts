@@ -23,12 +23,32 @@
  */
 import { NextResponse } from "next/server";
 import { completeFinishedMatches } from "@/lib/match-completion";
+import { seedDueRollingSquads } from "@/lib/rolling-squad";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { completed } = await completeFinishedMatches(new Date());
-  return NextResponse.json({ ok: true, completed });
+  // TEST-ONLY clock override (e2e suite), gated on MT_TEST_MODE=1 exactly
+  // like /api/whatsapp/due-posts and /api/cron/bot-health; never set in
+  // prod. The rolling-squad seed is due from 08:00 London, so the spec
+  // pins the clock either side of it.
+  let now = new Date();
+  if (process.env.MT_TEST_MODE === "1") {
+    const pinned = new Date(request.headers.get("x-test-now") ?? "");
+    if (!Number.isNaN(pinned.getTime())) now = pinned;
+  }
+  const { completed } = await completeFinishedMatches(now);
+  // Rolling squad (2026-09-30): AFTER completion, so a match finished on
+  // this tick is already a source. Its own try/catch: a seeding failure
+  // must never be reported as a completion failure, and the completion
+  // above has already happened.
+  let rollingSeeded = 0;
+  try {
+    rollingSeeded = (await seedDueRollingSquads(now)).seeded;
+  } catch (err) {
+    console.error("[complete-matches] rolling-squad seeding failed:", err);
+  }
+  return NextResponse.json({ ok: true, completed, rollingSeeded });
 }

@@ -252,6 +252,8 @@ import {
   buildSquadFullEveningPost,
   buildSquadRosterBlock,
   buildUnpaidTailText,
+  buildRollingAnnouncePost,
+  buildRollingDeadlineLine,
   BENCH_THIN_BELOW,
 } from "../../scheduler-copy";
 import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
@@ -309,6 +311,7 @@ import {
   buildAdminRecruitDmReply,
   buildBenchDmAck,
   buildBenchDmUnclear,
+  buildLateDropAdminNotice,
   buildDirectPayCollectorNotice,
   buildDirectPayCollectorNudge,
   buildDmQaApology,
@@ -1232,6 +1235,55 @@ function cases(lang: Lang): Case[] {
   add("R139 buildLegacyFeatureMenu / provisioned", buildLegacyFeatureMenu(buildLegacyProvisionedLead({ groupName: "Tuesday Ballers FC", playersPerTeam: 7, dayOfWeek: 2, kickoffTime: "21:00", venue: "Goals Wembley" }, lang), lang));
   add("R139 buildLegacyFeatureMenu / retry", buildLegacyFeatureMenu(legacyMenuRetryLead(lang), lang));
 
+
+  // ── Rolling squad (2026-09-30, slice 1 of the Friday-group plan). NEW
+  //    copy, added deliberately; no existing case changes. ──
+  const nine = ["Hamzah Khan", "Raihan Ahmed", "Wasim Ali", "Kemal Ediz"].map((name) => ({ name }));
+  const rollingBase = {
+    activityName: "Friday 9-a-side",
+    dateLabel: lang === "tr" ? "9 Ekim Cuma 20:30" : "Friday 9 October at 20:30",
+    venue: "Powerleague Shoreditch",
+    deadline: lang === "tr" ? "Perşembe 15:30" : "Thursday 15:30",
+    lang,
+  };
+  add("RSQ1 buildRollingAnnouncePost / places open", buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [], maxPlayers: 18 }));
+  add("RSQ1 buildRollingAnnouncePost / one place open", buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [], maxPlayers: 5 }));
+  add(
+    "RSQ1 buildRollingAnnouncePost / organisers pick",
+    buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [], maxPlayers: 18, organiserPicks: true }),
+  );
+  add(
+    "RSQ1 buildRollingAnnouncePost / full, with overflow",
+    buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [{ name: "Ali Demir" }, { name: null }], maxPlayers: 4 }),
+  );
+  add("RSQ2 buildRollingDeadlineLine", buildRollingDeadlineLine({ deadline: rollingBase.deadline, lang }));
+  add(
+    "RSQ3 buildBotIntro / rolling squad",
+    buildBotIntro({ ...INTRO_ALL, rollingSquad: true }, buildBenchIntroLine({ lang }), lang),
+  );
+  add(
+    "RSQ4 buildLateDropAdminNotice",
+    buildLateDropAdminNotice({
+      name: "Wasim Ali",
+      activityName: "Friday 9-a-side",
+      whenLabel: lang === "tr" ? "9 Ekim Cuma 20:30" : "Fri 9 Oct at 20:30",
+      time: "16:05",
+      deadline: rollingBase.deadline,
+      confirmed: 17,
+      maxPlayers: 18,
+      lang,
+    }),
+  );
+  const wr = t(lang);
+  add(
+    "RSQ5 weekly routine settings",
+    [wr.wr_section_title, wr.wr_section_lead, `${wr.wr_rolling_label}: ${wr.wr_rolling_blurb}`, `(i) ${wr.wr_rolling_info}`, wr.wr_rolling_on, wr.wr_rolling_off, wr.wr_save_failed].join("\n"),
+  );
+  add(
+    "RSQ5 carry over button",
+    [wr.carry_over_button, wr.carry_over_hint({ dateLabel: lang === "tr" ? "2 Ekim Cuma" : "Fri 2 Oct" }), wr.carry_over_done({ count: 1 }), wr.carry_over_done({ count: 16 }), wr.carry_over_nothing].join("\n"),
+  );
+
   return c;
 }
 
@@ -1302,6 +1354,8 @@ const MIGRATED_ROWS = [
   "R180 ", "R181 ", "R182 ",
   // a player DMs "Paid" (2026-09-23): the collector's notice and the player's replies
   "R157 ", "R158 ", "R159 ", "R160 ",
+  // rolling squad (2026-09-30)
+  "RSQ1 ", "RSQ2 ", "RSQ3 ", "RSQ4 ", "RSQ5 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

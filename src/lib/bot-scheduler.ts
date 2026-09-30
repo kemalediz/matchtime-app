@@ -52,7 +52,8 @@ import {
   buildSquadCompleteBenchInvite,
 } from "./bench-offer-copy";
 import { buildRatePromoPost, buildMatchDayChaseFallback, teamSheetNames } from "./group-copy";
-import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel } from "./i18n/dates";
+import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
+import { dropOutDeadlineFor } from "./weekly-deadlines";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   buildAnnounceMatchPost,
@@ -66,6 +67,8 @@ import {
   buildMatchDayTeamsBlock,
   buildPaymentPollQuestion,
   buildPreKickoffShortFallback,
+  buildRollingAnnouncePost,
+  buildRollingDeadlineLine,
   buildSquadFullEveningPost,
   buildSquadRosterBlock,
   buildUnpaidTailText,
@@ -680,6 +683,7 @@ export async function computeDuePosts(
     const seg = key.includes(":") ? key.slice(key.indexOf(":") + 1) : key;
     if (
       seg.startsWith("announce-match") ||
+      seg.startsWith("rolling-announce") ||
       seg.startsWith("evening-update") ||
       seg.startsWith("chase-") ||
       seg.startsWith("pre-kickoff") ||
@@ -779,6 +783,13 @@ async function computeForMatch(
     kind: ChaseKind,
     staticFallback: () => string,
   ): Promise<string> {
+    // ROLLING SQUAD (2026-09-30): fixed text, never the composer. Its
+    // prompt knows nothing about a carried-over squad and would tell
+    // players who are already in to "say IN". Using the static copy is
+    // how slice 1 avoids a prompt change, and it removes up to four
+    // model calls a week for the club. Clubs without the setting (Sutton
+    // FC) keep the composer exactly as before.
+    if (features.rollingSquad) return staticFallback();
     try {
       const llm = await composeChaseText({ groupId, kind });
       if (llm && llm.trim().length > 0) return llm;
@@ -887,8 +898,52 @@ async function computeForMatch(
     // permanently on a fixture nobody is actually playing in.
     const squadEmpty = confirmed.length === 0;
 
+    // ── 1-rolling. The rolling squad's announcement (2026-09-30, R1 of
+    //    MDs/friday-group-features-plan-2026-09-30.md). Same window, same
+    //    next-upcoming gate, its own key. Only when the squad was carried
+    //    over onto this match AND at least one player was carried; with
+    //    nobody carried the cold announcement below fires as today. When
+    //    this one is due the cold one is not, so the group never gets both.
+    //    A separate block with no `return`: nothing below is skipped.
+    let rollingAnnounceDue = false;
+    {
+      const rollingKey = `${matchId}:rolling-announce`;
+      if (
+        features.rollingSquad &&
+        m.rollingSeededAt != null &&
+        !sentKeys.has(rollingKey) &&
+        m.status === "UPCOMING" &&
+        hoursUntilMatch > 24 &&
+        inAnnounceWindow &&
+        isNextUpcoming
+      ) {
+        const carried = await db.attendanceEvent.count({
+          where: { matchId, cause: "rolling-squad" },
+        });
+        if (carried > 0) {
+          rollingAnnounceDue = true;
+          out.push({
+            kind: "group-message",
+            key: rollingKey,
+            matchId,
+            text: buildRollingAnnouncePost({
+              activityName: activity.name,
+              dateLabel: longDayTimeLabel(lang, m.date),
+              venue: activity.venue,
+              deadline: weekdayTimeLabel(lang, dropOutDeadlineFor(m)),
+              confirmed: confirmed.map((a) => a.user),
+              bench: bench.map((a) => a.user),
+              maxPlayers,
+              lang,
+            }),
+          });
+        }
+      }
+    }
+
     if (
       !sentKeys.has(key) &&
+      !rollingAnnounceDue &&
       m.status === "UPCOMING" &&
       hoursUntilMatch > 24 &&
       inAnnounceWindow &&
@@ -978,6 +1033,15 @@ async function computeForMatch(
       const isMatchDay = dayKey === matchDayKey;
       const teamsReady = m.teamAssignments.length > 0;
 
+      // Rolling squad (R2, 2026-09-30): branches 2a and 2b add one line
+      // with the drop-out deadline while it is still ahead. Null for a
+      // club without the setting, so Sutton's bytes are unchanged.
+      const rollingDropOutDeadline = features.rollingSquad ? dropOutDeadlineFor(m) : null;
+      const rollingDeadlineLine =
+        rollingDropOutDeadline && now < rollingDropOutDeadline
+          ? buildRollingDeadlineLine({ deadline: weekdayTimeLabel(lang, rollingDropOutDeadline), lang })
+          : null;
+
       let text: string | null = null;
       let mentions: string[] | undefined;
 
@@ -1063,7 +1127,9 @@ async function computeForMatch(
             lang,
           });
         });
-        text = unpaidTail ? `${chaseText}\n\n${unpaidTail.text}` : chaseText;
+        // Rolling squad (R2): the drop-out deadline, while it is ahead.
+        const body = rollingDeadlineLine ? `${chaseText}\n\n${rollingDeadlineLine}` : chaseText;
+        text = unpaidTail ? `${body}\n\n${unpaidTail.text}` : body;
         mentions = unpaidTail?.mentions;
       } else if (beforeDeadline && need === 0) {
         // 2b. SQUAD FULL — list it anyway, and keep the INs flowing
@@ -1127,7 +1193,8 @@ async function computeForMatch(
             benchInvite: features.bench ? buildSquadCompleteBenchInvite({ lang }) : null,
             lang,
           });
-          text = unpaidTail ? `${squadPost}\n\n${unpaidTail.text}` : squadPost;
+          const body = rollingDeadlineLine ? `${squadPost}\n\n${rollingDeadlineLine}` : squadPost;
+          text = unpaidTail ? `${body}\n\n${unpaidTail.text}` : body;
           mentions = unpaidTail?.mentions;
         } else if (unpaidTail) {
           text = unpaidTail.text;

@@ -301,6 +301,9 @@ export interface IntroFeatures {
   reminders: boolean;
   statsQa: boolean;
   paymentTracking: boolean;
+  /** Rolling squad (2026-09-30): the attendance line becomes the rolling
+   *  one. Absent reads as off, so every existing caller is unchanged. */
+  rollingSquad?: boolean;
 }
 
 /**
@@ -319,7 +322,7 @@ export function buildBotIntro(f: IntroFeatures, benchLine: string, lang?: Lang |
   const s = t(lang);
   const lines: string[] = [s.intro_opener, ``, s.intro_what_i_do];
   if (f.attendance) {
-    lines.push(``, s.intro_attendance, ``, s.intro_daily);
+    lines.push(``, f.rollingSquad ? s.intro_rolling_squad : s.intro_attendance, ``, s.intro_daily);
   }
   if (f.bench) {
     lines.push(``, benchLine);
@@ -378,4 +381,56 @@ export function buildGearReminder(args: { timeLabel: string; venue: string } & W
 /** Row 77: the score ask, 1h after the match ends. */
 export function buildAskScorePost(args: { activityName: string } & WithLang): string {
   return t(args.lang).ask_score(args);
+}
+
+/**
+ * Row RSQ1 (2026-09-30, rolling squad): the morning announcement for a
+ * match the squad was carried over onto (slice 1 of
+ * MDs/friday-group-features-plan-2026-09-30.md, R1). Replaces the cold
+ * "Say IN to join" for a rolling club; the cold one still fires when
+ * nobody was carried.
+ *
+ * `confirmed` and `bench` are the rows as they stand, in position order;
+ * a carried player who overflowed a smaller format is on the bench and
+ * listed under the waiting list. `deadline` is `weekdayTimeLabel`.
+ * `organiserPicks` is slice 2's "the organisers pick" wording, off until
+ * that slice wires it.
+ */
+export function buildRollingAnnouncePost(
+  args: {
+    activityName: string;
+    dateLabel: string;
+    venue: string;
+    deadline: string;
+    confirmed: NamedRow[];
+    bench: NamedRow[];
+    maxPlayers: number;
+    organiserPicks?: boolean;
+  } & WithLang,
+): string {
+  const s = t(args.lang);
+  const lines: string[] = [
+    s.rolling_announce_lead(args),
+    ``,
+    s.rolling_in_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers }),
+    ...numbered(args.confirmed, s.unnamed),
+  ];
+  if (args.bench.length > 0) {
+    lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
+  }
+  const open = Math.max(0, args.maxPlayers - args.confirmed.length);
+  const tail =
+    open === 0
+      ? s.rolling_tail_full
+      : args.organiserPicks
+        ? s.rolling_tail_open_organiser({ open })
+        : s.rolling_tail_open({ open });
+  lines.push(``, tail);
+  return lines.join("\n");
+}
+
+/** Row RSQ2: the line a rolling club's 17:00 post carries while the
+ *  drop-out deadline is still ahead (R2). */
+export function buildRollingDeadlineLine(args: { deadline: string } & WithLang): string {
+  return t(args.lang).rolling_deadline_line(args);
 }
