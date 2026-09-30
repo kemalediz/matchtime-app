@@ -406,3 +406,39 @@ export async function setOrgLanguage(orgId: string, language: string) {
   revalidatePath("/admin/settings");
   return { language: code };
 }
+
+/**
+ * The "Weekly routine" settings on /admin/settings (2026-09-30), plan
+ * section 5 of MDs/friday-group-features-plan-2026-09-30.md. OWNER/ADMIN
+ * only. Every weekly-routine setting goes through this ONE action as a
+ * patch, so slices 2 (who fills an open place) and 3 (weekly deadlines)
+ * add a key here rather than a new action. Each key is validated and a
+ * patch with nothing valid in it is refused, never silently ignored.
+ *
+ * Slice 1: `rollingSquad` (`Organisation.rollingSquadEnabled`).
+ */
+export interface WeeklyRoutinePatch {
+  rollingSquad?: boolean;
+}
+
+export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const { requireOrgAdmin } = await import("@/lib/org");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const data: { rollingSquadEnabled?: boolean } = {};
+  if (patch && "rollingSquad" in patch) {
+    if (typeof patch.rollingSquad !== "boolean") throw new Error("rollingSquad must be true or false");
+    data.rollingSquadEnabled = patch.rollingSquad;
+  }
+  if (Object.keys(data).length === 0) throw new Error("Nothing to change");
+
+  const row = await db.organisation.update({
+    where: { id: orgId },
+    data,
+    select: { rollingSquadEnabled: true },
+  });
+  revalidatePath("/admin/settings");
+  return { rollingSquad: row.rollingSquadEnabled };
+}

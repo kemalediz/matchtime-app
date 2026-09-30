@@ -78,7 +78,7 @@ export interface LatePlan {
 
 /** A WhatsApp timestamp as the Pi sends it (ISO), or as epoch seconds or
  *  milliseconds, to a Date. Null when unreadable. */
-function parseTimestamp(ts: unknown): Date | null {
+export function parseTimestamp(ts: unknown): Date | null {
   if (typeof ts === "number" && Number.isFinite(ts) && ts > 0) {
     // Seconds until the year 5138; anything bigger is milliseconds.
     return new Date(ts < 1e11 ? ts * 1000 : ts);

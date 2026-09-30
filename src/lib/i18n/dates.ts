@@ -58,6 +58,13 @@ export function longDayTimeLabel(lang: Lang | string | null | undefined, d: Date
   return label(lang, d, { en: "EEEE d MMMM 'at' HH:mm", tr: "d MMMM EEEE HH:mm" });
 }
 
+/** A deadline inside the coming week, as a player reads it: "Monday
+ *  21:00" / "Pazartesi 21:00". The rolling squad's drop-out deadline
+ *  (2026-09-30); the week is implied by the match it belongs to. */
+export function weekdayTimeLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "EEEE HH:mm", tr: "EEEE HH:mm" });
+}
+
 /** The cancel announcement's label: "Tue 22 Sep at 21:30" /
  *  "22 Eylül Salı 21:30". */
 export function dayTimeLabel(lang: Lang | string | null | undefined, d: Date): string {

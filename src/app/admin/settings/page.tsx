@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt, Languages } from "lucide-react";
-import { setOrgFeature, setOrgLanguage, setOrgTeamLabels } from "@/app/actions/org";
+import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt, Languages, Repeat } from "lucide-react";
+import { setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
+import { InfoButton } from "@/components/stats/info-button";
+import { t } from "@/lib/i18n/t";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
@@ -29,6 +31,8 @@ interface OrgData {
   stripeChargesEnabled?: boolean;
   paymentHolderId?: string | null;
   members?: { id: string; name: string | null }[];
+  /** "Weekly routine" (2026-09-30). Slices 2 and 3 add their settings. */
+  weeklyRoutine?: { rollingSquad: boolean };
 }
 
 export default function SettingsPage() {
@@ -131,6 +135,26 @@ export default function SettingsPage() {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
       setSavingFeature(null);
+    }
+  }
+
+  // Weekly routine (2026-09-30). One switch per setting, saved on change
+  // through the one `setWeeklyRoutine` action.
+  const [savingRoutine, setSavingRoutine] = useState<string | null>(null);
+  async function toggleRollingSquad(next: boolean) {
+    if (!org) return;
+    const s = t(org.language);
+    setSavingRoutine("rollingSquad");
+    setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad: next } } : prev));
+    try {
+      const { rollingSquad } = await setWeeklyRoutine(org.id, { rollingSquad: next });
+      setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad } } : prev));
+      toast.success(rollingSquad ? s.wr_rolling_on : s.wr_rolling_off);
+    } catch {
+      setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad: !next } } : prev));
+      toast.error(s.wr_save_failed);
+    } finally {
+      setSavingRoutine(null);
     }
   }
 
@@ -396,6 +420,53 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      {/* Weekly routine (2026-09-30). Words from the club's language
+          table. Slices 2 and 3 add their rows to this section. */}
+      {(() => {
+        const s = t(org.language);
+        const on = org.weeklyRoutine?.rollingSquad ?? false;
+        return (
+          <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="weekly-routine">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <Repeat className="w-4 h-4 text-slate-500" />
+              <h2 className="font-semibold text-slate-800">{s.wr_section_title}</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-500 mb-4">{s.wr_section_lead}</p>
+              <div className="divide-y divide-slate-100">
+                <div className="flex items-center justify-between gap-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
+                      {s.wr_rolling_label}
+                      <InfoButton title={s.wr_rolling_label}>
+                        <p>{s.wr_rolling_info}</p>
+                      </InfoButton>
+                    </div>
+                    <p className="text-xs text-slate-500">{s.wr_rolling_blurb}</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={s.wr_rolling_label}
+                    disabled={savingRoutine === "rollingSquad"}
+                    onClick={() => toggleRollingSquad(!on)}
+                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                      on ? "bg-green-500" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        on ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Payments — Connect bank */}
       {org.features?.paymentCollection && (

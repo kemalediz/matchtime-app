@@ -333,3 +333,23 @@ export function buildDmQaApology(lang?: Lang | string | null): string {
 export function buildStatsLinkDm(p: { name: string | null; url: string } & WithLang): string {
   return t(p.lang).dm_stats_link({ firstName: firstOf(p.name), url: p.url });
 }
+
+/**
+ * Row RSQ4 (2026-09-30, rolling squad): the admin notice when an OUT
+ * lands after the drop-out deadline (plan R4). The OUT is recorded like
+ * any other; this only tells the organisers it was late. `time` is when
+ * the player SENT it, `deadline` is `weekdayTimeLabel`.
+ */
+export function buildLateDropAdminNotice(
+  p: {
+    name: string;
+    activityName: string;
+    whenLabel: string;
+    time: string;
+    deadline: string;
+    confirmed: number;
+    maxPlayers: number;
+  } & WithLang,
+): string {
+  return t(p.lang).late_drop_admin_notice(p);
+}

@@ -56,6 +56,11 @@ export interface OrgFeatures {
    *  column value normalises to "en". Phase 0: no consumer reads it
    *  yet. See MDs/multi-language-design-2026-09-16.md section 4.1. */
   language: Lang;
+  /** Rolling squad (2026-09-30, `Organisation.rollingSquadEnabled`):
+   *  last match's players are carried onto the next one. Default off.
+   *  Deliberately NOT in `FEATURE_META`, which also drives the in-group
+   *  setup menu; it is set on /admin/settings, "Weekly routine". */
+  rollingSquad: boolean;
 }
 
 
@@ -72,6 +77,7 @@ const ALL_OFF: OrgFeatures = {
   paymentCollection: false,
   squadFromList: false,
   language: "en",
+  rollingSquad: false,
 };
 
 function fromRow(row: {
@@ -87,6 +93,7 @@ function fromRow(row: {
   paymentCollectionEnabled: boolean;
   featureSquadFromList: boolean;
   language: string;
+  rollingSquadEnabled: boolean;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -101,6 +108,7 @@ function fromRow(row: {
     paymentCollection: row.paymentCollectionEnabled,
     squadFromList: row.featureSquadFromList,
     language: normaliseLang(row.language),
+    rollingSquad: row.rollingSquadEnabled,
   };
 }
 
@@ -117,6 +125,7 @@ const SELECT = {
   paymentCollectionEnabled: true,
   featureSquadFromList: true,
   language: true,
+  rollingSquadEnabled: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {

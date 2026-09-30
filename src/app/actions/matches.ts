@@ -17,6 +17,7 @@ import {
   planFormatSwitchSchedule,
   renderKickoffMoveLine,
 } from "@/lib/format-switch-time";
+import { findCarryOverSource, seedRollingSquad } from "@/lib/rolling-squad";
 
 /**
  * Switch a match's format by swapping its `activityId` to another activity
@@ -284,4 +285,38 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath("/matches");
+}
+
+/**
+ * "Carry over last squad" on the match page (2026-09-30, plan 1.9).
+ *
+ * For a rolling-squad club whose match has no rows yet: copies the last
+ * PLAYED match of the fixture onto it, with no lookback limit (a club
+ * back from a summer break). Same writer as the 08:00 cron
+ * (`seedRollingSquad`), recorded as the admin, and it claims the same
+ * `rollingSeededAt`, so the cron never seeds it again and the rolling
+ * announcement follows next morning.
+ */
+export async function carryOverLastSquad(matchId: string): Promise<{ carried: number }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({
+    where: { id: matchId },
+    select: { id: true, activity: { select: { orgId: true, org: { select: { rollingSquadEnabled: true } } } } },
+  });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+  if (!match.activity.org.rollingSquadEnabled) {
+    throw new Error("Turn on the rolling squad in Settings first");
+  }
+
+  const source = await findCarryOverSource(matchId);
+  if (!source) return { carried: 0 };
+  const res = await seedRollingSquad({
+    targetId: matchId,
+    sourceId: source.id,
+    actor: { kind: "admin", userId: session.user.id },
+  });
+  revalidatePath(`/matches/${matchId}`);
+  return { carried: res.carried };
 }

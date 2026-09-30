@@ -5,6 +5,9 @@ import Link from "next/link";
 import { AttendButton } from "@/components/match/attend-button";
 import { AttendanceList } from "@/components/match/attendance-list";
 import { AddPlayerToMatch } from "@/components/match/add-player-to-match";
+import { CarryOverSquadButton } from "@/components/match/carry-over-squad-button";
+import { findCarryOverSource } from "@/lib/rolling-squad";
+import { dayLabel } from "@/lib/i18n/dates";
 import { TeamDisplay } from "@/components/match/team-display";
 import { isOrgAdmin } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
@@ -64,8 +67,15 @@ export default async function MatchDetailPage({
   // to see who's paid (instead of only via the post-match DM link).
   const orgPay = await db.organisation.findUnique({
     where: { id: match.activity.orgId },
-    select: { paymentCollectionEnabled: true, paymentHolderId: true },
+    select: { paymentCollectionEnabled: true, paymentHolderId: true, rollingSquadEnabled: true },
   });
+
+  // Rolling squad (2026-09-30): an admin of a rolling club can copy the
+  // last played squad onto an EMPTY match (a club's first week on
+  // MatchTime, or back from a break). `findCarryOverSource` returns null
+  // whenever the button does not apply.
+  const carryOverSource =
+    isAdmin && orgPay?.rollingSquadEnabled ? await findCarryOverSource(matchId) : null;
   const canSeePayments =
     !!orgPay?.paymentCollectionEnabled &&
     (isAdmin || orgPay.paymentHolderId === session.user.id);
@@ -294,6 +304,13 @@ export default async function MatchDetailPage({
         </div>
         <div className="p-6 space-y-4">
           {isAdmin && <AddPlayerToMatch matchId={matchId} existingPlayers={addablePlayers} />}
+          {carryOverSource && (
+            <CarryOverSquadButton
+              matchId={matchId}
+              lang={match.activity.org.language}
+              sourceDateLabel={dayLabel(match.activity.org.language, carryOverSource.date)}
+            />
+          )}
           <AttendanceList
             attendances={match.attendances.map((a) => ({
               ...a,

@@ -127,6 +127,7 @@ import {
   composeLateMessageAlert,
   formatDelay,
   LATE_HANDLED_BY,
+  parseTimestamp,
   planLateMessages,
   silenceLateResult,
   type LateEntry,
@@ -1958,6 +1959,14 @@ async function handleAnalyzeRequest(request: Request) {
               senderUserId: s.userId,
               senderName: s.name,
               senderIsAdmin: !!s.userId && engineAdminIds.has(s.userId),
+              // The ORIGINAL send time, for a rolling-squad club's late
+              // drop-out (2026-09-30): lateness is judged by when the
+              // player sent it, not when it reached us. Unreadable
+              // timestamps are left out and mean "now".
+              ...(() => {
+                const sentAt = parseTimestamp(m.timestamp);
+                return sentAt ? { sentAt } : {};
+              })(),
               // NOT from the residual. The tag is a property of what the
               // sender WROTE, and peeling the clause that carried
               // "@Match Time" must not be able to change what the

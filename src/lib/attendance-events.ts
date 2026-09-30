@@ -82,6 +82,11 @@ export const ATTENDANCE_EVENT_CAUSES = [
   /** The match's format changed (5-a-side ⇄ 7-a-side) and the squad was
    *  recut against the new capacity. Whole-squad, one transaction. */
   "format-switch",
+  /** Rolling squad (2026-09-30): last match's players were carried over
+   *  onto the next match of the fixture at 08:00 the morning after
+   *  (actorKind `scheduler`), or by an admin's "Carry over last squad"
+   *  button (actorKind `admin`). `sourceRef` is the source match id. */
+  "rolling-squad",
   /** A posted squad list was extracted and written to the DB
    *  (`featureSquadFromList` orgs). */
   "pasted-roster",

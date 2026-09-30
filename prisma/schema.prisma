@@ -288,6 +288,13 @@ model Organisation {
   /// DMs) but don't use the bot for in/out chatter.
   featureSquadFromList Boolean @default(false)
 
+  /// Rolling squad (2026-09-30, slice 1 of
+  /// MDs/friday-group-features-plan-2026-09-30.md): at 08:00 London the
+  /// morning after a match, everyone who played it is written CONFIRMED
+  /// on the next match of the same fixture. Default OFF; Sutton FC
+  /// unchanged. Read through `OrgFeatures.rollingSquad`.
+  rollingSquadEnabled Boolean @default(false)
+
   /// ─── Stripe payments (2026-06-03) ───────────────────────────────
   /// Per-match fee collection. The money collector is `paymentHolderId`
   /// (surfaced as "Money collector" in org setup). The three methods
@@ -751,6 +758,14 @@ model Match {
   /// Set when the per-player payment-link DMs have gone out. Null = not
   /// released yet (fee not confirmed). Gates the chaser.
   paymentLinksReleasedAt DateTime?
+
+  /// Rolling squad (2026-09-30): when last week's squad was copied onto
+  /// this match. NULL = never. Written once, by the claim in
+  /// `seedRollingSquad` (src/lib/rolling-squad.ts); it is the idempotency
+  /// key, so a second cron tick or the admin button seeds nothing twice.
+  rollingSeededAt          DateTime?
+  /// The match the squad was copied from. Plain string, no FK (history).
+  rollingSeededFromMatchId String?
 
   /// Per-match display-label override (highest precedence over org/sport).
   /// Index 0 = RED, 1 = YELLOW. Set when an admin asks MatchTime to invent

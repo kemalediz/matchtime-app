@@ -174,6 +174,9 @@ export interface EngineBatchMessage {
   senderUserId: string | null;
   senderName: string | null;
   senderIsAdmin: boolean;
+  /** The message's original WhatsApp send time, when the Pi forwarded a
+   *  readable one. Judges a rolling-squad late drop-out (2026-09-30). */
+  sentAt?: Date;
   tagged: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
@@ -898,7 +901,12 @@ export async function runAttendanceEngineBatch(args: {
   const actorByMessageId = new Map<string, EngineActor>(
     messages.map((m) => [
       m.waMessageId,
-      { userId: m.senderUserId, name: m.senderName ?? m.authorName, isAdmin: m.senderIsAdmin },
+      {
+        userId: m.senderUserId,
+        name: m.senderName ?? m.authorName,
+        isAdmin: m.senderIsAdmin,
+        ...(m.sentAt ? { sentAt: m.sentAt } : {}),
+      },
     ]),
   );
   const applicable = result.writes.filter((w) => ownedIds.has(w.sourceMessageId));

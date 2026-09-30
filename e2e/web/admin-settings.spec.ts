@@ -68,6 +68,45 @@ test("payment-method toggle persists and gates the pay page", async ({ page, db 
   await db.run(`UPDATE "Organisation" SET "payMethodPayByBank" = true WHERE id = $1`, [ORG_ID]);
 });
 
+test("Weekly routine: the rolling squad switch persists, and its info opens (EN and TR)", async ({ page, db }) => {
+  await signInAs(page, U.admin, "/admin/settings");
+  await page.waitForURL("**/admin/settings");
+  const section = page.getByTestId("weekly-routine");
+  await expect(section.getByRole("heading", { name: "Weekly routine" })).toBeVisible({ timeout: 30_000 });
+  const toggle = section.getByRole("switch", { name: "Rolling squad" });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+  // The ⓘ explains it.
+  await section.getByRole("button", { name: "What is Rolling squad?" }).click();
+  await expect(page.getByText(/everyone who played the last match is automatically in for the next one/)).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+
+  // ON persists to the org row and survives a reload.
+  await toggle.click();
+  await expect
+    .poll(async () =>
+      (await db.one<{ v: boolean }>(`SELECT "rollingSquadEnabled" AS v FROM "Organisation" WHERE id = $1`, [ORG_ID]))?.v,
+    )
+    .toBe(true);
+  await page.reload();
+  await expect(page.getByTestId("weekly-routine").getByRole("switch", { name: "Rolling squad" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+    { timeout: 30_000 },
+  );
+
+  // A Turkish club reads it in Turkish.
+  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+  await page.reload();
+  const tr = page.getByTestId("weekly-routine");
+  await expect(tr.getByRole("heading", { name: "Haftalık düzen" })).toBeVisible({ timeout: 30_000 });
+  await tr.getByRole("button", { name: "What is Kadro devam eder?" }).click();
+  await expect(page.getByText(/son maçta oynayan herkes bir sonraki maçta otomatik olarak kadroda olur/)).toBeVisible();
+
+  // Restore for later specs.
+  await db.run(`UPDATE "Organisation" SET language = 'en', "rollingSquadEnabled" = false WHERE id = $1`, [ORG_ID]);
+});
+
 test("settings + activities render with no horizontal overflow at mobile width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await signInAs(page, U.admin, "/admin/settings");

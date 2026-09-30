@@ -1867,4 +1867,62 @@ export const en = {
   admin_players_duplicate_row: (p: { placeholder: string; keeper: string }): string =>
     `${p.placeholder}, added by name, may be the same person as ${p.keeper}.`,
   admin_players_duplicate_merge: (p: { keeper: string }): string => `Merge into ${p.keeper}`,
+
+  // ── Rolling squad (2026-09-30), slice 1 of
+  //    MDs/friday-group-features-plan-2026-09-30.md. New copy, house
+  //    style: no em or en dashes. Rows RSQ1 to RSQ5 in copy-golden. ──
+
+  /** RSQ1: the morning announcement over a squad carried over from the
+   *  last match. `deadline` is `weekdayTimeLabel` ("Monday 21:00"). */
+  rolling_announce_lead: (p: { activityName: string; dateLabel: string; venue: string; deadline: string }): string =>
+    `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
+    `Everyone who played last time is in again. Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
+  rolling_in_header: (p: { confirmed: number; maxPlayers: number }): string =>
+    `*In (${p.confirmed}/${p.maxPlayers}):*`,
+  rolling_waiting_header: (p: { count: number }): string => `*Waiting list (${p.count}):*`,
+  rolling_tail_open: (p: { open: number }): string =>
+    `${p.open === 1 ? "1 place open" : `${p.open} places open`}: say *IN* to take one.`,
+  /** For a club where the organisers pick who plays (slice 2 wires it). */
+  rolling_tail_open_organiser: (p: { open: number }): string =>
+    `${p.open === 1 ? "1 place open" : `${p.open} places open`}: say *IN* to go on the waiting list, and the organisers will pick who plays.`,
+  rolling_tail_full: "The squad is full. Say *IN* to go on the waiting list.",
+  /** RSQ2: the extra line on the 17:00 post while the deadline is ahead. */
+  rolling_deadline_line: (p: { deadline: string }): string =>
+    `Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
+  /** RSQ3: replaces `intro_attendance` in the day-one intro. */
+  intro_rolling_squad:
+    "🔁 *Rolling squad*: if you played last time, you're in next time too. Say *OUT* if you can't make it, before the drop-out deadline.",
+  /** RSQ4: the DM to the club's admins when an OUT lands after the
+   *  deadline. `time` is when the player SENT it. */
+  late_drop_admin_notice: (p: {
+    name: string;
+    activityName: string;
+    whenLabel: string;
+    time: string;
+    deadline: string;
+    confirmed: number;
+    maxPlayers: number;
+  }): string =>
+    `Late drop-out: *${p.name}* said OUT for *${p.activityName}* (${p.whenLabel}) at ${p.time}, after the ${p.deadline} deadline. Squad is now ${p.confirmed}/${p.maxPlayers}.`,
+
+  // ── RSQ5: /admin/settings "Weekly routine" and the match page's
+  //    "Carry over last squad" button (web). ──
+  wr_section_title: "Weekly routine",
+  wr_section_lead: "How your squad is put together each week. Each setting stays off until you turn it on.",
+  wr_rolling_label: "Rolling squad",
+  wr_rolling_blurb: "Everyone who played last time is in again, unless they say OUT.",
+  wr_rolling_info:
+    "When this is on, everyone who played the last match is automatically in for the next one, and only needs to say OUT if they can't make it. " +
+    "Players who were on the waiting list, guests without a phone number and anyone who has left the group are not carried over. " +
+    "The squad is carried over at 08:00 the morning after each match, so you have the night to remove anyone who didn't turn up. " +
+    "Anyone still on the list at the final whistle counts as having played, for payments and ratings.",
+  wr_rolling_on: "Rolling squad is on",
+  wr_rolling_off: "Rolling squad is off",
+  wr_save_failed: "Couldn't save the setting",
+  carry_over_button: "Carry over last squad",
+  carry_over_hint: (p: { dateLabel: string }): string =>
+    `Puts everyone who played on ${p.dateLabel} into this match. They can still say OUT.`,
+  carry_over_done: (p: { count: number }): string =>
+    p.count === 1 ? "1 player carried over" : `${p.count} players carried over`,
+  carry_over_nothing: "Nobody to carry over",
 };
