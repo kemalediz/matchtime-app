@@ -59,6 +59,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations } from "@/lib/bot-scheduler";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
+import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
@@ -195,6 +196,19 @@ export async function GET(request: Request) {
   // TEST-ONLY preview mode, see below. Read here too, so a preview never
   // claims a platform job through the bridge.
   const previewOnly = process.env.MT_TEST_MODE === "1" && request.headers.get("x-no-claim") === "1";
+
+  // WEEKLY DEADLINES, D2 (2026-09-30): the organisers' summary once the
+  // club's drop-out deadline has passed. Queued as a BotJob through
+  // `sendAdminNotice` BEFORE compute, so it goes out in this same poll.
+  // A side effect, so never in preview mode; its own try/catch, so a
+  // failure here can never cost the group its posts.
+  if (!previewOnly) {
+    try {
+      await sendDueDeadlineSummaries(org.id, nowOverride ?? new Date());
+    } catch (err) {
+      console.error(`[due-posts] org ${org.id}: deadline summary failed:`, err);
+    }
+  }
 
   const result = await computeDuePosts(groupId, nowOverride);
   if (!result) {

@@ -10,6 +10,13 @@ import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { createSelfJoinClub, type SelfJoinClubInput, type SelfJoinRefusal } from "@/lib/self-join-club";
 import { announcePaymentsLiveIfJustLive, readPaymentLiveState } from "@/lib/payments-live-announce";
 import { revalidatePath } from "next/cache";
+import {
+  hasWeeklyDeadlinesPatch,
+  prepareWeeklyDeadlinesPatch,
+  weeklyDeadlinesView,
+  type WeeklyDeadlinesData,
+  type WeeklyDeadlinesPatch,
+} from "@/lib/weekly-deadlines-settings";
 
 /**
  * Today's club creation (/create-org with SELF_JOIN_ENABLED off).
@@ -416,8 +423,11 @@ export async function setOrgLanguage(orgId: string, language: string) {
  * patch with nothing valid in it is refused, never silently ignored.
  *
  * Slice 1: `rollingSquad` (`Organisation.rollingSquadEnabled`).
+ * Slice 3: `dropOutDeadline` and `listPublish` (day + time, or null to
+ * clear), validated in `weekly-deadlines-settings.ts`; a refusal comes
+ * back as `{ error }` for the page to show, and nothing is written.
  */
-export interface WeeklyRoutinePatch {
+export interface WeeklyRoutinePatch extends WeeklyDeadlinesPatch {
   rollingSquad?: boolean;
 }
 
@@ -427,18 +437,29 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
   const { requireOrgAdmin } = await import("@/lib/org");
   await requireOrgAdmin(session.user.id, orgId);
 
-  const data: { rollingSquadEnabled?: boolean } = {};
+  const data: { rollingSquadEnabled?: boolean } & WeeklyDeadlinesData = {};
   if (patch && "rollingSquad" in patch) {
     if (typeof patch.rollingSquad !== "boolean") throw new Error("rollingSquad must be true or false");
     data.rollingSquadEnabled = patch.rollingSquad;
+  }
+  if (hasWeeklyDeadlinesPatch(patch)) {
+    const deadlines = await prepareWeeklyDeadlinesPatch(orgId, patch);
+    if (deadlines.error) return { ok: false as const, error: deadlines.error };
+    Object.assign(data, deadlines.data);
   }
   if (Object.keys(data).length === 0) throw new Error("Nothing to change");
 
   const row = await db.organisation.update({
     where: { id: orgId },
     data,
-    select: { rollingSquadEnabled: true },
+    select: {
+      rollingSquadEnabled: true,
+      dropOutDeadlineDay: true,
+      dropOutDeadlineTime: true,
+      listPublishDay: true,
+      listPublishTime: true,
+    },
   });
   revalidatePath("/admin/settings");
-  return { rollingSquad: row.rollingSquadEnabled };
+  return { ok: true as const, rollingSquad: row.rollingSquadEnabled, ...weeklyDeadlinesView(row) };
 }

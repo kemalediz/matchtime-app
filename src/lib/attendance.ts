@@ -427,7 +427,15 @@ export async function cancelAttendance(
         select: {
           orgId: true,
           name: true,
-          org: { select: { rollingSquadEnabled: true, language: true } },
+          org: {
+            select: {
+              rollingSquadEnabled: true,
+              language: true,
+              // The club's weekly drop-out deadline (slice 3), when set.
+              dropOutDeadlineDay: true,
+              dropOutDeadlineTime: true,
+            },
+          },
         },
       },
     },
@@ -454,7 +462,7 @@ export async function cancelAttendance(
   // CONFIRMED player's OUT changes the squad, so only that one is late.
   // Optional chaining: unit-test doubles build the match without its org.
   const rollingClub = match.activity.org?.rollingSquadEnabled === true;
-  const dropOutDeadline = rollingClub ? dropOutDeadlineFor(match) : null;
+  const dropOutDeadline = rollingClub ? dropOutDeadlineFor(match, match.activity.org) : null;
   const sentAt = options?.occurredAt ?? new Date();
   // A player's own OUT, or a member's "X can't make it". An admin taking
   // a no-show off the squad is roster surgery, not a drop-out, and the

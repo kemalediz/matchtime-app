@@ -1925,4 +1925,67 @@ export const en = {
   carry_over_done: (p: { count: number }): string =>
     p.count === 1 ? "1 player carried over" : `${p.count} players carried over`,
   carry_over_nothing: "Nobody to carry over",
+
+  // ── Weekly deadlines (2026-09-30), slice 3 of
+  //    MDs/friday-group-features-plan-2026-09-30.md. New copy, house
+  //    style: no em or en dashes. Rows WDL1 to WDL4 in copy-golden. ──
+
+  /** WDL1 (D1): the group reminder 3 hours before the drop-out deadline.
+   *  `time` is the deadline's London time, `rosterBlock` the squad. */
+  dropout_reminder_post: (p: { activityName: string; whenLabel: string; time: string; rosterBlock: string }): string =>
+    `⏰ *${p.activityName}*, ${p.whenLabel}: the drop-out deadline is *today at ${p.time}*. If you can't play, say *OUT* before then.\n\n${p.rosterBlock}`,
+  /** WDL2 (D2): to the organisers once the deadline has passed. The
+   *  "Said maybe" and "places open" lines only when there is something
+   *  to say. */
+  deadline_summary_admin: (p: {
+    activityName: string;
+    whenLabel: string;
+    confirmed: number;
+    maxPlayers: number;
+    out: string[];
+    maybe: string[];
+    waiting: string[];
+    open: number;
+  }): string =>
+    [
+      `Drop-out deadline passed for *${p.activityName}* (${p.whenLabel}). Squad ${p.confirmed}/${p.maxPlayers}.`,
+      `Out this week: ${p.out.length > 0 ? p.out.join(", ") : "nobody"}.`,
+      ...(p.maybe.length > 0 ? [`Said maybe: ${p.maybe.join(", ")}.`] : []),
+      `Waiting list: ${p.waiting.length > 0 ? p.waiting.join(", ") : "empty"}.`,
+      ...(p.open > 0 ? [p.open === 1 ? "1 place open." : `${p.open} places open.`] : []),
+    ].join("\n"),
+  /** WDL3 (D3): the final list at publish time. */
+  list_published_head: (p: { activityName: string; dateLabel: string; venue: string }): string =>
+    `📋 *${p.activityName}* list, *${p.dateLabel}*, ${p.venue}`,
+  list_published_playing_header: (p: { confirmed: number; maxPlayers: number }): string =>
+    `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
+  list_published_open: (p: { open: number }): string =>
+    p.open === 1 ? "1 place still open." : `${p.open} places still open.`,
+  list_published_footer: "Can't make it now? Say *OUT* as soon as you can so a replacement can be brought in.",
+
+  // ── WDL4: /admin/settings "Weekly routine", the two deadline rows. ──
+  wd_dropout_label: "Drop-out deadline",
+  wd_dropout_blurb: "The last day and time players can pull out without it counting as late.",
+  wd_dropout_info:
+    "The last time players can pull out without it counting as late. MatchTime reminds the group 3 hours before, " +
+    "then messages the admins with who is out and who is waiting. An OUT after the deadline still counts, and the admins are told it was late.",
+  wd_publish_label: "List published",
+  wd_publish_blurb: "When MatchTime posts the final list in the group.",
+  wd_publish_info:
+    "When MatchTime posts the final list in the group: who is playing and who is on the waiting list. " +
+    "With this and a drop-out deadline set, MatchTime stops the daily 17:00 post, except on match day.",
+  wd_day_label: "Day",
+  wd_time_label: "Time",
+  wd_not_set: "Not set",
+  /** `dow`: 0 = Sunday. */
+  wd_weekday: (p: { dow: number }): string =>
+    ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][p.dow] ?? "",
+  wd_save: "Save",
+  wd_clear: "Clear",
+  wd_saved: "Weekly deadlines saved",
+  wd_err_incomplete: "Pick both a day and a time, or neither.",
+  wd_err_bad_value: "That day or time is not valid.",
+  wd_err_outside_hours: "Pick a time between 08:00 and 21:30.",
+  wd_err_order: "The drop-out deadline has to come before the list is published.",
+  wd_err_after_kickoff: "On match day, pick a time before kickoff.",
 };

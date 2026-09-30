@@ -295,6 +295,17 @@ model Organisation {
   /// unchanged. Read through `OrgFeatures.rollingSquad`.
   rollingSquadEnabled Boolean @default(false)
 
+  /// ─── Weekly deadlines (2026-09-30, slice 3 of
+  /// MDs/friday-group-features-plan-2026-09-30.md) ────────────────────
+  /// Club level (D8). Each pair is a London weekday (0=Sun..6=Sat) and
+  /// wall-clock "HH:mm"; per match it resolves to the last occurrence
+  /// strictly before kickoff (`weeklyDeadlinesFor`). All NULL by default:
+  /// nothing changes until an admin sets them on /admin/settings.
+  dropOutDeadlineDay  Int?
+  dropOutDeadlineTime String?
+  listPublishDay      Int?
+  listPublishTime     String?
+
   /// ─── Stripe payments (2026-06-03) ───────────────────────────────
   /// Per-match fee collection. The money collector is `paymentHolderId`
   /// (surfaced as "Money collector" in org setup). The three methods

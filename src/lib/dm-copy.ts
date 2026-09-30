@@ -353,3 +353,24 @@ export function buildLateDropAdminNotice(
 ): string {
   return t(p.lang).late_drop_admin_notice(p);
 }
+
+/**
+ * Row WDL2 (2026-09-30, weekly deadlines, D2 of plan 3.2): the organisers'
+ * summary once the club's drop-out deadline has passed. `out` is who
+ * dropped this week, `maybe` the CONFIRMED players with an open "maybe",
+ * `waiting` the waiting list in order, `open` the places still free.
+ */
+export function buildDeadlineSummaryAdminNotice(
+  p: {
+    activityName: string;
+    whenLabel: string;
+    confirmed: number;
+    maxPlayers: number;
+    out: string[];
+    maybe: string[];
+    waiting: string[];
+    open: number;
+  } & WithLang,
+): string {
+  return t(p.lang).deadline_summary_admin(p);
+}
