@@ -161,6 +161,7 @@ const SAMPLES: SampleArgs = {
   teams_not_generated: null,
   score_ack: { redLabel: "Kırmızı", red: 3, yellow: 1, yellowLabel: "Sarı" },
   payment_ack: { firstName: "Sait", count: 3 },
+  payments_live_announcement: { collector: "Kemal", card: true, bank: true, direct: true },
   reminder_ack_resolved: { whenLabel: "Thu 10 Sep at 09:00" },
   reminder_ack_unresolved: { phrase: "when the fixture list is out" },
   needs_tag_for_rest: { dropped: ["Abid Hussain"], benched: ["Idris Bello"] },

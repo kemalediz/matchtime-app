@@ -416,6 +416,29 @@ export const tr: Strings = {
 
   teams_not_generated: "Takımlar henüz kurulmadı, *@Match Time takımları kur* yazın, hallederim.",
   score_ack: (p) => `Tamam 👍 ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}, kaydettim.`,
+  payments_live_announcement: (p) => {
+    const who = p.collector ?? "organizatör";
+    const lines = [
+      "💳 *Maç ücretleri artık MatchTime üzerinden toplanıyor*",
+      "",
+      "Nasıl işliyor:",
+      "• Her maçtan sonra oynayan herkese, payını ödemesi için özelden bir link gönderiyorum.",
+    ];
+    if (p.card || p.bank) {
+      lines.push(
+        p.card && p.bank
+          ? "• Kartla, Apple Pay, Google Pay ile ya da doğrudan bankanızdan ödeyebilirsiniz."
+          : p.card
+            ? "• Kartla, Apple Pay ya da Google Pay ile ödeyebilirsiniz."
+            : "• Doğrudan bankanızdan ödeyebilirsiniz.",
+      );
+      const fee = p.card && p.bank ? "kart ya da banka ücreti" : p.card ? "kart ücreti" : "banka ücreti";
+      lines.push(`• Tutar, maç ücretinin oyuncular arasında bölünmüş payı, üstüne de ${fee}.`);
+    }
+    lines.push("• Ödemeyenlere hatırlatma gönderiyorum.");
+    if (p.direct) lines.push(`• Ödemeyi doğrudan ${who} ile halletmek de olur. Bana özelden *Ödedim* yazın, ${who} onaylasın.`);
+    return lines.join("\n");
+  },
   payment_ack: (p) => `Not aldım 🙌 ${p.firstName} ${p.count} kişinin ödemesini yaptı.`,
   reminder_ack_resolved: (p) => `👍 Tamam, ${p.whenLabel} sana DM atarım.`,
   reminder_ack_unresolved: (p) => `Tamam 👍 ${p.phrase} sana hatırlatırım.`,
