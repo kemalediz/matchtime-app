@@ -372,6 +372,27 @@ model Organisation {
   approvalDecidedAt DateTime?
   approvalDecidedBy String?
 
+  /// ─── Admin channel (2026-09-30, slice 2a) ─────────────────────────
+  /// Plan: MDs/friday-group-features-plan-2026-09-30.md, section 2.2 to 2.5.
+  /// Where admin-only notices go: "one-person" | "admin-group" | "each-admin".
+  /// New clubs start on "one-person" (the owner). The migration filled
+  /// every club that existed before it with "each-admin", today's
+  /// behaviour, so Sutton FC's notices, texts and keys are unchanged.
+  /// Read only through `src/lib/admin-channel.ts` (`sendAdminNotice`).
+  adminChannelMode   String  @default("one-person")
+  /// "one-person": who. NULL = the owner.
+  adminChannelUserId String?
+  /// The linked admin WhatsApp group. One club per group; never the
+  /// club's own community group (CHECK constraint, see the migration).
+  adminGroupId             String?   @unique
+  adminGroupSubject        String?
+  adminGroupLinkedAt       DateTime?
+  adminGroupLinkedByUserId String?
+  /// The pending link code shown on the settings page. Single use,
+  /// cleared when a group is linked. Unique across clubs.
+  adminGroupLinkCode          String?   @unique
+  adminGroupLinkCodeExpiresAt DateTime?
+
   memberships    Membership[]
   clubConnects   ClubConnect[]
   activities     Activity[]
@@ -1830,6 +1851,10 @@ model UnsolicitedGroup {
   addedAt      DateTime  @default(now())
   /// Set when MatchTime has left the group.
   leftAt       DateTime?
+  /// Slice 2a (2026-09-30): added by an owner or admin of an approved
+  /// club. Silent, no setup, waiting for "@Match Time admin group CODE".
+  /// Linking marks the row left.
+  awaitingAdminLink Boolean @default(false)
 
   @@index([groupId, leftAt])
 }

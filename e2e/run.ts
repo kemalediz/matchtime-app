@@ -314,6 +314,11 @@ async function runSuite(): Promise<number> {
     console.log("[e2e] arming the club-approval CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "org-approval-check.sql"));
 
+    // And the admin-channel invariants (slice 2a): a mode is one of three,
+    // and a club's admin group is never its own community group.
+    console.log("[e2e] arming the admin-channel CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "admin-channel-check.sql"));
+
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {
       MT_E2E_DATABASE_URL: E2E_DB_URL,

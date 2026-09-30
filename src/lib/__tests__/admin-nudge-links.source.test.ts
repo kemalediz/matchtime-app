@@ -25,8 +25,12 @@ describe("bot-scheduler admin nudges", () => {
     expect(src).toContain("nextPath: `/admin/matches/${matchId}/switch-format`");
     expect(src).toContain("nextPath: `/admin/matches/${matchId}/cancel`");
     expect(src).toContain('nextPath: "/admin/players"');
-    // Through buildAdminLink, which pins the club (orgId) at sign-in.
-    const nudges = src.split("buildAdminLink({").length - 1;
+    // Since slice 2a (2026-09-30) all three go through the admin channel,
+    // whose DMs are built with buildAdminLink, which pins the club (orgId)
+    // at sign-in. Covered by behaviour in admin-channel.test.ts too.
+    const nudges = src.split("adminNoticeInstructions({").length - 1;
     expect(nudges).toBeGreaterThanOrEqual(3);
+    const channel = readFileSync(path.resolve(__dirname, "../admin-channel.ts"), "utf8");
+    expect(channel).toContain("buildAdminLink({ userId, orgId: ch.orgId, nextPath: notice.nextPath })");
   });
 });

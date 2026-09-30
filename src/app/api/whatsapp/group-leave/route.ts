@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { findOrgAdminsWithPhone } from "@/lib/org";
+import { sendAdminNotice } from "@/lib/admin-channel";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -44,7 +44,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group" });
   }
 
-  const admins = await findOrgAdminsWithPhone(org.id);
   const now = new Date();
 
   type Result = {
@@ -89,8 +88,9 @@ export async function POST(request: Request) {
       data: { leftAt: now },
     });
 
-    // DM each admin so they know the roster shrank.
-    if (admins.length > 0) {
+    // Tell the admins the roster shrank, through the club's admin channel
+    // (slice 2a, 2026-09-30). "each-admin" (Sutton FC) is today's DMs.
+    {
       const displayName = user.name?.trim() || normalised;
       const wasAdmin = membership.role === "OWNER" || membership.role === "ADMIN";
       const lines = [
@@ -101,18 +101,8 @@ export async function POST(request: Request) {
         `If this was a mistake, re-add them to the group and I'll re-activate them automatically.`,
       ];
       const text = lines.join("\n");
-
-      for (const admin of admins) {
-        if (admin.id === user.id) continue; // admin leaving DM'ing themselves is pointless
-        await db.botJob.create({
-          data: {
-            orgId: org.id,
-            kind: "dm",
-            phone: admin.phoneNumber.replace(/^\+/, ""),
-            text,
-          },
-        });
-      }
+      // An admin leaving is not DM'd about themselves.
+      await sendAdminNotice({ orgId: org.id, holdOvernight: false, excludeUserId: user.id, text });
     }
 
     results.push({ phone: normalised, marked: true, userId: user.id });

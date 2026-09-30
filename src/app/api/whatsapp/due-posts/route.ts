@@ -63,6 +63,7 @@ import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
+import { PI_CAPS_HEADER, parsePiCaps } from "@/lib/admin-channel-rules";
 import {
   CIRCUIT_BREAKER_WINDOW_MS,
   GROUP_DIRECTED_KINDS,
@@ -210,7 +211,12 @@ export async function GET(request: Request) {
     }
   }
 
-  const result = await computeDuePosts(groupId, nowOverride);
+  // Slice 2a: what this Pi can do. Only a Pi that says "admin-group" is
+  // ever handed an admin-group post; for any other, admin notices fall
+  // back to the owner by DM (src/lib/admin-channel.ts).
+  const piCaps = parsePiCaps(request.headers.get(PI_CAPS_HEADER));
+
+  const result = await computeDuePosts(groupId, nowOverride, piCaps);
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
   }

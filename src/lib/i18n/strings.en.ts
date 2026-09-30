@@ -1988,4 +1988,41 @@ export const en = {
   wd_err_outside_hours: "Pick a time between 08:00 and 21:30.",
   wd_err_order: "The drop-out deadline has to come before the list is published.",
   wd_err_after_kickoff: "On match day, pick a time before kickoff.",
+  // ── Slice 2a: the admin channel (2026-09-30) ──
+  // MDs/friday-group-features-plan-2026-09-30.md, sections 2.3 and 5.
+  /** L1. Posted in the group that has just been linked. */
+  admin_group_linked: (p: { club: string }): string => `✅ Linked as the admin group for *${p.club}*.`,
+  /** L2. A wrong or expired code, from an owner or admin of an approved club. */
+  admin_group_bad_code:
+    "That code isn't valid any more. Open Settings on the website and press *Link admin group* for a new one.",
+  /** L3. The code was sent in the club's own community group. */
+  admin_group_main_group: (p: { club: string }): string =>
+    `This is *${p.club}*'s main group, so it can't be the admin group. Add me to a separate group for the admins.`,
+  /** L4. To the owner, by DM, after MatchTime was removed from the admin group. */
+  admin_group_removed_dm: (p: { club: string }): string =>
+    `I was removed from *${p.club}*'s admin group, so admin messages now come to you by DM. You can link a group again in Settings.`,
+  settings_admin_channel_heading: "Admin messages go to",
+  settings_admin_channel_info:
+    "Where MatchTime sends messages only admins should see: the waiting list to pick from, the drop-out summary, late drop-outs, who hasn't paid and new players to check. One person: a DM to the person you choose. Admin WhatsApp group: one message in your admins' group, and admins can reply there with a number, a name or a tag to pick a player. MatchTime reads nothing else in that group. Each admin by DM: every admin gets their own copy.",
+  settings_admin_channel_mode_one_person: "One person",
+  settings_admin_channel_mode_admin_group: "Admin WhatsApp group",
+  settings_admin_channel_mode_each_admin: "Each admin by DM",
+  settings_admin_channel_person_label: "Who",
+  settings_admin_channel_person_owner: (p: { name: string }): string => `${p.name} (owner)`,
+  settings_admin_channel_link_button: "Link admin group",
+  settings_admin_channel_link_again: "New code",
+  settings_admin_channel_link_info_title: "Link admin group",
+  settings_admin_channel_link_info:
+    "Press the button, then add MatchTime to your admins' WhatsApp group and send the code shown here in that group. The code works once and lasts 48 hours. MatchTime will not start a club setup in that group.",
+  settings_admin_channel_step_code: (p: { code: string }): string => `Keep this page open. Your code: ${p.code}`,
+  settings_admin_channel_step_add: "Add MatchTime to your admins' WhatsApp group.",
+  settings_admin_channel_step_send: "In that group, send:",
+  settings_admin_channel_command: (p: { code: string }): string => `@Match Time admin group ${p.code}`,
+  settings_admin_channel_validity: "The code works once and lasts 48 hours.",
+  settings_admin_channel_linked: (p: { group: string }): string => `Linked: ${p.group}`,
+  settings_admin_channel_unlink: "Unlink",
+  settings_admin_channel_pending_note:
+    "Until a group is linked, admin messages keep going where they go now.",
+  settings_admin_channel_saved: "Saved",
+  settings_admin_channel_unlinked: "Unlinked. Admin messages now go to the owner by DM.",
 };
