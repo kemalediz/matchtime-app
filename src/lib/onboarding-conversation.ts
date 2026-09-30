@@ -1099,7 +1099,8 @@ export function legacyEventQuestion(
   return null;
 }
 
-function presetForSide(n: number) {
+/** The sport preset the in-group setup copies for `n` players per side. */
+export function presetForSide(n: number) {
   return (
     SPORT_PRESETS.find((p) => p.key === `football-${n}aside`) ??
     SPORT_PRESETS.find((p) => p.playersPerTeam === n) ??
