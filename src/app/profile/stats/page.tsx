@@ -13,8 +13,8 @@ import {
 import { RatingTimeline } from "@/components/stats/rating-timeline";
 import { InfoButton } from "@/components/stats/info-button";
 import { t } from "@/lib/i18n/t";
-import { formatLastPlayed } from "@/lib/ranked-table-activity";
-import { TEAM_OF_SEASON_MIN_GAMES } from "@/lib/pipeline/stats-answer";
+import { lastPlayedLabel } from "@/lib/i18n/dates";
+import { GROUP_RATINGS_MIN_GAMES } from "@/lib/pipeline/stats-answer";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +28,12 @@ export default async function MyStatsPage() {
   const meId = session.user.id;
   const [stats, leaderboard, tots, allClubs, myClubRating] = await Promise.all([
     loadPlayerSeasonStats(membership.orgId, meId),
-    // `viewerId` so a player who has aged out of the ranked table still
-    // sees his own row on his own page — see
+    // The loader's default minimum is GROUP_RATINGS_MIN_GAMES, the same
+    // rule as Team of the Season (Kemal, 2026-09-30). Do not lower it
+    // here. `viewerId` so a player outside the table (aged out, or short
+    // of rated matches) still sees his own row on his own page: see
     // VIEWER_IS_EXEMPT_ON_OWN_STATS_PAGE in `ranked-table-activity.ts`.
-    loadRatingLeaderboard(membership.orgId, { minGames: 1, limit: 20, viewerId: meId }),
+    loadRatingLeaderboard(membership.orgId, { limit: 20, viewerId: meId }),
     loadTeamOfSeason(membership.orgId),
     // The overall rating is the ONE number in this product with an
     // access rule: it is built from every club this player has ever
@@ -333,51 +335,43 @@ export default async function MyStatsPage() {
         {leaderboard.length > 0 && (
           <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4">
             <div className="flex items-center gap-1.5 mb-3">
-              <div className="text-sm font-semibold text-slate-800">Squad leaderboard</div>
-              <InfoButton title="Squad leaderboard">
-                <p>Everyone ranked by their average rating this season.</p>
+              <div className="text-sm font-semibold text-slate-800">{s.stats_leaderboard_title}</div>
+              <InfoButton title={s.stats_leaderboard_title}>
+                <p>{s.stats_leaderboard_info_lead}</p>
                 <p>
-                  The arrow shows how each player moved since last week&apos;s match:{" "}
-                  <span className="text-emerald-600 font-semibold">↑</span> climbed,{" "}
-                  <span className="text-red-500 font-semibold">↓</span> dropped,{" "}
-                  <span className="text-slate-400 font-semibold">▬</span> no change.
+                  {s.stats_leaderboard_info_arrows_lead}{" "}
+                  <span className="text-emerald-600 font-semibold">↑</span> {s.stats_leaderboard_arrow_up},{" "}
+                  <span className="text-red-500 font-semibold">↓</span> {s.stats_leaderboard_arrow_down},{" "}
+                  <span className="text-slate-400 font-semibold">▬</span> {s.stats_leaderboard_arrow_same}.
                 </p>
-                {/* Say the table is filtered. A silent filter is how
-                    "where did I go?" questions start, and this InfoButton
-                    is where a player looks for the answer. */}
-                <p>
-                  The table lists players who have played in the last three months.
-                  Anyone who hasn&apos;t comes out of the rankings until they play
-                  again — their rating isn&apos;t changed or reduced while
-                  they&apos;re away, it just isn&apos;t ranked. One game back and
-                  they&apos;re in the table again at the same number.
-                </p>
-                <p className="text-slate-400">
-                  A <span className="font-semibold">1 game</span> tag means it&apos;s
-                  early days for them. Their position will settle as they play more.
-                </p>
+                {/* Say the table is filtered, and say it in the SAME words
+                    as the Team of the Season button below: both read one
+                    string, so the two panels cannot disagree. A silent
+                    filter is how "where did I go?" questions start. */}
+                <p>{s.stats_table_rule({ minGames: GROUP_RATINGS_MIN_GAMES })}</p>
               </InfoButton>
             </div>
             <div className="space-y-1">
               {leaderboard.map((r) => {
                 const isMe = r.userId === meId;
+                const unranked = r.rank === null;
                 return (
                   <div
                     key={r.userId}
                     className={`flex items-center gap-3 rounded-lg px-2 py-1.5 ${
-                      r.inactive ? "mt-2 border-t border-slate-200 pt-2.5" : ""
-                    } ${isMe && !r.inactive ? "bg-blue-50" : ""}`}
+                      unranked ? "mt-2 border-t border-slate-200 pt-2.5" : ""
+                    } ${isMe && !unranked ? "bg-blue-50" : ""}`}
                   >
                     <span className="w-5 text-sm font-semibold text-slate-500 text-right">
                       {/* An unranked row shows a dash, never a number.
                           Giving it a position would invent a standing the
-                          player hasn't played for — the same objection
+                          player hasn't played for, the same objection
                           that ruled out decaying the rating. */}
                       {r.rank ?? "–"}
                     </span>
                     <span
                       className={`flex-1 text-sm truncate ${
-                        r.inactive
+                        unranked
                           ? "text-slate-400"
                           : isMe
                             ? "font-bold text-blue-700"
@@ -385,22 +379,17 @@ export default async function MyStatsPage() {
                       }`}
                     >
                       {r.name}
-                      {isMe && " (you)"}
+                      {isMe && s.stats_leaderboard_you}
                     </span>
-                    {r.provisional && !r.inactive && (
-                      <span className="shrink-0 inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold">
-                        1 game
-                      </span>
-                    )}
-                    {r.inactive && (
+                    {unranked && (
                       <span className="shrink-0 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold">
-                        not ranked
+                        {s.stats_leaderboard_not_ranked}
                       </span>
                     )}
-                    {!r.inactive && <Movement delta={r.delta} />}
+                    {!unranked && <Movement delta={r.delta} newLabel={s.stats_leaderboard_new} />}
                     <span
                       className={`w-10 text-right text-sm font-semibold ${
-                        r.inactive ? "text-slate-400" : "text-slate-800"
+                        unranked ? "text-slate-400" : "text-slate-800"
                       }`}
                     >
                       {r.avg.toFixed(1)}
@@ -409,22 +398,24 @@ export default async function MyStatsPage() {
                 );
               })}
               {/* The whole point of the viewer exemption: tell him why
-                  he's below the line and that his number is intact, so
-                  the page reads as an invitation back rather than a
-                  demotion he didn't earn. */}
-              {leaderboard.some((r) => r.inactive && r.userId === meId) && (
-                <p className="px-2 pt-1 text-[11px] leading-snug text-slate-500">
-                  You&apos;re not in the rankings at the moment
-                  {(() => {
-                    const mine = leaderboard.find((r) => r.userId === meId)!;
-                    return mine.lastPlayed
-                      ? ` — your last game was ${formatLastPlayed(mine.lastPlayed)}`
-                      : "";
-                  })()}
-                  . Your {leaderboard.find((r) => r.userId === meId)!.avg.toFixed(1)} is
-                  untouched: play one more and you&apos;re straight back in the table with it.
-                </p>
-              )}
+                  he's below the line and what brings him in, so the page
+                  reads as an invitation rather than a demotion. Too few
+                  rated matches is said first: playing those also brings
+                  back a player who has been away. */}
+              {(() => {
+                const mine = leaderboard.find((r) => r.userId === meId && r.rank === null);
+                if (!mine) return null;
+                const text =
+                  mine.gamesNeeded > 0
+                    ? s.stats_leaderboard_join({ minGames: GROUP_RATINGS_MIN_GAMES, games: mine.games })
+                    : s.stats_leaderboard_away({
+                        avg: mine.avg.toFixed(1),
+                        lastPlayed: mine.lastPlayed
+                          ? lastPlayedLabel(membership.org.language, mine.lastPlayed)
+                          : undefined,
+                      });
+                return <p className="px-2 pt-1 text-[11px] leading-snug text-slate-500">{text}</p>;
+              })()}
             </div>
           </div>
         )}
@@ -433,18 +424,12 @@ export default async function MyStatsPage() {
         {tots && tots.formation.length > 0 && (
           <div className="mt-4 rounded-2xl bg-gradient-to-b from-emerald-700 to-emerald-800 text-white p-4">
             <div className="flex items-center gap-1.5 mb-3">
-              <div className="text-sm font-semibold">⚽ Team of the Season</div>
+              <div className="text-sm font-semibold">⚽ {s.stats_tots_title}</div>
               <span className="[&_svg]:text-emerald-200">
-                <InfoButton title="Team of the Season">
-                  <p>
-                    The best line-up of the season so far: the highest season-average-rated player
-                    in each position ({tots.sportName}).
-                  </p>
+                <InfoButton title={s.stats_tots_title}>
+                  <p>{s.stats_tots_info_lead({ sportName: tots.sportName })}</p>
                   <p className="text-slate-400">
-                    Players need at least {TEAM_OF_SEASON_MIN_GAMES} rated games and a game in the
-                    last three months to be picked. The three-month rule is the same one the squad
-                    leaderboard uses: anyone away longer is back in contention the moment they play
-                    again.
+                    {s.stats_table_rule({ minGames: GROUP_RATINGS_MIN_GAMES })}
                   </p>
                 </InfoButton>
               </span>
@@ -457,7 +442,7 @@ export default async function MyStatsPage() {
                   </span>
                   <span className="flex-1 text-sm font-medium truncate">
                     {slot.name}
-                    {slot.userId === meId && " (you)"}
+                    {slot.userId === meId && s.stats_leaderboard_you}
                   </span>
                   <span className="text-sm font-bold">{slot.avg.toFixed(1)}</span>
                 </div>
@@ -539,9 +524,9 @@ function Tile({
   );
 }
 
-function Movement({ delta }: { delta: number | null }) {
+function Movement({ delta, newLabel }: { delta: number | null; newLabel: string }) {
   if (delta === null)
-    return <span className="text-[11px] text-blue-500 w-8 text-center">new</span>;
+    return <span className="text-[11px] text-blue-500 w-8 text-center">{newLabel}</span>;
   if (delta === 0) return <span className="text-slate-300 w-8 text-center">▬</span>;
   if (delta > 0)
     return <span className="text-emerald-600 text-xs font-semibold w-8 text-center">↑{delta}</span>;

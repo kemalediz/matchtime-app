@@ -281,3 +281,63 @@ describe("loadRatingLeaderboard cut to a period (2026-09-23)", () => {
     expect(where).not.toHaveProperty("date");
   });
 });
+
+/**
+ * THE SQUAD LEADERBOARD NEEDS THREE RATED MATCHES (Kemal, 2026-09-30):
+ * "i like the rule for the leaderboard, implement it". The same rule as
+ * Team of the Season, from the same constant: at least
+ * `GROUP_RATINGS_MIN_GAMES` rated matches AND a match in the last three
+ * months. One lucky night no longer puts a newcomer at the top of the
+ * table with a "1 game" tag.
+ *
+ * In the seed: Kemal has 4 rated matches and is active, Najib 2 and
+ * active, Ehtisham 2 and gone for 100 days.
+ */
+describe("the squad leaderboard needs the group's minimum of rated matches (Kemal, 2026-09-30)", () => {
+  it("by default ranks only players with GROUP_RATINGS_MIN_GAMES rated matches", async () => {
+    const rows = await loadRatingLeaderboard(ORG);
+    expect(rows.map((r) => r.name)).toEqual(["Kemal"]);
+    expect(rows[0]!.rank).toBe(1);
+  });
+
+  it("no ranked row can carry a provisional 'early days' tag any more", async () => {
+    const rows = await loadRatingLeaderboard(ORG);
+    for (const r of rows) {
+      expect(r).not.toHaveProperty("provisional");
+      expect(r.games).toBeGreaterThanOrEqual(GROUP_RATINGS_MIN_GAMES);
+    }
+  });
+
+  it("gives an active viewer below the minimum his own unranked row, saying how many more he needs", async () => {
+    const rows = await loadRatingLeaderboard(ORG, { viewerId: "stayer" });
+    const me = rows.find((r) => r.userId === "stayer")!;
+    expect(me).toBeDefined();
+    expect(me.rank).toBeNull();
+    expect(me.inactive).toBe(false);
+    expect(me.games).toBe(2);
+    expect(me.gamesNeeded).toBe(1);
+    expect(me.avg).toBeCloseTo(7, 5);
+    expect(rows.at(-1)!.userId).toBe("stayer");
+  });
+
+  it("a viewer both away and below the minimum is told about the games, and marked inactive", async () => {
+    const rows = await loadRatingLeaderboard(ORG, { viewerId: "leaver" });
+    const me = rows.find((r) => r.userId === "leaver")!;
+    expect(me.rank).toBeNull();
+    expect(me.inactive).toBe(true);
+    expect(me.gamesNeeded).toBe(1);
+  });
+
+  it("a ranked row needs no more games", async () => {
+    const rows = await loadRatingLeaderboard(ORG, { viewerId: "regular" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.gamesNeeded).toBe(0);
+  });
+
+  it("the viewer's row is still purely additive under the new minimum", async () => {
+    const anonymous = await loadRatingLeaderboard(ORG);
+    const asStayer = await loadRatingLeaderboard(ORG, { viewerId: "stayer" });
+    expect(asStayer.filter((r) => r.rank !== null)).toEqual(anonymous);
+    expect(asStayer).toHaveLength(anonymous.length + 1);
+  });
+});

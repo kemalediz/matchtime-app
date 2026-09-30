@@ -1520,6 +1520,37 @@ export const en = {
    *  MatchTime has stopped. */
   ai_daily_cap_reached: (): string => "I've answered a lot of questions today, ask me again tomorrow.",
 
+  // ── /profile/stats: the squad leaderboard and Team of the Season panels
+  // (2026-09-30). Kemal: "i like the rule for the leaderboard, implement
+  // it and update the info button description on the panel." Both
+  // panels now apply ONE rule, so both info buttons state it from ONE
+  // string (`stats_table_rule`) and cannot contradict each other. New
+  // copy, house style: plain, no em dashes.
+  stats_leaderboard_title: "Squad leaderboard",
+  stats_leaderboard_info_lead: "Everyone in the table, ranked by their average rating this season.",
+  stats_leaderboard_info_arrows_lead: "The arrow shows how each player moved since last week's match:",
+  stats_leaderboard_arrow_up: "climbed",
+  stats_leaderboard_arrow_down: "dropped",
+  stats_leaderboard_arrow_same: "no change",
+  stats_leaderboard_new: "new",
+  stats_leaderboard_you: " (you)",
+  stats_leaderboard_not_ranked: "not ranked",
+  /** The rule, once, for both info buttons. The minimum is the one
+   *  constant `GROUP_RATINGS_MIN_GAMES`, passed in, never typed here. */
+  stats_table_rule: (p: { minGames: number }): string =>
+    `The squad leaderboard and Team of the Season use the same rule: a player needs at least ${p.minGames} rated matches and a match in the last three months. Anyone away for longer drops out until they play again, then comes straight back with the same rating, because it is never reduced while they are away.`,
+  /** The viewer's own row when they have fewer rated matches than the
+   *  table needs. `games` is at least 1: a player never rated gets no
+   *  row at all. */
+  stats_leaderboard_join: (p: { minGames: number; games: number }): string =>
+    `Play ${p.minGames} rated matches to join the table. You have ${p.games} so far, so ${p.minGames - p.games} more to go.`,
+  /** The viewer's own row when three months away took them out. */
+  stats_leaderboard_away: (p: { avg: string; lastPlayed?: string }): string =>
+    `You're not in the rankings at the moment${p.lastPlayed ? `: your last game was ${p.lastPlayed}` : ""}. Your ${p.avg} is untouched, and one more game puts you straight back in the table with it.`,
+  stats_tots_title: "Team of the Season",
+  stats_tots_info_lead: (p: { sportName: string }): string =>
+    `The best line-up of the season so far: the player with the highest season average rating in each position (${p.sportName}).`,
+
   // ── Self-join, slice 4: the organiser web (2026-09-29) ────────────
   // MDs/self-join-and-approval-plan-2026-09-28.md sections 5.1 to 5.3.
   // The website a new organiser reads while creating a club and

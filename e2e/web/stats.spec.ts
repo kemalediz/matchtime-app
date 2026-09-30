@@ -152,3 +152,27 @@ test("the dashboard tile is the CLUB rating, and it is the raw one", async ({ pa
   await expect(page.getByText("7.5", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("6.8", { exact: false })).toHaveCount(0);
 });
+
+/**
+ * The squad leaderboard follows the Team of the Season rule (Kemal,
+ * 2026-09-30): at least three rated matches and a match in the last
+ * three months. Riley has ONE rated match in the fixture world, so he
+ * is not ranked. His own page still shows him, unranked, with what it
+ * takes to join, and the old "1 game" tag is gone.
+ */
+test("a player short of three rated matches is told how to join the squad leaderboard", async ({ page }) => {
+  await signInAs(page, U.rater, "/profile/stats");
+  await page.waitForURL("**/profile/stats", { timeout: 30_000 });
+
+  await expect(page.getByText("Squad leaderboard", { exact: true })).toBeVisible();
+  await expect(page.getByText("not ranked", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Play 3 rated matches to join the table. You have 1 so far, so 2 more to go."),
+  ).toBeVisible();
+  await expect(page.getByText("1 game", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "What is Squad leaderboard?" }).click();
+  await expect(
+    page.getByText("a player needs at least 3 rated matches and a match in the last three months", { exact: false }),
+  ).toBeVisible();
+});

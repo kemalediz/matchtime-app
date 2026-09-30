@@ -25,7 +25,7 @@ import {
 } from "./player-rating";
 import { buildRankedRoster, loadLastPlayedByUser } from "./ranked-table-activity";
 import { earnsMrReliable, ratingSpread } from "./mr-reliable";
-import { TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-answer";
+import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-answer";
 
 export {
   MR_RELIABLE_MAX_SPREAD,
@@ -449,12 +449,15 @@ export interface LeaderboardRow {
   prevRank: number | null;
   /** prevRank - rank: positive = climbed, negative = dropped, 0 = same. */
   delta: number | null;
-  /** Only one rated match so far — ranking is provisional/noisy. UI marks
-   *  these so a young squad still shows everyone who's played. */
-  provisional: boolean;
   /** True only on the viewer's own courtesy row: they are out of the
    *  ranked table because they haven't played in three months. */
   inactive: boolean;
+  /** Rated matches still needed to reach the table's minimum. Always 0
+   *  on a ranked row; above 0 only on the viewer's own courtesy row, so
+   *  the page can say "play N more to join the table". (This replaced
+   *  the "1 game" provisional tag on 2026-09-30: with a minimum of three
+   *  a ranked row can no longer have one game.) */
+  gamesNeeded: number;
   /** When this player last played. Present so the UI can say WHY an
    *  inactive row is unranked instead of leaving it a mystery. */
   lastPlayed: Date | null;
@@ -464,8 +467,13 @@ export interface LeaderboardRow {
  * Season rating leaderboard with week-on-week movement arrows. Ranks
  * players by their average peer rating across all completed matches,
  * then re-ranks excluding the most recent completed match to compute
- * the movement since last week. Min `minGames` appearances to rank
- * (one lucky game shouldn't top the table).
+ * the movement since last week. Min `minGames` rated matches to rank
+ * (one lucky game shouldn't top the table). The default is
+ * `GROUP_RATINGS_MIN_GAMES`, the same single number Team of the Season
+ * and the group's ratings list use (Kemal, 2026-09-30: "i like the rule
+ * for the leaderboard, implement it"), so the squad leaderboard and
+ * Team of the Season apply one rule: that many rated matches AND a
+ * match in the last three months.
  *
  * PLAYERS WHO HAVE STOPPED TURNING UP ARE NOT RANKED. Same rule as the
  * chat leaderboards: no CONFIRMED appearance in the last three months
@@ -475,7 +483,9 @@ export interface LeaderboardRow {
  * decayed number is one the player never earned and reads to him as a
  * bug.
  *
- * `viewerId` is the ONE exemption. This function backs `/profile/stats`,
+ * `viewerId` is the ONE exemption, and it covers both halves of the
+ * rule: a viewer who has aged out, or who has fewer than `minGames`
+ * rated matches, still gets his own unranked row. This function backs `/profile/stats`,
  * a page with the reader's own name at the top which promises to show
  * "how you stack up against the squad". Showing a returning player
  * nothing there is hostile, and it is also the most likely way anybody
@@ -501,7 +511,7 @@ export async function loadRatingLeaderboard(
     since?: Date;
   } = {},
 ): Promise<LeaderboardRow[]> {
-  const minGames = opts.minGames ?? 2;
+  const minGames = opts.minGames ?? GROUP_RATINGS_MIN_GAMES;
   const limit = opts.limit ?? 20;
 
   const matches = await db.match.findMany({
@@ -576,25 +586,26 @@ export async function loadRatingLeaderboard(
       rank: rankNow,
       prevRank,
       delta: prevRank !== null ? prevRank - rankNow : null,
-      provisional: r.games < 2,
       inactive: false,
+      gamesNeeded: 0,
       lastPlayed: roster.lastPlayed(r.id),
     };
   });
 
   // The viewer's courtesy row. Only when they have actually been rated
   // (a stranger gets nothing rather than an empty row), and only when
-  // the filter is what removed them — someone held out by `minGames`
-  // is a different situation the UI already explains with its "1 game"
-  // tag, and is not this rule's business.
+  // one of the table's two rules is what kept them out: three months
+  // away, or fewer than `minGames` rated matches. A viewer who is
+  // ranked but below the `limit` cut is not this row's business.
   const viewerId = opts.viewerId;
+  const viewerAcc = viewerId ? all.get(viewerId) : undefined;
   if (
     viewerId &&
-    !roster.isRanked(viewerId) &&
-    all.has(viewerId) &&
+    viewerAcc &&
+    (!roster.isRanked(viewerId) || viewerAcc.matches.size < minGames) &&
     !ranked.some((r) => r.userId === viewerId)
   ) {
-    const a = all.get(viewerId)!;
+    const a = viewerAcc;
     ranked.push({
       userId: viewerId,
       name: names.get(viewerId) ?? "(unknown)",
@@ -603,8 +614,8 @@ export async function loadRatingLeaderboard(
       rank: null,
       prevRank: null,
       delta: null,
-      provisional: a.matches.size < 2,
-      inactive: true,
+      inactive: !roster.isRanked(viewerId),
+      gamesNeeded: Math.max(0, minGames - a.matches.size),
       lastPlayed: roster.lastPlayed(viewerId),
     });
   }
