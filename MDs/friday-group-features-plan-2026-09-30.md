@@ -60,7 +60,7 @@ A club with `rollingSquadEnabled = true`:
 - `status = COMPLETED`, `isHistorical = false`, `date < target.date`.
 - The most recent one within `ROLLING_LOOKBACK_DAYS = 21`.
 - **After a cancelled week:** the cancelled match is skipped and the one before it is used, if it is within 21 days. The cancelled week's own attendance (people who said OUT for that week only) is ignored. Recommended, see decision D1.
-- **Longer gap** (summer break, a month off): no source, no seeding. The match opens empty and the ordinary cold announcement fires. The admin can press "Carry over last squad" on the match page (1.6) if they want it anyway.
+- **Longer gap** (summer break, a month off): no source, no seeding. The match opens empty and the ordinary cold announcement fires. The admin can press "Carry over last squad" on the match page (1.9) if they want it anyway.
 - **The target** is the soonest live (UPCOMING) match of that fixture after the source, not already seeded, with `now < date`. Only one target per source.
 
 ### 1.3 Who is carried over
