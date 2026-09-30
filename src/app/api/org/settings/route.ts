@@ -4,6 +4,7 @@ import { getUserOrg } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { normaliseLang } from "@/lib/i18n/lang";
 import { seesAdminFields } from "@/lib/admin-view";
+import { weeklyDeadlinesView } from "@/lib/weekly-deadlines-settings";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -92,6 +93,6 @@ export async function GET() {
     paymentHolderId: org.paymentHolderId,
     members: members.map((m) => ({ id: m.user.id, name: m.user.name })),
     // "Weekly routine" (2026-09-30). Slices 2 and 3 add their settings here.
-    weeklyRoutine: { rollingSquad: org.rollingSquadEnabled },
+    weeklyRoutine: { rollingSquad: org.rollingSquadEnabled, ...weeklyDeadlinesView(org) },
   });
 }

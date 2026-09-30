@@ -1573,6 +1573,44 @@ export const tr: Strings = {
   carry_over_hint: (p) => `${p.dateLabel} maçında oynayan herkesi bu maça ekler. Yine de YOKUM diyebilirler.`,
   carry_over_done: (p) => `${p.count} oyuncu aktarıldı`,
   carry_over_nothing: "Aktarılacak kimse yok",
+
+  // ── Haftalık saatler (2026-09-30) ──
+  dropout_reminder_post: (p) =>
+    `⏰ *${p.activityName}*, ${p.whenLabel}: son çıkış saati *bugün ${p.time}*. Oynayamayacaksanız o saatten önce *YOKUM* yazın.\n\n${p.rosterBlock}`,
+  deadline_summary_admin: (p) =>
+    [
+      `*${p.activityName}* (${p.whenLabel}) için son çıkış saati geçti. Kadro ${p.confirmed}/${p.maxPlayers}.`,
+      `Bu hafta çıkanlar: ${p.out.length > 0 ? p.out.join(", ") : "kimse"}.`,
+      ...(p.maybe.length > 0 ? [`Belki diyenler: ${p.maybe.join(", ")}.`] : []),
+      `Yedek listesi: ${p.waiting.length > 0 ? p.waiting.join(", ") : "boş"}.`,
+      ...(p.open > 0 ? [`${p.open} yer boş.`] : []),
+    ].join("\n"),
+  list_published_head: (p) => `📋 *${p.activityName}* listesi, *${p.dateLabel}*, ${p.venue}`,
+  list_published_playing_header: (p) => `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`,
+  list_published_open: (p) => `${p.open} yer hâlâ boş.`,
+  list_published_footer: "Artık gelemiyorsanız yerinize birinin alınabilmesi için hemen *YOKUM* yazın.",
+  wd_dropout_label: "Son çıkış saati",
+  wd_dropout_blurb: "Oyuncuların geç sayılmadan çıkabileceği son gün ve saat.",
+  wd_dropout_info:
+    "Oyuncuların geç sayılmadan çıkabileceği son saat. MatchTime 3 saat önce gruba hatırlatır, sonra yöneticilere kimin çıktığını ve kimin beklediğini yazar. " +
+    "Son çıkış saatinden sonra YOKUM yine geçerlidir, yöneticilere geç olduğu bildirilir.",
+  wd_publish_label: "Liste yayını",
+  wd_publish_blurb: "MatchTime'ın son listeyi gruba gönderdiği zaman.",
+  wd_publish_info:
+    "MatchTime'ın son listeyi gruba gönderdiği zaman: kim oynuyor, kim yedekte. " +
+    "Bu ve son çıkış saati ayarlıysa MatchTime, maç günü dışında her gün 17:00'de gönderdiği mesajı durdurur.",
+  wd_day_label: "Gün",
+  wd_time_label: "Saat",
+  wd_not_set: "Ayarlanmadı",
+  wd_weekday: (p) => ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"][p.dow] ?? "",
+  wd_save: "Kaydet",
+  wd_clear: "Temizle",
+  wd_saved: "Haftalık saatler kaydedildi",
+  wd_err_incomplete: "Hem gün hem saat seçin ya da ikisini de boş bırakın.",
+  wd_err_bad_value: "Bu gün ya da saat geçerli değil.",
+  wd_err_outside_hours: "08:00 ile 21:30 arasında bir saat seçin.",
+  wd_err_order: "Son çıkış saati, listenin yayınlanmasından önce olmalı.",
+  wd_err_after_kickoff: "Maç günü için maç saatinden önce bir saat seçin.",
 };
 
 /**

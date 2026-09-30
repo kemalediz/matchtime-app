@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const h = vi.hoisted(() => ({
   state: {
     rolling: true,
+    club: {} as Record<string, unknown>,
     rows: [] as Array<{ id: string; matchId: string; userId: string; status: string; position: number }>,
     events: [] as Array<Record<string, unknown>>,
     notices: [] as Array<{ orgId: string; text: string }>,
@@ -33,7 +34,7 @@ vi.mock("../db", () => {
         maxPlayers: 18,
         date: KICKOFF,
         attendanceDeadline: DEADLINE,
-        activity: { orgId: "org1", name: "Friday 9-a-side", org: { rollingSquadEnabled: h.state.rolling, language: "en" } },
+        activity: { orgId: "org1", name: "Friday 9-a-side", org: { rollingSquadEnabled: h.state.rolling, language: "en", ...h.state.club } },
       }),
     },
     user: { findUnique: async () => ({ name: "Wasim Ali" }) },
@@ -79,6 +80,7 @@ const SELF = { cause: "self-attendance", actorKind: "player", actorUserId: "wasi
 
 beforeEach(() => {
   h.state.rolling = true;
+  h.state.club = {};
   h.state.rows = [
     { id: "a1", matchId: "m1", userId: "wasim", status: "CONFIRMED", position: 1 },
     { id: "a2", matchId: "m1", userId: "hamzah", status: "CONFIRMED", position: 2 },
@@ -133,6 +135,26 @@ describe("a club without the setting (Sutton)", () => {
     h.state.rolling = false;
     await cancelAttendance("wasim", "m1", SELF, { occurredAt: new Date("2026-10-09T15:05:00.000Z") });
     expect(h.state.rows[0].status).toBe("DROPPED");
+    expect(h.state.events[0].note ?? null).toBeNull();
+    expect(h.state.notices).toEqual([]);
+  });
+});
+
+describe("a club with a weekly drop-out deadline (slice 3)", () => {
+  // Monday 21:00 London for the Friday 9 Oct match: Mon 5 Oct 20:00 UTC.
+  beforeEach(() => {
+    h.state.club = { dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00" };
+  });
+
+  it("an OUT on Tuesday is late against Monday 21:00, even though the sign-up deadline is Friday", async () => {
+    await cancelAttendance("wasim", "m1", SELF, { occurredAt: new Date("2026-10-06T09:00:00.000Z") });
+    expect(String(h.state.events[0].note)).toBe("after the drop-out deadline (Monday 21:00)");
+    expect(h.state.notices).toHaveLength(1);
+    expect(h.state.notices[0].text).toContain("after the Monday 21:00 deadline");
+  });
+
+  it("an OUT sent on Monday at 20:55 is on time", async () => {
+    await cancelAttendance("wasim", "m1", SELF, { occurredAt: new Date("2026-10-05T19:55:00.000Z") });
     expect(h.state.events[0].note ?? null).toBeNull();
     expect(h.state.notices).toEqual([]);
   });

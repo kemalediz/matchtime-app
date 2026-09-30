@@ -434,3 +434,49 @@ export function buildRollingAnnouncePost(
 export function buildRollingDeadlineLine(args: { deadline: string } & WithLang): string {
   return t(args.lang).rolling_deadline_line(args);
 }
+
+/**
+ * Row WDL1 (2026-09-30, weekly deadlines, D1 of plan 3.2): the group
+ * reminder 3 hours before the club's drop-out deadline, with the squad.
+ * `time` is the deadline's London "HH:mm"; the post goes out the same
+ * day, hence "today".
+ */
+export function buildDropOutReminderPost(
+  args: { activityName: string; whenLabel: string; time: string; rosterBlock: string } & WithLang,
+): string {
+  return t(args.lang).dropout_reminder_post(args);
+}
+
+/**
+ * Row WDL3 (2026-09-30, weekly deadlines, D3 of plan 3.2): the final list
+ * at the club's publish time. Playing, then the waiting list when there
+ * is one, then the places still open when there are any, then the ask to
+ * say OUT early. After this, every change is announced by the post that
+ * makes it; the list is not re-posted.
+ */
+export function buildListPublishedPost(
+  args: {
+    activityName: string;
+    dateLabel: string;
+    venue: string;
+    confirmed: NamedRow[];
+    bench: NamedRow[];
+    maxPlayers: number;
+  } & WithLang,
+): string {
+  const s = t(args.lang);
+  const lines: string[] = [
+    s.list_published_head(args),
+    ``,
+    s.list_published_playing_header({ confirmed: args.confirmed.length, maxPlayers: args.maxPlayers }),
+    ...numbered(args.confirmed, s.unnamed),
+  ];
+  if (args.bench.length > 0) {
+    lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
+  }
+  lines.push(``);
+  const open = Math.max(0, args.maxPlayers - args.confirmed.length);
+  if (open > 0) lines.push(s.list_published_open({ open }));
+  lines.push(s.list_published_footer);
+  return lines.join("\n");
+}

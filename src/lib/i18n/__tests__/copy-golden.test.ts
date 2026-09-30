@@ -254,6 +254,8 @@ import {
   buildUnpaidTailText,
   buildRollingAnnouncePost,
   buildRollingDeadlineLine,
+  buildDropOutReminderPost,
+  buildListPublishedPost,
   BENCH_THIN_BELOW,
 } from "../../scheduler-copy";
 import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
@@ -312,6 +314,7 @@ import {
   buildBenchDmAck,
   buildBenchDmUnclear,
   buildLateDropAdminNotice,
+  buildDeadlineSummaryAdminNotice,
   buildDirectPayCollectorNotice,
   buildDirectPayCollectorNudge,
   buildDmQaApology,
@@ -1284,6 +1287,70 @@ function cases(lang: Lang): Case[] {
     [wr.carry_over_button, wr.carry_over_hint({ dateLabel: lang === "tr" ? "2 Ekim Cuma" : "Fri 2 Oct" }), wr.carry_over_done({ count: 1 }), wr.carry_over_done({ count: 16 }), wr.carry_over_nothing].join("\n"),
   );
 
+  // ── Weekly deadlines (2026-09-30, slice 3 of the Friday-group plan).
+  //    NEW copy, added deliberately; no existing case changes. ──
+  const wdWhen = lang === "tr" ? "9 Ekim Cuma 20:30" : "Fri 9 Oct at 20:30";
+  const wdRoster = buildSquadRosterBlock({ confirmed: nine, bench: [{ name: "Ali Demir" }], maxPlayers: 18, lang });
+  add(
+    "WDL1 buildDropOutReminderPost",
+    buildDropOutReminderPost({ activityName: "Friday 9-a-side", whenLabel: wdWhen, time: "21:00", rosterBlock: wdRoster, lang }),
+  );
+  const wdSummary = { activityName: "Friday 9-a-side", whenLabel: wdWhen, maxPlayers: 18, lang };
+  add(
+    "WDL2 buildDeadlineSummaryAdminNotice / drops, maybes, waiting, places open",
+    buildDeadlineSummaryAdminNotice({
+      ...wdSummary,
+      confirmed: 16,
+      out: ["Wasim Ali", "Kemal Ediz"],
+      maybe: ["Raihan Ahmed"],
+      waiting: ["Ali Demir", "Sam Lee"],
+      open: 2,
+    }),
+  );
+  add(
+    "WDL2 buildDeadlineSummaryAdminNotice / nobody out, full, empty list",
+    buildDeadlineSummaryAdminNotice({ ...wdSummary, confirmed: 18, out: [], maybe: [], waiting: [], open: 0 }),
+  );
+  add(
+    "WDL2 buildDeadlineSummaryAdminNotice / one place open",
+    buildDeadlineSummaryAdminNotice({ ...wdSummary, confirmed: 17, out: ["Wasim Ali"], maybe: [], waiting: [], open: 1 }),
+  );
+  const wdList = {
+    activityName: "Friday 9-a-side",
+    dateLabel: rollingBase.dateLabel,
+    venue: "Powerleague Shoreditch",
+    lang,
+  };
+  add(
+    "WDL3 buildListPublishedPost / full with a waiting list",
+    buildListPublishedPost({ ...wdList, confirmed: nine, bench: [{ name: "Ali Demir" }, { name: null }], maxPlayers: 4 }),
+  );
+  add(
+    "WDL3 buildListPublishedPost / places still open",
+    buildListPublishedPost({ ...wdList, confirmed: nine, bench: [], maxPlayers: 6 }),
+  );
+  add(
+    "WDL3 buildListPublishedPost / one place still open",
+    buildListPublishedPost({ ...wdList, confirmed: nine, bench: [], maxPlayers: 5 }),
+  );
+  add(
+    "WDL4 weekly deadline settings",
+    [
+      `${wr.wd_dropout_label}: ${wr.wd_dropout_blurb}`,
+      `(i) ${wr.wd_dropout_info}`,
+      `${wr.wd_publish_label}: ${wr.wd_publish_blurb}`,
+      `(i) ${wr.wd_publish_info}`,
+      `${wr.wd_day_label} / ${wr.wd_time_label} / ${wr.wd_not_set}`,
+      [0, 1, 2, 3, 4, 5, 6].map((dow) => wr.wd_weekday({ dow })).join(", "),
+      `${wr.wd_save} / ${wr.wd_clear} / ${wr.wd_saved}`,
+      wr.wd_err_incomplete,
+      wr.wd_err_bad_value,
+      wr.wd_err_outside_hours,
+      wr.wd_err_order,
+      wr.wd_err_after_kickoff,
+    ].join("\n"),
+  );
+
   return c;
 }
 
@@ -1356,6 +1423,8 @@ const MIGRATED_ROWS = [
   "R157 ", "R158 ", "R159 ", "R160 ",
   // rolling squad (2026-09-30)
   "RSQ1 ", "RSQ2 ", "RSQ3 ", "RSQ4 ", "RSQ5 ",
+  // weekly deadlines (2026-09-30)
+  "WDL1 ", "WDL2 ", "WDL3 ", "WDL4 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

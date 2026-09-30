@@ -107,6 +107,80 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
   await db.run(`UPDATE "Organisation" SET language = 'en', "rollingSquadEnabled" = false WHERE id = $1`, [ORG_ID]);
 });
 
+test("Weekly routine: the drop-out deadline and list time persist, refuse bad input, and explain themselves (EN and TR)", async ({
+  page,
+  db,
+}) => {
+  // The seeded club plays Tuesday 20:00 ("E2E 5-a-side").
+  const row = () =>
+    db.one<{ dd: number | null; dt: string | null; pd: number | null; pt: string | null }>(
+      `SELECT "dropOutDeadlineDay" AS dd, "dropOutDeadlineTime" AS dt, "listPublishDay" AS pd, "listPublishTime" AS pt
+       FROM "Organisation" WHERE id = $1`,
+      [ORG_ID],
+    );
+  await signInAs(page, U.admin, "/admin/settings");
+  await page.waitForURL("**/admin/settings");
+  const section = page.getByTestId("weekly-routine");
+  await expect(section.getByRole("heading", { name: "Weekly routine" })).toBeVisible({ timeout: 30_000 });
+
+  // The ⓘ for each.
+  await section.getByRole("button", { name: "What is Drop-out deadline?" }).click();
+  await expect(page.getByText(/MatchTime reminds the group 3 hours before/)).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await section.getByRole("button", { name: "What is List published?" }).click();
+  await expect(page.getByText(/MatchTime stops the daily 17:00 post, except on match day/)).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+
+  // Monday 21:00 and Tuesday 19:00: saved.
+  await section.getByTestId("wd-dropout-day").selectOption("1");
+  await section.getByTestId("wd-dropout-time").fill("21:00");
+  await section.getByTestId("wd-dropout-save").click();
+  await expect.poll(async () => await row()).toMatchObject({ dd: 1, dt: "21:00" });
+  await section.getByTestId("wd-publish-day").selectOption("2");
+  await section.getByTestId("wd-publish-time").fill("19:00");
+  await section.getByTestId("wd-publish-save").click();
+  await expect.poll(async () => await row()).toEqual({ dd: 1, dt: "21:00", pd: 2, pt: "19:00" });
+
+  // A list time on match day after kickoff is refused, and nothing changes.
+  await section.getByTestId("wd-publish-time").fill("20:30");
+  await section.getByTestId("wd-publish-save").click();
+  await expect(section.getByTestId("wd-publish-error")).toHaveText("On match day, pick a time before kickoff.");
+  expect(await row()).toMatchObject({ pd: 2, pt: "19:00" });
+
+  // Half a pair is refused.
+  await section.getByTestId("wd-dropout-day").selectOption("");
+  await section.getByTestId("wd-dropout-save").click();
+  await expect(section.getByTestId("wd-dropout-error")).toHaveText("Pick both a day and a time, or neither.");
+
+  // After a reload the saved values are shown.
+  await page.reload();
+  const again = page.getByTestId("weekly-routine");
+  await expect(again.getByTestId("wd-dropout-day")).toHaveValue("1", { timeout: 30_000 });
+  await expect(again.getByTestId("wd-dropout-time")).toHaveValue("21:00");
+  await expect(again.getByTestId("wd-publish-time")).toHaveValue("19:00");
+
+  // A Turkish club reads it in Turkish, errors included.
+  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+  await page.reload();
+  const tr = page.getByTestId("weekly-routine");
+  await expect(tr.getByRole("heading", { name: "Haftalık düzen" })).toBeVisible({ timeout: 30_000 });
+  await tr.getByRole("button", { name: "What is Son çıkış saati?" }).click();
+  await expect(page.getByText(/MatchTime 3 saat önce gruba hatırlatır/)).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await tr.getByTestId("wd-dropout-time").fill("07:00");
+  await tr.getByTestId("wd-dropout-save").click();
+  await expect(tr.getByTestId("wd-dropout-error")).toHaveText("08:00 ile 21:30 arasında bir saat seçin.");
+
+  // Clear returns the club to today's behaviour.
+  await tr.getByTestId("wd-dropout-clear").click();
+  await expect.poll(async () => (await row())?.dd ?? null).toBeNull();
+  await tr.getByTestId("wd-publish-clear").click();
+  await expect.poll(async () => await row()).toEqual({ dd: null, dt: null, pd: null, pt: null });
+
+  // Restore for later specs.
+  await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+});
+
 test("settings + activities render with no horizontal overflow at mobile width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await signInAs(page, U.admin, "/admin/settings");

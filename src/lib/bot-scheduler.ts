@@ -53,7 +53,13 @@ import {
 } from "./bench-offer-copy";
 import { buildRatePromoPost, buildMatchDayChaseFallback, teamSheetNames } from "./group-copy";
 import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
-import { dropOutDeadlineFor } from "./weekly-deadlines";
+import {
+  dropOutDeadlineFor,
+  dropOutReminderDue,
+  hasWeeklyRhythm,
+  listPublishDue,
+  weeklyDeadlinesFor,
+} from "./weekly-deadlines";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   buildAnnounceMatchPost,
@@ -62,7 +68,9 @@ import {
   buildBotIntro,
   buildChasePreKickoffFallback,
   buildDailyInListFallback,
+  buildDropOutReminderPost,
   buildGearReminder,
+  buildListPublishedPost,
   buildMatchDayLockedPost,
   buildMatchDayTeamsBlock,
   buildPaymentPollQuestion,
@@ -684,6 +692,8 @@ export async function computeDuePosts(
     if (
       seg.startsWith("announce-match") ||
       seg.startsWith("rolling-announce") ||
+      seg.startsWith("dropout-reminder") ||
+      seg.startsWith("list-published") ||
       seg.startsWith("evening-update") ||
       seg.startsWith("chase-") ||
       seg.startsWith("pre-kickoff") ||
@@ -749,6 +759,12 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
               teamLabels: true,
               // The group's language: every static post below reads it.
               language: true,
+              // Weekly deadlines (2026-09-30, slice 3): club level, resolved
+              // per match by `weeklyDeadlinesFor`. All NULL for Sutton FC.
+              dropOutDeadlineDay: true,
+              dropOutDeadlineTime: true,
+              listPublishDay: true,
+              listPublishTime: true,
             },
           },
         },
@@ -930,7 +946,7 @@ async function computeForMatch(
               activityName: activity.name,
               dateLabel: longDayTimeLabel(lang, m.date),
               venue: activity.venue,
-              deadline: weekdayTimeLabel(lang, dropOutDeadlineFor(m)),
+              deadline: weekdayTimeLabel(lang, dropOutDeadlineFor(m, activity.org)),
               confirmed: confirmed.map((a) => a.user),
               bench: bench.map((a) => a.user),
               maxPlayers,
@@ -1007,7 +1023,15 @@ async function computeForMatch(
     // five minutes later.
     const eveningKey = `${matchId}:evening-update:${dayKey}`;
 
-    if (isEvening && isPrematch && isNextUpcoming && !sentKeys.has(eveningKey)) {
+    // WEEKLY DEADLINES, D4 (2026-09-30, plan 3.3): a club with both a
+    // drop-out deadline and a list publish time has its week told by the
+    // announcement, the reminder, the summary and the list, so the daily
+    // 17:00 post is off on every day except match day (where the line-up
+    // and the full-squad nudge still matter). False for a club without
+    // both settings, so Sutton FC's 17:00 post is untouched.
+    const weeklyRhythmQuietDay = hasWeeklyRhythm(activity.org) && dayKey !== londonDateKey(m.date);
+
+    if (isEvening && isPrematch && isNextUpcoming && !weeklyRhythmQuietDay && !sentKeys.has(eveningKey)) {
       // Stop the unpaid-chase tail once we're in the final day before
       // kickoff. Whoever has paid has paid; ~5 reminders (Wed → Sun for
       // a Tue match) is enough. From the day-before-match onward, drop
@@ -1036,7 +1060,7 @@ async function computeForMatch(
       // Rolling squad (R2, 2026-09-30): branches 2a and 2b add one line
       // with the drop-out deadline while it is still ahead. Null for a
       // club without the setting, so Sutton's bytes are unchanged.
-      const rollingDropOutDeadline = features.rollingSquad ? dropOutDeadlineFor(m) : null;
+      const rollingDropOutDeadline = features.rollingSquad ? dropOutDeadlineFor(m, activity.org) : null;
       const rollingDeadlineLine =
         rollingDropOutDeadline && now < rollingDropOutDeadline
           ? buildRollingDeadlineLine({ deadline: weekdayTimeLabel(lang, rollingDropOutDeadline), lang })
@@ -1212,6 +1236,75 @@ async function computeForMatch(
           matchId,
           text,
           mentions,
+        });
+      }
+    }
+  }
+
+  // ── 2-weekly. Weekly deadlines (2026-09-30, slice 3 of
+  //    MDs/friday-group-features-plan-2026-09-30.md, section 3.2) ───────
+  //    Two group posts for a club that has set them, each its own block
+  //    with its own key and no `return`, so nothing below is skipped:
+  //      D1 `<matchId>:dropout-reminder`  3 hours before the club's
+  //         drop-out deadline (not before 09:00), with the squad;
+  //      D3 `<matchId>:list-published`    at the club's publish time,
+  //         the final list.
+  //    D2, the organisers' summary once the deadline has passed, is not
+  //    here: it goes through `sendAdminNotice` from the due-posts route
+  //    (`deadline-summary.ts`), because computing posts must stay free
+  //    of side effects (preview mode relies on it).
+  //    Both use the next-upcoming gate, so next week's match never posts
+  //    while this week's is still live. A club without the settings
+  //    (Sutton FC) resolves both to null and gets neither.
+  {
+    const isLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
+    const weekly = weeklyDeadlinesFor(m.date, activity.org);
+    const reminderKey = `${matchId}:dropout-reminder`;
+    const listKey = `${matchId}:list-published`;
+    const reminderDue =
+      weekly.dropOut !== null && !sentKeys.has(reminderKey) && dropOutReminderDue(now, weekly.dropOut);
+    // Once the teams are out the team sheet is the announcement; a
+    // fourteen-name list after it would be the roster the group was
+    // told not to get again (2026-09-15).
+    const listDue =
+      weekly.listPublish !== null &&
+      !sentKeys.has(listKey) &&
+      m.teamAssignments.length === 0 &&
+      listPublishDue(now, weekly.listPublish, m.date);
+    if (isLive && (reminderDue || listDue) && isNextUpcomingForPosting(siblingMatches, m)) {
+      if (reminderDue) {
+        out.push({
+          kind: "group-message",
+          key: reminderKey,
+          matchId,
+          text: buildDropOutReminderPost({
+            activityName: activity.name,
+            whenLabel: dayTimeLabel(lang, m.date),
+            time: format(weekly.dropOut!, "HH:mm"),
+            rosterBlock: buildSquadRosterBlock({
+              confirmed: confirmed.map((a) => a.user),
+              bench: bench.map((a) => a.user),
+              maxPlayers,
+              lang,
+            }),
+            lang,
+          }),
+        });
+      }
+      if (listDue) {
+        out.push({
+          kind: "group-message",
+          key: listKey,
+          matchId,
+          text: buildListPublishedPost({
+            activityName: activity.name,
+            dateLabel: longDayTimeLabel(lang, m.date),
+            venue: activity.venue,
+            confirmed: confirmed.map((a) => a.user),
+            bench: bench.map((a) => a.user),
+            maxPlayers,
+            lang,
+          }),
         });
       }
     }

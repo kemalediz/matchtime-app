@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt, Languages, Repeat } from "lucide-react";
 import { setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
 import { InfoButton } from "@/components/stats/info-button";
+import { WeeklyDeadlineRows, type DayTimeValue } from "@/components/settings/weekly-deadline-rows";
 import { t } from "@/lib/i18n/t";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
@@ -32,7 +33,12 @@ interface OrgData {
   paymentHolderId?: string | null;
   members?: { id: string; name: string | null }[];
   /** "Weekly routine" (2026-09-30). Slices 2 and 3 add their settings. */
-  weeklyRoutine?: { rollingSquad: boolean };
+  weeklyRoutine?: {
+    rollingSquad: boolean;
+    /** Weekly deadlines (slice 3): null when not set. */
+    dropOutDeadline?: DayTimeValue | null;
+    listPublish?: DayTimeValue | null;
+  };
 }
 
 export default function SettingsPage() {
@@ -147,7 +153,9 @@ export default function SettingsPage() {
     setSavingRoutine("rollingSquad");
     setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad: next } } : prev));
     try {
-      const { rollingSquad } = await setWeeklyRoutine(org.id, { rollingSquad: next });
+      const res = await setWeeklyRoutine(org.id, { rollingSquad: next });
+      if (!res.ok) throw new Error(res.error);
+      const { rollingSquad } = res;
       setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad } } : prev));
       toast.success(rollingSquad ? s.wr_rolling_on : s.wr_rolling_off);
     } catch {
@@ -462,6 +470,13 @@ export default function SettingsPage() {
                     />
                   </button>
                 </div>
+                {/* Weekly deadlines (slice 3): its own component. */}
+                <WeeklyDeadlineRows
+                  orgId={org.id}
+                  language={org.language}
+                  dropOutDeadline={org.weeklyRoutine?.dropOutDeadline ?? null}
+                  listPublish={org.weeklyRoutine?.listPublish ?? null}
+                />
               </div>
             </div>
           </section>

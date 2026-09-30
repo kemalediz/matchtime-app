@@ -9,11 +9,19 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const authMock = vi.fn();
 const orgUpdate = vi.fn();
+const orgFindUnique = vi.fn();
+const activityFindMany = vi.fn();
 const requireOrgAdmin = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }));
 vi.mock("@/lib/db", () => ({
-  db: { organisation: { update: (...a: unknown[]) => orgUpdate(...a) } },
+  db: {
+    organisation: {
+      update: (...a: unknown[]) => orgUpdate(...a),
+      findUnique: (...a: unknown[]) => orgFindUnique(...a),
+    },
+    activity: { findMany: (...a: unknown[]) => activityFindMany(...a) },
+  },
 }));
 vi.mock("@/lib/org", () => ({
   isSuperadmin: vi.fn(),
@@ -25,10 +33,20 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const { setWeeklyRoutine } = await import("../org");
 
+const UNSET_ROW = {
+  rollingSquadEnabled: true,
+  dropOutDeadlineDay: null,
+  dropOutDeadlineTime: null,
+  listPublishDay: null,
+  listPublishTime: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   authMock.mockResolvedValue({ user: { id: "u-hamzah" } });
-  orgUpdate.mockResolvedValue({ rollingSquadEnabled: true });
+  orgUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...UNSET_ROW, ...data }));
+  orgFindUnique.mockResolvedValue({ ...UNSET_ROW });
+  activityFindMany.mockResolvedValue([{ dayOfWeek: 5, time: "20:30" }]);
   requireOrgAdmin.mockResolvedValue(undefined);
 });
 
@@ -39,7 +57,7 @@ describe("setWeeklyRoutine", () => {
     expect(orgUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "org-fnf" }, data: { rollingSquadEnabled: true } }),
     );
-    expect(res).toEqual({ rollingSquad: true });
+    expect(res).toMatchObject({ rollingSquad: true });
   });
 
   it("refuses a non-admin", async () => {
@@ -59,5 +77,72 @@ describe("setWeeklyRoutine", () => {
       setWeeklyRoutine("org-fnf", { rollingSquad: "yes" } as unknown as { rollingSquad: boolean }),
     ).rejects.toThrow();
     expect(orgUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
+  it("sets the Friday group's Monday 21:00 drop-out deadline and Tuesday 20:00 list", async () => {
+    const res = await setWeeklyRoutine("org-fnf", {
+      dropOutDeadline: { day: 1, time: "21:00" },
+      listPublish: { day: 2, time: "20:00" },
+    });
+    expect(orgUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "org-fnf" },
+        data: { dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00", listPublishDay: 2, listPublishTime: "20:00" },
+      }),
+    );
+    expect(activityFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { orgId: "org-fnf", isActive: true } }),
+    );
+    expect(res).toEqual({
+      ok: true,
+      rollingSquad: true,
+      dropOutDeadline: { day: 1, time: "21:00" },
+      listPublish: { day: 2, time: "20:00" },
+    });
+  });
+
+  it("validates against the setting already saved: a new drop-out deadline after the saved list time is refused", async () => {
+    orgFindUnique.mockResolvedValue({ ...UNSET_ROW, listPublishDay: 2, listPublishTime: "20:00" });
+    const res = await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 3, time: "21:00" } });
+    expect(res).toMatchObject({ error: "order" });
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a time on match day after kickoff, and a time outside 08:00 to 21:30", async () => {
+    expect(await setWeeklyRoutine("org-fnf", { listPublish: { day: 5, time: "21:00" } })).toMatchObject({
+      error: "after-kickoff",
+    });
+    expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "23:00" } })).toMatchObject({
+      error: "outside-hours",
+    });
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("null clears a pair and returns the club to today's behaviour", async () => {
+    orgFindUnique.mockResolvedValue({ ...UNSET_ROW, dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00" });
+    const res = await setWeeklyRoutine("org-fnf", { dropOutDeadline: null });
+    expect(orgUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { dropOutDeadlineDay: null, dropOutDeadlineTime: null } }),
+    );
+    expect(res).toMatchObject({ dropOutDeadline: null });
+  });
+
+  it("refuses a malformed pair outright", async () => {
+    await expect(
+      setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: "Monday", time: "21:00" } } as unknown as {
+        dropOutDeadline: { day: number; time: string };
+      }),
+    ).resolves.toMatchObject({ error: "bad-value" });
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a non-admin before reading anything", async () => {
+    requireOrgAdmin.mockRejectedValue(new Error("Admin access required"));
+    await expect(setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "21:00" } })).rejects.toThrow(
+      "Admin access required",
+    );
+    expect(orgFindUnique).not.toHaveBeenCalled();
   });
 });
