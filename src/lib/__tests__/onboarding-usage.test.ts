@@ -38,9 +38,15 @@ describe("BOT_ADDED_INTRO (the short on-add intro, 2026-09-17)", () => {
     expect(BOT_ADDED_INTRO).toContain("\n\n");
   });
 
-  it("is short: the owner's rule is that the group gets too many bot words", () => {
-    expect(BOT_ADDED_INTRO.length).toBeLessThan(400);
-    expect(BOT_ADDED_INTRO.split("\n").filter(Boolean).length).toBeLessThanOrEqual(3);
+  // Kemal, 2026-09-30, replacing the 2026-09-17 "one line" rule: the
+  // intro lists what MatchTime does, like the ad for new groups. Still
+  // bounded, so it stays one readable WhatsApp message.
+  it("lists the features in one readable message", () => {
+    expect(BOT_ADDED_INTRO.length).toBeLessThan(1200);
+    for (const f of ["In", "bench", "teams", "Man of the Match", "stats", "Match fees"]) {
+      expect(BOT_ADDED_INTRO).toContain(f);
+    }
+    expect(BOT_ADDED_INTRO).not.toMatch(/[—–]/);
   });
 
   it("identifies MatchTime and keeps the consent keyword the parser needs", () => {
@@ -63,7 +69,7 @@ describe("BOT_ADDED_INTRO (the short on-add intro, 2026-09-17)", () => {
     const tr = buildBotAddedIntro("tr");
     expect(tr).toContain("MatchTime");
     expect(tr).toContain("*EVET*");
-    expect(tr.length).toBeLessThan(400);
+    expect(tr.length).toBeLessThan(1300);
     expect(tr).not.toMatch(/[—–]/);
     expect(parseBundleReply("EVET")?.choice).toBe("yes");
   });

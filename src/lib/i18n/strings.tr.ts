@@ -723,7 +723,15 @@ export const tr: Strings = {
   // this block; nothing here has been reviewed yet.
 
   onbIntro: (): string =>
-    `👋 Merhaba, ben *MatchTime*. Futbol grubunun haftalık işlerini üstlenirim: kim var kim yok, dengeli takımlar, hatırlatmalar.\n\n` +
+    `👋 Merhaba, ben *MatchTime*. Futbol gruplarının haftalık işlerini burada, WhatsApp'ta üstlenirim:\n\n` +
+    `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
+    `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
+    `📣 *Hatırlatma:* oyuncu mu eksik? Gruba hatırlatırım, kadro dolunca dururum.\n` +
+    `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.\n` +
+    `⭐ *Puanlar ve maçın oyuncusu* her maçtan sonra.\n` +
+    `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
+    `💷 *Maç ücretleri:* isterseniz kart ya da banka ile ödeme bağlantıları.\n\n` +
+    `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm.\n\n` +
     `*Bu grubu ben yöneteyim mi?* Organizatör kimse *EVET* yazsın, iki kısa soru soracağım. ` +
     `İstemiyorsanız beni görmezden gelin, sessiz kalırım. 🤐`,
 

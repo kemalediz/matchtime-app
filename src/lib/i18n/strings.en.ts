@@ -797,7 +797,15 @@ export const en = {
    *  line on what it is, one question. The consent keyword is load
    *  bearing: parseBundleReply reads it. */
   onbIntro: (): string =>
-    `👋 Hi, I'm *MatchTime*. I run the weekly admin for a football group: who's in, who's out, fair teams, reminders.\n\n` +
+    `👋 Hi, I'm *MatchTime*. I take care of the weekly admin for football groups, right here in WhatsApp:\n\n` +
+    `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
+    `🪑 *The bench:* once you're full, late Ins go on the bench, and the bench gets first dibs if someone drops.\n` +
+    `📣 *Chasing:* short of players? I remind the group, and stop once you're full.\n` +
+    `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n` +
+    `⭐ *Ratings and Man of the Match* after every game.\n` +
+    `📊 *Stats:* ask me anything, and everyone gets their own stats page.\n` +
+    `💷 *Match fees:* card or bank pay links, if you want them.\n\n` +
+    `I stay quiet during the banter and only reply to In, Out or a tag.\n\n` +
     `*Want me to run this group?* Whoever organises it, reply *YES* and I'll ask two quick questions. ` +
     `Not for you? Ignore me and I'll stay quiet. 🤐`,
 
