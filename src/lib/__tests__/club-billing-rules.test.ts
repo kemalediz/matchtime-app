@@ -299,3 +299,15 @@ describe("4.5: billingContact", () => {
     expect(billingContact({ paymentHolderId: "elvin" }, [member("elvin", "PLAYER", { phoneNumber: "  " })])).toBeNull();
   });
 });
+
+describe("RESUME_QUIET_LOOKBACK_DAYS covers every post-match window", () => {
+  it("is at least the scheduler's post-match lookback and the unpaid-list window", async () => {
+    const { RESUME_QUIET_LOOKBACK_DAYS } = await import("@/lib/club-billing-rules");
+    const { POST_MATCH_LOOKBACK_DAYS, POST_MATCH_END_FLOW_MAX_AGE_DAYS } = await import("@/lib/bot-scheduler");
+    const { UNPAID_FOLLOW_UP_RETRY_DAYS } = await import("@/lib/unpaid-rules");
+    expect(RESUME_QUIET_LOOKBACK_DAYS).toBeGreaterThanOrEqual(POST_MATCH_LOOKBACK_DAYS);
+    expect(RESUME_QUIET_LOOKBACK_DAYS).toBeGreaterThanOrEqual(POST_MATCH_END_FLOW_MAX_AGE_DAYS);
+    // unpaid-list.ts looks back 2 + retry days + 1 of slack.
+    expect(RESUME_QUIET_LOOKBACK_DAYS).toBeGreaterThanOrEqual(2 + UNPAID_FOLLOW_UP_RETRY_DAYS + 1);
+  });
+});

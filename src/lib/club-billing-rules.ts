@@ -38,6 +38,15 @@ export const TRIAL_DAYS = 30;
 export const GRACE_DAYS = 7;
 /** Card reminders (slice B4), as days after approval. */
 export const REMINDER_DAYS = [21, 28] as const;
+/**
+ * On resume, matches completed this recently are quieted too (their
+ * post-match flow switched off), so nothing about a match from before the
+ * resume is posted. At least the scheduler's post-match lookback
+ * (`POST_MATCH_LOOKBACK_DAYS` in bot-scheduler.ts, pinned by a test), which
+ * covers every post-match window (payment poll, unpaid reminders, the
+ * admins' unpaid list, rating DMs, MoM).
+ */
+export const RESUME_QUIET_LOOKBACK_DAYS = 10;
 /** The signed-in billing link's life, in seconds (9 days, 4.5). */
 export const BILLING_LINK_TTL = 9 * 24 * 60 * 60;
 
@@ -75,6 +84,17 @@ export const BILLING_NOT_PAUSED_WHERE = { billingStatus: { not: "paused" } } as 
  */
 export function billingQuietWhere(env: Env = process.env): typeof BILLING_NOT_PAUSED_WHERE | Record<string, never> {
   return isBillingEnabled(env) ? BILLING_NOT_PAUSED_WHERE : {};
+}
+
+/**
+ * The same, for a query on a row that belongs to a MATCH (a bench offer,
+ * a pick round): skip it when the match's club is billing-paused. Empty
+ * while the flag is off.
+ */
+export function billingQuietMatchWhere(
+  env: Env = process.env,
+): { match: { activity: { org: typeof BILLING_NOT_PAUSED_WHERE } } } | Record<string, never> {
+  return isBillingEnabled(env) ? { match: { activity: { org: BILLING_NOT_PAUSED_WHERE } } } : {};
 }
 
 // ── Dates ───────────────────────────────────────────────────────────────

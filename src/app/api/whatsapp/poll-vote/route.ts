@@ -14,6 +14,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { isMatchClubBillingPaused } from "@/lib/club-billing";
 import { normalisePhone } from "@/lib/phone";
 
 export async function POST(request: Request) {
@@ -48,6 +49,13 @@ export async function POST(request: Request) {
   if (!sent.matchId) return NextResponse.json({ ok: true, ignored: "no-matchId" });
 
   const matchId = sent.matchId;
+
+  // Club fee billing (B1): a club paused for the club fee records no vote
+  // and no payment tick (the collector can still mark payments on the
+  // website). No query while BILLING_ENABLED is off.
+  if (await isMatchClubBillingPaused(matchId)) {
+    return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
+  }
 
   // 1. Try phone match (most accurate).
   let voter: { id: string; name: string | null } | null = null;

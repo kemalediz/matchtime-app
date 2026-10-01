@@ -60,6 +60,12 @@
 
 BEGIN;
 
+-- Fail fast rather than queue behind a long transaction holding a lock on
+-- "Organisation" (ALTER TABLE takes ACCESS EXCLUSIVE, and every request
+-- queued behind it would wait too). If this times out, nothing is applied:
+-- re-run when the database is quiet.
+SET LOCAL lock_timeout = '5s';
+
 -- AlterTable
 ALTER TABLE "Organisation" ADD COLUMN     "billingPlan" TEXT NOT NULL DEFAULT 'standard',
 ADD COLUMN     "billingPricePence" INTEGER,

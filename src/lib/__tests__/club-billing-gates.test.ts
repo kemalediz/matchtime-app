@@ -151,10 +151,9 @@ describe("loadSilentGroupIds (db)", () => {
     on();
     expect(await loadSilentGroupIds()).toEqual([PAUSED_GROUP]);
     const pausedQuery = dbMock.organisation.findMany.mock.calls.find((c) => c[0].where.billingStatus === "paused");
-    expect(pausedQuery?.[0].where).toEqual({
-      approvalStatus: "approved",
-      billingStatus: "paused",
-      whatsappGroupId: { not: null },
+    expect(pausedQuery?.[0]).toEqual({
+      where: { approvalStatus: "approved", billingStatus: "paused" },
+      select: { whatsappGroupId: true, adminGroupId: true },
     });
   });
 });

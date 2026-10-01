@@ -32,7 +32,7 @@ import { e164Digits, normalisePhone } from "./phone";
 import { lidDigits } from "./connect-dm-rules";
 import { parseParticipantSnapshot, snapshotPhone } from "./participant-snapshot";
 import { ACTIVE_ONBOARDING_STAGES } from "./onboarding-parse";
-import { APPROVED_CLUB_WHERE } from "./club-approval-state";
+import { APPROVED_CLUB_WHERE, servingClubWhere } from "./club-approval-state";
 import {
   ADMIN_GROUP_CODE_TTL_MS,
   generateAdminGroupLinkCode,
@@ -401,11 +401,16 @@ export async function handleAdminGroupRemoved(
 
 // ── For the Pi (2.5) ─────────────────────────────────────────────────────
 
-/** Every approved club's linked admin group. */
+/**
+ * Every SERVED club's linked admin group: approved and (BILLING_ENABLED on)
+ * not paused for the club fee. A paused club's admin group is left out
+ * here and listed silent instead (`loadSilentGroupIds`), so the Pi neither
+ * forwards nor answers anything there. Flag off: approved, as before.
+ */
 export async function loadAdminGroups(): Promise<Array<{ groupId: string; orgId: string }>> {
   const rows =
     (await db.organisation.findMany({
-      where: { ...APPROVED_CLUB_WHERE, adminGroupId: { not: null } },
+      where: { ...servingClubWhere(), adminGroupId: { not: null } },
       select: { id: true, adminGroupId: true },
     })) ?? [];
   return rows

@@ -29,6 +29,7 @@ import { db } from "./db";
 import { resolveSenderUserIds } from "./admin-group-link";
 import { handlePickReply } from "./organiser-pick";
 import { PICK_RACE_WINDOW_MS } from "./organiser-pick-rules";
+import { isBillingPaused } from "./club-billing-rules";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -46,7 +47,7 @@ export type AdminGroupMessageResult =
   | { handled: false; ignored: "not-an-admin-group"; replyText: null }
   | {
       handled: false;
-      ignored: "no-open-pick" | "not-an-admin" | "not-a-pick" | "duplicate";
+      ignored: "no-open-pick" | "not-an-admin" | "not-a-pick" | "duplicate" | "club-billing-paused";
       orgId: string;
       replyText: null;
     }
@@ -61,8 +62,16 @@ function parseTimestamp(ts: string | null | undefined): Date | null {
 
 export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<AdminGroupMessageResult> {
   const now = msg.now ?? new Date();
-  const org = await db.organisation.findFirst({ where: { adminGroupId: msg.groupId }, select: { id: true } });
+  const org = await db.organisation.findFirst({
+    where: { adminGroupId: msg.groupId },
+    select: { id: true, billingStatus: true },
+  });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };
+  // Club fee billing (B1): a club paused for the club fee answers nothing,
+  // and nothing is read or written for it. Never while BILLING_ENABLED is
+  // off. (The Pi should not forward from a paused club's admin group at
+  // all: it is listed silent. This is the server's own refusal.)
+  if (isBillingPaused(org)) return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
 
   // Nothing open (or just filled, for the "Already filled" answer): the
   // group is the admins' own conversation, and it stays theirs.

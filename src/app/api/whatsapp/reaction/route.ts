@@ -30,6 +30,8 @@ import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { classifyReactionAttendance, resolveRecruitDmReaction } from "@/lib/recruit-reaction";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
+import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
+import { isMatchClubBillingPaused } from "@/lib/club-billing";
 
 const norm = (s: string) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -52,8 +54,10 @@ export async function POST(request: Request) {
   }
 
   // The offer post the reaction is on (set on /ack via the offer- key).
+  // Club fee billing (B1): an offer of a club paused for the club fee is
+  // not claimable. Empty fragment while BILLING_ENABLED is off.
   const offer = await db.benchSlotOffer.findFirst({
-    where: { waMessageId, resolvedAt: null },
+    where: { waMessageId, resolvedAt: null, ...billingQuietMatchWhere() },
     include: {
       match: {
         include: {
@@ -195,6 +199,9 @@ async function handleRecruitDmReaction(input: {
   if (!["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)) {
     return { ok: true, ignored: "match-not-open" };
   }
+  // Club fee billing (B1): no attendance written, no ack, for a club paused
+  // for the club fee. No query while BILLING_ENABLED is off.
+  if (await isMatchClubBillingPaused(target.matchId)) return { ok: true, ignored: "club-billing-paused" };
 
   const res = await applyOutOfBandSelfAttendance({
     userId: target.userId,

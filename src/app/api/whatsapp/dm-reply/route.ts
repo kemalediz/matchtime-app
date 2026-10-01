@@ -59,6 +59,7 @@
  */
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
+import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
@@ -171,8 +172,11 @@ export async function POST(request: Request) {
   //   is idempotent so a double-answer (DM + reaction) is safe.
   {
     // Candidate set = bench players of any match with an OPEN offer.
+    // Club fee billing (B1): an offer of a club paused for the club fee is
+    // not answerable (nothing claimed, no reply); the DM then meets the
+    // billing rail below. Empty fragment while BILLING_ENABLED is off.
     const openOffers = await db.benchSlotOffer.findMany({
-      where: { resolvedAt: null },
+      where: { resolvedAt: null, ...billingQuietMatchWhere() },
       select: { matchId: true },
     });
     if (openOffers.length > 0 && !isHelpRequest) {

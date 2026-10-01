@@ -32,6 +32,14 @@ const PAUSED_ACTIVITY = "e2e-billing-paused-activity";
 const PAUSED_MATCH = "e2e-billing-paused-match";
 const PAUSED_PLAYER = "e2e-billing-paused-player";
 const PAUSED_PHONE = "+447700900961";
+const PAUSED_MATE = "e2e-billing-paused-mate";
+const PAUSED_MATE_PHONE = "+447700900963";
+const PAUSED_HQ = "120363900000000103@g.us";
+const PAUSED_FUTURE = "e2e-billing-paused-future";
+const PAUSED_DONE = "e2e-billing-paused-done";
+const OFFER_MSG = "e2e-billing-offer-msg";
+const MOM_MSG = "e2e-billing-mom-msg";
+const PAY_MSG = "e2e-billing-pay-msg";
 
 // A club that was paused and has just been resumed (4.4): what
 // `resumeClub` leaves behind for a match that kicked off during the pause.
@@ -122,6 +130,52 @@ test.beforeAll(async () => {
   await db.run(
     `INSERT INTO "BotJob" (id,"orgId",kind,text,"pollOptions") VALUES ('e2e-billing-job',$1,'group','queued before the pause','{}')`,
     [PAUSED_ORG],
+  );
+
+  // The doors that do not go through analyze: the club's linked admin
+  // group, an open bench offer (DM reply and 👍), and its polls.
+  await db.run(
+    `UPDATE "Organisation" SET "adminGroupId" = $2, "paymentTrackingEnabled" = true WHERE id = $1`,
+    [PAUSED_ORG, PAUSED_HQ],
+  );
+  await db.run(
+    `INSERT INTO "User" (id, name, email, "phoneNumber", onboarded, "isActive", "updatedAt")
+     VALUES ($1,'Mo Mate','billing-mate@e2e-test.invalid',$2,true,true,now())`,
+    [PAUSED_MATE, PAUSED_MATE_PHONE],
+  );
+  await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1,$2,$3,'OWNER')`, [
+    `${PAUSED_MATE}-mem`,
+    PAUSED_MATE,
+    PAUSED_ORG,
+  ]);
+  await db.run(
+    `INSERT INTO "Match" (id,"activityId",date,"maxPlayers",status,"attendanceDeadline","updatedAt")
+     VALUES ($1,$2,now() + interval '2 days',10,'UPCOMING',now() + interval '1 day',now())`,
+    [PAUSED_FUTURE, PAUSED_ACTIVITY],
+  );
+  await db.run(
+    `INSERT INTO "Attendance" (id,"matchId","userId",status,position,"updatedAt") VALUES ('e2e-billing-att-bench',$1,$2,'BENCH',11,now())`,
+    [PAUSED_FUTURE, PAUSED_PLAYER],
+  );
+  await db.run(
+    `INSERT INTO "BenchSlotOffer" (id,"matchId","waMessageId","updatedAt") VALUES ('e2e-billing-offer',$1,$2,now())`,
+    [PAUSED_FUTURE, OFFER_MSG],
+  );
+  await db.run(
+    `INSERT INTO "Match" (id,"activityId",date,"maxPlayers",status,"attendanceDeadline","updatedAt")
+     VALUES ($1,$2,now() - interval '3 days',10,'COMPLETED',now() - interval '4 days',now())`,
+    [PAUSED_DONE, PAUSED_ACTIVITY],
+  );
+  for (const [i, u] of [PAUSED_PLAYER, PAUSED_MATE].entries()) {
+    await db.run(
+      `INSERT INTO "Attendance" (id,"matchId","userId",status,position,"updatedAt") VALUES ($1,$2,$3,'CONFIRMED',$4,now())`,
+      [`e2e-billing-att-done-${i}`, PAUSED_DONE, u, i + 1],
+    );
+  }
+  await db.run(
+    `INSERT INTO "SentNotification" (id,key,kind,"matchId","waMessageId") VALUES
+       ('e2e-billing-mom',$1,'mom-poll',$3,$4), ('e2e-billing-pay',$2,'payment-poll',$3,$5)`,
+    [`${PAUSED_DONE}:mom-poll`, `${PAUSED_DONE}:payment-poll`, PAUSED_DONE, MOM_MSG, PAY_MSG],
   );
 
   // The resumed club: subscribed again. QUIET_MATCH is what resumeClub
@@ -256,12 +310,73 @@ test.describe("DMs (4.3 point 7)", () => {
   });
 });
 
+test.describe("the doors that bypass analyze (review fixes)", () => {
+  test("/orgs: the paused club's admin group is not handed out as an admin group, and is silent", async ({ request }) => {
+    const res = await request.get("/api/whatsapp/orgs", { headers: HEADERS });
+    const body = (await res.json()) as { adminGroups: Array<{ groupId: string }>; silentGroups: string[] };
+    expect(body.adminGroups.map((a) => a.groupId)).not.toContain(PAUSED_HQ);
+    expect(body.silentGroups).toContain(PAUSED_HQ);
+  });
+
+  test("admin-group: a message in the paused club's admin group is refused", async ({ request, db }) => {
+    const res = await request.post("/api/whatsapp/admin-group", {
+      headers: HEADERS,
+      data: { groupId: PAUSED_HQ, text: "1", senderPhone: PAUSED_MATE_PHONE.replace("+", ""), messageId: msgId() },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.ignored).toBe("club-billing-paused");
+    expect(body.replyText).toBeNull();
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE 'admin-group-msg:%'`)).toBe(0);
+  });
+
+  test("bench offer by DM: a YES from the paused club's bench player claims nothing and gets no reply", async ({ request, db }) => {
+    const before = await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [PAUSED_ORG]);
+    const body = await dm(request, PAUSED_PHONE, "YES");
+    expect(body.handled).not.toBe("bench-dm");
+    expect(body.ignored).toBe("club-billing-paused");
+    const att = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE id = 'e2e-billing-att-bench'`);
+    expect(att?.status).toBe("BENCH");
+    expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [PAUSED_ORG])).toBe(before);
+  });
+
+  test("bench offer by reaction: a 👍 claims nothing", async ({ request, db }) => {
+    const res = await request.post("/api/whatsapp/reaction", {
+      headers: HEADERS,
+      data: { waMessageId: OFFER_MSG, emoji: "👍", fromPhone: PAUSED_PHONE.replace("+", "") },
+    });
+    expect(res.status()).toBe(200);
+    expect((await res.json()).outcome).toBeUndefined();
+    const att = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE id = 'e2e-billing-att-bench'`);
+    expect(att?.status).toBe("BENCH");
+    const offer = await db.one<{ resolvedAt: Date | null }>(`SELECT "resolvedAt" FROM "BenchSlotOffer" WHERE id = 'e2e-billing-offer'`);
+    expect(offer?.resolvedAt).toBeNull();
+  });
+
+  test("poll votes: neither a MoM vote nor a payment tick is written", async ({ request, db }) => {
+    for (const waMessageId of [MOM_MSG, PAY_MSG]) {
+      const res = await request.post("/api/whatsapp/poll-vote", {
+        headers: HEADERS,
+        data: { waMessageId, voterPhone: PAUSED_PHONE.replace("+", ""), optionName: "Mo Mate" },
+      });
+      expect(res.status()).toBe(200);
+      expect((await res.json()).ignored).toBe("club-billing-paused");
+    }
+    expect(await db.count(`SELECT COUNT(*) FROM "MoMVote" WHERE "matchId" = $1`, [PAUSED_DONE])).toBe(0);
+    const paid = await db.one<{ paidAt: Date | null }>(`SELECT "paidAt" FROM "Attendance" WHERE id = 'e2e-billing-att-done-0'`);
+    expect(paid?.paidAt).toBeNull();
+  });
+});
+
 test.describe("crons skip a paused club (4.3 point 6)", () => {
   test("generate-matches makes no fixture for it; the exempt club still gets one", async ({ request, db }) => {
     const res = await request.get("/api/cron/generate-matches", { headers: CRON });
     expect(res.status()).toBe(200);
     expect(
-      await db.count(`SELECT COUNT(*) FROM "Match" WHERE "activityId" = $1 AND id <> $2`, [PAUSED_ACTIVITY, PAUSED_MATCH]),
+      await db.count(`SELECT COUNT(*) FROM "Match" WHERE "activityId" = $1 AND id <> ALL($2)`, [
+        PAUSED_ACTIVITY,
+        [PAUSED_MATCH, PAUSED_FUTURE, PAUSED_DONE],
+      ]),
     ).toBe(0);
     // The resumed (subscribed) club is served: its weekly fixture exists.
     expect(

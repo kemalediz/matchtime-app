@@ -68,7 +68,7 @@ import {
   UNAPPROVED_CLUB_WHERE,
   servingClubWhere,
 } from "./club-approval-state";
-import { isBillingEnabled } from "./club-billing-rules";
+import { billingQuietWhere, isBillingEnabled } from "./club-billing-rules";
 
 // ── Flags ───────────────────────────────────────────────────────────────
 
@@ -156,9 +156,10 @@ export interface SilentGroupSources {
    *  forwards its messages to the admin-group route (never to analyze).
    *  Absent means none. */
   adminGroups?: Array<string | null>;
-  /** Club fee billing (B1): `whatsappGroupId` of approved clubs that are
-   *  billing-paused. Silent. Only ever filled while BILLING_ENABLED is
-   *  on; absent means none. */
+  /** Club fee billing (B1): the `whatsappGroupId` AND `adminGroupId` of
+   *  approved clubs that are billing-paused. Silent (the caller leaves a
+   *  paused club's admin group out of `adminGroups`). Only ever filled
+   *  while BILLING_ENABLED is on; absent means none. */
   pausedOrgGroups?: Array<string | null>;
 }
 
@@ -210,16 +211,19 @@ export async function loadSilentGroupIds(): Promise<string[]> {
       where: { leftAt: null },
       select: { groupId: true },
     }),
+    // Admin groups are never silent, except (flag on) a billing-paused
+    // club's, which is listed silent below. `billingQuietWhere()` is empty
+    // while the flag is off, so this query is today's.
     db.organisation.findMany({
-      where: { adminGroupId: { not: null } },
+      where: { adminGroupId: { not: null }, ...billingQuietWhere() },
       select: { adminGroupId: true },
     }),
     billing
       ? db.organisation.findMany({
-          where: { ...APPROVED_CLUB_WHERE, billingStatus: "paused", whatsappGroupId: { not: null } },
-          select: { whatsappGroupId: true },
+          where: { ...APPROVED_CLUB_WHERE, billingStatus: "paused" },
+          select: { whatsappGroupId: true, adminGroupId: true },
         })
-      : Promise.resolve([] as Array<{ whatsappGroupId: string | null }>),
+      : Promise.resolve([] as Array<{ whatsappGroupId: string | null; adminGroupId: string | null }>),
   ]);
   return computeSilentGroups({
     approvedOrgGroups: approvedOrgs.map((o) => o.whatsappGroupId),
@@ -227,7 +231,9 @@ export async function loadSilentGroupIds(): Promise<string[]> {
     unapprovedConnectGroups: connects.map((c) => c.groupId),
     unsolicitedGroups: unsolicited.map((u) => u.groupId),
     adminGroups: (adminGroups ?? []).map((o) => o.adminGroupId),
-    ...(billing ? { pausedOrgGroups: (pausedOrgs ?? []).map((o) => o.whatsappGroupId) } : {}),
+    ...(billing
+      ? { pausedOrgGroups: (pausedOrgs ?? []).flatMap((o) => [o.whatsappGroupId, o.adminGroupId]) }
+      : {}),
   });
 }
 
