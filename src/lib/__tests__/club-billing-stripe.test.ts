@@ -42,6 +42,7 @@ type Org = {
   billingPlan: string;
   billingPricePence: number | null;
   approvedAt: Date | null;
+  approvalStatus?: string;
 };
 
 const h = vi.hoisted(() => {
@@ -58,7 +59,9 @@ const h = vi.hoisted(() => {
       user_olly: { name: "Olly" },
     } as Record<string, { name: string }>,
     stateCalls: [] as string[],
-    pending: [] as Array<{ kind: string; cycleKey: string }>,
+    pending: [] as Array<{ kind: string; cycleKey: string; createdAt?: Date }>,
+    exemptSince: null as Date | null,
+    skipped: [] as Array<{ kind: string; cycleKey: string; why: string }>,
     failNextDm: false,
     ops: [] as Array<{ kind: string; title: string; dedupeKey?: string | null }>,
     /** Make the next clubBilling.updateMany lose a race (another writer first). */
@@ -146,8 +149,15 @@ vi.mock("../club-billing", async () => {
     }),
     loadBillingContactUserId: vi.fn(async () => h.state.contact),
     loadPendingBillingNotices: vi.fn(async () =>
-      h.state.pending.filter((p) => !h.state.notices.has(`${h.state.org?.id}|${p.kind}|${p.cycleKey}`)),
+      h.state.pending
+        .filter((p) => !h.state.notices.has(`${h.state.org?.id ?? "org_1"}|${p.kind}|${p.cycleKey}`))
+        .map((p) => ({ createdAt: new Date(p.cycleKey), ...p })),
     ),
+    loadExemptSince: vi.fn(async () => h.state.exemptSince),
+    skipBillingNotice: vi.fn(async (orgId: string, kind: string, cycleKey: string, why: string) => {
+      h.state.notices.add(`${orgId}|${kind}|${cycleKey}`);
+      h.state.skipped.push({ kind, cycleKey, why });
+    }),
     queueBillingDm: vi.fn(
       async (a: { orgId: string; kind: string; cycleKey: string; userId: string; text: (u: { name: string | null }) => string }) => {
         const key = `${a.orgId}|${a.kind}|${a.cycleKey}`;
@@ -175,6 +185,7 @@ import {
   startClubCheckout,
   syncPlanToStripe,
   cancelSubscriptionOnSuspend,
+  flushPendingBillingNotices,
 } from "../club-billing-stripe";
 import { applyCheckoutEvent } from "../payment-flow";
 
@@ -241,6 +252,8 @@ beforeEach(() => {
   h.state.failNextDm = false;
   h.state.ops = [];
   h.state.raceNextUpdate = null;
+  h.state.exemptSince = null;
+  h.state.skipped = [];
   process.env.STRIPE_CLUB_PORTAL_CONFIG_ID = "bpc_noinvoices";
   setWorld();
 });
@@ -854,12 +867,13 @@ describe("review fix 1 (HIGH): a club on Free or exempt never keeps a live subsc
 
   it("a Checkout that completes AFTER the club was set Free: cancelled at once, its payment refunded, never adopted", async () => {
     setWorld({ billingStatus: "exempt", billingPlan: "free" }, { stripeCustomerId: "cus_fake_1" });
+    h.state.exemptSince = new Date(Date.now() - 60_000);
     sub({ status: "active", trialEnd: null });
     fake.putPaidInvoice("sub_1", 999);
     const r = await handleBillingEvent(checkoutCompleted(), now);
     expect(r).toMatchObject({ action: "unwanted-cancelled", orgId: ORG });
     expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
-    expect(fake.state().refunds).toEqual([{ subscriptionId: "sub_1", pence: 999 }]);
+    expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_1", pence: 999 })]);
     expect(h.state.billing!.stripeSubscriptionId).toBeNull();
     expect(h.state.org!.billingStatus).toBe("exempt");
     expect(h.state.dms).toEqual([]);
@@ -998,16 +1012,13 @@ describe("review fix 4 (privacy): the Portal, and the shared Customer's details"
     expect(await openClubPortal({ orgId: ORG, userId: "user_colin", role: "contact" })).toEqual({ ok: false, reason: "not-allowed" });
   });
 
-  it("a NEW payer's session first resets the Customer (name to the club, email, address and VAT numbers cleared)", async () => {
+  it("round-2 N3: starting a setup session NEVER resets the shared Customer (the current payer's details stay while their card pays)", async () => {
     setWorld(
       { billingStatus: "subscribed" },
       { stripeCustomerId: "cus_x", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin" },
     );
     await startCardReplace({ orgId: ORG, userId: "user_pat", role: "contact" });
-    const methods = fake.state().calls.map((c) => c.method);
-    expect(methods.indexOf("resetCustomerDetails")).toBeGreaterThanOrEqual(0);
-    expect(methods.indexOf("resetCustomerDetails")).toBeLessThan(methods.indexOf("createCheckoutSession"));
-    expect(calls("resetCustomerDetails")).toEqual([{ customerId: "cus_x", name: "Billing Sevens" }]);
+    expect(calls("resetCustomerDetails")).toEqual([]);
   });
 
   it("the same payer again: no reset", async () => {
@@ -1065,9 +1076,11 @@ describe("review fix 5: no double charge", () => {
     sub({ id: "sub_2", status: "active", trialEnd: null });
     fake.putPaidInvoice("sub_2", 999);
     await handleBillingEvent(checkoutCompleted({ id: "cs_2", subscription: "sub_2" }), now);
-    expect(fake.state().refunds).toEqual([{ subscriptionId: "sub_2", pence: 999 }]);
+    expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2", pence: 999 })]);
     expect(h.state.ops).toEqual([expect.objectContaining({ kind: "club-billing", dedupeKey: "duplicate:sub_2" })]);
-    expect(h.state.ops[0].title).toContain("£9.99 refunded");
+    // Recorded BEFORE any money moves (round-2 N2), so it states the plan,
+    // not an amount; the amount is in the logs and in Stripe.
+    expect(h.state.ops[0].title).toBe("Second club fee subscription cancelled and its payments refunded");
     expect(h.state.dms).toEqual([]);
   });
 });
@@ -1125,7 +1138,7 @@ describe("review fix 11", () => {
     setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
     expect(await cancelSubscriptionOnSuspend(ORG)).toEqual({ action: "cancelled" });
     expect(calls("expireOpenCheckoutSessions")).toEqual([{ customerId: "cus_fake_1" }]);
-    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1", reason: "suspend" }]);
     expect(calls("refundPaidInvoices")).toEqual([]);
     expect(h.state.billing!.stripeSubscriptionStatus).toBe("canceled");
   });
@@ -1134,5 +1147,216 @@ describe("review fix 11", () => {
     setWorld({ billingStatus: "trial" });
     expect(await cancelSubscriptionOnSuspend(ORG)).toEqual({ action: "no-subscription" });
     expect(fake.state().calls).toEqual([]);
+  });
+});
+
+// ── Round-2 review (PR #181) ─────────────────────────────────────────────
+
+describe("round-2 N1 (HIGH): a club on Free, exempt, suspended or gone: cancel; refund only what it paid after it stopped being billed", () => {
+  const now = new Date();
+
+  it("a long-paying club set Free: a webhook landing before syncPlanToStripe's cancel cancels it, and its HISTORY is not refunded", async () => {
+    setWorld({ billingStatus: "exempt", billingPlan: "free" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    h.state.exemptSince = new Date(now.getTime() - 60_000);
+    sub({ status: "active", trialEnd: null });
+    for (let i = 1; i <= 6; i++) fake.putPaidInvoice("sub_1", 999, new Date(now.getTime() - i * 30 * DAY));
+    await handleBillingEvent(event("customer.subscription.updated", { id: "sub_1" }), now);
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
+    expect(fake.state().refunds).toEqual([]);
+    expect(h.state.billing!.stripeSubscriptionStatus).toBe("canceled");
+  });
+
+  it("an invoice paid AFTER the club became Free is refunded, and only that one", async () => {
+    setWorld({ billingStatus: "exempt", billingPlan: "free" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    h.state.exemptSince = new Date(now.getTime() - 60 * 60_000);
+    sub({ status: "active", trialEnd: null });
+    fake.putPaidInvoice("sub_1", 999, new Date(now.getTime() - 40 * DAY), "in_history");
+    fake.putPaidInvoice("sub_1", 999, new Date(now.getTime() - 60_000), "in_after_free");
+    await handleBillingEvent(event("invoice.paid", { id: "in_after_free", parent: { subscription_details: { subscription: "sub_1" } } }), now);
+    expect(fake.state().refunds).toEqual([{ subscriptionId: "sub_1", invoiceId: "in_after_free", pence: 999 }]);
+  });
+
+  it("a deleted club: cancel, NO automatic refund, recorded on /admin/health", async () => {
+    h.state.org = null;
+    h.state.billing = null;
+    sub({ status: "active", trialEnd: null, customerId: "cus_gone" });
+    fake.putPaidInvoice("sub_1", 999);
+    const r = await handleBillingEvent(event("customer.subscription.updated", { id: "sub_1" }), now);
+    expect(r).toMatchObject({ action: "unwanted-cancelled" });
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
+    expect(fake.state().refunds).toEqual([]);
+    expect(h.state.ops).toEqual([expect.objectContaining({ kind: "club-billing", dedupeKey: "unwanted:sub_1" })]);
+    expect(h.state.ops[0].title).toContain("not refunded automatically");
+  });
+
+  it("a suspended club: cancel only, no refund", async () => {
+    setWorld({ billingStatus: "subscribed", approvalStatus: "suspended" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    sub({ status: "active", trialEnd: null });
+    fake.putPaidInvoice("sub_1", 999);
+    await handleBillingEvent(event("customer.subscription.updated", { id: "sub_1" }), now);
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
+    expect(fake.state().refunds).toEqual([]);
+    expect(h.state.org!.billingStatus).toBe("subscribed");
+  });
+
+  it("a TRUE duplicate still has its own paid invoices refunded in full", async () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin" });
+    sub({ id: "sub_1", status: "active" });
+    sub({ id: "sub_2", status: "active", trialEnd: null });
+    fake.putPaidInvoice("sub_2", 999, new Date(now.getTime() - 60 * DAY));
+    await handleBillingEvent(checkoutCompleted({ id: "cs_2", subscription: "sub_2" }), now);
+    expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2", pence: 999 })]);
+  });
+});
+
+describe("round-2 N2: refund FIRST (idempotent, intent recorded), then cancel; a retry completes a missing refund", () => {
+  const dup = () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin" });
+    sub({ id: "sub_1", status: "active" });
+    sub({ id: "sub_2", status: "active", trialEnd: null });
+    fake.putPaidInvoice("sub_2", 999);
+  };
+
+  it("the order: ops event, refund, then cancel", async () => {
+    dup();
+    await handleBillingEvent(checkoutCompleted({ id: "cs_2", subscription: "sub_2" }), new Date());
+    const methods = fake.state().calls.map((c) => c.method);
+    expect(methods.indexOf("refundPaidInvoices")).toBeLessThan(methods.indexOf("cancelSubscription"));
+    expect(h.state.events.get("mt_refund_sub_2")).toMatchObject({ type: "mt.refund-intent", orgId: ORG, processedAt: expect.any(Date) });
+  });
+
+  it("the refund FAILS: recorded on /admin/health first, nothing cancelled, 500; the retry refunds and then cancels", async () => {
+    dup();
+    const spy = vi.spyOn(fake, "refundPaidInvoices").mockRejectedValueOnce(new Error("stripe 500"));
+    const e = checkoutCompleted({ id: "cs_2", subscription: "sub_2" });
+    expect((await processBillingWebhook(e, new Date())).status).toBe(500);
+    expect(h.state.ops).toHaveLength(1);
+    expect(calls("cancelSubscription")).toEqual([]);
+    expect(h.state.events.get("mt_refund_sub_2")).toMatchObject({ processedAt: null });
+    spy.mockRestore();
+    expect((await processBillingWebhook(e, new Date())).status).toBe(200);
+    expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2" })]);
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_2" }]);
+    expect(h.state.events.get("mt_refund_sub_2")!.processedAt).toBeInstanceOf(Date);
+  });
+
+  it("a refund intent left open while the subscription is already cancelled is completed by the next event for it", async () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    h.state.events.set("mt_refund_sub_2", { id: "mt_refund_sub_2", type: "mt.refund-intent", orgId: ORG, processedAt: null, error: "earlier failure" });
+    sub({ id: "sub_2", status: "canceled", trialEnd: null });
+    fake.putPaidInvoice("sub_2", 999);
+    await handleBillingEvent(event("customer.subscription.deleted", { id: "sub_2" }), new Date());
+    expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2" })]);
+    expect(h.state.events.get("mt_refund_sub_2")!.processedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("round-2 N3: the shared Customer is reset only once the new card is confirmed", () => {
+  const replaced = (payer: string) =>
+    event("checkout.session.completed", {
+      id: "cs_s",
+      mode: "setup",
+      customer: "cus_fake_1",
+      setup_intent: "seti_r",
+      metadata: { orgId: ORG, payerUserId: payer, purpose: "club-fee", action: "replace-card" },
+      customer_details: { email: `${payer}@example.test`, name: payer, address: { country: "GB", line1: "1 Lane" } },
+    });
+  beforeEach(() => {
+    setWorld(
+      { billingStatus: "subscribed" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin" },
+    );
+    sub({ status: "active" });
+    fake.putSetupIntent("seti_r", { paymentMethodId: "pm_new", brand: "visa", last4: "4000", country: "GB" });
+  });
+
+  it("a NEW payer: reset (old payer's email, address, VAT numbers gone), then their card and details", async () => {
+    await handleBillingEvent(replaced("user_pat"), new Date());
+    const methods = fake.state().calls.map((c) => c.method).filter((m) => ["resetCustomerDetails", "setDefaultPaymentMethod", "updateCustomer"].includes(m));
+    expect(methods).toEqual(["resetCustomerDetails", "setDefaultPaymentMethod", "updateCustomer"]);
+    expect(calls("resetCustomerDetails")).toEqual([{ customerId: "cus_fake_1", name: "Billing Sevens" }]);
+  });
+
+  it("the same payer updating their own card: no reset", async () => {
+    await handleBillingEvent(replaced("user_colin"), new Date());
+    expect(calls("resetCustomerDetails")).toEqual([]);
+  });
+});
+
+describe("round-2 N4: a subscription cancelled by a suspension leaves the billing state alone", () => {
+  it("the deletion of a suspend-marked subscription: mirrored as cancelled, the state unchanged (not trial, not paused)", async () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    sub({ status: "canceled", metadata: { orgId: ORG, purpose: "club-fee", cancelledBy: "suspend" } });
+    await handleBillingEvent(event("customer.subscription.deleted", { id: "sub_1" }), new Date(APPROVED.getTime() + 10 * DAY));
+    expect(h.state.org!.billingStatus).toBe("subscribed");
+    expect(h.state.billing!.stripeSubscriptionStatus).toBe("canceled");
+    expect(h.state.stateCalls).toEqual([]);
+  });
+
+  it("a suspended club never moves on a subscription event, whatever its metadata", async () => {
+    setWorld({ billingStatus: "subscribed", approvalStatus: "suspended" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    sub({ status: "canceled" });
+    await handleBillingEvent(event("customer.subscription.deleted", { id: "sub_1" }), new Date());
+    expect(h.state.stateCalls).toEqual([]);
+  });
+});
+
+describe("round-2 N5: pending DMs are re-checked against the club's state before they go", () => {
+  const now = new Date();
+  const iso = (d: Date) => d.toISOString();
+
+  it("plan-billed goes only while the club is still in THAT grace cycle", async () => {
+    const at = new Date(now.getTime() - DAY);
+    setWorld({ billingStatus: "grace" }, { graceEndsAt: new Date(at.getTime() + 7 * DAY) });
+    h.state.pending = [{ kind: "plan-billed", cycleKey: iso(at) }];
+    await flushPendingBillingNotices(ORG, now);
+    expect(h.state.dms.map((d) => d.kind)).toEqual(["plan-billed"]);
+  });
+
+  it("plan-billed for an older grace cycle, or after the club left grace: skipped", async () => {
+    const at = new Date(now.getTime() - DAY);
+    setWorld({ billingStatus: "grace" }, { graceEndsAt: new Date(now.getTime() + 7 * DAY) });
+    h.state.pending = [{ kind: "plan-billed", cycleKey: iso(at) }];
+    await flushPendingBillingNotices(ORG, now);
+    setWorld({ billingStatus: "subscribed" }, { graceEndsAt: null });
+    h.state.pending = [{ kind: "plan-billed", cycleKey: iso(new Date(at.getTime() + 1000)) }];
+    await flushPendingBillingNotices(ORG, now);
+    expect(h.state.dms).toEqual([]);
+    expect(h.state.skipped.map((x) => x.why)).toEqual(["not-current", "not-current"]);
+  });
+
+  it("resumed goes only while the club is serving", async () => {
+    setWorld({ billingStatus: "paused" });
+    h.state.pending = [{ kind: "resumed", cycleKey: iso(new Date(now.getTime() - 60_000)) }];
+    await flushPendingBillingNotices(ORG, now);
+    expect(h.state.dms).toEqual([]);
+    expect(h.state.skipped).toEqual([expect.objectContaining({ kind: "resumed", why: "not-current" })]);
+  });
+
+  it("older than 3 days: expired, never sent", async () => {
+    setWorld({ billingStatus: "subscribed" });
+    h.state.pending = [{ kind: "resumed", cycleKey: iso(new Date(now.getTime() - 4 * DAY)) }];
+    await flushPendingBillingNotices(ORG, now);
+    expect(h.state.dms).toEqual([]);
+    expect(h.state.skipped).toEqual([expect.objectContaining({ why: "expired" })]);
+  });
+
+  it("two of the same kind (plans toggled): only the newest can go, the older is superseded", async () => {
+    setWorld({ billingStatus: "subscribed" });
+    h.state.pending = [
+      { kind: "resumed", cycleKey: iso(new Date(now.getTime() - 2 * 60_000)) },
+      { kind: "resumed", cycleKey: iso(new Date(now.getTime() - 60_000)) },
+    ];
+    await flushPendingBillingNotices(ORG, now);
+    expect(h.state.dms).toHaveLength(1);
+    expect(h.state.skipped).toEqual([expect.objectContaining({ why: "superseded" })]);
+  });
+
+  it("no billing contact: expired rather than kept for ever", async () => {
+    setWorld({ billingStatus: "subscribed" });
+    h.state.contact = null;
+    h.state.pending = [{ kind: "resumed", cycleKey: iso(new Date(now.getTime() - 60_000)) }];
+    await flushPendingBillingNotices(ORG, now);
+    expect(h.state.skipped).toEqual([expect.objectContaining({ why: "no-contact" })]);
   });
 });

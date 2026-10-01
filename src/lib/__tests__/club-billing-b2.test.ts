@@ -36,6 +36,7 @@ const h = vi.hoisted(() => {
     benchSlotOffer: { updateMany: vi.fn() },
     platformJob: { create: vi.fn() },
     billingNotice: { createMany: vi.fn() },
+    billingEvent: { create: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
@@ -161,6 +162,19 @@ describe("setClubPlan: the platform owner's plan control (8.3, B2 note)", () => 
     setClub({ billingStatus: "exempt", billingPlan: "free" });
     await setClubPlan("org1", { plan: "standard", pricePence: null }, NOW);
     expect(m.billingNotice.createMany).not.toHaveBeenCalled();
+  });
+
+  it("round-2 N1: Free records WHEN the club became exempt, in the same transaction (the refund window)", async () => {
+    await setClubPlan("org1", { plan: "free", pricePence: null }, NOW);
+    expect(m.billingEvent.create).toHaveBeenCalledWith({
+      data: { id: `mt_exempt_org1_${NOW.getTime()}`, type: "mt.club-exempt", orgId: "org1", receivedAt: NOW, processedAt: NOW },
+    });
+  });
+
+  it("Free on a club that was already exempt records nothing", async () => {
+    setClub({ billingStatus: "exempt", billing: null });
+    await setClubPlan("org1", { plan: "free", pricePence: null }, NOW);
+    expect(m.billingEvent.create).not.toHaveBeenCalled();
   });
 
   it("Free on a PAUSED club resumes it, in the same transaction", async () => {

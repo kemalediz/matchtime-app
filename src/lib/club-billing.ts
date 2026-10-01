@@ -360,6 +360,11 @@ export async function setClubPlan(
         if (!moved.ok) throw new Error(`[club-billing] ${orgId}: plan Free could not make the club exempt (${moved.reason})`);
         status = moved.to;
         resumed = moved.resumed;
+        // WHEN the club stopped being billed, in the same transaction: the
+        // webhook refunds only invoices paid after it (round-2 review N1).
+        await tx.billingEvent.create({
+          data: { id: `mt_exempt_${orgId}_${now.getTime()}`, type: EXEMPT_EVENT_TYPE, orgId, receivedAt: now, processedAt: now },
+        });
       }
       const pricePence = choice.plan === "custom" ? choice.pricePence : null;
       await tx.organisation.update({ where: { id: orgId }, data: { billingPlan: choice.plan, billingPricePence: pricePence } });
@@ -675,10 +680,19 @@ export type BillingNoticeKind =
   | "payer-changed"
   | "fee-tip";
 
-/** `BillingNotice.platformJobId` while a sender holds the claim. NULL means
- *  PENDING (written by a state change, not sent yet); "skipped:<why>" means
- *  it can never be sent; anything else is the PlatformJob id. */
-const NOTICE_CLAIMED = "claimed";
+/** `BillingNotice.platformJobId` values: NULL is PENDING (written by a
+ *  state change, not sent yet); "claimed:<ISO time>" while a sender holds
+ *  it; "skipped:<why>" can never be sent; anything else is the PlatformJob
+ *  id. A claim older than CLAIM_STALE_MS was left by a sender that died
+ *  (round-2 review N6) and may be taken over. */
+const CLAIM_PREFIX = "claimed:";
+export const CLAIM_STALE_MS = 10 * 60 * 1000;
+
+function staleClaim(value: string | null, now: number): boolean {
+  if (!value?.startsWith(CLAIM_PREFIX)) return false;
+  const at = Date.parse(value.slice(CLAIM_PREFIX.length));
+  return Number.isFinite(at) && now - at > CLAIM_STALE_MS;
+}
 
 /**
  * Queue ONE billing DM on the platform channel (purpose "billing"), to
@@ -686,11 +700,12 @@ const NOTICE_CLAIMED = "claimed";
  * `BillingNotice(orgId, kind, cycleKey)` row:
  *
  *   - a new row is created already claimed; an existing PENDING row (no
- *     platformJobId: a state change wrote it in its own transaction, review
- *     fix 10) is claimed with a compare-and-set; anything else is "already";
+ *     platformJobId: a state change wrote it in its own transaction) or a
+ *     STALE claim (older than 10 minutes: its sender died) is taken with a
+ *     compare-and-set; anything else is "already";
  *   - queued: the row holds the PlatformJob id, so it is never sent twice;
  *   - queueing THREW: the claim is RELEASED (back to pending) and the error
- *     rethrown, so the retried webhook or action sends it (review fix 9);
+ *     rethrown, so the retried webhook or action sends it;
  *   - the recipient cannot be messaged: marked skipped, never retried.
  *
  * The only queuer of purpose "billing" (source guard). `text` is built
@@ -705,19 +720,26 @@ export async function queueBillingDm(args: {
   sendAfter?: Date | null;
 }): Promise<"queued" | "already" | "no-phone" | "refused"> {
   const where = { orgId: args.orgId, kind: args.kind, cycleKey: args.cycleKey };
-  let noticeId: string | null = null;
+  const claim = `${CLAIM_PREFIX}${new Date().toISOString()}`;
+  let claimed = false;
   try {
-    const notice = await db.billingNotice.create({ data: { ...where, platformJobId: NOTICE_CLAIMED }, select: { id: true } });
-    noticeId = notice.id;
+    await db.billingNotice.create({ data: { ...where, platformJobId: claim }, select: { id: true } });
+    claimed = true;
   } catch (err) {
     if ((err as { code?: string }).code !== "P2002") throw err;
   }
-  if (noticeId === null) {
-    const { count } = await db.billingNotice.updateMany({ where: { ...where, platformJobId: null }, data: { platformJobId: NOTICE_CLAIMED } });
-    if (count !== 1) return "already";
+  if (!claimed) {
+    const row = await db.billingNotice.findFirst({ where, select: { platformJobId: true } });
+    const current = row?.platformJobId ?? null;
+    if (row && (current === null || staleClaim(current, Date.now()))) {
+      const { count } = await db.billingNotice.updateMany({ where: { ...where, platformJobId: current }, data: { platformJobId: claim } });
+      claimed = count === 1;
+      if (claimed && current !== null) console.warn(`[club-billing] ${args.orgId}: ${args.kind} took over a stale claim (${current})`);
+    }
+    if (!claimed) return "already";
   }
   const mark = (platformJobId: string | null) =>
-    db.billingNotice.updateMany({ where: { ...where, platformJobId: NOTICE_CLAIMED }, data: { platformJobId } });
+    db.billingNotice.updateMany({ where: { ...where, platformJobId: claim }, data: { platformJobId } });
 
   try {
     const user = await db.user.findUnique({ where: { id: args.userId }, select: { name: true, phoneNumber: true } });
@@ -747,13 +769,37 @@ export async function queueBillingDm(args: {
   }
 }
 
+/** Never send this pending notice (stale, superseded, no longer true, or
+ *  nobody to send it to). Only a still-pending row is touched. */
+export async function skipBillingNotice(orgId: string, kind: BillingNoticeKind, cycleKey: string, why: string): Promise<void> {
+  await db.billingNotice.updateMany({ where: { orgId, kind, cycleKey, platformJobId: null }, data: { platformJobId: `skipped:${why}` } });
+}
+
+/** When the club last became exempt through the plan control (Free), or
+ *  null. A subscription invoice paid AFTER this moment is money the club
+ *  should not have paid; one paid before is history (round-2 review N1). */
+export async function loadExemptSince(orgId: string): Promise<Date | null> {
+  const row = await db.billingEvent.findFirst({
+    where: { orgId, type: EXEMPT_EVENT_TYPE },
+    orderBy: { receivedAt: "desc" },
+    select: { receivedAt: true },
+  });
+  return row?.receivedAt ?? null;
+}
+
+/** BillingEvent rows MatchTime writes itself (ids "mt_..." never collide
+ *  with Stripe's "evt_..."). */
+export const EXEMPT_EVENT_TYPE = "mt.club-exempt";
+
 /** The pending (written, not yet sent) notices of the kinds a state change
  *  leaves behind, for the caller to send (`flushPendingBillingNotices`). */
-export async function loadPendingBillingNotices(orgId: string): Promise<Array<{ kind: BillingNoticeKind; cycleKey: string }>> {
+export async function loadPendingBillingNotices(
+  orgId: string,
+): Promise<Array<{ kind: BillingNoticeKind; cycleKey: string; createdAt: Date }>> {
   const rows = await db.billingNotice.findMany({
     where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed"] } },
-    select: { kind: true, cycleKey: true },
+    select: { kind: true, cycleKey: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });
-  return rows.map((r) => ({ kind: r.kind as BillingNoticeKind, cycleKey: r.cycleKey }));
+  return rows.map((r) => ({ kind: r.kind as BillingNoticeKind, cycleKey: r.cycleKey, createdAt: r.createdAt }));
 }

@@ -31,6 +31,9 @@ const h = vi.hoisted(() => {
         rows.forEach((r) => Object.assign(r, data));
         return { count: rows.length };
       }),
+      findFirst: vi.fn(async ({ where }: { where: Partial<Notice> }) =>
+        state.notices.find((n) => Object.entries(where).every(([k, v]) => n[k as keyof Notice] === v)) ?? null,
+      ),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<Notice> }) => {
         const r = state.notices.find((n) => n.id === where.id)!;
         Object.assign(r, data);
@@ -91,5 +94,27 @@ describe("queueBillingDm", () => {
     expect(await queueBillingDm(args)).toBe("no-phone");
     expect(h.state.notices[0].platformJobId).toBe("skipped:no-phone");
     expect(await queueBillingDm(args)).toBe("already");
+  });
+});
+
+describe("round-2 N6: a claim left by a crashed sender", () => {
+  it("a claim younger than 10 minutes is respected ('already')", async () => {
+    h.state.notices.push({ id: "c1", orgId: "org1", kind: "card-added", cycleKey: "sub_1", platformJobId: `claimed:${new Date(Date.now() - 2 * 60_000).toISOString()}` });
+    expect(await queueBillingDm(args)).toBe("already");
+    expect(h.queue).not.toHaveBeenCalled();
+  });
+
+  it("a claim older than 10 minutes is released and taken over: the DM is sent", async () => {
+    h.state.notices.push({ id: "c1", orgId: "org1", kind: "card-added", cycleKey: "sub_1", platformJobId: `claimed:${new Date(Date.now() - 30 * 60_000).toISOString()}` });
+    expect(await queueBillingDm(args)).toBe("queued");
+    expect(h.state.notices[0].platformJobId).toBe("job_1");
+  });
+
+  it("a fresh claim is stamped with its time", async () => {
+    h.queue.mockImplementationOnce(async () => {
+      expect(h.state.notices[0].platformJobId).toMatch(/^claimed:\d{4}-/);
+      return { id: "job_1" };
+    });
+    await queueBillingDm(args);
   });
 });

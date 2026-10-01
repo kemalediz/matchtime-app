@@ -26,6 +26,7 @@
  * Nothing here reads or writes the database.
  */
 import Stripe from "stripe";
+import { isLiveSubscriptionStatus } from "./club-billing-rules";
 import { createFakeBillingStripe } from "./stripe-billing-fake";
 
 type Env = Record<string, string | undefined>;
@@ -85,7 +86,10 @@ export interface BillingStripe {
   payOpenInvoices(subscriptionId: string): Promise<number>;
   detachPaymentMethod(paymentMethodId: string): Promise<void>;
   updateSubscriptionPrice(args: { subscriptionId: string; itemId: string; priceId: string }): Promise<void>;
-  cancelSubscription(subscriptionId: string): Promise<void>;
+  /** Cancel at once, no proration. `reason: "suspend"` first marks the
+   *  subscription (metadata `cancelledBy: "suspend"`) so the deletion
+   *  webhook leaves the club's billing state alone (plan 4.2). */
+  cancelSubscription(subscriptionId: string, opts?: { reason?: "suspend" }): Promise<void>;
   findOrCreateCustomPrice(args: { productId: string; pence: number }): Promise<string>;
   /** The Customer's LIVE club fee subscriptions, read from Stripe itself
    *  (not our mirror), so no new session is made while one exists. */
@@ -101,9 +105,11 @@ export interface BillingStripe {
     name?: string | null;
     address?: Stripe.AddressParam | null;
   }): Promise<void>;
-  /** Refund every paid invoice of a subscription (a cancelled duplicate or
-   *  unwanted one). Returns the pence refunded. One refund per invoice. */
-  refundPaidInvoices(subscriptionId: string): Promise<number>;
+  /** Refund the subscription's paid invoices, or only those paid AFTER
+   *  `paidAfter`. One refund per invoice (idempotency key per invoice; an
+   *  invoice already refunded counts as done), so a retry completes what a
+   *  failed run left, never refunds twice. */
+  refundPaidInvoices(subscriptionId: string, opts?: { paidAfter?: Date | null }): Promise<{ pence: number; invoiceIds: string[] }>;
 }
 
 // ── Configuration ───────────────────────────────────────────────────────
@@ -259,8 +265,6 @@ function subscriptionOf(s: Stripe.Subscription): BillingSubscription {
   };
 }
 
-const LIVE = new Set(["trialing", "active", "past_due", "unpaid", "incomplete", "paused"]);
-
 /** The real adapter over a Stripe client (the platform account). */
 export function createStripeBillingAdapter(client: Stripe): BillingStripe {
   return {
@@ -308,8 +312,25 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
     },
 
     async listLiveSubscriptions(customerId) {
-      const list = await client.subscriptions.list({ customer: customerId, status: "all", limit: 20, expand: ["data.default_payment_method"] });
-      return list.data.filter((s) => LIVE.has(s.status) && s.metadata?.purpose === CLUB_FEE_PURPOSE).map(subscriptionOf);
+      // Every page: an old live subscription must never hide behind newer
+      // ended ones. "Live" is isLiveSubscriptionStatus, the one definition
+      // (Stripe's "paused" counts: it can resume and charge).
+      const out: BillingSubscription[] = [];
+      let startingAfter: string | undefined;
+      for (;;) {
+        const page = await client.subscriptions.list({
+          customer: customerId,
+          status: "all",
+          limit: 100,
+          expand: ["data.default_payment_method"],
+          ...(startingAfter ? { starting_after: startingAfter } : {}),
+        });
+        for (const s of page.data) {
+          if (isLiveSubscriptionStatus(s.status) && s.metadata?.purpose === CLUB_FEE_PURPOSE) out.push(subscriptionOf(s));
+        }
+        if (!page.has_more || page.data.length === 0) return out;
+        startingAfter = page.data[page.data.length - 1].id;
+      }
     },
 
     async resetCustomerDetails({ customerId, name }) {
@@ -327,23 +348,32 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
       });
     },
 
-    async refundPaidInvoices(subscriptionId) {
+    async refundPaidInvoices(subscriptionId, opts = {}) {
       const paid = await client.invoices.list({ subscription: subscriptionId, status: "paid", limit: 10 });
       let pence = 0;
+      const invoiceIds: string[] = [];
       for (const inv of paid.data) {
         if (!inv.id || !inv.amount_paid) continue;
+        const paidAt = dateOf(inv.status_transitions?.paid_at);
+        if (opts.paidAfter && (!paidAt || paidAt < opts.paidAfter)) continue;
         const payments = await client.invoicePayments.list({ invoice: inv.id });
         for (const p of payments.data) {
           const pi = idOf(p.payment?.payment_intent as string | { id: string } | undefined);
           if (p.status !== "paid" || !pi) continue;
-          await client.refunds.create(
-            { payment_intent: pi, metadata: { purpose: CLUB_FEE_PURPOSE, reason: "duplicate-or-unwanted" } },
-            { idempotencyKey: `club-fee-refund-${inv.id}` },
-          );
+          try {
+            await client.refunds.create(
+              { payment_intent: pi, metadata: { purpose: CLUB_FEE_PURPOSE, reason: "duplicate-or-unwanted" } },
+              { idempotencyKey: `club-fee-refund-${inv.id}` },
+            );
+          } catch (err) {
+            // A retry after the idempotency key expired: already refunded is done.
+            if ((err as { code?: string }).code !== "charge_already_refunded") throw err;
+          }
           pence += inv.amount_paid;
+          invoiceIds.push(inv.id);
         }
       }
-      return pence;
+      return { pence, invoiceIds };
     },
 
     async retrieveSetupIntentCard(setupIntentId) {
@@ -389,7 +419,10 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
       });
     },
 
-    async cancelSubscription(subscriptionId) {
+    async cancelSubscription(subscriptionId, opts = {}) {
+      if (opts.reason === "suspend") {
+        await client.subscriptions.update(subscriptionId, { metadata: { cancelledBy: "suspend" } });
+      }
       await client.subscriptions.cancel(subscriptionId, { prorate: false });
     },
 

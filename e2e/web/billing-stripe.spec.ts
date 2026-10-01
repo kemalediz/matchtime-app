@@ -400,6 +400,12 @@ test("6. the owner's plan on a live subscription; Free then Standard after the f
 
 test("7. a Checkout completing after the club was set Free is cancelled at once and refunded (review fix 1)", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET "billingStatus"='exempt', "billingPlan"='free', "billingPricePence"=NULL WHERE id=$1`, [ORG]);
+  // What setClubPlan records with Free: WHEN the club stopped being billed.
+  // Only a payment made after this is refunded (round-2 review N1).
+  await db.run(
+    `INSERT INTO "BillingEvent" (id,type,"orgId","receivedAt","processedAt") VALUES ('mt_exempt_e2e_late','mt.club-exempt',$1,$2,$2)`,
+    [ORG, new Date(Date.now() - 60_000).toISOString()],
+  );
   const customerId = (await billingRow())!.stripeCustomerId as string;
   fake().putSubscription({ ...subscription({ id: "sub_e2e_late", customerId, status: "active", trialEnd: null }) } as never);
   fake().putPaidInvoice("sub_e2e_late", 999);
@@ -414,7 +420,10 @@ test("7. a Checkout completing after the club was set Free is cancelled at once 
   });
   expect(await res.json()).toMatchObject({ received: true, action: "unwanted-cancelled" });
   expect(stripeState().calls.filter((c) => c.method === "cancelSubscription").map((c) => c.args)).toContainEqual({ subscriptionId: "sub_e2e_late" });
-  expect(stripeState().refunds).toContainEqual({ subscriptionId: "sub_e2e_late", pence: 999 });
+  expect(stripeState().refunds).toContainEqual(expect.objectContaining({ subscriptionId: "sub_e2e_late", pence: 999 }));
+  // Refunded BEFORE it was cancelled (round-2 review N2).
+  const order = stripeState().calls.map((c) => `${c.method}:${(c.args as { subscriptionId?: string }).subscriptionId ?? ""}`);
+  expect(order.indexOf("refundPaidInvoices:sub_e2e_late")).toBeLessThan(order.indexOf("cancelSubscription:sub_e2e_late"));
   expect(await status()).toBe("exempt");
   expect((await billingRow())!.stripeSubscriptionId).not.toBe("sub_e2e_late");
   expect(await db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId"=$1 AND kind='club-billing'`, [ORG])).toBe(1);

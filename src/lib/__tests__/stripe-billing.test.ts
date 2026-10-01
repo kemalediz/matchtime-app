@@ -444,7 +444,7 @@ describe("review fixes on the adapter", () => {
     const a = createStripeBillingAdapter(client as unknown as Stripe);
     const live = await a.listLiveSubscriptions("cus_1");
     expect(live.map((s) => [s.id, s.status])).toEqual([["sub_live", "past_due"]]);
-    expect(calls[0].args[0]).toEqual({ customer: "cus_1", status: "all", limit: 20, expand: ["data.default_payment_method"] });
+    expect(calls[0].args[0]).toEqual({ customer: "cus_1", status: "all", limit: 100, expand: ["data.default_payment_method"] });
   });
 
   it("fix 4: resets the Customer to the club before a new payer's session (name, no email, no address, no VAT numbers)", async () => {
@@ -461,7 +461,7 @@ describe("review fixes on the adapter", () => {
   it("fix 5: refunds every PAID invoice of a cancelled duplicate, once each (idempotency key per invoice)", async () => {
     const { client, calls } = client2();
     const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.refundPaidInvoices("sub_dup")).toBe(999);
+    expect(await a.refundPaidInvoices("sub_dup")).toEqual({ pence: 999, invoiceIds: ["in_paid"] });
     expect(calls.find((c) => c.path === "invoices.list")!.args[0]).toEqual({ subscription: "sub_dup", status: "paid", limit: 10 });
     expect(calls.filter((c) => c.path === "refunds.create")).toEqual([
       { path: "refunds.create", args: [{ payment_intent: "pi_1", metadata: { purpose: "club-fee", reason: "duplicate-or-unwanted" } }, { idempotencyKey: "club-fee-refund-in_paid" }] },
@@ -494,5 +494,87 @@ describe("review fixes on the adapter", () => {
 
   it("fix 4: no Portal configuration, no Portal (portalConfigId null), and the setup Checkout keeps the payer's own details", () => {
     expect(billingStripeConfig({}).portalConfigId).toBeNull();
+  });
+});
+
+describe("round-2 review fixes on the adapter", () => {
+  function inv(id: string, paidAtSecs: number, amount = 999) {
+    return { id, amount_paid: amount, status_transitions: { paid_at: paidAtSecs } };
+  }
+  function moneyClient(invoices: unknown[]) {
+    const { client, calls } = recordingClient();
+    const rec =
+      (p: string, result: unknown = {}) =>
+      (...args: unknown[]) => {
+        calls.push({ path: p, args });
+        return typeof result === "function" ? (result as (...a: unknown[]) => unknown)(...args) : Promise.resolve(result);
+      };
+    Object.assign(client.invoices, { list: rec("invoices.list", { data: invoices }) });
+    Object.assign(client, {
+      invoicePayments: {
+        list: rec("invoicePayments.list", (a: { invoice: string }) =>
+          Promise.resolve({ data: [{ status: "paid", payment: { type: "payment_intent", payment_intent: `pi_${a.invoice}` } }] }),
+        ),
+      },
+      refunds: { create: rec("refunds.create", { id: "re" }) },
+    });
+    return { client, calls };
+  }
+
+  it("N1: refunds only invoices paid AFTER the given moment (a Free club's history is never refunded)", async () => {
+    const { client, calls } = moneyClient([inv("in_old", 1_700_000_000), inv("in_new", 1_800_000_100)]);
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.refundPaidInvoices("sub_1", { paidAfter: new Date(1_800_000_000 * 1000) })).toEqual({ pence: 999, invoiceIds: ["in_new"] });
+    expect(calls.filter((c) => c.path === "refunds.create").map((c) => (c.args[0] as { payment_intent: string }).payment_intent)).toEqual(["pi_in_new"]);
+  });
+
+  it("N1: no window given refunds all of the subscription's own paid invoices (a true duplicate)", async () => {
+    const { client } = moneyClient([inv("in_a", 1_700_000_000), inv("in_b", 1_800_000_100)]);
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect((await a.refundPaidInvoices("sub_dup")).invoiceIds).toEqual(["in_a", "in_b"]);
+  });
+
+  it("N2: an invoice already refunded (a retry after 24h) counts as done, not an error", async () => {
+    const { client } = moneyClient([inv("in_a", 1_700_000_000)]);
+    (client as unknown as { refunds: { create: unknown } }).refunds.create = () =>
+      Promise.reject(Object.assign(new Error("already refunded"), { code: "charge_already_refunded" }));
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.refundPaidInvoices("sub_dup")).toEqual({ pence: 999, invoiceIds: ["in_a"] });
+  });
+
+  it("N4: a cancel by suspension marks the subscription first (metadata cancelledBy), then cancels", async () => {
+    const { client, calls } = recordingClient();
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await a.cancelSubscription("sub_1", { reason: "suspend" });
+    expect(calls).toEqual([
+      { path: "subscriptions.update", args: ["sub_1", { metadata: { cancelledBy: "suspend" } }] },
+      { path: "subscriptions.cancel", args: ["sub_1", { prorate: false }] },
+    ]);
+  });
+
+  it("N6: live subscriptions are read across EVERY page, not the newest 20", async () => {
+    const { client, calls } = recordingClient();
+    const page = (ids: string[], hasMore: boolean) => ({
+      has_more: hasMore,
+      data: ids.map((id) => ({ id, status: "active", customer: "cus_1", metadata: { purpose: "club-fee", orgId: "o" }, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [] } })),
+    });
+    let n = 0;
+    Object.assign(client.subscriptions, {
+      list: (...args: unknown[]) => {
+        calls.push({ path: "subscriptions.list", args });
+        return Promise.resolve(n++ === 0 ? page(["sub_a"], true) : page(["sub_b"], false));
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect((await a.listLiveSubscriptions("cus_1")).map((s) => s.id)).toEqual(["sub_a", "sub_b"]);
+    expect(calls[1].args[0]).toMatchObject({ customer: "cus_1", status: "all", limit: 100, starting_after: "sub_a" });
+  });
+
+  it("N6: the adapter's idea of 'live' is isLiveSubscriptionStatus (Stripe's 'paused' counts as live: it can resume and charge)", async () => {
+    const fakeA = createFakeBillingStripe();
+    for (const [id, status] of [["s1", "paused"], ["s2", "unpaid"], ["s3", "incomplete_expired"], ["s4", "canceled"]] as const) {
+      fakeA.putSubscription({ id, status, customerId: "cus_1", metadata: { purpose: "club-fee", orgId: "o" }, cancelAtPeriodEnd: false, currentPeriodEnd: null, trialEnd: null, priceId: null, itemId: null, card: null });
+    }
+    expect((await fakeA.listLiveSubscriptions("cus_1")).map((s) => s.id).sort()).toEqual(["s1", "s2"]);
   });
 });

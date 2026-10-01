@@ -52,6 +52,7 @@ import { buildAdminLink } from "./admin-link";
 import { appBaseUrl } from "./app-url";
 import {
   BILLING_LINK_TTL,
+  GRACE_DAYS,
   checkoutTrialEnd,
   isBillingEnabled,
   isLiveSubscriptionStatus,
@@ -61,7 +62,14 @@ import {
   vatCountryNeedsCheck,
   type BillingAccessRole,
 } from "./club-billing-rules";
-import { loadBillingContactUserId, loadPendingBillingNotices, queueBillingDm, setBillingState } from "./club-billing";
+import {
+  loadBillingContactUserId,
+  loadExemptSince,
+  loadPendingBillingNotices,
+  queueBillingDm,
+  setBillingState,
+  skipBillingNotice,
+} from "./club-billing";
 import { cardAddedText, cardReplacedText, moneyLabel, planBilledText, resumedText } from "./club-billing-view";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import {
@@ -108,6 +116,7 @@ async function loadOrg(orgId: string) {
       billingPlan: true,
       billingPricePence: true,
       approvedAt: true,
+      approvalStatus: true,
     },
   });
 }
@@ -148,19 +157,17 @@ type BillingRow = NonNullable<Awaited<ReturnType<typeof loadBilling>>>;
 
 /**
  * A setup-mode session on the club's Customer for `userId`: "Use my card
- * instead", and "update card and pay" for an unpaid subscription. A NEW
- * payer (not the card holder on file) first gets the shared Customer reset
- * to the club (name; email, address, phone and VAT numbers cleared), so
- * Checkout neither shows nor reuses the previous payer's details; the
- * webhook then puts the new payer's own details on.
+ * instead", and "update card and pay" for an unpaid subscription.
+ *
+ * The shared Customer is NOT reset here (round-2 review N3): the current
+ * payer's card is still paying, and an abandoned session must not leave
+ * their invoices with no email or address. The reset happens in the
+ * webhook once the new card is confirmed (`onReplaceCard`).
  */
 async function setupSession(
   stripe: BillingStripe,
   args: { orgId: string; userId: string; orgName: string; customerId: string; billing: BillingRow },
 ): Promise<BillingActionResult> {
-  if (args.billing.cardHolderUserId !== args.userId) {
-    await stripe.resetCustomerDetails({ customerId: args.customerId, name: args.orgName });
-  }
   await stripe.expireOpenCheckoutSessions(args.customerId);
   const session = await stripe.createCheckoutSession(
     buildSetupCheckoutParams({ orgId: args.orgId, payerUserId: args.userId, customerId: args.customerId, baseUrl: appBaseUrl() }),
@@ -379,7 +386,9 @@ export async function cancelSubscriptionOnSuspend(orgId: string): Promise<{ acti
   if (!stripe) return { action: billing.stripeSubscriptionId ? "not-set-up" : "no-subscription" };
   if (billing.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
   if (!billing.stripeSubscriptionId || !isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) return { action: "no-subscription" };
-  await stripe.cancelSubscription(billing.stripeSubscriptionId);
+  // Marked "cancelledBy: suspend" first, so the deletion webhook leaves the
+  // club's billing state as it is (plan 4.2; round-2 review N4).
+  await stripe.cancelSubscription(billing.stripeSubscriptionId, { reason: "suspend" });
   await markCancelled(orgId, billing.stripeSubscriptionId);
   console.log(`[club-billing-stripe] ${orgId}: suspended, subscription ${billing.stripeSubscriptionId} cancelled`);
   return { action: "cancelled" };
@@ -387,41 +396,75 @@ export async function cancelSubscriptionOnSuspend(orgId: string): Promise<{ acti
 
 // ── DMs written as pending by a state change ────────────────────────────
 
+/** A pending "resumed" or "plan-billed" DM older than this is never sent. */
+export const PENDING_NOTICE_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Send the club's PENDING billing notices ("resumed", "plan-billed"): rows
  * a state change wrote in its own transaction. Each goes once
  * (`queueBillingDm` claims it); one whose send fails stays pending for the
  * next call. Called after the webhook's sync and after a plan change.
+ *
+ * Re-checked against the club's state RIGHT NOW before anything goes
+ * (round-2 review N5); otherwise the notice is marked skipped, never sent:
+ *   expired      older than 3 days
+ *   superseded   a newer pending notice of the same kind exists (plans
+ *                toggled): only the newest can go
+ *   no-contact   nobody to send it to
+ *   not-current  plan-billed: the club is no longer in THAT grace cycle
+ *                (its grace end is not the one this notice set); resumed:
+ *                the club is not serving (paused, exempt, suspended)
  */
-export async function flushPendingBillingNotices(orgId: string): Promise<number> {
+export async function flushPendingBillingNotices(orgId: string, now: Date = new Date()): Promise<number> {
   if (!isBillingEnabled()) return 0;
   const pending = await loadPendingBillingNotices(orgId);
   if (pending.length === 0) return 0;
   const org = await loadOrg(orgId);
   const billing = await loadBilling(orgId);
   const contact = await loadBillingContactUserId(orgId);
-  if (!org || !contact) {
-    console.warn(`[club-billing-stripe] ${orgId}: ${pending.length} pending billing DM(s), no billing contact to send them to`);
-    return 0;
-  }
   let sent = 0;
   for (const p of pending) {
+    const newer = pending.some((q) => q.kind === p.kind && q.createdAt > p.createdAt);
+    const why =
+      now.getTime() - p.createdAt.getTime() > PENDING_NOTICE_MAX_AGE_MS
+        ? "expired"
+        : newer
+          ? "superseded"
+          : !org || !contact
+            ? "no-contact"
+            : p.kind === "plan-billed"
+              ? org.billingStatus === "grace" &&
+                !!billing?.graceEndsAt &&
+                billing.graceEndsAt.getTime() === new Date(p.cycleKey).getTime() + GRACE_DAYS * DAY_MS
+                ? null
+                : "not-current"
+              : p.kind === "resumed"
+                ? (org.billingStatus === "subscribed" || org.billingStatus === "past_due") && org.approvalStatus !== "suspended"
+                  ? null
+                  : "not-current"
+                : "not-current";
+    if (why) {
+      await skipBillingNotice(orgId, p.kind, p.cycleKey, why);
+      console.log(`[club-billing-stripe] ${orgId}: pending ${p.kind} DM (${p.cycleKey}) not sent: ${why}`);
+      continue;
+    }
     if (p.kind === "resumed") {
-      const r = await queueBillingDm({ orgId, kind: "resumed", cycleKey: p.cycleKey, userId: contact, text: () => resumedText(org.language, { club: org.name }) });
+      const r = await queueBillingDm({ orgId, kind: "resumed", cycleKey: p.cycleKey, userId: contact!, text: () => resumedText(org!.language, { club: org!.name }) });
       if (r === "queued") sent++;
-    } else if (p.kind === "plan-billed" && billing?.graceEndsAt) {
-      const graceEndsAt = billing.graceEndsAt;
-      const link = await billingLink(contact, orgId);
+    } else {
+      const graceEndsAt = billing!.graceEndsAt!;
+      const link = await billingLink(contact!, orgId);
       const r = await queueBillingDm({
         orgId,
         kind: "plan-billed",
         cycleKey: p.cycleKey,
-        userId: contact,
+        userId: contact!,
         text: ({ name }) =>
-          planBilledText(org.language, {
+          planBilledText(org!.language, {
             name,
-            club: org.name,
-            pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
+            club: org!.name,
+            pricePence: planPricePence(org!.billingPlan, org!.billingPricePence) ?? 0,
             graceEndsAt,
             link,
           }),
@@ -547,38 +590,104 @@ interface SyncOutcome {
 
 const outcome = (action: SyncOutcome["action"], orgId: string): SyncOutcome => ({ action, orgId, adopted: false, resumed: false });
 
+/** Which of a subscription's paid invoices to refund when it is cancelled. */
+type RefundPolicy = { mode: "all" } | { mode: "after"; since: Date } | { mode: "none" };
+
+const refundIntentId = (subscriptionId: string) => `mt_refund_${subscriptionId}`;
+const REFUND_INTENT_TYPE = "mt.refund-intent";
+
+function intentType(policy: RefundPolicy): string {
+  return policy.mode === "after" ? `${REFUND_INTENT_TYPE}:after:${policy.since.toISOString()}` : REFUND_INTENT_TYPE;
+}
+function policyOfIntent(type: string): RefundPolicy {
+  const m = /^mt\.refund-intent:after:(.+)$/.exec(type);
+  return m ? { mode: "after", since: new Date(m[1]) } : { mode: "all" };
+}
+
 /**
- * Cancel a subscription MatchTime must not keep (a duplicate, or one for a
- * club that is not billed) at once with no proration, refund what it took,
- * and record it on /admin/health. Never a DM.
+ * Cancel a subscription MatchTime must not keep, at once with no proration
+ * (round-2 review N1, N2). ORDER MATTERS, so a failure at any step is
+ * finished by the retry and money is never lost or refunded twice:
+ *
+ *   1. recorded on /admin/health FIRST (never a DM), before any money moves;
+ *   2. a refund INTENT row (`BillingEvent` "mt_refund_<sub>", processedAt
+ *      null) when anything is to be refunded, carrying which invoices;
+ *   3. the refunds (one per invoice, idempotent);
+ *   4. only then the cancel;
+ *   5. the intent closed (processedAt).
+ * A failure before 5 leaves the intent open; the next event for the same
+ * subscription (Stripe retries this one) completes it, even once the
+ * subscription is already cancelled.
+ *
+ * What is refunded:
+ *   duplicate                 all of its own paid invoices
+ *   Free / exempt club        only invoices paid AFTER the club stopped
+ *                             being billed (`loadExemptSince`); its history
+ *                             is never refunded
+ *   suspended or deleted club nothing automatically (the owner decides,
+ *                             in Stripe)
  */
 async function cancelAndRefund(
   orgId: string,
   sub: BillingSubscription,
   why: "duplicate" | "unwanted",
   billing: BillingRow | null,
+  policy: RefundPolicy,
 ): Promise<SyncOutcome> {
   const stripe = requireStripe();
-  await stripe.cancelSubscription(sub.id);
-  const refunded = await stripe.refundPaidInvoices(sub.id);
-  if (billing?.stripeSubscriptionId === sub.id) await markCancelled(orgId, sub.id);
-  const money = refunded > 0 ? `, ${moneyLabel(refunded)} refunded` : ", nothing had been charged";
+  const plan =
+    policy.mode === "none"
+      ? "cancelled, not refunded automatically: refund it by hand in Stripe if it should be"
+      : policy.mode === "all"
+        ? "cancelled and its payments refunded"
+        : `cancelled; payments since ${policy.since.toISOString()} refunded`;
   const title =
-    why === "duplicate"
-      ? `Second club fee subscription cancelled${money}`
-      : `Club fee subscription for a club that is not billed cancelled${money}`;
+    why === "duplicate" ? `Second club fee subscription ${plan}` : `Club fee subscription for a club that is not billed (or is gone) ${plan}`;
   await recordOpsEvent({
     orgId,
     kind: BILLING_ALERT_KIND,
     severity: "warning",
     title,
-    detail: `Subscription ${sub.id} (${sub.status}) on customer ${sub.customerId ?? "?"} was cancelled at once by the billing webhook${
+    detail: `Subscription ${sub.id} (${sub.status}) on customer ${sub.customerId ?? "?"}${
       why === "duplicate" ? `; the club keeps ${billing?.stripeSubscriptionId}` : ""
     }.`,
     dedupeKey: `${why}:${sub.id}`,
   });
+  if (policy.mode !== "none") await openRefundIntent(orgId, sub.id, policy);
+  await finishCancelAndRefund(orgId, sub, policy);
+  if (billing?.stripeSubscriptionId === sub.id) await markCancelled(orgId, sub.id);
   console.error(`[billing-webhook] ${orgId}: ${title} (${sub.id})`);
   return outcome(why === "duplicate" ? "duplicate-cancelled" : "unwanted-cancelled", orgId);
+}
+
+async function openRefundIntent(orgId: string, subscriptionId: string, policy: RefundPolicy): Promise<void> {
+  try {
+    await db.billingEvent.create({ data: { id: refundIntentId(subscriptionId), type: intentType(policy), orgId } });
+  } catch (err) {
+    if ((err as { code?: string }).code !== "P2002") throw err; // already open (a retry)
+  }
+}
+
+/** Steps 3 to 5: refunds (if an intent is open), the cancel, the intent closed. */
+async function finishCancelAndRefund(orgId: string, sub: BillingSubscription, policy: RefundPolicy): Promise<void> {
+  const stripe = requireStripe();
+  const intent = await db.billingEvent.findUnique({ where: { id: refundIntentId(sub.id) } });
+  const refundDue = policy.mode !== "none" && !!intent && !intent.processedAt;
+  if (refundDue) {
+    try {
+      const r = await stripe.refundPaidInvoices(sub.id, policy.mode === "after" ? { paidAfter: policy.since } : {});
+      if (r.pence > 0) console.warn(`[billing-webhook] ${orgId}: refunded ${moneyLabel(r.pence)} on ${sub.id} (${r.invoiceIds.join(", ")})`);
+    } catch (err) {
+      await db.billingEvent
+        .update({ where: { id: refundIntentId(sub.id) }, data: { error: (err as Error).message.slice(0, 2000) } })
+        .catch(() => undefined);
+      throw err; // nothing cancelled yet; Stripe retries the event
+    }
+  }
+  if (isLiveSubscriptionStatus(sub.status)) await stripe.cancelSubscription(sub.id);
+  if (refundDue) {
+    await db.billingEvent.update({ where: { id: refundIntentId(sub.id) }, data: { processedAt: new Date(), error: null } });
+  }
 }
 
 /**
@@ -610,8 +719,24 @@ async function syncSubscription(
   const org = await loadOrg(orgId);
   const billing = await loadBilling(orgId);
   const live = isLiveSubscriptionStatus(sub.status);
-  if (live && (!org || org.billingPlan === "free" || org.billingStatus === "exempt")) {
-    return cancelAndRefund(orgId, sub, "unwanted", billing);
+
+  // A refund this subscription still owes (an earlier run failed part
+  // way): finish it first, whatever state the subscription is in now.
+  const intent = await db.billingEvent.findUnique({ where: { id: refundIntentId(sub.id) } });
+  if (intent && !intent.processedAt) {
+    await finishCancelAndRefund(orgId, sub, policyOfIntent(intent.type));
+    if (billing?.stripeSubscriptionId === sub.id) await markCancelled(orgId, sub.id);
+    return outcome("unwanted-cancelled", orgId);
+  }
+
+  const suspended = org?.approvalStatus === "suspended";
+  if (live && (!org || suspended || org.billingPlan === "free" || org.billingStatus === "exempt")) {
+    let policy: RefundPolicy = { mode: "none" };
+    if (org && !suspended) {
+      const since = await loadExemptSince(orgId);
+      if (since) policy = { mode: "after", since };
+    }
+    return cancelAndRefund(orgId, sub, "unwanted", billing, policy);
   }
   if (!org || !billing) return outcome("no-billing", orgId);
   if (billing.stripeCustomerId && sub.customerId && billing.stripeCustomerId !== sub.customerId) {
@@ -623,7 +748,7 @@ async function syncSubscription(
   const adopting = current !== sub.id;
   if (current !== null && current !== sub.id) {
     if (!live) return outcome("stale-subscription", orgId);
-    if (isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) return cancelAndRefund(orgId, sub, "duplicate", billing);
+    if (isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) return cancelAndRefund(orgId, sub, "duplicate", billing, { mode: "all" });
   }
 
   const billingCountry = opts.billingCountry !== undefined ? opts.billingCountry : billing.billingCountry;
@@ -664,6 +789,11 @@ async function syncSubscription(
       console.log(`[billing-webhook] ${orgId}: subscription ${sub.id} price ${sub.priceId} corrected to the plan's ${target}`);
     }
   }
+
+  // A subscription cancelled by a suspension, or any event for a suspended
+  // club: mirrored above, but the billing state is left as it is (plan
+  // 4.2; round-2 review N4). Nothing is ever scheduled for a suspended club.
+  if (suspended || sub.metadata.cancelledBy === "suspend") return { action: "synced", orgId, adopted: adopting, resumed: false };
 
   const ev = subscriptionStateEvent(
     { status: sub.status, cancelAtPeriodEnd: sub.cancelAtPeriodEnd || billing.cancelAtPeriodEnd },
@@ -769,6 +899,14 @@ async function onReplaceCard(session: Stripe.Checkout.Session, orgId: string): P
   if (!card) return ignored("no-card", orgId);
   const oldPm = billing.stripePaymentMethodId;
   const oldHolder = billing.cardHolderUserId;
+
+  // A NEW payer's card is confirmed: only NOW is the shared Customer reset
+  // (name back to the club; the previous payer's email, address, phone and
+  // VAT numbers cleared), then the new payer's own details go on (round-2
+  // review N3). Setup mode cannot collect a VAT number: a business payer
+  // adds theirs in the Customer Portal ("Change card or cancel", tax IDs
+  // allowed in its configuration), which only they can open from then on.
+  if (oldHolder !== payer) await stripe.resetCustomerDetails({ customerId: billing.stripeCustomerId, name: org.name });
 
   await stripe.setDefaultPaymentMethod({
     customerId: billing.stripeCustomerId,

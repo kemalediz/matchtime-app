@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Stripe from "stripe";
 import type { BillingStripe, BillingSubscription, CardDetails } from "./stripe-billing";
+import { isLiveSubscriptionStatus } from "./club-billing-rules";
 
 interface StoredSubscription extends Omit<BillingSubscription, "currentPeriodEnd" | "trialEnd"> {
   currentPeriodEnd: string | null;
@@ -33,9 +34,9 @@ export interface FakeStripeState {
   setupIntents: Record<string, CardDetails>;
   detached: string[];
   prices: Record<string, string>;
-  refunds: Array<{ subscriptionId: string; pence: number }>;
-  /** Paid invoices a test says a subscription has (pence). */
-  paidInvoices: Record<string, number>;
+  refunds: Array<{ subscriptionId: string; invoiceId: string; pence: number }>;
+  /** Paid invoices a test says a subscription has. */
+  paidInvoices: Record<string, Array<{ id: string; pence: number; paidAt: string }>>;
 }
 
 const empty = (): FakeStripeState => ({
@@ -67,7 +68,7 @@ export type FakeBillingStripe = BillingStripe & {
   state(): FakeStripeState;
   putSubscription(sub: BillingSubscription): void;
   putSetupIntent(id: string, card: CardDetails): void;
-  putPaidInvoice(subscriptionId: string, pence: number): void;
+  putPaidInvoice(subscriptionId: string, pence: number, paidAt?: Date, invoiceId?: string): void;
 };
 
 export function createFakeBillingStripe(opts: { file?: string | null } = {}): FakeBillingStripe {
@@ -114,9 +115,10 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       save(s);
     },
 
-    putPaidInvoice(subscriptionId, pence) {
+    putPaidInvoice(subscriptionId, pence, paidAt = new Date(), invoiceId) {
       const s = load();
-      s.paidInvoices[subscriptionId] = pence;
+      const list = (s.paidInvoices[subscriptionId] ??= []);
+      list.push({ id: invoiceId ?? `in_fake_${subscriptionId}_${list.length + 1}`, pence, paidAt: paidAt.toISOString() });
       save(s);
     },
 
@@ -200,18 +202,20 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       });
     },
 
-    async cancelSubscription(subscriptionId) {
-      tx("cancelSubscription", { subscriptionId }, (s) => {
+    async cancelSubscription(subscriptionId, opts = {}) {
+      tx("cancelSubscription", opts.reason ? { subscriptionId, reason: opts.reason } : { subscriptionId }, (s) => {
         const sub = s.subscriptions[subscriptionId];
-        if (sub) sub.status = "canceled";
+        if (sub) {
+          sub.status = "canceled";
+          if (opts.reason === "suspend") sub.metadata = { ...sub.metadata, cancelledBy: "suspend" };
+        }
       });
     },
 
     async listLiveSubscriptions(customerId) {
-      const live = new Set(["trialing", "active", "past_due", "unpaid", "incomplete", "paused"]);
       return tx("listLiveSubscriptions", { customerId }, (s) =>
         Object.values(s.subscriptions)
-          .filter((x) => x.customerId === customerId && live.has(x.status) && x.metadata.purpose === "club-fee")
+          .filter((x) => x.customerId === customerId && isLiveSubscriptionStatus(x.status) && x.metadata.purpose === "club-fee")
           .map(fromStored),
       );
     },
@@ -224,11 +228,17 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       tx("updateCustomer", args, () => undefined);
     },
 
-    async refundPaidInvoices(subscriptionId) {
-      return tx("refundPaidInvoices", { subscriptionId }, (s) => {
-        const pence = s.paidInvoices[subscriptionId] ?? 0;
-        if (pence > 0 && !s.refunds.some((r) => r.subscriptionId === subscriptionId)) s.refunds.push({ subscriptionId, pence });
-        return pence;
+    async refundPaidInvoices(subscriptionId, opts = {}) {
+      return tx("refundPaidInvoices", { subscriptionId, paidAfter: opts.paidAfter ? opts.paidAfter.toISOString() : null }, (s) => {
+        let pence = 0;
+        const invoiceIds: string[] = [];
+        for (const inv of s.paidInvoices[subscriptionId] ?? []) {
+          if (opts.paidAfter && new Date(inv.paidAt) < opts.paidAfter) continue;
+          if (!s.refunds.some((r) => r.invoiceId === inv.id)) s.refunds.push({ subscriptionId, invoiceId: inv.id, pence: inv.pence });
+          pence += inv.pence;
+          invoiceIds.push(inv.id);
+        }
+        return { pence, invoiceIds };
       });
     },
 
