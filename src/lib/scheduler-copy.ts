@@ -251,6 +251,17 @@ export function buildUnpaidTailText(unpaid: number, lang?: Lang | string | null)
 }
 
 /**
+ * Row UNP2 (2026-10-01): the unpaid reminder posted on its own in a
+ * weekly-rhythm club's group, two days after the match
+ * (`<matchId>:unpaid-group`). Its own words, not row 73's: no "last
+ * week's match", no "the poll above". `dayName` is the match's weekday in
+ * the group's language (`weekdayLabel`).
+ */
+export function buildUnpaidGroupReminder(p: { unpaid: number; dayName: string; lang?: Lang | string | null }): string {
+  return t(p.lang).unpaid_group_reminder({ unpaid: p.unpaid, dayName: p.dayName });
+}
+
+/**
  * Row 81: the context clause inside the bench-slot offer (row 52's
  * `{context}` and row 85's plain twin for the DM). With a team and a
  * replaced player it names both; otherwise just the fixture.

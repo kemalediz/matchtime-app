@@ -251,6 +251,7 @@ import {
   buildPreKickoffShortFallback,
   buildSquadFullEveningPost,
   buildSquadRosterBlock,
+  buildUnpaidGroupReminder,
   buildUnpaidTailText,
   buildRollingAnnouncePost,
   buildRollingDeadlineLine,
@@ -315,6 +316,7 @@ import {
   buildBenchDmUnclear,
   buildLateDropAdminNotice,
   buildDeadlineSummaryAdminNotice,
+  buildUnpaidListAdminNotice,
   buildDirectPayCollectorNotice,
   buildDirectPayCollectorNudge,
   buildDmQaApology,
@@ -1486,6 +1488,23 @@ function cases(lang: Lang): Case[] {
     ].join("\n---\n"),
   );
 
+  // ── U1, the organisers' unpaid list (2026-10-01). NEW copy, added
+  //    deliberately; no existing case changes. UNP2 is the weekly-rhythm
+  //    club's standalone group reminder; row 73 (the 17:00 tail) is
+  //    untouched. ──
+  const unpWhen = lang === "tr" ? "9 Ekim Cuma 20:30" : "Fri 9 Oct at 20:30";
+  add(
+    "UNP1 buildUnpaidListAdminNotice / several unpaid",
+    buildUnpaidListAdminNotice({ activityName: "Friday 9-a-side", whenLabel: unpWhen, names: ["Wasim Ali", "Raihan Ahmed", "Ali Demir"], paid: 13, n: 16, lang }),
+  );
+  add(
+    "UNP1 buildUnpaidListAdminNotice / one unpaid",
+    buildUnpaidListAdminNotice({ activityName: "Friday 9-a-side", whenLabel: unpWhen, names: ["Wasim Ali"], paid: 15, n: 16, lang }),
+  );
+  const unpDay = lang === "tr" ? "Cuma" : "Friday";
+  add("UNP2 buildUnpaidGroupReminder / several", buildUnpaidGroupReminder({ unpaid: 3, dayName: unpDay, lang }));
+  add("UNP2 buildUnpaidGroupReminder / one", buildUnpaidGroupReminder({ unpaid: 1, dayName: unpDay, lang }));
+
   return c;
 }
 
@@ -1562,6 +1581,8 @@ const MIGRATED_ROWS = [
   "WDL1 ", "WDL2 ", "WDL3 ", "WDL4 ",
   // organiser pick (2026-10-01)
   "OPK1 ", "OPK2 ", "OPK3 ", "OPK4 ", "OPK5 ", "OPK6 ", "OPK7 ", "OPK8 ", "OPK9 ", "OPK10 ",
+  // the organisers' unpaid list (2026-10-01)
+  "UNP1 ", "UNP2 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {
