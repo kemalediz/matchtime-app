@@ -51,6 +51,31 @@ export default function AdminGuidePage() {
         (see <a href="#payments">Payments</a>).
       </p>
 
+      <h3 id="club-fee">Club fee</h3>
+      <p>
+        Your first month is free, counted from the day we approve your club.
+        After that it&apos;s £9.99 a month per group, including VAT. The money
+        collector (or the owner if no collector is set) adds a card on the
+        club&apos;s billing page. MatchTime DMs them a link to it, and admins
+        can open it from <strong>Open billing</strong> in Settings.
+      </p>
+      <p>
+        You&apos;ll get reminders before your first month ends. Nothing is
+        taken before then. If there&apos;s still no card when it ends,
+        MatchTime keeps running for one more week. After that it goes quiet in
+        your group until a card is added: no posts and no replies, but it
+        stays in the group, nothing is said to the players, and your players,
+        matches and stats are kept. Add a card and it&apos;s back within a few
+        minutes. You can cancel any time from the billing page, and Stripe
+        emails each receipt.
+      </p>
+      <p>
+        <strong>Tip:</strong> the collector can add a small share to what each
+        player pays for a game. For a weekly 5-a-side (10 players, about 4
+        games a month) that&apos;s about 25p a player per game: if your game
+        costs £8 each, ask for £8.25 and the club fee is covered.
+      </p>
+
       {/* ───────────────────────────────────────────────── */}
       <h2 id="activities">2. Your weekly match</h2>
 
