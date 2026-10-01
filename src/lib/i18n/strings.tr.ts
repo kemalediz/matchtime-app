@@ -1435,6 +1435,16 @@ export const tr: Strings = {
   stats_tots_info_lead: (p) =>
     `Sezonun şimdiye kadarki en iyi kadrosu: her mevkide sezon ortalama puanı en yüksek oyuncu (${p.sportName}).`,
 
+  // ── /profile/stats: kartları görsel olarak paylaşma (2026-10-01).
+  // Rozet adları iki dilde de İngilizce kalıyor (player-stats.ts). Kulüp
+  // adı parantez içinde, ek almadan duruyor. ──
+  stats_share_card: "Kartı paylaş",
+  stats_share_badge_label: (p) => `Paylaş: ${p.label}`,
+  stats_share_saved: "Görsel kaydedildi. WhatsApp'tan gönder.",
+  stats_share_failed: "Görsel hazırlanamadı. Tekrar dene.",
+  stats_share_badge_text: (p) => `MatchTime'da yeni rozetim: ${p.emoji} ${p.label} (${p.orgName})`,
+  stats_share_season_text: (p) => `MatchTime'da sezonum (${p.orgName})`,
+
   // ── Self-join, 4. dilim: organizatörün web sayfaları (2026-09-29) ──
   // Sayılara gelen ek (7'ye, 5'e, 6'ya...) sayının okunuşuna göre
   // seçilir: yedi, beş, altı. Kulüp adı hep eksiz bir yerde durur

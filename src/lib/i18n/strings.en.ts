@@ -1723,6 +1723,19 @@ export const en = {
   stats_tots_info_lead: (p: { sportName: string }): string =>
     `The best line-up of the season so far: the player with the highest season average rating in each position (${p.sportName}).`,
 
+  // ── /profile/stats: share cards as an image (2026-10-01). The season
+  //    card and each earned badge open the phone's share sheet with the
+  //    PNG attached; where that is not possible the PNG is downloaded and
+  //    `stats_share_saved` says what to do next. Badge labels themselves
+  //    are English in both languages (they come from player-stats.ts). ──
+  stats_share_card: "Share card",
+  stats_share_badge_label: (p: { label: string }): string => `Share ${p.label}`,
+  stats_share_saved: "Image saved. Send it in WhatsApp.",
+  stats_share_failed: "Couldn't make the image. Try again.",
+  stats_share_badge_text: (p: { emoji: string; label: string; orgName: string }): string =>
+    `I just earned ${p.emoji} ${p.label} at ${p.orgName} on MatchTime`,
+  stats_share_season_text: (p: { orgName: string }): string => `My season at ${p.orgName} on MatchTime`,
+
   // ── Self-join, slice 4: the organiser web (2026-09-29) ────────────
   // MDs/self-join-and-approval-plan-2026-09-28.md sections 5.1 to 5.3.
   // The website a new organiser reads while creating a club and
