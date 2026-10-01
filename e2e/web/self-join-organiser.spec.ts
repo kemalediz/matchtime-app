@@ -226,7 +226,7 @@ test("flag ON: sign up, set up the club and its weekly game, connect, and the ca
   await db.run(`UPDATE "Organisation" SET "approvalStatus" = 'pending' WHERE id = $1`, [org!.id]);
   await page.reload();
   await expect(card).toHaveAttribute("data-state", "pending");
-  await expect(card).toContainText("3. adım: grubunuzu kontrol ediyoruz");
+  await expect(card).toContainText("3. adım: kulübünüzü kontrol ediyoruz");
   await shot(page, "06-admin-pending");
   await db.run(`UPDATE "ClubConnect" SET "adderMatch" = 'unknown' WHERE "orgId" = $1`, [org!.id]);
   await page.reload();

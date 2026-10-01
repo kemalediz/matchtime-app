@@ -40,6 +40,16 @@ vi.mock("@/lib/db", () => ({ db: dbMock }));
 const importMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/participant-sync", () => ({ importParticipants: importMock }));
 
+// The organiser's signed-in links (2026-10-01): one per page, for the
+// organiser's own user, pinned to the club. A fake that shows all three.
+const adminLinkMock = vi.hoisted(() =>
+  vi.fn(async (a: { userId: string; orgId: string; nextPath: string }) => `https://mt.link/${a.userId}/${a.orgId}${a.nextPath}`),
+);
+vi.mock("@/lib/admin-link", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/admin-link")>()),
+  buildAdminLink: adminLinkMock,
+}));
+
 import { decideClub, handleApproverDm, leaveUnsolicitedGroup } from "../club-approval";
 
 const NOW = new Date("2026-09-29T12:00:00Z");
@@ -174,14 +184,26 @@ describe("decideClub: approve", () => {
     const [hello] = created("botJob");
     expect(hello).toMatchObject({ orgId: "org-riverside", kind: "group" });
     expect(hello.text).toContain("Ali has set me up to run this group's games.");
-    expect(hello.text).toContain("*IN*");
+    expect(hello.text).toContain("*In*");
     // The organiser's DM, once, on the platform channel.
     const dms = created("platformJob");
     expect(dms).toHaveLength(1);
     expect(dms[0]).toMatchObject({ kind: "dm", phone: ALI, purpose: "organiser-decision", refId: "cc-ali:approved" });
     expect(dms[0].text).toBe(
-      'Good news: Riverside FC is live. I\'ve said hello in "Riverside Tuesday 5s". You can set or change your weekly game here: https://matchtime.ai/admin/activities',
+      'Good news: Riverside FC is live. I\'ve said hello in "Riverside Tuesday 5s".\n\n' +
+        "A few things to set up when you have a minute:\n\n" +
+        "📅 *Your weekly game:* check the day, time and venue, or change them:\nhttps://mt.link/u-ali/org-riverside/admin/activities\n\n" +
+        "⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\nhttps://mt.link/u-ali/org-riverside/admin/players/ratings\n\n" +
+        "⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:\nhttps://mt.link/u-ali/org-riverside/admin/settings\n\n" +
+        "❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n\n" +
+        "Your first month is free.",
     );
+    // Each link signs in the organiser (the DM goes to their own phone), in this club.
+    expect(adminLinkMock.mock.calls.map((c) => c[0])).toEqual([
+      { userId: "u-ali", orgId: "org-riverside", nextPath: "/admin/activities" },
+      { userId: "u-ali", orgId: "org-riverside", nextPath: "/admin/players/ratings" },
+      { userId: "u-ali", orgId: "org-riverside", nextPath: "/admin/settings" },
+    ]);
     expect(anthropicCalls.n).toBe(0);
   });
 
@@ -190,6 +212,22 @@ describe("decideClub: approve", () => {
     await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
     expect(created("botJob")[0].text).toContain("*VARIM*");
     expect(created("platformJob")[0].text).toMatch(/^Güzel haber: Riverside FC artık aktif\./);
+  });
+
+  it("the hello is the full feature intro: In, bench, remind me, teams, MoM, stats, fees, help", async () => {
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    const hello = String(created("botJob")[0].text);
+    for (const f of ["*In*", "bench", "remind me", "teams", "Man of the Match", "ratings", "Stats", "Match fees", "*@Match Time help*"]) {
+      expect(hello).toContain(f);
+    }
+  });
+
+  it("a link that cannot be minted falls back to the plain page address; the DM still goes", async () => {
+    adminLinkMock.mockRejectedValueOnce(new Error("short link table down"));
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    const text = String(created("platformJob")[0].text);
+    expect(text).toContain("\nhttps://matchtime.ai/admin/activities\n");
+    expect(text).toContain("https://mt.link/u-ali/org-riverside/admin/players/ratings");
   });
 
   it("an approval still stands when the roster import fails (it is logged)", async () => {

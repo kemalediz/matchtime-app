@@ -142,7 +142,7 @@ test("from the sign-up phone, edited text, lowercase: verified, LID kept, one En
   expect(sent[0].text).toBe(
     "Hi Ali, got it: Riverside FC is connected to this chat.\n" +
       "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n" +
-      "I'll stay quiet in the group until we've switched it on for you, usually within a day.",
+      "I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.",
   );
 
   // The same WhatsApp message forwarded again: nothing new.

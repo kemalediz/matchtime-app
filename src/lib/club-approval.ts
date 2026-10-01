@@ -31,6 +31,7 @@
  */
 import { db } from "./db";
 import { t } from "./i18n/t";
+import { appUrl, buildAdminLink } from "./admin-link";
 import { e164Digits } from "./phone";
 import { parseParticipantSnapshot } from "./participant-snapshot";
 import { parseApproverPhones, queueOwnerDm } from "./owner-dm";
@@ -258,10 +259,27 @@ export type DecideClubResult =
 
 class DecisionRaceLost extends Error {}
 
-/** The organiser's weekly-game page, linked from the "approved" DM. */
-function weeklyGameLink(): string {
-  const base = (process.env.NEXTAUTH_URL ?? "https://matchtime.ai").replace(/\/$/, "");
-  return `${base}/admin/activities`;
+/**
+ * The organiser's links in the "approved" DM (2026-10-01): the weekly
+ * game, the seed editor and Settings. Each one signs the organiser in to
+ * this club (`buildAdminLink`); the DM goes to the organiser's own phone.
+ * A link that cannot be minted falls back to the page's plain address, so
+ * the DM always goes.
+ */
+async function organiserLinks(userId: string, orgId: string) {
+  const link = async (nextPath: string): Promise<string> => {
+    try {
+      return await buildAdminLink({ userId, orgId, nextPath });
+    } catch (err) {
+      console.error(`[club-approval] ${orgId}: signed-in link to ${nextPath} failed; sending the plain address:`, err);
+      return appUrl(nextPath);
+    }
+  };
+  return {
+    scheduleUrl: await link("/admin/activities"),
+    ratingsUrl: await link("/admin/players/ratings"),
+    settingsUrl: await link("/admin/settings"),
+  };
 }
 
 function firstName(name: string | null | undefined): string | null {
@@ -311,6 +329,8 @@ export async function decideClub(
       language: string | null;
       link: {
         id: string;
+        /** The organiser: their "approved" DM carries links that sign them in. */
+        userId: string;
         phone: string;
         groupId: string | null;
         groupSubject: string | null;
@@ -489,7 +509,11 @@ export async function decideClub(
     await queueOrganiserDecisionDm(
       `${after.link.id}:approved`,
       after.link.phone,
-      s.sj_dm_approved({ club: result.club, group: after.link.groupSubject, link: weeklyGameLink() }),
+      s.sj_dm_approved({
+        club: result.club,
+        group: after.link.groupSubject,
+        ...(await organiserLinks(after.link.userId, orgId)),
+      }),
     );
   }
   if (result.decision === "reject" && after.link) {

@@ -2284,7 +2284,7 @@ Step 2: add MatchTime to your football group. Save the number below as a contact
 MatchTime's WhatsApp number: +44 7700 900777
 
 ### R182 card / pending approval
-Step 3: we're checking your group, usually within a day. MatchTime stays quiet in the group until then.
+Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved, and messages you on WhatsApp when it's live.
 
 ### R182 card / pending, added by someone else
 MatchTime was added to "Riverside Tuesday 5s" by someone else. We'll check it before switching on.
@@ -2314,12 +2314,12 @@ We're taking on a few new groups each day. Please try again tomorrow.
 ### R183 connect DM / connected
 Hi Ali, got it: Riverside FC is connected to this chat.
 Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.
-I'll stay quiet in the group until we've switched it on for you, usually within a day.
+I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.
 
 ### R183 connect DM / connected, no name
 Hi, got it: Riverside FC is connected to this chat.
 Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.
-I'll stay quiet in the group until we've switched it on for you, usually within a day.
+I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.
 
 ### R183 connect DM / already connected
 You're already connected. Now just add me to your group.
@@ -2331,26 +2331,72 @@ That code has expired. Open your club on matchtime.ai and tap Add MatchTime to W
 We're taking on a few new groups each day. Please try again tomorrow.
 
 ### R184 group add / organiser ack
-Thanks, I'm in "Riverside Tuesday 5s". I'll stay quiet there until we switch you on, and I'll message you here when it's done.
+Thanks, I'm in "Riverside Tuesday 5s". I'll stay quiet there until your club is approved, usually within a day. I'll message you here when it's live.
 
 ### R184 group add / organiser ack, no group name
-Thanks, I'm in your group. I'll stay quiet there until we switch you on, and I'll message you here when it's done.
+Thanks, I'm in your group. I'll stay quiet there until your club is approved, usually within a day. I'll message you here when it's live.
 
 ### R185 group hello / organiser named
-👋 Hi everyone, I'm *MatchTime*. Ali has set me up to run this group's games.
-Playing? Just write *IN*. Can't make it? Write *OUT*. I'll tick your message and keep the squad list up to date.
-Anything else, tag me: *@Match Time help*
+👋 Hi everyone, I'm *MatchTime*. Ali has set me up to run this group's games. Here's what I do, right here in WhatsApp:
+
+✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.
+🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.
+⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.
+⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.
+⭐ *Man of the Match and ratings* after every game.
+📊 *Stats:* ask me anything, and everyone gets their own stats page.
+💷 *Match fees:* your organiser can switch on card or bank pay links.
+
+I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*
 
 ### R185 group hello / no organiser name
-👋 Hi everyone, I'm *MatchTime*. I'm here to run this group's games.
-Playing? Just write *IN*. Can't make it? Write *OUT*. I'll tick your message and keep the squad list up to date.
-Anything else, tag me: *@Match Time help*
+👋 Hi everyone, I'm *MatchTime*. I'm here to run this group's games. Here's what I do, right here in WhatsApp:
+
+✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.
+🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.
+⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.
+⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.
+⭐ *Man of the Match and ratings* after every game.
+📊 *Stats:* ask me anything, and everyone gets their own stats page.
+💷 *Match fees:* your organiser can switch on card or bank pay links.
+
+I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*
 
 ### R185 organiser DM / approved
-Good news: Riverside FC is live. I've said hello in "Riverside Tuesday 5s". You can set or change your weekly game here: https://matchtime.ai/admin/activities
+Good news: Riverside FC is live. I've said hello in "Riverside Tuesday 5s".
+
+A few things to set up when you have a minute:
+
+📅 *Your weekly game:* check the day, time and venue, or change them:
+https://matchtime.ai/l/sched
+
+⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:
+https://matchtime.ai/l/rate
+
+⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:
+https://matchtime.ai/l/set
+
+❓ *Help any time:* message me here, for example *help payments* or *help badges*.
+
+Your first month is free.
 
 ### R185 organiser DM / approved, no group name
-Good news: Riverside FC is live. I've said hello in your group. You can set or change your weekly game here: https://matchtime.ai/admin/activities
+Good news: Riverside FC is live. I've said hello in your group.
+
+A few things to set up when you have a minute:
+
+📅 *Your weekly game:* check the day, time and venue, or change them:
+https://matchtime.ai/l/sched
+
+⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:
+https://matchtime.ai/l/rate
+
+⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:
+https://matchtime.ai/l/set
+
+❓ *Help any time:* message me here, for example *help payments* or *help badges*.
+
+Your first month is free.
 
 ### R185 organiser DM / rejected
 Thanks for trying MatchTime. We can't take "Riverside Tuesday 5s" on right now, so I've left the group. We'll be in touch if that changes.

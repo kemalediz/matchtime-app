@@ -170,7 +170,7 @@ test("the organiser adds MatchTime: linked, pending, silent, one owner DM, one a
     {
       purpose: "connect-reply",
       refId: "e2e-sj6-en:in-group",
-      text: "Thanks, I'm in \"Riverside Tuesday 5s\". I'll stay quiet there until we switch you on, and I'll message you here when it's done.",
+      text: "Thanks, I'm in \"Riverside Tuesday 5s\". I'll stay quiet there until your club is approved, usually within a day. I'll message you here when it's live.",
     },
   ]);
 
@@ -203,7 +203,7 @@ test("a LID-only adder matches the connect DM's LID; the ack is Turkish; the own
 
   const ack = await jobsTo(db, AYSE_PHONE);
   expect(ack.map((j) => j.text)).toEqual([
-    'Teşekkürler, "Cuma Halı Saha" grubuna katıldım. Sizi açana kadar orada sessiz kalacağım, bitince size buradan yazacağım.',
+    'Teşekkürler, "Cuma Halı Saha" grubuna katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.',
   ]);
   const owner = (await jobsTo(db, E2E.APPROVER_PHONE)).find((j) => j.refId === "e2e-sj6-tr");
   expect(owner?.text).toContain("Added by: the organiser (matched by WhatsApp id) (organiser's WhatsApp number not confirmed)");

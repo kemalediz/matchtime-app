@@ -196,7 +196,7 @@ describe("a matched add (the organiser added MatchTime)", () => {
     const ack = dbMock.platformJob.create.mock.calls[0][0].data;
     expect(ack).toMatchObject({ kind: "dm", phone: ALI, purpose: "connect-reply", refId: "cc-ali:in-group" });
     expect(ack.text).toBe(
-      "Thanks, I'm in \"Riverside Tuesday 5s\". I'll stay quiet there until we switch you on, and I'll message you here when it's done.",
+      "Thanks, I'm in \"Riverside Tuesday 5s\". I'll stay quiet there until your club is approved, usually within a day. I'll message you here when it's live.",
     );
 
     // The owner DM is handed back for the route to queue.
@@ -222,7 +222,7 @@ describe("a matched add (the organiser added MatchTime)", () => {
     });
     const ack = dbMock.platformJob.create.mock.calls[0][0].data;
     expect(ack.text).toBe(
-      'Teşekkürler, "Cuma Halı Saha" grubuna katıldım. Sizi açana kadar orada sessiz kalacağım, bitince size buradan yazacağım.',
+      'Teşekkürler, "Cuma Halı Saha" grubuna katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.',
     );
     if (out.kind !== "linked") throw new Error("unreachable");
     expect(out.ownerDm.text).toContain("looks Turkish (club chose Türkçe)");
