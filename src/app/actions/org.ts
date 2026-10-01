@@ -1,5 +1,6 @@
 "use server";
 
+import { normaliseBenchPickFallback, normaliseBenchPickMode } from "@/lib/squad-capacity";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createOrgSchema } from "@/lib/validations";
@@ -435,6 +436,10 @@ export async function setOrgLanguage(orgId: string, language: string) {
  */
 export interface WeeklyRoutinePatch extends WeeklyDeadlinesPatch {
   rollingSquad?: boolean;
+  /** Slice 2b: who fills an open place. */
+  benchPickMode?: "first-come" | "organiser";
+  /** Slice 2b: when nobody picks in time. */
+  benchPickFallback?: "bench-offer" | "leave-empty";
   adminChannel?: { mode: string; userId: string | null };
 }
 
@@ -444,10 +449,22 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
   const { requireOrgAdmin } = await import("@/lib/org");
   await requireOrgAdmin(session.user.id, orgId);
 
-  const data: { rollingSquadEnabled?: boolean } & WeeklyDeadlinesData = {};
+  const data: { rollingSquadEnabled?: boolean; benchPickMode?: string; benchPickFallback?: string } & WeeklyDeadlinesData = {};
   if (patch && "rollingSquad" in patch) {
     if (typeof patch.rollingSquad !== "boolean") throw new Error("rollingSquad must be true or false");
     data.rollingSquadEnabled = patch.rollingSquad;
+  }
+  if (patch && "benchPickMode" in patch) {
+    if (patch.benchPickMode !== "first-come" && patch.benchPickMode !== "organiser") {
+      throw new Error('benchPickMode must be "first-come" or "organiser"');
+    }
+    data.benchPickMode = patch.benchPickMode;
+  }
+  if (patch && "benchPickFallback" in patch) {
+    if (patch.benchPickFallback !== "bench-offer" && patch.benchPickFallback !== "leave-empty") {
+      throw new Error('benchPickFallback must be "bench-offer" or "leave-empty"');
+    }
+    data.benchPickFallback = patch.benchPickFallback;
   }
   if (hasWeeklyDeadlinesPatch(patch)) {
     const deadlines = await prepareWeeklyDeadlinesPatch(orgId, patch);
@@ -466,6 +483,8 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
 
   const select = {
     rollingSquadEnabled: true,
+    benchPickMode: true,
+    benchPickFallback: true,
     dropOutDeadlineDay: true,
     dropOutDeadlineTime: true,
     listPublishDay: true,
@@ -480,5 +499,12 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
   const saved: { adminChannel?: SaveAdminChannelResult } = {};
   if (adminChannel) saved.adminChannel = await saveAdminChannelChoice(orgId, adminChannel.mode, adminChannel.userId);
   revalidatePath("/admin/settings");
-  return { ok: true as const, rollingSquad: row.rollingSquadEnabled, ...weeklyDeadlinesView(row), ...saved };
+  return {
+    ok: true as const,
+    rollingSquad: row.rollingSquadEnabled,
+    benchPickMode: normaliseBenchPickMode(row.benchPickMode),
+    benchPickFallback: normaliseBenchPickFallback(row.benchPickFallback),
+    ...weeklyDeadlinesView(row),
+    ...saved,
+  };
 }

@@ -14,6 +14,11 @@
  *      only while SELF_JOIN_ENABLED is on; deterministic, no model; a DM
  *      with no code, or a code that names no connect request, falls
  *      through untouched. See lib/connect-dm.ts)
+ *   0c. organiser pick reply            (2026-10-01, slice 2b: an owner or
+ *      admin, resolved BY PHONE ONLY, answering a pick round they were
+ *      asked on: "2", "Wasim", "NONE", "YES"; deterministic, no model; a DM
+ *      that is not a pick reply falls through untouched. See
+ *      lib/organiser-pick.ts, handleOrganiserPickDm)
  *   1. bench-slot offer reply           (an open BenchSlotOffer; skips a
  *      help request, which is never a YES/NO)
  *   1b. help                            (2026-09-30: "help", "help payments",
@@ -55,6 +60,7 @@
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, onlyUnapprovedClubs } from "@/lib/club-approval";
 import { handleConnectDm } from "@/lib/connect-dm";
+import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
@@ -129,6 +135,24 @@ export async function POST(request: Request) {
     if (decision) return NextResponse.json({ ok: true, ...decision });
     const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId });
     if (connect) return NextResponse.json({ ok: true, ...connect });
+  }
+
+  // ── Organiser pick (slice 2b): an admin answering a pick round ─────────
+  //   Before the bench reply and every model call (the admin-commands
+  //   classifier, Q&A), so a pick costs nothing. Engages only for a sender
+  //   who, by phone, was asked on an open round; returns null otherwise and
+  //   the DM carries on exactly as before.
+  {
+    const pick = await handleOrganiserPickDm({
+      phone,
+      senderAltPhone,
+      text,
+      waMessageId,
+      timestamp: typeof (body as { timestamp?: unknown }).timestamp === "string"
+        ? ((body as { timestamp?: string }).timestamp as string)
+        : null,
+    });
+    if (pick) return NextResponse.json({ ok: true, ...pick });
   }
 
   // A help request ("help", "help payments", "yardım ödeme") is answered

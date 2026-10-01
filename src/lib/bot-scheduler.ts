@@ -407,7 +407,11 @@ function hoursBetween(a: Date, b: Date): number {
 function botIntroMessage(f: OrgFeatures): string {
   // The words live in `scheduler-copy.ts` (pure, golden-pinned) and
   // come from the string table for the org's language.
-  return buildBotIntro(f, buildBenchIntroLine({ lang: f.language }), f.language);
+  return buildBotIntro(
+    f,
+    buildBenchIntroLine({ lang: f.language, organiser: f.benchPickMode === "organiser" }),
+    f.language,
+  );
 }
 
 // ─────────────────────────── Main entry point ─────────────────────────────
@@ -1001,6 +1005,9 @@ async function computeForMatch(
               confirmed: confirmed.map((a) => a.user),
               bench: bench.map((a) => a.user),
               maxPlayers,
+              // Slice 2b: an organiser-pick club says IN puts you on the
+              // waiting list, and the organisers pick.
+              organiserPicks: features.benchPickMode === "organiser",
               lang,
             }),
           });
@@ -1265,7 +1272,9 @@ async function computeForMatch(
             // the promise cannot drift. Only with the bench feature on:
             // without it the bench-slot offer never fires, so "I tag the
             // bench here" would be false.
-            benchInvite: features.bench ? buildSquadCompleteBenchInvite({ lang }) : null,
+            benchInvite: features.bench
+              ? buildSquadCompleteBenchInvite({ lang, organiser: features.benchPickMode === "organiser" })
+              : null,
             lang,
           });
           const body = rollingDeadlineLine ? `${squadPost}\n\n${rollingDeadlineLine}` : squadPost;
@@ -1534,6 +1543,7 @@ async function computeForMatch(
               matchWhen: when,
               need,
               lang,
+              organiser: features.benchPickMode === "organiser",
             }),
           });
           emitted++;
@@ -2566,9 +2576,14 @@ export async function requestBenchConfirmationOnDrop(
 ): Promise<void> {
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { attendances: true },
+    include: { attendances: true, activity: { select: { org: { select: { benchPickMode: true } } } } },
   });
   if (!match) return;
+
+  // An organiser-pick club (slice 2b) opens no offer on a drop: the admins
+  // pick (`organiser-pick.ts`), and only their fallback, when nobody picks
+  // in time, offers the place to the waiting list.
+  if (match.activity?.org?.benchPickMode === "organiser") return;
 
   const hasBench = match.attendances.some((a) => a.status === "BENCH");
   if (!hasBench) return; // nobody on the bench — chase handles it

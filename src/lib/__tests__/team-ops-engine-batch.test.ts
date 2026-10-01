@@ -81,6 +81,7 @@ const FEATURES_ON: OrgFeatures = {
   squadFromList: false,
   language: "en",
   rollingSquad: false,
+  benchPickMode: "first-come",
 };
 
 /** A model that answers from a table keyed on the message body, and

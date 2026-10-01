@@ -42,6 +42,7 @@
  *   format-switch.ts          the arithmetic the model got wrong
  * The engine is built OUT of the pure core, not beside it.
  */
+import { canTakeFreePlace, ORGANISER_PICK_BENCH_NOTE } from "../squad-capacity";
 import {
   actionRequiresTag,
   messageMentionsBotExplicitly,
@@ -1454,6 +1455,7 @@ export function decide(input: EngineInput): EngineResult {
           target: t,
           self,
           promoteAuthorized,
+          actorIsAdmin: senderIsAdmin,
           messageId: msg.id,
           // A replacement stands where the man he replaced stood.
           // Kemal's hand correction on the night of the incident put
@@ -1589,7 +1591,11 @@ export function decide(input: EngineInput): EngineResult {
           !!replacementIn?.userId &&
           t === replacementOut &&
           w.rows.get(replacementIn.userId)?.status !== "CONFIRMED";
-        if (write.status === "DROPPED" && t.userId && !replacementWillFill) {
+        // An organiser-pick club (slice 2b) opens no offer on a drop: the
+        // admins are asked instead (`organiser-pick.ts`), and only their
+        // fallback, when nobody picks in time, offers the place.
+        const organiserPicks = state.features.benchPickMode === "organiser";
+        if (write.status === "DROPPED" && t.userId && !replacementWillFill && !organiserPicks) {
           const bench = benchUserIds(w);
           const alreadyOpen = w.offers.some((o) => o.replacingUserId === t.userId);
           if (bench.length > 0 && !alreadyOpen) {
@@ -2805,10 +2811,15 @@ export function decide(input: EngineInput): EngineResult {
       return false;
     return true;
   });
+  // An organiser-pick club with somebody on the waiting list says nothing
+  // here: the admins are being asked to pick (slice 2b, plan 2.12). With
+  // an empty waiting list it says so, in the pick wording (compose).
+  const organiserPickQuiet = state.features.benchPickMode === "organiser" && benchSize > 0;
   const slotJustOpened =
     confirmedBefore >= state.maxPlayers &&
     confirmedCount(w) < state.maxPlayers &&
-    vacated.length > 0;
+    vacated.length > 0 &&
+    !organiserPickQuiet;
 
   // ═══════════════════════════════════════════════════════════════════
   // …AND A FOURTH ARM, IN FRONT OF ALL THREE (2026-09-15, same night)
@@ -3202,6 +3213,13 @@ function applyClaim(args: {
    * DROPPED, so nothing that renders a squad reads it.
    */
   inheritPosition?: number | null;
+  /**
+   * The SENDER is an owner or admin (slice 2b, 2026-10-01). In an
+   * organiser-pick club only an admin, a reclaim or a running fallback
+   * offer may take a free place; see `canTakeFreePlace`, the rule
+   * `registerAttendance` applies to the same write.
+   */
+  actorIsAdmin?: boolean;
 }): (ProposedWrite & { kind: "attendance" }) | null {
   const { w, state, target, self, promoteAuthorized, messageId } = args;
   const polarity = target.claim.polarity;
@@ -3242,7 +3260,18 @@ function applyClaim(args: {
   // slots.
   const explicitBench = polarity === "bench" && !target.claim.contingent;
   const confirmed = confirmedCount(w);
-  const squadHasRoom = confirmed < state.maxPlayers;
+  // WHO MAY TAKE A FREE PLACE (slice 2b): the one shared rule. For a
+  // first-come club (every club until it chooses otherwise, Sutton FC
+  // included) this is exactly `confirmed < maxPlayers`.
+  const hasRoom = confirmed < state.maxPlayers;
+  const squadHasRoom = canTakeFreePlace({
+    confirmed,
+    maxPlayers: state.maxPlayers,
+    pickMode: state.features.benchPickMode ?? "first-come",
+    actorIsAdmin: args.actorIsAdmin === true,
+    isReclaim: existing?.status === "DROPPED" && (state.reclaimUserIds ?? []).includes(userId),
+    openBenchOffer: w.offers.length > 0,
+  });
 
   if (existing && (existing.status === "CONFIRMED" || existing.status === "BENCH")) {
     const wantsDowngrade = explicitBench && existing.status === "CONFIRMED";
@@ -3280,7 +3309,9 @@ function applyClaim(args: {
     reason: explicitBench
       ? "explicit bench request"
       : status === "BENCH"
-        ? `squad full at ${confirmed}/${state.maxPlayers}`
+        ? hasRoom
+          ? ORGANISER_PICK_BENCH_NOTE
+          : `squad full at ${confirmed}/${state.maxPlayers}`
         : `slot ${confirmed + 1} of ${state.maxPlayers}`,
   };
 }

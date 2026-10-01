@@ -77,7 +77,10 @@ describe("dm-reply: the connect DM", () => {
     const body = await post(CONNECT);
     expect(connect.handleConnectDm).not.toHaveBeenCalled();
     expect(body).toEqual({ ok: true, ignored: "unknown-sender" });
-    expect(calls[0]).toBe("benchSlotOffer.findMany");
+    // Slice 2b: the organiser pick check (no round open: one cheap read,
+    // then nothing) sits between the self-join handlers and the bench reply.
+    expect(calls[0]).toBe("organiserPickRound.findFirst");
+    expect(calls[1]).toBe("benchSlotOffer.findMany");
     expect(calls.some((c) => c.startsWith("clubConnect."))).toBe(false);
   });
 
@@ -102,7 +105,10 @@ describe("dm-reply: the connect DM", () => {
     const body = await post({ phone: "447700900123", body: "IN", waMessageId: "wa-2" });
     expect(connect.handleConnectDm).toHaveBeenCalledTimes(1);
     expect(body).toEqual({ ok: true, ignored: "unknown-sender" });
-    expect(calls[0]).toBe("benchSlotOffer.findMany");
+    // Slice 2b: the organiser pick check (no round open: one cheap read,
+    // then nothing) sits between the self-join handlers and the bench reply.
+    expect(calls[0]).toBe("organiserPickRound.findFirst");
+    expect(calls[1]).toBe("benchSlotOffer.findMany");
   });
 
   it("an older Pi that forwards no LID still works: the fields are simply absent", async () => {

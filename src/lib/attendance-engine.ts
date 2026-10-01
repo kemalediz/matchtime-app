@@ -341,6 +341,9 @@ export async function applyEngineWrites(args: {
           benchIntent: benchIntentFor(w),
           promoteFromBench: promoteFromBenchFor(w, isSelf),
           event: eventContextFor(w, actor, isSelf, w.sourceMessageId),
+          // The engine decided with the sender's admin standing (slice 2b);
+          // the write decides with the same one.
+          actorIsAdmin: actor.isAdmin,
         });
         out.push({ write: w, userId, ok: true, status: res.status as AttStatus });
       }

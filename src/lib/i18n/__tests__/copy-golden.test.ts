@@ -362,6 +362,7 @@ import { detailsFollowUpQuestion } from "../../onboarding-parse";
 import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { resolveReminderPhrase } from "../../reminder-time";
 import { FEE_REPLY_SYSTEM_PROMPT, buildFeeReplySystemPrompt } from "../../fee-confirm";
+import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rules";
 
 // ── The three worlds ─────────────────────────────────────────────────
 
@@ -1379,6 +1380,112 @@ function cases(lang: Lang): Case[] {
     ].join("\n"),
   );
 
+  // ── Organiser pick (2026-10-01, slice 2b of the Friday-group plan).
+  //    NEW copy, added deliberately; no existing case changes. ──
+  const opWhen = lang === "tr" ? "9 Ekim Cuma 20:30" : "Fri 9 Oct at 20:30";
+  const opFallbackWhen = lang === "tr" ? "Cumartesi 20:30" : "Saturday 20:30";
+  const opRows = [
+    { name: "Kemal", position: "GK", rating: 7.4 },
+    { name: "Wasim", position: "MID", rating: 7.9 },
+    { name: "Ali", position: null, rating: null },
+  ];
+  const op = {
+    lang,
+    reason: "drop" as "drop" | "open-place" | "deadline-summary",
+    droppedNames: ["Hamzah"],
+    late: false,
+    activityName: "Friday 9-a-side",
+    whenLabel: opWhen,
+    open: 1,
+    confirmed: 17,
+    maxPlayers: 18,
+    rows: opRows,
+    audience: "dm" as "dm" | "group",
+    fallback: "bench-offer" as "bench-offer" | "leave-empty",
+    fallbackWhen: opFallbackWhen,
+  };
+  add("OPK1 buildPickMessage / one drop, by DM", buildPickMessage(op));
+  add("OPK1 buildPickMessage / in the admin group, leave it open", buildPickMessage({ ...op, audience: "group", fallback: "leave-empty" }));
+  add("OPK1 buildPickMessage / two drops", buildPickMessage({ ...op, droppedNames: ["Ali", "Sam"], open: 2, confirmed: 16 }));
+  add("OPK1 buildPickMessage / a late drop", buildPickMessage({ ...op, droppedNames: ["Ali"], late: true }));
+  add("OPK1 buildPickMessage / a place never filled", buildPickMessage({ ...op, reason: "open-place", droppedNames: [] }));
+  add("OPK1 buildPickMessage / two places never filled", buildPickMessage({ ...op, reason: "open-place", droppedNames: [], open: 2, confirmed: 16 }));
+  add("OPK1 buildPickMessage / the deadline summary", buildPickMessage({ ...op, reason: "deadline-summary" }));
+  add("OPK2 buildPickListChanged (P5)", buildPickListChanged({ lang, rows: opRows, audience: "group" }));
+  add(
+    "OPK3 the pick, told (A1 to A3)",
+    [
+      wr.pick_done_admin({ name: "Wasim", replacedName: "Hamzah", pickerName: "Raihan" }),
+      wr.pick_done_admin({ name: "Wasim", replacedName: null, pickerName: "Raihan" }),
+      wr.pick_done_admin({ name: "Wasim", replacedName: "Hamzah", pickerName: null }),
+      wr.pick_group_post({ name: "Wasim", replacedName: "Hamzah", team: null, confirmed: 18, maxPlayers: 18 }),
+      wr.pick_group_post({ name: "Wasim", replacedName: "Hamzah", team: lang === "tr" ? "Kırmızı" : "Red", confirmed: 18, maxPlayers: 18 }),
+      wr.pick_group_post({ name: "Wasim", replacedName: null, team: null, confirmed: 17, maxPlayers: 18 }),
+      wr.pick_player_dm({ dayTime: lang === "tr" ? "Cuma 20:30" : "Friday 20:30", venue: "Goals" }),
+    ].join("\n"),
+  );
+  add(
+    "OPK4 pick edge cases (E1 to E5)",
+    [
+      wr.pick_not_on_list({ name: "Wasim" }),
+      wr.pick_already_in({ name: "Wasim" }),
+      wr.pick_already_filled({ name: "Wasim", pickerName: "Raihan" }),
+      wr.pick_already_filled_full({ confirmed: 18, maxPlayers: 18 }),
+      wr.pick_unresolved_tag,
+      wr.pick_ambiguous({ first: "Ali", names: ["Ali Khan", "Ali Demir"] }),
+      wr.pick_ambiguous({ first: "Ali", names: ["Ali Khan", "Ali Demir", "Ali Veli"] }),
+    ].join("\n"),
+  );
+  add(
+    "OPK5 other admin-channel replies (P6 to P12)",
+    [
+      wr.pick_not_understood,
+      wr.pick_only_k({ k: 1, names: ["Wasim"] }),
+      wr.pick_only_k({ k: 2, names: ["Wasim", "Kemal"] }),
+      wr.pick_none_ack,
+      wr.pick_fallback_offered({ activityName: "Friday 9-a-side" }),
+      wr.pick_fallback_left({ activityName: "Friday 9-a-side", confirmed: 17, maxPlayers: 18 }),
+    ].join("\n"),
+  );
+  add("OPK6 slot_opened_organiser (P13)", wr.slot_opened_organiser({ kickoffLabel: lang === "tr" ? "Cum 20:30" : "Fri 20:30" }));
+  add("OPK7 onb_weekly_routine_tip (D7)", wr.onb_weekly_routine_tip);
+  add(
+    "OPK8 settings: who fills an open place",
+    [
+      `${wr.wr_pick_label}: ${wr.wr_pick_blurb}`,
+      `(i) ${wr.wr_pick_info}`,
+      `${wr.wr_pick_first_come} / ${wr.wr_pick_organiser}`,
+      wr.wr_fallback_label,
+      `(i) ${wr.wr_fallback_info}`,
+      `${wr.wr_fallback_offer} / ${wr.wr_fallback_leave}`,
+      wr.wr_pick_saved,
+    ].join("\n"),
+  );
+  add(
+    "OPK9 the match page's waiting list",
+    [
+      wr.wl_title({ count: 3 }),
+      wr.wl_hint,
+      `${wr.wl_bring_in} / ${wr.wl_move_up} / ${wr.wl_move_down}`,
+      `${wr.wl_no_position} / ${wr.wl_new}`,
+      wr.wl_brought_in({ name: "Wasim" }),
+      wr.wl_full,
+      wr.wl_failed,
+    ].join("\n"),
+  );
+
+  add(
+    "OPK10 the bench promises in an organiser-pick club",
+    [
+      buildSquadCompleteBenchInvite({ lang, organiser: true }),
+      buildBenchIntroLine({ lang, organiser: true }),
+      buildFullSquadBenchInvite({ matchName: "Friday 9-a-side", confirmedCount: 18, maxPlayers: 18, lang, organiser: true }),
+      buildRecruitInviteDm({ firstName: "Ali", matchName: "Friday 9-a-side", matchWhen: opWhen, spotsLeft: 2, link: null, lang, organiser: true }),
+      buildRecruitChaseText({ playerName: "Ali Aziz", activityName: "Friday 9-a-side", matchWhen: opWhen, need: 1, lang, organiser: true }),
+      buildSelfAttendanceAck({ failed: false, status: "BENCH", matchName: "Friday 9-a-side", matchWhen: opWhen, lang, organiser: true }),
+    ].join("\n---\n"),
+  );
+
   return c;
 }
 
@@ -1453,6 +1560,8 @@ const MIGRATED_ROWS = [
   "RSQ1 ", "RSQ2 ", "RSQ3 ", "RSQ4 ", "RSQ5 ",
   // weekly deadlines (2026-09-30)
   "WDL1 ", "WDL2 ", "WDL3 ", "WDL4 ",
+  // organiser pick (2026-10-01)
+  "OPK1 ", "OPK2 ", "OPK3 ", "OPK4 ", "OPK5 ", "OPK6 ", "OPK7 ", "OPK8 ", "OPK9 ", "OPK10 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

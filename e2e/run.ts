@@ -318,6 +318,9 @@ async function runSuite(): Promise<number> {
     // and a club's admin group is never its own community group.
     console.log("[e2e] arming the admin-channel CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "admin-channel-check.sql"));
+    // And the organiser-pick settings (slice 2b): each one of its choices.
+    console.log("[e2e] arming the organiser-pick CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "organiser-pick-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {

@@ -22,6 +22,7 @@
 import { db } from "./db";
 import type { FeatureKey } from "./org-features-meta";
 import { normaliseLang, type Lang } from "./i18n/lang";
+import { normaliseBenchPickMode, type BenchPickMode } from "./squad-capacity";
 
 export { FEATURE_META } from "./org-features-meta";
 export type { FeatureKey, ToggleableKey } from "./org-features-meta";
@@ -61,6 +62,11 @@ export interface OrgFeatures {
    *  Deliberately NOT in `FEATURE_META`, which also drives the in-group
    *  setup menu; it is set on /admin/settings, "Weekly routine". */
   rollingSquad: boolean;
+  /** Who fills an open place (2026-10-01, slice 2b,
+   *  `Organisation.benchPickMode`): "first-come" (today, every existing
+   *  club) or "organiser". Carried here so `SquadState.features` has it
+   *  with no extra query. Not in `FEATURE_META`, like `rollingSquad`. */
+  benchPickMode: BenchPickMode;
 }
 
 
@@ -78,6 +84,7 @@ const ALL_OFF: OrgFeatures = {
   squadFromList: false,
   language: "en",
   rollingSquad: false,
+  benchPickMode: "first-come",
 };
 
 function fromRow(row: {
@@ -94,6 +101,7 @@ function fromRow(row: {
   featureSquadFromList: boolean;
   language: string;
   rollingSquadEnabled: boolean;
+  benchPickMode?: string | null;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -109,6 +117,7 @@ function fromRow(row: {
     squadFromList: row.featureSquadFromList,
     language: normaliseLang(row.language),
     rollingSquad: row.rollingSquadEnabled,
+    benchPickMode: normaliseBenchPickMode(row.benchPickMode),
   };
 }
 
@@ -126,6 +135,7 @@ const SELECT = {
   featureSquadFromList: true,
   language: true,
   rollingSquadEnabled: true,
+  benchPickMode: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {

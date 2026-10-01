@@ -946,3 +946,47 @@ export async function moveUpFromBench(matchId: string, userId: string): Promise<
   revalidatePath(`/matches/${matchId}`);
   return { ok: true };
 }
+
+/**
+ * ORGANISER PICK on the match page (slice 2b, plan 2.13): an admin brings
+ * a player in from the waiting list. The same writer as a reply in the
+ * admin channel (`applyOrganiserPick`), so the web, a DM and the admin
+ * group have one writer, one set of posts (A1 to the admin channel with
+ * this admin as the picker, A2 in the group, A3 to the player) and the
+ * team-slot fill. Admin-only.
+ */
+export async function pickFromWaitingList(
+  matchId: string,
+  userId: string,
+): Promise<{ ok: true; brought: boolean; full: boolean }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const match = await db.match.findUnique({ where: { id: matchId }, select: { activity: { select: { orgId: true } } } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+  const { pickFromWaitingListAsAdmin } = await import("@/lib/organiser-pick");
+  const res = await pickFromWaitingListAsAdmin({ matchId, userId, adminUserId: session.user.id });
+  revalidatePath(`/matches/${matchId}`);
+  return { ok: true, brought: res.applied.length > 0, full: res.applied.length === 0 && res.noPlaceFor.length > 0 };
+}
+
+/**
+ * Reorder the waiting list (slice 2b, plan 2.13). Rewrites `position` for
+ * BENCH rows only, reusing the positions they already hold, so confirmed
+ * positions never move; one audit event per moved row. The next pick
+ * message lists the waiting list in this order. Admin-only.
+ */
+export async function reorderWaitingList(matchId: string, orderedUserIds: string[]): Promise<{ ok: true; moved: number }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  if (!Array.isArray(orderedUserIds) || orderedUserIds.some((id) => typeof id !== "string")) {
+    throw new Error("orderedUserIds must be a list of user ids");
+  }
+  const match = await db.match.findUnique({ where: { id: matchId }, select: { activity: { select: { orgId: true } } } });
+  if (!match) throw new Error("Match not found");
+  await requireOrgAdmin(session.user.id, match.activity.orgId);
+  const { reorderWaitingListRows } = await import("@/lib/organiser-pick");
+  const res = await reorderWaitingListRows({ matchId, orderedUserIds, adminUserId: session.user.id });
+  revalidatePath(`/matches/${matchId}`);
+  return { ok: true, moved: res.moved };
+}

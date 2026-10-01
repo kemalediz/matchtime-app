@@ -6,6 +6,9 @@ import { AttendButton } from "@/components/match/attend-button";
 import { AttendanceList } from "@/components/match/attendance-list";
 import { AddPlayerToMatch } from "@/components/match/add-player-to-match";
 import { CarryOverSquadButton } from "@/components/match/carry-over-squad-button";
+import { WaitingListControls } from "@/components/match/waiting-list-controls";
+import { summariseClubDisplayRatings } from "@/lib/player-rating";
+import { positionLabel } from "@/lib/organiser-pick-rules";
 import { findCarryOverSource } from "@/lib/rolling-squad";
 import { dayLabel } from "@/lib/i18n/dates";
 import { TeamDisplay } from "@/components/match/team-display";
@@ -67,8 +70,33 @@ export default async function MatchDetailPage({
   // to see who's paid (instead of only via the post-match DM link).
   const orgPay = await db.organisation.findUnique({
     where: { id: match.activity.orgId },
-    select: { paymentCollectionEnabled: true, paymentHolderId: true, rollingSquadEnabled: true },
+    select: { paymentCollectionEnabled: true, paymentHolderId: true, rollingSquadEnabled: true, benchPickMode: true },
   });
+
+  // Organiser pick (slice 2b, plan 2.13): admins of such a club see the
+  // waiting list with position and club rating (the number players see,
+  // never the seed), and can reorder it and bring someone in.
+  const organiserPicks = isAdmin && orgPay?.benchPickMode === "organiser";
+  const waitingRows = organiserPicks
+    ? await (async () => {
+        const bench = match.attendances.filter((a) => a.status === "BENCH");
+        const ids = bench.map((a) => a.userId);
+        const ratings = ids.length
+          ? await db.rating.findMany({
+              where: { playerId: { in: ids }, match: { activity: { orgId: match.activity.orgId } } },
+              orderBy: { createdAt: "desc" },
+              select: { playerId: true, matchId: true, score: true },
+            })
+          : [];
+        const summary = summariseClubDisplayRatings(ids, ratings, 60);
+        return bench.map((a) => ({
+          userId: a.userId,
+          name: a.user.name ?? "?",
+          position: positionLabel(positionsFor(a.user)),
+          rating: summary[a.userId]?.rating ?? null,
+        }));
+      })()
+    : [];
 
   // Rolling squad (2026-09-30): an admin of a rolling club can copy the
   // last played squad onto an EMPTY match (a club's first week on
@@ -319,7 +347,11 @@ export default async function MatchDetailPage({
             maxPlayers={match.maxPlayers}
             admin={isAdmin}
             matchId={matchId}
+            hideBench={organiserPicks}
           />
+          {organiserPicks && (
+            <WaitingListControls matchId={matchId} lang={match.activity.org.language} rows={waitingRows} />
+          )}
         </div>
       </section>
 

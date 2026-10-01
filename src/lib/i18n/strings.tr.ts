@@ -1643,6 +1643,89 @@ export const tr: Strings = {
     "Bir grup bağlanana kadar yönetici mesajları şu an gittiği yere gitmeye devam eder.",
   settings_admin_channel_saved: "Kaydedildi",
   settings_admin_channel_unlinked: "Bağlantı kaldırıldı. Yönetici mesajları artık kulüp sahibine DM olarak gidiyor.",
+
+
+  // ── Organizatör seçimi (2026-10-01) ──
+  slot_opened_organiser: (p) =>
+    `${p.kickoffLabel} maçında bir yer açıldı. *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
+  pick_lead_drop: (p) =>
+    `${joinList("tr", p.names.map((n) => `*${n}*`))}, *${p.activityName}* (${p.whenLabel}) maçından ${p.late ? "son çıkış saatinden sonra " : ""}çıktı.`,
+  pick_lead_deadline: (p) => `*${p.activityName}* (${p.whenLabel}) için son çıkış saati geçti.`,
+  pick_lead_open_place: (p) =>
+    `*${p.activityName}* (${p.whenLabel}) için ${p.open} yer boş, kadro ${p.confirmed}/${p.maxPlayers}.`,
+  pick_places_line: (p) => `${p.open} yer boş, kadro ${p.confirmed}/${p.maxPlayers}.`,
+  pick_waiting_header: "Yedek listesi:",
+  pick_list_row: (p) => `${p.n}. ${p.name} (${p.position ?? "mevki yok"}, ${p.rating ?? "yeni"})`,
+  pick_instructions_dm:
+    "Birini almak için numara ya da isim yazın, örneğin *2*, iki kişi için *2 3*. Boş bırakmak için *HİÇBİRİ* yazın.",
+  pick_instructions_group:
+    "Buraya numara, isim ya da @etiket yazın, örneğin *2*, iki kişi için *2 3*. *HİÇBİRİ* yazarsanız yer boş kalır.",
+  pick_fallback_offer: (p) => `${p.when} saatine kadar kimse seçmezse yeri tüm yedek listesine açarım.`,
+  pick_fallback_leave: (p) => `${p.when} saatine kadar kimse seçmezse yer boş kalır.`,
+  pick_done_admin: (p) =>
+    `✅ Tamam: *${p.name}*${p.replacedName ? `, *${p.replacedName}* yerine` : ""} kadroda${p.pickerName ? ` (${p.pickerName} seçti)` : ""}.`,
+  pick_group_post: (p) =>
+    p.replacedName
+      ? `✅ *${p.name}*, ${p.team ? `*${p.team}* takımında ` : ""}*${p.replacedName}* yerine kadroda. Kadro *${p.confirmed}/${p.maxPlayers}*.`
+      : `✅ *${p.name}* kadroda. Kadro *${p.confirmed}/${p.maxPlayers}*.`,
+  pick_player_dm: (p) => `${p.dayTime}, ${p.venue}: kadrodasın ⚽ Gelemeyecek olursan *YOKUM* yazman yeterli.`,
+  pick_not_on_list: (p) => `*${p.name}* yedek listesinde değil. Yine de kadroya alayım mı? *EVET* yazın.`,
+  pick_already_in: (p) => `*${p.name}* zaten kadroda. Başka birini seçer misiniz?`,
+  pick_already_filled: (p) => `Bu yer doldu: *${p.name}* kadroda (${p.pickerName} seçti).`,
+  pick_already_filled_full: (p) => `Bu yer doldu: kadro dolu (${p.confirmed}/${p.maxPlayers}).`,
+  pick_unresolved_tag: "Bunun kim olduğunu anlayamadım, adını yazar mısınız?",
+  pick_ambiguous: (p) =>
+    `${p.names.length === 2 ? "İki" : p.names.length === 3 ? "Üç" : String(p.names.length)} oyuncunun adı *${p.first}*: ${joinList("tr", p.names.map((n) => `*${n}*`))}. Hangisi? Tam adını yazın.`,
+  pick_list_changed: "Son mesajımdan beri yedek listesi değişti. Güncel hali:",
+  pick_not_understood:
+    "Bunu yedek listesiyle eşleştiremedim. Listeden bir numara (örneğin *2*) ya da tam isim yazın. *HİÇBİRİ* yazarsanız yer boş kalır.",
+  pick_only_k: (p) =>
+    `Sadece ${p.k} yer boştu, bu yüzden ilk ${p.names.length === 1 ? "seçiminizi" : "seçimlerinizi"} aldım: ${joinList("tr", p.names.map((n) => `*${n}*`))}.`,
+  pick_none_ack: "Tamam, yeri boş bırakıyorum. Maç sayfasından yine yedek listesinden seçebilirsiniz.",
+  pick_fallback_offered: (p) =>
+    `*${p.activityName}* için kimse seçim yapmadı, bu yüzden yeri yedek listesine açtım: ilk VARIM diyen alır.`,
+  pick_fallback_left: (p) =>
+    `*${p.activityName}* için kimse seçim yapmadı, yer boş kalıyor. Kadro ${p.confirmed}/${p.maxPlayers}.`,
+  onb_weekly_routine_tip:
+    "İpucu: kadroyu her hafta devam ettirmek, yerine geçecekleri yedek listesinden kendiniz seçmek ya da yönetici mesajlarını yöneticilerin grubunda almak için sitedeki Ayarlar sayfasını açın.",
+  wr_pick_label: "Boşalan yeri kim doldurur",
+  wr_pick_blurb: "İlk VARIM diyen, ya da organizatörler yedek listesinden seçer.",
+  wr_pick_info:
+    "İlk VARIM diyen: bir yer açılınca MatchTime yeri yedek listesine sunar, ilk VARIM diyen alır. " +
+    "Organizatörler seçer: MatchTime hiçbir yeri kendisi doldurmaz. VARIM diyen herkes yedek listesine girer; yönetici mesajlarınız " +
+    "(bkz. Yönetici mesajları) yedek listesini, mevkileri ve kulüp puanlarını içerir. Numara, isim ya da etiketle ilk yanıt veren yöneticinin seçtiği oyuncu kadroya girer.",
+  wr_pick_first_come: "İlk VARIM diyen",
+  wr_pick_organiser: "Organizatörler seçer",
+  wr_fallback_label: "Zamanında kimse seçmezse",
+  wr_fallback_info:
+    "Hiçbir yönetici bir gün içinde, en geç maçtan 4 saat önce yanıt vermezse, MatchTime yeri ya tüm yedek listesine sunar " +
+    "(ilk VARIM diyen alır) ya da boş bırakır.",
+  wr_fallback_offer: "Yedek listesine sun",
+  wr_fallback_leave: "Boş bırak",
+  wr_pick_saved: "Kaydedildi",
+  wl_title: (p) => `Yedek listesi (${p.count})`,
+  wl_hint: "Kimin oynayacağını organizatörler seçer. Listeyi sıralayın ya da birini kadroya alın.",
+  wl_bring_in: "Kadroya al",
+  wl_move_up: "Yukarı taşı",
+  wl_move_down: "Aşağı taşı",
+  wl_no_position: "mevki yok",
+  wl_new: "yeni",
+  wl_brought_in: (p) => `${p.name} kadroda`,
+  wl_full: "Kadro dolu",
+  wl_failed: "Kaydedilemedi. Tekrar deneyin.",
+  squad_complete_bench_invite_organiser:
+    "🪑 *Yedek listesi açık.* *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.",
+  bench_intro_line_organiser:
+    "🔁  *Yedek listesi:* *VARIM* yazın, yedek listesine ekleyeyim. Bir yer açılınca kimin oynayacağını organizatörler seçer.",
+  full_squad_bench_invite_organiser: (p) =>
+    `*${p.matchName}* kadrosu dolu, ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişiyiz, ama yedek listesi açık. ` +
+    `*VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer. 🙏`,
+  dm_recruit_invite_play_organiser: "Oynamak ister misin? *VARIM* yaz, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.",
+  dm_recruit_chase_organiser: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* (${p.matchWhen}) için hâlâ ${p.count} oyuncu arıyoruz. ` +
+    `Varsan *VARIM* yaz, yedek listesine ekleyeyim (kimin oynayacağını organizatörler seçer); yoksan *YOKUM* yaz, bir daha sormam 🙏`,
+  dm_self_ack_waiting_organiser: (p) =>
+    `📋 *${p.matchName}* (${p.matchWhen}) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏`,
 };
 
 /**

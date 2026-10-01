@@ -53,6 +53,7 @@ const features = {
   squadFromList: false,
   language: "en",
   rollingSquad: true,
+  benchPickMode: "first-come",
 };
 vi.mock("@/lib/org-features", () => ({ getOrgFeatures: async () => ({ ...features }) }));
 

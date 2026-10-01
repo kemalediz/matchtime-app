@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { normaliseBenchPickFallback, normaliseBenchPickMode } from "@/lib/squad-capacity";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
@@ -93,6 +94,12 @@ export async function GET() {
     paymentHolderId: org.paymentHolderId,
     members: members.map((m) => ({ id: m.user.id, name: m.user.name })),
     // "Weekly routine" (2026-09-30). Slices 2 and 3 add their settings here.
-    weeklyRoutine: { rollingSquad: org.rollingSquadEnabled, ...weeklyDeadlinesView(org) },
+    weeklyRoutine: {
+      rollingSquad: org.rollingSquadEnabled,
+      ...weeklyDeadlinesView(org),
+      // Slice 2b: who fills an open place, and the fallback.
+      benchPickMode: normaliseBenchPickMode(org.benchPickMode),
+      benchPickFallback: normaliseBenchPickFallback(org.benchPickFallback),
+    },
   });
 }

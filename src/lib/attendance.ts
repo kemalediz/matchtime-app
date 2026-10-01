@@ -11,6 +11,8 @@ import { isLateDrop } from "./rolling-squad-rules";
 import { sendAdminNotice } from "./admin-channel";
 import { buildLateDropAdminNotice } from "./dm-copy";
 import { dayTimeLabel, timeLabel, weekdayTimeLabel } from "./i18n/dates";
+import { canTakeFreePlace, normaliseBenchPickMode, ORGANISER_PICK_BENCH_NOTE } from "./squad-capacity";
+import { loadReclaimUserIds } from "./squad-reclaim";
 
 /**
  * Why a caller is asking for BENCH.
@@ -85,6 +87,15 @@ export async function registerAttendance(
      * still writes an event — recorded as UNATTRIBUTED, visibly.
      */
     event: AttendanceEventContext;
+    /**
+     * Is the person acting an owner or admin of the club? (slice 2b,
+     * 2026-10-01). Read only by an organiser-pick club, where only an
+     * admin, a reclaim or a running fallback offer may take a free place
+     * (`canTakeFreePlace`, the same rule the engine's react uses). The
+     * engine passes what it decided on; when absent it is looked up from
+     * `event.actorUserId`'s membership.
+     */
+    actorIsAdmin?: boolean;
   },
 ) {
   // TypeScript makes `options.event` mandatory for everything under
@@ -96,9 +107,30 @@ export async function registerAttendance(
   const eventContext = options.event ?? UNATTRIBUTED_ATTENDANCE_CONTEXT;
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true } } },
+    include: { activity: { select: { orgId: true, org: { select: { benchPickMode: true } } } } },
   });
   if (!match) throw new Error("Match not found");
+
+  // WHO MAY TAKE A FREE PLACE (slice 2b): the one rule the engine's react
+  // uses too. A first-come club (every club until it chooses otherwise,
+  // Sutton FC included) asks nothing more than today: is there room?
+  // Optional chaining: unit-test doubles build the match without its org.
+  const pickMode = normaliseBenchPickMode(match.activity.org?.benchPickMode);
+  let organiserFacts: { actorIsAdmin: boolean; isReclaim: boolean; openBenchOffer: boolean } | null = null;
+  const mayTakeFreePlace = async (confirmedNow: number, prior: { status: string } | null): Promise<boolean> => {
+    if (pickMode !== "organiser" || confirmedNow >= match.maxPlayers) return confirmedNow < match.maxPlayers;
+    if (!organiserFacts) {
+      const [actorIsAdmin, reclaims, openOffers] = await Promise.all([
+        options.actorIsAdmin !== undefined
+          ? Promise.resolve(options.actorIsAdmin)
+          : isClubAdminActor(eventContext, match.activity.orgId),
+        prior?.status === "DROPPED" ? loadReclaimUserIds(matchId, [userId]) : Promise.resolve([] as string[]),
+        db.benchSlotOffer.count({ where: { matchId, resolvedAt: null } }),
+      ]);
+      organiserFacts = { actorIsAdmin, isReclaim: reclaims.includes(userId), openBenchOffer: openOffers > 0 };
+    }
+    return canTakeFreePlace({ confirmed: confirmedNow, maxPlayers: match.maxPlayers, pickMode, ...organiserFacts });
+  };
 
   // Deadline check removed 2026-05-06 (Kemal's call): players can
   // register all the way up to match completion. Late INs on a full
@@ -175,7 +207,7 @@ export async function registerAttendance(
       const confirmedNow = await db.attendance.count({
         where: { matchId, status: "CONFIRMED" },
       });
-      if (confirmedNow < match.maxPlayers) wantsBenchPromotion = true;
+      if (await mayTakeFreePlace(confirmedNow, existing)) wantsBenchPromotion = true;
     }
     selfPromoted = wantsBenchPromotion;
     promotedFromBench = wantsBenchPromotion;
@@ -220,7 +252,9 @@ export async function registerAttendance(
   // the player is CONFIRMED and with the squad full they land on the
   // bench exactly as before. That is what keeps the squad renderable:
   // "N/M confirmed with slots open, plus a bench" can no longer occur.
-  const squadHasRoom = confirmedCount < match.maxPlayers;
+  const squadHasRoom = await mayTakeFreePlace(confirmedCount, existing);
+  /** Room, but an organiser-pick club keeps the place for the admins. */
+  const heldForOrganisers = !squadHasRoom && confirmedCount < match.maxPlayers;
   const status =
     options.benchIntent === "explicit" || !squadHasRoom ? "BENCH" : "CONFIRMED";
 
@@ -267,7 +301,9 @@ export async function registerAttendance(
           (row.status === "BENCH"
             ? options?.benchIntent === "explicit"
               ? "explicit bench request"
-              : "squad full — no slot to give"
+              : heldForOrganisers
+                ? ORGANISER_PICK_BENCH_NOTE
+                : "squad full — no slot to give"
             : promotedFromBench
               ? "bench player claimed a free slot"
               : null),
@@ -434,6 +470,7 @@ export async function cancelAttendance(
               // The club's weekly drop-out deadline (slice 3), when set.
               dropOutDeadlineDay: true,
               dropOutDeadlineTime: true,
+              benchPickMode: true,
             },
           },
         },
@@ -527,7 +564,14 @@ export async function cancelAttendance(
     await queueSlotEmojiRefresh(matchId);
   }
 
-  if (lateDrop) {
+  // With organiser pick on (slice 2b) and somebody waiting, the late drop
+  // is folded into the pick message the admins get next ("Ali dropped out
+  // after the deadline."), so they get one message, not two.
+  const foldedIntoPick =
+    lateDrop &&
+    match.activity.org?.benchPickMode === "organiser" &&
+    (await db.attendance.count({ where: { matchId, status: "BENCH" } })) > 0;
+  if (lateDrop && !foldedIntoPick) {
     await notifyLateDrop({
       orgId: match.activity.orgId,
       matchId,
@@ -574,4 +618,19 @@ async function notifyLateDrop(p: {
     }),
     now: new Date(),
   });
+}
+
+/**
+ * Is the person behind this write an owner or admin of the club? For an
+ * organiser-pick club only (slice 2b). A replay of a player's own old
+ * message after an admin linked their name (`unresolved-link`) is the
+ * player's claim, not the admin's, so it is not.
+ */
+async function isClubAdminActor(event: AttendanceEventContext, orgId: string): Promise<boolean> {
+  if (!event.actorUserId || event.cause === "unresolved-link") return false;
+  const m = await db.membership.findUnique({
+    where: { userId_orgId: { userId: event.actorUserId, orgId } },
+    select: { role: true, leftAt: true },
+  });
+  return !!m && !m.leftAt && (m.role === "OWNER" || m.role === "ADMIN");
 }

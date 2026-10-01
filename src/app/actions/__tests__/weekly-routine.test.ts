@@ -105,6 +105,9 @@ describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
       rollingSquad: true,
       dropOutDeadline: { day: 1, time: "21:00" },
       listPublish: { day: 2, time: "20:00" },
+      // Slice 2b: read back with every patch; unset rows read as today.
+      benchPickMode: "first-come",
+      benchPickFallback: "bench-offer",
     });
   });
 
@@ -179,6 +182,31 @@ describe("setWeeklyRoutine: slice 2a, where admin messages go", () => {
       setWeeklyRoutine("org-fnf", { adminChannel: "group" } as unknown as { adminChannel: { mode: string; userId: null } }),
     ).rejects.toThrow();
     expect(saveAdminChannelChoice).not.toHaveBeenCalled();
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("setWeeklyRoutine: slice 2b, who fills an open place", () => {
+  it("turns organiser pick on, and returns both pick settings", async () => {
+    orgUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      ...UNSET_ROW,
+      benchPickMode: "first-come",
+      benchPickFallback: "bench-offer",
+      ...data,
+    }));
+    const res = await setWeeklyRoutine("org-fnf", { benchPickMode: "organiser" });
+    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { benchPickMode: "organiser" } }));
+    expect(res).toMatchObject({ ok: true, benchPickMode: "organiser", benchPickFallback: "bench-offer" });
+  });
+
+  it("sets the fallback to leave the place open", async () => {
+    await setWeeklyRoutine("org-fnf", { benchPickFallback: "leave-empty" });
+    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { benchPickFallback: "leave-empty" } }));
+  });
+
+  it("refuses a value that is not one of the choices, nothing written", async () => {
+    await expect(setWeeklyRoutine("org-fnf", { benchPickMode: "random" as "organiser" })).rejects.toThrow();
+    await expect(setWeeklyRoutine("org-fnf", { benchPickFallback: "maybe" as "leave-empty" })).rejects.toThrow();
     expect(orgUpdate).not.toHaveBeenCalled();
   });
 });

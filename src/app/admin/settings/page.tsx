@@ -11,6 +11,7 @@ import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect
 import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
 import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
+import { PickModeRows } from "@/components/settings/pick-mode-rows";
 
 type FeatureKey = ToggleableKey;
 
@@ -39,6 +40,9 @@ interface OrgData {
     /** Weekly deadlines (slice 3): null when not set. */
     dropOutDeadline?: DayTimeValue | null;
     listPublish?: DayTimeValue | null;
+    /** Organiser pick (slice 2b). */
+    benchPickMode?: "first-come" | "organiser";
+    benchPickFallback?: "bench-offer" | "leave-empty";
   };
 }
 
@@ -471,6 +475,13 @@ export default function SettingsPage() {
                     />
                   </button>
                 </div>
+                {/* Organiser pick (slice 2b): who fills an open place. */}
+                <PickModeRows
+                  orgId={org.id}
+                  language={org.language}
+                  benchPickMode={org.weeklyRoutine?.benchPickMode ?? "first-come"}
+                  benchPickFallback={org.weeklyRoutine?.benchPickFallback ?? "bench-offer"}
+                />
                 {/* Weekly deadlines (slice 3): its own component. */}
                 <WeeklyDeadlineRows
                   orgId={org.id}

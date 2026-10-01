@@ -90,6 +90,10 @@ interface ReactionGate {
    *  builder reads it, the DM (`buildBenchOfferDm`) included since
    *  Phase 3: it is the language of the match's org. */
   lang?: Lang | string | null;
+  /** An organiser-pick club (slice 2b): the admins pick from the waiting
+   *  list, so no line may promise that the first to say IN plays. Absent
+   *  or false: today's words, byte for byte. */
+  organiser?: boolean;
 }
 
 export interface BenchOfferGroupCopy extends ReactionGate {
@@ -143,6 +147,7 @@ function benchPromotionHow(c: ReactionGate): string {
 /** The bench line in the bot's day-one intro post. It is a promise about
  *  how the feature behaves, so it is gated with the feature. */
 export function buildBenchIntroLine(c: ReactionGate = {}): string {
+  if (c.organiser) return t(c.lang).bench_intro_line_organiser;
   return t(c.lang).bench_intro_line({ how: benchPromotionHow(c) });
 }
 
@@ -208,6 +213,9 @@ export interface FullSquadBenchInviteCopy extends ReactionGate {
  * believing it has cover.
  */
 export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
+  if (c.organiser) {
+    return t(c.lang).full_squad_bench_invite_organiser({ matchName: c.matchName, confirmed: c.confirmedCount, maxPlayers: c.maxPlayers });
+  }
   return t(c.lang).full_squad_bench_invite({
     matchName: c.matchName,
     confirmed: c.confirmedCount,
@@ -249,6 +257,7 @@ export function buildFullSquadBenchInvite(c: FullSquadBenchInviteCopy): string {
  * group. `buildFullSquadBenchInvite` also reaches an admin by DM.
  */
 export function buildSquadCompleteBenchInvite(c: ReactionGate = {}): string {
+  if (c.organiser) return t(c.lang).squad_complete_bench_invite_organiser;
   return t(c.lang).squad_complete_bench_invite({ how: benchPromotionHow(c) });
 }
 
