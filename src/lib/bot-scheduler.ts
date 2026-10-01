@@ -50,6 +50,7 @@ import {
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { isSameRecurringFixture } from "./match-slot";
 import { buildMomAnnouncement } from "./mom-announcement";
+import { computeBadgeAnnouncements } from "./badge-announcement-scheduler";
 import {
   buildBenchOfferGroupPost,
   buildBenchOfferDm,
@@ -159,6 +160,10 @@ export type DueInstruction =
       matchId?: string;
       /** Optional — phone numbers (no +) to tag as real WhatsApp mentions. */
       mentions?: string[];
+      /** Badges post only (`badge-announcement-scheduler.ts`): the ledger
+       *  rows /api/whatsapp/due-posts writes in the same transaction as
+       *  the claim. Server-side; stripped before the Pi sees it. */
+      badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
     }
   | {
       kind: "group-poll";
@@ -720,6 +725,23 @@ export async function computeDuePosts(
     await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin);
   }
 
+  // ── Badge announcements (2026-10-01) ──────────────────────────────
+  //   One post per match, 18:00 London two days after it, listing the
+  //   badges newly earned and never announced. Skipped outright, with no
+  //   query, when the club has the feature off; also caught by the
+  //   key filter below. See badge-announcements.ts.
+  if (features.badgeAnnouncements) {
+    out.push(
+      ...(await computeBadgeAnnouncements({
+        orgId: org.id,
+        lang: features.language,
+        matches,
+        sentKeys,
+        now,
+      })),
+    );
+  }
+
   // ── Per-org feature gate (post-compute filter) ───────────────────
   //   Sections compute as normal; here we drop any instruction whose
   //   capability is switched off for this org. Done as a single
@@ -752,6 +774,7 @@ export async function computeDuePosts(
     if (seg.startsWith("recruit-chase")) return "attendance";
     if (seg.startsWith("bench-prompt")) return "bench";
     if (seg.startsWith("mom-")) return "momVoting";
+    if (seg.startsWith("badges")) return "badgeAnnouncements";
     if (seg.startsWith("rate-")) return "playerRating";
     if (seg.startsWith("payment-")) return "paymentTracking";
     if (seg.startsWith("unpaid-")) return "paymentTracking";

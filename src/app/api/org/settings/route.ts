@@ -78,6 +78,7 @@ export async function GET() {
       payByBank: org.payMethodPayByBank,
       payCard: org.payMethodCard,
       payDirect: org.payMethodDirect,
+      badgeAnnouncements: org.featureBadgeAnnouncements,
     },
   };
   if (!isAdmin) return NextResponse.json(publicView);

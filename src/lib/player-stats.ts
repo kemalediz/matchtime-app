@@ -31,6 +31,7 @@ import {
   MASTERCLASS_MIN_GAME_AVG,
   MOM_MACHINE_MIN_WINS,
   REGULAR_MIN_GAMES,
+  momWinners,
 } from "./badge-rules";
 import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-answer";
 
@@ -132,20 +133,6 @@ export interface PlayerSeasonStats {
 function mean(xs: number[]): number | null {
   if (xs.length === 0) return null;
   return xs.reduce((a, b) => a + b, 0) / xs.length;
-}
-
-/** Resolve the MoM winner(s) for a match from its vote rows: the
- *  playerId(s) with the most votes (>0). Ties co-win, matching the
- *  bot's shared-MoM announcement. */
-function momWinners(votes: { playerId: string }[]): Set<string> {
-  if (votes.length === 0) return new Set();
-  const tally = new Map<string, number>();
-  for (const v of votes) tally.set(v.playerId, (tally.get(v.playerId) ?? 0) + 1);
-  let max = 0;
-  for (const c of tally.values()) if (c > max) max = c;
-  const winners = new Set<string>();
-  for (const [pid, c] of tally) if (c === max && max > 0) winners.add(pid);
-  return winners;
 }
 
 export async function loadPlayerSeasonStats(

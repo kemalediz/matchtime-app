@@ -19,7 +19,12 @@ export type ToggleableKey =
   | "paymentCollection"
   | "payByBank"
   | "payCard"
-  | "payDirect";
+  | "payDirect"
+  /// Badge announcements (2026-10-01). Switchable on /admin/settings, in
+  /// the Bot features section with its own EN/TR row, but deliberately NOT
+  /// in `FEATURE_META`: that list is also the numbered in-group setup menu,
+  /// and inserting an entry would renumber the payment picks. Default ON.
+  | "badgeAnnouncements";
 
 /// Features shown in the admin Settings toggles + the in-group onboarding
 /// menu. `squadFromList` is INTENTIONALLY NOT here — it's a derived

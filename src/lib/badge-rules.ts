@@ -8,7 +8,7 @@
  * are the ones the badges have always used, moved here unchanged. Mr
  * Reliable's own thresholds live in `mr-reliable.ts`, for the same reason.
  */
-import { MR_RELIABLE_MAX_SPREAD, MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "./mr-reliable";
+import { MR_RELIABLE_MAX_SPREAD, MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES, earnsMrReliable } from "./mr-reliable";
 
 /** Regular: games played at the club. */
 export const REGULAR_MIN_GAMES = 10;
@@ -131,4 +131,65 @@ export function resolveBadgeName(query: string): BadgeKey | null {
     }
   }
   return best?.key ?? null;
+}
+
+// ── The milestone rules, shared with the group's badge announcements ──
+//
+// (2026-10-01, badge-announcements.ts.) The six badges a player's own
+// running totals decide, as one function over the constants above, so
+// the announcement's per-match replay applies exactly the thresholds the
+// stats page awards with. Iron Man and Above the Curve depend on the whole
+// club's season and are not announced, so they are not here.
+
+/** The badges a player's own running totals decide. */
+export const MILESTONE_BADGE_KEYS = [
+  "first-game",
+  "ten-games",
+  "first-mom",
+  "mom-machine",
+  "masterclass",
+  "reliable",
+] as const satisfies readonly BadgeKey[];
+export type MilestoneBadgeKey = (typeof MILESTONE_BADGE_KEYS)[number];
+
+export interface MilestoneInput {
+  /** Matches played (CONFIRMED or on a team sheet). */
+  gamesPlayed: number;
+  /** Matches won (or co-won) as Man of the Match. */
+  momCount: number;
+  /** The player's average rating in each game they were rated in. */
+  perGameAverages: number[];
+  /** Mean of every individual score the player received. */
+  avgRating: number | null;
+}
+
+export function milestoneBadgesEarned(i: MilestoneInput): Record<MilestoneBadgeKey, boolean> {
+  return {
+    "first-game": i.gamesPlayed >= 1,
+    "ten-games": i.gamesPlayed >= REGULAR_MIN_GAMES,
+    "first-mom": i.momCount >= 1,
+    "mom-machine": i.momCount >= MOM_MACHINE_MIN_WINS,
+    masterclass: i.perGameAverages.some((a) => a >= MASTERCLASS_MIN_GAME_AVG),
+    reliable: earnsMrReliable({ perGameAverages: i.perGameAverages, avgRating: i.avgRating }),
+  };
+}
+
+/** The emoji and name the stats page shows for a badge. */
+export function badgeMeta(key: BadgeKey): BadgeMeta {
+  return BADGES.find((b) => b.key === key)!;
+}
+
+/** Resolve the MoM winner(s) for a match from its vote rows: the
+ *  playerId(s) with the most votes (>0). Ties co-win, matching the
+ *  bot's shared-MoM announcement. Shared by the stats page and the
+ *  badge announcements. */
+export function momWinners(votes: { playerId: string }[]): Set<string> {
+  if (votes.length === 0) return new Set();
+  const tally = new Map<string, number>();
+  for (const v of votes) tally.set(v.playerId, (tally.get(v.playerId) ?? 0) + 1);
+  let max = 0;
+  for (const c of tally.values()) if (c > max) max = c;
+  const winners = new Set<string>();
+  for (const [pid, c] of tally) if (c === max && max > 0) winners.add(pid);
+  return winners;
 }

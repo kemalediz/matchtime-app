@@ -82,6 +82,7 @@ const FEATURES_ON: OrgFeatures = {
   language: "en",
   rollingSquad: false,
   benchPickMode: "first-come",
+  badgeAnnouncements: true,
 };
 
 /** A model that answers from a table keyed on the message body, and
