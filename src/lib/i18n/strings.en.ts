@@ -2450,7 +2450,7 @@ export const en = {
     `Thanks${p.name ? ` ${p.name}` : ""}, your card is saved. ` +
     (p.resumed
       ? `MatchTime is back on for ${p.club} and picks things up again in the group within a few minutes. Anyone who said IN while it was paused should say it again. `
-      : `MatchTime keeps running in ${p.club}'s WhatsApp group. `) +
+      : `MatchTime keeps running in the ${p.club} WhatsApp group. `) +
     (p.paidNow
       ? `The first ${p.price} has been taken today, then it's monthly, and Stripe emails you each invoice.`
       : `The first ${p.price} is taken on ${p.date}, then monthly, and Stripe emails you each invoice.`) +
@@ -2463,4 +2463,58 @@ export const en = {
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again at ${p.price} a month. ` +
     `The free month has already been used, so MatchTime keeps running in the group until ${p.date}. ` +
     `Add a card before then to keep it going: ${p.link}`,
+  // Club fee billing, slice B4: the scheduled card reminders (day 21, 28,
+  // 30), the pause, the payment problems and the new collector, all by
+  // platform DM to the billing contact, plus the admin channel's "no money
+  // collector yet" line. No dashes, EN and TR. Plan 7.2, 7.3.
+  billing_dm_trial_21: (p: { name: string | null; club: string; date: string; price: string; link: string; collector: boolean }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month on MatchTime ends on ${p.date}. ` +
+    (p.collector ? `As the person who collects the match fees, you're the one I'll ask for the card. ` : "") +
+    `To keep MatchTime running in the ${p.club} WhatsApp group, add a card here: ${p.link}\n` +
+    `It's ${p.price} a month for the whole group, and nothing is taken before ${p.date}.`,
+  billing_dm_trial_28: (p: { name: string | null; club: string; date: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, a quick reminder: ${p.club}'s free month ends on ${p.date}. ` +
+    `Add a card to keep MatchTime running in the ${p.club} WhatsApp group: ${p.link}`,
+  billing_dm_trial_ended: (p: { name: string | null; club: string; date: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month has ended. ` +
+    `MatchTime will keep running in the ${p.club} WhatsApp group for one more week, until ${p.date}. ` +
+    `Add a card any time before then: ${p.link}`,
+  billing_dm_set_collector:
+    "Tip: if someone else collects the match fees, make them the money collector in Settings and they'll look after the card instead.",
+  billing_dm_paused: (p: { name: string | null; club: string; price: string; link: string; kind: "no-card" | "payment-failed" | "cancelled" }): string =>
+    (p.kind === "payment-failed"
+      ? `Hi${p.name ? ` ${p.name}` : ""}, we couldn't take the ${p.price} for ${p.club}, so MatchTime is now paused. `
+      : p.kind === "cancelled"
+        ? `Hi${p.name ? ` ${p.name}` : ""}, the MatchTime plan for ${p.club} has ended, so MatchTime is now paused. `
+        : `Hi${p.name ? ` ${p.name}` : ""}, MatchTime is now paused for ${p.club}. `) +
+    `I'm still in the ${p.club} WhatsApp group, but I won't post or reply there, and nothing has been said in the group. ` +
+    `The players, matches and stats are all kept. To switch MatchTime back on, add a card here and it restarts within a few minutes: ${p.link}`,
+  billing_dm_payment_failed: (p: { name: string | null; club: string; price: string; link: string; ownCard: boolean }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, this month's ${p.price} for ${p.club} didn't go through. ` +
+    `Stripe will try again over the next few days, and MatchTime keeps running meanwhile. ` +
+    (p.ownCard ? `To update the card: ${p.link}` : `To put your own card on instead: ${p.link}`),
+  billing_dm_payment_action: (p: { name: string | null; club: string; price: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, your bank wants you to confirm this month's ${p.price} for ${p.club} before it can go through. ` +
+    `Please confirm it here: ${p.link}\nMatchTime keeps running meanwhile.`,
+  /** The 3DS DM when the card being charged is NOT the recipient's own
+   *  (a collector change still in progress). */
+  billing_dm_payment_action_other: (p: { name: string | null; club: string; price: string; link: string; billingLink: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, the card on file for ${p.club} needs the bank to confirm this month's ${p.price} before it can go through. ` +
+    `You can confirm and pay it here: ${p.link}\nOr put your own card on instead: ${p.billingLink}\nMatchTime keeps running meanwhile.`,
+  billing_dm_payer_changed_card: (p: { name: string | null; club: string; price: string; oldName: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `${p.oldName}'s card keeps paying until you put yours on, whenever suits you: ${p.link}`,
+  billing_dm_payer_changed_no_card: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `Add a card before ${p.date} to keep it running: ${p.link}`,
+  billing_dm_payer_changed_paused: (p: { name: string | null; club: string; price: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `Add a card to switch it back on: ${p.link}`,
+  /** Paused because MatchTime was taken out of the group (slice B5): the
+   *  way back is adding MatchTime back, not a card. */
+  billing_dm_payer_changed_removed: (p: { name: string | null; club: string; price: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `MatchTime was taken out of the ${p.club} WhatsApp group, so it is paused. To switch it back on, add MatchTime back to the group. The club fee page: ${p.link}`,
+  billing_admin_no_collector: (p: { link: string }): string =>
+    `Nobody is set as the money collector yet. Choose one in Settings: they'll look after the card for the club fee and get this tip too.${p.link ? ` ${p.link}` : ""}`,
 };

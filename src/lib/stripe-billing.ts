@@ -114,6 +114,17 @@ export interface BillingStripe {
    *  invoice already refunded counts as done), so a retry completes what a
    *  failed run left, never refunds twice. */
   refundPaidInvoices(subscriptionId: string, opts?: { paidAfter?: Date | null }): Promise<{ pence: number; invoiceIds: string[] }>;
+  /** One invoice's status and its hosted page (where a bank check, 3DS,
+   *  is done), or null when Stripe has no such invoice (slice B4). */
+  retrieveInvoice(invoiceId: string): Promise<BillingInvoice | null>;
+}
+
+/** What the payment DMs read about an invoice (slice B4). */
+export interface BillingInvoice {
+  id: string;
+  /** Stripe's word: draft, open, paid, uncollectible, void. */
+  status: string | null;
+  hostedInvoiceUrl: string | null;
 }
 
 // ── Configuration ───────────────────────────────────────────────────────
@@ -378,6 +389,16 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
         }
       }
       return { pence, invoiceIds };
+    },
+
+    async retrieveInvoice(invoiceId) {
+      try {
+        const inv = await client.invoices.retrieve(invoiceId);
+        return { id: inv.id ?? invoiceId, status: inv.status ?? null, hostedInvoiceUrl: inv.hosted_invoice_url ?? null };
+      } catch (err) {
+        if ((err as { code?: string }).code === "resource_missing") return null;
+        throw err;
+      }
     },
 
     async retrieveSetupIntentCard(setupIntentId) {

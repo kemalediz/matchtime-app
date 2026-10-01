@@ -403,3 +403,122 @@ export function billingNoticeText(lang: LangIn, n: BillingPageNotice): string {
       return s.billing_notice_failed;
   }
 }
+
+// ── Slice B4: the scheduler's DMs and the admin channel's tip (7.2, 7.3) ─
+
+/** "set a money collector" is added only when the owner is asked because
+ *  no collector is set (`billingContact(...).via === "owner"`). */
+type ContactVia = "collector" | "owner";
+
+function withExtras(lang: LangIn, body: string, extras: { tip?: ClubFeeTip | null; via?: ContactVia }): string {
+  const parts = [body];
+  if (extras.tip) parts.push(clubFeeTipText(lang, extras.tip));
+  if (extras.via === "owner") parts.push(t(lang).billing_dm_set_collector);
+  return parts.join("\n\n");
+}
+
+/** Day 21 and day 28 (7.3). `tip` is passed when the DM carries the club
+ *  fee tip (day 21, or day 28 when day 21 never reached the contact). */
+export function trialReminderText(
+  lang: LangIn,
+  p: {
+    kind: "trial-21" | "trial-28";
+    name: string | null;
+    club: string;
+    trialEndsAt: Date;
+    pricePence: number;
+    link: string;
+    via: ContactVia;
+    tip: ClubFeeTip | null;
+  },
+): string {
+  const s = t(lang);
+  const date = dayLabel(lang, p.trialEndsAt);
+  const body =
+    p.kind === "trial-21"
+      ? s.billing_dm_trial_21({ name: p.name, club: p.club, date, price: moneyLabel(p.pricePence), link: p.link, collector: p.via === "collector" })
+      : s.billing_dm_trial_28({ name: p.name, club: p.club, date, link: p.link });
+  return withExtras(lang, body, { tip: p.tip, via: p.via });
+}
+
+/** Day 30: the free month has ended, a week's grace (7.3). */
+export function trialEndedText(
+  lang: LangIn,
+  p: { name: string | null; club: string; graceEndsAt: Date; link: string; via: ContactVia },
+): string {
+  const body = t(lang).billing_dm_trial_ended({ name: p.name, club: p.club, date: dayLabel(lang, p.graceEndsAt), link: p.link });
+  return withExtras(lang, body, { via: p.via });
+}
+
+/** Paused: no card after the grace week, a payment not recovered, or a
+ *  plan that ended after a cancel (7.3). */
+export function pausedText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; reason: "no-card" | "payment-failed" | "cancelled"; link: string },
+): string {
+  return t(lang).billing_dm_paused({ name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link, kind: p.reason });
+}
+
+/** This month's payment did not go through (7.3). `ownCard` false: the
+ *  failing card is somebody else's (a collector change in progress). */
+export function paymentFailedText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; link: string; ownCard: boolean },
+): string {
+  return t(lang).billing_dm_payment_failed({ name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link, ownCard: p.ownCard });
+}
+
+/** The bank wants the payer to confirm the payment (3DS). `link` is the
+ *  invoice's own Stripe page, where the check is done; `billingLink` the
+ *  recipient's billing page, offered when the card is not their own. */
+export function paymentActionText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; link: string; ownCard: boolean; billingLink: string },
+): string {
+  const base = { name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link };
+  // Someone else's card (a collector change in progress): the recipient
+  // may confirm that payment, or put their own card on instead.
+  return p.ownCard
+    ? t(lang).billing_dm_payment_action(base)
+    : t(lang).billing_dm_payment_action_other({ ...base, billingLink: p.billingLink });
+}
+
+/** To a new money collector, once (4.5 point 2), then the tip. */
+export function payerChangedText(
+  lang: LangIn,
+  p: {
+    name: string | null;
+    club: string;
+    pricePence: number;
+    link: string;
+    /** "card": somebody else's card is paying; "no-card": add one before
+     *  `date`; "paused": add one to switch MatchTime back on; "removed":
+     *  paused because MatchTime was taken out of the group, so it must be
+     *  added back (slice B5). */
+    state: "card" | "no-card" | "paused" | "removed";
+    oldName: string | null;
+    date: Date | null;
+    tip: ClubFeeTip | null;
+  },
+): string {
+  const s = t(lang);
+  const base = { name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link };
+  const body =
+    p.state === "card"
+      ? s.billing_dm_payer_changed_card({ ...base, oldName: p.oldName ?? "" })
+      : p.state === "no-card" && p.date
+        ? s.billing_dm_payer_changed_no_card({ ...base, date: dayLabel(lang, p.date) })
+        : p.state === "removed"
+          ? s.billing_dm_payer_changed_removed(base)
+          : s.billing_dm_payer_changed_paused(base);
+  return withExtras(lang, body, { tip: p.tip });
+}
+
+/** The admin channel's club fee tip (7.2 point 3). With no collector set,
+ *  one more line asking the admins to choose one (the reader's own
+ *  signed-in link by DM, the plain URL in the admin group). */
+export function feeTipAdminText(lang: LangIn, tip: ClubFeeTip, p: { noCollector: boolean; link: string }): string {
+  const parts = [clubFeeTipText(lang, tip)];
+  if (p.noCollector) parts.push(t(lang).billing_admin_no_collector({ link: p.link }));
+  return parts.join("\n\n");
+}

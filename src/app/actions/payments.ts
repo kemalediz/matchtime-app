@@ -12,6 +12,7 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { onBillingContactChanged } from "@/lib/club-billing-dms";
 import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import {
@@ -153,6 +154,9 @@ export async function setPaymentHolder(
   }
 
   await db.organisation.update({ where: { id: orgId }, data: { paymentHolderId: userId } });
+  // Club fee billing (slice B4): a billed club's new collector is told,
+  // once, that they now look after the card. Never fails this action.
+  await onBillingContactChanged(orgId).catch((err) => console.error(`[payments] ${orgId}: payer-changed DM:`, err));
   revalidatePath("/admin/settings");
   return { ok: true, name: membership.user.name };
 }

@@ -87,7 +87,25 @@ async function billingRow() {
 async function status() {
   return (await testDb().one<{ billingStatus: string }>(`SELECT "billingStatus" FROM "Organisation" WHERE id=$1`, [ORG]))?.billingStatus;
 }
+/**
+ * Slice B4: billing DMs go out 10:00 to 20:00 London only. At night the
+ * webhook and the admin actions leave them PENDING, and the hourly billing
+ * cron's daytime run re-checks and sends them. So when this suite runs at
+ * night, the cron is run once at the next 10:30 London (test clock) before
+ * the DMs are read; in the daytime nothing is held and nothing is run.
+ */
+async function flushNightDms() {
+  const londonHour = (d: Date) => Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Europe/London" }).format(d));
+  let at = new Date();
+  if (londonHour(at) >= 10 && londonHour(at) < 20) return;
+  while (londonHour(at) !== 10) at = new Date(at.getTime() + 30 * 60 * 1000);
+  const res = await fetch(`${E2E_BASE_URL}/api/cron/billing`, {
+    headers: { authorization: `Bearer ${E2E.CRON_SECRET}`, "x-test-now": at.toISOString() },
+  });
+  expect(res.status).toBe(200);
+}
 async function billingDms() {
+  await flushNightDms();
   return testDb().all<{ phone: string; text: string; refId: string }>(
     `SELECT phone, text, "refId" FROM "PlatformJob" WHERE purpose='billing' AND "refId" LIKE $1 ORDER BY "createdAt"`,
     [`${ORG}:%`],
@@ -421,9 +439,11 @@ test("7. a Checkout completing after the club was set Free is cancelled at once 
   expect(await res.json()).toMatchObject({ received: true, action: "unwanted-cancelled" });
   expect(stripeState().calls.filter((c) => c.method === "cancelSubscription").map((c) => c.args)).toContainEqual({ subscriptionId: "sub_e2e_late" });
   expect(stripeState().refunds).toContainEqual(expect.objectContaining({ subscriptionId: "sub_e2e_late", pence: 999 }));
-  // Refunded BEFORE it was cancelled (round-2 review N2).
+  // CANCELLED before it was refunded (slice B4, changing round-2 review
+  // N2's order): a refund that keeps failing can never leave it charging.
   const order = stripeState().calls.map((c) => `${c.method}:${(c.args as { subscriptionId?: string }).subscriptionId ?? ""}`);
-  expect(order.indexOf("refundPaidInvoices:sub_e2e_late")).toBeLessThan(order.indexOf("cancelSubscription:sub_e2e_late"));
+  expect(order.indexOf("cancelSubscription:sub_e2e_late")).toBeGreaterThan(-1);
+  expect(order.indexOf("cancelSubscription:sub_e2e_late")).toBeLessThan(order.indexOf("refundPaidInvoices:sub_e2e_late"));
   expect(await status()).toBe("exempt");
   expect((await billingRow())!.stripeSubscriptionId).not.toBe("sub_e2e_late");
   expect(await db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId"=$1 AND kind='club-billing'`, [ORG])).toBe(1);
