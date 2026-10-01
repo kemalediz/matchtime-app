@@ -191,10 +191,27 @@ export interface RecruitInviteCopy {
   mentionReactions?: boolean;
   /** The org's language (`Organisation.language`); English when absent. */
   lang?: Lang | string | null;
+  /** An organiser-pick club (slice 2b): IN puts you on the waiting list. */
+  organiser?: boolean;
 }
 
 /** The invite for an org that tracks attendance in-app. */
 export function buildRecruitInviteDm(c: RecruitInviteCopy): string {
+  if (c.organiser) {
+    // The same invite with the "playing?" line saying what IN does here.
+    const s = t(c.lang);
+    const base = s.dm_recruit_invite({
+      firstName: c.firstName,
+      matchName: c.matchName,
+      matchWhen: c.matchWhen,
+      spotsLeft: c.spotsLeft,
+      link: c.link,
+      reactions: false,
+    });
+    const lines = base.split("\n");
+    lines[2] = s.dm_recruit_invite_play_organiser;
+    return lines.join("\n");
+  }
   return t(c.lang).dm_recruit_invite({
     firstName: c.firstName,
     matchName: c.matchName,
@@ -370,6 +387,7 @@ export async function inviteRecentPlayers(
             confirmedCount,
             maxPlayers: next.maxPlayers,
             lang: features.language,
+            organiser: features.benchPickMode === "organiser",
           })
         : // Bench OFF: the old sentence, unchanged, because for that org
           // it is the truth. `bot-scheduler.ts` refuses to post a bench
@@ -457,6 +475,7 @@ export async function inviteRecentPlayers(
         spotsLeft: need,
         link: await buildShortMagicLinkUrl(token),
         lang: features.language,
+        organiser: features.benchPickMode === "organiser",
       });
     } else {
       // MoM/ratings-only org (no in-app squad) → an RSVP link does nothing.

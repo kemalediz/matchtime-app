@@ -1713,6 +1713,19 @@ export const tr: Strings = {
   wl_brought_in: (p) => `${p.name} kadroda`,
   wl_full: "Kadro dolu",
   wl_failed: "Kaydedilemedi. Tekrar deneyin.",
+  squad_complete_bench_invite_organiser:
+    "🪑 *Yedek listesi açık.* *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.",
+  bench_intro_line_organiser:
+    "🔁  *Yedek listesi:* *VARIM* yazın, yedek listesine ekleyeyim. Bir yer açılınca kimin oynayacağını organizatörler seçer.",
+  full_squad_bench_invite_organiser: (p) =>
+    `*${p.matchName}* kadrosu dolu, ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişiyiz, ama yedek listesi açık. ` +
+    `*VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer. 🙏`,
+  dm_recruit_invite_play_organiser: "Oynamak ister misin? *VARIM* yaz, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.",
+  dm_recruit_chase_organiser: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* (${p.matchWhen}) için hâlâ ${p.count} oyuncu arıyoruz. ` +
+    `Varsan *VARIM* yaz, yedek listesine ekleyeyim (kimin oynayacağını organizatörler seçer); yoksan *YOKUM* yaz, bir daha sormam 🙏`,
+  dm_self_ack_waiting_organiser: (p) =>
+    `📋 *${p.matchName}* (${p.matchWhen}) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏`,
 };
 
 /**

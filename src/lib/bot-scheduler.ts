@@ -407,7 +407,11 @@ function hoursBetween(a: Date, b: Date): number {
 function botIntroMessage(f: OrgFeatures): string {
   // The words live in `scheduler-copy.ts` (pure, golden-pinned) and
   // come from the string table for the org's language.
-  return buildBotIntro(f, buildBenchIntroLine({ lang: f.language }), f.language);
+  return buildBotIntro(
+    f,
+    buildBenchIntroLine({ lang: f.language, organiser: f.benchPickMode === "organiser" }),
+    f.language,
+  );
 }
 
 // ─────────────────────────── Main entry point ─────────────────────────────
@@ -1268,7 +1272,9 @@ async function computeForMatch(
             // the promise cannot drift. Only with the bench feature on:
             // without it the bench-slot offer never fires, so "I tag the
             // bench here" would be false.
-            benchInvite: features.bench ? buildSquadCompleteBenchInvite({ lang }) : null,
+            benchInvite: features.bench
+              ? buildSquadCompleteBenchInvite({ lang, organiser: features.benchPickMode === "organiser" })
+              : null,
             lang,
           });
           const body = rollingDeadlineLine ? `${squadPost}\n\n${rollingDeadlineLine}` : squadPost;
@@ -1537,6 +1543,7 @@ async function computeForMatch(
               matchWhen: when,
               need,
               lang,
+              organiser: features.benchPickMode === "organiser",
             }),
           });
           emitted++;

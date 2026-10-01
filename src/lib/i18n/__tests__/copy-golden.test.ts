@@ -1474,6 +1474,18 @@ function cases(lang: Lang): Case[] {
     ].join("\n"),
   );
 
+  add(
+    "OPK10 the bench promises in an organiser-pick club",
+    [
+      buildSquadCompleteBenchInvite({ lang, organiser: true }),
+      buildBenchIntroLine({ lang, organiser: true }),
+      buildFullSquadBenchInvite({ matchName: "Friday 9-a-side", confirmedCount: 18, maxPlayers: 18, lang, organiser: true }),
+      buildRecruitInviteDm({ firstName: "Ali", matchName: "Friday 9-a-side", matchWhen: opWhen, spotsLeft: 2, link: null, lang, organiser: true }),
+      buildRecruitChaseText({ playerName: "Ali Aziz", activityName: "Friday 9-a-side", matchWhen: opWhen, need: 1, lang, organiser: true }),
+      buildSelfAttendanceAck({ failed: false, status: "BENCH", matchName: "Friday 9-a-side", matchWhen: opWhen, lang, organiser: true }),
+    ].join("\n---\n"),
+  );
+
   return c;
 }
 
@@ -1549,7 +1561,7 @@ const MIGRATED_ROWS = [
   // weekly deadlines (2026-09-30)
   "WDL1 ", "WDL2 ", "WDL3 ", "WDL4 ",
   // organiser pick (2026-10-01)
-  "OPK1 ", "OPK2 ", "OPK3 ", "OPK4 ", "OPK5 ", "OPK6 ", "OPK7 ", "OPK8 ", "OPK9 ",
+  "OPK1 ", "OPK2 ", "OPK3 ", "OPK4 ", "OPK5 ", "OPK6 ", "OPK7 ", "OPK8 ", "OPK9 ", "OPK10 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

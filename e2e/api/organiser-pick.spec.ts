@@ -218,6 +218,12 @@ test("'2' picks the second on the list: A1 here, A2 in the group, A3 to the play
     text: "You're in for Friday 20:30 at Goals ⚽ Can't make it after all? Just say *OUT*.",
   });
   expect((await rounds(db))[0]).toMatchObject({ outcome: "filled" });
+  // The squad-complete post in an organiser club: the waiting list, never
+  // "first to reply IN takes the slot".
+  const complete = j.filter((x) => x.kind === "group" && x.text.includes("Squad complete"));
+  expect(complete).toHaveLength(1);
+  expect(complete[0].text).toContain("🪑 *Waiting list is open.* Say *IN* to go on the waiting list, and the organisers will pick who plays.");
+  expect(j.some((x) => /takes the slot|first to reply/.test(x.text))).toBe(false);
 });
 
 test("a second admin's reply after the pick: E3 'Already filled'", async ({ request }) => {
@@ -333,6 +339,9 @@ test("Sutton unchanged: a first-come club fills a free place on IN and offers a 
   await post(request, "/api/whatsapp/attendance", { phoneNumber: digits(PHONE.fresh), action: "IN", groupId: E2E.GROUP_ID });
   const fresh = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.fresh]);
   expect(fresh?.status).toBe("CONFIRMED");
+  // Its squad-complete post keeps the first-come promise, unchanged.
+  const complete = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'group' AND text LIKE '%Squad complete%'`, [ORG_ID]);
+  expect(complete.map((x) => x.text).join("\n")).toContain("the first to reply *IN* takes the slot");
   await post(request, "/api/whatsapp/attendance", { phoneNumber: digits(PHONE.player), action: "OUT", groupId: E2E.GROUP_ID });
   expect(await db.all(`SELECT id FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [MATCH.upcoming])).toHaveLength(1);
   expect(await db.all(`SELECT id FROM "OrganiserPickRound" WHERE "orgId" = $1`, [ORG_ID])).toEqual([]);

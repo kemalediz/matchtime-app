@@ -84,12 +84,14 @@ export async function announceSquadFullIfJustFilled(
   // the bench tag, so the promise would be false. Same message, never a
   // second post. A failed lookup means no invite, not no post: the claim
   // above is already taken and nothing retries this announcement.
-  const benchOn = await getOrgFeatures(m.activity.orgId)
-    .then((f) => f.bench)
-    .catch((err) => {
-      console.error("[squad-announce] feature lookup failed, posting without bench invite:", err);
-      return false;
-    });
+  const features = await getOrgFeatures(m.activity.orgId).catch((err) => {
+    console.error("[squad-announce] feature lookup failed, posting without bench invite:", err);
+    return null;
+  });
+  const benchOn = features?.bench === true;
+  // An organiser-pick club (slice 2b): the waiting list, never "first to
+  // reply IN takes the slot".
+  const organiser = features?.benchPickMode === "organiser";
   // The words live in `group-copy.ts` (pure) so the golden snapshot can
   // pin them; this module owns the claim and the job.
   await db.botJob.create({
@@ -102,7 +104,7 @@ export async function announceSquadFullIfJustFilled(
         kickoffLabel: kickoffLondon,
         confirmed: confirmed.map((a) => a.user.name),
         bench: bench.map((a) => a.user.name),
-        benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang }) : null,
+        benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang, organiser }) : null,
         lang,
       }),
     },

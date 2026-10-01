@@ -2134,4 +2134,26 @@ export const en = {
   wl_brought_in: (p: { name: string }): string => `${p.name} is in`,
   wl_full: "The squad is full",
   wl_failed: "Couldn't save that. Try again.",
+
+  // ── OPK10: the bench promises, in an organiser-pick club (review fix).
+  //    First-come clubs keep their rows unchanged. ──
+  /** The squad-complete post's closing line. */
+  squad_complete_bench_invite_organiser:
+    "🪑 *Waiting list is open.* Say *IN* to go on the waiting list, and the organisers will pick who plays.",
+  /** The day-one intro's bench line. */
+  bench_intro_line_organiser:
+    "🔁  *Waiting list:* say *IN* to go on the waiting list. When a place opens, the organisers pick who plays.",
+  /** The answer to a recruit ask when the squad is full. */
+  full_squad_bench_invite_organiser: (p: { matchName: string; confirmed: number; maxPlayers: number }): string =>
+    `*${p.matchName}* is full at ${p.confirmed} of ${p.maxPlayers}, but the waiting list is open. ` +
+    `Say *IN* to go on the waiting list, and the organisers will pick who plays. 🙏`,
+  /** The recruit invite DM's "playing?" line. */
+  dm_recruit_invite_play_organiser: "Want to play? Reply *IN* to go on the waiting list, and the organisers will pick who plays.",
+  /** The recruit chase DM. */
+  dm_recruit_chase_organiser: (p: { firstName: string | null; count: number; activityName: string; matchWhen: string }): string =>
+    `👋 ${p.firstName ?? "there"}, still after ${p.count} ${p.count === 1 ? "player" : "players"} for *${p.activityName}* on ${p.matchWhen}. ` +
+    `Reply *IN* to go on the waiting list and the organisers will pick who plays, or *OUT* and I'll stop asking 🙏`,
+  /** The private ack of an IN that went on the waiting list. */
+  dm_self_ack_waiting_organiser: (p: { matchName: string; matchWhen: string }): string =>
+    `📋 I've put you on the waiting list for *${p.matchName}* on ${p.matchWhen}. The organisers pick who plays, and I'll message you if you're picked 🙏`,
 };

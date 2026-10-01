@@ -225,9 +225,12 @@ export function buildRecruitChaseText(args: {
   need: number;
   /** The org's language (`Organisation.language`); English when absent. */
   lang?: Lang | string | null;
+  /** An organiser-pick club (slice 2b): IN puts you on the waiting list. */
+  organiser?: boolean;
 }): string {
   const { playerName, activityName, matchWhen, need } = args;
-  return t(args.lang).dm_recruit_chase({
+  const s = t(args.lang);
+  return (args.organiser ? s.dm_recruit_chase_organiser : s.dm_recruit_chase)({
     firstName: playerName?.trim().split(/\s+/)[0] || null,
     count: Math.max(1, Math.floor(need)),
     activityName,

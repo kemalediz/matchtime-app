@@ -573,6 +573,12 @@ const SAMPLES: SampleArgs = {
   wl_brought_in: { name: "Wasim" },
   wl_full: null,
   wl_failed: null,
+  squad_complete_bench_invite_organiser: null,
+  bench_intro_line_organiser: null,
+  full_squad_bench_invite_organiser: { matchName: "Friday 9-a-side", confirmed: 18, maxPlayers: 18 },
+  dm_recruit_invite_play_organiser: null,
+  dm_recruit_chase_organiser: { firstName: "Ali", count: 1, activityName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30" },
+  dm_self_ack_waiting_organiser: { matchName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30" },
 };
 
 /** Render an entry with its sample arguments. */

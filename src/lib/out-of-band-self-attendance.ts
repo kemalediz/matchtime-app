@@ -104,12 +104,25 @@ export async function applyOutOfBandSelfAttendance(
     console.error("[oob-self-attendance] write failed:", err);
   }
 
+  // An organiser-pick club (slice 2b): a BENCH here is the waiting list,
+  // and the ack must not say the squad is full. Read only for a BENCH.
+  // A failed lookup reads as first-come: today's words, never a crash.
+  let organiser = false;
+  if (status === "BENCH") {
+    try {
+      const o = await db.organisation.findUnique({ where: { id: input.orgId }, select: { benchPickMode: true } });
+      organiser = o?.benchPickMode === "organiser";
+    } catch {
+      organiser = false;
+    }
+  }
   const ack = buildSelfAttendanceAck({
     failed,
     status,
     matchName: input.matchName,
     matchWhen: input.matchWhen,
     lang: input.lang,
+    organiser,
   });
 
   if (input.replyPhone) {
@@ -149,7 +162,13 @@ export function buildSelfAttendanceAck(input: {
   matchWhen: string;
   /** The match's org language (`Organisation.language`); English when absent. */
   lang?: Lang | string | null;
+  /** An organiser-pick club (slice 2b): a BENCH here is the waiting list,
+   *  not a full squad. */
+  organiser?: boolean;
 }): string {
+  if (input.organiser && !input.failed && input.status === "BENCH") {
+    return t(input.lang).dm_self_ack_waiting_organiser({ matchName: input.matchName, matchWhen: input.matchWhen });
+  }
   return t(input.lang).dm_self_ack({
     failed: input.failed,
     status: input.status,
