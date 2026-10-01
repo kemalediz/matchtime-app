@@ -42,7 +42,7 @@ const ACTION: Record<BillingButton, (orgId: string) => Promise<void>> = {
   "remove-mine": removeMyCardAction,
 };
 
-const NOTICES: readonly BillingPageNotice[] = ["done", "replaced", "removed", "not-set-up", "already", "failed"];
+const NOTICES: readonly BillingPageNotice[] = ["done", "replaced", "removed", "not-set-up", "already", "re-add", "failed"];
 
 /** The notice to show after a card action, from the URL Stripe or the
  *  action sent the viewer back to. */

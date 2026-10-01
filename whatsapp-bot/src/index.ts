@@ -16,6 +16,7 @@ import {
   addAdminGroup,
   isAdminGroup,
   removeAdminGroup,
+  removeMonitoredGroup,
 } from "./handlers.js";
 import { reactionChatId, routeAdminGroupInbound } from "./admin-group.js";
 import { degradedMessage } from "./degraded.js";
@@ -23,6 +24,7 @@ import { asString, readInboundHeadline, readMessageBody, readNotifyName, safePat
 import {
   handleGroupJoinForSelfAdd,
   handleGroupLeaveForSelfRemoval,
+  handleMonitoredGroupSelfRemoval,
   sweepForMissedSelfAdds,
   type HistoryMessageForServer,
 } from "./bot-added.js";
@@ -981,6 +983,20 @@ async function main() {
         return;
       }
       if (!isMonitoredGroup(groupId)) return;
+      // Club fee billing, slice B5: MatchTime ITSELF removed from a live
+      // club's group. The server pauses a club paying the club fee and
+      // only logs anything else (Sutton FC). Only when one of the removed
+      // participants is the bot; never throws. The human-leave path below
+      // then runs exactly as before (it never forwards the bot's own id).
+      await handleMonitoredGroupSelfRemoval(
+        {
+          isMonitoredGroup,
+          resolveSelfIds: () => driver.selfIds(),
+          postBotRemoved,
+          stopMonitoringGroup: removeMonitoredGroup,
+        },
+        notification,
+      );
       const selfId = driver.selfId();
       const phones = extractPhones(notification.recipientIds, selfId);
       if (phones.length === 0) return;

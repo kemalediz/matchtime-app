@@ -16,6 +16,7 @@ import {
   billingPageView,
   type BillingViewClub,
   billingButtons,
+  billingNoticeText,
   billingStateLines,
   clubFeeTipText,
   moneyLabel,
@@ -316,6 +317,57 @@ describe("bannerText (8.2): grace, past due and paused only", () => {
     expect(bannerText("tr", { status: "grace", trialEndsAt: TRIAL_END, graceEndsAt: GRACE_END })).toBe(
       "Ücretsiz ay sona erdi. MatchTime'ın çalışmaya devam etmesi için 7 Kasım Cumartesi tarihinden önce kart ekleyin.",
     );
+  });
+});
+
+describe("slice B5: paused because MatchTime was removed from the group", () => {
+  const removed = (over: Partial<BillingStateInput> = {}) => state({ status: "paused", pausedReason: "removed", ...over });
+
+  it("the state line asks for MatchTime to be added back, not for a card (EN and TR)", () => {
+    expect(billingStateLines("en", removed())).toEqual([
+      "MatchTime was removed from the club's WhatsApp group, so it is paused. All the data is kept. To carry on, add MatchTime back to the group.",
+    ]);
+    expect(billingStateLines("tr", removed())).toEqual([
+      "MatchTime kulübün WhatsApp grubundan çıkarıldığı için duraklatıldı. Tüm veriler saklanıyor. Devam etmek için MatchTime'ı gruba geri ekleyin.",
+    ]);
+    // Any other pause still asks for a card.
+    expect(billingStateLines("en", state({ status: "paused", pausedReason: "no-card" }))[0]).toContain("Add a card");
+  });
+
+  it("no card buttons at all, with or without the subscription still running to its end", () => {
+    expect(billingButtons(removed())).toEqual([]);
+    expect(billingButtons(removed({ subscriptionStatus: "active", cardHolderUserId: "u1", portalAvailable: true }))).toEqual([]);
+    expect(billingButtons(removed({ subscriptionStatus: "past_due" }))).toEqual([]);
+    expect(billingButtons(state({ status: "paused", pausedReason: "no-card" }))).toEqual(["add-card"]);
+  });
+
+  it("the banner says the same", () => {
+    expect(bannerText("en", { status: "paused", pausedReason: "removed", trialEndsAt: TRIAL_END, graceEndsAt: null })).toBe(
+      "MatchTime was removed from this club's WhatsApp group, so it is paused. Add it back to the group to carry on.",
+    );
+    expect(bannerText("tr", { status: "paused", pausedReason: "removed", trialEndsAt: TRIAL_END, graceEndsAt: null })).toBe(
+      "MatchTime bu kulübün WhatsApp grubundan çıkarıldığı için duraklatıldı. Devam etmek için gruba geri ekleyin.",
+    );
+  });
+
+  it("the notice when a card is refused for it", () => {
+    expect(billingNoticeText("en", "re-add")).toBe("MatchTime isn't in the club's WhatsApp group. Add it back to the group first.");
+    expect(billingNoticeText("tr", "re-add")).toBe("MatchTime kulübün WhatsApp grubunda değil. Önce gruba geri ekleyin.");
+  });
+
+  it("the page view for the contact and the settings card carry the removed line", () => {
+    const c = club({ status: "paused", billing: { ...club().billing!, pausedReason: "removed" } });
+    const page = billingPageView("en", c, "contact", "colin", null);
+    expect(page.buttons).toEqual([]);
+    expect(page.lines[0]).toContain("add MatchTime back to the group");
+    expect(billingCardView("en", c, null)!.lines[0]).toContain("add MatchTime back to the group");
+  });
+
+  it("no dashes, EN or TR", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const s = t(lang);
+      for (const x of [s.billing_state_paused_removed, s.billing_banner_paused_removed, s.billing_notice_re_add]) expect(x).not.toMatch(DASH);
+    }
   });
 });
 

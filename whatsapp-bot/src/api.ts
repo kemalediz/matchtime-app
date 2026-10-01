@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import type { HeartbeatPayload } from "./heartbeat.js";
+import type { BotRemovedResponse } from "./bot-added.js";
 import { refuseServerWriteInShadow } from "./shadow.js";
 
 const headers = {
@@ -419,7 +420,13 @@ export interface BotAddedResult {
  * any failure, a 404 from a server built before slice 6 included. Never
  * throws.
  */
-export async function postBotRemoved(params: { groupId: string }): Promise<boolean> {
+/**
+ * MatchTime itself was removed from a group. The server's answer (for a
+ * live club's group, slice B5: `billing` says whether the club fee was
+ * paused), or null when the post failed. A body that is not JSON still
+ * counts as told: `{}`.
+ */
+export async function postBotRemoved(params: { groupId: string }): Promise<BotRemovedResponse | null> {
   try {
     const res = await apiFetch(`${config.apiUrl}/api/whatsapp/bot-removed`, {
       method: "POST",
@@ -428,12 +435,13 @@ export async function postBotRemoved(params: { groupId: string }): Promise<boole
     });
     if (!res.ok) {
       console.error("bot-removed post failed:", res.status, await res.text());
-      return false;
+      return null;
     }
-    return true;
+    const body = (await res.json().catch(() => null)) as BotRemovedResponse | null;
+    return body && typeof body === "object" ? body : {};
   } catch (err) {
     console.error("bot-removed post failed:", err instanceof Error ? err.message : err);
-    return false;
+    return null;
   }
 }
 

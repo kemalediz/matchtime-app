@@ -275,7 +275,9 @@ export async function resolveAdder(
 export interface SelfRemovalDeps {
   isSilentGroup: (gid: string) => boolean;
   resolveSelfIds: () => Promise<string[]>;
-  postBotRemoved: (params: { groupId: string }) => Promise<boolean>;
+  /** Only awaited here: what the server answered does not matter for a
+   *  silent or admin group. */
+  postBotRemoved: (params: { groupId: string }) => Promise<unknown>;
   log?: (line: string) => void;
 }
 
@@ -297,6 +299,88 @@ export async function handleGroupLeaveForSelfRemoval(
     if (!isSelfAdd(normaliseRecipientIds(notification.recipientIds), selfIds)) return "not-self";
     await deps.postBotRemoved({ groupId: gid });
     log(`[bot-removed] MatchTime removed from silent group ${gid}; server told`);
+    return "forwarded";
+  } catch (err) {
+    log(`[bot-removed] ${gid}: could not tell the server: ${err instanceof Error ? err.message : String(err)}`);
+    return "failed";
+  }
+}
+
+// ── Club fee billing, slice B5: MatchTime removed from a LIVE group ───
+
+/** What /api/whatsapp/bot-removed answers about a live club's group. A
+ *  server built before B5 sends no `billing`. */
+export interface BotRemovedResponse {
+  ok?: boolean;
+  /** "paused" | "already-paused": the club is paused for the club fee.
+   *  Anything else ("exempt", "flag-off", "not-billed", "paused-other"):
+   *  only logged, nothing changed. */
+  billing?: string;
+  orgId?: string;
+}
+
+export interface MonitoredSelfRemovalDeps {
+  isMonitoredGroup: (gid: string) => boolean;
+  resolveSelfIds: () => Promise<string[]>;
+  /** The server's answer, or null when the post failed. */
+  postBotRemoved: (params: { groupId: string }) => Promise<BotRemovedResponse | null>;
+  /** The server paused the club: stop monitoring the group locally. */
+  stopMonitoringGroup: (gid: string) => void;
+  log?: (line: string) => void;
+}
+
+export type MonitoredSelfRemovalOutcome = "not-monitored" | "not-self" | "own-leave" | "forwarded" | "paused" | "failed";
+
+/** Did MatchTime leave by itself (a leave job), rather than get removed?
+ *  WhatsApp names the leaver as the author of their own leave. */
+function isOwnLeave(notification: GroupJoinNotification, selfIds: string[]): boolean {
+  const self = new Set(selfIds);
+  if (notification.author && self.has(notification.author)) return true;
+  if (notification.authorLid && self.has(`${notification.authorLid}@lid`)) return true;
+  return false;
+}
+
+/**
+ * A `group_leave` in a MONITORED group (a live club's, Sutton FC's
+ * included) that removed MatchTime ITSELF: tell the server, which pauses
+ * a club paying the club fee and only logs anything else (plan 4.2, slice
+ * B5). The leave event is Baileys' `group-participants.update` with
+ * `action: "remove"`, mapped by `membershipEvent` (baileys/groups.ts):
+ * `recipientIds` are the REMOVED participants, in phone form when known,
+ * else their LID; `author` is whoever removed them.
+ *
+ * Safety: forwarded ONLY when one of the removed participants is the bot
+ * by one of its own ids (`isSelfAdd`, the same check as a self-add; with
+ * no ids known nothing matches), and NOT when the bot itself is the
+ * author (MatchTime leaving by its own leave job is not a removal). A
+ * player leaving or being removed never gets here as a removal. Never
+ * throws.
+ */
+export async function handleMonitoredGroupSelfRemoval(
+  deps: MonitoredSelfRemovalDeps,
+  notification: GroupJoinNotification,
+): Promise<MonitoredSelfRemovalOutcome> {
+  const log = deps.log ?? ((l) => console.log(l));
+  const gid = notification.chatId;
+  if (!gid || !deps.isMonitoredGroup(gid)) return "not-monitored";
+  try {
+    const selfIds = await deps.resolveSelfIds();
+    if (!isSelfAdd(normaliseRecipientIds(notification.recipientIds), selfIds)) return "not-self";
+    if (isOwnLeave(notification, selfIds)) {
+      log(`[bot-removed] MatchTime left live group ${gid} by itself; not a removal, server not told`);
+      return "own-leave";
+    }
+    const res = await deps.postBotRemoved({ groupId: gid });
+    if (!res) {
+      log(`[bot-removed] ${gid}: could not tell the server MatchTime was removed from a live group`);
+      return "failed";
+    }
+    if (res.billing === "paused" || res.billing === "already-paused") {
+      deps.stopMonitoringGroup(gid);
+      log(`[bot-removed] MatchTime removed from live group ${gid} (author=${notification.author ?? "?"}); club fee paused (${res.billing}), no longer monitored`);
+      return "paused";
+    }
+    log(`[bot-removed] MatchTime removed from live group ${gid} (author=${notification.author ?? "?"}); server logged it (${res.billing ?? "no billing answer"})`);
     return "forwarded";
   } catch (err) {
     log(`[bot-removed] ${gid}: could not tell the server: ${err instanceof Error ? err.message : String(err)}`);

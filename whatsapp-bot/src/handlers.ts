@@ -88,6 +88,18 @@ export function addMonitoredGroup(groupId: string): void {
   monitoredGroups.add(groupId);
 }
 
+/**
+ * Club fee billing, slice B5: the server paused a live club because
+ * MatchTime was removed from its group. Stop monitoring it NOW (not at the
+ * next /orgs refresh), so that if MatchTime is added back the self-add
+ * reaches the server (`handleGroupJoinForSelfAdd` skips a monitored group)
+ * and the club can be resumed. NOT made silent: the next refresh decides.
+ */
+export function removeMonitoredGroup(groupId: string): void {
+  monitoredGroups.delete(groupId);
+  onboardingGroups.delete(groupId);
+}
+
 /** Replace the mid-setup set (a subset of the monitored set). */
 export function setOnboardingGroups(groupIds: string[]) {
   onboardingGroups = new Set(groupIds.filter((g) => !silentGroups.has(g) && !adminGroups.has(g)));

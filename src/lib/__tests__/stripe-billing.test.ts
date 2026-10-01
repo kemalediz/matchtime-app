@@ -348,6 +348,33 @@ describe("the real adapter (recording client, no network)", () => {
   });
 });
 
+describe("the fake adapter: cancel at period end (slice B5)", () => {
+  it("sets and clears the flag on a stored subscription, and records the call", async () => {
+    const f = createFakeBillingStripe();
+    f.putSubscription({
+      id: "sub_r",
+      status: "active",
+      customerId: "cus_r",
+      metadata: { orgId: "org_r", purpose: "club-fee" },
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: null,
+      trialEnd: null,
+      priceId: "price_std",
+      itemId: "si_r",
+      card: null,
+    });
+    await f.setCancelAtPeriodEnd("sub_r", true);
+    expect((await f.retrieveSubscription("sub_r")).cancelAtPeriodEnd).toBe(true);
+    expect((await f.retrieveSubscription("sub_r")).status).toBe("active");
+    await f.setCancelAtPeriodEnd("sub_r", false);
+    expect((await f.retrieveSubscription("sub_r")).cancelAtPeriodEnd).toBe(false);
+    expect(f.state().calls.filter((c) => c.method === "setCancelAtPeriodEnd")).toEqual([
+      { method: "setCancelAtPeriodEnd", args: { subscriptionId: "sub_r", cancel: true } },
+      { method: "setCancelAtPeriodEnd", args: { subscriptionId: "sub_r", cancel: false } },
+    ]);
+  });
+});
+
 describe("which adapter (fake only under MT_TEST_MODE and BILLING_STRIPE_FAKE together)", () => {
   it("fake needs BOTH test mode and the flag", () => {
     expect(isBillingStripeFake({ MT_TEST_MODE: "1", BILLING_STRIPE_FAKE: "1" })).toBe(true);
@@ -550,6 +577,18 @@ describe("round-2 review fixes on the adapter", () => {
       { path: "subscriptions.update", args: ["sub_1", { metadata: { cancelledBy: "suspend" } }] },
       { path: "subscriptions.cancel", args: ["sub_1", { prorate: false }] },
     ]);
+  });
+
+  it("slice B5: cancel at period end (removed from the group) and its undo (re-added) are one update each, nothing else", async () => {
+    const { client, calls } = recordingClient();
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await a.setCancelAtPeriodEnd("sub_1", true);
+    await a.setCancelAtPeriodEnd("sub_1", false);
+    expect(calls).toEqual([
+      { path: "subscriptions.update", args: ["sub_1", { cancel_at_period_end: true }] },
+      { path: "subscriptions.update", args: ["sub_1", { cancel_at_period_end: false }] },
+    ]);
+    expect(JSON.stringify(calls)).not.toMatch(/stripeAccount|application_fee|refund/);
   });
 
   it("N6: live subscriptions are read across EVERY page, not the newest 20", async () => {

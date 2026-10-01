@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   handleGroupJoinForSelfAdd,
   handleGroupLeaveForSelfRemoval,
+  handleMonitoredGroupSelfRemoval,
   isSelfAdd,
   normaliseRecipientIds,
   resolveAdder,
@@ -304,6 +305,121 @@ describe("handleGroupLeaveForSelfRemoval (plan 5.7)", () => {
       }),
     });
     expect(await handleGroupLeaveForSelfRemoval(d, { chatId: GID, recipientIds: [PN] })).toBe("failed");
+  });
+});
+
+describe("handleMonitoredGroupSelfRemoval (club fee billing, slice B5)", () => {
+  // Baileys' `group-participants.update` with action "remove", as
+  // membershipEvent (baileys/groups.ts) hands it up: recipientIds are the
+  // REMOVED participants (phone form when known, else the LID), author is
+  // whoever removed them.
+  const ADMIN = "447700900001@c.us";
+
+  function deps(over: Partial<Parameters<typeof handleMonitoredGroupSelfRemoval>[0]> = {}) {
+    const postBotRemoved = vi.fn(async (): Promise<{ ok: boolean; billing?: string } | null> => ({ ok: true, billing: "paused" }));
+    const stopped: string[] = [];
+    return {
+      d: {
+        isMonitoredGroup: (g: string) => g === GID,
+        resolveSelfIds: async () => [PN, LID],
+        postBotRemoved,
+        stopMonitoringGroup: (g: string) => void stopped.push(g),
+        log: () => undefined,
+        ...over,
+      },
+      postBotRemoved,
+      stopped,
+    };
+  }
+
+  it("MatchTime removed from a live group by an admin: the server is told, by phone id", async () => {
+    const { d, postBotRemoved } = deps();
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("paused");
+    expect(postBotRemoved).toHaveBeenCalledWith({ groupId: GID });
+  });
+
+  it("matches the bot by its LID too (a lid-addressed group)", async () => {
+    const { d, postBotRemoved } = deps();
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [LID], author: ADMIN })).toBe("paused");
+    expect(postBotRemoved).toHaveBeenCalledTimes(1);
+  });
+
+  it("a PLAYER removed or leaving is never forwarded as MatchTime's removal", async () => {
+    const { d, postBotRemoved, stopped } = deps();
+    expect(
+      await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: ["447700900002@c.us", "99999999999999@lid"], author: ADMIN }),
+    ).toBe("not-self");
+    expect(postBotRemoved).not.toHaveBeenCalled();
+    expect(stopped).toEqual([]);
+  });
+
+  it("no recipients, or junk recipients: nothing", async () => {
+    const { d, postBotRemoved } = deps();
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: undefined, author: ADMIN })).toBe("not-self");
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [null, 42, {}], author: ADMIN })).toBe("not-self");
+    expect(postBotRemoved).not.toHaveBeenCalled();
+  });
+
+  it("the bot's own ids unknown (not connected yet): never forwarded", async () => {
+    const { d, postBotRemoved } = deps({ resolveSelfIds: async () => [] });
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("not-self");
+    expect(postBotRemoved).not.toHaveBeenCalled();
+  });
+
+  it("MatchTime leaving by itself (author is the bot, e.g. a platform leave job) is not a removal", async () => {
+    const { d, postBotRemoved } = deps();
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: PN })).toBe("own-leave");
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [LID], author: LID })).toBe("own-leave");
+    expect(
+      await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: "x@c.us", authorLid: "88813579246810" }),
+    ).toBe("own-leave");
+    expect(postBotRemoved).not.toHaveBeenCalled();
+  });
+
+  it("a group the Pi does not monitor is not handled here (silent and admin groups have their own paths)", async () => {
+    const { d, postBotRemoved } = deps({ isMonitoredGroup: () => false });
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("not-monitored");
+    expect(await handleMonitoredGroupSelfRemoval(d, { recipientIds: [PN] })).toBe("not-monitored");
+    expect(postBotRemoved).not.toHaveBeenCalled();
+  });
+
+  it("the server paused the club: the group stops being monitored, so a re-add reaches the server", async () => {
+    const { d, stopped } = deps();
+    await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: ADMIN });
+    expect(stopped).toEqual([GID]);
+  });
+
+  it("a repeated event for a club already paused stops monitoring too", async () => {
+    const { d, stopped } = deps({ postBotRemoved: vi.fn(async () => ({ ok: true, billing: "already-paused" })) });
+    expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("paused");
+    expect(stopped).toEqual([GID]);
+  });
+
+  for (const billing of ["exempt", "flag-off", "not-billed", "paused-other", undefined]) {
+    it(`the server only logged it (${billing ?? "an older server"}): the group stays monitored (Sutton FC)`, async () => {
+      const { d, stopped } = deps({ postBotRemoved: vi.fn(async () => ({ ok: true, ...(billing ? { billing } : {}) })) });
+      expect(await handleMonitoredGroupSelfRemoval(d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("forwarded");
+      expect(stopped).toEqual([]);
+    });
+  }
+
+  it("a failed post (null) or a throw is logged, never thrown, and monitoring is kept", async () => {
+    const a = deps({ postBotRemoved: vi.fn(async () => null) });
+    expect(await handleMonitoredGroupSelfRemoval(a.d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("failed");
+    expect(a.stopped).toEqual([]);
+    const b = deps({
+      postBotRemoved: vi.fn(async () => {
+        throw new Error("ECONNRESET");
+      }),
+    });
+    expect(await handleMonitoredGroupSelfRemoval(b.d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("failed");
+    const c = deps({
+      resolveSelfIds: async () => {
+        throw new Error("not connected");
+      },
+    });
+    expect(await handleMonitoredGroupSelfRemoval(c.d, { chatId: GID, recipientIds: [PN], author: ADMIN })).toBe("failed");
+    expect(c.postBotRemoved).not.toHaveBeenCalled();
   });
 });
 

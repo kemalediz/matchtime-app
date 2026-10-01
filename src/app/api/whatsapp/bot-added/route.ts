@@ -49,6 +49,15 @@
  * path (handleOnboardingIfApplicable routes the active stages to the
  * onboarding state machine).
  *
+ * Club fee billing, slice B5 (2026-10-01): before anything above, a
+ * real self-add (never the sweep's `discovered`) of the group of a club
+ * PAUSED BECAUSE MATCHTIME WAS REMOVED runs `handleBillingReAdd`
+ * (lib/club-billing-removal.ts): back to the free month, or serving again
+ * when its subscription still pays (the cancel at period end undone), or
+ * still paused waiting for a card or a payment. With BILLING_ENABLED off,
+ * and for every other club, it does nothing. It never changes this
+ * route's answer, and a failure in it never breaks the add.
+ *
  * Auth via WHATSAPP_API_KEY same as the rest of /api/whatsapp/*.
  */
 import { NextResponse } from "next/server";
@@ -73,6 +82,22 @@ import {
 } from "@/lib/group-add";
 import { queueOwnerDm } from "@/lib/owner-dm";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "@/lib/admin-group-link";
+import { billingEnabledForApiRequest } from "@/lib/billing-flag";
+import { handleBillingReAdd } from "@/lib/club-billing-removal";
+
+/** Slice B5: MatchTime added back to a club paused because it was removed.
+ *  Reads a CLONE of the body, so the route below still reads it. Never throws. */
+async function billingReAddStep(request: Request): Promise<void> {
+  try {
+    const peek = (await request.clone().json().catch(() => null)) as { groupId?: unknown; discovered?: unknown } | null;
+    const groupId = typeof peek?.groupId === "string" && peek.groupId.endsWith("@g.us") ? peek.groupId : null;
+    if (!groupId || peek?.discovered === true) return;
+    const r = await handleBillingReAdd(groupId, { flagOn: billingEnabledForApiRequest(request) });
+    if (r.kind !== "not-removed") console.log(`[bot-added] ${groupId}: club fee re-add ${JSON.stringify(r)}`);
+  } catch (err) {
+    console.error("[bot-added] club fee re-add step failed (the add carries on):", err);
+  }
+}
 
 /** The `ignored` word the Pi logs for each self-join outcome. */
 const SELF_JOIN_IGNORED: Record<GroupAddOutcome["kind"], string> = {
@@ -123,6 +148,8 @@ export async function POST(request: Request) {
   if (apiKey !== process.env.WHATSAPP_API_KEY) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await billingReAddStep(request);
 
   if (selfJoinEnabledForApiRequest(request)) return selfJoinAdd(request);
 

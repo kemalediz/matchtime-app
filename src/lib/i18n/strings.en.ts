@@ -2404,6 +2404,8 @@ export const en = {
   billing_state_past_due: (p: { date: string }): string =>
     `Last payment didn't go through. Stripe is retrying. MatchTime stops on ${p.date} if it can't be taken.`,
   billing_state_paused: "MatchTime is paused. All the data is kept. Add a card to switch it back on.",
+  billing_state_paused_removed:
+    "MatchTime was removed from the club's WhatsApp group, so it is paused. All the data is kept. To carry on, add MatchTime back to the group.",
   billing_card_holder_note: (p: { club: string; contact: string }): string =>
     `Your card still pays ${p.club}'s MatchTime fee until ${p.contact} adds theirs.`,
   billing_who_collector: (p: { name: string }): string => `${p.name} looks after the card.`,
@@ -2423,6 +2425,8 @@ export const en = {
   billing_banner_past_due: (p: { date: string }): string =>
     `This month's club fee didn't go through. MatchTime stops on ${p.date} if it can't be taken.`,
   billing_banner_paused: "MatchTime is paused for this club. Add a card to switch it back on.",
+  billing_banner_paused_removed:
+    "MatchTime was removed from this club's WhatsApp group, so it is paused. Add it back to the group to carry on.",
   billing_banner_link: "See billing",
   // Club fee billing, slice B3: the billing page's notices after a card
   // action, and the webhook's DMs (card added, card replaced, resumed,
@@ -2432,6 +2436,7 @@ export const en = {
   billing_notice_removed: "Your card has been removed and won't be charged for this club again.",
   billing_notice_not_set_up: "Card payments aren't open yet. Please try again later.",
   billing_notice_already: "A card is already paying for this club.",
+  billing_notice_re_add: "MatchTime isn't in the club's WhatsApp group. Add it back to the group first.",
   billing_notice_failed: "Something went wrong. Please try again.",
   billing_dm_card_added: (p: {
     name: string | null;

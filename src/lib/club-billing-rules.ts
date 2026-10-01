@@ -141,8 +141,13 @@ export type BillingEventInput =
   | { type: "subscription-unpaid" }
   /** MatchTime removed from the club's group (slice B5). */
   | { type: "removed-from-group" }
-  /** MatchTime re-added to the same group (slice B5). */
-  | { type: "re-added" }
+  /**
+   * MatchTime re-added to the same group (slice B5), with what Stripe
+   * says about the club's subscription at that moment: "paying" (live and
+   * paid or in its trial; its cancel at period end has just been undone),
+   * "unpaid" (live but not paid), or none.
+   */
+  | { type: "re-added"; subscription?: "paying" | "unpaid" | null }
   /** The platform owner set plan Free (slice B2). */
   | { type: "plan-free" }
   /**
@@ -256,8 +261,20 @@ export function nextBillingState(
       return to("paused", from, { pausedReason: "removed" });
 
     case "re-added":
-      if (from !== "paused" || !b || b.pausedReason !== "removed" || now >= b.trialEndsAt) return null;
-      return to("trial", from);
+      // Only a club paused BECAUSE it was removed; any other pause has its
+      // own way back (a card, a payment).
+      if (from !== "paused" || !b || b.pausedReason !== "removed") return null;
+      // The subscription still pays (the removal only set it to end with
+      // the paid month, now undone): serving again at once.
+      if (event.subscription === "paying") return to("subscribed", from);
+      // Live but unpaid: still paused, now waiting for the payment, so
+      // "Update card and pay" and the paid invoice resume it as usual.
+      if (event.subscription === "unpaid") return to("paused", from, { pausedReason: "payment-failed" });
+      // No subscription, free month still running: back to the free month.
+      if (now < b.trialEndsAt) return to("trial", from);
+      // No subscription, free month over: still paused, now waiting for a
+      // card, so Add a card and its first payment resume it as usual.
+      return to("paused", from, { pausedReason: "no-card" });
 
     case "plan-free":
       if (from === "exempt") return null;
