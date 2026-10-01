@@ -40,6 +40,13 @@ its own signing secret**. We never see or store card numbers.
 DM channel, in English or Turkish. **No DMs to you.** Billing numbers sit on
 `/admin/clubs`.
 
+**VAT:** Cressoft is VAT registered and **£9.99 includes VAT** (about £8.33 to
+Cressoft, £1.66 VAT). The Stripe price is tax inclusive with a fixed 20% UK VAT rate, and
+invoices show Cressoft's legal name, address and VAT number. **UK billing addresses only
+at first**, because selling to consumers abroad (Turkey, the EU) brings foreign VAT
+registration. After VAT, Stripe and about £3 of AI, a club leaves about **£4.90 a
+month** (section 5.4).
+
 **Cost to build:** six PRs. No prompt changes, so **no paid AI test runs**. Stripe is
 tested in test mode and with signed fixture events; **live mode is touched only at
 rollout, by you, in the dashboard**.
@@ -47,7 +54,7 @@ rollout, by you, in the dashboard**.
 **Switch:** `BILLING_ENABLED`, off by default. Off means nobody is billed or paused, and
 any paused club comes straight back. It starts with **new clubs only**.
 
-**Decisions I need from you:** section 14 (ten of them, each with a recommendation).
+**Decisions I need from you:** section 14 (thirteen of them, each with a recommendation).
 
 ---
 
@@ -154,6 +161,9 @@ model ClubBilling {
   paymentFailedAt          DateTime?           // first failure of the current unpaid invoice
   pausedAt                 DateTime?
   pausedReason             String?             // "no-card" | "payment-failed" | "cancelled" | "removed"
+  billingCountry           String?             // from Checkout's billing address, ISO 3166 alpha-2
+  cardCountry              String?             // the card's issuing country
+  vatCountryCheck          Boolean   @default(false) // either is not GB: flagged on /admin/clubs
   resumedAt                DateTime?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
@@ -316,9 +326,15 @@ DM tells the organiser so (section 7).
 
 ### 5.1 Set up once per mode (test first, live at rollout, by Kemal)
 
-- Product **"MatchTime club"**. Price **£9.99 GBP, monthly, recurring**, lookup key
+- Product **"MatchTime club"**, tax code "General, electronically supplied services"
+  (`txcd_10000000`). Price **£9.99 GBP, monthly, recurring, `tax_behavior: "inclusive"`**,
+  lookup key
   `club_monthly_standard`. Its id goes in `STRIPE_CLUB_PRICE_ID`; the product id in
   `STRIPE_CLUB_PRODUCT_ID`.
+- **Tax Rate** "VAT", 20%, `inclusive: true`, country GB, jurisdiction "United
+  Kingdom". Its id goes in `STRIPE_CLUB_TAX_RATE_ID` (section 5.4).
+- **Business details and invoice settings:** Cressoft's legal name, registered address and
+  **GB VAT number** as the account tax ID, shown on invoices and receipts (section 5.4).
 - **Customer Portal** configuration: update payment method, view invoices, cancel **at
   period end**; no plan switching, no quantity changes. Return URL
   `https://matchtime.ai/admin/settings#billing`.
@@ -343,7 +359,11 @@ DM tells the organiser so (section 7).
   Stripe requires a Checkout trial end at least 48 hours ahead, so a card added on day 29
   gets at most one or two extra free days rather than being charged early. In `grace`
   or `paused` there is no trial: the first £9.99 is taken at once;
-- the price is `STRIPE_CLUB_PRICE_ID`, or for a Custom plan a price under
+- VAT: `subscription_data.default_tax_rates: [STRIPE_CLUB_TAX_RATE_ID]`,
+  `billing_address_collection: "required"`, `tax_id_collection: { enabled: true }`, and
+  the UK-only check in section 5.4;
+- the price is `STRIPE_CLUB_PRICE_ID`, or for a Custom plan a price (also
+  `tax_behavior: "inclusive"`) under
   `STRIPE_CLUB_PRODUCT_ID` with lookup key `club_monthly_<pence>`, created the first time
   it is needed and reused after.
 
@@ -381,6 +401,86 @@ swaps the item's price with `proration_behavior: "none"`, effective from the nex
 
 A handler error returns 500 so Stripe retries; the `BillingEvent` row records the error
 and is retried cleanly because `processedAt` is still null.
+
+### 5.4 VAT (Kemal, 2026-10-01: Cressoft is VAT registered, £9.99 includes VAT)
+
+**The numbers.** At the UK standard rate of 20%, a VAT-inclusive £9.99 is £9.99 / 1.2 =
+£8.325 net. Stripe rounds per invoice, so the split shows as **about £8.33 net plus
+£1.66 VAT** (it may print as £8.32 plus £1.67; either way the customer pays exactly
+£9.99). A Custom £5.00 is £4.17 net plus £0.83 VAT.
+
+**Who the customers are.** Mostly individual organisers paying out of their own pocket
+(B2C), living in the UK: every club plays in London, and `src/lib/london-time.ts` is
+hardcoded to Europe/London. A club or company that wants a VAT invoice in its own name
+can add its VAT number at Checkout (`tax_id_collection`); nothing else changes, because
+a UK business customer is charged UK VAT the same way.
+
+**Stripe Tax or a fixed tax rate. Recommend the fixed rate.**
+
+| | Fixed Tax Rate (recommended) | Stripe Tax |
+|---|---|---|
+| What it does | Applies 20% UK VAT, inclusive, to every club invoice | Works out the rate from the customer's location, for every country |
+| Cost | Free | 0.5% of each charge where tax is calculated (about 5p a month per club), on top of Stripe's other fees |
+| Fits | UK customers only, which is the recommendation below | Selling abroad, once registered there |
+| Setup | One Tax Rate object | Turn on Stripe Tax, add the UK registration, `automatic_tax: { enabled: true }` |
+
+With UK-only billing there is exactly one rate, so Stripe Tax adds cost and nothing else.
+The Price is still created `tax_behavior: "inclusive"`, so moving to Stripe Tax later is a
+change to the Checkout call, not a new price.
+
+**Invoices and receipts.** Stripe makes an invoice for every subscription charge and emails
+a receipt to the address entered at Checkout. Set once in the Stripe dashboard (Settings,
+Business details, and Invoice settings): Cressoft's **legal name, registered address and
+VAT number**, with the VAT number added as the account's tax ID so it prints on every
+invoice, plus a footer such as "MatchTime is a service of {legal name}". With the Tax Rate
+applied, each invoice shows the net amount, "VAT (20%, inclusive)" and the total. That
+covers what a full UK VAT invoice needs; for consumers a simplified invoice would already
+do. The settings card links to the Customer Portal, where every past invoice can be
+downloaded. (I have not seen what the live dashboard has today; rollout step 3 checks it.)
+
+**Organisers outside the UK (for example Turkey). Recommend UK only at first.**
+
+- For an electronic service sold to a **consumer**, VAT is due where the customer lives,
+  and a UK seller gets **no threshold** abroad:
+  - **EU consumers:** EU VAT from the first sale, normally through the non-Union OSS
+    scheme;
+  - **Turkey:** foreign providers of electronic services to Turkish consumers must
+    register for Turkish VAT (a simplified registration; 20% at present) and file there.
+
+  That is real admin for £9.99 a month. This is the general rule as I understand it; your
+  accountant should confirm it for Cressoft before anything is sold outside the UK.
+- **How "UK only" is enforced:** Checkout requires a billing address. On
+  `checkout.session.completed` the webhook reads the billing address country and the
+  card's issuing country. Both GB: normal. Either one not GB: the subscription is kept
+  (refusing after the card is taken would be worse), `vatCountryCheck` is set, the club
+  shows **"Check VAT country"** on `/admin/clubs`, and you decide: keep it (someone
+  living in London with a Turkish card is still a UK customer when the address and other
+  evidence say UK), make the club Free, or cancel and refund. HMRC expects two
+  non-conflicting pieces of evidence of where a consumer lives; the address and the card
+  country are those two.
+- Turkish-speaking organisers in London (the first prospects) are UK customers. Their
+  language is a display choice and has nothing to do with VAT.
+
+**Margin per club per month, VAT-inclusive price (Standard plan, UK card).**
+
+| Line | Amount |
+|---|---|
+| Customer pays | £9.99 |
+| VAT to HMRC (20%, inclusive) | £1.66 |
+| **Net revenue** | **£8.33** |
+| Stripe card fee (UK card, 1.5% + 20p of £9.99) | about £0.35 |
+| Stripe Billing fee (pay-as-you-go, 0.7% of billing volume) | about £0.07 |
+| AI (Kemal's planning figure; Sutton FC's September was about $3.50, roughly £2.60) | about £3.00 |
+| **Left per club** | **about £4.91** |
+| The same with Stripe Tax instead of a fixed rate | about £4.86 |
+| The same with a non-UK card (about 3.25% + 20p; check current Stripe pricing) | about £4.74 |
+| A club that hits the $1.00 a day AI ceiling every day (about £22 a month) | about minus £14 |
+
+Stripe's rates above are their standard UK list prices as I understand them, not read
+from Cressoft's account; the Billing fee in particular depends on the account's plan. A
+Custom £5.00 plan nets £4.17, about £3.66 after Stripe fees, so it roughly breaks even at
+£3 of AI. The last row is why decision 9 says to watch AI spend per club on
+`/admin/clubs`.
 
 ---
 
@@ -559,6 +659,10 @@ Nothing here DMs anyone.
   network**.
 - Resume: stale BotJobs dropped, future reminders kept, matches that passed during the
   pause completed with no post-match flow.
+- VAT: the Checkout call always carries the inclusive Tax Rate, a required billing
+  address and VAT number collection, for Standard and Custom prices alike; a completed
+  session with a non-GB billing country or card country sets `vatCountryCheck` and keeps
+  the subscription.
 - i18n: every new string exists in both languages; Turkish dates render.
 
 ### 10.2 Playwright (web, free)
@@ -585,7 +689,9 @@ events to `/api/stripe/billing-webhook`.
 On a Preview deployment with `sk_test` keys: real Checkout with card `4242 4242 4242
 4242`, a 3DS test card, a declining card (`4000 0000 0000 0341`), and a **Stripe test
 clock** to run a subscription through trial end, renewal, failure and Smart Retries to
-cancel in minutes. This is the only place real Stripe Billing behaviour is exercised
+cancel in minutes. Open one test invoice PDF and check the legal name, address, VAT
+number and the "VAT (20%, inclusive)" line, and try a Turkish billing address to see the
+flag. This is the only place real Stripe Billing behaviour is exercised
 before live.
 
 ---
@@ -598,10 +704,11 @@ before live.
 2. **Test mode first:** product, price, Portal, Smart Retries and webhook created in
    **test mode**, test env vars on Preview, 10.3 run end to end.
 3. **Live config, by Kemal in the Stripe dashboard** (no live keys through chat): live
-   product and price, Portal, Smart Retries, customer emails, the platform-scoped billing
+   product and tax-inclusive price, the 20% inclusive Tax Rate, business details and
+   VAT number on invoices, Portal, Smart Retries, customer emails, the platform-scoped billing
    webhook, and **delete the old platform-scoped `we_1TgQL6...` endpoint** if it still
    exists (section 2). Then Vercel prod env: `STRIPE_BILLING_WEBHOOK_SECRET`,
-   `STRIPE_CLUB_PRICE_ID`, `STRIPE_CLUB_PRODUCT_ID`.
+   `STRIPE_CLUB_PRICE_ID`, `STRIPE_CLUB_PRODUCT_ID`, `STRIPE_CLUB_TAX_RATE_ID`.
 4. **Switch on for new clubs only.** `BILLING_ENABLED=1`. Every existing club stays
    `exempt`. Clubs approved from that moment get a trial. Self-join clubs approved
    before it are Kemal's call per club ("Start free month", decision 2).
@@ -623,6 +730,7 @@ for clubs that chose to pay; Kemal can cancel any in Stripe.
 | `STRIPE_BILLING_WEBHOOK_SECRET` | Vercel | `whsec_...` of the **platform-scoped** billing endpoint |
 | `STRIPE_CLUB_PRICE_ID` | Vercel | `price_...` (£9.99 monthly) |
 | `STRIPE_CLUB_PRODUCT_ID` | Vercel | `prod_...`, for Custom prices |
+| `STRIPE_CLUB_TAX_RATE_ID` | Vercel | `txr_...`, 20% UK VAT, inclusive |
 | `STRIPE_SECRET_KEY` | existing | unchanged, same platform account |
 | `STRIPE_WEBHOOK_SECRET` | existing | unchanged, Connect endpoint only |
 | `BILLING_STRIPE_FAKE` | test only | `1` under `MT_TEST_MODE` for Playwright |
@@ -638,7 +746,7 @@ Added to `.env.example` with comments. Trial length (30), grace (7) and reminder
 |---|---|---|---|
 | B1 | **Schema, rules and the quiet gate.** Columns, `ClubBilling`, `BillingEvent`, `BillingNotice`, CHECK constraints, `club-billing-rules.ts`, `setBillingState`, `SERVING_CLUB_WHERE`, `isClubOperational` and every gate in 4.3, AI allowance $0, `fixtureSkipReason`, `dm-reply` rail, kill switch, `resumeClub`. No visible change (every club `exempt`). | none | `prisma/`, `club-approval-state.ts`, `club-billing*.ts`, `orgs`, `due-posts`, `analyze` (org lookups only), crons, `ai-budget.ts`, `org-lifecycle.ts`, `dm-reply` |
 | B2 | **Trial and owner controls.** Trial at approval (`decideClub` approve, flag on), `/admin/clubs` billing column, plan control, "Start free month", settings card (read-only states), banner, i18n. | B1 | `club-approval.ts` (one call), `/admin/clubs`, `/admin/settings`, `admin/layout.tsx`, `i18n` |
-| B3 | **Stripe.** `stripe-billing.ts`, Add a card (Checkout), Change card or cancel (Portal), billing webhook, sync, "card-added" DM, plan changes on live subscriptions, fake adapter. | B1, B2 | `stripe-billing.ts`, `api/stripe/billing-webhook`, settings actions |
+| B3 | **Stripe.** `stripe-billing.ts`, Add a card (Checkout, with the inclusive Tax Rate, billing address, VAT number collection and the UK check), Change card or cancel (Portal), billing webhook, sync, "card-added" DM, plan changes on live subscriptions, fake adapter. | B1, B2 | `stripe-billing.ts`, `api/stripe/billing-webhook`, settings actions |
 | B4 | **Scheduler.** `/api/cron/billing`, day 21, 28, 30, 37, payment-failure grace, `purpose: "billing"`, `BillingNotice`, all DM copy EN and TR. | B2, B3 | `api/cron/billing`, `vercel.json`, `platform-jobs.ts` (purpose), `i18n` |
 | B5 | **Removal from a live group.** Pi forwards self-removal for monitored groups too (`handleGroupLeaveForSelfRemoval`), server sets `paused (removed)` and cancels at period end for billed clubs only; **exempt clubs (Sutton) only log**. Re-add during the trial resumes it. Pi deployed with `scripts/deploy-pi.sh`, away from match time. | B3 | `whatsapp-bot/src/bot-added.ts`, `api/whatsapp/bot-removed`, `club-billing.ts` |
 | B6 | **Go-live.** Help page paragraph, `.env.example`, runbook in this file. Then rollout steps 2 to 5. | B1 to B5 | `help/admin/page.tsx` |
@@ -666,12 +774,24 @@ B1 touches `analyze/route.ts` only at the two org lookups.
    Portal cancel only (then a removed club in trial would still get reminder DMs).
 6. **Your off switch on a paying club** (suspend): recommend cancel the subscription at
    once with no automatic refund; you refund by hand in Stripe if you choose.
-7. **VAT:** is £9.99 VAT inclusive, and is the platform account VAT registered? Recommend
-   price set as tax inclusive and Stripe Tax off until your accountant says otherwise.
+7. **VAT method:** confirmed, Cressoft is VAT registered and £9.99 includes VAT.
+   Recommend a **fixed 20% inclusive Tax Rate**, not Stripe Tax (free, and exact for UK
+   only); the Price is still created tax inclusive so a later move to Stripe Tax is easy.
 8. **Custom price range:** recommend £1.00 to £9.99, monthly only, effective from the next
    month for clubs already paying. No annual plan for now.
 9. **AI cap for paying clubs:** recommend no change ($1.00 a day after the first 28 days)
    and watch spend per club on `/admin/clubs`.
-10. **Adding the fee to match fees** (the "about 50p each" idea built in): recommend not
+10. **UK only at first:** recommend yes. Non-UK billing address or card: subscription
+    kept, club flagged "Check VAT country" for you to decide. Selling to consumers in
+    Turkey or the EU waits until your accountant has set up foreign VAT (Turkish
+    simplified registration, EU non-Union OSS).
+11. **Invoice details:** please confirm the exact legal name, registered address and VAT
+    number to put on invoices (Stripe Settings, Business details), and whether the
+    footer should say "MatchTime is a service of {legal name}". Recommend also letting
+    a club enter its own VAT number at Checkout.
+12. **Custom price floor:** a £5.00 plan nets £4.17 before Stripe and AI, roughly
+    break-even at £3 of AI. Recommend £5 as the lowest custom price you offer in
+    practice, and Free (not a lower price) for anyone below that.
+13. **Adding the fee to match fees** (the "about 50p each" idea built in): recommend not
     now. It mixes the club fee into Connect money, which this plan keeps apart on purpose.
     Revisit once a few clubs pay and ask for it; it would be its own plan.
