@@ -6,7 +6,7 @@ import path from "node:path";
  * House rules for the public website copy (Kemal): no em dashes or en
  * dashes anywhere a visitor can read them, the real domain is
  * matchtime.ai (never matchtime.app), the bot is tagged as "@Match Time",
- * no fee talk, no "free" claims (MatchTime costs £5 a month per group
+ * no fee talk, no "free" claims (MatchTime costs £9.99 a month per group
  * with the first month free, since 2026-10-01), hello@matchtime.ai as the contact email, no published
  * MatchTime number, and no real club or player names on public pages.
  *
@@ -57,8 +57,8 @@ describe("public website copy", () => {
     expect(text).not.toMatch(/(^|[^\d])1\s?%|MatchTime fee|card fee|payment fee|processing fee|platform fee/i);
   });
 
-  // Kemal (2026-10-01): MatchTime is no longer free. It costs £5 a month
-  // per group with the first month free, so the only "free" a visitor may
+  // Kemal (2026-10-01): MatchTime is no longer free. It costs £9.99 a
+  // month per group with the first month free, so the only "free" a visitor may
   // read is "first month free". Catches "free to use", "it's free",
   // "for free", "Free WhatsApp organiser" and the like.
   it.each(sources)("$file does not claim MatchTime is free", ({ text }) => {
@@ -92,10 +92,12 @@ describe("public website copy", () => {
 
     it("the landing page has a pricing section with the price and the free first month", () => {
       expect(landing).toMatch(/id="pricing"/);
-      expect(landing).toMatch(/£5/);
+      expect(landing).toMatch(/£9\.99/);
+      expect(landing).not.toMatch(/£5(?![\d.])/);
       expect(landing).toMatch(/per group/i);
       expect(landing).toMatch(/first month (is )?free/i);
-      expect(landing).toMatch(/25p/);
+      expect(landing).toMatch(/about 50p a player/);
+      expect(landing).not.toMatch(/25p/);
     });
 
     // Kemal, 2026-10-01: no price in Google results or link previews.
@@ -109,7 +111,8 @@ describe("public website copy", () => {
 
     it("the help pages state the price", () => {
       for (const t of [help, admin]) {
-        expect(t).toMatch(/£5 a month/);
+        expect(t).toMatch(/£9\.99 a month/);
+        expect(t).not.toMatch(/£5(?![\d.])/);
         expect(t).toMatch(/first month (is )?free/i);
       }
     });

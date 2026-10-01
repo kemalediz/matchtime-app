@@ -30,12 +30,13 @@ for (const [path, heading] of GUIDES) {
 test("landing page shows the price and links the player guide", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText(/First month free/i).first()).toBeVisible();
-  // Pricing section: £5 a month per group, first month free (Kemal, 2026-10-01).
+  // Pricing section: £9.99 a month per group, first month free (Kemal, 2026-10-01).
   const pricing = page.locator("#pricing");
   await pricing.scrollIntoViewIfNeeded();
   await expect(pricing.getByRole("heading", { name: /One price for the whole group/i })).toBeVisible();
+  await expect(pricing.getByText("£9.99", { exact: true })).toBeVisible();
   await expect(pricing.getByText(/a month per group/i)).toBeVisible();
-  await expect(pricing.getByText(/about 25p a player/i)).toBeVisible();
+  await expect(pricing.getByText(/about 50p a player/i)).toBeVisible();
   // Nothing on the page still claims MatchTime is free.
   const body = (await page.locator("body").innerText()).replace(/first month (is )?free/gi, "");
   expect(body).not.toMatch(/\bfree\b/i);
