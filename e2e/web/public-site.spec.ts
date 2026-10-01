@@ -45,6 +45,20 @@ test("landing page shows the price and links the player guide", async ({ page })
   await expect(page.getByText(/The one rule/i)).toBeVisible();
 });
 
+test("organiser guide explains the club fee", async ({ page }) => {
+  await page.goto("/help/admin#club-fee");
+  const fee = page.locator("#club-fee");
+  await expect(fee).toBeVisible();
+  const section = page.locator("#club-fee ~ p").first();
+  await expect(section).toContainText("£9.99 a month per group, including VAT");
+  const body = await page.locator("main, body").first().innerText();
+  expect(body).toMatch(/money collector/i);
+  expect(body).toMatch(/goes quiet in your group until a card is added/i);
+  expect(body).toMatch(/about 25p a player per game/);
+  // Still no "free" beyond the first month on the guide.
+  expect(body.replace(/first month (is )?free/gi, "")).not.toMatch(/\bfree\b/i);
+});
+
 test("robots.txt is served and points at the sitemap", async ({ request }) => {
   const res = await request.get("/robots.txt");
   expect(res.status()).toBe(200);

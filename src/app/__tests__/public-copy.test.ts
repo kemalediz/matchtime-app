@@ -117,6 +117,33 @@ describe("public website copy", () => {
       }
     });
 
+    // Slice B6 (MDs/club-fee-billing-plan-2026-10-01.md): the organiser
+    // guide explains the club fee as shipped in B1 to B5. Each line here is
+    // a fact from the code, so the paragraph cannot drift from it.
+    it("the organiser guide explains the club fee as it works", () => {
+      const flat = admin.replace(/\s+/g, " ").replace(/&apos;/g, "'");
+      expect(admin).toMatch(/id="club-fee"/);
+      // Free month from approval (trial starts at approvedAt).
+      expect(flat).toMatch(/first month is free.{0,80}from the day we approve your club/i);
+      // £9.99 a month per group, VAT included (inclusive tax rate).
+      expect(flat).toMatch(/£9\.99 a month per group, including VAT/);
+      // The money collector, else the owner, adds the card on the billing page.
+      expect(flat).toMatch(/money collector/i);
+      expect(flat).toMatch(/or the owner if no collector is set/i);
+      expect(flat).toMatch(/billing page/i);
+      // Reminders before the first month ends (day 21 and 28).
+      expect(flat).toMatch(/reminders? before your first month ends/i);
+      // A week's grace (day 30 to 37), then quiet in the group, data kept.
+      expect(flat).toMatch(/one more week/i);
+      expect(flat).toMatch(/goes quiet in your group until a card is added/i);
+      expect(flat).toMatch(/players, matches and stats are kept/i);
+      // Cancel any time.
+      expect(flat).toMatch(/cancel any time/i);
+      // The club fee tip, worked for a weekly 5-a-side.
+      expect(flat).toMatch(/about 25p a player per game/);
+      expect(flat).toMatch(/5-a-side/);
+    });
+
     it("never claims MatchTime collects the club fee itself", () => {
       for (const { text } of sources) {
         expect(text).not.toMatch(/(collects?|charges?) the (club|monthly) fee (for you|automatically)|automatically (collect|split|charge)/i);

@@ -1299,7 +1299,7 @@ env.
 | B3 | **Stripe.** `stripe-billing.ts`, Add a card (Checkout, with the inclusive Tax Rate, billing address, VAT number collection and the UK check), Use my card instead (setup mode), Change card or cancel (Portal), Remove my card, billing webhook, sync, "card-added" and "card-replaced" DMs, plan changes on live subscriptions, fake adapter. **As built (2026-10-01):** `stripe-billing.ts` (pure Checkout builders, the real adapter, `getBillingStripe`), `stripe-billing-fake.ts` (tests only: `MT_TEST_MODE=1` and `BILLING_STRIPE_FAKE=1`, refused with a live key), `club-billing-stripe.ts` (the four actions, `processBillingWebhook` with `BillingEvent` idempotency, sync from a FRESH subscription read, `syncPlanToStripe`, `notifyPlanBilledAgain`), `app/actions/club-billing.ts` (each action re-checks `requireClubBillingAccess`), `queueBillingDm` in `club-billing.ts` (claim `BillingNotice` first; the only queuer of purpose `"billing"`). Also: only one Add a card session may be open per club (open ones are expired first), a second live subscription for a club is cancelled at once by the webhook, the B2 gap (Free and back) has the defined path in 4.2, and a "resumed" DM goes to the contact when a recovered payment brings a paused club back. Left for B4: the payment-failed and 3DS DMs, and any DM on Remove my card (the contact already had "payer-changed"). **Review hardening (PR #181):** a live subscription for a club on Free, exempt or gone is cancelled at once and refunded by the webhook, never adopted; open Checkout sessions expire on every session, plan or price change; an adopted subscription on a stale price is corrected; Stripe itself is asked for live subscriptions before any new session; adoption is a compare-and-set, and a duplicate is cancelled AND refunded automatically, recorded on /admin/health (kind `club-billing`), never a DM; an unpaid subscription always offers "Update card and pay" (setup mode, open invoice retried); the card holder is never read from subscription metadata (Checkout payer, or the contact after a Portal card change); the Portal needs `STRIPE_CLUB_PORTAL_CONFIG_ID` (no fallback, no button without it) and is only for the contact whose own card is on file; a new payer's session first resets the shared Customer (name back to the club; email, address, phone and VAT numbers cleared) and the webhook then writes the payer's email and address; the webhook answers 503 without its secret and ignores Connect events; a cancel inside the free month goes back to `trial`, and a new card keeps the original trial end; billing DMs are claimed and released on failure, and "resumed" and "plan-billed" are written as pending notices in the state change's own transaction; suspending a club (4.2, decision 7) cancels its live subscription at once with no automatic refund (wired in B3). **Round-2 review:** a live subscription for a Free or exempt club is cancelled and only invoices paid AFTER the club became Free are refunded (the moment is a `BillingEvent` row of type `mt.club-exempt`, written by `setClubPlan`); a suspended or deleted club's is cancelled with no automatic refund; only a true duplicate is refunded in full. The order is: /admin/health event, refund intent (`BillingEvent` `mt_refund_<sub>`), refunds (idempotent per invoice), cancel, intent closed (changed in B4: the cancel now comes BEFORE the refunds); an open intent is finished by the next event for that subscription. The shared Customer is reset only when a new payer's card is CONFIRMED (in the webhook), never at session start; setup mode collects no VAT number, so a business payer adds theirs in the Customer Portal (enable tax IDs in its configuration). A subscription cancelled by a suspension is marked `cancelledBy: suspend` and, like every event for a suspended club, never moves the billing state (B4: never schedule reminders for a club that is not approved). Pending DMs are re-checked before sending (plan-billed only in its own grace cycle, resumed only while serving) and skipped when older than 3 days, superseded, or with no contact. A DM claim older than 10 minutes can be taken over. Live subscriptions are read across every page; "live" is `isLiveSubscriptionStatus` everywhere (Stripe's `paused` counts as live: it can resume and charge). | B1, B2 | `stripe-billing.ts`, `api/stripe/billing-webhook`, billing page actions |
 | B4 | **Scheduler and messages.** `/api/cron/billing`, day 21, 28, 30, 37, payment-failure grace, `purpose: "billing"`, `BillingNotice`, all DM copy EN and TR to the billing contact with `/billing` links, the "set a money collector" line, `sendClubFeeTip` (admin channel, with the one-person skip), the "payer changed" DM from `setPaymentHolder`. **As built (2026-10-01):** `club-billing-schedule-rules.ts` (pure: the 10:00 to 20:00 London DM window, day 21 and 28 at 10:00 London counted in calendar days back from the London date of `trialEndsAt`, `billingTransitionDue`, `billingDmsDue`, `feeTipDue`), `club-billing-dms.ts` (the scheduled DMs, `sendClubFeeTip`, `onBillingContactChanged`, `notePaymentProblem`, `flushPendingBillingDms`), `club-billing-scheduler.ts` (`runBillingCron`) and `api/cron/billing` (hourly). State changes happen on time at any hour through `setBillingState`; a DM that becomes due at night is not queued with a `sendAfter` but left pending (or simply not yet due) and the 10:00 run re-checks it is still true before sending, so nobody is asked for a card they added at 07:00. The webhook's own DMs (card added, card replaced, resumed, billed again) follow the same rule: at night they are written as pending notices and the 10:00 run re-checks them (card added: still the club's live subscription; card replaced, keyed `<old card>|<old holder>`: the old card still off the club) before sending. A 3DS DM to a contact whose card is not the one being charged offers both the bank check and "put your own card on". A skipped "payer changed" notice is re-opened by the next real change to the same person. Every DM says "the {club} WhatsApp group". `invoice.payment_failed` and `invoice.payment_action_required` are NOTED by the webhook (pending `BillingNotice` kinds `payment-failed` and `payment-action`, once per invoice); a 3DS one is sent at once in the daytime with the invoice's hosted page, a failed one waits at least 30 minutes so a 3DS event for the same invoice supersedes it; both are re-checked against Stripe (invoice still open) before sending. A "paused" DM goes for any pause in the last 3 days except removal from the group, whoever paused it (cron or webhook). The admin tip claims `fee-tip` before the channel check and is skipped for good when the channel reaches only the contact; in "each admin" mode the contact is left out of the admin DMs. No contact: no DM, an /admin/health event. Follow-up from the B3 review: `finishCancelAndRefund` now CANCELS FIRST, then refunds, and the cron's `sweepOpenRefundIntents` completes any refund intent left open (older than 5 minutes), whatever `BILLING_ENABLED` says. No schema change. | B2, B3 | `api/cron/billing`, `vercel.json`, `platform-jobs.ts` (purpose), `actions/payments.ts` (one call), `i18n` |
 | B5 | **Removal from a live group.** Pi forwards self-removal for monitored groups too (`handleGroupLeaveForSelfRemoval`), server sets `paused (removed)` and cancels at period end for billed clubs only; **exempt clubs (Sutton) only log**. Re-add during the trial resumes it. Pi deployed with `scripts/deploy-pi.sh`, away from match time. | B3 | `whatsapp-bot/src/bot-added.ts`, `api/whatsapp/bot-removed`, `club-billing.ts` |
-| B6 | **Go-live.** Help page paragraph, `.env.example`, runbook in this file. Then rollout steps 2 to 7. | B1 to B5 | `help/admin/page.tsx` |
+| B6 | **Go-live.** Help page paragraph, `.env.example`, runbook in this file. Then rollout steps 2 to 7. **As built (2026-10-01):** the "Club fee" paragraph in `help/admin/page.tsx` (`#club-fee`, pinned by `public-copy.test.ts` and `public-site.spec.ts`), `.env.example` already carried every billing var, and section 16 is the runbook. | B1 to B5 | `help/admin/page.tsx` |
 
 | T1 | **AI top-ups (planned, after B6).** Credit balance and `AiTopUp`, credit spent after the daily cap in `ai-budget.ts`, Buy more page and Checkout, webhook credit and refund, the Buy more link in the cap notice (9.1). | B3 | `ai-budget.ts`, `ai-cap-notice.ts`, `stripe-billing.ts`, billing webhook, `src/app/billing/[orgId]/ai`, `prisma/`, `i18n` |
 
@@ -1403,3 +1403,305 @@ file's history at commit `8dc9646` (#176).
     small margin for refunds and support. $4.00 is about two and a half extra days at
     the $1.50 cap, or many days for a club that only goes slightly over. Alternative: a
     second £10 size for $8.50. Your call.
+
+---
+
+## 16. Go-live runbook (slice B6, for Kemal)
+
+Written 2026-10-01 against `origin/main` at `b60c941` (B1 to B5 merged, billing dark).
+Plain English, in order. Stripe moves its menus around from time to time: if a menu name
+below does not match, type the setting's name into the dashboard search box.
+
+**Two things checked in Vercel on 2026-10-01 that shape this runbook:**
+
+- **Preview deployments have no database and no sign-in settings today.** The only
+  Preview env var is `GOOGLE_MAPS_API_KEY`; `DATABASE_URL`, `AUTH_SECRET`,
+  `CRON_SECRET` and the Stripe keys are Production only. So step (a0) below gives Preview
+  its own test database first. Preview must **never** point at the production database.
+- **`AI_DAILY_CAP_DISABLED` is not in the Vercel env list**, so the AI caps (rollout step
+  4) already apply. Check it is still absent on the day you switch billing on.
+
+### (a0) Before Stripe: a Preview that can run on its own
+
+Claude can do all of this for you; it is listed so you know what exists.
+
+1. A **separate Supabase project for testing** (for example "matchtime-test"), never the
+   production one. Run `npx prisma migrate deploy` against it, then the seed.
+2. Vercel, Settings, Environment Variables, **Preview only** (pick the
+   `feat/billing-b6-help-runbook` branch, or all Preview branches):
+   - `DATABASE_URL`, `DIRECT_URL`: the test database;
+   - `AUTH_SECRET`, `CRON_SECRET`: new random values, **not** the production ones;
+   - `AUTH_TRUST_HOST=true`;
+   - `NEXTAUTH_URL`: the branch's stable Preview address (Vercel shows it on the
+     deployment as "Branch domain", like `https://matchtime-git-<branch>-<team>.vercel.app`).
+     The billing page, Stripe's return links and the DM links are all built from it;
+   - `STRIPE_SECRET_KEY` (`sk_test_...`) and `STRIPE_PUBLISHABLE_KEY` (`pk_test_...`);
+   - `BILLING_ENABLED=1`, plus the five Stripe ids from part (a) as you create them.
+3. **Deployment protection.** Vercel protects Preview deployments with a login by
+   default, which would block Stripe's webhook. In Vercel, Settings, Deployment
+   Protection, create a **Protection Bypass for Automation** secret. Stripe then calls
+   the Preview with `?x-vercel-protection-bypass=<that secret>` on the end of the webhook
+   address (part (a), step 8).
+4. **Signing in on the Preview.** Nothing on a Preview sends WhatsApp messages (the Pi
+   talks to production only). When you ask for a sign-in code, or the cron sends a
+   billing DM, the message is written to the `PlatformJob` table of the test database
+   instead, with its text. Claude reads the code or the link from there for you. Make
+   your own test user a superadmin in the test database (`User.isSuperadmin = true`) so
+   you can open `/admin/clubs` there.
+
+### (a) Stripe TEST mode setup, click by click
+
+Switch the dashboard to **Test mode** (the toggle at the top right) before every step.
+Write each id down as you go; the last column of the table at the end says where it goes.
+
+1. **Product and tax code.** Product catalog, **Add product**.
+   - Name: `MatchTime club`. Description: `MatchTime for one WhatsApp group`.
+   - Product tax code: **General, electronically supplied services** (`txcd_10000000`).
+   - Save. Copy the product id (`prod_...`).
+2. **The £9.99 monthly price.** On that product, **Add price** (or the price box shown
+   while creating it):
+   - Recurring, **Monthly**, amount **9.99**, currency **GBP**.
+   - **Include tax in price: Yes** (this is `tax_behavior: inclusive`).
+   - Under **More pricing options** (or "Advanced"), Lookup key:
+     `club_monthly_standard`.
+   - Save. Copy the price id (`price_...`).
+3. **The 20% VAT rate.** Product catalog, **Tax rates** (some accounts show it under
+   Settings, Tax), **New tax rate**:
+   - Type **VAT**, display name `VAT`, percentage **20**, **Inclusive**.
+   - Country **United Kingdom (GB)**, jurisdiction `United Kingdom`.
+   - Save. Copy the tax rate id (`txr_...`).
+4. **Business details, VAT number and invoice footer.**
+   - Settings, **Business**, Public details: Cressoft's **legal name** and **registered
+     address** (these print on invoices and receipts).
+   - Settings, **Billing**, **Invoices** (Invoice template): add Cressoft's **GB VAT
+     number** as an account tax ID, so it prints on every invoice; set the **Default
+     footer** to `MatchTime is a service of <legal name>`.
+   - These are account settings, so check them again in live mode (part (c)).
+5. **Customer portal configuration.** The app only offers "Change card or cancel" when
+   `STRIPE_CLUB_PORTAL_CONFIG_ID` names a portal configuration (it never uses the
+   account default). Create one with exactly these settings:
+   - update payment method: **on**;
+   - customer details: **tax IDs** may be added (this is how a business payer adds its
+     VAT number after a card change);
+   - cancel subscriptions: **on**, **at the end of the billing period**, no proration;
+   - **invoice history: off** (a new collector must never see an earlier collector's
+     invoices and home address);
+   - switching plans and changing quantities: **off**.
+
+   The dashboard's Customer portal page edits the account default and does not show its
+   id, so create this one with a single API call. Claude can run it for you with the
+   **test** key; for live mode you run it yourself in your own terminal (no live keys in
+   chat), with `STRIPE_KEY` set to the live secret key:
+
+   ```bash
+   curl https://api.stripe.com/v1/billing_portal/configurations -u "$STRIPE_KEY:" \
+     -d "business_profile[headline]=MatchTime club fee" \
+     -d "features[payment_method_update][enabled]=true" \
+     -d "features[customer_update][enabled]=true" \
+     -d "features[customer_update][allowed_updates][]=tax_id" \
+     -d "features[subscription_cancel][enabled]=true" \
+     -d "features[subscription_cancel][mode]=at_period_end" \
+     -d "features[subscription_cancel][proration_behavior]=none" \
+     -d "features[subscription_update][enabled]=false" \
+     -d "features[invoice_history][enabled]=false"
+   ```
+
+   Copy the `id` from the reply (`bpc_...`).
+6. **Smart Retries.** Settings, **Billing**, **Revenue recovery** (or "Subscriptions and
+   emails"), Retries:
+   - Smart Retries **on**, **4 tries within 1 week**;
+   - if all retries fail: **cancel the subscription**.
+
+   That makes Stripe's retry week the same as MatchTime's 7 day payment grace; when it
+   cancels, the webhook pauses the club.
+7. **Customer emails.** Settings, **Customer emails** and Settings, Billing, Revenue
+   recovery, Emails:
+   - **Successful payments** (receipts): on;
+   - **Send finalised invoices** to customers: on;
+   - **Failed payment** emails: on (a second channel besides the WhatsApp DM).
+8. **The billing webhook.** Developers (or Workbench), **Webhooks**, **Add destination**:
+   - Events from: **Your account** (NOT "Connected accounts"; that scope is the match
+     fee endpoint's);
+   - API version: `2026-05-27.dahlia`, the version the app's Stripe library is built
+     for;
+   - events, exactly these eight:
+     - `checkout.session.completed`
+     - `customer.subscription.created`
+     - `customer.subscription.updated`
+     - `customer.subscription.deleted`
+     - `invoice.paid`
+     - `invoice.payment_failed`
+     - `invoice.payment_action_required`
+     - `payment_method.detached`
+   - destination type **Webhook endpoint**, address:
+     `<Preview branch domain>/api/stripe/billing-webhook?x-vercel-protection-bypass=<bypass secret>`;
+   - create it, then **Reveal** the signing secret (`whsec_...`).
+
+**Where each id goes during testing: Vercel, Preview only, never Production.**
+
+| Id | Vercel env var (Preview) |
+|---|---|
+| `prod_...` | `STRIPE_CLUB_PRODUCT_ID` |
+| `price_...` | `STRIPE_CLUB_PRICE_ID` |
+| `txr_...` | `STRIPE_CLUB_TAX_RATE_ID` |
+| `bpc_...` | `STRIPE_CLUB_PORTAL_CONFIG_ID` |
+| `whsec_...` | `STRIPE_BILLING_WEBHOOK_SECRET` |
+| (switch) | `BILLING_ENABLED=1` |
+
+Redeploy the Preview after setting them (env vars are read at deploy time).
+
+### (b) Manual test on the Preview, with Stripe test cards
+
+Use a **test club** in the test database, with a WhatsApp group id that is not a real
+group. Test cards take any future expiry date, any three digit code and any UK postcode.
+
+| Card | What it does |
+|---|---|
+| `4242 4242 4242 4242` | always succeeds |
+| `4000 0025 0000 3155` | asks for a bank check (3DS) when the card is saved; later charges go through |
+| `4000 0000 0000 0341` | is saved fine, then every charge on it is declined |
+
+**How the dates are tested.** Two clocks are involved:
+
+- **MatchTime's days 21, 28, 30 and 37** come from `ClubBilling.trialEndsAt` in our own
+  database, read against the real time by the hourly billing cron. Stripe test clocks
+  cannot move them. To test a day, Claude moves `trialEndsAt` (and `graceEndsAt`) in the
+  **test** database and runs the cron by hand (`GET /api/cron/billing` with
+  `Authorization: Bearer <Preview CRON_SECRET>`). DMs only go out between 10:00 and 20:00
+  London, so test in the daytime.
+- **Stripe's own time** (the first charge at the end of the free month, the monthly
+  renewal, Smart Retries) moves with a **Stripe test clock**. A test clock can only be
+  attached when a customer is created, and the app creates the club's customer itself.
+  So for the test clock runs: Billing, **Test clocks**, create a clock, add a customer to
+  it with metadata `orgId = <test club id>` and `purpose = club-fee`, and Claude writes
+  that customer id into the test club's `ClubBilling.stripeCustomerId` **before** you
+  press Add a card. The app then uses that customer.
+
+**The script.** Tick each line; anything that does not happen as written is a bug to
+report, not to work around.
+
+1. **Approval starts the free month.** On the Preview, `/admin/clubs`, approve the test
+   club. Its billing line reads "Free month ends <date 30 days ahead>", card on file no.
+2. **Day 21.** Move `trialEndsAt` to 9 days from now, run the cron. One billing DM to the
+   money collector (or the owner with the "set a money collector" line when none is
+   set), with the club fee tip and a link to `/billing/<club id>`. The admins' club fee
+   tip goes to the admin channel unless that would reach only the same person. Run the
+   cron again: nothing new.
+3. **Day 28.** Move `trialEndsAt` to 2 days from now, run the cron. One short reminder.
+   (It carries the tip again in this test only, because moving the date starts a new
+   cycle.)
+4. **Day 30.** Move `trialEndsAt` to one hour ago, run the cron. The club moves to grace
+   ("Stops <date> without payment" on `/admin/clubs`), the "free month has ended" DM is
+   written, and the website banner shows for admins.
+5. **Day 37.** Move `trialEndsAt` to 7 days and one hour ago and `graceEndsAt` to exactly
+   7 days after it, run the cron. The club is **paused**: one "paused" DM; the group
+   drops out of `/api/whatsapp/orgs` and appears in its `silentGroups`; nothing is posted.
+6. **Back on with a card.** Open the DM link, **Add a card** with `4242...`. Stripe takes
+   £9.99 at once (no free days left). The club is back to subscribed, the "card added"
+   DM says MatchTime is back on, and the group returns to `/api/whatsapp/orgs`.
+7. **Card added inside the free month.** With a second test club in its free month, add
+   `4242...`. Nothing is charged; `/admin/clubs` shows "Next payment" on the trial end
+   date.
+8. **3DS.** Third test club, add `4000 0025 0000 3155` and complete the bank check on
+   Stripe's page. It saves normally.
+9. **Decline, retries, pause (test clock).** Fourth test club on a test clock customer
+   (above), add `4000 0000 0000 0341` in the free month. Advance the clock past the trial
+   end: the first charge fails, the club goes **past due**, one "didn't go through" DM,
+   banner shows. Advance the clock a day at a time through the week: Stripe retries 4
+   times, then cancels the subscription, and the club is **paused** with the payment
+   wording.
+10. **Renewal (test clock).** On the step 7 style club with a test clock customer and
+    `4242...`, advance the clock past the trial end and then a month: two invoices paid,
+    the club stays subscribed, "Next payment" moves on a month.
+11. **Collector change and card replacement.** Make a different member the money
+    collector in Settings: they get one "you're now the money collector" DM. On their
+    billing page **Use my card instead** with a second `4242...`. The old card is
+    removed, its holder gets one "card replaced" DM, and the next renewal (test clock)
+    charges the new card.
+12. **Portal.** As the payer, **Change card or cancel**: Stripe's page shows change card
+    and cancel, and **no invoice history**. Cancel: the billing page reads "Ends on
+    <date>"; at that date (test clock) the club is paused with the cancelled wording.
+13. **Invoice check.** Open one paid test invoice PDF: Cressoft's legal name, address,
+    VAT number, the footer, and a "VAT (20%, inclusive)" line inside the £9.99.
+14. **Non UK address.** Add a card with a Turkish billing address: the subscription is
+    kept and `/admin/clubs` shows **Check VAT country**.
+15. **Kill switch.** Set `BILLING_ENABLED` off on Preview and redeploy: the club paused
+    in step 9 is back in `/api/whatsapp/orgs`, and the cron moves nothing on. Set it
+    back on and redeploy: that club is paused again.
+
+### (c) Live mode
+
+Do these in this order.
+
+1. **Delete the old platform-scoped webhook `we_1TgQL6...` FIRST.** In live mode,
+   Developers, Webhooks, find the endpoint whose address is
+   `https://matchtime.ai/api/stripe/webhook` and whose scope is **Your account**.
+   - **Why:** that route is for match fees and only understands events from collectors'
+     connected accounts, checked with `STRIPE_WEBHOOK_SECRET`. The moment the first club
+     adds a card, Stripe would also send that endpoint every club fee event (checkouts,
+     subscriptions, invoices) from your own account. Those fail its signature check, so
+     Stripe keeps retrying them for days, emails you failure warnings, and may disable
+     the endpoint. Nothing would be mis-applied (the route refuses them, and ignores any
+     session without a match), but the noise would bury a real problem.
+   - **Check before you delete:** the list must also have a **Connected accounts**
+     endpoint to the same address that shows recent successful deliveries. That one
+     carries players' match payments: **do not touch it.** If the only endpoint to
+     `/api/stripe/webhook` is the platform-scoped one, stop and tell Claude before
+     deleting anything.
+2. **Repeat part (a), steps 1 to 8, in live mode** (the toggle off). Products, prices,
+   tax rates, the portal configuration and webhooks are separate in live and test mode,
+   so every id changes. Business details and the VAT number are account wide: just
+   check they are right. The live webhook address is
+   `https://matchtime.ai/api/stripe/billing-webhook` (no bypass secret).
+3. **Vercel Production env vars:** `STRIPE_CLUB_PRODUCT_ID`, `STRIPE_CLUB_PRICE_ID`,
+   `STRIPE_CLUB_TAX_RATE_ID`, `STRIPE_CLUB_PORTAL_CONFIG_ID`,
+   `STRIPE_BILLING_WEBHOOK_SECRET`, all live ids. `STRIPE_SECRET_KEY` and
+   `STRIPE_WEBHOOK_SECRET` stay as they are (same account, match fee endpoint).
+   Redeploy production.
+4. **Settle the open question first:** dormant self-join clubs (section 11, runbook
+   notes). Today they are billed like any club.
+5. **Switch on:** `BILLING_ENABLED=1` in Production, redeploy. From that moment new
+   approvals start a free month. Every existing club, Sutton FC included, stays exempt.
+   Self-join clubs approved before today stay free until you press **Start free month**
+   for each on `/admin/clubs` (decision 2).
+
+### (d) What to watch in the first week
+
+On **`/admin/clubs`**:
+
+- the totals line ("Club fees: N paying, ... in their free month, in grace, past due,
+  paused") moves as you expect, and does not say "Billing is switched off";
+- each new club shows **Free month ends <date 30 days after approval>**;
+- **Who pays** is a name, not **No billing contact** (a club with no collector and no
+  owner phone gets no reminders; fix the club, it will not fix itself);
+- **Check VAT country** on any club: decide keep, Free, or cancel and refund;
+- AI spend for the last 30 days next to each club's price.
+
+On **`/admin/health`**:
+
+- events of kind **`club-billing`**: something MatchTime did on its own to a
+  subscription (a duplicate cancelled and refunded, an unwanted one cancelled), and
+  clubs with no billing contact when a DM was due. Each one should make sense;
+- the usual WhatsApp layer checks: billing DMs go out through the platform DM channel,
+  one a minute, so a stuck Pi delays them.
+
+In the **Stripe dashboard** (live): the billing webhook's deliveries all succeed (any
+failure retries for days, so look at it daily); no failed deliveries on the Connect
+match fee endpoint either.
+
+### (e) The kill switch
+
+`BILLING_ENABLED` off in Vercel Production, then redeploy. Within one Pi org refresh (a
+few minutes) every paused club is served again, reminders stop and nobody is DMed.
+Subscriptions that are already paying keep charging, which is right for clubs that chose
+to pay; cancel any of them in Stripe if needed. The billing webhook still records and
+syncs events while it is off.
+
+**If it stays off for more than about 7 days:** while it is off, no free month or grace
+week moves on and no reminder is sent. Switching it back on catches up **at once**: a
+club whose free month ended while it was off goes to grace on the next hourly run, and
+one whose grace week also ended goes straight on to **paused** an hour later, possibly
+without ever getting the "free month has ended" DM. So before switching back on after a
+long break, look on `/admin/clubs` for clubs in their free month or grace whose end date
+has passed, and either give them more time first (a plan change, or a one-off date
+change agreed with you) or accept that they pause at once.
