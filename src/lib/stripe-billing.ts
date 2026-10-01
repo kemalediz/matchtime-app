@@ -87,6 +87,23 @@ export interface BillingStripe {
   updateSubscriptionPrice(args: { subscriptionId: string; itemId: string; priceId: string }): Promise<void>;
   cancelSubscription(subscriptionId: string): Promise<void>;
   findOrCreateCustomPrice(args: { productId: string; pence: number }): Promise<string>;
+  /** The Customer's LIVE club fee subscriptions, read from Stripe itself
+   *  (not our mirror), so no new session is made while one exists. */
+  listLiveSubscriptions(customerId: string): Promise<BillingSubscription[]>;
+  /** Before a NEW payer's session on the club's shared Customer: back to
+   *  the club's name, no email, no address, no phone, no VAT numbers, so
+   *  Checkout neither shows nor reuses the previous payer's details. */
+  resetCustomerDetails(args: { customerId: string; name: string }): Promise<void>;
+  /** The payer's own details onto the Customer (for invoices and receipts). */
+  updateCustomer(args: {
+    customerId: string;
+    email?: string | null;
+    name?: string | null;
+    address?: Stripe.AddressParam | null;
+  }): Promise<void>;
+  /** Refund every paid invoice of a subscription (a cancelled duplicate or
+   *  unwanted one). Returns the pence refunded. One refund per invoice. */
+  refundPaidInvoices(subscriptionId: string): Promise<number>;
 }
 
 // ── Configuration ───────────────────────────────────────────────────────
@@ -226,6 +243,24 @@ function cardOf(pm: string | Stripe.PaymentMethod | null | undefined): CardDetai
   };
 }
 
+function subscriptionOf(s: Stripe.Subscription): BillingSubscription {
+  const item = s.items?.data?.[0];
+  return {
+    id: s.id,
+    status: s.status,
+    customerId: idOf(s.customer as string | { id: string }),
+    metadata: { ...(s.metadata ?? {}) },
+    cancelAtPeriodEnd: !!s.cancel_at_period_end,
+    currentPeriodEnd: dateOf(item?.current_period_end),
+    trialEnd: dateOf(s.trial_end),
+    priceId: item?.price?.id ?? null,
+    itemId: item?.id ?? null,
+    card: cardOf(s.default_payment_method as string | Stripe.PaymentMethod | null),
+  };
+}
+
+const LIVE = new Set(["trialing", "active", "past_due", "unpaid", "incomplete", "paused"]);
+
 /** The real adapter over a Stripe client (the platform account). */
 export function createStripeBillingAdapter(client: Stripe): BillingStripe {
   return {
@@ -269,20 +304,46 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
     },
 
     async retrieveSubscription(id) {
-      const s = await client.subscriptions.retrieve(id, { expand: ["default_payment_method"] });
-      const item = s.items?.data?.[0];
-      return {
-        id: s.id,
-        status: s.status,
-        customerId: idOf(s.customer as string | { id: string }),
-        metadata: { ...(s.metadata ?? {}) },
-        cancelAtPeriodEnd: !!s.cancel_at_period_end,
-        currentPeriodEnd: dateOf(item?.current_period_end),
-        trialEnd: dateOf(s.trial_end),
-        priceId: item?.price?.id ?? null,
-        itemId: item?.id ?? null,
-        card: cardOf(s.default_payment_method as string | Stripe.PaymentMethod | null),
-      };
+      return subscriptionOf(await client.subscriptions.retrieve(id, { expand: ["default_payment_method"] }));
+    },
+
+    async listLiveSubscriptions(customerId) {
+      const list = await client.subscriptions.list({ customer: customerId, status: "all", limit: 20, expand: ["data.default_payment_method"] });
+      return list.data.filter((s) => LIVE.has(s.status) && s.metadata?.purpose === CLUB_FEE_PURPOSE).map(subscriptionOf);
+    },
+
+    async resetCustomerDetails({ customerId, name }) {
+      // "" unsets a field in Stripe's API.
+      await client.customers.update(customerId, { name, email: "", address: "", phone: "" });
+      const taxIds = await client.customers.listTaxIds(customerId, { limit: 20 });
+      for (const t of taxIds.data) await client.customers.deleteTaxId(customerId, t.id);
+    },
+
+    async updateCustomer({ customerId, email, name, address }) {
+      await client.customers.update(customerId, {
+        ...(email ? { email } : {}),
+        ...(name ? { name } : {}),
+        ...(address ? { address } : {}),
+      });
+    },
+
+    async refundPaidInvoices(subscriptionId) {
+      const paid = await client.invoices.list({ subscription: subscriptionId, status: "paid", limit: 10 });
+      let pence = 0;
+      for (const inv of paid.data) {
+        if (!inv.id || !inv.amount_paid) continue;
+        const payments = await client.invoicePayments.list({ invoice: inv.id });
+        for (const p of payments.data) {
+          const pi = idOf(p.payment?.payment_intent as string | { id: string } | undefined);
+          if (p.status !== "paid" || !pi) continue;
+          await client.refunds.create(
+            { payment_intent: pi, metadata: { purpose: CLUB_FEE_PURPOSE, reason: "duplicate-or-unwanted" } },
+            { idempotencyKey: `club-fee-refund-${inv.id}` },
+          );
+          pence += inv.amount_paid;
+        }
+      }
+      return pence;
     },
 
     async retrieveSetupIntentCard(setupIntentId) {
@@ -334,8 +395,14 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
 
     async findOrCreateCustomPrice({ productId, pence }) {
       const lookupKey = customPriceLookupKey(pence);
-      const found = await client.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
-      if (found.data[0]) return found.data[0].id;
+      // Any price holding the key, active or not: a lookup key is unique,
+      // so creating a second one would fail. An inactive one is switched back on.
+      const found = await client.prices.list({ lookup_keys: [lookupKey], limit: 1 });
+      const existing = found.data[0];
+      if (existing) {
+        if (!existing.active) await client.prices.update(existing.id, { active: true });
+        return existing.id;
+      }
       const created = await client.prices.create({
         product: productId,
         currency: "gbp",
@@ -367,7 +434,8 @@ export function setBillingStripeForTests(adapter: BillingStripe | null): void {
  */
 export function isBillingStripeFake(env: Env = process.env): boolean {
   if (env.MT_TEST_MODE !== "1" || env.BILLING_STRIPE_FAKE !== "1") return false;
-  return !(env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live");
+  const key = env.STRIPE_SECRET_KEY ?? "";
+  return !key.startsWith("sk_live") && !key.startsWith("rk_live");
 }
 
 /** The adapter to use, or null when Stripe is not set up. */

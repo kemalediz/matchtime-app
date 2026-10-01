@@ -19,6 +19,8 @@ import type { Lang } from "./i18n/lang";
 import {
   GRACE_DAYS,
   STANDARD_PRICE_PENCE,
+  isLiveSubscriptionStatus,
+  isUnpaidSubscriptionStatus,
   planPricePence,
   type BillingAccessRole,
   type ClubFeeTip,
@@ -84,6 +86,11 @@ export interface BillingStateInput {
   /** Who is looking. */
   viewerUserId: string;
   role: BillingAccessRole;
+  /** Stripe's word for the club's subscription, or null (slice B3). */
+  subscriptionStatus?: string | null;
+  /** The dedicated Customer Portal configuration is set (review fix 4):
+   *  without it there is no Portal button at all. */
+  portalAvailable?: boolean;
 }
 
 function graceDate(v: { trialEndsAt: Date | null; graceEndsAt: Date | null }): Date | null {
@@ -136,23 +143,31 @@ export function billingStateLines(lang: LangIn, v: BillingStateInput): string[] 
 
 export type BillingButton = "add-card" | "change-card" | "use-mine" | "update-card" | "remove-mine";
 
-/** The card buttons the page shows this viewer (8.1). Each one is a
- *  server action that re-checks who the viewer is (slice B3). */
+/**
+ * The card buttons the page shows this viewer (8.1). Each one is a server
+ * action that re-checks who the viewer is (slice B3).
+ *
+ *   add-card      no live subscription (trial, grace, paused)
+ *   update-card   "Update card and pay": the subscription is UNPAID, in any
+ *                 state; setup mode, then the open invoice is retried, so a
+ *                 club that cannot pay is never a dead end (review fix 2)
+ *   change-card   the Customer Portal: ONLY the contact whose own card is on
+ *                 file, and only with the dedicated Portal configuration
+ *                 (review fix 4)
+ *   use-mine      setup mode: somebody else's card, no card on file, or no
+ *                 Portal configured
+ *   remove-mine   an old card holder
+ */
 export function billingButtons(v: BillingStateInput): BillingButton[] {
   if (v.role === "card-holder") return ["remove-mine"];
   if (v.role !== "contact") return [];
-  switch (v.status) {
-    case "trial":
-    case "grace":
-    case "paused":
-      return ["add-card"];
-    case "subscribed":
-      return [ownCard(v) ? "change-card" : "use-mine"];
-    case "past_due":
-      return [ownCard(v) ? "update-card" : "use-mine"];
-    default:
-      return [];
-  }
+  const sub = v.subscriptionStatus ?? null;
+  const known = ["trial", "grace", "paused", "subscribed", "past_due"];
+  if (!known.includes(v.status)) return [];
+  if (isUnpaidSubscriptionStatus(sub) || v.status === "past_due") return ["update-card"];
+  const mineWithPortal = v.cardHolderUserId !== null && v.cardHolderUserId === v.viewerUserId && v.portalAvailable === true;
+  if (v.status === "subscribed" || isLiveSubscriptionStatus(sub)) return [mineWithPortal ? "change-card" : "use-mine"];
+  return ["add-card"];
 }
 
 /** The admin banner (8.2): grace, past due and paused only. */
@@ -188,6 +203,7 @@ export interface BillingViewClub {
     cardBrand: string | null;
     cardLast4: string | null;
     cardHolderUserId: string | null;
+    stripeSubscriptionStatus?: string | null;
   } | null;
   cardHolderName: string | null;
 }
@@ -206,8 +222,15 @@ export interface BillingPageView {
   tip: string | null;
 }
 
-function stateInput(c: BillingViewClub, viewerUserId: string, role: BillingAccessRole): BillingStateInput {
+function stateInput(
+  c: BillingViewClub,
+  viewerUserId: string,
+  role: BillingAccessRole,
+  portalAvailable = false,
+): BillingStateInput {
   return {
+    subscriptionStatus: c.billing?.stripeSubscriptionStatus ?? null,
+    portalAvailable,
     status: c.status,
     plan: c.plan,
     pricePence: c.pricePence,
@@ -252,13 +275,14 @@ export function billingPageView(
   role: BillingAccessRole,
   viewerUserId: string,
   tip: ClubFeeTip | null,
+  opts: { portalAvailable?: boolean } = {},
 ): BillingPageView {
   const s = t(lang);
   const base = { title: s.billing_page_title, club: c.club };
   if (role === "exempt-owner") {
     return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], tip: null };
   }
-  const v = stateInput(c, viewerUserId, role);
+  const v = stateInput(c, viewerUserId, role, opts.portalAvailable ?? false);
   const buttons = billingButtons(v).map((key) => ({ key, label: BUTTON_LABEL[key](s) }));
   return {
     ...base,

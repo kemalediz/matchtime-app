@@ -304,7 +304,7 @@ describe("the real adapter (recording client, no network)", () => {
     const a = createStripeBillingAdapter(client as unknown as Stripe);
     expect(await a.findOrCreateCustomPrice({ productId: "prod_1", pence: 500 })).toBe("price_custom_500");
     expect(calls).toEqual([
-      { path: "prices.list", args: [{ lookup_keys: ["club_monthly_500"], active: true, limit: 1 }] },
+      { path: "prices.list", args: [{ lookup_keys: ["club_monthly_500"], limit: 1 }] },
       {
         path: "prices.create",
         args: [
@@ -326,7 +326,7 @@ describe("the real adapter (recording client, no network)", () => {
     const { client, calls } = recordingClient();
     client.prices.list = (...args: unknown[]) => {
       calls.push({ path: "prices.list", args });
-      return Promise.resolve({ data: [{ id: "price_existing_500" }] });
+      return Promise.resolve({ data: [{ id: "price_existing_500", active: true }] });
     };
     const a = createStripeBillingAdapter(client as unknown as Stripe);
     expect(await a.findOrCreateCustomPrice({ productId: "prod_1", pence: 500 })).toBe("price_existing_500");
@@ -404,5 +404,95 @@ describe("the fake adapter (Playwright's Stripe)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("review fixes on the adapter", () => {
+  function client2() {
+    const { client, calls } = recordingClient();
+    const rec =
+      (p: string, result: unknown = {}) =>
+      (...args: unknown[]) => {
+        calls.push({ path: p, args });
+        return Promise.resolve(result);
+      };
+    Object.assign(client.subscriptions, {
+      list: rec("subscriptions.list", {
+        data: [
+          { id: "sub_live", status: "past_due", customer: "cus_1", metadata: { orgId: "org_1", purpose: "club-fee" }, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [{ id: "si", current_period_end: 1_800_000_000, price: { id: "p" } }] } },
+          { id: "sub_dead", status: "canceled", customer: "cus_1", metadata: { orgId: "org_1", purpose: "club-fee" }, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [] } },
+          { id: "sub_other", status: "active", customer: "cus_1", metadata: {}, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [] } },
+        ],
+      }),
+    });
+    Object.assign(client.customers, {
+      listTaxIds: rec("customers.listTaxIds", { data: [{ id: "txi_old" }] }),
+      deleteTaxId: rec("customers.deleteTaxId"),
+    });
+    Object.assign(client.invoices, {
+      list: rec("invoices.list", { data: [{ id: "in_paid", amount_paid: 999 }, { id: "in_zero", amount_paid: 0 }] }),
+    });
+    Object.assign(client, {
+      invoicePayments: { list: rec("invoicePayments.list", { data: [{ status: "paid", payment: { type: "payment_intent", payment_intent: "pi_1" } }] }) },
+      refunds: { create: rec("refunds.create", { id: "re_1" }) },
+    });
+    return { client, calls };
+  }
+
+  it("fix 5: lists the Customer's LIVE club fee subscriptions from Stripe (the truth before any new session)", async () => {
+    const { client, calls } = client2();
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    const live = await a.listLiveSubscriptions("cus_1");
+    expect(live.map((s) => [s.id, s.status])).toEqual([["sub_live", "past_due"]]);
+    expect(calls[0].args[0]).toEqual({ customer: "cus_1", status: "all", limit: 20, expand: ["data.default_payment_method"] });
+  });
+
+  it("fix 4: resets the Customer to the club before a new payer's session (name, no email, no address, no VAT numbers)", async () => {
+    const { client, calls } = client2();
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await a.resetCustomerDetails({ customerId: "cus_1", name: "Billing Sevens" });
+    expect(calls).toEqual([
+      { path: "customers.update", args: ["cus_1", { name: "Billing Sevens", email: "", address: "", phone: "" }] },
+      { path: "customers.listTaxIds", args: ["cus_1", { limit: 20 }] },
+      { path: "customers.deleteTaxId", args: ["cus_1", "txi_old"] },
+    ]);
+  });
+
+  it("fix 5: refunds every PAID invoice of a cancelled duplicate, once each (idempotency key per invoice)", async () => {
+    const { client, calls } = client2();
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.refundPaidInvoices("sub_dup")).toBe(999);
+    expect(calls.find((c) => c.path === "invoices.list")!.args[0]).toEqual({ subscription: "sub_dup", status: "paid", limit: 10 });
+    expect(calls.filter((c) => c.path === "refunds.create")).toEqual([
+      { path: "refunds.create", args: [{ payment_intent: "pi_1", metadata: { purpose: "club-fee", reason: "duplicate-or-unwanted" } }, { idempotencyKey: "club-fee-refund-in_paid" }] },
+    ]);
+  });
+
+  it("fix 11: an INACTIVE price holding the lookup key is reactivated, not duplicated", async () => {
+    const { client, calls } = recordingClient();
+    client.prices.list = (...args: unknown[]) => {
+      calls.push({ path: "prices.list", args });
+      return Promise.resolve({ data: [{ id: "price_old_500", active: false }] });
+    };
+    Object.assign(client.prices, {
+      update: (...args: unknown[]) => {
+        calls.push({ path: "prices.update", args });
+        return Promise.resolve({ id: "price_old_500" });
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.findOrCreateCustomPrice({ productId: "prod_1", pence: 500 })).toBe("price_old_500");
+    expect(calls).toEqual([
+      { path: "prices.list", args: [{ lookup_keys: ["club_monthly_500"], limit: 1 }] },
+      { path: "prices.update", args: ["price_old_500", { active: true }] },
+    ]);
+  });
+
+  it("fix 11: the fake is refused with a restricted live key too", () => {
+    expect(isBillingStripeFake({ MT_TEST_MODE: "1", BILLING_STRIPE_FAKE: "1", STRIPE_SECRET_KEY: "rk_live_x" })).toBe(false);
+  });
+
+  it("fix 4: no Portal configuration, no Portal (portalConfigId null), and the setup Checkout keeps the payer's own details", () => {
+    expect(billingStripeConfig({}).portalConfigId).toBeNull();
   });
 });

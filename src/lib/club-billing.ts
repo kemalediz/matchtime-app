@@ -121,8 +121,9 @@ export async function setBillingState(
   orgId: string,
   event: BillingEventInput,
   now: Date = new Date(),
+  opts: { noticeOnResume?: BillingNoticeKind } = {},
 ): Promise<SetBillingStateResult> {
-  return db.$transaction((tx) => applyBillingEventTx(tx, orgId, event, now), { timeout: TX_TIMEOUT_MS });
+  return db.$transaction((tx) => applyBillingEventTx(tx, orgId, event, now, opts), { timeout: TX_TIMEOUT_MS });
 }
 
 /**
@@ -136,6 +137,7 @@ async function applyBillingEventTx(
   orgId: string,
   event: BillingEventInput,
   now: Date,
+  opts: { noticeOnResume?: BillingNoticeKind } = {},
 ): Promise<SetBillingStateResult> {
   const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
     SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
@@ -172,7 +174,18 @@ async function applyBillingEventTx(
     const patch = billingPatch(from, t, now);
     if (Object.keys(patch).length > 0) await tx.clubBilling.updateMany({ where: { orgId }, data: patch });
   }
-  if (t.resumes) await resumeClubTx(tx, orgId, now);
+  if (t.resumes) {
+    await resumeClubTx(tx, orgId, now);
+    // A PENDING notice in the same transaction (review fix 10): the DM is
+    // sent afterwards, and a crash or a failed send in between leaves it
+    // pending for the retry, never lost.
+    if (opts.noticeOnResume) {
+      await tx.billingNotice.createMany({
+        data: [{ orgId, kind: opts.noticeOnResume, cycleKey: now.toISOString() }],
+        skipDuplicates: true,
+      });
+    }
+  }
 
   console.log(`[club-billing] ${orgId}: ${from} -> ${t.to} on ${event.type}`);
   return { ok: true, from: from as BillingStatus, to: t.to, resumed: t.resumes };
@@ -363,6 +376,15 @@ export async function setClubPlan(
         if (moved.ok && (moved.to === "trial" || moved.to === "grace")) {
           status = moved.to;
           billedAgain = moved.to;
+          if (moved.to === "grace") {
+            // The "plan-billed" DM, PENDING in this same transaction (review
+            // fix 10): the action sends it after commit, and a retry finds
+            // it still pending if that send failed.
+            await tx.billingNotice.createMany({
+              data: [{ orgId, kind: "plan-billed", cycleKey: now.toISOString() }],
+              skipDuplicates: true,
+            });
+          }
         }
       }
       return { ok: true, plan: choice.plan, pricePence, status, resumed, billedAgain };
@@ -653,16 +675,26 @@ export type BillingNoticeKind =
   | "payer-changed"
   | "fee-tip";
 
+/** `BillingNotice.platformJobId` while a sender holds the claim. NULL means
+ *  PENDING (written by a state change, not sent yet); "skipped:<why>" means
+ *  it can never be sent; anything else is the PlatformJob id. */
+const NOTICE_CLAIMED = "claimed";
+
 /**
  * Queue ONE billing DM on the platform channel (purpose "billing"), to
- * one club member's own phone. INSERT FIRST, THEN QUEUE: the
- * `BillingNotice(orgId, kind, cycleKey)` row is claimed before anything
- * is queued, so a re-delivered webhook or a retried cron can never DM
- * twice about the same thing.
+ * one club member's own phone. CLAIM FIRST, THEN QUEUE, on the
+ * `BillingNotice(orgId, kind, cycleKey)` row:
+ *
+ *   - a new row is created already claimed; an existing PENDING row (no
+ *     platformJobId: a state change wrote it in its own transaction, review
+ *     fix 10) is claimed with a compare-and-set; anything else is "already";
+ *   - queued: the row holds the PlatformJob id, so it is never sent twice;
+ *   - queueing THREW: the claim is RELEASED (back to pending) and the error
+ *     rethrown, so the retried webhook or action sends it (review fix 9);
+ *   - the recipient cannot be messaged: marked skipped, never retried.
  *
  * The only queuer of purpose "billing" (source guard). `text` is built
  * with the recipient's name, in the club's language by the caller.
- * Returns what happened; never throws for a refused recipient.
  */
 export async function queueBillingDm(args: {
   orgId: string;
@@ -672,23 +704,28 @@ export async function queueBillingDm(args: {
   text: (recipient: { name: string | null }) => string;
   sendAfter?: Date | null;
 }): Promise<"queued" | "already" | "no-phone" | "refused"> {
-  let noticeId: string;
+  const where = { orgId: args.orgId, kind: args.kind, cycleKey: args.cycleKey };
+  let noticeId: string | null = null;
   try {
-    const notice = await db.billingNotice.create({
-      data: { orgId: args.orgId, kind: args.kind, cycleKey: args.cycleKey },
-      select: { id: true },
-    });
+    const notice = await db.billingNotice.create({ data: { ...where, platformJobId: NOTICE_CLAIMED }, select: { id: true } });
     noticeId = notice.id;
   } catch (err) {
-    if ((err as { code?: string }).code === "P2002") return "already";
-    throw err;
+    if ((err as { code?: string }).code !== "P2002") throw err;
   }
-  const user = await db.user.findUnique({ where: { id: args.userId }, select: { name: true, phoneNumber: true } });
-  if (!user?.phoneNumber) {
-    console.warn(`[club-billing] ${args.orgId}: ${args.kind} DM not sent, ${args.userId} has no phone`);
-    return "no-phone";
+  if (noticeId === null) {
+    const { count } = await db.billingNotice.updateMany({ where: { ...where, platformJobId: null }, data: { platformJobId: NOTICE_CLAIMED } });
+    if (count !== 1) return "already";
   }
+  const mark = (platformJobId: string | null) =>
+    db.billingNotice.updateMany({ where: { ...where, platformJobId: NOTICE_CLAIMED }, data: { platformJobId } });
+
   try {
+    const user = await db.user.findUnique({ where: { id: args.userId }, select: { name: true, phoneNumber: true } });
+    if (!user?.phoneNumber) {
+      await mark("skipped:no-phone");
+      console.warn(`[club-billing] ${args.orgId}: ${args.kind} DM not sent, ${args.userId} has no phone`);
+      return "no-phone";
+    }
     const job = await queuePlatformDm({
       phone: user.phoneNumber,
       text: args.text({ name: user.name }),
@@ -696,14 +733,27 @@ export async function queueBillingDm(args: {
       refId: `${args.orgId}:${args.kind}:${args.cycleKey}`,
       sendAfter: args.sendAfter ?? null,
     });
-    await db.billingNotice.update({ where: { id: noticeId }, data: { platformJobId: job.id } });
+    await mark(job.id);
     console.log(`[club-billing] ${args.orgId}: ${args.kind} DM queued to ${args.userId}`);
     return "queued";
   } catch (err) {
     if (err instanceof PlatformDmRefused) {
+      await mark("skipped:refused");
       console.warn(`[club-billing] ${args.orgId}: ${args.kind} DM refused: ${err.reason}`);
       return "refused";
     }
+    await mark(null).catch(() => undefined); // release: the retry sends it
     throw err;
   }
+}
+
+/** The pending (written, not yet sent) notices of the kinds a state change
+ *  leaves behind, for the caller to send (`flushPendingBillingNotices`). */
+export async function loadPendingBillingNotices(orgId: string): Promise<Array<{ kind: BillingNoticeKind; cycleKey: string }>> {
+  const rows = await db.billingNotice.findMany({
+    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed"] } },
+    select: { kind: true, cycleKey: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => ({ kind: r.kind as BillingNoticeKind, cycleKey: r.cycleKey }));
 }

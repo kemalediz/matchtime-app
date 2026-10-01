@@ -11,13 +11,13 @@ const h = vi.hoisted(() => ({
   setClubPlan: vi.fn(),
   startTrial: vi.fn(),
   syncPlanToStripe: vi.fn(),
-  notifyPlanBilledAgain: vi.fn(),
+  flushPendingBillingNotices: vi.fn(),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ auth: h.auth }));
 vi.mock("@/lib/org", () => ({ isSuperadmin: h.isSuperadmin }));
 vi.mock("@/lib/club-billing", () => ({ setClubPlan: h.setClubPlan, startTrial: h.startTrial }));
-vi.mock("@/lib/club-billing-stripe", () => ({ syncPlanToStripe: h.syncPlanToStripe, notifyPlanBilledAgain: h.notifyPlanBilledAgain }));
+vi.mock("@/lib/club-billing-stripe", () => ({ syncPlanToStripe: h.syncPlanToStripe, flushPendingBillingNotices: h.flushPendingBillingNotices }));
 
 import { setClubPlanAction, startFreeMonthAction } from "../club-billing-admin";
 
@@ -26,7 +26,8 @@ beforeEach(() => {
   h.auth.mockResolvedValue({ user: { id: "kemal" } });
   h.isSuperadmin.mockResolvedValue(true);
   h.syncPlanToStripe.mockResolvedValue({ action: "no-subscription" });
-  h.notifyPlanBilledAgain.mockResolvedValue("queued");
+  h.flushPendingBillingNotices.mockResolvedValue(1);
+  process.env.STRIPE_CLUB_PRODUCT_ID = "prod_club";
 });
 
 describe("owner only", () => {
@@ -97,17 +98,30 @@ describe("setClubPlanAction", () => {
     });
   });
 
+  it("review fix 10: pending billing DMs are sent after EVERY save (a retried save still sends a DM that failed)", async () => {
+    h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "grace", resumed: false, billedAgain: null });
+    await setClubPlanAction("org1", "standard");
+    expect(h.flushPendingBillingNotices).toHaveBeenCalledWith("org1");
+  });
+
+  it("review fix 8: Custom with STRIPE_CLUB_PRODUCT_ID unset is refused loudly and NOTHING is saved", async () => {
+    delete process.env.STRIPE_CLUB_PRODUCT_ID;
+    const r = await setClubPlanAction("org1", "custom", "5");
+    expect(r).toEqual({ ok: false, message: "Custom prices need STRIPE_CLUB_PRODUCT_ID set (the MatchTime club product in Stripe). Nothing was saved." });
+    expect(h.setClubPlan).not.toHaveBeenCalled();
+  });
+
   it("billed again after Free with the free month used: grace, and the billing contact is asked for a card", async () => {
     h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "grace", resumed: false, billedAgain: "grace" });
     const r = await setClubPlanAction("org1", "standard");
-    expect(h.notifyPlanBilledAgain).toHaveBeenCalledWith("org1");
+    expect(h.flushPendingBillingNotices).toHaveBeenCalledWith("org1");
     expect(r.message).toBe("Plan saved: Standard £9.99 a month. The free month was already used, so the club has 7 days to add a card.");
   });
 
-  it("billed again while its free month is still running: back in trial, nobody DMed", async () => {
+  // (setClubPlan writes NO pending DM for a back-to-trial: club-billing-b2.test.ts.)
+  it("billed again while its free month is still running: back in trial", async () => {
     h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "trial", resumed: false, billedAgain: "trial" });
     const r = await setClubPlanAction("org1", "standard");
-    expect(h.notifyPlanBilledAgain).not.toHaveBeenCalled();
     expect(r.message).toBe("Plan saved: Standard £9.99 a month. The club is back in its free month.");
   });
 

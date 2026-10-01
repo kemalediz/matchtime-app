@@ -55,11 +55,11 @@ describe("billing webhook route", () => {
     expect(h.process).not.toHaveBeenCalled();
   });
 
-  it("no billing secret configured: answered 'ignored', nothing verified or processed", async () => {
+  it("review fix 6: no billing secret configured: 503, so Stripe keeps the event and retries once it is set", async () => {
     delete process.env.STRIPE_BILLING_WEBHOOK_SECRET;
     const res = await POST(req(payload, "t=1,v1=x"));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ignored: "billing-webhook-not-configured" });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "billing-webhook-not-configured" });
     expect(h.process).not.toHaveBeenCalled();
   });
 

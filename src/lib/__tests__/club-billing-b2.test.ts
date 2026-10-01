@@ -35,6 +35,7 @@ const h = vi.hoisted(() => {
     organiserPickRound: { updateMany: vi.fn() },
     benchSlotOffer: { updateMany: vi.fn() },
     platformJob: { create: vi.fn() },
+    billingNotice: { createMany: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
@@ -156,6 +157,12 @@ describe("setClubPlan: the platform owner's plan control (8.3, B2 note)", () => 
     expect(h.state.club).toMatchObject({ billingStatus: "exempt", billingPlan: "free", billingPricePence: null });
   });
 
+  it("a back-to-trial (free month still running) writes no pending DM", async () => {
+    setClub({ billingStatus: "exempt", billingPlan: "free" });
+    await setClubPlan("org1", { plan: "standard", pricePence: null }, NOW);
+    expect(m.billingNotice.createMany).not.toHaveBeenCalled();
+  });
+
   it("Free on a PAUSED club resumes it, in the same transaction", async () => {
     setClub({ billingStatus: "paused", billing: { trialEndsAt: APPROVED_AT, graceEndsAt: null, pausedReason: "no-card" } });
     const r = await setClubPlan("org1", { plan: "free", pricePence: null }, NOW);
@@ -203,6 +210,11 @@ describe("setClubPlan: the platform owner's plan control (8.3, B2 note)", () => 
     const patch = m.clubBilling.updateMany.mock.calls.at(-1)![0].data;
     expect(patch.graceEndsAt).toEqual(new Date(later.getTime() + 7 * DAY));
     expect(patch).toMatchObject({ paymentFailedAt: null, pausedAt: null, pausedReason: null });
+    // Review fix 10: the "plan-billed" DM is PENDING in the same transaction.
+    expect(m.billingNotice.createMany).toHaveBeenCalledWith({
+      data: [{ orgId: "org1", kind: "plan-billed", cycleKey: later.toISOString() }],
+      skipDuplicates: true,
+    });
   });
 
   it("leaving Free while the original free month is still running: back to TRIAL, its end kept", async () => {

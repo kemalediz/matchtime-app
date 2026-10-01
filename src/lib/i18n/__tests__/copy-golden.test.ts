@@ -231,7 +231,10 @@
  *     billing page's notices after a card action; the "card added",
  *     "card replaced", "resumed" and "billed again after Free" DMs).
  *     REMOVED, on purpose: the B2 placeholder "Card payments open here
- *     soon." from R189 (the card buttons now work). No other case changed.
+ *     soon." from R189 (the card buttons now work). CHANGED, on purpose
+ *     (PR #181 review fix 2): R189's "Update card" button reads "Update
+ *     card and pay" (it now retries the unpaid invoice). No other case
+ *     changed.
  */
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";

@@ -5,9 +5,10 @@
  * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 4.5 and 5.2.
  *
  *   Add a card              startClubCheckout  the billing contact
- *   Use my card instead     startCardReplace   the billing contact
- *   Change card or cancel,  openClubPortal     the contact who holds the card
- *   Update card
+ *   Use my card instead,    startCardReplace   the billing contact (setup
+ *   Update card and pay                        mode; an unpaid invoice is
+ *                                              retried on the new card)
+ *   Change card or cancel   openClubPortal     the contact who holds the card
  *   Remove my card          removeMyCard       an old card holder
  *
  * EVERY action re-checks the guard itself (`requireClubBillingAccess`,

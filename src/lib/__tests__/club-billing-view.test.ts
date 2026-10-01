@@ -249,14 +249,39 @@ describe("billingButtons (8.1): which card buttons the page shows", () => {
     for (const status of ["trial", "grace", "paused"]) expect(billingButtons(state({ status }))).toEqual(["add-card"]);
   });
 
-  it("the contact with their own card: change or cancel; past due: update", () => {
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1" }))).toEqual(["change-card"]);
-    expect(billingButtons(state({ status: "past_due", cardHolderUserId: "u1" }))).toEqual(["update-card"]);
+  it("the contact with their own card AND the dedicated Portal configured: change or cancel", () => {
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", subscriptionStatus: "active", portalAvailable: true }))).toEqual(["change-card"]);
+  });
+
+  it("review fix 4: no Portal configuration, or no card of their own on file (null holder): setup mode, never the Portal", () => {
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", subscriptionStatus: "active", portalAvailable: false }))).toEqual(["use-mine"]);
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: null, subscriptionStatus: "active", portalAvailable: true }))).toEqual(["use-mine"]);
   });
 
   it("the contact with someone else's card: use mine", () => {
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "old" }))).toEqual(["use-mine"]);
-    expect(billingButtons(state({ status: "past_due", cardHolderUserId: "old" }))).toEqual(["use-mine"]);
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "old", subscriptionStatus: "active", portalAvailable: true }))).toEqual(["use-mine"]);
+  });
+
+  it("review fix 2: an UNPAID subscription always shows 'Update card and pay' (setup mode, open invoice retried)", () => {
+    for (const [status, sub] of [
+      ["past_due", "past_due"],
+      ["past_due", "unpaid"],
+      ["paused", "past_due"],
+      ["paused", "unpaid"],
+      ["grace", "incomplete"],
+    ] as const) {
+      for (const holder of ["u1", "old", null]) {
+        expect(billingButtons(state({ status, subscriptionStatus: sub, cardHolderUserId: holder, portalAvailable: true })), `${status}/${sub}/${holder}`).toEqual(["update-card"]);
+      }
+    }
+    expect(t("en").billing_btn_update_card).toBe("Update card and pay");
+    expect(t("tr").billing_btn_update_card).toBe("Kartı güncelle ve öde");
+  });
+
+  it("paused or grace with no live subscription: Add a card", () => {
+    for (const sub of [null, "canceled", "incomplete_expired"]) {
+      expect(billingButtons(state({ status: "paused", subscriptionStatus: sub }))).toEqual(["add-card"]);
+    }
   });
 
   it("an old card holder: remove mine, nothing else", () => {

@@ -32,6 +32,7 @@ const h = vi.hoisted(() => {
     organiserPickRound: { updateMany: vi.fn() },
     benchSlotOffer: { updateMany: vi.fn() },
     platformJob: { create: vi.fn() },
+    billingNotice: { createMany: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
@@ -275,6 +276,22 @@ describe("setBillingState: the one writer", () => {
     // callback (so Postgres rolls the status back) and is not swallowed.
     await expect(setBillingState("org", { type: "card-added" }, NOW)).rejects.toThrow("db down");
     expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("review fix 10: noticeOnResume writes a PENDING notice in the SAME transaction as the resume", async () => {
+    setRow({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: NOW, pausedReason: "payment-failed" } });
+    await setBillingState("org", { type: "invoice-paid" }, NOW, { noticeOnResume: "resumed" });
+    expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(dbMock.billingNotice.createMany).toHaveBeenCalledWith({
+      data: [{ orgId: "org", kind: "resumed", cycleKey: NOW.toISOString() }],
+      skipDuplicates: true,
+    });
+  });
+
+  it("no resume, no pending notice", async () => {
+    setRow({ billingStatus: "past_due", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: NOW, pausedReason: null } });
+    await setBillingState("org", { type: "invoice-paid" }, NOW, { noticeOnResume: "resumed" });
+    expect(dbMock.billingNotice.createMany).not.toHaveBeenCalled();
   });
 
   it("nothing in setBillingState or resumeClub messages anyone", async () => {

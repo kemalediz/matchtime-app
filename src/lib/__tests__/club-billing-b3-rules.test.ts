@@ -191,3 +191,28 @@ describe("vatCountryNeedsCheck (5.4): UK only, flag rather than refuse", () => {
     expect(vatCountryNeedsCheck("GB", null)).toBe(true);
   });
 });
+
+describe("review fix 7: a subscription that ends DURING the free month goes back to trial, not paused", () => {
+  const club = (status: string): BillingClub => ({
+    approvedAt: APPROVED,
+    billingStatus: status,
+    billingPlan: "standard",
+    billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: null },
+  });
+
+  it("cancelled at once on day 10: back to trial (card removed), the free month's end kept", () => {
+    const now = new Date(APPROVED.getTime() + 10 * DAY);
+    expect(nextBillingState(club("subscribed"), { type: "subscription-ended", cancelAtPeriodEnd: false }, now, ON)).toMatchObject({
+      to: "trial",
+      pausedReason: null,
+    });
+  });
+
+  it("ended after the free month: paused as before", () => {
+    const now = new Date(TRIAL_ENDS.getTime() + DAY);
+    expect(nextBillingState(club("subscribed"), { type: "subscription-ended", cancelAtPeriodEnd: true }, now, ON)).toMatchObject({
+      to: "paused",
+      pausedReason: "cancelled",
+    });
+  });
+});

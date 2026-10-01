@@ -2413,7 +2413,7 @@ export const en = {
   billing_btn_add_card: "Add a card",
   billing_btn_change_card: "Change card or cancel",
   billing_btn_use_mine: "Use my card instead",
-  billing_btn_update_card: "Update card",
+  billing_btn_update_card: "Update card and pay",
   billing_btn_remove_mine: "Remove my card",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
   billing_open: "Open billing",

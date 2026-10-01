@@ -4,6 +4,7 @@ import { CreditCard } from "lucide-react";
 import { loadBillingAccess, loadClubFeeTip } from "@/lib/club-billing";
 import { billingNoticeText, billingPageView, type BillingButton, type BillingPageNotice } from "@/lib/club-billing-view";
 import { addCardAction, openPortalAction, removeMyCardAction, useMyCardAction } from "@/app/actions/club-billing";
+import { isClubPortalAvailable } from "@/lib/club-billing-stripe";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { WaText } from "@/components/billing/wa-text";
 
@@ -36,7 +37,8 @@ const ACTION: Record<BillingButton, (orgId: string) => Promise<void>> = {
   "add-card": addCardAction,
   "use-mine": useMyCardAction,
   "change-card": openPortalAction,
-  "update-card": openPortalAction,
+  // "Update card and pay": setup mode, then the open invoice is retried.
+  "update-card": useMyCardAction,
   "remove-mine": removeMyCardAction,
 };
 
@@ -82,7 +84,7 @@ export default async function BillingPage({
   }
   const { role, snapshot } = access;
   const tip = role === "exempt-owner" || role === "card-holder" ? null : await loadClubFeeTip(orgId);
-  const v = billingPageView(snapshot.language, snapshot, role, userId, tip);
+  const v = billingPageView(snapshot.language, snapshot, role, userId, tip, { portalAvailable: isClubPortalAvailable() });
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8" data-testid="billing-page" data-role={role}>

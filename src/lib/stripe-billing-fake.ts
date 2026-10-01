@@ -33,6 +33,9 @@ export interface FakeStripeState {
   setupIntents: Record<string, CardDetails>;
   detached: string[];
   prices: Record<string, string>;
+  refunds: Array<{ subscriptionId: string; pence: number }>;
+  /** Paid invoices a test says a subscription has (pence). */
+  paidInvoices: Record<string, number>;
 }
 
 const empty = (): FakeStripeState => ({
@@ -44,6 +47,8 @@ const empty = (): FakeStripeState => ({
   setupIntents: {},
   detached: [],
   prices: {},
+  refunds: [],
+  paidInvoices: {},
 });
 
 const toStored = (s: BillingSubscription): StoredSubscription => ({
@@ -62,6 +67,7 @@ export type FakeBillingStripe = BillingStripe & {
   state(): FakeStripeState;
   putSubscription(sub: BillingSubscription): void;
   putSetupIntent(id: string, card: CardDetails): void;
+  putPaidInvoice(subscriptionId: string, pence: number): void;
 };
 
 export function createFakeBillingStripe(opts: { file?: string | null } = {}): FakeBillingStripe {
@@ -105,6 +111,12 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
     putSubscription(sub) {
       const s = load();
       s.subscriptions[sub.id] = toStored(sub);
+      save(s);
+    },
+
+    putPaidInvoice(subscriptionId, pence) {
+      const s = load();
+      s.paidInvoices[subscriptionId] = pence;
       save(s);
     },
 
@@ -192,6 +204,31 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       tx("cancelSubscription", { subscriptionId }, (s) => {
         const sub = s.subscriptions[subscriptionId];
         if (sub) sub.status = "canceled";
+      });
+    },
+
+    async listLiveSubscriptions(customerId) {
+      const live = new Set(["trialing", "active", "past_due", "unpaid", "incomplete", "paused"]);
+      return tx("listLiveSubscriptions", { customerId }, (s) =>
+        Object.values(s.subscriptions)
+          .filter((x) => x.customerId === customerId && live.has(x.status) && x.metadata.purpose === "club-fee")
+          .map(fromStored),
+      );
+    },
+
+    async resetCustomerDetails(args) {
+      tx("resetCustomerDetails", args, () => undefined);
+    },
+
+    async updateCustomer(args) {
+      tx("updateCustomer", args, () => undefined);
+    },
+
+    async refundPaidInvoices(subscriptionId) {
+      return tx("refundPaidInvoices", { subscriptionId }, (s) => {
+        const pence = s.paidInvoices[subscriptionId] ?? 0;
+        if (pence > 0 && !s.refunds.some((r) => r.subscriptionId === subscriptionId)) s.refunds.push({ subscriptionId, pence });
+        return pence;
       });
     },
 

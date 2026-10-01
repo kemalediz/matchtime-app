@@ -574,6 +574,29 @@ export async function decideClub(
     }
   }
 
+  // Club fee billing (plan 4.2, decision 7; PR #181 review fix 11): the
+  // owner's off switch cancels a billed club's live subscription at once,
+  // no proration and no automatic refund. Stripe being down never undoes
+  // the suspension: it is logged and recorded on /admin/health.
+  if (result.decision === "suspend") {
+    try {
+      const { cancelSubscriptionOnSuspend } = await import("./club-billing-stripe");
+      const r = await cancelSubscriptionOnSuspend(orgId);
+      if (r.action !== "no-subscription") console.log(`[club-approval] ${orgId}: club fee subscription on suspend: ${r.action}`);
+    } catch (err) {
+      console.error(`[club-approval] ${orgId}: suspended, but its club fee subscription was NOT cancelled:`, err);
+      const { BILLING_ALERT_KIND, recordOpsEvent } = await import("./ops-alerts");
+      await recordOpsEvent({
+        orgId,
+        kind: BILLING_ALERT_KIND,
+        severity: "critical",
+        title: "Suspended club's subscription not cancelled",
+        detail: `Cancel it in Stripe by hand: ${(err as Error).message}`,
+        dedupeKey: `suspend-cancel-failed:${now.toISOString()}`,
+      });
+    }
+  }
+
   if (result.decision === "approve" && after.link) {
     const snapshot = parseParticipantSnapshot(after.link.participants);
     try {

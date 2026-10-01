@@ -34,7 +34,12 @@ import { billingStripeConfig, verifyBillingWebhook } from "@/lib/stripe-billing"
 
 export async function POST(request: Request) {
   const secret = billingStripeConfig().webhookSecret;
-  if (!secret) return NextResponse.json({ ok: true, ignored: "billing-webhook-not-configured" });
+  // 503, not 200: an event Stripe sends before the secret is set must be
+  // retried later, never dropped as if handled (review fix 6).
+  if (!secret) {
+    console.error("[billing-webhook] STRIPE_BILLING_WEBHOOK_SECRET is not set: answering 503 so Stripe retries");
+    return NextResponse.json({ error: "billing-webhook-not-configured" }, { status: 503 });
+  }
   const sig = request.headers.get("stripe-signature");
   if (!sig) return NextResponse.json({ error: "no signature" }, { status: 400 });
 

@@ -1912,7 +1912,7 @@ export const tr: Strings = {
   billing_btn_add_card: "Kart ekle",
   billing_btn_change_card: "Kartı değiştir ya da iptal et",
   billing_btn_use_mine: "Bunun yerine kendi kartımı kullan",
-  billing_btn_update_card: "Kartı güncelle",
+  billing_btn_update_card: "Kartı güncelle ve öde",
   billing_btn_remove_mine: "Kartımı kaldır",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
   billing_open: "Ödeme sayfasını aç",

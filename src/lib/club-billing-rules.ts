@@ -241,6 +241,10 @@ export function nextBillingState(
 
     case "subscription-ended":
       if (from !== "subscribed" && from !== "past_due") return null;
+      // Ended inside the free month (the payer cancelled at once, or the
+      // card was removed): the free month carries on, the card is gone. A
+      // new card then gets the same trial end, never an early charge.
+      if (from === "subscribed" && b && now < b.trialEndsAt) return to("trial", from);
       return to("paused", from, { pausedReason: event.cancelAtPeriodEnd ? "cancelled" : "payment-failed" });
 
     case "subscription-unpaid":
@@ -576,6 +580,15 @@ export function checkoutTrialEnd(trialEndsAt: Date, now: Date): Date {
  */
 export function isLiveSubscriptionStatus(status: string | null | undefined): boolean {
   return status !== null && status !== undefined && status !== "" && status !== "canceled" && status !== "incomplete_expired";
+}
+
+/**
+ * A live subscription whose payment did not go through (past due, unpaid,
+ * or a first payment still incomplete): the payer needs "update card and
+ * pay" (setup mode, then the open invoice is retried on the new card).
+ */
+export function isUnpaidSubscriptionStatus(status: string | null | undefined): boolean {
+  return status === "past_due" || status === "unpaid" || status === "incomplete";
 }
 
 /**

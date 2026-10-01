@@ -21,7 +21,8 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { setClubPlan, startTrial } from "@/lib/club-billing";
-import { notifyPlanBilledAgain, syncPlanToStripe } from "@/lib/club-billing-stripe";
+import { flushPendingBillingNotices, syncPlanToStripe } from "@/lib/club-billing-stripe";
+import { billingStripeConfig } from "@/lib/stripe-billing";
 import { parsePlanChoice } from "@/lib/club-billing-rules";
 import { moneyLabel } from "@/lib/club-billing-view";
 import { dayLabel } from "@/lib/i18n/dates";
@@ -48,6 +49,11 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
       message: choice.reason === "unknown-plan" ? "That is not a plan." : "A custom price must be between £1.00 and £9.99.",
     };
   }
+  if (choice.plan === "custom" && !billingStripeConfig().productId) {
+    // A Custom price is made in Stripe under the club product; without it a
+    // card could never be taken at that price. Refuse before writing.
+    return { ok: false, message: "Custom prices need STRIPE_CLUB_PRODUCT_ID set (the MatchTime club product in Stripe). Nothing was saved." };
+  }
   const r = await setClubPlan(orgId, { plan: choice.plan, pricePence: choice.pricePence });
   revalidatePath("/admin/clubs");
   if (!r.ok) {
@@ -69,8 +75,15 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
     return { ok: false, message: `${message} Stripe could not be updated (${(err as Error).message}). Press Save plan again to retry.` };
   }
 
+  // Any DM the change left pending ("plan-billed"), including one an
+  // earlier save failed to send. A failure here is logged; the next save
+  // (or webhook) sends it.
+  try {
+    await flushPendingBillingNotices(orgId);
+  } catch (err) {
+    console.error(`[club-billing-admin] ${orgId}: pending billing DM not sent yet:`, err);
+  }
   if (r.billedAgain === "grace") {
-    await notifyPlanBilledAgain(orgId);
     message += " The free month was already used, so the club has 7 days to add a card.";
   } else if (r.billedAgain === "trial") {
     message += " The club is back in its free month.";

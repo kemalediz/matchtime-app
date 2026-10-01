@@ -46,6 +46,11 @@ export const AI_CAP_ALERT_KIND = "ai-daily-cap";
  *  (`late-message.ts`): attendance recorded silently, nothing else
  *  executed. An event, info severity, never a DM. */
 export const LATE_MESSAGE_KIND = "late-message";
+/** Club fee billing (slice B3): something MatchTime did to a club fee
+ *  subscription on its own that the platform owner should be able to see,
+ *  e.g. a duplicate or unwanted subscription cancelled and refunded. An
+ *  event, never a DM (`club-billing-stripe.ts`). */
+export const BILLING_ALERT_KIND = "club-billing";
 
 export type OpsAlertSeverity = "critical" | "warning" | "info";
 
@@ -54,6 +59,7 @@ const EVENT_KINDS: ReadonlySet<string> = new Set([
   OPERATOR_NOTE_KIND,
   AI_CAP_ALERT_KIND,
   LATE_MESSAGE_KIND,
+  BILLING_ALERT_KIND,
 ]);
 
 export function healthKind(code: string): string {
@@ -154,6 +160,7 @@ const KIND_LABELS: Record<string, string> = {
   [OPERATOR_NOTE_KIND]: "Message not handled",
   [AI_CAP_ALERT_KIND]: "AI daily cap reached",
   [LATE_MESSAGE_KIND]: "Late message",
+  [BILLING_ALERT_KIND]: "Club fee billing",
 };
 
 export function alertKindLabel(kind: string): string {

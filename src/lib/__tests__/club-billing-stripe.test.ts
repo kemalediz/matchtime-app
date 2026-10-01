@@ -58,6 +58,11 @@ const h = vi.hoisted(() => {
       user_olly: { name: "Olly" },
     } as Record<string, { name: string }>,
     stateCalls: [] as string[],
+    pending: [] as Array<{ kind: string; cycleKey: string }>,
+    failNextDm: false,
+    ops: [] as Array<{ kind: string; title: string; dedupeKey?: string | null }>,
+    /** Make the next clubBilling.updateMany lose a race (another writer first). */
+    raceNextUpdate: null as null | (() => void),
   };
   const matches = (b: Record<string, unknown>, where: Record<string, unknown>) =>
     Object.entries(where).every(([k, v]) => (k === "orgId" ? true : b[k] === v));
@@ -71,6 +76,11 @@ const h = vi.hoisted(() => {
         state.billing && matches(state.billing as unknown as Record<string, unknown>, where) ? { ...state.billing } : null,
       ),
       updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Partial<Billing> }) => {
+        if (state.raceNextUpdate) {
+          const race = state.raceNextUpdate;
+          state.raceNextUpdate = null;
+          race();
+        }
         if (!state.billing || !matches(state.billing as unknown as Record<string, unknown>, where)) return { count: 0 };
         Object.assign(state.billing, data);
         return { count: 1 };
@@ -102,10 +112,17 @@ vi.mock("../db", () => ({ db: h.db }));
 vi.mock("../admin-link", () => ({
   buildAdminLink: vi.fn(async (a: { userId: string; nextPath: string }) => `https://mt.test/r/${a.userId}${a.nextPath}`),
 }));
+vi.mock("../ops-alerts", () => ({
+  BILLING_ALERT_KIND: "club-billing",
+  recordOpsEvent: vi.fn(async (a: { kind: string; title: string; dedupeKey?: string | null }) => {
+    h.state.ops.push(a);
+    return true;
+  }),
+}));
 vi.mock("../club-billing", async () => {
   const rules = await import("../club-billing-rules");
   return {
-    setBillingState: vi.fn(async (orgId: string, event: { type: string }, now: Date) => {
+    setBillingState: vi.fn(async (orgId: string, event: { type: string }, now: Date, opts: { noticeOnResume?: string } = {}) => {
       const o = h.state.org!;
       const b = h.state.billing;
       h.state.stateCalls.push(event.type);
@@ -124,13 +141,21 @@ vi.mock("../club-billing", async () => {
         if (t.graceEndsAt) b.graceEndsAt = t.graceEndsAt;
         if (t.paymentFailedAt) b.paymentFailedAt = t.paymentFailedAt;
       }
+      if (t.resumes && opts.noticeOnResume) h.state.pending.push({ kind: opts.noticeOnResume, cycleKey: now.toISOString() });
       return { ok: true, from, to: t.to, resumed: t.resumes };
     }),
     loadBillingContactUserId: vi.fn(async () => h.state.contact),
+    loadPendingBillingNotices: vi.fn(async () =>
+      h.state.pending.filter((p) => !h.state.notices.has(`${h.state.org?.id}|${p.kind}|${p.cycleKey}`)),
+    ),
     queueBillingDm: vi.fn(
       async (a: { orgId: string; kind: string; cycleKey: string; userId: string; text: (u: { name: string | null }) => string }) => {
         const key = `${a.orgId}|${a.kind}|${a.cycleKey}`;
         if (h.state.notices.has(key)) return "already";
+        if (h.state.failNextDm) {
+          h.state.failNextDm = false;
+          throw new Error("queue failed");
+        }
         h.state.notices.add(key);
         h.state.dms.push({ orgId: a.orgId, kind: a.kind, cycleKey: a.cycleKey, userId: a.userId, text: a.text({ name: h.state.users[a.userId]?.name ?? null }) });
         return "queued";
@@ -149,6 +174,7 @@ import {
   startCardReplace,
   startClubCheckout,
   syncPlanToStripe,
+  cancelSubscriptionOnSuspend,
 } from "../club-billing-stripe";
 import { applyCheckoutEvent } from "../payment-flow";
 
@@ -211,6 +237,11 @@ beforeEach(() => {
   h.state.notices.clear();
   h.state.stateCalls.length = 0;
   h.state.contact = "user_colin";
+  h.state.pending = [];
+  h.state.failNextDm = false;
+  h.state.ops = [];
+  h.state.raceNextUpdate = null;
+  process.env.STRIPE_CLUB_PORTAL_CONFIG_ID = "bpc_noinvoices";
   setWorld();
 });
 
@@ -277,7 +308,14 @@ describe("Add a card: startClubCheckout", () => {
   it("expires the club's open sessions before making a new one (two tabs never both subscribe)", async () => {
     setWorld({}, { stripeCustomerId: "cus_x" });
     await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now });
-    expect(fake.state().calls.map((c) => c.method)).toEqual(["expireOpenCheckoutSessions", "createCheckoutSession"]);
+    // Stripe is asked for live subscriptions first (review fix 5), the new
+    // payer gets a clean Customer (fix 4), then open sessions expire.
+    expect(fake.state().calls.map((c) => c.method)).toEqual([
+      "listLiveSubscriptions",
+      "resetCustomerDetails",
+      "expireOpenCheckoutSessions",
+      "createCheckoutSession",
+    ]);
   });
 
   it("in trial: trial_end is the free month's end on day 21", async () => {
@@ -373,8 +411,7 @@ describe("Use my card instead: startCardReplace (setup mode)", () => {
     expect(p.metadata).toEqual({ orgId: ORG, payerUserId: "user_pat", purpose: "club-fee", action: "replace-card" });
   });
 
-  it("refuses the card holder themselves (they use the Portal), a viewer, and a club with no live subscription", async () => {
-    expect(await startCardReplace({ orgId: ORG, userId: "user_colin", role: "contact" })).toEqual({ ok: false, reason: "own-card" });
+  it("refuses a viewer and a club with no live subscription", async () => {
     expect(await startCardReplace({ orgId: ORG, userId: "user_pat", role: "viewer" })).toEqual({ ok: false, reason: "not-allowed" });
     h.state.billing!.stripeSubscriptionStatus = "canceled";
     expect(await startCardReplace({ orgId: ORG, userId: "user_pat", role: "contact" })).toEqual({ ok: false, reason: "no-subscription" });
@@ -389,7 +426,7 @@ describe("Change card or cancel: openClubPortal", () => {
     expect(calls("createPortalSession")).toEqual([{ customerId: "cus_x", returnUrl: `https://mt.test/billing/${ORG}`, configuration: "bpc_noinvoices" }]);
   });
 
-  it("refuses a contact whose card is not on file (the old collector's card would show) and a viewer", async () => {
+  it("refuses a contact whose card is not on file (the old collector's card would show), a viewer, a null holder", async () => {
     setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_x", cardHolderUserId: "user_colin" });
     expect(await openClubPortal({ orgId: ORG, userId: "user_pat", role: "contact" })).toEqual({ ok: false, reason: "not-allowed" });
     expect(await openClubPortal({ orgId: ORG, userId: "user_colin", role: "viewer" })).toEqual({ ok: false, reason: "not-allowed" });
@@ -777,10 +814,10 @@ describe("syncPlanToStripe: plan changes on a live subscription (5.2)", () => {
     expect(await syncPlanToStripe(ORG)).toEqual({ action: "price-changed", priceId: "price_std" });
   });
 
-  it("the same price: nothing sent to Stripe", async () => {
+  it("the same price: only the open sessions are expired, nothing else sent", async () => {
     live();
     expect(await syncPlanToStripe(ORG)).toEqual({ action: "unchanged" });
-    expect(fake.state().calls).toEqual([]);
+    expect(fake.state().calls.map((c) => c.method)).toEqual(["expireOpenCheckoutSessions"]);
   });
 
   it("Free: the subscription is cancelled at once, and stored as cancelled at once", async () => {
@@ -807,5 +844,295 @@ describe("BILLING_ENABLED off: nothing reachable changes", () => {
     sub();
     await handleBillingEvent(checkoutCompleted(), new Date(APPROVED.getTime() + 21 * DAY));
     expect(h.state.dms).toEqual([]);
+  });
+});
+
+// ── Review fixes (PR #181 adversarial review) ───────────────────────────
+
+describe("review fix 1 (HIGH): a club on Free or exempt never keeps a live subscription", () => {
+  const now = new Date(APPROVED.getTime() + 21 * DAY);
+
+  it("a Checkout that completes AFTER the club was set Free: cancelled at once, its payment refunded, never adopted", async () => {
+    setWorld({ billingStatus: "exempt", billingPlan: "free" }, { stripeCustomerId: "cus_fake_1" });
+    sub({ status: "active", trialEnd: null });
+    fake.putPaidInvoice("sub_1", 999);
+    const r = await handleBillingEvent(checkoutCompleted(), now);
+    expect(r).toMatchObject({ action: "unwanted-cancelled", orgId: ORG });
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
+    expect(fake.state().refunds).toEqual([{ subscriptionId: "sub_1", pence: 999 }]);
+    expect(h.state.billing!.stripeSubscriptionId).toBeNull();
+    expect(h.state.org!.billingStatus).toBe("exempt");
+    expect(h.state.dms).toEqual([]);
+    expect(h.state.ops).toEqual([expect.objectContaining({ kind: "club-billing", dedupeKey: "unwanted:sub_1" })]);
+  });
+
+  it("a subscription event for an exempt club with no billing row (Sutton FC's shape): cancelled too", async () => {
+    setWorld({ billingStatus: "exempt", approvedAt: null });
+    h.state.billing = null;
+    sub({ status: "trialing", customerId: "cus_x" });
+    const r = await handleBillingEvent(event("customer.subscription.created", { id: "sub_1", object: "subscription" }), now);
+    expect(r).toMatchObject({ action: "unwanted-cancelled" });
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
+  });
+
+  it("setting Free expires every open Checkout session on the club's Customer, even with no subscription yet", async () => {
+    setWorld({ billingStatus: "exempt", billingPlan: "free" }, { stripeCustomerId: "cus_x" });
+    expect(await syncPlanToStripe(ORG)).toEqual({ action: "no-subscription" });
+    expect(calls("expireOpenCheckoutSessions")).toEqual([{ customerId: "cus_x" }]);
+  });
+
+  it("a price change expires open sessions too (a later completion cannot land on the old price)", async () => {
+    setWorld(
+      { billingStatus: "subscribed", billingPlan: "custom", billingPricePence: 500 },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", stripePriceId: "price_std" },
+    );
+    sub({ status: "active" });
+    await syncPlanToStripe(ORG);
+    const methods = fake.state().calls.map((c) => c.method);
+    expect(methods.indexOf("expireOpenCheckoutSessions")).toBeLessThan(methods.indexOf("updateSubscriptionPrice"));
+  });
+
+  it("an adopted subscription on a stale price is corrected to the club's current plan", async () => {
+    setWorld({ billingPlan: "custom", billingPricePence: 500 }, { stripeCustomerId: "cus_fake_1" });
+    sub({ priceId: "price_std" });
+    await handleBillingEvent(checkoutCompleted(), now);
+    expect(calls("updateSubscriptionPrice")).toEqual([{ subscriptionId: "sub_1", itemId: "si_1", priceId: "price_fake_500" }]);
+    expect(h.state.billing!.stripePriceId).toBe("price_fake_500");
+    expect(h.state.org!.billingStatus).toBe("subscribed");
+  });
+});
+
+describe("review fix 2: a club whose subscription is unpaid can always pay", () => {
+  const later = new Date(TRIAL_ENDS.getTime() + 10 * DAY);
+
+  it("paused with a past_due subscription: Add a card becomes the setup-mode 'update card and pay' path, never a dead end", async () => {
+    setWorld(
+      { billingStatus: "paused" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "past_due", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin", pausedReason: "payment-failed" },
+    );
+    sub({ status: "past_due", trialEnd: null });
+    const r = await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now: later });
+    expect(r).toMatchObject({ ok: true });
+    const p = calls("createCheckoutSession")[0] as unknown as Stripe.Checkout.SessionCreateParams;
+    expect(p.mode).toBe("setup");
+    expect(p.metadata).toMatchObject({ action: "replace-card", payerUserId: "user_colin" });
+  });
+
+  it("the card holder may use setup mode on their OWN card while it is unpaid, and the open invoice is retried", async () => {
+    setWorld(
+      { billingStatus: "past_due" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "past_due", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin" },
+    );
+    expect(await startCardReplace({ orgId: ORG, userId: "user_colin", role: "contact" })).toMatchObject({ ok: true });
+  });
+
+  it("an incomplete subscription is retried on the new card too", async () => {
+    setWorld(
+      { billingStatus: "grace" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "incomplete", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin" },
+    );
+    sub({ status: "incomplete", trialEnd: null });
+    fake.putSetupIntent("seti_2", { paymentMethodId: "pm_new", brand: "visa", last4: "1881", country: "GB" });
+    await handleBillingEvent(
+      event("checkout.session.completed", {
+        id: "cs_s",
+        mode: "setup",
+        customer: "cus_fake_1",
+        setup_intent: "seti_2",
+        metadata: { orgId: ORG, payerUserId: "user_colin", purpose: "club-fee", action: "replace-card" },
+        customer_details: { address: { country: "GB" } },
+      }),
+      later,
+    );
+    expect(calls("payOpenInvoices")).toEqual([{ subscriptionId: "sub_1" }]);
+  });
+
+  it("Stripe holds a live UNPAID subscription our mirror has not seen yet: the pay path, not a second subscription", async () => {
+    setWorld({ billingStatus: "grace" }, { stripeCustomerId: "cus_fake_1" });
+    sub({ status: "past_due", trialEnd: null });
+    await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now: later });
+    expect((calls("createCheckoutSession")[0] as { mode: string }).mode).toBe("setup");
+  });
+});
+
+describe("review fix 3: the card holder never comes from subscription metadata", () => {
+  it("a removed card is not put back on the old payer by a later subscription event", async () => {
+    setWorld(
+      { billingStatus: "subscribed" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", stripePaymentMethodId: null, cardHolderUserId: null },
+    );
+    sub({ status: "active", card: null, metadata: { orgId: ORG, purpose: "club-fee", payerUserId: "user_olly" } });
+    await handleBillingEvent(event("customer.subscription.updated", { id: "sub_1" }), new Date());
+    expect(h.state.billing!.cardHolderUserId).toBeNull();
+  });
+
+  it("a card changed in the Portal (a new card on the subscription) makes the billing CONTACT the holder", async () => {
+    setWorld(
+      { billingStatus: "subscribed" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", stripePaymentMethodId: "pm_old", cardHolderUserId: "user_olly" },
+    );
+    h.state.contact = "user_pat";
+    sub({ status: "active", card: { paymentMethodId: "pm_portal", brand: "visa", last4: "5556", country: "GB" }, metadata: { orgId: ORG, purpose: "club-fee", payerUserId: "user_olly" } });
+    await handleBillingEvent(event("customer.subscription.updated", { id: "sub_1" }), new Date());
+    expect(h.state.billing).toMatchObject({ stripePaymentMethodId: "pm_portal", cardHolderUserId: "user_pat" });
+  });
+
+  it("a completed Checkout makes the person who completed it the holder, whatever the metadata says", async () => {
+    setWorld({}, { stripeCustomerId: "cus_fake_1" });
+    sub({ metadata: { orgId: ORG, purpose: "club-fee", payerUserId: "user_olly" } });
+    await handleBillingEvent(checkoutCompleted(), new Date(APPROVED.getTime() + 21 * DAY));
+    expect(h.state.billing!.cardHolderUserId).toBe("user_colin");
+  });
+});
+
+describe("review fix 4 (privacy): the Portal, and the shared Customer's details", () => {
+  it("no Portal without STRIPE_CLUB_PORTAL_CONFIG_ID (never the account default)", async () => {
+    delete process.env.STRIPE_CLUB_PORTAL_CONFIG_ID;
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_x", cardHolderUserId: "user_colin" });
+    expect(await openClubPortal({ orgId: ORG, userId: "user_colin", role: "contact" })).toEqual({ ok: false, reason: "not-set-up" });
+    expect(calls("createPortalSession")).toEqual([]);
+  });
+
+  it("a contact with no card of their own on file never gets the Portal (setup mode instead)", async () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_x", cardHolderUserId: null });
+    expect(await openClubPortal({ orgId: ORG, userId: "user_colin", role: "contact" })).toEqual({ ok: false, reason: "not-allowed" });
+  });
+
+  it("a NEW payer's session first resets the Customer (name to the club, email, address and VAT numbers cleared)", async () => {
+    setWorld(
+      { billingStatus: "subscribed" },
+      { stripeCustomerId: "cus_x", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin" },
+    );
+    await startCardReplace({ orgId: ORG, userId: "user_pat", role: "contact" });
+    const methods = fake.state().calls.map((c) => c.method);
+    expect(methods.indexOf("resetCustomerDetails")).toBeGreaterThanOrEqual(0);
+    expect(methods.indexOf("resetCustomerDetails")).toBeLessThan(methods.indexOf("createCheckoutSession"));
+    expect(calls("resetCustomerDetails")).toEqual([{ customerId: "cus_x", name: "Billing Sevens" }]);
+  });
+
+  it("the same payer again: no reset", async () => {
+    setWorld({ billingStatus: "grace" }, { stripeCustomerId: "cus_x", cardHolderUserId: "user_colin" });
+    await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now: new Date(TRIAL_ENDS.getTime() + DAY) });
+    expect(calls("resetCustomerDetails")).toEqual([]);
+  });
+
+  it("the new card's billing address goes onto the Customer for the invoices", async () => {
+    setWorld(
+      { billingStatus: "subscribed" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin" },
+    );
+    fake.putSetupIntent("seti_9", { paymentMethodId: "pm_pat", brand: "visa", last4: "4000", country: "GB" });
+    const address = { country: "GB", line1: "1 Pitch Lane", city: "London", postal_code: "SM1 1AA" };
+    await handleBillingEvent(
+      event("checkout.session.completed", {
+        id: "cs_s",
+        mode: "setup",
+        customer: "cus_fake_1",
+        setup_intent: "seti_9",
+        metadata: { orgId: ORG, payerUserId: "user_pat", purpose: "club-fee", action: "replace-card" },
+        customer_details: { email: "pat@example.test", name: "Pat", address },
+      }),
+      new Date(),
+    );
+    expect(calls("updateCustomer")).toEqual([{ customerId: "cus_fake_1", address }]);
+  });
+});
+
+describe("review fix 5: no double charge", () => {
+  const now = new Date(APPROVED.getTime() + 21 * DAY);
+
+  it("Stripe already holds a live (paid or trialing) subscription for the club: no new session", async () => {
+    setWorld({}, { stripeCustomerId: "cus_fake_1" });
+    sub({ status: "trialing" });
+    expect(await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now })).toEqual({ ok: false, reason: "already-subscribed" });
+    expect(calls("createCheckoutSession")).toEqual([]);
+  });
+
+  it("adoption is a compare-and-set: if another subscription was stored meanwhile, this one is the duplicate", async () => {
+    setWorld({}, { stripeCustomerId: "cus_fake_1" });
+    sub({ id: "sub_2", status: "active", trialEnd: null });
+    sub({ id: "sub_1", status: "active", trialEnd: null });
+    h.state.raceNextUpdate = () => Object.assign(h.state.billing!, { stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    const r = await handleBillingEvent(checkoutCompleted({ subscription: "sub_2" }), now);
+    expect(r).toMatchObject({ action: "duplicate-cancelled" });
+    expect(h.state.billing!.stripeSubscriptionId).toBe("sub_1");
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_2" }]);
+  });
+
+  it("a cancelled duplicate that was PAID is refunded automatically and recorded on /admin/health (no DM to anyone)", async () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin" });
+    sub({ id: "sub_1", status: "active" });
+    sub({ id: "sub_2", status: "active", trialEnd: null });
+    fake.putPaidInvoice("sub_2", 999);
+    await handleBillingEvent(checkoutCompleted({ id: "cs_2", subscription: "sub_2" }), now);
+    expect(fake.state().refunds).toEqual([{ subscriptionId: "sub_2", pence: 999 }]);
+    expect(h.state.ops).toEqual([expect.objectContaining({ kind: "club-billing", dedupeKey: "duplicate:sub_2" })]);
+    expect(h.state.ops[0].title).toContain("£9.99 refunded");
+    expect(h.state.dms).toEqual([]);
+  });
+});
+
+describe("review fix 7: cancelled during the free month", () => {
+  it("back to trial (card removed), and a new card keeps trial_end = the free month's end", async () => {
+    setWorld(
+      { billingStatus: "subscribed" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "trialing", stripePaymentMethodId: "pm_colin", cardHolderUserId: "user_colin", cardLast4: "4242" },
+    );
+    sub({ status: "canceled" });
+    const day10 = new Date(APPROVED.getTime() + 10 * DAY);
+    await handleBillingEvent(event("customer.subscription.deleted", { id: "sub_1" }), day10);
+    expect(h.state.org!.billingStatus).toBe("trial");
+    expect(h.state.billing).toMatchObject({ stripePaymentMethodId: null, cardHolderUserId: null, cardLast4: null, stripeSubscriptionStatus: "canceled" });
+    await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now: day10 });
+    const p = calls("createCheckoutSession")[0] as unknown as Stripe.Checkout.SessionCreateParams;
+    expect(p.subscription_data?.trial_end).toBe(Math.floor(TRIAL_ENDS.getTime() / 1000));
+  });
+});
+
+describe("review fix 10: the 'resumed' DM is derived from a pending notice", () => {
+  const live = () =>
+    setWorld(
+      { billingStatus: "paused" },
+      { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "past_due", cardHolderUserId: "user_colin", stripePaymentMethodId: "pm_colin", pausedReason: "payment-failed" },
+    );
+  const invoicePaid = () =>
+    event("invoice.paid", { id: "in_1", billing_reason: "subscription_cycle", parent: { subscription_details: { subscription: "sub_1" } } });
+
+  it("the DM fails the first time: the retried webhook still sends it, once", async () => {
+    live();
+    sub({ status: "active", trialEnd: null });
+    h.state.failNextDm = true;
+    const e = invoicePaid();
+    expect((await processBillingWebhook(e, new Date())).status).toBe(500);
+    expect(h.state.org!.billingStatus).toBe("subscribed");
+    expect(h.state.dms).toEqual([]);
+    expect((await processBillingWebhook(e, new Date())).status).toBe(200);
+    expect(h.state.dms.map((d) => d.kind)).toEqual(["resumed"]);
+    await processBillingWebhook(invoicePaid(), new Date());
+    expect(h.state.dms).toHaveLength(1);
+  });
+});
+
+describe("review fix 11", () => {
+  it("an event from a CONNECTED account (event.account set) is ignored here", async () => {
+    sub();
+    const e = { ...checkoutCompleted(), account: "acct_collector" } as Stripe.Event;
+    expect(await handleBillingEvent(e, new Date())).toEqual({ action: "ignored", reason: "connect-event", orgId: null });
+    expect(fake.state().calls).toEqual([]);
+  });
+
+  it("suspending a billed club cancels its live subscription at once (no refund) and expires open sessions", async () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    expect(await cancelSubscriptionOnSuspend(ORG)).toEqual({ action: "cancelled" });
+    expect(calls("expireOpenCheckoutSessions")).toEqual([{ customerId: "cus_fake_1" }]);
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_1" }]);
+    expect(calls("refundPaidInvoices")).toEqual([]);
+    expect(h.state.billing!.stripeSubscriptionStatus).toBe("canceled");
+  });
+
+  it("suspending a club with no subscription does nothing in Stripe", async () => {
+    setWorld({ billingStatus: "trial" });
+    expect(await cancelSubscriptionOnSuspend(ORG)).toEqual({ action: "no-subscription" });
+    expect(fake.state().calls).toEqual([]);
   });
 });

@@ -28,8 +28,23 @@
  *
  * DMs (card added, card replaced, resumed, billed again) are queued only
  * while BILLING_ENABLED is on: their link opens a page that is a 404 with
- * the flag off. The day 21, 28, 30 and 37 reminders, the payment-failed
- * DM and the payer-changed DM are slice B4.
+ * the flag off. "Resumed" and "billed again" are written as PENDING
+ * notices by the state change's own transaction and sent by
+ * `flushPendingBillingNotices`, so a failed send is retried, never lost.
+ * The day 21, 28, 30 and 37 reminders, the payment-failed DM and the
+ * payer-changed DM are slice B4.
+ *
+ * ── Money safety (PR #181 review) ────────────────────────────────────
+ *   - a club on Free, exempt or gone never keeps a live subscription: the
+ *     webhook cancels it at once and refunds what it took;
+ *   - a second live subscription is cancelled and refunded the same way,
+ *     and both are recorded on /admin/health (never a DM);
+ *   - before any new session, Stripe itself is asked whether the Customer
+ *     has a live subscription, and open sessions are expired on every
+ *     session, plan or price change;
+ *   - a subscription is adopted with a compare-and-set;
+ *   - a club whose subscription is unpaid always has a way to pay (setup
+ *     mode, then the open invoice is retried on the new card).
  */
 import type Stripe from "stripe";
 import { db } from "./db";
@@ -40,13 +55,15 @@ import {
   checkoutTrialEnd,
   isBillingEnabled,
   isLiveSubscriptionStatus,
+  isUnpaidSubscriptionStatus,
   planPricePence,
   subscriptionStateEvent,
   vatCountryNeedsCheck,
   type BillingAccessRole,
 } from "./club-billing-rules";
-import { loadBillingContactUserId, queueBillingDm, setBillingState } from "./club-billing";
-import { cardAddedText, cardReplacedText, planBilledText, resumedText } from "./club-billing-view";
+import { loadBillingContactUserId, loadPendingBillingNotices, queueBillingDm, setBillingState } from "./club-billing";
+import { cardAddedText, cardReplacedText, moneyLabel, planBilledText, resumedText } from "./club-billing-view";
+import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import {
   billingStripeConfig,
   buildSetupCheckoutParams,
@@ -125,13 +142,46 @@ async function ensureCustomer(stripe: BillingStripe, orgId: string, name: string
   return winner?.stripeCustomerId ?? id;
 }
 
+// ── Shared ──────────────────────────────────────────────────────────────
+
+type BillingRow = NonNullable<Awaited<ReturnType<typeof loadBilling>>>;
+
+/**
+ * A setup-mode session on the club's Customer for `userId`: "Use my card
+ * instead", and "update card and pay" for an unpaid subscription. A NEW
+ * payer (not the card holder on file) first gets the shared Customer reset
+ * to the club (name; email, address, phone and VAT numbers cleared), so
+ * Checkout neither shows nor reuses the previous payer's details; the
+ * webhook then puts the new payer's own details on.
+ */
+async function setupSession(
+  stripe: BillingStripe,
+  args: { orgId: string; userId: string; orgName: string; customerId: string; billing: BillingRow },
+): Promise<BillingActionResult> {
+  if (args.billing.cardHolderUserId !== args.userId) {
+    await stripe.resetCustomerDetails({ customerId: args.customerId, name: args.orgName });
+  }
+  await stripe.expireOpenCheckoutSessions(args.customerId);
+  const session = await stripe.createCheckoutSession(
+    buildSetupCheckoutParams({ orgId: args.orgId, payerUserId: args.userId, customerId: args.customerId, baseUrl: appBaseUrl() }),
+  );
+  console.log(`[club-billing-stripe] ${args.orgId}: setup session ${session.id} for ${args.userId}`);
+  return { ok: true, url: session.url };
+}
+
 // ── Add a card ──────────────────────────────────────────────────────────
 
 /**
- * Add a card (5.2), for the billing contact when the club has no live
- * subscription: a Checkout session in subscription mode. In the free month
- * the trial ends at `max(trialEndsAt, now + 49h)`; in grace or paused the
- * first payment is taken at once.
+ * Add a card (5.2), for the billing contact: a Checkout session in
+ * subscription mode on the club's one Customer. While the free month is
+ * still running the trial ends at `max(trialEndsAt, now + 49h)` (also
+ * after a cancel inside the free month); otherwise the first payment is
+ * taken at once.
+ *
+ * Never a second subscription: Stripe itself is asked first. A live,
+ * UNPAID subscription (ours or one the mirror has not seen yet) turns this
+ * into "update card and pay" (setup mode) instead of a dead end; any other
+ * live one refuses ("already-subscribed").
  */
 export async function startClubCheckout(args: ActionArgs): Promise<BillingActionResult> {
   const now = args.now ?? new Date();
@@ -140,9 +190,8 @@ export async function startClubCheckout(args: ActionArgs): Promise<BillingAction
   const billing = await loadBilling(args.orgId);
   if (!org || !billing) return { ok: false, reason: "not-found" };
   const status = org.billingStatus;
-  if (status !== "trial" && status !== "grace" && status !== "paused") return { ok: false, reason: "not-billable" };
   if (org.billingPlan === "free") return { ok: false, reason: "not-billable" };
-  if (isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) return { ok: false, reason: "already-subscribed" };
+  if (status !== "trial" && status !== "grace" && status !== "paused" && status !== "past_due") return { ok: false, reason: "not-billable" };
 
   const stripe = getBillingStripe();
   const cfg = billingStripeConfig();
@@ -150,13 +199,28 @@ export async function startClubCheckout(args: ActionArgs): Promise<BillingAction
     console.warn(`[club-billing-stripe] Add a card for ${args.orgId}: not set up (${cfg.missingForCheckout.join(", ") || "no Stripe key"})`);
     return { ok: false, reason: "not-set-up" };
   }
+  if (billing.stripeCustomerId && billing.stripeSubscriptionId && isUnpaidSubscriptionStatus(billing.stripeSubscriptionStatus)) {
+    return setupSession(stripe, { orgId: args.orgId, userId: args.userId, orgName: org.name, customerId: billing.stripeCustomerId, billing });
+  }
+  if (isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) return { ok: false, reason: "already-subscribed" };
+  if (status === "past_due") return { ok: false, reason: "not-billable" };
+
   const priceId = await priceIdFor(stripe, org.billingPlan, org.billingPricePence);
   if (!priceId) return { ok: false, reason: "not-set-up" };
-
   const customerId = await ensureCustomer(stripe, args.orgId, org.name);
+
+  // Stripe's own truth, not our mirror (a webhook may still be on its way).
+  const live = await stripe.listLiveSubscriptions(customerId);
+  if (live.some((s) => isUnpaidSubscriptionStatus(s.status))) {
+    return setupSession(stripe, { orgId: args.orgId, userId: args.userId, orgName: org.name, customerId, billing });
+  }
+  if (live.length > 0) return { ok: false, reason: "already-subscribed" };
+
+  if (billing.cardHolderUserId !== args.userId) await stripe.resetCustomerDetails({ customerId, name: org.name });
   // Only one Add a card session may be open per club: two tabs (or a
   // double tap) can never both turn into a subscription.
   await stripe.expireOpenCheckoutSessions(customerId);
+  const inFreeMonth = status === "trial" || now < billing.trialEndsAt;
   const session = await stripe.createCheckoutSession(
     buildSubscriptionCheckoutParams({
       orgId: args.orgId,
@@ -164,7 +228,7 @@ export async function startClubCheckout(args: ActionArgs): Promise<BillingAction
       customerId,
       priceId,
       taxRateId: cfg.taxRateId!,
-      trialEnd: status === "trial" ? checkoutTrialEnd(billing.trialEndsAt, now) : null,
+      trialEnd: inFreeMonth ? checkoutTrialEnd(billing.trialEndsAt, now) : null,
       baseUrl: appBaseUrl(),
     }),
   );
@@ -172,55 +236,56 @@ export async function startClubCheckout(args: ActionArgs): Promise<BillingAction
   return { ok: true, url: session.url };
 }
 
-// ── Use my card instead ─────────────────────────────────────────────────
+// ── Use my card instead / update card and pay ───────────────────────────
 
 /**
- * Use my card instead (4.5 point 4), for the billing contact when the
- * club's live subscription is paid with somebody else's card: Checkout in
- * setup mode on the same Customer. The webhook makes the new card the
- * default and removes the old one.
+ * Setup mode on the club's Customer (4.5 point 4), for the billing contact
+ * while the club has a live subscription: "Use my card instead" (somebody
+ * else's card is paying, or none is on file) and "update card and pay"
+ * (the subscription is unpaid: the webhook retries the open invoice on the
+ * new card). The webhook makes the new card the default and removes the
+ * old one.
  */
 export async function startCardReplace(args: ActionArgs): Promise<BillingActionResult> {
   if (args.role !== "contact") return { ok: false, reason: "not-allowed" };
+  const org = await loadOrg(args.orgId);
   const billing = await loadBilling(args.orgId);
-  if (!billing) return { ok: false, reason: "not-found" };
+  if (!org || !billing) return { ok: false, reason: "not-found" };
   if (!billing.stripeSubscriptionId || !isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) {
     return { ok: false, reason: "no-subscription" };
   }
-  if (billing.cardHolderUserId === args.userId) return { ok: false, reason: "own-card" };
   if (!billing.stripeCustomerId) return { ok: false, reason: "no-customer" };
   const stripe = getBillingStripe();
   if (!stripe) return { ok: false, reason: "not-set-up" };
-  await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
-  const session = await stripe.createCheckoutSession(
-    buildSetupCheckoutParams({ orgId: args.orgId, payerUserId: args.userId, customerId: billing.stripeCustomerId, baseUrl: appBaseUrl() }),
-  );
-  console.log(`[club-billing-stripe] ${args.orgId}: Use my card instead session ${session.id} for ${args.userId}`);
-  return { ok: true, url: session.url };
+  return setupSession(stripe, { orgId: args.orgId, userId: args.userId, orgName: org.name, customerId: billing.stripeCustomerId, billing });
 }
 
 // ── Change card or cancel ───────────────────────────────────────────────
 
 /**
- * Change card or cancel (5.2): the Stripe Customer Portal, only for the
- * contact who is also the card holder (or when no card holder is
- * recorded), so a new collector never sees an earlier collector's card.
- * Invoice history is off in the Portal configuration (5.1).
+ * Change card or cancel (5.2): the Stripe Customer Portal, ONLY for the
+ * contact whose own card is on file, and ONLY with the dedicated Portal
+ * configuration (STRIPE_CLUB_PORTAL_CONFIG_ID, invoice history off): never
+ * the account default, which could show an earlier payer's invoices and
+ * address. A contact with no card of their own uses setup mode instead.
  */
 export async function openClubPortal(args: ActionArgs): Promise<BillingActionResult> {
   if (args.role !== "contact") return { ok: false, reason: "not-allowed" };
   const billing = await loadBilling(args.orgId);
   if (!billing) return { ok: false, reason: "not-found" };
   if (!billing.stripeCustomerId) return { ok: false, reason: "no-customer" };
-  if (billing.cardHolderUserId !== null && billing.cardHolderUserId !== args.userId) return { ok: false, reason: "not-allowed" };
+  const configuration = billingStripeConfig().portalConfigId;
+  if (!configuration) return { ok: false, reason: "not-set-up" };
+  if (billing.cardHolderUserId !== args.userId) return { ok: false, reason: "not-allowed" };
   const stripe = getBillingStripe();
   if (!stripe) return { ok: false, reason: "not-set-up" };
-  const portal = await stripe.createPortalSession({
-    customerId: billing.stripeCustomerId,
-    returnUrl: billingUrl(args.orgId),
-    configuration: billingStripeConfig().portalConfigId,
-  });
+  const portal = await stripe.createPortalSession({ customerId: billing.stripeCustomerId, returnUrl: billingUrl(args.orgId), configuration });
   return { ok: true, url: portal.url };
+}
+
+/** Is the Customer Portal offered at all (the dedicated configuration set)? */
+export function isClubPortalAvailable(): boolean {
+  return billingStripeConfig().portalConfigId !== null;
 }
 
 // ── Remove my card ──────────────────────────────────────────────────────
@@ -248,7 +313,7 @@ export async function removeMyCard(args: ActionArgs): Promise<{ ok: true } | { o
   return { ok: true };
 }
 
-// ── Plan changes on a live subscription ─────────────────────────────────
+// ── Plan changes, suspend ───────────────────────────────────────────────
 
 export type PlanSyncResult =
   | { action: "no-subscription" }
@@ -257,31 +322,35 @@ export type PlanSyncResult =
   | { action: "cancelled" }
   | { action: "price-changed"; priceId: string };
 
+/** Store a subscription we cancelled as cancelled at once, so Add a card
+ *  is not refused while the deletion webhook is still on its way. */
+async function markCancelled(orgId: string, subscriptionId: string) {
+  await db.clubBilling.updateMany({ where: { orgId, stripeSubscriptionId: subscriptionId }, data: { stripeSubscriptionStatus: "canceled" } });
+}
+
 /**
  * After the platform owner's plan change has committed (`setClubPlan`):
- *   - Free: the live subscription is cancelled at once, no proration (the
- *     club is already exempt, so the deletion webhook moves nothing);
+ *   - every open Checkout session on the club's Customer is expired first,
+ *     so a session started before the change can never complete on the old
+ *     plan or price (the webhook would cancel it anyway, see
+ *     `syncSubscription`);
+ *   - Free: the live subscription is cancelled at once, no proration;
  *   - Standard or Custom: the item's price is swapped with no proration,
- *     so the new price applies from the next month.
- * Running it again is harmless (same price: nothing sent).
+ *     from the next month.
+ * Running it again is harmless.
  */
 export async function syncPlanToStripe(orgId: string): Promise<PlanSyncResult> {
   const org = await loadOrg(orgId);
   const billing = await loadBilling(orgId);
+  const stripe = getBillingStripe();
+  if (stripe && billing?.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
   if (!org || !billing?.stripeSubscriptionId || !isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) {
     return { action: "no-subscription" };
   }
-  const stripe = getBillingStripe();
   if (!stripe) return { action: "not-set-up" };
   if (org.billingPlan === "free") {
     await stripe.cancelSubscription(billing.stripeSubscriptionId);
-    // Stored at once, so "Add a card" (after Free and back) is not refused
-    // while the deletion webhook is still on its way. The webhook then
-    // confirms it; the club is exempt, so it moves nothing.
-    await db.clubBilling.updateMany({
-      where: { orgId, stripeSubscriptionId: billing.stripeSubscriptionId },
-      data: { stripeSubscriptionStatus: "canceled" },
-    });
+    await markCancelled(orgId, billing.stripeSubscriptionId);
     console.log(`[club-billing-stripe] ${orgId}: plan Free, subscription ${billing.stripeSubscriptionId} cancelled`);
     return { action: "cancelled" };
   }
@@ -297,36 +366,70 @@ export async function syncPlanToStripe(orgId: string): Promise<PlanSyncResult> {
 }
 
 /**
- * The club was billed again after Free with its free month used up
- * (`setClubPlan`'s `billedAgain: "grace"`): one DM to the billing contact
- * asking for a card before the fresh grace ends. Claimed once per grace end.
+ * The platform owner suspended the club (plan 4.2, decision 7): its live
+ * subscription is cancelled at once, no proration and NO automatic refund
+ * (a refund is the owner's call, in Stripe), and open sessions expire.
+ * The billing state is left as it is; the club is off by approval.
+ * Called by `decideClub` after the suspension has committed.
  */
-export async function notifyPlanBilledAgain(orgId: string): Promise<string> {
-  if (!isBillingEnabled()) return "flag-off";
+export async function cancelSubscriptionOnSuspend(orgId: string): Promise<{ action: "cancelled" | "no-subscription" | "not-set-up" }> {
+  const billing = await loadBilling(orgId);
+  if (!billing) return { action: "no-subscription" };
+  const stripe = getBillingStripe();
+  if (!stripe) return { action: billing.stripeSubscriptionId ? "not-set-up" : "no-subscription" };
+  if (billing.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
+  if (!billing.stripeSubscriptionId || !isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) return { action: "no-subscription" };
+  await stripe.cancelSubscription(billing.stripeSubscriptionId);
+  await markCancelled(orgId, billing.stripeSubscriptionId);
+  console.log(`[club-billing-stripe] ${orgId}: suspended, subscription ${billing.stripeSubscriptionId} cancelled`);
+  return { action: "cancelled" };
+}
+
+// ── DMs written as pending by a state change ────────────────────────────
+
+/**
+ * Send the club's PENDING billing notices ("resumed", "plan-billed"): rows
+ * a state change wrote in its own transaction. Each goes once
+ * (`queueBillingDm` claims it); one whose send fails stays pending for the
+ * next call. Called after the webhook's sync and after a plan change.
+ */
+export async function flushPendingBillingNotices(orgId: string): Promise<number> {
+  if (!isBillingEnabled()) return 0;
+  const pending = await loadPendingBillingNotices(orgId);
+  if (pending.length === 0) return 0;
   const org = await loadOrg(orgId);
   const billing = await loadBilling(orgId);
-  if (!org || !billing?.graceEndsAt || org.billingStatus !== "grace") return "not-in-grace";
   const contact = await loadBillingContactUserId(orgId);
-  if (!contact) {
-    console.warn(`[club-billing-stripe] ${orgId}: billed again but there is no billing contact to ask for a card`);
-    return "no-contact";
+  if (!org || !contact) {
+    console.warn(`[club-billing-stripe] ${orgId}: ${pending.length} pending billing DM(s), no billing contact to send them to`);
+    return 0;
   }
-  const link = await billingLink(contact, orgId);
-  const graceEndsAt = billing.graceEndsAt;
-  return queueBillingDm({
-    orgId,
-    kind: "plan-billed",
-    cycleKey: graceEndsAt.toISOString(),
-    userId: contact,
-    text: ({ name }) =>
-      planBilledText(org.language, {
-        name,
-        club: org.name,
-        pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
-        graceEndsAt,
-        link,
-      }),
-  });
+  let sent = 0;
+  for (const p of pending) {
+    if (p.kind === "resumed") {
+      const r = await queueBillingDm({ orgId, kind: "resumed", cycleKey: p.cycleKey, userId: contact, text: () => resumedText(org.language, { club: org.name }) });
+      if (r === "queued") sent++;
+    } else if (p.kind === "plan-billed" && billing?.graceEndsAt) {
+      const graceEndsAt = billing.graceEndsAt;
+      const link = await billingLink(contact, orgId);
+      const r = await queueBillingDm({
+        orgId,
+        kind: "plan-billed",
+        cycleKey: p.cycleKey,
+        userId: contact,
+        text: ({ name }) =>
+          planBilledText(org.language, {
+            name,
+            club: org.name,
+            pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
+            graceEndsAt,
+            link,
+          }),
+      });
+      if (r === "queued") sent++;
+    }
+  }
+  return sent;
 }
 
 function billingLink(userId: string, orgId: string): Promise<string> {
@@ -387,6 +490,12 @@ function invoiceSubscriptionId(inv: Record<string, unknown>): string | null {
 /** What one event does. Exported for the unit tests; the route goes
  *  through `processBillingWebhook`. */
 export async function handleBillingEvent(event: Stripe.Event, now: Date = new Date()): Promise<BillingEventResult> {
+  // A Connect (connected account) event never belongs to the club fee,
+  // which lives on MatchTime's own account.
+  if ((event as { account?: string | null }).account) {
+    console.warn(`[billing-webhook] ${event.type} ${event.id} from connected account ${(event as { account?: string }).account}: ignored`);
+    return ignored("connect-event");
+  }
   const obj = event.data.object as unknown as Record<string, unknown>;
   switch (event.type) {
     case "checkout.session.completed": {
@@ -409,7 +518,7 @@ export async function handleBillingEvent(event: Stripe.Event, now: Date = new Da
     case "invoice.payment_action_required": {
       const subId = invoiceSubscriptionId(obj);
       if (!subId) return ignored("no-subscription");
-      return onSubscriptionChanged(subId, now, { invoiceId: idOf(obj.id), billingReason: (obj.billing_reason as string) ?? null });
+      return onSubscriptionChanged(subId, now);
     }
     case "payment_method.detached": {
       const pmId = idOf(obj.id);
@@ -429,50 +538,92 @@ export async function handleBillingEvent(event: Stripe.Event, now: Date = new Da
 }
 
 interface SyncOutcome {
-  action: "synced" | "duplicate-cancelled" | "stale-subscription" | "customer-mismatch" | "no-billing";
+  action: "synced" | "duplicate-cancelled" | "unwanted-cancelled" | "stale-subscription" | "customer-mismatch" | "no-billing";
   orgId: string;
   /** This sync adopted a NEW subscription for the club (a fresh Checkout). */
   adopted: boolean;
   resumed: boolean;
 }
 
+const outcome = (action: SyncOutcome["action"], orgId: string): SyncOutcome => ({ action, orgId, adopted: false, resumed: false });
+
+/**
+ * Cancel a subscription MatchTime must not keep (a duplicate, or one for a
+ * club that is not billed) at once with no proration, refund what it took,
+ * and record it on /admin/health. Never a DM.
+ */
+async function cancelAndRefund(
+  orgId: string,
+  sub: BillingSubscription,
+  why: "duplicate" | "unwanted",
+  billing: BillingRow | null,
+): Promise<SyncOutcome> {
+  const stripe = requireStripe();
+  await stripe.cancelSubscription(sub.id);
+  const refunded = await stripe.refundPaidInvoices(sub.id);
+  if (billing?.stripeSubscriptionId === sub.id) await markCancelled(orgId, sub.id);
+  const money = refunded > 0 ? `, ${moneyLabel(refunded)} refunded` : ", nothing had been charged";
+  const title =
+    why === "duplicate"
+      ? `Second club fee subscription cancelled${money}`
+      : `Club fee subscription for a club that is not billed cancelled${money}`;
+  await recordOpsEvent({
+    orgId,
+    kind: BILLING_ALERT_KIND,
+    severity: "warning",
+    title,
+    detail: `Subscription ${sub.id} (${sub.status}) on customer ${sub.customerId ?? "?"} was cancelled at once by the billing webhook${
+      why === "duplicate" ? `; the club keeps ${billing?.stripeSubscriptionId}` : ""
+    }.`,
+    dedupeKey: `${why}:${sub.id}`,
+  });
+  console.error(`[billing-webhook] ${orgId}: ${title} (${sub.id})`);
+  return outcome(why === "duplicate" ? "duplicate-cancelled" : "unwanted-cancelled", orgId);
+}
+
 /**
  * Bring the club's `ClubBilling` in line with a FRESH read of one of its
  * subscriptions, then move the billing state through the one writer.
  *
+ *   - a live subscription for a club that is on Free, exempt or gone is
+ *     cancelled and refunded, never adopted;
  *   - the club's current subscription (or the first one, or a new one
- *     after the old one ended) is mirrored and drives the state;
+ *     after the old one ended) is mirrored and drives the state; it is
+ *     ADOPTED with a compare-and-set, so two racing deliveries cannot both
+ *     adopt different subscriptions;
  *   - a DIFFERENT live subscription while the club already has one is a
- *     double subscription: it is cancelled at once and never kept;
- *   - an old, ended subscription changes nothing.
+ *     double subscription: cancelled and refunded;
+ *   - an old, ended subscription changes nothing;
+ *   - a live subscription on a price that is not the club's plan's is
+ *     corrected (no proration);
+ *   - the card holder is never read from subscription metadata: it is the
+ *     person who completed the Checkout (`holderUserId`), else, when the
+ *     subscription's card changed (the Portal), the billing contact.
  */
 async function syncSubscription(
   orgId: string,
   sub: BillingSubscription,
   now: Date,
-  opts: { billingCountry?: string | null } = {},
+  opts: { billingCountry?: string | null; holderUserId?: string | null } = {},
+  attempt = 0,
 ): Promise<SyncOutcome> {
   const org = await loadOrg(orgId);
   const billing = await loadBilling(orgId);
-  if (!org || !billing) return { action: "no-billing", orgId, adopted: false, resumed: false };
+  const live = isLiveSubscriptionStatus(sub.status);
+  if (live && (!org || org.billingPlan === "free" || org.billingStatus === "exempt")) {
+    return cancelAndRefund(orgId, sub, "unwanted", billing);
+  }
+  if (!org || !billing) return outcome("no-billing", orgId);
   if (billing.stripeCustomerId && sub.customerId && billing.stripeCustomerId !== sub.customerId) {
     console.error(`[billing-webhook] ${orgId}: subscription ${sub.id} is on ${sub.customerId}, not the club's ${billing.stripeCustomerId}; ignored`);
-    return { action: "customer-mismatch", orgId, adopted: false, resumed: false };
+    return outcome("customer-mismatch", orgId);
   }
 
   const current = billing.stripeSubscriptionId;
-  let adopted = current === null;
+  const adopting = current !== sub.id;
   if (current !== null && current !== sub.id) {
-    if (!isLiveSubscriptionStatus(sub.status)) return { action: "stale-subscription", orgId, adopted: false, resumed: false };
-    if (isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) {
-      const stripe = getBillingStripe();
-      if (stripe) await stripe.cancelSubscription(sub.id);
-      console.error(
-        `[billing-webhook] ${orgId}: DOUBLE SUBSCRIPTION ${sub.id} beside live ${current}; ${sub.id} cancelled. Check Stripe for a payment to refund.`,
-      );
-      return { action: "duplicate-cancelled", orgId, adopted: false, resumed: false };
-    }
-    adopted = true; // the old one ended; this is the club's new subscription
+    if (!live) return outcome("stale-subscription", orgId);
+    if (isLiveSubscriptionStatus(billing.stripeSubscriptionStatus)) return cancelAndRefund(orgId, sub, "duplicate", billing);
   }
 
   const billingCountry = opts.billingCountry !== undefined ? opts.billingCountry : billing.billingCountry;
@@ -485,17 +636,34 @@ async function syncSubscription(
   };
   if (!billing.stripeCustomerId && sub.customerId) data.stripeCustomerId = sub.customerId;
   if (opts.billingCountry !== undefined) data.billingCountry = opts.billingCountry;
-  if (sub.card && isLiveSubscriptionStatus(sub.status)) {
+  if (sub.status === "canceled" && !adopting) {
+    // The subscription ended: no card pays for the club any more.
+    Object.assign(data, { stripePaymentMethodId: null, cardBrand: null, cardLast4: null, cardHolderUserId: null });
+  } else if (sub.card && live) {
     Object.assign(data, cardFields(sub.card, billingCountry));
-    // Who added the card: the payer named on a subscription this sync
-    // adopts (a fresh Checkout), or when no card was on file at all. A
-    // replacement sets the holder itself (onReplaceCard).
-    const nothingOnFile = billing.cardHolderUserId === null && billing.stripePaymentMethodId === null;
-    if (sub.metadata.payerUserId && (adopted || nothingOnFile)) data.cardHolderUserId = sub.metadata.payerUserId;
+    if (opts.holderUserId) data.cardHolderUserId = opts.holderUserId;
+    else if (sub.card.paymentMethodId !== billing.stripePaymentMethodId) data.cardHolderUserId = await loadBillingContactUserId(orgId);
   } else if (opts.billingCountry !== undefined && billing.cardCountry !== null) {
     data.vatCountryCheck = vatCountryNeedsCheck(billingCountry, billing.cardCountry);
   }
-  await db.clubBilling.updateMany({ where: { orgId }, data });
+
+  // ADOPT WITH A COMPARE-AND-SET on the subscription we read.
+  const { count } = await db.clubBilling.updateMany({ where: { orgId, stripeSubscriptionId: current }, data });
+  if (count !== 1) {
+    if (attempt === 0) return syncSubscription(orgId, sub, now, opts, 1);
+    throw new Error(`[billing-webhook] ${orgId}: subscription ${sub.id} lost the adoption race twice; Stripe will retry`);
+  }
+
+  // The club's current plan decides the price, whatever the session said.
+  if (live && sub.itemId) {
+    const stripe = getBillingStripe();
+    const target = stripe ? await priceIdFor(stripe, org.billingPlan, org.billingPricePence) : null;
+    if (stripe && target && target !== sub.priceId) {
+      await stripe.updateSubscriptionPrice({ subscriptionId: sub.id, itemId: sub.itemId, priceId: target });
+      await db.clubBilling.updateMany({ where: { orgId, stripeSubscriptionId: sub.id }, data: { stripePriceId: target } });
+      console.log(`[billing-webhook] ${orgId}: subscription ${sub.id} price ${sub.priceId} corrected to the plan's ${target}`);
+    }
+  }
 
   const ev = subscriptionStateEvent(
     { status: sub.status, cancelAtPeriodEnd: sub.cancelAtPeriodEnd || billing.cancelAtPeriodEnd },
@@ -503,10 +671,13 @@ async function syncSubscription(
   );
   let resumed = false;
   if (ev) {
-    const r = await setBillingState(orgId, ev, now);
+    // A resume by a recovered payment leaves a PENDING "resumed" DM in the
+    // same transaction; a fresh Checkout's own "card added" DM says it.
+    const noticeOnResume = !adopting && isBillingEnabled() ? ("resumed" as const) : undefined;
+    const r = await setBillingState(orgId, ev, now, { noticeOnResume });
     resumed = r.ok && r.resumed;
   }
-  return { action: "synced", orgId, adopted, resumed };
+  return { action: "synced", orgId, adopted: adopting, resumed };
 }
 
 function cardFields(card: CardDetails, billingCountry: string | null): Record<string, unknown> {
@@ -535,14 +706,20 @@ async function onSubscriptionCheckout(session: Stripe.Checkout.Session, orgId: s
   const subId = idOf(session.subscription);
   if (!subId) return ignored("no-subscription", orgId);
   if (!(await customerMatches(orgId, idOf(session.customer)))) return ignored("customer-mismatch", orgId);
-  const sub = await requireStripe().retrieveSubscription(subId);
+  const stripe = requireStripe();
+  const sub = await stripe.retrieveSubscription(subId);
   if (!isClubFeeMetadata(sub.metadata) || sub.metadata.orgId !== orgId) return ignored("not-club-fee", orgId);
+  const payer = (session.metadata ?? {}).payerUserId ?? null;
   const billingCountry = session.customer_details?.address?.country ?? null;
-  const out = await syncSubscription(orgId, sub, now, { billingCountry });
+  const out = await syncSubscription(orgId, sub, now, { billingCountry, holderUserId: payer });
   if (out.action !== "synced") return { action: out.action, orgId };
 
+  // The payer's email onto the club's Customer, so receipts reach them
+  // (name and address come with Checkout's customer_update).
+  const email = session.customer_details?.email ?? null;
+  if (email && sub.customerId) await stripe.updateCustomer({ customerId: sub.customerId, email });
+
   // "Card added", once per subscription, to whoever added the card.
-  const payer = (session.metadata ?? {}).payerUserId;
   if (payer && isBillingEnabled() && (sub.status === "trialing" || sub.status === "active")) {
     const org = await loadOrg(orgId);
     const after = await loadBilling(orgId);
@@ -600,8 +777,13 @@ async function onReplaceCard(session: Stripe.Checkout.Session, orgId: string): P
     email: session.customer_details?.email ?? null,
     name: session.customer_details?.name ?? null,
   });
-  if (org.billingStatus === "past_due" || billing.stripeSubscriptionStatus === "past_due" || billing.stripeSubscriptionStatus === "unpaid") {
-    // Retry the open invoice on the new card at once (4.5 point 4).
+  // The new payer's billing address on the (reset) Customer, for invoices.
+  const address = session.customer_details?.address;
+  if (address?.country) {
+    await stripe.updateCustomer({ customerId: billing.stripeCustomerId, address: address as Stripe.AddressParam });
+  }
+  if (org.billingStatus === "past_due" || isUnpaidSubscriptionStatus(billing.stripeSubscriptionStatus)) {
+    // "Update card and pay": retry the open invoice on the new card at once.
     await stripe.payOpenInvoices(billing.stripeSubscriptionId);
   }
   const billingCountry = session.customer_details?.address?.country ?? billing.billingCountry;
@@ -632,11 +814,7 @@ async function onReplaceCard(session: Stripe.Checkout.Session, orgId: string): P
   return { action: "card-replaced", orgId };
 }
 
-async function onSubscriptionChanged(
-  subId: string,
-  now: Date,
-  invoice?: { invoiceId: string | null; billingReason: string | null },
-): Promise<BillingEventResult> {
+async function onSubscriptionChanged(subId: string, now: Date): Promise<BillingEventResult> {
   // The event's own copy may be stale; Stripe's current one decides, its
   // metadata included (purpose "club-fee" and the orgId).
   const sub = await requireStripe().retrieveSubscription(subId);
@@ -644,22 +822,8 @@ async function onSubscriptionChanged(
   const orgId = sub.metadata.orgId;
   const out = await syncSubscription(orgId, sub, now);
   if (out.action !== "synced") return { action: out.action, orgId };
-
-  // Back on after a recovered payment (not a fresh Checkout, whose own
-  // "card added" DM says so): one "resumed" DM to the billing contact.
-  if (out.resumed && !out.adopted && isBillingEnabled() && invoice?.billingReason !== "subscription_create") {
-    const org = await loadOrg(orgId);
-    const contact = await loadBillingContactUserId(orgId);
-    const after = await loadBilling(orgId);
-    if (org && contact) {
-      await queueBillingDm({
-        orgId,
-        kind: "resumed",
-        cycleKey: (after?.resumedAt ?? now).toISOString(),
-        userId: contact,
-        text: () => resumedText(org.language, { club: org.name }),
-      });
-    }
-  }
+  // Any DM a state change left pending ("resumed"), including one a
+  // previous delivery failed to send.
+  await flushPendingBillingNotices(orgId);
   return { action: "synced", orgId };
 }
