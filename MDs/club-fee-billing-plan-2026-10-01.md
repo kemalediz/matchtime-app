@@ -3,7 +3,13 @@
 Plan, 2026-10-01. Design only: no code, schema, Stripe setting or production row was
 changed to write it. Direction (the outline) accepted by Kemal on 2026-10-01. Every
 claim about the current code cites the file it was read from, on `origin/main` at
-`cd38c51`.
+`cd38c51` (sections 7.1, 7.2 and 14 were checked again at `dca3057`).
+
+Revised 2026-10-01 (second pass): Kemal decided that every club fee message explains
+how to split the fee among the players, with a worked example from the club's own game,
+sent to all the club's admins and to the money collector (sections 7.1 and 7.2). Adding
+the club fee to card match fees is written up as an optional slice B7 (section 14),
+which needs Kemal's yes.
 
 ---
 
@@ -36,9 +42,19 @@ on MatchTime's own Stripe account**. It never touches Stripe Connect or the coll
 accounts that players pay their match fees into. It has **its own webhook endpoint and
 its own signing secret**. We never see or store card numbers.
 
-**Who gets messaged:** only the organiser (the club's OWNER), by the existing platform
-DM channel, in English or Turkish. **No DMs to you.** Billing numbers sit on
-`/admin/clubs`.
+**How the club covers it:** every club fee message carries a **club fee tip** worked out
+from the club's own game, for example: "your weekly 5-a-side is 10 players and about 4
+games a month, so £9.99 works out at about *25p a player per game*. If your game costs
+£8 each, charge *£8.25* and the club fee is covered." It is in the "you're live" DM, the
+day 21 notice and the billing card on the settings page (section 7.2).
+
+**Who gets messaged:** card and payment DMs (they carry a signed-in link to add or change
+the card) go **only to the organiser** (the club's OWNER), by the platform DM channel.
+The club fee tip goes to **all the club's admins** through the club's own admin channel
+("Admin messages go to": one person, the admin WhatsApp group, or each admin), **and to
+the money collector**, who is the one who actually adds the share to the match fee, unless
+the admin channel already reaches them. English or Turkish. **No DMs to you.** Billing
+numbers sit on `/admin/clubs`.
 
 **VAT:** Cressoft is VAT registered and **£9.99 includes VAT** (about £8.33 to
 Cressoft, £1.66 VAT). The Stripe price is tax inclusive with a fixed 20% UK VAT rate, and
@@ -47,14 +63,21 @@ at first**, because selling to consumers abroad (Turkey, the EU) brings foreign 
 registration. After VAT, Stripe and about £3 of AI, a club leaves about **£4.90 a
 month** (section 5.4).
 
-**Cost to build:** six PRs. No prompt changes, so **no paid AI test runs**. Stripe is
-tested in test mode and with signed fixture events; **live mode is touched only at
-rollout, by you, in the dashboard**.
+**Cost to build:** six PRs (B1 to B6), plus a seventh (B7) only if you say yes to
+section 14. No prompt changes, so **no paid AI test runs**. Stripe is tested in test mode
+and with signed fixture events; **live mode is touched only at rollout, by you, in the
+dashboard**.
+
+**Optional, needs your yes (B7):** a per-club setting "Add the club fee to match fees"
+for clubs that take card or bank payments through MatchTime. Each such payment carries
+the player's share, taken with MatchTime's existing 1% platform fee, until the month's fee is covered; at month
+end the owner's card pays only the shortfall (cash payers), or nothing. Section 14.
 
 **Switch:** `BILLING_ENABLED`, off by default. Off means nobody is billed or paused, and
 any paused club comes straight back. It starts with **new clubs only**.
 
-**Decisions I need from you:** section 14 (thirteen of them, each with a recommendation).
+**Decisions I need from you:** section 15 (seventeen of them, each with a
+recommendation).
 
 ---
 
@@ -71,10 +94,17 @@ any paused club comes straight back. It starts with **new clubs only**.
 | Platform DM channel | `src/lib/platform-jobs.ts` (`queuePlatformDm`, `PLATFORM_DM_PURPOSES` = otp, connect-reply, organiser-decision), Pi poller | Goes out whatever the club's switches say (it does not depend on `due-posts`). Recipient must be a known MatchTime user. Pi pacing of one DM a minute applies. |
 | Owner DMs | `queueOwnerDm` in `src/lib/owner-dm.ts` | Approvals and acks only; a source guard (`__tests__/platform-jobs-source-guard.test.ts`) forbids anything else from using it. **Billing will not use it.** |
 | Signed-in links | `buildAdminLink` in `src/lib/admin-link.ts` | Short sign-in magic link to one admin page of one club, TTL `MAGIC_LINK_TTL.actionNudge` (48 hours). |
+| Admin channel (slice 2a) | `sendAdminNotice` in `src/lib/admin-channel.ts`; pure rules in `admin-channel-rules.ts` (`resolveAdminNoticeTargets`) | A club's "Admin messages go to": `one-person` (the chosen admin, NULL = owner; the default for new clubs), `admin-group` (one post in the linked admin WhatsApp group, falling back to the owner by DM at emit time if the Pi cannot send there), or `each-admin` (every OWNER and ADMIN with a phone; Sutton FC). Queued as `BotJob`s that the club's next `due-posts` poll hands the Pi, so a muted club sends nothing until unmuted. A DM carries the reader's own signed-in link; a group post carries the plain URL. Returns `{ channel, queued }`, not who was reached. Holds a notice queued 22:00 to 07:59 until 08:00 by default. |
+| Money collector | `Organisation.paymentHolderId` (`prisma/schema.prisma` ~202); set by `setPaymentHolder` in `src/app/actions/payments.ts` (~137) | Often not the owner and not an admin (Sutton: Kemal owns, Elvin collects). Self-join does not set it (`self-join-club.ts`), so a new club usually has none until set in Settings. Collector DMs today are plain `BotJob` `dm` rows (e.g. `payment-flow.ts` ~71). |
+| Admin group members | `detectAdminGroupCandidate` in `src/lib/admin-group-link.ts` (~115); `api/whatsapp/sync-participants` | The participant list of an admin group is read only once, when MatchTime is added, to decide whether it is an admin group; it is **not stored** against the club. `sync-participants` only matches the club's own group (`whatsappGroupId`). So the server **cannot tell who is in a club's admin group**. |
+| Players per game | `Sport.playersPerTeam` (`schema.prisma` ~547), seeded from `SPORT_PRESETS` in `src/lib/sport-presets.ts` (`football-5aside` 5, `-7aside` 7, `-8aside` 8, `-9aside` 9, `-11aside` 11, futsal 5 ...); each `Activity` has a `sportId`, `dayOfWeek`, `isActive` | Self-join creates the club's one weekly activity with the chosen players per side (`self-join-club.ts` ~114 to 131). |
+| Match fee | `Activity.feePerPlayer` and `feeSplitTotal` (~691), `Match.feePerPlayer` (~800) | The BASE per-player fee (before card or bank uplift). Null means no default; the collector is asked each week. `feeSplitTotal` means the pitch cost is split among those who played. |
+| Match fee pricing | `totalForMethod`, `platformFeePence`, `PLATFORM_FEE_RATE` in `src/lib/payments.ts` (~80 to 95); `payByMethod` in `src/app/actions/payments.ts` (~185 to 230); `createCheckoutSession` in `src/lib/stripe.ts` (~118 to 170); `pay-options.tsx` | The player's total is grossed up so the collector nets exactly the base: `G = (base x qty + stripeFixed + platform) / (1 - stripePct)`, rounded up to the penny. MatchTime's 1% is `application_fee_amount` on a **direct charge** on the club's connected account (`Organisation.stripeConnectAccountId`, one per club; `resetCollectorConnect` clears it). Cash ("direct") carries no fee. The Connect webhook ignores refunds (`api/stripe/webhook/route.ts` ~63); refunds are not handled in code today. |
 | Stripe today | `src/lib/stripe.ts`, `src/app/api/stripe/webhook/route.ts`, `applyCheckoutEvent` in `src/lib/payment-flow.ts` | Connect Express accounts for collectors, **direct charges** on the connected account, 1% `application_fee_amount`. The webhook verifies with the single `STRIPE_WEBHOOK_SECRET` (the **Connected accounts** endpoint). `applyCheckoutEvent` ignores a session without `matchId` and `userId` metadata (~121). |
 | Public route | `src/lib/public-paths.ts` ~49 | Everything under `/api/stripe` is already public (signature is the auth). |
 | Removal from a live group | `handleGroupLeaveForSelfRemoval` in `whatsapp-bot/src/bot-added.ts` (~290) | The Pi tells the server only when MatchTime is removed from a **silent** group. Removal from a live club's group is not reported today. |
-| Price on the site | `src/components/landing/landing-page.tsx` ~553, ~608, ~640; `src/app/help/admin/page.tsx` ~10, ~43 | "£9.99 a month per WhatsApp group ... first month is free", the 50p split advice, and "remove MatchTime from the group any time to stop". |
+| Price on the site | `src/components/landing/landing-page.tsx` ~553, ~608, ~640; `src/app/help/admin/page.tsx` ~10, ~43 | "£9.99 a month per WhatsApp group ... first month is free", the split advice ("With 20 players, that works out at about 50p a player", landing ~608, help ~49), and "remove MatchTime from the group any time to stop". |
+| Copy tests that bind this plan | `src/app/__tests__/public-copy.test.ts`; `src/lib/__tests__/self-join-copy.test.ts` (~100); `copy-golden.test.ts` (R185) | Public pages: no fee talk, "about 50p a player" required and "25p" forbidden on the landing page, and **never claims MatchTime collects the club fee** (`/(collects?\|charges?) the (club\|monthly) fee (for you\|automatically)\|automatically (collect\|split\|charge)/`). The "you're live" DM `sj_dm_approved` must **end with** "Your first month is free." and contain **no amount** (no £, no decimals). |
 | Crons | `vercel.json` | Seven crons; none for billing. |
 
 One club has exactly one group (`Organisation.whatsappGroupId`), so "per group" and "per
@@ -89,7 +119,9 @@ club" are the same thing here.
   Connect, no `application_fee_amount`. The money is MatchTime revenue, like the 1%
   platform fee already is.
 - **Match fees:** unchanged. Direct charges on each collector's connected account, the
-  Connect webhook, `applyCheckoutEvent`.
+  Connect webhook, `applyCheckoutEvent`. (Only the optional slice B7, section 14, would
+  add a club fee share to the match fee's `application_fee_amount`; the subscription
+  itself stays on the platform account either way.)
 - **Two webhooks, two secrets, two routes:**
   - existing `/api/stripe/webhook`, **Connected accounts** scope, `STRIPE_WEBHOOK_SECRET`;
   - new `/api/stripe/billing-webhook`, **Your account** (platform) scope,
@@ -191,7 +223,8 @@ model BillingNotice {
   id            String   @id @default(cuid())
   orgId         String
   kind          String   // "trial-21" | "trial-28" | "trial-ended" | "paused" | "card-added" | "payment-failed" | "resumed"
-  cycleKey      String   // e.g. trialEndsAt ISO date, or the invoice id
+                         // | "fee-tip" (admin channel) | "fee-tip-collector" (the money collector, section 7.2)
+  cycleKey      String   // e.g. trialEndsAt ISO date, or the invoice id; for "fee-tip-collector", the collector's user id
   platformJobId String?
   createdAt     DateTime @default(now())
   @@unique([orgId, kind, cycleKey])
@@ -207,6 +240,10 @@ No schema change. One new purpose, `"billing"`, added to `PLATFORM_DM_PURPOSES` 
 `platform-jobs.ts`, and `src/lib/club-billing.ts` added to the source guard's allowlist.
 The organiser is a MatchTime user, so the existing recipient rule (rule 12) passes.
 
+The club fee tip does **not** use the platform channel: it goes through `sendAdminNotice`
+and, for the collector, a plain `dm` `BotJob`, like every other message a club's
+organisers get (section 7.1).
+
 ---
 
 ## 4. States and transitions
@@ -219,7 +256,7 @@ no card). Reminders go out at or after **10:00 London** on their day.
 | Day | Instant | Condition | Action |
 |---|---|---|---|
 | 0 | `approvedAt` | `BILLING_ENABLED`, plan not free, no `ClubBilling` row yet | `trial`; create `ClubBilling` |
-| 21 | `trialEndsAt - 9d` | still `trial` | DM "trial-21" |
+| 21 | `trialEndsAt - 9d` | still `trial` | DM "trial-21" to the owner; club fee tip to the admin channel and the collector (7.2) |
 | 28 | `trialEndsAt - 2d` | still `trial` | DM "trial-28" |
 | 30 | `trialEndsAt` | still `trial` | to `grace`; DM "trial-ended"; banner |
 | 37 | `graceEndsAt` | still `grace` | to `paused` (no-card); DM "paused" |
@@ -494,14 +531,15 @@ Each run loads clubs in `trial`, `grace` or `past_due` and, for each, asks the p
 
 | Kind | Due when | Also |
 |---|---|---|
-| `trial-21` | now at or after day 21 at 10:00 London, still `trial` | skipped if `trial-28` is already due (a late cron never sends two in a row) |
+| `trial-21` | now at or after day 21 at 10:00 London, still `trial` | skipped if `trial-28` is already due (a late cron never sends two in a row); also queues the club fee tip (`fee-tip`, `fee-tip-collector`), which is **not** skipped with it: if day 21 was missed, the tip goes with day 28 |
 | `trial-28` | day 28 at 10:00 London, still `trial` | |
 | `trial-ended` | at or after `trialEndsAt`, still `trial` | moves to `grace` first; the DM waits for 10:00 if it is night |
 | `paused` | at or after `graceEndsAt`, still `grace` or `past_due` | moves to `paused`; the DM waits for 10:00 |
 
 The state change happens on time; only the DM waits for daytime (10:00 to 20:00 London),
 using `sendAfter` on the `PlatformJob`. Every DM is claimed first in `BillingNotice`
-(`orgId, kind, cycleKey`), then queued with `queuePlatformDm({ purpose: "billing" })`.
+(`orgId, kind, cycleKey`), then queued with `queuePlatformDm({ purpose: "billing" })`;
+the tip is claimed the same way and queued with `sendClubFeeTip` (section 7.2).
 Hourly runs make a missed run harmless.
 
 Why a Vercel cron and not the Pi scheduler: the Pi scheduler is per group and is exactly
@@ -510,21 +548,158 @@ The platform channel is the one sender that works whatever a club's switches say
 
 ---
 
-## 7. DM copy (organiser only, English and Turkish)
+## 7. Messages: who gets what, the club fee tip, and the copy (English and Turkish)
+
+### 7.1 Who gets which message
+
+| Message | Recipient | Channel | Why |
+|---|---|---|---|
+| "You're live" (`sj_dm_approved`), with a short tip | the organiser who asked to join | platform DM (`organiser-decision`, as today in `club-approval.ts` ~509) | It is the first message after approval; the admin channel may not be set up yet. |
+| Day 21, 28, 30, paused, card added, payment failed, resumed | the OWNER only | platform DM (`purpose: "billing"`) | Each carries a **signed-in link to add or change the card**, and only the OWNER can (decision 4). A personal sign-in link must never be posted in a group. |
+| Club fee tip, day 21 (sent once per free month) | **all admins**, through the admin channel | `sendAdminNotice` (`BotJob`s, next `due-posts` poll) | So every admin knows how to split the fee, whoever runs the money. |
+| Club fee tip for the collector | the **money collector** (`paymentHolderId`), unless the admin channel already reached them | one `dm` `BotJob` | The collector is the one who adds the share to the match fee and may be neither an admin nor in the admin group. |
+| Billing card on `/admin/settings` | every OWNER and ADMIN who opens Settings | web | Always there to look up. |
+
+The owner's day 21 card DM no longer carries the sharing sentence: the tip arrives as its
+own message through the admin channel, which reaches the owner in every mode except
+"one person" set to someone else, and that is the club's own choice of who reads admin
+messages.
+
+Because the tip goes through `due-posts`, a muted club (`whatsappBotEnabled` off) gets it
+when unmuted, like every other admin notice, and a paused club does not get it at all
+(a paused club has no `due-posts` poll; the tip is not useful then anyway). Day 21 is
+always in the free month, when the club is serving.
+
+### 7.2 The club fee tip
+
+**The numbers, per club** (a pure `clubFeeTip(input)` in `club-billing-rules.ts`, no
+database):
+
+- **Price:** £9.99, or the Custom price (`billingPricePence`). No tip for Free or
+  `exempt` clubs (nothing to cover).
+- **Players per game** = 2 x `Sport.playersPerTeam` of the club's weekly activity (a
+  5-a-side is 10, a 7-a-side 14, an 8-a-side 16, a 9-a-side 18).
+- **Games per month** = 4 x the number of the club's distinct weekly game slots (active
+  `Activity` rows, one per weekday and time; a format-switch pair on the same evening
+  counts once, as `generate-matches` already dedupes by kickoff within 90 minutes, `match-slot.ts`). One weekly game is 4; no active
+  activity also reads as 4. Recommend counting every month as four weeks rather than
+  counting the real calendar (a month has 4.33 weeks on average), so the share is stable
+  month to month and a cancelled week does not leave a gap (decision 15).
+- **Share per player per game** = price / (sum of players over the month's games),
+  **rounded up to the next 5p** (decision 14). With one weekly game that is price /
+  games / players. Two different weekly games (a Tuesday 5-a-side and a Thursday
+  7-a-side) are summed: 4 x 10 + 4 x 14 = 96 player-games.
+- **Example match fee:** the activity's own `feePerPlayer` when set (the base fee, before
+  any card uplift), else the latest `Match.feePerPlayer` for that activity, else a neutral
+  **£8** example. A club that splits the pitch cost (`feeSplitTotal`) gets the "add it to
+  each player's share" wording instead of a fee plus share sum.
+
+| Club | Players | Games | Exact share | Rounded up to 5p | Example |
+|---|---|---|---|---|---|
+| 5-a-side, £9.99 | 10 | 4 | 24.98p | **25p** | £8 game, charge **£8.25** (covers £10.00) |
+| 7-a-side, £9.99 | 14 | 4 | 17.84p | **20p** | £7 game, charge **£7.20** (covers £11.20) |
+| 9-a-side, £9.99 | 18 | 4 | 13.88p | **15p** | £6 game, charge **£6.15** (covers £10.80) |
+| 5-a-side, Custom £5 | 10 | 4 | 12.5p | **15p** | £8 game, charge **£8.15** (covers £6.00) |
+
+Rounding up means a full game covers the fee with a little to spare, which absorbs a
+player short or a week off. To the penny, the 7-a-side would be 18p (covers £10.08), with
+almost no slack.
+
+**Sending it** (`sendClubFeeTip(orgId, now)` in `club-billing.ts`):
+
+1. Claim `BillingNotice(orgId, "fee-tip", trialEndsAt)`; then
+   `sendAdminNotice({ orgId, text, nextPath: null })`.
+2. Work out whether that reached the collector. `sendAdminNotice` today returns only
+   `{ channel, queued }`, so it gains a `reachedUserIds` field (the DM recipients it
+   queued for; empty for a group post). The collector already has the tip when:
+   - **one person:** the resolved recipient (the chosen admin, or the owner fallback) is
+     the collector;
+   - **each admin:** the collector is an OWNER or ADMIN with a phone, so was among them;
+   - **admin group:** **this cannot be checked.** The server keeps no member list for a
+     club's admin group: the participants are read once, when MatchTime is added, only
+     to decide whether it is an admin group (`detectAdminGroupCandidate`,
+     `admin-group-link.ts` ~115), and `sync-participants` only syncs the club's own group.
+     So the collector **is DMed anyway**. If they are in the admin group they read it
+     twice, once in the group and once by DM, with different first lines. Accepted:
+     missing the person who sets the fee is worse than one repeat (decision 17).
+3. If not reached, claim `BillingNotice(orgId, "fee-tip-collector", collectorId)` and
+   queue one `dm` `BotJob` to the collector's phone with the collector wording. A
+   collector without a phone is skipped and logged. No sign-in link: the collector may
+   not be an admin, and the tip needs none.
+4. **No collector set:** admins only, and the admin text gains one line asking them to
+   set one in Settings (the link is the reader's own signed-in link by DM, the plain URL
+   in the admin group, as `sendAdminNotice` already does).
+
+**A collector set later.** When `setPaymentHolder` names a new collector for a club that is
+billed (`billingStatus` not `exempt`) and they have not had the tip
+(`BillingNotice(orgId, "fee-tip-collector", userId)` is free), they get it then, once.
+Recommend yes (decision 16); without it a collector chosen after day 21 never hears it.
+
+**Copy.** `{format}` is `sj_per_side_option` ("5-a-side"; in Turkish "5'e 5", "7'ye 7" through
+the existing `perSideTr`). `{share}` is pence written "25p" in both languages (the clubs
+are in London and play in pounds); a share of £1 or more is written "£1.05". `{fee}` and
+`{feePlus}` through `gbp()` in `payments.ts`.
+
+**Admin channel tip** (day 21; one message)
+
+> EN: 💷 *Club fee tip:* your weekly {format} is {players} players and about {games} games a month, so {price} works out at about *{share} a player per game*. If your game costs {fee} each, charge *{feePlus}* and the club fee is covered.
+
+> TR: 💷 *Kulüp ücreti ipucu:* haftalık {format} maçınız {players} oyunculu ve ayda yaklaşık {games} maç oynanıyor, yani {price} oyuncu başına maç başına yaklaşık *{share}* ediyor. Maç ücreti kişi başı {fee} ise *{feePlus}* alın, kulüp ücreti karşılanmış olur.
+
+When the club's own fee is known, the last sentence reads "Your game is {fee} each, so
+charging *{feePlus}* covers it." / "Maç ücretiniz kişi başı {fee}, *{feePlus}* alırsanız
+karşılanır." When the pitch cost is split (`feeSplitTotal`): "When you split the pitch
+cost, add about {share} to each player's share." / "Saha ücretini bölüştürürken her
+oyuncunun payına yaklaşık {share} ekleyin."
+
+No collector set, one extra line:
+
+> EN: Nobody is set as the money collector yet. Choose one in Settings so they get this tip too: {link}
+
+> TR: Henüz para toplayan kişi seçilmedi. Bu ipucunu o da alsın diye Ayarlar'dan birini seçin: {link}
+
+**Collector DM**
+
+> EN: 💷 You collect the match fees for *{club}*, so here's how to cover the {price} club fee: your weekly {format} is {players} players and about {games} games a month, which works out at about *{share} a player per game*. If your game costs {fee} each, charge *{feePlus}* and the club fee is covered.
+
+> TR: 💷 *{club}* için maç ücretlerini siz topluyorsunuz, o yüzden {price} kulüp ücretini nasıl karşılayabileceğinizi paylaşıyorum: haftalık {format} maçınız {players} oyunculu ve ayda yaklaşık {games} maç oynanıyor, bu da oyuncu başına maç başına yaklaşık *{share}* ediyor. Maç ücreti kişi başı {fee} ise *{feePlus}* alın, kulüp ücreti karşılanmış olur.
+
+The own-fee and split-cost endings are the same as the admin tip.
+
+**"You're live" DM** (`sj_dm_approved`): one short paragraph **after** "Your first month
+is free.", only when the club is billed (`BILLING_ENABLED` on and the plan is not Free).
+With billing off the DM is exactly today's.
+
+> EN: 💷 *Club fee tip:* after that it's {price} a month for the group. With {players} players and about {games} games a month, that's about *{share} a player per game*, so a {fee} game could be charged at *{feePlus}*.
+
+> TR: 💷 *Kulüp ücreti ipucu:* sonrasında grup için aylık {price}. {players} oyuncu ve ayda yaklaşık {games} maçla bu, oyuncu başına maç başına yaklaşık *{share}* ediyor; {fee} olan bir maç için *{feePlus}* alabilirsiniz.
+
+This breaks two pins in `self-join-copy.test.ts` (~100): the DM must **end with** "Your
+first month is free." and contain **no amount**. Both stay true for the no-tip DM; the
+slice adds a billed variant whose test pins that the tip follows the free-month sentence,
+carries exactly the tip's amounts, and has no dash. The doc comment on `sj_dm_approved`
+("never an amount") and the R185 copy-golden entries are updated with it.
+
+**The website is unchanged.** The landing and help pages keep "With 20 players, that works
+out at about 50p a player" (a month, one game a month each, no match fee). The tip is the
+per game version of the same sum (25p x 4 games x 10 players is £10), and the public copy
+test forbids "25p" on the landing page, which stays right because the tip is never on a
+public page.
+
+### 7.3 Billing DM copy (OWNER only)
 
 All strings go into `src/lib/i18n/strings.en.ts` and `strings.tr.ts` (the parity test
-covers them). `{price}` is "£9.99" or the custom price. `{share}` is the price divided by
-20, rounded to the nearest penny ("about 50p"). Dates through `src/lib/i18n/dates.ts`
-("Fri 31 Oct" and "31 Eki Cum"). `{link}` is `buildAdminLink` to
+covers them). `{price}` is "£9.99" or the custom price. Dates through
+`src/lib/i18n/dates.ts` ("Fri 31 Oct" and "31 Eki Cum"). `{link}` is `buildAdminLink` to
 `/admin/settings#billing` for that organiser and club.
 
 **Day 21**
 
 > EN: Hi {name}, {club}'s free month on MatchTime ends on {date}. To keep MatchTime running in "{group}", add a card here: {link}
-> It's {price} a month for the whole group, and nothing is taken before {date}. You can share it among the players if you like: with 20 players it's about {share} each.
+> It's {price} a month for the whole group, and nothing is taken before {date}. I've also sent a tip on splitting it among the players.
 
 > TR: Merhaba {name}, {club} için MatchTime'daki ücretsiz ayınız {date} tarihinde bitiyor. MatchTime'ın "{group}" grubunda çalışmaya devam etmesi için kartınızı buradan ekleyin: {link}
-> Tüm grup için aylık {price}. {date} tarihinden önce hiçbir ücret alınmaz. İsterseniz bu tutarı oyuncularla paylaşabilirsiniz: 20 oyuncuyla kişi başı yaklaşık {share}.
+> Tüm grup için aylık {price}. {date} tarihinden önce hiçbir ücret alınmaz. Bu tutarı oyuncular arasında nasıl paylaşabileceğinize dair bir ipucu da gönderdim.
 
 **Day 28**
 
@@ -569,7 +744,8 @@ covers them). `{price}` is "£9.99" or the custom price. `{share}` is the price 
 > TR: MatchTime {club} için yeniden açıldı. Birkaç dakika içinde "{group}" grubunda kaldığım yerden devam ediyorum. Ben duraklatılmışken VARIM yazanlar lütfen tekrar yazsın.
 
 House rules checked: no time-of-day greetings, no claims about what other organisers do,
-no mention of AI, no message to the group.
+no mention of AI, nothing in the club's own group (the tip may go to the separate admin
+group, which is the club's own choice), no em or en dashes.
 
 ---
 
@@ -582,15 +758,18 @@ A new section in `src/app/admin/settings/page.tsx`, shown only when the club's
 
 | State | What it shows | Buttons (OWNER only) |
 |---|---|---|
-| `trial` | "Free month until {date}. Then {price} a month for the whole group." Sharing tip. | **Add a card** |
+| `trial` | "Free month until {date}. Then {price} a month for the whole group." Club fee tip. | **Add a card** |
 | `subscribed` | "{price} a month. Next payment {date}. Card {brand} ending {last4}." or "Ends on {date}" after a cancel | **Change card or cancel** |
 | `grace` | "Your free month has ended. MatchTime stops on {date} unless a card is added." | **Add a card** |
 | `past_due` | "Last payment didn't go through. Stripe is retrying. MatchTime stops on {date} if it can't be taken." | **Update card** |
 | `paused` | "MatchTime is paused. Your data is kept. Add a card to switch it back on." | **Add a card** |
 
 ADMINs who are not the OWNER see the status text but not the buttons ("Ask {owner} to
-add a card"). The sharing tip reads "You can split it among the players: with 20, it's
-about {share} each." (advice only, no claim about what other groups do).
+add a card"). **Every state shows the club fee tip** (section 7.2), worked out from the
+club's game and match fee at page load, to OWNER and ADMINs alike, with the admin
+channel wording (no link line). When no money collector is set, the tip is followed by
+"Choose a money collector so they get this tip too" pointing at the payments section of
+the same page. Advice only, no claim about what other groups do.
 
 ### 8.2 Banner
 
@@ -663,6 +842,19 @@ Nothing here DMs anyone.
   address and VAT number collection, for Standard and Custom prices alike; a completed
   session with a non-GB billing country or card country sets `vatCountryCheck` and keeps
   the subscription.
+- Club fee tip (`clubFeeTip`): every row of the 7.2 table; Custom price; two weekly
+  games summed; no activity reads as 4 games; share rounded up to 5p and never below 5p;
+  own fee, latest match fee and the £8 fallback; `feeSplitTotal` wording; no tip for Free
+  or `exempt`.
+- Tip routing (`sendClubFeeTip`): one person is the collector, no extra DM; one person is
+  someone else, collector DMed; each admin with the collector an admin, no extra DM;
+  each admin with a non-admin collector, collector DMed; admin group, collector always
+  DMed; no collector, admins only with the "choose a collector" line; collector without
+  a phone skipped; a second call sends nothing (`BillingNotice`); `setPaymentHolder` on a
+  billed club DMs a new collector once, on an `exempt` club never.
+- `sj_dm_approved`: unchanged with billing off (today's pins, including "ends with the
+  free sentence" and "no amount"); with billing on, the tip follows the free sentence in
+  both languages.
 - i18n: every new string exists in both languages; Turkish dates render.
 
 ### 10.2 Playwright (web, free)
@@ -676,7 +868,8 @@ events to `/api/stripe/billing-webhook`.
   card shows "Next payment".
 - Grace and paused: banner appears; `/api/whatsapp/orgs` (with `WHATSAPP_API_KEY`) drops
   the group and lists it in `silentGroups`; after a fixture `invoice.paid` it is back.
-- A non-OWNER admin sees status, no buttons.
+- A non-OWNER admin sees status, no buttons, and the club fee tip with the club's own
+  numbers (a 7-a-side test club with a £7 fee shows 20p and £7.20).
 - `/admin/clubs`: superadmin sets Free, Custom £5 and Standard; "Start free month";
   non-superadmin gets 404.
 - Cron: hitting `/api/cron/billing` with `x-test-now` at days 21, 28, 30 and 37 queues
@@ -745,18 +938,213 @@ Added to `.env.example` with comments. Trial length (30), grace (7) and reminder
 | # | PR | Depends on | Main files |
 |---|---|---|---|
 | B1 | **Schema, rules and the quiet gate.** Columns, `ClubBilling`, `BillingEvent`, `BillingNotice`, CHECK constraints, `club-billing-rules.ts`, `setBillingState`, `SERVING_CLUB_WHERE`, `isClubOperational` and every gate in 4.3, AI allowance $0, `fixtureSkipReason`, `dm-reply` rail, kill switch, `resumeClub`. No visible change (every club `exempt`). | none | `prisma/`, `club-approval-state.ts`, `club-billing*.ts`, `orgs`, `due-posts`, `analyze` (org lookups only), crons, `ai-budget.ts`, `org-lifecycle.ts`, `dm-reply` |
-| B2 | **Trial and owner controls.** Trial at approval (`decideClub` approve, flag on), `/admin/clubs` billing column, plan control, "Start free month", settings card (read-only states), banner, i18n. | B1 | `club-approval.ts` (one call), `/admin/clubs`, `/admin/settings`, `admin/layout.tsx`, `i18n` |
+| B2 | **Trial, owner controls and the club fee tip.** Trial at approval (`decideClub` approve, flag on), `/admin/clubs` billing column, plan control, "Start free month", settings card (read-only states, with the tip), banner, `clubFeeTip`, the tip paragraph in `sj_dm_approved`, i18n. | B1 | `club-approval.ts` (one call), `club-billing-rules.ts`, `/admin/clubs`, `/admin/settings`, `admin/layout.tsx`, `i18n`, `self-join-copy.test.ts` |
 | B3 | **Stripe.** `stripe-billing.ts`, Add a card (Checkout, with the inclusive Tax Rate, billing address, VAT number collection and the UK check), Change card or cancel (Portal), billing webhook, sync, "card-added" DM, plan changes on live subscriptions, fake adapter. | B1, B2 | `stripe-billing.ts`, `api/stripe/billing-webhook`, settings actions |
-| B4 | **Scheduler.** `/api/cron/billing`, day 21, 28, 30, 37, payment-failure grace, `purpose: "billing"`, `BillingNotice`, all DM copy EN and TR. | B2, B3 | `api/cron/billing`, `vercel.json`, `platform-jobs.ts` (purpose), `i18n` |
+| B4 | **Scheduler and tip routing.** `/api/cron/billing`, day 21, 28, 30, 37, payment-failure grace, `purpose: "billing"`, `BillingNotice`, all DM copy EN and TR; `sendClubFeeTip` (admin channel plus collector, 7.2), `reachedUserIds` on `sendAdminNotice`, the new-collector tip in `setPaymentHolder`. | B2, B3 | `api/cron/billing`, `vercel.json`, `platform-jobs.ts` (purpose), `admin-channel.ts` (return value only), `actions/payments.ts` (one call), `i18n` |
 | B5 | **Removal from a live group.** Pi forwards self-removal for monitored groups too (`handleGroupLeaveForSelfRemoval`), server sets `paused (removed)` and cancels at period end for billed clubs only; **exempt clubs (Sutton) only log**. Re-add during the trial resumes it. Pi deployed with `scripts/deploy-pi.sh`, away from match time. | B3 | `whatsapp-bot/src/bot-added.ts`, `api/whatsapp/bot-removed`, `club-billing.ts` |
 | B6 | **Go-live.** Help page paragraph, `.env.example`, runbook in this file. Then rollout steps 2 to 5. | B1 to B5 | `help/admin/page.tsx` |
+| B7 | **Optional, only with Kemal's yes (section 14):** "Add the club fee to match fees" for clubs taking card or bank payments through Stripe Connect. Ships dark behind its own per-club setting, after B6 has run live for a while. | B6 | `payments.ts`, `actions/payments.ts`, `pay-options.tsx`, `stripe.ts`, `api/stripe/webhook`, `api/stripe/billing-webhook`, `stripe-billing.ts`, `club-billing.ts`, `/admin/settings`, public copy |
 
 B3 and the UI half of B2 can run in parallel after B1 if their files are split as above.
 B1 touches `analyze/route.ts` only at the two org lookups.
 
 ---
 
-## 14. Decisions for Kemal
+## 14. Proposed, needs Kemal's yes: add the club fee to match fees (slice B7)
+
+Not part of B1 to B6. Nothing here is built unless Kemal says yes (decision 13).
+
+### 14.1 What the organiser gets
+
+A per-club setting on `/admin/settings`, OWNER only: **"Add the club fee to match fees"**.
+It can be switched on only when the club takes payments through MatchTime (Stripe
+connected, `paymentCollectionEnabled`, card or Pay by Bank on) **and** a card is on file
+for the club fee. When on:
+
+- every card or Pay by Bank match payment carries the player's **club fee share** (the
+  section 7.2 number, 25p for a 5-a-side at £9.99), taken by MatchTime in the same
+  `application_fee_amount` that already carries the 1% platform fee;
+- it **stops adding** once that month's fee is covered;
+- at month end MatchTime charges the owner's card **only for the shortfall** (players who
+  paid cash, or a quiet month), or nothing. The card stays on file as the backup.
+
+Players who pay the collector directly (cash or bank transfer) pay no share: MatchTime
+never touches that money, which is exactly why there can be a shortfall.
+
+### 14.2 What changes for the player
+
+- `totalForMethod(base, method, qty)` in `payments.ts` gains a `clubSharePence` argument
+  and grosses it up with the rest, so the collector still nets exactly the base and the
+  Stripe fee on the share is covered too:
+  `G = (base x qty + stripeFixed + platform + share) / (1 - stripePct)`, rounded up to the
+  penny as today. `share` is for the whole payment (guests included), already capped.
+- `platformFeePence` stays the 1% only; a new `applicationFeePence = platform + share` is
+  what `payByMethod` passes to `createCheckoutSession`. Stripe takes its processing fee
+  from the connected account as today; the share and the 1% land on MatchTime's platform
+  balance.
+- The pay page (`pay-options.tsx`, which calls `totalForMethod` itself to show totals)
+  gets the same share from the server, so the shown and charged amounts match, and one
+  small line under the total: "Includes 25p towards {club}'s MatchTime plan." / "25p'si
+  {club} kulübünün MatchTime planına gidiyor." Recommend showing it: players see the
+  amount go up by the share and should know why.
+- `Attendance.paymentAmount` keeps recording what the player paid (it now includes the
+  share). The collector's "who paid" label is unchanged.
+
+Worked example, 5-a-side, £8 base, card, one player: today 1% is 8p and the total is
+(8.00 + 0.20 + 0.08) / 0.985 = **£8.41**. With a 25p share it is (8.00 + 0.20 + 0.08 +
+0.25) / 0.985 = **£8.66**; the application fee is 33p; the collector still nets £8.00.
+
+### 14.3 Tracking the share and stopping when covered
+
+A new table, per club, not per collector:
+
+```prisma
+model ClubFeeShare {
+  id                 String    @id @default(cuid())
+  orgId              String
+  checkoutSessionId  String    @unique   // the match payment's Checkout session (cs_...)
+  connectedAccountId String              // the collector account it was charged on, for refunds
+  applicationFeeId   String?             // fee_..., once the charge succeeds
+  sharePence         Int
+  refundedPence      Int       @default(0)
+  status             String              // "reserved" | "settled" | "refunded" | "applied"
+  appliedInvoiceId   String?             // the club fee invoice it was credited to
+  createdAt          DateTime  @default(now())
+  @@index([orgId, status])
+}
+```
+
+- **At checkout** (`payByMethod`), `remaining = price - settled and unapplied shares -
+  shares reserved in the last 30 minutes`. The payment carries `min(share x qty,
+  remaining)`, never below 0, and a `reserved` row is written with the session id. When
+  `remaining` is 0 the payment is exactly today's.
+- **On payment** (the Connect webhook's existing `checkout.session.completed`,
+  `applyCheckoutEvent`), the row becomes `settled` with the application fee id. An
+  expired session's reservation lapses after 30 minutes.
+- Two players paying in the same second can both see the last few pence as remaining, so
+  a month can be over-covered by at most one share per concurrent payer. That surplus is
+  credited like the rest and carries over to the next month (14.4).
+
+**The money collector changes mid-month.** Shares are keyed by `orgId`, and the club's
+connected account is a club field (`Organisation.stripeConnectAccountId`). A new collector
+means `resetCollectorConnect` clears the account and the new collector connects their
+own. Meanwhile card payments are unavailable (`payByMethod` refuses without a connected
+account), so no shares are taken and any gap becomes shortfall. Once the new account is
+connected, shares continue into the same club's count. Application fees from the old and
+new accounts both land on MatchTime's platform balance, so the month's total does not
+care who collected. Each row keeps `connectedAccountId`, so a refund of a payment taken
+on the old account can still find it.
+
+### 14.4 Month end: Stripe customer balance credit (recommended)
+
+The club fee subscription stays exactly as in section 5: £9.99 (or Custom), VAT
+inclusive, billed monthly in advance. Shares collected during one month are credited
+against the **next** invoice. With the card added during the free month, shares from the
+free month go towards the first £9.99.
+
+**Recommended mechanism: a customer balance credit.** On the billing webhook's
+`invoice.created` for a renewal (the subscription's invoice is created as a draft and
+finalised about an hour later), MatchTime sums the club's `settled` shares and adds one
+credit with `customers.createBalanceTransaction(customer, { amount: -min(sum, invoice
+total), currency: "gbp", description: "Club fee shares from match payments, {month}" })`,
+then marks those rows `applied` with the invoice id. Stripe applies a credit balance
+automatically when the invoice is finalised: the invoice still shows £9.99 including
+£1.66 VAT, and the amount charged to the card is only what is left, or nothing.
+
+Why not the alternatives:
+
+| Option | Problem |
+|---|---|
+| Customer balance credit (recommended) | none of the below; the invoice keeps the full price and the full VAT line, so VAT is still accounted on the £9.99 supply to the club |
+| A negative invoice item (a discount line) | lowers the invoice total, so it also lowers the VAT on the invoice, which is wrong if the shares are payments towards the same £9.99 |
+| Usage-based (metered) pricing | turns a fixed £9.99 into a variable charge, needs a different Price and Product, and still has to net off money taken elsewhere |
+| Coupons | fixed or percentage amounts, not "whatever was collected" |
+
+**If the webhook misses the draft window**, the credit still sits on the customer and is
+used by the next invoice. Nothing is lost; the owner pays in full once and less next
+month. The settings card shows it ("£6.40 of this month's £9.99 covered by match
+payments so far"; "£2.00 credit carried to next month").
+
+**Reconciliation:** the hourly billing cron (section 6) also checks, once a day, the
+platform's application fees (`applicationFees.list`) for the club's connected account
+against the `ClubFeeShare` rows, so a missed Connect webhook only delays a share.
+
+### 14.5 VAT
+
+The £9.99 stays VAT inclusive and is invoiced to the club (the owner), exactly as in 5.4.
+The shares are treated as **payments towards that invoice**, made through the club's
+match fee collection, not as a separate sale to each player: players get no VAT invoice
+from MatchTime, and the collector's Stripe receipt is unchanged except for the higher
+amount. This is the reading the customer balance mechanism matches. **Accountant to
+confirm** before B7 ships (decision 13(c)): whether HMRC would see the shares as
+consideration from the players for a supply to them, which would change the treatment.
+
+### 14.6 Refunds of a match payment
+
+Today MatchTime does not handle refunds in code at all: the Connect webhook ignores them
+(`api/stripe/webhook/route.ts` ~63), and a collector who wants to refund a player does it
+in Stripe. On a direct charge, a refund made on the connected account does **not** give
+back MatchTime's application fee unless the refund is created with
+`refund_application_fee` (a platform API option); I have not verified what an Express
+collector can do from their own Stripe dashboard. Test mode will show it.
+
+**Recommend refunding the share too**: the player did not play, and the club's month is
+then simply less covered. B7 adds `charge.refunded` to the Connect webhook's handled
+events: for a charge whose session has a `ClubFeeShare`, MatchTime refunds the share
+portion of the application fee (`applicationFees.createRefund(feeId, { amount })`) to the
+connected account, so the collector can pass it on, and lowers the row (`refundedPence`).
+If the share was already credited to an invoice, the club's next credit is reduced by
+that amount instead. The 1% is left as today's code leaves it.
+
+### 14.7 Public copy and the test that forbids it
+
+`public-copy.test.ts` has a pin "never claims MatchTime collects the club fee itself":
+`/(collects?|charges?) the (club|monthly) fee (for you|automatically)|automatically
+(collect|split|charge)/`, and a separate pin against fee talk ("platform fee", "card
+fee", "1%" and so on). With B7 the honest claim is narrower than either form, so:
+
+- Website wording (landing pricing section ~608 and help admin page ~49), after the 50p
+  line: "If your club takes card or bank payments through MatchTime, you can choose to
+  add each player's share to their match fee, and your card only pays what is left at
+  the end of the month." It names no MatchTime fee and avoids "automatically".
+- The test keeps "automatically (collect|split|charge)" and "collects the club fee for
+  you" forbidden (the setting is a choice and cash payers are not covered), and gains a
+  positive pin: any sentence on a public page that mentions adding the share to the
+  match fee also contains "card or bank payments" and "you can choose". Its comment is
+  updated to say why.
+- The landing pin "about 50p a player" stays; "25p" stays off the landing page.
+
+### 14.8 Failure modes
+
+| What goes wrong | Effect | Handling |
+|---|---|---|
+| Two payments race for the last pence | month over-covered by a few pence | credit carries to the next month |
+| Connect webhook late or lost | share not counted yet; owner may pay more this month | daily reconciliation against `applicationFees.list`; surplus carries over |
+| `invoice.created` handled after finalisation | credit lands on the next invoice | shown on the settings card; nothing lost |
+| Collector disconnects, or changes mid-month | no card payments, so no shares | the shortfall is charged to the card as normal (14.3) |
+| Club moved to Free or `exempt` mid-month | no invoice left to credit | shares stop at once; collected credit is listed on `/admin/clubs` for Kemal to refund by hand |
+| Club cancels or is paused with credit left | credit sits on the Stripe customer | same: listed on `/admin/clubs`; no automatic refund |
+| Owner's card fails for the shortfall | `past_due`, as section 4 | unchanged; shares keep counting while `past_due` |
+| `BILLING_ENABLED` switched off | nobody is billed | no new shares are added (the setting is ignored); credit already on a customer stays there for Kemal to refund or use |
+| Price changes (Custom) | cap would use the old price | the cap reads the subscription's current price at checkout |
+| Pay page shown, then the month is covered before the player pays | total on screen is higher than needed | the share is fixed when the Checkout session is created, and the page shows the same server figure; at most one share over |
+
+### 14.9 Tests (free suites)
+
+Unit: the gross-up with a share (collector nets the base exactly, for card and bank,
+qty 1 and 3); application fee = 1% + share; the cap and reservations; a race (two
+checkouts, one remaining share); a refund before and after crediting; the balance credit
+amount on `invoice.created` (capped at the invoice total, idempotent on a re-delivered
+event); collector change keeps the club's count; cash payments never carry a share;
+setting off, Free, `exempt` or flag off means today's totals to the penny (existing
+payment tests stay green). Playwright: the pay page shows the line and the higher total;
+the settings card shows "covered so far". Test mode by hand: a test clock month with
+three card payments and one cash payer, checking the invoice shows £9.99 incl VAT and
+charges only the shortfall.
+
+---
+
+## 15. Decisions for Kemal
 
 1. **Trial length: 30 days from approval, then 7 days grace.** Recommend yes, as in the
    outline. The site says "first month free"; the grace week is on top and not advertised.
@@ -792,6 +1180,27 @@ B1 touches `analyze/route.ts` only at the two org lookups.
 12. **Custom price floor:** a £5.00 plan nets £4.17 before Stripe and AI, roughly
     break-even at £3 of AI. Recommend £5 as the lowest custom price you offer in
     practice, and Free (not a lower price) for anyone below that.
-13. **Adding the fee to match fees** (the "about 50p each" idea built in): recommend not
-    now. It mixes the club fee into Connect money, which this plan keeps apart on purpose.
-    Revisit once a few clubs pay and ask for it; it would be its own plan.
+13. **Adding the club fee to match fees** (slice B7, section 14): your call, it is the
+    one optional part. Recommend **yes, but after B1 to B6 have run live** with a few
+    paying clubs, as its own PR behind its own per-club setting. It keeps the money
+    separation of section 2 for the subscription itself; only the share rides on the
+    Connect application fee, which already carries MatchTime's 1%. If yes, three
+    sub-decisions:
+    (a) **refunds:** recommend a refunded match payment gives the share back too (14.6);
+    (b) **month end:** recommend a Stripe **customer balance credit** against the
+    full-price invoice, not a discount line or metered price (14.4);
+    (c) **VAT:** please have your accountant confirm that the shares can be treated as
+    payments towards the club's VAT-inclusive invoice (14.5).
+    No: the club fee tip (section 7.2) still tells organisers how to cover it themselves.
+14. **Rounding the share:** recommend **up to the next 5p** (25p, 20p, 15p): round
+    numbers to add to a match fee, and a full game covers the fee with a little to spare.
+    Alternative: up to the next penny (18p for a 7-a-side), which leaves almost no slack.
+15. **Games per month in the tip:** recommend **4 per weekly game, every month**, not
+    the real calendar count, so the tip does not change month to month and a five-week
+    month or a cancelled week is absorbed.
+16. **A collector named after day 21** gets the tip by DM once, for a billed club.
+    Recommend yes.
+17. **Collector in the admin group:** the server cannot see who is in a club's admin
+    group, so in admin group mode the collector is DMed the tip as well, and may read it
+    twice. Recommend accepting the duplicate (7.2). Alternative: store the admin group's
+    members from the Pi, a separate piece of work.
