@@ -470,6 +470,7 @@ const SAMPLES: SampleArgs = {
     scheduleUrl: "https://matchtime.ai/l/sched",
     ratingsUrl: "https://matchtime.ai/l/rate",
     settingsUrl: "https://matchtime.ai/l/set",
+    tip: "TIP-PARAGRAPH",
   },
   sj_dm_rejected: { group: "Riverside Tuesday 5s" },
   dm_admin_join_new: { club: "Sutton FC", phone: "+447376548222", url: "https://mt.example/r/phones" },
@@ -615,6 +616,36 @@ const SAMPLES: SampleArgs = {
   ai_cap_admin_notice: { club: "Sutton FC", more: "MORE-LINE" },
   ai_cap_more_contact: null,
   ai_cap_more_buy: { url: "https://mt.example/buy" },
+  // Club fee billing, slice B2 (2026-10-01).
+  club_fee_tip: { format: "7-a-side", players: 14, games: 4, price: "£9.99", share: "20p", fee: "£7", feePlus: "£7.20", mode: "example" },
+  sj_dm_approved_tip: { players: 14, games: 8, price: "£9.99", share: "20p", fee: "£7", feePlus: "£7.20", split: false },
+  billing_page_title: null,
+  billing_state_trial: { date: "Sat 31 Oct", price: "£9.99" },
+  billing_state_grace: { date: "Sat 7 Nov" },
+  billing_state_subscribed: { price: "£9.99", date: "Tue 1 Dec" },
+  billing_state_subscribed_ending: { price: "£9.99", date: "Tue 1 Dec" },
+  billing_state_card: { brand: "Visa", last4: "4242" },
+  billing_state_paid_with_other: { price: "£9.99", holder: "Elvin", date: "Tue 1 Dec" },
+  billing_state_past_due: { date: "Sat 7 Nov" },
+  billing_state_paused: null,
+  billing_card_holder_note: { club: "Riverside FC", contact: "Colin" },
+  billing_who_collector: { name: "Colin" },
+  billing_who_owner: null,
+  billing_who_none: null,
+  billing_card_on_file: { yes: true },
+  billing_btn_add_card: null,
+  billing_btn_change_card: null,
+  billing_btn_use_mine: null,
+  billing_btn_update_card: null,
+  billing_btn_remove_mine: null,
+  billing_btn_soon: null,
+  billing_exempt: { club: "Sutton FC" },
+  billing_open: null,
+  billing_choose_collector: null,
+  billing_banner_grace: { date: "Sat 7 Nov" },
+  billing_banner_past_due: { date: "Sat 7 Nov" },
+  billing_banner_paused: null,
+  billing_banner_link: null,
 };
 
 /** Render an entry with its sample arguments. */
@@ -795,7 +826,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table", "audience"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

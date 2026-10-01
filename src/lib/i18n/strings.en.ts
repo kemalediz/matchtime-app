@@ -1970,14 +1970,18 @@ export const en = {
     `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`,
   /** To the organiser, once, when the owner approves (2026-10-01: a short
    *  checklist). Each URL is the organiser's own signed-in link to that
-   *  page, so this DM goes to the organiser only. The one pricing sentence
-   *  is "Your first month is free.", never an amount. */
+   *  page, so this DM goes to the organiser only. Without billing the one
+   *  pricing sentence is "Your first month is free.", never an amount, and
+   *  it ends the DM. For a BILLED club (club fee billing slice B2:
+   *  BILLING_ENABLED on and the plan not Free) `tip` is the
+   *  `sj_dm_approved_tip` paragraph, which follows that sentence. */
   sj_dm_approved: (p: {
     club: string;
     group: string | null;
     scheduleUrl: string;
     ratingsUrl: string;
     settingsUrl: string;
+    tip?: string | null;
   }): string =>
     `Good news: ${p.club} is live. I've said hello in ${p.group ? `"${p.group}"` : "your group"}.\n\n` +
     `A few things to set up when you have a minute:\n\n` +
@@ -1985,7 +1989,8 @@ export const en = {
     `⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\n${p.ratingsUrl}\n\n` +
     `⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:\n${p.settingsUrl}\n\n` +
     `❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n\n` +
-    `Your first month is free.`,
+    `Your first month is free.` +
+    (p.tip ? `\n\n${p.tip}` : ""),
   /** To the organiser, once, when the owner rejects. MatchTime has left the
    *  group without a word in it (decision 1). */
   sj_dm_rejected: (p: { group: string | null }): string =>
@@ -2343,4 +2348,81 @@ export const en = {
     `The allowance resets at midnight. ${p.more}`,
   ai_cap_more_contact: "Need more? Email hello@matchtime.ai and we can raise your club's daily allowance.",
   ai_cap_more_buy: (p: { url: string }): string => `Need more? Buy extra AI allowance here: ${p.url}`,
+  // ── Club fee billing, slice B2 (2026-10-01). Plan:
+  //    MDs/club-fee-billing-plan-2026-10-01.md, sections 7.2 and 8. The
+  //    numbers come from `clubFeeTip` (club-billing-rules.ts) and are
+  //    formatted by club-billing-view.ts: `price`, `fee` and `feePlus` like
+  //    "£9.99" and "£8.25", `share` like "25p" (or "£1.05"), `format` from
+  //    `sj_per_side_option`. The tip only ever says what to CHARGE, never
+  //    how players pay, so it reads right for a club that pays by bank
+  //    transfer. Nothing here goes to players. ──
+  /** The club fee tip paragraph (billing page, settings card; the B4 DMs
+   *  and the admin channel reuse it). `mode`: "example" when the club has
+   *  no fee of its own (the GBP 8 example), "known" when it has one,
+   *  "split" when it splits the pitch cost. */
+  club_fee_tip: (p: {
+    format: string;
+    players: number;
+    games: number;
+    price: string;
+    share: string;
+    fee: string;
+    feePlus: string;
+    mode: "example" | "known" | "split";
+  }): string =>
+    `💷 *Club fee tip:* your weekly ${p.format} is ${p.players} players and about ${p.games} games a month, ` +
+    `so ${p.price} works out at about *${p.share} a player per game*. ` +
+    (p.mode === "split"
+      ? `When you split the pitch cost, add about ${p.share} to each player's share.`
+      : p.mode === "known"
+        ? `Your game is ${p.fee} each, so charging *${p.feePlus}* covers it.`
+        : `If your game costs ${p.fee} each, charge *${p.feePlus}* and the club fee is covered.`),
+  /** The short tip after "Your first month is free." in `sj_dm_approved`,
+   *  only for a club that is billed. */
+  sj_dm_approved_tip: (p: {
+    players: number;
+    games: number;
+    price: string;
+    share: string;
+    fee: string;
+    feePlus: string;
+    split: boolean;
+  }): string =>
+    `💷 *Club fee tip:* after that it's ${p.price} a month for the group, paid by card by whoever collects the match fees. ` +
+    `With ${p.players} players and about ${p.games} games a month, that's about *${p.share} a player per game*` +
+    (p.split ? `, to add to each player's share of the pitch cost.` : `, so a ${p.fee} game could be charged at *${p.feePlus}*.`),
+  billing_page_title: "Club fee",
+  billing_state_trial: (p: { date: string; price: string }): string =>
+    `Free month until ${p.date}. Then ${p.price} a month for the whole group.`,
+  billing_state_grace: (p: { date: string }): string =>
+    `The free month has ended. MatchTime stops on ${p.date} unless a card is added.`,
+  billing_state_subscribed: (p: { price: string; date: string }): string => `${p.price} a month. Next payment ${p.date}.`,
+  billing_state_subscribed_ending: (p: { price: string; date: string }): string => `${p.price} a month. Ends on ${p.date}.`,
+  billing_state_card: (p: { brand: string; last4: string }): string => `Card ${p.brand} ending ${p.last4}.`,
+  billing_state_paid_with_other: (p: { price: string; holder: string; date: string }): string =>
+    `${p.price} a month, paid with ${p.holder}'s card until you put yours on. Next payment ${p.date}.`,
+  billing_state_past_due: (p: { date: string }): string =>
+    `Last payment didn't go through. Stripe is retrying. MatchTime stops on ${p.date} if it can't be taken.`,
+  billing_state_paused: "MatchTime is paused. All the data is kept. Add a card to switch it back on.",
+  billing_card_holder_note: (p: { club: string; contact: string }): string =>
+    `Your card still pays ${p.club}'s MatchTime fee until ${p.contact} adds theirs.`,
+  billing_who_collector: (p: { name: string }): string => `${p.name} looks after the card.`,
+  billing_who_owner: "No money collector set: the owner is asked for the card.",
+  billing_who_none: "No money collector or owner with a phone number, so nobody can be asked for the card yet.",
+  billing_card_on_file: (p: { yes: boolean }): string => (p.yes ? "Card on file: yes." : "Card on file: no."),
+  billing_btn_add_card: "Add a card",
+  billing_btn_change_card: "Change card or cancel",
+  billing_btn_use_mine: "Use my card instead",
+  billing_btn_update_card: "Update card",
+  billing_btn_remove_mine: "Remove my card",
+  billing_btn_soon: "Card payments open here soon.",
+  billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
+  billing_open: "Open billing",
+  billing_choose_collector: "Choose a money collector",
+  billing_banner_grace: (p: { date: string }): string =>
+    `The free month has ended. Add a card before ${p.date} to keep MatchTime running.`,
+  billing_banner_past_due: (p: { date: string }): string =>
+    `This month's club fee didn't go through. MatchTime stops on ${p.date} if it can't be taken.`,
+  billing_banner_paused: "MatchTime is paused for this club. Add a card to switch it back on.",
+  billing_banner_link: "See billing",
 };

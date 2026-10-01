@@ -282,3 +282,255 @@ export function billingContact(
   const owner = members.find((m) => m.role === "OWNER" && m.leftAt === null && hasPhone(m));
   return owner ? { userId: owner.userId, via: "owner" } : null;
 }
+
+// ── Prices and the plan control (slice B2, 8.3; decisions 9 and 13) ─────
+
+/** Standard plan: GBP 9.99 a month, VAT included. */
+export const STANDARD_PRICE_PENCE = 999;
+/** Custom plan range (the CHECK constraint holds the same line). */
+export const CUSTOM_PRICE_MIN_PENCE = 100;
+export const CUSTOM_PRICE_MAX_PENCE = 999;
+
+/** The monthly price a plan charges, or null for Free (and for a custom
+ *  plan with no price, which the CHECK constraint forbids anyway). */
+export function planPricePence(plan: string, pricePence: number | null): number | null {
+  if (plan === "standard") return STANDARD_PRICE_PENCE;
+  if (plan === "custom") return pricePence ?? null;
+  return null;
+}
+
+export type PlanChoice =
+  | { ok: true; plan: BillingPlan; pricePence: number | null }
+  | { ok: false; reason: "unknown-plan" | "bad-price" | "out-of-range" };
+
+/**
+ * The platform owner's plan control, parsed. Custom takes pounds as typed
+ * ("5", "5.50", "£5.50"), GBP 1.00 to GBP 9.99, whole pence. Standard and
+ * Free ignore any price.
+ */
+export function parsePlanChoice(input: { plan: string; price?: string | null }): PlanChoice {
+  const plan = input.plan;
+  if (plan === "standard" || plan === "free") return { ok: true, plan, pricePence: null };
+  if (plan !== "custom") return { ok: false, reason: "unknown-plan" };
+  const raw = (input.price ?? "").trim().replace(/^£/, "").trim();
+  const m = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(raw);
+  if (!m) return { ok: false, reason: "bad-price" };
+  const pence = Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0") || "0");
+  if (pence < CUSTOM_PRICE_MIN_PENCE || pence > CUSTOM_PRICE_MAX_PENCE) return { ok: false, reason: "out-of-range" };
+  return { ok: true, plan: "custom", pricePence: pence };
+}
+
+// ── The club fee tip (slice B2, 7.2; decisions 15 and 16) ───────────────
+
+/** Games a month per weekly game slot: every month counts as four weeks. */
+export const GAMES_PER_WEEKLY_SLOT = 4;
+/** The neutral example match fee when the club has none (GBP 8). */
+export const EXAMPLE_FEE_PENCE = 800;
+/** The share is rounded UP to the next multiple of this, never below it. */
+export const SHARE_STEP_PENCE = 5;
+/** Two activities on the same weekday within this many minutes are one
+ *  game slot (a format-switch pair), as generate-matches dedupes them
+ *  (`SLOT_TIME_TOLERANCE_MS` in match-slot.ts). */
+export const SLOT_TOLERANCE_MINUTES = 90;
+
+/** One ACTIVE weekly activity, as the tip reads it. Fees in pounds, as
+ *  `Activity.feePerPlayer` and `Match.feePerPlayer` store them. */
+export interface TipActivity {
+  dayOfWeek: number;
+  /** "HH:MM". */
+  time: string;
+  playersPerTeam: number;
+  feePerPlayer: number | null;
+  feeSplitTotal: boolean;
+  /** The latest match's base fee for this activity, when one was set. */
+  latestMatchFee: number | null;
+}
+
+export interface ClubFeeTipInput {
+  /** The club's billing state (`Organisation.billingStatus`). */
+  status: string;
+  plan: string;
+  pricePence: number | null;
+  activities: TipActivity[];
+  /** Players per side when the club has no active activity (default 5). */
+  fallbackPlayersPerTeam?: number;
+}
+
+export interface ClubFeeTip {
+  pricePence: number;
+  /** Players per side of the club's (first) weekly game. */
+  perSide: number;
+  /** Players in that game (2 x per side). */
+  players: number;
+  /** Games a month: 4 per weekly slot, at least 4. */
+  games: number;
+  /** The share per player per game, rounded up to the next 5p. */
+  sharePence: number;
+  /** The example match fee and the fee with the share added. */
+  feePence: number;
+  feePlusPence: number;
+  feeSource: "own" | "latest-match" | "example";
+  /** The club splits the pitch cost (`feeSplitTotal`). */
+  split: boolean;
+}
+
+function minutesOf(time: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
+
+/**
+ * The weekly game slots: activities grouped by weekday, two within
+ * SLOT_TOLERANCE_MINUTES of each other counting once. Each slot is
+ * represented by its SMALLEST game (fewest players), so a format-switch
+ * pair never understates the share. Ordered by weekday, then time.
+ */
+function weeklySlots(activities: TipActivity[]): TipActivity[] {
+  const sorted = [...activities].sort((a, b) => a.dayOfWeek - b.dayOfWeek || minutesOf(a.time) - minutesOf(b.time));
+  const slots: Array<{ day: number; start: number; rep: TipActivity }> = [];
+  for (const a of sorted) {
+    const at = minutesOf(a.time);
+    const slot = slots.find((s) => s.day === a.dayOfWeek && Math.abs(at - s.start) <= SLOT_TOLERANCE_MINUTES);
+    if (!slot) slots.push({ day: a.dayOfWeek, start: at, rep: a });
+    else if (a.playersPerTeam < slot.rep.playersPerTeam) slot.rep = a;
+  }
+  return slots.map((s) => s.rep);
+}
+
+/**
+ * The club fee tip's numbers (7.2), or null when there is nothing to
+ * cover (an exempt club, or the Free plan).
+ *
+ *   players per game   2 x playersPerTeam
+ *   games a month      4 per weekly slot (4 when there is none)
+ *   share              price / player-games in a month, rounded UP to the
+ *                      next 5p and never below 5p
+ *   example fee        the activity's own fee, else its latest match fee,
+ *                      else GBP 8
+ */
+export function clubFeeTip(input: ClubFeeTipInput): ClubFeeTip | null {
+  if (input.status === "exempt") return null;
+  const price = planPricePence(input.plan, input.pricePence);
+  if (price === null) return null;
+
+  const slots = weeklySlots(input.activities);
+  const first = slots[0] ?? null;
+  const perSide = first?.playersPerTeam ?? input.fallbackPlayersPerTeam ?? 5;
+  const playerGames =
+    slots.length > 0
+      ? slots.reduce((sum, s) => sum + GAMES_PER_WEEKLY_SLOT * 2 * s.playersPerTeam, 0)
+      : GAMES_PER_WEEKLY_SLOT * 2 * perSide;
+  // Integer ceiling of price / (playerGames x 5p), in whole 5p steps.
+  const step = playerGames * SHARE_STEP_PENCE;
+  const sharePence = Math.max(SHARE_STEP_PENCE, Math.floor((price + step - 1) / step) * SHARE_STEP_PENCE);
+
+  const own = first?.feePerPlayer ?? null;
+  const latest = first?.latestMatchFee ?? null;
+  const feeSource: ClubFeeTip["feeSource"] = own !== null && own > 0 ? "own" : latest !== null && latest > 0 ? "latest-match" : "example";
+  const feePence = feeSource === "own" ? Math.round(own! * 100) : feeSource === "latest-match" ? Math.round(latest! * 100) : EXAMPLE_FEE_PENCE;
+
+  return {
+    pricePence: price,
+    perSide,
+    players: 2 * perSide,
+    games: Math.max(1, slots.length) * GAMES_PER_WEEKLY_SLOT,
+    sharePence,
+    feePence,
+    feePlusPence: feePence + sharePence,
+    feeSource,
+    split: first?.feeSplitTotal ?? false,
+  };
+}
+
+// ── Who may open the billing page (slice B2, 4.5) ───────────────────────
+
+/**
+ *   "contact"       the billing contact (the money collector, else the
+ *                   owner): the full page, every card button;
+ *   "card-holder"   whoever's card is on file but is no longer the
+ *                   contact: one button, Remove my card;
+ *   "viewer"        an OWNER or ADMIN (or the platform superadmin) who is
+ *                   neither: the status and the tip, no buttons;
+ *   "exempt-owner"  the club is exempt (Sutton FC's shape): its OWNER (or
+ *                   the superadmin) sees an "exempt" label and nothing else.
+ */
+export type BillingAccessRole = "contact" | "card-holder" | "viewer" | "exempt-owner";
+
+export interface BillingAccessInput {
+  userId: string;
+  /** BILLING_ENABLED, as the web reads it. Off: nobody gets anything. */
+  flagOn: boolean;
+  /** The club's `billingStatus`. */
+  status: string;
+  isSuperadmin: boolean;
+  /** The user's membership of THIS club, or null. */
+  membership: { role: string; leftAt: Date | null } | null;
+  /** `billingContact(...)`'s user id, or null when there is none. */
+  contactUserId: string | null;
+  /** `ClubBilling.cardHolderUserId`. */
+  cardHolderUserId: string | null;
+}
+
+/** Who this user is to the club's billing, or null (the page is a 404). */
+export function billingAccessRole(input: BillingAccessInput): BillingAccessRole | null {
+  if (!input.flagOn) return null;
+  const current = input.membership && input.membership.leftAt === null ? input.membership : null;
+  if (input.status === "exempt") {
+    return input.isSuperadmin || current?.role === "OWNER" ? "exempt-owner" : null;
+  }
+  if (input.contactUserId !== null && input.contactUserId === input.userId) return "contact";
+  if (input.cardHolderUserId !== null && input.cardHolderUserId === input.userId) return "card-holder";
+  if (input.isSuperadmin || current?.role === "OWNER" || current?.role === "ADMIN") return "viewer";
+  return null;
+}
+
+// ── "Start free month" (slice B2, 8.3; decision 2) ──────────────────────
+
+export type StartTrialRefusal = "not-self-join" | "flag-off" | "not-exempt" | "had-free-month" | "plan-free";
+
+/**
+ * Why "Start free month" cannot start one, or null when it can. The same
+ * line `nextBillingState` holds for "start-trial", spelled out so the
+ * platform owner's page can say which. The free month happens once per
+ * club (`trialEndsAt` is never reset), so a club that had one, or is
+ * already billed, is refused.
+ */
+export function startTrialRefusal(
+  club: { approvedAt: Date | null; billingStatus: string; billingPlan: string; hadFreeMonth: boolean },
+  env: Env = process.env,
+): StartTrialRefusal | null {
+  if (club.approvedAt === null) return "not-self-join";
+  if (!isBillingEnabled(env)) return "flag-off";
+  if (club.billingStatus !== "exempt") return "not-exempt";
+  if (club.hadFreeMonth) return "had-free-month";
+  if (club.billingPlan === "free") return "plan-free";
+  return null;
+}
+
+// ── The owner page's totals line (slice B2, 8.3 point 3) ────────────────
+
+export interface BillingTotals {
+  /** Clubs with a card paying now ("subscribed"). */
+  paying: number;
+  /** What the paying clubs pay a month at their current prices. */
+  monthlyPence: number;
+  trial: number;
+  grace: number;
+  pastDue: number;
+  paused: number;
+}
+
+/** Read from our tables; Stripe's dashboard stays the money record. */
+export function billingTotals(rows: Array<{ status: string; plan: string; pricePence: number | null }>): BillingTotals {
+  const totals: BillingTotals = { paying: 0, monthlyPence: 0, trial: 0, grace: 0, pastDue: 0, paused: 0 };
+  for (const r of rows) {
+    if (r.status === "subscribed") {
+      totals.paying++;
+      totals.monthlyPence += planPricePence(r.plan, r.pricePence) ?? 0;
+    } else if (r.status === "trial") totals.trial++;
+    else if (r.status === "grace") totals.grace++;
+    else if (r.status === "past_due") totals.pastDue++;
+    else if (r.status === "paused") totals.paused++;
+  }
+  return totals;
+}

@@ -182,6 +182,15 @@ test("Approve: the club goes live with its group, the hello is queued, the organ
   ).toBe(1);
   // A decision on the page does not DM the owner about itself.
   expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob" WHERE purpose = 'owner-ack'`)).toBe(0);
+  // Club fee billing (slice B2): the suite runs with BILLING_ENABLED on, so
+  // the approval started the free month, and the page shows it.
+  expect(await db.one(`SELECT "billingStatus" FROM "Organisation" WHERE id = $1`, [`${P}-riverside`])).toEqual({
+    billingStatus: "trial",
+  });
+  expect(await db.count(`SELECT COUNT(*) FROM "ClubBilling" WHERE "orgId" = $1`, [`${P}-riverside`])).toBe(1);
+  await expect(
+    page.getByTestId("live-club").filter({ hasText: "Riverside FC" }).getByTestId("club-billing-summary"),
+  ).toContainText("Standard £9.99. Free month. Free month ends");
 });
 
 test("Reject: the club is rejected, MatchTime leaves the group", async ({ page, db, context }) => {

@@ -6,6 +6,8 @@ import { resolveTeamLabels } from "@/lib/team-labels";
 import { normaliseLang } from "@/lib/i18n/lang";
 import { seesAdminFields } from "@/lib/admin-view";
 import { weeklyDeadlinesView } from "@/lib/weekly-deadlines-settings";
+import { loadBillingCard } from "@/lib/club-billing";
+import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -83,6 +85,11 @@ export async function GET() {
   };
   if (!isAdmin) return NextResponse.json(publicView);
 
+  // Club fee billing (slice B2): the billing card, for OWNER and ADMIN
+  // only. Null with BILLING_ENABLED off and for an exempt club, so
+  // Sutton FC and every club before billing see nothing new.
+  const billing = await loadBillingCard(org.id, { flagOn: await billingUiEnabledForRequest() });
+
   return NextResponse.json({
     ...publicView,
     inviteCode: org.inviteCode,
@@ -102,5 +109,6 @@ export async function GET() {
       benchPickMode: normaliseBenchPickMode(org.benchPickMode),
       benchPickFallback: normaliseBenchPickFallback(org.benchPickFallback),
     },
+    billing,
   });
 }

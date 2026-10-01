@@ -1654,7 +1654,8 @@ export const tr: Strings = {
     `⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:\n${p.ratingsUrl}\n\n` +
     `⚙️ *Ayarlar:* ödemeleri, devam eden kadroyu, haftalık son saatleri, yönetici mesajlarını, organizatör seçimini ve rozet duyurularını buradan açın:\n${p.settingsUrl}\n\n` +
     `❓ *Yardım:* istediğiniz zaman bana buradan yazın, örneğin *yardım ödeme* ya da *yardım rozetler*.\n\n` +
-    `İlk ayınız ücretsiz.`,
+    `İlk ayınız ücretsiz.` +
+    (p.tip ? `\n\n${p.tip}` : ""),
   sj_dm_rejected: (p) =>
     `MatchTime'ı denediğiniz için teşekkürler. ${p.group ? `"${p.group}" grubunu` : "Grubunuzu"} şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.`,
 
@@ -1877,6 +1878,51 @@ export const tr: Strings = {
     `Kullanım hakkı gece yarısı sıfırlanır. ${p.more}`,
   ai_cap_more_contact: "Daha fazlası mı gerekiyor? hello@matchtime.ai adresine yazın, kulübünüzün günlük hakkını artıralım.",
   ai_cap_more_buy: (p) => `Daha fazlası mı gerekiyor? Ek yapay zekâ hakkını buradan satın alabilirsiniz: ${p.url}`,
+  club_fee_tip: (p) =>
+    `💷 *Kulüp ücreti ipucu:* haftalık ${p.format} maçınız ${p.players} oyunculu ve ayda yaklaşık ${p.games} maç oynanıyor, ` +
+    `yani ${p.price} oyuncu başına maç başına yaklaşık *${p.share}* ediyor. ` +
+    (p.mode === "split"
+      ? `Saha ücretini bölüştürürken her oyuncunun payına yaklaşık ${p.share} ekleyin.`
+      : p.mode === "known"
+        ? `Maç ücretiniz kişi başı ${p.fee}, *${p.feePlus}* alırsanız karşılanır.`
+        : `Maç ücreti kişi başı ${p.fee} ise *${p.feePlus}* alın, kulüp ücreti karşılanmış olur.`),
+  sj_dm_approved_tip: (p) =>
+    `💷 *Kulüp ücreti ipucu:* sonrasında grup için aylık ${p.price}, maç ücretlerini toplayan kişi kartla öder. ` +
+    `${p.players} oyuncu ve ayda yaklaşık ${p.games} maçla bu, oyuncu başına maç başına yaklaşık *${p.share}* ediyor` +
+    (p.split
+      ? `; saha ücretini bölüştürürken her oyuncunun payına ekleyebilirsiniz.`
+      : `; ${p.fee} olan bir maç için *${p.feePlus}* alabilirsiniz.`),
+  billing_page_title: "Kulüp ücreti",
+  billing_state_trial: (p) => `Ücretsiz ay ${p.date} tarihine kadar. Sonrasında tüm grup için aylık ${p.price}.`,
+  billing_state_grace: (p) => `Ücretsiz ay sona erdi. Kart eklenmezse MatchTime ${p.date} tarihinde durur.`,
+  billing_state_subscribed: (p) => `Aylık ${p.price}. Sonraki ödeme ${p.date}.`,
+  billing_state_subscribed_ending: (p) => `Aylık ${p.price}. ${p.date} tarihinde sona eriyor.`,
+  billing_state_card: (p) => `${p.brand} kart, son dört hanesi ${p.last4}.`,
+  billing_state_paid_with_other: (p) =>
+    `Aylık ${p.price}, siz kendi kartınızı ekleyene kadar ${p.holder} kişisinin kartıyla ödeniyor. Sonraki ödeme ${p.date}.`,
+  billing_state_past_due: (p) =>
+    `Son ödeme alınamadı. Stripe tekrar deniyor. Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
+  billing_state_paused: "MatchTime duraklatıldı. Tüm veriler saklanıyor. Yeniden açmak için kart ekleyin.",
+  billing_card_holder_note: (p) =>
+    `${p.contact} kendi kartını ekleyene kadar ${p.club} için MatchTime ücreti sizin kartınızdan ödenmeye devam ediyor.`,
+  billing_who_collector: (p) => `Kartla ${p.name} ilgileniyor.`,
+  billing_who_owner: "Para toplayan kişi seçilmedi: kart kulüp sahibinden istenir.",
+  billing_who_none: "Telefon numarası kayıtlı bir para toplayan kişi ya da kulüp sahibi yok, bu yüzden henüz kimseden kart istenemiyor.",
+  billing_card_on_file: (p) => (p.yes ? "Kayıtlı kart: var." : "Kayıtlı kart: yok."),
+  billing_btn_add_card: "Kart ekle",
+  billing_btn_change_card: "Kartı değiştir ya da iptal et",
+  billing_btn_use_mine: "Bunun yerine kendi kartımı kullan",
+  billing_btn_update_card: "Kartı güncelle",
+  billing_btn_remove_mine: "Kartımı kaldır",
+  billing_btn_soon: "Kartla ödeme burada yakında açılıyor.",
+  billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
+  billing_open: "Ödeme sayfasını aç",
+  billing_choose_collector: "Para toplayan kişiyi seçin",
+  billing_banner_grace: (p) =>
+    `Ücretsiz ay sona erdi. MatchTime'ın çalışmaya devam etmesi için ${p.date} tarihinden önce kart ekleyin.`,
+  billing_banner_past_due: (p) => `Bu ayın kulüp ücreti alınamadı. Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
+  billing_banner_paused: "MatchTime bu kulüp için duraklatıldı. Yeniden açmak için kart ekleyin.",
+  billing_banner_link: "Ödeme sayfası",
 };
 
 /**

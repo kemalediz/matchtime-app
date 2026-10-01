@@ -36,6 +36,8 @@ import { e164Digits } from "./phone";
 import { parseParticipantSnapshot } from "./participant-snapshot";
 import { parseApproverPhones, queueOwnerDm } from "./owner-dm";
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
+import { loadClubFeeTip, setBillingState } from "./club-billing";
+import { approvedTipText } from "./club-billing-view";
 import {
   isApproverSender,
   ownerAckText,
@@ -553,6 +555,25 @@ export async function decideClub(
   // Everything below happens after the decision is committed. A failure
   // here is logged and never undoes the decision.
   const s = t(after.language);
+
+  // Club fee billing (slice B2): with BILLING_ENABLED on, the club's free
+  // month starts at its approval, through the one writer (it reads
+  // `approvedAt`, just committed). A failure leaves the club "exempt",
+  // which bills nobody, and is logged; the approval stands. A club whose
+  // free month did start gets the club fee tip in its "you're live" DM.
+  let feeTip: string | null = null;
+  if (result.decision === "approve" && isBillingEnabled()) {
+    try {
+      const started = await setBillingState(orgId, { type: "approved" }, now);
+      if (started.ok && started.to === "trial") {
+        const tip = await loadClubFeeTip(orgId);
+        if (tip) feeTip = approvedTipText(after.language, tip);
+      }
+    } catch (err) {
+      console.error(`[club-approval] ${orgId}: the free month did NOT start (the club stays exempt):`, err);
+    }
+  }
+
   if (result.decision === "approve" && after.link) {
     const snapshot = parseParticipantSnapshot(after.link.participants);
     try {
@@ -571,6 +592,7 @@ export async function decideClub(
         club: result.club,
         group: after.link.groupSubject,
         ...(await organiserLinks(after.link.userId, orgId)),
+        tip: feeTip,
       }),
     );
   }

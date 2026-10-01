@@ -195,7 +195,30 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   expect(live).toMatch(/⭐ \*Starting ratings:\*[^\n]*\nhttp\S+\n/);
   expect(live).toMatch(/⚙️ \*Settings:\*[^\n]*\nhttp\S+\n/);
   expect(live).toContain("*help payments* or *help badges*");
-  expect(live.endsWith("Your first month is free.")).toBe(true);
+  // Club fee billing (slice B2): the suite runs with BILLING_ENABLED on, so
+  // the approval started the club's free month (through the one writer,
+  // on real Postgres with its CHECK constraints) and the DM follows the
+  // free-month sentence with the club fee tip. With the flag off the DM
+  // ends on that sentence (unit-pinned in club-decisions.test.ts).
+  expect(live).toMatch(/Your first month is free\.\n\n💷 \*Club fee tip:\* after that it's £9\.99 a month for the group/);
+  expect(live).not.toMatch(/[—–]/);
+  expect(await db.one(`SELECT "billingStatus","billingPlan" FROM "Organisation" WHERE id = $1`, [EN_ORG])).toEqual({
+    billingStatus: "trial",
+    billingPlan: "standard",
+  });
+  const trial = await db.one<{ start: string; ends: string; approved: string }>(
+    `SELECT cb."trialStartedAt"::text AS start, cb."trialEndsAt"::text AS ends, o."approvedAt"::text AS approved
+       FROM "ClubBilling" cb JOIN "Organisation" o ON o.id = cb."orgId" WHERE cb."orgId" = $1`,
+    [EN_ORG],
+  );
+  // The free month starts at the approval and runs 30 days.
+  expect(trial?.start).toBe(trial?.approved);
+  expect(
+    await db.count(
+      `SELECT COUNT(*) FROM "ClubBilling" WHERE "orgId" = $1 AND "trialEndsAt" = "trialStartedAt" + interval '30 days'`,
+      [EN_ORG],
+    ),
+  ).toBe(1);
   // Three distinct links, none of them a bare admin path.
   const urls = live.match(/^http\S+$/gm) ?? [];
   expect(new Set(urls).size).toBe(3);

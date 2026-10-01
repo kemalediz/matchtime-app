@@ -10,6 +10,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { t } from "@/lib/i18n/t";
+import { clubFeeTip } from "@/lib/club-billing-rules";
+import { approvedTipText } from "@/lib/club-billing-view";
 
 const en = t("en");
 const tr = t("tr");
@@ -129,4 +131,35 @@ describe("sj_dm_approved: the organiser's checklist", () => {
     expect(dm).toMatch(/starting ratings/i);
     expect(dm).toMatch(/weekly game/i);
   });
+});
+
+describe("sj_dm_approved for a BILLED club (club fee billing, slice B2, plan 7.2)", () => {
+  // Without billing (flag off, Free, exempt) the DM is the one pinned
+  // above: it ENDS with the free-month sentence and has no amount. A
+  // billed club's DM keeps that sentence and follows it with the tip.
+  const tip = clubFeeTip({
+    status: "trial",
+    plan: "standard",
+    pricePence: null,
+    activities: [{ dayOfWeek: 2, time: "20:00", playersPerTeam: 5, feePerPlayer: null, feeSplitTotal: false, latestMatchFee: null }],
+  })!;
+  for (const [lang, s, free] of [
+    ["en", en, "Your first month is free."],
+    ["tr", tr, "İlk ayınız ücretsiz."],
+  ] as const) {
+    const tipText = approvedTipText(lang, tip);
+    const dm = s.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS, tip: tipText });
+
+    it(`${lang}: the tip follows the free-month sentence and ends the DM`, () => {
+      expect(dm.endsWith(`${free}\n\n${tipText}`)).toBe(true);
+    });
+
+    it(`${lang}: the tip carries exactly the tip's amounts, and no dash`, () => {
+      const after = dm.slice(dm.indexOf(free) + free.length);
+      expect(after.match(/£\d+(?:\.\d\d)?|\d+p/g)).toEqual(["£9.99", "25p", "£8", "£8.25"]);
+      // Nothing before the free sentence gained an amount.
+      expect(dm.slice(0, dm.indexOf(free))).not.toMatch(/£|\d+[.,]\d\d/);
+      expect(dm).not.toMatch(/[—–]/);
+    });
+  }
 });

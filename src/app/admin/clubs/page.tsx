@@ -20,6 +20,10 @@ import { countOrgDmsSince } from "@/lib/org-dm-count";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { notFound, redirect } from "next/navigation";
 import { DecideButtons, LeaveButton, TurnOffButton } from "./club-buttons";
+import { PlanControl, StartFreeMonthButton } from "./billing-controls";
+import { loadClubBillingSnapshot } from "@/lib/club-billing";
+import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
+import { moneyLabel } from "@/lib/club-billing-view";
 
 /**
  * /admin/clubs: the platform owner's decisions on self-join clubs (slice 7).
@@ -66,6 +70,80 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-slate-500">{children}</p>;
 }
 
+/** Days of AI spend shown per live club (plan 8.3 point 4). */
+const AI_SPEND_DAYS = 30;
+
+const STATUS_LABEL: Record<string, string> = {
+  exempt: "Exempt (never billed)",
+  trial: "Free month",
+  grace: "Grace week",
+  subscribed: "Paying",
+  past_due: "Past due",
+  paused: "Paused",
+};
+
+function planLabel(plan: string, pricePence: number | null): string {
+  if (plan === "free") return "Free";
+  const p = planPricePence(plan, pricePence);
+  return plan === "custom" ? `Custom ${p ? moneyLabel(p) : ""}` : "Standard £9.99";
+}
+
+type LiveClub = {
+  id: string;
+  name: string;
+  billingStatus: string;
+  billingPlan: string;
+  billingPricePence: number | null;
+  clubBilling: { vatCountryCheck: boolean } | null;
+  spend30: number;
+  billing: Awaited<ReturnType<typeof loadClubBillingSnapshot>>;
+};
+
+/**
+ * One live club's club fee: plan, state, the date that matters, card on
+ * file, who pays, its AI spend over 30 days, and the owner's controls.
+ * Nothing here messages anyone.
+ */
+function BillingRow({ c, billingOn }: { c: LiveClub; billingOn: boolean }) {
+  const b = c.billing;
+  const status = b?.status ?? c.billingStatus;
+  const cb = b?.billing ?? null;
+  const date =
+    status === "trial" && cb
+      ? `Free month ends ${when(cb.trialEndsAt)}`
+      : (status === "grace" || status === "past_due") && cb?.graceEndsAt
+        ? `Stops ${when(cb.graceEndsAt)} without payment`
+        : status === "subscribed" && cb?.currentPeriodEnd
+          ? `Next payment ${when(cb.currentPeriodEnd)}`
+          : null;
+  const who = !b?.contact
+    ? "No billing contact"
+    : b.contact.via === "collector"
+      ? `${b.contact.name ?? "(no name)"} (money collector)`
+      : `${b.contact.name ?? "(no name)"} (owner, no money collector set)`;
+  const canStart = status === "exempt" && !cb && c.billingPlan !== "free";
+  return (
+    <div data-testid="club-billing" className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">
+      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[8rem_1fr]">
+        <dt className="text-slate-500">Club fee</dt>
+        <dd data-testid="club-billing-summary">
+          {planLabel(c.billingPlan, c.billingPricePence)}. {STATUS_LABEL[status] ?? status}.{date ? ` ${date}.` : ""}
+          {status !== "exempt" && ` Card on file: ${cb?.cardHolderUserId || cb?.cardLast4 ? "yes" : "no"}.`}
+          {c.clubBilling?.vatCountryCheck && <strong className="text-amber-700"> Check VAT country.</strong>}
+        </dd>
+        <dt className="text-slate-500">Who pays</dt>
+        <dd>{who}</dd>
+        <dt className="text-slate-500">AI, last 30 days</dt>
+        <dd data-testid="club-ai-30d">{usd(c.spend30)}</dd>
+      </dl>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <PlanControl orgId={c.id} club={c.name} plan={c.billingPlan} pricePence={c.billingPricePence} />
+        {canStart && <StartFreeMonthButton orgId={c.id} club={c.name} enabled={billingOn} />}
+      </div>
+    </div>
+  );
+}
+
 export default async function ClubsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -100,7 +178,17 @@ export default async function ClubsPage() {
       db.organisation.findMany({
         where: { ...APPROVED_CLUB_WHERE, approvedAt: { not: null } },
         orderBy: { approvedAt: "desc" },
-        select: { id: true, name: true, approvedAt: true, whatsappGroupId: true, whatsappBotEnabled: true },
+        select: {
+          id: true,
+          name: true,
+          approvedAt: true,
+          whatsappGroupId: true,
+          whatsappBotEnabled: true,
+          billingStatus: true,
+          billingPlan: true,
+          billingPricePence: true,
+          clubBilling: { select: { vatCountryCheck: true } },
+        },
       }),
       db.organisation.findMany({
         where: REJECTED_CLUB_WHERE,
@@ -138,15 +226,34 @@ export default async function ClubsPage() {
     : [];
   const spendOf = new Map(pendingSpend.map((r) => [r.orgId, r.costUsd]));
 
+  // Club fee billing (slice B2, plan 8.3): each live club's AI spend over
+  // the last 30 London days, next to its price.
+  const spend30 = liveOrgs.length
+    ? await db.orgAiUsage.groupBy({
+        by: ["orgId"],
+        where: {
+          orgId: { in: liveOrgs.map((o) => o.id) },
+          day: { gte: new Date(new Date(`${londonDay(now)}T00:00:00Z`).getTime() - (AI_SPEND_DAYS - 1) * DAY_MS) },
+        },
+        _sum: { costUsd: true },
+      })
+    : [];
+  const spend30Of = new Map(spend30.map((r) => [r.orgId, r._sum.costUsd ?? 0]));
+  const billingOn = isBillingEnabled();
+
   const live = await Promise.all(
     liveOrgs.map(async (o) => {
       const cap = newClubDmCap(o, now);
-      const [dmsToday, ai] = await Promise.all([
+      const [dmsToday, ai, billing] = await Promise.all([
         cap !== null ? countOrgDmsSince(o.id, midnight) : Promise.resolve(null),
         getAiBudgetStatus(o.id, now),
+        loadClubBillingSnapshot(o.id),
       ]);
-      return { ...o, cap, dmsToday, ai, newClub: cap !== null };
+      return { ...o, cap, dmsToday, ai, newClub: cap !== null, billing, spend30: spend30Of.get(o.id) ?? 0 };
     }),
+  );
+  const totals = billingTotals(
+    liveOrgs.map((o) => ({ status: o.billingStatus, plan: o.billingPlan, pricePence: o.billingPricePence })),
   );
 
   const leaveJobs = unsolicited.length
@@ -263,12 +370,20 @@ export default async function ClubsPage() {
                   {usd(c.ai.capUsd)}
                   {c.ai.capped ? " (capped)" : ""}.{!c.whatsappBotEnabled && " Muted."}
                 </p>
+                <BillingRow c={c} billingOn={billingOn} />
                 <div className="mt-3">
                   <TurnOffButton orgId={c.id} club={c.name} />
                 </div>
               </li>
             ))}
           </ul>
+        )}
+        {live.length > 0 && (
+          <p data-testid="billing-totals" className="mt-3 text-sm text-slate-600">
+            Club fees: {totals.paying} paying, {moneyLabel(totals.monthlyPence)} a month at current prices.{" "}
+            {totals.trial} in their free month, {totals.grace} in grace, {totals.pastDue} past due, {totals.paused} paused.
+            {!billingOn && " Billing is switched off (BILLING_ENABLED): nobody is billed or paused."}
+          </p>
         )}
       </Section>
 

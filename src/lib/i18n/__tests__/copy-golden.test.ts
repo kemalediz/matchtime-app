@@ -377,6 +377,8 @@ import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { resolveReminderPhrase } from "../../reminder-time";
 import { FEE_REPLY_SYSTEM_PROMPT, buildFeeReplySystemPrompt } from "../../fee-confirm";
 import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rules";
+import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
+import { approvedTipText, bannerText, billingStateLines, clubFeeTipText } from "../../club-billing-view";
 
 // ── The three worlds ─────────────────────────────────────────────────
 
@@ -1174,6 +1176,67 @@ function cases(lang: Lang): Case[] {
   add(
     "R187 settings / linked",
     `${sj.settings_admin_channel_linked({ group: "FNF HQ" })} [${sj.settings_admin_channel_unlink}]\n${sj.settings_admin_channel_saved}\n${sj.settings_admin_channel_unlinked}`,
+  );
+
+  // ── club fee billing slice B2 (2026-10-01), NEW copy: the club fee tip
+  //    (plan 7.2), the billed "you're live" DM, and the billing page's,
+  //    settings card's and banner's lines (plan 8). Additions only. ──
+  const tipAct = (over: Partial<TipActivity> = {}): TipActivity => ({
+    dayOfWeek: 2, time: "20:00", playersPerTeam: 5, feePerPlayer: null, feeSplitTotal: false, latestMatchFee: null, ...over,
+  });
+  const tipOf = (over: Partial<TipActivity> = {}, plan = "standard", pricePence: number | null = null) =>
+    clubFeeTip({ status: "trial", plan, pricePence, activities: [tipAct(over)] })!;
+  add("R188 club fee tip / 5-a-side, GBP 8 example", clubFeeTipText(lang, tipOf()));
+  add("R188 club fee tip / 7-a-side, own GBP 7 fee", clubFeeTipText(lang, tipOf({ playersPerTeam: 7, feePerPlayer: 7 })));
+  add("R188 club fee tip / 9-a-side, latest match GBP 6", clubFeeTipText(lang, tipOf({ playersPerTeam: 9, latestMatchFee: 6 })));
+  add("R188 club fee tip / split pitch cost", clubFeeTipText(lang, tipOf({ feeSplitTotal: true })));
+  add("R188 club fee tip / Custom GBP 5", clubFeeTipText(lang, tipOf({}, "custom", 500)));
+  add(
+    "R188 organiser DM / approved, billed club",
+    sj.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...SJ_APPROVED_LINKS, tip: approvedTipText(lang, tipOf()) }),
+  );
+  add("R188 organiser DM / approved tip, split pitch cost", approvedTipText(lang, tipOf({ feeSplitTotal: true })));
+  const billView = {
+    plan: "standard", pricePence: null, trialEndsAt: new Date("2026-10-31T10:00:00Z"), graceEndsAt: new Date("2026-11-07T10:00:00Z"),
+    currentPeriodEnd: new Date("2026-12-01T10:00:00Z"), cancelAtPeriodEnd: false, cardBrand: "Visa", cardLast4: "4242",
+    cardHolderUserId: "u1", cardHolderName: "Elvin", viewerUserId: "u1", role: "contact" as const,
+  };
+  add(
+    "R189 billing page / state lines",
+    [
+      ...billingStateLines(lang, { ...billView, status: "trial" }),
+      ...billingStateLines(lang, { ...billView, status: "grace" }),
+      ...billingStateLines(lang, { ...billView, status: "subscribed" }),
+      ...billingStateLines(lang, { ...billView, status: "subscribed", cancelAtPeriodEnd: true }),
+      ...billingStateLines(lang, { ...billView, status: "subscribed", viewerUserId: "u2" }),
+      ...billingStateLines(lang, { ...billView, status: "past_due" }),
+      ...billingStateLines(lang, { ...billView, status: "paused" }),
+    ].join("\n"),
+  );
+  add(
+    "R189 billing page / who pays, buttons, exempt",
+    [
+      sj.billing_page_title,
+      sj.billing_who_collector({ name: "Colin" }),
+      sj.billing_who_owner,
+      sj.billing_who_none,
+      sj.billing_card_on_file({ yes: true }),
+      sj.billing_card_on_file({ yes: false }),
+      sj.billing_card_holder_note({ club: "Riverside FC", contact: "Colin" }),
+      `[${sj.billing_btn_add_card}] [${sj.billing_btn_change_card}] [${sj.billing_btn_use_mine}] [${sj.billing_btn_update_card}] [${sj.billing_btn_remove_mine}]`,
+      sj.billing_btn_soon,
+      `[${sj.billing_open}] [${sj.billing_choose_collector}]`,
+      sj.billing_exempt({ club: "Sutton FC" }),
+    ].join("\n"),
+  );
+  add(
+    "R189 billing banner",
+    [
+      bannerText(lang, { status: "grace", trialEndsAt: billView.trialEndsAt, graceEndsAt: billView.graceEndsAt }),
+      bannerText(lang, { status: "past_due", trialEndsAt: billView.trialEndsAt, graceEndsAt: billView.graceEndsAt }),
+      bannerText(lang, { status: "paused", trialEndsAt: billView.trialEndsAt, graceEndsAt: null }),
+      sj.billing_banner_link,
+    ].join("\n"),
   );
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
