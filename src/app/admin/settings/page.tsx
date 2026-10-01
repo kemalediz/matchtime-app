@@ -12,6 +12,7 @@ import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
 import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
 import { PickModeRows } from "@/components/settings/pick-mode-rows";
+import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
 
 type FeatureKey = ToggleableKey;
 
@@ -44,6 +45,9 @@ interface OrgData {
     benchPickMode?: "first-come" | "organiser";
     benchPickFallback?: "bench-offer" | "leave-empty";
   };
+  /** Club fee billing (slice B2): null or absent with billing off and for
+   *  an exempt club, so nothing new shows. */
+  billing?: BillingCardData | null;
 }
 
 export default function SettingsPage() {
@@ -530,9 +534,16 @@ export default function SettingsPage() {
         );
       })()}
 
+      {/* Club fee billing (slice B2). "Choose a money collector" points at
+          the collector picker below, which only exists while payment
+          collection is on. */}
+      {org.billing && (
+        <BillingSettingsCard data={org.billing} collectorAnchor={org.features?.paymentCollection ? "#payments" : null} />
+      )}
+
       {/* Payments — Connect bank */}
       {org.features?.paymentCollection && (
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <section id="payments" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
             <Landmark className="w-4 h-4 text-slate-500" />
             <h2 className="font-semibold text-slate-800">Money collector&apos;s bank</h2>

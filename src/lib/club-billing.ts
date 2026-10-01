@@ -9,11 +9,15 @@
  * Stripe webhook and the billing cron arriving together are serialised and
  * the second always decides on fresh state.
  *
- * B1 ships the writer DARK: nothing calls `setBillingState` yet (B2 wires
- * approval and the platform owner's controls, B3 the webhook, B4 the
- * cron, B5 removal from the group). Every club is "exempt" by the column
- * default, and an exempt club only ever moves on an approval or "Start
- * free month" with BILLING_ENABLED on.
+ * Callers: B2 wires approval (`decideClub`), the platform owner's plan
+ * control (`setClubPlan`) and "Start free month" (`startTrial`); B3 the
+ * webhook, B4 the cron, B5 removal from the group. Every club is "exempt"
+ * by the column default, and an exempt club only ever moves on an
+ * approval or "Start free month" with BILLING_ENABLED on.
+ *
+ * B2 also reads here for the web: the billing page's guard
+ * (`requireClubBillingAccess`), the settings card, the banner and the
+ * club fee tip. None of it calls Stripe.
  *
  * NOTHING HERE MESSAGES ANYONE. The billing DMs are slice B4, through the
  * platform DM channel; `resumeClub` deliberately posts nothing in the
@@ -26,14 +30,24 @@ import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
 import {
   RESUME_QUIET_LOOKBACK_DAYS,
+  billingAccessRole,
+  billingContact,
+  clubFeeTip,
   isBillingEnabled,
   isBillingPaused,
   nextBillingState,
+  startTrialRefusal,
   trialWindow,
+  type BillingAccessRole,
+  type BillingContact,
   type BillingEventInput,
+  type BillingPlan,
   type BillingStatus,
   type BillingTransition,
+  type ClubFeeTip,
+  type StartTrialRefusal,
 } from "./club-billing-rules";
+import { bannerText, billingCardView, type BillingCardView } from "./club-billing-view";
 
 /**
  * Is the club this match belongs to paused for the club fee? For the Pi
@@ -99,50 +113,60 @@ export async function setBillingState(
   event: BillingEventInput,
   now: Date = new Date(),
 ): Promise<SetBillingStateResult> {
-  return db.$transaction(
-    async (tx): Promise<SetBillingStateResult> => {
-      const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
-        SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
-      const org = orgs[0];
-      if (!org) return { ok: false, reason: "not-found" };
-      const billings = await tx.$queryRaw<
-        Array<{ trialEndsAt: Date; graceEndsAt: Date | null; pausedReason: string | null }>
-      >`SELECT "trialEndsAt", "graceEndsAt", "pausedReason" FROM "ClubBilling" WHERE "orgId" = ${orgId} FOR UPDATE`;
+  return db.$transaction((tx) => applyBillingEventTx(tx, orgId, event, now), { timeout: TX_TIMEOUT_MS });
+}
 
-      const from = org.billingStatus;
-      const t = nextBillingState(
-        { approvedAt: org.approvedAt, billingStatus: from, billingPlan: org.billingPlan, billing: billings[0] ?? null },
-        event,
-        now,
-      );
-      if (!t) return { ok: false, reason: "no-change" };
+/**
+ * `setBillingState`'s body, on a transaction client, so a caller that
+ * must write more in the SAME transaction (the plan control's Free, B2)
+ * shares the lock and the all-or-nothing. Locking a row this transaction
+ * already holds is a no-op in Postgres.
+ */
+async function applyBillingEventTx(
+  tx: Tx,
+  orgId: string,
+  event: BillingEventInput,
+  now: Date,
+): Promise<SetBillingStateResult> {
+  const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
+    SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+  const org = orgs[0];
+  if (!org) return { ok: false, reason: "not-found" };
+  const billings = await tx.$queryRaw<
+    Array<{ trialEndsAt: Date; graceEndsAt: Date | null; pausedReason: string | null }>
+  >`SELECT "trialEndsAt", "graceEndsAt", "pausedReason" FROM "ClubBilling" WHERE "orgId" = ${orgId} FOR UPDATE`;
 
-      const { count } = await tx.organisation.updateMany({
-        where: { id: orgId, billingStatus: from },
-        data: { billingStatus: t.to },
-      });
-      if (count !== 1) {
-        // Cannot happen under the row lock; kept as the second lock.
-        console.log(`[club-billing] ${orgId}: ${event.type} lost the race (${from} changed underneath)`);
-        return { ok: false, reason: "raced" };
-      }
-
-      if (t.createsBilling) {
-        // `approvedAt` is never null here: nextBillingState refuses a club
-        // that predates self-join.
-        const start = event.type === "approved" ? (org.approvedAt ?? now) : now;
-        await tx.clubBilling.create({ data: { orgId, ...trialWindow(start) } });
-      } else {
-        const patch = billingPatch(from, t, now);
-        if (Object.keys(patch).length > 0) await tx.clubBilling.updateMany({ where: { orgId }, data: patch });
-      }
-      if (t.resumes) await resumeClubTx(tx, orgId, now);
-
-      console.log(`[club-billing] ${orgId}: ${from} -> ${t.to} on ${event.type}`);
-      return { ok: true, from: from as BillingStatus, to: t.to, resumed: t.resumes };
-    },
-    { timeout: TX_TIMEOUT_MS },
+  const from = org.billingStatus;
+  const t = nextBillingState(
+    { approvedAt: org.approvedAt, billingStatus: from, billingPlan: org.billingPlan, billing: billings[0] ?? null },
+    event,
+    now,
   );
+  if (!t) return { ok: false, reason: "no-change" };
+
+  const { count } = await tx.organisation.updateMany({
+    where: { id: orgId, billingStatus: from },
+    data: { billingStatus: t.to },
+  });
+  if (count !== 1) {
+    // Cannot happen under the row lock; kept as the second lock.
+    console.log(`[club-billing] ${orgId}: ${event.type} lost the race (${from} changed underneath)`);
+    return { ok: false, reason: "raced" };
+  }
+
+  if (t.createsBilling) {
+    // `approvedAt` is never null here: nextBillingState refuses a club
+    // that predates self-join.
+    const start = event.type === "approved" ? (org.approvedAt ?? now) : now;
+    await tx.clubBilling.create({ data: { orgId, ...trialWindow(start) } });
+  } else {
+    const patch = billingPatch(from, t, now);
+    if (Object.keys(patch).length > 0) await tx.clubBilling.updateMany({ where: { orgId }, data: patch });
+  }
+  if (t.resumes) await resumeClubTx(tx, orgId, now);
+
+  console.log(`[club-billing] ${orgId}: ${from} -> ${t.to} on ${event.type}`);
+  return { ok: true, from: from as BillingStatus, to: t.to, resumed: t.resumes };
 }
 
 /** Generous: the resume work touches a handful of rows per club. */
@@ -246,3 +270,320 @@ async function resumeClubTx(
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// ── Slice B2: the platform owner's controls ─────────────────────────────
+
+export type SetClubPlanResult =
+  | { ok: true; plan: BillingPlan; pricePence: number | null; status: BillingStatus; resumed: boolean }
+  | { ok: false; reason: "not-found" | "not-self-join" };
+
+/**
+ * The platform owner's plan control on /admin/clubs (8.3): Standard,
+ * Free or Custom. ONE transaction holding the club's row lock, ordered so
+ * every statement satisfies the CHECK constraints
+ * (prisma/sql/org-billing-check.sql):
+ *
+ *   - to Free: the billing state goes to "exempt" FIRST (the "plan-free"
+ *     event through `applyBillingEventTx`, which resumes a paused club in
+ *     the same transaction), THEN the plan is written. The other order
+ *     would break Organisation_billingFreeExempt_check;
+ *   - leaving Free (or Standard and Custom between themselves): the plan
+ *     first, and no status change. A club leaving Free stays "exempt"
+ *     until the owner presses "Start free month" (if it never had one).
+ *
+ * Refused for a club that predates self-join (`approvedAt` NULL, Sutton
+ * FC): it is never billed, so it has no plan to change.
+ *
+ * Works with BILLING_ENABLED off too: Free only ever makes a club less
+ * billed, and Standard or Custom on an exempt club bills nobody.
+ * Changing the price of a live Stripe subscription is slice B3.
+ */
+export async function setClubPlan(
+  orgId: string,
+  choice: { plan: BillingPlan; pricePence: number | null },
+  now: Date = new Date(),
+): Promise<SetClubPlanResult> {
+  return db.$transaction(
+    async (tx): Promise<SetClubPlanResult> => {
+      const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
+        SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+      const org = orgs[0];
+      if (!org) return { ok: false, reason: "not-found" };
+      if (org.approvedAt === null) return { ok: false, reason: "not-self-join" };
+
+      let status = org.billingStatus as BillingStatus;
+      let resumed = false;
+      if (choice.plan === "free" && status !== "exempt") {
+        const moved = await applyBillingEventTx(tx, orgId, { type: "plan-free" }, now);
+        // Every non-exempt state moves to exempt on "plan-free"; anything
+        // else would leave a Free plan on a billed club, which the CHECK
+        // refuses. Throw, so nothing in this transaction is committed.
+        if (!moved.ok) throw new Error(`[club-billing] ${orgId}: plan Free could not make the club exempt (${moved.reason})`);
+        status = moved.to;
+        resumed = moved.resumed;
+      }
+      const pricePence = choice.plan === "custom" ? choice.pricePence : null;
+      await tx.organisation.update({ where: { id: orgId }, data: { billingPlan: choice.plan, billingPricePence: pricePence } });
+      console.log(`[club-billing] ${orgId}: plan ${org.billingPlan} -> ${choice.plan}${pricePence ? ` (${pricePence}p)` : ""}`);
+      return { ok: true, plan: choice.plan, pricePence, status, resumed };
+    },
+    { timeout: TX_TIMEOUT_MS },
+  );
+}
+
+export type StartTrialResult =
+  | { ok: true; trialEndsAt: Date }
+  | { ok: false; reason: StartTrialRefusal | "not-found" | "raced" };
+
+/**
+ * "Start free month" on /admin/clubs (8.3, decision 2), for a self-join
+ * club approved before billing was switched on: the free month starts
+ * NOW, once per club, through the one writer.
+ */
+export async function startTrial(orgId: string, now: Date = new Date()): Promise<StartTrialResult> {
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { billingStatus: true, billingPlan: true, approvedAt: true, clubBilling: { select: { trialEndsAt: true } } },
+  });
+  if (!org) return { ok: false, reason: "not-found" };
+  const refusal = startTrialRefusal({
+    approvedAt: org.approvedAt,
+    billingStatus: org.billingStatus,
+    billingPlan: org.billingPlan,
+    hadFreeMonth: org.clubBilling !== null,
+  });
+  if (refusal) return { ok: false, reason: refusal };
+  const r = await setBillingState(orgId, { type: "start-trial" }, now);
+  if (!r.ok) return { ok: false, reason: r.reason === "not-found" ? "not-found" : "raced" };
+  return { ok: true, trialEndsAt: trialWindow(now).trialEndsAt };
+}
+
+// ── Slice B2: the club fee tip, from the club's own games ───────────────
+
+/**
+ * The club fee tip's numbers for a club (7.2), or null when there is
+ * nothing to cover (exempt, Free) or no such club. Reads the club's
+ * ACTIVE weekly games, their sport's players per side and each one's
+ * latest match fee.
+ */
+export async function loadClubFeeTip(orgId: string): Promise<ClubFeeTip | null> {
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: {
+      billingStatus: true,
+      billingPlan: true,
+      billingPricePence: true,
+      sports: { select: { playersPerTeam: true }, orderBy: { createdAt: "asc" }, take: 1 },
+      activities: {
+        where: { isActive: true },
+        select: {
+          dayOfWeek: true,
+          time: true,
+          feePerPlayer: true,
+          feeSplitTotal: true,
+          sport: { select: { playersPerTeam: true } },
+          matches: {
+            where: { feePerPlayer: { not: null } },
+            orderBy: { date: "desc" },
+            take: 1,
+            select: { feePerPlayer: true },
+          },
+        },
+      },
+    },
+  });
+  if (!org) return null;
+  return clubFeeTip({
+    status: org.billingStatus,
+    plan: org.billingPlan,
+    pricePence: org.billingPricePence,
+    fallbackPlayersPerTeam: org.sports[0]?.playersPerTeam,
+    activities: org.activities.map((a) => ({
+      dayOfWeek: a.dayOfWeek,
+      time: a.time,
+      playersPerTeam: a.sport.playersPerTeam,
+      feePerPlayer: a.feePerPlayer,
+      feeSplitTotal: a.feeSplitTotal,
+      latestMatchFee: a.matches[0]?.feePerPlayer ?? null,
+    })),
+  });
+}
+
+// ── Slice B2: who may open /billing/[orgId] (4.5) ───────────────────────
+
+/** Thrown by `requireClubBillingAccess`: the page answers 404. */
+export class BillingAccessDenied extends Error {
+  constructor(orgId: string) {
+    super(`No billing access to ${orgId}`);
+    this.name = "BillingAccessDenied";
+  }
+}
+
+/** Everything the billing page, the settings card and the guard read. */
+export interface ClubBillingSnapshot {
+  orgId: string;
+  club: string;
+  language: string;
+  /** `Organisation.billingStatus`. */
+  status: string;
+  plan: string;
+  pricePence: number | null;
+  paymentHolderId: string | null;
+  contact: (BillingContact & { name: string | null }) | null;
+  billing: {
+    trialEndsAt: Date;
+    graceEndsAt: Date | null;
+    currentPeriodEnd: Date | null;
+    cancelAtPeriodEnd: boolean;
+    cardBrand: string | null;
+    cardLast4: string | null;
+    cardHolderUserId: string | null;
+  } | null;
+  cardHolderName: string | null;
+  members: Array<{ userId: string; role: string; leftAt: Date | null; name: string | null }>;
+}
+
+/** The club's billing as the web shows it, or null for no such club. */
+export async function loadClubBillingSnapshot(orgId: string): Promise<ClubBillingSnapshot | null> {
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: {
+      id: true,
+      name: true,
+      language: true,
+      billingStatus: true,
+      billingPlan: true,
+      billingPricePence: true,
+      paymentHolderId: true,
+      memberships: {
+        orderBy: { createdAt: "asc" },
+        select: { userId: true, role: true, leftAt: true, user: { select: { phoneNumber: true, name: true } } },
+      },
+      clubBilling: {
+        select: {
+          trialEndsAt: true,
+          graceEndsAt: true,
+          currentPeriodEnd: true,
+          cancelAtPeriodEnd: true,
+          cardBrand: true,
+          cardLast4: true,
+          cardHolderUserId: true,
+        },
+      },
+    },
+  });
+  if (!org) return null;
+  const members = org.memberships.map((mb) => ({
+    userId: mb.userId,
+    role: mb.role as string,
+    leftAt: mb.leftAt,
+    phoneNumber: mb.user.phoneNumber,
+    name: mb.user.name,
+  }));
+  const contact = billingContact({ paymentHolderId: org.paymentHolderId }, members);
+  const nameOf = (id: string | null | undefined) => (id ? (members.find((mb) => mb.userId === id)?.name ?? null) : null);
+  const holderId = org.clubBilling?.cardHolderUserId ?? null;
+  let cardHolderName = nameOf(holderId);
+  if (holderId && cardHolderName === null) {
+    // An old card holder who has left the club is not in the member list.
+    cardHolderName = (await db.user.findUnique({ where: { id: holderId }, select: { name: true } }))?.name ?? null;
+  }
+  return {
+    orgId: org.id,
+    club: org.name,
+    language: org.language,
+    status: org.billingStatus,
+    plan: org.billingPlan,
+    pricePence: org.billingPricePence,
+    paymentHolderId: org.paymentHolderId,
+    contact: contact ? { ...contact, name: nameOf(contact.userId) } : null,
+    billing: org.clubBilling ?? null,
+    cardHolderName,
+    members: members.map(({ userId, role, leftAt, name }) => ({ userId, role, leftAt, name })),
+  };
+}
+
+export interface BillingAccess {
+  role: BillingAccessRole;
+  snapshot: ClubBillingSnapshot;
+}
+
+/**
+ * Who `userId` is to this club's billing (4.5), or null (the page is a
+ * 404). `flagOn` is BILLING_ENABLED as the web reads it (the e2e cookie
+ * seam, billing-flag.ts); it defaults to the environment.
+ */
+export async function loadBillingAccess(
+  userId: string,
+  orgId: string,
+  opts: { flagOn?: boolean } = {},
+): Promise<BillingAccess | null> {
+  const flagOn = opts.flagOn ?? isBillingEnabled();
+  if (!flagOn) return null;
+  const snapshot = await loadClubBillingSnapshot(orgId);
+  if (!snapshot) return null;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { isSuperadmin: true } });
+  const mine = snapshot.members.find((mb) => mb.userId === userId) ?? null;
+  const role = billingAccessRole({
+    userId,
+    flagOn,
+    status: snapshot.status,
+    isSuperadmin: !!user?.isSuperadmin,
+    membership: mine ? { role: mine.role, leftAt: mine.leftAt } : null,
+    contactUserId: snapshot.contact?.userId ?? null,
+    cardHolderUserId: snapshot.billing?.cardHolderUserId ?? null,
+  });
+  return role ? { role, snapshot } : null;
+}
+
+/**
+ * The guard for the billing page and (slice B3) every billing server
+ * action, modelled on `requireMatchCollectorOrAdmin`: the billing
+ * contact, an old card holder, or an OWNER or ADMIN (read only). Throws
+ * `BillingAccessDenied` for anybody else, for an exempt club (there is
+ * no billing to act on) and while BILLING_ENABLED is off. A server action
+ * must call it itself, never trusting that the page was shown, and must
+ * also refuse the role it does not serve (a "viewer" changes nothing).
+ */
+export async function requireClubBillingAccess(
+  userId: string,
+  orgId: string,
+  opts: { flagOn?: boolean } = {},
+): Promise<BillingAccess & { role: Exclude<BillingAccessRole, "exempt-owner"> }> {
+  const access = await loadBillingAccess(userId, orgId, opts);
+  if (!access || access.role === "exempt-owner") throw new BillingAccessDenied(orgId);
+  return access as BillingAccess & { role: Exclude<BillingAccessRole, "exempt-owner"> };
+}
+
+// ── Slice B2: the settings card and the banner (8.1, 8.2) ───────────────
+
+/**
+ * The /admin/settings billing card for a club, or null: with the web's
+ * flag off, and for an exempt club (Sutton FC sees nothing new). The
+ * caller has already checked the viewer is an OWNER or ADMIN.
+ */
+export async function loadBillingCard(
+  orgId: string,
+  opts: { flagOn?: boolean } = {},
+): Promise<(BillingCardView & { billingPath: string }) | null> {
+  if (!(opts.flagOn ?? isBillingEnabled())) return null;
+  const snapshot = await loadClubBillingSnapshot(orgId);
+  if (!snapshot || snapshot.status === "exempt") return null;
+  const view = billingCardView(snapshot.language, snapshot, await loadClubFeeTip(orgId));
+  return view ? { ...view, billingPath: `/billing/${orgId}` } : null;
+}
+
+/** The admin banner's line for a club (grace, past due, paused), or null. */
+export async function loadBillingBanner(orgId: string, opts: { flagOn?: boolean } = {}): Promise<string | null> {
+  if (!(opts.flagOn ?? isBillingEnabled())) return null;
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { language: true, billingStatus: true, clubBilling: { select: { trialEndsAt: true, graceEndsAt: true } } },
+  });
+  if (!org) return null;
+  return bannerText(org.language, {
+    status: org.billingStatus,
+    trialEndsAt: org.clubBilling?.trialEndsAt ?? null,
+    graceEndsAt: org.clubBilling?.graceEndsAt ?? null,
+  });
+}

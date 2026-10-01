@@ -50,6 +50,17 @@ vi.mock("@/lib/admin-link", async (importOriginal) => ({
   buildAdminLink: adminLinkMock,
 }));
 
+// Club fee billing, slice B2: approval starts the free month (flag on) and
+// the "you're live" DM carries the club fee tip for a billed club. The
+// writer and the tip loader are faked here; their own tests are
+// club-billing.test.ts and club-billing-b2.test.ts.
+const billingMock = vi.hoisted(() => ({ setBillingState: vi.fn(), loadClubFeeTip: vi.fn() }));
+vi.mock("@/lib/club-billing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/club-billing")>()),
+  setBillingState: billingMock.setBillingState,
+  loadClubFeeTip: billingMock.loadClubFeeTip,
+}));
+
 import { decideClub, handleApproverDm, leaveUnsolicitedGroup } from "../club-approval";
 
 const NOW = new Date("2026-09-29T12:00:00Z");
@@ -148,6 +159,9 @@ beforeEach(() => {
   dbMock.platformJob.findFirst.mockResolvedValue(null);
   dbMock.platformJob.create.mockImplementation(async ({ data }: { data: object }) => ({ id: "pj-1", ...data }));
   importMock.mockResolvedValue({ added: 2, alreadyKnown: 0, skippedNoPhone: 0, restoredMembership: 0, total: 2 });
+  delete process.env.BILLING_ENABLED;
+  billingMock.setBillingState.mockResolvedValue({ ok: false, reason: "no-change" });
+  billingMock.loadClubFeeTip.mockResolvedValue(null);
 });
 
 afterAll(() => {
@@ -269,6 +283,76 @@ describe("decideClub: approve", () => {
     }
     expect(orgs["org-sutton"]).toEqual(sutton());
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("decideClub: approve starts the free month (club fee billing, slice B2)", () => {
+  const TIP = {
+    pricePence: 999,
+    perSide: 5,
+    players: 10,
+    games: 4,
+    sharePence: 25,
+    feePence: 800,
+    feePlusPence: 825,
+    feeSource: "example" as const,
+    split: false,
+  };
+  const FREE = "Your first month is free.";
+
+  it("BILLING_ENABLED off: no free month starts and the DM is exactly today's", async () => {
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    expect(billingMock.setBillingState).not.toHaveBeenCalled();
+    const text = String(created("platformJob")[0].text);
+    expect(text.endsWith(FREE)).toBe(true);
+    expect(text).not.toMatch(/£|Club fee/);
+  });
+
+  it("flag on: the free month starts through the one writer, and the DM ends with the tip after the free sentence", async () => {
+    process.env.BILLING_ENABLED = "1";
+    billingMock.setBillingState.mockResolvedValue({ ok: true, from: "exempt", to: "trial", resumed: false });
+    billingMock.loadClubFeeTip.mockResolvedValue(TIP);
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    expect(billingMock.setBillingState).toHaveBeenCalledWith("org-riverside", { type: "approved" }, NOW);
+    const text = String(created("platformJob")[0].text);
+    expect(text).toContain(
+      `${FREE}\n\n💷 *Club fee tip:* after that it's £9.99 a month for the group, paid by card by whoever collects the match fees. ` +
+        "With 10 players and about 4 games a month, that's about *25p a player per game*, so a £8 game could be charged at *£8.25*.",
+    );
+  });
+
+  it("flag on, in Turkish", async () => {
+    process.env.BILLING_ENABLED = "1";
+    orgs["org-riverside"].language = "tr";
+    billingMock.setBillingState.mockResolvedValue({ ok: true, from: "exempt", to: "trial", resumed: false });
+    billingMock.loadClubFeeTip.mockResolvedValue(TIP);
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    expect(String(created("platformJob")[0].text)).toContain("İlk ayınız ücretsiz.\n\n💷 *Kulüp ücreti ipucu:*");
+  });
+
+  it("flag on but no free month started (plan Free): no tip", async () => {
+    process.env.BILLING_ENABLED = "1";
+    billingMock.loadClubFeeTip.mockResolvedValue(TIP);
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    expect(billingMock.setBillingState).toHaveBeenCalledTimes(1);
+    expect(String(created("platformJob")[0].text).endsWith(FREE)).toBe(true);
+  });
+
+  it("a billing failure never undoes the approval; the DM goes without the tip", async () => {
+    process.env.BILLING_ENABLED = "1";
+    billingMock.setBillingState.mockRejectedValue(new Error("lock timeout"));
+    const r = await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    expect(r.ok).toBe(true);
+    expect(orgs["org-riverside"].approvalStatus).toBe("approved");
+    expect(String(created("platformJob")[0].text).endsWith(FREE)).toBe(true);
+  });
+
+  it("reject and suspend never touch billing", async () => {
+    process.env.BILLING_ENABLED = "1";
+    await decideClub("org-riverside", "reject", "u-kemal", { now: NOW });
+    orgs["org-riverside"] = riverside({ approvalStatus: "approved", approvedAt: NOW, whatsappGroupId: GROUP });
+    await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "Riverside FC" });
+    expect(billingMock.setBillingState).not.toHaveBeenCalled();
   });
 });
 
