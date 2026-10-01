@@ -67,7 +67,7 @@ vi.mock("@/lib/message-analyzer", () => ({
 }));
 
 import { computeDuePosts } from "@/lib/bot-scheduler";
-import { buildUnpaidTailText } from "@/lib/scheduler-copy";
+import { buildUnpaidGroupReminder, buildUnpaidTailText } from "@/lib/scheduler-copy";
 
 const GROUP = "group-fnf@g.us";
 const ORG = { id: "org-fnf", whatsappGroupId: GROUP, whatsappBotEnabled: true };
@@ -196,7 +196,13 @@ describe("the standalone unpaid reminder in the group (weekly-deadline clubs)", 
     const mine = out.filter((i) => i.key === KEY);
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({ kind: "group-message", matchId: "m-fri-9-oct" });
-    expect(text(out, KEY)).toBe(buildUnpaidTailText(2, "en"));
+    expect(text(out, KEY)).toBe(
+      "💳 *2* payments still pending for Friday's match. If you've already paid, tick your team in the payment poll to clear it 🙏",
+    );
+    expect(text(out, KEY)).toBe(buildUnpaidGroupReminder({ unpaid: 2, dayName: "Friday", lang: "en" }));
+    // Its own words, not the 17:00 tail's ("last week's match", "the poll above").
+    expect(text(out, KEY)).not.toBe(buildUnpaidTailText(2, "en"));
+    expect(text(out, KEY)).not.toMatch(/[\u2013\u2014]/);
   });
 
   it("not before 10:00, not the day before, not once sent", async () => {
@@ -227,8 +233,10 @@ describe("the standalone unpaid reminder in the group (weekly-deadline clubs)", 
       ),
     ]);
     expect((await instructions(SUN_1005)).some((i) => i.key === KEY)).toBe(false);
-    setWorld([completed({ ...HAMZAH_CLUB, paymentHolderId: "u0" }, [1])]);
-    expect(text(await instructions(SUN_1005), KEY)).toBe(buildUnpaidTailText(2, "en"));
+    setWorld([completed({ ...HAMZAH_CLUB, paymentHolderId: "u0" }, [1, 2])]);
+    expect(text(await instructions(SUN_1005), KEY)).toBe(
+      "💳 1 payment still pending for Friday's match. If you've already paid, tick your team in the payment poll to clear it 🙏",
+    );
   });
 
   it("no signal (nobody ticked, no credit): nothing", async () => {
@@ -256,6 +264,9 @@ describe("the standalone unpaid reminder in the group (weekly-deadline clubs)", 
 
   it("Turkish club: the Turkish tail", async () => {
     setWorld([completed({ ...HAMZAH_CLUB, language: "tr" })]);
-    expect(text(await instructions(SUN_1005), KEY)).toBe(buildUnpaidTailText(2, "tr"));
+    expect(text(await instructions(SUN_1005), KEY)).toBe(
+      buildUnpaidGroupReminder({ unpaid: 2, dayName: "Cuma", lang: "tr" }),
+    );
+    expect(text(await instructions(SUN_1005), KEY)).toContain("Cuma günkü maç için *2* ödeme");
   });
 });

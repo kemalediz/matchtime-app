@@ -580,6 +580,7 @@ const SAMPLES: SampleArgs = {
   dm_recruit_chase_organiser: { firstName: "Ali", count: 1, activityName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30" },
   dm_self_ack_waiting_organiser: { matchName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30" },
   // U1, the organisers' unpaid list (2026-10-01)
+  unpaid_group_reminder: { unpaid: 4, dayName: "Friday" },
   unpaid_list_admin: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", names: ["Wasim", "Raihan"], paid: 14, n: 16 },
 };
 

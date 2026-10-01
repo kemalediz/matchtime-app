@@ -1730,6 +1730,11 @@ export const tr: Strings = {
   // ── UNP1 (2026-10-01): yöneticilere ödemeyenler listesi ──
   unpaid_list_admin: (p) =>
     `💷 *${p.activityName}* (${p.whenLabel}) için ödemeyenler: ${p.names.join(", ")}. ${p.n} kişiden ${p.paid} kişi ödedi.`,
+  // ── UNP2 (2026-10-01): haftalık düzenli kulüplerde gruba tek başına ödeme hatırlatması ──
+  unpaid_group_reminder: (p) =>
+    p.unpaid === 1
+      ? `💳 ${p.dayName} günkü maç için 1 ödeme hâlâ bekliyor. Ödediyseniz ödeme anketinde takımınızı işaretleyin 🙏`
+      : `💳 ${p.dayName} günkü maç için *${p.unpaid}* ödeme hâlâ bekliyor. Ödediyseniz ödeme anketinde takımınızı işaretlemeniz yeterli 🙏`,
 };
 
 /**

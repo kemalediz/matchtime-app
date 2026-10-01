@@ -22,7 +22,6 @@
 import { test, expect, resetDb } from "../fixtures";
 import { E2E } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
-import { buildUnpaidTailText } from "@/lib/scheduler-copy";
 import type { APIRequestContext } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
@@ -163,7 +162,9 @@ test("Sun 10:05: the weekly club gets the group reminder and its owner the unpai
   const reminder = w.filter((i) => i.key === `${W_MATCH}:unpaid-group`);
   expect(reminder).toHaveLength(1);
   expect(reminder[0].kind).toBe("group-message");
-  expect(reminder[0].text).toBe(buildUnpaidTailText(2, "en"));
+  expect(reminder[0].text).toBe(
+    "💳 *2* payments still pending for Friday's match. If you've already paid, tick your team in the payment poll to clear it 🙏",
+  );
 
   const jobs = await unpaidListJobs(db);
   expect(jobs).toHaveLength(1);

@@ -57,7 +57,7 @@ import {
   buildSquadCompleteBenchInvite,
 } from "./bench-offer-copy";
 import { buildRatePromoPost, buildMatchDayChaseFallback, teamSheetNames } from "./group-copy";
-import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
+import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel, weekdayLabel, weekdayTimeLabel } from "./i18n/dates";
 import {
   dropOutDeadlineFor,
   dropOutReminderDue,
@@ -85,6 +85,7 @@ import {
   buildRollingDeadlineLine,
   buildSquadFullEveningPost,
   buildSquadRosterBlock,
+  buildUnpaidGroupReminder,
   buildUnpaidTailText,
 } from "./scheduler-copy";
 
@@ -1929,8 +1930,10 @@ async function computeForMatch(
   //    club (2026-10-01, decided by Kemal). D4 switched such a club's
   //    17:00 post off except on match day, and the unpaid tail only ever
   //    rode on that post (and never on match day or the day before), so
-  //    the group lost its "please pay" nudge. This posts the same tail
-  //    text, alone, once, at 10:00 London two days after the COMPLETED
+  //    the group lost its "please pay" nudge. This posts its own reminder
+  //    (row UNP2: names the match by day, points at "the payment poll"
+  //    rather than row 73's "last week's match" and "the poll above"),
+  //    once, at 10:00 London two days after the COMPLETED
   //    match (`unpaidFollowUpDue`), counted by the same rule
   //    (`summariseUnpaid`), keyed `<matchId>:unpaid-group`. The organisers'
   //    named list (U1) is a separate notice, `unpaid-list.ts`.
@@ -1952,7 +1955,12 @@ async function computeForMatch(
         creditCount: (m.paymentCredits ?? []).reduce((s, c) => s + c.count, 0),
       });
       if (summary) {
-        out.push({ kind: "group-message", key, matchId, text: buildUnpaidTailText(summary.unpaid, lang) });
+        out.push({
+          kind: "group-message",
+          key,
+          matchId,
+          text: buildUnpaidGroupReminder({ unpaid: summary.unpaid, dayName: weekdayLabel(lang, m.date), lang }),
+        });
       }
     }
   }

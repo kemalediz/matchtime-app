@@ -2163,4 +2163,13 @@ export const en = {
   //    the group tail's rule (holder left out, bulk credits count). ──
   unpaid_list_admin: (p: { activityName: string; whenLabel: string; names: string[]; paid: number; n: number }): string =>
     `💷 Unpaid for *${p.activityName}* (${p.whenLabel}): ${p.names.join(", ")}. ${p.paid} of ${p.n} paid.`,
+  // ── UNP2 (2026-10-01): the unpaid reminder posted ON ITS OWN in the
+  //    group of a weekly-rhythm club, two days after the match. Not row 73
+  //    (`unpaid_tail`, the 17:00 tail): that says "last week's match" and
+  //    "the poll above", and by now the poll is two days up. `dayName` is
+  //    the match's weekday (`weekdayLabel`). ──
+  unpaid_group_reminder: (p: { unpaid: number; dayName: string }): string =>
+    p.unpaid === 1
+      ? `💳 1 payment still pending for ${p.dayName}'s match. If you've already paid, tick your team in the payment poll to clear it 🙏`
+      : `💳 *${p.unpaid}* payments still pending for ${p.dayName}'s match. If you've already paid, tick your team in the payment poll to clear it 🙏`,
 };
