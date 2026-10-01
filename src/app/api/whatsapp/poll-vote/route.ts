@@ -50,13 +50,6 @@ export async function POST(request: Request) {
 
   const matchId = sent.matchId;
 
-  // Club fee billing (B1): a club paused for the club fee records no vote
-  // and no payment tick (the collector can still mark payments on the
-  // website). No query while BILLING_ENABLED is off.
-  if (await isMatchClubBillingPaused(matchId)) {
-    return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
-  }
-
   // 1. Try phone match (most accurate).
   let voter: { id: string; name: string | null } | null = null;
   const normalised = normalisePhone(voterPhone);
@@ -136,6 +129,14 @@ export async function POST(request: Request) {
       data: { paidAt: optionName ? new Date() : null },
     });
     return NextResponse.json({ ok: true, action: optionName ? "paid" : "unpaid" });
+  }
+
+  // Club fee billing (B1): a club paused for the club fee records no MoM
+  // vote. (A payment tick above IS recorded while paused, plan 4.3: it is
+  // money a player actually paid, and that branch sends nothing.) No query
+  // while BILLING_ENABLED is off.
+  if (await isMatchClubBillingPaused(matchId)) {
+    return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
   }
 
   // No option means the user un-voted — delete the MoMVote.

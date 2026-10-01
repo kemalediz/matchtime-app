@@ -33,6 +33,7 @@ import { lidDigits } from "./connect-dm-rules";
 import { parseParticipantSnapshot, snapshotPhone } from "./participant-snapshot";
 import { ACTIVE_ONBOARDING_STAGES } from "./onboarding-parse";
 import { APPROVED_CLUB_WHERE, servingClubWhere } from "./club-approval-state";
+import { isBillingPaused } from "./club-billing-rules";
 import {
   ADMIN_GROUP_CODE_TTL_MS,
   generateAdminGroupLinkCode,
@@ -129,7 +130,9 @@ export async function detectAdminGroupCandidate(input: {
 
   const openCodes =
     (await db.organisation.findMany({
-      where: { ...APPROVED_CLUB_WHERE, adminGroupLinkCode: { not: null }, adminGroupLinkCodeExpiresAt: { gt: input.now } },
+      // Club fee billing (B1): a paused club's open code does not make a
+      // group its admin-group candidate. APPROVED_CLUB_WHERE while the flag is off.
+      where: { ...servingClubWhere(), adminGroupLinkCode: { not: null }, adminGroupLinkCodeExpiresAt: { gt: input.now } },
       select: { id: true, adminGroupLinkCodeExpiresAt: true },
     })) ?? [];
   if (openCodes.length === 0) return false;
@@ -265,8 +268,18 @@ export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminG
 
   const target = await db.organisation.findFirst({
     where: { ...APPROVED_CLUB_WHERE, adminGroupLinkCode: code },
-    select: { id: true, name: true, language: true, adminGroupId: true, adminGroupLinkCodeExpiresAt: true },
+    select: {
+      id: true,
+      name: true,
+      language: true,
+      adminGroupId: true,
+      adminGroupLinkCodeExpiresAt: true,
+      billingStatus: true,
+    },
   });
+  // Club fee billing (B1): a club paused for the club fee links no admin
+  // group, and says nothing (not even L2). Never while the flag is off.
+  if (target && isBillingPaused(target)) return ignored("club-billing-paused");
   const valid =
     !!target && !!target.adminGroupLinkCodeExpiresAt && target.adminGroupLinkCodeExpiresAt.getTime() > now.getTime();
   if (!valid) {

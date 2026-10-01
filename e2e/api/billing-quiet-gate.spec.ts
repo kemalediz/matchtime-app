@@ -353,18 +353,30 @@ test.describe("the doors that bypass analyze (review fixes)", () => {
     expect(offer?.resolvedAt).toBeNull();
   });
 
-  test("poll votes: neither a MoM vote nor a payment tick is written", async ({ request, db }) => {
-    for (const waMessageId of [MOM_MSG, PAY_MSG]) {
-      const res = await request.post("/api/whatsapp/poll-vote", {
-        headers: HEADERS,
-        data: { waMessageId, voterPhone: PAUSED_PHONE.replace("+", ""), optionName: "Mo Mate" },
-      });
-      expect(res.status()).toBe(200);
-      expect((await res.json()).ignored).toBe("club-billing-paused");
-    }
+  test("poll votes: a MoM vote is not written", async ({ request, db }) => {
+    const res = await request.post("/api/whatsapp/poll-vote", {
+      headers: HEADERS,
+      data: { waMessageId: MOM_MSG, voterPhone: PAUSED_PHONE.replace("+", ""), optionName: "Mo Mate" },
+    });
+    expect(res.status()).toBe(200);
+    expect((await res.json()).ignored).toBe("club-billing-paused");
     expect(await db.count(`SELECT COUNT(*) FROM "MoMVote" WHERE "matchId" = $1`, [PAUSED_DONE])).toBe(0);
+  });
+
+  test("poll votes: a payment tick IS recorded (money a player paid, plan 4.3), silently", async ({ request, db }) => {
+    const jobs = await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [PAUSED_ORG]);
+    const platform = await db.count(`SELECT COUNT(*) FROM "PlatformJob"`);
+    const res = await request.post("/api/whatsapp/poll-vote", {
+      headers: HEADERS,
+      data: { waMessageId: PAY_MSG, voterPhone: PAUSED_PHONE.replace("+", ""), optionName: "Red" },
+    });
+    expect(res.status()).toBe(200);
+    expect((await res.json()).action).toBe("paid");
     const paid = await db.one<{ paidAt: Date | null }>(`SELECT "paidAt" FROM "Attendance" WHERE id = 'e2e-billing-att-done-0'`);
-    expect(paid?.paidAt).toBeNull();
+    expect(paid?.paidAt).not.toBeNull();
+    // Nothing outbound: no BotJob, no platform DM.
+    expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [PAUSED_ORG])).toBe(jobs);
+    expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob"`)).toBe(platform);
   });
 });
 
