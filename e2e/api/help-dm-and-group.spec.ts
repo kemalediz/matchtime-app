@@ -126,3 +126,39 @@ test("DM 'help schedule' from the ADMIN: four signed-in links; from a player, on
   expect(player).toMatch(/organiser/);
   expect(player).not.toMatch(/https?:\/\//);
 });
+
+test("group: '@Match Time help badges Mr Reliable' gives that badge's rules; bare 'help badges' lists them all", async ({
+  request,
+}) => {
+  const id = msgId();
+  const id2 = msgId();
+  const res = await postAnalyze(request, [
+    { waMessageId: id, body: "@Match Time help badges Mr Reliable", authorPhone: PHONE.player, authorName: NAME.player, botMentioned: true },
+    { waMessageId: id2, body: "@Match Time help badges", authorPhone: PHONE.player, authorName: NAME.player, botMentioned: true },
+  ]);
+  const results = res.results as Array<{ waMessageId: string; reply?: string; handledBy?: string }>;
+  const one = results.find((x) => x.waMessageId === id)!;
+  expect(one.handledBy).toBe("fast-path");
+  expect(one.reply?.startsWith("🧱 *Mr Reliable*")).toBe(true);
+  expect(one.reply).toContain("1. Rated in at least 4 games.");
+  expect(one.reply).toContain("the spread (standard deviation) is under 1 point");
+  const all = results.find((x) => x.waMessageId === id2)!;
+  expect(all.handledBy).toBe("fast-path");
+  for (const name of ["On the board", "Regular", "Iron Man", "Man of the Match", "MoM Machine", "Masterclass", "Mr Reliable", "Above the Curve"]) {
+    expect(all.reply).toContain(`*${name}*: `);
+  }
+  expect(all.reply).toContain("*@Match Time help badges Mr Reliable*");
+  expect(all.reply).not.toMatch(/[—–]/);
+});
+
+test("DM 'help badges iron man' answers with that badge; an unknown name gets the list", async ({ request, db }) => {
+  const json = await postDm(request, PHONE.rater, "help badges iron man");
+  expect(json).toMatchObject({ handled: "dm-help", topic: "badges", audience: "player" });
+  const text = (await lastDmTo(db, PHONE.rater))!.text;
+  expect(text.startsWith("🦾 *Iron Man*")).toBe(true);
+  expect(text).toContain("At least 3 matches");
+  await postDm(request, PHONE.rater, "help badges golden boot");
+  const unknown = (await lastDmTo(db, PHONE.rater))!.text;
+  expect(unknown).toContain(`I don't know a badge called "golden boot"`);
+  expect(unknown).toContain("*help badges Mr Reliable*");
+});

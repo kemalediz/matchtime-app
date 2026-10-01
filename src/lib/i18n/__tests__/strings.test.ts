@@ -34,6 +34,7 @@ import { en } from "../strings.en";
 import { tr } from "../strings.tr";
 import { t, type Strings } from "../t";
 import { LANGS, LANG_LABELS, DEFAULT_LANG, isLang, normaliseLang } from "../lang";
+import { BADGE_NUMBERS } from "../../badge-rules";
 
 const TABLES = { en, tr } as const;
 
@@ -316,6 +317,12 @@ const SAMPLES: SampleArgs = {
   onbHelpAdminPage: { url: "https://mt.example/s/page" },
   onbHelpForClub: { club: "Riverside FC" },
   onbHelpExplainer: { topic: "teams" },
+  onbHelpBadgesHead: null,
+  onbHelpBadgeLine: { key: "reliable", emoji: "🧱", label: "Mr Reliable", n: BADGE_NUMBERS },
+  onbHelpBadgesFoot: { dm: false, example: "Mr Reliable" },
+  onbHelpBadgesUnknown: { query: "golden boot" },
+  onbHelpBadgesClubNote: null,
+  onbHelpBadgeDetail: { key: "reliable", emoji: "🧱", label: "Mr Reliable", n: BADGE_NUMBERS },
 
   // ── private messages (Phase 3) ──
   //   `dayNum`, `kind`, `category` and `decision` are branched on, not printed.

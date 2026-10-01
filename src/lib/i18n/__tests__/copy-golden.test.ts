@@ -222,6 +222,10 @@
  *     by audience, schedule help, the admin's "can't do that by message"
  *     pointer, the setup DM's seed, block-booking and match-list links,
  *     the join DMs with a link). No other English case changed.
+ *
+ *   - 2026-10-01, "help badges": ADDED R152 (the badge list, each
+ *     badge's rules, an unknown name). CHANGED, on purpose: bare help
+ *     (R143, R148 bare / admin) lists the new badges topic.
  */
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
@@ -1039,6 +1043,13 @@ function cases(lang: Lang): Case[] {
   add("R151 composeJoinDm / new, unnamed", composeJoinDm(lang, { kind: "new", club: "MT Test", phone: "+447546111893" }, "https://mt.example/r/phones"));
   add("R151 composeJoinDm / new, named", composeJoinDm(lang, { kind: "new", club: "MT Test", phone: "+447546111893", name: "Ali" }, "https://mt.example/r/players"));
   add("R151 composeJoinDm / possible duplicate", composeJoinDm(lang, { kind: "first", club: "MT Test", name: "Hamzah Khan", link: { kind: "suggest", names: ["Hamzah", "Hamza"] } }, "https://mt.example/r/players"));
+  // ── 1.4c "help badges" (2026-10-01): NEW cases ──────────────────────
+  add("R152 buildHelpReply / badges / group", buildHelpReply("badges", ALL_ON, lang, { audience: "group" }));
+  add("R152 buildHelpReply / badges / player", buildHelpReply("badges", ALL_ON, lang, { audience: "player" }));
+  add("R152 buildHelpReply / badges / unknown name", buildHelpReply("badges", ALL_ON, lang, { audience: "group", badgeQuery: "golden boot" }));
+  for (const name of ["On the board", "Regular", "Iron Man", "Man of the Match", "MoM Machine", "Masterclass", "Mr Reliable", "Above the Curve"]) {
+    add(`R152 buildHelpReply / badges / ${name}`, buildHelpReply("badges", ALL_ON, lang, { audience: "group", badgeQuery: name }));
+  }
   // ── 1.5 the web surfaces (slice 6, 2026-09-19) ──────────────────────
   //    NEW copy, not a move, so these cases are additive to both
   //    snapshots and the only other line in the English diff is the

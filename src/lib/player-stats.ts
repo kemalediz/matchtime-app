@@ -25,6 +25,13 @@ import {
 } from "./player-rating";
 import { buildRankedRoster, loadLastPlayedByUser } from "./ranked-table-activity";
 import { earnsMrReliable, ratingSpread } from "./mr-reliable";
+import {
+  ABOVE_CURVE_MIN_RATED_GAMES,
+  IRON_MAN_MIN_MATCHES,
+  MASTERCLASS_MIN_GAME_AVG,
+  MOM_MACHINE_MIN_WINS,
+  REGULAR_MIN_GAMES,
+} from "./badge-rules";
 import { GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./pipeline/stats-answer";
 
 export {
@@ -348,19 +355,19 @@ export async function loadPlayerSeasonStats(
 
   // Badges (milestones).
   const playedEvery = eligibleMatches > 0 && gamesPlayed === eligibleMatches;
-  const hadMasterclass = timeline.some((p) => p.myAvg !== null && p.myAvg >= 9);
+  const hadMasterclass = timeline.some((p) => p.myAvg !== null && p.myAvg >= MASTERCLASS_MIN_GAME_AVG);
   const badges: Badge[] = [
     { key: "first-game", emoji: "👟", label: "On the board", hint: "Played your first game", earned: gamesPlayed >= 1 },
-    { key: "ten-games", emoji: "🔟", label: "Regular", hint: "Played 10+ games", earned: gamesPlayed >= 10 },
-    { key: "ironman", emoji: "🦾", label: "Iron Man", hint: "Played every match since joining", earned: playedEvery && eligibleMatches >= 3 },
+    { key: "ten-games", emoji: "🔟", label: "Regular", hint: "Played 10+ games", earned: gamesPlayed >= REGULAR_MIN_GAMES },
+    { key: "ironman", emoji: "🦾", label: "Iron Man", hint: "Played every match since joining", earned: playedEvery && eligibleMatches >= IRON_MAN_MIN_MATCHES },
     { key: "first-mom", emoji: "🏆", label: "Man of the Match", hint: "Won MoM at least once", earned: momCount >= 1 },
-    { key: "mom-machine", emoji: "👑", label: "MoM Machine", hint: "Won MoM 3+ times", earned: momCount >= 3 },
+    { key: "mom-machine", emoji: "👑", label: "MoM Machine", hint: "Won MoM 3+ times", earned: momCount >= MOM_MACHINE_MIN_WINS },
     { key: "masterclass", emoji: "🌟", label: "Masterclass", hint: "Averaged 9+ in a game", earned: hadMasterclass },
     // The rule lives in `mr-reliable.ts` so the group's "who is Mr
     // Reliable?" answer (`loadMrReliableHolders`) can never disagree
     // with this badge. Same thresholds, moved, not changed.
     { key: "reliable", emoji: "🧱", label: "Mr Reliable", hint: "Consistently strong ratings", earned: earnsMrReliable({ perGameAverages: timeline.map((p) => p.myAvg!).filter((x) => x != null), avgRating }) },
-    { key: "above-field", emoji: "📈", label: "Above the Curve", hint: "Season rating above the squad average", earned: vsFieldPct !== null && vsFieldPct > 0 && timeline.length >= 3 },
+    { key: "above-field", emoji: "📈", label: "Above the Curve", hint: "Season rating above the squad average", earned: vsFieldPct !== null && vsFieldPct > 0 && timeline.length >= ABOVE_CURVE_MIN_RATED_GAMES },
   ];
 
   // Chemistry: best teammate by win-rate and by your avg rating (min 2 games together).

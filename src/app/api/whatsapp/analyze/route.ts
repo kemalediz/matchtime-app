@@ -1147,7 +1147,7 @@ async function handleAnalyzeRequest(request: Request) {
     const topic = helpReq.topic;
     // The group reply is public: plain URLs, never a signed-in link. The
     // DM route calls the same builder (lib/dm-help.ts).
-    const reply = buildHelpReply(topic, helpFeaturesFrom(feats), feats.language, { audience: "group" });
+    const reply = buildHelpReply(topic, helpFeaturesFrom(feats), feats.language, { audience: "group", badgeQuery: helpReq.badgeQuery });
     const sender = senderById.get(m.waMessageId)!;
     await recordAnalysis({
       orgId: org.id, groupId: body.groupId, msg: m,

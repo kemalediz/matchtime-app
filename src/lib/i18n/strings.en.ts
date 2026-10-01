@@ -46,6 +46,7 @@
  */
 import { joinList } from "./text";
 import type { StatsPeriod } from "../pipeline/types";
+import type { BadgeKey, BadgeNumbers } from "../badge-rules";
 
 /** The tables whose answer says it cannot be cut to a period. */
 type UncutTable = "elo" | "team_of_season" | "mr_reliable" | "chemistry" | "generic";
@@ -1013,13 +1014,14 @@ export const en = {
     `   • *@Match Time help ${p.word}*: ${p.label}`,
 
   /** The word a player types after "help" for each topic, in this language. */
-  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
+  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
     p.topic,
 
   /** Human label for each topic, used in the bare-help topic menu. */
-  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
     ({
       schedule: "schedule & bookings",
+      badges: "badges and how to earn them",
       availability: "squad & availability",
       teams: "fair teams",
       mom: "Man of the Match",
@@ -1172,6 +1174,81 @@ export const en = {
         `I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.\n` +
         `This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.`,
     })[p.topic],
+
+  // ── "help badges" (2026-10-01) ──────────────────────────────────────
+  // Deterministic, no model. Every number comes from `BadgeNumbers`,
+  // built from the constants the stats page awards the badges with
+  // (src/lib/badge-rules.ts, src/lib/mr-reliable.ts). Badge names stay
+  // as the stats page prints them.
+
+  /** "help badges": the line above the list. */
+  onbHelpBadgesHead: (): string => `🏅 *Badges: how to earn them*`,
+
+  /** One badge in the list: its emoji, name and rule in one line. */
+  onbHelpBadgeLine: (p: { key: BadgeKey; emoji: string; label: string; n: BadgeNumbers }): string => {
+    const n = p.n;
+    const rule = ({
+      "first-game": `play your first game.`,
+      "ten-games": `play ${n.regularMinGames} or more games.`,
+      ironman: `play every match since joining, with at least ${n.ironManMinMatches} matches played.`,
+      "first-mom": `win the Man of the Match vote once.`,
+      "mom-machine": `win the Man of the Match vote ${n.momMachineMinWins} or more times.`,
+      masterclass: `average ${n.masterclassMinGameAvg} or more in a single game.`,
+      reliable: `get rated in at least ${n.mrReliableMinGames} games, average ${n.mrReliableMinAvg} or more, and stay steady from game to game.`,
+      "above-field": `get rated in at least ${n.aboveCurveMinRatedGames} games and average above the club average.`,
+    } as Record<BadgeKey, string>)[p.key];
+    return `${p.emoji} *${p.label}*: ${rule}`;
+  },
+
+  /** Below the list: where badges come from, which can be lost, and how
+   *  to ask about one. `dm`: the asker is in a private chat (no tag). */
+  onbHelpBadgesFoot: (p: { dm: boolean; example: string }): string =>
+    `Badges are worked out from all finished games at this club. Most stay once earned. ` +
+    `Iron Man, Mr Reliable and Above the Curve can be lost: Mr Reliable and Above the Curve come back when the ratings do, and Iron Man ends with the first missed match.\n` +
+    `For the full rules of one badge: *${p.dm ? "" : "@Match Time "}help badges ${p.example}*`,
+
+  /** "help badges <name>" for a name that is no badge: the line above the list. */
+  onbHelpBadgesUnknown: (p: { query: string }): string => `🤔 I don't know a badge called "${p.query}". Here they all are:`,
+
+  /** Closes one badge's rules. */
+  onbHelpBadgesClubNote: (): string => `Badges are worked out from all finished games at this club.`,
+
+  /** "help badges <name>": that badge's full rules. */
+  onbHelpBadgeDetail: (p: { key: BadgeKey; emoji: string; label: string; n: BadgeNumbers }): string => {
+    const n = p.n;
+    const points = (x: number) => `${x} point${x === 1 ? "" : "s"}`;
+    const kept = `Once earned, it stays.`;
+    const body = ({
+      "first-game":
+        `Earned by playing a first game at this club. A game counts once it's finished and the player was in the confirmed squad or on the team sheet.\n${kept}`,
+      "ten-games":
+        `Earned by playing ${n.regularMinGames} or more games at this club. Every finished game the player was in the confirmed squad or on the team sheet for counts.\n${kept}`,
+      ironman:
+        `Earned when both are true:\n` +
+        `1. Played every match at this club since joining. Matches from before they joined don't count against them.\n` +
+        `2. At least ${n.ironManMinMatches} matches have been played in that time.\n` +
+        `It ends with the first missed match, and that match always counts, so it doesn't come back.`,
+      "first-mom":
+        `Earned by winning the Man of the Match vote once. If two or more players tie on the most votes, they all win it.\n${kept}`,
+      "mom-machine":
+        `Earned by winning the Man of the Match vote ${n.momMachineMinWins} or more times. A tie on the most votes counts as a win for everyone in the tie.\n${kept}`,
+      masterclass:
+        `Earned with one game where the ratings the other players gave average ${n.masterclassMinGameAvg} or more. One game is enough.\n${kept}`,
+      reliable:
+        `Earned when all three are true:\n` +
+        `1. Rated in at least ${n.mrReliableMinGames} games.\n` +
+        `2. An average rating of ${n.mrReliableMinAvg} or more across all their ratings.\n` +
+        `3. Steady from game to game: their game-by-game averages don't swing much. In numbers, the spread (standard deviation) is under ${points(n.mrReliableMaxSpread)}. ` +
+        `A player who scores ${n.mrReliableSteady.join(", ")} qualifies. One who scores ${n.mrReliableSwinging.join(", ")} doesn't, even if the average is similar.\n` +
+        `It can be lost if the ratings drop or start to swing, and comes back when they settle again.`,
+      "above-field":
+        `Earned when both are true:\n` +
+        `1. Rated in at least ${n.aboveCurveMinRatedGames} games.\n` +
+        `2. Their average rating (every rating they've received) is higher than the club average (every rating given to every player in the club's games).\n` +
+        `It can be lost if their average drops to the club average or below, and comes back when it climbs above it again.`,
+    } as Record<BadgeKey, string>)[p.key];
+    return `${p.emoji} *${p.label}*\n${body}`;
+  },
 
   // ── private messages (Phase 3) ──────────────────────────────────────
   // Everything a player (or the money collector) receives PRIVATELY,
