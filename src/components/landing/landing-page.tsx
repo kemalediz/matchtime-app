@@ -550,7 +550,7 @@ export function LandingPage() {
               One price for the whole group.
             </h2>
             <p className="mt-5 text-lg text-slate-600">
-              £5 a month per WhatsApp group, not per player. Your first month
+              £9.99 a month per WhatsApp group, not per player. Your first month
               is free, so you can see how it runs your week before you pay.
             </p>
           </div>
@@ -574,7 +574,7 @@ export function LandingPage() {
                     className="text-6xl sm:text-7xl font-extrabold tracking-tight text-white"
                     style={DISPLAY_FONT}
                   >
-                    £5
+                    £9.99
                   </span>
                   <span className="text-lg text-slate-300">a month per group</span>
                 </div>
@@ -605,7 +605,7 @@ export function LandingPage() {
                 color="teal"
                 icon={<Users className="w-6 h-6" />}
                 title="Share it out if you like"
-                body="The organiser can split the £5 among the players who played that month. For a typical group of 20, that works out at about 25p a player."
+                body="The organiser can split the £9.99 among the players who played that month. With 20 players, that works out at about 50p a player."
               />
               <FeatureCard
                 color="amber"
@@ -637,7 +637,7 @@ export function LandingPage() {
             <br /> match-day morning?
           </h2>
           <p className="mt-5 text-lg text-slate-200 leading-relaxed">
-            Your first month is free, then it&apos;s £5 a month for the whole
+            Your first month is free, then it&apos;s £9.99 a month for the whole
             group. Add it, and if you don&apos;t like it, remove it. Card and
             bank payments are there if you want them.
           </p>
