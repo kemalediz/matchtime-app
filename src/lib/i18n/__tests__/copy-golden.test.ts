@@ -226,6 +226,12 @@
  *   - 2026-10-01, "help badges": ADDED R152 (the badge list, each
  *     badge's rules, an unknown name). CHANGED, on purpose: bare help
  *     (R143, R148 bare / admin) lists the new badges topic.
+ *
+ *   - 2026-10-01, club fee billing slice B3 (Stripe): ADDED R190 (the
+ *     billing page's notices after a card action; the "card added",
+ *     "card replaced", "resumed" and "billed again after Free" DMs).
+ *     REMOVED, on purpose: the B2 placeholder "Card payments open here
+ *     soon." from R189 (the card buttons now work). No other case changed.
  */
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
@@ -378,7 +384,17 @@ import { resolveReminderPhrase } from "../../reminder-time";
 import { FEE_REPLY_SYSTEM_PROMPT, buildFeeReplySystemPrompt } from "../../fee-confirm";
 import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rules";
 import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
-import { approvedTipText, bannerText, billingStateLines, clubFeeTipText } from "../../club-billing-view";
+import {
+  approvedTipText,
+  bannerText,
+  billingNoticeText,
+  billingStateLines,
+  cardAddedText,
+  cardReplacedText,
+  clubFeeTipText,
+  planBilledText,
+  resumedText,
+} from "../../club-billing-view";
 
 // ── The three worlds ─────────────────────────────────────────────────
 
@@ -1224,7 +1240,6 @@ function cases(lang: Lang): Case[] {
       sj.billing_card_on_file({ yes: false }),
       sj.billing_card_holder_note({ club: "Riverside FC", contact: "Colin" }),
       `[${sj.billing_btn_add_card}] [${sj.billing_btn_change_card}] [${sj.billing_btn_use_mine}] [${sj.billing_btn_update_card}] [${sj.billing_btn_remove_mine}]`,
-      sj.billing_btn_soon,
       `[${sj.billing_open}] [${sj.billing_choose_collector}]`,
       sj.billing_exempt({ club: "Sutton FC" }),
     ].join("\n"),
@@ -1237,6 +1252,22 @@ function cases(lang: Lang): Case[] {
       bannerText(lang, { status: "paused", trialEndsAt: billView.trialEndsAt, graceEndsAt: null }),
       sj.billing_banner_link,
     ].join("\n"),
+  );
+  // Slice B3 (2026-10-01): the billing page's notices and the webhook's DMs.
+  add(
+    "R190 billing page / notices after a card action",
+    (["done", "replaced", "removed", "not-set-up", "already", "failed"] as const).map((n) => billingNoticeText(lang, n)).join("\n"),
+  );
+  const cardAdded = { name: "Colin", club: "Riverside FC", pricePence: 999, link: "https://matchtime.ai/r/abc" };
+  add("R190 billing DM / card added, free month", cardAddedText(lang, { ...cardAdded, firstPaymentOn: billView.trialEndsAt, resumed: false }));
+  add("R190 billing DM / card added, paid now", cardAddedText(lang, { ...cardAdded, firstPaymentOn: null, resumed: false }));
+  add("R190 billing DM / card added, back on after a pause", cardAddedText(lang, { ...cardAdded, firstPaymentOn: null, resumed: true }));
+  add("R190 billing DM / card added, no name", cardAddedText(lang, { ...cardAdded, name: null, firstPaymentOn: null, resumed: false }));
+  add("R190 billing DM / card replaced", cardReplacedText(lang, { name: "Colin", newName: "Pat", club: "Riverside FC" }));
+  add("R190 billing DM / resumed", resumedText(lang, { club: "Riverside FC" }));
+  add(
+    "R190 billing DM / billed again after Free",
+    planBilledText(lang, { name: "Colin", club: "Riverside FC", pricePence: 999, graceEndsAt: billView.graceEndsAt, link: "https://matchtime.ai/r/abc" }),
   );
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));

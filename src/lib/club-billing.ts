@@ -28,6 +28,7 @@
  */
 import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
+import { PlatformDmRefused, queuePlatformDm } from "./platform-jobs";
 import {
   RESUME_QUIET_LOOKBACK_DAYS,
   billingAccessRole,
@@ -77,6 +78,14 @@ function billingPatch(from: string, t: BillingTransition, now: Date): Record<str
   } else if (from === "paused") {
     patch.pausedAt = null;
     patch.pausedReason = null;
+  }
+  if (from === "exempt" && (t.to === "trial" || t.to === "grace")) {
+    // Billed again after Free ("plan-billed", slice B3): nothing from an
+    // earlier billed spell may linger.
+    patch.paymentFailedAt = null;
+    patch.pausedAt = null;
+    patch.pausedReason = null;
+    if (t.to === "trial") patch.graceEndsAt = null;
   }
   if (t.to === "subscribed") {
     // Paid (or a card is on): no grace is running, no failure is open.
@@ -274,7 +283,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // ── Slice B2: the platform owner's controls ─────────────────────────────
 
 export type SetClubPlanResult =
-  | { ok: true; plan: BillingPlan; pricePence: number | null; status: BillingStatus; resumed: boolean }
+  | {
+      ok: true;
+      plan: BillingPlan;
+      pricePence: number | null;
+      status: BillingStatus;
+      resumed: boolean;
+      /** Set when leaving Free billed the club again (its free month was
+       *  already used): "trial" while that month is still running, else
+       *  "grace" with a fresh 7 days. Slice B3. */
+      billedAgain: "trial" | "grace" | null;
+    }
   | { ok: false; reason: "not-found" | "not-self-join" };
 
 /**
@@ -288,15 +307,22 @@ export type SetClubPlanResult =
  *     the same transaction), THEN the plan is written. The other order
  *     would break Organisation_billingFreeExempt_check;
  *   - leaving Free (or Standard and Custom between themselves): the plan
- *     first, and no status change. A club leaving Free stays "exempt"
- *     until the owner presses "Start free month" (if it never had one).
+ *     first. A club that never had a free month stays "exempt" until the
+ *     owner presses "Start free month". A club that HAD one is billed
+ *     again in the same transaction ("plan-billed", slice B3): back to
+ *     "trial" while its free month is still running, else "grace" with a
+ *     fresh 7 days, and the caller asks the billing contact for a card.
+ *     Pressing Standard again later (with the flag on) does the same, so
+ *     no club is left exempt for ever by a Free spell.
  *
  * Refused for a club that predates self-join (`approvedAt` NULL, Sutton
  * FC): it is never billed, so it has no plan to change.
  *
  * Works with BILLING_ENABLED off too: Free only ever makes a club less
  * billed, and Standard or Custom on an exempt club bills nobody.
- * Changing the price of a live Stripe subscription is slice B3.
+ * The Stripe side (a new price, or cancelling on Free) is
+ * `syncPlanToStripe` in club-billing-stripe.ts, run by the caller after
+ * this commits.
  */
 export async function setClubPlan(
   orgId: string,
@@ -325,7 +351,21 @@ export async function setClubPlan(
       const pricePence = choice.plan === "custom" ? choice.pricePence : null;
       await tx.organisation.update({ where: { id: orgId }, data: { billingPlan: choice.plan, billingPricePence: pricePence } });
       console.log(`[club-billing] ${orgId}: plan ${org.billingPlan} -> ${choice.plan}${pricePence ? ` (${pricePence}p)` : ""}`);
-      return { ok: true, plan: choice.plan, pricePence, status, resumed };
+
+      // Slice B3, the B2 gap: an EXEMPT club that already had its free
+      // month, set to Standard or Custom, is billed again (the plan is
+      // written first, so the CHECK constraints hold at every statement).
+      // `nextBillingState` refuses it with the flag off, for a club never
+      // trialled (Start free month is its way in) and on Free.
+      let billedAgain: "trial" | "grace" | null = null;
+      if (choice.plan !== "free" && status === "exempt") {
+        const moved = await applyBillingEventTx(tx, orgId, { type: "plan-billed" }, now);
+        if (moved.ok && (moved.to === "trial" || moved.to === "grace")) {
+          status = moved.to;
+          billedAgain = moved.to;
+        }
+      }
+      return { ok: true, plan: choice.plan, pricePence, status, resumed, billedAgain };
     },
     { timeout: TX_TIMEOUT_MS },
   );
@@ -438,6 +478,8 @@ export interface ClubBillingSnapshot {
     cardBrand: string | null;
     cardLast4: string | null;
     cardHolderUserId: string | null;
+    /** Stripe's word for the club's subscription (slice B3), or null. */
+    stripeSubscriptionStatus: string | null;
   } | null;
   cardHolderName: string | null;
   members: Array<{ userId: string; role: string; leftAt: Date | null; name: string | null }>;
@@ -468,6 +510,7 @@ export async function loadClubBillingSnapshot(orgId: string): Promise<ClubBillin
           cardBrand: true,
           cardLast4: true,
           cardHolderUserId: true,
+          stripeSubscriptionStatus: true,
         },
       },
     },
@@ -586,4 +629,81 @@ export async function loadBillingBanner(orgId: string, opts: { flagOn?: boolean 
     trialEndsAt: org.clubBilling?.trialEndsAt ?? null,
     graceEndsAt: org.clubBilling?.graceEndsAt ?? null,
   });
+}
+
+// ── Slice B3: the billing DMs (claimed once, then queued) ───────────────
+
+/** The billing contact's user id (4.5): the money collector, else the
+ *  owner, else null. Resolved now, never stored. */
+export async function loadBillingContactUserId(orgId: string): Promise<string | null> {
+  const snapshot = await loadClubBillingSnapshot(orgId);
+  return snapshot?.contact?.userId ?? null;
+}
+
+export type BillingNoticeKind =
+  | "card-added"
+  | "card-replaced"
+  | "resumed"
+  | "plan-billed"
+  | "trial-21"
+  | "trial-28"
+  | "trial-ended"
+  | "paused"
+  | "payment-failed"
+  | "payer-changed"
+  | "fee-tip";
+
+/**
+ * Queue ONE billing DM on the platform channel (purpose "billing"), to
+ * one club member's own phone. INSERT FIRST, THEN QUEUE: the
+ * `BillingNotice(orgId, kind, cycleKey)` row is claimed before anything
+ * is queued, so a re-delivered webhook or a retried cron can never DM
+ * twice about the same thing.
+ *
+ * The only queuer of purpose "billing" (source guard). `text` is built
+ * with the recipient's name, in the club's language by the caller.
+ * Returns what happened; never throws for a refused recipient.
+ */
+export async function queueBillingDm(args: {
+  orgId: string;
+  kind: BillingNoticeKind;
+  cycleKey: string;
+  userId: string;
+  text: (recipient: { name: string | null }) => string;
+  sendAfter?: Date | null;
+}): Promise<"queued" | "already" | "no-phone" | "refused"> {
+  let noticeId: string;
+  try {
+    const notice = await db.billingNotice.create({
+      data: { orgId: args.orgId, kind: args.kind, cycleKey: args.cycleKey },
+      select: { id: true },
+    });
+    noticeId = notice.id;
+  } catch (err) {
+    if ((err as { code?: string }).code === "P2002") return "already";
+    throw err;
+  }
+  const user = await db.user.findUnique({ where: { id: args.userId }, select: { name: true, phoneNumber: true } });
+  if (!user?.phoneNumber) {
+    console.warn(`[club-billing] ${args.orgId}: ${args.kind} DM not sent, ${args.userId} has no phone`);
+    return "no-phone";
+  }
+  try {
+    const job = await queuePlatformDm({
+      phone: user.phoneNumber,
+      text: args.text({ name: user.name }),
+      purpose: "billing",
+      refId: `${args.orgId}:${args.kind}:${args.cycleKey}`,
+      sendAfter: args.sendAfter ?? null,
+    });
+    await db.billingNotice.update({ where: { id: noticeId }, data: { platformJobId: job.id } });
+    console.log(`[club-billing] ${args.orgId}: ${args.kind} DM queued to ${args.userId}`);
+    return "queued";
+  } catch (err) {
+    if (err instanceof PlatformDmRefused) {
+      console.warn(`[club-billing] ${args.orgId}: ${args.kind} DM refused: ${err.reason}`);
+      return "refused";
+    }
+    throw err;
+  }
 }

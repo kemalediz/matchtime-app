@@ -308,7 +308,12 @@ describe("the web strings in both tables", () => {
         s.billing_btn_use_mine,
         s.billing_btn_update_card,
         s.billing_btn_remove_mine,
-        s.billing_btn_soon,
+        s.billing_notice_done,
+        s.billing_notice_replaced,
+        s.billing_notice_removed,
+        s.billing_notice_not_set_up,
+        s.billing_notice_already,
+        s.billing_notice_failed,
         s.billing_open,
         s.billing_choose_collector,
         s.billing_banner_paused,
@@ -349,12 +354,12 @@ function club(over: Partial<BillingViewClub> = {}): BillingViewClub {
 describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   const tip = tipFor({ playersPerTeam: 7, feePerPlayer: 7 });
 
-  it("the contact: the state, the tip and Add a card (a placeholder in B2)", () => {
+  it("the contact: the state, the tip and Add a card (live since B3, no 'soon' line)", () => {
     const v = billingPageView("en", club(), "contact", "colin", tip);
     expect(v.exempt).toBeNull();
     expect(v.lines).toEqual(["Free month until Sat 31 Oct. Then £9.99 a month for the whole group."]);
     expect(v.buttons).toEqual([{ key: "add-card", label: "Add a card" }]);
-    expect(v.soon).toBe("Card payments open here soon.");
+    expect(v).not.toHaveProperty("soon");
     expect(v.tip).toContain("*20p a player per game*");
     expect(v.tip).toContain("*£7.20*");
     expect(v.who).toBeNull();
@@ -363,7 +368,7 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   it("an admin who is not the contact: state, who pays, tip, NO buttons", () => {
     const v = billingPageView("en", club(), "viewer", "owner", tip);
     expect(v.buttons).toEqual([]);
-    expect(v.soon).toBeNull();
+    expect(v).not.toHaveProperty("soon");
     expect(v.who).toBe("Colin looks after the card.");
     expect(v.tip).not.toBeNull();
   });

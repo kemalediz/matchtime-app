@@ -10,8 +10,10 @@
  * writer path (`setClubPlan`, `startTrial` in src/lib/club-billing.ts),
  * which refuses any club that predates self-join (Sutton FC).
  *
- * Nothing here messages anybody and nothing here calls Stripe (slice B3
- * changes the price of a live subscription and cancels one on Free).
+ * Slice B3: after a plan is saved, `syncPlanToStripe` swaps a live
+ * subscription's price (no proration, from the next month) or cancels it
+ * on Free; a club billed again after Free with its free month used up
+ * gets one DM to its billing contact asking for a card.
  *
  * "use server" modules may export async functions only.
  */
@@ -19,6 +21,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { setClubPlan, startTrial } from "@/lib/club-billing";
+import { notifyPlanBilledAgain, syncPlanToStripe } from "@/lib/club-billing-stripe";
 import { parsePlanChoice } from "@/lib/club-billing-rules";
 import { moneyLabel } from "@/lib/club-billing-view";
 import { dayLabel } from "@/lib/i18n/dates";
@@ -54,10 +57,25 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
     };
   }
   const label = r.plan === "free" ? "Free" : r.plan === "custom" ? `Custom ${moneyLabel(r.pricePence ?? 0)} a month` : "Standard £9.99 a month";
-  return {
-    ok: true,
-    message: `Plan saved: ${label}.${r.plan === "free" ? " The club is not billed." : ""}${r.resumed ? " MatchTime is back on in its group." : ""}`,
-  };
+  let message = `Plan saved: ${label}.${r.plan === "free" ? " The club is not billed." : ""}${r.resumed ? " MatchTime is back on in its group." : ""}`;
+
+  // The database is committed; now Stripe (a live subscription only).
+  try {
+    const synced = await syncPlanToStripe(orgId);
+    if (synced.action === "cancelled") message += " Its card subscription was cancelled.";
+    else if (synced.action === "price-changed") message += " The card is charged the new price from the next payment.";
+  } catch (err) {
+    console.error(`[club-billing-admin] ${orgId}: Stripe plan sync failed:`, err);
+    return { ok: false, message: `${message} Stripe could not be updated (${(err as Error).message}). Press Save plan again to retry.` };
+  }
+
+  if (r.billedAgain === "grace") {
+    await notifyPlanBilledAgain(orgId);
+    message += " The free month was already used, so the club has 7 days to add a card.";
+  } else if (r.billedAgain === "trial") {
+    message += " The club is back in its free month.";
+  }
+  return { ok: true, message };
 }
 
 const START_REFUSED: Record<string, string> = {

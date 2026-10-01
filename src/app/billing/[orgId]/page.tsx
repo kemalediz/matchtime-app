@@ -2,7 +2,8 @@ import { auth } from "@/lib/auth";
 import { notFound, redirect } from "next/navigation";
 import { CreditCard } from "lucide-react";
 import { loadBillingAccess, loadClubFeeTip } from "@/lib/club-billing";
-import { billingPageView } from "@/lib/club-billing-view";
+import { billingNoticeText, billingPageView, type BillingButton, type BillingPageNotice } from "@/lib/club-billing-view";
+import { addCardAction, openPortalAction, removeMyCardAction, useMyCardAction } from "@/app/actions/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { WaText } from "@/components/billing/wa-text";
 
@@ -26,18 +27,59 @@ export const dynamic = "force-dynamic";
  *   anybody else, an unknown club, or the flag   404
  *   off
  *
- * SLICE B2: the card buttons are shown disabled. The Stripe calls behind
- * them (and the server actions, each re-checking the guard) are slice B3.
- * English or Turkish by the club's language.
+ * SLICE B3: each card button is a form posting to its server action
+ * (src/app/actions/club-billing.ts), which re-checks the guard itself and
+ * redirects to Stripe (Checkout or the Customer Portal) or back here with
+ * a notice. English or Turkish by the club's language.
  */
-export default async function BillingPage({ params }: { params: Promise<{ orgId: string }> }) {
+const ACTION: Record<BillingButton, (orgId: string) => Promise<void>> = {
+  "add-card": addCardAction,
+  "use-mine": useMyCardAction,
+  "change-card": openPortalAction,
+  "update-card": openPortalAction,
+  "remove-mine": removeMyCardAction,
+};
+
+const NOTICES: readonly BillingPageNotice[] = ["done", "replaced", "removed", "not-set-up", "already", "failed"];
+
+/** The notice to show after a card action, from the URL Stripe or the
+ *  action sent the viewer back to. */
+function noticeFrom(sp: Record<string, string | string[] | undefined>): BillingPageNotice | null {
+  if (sp.done === "1") return "done";
+  if (sp.replaced === "1") return "replaced";
+  const n = typeof sp.notice === "string" ? sp.notice : null;
+  return n && (NOTICES as readonly string[]).includes(n) ? (n as BillingPageNotice) : null;
+}
+
+export default async function BillingPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ orgId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { orgId } = await params;
+  const notice = noticeFrom(await searchParams);
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
 
-  const access = await loadBillingAccess(userId, orgId, { flagOn: await billingUiEnabledForRequest() });
-  if (!access) notFound();
+  const flagOn = await billingUiEnabledForRequest();
+  const access = await loadBillingAccess(userId, orgId, { flagOn });
+  if (!access) {
+    // An old card holder who is a player has no access once their card is
+    // removed: they still see that it worked (no club data on this view).
+    if (flagOn && notice === "removed") {
+      return (
+        <div className="min-h-screen bg-slate-50 px-4 py-8" data-testid="billing-page" data-role="none">
+          <p data-testid="billing-notice" data-notice="removed" role="status" className="mx-auto max-w-md rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+            {billingNoticeText(null, "removed")}
+          </p>
+        </div>
+      );
+    }
+    notFound();
+  }
   const { role, snapshot } = access;
   const tip = role === "exempt-owner" || role === "card-holder" ? null : await loadClubFeeTip(orgId);
   const v = billingPageView(snapshot.language, snapshot, role, userId, tip);
@@ -49,6 +91,19 @@ export default async function BillingPage({ params }: { params: Promise<{ orgId:
           <p className="text-xs uppercase tracking-wider text-slate-400">{v.club}</p>
           <h1 className="text-xl font-bold text-slate-900 mt-1">{v.title}</h1>
         </div>
+
+        {notice && role !== "exempt-owner" && (
+          <p
+            data-testid="billing-notice"
+            data-notice={notice}
+            role="status"
+            className={`mb-4 rounded-lg border p-3 text-sm ${
+              notice === "failed" || notice === "not-set-up" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-blue-100 bg-blue-50 text-blue-900"
+            }`}
+          >
+            {billingNoticeText(snapshot.language, notice)}
+          </p>
+        )}
 
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3 text-sm text-slate-700">
           {v.exempt && <p data-testid="billing-exempt">{v.exempt}</p>}
@@ -66,23 +121,19 @@ export default async function BillingPage({ params }: { params: Promise<{ orgId:
             </p>
           )}
           {v.buttons.length > 0 && (
-            <div className="pt-1 space-y-2">
-              <div className="flex flex-wrap gap-2">
-                {v.buttons.map((b) => (
+            <div className="pt-1 flex flex-wrap gap-2">
+              {v.buttons.map((b) => (
+                <form key={b.key} action={ACTION[b.key].bind(null, orgId)}>
                   <button
-                    key={b.key}
-                    type="button"
-                    disabled
-                    aria-disabled="true"
+                    type="submit"
                     data-testid={`billing-btn-${b.key}`}
-                    className="inline-flex items-center gap-2 h-11 px-4 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 h-11 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
                   >
                     <CreditCard className="h-4 w-4" />
                     {b.label}
                   </button>
-                ))}
-              </div>
-              {v.soon && <p className="text-xs text-slate-400">{v.soon}</p>}
+                </form>
+              ))}
             </div>
           )}
         </section>

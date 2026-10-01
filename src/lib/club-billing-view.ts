@@ -136,8 +136,8 @@ export function billingStateLines(lang: LangIn, v: BillingStateInput): string[] 
 
 export type BillingButton = "add-card" | "change-card" | "use-mine" | "update-card" | "remove-mine";
 
-/** The card buttons the page shows this viewer (8.1). Slice B2 renders
- *  them disabled: the Stripe calls behind them are slice B3. */
+/** The card buttons the page shows this viewer (8.1). Each one is a
+ *  server action that re-checks who the viewer is (slice B3). */
 export function billingButtons(v: BillingStateInput): BillingButton[] {
   if (v.role === "card-holder") return ["remove-mine"];
   if (v.role !== "contact") return [];
@@ -203,8 +203,6 @@ export interface BillingPageView {
   /** The old card holder's line. */
   holderNote: string | null;
   buttons: Array<{ key: BillingButton; label: string }>;
-  /** Slice B2: the card buttons are placeholders until slice B3. */
-  soon: string | null;
   tip: string | null;
 }
 
@@ -258,7 +256,7 @@ export function billingPageView(
   const s = t(lang);
   const base = { title: s.billing_page_title, club: c.club };
   if (role === "exempt-owner") {
-    return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], soon: null, tip: null };
+    return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], tip: null };
   }
   const v = stateInput(c, viewerUserId, role);
   const buttons = billingButtons(v).map((key) => ({ key, label: BUTTON_LABEL[key](s) }));
@@ -270,7 +268,6 @@ export function billingPageView(
     holderNote:
       role === "card-holder" ? s.billing_card_holder_note({ club: c.club, contact: c.contact?.name ?? "" }) : null,
     buttons,
-    soon: buttons.length > 0 ? s.billing_btn_soon : null,
     tip: tip && role !== "card-holder" ? clubFeeTipText(lang, tip) : null,
   };
 }
@@ -304,4 +301,69 @@ export function billingCardView(lang: LangIn, c: BillingViewClub, tip: ClubFeeTi
     openLabel: s.billing_open,
     chooseCollectorLabel: c.contact?.via === "collector" ? null : s.billing_choose_collector,
   };
+}
+
+// ── Slice B3: the webhook's DMs and the page's notices ──────────────────
+
+/** "Card added" (7.3), to whoever added the card. `firstPaymentOn` null
+ *  means the first payment was taken at once (grace, or after a pause). */
+export function cardAddedText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; firstPaymentOn: Date | null; resumed: boolean; link: string },
+): string {
+  return t(lang).billing_dm_card_added({
+    name: p.name,
+    club: p.club,
+    price: moneyLabel(p.pricePence),
+    date: p.firstPaymentOn ? dayLabel(lang, p.firstPaymentOn) : "",
+    paidNow: p.firstPaymentOn === null,
+    resumed: p.resumed,
+    link: p.link,
+  });
+}
+
+/** "Card replaced" (7.3), to the old card holder. No link. */
+export function cardReplacedText(lang: LangIn, p: { name: string | null; newName: string; club: string }): string {
+  return t(lang).billing_dm_card_replaced(p);
+}
+
+/** "Resumed" (7.3), to the billing contact, after a recovered payment. */
+export function resumedText(lang: LangIn, p: { club: string }): string {
+  return t(lang).billing_dm_resumed(p);
+}
+
+/** Billed again after Free with the free month used up: a fresh grace
+ *  week, and a card asked for. */
+export function planBilledText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; graceEndsAt: Date; link: string },
+): string {
+  return t(lang).billing_dm_plan_billed({
+    name: p.name,
+    club: p.club,
+    price: moneyLabel(p.pricePence),
+    date: dayLabel(lang, p.graceEndsAt),
+    link: p.link,
+  });
+}
+
+export type BillingPageNotice = "done" | "replaced" | "removed" | "not-set-up" | "already" | "failed";
+
+/** The line the billing page shows after a card action. */
+export function billingNoticeText(lang: LangIn, n: BillingPageNotice): string {
+  const s = t(lang);
+  switch (n) {
+    case "done":
+      return s.billing_notice_done;
+    case "replaced":
+      return s.billing_notice_replaced;
+    case "removed":
+      return s.billing_notice_removed;
+    case "not-set-up":
+      return s.billing_notice_not_set_up;
+    case "already":
+      return s.billing_notice_already;
+    case "failed":
+      return s.billing_notice_failed;
+  }
 }

@@ -2415,7 +2415,6 @@ export const en = {
   billing_btn_use_mine: "Use my card instead",
   billing_btn_update_card: "Update card",
   billing_btn_remove_mine: "Remove my card",
-  billing_btn_soon: "Card payments open here soon.",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",
@@ -2425,4 +2424,38 @@ export const en = {
     `This month's club fee didn't go through. MatchTime stops on ${p.date} if it can't be taken.`,
   billing_banner_paused: "MatchTime is paused for this club. Add a card to switch it back on.",
   billing_banner_link: "See billing",
+  // Club fee billing, slice B3: the billing page's notices after a card
+  // action, and the webhook's DMs (card added, card replaced, resumed,
+  // billed again after Free). No dashes, EN and TR.
+  billing_notice_done: "Thanks, your card is being saved. This page shows it within a minute.",
+  billing_notice_replaced: "Thanks, your card is being put on. This page shows it within a minute.",
+  billing_notice_removed: "Your card has been removed and won't be charged for this club again.",
+  billing_notice_not_set_up: "Card payments aren't open yet. Please try again later.",
+  billing_notice_already: "A card is already paying for this club.",
+  billing_notice_failed: "Something went wrong. Please try again.",
+  billing_dm_card_added: (p: {
+    name: string | null;
+    club: string;
+    price: string;
+    date: string;
+    paidNow: boolean;
+    resumed: boolean;
+    link: string;
+  }): string =>
+    `Thanks${p.name ? ` ${p.name}` : ""}, your card is saved. ` +
+    (p.resumed
+      ? `MatchTime is back on for ${p.club} and picks things up again in the group within a few minutes. Anyone who said IN while it was paused should say it again. `
+      : `MatchTime keeps running in ${p.club}'s WhatsApp group. `) +
+    (p.paidNow
+      ? `The first ${p.price} has been taken today, then it's monthly, and Stripe emails you each invoice.`
+      : `The first ${p.price} is taken on ${p.date}, then monthly, and Stripe emails you each invoice.`) +
+    ` To change your card or cancel: ${p.link}`,
+  billing_dm_card_replaced: (p: { name: string | null; newName: string; club: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.newName} now pays the MatchTime fee for ${p.club}. Your card has been removed and won't be charged for it again.`,
+  billing_dm_resumed: (p: { club: string }): string =>
+    `MatchTime is back on for ${p.club}. I'll pick things up again in the group within a few minutes. Anyone who said IN while I was paused should say it again.`,
+  billing_dm_plan_billed: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again at ${p.price} a month. ` +
+    `The free month has already been used, so MatchTime keeps running in the group until ${p.date}. ` +
+    `Add a card before then to keep it going: ${p.link}`,
 };
