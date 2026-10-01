@@ -1978,6 +1978,9 @@ export const tr: Strings = {
   billing_dm_payment_action: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için bu ayın ${p.price} ödemesinin geçebilmesi için bankanız onayınızı istiyor. ` +
     `Lütfen buradan onaylayın: ${p.link}\nBu sürede MatchTime çalışmaya devam ediyor.`,
+  billing_dm_payment_action_other: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için kayıtlı kartla bu ayın ${p.price} ödemesinin geçebilmesi için banka onayı gerekiyor. ` +
+    `Buradan onaylayıp ödeyebilirsiniz: ${p.link}\nBunun yerine kendi kartınızı ekleyin: ${p.billingLink}\nBu sürede MatchTime çalışmaya devam ediyor.`,
   billing_dm_payer_changed_card: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
     `Siz kendi kartınızı ekleyene kadar ${p.oldName} kişisinin kartından ödenmeye devam ediyor, size uygun bir zamanda ekleyebilirsiniz: ${p.link}`,
@@ -1987,6 +1990,9 @@ export const tr: Strings = {
   billing_dm_payer_changed_paused: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
     `Yeniden açmak için kart ekleyin: ${p.link}`,
+  billing_dm_payer_changed_removed: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `MatchTime ${p.club} WhatsApp grubundan çıkarıldığı için duraklatıldı. Yeniden açmak için MatchTime'ı gruba geri ekleyin. Kulüp ücreti sayfası: ${p.link}`,
   billing_admin_no_collector: (p) =>
     `Henüz para toplayan kişi seçilmedi. Ayarlar'dan birini seçin: kulüp ücreti için kartla o ilgilenecek ve bu ipucunu o da alacak.${p.link ? ` ${p.link}` : ""}`,
 };

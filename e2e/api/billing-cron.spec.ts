@@ -154,7 +154,7 @@ test("day 30: the free month ends ON TIME (09:00 London), the DM waits for 10:00
   await cron(request, "2026-10-31T10:00:00Z");
   const en = await billingDms(EN_COLLECTOR.phone);
   expect(en).toHaveLength(3);
-  expect(en[2].text).toContain("free month has ended. MatchTime will keep running in Cron Rovers's WhatsApp group for one more week, until Sat 7 Nov.");
+  expect(en[2].text).toContain("free month has ended. MatchTime will keep running in the Cron Rovers WhatsApp group for one more week, until Sat 7 Nov.");
 });
 
 test("day 37: two cron runs at the same moment pause the club ONCE and send ONE 'paused' DM", async ({ request }) => {

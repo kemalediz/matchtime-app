@@ -31,8 +31,9 @@
  * the flag off. "Resumed" and "billed again" are written as PENDING
  * notices by the state change's own transaction and sent by
  * `flushPendingBillingNotices`, so a failed send is retried, never lost.
- * Slice B4: every DM here waits for daytime (10:00 to 20:00 London,
- * `sendAfter`); a failed payment or a bank check (3DS) is noted for
+ * Slice B4: every DM here goes only 10:00 to 20:00 London. At night it is
+ * noted as PENDING and the hourly cron's daytime run re-checks it is still
+ * true before sending (`flushPendingBillingNotices`); a failed payment or a bank check (3DS) is noted for
  * club-billing-dms.ts, which sends it in the daytime if it is still true.
  * The day 21, 28, 30 and 37 DMs and the payer-changed DM live there too.
  *
@@ -68,13 +69,14 @@ import {
   loadBillingContactUserId,
   loadExemptSince,
   loadPendingBillingNotices,
+  notePendingBillingNotice,
   queueBillingDm,
   setBillingState,
   skipBillingNotice,
 } from "./club-billing";
 import { cardAddedText, cardReplacedText, moneyLabel, planBilledText, resumedText } from "./club-billing-view";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
-import { billingDmSendAfter } from "./club-billing-schedule-rules";
+import { isBillingDmHour } from "./club-billing-schedule-rules";
 import { notePaymentProblem } from "./club-billing-dms";
 import {
   billingStripeConfig,
@@ -429,6 +431,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export async function flushPendingBillingNotices(orgId: string, now: Date = new Date()): Promise<number> {
   if (!isBillingEnabled()) return 0;
+  // Slice B4: billing DMs go out 10:00 to 20:00 London only. At night they
+  // stay pending and the hourly cron's daytime run sends what is still true.
+  if (!isBillingDmHour(now)) return 0;
   const pending = await loadPendingBillingNotices(orgId);
   if (pending.length === 0) return 0;
   const org = await loadOrg(orgId);
@@ -436,60 +441,115 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
   const contact = await loadBillingContactUserId(orgId);
   let sent = 0;
   for (const p of pending) {
-    const newer = pending.some((q) => q.kind === p.kind && q.createdAt > p.createdAt);
-    const why =
-      now.getTime() - p.createdAt.getTime() > PENDING_NOTICE_MAX_AGE_MS
-        ? "expired"
-        : newer
-          ? "superseded"
-          : !org || !contact
-            ? "no-contact"
-            : p.kind === "plan-billed"
-              ? org.billingStatus === "grace" &&
-                !!billing?.graceEndsAt &&
-                billing.graceEndsAt.getTime() === new Date(p.cycleKey).getTime() + GRACE_DAYS * DAY_MS
-                ? null
-                : "not-current"
-              : p.kind === "resumed"
-                ? (org.billingStatus === "subscribed" || org.billingStatus === "past_due") && org.approvalStatus !== "suspended"
-                  ? null
-                  : "not-current"
-                : "not-current";
-    if (why) {
-      await skipBillingNotice(orgId, p.kind, p.cycleKey, why);
-      console.log(`[club-billing-stripe] ${orgId}: pending ${p.kind} DM (${p.cycleKey}) not sent: ${why}`);
+    // Only one "resumed" or "plan-billed" can be current; every "card
+    // replaced" is about a different card, so none supersedes another.
+    const newer =
+      (p.kind === "resumed" || p.kind === "plan-billed") && pending.some((q) => q.kind === p.kind && q.createdAt > p.createdAt);
+    let why: string | null =
+      now.getTime() - p.createdAt.getTime() > PENDING_NOTICE_MAX_AGE_MS ? "expired" : newer ? "superseded" : !org ? "no-contact" : null;
+    let send: (() => Promise<string>) | null = null;
+    if (!why && org) {
+      switch (p.kind) {
+        case "plan-billed": {
+          const ok =
+            org.billingStatus === "grace" &&
+            !!billing?.graceEndsAt &&
+            billing.graceEndsAt.getTime() === new Date(p.cycleKey).getTime() + GRACE_DAYS * DAY_MS;
+          if (!contact) why = "no-contact";
+          else if (!ok) why = "not-current";
+          else {
+            const graceEndsAt = billing!.graceEndsAt!;
+            const link = await billingLink(contact, orgId);
+            send = () =>
+              queueBillingDm({
+                orgId,
+                kind: "plan-billed",
+                cycleKey: p.cycleKey,
+                userId: contact,
+                text: ({ name }) =>
+                  planBilledText(org.language, {
+                    name,
+                    club: org.name,
+                    pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
+                    graceEndsAt,
+                    link,
+                  }),
+              });
+          }
+          break;
+        }
+        case "resumed": {
+          const ok = (org.billingStatus === "subscribed" || org.billingStatus === "past_due") && org.approvalStatus !== "suspended";
+          if (!contact) why = "no-contact";
+          else if (!ok) why = "not-current";
+          else send = () => queueBillingDm({ orgId, kind: "resumed", cycleKey: p.cycleKey, userId: contact, text: () => resumedText(org.language, { club: org.name }) });
+          break;
+        }
+        case "card-added": {
+          // Still the club's subscription, still paying or in its free
+          // month, still a card on it, and the club still billed.
+          const holder = billing?.cardHolderUserId ?? null;
+          const ok =
+            !!billing &&
+            billing.stripeSubscriptionId === p.cycleKey &&
+            (billing.stripeSubscriptionStatus === "trialing" || billing.stripeSubscriptionStatus === "active") &&
+            !!holder &&
+            org.billingStatus !== "exempt" &&
+            org.approvalStatus !== "suspended";
+          if (!ok) why = "not-current";
+          else {
+            const firstPaymentOn = billing!.stripeSubscriptionStatus === "trialing" ? billing!.currentPeriodEnd : null;
+            const resumed = !!billing!.resumedAt && billing!.resumedAt.getTime() >= p.createdAt.getTime() - DAY_MS;
+            const link = await billingLink(holder!, orgId);
+            send = () =>
+              queueBillingDm({
+                orgId,
+                kind: "card-added",
+                cycleKey: p.cycleKey,
+                userId: holder!,
+                text: ({ name }) =>
+                  cardAddedText(org.language, {
+                    name,
+                    club: org.name,
+                    pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
+                    firstPaymentOn,
+                    resumed,
+                    link,
+                  }),
+              });
+          }
+          break;
+        }
+        case "card-replaced": {
+          // cycleKey "<old card>|<its holder>": still removed, and somebody
+          // else's card on file now.
+          const [oldPm, oldHolder] = p.cycleKey.split("|");
+          const holder = billing?.cardHolderUserId ?? null;
+          const ok = !!oldPm && !!oldHolder && billing?.stripePaymentMethodId !== oldPm && !!holder && holder !== oldHolder;
+          if (!ok) why = "not-current";
+          else {
+            const newName = (await db.user.findUnique({ where: { id: holder! }, select: { name: true } }))?.name ?? "";
+            send = () =>
+              queueBillingDm({
+                orgId,
+                kind: "card-replaced",
+                cycleKey: p.cycleKey,
+                userId: oldHolder,
+                text: ({ name }) => cardReplacedText(org.language, { name, newName, club: org.name }),
+              });
+          }
+          break;
+        }
+        default:
+          why = "not-current";
+      }
+    }
+    if (why || !send) {
+      await skipBillingNotice(orgId, p.kind, p.cycleKey, why ?? "not-current");
+      console.log(`[club-billing-stripe] ${orgId}: pending ${p.kind} DM (${p.cycleKey}) not sent: ${why ?? "not-current"}`);
       continue;
     }
-    if (p.kind === "resumed") {
-      const r = await queueBillingDm({
-        orgId,
-        kind: "resumed",
-        cycleKey: p.cycleKey,
-        userId: contact!,
-        sendAfter: billingDmSendAfter(now),
-        text: () => resumedText(org!.language, { club: org!.name }),
-      });
-      if (r === "queued") sent++;
-    } else {
-      const graceEndsAt = billing!.graceEndsAt!;
-      const link = await billingLink(contact!, orgId);
-      const r = await queueBillingDm({
-        orgId,
-        kind: "plan-billed",
-        cycleKey: p.cycleKey,
-        userId: contact!,
-        sendAfter: billingDmSendAfter(now),
-        text: ({ name }) =>
-          planBilledText(org!.language, {
-            name,
-            club: org!.name,
-            pricePence: planPricePence(org!.billingPlan, org!.billingPricePence) ?? 0,
-            graceEndsAt,
-            link,
-          }),
-      });
-      if (r === "queued") sent++;
-    }
+    if ((await send()) === "queued") sent++;
   }
   return sent;
 }
@@ -565,7 +625,7 @@ export async function handleBillingEvent(event: Stripe.Event, now: Date = new Da
       const md = (session.metadata ?? {}) as Record<string, string>;
       if (!isClubFeeMetadata(md)) return ignored("not-club-fee");
       if (session.mode === "subscription") return onSubscriptionCheckout(session, md.orgId, now);
-      if (session.mode === "setup" && md.action === "replace-card") return onReplaceCard(session, md.orgId);
+      if (session.mode === "setup" && md.action === "replace-card") return onReplaceCard(session, md.orgId, now);
       return ignored("unhandled-session", md.orgId);
     }
     case "customer.subscription.created":
@@ -954,7 +1014,11 @@ async function onSubscriptionCheckout(session: Stripe.Checkout.Session, orgId: s
   if (email && sub.customerId) await stripe.updateCustomer({ customerId: sub.customerId, email });
 
   // "Card added", once per subscription, to whoever added the card.
-  if (payer && isBillingEnabled() && (sub.status === "trialing" || sub.status === "active")) {
+  if (payer && isBillingEnabled() && (sub.status === "trialing" || sub.status === "active") && !isBillingDmHour(now)) {
+    // Night (slice B4): noted as pending; the 10:00 run sends it if this is
+    // still the club's paying subscription then.
+    await notePendingBillingNotice(orgId, "card-added", sub.id, now);
+  } else if (payer && isBillingEnabled() && (sub.status === "trialing" || sub.status === "active")) {
     const org = await loadOrg(orgId);
     const after = await loadBilling(orgId);
     if (org && after) {
@@ -969,7 +1033,6 @@ async function onSubscriptionCheckout(session: Stripe.Checkout.Session, orgId: s
         kind: "card-added",
         cycleKey: sub.id,
         userId: payer,
-        sendAfter: billingDmSendAfter(now),
         text: ({ name }) =>
           cardAddedText(org.language, {
             name,
@@ -985,7 +1048,7 @@ async function onSubscriptionCheckout(session: Stripe.Checkout.Session, orgId: s
   return { action: "card-added", orgId };
 }
 
-async function onReplaceCard(session: Stripe.Checkout.Session, orgId: string): Promise<BillingEventResult> {
+async function onReplaceCard(session: Stripe.Checkout.Session, orgId: string, now: Date): Promise<BillingEventResult> {
   const payer = (session.metadata ?? {}).payerUserId;
   const setupIntentId = idOf(session.setup_intent);
   if (!payer || !setupIntentId) return ignored("incomplete-session", orgId);
@@ -1043,15 +1106,21 @@ async function onReplaceCard(session: Stripe.Checkout.Session, orgId: string): P
       console.warn(`[billing-webhook] ${orgId}: detaching the old card ${oldPm}:`, (err as Error).message);
     }
     if (oldHolder && oldHolder !== payer && isBillingEnabled()) {
-      const newName = (await db.user.findUnique({ where: { id: payer }, select: { name: true } }))?.name ?? "";
-      await queueBillingDm({
-        orgId,
-        kind: "card-replaced",
-        cycleKey: oldPm,
-        userId: oldHolder,
-        sendAfter: billingDmSendAfter(new Date()),
-        text: ({ name }) => cardReplacedText(org.language, { name, newName, club: org.name }),
-      });
+      // Keyed by the old card AND its holder, so a night-time notice can be
+      // sent to the right person in the morning (slice B4).
+      const cycleKey = `${oldPm}|${oldHolder}`;
+      if (!isBillingDmHour(now)) {
+        await notePendingBillingNotice(orgId, "card-replaced", cycleKey, now);
+      } else {
+        const newName = (await db.user.findUnique({ where: { id: payer }, select: { name: true } }))?.name ?? "";
+        await queueBillingDm({
+          orgId,
+          kind: "card-replaced",
+          cycleKey,
+          userId: oldHolder,
+          text: ({ name }) => cardReplacedText(org.language, { name, newName, club: org.name }),
+        });
+      }
     }
   }
   console.log(`[billing-webhook] ${orgId}: card replaced by ${payer} (${card.paymentMethodId}${oldPm ? `, ${oldPm} removed` : ""})`);
@@ -1068,6 +1137,6 @@ async function onSubscriptionChanged(subId: string, now: Date): Promise<BillingE
   if (out.action !== "synced") return { action: out.action, orgId };
   // Any DM a state change left pending ("resumed"), including one a
   // previous delivery failed to send.
-  await flushPendingBillingNotices(orgId);
+  await flushPendingBillingNotices(orgId, now);
   return { action: "synced", orgId };
 }

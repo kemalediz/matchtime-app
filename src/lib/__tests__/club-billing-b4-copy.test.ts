@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { ClubFeeTip } from "../club-billing-rules";
 import {
+  cardAddedText,
   feeTipAdminText,
   paymentActionText,
   paymentFailedText,
@@ -33,10 +34,13 @@ function all(lang: "en" | "tr"): Record<string, string> {
     pausedCancelled: pausedText(lang, { name: "Cole", club: "Riverside FC", pricePence: 999, reason: "cancelled", link: LINK }),
     failedOwn: paymentFailedText(lang, { name: "Cole", club: "Riverside FC", pricePence: 999, link: LINK, ownCard: true }),
     failedOther: paymentFailedText(lang, { name: "Cole", club: "Riverside FC", pricePence: 999, link: LINK, ownCard: false }),
-    action: paymentActionText(lang, { name: "Cole", club: "Riverside FC", pricePence: 999, link: "https://invoice.stripe.com/i/x" }),
+    action: paymentActionText(lang, { name: "Cole", club: "Riverside FC", pricePence: 999, link: "https://invoice.stripe.com/i/x", ownCard: true, billingLink: LINK }),
+    actionOther: paymentActionText(lang, { name: "Cole", club: "Riverside FC", pricePence: 999, link: "https://invoice.stripe.com/i/x", ownCard: false, billingLink: LINK }),
     payerCard: payerChangedText(lang, { name: "Pat", club: "Riverside FC", pricePence: 999, link: LINK, state: "card", oldName: "Cole", date: null, tip: TIP }),
     payerNoCard: payerChangedText(lang, { name: "Pat", club: "Riverside FC", pricePence: 999, link: LINK, state: "no-card", oldName: null, date: END, tip: TIP }),
     payerPaused: payerChangedText(lang, { name: "Pat", club: "Riverside FC", pricePence: 500, link: LINK, state: "paused", oldName: null, date: null, tip: null }),
+    cardAdded: cardAddedText(lang, { name: "Cole", club: "Riverside FC", pricePence: 999, firstPaymentOn: END, resumed: false, link: LINK }),
+    payerRemoved: payerChangedText(lang, { name: "Pat", club: "Riverside FC", pricePence: 999, link: LINK, state: "removed", oldName: null, date: null, tip: null }),
     adminTip: feeTipAdminText(lang, TIP, { noCollector: false, link: "" }),
     adminTipNoCollector: feeTipAdminText(lang, TIP, { noCollector: true, link: LINK }),
   };
@@ -49,18 +53,20 @@ describe("slice B4 copy", () => {
         expect(text, k).not.toMatch(/[–—]/);
         expect(text, k).not.toMatch(/good (morning|afternoon|evening)|günaydın|iyi akşamlar/i);
         if (!k.startsWith("adminTip")) expect(text, k).toContain("Riverside FC");
+        if (lang === "en") expect(text, k).not.toContain("Riverside FC's WhatsApp group");
       }
     });
   }
 
-  it("English, exactly as the plan words it (7.3), with the group named as the club's WhatsApp group", () => {
+  it("English, exactly as the plan words it (7.3), with the group named as the {club} WhatsApp group", () => {
     const en = all("en");
     expect(en.d21collector).toBe(
       "Hi Cole, Riverside FC's free month on MatchTime ends on Sat 31 Oct. As the person who collects the match fees, you're the one I'll ask for the card. " +
-        `To keep MatchTime running in Riverside FC's WhatsApp group, add a card here: ${LINK}\n` +
+        `To keep MatchTime running in the Riverside FC WhatsApp group, add a card here: ${LINK}\n` +
         "It's £9.99 a month for the whole group, and nothing is taken before Sat 31 Oct.\n\n" +
         "💷 *Club fee tip:* your weekly 7-a-side is 14 players and about 4 games a month, so £9.99 works out at about *20p a player per game*. Your game is £7 each, so charging *£7.20* covers it.",
     );
+    expect(en.cardAdded).toContain("MatchTime keeps running in the Riverside FC WhatsApp group.");
     expect(en.d21owner).not.toContain("As the person who collects");
     expect(en.d21owner.endsWith("Tip: if someone else collects the match fees, make them the money collector in Settings and they'll look after the card instead.")).toBe(true);
     expect(en.d28).not.toContain("Club fee tip");
@@ -88,6 +94,7 @@ describe("slice B4 copy", () => {
     expect(tr.pausedPayment).toContain("Riverside FC için £9.99 ödemesini alamadık");
     expect(tr.failedOther).toContain("Bunun yerine kendi kartınızı eklemek için:");
     expect(tr.payerCard).toContain("Cole kişisinin kartından ödenmeye devam ediyor");
+    expect(tr.actionOther).toContain("Bunun yerine kendi kartınızı ekleyin:");
     expect(tr.adminTipNoCollector).toContain("Henüz para toplayan kişi seçilmedi.");
   });
 });

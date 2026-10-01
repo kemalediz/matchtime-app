@@ -805,9 +805,19 @@ export async function loadPendingBillingNotices(
   orgId: string,
 ): Promise<Array<{ kind: BillingNoticeKind; cycleKey: string; createdAt: Date }>> {
   const rows = await db.billingNotice.findMany({
-    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed"] } },
+    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed", "card-added", "card-replaced"] } },
     select: { kind: true, cycleKey: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });
   return rows.map((r) => ({ kind: r.kind as BillingNoticeKind, cycleKey: r.cycleKey, createdAt: r.createdAt }));
+}
+
+/**
+ * Note a billing DM as PENDING (slice B4): a DM that became due at night
+ * is not queued for the morning blindly; the 10:00 run re-checks it is
+ * still true and sends it (`flushPendingBillingNotices`). Once per club,
+ * kind and cycle, like every billing notice.
+ */
+export async function notePendingBillingNotice(orgId: string, kind: BillingNoticeKind, cycleKey: string, now: Date): Promise<void> {
+  await db.billingNotice.createMany({ data: [{ orgId, kind, cycleKey, createdAt: now }], skipDuplicates: true });
 }

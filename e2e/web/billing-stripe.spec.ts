@@ -87,7 +87,25 @@ async function billingRow() {
 async function status() {
   return (await testDb().one<{ billingStatus: string }>(`SELECT "billingStatus" FROM "Organisation" WHERE id=$1`, [ORG]))?.billingStatus;
 }
+/**
+ * Slice B4: billing DMs go out 10:00 to 20:00 London only. At night the
+ * webhook and the admin actions leave them PENDING, and the hourly billing
+ * cron's daytime run re-checks and sends them. So when this suite runs at
+ * night, the cron is run once at the next 10:30 London (test clock) before
+ * the DMs are read; in the daytime nothing is held and nothing is run.
+ */
+async function flushNightDms() {
+  const londonHour = (d: Date) => Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Europe/London" }).format(d));
+  let at = new Date();
+  if (londonHour(at) >= 10 && londonHour(at) < 20) return;
+  while (londonHour(at) !== 10) at = new Date(at.getTime() + 30 * 60 * 1000);
+  const res = await fetch(`${E2E_BASE_URL}/api/cron/billing`, {
+    headers: { authorization: `Bearer ${E2E.CRON_SECRET}`, "x-test-now": at.toISOString() },
+  });
+  expect(res.status).toBe(200);
+}
 async function billingDms() {
+  await flushNightDms();
   return testDb().all<{ phone: string; text: string; refId: string }>(
     `SELECT phone, text, "refId" FROM "PlatformJob" WHERE purpose='billing' AND "refId" LIKE $1 ORDER BY "createdAt"`,
     [`${ORG}:%`],

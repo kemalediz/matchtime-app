@@ -119,11 +119,15 @@ const h = vi.hoisted(() => {
         return { count };
       }),
       updateMany: vi.fn(
-        async ({ where, data }: { where: { orgId: string; kind: string; cycleKey: string; platformJobId?: string | null }; data: { platformJobId: string | null } }) => {
+        async ({ where, data }: { where: { orgId: string; kind: string; cycleKey: string; platformJobId?: string | null | { startsWith: string } }; data: { platformJobId: string | null; createdAt?: Date } }) => {
           const row = state.notices.get(key(where.orgId, where.kind, where.cycleKey));
           if (!row) return { count: 0 };
-          if ("platformJobId" in where && row.platformJobId !== where.platformJobId) return { count: 0 };
+          const pj = (where as { platformJobId?: unknown }).platformJobId;
+          if (pj && typeof pj === "object" && "startsWith" in (pj as object)) {
+            if (!row.platformJobId?.startsWith((pj as { startsWith: string }).startsWith)) return { count: 0 };
+          } else if ("platformJobId" in where && row.platformJobId !== pj) return { count: 0 };
           row.platformJobId = data.platformJobId;
+          if ((data as { createdAt?: Date }).createdAt) row.createdAt = (data as { createdAt: Date }).createdAt;
           return { count: 1 };
         },
       ),
@@ -371,7 +375,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     const d28 = dmsOf("trial-28");
     expect(d28).toHaveLength(1);
     expect(d28[0].text).toBe(
-      "Hi Cole, a quick reminder: Riverside FC's free month ends on Sat 31 Oct. Add a card to keep MatchTime running in Riverside FC's WhatsApp group: " +
+      "Hi Cole, a quick reminder: Riverside FC's free month ends on Sat 31 Oct. Add a card to keep MatchTime running in the Riverside FC WhatsApp group: " +
         `https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}`,
     );
   });
@@ -405,7 +409,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     await runBillingCron(new Date(TRIAL_ENDS.getTime() + HOUR)); // 10:00
     const dm = dmsOf("trial-ended");
     expect(dm).toHaveLength(1);
-    expect(dm[0].text).toContain("Hi Owen, Riverside FC's free month has ended. MatchTime will keep running in Riverside FC's WhatsApp group for one more week, until Sat 7 Nov.");
+    expect(dm[0].text).toContain("Hi Owen, Riverside FC's free month has ended. MatchTime will keep running in the Riverside FC WhatsApp group for one more week, until Sat 7 Nov.");
     expect(dm[0].text).toContain("make them the money collector");
   });
 
@@ -430,7 +434,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     await runBillingCron(new Date(graceEnd.getTime() + 2 * HOUR));
     const dm = dmsOf("paused");
     expect(dm).toHaveLength(1);
-    expect(dm[0].text).toContain("Hi Owen, MatchTime is now paused for Riverside FC. I'm still in Riverside FC's WhatsApp group, but I won't post or reply there");
+    expect(dm[0].text).toContain("Hi Owen, MatchTime is now paused for Riverside FC. I'm still in the Riverside FC WhatsApp group, but I won't post or reply there");
     expect(dm[0].text).toContain("https://mt.test/r/u_owen/billing/org_1");
   });
 
@@ -633,6 +637,14 @@ describe("onBillingContactChanged: the 'payer changed' DM from setPaymentHolder"
     expect(dmsOf("payer-changed")[0].text).toContain("Add a card to switch it back on:");
   });
 
+  it("paused because MatchTime was removed from the group: asks for MatchTime to be added back, not for a card", async () => {
+    club({ billingStatus: "paused", paymentHolderId: "u_cole" }, { pausedAt: new Date("2026-11-07T09:00:00Z"), pausedReason: "removed" });
+    await onBillingContactChanged("org_1", NOON);
+    const text = dmsOf("payer-changed")[0].text;
+    expect(text).toContain("MatchTime was taken out of the Riverside FC WhatsApp group, so it is paused. To switch it back on, add MatchTime back to the group.");
+    expect(text).not.toContain("Add a card");
+  });
+
   it("changing back and forth never repeats it (claimed by the collector's user id)", async () => {
     const c = club({ paymentHolderId: "u_cole" });
     await onBillingContactChanged("org_1", NOON);
@@ -641,6 +653,25 @@ describe("onBillingContactChanged: the 'payer changed' DM from setPaymentHolder"
     c.paymentHolderId = "u_cole";
     await onBillingContactChanged("org_1", NOON);
     expect(dmsOf("payer-changed").map((d) => d.userId)).toEqual(["u_cole", "u_ada"]);
+  });
+
+  it("a skipped notice never blocks a later, real change to the same person (skipped rows are re-opened; a delivered one is not repeated)", async () => {
+    const c = club({ paymentHolderId: "u_ada" });
+    await onBillingContactChanged("org_1", new Date("2026-10-12T22:00:00Z")); // pending for Ada
+    c.paymentHolderId = "u_cole";
+    await flushPendingBillingDms("org_1", new Date("2026-10-13T09:00:00Z")); // Ada's is skipped: not current
+    expect(h.state.notices.get(h.key("org_1", "payer-changed", "u_ada"))!.platformJobId).toBe("skipped:not-current");
+    c.paymentHolderId = "u_ada"; // Ada really is the collector again, days later
+    expect(await onBillingContactChanged("org_1", new Date("2026-10-16T11:00:00Z"))).toBe("queued");
+    expect(dmsOf("payer-changed").map((d) => d.userId)).toEqual(["u_ada"]);
+    // At night the re-opened row is pending again, with a fresh age.
+    c.paymentHolderId = "u_cole";
+    h.state.notices.set(h.key("org_1", "payer-changed", "u_cole"), {
+      orgId: "org_1", kind: "payer-changed", cycleKey: "u_cole", platformJobId: "skipped:no-phone", createdAt: new Date("2026-10-01T00:00:00Z"),
+    });
+    expect(await onBillingContactChanged("org_1", new Date("2026-10-16T22:00:00Z"))).toBe("pending");
+    await flushPendingBillingDms("org_1", new Date("2026-10-17T09:00:00Z"));
+    expect(dmsOf("payer-changed").map((d) => d.userId)).toEqual(["u_ada", "u_cole"]);
   });
 
   it("never on an exempt club, a suspended club, with the flag off, or when the new collector's own card is on file", async () => {
@@ -720,6 +751,19 @@ describe("notePaymentProblem + flush: payment failed and 3DS DMs", () => {
     await flushPendingBillingDms("org_1", new Date(FAILED_AT.getTime() + 2 * HOUR));
     expect(dmsOf("payment-failed")).toEqual([]);
     expect(h.state.notices.get(h.key("org_1", "payment-failed", "in_1"))!.platformJobId).toBe("skipped:superseded");
+  });
+
+  it("3DS when the card on file is someone else's (collector change in progress): the contact may confirm it or put their own card on", async () => {
+    pastDue({ cardHolderUserId: "u_owen" });
+    await notePaymentProblem({ orgId: "org_1", invoiceId: "in_3", kind: "payment-action", hostedUrl: "https://invoice.stripe.com/i/in_3", now: FAILED_AT });
+    const dm = dmsOf("payment-action")[0];
+    expect(dm.userId).toBe("u_cole");
+    expect(dm.text).toBe(
+      "Hi Cole, the card on file for Riverside FC needs the bank to confirm this month's £9.99 before it can go through. " +
+        "You can confirm and pay it here: https://invoice.stripe.com/i/in_3\n" +
+        `Or put your own card on instead: https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}\n` +
+        "MatchTime keeps running meanwhile.",
+    );
   });
 
   it("3DS at night: pending; the 10:00 run re-reads the invoice and sends its link only if it is still open", async () => {

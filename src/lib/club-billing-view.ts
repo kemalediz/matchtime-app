@@ -469,9 +469,18 @@ export function paymentFailedText(
 }
 
 /** The bank wants the payer to confirm the payment (3DS). `link` is the
- *  invoice's own Stripe page, where the check is done. */
-export function paymentActionText(lang: LangIn, p: { name: string | null; club: string; pricePence: number; link: string }): string {
-  return t(lang).billing_dm_payment_action({ name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link });
+ *  invoice's own Stripe page, where the check is done; `billingLink` the
+ *  recipient's billing page, offered when the card is not their own. */
+export function paymentActionText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; link: string; ownCard: boolean; billingLink: string },
+): string {
+  const base = { name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link };
+  // Someone else's card (a collector change in progress): the recipient
+  // may confirm that payment, or put their own card on instead.
+  return p.ownCard
+    ? t(lang).billing_dm_payment_action(base)
+    : t(lang).billing_dm_payment_action_other({ ...base, billingLink: p.billingLink });
 }
 
 /** To a new money collector, once (4.5 point 2), then the tip. */
@@ -483,8 +492,10 @@ export function payerChangedText(
     pricePence: number;
     link: string;
     /** "card": somebody else's card is paying; "no-card": add one before
-     *  `date`; "paused": add one to switch MatchTime back on. */
-    state: "card" | "no-card" | "paused";
+     *  `date`; "paused": add one to switch MatchTime back on; "removed":
+     *  paused because MatchTime was taken out of the group, so it must be
+     *  added back (slice B5). */
+    state: "card" | "no-card" | "paused" | "removed";
     oldName: string | null;
     date: Date | null;
     tip: ClubFeeTip | null;
@@ -497,7 +508,9 @@ export function payerChangedText(
       ? s.billing_dm_payer_changed_card({ ...base, oldName: p.oldName ?? "" })
       : p.state === "no-card" && p.date
         ? s.billing_dm_payer_changed_no_card({ ...base, date: dayLabel(lang, p.date) })
-        : s.billing_dm_payer_changed_paused(base);
+        : p.state === "removed"
+          ? s.billing_dm_payer_changed_removed(base)
+          : s.billing_dm_payer_changed_paused(base);
   return withExtras(lang, body, { tip: p.tip });
 }
 

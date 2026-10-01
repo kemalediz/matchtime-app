@@ -354,7 +354,8 @@ async function sendPayerChanged(club: DmClub & { billing: NonNullable<DmClub["bi
   const b = club.billing;
   const holder = b.cardHolderUserId;
   const oldName = holder && holder !== userId && isLiveSubscriptionStatus(b.stripeSubscriptionStatus) ? await nameOf(club, holder) : null;
-  const state: "card" | "no-card" | "paused" = club.status === "paused" ? "paused" : oldName ? "card" : "no-card";
+  const state: "card" | "no-card" | "paused" | "removed" =
+    club.status === "paused" ? (b.pausedReason === "removed" ? "removed" : "paused") : oldName ? "card" : "no-card";
   const date =
     club.status === "trial" ? b.trialEndsAt : club.status === "grace" || club.status === "past_due" ? (b.graceEndsAt ?? b.trialEndsAt) : (b.currentPeriodEnd ?? b.trialEndsAt);
   const tip = await loadClubFeeTip(club.id);
@@ -371,7 +372,8 @@ async function sendPayerChanged(club: DmClub & { billing: NonNullable<DmClub["bi
 /**
  * Called by `setPaymentHolder` after a new money collector is saved. For a
  * billed club, the new collector gets ONE DM (claimed by their user id, so
- * changing back and forth never repeats it): they now look after the card.
+ * changing back and forth never repeats a DELIVERED one; a skipped one is
+ * re-opened by the next real change): they now look after the card.
  * At night it is kept pending for the 10:00 run, which sends it only if
  * they are still the collector. Never throws into the caller's action.
  */
@@ -384,12 +386,20 @@ export async function onBillingContactChanged(orgId: string, now: Date = new Dat
     if (!userId) return "skipped:no-collector";
     const refusal = payerChangedRefusal(club, userId);
     if (refusal) return `skipped:${refusal}`;
+    // A notice for this person that was SKIPPED (not current any more when
+    // it came to be sent, no phone then, too old) never reached them: this
+    // real change re-opens it, with a fresh age. One that was delivered
+    // stays delivered, so changing back and forth never repeats it.
+    const reopened = await db.billingNotice.updateMany({
+      where: { orgId, kind: "payer-changed", cycleKey: userId, platformJobId: { startsWith: "skipped:" } },
+      data: { platformJobId: null, createdAt: now },
+    });
     if (!isBillingDmHour(now)) {
       const { count } = await db.billingNotice.createMany({
         data: [{ orgId, kind: "payer-changed", cycleKey: userId, createdAt: now }],
         skipDuplicates: true,
       });
-      return count === 1 ? "pending" : "already";
+      return count === 1 || reopened.count === 1 ? "pending" : "already";
     }
     return await sendPayerChanged(club, userId);
   } catch (err) {
@@ -431,7 +441,7 @@ export async function notePaymentProblem(args: {
       data: [{ orgId: args.orgId, kind: args.kind, cycleKey: args.invoiceId, createdAt: now }],
       skipDuplicates: true,
     });
-    if (args.kind === "payment-action" && args.hostedUrl && isBillingDmHour(now)) {
+    if (args.kind === "payment-action" && args.hostedUrl && club.contact && isBillingDmHour(now)) {
       return await sendPaymentAction(club, args.invoiceId, args.hostedUrl);
     }
     return "pending";
@@ -441,14 +451,18 @@ export async function notePaymentProblem(args: {
   }
 }
 
-function sendPaymentAction(club: DmClub, invoiceId: string, hostedUrl: string) {
+async function sendPaymentAction(club: DmClub & { billing: NonNullable<DmClub["billing"]> }, invoiceId: string, hostedUrl: string) {
   const contact = club.contact!;
+  const holder = club.billing.cardHolderUserId;
+  const ownCard = holder === null || holder === contact.userId;
+  const billingLinkUrl = ownCard ? "" : await billingLink(contact.userId, club.id);
   return queueBillingDm({
     orgId: club.id,
     kind: "payment-action",
     cycleKey: invoiceId,
     userId: contact.userId,
-    text: ({ name }) => paymentActionText(club.language, { name, club: club.name, pricePence: club.pricePence, link: hostedUrl }),
+    text: ({ name }) =>
+      paymentActionText(club.language, { name, club: club.name, pricePence: club.pricePence, link: hostedUrl, ownCard, billingLink: billingLinkUrl }),
   });
 }
 
