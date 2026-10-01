@@ -117,7 +117,7 @@ export function LandingPage() {
         <div className="relative max-w-6xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-medium text-blue-100 backdrop-blur mb-6">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            First month free · Lives in your WhatsApp group · No app for players
+            Lives in your WhatsApp group · No app for players
           </div>
           <h1
             className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.05] text-white"
@@ -133,8 +133,6 @@ export function LandingPage() {
             MatchTime sits in your WhatsApp group and does the organiser&apos;s
             job: it tracks who&apos;s in, runs the bench, chases when you&apos;re
             short, picks balanced teams and collects ratings after the game.
-            Your first month is free, then it&apos;s £5 a month for the whole
-            group. Don&apos;t like it? Remove it.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center">
             <Link
@@ -153,10 +151,6 @@ export function LandingPage() {
           </div>
 
           <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs sm:text-sm text-slate-300">
-            <span className="inline-flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-400" />
-              £5 a month per group, first month free
-            </span>
             <span className="inline-flex items-center gap-1.5">
               <Check className="w-4 h-4 text-emerald-400" />
               Players just chat as normal
