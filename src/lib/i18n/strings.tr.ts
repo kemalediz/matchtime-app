@@ -75,6 +75,7 @@
 import type { Strings } from "./t";
 import { joinList } from "./text";
 import type { StatsPeriod } from "../pipeline/types";
+import type { BadgeKey } from "../badge-rules";
 
 const UNIT_TR = { day: "gün", week: "hafta", month: "ay", year: "yıl" } as const;
 
@@ -917,7 +918,7 @@ export const tr: Strings = {
   onbHelpTopicLine: (p: { word: string; label: string }): string =>
     `   • *@Match Time yardım ${p.word}*, ${p.label}`,
 
-  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
+  onbHelpTopicWord: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
     ({
       availability: "kadro",
       teams: "takımlar",
@@ -926,9 +927,10 @@ export const tr: Strings = {
       reminders: "hatırlatma",
       payments: "ödeme",
       schedule: "program",
+      badges: "rozetler",
     })[p.topic],
 
-  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" }): string =>
+  onbHelpTopicLabel: (p: { topic: "availability" | "teams" | "mom" | "ratings" | "reminders" | "payments" | "schedule" | "badges" }): string =>
     ({
       availability: "kadro ve katılım",
       teams: "dengeli takımlar",
@@ -937,6 +939,7 @@ export const tr: Strings = {
       reminders: "hatırlatmalar",
       payments: "ödeme takibi",
       schedule: "program ve rezervasyonlar",
+      badges: "rozetler ve nasıl kazanılır",
     })[p.topic],
 
   onbHelpNotOn: (): string =>
@@ -1056,6 +1059,75 @@ export const tr: Strings = {
         `Ödemeyenlere nazik hatırlatmalar gönderirim. Oyuncular kartla ödeyebilir, organizatör nakit ve havaleleri alındı olarak işaretleyebilir.\n` +
         `Bu yalnızca ödeme takibi açıkken çalışır. Son durum için *@Match Time kim ödemedi?* yazın.`,
     })[p.topic],
+
+  // ── "help badges" (2026-10-01) ──────────────────────────────────────
+  // Rozet adları istatistik sayfasındaki gibi (İngilizce) kalır. Ondalık
+  // ayırıcı virgül; örnek puan listeleri noktalı virgülle ayrılır, yoksa
+  // "7,5" ile karışır.
+
+  onbHelpBadgesHead: () => `🏅 *Rozetler: nasıl kazanılır*`,
+
+  onbHelpBadgeLine: (p) => {
+    const n = p.n;
+    const d = (x: number) => String(x).replace(".", ",");
+    const rule = ({
+      "first-game": `bu kulüpteki ilk maçını oyna.`,
+      "ten-games": `${n.regularMinGames} veya daha fazla maç oyna.`,
+      ironman: `katıldığından beri her maçı oyna, en az ${n.ironManMinMatches} maç oynanmış olsun.`,
+      "first-mom": `maçın adamı oylamasını bir kez kazan.`,
+      "mom-machine": `maçın adamı oylamasını ${n.momMachineMinWins} veya daha fazla kez kazan.`,
+      masterclass: `tek bir maçta ortalama ${d(n.masterclassMinGameAvg)} veya üzeri puan al.`,
+      reliable: `en az ${n.mrReliableMinGames} maçta puan al, ortalaman ${d(n.mrReliableMinAvg)} veya üzeri olsun ve maçtan maça istikrarlı ol.`,
+      "above-field": `en az ${n.aboveCurveMinRatedGames} maçta puan al ve ortalaman kulüp ortalamasının üstünde olsun.`,
+    } as Record<BadgeKey, string>)[p.key];
+    return `${p.emoji} *${p.label}*: ${rule}`;
+  },
+
+  onbHelpBadgesFoot: (p) =>
+    `Rozetler bu kulüpteki tüm biten maçlardan hesaplanır. Çoğu bir kez kazanılınca kalır. ` +
+    `Iron Man, Mr Reliable ve Above the Curve kaybedilebilir: Mr Reliable ve Above the Curve puanlar toparlanınca geri gelir, Iron Man ise kaçırılan ilk maçta biter.\n` +
+    `Tek bir rozetin tüm kuralları için: *${p.dm ? "" : "@Match Time "}yardım rozetler ${p.example}*`,
+
+  onbHelpBadgesUnknown: (p) => `🤔 "${p.query}" adında bir rozet bilmiyorum. Hepsi burada:`,
+
+  onbHelpBadgesClubNote: () => `Rozetler bu kulüpteki tüm biten maçlardan hesaplanır.`,
+
+  onbHelpBadgeDetail: (p) => {
+    const n = p.n;
+    const d = (x: number) => String(x).replace(".", ",");
+    const list = (xs: readonly number[]) => `${xs.slice(0, -1).map(d).join("; ")} ve ${d(xs[xs.length - 1])}`;
+    const kept = `Bir kez kazanılınca kalır.`;
+    const body = ({
+      "first-game":
+        `Bu kulüpte ilk maçını oynayan kazanır. Bir maç, bittiğinde oyuncu kesin kadrodaysa ya da takım listesindeyse sayılır.\n${kept}`,
+      "ten-games":
+        `Bu kulüpte ${n.regularMinGames} veya daha fazla maç oynayan kazanır. Oyuncunun kesin kadroda ya da takım listesinde olduğu her biten maç sayılır.\n${kept}`,
+      ironman:
+        `İkisi birden doğruysa kazanılır:\n` +
+        `1. Kulübe katıldığından beri bu kulüpteki her maçı oynamış olmak. Katılmadan önceki maçlar aleyhine sayılmaz.\n` +
+        `2. Bu sürede en az ${n.ironManMinMatches} maç oynanmış olması.\n` +
+        `Kaçırılan ilk maçta biter ve o maç hep sayıldığı için geri gelmez.`,
+      "first-mom":
+        `Maçın adamı oylamasını bir kez kazanan alır. En çok oyda iki ya da daha fazla oyuncu berabere kalırsa hepsi kazanmış sayılır.\n${kept}`,
+      "mom-machine":
+        `Maçın adamı oylamasını ${n.momMachineMinWins} veya daha fazla kez kazanan alır. En çok oyda beraberlik, berabere kalan herkes için bir galibiyet sayılır.\n${kept}`,
+      masterclass:
+        `Diğer oyuncuların verdiği puanların ortalaması tek bir maçta ${d(n.masterclassMinGameAvg)} veya üzeri olursa kazanılır. Bir maç yeter.\n${kept}`,
+      reliable:
+        `Üçü birden doğruysa kazanılır:\n` +
+        `1. En az ${n.mrReliableMinGames} maçta puan almış olmak.\n` +
+        `2. Aldığı tüm puanların ortalaması ${d(n.mrReliableMinAvg)} veya üzeri.\n` +
+        `3. Maçtan maça istikrarlı olmak: maç maç ortalamaları çok dalgalanmıyor. Sayıyla, yayılım (standart sapma) ${d(n.mrReliableMaxSpread)} puanın altında. ` +
+        `${list(n.mrReliableSteady)} alan bir oyuncu hak kazanır. ${list(n.mrReliableSwinging)} alan bir oyuncu, ortalaması benzer olsa bile kazanamaz.\n` +
+        `Puanlar düşer ya da dalgalanmaya başlarsa kaybedilebilir, yeniden oturunca geri gelir.`,
+      "above-field":
+        `İkisi birden doğruysa kazanılır:\n` +
+        `1. En az ${n.aboveCurveMinRatedGames} maçta puan almış olmak.\n` +
+        `2. Aldığı tüm puanların ortalaması kulüp ortalamasından (kulübün maçlarında her oyuncuya verilen tüm puanlar) yüksek.\n` +
+        `Ortalaması kulüp ortalamasına ya da altına düşerse kaybedilebilir, yeniden üstüne çıkınca geri gelir.`,
+    } as Record<BadgeKey, string>)[p.key];
+    return `${p.emoji} *${p.label}*\n${body}`;
+  },
 
   // ── private messages (Phase 3) ──────────────────────────────────────
   // Register: "sen" in every DM (the owner's decision). Names, dates and

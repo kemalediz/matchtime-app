@@ -124,7 +124,7 @@ export async function handleDmHelp(args: {
 
   const features = await getOrgFeatures(membership.orgId);
   const lang = features.language;
-  const body = buildHelpReply(req.topic, helpFeaturesFrom(features), lang, { audience, links });
+  const body = buildHelpReply(req.topic, helpFeaturesFrom(features), lang, { audience, links, badgeQuery: req.badgeQuery });
   const text = clubCount > 1 ? `${t(lang).onbHelpForClub({ club: membership.org.name })}\n\n${body}` : body;
 
   await db.botJob.create({

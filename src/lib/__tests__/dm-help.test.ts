@@ -144,6 +144,18 @@ describe("handleDmHelp", () => {
     expect(botJobCreate.mock.calls[0][0].data.text).toBe(buildHelpReply(null, FEATS_PAY_OFF, "en"));
   });
 
+  it("'help badges Mr Reliable' (an admin too): that badge's rules, plain drill-down, no link minted", async () => {
+    membershipFindMany.mockResolvedValue([mem("org-mt", "OWNER", "MT Test")]);
+    const out = await handleDmHelp(args("help badges Mr Reliable"));
+    expect(out).toMatchObject({ handled: "dm-help", topic: "badges", audience: "admin" });
+    expect(buildAdminLink).not.toHaveBeenCalled();
+    const text = botJobCreate.mock.calls[0][0].data.text as string;
+    expect(text.startsWith("🧱 *Mr Reliable*")).toBe(true);
+    expect(text).toContain("1. Rated in at least 4 games.");
+    await handleDmHelp(args("help badges"));
+    expect(botJobCreate.mock.calls[1][0].data.text).toContain("*help badges Mr Reliable*");
+  });
+
   it("the club's language decides the reply's language", async () => {
     membershipFindMany.mockResolvedValue([mem("org-tr", "PLAYER", "Cuma", "tr")]);
     getOrgFeatures.mockResolvedValue({ ...FEATS_PAY_OFF, language: "tr" });

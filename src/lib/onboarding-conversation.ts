@@ -61,6 +61,7 @@ import {
 } from "./onboarding-parse";
 import { findExistingOrgMember } from "./resolve-player";
 import { t } from "./i18n/t";
+import { buildBadgeHelp } from "./badge-help";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
@@ -256,11 +257,14 @@ export type HelpTopic =
   | "payments"
   // 2026-09-30: how to change the schedule in the admin screens. Not
   // behind a feature flag: every club has a schedule.
-  | "schedule";
+  | "schedule"
+  // 2026-10-01: every badge and its rules (badge-help.ts). Not behind a
+  // flag either: every club's players have a stats page.
+  | "badges";
 
 /** The org-feature flag each topic is gated behind. A topic is only
  *  explained (and only listed in bare help) when its flag is ON. */
-const HELP_TOPIC_FEATURE: Record<Exclude<HelpTopic, "schedule">, keyof HelpFeatures> = {
+const HELP_TOPIC_FEATURE: Record<Exclude<HelpTopic, "schedule" | "badges">, keyof HelpFeatures> = {
   ratings: "playerRating",
   teams: "teamBalancing",
   mom: "momVoting",
@@ -356,6 +360,9 @@ const HELP_TOPIC_ALIASES: Array<[RegExp, HelpTopic]> = [
  */
 export function parseHelpTopic(raw: string): HelpTopic | null {
   if (!raw) return null;
+  // Badges first, under both casings, so a badge name that is also a
+  // topic word ("help badges man of the match") stays with badges.
+  if (badgeWordTail(raw) !== null) return "badges";
   // Both lower-casings, because they disagree on "I": the Turkish rules
   // make "RATINGS" into "ratıngs" (dotless) and the plain rules make
   // "YARDIM" into "yardim" and "MAÇIN" into "maçin". Each alias list is
@@ -385,6 +392,21 @@ export function parseHelpTopic(raw: string): HelpTopic | null {
  * body is tested under BOTH lower-casings (the Turkish one turns "TIME"
  * into "tıme", and "YARDIM" only matches under the Turkish one).
  */
+/** The text after the badges word ("badges", "rozetler") when the help
+ *  tail carries one, else null. */
+const BADGE_WORD_RE = /(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})[\s\S]*?(?<!\p{L})(?:badges?|rozet\p{L}*)(?!\p{L})([\s\S]*)$/u;
+function badgeWordTail(raw: string): string | null {
+  for (const lower of [raw.toLowerCase(), raw.toLocaleLowerCase("tr")]) {
+    const m = lower.match(BADGE_WORD_RE);
+    if (m) {
+      // Slice the ORIGINAL text, so the badge name keeps its casing; the
+      // two lower-casings never change the string's length here.
+      return lower.length === raw.length ? raw.slice(raw.length - m[1].length).trim() : m[1].trim();
+    }
+  }
+  return null;
+}
+
 export const HELP_REQUEST_RE =
   /^\s*(?:@?\s*match\s*time|@mt|matchtime)?\s*(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})(?:\s+[\p{L}\p{N} &']+?)?\s*$/iu;
 
@@ -397,16 +419,23 @@ export const HELP_REQUEST_RE =
  * a KNOWN topic in at most four words. "help me I can't make Tuesday" is
  * not a help request by DM; it goes to the handlers that read it.
  */
-export function readHelpRequest(body: string, opts: { dm: boolean }): { topic: HelpTopic | null } | null {
+export function readHelpRequest(
+  body: string,
+  opts: { dm: boolean },
+): { topic: HelpTopic | null; badgeQuery?: string } | null {
   if (!body) return null;
   if (!HELP_REQUEST_RE.test(body.toLowerCase()) && !HELP_REQUEST_RE.test(body.toLocaleLowerCase("tr"))) return null;
   const topic = parseHelpTopic(body);
-  if (!opts.dm) return { topic };
+  // "help badges Mr Reliable": the badge name rides along (2026-10-01).
+  const badgeQuery = topic === "badges" ? badgeWordTail(body) || undefined : undefined;
+  const found = badgeQuery ? { topic, badgeQuery } : { topic };
+  if (!opts.dm) return found;
   const tail = (body.toLocaleLowerCase("tr").match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u)?.[1] ??
     body.toLowerCase().match(/(?<!\p{L})(?:help|yardım|yardim)(?!\p{L})([\s\S]*)$/u)?.[1] ??
     "").trim();
   if (tail === "") return { topic: null };
-  if (topic && tail.split(/\s+/).length <= 4) return { topic };
+  // A badge name can be long ("help badges man of the match").
+  if (topic && tail.split(/\s+/).length <= (topic === "badges" ? 6 : 4)) return found;
   return null;
 }
 
@@ -416,6 +445,7 @@ const HELP_TOPIC_ORDER: HelpTopic[] = [
   "teams",
   "mom",
   "ratings",
+  "badges",
   "reminders",
   "payments",
   "schedule",
@@ -443,12 +473,14 @@ export interface HelpContext {
    *  group, the admin's own signed-in link in their DM. A missing page
    *  falls back to its public URL. */
   links?: Partial<Record<HelpAdminPage, string>>;
+  /** "help badges <name>": the badge name as typed (readHelpRequest). */
+  badgeQuery?: string;
 }
 
 /** The admin pages a given answer links to, so a DM caller mints only the
  *  signed-in links it will actually send. */
 export function helpPagesNeeded(topic: HelpTopic | null, audience: HelpAudience): HelpAdminPage[] {
-  if (audience === "player") return [];
+  if (audience === "player" || topic === "badges") return [];
   if (topic === "schedule") return ["activities", "blockBookings", "bulk", "matches"];
   if (audience === "group" && topic === null) return [];
   return ["settings"];
@@ -459,7 +491,7 @@ function helpLink(ctx: HelpContext, page: HelpAdminPage): string {
 }
 
 function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
-  if (topic === "schedule") return true;
+  if (topic === "schedule" || topic === "badges") return true;
   // Payments count as on when either payment flag is: a club that
   // collects fees without the tracking flag still has the feature.
   if (topic === "payments") return features.paymentTracking || features.paymentCollection === true;
@@ -490,6 +522,7 @@ export function buildHelpReply(
 ): string {
   const s = t(lang);
   const adminTail = (line: string) => (ctx.audience === "admin" ? `\n\n${line}` : "");
+  if (topic === "badges") return buildBadgeHelp(ctx.badgeQuery, lang, { dm: ctx.audience !== "group" });
   if (topic === "schedule") {
     return s.onbHelpSchedule({
       audience: ctx.audience,
