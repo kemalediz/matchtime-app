@@ -316,6 +316,7 @@ const FEATURE_COLUMN: Record<string, string> = {
   payByBank: "payMethodPayByBank",
   payCard: "payMethodCard",
   payDirect: "payMethodDirect",
+  badgeAnnouncements: "featureBadgeAnnouncements",
 };
 
 export async function setOrgFeature(

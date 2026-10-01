@@ -400,6 +400,16 @@ const SAMPLES: SampleArgs = {
   stats_share_failed: null,
   stats_share_badge_text: { emoji: "EMOJI", label: "BADGELABEL", orgName: "ORGNAME" },
   stats_share_season_text: { orgName: "ORGNAME" },
+  badges_post_header: null,
+  badges_post_footer: null,
+  badges_line_first_game: { emoji: "👟", label: "On the board", names: ["Hamzah"] },
+  badges_line_first_mom: { emoji: "🏆", label: "Man of the Match", shared: [["Burak Yildiz", "Mojib"]], solo: ["Wasim"] },
+  badges_line_mom_machine: { emoji: "👑", label: "MoM Machine", names: ["Wasim"] },
+  badges_line_masterclass: { emoji: "🌟", label: "Masterclass", names: ["Wasim"] },
+  badges_line_ten_games: { emoji: "🔟", label: "Regular", names: ["Mojib", "Wasim"] },
+  badges_line_reliable: { emoji: "🧱", label: "Mr Reliable", names: ["Najib"] },
+  badges_feature_label: null,
+  badges_feature_blurb: null,
 
   // ── self-join slice 4: the organiser web ──
   sj_activity_name: { perSide: 7 },

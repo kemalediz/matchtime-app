@@ -430,6 +430,39 @@ export default function SettingsPage() {
                 </div>
               );
             })}
+            {/* Badge announcements (2026-10-01). Its own row, not in
+                FEATURE_META (that list is also the numbered in-group
+                setup menu). Words from the club's language table. */}
+            {(() => {
+              const s = t(org.language);
+              const key: FeatureKey = "badgeAnnouncements";
+              const on = org.features?.[key] ?? true;
+              return (
+                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-badge-announcements">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800">{s.badges_feature_label}</p>
+                    <p className="text-xs text-slate-500">{s.badges_feature_blurb}</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={s.badges_feature_label}
+                    disabled={savingFeature === key}
+                    onClick={() => toggleFeature(key, !on)}
+                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                      on ? "bg-green-500" : "bg-slate-300"
+                    }`}
+                    title={on ? "Click to disable" : "Click to enable"}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        on ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </section>

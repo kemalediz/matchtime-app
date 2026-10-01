@@ -57,7 +57,8 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { computeDuePosts, sweepExpiredBenchConfirmations } from "@/lib/bot-scheduler";
+import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
+import { badgeLedgerOf, claimBadgePost } from "@/lib/badge-announcement-scheduler";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
@@ -156,6 +157,13 @@ async function fetchRecentGroupTexts(orgId: string, now: Date): Promise<RecentOu
     );
     return [];
   }
+}
+
+function withoutBadgeLedger(instr: DueInstruction): DueInstruction {
+  if (instr.kind !== "group-message" || !("badgeLedger" in instr)) return instr;
+  const rest = { ...instr };
+  delete rest.badgeLedger;
+  return rest;
 }
 
 export async function GET(request: Request) {
@@ -294,6 +302,14 @@ export async function GET(request: Request) {
     // the loser gets P2002 and skips. A findFirst-then-create check here
     // would reintroduce exactly the race this fixes.
     claim: async (instr: Claimable) => {
+      // A badges post records its badges in the SAME transaction as the
+      // claim: only the poller that wins the post writes the ledger, and
+      // a claimed post can never leave its badges unrecorded.
+      const badgeRows = badgeLedgerOf(instr);
+      if (badgeRows) {
+        await claimBadgePost(org.id, instr, badgeRows);
+        return;
+      }
       await db.sentNotification.create({
         data: {
           key: instr.key,
@@ -363,5 +379,9 @@ export async function GET(request: Request) {
   }
 
   const bridged = await bridgePlatformDmsForLegacyPi(request);
-  return NextResponse.json({ ...result, instructions: [...bridged, ...selection.dispatch] });
+  return NextResponse.json({
+    ...result,
+    // The badges ledger is server-side bookkeeping; the Pi gets the post only.
+    instructions: [...bridged, ...selection.dispatch.map(withoutBadgeLedger)],
+  });
 }

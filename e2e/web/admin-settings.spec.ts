@@ -107,6 +107,37 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
   await db.run(`UPDATE "Organisation" SET language = 'en', "rollingSquadEnabled" = false WHERE id = $1`, [ORG_ID]);
 });
 
+test("Badge announcements: ON by default, the switch persists, and it reads in Turkish", async ({ page, db }) => {
+  await signInAs(page, U.admin, "/admin/settings");
+  await page.waitForURL("**/admin/settings");
+  const row = page.getByTestId("feature-badge-announcements");
+  const toggle = row.getByRole("switch", { name: "Badge announcements" });
+  await expect(toggle).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
+  await expect(row.getByText(/Two days after each match, posts the new badges in the group/)).toBeVisible();
+
+  // OFF persists to the org row and survives a reload.
+  await toggle.click();
+  await expect
+    .poll(async () =>
+      (await db.one<{ v: boolean }>(`SELECT "featureBadgeAnnouncements" AS v FROM "Organisation" WHERE id = $1`, [ORG_ID]))?.v,
+    )
+    .toBe(false);
+  await page.reload();
+  await expect(
+    page.getByTestId("feature-badge-announcements").getByRole("switch", { name: "Badge announcements" }),
+  ).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
+
+  // A Turkish club reads it in Turkish.
+  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+  await page.reload();
+  await expect(
+    page.getByTestId("feature-badge-announcements").getByRole("switch", { name: "Rozet duyuruları" }),
+  ).toBeVisible({ timeout: 30_000 });
+
+  // Restore for later specs.
+  await db.run(`UPDATE "Organisation" SET language = 'en', "featureBadgeAnnouncements" = true WHERE id = $1`, [ORG_ID]);
+});
+
 test("Weekly routine: the drop-out deadline and list time persist, refuse bad input, and explain themselves (EN and TR)", async ({
   page,
   db,

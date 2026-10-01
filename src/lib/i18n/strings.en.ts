@@ -81,6 +81,12 @@ function resultsWhenEn(p: StatsPeriod): string {
   }
 }
 
+/** "*A*", "*A* and *B*", "*A*, *B* and *C*": names in bold, for a group post. */
+function boldNamesEn(names: string[]): string {
+  const b = names.map((n) => `*${n}*`);
+  return b.length <= 1 ? (b[0] ?? "") : `${b.slice(0, -1).join(", ")} and ${b[b.length - 1]}`;
+}
+
 export const en = {
   // ── shared fragments ─────────────────────────────────────────────
 
@@ -1812,6 +1818,41 @@ export const en = {
   stats_share_badge_text: (p: { emoji: string; label: string; orgName: string }): string =>
     `I just earned ${p.emoji} ${p.label} at ${p.orgName} on MatchTime`,
   stats_share_season_text: (p: { orgName: string }): string => `My season at ${p.orgName} on MatchTime`,
+
+  // ── Badge announcements (2026-10-01): the group post two days after a
+  //    match (badge-announcements.ts) and its switch on /admin/settings.
+  //    NEW copy, house style, no em dashes. One line per badge; players
+  //    who earned the same badge share its line. Badge names stay English
+  //    in both languages, as on the stats page. "them", never "him". ──
+  badges_post_header: "🏅 *New badges this week*",
+  // No URL: links in the group would be personal. The stats link rides
+  // on each player's own rating DM (`dm_rating`).
+  badges_post_footer:
+    "Well played all! 👏\n📊 See your own stats and badges any time: tap the stats link in my rating DM after each match.",
+  badges_line_first_game: (p: { emoji: string; label: string; names: string[] }): string =>
+    p.names.length === 1
+      ? `${p.emoji} *${p.label}*: welcome ${boldNamesEn(p.names)}, first game for the club! 🎉`
+      : `${p.emoji} *${p.label}*: welcome ${boldNamesEn(p.names)}, first games for the club! 🎉`,
+  /** `shared`: groups of first-timers who co-won the same match; `solo`:
+   *  first-timers who did not share theirs with another first-timer. */
+  badges_line_first_mom: (p: { emoji: string; label: string; shared: string[][]; solo: string[] }): string => {
+    const clauses = p.shared.map(
+      (g) => `${boldNamesEn(g)} shared it, ${g.length === 2 ? "a first for both" : "a first for all of them"}`,
+    );
+    if (p.solo.length > 0) clauses.push(`${boldNamesEn(p.solo)} won it for the first time`);
+    return `${p.emoji} *${p.label}*: ${clauses.join("; ")} ⭐`;
+  },
+  badges_line_mom_machine: (p: { emoji: string; label: string; names: string[] }): string =>
+    `${p.emoji} *${p.label}*: ${boldNamesEn(p.names)} ${p.names.length === 1 ? "has" : "have"} now been Man of the Match 3 times 🔥`,
+  badges_line_masterclass: (p: { emoji: string; label: string; names: string[] }): string =>
+    `${p.emoji} *${p.label}*: ${boldNamesEn(p.names)} averaged 9+ in a game, top class 🎯`,
+  badges_line_ten_games: (p: { emoji: string; label: string; names: string[] }): string =>
+    `${p.emoji} *${p.label}*: ${boldNamesEn(p.names)} ${p.names.length === 1 ? "has" : "have"} now played 10 games 💪`,
+  badges_line_reliable: (p: { emoji: string; label: string; names: string[] }): string =>
+    `${p.emoji} *${p.label}*: ${boldNamesEn(p.names)}, strong ratings week after week, you can count on them 🔒`,
+  badges_feature_label: "Badge announcements",
+  badges_feature_blurb:
+    "Two days after each match, posts the new badges in the group: first game, Regular, Man of the Match, MoM Machine, Masterclass, Mr Reliable.",
 
   // ── Self-join, slice 4: the organiser web (2026-09-29) ────────────
   // MDs/self-join-and-approval-plan-2026-09-28.md sections 5.1 to 5.3.

@@ -67,6 +67,11 @@ export interface OrgFeatures {
    *  club) or "organiser". Carried here so `SquadState.features` has it
    *  with no extra query. Not in `FEATURE_META`, like `rollingSquad`. */
   benchPickMode: BenchPickMode;
+  /** Badge announcements (2026-10-01, `Organisation.featureBadgeAnnouncements`):
+   *  the group post of new badges two days after each match. Default ON.
+   *  Not in `FEATURE_META` (which also drives the in-group setup menu);
+   *  it has its own row on /admin/settings. */
+  badgeAnnouncements: boolean;
 }
 
 
@@ -85,6 +90,7 @@ const ALL_OFF: OrgFeatures = {
   language: "en",
   rollingSquad: false,
   benchPickMode: "first-come",
+  badgeAnnouncements: false,
 };
 
 function fromRow(row: {
@@ -102,6 +108,7 @@ function fromRow(row: {
   language: string;
   rollingSquadEnabled: boolean;
   benchPickMode?: string | null;
+  featureBadgeAnnouncements?: boolean | null;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -118,6 +125,8 @@ function fromRow(row: {
     language: normaliseLang(row.language),
     rollingSquad: row.rollingSquadEnabled,
     benchPickMode: normaliseBenchPickMode(row.benchPickMode),
+    // Absent (an older caller's select): the column default, ON.
+    badgeAnnouncements: row.featureBadgeAnnouncements ?? true,
   };
 }
 
@@ -136,6 +145,7 @@ const SELECT = {
   language: true,
   rollingSquadEnabled: true,
   benchPickMode: true,
+  featureBadgeAnnouncements: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {

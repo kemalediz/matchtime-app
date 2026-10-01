@@ -107,6 +107,7 @@ model User {
 
   accounts                Account[]
   sessions                Session[]
+  badgeAnnouncements      BadgeAnnouncement[]
   memberships             Membership[]
   attendances             Attendance[]
   ratingsGiven            Rating[]                 @relation("RatingsGiven")
@@ -295,6 +296,13 @@ model Organisation {
   /// unchanged. Read through `OrgFeatures.rollingSquad`.
   rollingSquadEnabled Boolean @default(false)
 
+  /// Badge announcements (2026-10-01, `badge-announcements.ts`): two days
+  /// after each match, post the new badges in the group. Default ON, for
+  /// new clubs and existing ones alike: a club's FIRST run can never post
+  /// badges its players already held (the backfill plus the bootstrap
+  /// guard, see that file). Read through `OrgFeatures.badgeAnnouncements`.
+  featureBadgeAnnouncements Boolean @default(true)
+
   /// ─── Weekly deadlines (2026-09-30, slice 3 of
   /// MDs/friday-group-features-plan-2026-09-30.md) ────────────────────
   /// Club level (D8). Each pair is a London weekday (0=Sun..6=Sat) and
@@ -379,15 +387,15 @@ model Organisation {
   /// every club that existed before it with "each-admin", today's
   /// behaviour, so Sutton FC's notices, texts and keys are unchanged.
   /// Read only through `src/lib/admin-channel.ts` (`sendAdminNotice`).
-  adminChannelMode   String  @default("one-person")
+  adminChannelMode            String    @default("one-person")
   /// "one-person": who. NULL = the owner.
-  adminChannelUserId String?
+  adminChannelUserId          String?
   /// The linked admin WhatsApp group. One club per group; never the
   /// club's own community group (CHECK constraint, see the migration).
-  adminGroupId             String?   @unique
-  adminGroupSubject        String?
-  adminGroupLinkedAt       DateTime?
-  adminGroupLinkedByUserId String?
+  adminGroupId                String?   @unique
+  adminGroupSubject           String?
+  adminGroupLinkedAt          DateTime?
+  adminGroupLinkedByUserId    String?
   /// The pending link code shown on the settings page. Single use,
   /// cleared when a group is linked. Unique across clubs.
   adminGroupLinkCode          String?   @unique
@@ -404,14 +412,15 @@ model Organisation {
   /// place to the whole waiting list, first to say IN) or "leave-empty".
   benchPickFallback String @default("bench-offer")
 
-  memberships    Membership[]
-  clubConnects   ClubConnect[]
-  activities     Activity[]
-  sports         Sport[]
-  userAliases    UserAlias[]
-  rosterSurveys  RosterSurvey[]
-  groupMessages  GroupMessage[]
-  windowVerdicts WindowVerdict[]
+  memberships        Membership[]
+  clubConnects       ClubConnect[]
+  activities         Activity[]
+  sports             Sport[]
+  userAliases        UserAlias[]
+  rosterSurveys      RosterSurvey[]
+  groupMessages      GroupMessage[]
+  windowVerdicts     WindowVerdict[]
+  badgeAnnouncements BadgeAnnouncement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -626,7 +635,7 @@ model Membership {
   /// member: the blend then shrinks toward the CLUB's own mean rating,
   /// never toward another club's number and never toward the overall.
   /// Do NOT default this. A default is a carried-over opinion.
-  seedRating  Float?
+  seedRating Float?
 
   /// This club's Elo. Leaderboard only (see lib/elo.ts). 1000 is the
   /// genuine "no information" value for Elo, so unlike seedRating it
@@ -702,33 +711,30 @@ model Activity {
  * Tuesdays, 25 Aug → 27 Oct 2026). All Match rows are created UP-FRONT at
  * block creation so the whole season is visible and manageable as a set
  * (list, bulk-cancel for holidays, bulk-restore, delete).
- *
  * Posting semantics are unchanged: the scheduler's
  * `isNextUpcomingForPosting` gate (src/lib/next-upcoming-match.ts) already
  * suppresses any match with an earlier LIVE match in the same recurring
  * fixture, so pre-created future matches stay silent until the previous
  * one is COMPLETED or CANCELLED. Creating a block queues no group post.
- *
  * `time` is a LONDON WALL CLOCK "HH:mm"; each match's UTC instant is
  * resolved PER DATE (DST-safe — the 2026 block straddles the BST→GMT
  * change). `startDate`/`endDate` are London calendar dates (DATE column,
  * read back as UTC midnight).
- *
  * Deleting a block never deletes played/history-bearing matches — they are
  * detached (Match.blockBookingId → NULL via ON DELETE SET NULL after the
  * explicit partition in deleteBlockBooking).
  */
 model BlockBooking {
-  id         String   @id @default(cuid())
-  orgId      String
-  activityId String
-  activity   Activity @relation(fields: [activityId], references: [id])
+  id           String   @id @default(cuid())
+  orgId        String
+  activityId   String
+  activity     Activity @relation(fields: [activityId], references: [id])
   /// First match calendar date (London), inclusive.
-  startDate  DateTime @db.Date
+  startDate    DateTime @db.Date
   /// Last match calendar date (London), inclusive.
-  endDate    DateTime @db.Date
+  endDate      DateTime @db.Date
   /// Kickoff, London wall clock "HH:mm" — resolved to UTC per date.
-  time       String
+  time         String
   /// What the venue charges per match (£). Optional bookkeeping.
   costPerMatch Float?
   notes        String?
@@ -842,6 +848,29 @@ model Match {
  * "<matchId>:<kind>" (group-wide events) or "<matchId>:<kind>:<userId>"
  * (per-user DMs / reminders).
  */
+/**
+ * Badge announcements (2026-10-01): the ledger of badges MatchTime has
+ * announced in a club's group, ONE row per player per badge per club,
+ * ever (the unique key is the whole guarantee). Written in the same
+ * transaction that claims the `<matchId>:badges` post, plus silent rows
+ * for badges a player already held before the feature reached the club
+ * (the backfill script and the bootstrap guard, `badge-announcements.ts`).
+ * `matchId` is the match the badge was earned at: informational only,
+ * with no foreign key, so deleting a match never forgets an announcement.
+ */
+model BadgeAnnouncement {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeKey  String
+  matchId   String?
+  createdAt DateTime     @default(now())
+
+  @@unique([orgId, userId, badgeKey])
+}
+
 model SentNotification {
   id          String   @id @default(cuid())
   key         String   @unique
@@ -959,33 +988,29 @@ model RosterSurveyResponse {
 
 /**
  * The WhatsApp bot's latest self-report, one row per org.
- *
  * Everything the bot knows about its own health used to be a
  * `console.error` in `bot.log` on a Raspberry Pi that nobody reads — the
  * 2026-08-30 audit's headline finding, and the reason a three-day outage
  * was a three-day outage. This is where that signal lands instead.
- *
  * LATEST-ONLY, not a history table. The counters are cumulative per bot
  * PROCESS, so every rule in `src/lib/bot-health.ts` is expressible as
  * "has this ever happened since the process started" and needs no deltas.
  * One row per org means no growth, no retention cron, and no second place
  * for the truth to live. `processStartedAt` is what tells a reader the
  * counters reset.
- *
  * Written by `POST /api/whatsapp/heartbeat` (every ~10 min, from the
  * Pi's batch-flush timer, INCLUDING the tick where there was nothing to
  * flush — an empty buffer is the failure being hunted, so the report
  * cannot be conditional on having something to say). Read by
  * `GET /api/cron/bot-health` hourly, which is the half that notices
  * ABSENCE: a Pi that sends nothing cannot report that it sent nothing.
- *
  * No relation to Organisation, matching `BotJob` next door: this is
  * operational telemetry, not domain data, and it must survive being
  * looked at when the org row is mid-edit.
  */
 model BotHealth {
-  id        String @id @default(cuid())
-  orgId     String @unique
+  id        String  @id @default(cuid())
+  orgId     String  @unique
   /// The WhatsApp group the reporting bot was monitoring for this org.
   /// Null until a heartbeat has actually arrived.
   waGroupId String?
@@ -1351,7 +1376,6 @@ model Attendance {
 
 /**
  * APPEND-ONLY attendance audit log (2026-09-01).
- *
  * WHY IT EXISTS
  * -------------
  * `Attendance` records what a squad IS. Nothing recorded what it WAS.
@@ -1364,20 +1388,18 @@ model Attendance {
  * §10 step 6 of MDs/analyzer-redesign-2026-08-31.md — swapping the
  * attendance WRITE path, the only change in the redesign that can put a
  * player at a pitch with no slot — is meant to turn on that evidence.
- *
  * WHAT IT GUARANTEES
  * ------------------
  * 1. APPEND-ONLY. A database trigger (`attendance_event_no_mutate`)
- *    rejects every UPDATE and DELETE on this table. Its whole value is
- *    that it is the one thing here that cannot be rewritten, so that is
- *    enforced in the database and not by convention. TRUNCATE is
- *    deliberately still allowed — the e2e fixture world resets that way
- *    and a test database is not an audit trail.
+ * rejects every UPDATE and DELETE on this table. Its whole value is
+ * that it is the one thing here that cannot be rewritten, so that is
+ * enforced in the database and not by convention. TRUNCATE is
+ * deliberately still allowed — the e2e fixture world resets that way
+ * and a test database is not an audit trail.
  * 2. WRITTEN IN THE SAME TRANSACTION as the attendance change it
- *    records, so the log can never disagree with the state.
+ * records, so the log can never disagree with the state.
  * 3. It records the CAUSE, not just the effect. A replay has to be able
- *    to tell a drop that came from a bench claim from a self-OUT.
- *
+ * to tell a drop that came from a bench claim from a self-OUT.
  * NO FOREIGN KEYS — DELIBERATE
  * ----------------------------
  * `matchId` / `userId` / `orgId` / `actorUserId` are plain strings, not
@@ -1387,7 +1409,6 @@ model Attendance {
  * `Match`), and RESTRICT would make the log block ordinary deletes.
  * `UserMerge.oldUserId` sets the same precedent for the same reason: a
  * record of what happened has to outlive the row it describes.
- *
  * GROWTH
  * ------
  * One row per attendance TRANSITION, not per message. Sutton FC's real
@@ -1579,8 +1600,8 @@ model OrgAiUsage {
 }
 
 model AnalyzedMessage {
-  id           String   @id @default(cuid())
-  waMessageId  String   @unique
+  id           String  @id @default(cuid())
+  waMessageId  String  @unique
   orgId        String
   groupId      String
   authorPhone  String?
@@ -1589,12 +1610,12 @@ model AnalyzedMessage {
   /// "unresolved messages" queue can show WHO ("ba") to link to a
   /// player when authorUserId is null. Nullable + additive.
   authorName   String?
-  body         String?  @db.Text
+  body         String? @db.Text
   handledBy    String
   intent       String?
   action       String?
   confidence   Float?
-  reasoning    String?  @db.Text
+  reasoning    String? @db.Text
 
   /// The analyze REQUEST this message was reasoned about in (2026-09-01).
   /// The Pi buffers inbound messages and flushes a WINDOW to
@@ -1609,7 +1630,7 @@ model AnalyzedMessage {
   /// analyze route for every message in a request (see
   /// `src/lib/analyze-batch-context.ts`); NULL on every row written
   /// before this shipped, and null-safe everywhere it is read.
-  batchId      String?
+  batchId String?
 
   /// WHAT THE MODEL SAID about this message (2026-09-24): the router's
   /// route and each extractor's FACTS, with the model that produced them
@@ -1624,7 +1645,7 @@ model AnalyzedMessage {
   /// `scripts/trace-message.ts`.
   pipelineTrace Json?
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([orgId, createdAt])
   @@index([groupId, createdAt])
@@ -1831,20 +1852,20 @@ model ShortLink {
 /// the organiser's phone (or LID) matching the person who added
 /// MatchTime to the group.
 model ClubConnect {
-  id                      String    @id @default(cuid())
-  orgId                   String
-  org                     Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
   /// The organiser: OWNER of the draft club.
-  userId                  String
+  userId    String
   /// Their verified signup phone, digits only.
-  phone                   String
+  phone     String
   /// 4 chars, alphabet without 0 O 1 I L.
-  code                    String
+  code      String
   /// "issued" | "dm_verified" | "group_linked" | "expired" | "superseded" | "closed"
-  status                  String    @default("issued")
-  issuedAt                DateTime  @default(now())
+  status    String       @default("issued")
+  issuedAt  DateTime     @default(now())
   /// issuedAt + 60 minutes.
-  expiresAt               DateTime
+  expiresAt DateTime
 
   // The connect DM
   dmAt                    DateTime?
@@ -1863,24 +1884,24 @@ model ClubConnect {
   siteCapAt               DateTime?
 
   // The group add
-  groupId                 String?
-  groupSubject            String?
-  memberCount             Int?
-  addedByPhone            String?
-  addedByLid              String?
+  groupId         String?
+  groupSubject    String?
+  memberCount     Int?
+  addedByPhone    String?
+  addedByLid      String?
   /// "phone" | "lid" | "other-organiser-present" | "unknown" | "mismatch"
-  adderMatch              String?
+  adderMatch      String?
   /// Participant snapshot at add time, imported at approval.
-  participants            Json?
-  detectedLang            String?
-  linkedAt                DateTime?
+  participants    Json?
+  detectedLang    String?
+  linkedAt        DateTime?
   /// The one DM to the platform owner, once.
-  ownerDmQueuedAt         DateTime?
+  ownerDmQueuedAt DateTime?
   /// MatchTime was removed from the group while pending.
-  botRemovedAt            DateTime?
+  botRemovedAt    DateTime?
 
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([code, status])
   @@index([orgId, status])
@@ -1897,19 +1918,19 @@ model ClubConnect {
 /// row exists until `leftAt`. Recorded by a later slice; slice 1 only
 /// reads it.
 model UnsolicitedGroup {
-  id           String    @id @default(cuid())
-  groupId      String
-  subject      String?
-  memberCount  Int?
-  addedByPhone String?
-  addedByLid   String?
-  addedAt      DateTime  @default(now())
+  id                String    @id @default(cuid())
+  groupId           String
+  subject           String?
+  memberCount       Int?
+  addedByPhone      String?
+  addedByLid        String?
+  addedAt           DateTime  @default(now())
   /// Set when MatchTime has left the group.
-  leftAt       DateTime?
+  leftAt            DateTime?
   /// Slice 2a (2026-09-30): added by an owner or admin of an approved
   /// club. Silent, no setup, waiting for "@Match Time admin group CODE".
   /// Linking marks the row left.
-  awaitingAdminLink Boolean @default(false)
+  awaitingAdminLink Boolean   @default(false)
 
   @@index([groupId, leftAt])
 }

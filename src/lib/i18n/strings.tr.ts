@@ -119,6 +119,12 @@ function capTr(s: string): string {
   return s ? s.charAt(0).toLocaleUpperCase("tr") + s.slice(1) : s;
 }
 
+/** "*A*", "*A* ve *B*", "*A*, *B* ve *C*": kalın isimler, grup mesajı için. */
+function boldNamesTr(names: string[]): string {
+  const b = names.map((n) => `*${n}*`);
+  return b.length <= 1 ? (b[0] ?? "") : `${b.slice(0, -1).join(", ")} ve ${b[b.length - 1]}`;
+}
+
 export const tr: Strings = {
   // ── shared fragments ─────────────────────────────────────────────
 
@@ -1516,6 +1522,38 @@ export const tr: Strings = {
   stats_share_failed: "Görsel hazırlanamadı. Tekrar dene.",
   stats_share_badge_text: (p) => `MatchTime'da yeni rozetim: ${p.emoji} ${p.label} (${p.orgName})`,
   stats_share_season_text: (p) => `MatchTime'da sezonum (${p.orgName})`,
+
+  // ── Rozet duyuruları (2026-10-01): maçtan iki gün sonra gruba giden
+  // mesaj (badge-announcements.ts) ve /admin/settings anahtarı. Her rozet
+  // tek satır; aynı rozeti kazananlar aynı satırı paylaşır. Rozet adları
+  // istatistik sayfasındaki gibi İngilizce kalıyor. ──
+  badges_post_header: "🏅 *Bu haftanın yeni rozetleri*",
+  badges_post_footer:
+    "Hepinizin eline sağlık! 👏\n📊 Kendi istatistiklerini ve rozetlerini istediğin zaman görebilirsin: her maçtan sonra gönderdiğim puanlama mesajındaki istatistik linkine dokun.",
+  badges_line_first_game: (p) =>
+    p.names.length === 1
+      ? `${p.emoji} *${p.label}*: aramıza hoş geldin ${boldNamesTr(p.names)}, kulüpteki ilk maçın! 🎉`
+      : `${p.emoji} *${p.label}*: aramıza hoş geldiniz ${boldNamesTr(p.names)}, kulüpteki ilk maçınız! 🎉`,
+  badges_line_first_mom: (p) => {
+    const clauses = p.shared.map(
+      (g) => `${boldNamesTr(g)} ödülü paylaştı, ${g.length === 2 ? "ikisi için de" : "hepsi için"} bir ilk`,
+    );
+    if (p.solo.length > 0) clauses.push(`${boldNamesTr(p.solo)} ilk kez maçın adamı seçildi`);
+    return `${p.emoji} *${p.label}*: ${clauses.join("; ")} ⭐`;
+  },
+  badges_line_mom_machine: (p) =>
+    `${p.emoji} *${p.label}*: ${boldNamesTr(p.names)} artık 3 kez maçın adamı seçildi 🔥`,
+  badges_line_masterclass: (p) =>
+    `${p.emoji} *${p.label}*: ${boldNamesTr(p.names)} bir maçta 9+ ortalama yakaladı, birinci sınıf 🎯`,
+  badges_line_ten_games: (p) =>
+    `${p.emoji} *${p.label}*: ${boldNamesTr(p.names)} artık 10 maç oynadı 💪`,
+  badges_line_reliable: (p) =>
+    p.names.length === 1
+      ? `${p.emoji} *${p.label}*: ${boldNamesTr(p.names)}, her hafta yüksek puan, ona güvenebilirsiniz 🔒`
+      : `${p.emoji} *${p.label}*: ${boldNamesTr(p.names)}, her hafta yüksek puan, onlara güvenebilirsiniz 🔒`,
+  badges_feature_label: "Rozet duyuruları",
+  badges_feature_blurb:
+    "Her maçtan iki gün sonra yeni rozetleri grupta paylaşır: ilk maç, Regular, Man of the Match, MoM Machine, Masterclass, Mr Reliable.",
 
   // ── Self-join, 4. dilim: organizatörün web sayfaları (2026-09-29) ──
   // Sayılara gelen ek (7'ye, 5'e, 6'ya...) sayının okunuşuna göre

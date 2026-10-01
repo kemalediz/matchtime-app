@@ -292,6 +292,7 @@ import {
 } from "../../bench-offer-copy";
 import { formatRatingProgressReply } from "../../rating-progress-answer";
 import { buildMomAnnouncement } from "../../mom-announcement";
+import { buildBadgeAnnouncementPost } from "../../badge-announcements";
 import { buildFormatSwitchFacts, renderFormatSwitchContext } from "../../format-switch";
 import { renderKickoffMoveLine } from "../../format-switch-time";
 import { buildOutOfBandAttendanceLine } from "../../out-of-band-attendance";
@@ -1516,6 +1517,73 @@ function cases(lang: Lang): Case[] {
   add("UNP2 buildUnpaidGroupReminder / several", buildUnpaidGroupReminder({ unpaid: 3, dayName: unpDay, lang }));
   add("UNP2 buildUnpaidGroupReminder / one", buildUnpaidGroupReminder({ unpaid: 1, dayName: unpDay, lang }));
 
+  // ── Badge announcements (2026-10-01). NEW copy, added deliberately; no
+  //    existing case changes. One line per badge, one player and several
+  //    players per badge, and a first MoM shared by two first-timers. ──
+  add(
+    "BDG1 buildBadgeAnnouncementPost / one player per badge, every badge",
+    String(
+      buildBadgeAnnouncementPost(
+        [
+          { name: "Hamzah", keys: ["first-game"] },
+          { name: "Wasim", keys: ["first-mom"], firstMomMatchId: "m1" },
+          { name: "Sait Demir", keys: ["mom-machine"] },
+          { name: "Kemal Ediz", keys: ["masterclass"] },
+          { name: "Mojib", keys: ["ten-games"] },
+          { name: "Najib", keys: ["reliable"] },
+        ],
+        lang,
+      ),
+    ),
+  );
+  add(
+    "BDG1 buildBadgeAnnouncementPost / several players per badge",
+    String(
+      buildBadgeAnnouncementPost(
+        [
+          { name: "Hamzah", keys: ["first-game"] },
+          { name: "Raihan Ahmed", keys: ["first-game"] },
+          { name: "Mojib", keys: ["ten-games"] },
+          { name: "Ibrahim Sahin", keys: ["ten-games"] },
+          { name: "Wasim", keys: ["ten-games", "first-mom"], firstMomMatchId: "m1" },
+          { name: "Ali Demir", keys: ["first-mom"], firstMomMatchId: "m2" },
+          { name: "Najib", keys: ["reliable", "masterclass"] },
+          { name: "Abid Hussain", keys: ["reliable", "masterclass", "mom-machine"] },
+          { name: "Sait Demir", keys: ["mom-machine"] },
+        ],
+        lang,
+      ),
+    ),
+  );
+  add(
+    "BDG1 buildBadgeAnnouncementPost / first MoM shared by two first-timers",
+    String(
+      buildBadgeAnnouncementPost(
+        [
+          { name: "Burak Yildiz", keys: ["first-mom"], firstMomMatchId: "sept22" },
+          { name: "Mojib", keys: ["first-mom", "ten-games"], firstMomMatchId: "sept22" },
+          { name: "Hamzah", keys: ["first-game"] },
+          { name: "Ibrahim Sahin", keys: ["ten-games"] },
+          { name: "Wasim", keys: ["ten-games"] },
+        ],
+        lang,
+      ),
+    ),
+  );
+  add(
+    "BDG1 buildBadgeAnnouncementPost / shared pair and a solo first-timer",
+    String(
+      buildBadgeAnnouncementPost(
+        [
+          { name: "Burak Yildiz", keys: ["first-mom"], firstMomMatchId: "sept22" },
+          { name: "Mojib", keys: ["first-mom"], firstMomMatchId: "sept22" },
+          { name: "Sait Demir", keys: ["first-mom"], firstMomMatchId: "sept15" },
+        ],
+        lang,
+      ),
+    ),
+  );
+
   return c;
 }
 
@@ -1594,6 +1662,8 @@ const MIGRATED_ROWS = [
   "OPK1 ", "OPK2 ", "OPK3 ", "OPK4 ", "OPK5 ", "OPK6 ", "OPK7 ", "OPK8 ", "OPK9 ", "OPK10 ",
   // the organisers' unpaid list (2026-10-01)
   "UNP1 ", "UNP2 ",
+  // badge announcements (2026-10-01)
+  "BDG1 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

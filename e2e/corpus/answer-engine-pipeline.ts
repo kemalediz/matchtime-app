@@ -315,6 +315,8 @@ async function loadFeaturesViaSql(ctx: PipelineContext, orgId: string): Promise<
     language: normaliseLang(row.language),
     rollingSquad: row.rollingSquadEnabled === true,
     benchPickMode: row.benchPickMode === "organiser" ? "organiser" : "first-come",
+    // Not read by the answer engine; the column default.
+    badgeAnnouncements: true,
   };
 }
 
