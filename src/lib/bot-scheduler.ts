@@ -66,6 +66,7 @@ import {
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
 import { normaliseLang, type Lang } from "./i18n/lang";
+import { summariseUnpaid, unpaidFollowUpDue } from "./unpaid-rules";
 import {
   buildAnnounceMatchPost,
   buildAskScorePost,
@@ -343,29 +344,23 @@ async function buildUnpaidTail(
   // the chase + tracking side-effects go silent.
   if (!lastCompleted.activity.org.paymentTrackingEnabled) return null;
 
-  // Exclude the payment holder — they're the one collecting fees from
-  // others, including them in the unpaid chase would be embarrassing.
-  // If the org hasn't set one (null), we don't exclude anyone and let
-  // the admin configure it in /admin/settings or during onboarding.
-  const payerId = lastCompleted.activity.org.paymentHolderId ?? null;
-
-  const confirmed = payerId
-    ? lastCompleted.attendances.filter((a) => a.userId !== payerId)
-    : lastCompleted.attendances;
-  const paid = confirmed.filter((a) => a.paidAt != null);
-  // Subtract aggregate bulk-payment credits ("Amir paid for 4 players")
-  // from the unpaid count. These cover players whose specific Attendance
-  // rows aren't marked individually (the named-player path updates
-  // Attendance.paidAt directly and skips creating a credit row).
-  const creditCount = lastCompleted.paymentCredits.reduce(
-    (s, c) => s + c.count,
-    0,
-  );
-  const unpaidPeople = confirmed.filter((a) => a.paidAt == null).length;
-  const unpaid = Math.max(0, unpaidPeople - creditCount);
-  // Don't chase when we have no signal — false precision is worse than silence.
-  if (paid.length === 0 && creditCount === 0) return null;
-  if (unpaid === 0) return null;
+  // The rule lives in `summariseUnpaid` (unpaid-rules.ts) since
+  // 2026-10-01, unchanged, so the admin unpaid list (U1) and the
+  // weekly-rhythm group reminder count exactly as this tail does:
+  //   - the payment holder is left out: they collect the fees, and
+  //     chasing them would be embarrassing (null means nobody is left out
+  //     until an admin sets one in /admin/settings or onboarding);
+  //   - bulk credits ("Amir paid for 4 players") come off the count, for
+  //     players whose own Attendance rows are not marked;
+  //   - no signal (nobody paid, no credit) or nobody owing: null. False
+  //     precision is worse than silence.
+  const summary = summariseUnpaid({
+    confirmed: lastCompleted.attendances,
+    payerId: lastCompleted.activity.org.paymentHolderId ?? null,
+    creditCount: lastCompleted.paymentCredits.reduce((s, c) => s + c.count, 0),
+  });
+  if (!summary) return null;
+  const unpaid = summary.unpaid;
 
   // Poll-only format per Sait's suggestion (2026-04-25). No naming,
   // no shaming — point everyone at the original payment poll. Anyone
@@ -758,6 +753,7 @@ export async function computeDuePosts(
     if (seg.startsWith("mom-")) return "momVoting";
     if (seg.startsWith("rate-")) return "playerRating";
     if (seg.startsWith("payment-")) return "paymentTracking";
+    if (seg.startsWith("unpaid-")) return "paymentTracking";
     if (seg.startsWith("fee-ask")) return "paymentCollection";
     if (seg.startsWith("pay-chase")) return "paymentCollection";
     // ask-score is the "what was the final score?" prompt. Its sole
@@ -810,6 +806,8 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
             select: {
               paymentCollectionEnabled: true,
               paymentHolderId: true,
+              // The weekly-rhythm unpaid reminder (2026-10-01) is gated on it.
+              paymentTrackingEnabled: true,
               teamLabels: true,
               // The group's language: every static post below reads it.
               language: true,
@@ -827,6 +825,8 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
       teamAssignments: { include: { user: { select: { id: true, name: true } } } },
       benchConfirmations: { where: { resolvedAt: null } },
       benchSlotOffers: { where: { resolvedAt: null } },
+      // Bulk payment credits, for the weekly-rhythm unpaid reminder.
+      paymentCredits: { select: { count: true } },
     },
     orderBy: { date: "asc" },
   });
@@ -1922,6 +1922,38 @@ async function computeForMatch(
         question: buildPaymentPollQuestion(activity.name, lang),
         options: [redLabel, yellowLabel],
       });
+    }
+  }
+
+  // ── 6a-unpaid. The unpaid reminder on its own, for a weekly-rhythm
+  //    club (2026-10-01, decided by Kemal). D4 switched such a club's
+  //    17:00 post off except on match day, and the unpaid tail only ever
+  //    rode on that post (and never on match day or the day before), so
+  //    the group lost its "please pay" nudge. This posts the same tail
+  //    text, alone, once, at 10:00 London two days after the COMPLETED
+  //    match (`unpaidFollowUpDue`), counted by the same rule
+  //    (`summariseUnpaid`), keyed `<matchId>:unpaid-group`. The organisers'
+  //    named list (U1) is a separate notice, `unpaid-list.ts`.
+  //    `hasWeeklyRhythm` is false for a club without both deadlines, so
+  //    Sutton FC gets nothing new: its tail stays on the 17:00 post.
+  {
+    const key = `${matchId}:unpaid-group`;
+    if (
+      m.status === "COMPLETED" &&
+      m.postMatchEndFlow !== false &&
+      activity.org?.paymentTrackingEnabled &&
+      hasWeeklyRhythm(activity.org) &&
+      !sentKeys.has(key) &&
+      unpaidFollowUpDue(now, m.date)
+    ) {
+      const summary = summariseUnpaid({
+        confirmed: confirmed.map((a) => ({ userId: a.userId, paidAt: a.paidAt })),
+        payerId: activity.org.paymentHolderId ?? null,
+        creditCount: (m.paymentCredits ?? []).reduce((s, c) => s + c.count, 0),
+      });
+      if (summary) {
+        out.push({ kind: "group-message", key, matchId, text: buildUnpaidTailText(summary.unpaid, lang) });
+      }
     }
   }
 

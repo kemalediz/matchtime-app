@@ -60,6 +60,7 @@ import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations } from "@/lib/bot-scheduler";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
+import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
@@ -222,6 +223,19 @@ export async function GET(request: Request) {
       await sendDueDeadlineSummaries(org.id, nowOverride ?? new Date());
     } catch (err) {
       console.error(`[due-posts] org ${org.id}: deadline summary failed:`, err);
+    }
+  }
+
+  // U1 (2026-10-01): the organisers' unpaid list, 10:00 London two days
+  // after a completed match, for clubs on "one-person" or "admin-group"
+  // only (Sutton FC, on "each-admin", returns at once). Queued through
+  // `sendAdminNotice` like the summary above; never in preview mode; its
+  // own try/catch so it can never cost the group its posts.
+  if (!previewOnly) {
+    try {
+      await sendDueUnpaidLists(org.id, nowOverride ?? new Date());
+    } catch (err) {
+      console.error(`[due-posts] org ${org.id}: unpaid list failed:`, err);
     }
   }
 

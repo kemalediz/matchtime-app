@@ -374,3 +374,15 @@ export function buildDeadlineSummaryAdminNotice(
 ): string {
   return t(p.lang).deadline_summary_admin(p);
 }
+
+/**
+ * Row UNP1 (2026-10-01): U1 of the Friday-group plan (2.12), the
+ * organisers' unpaid list, 10:00 London two days after a completed match.
+ * `names` are the players not marked paid; `paid` of `n` follows the group
+ * tail's rule (`summariseUnpaid`: holder left out, bulk credits count).
+ */
+export function buildUnpaidListAdminNotice(
+  p: { activityName: string; whenLabel: string; names: string[]; paid: number; n: number } & WithLang,
+): string {
+  return t(p.lang).unpaid_list_admin(p);
+}

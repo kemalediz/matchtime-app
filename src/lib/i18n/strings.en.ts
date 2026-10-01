@@ -2156,4 +2156,11 @@ export const en = {
   /** The private ack of an IN that went on the waiting list. */
   dm_self_ack_waiting_organiser: (p: { matchName: string; matchWhen: string }): string =>
     `📋 I've put you on the waiting list for *${p.matchName}* on ${p.matchWhen}. The organisers pick who plays, and I'll message you if you're picked 🙏`,
+
+  // ── UNP1 (2026-10-01): U1 of MDs/friday-group-features-plan-2026-09-30.md
+  //    (2.12), the organisers' unpaid list, 10:00 two days after the
+  //    match. `names` are the players not marked paid; `paid` of `n` uses
+  //    the group tail's rule (holder left out, bulk credits count). ──
+  unpaid_list_admin: (p: { activityName: string; whenLabel: string; names: string[]; paid: number; n: number }): string =>
+    `💷 Unpaid for *${p.activityName}* (${p.whenLabel}): ${p.names.join(", ")}. ${p.paid} of ${p.n} paid.`,
 };

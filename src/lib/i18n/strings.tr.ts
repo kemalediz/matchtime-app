@@ -1726,6 +1726,10 @@ export const tr: Strings = {
     `Varsan *VARIM* yaz, yedek listesine ekleyeyim (kimin oynayacağını organizatörler seçer); yoksan *YOKUM* yaz, bir daha sormam 🙏`,
   dm_self_ack_waiting_organiser: (p) =>
     `📋 *${p.matchName}* (${p.matchWhen}) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏`,
+
+  // ── UNP1 (2026-10-01): yöneticilere ödemeyenler listesi ──
+  unpaid_list_admin: (p) =>
+    `💷 *${p.activityName}* (${p.whenLabel}) için ödemeyenler: ${p.names.join(", ")}. ${p.n} kişiden ${p.paid} kişi ödedi.`,
 };
 
 /**
