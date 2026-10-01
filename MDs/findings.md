@@ -33,3 +33,21 @@ Things Kemal has noted that are NOT being worked on yet. Each entry says what, w
 **Why it matters:** it cost a few confused minutes during the Hamzah demo ("MT Test" re-added, no setup questions). Only hits when a club is deleted and its group re-added quickly, which is exactly what testing and demos do.
 
 **How:** either the Pi re-checks with the server when it is added to a group it believes is already a club (one `/api/whatsapp/orgs` refresh before deciding), or deleting a club triggers the same "refresh now" signal that setup completion already uses. The first is simpler and also covers any other stale case.
+
+---
+
+## F3. Learn how the group works and set it up that way (Kemal, 2026-10-01)
+
+**What:** once, right after a new club is approved, MatchTime reads the chat history WhatsApp shared when it joined (already captured by the Pi) with one AI call and works out how the group runs. **It then applies the settings itself and shows the organiser what it set and why**, with one tap to change any of them (Kemal: "settings can be automatically done, and shown to the organiser"). Replaces AI-drafted seed ratings, which gave little value (most players came back "low" confidence at the neutral 6).
+
+**Signals and the setting each one drives:**
+- nobody says "In", an admin posts the list or "same as last week": rolling squad
+- admins announce who plays, players message admins: organisers pick from the waiting list
+- "clear your names by Monday", "list out Tuesday": weekly deadlines with those times
+- "paid", "sent", "transferred" after games: payment tracking on
+- day, time, venue, how many a side: the weekly game and the format
+- Turkish or English: language (already done without AI)
+
+**Rules:** nothing changes when the history is empty or too short; each applied setting is listed in the organiser DM and on /admin/settings with the chat evidence ("from messages like: ...") and an undo. One AI call per new club, inside the new club's daily cap. It is a new prompt, so it needs Kemal's approval for one live check (each case once).
+
+**When:** after the Friday features are live with Hamzah's group.
