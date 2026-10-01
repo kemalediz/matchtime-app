@@ -266,6 +266,13 @@ import {
 import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
 import { t } from "../t";
 import { dayTimeLabel } from "../dates";
+
+/** The organiser's three signed-in links in the "you're live" DM (2026-10-01). */
+const SJ_APPROVED_LINKS = {
+  scheduleUrl: "https://matchtime.ai/l/sched",
+  ratingsUrl: "https://matchtime.ai/l/rate",
+  settingsUrl: "https://matchtime.ai/l/set",
+};
 import {
   buildColourSwapReply,
   buildFormatSwitchAnnouncement,
@@ -1136,8 +1143,8 @@ function cases(lang: Lang): Case[] {
   // ── self-join slice 7: the decision (2026-09-29) ──
   add("R185 group hello / organiser named", sj.sj_group_hello({ organiser: "Ali" }));
   add("R185 group hello / no organiser name", sj.sj_group_hello({ organiser: null }));
-  add("R185 organiser DM / approved", sj.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", link: "https://matchtime.ai/admin/activities" }));
-  add("R185 organiser DM / approved, no group name", sj.sj_dm_approved({ club: "Riverside FC", group: null, link: "https://matchtime.ai/admin/activities" }));
+  add("R185 organiser DM / approved", sj.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...SJ_APPROVED_LINKS }));
+  add("R185 organiser DM / approved, no group name", sj.sj_dm_approved({ club: "Riverside FC", group: null, ...SJ_APPROVED_LINKS }));
   add("R185 organiser DM / rejected", sj.sj_dm_rejected({ group: "Riverside Tuesday 5s" }));
   add("R185 organiser DM / rejected, no group name", sj.sj_dm_rejected({ group: null }));
 

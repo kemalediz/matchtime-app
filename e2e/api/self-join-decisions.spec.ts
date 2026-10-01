@@ -22,6 +22,10 @@ import { ORG_ID } from "../helpers/constants";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
+import { t } from "@/lib/i18n/t";
+
+/** The group hello, from the copy table (its wording is pinned in self-join-copy.test.ts). */
+const hello = (lang: "en" | "tr") => t(lang).sj_group_hello;
 
 const execFileAsync = promisify(execFile);
 
@@ -184,9 +188,17 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   ]);
   const organiser = await jobsTo(db, ALI_PHONE);
   expect(organiser.at(-1)).toMatchObject({ purpose: "organiser-decision", refId: "e2e-sj7-en:approved" });
-  expect(organiser.at(-1)?.text).toMatch(
-    /^Good news: Riverside FC is live\. I've said hello in "Riverside Tuesday 5s"\. You can set or change your weekly game here: http.*\/admin\/activities$/,
-  );
+  // A short checklist, each item with its own signed-in link (2026-10-01).
+  const live = organiser.at(-1)?.text ?? "";
+  expect(live).toMatch(/^Good news: Riverside FC is live\. I've said hello in "Riverside Tuesday 5s"\.\n\n/);
+  expect(live).toMatch(/📅 \*Your weekly game:\*[^\n]*\nhttp\S+\n/);
+  expect(live).toMatch(/⭐ \*Starting ratings:\*[^\n]*\nhttp\S+\n/);
+  expect(live).toMatch(/⚙️ \*Settings:\*[^\n]*\nhttp\S+\n/);
+  expect(live).toContain("*help payments* or *help badges*");
+  expect(live.endsWith("Your first month is free.")).toBe(true);
+  // Three distinct links, none of them a bare admin path.
+  const urls = live.match(/^http\S+$/gm) ?? [];
+  expect(new Set(urls).size).toBe(3);
 
   // 4. The Pi now serves the group, and it is no longer silent.
   const orgs = await (await request.get("/api/whatsapp/orgs", { headers: ON })).json();
@@ -199,11 +211,8 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   const { instructions } = await poll.json();
   const groupPosts = instructions.filter((i: { kind: string }) => i.kind === "group-message" || i.kind === "group-poll");
   expect(groupPosts).toHaveLength(1);
-  expect(groupPosts[0].text).toBe(
-    "👋 Hi everyone, I'm *MatchTime*. Ali has set me up to run this group's games.\n" +
-      "Playing? Just write *IN*. Can't make it? Write *OUT*. I'll tick your message and keep the squad list up to date.\n" +
-      "Anything else, tag me: *@Match Time help*",
-  );
+  expect(groupPosts[0].text).toBe(hello("en")({ organiser: "Ali" }));
+  expect(groupPosts[0].text).toContain("Ali has set me up to run this group's games.");
   expect(instructions[0]).toBe(groupPosts[0]);
 
   // 6. The platform channel hands the Pi the organiser's DM and the ack.

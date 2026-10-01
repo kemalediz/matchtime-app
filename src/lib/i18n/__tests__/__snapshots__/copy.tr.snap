@@ -2285,7 +2285,7 @@ Kodunuz +44 77** ***123 numarasından geldi. Lütfen kayıt olduğunuz numaradan
 MatchTime'ın WhatsApp numarası: +44 7700 900777
 
 ### R182 card / pending approval
-3. adım: grubunuzu kontrol ediyoruz, genellikle bir gün içinde. O zamana kadar MatchTime grupta sessiz kalır.
+3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır, yayına geçince size WhatsApp'tan yazar.
 
 ### R182 card / pending, added by someone else
 MatchTime "Riverside Tuesday 5s" grubuna başka biri tarafından eklendi. Açmadan önce kontrol edeceğiz.
@@ -2315,12 +2315,12 @@ Her gün birkaç yeni grup alıyoruz. Lütfen yarın tekrar deneyin.
 ### R183 connect DM / connected
 Merhaba Ali, tamamdır: Riverside FC bu sohbete bağlandı.
 Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.
-Sizin için açana kadar grupta sessiz kalacağım, genellikle bir gün içinde.
+Kulübünüz onaylanana kadar grupta sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.
 
 ### R183 connect DM / connected, no name
 Merhaba, tamamdır: Riverside FC bu sohbete bağlandı.
 Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.
-Sizin için açana kadar grupta sessiz kalacağım, genellikle bir gün içinde.
+Kulübünüz onaylanana kadar grupta sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.
 
 ### R183 connect DM / already connected
 Zaten bağlısınız. Şimdi beni grubunuza eklemeniz yeterli.
@@ -2332,26 +2332,72 @@ Bu kodun süresi doldu. matchtime.ai'de kulübünüzü açın ve MatchTime'ı Wh
 Her gün birkaç yeni grup alıyoruz. Lütfen yarın tekrar deneyin.
 
 ### R184 group add / organiser ack
-Teşekkürler, "Riverside Tuesday 5s" grubuna katıldım. Sizi açana kadar orada sessiz kalacağım, bitince size buradan yazacağım.
+Teşekkürler, "Riverside Tuesday 5s" grubuna katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.
 
 ### R184 group add / organiser ack, no group name
-Teşekkürler, grubunuza katıldım. Sizi açana kadar orada sessiz kalacağım, bitince size buradan yazacağım.
+Teşekkürler, grubunuza katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.
 
 ### R185 group hello / organiser named
-👋 Herkese merhaba, ben *MatchTime*. Ali beni bu grubun maçlarını düzenlemem için kurdu.
-Oynuyor musun? *VARIM* yazman yeterli. Gelemiyorsan *YOKUM* yaz. Mesajına ✅ koyar, kadro listesini güncel tutarım.
-Başka bir şey için beni etiketle: *@Match Time yardım*
+👋 Herkese merhaba, ben *MatchTime*. Ali beni bu grubun maçlarını düzenlemem için kurdu. Burada, WhatsApp'ta şunları yaparım:
+
+✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.
+🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.
+⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.
+⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.
+📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.
+💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.
+
+Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*
 
 ### R185 group hello / no organiser name
-👋 Herkese merhaba, ben *MatchTime*. Bu grubun maçlarını düzenlemek için buradayım.
-Oynuyor musun? *VARIM* yazman yeterli. Gelemiyorsan *YOKUM* yaz. Mesajına ✅ koyar, kadro listesini güncel tutarım.
-Başka bir şey için beni etiketle: *@Match Time yardım*
+👋 Herkese merhaba, ben *MatchTime*. Bu grubun maçlarını düzenlemek için buradayım. Burada, WhatsApp'ta şunları yaparım:
+
+✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.
+🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.
+⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.
+⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.
+📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.
+💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.
+
+Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*
 
 ### R185 organiser DM / approved
-Güzel haber: Riverside FC artık aktif. "Riverside Tuesday 5s" grubunda herkese merhaba dedim. Haftalık maçınızı buradan ayarlayabilir ya da değiştirebilirsiniz: https://matchtime.ai/admin/activities
+Güzel haber: Riverside FC artık aktif. "Riverside Tuesday 5s" grubunda herkese merhaba dedim.
+
+Vaktiniz olunca ayarlamanız gereken birkaç şey:
+
+📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:
+https://matchtime.ai/l/sched
+
+⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:
+https://matchtime.ai/l/rate
+
+⚙️ *Ayarlar:* ödemeleri, devam eden kadroyu, haftalık son saatleri, yönetici mesajlarını, organizatör seçimini ve rozet duyurularını buradan açın:
+https://matchtime.ai/l/set
+
+❓ *Yardım:* istediğiniz zaman bana buradan yazın, örneğin *yardım ödeme* ya da *yardım rozetler*.
+
+İlk ayınız ücretsiz.
 
 ### R185 organiser DM / approved, no group name
-Güzel haber: Riverside FC artık aktif. Grubunuzda herkese merhaba dedim. Haftalık maçınızı buradan ayarlayabilir ya da değiştirebilirsiniz: https://matchtime.ai/admin/activities
+Güzel haber: Riverside FC artık aktif. Grubunuzda herkese merhaba dedim.
+
+Vaktiniz olunca ayarlamanız gereken birkaç şey:
+
+📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:
+https://matchtime.ai/l/sched
+
+⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:
+https://matchtime.ai/l/rate
+
+⚙️ *Ayarlar:* ödemeleri, devam eden kadroyu, haftalık son saatleri, yönetici mesajlarını, organizatör seçimini ve rozet duyurularını buradan açın:
+https://matchtime.ai/l/set
+
+❓ *Yardım:* istediğiniz zaman bana buradan yazın, örneğin *yardım ödeme* ya da *yardım rozetler*.
+
+İlk ayınız ücretsiz.
 
 ### R185 organiser DM / rejected
 MatchTime'ı denediğiniz için teşekkürler. "Riverside Tuesday 5s" grubunu şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.

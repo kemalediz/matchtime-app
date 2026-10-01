@@ -1904,7 +1904,8 @@ export const en = {
   sj_card_dm_verified:
     "Step 2: add MatchTime to your football group. Save the number below as a contact called MatchTime, then open the group, tap Add participant and pick MatchTime.",
   sj_card_number_label: "MatchTime's WhatsApp number",
-  sj_card_pending: "Step 3: we're checking your group, usually within a day. MatchTime stays quiet in the group until then.",
+  sj_card_pending:
+    "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved, and messages you on WhatsApp when it's live.",
   sj_card_pending_other: (p: { group: string }): string =>
     `MatchTime was added to "${p.group}" by someone else. We'll check it before switching on.`,
   sj_card_approved: (p: { group: string }): string => `You're live. MatchTime said hello in "${p.group}".`,
@@ -1940,7 +1941,7 @@ export const en = {
   sj_dm_connected: (p: { name: string | null; club: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, got it: ${p.club} is connected to this chat.\n` +
     "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n" +
-    "I'll stay quiet in the group until we've switched it on for you, usually within a day.",
+    "I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.",
   sj_dm_already_connected: "You're already connected. Now just add me to your group.",
   sj_dm_code_expired: "That code has expired. Open your club on matchtime.ai and tap Add MatchTime to WhatsApp again.",
 
@@ -1948,19 +1949,43 @@ export const en = {
   /** Sent only when the adder WAS the organiser (matched by phone or by the
    *  connect DM's WhatsApp id). `group` is the group's subject, when read. */
   sj_dm_in_group: (p: { group: string | null }): string =>
-    `Thanks, I'm in ${p.group ? `"${p.group}"` : "your group"}. I'll stay quiet there until we switch you on, and I'll message you here when it's done.`,
+    `Thanks, I'm in ${p.group ? `"${p.group}"` : "your group"}. I'll stay quiet there until your club is approved, usually within a day. I'll message you here when it's live.`,
 
   // ── Self-join slice 7: the decision (plan 5.4, 6.3) ──
-  /** The first thing MatchTime ever says in a newly approved group. Short,
-   *  friendly, explains IN and OUT. `organiser` is the organiser's first
-   *  name, when known. */
+  /** The first thing MatchTime ever says in a newly approved group
+   *  (2026-10-01: the full feature intro, modelled on `onbIntro`, without
+   *  its consent and setup questions: the club is already approved).
+   *  Static apart from the organiser's first name, like `onbIntro`.
+   *  Payments are only ever something the organiser CAN switch on. */
   sj_group_hello: (p: { organiser: string | null }): string =>
-    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."}\n` +
-    "Playing? Just write *IN*. Can't make it? Write *OUT*. I'll tick your message and keep the squad list up to date.\n" +
-    "Anything else, tag me: *@Match Time help*",
-  /** To the organiser, once, when the owner approves. */
-  sj_dm_approved: (p: { club: string; group: string | null; link: string }): string =>
-    `Good news: ${p.club} is live. I've said hello in ${p.group ? `"${p.group}"` : "your group"}. You can set or change your weekly game here: ${p.link}`,
+    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."} ` +
+    `Here's what I do, right here in WhatsApp:\n\n` +
+    `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
+    `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n` +
+    `⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
+    `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n` +
+    `⭐ *Man of the Match and ratings* after every game.\n` +
+    `📊 *Stats:* ask me anything, and everyone gets their own stats page.\n` +
+    `💷 *Match fees:* your organiser can switch on card or bank pay links.\n\n` +
+    `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`,
+  /** To the organiser, once, when the owner approves (2026-10-01: a short
+   *  checklist). Each URL is the organiser's own signed-in link to that
+   *  page, so this DM goes to the organiser only. The one pricing sentence
+   *  is "Your first month is free.", never an amount. */
+  sj_dm_approved: (p: {
+    club: string;
+    group: string | null;
+    scheduleUrl: string;
+    ratingsUrl: string;
+    settingsUrl: string;
+  }): string =>
+    `Good news: ${p.club} is live. I've said hello in ${p.group ? `"${p.group}"` : "your group"}.\n\n` +
+    `A few things to set up when you have a minute:\n\n` +
+    `📅 *Your weekly game:* check the day, time and venue, or change them:\n${p.scheduleUrl}\n\n` +
+    `⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\n${p.ratingsUrl}\n\n` +
+    `⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:\n${p.settingsUrl}\n\n` +
+    `❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n\n` +
+    `Your first month is free.`,
   /** To the organiser, once, when the owner rejects. MatchTime has left the
    *  group without a word in it (decision 1). */
   sj_dm_rejected: (p: { group: string | null }): string =>

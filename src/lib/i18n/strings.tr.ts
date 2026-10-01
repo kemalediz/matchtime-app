@@ -1598,7 +1598,8 @@ export const tr: Strings = {
   sj_card_dm_verified:
     "2. adım: MatchTime'ı futbol grubunuza ekleyin. Aşağıdaki numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.",
   sj_card_number_label: "MatchTime'ın WhatsApp numarası",
-  sj_card_pending: "3. adım: grubunuzu kontrol ediyoruz, genellikle bir gün içinde. O zamana kadar MatchTime grupta sessiz kalır.",
+  sj_card_pending:
+    "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır, yayına geçince size WhatsApp'tan yazar.",
   sj_card_pending_other: (p) =>
     `MatchTime "${p.group}" grubuna başka biri tarafından eklendi. Açmadan önce kontrol edeceğiz.`,
   sj_card_approved: (p) => `Aktifsiniz. MatchTime "${p.group}" grubunda herkese merhaba dedi.`,
@@ -1626,21 +1627,34 @@ export const tr: Strings = {
   sj_dm_connected: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, tamamdır: ${p.club} bu sohbete bağlandı.\n` +
     "Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.\n" +
-    "Sizin için açana kadar grupta sessiz kalacağım, genellikle bir gün içinde.",
+    "Kulübünüz onaylanana kadar grupta sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.",
   sj_dm_already_connected: "Zaten bağlısınız. Şimdi beni grubunuza eklemeniz yeterli.",
   sj_dm_code_expired:
     "Bu kodun süresi doldu. matchtime.ai'de kulübünüzü açın ve MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun.",
 
   sj_dm_in_group: (p) =>
-    `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Sizi açana kadar orada sessiz kalacağım, bitince size buradan yazacağım.`,
+    `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.`,
 
   // ── Self-join slice 7: the decision ──
   sj_group_hello: (p) =>
-    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."}\n` +
-    "Oynuyor musun? *VARIM* yazman yeterli. Gelemiyorsan *YOKUM* yaz. Mesajına ✅ koyar, kadro listesini güncel tutarım.\n" +
-    "Başka bir şey için beni etiketle: *@Match Time yardım*",
+    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."} ` +
+    `Burada, WhatsApp'ta şunları yaparım:\n\n` +
+    `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
+    `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
+    `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.\n` +
+    `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.\n` +
+    `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.\n` +
+    `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
+    `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.\n\n` +
+    `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
   sj_dm_approved: (p) =>
-    `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim. Haftalık maçınızı buradan ayarlayabilir ya da değiştirebilirsiniz: ${p.link}`,
+    `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim.\n\n` +
+    `Vaktiniz olunca ayarlamanız gereken birkaç şey:\n\n` +
+    `📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:\n${p.scheduleUrl}\n\n` +
+    `⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:\n${p.ratingsUrl}\n\n` +
+    `⚙️ *Ayarlar:* ödemeleri, devam eden kadroyu, haftalık son saatleri, yönetici mesajlarını, organizatör seçimini ve rozet duyurularını buradan açın:\n${p.settingsUrl}\n\n` +
+    `❓ *Yardım:* istediğiniz zaman bana buradan yazın, örneğin *yardım ödeme* ya da *yardım rozetler*.\n\n` +
+    `İlk ayınız ücretsiz.`,
   sj_dm_rejected: (p) =>
     `MatchTime'ı denediğiniz için teşekkürler. ${p.group ? `"${p.group}" grubunu` : "Grubunuzu"} şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.`,
 
