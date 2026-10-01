@@ -98,16 +98,13 @@ describe("public website copy", () => {
       expect(landing).toMatch(/25p/);
     });
 
-    it("the JSON-LD offer is £5 a month in GBP, not £0", () => {
-      const offer = landing.match(/offers:\s*\{[\s\S]*?\n\s{12}\}/)?.[0] ?? "";
-      expect(offer).toMatch(/price:\s*"5(\.00)?"/);
-      expect(offer).toMatch(/priceCurrency:\s*"GBP"/);
-      expect(offer).not.toMatch(/price:\s*"0"/);
-    });
-
-    it("site metadata states the price", () => {
-      expect(layout).toMatch(/£5 a month per group/);
-      expect(layout).toMatch(/first month free/i);
+    // Kemal, 2026-10-01: no price in Google results or link previews.
+    // The price lives on the page (pricing section) only.
+    it("search and link-preview text carry no price and no free claim", () => {
+      expect(layout).not.toMatch(/£\d/);
+      expect(layout).not.toMatch(/\bfree\b/i);
+      expect(landing).not.toMatch(/offers:\s*\{/);
+      expect(landing).not.toMatch(/priceCurrency/);
     });
 
     it("the help pages state the price", () => {

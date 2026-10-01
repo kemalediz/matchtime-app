@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     template: "%s · MatchTime",
   },
   description:
-    "MatchTime lives in your WhatsApp group and runs your weekly game: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes. £5 a month per group, first month free.",
+    "MatchTime lives in your WhatsApp group and runs your weekly game: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes.",
   keywords: [
     "sports team management",
     "5-a-side attendance",
@@ -59,13 +59,13 @@ export const metadata: Metadata = {
     siteName: "MatchTime",
     title: "MatchTime: run your weekly match on autopilot",
     description:
-      "WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match. £5 a month per group, first month free.",
+      "WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match.",
   },
   twitter: {
     card: "summary_large_image",
     title: "MatchTime: run your weekly match on autopilot",
     description:
-      "WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match. £5 a month per group, first month free.",
+      "WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match.",
   },
   robots: {
     index: true,

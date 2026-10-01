@@ -714,26 +714,8 @@ export function LandingPage() {
             applicationCategory: "SportsApplication",
             operatingSystem: "Web, WhatsApp",
             description:
-              "MatchTime lives in your WhatsApp group and runs your weekly game: attendance, the bench, chasing, balanced teams, ratings, Man of the Match and optional card or bank payments. £5 a month per group, first month free.",
+              "MatchTime lives in your WhatsApp group and runs your weekly game: attendance, the bench, chasing, balanced teams, ratings, Man of the Match and optional card or bank payments.",
             url: "https://matchtime.ai",
-            offers: {
-              "@type": "Offer",
-              price: "5.00",
-              priceCurrency: "GBP",
-              description:
-                "£5 a month per WhatsApp group, not per player. First month free, no contract.",
-              priceSpecification: {
-                "@type": "UnitPriceSpecification",
-                price: "5.00",
-                priceCurrency: "GBP",
-                unitText: "MONTH",
-                referenceQuantity: {
-                  "@type": "QuantitativeValue",
-                  value: 1,
-                  unitCode: "MON",
-                },
-              },
-            },
             publisher: {
               "@type": "Organization",
               name: "Cressoft",
