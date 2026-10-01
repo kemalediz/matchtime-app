@@ -12,6 +12,8 @@ const dbMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const silentMock = vi.hoisted(() => ({ isSilentGroup: vi.fn(async (_g: string) => false) }));
+const noticeMock = vi.hoisted(() => ({ notifyAdminsOfAiCap: vi.fn(async () => {}) }));
+vi.mock("../ai-cap-notice", () => noticeMock);
 vi.mock("../club-approval", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../club-approval")>()),
   isSilentGroup: (g: string) => silentMock.isSilentGroup(g),
@@ -25,9 +27,11 @@ import {
   onboardingGroupKey,
   onboardingUserKey,
   pickCapReplyMessage,
+  recordCapSkips,
   DAILY_CAP_USD,
   NEW_CLUB_CAP_USD,
   NEW_CLUB_WINDOW_DAYS,
+  PRE_CLUB_CAP_USD,
   CALL_RESERVE_USD,
 } from "../ai-budget";
 import { AiBudgetExceededError } from "../ai-budget-context";
@@ -48,35 +52,37 @@ const sutton = {
 };
 
 describe("aiAllowanceUsd: how much a club may spend today", () => {
-  it("an established club gets $1.00 a day (Sutton FC)", () => {
-    expect(DAILY_CAP_USD).toBe(1);
-    expect(aiAllowanceUsd(sutton, NOW)).toBe(1);
+  it("an established (paying) club gets $1.50 a day by default", () => {
+    expect(DAILY_CAP_USD).toBe(1.5);
+    expect(aiAllowanceUsd(sutton, NOW)).toBe(1.5);
   });
 
-  it("a club in its first four weeks gets $0.25 a day", () => {
-    expect(NEW_CLUB_CAP_USD).toBe(0.25);
-    expect(NEW_CLUB_WINDOW_DAYS).toBe(28);
+  it("a club in its free month gets $2.00 a day", () => {
+    expect(NEW_CLUB_CAP_USD).toBe(2);
+    expect(NEW_CLUB_WINDOW_DAYS).toBe(30);
     const fresh = { ...sutton, createdAt: new Date(NOW.getTime() - 3 * DAY) };
-    expect(aiAllowanceUsd(fresh, NOW)).toBe(0.25);
+    expect(aiAllowanceUsd(fresh, NOW)).toBe(2);
   });
 
-  it("the window is exactly 28 days: a second before is new, the boundary is established", () => {
-    const start = new Date(NOW.getTime() - 28 * DAY);
-    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(start.getTime() + 1000) }, NOW)).toBe(0.25);
-    expect(aiAllowanceUsd({ ...sutton, createdAt: start }, NOW)).toBe(1);
+  it("the free month is exactly 30 days: a second before is new, the boundary is established", () => {
+    const start = new Date(NOW.getTime() - 30 * DAY);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(start.getTime() + 1000) }, NOW)).toBe(2);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: start }, NOW)).toBe(1.5);
+    // Day 29 (the old 28-day window's first day out) is still the free month.
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 29 * DAY) }, NOW)).toBe(2);
   });
 
   it("aiWindowStartAt, when set, starts the window instead of createdAt", () => {
     // Created long ago, but approved (went live) yesterday.
     const approvedYesterday = { ...sutton, aiWindowStartAt: new Date(NOW.getTime() - DAY) };
-    expect(aiAllowanceUsd(approvedYesterday, NOW)).toBe(0.25);
+    expect(aiAllowanceUsd(approvedYesterday, NOW)).toBe(2);
     // Created yesterday, window start pinned to long ago.
     const pinnedOld = {
       ...sutton,
       createdAt: new Date(NOW.getTime() - DAY),
       aiWindowStartAt: new Date(NOW.getTime() - 60 * DAY),
     };
-    expect(aiAllowanceUsd(pinnedOld, NOW)).toBe(1);
+    expect(aiAllowanceUsd(pinnedOld, NOW)).toBe(1.5);
   });
 
   it("the platform owner's override wins over both defaults", () => {
@@ -93,15 +99,37 @@ describe("aiAllowanceUsd: how much a club may spend today", () => {
     expect(aiAllowanceUsd({ ...sutton, whatsappBotEnabled: false, aiDailyCapUsd: 5 }, NOW)).toBe(0);
   });
 
-  it("spend before a club exists (onboarding) gets the new-club allowance", () => {
+  it("spend before a club exists (onboarding) keeps the small pre-club allowance, not the free month", () => {
+    expect(PRE_CLUB_CAP_USD).toBe(0.25);
     expect(aiAllowanceUsd(null, NOW)).toBe(0.25);
   });
 });
 
-describe("aiAllowanceUsd and club approval (self-join slice 1)", () => {
-  it("Sutton FC's real prod shape is unchanged: approved, no approvedAt, its $1.50 override", () => {
+describe("aiAllowanceUsd and the global emergency switch", () => {
+  const ENV = process.env.AI_DAILY_CAP_DISABLED;
+  afterAll(() => {
+    if (ENV === undefined) delete process.env.AI_DAILY_CAP_DISABLED;
+    else process.env.AI_DAILY_CAP_DISABLED = ENV;
+  });
+
+  it("with the switch on, every live approved club gets $50, the override included; $0 rules still hold", () => {
+    process.env.AI_DAILY_CAP_DISABLED = "1";
+    try {
+      expect(aiAllowanceUsd(sutton, NOW)).toBe(50);
+      expect(aiAllowanceUsd({ ...sutton, aiDailyCapUsd: 1.5 }, NOW)).toBe(50);
+      expect(aiAllowanceUsd({ ...sutton, approvalStatus: "pending" }, NOW)).toBe(0);
+      expect(aiAllowanceUsd({ ...sutton, whatsappBotEnabled: false }, NOW)).toBe(0);
+    } finally {
+      delete process.env.AI_DAILY_CAP_DISABLED;
+    }
     expect(aiAllowanceUsd({ ...sutton, aiDailyCapUsd: 1.5 }, NOW)).toBe(1.5);
-    expect(aiAllowanceUsd(sutton, NOW)).toBe(1);
+  });
+});
+
+describe("aiAllowanceUsd and club approval (self-join slice 1)", () => {
+  it("Sutton FC's real prod shape: approved, no approvedAt, its $1.50 override", () => {
+    expect(aiAllowanceUsd({ ...sutton, aiDailyCapUsd: 1.5 }, NOW)).toBe(1.5);
+    expect(aiAllowanceUsd(sutton, NOW)).toBe(1.5);
   });
 
   it("a club that is not approved spends $0, whatever the override and whatever else is set", () => {
@@ -112,23 +140,23 @@ describe("aiAllowanceUsd and club approval (self-join slice 1)", () => {
     }
   });
 
-  it("the 4-week window starts at approvedAt when set, before aiWindowStartAt and createdAt", () => {
-    // Created 60 days ago, waited in pending, approved yesterday: full new-club window.
+  it("the free month starts at approvedAt when set, before aiWindowStartAt and createdAt", () => {
+    // Created 60 days ago, waited in pending, approved yesterday: full free month.
     const approvedYesterday = {
       ...sutton,
       createdAt: new Date(NOW.getTime() - 60 * DAY),
       approvedAt: new Date(NOW.getTime() - DAY),
     };
-    expect(aiAllowanceUsd(approvedYesterday, NOW)).toBe(0.25);
+    expect(aiAllowanceUsd(approvedYesterday, NOW)).toBe(2);
     // approvedAt wins over a stale aiWindowStartAt in either direction.
-    expect(aiAllowanceUsd({ ...approvedYesterday, aiWindowStartAt: new Date(NOW.getTime() - 90 * DAY) }, NOW)).toBe(0.25);
-    const approvedLongAgo = { ...sutton, approvedAt: new Date(NOW.getTime() - 30 * DAY) };
-    expect(aiAllowanceUsd({ ...approvedLongAgo, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(1);
+    expect(aiAllowanceUsd({ ...approvedYesterday, aiWindowStartAt: new Date(NOW.getTime() - 90 * DAY) }, NOW)).toBe(2);
+    const approvedLongAgo = { ...sutton, approvedAt: new Date(NOW.getTime() - 31 * DAY) };
+    expect(aiAllowanceUsd({ ...approvedLongAgo, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(1.5);
   });
 
   it("with approvedAt null the old rule holds: aiWindowStartAt, else createdAt", () => {
-    expect(aiAllowanceUsd({ ...sutton, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(0.25);
-    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(0.25);
+    expect(aiAllowanceUsd({ ...sutton, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(2);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(2);
   });
 });
 
@@ -260,9 +288,9 @@ describe("the database ledger fails OPEN", () => {
 
   it("getAiBudgetStatus reports capped once spend plus holds reach the cap", async () => {
     dbMock.organisation.findUnique.mockResolvedValue(sutton);
-    dbMock.$queryRaw.mockResolvedValue([{ costUsd: 0.97, reservedUsd: 0.03 }]);
+    dbMock.$queryRaw.mockResolvedValue([{ costUsd: 1.47, reservedUsd: 0.03 }]);
     const s = await getAiBudgetStatus("org-1", NOW);
-    expect(s).toMatchObject({ capped: true, capUsd: 1, spentUsd: 0.97 });
+    expect(s).toMatchObject({ capped: true, capUsd: 1.5, spentUsd: 1.47 });
     dbMock.$queryRaw.mockResolvedValue([{ costUsd: 0.5, reservedUsd: 0 }]);
     expect((await getAiBudgetStatus("org-1", NOW)).capped).toBe(false);
   });
@@ -294,5 +322,62 @@ describe("pickCapReplyMessage: one polite line per club per day, to a tagged mes
         throw new Error("db down");
       }),
     ).toBeNull();
+  });
+});
+
+describe("the cap tripping tells the club's admins (via ai-cap-notice)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("a refused reservation for a live club asks for the admin notice, with today's London day", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(sutton);
+    dbMock.$queryRaw.mockResolvedValue([]);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await expect(ledger.reserve("org-1", "router")).rejects.toBeInstanceOf(AiBudgetExceededError);
+    expect(noticeMock.notifyAdminsOfAiCap).toHaveBeenCalledTimes(1);
+    expect(noticeMock.notifyAdminsOfAiCap).toHaveBeenCalledWith("org-1", NOW);
+  });
+
+  it("a club allowed $0 (muted, unapproved) is refused WITHOUT any admin notice", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...sutton, whatsappBotEnabled: false });
+    dbMock.$queryRaw.mockResolvedValue([]);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await expect(ledger.reserve("org-1", "router")).rejects.toBeInstanceOf(AiBudgetExceededError);
+    expect(noticeMock.notifyAdminsOfAiCap).not.toHaveBeenCalled();
+  });
+
+  it("spend with no club yet (onboarding keys) never asks for an admin notice", async () => {
+    process.env.SELF_JOIN_ENABLED = "1";
+    try {
+      dbMock.$queryRaw.mockResolvedValue([]);
+      const ledger = prismaAiBudgetLedger(() => NOW);
+      await expect(ledger.reserve(onboardingGroupKey("g"), "onboarding")).rejects.toBeInstanceOf(AiBudgetExceededError);
+      expect(noticeMock.notifyAdminsOfAiCap).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.SELF_JOIN_ENABLED;
+    }
+  });
+
+  it("group messages skipped at the cap ask for the notice too (the analyze route's trip point)", async () => {
+    dbMock.$queryRaw.mockResolvedValue([{ first: false }]);
+    await recordCapSkips("org-1", 3, NOW, 1.5);
+    expect(noticeMock.notifyAdminsOfAiCap).toHaveBeenCalledWith("org-1", NOW);
+  });
+
+  it("skips recorded with a known $0 cap, or for an onboarding key, ask for no notice", async () => {
+    dbMock.$queryRaw.mockResolvedValue([{ first: true }]);
+    await recordCapSkips("org-1", 3, NOW, 0);
+    await recordCapSkips(onboardingUserKey("u"), 3, NOW, 0.25);
+    expect(noticeMock.notifyAdminsOfAiCap).not.toHaveBeenCalled();
+  });
+
+  it("a notice failure never breaks the refusal (it still throws the cap error, nothing else)", async () => {
+    noticeMock.notifyAdminsOfAiCap.mockRejectedValueOnce(new Error("boom"));
+    dbMock.organisation.findUnique.mockResolvedValue(sutton);
+    dbMock.$queryRaw.mockResolvedValue([]);
+    const ledger = prismaAiBudgetLedger(() => NOW);
+    await expect(ledger.reserve("org-1", "router")).rejects.toBeInstanceOf(AiBudgetExceededError);
   });
 });

@@ -2328,4 +2328,19 @@ export const en = {
     p.unpaid === 1
       ? `💳 1 payment still pending for ${p.dayName}'s match. If you've already paid, tick your team in the payment poll to clear it 🙏`
       : `💳 *${p.unpaid}* payments still pending for ${p.dayName}'s match. If you've already paid, tick your team in the payment poll to clear it 🙏`,
+  // ── The daily AI cap, told to the club's admins once a day (2026-10-01).
+  //    Sent through the admin channel when the club reaches its allowance.
+  //    Every claim is what the code does at the cap: the router floor still
+  //    records a bare In or Out in the group, model-backed replies are
+  //    skipped, scheduled posts go out (the chase falls back to its static
+  //    copy), and the allowance is per London calendar day. `more` is the
+  //    "how to get more" line: today the contact email, later a Buy more
+  //    link (`ai_cap_more_buy`). ──
+  ai_cap_admin_notice: (p: { club: string; more: string }): string =>
+    `⚠️ MatchTime has used today's AI allowance for *${p.club}*. ` +
+    `Until midnight (UK time) I'll still record a plain In or Out in the group, but I won't answer questions ` +
+    `or other requests that need the AI. Scheduled posts carry on as normal. ` +
+    `The allowance resets at midnight. ${p.more}`,
+  ai_cap_more_contact: "Need more? Email hello@matchtime.ai and we can raise your club's daily allowance.",
+  ai_cap_more_buy: (p: { url: string }): string => `Need more? Buy extra AI allowance here: ${p.url}`,
 };

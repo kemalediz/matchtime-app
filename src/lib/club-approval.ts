@@ -297,7 +297,7 @@ function firstName(name: string | null | undefined): string | null {
  *   approve  pending -> approved. Refused when another approved club owns
  *            the group. Sets `whatsappGroupId` (from the connect request;
  *            it is never set while pending, plan 3.1), `approvedAt` (the
- *            start of the club's first four weeks, see ai-budget.ts
+ *            start of the club's free month, see ai-budget.ts
  *            `aiWindowStart`), and turns the bot ON (the CHECK constraint
  *            allows it now). Queues the hello as the club's first group
  *            BotJob; the Pi picks the group up on its next org refresh.
