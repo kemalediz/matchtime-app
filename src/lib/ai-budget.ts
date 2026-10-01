@@ -17,13 +17,17 @@
  *     group) may spend NOTHING, and no override lifts that;
  *   - the platform owner's per-club override, `Organisation.aiDailyCapUsd`,
  *     when set;
- *   - $0.25 a day for the first 28 days from the window start, which is
- *     `approvedAt ?? aiWindowStartAt ?? createdAt` (see `aiWindowStart`);
- *   - $1.00 a day after that. Sutton FC is long past its first four weeks.
+ *   - $2.00 a day for the club's FREE MONTH, the first 30 days from the
+ *     window start, which is `approvedAt ?? aiWindowStartAt ?? createdAt`
+ *     (see `aiWindowStart`) (Kemal, 2026-10-01; was $0.25 for 28 days);
+ *   - $1.50 a day after that, the default for a paying club (Kemal,
+ *     2026-10-01; was $1.00). Sutton FC is long past its free month and
+ *     has its own override of the same $1.50.
  *
  * Spend that happens before a club exists (the in-group setup
  * conversation, the web wizard's chat analysis) is keyed on the group or
- * the user instead of an org and gets the new-club $0.25. Two exceptions
+ * the user instead of an org and gets `PRE_CLUB_CAP_USD`, $0.25: nobody
+ * has approved anything yet, so it is not the free month. Two exceptions
  * for a GROUP key, both $0: the group is silent (it belongs to a club
  * waiting for approval, or nobody asked for MatchTime there), or
  * self-join is on, which retires the in-group setup altogether.
@@ -77,13 +81,20 @@
  *   none-bucket shadow cron, team-generation rating adjuster,
  *   onboarding enrichment, the web onboarding wizard.
  *
- * NOBODY IS MESSAGED ABOUT A CAP HIT. The row's `cappedAt`, and one info
- * event on the owner's /admin/health page, are the whole of the record.
+ * WHO HEARS ABOUT A CAP HIT. The club's own admins, ONCE per club per
+ * London day, through the club's admin channel (`ai-cap-notice.ts`,
+ * Kemal 2026-10-01). Never the platform owner: for him the row's
+ * `cappedAt` and one info event on /admin/health are the whole record.
+ * Both trip points ask for it: a refused reservation (`recordRefusal`,
+ * any call site) and group messages skipped at the cap
+ * (`recordCapSkips`, the analyze route); the notice module's claim key
+ * makes any number of asks one message.
  */
 import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { AI_CAP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isClubApproved, isSelfJoinEnabled, isSilentGroup } from "./club-approval";
+import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
   AiBudgetExceededError,
   runWithAiBudget,
@@ -95,9 +106,20 @@ import {
 export { bindAiBudgetKey, isAiBudgetExceeded, AiBudgetExceededError } from "./ai-budget-context";
 export { AI_CAP_ALERT_KIND } from "./ops-alerts";
 
-export const DAILY_CAP_USD = 1.0;
-export const NEW_CLUB_CAP_USD = 0.25;
-export const NEW_CLUB_WINDOW_DAYS = 28;
+/** A paying club's default, after its free month (Kemal, 2026-10-01). */
+export const DAILY_CAP_USD = 1.5;
+/** The free month's allowance (Kemal, 2026-10-01). */
+export const NEW_CLUB_CAP_USD = 2.0;
+/** The free month: 30 days, the same length as the billing trial. */
+export const NEW_CLUB_WINDOW_DAYS = 30;
+/**
+ * Spend with no approved club behind it yet (onboarding keys). Kept at the
+ * old new-club figure on purpose: the free month starts at approval, and
+ * this is money spent on behalf of people nobody has approved. In practice
+ * the in-group setup is $0 while self-join is on, so this is the web
+ * wizard's chat analysis, a few cents.
+ */
+export const PRE_CLUB_CAP_USD = 0.25;
 /** Held per call between reserve and settle. See the bound above. */
 export const CALL_RESERVE_USD = 0.01;
 
@@ -121,13 +143,13 @@ export interface AllowanceOrg {
 }
 
 /**
- * When the club's first-four-weeks window starts:
+ * When the club's free-month window starts:
  * `approvedAt ?? aiWindowStartAt ?? createdAt`.
  *
  * Why `approvedAt` first. It is a FACT, written once, by the approval
  * itself: the moment a self-join club was allowed to act. A club that
- * waited a week in pending must still get its full four weeks at $0.25
- * once live (decision 5), and no other column can know that moment.
+ * waited a week in pending must still get its full free month once live
+ * (decision 5), and no other column can know that moment.
  *
  * Why `aiWindowStartAt` stays. It was added by the cap slice as a manual
  * lever, "start this club's window later than its row", for a club that
@@ -149,11 +171,17 @@ export function aiWindowStart(
  * spend that has no club yet (onboarding).
  */
 /**
- * The global off switch (Kemal, 2026-09-30: "remove the AI allowance
- * globally for now"). With `AI_DAILY_CAP_DISABLED=1` every club that may
- * spend at all gets $50 a day instead of its usual cap. The $0 rules above the caps
+ * The global switch, kept as an EMERGENCY OVERRIDE (Kemal, 2026-09-30;
+ * to be removed from Vercel production after the 2026-10-01 caps land).
+ * With `AI_DAILY_CAP_DISABLED=1` every club that may spend at all gets
+ * $50 a day instead of its usual cap. The $0 rules above the caps
  * (unapproved clubs, bot off, silent groups) still hold: they are the
  * anti-abuse rails, not the cost ceiling. Spend is still recorded.
+ *
+ * It is read BEFORE the per-club override, deliberately: an emergency
+ * switch that some clubs silently ignore is not an emergency switch. To
+ * stop one club spending, mute it or suspend it (both $0 above), not a $0
+ * override.
  */
 /** The daily limit while the switch is on (Kemal, 2026-09-30: "just write $50 per day"). */
 export const UNCAPPED_USD = 50;
@@ -164,7 +192,7 @@ export function isAiCapDisabled(env: Record<string, string | undefined> = proces
 }
 
 export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date): number {
-  if (!org) return isAiCapDisabled() ? UNCAPPED_USD : NEW_CLUB_CAP_USD;
+  if (!org) return isAiCapDisabled() ? UNCAPPED_USD : PRE_CLUB_CAP_USD;
   // Not approved: $0 before anything else is even read. The silence
   // rails already keep such a club from reaching a model; this is the
   // defence in depth for a future path that forgets them.
@@ -230,7 +258,7 @@ async function noteFirstCapToday(key: string, day: string, cap: number | null, w
   });
 }
 
-async function recordRefusal(key: string, day: string, cap: number, label: string): Promise<void> {
+async function recordRefusal(key: string, day: string, cap: number, label: string, now: Date): Promise<void> {
   try {
     // `first`: was the club NOT yet capped today before this statement?
     // Read from a snapshot in the same statement rather than by comparing
@@ -250,6 +278,20 @@ async function recordRefusal(key: string, day: string, cap: number, label: strin
     if (rows[0]?.first) await noteFirstCapToday(key, day, cap, `first refused call: ${label}`);
   } catch (err) {
     console.error(`[ai-budget] could not record a refused call for ${key}:`, err);
+  }
+  // A club allowed $0 (unapproved, muted, no group) was never at "its
+  // allowance": nobody is told. Nor is anyone for spend with no club.
+  if (cap > 0) await tellClubAdmins(key, now);
+}
+
+/** The once-a-day admin notice. Never throws: a notice must not turn a
+ *  refusal into a different error or break a batch. */
+async function tellClubAdmins(key: string, now: Date): Promise<void> {
+  if (isPseudoKey(key)) return;
+  try {
+    await notifyAdminsOfAiCap(key, now);
+  } catch (err) {
+    console.error(`[ai-budget] could not queue the cap notice for ${key}:`, err);
   }
 }
 
@@ -273,7 +315,7 @@ export function prismaAiBudgetLedger(clock: () => Date = () => new Date()): AiBu
         return { key, day, reservedUsd: 0 };
       }
       if (cap <= 0) {
-        await recordRefusal(key, day, cap, label);
+        await recordRefusal(key, day, cap, label, now);
         throw new AiBudgetExceededError(key, label);
       }
       let granted: boolean;
@@ -295,7 +337,7 @@ export function prismaAiBudgetLedger(clock: () => Date = () => new Date()): AiBu
         return { key, day, reservedUsd: 0 };
       }
       if (!granted) {
-        await recordRefusal(key, day, cap, label);
+        await recordRefusal(key, day, cap, label, now);
         throw new AiBudgetExceededError(key, label);
       }
       return { key, day, reservedUsd: CALL_RESERVE_USD };
@@ -396,6 +438,9 @@ export async function recordCapSkips(
   } catch (err) {
     console.error(`[ai-budget] could not count ${count} skipped message(s) for ${key}:`, err);
   }
+  // `capUsd` null means "not known here"; the notice module re-checks the
+  // club itself. A known $0 cap is a club nobody is told about.
+  if (capUsd === null || capUsd > 0) await tellClubAdmins(key, now);
 }
 
 /**

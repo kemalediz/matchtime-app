@@ -21,7 +21,7 @@ describe("AI_DAILY_CAP_DISABLED (Kemal, 2026-09-30)", () => {
     expect(isAiCapDisabled({ AI_DAILY_CAP_DISABLED: "1" })).toBe(true);
     expect(isAiCapDisabled({})).toBe(false);
   });
-  it("off by default: a new club keeps its 25p", () => {
+  it("off by default: a new club gets its free-month allowance", () => {
     expect(aiAllowanceUsd(live as never, now)).toBe(NEW_CLUB_CAP_USD);
   });
   it("on: a live club and pre-club setup spend without a daily limit, even with an override", () => {

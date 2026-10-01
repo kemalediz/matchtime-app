@@ -52,6 +52,24 @@ const status = (db: TestDb, userId: string) =>
 const find = (res: { results: Array<{ waMessageId: string; reply: string | null }> }, id: string) =>
   res.results.find((r) => r.waMessageId === id)!;
 
+/** The admins' once-a-day notice (ai-cap-notice.ts), as queued BotJobs. */
+const NOTICE_LIKE = "%MatchTime has used today's AI allowance%";
+const noticeJobs = (db: TestDb) =>
+  db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND text LIKE $2`, [ORG_ID, NOTICE_LIKE]);
+const noticeClaims = (db: TestDb) =>
+  db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE $1`, [`${ORG_ID}:ai-cap:%`]);
+/** Who the default ("each-admin") channel reaches: owners and admins with a phone. */
+const adminsWithPhone = (db: TestDb) =>
+  db.count(
+    `SELECT COUNT(*) FROM "Membership" m JOIN "User" u ON u.id = m."userId"
+      WHERE m."orgId" = $1 AND m."leftAt" IS NULL AND m.role IN ('OWNER','ADMIN') AND u."phoneNumber" IS NOT NULL`,
+    [ORG_ID],
+  );
+/** From 22:00 London no notice is queued (it would arrive tomorrow). */
+const londonHour = () =>
+  Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }).format(new Date()));
+const noticeExpected = () => londonHour() < 22;
+
 async function setCap(db: TestDb, usd: number | null): Promise<void> {
   await db.run(`UPDATE "Organisation" SET "aiDailyCapUsd" = $2 WHERE id = $1`, [ORG_ID, usd]);
 }
@@ -122,11 +140,18 @@ test("at the cap: IN and OUT still work, banter is silent, a tagged ask gets ONE
   expect(after.cappedAt).not.toBeNull();
   expect(after.capReplySentAt).not.toBeNull();
 
-  // Recorded for the owner's health page, once, and never as a DM.
+  // Recorded for the owner's health page, once.
   expect(await db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE kind = 'ai-daily-cap' AND "orgId" = $1`, [ORG_ID])).toBe(1);
-  expect(
-    await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE kind = 'dm' AND text LIKE '%cap%'`),
-  ).toBe(0);
+
+  // The club's admins are told ONCE, through the admin channel (this club
+  // is on "each-admin": one DM per owner and admin with a phone).
+  if (noticeExpected()) {
+    expect(await noticeClaims(db)).toBe(1);
+    expect(await noticeJobs(db)).toBe(await adminsWithPhone(db));
+    expect(await adminsWithPhone(db)).toBeGreaterThan(0);
+  } else {
+    expect(await noticeJobs(db)).toBe(0);
+  }
 });
 
 test("the polite line is sent at most once per club per day", async ({ request }) => {
@@ -141,6 +166,22 @@ test("the polite line is sent at most once per club per day", async ({ request }
     },
   ]);
   expect(find(res, id).reply).toBeNull();
+});
+
+test("the admins' notice is not repeated by a second capped batch the same day", async ({ request, db }) => {
+  const before = await noticeJobs(db);
+  await postAnalyze(request, [
+    { waMessageId: msgId(), body: "lol another one", authorPhone: "447700900008", authorName: "Tom Third" },
+    {
+      waMessageId: msgId(),
+      body: "@Match Time who scored?",
+      authorPhone: "447700900004",
+      authorName: "Riley Rater",
+      botMentioned: true,
+    },
+  ]);
+  expect(await noticeJobs(db)).toBe(before);
+  expect(await noticeClaims(db)).toBe(noticeExpected() ? 1 : 0);
 });
 
 test("the line speaks the club's language", async ({ request, db }) => {
@@ -166,6 +207,8 @@ test("the line speaks the club's language", async ({ request, db }) => {
 test("concurrent requests cannot spend past the cap by more than the stated bound", async ({ request, db }) => {
   await db.run(`DELETE FROM "OrgAiUsage" WHERE "orgId" = $1`, [ORG_ID]);
   await db.run(`DELETE FROM "OpsAlert" WHERE kind = 'ai-daily-cap'`);
+  await db.run(`DELETE FROM "SentNotification" WHERE key LIKE $1`, [`${ORG_ID}:ai-cap:%`]);
+  await db.run(`DELETE FROM "BotJob" WHERE "orgId" = $1 AND text LIKE $2`, [ORG_ID, NOTICE_LIKE]);
   const cap = 0.05;
   await setCap(db, cap);
   const bodies = Array.from({ length: 12 }, (_, i) => `just chatting number ${i + 1}`);
@@ -186,5 +229,11 @@ test("concurrent requests cannot spend past the cap by more than the stated boun
   expect(Number(u.reservedUsd)).toBeCloseTo(0, 9);
   expect(u.calls).toBeGreaterThan(0);
   expect(u.calls).toBeLessThan(bodies.length);
+  // Many refusals racing across twelve requests: ONE notice claim, one
+  // queued notice per admin, never one per refusal.
+  if (noticeExpected()) {
+    expect(await noticeClaims(db)).toBe(1);
+    expect(await noticeJobs(db)).toBe(await adminsWithPhone(db));
+  }
   await setCap(db, null);
 });

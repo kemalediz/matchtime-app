@@ -413,7 +413,7 @@ export async function analyzeOnboardingChat(
 
   const parsed = parseWhatsAppChat(fileText, { recentMessageLimit: 15_000 });
   // No club exists yet: the analysis is spent from this user's own
-  // new-club allowance (the daily AI cap, lib/ai-budget.ts). At the cap it
+  // pre-club allowance (`PRE_CLUB_CAP_USD`, lib/ai-budget.ts). At the cap it
   // returns null, and the wizard carries on with the manual defaults.
   return withOrgAiBudget(onboardingUserKey(session.user.id), () =>
     analyzeForOnboarding({

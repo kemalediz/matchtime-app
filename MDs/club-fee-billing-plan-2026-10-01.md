@@ -6,7 +6,7 @@ claim about the current code cites the file it was read from, on `origin/main` a
 `cd38c51` (sections 7.1 and 7.2 were checked again at `dca3057`; sections 1, 4.5, 8.1
 and 9 at `8dc9646`).
 
-Revised 2026-10-01, three passes:
+Revised 2026-10-01, four passes:
 
 - **Second pass:** every club fee message explains how to split the fee among the
   players, with a worked example from the club's own game (section 7.2).
@@ -19,6 +19,13 @@ Revised 2026-10-01, three passes:
      fee tip is how clubs cover the fee (section 14).
   3. The AI cap for paying clubs stays **open**, with today's state written down from
      the code and a recommendation (section 9, decision 10).
+- **Fourth pass (Kemal's decisions, 2026-10-01, shipped in the AI cap PR):**
+  1. **New AI daily caps.** $2.00 a day for the free month (30 days from approval), then
+     **$1.50 a day** for a paying club; unapproved or muted clubs $0 as before. Decision
+     10 is now **decided** (section 9).
+  2. When a club reaches its cap, its **admins are told once a day** through the admin
+     channel (section 9).
+  3. **AI top-ups (planned)**, a future slice after B1 to B6 (section 9.1, decision 18).
 
 ---
 
@@ -85,9 +92,10 @@ at first**, because selling to consumers abroad (Turkey, the EU) brings foreign 
 registration. After VAT, Stripe and about £3 of AI, a club leaves about **£4.90 a
 month** (section 5.4).
 
-**AI cost guard (open, decision 10):** the per-club AI caps are switched off in
-production today (`AI_DAILY_CAP_DISABLED=1`, every approved club may spend $50 a day).
-Recommend switching them back on before billing launches.
+**AI cost guard (decided, decision 10):** $2.00 a day in the free month, then $1.50 a
+day. When a club hits its cap its admins get one message that day. The global switch
+`AI_DAILY_CAP_DISABLED` is being removed from production so the caps apply again.
+Later, admins will be able to buy **AI top-ups** (section 9.1).
 
 **Cost to build:** six PRs (B1 to B6). No prompt changes, so **no paid AI test runs**.
 Stripe is tested in test mode and with signed fixture events; **live mode is touched only
@@ -96,7 +104,7 @@ at rollout, by you, in the dashboard**.
 **Switch:** `BILLING_ENABLED`, off by default. Off means nobody is billed or paused, and
 any paused club comes straight back. It starts with **new clubs only**.
 
-**Decisions I need from you:** section 15 (seventeen, three of them already decided and
+**Decisions I need from you:** section 15 (eighteen, four of them already decided and
 recorded there, each open one with a recommendation).
 
 ---
@@ -110,7 +118,7 @@ recorded there, each open one with a recommendation).
 | Where the gates are read | `api/whatsapp/orgs/route.ts` (orgs query ~23), `api/whatsapp/due-posts/route.ts` (~184, `whatsappBotEnabled: true`), `api/whatsapp/analyze/route.ts` (~478, ~4186), crons `bot-health` (~65), `none-bucket-shadow` (~94), `extract-squads` (~75), `src/lib/match-completion.ts` (~41), `src/lib/rolling-squad.ts` (~187), `fixtureSkipReason` in `src/lib/org-lifecycle.ts` (~120), and `isClubOperational` in `unpaid-list.ts`, `deadline-summary.ts`, `organiser-pick.ts`, `badge-announcement-scheduler.ts` | Every place MatchTime acts on its own initiative already passes through one of these. |
 | Silent groups | `loadSilentGroupIds` / `computeSilentGroups` in `club-approval.ts` (~150 to 195); returned by `/api/whatsapp/orgs` as `silentGroups` | The Pi drops their messages and never lets "@MatchTime setup" monitor them. A group owned by an approved club is never silent today. |
 | DM sender rail | `dm-reply/route.ts` ~410, `onlyUnapprovedClubs` | A sender whose only clubs are unapproved never reaches a model path. |
-| AI cap | `aiAllowanceUsd` in `src/lib/ai-budget.ts` (~166 to 180) | Unapproved, bot off or no group: $0, before anything else. Then the global switch `AI_DAILY_CAP_DISABLED`: when set, $50 a day (`UNCAPPED_USD`) for every allowed club, **ignoring the per-club override too**. Otherwise the override `aiDailyCapUsd`, else $0.25 a day (`NEW_CLUB_CAP_USD`) for 28 days from `approvedAt ?? aiWindowStartAt ?? createdAt`, then $1.00 (`DAILY_CAP_USD`). Section 9. |
+| AI cap | `aiAllowanceUsd` in `src/lib/ai-budget.ts` (~166 to 180) | Unapproved, bot off or no group: $0, before anything else. Then the global switch `AI_DAILY_CAP_DISABLED`: when set, $50 a day (`UNCAPPED_USD`) for every allowed club, **ignoring the per-club override too**. Otherwise the override `aiDailyCapUsd`, else $2.00 a day (`NEW_CLUB_CAP_USD`) for 30 days (`NEW_CLUB_WINDOW_DAYS`) from `approvedAt ?? aiWindowStartAt ?? createdAt`, then $1.50 (`DAILY_CAP_USD`); before 2026-10-01 these were $0.25 for 28 days, then $1.00. Section 9. |
 | Platform DM channel | `src/lib/platform-jobs.ts` (`queuePlatformDm`, `PLATFORM_DM_PURPOSES` = otp, connect-reply, organiser-decision), Pi poller | Goes out whatever the club's switches say (it does not depend on `due-posts`). Recipient must be a number MatchTime already knows: a User with that phone (rule 12, ~17). Pi pacing of one DM a minute applies. |
 | Owner DMs | `queueOwnerDm` in `src/lib/owner-dm.ts` | Approvals and acks to Kemal only; a source guard (`__tests__/platform-jobs-source-guard.test.ts`) forbids anything else from using it. **Billing will not use it.** |
 | Signed-in links | `buildAdminLink` in `src/lib/admin-link.ts`; `signMagicLinkToken`, `MAGIC_LINK_TTL`, `MAX_TTL_BY_PURPOSE` in `src/lib/magic-link.ts`; landing `src/app/r/[token]/page.tsx`; `pinOrgFromMagicLink` in `src/lib/org.ts` (~28) | `buildAdminLink({ userId, orgId, nextPath, ttlSeconds? })` mints a `sign-in` magic link (short link) to **any same-origin path**; it checks only that `nextPath` starts with one `/`. Default TTL `MAGIC_LINK_TTL.actionNudge` (48 hours); a `sign-in` token may live up to 365 days. Tapping it creates a normal session **as that user** and redirects to `nextPath`; `orgId` pins the club cookie when the user is a current member. It grants nothing the user's role does not already have: `/admin/*` redirects anyone who is not an OWNER or ADMIN (`src/app/admin/layout.tsx`, `isOrgAdmin` in `org.ts` ~123). |
@@ -668,14 +676,14 @@ has today; rollout step 3 checks it.)
 | **Left per club** | **about £4.91** |
 | The same with Stripe Tax instead of a fixed rate | about £4.86 |
 | The same with a non-UK card (about 3.25% + 20p; check current Stripe pricing) | about £4.74 |
-| A club that hits the $1.00 a day AI cap every day (about £22 a month), caps switched on | about minus £14 |
+| A club that hits the $1.50 a day AI cap every day (about £33 a month), caps switched on | about minus £25 |
 | The same club with the caps switched off as today ($50 a day ceiling, over £1,000 a month at worst) | unbounded in practice |
 
 Stripe's rates above are their standard UK list prices as I understand them, not read
 from Cressoft's account; the Billing fee in particular depends on the account's plan. A
 Custom £5.00 plan nets £4.17, about £3.66 after Stripe fees, so it roughly breaks even at
-£3 of AI. The last two rows are why section 9 and decision 10 recommend switching the
-caps back on before launch.
+£3 of AI. The last two rows are why the caps are switched back on before launch
+(section 9, decision 10).
 
 ---
 
@@ -996,9 +1004,34 @@ Nothing here DMs anyone.
 
 ---
 
-## 9. The AI cap and billing (open, decision 10)
+## 9. The AI cap and billing (decided, decision 10)
 
-**Today, verified in `src/lib/ai-budget.ts` (`aiAllowanceUsd`, ~166 to 180):**
+**Decided by Kemal, 2026-10-01, and shipped in the AI cap PR (`src/lib/ai-budget.ts`,
+`src/lib/ai-cap-notice.ts`):**
+
+- **Free month: $2.00 a day** (`NEW_CLUB_CAP_USD`) for the first **30 days**
+  (`NEW_CLUB_WINDOW_DAYS`) from `approvedAt ?? aiWindowStartAt ?? createdAt`, so the AI
+  window and the 30 day trial now line up.
+- **Paying clubs: $1.50 a day** (`DAILY_CAP_USD`) after that. Sutton FC keeps its
+  per-club override of $1.50 (same value).
+- **Unapproved, muted or no group: $0**, as before. Spend with no club yet (the web
+  wizard's chat analysis) keeps the old $0.25 (`PRE_CLUB_CAP_USD`): the free month
+  starts at approval, and nobody has approved anything yet.
+- **`AI_DAILY_CAP_DISABLED` stays in code as an emergency override** and is being removed
+  from Vercel production so the caps apply. While set it still beats the per-club
+  override, on purpose: an emergency switch some clubs ignore is not one. To stop one
+  club spending, mute or suspend it.
+- **The admins are told, once a day.** The first time a club is capped on a London day,
+  its admins get one message through the admin channel (`sendAdminNotice`: one person,
+  the admin group, or each admin), never Kemal. Claimed by a `SentNotification` key
+  `<orgId>:ai-cap:<YYYY-MM-DD>`, so racing refusals send one. Not for unapproved,
+  dormant or muted clubs, and not from 22:00 London (it would arrive the next morning
+  about a day that is over). It says what still works (a plain In or Out in the
+  group, scheduled posts), that questions and other AI requests get no answer, that it
+  resets at midnight UK time, and how to get more (today: email hello@matchtime.ai;
+  later the **Buy more** link from 9.1).
+
+**Before that PR, verified in `src/lib/ai-budget.ts` (`aiAllowanceUsd`, ~166 to 180):**
 
 - `AI_DAILY_CAP_DISABLED=1` is set in Vercel **production** (the variable is listed in
   `vercel env ls production`; its value is encrypted, and Kemal confirmed it is `1`). It
@@ -1012,23 +1045,73 @@ Nothing here DMs anyone.
   (`NEW_CLUB_CAP_USD`) for 28 days (`NEW_CLUB_WINDOW_DAYS`) from
   `approvedAt ?? aiWindowStartAt ?? createdAt`, then $1.00 a day (`DAILY_CAP_USD`).
 
-**What billing adds, whichever way decision 10 goes:**
+**What billing adds:**
 
 - **Paused means $0**, added to `aiAllowanceUsd` just after the approval check and before
   the global switch (4.3 point 5), with a test that neither `AI_DAILY_CAP_DISABLED` nor
   `aiDailyCapUsd` can lift it.
 - `AllowanceOrg` and `ALLOWANCE_SELECT` gain `billingStatus`.
-- The new-club window and the trial both start at `approvedAt`; the trial runs 30 days
-  and the window 28, so for days 28 to 30 a trial club already has the full allowance.
-  No change proposed.
+- The free-month window and the trial both start at `approvedAt` and both run 30 days
+  (the window was 28 before the AI cap PR), so a trial club has the free month allowance
+  exactly while it is in trial.
 
-**Recommendation (pending Kemal):** switch the per-club caps back on (remove
-`AI_DAILY_CAP_DISABLED` from Vercel production) **before billing launches**. A paying club
-that used its full $1.00 every day would cost about £22 a month against £8.33 net
-revenue; with the switch on as today, the same club's ceiling is $50 a day. For scale,
+**Why the cap still matters with billing:** a paying club that used its full $1.50 every
+day would cost about £33 a month against £8.33 net revenue; with the switch on, the same
+club's ceiling is $50 a day. A free month club at its full $2.00 every day would cost
+about £45 before any revenue. For scale,
 Sutton FC's whole September production AI bill was about $3.50
 (`MDs/llm-spend-september-2026.md`), so a normal club is far below either ceiling; the cap
 is the guard against the abnormal one. Spend per club is shown on `/admin/clubs` (8.3).
+
+### 9.1 AI top-ups (planned)
+
+A future slice (**T1**), after B1 to B6. Nothing of it is built. It is the answer to "Need
+more?" in the cap notice.
+
+**What the club sees.** The cap notice ends with a **Buy more** link instead of the email
+line (`buildAiCapAdminNotice` already takes a `buyMoreUrl`, so only that argument
+changes). The link opens a small page with one button, **Buy £5 of extra AI**, which goes
+to Stripe Checkout. Once paid, MatchTime answers again straight away, the same day.
+
+**Who can buy:** the money collector or any owner or admin of the club. A DM carries the
+reader's own signed-in link (`buildAdminLink`) to `/billing/<orgId>/ai`; a post in the
+admin group carries the plain URL, which asks for sign-in. The page guard is
+`requireClubBillingAccess` (4.5) widened to owners and admins.
+
+**Payment.** A one-off Stripe Checkout payment (`mode: "payment"`) on the **platform
+account**, not a Connect account: this is Cressoft's revenue, like the club fee. One
+tax-inclusive Price (`STRIPE_AI_TOPUP_PRICE_ID`) with the same 20% inclusive Tax Rate as
+the club fee (5.4), so £5.00 includes VAT. Receipts by email from Stripe. Metadata
+carries `purpose: "ai-topup"`, `orgId` and the buyer's `userId`; the billing webhook
+(5.3) credits the club on `checkout.session.completed`, idempotent on the session id.
+
+**Mechanics (proposed):**
+
+1. **A credit balance on the club.** `Organisation.aiCreditUsd` (dollars, default 0) and a
+   small `AiTopUp` table (session id unique, org, buyer, pence paid, dollars credited,
+   time) for audit and idempotency. One top-up adds its dollars to the balance.
+2. **The daily cap is spent first, the credit after.** In `ai-budget.ts` the reservation
+   tries today's allowance as now. When that is used up and the club has credit, the
+   hold is taken from the credit instead, in one statement
+   (`UPDATE ... SET "aiCreditUsd" = "aiCreditUsd" - hold WHERE "aiCreditUsd" >= hold`),
+   so racing calls cannot spend the same cent twice. On settle the real cost is booked
+   and the unused part of the hold goes back to the balance. Same overshoot bound as
+   today, at most a few cents.
+3. **Credit never lifts a $0.** Unapproved, muted, suspended or paused clubs spend
+   nothing whatever their balance. Credit is not used while `AI_DAILY_CAP_DISABLED` is
+   set.
+4. **It lasts until used**, across days. It is not refundable once used; a refund of an
+   unused top-up is done by hand in Stripe, and `charge.refunded` takes the refunded
+   share back off the balance (never below 0).
+5. **The cap notice follows the credit.** With credit left, reaching the daily cap sends
+   no notice (nothing changes for the group). When the credit also runs out, the usual
+   once-a-day notice goes out with the Buy more link, under the same claim key.
+6. **Visible to Kemal** on `/admin/clubs` (balance and top-ups), and to the club on the
+   billing page.
+
+Files, roughly: `ai-budget.ts` (reserve and settle), `ai-cap-notice.ts` (the link),
+`stripe-billing.ts` and the billing webhook (B3), `src/app/billing/[orgId]/ai`, a
+migration, i18n. No prompt change, so no paid AI test runs. Depends on B3.
 
 ---
 
@@ -1146,8 +1229,9 @@ Stripe Billing behaviour is exercised before live.
    `we_1TgQL6...` endpoint** if it still exists (section 2). Then Vercel prod env:
    `STRIPE_BILLING_WEBHOOK_SECRET`, `STRIPE_CLUB_PRICE_ID`, `STRIPE_CLUB_PRODUCT_ID`,
    `STRIPE_CLUB_TAX_RATE_ID`.
-4. **AI caps back on** if Kemal agrees (decision 10): remove `AI_DAILY_CAP_DISABLED` from
-   Vercel production and redeploy, before step 5.
+4. **AI caps back on** (decision 10, decided): remove `AI_DAILY_CAP_DISABLED` from
+   Vercel production and redeploy, before step 5. Planned right after the AI cap PR
+   merges.
 5. **Switch on for new clubs only.** `BILLING_ENABLED=1`. Every existing club stays
    `exempt`. Clubs approved from that moment get a trial. Self-join clubs approved
    before it are Kemal's call per club ("Start free month", decision 2).
@@ -1174,7 +1258,8 @@ for clubs that chose to pay; Kemal can cancel any in Stripe.
 | `STRIPE_CLUB_TAX_RATE_ID` | Vercel | `txr_...`, 20% UK VAT, inclusive |
 | `STRIPE_SECRET_KEY` | existing | unchanged, same platform account |
 | `STRIPE_WEBHOOK_SECRET` | existing | unchanged, Connect endpoint only |
-| `AI_DAILY_CAP_DISABLED` | existing, production | set today; recommended removed before launch (decision 10) |
+| `AI_DAILY_CAP_DISABLED` | existing, production | emergency override only; being removed from production after the AI cap PR (decision 10) |
+| `STRIPE_AI_TOPUP_PRICE_ID` | Vercel, slice T1 only | `price_...`, the £5 top-up, tax inclusive (9.1) |
 | `BILLING_STRIPE_FAKE` | test only | `1` under `MT_TEST_MODE` for Playwright |
 
 Added to `.env.example` with comments. Trial length (30), grace (7), reminder days
@@ -1193,6 +1278,8 @@ env.
 | B4 | **Scheduler and messages.** `/api/cron/billing`, day 21, 28, 30, 37, payment-failure grace, `purpose: "billing"`, `BillingNotice`, all DM copy EN and TR to the billing contact with `/billing` links, the "set a money collector" line, `sendClubFeeTip` (admin channel, with the one-person skip), the "payer changed" DM from `setPaymentHolder`. | B2, B3 | `api/cron/billing`, `vercel.json`, `platform-jobs.ts` (purpose), `actions/payments.ts` (one call), `i18n` |
 | B5 | **Removal from a live group.** Pi forwards self-removal for monitored groups too (`handleGroupLeaveForSelfRemoval`), server sets `paused (removed)` and cancels at period end for billed clubs only; **exempt clubs (Sutton) only log**. Re-add during the trial resumes it. Pi deployed with `scripts/deploy-pi.sh`, away from match time. | B3 | `whatsapp-bot/src/bot-added.ts`, `api/whatsapp/bot-removed`, `club-billing.ts` |
 | B6 | **Go-live.** Help page paragraph, `.env.example`, runbook in this file. Then rollout steps 2 to 7. | B1 to B5 | `help/admin/page.tsx` |
+
+| T1 | **AI top-ups (planned, after B6).** Credit balance and `AiTopUp`, credit spent after the daily cap in `ai-budget.ts`, Buy more page and Checkout, webhook credit and refund, the Buy more link in the cap notice (9.1). | B3 | `ai-budget.ts`, `ai-cap-notice.ts`, `stripe-billing.ts`, billing webhook, `src/app/billing/[orgId]/ai`, `prisma/`, `i18n` |
 
 B3 and the UI half of B2 can run in parallel after B1 if their files are split as above.
 B1 touches `analyze/route.ts` only at the two org lookups.
@@ -1258,13 +1345,11 @@ file's history at commit `8dc9646` (#176).
    only); the Price is still created tax inclusive so a later move to Stripe Tax is easy.
 9. **Custom price range:** recommend £1.00 to £9.99, monthly only, effective from the next
    month for clubs already paying. No annual plan for now.
-10. **AI cap for paying clubs. Open.** Today (section 9): `AI_DAILY_CAP_DISABLED=1` in
-    production, so every approved club may spend $50 a day and per-club overrides are
-    ignored. With it off: $0.25 a day for 28 days from approval, then $1.00, per-club
-    override `aiDailyCapUsd` (Sutton $1.50), unapproved $0. Recommend switching the caps
-    back on (remove the variable) **before billing launches**: a paying club at the
-    $1.00 worst case costs about £22 a month against £8.33 net, and without the caps the
-    ceiling is $50 a day. Your call.
+10. **AI cap for paying clubs. Decided (Kemal, 2026-10-01):** $2.00 a day for the free
+    month (30 days from approval), then $1.50 a day; Sutton keeps its $1.50 override;
+    unapproved and muted $0. `AI_DAILY_CAP_DISABLED` stays in code as an emergency
+    override and is removed from production. Admins are told once a day when their
+    club reaches its cap (section 9).
 11. **UK only at first:** recommend yes. Non-UK billing address or card: subscription
     kept, club flagged "Check VAT country" for you to decide. Selling to consumers in
     Turkey or the EU waits until your accountant has set up foreign VAT (Turkish
@@ -1290,3 +1375,9 @@ file's history at commit `8dc9646` (#176).
     "admin group" mode a collector who is also an admin (or in the admin group, which the
     server cannot see) may read it twice. Recommend accepting the repeat (7.1).
     Alternative: store the admin group's members from the Pi, a separate piece of work.
+18. **AI top-up size and price (slice T1, 9.1).** Recommend **one size: £5.00 including
+    VAT for $4.00 of extra AI**, which lasts until used. After VAT (£0.83) and Stripe's
+    card fee (about £0.28) about £3.89 is left, roughly $5.20, so $4.00 of AI leaves a
+    small margin for refunds and support. $4.00 is about two and a half extra days at
+    the $1.50 cap, or many days for a club that only goes slightly over. Alternative: a
+    second £10 size for $8.50. Your call.

@@ -1865,7 +1865,9 @@ async function handleAnalyzeRequest(request: Request) {
   // is counted on today's `OrgAiUsage` row. If any of them TAGS
   // MatchTime, the first one gets today's one polite line, claimed
   // atomically so two racing flushes cannot both send it. Untagged ones
-  // stay silent, as banter always does. No DM, no email, to anyone.
+  // stay silent, as banter always does. `recordCapSkips` also asks for
+  // the club admins' once-a-day notice (`ai-cap-notice.ts`); never to
+  // the platform owner, never an email.
   const cappedIds = new Set(
     (gate?.routes ?? []).filter((r) => r.source === "capped").map((r) => r.messageId),
   );

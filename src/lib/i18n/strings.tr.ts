@@ -1869,6 +1869,14 @@ export const tr: Strings = {
     p.unpaid === 1
       ? `💳 ${p.dayName} günkü maç için 1 ödeme hâlâ bekliyor. Ödediyseniz ödeme anketinde takımınızı işaretleyin 🙏`
       : `💳 ${p.dayName} günkü maç için *${p.unpaid}* ödeme hâlâ bekliyor. Ödediyseniz ödeme anketinde takımınızı işaretlemeniz yeterli 🙏`,
+  // ── Günlük yapay zekâ sınırı, kulüp yöneticilerine günde bir kez (2026-10-01) ──
+  ai_cap_admin_notice: (p) =>
+    `⚠️ MatchTime, *${p.club}* için bugünkü yapay zekâ kullanım hakkını doldurdu. ` +
+    `Gece yarısına kadar (İngiltere saati) grupta düz bir "varım" ya da "yokum" mesajını yine kaydederim, ` +
+    `ama soruları ve yapay zekâ gerektiren diğer istekleri yanıtlamam. Planlı paylaşımlar her zamanki gibi devam eder. ` +
+    `Kullanım hakkı gece yarısı sıfırlanır. ${p.more}`,
+  ai_cap_more_contact: "Daha fazlası mı gerekiyor? hello@matchtime.ai adresine yazın, kulübünüzün günlük hakkını artıralım.",
+  ai_cap_more_buy: (p) => `Daha fazlası mı gerekiyor? Ek yapay zekâ hakkını buradan satın alabilirsiniz: ${p.url}`,
 };
 
 /**

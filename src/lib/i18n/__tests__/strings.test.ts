@@ -611,6 +611,10 @@ const SAMPLES: SampleArgs = {
   // U1, the organisers' unpaid list (2026-10-01)
   unpaid_group_reminder: { unpaid: 4, dayName: "Friday" },
   unpaid_list_admin: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", names: ["Wasim", "Raihan"], paid: 14, n: 16 },
+  // The daily AI cap admin notice (2026-10-01)
+  ai_cap_admin_notice: { club: "Sutton FC", more: "MORE-LINE" },
+  ai_cap_more_contact: null,
+  ai_cap_more_buy: { url: "https://mt.example/buy" },
 };
 
 /** Render an entry with its sample arguments. */
