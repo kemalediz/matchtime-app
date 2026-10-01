@@ -61,3 +61,33 @@ describe("billingStatus has one writer", () => {
     expect(walk(SRC)).toContain(path.join(SRC, "lib", "club-billing.ts"));
   });
 });
+
+describe("slice B3: billing DMs have one queuer, and the club fee never touches Connect", () => {
+  const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it('only club-billing.ts queues a purpose "billing" DM (through queueBillingDm)', () => {
+    const queuers = walk(SRC).filter((f) => /purpose:\s*["']billing["']/.test(strip(readFileSync(f, "utf8"))));
+    expect(queuers.map((f) => path.relative(SRC, f))).toEqual([path.join("lib", "club-billing.ts")]);
+  });
+
+  it("the club fee Stripe code never passes a Connect account, an application fee or a transfer", () => {
+    for (const rel of ["lib/stripe-billing.ts", "lib/stripe-billing-fake.ts", "lib/club-billing-stripe.ts", "app/api/stripe/billing-webhook/route.ts"]) {
+      const src = strip(readFileSync(path.join(SRC, rel), "utf8"));
+      expect(src, rel).not.toMatch(/stripeAccount|application_fee|transfer_data|on_behalf_of/);
+    }
+  });
+
+  it("the club fee Stripe code never puts matchId or userId in metadata", () => {
+    for (const rel of ["lib/stripe-billing.ts", "lib/club-billing-stripe.ts"]) {
+      const src = strip(readFileSync(path.join(SRC, rel), "utf8"));
+      expect(src, rel).not.toMatch(/\bmatchId\b/);
+      expect(src, rel).not.toMatch(/metadata:\s*\{[^}]*\buserId\b/);
+    }
+  });
+
+  it("the billing webhook route verifies with its own secret, never the Connect helper", () => {
+    const src = strip(readFileSync(path.join(SRC, "app/api/stripe/billing-webhook/route.ts"), "utf8"));
+    expect(src).toMatch(/verifyBillingWebhook/);
+    expect(src).not.toMatch(/constructWebhookEvent|STRIPE_WEBHOOK_SECRET\b/);
+  });
+});

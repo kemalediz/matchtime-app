@@ -106,6 +106,16 @@ export const E2E = {
    *  which writes nothing. */
   PAYMENT_CLAIM_STUB_FILE: path.join(REPO_ROOT, ".e2e", "payment-claim-stub.json"),
 
+  /** The FAKE Stripe's world for club fee billing (slice B3,
+   *  src/lib/stripe-billing-fake.ts): the calls the dev server made and the
+   *  subscriptions and setup intents a spec says Stripe holds. Shared by
+   *  the dev server and the specs through this one file. */
+  BILLING_STRIPE_FILE: path.join(REPO_ROOT, ".e2e", "billing-stripe-fake.json"),
+
+  /** The club fee webhook's TEST signing secret. Specs sign fixture events
+   *  with it locally; it is never a real Stripe secret. */
+  BILLING_WEBHOOK_SECRET: "whsec_e2e_club_fee_test_only",
+
   /** WhatsApp group id of the seeded test org. */
   GROUP_ID: "e2e-test-group@g.us",
 
@@ -219,6 +229,19 @@ export function buildTestEnv(): Record<string, string> {
     // unit tests (src/lib/__tests__/club-billing-gates.test.ts and the
     // route and cron tests beside them).
     BILLING_ENABLED: "1",
+    // Club fee billing, slice B3: Stripe is the FAKE adapter (never calls
+    // Stripe; needs MT_TEST_MODE=1 too, and refuses a live key), the
+    // billing webhook verifies with a test-only secret, and the price, product,
+    // tax rate and Portal configuration are dummy ids the fake never resolves
+    // against Stripe.
+    BILLING_STRIPE_FAKE: "1",
+    MT_TEST_BILLING_STRIPE_FILE: E2E.BILLING_STRIPE_FILE,
+    STRIPE_BILLING_WEBHOOK_SECRET: E2E.BILLING_WEBHOOK_SECRET,
+    STRIPE_CLUB_PRICE_ID: "price_e2e_standard",
+    STRIPE_CLUB_PRODUCT_ID: "prod_e2e_club",
+    STRIPE_CLUB_TAX_RATE_ID: "txr_e2e_vat",
+    // The dedicated Portal configuration is REQUIRED for a Portal button.
+    STRIPE_CLUB_PORTAL_CONFIG_ID: "bpc_e2e_no_invoices",
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
     STRIPE_SECRET_KEY: "",

@@ -1912,9 +1912,8 @@ export const tr: Strings = {
   billing_btn_add_card: "Kart ekle",
   billing_btn_change_card: "Kartı değiştir ya da iptal et",
   billing_btn_use_mine: "Bunun yerine kendi kartımı kullan",
-  billing_btn_update_card: "Kartı güncelle",
+  billing_btn_update_card: "Kartı güncelle ve öde",
   billing_btn_remove_mine: "Kartımı kaldır",
-  billing_btn_soon: "Kartla ödeme burada yakında açılıyor.",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
@@ -1923,6 +1922,29 @@ export const tr: Strings = {
   billing_banner_past_due: (p) => `Bu ayın kulüp ücreti alınamadı. Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
   billing_banner_paused: "MatchTime bu kulüp için duraklatıldı. Yeniden açmak için kart ekleyin.",
   billing_banner_link: "Ödeme sayfası",
+  billing_notice_done: "Teşekkürler, kartınız kaydediliyor. Bir dakika içinde bu sayfada görünür.",
+  billing_notice_replaced: "Teşekkürler, kartınız ekleniyor. Bir dakika içinde bu sayfada görünür.",
+  billing_notice_removed: "Kartınız kaldırıldı ve bu kulüp için bir daha ücret alınmayacak.",
+  billing_notice_not_set_up: "Kartla ödeme henüz açık değil. Lütfen daha sonra tekrar deneyin.",
+  billing_notice_already: "Bu kulüp için zaten bir kart ödeme yapıyor.",
+  billing_notice_failed: "Bir sorun oluştu. Lütfen tekrar deneyin.",
+  billing_dm_card_added: (p) =>
+    `Teşekkürler${p.name ? ` ${p.name}` : ""}, kartınız kaydedildi. ` +
+    (p.resumed
+      ? `MatchTime ${p.club} için yeniden açıldı ve birkaç dakika içinde grupta kaldığı yerden devam ediyor. Duraklatılmışken VARIM yazanlar lütfen tekrar yazsın. `
+      : `MatchTime ${p.club} WhatsApp grubunda çalışmaya devam ediyor. `) +
+    (p.paidNow
+      ? `İlk ${p.price} bugün alındı, sonra her ay alınacak; her faturayı Stripe size e-postayla gönderir.`
+      : `İlk ${p.price} ${p.date} tarihinde, sonra her ay alınacak; her faturayı Stripe size e-postayla gönderir.`) +
+    ` Kartınızı değiştirmek ya da iptal etmek için: ${p.link}`,
+  billing_dm_card_replaced: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime ücretini artık ${p.newName} ödüyor. Kartınız kaldırıldı ve bunun için bir daha ücret alınmayacak.`,
+  billing_dm_resumed: (p) =>
+    `MatchTime ${p.club} için yeniden açıldı. Birkaç dakika içinde grupta kaldığım yerden devam ediyorum. Ben duraklatılmışken VARIM yazanlar lütfen tekrar yazsın.`,
+  billing_dm_plan_billed: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} yeniden aylık ${p.price} MatchTime planında. ` +
+    `Ücretsiz ay daha önce kullanıldı, bu yüzden MatchTime grupta ${p.date} tarihine kadar çalışmaya devam edecek. ` +
+    `Çalışmaya devam etmesi için o tarihe kadar kart ekleyin: ${p.link}`,
 };
 
 /**

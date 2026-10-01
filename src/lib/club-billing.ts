@@ -28,6 +28,7 @@
  */
 import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
+import { PlatformDmRefused, queuePlatformDm } from "./platform-jobs";
 import {
   RESUME_QUIET_LOOKBACK_DAYS,
   billingAccessRole,
@@ -78,6 +79,14 @@ function billingPatch(from: string, t: BillingTransition, now: Date): Record<str
     patch.pausedAt = null;
     patch.pausedReason = null;
   }
+  if (from === "exempt" && (t.to === "trial" || t.to === "grace")) {
+    // Billed again after Free ("plan-billed", slice B3): nothing from an
+    // earlier billed spell may linger.
+    patch.paymentFailedAt = null;
+    patch.pausedAt = null;
+    patch.pausedReason = null;
+    if (t.to === "trial") patch.graceEndsAt = null;
+  }
   if (t.to === "subscribed") {
     // Paid (or a card is on): no grace is running, no failure is open.
     patch.graceEndsAt = null;
@@ -112,8 +121,9 @@ export async function setBillingState(
   orgId: string,
   event: BillingEventInput,
   now: Date = new Date(),
+  opts: { noticeOnResume?: BillingNoticeKind } = {},
 ): Promise<SetBillingStateResult> {
-  return db.$transaction((tx) => applyBillingEventTx(tx, orgId, event, now), { timeout: TX_TIMEOUT_MS });
+  return db.$transaction((tx) => applyBillingEventTx(tx, orgId, event, now, opts), { timeout: TX_TIMEOUT_MS });
 }
 
 /**
@@ -127,6 +137,7 @@ async function applyBillingEventTx(
   orgId: string,
   event: BillingEventInput,
   now: Date,
+  opts: { noticeOnResume?: BillingNoticeKind } = {},
 ): Promise<SetBillingStateResult> {
   const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
     SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
@@ -163,7 +174,18 @@ async function applyBillingEventTx(
     const patch = billingPatch(from, t, now);
     if (Object.keys(patch).length > 0) await tx.clubBilling.updateMany({ where: { orgId }, data: patch });
   }
-  if (t.resumes) await resumeClubTx(tx, orgId, now);
+  if (t.resumes) {
+    await resumeClubTx(tx, orgId, now);
+    // A PENDING notice in the same transaction (review fix 10): the DM is
+    // sent afterwards, and a crash or a failed send in between leaves it
+    // pending for the retry, never lost.
+    if (opts.noticeOnResume) {
+      await tx.billingNotice.createMany({
+        data: [{ orgId, kind: opts.noticeOnResume, cycleKey: now.toISOString() }],
+        skipDuplicates: true,
+      });
+    }
+  }
 
   console.log(`[club-billing] ${orgId}: ${from} -> ${t.to} on ${event.type}`);
   return { ok: true, from: from as BillingStatus, to: t.to, resumed: t.resumes };
@@ -274,7 +296,17 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // ── Slice B2: the platform owner's controls ─────────────────────────────
 
 export type SetClubPlanResult =
-  | { ok: true; plan: BillingPlan; pricePence: number | null; status: BillingStatus; resumed: boolean }
+  | {
+      ok: true;
+      plan: BillingPlan;
+      pricePence: number | null;
+      status: BillingStatus;
+      resumed: boolean;
+      /** Set when leaving Free billed the club again (its free month was
+       *  already used): "trial" while that month is still running, else
+       *  "grace" with a fresh 7 days. Slice B3. */
+      billedAgain: "trial" | "grace" | null;
+    }
   | { ok: false; reason: "not-found" | "not-self-join" };
 
 /**
@@ -288,15 +320,22 @@ export type SetClubPlanResult =
  *     the same transaction), THEN the plan is written. The other order
  *     would break Organisation_billingFreeExempt_check;
  *   - leaving Free (or Standard and Custom between themselves): the plan
- *     first, and no status change. A club leaving Free stays "exempt"
- *     until the owner presses "Start free month" (if it never had one).
+ *     first. A club that never had a free month stays "exempt" until the
+ *     owner presses "Start free month". A club that HAD one is billed
+ *     again in the same transaction ("plan-billed", slice B3): back to
+ *     "trial" while its free month is still running, else "grace" with a
+ *     fresh 7 days, and the caller asks the billing contact for a card.
+ *     Pressing Standard again later (with the flag on) does the same, so
+ *     no club is left exempt for ever by a Free spell.
  *
  * Refused for a club that predates self-join (`approvedAt` NULL, Sutton
  * FC): it is never billed, so it has no plan to change.
  *
  * Works with BILLING_ENABLED off too: Free only ever makes a club less
  * billed, and Standard or Custom on an exempt club bills nobody.
- * Changing the price of a live Stripe subscription is slice B3.
+ * The Stripe side (a new price, or cancelling on Free) is
+ * `syncPlanToStripe` in club-billing-stripe.ts, run by the caller after
+ * this commits.
  */
 export async function setClubPlan(
   orgId: string,
@@ -321,11 +360,39 @@ export async function setClubPlan(
         if (!moved.ok) throw new Error(`[club-billing] ${orgId}: plan Free could not make the club exempt (${moved.reason})`);
         status = moved.to;
         resumed = moved.resumed;
+        // WHEN the club stopped being billed, in the same transaction: the
+        // webhook refunds only invoices paid after it (round-2 review N1).
+        await tx.billingEvent.create({
+          data: { id: `mt_exempt_${orgId}_${now.getTime()}`, type: EXEMPT_EVENT_TYPE, orgId, receivedAt: now, processedAt: now },
+        });
       }
       const pricePence = choice.plan === "custom" ? choice.pricePence : null;
       await tx.organisation.update({ where: { id: orgId }, data: { billingPlan: choice.plan, billingPricePence: pricePence } });
       console.log(`[club-billing] ${orgId}: plan ${org.billingPlan} -> ${choice.plan}${pricePence ? ` (${pricePence}p)` : ""}`);
-      return { ok: true, plan: choice.plan, pricePence, status, resumed };
+
+      // Slice B3, the B2 gap: an EXEMPT club that already had its free
+      // month, set to Standard or Custom, is billed again (the plan is
+      // written first, so the CHECK constraints hold at every statement).
+      // `nextBillingState` refuses it with the flag off, for a club never
+      // trialled (Start free month is its way in) and on Free.
+      let billedAgain: "trial" | "grace" | null = null;
+      if (choice.plan !== "free" && status === "exempt") {
+        const moved = await applyBillingEventTx(tx, orgId, { type: "plan-billed" }, now);
+        if (moved.ok && (moved.to === "trial" || moved.to === "grace")) {
+          status = moved.to;
+          billedAgain = moved.to;
+          if (moved.to === "grace") {
+            // The "plan-billed" DM, PENDING in this same transaction (review
+            // fix 10): the action sends it after commit, and a retry finds
+            // it still pending if that send failed.
+            await tx.billingNotice.createMany({
+              data: [{ orgId, kind: "plan-billed", cycleKey: now.toISOString() }],
+              skipDuplicates: true,
+            });
+          }
+        }
+      }
+      return { ok: true, plan: choice.plan, pricePence, status, resumed, billedAgain };
     },
     { timeout: TX_TIMEOUT_MS },
   );
@@ -438,6 +505,8 @@ export interface ClubBillingSnapshot {
     cardBrand: string | null;
     cardLast4: string | null;
     cardHolderUserId: string | null;
+    /** Stripe's word for the club's subscription (slice B3), or null. */
+    stripeSubscriptionStatus: string | null;
   } | null;
   cardHolderName: string | null;
   members: Array<{ userId: string; role: string; leftAt: Date | null; name: string | null }>;
@@ -468,6 +537,7 @@ export async function loadClubBillingSnapshot(orgId: string): Promise<ClubBillin
           cardBrand: true,
           cardLast4: true,
           cardHolderUserId: true,
+          stripeSubscriptionStatus: true,
         },
       },
     },
@@ -586,4 +656,150 @@ export async function loadBillingBanner(orgId: string, opts: { flagOn?: boolean 
     trialEndsAt: org.clubBilling?.trialEndsAt ?? null,
     graceEndsAt: org.clubBilling?.graceEndsAt ?? null,
   });
+}
+
+// ── Slice B3: the billing DMs (claimed once, then queued) ───────────────
+
+/** The billing contact's user id (4.5): the money collector, else the
+ *  owner, else null. Resolved now, never stored. */
+export async function loadBillingContactUserId(orgId: string): Promise<string | null> {
+  const snapshot = await loadClubBillingSnapshot(orgId);
+  return snapshot?.contact?.userId ?? null;
+}
+
+export type BillingNoticeKind =
+  | "card-added"
+  | "card-replaced"
+  | "resumed"
+  | "plan-billed"
+  | "trial-21"
+  | "trial-28"
+  | "trial-ended"
+  | "paused"
+  | "payment-failed"
+  | "payer-changed"
+  | "fee-tip";
+
+/** `BillingNotice.platformJobId` values: NULL is PENDING (written by a
+ *  state change, not sent yet); "claimed:<ISO time>" while a sender holds
+ *  it; "skipped:<why>" can never be sent; anything else is the PlatformJob
+ *  id. A claim older than CLAIM_STALE_MS was left by a sender that died
+ *  (round-2 review N6) and may be taken over. */
+const CLAIM_PREFIX = "claimed:";
+export const CLAIM_STALE_MS = 10 * 60 * 1000;
+
+function staleClaim(value: string | null, now: number): boolean {
+  if (!value?.startsWith(CLAIM_PREFIX)) return false;
+  const at = Date.parse(value.slice(CLAIM_PREFIX.length));
+  return Number.isFinite(at) && now - at > CLAIM_STALE_MS;
+}
+
+/**
+ * Queue ONE billing DM on the platform channel (purpose "billing"), to
+ * one club member's own phone. CLAIM FIRST, THEN QUEUE, on the
+ * `BillingNotice(orgId, kind, cycleKey)` row:
+ *
+ *   - a new row is created already claimed; an existing PENDING row (no
+ *     platformJobId: a state change wrote it in its own transaction) or a
+ *     STALE claim (older than 10 minutes: its sender died) is taken with a
+ *     compare-and-set; anything else is "already";
+ *   - queued: the row holds the PlatformJob id, so it is never sent twice;
+ *   - queueing THREW: the claim is RELEASED (back to pending) and the error
+ *     rethrown, so the retried webhook or action sends it;
+ *   - the recipient cannot be messaged: marked skipped, never retried.
+ *
+ * The only queuer of purpose "billing" (source guard). `text` is built
+ * with the recipient's name, in the club's language by the caller.
+ */
+export async function queueBillingDm(args: {
+  orgId: string;
+  kind: BillingNoticeKind;
+  cycleKey: string;
+  userId: string;
+  text: (recipient: { name: string | null }) => string;
+  sendAfter?: Date | null;
+}): Promise<"queued" | "already" | "no-phone" | "refused"> {
+  const where = { orgId: args.orgId, kind: args.kind, cycleKey: args.cycleKey };
+  const claim = `${CLAIM_PREFIX}${new Date().toISOString()}`;
+  let claimed = false;
+  try {
+    await db.billingNotice.create({ data: { ...where, platformJobId: claim }, select: { id: true } });
+    claimed = true;
+  } catch (err) {
+    if ((err as { code?: string }).code !== "P2002") throw err;
+  }
+  if (!claimed) {
+    const row = await db.billingNotice.findFirst({ where, select: { platformJobId: true } });
+    const current = row?.platformJobId ?? null;
+    if (row && (current === null || staleClaim(current, Date.now()))) {
+      const { count } = await db.billingNotice.updateMany({ where: { ...where, platformJobId: current }, data: { platformJobId: claim } });
+      claimed = count === 1;
+      if (claimed && current !== null) console.warn(`[club-billing] ${args.orgId}: ${args.kind} took over a stale claim (${current})`);
+    }
+    if (!claimed) return "already";
+  }
+  const mark = (platformJobId: string | null) =>
+    db.billingNotice.updateMany({ where: { ...where, platformJobId: claim }, data: { platformJobId } });
+
+  try {
+    const user = await db.user.findUnique({ where: { id: args.userId }, select: { name: true, phoneNumber: true } });
+    if (!user?.phoneNumber) {
+      await mark("skipped:no-phone");
+      console.warn(`[club-billing] ${args.orgId}: ${args.kind} DM not sent, ${args.userId} has no phone`);
+      return "no-phone";
+    }
+    const job = await queuePlatformDm({
+      phone: user.phoneNumber,
+      text: args.text({ name: user.name }),
+      purpose: "billing",
+      refId: `${args.orgId}:${args.kind}:${args.cycleKey}`,
+      sendAfter: args.sendAfter ?? null,
+    });
+    await mark(job.id);
+    console.log(`[club-billing] ${args.orgId}: ${args.kind} DM queued to ${args.userId}`);
+    return "queued";
+  } catch (err) {
+    if (err instanceof PlatformDmRefused) {
+      await mark("skipped:refused");
+      console.warn(`[club-billing] ${args.orgId}: ${args.kind} DM refused: ${err.reason}`);
+      return "refused";
+    }
+    await mark(null).catch(() => undefined); // release: the retry sends it
+    throw err;
+  }
+}
+
+/** Never send this pending notice (stale, superseded, no longer true, or
+ *  nobody to send it to). Only a still-pending row is touched. */
+export async function skipBillingNotice(orgId: string, kind: BillingNoticeKind, cycleKey: string, why: string): Promise<void> {
+  await db.billingNotice.updateMany({ where: { orgId, kind, cycleKey, platformJobId: null }, data: { platformJobId: `skipped:${why}` } });
+}
+
+/** When the club last became exempt through the plan control (Free), or
+ *  null. A subscription invoice paid AFTER this moment is money the club
+ *  should not have paid; one paid before is history (round-2 review N1). */
+export async function loadExemptSince(orgId: string): Promise<Date | null> {
+  const row = await db.billingEvent.findFirst({
+    where: { orgId, type: EXEMPT_EVENT_TYPE },
+    orderBy: { receivedAt: "desc" },
+    select: { receivedAt: true },
+  });
+  return row?.receivedAt ?? null;
+}
+
+/** BillingEvent rows MatchTime writes itself (ids "mt_..." never collide
+ *  with Stripe's "evt_..."). */
+export const EXEMPT_EVENT_TYPE = "mt.club-exempt";
+
+/** The pending (written, not yet sent) notices of the kinds a state change
+ *  leaves behind, for the caller to send (`flushPendingBillingNotices`). */
+export async function loadPendingBillingNotices(
+  orgId: string,
+): Promise<Array<{ kind: BillingNoticeKind; cycleKey: string; createdAt: Date }>> {
+  const rows = await db.billingNotice.findMany({
+    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed"] } },
+    select: { kind: true, cycleKey: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => ({ kind: r.kind as BillingNoticeKind, cycleKey: r.cycleKey, createdAt: r.createdAt }));
 }

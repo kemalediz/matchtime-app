@@ -35,6 +35,8 @@ const h = vi.hoisted(() => {
     organiserPickRound: { updateMany: vi.fn() },
     benchSlotOffer: { updateMany: vi.fn() },
     platformJob: { create: vi.fn() },
+    billingNotice: { createMany: vi.fn() },
+    billingEvent: { create: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
@@ -156,6 +158,25 @@ describe("setClubPlan: the platform owner's plan control (8.3, B2 note)", () => 
     expect(h.state.club).toMatchObject({ billingStatus: "exempt", billingPlan: "free", billingPricePence: null });
   });
 
+  it("a back-to-trial (free month still running) writes no pending DM", async () => {
+    setClub({ billingStatus: "exempt", billingPlan: "free" });
+    await setClubPlan("org1", { plan: "standard", pricePence: null }, NOW);
+    expect(m.billingNotice.createMany).not.toHaveBeenCalled();
+  });
+
+  it("round-2 N1: Free records WHEN the club became exempt, in the same transaction (the refund window)", async () => {
+    await setClubPlan("org1", { plan: "free", pricePence: null }, NOW);
+    expect(m.billingEvent.create).toHaveBeenCalledWith({
+      data: { id: `mt_exempt_org1_${NOW.getTime()}`, type: "mt.club-exempt", orgId: "org1", receivedAt: NOW, processedAt: NOW },
+    });
+  });
+
+  it("Free on a club that was already exempt records nothing", async () => {
+    setClub({ billingStatus: "exempt", billing: null });
+    await setClubPlan("org1", { plan: "free", pricePence: null }, NOW);
+    expect(m.billingEvent.create).not.toHaveBeenCalled();
+  });
+
   it("Free on a PAUSED club resumes it, in the same transaction", async () => {
     setClub({ billingStatus: "paused", billing: { trialEndsAt: APPROVED_AT, graceEndsAt: null, pausedReason: "no-card" } });
     const r = await setClubPlan("org1", { plan: "free", pricePence: null }, NOW);
@@ -170,15 +191,73 @@ describe("setClubPlan: the platform owner's plan control (8.3, B2 note)", () => 
     expect(h.state.log).toEqual(["lock-org", "plan:free"]);
   });
 
-  it("leaving Free: the plan first, the status stays exempt (no trial starts by itself)", async () => {
+  it("leaving Free, never trialled: the plan first, the status stays exempt (no trial starts by itself)", async () => {
     setClub({ billingStatus: "exempt", billingPlan: "free", billing: null });
     expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, NOW)).toMatchObject({
       ok: true,
       plan: "standard",
       status: "exempt",
+      billedAgain: null,
     });
-    expect(h.state.log).toEqual(["lock-org", "plan:standard"]);
+    // The second lock is the same transaction re-reading under its own
+    // lock (a no-op in Postgres) before deciding "plan-billed" does not apply.
+    expect(h.state.log).toEqual(["lock-org", "plan:standard", "lock-org"]);
     expect(m.clubBilling.create).not.toHaveBeenCalled();
+  });
+
+  // Slice B3, the gap found in B2: Free and back after the free month was
+  // used would leave the club exempt for ever ("Start free month" refuses a
+  // second free month). Now it is billed again, in the SAME transaction,
+  // plan first so the CHECK constraints hold at every statement.
+  it("leaving Free after the free month was used: plan first, then GRACE with a fresh 7 days", async () => {
+    const trialEndsAt = new Date(APPROVED_AT.getTime() + 30 * DAY);
+    const later = new Date(trialEndsAt.getTime() + 20 * DAY);
+    setClub({ billingStatus: "exempt", billingPlan: "free", billing: { trialEndsAt, graceEndsAt: null, pausedReason: null } });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, later)).toMatchObject({
+      ok: true,
+      plan: "standard",
+      status: "grace",
+      billedAgain: "grace",
+    });
+    expect(h.state.log).toEqual(["lock-org", "plan:standard", "lock-org", "status:grace"]);
+    expect(m.$transaction).toHaveBeenCalledTimes(1);
+    const patch = m.clubBilling.updateMany.mock.calls.at(-1)![0].data;
+    expect(patch.graceEndsAt).toEqual(new Date(later.getTime() + 7 * DAY));
+    expect(patch).toMatchObject({ paymentFailedAt: null, pausedAt: null, pausedReason: null });
+    // Review fix 10: the "plan-billed" DM is PENDING in the same transaction.
+    expect(m.billingNotice.createMany).toHaveBeenCalledWith({
+      data: [{ orgId: "org1", kind: "plan-billed", cycleKey: later.toISOString() }],
+      skipDuplicates: true,
+    });
+  });
+
+  it("leaving Free while the original free month is still running: back to TRIAL, its end kept", async () => {
+    setClub({ billingStatus: "exempt", billingPlan: "free" });
+    expect(await setClubPlan("org1", { plan: "custom", pricePence: 500 }, NOW)).toMatchObject({
+      ok: true,
+      status: "trial",
+      billedAgain: "trial",
+    });
+    expect(m.clubBilling.create).not.toHaveBeenCalled();
+  });
+
+  it("Standard pressed again on an exempt club with a used free month does the same (the way out of the old gap)", async () => {
+    const trialEndsAt = new Date(APPROVED_AT.getTime() + 30 * DAY);
+    setClub({ billingStatus: "exempt", billingPlan: "standard", billing: { trialEndsAt, graceEndsAt: null, pausedReason: null } });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, new Date(trialEndsAt.getTime() + DAY))).toMatchObject({
+      status: "grace",
+      billedAgain: "grace",
+    });
+  });
+
+  it("flag off: leaving Free bills nobody", async () => {
+    delete process.env.BILLING_ENABLED;
+    const trialEndsAt = new Date(APPROVED_AT.getTime() + 30 * DAY);
+    setClub({ billingStatus: "exempt", billingPlan: "free", billing: { trialEndsAt, graceEndsAt: null, pausedReason: null } });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, new Date(trialEndsAt.getTime() + DAY))).toMatchObject({
+      status: "exempt",
+      billedAgain: null,
+    });
   });
 
   it("Custom GBP 5 on a club in trial: plan and price, the state untouched", async () => {

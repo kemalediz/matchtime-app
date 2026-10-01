@@ -10,8 +10,10 @@
  * writer path (`setClubPlan`, `startTrial` in src/lib/club-billing.ts),
  * which refuses any club that predates self-join (Sutton FC).
  *
- * Nothing here messages anybody and nothing here calls Stripe (slice B3
- * changes the price of a live subscription and cancels one on Free).
+ * Slice B3: after a plan is saved, `syncPlanToStripe` swaps a live
+ * subscription's price (no proration, from the next month) or cancels it
+ * on Free; a club billed again after Free with its free month used up
+ * gets one DM to its billing contact asking for a card.
  *
  * "use server" modules may export async functions only.
  */
@@ -19,6 +21,8 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { setClubPlan, startTrial } from "@/lib/club-billing";
+import { flushPendingBillingNotices, syncPlanToStripe } from "@/lib/club-billing-stripe";
+import { billingStripeConfig } from "@/lib/stripe-billing";
 import { parsePlanChoice } from "@/lib/club-billing-rules";
 import { moneyLabel } from "@/lib/club-billing-view";
 import { dayLabel } from "@/lib/i18n/dates";
@@ -45,6 +49,11 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
       message: choice.reason === "unknown-plan" ? "That is not a plan." : "A custom price must be between £1.00 and £9.99.",
     };
   }
+  if (choice.plan === "custom" && !billingStripeConfig().productId) {
+    // A Custom price is made in Stripe under the club product; without it a
+    // card could never be taken at that price. Refuse before writing.
+    return { ok: false, message: "Custom prices need STRIPE_CLUB_PRODUCT_ID set (the MatchTime club product in Stripe). Nothing was saved." };
+  }
   const r = await setClubPlan(orgId, { plan: choice.plan, pricePence: choice.pricePence });
   revalidatePath("/admin/clubs");
   if (!r.ok) {
@@ -54,10 +63,32 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
     };
   }
   const label = r.plan === "free" ? "Free" : r.plan === "custom" ? `Custom ${moneyLabel(r.pricePence ?? 0)} a month` : "Standard £9.99 a month";
-  return {
-    ok: true,
-    message: `Plan saved: ${label}.${r.plan === "free" ? " The club is not billed." : ""}${r.resumed ? " MatchTime is back on in its group." : ""}`,
-  };
+  let message = `Plan saved: ${label}.${r.plan === "free" ? " The club is not billed." : ""}${r.resumed ? " MatchTime is back on in its group." : ""}`;
+
+  // The database is committed; now Stripe (a live subscription only).
+  try {
+    const synced = await syncPlanToStripe(orgId);
+    if (synced.action === "cancelled") message += " Its card subscription was cancelled.";
+    else if (synced.action === "price-changed") message += " The card is charged the new price from the next payment.";
+  } catch (err) {
+    console.error(`[club-billing-admin] ${orgId}: Stripe plan sync failed:`, err);
+    return { ok: false, message: `${message} Stripe could not be updated (${(err as Error).message}). Press Save plan again to retry.` };
+  }
+
+  // Any DM the change left pending ("plan-billed"), including one an
+  // earlier save failed to send. A failure here is logged; the next save
+  // (or webhook) sends it.
+  try {
+    await flushPendingBillingNotices(orgId);
+  } catch (err) {
+    console.error(`[club-billing-admin] ${orgId}: pending billing DM not sent yet:`, err);
+  }
+  if (r.billedAgain === "grace") {
+    message += " The free month was already used, so the club has 7 days to add a card.";
+  } else if (r.billedAgain === "trial") {
+    message += " The club is back in its free month.";
+  }
+  return { ok: true, message };
 }
 
 const START_REFUSED: Record<string, string> = {

@@ -19,7 +19,8 @@
  *                       how a number becomes verified. Capped at the
  *                       sign-up action (per phone, per IP, site per day).
  *   connect-reply,      only a number MatchTime already knows (a User with
- *   organiser-decision  that phone: a verified sign-up or a club member).
+ *   organiser-decision, that phone: a verified sign-up or a club member).
+ *   billing
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack           is the only door to Kemal's phone.
  *
@@ -57,7 +58,9 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
 /** DM purposes anything may queue, subject to the recipient rule above. */
-export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision"] as const;
+/** "billing": club fee DMs to the billing contact or card holder (club fee
+ *  billing, slice B3), queued only by `queueBillingDm` in club-billing.ts. */
+export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision", "billing"] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
 /** DM purposes only `queueOwnerDm` may write. */

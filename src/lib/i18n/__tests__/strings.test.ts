@@ -638,7 +638,6 @@ const SAMPLES: SampleArgs = {
   billing_btn_use_mine: null,
   billing_btn_update_card: null,
   billing_btn_remove_mine: null,
-  billing_btn_soon: null,
   billing_exempt: { club: "Sutton FC" },
   billing_open: null,
   billing_choose_collector: null,
@@ -646,6 +645,16 @@ const SAMPLES: SampleArgs = {
   billing_banner_past_due: { date: "Sat 7 Nov" },
   billing_banner_paused: null,
   billing_banner_link: null,
+  billing_notice_done: null,
+  billing_notice_replaced: null,
+  billing_notice_removed: null,
+  billing_notice_not_set_up: null,
+  billing_notice_already: null,
+  billing_notice_failed: null,
+  billing_dm_card_added: { name: "Colin", club: "Riverside FC", price: "£9.99", date: "Sat 31 Oct", paidNow: false, resumed: false, link: "https://matchtime.ai/r/abc" },
+  billing_dm_card_replaced: { name: "Colin", newName: "Pat", club: "Riverside FC" },
+  billing_dm_resumed: { club: "Riverside FC" },
+  billing_dm_plan_billed: { name: "Colin", club: "Riverside FC", price: "£9.99", date: "Sat 7 Nov", link: "https://matchtime.ai/r/abc" },
 };
 
 /** Render an entry with its sample arguments. */

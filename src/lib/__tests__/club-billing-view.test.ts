@@ -249,14 +249,39 @@ describe("billingButtons (8.1): which card buttons the page shows", () => {
     for (const status of ["trial", "grace", "paused"]) expect(billingButtons(state({ status }))).toEqual(["add-card"]);
   });
 
-  it("the contact with their own card: change or cancel; past due: update", () => {
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1" }))).toEqual(["change-card"]);
-    expect(billingButtons(state({ status: "past_due", cardHolderUserId: "u1" }))).toEqual(["update-card"]);
+  it("the contact with their own card AND the dedicated Portal configured: change or cancel", () => {
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", subscriptionStatus: "active", portalAvailable: true }))).toEqual(["change-card"]);
+  });
+
+  it("review fix 4: no Portal configuration, or no card of their own on file (null holder): setup mode, never the Portal", () => {
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", subscriptionStatus: "active", portalAvailable: false }))).toEqual(["use-mine"]);
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: null, subscriptionStatus: "active", portalAvailable: true }))).toEqual(["use-mine"]);
   });
 
   it("the contact with someone else's card: use mine", () => {
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "old" }))).toEqual(["use-mine"]);
-    expect(billingButtons(state({ status: "past_due", cardHolderUserId: "old" }))).toEqual(["use-mine"]);
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "old", subscriptionStatus: "active", portalAvailable: true }))).toEqual(["use-mine"]);
+  });
+
+  it("review fix 2: an UNPAID subscription always shows 'Update card and pay' (setup mode, open invoice retried)", () => {
+    for (const [status, sub] of [
+      ["past_due", "past_due"],
+      ["past_due", "unpaid"],
+      ["paused", "past_due"],
+      ["paused", "unpaid"],
+      ["grace", "incomplete"],
+    ] as const) {
+      for (const holder of ["u1", "old", null]) {
+        expect(billingButtons(state({ status, subscriptionStatus: sub, cardHolderUserId: holder, portalAvailable: true })), `${status}/${sub}/${holder}`).toEqual(["update-card"]);
+      }
+    }
+    expect(t("en").billing_btn_update_card).toBe("Update card and pay");
+    expect(t("tr").billing_btn_update_card).toBe("Kartı güncelle ve öde");
+  });
+
+  it("paused or grace with no live subscription: Add a card", () => {
+    for (const sub of [null, "canceled", "incomplete_expired"]) {
+      expect(billingButtons(state({ status: "paused", subscriptionStatus: sub }))).toEqual(["add-card"]);
+    }
   });
 
   it("an old card holder: remove mine, nothing else", () => {
@@ -308,7 +333,12 @@ describe("the web strings in both tables", () => {
         s.billing_btn_use_mine,
         s.billing_btn_update_card,
         s.billing_btn_remove_mine,
-        s.billing_btn_soon,
+        s.billing_notice_done,
+        s.billing_notice_replaced,
+        s.billing_notice_removed,
+        s.billing_notice_not_set_up,
+        s.billing_notice_already,
+        s.billing_notice_failed,
         s.billing_open,
         s.billing_choose_collector,
         s.billing_banner_paused,
@@ -349,12 +379,12 @@ function club(over: Partial<BillingViewClub> = {}): BillingViewClub {
 describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   const tip = tipFor({ playersPerTeam: 7, feePerPlayer: 7 });
 
-  it("the contact: the state, the tip and Add a card (a placeholder in B2)", () => {
+  it("the contact: the state, the tip and Add a card (live since B3, no 'soon' line)", () => {
     const v = billingPageView("en", club(), "contact", "colin", tip);
     expect(v.exempt).toBeNull();
     expect(v.lines).toEqual(["Free month until Sat 31 Oct. Then £9.99 a month for the whole group."]);
     expect(v.buttons).toEqual([{ key: "add-card", label: "Add a card" }]);
-    expect(v.soon).toBe("Card payments open here soon.");
+    expect(v).not.toHaveProperty("soon");
     expect(v.tip).toContain("*20p a player per game*");
     expect(v.tip).toContain("*£7.20*");
     expect(v.who).toBeNull();
@@ -363,7 +393,7 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   it("an admin who is not the contact: state, who pays, tip, NO buttons", () => {
     const v = billingPageView("en", club(), "viewer", "owner", tip);
     expect(v.buttons).toEqual([]);
-    expect(v.soon).toBeNull();
+    expect(v).not.toHaveProperty("soon");
     expect(v.who).toBe("Colin looks after the card.");
     expect(v.tip).not.toBeNull();
   });

@@ -19,6 +19,8 @@ import type { Lang } from "./i18n/lang";
 import {
   GRACE_DAYS,
   STANDARD_PRICE_PENCE,
+  isLiveSubscriptionStatus,
+  isUnpaidSubscriptionStatus,
   planPricePence,
   type BillingAccessRole,
   type ClubFeeTip,
@@ -84,6 +86,11 @@ export interface BillingStateInput {
   /** Who is looking. */
   viewerUserId: string;
   role: BillingAccessRole;
+  /** Stripe's word for the club's subscription, or null (slice B3). */
+  subscriptionStatus?: string | null;
+  /** The dedicated Customer Portal configuration is set (review fix 4):
+   *  without it there is no Portal button at all. */
+  portalAvailable?: boolean;
 }
 
 function graceDate(v: { trialEndsAt: Date | null; graceEndsAt: Date | null }): Date | null {
@@ -136,23 +143,31 @@ export function billingStateLines(lang: LangIn, v: BillingStateInput): string[] 
 
 export type BillingButton = "add-card" | "change-card" | "use-mine" | "update-card" | "remove-mine";
 
-/** The card buttons the page shows this viewer (8.1). Slice B2 renders
- *  them disabled: the Stripe calls behind them are slice B3. */
+/**
+ * The card buttons the page shows this viewer (8.1). Each one is a server
+ * action that re-checks who the viewer is (slice B3).
+ *
+ *   add-card      no live subscription (trial, grace, paused)
+ *   update-card   "Update card and pay": the subscription is UNPAID, in any
+ *                 state; setup mode, then the open invoice is retried, so a
+ *                 club that cannot pay is never a dead end (review fix 2)
+ *   change-card   the Customer Portal: ONLY the contact whose own card is on
+ *                 file, and only with the dedicated Portal configuration
+ *                 (review fix 4)
+ *   use-mine      setup mode: somebody else's card, no card on file, or no
+ *                 Portal configured
+ *   remove-mine   an old card holder
+ */
 export function billingButtons(v: BillingStateInput): BillingButton[] {
   if (v.role === "card-holder") return ["remove-mine"];
   if (v.role !== "contact") return [];
-  switch (v.status) {
-    case "trial":
-    case "grace":
-    case "paused":
-      return ["add-card"];
-    case "subscribed":
-      return [ownCard(v) ? "change-card" : "use-mine"];
-    case "past_due":
-      return [ownCard(v) ? "update-card" : "use-mine"];
-    default:
-      return [];
-  }
+  const sub = v.subscriptionStatus ?? null;
+  const known = ["trial", "grace", "paused", "subscribed", "past_due"];
+  if (!known.includes(v.status)) return [];
+  if (isUnpaidSubscriptionStatus(sub) || v.status === "past_due") return ["update-card"];
+  const mineWithPortal = v.cardHolderUserId !== null && v.cardHolderUserId === v.viewerUserId && v.portalAvailable === true;
+  if (v.status === "subscribed" || isLiveSubscriptionStatus(sub)) return [mineWithPortal ? "change-card" : "use-mine"];
+  return ["add-card"];
 }
 
 /** The admin banner (8.2): grace, past due and paused only. */
@@ -188,6 +203,7 @@ export interface BillingViewClub {
     cardBrand: string | null;
     cardLast4: string | null;
     cardHolderUserId: string | null;
+    stripeSubscriptionStatus?: string | null;
   } | null;
   cardHolderName: string | null;
 }
@@ -203,13 +219,18 @@ export interface BillingPageView {
   /** The old card holder's line. */
   holderNote: string | null;
   buttons: Array<{ key: BillingButton; label: string }>;
-  /** Slice B2: the card buttons are placeholders until slice B3. */
-  soon: string | null;
   tip: string | null;
 }
 
-function stateInput(c: BillingViewClub, viewerUserId: string, role: BillingAccessRole): BillingStateInput {
+function stateInput(
+  c: BillingViewClub,
+  viewerUserId: string,
+  role: BillingAccessRole,
+  portalAvailable = false,
+): BillingStateInput {
   return {
+    subscriptionStatus: c.billing?.stripeSubscriptionStatus ?? null,
+    portalAvailable,
     status: c.status,
     plan: c.plan,
     pricePence: c.pricePence,
@@ -254,13 +275,14 @@ export function billingPageView(
   role: BillingAccessRole,
   viewerUserId: string,
   tip: ClubFeeTip | null,
+  opts: { portalAvailable?: boolean } = {},
 ): BillingPageView {
   const s = t(lang);
   const base = { title: s.billing_page_title, club: c.club };
   if (role === "exempt-owner") {
-    return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], soon: null, tip: null };
+    return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], tip: null };
   }
-  const v = stateInput(c, viewerUserId, role);
+  const v = stateInput(c, viewerUserId, role, opts.portalAvailable ?? false);
   const buttons = billingButtons(v).map((key) => ({ key, label: BUTTON_LABEL[key](s) }));
   return {
     ...base,
@@ -270,7 +292,6 @@ export function billingPageView(
     holderNote:
       role === "card-holder" ? s.billing_card_holder_note({ club: c.club, contact: c.contact?.name ?? "" }) : null,
     buttons,
-    soon: buttons.length > 0 ? s.billing_btn_soon : null,
     tip: tip && role !== "card-holder" ? clubFeeTipText(lang, tip) : null,
   };
 }
@@ -304,4 +325,69 @@ export function billingCardView(lang: LangIn, c: BillingViewClub, tip: ClubFeeTi
     openLabel: s.billing_open,
     chooseCollectorLabel: c.contact?.via === "collector" ? null : s.billing_choose_collector,
   };
+}
+
+// ── Slice B3: the webhook's DMs and the page's notices ──────────────────
+
+/** "Card added" (7.3), to whoever added the card. `firstPaymentOn` null
+ *  means the first payment was taken at once (grace, or after a pause). */
+export function cardAddedText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; firstPaymentOn: Date | null; resumed: boolean; link: string },
+): string {
+  return t(lang).billing_dm_card_added({
+    name: p.name,
+    club: p.club,
+    price: moneyLabel(p.pricePence),
+    date: p.firstPaymentOn ? dayLabel(lang, p.firstPaymentOn) : "",
+    paidNow: p.firstPaymentOn === null,
+    resumed: p.resumed,
+    link: p.link,
+  });
+}
+
+/** "Card replaced" (7.3), to the old card holder. No link. */
+export function cardReplacedText(lang: LangIn, p: { name: string | null; newName: string; club: string }): string {
+  return t(lang).billing_dm_card_replaced(p);
+}
+
+/** "Resumed" (7.3), to the billing contact, after a recovered payment. */
+export function resumedText(lang: LangIn, p: { club: string }): string {
+  return t(lang).billing_dm_resumed(p);
+}
+
+/** Billed again after Free with the free month used up: a fresh grace
+ *  week, and a card asked for. */
+export function planBilledText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; graceEndsAt: Date; link: string },
+): string {
+  return t(lang).billing_dm_plan_billed({
+    name: p.name,
+    club: p.club,
+    price: moneyLabel(p.pricePence),
+    date: dayLabel(lang, p.graceEndsAt),
+    link: p.link,
+  });
+}
+
+export type BillingPageNotice = "done" | "replaced" | "removed" | "not-set-up" | "already" | "failed";
+
+/** The line the billing page shows after a card action. */
+export function billingNoticeText(lang: LangIn, n: BillingPageNotice): string {
+  const s = t(lang);
+  switch (n) {
+    case "done":
+      return s.billing_notice_done;
+    case "replaced":
+      return s.billing_notice_replaced;
+    case "removed":
+      return s.billing_notice_removed;
+    case "not-set-up":
+      return s.billing_notice_not_set_up;
+    case "already":
+      return s.billing_notice_already;
+    case "failed":
+      return s.billing_notice_failed;
+  }
 }

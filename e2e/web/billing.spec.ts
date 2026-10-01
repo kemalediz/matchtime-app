@@ -3,7 +3,7 @@
  * MDs/club-fee-billing-plan-2026-10-01.md, sections 4.5, 8.1 to 8.3.
  *
  *   1. /billing/[orgId] per role: the money collector who is a PLAYER is
- *      the contact (full view, card buttons disabled until slice B3) and
+ *      the contact (full view, live card buttons since slice B3) and
  *      still cannot open /admin; the owner reads only; an old card holder
  *      sees Remove my card; a plain player and a non-member get a 404.
  *   2. The /admin/settings billing card for OWNER and ADMIN.
@@ -14,7 +14,8 @@
  *   6. /admin/clubs: the billing row, AI spend, Plan (Custom, Free,
  *      Standard) and Start free month, for the platform owner only.
  *
- * Nothing here calls Stripe and nothing messages anyone.
+ * Nothing here calls Stripe and nothing messages anyone. The card buttons
+ * Stripe side (fake adapter, signed webhooks) is e2e/web/billing-stripe.spec.ts.
  */
 import type { BrowserContext } from "@playwright/test";
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
@@ -129,7 +130,7 @@ test.afterAll(() => {
 });
 
 test.describe("/billing/[orgId] per role", () => {
-  test("the money collector, a PLAYER, is the contact: state, tip, disabled Add a card; /admin still redirects", async ({ page }) => {
+  test("the money collector, a PLAYER, is the contact: state, tip, Add a card; /admin still redirects", async ({ page }) => {
     await signInAs(page, USER.colin, `/billing/${ORG}`);
     await page.waitForURL(`**/billing/${ORG}`);
     const billing = page.getByTestId("billing-page");
@@ -140,8 +141,8 @@ test.describe("/billing/[orgId] per role", () => {
     );
     const add = page.getByTestId("billing-btn-add-card");
     await expect(add).toBeVisible();
-    await expect(add).toBeDisabled();
-    await expect(page.getByText("Card payments open here soon.")).toBeVisible();
+    await expect(add).toBeEnabled();
+    await expect(page.getByText("Card payments open here soon.")).toHaveCount(0);
     const tip = page.getByTestId("billing-tip");
     await expect(tip).toContainText("your weekly 7-a-side is 14 players and about 4 games a month");
     await expect(tip).toContainText("20p a player per game");
@@ -166,7 +167,7 @@ test.describe("/billing/[orgId] per role", () => {
     await setState(`UPDATE "Organisation" SET "paymentHolderId"=NULL WHERE id=$1`, [ORG]);
     await signInAs(page, USER.owner, `/billing/${ORG}`);
     await expect(page.getByTestId("billing-page")).toHaveAttribute("data-role", "contact", { timeout: 30_000 });
-    await expect(page.getByTestId("billing-btn-add-card")).toBeDisabled();
+    await expect(page.getByTestId("billing-btn-add-card")).toBeEnabled();
   });
 
   test("an admin reads only", async ({ page }) => {
@@ -189,7 +190,7 @@ test.describe("/billing/[orgId] per role", () => {
     await expect(page.getByTestId("billing-holder-note")).toHaveText(
       "Your card still pays Billing Sevens's MatchTime fee until Colin Sevens adds theirs.",
     );
-    await expect(page.getByTestId("billing-btn-remove-mine")).toBeDisabled();
+    await expect(page.getByTestId("billing-btn-remove-mine")).toBeEnabled();
     await expect(page.getByTestId("billing-tip")).toHaveCount(0);
 
     await context.clearCookies();
@@ -198,7 +199,7 @@ test.describe("/billing/[orgId] per role", () => {
     await expect(page.getByTestId("billing-state")).toHaveText(
       "£9.99 a month, paid with Elvin Sevens's card until you put yours on. Next payment Fri 1 Mar.",
     );
-    await expect(page.getByTestId("billing-btn-use-mine")).toBeDisabled();
+    await expect(page.getByTestId("billing-btn-use-mine")).toBeEnabled();
     // The card's last four are only ever shown to its holder.
     await expect(page.getByTestId("billing-page")).not.toContainText("4242");
   });
@@ -356,11 +357,16 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
 
     await row.getByLabel("Plan", { exact: true }).selectOption("standard");
     await row.getByRole("button", { name: "Save plan" }).click();
-    await expect(page.getByText("Plan saved: Standard £9.99 a month.")).toBeVisible({ timeout: 30_000 });
-    // Leaving Free does not start billing: the club stays exempt.
+    // Slice B3: leaving Free while the club's one free month is still
+    // running puts it back in that month (its end kept); no second free
+    // month is ever started.
+    await expect(page.getByText("Plan saved: Standard £9.99 a month. The club is back in its free month.")).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingPlan","billingStatus" FROM "Organisation" WHERE id=$1`, [ORG])).toEqual({
       billingPlan: "standard",
-      billingStatus: "exempt",
+      billingStatus: "trial",
+    });
+    expect(await db.one(`SELECT "trialEndsAt" FROM "ClubBilling" WHERE "orgId"=$1`, [ORG])).toEqual({
+      trialEndsAt: new Date("2030-01-31T12:00:00Z"),
     });
     // It had its free month, so there is no "Start free month" for it.
     await expect(row.getByRole("button", { name: "Start free month" })).toHaveCount(0);
