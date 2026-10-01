@@ -92,6 +92,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
 import { buildShortMagicLinkUrl } from "@/lib/short-link";
 import { answerScopedQuestion } from "@/lib/dm-qa";
@@ -474,8 +475,14 @@ async function handleAnalyzeRequest(request: Request) {
     if (onb) return NextResponse.json(onb);
   }
 
+  // Club fee billing (B1, plan 4.3 point 4): a billing-paused club's batch
+  // is ignored here, before any model call, even if a stale Pi forwarded
+  // it. `billingQuietWhere()` is empty while BILLING_ENABLED is off. (The
+  // live-org check in handleOnboardingIfApplicable deliberately keeps
+  // seeing a paused club, so its group can never fall through to the
+  // in-group setup.)
   const org = await db.organisation.findFirst({
-    where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true },
+    where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
     // `language`: the squad post composed from the rows below speaks
     // the group's language (Phase 2 of the multi-language design).
     select: { id: true, name: true, language: true },

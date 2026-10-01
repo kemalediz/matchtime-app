@@ -3,12 +3,37 @@
  * such as org-lifecycle.ts can share the one definition of "approved".
  * Everything here is re-exported from club-approval.ts, which is the
  * module every other caller should import. See that file for the design.
+ *
+ * Club fee billing (slice B1, 2026-10-01) adds the SERVING gate: approved
+ * AND not billing-paused. "Paused" is read only through
+ * `isBillingPaused` / `billingQuietWhere` (club-billing-rules.ts), which
+ * are false / empty while BILLING_ENABLED is off, so with the flag off
+ * every gate below is exactly the approval gate it was before.
  */
+import { BILLING_NOT_PAUSED_WHERE, isBillingEnabled, isBillingPaused } from "./club-billing-rules";
 export const APPROVAL_STATUSES = ["draft", "pending", "approved", "rejected", "suspended"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
 /** The one Prisma `where` fragment for "this club is approved". */
 export const APPROVED_CLUB_WHERE = { approvalStatus: "approved" } as const;
+
+/**
+ * Approved AND not billing-paused (plan section 4.3): the clubs MatchTime
+ * serves. Use `servingClubWhere()` in queries, never this constant
+ * directly: the function honours the BILLING_ENABLED kill switch.
+ */
+export const SERVING_CLUB_WHERE = { ...APPROVED_CLUB_WHERE, ...BILLING_NOT_PAUSED_WHERE } as const;
+
+/**
+ * The Prisma `where` fragment for "MatchTime serves this club". With
+ * BILLING_ENABLED off it IS `APPROVED_CLUB_WHERE` (the same object), so
+ * every query that switched to it is byte for byte today's.
+ */
+export function servingClubWhere(
+  env: Record<string, string | undefined> = process.env,
+): typeof APPROVED_CLUB_WHERE | typeof SERVING_CLUB_WHERE {
+  return isBillingEnabled(env) ? SERVING_CLUB_WHERE : APPROVED_CLUB_WHERE;
+}
 
 /** A club created through self-join that has not been linked to a group
  *  yet (or was removed from it while pending). Slice 6. */
@@ -44,12 +69,20 @@ export function isClubApproved(org: { approvalStatus: string | null | undefined 
 
 /**
  * May MatchTime act for this club on its own initiative? Approved AND
- * not dormant. Deliberately blind to the mute switch, for the reason in
- * org-lifecycle.ts: muting a live club must never cost it a fixture.
+ * not dormant AND not billing-paused (club fee billing, slice B1; never
+ * paused while BILLING_ENABLED is off). Deliberately blind to the mute
+ * switch, for the reason in org-lifecycle.ts: muting a live club must
+ * never cost it a fixture.
+ *
+ * `billingStatus` is a REQUIRED key so every caller has to select it;
+ * a caller that forgot would silently ignore the pause.
  */
 export function isClubOperational(org: {
   approvalStatus: string | null | undefined;
   dormantAt: Date | null | undefined;
+  billingStatus: string | null | undefined;
 }): boolean {
-  return isClubApproved(org) && (org.dormantAt === null || org.dormantAt === undefined);
+  return (
+    isClubApproved(org) && (org.dormantAt === null || org.dormantAt === undefined) && !isBillingPaused(org)
+  );
 }

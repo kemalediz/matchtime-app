@@ -94,6 +94,7 @@ export async function notifyAdminsOfAiCap(orgId: string, now: Date = new Date())
         language: true,
         approvalStatus: true,
         dormantAt: true,
+        billingStatus: true,
         whatsappBotEnabled: true,
         whatsappGroupId: true,
       },

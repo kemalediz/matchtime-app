@@ -321,6 +321,11 @@ async function runSuite(): Promise<number> {
     // And the organiser-pick settings (slice 2b): each one of its choices.
     console.log("[e2e] arming the organiser-pick CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "organiser-pick-check.sql"));
+    // And the club fee billing invariants (slice B1): a state is one of
+    // six, a plan one of three, a custom price only on a custom plan, and
+    // a Free plan is always exempt.
+    console.log("[e2e] arming the club-billing CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "org-billing-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {

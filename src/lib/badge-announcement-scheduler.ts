@@ -98,7 +98,7 @@ export async function computeBadgeAnnouncements(args: {
   // initiative, even with the bot switched on.
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { approvalStatus: true, dormantAt: true },
+    select: { approvalStatus: true, dormantAt: true, billingStatus: true },
   });
   if (!org || !isClubOperational(org)) return [];
 

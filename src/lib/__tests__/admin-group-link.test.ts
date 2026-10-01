@@ -314,3 +314,51 @@ describe("codes, unlinking and removal", () => {
     expect(await loadAdminGroups()).toEqual([{ groupId: HQ, orgId: "org-fnf" }]);
   });
 });
+
+describe("club fee billing (B1): a paused club cannot link an admin group", () => {
+  const SAVED = process.env.BILLING_ENABLED;
+  afterAll(() => {
+    if (SAVED === undefined) delete process.env.BILLING_ENABLED;
+    else process.env.BILLING_ENABLED = SAVED;
+  });
+
+  it("flag on: a valid code of a paused club links nothing and says nothing", async () => {
+    process.env.BILLING_ENABLED = "1";
+    world({ code: { billingStatus: "paused" } as Partial<typeof FNF> });
+    const r = await send("@Match Time admin group k7p3qx");
+    expect(r).toEqual({ outcome: "ignored", replyText: null, reason: "club-billing-paused" });
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("flag on: an exempt (Sutton-shaped) club links as before", async () => {
+    process.env.BILLING_ENABLED = "1";
+    world({ code: { billingStatus: "exempt" } as Partial<typeof FNF> });
+    expect((await send("@Match Time admin group k7p3qx")).outcome).toBe("linked");
+  });
+
+  it("flag off: a club whose column says paused links as before", async () => {
+    delete process.env.BILLING_ENABLED;
+    world({ code: { billingStatus: "paused" } as Partial<typeof FNF> });
+    expect((await send("@Match Time admin group k7p3qx")).outcome).toBe("linked");
+  });
+
+  it("candidate detection: flag on, a paused club's open code does not count; flag off, today's query", async () => {
+    world();
+    delete process.env.BILLING_ENABLED;
+    await detectAdminGroupCandidate({ addedByPhone: STRANGER_PHONE, participants: [], now: NOW });
+    expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({
+      approvalStatus: "approved",
+      adminGroupLinkCode: { not: null },
+      adminGroupLinkCodeExpiresAt: { gt: NOW },
+    });
+    dbMock.organisation.findMany.mockClear();
+    process.env.BILLING_ENABLED = "1";
+    await detectAdminGroupCandidate({ addedByPhone: STRANGER_PHONE, participants: [], now: NOW });
+    expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({
+      approvalStatus: "approved",
+      billingStatus: { not: "paused" },
+      adminGroupLinkCode: { not: null },
+      adminGroupLinkCodeExpiresAt: { gt: NOW },
+    });
+  });
+});

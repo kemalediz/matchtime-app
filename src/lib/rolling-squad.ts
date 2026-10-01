@@ -22,7 +22,7 @@
  * engineering must not cost a club its squad. Posts stay muted by it.
  */
 import { db } from "./db";
-import { APPROVED_CLUB_WHERE } from "./club-approval-state";
+import { servingClubWhere } from "./club-approval-state";
 import { formatLondon } from "./london-time";
 import { recordAttendanceEvent } from "./attendance-events";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
@@ -184,7 +184,7 @@ type FixtureRow = {
  */
 export async function seedDueRollingSquads(now: Date = new Date()): Promise<{ seeded: number }> {
   const orgs = await db.organisation.findMany({
-    where: { ...APPROVED_CLUB_WHERE, rollingSquadEnabled: true, dormantAt: null },
+    where: { ...servingClubWhere(), rollingSquadEnabled: true, dormantAt: null },
     select: { id: true },
   });
 

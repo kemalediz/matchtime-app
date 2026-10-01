@@ -14,6 +14,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { isMatchClubBillingPaused } from "@/lib/club-billing";
 import { normalisePhone } from "@/lib/phone";
 
 export async function POST(request: Request) {
@@ -128,6 +129,14 @@ export async function POST(request: Request) {
       data: { paidAt: optionName ? new Date() : null },
     });
     return NextResponse.json({ ok: true, action: optionName ? "paid" : "unpaid" });
+  }
+
+  // Club fee billing (B1): a club paused for the club fee records no MoM
+  // vote. (A payment tick above IS recorded while paused, plan 4.3: it is
+  // money a player actually paid, and that branch sends nothing.) No query
+  // while BILLING_ENABLED is off.
+  if (await isMatchClubBillingPaused(matchId)) {
+    return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
   }
 
   // No option means the user un-voted — delete the MoMVote.

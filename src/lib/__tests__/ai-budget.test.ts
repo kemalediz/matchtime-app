@@ -3,7 +3,7 @@
  * failure mode. The SQL itself (atomic reservation under concurrency) is
  * exercised against a real Postgres by `e2e/api/ai-daily-cap.spec.ts`.
  */
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
@@ -49,6 +49,8 @@ const sutton = {
   whatsappGroupId: "120363000000000000@g.us",
   approvalStatus: "approved",
   approvedAt: null as Date | null,
+  /** Club fee billing (B1): every pre-billing club reads the default. */
+  billingStatus: "exempt",
 };
 
 describe("aiAllowanceUsd: how much a club may spend today", () => {
@@ -381,3 +383,49 @@ describe("the cap tripping tells the club's admins (via ai-cap-notice)", () => {
     await expect(ledger.reserve("org-1", "router")).rejects.toBeInstanceOf(AiBudgetExceededError);
   });
 });
+
+describe("aiAllowanceUsd and club fee billing (B1, plan 4.3 point 5)", () => {
+  const SAVED = { billing: process.env.BILLING_ENABLED, cap: process.env.AI_DAILY_CAP_DISABLED };
+  afterEach(() => {
+    if (SAVED.billing === undefined) delete process.env.BILLING_ENABLED;
+    else process.env.BILLING_ENABLED = SAVED.billing;
+    if (SAVED.cap === undefined) delete process.env.AI_DAILY_CAP_DISABLED;
+    else process.env.AI_DAILY_CAP_DISABLED = SAVED.cap;
+  });
+  const paused = { ...sutton, billingStatus: "paused" };
+
+  it("flag on: a paused club may spend $0", () => {
+    process.env.BILLING_ENABLED = "1";
+    delete process.env.AI_DAILY_CAP_DISABLED;
+    expect(aiAllowanceUsd(paused, NOW)).toBe(0);
+  });
+  it("flag on: neither the per-club override nor the global switch lifts it", () => {
+    process.env.BILLING_ENABLED = "1";
+    expect(aiAllowanceUsd({ ...paused, aiDailyCapUsd: 5 }, NOW)).toBe(0);
+    process.env.AI_DAILY_CAP_DISABLED = "1";
+    expect(aiAllowanceUsd(paused, NOW)).toBe(0);
+    expect(aiAllowanceUsd({ ...paused, aiDailyCapUsd: 5 }, NOW)).toBe(0);
+  });
+  it("flag on: Sutton FC (exempt) and every other billed state keep their allowance", () => {
+    process.env.BILLING_ENABLED = "1";
+    delete process.env.AI_DAILY_CAP_DISABLED;
+    expect(aiAllowanceUsd(sutton, NOW)).toBe(DAILY_CAP_USD);
+    expect(aiAllowanceUsd({ ...sutton, aiDailyCapUsd: 1.5 }, NOW)).toBe(1.5);
+    for (const s of ["trial", "grace", "subscribed", "past_due"]) {
+      expect(aiAllowanceUsd({ ...sutton, billingStatus: s }, NOW)).toBe(DAILY_CAP_USD);
+    }
+  });
+  it("flag off: a club whose column says paused spends exactly as before", () => {
+    delete process.env.BILLING_ENABLED;
+    delete process.env.AI_DAILY_CAP_DISABLED;
+    expect(aiAllowanceUsd(paused, NOW)).toBe(aiAllowanceUsd(sutton, NOW));
+    expect(aiAllowanceUsd({ ...paused, aiDailyCapUsd: 1.5 }, NOW)).toBe(1.5);
+    process.env.AI_DAILY_CAP_DISABLED = "1";
+    expect(aiAllowanceUsd(paused, NOW)).toBe(50);
+  });
+  it("the approval check still comes first", () => {
+    process.env.BILLING_ENABLED = "1";
+    expect(aiAllowanceUsd({ ...sutton, approvalStatus: "pending" }, NOW)).toBe(0);
+  });
+});
+

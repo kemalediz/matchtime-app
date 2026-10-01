@@ -41,7 +41,7 @@ const CHURNED = new Date("2026-06-18T12:00:00Z"); // the day Sutton Lads went
 
 const candidate = (over: Partial<FixtureCandidate> = {}): FixtureCandidate => ({
   isActive: true,
-  org: { dormantAt: null, approvalStatus: "approved" },
+  org: { dormantAt: null, approvalStatus: "approved", billingStatus: "exempt" },
   ...over,
 });
 
@@ -74,14 +74,14 @@ describe("fixtureSkipReason", () => {
   });
 
   it("a dormant org's active activity does NOT generate", () => {
-    expect(fixtureSkipReason(candidate({ org: { dormantAt: CHURNED, approvalStatus: "approved" } }))).toBe("org-dormant");
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: CHURNED, approvalStatus: "approved", billingStatus: "exempt" } }))).toBe("org-dormant");
   });
 
   it("a MUTED but live org still generates — muting is not churn", () => {
     // The regression that matters most. Mute is `whatsappBotEnabled`,
     // which this rule deliberately cannot see; the only way to be
     // skipped is `dormantAt`.
-    expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus: "approved" } }))).toBeNull();
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus: "approved", billingStatus: "exempt" } }))).toBeNull();
   });
 
   it("an inactive activity in a live org does NOT generate — unchanged behaviour", () => {
@@ -90,16 +90,16 @@ describe("fixtureSkipReason", () => {
 
   it("an unapproved club's active activity does NOT generate (self-join slice 1)", () => {
     for (const approvalStatus of ["draft", "pending", "rejected", "suspended"]) {
-      expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus } }))).toBe("org-not-approved");
+      expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus, billingStatus: "exempt" } }))).toBe("org-not-approved");
     }
   });
 
   it("Sutton FC's shape (approved by the migration default, live) still generates", () => {
-    expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus: "approved" } }))).toBeNull();
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: null, approvalStatus: "approved", billingStatus: "exempt" } }))).toBeNull();
   });
 
   it("dormancy is reported before approval: the club being gone is the bigger fact", () => {
-    expect(fixtureSkipReason(candidate({ org: { dormantAt: CHURNED, approvalStatus: "suspended" } }))).toBe(
+    expect(fixtureSkipReason(candidate({ org: { dormantAt: CHURNED, approvalStatus: "suspended", billingStatus: "exempt" } }))).toBe(
       "org-dormant",
     );
   });
@@ -107,7 +107,7 @@ describe("fixtureSkipReason", () => {
   it("reports the org, not the activity, when both are off", () => {
     // The club being gone is the bigger fact and the one worth counting.
     expect(
-      fixtureSkipReason(candidate({ isActive: false, org: { dormantAt: CHURNED, approvalStatus: "approved" } })),
+      fixtureSkipReason(candidate({ isActive: false, org: { dormantAt: CHURNED, approvalStatus: "approved", billingStatus: "exempt" } })),
     ).toBe("org-dormant");
   });
 });
@@ -115,7 +115,7 @@ describe("fixtureSkipReason", () => {
 describe("partitionGeneratable", () => {
   const live = { id: "sutton-fc", ...candidate() };
   const muted = { id: "sutton-fc-muted", ...candidate() };
-  const dormant = { id: "sutton-lads", ...candidate({ org: { dormantAt: CHURNED, approvalStatus: "approved" } }) };
+  const dormant = { id: "sutton-lads", ...candidate({ org: { dormantAt: CHURNED, approvalStatus: "approved", billingStatus: "exempt" } }) };
   const inactive = { id: "old-7aside-format", ...candidate({ isActive: false }) };
 
   it("splits generatable from skipped and keeps the reason for each skip", () => {
@@ -133,7 +133,7 @@ describe("partitionGeneratable", () => {
   });
 
   it("counts unapproved-org skips separately too", () => {
-    const pending = { id: "self-join-pending", ...candidate({ org: { dormantAt: null, approvalStatus: "pending" } }) };
+    const pending = { id: "self-join-pending", ...candidate({ org: { dormantAt: null, approvalStatus: "pending", billingStatus: "exempt" } }) };
     const out = partitionGeneratable([live, pending, dormant]);
     expect(out.generate.map((a) => a.id)).toEqual(["sutton-fc"]);
     expect(out.skippedNotApprovedOrgs).toBe(1);

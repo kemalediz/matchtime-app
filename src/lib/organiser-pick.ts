@@ -36,6 +36,7 @@ import { loadAdminChannel, sendAdminNotice } from "./admin-channel";
 import { resolveAdminNoticeTargets } from "./admin-channel-rules";
 import { resolveSenderUserIds } from "./admin-group-link";
 import { isClubOperational } from "./club-approval-state";
+import { billingQuietWhere, isBillingPaused } from "./club-billing-rules";
 import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { weeklyDeadlinesFor } from "./weekly-deadlines";
@@ -82,6 +83,7 @@ interface PickOrg {
   benchPickFallback: string;
   approvalStatus: string | null;
   dormantAt: Date | null;
+  billingStatus: string;
   dropOutDeadlineDay: number | null;
   dropOutDeadlineTime: string | null;
 }
@@ -97,6 +99,7 @@ async function loadPickOrg(orgId: string): Promise<PickOrg | null> {
       benchPickFallback: true,
       approvalStatus: true,
       dormantAt: true,
+      billingStatus: true,
       dropOutDeadlineDay: true,
       dropOutDeadlineTime: true,
     },
@@ -750,6 +753,9 @@ export async function handlePickReply(input: PickReplyInput): Promise<PickReplyO
   const now = input.now ?? new Date();
   const org = await loadPickOrg(input.orgId);
   if (!org || org.benchPickMode !== "organiser") return NOT_OURS;
+  // Club fee billing (B1): a club paused for the club fee answers no pick
+  // reply and applies none. Never while BILLING_ENABLED is off.
+  if (isBillingPaused(org)) return NOT_OURS;
   const found = await findReplyRound(org.id, input.door, input.senderUserId, now);
   if (!found) return NOT_OURS;
   const { round } = found;
@@ -934,7 +940,14 @@ export async function handleOrganiserPickDm(input: {
 
   for (const user of users) {
     const memberships = await db.membership.findMany({
-      where: { userId: user.id, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, org: { benchPickMode: "organiser" } },
+      // Club fee billing (B1): a billing-paused club is left out, so nothing
+      // is claimed, applied or answered for it. Empty while the flag is off.
+      where: {
+        userId: user.id,
+        leftAt: null,
+        role: { in: ["OWNER", "ADMIN"] },
+        org: { benchPickMode: "organiser", ...billingQuietWhere() },
+      },
       select: { orgId: true },
     });
     for (const { orgId } of memberships) {

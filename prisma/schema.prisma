@@ -412,6 +412,24 @@ model Organisation {
   /// place to the whole waiting list, first to say IN) or "leave-empty".
   benchPickFallback String @default("bench-offer")
 
+  /// ─── Club fee billing (2026-10-01, slice B1) ──────────────────────
+  /// Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 3 and 4.
+  /// "exempt" | "trial" | "grace" | "subscribed" | "past_due" | "paused".
+  /// DEFAULT "exempt": every club that exists when this lands (Sutton FC
+  /// included) is never billed and never paused. Only an approval with
+  /// BILLING_ENABLED on moves a club to "trial" (slice B2). Single writer:
+  /// `setBillingState` in src/lib/club-billing.ts (source guard test).
+  /// A GATE: "paused" makes MatchTime quiet for the club (no posts, no
+  /// replies, no AI), read through `servingClubWhere` / `isClubOperational`
+  /// in club-approval-state.ts, and ignored entirely while BILLING_ENABLED
+  /// is off. NOT the mute switch: `whatsappBotEnabled` is never written by
+  /// billing. CHECK constraints: prisma/sql/org-billing-check.sql.
+  billingStatus     String @default("exempt")
+  /// "standard" | "free" | "custom". Set by the platform owner (slice B2).
+  billingPlan       String @default("standard")
+  /// Monthly price in pence when billingPlan = "custom" (100 to 999). NULL otherwise.
+  billingPricePence Int?
+
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
@@ -421,6 +439,8 @@ model Organisation {
   groupMessages      GroupMessage[]
   windowVerdicts     WindowVerdict[]
   badgeAnnouncements BadgeAnnouncement[]
+  clubBilling        ClubBilling?
+  billingNotices     BillingNotice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -869,6 +889,74 @@ model BadgeAnnouncement {
   createdAt DateTime     @default(now())
 
   @@unique([orgId, userId, badgeKey])
+}
+
+/// Club fee billing (2026-10-01, slice B1): the Stripe details of one
+/// billed club. Plan: MDs/club-fee-billing-plan-2026-10-01.md, 3.2.
+/// Created when a club's free month starts (slice B2); an exempt club has
+/// no row. `trialEndsAt` is written ONCE and never reset, so a club gets
+/// one free month, re-approval included. Written only by
+/// src/lib/club-billing.ts. No card numbers are ever stored.
+model ClubBilling {
+  orgId                    String       @id
+  org                      Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  trialStartedAt           DateTime
+  trialEndsAt              DateTime
+  /// trialEndsAt + 7 days (no card), or paymentFailedAt + 7 days.
+  graceEndsAt              DateTime?
+  stripeCustomerId         String?      @unique
+  stripeSubscriptionId     String?      @unique
+  /// Stripe's own word: trialing, active, past_due, canceled, unpaid ...
+  stripeSubscriptionStatus String?
+  stripePriceId            String?
+  currentPeriodEnd         DateTime?
+  cancelAtPeriodEnd        Boolean      @default(false)
+  stripePaymentMethodId    String?
+  cardBrand                String?
+  cardLast4                String?
+  /// Who added the card on file (the money collector, or the owner).
+  cardHolderUserId         String?
+  paymentFailedAt          DateTime?
+  pausedAt                 DateTime?
+  /// "no-card" | "payment-failed" | "cancelled" | "removed"
+  pausedReason             String?
+  billingCountry           String?
+  cardCountry              String?
+  vatCountryCheck          Boolean      @default(false)
+  resumedAt                DateTime?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+}
+
+/// Stripe billing webhook idempotency and audit (slice B3 writes it).
+/// `id` is Stripe's event id. No foreign key on purpose: the audit row
+/// outlives a deleted club.
+model BillingEvent {
+  id          String    @id
+  type        String
+  orgId       String?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?   @db.Text
+
+  @@index([orgId, receivedAt])
+}
+
+/// One billing DM per club, per kind, per cycle (slice B4 writes it).
+/// Insert first, then queue the DM, so a retried cron or a re-delivered
+/// webhook can never DM twice about the same thing.
+model BillingNotice {
+  id            String       @id @default(cuid())
+  orgId         String
+  org           Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// "trial-21" | "trial-28" | "trial-ended" | "paused" | "card-added" |
+  /// "payment-failed" | "resumed" | "payer-changed" | "card-replaced" | "fee-tip"
+  kind          String
+  cycleKey      String
+  platformJobId String?
+  createdAt     DateTime     @default(now())
+
+  @@unique([orgId, kind, cycleKey])
 }
 
 model SentNotification {

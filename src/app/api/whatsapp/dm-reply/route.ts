@@ -58,7 +58,8 @@
  * If no active survey applies, the DM is silently ignored.
  */
 import { withOrgAiBudget } from "@/lib/ai-budget";
-import { handleApproverDm, onlyUnapprovedClubs } from "@/lib/club-approval";
+import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
+import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
@@ -171,8 +172,11 @@ export async function POST(request: Request) {
   //   is idempotent so a double-answer (DM + reaction) is safe.
   {
     // Candidate set = bench players of any match with an OPEN offer.
+    // Club fee billing (B1): an offer of a club paused for the club fee is
+    // not answerable (nothing claimed, no reply); the DM then meets the
+    // billing rail below. Empty fragment while BILLING_ENABLED is off.
     const openOffers = await db.benchSlotOffer.findMany({
-      where: { resolvedAt: null },
+      where: { resolvedAt: null, ...billingQuietMatchWhere() },
       select: { matchId: true },
     });
     if (openOffers.length > 0 && !isHelpRequest) {
@@ -407,9 +411,18 @@ export async function POST(request: Request) {
   //   The deterministic connect handler at the top of this route is the
   //   only thing that answers such an organiser. Every club that
   //   predates self-join is approved, so a Sutton FC member is untouched.
-  if (await onlyUnapprovedClubs(user.memberships.map((m) => m.orgId))) {
+  //   Club fee billing (B1, plan 4.3 point 7): the same rail now also
+  //   catches a sender whose every approved club is paused for the club
+  //   fee ("club-billing-paused"). With BILLING_ENABLED off this is
+  //   exactly the approval rail: the same query and the same answer.
+  const notServing = await nonServingClubsReason(user.memberships.map((m) => m.orgId));
+  if (notServing === "club-not-approved") {
     console.log(`[dm-reply] sender ${user.id} belongs only to unapproved clubs; ignoring`);
     return NextResponse.json({ ok: true, ignored: "club-not-approved" });
+  }
+  if (notServing === "club-billing-paused") {
+    console.log(`[dm-reply] sender ${user.id} belongs only to clubs paused for the club fee; ignoring`);
+    return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
   }
 
   // ── Help by DM (2026-09-30) ──────────────────────────────────────────

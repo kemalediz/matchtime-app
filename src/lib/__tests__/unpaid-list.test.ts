@@ -133,6 +133,29 @@ describe("the admin unpaid list (U1)", () => {
     });
   });
 
+  it("club fee billing: nothing for a paused club (flag on); unchanged with the flag off", async () => {
+    const saved = process.env.BILLING_ENABLED;
+    try {
+      h.state.org = { ...h.state.org, billingStatus: "paused" };
+      process.env.BILLING_ENABLED = "1";
+      expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 0 });
+      delete process.env.BILLING_ENABLED;
+      expect(await sendDueUnpaidLists("org-fnf", SUN_1005)).toEqual({ sent: 1 });
+    } finally {
+      if (saved === undefined) delete process.env.BILLING_ENABLED;
+      else process.env.BILLING_ENABLED = saved;
+    }
+  });
+
+  it("after a resume, a match from before the pause is never chased: resumeClub switches its post-match flow off, which this query excludes", async () => {
+    // The contract between the two files, pinned from both sides: the
+    // club-billing test asserts resumeClub writes postMatchEndFlow = false
+    // for every match completed in the last RESUME_QUIET_LOOKBACK_DAYS
+    // (>= this file's own window); here, such a match is never loaded.
+    await sendDueUnpaidLists("org-fnf", SUN_1005);
+    expect((h.state.matchWhere as { postMatchEndFlow: unknown }).postMatchEndFlow).toBe(true);
+  });
+
   it("not before 10:00", async () => {
     expect(await sendDueUnpaidLists("org-fnf", SUN_0955)).toEqual({ sent: 0 });
     expect(h.state.notices).toEqual([]);

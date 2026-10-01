@@ -48,6 +48,7 @@ export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()):
       language: true,
       approvalStatus: true,
       dormantAt: true,
+      billingStatus: true,
       adminChannelMode: true,
       paymentTrackingEnabled: true,
       paymentHolderId: true,
