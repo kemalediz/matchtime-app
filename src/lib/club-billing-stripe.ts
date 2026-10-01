@@ -31,8 +31,10 @@
  * the flag off. "Resumed" and "billed again" are written as PENDING
  * notices by the state change's own transaction and sent by
  * `flushPendingBillingNotices`, so a failed send is retried, never lost.
- * The day 21, 28, 30 and 37 reminders, the payment-failed DM and the
- * payer-changed DM are slice B4.
+ * Slice B4: every DM here waits for daytime (10:00 to 20:00 London,
+ * `sendAfter`); a failed payment or a bank check (3DS) is noted for
+ * club-billing-dms.ts, which sends it in the daytime if it is still true.
+ * The day 21, 28, 30 and 37 DMs and the payer-changed DM live there too.
  *
  * ── Money safety (PR #181 review) ────────────────────────────────────
  *   - a club on Free, exempt or gone never keeps a live subscription: the
@@ -72,6 +74,8 @@ import {
 } from "./club-billing";
 import { cardAddedText, cardReplacedText, moneyLabel, planBilledText, resumedText } from "./club-billing-view";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
+import { billingDmSendAfter } from "./club-billing-schedule-rules";
+import { notePaymentProblem } from "./club-billing-dms";
 import {
   billingStripeConfig,
   buildSetupCheckoutParams,
@@ -457,7 +461,14 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
       continue;
     }
     if (p.kind === "resumed") {
-      const r = await queueBillingDm({ orgId, kind: "resumed", cycleKey: p.cycleKey, userId: contact!, text: () => resumedText(org!.language, { club: org!.name }) });
+      const r = await queueBillingDm({
+        orgId,
+        kind: "resumed",
+        cycleKey: p.cycleKey,
+        userId: contact!,
+        sendAfter: billingDmSendAfter(now),
+        text: () => resumedText(org!.language, { club: org!.name }),
+      });
       if (r === "queued") sent++;
     } else {
       const graceEndsAt = billing!.graceEndsAt!;
@@ -467,6 +478,7 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
         kind: "plan-billed",
         cycleKey: p.cycleKey,
         userId: contact!,
+        sendAfter: billingDmSendAfter(now),
         text: ({ name }) =>
           planBilledText(org!.language, {
             name,
@@ -568,7 +580,23 @@ export async function handleBillingEvent(event: Stripe.Event, now: Date = new Da
     case "invoice.payment_action_required": {
       const subId = invoiceSubscriptionId(obj);
       if (!subId) return ignored("no-subscription");
-      return onSubscriptionChanged(subId, now);
+      const res = await onSubscriptionChanged(subId, now);
+      // Slice B4: a failed payment, or a bank check (3DS), is NOTED for the
+      // billing contact after the sync has moved the state. The DM itself
+      // goes in the daytime, once per invoice, if it is still true then
+      // (club-billing-dms.ts). Noting never throws.
+      const invoiceId = idOf(obj.id);
+      if (event.type !== "invoice.paid" && res.action === "synced" && res.orgId && invoiceId) {
+        const hosted = typeof obj.hosted_invoice_url === "string" ? obj.hosted_invoice_url : null;
+        await notePaymentProblem({
+          orgId: res.orgId,
+          invoiceId,
+          kind: event.type === "invoice.payment_failed" ? "payment-failed" : "payment-action",
+          hostedUrl: hosted,
+          now,
+        });
+      }
+      return res;
     }
     case "payment_method.detached": {
       const pmId = idOf(obj.id);
@@ -600,7 +628,8 @@ const outcome = (action: SyncOutcome["action"], orgId: string): SyncOutcome => (
 /** Which of a subscription's paid invoices to refund when it is cancelled. */
 type RefundPolicy = { mode: "all" } | { mode: "after"; since: Date } | { mode: "none" };
 
-const refundIntentId = (subscriptionId: string) => `mt_refund_${subscriptionId}`;
+const REFUND_INTENT_ID_PREFIX = "mt_refund_";
+const refundIntentId = (subscriptionId: string) => `${REFUND_INTENT_ID_PREFIX}${subscriptionId}`;
 const REFUND_INTENT_TYPE = "mt.refund-intent";
 
 function intentType(policy: RefundPolicy): string {
@@ -613,18 +642,21 @@ function policyOfIntent(type: string): RefundPolicy {
 
 /**
  * Cancel a subscription MatchTime must not keep, at once with no proration
- * (round-2 review N1, N2). ORDER MATTERS, so a failure at any step is
- * finished by the retry and money is never lost or refunded twice:
+ * (round-2 review N1, N2; order changed in slice B4). ORDER MATTERS, so a
+ * failure at any step is finished by the retry and money is never lost,
+ * charged again or refunded twice:
  *
  *   1. recorded on /admin/health FIRST (never a DM), before any money moves;
  *   2. a refund INTENT row (`BillingEvent` "mt_refund_<sub>", processedAt
  *      null) when anything is to be refunded, carrying which invoices;
- *   3. the refunds (one per invoice, idempotent);
- *   4. only then the cancel;
+ *   3. the CANCEL, first of the money steps: a refund that keeps failing
+ *      can then never leave an unwanted or duplicate subscription charging;
+ *   4. the refunds (one per invoice, idempotent);
  *   5. the intent closed (processedAt).
  * A failure before 5 leaves the intent open; the next event for the same
- * subscription (Stripe retries this one) completes it, even once the
- * subscription is already cancelled.
+ * subscription (Stripe retries this one, and the cancel itself sends one)
+ * completes it, and so does the hourly billing cron
+ * (`sweepOpenRefundIntents`), even once the subscription is cancelled.
  *
  * What is refunded:
  *   duplicate                 all of its own paid invoices
@@ -675,26 +707,91 @@ async function openRefundIntent(orgId: string, subscriptionId: string, policy: R
   }
 }
 
-/** Steps 3 to 5: refunds (if an intent is open), the cancel, the intent closed. */
+/** Steps 3 to 5: the cancel, the refunds (if an intent is open), the
+ *  intent closed. A failure is written on the intent and rethrown. */
 async function finishCancelAndRefund(orgId: string, sub: BillingSubscription, policy: RefundPolicy): Promise<void> {
   const stripe = requireStripe();
   const intent = await db.billingEvent.findUnique({ where: { id: refundIntentId(sub.id) } });
   const refundDue = policy.mode !== "none" && !!intent && !intent.processedAt;
+  const noteError = (err: unknown) =>
+    refundDue
+      ? db.billingEvent
+          .update({ where: { id: refundIntentId(sub.id) }, data: { error: (err as Error).message.slice(0, 2000) } })
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+  if (isLiveSubscriptionStatus(sub.status)) {
+    try {
+      await stripe.cancelSubscription(sub.id);
+    } catch (err) {
+      await noteError(err);
+      throw err; // nothing refunded yet; Stripe retries the event, the cron sweeps the intent
+    }
+  }
   if (refundDue) {
     try {
       const r = await stripe.refundPaidInvoices(sub.id, policy.mode === "after" ? { paidAfter: policy.since } : {});
       if (r.pence > 0) console.warn(`[billing-webhook] ${orgId}: refunded ${moneyLabel(r.pence)} on ${sub.id} (${r.invoiceIds.join(", ")})`);
     } catch (err) {
-      await db.billingEvent
-        .update({ where: { id: refundIntentId(sub.id) }, data: { error: (err as Error).message.slice(0, 2000) } })
-        .catch(() => undefined);
-      throw err; // nothing cancelled yet; Stripe retries the event
+      await noteError(err);
+      throw err; // already cancelled, so nothing more is charged; the retry or the cron refunds
     }
-  }
-  if (isLiveSubscriptionStatus(sub.status)) await stripe.cancelSubscription(sub.id);
-  if (refundDue) {
     await db.billingEvent.update({ where: { id: refundIntentId(sub.id) }, data: { processedAt: new Date(), error: null } });
   }
+}
+
+/** An intent younger than this is left to the webhook delivery working on it. */
+export const REFUND_SWEEP_MIN_AGE_MS = 5 * 60 * 1000;
+/** At most this many intents per cron run. */
+const REFUND_SWEEP_BATCH = 50;
+
+/**
+ * The hourly billing cron's half of the refund intents (slice B4): every
+ * intent still open (an earlier cancel or refund failed and no later event
+ * for that subscription has finished it) is completed here, in the same
+ * order: cancel if somehow still live, then refund, then close. A refund
+ * that keeps failing stays open with its error, is recorded on
+ * /admin/health (never a DM), and is tried again next hour.
+ */
+export async function sweepOpenRefundIntents(now: Date = new Date()): Promise<{ finished: number; failed: number }> {
+  const rows = await db.billingEvent.findMany({
+    where: {
+      id: { startsWith: REFUND_INTENT_ID_PREFIX },
+      processedAt: null,
+      receivedAt: { lte: new Date(now.getTime() - REFUND_SWEEP_MIN_AGE_MS) },
+    },
+    select: { id: true, type: true, orgId: true },
+    orderBy: { receivedAt: "asc" },
+    take: REFUND_SWEEP_BATCH,
+  });
+  let finished = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const subId = row.id.slice(REFUND_INTENT_ID_PREFIX.length);
+    const orgId = row.orgId ?? "unknown";
+    try {
+      const sub = await requireStripe().retrieveSubscription(subId);
+      await finishCancelAndRefund(orgId, sub, policyOfIntent(row.type));
+      if (row.orgId) {
+        const billing = await loadBilling(row.orgId);
+        if (billing?.stripeSubscriptionId === subId) await markCancelled(row.orgId, subId);
+      }
+      finished++;
+      console.log(`[billing-cron] ${orgId}: open refund intent for ${subId} completed`);
+    } catch (err) {
+      failed++;
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[billing-cron] ${orgId}: open refund intent for ${subId} still failing: ${message}`);
+      await recordOpsEvent({
+        orgId: row.orgId,
+        kind: BILLING_ALERT_KIND,
+        severity: "warning",
+        title: "A club fee refund is still failing",
+        detail: `Subscription ${subId} is cancelled but its refund has not gone through yet (${message.slice(0, 300)}). Retried every hour.`,
+        dedupeKey: `refund-failing:${subId}`,
+      }).catch(() => undefined);
+    }
+  }
+  return { finished, failed };
 }
 
 /**
@@ -872,6 +969,7 @@ async function onSubscriptionCheckout(session: Stripe.Checkout.Session, orgId: s
         kind: "card-added",
         cycleKey: sub.id,
         userId: payer,
+        sendAfter: billingDmSendAfter(now),
         text: ({ name }) =>
           cardAddedText(org.language, {
             name,
@@ -951,6 +1049,7 @@ async function onReplaceCard(session: Stripe.Checkout.Session, orgId: string): P
         kind: "card-replaced",
         cycleKey: oldPm,
         userId: oldHolder,
+        sendAfter: billingDmSendAfter(new Date()),
         text: ({ name }) => cardReplacedText(org.language, { name, newName, club: org.name }),
       });
     }

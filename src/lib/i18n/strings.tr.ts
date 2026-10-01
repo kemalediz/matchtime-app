@@ -1949,6 +1949,46 @@ export const tr: Strings = {
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} yeniden aylık ${p.price} MatchTime planında. ` +
     `Ücretsiz ay daha önce kullanıldı, bu yüzden MatchTime grupta ${p.date} tarihine kadar çalışmaya devam edecek. ` +
     `Çalışmaya devam etmesi için o tarihe kadar kart ekleyin: ${p.link}`,
+  billing_dm_trial_21: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime'daki ücretsiz ay ${p.date} tarihinde bitiyor. ` +
+    (p.collector ? `Maç ücretlerini siz topladığınız için kartı sizden istiyorum. ` : "") +
+    `MatchTime'ın ${p.club} WhatsApp grubunda çalışmaya devam etmesi için buradan kart ekleyin: ${p.link}\n` +
+    `Tüm grup için aylık ${p.price}. ${p.date} tarihinden önce hiçbir ücret alınmaz.`,
+  billing_dm_trial_28: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, kısa bir hatırlatma: ${p.club} için ücretsiz ay ${p.date} tarihinde bitiyor. ` +
+    `MatchTime'ın ${p.club} WhatsApp grubunda çalışmaya devam etmesi için kart ekleyin: ${p.link}`,
+  billing_dm_trial_ended: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ücretsiz ay sona erdi. ` +
+    `MatchTime ${p.club} WhatsApp grubunda bir hafta daha, ${p.date} tarihine kadar çalışmaya devam edecek. ` +
+    `O tarihe kadar istediğiniz zaman kart ekleyebilirsiniz: ${p.link}`,
+  billing_dm_set_collector:
+    "İpucu: maç ücretlerini başka biri topluyorsa, Ayarlar'dan onu para toplayan kişi yapın, kartla o ilgilensin.",
+  billing_dm_paused: (p) =>
+    (p.kind === "payment-failed"
+      ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.price} ödemesini alamadık, bu yüzden MatchTime şu an duraklatıldı. `
+      : p.kind === "cancelled"
+        ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime planı sona erdi, bu yüzden MatchTime şu an duraklatıldı. `
+        : `Merhaba${p.name ? ` ${p.name}` : ""}, MatchTime ${p.club} için şu an duraklatıldı. `) +
+    `Hâlâ ${p.club} WhatsApp grubundayım ama orada mesaj atmayacağım ya da yanıt vermeyeceğim, gruba da hiçbir şey söylenmedi. ` +
+    `Oyuncular, maçlar ve istatistikler saklanıyor. MatchTime'ı yeniden açmak için buradan kart ekleyin, birkaç dakika içinde tekrar başlar: ${p.link}`,
+  billing_dm_payment_failed: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için bu ayın ${p.price} ödemesi alınamadı. ` +
+    `Stripe önümüzdeki birkaç gün içinde tekrar deneyecek, bu sürede MatchTime çalışmaya devam ediyor. ` +
+    (p.ownCard ? `Kartı güncellemek için: ${p.link}` : `Bunun yerine kendi kartınızı eklemek için: ${p.link}`),
+  billing_dm_payment_action: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için bu ayın ${p.price} ödemesinin geçebilmesi için bankanız onayınızı istiyor. ` +
+    `Lütfen buradan onaylayın: ${p.link}\nBu sürede MatchTime çalışmaya devam ediyor.`,
+  billing_dm_payer_changed_card: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `Siz kendi kartınızı ekleyene kadar ${p.oldName} kişisinin kartından ödenmeye devam ediyor, size uygun bir zamanda ekleyebilirsiniz: ${p.link}`,
+  billing_dm_payer_changed_no_card: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `Çalışmaya devam etmesi için ${p.date} tarihinden önce kart ekleyin: ${p.link}`,
+  billing_dm_payer_changed_paused: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `Yeniden açmak için kart ekleyin: ${p.link}`,
+  billing_admin_no_collector: (p) =>
+    `Henüz para toplayan kişi seçilmedi. Ayarlar'dan birini seçin: kulüp ücreti için kartla o ilgilenecek ve bu ipucunu o da alacak.${p.link ? ` ${p.link}` : ""}`,
 };
 
 /**

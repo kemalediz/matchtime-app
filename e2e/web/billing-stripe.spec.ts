@@ -421,9 +421,11 @@ test("7. a Checkout completing after the club was set Free is cancelled at once 
   expect(await res.json()).toMatchObject({ received: true, action: "unwanted-cancelled" });
   expect(stripeState().calls.filter((c) => c.method === "cancelSubscription").map((c) => c.args)).toContainEqual({ subscriptionId: "sub_e2e_late" });
   expect(stripeState().refunds).toContainEqual(expect.objectContaining({ subscriptionId: "sub_e2e_late", pence: 999 }));
-  // Refunded BEFORE it was cancelled (round-2 review N2).
+  // CANCELLED before it was refunded (slice B4, changing round-2 review
+  // N2's order): a refund that keeps failing can never leave it charging.
   const order = stripeState().calls.map((c) => `${c.method}:${(c.args as { subscriptionId?: string }).subscriptionId ?? ""}`);
-  expect(order.indexOf("refundPaidInvoices:sub_e2e_late")).toBeLessThan(order.indexOf("cancelSubscription:sub_e2e_late"));
+  expect(order.indexOf("cancelSubscription:sub_e2e_late")).toBeGreaterThan(-1);
+  expect(order.indexOf("cancelSubscription:sub_e2e_late")).toBeLessThan(order.indexOf("refundPaidInvoices:sub_e2e_late"));
   expect(await status()).toBe("exempt");
   expect((await billingRow())!.stripeSubscriptionId).not.toBe("sub_e2e_late");
   expect(await db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId"=$1 AND kind='club-billing'`, [ORG])).toBe(1);

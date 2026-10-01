@@ -683,6 +683,8 @@ export type BillingNoticeKind =
   | "trial-ended"
   | "paused"
   | "payment-failed"
+  /** A bank check (3DS) on an invoice (slice B4). */
+  | "payment-action"
   | "payer-changed"
   | "fee-tip";
 

@@ -50,7 +50,7 @@ const h = vi.hoisted(() => {
     org: null as Org | null,
     billing: null as Billing | null,
     events: new Map<string, { id: string; type: string; orgId: string | null; processedAt: Date | null; error: string | null }>(),
-    dms: [] as Array<{ orgId: string; kind: string; cycleKey: string; userId: string; text: string }>,
+    dms: [] as Array<{ orgId: string; kind: string; cycleKey: string; userId: string; text: string; sendAfter?: Date | null }>,
     notices: new Set<string>(),
     contact: "user_colin" as string | null,
     users: {
@@ -63,6 +63,7 @@ const h = vi.hoisted(() => {
     exemptSince: null as Date | null,
     skipped: [] as Array<{ kind: string; cycleKey: string; why: string }>,
     failNextDm: false,
+    paymentNotes: [] as Array<Record<string, unknown>>,
     ops: [] as Array<{ kind: string; title: string; dedupeKey?: string | null }>,
     /** Make the next clubBilling.updateMany lose a race (another writer first). */
     raceNextUpdate: null as null | (() => void),
@@ -91,9 +92,18 @@ const h = vi.hoisted(() => {
     },
     billingEvent: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => state.events.get(where.id) ?? null),
+      findMany: vi.fn(async ({ where }: { where: { id?: { startsWith?: string }; processedAt?: null; receivedAt?: { lte?: Date } } }) =>
+        [...state.events.values()].filter((r) => {
+          const row = r as typeof r & { receivedAt?: Date };
+          if (where.id?.startsWith && !row.id.startsWith(where.id.startsWith)) return false;
+          if (where.processedAt === null && row.processedAt !== null) return false;
+          if (where.receivedAt?.lte && (row.receivedAt ?? new Date(0)) > where.receivedAt.lte) return false;
+          return true;
+        }),
+      ),
       create: vi.fn(async ({ data }: { data: { id: string; type: string; orgId?: string | null } }) => {
         if (state.events.has(data.id)) throw Object.assign(new Error("Unique constraint"), { code: "P2002" });
-        const row = { id: data.id, type: data.type, orgId: data.orgId ?? null, processedAt: null, error: null };
+        const row = { id: data.id, type: data.type, orgId: data.orgId ?? null, processedAt: null, error: null, receivedAt: new Date() };
         state.events.set(data.id, row);
         return row;
       }),
@@ -120,6 +130,12 @@ vi.mock("../ops-alerts", () => ({
   recordOpsEvent: vi.fn(async (a: { kind: string; title: string; dedupeKey?: string | null }) => {
     h.state.ops.push(a);
     return true;
+  }),
+}));
+vi.mock("../club-billing-dms", () => ({
+  notePaymentProblem: vi.fn(async (a: Record<string, unknown>) => {
+    h.state.paymentNotes.push(a);
+    return "pending";
   }),
 }));
 vi.mock("../club-billing", async () => {
@@ -159,7 +175,7 @@ vi.mock("../club-billing", async () => {
       h.state.skipped.push({ kind, cycleKey, why });
     }),
     queueBillingDm: vi.fn(
-      async (a: { orgId: string; kind: string; cycleKey: string; userId: string; text: (u: { name: string | null }) => string }) => {
+      async (a: { orgId: string; kind: string; cycleKey: string; userId: string; text: (u: { name: string | null }) => string; sendAfter?: Date | null }) => {
         const key = `${a.orgId}|${a.kind}|${a.cycleKey}`;
         if (h.state.notices.has(key)) return "already";
         if (h.state.failNextDm) {
@@ -167,7 +183,7 @@ vi.mock("../club-billing", async () => {
           throw new Error("queue failed");
         }
         h.state.notices.add(key);
-        h.state.dms.push({ orgId: a.orgId, kind: a.kind, cycleKey: a.cycleKey, userId: a.userId, text: a.text({ name: h.state.users[a.userId]?.name ?? null }) });
+        h.state.dms.push({ orgId: a.orgId, kind: a.kind, cycleKey: a.cycleKey, userId: a.userId, text: a.text({ name: h.state.users[a.userId]?.name ?? null }), sendAfter: a.sendAfter });
         return "queued";
       },
     ),
@@ -186,6 +202,7 @@ import {
   syncPlanToStripe,
   cancelSubscriptionOnSuspend,
   flushPendingBillingNotices,
+  sweepOpenRefundIntents,
 } from "../club-billing-stripe";
 import { applyCheckoutEvent } from "../payment-flow";
 
@@ -250,6 +267,7 @@ beforeEach(() => {
   h.state.contact = "user_colin";
   h.state.pending = [];
   h.state.failNextDm = false;
+  h.state.paymentNotes = [];
   h.state.ops = [];
   h.state.raceNextUpdate = null;
   h.state.exemptSince = null;
@@ -742,13 +760,31 @@ describe("subscription and invoice events", () => {
     expect(h.state.billing!.stripeSubscriptionStatus).toBe("canceled");
   });
 
-  it("invoice.payment_action_required is synced and changes nothing else (the 3DS DM is slice B4)", async () => {
+  it("invoice.payment_action_required is synced, changes no state, and notes the 3DS DM with the invoice's own page (slice B4)", async () => {
     live();
     sub({ status: "active" });
-    const r = await handleBillingEvent(invoice("invoice.payment_action_required"), now);
+    const r = await handleBillingEvent(invoice("invoice.payment_action_required", { hosted_invoice_url: "https://invoice.stripe.com/i/in_1" }), now);
     expect(r).toMatchObject({ orgId: ORG });
     expect(h.state.org!.billingStatus).toBe("subscribed");
     expect(h.state.dms).toEqual([]);
+    expect(h.state.paymentNotes).toEqual([
+      { orgId: ORG, invoiceId: "in_1", kind: "payment-action", hostedUrl: "https://invoice.stripe.com/i/in_1", now },
+    ]);
+  });
+
+  it("invoice.payment_failed notes the 'payment failed' DM for that invoice, AFTER the sync moved the club to past due (slice B4)", async () => {
+    live();
+    sub({ status: "past_due" });
+    await handleBillingEvent(invoice("invoice.payment_failed"), now);
+    expect(h.state.org!.billingStatus).toBe("past_due");
+    expect(h.state.paymentNotes).toEqual([{ orgId: ORG, invoiceId: "in_1", kind: "payment-failed", hostedUrl: null, now }]);
+  });
+
+  it("invoice.paid notes nothing", async () => {
+    live();
+    sub({ status: "active" });
+    await handleBillingEvent(invoice("invoice.paid"), now);
+    expect(h.state.paymentNotes).toEqual([]);
   });
 
   it("payment_method.detached for the card on file clears the card fields; any other card is ignored", async () => {
@@ -1227,7 +1263,7 @@ describe("round-2 N1 (HIGH): a club on Free, exempt, suspended or gone: cancel; 
   });
 });
 
-describe("round-2 N2: refund FIRST (idempotent, intent recorded), then cancel; a retry completes a missing refund", () => {
+describe("B4 follow-up to round-2 N2: CANCEL FIRST, then refund (intent recorded); a retry or the hourly sweep completes a missing refund", () => {
   const dup = () => {
     setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cardHolderUserId: "user_colin" });
     sub({ id: "sub_1", status: "active" });
@@ -1235,26 +1271,42 @@ describe("round-2 N2: refund FIRST (idempotent, intent recorded), then cancel; a
     fake.putPaidInvoice("sub_2", 999);
   };
 
-  it("the order: ops event, refund, then cancel", async () => {
+  it("the order: ops event, refund intent, CANCEL, then refund, then the intent closed", async () => {
     dup();
     await handleBillingEvent(checkoutCompleted({ id: "cs_2", subscription: "sub_2" }), new Date());
     const methods = fake.state().calls.map((c) => c.method);
-    expect(methods.indexOf("refundPaidInvoices")).toBeLessThan(methods.indexOf("cancelSubscription"));
+    expect(methods.indexOf("cancelSubscription")).toBeGreaterThan(-1);
+    expect(methods.indexOf("cancelSubscription")).toBeLessThan(methods.indexOf("refundPaidInvoices"));
     expect(h.state.events.get("mt_refund_sub_2")).toMatchObject({ type: "mt.refund-intent", orgId: ORG, processedAt: expect.any(Date) });
   });
 
-  it("the refund FAILS: recorded on /admin/health first, nothing cancelled, 500; the retry refunds and then cancels", async () => {
+  it("the refund FAILS: the unwanted subscription is ALREADY cancelled (it can never charge again), the intent stays open, 500; the retry refunds without cancelling twice", async () => {
     dup();
     const spy = vi.spyOn(fake, "refundPaidInvoices").mockRejectedValueOnce(new Error("stripe 500"));
     const e = checkoutCompleted({ id: "cs_2", subscription: "sub_2" });
     expect((await processBillingWebhook(e, new Date())).status).toBe(500);
     expect(h.state.ops).toHaveLength(1);
-    expect(calls("cancelSubscription")).toEqual([]);
-    expect(h.state.events.get("mt_refund_sub_2")).toMatchObject({ processedAt: null });
+    expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_2" }]);
+    expect(fake.state().subscriptions.sub_2.status).toBe("canceled");
+    expect(h.state.events.get("mt_refund_sub_2")).toMatchObject({ processedAt: null, error: "stripe 500" });
     spy.mockRestore();
     expect((await processBillingWebhook(e, new Date())).status).toBe(200);
     expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2" })]);
     expect(calls("cancelSubscription")).toEqual([{ subscriptionId: "sub_2" }]);
+    expect(h.state.events.get("mt_refund_sub_2")!.processedAt).toBeInstanceOf(Date);
+  });
+
+  it("the CANCEL fails: nothing is refunded yet, the intent stays open, 500; the retry cancels and then refunds", async () => {
+    dup();
+    const spy = vi.spyOn(fake, "cancelSubscription").mockRejectedValueOnce(new Error("stripe 502"));
+    const e = checkoutCompleted({ id: "cs_2", subscription: "sub_2" });
+    expect((await processBillingWebhook(e, new Date())).status).toBe(500);
+    expect(fake.state().refunds).toEqual([]);
+    expect(h.state.events.get("mt_refund_sub_2")).toMatchObject({ processedAt: null });
+    spy.mockRestore();
+    expect((await processBillingWebhook(e, new Date())).status).toBe(200);
+    expect(fake.state().subscriptions.sub_2.status).toBe("canceled");
+    expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2" })]);
     expect(h.state.events.get("mt_refund_sub_2")!.processedAt).toBeInstanceOf(Date);
   });
 
@@ -1266,6 +1318,70 @@ describe("round-2 N2: refund FIRST (idempotent, intent recorded), then cancel; a
     await handleBillingEvent(event("customer.subscription.deleted", { id: "sub_2" }), new Date());
     expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2" })]);
     expect(h.state.events.get("mt_refund_sub_2")!.processedAt).toBeInstanceOf(Date);
+  });
+
+  describe("the hourly sweep of open refund intents (sweepOpenRefundIntents)", () => {
+    const openIntent = (subId: string, type = "mt.refund-intent", receivedAt = new Date(Date.now() - HOUR)) =>
+      h.state.events.set(`mt_refund_${subId}`, { id: `mt_refund_${subId}`, type, orgId: ORG, processedAt: null, error: "earlier failure", receivedAt } as never);
+
+    it("finishes an open intent nobody else will retry: refunds (once) and closes it; a cancelled subscription is not cancelled again", async () => {
+      setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+      openIntent("sub_2");
+      sub({ id: "sub_2", status: "canceled", trialEnd: null });
+      fake.putPaidInvoice("sub_2", 999);
+      const r = await sweepOpenRefundIntents(new Date());
+      expect(r).toEqual({ finished: 1, failed: 0 });
+      expect(fake.state().refunds).toEqual([expect.objectContaining({ subscriptionId: "sub_2", pence: 999 })]);
+      expect(calls("cancelSubscription")).toEqual([]);
+      expect(h.state.events.get("mt_refund_sub_2")!.processedAt).toBeInstanceOf(Date);
+      // A second sweep finds nothing open.
+      expect(await sweepOpenRefundIntents(new Date())).toEqual({ finished: 0, failed: 0 });
+      expect(fake.state().refunds).toHaveLength(1);
+    });
+
+    it("an intent whose subscription is somehow still live is CANCELLED first, then refunded", async () => {
+      setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+      openIntent("sub_2");
+      sub({ id: "sub_2", status: "active", trialEnd: null });
+      fake.putPaidInvoice("sub_2", 999);
+      await sweepOpenRefundIntents(new Date());
+      const methods = fake.state().calls.map((c) => c.method);
+      expect(methods.indexOf("cancelSubscription")).toBeLessThan(methods.indexOf("refundPaidInvoices"));
+      expect(fake.state().subscriptions.sub_2.status).toBe("canceled");
+    });
+
+    it("keeps the 'after' policy of the intent (only payments after the club became Free are refunded)", async () => {
+      setWorld({ billingStatus: "exempt", billingPlan: "free" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "canceled" });
+      const since = new Date(Date.now() - 2 * DAY);
+      openIntent("sub_1", `mt.refund-intent:after:${since.toISOString()}`);
+      sub({ id: "sub_1", status: "canceled" });
+      fake.putPaidInvoice("sub_1", 999, new Date(Date.now() - 40 * DAY), "in_before");
+      fake.putPaidInvoice("sub_1", 999, new Date(Date.now() - DAY), "in_after");
+      await sweepOpenRefundIntents(new Date());
+      expect(fake.state().refunds).toEqual([{ subscriptionId: "sub_1", invoiceId: "in_after", pence: 999 }]);
+    });
+
+    it("a refund that keeps failing stays open with its error and is counted; the next one is still tried", async () => {
+      setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+      openIntent("sub_2");
+      openIntent("sub_3");
+      sub({ id: "sub_2", status: "canceled", trialEnd: null });
+      sub({ id: "sub_3", status: "canceled", trialEnd: null });
+      fake.putPaidInvoice("sub_3", 999);
+      const spy = vi.spyOn(fake, "refundPaidInvoices").mockRejectedValueOnce(new Error("still down"));
+      const r = await sweepOpenRefundIntents(new Date());
+      spy.mockRestore();
+      expect(r).toEqual({ finished: 1, failed: 1 });
+      expect(h.state.events.get("mt_refund_sub_2")).toMatchObject({ processedAt: null, error: "still down" });
+      expect(h.state.events.get("mt_refund_sub_3")!.processedAt).toBeInstanceOf(Date);
+    });
+
+    it("leaves an intent opened in the last few minutes to the webhook that is working on it", async () => {
+      setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+      openIntent("sub_2", "mt.refund-intent", new Date());
+      sub({ id: "sub_2", status: "canceled", trialEnd: null });
+      expect(await sweepOpenRefundIntents(new Date())).toEqual({ finished: 0, failed: 0 });
+    });
   });
 });
 
@@ -1376,5 +1492,29 @@ describe("round-2 N5: pending DMs are re-checked against the club's state before
     h.state.pending = [{ kind: "resumed", cycleKey: iso(new Date(now.getTime() - 60_000)) }];
     await flushPendingBillingNotices(ORG, now);
     expect(h.state.skipped).toEqual([expect.objectContaining({ why: "no-contact" })]);
+  });
+});
+
+describe("slice B4: the webhook's own DMs wait for daytime (10:00 to 20:00 London)", () => {
+  it("'card added' at 23:00 London is queued for 10:00 the next morning; in the daytime it goes at once", async () => {
+    sub({ status: "trialing" });
+    await handleBillingEvent(checkoutCompleted(), new Date("2026-10-21T22:00:00Z"));
+    expect(h.state.dms[0]).toMatchObject({ kind: "card-added" });
+    expect(h.state.dms[0].sendAfter).toEqual(new Date("2026-10-22T09:00:00Z"));
+
+    setWorld();
+    h.state.dms.length = 0;
+    h.state.notices.clear();
+    sub({ id: "sub_9", status: "trialing" });
+    await handleBillingEvent(checkoutCompleted({ id: "cs_9", subscription: "sub_9" }), new Date("2026-10-21T12:00:00Z"));
+    expect(h.state.dms[0].sendAfter ?? null).toBeNull();
+  });
+
+  it("a pending 'resumed' flushed at night is queued for 10:00", async () => {
+    setWorld({ billingStatus: "subscribed" }, { stripeCustomerId: "cus_fake_1", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active" });
+    const night = new Date("2026-12-01T02:00:00Z");
+    h.state.pending.push({ kind: "resumed", cycleKey: night.toISOString() });
+    await flushPendingBillingNotices(ORG, night);
+    expect(h.state.dms[0]).toMatchObject({ kind: "resumed", sendAfter: new Date("2026-12-01T10:00:00Z") });
   });
 });

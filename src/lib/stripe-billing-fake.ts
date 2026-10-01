@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Stripe from "stripe";
-import type { BillingStripe, BillingSubscription, CardDetails } from "./stripe-billing";
+import type { BillingInvoice, BillingStripe, BillingSubscription, CardDetails } from "./stripe-billing";
 import { isLiveSubscriptionStatus } from "./club-billing-rules";
 
 interface StoredSubscription extends Omit<BillingSubscription, "currentPeriodEnd" | "trialEnd"> {
@@ -37,6 +37,8 @@ export interface FakeStripeState {
   refunds: Array<{ subscriptionId: string; invoiceId: string; pence: number }>;
   /** Paid invoices a test says a subscription has. */
   paidInvoices: Record<string, Array<{ id: string; pence: number; paidAt: string }>>;
+  /** Invoices a test says exist (slice B4: the payment DMs re-check them). */
+  invoices: Record<string, BillingInvoice>;
 }
 
 const empty = (): FakeStripeState => ({
@@ -50,6 +52,7 @@ const empty = (): FakeStripeState => ({
   prices: {},
   refunds: [],
   paidInvoices: {},
+  invoices: {},
 });
 
 const toStored = (s: BillingSubscription): StoredSubscription => ({
@@ -69,6 +72,7 @@ export type FakeBillingStripe = BillingStripe & {
   putSubscription(sub: BillingSubscription): void;
   putSetupIntent(id: string, card: CardDetails): void;
   putPaidInvoice(subscriptionId: string, pence: number, paidAt?: Date, invoiceId?: string): void;
+  putInvoice(invoice: BillingInvoice): void;
 };
 
 export function createFakeBillingStripe(opts: { file?: string | null } = {}): FakeBillingStripe {
@@ -120,6 +124,16 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       const list = (s.paidInvoices[subscriptionId] ??= []);
       list.push({ id: invoiceId ?? `in_fake_${subscriptionId}_${list.length + 1}`, pence, paidAt: paidAt.toISOString() });
       save(s);
+    },
+
+    putInvoice(invoice) {
+      const s = load();
+      s.invoices[invoice.id] = invoice;
+      save(s);
+    },
+
+    async retrieveInvoice(invoiceId) {
+      return tx("retrieveInvoice", { invoiceId }, (s) => s.invoices?.[invoiceId] ?? null);
     },
 
     putSetupIntent(id, card) {

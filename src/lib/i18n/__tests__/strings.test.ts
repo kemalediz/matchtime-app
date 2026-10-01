@@ -658,6 +658,17 @@ const SAMPLES: SampleArgs = {
   billing_dm_card_replaced: { name: "Colin", newName: "Pat", club: "Riverside FC" },
   billing_dm_resumed: { club: "Riverside FC" },
   billing_dm_plan_billed: { name: "Colin", club: "Riverside FC", price: "£9.99", date: "Sat 7 Nov", link: "https://matchtime.ai/r/abc" },
+  billing_dm_trial_21: { name: "Colin", club: "Riverside FC", date: "Sat 31 Oct", price: "£9.99", link: "https://matchtime.ai/r/abc", collector: true },
+  billing_dm_trial_28: { name: "Colin", club: "Riverside FC", date: "Sat 31 Oct", link: "https://matchtime.ai/r/abc" },
+  billing_dm_trial_ended: { name: "Colin", club: "Riverside FC", date: "Sat 7 Nov", link: "https://matchtime.ai/r/abc" },
+  billing_dm_set_collector: null,
+  billing_dm_paused: { name: "Colin", club: "Riverside FC", price: "£9.99", link: "https://matchtime.ai/r/abc", kind: "payment-failed" },
+  billing_dm_payment_failed: { name: "Colin", club: "Riverside FC", price: "£9.99", link: "https://matchtime.ai/r/abc", ownCard: true },
+  billing_dm_payment_action: { name: "Colin", club: "Riverside FC", price: "£9.99", link: "https://invoice.stripe.com/i/abc" },
+  billing_dm_payer_changed_card: { name: "Pat", club: "Riverside FC", price: "£9.99", oldName: "Colin", link: "https://matchtime.ai/r/abc" },
+  billing_dm_payer_changed_no_card: { name: "Pat", club: "Riverside FC", price: "£9.99", date: "Sat 31 Oct", link: "https://matchtime.ai/r/abc" },
+  billing_dm_payer_changed_paused: { name: "Pat", club: "Riverside FC", price: "£9.99", link: "https://matchtime.ai/r/abc" },
+  billing_admin_no_collector: { link: "https://matchtime.ai/r/abc" },
 };
 
 /** Render an entry with its sample arguments. */
