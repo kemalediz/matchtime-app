@@ -6,7 +6,8 @@ import path from "node:path";
  * House rules for the public website copy (Kemal): no em dashes or en
  * dashes anywhere a visitor can read them, the real domain is
  * matchtime.ai (never matchtime.app), the bot is tagged as "@Match Time",
- * no fee talk, hello@matchtime.ai as the contact email, no published
+ * no fee talk, no "free" claims (MatchTime costs £5 a month per group
+ * with the first month free, since 2026-10-01), hello@matchtime.ai as the contact email, no published
  * MatchTime number, and no real club or player names on public pages.
  *
  * Checks the source of every public page with comments stripped, so the
@@ -56,6 +57,18 @@ describe("public website copy", () => {
     expect(text).not.toMatch(/(^|[^\d])1\s?%|MatchTime fee|card fee|payment fee|processing fee|platform fee/i);
   });
 
+  // Kemal (2026-10-01): MatchTime is no longer free. It costs £5 a month
+  // per group with the first month free, so the only "free" a visitor may
+  // read is "first month free". Catches "free to use", "it's free",
+  // "for free", "Free WhatsApp organiser" and the like.
+  it.each(sources)("$file does not claim MatchTime is free", ({ text }) => {
+    // Collapse whitespace first so a sentence wrapped across source lines
+    // ("Your first month\n is free") reads as the sentence a visitor sees.
+    const flat = text.replace(/\s+/g, " ").replace(/first month (is )?free/gi, "");
+    const hits = [...flat.matchAll(/.{0,40}\bfree\b.{0,40}/gi)].map((m) => m[0]);
+    expect(hits).toEqual([]);
+  });
+
   // Kemal: the public contact address is hello@matchtime.ai, and the
   // MatchTime WhatsApp number is never published or implied.
   it.each(sources)("$file uses hello@matchtime.ai as the only contact email", ({ text }) => {
@@ -69,5 +82,45 @@ describe("public website copy", () => {
 
   it.each(sources)("$file names no real club, player or venue", ({ text }) => {
     expect(text).not.toMatch(/Sutton|\bAbid\b|\bElvin\b|\bIbrahim\b|\bEhtisham\b|\bKarahan\b|\bNajib\b|at Goals\b|call Goals/);
+  });
+
+  describe("pricing", () => {
+    const landing = sources.find((s) => s.file.endsWith("landing-page.tsx"))!.text;
+    const layout = sources.find((s) => s.file === "src/app/layout.tsx")!.text;
+    const help = sources.find((s) => s.file === "src/app/help/page.tsx")!.text;
+    const admin = sources.find((s) => s.file === "src/app/help/admin/page.tsx")!.text;
+
+    it("the landing page has a pricing section with the price and the free first month", () => {
+      expect(landing).toMatch(/id="pricing"/);
+      expect(landing).toMatch(/£5/);
+      expect(landing).toMatch(/per group/i);
+      expect(landing).toMatch(/first month (is )?free/i);
+      expect(landing).toMatch(/25p/);
+    });
+
+    it("the JSON-LD offer is £5 a month in GBP, not £0", () => {
+      const offer = landing.match(/offers:\s*\{[\s\S]*?\n\s{12}\}/)?.[0] ?? "";
+      expect(offer).toMatch(/price:\s*"5(\.00)?"/);
+      expect(offer).toMatch(/priceCurrency:\s*"GBP"/);
+      expect(offer).not.toMatch(/price:\s*"0"/);
+    });
+
+    it("site metadata states the price", () => {
+      expect(layout).toMatch(/£5 a month per group/);
+      expect(layout).toMatch(/first month free/i);
+    });
+
+    it("the help pages state the price", () => {
+      for (const t of [help, admin]) {
+        expect(t).toMatch(/£5 a month/);
+        expect(t).toMatch(/first month (is )?free/i);
+      }
+    });
+
+    it("never claims MatchTime collects the club fee itself", () => {
+      for (const { text } of sources) {
+        expect(text).not.toMatch(/(collects?|charges?) the (club|monthly) fee (for you|automatically)|automatically (collect|split|charge)/i);
+      }
+    });
   });
 });

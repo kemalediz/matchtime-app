@@ -74,6 +74,9 @@ export function LandingPage() {
             <a href="#how-it-works" className="hover:text-white transition-colors">
               How it works
             </a>
+            <a href="#pricing" className="hover:text-white transition-colors">
+              Pricing
+            </a>
             <Link href="/help/player" className="hover:text-white transition-colors">
               Player guide
             </Link>
@@ -114,7 +117,7 @@ export function LandingPage() {
         <div className="relative max-w-6xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-medium text-blue-100 backdrop-blur mb-6">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Free to use · Lives in your WhatsApp group · No app for players
+            First month free · Lives in your WhatsApp group · No app for players
           </div>
           <h1
             className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.05] text-white"
@@ -130,7 +133,8 @@ export function LandingPage() {
             MatchTime sits in your WhatsApp group and does the organiser&apos;s
             job: it tracks who&apos;s in, runs the bench, chases when you&apos;re
             short, picks balanced teams and collects ratings after the game.
-            Add it to your group for free. Don&apos;t like it? Remove it.
+            Your first month is free, then it&apos;s £5 a month for the whole
+            group. Don&apos;t like it? Remove it.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center">
             <Link
@@ -151,7 +155,7 @@ export function LandingPage() {
           <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs sm:text-sm text-slate-300">
             <span className="inline-flex items-center gap-1.5">
               <Check className="w-4 h-4 text-emerald-400" />
-              Free to use
+              £5 a month per group, first month free
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Check className="w-4 h-4 text-emerald-400" />
@@ -414,7 +418,7 @@ export function LandingPage() {
             </h2>
             <p className="mt-5 text-lg text-slate-600">
               Set it up once, play every week. MatchTime takes care of the rest.
-              It&apos;s free, and you can remove it from your group any time.
+              Your first month is free, and you can remove it from your group any time.
             </p>
           </div>
 
@@ -535,6 +539,91 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ── Pricing ───────────────────────────────────────────────────── */}
+      <section
+        id="pricing"
+        className="relative py-24 sm:py-32 px-5 sm:px-8 bg-white text-slate-800"
+      >
+        <div className="max-w-6xl mx-auto">
+          <div className="max-w-2xl mx-auto text-center">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+              Pricing
+            </span>
+            <h2
+              className="mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900"
+              style={DISPLAY_FONT}
+            >
+              One price for the whole group.
+            </h2>
+            <p className="mt-5 text-lg text-slate-600">
+              £5 a month per WhatsApp group, not per player. Your first month
+              is free, so you can see how it runs your week before you pay.
+            </p>
+          </div>
+
+          <div className="mt-16 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6">
+            <div className="p-7 sm:p-10 rounded-2xl bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 border border-white/10 relative overflow-hidden">
+              <div
+                className="absolute inset-0 opacity-30"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(400px circle at 80% 20%, rgba(20,184,166,0.3), transparent 50%)",
+                }}
+              />
+              <div className="relative">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/15 text-emerald-300 text-xs font-semibold">
+                  <Sparkles className="w-3 h-3" />
+                  First month free
+                </div>
+                <div className="mt-5 flex items-baseline gap-2">
+                  <span
+                    className="text-6xl sm:text-7xl font-extrabold tracking-tight text-white"
+                    style={DISPLAY_FONT}
+                  >
+                    £5
+                  </span>
+                  <span className="text-lg text-slate-300">a month per group</span>
+                </div>
+                <ul className="mt-7 space-y-3">
+                  {[
+                    "Everything on this page, for your whole WhatsApp group",
+                    "One price, however big your squad is",
+                    "No contract. Remove MatchTime from the group any time to stop",
+                  ].map((b) => (
+                    <li key={b} className="flex items-start gap-3 text-slate-200">
+                      <Check className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href="/signup"
+                  className="mt-9 inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-white text-slate-900 font-semibold shadow-xl transition-all hover:-translate-y-0.5"
+                >
+                  Start your group
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6">
+              <FeatureCard
+                color="teal"
+                icon={<Users className="w-6 h-6" />}
+                title="Share it out if you like"
+                body="The organiser can split the £5 among the players who played that month. For a typical group of 20, that works out at about 25p a player."
+              />
+              <FeatureCard
+                color="amber"
+                icon={<CreditCard className="w-6 h-6" />}
+                title="Match fees are separate, and optional"
+                body="Switch on pay links and players pay their match fee by card or bank after the game. They pay the card or bank fee on top, so you receive the full match fee. Collecting cash? Leave it off."
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Final CTA ─────────────────────────────────────────────────── */}
       <section className="relative py-24 sm:py-32 px-5 sm:px-8 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 overflow-hidden">
         <div
@@ -554,9 +643,9 @@ export function LandingPage() {
             <br /> match-day morning?
           </h2>
           <p className="mt-5 text-lg text-slate-200 leading-relaxed">
-            MatchTime is free to use. Add it to your group, and if you
-            don&apos;t like it, remove it. Card and bank payments are there
-            if you want them.
+            Your first month is free, then it&apos;s £5 a month for the whole
+            group. Add it, and if you don&apos;t like it, remove it. Card and
+            bank payments are there if you want them.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center">
             <Link
@@ -631,12 +720,25 @@ export function LandingPage() {
             applicationCategory: "SportsApplication",
             operatingSystem: "Web, WhatsApp",
             description:
-              "MatchTime lives in your WhatsApp group and runs your weekly game: attendance, the bench, chasing, balanced teams, ratings, Man of the Match and optional card or bank payments. Free to use.",
+              "MatchTime lives in your WhatsApp group and runs your weekly game: attendance, the bench, chasing, balanced teams, ratings, Man of the Match and optional card or bank payments. £5 a month per group, first month free.",
             url: "https://matchtime.ai",
             offers: {
               "@type": "Offer",
-              price: "0",
+              price: "5.00",
               priceCurrency: "GBP",
+              description:
+                "£5 a month per WhatsApp group, not per player. First month free, no contract.",
+              priceSpecification: {
+                "@type": "UnitPriceSpecification",
+                price: "5.00",
+                priceCurrency: "GBP",
+                unitText: "MONTH",
+                referenceQuantity: {
+                  "@type": "QuantitativeValue",
+                  value: 1,
+                  unitCode: "MON",
+                },
+              },
             },
             publisher: {
               "@type": "Organization",

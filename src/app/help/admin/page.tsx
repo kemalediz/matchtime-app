@@ -7,7 +7,8 @@ export default function AdminGuidePage() {
       <p>
         You run the group. This guide walks through what MatchTime does for
         you each week, and what you can check or fix from the dashboard.
-        MatchTime is free to use.
+        MatchTime costs £5 a month per group, and your first month is free.
+        See <a href="#pricing">What it costs</a> below.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
@@ -35,6 +36,19 @@ export default function AdminGuidePage() {
       <p>
         Don&apos;t like it? Remove it from the group. You can also switch
         individual features off in <strong>Settings</strong>.
+      </p>
+
+      <h3 id="pricing">What it costs</h3>
+      <p>
+        MatchTime costs £5 a month per WhatsApp group. That covers the whole
+        group, not each player, and your first month is free. There&apos;s no
+        contract: remove MatchTime from the group any time to stop.
+      </p>
+      <p>
+        You can share the cost among the players who played that month if you
+        like. For a typical group of 20, that works out at about 25p a player.
+        Match fees are separate: collecting them through MatchTime is optional
+        (see <a href="#payments">Payments</a>).
       </p>
 
       {/* ───────────────────────────────────────────────── */}
@@ -405,7 +419,8 @@ export default function AdminGuidePage() {
         pay the collector directly, and the collector confirms it.
       </p>
       <p>
-        Collecting cash instead? Just leave payments off.
+        Players pay the card or bank fee on top, so the collector receives
+        the full match fee. Collecting cash instead? Just leave payments off.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
