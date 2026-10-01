@@ -212,6 +212,13 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       });
     },
 
+    async setCancelAtPeriodEnd(subscriptionId, cancel) {
+      tx("setCancelAtPeriodEnd", { subscriptionId, cancel }, (s) => {
+        const sub = s.subscriptions[subscriptionId];
+        if (sub) sub.cancelAtPeriodEnd = cancel;
+      });
+    },
+
     async listLiveSubscriptions(customerId) {
       return tx("listLiveSubscriptions", { customerId }, (s) =>
         Object.values(s.subscriptions)

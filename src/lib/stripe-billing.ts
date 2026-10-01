@@ -90,6 +90,10 @@ export interface BillingStripe {
    *  subscription (metadata `cancelledBy: "suspend"`) so the deletion
    *  webhook leaves the club's billing state alone (plan 4.2). */
   cancelSubscription(subscriptionId: string, opts?: { reason?: "suspend" }): Promise<void>;
+  /** Slice B5: end the subscription with the paid month (`true`, MatchTime
+   *  removed from the group; no refund, nothing taken early), or undo that
+   *  (`false`, MatchTime added back). Nothing else changes. */
+  setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean): Promise<void>;
   findOrCreateCustomPrice(args: { productId: string; pence: number }): Promise<string>;
   /** The Customer's LIVE club fee subscriptions, read from Stripe itself
    *  (not our mirror), so no new session is made while one exists. */
@@ -424,6 +428,10 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
         await client.subscriptions.update(subscriptionId, { metadata: { cancelledBy: "suspend" } });
       }
       await client.subscriptions.cancel(subscriptionId, { prorate: false });
+    },
+
+    async setCancelAtPeriodEnd(subscriptionId, cancel) {
+      await client.subscriptions.update(subscriptionId, { cancel_at_period_end: cancel });
     },
 
     async findOrCreateCustomPrice({ productId, pence }) {

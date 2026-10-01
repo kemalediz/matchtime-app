@@ -91,6 +91,9 @@ export interface BillingStateInput {
   /** The dedicated Customer Portal configuration is set (review fix 4):
    *  without it there is no Portal button at all. */
   portalAvailable?: boolean;
+  /** Why a paused club is paused (slice B5: "removed" asks for MatchTime
+   *  to be added back to the group, not for a card). */
+  pausedReason?: string | null;
 }
 
 function graceDate(v: { trialEndsAt: Date | null; graceEndsAt: Date | null }): Date | null {
@@ -125,7 +128,7 @@ export function billingStateLines(lang: LangIn, v: BillingStateInput): string[] 
     case "past_due":
       return [s.billing_state_past_due({ date: date(graceDate(v)) })];
     case "paused":
-      return [s.billing_state_paused];
+      return [v.pausedReason === "removed" ? s.billing_state_paused_removed : s.billing_state_paused];
     case "subscribed": {
       if (v.cancelAtPeriodEnd) return [s.billing_state_subscribed_ending({ price, date: date(next) })];
       if (v.role === "contact" && !ownCard(v)) {
@@ -164,6 +167,10 @@ export function billingButtons(v: BillingStateInput): BillingButton[] {
   const sub = v.subscriptionStatus ?? null;
   const known = ["trial", "grace", "paused", "subscribed", "past_due"];
   if (!known.includes(v.status)) return [];
+  // Slice B5: the way back is adding MatchTime to the group again; a card
+  // first would pay for a group MatchTime is not in (club-billing-stripe.ts
+  // refuses it too).
+  if (v.status === "paused" && v.pausedReason === "removed") return [];
   if (isUnpaidSubscriptionStatus(sub) || v.status === "past_due") return ["update-card"];
   const mineWithPortal = v.cardHolderUserId !== null && v.cardHolderUserId === v.viewerUserId && v.portalAvailable === true;
   if (v.status === "subscribed" || isLiveSubscriptionStatus(sub)) return [mineWithPortal ? "change-card" : "use-mine"];
@@ -173,14 +180,14 @@ export function billingButtons(v: BillingStateInput): BillingButton[] {
 /** The admin banner (8.2): grace, past due and paused only. */
 export function bannerText(
   lang: LangIn,
-  v: { status: string; trialEndsAt: Date | null; graceEndsAt: Date | null },
+  v: { status: string; trialEndsAt: Date | null; graceEndsAt: Date | null; pausedReason?: string | null },
 ): string | null {
   const s = t(lang);
   const d = graceDate(v);
   const date = d ? dayLabel(lang, d) : "";
   if (v.status === "grace") return s.billing_banner_grace({ date });
   if (v.status === "past_due") return s.billing_banner_past_due({ date });
-  if (v.status === "paused") return s.billing_banner_paused;
+  if (v.status === "paused") return v.pausedReason === "removed" ? s.billing_banner_paused_removed : s.billing_banner_paused;
   return null;
 }
 
@@ -204,6 +211,8 @@ export interface BillingViewClub {
     cardLast4: string | null;
     cardHolderUserId: string | null;
     stripeSubscriptionStatus?: string | null;
+    /** Slice B5. */
+    pausedReason?: string | null;
   } | null;
   cardHolderName: string | null;
 }
@@ -231,6 +240,7 @@ function stateInput(
   return {
     subscriptionStatus: c.billing?.stripeSubscriptionStatus ?? null,
     portalAvailable,
+    pausedReason: c.billing?.pausedReason ?? null,
     status: c.status,
     plan: c.plan,
     pricePence: c.pricePence,
@@ -371,7 +381,7 @@ export function planBilledText(
   });
 }
 
-export type BillingPageNotice = "done" | "replaced" | "removed" | "not-set-up" | "already" | "failed";
+export type BillingPageNotice = "done" | "replaced" | "removed" | "not-set-up" | "already" | "re-add" | "failed";
 
 /** The line the billing page shows after a card action. */
 export function billingNoticeText(lang: LangIn, n: BillingPageNotice): string {
@@ -387,6 +397,8 @@ export function billingNoticeText(lang: LangIn, n: BillingPageNotice): string {
       return s.billing_notice_not_set_up;
     case "already":
       return s.billing_notice_already;
+    case "re-add":
+      return s.billing_notice_re_add;
     case "failed":
       return s.billing_notice_failed;
   }

@@ -201,18 +201,23 @@ describe("self-join slice 6: bot-added and bot-removed", () => {
     expect(JSON.parse(init.body)).toMatchObject({ addedByLid: "158055467598961", discovered: true });
   });
 
-  it("bot-removed POSTs the group", async () => {
+  it("bot-removed POSTs the group and hands back the answer", async () => {
     fetchMock.mockResolvedValue(res(200, { ok: true }));
-    expect(await postBotRemoved({ groupId: "g@g.us" })).toBe(true);
+    expect(await postBotRemoved({ groupId: "g@g.us" })).toEqual({ ok: true });
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toMatch(/\/api\/whatsapp\/bot-removed$/);
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({ groupId: "g@g.us" });
   });
 
-  it("an OLDER server's 404 on bot-removed is false, never a throw", async () => {
+  it("an OLDER server's 404 on bot-removed is null, never a throw", async () => {
     fetchMock.mockResolvedValue(res(404, { error: "not found" }));
-    expect(await postBotRemoved({ groupId: "g@g.us" })).toBe(false);
+    expect(await postBotRemoved({ groupId: "g@g.us" })).toBeNull();
+  });
+
+  it("slice B5: the billing answer for a live club's group comes back to the caller", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true, billing: "paused", orgId: "org-x" }));
+    expect(await postBotRemoved({ groupId: "g@g.us" })).toEqual({ ok: true, billing: "paused", orgId: "org-x" });
   });
 });
 

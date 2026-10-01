@@ -107,6 +107,8 @@ describe("Sutton FC and every pre-self-join club: exempt is never paused", () =>
     { type: "subscription-unpaid" },
     { type: "removed-from-group" },
     { type: "re-added" },
+    { type: "re-added", subscription: "paying" },
+    { type: "re-added", subscription: "unpaid" },
     { type: "plan-free" },
   ];
   for (const env of [ON, OFF]) {
@@ -236,12 +238,40 @@ describe("4.2: removal, re-add and plan Free", () => {
     }
     expect(nextBillingState(club({ billingStatus: "paused" }), { type: "removed-from-group" }, NOW, ON)).toBeNull();
   });
-  it("re-added before the trial end: paused (removed) back to trial, resumed", () => {
-    const removed = club({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: "removed" } });
-    expect(nextBillingState(removed, { type: "re-added" }, NOW, ON)).toMatchObject({ to: "trial", resumes: true });
-    expect(nextBillingState(removed, { type: "re-added" }, TRIAL_ENDS, ON)).toBeNull();
-    const noCard = club({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: "no-card" } });
-    expect(nextBillingState(noCard, { type: "re-added" }, NOW, ON)).toBeNull();
+  const removed = club({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: "removed" } });
+  it("re-added before the trial end, no card: paused (removed) back to trial, resumed", () => {
+    expect(nextBillingState(removed, { type: "re-added" }, NOW, ON)).toMatchObject({ to: "trial", resumes: true, pausedReason: null });
+    expect(nextBillingState(removed, { type: "re-added", subscription: null }, NOW, ON)).toMatchObject({ to: "trial", resumes: true });
+  });
+  it("slice B5: re-added after the free month, no card: stays paused, now waiting for a card (no-card), not resumed", () => {
+    expect(nextBillingState(removed, { type: "re-added" }, TRIAL_ENDS, ON)).toEqual({
+      to: "paused",
+      pausedReason: "no-card",
+      createsBilling: false,
+      resumes: false,
+    });
+  });
+  it("slice B5: re-added while the subscription still pays (un-cancelled): subscribed, resumed, inside or after the free month", () => {
+    expect(nextBillingState(removed, { type: "re-added", subscription: "paying" }, NOW, ON)).toMatchObject({ to: "subscribed", resumes: true });
+    expect(nextBillingState(removed, { type: "re-added", subscription: "paying" }, TRIAL_ENDS, ON)).toMatchObject({ to: "subscribed", resumes: true });
+  });
+  it("slice B5: re-added with an UNPAID subscription: stays paused, waiting for the payment (payment-failed)", () => {
+    expect(nextBillingState(removed, { type: "re-added", subscription: "unpaid" }, TRIAL_ENDS, ON)).toMatchObject({
+      to: "paused",
+      pausedReason: "payment-failed",
+      resumes: false,
+    });
+  });
+  it("re-added does nothing to a club paused for any other reason, or not paused", () => {
+    for (const reason of ["no-card", "payment-failed", "cancelled"]) {
+      const other = club({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: reason } });
+      for (const sub of [undefined, null, "paying", "unpaid"] as const) {
+        expect(nextBillingState(other, { type: "re-added", subscription: sub }, NOW, ON)).toBeNull();
+      }
+    }
+    for (const s of ["trial", "grace", "subscribed", "past_due"] as const) {
+      expect(nextBillingState(club({ billingStatus: s }), { type: "re-added", subscription: "paying" }, NOW, ON)).toBeNull();
+    }
   });
   it("plan Free: any billed state to exempt, resuming a paused club", () => {
     for (const s of ["trial", "grace", "subscribed", "past_due"] as const) {

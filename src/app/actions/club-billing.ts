@@ -39,6 +39,7 @@ type Outcome = { ok: true; url?: string } | { ok: false; reason: BillingActionRe
 function noticeFor(reason: BillingActionRefusal): string {
   if (reason === "not-set-up") return "not-set-up";
   if (reason === "already-subscribed") return "already";
+  if (reason === "removed-from-group") return "re-add";
   return "failed";
 }
 

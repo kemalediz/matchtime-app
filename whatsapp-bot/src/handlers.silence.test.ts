@@ -15,6 +15,7 @@ import {
   isLegacySetupTriggerEnabled,
   isMonitoredGroup,
   isSilentGroup,
+  removeMonitoredGroup,
   setLegacySetupTrigger,
   setMonitoredGroups,
   setOnboardingGroups,
@@ -128,5 +129,30 @@ describe("admin groups on the Pi (slice 2a)", () => {
     setAdminGroups([{ groupId: HQ, orgId: "org-fnf" }]);
     removeAdminGroup(HQ);
     expect(isAdminGroup(HQ)).toBe(false);
+  });
+});
+
+describe("removeMonitoredGroup (club fee billing, slice B5)", () => {
+  beforeEach(() => {
+    setSilentGroups([]);
+    setMonitoredGroups([]);
+    setOnboardingGroups([]);
+  });
+
+  it("stops monitoring one group (and its setup flush), leaving the others alone", () => {
+    setMonitoredGroups([SUTTON, PENDING]);
+    setOnboardingGroups([PENDING]);
+    removeMonitoredGroup(PENDING);
+    expect(isMonitoredGroup(PENDING)).toBe(false);
+    expect(_test_groupSets().onboarding).toEqual([]);
+    expect(isMonitoredGroup(SUTTON)).toBe(true);
+  });
+
+  it("does not make the group silent: a re-add still reaches the server, and the next refresh decides", () => {
+    setMonitoredGroups([PENDING]);
+    removeMonitoredGroup(PENDING);
+    expect(isSilentGroup(PENDING)).toBe(false);
+    setMonitoredGroups([PENDING]);
+    expect(isMonitoredGroup(PENDING)).toBe(true);
   });
 });

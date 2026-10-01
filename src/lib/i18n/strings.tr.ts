@@ -1903,6 +1903,8 @@ export const tr: Strings = {
   billing_state_past_due: (p) =>
     `Son ödeme alınamadı. Stripe tekrar deniyor. Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
   billing_state_paused: "MatchTime duraklatıldı. Tüm veriler saklanıyor. Yeniden açmak için kart ekleyin.",
+  billing_state_paused_removed:
+    "MatchTime kulübün WhatsApp grubundan çıkarıldığı için duraklatıldı. Tüm veriler saklanıyor. Devam etmek için MatchTime'ı gruba geri ekleyin.",
   billing_card_holder_note: (p) =>
     `${p.contact} kendi kartını ekleyene kadar ${p.club} için MatchTime ücreti sizin kartınızdan ödenmeye devam ediyor.`,
   billing_who_collector: (p) => `Kartla ${p.name} ilgileniyor.`,
@@ -1921,12 +1923,14 @@ export const tr: Strings = {
     `Ücretsiz ay sona erdi. MatchTime'ın çalışmaya devam etmesi için ${p.date} tarihinden önce kart ekleyin.`,
   billing_banner_past_due: (p) => `Bu ayın kulüp ücreti alınamadı. Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
   billing_banner_paused: "MatchTime bu kulüp için duraklatıldı. Yeniden açmak için kart ekleyin.",
+  billing_banner_paused_removed: "MatchTime bu kulübün WhatsApp grubundan çıkarıldığı için duraklatıldı. Devam etmek için gruba geri ekleyin.",
   billing_banner_link: "Ödeme sayfası",
   billing_notice_done: "Teşekkürler, kartınız kaydediliyor. Bir dakika içinde bu sayfada görünür.",
   billing_notice_replaced: "Teşekkürler, kartınız ekleniyor. Bir dakika içinde bu sayfada görünür.",
   billing_notice_removed: "Kartınız kaldırıldı ve bu kulüp için bir daha ücret alınmayacak.",
   billing_notice_not_set_up: "Kartla ödeme henüz açık değil. Lütfen daha sonra tekrar deneyin.",
   billing_notice_already: "Bu kulüp için zaten bir kart ödeme yapıyor.",
+  billing_notice_re_add: "MatchTime kulübün WhatsApp grubunda değil. Önce gruba geri ekleyin.",
   billing_notice_failed: "Bir sorun oluştu. Lütfen tekrar deneyin.",
   billing_dm_card_added: (p) =>
     `Teşekkürler${p.name ? ` ${p.name}` : ""}, kartınız kaydedildi. ` +

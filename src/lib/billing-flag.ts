@@ -39,3 +39,19 @@ export async function billingUiEnabledForRequest(): Promise<boolean> {
   }
   return billingUiEnabledFrom(value);
 }
+
+/**
+ * The same seam for the Pi's API routes that carry no cookie (slice B5:
+ * bot-removed and bot-added's re-add step): a header, honoured only under
+ * `MT_TEST_MODE=1`, so the e2e suite can show a removal is only logged
+ * with the flag off. The Pi never sends it; outside test mode it is
+ * ignored in both directions and this is exactly `isBillingEnabled()`.
+ */
+export const BILLING_TEST_HEADER = "x-mt-test-billing";
+
+export function billingEnabledForApiRequest(
+  request: Request,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return billingUiEnabledFrom(request.headers.get(BILLING_TEST_HEADER) ?? undefined, env);
+}

@@ -395,6 +395,24 @@ describe("Add a card: startClubCheckout", () => {
     }
   });
 
+  it("slice B5: a club paused because MatchTime was removed is never offered a card (add MatchTime back first)", async () => {
+    // Without the subscription (it ended with the paid month) and with it
+    // still running to its end: Add a card would pay for a group MatchTime
+    // is not in, and the webhook never resumes a removed club.
+    for (const billing of [
+      { pausedReason: "removed" },
+      { pausedReason: "removed", stripeCustomerId: "cus_x", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", cancelAtPeriodEnd: true },
+      { pausedReason: "removed", stripeCustomerId: "cus_x", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "past_due", cancelAtPeriodEnd: true },
+    ]) {
+      setWorld({ billingStatus: "paused" }, billing);
+      expect(await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now }), JSON.stringify(billing)).toEqual({
+        ok: false,
+        reason: "removed-from-group",
+      });
+    }
+    expect(fake.state().calls).toEqual([]);
+  });
+
   it("not set up: no Stripe or no price says so, never a half-made session", async () => {
     delete process.env.STRIPE_CLUB_PRICE_ID;
     expect(await startClubCheckout({ orgId: ORG, userId: "user_colin", role: "contact", now })).toEqual({ ok: false, reason: "not-set-up" });

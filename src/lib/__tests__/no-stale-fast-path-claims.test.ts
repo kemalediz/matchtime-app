@@ -109,7 +109,8 @@ describe("no source file claims a regex fast path still handles attendance", () 
     // group id the server just called silent).
     const exported = [...handlers.matchAll(/export function (\w+)/g)].map((m) => m[1]);
     // Slice 2a (2026-09-30) adds the admin-group set: group ids and the
-    // club they belong to, never a message.
+    // club they belong to, never a message. Club fee billing slice B5
+    // (2026-10-01) adds `removeMonitoredGroup`: a group id, never a message.
     expect(exported.sort()).toEqual([
       "_test_groupSets",
       "addAdminGroup",
@@ -122,6 +123,7 @@ describe("no source file claims a regex fast path still handles attendance", () 
       "isOnboardingGroup",
       "isSilentGroup",
       "removeAdminGroup",
+      "removeMonitoredGroup",
       "removeOnboardingGroup",
       "setAdminGroups",
       "setLegacySetupTrigger",

@@ -538,6 +538,7 @@ export async function loadClubBillingSnapshot(orgId: string): Promise<ClubBillin
           cardLast4: true,
           cardHolderUserId: true,
           stripeSubscriptionStatus: true,
+          pausedReason: true,
         },
       },
     },
@@ -648,13 +649,18 @@ export async function loadBillingBanner(orgId: string, opts: { flagOn?: boolean 
   if (!(opts.flagOn ?? isBillingEnabled())) return null;
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { language: true, billingStatus: true, clubBilling: { select: { trialEndsAt: true, graceEndsAt: true } } },
+    select: {
+      language: true,
+      billingStatus: true,
+      clubBilling: { select: { trialEndsAt: true, graceEndsAt: true, pausedReason: true } },
+    },
   });
   if (!org) return null;
   return bannerText(org.language, {
     status: org.billingStatus,
     trialEndsAt: org.clubBilling?.trialEndsAt ?? null,
     graceEndsAt: org.clubBilling?.graceEndsAt ?? null,
+    pausedReason: org.clubBilling?.pausedReason ?? null,
   });
 }
 

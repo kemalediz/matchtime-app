@@ -87,6 +87,9 @@ export type BillingActionRefusal =
   | "not-allowed"
   | "not-set-up"
   | "not-billable"
+  /** Slice B5: paused because MatchTime was removed from the group. The way
+   *  back is adding MatchTime to the group again, never a card first. */
+  | "removed-from-group"
   | "already-subscribed"
   | "no-subscription"
   | "no-customer"
@@ -199,6 +202,10 @@ export async function startClubCheckout(args: ActionArgs): Promise<BillingAction
   const status = org.billingStatus;
   if (org.billingPlan === "free") return { ok: false, reason: "not-billable" };
   if (status !== "trial" && status !== "grace" && status !== "paused" && status !== "past_due") return { ok: false, reason: "not-billable" };
+  // Slice B5: it would pay for a group MatchTime is not in, and the webhook
+  // deliberately never resumes a removed club. Adding MatchTime back moves
+  // the club on (club-billing-removal.ts), after which a card works.
+  if (status === "paused" && billing.pausedReason === "removed") return { ok: false, reason: "removed-from-group" };
 
   const stripe = getBillingStripe();
   const cfg = billingStripeConfig();
