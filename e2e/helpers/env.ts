@@ -210,6 +210,15 @@ export function buildTestEnv(): Record<string, string> {
     // reach is `bot-health`'s `none-shadow-stale` rule, which is the
     // whole point — the alert has to be provable in a test.
     NONE_BUCKET_SHADOW_ENABLED: "1",
+    // Club fee billing (slice B1). ON for the suite so the quiet gate is
+    // exercised end to end: every seeded club is "exempt" by the column
+    // default (the Sutton FC shape), so every other spec runs through the
+    // flag-on gates and must behave exactly as before, and
+    // e2e/api/billing-quiet-gate.spec.ts pauses a club of its own. Prod
+    // keeps it OFF; the flag-off queries are pinned byte for byte by the
+    // unit tests (src/lib/__tests__/club-billing-gates.test.ts and the
+    // route and cron tests beside them).
+    BILLING_ENABLED: "1",
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
     STRIPE_SECRET_KEY: "",

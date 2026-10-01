@@ -48,16 +48,16 @@ describe("approval states", () => {
 
 describe("isClubOperational: approved and not dormant", () => {
   it("Sutton FC's shape (default approved, live) is operational", () => {
-    expect(isClubOperational({ approvalStatus: "approved", dormantAt: null })).toBe(true);
+    expect(isClubOperational({ approvalStatus: "approved", dormantAt: null, billingStatus: "exempt" })).toBe(true);
   });
 
   it("a dormant approved club is not", () => {
-    expect(isClubOperational({ approvalStatus: "approved", dormantAt: new Date("2026-06-18") })).toBe(false);
+    expect(isClubOperational({ approvalStatus: "approved", dormantAt: new Date("2026-06-18"), billingStatus: "exempt" })).toBe(false);
   });
 
   it("no unapproved club is, whatever its dormancy", () => {
     for (const s of ["draft", "pending", "rejected", "suspended"]) {
-      expect(isClubOperational({ approvalStatus: s, dormantAt: null })).toBe(false);
+      expect(isClubOperational({ approvalStatus: s, dormantAt: null, billingStatus: "exempt" })).toBe(false);
     }
   });
 });

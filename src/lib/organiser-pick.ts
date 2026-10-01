@@ -82,6 +82,7 @@ interface PickOrg {
   benchPickFallback: string;
   approvalStatus: string | null;
   dormantAt: Date | null;
+  billingStatus: string;
   dropOutDeadlineDay: number | null;
   dropOutDeadlineTime: string | null;
 }
@@ -97,6 +98,7 @@ async function loadPickOrg(orgId: string): Promise<PickOrg | null> {
       benchPickFallback: true,
       approvalStatus: true,
       dormantAt: true,
+      billingStatus: true,
       dropOutDeadlineDay: true,
       dropOutDeadlineTime: true,
     },

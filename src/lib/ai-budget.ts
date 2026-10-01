@@ -94,6 +94,7 @@ import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { AI_CAP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isClubApproved, isSelfJoinEnabled, isSilentGroup } from "./club-approval";
+import { isBillingPaused } from "./club-billing-rules";
 import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
   AiBudgetExceededError,
@@ -140,6 +141,9 @@ export interface AllowanceOrg {
   /** When the platform owner approved a self-join club. NULL for every
    *  club that existed before self-join. */
   approvedAt: Date | null;
+  /** Club fee billing (B1): "paused" spends nothing while BILLING_ENABLED
+   *  is on (club-billing-rules.ts). Every pre-billing club is "exempt". */
+  billingStatus: string;
 }
 
 /**
@@ -197,6 +201,10 @@ export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date): number {
   // rails already keep such a club from reaching a model; this is the
   // defence in depth for a future path that forgets them.
   if (!isClubApproved(org)) return 0;
+  // Paused for the club fee (B1, plan 4.3 point 5): $0, checked before the
+  // global switch and the per-club override so neither can lift it. Never
+  // paused while BILLING_ENABLED is off.
+  if (isBillingPaused(org)) return 0;
   if (!org.whatsappBotEnabled || !org.whatsappGroupId) return 0;
   if (isAiCapDisabled()) return UNCAPPED_USD;
   if (org.aiDailyCapUsd !== null && org.aiDailyCapUsd !== undefined) {
@@ -220,6 +228,7 @@ const ALLOWANCE_SELECT = {
   whatsappGroupId: true,
   approvalStatus: true,
   approvedAt: true,
+  billingStatus: true,
 } as const;
 
 /** The cap for a key today. Throws on a database error (callers fail open). */

@@ -60,6 +60,7 @@ import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
 import { badgeLedgerOf, claimBadgePost } from "@/lib/badge-announcement-scheduler";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
+import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
@@ -181,8 +182,11 @@ export async function GET(request: Request) {
   // Find the org first so we can run the bench-confirmation sweep scoped to
   // it. This has to happen before compute so the new prompt that replaces
   // the expired one gets posted in this same cycle.
+  // Club fee billing (B1, plan 4.3 point 4): a billing-paused club is
+  // refused here too, so a stale Pi that still polls gets a 404 and never
+  // a post. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
   const org = await db.organisation.findFirst({
-    where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
+    where: { whatsappGroupId: groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
     select: { id: true, approvedAt: true },
   });
   if (!org) {

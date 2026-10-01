@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   // identical in the cron log, which is how this bug survived a quarter.
   const candidates = await db.activity.findMany({
     where: { isActive: true },
-    include: { sport: true, org: { select: { name: true, dormantAt: true, approvalStatus: true } } },
+    include: { sport: true, org: { select: { name: true, dormantAt: true, approvalStatus: true, billingStatus: true } } },
   });
 
   // Filtered BEFORE the loop, not with a `continue` inside it: this repo
@@ -65,6 +65,14 @@ export async function GET(request: Request) {
       `[generate-matches] skipping "${s.item.name}" — org "${s.item.org.name}" is not approved ` +
         `(${s.item.org.approvalStatus})`,
     );
+  }
+
+  // Club fee billing (B1, plan 4.3 point 6): a club paused for the club
+  // fee gets no fixture while it is quiet. Never while BILLING_ENABLED is
+  // off (the rule reads the kill switch). Logged only: the response body
+  // is unchanged.
+  for (const s of skipped.filter((x) => x.reason === "org-billing-paused")) {
+    console.log(`[generate-matches] skipping "${s.item.name}" — org "${s.item.org.name}" is paused for the club fee`);
   }
 
   let created = 0;

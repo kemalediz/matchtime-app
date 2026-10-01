@@ -127,3 +127,38 @@ describe("GET /api/whatsapp/orgs", () => {
     expect(body.silentGroups).toEqual(["g-pending"]);
   });
 });
+
+describe("GET /api/whatsapp/orgs: club fee billing (B1, plan 4.3 point 2)", () => {
+  const BILLING = process.env.BILLING_ENABLED;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.WHATSAPP_API_KEY = KEY;
+    delete process.env.SELF_JOIN_ENABLED;
+    dbMock.organisation.findMany.mockResolvedValue([]);
+    dbMock.onboardingSession.findMany.mockResolvedValue([]);
+    silentMock.loadSilentGroupIds.mockResolvedValue([]);
+  });
+  afterAll(() => {
+    if (BILLING === undefined) delete process.env.BILLING_ENABLED;
+    else process.env.BILLING_ENABLED = BILLING;
+  });
+
+  it("flag off: the orgs query is exactly today's (no billing filter)", async () => {
+    delete process.env.BILLING_ENABLED;
+    await call();
+    const where = dbMock.organisation.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({ approvalStatus: "approved", whatsappBotEnabled: true, whatsappGroupId: { not: null } });
+    expect("billingStatus" in where).toBe(false);
+  });
+
+  it("flag on: a billing-paused club is left out of the monitored orgs", async () => {
+    process.env.BILLING_ENABLED = "1";
+    await call();
+    expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({
+      approvalStatus: "approved",
+      billingStatus: { not: "paused" },
+      whatsappBotEnabled: true,
+      whatsappGroupId: { not: null },
+    });
+  });
+});

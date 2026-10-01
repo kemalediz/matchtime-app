@@ -62,6 +62,7 @@
  */
 
 import { isClubApproved } from "./club-approval-state";
+import { isBillingPaused } from "./club-billing-rules";
 
 /** The only field of an Organisation that says whether the club exists. */
 export interface OrgLifecycle {
@@ -96,7 +97,12 @@ export interface FixtureCandidate {
   isActive: boolean;
   /** Lifecycle plus club approval (self-join, 2026-09-29): a club that
    *  is not approved gets no fixtures either. See club-approval.ts. */
-  org: OrgLifecycle & { approvalStatus: string };
+  org: OrgLifecycle & {
+    approvalStatus: string;
+    /** Club fee billing (B1): a paused club gets no fixture while
+     *  BILLING_ENABLED is on. Required so the cron must select it. */
+    billingStatus: string;
+  };
 }
 
 /**
@@ -104,7 +110,7 @@ export interface FixtureCandidate {
  * `activity-inactive` because they mean completely different things to
  * whoever reads the cron's output: one club is gone, one fixture is off.
  */
-export type FixtureSkipReason = "org-dormant" | "org-not-approved" | "activity-inactive";
+export type FixtureSkipReason = "org-dormant" | "org-not-approved" | "org-billing-paused" | "activity-inactive";
 
 /**
  * The rule. Returns null when a fixture SHOULD be generated, or the
@@ -123,6 +129,11 @@ export function fixtureSkipReason(candidate: FixtureCandidate): FixtureSkipReaso
   // must cost nothing and post nothing, so it gets no fixture. Every
   // club that predates self-join is "approved" by the column default.
   if (!isClubApproved(candidate.org)) return "org-not-approved";
+  // Club fee billing (B1, plan 4.3 point 6): a club paused for the club
+  // fee gets no fixture, so nothing is posted for it while it is quiet.
+  // Never while BILLING_ENABLED is off. Dormancy and approval first: they
+  // are the bigger facts.
+  if (isBillingPaused(candidate.org)) return "org-billing-paused";
   if (!candidate.isActive) return "activity-inactive";
   return null;
 }
@@ -136,6 +147,8 @@ export interface GeneratablePartition<T> {
   skippedDormantOrgs: number;
   /** Activities skipped because their club is not approved. */
   skippedNotApprovedOrgs: number;
+  /** Activities skipped because their club is billing-paused (B1). */
+  skippedBillingPausedOrgs: number;
 }
 
 /**
@@ -168,5 +181,6 @@ export function partitionGeneratable<T extends FixtureCandidate>(
     skipped,
     skippedDormantOrgs: skipped.filter((s) => s.reason === "org-dormant").length,
     skippedNotApprovedOrgs: skipped.filter((s) => s.reason === "org-not-approved").length,
+    skippedBillingPausedOrgs: skipped.filter((s) => s.reason === "org-billing-paused").length,
   };
 }

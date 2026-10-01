@@ -29,7 +29,7 @@ import { sendRatingEmails } from "./email";
 import { computeEloDeltas } from "./elo";
 import { applyMembershipEloDeltas, loadMembershipEloInputs } from "./membership-elo";
 import { formatLondon } from "./london-time";
-import { APPROVED_CLUB_WHERE } from "./club-approval";
+import { servingClubWhere } from "./club-approval";
 
 export async function completeFinishedMatches(now: Date = new Date()): Promise<{ completed: number }> {
   const candidates = await db.match.findMany({
@@ -38,7 +38,9 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
       date: { lte: now },
       // Self-join (2026-09-29): a club that is not approved gets no
       // post-match flow. Every pre-existing club is approved by default.
-      activity: { org: APPROVED_CLUB_WHERE },
+      // Club fee billing (B1): nor does a billing-paused club (flag on);
+      // its matches are completed quietly by `resumeClub` instead.
+      activity: { org: servingClubWhere() },
     },
     include: {
       activity: true,

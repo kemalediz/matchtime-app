@@ -56,11 +56,19 @@ export {
   SUSPENDED_CLUB_WHERE,
   UNAPPROVED_CLUB_WHERE,
   SELF_JOIN_CLUB_WHERE,
+  SERVING_CLUB_WHERE,
+  servingClubWhere,
   isClubApproved,
   isClubOperational,
   type ApprovalStatus,
 } from "./club-approval-state";
-import { APPROVED_CLUB_WHERE, PENDING_CLUB_WHERE, UNAPPROVED_CLUB_WHERE } from "./club-approval-state";
+import {
+  APPROVED_CLUB_WHERE,
+  PENDING_CLUB_WHERE,
+  UNAPPROVED_CLUB_WHERE,
+  servingClubWhere,
+} from "./club-approval-state";
+import { isBillingEnabled } from "./club-billing-rules";
 
 // ── Flags ───────────────────────────────────────────────────────────────
 
@@ -148,6 +156,10 @@ export interface SilentGroupSources {
    *  forwards its messages to the admin-group route (never to analyze).
    *  Absent means none. */
   adminGroups?: Array<string | null>;
+  /** Club fee billing (B1): `whatsappGroupId` of approved clubs that are
+   *  billing-paused. Silent. Only ever filled while BILLING_ENABLED is
+   *  on; absent means none. */
+  pausedOrgGroups?: Array<string | null>;
 }
 
 /**
@@ -159,17 +171,31 @@ export function computeSilentGroups(src: SilentGroupSources): string[] {
   const ok = (g: string | null): g is string => typeof g === "string" && g.length > 0;
   const approved = new Set([...src.approvedOrgGroups, ...(src.adminGroups ?? [])].filter(ok));
   const silent = new Set<string>();
-  for (const g of [...src.unapprovedOrgGroups, ...src.unapprovedConnectGroups, ...src.unsolicitedGroups]) {
+  for (const g of [
+    ...src.unapprovedOrgGroups,
+    ...src.unapprovedConnectGroups,
+    ...src.unsolicitedGroups,
+    ...(src.pausedOrgGroups ?? []),
+  ]) {
     if (ok(g) && !approved.has(g)) silent.add(g);
   }
   return [...silent];
 }
 
-/** Read the sources and compute the silent set. Five small queries. */
+/**
+ * Read the sources and compute the silent set. Five small queries, plus a
+ * sixth (the billing-paused clubs) only while BILLING_ENABLED is on.
+ *
+ * "approved, never silent" is the SERVING clubs: with the flag on, a
+ * billing-paused club's group is not protected by that rule, and is
+ * listed silent, so the Pi drops its messages (plan 4.3 point 3). With
+ * the flag off the queries are exactly today's.
+ */
 export async function loadSilentGroupIds(): Promise<string[]> {
-  const [approvedOrgs, unapprovedOrgs, connects, unsolicited, adminGroups] = await Promise.all([
+  const billing = isBillingEnabled();
+  const [approvedOrgs, unapprovedOrgs, connects, unsolicited, adminGroups, pausedOrgs] = await Promise.all([
     db.organisation.findMany({
-      where: { ...APPROVED_CLUB_WHERE, whatsappGroupId: { not: null } },
+      where: { ...servingClubWhere(), whatsappGroupId: { not: null } },
       select: { whatsappGroupId: true },
     }),
     db.organisation.findMany({
@@ -188,6 +214,12 @@ export async function loadSilentGroupIds(): Promise<string[]> {
       where: { adminGroupId: { not: null } },
       select: { adminGroupId: true },
     }),
+    billing
+      ? db.organisation.findMany({
+          where: { ...APPROVED_CLUB_WHERE, billingStatus: "paused", whatsappGroupId: { not: null } },
+          select: { whatsappGroupId: true },
+        })
+      : Promise.resolve([] as Array<{ whatsappGroupId: string | null }>),
   ]);
   return computeSilentGroups({
     approvedOrgGroups: approvedOrgs.map((o) => o.whatsappGroupId),
@@ -195,6 +227,7 @@ export async function loadSilentGroupIds(): Promise<string[]> {
     unapprovedConnectGroups: connects.map((c) => c.groupId),
     unsolicitedGroups: unsolicited.map((u) => u.groupId),
     adminGroups: (adminGroups ?? []).map((o) => o.adminGroupId),
+    ...(billing ? { pausedOrgGroups: (pausedOrgs ?? []).map((o) => o.whatsappGroupId) } : {}),
   });
 }
 
@@ -229,6 +262,25 @@ export async function onlyUnapprovedClubs(orgIds: string[]): Promise<boolean> {
   if (orgIds.length === 0) return false;
   const approved = await db.organisation.count({ where: { id: { in: orgIds }, ...APPROVED_CLUB_WHERE } });
   return approved === 0;
+}
+
+/**
+ * The dm-reply rail (club fee billing B1, plan 4.3 point 7): does this DM
+ * sender belong ONLY to clubs MatchTime is not serving? null = no (carry
+ * on). Otherwise why: "club-not-approved" (every club unapproved, today's
+ * rail, today's reason) or "club-billing-paused" (approved, but every
+ * approved one is paused). Either way the DM goes nowhere near a model.
+ *
+ * With BILLING_ENABLED off this is exactly `onlyUnapprovedClubs`: the
+ * same single query, the same answer.
+ */
+export async function nonServingClubsReason(
+  orgIds: string[],
+): Promise<"club-not-approved" | "club-billing-paused" | null> {
+  if (await onlyUnapprovedClubs(orgIds)) return "club-not-approved";
+  if (orgIds.length === 0 || !isBillingEnabled()) return null;
+  const serving = await db.organisation.count({ where: { id: { in: orgIds }, ...servingClubWhere() } });
+  return serving === 0 ? "club-billing-paused" : null;
 }
 
 // ── The decision (slice 7) ──────────────────────────────────────────────

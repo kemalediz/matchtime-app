@@ -5,7 +5,7 @@ import {
   ONBOARDING_SESSION_TTL_MS,
 } from "@/lib/onboarding-parse";
 import {
-  APPROVED_CLUB_WHERE,
+  servingClubWhere,
   isLegacySetupTriggerEnabled,
   isSelfJoinEnabled,
   loadSilentGroupIds,
@@ -24,7 +24,11 @@ export async function GET(request: Request) {
     where: {
       // The CHECK constraint already forbids a bot-enabled club that is
       // not approved; this is the second lock on the same door.
-      ...APPROVED_CLUB_WHERE,
+      // Club fee billing (B1, plan 4.3 point 2): a billing-paused club is
+      // not served, so its group leaves the monitored set and due-posts is
+      // no longer polled for it. With BILLING_ENABLED off this is exactly
+      // APPROVED_CLUB_WHERE.
+      ...servingClubWhere(),
       whatsappBotEnabled: true,
       whatsappGroupId: { not: null },
     },
@@ -40,9 +44,10 @@ export async function GET(request: Request) {
   // ── Silent groups (self-join slice 1, 2026-09-29) ─────────────────
   // Groups MatchTime is in but must never speak in or forward: a club
   // waiting for approval, rejected or suspended, or a group somebody
-  // added MatchTime to with no connect code. The Pi drops their messages
-  // and never lets the "@MatchTime setup" trigger monitor them. A live
-  // club's group is never silent (belt and braces over the loader).
+  // added MatchTime to with no connect code, and (BILLING_ENABLED on) a
+  // club paused for the club fee. The Pi drops their messages and never
+  // lets the "@MatchTime setup" trigger monitor them. A served club's
+  // group is never silent (belt and braces over the loader).
   const silentGroups = (await loadSilentGroupIds()).filter((g) => !known.has(g));
   const silent = new Set(silentGroups);
 

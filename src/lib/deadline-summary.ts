@@ -53,6 +53,7 @@ export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Da
       language: true,
       approvalStatus: true,
       dormantAt: true,
+      billingStatus: true,
       dropOutDeadlineDay: true,
       dropOutDeadlineTime: true,
       listPublishDay: true,
