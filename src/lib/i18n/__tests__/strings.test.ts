@@ -387,6 +387,12 @@ const SAMPLES: SampleArgs = {
   stats_leaderboard_away: { avg: "7.4", lastPlayed: "LASTPLAYED" },
   stats_tots_title: null,
   stats_tots_info_lead: { sportName: "SPORTNAME" },
+  stats_share_card: null,
+  stats_share_badge_label: { label: "BADGELABEL" },
+  stats_share_saved: null,
+  stats_share_failed: null,
+  stats_share_badge_text: { emoji: "EMOJI", label: "BADGELABEL", orgName: "ORGNAME" },
+  stats_share_season_text: { orgName: "ORGNAME" },
 
   // ── self-join slice 4: the organiser web ──
   sj_activity_name: { perSide: 7 },

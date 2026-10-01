@@ -21,6 +21,16 @@ describe("isPublicPath", () => {
     },
   );
 
+  // The badge share card is an image shared straight into WhatsApp, public
+  // by cuid like the Wrapped card. The route itself 404s unless the badge
+  // is earned (src/lib/badge-card.ts).
+  it.each(["/api/wrapped/u1", "/api/badge-card/u1/mom-machine"])(
+    "serves the public share card %s without a session",
+    (p) => {
+      expect(isPublicPath(p)).toBe(true);
+    },
+  );
+
   it.each(["/admin", "/admin/players", "/profile", "/matches/123", "/helpdesk", "/help-me", "/create-org"])(
     "still gates the signed-in route %s",
     (p) => {

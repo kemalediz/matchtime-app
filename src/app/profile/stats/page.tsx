@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { getUserOrg } from "@/lib/org";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Share2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
   loadPlayerSeasonStats,
   loadRatingLeaderboard,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/player-stats";
 import { RatingTimeline } from "@/components/stats/rating-timeline";
 import { InfoButton } from "@/components/stats/info-button";
+import { ShareImageButton } from "@/components/stats/share-image-button";
 import { t } from "@/lib/i18n/t";
 import { lastPlayedLabel } from "@/lib/i18n/dates";
 import { GROUP_RATINGS_MIN_GAMES } from "@/lib/pipeline/stats-answer";
@@ -62,14 +63,17 @@ export default async function MyStatsPage() {
           <Link href="/profile" className="inline-flex items-center gap-1 text-sm text-slate-500">
             <ArrowLeft className="w-4 h-4" /> Profile
           </Link>
-          <a
-            href={`/api/wrapped/${stats.player.id}?org=${stats.orgId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600"
-          >
-            <Share2 className="w-4 h-4" /> Share card
-          </a>
+          {/* Shared as an IMAGE (Kemal, 2026-10-01): the phone's share
+              sheet gets the PNG, so WhatsApp is one tap away. */}
+          <ShareImageButton
+            url={`/api/wrapped/${stats.player.id}?org=${stats.orgId}`}
+            filename="matchtime-season.png"
+            text={s.stats_share_season_text({ orgName: stats.orgName })}
+            savedText={s.stats_share_saved}
+            failedText={s.stats_share_failed}
+            ariaLabel={s.stats_share_card}
+            label={s.stats_share_card}
+          />
         </div>
 
         <h1 className="mt-3 text-2xl font-bold text-slate-900">{firstName}&apos;s season</h1>
@@ -479,10 +483,23 @@ export default async function MyStatsPage() {
                 }`}
               >
                 <span className={`text-xl ${b.earned ? "" : "grayscale"}`}>{b.emoji}</span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-slate-800 truncate">{b.label}</div>
                   <div className="text-[10px] text-slate-400 leading-tight">{b.hint}</div>
                 </div>
+                {/* Only an EARNED badge can be shared: the card route
+                    404s for anything else (src/lib/badge-card.ts). */}
+                {b.earned && (
+                  <ShareImageButton
+                    url={`/api/badge-card/${stats.player.id}/${b.key}?org=${stats.orgId}`}
+                    filename={`matchtime-${b.key}.png`}
+                    text={s.stats_share_badge_text({ emoji: b.emoji, label: b.label, orgName: stats.orgName })}
+                    savedText={s.stats_share_saved}
+                    failedText={s.stats_share_failed}
+                    ariaLabel={s.stats_share_badge_label({ label: b.label })}
+                    className="shrink-0 self-start rounded-full p-1.5 text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                  />
+                )}
               </div>
             ))}
           </div>
