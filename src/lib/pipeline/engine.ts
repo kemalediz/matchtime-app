@@ -346,7 +346,7 @@ export function decide(input: EngineInput): EngineResult {
   const statedSlotMoves: Array<{ fromUserId: string; toUserId: string; team: "RED" | "YELLOW" }> =
     [];
   /**
-   * Bench offers OPENED BY THIS BATCH, with the exact write, speech and
+   * Bench offers OPENED BY THIS BATCH, with the exact write and
    * outcome that opened each, keyed by the player whose slot it offers.
    *
    * Kept so the state check at the bottom can take an offer back when the
@@ -356,7 +356,7 @@ export function decide(input: EngineInput): EngineResult {
    */
   const offersOpenedThisBatch = new Map<
     string,
-    { write: ProposedWrite; speech: SpeechIntent; outcome: MessageOutcome }
+    { write: ProposedWrite; outcome: MessageOutcome }
   >();
 
   // ── S35 · state collapse ─────────────────────────────────────────────
@@ -1580,6 +1580,17 @@ export function decide(input: EngineInput): EngineResult {
         // bench. Nobody is dropped; first claim wins; daytime gating and
         // the copy live in bench-offer-copy.ts (§13 "preserve exactly").
         //
+        // ⚠️ THE ENGINE SAYS NOTHING ABOUT IT (2026-10-03). The offer's
+        // own group post (`bot-scheduler.ts`, keyed `offer-<id>`) is the
+        // ONE announcement of the slot: it tags every bencher, maps a
+        // claim back onto the offer, pairs with each bencher's DM and
+        // respects the overnight gate. A `bench_offer_open` sentence used
+        // to ride the analyze reply as well, so every drop with a bench
+        // announced the same slot twice, seconds apart (Sutton FC,
+        // 3 Oct 2026, 13:33). The write below is the whole of the
+        // engine's part; `slot_opened` stays quiet for the same slot
+        // because the open offer owns it (see `vacated`).
+        //
         // ⚠️ NOT FOR A SLOT A REPLACEMENT IS ABOUT TO FILL (2026-09-22).
         // "Mojib is replacing Najib" would otherwise drop Najib, invite
         // the whole bench to claim his place, and then give it to Mojib
@@ -1612,16 +1623,9 @@ export function decide(input: EngineInput): EngineResult {
               sourceMessageId: msg.id,
               reason: `${t.name} dropped out with ${bench.length} on the bench`,
             };
-            const offerSpeech: SpeechIntent = {
-              kind: "bench_offer_open",
-              messageId: msg.id,
-              replacingName: t.name,
-            };
             emit(offerWrite);
-            speech.push(offerSpeech);
             offersOpenedThisBatch.set(t.userId, {
               write: offerWrite,
-              speech: offerSpeech,
               outcome: out,
             });
           }
@@ -2682,10 +2686,12 @@ export function decide(input: EngineInput): EngineResult {
   //     relies on it in these words: "the squad-just-filled announcement
   //     is fired by the analyze route at the moment the 14th IN lands,
   //     which is enough confirmation."
-  //   • A SLOT OPENS ON A FULL SQUAD → `bench_offer_open`, emitted 700
-  //     lines up and composed as "A slot just opened 🎟 …, first to say
-  //     IN takes it." With an empty bench there is no offer, and then
-  //     `need > 0` puts the 17:00 chase back on.
+  //   • A SLOT OPENS ON A FULL SQUAD WITH A BENCH → the BenchSlotOffer's
+  //     own group post (`bot-scheduler.ts`, `offer-<id>`), which tags the
+  //     bench and DMs each bencher. (Until 2026-10-03 the engine also
+  //     said "A slot just opened 🎟 …" here, which announced the same
+  //     slot twice.) With an empty bench there is no offer: that is
+  //     `slot_opened` below, and `need > 0` puts the 17:00 chase back on.
   //   • A FORMAT SWITCH → never reaches this engine at all. It is an
   //     admin PORTAL action (`app/actions/matches.ts:157`) that queues
   //     its own "🔁 *Match switched*" post carrying the roster.
@@ -2900,7 +2906,7 @@ export function decide(input: EngineInput): EngineResult {
   // 2026-06-12 shape S36 exists to prevent.
   //
   // So an offer this batch opened for a slot this batch then refilled is
-  // TAKEN BACK: its proposed write, its speech and the working offer,
+  // TAKEN BACK: its proposed write and the working offer,
   // each removed by reference. Only while the offer is still open: if a
   // bench player claimed it in between, the offer did its job and stands.
   //
@@ -2910,9 +2916,10 @@ export function decide(input: EngineInput): EngineResult {
   // what stops further prompts; nothing in the engine can recall a DM
   // that has gone. And the real `BenchSlotOffer` row is created by
   // `cancelAttendance`, not from this write (the apply layer skips
-  // `open_bench_offer`), so what this retracts is the group line and the
-  // dry run's account of it; the row is opened and then closed by that
-  // same squad-full close inside the same apply pass.
+  // `open_bench_offer`), so what this retracts is the dry run's account
+  // of it and the `vacated` exemption it would buy; the row is opened and
+  // then closed by that same squad-full close inside the same apply
+  // pass, so the scheduler never posts it.
   const retractRefilledOffers = (moves: Array<{ fromUserId: string }>) => {
     for (const m of moves) {
       const opened = offersOpenedThisBatch.get(m.fromUserId);
@@ -2928,7 +2935,6 @@ export function decide(input: EngineInput): EngineResult {
       };
       drop(writes, opened.write);
       drop(opened.outcome.writes, opened.write);
-      drop(speech, opened.speech);
       opened.outcome.reasons.push(
         `bench offer for ${nameOf(w, m.fromUserId)}'s slot taken back: the same batch refilled it`,
       );

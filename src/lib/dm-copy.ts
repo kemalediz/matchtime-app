@@ -21,6 +21,7 @@
 import { gbp } from "./payments";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
+import { dayUnlessToday } from "./i18n/dates";
 
 type WithLang = { lang?: Lang | string | null };
 
@@ -254,14 +255,21 @@ export function feeConfirmQuestionForPrompt(lang?: Lang | string | null): string
 
 // ── rows 103, 104: the bench-offer DM's replies (dm-reply route) ───────
 
-export function buildBenchDmUnclear(lang?: Lang | string | null): string {
-  return t(lang).dm_bench_unclear;
+/** `matchDate` is the offered match, `now` the moment of the reply:
+ *  "tonight" only on match day (London), the match day otherwise. */
+export function buildBenchDmUnclear(lang: Lang | string | null | undefined, matchDate: Date, now: Date): string {
+  return t(lang).dm_bench_unclear({ day: dayUnlessToday(lang, matchDate, now) });
 }
 
 export type BenchDmAckKind = "declined" | "confirmed" | "taken" | "other";
 
-export function buildBenchDmAck(kind: BenchDmAckKind, lang?: Lang | string | null): string {
-  return t(lang).dm_bench_ack({ kind });
+export function buildBenchDmAck(
+  kind: BenchDmAckKind,
+  lang: Lang | string | null | undefined,
+  matchDate: Date,
+  now: Date,
+): string {
+  return t(lang).dm_bench_ack({ kind, day: dayUnlessToday(lang, matchDate, now) });
 }
 
 // ── row 105: the tentative follow-up's one re-ask ──────────────────────

@@ -1137,7 +1137,11 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
     expect(r.speech.filter((s) => s.kind === "squad_status")).toHaveLength(0);
   });
 
-  it("a drop from a full squad speaks the BENCH OFFER, not the roster", () => {
+  it("a drop from a full squad opens the BENCH OFFER and says nothing itself (2026-10-03)", () => {
+    // The offer's own group post (bot-scheduler, `offer-<id>`) is the ONE
+    // announcement of this slot: it tags the bench and pairs with the DMs.
+    // The engine used to add "A slot just opened 🎟 …" on top, and Sutton
+    // FC read the same slot announced twice at 13:33 on 3 Oct 2026.
     const state = world({ confirmed: [...FULL_14], bench: ["habib"] });
     const r = decide({
       now: NOW,
@@ -1152,7 +1156,8 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
       ],
     });
     expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
-    expect(r.speech.map((s) => s.kind)).toEqual(["bench_offer_open"]);
+    expect(r.writes.some((w) => w.kind === "open_bench_offer")).toBe(true);
+    expect(r.speech).toEqual([]);
   });
 
   it("\"who's in?\" is still answered with the roster", () => {
@@ -1246,7 +1251,8 @@ describe("S36b · a routine attendance change gets the react and nothing else (2
       ],
     });
     expect(statusOf(r.nextState, "zair")).toBe("DROPPED");
-    expect(r.speech.map((s) => s.kind)).toEqual(["bench_offer_open", "squad_status"]);
+    expect(r.writes.some((w) => w.kind === "open_bench_offer")).toBe(true);
+    expect(r.speech.map((s) => s.kind)).toEqual(["squad_status"]);
   });
 
   it("a SELF drop in the same batch as a third-party move posts ONCE, not twice", () => {
@@ -1407,13 +1413,14 @@ describe("S36c · a drop that opens a spot speaks; an IN still does not (2026-09
     expect(s.outNames).toEqual(["Abid Hussain", "Zair Malik", "Shaz Iqbal"]);
   });
 
-  it("a drop with a BENCH behind it says the bench offer and nothing on top of it", () => {
+  it("a drop with a BENCH behind it says nothing: the bench offer's own post owns it", () => {
     // The bench broadcast already owns this: `open_bench_offer` →
     // `requestBenchConfirmationOnDrop` → a group post tagging every
     // bencher plus a DM each. A second "one slot open" is noise.
     const state = world({ confirmed: [...FULL_14], bench: ["habib"] });
     const r = decide({ now: NOW, state, messages: [selfOut("zair", "cant make it")] });
-    expect(r.speech.map((s) => s.kind)).toEqual(["bench_offer_open"]);
+    expect(r.writes.some((w) => w.kind === "open_bench_offer")).toBe(true);
+    expect(r.speech).toEqual([]);
   });
 
   it("a squad that was ALREADY short says nothing when another player drops", () => {
@@ -3781,9 +3788,9 @@ describe("2026-09-08 · an admin's untagged [OUT + BENCH] (David / Mojib)", () =
   });
 
   it("the freed slot is still offered to the bench off the partial apply", () => {
-    // The engine's half of the offer chain: the `open_bench_offer` write
-    // and the sentence that goes with it, both fired by the drop that
-    // survived the split.
+    // The engine's half of the offer chain: the `open_bench_offer` write,
+    // fired by the drop that survived the split. (The sentence that went
+    // with it is gone since 2026-10-03: the offer's own post says it.)
     const state = world({
       players: [...SUTTON, "david"],
       maxPlayers: 14,
@@ -3799,7 +3806,6 @@ describe("2026-09-08 · an admin's untagged [OUT + BENCH] (David / Mojib)", () =
     });
     expect(statusOf(r.nextState, "david")).toBe("DROPPED");
     expect(r.writes.some((w) => w.kind === "open_bench_offer")).toBe(true);
-    expect(r.speech.some((x) => x.kind === "bench_offer_open")).toBe(true);
     // Mojib is on the bench and the BENCH clause was refused, so he is
     // exactly where he was: on the bench, and now one of the people the
     // freed slot is offered to.

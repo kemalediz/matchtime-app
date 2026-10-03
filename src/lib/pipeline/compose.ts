@@ -661,27 +661,6 @@ export function compose(result: EngineResult): ComposedOutput {
         });
         break;
 
-      case "bench_offer_open": {
-        // The bench-offer copy is owned by bench-offer-copy.ts and is
-        // pinned to a feature flag (inbound reaction forwarding is dead
-        // on the Pi, so the 👍 instruction must not be printed). The
-        // dry-run only needs to say that an offer WOULD open; the real
-        // wording stays where it lives.
-        //
-        // AND it must not survive the offer. A drop opens an offer and a
-        // bench player can claim it LATER IN THE SAME BATCH, at which
-        // point announcing it contradicts the squad post that follows —
-        // the 2026-06-12 shape S36's single-post rule exists to prevent
-        // — and `bench` is empty by then, so the sentence had a dangling
-        // comma where the names should be.
-        if (bench.length === 0) break;
-        utterances.push({
-          messageId: sp.messageId,
-          text: s.bench_offer_open({ benchNames: bench }),
-        });
-        break;
-      }
-
       case "slot_opened": {
         // ── A COMPLETE SQUAD IS NOT COMPLETE ANY MORE ───────────────
         //

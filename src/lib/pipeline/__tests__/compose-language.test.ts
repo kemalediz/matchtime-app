@@ -84,15 +84,6 @@ describe("compose(): a Turkish world speaks Turkish", () => {
     );
   });
 
-  it("bench offer open: Turkish, names joined with 've'", () => {
-    const text = say(turkish({ confirmed: ELEVEN, bench: ["erdal", "amir"] }), {
-      kind: "bench_offer_open",
-      messageId: "m",
-      replacingName: "Sait Demir",
-    })[0];
-    expect(text).toBe("Bir yer açıldı 🎟 Erdal Ozkan ve Amir Ahmadi, ilk VARIM yazan alır. Kimse çıkarılmıyor.");
-  });
-
   it("the answer_squad kind uses the same Turkish post", () => {
     const text = say(turkish({ confirmed: ELEVEN }), { kind: "answer_squad", messageId: "m" })[0];
     expect(text).toMatch(/^📋 Aldığım mesajlara göre son kadro: \*11\/14\*/);

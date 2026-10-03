@@ -202,12 +202,14 @@ export const tr: Strings = {
 
   // ── row 81: the bench offer's context clause ─────────────────────
 
+  //   `day` null on match day ("bu akşamki"), else "6 Ekim Salı günkü".
+
   bench_offer_context_team: (p) =>
-    `bu akşamki *${p.activityName}* için, *${p.teamLabel}* takımında (${p.replacingName} yerine)`,
+    `${p.day ? `${p.day} günkü` : "bu akşamki"} *${p.activityName}* için, *${p.teamLabel}* takımında (${p.replacingName} yerine)`,
   bench_offer_context_team_plain: (p) =>
-    `bu akşamki ${p.activityName} için, ${p.teamLabel} takımında (${p.replacingName} yerine)`,
-  bench_offer_context_fixture: (p) => `bu akşamki *${p.activityName}* için`,
-  bench_offer_context_fixture_plain: (p) => `bu akşamki ${p.activityName} için`,
+    `${p.day ? `${p.day} günkü` : "bu akşamki"} ${p.activityName} için, ${p.teamLabel} takımında (${p.replacingName} yerine)`,
+  bench_offer_context_fixture: (p) => `${p.day ? `${p.day} günkü` : "bu akşamki"} *${p.activityName}* için`,
+  bench_offer_context_fixture_plain: (p) => `${p.day ? `${p.day} günkü` : "bu akşamki"} ${p.activityName} için`,
 
   // ── row 3: buildRatePromoPost ────────────────────────────────────
 
@@ -220,11 +222,6 @@ export const tr: Strings = {
 
   match_day_chase_fallback: (p) =>
     `☀️ Bu akşamki *${p.activityName}* için hâlâ *${p.need} kişi* eksiğiz. Gelebilecek var mı? 👀`,
-
-  // ── row 38: bench_offer_open ─────────────────────────────────────
-
-  bench_offer_open: (p) =>
-    `Bir yer açıldı 🎟 ${joinList("tr", p.benchNames)}, ilk VARIM yazan alır. Kimse çıkarılmıyor.`,
 
   // ── row 39: slot_opened ──────────────────────────────────────────
   //   No "13/14" and no "yer" count in a shape the guards misread: the
@@ -1209,13 +1206,13 @@ export const tr: Strings = {
     );
   },
 
-  dm_bench_unclear:
-    "Bu akşamki boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏",
+  dm_bench_unclear: (p) =>
+    `${p.day ? `${p.day} günkü` : "Bu akşamki"} boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏`,
 
   dm_bench_ack: (p) =>
     ({
       declined: "👍 Sorun değil, yedekte kalmaya devam ediyorsun, bir şey değişmedi.",
-      confirmed: "✅ Yer senin, bu akşam oynuyorsun! ⚽",
+      confirmed: `✅ Yer senin, ${p.day ? `${p.day} günü` : "bu akşam"} oynuyorsun! ⚽`,
       taken: "Maalesef biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende 🙏",
       other: "👍 Tamam.",
     })[p.kind],
