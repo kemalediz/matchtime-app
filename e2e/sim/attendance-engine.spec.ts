@@ -814,10 +814,13 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     const res = await g.postBatch([{ player: "pete", body: INJURY }]);
 
     expect(await g.counts()).toMatchObject({ confirmed: 13, bench: 1 });
+    // Not a word from the engine (2026-10-03): the offer's own post,
+    // from the scheduler, is the one announcement of this slot. See
+    // `bench-offer-single-post.spec.ts` for the two paths together.
     const speakers = res.results.filter((r) => (r.reply ?? "").length > 0);
-    expect(speakers).toHaveLength(1);
-    expect(speakers[0].reply).toContain("A slot just opened");
-    expect(speakers[0].reply).not.toContain("13 of 14");
+    expect(speakers).toHaveLength(0);
+    expect(res.results[0].react).toBe("👋");
+    expect(res.groupPosts).toEqual([]);
     expect(res.dms).toEqual([]);
   });
 

@@ -281,7 +281,8 @@ describe("a slot refilled in the SAME batch is not offered to the bench (#82's p
       ],
     });
     expect(r.writes.some((w) => w.kind === "open_bench_offer")).toBe(true);
-    expect(r.speech.map((s) => s.kind)).toContain("bench_offer_open");
+    // No sentence of its own: the offer's group post announces it.
+    expect(r.speech).toEqual([]);
   });
 
   it("CONTROL: a bench player who claims the offer keeps it claimed", () => {

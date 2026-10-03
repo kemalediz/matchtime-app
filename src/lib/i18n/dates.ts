@@ -160,3 +160,21 @@ export function lastPlayedLabel(lang: Lang | string | null | undefined, d: Date)
   if (normaliseLang(lang) === "tr") return formatLondon(d, "d MMMM yyyy", trLocale);
   return formatLastPlayed(d);
 }
+
+/**
+ * "TONIGHT" OR THE DAY, for copy that is about one match and can be sent
+ * on any day before it (2026-10-03).
+ *
+ * `null` when the match is on the same London calendar day as `now`, and
+ * the caller then says "tonight" / "bu akşam" exactly as it always did.
+ * Otherwise the match day as `dayLabel` writes it: "Tue 6 Oct" /
+ * "6 Ekim Salı". Calendar day, not a window of hours: a drop at 23:30
+ * the evening before is not "tonight", and one at 00:30 on match day is.
+ *
+ * Sutton FC, Saturday 3 October 2026: a bench offer for the Tuesday
+ * 6 October match said "for *Tuesday 7-a-side* tonight".
+ */
+export function dayUnlessToday(lang: Lang | string | null | undefined, matchDate: Date, now: Date): string | null {
+  if (formatLondon(matchDate, "yyyy-MM-dd") === formatLondon(now, "yyyy-MM-dd")) return null;
+  return dayLabel(lang, matchDate);
+}

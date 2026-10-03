@@ -1229,7 +1229,6 @@ export type SpeechIntent =
    *  anybody can check, and `route.ts:3986-3992` already says the
    *  resolved label out loud for exactly that reason. */
   | { kind: "reminder_ack"; messageId: string; phrase: string; whenLabel: string | null }
-  | { kind: "bench_offer_open"; messageId: string; replacingName: string }
   /**
    * A COMPLETE SQUAD IS NOT COMPLETE ANY MORE, and there is no bench to
    * absorb it (2026-09-15). One post per batch however many rows moved.

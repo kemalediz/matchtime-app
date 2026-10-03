@@ -755,8 +755,6 @@ function cases(lang: Lang): Case[] {
   add("R36 reminder_ack / resolved", say(full, { kind: "reminder_ack", messageId: MSG, phrase: "thursday", whenLabel: "Thu 10 Sep at 09:00" }));
   add("R37 reminder_ack / unresolved", say(full, { kind: "reminder_ack", messageId: MSG, phrase: "when the fixture list is out", whenLabel: null }));
 
-  add("R38 bench_offer_open / bench of two", say(short, { kind: "bench_offer_open", messageId: MSG, replacingName: "Sait Demir" }));
-  add("R38 bench_offer_open / bench empty", say(w({ confirmed: ELEVEN }), { kind: "bench_offer_open", messageId: MSG, replacingName: "Sait Demir" }));
 
   const thirteen = w({ confirmed: FOURTEEN.slice(0, 13) });
   const twelve = w({ confirmed: FOURTEEN.slice(0, 12) });
@@ -839,14 +837,27 @@ function cases(lang: Lang): Case[] {
   add("R72 buildDailyInListFallback / one more", buildDailyInListFallback({ activityName: "Tuesday 7-a-side", need: 1, rosterBlock: buildSquadRosterBlock({ confirmed: named(fourteenNames.slice(0, 13)), bench: [], maxPlayers: 14, lang }), lang }));
   add("R73 buildUnpaidTailText / one", buildUnpaidTailText(1, lang));
   add("R73 buildUnpaidTailText / four", buildUnpaidTailText(4, lang));
-  const ctxTeam = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: redLabel, replacingName: "Sait Demir" }, lang });
+  // Row 81's "tonight" belongs to match day only (2026-10-03). The
+  // match-day rows keep the original bytes; the "other day" rows are new.
+  const OFFER_MATCH = new Date("2026-10-06T20:30:00.000Z"); // Tue 6 Oct, 21:30 BST
+  const OFFER_MATCH_DAY = new Date("2026-10-06T12:00:00.000Z");
+  const OFFER_SATURDAY = new Date("2026-10-03T12:33:00.000Z");
+  const onDay = { matchDate: OFFER_MATCH, now: OFFER_MATCH_DAY };
+  const before = { matchDate: OFFER_MATCH, now: OFFER_SATURDAY };
+  const ctxTeam = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: redLabel, replacingName: "Sait Demir" }, ...onDay, lang });
   add("R81 buildBenchOfferContext / team and replaced player (group)", ctxTeam.group);
   add("R81 buildBenchOfferContext / team and replaced player (plain)", ctxTeam.plain);
-  const ctxNoName = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: redLabel, replacingName: null }, lang });
+  const ctxNoName = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: redLabel, replacingName: null }, ...onDay, lang });
   add("R81 buildBenchOfferContext / replaced player unnamed (group)", ctxNoName.group);
-  const ctxFixture = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: null, lang });
+  const ctxFixture = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: null, ...onDay, lang });
   add("R81 buildBenchOfferContext / fixture only (group)", ctxFixture.group);
   add("R81 buildBenchOfferContext / fixture only (plain)", ctxFixture.plain);
+  const ctxTeamBefore = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: { teamLabel: redLabel, replacingName: "Sait Demir" }, ...before, lang });
+  add("R81 buildBenchOfferContext / team, not match day (group)", ctxTeamBefore.group);
+  add("R81 buildBenchOfferContext / team, not match day (plain)", ctxTeamBefore.plain);
+  const ctxFixtureBefore = buildBenchOfferContext({ activityName: "Tuesday 7-a-side", team: null, ...before, lang });
+  add("R81 buildBenchOfferContext / fixture only, not match day (group)", ctxFixtureBefore.group);
+  add("R81 buildBenchOfferContext / fixture only, not match day (plain)", ctxFixtureBefore.plain);
   add("R78 buildPaymentPollQuestion", buildPaymentPollQuestion("Tuesday 7-a-side", lang));
 
   // ── 1.2 scheduler-copy.ts, slice 2 (extracted from bot-scheduler.ts 2026-09-17)
@@ -1352,10 +1363,15 @@ function cases(lang: Lang): Case[] {
   add("R98 buildFeeConfirmPrompt / total split", buildFeeConfirmPrompt({ perPlayer: 7.69, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: true, lang }));
   add("R98 buildFeeConfirmPrompt / one player", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Tuesday 7-a-side", wasTotal: true, lang }));
   add("R98 buildFeeConfirmPrompt / nobody to charge", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 0, matchName: "Tuesday 7-a-side", wasTotal: false, lang }));
-  add("R103 buildBenchDmUnclear", buildBenchDmUnclear(lang));
+  const BENCH_MATCH = new Date("2026-10-06T20:30:00.000Z");
+  const BENCH_MATCH_DAY = new Date("2026-10-06T12:00:00.000Z");
+  const BENCH_SATURDAY = new Date("2026-10-03T12:33:00.000Z");
+  add("R103 buildBenchDmUnclear", buildBenchDmUnclear(lang, BENCH_MATCH, BENCH_MATCH_DAY));
+  add("R103 buildBenchDmUnclear / not match day", buildBenchDmUnclear(lang, BENCH_MATCH, BENCH_SATURDAY));
   for (const kind of ["declined", "confirmed", "taken", "other"] as const) {
-    add(`R104 buildBenchDmAck / ${kind}`, buildBenchDmAck(kind, lang));
+    add(`R104 buildBenchDmAck / ${kind}`, buildBenchDmAck(kind, lang, BENCH_MATCH, BENCH_MATCH_DAY));
   }
+  add("R104 buildBenchDmAck / confirmed, not match day", buildBenchDmAck("confirmed", lang, BENCH_MATCH, BENCH_SATURDAY));
   add("R105 buildTentativeReask", buildTentativeReask(lang));
   add("R106 buildAdminRecruitDmReply / invited three, two spots", buildAdminRecruitDmReply({ ok: true, invited: 3, matchName: "Tuesday 7-a-side", matchWhen: W, need: 2 }, lang));
   add("R106 buildAdminRecruitDmReply / invited one, one spot", buildAdminRecruitDmReply({ ok: true, invited: 1, matchName: "Tuesday 7-a-side", matchWhen: W, need: 1 }, lang));

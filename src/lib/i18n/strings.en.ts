@@ -202,12 +202,19 @@ export const en = {
   //   `_plain` twins are for the DM (row 85), which stays English in
   //   Phase 2; they are here so the pair moves together in Phase 3.
 
-  bench_offer_context_team: (p: { teamLabel: string; replacingName: string; activityName: string }): string =>
-    `on *${p.teamLabel}* (replacing ${p.replacingName}) for *${p.activityName}* tonight`,
-  bench_offer_context_team_plain: (p: { teamLabel: string; replacingName: string; activityName: string }): string =>
-    `on ${p.teamLabel} (replacing ${p.replacingName}) for ${p.activityName} tonight`,
-  bench_offer_context_fixture: (p: { activityName: string }): string => `for *${p.activityName}* tonight`,
-  bench_offer_context_fixture_plain: (p: { activityName: string }): string => `for ${p.activityName} tonight`,
+  //   `day` is `dayUnlessToday()` (i18n/dates.ts): null on match day,
+  //   which keeps "tonight", and the match day ("Tue 6 Oct") on any other
+  //   day. Until 2026-10-03 these hard-coded "tonight", and a Saturday
+  //   offer for a Tuesday match said "tonight".
+
+  bench_offer_context_team: (p: { teamLabel: string; replacingName: string; activityName: string; day: string | null }): string =>
+    `on *${p.teamLabel}* (replacing ${p.replacingName}) for *${p.activityName}* ${p.day ? `on ${p.day}` : "tonight"}`,
+  bench_offer_context_team_plain: (p: { teamLabel: string; replacingName: string; activityName: string; day: string | null }): string =>
+    `on ${p.teamLabel} (replacing ${p.replacingName}) for ${p.activityName} ${p.day ? `on ${p.day}` : "tonight"}`,
+  bench_offer_context_fixture: (p: { activityName: string; day: string | null }): string =>
+    `for *${p.activityName}* ${p.day ? `on ${p.day}` : "tonight"}`,
+  bench_offer_context_fixture_plain: (p: { activityName: string; day: string | null }): string =>
+    `for ${p.activityName} ${p.day ? `on ${p.day}` : "tonight"}`,
 
   // ── row 3: buildRatePromoPost (group-copy.ts) ────────────────────
 
@@ -220,11 +227,6 @@ export const en = {
 
   match_day_chase_fallback: (p: { need: number; activityName: string }): string =>
     `☀️ Still *${p.need} short* for tonight's *${p.activityName}*. Any takers? 👀`,
-
-  // ── row 38: bench_offer_open (compose.ts) ────────────────────────
-
-  bench_offer_open: (p: { benchNames: string[] }): string =>
-    `A slot just opened 🎟 ${joinList("en", p.benchNames)}, first to say IN takes it. Nobody gets dropped.`,
 
   // ── row 39: slot_opened (compose.ts) ─────────────────────────────
   //   "13 of 14", never "13/14", and "slot", never "spot": both are
@@ -1347,17 +1349,18 @@ export const en = {
     );
   },
 
-  /** Row 103: the bench DM's one clarification. */
-  dm_bench_unclear:
-    `Want the open slot for tonight? Reply *YES* to grab it. ` +
-    `If not, no worries — you stay on the bench either way 🙏`,
+  /** Row 103: the bench DM's one clarification. `day` as in the row 81
+   *  context clause: null on match day ("tonight"), else "Tue 6 Oct". */
+  dm_bench_unclear: (p: { day: string | null }): string =>
+    `Want the open slot for ${p.day ?? "tonight"}? Reply *YES* to grab it. ` +
+    `If not, no worries, you stay on the bench either way 🙏`,
 
   /** Row 104: the bench DM's ack, from what the claim did. */
-  dm_bench_ack: (p: { kind: "declined" | "confirmed" | "taken" | "other" }): string =>
+  dm_bench_ack: (p: { kind: "declined" | "confirmed" | "taken" | "other"; day: string | null }): string =>
     ({
-      declined: `👍 No worries — you're still on the bench, nothing changes.`,
-      confirmed: `✅ You got it — you're in for tonight! ⚽`,
-      taken: `Ah — someone just grabbed that one first. You're still first in line on the bench if another opens 🙏`,
+      declined: `👍 No worries, you're still on the bench, nothing changes.`,
+      confirmed: `✅ You got it, you're in for ${p.day ?? "tonight"}! ⚽`,
+      taken: `Ah, someone just grabbed that one first. You're still first in line on the bench if another opens 🙏`,
       other: `👍 Got it.`,
     })[p.kind],
 

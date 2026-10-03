@@ -1619,9 +1619,14 @@ async function computeForMatch(
             team = { teamLabel: ta.team === "RED" ? labels[0] : labels[1], replacingName: repl.name };
           }
         }
+        // "tonight" only when the match is today in London; the match day
+        // otherwise (2026-10-03: a Saturday offer for a Tuesday match said
+        // "tonight").
         const { group: ctx, plain: ctxPlain } = buildBenchOfferContext({
           activityName: activity.name,
           team,
+          matchDate: m.date,
+          now,
           lang,
         });
 

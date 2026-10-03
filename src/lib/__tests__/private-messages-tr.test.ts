@@ -251,7 +251,8 @@ describe("the bench DM reply, Turkish", () => {
     const dm = t("tr").dm_bench_offer({ firstName: "Erdal", context: "bu akşamki Cuma Maçı için", reactions: false });
     expect(dm).toContain("*EVET*");
     expect(readBenchDmReply("EVET", "tr")).toBe("yes");
-    expect(t("tr").dm_bench_unclear).toContain("*EVET*");
+    expect(t("tr").dm_bench_unclear({ day: null })).toContain("*EVET*");
+    expect(t("tr").dm_bench_unclear({ day: "6 Ekim Salı" })).toContain("*EVET*");
   });
 });
 
@@ -488,7 +489,8 @@ describe("the Turkish DMs never ask for an English word", () => {
     s.dm_tentative_reask,
     s.dm_bench_offer({ firstName: "", context: "x", reactions: true }),
     s.dm_bench_offer({ firstName: "", context: "x", reactions: false }),
-    s.dm_bench_unclear,
+    s.dm_bench_unclear({ day: null }),
+    s.dm_bench_unclear({ day: "6 Ekim Salı" }),
     s.dm_recruit_invite({ firstName: null, matchName: "x", matchWhen: "y", spotsLeft: 0, link: null, reactions: true }),
     s.dm_recruit_group_invite({ firstName: null, matchName: "x", matchWhen: "y" }),
     s.dm_recruit_chase({ firstName: null, count: 1, activityName: "x", matchWhen: "y" }),

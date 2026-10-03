@@ -228,9 +228,12 @@ export async function POST(request: Request) {
         // read (`readBenchDmReply`) and of the DM we send back.
         const matchOrg = await db.match.findUnique({
           where: { id: claimant.matchId },
-          select: { activity: { select: { orgId: true, org: { select: { language: true } } } } },
+          select: { date: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
         });
         const orgId = matchOrg?.activity.orgId ?? null;
+        // The day the replies name: "tonight" only on match day (London).
+        const offerMatchDate = matchOrg?.date ?? new Date();
+        const replyNow = new Date();
         const benchLang = matchOrg?.activity.org.language;
         const benchReply = readBenchDmReply(text, benchLang);
         const isYes = benchReply === "yes";
@@ -246,7 +249,7 @@ export async function POST(request: Request) {
                 orgId,
                 kind: "dm",
                 phone: phoneNoPlus,
-                text: buildBenchDmUnclear(benchLang),
+                text: buildBenchDmUnclear(benchLang, offerMatchDate, replyNow),
               },
             });
           }
@@ -269,6 +272,8 @@ export async function POST(request: Request) {
                   ? "taken"
                   : "other",
             benchLang,
+            offerMatchDate,
+            replyNow,
           );
           await db.botJob.create({
             data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack },

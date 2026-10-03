@@ -18,6 +18,7 @@
  */
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
+import { dayUnlessToday } from "./i18n/dates";
 
 /** A player as the scheduler sees one: the name may be missing. */
 export interface NamedRow {
@@ -281,15 +282,21 @@ export function buildBenchOfferContext(
   args: {
     activityName: string;
     team: { teamLabel: string; replacingName: string | null } | null;
+    /** The offered match's kickoff, and the moment the offer is being
+     *  sent: "tonight" only when both fall on the same London day,
+     *  the match day otherwise (2026-10-03). */
+    matchDate: Date;
+    now: Date;
   } & WithLang,
 ): { group: string; plain: string } {
   const s = t(args.lang);
   const dm = s;
+  const day = dayUnlessToday(args.lang, args.matchDate, args.now);
   if (args.team) {
-    const p = { teamLabel: args.team.teamLabel, replacingName: args.team.replacingName ?? "—", activityName: args.activityName };
+    const p = { teamLabel: args.team.teamLabel, replacingName: args.team.replacingName ?? "—", activityName: args.activityName, day };
     return { group: s.bench_offer_context_team(p), plain: dm.bench_offer_context_team_plain(p) };
   }
-  const p = { activityName: args.activityName };
+  const p = { activityName: args.activityName, day };
   return { group: s.bench_offer_context_fixture(p), plain: dm.bench_offer_context_fixture_plain(p) };
 }
 
