@@ -998,6 +998,18 @@ describe("applyMonthInvoice: the webhook's mapping onto the month (idempotent, o
     expect(month(1).status).toBe("void");
   });
 
+  it("the reason says which: 'voided-in-stripe' for a voided invoice, 'uncollectible-in-stripe' for one marked uncollectible", async () => {
+    const inv = await invoicedMonth();
+    await applyMonthInvoice({ orgId: ORG, monthId: month(1).id, invoice: { ...inv, status: "uncollectible" }, kind: "void", now: CLOSE_M1 });
+    expect(month(1)).toMatchObject({ status: "void", reason: "uncollectible-in-stripe" });
+  });
+
+  it("a voided invoice keeps the reason 'voided-in-stripe'", async () => {
+    const inv = await invoicedMonth();
+    await applyMonthInvoice({ orgId: ORG, monthId: month(1).id, invoice: { ...inv, status: "void" }, kind: "void", now: CLOSE_M1 });
+    expect(month(1)).toMatchObject({ status: "void", reason: "voided-in-stripe" });
+  });
+
   it("L1: payUnpaidMonths never pays for a club on Free, exempt or suspended", async () => {
     const inv = await invoicedMonth();
     await applyMonthInvoice({ orgId: ORG, monthId: month(1).id, invoice: inv, kind: "failed", now: CLOSE_M1 });

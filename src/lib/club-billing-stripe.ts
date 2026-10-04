@@ -87,11 +87,20 @@ import {
   waiveOpenMonths,
 } from "./club-billing-months";
 import { recordSuspended } from "./club-billing-spells";
-import { cardAddedText, cardReplacedText, keepPayingText, planBilledText, resumedText } from "./club-billing-view";
+import {
+  billedAgainCardText,
+  cardAddedText,
+  cardDroppedText,
+  cardReplacedText,
+  keepPayingText,
+  planBilledText,
+  resumedText,
+} from "./club-billing-view";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isBillingDmHour } from "./club-billing-schedule-rules";
 import { notePaymentProblem, sendMonthCharged } from "./club-billing-dms";
 import {
+  addressParamOf,
   billingStripeConfig,
   buildCardSetupCheckoutParams,
   getBillingStripe,
@@ -378,6 +387,8 @@ export type PlanChangeResult =
  *     is voided (forgiven), plan 2A.6;
  *   - Standard or Custom: nothing in Stripe. The month close charges the
  *     LOWER of the price when the month opened and the price at the close.
+ *     A club now "subscribed" (billed again with its card on file) has its
+ *     current month opened at once.
  * Running it again is harmless.
  */
 export async function onPlanChanged(orgId: string, now: Date = new Date()): Promise<PlanChangeResult> {
@@ -385,7 +396,15 @@ export async function onPlanChanged(orgId: string, now: Date = new Date()): Prom
   const billing = await loadBilling(orgId);
   const stripe = getBillingStripe();
   if (stripe && billing?.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
-  if (!org || (org.billingPlan !== "free" && org.billingStatus !== "exempt")) return { action: "none" };
+  if (!org) return { action: "none" };
+  if (org.billingPlan !== "free" && org.billingStatus !== "exempt") {
+    // Billed again with the card on file (test mode fix, 2026-10-05): open
+    // the CURRENT month now rather than at the next hourly run, so the page
+    // shows this month's charge date, not the one from before Free. Never
+    // an earlier month (openDueMonths), and nothing is charged by opening.
+    if (org.billingStatus === "subscribed" && billable(org)) await openDueMonths(orgId, now);
+    return { action: "none" };
+  }
   const waived = await waiveOpenMonths(orgId, "free-plan", now);
   const v = await voidUnpaidMonthInvoices(orgId, now, "free-plan");
   console.log(`[club-billing-stripe] ${orgId}: plan Free; ${waived} open month(s) waived, ${v.voided} unpaid invoice(s) voided`);
@@ -413,6 +432,26 @@ export async function onClubSuspended(orgId: string, now: Date = new Date()): Pr
   const waived = await waiveOpenMonths(orgId, "suspended", now);
   if (waived > 0) console.log(`[club-billing-stripe] ${orgId}: suspended; ${waived} open month(s) waived`);
   return { waived };
+}
+
+/**
+ * Review M1: a card the plan control took off the club (it was not the
+ * billing contact's) is detached in Stripe too, so it can never be charged.
+ * The database no longer points at it (setClubPlan cleared it in its
+ * transaction), so a failure here is logged, never thrown: no charge can
+ * reach it through MatchTime. Never detaches the card that IS on file.
+ */
+export async function detachDroppedCard(orgId: string, paymentMethodId: string): Promise<void> {
+  const billing = await loadBilling(orgId);
+  if (billing?.stripePaymentMethodId === paymentMethodId) return;
+  const stripe = getBillingStripe();
+  if (!stripe) return;
+  try {
+    await stripe.detachPaymentMethod(paymentMethodId);
+    console.log(`[club-billing-stripe] ${orgId}: previous holder's card ${paymentMethodId} detached (not billed again)`);
+  } catch (err) {
+    console.warn(`[club-billing-stripe] ${orgId}: detaching the dropped card ${paymentMethodId}:`, (err as Error).message);
+  }
 }
 
 // ── DMs written as pending by a state change ────────────────────────────
@@ -470,7 +509,7 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
     // every "card replaced" is about a different card, so none supersedes
     // another.
     const newer =
-      (p.kind === "resumed" || p.kind === "plan-billed" || p.kind === "keep-paying") &&
+      (p.kind === "resumed" || p.kind === "plan-billed" || p.kind === "keep-paying" || p.kind === "billed-again") &&
       pending.some((q) => q.kind === p.kind && q.createdAt > p.createdAt);
     let why: string | null =
       now.getTime() - p.createdAt.getTime() > PENDING_NOTICE_MAX_AGE_MS ? "expired" : newer ? "superseded" : !org ? "no-contact" : null;
@@ -573,6 +612,48 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
                   }),
               });
           }
+          break;
+        }
+        case "billed-again": {
+          // Review M1: still subscribed, still billed, and the card on file
+          // is still the CONTACT's own (setClubPlan only bills theirs).
+          const holder = billing?.cardHolderUserId ?? null;
+          const ok =
+            org.billingStatus === "subscribed" &&
+            billable(org) &&
+            !!billing?.stripePaymentMethodId &&
+            !!billing.cardLast4 &&
+            !!holder &&
+            holder === contact;
+          if (!ok) why = "not-current";
+          else {
+            const link = await billingLink(holder!, orgId);
+            const firstChargeOn = nextChargeOn(billing!.trialEndsAt, now);
+            send = () =>
+              queueBillingDm({
+                orgId,
+                kind: "billed-again",
+                cycleKey: p.cycleKey,
+                userId: holder!,
+                text: ({ name }) =>
+                  billedAgainCardText(org.language, {
+                    name,
+                    club: org.name,
+                    last4: billing!.cardLast4!,
+                    pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
+                    firstChargeOn,
+                    link,
+                  }),
+              });
+          }
+          break;
+        }
+        case "card-dropped": {
+          // cycleKey "<old card>|<its holder>": that card is still off the club.
+          const [oldPm, oldHolder] = p.cycleKey.split("|");
+          const ok = !!oldPm && !!oldHolder && billing?.stripePaymentMethodId !== oldPm;
+          if (!ok) why = "not-current";
+          else send = () => queueBillingDm({ orgId, kind: "card-dropped", cycleKey: p.cycleKey, userId: oldHolder, text: ({ name }) => cardDroppedText(org.language, { name, club: org.name }) });
           break;
         }
         case "card-replaced": {
@@ -902,6 +983,7 @@ async function onCardSaved(
 
   if (org.billingPlan === "free" || org.billingStatus === "exempt") {
     if (card.paymentMethodId !== billing.stripePaymentMethodId) await stripe.detachPaymentMethod(card.paymentMethodId);
+    await restoreCustomerAfterRejectedSession(stripe, { orgId, orgName: org.name, billing, session, payer });
     console.warn(`[billing-webhook] ${orgId}: a card was saved for a club that is not billed; removed again`);
     return ignored("not-billable", orgId);
   }
@@ -911,6 +993,49 @@ async function onCardSaved(
   // sessions delivered at the same moment are applied one after the other,
   // and the second always decides on what the first left.
   return withCardSessionLock(orgId, () => applyCardSession(session, orgId, action, payer, card, now));
+}
+
+/**
+ * Review L1: Checkout (`customer_update` auto, `tax_id_collection`) wrote
+ * the rejected session's payer onto the club's shared Customer before this
+ * webhook ran. Put the Customer back: the payer of the card on file (its
+ * billing details), else the club default (the club's name, no email, no
+ * address), and remove the VAT numbers that session added unless they are
+ * the current payer's own. A failure is logged and flagged for the owner,
+ * never thrown: the card itself is already handled.
+ */
+async function restoreCustomerAfterRejectedSession(
+  stripe: BillingStripe,
+  a: {
+    orgId: string;
+    orgName: string;
+    billing: { stripeCustomerId: string | null; stripePaymentMethodId: string | null; cardHolderUserId: string | null };
+    session: Stripe.Checkout.Session;
+    payer: string;
+  },
+): Promise<void> {
+  if (!a.billing.stripeCustomerId) return;
+  try {
+    const current = a.billing.stripePaymentMethodId ? await stripe.retrievePaymentMethodDetails(a.billing.stripePaymentMethodId) : null;
+    const sessionTaxIds = (a.session.customer_details?.tax_ids ?? []).map((t) => t.value).filter((v): v is string => !!v);
+    await stripe.restoreCustomerDetails({
+      customerId: a.billing.stripeCustomerId,
+      name: current?.name || a.orgName,
+      email: current?.email ?? null,
+      address: current?.address ?? null,
+      removeTaxIds: a.payer === a.billing.cardHolderUserId ? [] : sessionTaxIds,
+    });
+  } catch (err) {
+    console.error(`[billing-webhook] ${a.orgId}: could not put the Customer back after rejected session ${a.session.id}:`, err);
+    await recordOpsEvent({
+      orgId: a.orgId,
+      kind: BILLING_ALERT_KIND,
+      severity: "warning",
+      title: "Club fee Customer details may show the wrong payer",
+      detail: `A rejected card session (${a.session.id}) wrote its payer onto Customer ${a.billing.stripeCustomerId}, and putting it back failed (${(err as Error).message}). Check the Customer's name, email, address and tax IDs in Stripe.`,
+      dedupeKey: `customer-restore:${a.session.id}`,
+    }).catch(() => undefined);
+  }
 }
 
 /** How long a card session may hold its club's lock (Stripe calls inside). */
@@ -973,23 +1098,35 @@ async function applyCardSession(
         console.warn(`[billing-webhook] ${orgId}: detaching superseded card ${card.paymentMethodId}:`, (err as Error).message);
       }
     }
-    console.warn(`[billing-webhook] ${orgId}: card session ${session.id} is older than the card on file; its card removed, nothing else changed`);
+    await restoreCustomerAfterRejectedSession(stripe, { orgId, orgName: org.name, billing, session, payer });
+    console.warn(`[billing-webhook] ${orgId}: card session ${session.id} is older than the card on file; its card removed, the Customer put back`);
     return ignored("superseded-session", orgId);
   }
 
   // Read the OLD card and holder BEFORE anything changes in Stripe.
   const oldPm = billing.stripePaymentMethodId;
   const oldHolder = billing.cardHolderUserId;
-  if (oldHolder !== payer) await stripe.resetCustomerDetails({ customerId: billing.stripeCustomerId, name: org.name });
+  const newPayer = oldHolder !== payer;
+  // Checkout (customer_update "auto") has already written this payer's name,
+  // address and any VAT number onto the Customer. A NEW payer's reset wipes
+  // the old payer's details but spares the VAT numbers given in THIS
+  // session; the name, email and address are put back just below.
+  const keepTaxIds = (session.customer_details?.tax_ids ?? []).map((t) => t.value).filter((v): v is string => !!v);
+  if (newPayer) await stripe.resetCustomerDetails({ customerId: billing.stripeCustomerId, name: org.name, keepTaxIds });
   await stripe.setDefaultPaymentMethod({
     customerId: billing.stripeCustomerId,
     paymentMethodId: card.paymentMethodId,
     email: session.customer_details?.email ?? null,
     name: session.customer_details?.name ?? null,
   });
-  const address = session.customer_details?.address;
-  if (address?.country) await stripe.updateCustomer({ customerId: billing.stripeCustomerId, address: address as Stripe.AddressParam });
-  const billingCountry = address?.country ?? billing.billingCountry;
+  // The payer's address: Checkout's customer_details, else the saved card's
+  // billing details (setup mode can return customer_details.address null;
+  // test mode, 2026-10-05). Either way the Customer ends with it, so the
+  // invoice PDF's "Bill to" is filled.
+  const address = addressParamOf(session.customer_details?.address) ?? card.billingAddress ?? null;
+  if (address) await stripe.updateCustomer({ customerId: billing.stripeCustomerId, address });
+  // A new payer never inherits the old payer's country.
+  const billingCountry = address?.country ?? (newPayer ? null : billing.billingCountry);
   await db.clubBilling.updateMany({
     where: { orgId },
     data: { ...cardFields(card, billingCountry), billingCountry, cardHolderUserId: payer },

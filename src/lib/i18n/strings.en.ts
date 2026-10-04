@@ -2414,7 +2414,8 @@ export const en = {
   billing_state_paid_with_other: (p: { holder: string; rest: string }): string =>
     `Paid with ${p.holder}'s card until you put yours on. ${p.rest}`,
   /** `what`: the unpaid month ("for 1 Nov to 30 Nov") or months; `retrying`
-   *  only when retries are switched on (BILLING_CRON_RETRIES or Stripe's). */
+   *  only when retries are switched on (Stripe's own, BILLING_STRIPE_RETRIES
+   *  on by default, or the cron's, BILLING_CRON_RETRIES=1). */
   billing_state_past_due: (p: { amount: string; from: string; to: string; months: number; retrying: boolean; date: string }): string =>
     (p.amount
       ? p.months > 1
@@ -2503,6 +2504,17 @@ export const en = {
   billing_btn_remove_mine: "Remove my card",
   billing_btn_stop_paying: "Stop paying",
   billing_btn_keep_paying: "Keep paying",
+  // Stop paying asks first (test mode fix, 2026-10-05). No dashes.
+  billing_stop_confirm_title: "Stop paying for MatchTime?",
+  /** After the free month: billing ends with the current month (`date`,
+   *  the day it is charged), then the club is paused. */
+  billing_stop_confirm_month: (p: { date: string }): string =>
+    `Billing ends on ${p.date}, after this month is charged for its games. Then MatchTime pauses in the group until someone starts paying again.`,
+  /** Inside the free month: the card is removed at once. */
+  billing_stop_confirm_free: (p: { date: string }): string =>
+    `Your card will be removed now and nothing is charged. The free month carries on until ${p.date}; after that a card is needed to keep MatchTime running.`,
+  billing_btn_stop_confirm_yes: "Yes, stop paying",
+  billing_btn_stop_confirm_no: "Go back",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",
@@ -2557,6 +2569,13 @@ export const en = {
     `${p.first ? "The first" : "The next"} charge is on ${p.date}. You can see each charge and its receipt on your billing page, and change your card or stop there: ${p.link}`,
   billing_dm_card_replaced: (p: { name: string | null; newName: string; club: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.newName} now pays the MatchTime fee for ${p.club}. Your card has been removed and won't be charged for it again.`,
+  /** Review M1: billed again after Free with the contact's own card on file. */
+  billing_dm_billed_again_card: (p: { name: string | null; club: string; last4: string; price: string; date: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again and is paid with your card ending ${p.last4}: only the games played, up to ${p.price} a month. ` +
+    `The first charge is on ${p.date}. To stop paying or change the card: ${p.link}`,
+  /** Review M1: a previous holder's card taken off the club instead of being billed again. */
+  billing_dm_card_dropped: (p: { name: string | null; club: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, your card is no longer used for the MatchTime fee for ${p.club} and has been removed. It won't be charged for it again.`,
   billing_dm_resumed: (p: { club: string }): string =>
     `MatchTime is back on for ${p.club}. I'll pick things up again in the group within a few minutes. Anyone who said IN while I was paused should say it again.`,
   billing_dm_plan_billed: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>

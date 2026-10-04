@@ -89,7 +89,11 @@ export default async function BillingPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { orgId } = await params;
-  const notice = noticeFrom(await searchParams);
+  const sp = await searchParams;
+  const notice = noticeFrom(sp);
+  // Stop paying asks first (test mode fix, 2026-10-05): the button links
+  // here with ?confirm=stop-paying, and only "Yes, stop paying" posts.
+  const confirmingStop = sp.confirm === "stop-paying";
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const userId = session.user.id;
@@ -125,6 +129,7 @@ export default async function BillingPage({
           cardHolderUserId: snapshot.billing?.cardHolderUserId ?? null,
         });
   const v = billingPageView(snapshot.language, snapshot, role, userId, tip, { now, months, orgId });
+  const billingPath = `/billing/${encodeURIComponent(orgId)}`;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8" data-testid="billing-page" data-role={role}>
@@ -169,18 +174,59 @@ export default async function BillingPage({
           )}
           {v.buttons.length > 0 && (
             <div className="pt-1 flex flex-wrap gap-2">
-              {v.buttons.map((b) => (
-                <form key={b.key} action={ACTION[b.key].bind(null, orgId)}>
+              {v.buttons.map((b) =>
+                b.key === "stop-paying" ? (
+                  // A link, not a post: it opens the confirmation below.
+                  confirmingStop && v.stopConfirm ? null : (
+                    <a
+                      key={b.key}
+                      href={`${billingPath}?confirm=stop-paying`}
+                      data-testid={`billing-btn-${b.key}`}
+                      className="inline-flex items-center gap-2 h-11 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      {b.label}
+                    </a>
+                  )
+                ) : (
+                  <form key={b.key} action={ACTION[b.key].bind(null, orgId)}>
+                    <button
+                      type="submit"
+                      data-testid={`billing-btn-${b.key}`}
+                      className="inline-flex items-center gap-2 h-11 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      {b.label}
+                    </button>
+                  </form>
+                ),
+              )}
+            </div>
+          )}
+          {confirmingStop && v.stopConfirm && (
+            <div data-testid="billing-stop-confirm" role="alertdialog" aria-labelledby="billing-stop-confirm-title" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 space-y-2">
+              <p id="billing-stop-confirm-title" className="font-semibold">
+                {v.stopConfirm.title}
+              </p>
+              <p>{v.stopConfirm.text}</p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <form action={ACTION["stop-paying"].bind(null, orgId)}>
                   <button
                     type="submit"
-                    data-testid={`billing-btn-${b.key}`}
-                    className="inline-flex items-center gap-2 h-11 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+                    data-testid="billing-btn-stop-paying-confirm"
+                    className="inline-flex items-center h-11 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700"
                   >
-                    <CreditCard className="h-4 w-4" />
-                    {b.label}
+                    {v.stopConfirm.yes}
                   </button>
                 </form>
-              ))}
+                <a
+                  href={billingPath}
+                  data-testid="billing-stop-cancel"
+                  className="inline-flex items-center h-11 px-4 rounded-lg border border-slate-300 bg-white text-slate-700 font-medium hover:bg-slate-50"
+                >
+                  {v.stopConfirm.no}
+                </a>
+              </div>
             </div>
           )}
         </section>

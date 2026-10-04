@@ -241,6 +241,9 @@ export function buildTestEnv(): Record<string, string> {
     // the inclusive VAT rate (the price and Portal ids are retired).
     STRIPE_CLUB_PRODUCT_ID: "prod_e2e_club",
     STRIPE_CLUB_TAX_RATE_ID: "txr_e2e_vat",
+    // Stripe's own retries are on, as production sets it (review L2: the
+    // "it will be tried again" copy needs it explicitly on).
+    BILLING_STRIPE_RETRIES: "1",
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
     STRIPE_SECRET_KEY: "",

@@ -15,6 +15,7 @@ import {
   gameLine,
   monthBoxText,
   monthChargedText,
+  ownerChargeDateLabel,
   ownerLastMonthLabel,
   ownerThisMonthLabel,
   pastMonthLine,
@@ -23,7 +24,7 @@ import {
   type BillingStateInput,
 } from "../club-billing-view";
 import { billingTotals, receiptAllowed } from "../club-billing-rules";
-import { billingRetriesOn } from "../club-billing-schedule-rules";
+import { billingRetriesOn, bothRetrySourcesOn } from "../club-billing-schedule-rules";
 
 const DASH = /[—–]/;
 const LINK = "https://matchtime.ai/r/abc";
@@ -297,11 +298,21 @@ describe("P3 review copy fixes", () => {
     );
   });
 
-  it("billingRetriesOn: the cron's retries (on unless 0) or Stripe's own (BILLING_STRIPE_RETRIES=1)", () => {
-    expect(billingRetriesOn({})).toBe(true);
-    expect(billingRetriesOn({ BILLING_CRON_RETRIES: "0" })).toBe(false);
-    expect(billingRetriesOn({ BILLING_CRON_RETRIES: "0", BILLING_STRIPE_RETRIES: "1" })).toBe(true);
-    expect(billingRetriesOn({ BILLING_CRON_RETRIES: "off", BILLING_STRIPE_RETRIES: "0" })).toBe(false);
+  it("billingRetriesOn: 'it will be tried again' only when a retry source is EXPLICITLY on (review L2)", () => {
+    // Unset: nothing claims a retry (the dashboard setting is not known here).
+    expect(billingRetriesOn({})).toBe(false);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "" })).toBe(false);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "1" })).toBe(true);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "on" })).toBe(true);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "0" })).toBe(false);
+    expect(billingRetriesOn({ BILLING_CRON_RETRIES: "1" })).toBe(true);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "0", BILLING_CRON_RETRIES: "0" })).toBe(false);
+  });
+
+  it("bothRetrySourcesOn: true only when BOTH are explicitly on", () => {
+    expect(bothRetrySourcesOn({ BILLING_STRIPE_RETRIES: "1", BILLING_CRON_RETRIES: "1" })).toBe(true);
+    expect(bothRetrySourcesOn({ BILLING_STRIPE_RETRIES: "1" })).toBe(false);
+    expect(bothRetrySourcesOn({ BILLING_CRON_RETRIES: "1" })).toBe(false);
   });
 });
 
@@ -316,6 +327,16 @@ describe("receipts on the billing page", () => {
     expect(receiptAllowed({ role: "viewer", ownCard: true, status: "paid", hasInvoice: true, invoicedAt, cardSince: null })).toBe(false);
     expect(receiptAllowed({ role: "contact", ownCard: true, status: "failed", hasInvoice: true, invoicedAt: null, cardSince: null })).toBe(false);
     expect(receiptAllowed({ role: "contact", ownCard: true, status: "paid", hasInvoice: false, invoicedAt, cardSince: null })).toBe(false);
+  });
+});
+
+describe("/admin/clubs: the next charge date (test mode: it showed 'Next charge Thu 1 Oct, 00:00')", () => {
+  // A month ends at 00:00 London (BST here, 23:00 UTC the day before); its
+  // charge runs that day from 10:00 London.
+  it("the London DAY the month ends, and 'from 10:00', never 00:00 or the UTC day before", () => {
+    const endsAt = new Date("2026-09-30T23:00:00Z"); // 00:00 BST on Thu 1 Oct
+    expect(ownerChargeDateLabel(endsAt)).toBe("Thu 1 Oct, from 10:00");
+    expect(ownerChargeDateLabel(new Date("2026-12-01T00:00:00Z"))).toBe("Tue 1 Dec, from 10:00"); // GMT
   });
 });
 

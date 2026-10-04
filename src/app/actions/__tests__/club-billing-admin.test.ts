@@ -12,12 +12,17 @@ const h = vi.hoisted(() => ({
   startTrial: vi.fn(),
   onPlanChanged: vi.fn(),
   flushPendingBillingNotices: vi.fn(),
+  detachDroppedCard: vi.fn(),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ auth: h.auth }));
 vi.mock("@/lib/org", () => ({ isSuperadmin: h.isSuperadmin }));
 vi.mock("@/lib/club-billing", () => ({ setClubPlan: h.setClubPlan, startTrial: h.startTrial }));
-vi.mock("@/lib/club-billing-stripe", () => ({ onPlanChanged: h.onPlanChanged, flushPendingBillingNotices: h.flushPendingBillingNotices }));
+vi.mock("@/lib/club-billing-stripe", () => ({
+  onPlanChanged: h.onPlanChanged,
+  flushPendingBillingNotices: h.flushPendingBillingNotices,
+  detachDroppedCard: h.detachDroppedCard,
+}));
 
 import { setClubPlanAction, startFreeMonthAction } from "../club-billing-admin";
 
@@ -137,6 +142,37 @@ describe("setClubPlanAction", () => {
     h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "trial", resumed: false, billedAgain: "trial" });
     const r = await setClubPlanAction("org1", "standard");
     expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The club is back in its free month.");
+  });
+
+  it("review M1: billed again with the CONTACT's card on file: billed with it, and they are told", async () => {
+    h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "subscribed", resumed: false, billedAgain: "subscribed", droppedCard: null });
+    const r = await setClubPlanAction("org1", "standard");
+    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The billing contact's card on file is billed again, and they get a message saying so.");
+    expect(h.flushPendingBillingNotices).toHaveBeenCalledWith("org1");
+    expect(h.detachDroppedCard).not.toHaveBeenCalled();
+  });
+
+  it("review M1: a PREVIOUS holder's card was on file: detached, never billed; the contact is asked for a card", async () => {
+    h.setClubPlan.mockResolvedValue({
+      ok: true,
+      plan: "standard",
+      pricePence: null,
+      status: "grace",
+      resumed: false,
+      billedAgain: "grace",
+      droppedCard: { paymentMethodId: "pm_old", holderUserId: "u_elvin" },
+    });
+    const r = await setClubPlanAction("org1", "standard");
+    expect(h.detachDroppedCard).toHaveBeenCalledWith("org1", "pm_old");
+    expect(r.message).toBe(
+      "Plan saved: Standard, up to £9.99 a month. The free month was already used, so the club has 7 days to add a card. The card on file was not the billing contact's, so it was removed (never charged) and its holder is told.",
+    );
+  });
+
+  it("billed again after the payer had stopped paying, or while MatchTime is out of the group: still paused", async () => {
+    h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "paused", resumed: false, billedAgain: "paused", droppedCard: null });
+    const r = await setClubPlanAction("org1", "standard");
+    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. It stays paused (the payer had stopped paying, or MatchTime is not in its group).");
   });
 
   it("Sutton FC's shape is refused by the writer", async () => {

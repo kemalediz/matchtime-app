@@ -26,7 +26,8 @@
  *               club per run, and two runs never both charge it);
  *             - slice P3: the cron's own retries of a failed month's
  *               invoice, days 1, 3 and 5 (BILLING_CRON_RETRIES, default
- *               on); a paid retry is applied at once;
+ *               OFF since Stripe's own retries cover one-off invoices); a
+ *               paid retry is applied at once;
  *             - the billing contact's day 21, 28, 30 or "paused" DM, the
  *               admins' club fee tip, every pending billing DM that is
  *               still true, and (slice P3) the month DMs: the receipt of a
@@ -44,7 +45,8 @@ import { db } from "./db";
 import { setBillingState } from "./club-billing";
 import { APPROVED_CLUB_WHERE, isClubApproved } from "./club-approval-state";
 import { isBillingEnabled } from "./club-billing-rules";
-import { billingTransitionDue, isBillingDmHour } from "./club-billing-schedule-rules";
+import { billingTransitionDue, bothRetrySourcesOn, isBillingDmHour } from "./club-billing-schedule-rules";
+import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { flushPendingBillingDms, sendClubFeeTip, sendMonthDms, sendScheduledBillingDms } from "./club-billing-dms";
 import { flushPendingBillingNotices, syncPaidMonthInvoice } from "./club-billing-stripe";
 import { closeNextDueMonth, openDueMonths, retryFailedMonthInvoices, sweepUnwantedMonthInvoices } from "./club-billing-months";
@@ -89,6 +91,20 @@ export async function runBillingCron(now: Date = new Date()): Promise<BillingCro
   }
   const daytime = isBillingDmHour(now);
   if (!isBillingEnabled()) return { enabled: false, daytime, voids, clubs: [] };
+  // Review L2: both retry sources explicitly on would try a card twice as
+  // often. Once on /admin/health (deduped), never blocks the run.
+  if (bothRetrySourcesOn()) {
+    await recordOpsEvent({
+      orgId: null,
+      kind: BILLING_ALERT_KIND,
+      severity: "warning",
+      title: "Club fee retries are switched on twice",
+      detail:
+        "BILLING_STRIPE_RETRIES and BILLING_CRON_RETRIES are both on, so a failed card is tried by Stripe AND by the hourly cron. Keep one: normally unset BILLING_CRON_RETRIES (runbook 16.1 step 6).",
+      dedupeKey: "billing-retries-both-on",
+      now,
+    }).catch(() => undefined);
+  }
 
   // Every club with a ClubBilling row (only billed clubs have one), of the
   // approved ones. The billing state is read through a select and decided

@@ -30,10 +30,10 @@
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { Pool } from "pg";
+import { Pool, defaults as pgDefaults, types as pgTypes } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
-import { localBillingTestRefusal } from "../src/lib/billing-local-guard";
+import { londonRow, localBillingTestRefusal, parsePgUtcTimestamp } from "../src/lib/billing-local-guard";
 import { signMagicLinkToken } from "../src/lib/magic-link";
 import { monthBounds, monthFee } from "../src/lib/club-billing-cycle-rules";
 import { formatLondon, londonDateTimeToUtc } from "../src/lib/london-time";
@@ -59,6 +59,13 @@ function stop(msg: string): never {
 
 const refusal = localBillingTestRefusal(process.env);
 if (refusal) stop(refusal);
+
+// The columns are TIMESTAMP WITHOUT TIME ZONE holding UTC (as Prisma
+// writes them). node-pg by default writes a Date as this Mac's LOCAL wall
+// clock and reads one back the same way, so in BST every time this helper
+// wrote or printed was an hour off what the app saw. UTC both ways.
+pgDefaults.parseInputDatesAsUTC = true;
+pgTypes.setTypeParser(1114, parsePgUtcTimestamp);
 
 const base = process.env.NEXTAUTH_URL!.replace(/\/+$/, "");
 const pool = new Pool({ connectionString: process.env.DIRECT_URL, max: 2 });
@@ -188,7 +195,7 @@ async function status() {
     )
   ).rows[0];
   console.log("Club:", org);
-  console.log("ClubBilling:", cb);
+  console.log("ClubBilling (times in London):", cb ? londonRow(cb) : cb);
   // Read through Prisma (a find): club-billing-months.ts stays the only
   // writer of the months, and no raw SQL here names their table.
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL! }) });
@@ -198,14 +205,14 @@ async function status() {
       orderBy: { index: "asc" },
       select: { id: true, index: true, status: true, scheduled: true, played: true, amountPence: true, stripeInvoiceId: true, reason: true, startsAt: true, endsAt: true },
     });
-    console.log("Months:");
-    console.table(months);
+    console.log("Months (times in London):");
+    console.table(months.map((m) => londonRow(m)));
   } finally {
     await prisma.$disconnect();
   }
   const dms = await run(`SELECT "createdAt",text FROM "PlatformJob" WHERE purpose='billing' AND "refId" LIKE $1 ORDER BY "createdAt" DESC LIMIT 8`, [`${ORG}:%`]);
   console.log("Billing DMs it would have sent (newest first, never sent from this Mac):");
-  for (const r of dms.rows) console.log(`\n[${(r.createdAt as Date).toISOString()}]\n${r.text}`);
+  for (const r of dms.rows) console.log(`\n[${londonRow({ at: r.createdAt as Date }).at}]\n${r.text}`);
 }
 
 async function main() {

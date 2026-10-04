@@ -79,8 +79,18 @@ describe("setup Checkout: Add a card and Use my card instead (5.3, 4.5 point 4)"
     expect(json).not.toMatch(/matchId|"userId"|application_fee|transfer_data|payment_intent_data|on_behalf_of/);
   });
 
-  it("does NOT ask Checkout for a VAT number in setup mode (not confirmed that setup mode allows it; see the test mode list)", () => {
-    expect(params("add-card")).not.toHaveProperty("tax_id_collection");
+  // Test mode (2026-10-05): setup-mode Checkout returns customer_details.address
+  // = null unless it may write the address onto the Customer, and Stripe
+  // accepts tax_id_collection in setup mode only with customer_update name
+  // AND address "auto" (all three together).
+  it("asks for the billing address, a VAT number (optional to the payer) and writes name and address onto the Customer", () => {
+    for (const action of ["add-card", "replace-card"] as const) {
+      expect(params(action)).toMatchObject({
+        billing_address_collection: "required",
+        tax_id_collection: { enabled: true },
+        customer_update: { name: "auto", address: "auto" },
+      });
+    }
   });
 
   it("comes back to the billing page: ?done=1 for a new card, ?replaced=1 for a replacement", () => {
@@ -428,6 +438,83 @@ describe("the real adapter (recording client, no network)", () => {
     await a.resetCustomerDetails({ customerId: "cus_1", name: "Card Sevens" });
     expect(calls.map((c) => c.path)).toEqual(["customers.update", "customers.listTaxIds", "customers.deleteTaxId"]);
     expect(calls[0].args).toEqual(["cus_1", { name: "Card Sevens", email: "", address: "", phone: "" }]);
+  });
+
+  it("the reset keeps the VAT numbers the NEW payer just gave at Checkout, and removes the rest", async () => {
+    const { client, calls } = recordingClient({
+      customers: {
+        update: (...args: unknown[]) => (calls.push({ path: "customers.update", args }), Promise.resolve({})),
+        listTaxIds: () => Promise.resolve({ data: [{ id: "txi_old", value: "GB111111111" }, { id: "txi_new", value: "GB222222222" }] }),
+        deleteTaxId: (...args: unknown[]) => (calls.push({ path: "customers.deleteTaxId", args }), Promise.resolve({})),
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await a.resetCustomerDetails({ customerId: "cus_1", name: "Card Sevens", keepTaxIds: ["GB222222222"] });
+    expect(calls.filter((c) => c.path === "customers.deleteTaxId").map((c) => c.args)).toEqual([["cus_1", "txi_old"]]);
+  });
+
+  it("the saved card carries the payer's billing address from the payment method (Checkout's customer_details can be null)", async () => {
+    const { client } = recordingClient({
+      setupIntents: {
+        retrieve: () =>
+          Promise.resolve({
+            payment_method: {
+              id: "pm_3",
+              type: "card",
+              card: { brand: "visa", last4: "4242", country: "US" },
+              billing_details: { name: "Pat", email: "pat@example.test", address: { country: "GB", line1: "1 Road", city: "Sutton", postal_code: "SM1 1AA", line2: null, state: null } },
+            },
+          }),
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrieveSetupIntentCard("seti_3")).toEqual({
+      paymentMethodId: "pm_3",
+      brand: "visa",
+      last4: "4242",
+      country: "US",
+      billingAddress: { country: "GB", line1: "1 Road", city: "Sutton", postal_code: "SM1 1AA" },
+      billingName: "Pat",
+      billingEmail: "pat@example.test",
+    });
+  });
+
+  it("review L1: restoreCustomerDetails puts the given payer (or the club default) back and removes ONLY the named VAT numbers", async () => {
+    const calls: Array<{ path: string; args: unknown[] }> = [];
+    const { client } = recordingClient({
+      customers: {
+        update: (...args: unknown[]) => (calls.push({ path: "customers.update", args }), Promise.resolve({})),
+        listTaxIds: () => Promise.resolve({ data: [{ id: "txi_cur", value: "GB111111111" }, { id: "txi_rej", value: "GB222222222" }] }),
+        deleteTaxId: (...args: unknown[]) => (calls.push({ path: "customers.deleteTaxId", args }), Promise.resolve({})),
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await a.restoreCustomerDetails({ customerId: "cus_1", name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road" }, removeTaxIds: ["GB 222222222"] });
+    expect(calls).toEqual([
+      { path: "customers.update", args: ["cus_1", { name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road" } }] },
+      { path: "customers.deleteTaxId", args: ["cus_1", "txi_rej"] },
+    ]);
+    calls.length = 0;
+    await a.restoreCustomerDetails({ customerId: "cus_1", name: "Card Sevens", email: null, address: null, removeTaxIds: [] });
+    expect(calls).toEqual([{ path: "customers.update", args: ["cus_1", { name: "Card Sevens", email: "", address: "" }] }]);
+  });
+
+  it("review L1: retrievePaymentMethodDetails reads the card's billing name, email and address", async () => {
+    const { client } = recordingClient({
+      paymentMethods: {
+        detach: () => Promise.resolve({}),
+        retrieve: () =>
+          Promise.resolve({ id: "pm_1", billing_details: { name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road", city: null } } }),
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrievePaymentMethodDetails("pm_1")).toEqual({ name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road" } });
+  });
+
+  it("a payment method with no billing address gives billingAddress null", async () => {
+    const { client } = recordingClient();
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrieveSetupIntentCard("seti_1")).toMatchObject({ paymentMethodId: "pm_2", billingAddress: null });
   });
 });
 

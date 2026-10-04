@@ -1976,6 +1976,13 @@ export const tr: Strings = {
   billing_btn_remove_mine: "Kartımı kaldır",
   billing_btn_stop_paying: "Ödemeyi durdur",
   billing_btn_keep_paying: "Ödemeye devam et",
+  billing_stop_confirm_title: "MatchTime için ödemeyi durdurmak istiyor musunuz?",
+  billing_stop_confirm_month: (p) =>
+    `Ödeme ${p.date} tarihinde, bu ay oynanan maçlar için ücret alındıktan sonra sona erer. Sonra MatchTime, biri yeniden ödemeye başlayana kadar grupta durur.`,
+  billing_stop_confirm_free: (p) =>
+    `Kartınız şimdi kaldırılır ve hiçbir ücret alınmaz. Ücretsiz ay ${p.date} tarihine kadar devam eder; sonrasında MatchTime'ın çalışmaya devam etmesi için kart gerekir.`,
+  billing_btn_stop_confirm_yes: "Evet, ödemeyi durdur",
+  billing_btn_stop_confirm_no: "Geri dön",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
@@ -2014,6 +2021,11 @@ export const tr: Strings = {
     `${p.first ? "İlk" : "Sonraki"} ödeme ${p.date} tarihinde. Her ödemeyi ve makbuzunu ödeme sayfanızda görebilir, kartınızı orada değiştirebilir ya da durdurabilirsiniz: ${p.link}`,
   billing_dm_card_replaced: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime ücretini artık ${p.newName} ödüyor. Kartınız kaldırıldı ve bunun için bir daha ücret alınmayacak.`,
+  billing_dm_billed_again_card: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} yeniden MatchTime planında ve son dört hanesi ${p.last4} olan kartınızla ödeniyor: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
+    `İlk ödeme ${p.date} tarihinde alınır. Ödemeyi durdurmak ya da kartı değiştirmek için: ${p.link}`,
+  billing_dm_card_dropped: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, kartınız artık ${p.club} için MatchTime ücretinde kullanılmıyor ve kaldırıldı. Bunun için bir daha ücret alınmayacak.`,
   billing_dm_resumed: (p) =>
     `MatchTime ${p.club} için yeniden açıldı. Birkaç dakika içinde grupta kaldığım yerden devam ediyorum. Ben duraklatılmışken VARIM yazanlar lütfen tekrar yazsın.`,
   billing_dm_plan_billed: (p) =>

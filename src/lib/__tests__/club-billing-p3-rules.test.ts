@@ -23,13 +23,13 @@ const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 const FIRST = new Date("2026-12-01T10:00:00Z"); // the close's first attempt
 
-describe("BILLING_CRON_RETRIES: on unless switched off", () => {
-  it("default on (unset or empty); off for 0, false, off, no (any case, spaces)", () => {
-    expect(cronRetriesEnabled({})).toBe(true);
-    expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: "" })).toBe(true);
-    expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: "1" })).toBe(true);
-    expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: "on" })).toBe(true);
-    for (const v of ["0", "false", "OFF", " no "]) expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: v }), v).toBe(false);
+describe("BILLING_CRON_RETRIES: OFF unless switched on (Stripe's own retries are the default, 2026-10-05)", () => {
+  it("default off (unset or empty); on only for 1, true, on, yes (any case, spaces)", () => {
+    expect(cronRetriesEnabled({})).toBe(false);
+    expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: "" })).toBe(false);
+    expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: "0" })).toBe(false);
+    expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: "maybe" })).toBe(false);
+    for (const v of ["1", "true", "ON", " yes "]) expect(cronRetriesEnabled({ BILLING_CRON_RETRIES: v }), v).toBe(true);
   });
 });
 

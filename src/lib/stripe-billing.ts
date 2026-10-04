@@ -52,6 +52,24 @@ export interface CardDetails {
   last4: string | null;
   /** The card's issuing country (ISO alpha-2). */
   country: string | null;
+  /**
+   * The billing address the payer typed at Checkout, as the payment method
+   * holds it (`billing_details.address`). Setup-mode Checkout can return
+   * `customer_details.address` null (seen in test mode, 2026-10-05), so the
+   * webhook falls back to this. Empty fields are left out; null when no
+   * country is known. Optional: the fake and old callers may omit it.
+   */
+  billingAddress?: Stripe.AddressParam | null;
+  /** The payer's name and email on the card (`billing_details`). */
+  billingName?: string | null;
+  billingEmail?: string | null;
+}
+
+/** The payer details a payment method holds (`billing_details`). */
+export interface PayerDetails {
+  name: string | null;
+  email: string | null;
+  address: Stripe.AddressParam | null;
 }
 
 /** One invoice, as billing reads it. */
@@ -108,8 +126,26 @@ export interface BillingStripe {
   setDefaultPaymentMethod(args: { customerId: string; paymentMethodId: string; email?: string | null; name?: string | null }): Promise<void>;
   detachPaymentMethod(paymentMethodId: string): Promise<void>;
   /** Before a NEW payer's card goes on the club's shared Customer: back to
-   *  the club's name, no email, no address, no phone, no VAT numbers. */
-  resetCustomerDetails(args: { customerId: string; name: string }): Promise<void>;
+   *  the club's name, no email, no address, no phone, no VAT numbers except
+   *  `keepTaxIds` (the values the new payer gave at Checkout, which
+   *  `customer_update` has already put on the Customer). */
+  resetCustomerDetails(args: { customerId: string; name: string; keepTaxIds?: string[] }): Promise<void>;
+  /**
+   * Review L1: put a payer's details back on the Customer (or, with nulls,
+   * the club default: no email, no address) after a card session the
+   * webhook rejected, and remove the VAT numbers that session added
+   * (`removeTaxIds`, by value). Checkout's `customer_update` had already
+   * written that session's payer onto the shared Customer.
+   */
+  restoreCustomerDetails(args: {
+    customerId: string;
+    name: string;
+    email: string | null;
+    address: Stripe.AddressParam | null;
+    removeTaxIds: string[];
+  }): Promise<void>;
+  /** The payer details on a saved card, or null when Stripe has no such card. */
+  retrievePaymentMethodDetails(paymentMethodId: string): Promise<PayerDetails | null>;
   /** The payer's own details onto the Customer (for invoices and receipts). */
   updateCustomer(args: {
     customerId: string;
@@ -173,10 +209,16 @@ const billingPath = (orgId: string) => `/billing/${encodeURIComponent(orgId)}`;
  * Add a card, Use my card instead, Change card, Update card and pay (5.3):
  * Checkout in SETUP mode on the club's one Customer. Nothing is charged;
  * the webhook makes the saved card the Customer's default. A billing
- * address is required (the UK check reads it). No VAT number is asked for:
- * whether Checkout allows `tax_id_collection` in setup mode is to be
- * confirmed in test mode, and a business payer can have Kemal add theirs to
- * the Customer meanwhile.
+ * address is required (the UK check reads it, and the invoice PDF's "Bill
+ * to" shows it). A business payer may give a VAT number.
+ *
+ * Confirmed in test mode (2026-10-05): without `customer_update`, a setup
+ * session returns `customer_details.address` null, so the Customer never
+ * got the payer's address; and Stripe accepts `tax_id_collection` in setup
+ * mode only together with `customer_update` name AND address "auto". With
+ * them Checkout writes the payer's name, address and VAT number onto the
+ * club's Customer itself; the webhook then keeps them (a new payer's reset
+ * spares the VAT numbers they just gave) and writes the address again.
  */
 export function buildCardSetupCheckoutParams(args: {
   orgId: string;
@@ -196,6 +238,8 @@ export function buildCardSetupCheckoutParams(args: {
     metadata,
     setup_intent_data: { metadata: { ...metadata } },
     billing_address_collection: "required",
+    customer_update: { name: "auto", address: "auto" },
+    tax_id_collection: { enabled: true },
     success_url: `${base}${billingPath(args.orgId)}?${args.action === "add-card" ? "done" : "replaced"}=1`,
     cancel_url: `${base}${billingPath(args.orgId)}`,
   };
@@ -280,15 +324,32 @@ export function verifyBillingWebhook(payload: string, signature: string, secret:
 const idOf = (v: string | { id: string } | null | undefined): string | null =>
   v == null ? null : typeof v === "string" ? v : v.id;
 
+/** A Stripe address with its empty fields left out, or null when it has
+ *  no country (an address with no country cannot place the payer). */
+export function addressParamOf(a: Stripe.Address | Stripe.AddressParam | null | undefined): Stripe.AddressParam | null {
+  if (!a?.country) return null;
+  const out: Record<string, string> = {};
+  for (const k of ["line1", "line2", "city", "state", "postal_code", "country"] as const) {
+    const v = (a as Record<string, string | null | undefined>)[k];
+    if (typeof v === "string" && v.trim()) out[k] = v;
+  }
+  return out as Stripe.AddressParam;
+}
+
 function cardOf(pm: string | Stripe.PaymentMethod | null | undefined): CardDetails | null {
-  if (!pm || typeof pm === "string") return pm ? { paymentMethodId: pm, brand: null, last4: null, country: null } : null;
+  if (!pm || typeof pm === "string") return pm ? { paymentMethodId: pm, brand: null, last4: null, country: null, billingAddress: null } : null;
   return {
     paymentMethodId: pm.id,
     brand: pm.card?.brand ?? null,
     last4: pm.card?.last4 ?? null,
     country: pm.card?.country ?? null,
+    billingAddress: addressParamOf(pm.billing_details?.address),
+    billingName: pm.billing_details?.name ?? null,
+    billingEmail: pm.billing_details?.email ?? null,
   };
 }
+
+const taxIdKey = (v: string) => v.replace(/\s+/g, "").toUpperCase();
 
 function invoiceOf(inv: Stripe.Invoice): BillingInvoice {
   return {
@@ -368,11 +429,40 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
       await client.paymentMethods.detach(paymentMethodId);
     },
 
-    async resetCustomerDetails({ customerId, name }) {
+    async resetCustomerDetails({ customerId, name, keepTaxIds = [] }) {
       // "" unsets a field in Stripe's API.
       await client.customers.update(customerId, { name, email: "", address: "", phone: "" });
+      const keep = new Set(keepTaxIds.map(taxIdKey));
       const taxIds = await client.customers.listTaxIds(customerId, { limit: 20 });
-      for (const t of taxIds.data) await client.customers.deleteTaxId(customerId, t.id);
+      for (const t of taxIds.data) {
+        if (t.value && keep.has(taxIdKey(t.value))) continue;
+        await client.customers.deleteTaxId(customerId, t.id);
+      }
+    },
+
+    async restoreCustomerDetails({ customerId, name, email, address, removeTaxIds }) {
+      // "" unsets a field in Stripe's API.
+      await client.customers.update(customerId, { name, email: email ?? "", address: address ?? "" });
+      if (removeTaxIds.length === 0) return;
+      const remove = new Set(removeTaxIds.map(taxIdKey));
+      const taxIds = await client.customers.listTaxIds(customerId, { limit: 20 });
+      for (const t of taxIds.data) {
+        if (t.value && remove.has(taxIdKey(t.value))) await client.customers.deleteTaxId(customerId, t.id);
+      }
+    },
+
+    async retrievePaymentMethodDetails(paymentMethodId) {
+      try {
+        const pm = await client.paymentMethods.retrieve(paymentMethodId);
+        return {
+          name: pm.billing_details?.name ?? null,
+          email: pm.billing_details?.email ?? null,
+          address: addressParamOf(pm.billing_details?.address),
+        };
+      } catch (err) {
+        if ((err as { code?: string }).code === "resource_missing") return null;
+        throw err;
+      }
     },
 
     async updateCustomer({ customerId, email, name, address }) {

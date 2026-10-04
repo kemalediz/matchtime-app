@@ -327,6 +327,9 @@ const dmsOf = (kind?: string) => h.state.dms.filter((d) => !kind || d.kind === k
 beforeEach(() => {
   process.env.BILLING_ENABLED = "1";
   process.env.NEXTAUTH_URL = "https://mt.test";
+  // Retries are claimed only when explicitly on (review L2); these DMs are
+  // the "it will be tried again" ones.
+  process.env.BILLING_STRIPE_RETRIES = "1";
   fake = createFakeBillingStripe();
   setBillingStripeForTests(fake);
   h.state.clubs.clear();

@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { localBillingTestRefusal } from "../billing-local-guard";
+import { londonRow, localBillingTestRefusal, parsePgUtcTimestamp } from "../billing-local-guard";
 
 const OK = {
   DATABASE_URL: "postgresql://localhost:5432/matchtime_billing",
@@ -49,5 +49,22 @@ describe("localBillingTestRefusal", () => {
       const at = src.indexOf(first);
       if (at !== -1) expect(at, first).toBeGreaterThan(guard);
     }
+  });
+});
+
+// Test mode, 2026-10-05: `status` printed BST times an hour off. The
+// columns are TIMESTAMP(3) WITHOUT TIME ZONE holding UTC, and node-pg's
+// default parser reads them as the Mac's LOCAL time (Europe/London, BST).
+describe("the helper's time display (status printed BST times an hour off)", () => {
+  it("reads a TIMESTAMP WITHOUT TIME ZONE as the UTC it holds, whatever the machine's zone", () => {
+    expect(parsePgUtcTimestamp("2026-10-05 09:00:00.123").toISOString()).toBe("2026-10-05T09:00:00.123Z");
+    expect(parsePgUtcTimestamp("2026-12-01 00:00:00").toISOString()).toBe("2026-12-01T00:00:00.000Z");
+  });
+
+  it("shows every date of a row in London time, labelled, and leaves other values alone", () => {
+    expect(
+      londonRow({ trialEndsAt: new Date("2026-09-30T23:00:00Z"), graceEndsAt: null, cardLast4: "4242", n: 3 }),
+    ).toEqual({ trialEndsAt: "2026-10-01 00:00 London", graceEndsAt: null, cardLast4: "4242", n: 3 });
+    expect(londonRow({ at: new Date("2026-12-01T10:30:00Z") })).toEqual({ at: "2026-12-01 10:30 London" });
   });
 });

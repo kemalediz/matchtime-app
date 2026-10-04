@@ -316,6 +316,7 @@ vi.mock("../club-billing", async () => {
 import { setBillingStripeForTests } from "../stripe-billing";
 import { createFakeBillingStripe, type FakeBillingStripe } from "../stripe-billing-fake";
 import {
+  detachDroppedCard,
   flushPendingBillingNotices,
   handleBillingEvent,
   keepPaying,
@@ -538,6 +539,60 @@ describe("webhook: a card saved (checkout.session.completed, setup mode)", () =>
     expect(moneyCalls()).toEqual([]);
   });
 
+  // Test mode, 2026-10-05: a setup-mode Checkout returned
+  // customer_details.address = null, so billingCountry was never set, every
+  // club was flagged "Check VAT country" and the invoice PDF had no "Bill to".
+  describe("the payer's billing address (customer_details.address can be null in setup mode)", () => {
+    const GB_ADDR = { country: "GB", line1: "1 Pitch Lane", city: "Sutton", postal_code: "SM1 1AA" };
+
+    it("customer_details.address null: the address comes from the saved card's billing details; country set, no VAT check; the Customer gets it", async () => {
+      setWorld({}, { stripeCustomerId: "cus_fake_1" });
+      const e = cardSaved("add-card", "user_colin", { customer_details: { email: "colin@example.test", name: "Colin", address: null } });
+      fake.putSetupIntent("seti_user_colin", { paymentMethodId: "pm_colin", brand: "visa", last4: "4242", country: "GB", billingAddress: GB_ADDR });
+      await handleBillingEvent(e, DAYTIME);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", cardCountry: "GB", vatCountryCheck: false });
+      expect(calls("updateCustomer")).toEqual([{ customerId: "cus_fake_1", address: GB_ADDR }]);
+    });
+
+    it("customer_details.address present, the card's empty: customer_details is used (the other way round)", async () => {
+      setWorld({}, { stripeCustomerId: "cus_fake_1" });
+      await handleBillingEvent(cardSaved("add-card"), DAYTIME);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", vatCountryCheck: false });
+      expect(calls("updateCustomer")).toEqual([{ customerId: "cus_fake_1", address: { country: "GB", line1: "1 Road" } }]);
+    });
+
+    it("a GB address with a card issued abroad still flags the VAT check", async () => {
+      setWorld({}, { stripeCustomerId: "cus_fake_1" });
+      const e = cardSaved("add-card", "user_colin", { customer_details: { email: "c@example.test", name: "Colin", address: null } });
+      fake.putSetupIntent("seti_user_colin", { paymentMethodId: "pm_colin", brand: "visa", last4: "4242", country: "US", billingAddress: GB_ADDR });
+      await handleBillingEvent(e, DAYTIME);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", cardCountry: "US", vatCountryCheck: true });
+    });
+
+    it("a NEW payer with no address anywhere never inherits the old payer's country", async () => {
+      setWorld({ billingStatus: "subscribed" }, withCard({ billingCountry: "GB", cardCountry: "GB" }));
+      h.state.contact = "user_pat";
+      const e = cardSaved("replace-card", "user_pat", { customer_details: { email: "pat@example.test", name: "Pat", address: null } });
+      await handleBillingEvent(e, DAYTIME);
+      expect(h.state.billing).toMatchObject({ cardHolderUserId: "user_pat", billingCountry: null, vatCountryCheck: true });
+    });
+
+    it("a NEW payer: the reset keeps the VAT number they just gave at Checkout, then their address goes back on the Customer", async () => {
+      setWorld({ billingStatus: "subscribed" }, withCard());
+      h.state.contact = "user_pat";
+      const e = cardSaved("replace-card", "user_pat", {
+        customer_details: { email: "pat@example.test", name: "Pat FC Ltd", address: null, tax_ids: [{ type: "gb_vat", value: "GB123456789" }] },
+      });
+      fake.putSetupIntent("seti_user_pat", { paymentMethodId: "pm_pat", brand: "visa", last4: "1881", country: "GB", billingAddress: GB_ADDR });
+      await handleBillingEvent(e, DAYTIME);
+      expect(calls("resetCustomerDetails")).toEqual([{ customerId: "cus_fake_1", name: "Billing Sevens", keepTaxIds: ["GB123456789"] }]);
+      const order = fake.state().calls.map((c) => c.method).filter((m) => ["resetCustomerDetails", "setDefaultPaymentMethod", "updateCustomer"].includes(m));
+      expect(order).toEqual(["resetCustomerDetails", "setDefaultPaymentMethod", "updateCustomer"]);
+      expect(calls("updateCustomer")).toEqual([{ customerId: "cus_fake_1", address: GB_ADDR }]);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", vatCountryCheck: false });
+    });
+  });
+
   it("a re-delivered event is answered as a duplicate: one card, one DM", async () => {
     setWorld({}, { stripeCustomerId: "cus_fake_1" });
     const e = cardSaved("add-card");
@@ -584,6 +639,51 @@ describe("webhook: a card saved (checkout.session.completed, setup mode)", () =>
     expect(fake.state().detached).toEqual(["pm_colin"]);
     expect(h.state.billing!.stripePaymentMethodId).toBeNull();
     expect(h.state.stateCalls).toEqual([]);
+  });
+
+  // Review L1: Checkout (customer_update auto, tax_id_collection) writes the
+  // payer's details onto the shared Customer BEFORE our webhook runs. A
+  // session the webhook rejects must not leave them there.
+  it("review L1: rejected because the club is Free: the Customer goes back to the club default (no card on file), the session's VAT number removed", async () => {
+    setWorld({ billingPlan: "free", billingStatus: "exempt" }, { stripeCustomerId: "cus_fake_1" });
+    const e = cardSaved("add-card", "user_pat", { customer_details: { email: "pat@example.test", name: "Pat", address: { country: "GB" }, tax_ids: [{ type: "gb_vat", value: "GB222222222" }] } });
+    await handleBillingEvent(e, DAYTIME);
+    expect(calls("restoreCustomerDetails")).toEqual([
+      { customerId: "cus_fake_1", name: "Billing Sevens", email: null, address: null, removeTaxIds: ["GB222222222"] },
+    ]);
+  });
+
+  it("review L1: rejected while the CURRENT payer's card is on file: the Customer goes back to that payer's details", async () => {
+    setWorld({ billingPlan: "free", billingStatus: "exempt" }, withCard());
+    fake.putSetupIntent("seti_existing", {
+      paymentMethodId: "pm_colin",
+      brand: "visa",
+      last4: "4242",
+      country: "GB",
+      billingAddress: { country: "GB", line1: "1 Road" },
+      billingName: "Colin",
+      billingEmail: "colin@example.test",
+    });
+    await handleBillingEvent(cardSaved("add-card", "user_pat", { customer_details: { email: "pat@example.test", name: "Pat", address: null } }), DAYTIME);
+    expect(calls("restoreCustomerDetails")).toEqual([
+      { customerId: "cus_fake_1", name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road" }, removeTaxIds: [] },
+    ]);
+  });
+
+  it("review L1: a superseded (older) session is rejected too: the newer payer's details are put back", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard());
+    h.state.contact = "user_pat";
+    await handleBillingEvent(cardSaved("replace-card", "user_pat", { id: "cs_new", created: Math.floor(DAYTIME.getTime() / 1000) }), DAYTIME);
+    fake.putSetupIntent("seti_user_pat", { paymentMethodId: "pm_pat", brand: "visa", last4: "1881", country: "GB", billingName: "Pat", billingEmail: "pat@example.test", billingAddress: { country: "GB", line1: "2 Lane" } });
+    const older = cardSaved("replace-card", "user_olly", {
+      id: "cs_old",
+      created: Math.floor(DAYTIME.getTime() / 1000) - 3600,
+      customer_details: { email: "olly@example.test", name: "Olly", address: null, tax_ids: [{ type: "gb_vat", value: "GB333333333" }] },
+    });
+    expect(await handleBillingEvent(older, DAYTIME)).toMatchObject({ reason: "superseded-session" });
+    expect(calls("restoreCustomerDetails")).toEqual([
+      { customerId: "cus_fake_1", name: "Pat", email: "pat@example.test", address: { country: "GB", line1: "2 Lane" }, removeTaxIds: ["GB333333333"] },
+    ]);
   });
 
   it("a suspended club: the card is mirrored, the state NEVER moves, no DM", async () => {
@@ -936,6 +1036,14 @@ describe("plan changes and suspension (2A.6)", () => {
     expect(fake.state().calls.map((c) => c.method)).toEqual(["expireOpenCheckoutSessions"]);
   });
 
+  it("billed again after Free with a card on file: the current month opens at once, so the page's next charge date is current (no month before now)", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard({ currentPeriodEnd: TRIAL_ENDS }));
+    expect(await onPlanChanged(ORG, MID_M1)).toEqual({ action: "none" });
+    expect(h.state.months.map((m) => ({ index: m.index, status: m.status }))).toEqual([{ index: 1, status: "open" }]);
+    expect(h.state.billing!.currentPeriodEnd).toEqual(M1_END);
+    expect(moneyCalls()).toEqual([]);
+  });
+
   it("suspended: the open month waived, open sessions expired; earlier unpaid invoices left for the owner", async () => {
     setWorld({ billingStatus: "subscribed", approvalStatus: "suspended" }, withCard());
     const inv = await invoicedMonth(1, "failed");
@@ -945,6 +1053,70 @@ describe("plan changes and suspension (2A.6)", () => {
     expect(h.state.spells).toEqual([{ orgId: ORG, type: "mt.suspended", at: MID_M1 }]);
     expect(h.state.months.map((m) => m.status)).toEqual(["failed", "waived"]);
     expect((await fake.retrieveInvoice(inv))?.status).toBe("open");
+  });
+});
+
+// ── Review M1: billed again after Free (the pending DMs setClubPlan wrote) ──
+
+describe("review M1: billed again after Free, the DMs", () => {
+  it("'billed-again': ONE DM to the card holder (the contact): their card's last four, games played up to the price, the first charge date, the billing link", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard({ currentPeriodEnd: M1_END }));
+    h.state.pending.push({ kind: "billed-again", cycleKey: MID_M1.toISOString(), createdAt: MID_M1 });
+    expect(await flushPendingBillingNotices(ORG, MID_M1)).toBe(1);
+    expect(h.state.dms).toHaveLength(1);
+    expect(h.state.dms[0]).toMatchObject({ kind: "billed-again", userId: "user_colin", cycleKey: MID_M1.toISOString() });
+    expect(h.state.dms[0].text).toBe(
+      "Hi Colin, Billing Sevens is on the MatchTime plan again and is paid with your card ending 4242: only the games played, up to £9.99 a month. The first charge is on Tue 1 Dec. To stop paying or change the card: https://mt.test/r/user_colin/billing/org_1",
+    );
+    // Once: a second flush sends nothing.
+    expect(await flushPendingBillingNotices(ORG, MID_M1)).toBe(0);
+    expect(h.state.dms).toHaveLength(1);
+  });
+
+  it("'billed-again' is skipped when it is no longer true: not subscribed, or the card is no longer the contact's", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard({ cardHolderUserId: "user_pat" }));
+    h.state.pending.push({ kind: "billed-again", cycleKey: MID_M1.toISOString(), createdAt: MID_M1 });
+    expect(await flushPendingBillingNotices(ORG, MID_M1)).toBe(0);
+    expect(h.state.skipped).toContainEqual({ kind: "billed-again", cycleKey: MID_M1.toISOString(), why: "not-current" });
+  });
+
+  it("'billed-again' waits for daytime (10:00 to 20:00 London)", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard());
+    const night = new Date("2026-11-15T01:00:00Z");
+    h.state.pending.push({ kind: "billed-again", cycleKey: night.toISOString(), createdAt: night });
+    expect(await flushPendingBillingNotices(ORG, night)).toBe(0);
+    expect(h.state.dms).toEqual([]);
+  });
+
+  it("'card-dropped': ONE DM to the old holder while that card is no longer on file", async () => {
+    setWorld({ billingStatus: "grace" }, { stripeCustomerId: "cus_fake_1" });
+    h.state.pending.push({ kind: "card-dropped", cycleKey: "pm_pat|user_pat", createdAt: MID_M1 });
+    expect(await flushPendingBillingNotices(ORG, MID_M1)).toBe(1);
+    expect(h.state.dms[0]).toMatchObject({ kind: "card-dropped", userId: "user_pat" });
+    expect(h.state.dms[0].text).toBe(
+      "Hi Pat, your card is no longer used for the MatchTime fee for Billing Sevens and has been removed. It won't be charged for it again.",
+    );
+  });
+
+  it("'card-dropped' is skipped if that card is somehow back on file", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard({ stripePaymentMethodId: "pm_pat", cardHolderUserId: "user_pat" }));
+    h.state.pending.push({ kind: "card-dropped", cycleKey: "pm_pat|user_pat", createdAt: MID_M1 });
+    expect(await flushPendingBillingNotices(ORG, MID_M1)).toBe(0);
+  });
+
+  it("detachDroppedCard: the old card is detached in Stripe (never charged); already detached is fine; nothing charged", async () => {
+    setWorld({ billingStatus: "grace" }, { stripeCustomerId: "cus_fake_1" });
+    await detachDroppedCard(ORG, "pm_pat");
+    expect(fake.state().detached).toEqual(["pm_pat"]);
+    vi.spyOn(fake, "detachPaymentMethod").mockRejectedValueOnce(new Error("already detached"));
+    await expect(detachDroppedCard(ORG, "pm_pat")).resolves.toBeUndefined();
+    expect(moneyCalls()).toEqual([]);
+  });
+
+  it("detachDroppedCard never detaches the card that IS on file", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard());
+    await detachDroppedCard(ORG, "pm_colin");
+    expect(fake.state().detached).toEqual([]);
   });
 });
 

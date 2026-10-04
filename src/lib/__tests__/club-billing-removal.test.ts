@@ -343,6 +343,13 @@ describe("added back (read from our rows, no Stripe call)", () => {
     expect(h.state.billing!.pausedReason).toBe("no-card");
   });
 
+  it("review M1: added back while on Free (exempt, the 'removed' marker kept through Free): the marker is cleared, so Standard later bills it as usual", async () => {
+    seed({ billingStatus: "exempt", billingPlan: "free" }, { pausedReason: "removed" });
+    expect(await handleBillingReAdd(GROUP, ON)).toEqual({ kind: "not-removed" });
+    expect(h.state.billing!.pausedReason).toBeNull();
+    expect(h.state.events).toEqual([]);
+  });
+
   it("IDEMPOTENT: a second re-add does nothing", async () => {
     await removedThen("trial");
     await handleBillingReAdd(GROUP, ON);

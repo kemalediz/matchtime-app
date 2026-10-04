@@ -23,7 +23,7 @@ import { DecideButtons, LeaveButton, TurnOffButton } from "./club-buttons";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
-import { moneyLabel, ownerLastMonthLabel, ownerThisMonthLabel } from "@/lib/club-billing-view";
+import { moneyLabel, ownerChargeDateLabel, ownerLastMonthLabel, ownerThisMonthLabel } from "@/lib/club-billing-view";
 import { loadCurrentMonth, loadPastMonths, loadUnpaidSummary } from "@/lib/club-billing-month-summary";
 
 /**
@@ -140,8 +140,8 @@ function BillingRow({ c, billingOn }: { c: LiveClub; billingOn: boolean }) {
         ? `Stops ${when(cb.graceEndsAt)} without payment`
         : status === "subscribed" && cb?.currentPeriodEnd
           ? cb.cancelAtPeriodEnd
-            ? `Stops paying ${when(cb.currentPeriodEnd)}`
-            : `Next charge ${when(cb.currentPeriodEnd)}`
+            ? `Last charge ${ownerChargeDateLabel(cb.currentPeriodEnd)}, then billing stops`
+            : `Next charge ${ownerChargeDateLabel(cb.currentPeriodEnd)}`
           : null;
   const who = !b?.contact
     ? "No billing contact"

@@ -44,7 +44,8 @@
  * page asks for MatchTime to be added back first.
  *
  * This file never writes `billingStatus`: every move goes through
- * `setBillingState` (club-billing.ts). It writes nothing else.
+ * `setBillingState` (club-billing.ts). The one other write: clearing the
+ * "removed" marker an exempt (Free) club kept when it is added back.
  */
 import { db } from "./db";
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
@@ -192,6 +193,14 @@ export async function handleBillingReAdd(
   try {
     if (!opts.flagOn) return { kind: "not-removed" };
     const org = await loadApprovedClubByGroup(groupId);
+    // Review M1: a club removed while billed and then set Free keeps
+    // "removed" as a marker through the Free spell (so Standard again keeps
+    // it paused). Added back meanwhile: the marker goes, nothing else moves.
+    if (org && org.approvedAt !== null && org.billingStatus === "exempt" && org.clubBilling?.pausedReason === "removed") {
+      await db.clubBilling.updateMany({ where: { orgId: org.id, pausedReason: "removed" }, data: { pausedReason: null } });
+      console.log(`[club-billing-removal] ${org.id} (${groupId}): MatchTime added back while on Free; the removed marker is cleared`);
+      return { kind: "not-removed" };
+    }
     if (!org || org.approvedAt === null || org.billingStatus !== "paused" || org.clubBilling?.pausedReason !== "removed") {
       return { kind: "not-removed" };
     }

@@ -16,6 +16,7 @@
 import { t } from "./i18n/t";
 import { dayLabel, dayMonthShortLabel } from "./i18n/dates";
 import { monthBounds, monthFee } from "./club-billing-cycle-rules";
+import { BILLING_DM_FROM_HOUR } from "./club-billing-schedule-rules";
 import type { Lang } from "./i18n/lang";
 import type { MonthsSummary } from "./club-billing-month-summary";
 import {
@@ -225,6 +226,16 @@ export function gameLine(lang: LangIn, g: { kickoff: Date; outcome: string }): s
   return `${dayLabel(lang, g.kickoff)}: ${t(lang).billing_game_outcome({ outcome: g.outcome })}`;
 }
 
+/**
+ * /admin/clubs (English): when a month's charge runs. A month ends at 00:00
+ * London (`endsAt`, exclusive) and its close charges it that same London day
+ * from 10:00 (daytime runs only), so the label is that day and "from 10:00",
+ * never the bare 00:00 instant (test mode, 2026-10-05).
+ */
+export function ownerChargeDateLabel(endsAt: Date): string {
+  return `${dayLabel("en", endsAt)}, from ${String(BILLING_DM_FROM_HOUR).padStart(2, "0")}:00`;
+}
+
 /** /admin/clubs (English, the platform owner's page): this month so far. */
 export function ownerThisMonthLabel(m: { played: number; scheduled: number; amountPence: number } | null): string {
   if (!m) return "no month open";
@@ -370,6 +381,12 @@ export interface BillingPageView {
   past: PastMonthView[];
   seeGamesLabel: string;
   receiptLabel: string;
+  /**
+   * Stop paying asks first (test mode fix, 2026-10-05): the button opens
+   * this confirmation (what stopping means, and the date), and only "yes"
+   * posts the action. Null when there is no Stop paying button.
+   */
+  stopConfirm: { title: string; text: string; yes: string; no: string } | null;
 }
 
 /** One closed month on the page: its line, its games, and (for the payer,
@@ -463,7 +480,18 @@ export function billingPageView(
     receiptLabel: s.billing_receipt,
   };
   if (role === "exempt-owner") {
-    return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], tip: null, monthBox: null, past: [] };
+    return {
+      ...base,
+      exempt: s.billing_exempt({ club: c.club }),
+      lines: [],
+      who: null,
+      holderNote: null,
+      buttons: [],
+      tip: null,
+      monthBox: null,
+      past: [],
+      stopConfirm: null,
+    };
   }
   const v = stateInput(c, viewerUserId, role, extra);
   const buttons = billingButtons(v).map((key) => ({ key, label: BUTTON_LABEL[key](s) }));
@@ -479,7 +507,21 @@ export function billingPageView(
       role === "card-holder" ? s.billing_card_holder_note({ club: c.club, contact: c.contact?.name ?? "" }) : null,
     buttons,
     tip: tip && role !== "card-holder" ? clubFeeTipText(lang, tip) : null,
+    stopConfirm: buttons.some((b) => b.key === "stop-paying") ? stopConfirmView(lang, v) : null,
   };
+}
+
+/** What the Stop paying confirmation says: inside the free month the card
+ *  goes at once (`stopPaying`); otherwise billing ends with the current
+ *  month, on the day it is charged. */
+function stopConfirmView(lang: LangIn, v: BillingStateInput): NonNullable<BillingPageView["stopConfirm"]> {
+  const s = t(lang);
+  const inFreeMonth = !!(v.now && v.trialEndsAt && v.now.getTime() < v.trialEndsAt.getTime());
+  const next = v.currentPeriodEnd ?? (v.trialEndsAt ? monthBounds(v.trialEndsAt, 1).endsAt : null);
+  const text = inFreeMonth
+    ? s.billing_stop_confirm_free({ date: v.trialEndsAt ? dayLabel(lang, v.trialEndsAt) : "" })
+    : s.billing_stop_confirm_month({ date: next ? dayLabel(lang, next) : "" });
+  return { title: s.billing_stop_confirm_title, text, yes: s.billing_btn_stop_confirm_yes, no: s.billing_btn_stop_confirm_no };
 }
 
 export interface BillingCardView {
@@ -548,6 +590,26 @@ export function cardAddedText(
 /** "Card replaced" (7.3), to the old card holder. No link. */
 export function cardReplacedText(lang: LangIn, p: { name: string | null; newName: string; club: string }): string {
   return t(lang).billing_dm_card_replaced(p);
+}
+
+/** Review M1: billed again after Free with the contact's own card on file. */
+export function billedAgainCardText(
+  lang: LangIn,
+  p: { name: string | null; club: string; last4: string; pricePence: number; firstChargeOn: Date; link: string },
+): string {
+  return t(lang).billing_dm_billed_again_card({
+    name: p.name,
+    club: p.club,
+    last4: p.last4,
+    price: moneyLabel(p.pricePence),
+    date: dayLabel(lang, p.firstChargeOn),
+    link: p.link,
+  });
+}
+
+/** Review M1: a previous holder's card taken off the club, never billed. */
+export function cardDroppedText(lang: LangIn, p: { name: string | null; club: string }): string {
+  return t(lang).billing_dm_card_dropped(p);
 }
 
 /** "Resumed" (7.3), to the billing contact, after a recovered payment. */

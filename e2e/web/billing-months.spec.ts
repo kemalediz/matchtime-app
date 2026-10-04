@@ -243,6 +243,10 @@ test("5. /admin/clubs: this month so far, last month, and the totals line", asyn
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Month Sevens" });
     await expect(row.getByTestId("club-billing-summary")).toContainText("Standard, up to £9.99. Paying. Next charge", { timeout: 30_000 });
+    // The London day the month ends and "from 10:00" (the close runs then),
+    // never the month's 00:00 boundary.
+    await expect(row.getByTestId("club-billing-summary")).toContainText(/Next charge \w{3} \d{1,2} \w{3}, from 10:00\./);
+    await expect(row.getByTestId("club-billing-summary")).not.toContainText("00:00");
     await expect(row.getByTestId("club-billing-this-month")).toHaveText(/^1 of \d+ so far, £\d+\.\d\d$/);
     await expect(row.getByTestId("club-billing-last-month")).toHaveText("£7.99 paid");
     const totals = page.getByTestId("billing-totals");

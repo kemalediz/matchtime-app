@@ -19,7 +19,16 @@ type Club = {
   billingPlan: string;
   billingPricePence: number | null;
   approvedAt: Date | null;
-  billing: { trialEndsAt: Date; graceEndsAt: Date | null; pausedReason: string | null } | null;
+  billing: {
+    trialEndsAt: Date;
+    graceEndsAt: Date | null;
+    pausedReason: string | null;
+    stripePaymentMethodId?: string | null;
+    cardHolderUserId?: string | null;
+    cancelAtPeriodEnd?: boolean;
+  } | null;
+  /** The money collector (the billing contact when a member with a phone). */
+  paymentHolderId?: string | null;
 };
 
 const h = vi.hoisted(() => {
@@ -134,7 +143,12 @@ beforeEach(() => {
     h.state.club!.billing = { trialEndsAt: a.data.trialEndsAt, graceEndsAt: null, pausedReason: null };
     return {};
   });
-  m.clubBilling.updateMany.mockResolvedValue({ count: 1 });
+  m.clubBilling.updateMany.mockImplementation(async (a: { data: Record<string, unknown> }) => {
+    const c = h.state.club;
+    if (c?.billing && "stripePaymentMethodId" in a.data) Object.assign(c.billing, a.data);
+    return { count: 1 };
+  });
+  m.clubBilling.findUnique.mockImplementation(async () => (h.state.club?.billing ? { ...h.state.club.billing } : null));
   m.botJob.updateMany.mockResolvedValue({ count: 0 });
   m.match.findMany.mockResolvedValue([]);
   m.match.updateMany.mockResolvedValue({ count: 0 });
@@ -144,7 +158,18 @@ beforeEach(() => {
   m.organisation.findUnique.mockImplementation(async () => {
     const c = h.state.club;
     return c
-      ? { billingStatus: c.billingStatus, billingPlan: c.billingPlan, approvedAt: c.approvedAt, clubBilling: c.billing }
+      ? {
+          billingStatus: c.billingStatus,
+          billingPlan: c.billingPlan,
+          approvedAt: c.approvedAt,
+          clubBilling: c.billing,
+          paymentHolderId: c.paymentHolderId ?? "u_colin",
+          memberships: [
+            { userId: "u_owner", role: "OWNER", leftAt: null, user: { phoneNumber: "+447700900001", name: "Olly" } },
+            { userId: "u_colin", role: "PLAYER", leftAt: null, user: { phoneNumber: "+447700900002", name: "Colin" } },
+            { userId: "u_pat", role: "PLAYER", leftAt: null, user: { phoneNumber: "+447700900003", name: "Pat" } },
+          ],
+        }
       : null;
   });
 });
@@ -248,6 +273,104 @@ describe("setClubPlan: the platform owner's plan control (8.3, B2 note)", () => 
       status: "grace",
       billedAgain: "grace",
     });
+  });
+
+  // Test mode, 2026-10-05: a club with a card on file set Free and back to
+  // Standard went trial, grace, then paused for "no card".
+  // Test mode, 2026-10-05: a club with a card on file set Free and back to
+  // Standard went trial, grace, then paused for "no card". Review M1: only
+  // the CURRENT billing contact's card is billed again, and they are told.
+  const TRIAL_ENDS_AT = new Date(APPROVED_AT.getTime() + 30 * DAY);
+  const carded = (over: Partial<NonNullable<Club["billing"]>> = {}) => ({
+    trialEndsAt: TRIAL_ENDS_AT,
+    graceEndsAt: null,
+    pausedReason: null,
+    stripePaymentMethodId: "pm_1",
+    cardHolderUserId: "u_colin",
+    ...over,
+  });
+
+  it("leaving Free with the CONTACT's card on file (free month used): straight to SUBSCRIBED, a 'billed again' DM pending, no 'add a card' DM", async () => {
+    const later = new Date(TRIAL_ENDS_AT.getTime() + 20 * DAY);
+    setClub({ billingStatus: "exempt", billingPlan: "free", billing: carded() });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, later)).toMatchObject({
+      ok: true,
+      status: "subscribed",
+      billedAgain: "subscribed",
+      droppedCard: null,
+    });
+    expect(m.billingNotice.createMany).toHaveBeenCalledTimes(1);
+    expect(m.billingNotice.createMany).toHaveBeenCalledWith({
+      data: [{ orgId: "org1", kind: "billed-again", cycleKey: later.toISOString() }],
+      skipDuplicates: true,
+    });
+    const patch = m.clubBilling.updateMany.mock.calls.map((c) => c[0].data).find((d) => "pausedReason" in d);
+    expect(patch).toMatchObject({ graceEndsAt: null, paymentFailedAt: null, pausedAt: null, pausedReason: null, cancelAtPeriodEnd: false });
+    expect(h.state.club!.billing!.stripePaymentMethodId).toBe("pm_1");
+  });
+
+  it("leaving Free with the contact's card inside the free month: SUBSCRIBED, the card kept", async () => {
+    setClub({ billingStatus: "exempt", billingPlan: "free", billing: carded() });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, NOW)).toMatchObject({ status: "subscribed", billedAgain: "subscribed" });
+    expect(m.clubBilling.create).not.toHaveBeenCalled();
+  });
+
+  it("review M1: the card on file is a PREVIOUS collector's: never billed; removed from the club in the same transaction, its holder told; GRACE asks the contact", async () => {
+    const later = new Date(TRIAL_ENDS_AT.getTime() + 20 * DAY);
+    setClub({ billingStatus: "exempt", billingPlan: "free", billing: carded({ cardHolderUserId: "u_pat" }) });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, later)).toMatchObject({
+      status: "grace",
+      billedAgain: "grace",
+      droppedCard: { paymentMethodId: "pm_1", holderUserId: "u_pat" },
+    });
+    expect(h.state.club!.billing).toMatchObject({ stripePaymentMethodId: null, cardHolderUserId: null });
+    const notices = m.billingNotice.createMany.mock.calls.map((c) => c[0].data[0]);
+    expect(notices).toEqual([
+      { orgId: "org1", kind: "card-dropped", cycleKey: "pm_1|u_pat" },
+      { orgId: "org1", kind: "plan-billed", cycleKey: later.toISOString() },
+    ]);
+  });
+
+  it("review M1: a card with no known holder is not billed either", async () => {
+    setClub({ billingStatus: "exempt", billingPlan: "free", billing: carded({ cardHolderUserId: null }) });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, NOW)).toMatchObject({ status: "trial", droppedCard: { paymentMethodId: "pm_1", holderUserId: null } });
+  });
+
+  it("flag off: leaving Free never drops or bills a card", async () => {
+    delete process.env.BILLING_ENABLED;
+    setClub({ billingStatus: "exempt", billingPlan: "free", billing: carded({ cardHolderUserId: "u_pat" }) });
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, NOW)).toMatchObject({ status: "exempt", droppedCard: null });
+    expect(h.state.club!.billing!.stripePaymentMethodId).toBe("pm_1");
+  });
+
+  it("a club that had STOPPED paying, set Free and back: paused (cancelled) again, never charged without Keep paying", async () => {
+    const later = new Date(TRIAL_ENDS_AT.getTime() + 40 * DAY);
+    setClub({ billingStatus: "paused", billing: carded({ pausedReason: "cancelled", cancelAtPeriodEnd: true }) });
+    await setClubPlan("org1", { plan: "free", pricePence: null }, later);
+    // The stop is remembered through the Free spell (the pause reason is cleared).
+    const freePatch = m.clubBilling.updateMany.mock.calls.map((c) => c[0].data).find((d) => "pausedReason" in d);
+    expect(freePatch).toMatchObject({ pausedReason: null, cancelAtPeriodEnd: true });
+    h.state.club!.billing = { ...h.state.club!.billing!, pausedReason: null, cancelAtPeriodEnd: true };
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, new Date(later.getTime() + DAY))).toMatchObject({
+      status: "paused",
+      billedAgain: "paused",
+    });
+    expect(m.billingNotice.createMany).not.toHaveBeenCalled();
+  });
+
+  it("review M1: a club paused because MatchTime was REMOVED from its group, set Free and back: still paused (removed)", async () => {
+    const later = new Date(TRIAL_ENDS_AT.getTime() + 40 * DAY);
+    setClub({ billingStatus: "paused", billing: carded({ pausedReason: "removed" }) });
+    await setClubPlan("org1", { plan: "free", pricePence: null }, later);
+    // The removal is remembered through the Free spell.
+    const freePatch = m.clubBilling.updateMany.mock.calls.map((c) => c[0].data).find((d) => "pausedReason" in d);
+    expect(freePatch).toMatchObject({ pausedReason: "removed", pausedAt: null });
+    h.state.club!.billing = { ...h.state.club!.billing!, pausedReason: "removed" };
+    expect(await setClubPlan("org1", { plan: "standard", pricePence: null }, new Date(later.getTime() + DAY))).toMatchObject({
+      status: "paused",
+      billedAgain: "paused",
+    });
+    expect(m.billingNotice.createMany).not.toHaveBeenCalled();
   });
 
   it("flag off: leaving Free bills nobody", async () => {
