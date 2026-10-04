@@ -33,6 +33,7 @@ const h = vi.hoisted(() => {
     benchSlotOffer: { updateMany: vi.fn() },
     platformJob: { create: vi.fn() },
     billingNotice: { createMany: vi.fn() },
+    billingEvent: { create: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
@@ -298,6 +299,53 @@ describe("setBillingState: the one writer", () => {
     setRow({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: NOW, pausedReason: "no-card" } });
     await setBillingState("org", { type: "card-added" }, NOW);
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("slice P1: pause spans (mt.paused / mt.resumed) for the games-played count", () => {
+  it("a move INTO paused writes one mt.paused row, in the same transaction, stamped with the transition's time", async () => {
+    setRow({ billingStatus: "grace", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: NOW, pausedReason: null } });
+    await setBillingState("org", { type: "grace-ended" }, NOW);
+    expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(dbMock.billingEvent.create).toHaveBeenCalledTimes(1);
+    expect(dbMock.billingEvent.create).toHaveBeenCalledWith({
+      data: { id: `mt_paused_org_${NOW.getTime()}`, type: "mt.paused", orgId: "org", receivedAt: NOW, processedAt: NOW },
+    });
+  });
+
+  it("a move OUT of paused writes one mt.resumed row", async () => {
+    setRow({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: NOW, pausedReason: "no-card" } });
+    await setBillingState("org", { type: "card-added" }, NOW);
+    expect(dbMock.billingEvent.create).toHaveBeenCalledTimes(1);
+    expect(dbMock.billingEvent.create).toHaveBeenCalledWith({
+      data: { id: `mt_resumed_org_${NOW.getTime()}`, type: "mt.resumed", orgId: "org", receivedAt: NOW, processedAt: NOW },
+    });
+  });
+
+  it("removal from the group pauses too, and is recorded the same way", async () => {
+    setRow({ billingStatus: "subscribed" });
+    await setBillingState("org", { type: "removed-from-group" }, NOW);
+    expect(dbMock.billingEvent.create.mock.calls.map((c) => c[0].data.type)).toEqual(["mt.paused"]);
+  });
+
+  it("transitions that neither enter nor leave paused write no event", async () => {
+    await setBillingState("org", { type: "card-added" }, NOW); // trial -> subscribed
+    setRow({ billingStatus: "subscribed" });
+    await setBillingState("org", { type: "payment-failed" }, NOW); // subscribed -> past_due
+    expect(dbMock.billingEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("no change, no event", async () => {
+    setRow({ billingStatus: "subscribed" });
+    await setBillingState("org", { type: "trial-ended" }, NOW);
+    expect(dbMock.billingEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("the event is written AFTER the compare-and-set, so a lost race writes none", async () => {
+    setRow({ billingStatus: "grace", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: NOW, pausedReason: null } });
+    dbMock.organisation.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await setBillingState("org", { type: "grace-ended" }, NOW)).toEqual({ ok: false, reason: "raced" });
+    expect(dbMock.billingEvent.create).not.toHaveBeenCalled();
   });
 });
 

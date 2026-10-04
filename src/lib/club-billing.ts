@@ -49,6 +49,7 @@ import {
   type StartTrialRefusal,
 } from "./club-billing-rules";
 import { bannerText, billingCardView, type BillingCardView } from "./club-billing-view";
+import { PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE } from "./club-billing-cycle-rules";
 
 /**
  * Is the club this match belongs to paused for the club fee? For the Pi
@@ -163,6 +164,24 @@ async function applyBillingEventTx(
     // Cannot happen under the row lock; kept as the second lock.
     console.log(`[club-billing] ${orgId}: ${event.type} lost the race (${from} changed underneath)`);
     return { ok: false, reason: "raced" };
+  }
+
+  // Slice P1 (plan 2A.3): the pause spans the games-played count reads.
+  // Written after the compare-and-set and in the SAME transaction, so a
+  // span exists exactly when the state change was committed. The matches
+  // `resumeClubTx` completes quietly kicked off inside such a span and
+  // are never counted as played.
+  const spanEvent = t.to === "paused" && from !== "paused" ? "paused" : from === "paused" && t.to !== "paused" ? "resumed" : null;
+  if (spanEvent) {
+    await tx.billingEvent.create({
+      data: {
+        id: `mt_${spanEvent}_${orgId}_${now.getTime()}`,
+        type: spanEvent === "paused" ? PAUSED_EVENT_TYPE : RESUMED_EVENT_TYPE,
+        orgId,
+        receivedAt: now,
+        processedAt: now,
+      },
+    });
   }
 
   if (t.createsBilling) {

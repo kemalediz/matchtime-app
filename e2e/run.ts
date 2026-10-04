@@ -326,6 +326,10 @@ async function runSuite(): Promise<number> {
     // a Free plan is always exempt.
     console.log("[e2e] arming the club-billing CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "org-billing-check.sql"));
+    // And the billing month's (slice P1): a month state is one of ten, an
+    // amount is never under Stripe's 30p, and a charged month names its invoice.
+    console.log("[e2e] arming the club-billing-month CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "club-billing-month-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {
