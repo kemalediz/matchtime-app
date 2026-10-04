@@ -243,6 +243,18 @@ describe("4.2: cards and payments", () => {
       expect(nextBillingState(club({ billingStatus: s }), { type: "billing-stopped" }, NOW, ON), s).toBeNull();
     }
   });
+  it("M3: the unpaid invoice forgiven (voided, uncollectible) with nothing else unpaid: past_due or paused for it back to subscribed", () => {
+    expect(nextBillingState(club({ billingStatus: "past_due" }), { type: "unpaid-cleared" }, NOW, ON)).toMatchObject({ to: "subscribed", resumes: false });
+    const pf = club({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: "payment-failed" } });
+    expect(nextBillingState(pf, { type: "unpaid-cleared" }, NOW, ON)).toMatchObject({ to: "subscribed", resumes: true });
+    for (const reason of ["no-card", "cancelled", "removed"]) {
+      const other = club({ billingStatus: "paused", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: reason } });
+      expect(nextBillingState(other, { type: "unpaid-cleared" }, NOW, ON), reason).toBeNull();
+    }
+    for (const s of ["trial", "grace", "subscribed"] as const) {
+      expect(nextBillingState(club({ billingStatus: s }), { type: "unpaid-cleared" }, NOW, ON), s).toBeNull();
+    }
+  });
   it("slice P2: the subscription events are gone", () => {
     expect(nextBillingState(club({ billingStatus: "past_due" }), { type: "subscription-unpaid" } as never, NOW, ON)).toBeNull();
     expect(nextBillingState(club({ billingStatus: "subscribed" }), { type: "subscription-ended", cancelAtPeriodEnd: true } as never, NOW, ON)).toBeNull();

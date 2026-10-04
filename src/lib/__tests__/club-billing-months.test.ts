@@ -76,6 +76,8 @@ const h = vi.hoisted(() => {
     failNextMonthWriteWith: null as string | null,
     /** Run once, just before the loader returns (to change the club mid close). */
     duringLoad: null as null | (() => void),
+    /** BillingEvent rows (spans and spells). */
+    events: [] as Array<{ id: string; type: string; orgId: string | null; receivedAt: Date }>,
   };
 
   const cmp = (row: Record<string, unknown>, where: Record<string, unknown>): boolean =>
@@ -94,6 +96,19 @@ const h = vi.hoisted(() => {
     });
 
   const db = {
+    billingEvent: {
+      findFirst: vi.fn(async ({ where }: { where: { orgId: string | null; type: { in: string[] } } }) => {
+        const rows = state.events
+          .filter((e) => e.orgId === where.orgId && where.type.in.includes(e.type))
+          .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
+        return rows[0] ?? null;
+      }),
+      create: vi.fn(async ({ data }: { data: { id: string; type: string; orgId: string | null; receivedAt: Date } }) => {
+        if (state.events.some((e) => e.id === data.id)) throw Object.assign(new Error("Unique constraint"), { code: "P2002" });
+        state.events.push({ id: data.id, type: data.type, orgId: data.orgId, receivedAt: data.receivedAt });
+        return data;
+      }),
+    },
     organisation: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
         const o = state.orgs.get(where.id);
@@ -189,10 +204,18 @@ vi.mock("../ops-alerts", () => ({
     return true;
   }),
 }));
-vi.mock("../club-billing-month-loader", () => ({
+vi.mock("../club-billing-month-loader", async () => {
+  const rules = await vi.importActual<typeof import("../club-billing-cycle-rules")>("../club-billing-cycle-rules");
+  return {
   loadClubMonthInput: vi.fn(async (_client: unknown, orgId: string, month: { startsAt: Date; endsAt: Date }): Promise<CountClubMonthInput | null> => {
     const org = h.state.orgs.get(orgId);
     if (!org) return null;
+    // As the real loader: the club's spans and spells plus the global ones.
+    const spans = rules.notChargedSpansFrom(
+      h.state.events
+        .filter((e) => (e.orgId === orgId || e.orgId === null) && e.receivedAt < month.endsAt)
+        .map((e) => ({ type: e.type, at: e.receivedAt })),
+    );
     const input: CountClubMonthInput = {
       startsAt: month.startsAt,
       endsAt: month.endsAt,
@@ -200,7 +223,7 @@ vi.mock("../club-billing-month-loader", () => ({
         { id: "act_tue", dayOfWeek: 2, time: "19:00", venue: "Pitch", isActive: h.state.activityActive, createdAt: new Date("2026-01-01T00:00:00Z") },
       ],
       matches: (h.state.matches.get(orgId) ?? []).filter((m) => m.date >= month.startsAt && m.date < month.endsAt),
-      pauseSpans: [],
+      pauseSpans: spans,
       tracksAttendance: org.featureAttendance,
     };
     if (h.state.duringLoad) {
@@ -210,7 +233,8 @@ vi.mock("../club-billing-month-loader", () => ({
     }
     return input;
   }),
-}));
+  };
+});
 vi.mock("../club-billing", async () => {
   const rules = await vi.importActual<typeof import("../club-billing-rules")>("../club-billing-rules");
   return {
@@ -234,9 +258,11 @@ vi.mock("../club-billing", async () => {
 
 import { setBillingStripeForTests } from "../stripe-billing";
 import { createFakeBillingStripe, type FakeBillingStripe, type FakeInvoice } from "../stripe-billing-fake";
+import { recordBillingFlagState, recordNotBillable } from "../club-billing-spells";
 import {
   CLOSING_STALE_MS,
   applyMonthInvoice,
+  applyStopIfDue,
   closeMonth,
   closeNextDueMonth,
   openDueMonths,
@@ -333,6 +359,7 @@ beforeEach(() => {
   h.state.stateCalls = [];
   h.state.failNextMonthWriteWith = null;
   h.state.duringLoad = null;
+  h.state.events = [];
   fake = createFakeBillingStripe();
   setBillingStripeForTests(fake);
   vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -378,10 +405,10 @@ describe("opening months (plan 6)", () => {
     expect(month(1).priceAtStartPence).toBe(500);
   });
 
-  it("after a cron outage the missed months open in order", async () => {
+  it("H1: only the month containing now opens, never a missed one (no catch-up)", async () => {
     club();
     await openDueMonths(ORG, new Date("2027-01-05T12:00:00Z"));
-    expect(monthsOf().map((m) => m.index)).toEqual([1, 2, 3]);
+    expect(monthsOf().map((m) => m.index)).toEqual([3]);
     expect(h.state.billings.get(ORG)!.currentPeriodEnd).toEqual(new Date("2027-02-01T00:00:00Z"));
   });
 
@@ -412,7 +439,7 @@ describe("opening months (plan 6)", () => {
     club({ billingStatus: "paused" }, { pausedReason: "cancelled" });
     expect((await openDueMonths(ORG, CLOSE_M1)).opened).toEqual([]);
     club({ billingStatus: "paused" }, { pausedReason: "no-card", stripePaymentMethodId: null });
-    expect((await openDueMonths(ORG, CLOSE_M1)).opened).toEqual([1, 2]);
+    expect((await openDueMonths(ORG, CLOSE_M1)).opened).toEqual([2]);
   });
 
   it("Stop paying: no month after the one it was pressed in", async () => {
@@ -438,10 +465,11 @@ describe("closing a month: each count to an amount, or to no invoice at all (2A.
     expect(month(1).stripeInvoiceId).toBe(inv.id);
     expect(inv).toMatchObject({ customerId: "cus_sevens", status: "paid", totalPence: 749, metadata: { orgId: ORG, purpose: "club-fee", monthId: month(1).id } });
     expect(inv.params).toMatchObject({ collection_method: "charge_automatically", pending_invoice_items_behavior: "exclude", auto_advance: false });
-    expect(inv.params.description).toBe("MatchTime club fee, Card Sevens, 1 Nov 2026 to 30 Nov 2026: 3 of 4 games played");
+    // L4: no club name (it can change between retries of the same key).
+    expect(inv.params.description).toBe("MatchTime club fee, 1 Nov 2026 to 30 Nov 2026: 3 of 4 games played");
     expect(inv.items).toHaveLength(1);
     expect(inv.items[0]).toMatchObject({
-      price_data: { currency: "gbp", product: "prod_club", unit_amount: 749, tax_behavior: "inclusive" },
+      price_data: { currency: "gbp", product: "prod_club", unit_amount: 749 },
       tax_rates: ["txr_vat_inclusive"],
     });
     expect(inv.payAttempts).toEqual([{ paymentMethodId: "pm_colin", outcome: "succeed" }]);
@@ -611,7 +639,8 @@ describe("closing a month: when (plan 6)", () => {
     club();
     weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
     weeks(DEC_TUESDAYS, ["played", "played", "played", "played", "played"]);
-    await openDueMonths(ORG, new Date("2027-01-02T09:00:00Z"));
+    await openDueMonths(ORG, TRIAL_ENDS);
+    await openDueMonths(ORG, new Date("2026-12-01T01:00:00Z"));
     expect(await closeNextDueMonth(ORG, new Date("2027-01-02T03:00:00Z"))).toEqual({ skipped: "night" });
     expect(await closeNextDueMonth(ORG, new Date("2027-01-02T11:00:00Z"))).toMatchObject({ outcome: "paid", index: 1 });
     expect(month(2).status).toBe("open");
@@ -708,12 +737,34 @@ describe("idempotency: double cron, retry after failure", () => {
     expect(invoices()[0].totalPence).toBe(749);
   });
 
-  it("a total that is not the amount (a Tax Rate that is not inclusive): NOT finalised, nothing taken, flagged critical", async () => {
+  it("L4: the club renamed between a crash and the retry: the SAME invoice, no idempotency error (no name in the request)", async () => {
+    club();
+    weeks(NOV_TUESDAYS, ["played", "played", "cancelled", "played"]);
+    await openThrough(TRIAL_ENDS);
+    const id = month(1).id;
+    h.state.failNextMonthWriteWith = "stripeInvoiceId";
+    await closeMonth(id, CLOSE_M1);
+    h.state.orgs.get(ORG)!.name = "Card Sevens Renamed";
+    fake.findMonthInvoices = async () => []; // search not caught up yet: only the key protects
+    h.state.months.get(id)!.updatedAt = new Date(0);
+    expect(await closeMonth(id, CLOSE_M1)).toMatchObject({ outcome: "paid", amountPence: 749 });
+    expect(invoices()).toHaveLength(1);
+  });
+
+  it("M4: a Tax Rate that is not inclusive (or not 20%, or archived): refused BEFORE any invoice is made, flagged critical", async () => {
     process.env.STRIPE_CLUB_TAX_RATE_ID = "txr_exclusive_vat";
     club();
     await openThrough(TRIAL_ENDS);
-    const r = await closeMonth(month(1).id, CLOSE_M1);
-    expect(r).toMatchObject({ error: expect.stringMatching(/total/i) });
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ error: expect.stringMatching(/tax rate/i) });
+    expect(invoices()).toHaveLength(0);
+    expect(h.state.ops).toContainEqual(expect.objectContaining({ severity: "critical" }));
+  });
+
+  it("M4: amount_due is not the amount (a customer credit balance, a stray item): NOT finalised and nothing taken, flagged critical", async () => {
+    club();
+    fake.putCustomerBalance("cus_sevens", 100);
+    await openThrough(TRIAL_ENDS);
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ error: expect.stringMatching(/amount due/i) });
     expect(invoices()[0]).toMatchObject({ status: "draft", payAttempts: [] });
     expect(h.state.ops).toContainEqual(expect.objectContaining({ severity: "critical" }));
   });
@@ -734,9 +785,28 @@ describe("Stop paying at the month end (4.2)", () => {
     expect(h.state.billings.get(ORG)!.pausedReason).toBe("cancelled");
   });
 
+  it("L2: the last month's charge DECLINED: the club is NOT paused yet; it pauses (cancelled) once that invoice is paid", async () => {
+    club({}, { cancelAtPeriodEnd: true });
+    fake.setPayOutcome("pm_colin", "decline");
+    weeks(NOV_TUESDAYS, ["played", "played", "played", "cancelled"]);
+    await openThrough(TRIAL_ENDS);
+    const r = await closeMonth(month(1).id, CLOSE_M1);
+    expect(r).toMatchObject({ outcome: "invoiced" });
+    expect(r).not.toMatchObject({ stopped: true });
+    expect(h.state.stateCalls).toEqual([]);
+    const inv = (await fake.retrieveInvoice(month(1).stripeInvoiceId!))!;
+    await applyMonthInvoice({ orgId: ORG, monthId: month(1).id, invoice: { ...inv, status: "paid" }, kind: "paid", now: CLOSE_M2 });
+    expect(await applyStopIfDue(ORG, CLOSE_M2)).toBe(true);
+    expect(h.state.orgs.get(ORG)!.billingStatus).toBe("paused");
+    expect(h.state.billings.get(ORG)!.pausedReason).toBe("cancelled");
+  });
+
   it("a stop that is for a LATER month does not pause the club at this close", async () => {
     club({}, { cancelAtPeriodEnd: true });
+    await openDueMonths(ORG, TRIAL_ENDS);
+    h.state.billings.get(ORG)!.cancelAtPeriodEnd = false;
     await openDueMonths(ORG, new Date("2026-12-01T01:00:00Z"));
+    h.state.billings.get(ORG)!.cancelAtPeriodEnd = true;
     expect(h.state.billings.get(ORG)!.currentPeriodEnd).toEqual(M2_END);
     expect(await closeMonth(month(1).id, CLOSE_M1)).not.toMatchObject({ stopped: true });
     expect(h.state.stateCalls).toEqual([]);
@@ -749,6 +819,7 @@ describe("Free and suspend (2A.6)", () => {
   it("waiveOpenMonths: every OPEN month waived with its reason; closed ones untouched", async () => {
     club();
     weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
+    await openDueMonths(ORG, TRIAL_ENDS);
     await openDueMonths(ORG, new Date("2026-12-01T01:00:00Z"));
     await closeMonth(month(1).id, CLOSE_M1);
     expect(await waiveOpenMonths(ORG, "suspended", CLOSE_M1)).toBe(1);
@@ -780,6 +851,56 @@ describe("Free and suspend (2A.6)", () => {
     await fake.payInvoice(month(1).stripeInvoiceId!, { paymentMethodId: "pm_colin" });
     expect(await voidUnpaidMonthInvoices(ORG, CLOSE_M1)).toEqual({ voided: 0, alreadyPaid: 1, failed: 0 });
     expect(h.state.ops).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/paid/i) }));
+  });
+
+  it("M2: a month stuck CLOSING with its invoice already made (a crash) is voided too when the club goes Free, by the action and by the sweep", async () => {
+    club();
+    weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
+    await openThrough(TRIAL_ENDS);
+    const real = fake.finalizeInvoice.bind(fake);
+    fake.finalizeInvoice = async () => {
+      throw new Error("Stripe is down");
+    };
+    await closeMonth(month(1).id, CLOSE_M1);
+    fake.finalizeInvoice = real;
+    expect(month(1)).toMatchObject({ status: "closing", stripeInvoiceId: expect.stringMatching(/^in_fake_/) });
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "free", billingStatus: "exempt" });
+    expect(await voidUnpaidMonthInvoices(ORG, CLOSE_M1)).toEqual({ voided: 1, alreadyPaid: 0, failed: 0 });
+    expect(month(1).status).toBe("void");
+    expect(invoices()).toHaveLength(0); // the draft was deleted
+    // And the close, retried later, charges nothing.
+    h.state.months.get(month(1).id)!.updatedAt = new Date(0);
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toEqual({ skipped: "already-closed", monthId: month(1).id });
+  });
+
+  it("M2: the sweep includes a stuck CLOSING month with an invoice", async () => {
+    club();
+    weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
+    await openThrough(TRIAL_ENDS);
+    fake.finalizeInvoice = async () => {
+      throw new Error("Stripe is down");
+    };
+    await closeMonth(month(1).id, CLOSE_M1);
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "free", billingStatus: "exempt" });
+    expect(await sweepUnwantedMonthInvoices(CLOSE_M1)).toEqual({ voided: 1, failed: 0 });
+    expect(month(1).status).toBe("void");
+  });
+
+  it("M2: the club turns Free in the seconds between the re-check and the payment: the invoice is voided, NOTHING is taken, recorded", async () => {
+    club();
+    weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
+    await openThrough(TRIAL_ENDS);
+    const real = fake.finalizeInvoice.bind(fake);
+    fake.finalizeInvoice = async (id: string) => {
+      const r = await real(id);
+      Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "free", billingStatus: "exempt" });
+      return r;
+    };
+    expect(await closeMonth(month(1).id, CLOSE_M1)).toMatchObject({ outcome: "void", reason: "free-plan" });
+    expect(month(1).status).toBe("void");
+    expect(fake.state().calls.filter((c) => c.method === "payInvoice")).toHaveLength(0);
+    expect(Object.values(fake.state().invoices)[0]).toMatchObject({ status: "void" });
+    expect(h.state.ops).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/stopped being billed/i) }));
   });
 
   it("sweepUnwantedMonthInvoices: an exempt (Free) club's unpaid invoice is voided by the hourly run, whatever the flag says", async () => {
@@ -847,6 +968,16 @@ describe("applyMonthInvoice: the webhook's mapping onto the month (idempotent, o
     expect(month(1)).toMatchObject({ status: "paid", stripeInvoiceId: "in_x" });
   });
 
+  it("M3: paid AFTER the month was made void (Stripe collected an uncollectible invoice): recorded paid, never lost, flagged for the owner", async () => {
+    const inv = await invoicedMonth();
+    const id = month(1).id;
+    await applyMonthInvoice({ orgId: ORG, monthId: id, invoice: { ...inv, status: "uncollectible" }, kind: "void", now: CLOSE_M1 });
+    expect(month(1).status).toBe("void");
+    expect(await applyMonthInvoice({ orgId: ORG, monthId: id, invoice: { ...inv, status: "paid" }, kind: "paid", now: CLOSE_M2 })).toBe("changed");
+    expect(month(1)).toMatchObject({ status: "paid", paidAt: CLOSE_M2 });
+    expect(h.state.ops).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/paid after/i) }));
+  });
+
   it("an invoice that is NOT the month's own (a second invoice for one month): never applied, flagged critical", async () => {
     const inv = await invoicedMonth();
     expect(
@@ -867,6 +998,16 @@ describe("applyMonthInvoice: the webhook's mapping onto the month (idempotent, o
     expect(month(1).status).toBe("void");
   });
 
+  it("L1: payUnpaidMonths never pays for a club on Free, exempt or suspended", async () => {
+    const inv = await invoicedMonth();
+    await applyMonthInvoice({ orgId: ORG, monthId: month(1).id, invoice: inv, kind: "failed", now: CLOSE_M1 });
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "free", billingStatus: "exempt" });
+    expect(await payUnpaidMonths(ORG, "pm_pat")).toBe(0);
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "standard", billingStatus: "subscribed", approvalStatus: "suspended" });
+    expect(await payUnpaidMonths(ORG, "pm_pat")).toBe(0);
+    expect(fake.state().calls.filter((c) => c.method === "payInvoice" && (c.args as { paymentMethodId: string }).paymentMethodId === "pm_pat")).toHaveLength(0);
+  });
+
   it("payUnpaidMonths: a new card pays every unpaid month's open invoice at once; nothing with the flag off", async () => {
     const inv = await invoicedMonth();
     await applyMonthInvoice({ orgId: ORG, monthId: month(1).id, invoice: inv, kind: "failed", now: CLOSE_M1 });
@@ -879,3 +1020,94 @@ describe("applyMonthInvoice: the webhook's mapping onto the month (idempotent, o
     expect(invoices()[0].payAttempts.at(-1)).toEqual({ paymentMethodId: "pm_pat", outcome: "succeed" });
   });
 });
+
+// ── H1: not-billable spells and billing off ───────────────────────────────
+
+describe("H1 (P2 review): months while not billable, or while billing was off, are never opened or charged", () => {
+  const FEB_TUESDAYS = ["2027-02-02", "2027-02-09", "2027-02-16", "2027-02-23"];
+  const JAN_TUESDAYS = ["2027-01-05", "2027-01-12", "2027-01-19", "2027-01-26"];
+  const CLOSE_M3 = new Date("2027-02-01T10:00:00Z");
+  const CLOSE_M4 = new Date("2027-03-01T10:00:00Z");
+  const allPlayed = () => {
+    weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
+    weeks(DEC_TUESDAYS, ["played", "played", "played", "played", "played"]);
+    weeks(JAN_TUESDAYS, ["played", "played", "played", "played"]);
+    weeks(FEB_TUESDAYS, ["played", "played", "played", "played"]);
+  };
+  const spell = (type: string, at: Date) => h.state.events.push({ id: `${type}_${at.getTime()}`, type, orgId: ORG, receivedAt: at });
+
+  it("Free for three months, then Standard: months 2 and 3 never exist; month 4 charges only the games after billing came back", async () => {
+    club();
+    allPlayed();
+    await openDueMonths(ORG, TRIAL_ENDS);
+    // Free on 10 Nov (setBillingState writes mt.unbilled; onPlanChanged waives).
+    const freeAt = new Date("2026-11-10T12:00:00Z");
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "free", billingStatus: "exempt" });
+    spell("mt.unbilled", freeAt);
+    await waiveOpenMonths(ORG, "free-plan", freeAt);
+    // Every hourly run while Free opens nothing.
+    for (const at of ["2026-12-01T01:00:00Z", "2027-01-01T01:00:00Z", "2027-02-01T01:00:00Z"]) {
+      expect((await openDueMonths(ORG, new Date(at))).opened).toEqual([]);
+      expect(await closeNextDueMonth(ORG, new Date(at.replace("01:00", "11:00")))).toEqual({ skipped: "none" });
+    }
+    // Standard again on Sun 14 Feb (billed again: mt.billed).
+    const backAt = new Date("2027-02-14T12:00:00Z");
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "standard", billingStatus: "subscribed" });
+    spell("mt.billed", backAt);
+    expect((await openDueMonths(ORG, backAt)).opened).toEqual([4]);
+    expect(monthsOf().map((m) => [m.index, m.status])).toEqual([
+      [1, "waived"],
+      [4, "open"],
+    ]);
+    // 2 and 9 Feb were inside the Free spell: scheduled, not played.
+    expect(await closeNextDueMonth(ORG, CLOSE_M4)).toMatchObject({ outcome: "paid", index: 4, amountPence: 499 });
+    expect(month(4)).toMatchObject({ scheduled: 4, played: 2 });
+    expect(invoices()).toHaveLength(1);
+  });
+
+  it("a suspension: nothing opens while suspended; billable again (self-healed marker), only the current month, games before it not charged", async () => {
+    club();
+    allPlayed();
+    await openDueMonths(ORG, TRIAL_ENDS);
+    const suspendedAt = new Date("2026-11-20T12:00:00Z");
+    h.state.orgs.get(ORG)!.approvalStatus = "suspended";
+    await recordNotBillable(ORG, suspendedAt);
+    await waiveOpenMonths(ORG, "suspended", suspendedAt);
+    expect((await openDueMonths(ORG, new Date("2026-12-15T12:00:00Z"))).opened).toEqual([]);
+    // Back (by hand) on 20 Jan: the open spell is closed at that moment.
+    const backAt = new Date("2027-01-20T12:00:00Z");
+    h.state.orgs.get(ORG)!.approvalStatus = "approved";
+    expect((await openDueMonths(ORG, backAt)).opened).toEqual([3]);
+    expect(h.state.events.map((e) => e.type)).toEqual(["mt.unbilled", "mt.billed"]);
+    // Only 26 Jan is after billing came back (5, 12 and 19 Jan were inside the spell).
+    expect(await closeNextDueMonth(ORG, CLOSE_M3)).toMatchObject({ outcome: "paid", index: 3, amountPence: 249 });
+    expect(month(3)).toMatchObject({ scheduled: 4, played: 1 });
+  });
+
+  it("BILLING_ENABLED off for two months: no catch-up; the month open when it went off charges only the games before", async () => {
+    club();
+    allPlayed();
+    await openDueMonths(ORG, TRIAL_ENDS);
+    // The hourly run sees the flag off on 20 Nov (a GLOBAL marker).
+    delete process.env.BILLING_ENABLED;
+    await recordBillingFlagState(false, new Date("2026-11-20T12:00:00Z"));
+    await recordBillingFlagState(false, new Date("2026-11-20T13:00:00Z")); // once, not every hour
+    expect(await openDueMonths(ORG, new Date("2026-12-15T12:00:00Z"))).toEqual({ opened: [], skipped: "off" });
+    // Back on 3 Feb.
+    process.env.BILLING_ENABLED = "1";
+    const onAt = new Date("2027-02-03T09:00:00Z");
+    await recordBillingFlagState(true, onAt);
+    expect(h.state.events.map((e) => [e.type, e.orgId])).toEqual([
+      ["mt.billing-off", null],
+      ["mt.billing-on", null],
+    ]);
+    expect((await openDueMonths(ORG, onAt)).opened).toEqual([4]);
+    expect(monthsOf().map((m) => m.index)).toEqual([1, 4]);
+    // Month 1 closes now: 3, 10 and 17 Nov played before billing went off; 24 Nov was inside it.
+    expect(await closeNextDueMonth(ORG, new Date("2027-02-03T11:00:00Z"))).toMatchObject({ outcome: "paid", index: 1, amountPence: 749 });
+    // Month 4: 2 Feb was inside the off spell.
+    expect(await closeNextDueMonth(ORG, CLOSE_M4)).toMatchObject({ outcome: "paid", index: 4, amountPence: 749 });
+    expect(month(4)).toMatchObject({ scheduled: 4, played: 3 });
+  });
+});
+

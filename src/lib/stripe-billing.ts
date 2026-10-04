@@ -62,6 +62,8 @@ export interface BillingInvoice {
   hostedInvoiceUrl: string | null;
   /** The invoice total in pence (VAT inclusive, so the amount charged). */
   totalPence?: number | null;
+  /** What Stripe will actually try to take (after any customer credit). */
+  amountDuePence?: number | null;
   customerId?: string | null;
   metadata?: Record<string, string>;
 }
@@ -83,6 +85,14 @@ export interface MonthInvoiceItemArgs extends MonthInvoiceArgs {
 }
 
 export type VoidOutcome = "voided" | "deleted" | "already-void" | "paid" | "not-found";
+
+/** A Tax Rate as the close checks it (M4). */
+export interface BillingTaxRate {
+  id: string;
+  inclusive: boolean;
+  percentage: number;
+  active: boolean;
+}
 
 /** The calls club fee billing makes. Real or fake, same contract. */
 export interface BillingStripe {
@@ -109,6 +119,8 @@ export interface BillingStripe {
   }): Promise<void>;
   /** One invoice, or null when Stripe has no such invoice. */
   retrieveInvoice(invoiceId: string): Promise<BillingInvoice | null>;
+  /** The VAT Tax Rate, or null when Stripe has no such rate (M4). */
+  retrieveTaxRate(taxRateId: string): Promise<BillingTaxRate | null>;
   /** The club fee invoices carrying this month's id (search by metadata). */
   findMonthInvoices(monthId: string): Promise<BillingInvoice[]>;
   /** A DRAFT invoice for the month (idempotency key per month). */
@@ -213,8 +225,9 @@ export function buildMonthInvoiceParams(a: MonthInvoiceArgs): { params: Stripe.I
 }
 
 /**
- * The month's one item (5.3 step 2): the exact pence, tax INCLUSIVE under
- * the club product, with the 20% VAT Tax Rate, on that draft. Refuses
+ * The month's one item (5.3 step 2): the exact pence under the club
+ * product, with the 20% VAT Tax Rate (inclusive by its own setting), on
+ * that draft. Refuses
  * anything but whole pence of at least Stripe's 30p minimum.
  */
 export function buildMonthInvoiceItemParams(a: MonthInvoiceItemArgs): { params: Stripe.InvoiceItemCreateParams; idempotencyKey: string } {
@@ -225,7 +238,11 @@ export function buildMonthInvoiceItemParams(a: MonthInvoiceItemArgs): { params: 
     params: {
       customer: a.customerId,
       invoice: a.invoiceId,
-      price_data: { currency: "gbp", product: a.productId, unit_amount: a.amountPence, tax_behavior: "inclusive" },
+      // No `tax_behavior` here (P2 review, M4): that field belongs to Stripe
+      // Tax. With a manual tax rate, the RATE's own `inclusive` flag decides
+      // whether VAT is inside the amount, and the month close checks that
+      // flag (and 20%) before any invoice is made, then checks the total.
+      price_data: { currency: "gbp", product: a.productId, unit_amount: a.amountPence },
       quantity: 1,
       tax_rates: [a.taxRateId],
       description: a.description,
@@ -279,6 +296,7 @@ function invoiceOf(inv: Stripe.Invoice): BillingInvoice {
     status: inv.status ?? null,
     hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
     totalPence: typeof inv.total === "number" ? inv.total : null,
+    amountDuePence: typeof inv.amount_due === "number" ? inv.amount_due : null,
     customerId: idOf(inv.customer as string | { id: string } | null),
     metadata: { ...((inv.metadata ?? {}) as Record<string, string>) },
   };
@@ -366,6 +384,16 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
     },
 
     retrieveInvoice: retrieve,
+
+    async retrieveTaxRate(taxRateId) {
+      try {
+        const r = await client.taxRates.retrieve(taxRateId);
+        return { id: r.id, inclusive: !!r.inclusive, percentage: r.percentage, active: !!r.active };
+      } catch (err) {
+        if ((err as { code?: string }).code === "resource_missing") return null;
+        throw err;
+      }
+    },
 
     async findMonthInvoices(monthId) {
       const found = await client.invoices.search({ query: monthInvoiceSearchQuery(monthId), limit: 10 });

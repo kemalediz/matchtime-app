@@ -35,6 +35,7 @@ import { billingTransitionDue, isBillingDmHour } from "./club-billing-schedule-r
 import { flushPendingBillingDms, sendClubFeeTip, sendScheduledBillingDms } from "./club-billing-dms";
 import { flushPendingBillingNotices } from "./club-billing-stripe";
 import { sweepUnwantedMonthInvoices } from "./club-billing-months";
+import { recordBillingFlagState } from "./club-billing-spells";
 
 export interface BillingCronClubReport {
   orgId: string;
@@ -54,6 +55,10 @@ export interface BillingCronReport {
 }
 
 export async function runBillingCron(now: Date = new Date()): Promise<BillingCronReport> {
+  // H1: BILLING_ENABLED as this run sees it, recorded once per change
+  // (GLOBAL). Games while it was off are never charged, and no month that
+  // started while it was off is ever opened. Never blocks the run.
+  await recordBillingFlagState(isBillingEnabled(), now).catch((err) => console.error("[billing-cron] could not record the flag state:", err));
   let voids: BillingCronReport["voids"];
   try {
     voids = await sweepUnwantedMonthInvoices(now);

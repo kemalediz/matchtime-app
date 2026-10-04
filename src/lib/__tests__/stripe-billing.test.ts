@@ -107,7 +107,7 @@ describe("one invoice per month (5.3, charge a month)", () => {
     expect(idempotencyKey).toBe("club-fee-invoice-cbm_1");
   });
 
-  it("the item: the exact pence, tax INCLUSIVE under the club product, the 20% VAT rate, on that invoice", () => {
+  it("the item: the exact pence under the club product, the VAT Tax Rate (whose OWN inclusive setting decides), on that invoice", () => {
     const { params, idempotencyKey } = buildMonthInvoiceItemParams({
       customerId: "cus_1",
       invoiceId: "in_1",
@@ -121,7 +121,10 @@ describe("one invoice per month (5.3, charge a month)", () => {
     expect(params).toEqual({
       customer: "cus_1",
       invoice: "in_1",
-      price_data: { currency: "gbp", product: "prod_club", unit_amount: 799, tax_behavior: "inclusive" },
+      // No price_data.tax_behavior (M4): that field is for Stripe Tax; with a
+      // manual tax rate the RATE's inclusive flag decides, and the close
+      // checks that flag before any invoice is made.
+      price_data: { currency: "gbp", product: "prod_club", unit_amount: 799 },
       quantity: 1,
       tax_rates: ["txr_vat"],
       description: MONTH.description,
@@ -367,6 +370,26 @@ describe("the real adapter (recording client, no network)", () => {
     client.invoices.retrieve = (() => Promise.resolve(invoice({ status: "open", total: 799 }))) as never;
     const a = createStripeBillingAdapter(client as unknown as Stripe);
     await expect(a.payInvoice("in_1")).rejects.toThrow(/connection reset/);
+  });
+
+  it("M4: reads a Tax Rate's inclusive flag, percentage and state (checked before any invoice is made)", async () => {
+    const { client, calls } = recordingClient({
+      taxRates: {
+        retrieve: (...args: unknown[]) => {
+          calls.push({ path: "taxRates.retrieve", args });
+          return Promise.resolve({ id: "txr_vat", inclusive: true, percentage: 20, active: true });
+        },
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrieveTaxRate("txr_vat")).toEqual({ id: "txr_vat", inclusive: true, percentage: 20, active: true });
+  });
+
+  it("M4: an invoice carries amount_due as well as total", async () => {
+    const { client } = recordingClient();
+    client.invoices.retrieve = (() => Promise.resolve({ id: "in_1", status: "open", total: 799, amount_due: 699, customer: "cus_1", metadata: {} })) as never;
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrieveInvoice("in_1")).toMatchObject({ totalPence: 799, amountDuePence: 699 });
   });
 
   it("finds a month's invoices by search, club fee ones for that month only", async () => {

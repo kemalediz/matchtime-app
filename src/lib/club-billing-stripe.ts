@@ -79,12 +79,14 @@ import {
 } from "./club-billing";
 import {
   applyMonthInvoice,
+  applyStopIfDue,
   openDueMonths,
   payUnpaidMonths,
   unpaidMonthIds,
   voidUnpaidMonthInvoices,
   waiveOpenMonths,
 } from "./club-billing-months";
+import { recordNotBillable } from "./club-billing-spells";
 import { cardAddedText, cardReplacedText, planBilledText, resumedText } from "./club-billing-view";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isBillingDmHour } from "./club-billing-schedule-rules";
@@ -281,6 +283,9 @@ export async function stopPaying(
 ): Promise<{ ok: true; freeMonth: boolean } | { ok: false; reason: BillingActionRefusal }> {
   const now = args.now ?? new Date();
   if (args.role !== "contact") return { ok: false, reason: "not-allowed" };
+  // L3: with BILLING_ENABLED off no month opens, so a stop date could not
+  // be recorded; refused.
+  if (!isBillingEnabled()) return { ok: false, reason: "not-billable" };
   const org = await loadOrg(args.orgId);
   const billing = await loadBilling(args.orgId);
   if (!org || !billing) return { ok: false, reason: "not-found" };
@@ -320,13 +325,15 @@ export async function keepPaying(args: ActionArgs): Promise<{ ok: true } | { ok:
   const billing = await loadBilling(args.orgId);
   if (!org || !billing) return { ok: false, reason: "not-found" };
   if (!billable(org)) return { ok: false, reason: "not-billable" };
-  if (org.billingStatus === "subscribed" && billing.cancelAtPeriodEnd) {
+  if ((org.billingStatus === "subscribed" || org.billingStatus === "past_due") && billing.cancelAtPeriodEnd) {
     await db.clubBilling.updateMany({ where: { orgId: args.orgId }, data: { cancelAtPeriodEnd: false } });
     console.log(`[club-billing-stripe] ${args.orgId}: Keep paying; Stop paying undone`);
     return { ok: true };
   }
   if (org.billingStatus === "paused" && billing.pausedReason === "cancelled") {
     if (!billing.stripePaymentMethodId) return { ok: false, reason: "no-card" };
+    // L2: a month still unpaid is paid first (Update card and pay).
+    if ((await unpaidMonthIds(args.orgId)).length > 0) return { ok: false, reason: "past-due" };
     const moved = await setBillingState(args.orgId, { type: "card-added" }, now);
     if (!moved.ok) return { ok: false, reason: "not-billable" };
     console.log(`[club-billing-stripe] ${args.orgId}: Start again after Stop paying; billing resumes`);
@@ -376,6 +383,9 @@ export async function onClubSuspended(orgId: string, now: Date = new Date()): Pr
   if (!billing) return { waived: 0 };
   const stripe = getBillingStripe();
   if (stripe && billing.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
+  // H1: the not-billable spell starts now; no month opens while it lasts,
+  // and no game inside it is ever charged.
+  await recordNotBillable(orgId, now);
   const waived = await waiveOpenMonths(orgId, "suspended", now);
   if (waived > 0) console.log(`[club-billing-stripe] ${orgId}: suspended; ${waived} open month(s) waived`);
   return { waived };
@@ -540,6 +550,9 @@ function billingLink(userId: string, orgId: string): Promise<string> {
 
 export type BillingEventResult = { action: string; orgId: string | null; reason?: string };
 
+/** One row per applied card session, at the session's CREATED time (M1). */
+export const CARD_SESSION_EVENT_TYPE = "mt.card-session";
+
 const ignored = (reason: string, orgId: string | null = null): BillingEventResult => ({ action: "ignored", reason, orgId });
 
 /**
@@ -699,12 +712,21 @@ async function onInvoiceEvent(type: string, obj: Record<string, unknown>, now: D
       await setBillingState(orgId, { type: "invoice-paid" }, now, { noticeOnResume: isBillingEnabled() ? "resumed" : undefined });
       await flushPendingBillingNotices(orgId, now);
     }
+    // L2: a Stop paying waiting for this last charge takes effect now.
+    await applyStopIfDue(orgId, now);
     return { action: "month-paid", orgId };
   }
 
   if (fresh.status === "void" || fresh.status === "uncollectible") {
     const r = await applyMonthInvoice({ orgId, monthId, invoice: fresh, kind: "void", now });
-    return { action: r === "changed" || r === "unchanged" ? "month-void" : `month-${r}`, orgId };
+    if (r === "not-found" || r === "mismatch") return { action: `month-${r}`, orgId };
+    // M3: forgiven. A club owing only this invoice is no longer owing.
+    if (org && billable(org) && (await unpaidMonthIds(orgId)).length === 0) {
+      const moved = await setBillingState(orgId, { type: "unpaid-cleared" }, now, { noticeOnResume: isBillingEnabled() ? "resumed" : undefined });
+      if (moved.ok) await flushPendingBillingNotices(orgId, now);
+    }
+    if (org && billable(org)) await applyStopIfDue(orgId, now);
+    return { action: "month-void", orgId };
   }
 
   if (fresh.status === "open" && type === "invoice.payment_failed") {
@@ -779,6 +801,37 @@ async function onCardSaved(
     if (card.paymentMethodId !== billing.stripePaymentMethodId) await stripe.detachPaymentMethod(card.paymentMethodId);
     console.warn(`[billing-webhook] ${orgId}: a card was saved for a club that is not billed; removed again`);
     return ignored("not-billable", orgId);
+  }
+
+  // M1 (P2 review): ORDER. Each completed session is recorded with the time
+  // it was CREATED; a session older than one already applied is a late
+  // retry and must never overwrite the newer card (or wipe its payer's
+  // details): its own card is detached instead. Recorded first, then
+  // re-checked, so two deliveries racing each other converge on the newer.
+  const sessionAt = typeof session.created === "number" ? new Date(session.created * 1000) : now;
+  const markerId = `mt_card_session_${session.id}`;
+  const superseded = async () =>
+    db.billingEvent.findFirst({
+      where: { orgId, type: CARD_SESSION_EVENT_TYPE, receivedAt: { gt: sessionAt }, id: { not: markerId } },
+      select: { id: true },
+    });
+  if (!(await superseded())) {
+    try {
+      await db.billingEvent.create({ data: { id: markerId, type: CARD_SESSION_EVENT_TYPE, orgId, receivedAt: sessionAt, processedAt: now } });
+    } catch (err) {
+      if ((err as { code?: string }).code !== "P2002") throw err; // a re-delivery of this same session
+    }
+  }
+  if (await superseded()) {
+    if (card.paymentMethodId !== billing.stripePaymentMethodId) {
+      try {
+        await stripe.detachPaymentMethod(card.paymentMethodId);
+      } catch (err) {
+        console.warn(`[billing-webhook] ${orgId}: detaching superseded card ${card.paymentMethodId}:`, (err as Error).message);
+      }
+    }
+    console.warn(`[billing-webhook] ${orgId}: card session ${session.id} is older than the card on file; its card removed, nothing else changed`);
+    return ignored("superseded-session", orgId);
   }
 
   // Read the OLD card and holder BEFORE anything changes in Stripe.

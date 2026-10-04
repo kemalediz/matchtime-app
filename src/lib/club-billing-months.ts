@@ -56,6 +56,7 @@ import {
 import { isBillingEnabled, planPricePence } from "./club-billing-rules";
 import { isBillingDmHour } from "./club-billing-schedule-rules";
 import { formatLondon } from "./london-time";
+import { closeNotBillableSpell } from "./club-billing-spells";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { billingStripeConfig, getBillingStripe, type BillingInvoice, type BillingStripe } from "./stripe-billing";
 
@@ -129,9 +130,10 @@ export interface OpenMonthsResult {
 }
 
 /**
- * Open every month of the club that has started and is not open yet
- * (plan 6): the first at `trialEndsAt`, missed ones in order after an
- * outage. Idempotent (unique `orgId, index`). `ClubBilling.currentPeriodEnd`
+ * Open the club's CURRENT month if it is not open yet (plan 6; P2 review
+ * H1): never an earlier one, so a month that started while the club was
+ * not billable, while billing was off, or during an outage is never
+ * charged. Idempotent (unique `orgId, index`). `ClubBilling.currentPeriodEnd`
  * mirrors the end of the latest month, for the pages and Stop paying.
  *
  * Skipped: flag off; a club that is not billed (exempt, Free, suspended,
@@ -148,6 +150,9 @@ export async function openDueMonths(orgId: string, now: Date = new Date()): Prom
   const price = planPricePence(club.billingPlan, club.billingPricePence);
   if (price === null) return { opened: [], skipped: "not-billed" };
 
+  // Billable now: a not-billable spell still open (a suspension lifted by
+  // hand) ends here, so no game before this moment is ever charged (H1).
+  await closeNotBillableSpell(orgId, now);
   const last = await db.clubBillingMonth.findFirst({ where: { orgId }, orderBy: { index: "desc" }, select: { index: true } });
   const due = monthsToOpen(b.trialEndsAt, last?.index ?? 0, now, { stopAt: b.cancelAtPeriodEnd ? b.currentPeriodEnd : null });
   if (due.length === 0) return { opened: [] };
@@ -331,14 +336,11 @@ async function decideAndCharge(month: MonthRow, now: Date): Promise<CloseMonthRe
     }
   }
 
-  // Stop paying: billing ends with the month it was pressed in. That month
-  // has just been closed (charged for its games as usual); now the club is
-  // paused ("cancelled").
-  const b = club?.clubBilling;
-  if (b?.cancelAtPeriodEnd && b.currentPeriodEnd && month.endsAt.getTime() >= b.currentPeriodEnd.getTime() && "outcome" in result) {
-    const moved = await setBillingState(month.orgId, { type: "billing-stopped" }, now);
-    if (moved.ok) result = { ...result, stopped: true };
-  }
+  // Stop paying: billing ends with the month it was pressed in. Once that
+  // month's charge is KNOWN (paid, or nothing to charge), the club is paused
+  // ("cancelled"); while its invoice is still pending or failed it is not
+  // (L2): `applyStopIfDue` runs again when the invoice is paid or voided.
+  if ("outcome" in result && (await applyStopIfDue(month.orgId, now))) result = { ...result, stopped: true };
   return result;
 }
 
@@ -381,11 +383,26 @@ async function chargeMonth(
   const cfg = billingStripeConfig();
   const b = club.clubBilling!;
   const customerId = b.stripeCustomerId!;
-  const args = { orgId: month.orgId, monthId: month.id, customerId, description: invoiceDescription(club.name, month) };
+  // L4: only stable values in the request (no club name, which can change
+  // between a crash and the retry of the same idempotency key).
+  const args = { orgId: month.orgId, monthId: month.id, customerId, description: invoiceDescription(month) };
+
+  // M4 (P2 review): VAT comes from the Tax Rate's OWN inclusive setting.
+  // Checked before any invoice is made: inclusive, 20%, active.
+  const rate = await stripe.retrieveTaxRate(cfg.taxRateId!);
+  if (!rate || !rate.inclusive || rate.percentage !== 20 || !rate.active) {
+    await critical(
+      month,
+      now,
+      "Club fee VAT tax rate is not set up right",
+      `STRIPE_CLUB_TAX_RATE_ID ${cfg.taxRateId} is ${rate ? `${rate.inclusive ? "inclusive" : "NOT inclusive"}, ${rate.percentage}%, ${rate.active ? "active" : "archived"}` : "missing"}. It must be an active 20% INCLUSIVE rate. Nothing was invoiced or charged.`,
+    );
+    throw new Error(`tax rate ${cfg.taxRateId} is not an active 20% inclusive rate`);
+  }
 
   let inv: BillingInvoice | null = month.stripeInvoiceId ? await stripe.retrieveInvoice(month.stripeInvoiceId) : null;
   if (!inv) {
-    const found = (await stripe.findMonthInvoices(month.id)).filter((i) => i.status !== "void" && i.status !== "deleted");
+    const found = (await stripe.findMonthInvoices(month.id)).filter((i) => i.status !== "void");
     if (found.length > 1) {
       await critical(month, now, "More than one club fee invoice for one month", `Invoices ${found.map((i) => i.id).join(", ")} all carry month ${month.id}. Nothing more was charged; void the extra one in Stripe.`);
       throw new Error(`month ${month.id} has ${found.length} invoices in Stripe`);
@@ -412,22 +429,39 @@ async function chargeMonth(
       await stripe.addMonthInvoiceItem({ ...args, invoiceId: inv.id, amountPence, productId: cfg.productId!, taxRateId: cfg.taxRateId! });
       inv = (await stripe.retrieveInvoice(inv.id)) ?? inv;
     }
-    if (inv.totalPence !== amountPence) {
+    // M4: the total AND what Stripe would take must both be the amount
+    // (a customer credit balance or a stray item would change amount_due).
+    if (inv.totalPence !== amountPence || inv.amountDuePence !== amountPence) {
       await critical(
         month,
         now,
-        "Club fee invoice total is not the amount",
-        `Invoice ${inv.id} totals ${inv.totalPence ?? "?"}p but the month is ${amountPence}p (is the Tax Rate inclusive?). It was NOT finalised and nothing was charged.`,
+        "Club fee invoice total or amount due is not the amount",
+        `Invoice ${inv.id} totals ${inv.totalPence ?? "?"}p with ${inv.amountDuePence ?? "?"}p amount due, but the month is ${amountPence}p. It was NOT finalised and nothing was charged.`,
       );
-      throw new Error(`invoice ${inv.id} total ${inv.totalPence}p is not the month's ${amountPence}p`);
+      throw new Error(`invoice ${inv.id} total ${inv.totalPence}p / amount due ${inv.amountDuePence}p is not the month's ${amountPence}p`);
     }
+    const stop = await unbillableNow(month);
+    if (stop) return forgiveInvoice(stripe, month, inv.id, stop, now, done);
     inv = await stripe.finalizeInvoice(inv.id);
   }
   let declined = false;
   if (inv.status === "open") {
+    // M2 (P2 review): the club again, the moment before the money moves. A
+    // club set Free or suspended since the last read is never charged: its
+    // invoice is voided and the month recorded void.
+    const stop = await unbillableNow(month);
+    if (stop) return forgiveInvoice(stripe, month, inv.id, stop, now, done);
+    if (inv.amountDuePence !== amountPence) {
+      await critical(month, now, "Club fee invoice amount due is not the amount", `Invoice ${inv.id} (open) has ${inv.amountDuePence ?? "?"}p due but the month is ${amountPence}p. Nothing was charged by MatchTime.`);
+      throw new Error(`invoice ${inv.id} amount due ${inv.amountDuePence}p is not the month's ${amountPence}p`);
+    }
     const r = await stripe.payInvoice(inv.id, { paymentMethodId: b.stripePaymentMethodId });
     inv = r.invoice;
     declined = r.declined;
+    if (inv.status === "paid") {
+      const after = await unbillableNow(month);
+      if (after) await alertPaidWhileNotBilled(month, now, after);
+    }
   }
   const status: "paid" | "void" | "invoiced" =
     inv.status === "paid" ? "paid" : inv.status === "void" || inv.status === "uncollectible" ? "void" : "invoiced";
@@ -438,11 +472,48 @@ async function chargeMonth(
   return done(status, amountPence);
 }
 
-/** "MatchTime club fee, Card Sevens, 1 Nov 2026 to 30 Nov 2026: 4 of 5 games played". */
-export function invoiceDescription(club: string, m: { startsAt: Date; endsAt: Date; played: number; scheduled: number }): string {
+/** Why the club must not be charged right now (re-read), or null. */
+async function unbillableNow(month: { orgId: string }): Promise<WaiveReason | null> {
+  if (!isBillingEnabled()) return "not-approved";
+  return waiveReasonFor(await loadClub(month.orgId));
+}
+
+/** The club stopped being billable while its month was being charged:
+ *  forgive the invoice (void, or delete a draft), record it, never pay. */
+async function forgiveInvoice(
+  stripe: BillingStripe,
+  month: MonthRow,
+  invoiceId: string,
+  reason: WaiveReason,
+  now: Date,
+  done: (o: Exclude<MonthStatus, "open" | "closing" | "failed">, a: number | null, r?: string | null) => CloseMonthResult,
+): Promise<CloseMonthResult> {
+  const v = await stripe.voidInvoice(invoiceId);
+  if (v === "paid") {
+    await finish(month, now, "paid", { stripeInvoiceId: invoiceId });
+    await alertPaidWhileNotBilled(month, now, reason);
+    return done("paid", month.amountPence);
+  }
+  await finish(month, now, "void", { reason, stripeInvoiceId: invoiceId });
+  await recordOpsEvent({
+    orgId: month.orgId,
+    kind: BILLING_ALERT_KIND,
+    severity: "info",
+    title: "Club fee month not charged: the club stopped being billed while it was being charged",
+    detail: `Month ${month.index}'s invoice ${invoiceId} was ${v} before any payment (${reason}).`,
+    dedupeKey: `forgiven-mid-charge:${month.id}`,
+    now,
+  }).catch(() => undefined);
+  return done("void", null, reason);
+}
+
+/** "MatchTime club fee, 1 Nov 2026 to 30 Nov 2026: 4 of 5 games played".
+ *  Only the month's stored, stable numbers: the request it goes in carries
+ *  an idempotency key (L4). The club's name is on the Customer. */
+export function invoiceDescription(m: { startsAt: Date; endsAt: Date; played: number; scheduled: number }): string {
   const from = formatLondon(m.startsAt, "d MMM yyyy");
   const to = formatLondon(new Date(m.endsAt.getTime() - DAY_MS / 2), "d MMM yyyy");
-  return `MatchTime club fee, ${club}, ${from} to ${to}: ${m.played} of ${m.scheduled} games played`;
+  return `MatchTime club fee, ${from} to ${to}: ${m.played} of ${m.scheduled} games played`;
 }
 
 function gamesJson(games: CycleGame[]) {
@@ -479,6 +550,27 @@ async function alertPaidWhileNotBilled(month: { orgId: string; id: string; index
   }).catch(() => undefined);
 }
 
+// ── Stop paying (4.2) ───────────────────────────────────────────────────
+
+/**
+ * Stop paying takes effect: the club pressed it, its stop date (the end of
+ * the month it was pressed in, `currentPeriodEnd`) has passed, and every
+ * month up to that date is settled (none open, closing, invoiced or
+ * failed). Then the club moves to "paused (cancelled)". Called after a
+ * month closes and after a month's invoice is paid or voided. Idempotent.
+ */
+export async function applyStopIfDue(orgId: string, now: Date = new Date()): Promise<boolean> {
+  const b = await db.clubBilling.findUnique({ where: { orgId }, select: { cancelAtPeriodEnd: true, currentPeriodEnd: true } });
+  if (!b?.cancelAtPeriodEnd || !b.currentPeriodEnd || b.currentPeriodEnd.getTime() > now.getTime()) return false;
+  const pending = await db.clubBillingMonth.findFirst({
+    where: { orgId, status: { in: ["open", "closing", "invoiced", "failed"] }, endsAt: { lte: b.currentPeriodEnd } },
+    select: { id: true },
+  });
+  if (pending) return false;
+  const moved = await setBillingState(orgId, { type: "billing-stopped" }, now);
+  return moved.ok;
+}
+
 // ── Free, suspend, void ─────────────────────────────────────────────────
 
 /**
@@ -495,8 +587,9 @@ export async function waiveOpenMonths(orgId: string, reason: "free-plan" | "susp
   return count;
 }
 
-/** Months with an invoice that may still be charged. */
-const UNPAID_WITH_INVOICE: MonthStatus[] = ["invoiced", "failed"];
+/** Months with an invoice that may still be charged: invoiced, failed,
+ *  and one stuck CLOSING whose invoice was already made (M2). */
+const UNPAID_WITH_INVOICE: MonthStatus[] = ["invoiced", "failed", "closing"];
 
 /**
  * Plan Free (2A.6): every unpaid club fee invoice of the club is forgiven
@@ -598,7 +691,9 @@ export async function applyMonthInvoice(args: {
     return "mismatch";
   }
   const from: Record<typeof args.kind, MonthStatus[]> = {
-    paid: ["closing", "invoiced", "failed"],
+    // "void" too (M3): Stripe can still collect an invoice it had marked
+    // uncollectible. Money taken is always recorded.
+    paid: ["closing", "invoiced", "failed", "void"],
     failed: ["closing", "invoiced"],
     void: ["closing", "invoiced", "failed"],
   };
@@ -612,6 +707,17 @@ export async function applyMonthInvoice(args: {
     where: { id: m.id, status: { in: from[args.kind] } },
     data: { ...data, stripeInvoiceId: args.invoice.id, ...(m.closedAt ? {} : { closedAt: args.now }), updatedAt: args.now },
   });
+  if (count === 1 && args.kind === "paid" && m.status === "void") {
+    await recordOpsEvent({
+      orgId: m.orgId,
+      kind: BILLING_ALERT_KIND,
+      severity: "warning",
+      title: "Club fee paid after it was voided or marked uncollectible",
+      detail: `Invoice ${args.invoice.id} (month ${m.index}) was paid after MatchTime recorded it void. Recorded as paid; refund it by hand in Stripe if it should not have been taken.`,
+      dedupeKey: `paid-after-void:${args.invoice.id}`,
+      now: args.now,
+    }).catch(() => undefined);
+  }
   return count === 1 ? "changed" : "unchanged";
 }
 
@@ -630,8 +736,10 @@ export async function payUnpaidMonths(orgId: string, paymentMethodId: string): P
   // The kill switch: with BILLING_ENABLED off MatchTime asks Stripe to take
   // nothing (invoices already open are left to Stripe and the owner).
   if (!isBillingEnabled()) return 0;
+  // L1: never for a club that must not be charged (Free, exempt, suspended).
+  if (waiveReasonFor(await loadClub(orgId))) return 0;
   const months = await db.clubBillingMonth.findMany({
-    where: { orgId, status: { in: UNPAID_WITH_INVOICE }, stripeInvoiceId: { not: null } },
+    where: { orgId, status: { in: ["invoiced", "failed"] }, stripeInvoiceId: { not: null } },
     select: { id: true, index: true, stripeInvoiceId: true },
   });
   const stripe = getBillingStripe();

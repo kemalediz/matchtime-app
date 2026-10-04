@@ -12,7 +12,19 @@
 import { describe, expect, it } from "vitest";
 import * as rules from "../club-billing-rules";
 import { nextBillingState, vatCountryNeedsCheck, type BillingClub } from "../club-billing-rules";
-import { MONTH_CLOSE_DELAY_MS, monthCloseDue, monthsToOpen, monthBounds } from "../club-billing-cycle-rules";
+import {
+  BILLED_EVENT_TYPE,
+  BILLING_OFF_EVENT_TYPE,
+  BILLING_ON_EVENT_TYPE,
+  MONTH_CLOSE_DELAY_MS,
+  PAUSED_EVENT_TYPE,
+  RESUMED_EVENT_TYPE,
+  UNBILLED_EVENT_TYPE,
+  monthCloseDue,
+  monthsToOpen,
+  monthBounds,
+  notChargedSpansFrom,
+} from "../club-billing-cycle-rules";
 
 const ON = { BILLING_ENABLED: "1" };
 const OFF = {};
@@ -141,22 +153,48 @@ describe("slice P2: when a month closes and which months open (plan 6)", () => {
     expect(monthsToOpen(TRIAL_ENDS, 0, TRIAL_ENDS)).toEqual([1]);
   });
 
-  it("missed months open in order after an outage, never one already open", () => {
-    const at = new Date(monthBounds(TRIAL_ENDS, 3).startsAt.getTime() + HOUR);
-    expect(monthsToOpen(TRIAL_ENDS, 0, at)).toEqual([1, 2, 3]);
-    expect(monthsToOpen(TRIAL_ENDS, 2, at)).toEqual([3]);
-    expect(monthsToOpen(TRIAL_ENDS, 3, at)).toEqual([]);
-  });
-
-  it("at most 24 at once (a guard against a runaway backlog)", () => {
-    const at = monthBounds(TRIAL_ENDS, 40).startsAt;
-    expect(monthsToOpen(TRIAL_ENDS, 0, at)).toHaveLength(24);
+  it("H1: ONLY the month containing now opens: no catch-up of months missed while the club was not billable or billing was off", () => {
+    const at = new Date(monthBounds(TRIAL_ENDS, 4).startsAt.getTime() + HOUR);
+    expect(monthsToOpen(TRIAL_ENDS, 0, at)).toEqual([4]);
+    expect(monthsToOpen(TRIAL_ENDS, 1, at)).toEqual([4]);
+    expect(monthsToOpen(TRIAL_ENDS, 4, at)).toEqual([]);
+    expect(monthsToOpen(TRIAL_ENDS, 5, at)).toEqual([]);
   });
 
   it("Stop paying: no month that starts at or after the stop date", () => {
     const stopAt = monthBounds(TRIAL_ENDS, 2).endsAt;
     const at = new Date(monthBounds(TRIAL_ENDS, 4).startsAt.getTime() + HOUR);
     expect(monthsToOpen(TRIAL_ENDS, 2, at, { stopAt })).toEqual([]);
-    expect(monthsToOpen(TRIAL_ENDS, 1, at, { stopAt })).toEqual([2]);
+    expect(monthsToOpen(TRIAL_ENDS, 1, at, { stopAt })).toEqual([]);
+    const inMonth2 = new Date(monthBounds(TRIAL_ENDS, 2).startsAt.getTime() + HOUR);
+    expect(monthsToOpen(TRIAL_ENDS, 1, inMonth2, { stopAt })).toEqual([2]);
   });
 });
+
+describe("H1: spans in which games are never charged (pause, not billable, billing off)", () => {
+  const at = (iso: string) => new Date(iso);
+  it("each kind pairs its own start and end; an open start runs to now", () => {
+    const spans = notChargedSpansFrom([
+      { type: PAUSED_EVENT_TYPE, at: at("2026-11-02T00:00:00Z") },
+      { type: RESUMED_EVENT_TYPE, at: at("2026-11-05T00:00:00Z") },
+      { type: UNBILLED_EVENT_TYPE, at: at("2026-11-10T00:00:00Z") },
+      { type: BILLED_EVENT_TYPE, at: at("2027-02-14T12:00:00Z") },
+      { type: BILLING_OFF_EVENT_TYPE, at: at("2027-03-01T00:00:00Z") },
+    ]);
+    expect(spans).toEqual([
+      { from: at("2026-11-02T00:00:00Z"), to: at("2026-11-05T00:00:00Z") },
+      { from: at("2026-11-10T00:00:00Z"), to: at("2027-02-14T12:00:00Z") },
+      { from: at("2027-03-01T00:00:00Z"), to: null },
+    ]);
+  });
+
+  it("a billing-off marker does not end on a club's 'billed' marker, only on billing-on", () => {
+    const spans = notChargedSpansFrom([
+      { type: BILLING_OFF_EVENT_TYPE, at: at("2026-11-01T00:00:00Z") },
+      { type: BILLED_EVENT_TYPE, at: at("2026-11-02T00:00:00Z") },
+      { type: BILLING_ON_EVENT_TYPE, at: at("2026-11-20T00:00:00Z") },
+    ]);
+    expect(spans).toEqual([{ from: at("2026-11-01T00:00:00Z"), to: at("2026-11-20T00:00:00Z") }]);
+  });
+});
+

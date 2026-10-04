@@ -49,6 +49,7 @@ const h = vi.hoisted(() => {
     beforeTransition: null as null | ((orgId: string) => void),
     ops: [] as Array<{ title: string; dedupeKey?: string | null }>,
     refundSweeps: 0,
+    flagStates: [] as boolean[],
     pendingFlushes: [] as string[],
     tip: {
       pricePence: 999, perSide: 5, players: 10, games: 4, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false,
@@ -182,6 +183,12 @@ vi.mock("../admin-channel", async () => {
     ),
   };
 });
+vi.mock("../club-billing-spells", () => ({
+  recordBillingFlagState: vi.fn(async (on: boolean) => {
+    h.state.flagStates.push(on);
+    return true;
+  }),
+}));
 vi.mock("../club-billing-months", () => ({
   // Slice P2: the void sweep replaced B3's refund-intent sweep.
   sweepUnwantedMonthInvoices: vi.fn(async () => {
@@ -309,6 +316,7 @@ beforeEach(() => {
   h.state.ops.length = 0;
   h.state.beforeTransition = null;
   h.state.refundSweeps = 0;
+  h.state.flagStates = [];
   h.state.pendingFlushes.length = 0;
   h.state.tip = { pricePence: 999, perSide: 5, players: 10, games: 4, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false };
 });
@@ -484,6 +492,8 @@ describe("runBillingCron: who is never touched", () => {
     expect(dmsOf()).toEqual([]);
     expect(h.state.transitions).toEqual([]);
     expect(h.state.refundSweeps).toBe(1);
+    // H1: the run records that billing is off (once per change).
+    expect(h.state.flagStates).toEqual([false]);
   });
 
   it("a suspended club, an unapproved club and an exempt club: nothing", async () => {
@@ -545,6 +555,7 @@ describe("transitions racing webhooks (the one locked writer decides)", () => {
     expect(h.state.pendingFlushes).toEqual([]);
     await runBillingCron(DAY21);
     expect(h.state.refundSweeps).toBe(2);
+    expect(h.state.flagStates).toEqual([true, true]);
     expect(h.state.pendingFlushes).toEqual(["org_1"]);
   });
 });

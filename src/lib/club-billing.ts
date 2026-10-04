@@ -49,7 +49,7 @@ import {
   type StartTrialRefusal,
 } from "./club-billing-rules";
 import { bannerText, billingCardView, type BillingCardView } from "./club-billing-view";
-import { PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE } from "./club-billing-cycle-rules";
+import { BILLED_EVENT_TYPE, PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE, UNBILLED_EVENT_TYPE } from "./club-billing-cycle-rules";
 
 /**
  * Is the club this match belongs to paused for the club fee? For the Pi
@@ -179,16 +179,19 @@ async function applyBillingEventTx(
   // span exists exactly when the state change was committed. The matches
   // `resumeClubTx` completes quietly kicked off inside such a span and
   // are never counted as played.
-  const spanEvent = t.to === "paused" && from !== "paused" ? "paused" : from === "paused" && t.to !== "paused" ? "resumed" : null;
-  if (spanEvent) {
+  const spanEvent: "paused" | "resumed" | null =
+    t.to === "paused" && from !== "paused" ? "paused" : from === "paused" && t.to !== "paused" ? "resumed" : null;
+  // Slice P2 review (H1): the not-billable spells. Into "exempt" (plan
+  // Free) the club stops being billable; out of it (billed again) it is
+  // billable from now. Games inside the spell are never charged, and no
+  // month that started inside it is ever opened.
+  const spellEvent: "unbilled" | "billed" | null =
+    t.to === "exempt" && from !== "exempt" ? "unbilled" : from === "exempt" && t.to !== "exempt" ? "billed" : null;
+  const types = { paused: PAUSED_EVENT_TYPE, resumed: RESUMED_EVENT_TYPE, unbilled: UNBILLED_EVENT_TYPE, billed: BILLED_EVENT_TYPE } as const;
+  for (const kind of [spanEvent, spellEvent]) {
+    if (!kind) continue;
     await tx.billingEvent.create({
-      data: {
-        id: `mt_${spanEvent}_${orgId}_${now.getTime()}`,
-        type: spanEvent === "paused" ? PAUSED_EVENT_TYPE : RESUMED_EVENT_TYPE,
-        orgId,
-        receivedAt: now,
-        processedAt: now,
-      },
+      data: { id: `mt_${kind}_${orgId}_${now.getTime()}`, type: types[kind], orgId, receivedAt: now, processedAt: now },
     });
   }
 

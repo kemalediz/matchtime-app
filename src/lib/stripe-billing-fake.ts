@@ -53,7 +53,7 @@ export interface FakeInvoice {
 export interface FakeStripeState {
   seq: number;
   calls: Array<{ method: string; args: unknown }>;
-  customers: Record<string, { orgId: string; name: string; defaultPaymentMethod?: string | null }>;
+  customers: Record<string, { orgId: string; name: string; defaultPaymentMethod?: string | null; balancePence?: number }>;
   sessions: Record<string, { params: Stripe.Checkout.SessionCreateParams; status: "open" | "expired" }>;
   setupIntents: Record<string, CardDetails>;
   detached: string[];
@@ -84,17 +84,20 @@ export type FakeBillingStripe = BillingStripe & {
   setPayOutcome(paymentMethodId: string | "*", outcome: FakePayOutcome): void;
   /** Stripe forgets idempotency keys after 24 hours. */
   forgetIdempotencyKeys(): void;
+  /** A customer credit balance: Stripe takes it off amount_due. */
+  putCustomerBalance(customerId: string, pence: number): void;
 };
 
 const isFull = (inv: FakeInvoice | BillingInvoice | undefined): inv is FakeInvoice => !!inv && "items" in inv;
 
-function view(inv: FakeInvoice | BillingInvoice): BillingInvoice {
+function view(inv: FakeInvoice | BillingInvoice, balancePence = 0): BillingInvoice {
   if (!isFull(inv)) return { ...inv };
   return {
     id: inv.id,
     status: inv.status,
     hostedInvoiceUrl: inv.hostedInvoiceUrl,
     totalPence: inv.totalPence,
+    amountDuePence: inv.status === "paid" || inv.status === "void" ? 0 : Math.max(0, inv.totalPence - balancePence),
     customerId: inv.customerId,
     metadata: { ...inv.metadata },
   };
@@ -181,6 +184,12 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       save(s);
     },
 
+    putCustomerBalance(customerId, pence) {
+      const s = load();
+      (s.customers[customerId] ??= { orgId: "", name: "" }).balancePence = pence;
+      save(s);
+    },
+
     forgetIdempotencyKeys() {
       const s = load();
       s.idempotency = {};
@@ -247,11 +256,16 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       tx("updateCustomer", args, () => undefined);
     },
 
+    async retrieveTaxRate(taxRateId) {
+      // A rate id containing "exclusive" stands for a rate set up wrongly.
+      return tx("retrieveTaxRate", { taxRateId }, () => ({ id: taxRateId, inclusive: !taxRateId.includes("exclusive"), percentage: 20, active: true }));
+    },
+
     async retrieveInvoice(invoiceId) {
       return tx("retrieveInvoice", { invoiceId }, (s) => {
         const inv = s.invoices[invoiceId];
         if (!inv || (isFull(inv) && inv.status === "deleted")) return null;
-        return view(inv);
+        return view(inv, isFull(inv) ? (s.customers[inv.customerId]?.balancePence ?? 0) : 0);
       });
     },
 

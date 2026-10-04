@@ -70,7 +70,7 @@ const h = vi.hoisted(() => {
     org: null as Org | null,
     billing: null as Billing | null,
     months: [] as Month[],
-    events: new Map<string, { id: string; type: string; orgId: string | null; processedAt: Date | null; error: string | null }>(),
+    events: new Map<string, { id: string; type: string; orgId: string | null; processedAt: Date | null; error: string | null; receivedAt?: Date }>(),
     dms: [] as Array<{ kind: string; cycleKey: string; userId: string; text: string }>,
     notices: new Set<string>(),
     contact: "user_colin" as string | null,
@@ -80,16 +80,18 @@ const h = vi.hoisted(() => {
     skipped: [] as Array<{ kind: string; cycleKey: string; why: string }>,
     paymentNotes: [] as Array<Record<string, unknown>>,
     ops: [] as Array<{ title: string; severity: string }>,
+    spells: [] as Array<{ orgId: string; type: string; at: Date }>,
   };
   const cmp = (row: Record<string, unknown>, where: Record<string, unknown>) =>
     Object.entries(where).every(([k, v]) => {
       const cur = row[k];
       if (v instanceof Date) return cur instanceof Date && cur.getTime() === v.getTime();
       if (v && typeof v === "object") {
-        const o = v as { in?: unknown[]; not?: unknown; lt?: Date };
+        const o = v as { in?: unknown[]; not?: unknown; lt?: Date; lte?: Date };
         if (o.in) return o.in.includes(cur);
         if ("not" in o) return cur !== o.not;
         if (o.lt) return cur instanceof Date && cur.getTime() < o.lt.getTime();
+        if (o.lte) return cur instanceof Date && cur.getTime() <= o.lte.getTime();
         return false;
       }
       return cur === v;
@@ -120,6 +122,7 @@ const h = vi.hoisted(() => {
       }),
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         const rows = state.months.filter((m) => cmp(m as unknown as Record<string, unknown>, where)).sort((a, b) => b.index - a.index);
+        // (orderBy is index desc for the opener; a presence check for the stop)
         return rows[0] ? { ...rows[0] } : null;
       }),
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
@@ -156,9 +159,20 @@ const h = vi.hoisted(() => {
     },
     billingEvent: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => state.events.get(where.id) ?? null),
-      create: vi.fn(async ({ data }: { data: { id: string; type: string } }) => {
+      findFirst: vi.fn(async ({ where }: { where: { orgId: string; type: string; receivedAt?: { gt: Date }; id?: { not: string } } }) => {
+        return (
+          [...state.events.values()].find(
+            (e) =>
+              e.orgId === where.orgId &&
+              e.type === where.type &&
+              (!where.receivedAt || (e.receivedAt !== undefined && e.receivedAt.getTime() > where.receivedAt.gt.getTime())) &&
+              (!where.id || e.id !== where.id.not),
+          ) ?? null
+        );
+      }),
+      create: vi.fn(async ({ data }: { data: { id: string; type: string; orgId?: string | null; receivedAt?: Date } }) => {
         if (state.events.has(data.id)) throw Object.assign(new Error("Unique constraint"), { code: "P2002" });
-        const row = { id: data.id, type: data.type, orgId: null, processedAt: null, error: null };
+        const row = { id: data.id, type: data.type, orgId: data.orgId ?? null, processedAt: null, error: null, receivedAt: data.receivedAt };
         state.events.set(data.id, row);
         return row;
       }),
@@ -194,6 +208,13 @@ vi.mock("../club-billing-dms", () => ({
   }),
 }));
 vi.mock("../club-billing-month-loader", () => ({ loadClubMonthInput: vi.fn(async () => null) }));
+vi.mock("../club-billing-spells", () => ({
+  recordNotBillable: vi.fn(async (orgId: string, now: Date) => {
+    h.state.spells.push({ orgId, type: "mt.unbilled", at: now });
+    return true;
+  }),
+  closeNotBillableSpell: vi.fn(async () => false),
+}));
 vi.mock("../club-billing", async () => {
   const rules = await vi.importActual<typeof import("../club-billing-rules")>("../club-billing-rules");
   return {
@@ -323,7 +344,7 @@ beforeEach(() => {
   process.env.NEXTAUTH_URL = "https://mt.test";
   fake = createFakeBillingStripe();
   setBillingStripeForTests(fake);
-  Object.assign(h.state, { months: [], dms: [], stateCalls: [], pending: [], skipped: [], paymentNotes: [], ops: [], contact: "user_colin" });
+  Object.assign(h.state, { months: [], dms: [], stateCalls: [], pending: [], skipped: [], paymentNotes: [], ops: [], spells: [], contact: "user_colin" });
   h.state.events.clear();
   h.state.notices.clear();
   setWorld();
@@ -532,6 +553,29 @@ describe("webhook: a card saved (checkout.session.completed, setup mode)", () =>
     expect(moneyCalls()).toEqual([]);
   });
 
+  it("M1: a LATE retry of an OLDER session never overwrites a newer card: its own card is detached, the payer's details untouched", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard());
+    h.state.contact = "user_pat";
+    const newer = cardSaved("replace-card", "user_pat", { id: "cs_new", created: Math.floor(DAYTIME.getTime() / 1000) });
+    await handleBillingEvent(newer, DAYTIME);
+    expect(h.state.billing).toMatchObject({ stripePaymentMethodId: "pm_pat", cardHolderUserId: "user_pat" });
+    const before = fake.state().calls.length;
+    // Colin's session from an hour EARLIER arrives now (Stripe retried it).
+    const older = cardSaved("replace-card", "user_olly", { id: "cs_old", created: Math.floor(DAYTIME.getTime() / 1000) - 3600 });
+    expect(await handleBillingEvent(older, DAYTIME)).toMatchObject({ action: "ignored", reason: "superseded-session" });
+    expect(h.state.billing).toMatchObject({ stripePaymentMethodId: "pm_pat", cardHolderUserId: "user_pat", cardLast4: "1881" });
+    const after = fake.state().calls.slice(before).map((c) => c.method);
+    expect(after).not.toContain("resetCustomerDetails");
+    expect(after).not.toContain("setDefaultPaymentMethod");
+    expect(after).not.toContain("updateCustomer");
+    expect(fake.state().detached).toContain("pm_olly");
+    expect(fake.state().detached).not.toContain("pm_pat");
+    // A re-delivery of the NEWER session itself is not "superseded".
+    expect(await handleBillingEvent(cardSaved("replace-card", "user_pat", { id: "cs_new", created: Math.floor(DAYTIME.getTime() / 1000) }), DAYTIME)).toMatchObject({
+      action: "card-replaced",
+    });
+  });
+
   it("'Update card and pay': an unpaid month's invoice is paid on the NEW card at once; the club stays past due until invoice.paid", async () => {
     setWorld({ billingStatus: "past_due" }, withCard({ paymentFailedAt: M1_END }));
     const inv = await invoicedMonth(1, "failed");
@@ -634,6 +678,35 @@ describe("webhook: a month's invoice (paid / failed / bank check / void)", () =>
     expect(h.state.months[0].status).toBe("void");
   });
 
+  it("M3: the only unpaid invoice voided in Stripe: the club leaves past due (back to subscribed); with another unpaid month it stays", async () => {
+    setWorld({ billingStatus: "past_due" }, withCard({ graceEndsAt: new Date(M1_END.getTime() + 7 * DAY) }));
+    const inv = await invoicedMonth(1, "failed");
+    await fake.voidInvoice(inv);
+    await handleBillingEvent(invoiceEvent("invoice.voided", inv), M1_END);
+    expect(h.state.org!.billingStatus).toBe("subscribed");
+    expect(h.state.stateCalls).toEqual([{ type: "unpaid-cleared", noticeOnResume: "resumed" }]);
+
+    setWorld({ billingStatus: "past_due" }, withCard());
+    h.state.months = [];
+    h.state.stateCalls = [];
+    const one = await invoicedMonth(1, "failed");
+    await invoicedMonth(2, "failed");
+    await fake.voidInvoice(one);
+    await handleBillingEvent(invoiceEvent("invoice.voided", one), M1_END);
+    expect(h.state.org!.billingStatus).toBe("past_due");
+  });
+
+  it("M3: marked uncollectible while PAUSED for that payment: back on (subscribed)", async () => {
+    setWorld({ billingStatus: "paused" }, withCard({ pausedReason: "payment-failed" }));
+    const inv = await invoicedMonth(1, "failed");
+    const stored = fake.state().invoices[inv] as { status: string };
+    stored.status = "uncollectible";
+    fake.putInvoice({ ...(await fake.retrieveInvoice(inv))!, status: "uncollectible" });
+    await handleBillingEvent(invoiceEvent("invoice.marked_uncollectible", inv), M1_END);
+    expect(h.state.months[0].status).toBe("void");
+    expect(h.state.org!.billingStatus).toBe("subscribed");
+  });
+
   it("re-delivery of invoice.paid: one change only (BillingEvent idempotency)", async () => {
     setWorld({ billingStatus: "past_due" }, withCard());
     const inv = await invoicedMonth(1, "failed");
@@ -722,6 +795,37 @@ describe("Stop paying and Keep paying (4.2)", () => {
     expect(await stopPaying({ orgId: ORG, userId: "user_colin", role: "contact", now: MID_M1 })).toEqual({ ok: false, reason: "not-billable" });
   });
 
+  it("L3: Stop paying with BILLING_ENABLED off is refused (nothing recorded)", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard());
+    delete process.env.BILLING_ENABLED;
+    expect(await stopPaying({ orgId: ORG, userId: "user_colin", role: "contact", now: MID_M1 })).toEqual({ ok: false, reason: "not-billable" });
+    expect(h.state.billing!.cancelAtPeriodEnd).toBe(false);
+    expect(h.state.months).toEqual([]);
+  });
+
+  it("L2: Keep paying after the stop took effect, with a month still UNPAID: refused (pay it first)", async () => {
+    setWorld({ billingStatus: "paused" }, withCard({ pausedReason: "cancelled", cancelAtPeriodEnd: true }));
+    await invoicedMonth(1, "failed");
+    expect(await keepPaying({ orgId: ORG, userId: "user_colin", role: "contact", now: MID_M1 })).toEqual({ ok: false, reason: "past-due" });
+    expect(h.state.org!.billingStatus).toBe("paused");
+  });
+
+  it("L2: Keep paying while past due with Stop pressed: the stop is undone (the debt is handled by Update card and pay)", async () => {
+    setWorld({ billingStatus: "past_due" }, withCard({ cancelAtPeriodEnd: true }));
+    expect(await keepPaying({ orgId: ORG, userId: "user_colin", role: "contact", now: MID_M1 })).toEqual({ ok: true });
+    expect(h.state.billing!.cancelAtPeriodEnd).toBe(false);
+  });
+
+  it("L2: the stopping club's last invoice is paid late (it was declined at the close): THEN it pauses (cancelled)", async () => {
+    setWorld({ billingStatus: "past_due" }, withCard({ cancelAtPeriodEnd: true, currentPeriodEnd: M1_END }));
+    const inv = await invoicedMonth(1, "failed");
+    await fake.payInvoice(inv, { paymentMethodId: "pm_colin" });
+    await handleBillingEvent(invoiceEvent("invoice.paid", inv), new Date(M1_END.getTime() + 3 * DAY));
+    expect(h.state.stateCalls.map((c) => c.type)).toEqual(["invoice-paid", "billing-stopped"]);
+    expect(h.state.org!.billingStatus).toBe("paused");
+    expect(h.state.billing!.pausedReason).toBe("cancelled");
+  });
+
   it("Keep paying undoes it before the month ends", async () => {
     setWorld({ billingStatus: "subscribed" }, withCard({ cancelAtPeriodEnd: true, currentPeriodEnd: M1_END }));
     expect(await keepPaying({ orgId: ORG, userId: "user_colin", role: "contact", now: MID_M1 })).toEqual({ ok: true });
@@ -783,6 +887,8 @@ describe("plan changes and suspension (2A.6)", () => {
     const inv = await invoicedMonth(1, "failed");
     h.state.months.push({ ...h.state.months[0], id: "cbm_2", index: 2, status: "open", stripeInvoiceId: null, amountPence: null });
     expect(await onClubSuspended(ORG, MID_M1)).toEqual({ waived: 1 });
+    // H1: the not-billable spell starts now, so no game while suspended is ever charged.
+    expect(h.state.spells).toEqual([{ orgId: ORG, type: "mt.unbilled", at: MID_M1 }]);
     expect(h.state.months.map((m) => m.status)).toEqual(["failed", "waived"]);
     expect((await fake.retrieveInvoice(inv))?.status).toBe("open");
   });

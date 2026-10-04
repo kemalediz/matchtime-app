@@ -142,6 +142,12 @@ export type BillingEventInput =
   /** `invoice.paid` on a month's club fee invoice, with no other unpaid. */
   | { type: "invoice-paid" }
   /**
+   * P2 review (M3): the unpaid invoice was forgiven (voided, or marked
+   * uncollectible) and nothing else is unpaid: the club is no longer owing,
+   * so past due, or paused FOR THAT payment, goes back to subscribed.
+   */
+  | { type: "unpaid-cleared" }
+  /**
    * Slice P2: billing ends because the payer pressed Stop paying. Inside
    * the free month (the card has just been removed) the club goes back to
    * "trial" with the same end date; otherwise the month close of the last
@@ -259,6 +265,11 @@ export function nextBillingState(
 
     case "invoice-paid":
       if (from === "past_due" || from === "paused") return to("subscribed", from);
+      return null;
+
+    case "unpaid-cleared":
+      if (from === "past_due") return to("subscribed", from);
+      if (from === "paused" && b?.pausedReason === "payment-failed") return to("subscribed", from);
       return null;
 
     case "billing-stopped":

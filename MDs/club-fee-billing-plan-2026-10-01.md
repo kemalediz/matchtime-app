@@ -1443,6 +1443,39 @@ Where it differs from 5.3 as written, and why:
   with the first charge date). The games-played copy of 7.3 is P3 and must ship before the flag
   is turned on.
 
+**Adversarial review fixes (same PR, 2026-10-04):**
+
+- **H1, no catch-up.** Only the month containing "now" is ever opened, never an earlier one:
+  a month that started while the club was on Free, suspended, or while `BILLING_ENABLED` was
+  off (or during a cron outage) is never opened and never charged. Not-charged spells are
+  recorded as `BillingEvent` rows and read by the month loader like pause spans (a game inside
+  one is scheduled, not played): `mt.unbilled` / `mt.billed` per club (written by
+  `setBillingState` on the move into and out of `exempt`; suspension writes `mt.unbilled`; the
+  month opener closes a spell still open when the club is billable again) and
+  `mt.billing-off` / `mt.billing-on` GLOBAL rows, written by the hourly run once per change of
+  the flag (`src/lib/club-billing-spells.ts`). This replaces "missed months open in order" in
+  section 6 and the runbook note in 11 about months charging on the first run after a flag-off
+  spell: they never open.
+- **M1:** each applied card session is recorded at its CREATED time (`mt.card-session`); a late
+  retry of an older session never overwrites a newer card or resets the Customer: its own card
+  is detached.
+- **M2:** voiding on Free (and the hourly sweep) includes a month stuck `closing` with its
+  invoice made; the close re-reads the club right before finalising and right before paying,
+  and voids instead of charging if it stopped being billable (recorded on /admin/health).
+- **M3:** a month's invoice voided or marked uncollectible, with nothing else unpaid, moves a
+  club that was past due (or paused for that payment) back to `subscribed` (`unpaid-cleared`);
+  a payment that arrives after a month was recorded void is recorded paid and flagged.
+- **M4:** VAT comes from the Tax Rate's own `inclusive` setting: `price_data.tax_behavior` is no
+  longer sent (it belongs to Stripe Tax); before any invoice the close checks the rate is
+  active, 20% and inclusive; before finalising, both `total` and `amount_due` must equal the
+  month's amount; before paying, `amount_due` again.
+- **L1-L5:** a new card never pays for a club on Free, exempt or suspended; Keep paying is refused
+  from `paused (cancelled)` while a month is unpaid, and clears a pending stop in `past_due`;
+  Stop paying takes effect only once every month up to the stop date is settled (a declined
+  last charge pauses the club only when it is paid or voided: `applyStopIfDue`); Stop paying is
+  refused with the flag off; the invoice description has no club name (only the month's stored
+  numbers are in a request that carries an idempotency key).
+
 **To verify in Stripe test mode before P3 relies on it** (none of these can be settled without
 a real test account; the code works either way as described):
 
@@ -1456,9 +1489,14 @@ a real test account; the code works either way as described):
    `4000 0000 0000 0341`, watch for retry attempts over the next days. If they do not, P3 adds
    the cron's own retries on days 1, 3 and 5 (`payUnpaidMonths` already pays an open invoice).
 4. The `invoiceItems.create` fields in this library version (`stripe` 22.2.0, API
-   `2026-05-27.dahlia`): `price_data { currency, product, unit_amount, tax_behavior }`,
-   `quantity`, `tax_rates`, `invoice`, `metadata`. The types accept them; confirm the item lands
-   on the draft, the invoice total equals the amount, and the PDF shows "VAT (20%, inclusive)".
+   `2026-05-27.dahlia`): `price_data { currency, product, unit_amount }` (no `tax_behavior`),
+   `quantity`, `tax_rates: [STRIPE_CLUB_TAX_RATE_ID]`, `invoice`, `metadata`. With the Tax Rate
+   created as `percentage: 20, inclusive: true, country: GB`, an item of 799: confirm on the
+   draft `total = 799`, `amount_due = 799`, `tax = 133` (799 x 20/120, rounded), and the PDF
+   line "VAT (20% inclusive)". Then the same with an EXCLUSIVE test rate set in
+   `STRIPE_CLUB_TAX_RATE_ID`: the close must refuse before any invoice (the rate check).
+   Also confirm whether a draft's `amount_due` already reflects a customer credit balance (if it
+   only applies at finalisation, the second `amount_due` check before paying catches it).
 5. A card that needs a bank check off-session (`4000 0027 6000 3184`): which events arrive
    (`invoice.payment_action_required` alone, or also `invoice.payment_failed`), and that the
    3DS DM's link (`hosted_invoice_url`) completes it.

@@ -335,6 +335,20 @@ describe("slice P1: pause spans (mt.paused / mt.resumed) for the games-played co
     expect(dbMock.billingEvent.create).not.toHaveBeenCalled();
   });
 
+  it("P2 review H1: a move INTO exempt (plan Free) writes mt.unbilled; OUT of exempt (billed again) writes mt.billed", async () => {
+    setRow({ billingStatus: "subscribed" });
+    await setBillingState("org", { type: "plan-free" }, NOW);
+    expect(dbMock.billingEvent.create.mock.calls.map((c) => c[0].data)).toEqual([
+      { id: `mt_unbilled_org_${NOW.getTime()}`, type: "mt.unbilled", orgId: "org", receivedAt: NOW, processedAt: NOW },
+    ]);
+    dbMock.billingEvent.create.mockClear();
+    setRow({ billingStatus: "exempt", billingPlan: "standard", billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: null } });
+    const later = new Date(TRIAL_ENDS.getTime() + 40 * 24 * 60 * 60 * 1000);
+    process.env.BILLING_ENABLED = "1";
+    await setBillingState("org", { type: "plan-billed" }, later);
+    expect(dbMock.billingEvent.create.mock.calls.map((c) => c[0].data.type)).toEqual(["mt.billed"]);
+  });
+
   it("no change, no event", async () => {
     setRow({ billingStatus: "subscribed" });
     await setBillingState("org", { type: "trial-ended" }, NOW);

@@ -25,6 +25,14 @@ export const STRIPE_MIN_CHARGE_PENCE = 30;
  *  "mt_resumed_<orgId>_<ms>", never colliding with Stripe's "evt_..."). */
 export const PAUSED_EVENT_TYPE = "mt.paused";
 export const RESUMED_EVENT_TYPE = "mt.resumed";
+/** Slice P2 review (H1): the club stopped being billable (plan Free,
+ *  suspended) and became billable again. Per club. */
+export const UNBILLED_EVENT_TYPE = "mt.unbilled";
+export const BILLED_EVENT_TYPE = "mt.billed";
+/** Slice P2 review (H1): BILLING_ENABLED seen off, then on, by the hourly
+ *  billing run. GLOBAL rows (orgId NULL): they apply to every club. */
+export const BILLING_OFF_EVENT_TYPE = "mt.billing-off";
+export const BILLING_ON_EVENT_TYPE = "mt.billing-on";
 
 // ── Month boundaries (2A.1) ─────────────────────────────────────────────
 
@@ -95,10 +103,6 @@ export function monthIndexAt(anchor: Date, at: Date): number {
  *  game has finished and the 15 minute completion cron has run (plan 6). */
 export const MONTH_CLOSE_DELAY_MS = 6 * 60 * 60 * 1000;
 
-/** At most this many months open in one run (a guard against a runaway
- *  backlog; a real one is a few months after a long flag-off spell). */
-export const MAX_MONTHS_OPENED_PER_RUN = 24;
-
 /** Is a month that ends at `endsAt` old enough to close (the delay only;
  *  the caller also waits for the daytime)? */
 export function monthCloseDue(endsAt: Date, now: Date): boolean {
@@ -106,21 +110,21 @@ export function monthCloseDue(endsAt: Date, now: Date): boolean {
 }
 
 /**
- * The month indexes to open now, in order: every month after the club's
- * highest opened index (`lastIndex`, 0 for none) that has started by `now`.
- * Months that started during a cron outage or a flag-off spell open too, so
- * they close in order (plan 6 and the runbook note in 11). With `stopAt`
- * (Stop paying: the end of the month it was pressed in), no month that
- * starts at or after it opens.
+ * The month index to open now: ONLY the month containing `now`, when it is
+ * after the club's highest opened index (`lastIndex`, 0 for none). Never an
+ * earlier month (slice P2 review, H1): a month that started while the club
+ * was not billable (Free, suspended), while billing was off, or during a
+ * cron outage is NEVER opened later and so never charged. A club that
+ * becomes billable again starts with the month containing that moment, and
+ * the games before it in that month are left out by the not-charged spans
+ * (`notChargedSpansFrom`). With `stopAt` (Stop paying: the end of the month
+ * it was pressed in), no month that starts at or after it opens.
  */
 export function monthsToOpen(anchor: Date, lastIndex: number, now: Date, opts: { stopAt?: Date | null } = {}): number[] {
   const current = monthIndexAt(anchor, now);
-  const out: number[] = [];
-  for (let k = Math.max(1, lastIndex + 1); k <= current && out.length < MAX_MONTHS_OPENED_PER_RUN; k++) {
-    if (opts.stopAt && monthBounds(anchor, k).startsAt.getTime() >= opts.stopAt.getTime()) break;
-    out.push(k);
-  }
-  return out;
+  if (current < 1 || current <= lastIndex) return [];
+  if (opts.stopAt && monthBounds(anchor, current).startsAt.getTime() >= opts.stopAt.getTime()) return [];
+  return [current];
 }
 
 // ── Pause spans (2A.3) ──────────────────────────────────────────────────
@@ -149,6 +153,39 @@ export function pauseSpansFrom(events: Array<{ type: string; at: Date }>): Pause
   }
   if (open !== null) spans.push({ from: open, to: null });
   return spans;
+}
+
+/** Pair each start type with its own end type: [from, to), open ends run
+ *  to now. A repeated start while open, or an end while closed, is ignored. */
+function pairedSpans(events: Array<{ type: string; at: Date }>, start: string, end: string): PauseSpan[] {
+  const sorted = events.filter((e) => e.type === start || e.type === end).sort((a, b) => a.at.getTime() - b.at.getTime());
+  const spans: PauseSpan[] = [];
+  let open: Date | null = null;
+  for (const e of sorted) {
+    if (e.type === start && open === null) open = e.at;
+    else if (e.type === end && open !== null) {
+      spans.push({ from: open, to: e.at });
+      open = null;
+    }
+  }
+  if (open !== null) spans.push({ from: open, to: null });
+  return spans;
+}
+
+/**
+ * Every span in which a club's games are never charged (slice P2 review,
+ * H1): billing-paused (`mt.paused` / `mt.resumed`), not billable
+ * (`mt.unbilled` / `mt.billed`: Free, suspended) and billing switched off
+ * (`mt.billing-off` / `mt.billing-on`, global). A game that kicked off
+ * inside any of them is scheduled and NOT played, as a pause span already
+ * is, so it can only lower the fee. Ordered by start.
+ */
+export function notChargedSpansFrom(events: Array<{ type: string; at: Date }>): PauseSpan[] {
+  return [
+    ...pairedSpans(events, PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE),
+    ...pairedSpans(events, UNBILLED_EVENT_TYPE, BILLED_EVENT_TYPE),
+    ...pairedSpans(events, BILLING_OFF_EVENT_TYPE, BILLING_ON_EVENT_TYPE),
+  ].sort((a, b) => a.from.getTime() - b.from.getTime());
 }
 
 function inPause(at: Date, spans: PauseSpan[]): boolean {
