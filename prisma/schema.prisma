@@ -441,6 +441,7 @@ model Organisation {
   badgeAnnouncements BadgeAnnouncement[]
   clubBilling        ClubBilling?
   billingNotices     BillingNotice[]
+  billingMonths      ClubBillingMonth[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -957,6 +958,47 @@ model BillingNotice {
   createdAt     DateTime     @default(now())
 
   @@unique([orgId, kind, cycleKey])
+}
+
+/// One billing month of a billed club, charged by games played in arrears
+/// (slice P1, 2026-10-04). Plan: MDs/club-fee-billing-plan-2026-10-01.md,
+/// sections 2A and 3.6. Opened by the billing cron when the month starts,
+/// closed the morning after it ends (P2/P3). Single writer (from P2):
+/// src/lib/club-billing-months.ts. P1 adds the table only; nothing writes
+/// it yet. CHECK constraints: prisma/sql/club-billing-month-check.sql.
+model ClubBillingMonth {
+  id                String       @id @default(cuid())
+  orgId             String
+  org               Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// 1 = the first month after the free month.
+  index             Int
+  startsAt          DateTime
+  /// Exclusive: 00:00 London on the anchor day of the next month.
+  endsAt            DateTime
+  /// The plan's monthly maximum when the month opened (pence).
+  priceAtStartPence Int
+  /// "open" | "closing" | "no-games" | "below-minimum" | "waived" | "no-card"
+  /// | "invoiced" | "paid" | "failed" | "void"
+  status            String       @default("open")
+  scheduled         Int?
+  played            Int?
+  /// The maximum used: the lower of the price at start and at close.
+  pricePence        Int?
+  amountPence       Int?
+  /// Why it was waived ("free-plan" | "suspended" | "removed-before-start" ...).
+  reason            String?
+  /// The games counted: one entry per scheduled game, with its match ids,
+  /// kickoff, played or not and why. For the receipt page and any dispute.
+  games             Json?
+  stripeInvoiceId   String?      @unique
+  closedAt          DateTime?
+  paidAt            DateTime?
+  refundedPence     Int          @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([orgId, index])
+  @@index([status])
 }
 
 model SentNotification {
