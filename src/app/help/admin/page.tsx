@@ -7,8 +7,9 @@ export default function AdminGuidePage() {
       <p>
         You run the group. This guide walks through what MatchTime does for
         you each week, and what you can check or fix from the dashboard.
-        MatchTime costs £9.99 a month per group, and your first month is free.
-        See <a href="#pricing">What it costs</a> below.
+        MatchTime costs up to £9.99 a month per group, and you only pay for
+        the weeks you play. Your first month is free. See{" "}
+        <a href="#club-fee">Club fee</a> below.
       </p>
 
       {/* ───────────────────────────────────────────────── */}
@@ -38,17 +39,51 @@ export default function AdminGuidePage() {
         individual features off in <strong>Settings</strong>.
       </p>
 
-      <h3 id="pricing">What it costs</h3>
+      <h3 id="club-fee">Club fee</h3>
       <p>
-        MatchTime costs £9.99 a month per WhatsApp group. That covers the whole
-        group, not each player, and your first month is free. There&apos;s no
-        contract: remove MatchTime from the group any time to stop.
+        Your first month is free, counted from the day we approve your club.
+        No card is needed to start.
       </p>
       <p>
-        You can share the cost among the players who played that month if you
-        like. With 20 players, that works out at about 50p a player.
-        Match fees are separate: collecting them through MatchTime is optional
-        (see <a href="#payments">Payments</a>).
+        After that you only pay for the weeks you play: up to £9.99 a month
+        per WhatsApp group, VAT included, for the whole group rather than
+        each player. After each month MatchTime counts the games your group
+        played out of the games it had scheduled, and the card on file is
+        charged for those only, the morning after the month ends. Play 3
+        weeks out of 4 and it&apos;s £7.49. Play none, or take a summer
+        break, and nothing is charged.
+      </p>
+      <p>
+        The <strong>money collector</strong> (the person who collects the
+        match fees, set in <strong>Settings</strong>) adds a card. If no money
+        collector is set, the club owner is asked instead. Nothing is taken
+        when the card is added.
+      </p>
+      <p>
+        Nine days before your first month ends, MatchTime sends a reminder by
+        WhatsApp with a link to your billing page, and another two days
+        before the end if there is still no card. If the first month ends
+        without a card, MatchTime keeps running for a week. After that week
+        it goes quiet in your group until a card is added: no posts, no
+        replies, and nothing is said in the group. Your players, matches and
+        stats are all kept, and MatchTime starts again within a few minutes
+        of a card being added.
+      </p>
+      <p>
+        Each month, its games and its charge are on your billing page. There
+        is no contract: to stop, press <strong>Stop paying</strong> there.
+        Billing ends when the current month ends, and that month is charged
+        only for the games played, as usual. Removing MatchTime from the
+        group stops it straight away; the games already played that month
+        are charged when the month ends.
+      </p>
+      <p>
+        <strong>Tip:</strong> a game played costs the club at most £2.50
+        (£9.99 over four weeks), so with 10 players it&apos;s at most about
+        25p a player per game. Add that to each player&apos;s match fee and
+        the club fee is covered; a week you don&apos;t play costs nothing.
+        Match fees are separate: collecting them through MatchTime is
+        optional (see <a href="#payments">Payments</a>).
       </p>
 
       {/* ───────────────────────────────────────────────── */}

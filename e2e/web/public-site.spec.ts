@@ -30,13 +30,16 @@ for (const [path, heading] of GUIDES) {
 test("landing page shows the price and links the player guide", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText(/First month free/i).first()).toBeVisible();
-  // Pricing section: £9.99 a month per group, first month free (Kemal, 2026-10-01).
+  // Pricing section: up to £9.99 a month per group, first month free (Kemal, 2026-10-01).
   const pricing = page.locator("#pricing");
   await pricing.scrollIntoViewIfNeeded();
   await expect(pricing.getByRole("heading", { name: /One price for the whole group/i })).toBeVisible();
   await expect(pricing.getByText("£9.99", { exact: true })).toBeVisible();
   await expect(pricing.getByText(/a month per group/i)).toBeVisible();
   await expect(pricing.getByText(/about 50p a player/i)).toBeVisible();
+  // Charged by games played, up to £9.99 a month (Kemal, 2026-10-02).
+  await expect(pricing.getByText(/Up to £9\.99 a month per WhatsApp group, not per player, and you only pay for the weeks you play/)).toBeVisible();
+  await expect(pricing.getByText(/Play 3 weeks out of 4 and it's £7\.49\. Take a month off and it's nothing\./)).toBeVisible();
   // Nothing on the page still claims MatchTime is free.
   const body = (await page.locator("body").innerText()).replace(/first month (is )?free/gi, "");
   expect(body).not.toMatch(/\bfree\b/i);
@@ -51,6 +54,20 @@ test("robots.txt is served and points at the sitemap", async ({ request }) => {
   const body = await res.text();
   expect(body).toMatch(/Sitemap: .*\/sitemap\.xml/);
   expect(body).toMatch(/Disallow: \/admin/);
+});
+
+test("the organiser guide explains the club fee: games played, up to £9.99, the card, stopping", async ({ page }) => {
+  await page.goto("/help/admin");
+  const heading = page.getByRole("heading", { name: "Club fee", exact: true });
+  await heading.scrollIntoViewIfNeeded();
+  await expect(heading).toBeVisible();
+  const guide = page.locator("article");
+  await expect(guide.getByText(/only pay for the weeks you play: up to £9\.99 a month per WhatsApp group, VAT included/)).toBeVisible();
+  await expect(guide.getByText(/adds a card/).first()).toBeVisible();
+  await expect(guide.getByText(/at most about 25p a player per game/)).toBeVisible();
+  const text = (await guide.innerText()).replace(/first month (is )?free/gi, "");
+  expect(text).not.toMatch(/\bfree\b/i);
+  expect(text).not.toMatch(/[—–]/);
 });
 
 test("signed-in admin still gets the guides", async ({ page }) => {

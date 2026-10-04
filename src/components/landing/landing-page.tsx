@@ -550,8 +550,13 @@ export function LandingPage() {
               One price for the whole group.
             </h2>
             <p className="mt-5 text-lg text-slate-600">
-              £9.99 a month per WhatsApp group, not per player. Your first month
-              is free, so you can see how it runs your week before you pay.
+              Up to £9.99 a month per WhatsApp group, not per player, and you
+              only pay for the weeks you play. Your first month is free, so you
+              can see how it runs your week before you pay.
+            </p>
+            <p className="mt-3 text-base text-slate-500">
+              Play 3 weeks out of 4 and it&apos;s £7.49. Take a month off and
+              it&apos;s nothing.
             </p>
           </div>
 
@@ -570,6 +575,7 @@ export function LandingPage() {
                   First month free
                 </div>
                 <div className="mt-5 flex items-baseline gap-2">
+                  <span className="text-lg text-slate-300">Up to</span>
                   <span
                     className="text-6xl sm:text-7xl font-extrabold tracking-tight text-white"
                     style={DISPLAY_FONT}
@@ -582,7 +588,8 @@ export function LandingPage() {
                   {[
                     "Everything on this page, for your whole WhatsApp group",
                     "One price, however big your squad is",
-                    "No contract. Remove MatchTime from the group any time to stop",
+                    "Charged after each month, only for the weeks you play",
+                    "No contract. Stop any time",
                   ].map((b) => (
                     <li key={b} className="flex items-start gap-3 text-slate-200">
                       <Check className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
@@ -605,7 +612,7 @@ export function LandingPage() {
                 color="teal"
                 icon={<Users className="w-6 h-6" />}
                 title="Share it out if you like"
-                body="The organiser can split the £9.99 among the players who played that month. With 20 players, that works out at about 50p a player."
+                body="The organiser can share the month's fee among the players who played. Even a month charged in full at £9.99, shared by 20 players, works out at about 50p a player."
               />
               <FeatureCard
                 color="amber"
@@ -637,9 +644,10 @@ export function LandingPage() {
             <br /> match-day morning?
           </h2>
           <p className="mt-5 text-lg text-slate-200 leading-relaxed">
-            Your first month is free, then it&apos;s £9.99 a month for the whole
-            group. Add it, and if you don&apos;t like it, remove it. Card and
-            bank payments are there if you want them.
+            Your first month is free, then it&apos;s up to £9.99 a month for
+            the whole group, and you only pay for the weeks you play. Add it,
+            and if you don&apos;t like it, remove it. Card and bank payments
+            are there if you want them.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center">
             <Link
