@@ -56,7 +56,7 @@ export function PlanControl({
         disabled={pending}
         className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
       >
-        <option value="standard">Standard £9.99</option>
+        <option value="standard">Standard, up to £9.99</option>
         <option value="free">Free</option>
         <option value="custom">Custom</option>
       </select>
@@ -64,14 +64,14 @@ export function PlanControl({
         <span className="inline-flex items-center gap-1 text-sm text-slate-600">
           £
           <input
-            aria-label="Custom price in pounds"
+            aria-label="Custom monthly maximum in pounds"
             inputMode="decimal"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             disabled={pending}
             className="h-9 w-20 rounded-lg border border-slate-300 bg-white px-2 text-sm"
           />
-          a month
+          monthly maximum
         </span>
       )}
       <button

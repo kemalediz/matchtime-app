@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { WaText } from "@/components/billing/wa-text";
+import { loadMonthsSummary } from "@/lib/club-billing-month-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,12 @@ export const dynamic = "force-dynamic";
  * redirects to Stripe Checkout (setup mode: nothing is charged when a card
  * is saved) or back here with a notice. English or Turkish by the club's
  * language.
+ *
+ * SLICE P4 (games played): the "this month" box (games played so far of
+ * scheduled, still to come, the charge so far and the most it can be,
+ * the charge date), then the past months (amount and state, the games
+ * behind "See games", and for the payer their own card's receipts, through
+ * /billing/[orgId]/receipt/[monthId]). Nobody's name is on a game line.
  */
 const ACTION: Record<BillingButton, (orgId: string) => Promise<void>> = {
   "add-card": addCardAction,
@@ -105,7 +112,19 @@ export default async function BillingPage({
   }
   const { role, snapshot } = access;
   const tip = role === "exempt-owner" || role === "card-holder" ? null : await loadClubFeeTip(orgId);
-  const v = billingPageView(snapshot.language, snapshot, role, userId, tip);
+  const now = new Date();
+  const months =
+    role === "exempt-owner" || role === "card-holder"
+      ? null
+      : await loadMonthsSummary(orgId, {
+          now,
+          plan: snapshot.plan,
+          pricePence: snapshot.pricePence,
+          role,
+          viewerUserId: userId,
+          cardHolderUserId: snapshot.billing?.cardHolderUserId ?? null,
+        });
+  const v = billingPageView(snapshot.language, snapshot, role, userId, tip, { now, months, orgId });
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8" data-testid="billing-page" data-role={role}>
@@ -137,6 +156,11 @@ export default async function BillingPage({
               ))}
             </div>
           )}
+          {v.monthBox && (
+            <p data-testid="billing-month-box" className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-blue-900">
+              {v.monthBox}
+            </p>
+          )}
           {v.holderNote && <p data-testid="billing-holder-note">{v.holderNote}</p>}
           {v.who && (
             <p data-testid="billing-who" className="text-slate-500">
@@ -160,6 +184,41 @@ export default async function BillingPage({
             </div>
           )}
         </section>
+
+        {v.past.length > 0 && (
+          <section data-testid="billing-past" className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm text-sm text-slate-700">
+            <h2 className="font-semibold text-slate-900 mb-2">{v.pastTitle}</h2>
+            <ul className="space-y-2">
+              {v.past.map((m) => (
+                <li key={m.id} data-testid="billing-past-month" data-month={m.id}>
+                  <p>
+                    {m.line}
+                    {m.receiptHref && (
+                      <>
+                        {" "}
+                        <a data-testid="billing-receipt" href={m.receiptHref} className="font-medium text-blue-700 hover:underline">
+                          {v.receiptLabel}
+                        </a>
+                      </>
+                    )}
+                  </p>
+                  {m.games.length > 0 && (
+                    <details className="mt-1">
+                      <summary data-testid="billing-see-games" className="cursor-pointer text-blue-700">
+                        {v.seeGamesLabel}
+                      </summary>
+                      <ul className="mt-1 ml-4 list-disc text-slate-600">
+                        {m.games.map((g, i) => (
+                          <li key={i}>{g}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {v.tip && (
           <section data-testid="billing-tip" className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-5 text-sm text-emerald-900">

@@ -190,7 +190,7 @@ test("Approve: the club goes live with its group, the hello is queued, the organ
   expect(await db.count(`SELECT COUNT(*) FROM "ClubBilling" WHERE "orgId" = $1`, [`${P}-riverside`])).toBe(1);
   await expect(
     page.getByTestId("live-club").filter({ hasText: "Riverside FC" }).getByTestId("club-billing-summary"),
-  ).toContainText("Standard £9.99. Free month. Free month ends");
+  ).toContainText("Standard, up to £9.99. Free month. Free month ends");
 });
 
 test("Reject: the club is rejected, MatchTime leaves the group", async ({ page, db, context }) => {

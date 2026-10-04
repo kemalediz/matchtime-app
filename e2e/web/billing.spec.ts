@@ -137,7 +137,7 @@ test.describe("/billing/[orgId] per role", () => {
     await expect(billing).toHaveAttribute("data-role", "contact", { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "Club fee" })).toBeVisible();
     await expect(page.getByTestId("billing-state")).toHaveText(
-      "Free month until Thu 31 Jan. Then £9.99 a month for the whole group.",
+      "Free month until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
     );
     const add = page.getByTestId("billing-btn-add-card");
     await expect(add).toBeVisible();
@@ -197,7 +197,9 @@ test.describe("/billing/[orgId] per role", () => {
     await signInAs(page, USER.colin, `/billing/${ORG}`);
     await expect(page.getByTestId("billing-page")).toHaveAttribute("data-role", "contact", { timeout: 30_000 });
     await expect(page.getByTestId("billing-state")).toHaveText(
-      "£9.99 a month, paid with Elvin Sevens's card until you put yours on. Next payment Fri 1 Mar.",
+      // Slice P4: still inside the free month (it ends Thu 31 Jan 2030), so
+      // nothing is taken until the morning after month 1 ends.
+      "Paid with Elvin Sevens's card until you put yours on. Nothing is taken until Thu 28 Feb.",
     );
     await expect(page.getByTestId("billing-btn-use-mine")).toBeEnabled();
     // The card's last four are only ever shown to its holder.
@@ -227,7 +229,9 @@ test.describe("/admin/settings billing card and the banner", () => {
     await page.waitForURL("**/admin/settings");
     const card = page.getByTestId("settings-billing-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
-    await expect(card).toContainText("Free month until Thu 31 Jan. Then £9.99 a month for the whole group.");
+    await expect(card).toContainText("Free month until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.");
+    // No month has opened yet (the free month runs): no month box.
+    await expect(card.getByTestId("settings-billing-month")).toHaveCount(0);
     await expect(card).toContainText("Colin Sevens looks after the card.");
     await expect(card).toContainText("Card on file: no.");
     await expect(card).toContainText("20p a player per game");
@@ -249,7 +253,9 @@ test.describe("/admin/settings billing card and the banner", () => {
     await setState(`UPDATE "ClubBilling" SET "graceEndsAt"='2030-02-07T12:00:00Z' WHERE "orgId"=$1`, [ORG]);
     for (const [status, text] of [
       ["grace", "The free month has ended. Add a card before Thu 7 Feb to keep MatchTime running."],
-      ["past_due", "This month's club fee didn't go through. MatchTime stops on Thu 7 Feb if it can't be taken."],
+      // Slice P4: no unpaid month is seeded here, so the fallback wording;
+      // billing-months.spec.ts names a real unpaid month.
+      ["past_due", "The last club fee payment didn't go through. MatchTime stops on Thu 7 Feb if it can't be taken."],
       ["paused", "MatchTime is paused for this club. Add a card to switch it back on."],
     ] as const) {
       await setState(`UPDATE "Organisation" SET "billingStatus"=$2 WHERE id=$1`, [ORG, status]);
@@ -314,14 +320,19 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Billing Sevens" });
     await expect(row.getByTestId("club-billing-summary")).toContainText(
-      "Standard £9.99. Free month. Free month ends Thu 31 Jan, 12:00. Card on file: no.",
+      "Standard, up to £9.99. Free month. Free month ends Thu 31 Jan, 12:00. Card on file: no.",
       { timeout: 30_000 },
     );
     await expect(row).toContainText("Colin Sevens (money collector)");
     await expect(row.getByTestId("club-ai-30d")).toHaveText("$1.25");
     const late = page.getByTestId("live-club").filter({ hasText: "Late Starters" });
-    await expect(late.getByTestId("club-billing-summary")).toContainText("Standard £9.99. Exempt (never billed).");
-    await expect(page.getByTestId("billing-totals")).toContainText("0 paying, £0 a month at current prices.");
+    await expect(late.getByTestId("club-billing-summary")).toContainText("Standard, up to £9.99. Exempt (never billed).");
+    await expect(row.getByTestId("club-billing-this-month")).toHaveText("no month open");
+    await expect(row.getByTestId("club-billing-last-month")).toHaveText("none yet");
+    await expect(page.getByTestId("billing-totals")).toContainText(
+      "Club fees: 0 with a card. Charged last month: £0. This month so far: £0. Failed or unpaid: 0.",
+    );
+    await expect(page.getByTestId("billing-totals")).toContainText("Check VAT country: 0.");
     await expect(page.getByTestId("billing-totals")).toContainText("1 in their free month");
     expect(await page.getByTestId("clubs-page").innerText()).not.toMatch(DASH);
   });
@@ -330,7 +341,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Billing Sevens" });
     await row.getByLabel("Plan", { exact: true }).selectOption("custom");
-    await row.getByLabel("Custom price in pounds").fill("5");
+    await row.getByLabel("Custom monthly maximum in pounds").fill("5");
     await row.getByRole("button", { name: "Save plan" }).click();
     await expect(page.getByText("Plan saved: Custom, up to £5 a month.")).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingPlan","billingPricePence","billingStatus" FROM "Organisation" WHERE id=$1`, [ORG])).toEqual({
@@ -340,7 +351,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     });
 
     // Out of range: refused, nothing written.
-    await row.getByLabel("Custom price in pounds").fill("12");
+    await row.getByLabel("Custom monthly maximum in pounds").fill("12");
     await row.getByRole("button", { name: "Save plan" }).click();
     await expect(page.getByText("A custom price must be between £1.00 and £9.99.")).toBeVisible({ timeout: 30_000 });
     expect((await db.one<{ p: number }>(`SELECT "billingPricePence" AS p FROM "Organisation" WHERE id=$1`, [ORG]))?.p).toBe(500);

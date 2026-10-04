@@ -1891,16 +1891,76 @@ export const tr: Strings = {
       ? `; saha ücretini bölüştürürken her oyuncunun payına ekleyebilirsiniz.`
       : `; ${p.fee} olan bir maç için *${p.feePlus}* alabilirsiniz.`),
   billing_page_title: "Kulüp ücreti",
-  billing_state_trial: (p) => `Ücretsiz ay ${p.date} tarihine kadar. Sonrasında tüm grup için aylık ${p.price}.`,
+  billing_state_trial: (p) =>
+    `Ücretsiz ay ${p.date} tarihine kadar. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla ${p.price}.`,
   billing_state_grace: (p) => `Ücretsiz ay sona erdi. Kart eklenmezse MatchTime ${p.date} tarihinde durur.`,
-  billing_state_subscribed: (p) => `Aylık ${p.price}. Sonraki ödeme ${p.date}.`,
-  billing_state_subscribed_ending: (p) => `Aylık ${p.price}. ${p.date} tarihinde sona eriyor.`,
+  billing_state_subscribed: (p) => `Yalnızca oynanan maçlar için ücret alınır, ayda en fazla ${p.price}. Sonraki ödeme ${p.date}.`,
+  billing_state_card_saved: (p) => `Kart kaydedildi. ${p.date} tarihine kadar hiçbir ücret alınmaz.`,
+  billing_state_nothing_until: (p) => `${p.date} tarihine kadar hiçbir ücret alınmaz.`,
+  billing_state_subscribed_ending: (p) => `Ödeme ${p.date} tarihinde, bu ay oynanan maçlar için ücret alındıktan sonra sona eriyor.`,
   billing_state_card: (p) => `${p.brand} kart, son dört hanesi ${p.last4}.`,
-  billing_state_paid_with_other: (p) =>
-    `Aylık ${p.price}, siz kendi kartınızı ekleyene kadar ${p.holder} kişisinin kartıyla ödeniyor. Sonraki ödeme ${p.date}.`,
+  billing_state_paid_with_other: (p) => `Siz kendi kartınızı ekleyene kadar ${p.holder} kişisinin kartıyla ödeniyor. ${p.rest}`,
   billing_state_past_due: (p) =>
-    `Son ödeme alınamadı. Stripe tekrar deniyor. Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
+    (p.amount
+      ? p.months > 1
+        ? `${p.months} ayın maçlarına ait ${p.amount} ödemesi alınamadı. `
+        : `${p.from} ile ${p.to} arası için ${p.amount} ödemesi alınamadı. `
+      : `Son ödeme alınamadı. `) +
+    (p.retrying ? `Önümüzdeki birkaç gün içinde tekrar denenecek. ` : `MatchTime'ın çalışmaya devam etmesi için kartı güncelleyip ödeyin. `) +
+    `Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
   billing_state_paused: "MatchTime duraklatıldı. Tüm veriler saklanıyor. Yeniden açmak için kart ekleyin.",
+  billing_state_paused_unpaid: (p) =>
+    `MatchTime duraklatıldı çünkü ` +
+    (p.amount ? (p.months > 1 ? `${p.months} ayın maçlarına ait ${p.amount} ödenmedi. ` : `${p.amount} ödenmedi. `) : `bir ödeme yapılmadı. `) +
+    `Tüm veriler saklanıyor. Yeniden açmak için kartı güncelleyip ödeyin.`,
+  billing_state_paused_stopped:
+    "Ödeme durdurulduğu için MatchTime duraklatıldı. Tüm veriler saklanıyor. Yeniden açmak için Ödemeye devam et düğmesine basın.",
+  billing_month_box: (p) =>
+    p.scheduled === 0
+      ? `Bu ay (${p.from} ile ${p.to} arası): şu ana kadar maç yok, bu yüzden ödenecek bir şey yok.`
+      : p.upcoming > 0
+        ? `Bu ay (${p.from} ile ${p.to} arası): şu ana kadar ${p.scheduled} maçın ${p.played} tanesi oynandı, ${p.upcoming} maç daha var. ` +
+          `Şu ana kadar ${p.amount}; kalan tüm maçlar oynanırsa ${p.max}. Ödeme ${p.date} tarihinde alınır.`
+        : `Bu ay (${p.from} ile ${p.to} arası): ${p.scheduled} maçın ${p.played} tanesi oynandı. Bu ${p.amount} eder, ödeme ${p.date} tarihinde alınır.`,
+  billing_nothing: "ücret yok",
+  billing_past_months: "Geçmiş aylar",
+  billing_see_games: "Maçları gör",
+  billing_receipt: "Makbuz",
+  billing_month_line: (p) => {
+    const head = `${p.from} ile ${p.to} arası: `;
+    const g = p.games ? `${p.games}, ` : "";
+    switch (p.status) {
+      case "paid":
+        return `${head}${g}${p.amount} ödendi`;
+      case "invoiced":
+        return `${head}${g}${p.amount} alınıyor`;
+      case "failed":
+        return `${head}${g}${p.amount} henüz ödenmedi`;
+      case "void":
+        return `${head}${g}${p.amount} iptal edildi, ödenecek bir şey yok`;
+      case "no-games":
+        return `${head}maç yok, ödenecek bir şey yok`;
+      case "below-minimum":
+        return `${head}${g}30p altında, bu yüzden ödenecek bir şey yok`;
+      case "no-card":
+        return `${head}${g}ücret alınmadı (kayıtlı kart yok)`;
+      case "waived":
+        return `${head}ödenecek bir şey yok`;
+      default:
+        return `${head}hesaplanıyor`;
+    }
+  },
+  billing_month_games: (p) => `${p.scheduled} maçın ${p.played} tanesi`,
+  billing_game_outcome: (p) =>
+    ({
+      played: "oynandı",
+      cancelled: "iptal edildi",
+      "nobody-in": "kimse VARIM demedi",
+      paused: "MatchTime duraklatılmıştı",
+      "no-match": "maç yok",
+      "not-completed": "oynanmadı",
+      upcoming: "henüz oynanmadı",
+    })[p.outcome] ?? "oynanmadı",
   billing_state_paused_removed:
     "MatchTime kulübün WhatsApp grubundan çıkarıldığı için duraklatıldı. Tüm veriler saklanıyor. Devam etmek için MatchTime'ı gruba geri ekleyin.",
   billing_card_holder_note: (p) =>
@@ -1921,8 +1981,16 @@ export const tr: Strings = {
   billing_choose_collector: "Para toplayan kişiyi seçin",
   billing_banner_grace: (p) =>
     `Ücretsiz ay sona erdi. MatchTime'ın çalışmaya devam etmesi için ${p.date} tarihinden önce kart ekleyin.`,
-  billing_banner_past_due: (p) => `Bu ayın kulüp ücreti alınamadı. Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
+  billing_banner_past_due: (p) =>
+    (p.amount
+      ? p.months > 1
+        ? `${p.months} ayın kulüp ücreti olan ${p.amount} alınamadı. `
+        : `${p.from} ile ${p.to} arası kulüp ücreti (${p.amount}) alınamadı. `
+      : `Son kulüp ücreti ödemesi alınamadı. `) + `Ödeme alınamazsa MatchTime ${p.date} tarihinde durur.`,
   billing_banner_paused: "MatchTime bu kulüp için duraklatıldı. Yeniden açmak için kart ekleyin.",
+  billing_banner_paused_unpaid: "Bir kulüp ücreti ödemesi yapılmadığı için MatchTime bu kulüp için duraklatıldı. Ödeme sayfasından ödenebilir.",
+  billing_banner_paused_stopped:
+    "Ödeme durdurulduğu için MatchTime bu kulüp için duraklatıldı. Ödeme sayfasındaki Ödemeye devam et düğmesi yeniden açar.",
   billing_banner_paused_removed: "MatchTime bu kulübün WhatsApp grubundan çıkarıldığı için duraklatıldı. Devam etmek için gruba geri ekleyin.",
   billing_banner_link: "Ödeme sayfası",
   billing_notice_done: "Teşekkürler, kartınız kaydediliyor. Bir dakika içinde bu sayfada görünür.",
@@ -1943,7 +2011,7 @@ export const tr: Strings = {
       ? `MatchTime ${p.club} için yeniden açıldı ve birkaç dakika içinde grupta kaldığı yerden devam ediyor. Duraklatılmışken VARIM yazanlar lütfen tekrar yazsın. `
       : `MatchTime ${p.club} WhatsApp grubunda çalışmaya devam ediyor. `) +
     `Şu an hiçbir ücret alınmadı: her ayın sonunda oynanan maçları sayıyorum ve yalnızca onlar için, en fazla ${p.price} alıyorum. ` +
-    `${p.first ? "İlk" : "Sonraki"} ödeme ${p.date} tarihinde; her makbuzu Stripe size e-postayla gönderir. Kartınızı değiştirmek ya da durdurmak için: ${p.link}`,
+    `${p.first ? "İlk" : "Sonraki"} ödeme ${p.date} tarihinde. Her ödemeyi ve makbuzunu ödeme sayfanızda görebilir, kartınızı orada değiştirebilir ya da durdurabilirsiniz: ${p.link}`,
   billing_dm_card_replaced: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime ücretini artık ${p.newName} ödüyor. Kartınız kaldırıldı ve bunun için bir daha ücret alınmayacak.`,
   billing_dm_resumed: (p) =>
@@ -1971,7 +2039,9 @@ export const tr: Strings = {
     "İpucu: maç ücretlerini başka biri topluyorsa, Ayarlar'dan onu para toplayan kişi yapın, kartla o ilgilensin.",
   billing_dm_paused: (p) =>
     (p.kind === "payment-failed"
-      ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.amount} ödemesini alamadık, bu yüzden MatchTime şu an duraklatıldı. `
+      ? p.months > 1
+        ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.months} ayın maçlarına ait toplam ${p.amount} ödemesini alamadık, bu yüzden MatchTime şu an duraklatıldı. `
+        : `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.amount} ödemesini alamadık, bu yüzden MatchTime şu an duraklatıldı. `
       : p.kind === "cancelled"
         ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime ödemesini durdurdunuz, bu yüzden şu an duraklatıldı. Son ay, her zamanki gibi yalnızca oynanan maçlar için ücretlendirildi. `
         : `Merhaba${p.name ? ` ${p.name}` : ""}, MatchTime ${p.club} için şu an duraklatıldı. `) +
@@ -1984,8 +2054,11 @@ export const tr: Strings = {
         : `MatchTime'ı yeniden açmak için buradan kart ekleyin, birkaç dakika içinde tekrar başlar: ${p.link}`),
   billing_dm_payment_failed: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.from} ile ${p.to} arasındaki maçların ${p.amount} ödemesi alınamadı. ` +
-    `Önümüzdeki birkaç gün içinde tekrar denenecek, bu sürede MatchTime çalışmaya devam ediyor. ` +
-    (p.ownCard ? `Kartı güncellemek için: ${p.link}` : `Bunun yerine kendi kartınızı eklemek için: ${p.link}`),
+    (p.retrying
+      ? `Önümüzdeki birkaç gün içinde tekrar denenecek, bu sürede MatchTime çalışmaya devam ediyor. ` +
+        (p.ownCard ? `Kartı güncellemek için: ${p.link}` : `Bunun yerine kendi kartınızı eklemek için: ${p.link}`)
+      : `MatchTime şimdilik çalışmaya devam ediyor. ` +
+        (p.ownCard ? `Şimdi ödemek için buradan kartı güncelleyip ödeyin: ${p.link}` : `Şimdi kendi kartınızla ödemek için: ${p.link}`)),
   billing_dm_payment_action: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.from} ile ${p.to} arasındaki maçların ${p.amount} ödemesinin geçebilmesi için bankanız onayınızı istiyor. ` +
     `Lütfen buradan onaylayın: ${p.link}\nBu sürede MatchTime çalışmaya devam ediyor.`,
@@ -2012,7 +2085,10 @@ export const tr: Strings = {
     `, bu yüzden ` +
     (p.last4 ? `${p.last4} ile biten ` : "") +
     (p.ownCard ? "kartınızdan" : "kayıtlı karttan") +
-    ` ${p.amount} çekildi (KDV dahil; tam ay ${p.price}). Makbuzu Stripe size e-postayla gönderdi. Ayrıntılar: ${p.link}`,
+    ` ${p.amount} çekildi (KDV dahil; tam ay ${p.price}). ` +
+    (p.ownCard
+      ? `Makbuzu Stripe size e-postayla gönderdi. Ayrıntılar: ${p.link}`
+      : `Ayın maçlarını ve ücretini ödeme sayfanızda görebilirsiniz: ${p.link}`),
   billing_dm_month_free: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} ${p.from} ile ${p.to} arasında hiç maç oynamadı, bu yüzden o ay için ödenecek bir şey yok. ` +
     `MatchTime yalnızca oynadığınız maçlar için ücret alır.`,

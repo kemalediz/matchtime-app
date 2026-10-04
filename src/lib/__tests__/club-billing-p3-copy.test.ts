@@ -71,8 +71,8 @@ function all(lang: "en" | "tr"): Record<string, string> {
     pausedNoCard: pausedText(lang, { ...base, amountPence: 999, reason: "no-card", link: LINK }),
     pausedPayment: pausedText(lang, { ...base, amountPence: 749, reason: "payment-failed", link: LINK }),
     pausedCancelled: pausedText(lang, { ...base, amountPence: 999, reason: "cancelled", link: LINK }),
-    failed: paymentFailedText(lang, { ...base, ...M1, amountPence: 749, link: LINK, ownCard: true }),
-    failedOther: paymentFailedText(lang, { ...base, ...M1, amountPence: 749, link: LINK, ownCard: false }),
+    failed: paymentFailedText(lang, { ...base, ...M1, amountPence: 749, link: LINK, ownCard: true, retrying: true }),
+    failedOther: paymentFailedText(lang, { ...base, ...M1, amountPence: 749, link: LINK, ownCard: false, retrying: true }),
     action: paymentActionText(lang, { ...base, ...M1, amountPence: 749, link: HOSTED, ownCard: true, billingLink: LINK }),
     actionOther: paymentActionText(lang, { ...base, ...M1, amountPence: 749, link: HOSTED, ownCard: false, billingLink: LINK }),
     payerCard: payerChangedText(lang, { name: "Pat", club: "Riverside FC", pricePence: 999, link: LINK, state: "card", oldName: "Cole", date: null, tip: null }),
@@ -162,12 +162,12 @@ describe("rewritten DMs", () => {
     expect(all("en").cardAdded).toBe(
       "Thanks Cole, your card is saved. MatchTime keeps running in the Riverside FC WhatsApp group. " +
         "Nothing has been taken: after each month I count the games played and charge only for those, up to £9.99. " +
-        `The first charge is on Tue 1 Dec, and Stripe emails you each receipt. To change your card or stop: ${LINK}`,
+        `The first charge is on Tue 1 Dec. You can see each charge and its receipt on your billing page, and change your card or stop there: ${LINK}`,
     );
     expect(all("en").cardAddedNext).toContain("MatchTime is back on for Riverside FC");
     expect(all("en").cardAddedNext).toContain("The next charge is on Tue 1 Dec");
-    expect(all("tr").cardAdded).toContain("Şu an hiçbir ücret alınmadı: her ayın sonunda oynanan maçları sayıyorum ve yalnızca onlar için, en fazla £9.99 alıyorum. İlk ödeme 1 Aralık Salı tarihinde;");
-    expect(all("tr").cardAddedNext).toContain("Sonraki ödeme 1 Aralık Salı tarihinde;");
+    expect(all("tr").cardAdded).toContain("Şu an hiçbir ücret alınmadı: her ayın sonunda oynanan maçları sayıyorum ve yalnızca onlar için, en fazla £9.99 alıyorum. İlk ödeme 1 Aralık Salı tarihinde.");
+    expect(all("tr").cardAddedNext).toContain("Sonraki ödeme 1 Aralık Salı tarihinde.");
   });
 
   it("day 21: the games-played sentence and the first charge (the morning after month 1 ends), then the tip", () => {

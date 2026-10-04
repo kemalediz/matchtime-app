@@ -56,6 +56,7 @@ import {
   PAYMENT_FAILED_HOLD_MS,
   PENDING_BILLING_DM_MAX_AGE_MS,
   billingDmsDue,
+  billingRetriesOn,
   feeTipDue,
   isBillingDmHour,
   monthDmFresh,
@@ -284,10 +285,12 @@ async function sendOneScheduled(club: DmClub & { billing: NonNullable<DmClub["bi
     case "paused": {
       const reason = club.billing.pausedReason;
       if (reason !== "no-card" && reason !== "payment-failed" && reason !== "cancelled") return "no-reason";
-      // Slice P3: what could not be taken is the unpaid month's charge.
-      const unpaid = reason === "payment-failed" ? await latestUnpaidMonth(club.id) : null;
-      const amountPence = unpaid?.amountPence ?? club.pricePence;
-      text = ({ name }) => pausedText(lang, { name, club: club.name, amountPence, reason, link });
+      // Slice P4 (P3 review): what could not be taken is the TOTAL of the
+      // unpaid months, and how many there are.
+      const unpaid = reason === "payment-failed" ? await unpaidMonthsTotal(club.id) : null;
+      const amountPence = unpaid && unpaid.count > 0 ? unpaid.totalPence : club.pricePence;
+      const unpaidMonths = unpaid && unpaid.count > 0 ? unpaid.count : 1;
+      text = ({ name }) => pausedText(lang, { name, club: club.name, amountPence, unpaidMonths, reason, link });
       break;
     }
   }
@@ -476,12 +479,14 @@ async function monthOfInvoice(orgId: string, invoiceId: string) {
 }
 
 /** The club's latest month whose charge is still owed (slice P3). */
-async function latestUnpaidMonth(orgId: string) {
-  return db.clubBillingMonth.findFirst({
+/** The club's unpaid club fee months (failed, or invoiced and not yet
+ *  paid): their total and how many. */
+async function unpaidMonthsTotal(orgId: string): Promise<{ totalPence: number; count: number }> {
+  const rows = await db.clubBillingMonth.findMany({
     where: { orgId, status: { in: ["failed", "invoiced"] }, amountPence: { not: null } },
-    orderBy: { index: "desc" },
     select: { amountPence: true },
   });
+  return { totalPence: rows.reduce((sum, r) => sum + (r.amountPence ?? 0), 0), count: rows.length };
 }
 
 async function sendPaymentAction(club: DmClub & { billing: NonNullable<DmClub["billing"]> }, invoiceId: string, hostedUrl: string) {
@@ -530,6 +535,7 @@ async function sendPaymentFailed(club: DmClub & { billing: NonNullable<DmClub["b
         endsAt: month.endsAt,
         link,
         ownCard,
+        retrying: billingRetriesOn(),
       }),
   });
 }

@@ -264,18 +264,38 @@ describe("startTrialRefusal", () => {
   });
 });
 
-describe("billingTotals: the owner page's totals line", () => {
-  it("paying clubs and their monthly total at current prices; the other states counted", () => {
+describe("billingTotals: the owner page's totals line (slice P4: games played)", () => {
+  it("clubs with a card, last month charged, this month so far, unpaid, VAT checks; exempt clubs not counted", () => {
+    const row = (status: string, over: Record<string, unknown> = {}) => ({
+      status,
+      cardOnFile: false,
+      vatCheck: false,
+      thisMonthPence: null,
+      lastMonth: null,
+      unpaidPence: 0,
+      ...over,
+    });
     expect(
       billingTotals([
-        { status: "subscribed", plan: "standard", pricePence: null },
-        { status: "subscribed", plan: "custom", pricePence: 500 },
-        { status: "trial", plan: "standard", pricePence: null },
-        { status: "grace", plan: "standard", pricePence: null },
-        { status: "past_due", plan: "standard", pricePence: null },
-        { status: "paused", plan: "standard", pricePence: null },
-        { status: "exempt", plan: "free", pricePence: null },
+        row("subscribed", { cardOnFile: true, thisMonthPence: 499, lastMonth: { status: "paid", amountPence: 999 } }),
+        row("subscribed", { cardOnFile: true, thisMonthPence: 0, lastMonth: { status: "paid", amountPence: 375 } }),
+        row("trial"),
+        row("grace"),
+        row("past_due", { cardOnFile: true, unpaidPence: 749, lastMonth: { status: "failed", amountPence: 749 } }),
+        row("paused", { vatCheck: true }),
+        row("exempt", { cardOnFile: true, vatCheck: true }),
       ]),
-    ).toEqual({ paying: 2, monthlyPence: 1499, trial: 1, grace: 1, pastDue: 1, paused: 1 });
+    ).toEqual({
+      withCard: 3,
+      lastMonthChargedPence: 1374,
+      thisMonthPence: 499,
+      unpaidClubs: 1,
+      unpaidPence: 749,
+      vatCheck: 1,
+      trial: 1,
+      grace: 1,
+      pastDue: 1,
+      paused: 1,
+    });
   });
 });

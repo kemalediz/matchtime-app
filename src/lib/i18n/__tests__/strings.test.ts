@@ -622,11 +622,24 @@ const SAMPLES: SampleArgs = {
   billing_state_trial: { date: "Sat 31 Oct", price: "£9.99" },
   billing_state_grace: { date: "Sat 7 Nov" },
   billing_state_subscribed: { price: "£9.99", date: "Tue 1 Dec" },
-  billing_state_subscribed_ending: { price: "£9.99", date: "Tue 1 Dec" },
+  billing_state_card_saved: { date: "Tue 1 Dec" },
+  billing_state_nothing_until: { date: "Tue 1 Dec" },
+  billing_state_subscribed_ending: { date: "Tue 1 Dec" },
   billing_state_card: { brand: "Visa", last4: "4242" },
-  billing_state_paid_with_other: { price: "£9.99", holder: "Elvin", date: "Tue 1 Dec" },
-  billing_state_past_due: { date: "Sat 7 Nov" },
+  billing_state_paid_with_other: { holder: "Elvin", rest: "RESTLINE" },
+  billing_state_past_due: { amount: "£7.49", from: "1 Nov", to: "30 Nov", months: 1, retrying: true, date: "Tue 8 Dec" },
   billing_state_paused: null,
+  billing_state_paused_unpaid: { amount: "£15.48", months: 2 },
+  billing_state_paused_stopped: null,
+  // Club fee billing, slice P4 (games played): the month box, past months.
+  billing_month_box: { from: "1 Nov", to: "30 Nov", played: 2, scheduled: 4, upcoming: 3, amount: "£4.99", max: "£9.99", date: "Tue 1 Dec" },
+  billing_nothing: null,
+  billing_past_months: null,
+  billing_see_games: null,
+  billing_receipt: null,
+  billing_month_line: { from: "1 Nov", to: "30 Nov", status: "paid", games: "GAMESCOUNT", amount: "£7.99" },
+  billing_month_games: { played: 4, scheduled: 5 },
+  billing_game_outcome: { outcome: "played" },
   billing_state_paused_removed: null,
   billing_card_holder_note: { club: "Riverside FC", contact: "Colin" },
   billing_who_collector: { name: "Colin" },
@@ -644,8 +657,10 @@ const SAMPLES: SampleArgs = {
   billing_open: null,
   billing_choose_collector: null,
   billing_banner_grace: { date: "Sat 7 Nov" },
-  billing_banner_past_due: { date: "Sat 7 Nov" },
+  billing_banner_past_due: { amount: "£7.49", from: "1 Nov", to: "30 Nov", months: 1, date: "Tue 8 Dec" },
   billing_banner_paused: null,
+  billing_banner_paused_unpaid: null,
+  billing_banner_paused_stopped: null,
   billing_banner_paused_removed: null,
   billing_banner_link: null,
   billing_notice_done: null,
@@ -667,8 +682,8 @@ const SAMPLES: SampleArgs = {
   billing_dm_trial_28: { name: "Colin", club: "Riverside FC", date: "Sat 31 Oct", price: "£9.99", link: "https://matchtime.ai/r/abc" },
   billing_dm_trial_ended: { name: "Colin", club: "Riverside FC", date: "Sat 7 Nov", price: "£9.99", link: "https://matchtime.ai/r/abc" },
   billing_dm_set_collector: null,
-  billing_dm_paused: { name: "Colin", club: "Riverside FC", amount: "£7.49", link: "https://matchtime.ai/r/abc", kind: "payment-failed" },
-  billing_dm_payment_failed: { name: "Colin", club: "Riverside FC", amount: "£7.49", from: "1 Nov", to: "30 Nov", link: "https://matchtime.ai/r/abc", ownCard: true },
+  billing_dm_paused: { name: "Colin", club: "Riverside FC", amount: "£15.48", months: 2, link: "https://matchtime.ai/r/abc", kind: "payment-failed" },
+  billing_dm_payment_failed: { name: "Colin", club: "Riverside FC", amount: "£7.49", from: "1 Nov", to: "30 Nov", link: "https://matchtime.ai/r/abc", ownCard: true, retrying: true },
   billing_dm_payment_action: { name: "Colin", club: "Riverside FC", amount: "£7.49", from: "1 Nov", to: "30 Nov", link: "https://invoice.stripe.com/i/abc" },
   billing_dm_payment_action_other: { name: "Colin", club: "Riverside FC", amount: "£7.49", from: "1 Nov", to: "30 Nov", link: "https://invoice.stripe.com/i/abc", billingLink: "https://matchtime.ai/r/abc" },
   billing_dm_payer_changed_card: { name: "Pat", club: "Riverside FC", price: "£9.99", oldName: "Colin", link: "https://matchtime.ai/r/abc" },
@@ -860,7 +875,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,
