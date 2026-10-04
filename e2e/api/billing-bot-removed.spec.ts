@@ -9,12 +9,14 @@
  * only because the harness boots the server with MT_TEST_MODE=1), and
  * `x-mt-test-self-join: 1` turns self-join on for the pending club's case.
  *
- * What is pinned:
- *   - a billed club: paused (removed), its subscription set to end with
- *     the paid month (not cancelled now, nothing refunded), no DM; it
- *     leaves the Pi's monitored set; a repeat changes nothing;
- *   - added back: in the free month it serves again (a still-running
- *     subscription is un-cancelled); after it, it waits for a card;
+ * What is pinned (slice P2, games played: no subscription):
+ *   - a billed club: paused (removed), NOTHING charged, ended or refunded
+ *     in Stripe (only open card sessions expire; the games played before
+ *     the removal are charged when that month closes), no DM; it leaves
+ *     the Pi's monitored set; a repeat changes nothing;
+ *   - added back: with a card on file and nothing unpaid it serves again;
+ *     in the free month with no card it is back in trial; after it, it
+ *     waits for a card;
  *   - Sutton FC (the seeded club, never billed): logged only;
  *   - BILLING_ENABLED off: logged only, nothing written;
  *   - a pending self-join club: exactly today's behaviour (back to draft).
@@ -48,8 +50,8 @@ const PENDING = "e2e-b5-pending";
 const PENDING_GROUP = "120363900000000505@g.us";
 const PENDING_OWNER = "e2e-b5-pending-owner";
 
-const SUB = "sub_e2e_b5";
 const CUS = "cus_e2e_b5";
+const PM = "pm_e2e_b5";
 const TRIAL_ENDS = new Date(Date.now() + 25 * DAY);
 
 const fake = () => createFakeBillingStripe({ file: E2E.BILLING_STRIPE_FILE });
@@ -92,7 +94,7 @@ const club = (id: string) =>
 
 const billingDms = () => testDb().count(`SELECT COUNT(*) FROM "PlatformJob" WHERE purpose = 'billing'`);
 
-async function seedBilledClub(id: string, group: string, status: string, trialEndsAt: Date, sub?: { status: string }) {
+async function seedBilledClub(id: string, group: string, status: string, trialEndsAt: Date, card = false) {
   const db = testDb();
   await db.run(
     `INSERT INTO "Organisation" (id,name,slug,"inviteCode","approvalStatus","approvedAt","approvalDecidedAt","whatsappGroupId",
@@ -101,17 +103,18 @@ async function seedBilledClub(id: string, group: string, status: string, trialEn
     [id, `B5 ${id}`, `${id}-invite`, new Date(trialEndsAt.getTime() - 30 * DAY).toISOString(), group, status],
   );
   await db.run(
-    `INSERT INTO "ClubBilling" ("orgId","trialStartedAt","trialEndsAt","graceEndsAt","stripeCustomerId","stripeSubscriptionId",
-       "stripeSubscriptionStatus","updatedAt")
-     VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
+    `INSERT INTO "ClubBilling" ("orgId","trialStartedAt","trialEndsAt","graceEndsAt","stripeCustomerId","stripePaymentMethodId",
+       "cardBrand","cardLast4","updatedAt")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())`,
     [
       id,
       new Date(trialEndsAt.getTime() - 30 * DAY).toISOString(),
       trialEndsAt.toISOString(),
       status === "grace" ? new Date(trialEndsAt.getTime() + 7 * DAY).toISOString() : null,
-      sub ? CUS : null,
-      sub ? SUB : null,
-      sub ? sub.status : null,
+      card ? CUS : null,
+      card ? PM : null,
+      card ? "visa" : null,
+      card ? "4242" : null,
     ],
   );
   await db.run(
@@ -131,20 +134,8 @@ test.beforeAll(async () => {
   mkdirSync(path.dirname(E2E.BILLING_STRIPE_FILE), { recursive: true });
   writeFileSync(E2E.BILLING_STRIPE_FILE, "{}");
 
-  // A club with a card on in its free month: the subscription is trialing.
-  await seedBilledClub(PAYING, PAYING_GROUP, "subscribed", TRIAL_ENDS, { status: "trialing" });
-  fake().putSubscription({
-    id: SUB,
-    status: "trialing",
-    customerId: CUS,
-    metadata: { orgId: PAYING, purpose: "club-fee" },
-    cancelAtPeriodEnd: false,
-    currentPeriodEnd: TRIAL_ENDS,
-    trialEnd: TRIAL_ENDS,
-    priceId: "price_e2e_standard",
-    itemId: "si_e2e_b5",
-    card: { paymentMethodId: "pm_e2e_b5", brand: "visa", last4: "4242", country: "GB" },
-  });
+  // A club with a card on in its free month ("subscribed": a card on file).
+  await seedBilledClub(PAYING, PAYING_GROUP, "subscribed", TRIAL_ENDS, true);
   // In the free month with no card; in grace after it; one for the flag-off check.
   await seedBilledClub(TRIAL, TRIAL_GROUP, "trial", TRIAL_ENDS);
   await seedBilledClub(LATE, LATE_GROUP, "grace", new Date(Date.now() - 3 * DAY));
@@ -174,7 +165,7 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("a billed club: paused (removed), the subscription ends with the paid month, no DM, out of the Pi's monitored set", async ({
+test("a billed club: paused (removed), nothing charged or ended in Stripe, no DM, out of the Pi's monitored set", async ({
   request,
 }) => {
   expect(await monitored(request)).toContain(PAYING_GROUP);
@@ -187,13 +178,10 @@ test("a billed club: paused (removed), the subscription ends with the paid month
     billingStatus: "paused",
     whatsappBotEnabled: true, // billing never touches the mute switch
     pausedReason: "removed",
-    cancelAtPeriodEnd: true,
+    cancelAtPeriodEnd: false,
   });
-  const sub = await fake().retrieveSubscription(SUB);
-  expect(sub).toMatchObject({ status: "trialing", cancelAtPeriodEnd: true });
-  const methods = fake().state().calls.map((c) => c.method);
-  expect(methods).not.toContain("cancelSubscription");
-  expect(methods).not.toContain("refundPaidInvoices");
+  // Only the open card sessions are expired: no invoice, no payment, no detach.
+  expect(fake().state().calls.map((c) => c.method)).toEqual(["expireOpenCheckoutSessions"]);
   expect(await billingDms()).toBe(dms);
 
   const after = await orgs(request);
@@ -201,17 +189,18 @@ test("a billed club: paused (removed), the subscription ends with the paid month
   expect(after.silentGroups).toContain(PAYING_GROUP);
 });
 
-test("the same removal again (a repeated event): nothing changes, no second Stripe change", async ({ request }) => {
+test("the same removal again (a repeated event): nothing changes", async ({ request }) => {
   expect(await botRemoved(request, PAYING_GROUP)).toEqual({ ok: true, billing: "already-paused", orgId: PAYING });
   expect((await club(PAYING))?.billingStatus).toBe("paused");
-  expect(fake().state().calls.filter((c) => c.method === "setCancelAtPeriodEnd")).toHaveLength(1);
+  expect(fake().state().calls.filter((c) => !["expireOpenCheckoutSessions"].includes(c.method))).toEqual([]);
 });
 
-test("added back while its subscription still runs: the cancel is undone and the club serves again", async ({ request }) => {
+test("added back with a card on file and nothing unpaid: the club serves again, no Stripe call", async ({ request }) => {
+  const before = fake().state().calls.length;
   const json = await botAdded(request, PAYING_GROUP);
   expect(json).toMatchObject({ ok: true, introText: null });
-  expect(await club(PAYING)).toMatchObject({ billingStatus: "subscribed", pausedReason: null, cancelAtPeriodEnd: false });
-  expect((await fake().retrieveSubscription(SUB)).cancelAtPeriodEnd).toBe(false);
+  expect(await club(PAYING)).toMatchObject({ billingStatus: "subscribed", pausedReason: null });
+  expect(fake().state().calls.length).toBe(before);
   expect(await monitored(request)).toContain(PAYING_GROUP);
 });
 

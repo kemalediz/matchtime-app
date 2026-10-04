@@ -1,33 +1,36 @@
 /**
- * Club fee billing, slice B3: the card buttons and the billing webhook,
- * end to end. Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 4.5,
- * 5.2, 5.3 and 10.2.
+ * Club fee billing, slices B3 and P2 (games played): the card buttons and
+ * the billing webhook, end to end. Plan:
+ * MDs/club-fee-billing-plan-2026-10-01.md, sections 4.2, 4.5, 5.3, 5.4,
+ * 10.2.
  *
  * STRIPE IS THE FAKE ADAPTER (src/lib/stripe-billing-fake.ts): the dev
  * server runs with MT_TEST_MODE=1 and BILLING_STRIPE_FAKE=1, so a Checkout
  * "URL" is the billing page itself with `?fake_checkout=<id>`, and every
  * call is recorded in one JSON file this spec reads. When a test needs
- * Stripe to "hold" a subscription or a saved card, it writes it there,
+ * Stripe to "hold" a saved card or a month's invoice, it writes it there,
  * then posts a fixture event SIGNED LOCALLY with the test-only billing
  * secret to /api/stripe/billing-webhook. Nothing reaches Stripe.
  *
- *   1. A PLAYER money collector adds a card: Checkout params, the webhook,
- *      subscribed, the "card added" DM once (a re-delivery is a duplicate).
- *   2. Change card or cancel opens the (fake) Customer Portal.
+ * The month close itself (count, fee, invoice) is driven by the hourly
+ * cron in slice P3; its unit tests are club-billing-months.test.ts. Here a
+ * month's invoice is seeded as the close leaves it.
+ *
+ *   1. A PLAYER money collector adds a card: setup mode, the webhook,
+ *      subscribed, NOTHING charged, the "card added" DM once.
+ *   2. Stop paying inside the free month: the card is removed, back in the
+ *      free month; a card added again.
  *   3. A new collector: Use my card instead (setup mode), the old card
- *      removed and its holder told once; the old (player) holder's page is
- *      gone.
+ *      removed and its holder told once; the old (player) holder's page
+ *      is gone.
  *   4. The old card holder's Remove my card.
- *   5. invoice.payment_failed and invoice.paid; a bad signature; an event
- *      that is not a club fee.
- *   6. The platform owner's plan changes on the live subscription (Custom
- *      price swap, Free cancels), then Standard with the free month used
- *      up: grace, a fresh week, and the collector asked for a card; a new
- *      Add a card then has no trial.
- *   7. (PR #181 review fix 1) a Checkout that completes after the club was
- *      set Free: cancelled at once and refunded, recorded on /admin/health.
- *   8. (review fix 2) a paused club whose subscription is past due: "Update
- *      card and pay" (setup mode), and the open invoice is retried.
+ *   5. A month's invoice fails: past due, "Update card and pay" (setup
+ *      mode) pays it on the new card, invoice.paid: subscribed, the month
+ *      paid. A bad signature and events that are not ours change nothing.
+ *   6. Stop paying after the free month: billing ends with the current
+ *      month; Keep paying undoes it.
+ *   7. The owner sets Free with an unpaid invoice: voided, the open months
+ *      waived; a card saved afterwards is removed at once.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -112,19 +115,35 @@ async function billingDms() {
   );
 }
 
-const subscription = (over: Record<string, unknown> = {}) => ({
-  id: "sub_e2e_1",
-  status: "trialing",
-  customerId: "",
-  metadata: { orgId: ORG, purpose: "club-fee", payerUserId: USER.colin },
-  cancelAtPeriodEnd: false,
-  currentPeriodEnd: TRIAL_ENDS,
-  trialEnd: TRIAL_ENDS,
-  priceId: "price_e2e_standard",
-  itemId: "si_e2e_1",
-  card: { paymentMethodId: "pm_e2e_colin", brand: "visa", last4: "4242", country: "GB" },
-  ...over,
-});
+/** Complete a setup-mode session as Stripe would: the SetupIntent holds the card. */
+async function completeSetup(
+  request: APIRequestContext,
+  sessionId: string,
+  card: { pm: string; brand: string; last4: string },
+  who: { email: string; name: string },
+  id?: string,
+) {
+  const params = stripeState().sessions[sessionId].params;
+  fake().putSetupIntent(`seti_${sessionId}`, { paymentMethodId: card.pm, brand: card.brand, last4: card.last4, country: "GB" });
+  return postEvent(
+    request,
+    "checkout.session.completed",
+    {
+      id: sessionId,
+      object: "checkout.session",
+      mode: "setup",
+      customer: params.customer,
+      setup_intent: `seti_${sessionId}`,
+      created: Math.floor(Date.now() / 1000) - 60,
+      metadata: params.metadata,
+      customer_details: { email: who.email, name: who.name, address: { country: "GB", line1: "1 Pitch Lane" } },
+    },
+    id ? { id } : {},
+  );
+}
+
+/** Money Stripe was asked to move: invoices made, finalised or paid. */
+const moneyCalls = () => stripeState().calls.filter((c) => /MonthInvoice|finalizeInvoice|payInvoice/.test(c.method));
 
 test.beforeAll(async () => {
   resetDb();
@@ -166,52 +185,35 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("1. a PLAYER money collector adds a card: Checkout, the webhook, subscribed, one 'card added' DM", async ({ page, request }) => {
+test("1. a PLAYER money collector adds a card: setup mode, the webhook, subscribed, NOTHING charged, one 'card added' DM", async ({ page, request }) => {
   await signInAs(page, USER.colin, `/billing/${ORG}`);
   await expect(page.getByTestId("billing-page")).toHaveAttribute("data-role", "contact", { timeout: 30_000 });
   await page.getByTestId("billing-btn-add-card").click();
   await page.waitForURL(/fake_checkout=cs_fake_/, { timeout: 30_000 });
   const sessionId = new URL(page.url()).searchParams.get("fake_checkout")!;
 
-  // What MatchTime asked Stripe for.
+  // What MatchTime asked Stripe for: SETUP mode on the club's Customer.
   const customerId = (await billingRow())!.stripeCustomerId as string;
   expect(customerId).toMatch(/^cus_fake_/);
   const params = stripeState().sessions[sessionId].params;
   expect(params).toMatchObject({
-    mode: "subscription",
+    mode: "setup",
     customer: customerId,
     client_reference_id: ORG,
-    line_items: [{ price: "price_e2e_standard", quantity: 1 }],
+    currency: "gbp",
     billing_address_collection: "required",
-    tax_id_collection: { enabled: true },
     metadata: { orgId: ORG, payerUserId: USER.colin, purpose: "club-fee", action: "add-card" },
+    setup_intent_data: { metadata: { orgId: ORG, payerUserId: USER.colin, purpose: "club-fee", action: "add-card" } },
   });
-  expect(params.subscription_data).toMatchObject({
-    default_tax_rates: ["txr_e2e_vat"],
-    trial_end: Math.floor(TRIAL_ENDS.getTime() / 1000),
-    metadata: { orgId: ORG, purpose: "club-fee", payerUserId: USER.colin },
-  });
+  expect(params).not.toHaveProperty("line_items");
+  expect(params).not.toHaveProperty("subscription_data");
   expect(JSON.stringify(params)).not.toMatch(/matchId|application_fee|stripeAccount/);
 
-  // Stripe now holds the subscription; it tells us so.
-  fake().putSubscription({ ...subscription({ customerId }) } as never);
-  const completed = {
-    id: sessionId,
-    object: "checkout.session",
-    mode: "subscription",
-    customer: customerId,
-    subscription: "sub_e2e_1",
-    created: Math.floor(Date.now() / 1000) - 60,
-    metadata: params.metadata,
-    customer_details: { email: "colin@e2e-test.invalid", name: "Colin Sevens", address: { country: "GB" } },
-  };
-  const evtId = `evt_e2e_checkout_${Date.now()}`;
-  const res = await postEvent(request, "checkout.session.completed", completed, { id: evtId });
+  const evtId = `evt_e2e_card_${Date.now()}`;
+  const res = await completeSetup(request, sessionId, { pm: "pm_e2e_colin", brand: "visa", last4: "4242" }, { email: "colin@e2e-test.invalid", name: "Colin Sevens" }, evtId);
   expect(res.status()).toBe(200);
   expect(await status()).toBe("subscribed");
   expect(await billingRow()).toMatchObject({
-    stripeSubscriptionId: "sub_e2e_1",
-    stripeSubscriptionStatus: "trialing",
     stripePaymentMethodId: "pm_e2e_colin",
     cardBrand: "visa",
     cardLast4: "4242",
@@ -220,78 +222,81 @@ test("1. a PLAYER money collector adds a card: Checkout, the webhook, subscribed
     cardCountry: "GB",
     vatCountryCheck: false,
   });
-  expect((await testDb().one(`SELECT "processedAt" IS NOT NULL AS done FROM "BillingEvent" WHERE id=$1`, [evtId]))).toEqual({ done: true });
+  expect(stripeState().customers[customerId].defaultPaymentMethod).toBe("pm_e2e_colin");
+  // Saving a card charges NOTHING: no invoice, no payment.
+  expect(moneyCalls()).toEqual([]);
+  expect(await testDb().one(`SELECT "processedAt" IS NOT NULL AS done FROM "BillingEvent" WHERE id=$1`, [evtId])).toEqual({ done: true });
 
   const dms = await billingDms();
   expect(dms).toHaveLength(1);
   expect(dms[0].phone).toBe(PHONE.colin);
   expect(dms[0].text).toContain("Thanks Colin Sevens, your card is saved.");
-  expect(dms[0].text).toContain("The first £9.99 is taken on Thu 31 Jan");
+  expect(dms[0].text).not.toMatch(/taken today/);
   expect(dms[0].text).not.toMatch(DASH);
 
   // Stripe re-delivers: answered as a duplicate, nothing twice.
-  const again = await postEvent(request, "checkout.session.completed", completed, { id: evtId });
+  const again = await completeSetup(request, sessionId, { pm: "pm_e2e_colin", brand: "visa", last4: "4242" }, { email: "colin@e2e-test.invalid", name: "Colin Sevens" }, evtId);
   expect(await again.json()).toEqual({ received: true, duplicate: true });
   expect(await billingDms()).toHaveLength(1);
 
-  // Back from Stripe: the notice, then the paid state with the card.
+  // Back from Stripe: the notice, the card, Change card and Stop paying.
   await page.goto(`/billing/${ORG}?done=1`);
-  await expect(page.getByTestId("billing-notice")).toHaveText(
-    "Thanks, your card is being saved. This page shows it within a minute.",
-    { timeout: 30_000 },
-  );
-  await expect(page.getByTestId("billing-state")).toContainText("£9.99 a month. Next payment Thu 31 Jan.");
+  await expect(page.getByTestId("billing-notice")).toHaveText("Thanks, your card is being saved. This page shows it within a minute.", { timeout: 30_000 });
   await expect(page.getByTestId("billing-state")).toContainText("Card visa ending 4242.");
-  await expect(page.getByTestId("billing-btn-change-card")).toBeVisible();
+  await expect(page.getByTestId("billing-btn-change-card")).toHaveText("Change card");
+  await expect(page.getByTestId("billing-btn-stop-paying")).toHaveText("Stop paying");
 });
 
-test("2. Change card or cancel opens the Customer Portal, returning to the billing page", async ({ page }) => {
+test("2. Stop paying inside the free month: the card is removed, back in the free month; a card added again", async ({ page, request }) => {
   await signInAs(page, USER.colin, `/billing/${ORG}`);
-  await page.getByTestId("billing-btn-change-card").click();
-  await page.waitForURL(/fake_portal=1/, { timeout: 30_000 });
-  const portal = stripeState().calls.filter((c) => c.method === "createPortalSession").at(-1)!.args as Record<string, unknown>;
-  expect(portal).toMatchObject({ returnUrl: `${E2E_BASE_URL}/billing/${ORG}` });
+  await page.getByTestId("billing-btn-stop-paying").click();
+  await expect(page.getByTestId("billing-notice")).toHaveText(
+    "Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.",
+    { timeout: 30_000 },
+  );
+  expect(stripeState().detached).toContain("pm_e2e_colin");
+  expect(await status()).toBe("trial");
+  expect(await billingRow()).toMatchObject({ stripePaymentMethodId: null, cardHolderUserId: null, trialEndsAt: TRIAL_ENDS });
+  expect(moneyCalls()).toEqual([]);
+
+  await page.getByTestId("billing-btn-add-card").click();
+  await page.waitForURL(/fake_checkout=cs_fake_/, { timeout: 30_000 });
+  const sessionId = new URL(page.url()).searchParams.get("fake_checkout")!;
+  expect((await completeSetup(request, sessionId, { pm: "pm_e2e_colin2", brand: "visa", last4: "4242" }, { email: "colin@e2e-test.invalid", name: "Colin Sevens" })).status()).toBe(200);
+  expect(await status()).toBe("subscribed");
+  expect((await billingRow())!.stripePaymentMethodId).toBe("pm_e2e_colin2");
+  // The same club Customer, never a second one.
+  expect(stripeState().calls.filter((c) => c.method === "createCustomer")).toHaveLength(1);
 });
 
 test("3. a new collector puts their own card on: setup mode, the old card removed, its holder told once", async ({ page, context, request }) => {
   await testDb().run(`UPDATE "Organisation" SET "paymentHolderId"=$2 WHERE id=$1`, [ORG, USER.pat]);
   await signInAs(page, USER.pat, `/billing/${ORG}`);
-  await expect(page.getByTestId("billing-state")).toHaveText(
-    "£9.99 a month, paid with Colin Sevens's card until you put yours on. Next payment Thu 31 Jan.",
-    { timeout: 30_000 },
-  );
+  await expect(page.getByTestId("billing-state")).toContainText("paid with Colin Sevens's card until you put yours on", { timeout: 30_000 });
   await expect(page.getByTestId("billing-page")).not.toContainText("4242");
   await page.getByTestId("billing-btn-use-mine").click();
   await page.waitForURL(/fake_checkout=cs_fake_/, { timeout: 30_000 });
   const sessionId = new URL(page.url()).searchParams.get("fake_checkout")!;
-  const params = stripeState().sessions[sessionId].params;
   const customerId = (await billingRow())!.stripeCustomerId;
-  expect(params).toMatchObject({
+  expect(stripeState().sessions[sessionId].params).toMatchObject({
     mode: "setup",
     customer: customerId,
     billing_address_collection: "required",
     metadata: { orgId: ORG, payerUserId: USER.pat, purpose: "club-fee", action: "replace-card" },
   });
 
-  fake().putSetupIntent("seti_e2e_pat", { paymentMethodId: "pm_e2e_pat", brand: "mastercard", last4: "4444", country: "GB" });
-  const res = await postEvent(request, "checkout.session.completed", {
-    id: sessionId,
-    object: "checkout.session",
-    mode: "setup",
-    customer: customerId,
-    setup_intent: "seti_e2e_pat",
-    metadata: params.metadata,
-    customer_details: { email: "pat@e2e-test.invalid", name: "Pat Sevens", address: { country: "GB" } },
-  });
+  const res = await completeSetup(request, sessionId, { pm: "pm_e2e_pat", brand: "mastercard", last4: "4444" }, { email: "pat@e2e-test.invalid", name: "Pat Sevens" });
   expect(res.status()).toBe(200);
   expect(await billingRow()).toMatchObject({ cardHolderUserId: USER.pat, stripePaymentMethodId: "pm_e2e_pat", cardLast4: "4444" });
-  expect(stripeState().detached).toContain("pm_e2e_colin");
+  expect(stripeState().detached).toContain("pm_e2e_colin2");
+  expect(stripeState().calls.map((c) => c.method)).toContain("resetCustomerDetails");
   const replaced = (await billingDms()).filter((d) => d.refId.includes(":card-replaced:"));
   expect(replaced).toHaveLength(1);
   expect(replaced[0]).toMatchObject({
     phone: PHONE.colin,
     text: "Hi Colin Sevens, Pat Sevens now pays the MatchTime fee for Card Sevens. Your card has been removed and won't be charged for it again.",
   });
+  expect(moneyCalls()).toEqual([]);
 
   await page.goto(`/billing/${ORG}`);
   await expect(page.getByTestId("billing-state")).toContainText("Card mastercard ending 4444.", { timeout: 30_000 });
@@ -309,37 +314,82 @@ test("4. the old card holder removes their card", async ({ page }) => {
   await signInAs(page, USER.pat, `/billing/${ORG}`);
   await expect(page.getByTestId("billing-page")).toHaveAttribute("data-role", "card-holder", { timeout: 30_000 });
   await page.getByTestId("billing-btn-remove-mine").click();
-  await expect(page.getByTestId("billing-notice")).toHaveText(
-    "Your card has been removed and won't be charged for this club again.",
-    { timeout: 30_000 },
-  );
+  await expect(page.getByTestId("billing-notice")).toHaveText("Your card has been removed and won't be charged for this club again.", { timeout: 30_000 });
   expect(stripeState().detached).toContain("pm_e2e_pat");
   expect(await billingRow()).toMatchObject({ stripePaymentMethodId: null, cardHolderUserId: null, cardLast4: null });
   expect(await status()).toBe("subscribed");
 });
 
-test("5. payment failed, then paid; a bad signature and a non club fee event change nothing", async ({ request }) => {
+/** A month's invoice as the close leaves it: finalised, open, on the club's Customer. */
+async function seedInvoicedMonth(monthId: string, index: number, pence: number, monthStatus = "invoiced") {
   const customerId = (await billingRow())!.stripeCustomerId as string;
-  const invoice = (id: string) => ({
-    id,
-    object: "invoice",
-    customer: customerId,
-    billing_reason: "subscription_cycle",
-    parent: { type: "subscription_details", subscription_details: { subscription: "sub_e2e_1" } },
-  });
-  // Pat removed their card in test 4: Stripe's subscription has none on it.
-  fake().putSubscription({ ...subscription({ customerId, status: "past_due", trialEnd: null, card: null }) } as never);
-  expect((await postEvent(request, "invoice.payment_failed", invoice("in_e2e_1"))).status()).toBe(200);
+  const args = { orgId: ORG, monthId, customerId, description: `MatchTime club fee, Card Sevens: e2e month ${index}` };
+  const inv = await fake().createMonthInvoice(args);
+  await fake().addMonthInvoiceItem({ ...args, invoiceId: inv.id, amountPence: pence, productId: "prod_e2e_club", taxRateId: "txr_e2e_vat" });
+  await fake().finalizeInvoice(inv.id);
+  await testDb().run(
+    `INSERT INTO "ClubBillingMonth" (id,"orgId",index,"startsAt","endsAt","priceAtStartPence",status,scheduled,played,"pricePence","amountPence","stripeInvoiceId","closedAt","updatedAt")
+     VALUES ($1,$2,$3,now() - interval '40 days',now() - interval '10 days',999,$4,5,4,999,$5,$6,now(),now())`,
+    [monthId, ORG, index, monthStatus, pence, inv.id],
+  );
+  return { invoiceId: inv.id, customerId };
+}
+async function monthRow(id: string) {
+  return testDb().one<Record<string, unknown>>(`SELECT * FROM "ClubBillingMonth" WHERE id=$1`, [id]);
+}
+const invoiceObject = (id: string, monthId: string, customerId: string) => ({
+  id,
+  object: "invoice",
+  customer: customerId,
+  metadata: { orgId: ORG, purpose: "club-fee", monthId },
+});
+
+test("5. a month's invoice fails: past due, Update card and pay, then paid: subscribed; foreign events change nothing", async ({ page, request }) => {
+  // The free month is over: the club is in its billing months.
+  await testDb().run(`UPDATE "ClubBilling" SET "trialEndsAt" = now() - interval '45 days' WHERE "orgId"=$1`, [ORG]);
+  const { invoiceId, customerId } = await seedInvoicedMonth("cbm_e2e_1", 1, 799);
+
+  // Pat removed their card in test 4: Stripe's attempt fails.
+  expect((await postEvent(request, "invoice.payment_failed", invoiceObject(invoiceId, "cbm_e2e_1", customerId))).status()).toBe(200);
   expect(await status()).toBe("past_due");
   expect((await billingRow())!.graceEndsAt).not.toBeNull();
+  expect((await monthRow("cbm_e2e_1"))!.status).toBe("failed");
 
-  fake().putSubscription({ ...subscription({ customerId, status: "active", trialEnd: null, card: null }) } as never);
-  expect((await postEvent(request, "invoice.paid", invoice("in_e2e_1"))).status()).toBe(200);
+  await page.context().clearCookies();
+  await signInAs(page, USER.colin, `/billing/${ORG}`);
+  const pay = page.getByTestId("billing-btn-update-card");
+  await expect(pay).toHaveText("Update card and pay", { timeout: 30_000 });
+  await expect(page.getByTestId("billing-btn-stop-paying")).toHaveCount(0);
+  await pay.click();
+  await page.waitForURL(/fake_checkout=cs_fake_/, { timeout: 30_000 });
+  const sessionId = new URL(page.url()).searchParams.get("fake_checkout")!;
+  expect(stripeState().sessions[sessionId].params).toMatchObject({ mode: "setup", customer: customerId, metadata: { action: "replace-card", payerUserId: USER.colin } });
+
+  const res = await completeSetup(request, sessionId, { pm: "pm_e2e_good", brand: "visa", last4: "1111" }, { email: "colin@e2e-test.invalid", name: "Colin Sevens" });
+  expect(res.status()).toBe(200);
+  // The unpaid month's invoice is paid on the NEW card at once.
+  expect(stripeState().calls.filter((c) => c.method === "payInvoice").map((c) => c.args)).toEqual([{ invoiceId, paymentMethodId: "pm_e2e_good" }]);
+  expect((await fake().retrieveInvoice(invoiceId))!.status).toBe("paid");
+  // Still past due until Stripe says the invoice is paid.
+  expect(await status()).toBe("past_due");
+
+  const paidEvt = `evt_e2e_paid_${Date.now()}`;
+  expect((await postEvent(request, "invoice.paid", invoiceObject(invoiceId, "cbm_e2e_1", customerId), { id: paidEvt })).status()).toBe(200);
   expect(await status()).toBe("subscribed");
-  expect(await billingRow()).toMatchObject({ graceEndsAt: null, paymentFailedAt: null });
+  expect(await billingRow()).toMatchObject({ graceEndsAt: null, paymentFailedAt: null, stripePaymentMethodId: "pm_e2e_good" });
+  expect(await monthRow("cbm_e2e_1")).toMatchObject({ status: "paid", stripeInvoiceId: invoiceId, amountPence: 799 });
+  // Re-delivered: a duplicate.
+  expect(await (await postEvent(request, "invoice.paid", invoiceObject(invoiceId, "cbm_e2e_1", customerId), { id: paidEvt })).json()).toEqual({
+    received: true,
+    duplicate: true,
+  });
+  // A stale 'payment_failed' for the same invoice now: applied as paid (fresh read), never past due again.
+  await postEvent(request, "invoice.payment_failed", invoiceObject(invoiceId, "cbm_e2e_1", customerId));
+  expect(await status()).toBe("subscribed");
+  expect((await monthRow("cbm_e2e_1"))!.status).toBe("paid");
 
   // Signed with any other secret (e.g. the Connect endpoint's): refused.
-  const bad = await postEvent(request, "invoice.payment_failed", invoice("in_e2e_2"), { secret: "whsec_not_the_billing_one" });
+  const bad = await postEvent(request, "invoice.payment_failed", invoiceObject(invoiceId, "cbm_e2e_1", customerId), { secret: "whsec_not_the_billing_one" });
   expect(bad.status()).toBe(400);
   // A match fee session reaching this route: recorded, ignored.
   const notOurs = await postEvent(request, "checkout.session.completed", {
@@ -349,139 +399,65 @@ test("5. payment failed, then paid; a bad signature and a non club fee event cha
     metadata: { matchId: "m1", userId: "u1", quantity: "1" },
   });
   expect(await notOurs.json()).toMatchObject({ received: true, action: "ignored", reason: "not-club-fee" });
+  // A subscription event (none exist any more): answered and ignored.
+  const sub = await postEvent(request, "customer.subscription.updated", { id: "sub_old", object: "subscription", metadata: { orgId: ORG, purpose: "club-fee" } });
+  expect(await sub.json()).toMatchObject({ received: true, action: "ignored", reason: "subscription-retired" });
   expect(await status()).toBe("subscribed");
 });
 
-test("6. the owner's plan on a live subscription; Free then Standard after the free month: grace and a card asked for", async ({ page, request, db }) => {
+test("6. Stop paying after the free month: billing ends with the current month; Keep paying undoes it", async ({ page }) => {
+  await signInAs(page, USER.colin, `/billing/${ORG}`);
+  await page.getByTestId("billing-btn-stop-paying").click();
+  await expect(page.getByTestId("billing-notice")).toHaveText(
+    "Done. Billing ends when this month ends: this month is charged for its games as usual, then nothing more. MatchTime keeps running until then.",
+    { timeout: 30_000 },
+  );
+  const row = (await billingRow())!;
+  expect(row.cancelAtPeriodEnd).toBe(true);
+  // The current month is open, and its end is the stop date.
+  expect((row.currentPeriodEnd as Date).getTime()).toBeGreaterThan(Date.now());
+  expect(await status()).toBe("subscribed");
+  expect((await billingRow())!.stripePaymentMethodId).toBe("pm_e2e_good");
+  await expect(page.getByTestId("billing-btn-keep-paying")).toHaveText("Keep paying");
+
+  await page.getByTestId("billing-btn-keep-paying").click();
+  await expect(page.getByTestId("billing-notice")).toHaveText("Done. MatchTime keeps running, and each month is charged only for the games played.", { timeout: 30_000 });
+  expect((await billingRow())!.cancelAtPeriodEnd).toBe(false);
+  await expect(page.getByTestId("billing-btn-stop-paying")).toBeVisible();
+});
+
+test("7. the owner sets Free with an unpaid invoice: voided, open months waived; a card saved afterwards is removed", async ({ page, request, db }) => {
+  const { invoiceId, customerId } = await seedInvoicedMonth("cbm_e2e_unpaid", 90, 499, "failed");
   await db.run(`UPDATE "User" SET "isSuperadmin" = true WHERE id = $1`, [USER.owner]);
   try {
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Card Sevens" });
-
-    // Custom GBP 5: the live subscription's price is swapped, no proration.
-    await row.getByLabel("Plan", { exact: true }).selectOption("custom");
-    await row.getByLabel("Custom price in pounds").fill("5");
-    await row.getByRole("button", { name: "Save plan" }).click();
-    await expect(page.getByText("Plan saved: Custom £5 a month. The card is charged the new price from the next payment.")).toBeVisible({ timeout: 30_000 });
-    const swap = stripeState().calls.filter((c) => c.method === "updateSubscriptionPrice").at(-1)!.args;
-    expect(swap).toEqual({ subscriptionId: "sub_e2e_1", itemId: "si_e2e_1", priceId: "price_fake_500" });
-
-    // Free: cancelled at once; the deletion that follows moves nothing.
     page.once("dialog", (d) => d.accept());
     await row.getByLabel("Plan", { exact: true }).selectOption("free");
     await row.getByRole("button", { name: "Save plan" }).click();
-    await expect(page.getByText("Plan saved: Free. The club is not billed. Its card subscription was cancelled.")).toBeVisible({ timeout: 30_000 });
-    expect(stripeState().calls.filter((c) => c.method === "cancelSubscription").map((c) => c.args)).toEqual([{ subscriptionId: "sub_e2e_1" }]);
-    expect(await status()).toBe("exempt");
-    const customerId = (await billingRow())!.stripeCustomerId as string;
-    fake().putSubscription({ ...subscription({ customerId, status: "canceled", trialEnd: null }) } as never);
-    await postEvent(request, "customer.subscription.deleted", { id: "sub_e2e_1", object: "subscription", metadata: { orgId: ORG, purpose: "club-fee" } });
-    expect(await status()).toBe("exempt");
-    expect((await billingRow())!.stripeSubscriptionStatus).toBe("canceled");
-
-    // The free month is over by now. Standard again: grace, a fresh week, one DM to the collector.
-    await db.run(`UPDATE "ClubBilling" SET "trialEndsAt" = now() - interval '20 days' WHERE "orgId"=$1`, [ORG]);
-    const dmsBefore = (await billingDms()).length;
-    await row.getByLabel("Plan", { exact: true }).selectOption("standard");
-    await row.getByRole("button", { name: "Save plan" }).click();
-    await expect(
-      page.getByText("Plan saved: Standard £9.99 a month. The free month was already used, so the club has 7 days to add a card."),
-    ).toBeVisible({ timeout: 30_000 });
-    expect(await status()).toBe("grace");
-    const grace = await db.one<{ days: number }>(
-      `SELECT round(extract(epoch FROM ("graceEndsAt" - now())) / 86400)::int AS days FROM "ClubBilling" WHERE "orgId"=$1`,
-      [ORG],
-    );
-    expect(grace?.days).toBe(7);
-    const dms = await billingDms();
-    expect(dms).toHaveLength(dmsBefore + 1);
-    expect(dms.at(-1)!.phone).toBe(PHONE.colin);
-    expect(dms.at(-1)!.text).toContain("Card Sevens is on the MatchTime plan again at £9.99 a month.");
-    expect(dms.at(-1)!.text).not.toMatch(DASH);
+    await expect(page.getByText(/Plan saved: Free\. The club is not billed\..* 1 unpaid invoice\(s\) cancelled\./)).toBeVisible({ timeout: 30_000 });
   } finally {
     await db.run(`UPDATE "User" SET "isSuperadmin" = false WHERE id = $1`, [USER.owner]);
   }
-
-  // In grace, a new Add a card takes the first payment at once: no trial.
-  await page.context().clearCookies();
-  await signInAs(page, USER.colin, `/billing/${ORG}`);
-  await page.getByTestId("billing-btn-add-card").click();
-  await page.waitForURL(/fake_checkout=cs_fake_/, { timeout: 30_000 });
-  const sessionId = new URL(page.url()).searchParams.get("fake_checkout")!;
-  const params = stripeState().sessions[sessionId].params;
-  expect(params.subscription_data).not.toHaveProperty("trial_end");
-  expect(params.line_items).toEqual([{ price: "price_e2e_standard", quantity: 1 }]);
-  // The same club Customer, never a second one.
-  expect(params.customer).toBe((await billingRow())!.stripeCustomerId);
-  expect(stripeState().calls.filter((c) => c.method === "createCustomer")).toHaveLength(1);
-});
-
-test("7. a Checkout completing after the club was set Free is cancelled at once and refunded (review fix 1)", async ({ request, db }) => {
-  await db.run(`UPDATE "Organisation" SET "billingStatus"='exempt', "billingPlan"='free', "billingPricePence"=NULL WHERE id=$1`, [ORG]);
-  // What setClubPlan records with Free: WHEN the club stopped being billed.
-  // Only a payment made after this is refunded (round-2 review N1).
-  await db.run(
-    `INSERT INTO "BillingEvent" (id,type,"orgId","receivedAt","processedAt") VALUES ('mt_exempt_e2e_late','mt.club-exempt',$1,$2,$2)`,
-    [ORG, new Date(Date.now() - 60_000).toISOString()],
-  );
-  const customerId = (await billingRow())!.stripeCustomerId as string;
-  fake().putSubscription({ ...subscription({ id: "sub_e2e_late", customerId, status: "active", trialEnd: null }) } as never);
-  fake().putPaidInvoice("sub_e2e_late", 999);
-  const res = await postEvent(request, "checkout.session.completed", {
-    id: "cs_e2e_late",
-    object: "checkout.session",
-    mode: "subscription",
-    customer: customerId,
-    subscription: "sub_e2e_late",
-    metadata: { orgId: ORG, payerUserId: USER.colin, purpose: "club-fee", action: "add-card" },
-    customer_details: { address: { country: "GB" } },
-  });
-  expect(await res.json()).toMatchObject({ received: true, action: "unwanted-cancelled" });
-  expect(stripeState().calls.filter((c) => c.method === "cancelSubscription").map((c) => c.args)).toContainEqual({ subscriptionId: "sub_e2e_late" });
-  expect(stripeState().refunds).toContainEqual(expect.objectContaining({ subscriptionId: "sub_e2e_late", pence: 999 }));
-  // CANCELLED before it was refunded (slice B4, changing round-2 review
-  // N2's order): a refund that keeps failing can never leave it charging.
-  const order = stripeState().calls.map((c) => `${c.method}:${(c.args as { subscriptionId?: string }).subscriptionId ?? ""}`);
-  expect(order.indexOf("cancelSubscription:sub_e2e_late")).toBeGreaterThan(-1);
-  expect(order.indexOf("cancelSubscription:sub_e2e_late")).toBeLessThan(order.indexOf("refundPaidInvoices:sub_e2e_late"));
   expect(await status()).toBe("exempt");
-  expect((await billingRow())!.stripeSubscriptionId).not.toBe("sub_e2e_late");
-  expect(await db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId"=$1 AND kind='club-billing'`, [ORG])).toBe(1);
-});
+  expect((await fake().retrieveInvoice(invoiceId))!.status).toBe("void");
+  expect(await monthRow("cbm_e2e_unpaid")).toMatchObject({ status: "void", reason: "free-plan" });
+  expect(await db.count(`SELECT COUNT(*) FROM "ClubBillingMonth" WHERE "orgId"=$1 AND status='open'`, [ORG])).toBe(0);
+  // Nothing was ever charged by the Free change.
+  expect(stripeState().calls.filter((c) => c.method === "payInvoice" && (c.args as { invoiceId: string }).invoiceId === invoiceId)).toHaveLength(0);
 
-test("8. a paused club with a past due subscription: Update card and pay, then the invoice is retried (review fix 2)", async ({ page, request, db }) => {
-  await db.run(`UPDATE "Organisation" SET "billingPlan"='standard', "billingStatus"='paused' WHERE id=$1`, [ORG]);
-  await db.run(
-    `UPDATE "ClubBilling" SET "stripeSubscriptionId"='sub_e2e_due', "stripeSubscriptionStatus"='past_due', "cardHolderUserId"=$2,
-       "stripePaymentMethodId"='pm_e2e_declined', "pausedReason"='payment-failed', "pausedAt"=now() WHERE "orgId"=$1`,
-    [ORG, USER.colin],
-  );
-  const customerId = (await billingRow())!.stripeCustomerId as string;
-  fake().putSubscription({ ...subscription({ id: "sub_e2e_due", customerId, status: "past_due", trialEnd: null }) } as never);
-
-  await page.context().clearCookies();
-  await signInAs(page, USER.colin, `/billing/${ORG}`);
-  const pay = page.getByTestId("billing-btn-update-card");
-  await expect(pay).toHaveText("Update card and pay", { timeout: 30_000 });
-  await expect(page.getByTestId("billing-btn-add-card")).toHaveCount(0);
-  await pay.click();
-  await page.waitForURL(/fake_checkout=cs_fake_/, { timeout: 30_000 });
-  const sessionId = new URL(page.url()).searchParams.get("fake_checkout")!;
-  const params = stripeState().sessions[sessionId].params;
-  expect(params).toMatchObject({ mode: "setup", customer: customerId, metadata: { action: "replace-card", payerUserId: USER.colin } });
-
-  fake().putSetupIntent("seti_e2e_pay", { paymentMethodId: "pm_e2e_good", brand: "visa", last4: "1111", country: "GB" });
-  const res = await postEvent(request, "checkout.session.completed", {
-    id: sessionId,
+  // A card session that completes after the club was set Free: the card is removed at once.
+  fake().putSetupIntent("seti_e2e_late", { paymentMethodId: "pm_e2e_late", brand: "visa", last4: "9999", country: "GB" });
+  const late = await postEvent(request, "checkout.session.completed", {
+    id: "cs_e2e_late",
     object: "checkout.session",
     mode: "setup",
     customer: customerId,
-    setup_intent: "seti_e2e_pay",
-    metadata: params.metadata,
-    customer_details: { email: "colin@e2e-test.invalid", name: "Colin Sevens", address: { country: "GB" } },
+    setup_intent: "seti_e2e_late",
+    metadata: { orgId: ORG, payerUserId: USER.colin, purpose: "club-fee", action: "add-card" },
+    customer_details: { address: { country: "GB" } },
   });
-  expect(res.status()).toBe(200);
-  expect(stripeState().calls.filter((c) => c.method === "payOpenInvoices").map((c) => c.args)).toContainEqual({ subscriptionId: "sub_e2e_due" });
-  expect(await billingRow()).toMatchObject({ stripePaymentMethodId: "pm_e2e_good", cardHolderUserId: USER.colin });
-  expect(stripeState().detached).toContain("pm_e2e_declined");
+  expect(await late.json()).toMatchObject({ received: true, action: "ignored", reason: "not-billable" });
+  expect(stripeState().detached).toContain("pm_e2e_late");
+  expect(await status()).toBe("exempt");
 });

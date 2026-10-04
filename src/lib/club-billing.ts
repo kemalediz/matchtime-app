@@ -71,14 +71,22 @@ export type SetBillingStateResult =
   | { ok: false; reason: "not-found" | "no-change" | "raced" };
 
 /** The ClubBilling fields a transition writes (never `trialEndsAt`). */
-function billingPatch(from: string, t: BillingTransition, now: Date): Record<string, Date | string | null> {
-  const patch: Record<string, Date | string | null> = {};
+function billingPatch(
+  from: string,
+  t: BillingTransition,
+  now: Date,
+  fromReason: string | null = null,
+): Record<string, Date | string | boolean | null> {
+  const patch: Record<string, Date | string | boolean | null> = {};
   if (t.to === "paused") {
     patch.pausedAt = now;
     patch.pausedReason = t.pausedReason;
   } else if (from === "paused") {
     patch.pausedAt = null;
     patch.pausedReason = null;
+    // Slice P2: billing starts again after Stop paying (Keep paying, or a
+    // new card): that stop is over. Any other resume keeps a pending stop.
+    if (fromReason === "cancelled") patch.cancelAtPeriodEnd = false;
   }
   if (from === "exempt" && (t.to === "trial" || t.to === "grace")) {
     // Billed again after Free ("plan-billed", slice B3): nothing from an
@@ -190,7 +198,7 @@ async function applyBillingEventTx(
     const start = event.type === "approved" ? (org.approvedAt ?? now) : now;
     await tx.clubBilling.create({ data: { orgId, ...trialWindow(start) } });
   } else {
-    const patch = billingPatch(from, t, now);
+    const patch = billingPatch(from, t, now, billings[0]?.pausedReason ?? null);
     if (Object.keys(patch).length > 0) await tx.clubBilling.updateMany({ where: { orgId }, data: patch });
   }
   if (t.resumes) {
@@ -352,8 +360,9 @@ export type SetClubPlanResult =
  *
  * Works with BILLING_ENABLED off too: Free only ever makes a club less
  * billed, and Standard or Custom on an exempt club bills nobody.
- * The Stripe side (a new price, or cancelling on Free) is
- * `syncPlanToStripe` in club-billing-stripe.ts, run by the caller after
+ * The months side (slice P2: on Free the open month is waived and unpaid
+ * club fee invoices are voided; a price change is read by the month close)
+ * is `onPlanChanged` in club-billing-stripe.ts, run by the caller after
  * this commits.
  */
 export async function setClubPlan(
@@ -379,8 +388,8 @@ export async function setClubPlan(
         if (!moved.ok) throw new Error(`[club-billing] ${orgId}: plan Free could not make the club exempt (${moved.reason})`);
         status = moved.to;
         resumed = moved.resumed;
-        // WHEN the club stopped being billed, in the same transaction: the
-        // webhook refunds only invoices paid after it (round-2 review N1).
+        // WHEN the club stopped being billed, in the same transaction, for
+        // the audit trail (B3 round-2 review N1).
         await tx.billingEvent.create({
           data: { id: `mt_exempt_${orgId}_${now.getTime()}`, type: EXEMPT_EVENT_TYPE, orgId, receivedAt: now, processedAt: now },
         });
@@ -524,8 +533,8 @@ export interface ClubBillingSnapshot {
     cardBrand: string | null;
     cardLast4: string | null;
     cardHolderUserId: string | null;
-    /** Stripe's word for the club's subscription (slice B3), or null. */
-    stripeSubscriptionStatus: string | null;
+    /** Slice B5: why a paused club is paused. */
+    pausedReason: string | null;
   } | null;
   cardHolderName: string | null;
   members: Array<{ userId: string; role: string; leftAt: Date | null; name: string | null }>;
@@ -556,7 +565,6 @@ export async function loadClubBillingSnapshot(orgId: string): Promise<ClubBillin
           cardBrand: true,
           cardLast4: true,
           cardHolderUserId: true,
-          stripeSubscriptionStatus: true,
           pausedReason: true,
         },
       },
@@ -800,18 +808,6 @@ export async function queueBillingDm(args: {
  *  nobody to send it to). Only a still-pending row is touched. */
 export async function skipBillingNotice(orgId: string, kind: BillingNoticeKind, cycleKey: string, why: string): Promise<void> {
   await db.billingNotice.updateMany({ where: { orgId, kind, cycleKey, platformJobId: null }, data: { platformJobId: `skipped:${why}` } });
-}
-
-/** When the club last became exempt through the plan control (Free), or
- *  null. A subscription invoice paid AFTER this moment is money the club
- *  should not have paid; one paid before is history (round-2 review N1). */
-export async function loadExemptSince(orgId: string): Promise<Date | null> {
-  const row = await db.billingEvent.findFirst({
-    where: { orgId, type: EXEMPT_EVENT_TYPE },
-    orderBy: { receivedAt: "desc" },
-    select: { receivedAt: true },
-  });
-  return row?.receivedAt ?? null;
 }
 
 /** BillingEvent rows MatchTime writes itself (ids "mt_..." never collide

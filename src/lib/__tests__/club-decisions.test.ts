@@ -63,8 +63,8 @@ vi.mock("@/lib/club-billing", async (importOriginal) => ({
 
 // Review fix 11: a suspension cancels the club's live club fee subscription
 // (plan 4.2, decision 7). The Stripe side is club-billing-stripe.test.ts.
-const suspendCancelMock = vi.hoisted(() => vi.fn(async () => ({ action: "cancelled" })));
-vi.mock("@/lib/club-billing-stripe", () => ({ cancelSubscriptionOnSuspend: suspendCancelMock }));
+const suspendCancelMock = vi.hoisted(() => vi.fn(async () => ({ waived: 1 })));
+vi.mock("@/lib/club-billing-stripe", () => ({ onClubSuspended: suspendCancelMock }));
 
 import { decideClub, handleApproverDm, leaveUnsolicitedGroup } from "../club-approval";
 
@@ -406,19 +406,19 @@ describe("decideClub: suspend (the off switch)", () => {
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
   });
 
-  it("review fix 11: a suspension cancels the club's club fee subscription (after it is committed)", async () => {
+  it("slice P2 (decision 7 under games played): a suspension waives the club's open club fee month (after it is committed)", async () => {
     await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "riverside fc" });
-    expect(suspendCancelMock).toHaveBeenCalledWith("org-riverside");
+    expect(suspendCancelMock).toHaveBeenCalledWith("org-riverside", NOW);
   });
 
-  it("a Stripe failure there never undoes the suspension", async () => {
+  it("a failure there never undoes the suspension", async () => {
     suspendCancelMock.mockRejectedValueOnce(new Error("stripe down"));
     const r = await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "riverside fc" });
     expect(r).toMatchObject({ ok: true, decision: "suspend" });
     expect(orgs["org-riverside"].approvalStatus).toBe("suspended");
   });
 
-  it("approve and reject never touch the subscription", async () => {
+  it("approve and reject never touch the billing months", async () => {
     orgs["org-riverside"] = riverside();
     await decideClub("org-riverside", "reject", "u-kemal", { now: NOW });
     expect(suspendCancelMock).not.toHaveBeenCalled();

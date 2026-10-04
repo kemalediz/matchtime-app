@@ -89,6 +89,40 @@ export function monthIndexAt(anchor: Date, at: Date): number {
   return k;
 }
 
+// ── Opening and closing months (plan 6, slice P2) ───────────────────────
+
+/** A month is closed at least this long after it ends: the last evening
+ *  game has finished and the 15 minute completion cron has run (plan 6). */
+export const MONTH_CLOSE_DELAY_MS = 6 * 60 * 60 * 1000;
+
+/** At most this many months open in one run (a guard against a runaway
+ *  backlog; a real one is a few months after a long flag-off spell). */
+export const MAX_MONTHS_OPENED_PER_RUN = 24;
+
+/** Is a month that ends at `endsAt` old enough to close (the delay only;
+ *  the caller also waits for the daytime)? */
+export function monthCloseDue(endsAt: Date, now: Date): boolean {
+  return now.getTime() >= endsAt.getTime() + MONTH_CLOSE_DELAY_MS;
+}
+
+/**
+ * The month indexes to open now, in order: every month after the club's
+ * highest opened index (`lastIndex`, 0 for none) that has started by `now`.
+ * Months that started during a cron outage or a flag-off spell open too, so
+ * they close in order (plan 6 and the runbook note in 11). With `stopAt`
+ * (Stop paying: the end of the month it was pressed in), no month that
+ * starts at or after it opens.
+ */
+export function monthsToOpen(anchor: Date, lastIndex: number, now: Date, opts: { stopAt?: Date | null } = {}): number[] {
+  const current = monthIndexAt(anchor, now);
+  const out: number[] = [];
+  for (let k = Math.max(1, lastIndex + 1); k <= current && out.length < MAX_MONTHS_OPENED_PER_RUN; k++) {
+    if (opts.stopAt && monthBounds(anchor, k).startsAt.getTime() >= opts.stopAt.getTime()) break;
+    out.push(k);
+  }
+  return out;
+}
+
 // ── Pause spans (2A.3) ──────────────────────────────────────────────────
 
 /** A billing-paused span: [from, to), `to` null while still paused. */

@@ -15,50 +15,49 @@
  *     exempt club, or BILLING_ENABLED off: LOGGED ONLY. Nothing is
  *     written, nothing goes to Stripe;
  *   - a club being billed (trial, grace, subscribed, past due): paused,
- *     reason "removed", through the one writer (`setBillingState`), then
- *     its live subscription set to end with the paid month (cancel at
- *     period end: no refund, nothing taken early; in the free month that
- *     means it ends at the trial end with no charge). No DM to anyone;
+ *     reason "removed", through the one writer (`setBillingState`). Slice
+ *     P2: NO Stripe call to end anything (there is no subscription): the
+ *     games played before the removal are charged when that month closes
+ *     (the weeks after it count as scheduled, not played), and no later
+ *     month opens while it is removed. Any open Add a card session is
+ *     expired, so one started before the removal cannot save a card for a
+ *     group MatchTime is not in. No DM to anyone;
  *   - already paused because removed (a repeated event): nothing changes;
- *     the Stripe step runs again, so a failed earlier attempt is healed;
+ *     the session expiry runs again, so a failed earlier attempt is healed;
  *   - paused for another reason (no card, payment failed, cancelled):
  *     nothing changes.
  *
  * ADDED BACK (`handleBillingReAdd`, from POST /api/whatsapp/bot-added).
- * Only a club paused BECAUSE it was removed, with the flag on:
- *   - its subscription still live: the cancel at period end is undone in
- *     Stripe, and the club serves again ("subscribed") when it is paying;
- *     an unpaid one stays paused, now "payment-failed", so "Update card and
- *     pay" brings it back as usual;
- *   - no live subscription, free month still running: back to "trial"
- *     with the same `trialEndsAt` (never reset);
- *   - no live subscription, free month over: stays paused, now "no-card",
- *     so Add a card and its first payment bring it back as usual.
+ * Only a club paused BECAUSE it was removed, with the flag on. Read from
+ * OUR rows (slice P2), no Stripe call:
+ *   - a card on file and no club fee invoice unpaid: serving again
+ *     ("subscribed");
+ *   - a club fee invoice unpaid: stays paused, now "payment-failed", so
+ *     "Update card and pay" brings it back as usual;
+ *   - no card, free month still running: back to "trial" with the same
+ *     `trialEndsAt` (never reset);
+ *   - no card, free month over: stays paused, now "no-card", so Add a card
+ *     brings it back as usual.
  * This keeps one rule for the billing page: a club paused because removed
  * is never offered Add a card (it would pay for a group MatchTime is not
  * in, and the webhook deliberately does not resume a removed club); the
  * page asks for MatchTime to be added back first.
  *
  * This file never writes `billingStatus`: every move goes through
- * `setBillingState` (club-billing.ts). It writes only the Stripe mirror
- * field `cancelAtPeriodEnd` of ClubBilling.
+ * `setBillingState` (club-billing.ts). It writes nothing else.
  */
 import { db } from "./db";
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
-import { isLiveSubscriptionStatus, isUnpaidSubscriptionStatus } from "./club-billing-rules";
 import { setBillingState } from "./club-billing";
+import { unpaidMonthIds } from "./club-billing-months";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { getBillingStripe } from "./stripe-billing";
 
 const LIVE_BILLED = new Set(["trial", "grace", "subscribed", "past_due"]);
 
-/** What happened in Stripe after a removal. */
-export type RemovalStripeOutcome =
-  | "cancel-at-period-end"
-  | "already-cancelling"
-  | "no-subscription"
-  | "not-set-up"
-  | "failed";
+/** What happened in Stripe after a removal (slice P2: only open Add a
+ *  card sessions are expired; nothing is charged or ended). */
+export type RemovalStripeOutcome = "sessions-expired" | "no-customer" | "not-set-up" | "failed";
 
 export type BillingRemovalResult =
   /** No approved club owns the group: not a billing matter. */
@@ -86,8 +85,7 @@ async function loadApprovedClubByGroup(groupId: string) {
         select: {
           pausedReason: true,
           stripeCustomerId: true,
-          stripeSubscriptionId: true,
-          stripeSubscriptionStatus: true,
+          stripePaymentMethodId: true,
         },
       },
     },
@@ -122,7 +120,7 @@ export async function handleBillingRemoval(
       console.log(`${tag}: MatchTime removed from the group of a club already paused (${org.clubBilling?.pausedReason ?? "?"}); nothing changes`);
       return { kind: "logged", orgId: org.id, why: "paused-other" };
     }
-    const stripe = await endSubscriptionWithPaidMonth(org.id, now);
+    const stripe = await expireCardSessions(org.id, now);
     console.log(`${tag}: removed again, already paused (removed); Stripe ${stripe}`);
     return { kind: "already-paused", orgId: org.id, stripe };
   }
@@ -136,69 +134,43 @@ export async function handleBillingRemoval(
     // Raced with another writer: decide on what it left.
     const fresh = await loadApprovedClubByGroup(groupId);
     if (fresh?.billingStatus === "paused" && fresh.clubBilling?.pausedReason === "removed") {
-      return { kind: "already-paused", orgId: org.id, stripe: await endSubscriptionWithPaidMonth(org.id, now) };
+      return { kind: "already-paused", orgId: org.id, stripe: await expireCardSessions(org.id, now) };
     }
     console.log(`${tag}: removal not applied (${moved.reason}); now ${fresh?.billingStatus ?? "gone"}`);
     return { kind: "logged", orgId: org.id, why: fresh?.billingStatus === "paused" ? "paused-other" : "not-billed" };
   }
-  const stripe = await endSubscriptionWithPaidMonth(org.id, now);
+  const stripe = await expireCardSessions(org.id, now);
   console.log(`${tag}: MatchTime removed from the group; ${moved.from} -> paused (removed), Stripe ${stripe}, no DM`);
   return { kind: "paused", orgId: org.id, stripe };
 }
 
 /**
- * The club's live subscription ends with the month already paid (or at the
- * trial end, uncharged). Also expires any open Add a card session, so one
- * started before the removal cannot become a new subscription. Read fresh
- * from Stripe, so a repeat is a no-op. Never throws.
+ * Expire any open Add a card session on the club's Customer, so one
+ * started before the removal cannot save a card afterwards. Nothing else
+ * goes to Stripe (slice P2: no subscription to end; the open month closes
+ * as usual). Never throws.
  */
-async function endSubscriptionWithPaidMonth(orgId: string, now: Date): Promise<RemovalStripeOutcome> {
-  const billing = await db.clubBilling.findUnique({
-    where: { orgId },
-    select: { stripeCustomerId: true, stripeSubscriptionId: true, stripeSubscriptionStatus: true },
-  });
-  if (!billing?.stripeCustomerId && !billing?.stripeSubscriptionId) return "no-subscription";
+async function expireCardSessions(orgId: string, now: Date): Promise<RemovalStripeOutcome> {
+  const billing = await db.clubBilling.findUnique({ where: { orgId }, select: { stripeCustomerId: true } });
+  if (!billing?.stripeCustomerId) return "no-customer";
   const stripe = getBillingStripe();
-  const hasLive = !!billing.stripeSubscriptionId && isLiveSubscriptionStatus(billing.stripeSubscriptionStatus);
-  if (!stripe) {
-    if (!hasLive) return "no-subscription";
-    await alert(orgId, billing.stripeSubscriptionId!, "Stripe is not set up (no STRIPE_SECRET_KEY)", now);
-    return "not-set-up";
-  }
+  if (!stripe) return "not-set-up";
   try {
-    if (billing.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
-    if (!hasLive) return "no-subscription";
-    const subId = billing.stripeSubscriptionId!;
-    const sub = await stripe.retrieveSubscription(subId);
-    if (!isLiveSubscriptionStatus(sub.status)) return "no-subscription";
-    if (sub.cancelAtPeriodEnd) {
-      await db.clubBilling.updateMany({ where: { orgId, stripeSubscriptionId: subId }, data: { cancelAtPeriodEnd: true } });
-      return "already-cancelling";
-    }
-    await stripe.setCancelAtPeriodEnd(subId, true);
-    await db.clubBilling.updateMany({ where: { orgId, stripeSubscriptionId: subId }, data: { cancelAtPeriodEnd: true } });
-    return "cancel-at-period-end";
+    await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
+    return "sessions-expired";
   } catch (err) {
-    console.error(`[club-billing-removal] ${orgId}: could not set the subscription to end with the paid month:`, err);
-    await alert(orgId, billing.stripeSubscriptionId ?? "none", err instanceof Error ? err.message : String(err), now);
+    console.error(`[club-billing-removal] ${orgId}: could not expire open card sessions:`, err);
+    await recordOpsEvent({
+      orgId,
+      kind: BILLING_ALERT_KIND,
+      severity: "warning",
+      title: "Card sessions still open after MatchTime was removed",
+      detail: `MatchTime was removed from this club's group and the club is paused, but open Add a card sessions on ${billing.stripeCustomerId} could not be expired (${err instanceof Error ? err.message : String(err)}). They expire on their own within a day; it is retried the next time the removal is reported.`,
+      dedupeKey: `removed-sessions-${orgId}`,
+      now,
+    }).catch((e) => console.error(`[club-billing-removal] ${orgId}: could not record the alert:`, e));
     return "failed";
   }
-}
-
-/** On /admin/health (kind club-billing), never a DM. */
-async function alert(orgId: string, subId: string, why: string, now: Date): Promise<void> {
-  await recordOpsEvent({
-    orgId,
-    kind: BILLING_ALERT_KIND,
-    severity: "warning",
-    title: "Club fee still running after MatchTime was removed",
-    detail:
-      `MatchTime was removed from this club's group and the club is paused, but its subscription ${subId} ` +
-      `could not be set to end with the paid month (${why}). Set "cancel at period end" in Stripe, or it ` +
-      `is retried the next time the removal is reported.`,
-    dedupeKey: `removed-cancel-${subId}`,
-    now,
-  }).catch((e) => console.error(`[club-billing-removal] ${orgId}: could not record the alert:`, e));
 }
 
 export type BillingReAddResult =
@@ -223,32 +195,16 @@ export async function handleBillingReAdd(
     if (!org || org.approvedAt === null || org.billingStatus !== "paused" || org.clubBilling?.pausedReason !== "removed") {
       return { kind: "not-removed" };
     }
-    const b = org.clubBilling;
-    let subscription: "paying" | "unpaid" | null = null;
-    if (b.stripeSubscriptionId && isLiveSubscriptionStatus(b.stripeSubscriptionStatus)) {
-      const stripe = getBillingStripe();
-      if (!stripe) {
-        console.error(`[club-billing-removal] ${org.id}: re-added, but Stripe is not set up to undo the cancel; left paused`);
-        return { kind: "failed", orgId: org.id };
-      }
-      const sub = await stripe.retrieveSubscription(b.stripeSubscriptionId);
-      if (isLiveSubscriptionStatus(sub.status)) {
-        if (sub.cancelAtPeriodEnd) await stripe.setCancelAtPeriodEnd(sub.id, false);
-        await db.clubBilling.updateMany({
-          where: { orgId: org.id, stripeSubscriptionId: sub.id },
-          data: { cancelAtPeriodEnd: false },
-        });
-        subscription = isUnpaidSubscriptionStatus(sub.status) ? "unpaid" : "paying";
-      }
-    }
-    const moved = await setBillingState(org.id, { type: "re-added", subscription }, now);
+    const unpaid = (await unpaidMonthIds(org.id)).length > 0;
+    const card: "ok" | "unpaid" | null = unpaid ? "unpaid" : org.clubBilling.stripePaymentMethodId ? "ok" : null;
+    const moved = await setBillingState(org.id, { type: "re-added", card }, now);
     if (!moved.ok) {
       console.log(`[club-billing-removal] ${org.id}: re-added, no change (${moved.reason})`);
       return { kind: "not-removed" };
     }
-    console.log(`[club-billing-removal] ${org.id} (${groupId}): MatchTime added back; paused -> ${moved.to} (subscription ${subscription ?? "none"})`);
+    console.log(`[club-billing-removal] ${org.id} (${groupId}): MatchTime added back; paused -> ${moved.to} (card ${card ?? "none"})`);
     if (moved.to === "trial" || moved.to === "subscribed") return { kind: "resumed", orgId: org.id, to: moved.to };
-    return { kind: "still-paused", orgId: org.id, reason: subscription === "unpaid" ? "payment-failed" : "no-card" };
+    return { kind: "still-paused", orgId: org.id, reason: card === "unpaid" ? "payment-failed" : "no-card" };
   } catch (err) {
     console.error(`[club-billing-removal] ${groupId}: re-add billing step failed (club left as it was):`, err);
     return { kind: "failed", orgId: "" };

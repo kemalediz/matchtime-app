@@ -1,14 +1,17 @@
 "use server";
 
 /**
- * The billing page's card buttons (club fee billing, slice B3).
- * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 4.5 and 5.2.
+ * The billing page's card buttons (club fee billing, slice B3; slice P2
+ * for games played: setup mode only, no Customer Portal, our own Stop
+ * paying). Plan: MDs/club-fee-billing-plan-2026-10-01.md, 4.2, 4.5, 5.3.
  *
- *   Add a card              startClubCheckout  the billing contact
+ *   Add a card              startClubCheckout  the billing contact (setup
+ *                                              mode, nothing charged)
  *   Use my card instead,    startCardReplace   the billing contact (setup
- *   Update card and pay                        mode; an unpaid invoice is
- *                                              retried on the new card)
- *   Change card or cancel   openClubPortal     the contact who holds the card
+ *   Change card,                               mode; anything unpaid is
+ *   Update card and pay                        paid on the new card)
+ *   Stop paying             stopPaying         the billing contact
+ *   Keep paying             keepPaying         the billing contact
  *   Remove my card          removeMyCard       an old card holder
  *
  * EVERY action re-checks the guard itself (`requireClubBillingAccess`,
@@ -26,10 +29,11 @@ import { auth } from "@/lib/auth";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { requireClubBillingAccess } from "@/lib/club-billing";
 import {
-  openClubPortal,
+  keepPaying,
   removeMyCard,
   startCardReplace,
   startClubCheckout,
+  stopPaying,
   type BillingActionRefusal,
 } from "@/lib/club-billing-stripe";
 import type { BillingAccessRole } from "@/lib/club-billing-rules";
@@ -38,8 +42,9 @@ type Outcome = { ok: true; url?: string } | { ok: false; reason: BillingActionRe
 
 function noticeFor(reason: BillingActionRefusal): string {
   if (reason === "not-set-up") return "not-set-up";
-  if (reason === "already-subscribed") return "already";
+  if (reason === "already-card") return "already";
   if (reason === "removed-from-group") return "re-add";
+  if (reason === "past-due") return "past-due";
   return "failed";
 }
 
@@ -48,7 +53,7 @@ async function run(
   orgId: string,
   label: string,
   act: (a: { orgId: string; userId: string; role: BillingAccessRole }) => Promise<Outcome>,
-  okNotice: string | null,
+  okNotice: string | null | (() => string),
 ): Promise<never> {
   const session = await auth();
   const userId = session?.user?.id;
@@ -65,7 +70,8 @@ async function run(
   let target: string;
   try {
     const r = await act({ orgId, userId, role });
-    if (r.ok) target = r.url ?? (okNotice ? `${back}?notice=${okNotice}` : back);
+    const notice = typeof okNotice === "function" ? okNotice() : okNotice;
+    if (r.ok) target = r.url ?? (notice ? `${back}?notice=${notice}` : back);
     else {
       console.warn(`[billing-action] ${label} for ${orgId} by ${userId} (${role}) refused: ${r.reason}`);
       target = `${back}?notice=${noticeFor(r.reason)}`;
@@ -78,19 +84,36 @@ async function run(
   redirect(target);
 }
 
-/** Add a card: Stripe Checkout, subscription mode. */
+/** Add a card: Stripe Checkout, setup mode (nothing charged). */
 export async function addCardAction(orgId: string): Promise<void> {
   await run(orgId, "Add a card", startClubCheckout, null);
 }
 
-/** Use my card instead: Stripe Checkout, setup mode. */
+/** Use my card instead, Change card, Update card and pay: Stripe
+ *  Checkout, setup mode. */
 export async function useMyCardAction(orgId: string): Promise<void> {
   await run(orgId, "Use my card instead", startCardReplace, null);
 }
 
-/** Change card or cancel (and Update card): the Customer Portal. */
-export async function openPortalAction(orgId: string): Promise<void> {
-  await run(orgId, "Customer Portal", openClubPortal, null);
+/** Stop paying: billing ends with the current month (inside the free
+ *  month the card is removed at once). */
+export async function stopPayingAction(orgId: string): Promise<void> {
+  const freeMonth = { value: false };
+  await run(
+    orgId,
+    "Stop paying",
+    async (a) => {
+      const r = await stopPaying(a);
+      if (r.ok && r.freeMonth) freeMonth.value = true;
+      return r;
+    },
+    () => (freeMonth.value ? "stopped-free" : "stopped"),
+  );
+}
+
+/** Keep paying: undoes Stop paying, or starts billing again after it. */
+export async function keepPayingAction(orgId: string): Promise<void> {
+  await run(orgId, "Keep paying", keepPaying, "kept");
 }
 
 /** Remove my card: the old card holder stops paying. */

@@ -1,15 +1,25 @@
 /**
- * CLUB FEE BILLING, slice B3: a FAKE Stripe for tests. Never calls Stripe.
+ * CLUB FEE BILLING: a FAKE Stripe for tests (slice B3, rewritten for games
+ * played in slice P2). Never calls Stripe.
  *
  * Used by the unit tests directly and by the e2e suite through
  * `getBillingStripe()`, which hands it out only with MT_TEST_MODE=1 AND
  * BILLING_STRIPE_FAKE=1 (src/lib/stripe-billing.ts).
  *
  * With `file` set (MT_TEST_BILLING_STRIPE_FILE), its state lives in one
- * JSON file, so the dev server (which creates sessions) and a Playwright
- * spec (which reads the recorded calls and writes the subscription Stripe
+ * JSON file, so the dev server (which creates sessions and invoices) and a
+ * Playwright spec (which reads the recorded calls and writes what Stripe
  * would hold before posting a signed webhook) share one world across
  * processes. Without a file it is in memory.
+ *
+ * It behaves like Stripe where money safety depends on it:
+ *   - an idempotency key returns the SAME object, and the same key with
+ *     different parameters is REFUSED;
+ *   - a draft is never finalised on its own; finalising and paying follow
+ *     Stripe's order (draft, open, paid), and paying a draft is refused;
+ *   - a decline leaves the invoice open (`setPayOutcome`);
+ *   - a Tax Rate id containing "exclusive" adds 20% on top, so a
+ *     misconfigured rate shows up as a different total.
  *
  * A Checkout "URL" is the billing page itself with `?fake_checkout=<id>`,
  * so a browser test lands somewhere real.
@@ -17,28 +27,41 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Stripe from "stripe";
-import type { BillingInvoice, BillingStripe, BillingSubscription, CardDetails } from "./stripe-billing";
-import { isLiveSubscriptionStatus } from "./club-billing-rules";
+import {
+  buildMonthInvoiceItemParams,
+  buildMonthInvoiceParams,
+  type BillingInvoice,
+  type BillingStripe,
+  type CardDetails,
+  type VoidOutcome,
+} from "./stripe-billing";
 
-interface StoredSubscription extends Omit<BillingSubscription, "currentPeriodEnd" | "trialEnd"> {
-  currentPeriodEnd: string | null;
-  trialEnd: string | null;
+export type FakePayOutcome = "succeed" | "decline" | "action";
+
+export interface FakeInvoice {
+  id: string;
+  customerId: string;
+  status: "draft" | "open" | "paid" | "void" | "uncollectible" | "deleted";
+  metadata: Record<string, string>;
+  totalPence: number;
+  hostedInvoiceUrl: string;
+  params: Stripe.InvoiceCreateParams;
+  items: Stripe.InvoiceItemCreateParams[];
+  payAttempts: Array<{ paymentMethodId: string | null; outcome: FakePayOutcome | "no-card" }>;
 }
 
 export interface FakeStripeState {
   seq: number;
   calls: Array<{ method: string; args: unknown }>;
-  customers: Record<string, { orgId: string; name: string }>;
+  customers: Record<string, { orgId: string; name: string; defaultPaymentMethod?: string | null }>;
   sessions: Record<string, { params: Stripe.Checkout.SessionCreateParams; status: "open" | "expired" }>;
-  subscriptions: Record<string, StoredSubscription>;
   setupIntents: Record<string, CardDetails>;
   detached: string[];
-  prices: Record<string, string>;
-  refunds: Array<{ subscriptionId: string; invoiceId: string; pence: number }>;
-  /** Paid invoices a test says a subscription has. */
-  paidInvoices: Record<string, Array<{ id: string; pence: number; paidAt: string }>>;
-  /** Invoices a test says exist (slice B4: the payment DMs re-check them). */
-  invoices: Record<string, BillingInvoice>;
+  invoices: Record<string, FakeInvoice | BillingInvoice>;
+  /** idempotency key -> { object id, the parameters it was first used with }. */
+  idempotency: Record<string, { id: string; params: string }>;
+  /** A card's outcome when charged ("*" for every card); default succeed. */
+  payOutcomes: Record<string, FakePayOutcome>;
 }
 
 const empty = (): FakeStripeState => ({
@@ -46,34 +69,36 @@ const empty = (): FakeStripeState => ({
   calls: [],
   customers: {},
   sessions: {},
-  subscriptions: {},
   setupIntents: {},
   detached: [],
-  prices: {},
-  refunds: [],
-  paidInvoices: {},
   invoices: {},
-});
-
-const toStored = (s: BillingSubscription): StoredSubscription => ({
-  ...s,
-  currentPeriodEnd: s.currentPeriodEnd ? s.currentPeriodEnd.toISOString() : null,
-  trialEnd: s.trialEnd ? s.trialEnd.toISOString() : null,
-});
-
-const fromStored = (s: StoredSubscription): BillingSubscription => ({
-  ...s,
-  currentPeriodEnd: s.currentPeriodEnd ? new Date(s.currentPeriodEnd) : null,
-  trialEnd: s.trialEnd ? new Date(s.trialEnd) : null,
+  idempotency: {},
+  payOutcomes: {},
 });
 
 export type FakeBillingStripe = BillingStripe & {
   state(): FakeStripeState;
-  putSubscription(sub: BillingSubscription): void;
   putSetupIntent(id: string, card: CardDetails): void;
-  putPaidInvoice(subscriptionId: string, pence: number, paidAt?: Date, invoiceId?: string): void;
+  /** An invoice a test says exists (as Stripe would hold it). */
   putInvoice(invoice: BillingInvoice): void;
+  setPayOutcome(paymentMethodId: string | "*", outcome: FakePayOutcome): void;
+  /** Stripe forgets idempotency keys after 24 hours. */
+  forgetIdempotencyKeys(): void;
 };
+
+const isFull = (inv: FakeInvoice | BillingInvoice | undefined): inv is FakeInvoice => !!inv && "items" in inv;
+
+function view(inv: FakeInvoice | BillingInvoice): BillingInvoice {
+  if (!isFull(inv)) return { ...inv };
+  return {
+    id: inv.id,
+    status: inv.status,
+    hostedInvoiceUrl: inv.hostedInvoiceUrl,
+    totalPence: inv.totalPence,
+    customerId: inv.customerId,
+    metadata: { ...inv.metadata },
+  };
+}
 
 export function createFakeBillingStripe(opts: { file?: string | null } = {}): FakeBillingStripe {
   const file = opts.file ?? null;
@@ -98,31 +123,49 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
     mkdirSync(path.dirname(/*turbopackIgnore: true*/ file), { recursive: true });
     writeFileSync(/*turbopackIgnore: true*/ file, JSON.stringify(s, null, 2));
   };
-  /** Read, change, write, and record the call. */
+  /** Read, change, write, and record the call. A throw still records it. */
   function tx<T>(method: string, args: unknown, fn: (s: FakeStripeState) => T): T {
     const s = load();
     s.calls.push({ method, args });
-    const out = fn(s);
-    save(s);
-    return out;
+    try {
+      return fn(s);
+    } finally {
+      save(s);
+    }
   }
   const next = (s: FakeStripeState, prefix: string) => `${prefix}_fake_${++s.seq}`;
+
+  /** Stripe's idempotency: same key, same parameters: the same object. */
+  function idempotent(s: FakeStripeState, key: string, params: unknown, create: () => string): string {
+    const json = JSON.stringify(params);
+    const seen = s.idempotency[key];
+    if (seen) {
+      if (seen.params !== json) {
+        throw Object.assign(new Error(`Keys for idempotent requests can only be used with the same parameters they were first used with (${key})`), {
+          type: "StripeIdempotencyError",
+        });
+      }
+      return seen.id;
+    }
+    const id = create();
+    s.idempotency[key] = { id, params: json };
+    return id;
+  }
+
+  function full(s: FakeStripeState, invoiceId: string): FakeInvoice {
+    const inv = s.invoices[invoiceId];
+    if (!isFull(inv) || inv.status === "deleted") throw Object.assign(new Error(`No such invoice: '${invoiceId}'`), { code: "resource_missing" });
+    return inv;
+  }
 
   return {
     kind: "fake",
 
     state: () => load(),
 
-    putSubscription(sub) {
+    putSetupIntent(id, card) {
       const s = load();
-      s.subscriptions[sub.id] = toStored(sub);
-      save(s);
-    },
-
-    putPaidInvoice(subscriptionId, pence, paidAt = new Date(), invoiceId) {
-      const s = load();
-      const list = (s.paidInvoices[subscriptionId] ??= []);
-      list.push({ id: invoiceId ?? `in_fake_${subscriptionId}_${list.length + 1}`, pence, paidAt: paidAt.toISOString() });
+      s.setupIntents[id] = card;
       save(s);
     },
 
@@ -132,13 +175,15 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       save(s);
     },
 
-    async retrieveInvoice(invoiceId) {
-      return tx("retrieveInvoice", { invoiceId }, (s) => s.invoices?.[invoiceId] ?? null);
+    setPayOutcome(paymentMethodId, outcome) {
+      const s = load();
+      s.payOutcomes[paymentMethodId] = outcome;
+      save(s);
     },
 
-    putSetupIntent(id, card) {
+    forgetIdempotencyKeys() {
       const s = load();
-      s.setupIntents[id] = card;
+      s.idempotency = {};
       save(s);
     },
 
@@ -174,71 +219,24 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       });
     },
 
-    async createPortalSession(args) {
-      return tx("createPortalSession", args, () => ({ url: `${args.returnUrl}?fake_portal=1` }));
-    },
-
-    async retrieveSubscription(id) {
-      const sub = tx("retrieveSubscription", { id }, (s) => s.subscriptions[id] ?? null);
-      if (!sub) throw new Error(`No such subscription: '${id}'`);
-      return fromStored(sub);
-    },
-
     async retrieveSetupIntentCard(setupIntentId) {
       return tx("retrieveSetupIntentCard", { setupIntentId }, (s) => s.setupIntents[setupIntentId] ?? null);
     },
 
     async setDefaultPaymentMethod(args) {
       tx("setDefaultPaymentMethod", args, (s) => {
-        const sub = s.subscriptions[args.subscriptionId];
-        const card = Object.values(s.setupIntents).find((c) => c.paymentMethodId === args.paymentMethodId);
-        if (sub) sub.card = card ?? { paymentMethodId: args.paymentMethodId, brand: null, last4: null, country: null };
+        const c = (s.customers[args.customerId] ??= { orgId: "", name: "" });
+        c.defaultPaymentMethod = args.paymentMethodId;
       });
-    },
-
-    async payOpenInvoices(subscriptionId) {
-      return tx("payOpenInvoices", { subscriptionId }, () => 0);
     },
 
     async detachPaymentMethod(paymentMethodId) {
       tx("detachPaymentMethod", { paymentMethodId }, (s) => {
         s.detached.push(paymentMethodId);
-        for (const sub of Object.values(s.subscriptions)) {
-          if (sub.card?.paymentMethodId === paymentMethodId) sub.card = null;
+        for (const c of Object.values(s.customers)) {
+          if (c.defaultPaymentMethod === paymentMethodId) c.defaultPaymentMethod = null;
         }
       });
-    },
-
-    async updateSubscriptionPrice(args) {
-      tx("updateSubscriptionPrice", args, (s) => {
-        const sub = s.subscriptions[args.subscriptionId];
-        if (sub) sub.priceId = args.priceId;
-      });
-    },
-
-    async cancelSubscription(subscriptionId, opts = {}) {
-      tx("cancelSubscription", opts.reason ? { subscriptionId, reason: opts.reason } : { subscriptionId }, (s) => {
-        const sub = s.subscriptions[subscriptionId];
-        if (sub) {
-          sub.status = "canceled";
-          if (opts.reason === "suspend") sub.metadata = { ...sub.metadata, cancelledBy: "suspend" };
-        }
-      });
-    },
-
-    async setCancelAtPeriodEnd(subscriptionId, cancel) {
-      tx("setCancelAtPeriodEnd", { subscriptionId, cancel }, (s) => {
-        const sub = s.subscriptions[subscriptionId];
-        if (sub) sub.cancelAtPeriodEnd = cancel;
-      });
-    },
-
-    async listLiveSubscriptions(customerId) {
-      return tx("listLiveSubscriptions", { customerId }, (s) =>
-        Object.values(s.subscriptions)
-          .filter((x) => x.customerId === customerId && isLiveSubscriptionStatus(x.status) && x.metadata.purpose === "club-fee")
-          .map(fromStored),
-      );
     },
 
     async resetCustomerDetails(args) {
@@ -249,25 +247,93 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       tx("updateCustomer", args, () => undefined);
     },
 
-    async refundPaidInvoices(subscriptionId, opts = {}) {
-      return tx("refundPaidInvoices", { subscriptionId, paidAfter: opts.paidAfter ? opts.paidAfter.toISOString() : null }, (s) => {
-        let pence = 0;
-        const invoiceIds: string[] = [];
-        for (const inv of s.paidInvoices[subscriptionId] ?? []) {
-          if (opts.paidAfter && new Date(inv.paidAt) < opts.paidAfter) continue;
-          if (!s.refunds.some((r) => r.invoiceId === inv.id)) s.refunds.push({ subscriptionId, invoiceId: inv.id, pence: inv.pence });
-          pence += inv.pence;
-          invoiceIds.push(inv.id);
-        }
-        return { pence, invoiceIds };
+    async retrieveInvoice(invoiceId) {
+      return tx("retrieveInvoice", { invoiceId }, (s) => {
+        const inv = s.invoices[invoiceId];
+        if (!inv || (isFull(inv) && inv.status === "deleted")) return null;
+        return view(inv);
       });
     },
 
-    async findOrCreateCustomPrice(args) {
-      return tx("findOrCreateCustomPrice", args, (s) => {
-        const key = `club_monthly_${args.pence}`;
-        if (!s.prices[key]) s.prices[key] = `price_fake_${args.pence}`;
-        return s.prices[key];
+    async findMonthInvoices(monthId) {
+      return tx("findMonthInvoices", { monthId }, (s) =>
+        Object.values(s.invoices)
+          .filter((i) => isFull(i) && i.status !== "deleted" && i.metadata.purpose === "club-fee" && i.metadata.monthId === monthId)
+          .map(view),
+      );
+    },
+
+    async createMonthInvoice(args) {
+      return tx("createMonthInvoice", args, (s) => {
+        const { params, idempotencyKey } = buildMonthInvoiceParams(args);
+        const id = idempotent(s, idempotencyKey, params, () => {
+          const invId = next(s, "in");
+          s.invoices[invId] = {
+            id: invId,
+            customerId: args.customerId,
+            status: "draft",
+            metadata: { ...(params.metadata as Record<string, string>) },
+            totalPence: 0,
+            hostedInvoiceUrl: `https://invoice.stripe.test/${invId}`,
+            params,
+            items: [],
+            payAttempts: [],
+          };
+          return invId;
+        });
+        return view(s.invoices[id]);
+      });
+    },
+
+    async addMonthInvoiceItem(args) {
+      tx("addMonthInvoiceItem", args, (s) => {
+        const { params, idempotencyKey } = buildMonthInvoiceItemParams(args);
+        idempotent(s, idempotencyKey, params, () => {
+          const inv = full(s, args.invoiceId);
+          if (inv.status !== "draft") throw new Error(`You can only add invoice items to draft invoices (${inv.id} is ${inv.status})`);
+          inv.items.push(params);
+          const unit = params.price_data?.unit_amount ?? 0;
+          const exclusive = (params.tax_rates ?? []).some((t) => t.includes("exclusive"));
+          inv.totalPence += exclusive ? Math.round(unit * 1.2) : unit;
+          return next(s, "ii");
+        });
+      });
+    },
+
+    async finalizeInvoice(invoiceId) {
+      return tx("finalizeInvoice", { invoiceId }, (s) => {
+        const inv = full(s, invoiceId);
+        if (inv.status === "draft") inv.status = "open";
+        return view(inv);
+      });
+    },
+
+    async payInvoice(invoiceId, opts = {}) {
+      return tx("payInvoice", { invoiceId, paymentMethodId: opts.paymentMethodId ?? null }, (s) => {
+        const inv = full(s, invoiceId);
+        if (inv.status === "paid") return { invoice: view(inv), declined: false };
+        if (inv.status !== "open") throw new Error(`Invoice ${invoiceId} is ${inv.status}; only an open invoice can be paid`);
+        const pm = opts.paymentMethodId ?? s.customers[inv.customerId]?.defaultPaymentMethod ?? null;
+        const outcome: FakePayOutcome | "no-card" = !pm ? "no-card" : (s.payOutcomes[pm] ?? s.payOutcomes["*"] ?? "succeed");
+        inv.payAttempts.push({ paymentMethodId: pm, outcome });
+        if (outcome === "succeed") inv.status = "paid";
+        return { invoice: view(inv), declined: outcome !== "succeed" };
+      });
+    },
+
+    async voidInvoice(invoiceId) {
+      return tx("voidInvoice", { invoiceId }, (s): VoidOutcome => {
+        const inv = s.invoices[invoiceId];
+        if (!inv || (isFull(inv) && inv.status === "deleted")) return "not-found";
+        if (inv.status === "paid") return "paid";
+        if (inv.status === "void") return "already-void";
+        if (inv.status === "draft") {
+          if (isFull(inv)) inv.status = "deleted";
+          else delete s.invoices[invoiceId];
+          return "deleted";
+        }
+        inv.status = "void";
+        return "voided";
       });
     },
   };

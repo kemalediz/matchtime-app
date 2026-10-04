@@ -1,6 +1,7 @@
 /**
- * The CLUB FEE billing webhook (club fee billing, slice B3).
- * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 2, 5.1 and 5.3.
+ * The CLUB FEE billing webhook (club fee billing, slice B3; slice P2 for
+ * games played: a card saved in setup mode and one invoice per month).
+ * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 2, 5.2 and 5.4.
  *
  * NOT the match fee webhook. /api/stripe/webhook is the Connect endpoint
  * ("Connected accounts" scope, STRIPE_WEBHOOK_SECRET) for players paying
@@ -13,19 +14,20 @@
  * destination, "Your account":
  *   URL:    https://matchtime.ai/api/stripe/billing-webhook
  *   Events: checkout.session.completed
- *           customer.subscription.created
- *           customer.subscription.updated
- *           customer.subscription.deleted
  *           invoice.paid
  *           invoice.payment_failed
  *           invoice.payment_action_required
+ *           invoice.voided
+ *           invoice.marked_uncollectible
  *           payment_method.detached
+ * (customer.subscription.* are not needed any more: none exist; if they
+ * arrive they are answered 200 and ignored.)
  *
  * Public route (src/lib/public-paths.ts allows /api/stripe): the
  * signature is the auth. Everything after verification is in
  * `processBillingWebhook` (club-billing-stripe.ts): BillingEvent
- * idempotency, purpose "club-fee" only, a fresh read of the subscription,
- * and every state move through the one writer.
+ * idempotency, purpose "club-fee" only, a fresh read of the invoice, the
+ * month found by its id, and every state move through the one writer.
  */
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";

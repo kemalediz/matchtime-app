@@ -245,44 +245,52 @@ describe("billingStateLines (8.1)", () => {
   });
 });
 
-describe("billingButtons (8.1): which card buttons the page shows", () => {
-  it("the contact: Add a card before a card is on", () => {
-    for (const status of ["trial", "grace", "paused"]) expect(billingButtons(state({ status }))).toEqual(["add-card"]);
+describe("billingButtons (8.1; slice P2: setup mode only, our own Stop paying)", () => {
+  it("the contact: Add a card while no card is on file", () => {
+    for (const status of ["trial", "grace", "subscribed"]) expect(billingButtons(state({ status }))).toEqual(["add-card"]);
+    expect(billingButtons(state({ status: "paused", pausedReason: "no-card" }))).toEqual(["add-card"]);
   });
 
-  it("the contact with their own card AND the dedicated Portal configured: change or cancel", () => {
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", subscriptionStatus: "active", portalAvailable: true }))).toEqual(["change-card"]);
+  it("the contact's own card on file and billing running: Change card (setup mode) and Stop paying", () => {
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", cardLast4: "4242" }))).toEqual(["change-card", "stop-paying"]);
   });
 
-  it("review fix 4: no Portal configuration, or no card of their own on file (null holder): setup mode, never the Portal", () => {
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", subscriptionStatus: "active", portalAvailable: false }))).toEqual(["use-mine"]);
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: null, subscriptionStatus: "active", portalAvailable: true }))).toEqual(["use-mine"]);
+  it("Stop paying pressed: Keep paying instead", () => {
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "u1", cardLast4: "4242", cancelAtPeriodEnd: true }))).toEqual([
+      "change-card",
+      "keep-paying",
+    ]);
   });
 
-  it("the contact with someone else's card: use mine", () => {
-    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "old", subscriptionStatus: "active", portalAvailable: true }))).toEqual(["use-mine"]);
+  it("the contact with someone else's card: Use my card instead (and Stop paying)", () => {
+    expect(billingButtons(state({ status: "subscribed", cardHolderUserId: "old", cardLast4: "1881" }))).toEqual(["use-mine", "stop-paying"]);
   });
 
-  it("review fix 2: an UNPAID subscription always shows 'Update card and pay' (setup mode, open invoice retried)", () => {
-    for (const [status, sub] of [
-      ["past_due", "past_due"],
-      ["past_due", "unpaid"],
-      ["paused", "past_due"],
-      ["paused", "unpaid"],
-      ["grace", "incomplete"],
-    ] as const) {
-      for (const holder of ["u1", "old", null]) {
-        expect(billingButtons(state({ status, subscriptionStatus: sub, cardHolderUserId: holder, portalAvailable: true })), `${status}/${sub}/${holder}`).toEqual(["update-card"]);
-      }
+  it("a card in the free month (trial with a card is 'subscribed'); in trial or grace with a card: change it only", () => {
+    expect(billingButtons(state({ status: "trial", cardHolderUserId: "u1", cardLast4: "4242" }))).toEqual(["change-card"]);
+  });
+
+  it("a payment failed (past due, or paused for it): ALWAYS 'Update card and pay', whoever's card", () => {
+    for (const holder of ["u1", "old", null]) {
+      expect(billingButtons(state({ status: "past_due", cardHolderUserId: holder, cardLast4: holder ? "4242" : null })), `past_due/${holder}`).toEqual(["update-card"]);
+      expect(billingButtons(state({ status: "paused", pausedReason: "payment-failed", cardHolderUserId: holder })), `paused/${holder}`).toEqual(["update-card"]);
     }
     expect(t("en").billing_btn_update_card).toBe("Update card and pay");
     expect(t("tr").billing_btn_update_card).toBe("Kartı güncelle ve öde");
   });
 
-  it("paused or grace with no live subscription: Add a card", () => {
-    for (const sub of [null, "canceled", "incomplete_expired"]) {
-      expect(billingButtons(state({ status: "paused", subscriptionStatus: sub }))).toEqual(["add-card"]);
-    }
+  it("paused after Stop paying with the card still on: Keep paying (start again); with no card: Add a card", () => {
+    expect(billingButtons(state({ status: "paused", pausedReason: "cancelled", cardHolderUserId: "u1", cardLast4: "4242" }))).toEqual(["keep-paying"]);
+    expect(billingButtons(state({ status: "paused", pausedReason: "cancelled" }))).toEqual(["add-card"]);
+  });
+
+  it("the new labels, English and Turkish, no Portal wording", () => {
+    expect([t("en").billing_btn_change_card, t("en").billing_btn_stop_paying, t("en").billing_btn_keep_paying]).toEqual(["Change card", "Stop paying", "Keep paying"]);
+    expect([t("tr").billing_btn_change_card, t("tr").billing_btn_stop_paying, t("tr").billing_btn_keep_paying]).toEqual([
+      "Kartı değiştir",
+      "Ödemeyi durdur",
+      "Ödemeye devam et",
+    ]);
   });
 
   it("an old card holder: remove mine, nothing else", () => {
@@ -291,7 +299,7 @@ describe("billingButtons (8.1): which card buttons the page shows", () => {
 
   it("a viewer and an exempt owner: no buttons at all", () => {
     for (const status of ["trial", "grace", "subscribed", "past_due", "paused"]) {
-      expect(billingButtons(state({ status, role: "viewer" }))).toEqual([]);
+      expect(billingButtons(state({ status, role: "viewer", cardHolderUserId: "u1", cardLast4: "4242" }))).toEqual([]);
     }
     expect(billingButtons(state({ status: "exempt", role: "exempt-owner" }))).toEqual([]);
   });
@@ -334,10 +342,9 @@ describe("slice B5: paused because MatchTime was removed from the group", () => 
     expect(billingStateLines("en", state({ status: "paused", pausedReason: "no-card" }))[0]).toContain("Add a card");
   });
 
-  it("no card buttons at all, with or without the subscription still running to its end", () => {
+  it("no card buttons at all, with or without a card on file", () => {
     expect(billingButtons(removed())).toEqual([]);
-    expect(billingButtons(removed({ subscriptionStatus: "active", cardHolderUserId: "u1", portalAvailable: true }))).toEqual([]);
-    expect(billingButtons(removed({ subscriptionStatus: "past_due" }))).toEqual([]);
+    expect(billingButtons(removed({ cardHolderUserId: "u1", cardLast4: "4242" }))).toEqual([]);
     expect(billingButtons(state({ status: "paused", pausedReason: "no-card" }))).toEqual(["add-card"]);
   });
 

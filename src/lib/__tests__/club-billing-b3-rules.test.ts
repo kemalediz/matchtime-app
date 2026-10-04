@@ -1,21 +1,18 @@
 /**
- * CLUB FEE BILLING, slice B3: the pure rules the Stripe half reads.
- * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 4.2, 5.2 to 5.4,
- * decision 3 (the 49 hour Checkout trial rule) and the B2 review gap
- * (Free, then back to Standard after the free month was used).
+ * CLUB FEE BILLING: the pure rules the Stripe half reads (slice B3, revised
+ * for games played in slice P2).
+ * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 4.2, 5.3, 5.4,
+ * 6 and the B2 review gap (Free, then back to Standard after the free month
+ * was used).
  *
  * No database, no Stripe, no clock: every rule takes `now` and `env`.
+ * The 49 hour Checkout trial rule, the subscription status helpers and
+ * `subscriptionStateEvent` retired with the subscription (P2, 5.5).
  */
 import { describe, expect, it } from "vitest";
-import {
-  CHECKOUT_TRIAL_MIN_HOURS,
-  checkoutTrialEnd,
-  isLiveSubscriptionStatus,
-  nextBillingState,
-  subscriptionStateEvent,
-  vatCountryNeedsCheck,
-  type BillingClub,
-} from "../club-billing-rules";
+import * as rules from "../club-billing-rules";
+import { nextBillingState, vatCountryNeedsCheck, type BillingClub } from "../club-billing-rules";
+import { MONTH_CLOSE_DELAY_MS, monthCloseDue, monthsToOpen, monthBounds } from "../club-billing-cycle-rules";
 
 const ON = { BILLING_ENABLED: "1" };
 const OFF = {};
@@ -24,34 +21,11 @@ const DAY = 24 * HOUR;
 const APPROVED = new Date("2026-10-01T09:00:00Z");
 const TRIAL_ENDS = new Date(APPROVED.getTime() + 30 * DAY);
 
-describe("checkoutTrialEnd (decision 3): max(trialEndsAt, now + 49h)", () => {
-  it("is 49 hours, one more than Stripe's 48 hour minimum", () => {
-    expect(CHECKOUT_TRIAL_MIN_HOURS).toBe(49);
-  });
-
-  it("day 21: the free month's own end", () => {
-    const now = new Date(APPROVED.getTime() + 21 * DAY);
-    expect(checkoutTrialEnd(TRIAL_ENDS, now)).toEqual(TRIAL_ENDS);
-  });
-
-  it("day 28 with exactly 48 hours left: pushed to now + 49h (one extra free hour, never early)", () => {
-    const now = new Date(TRIAL_ENDS.getTime() - 48 * HOUR);
-    expect(checkoutTrialEnd(TRIAL_ENDS, now)).toEqual(new Date(now.getTime() + 49 * HOUR));
-  });
-
-  it("day 28 with 50 hours left: the free month's own end", () => {
-    const now = new Date(TRIAL_ENDS.getTime() - 50 * HOUR);
-    expect(checkoutTrialEnd(TRIAL_ENDS, now)).toEqual(TRIAL_ENDS);
-  });
-
-  it("day 29: pushed to now + 49h", () => {
-    const now = new Date(TRIAL_ENDS.getTime() - 24 * HOUR);
-    expect(checkoutTrialEnd(TRIAL_ENDS, now)).toEqual(new Date(now.getTime() + 49 * HOUR));
-  });
-
-  it("day 30, a minute before the end: pushed to now + 49h", () => {
-    const now = new Date(TRIAL_ENDS.getTime() - 60_000);
-    expect(checkoutTrialEnd(TRIAL_ENDS, now)).toEqual(new Date(now.getTime() + 49 * HOUR));
+describe("slice P2: the subscription helpers are gone", () => {
+  it("no checkoutTrialEnd, CHECKOUT_TRIAL_MIN_HOURS, isLiveSubscriptionStatus, isUnpaidSubscriptionStatus or subscriptionStateEvent", () => {
+    for (const name of ["checkoutTrialEnd", "CHECKOUT_TRIAL_MIN_HOURS", "isLiveSubscriptionStatus", "isUnpaidSubscriptionStatus", "subscriptionStateEvent"]) {
+      expect(name in rules, name).toBe(false);
+    }
   });
 });
 
@@ -116,66 +90,6 @@ describe("Free, then back to Standard or Custom (the B2 gap): the 'plan-billed' 
   });
 });
 
-describe("isLiveSubscriptionStatus: a subscription that still charges or may charge", () => {
-  it.each(["trialing", "active", "past_due", "unpaid", "incomplete", "paused"])("%s is live", (s) => {
-    expect(isLiveSubscriptionStatus(s)).toBe(true);
-  });
-  it.each(["canceled", "incomplete_expired", null, undefined, ""])("%s is not", (s) => {
-    expect(isLiveSubscriptionStatus(s as string | null)).toBe(false);
-  });
-});
-
-describe("subscriptionStateEvent: Stripe's latest truth to one billing event (5.3)", () => {
-  const ev = (status: string, clubStatus: string, extra: { cancelAtPeriodEnd?: boolean; pausedReason?: string | null } = {}) =>
-    subscriptionStateEvent({ status, cancelAtPeriodEnd: extra.cancelAtPeriodEnd ?? false }, { status: clubStatus, pausedReason: extra.pausedReason ?? null });
-
-  it("trialing or active on a club with no card yet: card-added", () => {
-    for (const s of ["trialing", "active"]) {
-      expect(ev(s, "trial")).toEqual({ type: "card-added" });
-      expect(ev(s, "grace")).toEqual({ type: "card-added" });
-    }
-  });
-
-  it("active on a paused club: card-added (resume), unless the pause is a removal from the group", () => {
-    expect(ev("active", "paused", { pausedReason: "payment-failed" })).toEqual({ type: "card-added" });
-    expect(ev("active", "paused", { pausedReason: "no-card" })).toEqual({ type: "card-added" });
-    expect(ev("active", "paused", { pausedReason: "removed", cancelAtPeriodEnd: true })).toBeNull();
-  });
-
-  it("active on a past due club: invoice-paid", () => {
-    expect(ev("active", "past_due")).toEqual({ type: "invoice-paid" });
-  });
-
-  it("active on a subscribed club: nothing", () => {
-    expect(ev("active", "subscribed")).toBeNull();
-  });
-
-  it("past_due on a subscribed club: payment-failed", () => {
-    expect(ev("past_due", "subscribed")).toEqual({ type: "payment-failed" });
-    expect(ev("past_due", "past_due")).toBeNull();
-  });
-
-  it("unpaid: Stripe gave up", () => {
-    expect(ev("unpaid", "past_due")).toEqual({ type: "subscription-unpaid" });
-    expect(ev("unpaid", "subscribed")).toEqual({ type: "payment-failed" });
-  });
-
-  it("canceled: the subscription ended, cancelled or failed", () => {
-    expect(ev("canceled", "subscribed", { cancelAtPeriodEnd: true })).toEqual({ type: "subscription-ended", cancelAtPeriodEnd: true });
-    expect(ev("canceled", "past_due")).toEqual({ type: "subscription-ended", cancelAtPeriodEnd: false });
-  });
-
-  it("an exempt club (Free, Sutton FC) never moves on Stripe's word", () => {
-    for (const s of ["trialing", "active", "past_due", "unpaid", "canceled"]) expect(ev(s, "exempt"), s).toBeNull();
-  });
-
-  it("incomplete and paused subscriptions say nothing", () => {
-    expect(ev("incomplete", "trial")).toBeNull();
-    expect(ev("incomplete_expired", "trial")).toBeNull();
-    expect(ev("paused", "subscribed")).toBeNull();
-  });
-});
-
 describe("vatCountryNeedsCheck (5.4): UK only, flag rather than refuse", () => {
   it("both GB: no check", () => {
     expect(vatCountryNeedsCheck("GB", "GB")).toBe(false);
@@ -192,7 +106,7 @@ describe("vatCountryNeedsCheck (5.4): UK only, flag rather than refuse", () => {
   });
 });
 
-describe("review fix 7: a subscription that ends DURING the free month goes back to trial, not paused", () => {
+describe("Stop paying inside the free month goes back to trial (B3 review fix 7, kept for P2)", () => {
   const club = (status: string): BillingClub => ({
     approvedAt: APPROVED,
     billingStatus: status,
@@ -200,19 +114,49 @@ describe("review fix 7: a subscription that ends DURING the free month goes back
     billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: null },
   });
 
-  it("cancelled at once on day 10: back to trial (card removed), the free month's end kept", () => {
+  it("stopped on day 10 (card removed): back to trial, the free month's end kept", () => {
     const now = new Date(APPROVED.getTime() + 10 * DAY);
-    expect(nextBillingState(club("subscribed"), { type: "subscription-ended", cancelAtPeriodEnd: false }, now, ON)).toMatchObject({
-      to: "trial",
-      pausedReason: null,
-    });
+    expect(nextBillingState(club("subscribed"), { type: "billing-stopped" }, now, ON)).toMatchObject({ to: "trial", pausedReason: null });
   });
 
-  it("ended after the free month: paused as before", () => {
-    const now = new Date(TRIAL_ENDS.getTime() + DAY);
-    expect(nextBillingState(club("subscribed"), { type: "subscription-ended", cancelAtPeriodEnd: true }, now, ON)).toMatchObject({
-      to: "paused",
-      pausedReason: "cancelled",
-    });
+  it("stopped after the free month (at the month close): paused (cancelled)", () => {
+    const now = new Date(TRIAL_ENDS.getTime() + 31 * DAY);
+    expect(nextBillingState(club("subscribed"), { type: "billing-stopped" }, now, ON)).toMatchObject({ to: "paused", pausedReason: "cancelled" });
+  });
+});
+
+describe("slice P2: when a month closes and which months open (plan 6)", () => {
+  it("the close waits 6 hours after the month ends", () => {
+    expect(MONTH_CLOSE_DELAY_MS).toBe(6 * HOUR);
+    const endsAt = new Date("2026-12-01T00:00:00Z");
+    expect(monthCloseDue(endsAt, new Date(endsAt.getTime() + 6 * HOUR - 1))).toBe(false);
+    expect(monthCloseDue(endsAt, new Date(endsAt.getTime() + 6 * HOUR))).toBe(true);
+  });
+
+  it("nothing opens inside the free month", () => {
+    expect(monthsToOpen(TRIAL_ENDS, 0, new Date(TRIAL_ENDS.getTime() - 1))).toEqual([]);
+  });
+
+  it("month 1 opens at the free month's end, at any hour", () => {
+    expect(monthsToOpen(TRIAL_ENDS, 0, TRIAL_ENDS)).toEqual([1]);
+  });
+
+  it("missed months open in order after an outage, never one already open", () => {
+    const at = new Date(monthBounds(TRIAL_ENDS, 3).startsAt.getTime() + HOUR);
+    expect(monthsToOpen(TRIAL_ENDS, 0, at)).toEqual([1, 2, 3]);
+    expect(monthsToOpen(TRIAL_ENDS, 2, at)).toEqual([3]);
+    expect(monthsToOpen(TRIAL_ENDS, 3, at)).toEqual([]);
+  });
+
+  it("at most 24 at once (a guard against a runaway backlog)", () => {
+    const at = monthBounds(TRIAL_ENDS, 40).startsAt;
+    expect(monthsToOpen(TRIAL_ENDS, 0, at)).toHaveLength(24);
+  });
+
+  it("Stop paying: no month that starts at or after the stop date", () => {
+    const stopAt = monthBounds(TRIAL_ENDS, 2).endsAt;
+    const at = new Date(monthBounds(TRIAL_ENDS, 4).startsAt.getTime() + HOUR);
+    expect(monthsToOpen(TRIAL_ENDS, 2, at, { stopAt })).toEqual([]);
+    expect(monthsToOpen(TRIAL_ENDS, 1, at, { stopAt })).toEqual([2]);
   });
 });

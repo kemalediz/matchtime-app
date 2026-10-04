@@ -2416,10 +2416,12 @@ export const en = {
   billing_who_none: "No money collector or owner with a phone number, so nobody can be asked for the card yet.",
   billing_card_on_file: (p: { yes: boolean }): string => (p.yes ? "Card on file: yes." : "Card on file: no."),
   billing_btn_add_card: "Add a card",
-  billing_btn_change_card: "Change card or cancel",
+  billing_btn_change_card: "Change card",
   billing_btn_use_mine: "Use my card instead",
   billing_btn_update_card: "Update card and pay",
   billing_btn_remove_mine: "Remove my card",
+  billing_btn_stop_paying: "Stop paying",
+  billing_btn_keep_paying: "Keep paying",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",
@@ -2441,6 +2443,11 @@ export const en = {
   billing_notice_already: "A card is already paying for this club.",
   billing_notice_re_add: "MatchTime isn't in the club's WhatsApp group. Add it back to the group first.",
   billing_notice_failed: "Something went wrong. Please try again.",
+  billing_notice_stopped:
+    "Done. Billing ends when this month ends: this month is charged for its games as usual, then nothing more. MatchTime keeps running until then.",
+  billing_notice_stopped_free: "Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.",
+  billing_notice_kept: "Done. MatchTime keeps running, and each month is charged only for the games played.",
+  billing_notice_past_due: "A payment is overdue. Update the card and pay it first.",
   billing_dm_card_added: (p: {
     name: string | null;
     club: string;

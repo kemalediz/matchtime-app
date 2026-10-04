@@ -332,7 +332,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     await row.getByLabel("Plan", { exact: true }).selectOption("custom");
     await row.getByLabel("Custom price in pounds").fill("5");
     await row.getByRole("button", { name: "Save plan" }).click();
-    await expect(page.getByText("Plan saved: Custom £5 a month.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Plan saved: Custom, up to £5 a month.")).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingPlan","billingPricePence","billingStatus" FROM "Organisation" WHERE id=$1`, [ORG])).toEqual({
       billingPlan: "custom",
       billingPricePence: 500,
@@ -360,7 +360,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     // Slice B3: leaving Free while the club's one free month is still
     // running puts it back in that month (its end kept); no second free
     // month is ever started.
-    await expect(page.getByText("Plan saved: Standard £9.99 a month. The club is back in its free month.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Plan saved: Standard, up to £9.99 a month. The club is back in its free month.")).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingPlan","billingStatus" FROM "Organisation" WHERE id=$1`, [ORG])).toEqual({
       billingPlan: "standard",
       billingStatus: "trial",

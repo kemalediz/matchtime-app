@@ -1,5 +1,7 @@
 /**
- * Club fee billing, slice B3: the billing page's four card actions.
+ * Club fee billing, slices B3 and P2: the billing page's card actions
+ * (Add a card, Use my card instead / Change card, Stop paying, Keep
+ * paying, Remove my card; the Customer Portal action retired in P2).
  * Plan: MDs/club-fee-billing-plan-2026-10-01.md, section 4.5 ("every
  * server action re-checks the guard, never trusting that the page was
  * shown").
@@ -22,7 +24,8 @@ const h = vi.hoisted(() => ({
   requireAccess: vi.fn(),
   startClubCheckout: vi.fn(),
   startCardReplace: vi.fn(),
-  openClubPortal: vi.fn(),
+  stopPaying: vi.fn(),
+  keepPaying: vi.fn(),
   removeMyCard: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
@@ -40,11 +43,13 @@ vi.mock("@/lib/club-billing", () => ({
 vi.mock("@/lib/club-billing-stripe", () => ({
   startClubCheckout: h.startClubCheckout,
   startCardReplace: h.startCardReplace,
-  openClubPortal: h.openClubPortal,
+  stopPaying: h.stopPaying,
+  keepPaying: h.keepPaying,
   removeMyCard: h.removeMyCard,
 }));
 
-import { addCardAction, openPortalAction, removeMyCardAction, useMyCardAction } from "../club-billing";
+import * as actions from "../club-billing";
+import { addCardAction, keepPayingAction, removeMyCardAction, stopPayingAction, useMyCardAction } from "../club-billing";
 
 async function redirectOf(p: Promise<unknown>): Promise<string> {
   try {
@@ -66,7 +71,8 @@ beforeEach(() => {
 const ACTIONS = [
   ["addCardAction", addCardAction, h.startClubCheckout],
   ["useMyCardAction", useMyCardAction, h.startCardReplace],
-  ["openPortalAction", openPortalAction, h.openClubPortal],
+  ["stopPayingAction", stopPayingAction, h.stopPaying],
+  ["keepPayingAction", keepPayingAction, h.keepPaying],
 ] as const;
 
 describe("each action re-checks who the viewer is", () => {
@@ -109,8 +115,32 @@ describe("each action re-checks who the viewer is", () => {
   it("Add a card: not set up, or a card already paying, say so", async () => {
     h.startClubCheckout.mockResolvedValue({ ok: false, reason: "not-set-up" });
     expect(await redirectOf(addCardAction("org1"))).toBe("/billing/org1?notice=not-set-up");
-    h.startClubCheckout.mockResolvedValue({ ok: false, reason: "already-subscribed" });
+    h.startClubCheckout.mockResolvedValue({ ok: false, reason: "already-card" });
     expect(await redirectOf(addCardAction("org1"))).toBe("/billing/org1?notice=already");
+  });
+
+  it("slice P2: the Customer Portal action is gone", () => {
+    expect("openPortalAction" in actions).toBe(false);
+  });
+});
+
+describe("slice P2: Stop paying and Keep paying", () => {
+  it("Stop paying lands on the page with 'stopped', or 'stopped-free' inside the free month (card removed)", async () => {
+    h.stopPaying.mockResolvedValue({ ok: true, freeMonth: false });
+    expect(await redirectOf(stopPayingAction("org1"))).toBe("/billing/org1?notice=stopped");
+    h.stopPaying.mockResolvedValue({ ok: true, freeMonth: true });
+    expect(await redirectOf(stopPayingAction("org1"))).toBe("/billing/org1?notice=stopped-free");
+    expect(h.requireAccess).toHaveBeenCalledTimes(2);
+  });
+
+  it("a payment overdue: the 'past-due' notice (pay first)", async () => {
+    h.stopPaying.mockResolvedValue({ ok: false, reason: "past-due" });
+    expect(await redirectOf(stopPayingAction("org1"))).toBe("/billing/org1?notice=past-due");
+  });
+
+  it("Keep paying lands on the page with 'kept'", async () => {
+    h.keepPaying.mockResolvedValue({ ok: true });
+    expect(await redirectOf(keepPayingAction("org1"))).toBe("/billing/org1?notice=kept");
   });
 });
 

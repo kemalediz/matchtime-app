@@ -10,10 +10,12 @@
  * writer path (`setClubPlan`, `startTrial` in src/lib/club-billing.ts),
  * which refuses any club that predates self-join (Sutton FC).
  *
- * Slice B3: after a plan is saved, `syncPlanToStripe` swaps a live
- * subscription's price (no proration, from the next month) or cancels it
- * on Free; a club billed again after Free with its free month used up
- * gets one DM to its billing contact asking for a card.
+ * After a plan is saved, `onPlanChanged` (slice P2, games played): on Free
+ * the open month is waived and every unpaid club fee invoice voided; a
+ * price change needs nothing in Stripe (each month close charges the lower
+ * of the price when the month opened and the price at the close). A club
+ * billed again after Free with its free month used up gets one DM to its
+ * billing contact asking for a card.
  *
  * "use server" modules may export async functions only.
  */
@@ -21,8 +23,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { setClubPlan, startTrial } from "@/lib/club-billing";
-import { flushPendingBillingNotices, syncPlanToStripe } from "@/lib/club-billing-stripe";
-import { billingStripeConfig } from "@/lib/stripe-billing";
+import { flushPendingBillingNotices, onPlanChanged } from "@/lib/club-billing-stripe";
 import { parsePlanChoice } from "@/lib/club-billing-rules";
 import { moneyLabel } from "@/lib/club-billing-view";
 import { dayLabel } from "@/lib/i18n/dates";
@@ -49,11 +50,6 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
       message: choice.reason === "unknown-plan" ? "That is not a plan." : "A custom price must be between £1.00 and £9.99.",
     };
   }
-  if (choice.plan === "custom" && !billingStripeConfig().productId) {
-    // A Custom price is made in Stripe under the club product; without it a
-    // card could never be taken at that price. Refuse before writing.
-    return { ok: false, message: "Custom prices need STRIPE_CLUB_PRODUCT_ID set (the MatchTime club product in Stripe). Nothing was saved." };
-  }
   const r = await setClubPlan(orgId, { plan: choice.plan, pricePence: choice.pricePence });
   revalidatePath("/admin/clubs");
   if (!r.ok) {
@@ -62,16 +58,23 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
       message: r.reason === "not-found" ? "That club no longer exists." : "Only clubs that joined themselves have a plan.",
     };
   }
-  const label = r.plan === "free" ? "Free" : r.plan === "custom" ? `Custom ${moneyLabel(r.pricePence ?? 0)} a month` : "Standard £9.99 a month";
+  const label =
+    r.plan === "free" ? "Free" : r.plan === "custom" ? `Custom, up to ${moneyLabel(r.pricePence ?? 0)} a month` : "Standard, up to £9.99 a month";
   let message = `Plan saved: ${label}.${r.plan === "free" ? " The club is not billed." : ""}${r.resumed ? " MatchTime is back on in its group." : ""}`;
 
-  // The database is committed; now Stripe (a live subscription only).
+  // The database is committed; now the months and Stripe (Free only).
   try {
-    const synced = await syncPlanToStripe(orgId);
-    if (synced.action === "cancelled") message += " Its card subscription was cancelled.";
-    else if (synced.action === "price-changed") message += " The card is charged the new price from the next payment.";
+    const changed = await onPlanChanged(orgId);
+    if (changed.action === "forgiven") {
+      if (changed.waived > 0) message += " This month is not charged.";
+      if (changed.voided > 0) message += ` ${changed.voided} unpaid invoice(s) cancelled.`;
+      if (changed.alreadyPaid > 0) message += ` ${changed.alreadyPaid} invoice(s) had already been paid: refund by hand in Stripe if they should be.`;
+      if (changed.failed > 0) {
+        return { ok: false, message: `${message} ${changed.failed} unpaid invoice(s) could not be cancelled in Stripe yet; the hourly billing run keeps trying. Press Save plan again to retry now.` };
+      }
+    }
   } catch (err) {
-    console.error(`[club-billing-admin] ${orgId}: Stripe plan sync failed:`, err);
+    console.error(`[club-billing-admin] ${orgId}: plan change follow-up failed:`, err);
     return { ok: false, message: `${message} Stripe could not be updated (${(err as Error).message}). Press Save plan again to retry.` };
   }
 

@@ -125,29 +125,37 @@ export type BillingEventInput =
   | { type: "approved" }
   /** The platform owner's "Start free month" on /admin/clubs (slice B2). */
   | { type: "start-trial" }
-  /** Checkout completed: a card is on file (slice B3). */
-  | { type: "card-added" }
+  /**
+   * A card was saved (Checkout in setup mode completed; slice P2), or the
+   * payer pressed "Keep paying" on a club paused after Stop paying. Nothing
+   * is charged by it. `unpaid`: a club fee invoice of an earlier month is
+   * still unpaid, so a club paused for a failed payment stays paused until
+   * that invoice is paid (`invoice-paid` resumes it).
+   */
+  | { type: "card-added"; unpaid?: boolean }
   /** The scheduler at or after `trialEndsAt` (slice B4). */
   | { type: "trial-ended" }
   /** The scheduler at or after `graceEndsAt` (slice B4). */
   | { type: "grace-ended" }
-  /** `invoice.payment_failed` (slice B3). */
+  /** `invoice.payment_failed` on a month's club fee invoice. */
   | { type: "payment-failed" }
-  /** `invoice.paid` (slice B3). */
+  /** `invoice.paid` on a month's club fee invoice, with no other unpaid. */
   | { type: "invoice-paid" }
-  /** `customer.subscription.deleted` (slice B3). */
-  | { type: "subscription-ended"; cancelAtPeriodEnd: boolean }
-  /** Subscription status `unpaid`: Stripe gave up (slice B3). */
-  | { type: "subscription-unpaid" }
+  /**
+   * Slice P2: billing ends because the payer pressed Stop paying. Inside
+   * the free month (the card has just been removed) the club goes back to
+   * "trial" with the same end date; otherwise the month close of the last
+   * month pauses it ("cancelled").
+   */
+  | { type: "billing-stopped" }
   /** MatchTime removed from the club's group (slice B5). */
   | { type: "removed-from-group" }
   /**
-   * MatchTime re-added to the same group (slice B5), with what Stripe
-   * says about the club's subscription at that moment: "paying" (live and
-   * paid or in its trial; its cancel at period end has just been undone),
-   * "unpaid" (live but not paid), or none.
+   * MatchTime re-added to the same group (slice B5), with what OUR rows say
+   * about paying (slice P2): "ok" (a card on file and no club fee invoice
+   * unpaid), "unpaid" (a club fee invoice is unpaid), or null (no card).
    */
-  | { type: "re-added"; subscription?: "paying" | "unpaid" | null }
+  | { type: "re-added"; card?: "ok" | "unpaid" | null }
   /** The platform owner set plan Free (slice B2). */
   | { type: "plan-free" }
   /**
@@ -233,7 +241,16 @@ export function nextBillingState(
       return null;
 
     case "card-added":
-      if (from === "trial" || from === "grace" || from === "paused") return to("subscribed", from);
+      if (from === "trial" || from === "grace") return to("subscribed", from);
+      if (from === "paused") {
+        // Removed from the group: adding MatchTime back is the way, never a
+        // card (it would pay for a group MatchTime is not in).
+        if (b?.pausedReason === "removed") return null;
+        // A failed payment: the card alone does not resume it while that
+        // invoice is unpaid; paying it does (invoice-paid).
+        if (b?.pausedReason === "payment-failed" && event.unpaid) return null;
+        return to("subscribed", from);
+      }
       return null;
 
     case "payment-failed":
@@ -244,17 +261,12 @@ export function nextBillingState(
       if (from === "past_due" || from === "paused") return to("subscribed", from);
       return null;
 
-    case "subscription-ended":
+    case "billing-stopped":
       if (from !== "subscribed" && from !== "past_due") return null;
-      // Ended inside the free month (the payer cancelled at once, or the
-      // card was removed): the free month carries on, the card is gone. A
-      // new card then gets the same trial end, never an early charge.
+      // Stopped inside the free month (the card has just been removed): the
+      // free month carries on with the same end date and its reminders.
       if (from === "subscribed" && b && now < b.trialEndsAt) return to("trial", from);
-      return to("paused", from, { pausedReason: event.cancelAtPeriodEnd ? "cancelled" : "payment-failed" });
-
-    case "subscription-unpaid":
-      if (from !== "past_due") return null;
-      return to("paused", from, { pausedReason: "payment-failed" });
+      return to("paused", from, { pausedReason: "cancelled" });
 
     case "removed-from-group":
       if (!LIVE_BILLED.has(from)) return null;
@@ -264,16 +276,15 @@ export function nextBillingState(
       // Only a club paused BECAUSE it was removed; any other pause has its
       // own way back (a card, a payment).
       if (from !== "paused" || !b || b.pausedReason !== "removed") return null;
-      // The subscription still pays (the removal only set it to end with
-      // the paid month, now undone): serving again at once.
-      if (event.subscription === "paying") return to("subscribed", from);
-      // Live but unpaid: still paused, now waiting for the payment, so
-      // "Update card and pay" and the paid invoice resume it as usual.
-      if (event.subscription === "unpaid") return to("paused", from, { pausedReason: "payment-failed" });
-      // No subscription, free month still running: back to the free month.
+      // A card on file and nothing unpaid: serving again at once.
+      if (event.card === "ok") return to("subscribed", from);
+      // A club fee invoice is unpaid: still paused, now waiting for the
+      // payment, so "Update card and pay" and the paid invoice resume it.
+      if (event.card === "unpaid") return to("paused", from, { pausedReason: "payment-failed" });
+      // No card, free month still running: back to the free month.
       if (now < b.trialEndsAt) return to("trial", from);
-      // No subscription, free month over: still paused, now waiting for a
-      // card, so Add a card and its first payment resume it as usual.
+      // No card, free month over: still paused, now waiting for a card, so
+      // Add a card resumes it as usual.
       return to("paused", from, { pausedReason: "no-card" });
 
     case "plan-free":
@@ -286,6 +297,11 @@ export function nextBillingState(
       if (!isBillingEnabled(env)) return null;
       if (now < b.trialEndsAt) return to("trial", from);
       return to("grace", from, { graceEndsAt: graceEndsFrom(now) });
+
+    default:
+      // An event this table does not know (a retired subscription event):
+      // no change.
+      return null;
   }
 }
 
@@ -571,82 +587,18 @@ export function billingTotals(rows: Array<{ status: string; plan: string; priceP
   return totals;
 }
 
-// ── Slice B3: Stripe (sections 5.2 to 5.4) ──────────────────────────────
-
-/**
- * Stripe refuses a Checkout `trial_end` less than 48 hours ahead; one more
- * hour of margin covers the time between building the session and Stripe
- * reading it (decision 3).
- */
-export const CHECKOUT_TRIAL_MIN_HOURS = 49;
-
-/**
- * The `trial_end` for a club still in its free month: the free month's own
- * end, pushed to at least now + 49 hours. A card added on day 29 gets one or
- * two extra free days rather than an early charge.
- */
-export function checkoutTrialEnd(trialEndsAt: Date, now: Date): Date {
-  const floor = now.getTime() + CHECKOUT_TRIAL_MIN_HOURS * 60 * 60 * 1000;
-  return new Date(Math.max(trialEndsAt.getTime(), floor));
-}
-
-/**
- * A subscription that still charges, or may still charge, the card. A new
- * Checkout is refused while one exists, so a club can never pay twice.
- * `incomplete` counts: its first payment may still go through.
- */
-export function isLiveSubscriptionStatus(status: string | null | undefined): boolean {
-  return status !== null && status !== undefined && status !== "" && status !== "canceled" && status !== "incomplete_expired";
-}
-
-/**
- * A live subscription whose payment did not go through (past due, unpaid,
- * or a first payment still incomplete): the payer needs "update card and
- * pay" (setup mode, then the open invoice is retried on the new card).
- */
-export function isUnpaidSubscriptionStatus(status: string | null | undefined): boolean {
-  return status === "past_due" || status === "unpaid" || status === "incomplete";
-}
-
-/**
- * Stripe's latest word on the club's subscription (always re-fetched, so
- * out-of-order webhooks converge) as one billing event, or null. The one
- * writer then decides with `nextBillingState`, so an exempt club (Free,
- * Sutton FC) never moves whatever this says.
- *
- * A club paused because MatchTime was removed from its group (slice B5)
- * is not resumed by its old subscription still running to the end of the
- * paid month.
- */
-export function subscriptionStateEvent(
-  sub: { status: string; cancelAtPeriodEnd: boolean },
-  club: { status: string; pausedReason: string | null },
-): BillingEventInput | null {
-  if (club.status === "exempt") return null;
-  switch (sub.status) {
-    case "trialing":
-    case "active":
-      if (club.status === "trial" || club.status === "grace") return { type: "card-added" };
-      if (club.status === "paused") return club.pausedReason === "removed" ? null : { type: "card-added" };
-      if (club.status === "past_due") return { type: "invoice-paid" };
-      return null;
-    case "past_due":
-      return club.status === "subscribed" ? { type: "payment-failed" } : null;
-    case "unpaid":
-      if (club.status === "past_due") return { type: "subscription-unpaid" };
-      return club.status === "subscribed" ? { type: "payment-failed" } : null;
-    case "canceled":
-      return { type: "subscription-ended", cancelAtPeriodEnd: sub.cancelAtPeriodEnd };
-    default:
-      return null;
-  }
-}
+// ── Slice B3: Stripe (section 5.4) ─────────────────────────────────────
+//
+// Slice P2 retired the subscription helpers (`checkoutTrialEnd`, the 49
+// hour rule, `isLiveSubscriptionStatus`, `isUnpaidSubscriptionStatus`,
+// `subscriptionStateEvent`): a card is saved in setup mode and each month
+// is one invoice our own month close creates (plan 5.1, option b).
 
 /**
  * UK only at first (5.4, decision 11): the billing address country and the
  * card's issuing country are the two pieces of evidence of where the payer
  * lives. Either one not GB, or unknown, flags the club "Check VAT country"
- * on /admin/clubs. The subscription is kept either way: refusing after the
+ * on /admin/clubs. The card is kept either way: refusing after the
  * card is taken would be worse.
  */
 export function vatCountryNeedsCheck(billingCountry: string | null | undefined, cardCountry: string | null | undefined): boolean {

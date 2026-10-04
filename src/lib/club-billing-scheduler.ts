@@ -3,9 +3,11 @@
  * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 4.1 and 6.
  *
  * Every run:
- *   1. completes any REFUND INTENT left open (a club fee subscription that
- *      was cancelled but whose refund failed), whatever the flag says: it
- *      is money already taken (`sweepOpenRefundIntents`);
+ *   1. voids any unpaid club fee invoice of a club that must not be
+ *      charged any more (set Free, exempt, gone), whatever the flag says,
+ *      so Stripe's own retries never take it (`sweepUnwantedMonthInvoices`,
+ *      slice P2; it replaces B3's refund-intent sweep, which went with the
+ *      subscription);
  *   2. with BILLING_ENABLED on, for every billed club that is approved and
  *      came through self-join (never a suspended, unapproved, exempt or
  *      pre self-join club):
@@ -31,7 +33,8 @@ import { APPROVED_CLUB_WHERE, isClubApproved } from "./club-approval-state";
 import { isBillingEnabled } from "./club-billing-rules";
 import { billingTransitionDue, isBillingDmHour } from "./club-billing-schedule-rules";
 import { flushPendingBillingDms, sendClubFeeTip, sendScheduledBillingDms } from "./club-billing-dms";
-import { flushPendingBillingNotices, sweepOpenRefundIntents } from "./club-billing-stripe";
+import { flushPendingBillingNotices } from "./club-billing-stripe";
+import { sweepUnwantedMonthInvoices } from "./club-billing-months";
 
 export interface BillingCronClubReport {
   orgId: string;
@@ -45,20 +48,21 @@ export interface BillingCronClubReport {
 export interface BillingCronReport {
   enabled: boolean;
   daytime: boolean;
-  refunds: { finished: number; failed: number } | { error: string };
+  /** Slice P2: unpaid invoices of clubs no longer billed, voided. */
+  voids: { voided: number; failed: number } | { error: string };
   clubs: BillingCronClubReport[];
 }
 
 export async function runBillingCron(now: Date = new Date()): Promise<BillingCronReport> {
-  let refunds: BillingCronReport["refunds"];
+  let voids: BillingCronReport["voids"];
   try {
-    refunds = await sweepOpenRefundIntents(now);
+    voids = await sweepUnwantedMonthInvoices(now);
   } catch (err) {
-    refunds = { error: err instanceof Error ? err.message : String(err) };
-    console.error("[billing-cron] refund sweep failed:", err);
+    voids = { error: err instanceof Error ? err.message : String(err) };
+    console.error("[billing-cron] void sweep failed:", err);
   }
   const daytime = isBillingDmHour(now);
-  if (!isBillingEnabled()) return { enabled: false, daytime, refunds, clubs: [] };
+  if (!isBillingEnabled()) return { enabled: false, daytime, voids, clubs: [] };
 
   // Every club with a ClubBilling row (only billed clubs have one), of the
   // approved ones. The billing state is read through a select and decided
@@ -98,5 +102,5 @@ export async function runBillingCron(now: Date = new Date()): Promise<BillingCro
     }
   }
   console.log(`[billing-cron] ${now.toISOString()}: ${clubs.length} billed club(s), daytime ${daytime}`);
-  return { enabled: true, daytime, refunds, clubs };
+  return { enabled: true, daytime, voids, clubs };
 }

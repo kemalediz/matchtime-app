@@ -3,8 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { CreditCard } from "lucide-react";
 import { loadBillingAccess, loadClubFeeTip } from "@/lib/club-billing";
 import { billingNoticeText, billingPageView, type BillingButton, type BillingPageNotice } from "@/lib/club-billing-view";
-import { addCardAction, openPortalAction, removeMyCardAction, useMyCardAction } from "@/app/actions/club-billing";
-import { isClubPortalAvailable } from "@/lib/club-billing-stripe";
+import {
+  addCardAction,
+  keepPayingAction,
+  removeMyCardAction,
+  stopPayingAction,
+  useMyCardAction,
+} from "@/app/actions/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { WaText } from "@/components/billing/wa-text";
 
@@ -28,21 +33,37 @@ export const dynamic = "force-dynamic";
  *   anybody else, an unknown club, or the flag   404
  *   off
  *
- * SLICE B3: each card button is a form posting to its server action
+ * SLICE B3, P2: each card button is a form posting to its server action
  * (src/app/actions/club-billing.ts), which re-checks the guard itself and
- * redirects to Stripe (Checkout or the Customer Portal) or back here with
- * a notice. English or Turkish by the club's language.
+ * redirects to Stripe Checkout (setup mode: nothing is charged when a card
+ * is saved) or back here with a notice. English or Turkish by the club's
+ * language.
  */
 const ACTION: Record<BillingButton, (orgId: string) => Promise<void>> = {
   "add-card": addCardAction,
   "use-mine": useMyCardAction,
-  "change-card": openPortalAction,
-  // "Update card and pay": setup mode, then the open invoice is retried.
+  // Change card is setup mode too (slice P2: no Customer Portal).
+  "change-card": useMyCardAction,
+  // "Update card and pay": setup mode, then what is unpaid is paid on it.
   "update-card": useMyCardAction,
   "remove-mine": removeMyCardAction,
+  "stop-paying": stopPayingAction,
+  "keep-paying": keepPayingAction,
 };
 
-const NOTICES: readonly BillingPageNotice[] = ["done", "replaced", "removed", "not-set-up", "already", "re-add", "failed"];
+const NOTICES: readonly BillingPageNotice[] = [
+  "done",
+  "replaced",
+  "removed",
+  "not-set-up",
+  "already",
+  "re-add",
+  "failed",
+  "stopped",
+  "stopped-free",
+  "kept",
+  "past-due",
+];
 
 /** The notice to show after a card action, from the URL Stripe or the
  *  action sent the viewer back to. */
@@ -84,7 +105,7 @@ export default async function BillingPage({
   }
   const { role, snapshot } = access;
   const tip = role === "exempt-owner" || role === "card-holder" ? null : await loadClubFeeTip(orgId);
-  const v = billingPageView(snapshot.language, snapshot, role, userId, tip, { portalAvailable: isClubPortalAvailable() });
+  const v = billingPageView(snapshot.language, snapshot, role, userId, tip);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8" data-testid="billing-page" data-role={role}>
@@ -100,7 +121,7 @@ export default async function BillingPage({
             data-notice={notice}
             role="status"
             className={`mb-4 rounded-lg border p-3 text-sm ${
-              notice === "failed" || notice === "not-set-up" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-blue-100 bg-blue-50 text-blue-900"
+              notice === "failed" || notice === "not-set-up" || notice === "past-due" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-blue-100 bg-blue-50 text-blue-900"
             }`}
           >
             {billingNoticeText(snapshot.language, notice)}

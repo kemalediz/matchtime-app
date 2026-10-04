@@ -2504,7 +2504,7 @@ No money collector or owner with a phone number, so nobody can be asked for the 
 Card on file: yes.
 Card on file: no.
 Your card still pays Riverside FC's MatchTime fee until Colin adds theirs.
-[Add a card] [Change card or cancel] [Use my card instead] [Update card and pay] [Remove my card]
+[Add a card] [Change card] [Use my card instead] [Update card and pay] [Remove my card] [Stop paying] [Keep paying]
 [Open billing] [Choose a money collector]
 Sutton FC has no club fee. MatchTime is free for this club.
 
@@ -2521,6 +2521,10 @@ Your card has been removed and won't be charged for this club again.
 Card payments aren't open yet. Please try again later.
 A card is already paying for this club.
 Something went wrong. Please try again.
+Done. Billing ends when this month ends: this month is charged for its games as usual, then nothing more. MatchTime keeps running until then.
+Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.
+Done. MatchTime keeps running, and each month is charged only for the games played.
+A payment is overdue. Update the card and pay it first.
 
 ### R190 billing DM / card added, free month
 Thanks Colin, your card is saved. MatchTime keeps running in the Riverside FC WhatsApp group. The first £9.99 is taken on Sat 31 Oct, then monthly, and Stripe emails you each invoice. To change your card or cancel: https://matchtime.ai/r/abc

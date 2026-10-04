@@ -19,8 +19,6 @@ import type { Lang } from "./i18n/lang";
 import {
   GRACE_DAYS,
   STANDARD_PRICE_PENCE,
-  isLiveSubscriptionStatus,
-  isUnpaidSubscriptionStatus,
   planPricePence,
   type BillingAccessRole,
   type ClubFeeTip,
@@ -86,11 +84,6 @@ export interface BillingStateInput {
   /** Who is looking. */
   viewerUserId: string;
   role: BillingAccessRole;
-  /** Stripe's word for the club's subscription, or null (slice B3). */
-  subscriptionStatus?: string | null;
-  /** The dedicated Customer Portal configuration is set (review fix 4):
-   *  without it there is no Portal button at all. */
-  portalAvailable?: boolean;
   /** Why a paused club is paused (slice B5: "removed" asks for MatchTime
    *  to be added back to the group, not for a card). */
   pausedReason?: string | null;
@@ -144,37 +137,54 @@ export function billingStateLines(lang: LangIn, v: BillingStateInput): string[] 
   }
 }
 
-export type BillingButton = "add-card" | "change-card" | "use-mine" | "update-card" | "remove-mine";
+export type BillingButton =
+  | "add-card"
+  | "change-card"
+  | "use-mine"
+  | "update-card"
+  | "remove-mine"
+  | "stop-paying"
+  | "keep-paying";
+
+/** A card is on file (its holder or its last four is known). */
+function cardOnFile(v: BillingStateInput): boolean {
+  return v.cardHolderUserId !== null || v.cardLast4 !== null;
+}
 
 /**
  * The card buttons the page shows this viewer (8.1). Each one is a server
- * action that re-checks who the viewer is (slice B3).
+ * action that re-checks who the viewer is. Slice P2: no Customer Portal;
+ * every card change is Checkout in setup mode, and stopping is our own
+ * button.
  *
- *   add-card      no live subscription (trial, grace, paused)
- *   update-card   "Update card and pay": the subscription is UNPAID, in any
- *                 state; setup mode, then the open invoice is retried, so a
- *                 club that cannot pay is never a dead end (review fix 2)
- *   change-card   the Customer Portal: ONLY the contact whose own card is on
- *                 file, and only with the dedicated Portal configuration
- *                 (review fix 4)
- *   use-mine      setup mode: somebody else's card, no card on file, or no
- *                 Portal configured
+ *   add-card      no card on file (trial, grace, paused for no card)
+ *   update-card   "Update card and pay": a payment failed (past due, or
+ *                 paused for it); setup mode, then what is unpaid is paid
+ *                 on the new card, so a club that cannot pay is never a
+ *                 dead end
+ *   change-card   the contact's own card is on file: put another one on
+ *   use-mine      somebody else's card is on file (a collector change)
+ *   stop-paying   a card is on file and billing runs: it ends with the
+ *                 current month (inside the free month the card goes)
+ *   keep-paying   Stop paying was pressed (undo), or the club is paused
+ *                 after it and its card is still on file (start again)
  *   remove-mine   an old card holder
  */
 export function billingButtons(v: BillingStateInput): BillingButton[] {
   if (v.role === "card-holder") return ["remove-mine"];
   if (v.role !== "contact") return [];
-  const sub = v.subscriptionStatus ?? null;
   const known = ["trial", "grace", "paused", "subscribed", "past_due"];
   if (!known.includes(v.status)) return [];
   // Slice B5: the way back is adding MatchTime to the group again; a card
   // first would pay for a group MatchTime is not in (club-billing-stripe.ts
   // refuses it too).
   if (v.status === "paused" && v.pausedReason === "removed") return [];
-  if (isUnpaidSubscriptionStatus(sub) || v.status === "past_due") return ["update-card"];
-  const mineWithPortal = v.cardHolderUserId !== null && v.cardHolderUserId === v.viewerUserId && v.portalAvailable === true;
-  if (v.status === "subscribed" || isLiveSubscriptionStatus(sub)) return [mineWithPortal ? "change-card" : "use-mine"];
-  return ["add-card"];
+  if (v.status === "past_due" || (v.status === "paused" && v.pausedReason === "payment-failed")) return ["update-card"];
+  if (!cardOnFile(v)) return ["add-card"];
+  if (v.status === "paused" && v.pausedReason === "cancelled") return ["keep-paying"];
+  const card: BillingButton = ownCard(v) ? "change-card" : "use-mine";
+  if (v.status === "subscribed") return [card, v.cancelAtPeriodEnd ? "keep-paying" : "stop-paying"];
+  return [card];
 }
 
 /** The admin banner (8.2): grace, past due and paused only. */
@@ -210,7 +220,6 @@ export interface BillingViewClub {
     cardBrand: string | null;
     cardLast4: string | null;
     cardHolderUserId: string | null;
-    stripeSubscriptionStatus?: string | null;
     /** Slice B5. */
     pausedReason?: string | null;
   } | null;
@@ -231,15 +240,8 @@ export interface BillingPageView {
   tip: string | null;
 }
 
-function stateInput(
-  c: BillingViewClub,
-  viewerUserId: string,
-  role: BillingAccessRole,
-  portalAvailable = false,
-): BillingStateInput {
+function stateInput(c: BillingViewClub, viewerUserId: string, role: BillingAccessRole): BillingStateInput {
   return {
-    subscriptionStatus: c.billing?.stripeSubscriptionStatus ?? null,
-    portalAvailable,
     pausedReason: c.billing?.pausedReason ?? null,
     status: c.status,
     plan: c.plan,
@@ -271,6 +273,8 @@ const BUTTON_LABEL: Record<BillingButton, (s: ReturnType<typeof t>) => string> =
   "use-mine": (s) => s.billing_btn_use_mine,
   "update-card": (s) => s.billing_btn_update_card,
   "remove-mine": (s) => s.billing_btn_remove_mine,
+  "stop-paying": (s) => s.billing_btn_stop_paying,
+  "keep-paying": (s) => s.billing_btn_keep_paying,
 };
 
 /**
@@ -285,14 +289,13 @@ export function billingPageView(
   role: BillingAccessRole,
   viewerUserId: string,
   tip: ClubFeeTip | null,
-  opts: { portalAvailable?: boolean } = {},
 ): BillingPageView {
   const s = t(lang);
   const base = { title: s.billing_page_title, club: c.club };
   if (role === "exempt-owner") {
     return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], tip: null };
   }
-  const v = stateInput(c, viewerUserId, role, opts.portalAvailable ?? false);
+  const v = stateInput(c, viewerUserId, role);
   const buttons = billingButtons(v).map((key) => ({ key, label: BUTTON_LABEL[key](s) }));
   return {
     ...base,
@@ -381,7 +384,19 @@ export function planBilledText(
   });
 }
 
-export type BillingPageNotice = "done" | "replaced" | "removed" | "not-set-up" | "already" | "re-add" | "failed";
+export type BillingPageNotice =
+  | "done"
+  | "replaced"
+  | "removed"
+  | "not-set-up"
+  | "already"
+  | "re-add"
+  | "failed"
+  /** Slice P2: Stop paying, Keep paying, and a stop refused while a payment is overdue. */
+  | "stopped"
+  | "stopped-free"
+  | "kept"
+  | "past-due";
 
 /** The line the billing page shows after a card action. */
 export function billingNoticeText(lang: LangIn, n: BillingPageNotice): string {
@@ -401,6 +416,14 @@ export function billingNoticeText(lang: LangIn, n: BillingPageNotice): string {
       return s.billing_notice_re_add;
     case "failed":
       return s.billing_notice_failed;
+    case "stopped":
+      return s.billing_notice_stopped;
+    case "stopped-free":
+      return s.billing_notice_stopped_free;
+    case "kept":
+      return s.billing_notice_kept;
+    case "past-due":
+      return s.billing_notice_past_due;
   }
 }
 

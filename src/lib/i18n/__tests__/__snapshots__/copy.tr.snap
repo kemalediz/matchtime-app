@@ -2505,7 +2505,7 @@ Telefon numarası kayıtlı bir para toplayan kişi ya da kulüp sahibi yok, bu 
 Kayıtlı kart: var.
 Kayıtlı kart: yok.
 Colin kendi kartını ekleyene kadar Riverside FC için MatchTime ücreti sizin kartınızdan ödenmeye devam ediyor.
-[Kart ekle] [Kartı değiştir ya da iptal et] [Bunun yerine kendi kartımı kullan] [Kartı güncelle ve öde] [Kartımı kaldır]
+[Kart ekle] [Kartı değiştir] [Bunun yerine kendi kartımı kullan] [Kartı güncelle ve öde] [Kartımı kaldır] [Ödemeyi durdur] [Ödemeye devam et]
 [Ödeme sayfasını aç] [Para toplayan kişiyi seçin]
 Sutton FC için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.
 
@@ -2522,6 +2522,10 @@ Kartınız kaldırıldı ve bu kulüp için bir daha ücret alınmayacak.
 Kartla ödeme henüz açık değil. Lütfen daha sonra tekrar deneyin.
 Bu kulüp için zaten bir kart ödeme yapıyor.
 Bir sorun oluştu. Lütfen tekrar deneyin.
+Tamam. Ödeme bu ay bitince sona eriyor: bu ay oynanan maçlar için her zamanki gibi ücretlendirilir, sonra başka bir şey alınmaz. MatchTime o zamana kadar çalışmaya devam ediyor.
+Tamam. Kartınız kaldırıldı ve hiçbir ücret alınmadı. Ücretsiz ay bitene kadar devam ediyor.
+Tamam. MatchTime çalışmaya devam ediyor ve her ay yalnızca oynanan maçlar için ücret alınır.
+Gecikmiş bir ödeme var. Önce kartı güncelleyip ödeyin.
 
 ### R190 billing DM / card added, free month
 Teşekkürler Colin, kartınız kaydedildi. MatchTime Riverside FC WhatsApp grubunda çalışmaya devam ediyor. İlk £9.99 31 Ekim Cumartesi tarihinde, sonra her ay alınacak; her faturayı Stripe size e-postayla gönderir. Kartınızı değiştirmek ya da iptal etmek için: https://matchtime.ai/r/abc
