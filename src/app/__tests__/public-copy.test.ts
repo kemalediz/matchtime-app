@@ -6,8 +6,9 @@ import path from "node:path";
  * House rules for the public website copy (Kemal): no em dashes or en
  * dashes anywhere a visitor can read them, the real domain is
  * matchtime.ai (never matchtime.app), the bot is tagged as "@Match Time",
- * no fee talk, no "free" claims (MatchTime costs £9.99 a month per group
- * with the first month free, since 2026-10-01), hello@matchtime.ai as the contact email, no published
+ * no fee talk, no "free" claims (MatchTime costs up to £9.99 a month per
+ * group, charged only for the weeks played, with the first month free,
+ * since 2026-10-01), hello@matchtime.ai as the contact email, no published
  * MatchTime number, and no real club or player names on public pages.
  *
  * Checks the source of every public page with comments stripped, so the
@@ -57,8 +58,9 @@ describe("public website copy", () => {
     expect(text).not.toMatch(/(^|[^\d])1\s?%|MatchTime fee|card fee|payment fee|processing fee|platform fee/i);
   });
 
-  // Kemal (2026-10-01): MatchTime is no longer free. It costs £9.99 a
-  // month per group with the first month free, so the only "free" a visitor may
+  // Kemal (2026-10-01): MatchTime is no longer free. It costs up to £9.99
+  // a month per group, only for the weeks played (2026-10-02), with the
+  // first month free, so the only "free" a visitor may
   // read is "first month free". Catches "free to use", "it's free",
   // "for free", "Free WhatsApp organiser" and the like.
   it.each(sources)("$file does not claim MatchTime is free", ({ text }) => {
@@ -90,6 +92,8 @@ describe("public website copy", () => {
     const help = sources.find((s) => s.file === "src/app/help/page.tsx")!.text;
     const admin = sources.find((s) => s.file === "src/app/help/admin/page.tsx")!.text;
 
+    const flat = (t: string) => t.replace(/\s+/g, " ");
+
     it("the landing page has a pricing section with the price and the free first month", () => {
       expect(landing).toMatch(/id="pricing"/);
       expect(landing).toMatch(/£9\.99/);
@@ -98,6 +102,21 @@ describe("public website copy", () => {
       expect(landing).toMatch(/first month (is )?free/i);
       expect(landing).toMatch(/about 50p a player/);
       expect(landing).not.toMatch(/25p/);
+    });
+
+    // Kemal, 2026-10-02: the club fee is charged by games played, in
+    // arrears, up to £9.99 a month. The site says so, and never states a
+    // flat "£9.99 a month" that every month costs.
+    it("the landing page says it is up to £9.99 a month and you only pay for the weeks you play", () => {
+      expect(flat(landing)).toMatch(/up to £9\.99 a month/i);
+      expect(flat(landing)).toMatch(/you only pay for the weeks you play/i);
+      expect(flat(landing)).toMatch(/Play 3 weeks out of 4 and it&apos;s £7\.49/);
+      expect(flat(landing)).not.toMatch(/then it&apos;s £9\.99 a month/i);
+      expect(flat(landing)).not.toMatch(/(?<!up to )£9\.99 a month per WhatsApp group/i);
+    });
+
+    it("the hero, before the pricing section, carries no price", () => {
+      expect(landing.slice(0, landing.indexOf('id="pricing"'))).not.toMatch(/£\d/);
     });
 
     // Kemal, 2026-10-01: no price in Google results or link previews.
@@ -109,11 +128,46 @@ describe("public website copy", () => {
       expect(landing).not.toMatch(/priceCurrency/);
     });
 
-    it("the help pages state the price", () => {
+    it("the help pages state the price as a maximum, for the weeks played", () => {
       for (const t of [help, admin]) {
-        expect(t).toMatch(/£9\.99 a month/);
+        expect(flat(t)).toMatch(/up to £9\.99 a month/);
+        expect(flat(t)).not.toMatch(/(?<!up to )£9\.99 a month/);
         expect(t).not.toMatch(/£5(?![\d.])/);
-        expect(t).toMatch(/first month (is )?free/i);
+        expect(flat(t)).toMatch(/first month (is )?free/i);
+        expect(flat(t)).toMatch(/only pay for the weeks you play/i);
+      }
+    });
+
+    // The organiser guide's "Club fee" section (Kemal, P4 brief): the free
+    // first month from approval; then only the games played, up to £9.99 a
+    // month per group including VAT; the money collector or the owner adds
+    // a card; reminders; a week's grace; then quiet until a card is added,
+    // data kept; stop any time; the tip of 25p a player per game at most.
+    it("the organiser guide has a Club fee section covering every point", () => {
+      const start = admin.indexOf('id="club-fee"');
+      expect(start).toBeGreaterThan(-1);
+      const end = admin.indexOf("<h2", start);
+      const section = flat(admin.slice(start, end === -1 ? undefined : end));
+      for (const re of [
+        /first month is free/i,
+        /approve/i,
+        /only (pay|charged) for the (games|weeks) (you play|played)/i,
+        /up to £9\.99 a month/i,
+        /per WhatsApp group/i,
+        /VAT/,
+        /money collector/i,
+        /owner/i,
+        /add(s)? a card/i,
+        /reminder/i,
+        /a week/i,
+        /quiet/i,
+        /(data|players, matches and stats) (is|are) (all )?kept/i,
+        /Stop paying/,
+        /25p a player per game/,
+        /at most/i,
+        /billing page/i,
+      ]) {
+        expect(section, String(re)).toMatch(re);
       }
     });
 
