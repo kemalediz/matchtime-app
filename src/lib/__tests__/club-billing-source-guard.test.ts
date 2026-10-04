@@ -71,14 +71,20 @@ describe("slice B3: billing DMs have one queuer, and the club fee never touches 
   });
 
   it("the club fee Stripe code never passes a Connect account, an application fee or a transfer", () => {
-    for (const rel of ["lib/stripe-billing.ts", "lib/stripe-billing-fake.ts", "lib/club-billing-stripe.ts", "app/api/stripe/billing-webhook/route.ts"]) {
+    for (const rel of [
+      "lib/stripe-billing.ts",
+      "lib/stripe-billing-fake.ts",
+      "lib/club-billing-stripe.ts",
+      "lib/club-billing-months.ts",
+      "app/api/stripe/billing-webhook/route.ts",
+    ]) {
       const src = strip(readFileSync(path.join(SRC, rel), "utf8"));
       expect(src, rel).not.toMatch(/stripeAccount|application_fee|transfer_data|on_behalf_of/);
     }
   });
 
   it("the club fee Stripe code never puts matchId or userId in metadata", () => {
-    for (const rel of ["lib/stripe-billing.ts", "lib/club-billing-stripe.ts"]) {
+    for (const rel of ["lib/stripe-billing.ts", "lib/club-billing-stripe.ts", "lib/club-billing-months.ts"]) {
       const src = strip(readFileSync(path.join(SRC, rel), "utf8"));
       expect(src, rel).not.toMatch(/\bmatchId\b/);
       expect(src, rel).not.toMatch(/metadata:\s*\{[^}]*\buserId\b/);
@@ -91,3 +97,20 @@ describe("slice B3: billing DMs have one queuer, and the club fee never touches 
     expect(src).not.toMatch(/constructWebhookEvent|STRIPE_WEBHOOK_SECRET\b/);
   });
 });
+
+describe("slice P2: only the billing adapter talks to Stripe's invoice APIs", () => {
+  const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const INVOICE_CALL = /\binvoices\.(create|pay|finalizeInvoice|voidInvoice|del|update|sendInvoice|markUncollectible)\s*\(|\binvoiceItems\.(create|update|del)\s*\(/;
+
+  it("no file but stripe-billing.ts creates, pays, finalises or voids a Stripe invoice (nothing outside billing charges the platform account)", () => {
+    const callers = walk(SRC).filter((f) => INVOICE_CALL.test(strip(readFileSync(f, "utf8"))));
+    expect(callers.map((f) => path.relative(SRC, f))).toEqual([path.join("lib", "stripe-billing.ts")]);
+  });
+
+  it("the month module reaches Stripe only through getBillingStripe(), never a Stripe client of its own", () => {
+    const src = strip(readFileSync(path.join(SRC, "lib", "club-billing-months.ts"), "utf8"));
+    expect(src).not.toMatch(/new Stripe\(|from "stripe"|from "\.\/stripe"/);
+    expect(src).toMatch(/getBillingStripe\(\)/);
+  });
+});
+

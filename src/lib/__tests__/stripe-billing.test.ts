@@ -1,107 +1,148 @@
 /**
- * CLUB FEE BILLING, slice B3: the Stripe adapter and its pure halves.
+ * CLUB FEE BILLING: the Stripe adapter and its pure halves (slice B3,
+ * rewritten for games played in slice P2).
  * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 2, 5.1 to 5.4.
  *
  * NO NETWORK. The real adapter is driven with a recording stand-in for the
  * Stripe client, so the exact calls (and the absence of any Connect
  * `stripeAccount`) are pinned; webhook signatures are made locally with
- * `generateTestHeaderString`; the fake adapter is the one Playwright uses.
+ * `generateTestHeaderString`; the fake adapter is the one Playwright and
+ * the month close tests use.
+ *
+ * P2: no subscription, no Portal, no price objects. A card is saved with
+ * Checkout in SETUP mode, and each month with something to charge is ONE
+ * invoice our month close creates: an invoice item for the exact pence,
+ * tax INCLUSIVE with the 20% VAT rate, charged automatically, with an
+ * idempotency key per club month.
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Stripe from "stripe";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import * as adapterModule from "../stripe-billing";
 import {
   CLUB_FEE_PURPOSE,
   billingStripeConfig,
-  buildSetupCheckoutParams,
-  buildSubscriptionCheckoutParams,
+  buildCardSetupCheckoutParams,
+  buildMonthInvoiceItemParams,
+  buildMonthInvoiceParams,
   createStripeBillingAdapter,
   getBillingStripe,
   isBillingStripeFake,
   isClubFeeMetadata,
+  monthInvoiceSearchQuery,
   setBillingStripeForTests,
   verifyBillingWebhook,
 } from "../stripe-billing";
 import { createFakeBillingStripe } from "../stripe-billing-fake";
 
 const BASE = "https://matchtime.example";
-const NOW = new Date("2026-10-20T12:00:00Z");
 
 afterEach(() => setBillingStripeForTests(null));
 
-describe("subscription Checkout (Add a card, 5.2)", () => {
-  const args = {
-    orgId: "org_1",
-    payerUserId: "user_colin",
-    customerId: "cus_1",
-    priceId: "price_std",
-    taxRateId: "txr_vat",
-    baseUrl: BASE,
-  };
+const MONTH = {
+  orgId: "org_1",
+  monthId: "cbm_1",
+  customerId: "cus_1",
+  description: "MatchTime club fee, Card Sevens, 1 Nov 2026 to 30 Nov 2026: 4 of 5 games played",
+};
 
-  it("is a subscription on the club's own Customer, one item, the tax rate, the billing address and VAT number collection", () => {
-    const p = buildSubscriptionCheckoutParams({ ...args, trialEnd: null });
-    expect(p.mode).toBe("subscription");
-    expect(p.customer).toBe("cus_1");
-    expect(p.client_reference_id).toBe("org_1");
-    expect(p.line_items).toEqual([{ price: "price_std", quantity: 1 }]);
-    expect(p.subscription_data?.default_tax_rates).toEqual(["txr_vat"]);
-    expect(p.billing_address_collection).toBe("required");
-    expect(p.tax_id_collection).toEqual({ enabled: true });
-    expect(p.customer_update).toEqual({ address: "auto", name: "auto" });
-    expect(p.payment_method_types).toEqual(["card"]);
-    expect(p.success_url).toBe(`${BASE}/billing/org_1?done=1`);
-    expect(p.cancel_url).toBe(`${BASE}/billing/org_1`);
+describe("setup Checkout: Add a card and Use my card instead (5.3, 4.5 point 4)", () => {
+  const params = (action: "add-card" | "replace-card") =>
+    buildCardSetupCheckoutParams({ orgId: "org_1", payerUserId: "user_colin", customerId: "cus_1", baseUrl: `${BASE}/`, action });
+
+  it("is SETUP mode on the club's own Customer: card only, GBP, billing address required, nothing charged", () => {
+    const p = params("add-card");
+    expect(p).toMatchObject({
+      mode: "setup",
+      customer: "cus_1",
+      client_reference_id: "org_1",
+      currency: "gbp",
+      payment_method_types: ["card"],
+      billing_address_collection: "required",
+    });
+    expect(p).not.toHaveProperty("line_items");
+    expect(p).not.toHaveProperty("subscription_data");
   });
 
-  it("carries orgId, payerUserId and purpose 'club-fee', and NEVER matchId or userId (so the Connect webhook ignores it)", () => {
-    const p = buildSubscriptionCheckoutParams({ ...args, trialEnd: null });
-    expect(p.metadata).toEqual({ orgId: "org_1", payerUserId: "user_colin", purpose: CLUB_FEE_PURPOSE, action: "add-card" });
-    expect(p.subscription_data?.metadata).toEqual({ orgId: "org_1", payerUserId: "user_colin", purpose: CLUB_FEE_PURPOSE });
-    for (const md of [p.metadata, p.subscription_data?.metadata]) {
-      expect(md).not.toHaveProperty("matchId");
-      expect(md).not.toHaveProperty("userId");
+  it("carries orgId, payerUserId, purpose 'club-fee' and the action, on the session AND the SetupIntent", () => {
+    for (const action of ["add-card", "replace-card"] as const) {
+      const p = params(action);
+      expect(p.metadata).toEqual({ orgId: "org_1", payerUserId: "user_colin", purpose: CLUB_FEE_PURPOSE, action });
+      expect(p.setup_intent_data?.metadata).toEqual({ orgId: "org_1", payerUserId: "user_colin", purpose: CLUB_FEE_PURPOSE, action });
     }
-    expect(CLUB_FEE_PURPOSE).toBe("club-fee");
   });
 
-  it("no Connect: no application fee, no payment intent data, no transfer", () => {
-    const p = buildSubscriptionCheckoutParams({ ...args, trialEnd: null }) as Record<string, unknown>;
-    expect(JSON.stringify(p)).not.toMatch(/application_fee|transfer_data|on_behalf_of|stripeAccount/);
-    expect(p.payment_intent_data).toBeUndefined();
+  it("never matchId, userId, a Connect account, an application fee or a payment", () => {
+    const json = JSON.stringify(params("add-card"));
+    expect(json).not.toMatch(/matchId|"userId"|application_fee|transfer_data|payment_intent_data|on_behalf_of/);
   });
 
-  it("trial_end only when given, in whole seconds", () => {
-    expect(buildSubscriptionCheckoutParams({ ...args, trialEnd: null }).subscription_data).not.toHaveProperty("trial_end");
-    const end = new Date("2026-10-31T09:00:00.700Z");
-    expect(buildSubscriptionCheckoutParams({ ...args, trialEnd: end }).subscription_data?.trial_end).toBe(
-      Math.floor(end.getTime() / 1000),
-    );
+  it("does NOT ask Checkout for a VAT number in setup mode (not confirmed that setup mode allows it; see the test mode list)", () => {
+    expect(params("add-card")).not.toHaveProperty("tax_id_collection");
   });
 
-  it("a Custom price goes in the same place, with the same tax rate", () => {
-    const p = buildSubscriptionCheckoutParams({ ...args, priceId: "price_custom_500", trialEnd: null });
-    expect(p.line_items).toEqual([{ price: "price_custom_500", quantity: 1 }]);
-    expect(p.subscription_data?.default_tax_rates).toEqual(["txr_vat"]);
+  it("comes back to the billing page: ?done=1 for a new card, ?replaced=1 for a replacement", () => {
+    expect(params("add-card").success_url).toBe(`${BASE}/billing/org_1?done=1`);
+    expect(params("replace-card").success_url).toBe(`${BASE}/billing/org_1?replaced=1`);
+    expect(params("add-card").cancel_url).toBe(`${BASE}/billing/org_1`);
   });
 });
 
-describe("setup Checkout (Use my card instead, 4.5 point 4)", () => {
-  it("setup mode on the club's Customer, card only, billing address required, the replace-card metadata", () => {
-    const p = buildSetupCheckoutParams({ orgId: "org_1", payerUserId: "user_pat", customerId: "cus_1", baseUrl: BASE });
-    expect(p.mode).toBe("setup");
-    expect(p.customer).toBe("cus_1");
-    expect(p.currency).toBe("gbp");
-    expect(p.payment_method_types).toEqual(["card"]);
-    expect(p.billing_address_collection).toBe("required");
-    expect(p.metadata).toEqual({ orgId: "org_1", payerUserId: "user_pat", purpose: CLUB_FEE_PURPOSE, action: "replace-card" });
-    expect(p.setup_intent_data?.metadata).toEqual({ orgId: "org_1", payerUserId: "user_pat", purpose: CLUB_FEE_PURPOSE });
-    expect(p.metadata).not.toHaveProperty("matchId");
-    expect(p.success_url).toBe(`${BASE}/billing/org_1?replaced=1`);
-    expect(p.cancel_url).toBe(`${BASE}/billing/org_1`);
-    expect(p).not.toHaveProperty("line_items");
+describe("one invoice per month (5.3, charge a month)", () => {
+  it("the invoice: charged automatically, NOT auto-advanced while it is a draft, pending items excluded, the club fee metadata", () => {
+    const { params, idempotencyKey } = buildMonthInvoiceParams(MONTH);
+    expect(params).toEqual({
+      customer: "cus_1",
+      collection_method: "charge_automatically",
+      // A draft must never be finalised by Stripe on its own (an empty
+      // invoice an hour later): we finalise it ourselves once the item is on.
+      auto_advance: false,
+      pending_invoice_items_behavior: "exclude",
+      currency: "gbp",
+      description: MONTH.description,
+      metadata: { orgId: "org_1", purpose: "club-fee", monthId: "cbm_1" },
+    });
+    expect(idempotencyKey).toBe("club-fee-invoice-cbm_1");
+  });
+
+  it("the item: the exact pence under the club product, the VAT Tax Rate (whose OWN inclusive setting decides), on that invoice", () => {
+    const { params, idempotencyKey } = buildMonthInvoiceItemParams({
+      customerId: "cus_1",
+      invoiceId: "in_1",
+      monthId: "cbm_1",
+      orgId: "org_1",
+      amountPence: 799,
+      productId: "prod_club",
+      taxRateId: "txr_vat",
+      description: MONTH.description,
+    });
+    expect(params).toEqual({
+      customer: "cus_1",
+      invoice: "in_1",
+      // No price_data.tax_behavior (M4): that field is for Stripe Tax; with a
+      // manual tax rate the RATE's inclusive flag decides, and the close
+      // checks that flag before any invoice is made.
+      price_data: { currency: "gbp", product: "prod_club", unit_amount: 799 },
+      quantity: 1,
+      tax_rates: ["txr_vat"],
+      description: MONTH.description,
+      metadata: { orgId: "org_1", purpose: "club-fee", monthId: "cbm_1" },
+    });
+    expect(idempotencyKey).toBe("club-fee-item-cbm_1");
+  });
+
+  it("refuses an amount that is not whole pence of at least 30p (Stripe's minimum)", () => {
+    const base = { customerId: "c", invoiceId: "i", monthId: "m", orgId: "o", productId: "p", taxRateId: "t", description: "d" };
+    expect(() => buildMonthInvoiceItemParams({ ...base, amountPence: 29 })).toThrow();
+    expect(() => buildMonthInvoiceItemParams({ ...base, amountPence: 7.5 })).toThrow();
+    expect(() => buildMonthInvoiceItemParams({ ...base, amountPence: 30 })).not.toThrow();
+  });
+
+  it("finds a month's invoice by its metadata (a crash after Stripe made it, retried after the 24 hour key window)", () => {
+    expect(monthInvoiceSearchQuery("cbm_1")).toBe("metadata['monthId']:'cbm_1'");
+    expect(() => monthInvoiceSearchQuery("x' OR '1")).toThrow();
   });
 });
 
@@ -115,26 +156,19 @@ describe("isClubFeeMetadata", () => {
 });
 
 describe("billingStripeConfig: env, never a key in code", () => {
-  it("reads the price, product, tax rate, portal configuration and webhook secret", () => {
+  it("reads the product, tax rate and webhook secret; the price and Portal ids are retired", () => {
     const c = billingStripeConfig({
-      STRIPE_CLUB_PRICE_ID: "price_std",
-      STRIPE_CLUB_PRODUCT_ID: "prod_1",
-      STRIPE_CLUB_TAX_RATE_ID: "txr_vat",
-      STRIPE_CLUB_PORTAL_CONFIG_ID: "bpc_1",
+      STRIPE_CLUB_PRODUCT_ID: " prod_1 ",
+      STRIPE_CLUB_TAX_RATE_ID: "txr_1",
       STRIPE_BILLING_WEBHOOK_SECRET: "whsec_b",
+      STRIPE_CLUB_PRICE_ID: "price_old",
+      STRIPE_CLUB_PORTAL_CONFIG_ID: "bpc_old",
     });
-    expect(c).toEqual({
-      priceId: "price_std",
-      productId: "prod_1",
-      taxRateId: "txr_vat",
-      portalConfigId: "bpc_1",
-      webhookSecret: "whsec_b",
-      missingForCheckout: [],
-    });
+    expect(c).toEqual({ productId: "prod_1", taxRateId: "txr_1", webhookSecret: "whsec_b", missing: [] });
   });
 
-  it("names what is missing for a Checkout (the price and the tax rate are required)", () => {
-    expect(billingStripeConfig({}).missingForCheckout).toEqual(["STRIPE_CLUB_PRICE_ID", "STRIPE_CLUB_TAX_RATE_ID"]);
+  it("names what is missing to charge a month (the product and the tax rate are both required)", () => {
+    expect(billingStripeConfig({}).missing).toEqual(["STRIPE_CLUB_PRODUCT_ID", "STRIPE_CLUB_TAX_RATE_ID"]);
   });
 });
 
@@ -156,30 +190,33 @@ describe("verifyBillingWebhook: its OWN secret (section 2)", () => {
     const sig = signer.webhooks.generateTestHeaderString({ payload, secret: "whsec_billing" });
     expect(() => verifyBillingWebhook(payload.replace("evt_1", "evt_2"), sig, "whsec_billing")).toThrow();
   });
-
-  it("needs no API key (verifying is local)", () => {
-    const prev = process.env.STRIPE_SECRET_KEY;
-    delete process.env.STRIPE_SECRET_KEY;
-    try {
-      const sig = signer.webhooks.generateTestHeaderString({ payload, secret: "whsec_billing" });
-      expect(verifyBillingWebhook(payload, sig, "whsec_billing").type).toBe("invoice.paid");
-    } finally {
-      if (prev !== undefined) process.env.STRIPE_SECRET_KEY = prev;
-    }
-  });
 });
 
 /** A stand-in Stripe client that records every call and its arguments. */
-function recordingClient() {
+function recordingClient(over: Record<string, unknown> = {}) {
   const calls: Array<{ path: string; args: unknown[] }> = [];
   const rec =
     (p: string, result: unknown = {}) =>
     (...args: unknown[]) => {
       calls.push({ path: p, args });
-      return Promise.resolve(typeof result === "function" ? (result as (...a: unknown[]) => unknown)(...args) : result);
+      return typeof result === "function" ? (result as (...a: unknown[]) => unknown)(...args) : Promise.resolve(result);
     };
+  const invoice = (o: Record<string, unknown> = {}) => ({
+    id: "in_1",
+    status: "draft",
+    total: 0,
+    customer: "cus_1",
+    hosted_invoice_url: "https://invoice.stripe.test/in_1",
+    metadata: { orgId: "org_1", purpose: "club-fee", monthId: "cbm_1" },
+    ...o,
+  });
   const client = {
-    customers: { create: rec("customers.create", { id: "cus_new" }), update: rec("customers.update") },
+    customers: {
+      create: rec("customers.create", { id: "cus_new" }),
+      update: rec("customers.update"),
+      listTaxIds: rec("customers.listTaxIds", { data: [{ id: "txi_old" }] }),
+      deleteTaxId: rec("customers.deleteTaxId"),
+    },
     checkout: {
       sessions: {
         create: rec("checkout.sessions.create", { id: "cs_1", url: "https://checkout.stripe.test/cs_1" }),
@@ -192,54 +229,63 @@ function recordingClient() {
         expire: rec("checkout.sessions.expire"),
       },
     },
-    billingPortal: { sessions: { create: rec("billingPortal.sessions.create", { url: "https://billing.stripe.test/p" }) } },
-    subscriptions: {
-      retrieve: rec("subscriptions.retrieve", {
-        id: "sub_1",
-        status: "trialing",
-        customer: "cus_1",
-        metadata: { orgId: "org_1", purpose: "club-fee" },
-        cancel_at_period_end: false,
-        trial_end: 1_800_000_000,
-        default_payment_method: { id: "pm_1", type: "card", card: { brand: "visa", last4: "4242", country: "GB" } },
-        items: { data: [{ id: "si_1", current_period_end: 1_800_000_000, price: { id: "price_std" } }] },
-      }),
-      update: rec("subscriptions.update"),
-      cancel: rec("subscriptions.cancel"),
-    },
     setupIntents: {
       retrieve: rec("setupIntents.retrieve", {
         payment_method: { id: "pm_2", type: "card", card: { brand: "mastercard", last4: "4444", country: "TR" } },
       }),
     },
-    invoices: { list: rec("invoices.list", { data: [{ id: "in_open" }] }), pay: rec("invoices.pay") },
-    paymentMethods: { detach: rec("paymentMethods.detach") },
-    prices: {
-      list: rec("prices.list", { data: [] }),
-      create: rec("prices.create", { id: "price_custom_500" }),
+    invoices: {
+      create: rec("invoices.create", invoice()),
+      retrieve: rec("invoices.retrieve", invoice({ status: "open", total: 799 })),
+      finalizeInvoice: rec("invoices.finalizeInvoice", invoice({ status: "open", total: 799 })),
+      pay: rec("invoices.pay", invoice({ status: "paid", total: 799 })),
+      voidInvoice: rec("invoices.voidInvoice", invoice({ status: "void", total: 799 })),
+      del: rec("invoices.del", { id: "in_1", deleted: true }),
+      search: rec("invoices.search", { data: [invoice({ status: "open", total: 799 })] }),
     },
+    invoiceItems: { create: rec("invoiceItems.create", { id: "ii_1" }) },
+    paymentMethods: { detach: rec("paymentMethods.detach") },
+    ...over,
   };
-  return { client, calls };
+  return { client, calls, invoice };
 }
 
 describe("the real adapter (recording client, no network)", () => {
-  it("NEVER passes a Connect stripeAccount on any call", async () => {
+  it("NEVER passes a Connect stripeAccount, an application fee or a transfer on any call", async () => {
     const { client, calls } = recordingClient();
     const a = createStripeBillingAdapter(client as unknown as Stripe);
     await a.createCustomer({ orgId: "org_1", name: "Billing Sevens" });
     await a.expireOpenCheckoutSessions("cus_1");
-    await a.createCheckoutSession(buildSubscriptionCheckoutParams({ orgId: "org_1", payerUserId: "u", customerId: "cus_1", priceId: "p", taxRateId: "t", trialEnd: null, baseUrl: BASE }));
-    await a.createPortalSession({ customerId: "cus_1", returnUrl: `${BASE}/billing/org_1`, configuration: null });
-    await a.retrieveSubscription("sub_1");
+    await a.createCheckoutSession(buildCardSetupCheckoutParams({ orgId: "org_1", payerUserId: "u", customerId: "cus_1", baseUrl: BASE, action: "add-card" }));
     await a.retrieveSetupIntentCard("seti_1");
-    await a.setDefaultPaymentMethod({ customerId: "cus_1", subscriptionId: "sub_1", paymentMethodId: "pm_2", email: "pat@example.test", name: "Pat" });
-    await a.payOpenInvoices("sub_1");
+    await a.setDefaultPaymentMethod({ customerId: "cus_1", paymentMethodId: "pm_2", email: "pat@example.test", name: "Pat" });
+    await a.createMonthInvoice(MONTH);
+    await a.addMonthInvoiceItem({ ...MONTH, invoiceId: "in_1", amountPence: 799, productId: "prod_club", taxRateId: "txr_vat" });
+    await a.finalizeInvoice("in_1");
+    await a.payInvoice("in_1", { paymentMethodId: "pm_2" });
+    await a.findMonthInvoices("cbm_1");
+    await a.voidInvoice("in_1");
     await a.detachPaymentMethod("pm_1");
-    await a.updateSubscriptionPrice({ subscriptionId: "sub_1", itemId: "si_1", priceId: "price_custom_500" });
-    await a.cancelSubscription("sub_1");
-    await a.findOrCreateCustomPrice({ productId: "prod_1", pence: 500 });
     expect(calls.length).toBeGreaterThan(10);
-    expect(JSON.stringify(calls)).not.toMatch(/stripeAccount|application_fee/);
+    expect(JSON.stringify(calls)).not.toMatch(/stripeAccount|application_fee|transfer_data|on_behalf_of/);
+  });
+
+  it("the retired subscription calls are gone from the adapter", () => {
+    const a = createStripeBillingAdapter(recordingClient().client as unknown as Stripe) as unknown as Record<string, unknown>;
+    for (const name of [
+      "createPortalSession",
+      "retrieveSubscription",
+      "listLiveSubscriptions",
+      "updateSubscriptionPrice",
+      "cancelSubscription",
+      "setCancelAtPeriodEnd",
+      "findOrCreateCustomPrice",
+      "refundPaidInvoices",
+      "payOpenInvoices",
+    ]) {
+      expect(a[name], name).toBeUndefined();
+    }
+    expect("buildSubscriptionCheckoutParams" in adapterModule).toBe(false);
   });
 
   it("creates ONE Customer per club: an idempotency key per club, the orgId and purpose in metadata", async () => {
@@ -252,126 +298,136 @@ describe("the real adapter (recording client, no network)", () => {
     });
   });
 
-  it("expires only the club fee sessions still open, so two tabs can never both subscribe", async () => {
+  it("expires only the club fee sessions still open, so two tabs can never both save a card", async () => {
     const { client, calls } = recordingClient();
     const a = createStripeBillingAdapter(client as unknown as Stripe);
     expect(await a.expireOpenCheckoutSessions("cus_1")).toBe(1);
     expect(calls.filter((c) => c.path === "checkout.sessions.expire").map((c) => c.args[0])).toEqual(["cs_old"]);
-    expect(calls[0].args[0]).toEqual({ customer: "cus_1", status: "open", limit: 20 });
   });
 
-  it("reads the subscription into plain fields (period end from the item, card from the expanded payment method)", async () => {
+  it("makes the new card the Customer's default for invoices (no subscription to update), with the payer's email", async () => {
     const { client, calls } = recordingClient();
     const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.retrieveSubscription("sub_1")).toEqual({
-      id: "sub_1",
-      status: "trialing",
-      customerId: "cus_1",
-      metadata: { orgId: "org_1", purpose: "club-fee" },
-      cancelAtPeriodEnd: false,
-      currentPeriodEnd: new Date(1_800_000_000 * 1000),
-      trialEnd: new Date(1_800_000_000 * 1000),
-      priceId: "price_std",
-      itemId: "si_1",
-      card: { paymentMethodId: "pm_1", brand: "visa", last4: "4242", country: "GB" },
-    });
-    expect(calls[0].args).toEqual(["sub_1", { expand: ["default_payment_method"] }]);
-  });
-
-  it("makes the new card the default on the Customer AND the subscription", async () => {
-    const { client, calls } = recordingClient();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    await a.setDefaultPaymentMethod({ customerId: "cus_1", subscriptionId: "sub_1", paymentMethodId: "pm_2", email: "pat@example.test", name: "Pat" });
+    await a.setDefaultPaymentMethod({ customerId: "cus_1", paymentMethodId: "pm_2", email: "pat@example.test", name: "Pat" });
     expect(calls).toEqual([
-      { path: "customers.update", args: ["cus_1", { invoice_settings: { default_payment_method: "pm_2" }, email: "pat@example.test", name: "Pat" }] },
-      { path: "subscriptions.update", args: ["sub_1", { default_payment_method: "pm_2" }] },
-    ]);
-  });
-
-  it("a plan change swaps the item's price with no proration; Free cancels at once with no proration", async () => {
-    const { client, calls } = recordingClient();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    await a.updateSubscriptionPrice({ subscriptionId: "sub_1", itemId: "si_1", priceId: "price_custom_500" });
-    await a.cancelSubscription("sub_1");
-    expect(calls).toEqual([
-      { path: "subscriptions.update", args: ["sub_1", { items: [{ id: "si_1", price: "price_custom_500" }], proration_behavior: "none" }] },
-      { path: "subscriptions.cancel", args: ["sub_1", { prorate: false }] },
-    ]);
-  });
-
-  it("a Custom price is looked up by its lookup key, else created tax INCLUSIVE, monthly, in GBP", async () => {
-    const { client, calls } = recordingClient();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.findOrCreateCustomPrice({ productId: "prod_1", pence: 500 })).toBe("price_custom_500");
-    expect(calls).toEqual([
-      { path: "prices.list", args: [{ lookup_keys: ["club_monthly_500"], limit: 1 }] },
       {
-        path: "prices.create",
-        args: [
-          {
-            product: "prod_1",
-            currency: "gbp",
-            unit_amount: 500,
-            recurring: { interval: "month" },
-            tax_behavior: "inclusive",
-            lookup_key: "club_monthly_500",
-            metadata: { purpose: "club-fee" },
-          },
-        ],
+        path: "customers.update",
+        args: ["cus_1", { invoice_settings: { default_payment_method: "pm_2" }, email: "pat@example.test", name: "Pat" }],
       },
     ]);
   });
 
-  it("reuses an existing Custom price", async () => {
-    const { client, calls } = recordingClient();
-    client.prices.list = (...args: unknown[]) => {
-      calls.push({ path: "prices.list", args });
-      return Promise.resolve({ data: [{ id: "price_existing_500", active: true }] });
-    };
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.findOrCreateCustomPrice({ productId: "prod_1", pence: 500 })).toBe("price_existing_500");
-    expect(calls.map((c) => c.path)).toEqual(["prices.list"]);
-  });
-
-  it("the Portal session takes the configuration when one is set", async () => {
+  it("creates the month's invoice and item with their idempotency keys", async () => {
     const { client, calls } = recordingClient();
     const a = createStripeBillingAdapter(client as unknown as Stripe);
-    await a.createPortalSession({ customerId: "cus_1", returnUrl: `${BASE}/billing/org_1`, configuration: "bpc_1" });
-    expect(calls[0].args).toEqual([{ customer: "cus_1", return_url: `${BASE}/billing/org_1`, configuration: "bpc_1" }]);
+    const inv = await a.createMonthInvoice(MONTH);
+    expect(inv).toMatchObject({ id: "in_1", status: "draft", totalPence: 0, customerId: "cus_1" });
+    await a.addMonthInvoiceItem({ ...MONTH, invoiceId: "in_1", amountPence: 799, productId: "prod_club", taxRateId: "txr_vat" });
+    expect(calls[0].path).toBe("invoices.create");
+    expect(calls[0].args[1]).toEqual({ idempotencyKey: "club-fee-invoice-cbm_1" });
+    expect(calls[1].path).toBe("invoiceItems.create");
+    expect(calls[1].args[1]).toEqual({ idempotencyKey: "club-fee-item-cbm_1" });
   });
 
-  it("retries the open invoice on the new card; a decline is logged, not thrown", async () => {
-    const { client } = recordingClient();
-    client.invoices.pay = vi.fn().mockRejectedValue(new Error("card_declined"));
+  it("finalises a draft with auto-advance ON (so Stripe's automatic collection retries), and leaves a finalised one alone", async () => {
+    const { client, calls, invoice } = recordingClient();
+    client.invoices.retrieve = (() => Promise.resolve(invoice({ status: "draft", total: 799 }))) as never;
     const a = createStripeBillingAdapter(client as unknown as Stripe);
-    await expect(a.payOpenInvoices("sub_1")).resolves.toBe(0);
-  });
-});
+    expect((await a.finalizeInvoice("in_1")).status).toBe("open");
+    expect(calls.find((c) => c.path === "invoices.finalizeInvoice")?.args).toEqual(["in_1", { auto_advance: true }]);
 
-describe("the fake adapter: cancel at period end (slice B5)", () => {
-  it("sets and clears the flag on a stored subscription, and records the call", async () => {
-    const f = createFakeBillingStripe();
-    f.putSubscription({
-      id: "sub_r",
-      status: "active",
-      customerId: "cus_r",
-      metadata: { orgId: "org_r", purpose: "club-fee" },
-      cancelAtPeriodEnd: false,
-      currentPeriodEnd: null,
-      trialEnd: null,
-      priceId: "price_std",
-      itemId: "si_r",
-      card: null,
+    const second = recordingClient();
+    const b = createStripeBillingAdapter(second.client as unknown as Stripe);
+    expect((await b.finalizeInvoice("in_1")).status).toBe("open");
+    expect(second.calls.some((c) => c.path === "invoices.finalizeInvoice")).toBe(false);
+  });
+
+  it("pays on the given card; a DECLINE is not an error (Stripe reports it with invoice.payment_failed)", async () => {
+    const declined = Object.assign(new Error("Your card was declined."), { type: "StripeCardError", code: "card_declined" });
+    const { client, calls, invoice } = recordingClient({});
+    client.invoices.pay = ((...args: unknown[]) => {
+      calls.push({ path: "invoices.pay", args });
+      return Promise.reject(declined);
+    }) as never;
+    client.invoices.retrieve = (() => Promise.resolve(invoice({ status: "open", total: 799 }))) as never;
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    const r = await a.payInvoice("in_1", { paymentMethodId: "pm_2" });
+    expect(r).toMatchObject({ declined: true, invoice: { status: "open" } });
+    expect(calls.find((c) => c.path === "invoices.pay")?.args).toEqual(["in_1", { payment_method: "pm_2" }]);
+  });
+
+  it("paying an invoice that is already paid is done, not an error", async () => {
+    const { client, invoice } = recordingClient();
+    client.invoices.pay = (() => Promise.reject(Object.assign(new Error("Invoice is already paid"), { type: "StripeInvalidRequestError" }))) as never;
+    client.invoices.retrieve = (() => Promise.resolve(invoice({ status: "paid", total: 799 }))) as never;
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.payInvoice("in_1")).toMatchObject({ declined: false, invoice: { status: "paid" } });
+  });
+
+  it("any other error while the invoice is still open is thrown (the close retries later)", async () => {
+    const { client, invoice } = recordingClient();
+    client.invoices.pay = (() => Promise.reject(Object.assign(new Error("connection reset"), { type: "StripeConnectionError" }))) as never;
+    client.invoices.retrieve = (() => Promise.resolve(invoice({ status: "open", total: 799 }))) as never;
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await expect(a.payInvoice("in_1")).rejects.toThrow(/connection reset/);
+  });
+
+  it("M4: reads a Tax Rate's inclusive flag, percentage and state (checked before any invoice is made)", async () => {
+    const { client, calls } = recordingClient({
+      taxRates: {
+        retrieve: (...args: unknown[]) => {
+          calls.push({ path: "taxRates.retrieve", args });
+          return Promise.resolve({ id: "txr_vat", inclusive: true, percentage: 20, active: true });
+        },
+      },
     });
-    await f.setCancelAtPeriodEnd("sub_r", true);
-    expect((await f.retrieveSubscription("sub_r")).cancelAtPeriodEnd).toBe(true);
-    expect((await f.retrieveSubscription("sub_r")).status).toBe("active");
-    await f.setCancelAtPeriodEnd("sub_r", false);
-    expect((await f.retrieveSubscription("sub_r")).cancelAtPeriodEnd).toBe(false);
-    expect(f.state().calls.filter((c) => c.method === "setCancelAtPeriodEnd")).toEqual([
-      { method: "setCancelAtPeriodEnd", args: { subscriptionId: "sub_r", cancel: true } },
-      { method: "setCancelAtPeriodEnd", args: { subscriptionId: "sub_r", cancel: false } },
-    ]);
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrieveTaxRate("txr_vat")).toEqual({ id: "txr_vat", inclusive: true, percentage: 20, active: true });
+  });
+
+  it("M4: an invoice carries amount_due as well as total", async () => {
+    const { client } = recordingClient();
+    client.invoices.retrieve = (() => Promise.resolve({ id: "in_1", status: "open", total: 799, amount_due: 699, customer: "cus_1", metadata: {} })) as never;
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrieveInvoice("in_1")).toMatchObject({ totalPence: 799, amountDuePence: 699 });
+  });
+
+  it("finds a month's invoices by search, club fee ones for that month only", async () => {
+    const { client, calls, invoice } = recordingClient();
+    client.invoices.search = ((...args: unknown[]) => {
+      calls.push({ path: "invoices.search", args });
+      return Promise.resolve({
+        data: [invoice({ id: "in_a", status: "open", total: 799 }), invoice({ id: "in_b", metadata: { monthId: "cbm_1" } })],
+      });
+    }) as never;
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect((await a.findMonthInvoices("cbm_1")).map((i) => i.id)).toEqual(["in_a"]);
+    expect(calls[0].args[0]).toEqual({ query: "metadata['monthId']:'cbm_1'", limit: 10 });
+  });
+
+  it("void: a draft is DELETED (Stripe cannot void a draft), an open one voided, a paid one left alone", async () => {
+    for (const [status, outcome, path] of [
+      ["draft", "deleted", "invoices.del"],
+      ["open", "voided", "invoices.voidInvoice"],
+      ["uncollectible", "voided", "invoices.voidInvoice"],
+      ["void", "already-void", null],
+      ["paid", "paid", null],
+    ] as const) {
+      const { client, calls, invoice } = recordingClient();
+      client.invoices.retrieve = (() => Promise.resolve(invoice({ status, total: 799 }))) as never;
+      const a = createStripeBillingAdapter(client as unknown as Stripe);
+      expect(await a.voidInvoice("in_1"), status).toBe(outcome);
+      const mutating = calls.filter((c) => c.path === "invoices.del" || c.path === "invoices.voidInvoice").map((c) => c.path);
+      expect(mutating, status).toEqual(path ? [path] : []);
+    }
+  });
+
+  it("resets the shared Customer to the club for a new payer (name, no email, no address, no VAT numbers)", async () => {
+    const { client, calls } = recordingClient();
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await a.resetCustomerDetails({ customerId: "cus_1", name: "Card Sevens" });
+    expect(calls.map((c) => c.path)).toEqual(["customers.update", "customers.listTaxIds", "customers.deleteTaxId"]);
+    expect(calls[0].args).toEqual(["cus_1", { name: "Card Sevens", email: "", address: "", phone: "" }]);
   });
 });
 
@@ -382,8 +438,9 @@ describe("which adapter (fake only under MT_TEST_MODE and BILLING_STRIPE_FAKE to
     expect(isBillingStripeFake({ MT_TEST_MODE: "1" })).toBe(false);
   });
 
-  it("never fake with a live key in the environment", () => {
+  it("never fake with a live key (secret or restricted) in the environment", () => {
     expect(isBillingStripeFake({ MT_TEST_MODE: "1", BILLING_STRIPE_FAKE: "1", STRIPE_SECRET_KEY: "sk_live_x" })).toBe(false);
+    expect(isBillingStripeFake({ MT_TEST_MODE: "1", BILLING_STRIPE_FAKE: "1", STRIPE_SECRET_KEY: "rk_live_x" })).toBe(false);
   });
 
   it("null when Stripe is not configured and not faked", () => {
@@ -397,223 +454,79 @@ describe("which adapter (fake only under MT_TEST_MODE and BILLING_STRIPE_FAKE to
   });
 });
 
-describe("the fake adapter (Playwright's Stripe)", () => {
-  it("records calls, returns a LOCAL checkout URL, and serves subscriptions a test wrote", async () => {
+describe("the fake adapter (the month close tests' and Playwright's Stripe)", () => {
+  const item = { productId: "prod_e2e", taxRateId: "txr_e2e_vat" };
+
+  it("records calls, returns a LOCAL checkout URL, and shares one world across instances through its file", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "mt-fake-stripe-"));
     const file = path.join(dir, "stripe.json");
     try {
       const fake = createFakeBillingStripe({ file });
       const { id: customerId } = await fake.createCustomer({ orgId: "org_1", name: "Club" });
       expect(customerId).toMatch(/^cus_fake_/);
-      const params = buildSubscriptionCheckoutParams({ orgId: "org_1", payerUserId: "u", customerId, priceId: "p", taxRateId: "t", trialEnd: NOW, baseUrl: BASE });
-      const s = await fake.createCheckoutSession(params);
+      const s = await fake.createCheckoutSession(
+        buildCardSetupCheckoutParams({ orgId: "org_1", payerUserId: "u", customerId, baseUrl: BASE, action: "add-card" }),
+      );
       expect(s.url).toBe(`${BASE}/billing/org_1?fake_checkout=${s.id}`);
       const state = JSON.parse(readFileSync(file, "utf8"));
       expect(state.calls.map((c: { method: string }) => c.method)).toEqual(["createCustomer", "createCheckoutSession"]);
-      expect(state.sessions[s.id].params.metadata.purpose).toBe("club-fee");
-
-      // A test writes the subscription Stripe would hold, then the adapter serves it.
-      const second = createFakeBillingStripe({ file });
-      second.putSubscription({
-        id: "sub_fake_1",
-        status: "trialing",
-        customerId,
-        metadata: { orgId: "org_1", purpose: "club-fee" },
-        cancelAtPeriodEnd: false,
-        currentPeriodEnd: NOW,
-        trialEnd: NOW,
-        priceId: "p",
-        itemId: "si_fake_1",
-        card: { paymentMethodId: "pm_fake_1", brand: "visa", last4: "4242", country: "GB" },
-      });
-      expect((await fake.retrieveSubscription("sub_fake_1")).currentPeriodEnd).toEqual(NOW);
-      await expect(fake.retrieveSubscription("sub_missing")).rejects.toThrow(/No such subscription/);
+      expect(state.sessions[s.id].params.mode).toBe("setup");
+      expect(createFakeBillingStripe({ file }).state().customers[customerId].orgId).toBe("org_1");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-});
 
-describe("review fixes on the adapter", () => {
-  function client2() {
-    const { client, calls } = recordingClient();
-    const rec =
-      (p: string, result: unknown = {}) =>
-      (...args: unknown[]) => {
-        calls.push({ path: p, args });
-        return Promise.resolve(result);
-      };
-    Object.assign(client.subscriptions, {
-      list: rec("subscriptions.list", {
-        data: [
-          { id: "sub_live", status: "past_due", customer: "cus_1", metadata: { orgId: "org_1", purpose: "club-fee" }, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [{ id: "si", current_period_end: 1_800_000_000, price: { id: "p" } }] } },
-          { id: "sub_dead", status: "canceled", customer: "cus_1", metadata: { orgId: "org_1", purpose: "club-fee" }, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [] } },
-          { id: "sub_other", status: "active", customer: "cus_1", metadata: {}, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [] } },
-        ],
-      }),
-    });
-    Object.assign(client.customers, {
-      listTaxIds: rec("customers.listTaxIds", { data: [{ id: "txi_old" }] }),
-      deleteTaxId: rec("customers.deleteTaxId"),
-    });
-    Object.assign(client.invoices, {
-      list: rec("invoices.list", { data: [{ id: "in_paid", amount_paid: 999 }, { id: "in_zero", amount_paid: 0 }] }),
-    });
-    Object.assign(client, {
-      invoicePayments: { list: rec("invoicePayments.list", { data: [{ status: "paid", payment: { type: "payment_intent", payment_intent: "pi_1" } }] }) },
-      refunds: { create: rec("refunds.create", { id: "re_1" }) },
-    });
-    return { client, calls };
-  }
-
-  it("fix 5: lists the Customer's LIVE club fee subscriptions from Stripe (the truth before any new session)", async () => {
-    const { client, calls } = client2();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    const live = await a.listLiveSubscriptions("cus_1");
-    expect(live.map((s) => [s.id, s.status])).toEqual([["sub_live", "past_due"]]);
-    expect(calls[0].args[0]).toEqual({ customer: "cus_1", status: "all", limit: 100, expand: ["data.default_payment_method"] });
+  it("an idempotency key returns the SAME invoice; the same key with different parameters is refused, like Stripe", async () => {
+    const fake = createFakeBillingStripe();
+    const a = await fake.createMonthInvoice(MONTH);
+    const b = await fake.createMonthInvoice(MONTH);
+    expect(b.id).toBe(a.id);
+    await expect(fake.createMonthInvoice({ ...MONTH, description: "something else" })).rejects.toThrow(/idempoten/i);
+    expect(Object.keys(fake.state().invoices)).toHaveLength(1);
   });
 
-  it("fix 4: resets the Customer to the club before a new payer's session (name, no email, no address, no VAT numbers)", async () => {
-    const { client, calls } = client2();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    await a.resetCustomerDetails({ customerId: "cus_1", name: "Billing Sevens" });
-    expect(calls).toEqual([
-      { path: "customers.update", args: ["cus_1", { name: "Billing Sevens", email: "", address: "", phone: "" }] },
-      { path: "customers.listTaxIds", args: ["cus_1", { limit: 20 }] },
-      { path: "customers.deleteTaxId", args: ["cus_1", "txi_old"] },
-    ]);
+  it("a draft, its item, finalised, paid on the default card", async () => {
+    const fake = createFakeBillingStripe();
+    await fake.setDefaultPaymentMethod({ customerId: "cus_1", paymentMethodId: "pm_ok" });
+    const inv = await fake.createMonthInvoice(MONTH);
+    await fake.addMonthInvoiceItem({ ...MONTH, ...item, invoiceId: inv.id, amountPence: 799 });
+    expect((await fake.retrieveInvoice(inv.id))?.totalPence).toBe(799);
+    expect((await fake.finalizeInvoice(inv.id)).status).toBe("open");
+    expect(await fake.payInvoice(inv.id)).toMatchObject({ declined: false, invoice: { status: "paid", totalPence: 799 } });
   });
 
-  it("fix 5: refunds every PAID invoice of a cancelled duplicate, once each (idempotency key per invoice)", async () => {
-    const { client, calls } = client2();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.refundPaidInvoices("sub_dup")).toEqual({ pence: 999, invoiceIds: ["in_paid"] });
-    expect(calls.find((c) => c.path === "invoices.list")!.args[0]).toEqual({ subscription: "sub_dup", status: "paid", limit: 10 });
-    expect(calls.filter((c) => c.path === "refunds.create")).toEqual([
-      { path: "refunds.create", args: [{ payment_intent: "pi_1", metadata: { purpose: "club-fee", reason: "duplicate-or-unwanted" } }, { idempotencyKey: "club-fee-refund-in_paid" }] },
-    ]);
+  it("a card set to decline leaves the invoice open and says so", async () => {
+    const fake = createFakeBillingStripe();
+    fake.setPayOutcome("pm_bad", "decline");
+    const inv = await fake.createMonthInvoice(MONTH);
+    await fake.addMonthInvoiceItem({ ...MONTH, ...item, invoiceId: inv.id, amountPence: 499 });
+    await fake.finalizeInvoice(inv.id);
+    expect(await fake.payInvoice(inv.id, { paymentMethodId: "pm_bad" })).toMatchObject({ declined: true, invoice: { status: "open" } });
   });
 
-  it("fix 11: an INACTIVE price holding the lookup key is reactivated, not duplicated", async () => {
-    const { client, calls } = recordingClient();
-    client.prices.list = (...args: unknown[]) => {
-      calls.push({ path: "prices.list", args });
-      return Promise.resolve({ data: [{ id: "price_old_500", active: false }] });
-    };
-    Object.assign(client.prices, {
-      update: (...args: unknown[]) => {
-        calls.push({ path: "prices.update", args });
-        return Promise.resolve({ id: "price_old_500" });
-      },
-    });
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.findOrCreateCustomPrice({ productId: "prod_1", pence: 500 })).toBe("price_old_500");
-    expect(calls).toEqual([
-      { path: "prices.list", args: [{ lookup_keys: ["club_monthly_500"], limit: 1 }] },
-      { path: "prices.update", args: ["price_old_500", { active: true }] },
-    ]);
+  it("a tax rate that is NOT inclusive shows up as a different total (the close refuses to finalise it)", async () => {
+    const fake = createFakeBillingStripe();
+    const inv = await fake.createMonthInvoice(MONTH);
+    await fake.addMonthInvoiceItem({ ...MONTH, productId: "prod", taxRateId: "txr_exclusive_vat", invoiceId: inv.id, amountPence: 799 });
+    expect((await fake.retrieveInvoice(inv.id))?.totalPence).toBe(959);
   });
 
-  it("fix 11: the fake is refused with a restricted live key too", () => {
-    expect(isBillingStripeFake({ MT_TEST_MODE: "1", BILLING_STRIPE_FAKE: "1", STRIPE_SECRET_KEY: "rk_live_x" })).toBe(false);
+  it("after the idempotency window (forgotten keys), the search still finds the month's invoice", async () => {
+    const fake = createFakeBillingStripe();
+    const inv = await fake.createMonthInvoice(MONTH);
+    fake.forgetIdempotencyKeys();
+    expect((await fake.findMonthInvoices("cbm_1")).map((i) => i.id)).toEqual([inv.id]);
   });
 
-  it("fix 4: no Portal configuration, no Portal (portalConfigId null), and the setup Checkout keeps the payer's own details", () => {
-    expect(billingStripeConfig({}).portalConfigId).toBeNull();
-  });
-});
-
-describe("round-2 review fixes on the adapter", () => {
-  function inv(id: string, paidAtSecs: number, amount = 999) {
-    return { id, amount_paid: amount, status_transitions: { paid_at: paidAtSecs } };
-  }
-  function moneyClient(invoices: unknown[]) {
-    const { client, calls } = recordingClient();
-    const rec =
-      (p: string, result: unknown = {}) =>
-      (...args: unknown[]) => {
-        calls.push({ path: p, args });
-        return typeof result === "function" ? (result as (...a: unknown[]) => unknown)(...args) : Promise.resolve(result);
-      };
-    Object.assign(client.invoices, { list: rec("invoices.list", { data: invoices }) });
-    Object.assign(client, {
-      invoicePayments: {
-        list: rec("invoicePayments.list", (a: { invoice: string }) =>
-          Promise.resolve({ data: [{ status: "paid", payment: { type: "payment_intent", payment_intent: `pi_${a.invoice}` } }] }),
-        ),
-      },
-      refunds: { create: rec("refunds.create", { id: "re" }) },
-    });
-    return { client, calls };
-  }
-
-  it("N1: refunds only invoices paid AFTER the given moment (a Free club's history is never refunded)", async () => {
-    const { client, calls } = moneyClient([inv("in_old", 1_700_000_000), inv("in_new", 1_800_000_100)]);
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.refundPaidInvoices("sub_1", { paidAfter: new Date(1_800_000_000 * 1000) })).toEqual({ pence: 999, invoiceIds: ["in_new"] });
-    expect(calls.filter((c) => c.path === "refunds.create").map((c) => (c.args[0] as { payment_intent: string }).payment_intent)).toEqual(["pi_in_new"]);
-  });
-
-  it("N1: no window given refunds all of the subscription's own paid invoices (a true duplicate)", async () => {
-    const { client } = moneyClient([inv("in_a", 1_700_000_000), inv("in_b", 1_800_000_100)]);
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect((await a.refundPaidInvoices("sub_dup")).invoiceIds).toEqual(["in_a", "in_b"]);
-  });
-
-  it("N2: an invoice already refunded (a retry after 24h) counts as done, not an error", async () => {
-    const { client } = moneyClient([inv("in_a", 1_700_000_000)]);
-    (client as unknown as { refunds: { create: unknown } }).refunds.create = () =>
-      Promise.reject(Object.assign(new Error("already refunded"), { code: "charge_already_refunded" }));
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect(await a.refundPaidInvoices("sub_dup")).toEqual({ pence: 999, invoiceIds: ["in_a"] });
-  });
-
-  it("N4: a cancel by suspension marks the subscription first (metadata cancelledBy), then cancels", async () => {
-    const { client, calls } = recordingClient();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    await a.cancelSubscription("sub_1", { reason: "suspend" });
-    expect(calls).toEqual([
-      { path: "subscriptions.update", args: ["sub_1", { metadata: { cancelledBy: "suspend" } }] },
-      { path: "subscriptions.cancel", args: ["sub_1", { prorate: false }] },
-    ]);
-  });
-
-  it("slice B5: cancel at period end (removed from the group) and its undo (re-added) are one update each, nothing else", async () => {
-    const { client, calls } = recordingClient();
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    await a.setCancelAtPeriodEnd("sub_1", true);
-    await a.setCancelAtPeriodEnd("sub_1", false);
-    expect(calls).toEqual([
-      { path: "subscriptions.update", args: ["sub_1", { cancel_at_period_end: true }] },
-      { path: "subscriptions.update", args: ["sub_1", { cancel_at_period_end: false }] },
-    ]);
-    expect(JSON.stringify(calls)).not.toMatch(/stripeAccount|application_fee|refund/);
-  });
-
-  it("N6: live subscriptions are read across EVERY page, not the newest 20", async () => {
-    const { client, calls } = recordingClient();
-    const page = (ids: string[], hasMore: boolean) => ({
-      has_more: hasMore,
-      data: ids.map((id) => ({ id, status: "active", customer: "cus_1", metadata: { purpose: "club-fee", orgId: "o" }, cancel_at_period_end: false, trial_end: null, default_payment_method: null, items: { data: [] } })),
-    });
-    let n = 0;
-    Object.assign(client.subscriptions, {
-      list: (...args: unknown[]) => {
-        calls.push({ path: "subscriptions.list", args });
-        return Promise.resolve(n++ === 0 ? page(["sub_a"], true) : page(["sub_b"], false));
-      },
-    });
-    const a = createStripeBillingAdapter(client as unknown as Stripe);
-    expect((await a.listLiveSubscriptions("cus_1")).map((s) => s.id)).toEqual(["sub_a", "sub_b"]);
-    expect(calls[1].args[0]).toMatchObject({ customer: "cus_1", status: "all", limit: 100, starting_after: "sub_a" });
-  });
-
-  it("N6: the adapter's idea of 'live' is isLiveSubscriptionStatus (Stripe's 'paused' counts as live: it can resume and charge)", async () => {
-    const fakeA = createFakeBillingStripe();
-    for (const [id, status] of [["s1", "paused"], ["s2", "unpaid"], ["s3", "incomplete_expired"], ["s4", "canceled"]] as const) {
-      fakeA.putSubscription({ id, status, customerId: "cus_1", metadata: { purpose: "club-fee", orgId: "o" }, cancelAtPeriodEnd: false, currentPeriodEnd: null, trialEnd: null, priceId: null, itemId: null, card: null });
-    }
-    expect((await fakeA.listLiveSubscriptions("cus_1")).map((s) => s.id).sort()).toEqual(["s1", "s2"]);
+  it("void deletes a draft and voids an open invoice", async () => {
+    const fake = createFakeBillingStripe();
+    const draft = await fake.createMonthInvoice(MONTH);
+    expect(await fake.voidInvoice(draft.id)).toBe("deleted");
+    const open = await fake.createMonthInvoice({ ...MONTH, monthId: "cbm_2" });
+    await fake.addMonthInvoiceItem({ ...MONTH, ...item, monthId: "cbm_2", invoiceId: open.id, amountPence: 999 });
+    await fake.finalizeInvoice(open.id);
+    expect(await fake.voidInvoice(open.id)).toBe("voided");
+    expect((await fake.retrieveInvoice(open.id))?.status).toBe("void");
   });
 });

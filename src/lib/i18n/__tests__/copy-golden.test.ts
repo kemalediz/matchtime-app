@@ -1253,7 +1253,7 @@ function cases(lang: Lang): Case[] {
       sj.billing_card_on_file({ yes: true }),
       sj.billing_card_on_file({ yes: false }),
       sj.billing_card_holder_note({ club: "Riverside FC", contact: "Colin" }),
-      `[${sj.billing_btn_add_card}] [${sj.billing_btn_change_card}] [${sj.billing_btn_use_mine}] [${sj.billing_btn_update_card}] [${sj.billing_btn_remove_mine}]`,
+      `[${sj.billing_btn_add_card}] [${sj.billing_btn_change_card}] [${sj.billing_btn_use_mine}] [${sj.billing_btn_update_card}] [${sj.billing_btn_remove_mine}] [${sj.billing_btn_stop_paying}] [${sj.billing_btn_keep_paying}]`,
       `[${sj.billing_open}] [${sj.billing_choose_collector}]`,
       sj.billing_exempt({ club: "Sutton FC" }),
     ].join("\n"),
@@ -1270,7 +1270,9 @@ function cases(lang: Lang): Case[] {
   // Slice B3 (2026-10-01): the billing page's notices and the webhook's DMs.
   add(
     "R190 billing page / notices after a card action",
-    (["done", "replaced", "removed", "not-set-up", "already", "failed"] as const).map((n) => billingNoticeText(lang, n)).join("\n"),
+    (["done", "replaced", "removed", "not-set-up", "already", "failed", "stopped", "stopped-free", "kept", "past-due"] as const)
+      .map((n) => billingNoticeText(lang, n))
+      .join("\n"),
   );
   const cardAdded = { name: "Colin", club: "Riverside FC", pricePence: 999, link: "https://matchtime.ai/r/abc" };
   add("R190 billing DM / card added, free month", cardAddedText(lang, { ...cardAdded, firstPaymentOn: billView.trialEndsAt, resumed: false }));

@@ -3,7 +3,9 @@
  * READ ONLY. Kemal runs the script against production, so it must only ever
  * SELECT: no write method, no raw SQL, no transaction and no session SET
  * (a leaked SET on the production pooler broke prod writes on 2026-09-29).
- * And nothing in P1 writes `ClubBillingMonth`: its one writer arrives in P2.
+ * And `ClubBillingMonth` has ONE writer, src/lib/club-billing-months.ts
+ * (slice P2): no other file or script may write it (plan 10.1, source
+ * guards).
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -44,7 +46,7 @@ describe("slice P1: the games-played report is read only", () => {
   });
 });
 
-describe("slice P1: nothing writes ClubBillingMonth yet", () => {
+describe("slice P2: ClubBillingMonth has one writer (club-billing-months.ts)", () => {
   function walk(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
       const full = path.join(dir, name);
@@ -55,10 +57,19 @@ describe("slice P1: nothing writes ClubBillingMonth yet", () => {
     return out;
   }
 
-  it("no source file or script calls a write on clubBillingMonth", () => {
-    const offenders = [...walk(path.join(ROOT, "src")), ...walk(path.join(ROOT, "scripts"))].filter((f) =>
-      /clubBillingMonth\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(strip(readFileSync(f, "utf8"))),
+  const WRITE = /clubBillingMonth\.(create|createMany|createManyAndReturn|update|updateMany|updateManyAndReturn|upsert|delete|deleteMany)\s*\(/;
+
+  it("no source file or script but club-billing-months.ts calls a write on clubBillingMonth", () => {
+    const writers = [...walk(path.join(ROOT, "src")), ...walk(path.join(ROOT, "scripts"))].filter((f) =>
+      WRITE.test(strip(readFileSync(f, "utf8"))),
     );
-    expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
+    expect(writers.map((f) => path.relative(ROOT, f))).toEqual([path.join("src", "lib", "club-billing-months.ts")]);
+  });
+
+  it("no raw SQL names the table anywhere in src or scripts (a second writer by the back door)", () => {
+    const raw = [...walk(path.join(ROOT, "src")), ...walk(path.join(ROOT, "scripts"))].filter((f) =>
+      /"ClubBillingMonth"/.test(strip(readFileSync(f, "utf8"))),
+    );
+    expect(raw.map((f) => path.relative(ROOT, f))).toEqual([]);
   });
 });

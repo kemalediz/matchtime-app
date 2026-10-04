@@ -12,9 +12,13 @@
  */
 import type { Prisma } from "@/generated/prisma/client";
 import {
+  BILLED_EVENT_TYPE,
+  BILLING_OFF_EVENT_TYPE,
+  BILLING_ON_EVENT_TYPE,
   PAUSED_EVENT_TYPE,
   RESUMED_EVENT_TYPE,
-  pauseSpansFrom,
+  UNBILLED_EVENT_TYPE,
+  notChargedSpansFrom,
   type CountClubMonthInput,
   type CycleActivity,
 } from "./club-billing-cycle-rules";
@@ -92,8 +96,17 @@ export async function loadClubMonthInput(
     select: { id: true, dayOfWeek: true, time: true, venue: true, isActive: true, createdAt: true },
   });
 
+  // Every span in which games are never charged (P2 review, H1): the
+  // club's billing pauses and not-billable spells (Free, suspended), and
+  // the GLOBAL spells when BILLING_ENABLED was off (orgId NULL).
   const events = await client.billingEvent.findMany({
-    where: { orgId, type: { in: [PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE] }, receivedAt: { lt: month.endsAt } },
+    where: {
+      OR: [
+        { orgId, type: { in: [PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE, UNBILLED_EVENT_TYPE, BILLED_EVENT_TYPE] } },
+        { orgId: null, type: { in: [BILLING_OFF_EVENT_TYPE, BILLING_ON_EVENT_TYPE] } },
+      ],
+      receivedAt: { lt: month.endsAt },
+    },
     orderBy: { receivedAt: "asc" },
     select: { type: true, receivedAt: true },
   });
@@ -112,7 +125,7 @@ export async function loadClubMonthInput(
       yellowScore: m.yellowScore,
       confirmedCount: m._count.attendances,
     })),
-    pauseSpans: pauseSpansFrom(events.map((e) => ({ type: e.type, at: e.receivedAt }))),
+    pauseSpans: notChargedSpansFrom(events.map((e) => ({ type: e.type, at: e.receivedAt }))),
     tracksAttendance: org.featureAttendance,
     ...(opts.now ? { now: opts.now } : {}),
   };

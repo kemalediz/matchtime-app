@@ -78,13 +78,33 @@ describe("loadClubMonthInput", () => {
     });
   });
 
-  it("reads the pause events up to the month's end, oldest first", async () => {
+  it("reads the club's pause and not-billable events AND the global billing-off events, up to the month's end, oldest first (H1)", async () => {
     const c = fakeClient();
     await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
     expect(c.billingEvent.findMany.mock.calls[0][0]).toMatchObject({
-      where: { orgId: "org", type: { in: ["mt.paused", "mt.resumed"] }, receivedAt: { lt: NOV.endsAt } },
+      where: {
+        OR: [
+          { orgId: "org", type: { in: ["mt.paused", "mt.resumed", "mt.unbilled", "mt.billed"] } },
+          { orgId: null, type: { in: ["mt.billing-off", "mt.billing-on"] } },
+        ],
+        receivedAt: { lt: NOV.endsAt },
+      },
       orderBy: { receivedAt: "asc" },
     });
+  });
+
+  it("H1: games inside a Free spell or a billing-off spell are NOT played (only games outside them count)", async () => {
+    const c = fakeClient();
+    c.billingEvent.findMany.mockResolvedValue([
+      { type: "mt.unbilled", receivedAt: new Date("2026-10-01T00:00:00Z") },
+      { type: "mt.billed", receivedAt: new Date("2026-11-10T00:00:00Z") },
+      { type: "mt.billing-off", receivedAt: new Date("2026-11-25T00:00:00Z") },
+    ]);
+    const input = await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
+    expect(input?.pauseSpans).toEqual([
+      { from: new Date("2026-10-01T00:00:00Z"), to: new Date("2026-11-10T00:00:00Z") },
+      { from: new Date("2026-11-25T00:00:00Z"), to: null },
+    ]);
   });
 
   it("maps rows into the count's input: confirmedCount, spans, tracksAttendance, and passes now through", async () => {

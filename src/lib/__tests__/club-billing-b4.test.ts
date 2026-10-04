@@ -32,8 +32,7 @@ type Club = {
     pausedReason: string | null;
     paymentFailedAt: Date | null;
     cardHolderUserId: string | null;
-    stripeSubscriptionId: string | null;
-    stripeSubscriptionStatus: string | null;
+    stripePaymentMethodId: string | null;
   } | null;
   adminChannel?: { mode: string; channelUserId: string | null; adminGroupId: string | null };
 };
@@ -50,6 +49,7 @@ const h = vi.hoisted(() => {
     beforeTransition: null as null | ((orgId: string) => void),
     ops: [] as Array<{ title: string; dedupeKey?: string | null }>,
     refundSweeps: 0,
+    flagStates: [] as boolean[],
     pendingFlushes: [] as string[],
     tip: {
       pricePence: 999, perSide: 5, players: 10, games: 4, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false,
@@ -183,11 +183,20 @@ vi.mock("../admin-channel", async () => {
     ),
   };
 });
-vi.mock("../club-billing-stripe", () => ({
-  sweepOpenRefundIntents: vi.fn(async () => {
-    h.state.refundSweeps++;
-    return { finished: 0, failed: 0 };
+vi.mock("../club-billing-spells", () => ({
+  recordBillingFlagState: vi.fn(async (on: boolean) => {
+    h.state.flagStates.push(on);
+    return true;
   }),
+}));
+vi.mock("../club-billing-months", () => ({
+  // Slice P2: the void sweep replaced B3's refund-intent sweep.
+  sweepUnwantedMonthInvoices: vi.fn(async () => {
+    h.state.refundSweeps++;
+    return { voided: 0, failed: 0 };
+  }),
+}));
+vi.mock("../club-billing-stripe", () => ({
   flushPendingBillingNotices: vi.fn(async (orgId: string) => {
     h.state.pendingFlushes.push(orgId);
     return 0;
@@ -283,8 +292,7 @@ function club(over: Partial<Club> = {}, billing: Partial<NonNullable<Club["billi
       pausedReason: null,
       paymentFailedAt: null,
       cardHolderUserId: null,
-      stripeSubscriptionId: null,
-      stripeSubscriptionStatus: null,
+      stripePaymentMethodId: null,
       ...billing,
     },
     ...over,
@@ -308,6 +316,7 @@ beforeEach(() => {
   h.state.ops.length = 0;
   h.state.beforeTransition = null;
   h.state.refundSweeps = 0;
+  h.state.flagStates = [];
   h.state.pendingFlushes.length = 0;
   h.state.tip = { pricePence: 999, perSide: 5, players: 10, games: 4, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false };
 });
@@ -441,7 +450,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
   it("past due and the 7 day payment grace runs out: paused (payment failed), the 'paused' DM says so", async () => {
     const c = club(
       { billingStatus: "past_due" },
-      { graceEndsAt: new Date("2026-12-08T10:00:00Z"), paymentFailedAt: new Date("2026-12-01T10:00:00Z"), cardHolderUserId: "u_owen", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "past_due" },
+      { graceEndsAt: new Date("2026-12-08T10:00:00Z"), paymentFailedAt: new Date("2026-12-01T10:00:00Z"), cardHolderUserId: "u_owen", stripePaymentMethodId: "pm_owen" },
     );
     await runBillingCron(new Date("2026-12-08T12:00:00Z"));
     expect(c.billingStatus).toBe("paused");
@@ -475,7 +484,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
 // ── Skips ───────────────────────────────────────────────────────────────
 
 describe("runBillingCron: who is never touched", () => {
-  it("BILLING_ENABLED off: no transition, no DM (the refund sweep still runs: it is money already taken)", async () => {
+  it("BILLING_ENABLED off: no transition, no DM (the void sweep still runs: a club set Free is never charged by Stripe's retries)", async () => {
     process.env.BILLING_ENABLED = "0";
     const c = club({}, {});
     await runBillingCron(new Date(TRIAL_ENDS.getTime() + 2 * HOUR));
@@ -483,6 +492,8 @@ describe("runBillingCron: who is never touched", () => {
     expect(dmsOf()).toEqual([]);
     expect(h.state.transitions).toEqual([]);
     expect(h.state.refundSweeps).toBe(1);
+    // H1: the run records that billing is off (once per change).
+    expect(h.state.flagStates).toEqual([false]);
   });
 
   it("a suspended club, an unapproved club and an exempt club: nothing", async () => {
@@ -515,7 +526,7 @@ describe("transitions racing webhooks (the one locked writer decides)", () => {
   it("a recovered payment lands just before the cron's grace end: not paused, no 'paused' DM", async () => {
     const c = club(
       { billingStatus: "past_due" },
-      { graceEndsAt: new Date("2026-12-08T10:00:00Z"), paymentFailedAt: new Date("2026-12-01T10:00:00Z"), stripeSubscriptionStatus: "past_due" },
+      { graceEndsAt: new Date("2026-12-08T10:00:00Z"), paymentFailedAt: new Date("2026-12-01T10:00:00Z"), stripePaymentMethodId: "pm_cole" },
     );
     h.state.beforeTransition = () => {
       c.billingStatus = "subscribed";
@@ -537,13 +548,14 @@ describe("transitions racing webhooks (the one locked writer decides)", () => {
     expect(dmsOf("trial-21")).toHaveLength(1);
   });
 
-  it("every run sweeps the open refund intents and flushes pending resumed or plan-billed DMs in the daytime", async () => {
+  it("every run sweeps unwanted unpaid invoices and flushes pending resumed or plan-billed DMs in the daytime", async () => {
     club();
     await runBillingCron(NIGHT(DAY21));
     expect(h.state.refundSweeps).toBe(1);
     expect(h.state.pendingFlushes).toEqual([]);
     await runBillingCron(DAY21);
     expect(h.state.refundSweeps).toBe(2);
+    expect(h.state.flagStates).toEqual([true, true]);
     expect(h.state.pendingFlushes).toEqual(["org_1"]);
   });
 });
@@ -626,7 +638,7 @@ describe("onBillingContactChanged: the 'payer changed' DM from setPaymentHolder"
   });
 
   it("someone else's card is paying: 'Owen's card keeps paying until you put yours on'", async () => {
-    club({ billingStatus: "subscribed", paymentHolderId: "u_cole" }, { cardHolderUserId: "u_owen", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "active", currentPeriodEnd: new Date("2026-11-30T09:00:00Z") });
+    club({ billingStatus: "subscribed", paymentHolderId: "u_cole" }, { cardHolderUserId: "u_owen", stripePaymentMethodId: "pm_owen", currentPeriodEnd: new Date("2026-11-30T09:00:00Z") });
     await onBillingContactChanged("org_1", NOON);
     expect(dmsOf("payer-changed")[0].text).toContain("Owen's card keeps paying until you put yours on, whenever suits you:");
   });
@@ -710,7 +722,7 @@ describe("notePaymentProblem + flush: payment failed and 3DS DMs", () => {
   const pastDue = (over: Partial<NonNullable<Club["billing"]>> = {}) =>
     club(
       { billingStatus: "past_due", paymentHolderId: "u_cole" },
-      { cardHolderUserId: "u_cole", stripeSubscriptionId: "sub_1", stripeSubscriptionStatus: "past_due", paymentFailedAt: FAILED_AT, graceEndsAt: new Date(FAILED_AT.getTime() + 7 * DAY), ...over },
+      { cardHolderUserId: "u_cole", stripePaymentMethodId: "pm_cole", paymentFailedAt: FAILED_AT, graceEndsAt: new Date(FAILED_AT.getTime() + 7 * DAY), ...over },
     );
 
   it("payment failed: held 30 minutes (a 3DS event for the same invoice would replace it), then one DM to the contact", async () => {

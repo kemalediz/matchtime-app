@@ -43,7 +43,6 @@ import {
   STANDARD_PRICE_PENCE,
   billingContact,
   isBillingEnabled,
-  isLiveSubscriptionStatus,
   planPricePence,
   type BillingContact,
 } from "./club-billing-rules";
@@ -104,8 +103,7 @@ async function loadDmClub(orgId: string) {
           pausedReason: true,
           paymentFailedAt: true,
           cardHolderUserId: true,
-          stripeSubscriptionId: true,
-          stripeSubscriptionStatus: true,
+          stripePaymentMethodId: true,
         },
       },
     },
@@ -353,7 +351,9 @@ function payerChangedRefusal(club: DmClub | null, userId: string): string | null
 async function sendPayerChanged(club: DmClub & { billing: NonNullable<DmClub["billing"]> }, userId: string) {
   const b = club.billing;
   const holder = b.cardHolderUserId;
-  const oldName = holder && holder !== userId && isLiveSubscriptionStatus(b.stripeSubscriptionStatus) ? await nameOf(club, holder) : null;
+  // Somebody else's card is still on file and keeps paying (slice P2: a
+  // card on file, not a live subscription).
+  const oldName = holder && holder !== userId && b.stripePaymentMethodId ? await nameOf(club, holder) : null;
   const state: "card" | "no-card" | "paused" | "removed" =
     club.status === "paused" ? (b.pausedReason === "removed" ? "removed" : "paused") : oldName ? "card" : "no-card";
   const date =

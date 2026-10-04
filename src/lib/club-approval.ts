@@ -574,25 +574,27 @@ export async function decideClub(
     }
   }
 
-  // Club fee billing (plan 4.2, decision 7; PR #181 review fix 11): the
-  // owner's off switch cancels a billed club's live subscription at once,
-  // no proration and no automatic refund. Stripe being down never undoes
-  // the suspension: it is logged and recorded on /admin/health.
+  // Club fee billing (plan 4.2 and 2A.6, decision 7 under games played):
+  // the owner's off switch WAIVES the club's open month (closed, no
+  // charge); no later month opens while it is suspended, and the month
+  // close re-checks the suspension itself before any money moves. A
+  // failure here never undoes the suspension: it is recorded on
+  // /admin/health.
   if (result.decision === "suspend") {
     try {
-      const { cancelSubscriptionOnSuspend } = await import("./club-billing-stripe");
-      const r = await cancelSubscriptionOnSuspend(orgId);
-      if (r.action !== "no-subscription") console.log(`[club-approval] ${orgId}: club fee subscription on suspend: ${r.action}`);
+      const { onClubSuspended } = await import("./club-billing-stripe");
+      const r = await onClubSuspended(orgId, now);
+      if (r.waived > 0) console.log(`[club-approval] ${orgId}: suspended; ${r.waived} open club fee month(s) waived`);
     } catch (err) {
-      console.error(`[club-approval] ${orgId}: suspended, but its club fee subscription was NOT cancelled:`, err);
+      console.error(`[club-approval] ${orgId}: suspended, but its open club fee month was NOT waived:`, err);
       const { BILLING_ALERT_KIND, recordOpsEvent } = await import("./ops-alerts");
       await recordOpsEvent({
         orgId,
         kind: BILLING_ALERT_KIND,
-        severity: "critical",
-        title: "Suspended club's subscription not cancelled",
-        detail: `Cancel it in Stripe by hand: ${(err as Error).message}`,
-        dedupeKey: `suspend-cancel-failed:${now.toISOString()}`,
+        severity: "warning",
+        title: "Suspended club's open month not waived",
+        detail: `The month close re-checks the suspension and waives it anyway; nothing is charged. (${(err as Error).message})`,
+        dedupeKey: `suspend-waive-failed:${now.toISOString()}`,
       });
     }
   }

@@ -1909,10 +1909,12 @@ export const tr: Strings = {
   billing_who_none: "Telefon numarası kayıtlı bir para toplayan kişi ya da kulüp sahibi yok, bu yüzden henüz kimseden kart istenemiyor.",
   billing_card_on_file: (p) => (p.yes ? "Kayıtlı kart: var." : "Kayıtlı kart: yok."),
   billing_btn_add_card: "Kart ekle",
-  billing_btn_change_card: "Kartı değiştir ya da iptal et",
+  billing_btn_change_card: "Kartı değiştir",
   billing_btn_use_mine: "Bunun yerine kendi kartımı kullan",
   billing_btn_update_card: "Kartı güncelle ve öde",
   billing_btn_remove_mine: "Kartımı kaldır",
+  billing_btn_stop_paying: "Ödemeyi durdur",
+  billing_btn_keep_paying: "Ödemeye devam et",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
@@ -1929,6 +1931,11 @@ export const tr: Strings = {
   billing_notice_already: "Bu kulüp için zaten bir kart ödeme yapıyor.",
   billing_notice_re_add: "MatchTime kulübün WhatsApp grubunda değil. Önce gruba geri ekleyin.",
   billing_notice_failed: "Bir sorun oluştu. Lütfen tekrar deneyin.",
+  billing_notice_stopped:
+    "Tamam. Ödeme bu ay bitince sona eriyor: bu ay oynanan maçlar için her zamanki gibi ücretlendirilir, sonra başka bir şey alınmaz. MatchTime o zamana kadar çalışmaya devam ediyor.",
+  billing_notice_stopped_free: "Tamam. Kartınız kaldırıldı ve hiçbir ücret alınmadı. Ücretsiz ay bitene kadar devam ediyor.",
+  billing_notice_kept: "Tamam. MatchTime çalışmaya devam ediyor ve her ay yalnızca oynanan maçlar için ücret alınır.",
+  billing_notice_past_due: "Gecikmiş bir ödeme var. Önce kartı güncelleyip ödeyin.",
   billing_dm_card_added: (p) =>
     `Teşekkürler${p.name ? ` ${p.name}` : ""}, kartınız kaydedildi. ` +
     (p.resumed

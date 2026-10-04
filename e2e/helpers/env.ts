@@ -237,11 +237,10 @@ export function buildTestEnv(): Record<string, string> {
     BILLING_STRIPE_FAKE: "1",
     MT_TEST_BILLING_STRIPE_FILE: E2E.BILLING_STRIPE_FILE,
     STRIPE_BILLING_WEBHOOK_SECRET: E2E.BILLING_WEBHOOK_SECRET,
-    STRIPE_CLUB_PRICE_ID: "price_e2e_standard",
+    // Slice P2: every month's invoice item is made under the product with
+    // the inclusive VAT rate (the price and Portal ids are retired).
     STRIPE_CLUB_PRODUCT_ID: "prod_e2e_club",
     STRIPE_CLUB_TAX_RATE_ID: "txr_e2e_vat",
-    // The dedicated Portal configuration is REQUIRED for a Portal button.
-    STRIPE_CLUB_PORTAL_CONFIG_ID: "bpc_e2e_no_invoices",
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
     STRIPE_SECRET_KEY: "",
