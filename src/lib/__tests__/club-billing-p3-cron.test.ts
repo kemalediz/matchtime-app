@@ -353,7 +353,7 @@ const OWEN: Member = { userId: "u_owen", role: "OWNER", leftAt: null, name: "Owe
 const COLE: Member = { userId: "u_cole", role: "PLAYER", leftAt: null, name: "Cole", phoneNumber: "+447700900003" };
 
 let fake: FakeBillingStripe;
-const ENV_KEYS = ["BILLING_ENABLED", "STRIPE_CLUB_PRODUCT_ID", "STRIPE_CLUB_TAX_RATE_ID", "BILLING_CRON_RETRIES", "NEXTAUTH_URL"] as const;
+const ENV_KEYS = ["BILLING_ENABLED", "STRIPE_CLUB_PRODUCT_ID", "STRIPE_CLUB_TAX_RATE_ID", "BILLING_CRON_RETRIES", "BILLING_STRIPE_RETRIES", "NEXTAUTH_URL"] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
 function club(over: Partial<Org> = {}, billing: Partial<Billing> = {}, orgId = ORG) {
@@ -720,6 +720,19 @@ describe("retries of a failed month: days 1, 3 and 5, daytime, configurable", ()
     await runBillingCron(at("2026-12-04T10:00:00Z"));
     await runBillingCron(at("2026-12-06T10:00:00Z"));
     expect(payCalls()).toHaveLength(1);
+  });
+
+  it("review L2: BOTH retry sources explicitly on: one warning on /admin/health (deduped), the run carries on", async () => {
+    process.env.BILLING_STRIPE_RETRIES = "1";
+    process.env.BILLING_CRON_RETRIES = "1";
+    await runBillingCron(at("2026-12-02T10:00:00Z"));
+    const warn = h.state.ops.filter((o) => (o as { dedupeKey?: string | null }).dedupeKey === "billing-retries-both-on");
+    expect(warn).toHaveLength(1);
+    expect(warn[0]).toMatchObject({ orgId: null, severity: "warning" });
+    delete process.env.BILLING_STRIPE_RETRIES;
+    h.state.ops.length = 0;
+    await runBillingCron(at("2026-12-02T11:00:00Z"));
+    expect(h.state.ops.filter((o) => (o as { dedupeKey?: string | null }).dedupeKey === "billing-retries-both-on")).toHaveLength(0);
   });
 
   it("BILLING_CRON_RETRIES unset: the DEFAULT is no cron retries (Stripe's own are the one mechanism)", async () => {

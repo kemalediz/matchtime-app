@@ -87,7 +87,15 @@ import {
   waiveOpenMonths,
 } from "./club-billing-months";
 import { recordSuspended } from "./club-billing-spells";
-import { cardAddedText, cardReplacedText, keepPayingText, planBilledText, resumedText } from "./club-billing-view";
+import {
+  billedAgainCardText,
+  cardAddedText,
+  cardDroppedText,
+  cardReplacedText,
+  keepPayingText,
+  planBilledText,
+  resumedText,
+} from "./club-billing-view";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isBillingDmHour } from "./club-billing-schedule-rules";
 import { notePaymentProblem, sendMonthCharged } from "./club-billing-dms";
@@ -426,6 +434,26 @@ export async function onClubSuspended(orgId: string, now: Date = new Date()): Pr
   return { waived };
 }
 
+/**
+ * Review M1: a card the plan control took off the club (it was not the
+ * billing contact's) is detached in Stripe too, so it can never be charged.
+ * The database no longer points at it (setClubPlan cleared it in its
+ * transaction), so a failure here is logged, never thrown: no charge can
+ * reach it through MatchTime. Never detaches the card that IS on file.
+ */
+export async function detachDroppedCard(orgId: string, paymentMethodId: string): Promise<void> {
+  const billing = await loadBilling(orgId);
+  if (billing?.stripePaymentMethodId === paymentMethodId) return;
+  const stripe = getBillingStripe();
+  if (!stripe) return;
+  try {
+    await stripe.detachPaymentMethod(paymentMethodId);
+    console.log(`[club-billing-stripe] ${orgId}: previous holder's card ${paymentMethodId} detached (not billed again)`);
+  } catch (err) {
+    console.warn(`[club-billing-stripe] ${orgId}: detaching the dropped card ${paymentMethodId}:`, (err as Error).message);
+  }
+}
+
 // ── DMs written as pending by a state change ────────────────────────────
 
 /** A pending "resumed" or "plan-billed" DM older than this is never sent. */
@@ -481,7 +509,7 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
     // every "card replaced" is about a different card, so none supersedes
     // another.
     const newer =
-      (p.kind === "resumed" || p.kind === "plan-billed" || p.kind === "keep-paying") &&
+      (p.kind === "resumed" || p.kind === "plan-billed" || p.kind === "keep-paying" || p.kind === "billed-again") &&
       pending.some((q) => q.kind === p.kind && q.createdAt > p.createdAt);
     let why: string | null =
       now.getTime() - p.createdAt.getTime() > PENDING_NOTICE_MAX_AGE_MS ? "expired" : newer ? "superseded" : !org ? "no-contact" : null;
@@ -584,6 +612,48 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
                   }),
               });
           }
+          break;
+        }
+        case "billed-again": {
+          // Review M1: still subscribed, still billed, and the card on file
+          // is still the CONTACT's own (setClubPlan only bills theirs).
+          const holder = billing?.cardHolderUserId ?? null;
+          const ok =
+            org.billingStatus === "subscribed" &&
+            billable(org) &&
+            !!billing?.stripePaymentMethodId &&
+            !!billing.cardLast4 &&
+            !!holder &&
+            holder === contact;
+          if (!ok) why = "not-current";
+          else {
+            const link = await billingLink(holder!, orgId);
+            const firstChargeOn = nextChargeOn(billing!.trialEndsAt, now);
+            send = () =>
+              queueBillingDm({
+                orgId,
+                kind: "billed-again",
+                cycleKey: p.cycleKey,
+                userId: holder!,
+                text: ({ name }) =>
+                  billedAgainCardText(org.language, {
+                    name,
+                    club: org.name,
+                    last4: billing!.cardLast4!,
+                    pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
+                    firstChargeOn,
+                    link,
+                  }),
+              });
+          }
+          break;
+        }
+        case "card-dropped": {
+          // cycleKey "<old card>|<its holder>": that card is still off the club.
+          const [oldPm, oldHolder] = p.cycleKey.split("|");
+          const ok = !!oldPm && !!oldHolder && billing?.stripePaymentMethodId !== oldPm;
+          if (!ok) why = "not-current";
+          else send = () => queueBillingDm({ orgId, kind: "card-dropped", cycleKey: p.cycleKey, userId: oldHolder, text: ({ name }) => cardDroppedText(org.language, { name, club: org.name }) });
           break;
         }
         case "card-replaced": {
@@ -913,6 +983,7 @@ async function onCardSaved(
 
   if (org.billingPlan === "free" || org.billingStatus === "exempt") {
     if (card.paymentMethodId !== billing.stripePaymentMethodId) await stripe.detachPaymentMethod(card.paymentMethodId);
+    await restoreCustomerAfterRejectedSession(stripe, { orgId, orgName: org.name, billing, session, payer });
     console.warn(`[billing-webhook] ${orgId}: a card was saved for a club that is not billed; removed again`);
     return ignored("not-billable", orgId);
   }
@@ -922,6 +993,49 @@ async function onCardSaved(
   // sessions delivered at the same moment are applied one after the other,
   // and the second always decides on what the first left.
   return withCardSessionLock(orgId, () => applyCardSession(session, orgId, action, payer, card, now));
+}
+
+/**
+ * Review L1: Checkout (`customer_update` auto, `tax_id_collection`) wrote
+ * the rejected session's payer onto the club's shared Customer before this
+ * webhook ran. Put the Customer back: the payer of the card on file (its
+ * billing details), else the club default (the club's name, no email, no
+ * address), and remove the VAT numbers that session added unless they are
+ * the current payer's own. A failure is logged and flagged for the owner,
+ * never thrown: the card itself is already handled.
+ */
+async function restoreCustomerAfterRejectedSession(
+  stripe: BillingStripe,
+  a: {
+    orgId: string;
+    orgName: string;
+    billing: { stripeCustomerId: string | null; stripePaymentMethodId: string | null; cardHolderUserId: string | null };
+    session: Stripe.Checkout.Session;
+    payer: string;
+  },
+): Promise<void> {
+  if (!a.billing.stripeCustomerId) return;
+  try {
+    const current = a.billing.stripePaymentMethodId ? await stripe.retrievePaymentMethodDetails(a.billing.stripePaymentMethodId) : null;
+    const sessionTaxIds = (a.session.customer_details?.tax_ids ?? []).map((t) => t.value).filter((v): v is string => !!v);
+    await stripe.restoreCustomerDetails({
+      customerId: a.billing.stripeCustomerId,
+      name: current?.name || a.orgName,
+      email: current?.email ?? null,
+      address: current?.address ?? null,
+      removeTaxIds: a.payer === a.billing.cardHolderUserId ? [] : sessionTaxIds,
+    });
+  } catch (err) {
+    console.error(`[billing-webhook] ${a.orgId}: could not put the Customer back after rejected session ${a.session.id}:`, err);
+    await recordOpsEvent({
+      orgId: a.orgId,
+      kind: BILLING_ALERT_KIND,
+      severity: "warning",
+      title: "Club fee Customer details may show the wrong payer",
+      detail: `A rejected card session (${a.session.id}) wrote its payer onto Customer ${a.billing.stripeCustomerId}, and putting it back failed (${(err as Error).message}). Check the Customer's name, email, address and tax IDs in Stripe.`,
+      dedupeKey: `customer-restore:${a.session.id}`,
+    }).catch(() => undefined);
+  }
 }
 
 /** How long a card session may hold its club's lock (Stripe calls inside). */
@@ -984,7 +1098,8 @@ async function applyCardSession(
         console.warn(`[billing-webhook] ${orgId}: detaching superseded card ${card.paymentMethodId}:`, (err as Error).message);
       }
     }
-    console.warn(`[billing-webhook] ${orgId}: card session ${session.id} is older than the card on file; its card removed, nothing else changed`);
+    await restoreCustomerAfterRejectedSession(stripe, { orgId, orgName: org.name, billing, session, payer });
+    console.warn(`[billing-webhook] ${orgId}: card session ${session.id} is older than the card on file; its card removed, the Customer put back`);
     return ignored("superseded-session", orgId);
   }
 

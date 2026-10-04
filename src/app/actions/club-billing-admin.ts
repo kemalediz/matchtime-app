@@ -15,8 +15,9 @@
  * price change needs nothing in Stripe (each month close charges the lower
  * of the price when the month opened and the price at the close). A club
  * billed again after Free with its free month used up gets one DM to its
- * billing contact asking for a card, unless a card is on file: then that
- * card is billed and nobody is asked.
+ * billing contact asking for a card, unless the CONTACT's own card is on
+ * file: then that card is billed and they are told. Anybody else's card is
+ * removed (never billed) and its holder told (review M1).
  *
  * "use server" modules may export async functions only.
  */
@@ -24,7 +25,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { setClubPlan, startTrial } from "@/lib/club-billing";
-import { flushPendingBillingNotices, onPlanChanged } from "@/lib/club-billing-stripe";
+import { detachDroppedCard, flushPendingBillingNotices, onPlanChanged } from "@/lib/club-billing-stripe";
 import { parsePlanChoice } from "@/lib/club-billing-rules";
 import { moneyLabel } from "@/lib/club-billing-view";
 import { dayLabel } from "@/lib/i18n/dates";
@@ -63,6 +64,10 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
     r.plan === "free" ? "Free" : r.plan === "custom" ? `Custom, up to ${moneyLabel(r.pricePence ?? 0)} a month` : "Standard, up to £9.99 a month";
   let message = `Plan saved: ${label}.${r.plan === "free" ? " The club is not billed." : ""}${r.resumed ? " MatchTime is back on in its group." : ""}`;
 
+  // Review M1: a card that was not the billing contact's was taken off the
+  // club in the plan's transaction; detach it in Stripe too. Never throws.
+  if (r.droppedCard) await detachDroppedCard(orgId, r.droppedCard.paymentMethodId);
+
   // The database is committed; now the months and Stripe (Free only).
   try {
     const changed = await onPlanChanged(orgId);
@@ -92,9 +97,12 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
   } else if (r.billedAgain === "trial") {
     message += " The club is back in its free month.";
   } else if (r.billedAgain === "subscribed") {
-    message += " The card on file is billed again; nobody is asked for a card.";
+    message += " The billing contact's card on file is billed again, and they get a message saying so.";
   } else if (r.billedAgain === "paused") {
-    message += " The payer had stopped paying, so it stays paused until they press Keep paying.";
+    message += " It stays paused (the payer had stopped paying, or MatchTime is not in its group).";
+  }
+  if (r.droppedCard) {
+    message += " The card on file was not the billing contact's, so it was removed (never charged) and its holder is told.";
   }
   return { ok: true, message };
 }

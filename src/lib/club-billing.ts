@@ -91,6 +91,11 @@ function billingPatch(
     // reason is cleared, so `cancelAtPeriodEnd` is what tells "plan-billed"
     // later that the payer had stopped (test mode fix, 2026-10-05).
     if (fromReason === "cancelled") patch.cancelAtPeriodEnd = t.to === "exempt";
+    // Likewise a removal from the group (review M1): into "exempt" the
+    // reason stays as the marker, so "plan-billed" later keeps the club
+    // paused (removed); adding MatchTime back clears it
+    // (club-billing-removal.ts).
+    if (fromReason === "removed" && t.to === "exempt") patch.pausedReason = "removed";
   }
   if (from === "exempt" && t.to !== "exempt") {
     // Billed again after Free ("plan-billed", slice B3): nothing from an
@@ -252,6 +257,20 @@ async function applyBillingEventTx(
   return { ok: true, from: from as BillingStatus, to: t.to, resumed: t.resumes };
 }
 
+/** The billing contact's user id (4.5), read on a transaction client. */
+async function billingContactTx(tx: Tx, orgId: string): Promise<string | null> {
+  const org = await tx.organisation.findUnique({
+    where: { id: orgId },
+    select: {
+      paymentHolderId: true,
+      memberships: { orderBy: { createdAt: "asc" }, select: { userId: true, role: true, leftAt: true, user: { select: { phoneNumber: true } } } },
+    },
+  });
+  if (!org) return null;
+  const members = (org.memberships ?? []).map((mb) => ({ userId: mb.userId, role: mb.role as string, leftAt: mb.leftAt, phoneNumber: mb.user.phoneNumber }));
+  return billingContact({ paymentHolderId: org.paymentHolderId ?? null }, members)?.userId ?? null;
+}
+
 /** Generous: the resume work touches a handful of rows per club. */
 const TX_TIMEOUT_MS = 20_000;
 
@@ -366,10 +385,15 @@ export type SetClubPlanResult =
       /** Set when leaving Free billed the club again (its free month was
        *  already used): "trial" while that month is still running, else
        *  "grace" with a fresh 7 days. Slice B3. */
-      /** Billed again after Free: "subscribed" (a card on file), "paused"
-       *  (a card on file but the payer had stopped paying), else "trial" or
-       *  "grace" (no card). */
+      /** Billed again after Free: "subscribed" (the billing contact's card
+       *  on file), "paused" (the payer had stopped paying, or MatchTime was
+       *  removed from the group), else "trial" or "grace" (no card). */
       billedAgain: "trial" | "grace" | "subscribed" | "paused" | null;
+      /** Review M1: a card on file that was NOT the billing contact's,
+       *  removed from the club in this transaction instead of being billed.
+       *  The caller detaches it in Stripe (`detachDroppedCard`); its holder
+       *  is told by the pending "card-dropped" DM. */
+      droppedCard: { paymentMethodId: string; holderUserId: string | null } | null;
     }
   | { ok: false; reason: "not-found" | "not-self-join" };
 
@@ -441,11 +465,44 @@ export async function setClubPlan(
       // `nextBillingState` refuses it with the flag off, for a club never
       // trialled (Start free month is its way in) and on Free.
       let billedAgain: "trial" | "grace" | "subscribed" | "paused" | null = null;
+      let droppedCard: { paymentMethodId: string; holderUserId: string | null } | null = null;
       if (choice.plan !== "free" && status === "exempt") {
+        // Review M1: only the CURRENT billing contact's card is ever billed
+        // again. Anybody else's card (a previous collector's, or one with no
+        // known holder) is taken off the club first, in this transaction, so
+        // the club is asked for a card instead and the old card is never
+        // charged; its holder is told ("card-dropped").
+        if (isBillingEnabled()) {
+          const cb = await tx.clubBilling.findUnique({ where: { orgId }, select: { stripePaymentMethodId: true, cardHolderUserId: true } });
+          if (cb?.stripePaymentMethodId) {
+            const contact = await billingContactTx(tx, orgId);
+            if (!cb.cardHolderUserId || cb.cardHolderUserId !== contact) {
+              await tx.clubBilling.updateMany({
+                where: { orgId, stripePaymentMethodId: cb.stripePaymentMethodId },
+                data: { stripePaymentMethodId: null, cardBrand: null, cardLast4: null, cardHolderUserId: null },
+              });
+              droppedCard = { paymentMethodId: cb.stripePaymentMethodId, holderUserId: cb.cardHolderUserId };
+              if (cb.cardHolderUserId) {
+                await tx.billingNotice.createMany({
+                  data: [{ orgId, kind: "card-dropped", cycleKey: `${cb.stripePaymentMethodId}|${cb.cardHolderUserId}` }],
+                  skipDuplicates: true,
+                });
+              }
+            }
+          }
+        }
         const moved = await applyBillingEventTx(tx, orgId, { type: "plan-billed" }, now);
         if (moved.ok && (moved.to === "trial" || moved.to === "grace" || moved.to === "subscribed" || moved.to === "paused")) {
           status = moved.to;
           billedAgain = moved.to;
+          if (moved.to === "subscribed") {
+            // Review M1: the contact is told their card is billed again,
+            // PENDING in this transaction like "plan-billed".
+            await tx.billingNotice.createMany({
+              data: [{ orgId, kind: "billed-again", cycleKey: now.toISOString() }],
+              skipDuplicates: true,
+            });
+          }
           if (moved.to === "grace") {
             // The "plan-billed" DM, PENDING in this same transaction (review
             // fix 10): the action sends it after commit, and a retry finds
@@ -457,7 +514,7 @@ export async function setClubPlan(
           }
         }
       }
-      return { ok: true, plan: choice.plan, pricePence, status, resumed, billedAgain };
+      return { ok: true, plan: choice.plan, pricePence, status, resumed, billedAgain, droppedCard };
     },
     { timeout: TX_TIMEOUT_MS },
   );
@@ -756,6 +813,10 @@ export type BillingNoticeKind =
   | "card-replaced"
   | "resumed"
   | "plan-billed"
+  /** Review M1: billed again after Free with the contact's card on file. */
+  | "billed-again"
+  /** Review M1: a previous holder's card taken off the club, not billed. */
+  | "card-dropped"
   | "trial-21"
   | "trial-28"
   | "trial-ended"
@@ -877,7 +938,7 @@ export async function loadPendingBillingNotices(
   orgId: string,
 ): Promise<Array<{ kind: BillingNoticeKind; cycleKey: string; createdAt: Date }>> {
   const rows = await db.billingNotice.findMany({
-    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed", "card-added", "card-replaced", "keep-paying"] } },
+    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed", "card-added", "card-replaced", "keep-paying", "billed-again", "card-dropped"] } },
     select: { kind: true, cycleKey: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });

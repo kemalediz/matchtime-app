@@ -330,6 +330,12 @@ export function nextBillingState(
       if (from !== "exempt" || !b) return null;
       if (club.billingPlan === "free") return null;
       if (!isBillingEnabled(env)) return null;
+      // Paused because MatchTime was removed from its group, then Free: the
+      // removal is remembered through the Free spell (review M1). Still
+      // removed: adding MatchTime back to the group is the way, as before.
+      if (b.pausedReason === "removed") return to("paused", from, { pausedReason: "removed" });
+      // `hasCard` here is the CURRENT billing contact's card only: the plan
+      // control drops anybody else's card first (review M1, setClubPlan).
       if (b.hasCard) {
         // The payer had stopped paying: still stopped. "Keep paying" (Start
         // again) is their way back; the card is never charged without it.

@@ -251,7 +251,9 @@
  *
  *   - 2026-10-05, club fee billing test mode fixes: ADDED R193 (the Stop
  *     paying confirmation on the billing page: what stopping means inside
- *     and after the free month, Yes and Go back). No other case changed.
+ *     and after the free month, Yes and Go back; review M1: the "billed
+ *     again with your card" DM and the "your card was removed" DM to a
+ *     previous holder). No other case changed.
  *
  *   - 2026-10-01, club fee billing slice B3 (Stripe): ADDED R190 (the
  *     billing page's notices after a card action; the "card added",
@@ -416,8 +418,10 @@ import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
 import {
   approvedTipText,
   bannerText,
+  billedAgainCardText,
   billingNoticeText,
   billingStateLines,
+  cardDroppedText,
   gameLine,
   monthBoxText,
   pastMonthLine,
@@ -1399,6 +1403,13 @@ function cases(lang: Lang): Case[] {
       sj.billing_stop_confirm_month({ date: "Tue 1 Dec" }),
       sj.billing_stop_confirm_free({ date: "Sat 31 Oct" }),
       `[${sj.billing_btn_stop_confirm_yes}] [${sj.billing_btn_stop_confirm_no}]`,
+    ].join("\n"),
+  );
+  add(
+    "R193 billing DM / billed again with the contact's card, a previous holder's card dropped",
+    [
+      billedAgainCardText(lang, { name: "Colin", club: "Riverside FC", last4: "4242", pricePence: 999, firstChargeOn: new Date("2026-12-01T00:00:00Z"), link: "https://matchtime.ai/r/abc" }),
+      cardDroppedText(lang, { name: "Elvin", club: "Riverside FC" }),
     ].join("\n"),
   );
 

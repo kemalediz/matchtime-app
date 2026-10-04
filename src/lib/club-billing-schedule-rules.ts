@@ -176,8 +176,8 @@ type Env = Record<string, string | undefined>;
  * 7 day payment grace. OFF by default since 2026-10-05: Stripe test mode
  * confirmed the account's own automatic retries (Revenue recovery) cover
  * one-off invoices, so only ONE retry mechanism runs. Switched on with
- * BILLING_CRON_RETRIES=1 only together with BILLING_STRIPE_RETRIES=0 and
- * Stripe's retries switched off (runbook 16.1 step 6).
+ * BILLING_CRON_RETRIES=1 only with Stripe's retries switched off and
+ * BILLING_STRIPE_RETRIES unset (runbook 16.1 step 6).
  */
 export const CRON_RETRY_DAYS = [1, 3, 5] as const;
 
@@ -185,32 +185,39 @@ const isOn = (v: string | undefined) => {
   const x = v?.trim().toLowerCase();
   return x === "1" || x === "true" || x === "on" || x === "yes";
 };
-const isOff = (v: string | undefined) => {
-  const x = v?.trim().toLowerCase();
-  return x === "0" || x === "false" || x === "off" || x === "no";
-};
 
 /** `BILLING_CRON_RETRIES`: OFF unless explicitly "1"/"true"/"on"/"yes". */
 export function cronRetriesEnabled(env: Env = process.env): boolean {
   return isOn(env.BILLING_CRON_RETRIES);
 }
 
-/** `BILLING_STRIPE_RETRIES`: Stripe's own automatic retries of a failed
- *  invoice are on in the dashboard. ON unless explicitly "0"/"false"/"off"/"no". */
+/**
+ * `BILLING_STRIPE_RETRIES`: Kemal has switched Stripe's own automatic
+ * retries on in the dashboard (Revenue recovery), for this environment. ON
+ * only when explicitly "1"/"true"/"on"/"yes" (review L2): the app cannot
+ * see the dashboard, so unset never claims a retry.
+ */
 export function stripeRetriesOn(env: Env = process.env): boolean {
-  return !isOff(env.BILLING_STRIPE_RETRIES);
+  return isOn(env.BILLING_STRIPE_RETRIES);
 }
 
 /**
- * Will a failed month's charge be tried again (slice P4)? Yes when Stripe's
- * own automatic retries are on (`BILLING_STRIPE_RETRIES`, on unless "0":
- * confirmed in test mode to cover one-off invoices, plan 16.1 step 5) or
- * the cron's own retries are (`BILLING_CRON_RETRIES=1`). The payment failed
- * DM and the billing page only say "it will be tried again" when this is
- * true; otherwise they say how to pay now.
+ * Will a failed month's charge be tried again (slice P4)? Only when a retry
+ * source is EXPLICITLY on: Stripe's own (`BILLING_STRIPE_RETRIES=1`, set
+ * once the dashboard's retries are checked on, runbook 16.1 step 5; the
+ * default mechanism, confirmed in test mode to cover one-off invoices) or
+ * the cron's (`BILLING_CRON_RETRIES=1`). The payment failed DM and the
+ * billing page only say "it will be tried again" when this is true;
+ * otherwise they say how to pay now.
  */
 export function billingRetriesOn(env: Env = process.env): boolean {
   return stripeRetriesOn(env) || cronRetriesEnabled(env);
+}
+
+/** Both retry sources explicitly on: the card would be tried twice as
+ *  often. The billing cron warns on /admin/health (review L2). */
+export function bothRetrySourcesOn(env: Env = process.env): boolean {
+  return stripeRetriesOn(env) && cronRetriesEnabled(env);
 }
 
 /**

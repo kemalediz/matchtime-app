@@ -60,6 +60,16 @@ export interface CardDetails {
    * country is known. Optional: the fake and old callers may omit it.
    */
   billingAddress?: Stripe.AddressParam | null;
+  /** The payer's name and email on the card (`billing_details`). */
+  billingName?: string | null;
+  billingEmail?: string | null;
+}
+
+/** The payer details a payment method holds (`billing_details`). */
+export interface PayerDetails {
+  name: string | null;
+  email: string | null;
+  address: Stripe.AddressParam | null;
 }
 
 /** One invoice, as billing reads it. */
@@ -120,6 +130,22 @@ export interface BillingStripe {
    *  `keepTaxIds` (the values the new payer gave at Checkout, which
    *  `customer_update` has already put on the Customer). */
   resetCustomerDetails(args: { customerId: string; name: string; keepTaxIds?: string[] }): Promise<void>;
+  /**
+   * Review L1: put a payer's details back on the Customer (or, with nulls,
+   * the club default: no email, no address) after a card session the
+   * webhook rejected, and remove the VAT numbers that session added
+   * (`removeTaxIds`, by value). Checkout's `customer_update` had already
+   * written that session's payer onto the shared Customer.
+   */
+  restoreCustomerDetails(args: {
+    customerId: string;
+    name: string;
+    email: string | null;
+    address: Stripe.AddressParam | null;
+    removeTaxIds: string[];
+  }): Promise<void>;
+  /** The payer details on a saved card, or null when Stripe has no such card. */
+  retrievePaymentMethodDetails(paymentMethodId: string): Promise<PayerDetails | null>;
   /** The payer's own details onto the Customer (for invoices and receipts). */
   updateCustomer(args: {
     customerId: string;
@@ -318,8 +344,12 @@ function cardOf(pm: string | Stripe.PaymentMethod | null | undefined): CardDetai
     last4: pm.card?.last4 ?? null,
     country: pm.card?.country ?? null,
     billingAddress: addressParamOf(pm.billing_details?.address),
+    billingName: pm.billing_details?.name ?? null,
+    billingEmail: pm.billing_details?.email ?? null,
   };
 }
+
+const taxIdKey = (v: string) => v.replace(/\s+/g, "").toUpperCase();
 
 function invoiceOf(inv: Stripe.Invoice): BillingInvoice {
   return {
@@ -402,11 +432,36 @@ export function createStripeBillingAdapter(client: Stripe): BillingStripe {
     async resetCustomerDetails({ customerId, name, keepTaxIds = [] }) {
       // "" unsets a field in Stripe's API.
       await client.customers.update(customerId, { name, email: "", address: "", phone: "" });
-      const keep = new Set(keepTaxIds.map((v) => v.replace(/\s+/g, "").toUpperCase()));
+      const keep = new Set(keepTaxIds.map(taxIdKey));
       const taxIds = await client.customers.listTaxIds(customerId, { limit: 20 });
       for (const t of taxIds.data) {
-        if (t.value && keep.has(t.value.replace(/\s+/g, "").toUpperCase())) continue;
+        if (t.value && keep.has(taxIdKey(t.value))) continue;
         await client.customers.deleteTaxId(customerId, t.id);
+      }
+    },
+
+    async restoreCustomerDetails({ customerId, name, email, address, removeTaxIds }) {
+      // "" unsets a field in Stripe's API.
+      await client.customers.update(customerId, { name, email: email ?? "", address: address ?? "" });
+      if (removeTaxIds.length === 0) return;
+      const remove = new Set(removeTaxIds.map(taxIdKey));
+      const taxIds = await client.customers.listTaxIds(customerId, { limit: 20 });
+      for (const t of taxIds.data) {
+        if (t.value && remove.has(taxIdKey(t.value))) await client.customers.deleteTaxId(customerId, t.id);
+      }
+    },
+
+    async retrievePaymentMethodDetails(paymentMethodId) {
+      try {
+        const pm = await client.paymentMethods.retrieve(paymentMethodId);
+        return {
+          name: pm.billing_details?.name ?? null,
+          email: pm.billing_details?.email ?? null,
+          address: addressParamOf(pm.billing_details?.address),
+        };
+      } catch (err) {
+        if ((err as { code?: string }).code === "resource_missing") return null;
+        throw err;
       }
     },
 

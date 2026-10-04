@@ -99,6 +99,15 @@ describe("Free, then back to Standard or Custom (the B2 gap): the 'plan-billed' 
       expect(nextBillingState(carded({ stopped: true }), { type: "plan-billed" }, now, ON)).toMatchObject({ to: "paused", pausedReason: "cancelled" });
     });
 
+    it("review M1: removed from the group before Free (the reason kept as the marker): still paused (removed), card or not", () => {
+      const now = new Date(TRIAL_ENDS.getTime() + 20 * DAY);
+      expect(nextBillingState(carded({ pausedReason: "removed" }), { type: "plan-billed" }, now, ON)).toMatchObject({ to: "paused", pausedReason: "removed" });
+      expect(nextBillingState(club({ billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: "removed" } }), { type: "plan-billed" }, now, ON)).toMatchObject({
+        to: "paused",
+        pausedReason: "removed",
+      });
+    });
+
     it("flag off or plan still Free: nothing changes, card or not", () => {
       const now = new Date(TRIAL_ENDS.getTime() + 20 * DAY);
       expect(nextBillingState(carded(), { type: "plan-billed" }, now, OFF)).toBeNull();

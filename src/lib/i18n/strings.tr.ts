@@ -2021,6 +2021,11 @@ export const tr: Strings = {
     `${p.first ? "İlk" : "Sonraki"} ödeme ${p.date} tarihinde. Her ödemeyi ve makbuzunu ödeme sayfanızda görebilir, kartınızı orada değiştirebilir ya da durdurabilirsiniz: ${p.link}`,
   billing_dm_card_replaced: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime ücretini artık ${p.newName} ödüyor. Kartınız kaldırıldı ve bunun için bir daha ücret alınmayacak.`,
+  billing_dm_billed_again_card: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} yeniden MatchTime planında ve son dört hanesi ${p.last4} olan kartınızla ödeniyor: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
+    `İlk ödeme ${p.date} tarihinde alınır. Ödemeyi durdurmak ya da kartı değiştirmek için: ${p.link}`,
+  billing_dm_card_dropped: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, kartınız artık ${p.club} için MatchTime ücretinde kullanılmıyor ve kaldırıldı. Bunun için bir daha ücret alınmayacak.`,
   billing_dm_resumed: (p) =>
     `MatchTime ${p.club} için yeniden açıldı. Birkaç dakika içinde grupta kaldığım yerden devam ediyorum. Ben duraklatılmışken VARIM yazanlar lütfen tekrar yazsın.`,
   billing_dm_plan_billed: (p) =>

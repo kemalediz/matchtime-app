@@ -2569,6 +2569,13 @@ export const en = {
     `${p.first ? "The first" : "The next"} charge is on ${p.date}. You can see each charge and its receipt on your billing page, and change your card or stop there: ${p.link}`,
   billing_dm_card_replaced: (p: { name: string | null; newName: string; club: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.newName} now pays the MatchTime fee for ${p.club}. Your card has been removed and won't be charged for it again.`,
+  /** Review M1: billed again after Free with the contact's own card on file. */
+  billing_dm_billed_again_card: (p: { name: string | null; club: string; last4: string; price: string; date: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again and is paid with your card ending ${p.last4}: only the games played, up to ${p.price} a month. ` +
+    `The first charge is on ${p.date}. To stop paying or change the card: ${p.link}`,
+  /** Review M1: a previous holder's card taken off the club instead of being billed again. */
+  billing_dm_card_dropped: (p: { name: string | null; club: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, your card is no longer used for the MatchTime fee for ${p.club} and has been removed. It won't be charged for it again.`,
   billing_dm_resumed: (p: { club: string }): string =>
     `MatchTime is back on for ${p.club}. I'll pick things up again in the group within a few minutes. Anyone who said IN while I was paused should say it again.`,
   billing_dm_plan_billed: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>

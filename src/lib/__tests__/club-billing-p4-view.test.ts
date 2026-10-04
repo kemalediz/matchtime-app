@@ -24,7 +24,7 @@ import {
   type BillingStateInput,
 } from "../club-billing-view";
 import { billingTotals, receiptAllowed } from "../club-billing-rules";
-import { billingRetriesOn } from "../club-billing-schedule-rules";
+import { billingRetriesOn, bothRetrySourcesOn } from "../club-billing-schedule-rules";
 
 const DASH = /[—–]/;
 const LINK = "https://matchtime.ai/r/abc";
@@ -298,14 +298,21 @@ describe("P3 review copy fixes", () => {
     );
   });
 
-  it("billingRetriesOn: Stripe's own retries (on unless BILLING_STRIPE_RETRIES=0) or the cron's (off unless BILLING_CRON_RETRIES=1)", () => {
-    // Defaults: ONE mechanism, Stripe's (confirmed to retry one-off invoices).
-    expect(billingRetriesOn({})).toBe(true);
+  it("billingRetriesOn: 'it will be tried again' only when a retry source is EXPLICITLY on (review L2)", () => {
+    // Unset: nothing claims a retry (the dashboard setting is not known here).
+    expect(billingRetriesOn({})).toBe(false);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "" })).toBe(false);
     expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "1" })).toBe(true);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "on" })).toBe(true);
     expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "0" })).toBe(false);
-    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "off", BILLING_CRON_RETRIES: "0" })).toBe(false);
-    // The cron instead of Stripe.
-    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "0", BILLING_CRON_RETRIES: "1" })).toBe(true);
+    expect(billingRetriesOn({ BILLING_CRON_RETRIES: "1" })).toBe(true);
+    expect(billingRetriesOn({ BILLING_STRIPE_RETRIES: "0", BILLING_CRON_RETRIES: "0" })).toBe(false);
+  });
+
+  it("bothRetrySourcesOn: true only when BOTH are explicitly on", () => {
+    expect(bothRetrySourcesOn({ BILLING_STRIPE_RETRIES: "1", BILLING_CRON_RETRIES: "1" })).toBe(true);
+    expect(bothRetrySourcesOn({ BILLING_STRIPE_RETRIES: "1" })).toBe(false);
+    expect(bothRetrySourcesOn({ BILLING_CRON_RETRIES: "1" })).toBe(false);
   });
 });
 

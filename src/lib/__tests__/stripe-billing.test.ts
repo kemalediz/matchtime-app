@@ -474,7 +474,41 @@ describe("the real adapter (recording client, no network)", () => {
       last4: "4242",
       country: "US",
       billingAddress: { country: "GB", line1: "1 Road", city: "Sutton", postal_code: "SM1 1AA" },
+      billingName: "Pat",
+      billingEmail: "pat@example.test",
     });
+  });
+
+  it("review L1: restoreCustomerDetails puts the given payer (or the club default) back and removes ONLY the named VAT numbers", async () => {
+    const calls: Array<{ path: string; args: unknown[] }> = [];
+    const { client } = recordingClient({
+      customers: {
+        update: (...args: unknown[]) => (calls.push({ path: "customers.update", args }), Promise.resolve({})),
+        listTaxIds: () => Promise.resolve({ data: [{ id: "txi_cur", value: "GB111111111" }, { id: "txi_rej", value: "GB222222222" }] }),
+        deleteTaxId: (...args: unknown[]) => (calls.push({ path: "customers.deleteTaxId", args }), Promise.resolve({})),
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    await a.restoreCustomerDetails({ customerId: "cus_1", name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road" }, removeTaxIds: ["GB 222222222"] });
+    expect(calls).toEqual([
+      { path: "customers.update", args: ["cus_1", { name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road" } }] },
+      { path: "customers.deleteTaxId", args: ["cus_1", "txi_rej"] },
+    ]);
+    calls.length = 0;
+    await a.restoreCustomerDetails({ customerId: "cus_1", name: "Card Sevens", email: null, address: null, removeTaxIds: [] });
+    expect(calls).toEqual([{ path: "customers.update", args: ["cus_1", { name: "Card Sevens", email: "", address: "" }] }]);
+  });
+
+  it("review L1: retrievePaymentMethodDetails reads the card's billing name, email and address", async () => {
+    const { client } = recordingClient({
+      paymentMethods: {
+        detach: () => Promise.resolve({}),
+        retrieve: () =>
+          Promise.resolve({ id: "pm_1", billing_details: { name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road", city: null } } }),
+      },
+    });
+    const a = createStripeBillingAdapter(client as unknown as Stripe);
+    expect(await a.retrievePaymentMethodDetails("pm_1")).toEqual({ name: "Colin", email: "colin@example.test", address: { country: "GB", line1: "1 Road" } });
   });
 
   it("a payment method with no billing address gives billingAddress null", async () => {

@@ -256,6 +256,17 @@ export function createFakeBillingStripe(opts: { file?: string | null } = {}): Fa
       tx("updateCustomer", args, () => undefined);
     },
 
+    async restoreCustomerDetails(args) {
+      tx("restoreCustomerDetails", args, () => undefined);
+    },
+
+    async retrievePaymentMethodDetails(paymentMethodId) {
+      return tx("retrievePaymentMethodDetails", { paymentMethodId }, (s) => {
+        const card = Object.values(s.setupIntents).find((c) => c.paymentMethodId === paymentMethodId);
+        return card ? { name: card.billingName ?? null, email: card.billingEmail ?? null, address: card.billingAddress ?? null } : null;
+      });
+    },
+
     async retrieveTaxRate(taxRateId) {
       // A rate id containing "exclusive" stands for a rate set up wrongly.
       return tx("retrieveTaxRate", { taxRateId }, () => ({ id: taxRateId, inclusive: !taxRateId.includes("exclusive"), percentage: 20, active: true }));

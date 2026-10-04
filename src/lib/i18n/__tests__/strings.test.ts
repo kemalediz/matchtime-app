@@ -681,6 +681,8 @@ const SAMPLES: SampleArgs = {
   billing_notice_past_due: null,
   billing_dm_card_added: { name: "Colin", club: "Riverside FC", price: "£9.99", date: "Tue 1 Dec", first: true, resumed: false, link: "https://matchtime.ai/r/abc" },
   billing_dm_card_replaced: { name: "Colin", newName: "Pat", club: "Riverside FC" },
+  billing_dm_billed_again_card: { name: "Colin", club: "Riverside FC", last4: "4242", price: "£9.99", date: "Tue 1 Dec", link: "https://matchtime.ai/r/abc" },
+  billing_dm_card_dropped: { name: "Elvin", club: "Riverside FC" },
   billing_dm_resumed: { club: "Riverside FC" },
   billing_dm_plan_billed: { name: "Colin", club: "Riverside FC", price: "£9.99", date: "Sat 7 Nov", link: "https://matchtime.ai/r/abc" },
   billing_dm_trial_21: { name: "Colin", club: "Riverside FC", date: "Sat 31 Oct", price: "£9.99", firstCharge: "Tue 1 Dec", link: "https://matchtime.ai/r/abc", collector: true },

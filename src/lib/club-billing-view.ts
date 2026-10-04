@@ -592,6 +592,26 @@ export function cardReplacedText(lang: LangIn, p: { name: string | null; newName
   return t(lang).billing_dm_card_replaced(p);
 }
 
+/** Review M1: billed again after Free with the contact's own card on file. */
+export function billedAgainCardText(
+  lang: LangIn,
+  p: { name: string | null; club: string; last4: string; pricePence: number; firstChargeOn: Date; link: string },
+): string {
+  return t(lang).billing_dm_billed_again_card({
+    name: p.name,
+    club: p.club,
+    last4: p.last4,
+    price: moneyLabel(p.pricePence),
+    date: dayLabel(lang, p.firstChargeOn),
+    link: p.link,
+  });
+}
+
+/** Review M1: a previous holder's card taken off the club, never billed. */
+export function cardDroppedText(lang: LangIn, p: { name: string | null; club: string }): string {
+  return t(lang).billing_dm_card_dropped(p);
+}
+
 /** "Resumed" (7.3), to the billing contact, after a recovered payment. */
 export function resumedText(lang: LangIn, p: { club: string }): string {
   return t(lang).billing_dm_resumed(p);
