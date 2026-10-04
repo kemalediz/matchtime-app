@@ -1310,6 +1310,9 @@ voided).
 
 ## 11. Rollout
 
+**The click by click go-live runbook for the games-played charge is section 16** (written
+with P4, 2026-10-04). The list below is the outline it expands.
+
 1. **Flag** `BILLING_ENABLED` stays off while P1 to P4 ship dark.
 2. **Test mode first:** product, VAT rate, retries setting, customer emails and the
    webhook (with the event list of 5.4) in test mode; 10.3 end to end on a Preview.
@@ -1363,6 +1366,7 @@ under 5.2 and 5.4. Recommend not merging it as it is; P4 carries its Preview set
 | `STRIPE_AI_TOPUP_PRICE_ID` | slice T1 only | `price_...`, the £5 top-up (9.1) |
 | `BILLING_STRIPE_FAKE` | test only | `1` under `MT_TEST_MODE` for Playwright |
 | `BILLING_CRON_RETRIES` | Vercel (optional) | ON unless `0`: the hourly cron retries a failed month's invoice on days 1, 3 and 5 (slice P3). Set `0` once test mode shows the account's own retries cover one-off invoices |
+| `BILLING_STRIPE_RETRIES` | Vercel (optional) | `1` only when test mode showed Stripe's own automatic retries cover one-off invoices (slice P4). With it, or with `BILLING_CRON_RETRIES` on, the payment failed DM and the billing page say "it will be tried again"; with neither, they say how to pay now (16.1 step 6) |
 
 Constants, not env: trial 30 days, grace 7, reminders days 21 and 28, the billing link TTL
 9 days, the close delay 6 hours, the Stripe minimum 30p, all in the rules files.
@@ -1561,6 +1565,56 @@ state lines ("£9.99 a month. Next payment ...", "Then £9.99 a month for the wh
 past due banner says "This month's club fee"; the month box and past months; public and help
 copy. `charge.refunded` is still not mapped to `refundedPence`.
 
+### 13.5 P4 as built (2026-10-04)
+
+- **Billing page** (`/billing/[orgId]`): the "this month" box, counted at page load by
+  `loadCurrentMonth` in the new read-only `src/lib/club-billing-month-summary.ts` (the same
+  `countClubMonth` and `monthFee` the close uses, with `now`, and the lower of the price at the
+  month's start and now): "This month (1 Nov to 30 Nov): 2 of 4 games played so far, 2 still to
+  come. So far that's £4.99; if every game still to come is played it's £9.99. Charged on Tue 1
+  Dec." It shows only while a month is open (the hourly cron opens it). Then **past months**, the
+  newest 12: "1 Nov to 30 Nov: 4 of 5 games, £7.99 paid" (or being taken, not paid yet,
+  cancelled, no games, under 30p, no card, nothing to pay), with the games behind **See games**
+  (day and why: played, cancelled, nobody said IN, MatchTime was paused, no match, not played,
+  still to come; never a name).
+- **Receipts:** a **Receipt** link only for the billing contact whose own card is on file, only for
+  a paid month invoiced since that card went on (`receiptAllowed`: the latest `mt.card-session`
+  marker against the month's close). The link is `/billing/[orgId]/receipt/[monthId]`, which
+  re-checks the rule and redirects to Stripe's hosted invoice page. Why the rule: the hosted page
+  shows the payer's name, email and billing address as they were when the invoice was made, so an
+  earlier collector's receipt is never shown to the next one, and an admin reading the page sees no
+  receipt links.
+- **State lines and banner, no flat fee left:** trial "After that you only pay for the games you
+  play, up to £9.99 a month for the whole group"; a card saved in the free month "Card saved.
+  Nothing is taken until {first charge}"; subscribed "Only the games played are charged, up to £9.99
+  a month. Next charge {date}"; stopping "Billing ends on {date}, after this month is charged for its
+  games"; past due names the unpaid month and amount (or the total of several) and says "It will be
+  tried again" only when retries are on; paused for a payment gives the total owed; paused after
+  Stop paying says Keep paying. The past due banner names the month and amount instead of "This
+  month's club fee".
+- **Settings card:** this month so far and the last closed month.
+- **/admin/clubs:** plan "Standard, up to £9.99" or "Custom, up to £5", the Custom field labelled
+  "monthly maximum", "Next charge", **This month** ("2 of 5 so far, £3.99") and **Last month**
+  ("£7.49 paid", "no games", "£7.49 failed") with any unpaid total; totals: clubs with a card,
+  charged last month (each club's last closed month, when paid), this month so far, failed or
+  unpaid (clubs and total), the states, and the "Check VAT country" count.
+- **P3 review copy fixes:** the receipt DM says "Stripe has emailed you the receipt" only when the
+  card is the contact's own, otherwise "You can see the month's games and charge on your billing
+  page"; card added no longer promises Stripe's emails ("You can see each charge and its receipt on
+  your billing page"); payment failed says "It will be tried again over the next few days" only
+  when `billingRetriesOn()` (the cron's retries, or `BILLING_STRIPE_RETRIES=1`), otherwise "To pay it
+  now, update the card and pay here"; the paused DM gives the total owed across unpaid months and
+  how many ("the £15.48 owed for 2 months of {club}'s games").
+- **Public copy** (its own commit, to ship at go-live): the landing pricing ("Up to £9.99 a month
+  per WhatsApp group, not per player, and you only pay for the weeks you play"; "Play 3 weeks out of
+  4 and it's £7.49. Take a month off and it's nothing."), /help, and the organiser guide's **Club
+  fee** section (`#club-fee`).
+- **Local test helper:** `scripts/billing-local-test.ts` (setup, links, games, times, status) for
+  16.2, refusing anything but a local database, a Stripe test key and a localhost app
+  (`src/lib/billing-local-guard.ts`).
+- `charge.refunded` is still not mapped onto `refundedPence`; refunds stay a manual step in Stripe
+  and are not shown on the billing page.
+
 ---
 
 ## 14. Not planned: adding the club fee to match fees (was slice B7)
@@ -1699,3 +1753,298 @@ range £1.00 to £9.99 stays, and anything that works out under 30p is not charg
    group charges the games played before it at the month end; a suspension waives the open
    month; and a **Custom price is a monthly maximum** that scales the same way (3 of 4 on
    £5 is £3.75).
+
+---
+
+## 16. Go-live runbook: games played (P4, 2026-10-04)
+
+For Kemal, in order. It replaces PR #184's runbook (closed), which set up a monthly Price, a
+Customer Portal and subscription events, none of which exist any more. Nothing here changes a
+club until step 16.3.6 turns `BILLING_ENABLED` on. Stripe moves its menus now and then: where a
+label below differs slightly on screen, the URL given next to it is the reliable way in.
+
+**Before you start**
+
+- P1 to P4 are merged and deployed, `BILLING_ENABLED` is still off.
+- The Stripe CLI is installed (`stripe --version`) and signed in: `stripe login`, then pick the
+  MatchTime account. The CLI works in test mode unless told otherwise.
+- Postgres runs on this Mac (`pg_isready` says "accepting connections").
+
+### 16.1 Stripe TEST mode: set up once
+
+Open https://dashboard.stripe.com and switch to **Test mode** (the toggle at the top right, or
+"Switch to test mode" in the account menu). Every URL below has `/test/` in it for this part.
+
+1. **Product.** Product catalogue (https://dashboard.stripe.com/test/products) > **+ Create
+   product**.
+   - Name: `MatchTime club`. Description: `MatchTime club fee, charged for the games played`.
+   - Product tax code: search "electronically supplied" and pick **General, Electronically
+     Supplied Services** (`txcd_10000000`).
+   - If the form insists on a price, give it One-off, £9.99, "Include tax in price": Yes. It is
+     never used (each month's invoice carries its own amount).
+   - **Add product**, open it, copy its id (`prod_...`). This is `STRIPE_CLUB_PRODUCT_ID`.
+   - Shortcut, same result: `stripe products create --name="MatchTime club" --tax-code=txcd_10000000`
+2. **VAT rate, inclusive.** Tax rates (https://dashboard.stripe.com/test/tax-rates) > **+ New**
+   (or **Create tax rate**).
+   - Type: VAT. Display name: `VAT`. Description: `UK VAT 20%`.
+   - Region: United Kingdom. Percentage: `20`.
+   - **Inclusive** (the price already includes the tax). This matters: an exclusive rate would
+     make £7.99 into £9.59, and the month close refuses to finalise any invoice whose total is not
+     the month's amount.
+   - Save, copy the id (`txr_...`). This is `STRIPE_CLUB_TAX_RATE_ID`.
+   - Shortcut: `stripe tax_rates create --display-name=VAT --description="UK VAT 20%" --percentage=20 --inclusive=true --country=GB --jurisdiction=GB`
+3. **Business details, VAT number and invoice footer.**
+   - Settings > Business > **Business details** (https://dashboard.stripe.com/settings/account):
+     Cressoft's legal name and registered address (decision 12).
+   - Settings > Billing > **Invoices** (https://dashboard.stripe.com/test/settings/billing/invoice):
+     under the account tax IDs ("Tax IDs" or "Default tax IDs"), add the **GB VAT number** and tick it
+     to show on invoices; **Default footer**: `MatchTime is a service of {legal name}, VAT number GB...`
+     (your wording, decision 12). Save.
+4. **Customer emails.** Settings > **Customer emails** (https://dashboard.stripe.com/test/settings/emails):
+   - **Successful payments**: on (the receipt).
+   - **Finalised invoices**: "Email finalised invoices to customers" on, so each payer gets the VAT
+     invoice. On some dashboards this switch is under Settings > Billing > **Subscriptions and
+     emails** (https://dashboard.stripe.com/test/settings/billing/automatic), "Manage invoices sent to
+     customers".
+   - **Failed payments**: on, if offered for invoices.
+   - In test mode Stripe only emails addresses of people on the Stripe account, so use your own
+     email at Checkout in 16.2.
+5. **Retries for one-off invoices.** Settings > Billing > **Revenue recovery** > Retries
+   (https://dashboard.stripe.com/test/settings/billing/automatic, the "Manage failed payments" part).
+   - If there is a retry schedule for **one-off invoices** (not only subscriptions): switch it on
+     and keep every retry within **7 days** (our grace week), for example 1, 3 and 5 days.
+   - If it only mentions subscriptions, leave it: our hourly cron retries instead (on by default).
+   - Which one wins is decided by a real decline in 16.2, check 5.
+6. **Retries in our app, and what the DMs say.** Two switches, both in Vercel later:
+
+   | What 16.2 check 5 showed | `BILLING_CRON_RETRIES` | `BILLING_STRIPE_RETRIES` | The DM and the page say |
+   |---|---|---|---|
+   | Stripe did NOT schedule another attempt (default case) | leave unset (on) | leave unset | "It will be tried again over the next few days" (our cron, days 1, 3, 5) |
+   | Stripe DID schedule another attempt | `0` | `1` | "It will be tried again" (Stripe's schedule) |
+   | You want no retries at all | `0` | leave unset | "To pay it now, update the card and pay here" |
+
+   Never leave both retry sources on when Stripe retries too: the card would be tried twice as often.
+7. **The billing webhook (Your account).** Developers > **Webhooks**
+   (https://dashboard.stripe.com/test/webhooks, on newer dashboards Workbench > Webhooks) >
+   **+ Add endpoint** (or **Add destination**):
+   - Events from: **Your account** (NOT Connected accounts).
+   - API version: the account's default, or `2026-05-27.dahlia` if offered (the library's).
+   - Events, exactly these seven:
+     `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
+     `invoice.payment_action_required`, `invoice.voided`, `invoice.marked_uncollectible`,
+     `payment_method.detached`.
+     (No `customer.subscription.*`: there are no subscriptions. `charge.refunded` is not used yet.)
+   - Endpoint URL: `https://matchtime.ai/api/stripe/billing-webhook`.
+   - Create, then **Reveal** the signing secret (`whsec_...`). Keep it for 16.3; for the test on
+     this Mac, `stripe listen` gives its own secret (16.2).
+
+### 16.2 The test on this Mac (local database, `stripe listen`, test cards)
+
+This drives the real app on http://localhost:3000 against a **local** database and Stripe **test**
+mode. Nothing reaches production: the database is on this Mac, the WhatsApp Pi only polls
+matchtime.ai, so the billing DMs are only written to the local database (`status` prints them).
+
+**Set up (once)**
+
+1. `createdb matchtime_billing`
+2. In the repo, create `.env.billing-local` (git ignores every `.env*` file):
+
+   ```
+   DATABASE_URL=postgresql://kemal@localhost:5432/matchtime_billing
+   DIRECT_URL=postgresql://kemal@localhost:5432/matchtime_billing
+   NEXTAUTH_URL=http://localhost:3000
+   STRIPE_SECRET_KEY=sk_test_...            # Developers > API keys, test mode
+   STRIPE_CLUB_PRODUCT_ID=prod_...          # 16.1 step 1 (test)
+   STRIPE_CLUB_TAX_RATE_ID=txr_...          # 16.1 step 2 (test)
+   STRIPE_BILLING_WEBHOOK_SECRET=whsec_...  # from stripe listen, step 3
+   BILLING_ENABLED=1
+   MT_TEST_MODE=1                           # lets the cron take x-test-now (a pinned clock)
+   CRON_SECRET=local-billing-test
+   ```
+
+   (Keep the `.env` lines out of it: `.env` points at the PRODUCTION database. The values in this
+   file win because they are exported before anything starts.)
+3. **Terminal A**, forward Stripe's events to this Mac (leave it running):
+
+   ```
+   stripe listen --forward-to localhost:3000/api/stripe/billing-webhook --events checkout.session.completed,invoice.paid,invoice.payment_failed,invoice.payment_action_required,invoice.voided,invoice.marked_uncollectible,payment_method.detached
+   ```
+
+   It prints `Your webhook signing secret is whsec_...`: put that in `.env.billing-local`.
+4. **Terminal B**, the database and the test club:
+
+   ```
+   set -a; source .env.billing-local; set +a
+   node --env-file=.env --import tsx scripts/billing-local-test.ts setup
+   ```
+
+   It refuses to run unless the database is on this Mac, the Stripe key is a test key and the app
+   URL is localhost. It applies the schema and the CHECK constraints, creates **Billing Test FC**
+   (free month from now, a Tuesday 5-a-side, Test Collector as money collector, Test Owner as owner
+   and platform owner) and prints three sign-in links.
+5. **Terminal C**, the app, only if the database really is the local one:
+
+   ```
+   set -a; source .env.billing-local; set +a
+   [[ "$DATABASE_URL" == *localhost* ]] && npm run dev
+   ```
+
+**The checks** (these are the eight open points of 13.3, plus the P4 pages)
+
+1. **Add a card, nothing taken (13.3 point 1).** Open the "Money collector" link > **Add a card** >
+   Stripe Checkout: your own email, card `4242 4242 4242 4242`, any future date, any CVC, a UK
+   address > Save. Back on the page: "Card saved. Nothing is taken until {date}." and "Card visa
+   ending 4242." Terminal A shows `checkout.session.completed` answered `200`. In Stripe (test) >
+   Customers > the club: one card, **no payments**. Then
+   `stripe setup_intents list --limit 1` shows `"usage": "off_session"`.
+   `node --env-file=.env --import tsx scripts/billing-local-test.ts status`: `billingStatus: subscribed`,
+   and the "card added" DM text (between 20:00 and 10:00 London a billing DM waits for the next
+   daytime cron run, so it appears after curl 1 or curl 2 instead).
+2. **VAT number at Checkout (13.3 point 2), optional.** `stripe checkout sessions create --mode=setup --currency=gbp --customer=cus_... --success-url=http://localhost:3000 -d "tax_id_collection[enabled]=true"`.
+   An error means setup mode cannot collect it (business payers then send their VAT number and you
+   add it to the Customer). Success means it is one line in `buildCardSetupCheckoutParams`; tell
+   Claude.
+3. **Count, invoice, VAT, receipt (13.3 points 4 and 6).**
+   `... billing-local-test.ts games` (seeds month 1: 4 Tuesdays played, 1 cancelled, expected
+   £7.99), then `... billing-local-test.ts times` and run its **curl 1** (opens month 1) and
+   **curl 2** (closes and charges it at 10:30 the morning after). Then:
+   - Terminal A: `invoice.paid` answered `200`. `status`: month 1 `paid`, 5 scheduled, 4 played,
+     799. The receipt DM text: "Billing Test FC played 4 of 5 games between ... so £7.99 was charged
+     to your card ending 4242 (VAT included; a full month is £9.99). Stripe has emailed you the
+     receipt."
+   - Stripe (test) > Invoices > the newest: total **£7.99**, tax **£1.33**, the line "VAT (20%
+     inclusive)", description "MatchTime club fee, {dates}: 4 of 5 games played". Download the PDF:
+     legal name, address, VAT number, footer.
+   - Your inbox: Stripe's receipt and the invoice email.
+   - `stripe invoices retrieve in_...`: `"total": 799`, `"amount_paid": 799`, and the VAT of 133
+     (in `total_taxes` on recent API versions, `tax` on older ones).
+   - `stripe invoices search --query "metadata['monthId']:'<the month id from status>'"` finds it
+     (point 6).
+   - The billing page (collector link): under **Past months**, "{dates}: 4 of 5 games, £7.99 paid",
+     **See games** lists the five Tuesdays (four played, one cancelled), and **Receipt** opens
+     Stripe's hosted invoice. The owner's links: /admin/settings shows the last month line,
+     /admin/clubs shows "Last month: £7.99 paid" and "Charged last month: £7.99". (The "this month"
+     box only shows while a month is open in real time; the Playwright suite covers it.)
+4. **An exclusive VAT rate is refused (13.3 point 4).** Make a second test rate with **Inclusive
+   off**, put its id in `STRIPE_CLUB_TAX_RATE_ID`, restart Terminal C, then start a fresh club:
+   `dropdb matchtime_billing && createdb matchtime_billing`, `setup`, add a card, `games`, curl 1,
+   curl 2. Expected: **no invoice in Stripe**; `status` shows month 1 with no invoice id; the owner's
+   /admin/health shows "Club fee VAT tax rate is not set up right ... Nothing was invoiced or
+   charged." Put the inclusive id back afterwards.
+5. **A declined charge, and the retries decision (13.3 point 3).** Fresh club (dropdb, createdb,
+   setup), add card `4000 0000 0000 0341` (it saves, then declines when charged), `games`, curl 1,
+   curl 2. Expected: Terminal A `invoice.payment_failed` 200; `status`: month `failed`, club
+   `past_due`; the payment failed DM; the collector's page "The £7.99 for {dates} didn't go through.
+   It will be tried again over the next few days. MatchTime stops on {date} if it can't be taken."
+   and **Update card and pay**; the owner sees the banner on /admin naming the month and £7.99.
+   **Now decide the retries:** open the invoice in Stripe (test). If it shows a **next payment
+   attempt** date (or `stripe invoices retrieve in_...` has a non-null `next_payment_attempt`), Stripe
+   retries one-off invoices: use the second row of the table in 16.1 step 6. If it is empty, use
+   the first row. (The cron's own retries on days 1, 3 and 5 are proven by the unit tests; they
+   cannot be watched here, see the next point.)
+   Then run the "Retry day 1" curl from `times`. On this Mac the grace week was counted from today's
+   real date while the cron's clock is pinned a month later, so this run **pauses** the club:
+   `status` shows `paused` and the paused DM "we couldn't take the £7.99 for Billing Test FC, so
+   MatchTime is now paused" (with two unpaid months it gives the total and "2 months"). Finally
+   **Update card and pay** with `4242 4242 4242 4242`: the invoice is paid on the new card at once,
+   `invoice.paid` arrives, the club is `subscribed` again with the "MatchTime is back on" DM, and
+   the receipt DM is written.
+6. **Payments with no retries say how to pay now.** Stop Terminal C, add `BILLING_CRON_RETRIES=0` to
+   `.env.billing-local` (and no `BILLING_STRIPE_RETRIES`), re-source, restart, repeat check 5 up to
+   the decline: the DM now says "MatchTime keeps running for now. To pay it now, update the card and
+   pay here". Take the line out again afterwards unless you chose that row.
+7. **A bank check (13.3 point 5).**
+   - At card entry: add card `4000 0025 0000 3155`. Checkout shows the bank's test check page;
+     complete it. Later charges of that card go through without one (curl 1, curl 2: `paid`).
+   - Off session: fresh club, card `4000 0027 6000 3184`, `games`, curl 1, curl 2. Note which events
+     Terminal A shows (`invoice.payment_action_required` alone, or also `invoice.payment_failed`):
+     tell Claude. `status` shows the bank check DM with Stripe's hosted invoice link; open it, complete
+     the check: `invoice.paid`, `subscribed`.
+8. **Change card, Stop paying, Keep paying.** On the collector's page: **Change card** with `5555 5555
+   5555 4444` ("Card mastercard ending 4444"). The page uses the real clock, so on this Mac the club
+   is still in its free month: **Stop paying** removes the card and says "Your card has been removed
+   and nothing has been charged. The free month carries on until it ends." Add a card again
+   afterwards. Stop paying after the free month (billing ends with the current month, which is
+   charged as usual; **Keep paying** undoes it or starts again) is covered by the Playwright suite
+   (`billing-stripe.spec.ts`, test 6) and the unit tests.
+9. **Free voids, uncollectible is recorded (13.3 points 7 and 8).** With a month failed (check 5),
+   the owner's /admin/clubs link > Plan **Free** > Save: the invoice is **voided** in Stripe, Terminal
+   A shows `invoice.voided` 200, `status` shows the month `void`. On another failed month, in Stripe
+   open the invoice > **Mark uncollectible**: `invoice.marked_uncollectible` 200, month `void`, the
+   club back to `subscribed` if nothing else is unpaid.
+10. **Tidy up.** `dropdb matchtime_billing`, stop Terminals A and C. Test mode objects can stay.
+
+### 16.3 Live mode
+
+1. **Same set up, live.** Switch the dashboard to **live** and repeat 16.1 steps 1 to 5 (product,
+   inclusive VAT rate, business details and VAT number and footer, customer emails, retries). Copy
+   the live `prod_...` and `txr_...`.
+2. **Live billing webhook.** 16.1 step 7 in live mode: Your account, the seven events,
+   `https://matchtime.ai/api/stripe/billing-webhook`. Reveal the live `whsec_...`.
+3. **The old platform-scoped endpoint `we_1TgQL6...`: check first, then delete.** Developers >
+   Webhooks (live) shows every endpoint with its scope.
+   - Find the **Connected accounts** endpoint to `https://matchtime.ai/api/stripe/webhook` (match
+     fees). Open it: it must exist, be **enabled**, and its **Event deliveries** must show recent
+     events answered **200** (a recent card or Pay by Bank match payment). If there is nothing
+     recent, wait for the next match fee payment, or ask Claude to check the Vercel logs for
+     `/api/stripe/webhook`. Do not continue until you have seen it deliver.
+   - Then find `we_1TgQL6...`: scope **Your account**, also pointing at `/api/stripe/webhook`. If
+     it exists, open it > **...** > **Delete endpoint**. (It would send the club fee's invoice events
+     to the match fee route, where they fail signature checks and are refused; deleting it removes the
+     noise and the risk.)
+   - Check the list again: one Connected accounts endpoint to `/api/stripe/webhook`, one Your
+     account endpoint to `/api/stripe/billing-webhook`, nothing else pointing at either route.
+4. **Production environment variables (Vercel).** Project matchtime > Settings > Environment
+   Variables, **Production** only (or `vercel env add NAME production`, which asks for the value):
+   - `STRIPE_CLUB_PRODUCT_ID` = live `prod_...`
+   - `STRIPE_CLUB_TAX_RATE_ID` = live `txr_...`
+   - `STRIPE_BILLING_WEBHOOK_SECRET` = live `whsec_...` of the billing endpoint
+   - `BILLING_CRON_RETRIES` and `BILLING_STRIPE_RETRIES` as the table in 16.1 step 6 decided
+   - Remove `STRIPE_CLUB_PRICE_ID` and `STRIPE_CLUB_PORTAL_CONFIG_ID` if they exist (no longer read).
+   - Check `AI_DAILY_CAP_DISABLED` is **not** there (`vercel env ls production`).
+   - Leave `BILLING_ENABLED` alone for now.
+5. **The public copy.** If the website and help commit of P4 was held back, merge and deploy it now,
+   before the switch, so the site says "up to £9.99 a month, you only pay for the weeks you play"
+   when the first club is billed. Redeploy production so the variables of step 4 apply.
+6. **Switch on.** Add `BILLING_ENABLED` = `1` (Production), then redeploy production (Deployments >
+   the latest > **Redeploy**, or Claude runs `vercel --prod`). Every existing club stays exempt
+   (Sutton FC included); only a club approved from now on starts its free month. Check
+   /admin/clubs: Sutton FC is not listed, existing self-join clubs show "Exempt (never billed)"
+   unless you press **Start free month** for one (decision 2). Stripe > Webhooks (live) > the billing
+   endpoint: no failed deliveries.
+7. **First real club.** Approve as usual; /admin/clubs shows "Free month ends {date}". Day 21: the
+   card DM reaches the money collector. When the card is added: "Card on file: yes", nothing charged
+   in Stripe. About day 61: the first month closes at 10:00, the invoice, the receipt DM.
+
+### 16.4 First week after switching on
+
+Once a day (or ask Claude to):
+
+- **/admin/clubs**: each billed club's state, card on file, This month and Last month, the totals
+  line ("Failed or unpaid", "Check VAT country"). A "Check VAT country" club has a non UK card or
+  address: decide whether to keep it (decision 11).
+- **/admin/health**: any `club-billing` event (an invoice voided by the close, a missing billing
+  contact, a webhook that failed).
+- **Stripe (live) > Webhooks > the billing endpoint**: every delivery `200`. A `503` means
+  `STRIPE_BILLING_WEBHOOK_SECRET` is missing in production; a `400` means it is the wrong secret.
+- **Vercel > Logs**: `/api/cron/billing` runs every hour with `200`; search for `[billing]` errors.
+- **Stripe (live) > Payments and Invoices**: nothing appears before a club's first month has ended
+  (about day 61 after its approval); a £0 invoice should never appear.
+- The billing DMs go out only 10:00 to 20:00 London; one at night is sent at the next 10:00 run.
+
+### 16.5 Kill switch
+
+- **Stop everything:** Vercel > Environment Variables > `BILLING_ENABLED` > remove it (or set `0`),
+  then redeploy production. Within a few minutes: paused clubs serve again (one Pi org refresh),
+  reminders and billing DMs stop, **no month opens or closes, so nobody is charged**. Games played
+  while it is off are never charged later: the hourly run records the off spell, and months that
+  would have ended in it are never opened (13.3, H1).
+- **What it does not undo:** invoices already created stay in Stripe. To forgive one: Stripe >
+  Invoices > the invoice > **Void invoice** (unpaid) or **Refund** on its payment (paid). The
+  webhook records a void; a refund is not shown on the billing page (`charge.refunded` is not
+  mapped yet).
+- **One club only:** /admin/clubs > its Plan > **Free** > Save. Its open month is waived, its unpaid
+  club fee invoices are voided, it is never billed again unless you set Standard or Custom.
+- **Switching back on after more than a week:** free months and grace weeks catch up at once on the
+  first hourly run (reminders, grace, possibly pauses), so look at /admin/clubs first; no month of
+  the off spell is ever charged.
