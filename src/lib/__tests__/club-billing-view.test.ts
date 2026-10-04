@@ -53,15 +53,17 @@ describe("money labels", () => {
 describe("clubFeeTipText (7.2)", () => {
   it("en, 5-a-side with no fee of its own: the plan's worked example, word for word", () => {
     expect(clubFeeTipText("en", tipFor())).toBe(
-      "💷 *Club fee tip:* your weekly 5-a-side is 10 players and about 4 games a month, so £9.99 works out at about " +
-        "*25p a player per game*. If your game costs £8 each, charge *£8.25* and the club fee is covered.",
+      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £9.99 a month. Each game played costs the club at most £2.50, " +
+        "which is about *25p a player per game* for your 10 players. If your game costs £8 each, charge *£8.25* and the club fee is covered. " +
+        "Weeks you don't play cost nothing.",
     );
   });
 
   it("en, 7-a-side with its own GBP 7 fee: 20p and GBP 7.20", () => {
     expect(clubFeeTipText("en", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toBe(
-      "💷 *Club fee tip:* your weekly 7-a-side is 14 players and about 4 games a month, so £9.99 works out at about " +
-        "*20p a player per game*. Your game is £7 each, so charging *£7.20* covers it.",
+      "💷 *Club fee tip:* MatchTime only charges for the games you play, up to £9.99 a month. Each game played costs the club at most £2.50, " +
+        "which is about *20p a player per game* for your 14 players. Your game is £7 each, so charging *£7.20* covers it. " +
+        "Weeks you don't play cost nothing.",
     );
   });
 
@@ -78,17 +80,18 @@ describe("clubFeeTipText (7.2)", () => {
   });
 
   it("en, a Custom GBP 5 plan", () => {
-    expect(clubFeeTipText("en", tipFor({}, "custom", 500))).toContain("so £5 works out at about *15p a player per game*");
+    expect(clubFeeTipText("en", tipFor({}, "custom", 500))).toContain(
+      "up to £5 a month. Each game played costs the club at most £1.25, which is about *15p a player per game*",
+    );
   });
 
-  it("tr: the plan's Turkish, with the Turkish per-side form", () => {
+  it("tr: the plan's Turkish (slice P3: games played)", () => {
     expect(clubFeeTipText("tr", tipFor())).toBe(
-      "💷 *Kulüp ücreti ipucu:* haftalık 5'e 5 maçınız 10 oyunculu ve ayda yaklaşık 4 maç oynanıyor, yani £9.99 oyuncu " +
-        "başına maç başına yaklaşık *25p* ediyor. Maç ücreti kişi başı £8 ise *£8.25* alın, kulüp ücreti karşılanmış olur.",
+      "💷 *Kulüp ücreti ipucu:* MatchTime yalnızca oynadığınız maçlar için ücret alır, ayda en fazla £9.99. " +
+        "Oynanan her maç kulübe en fazla £2.50 tutar; bu da 10 oyuncunuz için *oyuncu başına maç başına yaklaşık 25p* eder. " +
+        "Maç ücreti kişi başı £8 ise *£8.25* alın, kulüp ücreti karşılanmış olur. Oynamadığınız haftalar için hiçbir şey ödemezsiniz.",
     );
-    expect(clubFeeTipText("tr", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toContain(
-      "haftalık 7'ye 7 maçınız 14 oyunculu",
-    );
+    expect(clubFeeTipText("tr", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toContain("14 oyuncunuz için");
     expect(clubFeeTipText("tr", tipFor({ playersPerTeam: 7, feePerPlayer: 7 }))).toContain(
       "Maç ücretiniz kişi başı £7, *£7.20* alırsanız karşılanır.",
     );
@@ -115,8 +118,8 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
   it("en: the tip FOLLOWS the free-month sentence, with the club's own numbers", () => {
     const tip = approvedTipText("en", tipFor());
     expect(tip).toBe(
-      "💷 *Club fee tip:* after that it's £9.99 a month for the group, paid by card by whoever collects the match fees. " +
-        "With 10 players and about 4 games a month, that's about *25p a player per game*, so a £8 game could be charged at *£8.25*.",
+      "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. " +
+        "Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.",
     );
     const dm = t("en").sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS, tip });
     expect(dm.endsWith(`Your first month is free.\n\n${tip}`)).toBe(true);
@@ -127,8 +130,8 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
   it("tr: the same, in Turkish", () => {
     const tip = approvedTipText("tr", tipFor());
     expect(tip).toBe(
-      "💷 *Kulüp ücreti ipucu:* sonrasında grup için aylık £9.99, maç ücretlerini toplayan kişi kartla öder. " +
-        "10 oyuncu ve ayda yaklaşık 4 maçla bu, oyuncu başına maç başına yaklaşık *25p* ediyor; £8 olan bir maç için *£8.25* alabilirsiniz.",
+      "💷 *Kulüp ücreti ipucu:* sonrasında MatchTime yalnızca oynadığınız maçlar için ücret alır, grup için ayda en fazla £9.99; ücreti maç ücretlerini toplayan kişi kartla öder. " +
+        "Oynanan her maç en fazla £2.50 tutar, 10 oyuncuyla *oyuncu başına maç başına yaklaşık 25p* eder; £8 olan bir maç için *£8.25* alabilirsiniz.",
     );
     const dm = t("tr").sj_dm_approved({ club: "Kartallar", group: null, ...LINKS, tip });
     expect(dm.endsWith(`İlk ayınız ücretsiz.\n\n${tip}`)).toBe(true);
@@ -137,7 +140,7 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
 
   it("the split wording", () => {
     expect(approvedTipText("en", tipFor({ feeSplitTotal: true }))).toContain(
-      "*25p a player per game*, to add to each player's share of the pitch cost.",
+      "*25p a player per game* with 10 players, to add to each player's share of the pitch cost.",
     );
     expect(approvedTipText("tr", tipFor({ feeSplitTotal: true }))).toContain(
       "saha ücretini bölüştürürken her oyuncunun payına ekleyebilirsiniz.",
@@ -479,7 +482,7 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
     const v = billingPageView("tr", club(), "contact", "colin", tip);
     expect(v.title).toBe("Kulüp ücreti");
     expect(v.buttons[0].label).toBe("Kart ekle");
-    expect(v.tip).toContain("7'ye 7");
+    expect(v.tip).toContain("14 oyuncunuz için");
   });
 });
 

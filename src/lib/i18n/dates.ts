@@ -119,6 +119,13 @@ export function dayOfMonthLabel(lang: Lang | string | null | undefined, d: Date)
   return label(lang, d, { en: "d MMMM", tr: "d MMMM" });
 }
 
+/** Day and short month, no weekday: "1 Nov" / "1 Kasım". The club fee's
+ *  billing month in a DM ("between 1 Nov and 30 Nov"). Turkish writes the
+ *  month in full, as every other Turkish date here does. */
+export function dayMonthShortLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "d MMM", tr: "d MMMM" });
+}
+
 /**
  * A completed match's date in the recent-history block. The English one
  * is NOT a date-fns pattern: `match-history.ts` has always written

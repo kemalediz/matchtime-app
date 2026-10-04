@@ -951,7 +951,9 @@ model BillingNotice {
   orgId         String
   org           Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
   /// "trial-21" | "trial-28" | "trial-ended" | "paused" | "card-added" |
-  /// "payment-failed" | "resumed" | "payer-changed" | "card-replaced" | "fee-tip"
+  /// "payment-failed" | "payment-action" | "resumed" | "plan-billed" |
+  /// "payer-changed" | "card-replaced" | "fee-tip" | "month-charged" |
+  /// "month-free" | "keep-paying" (no CHECK: a free-text column)
   kind          String
   cycleKey      String
   platformJobId String?

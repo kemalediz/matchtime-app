@@ -232,6 +232,8 @@ test("1. a PLAYER money collector adds a card: setup mode, the webhook, subscrib
   expect(dms[0].phone).toBe(PHONE.colin);
   expect(dms[0].text).toContain("Thanks Colin Sevens, your card is saved.");
   expect(dms[0].text).not.toMatch(/taken today/);
+  // Slice P3 (games played): nothing is taken; each month is charged for its games.
+  expect(dms[0].text).toContain("Nothing has been taken: after each month I count the games played and charge only for those, up to £9.99.");
   expect(dms[0].text).not.toMatch(DASH);
 
   // Stripe re-delivers: answered as a duplicate, nothing twice.

@@ -84,7 +84,7 @@ describe("loadClubMonthInput", () => {
     expect(c.billingEvent.findMany.mock.calls[0][0]).toMatchObject({
       where: {
         OR: [
-          { orgId: "org", type: { in: ["mt.paused", "mt.resumed", "mt.unbilled", "mt.billed"] } },
+          { orgId: "org", type: { in: ["mt.paused", "mt.resumed", "mt.unbilled", "mt.billed", "mt.suspended", "mt.unsuspended"] } },
           { orgId: null, type: { in: ["mt.billing-off", "mt.billing-on"] } },
         ],
         receivedAt: { lt: NOV.endsAt },

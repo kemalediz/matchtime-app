@@ -716,7 +716,13 @@ export type BillingNoticeKind =
   /** A bank check (3DS) on an invoice (slice B4). */
   | "payment-action"
   | "payer-changed"
-  | "fee-tip";
+  | "fee-tip"
+  /** Slice P3 (games played), keyed by the month's id: the receipt once
+   *  its invoice is paid, and the first month in a row with no games. */
+  | "month-charged"
+  | "month-free"
+  /** Slice P3: Keep paying ("undo:<stop date>" or "restart:<pause>"). */
+  | "keep-paying";
 
 /** `BillingNotice.platformJobId` values: NULL is PENDING (written by a
  *  state change, not sent yet); "claimed:<ISO time>" while a sender holds
@@ -823,7 +829,7 @@ export async function loadPendingBillingNotices(
   orgId: string,
 ): Promise<Array<{ kind: BillingNoticeKind; cycleKey: string; createdAt: Date }>> {
   const rows = await db.billingNotice.findMany({
-    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed", "card-added", "card-replaced"] } },
+    where: { orgId, platformJobId: null, kind: { in: ["plan-billed", "resumed", "card-added", "card-replaced", "keep-paying"] } },
     select: { kind: true, cycleKey: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });

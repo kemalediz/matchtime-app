@@ -258,7 +258,7 @@ vi.mock("../club-billing", async () => {
 
 import { setBillingStripeForTests } from "../stripe-billing";
 import { createFakeBillingStripe, type FakeBillingStripe, type FakeInvoice } from "../stripe-billing-fake";
-import { recordBillingFlagState, recordNotBillable } from "../club-billing-spells";
+import { recordBillingFlagState, recordSuspended } from "../club-billing-spells";
 import {
   CLOSING_STALE_MS,
   applyMonthInvoice,
@@ -1071,15 +1071,40 @@ describe("H1 (P2 review): months while not billable, or while billing was off, a
     await openDueMonths(ORG, TRIAL_ENDS);
     const suspendedAt = new Date("2026-11-20T12:00:00Z");
     h.state.orgs.get(ORG)!.approvalStatus = "suspended";
-    await recordNotBillable(ORG, suspendedAt);
+    await recordSuspended(ORG, suspendedAt);
     await waiveOpenMonths(ORG, "suspended", suspendedAt);
     expect((await openDueMonths(ORG, new Date("2026-12-15T12:00:00Z"))).opened).toEqual([]);
     // Back (by hand) on 20 Jan: the open spell is closed at that moment.
     const backAt = new Date("2027-01-20T12:00:00Z");
     h.state.orgs.get(ORG)!.approvalStatus = "approved";
     expect((await openDueMonths(ORG, backAt)).opened).toEqual([3]);
-    expect(h.state.events.map((e) => e.type)).toEqual(["mt.unbilled", "mt.billed"]);
+    expect(h.state.events.map((e) => e.type)).toEqual(["mt.suspended", "mt.unsuspended"]);
     // Only 26 Jan is after billing came back (5, 12 and 19 Jan were inside the spell).
+    expect(await closeNextDueMonth(ORG, CLOSE_M3)).toMatchObject({ outcome: "paid", index: 3, amountPence: 249 });
+    expect(month(3)).toMatchObject({ scheduled: 4, played: 1 });
+  });
+
+  it("P3 (P2 review LOW 2): suspended, then set Free and back to Standard WHILE still suspended: the suspension's spell stays open until it is lifted", async () => {
+    club();
+    allPlayed();
+    await openDueMonths(ORG, TRIAL_ENDS);
+    const suspendedAt = new Date("2026-11-20T12:00:00Z");
+    h.state.orgs.get(ORG)!.approvalStatus = "suspended";
+    await recordSuspended(ORG, suspendedAt);
+    await waiveOpenMonths(ORG, "suspended", suspendedAt);
+    // Free on 25 Nov and Standard again on 1 Dec (setBillingState's own
+    // pair), all while still suspended.
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "free", billingStatus: "exempt" });
+    spell("mt.unbilled", new Date("2026-11-25T12:00:00Z"));
+    Object.assign(h.state.orgs.get(ORG)!, { billingPlan: "standard", billingStatus: "subscribed" });
+    spell("mt.billed", new Date("2026-12-01T12:00:00Z"));
+    expect((await openDueMonths(ORG, new Date("2026-12-15T12:00:00Z"))).opened).toEqual([]);
+    // Lifted on 20 Jan: only then does the suspension's spell end.
+    const backAt = new Date("2027-01-20T12:00:00Z");
+    h.state.orgs.get(ORG)!.approvalStatus = "approved";
+    expect((await openDueMonths(ORG, backAt)).opened).toEqual([3]);
+    expect(h.state.events.map((e) => e.type)).toEqual(["mt.suspended", "mt.unbilled", "mt.billed", "mt.unsuspended"]);
+    // 5, 12 and 19 Jan were still inside the suspension: not played.
     expect(await closeNextDueMonth(ORG, CLOSE_M3)).toMatchObject({ outcome: "paid", index: 3, amountPence: 249 });
     expect(month(3)).toMatchObject({ scheduled: 4, played: 1 });
   });

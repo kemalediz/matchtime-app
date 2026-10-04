@@ -1362,6 +1362,7 @@ under 5.2 and 5.4. Recommend not merging it as it is; P4 carries its Preview set
 | `AI_DAILY_CAP_DISABLED` | emergency override only | must be absent in production |
 | `STRIPE_AI_TOPUP_PRICE_ID` | slice T1 only | `price_...`, the £5 top-up (9.1) |
 | `BILLING_STRIPE_FAKE` | test only | `1` under `MT_TEST_MODE` for Playwright |
+| `BILLING_CRON_RETRIES` | Vercel (optional) | ON unless `0`: the hourly cron retries a failed month's invoice on days 1, 3 and 5 (slice P3). Set `0` once test mode shows the account's own retries cover one-off invoices |
 
 Constants, not env: trial 30 days, grace 7, reminders days 21 and 28, the billing link TTL
 9 days, the close delay 6 hours, the Stripe minimum 30p, all in the rules files.
@@ -1441,7 +1442,7 @@ Where it differs from 5.3 as written, and why:
   charge needs one more Stripe read; refunds stay manual): P3 or P4.
 - **The card added DM copy still says "The first £9.99 is taken on {date}"** (B3 wording, now
   with the first charge date). The games-played copy of 7.3 is P3 and must ship before the flag
-  is turned on.
+  is turned on. (Done in P3, 13.4.)
 
 **Adversarial review fixes (same PR, 2026-10-04):**
 
@@ -1505,6 +1506,60 @@ a real test account; the code works either way as described):
 7. `invoices.del` on a draft and `invoices.voidInvoice` on an open invoice (plan Free).
 8. The webhook endpoint is subscribed to `invoice.voided` and `invoice.marked_uncollectible`
    (new in P2) and no longer needs `customer.subscription.*`.
+
+### 13.4 P3 as built (2026-10-04)
+
+**The hourly cron** (`runBillingCron`, `club-billing-scheduler.ts`), for every billed, approved,
+self-join club, each run: the on-time state change (as B4); then **open** the current month at
+any hour (`openDueMonths`, P2's no-catch-up rule); then, in the daytime only (10:00 to 20:00
+London): **close** the lowest month that ended at least 6 hours ago (`closeNextDueMonth`, one per
+club per run, compare-and-set), the cron's **retries**, the scheduled DMs, the admin tip, the
+pending DMs, and the **month DMs**. The close runs before the DMs, so a Stop paying that takes
+effect at the close sends its "paused" DM in the same run. Flag off: nothing opens or closes.
+
+**Retries** (`retryFailedMonthInvoices` in `club-billing-months.ts`): a month recorded `failed`
+is paid again on the card on file on days 1, 3 and 5 after its close, daytime only, claimed per
+month and day (`BillingEvent` `mt_invoice_retry_<month>_d<day>`), only the latest due day after an
+outage, never for a club that is paused, not billable or has no card, never when the invoice is
+not open or its amount due is not the month's amount. A paid retry is applied at once through
+the webhook's own path (`syncPaidMonthInvoice`). `BILLING_CRON_RETRIES=0` switches them off.
+
+**DMs** (all to the billing contact, platform DM, claimed once in `BillingNotice`, 10:00 to
+20:00 London only, never the platform owner):
+
+- `month-charged` (cycle: the month's id): only once the month is recorded `paid`. Sent by the
+  webhook's `invoice.paid` in the daytime, otherwise by the cron's daytime run, while the month was
+  closed or paid in the last 3 days.
+- `month-free` (cycle: the month's id): a month closed `no-games`, only when the club's month
+  before it was not also `no-games` (a later one is recorded `skipped:not-first`), never to a
+  paused club.
+- `keep-paying` ("undo:<stop date>" or "restart:<pause>"): from Keep paying; pending at night,
+  re-checked by the 10:00 run.
+- Rewritten for games played: card added (nothing taken, the first or next charge date), day 21
+  (the first charge date), day 28 and day 30 (how it is charged), paused (the unpaid month's
+  amount; Stop paying wording; how to switch it back on per reason), payment failed and the bank
+  check (the amount for the month's games between its dates), payer changed and billed again
+  ("only the games played, up to {price} a month"), the club fee tip and the "you're live" tip
+  (`perGamePence`, at most {perGame} a game). Exact EN and TR copy: `club-billing-p3-copy.test.ts`.
+
+**P2 review LOW fixes:**
+
+1. Card sessions of one club are applied under a transaction-scoped advisory lock
+   (`club-card-session:<orgId>`), reading the club fresh inside it; two sessions created in the
+   same second are ordered by their session id, so the same one wins in any delivery order.
+2. Suspension has its own markers (`mt.suspended` / `mt.unsuspended`, `recordSuspended`), read by
+   the month loader; the month opener closes any of the club's own open spells
+   (`closeNotBillableSpells`). Free then Standard while still suspended no longer ends the
+   suspension's spell.
+3. `onClubSuspended` writes the marker before any Stripe call.
+4. `invoice.paid` and `invoice.voided` run `applyStopIfDue` first; a stopping club goes straight to
+   paused (cancelled). `nextBillingState` gains `billing-stopped` from paused (payment failed) to
+   paused (cancelled), never a resume on the way.
+
+**Not in P3 (P4):** the billing page and settings card still describe the flat fee in their
+state lines ("£9.99 a month. Next payment ...", "Then £9.99 a month for the whole group") and the
+past due banner says "This month's club fee"; the month box and past months; public and help
+copy. `charge.refunded` is still not mapped to `refundedPence`.
 
 ---
 

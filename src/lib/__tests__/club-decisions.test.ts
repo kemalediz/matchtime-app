@@ -297,6 +297,7 @@ describe("decideClub: approve starts the free month (club fee billing, slice B2)
     perSide: 5,
     players: 10,
     games: 4,
+    perGamePence: 250,
     sharePence: 25,
     feePence: 800,
     feePlusPence: 825,
@@ -321,8 +322,8 @@ describe("decideClub: approve starts the free month (club fee billing, slice B2)
     expect(billingMock.setBillingState).toHaveBeenCalledWith("org-riverside", { type: "approved" }, NOW);
     const text = String(created("platformJob")[0].text);
     expect(text).toContain(
-      `${FREE}\n\n💷 *Club fee tip:* after that it's £9.99 a month for the group, paid by card by whoever collects the match fees. ` +
-        "With 10 players and about 4 games a month, that's about *25p a player per game*, so a £8 game could be charged at *£8.25*.",
+      `${FREE}\n\n💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. ` +
+        "Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.",
     );
   });
 

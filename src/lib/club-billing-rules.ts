@@ -273,6 +273,11 @@ export function nextBillingState(
       return null;
 
     case "billing-stopped":
+      // Slice P3 (P2 review LOW 4): the stop comes due while the club is
+      // paused for a failed payment (that payment then arrives, or is
+      // forgiven): it stays paused, now because billing stopped. Never a
+      // resume on the way.
+      if (from === "paused" && b?.pausedReason === "payment-failed") return to("paused", from, { pausedReason: "cancelled" });
       if (from !== "subscribed" && from !== "past_due") return null;
       // Stopped inside the free month (the card has just been removed): the
       // free month carries on with the same end date and its reminders.
@@ -427,6 +432,10 @@ export interface ClubFeeTip {
   players: number;
   /** Games a month: 4 per weekly slot, at least 4. */
   games: number;
+  /** Slice P3 (games played): the most one game played costs the club,
+   *  the monthly price over the month's games, rounded UP to the penny
+   *  (GBP 2.50 for GBP 9.99 and one weekly game). */
+  perGamePence: number;
   /** The share per player per game, rounded up to the next 5p. */
   sharePence: number;
   /** The example match fee and the fee with the share added. */
@@ -466,6 +475,8 @@ function weeklySlots(activities: TipActivity[]): TipActivity[] {
  *
  *   players per game   2 x playersPerTeam
  *   games a month      4 per weekly slot (4 when there is none)
+ *   per game           price / games, rounded UP to the penny: the most
+ *                      a game played costs (slice P3, games played)
  *   share              price / player-games in a month, rounded UP to the
  *                      next 5p and never below 5p
  *   example fee        the activity's own fee, else its latest match fee,
@@ -492,11 +503,13 @@ export function clubFeeTip(input: ClubFeeTipInput): ClubFeeTip | null {
   const feeSource: ClubFeeTip["feeSource"] = own !== null && own > 0 ? "own" : latest !== null && latest > 0 ? "latest-match" : "example";
   const feePence = feeSource === "own" ? Math.round(own! * 100) : feeSource === "latest-match" ? Math.round(latest! * 100) : EXAMPLE_FEE_PENCE;
 
+  const games = Math.max(1, slots.length) * GAMES_PER_WEEKLY_SLOT;
   return {
     pricePence: price,
     perSide,
     players: 2 * perSide,
-    games: Math.max(1, slots.length) * GAMES_PER_WEEKLY_SLOT,
+    games,
+    perGamePence: Math.ceil(price / games),
     sharePence,
     feePence,
     feePlusPence: feePence + sharePence,
