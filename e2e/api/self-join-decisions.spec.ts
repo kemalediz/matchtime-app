@@ -200,7 +200,7 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   // on real Postgres with its CHECK constraints) and the DM follows the
   // free-month sentence with the club fee tip. With the flag off the DM
   // ends on that sentence (unit-pinned in club-decisions.test.ts).
-  expect(live).toMatch(/Your first month is free\.\n\n💷 \*Club fee tip:\* after that it's £9\.99 a month for the group/);
+  expect(live).toMatch(/Your first month is free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/);
   expect(live).not.toMatch(/[—–]/);
   expect(await db.one(`SELECT "billingStatus","billingPlan" FROM "Organisation" WHERE id = $1`, [EN_ORG])).toEqual({
     billingStatus: "trial",

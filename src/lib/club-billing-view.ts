@@ -14,7 +14,8 @@
  * (`__tests__/club-billing-source-guard.test.ts`).
  */
 import { t } from "./i18n/t";
-import { dayLabel } from "./i18n/dates";
+import { dayLabel, dayMonthShortLabel } from "./i18n/dates";
+import { monthBounds } from "./club-billing-cycle-rules";
 import type { Lang } from "./i18n/lang";
 import {
   GRACE_DAYS,
@@ -42,10 +43,9 @@ export function shareLabel(pence: number): string {
 export function clubFeeTipText(lang: LangIn, tip: ClubFeeTip): string {
   const s = t(lang);
   return s.club_fee_tip({
-    format: s.sj_per_side_option({ perSide: tip.perSide }),
     players: tip.players,
-    games: tip.games,
     price: moneyLabel(tip.pricePence),
+    perGame: moneyLabel(tip.perGamePence),
     share: shareLabel(tip.sharePence),
     fee: moneyLabel(tip.feePence),
     feePlus: moneyLabel(tip.feePlusPence),
@@ -58,8 +58,8 @@ export function clubFeeTipText(lang: LangIn, tip: ClubFeeTip): string {
 export function approvedTipText(lang: LangIn, tip: ClubFeeTip): string {
   return t(lang).sj_dm_approved_tip({
     players: tip.players,
-    games: tip.games,
     price: moneyLabel(tip.pricePence),
+    perGame: moneyLabel(tip.perGamePence),
     share: shareLabel(tip.sharePence),
     fee: moneyLabel(tip.feePence),
     feePlus: moneyLabel(tip.feePlusPence),
@@ -342,18 +342,20 @@ export function billingCardView(lang: LangIn, c: BillingViewClub, tip: ClubFeeTi
 
 // ── Slice B3: the webhook's DMs and the page's notices ──────────────────
 
-/** "Card added" (7.3), to whoever added the card. `firstPaymentOn` null
- *  means the first payment was taken at once (grace, or after a pause). */
+/** "Card added" (7.3), to whoever added the card. Slice P3 (games
+ *  played): nothing is taken when a card is saved; `firstChargeOn` is the
+ *  morning after the current billing month ends, and `first` says whether
+ *  any month has been charged before ("The first" or "The next"). */
 export function cardAddedText(
   lang: LangIn,
-  p: { name: string | null; club: string; pricePence: number; firstPaymentOn: Date | null; resumed: boolean; link: string },
+  p: { name: string | null; club: string; pricePence: number; firstChargeOn: Date; first: boolean; resumed: boolean; link: string },
 ): string {
   return t(lang).billing_dm_card_added({
     name: p.name,
     club: p.club,
     price: moneyLabel(p.pricePence),
-    date: p.firstPaymentOn ? dayLabel(lang, p.firstPaymentOn) : "",
-    paidNow: p.firstPaymentOn === null,
+    date: dayLabel(lang, p.firstChargeOn),
+    first: p.first,
     resumed: p.resumed,
     link: p.link,
   });
@@ -457,53 +459,137 @@ export function trialReminderText(
 ): string {
   const s = t(lang);
   const date = dayLabel(lang, p.trialEndsAt);
+  const price = moneyLabel(p.pricePence);
+  // The first charge: the morning after month 1 (the first month after the
+  // free one) ends, which is when it closes (plan 2A.1).
+  const firstCharge = dayLabel(lang, monthBounds(p.trialEndsAt, 1).endsAt);
   const body =
     p.kind === "trial-21"
-      ? s.billing_dm_trial_21({ name: p.name, club: p.club, date, price: moneyLabel(p.pricePence), link: p.link, collector: p.via === "collector" })
-      : s.billing_dm_trial_28({ name: p.name, club: p.club, date, link: p.link });
+      ? s.billing_dm_trial_21({ name: p.name, club: p.club, date, price, firstCharge, link: p.link, collector: p.via === "collector" })
+      : s.billing_dm_trial_28({ name: p.name, club: p.club, date, price, link: p.link });
   return withExtras(lang, body, { tip: p.tip, via: p.via });
 }
 
 /** Day 30: the free month has ended, a week's grace (7.3). */
 export function trialEndedText(
   lang: LangIn,
-  p: { name: string | null; club: string; graceEndsAt: Date; link: string; via: ContactVia },
+  p: { name: string | null; club: string; graceEndsAt: Date; pricePence: number; link: string; via: ContactVia },
 ): string {
-  const body = t(lang).billing_dm_trial_ended({ name: p.name, club: p.club, date: dayLabel(lang, p.graceEndsAt), link: p.link });
+  const body = t(lang).billing_dm_trial_ended({
+    name: p.name,
+    club: p.club,
+    date: dayLabel(lang, p.graceEndsAt),
+    price: moneyLabel(p.pricePence),
+    link: p.link,
+  });
   return withExtras(lang, body, { via: p.via });
 }
 
-/** Paused: no card after the grace week, a payment not recovered, or a
- *  plan that ended after a cancel (7.3). */
+/** Paused: no card after the grace week, a payment not recovered, or
+ *  billing stopped by the payer (7.3). `amountPence`: what could not be
+ *  taken (the unpaid month's charge); read only for "payment-failed". */
 export function pausedText(
   lang: LangIn,
-  p: { name: string | null; club: string; pricePence: number; reason: "no-card" | "payment-failed" | "cancelled"; link: string },
+  p: { name: string | null; club: string; amountPence: number; reason: "no-card" | "payment-failed" | "cancelled"; link: string },
 ): string {
-  return t(lang).billing_dm_paused({ name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link, kind: p.reason });
+  return t(lang).billing_dm_paused({ name: p.name, club: p.club, amount: moneyLabel(p.amountPence), link: p.link, kind: p.reason });
 }
 
-/** This month's payment did not go through (7.3). `ownCard` false: the
+/** A billing month's first and last day, as a DM names them: "1 Nov" and
+ *  "30 Nov" ("1 Kasım", "30 Kasım"). `endsAt` is exclusive (00:00 London
+ *  on the day the next month starts), so the last day is the day before. */
+export function monthRangeLabels(lang: LangIn, m: { startsAt: Date; endsAt: Date }): { from: string; to: string } {
+  return {
+    from: dayMonthShortLabel(lang, m.startsAt),
+    to: dayMonthShortLabel(lang, new Date(m.endsAt.getTime() - DAY_MS / 2)),
+  };
+}
+
+/** A month's charge did not go through (7.3). `ownCard` false: the
  *  failing card is somebody else's (a collector change in progress). */
 export function paymentFailedText(
   lang: LangIn,
-  p: { name: string | null; club: string; pricePence: number; link: string; ownCard: boolean },
+  p: { name: string | null; club: string; amountPence: number; startsAt: Date; endsAt: Date; link: string; ownCard: boolean },
 ): string {
-  return t(lang).billing_dm_payment_failed({ name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link, ownCard: p.ownCard });
+  return t(lang).billing_dm_payment_failed({
+    name: p.name,
+    club: p.club,
+    amount: moneyLabel(p.amountPence),
+    ...monthRangeLabels(lang, p),
+    link: p.link,
+    ownCard: p.ownCard,
+  });
 }
 
-/** The bank wants the payer to confirm the payment (3DS). `link` is the
- *  invoice's own Stripe page, where the check is done; `billingLink` the
- *  recipient's billing page, offered when the card is not their own. */
+/** The bank wants the payer to confirm a month's charge (3DS). `link` is
+ *  the invoice's own Stripe page, where the check is done; `billingLink`
+ *  the recipient's billing page, offered when the card is not their own. */
 export function paymentActionText(
   lang: LangIn,
-  p: { name: string | null; club: string; pricePence: number; link: string; ownCard: boolean; billingLink: string },
+  p: { name: string | null; club: string; amountPence: number; startsAt: Date; endsAt: Date; link: string; ownCard: boolean; billingLink: string },
 ): string {
-  const base = { name: p.name, club: p.club, price: moneyLabel(p.pricePence), link: p.link };
+  const base = { name: p.name, club: p.club, amount: moneyLabel(p.amountPence), ...monthRangeLabels(lang, p), link: p.link };
   // Someone else's card (a collector change in progress): the recipient
   // may confirm that payment, or put their own card on instead.
   return p.ownCard
     ? t(lang).billing_dm_payment_action(base)
     : t(lang).billing_dm_payment_action_other({ ...base, billingLink: p.billingLink });
+}
+
+// ── Slice P3: the month's receipt, a month with no games, Keep paying ───
+
+/** The receipt, once a month's invoice is PAID (7.3): the games count,
+ *  the charge, the card, the full month price. */
+export function monthChargedText(
+  lang: LangIn,
+  p: {
+    name: string | null;
+    club: string;
+    startsAt: Date;
+    endsAt: Date;
+    played: number;
+    scheduled: number;
+    amountPence: number;
+    pricePence: number;
+    last4: string | null;
+    ownCard: boolean;
+    link: string;
+  },
+): string {
+  return t(lang).billing_dm_month_charged({
+    name: p.name,
+    club: p.club,
+    played: p.played,
+    scheduled: p.scheduled,
+    ...monthRangeLabels(lang, p),
+    amount: moneyLabel(p.amountPence),
+    price: moneyLabel(p.pricePence),
+    last4: p.last4,
+    ownCard: p.ownCard,
+    link: p.link,
+  });
+}
+
+/** The FIRST month in a row with no games (7.3): nothing to pay. */
+export function monthFreeText(lang: LangIn, p: { name: string | null; club: string; startsAt: Date; endsAt: Date }): string {
+  return t(lang).billing_dm_month_free({ name: p.name, club: p.club, ...monthRangeLabels(lang, p) });
+}
+
+/** Keep paying: Stop paying undone, or (`restarted`) billing started again
+ *  after the stop took effect. `nextChargeOn`: the morning after the
+ *  current month ends. */
+export function keepPayingText(
+  lang: LangIn,
+  p: { name: string | null; club: string; pricePence: number; nextChargeOn: Date; restarted: boolean; link: string },
+): string {
+  return t(lang).billing_dm_keep_paying({
+    name: p.name,
+    club: p.club,
+    price: moneyLabel(p.pricePence),
+    date: dayLabel(lang, p.nextChargeOn),
+    restarted: p.restarted,
+    link: p.link,
+  });
 }
 
 /** To a new money collector, once (4.5 point 2), then the tip. */

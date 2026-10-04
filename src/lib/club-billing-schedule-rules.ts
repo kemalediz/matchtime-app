@@ -165,3 +165,47 @@ export function feeTipDue(club: ScheduleClub, now: Date): { cycleKey: string } |
   if (now < reminderAt(club.trialEndsAt, TRIAL_21_DAYS_BEFORE_END)) return null;
   return { cycleKey: club.trialEndsAt.toISOString() };
 }
+
+// ── Slice P3 (games played): the cron's retries and the month DMs ───────
+
+type Env = Record<string, string | undefined>;
+
+/**
+ * The cron's own retries of a failed month's invoice (plan 5.3): on days
+ * 1, 3 and 5 after the close's first attempt, in the daytime, within the
+ * 7 day payment grace. For an account whose automatic retries do not cover
+ * one-off invoices; switched off with BILLING_CRON_RETRIES=0 once Stripe
+ * test mode shows they do (plan 13.3, point 3).
+ */
+export const CRON_RETRY_DAYS = [1, 3, 5] as const;
+
+/** `BILLING_CRON_RETRIES`: ON unless explicitly "0"/"false"/"off"/"no". */
+export function cronRetriesEnabled(env: Env = process.env): boolean {
+  const v = env.BILLING_CRON_RETRIES?.trim().toLowerCase();
+  if (!v) return true;
+  return !(v === "0" || v === "false" || v === "off" || v === "no");
+}
+
+/**
+ * The retry day due now for a month whose first attempt was at
+ * `firstAttemptAt`, or null. Only the LATEST due day, and only when it is
+ * later than every day already tried (`done`): after a cron outage the
+ * missed days are not caught up one after another, and a day is never
+ * tried twice.
+ */
+export function cronRetryDayDue(firstAttemptAt: Date, now: Date, done: readonly number[]): number | null {
+  const elapsed = now.getTime() - firstAttemptAt.getTime();
+  const due = CRON_RETRY_DAYS.filter((d) => elapsed >= d * DAY_MS);
+  if (due.length === 0) return null;
+  const latest = due[due.length - 1];
+  return latest > Math.max(0, ...done) ? latest : null;
+}
+
+/** A month's DM (the receipt, "nothing to pay") is sent only while the
+ *  month was closed or paid in the last 3 days: a DM about an old month
+ *  (billing off for a while, a DM that kept failing) never goes. */
+export const MONTH_DM_MAX_AGE_MS = 3 * DAY_MS;
+
+export function monthDmFresh(m: { closedAt: Date | null; paidAt: Date | null }, now: Date): boolean {
+  return [m.closedAt, m.paidAt].some((d) => d !== null && now.getTime() - d.getTime() <= MONTH_DM_MAX_AGE_MS);
+}

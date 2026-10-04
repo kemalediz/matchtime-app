@@ -14,6 +14,11 @@
  *                             by the billing webhook
  *   flushPendingBillingDms    sends what was noted, after checking it is
  *                             still true
+ *   sendMonthCharged          slice P3: the month's receipt once its invoice
+ *                             is PAID (from the webhook, and the cron)
+ *   sendMonthDms              slice P3, the hourly cron: every recent paid
+ *                             month's receipt and the FIRST month in a row
+ *                             with no games ("nothing to pay"), once each
  *
  * ── Rules every message here keeps ───────────────────────────────────
  *   - DAYTIME ONLY: 10:00 to 20:00 London. A DM that becomes due at night
@@ -47,16 +52,20 @@ import {
   type BillingContact,
 } from "./club-billing-rules";
 import {
+  MONTH_DM_MAX_AGE_MS,
   PAYMENT_FAILED_HOLD_MS,
   PENDING_BILLING_DM_MAX_AGE_MS,
   billingDmsDue,
   feeTipDue,
   isBillingDmHour,
+  monthDmFresh,
   type DueDm,
   type ScheduleClub,
 } from "./club-billing-schedule-rules";
 import {
   feeTipAdminText,
+  monthChargedText,
+  monthFreeText,
   paymentActionText,
   paymentFailedText,
   pausedText,
@@ -104,6 +113,7 @@ async function loadDmClub(orgId: string) {
           paymentFailedAt: true,
           cardHolderUserId: true,
           stripePaymentMethodId: true,
+          cardLast4: true,
         },
       },
     },
@@ -268,12 +278,16 @@ async function sendOneScheduled(club: DmClub & { billing: NonNullable<DmClub["bi
       break;
     }
     case "trial-ended":
-      text = ({ name }) => trialEndedText(lang, { name, club: club.name, graceEndsAt: club.billing.graceEndsAt!, link, via: contact.via });
+      text = ({ name }) =>
+        trialEndedText(lang, { name, club: club.name, graceEndsAt: club.billing.graceEndsAt!, pricePence: club.pricePence, link, via: contact.via });
       break;
     case "paused": {
       const reason = club.billing.pausedReason;
       if (reason !== "no-card" && reason !== "payment-failed" && reason !== "cancelled") return "no-reason";
-      text = ({ name }) => pausedText(lang, { name, club: club.name, pricePence: club.pricePence, reason, link });
+      // Slice P3: what could not be taken is the unpaid month's charge.
+      const unpaid = reason === "payment-failed" ? await latestUnpaidMonth(club.id) : null;
+      const amountPence = unpaid?.amountPence ?? club.pricePence;
+      text = ({ name }) => pausedText(lang, { name, club: club.name, amountPence, reason, link });
       break;
     }
   }
@@ -451,10 +465,31 @@ export async function notePaymentProblem(args: {
   }
 }
 
+/** The billing month an invoice charges (slice P3): its dates and amount
+ *  for the payment DMs. Null when no month of the club carries it. */
+async function monthOfInvoice(orgId: string, invoiceId: string) {
+  const m = await db.clubBillingMonth.findFirst({
+    where: { orgId, stripeInvoiceId: invoiceId },
+    select: { id: true, startsAt: true, endsAt: true, amountPence: true },
+  });
+  return m && m.amountPence !== null ? { ...m, amountPence: m.amountPence } : null;
+}
+
+/** The club's latest month whose charge is still owed (slice P3). */
+async function latestUnpaidMonth(orgId: string) {
+  return db.clubBillingMonth.findFirst({
+    where: { orgId, status: { in: ["failed", "invoiced"] }, amountPence: { not: null } },
+    orderBy: { index: "desc" },
+    select: { amountPence: true },
+  });
+}
+
 async function sendPaymentAction(club: DmClub & { billing: NonNullable<DmClub["billing"]> }, invoiceId: string, hostedUrl: string) {
   const contact = club.contact!;
   const holder = club.billing.cardHolderUserId;
   const ownCard = holder === null || holder === contact.userId;
+  const month = await monthOfInvoice(club.id, invoiceId);
+  if (!month) return "no-month";
   const billingLinkUrl = ownCard ? "" : await billingLink(contact.userId, club.id);
   return queueBillingDm({
     orgId: club.id,
@@ -462,11 +497,22 @@ async function sendPaymentAction(club: DmClub & { billing: NonNullable<DmClub["b
     cycleKey: invoiceId,
     userId: contact.userId,
     text: ({ name }) =>
-      paymentActionText(club.language, { name, club: club.name, pricePence: club.pricePence, link: hostedUrl, ownCard, billingLink: billingLinkUrl }),
+      paymentActionText(club.language, {
+        name,
+        club: club.name,
+        amountPence: month.amountPence,
+        startsAt: month.startsAt,
+        endsAt: month.endsAt,
+        link: hostedUrl,
+        ownCard,
+        billingLink: billingLinkUrl,
+      }),
   });
 }
 
 async function sendPaymentFailed(club: DmClub & { billing: NonNullable<DmClub["billing"]> }, contact: BillingContact, invoiceId: string) {
+  const month = await monthOfInvoice(club.id, invoiceId);
+  if (!month) return "no-month";
   const link = await billingLink(contact.userId, club.id);
   const holder = club.billing.cardHolderUserId;
   const ownCard = holder === null || holder === contact.userId;
@@ -475,7 +521,16 @@ async function sendPaymentFailed(club: DmClub & { billing: NonNullable<DmClub["b
     kind: "payment-failed",
     cycleKey: invoiceId,
     userId: contact.userId,
-    text: ({ name }) => paymentFailedText(club.language, { name, club: club.name, pricePence: club.pricePence, link, ownCard }),
+    text: ({ name }) =>
+      paymentFailedText(club.language, {
+        name,
+        club: club.name,
+        amountPence: month.amountPence,
+        startsAt: month.startsAt,
+        endsAt: month.endsAt,
+        link,
+        ownCard,
+      }),
   });
 }
 
@@ -545,17 +600,168 @@ export async function flushPendingBillingDms(orgId: string, now: Date = new Date
         await noContact(orgId, kind, row.cycleKey);
         continue;
       }
-      if (kind === "payment-action") {
-        if (!invoice?.hostedInvoiceUrl) {
-          await skipPending(orgId, kind, row.cycleKey, "no-link");
-          continue;
-        }
-        if ((await sendPaymentAction(club, row.cycleKey, invoice.hostedInvoiceUrl)) === "queued") sent++;
-      } else if ((await sendPaymentFailed(club, club.contact, row.cycleKey)) === "queued") {
-        sent++;
+      if (kind === "payment-action" && !invoice?.hostedInvoiceUrl) {
+        await skipPending(orgId, kind, row.cycleKey, "no-link");
+        continue;
       }
+      const r =
+        kind === "payment-action"
+          ? await sendPaymentAction(club, row.cycleKey, invoice!.hostedInvoiceUrl!)
+          : await sendPaymentFailed(club, club.contact, row.cycleKey);
+      if (r === "no-month") await skipPending(orgId, kind, row.cycleKey, "no-month");
+      else if (r === "queued") sent++;
     } catch (err) {
       console.error(`[club-billing-dms] ${orgId}: pending ${kind} (${row.cycleKey}) not sent yet:`, err);
+    }
+  }
+  return sent;
+}
+
+// ── Slice P3 (games played): the month's receipt and "nothing to pay" ───
+
+type MonthDmResult = "off" | "night" | "not-billed" | "not-found" | "not-paid" | "not-zero" | "stale" | "not-first" | "no-contact" | "queued" | "already" | "no-phone" | "refused";
+
+/** The month a DM is about, with what the DM says. */
+async function loadMonth(orgId: string, monthId: string) {
+  const m = await db.clubBillingMonth.findUnique({
+    where: { id: monthId },
+    select: {
+      id: true,
+      orgId: true,
+      index: true,
+      startsAt: true,
+      endsAt: true,
+      status: true,
+      scheduled: true,
+      played: true,
+      pricePence: true,
+      priceAtStartPence: true,
+      amountPence: true,
+      closedAt: true,
+      paidAt: true,
+    },
+  });
+  return m && m.orgId === orgId ? m : null;
+}
+
+/**
+ * The month's receipt (plan 7.3) to the billing contact, once the month's
+ * invoice is PAID: "4 of 5 games played between 1 Nov and 30 Nov, GBP 7.99
+ * charged". Only money actually taken: the month must be recorded paid.
+ * ONCE per month (claimed by the month's id), 10:00 to 20:00 London only:
+ * at night nothing is written and the hourly cron's daytime run sends it
+ * (`sendMonthDms`), while the month is fresh (paid or closed in the last 3
+ * days). Never to the platform owner.
+ */
+export async function sendMonthCharged(orgId: string, monthId: string, now: Date = new Date()): Promise<MonthDmResult> {
+  if (!isBillingEnabled()) return "off";
+  if (!isBillingDmHour(now)) return "night";
+  const club = await loadDmClub(orgId);
+  if (!isMessageable(club)) return "not-billed";
+  const m = await loadMonth(orgId, monthId);
+  if (!m) return "not-found";
+  if (m.status !== "paid" || m.amountPence === null || m.played === null || m.scheduled === null) return "not-paid";
+  if (!monthDmFresh(m, now)) return "stale";
+  const contact = club.contact;
+  if (!contact) {
+    await noContact(orgId, "month-charged", monthId);
+    return "no-contact";
+  }
+  const link = await billingLink(contact.userId, orgId);
+  const holder = club.billing.cardHolderUserId;
+  const ownCard = holder === null || holder === contact.userId;
+  const amountPence = m.amountPence;
+  const played = m.played;
+  const scheduled = m.scheduled;
+  return queueBillingDm({
+    orgId,
+    kind: "month-charged",
+    cycleKey: monthId,
+    userId: contact.userId,
+    text: ({ name }) =>
+      monthChargedText(club.language, {
+        name,
+        club: club.name,
+        startsAt: m.startsAt,
+        endsAt: m.endsAt,
+        played,
+        scheduled,
+        amountPence,
+        pricePence: m.pricePence ?? m.priceAtStartPence,
+        last4: club.billing.cardLast4,
+        ownCard,
+        link,
+      }),
+  });
+}
+
+/**
+ * "No games, nothing to pay" (plan 7.3) for a month closed as `no-games`,
+ * only when it is the FIRST such month in a row: the club's month before it
+ * was not also `no-games`, so a long summer break sends one DM, not one a
+ * month. A later zero month is recorded as skipped and never sent. Once
+ * per month, daytime only, while fresh.
+ */
+export async function sendMonthFree(orgId: string, monthId: string, now: Date = new Date()): Promise<MonthDmResult> {
+  if (!isBillingEnabled()) return "off";
+  if (!isBillingDmHour(now)) return "night";
+  const club = await loadDmClub(orgId);
+  if (!isMessageable(club)) return "not-billed";
+  const m = await loadMonth(orgId, monthId);
+  if (!m) return "not-found";
+  if (m.status !== "no-games") return "not-zero";
+  if (!monthDmFresh(m, now)) return "stale";
+  // A paused club already knows MatchTime is off in its group; "nothing to
+  // pay" would only confuse that.
+  if (club.status === "paused") return "not-billed";
+  const before = await db.clubBillingMonth.findFirst({
+    where: { orgId, index: { lt: m.index } },
+    orderBy: { index: "desc" },
+    select: { status: true },
+  });
+  if (before?.status === "no-games") {
+    await db.billingNotice.createMany({
+      data: [{ orgId, kind: "month-free", cycleKey: monthId, platformJobId: "skipped:not-first", createdAt: now }],
+      skipDuplicates: true,
+    });
+    return "not-first";
+  }
+  const contact = club.contact;
+  if (!contact) {
+    await noContact(orgId, "month-free", monthId);
+    return "no-contact";
+  }
+  return queueBillingDm({
+    orgId,
+    kind: "month-free",
+    cycleKey: monthId,
+    userId: contact.userId,
+    text: ({ name }) => monthFreeText(club.language, { name, club: club.name, startsAt: m.startsAt, endsAt: m.endsAt }),
+  });
+}
+
+/**
+ * The hourly cron's daytime step (slice P3): for every month of the club
+ * paid or closed in the last 3 days, the receipt (paid) or "nothing to pay"
+ * (no games), each at most once. The months a webhook paid at night, and
+ * the ones the close paid on the spot, are all picked up here. Returns what
+ * was queued, as "<kind>:<index>".
+ */
+export async function sendMonthDms(orgId: string, now: Date = new Date()): Promise<string[]> {
+  if (!isBillingEnabled() || !isBillingDmHour(now)) return [];
+  const since = new Date(now.getTime() - MONTH_DM_MAX_AGE_MS);
+  const months = await db.clubBillingMonth.findMany({
+    where: { orgId, status: { in: ["paid", "no-games"] }, OR: [{ closedAt: { gte: since } }, { paidAt: { gte: since } }] },
+    orderBy: { index: "asc" },
+    select: { id: true, index: true, status: true },
+  });
+  const sent: string[] = [];
+  for (const m of months) {
+    try {
+      const r = m.status === "paid" ? await sendMonthCharged(orgId, m.id, now) : await sendMonthFree(orgId, m.id, now);
+      if (r === "queued") sent.push(`${m.status === "paid" ? "month-charged" : "month-free"}:${m.index}`);
+    } catch (err) {
+      console.error(`[club-billing-dms] ${orgId}: month ${m.index} DM not sent yet:`, err);
     }
   }
   return sent;

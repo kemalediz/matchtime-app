@@ -59,6 +59,7 @@ describe("clubFeeTip: the numbers (7.2)", () => {
       perSide: 5,
       players: 10,
       games: 4,
+      perGamePence: 250,
       sharePence: 25,
       feePence: 800,
       feePlusPence: 825,

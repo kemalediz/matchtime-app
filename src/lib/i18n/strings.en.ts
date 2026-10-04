@@ -2364,35 +2364,35 @@ export const en = {
    *  no fee of its own (the GBP 8 example), "known" when it has one,
    *  "split" when it splits the pitch cost. */
   club_fee_tip: (p: {
-    format: string;
     players: number;
-    games: number;
     price: string;
+    perGame: string;
     share: string;
     fee: string;
     feePlus: string;
     mode: "example" | "known" | "split";
   }): string =>
-    `💷 *Club fee tip:* your weekly ${p.format} is ${p.players} players and about ${p.games} games a month, ` +
-    `so ${p.price} works out at about *${p.share} a player per game*. ` +
+    `💷 *Club fee tip:* MatchTime only charges for the games you play, up to ${p.price} a month. ` +
+    `Each game played costs the club at most ${p.perGame}, which is about *${p.share} a player per game* for your ${p.players} players. ` +
     (p.mode === "split"
       ? `When you split the pitch cost, add about ${p.share} to each player's share.`
       : p.mode === "known"
         ? `Your game is ${p.fee} each, so charging *${p.feePlus}* covers it.`
-        : `If your game costs ${p.fee} each, charge *${p.feePlus}* and the club fee is covered.`),
+        : `If your game costs ${p.fee} each, charge *${p.feePlus}* and the club fee is covered.`) +
+    ` Weeks you don't play cost nothing.`,
   /** The short tip after "Your first month is free." in `sj_dm_approved`,
    *  only for a club that is billed. */
   sj_dm_approved_tip: (p: {
     players: number;
-    games: number;
     price: string;
+    perGame: string;
     share: string;
     fee: string;
     feePlus: string;
     split: boolean;
   }): string =>
-    `💷 *Club fee tip:* after that it's ${p.price} a month for the group, paid by card by whoever collects the match fees. ` +
-    `With ${p.players} players and about ${p.games} games a month, that's about *${p.share} a player per game*` +
+    `💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to ${p.price} a month for the group, paid by card by whoever collects the match fees. ` +
+    `Each game played costs at most ${p.perGame}, about *${p.share} a player per game* with ${p.players} players` +
     (p.split ? `, to add to each player's share of the pitch cost.` : `, so a ${p.fee} game could be charged at *${p.feePlus}*.`),
   billing_page_title: "Club fee",
   billing_state_trial: (p: { date: string; price: string }): string =>
@@ -2448,12 +2448,15 @@ export const en = {
   billing_notice_stopped_free: "Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.",
   billing_notice_kept: "Done. MatchTime keeps running, and each month is charged only for the games played.",
   billing_notice_past_due: "A payment is overdue. Update the card and pay it first.",
+  /** Slice P3 (games played): saving a card charges nothing; each month is
+   *  charged after it ends, for its games. `first`: no month has been
+   *  charged yet ("The first charge"), else "The next charge". */
   billing_dm_card_added: (p: {
     name: string | null;
     club: string;
     price: string;
     date: string;
-    paidNow: boolean;
+    first: boolean;
     resumed: boolean;
     link: string;
   }): string =>
@@ -2461,70 +2464,136 @@ export const en = {
     (p.resumed
       ? `MatchTime is back on for ${p.club} and picks things up again in the group within a few minutes. Anyone who said IN while it was paused should say it again. `
       : `MatchTime keeps running in the ${p.club} WhatsApp group. `) +
-    (p.paidNow
-      ? `The first ${p.price} has been taken today, then it's monthly, and Stripe emails you each invoice.`
-      : `The first ${p.price} is taken on ${p.date}, then monthly, and Stripe emails you each invoice.`) +
-    ` To change your card or cancel: ${p.link}`,
+    `Nothing has been taken: after each month I count the games played and charge only for those, up to ${p.price}. ` +
+    `${p.first ? "The first" : "The next"} charge is on ${p.date}, and Stripe emails you each receipt. To change your card or stop: ${p.link}`,
   billing_dm_card_replaced: (p: { name: string | null; newName: string; club: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.newName} now pays the MatchTime fee for ${p.club}. Your card has been removed and won't be charged for it again.`,
   billing_dm_resumed: (p: { club: string }): string =>
     `MatchTime is back on for ${p.club}. I'll pick things up again in the group within a few minutes. Anyone who said IN while I was paused should say it again.`,
   billing_dm_plan_billed: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again at ${p.price} a month. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again: only the games played, up to ${p.price} a month. ` +
     `The free month has already been used, so MatchTime keeps running in the group until ${p.date}. ` +
     `Add a card before then to keep it going: ${p.link}`,
   // Club fee billing, slice B4: the scheduled card reminders (day 21, 28,
   // 30), the pause, the payment problems and the new collector, all by
   // platform DM to the billing contact, plus the admin channel's "no money
   // collector yet" line. No dashes, EN and TR. Plan 7.2, 7.3.
-  billing_dm_trial_21: (p: { name: string | null; club: string; date: string; price: string; link: string; collector: boolean }): string =>
+  billing_dm_trial_21: (p: {
+    name: string | null;
+    club: string;
+    date: string;
+    price: string;
+    firstCharge: string;
+    link: string;
+    collector: boolean;
+  }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month on MatchTime ends on ${p.date}. ` +
     (p.collector ? `As the person who collects the match fees, you're the one I'll ask for the card. ` : "") +
     `To keep MatchTime running in the ${p.club} WhatsApp group, add a card here: ${p.link}\n` +
-    `It's ${p.price} a month for the whole group, and nothing is taken before ${p.date}.`,
-  billing_dm_trial_28: (p: { name: string | null; club: string; date: string; link: string }): string =>
+    `After that you only pay for the games you play, up to ${p.price} a month for the whole group, charged after each month ends. ` +
+    `Nothing is taken when you add the card; the first charge is on ${p.firstCharge}.`,
+  billing_dm_trial_28: (p: { name: string | null; club: string; date: string; price: string; link: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, a quick reminder: ${p.club}'s free month ends on ${p.date}. ` +
-    `Add a card to keep MatchTime running in the ${p.club} WhatsApp group: ${p.link}`,
-  billing_dm_trial_ended: (p: { name: string | null; club: string; date: string; link: string }): string =>
+    `Add a card to keep MatchTime running in the ${p.club} WhatsApp group: ${p.link}\n` +
+    `You only pay for the games you play, up to ${p.price} a month, and nothing is taken when you add the card.`,
+  billing_dm_trial_ended: (p: { name: string | null; club: string; date: string; price: string; link: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month has ended. ` +
     `MatchTime will keep running in the ${p.club} WhatsApp group for one more week, until ${p.date}. ` +
-    `Add a card any time before then: ${p.link}`,
+    `Add a card any time before then: ${p.link}\n` +
+    `You only pay for the games you play, up to ${p.price} a month, charged after each month ends.`,
   billing_dm_set_collector:
     "Tip: if someone else collects the match fees, make them the money collector in Settings and they'll look after the card instead.",
-  billing_dm_paused: (p: { name: string | null; club: string; price: string; link: string; kind: "no-card" | "payment-failed" | "cancelled" }): string =>
+  /** `amount`: what could not be taken (the unpaid month's charge). The
+   *  last sentence says what switches MatchTime back on for that reason. */
+  billing_dm_paused: (p: { name: string | null; club: string; amount: string; link: string; kind: "no-card" | "payment-failed" | "cancelled" }): string =>
     (p.kind === "payment-failed"
-      ? `Hi${p.name ? ` ${p.name}` : ""}, we couldn't take the ${p.price} for ${p.club}, so MatchTime is now paused. `
+      ? `Hi${p.name ? ` ${p.name}` : ""}, we couldn't take the ${p.amount} for ${p.club}, so MatchTime is now paused. `
       : p.kind === "cancelled"
-        ? `Hi${p.name ? ` ${p.name}` : ""}, the MatchTime plan for ${p.club} has ended, so MatchTime is now paused. `
+        ? `Hi${p.name ? ` ${p.name}` : ""}, you stopped paying for MatchTime for ${p.club}, so it is now paused. The last month was charged only for the games played, as usual. `
         : `Hi${p.name ? ` ${p.name}` : ""}, MatchTime is now paused for ${p.club}. `) +
     `I'm still in the ${p.club} WhatsApp group, but I won't post or reply there, and nothing has been said in the group. ` +
-    `The players, matches and stats are all kept. To switch MatchTime back on, add a card here and it restarts within a few minutes: ${p.link}`,
-  billing_dm_payment_failed: (p: { name: string | null; club: string; price: string; link: string; ownCard: boolean }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, this month's ${p.price} for ${p.club} didn't go through. ` +
-    `Stripe will try again over the next few days, and MatchTime keeps running meanwhile. ` +
+    `The players, matches and stats are all kept. ` +
+    (p.kind === "payment-failed"
+      ? `To switch MatchTime back on, update the card and pay here, and it restarts within a few minutes: ${p.link}`
+      : p.kind === "cancelled"
+        ? `To switch MatchTime back on, press Keep paying here and it restarts within a few minutes: ${p.link}`
+        : `To switch MatchTime back on, add a card here and it restarts within a few minutes: ${p.link}`),
+  /** Slice P3: a month's charge did not go through. `from` and `to` are
+   *  the month's first and last day. */
+  billing_dm_payment_failed: (p: { name: string | null; club: string; amount: string; from: string; to: string; link: string; ownCard: boolean }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, the ${p.amount} for ${p.club}'s games between ${p.from} and ${p.to} didn't go through. ` +
+    `It will be tried again over the next few days, and MatchTime keeps running meanwhile. ` +
     (p.ownCard ? `To update the card: ${p.link}` : `To put your own card on instead: ${p.link}`),
-  billing_dm_payment_action: (p: { name: string | null; club: string; price: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, your bank wants you to confirm this month's ${p.price} for ${p.club} before it can go through. ` +
+  billing_dm_payment_action: (p: { name: string | null; club: string; amount: string; from: string; to: string; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, your bank wants you to confirm the ${p.amount} for ${p.club}'s games between ${p.from} and ${p.to} before it can go through. ` +
     `Please confirm it here: ${p.link}\nMatchTime keeps running meanwhile.`,
   /** The 3DS DM when the card being charged is NOT the recipient's own
    *  (a collector change still in progress). */
-  billing_dm_payment_action_other: (p: { name: string | null; club: string; price: string; link: string; billingLink: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, the card on file for ${p.club} needs the bank to confirm this month's ${p.price} before it can go through. ` +
+  billing_dm_payment_action_other: (p: {
+    name: string | null;
+    club: string;
+    amount: string;
+    from: string;
+    to: string;
+    link: string;
+    billingLink: string;
+  }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, the card on file for ${p.club} needs the bank to confirm the ${p.amount} for the games between ${p.from} and ${p.to} before it can go through. ` +
     `You can confirm and pay it here: ${p.link}\nOr put your own card on instead: ${p.billingLink}\nMatchTime keeps running meanwhile.`,
   billing_dm_payer_changed_card: (p: { name: string | null; club: string; price: string; oldName: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's club fee for the ${p.club} WhatsApp group: only the games played, up to ${p.price} a month. ` +
     `${p.oldName}'s card keeps paying until you put yours on, whenever suits you: ${p.link}`,
   billing_dm_payer_changed_no_card: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's club fee for the ${p.club} WhatsApp group: only the games played, up to ${p.price} a month. ` +
     `Add a card before ${p.date} to keep it running: ${p.link}`,
   billing_dm_payer_changed_paused: (p: { name: string | null; club: string; price: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's club fee for the ${p.club} WhatsApp group: only the games played, up to ${p.price} a month. ` +
     `Add a card to switch it back on: ${p.link}`,
   /** Paused because MatchTime was taken out of the group (slice B5): the
    *  way back is adding MatchTime back, not a card. */
   billing_dm_payer_changed_removed: (p: { name: string | null; club: string; price: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's ${p.price} a month for the group. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, you're now the money collector for ${p.club}, so you look after MatchTime's club fee for the ${p.club} WhatsApp group: only the games played, up to ${p.price} a month. ` +
     `MatchTime was taken out of the ${p.club} WhatsApp group, so it is paused. To switch it back on, add MatchTime back to the group. The club fee page: ${p.link}`,
   billing_admin_no_collector: (p: { link: string }): string =>
     `Nobody is set as the money collector yet. Choose one in Settings: they'll look after the card for the club fee and get this tip too.${p.link ? ` ${p.link}` : ""}`,
+  // Club fee billing, slice P3 (games played): the month's receipt, the
+  // first month in a row with no games, and Keep paying. To the billing
+  // contact by platform DM, 10:00 to 20:00 London, once each. No dashes,
+  // EN and TR. Plan 7.3.
+  /** After a month's invoice is PAID: its count and charge. `last4` null
+   *  when the card is not known; `ownCard` false when the card on file is
+   *  somebody else's (a collector change in progress). */
+  billing_dm_month_charged: (p: {
+    name: string | null;
+    club: string;
+    played: number;
+    scheduled: number;
+    from: string;
+    to: string;
+    amount: string;
+    price: string;
+    last4: string | null;
+    ownCard: boolean;
+    link: string;
+  }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} played ` +
+    (p.played === p.scheduled && p.scheduled > 1 ? `all ${p.scheduled} games` : `${p.played} of ${p.scheduled} ${p.scheduled === 1 ? "game" : "games"}`) +
+    ` between ${p.from} and ${p.to}, so ${p.amount} was charged to ` +
+    (p.ownCard ? "your card" : "the card on file") +
+    (p.last4 ? ` ending ${p.last4}` : "") +
+    ` (VAT included; a full month is ${p.price}). Stripe has emailed you the receipt. Details: ${p.link}`,
+  /** A month that played no games: nothing charged. Only the FIRST such
+   *  month in a row is told (a summer break sends one). */
+  billing_dm_month_free: (p: { name: string | null; club: string; from: string; to: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} played no games between ${p.from} and ${p.to}, so there is nothing to pay for that month. ` +
+    `MatchTime only charges for the games you play.`,
+  /** Keep paying: Stop paying undone, or (`restarted`) billing started
+   *  again after the stop took effect. `date` is the next charge. */
+  billing_dm_keep_paying: (p: { name: string | null; club: string; price: string; date: string; restarted: boolean; link: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, ` +
+    (p.restarted
+      ? `MatchTime is back on for ${p.club} and picks things up again in the group within a few minutes. Anyone who said IN while it was paused should say it again. Each month`
+      : `done: MatchTime keeps running in the ${p.club} WhatsApp group and billing carries on. As before, each month`) +
+    ` is charged only for the games played, up to ${p.price}, the morning after it ends; the next charge is on ${p.date}. ` +
+    `To change your card or stop: ${p.link}`,
 };

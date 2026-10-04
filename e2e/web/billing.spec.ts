@@ -144,7 +144,7 @@ test.describe("/billing/[orgId] per role", () => {
     await expect(add).toBeEnabled();
     await expect(page.getByText("Card payments open here soon.")).toHaveCount(0);
     const tip = page.getByTestId("billing-tip");
-    await expect(tip).toContainText("your weekly 7-a-side is 14 players and about 4 games a month");
+    await expect(tip).toContainText("MatchTime only charges for the games you play, up to £9.99 a month. Each game played costs the club at most £2.50");
     await expect(tip).toContainText("20p a player per game");
     await expect(tip).toContainText("Your game is £7 each, so charging £7.20 covers it.");
     expect(await billing.innerText()).not.toMatch(DASH);

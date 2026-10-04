@@ -25,10 +25,17 @@ export const STRIPE_MIN_CHARGE_PENCE = 30;
  *  "mt_resumed_<orgId>_<ms>", never colliding with Stripe's "evt_..."). */
 export const PAUSED_EVENT_TYPE = "mt.paused";
 export const RESUMED_EVENT_TYPE = "mt.resumed";
-/** Slice P2 review (H1): the club stopped being billable (plan Free,
- *  suspended) and became billable again. Per club. */
+/** Slice P2 review (H1): the club stopped being billable because it was
+ *  set FREE (moved into "exempt") and became billable again. Per club;
+ *  written by `setBillingState`. */
 export const UNBILLED_EVENT_TYPE = "mt.unbilled";
 export const BILLED_EVENT_TYPE = "mt.billed";
+/** Slice P3 (P2 review LOW 2): SUSPENDED by the platform owner, and
+ *  billable again. Its OWN pair, so a Free spell that ends while the club is
+ *  still suspended (Free, then Standard again) never ends the suspension's
+ *  spell. Per club; written by club-billing-spells.ts. */
+export const SUSPENDED_EVENT_TYPE = "mt.suspended";
+export const UNSUSPENDED_EVENT_TYPE = "mt.unsuspended";
 /** Slice P2 review (H1): BILLING_ENABLED seen off, then on, by the hourly
  *  billing run. GLOBAL rows (orgId NULL): they apply to every club. */
 export const BILLING_OFF_EVENT_TYPE = "mt.billing-off";
@@ -175,7 +182,8 @@ function pairedSpans(events: Array<{ type: string; at: Date }>, start: string, e
 /**
  * Every span in which a club's games are never charged (slice P2 review,
  * H1): billing-paused (`mt.paused` / `mt.resumed`), not billable
- * (`mt.unbilled` / `mt.billed`: Free, suspended) and billing switched off
+ * (`mt.unbilled` / `mt.billed`: Free; `mt.suspended` / `mt.unsuspended`:
+ * suspended, slice P3) and billing switched off
  * (`mt.billing-off` / `mt.billing-on`, global). A game that kicked off
  * inside any of them is scheduled and NOT played, as a pause span already
  * is, so it can only lower the fee. Ordered by start.
@@ -184,6 +192,7 @@ export function notChargedSpansFrom(events: Array<{ type: string; at: Date }>): 
   return [
     ...pairedSpans(events, PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE),
     ...pairedSpans(events, UNBILLED_EVENT_TYPE, BILLED_EVENT_TYPE),
+    ...pairedSpans(events, SUSPENDED_EVENT_TYPE, UNSUSPENDED_EVENT_TYPE),
     ...pairedSpans(events, BILLING_OFF_EVENT_TYPE, BILLING_ON_EVENT_TYPE),
   ].sort((a, b) => a.from.getTime() - b.from.getTime());
 }

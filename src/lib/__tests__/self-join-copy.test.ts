@@ -156,7 +156,9 @@ describe("sj_dm_approved for a BILLED club (club fee billing, slice B2, plan 7.2
 
     it(`${lang}: the tip carries exactly the tip's amounts, and no dash`, () => {
       const after = dm.slice(dm.indexOf(free) + free.length);
-      expect(after.match(/£\d+(?:\.\d\d)?|\d+p/g)).toEqual(["£9.99", "25p", "£8", "£8.25"]);
+      // Slice P3 (games played): the monthly maximum, the per game maximum,
+      // the share and the worked example.
+      expect(after.match(/£\d+(?:\.\d\d)?|\d+p/g)).toEqual(["£9.99", "£2.50", "25p", "£8", "£8.25"]);
       // Nothing before the free sentence gained an amount.
       expect(dm.slice(0, dm.indexOf(free))).not.toMatch(/£|\d+[.,]\d\d/);
       expect(dm).not.toMatch(/[—–]/);

@@ -1876,16 +1876,17 @@ export const tr: Strings = {
   ai_cap_more_contact: "Daha fazlası mı gerekiyor? hello@matchtime.ai adresine yazın, kulübünüzün günlük hakkını artıralım.",
   ai_cap_more_buy: (p) => `Daha fazlası mı gerekiyor? Ek yapay zekâ hakkını buradan satın alabilirsiniz: ${p.url}`,
   club_fee_tip: (p) =>
-    `💷 *Kulüp ücreti ipucu:* haftalık ${p.format} maçınız ${p.players} oyunculu ve ayda yaklaşık ${p.games} maç oynanıyor, ` +
-    `yani ${p.price} oyuncu başına maç başına yaklaşık *${p.share}* ediyor. ` +
+    `💷 *Kulüp ücreti ipucu:* MatchTime yalnızca oynadığınız maçlar için ücret alır, ayda en fazla ${p.price}. ` +
+    `Oynanan her maç kulübe en fazla ${p.perGame} tutar; bu da ${p.players} oyuncunuz için *oyuncu başına maç başına yaklaşık ${p.share}* eder. ` +
     (p.mode === "split"
       ? `Saha ücretini bölüştürürken her oyuncunun payına yaklaşık ${p.share} ekleyin.`
       : p.mode === "known"
         ? `Maç ücretiniz kişi başı ${p.fee}, *${p.feePlus}* alırsanız karşılanır.`
-        : `Maç ücreti kişi başı ${p.fee} ise *${p.feePlus}* alın, kulüp ücreti karşılanmış olur.`),
+        : `Maç ücreti kişi başı ${p.fee} ise *${p.feePlus}* alın, kulüp ücreti karşılanmış olur.`) +
+    ` Oynamadığınız haftalar için hiçbir şey ödemezsiniz.`,
   sj_dm_approved_tip: (p) =>
-    `💷 *Kulüp ücreti ipucu:* sonrasında grup için aylık ${p.price}, maç ücretlerini toplayan kişi kartla öder. ` +
-    `${p.players} oyuncu ve ayda yaklaşık ${p.games} maçla bu, oyuncu başına maç başına yaklaşık *${p.share}* ediyor` +
+    `💷 *Kulüp ücreti ipucu:* sonrasında MatchTime yalnızca oynadığınız maçlar için ücret alır, grup için ayda en fazla ${p.price}; ücreti maç ücretlerini toplayan kişi kartla öder. ` +
+    `Oynanan her maç en fazla ${p.perGame} tutar, ${p.players} oyuncuyla *oyuncu başına maç başına yaklaşık ${p.share}* eder` +
     (p.split
       ? `; saha ücretini bölüştürürken her oyuncunun payına ekleyebilirsiniz.`
       : `; ${p.fee} olan bir maç için *${p.feePlus}* alabilirsiniz.`),
@@ -1941,64 +1942,87 @@ export const tr: Strings = {
     (p.resumed
       ? `MatchTime ${p.club} için yeniden açıldı ve birkaç dakika içinde grupta kaldığı yerden devam ediyor. Duraklatılmışken VARIM yazanlar lütfen tekrar yazsın. `
       : `MatchTime ${p.club} WhatsApp grubunda çalışmaya devam ediyor. `) +
-    (p.paidNow
-      ? `İlk ${p.price} bugün alındı, sonra her ay alınacak; her faturayı Stripe size e-postayla gönderir.`
-      : `İlk ${p.price} ${p.date} tarihinde, sonra her ay alınacak; her faturayı Stripe size e-postayla gönderir.`) +
-    ` Kartınızı değiştirmek ya da iptal etmek için: ${p.link}`,
+    `Şu an hiçbir ücret alınmadı: her ayın sonunda oynanan maçları sayıyorum ve yalnızca onlar için, en fazla ${p.price} alıyorum. ` +
+    `${p.first ? "İlk" : "Sonraki"} ödeme ${p.date} tarihinde; her makbuzu Stripe size e-postayla gönderir. Kartınızı değiştirmek ya da durdurmak için: ${p.link}`,
   billing_dm_card_replaced: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime ücretini artık ${p.newName} ödüyor. Kartınız kaldırıldı ve bunun için bir daha ücret alınmayacak.`,
   billing_dm_resumed: (p) =>
     `MatchTime ${p.club} için yeniden açıldı. Birkaç dakika içinde grupta kaldığım yerden devam ediyorum. Ben duraklatılmışken VARIM yazanlar lütfen tekrar yazsın.`,
   billing_dm_plan_billed: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} yeniden aylık ${p.price} MatchTime planında. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} yeniden MatchTime planında: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
     `Ücretsiz ay daha önce kullanıldı, bu yüzden MatchTime grupta ${p.date} tarihine kadar çalışmaya devam edecek. ` +
     `Çalışmaya devam etmesi için o tarihe kadar kart ekleyin: ${p.link}`,
   billing_dm_trial_21: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime'daki ücretsiz ay ${p.date} tarihinde bitiyor. ` +
     (p.collector ? `Maç ücretlerini siz topladığınız için kartı sizden istiyorum. ` : "") +
     `MatchTime'ın ${p.club} WhatsApp grubunda çalışmaya devam etmesi için buradan kart ekleyin: ${p.link}\n` +
-    `Tüm grup için aylık ${p.price}. ${p.date} tarihinden önce hiçbir ücret alınmaz.`,
+    `Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla ${p.price}, her ay bittikten sonra alınır. ` +
+    `Kartı eklediğinizde hiçbir ücret alınmaz; ilk ödeme ${p.firstCharge} tarihinde.`,
   billing_dm_trial_28: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, kısa bir hatırlatma: ${p.club} için ücretsiz ay ${p.date} tarihinde bitiyor. ` +
-    `MatchTime'ın ${p.club} WhatsApp grubunda çalışmaya devam etmesi için kart ekleyin: ${p.link}`,
+    `MatchTime'ın ${p.club} WhatsApp grubunda çalışmaya devam etmesi için kart ekleyin: ${p.link}\n` +
+    `Yalnızca oynadığınız maçlar için ödersiniz, ayda en fazla ${p.price}; kartı eklediğinizde hiçbir ücret alınmaz.`,
   billing_dm_trial_ended: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ücretsiz ay sona erdi. ` +
     `MatchTime ${p.club} WhatsApp grubunda bir hafta daha, ${p.date} tarihine kadar çalışmaya devam edecek. ` +
-    `O tarihe kadar istediğiniz zaman kart ekleyebilirsiniz: ${p.link}`,
+    `O tarihe kadar istediğiniz zaman kart ekleyebilirsiniz: ${p.link}\n` +
+    `Yalnızca oynadığınız maçlar için ödersiniz, ayda en fazla ${p.price}, her ay bittikten sonra alınır.`,
   billing_dm_set_collector:
     "İpucu: maç ücretlerini başka biri topluyorsa, Ayarlar'dan onu para toplayan kişi yapın, kartla o ilgilensin.",
   billing_dm_paused: (p) =>
     (p.kind === "payment-failed"
-      ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.price} ödemesini alamadık, bu yüzden MatchTime şu an duraklatıldı. `
+      ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.amount} ödemesini alamadık, bu yüzden MatchTime şu an duraklatıldı. `
       : p.kind === "cancelled"
-        ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime planı sona erdi, bu yüzden MatchTime şu an duraklatıldı. `
+        ? `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime ödemesini durdurdunuz, bu yüzden şu an duraklatıldı. Son ay, her zamanki gibi yalnızca oynanan maçlar için ücretlendirildi. `
         : `Merhaba${p.name ? ` ${p.name}` : ""}, MatchTime ${p.club} için şu an duraklatıldı. `) +
     `Hâlâ ${p.club} WhatsApp grubundayım ama orada mesaj atmayacağım ya da yanıt vermeyeceğim, gruba da hiçbir şey söylenmedi. ` +
-    `Oyuncular, maçlar ve istatistikler saklanıyor. MatchTime'ı yeniden açmak için buradan kart ekleyin, birkaç dakika içinde tekrar başlar: ${p.link}`,
+    `Oyuncular, maçlar ve istatistikler saklanıyor. ` +
+    (p.kind === "payment-failed"
+      ? `MatchTime'ı yeniden açmak için buradan kartı güncelleyip ödeyin, birkaç dakika içinde tekrar başlar: ${p.link}`
+      : p.kind === "cancelled"
+        ? `MatchTime'ı yeniden açmak için buradan Ödemeye devam et düğmesine basın, birkaç dakika içinde tekrar başlar: ${p.link}`
+        : `MatchTime'ı yeniden açmak için buradan kart ekleyin, birkaç dakika içinde tekrar başlar: ${p.link}`),
   billing_dm_payment_failed: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için bu ayın ${p.price} ödemesi alınamadı. ` +
-    `Stripe önümüzdeki birkaç gün içinde tekrar deneyecek, bu sürede MatchTime çalışmaya devam ediyor. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.from} ile ${p.to} arasındaki maçların ${p.amount} ödemesi alınamadı. ` +
+    `Önümüzdeki birkaç gün içinde tekrar denenecek, bu sürede MatchTime çalışmaya devam ediyor. ` +
     (p.ownCard ? `Kartı güncellemek için: ${p.link}` : `Bunun yerine kendi kartınızı eklemek için: ${p.link}`),
   billing_dm_payment_action: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için bu ayın ${p.price} ödemesinin geçebilmesi için bankanız onayınızı istiyor. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ${p.from} ile ${p.to} arasındaki maçların ${p.amount} ödemesinin geçebilmesi için bankanız onayınızı istiyor. ` +
     `Lütfen buradan onaylayın: ${p.link}\nBu sürede MatchTime çalışmaya devam ediyor.`,
   billing_dm_payment_action_other: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için kayıtlı kartla bu ayın ${p.price} ödemesinin geçebilmesi için banka onayı gerekiyor. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için kayıtlı kartla ${p.from} ile ${p.to} arasındaki maçların ${p.amount} ödemesinin geçebilmesi için banka onayı gerekiyor. ` +
     `Buradan onaylayıp ödeyebilirsiniz: ${p.link}\nBunun yerine kendi kartınızı ekleyin: ${p.billingLink}\nBu sürede MatchTime çalışmaya devam ediyor.`,
   billing_dm_payer_changed_card: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden ${p.club} WhatsApp grubu için MatchTime kulüp ücretiyle siz ilgileniyorsunuz: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
     `Siz kendi kartınızı ekleyene kadar ${p.oldName} kişisinin kartından ödenmeye devam ediyor, size uygun bir zamanda ekleyebilirsiniz: ${p.link}`,
   billing_dm_payer_changed_no_card: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden ${p.club} WhatsApp grubu için MatchTime kulüp ücretiyle siz ilgileniyorsunuz: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
     `Çalışmaya devam etmesi için ${p.date} tarihinden önce kart ekleyin: ${p.link}`,
   billing_dm_payer_changed_paused: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden ${p.club} WhatsApp grubu için MatchTime kulüp ücretiyle siz ilgileniyorsunuz: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
     `Yeniden açmak için kart ekleyin: ${p.link}`,
   billing_dm_payer_changed_removed: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden grup için MatchTime'ın aylık ${p.price} ücretiyle siz ilgileniyorsunuz. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, artık ${p.club} için para toplayan kişi sizsiniz, bu yüzden ${p.club} WhatsApp grubu için MatchTime kulüp ücretiyle siz ilgileniyorsunuz: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
     `MatchTime ${p.club} WhatsApp grubundan çıkarıldığı için duraklatıldı. Yeniden açmak için MatchTime'ı gruba geri ekleyin. Kulüp ücreti sayfası: ${p.link}`,
   billing_admin_no_collector: (p) =>
     `Henüz para toplayan kişi seçilmedi. Ayarlar'dan birini seçin: kulüp ücreti için kartla o ilgilenecek ve bu ipucunu o da alacak.${p.link ? ` ${p.link}` : ""}`,
+  billing_dm_month_charged: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} ${p.from} ile ${p.to} arasında` +
+    (p.played === p.scheduled && p.scheduled > 1 ? `ki ${p.scheduled} maçın hepsini oynadı` : ` ${p.scheduled} maçın ${p.played} tanesini oynadı`) +
+    `, bu yüzden ` +
+    (p.last4 ? `${p.last4} ile biten ` : "") +
+    (p.ownCard ? "kartınızdan" : "kayıtlı karttan") +
+    ` ${p.amount} çekildi (KDV dahil; tam ay ${p.price}). Makbuzu Stripe size e-postayla gönderdi. Ayrıntılar: ${p.link}`,
+  billing_dm_month_free: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} ${p.from} ile ${p.to} arasında hiç maç oynamadı, bu yüzden o ay için ödenecek bir şey yok. ` +
+    `MatchTime yalnızca oynadığınız maçlar için ücret alır.`,
+  billing_dm_keep_paying: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ` +
+    (p.restarted
+      ? `MatchTime ${p.club} için yeniden açıldı ve birkaç dakika içinde grupta kaldığı yerden devam ediyor. Duraklatılmışken VARIM yazanlar lütfen tekrar yazsın. Her ay`
+      : `tamam: MatchTime ${p.club} WhatsApp grubunda çalışmaya devam ediyor ve ödeme sürüyor. Önceden olduğu gibi her ay`) +
+    ` yalnızca oynanan maçlar için, en fazla ${p.price}, ay bittikten sonraki sabah ücret alınır; sonraki ödeme ${p.date} tarihinde. ` +
+    `Kartınızı değiştirmek ya da durdurmak için: ${p.link}`,
 };
 
 /**

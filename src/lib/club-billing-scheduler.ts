@@ -16,9 +16,22 @@
  *           the one locked writer `setBillingState`, so a webhook arriving
  *           at the same moment is serialised and the second one decides on
  *           fresh state (a card added a second earlier wins);
- *        b. in the daytime only (10:00 to 20:00 London): the billing
- *           contact's day 21, 28, 30 or "paused" DM, the admins' club fee
- *           tip, and every pending billing DM that is still true.
+ *        b. slice P3: the club's CURRENT billing month is opened if it is
+ *           not yet, at any hour (`openDueMonths`: only the month
+ *           containing now, never an earlier one, so no catch-up);
+ *        c. in the daytime only (10:00 to 20:00 London):
+ *             - slice P3: the club's lowest month that ended at least 6
+ *               hours ago is closed: counted, and charged or recorded why
+ *               not (`closeNextDueMonth`, a compare-and-set: one month per
+ *               club per run, and two runs never both charge it);
+ *             - slice P3: the cron's own retries of a failed month's
+ *               invoice, days 1, 3 and 5 (BILLING_CRON_RETRIES, default
+ *               on); a paid retry is applied at once;
+ *             - the billing contact's day 21, 28, 30 or "paused" DM, the
+ *               admins' club fee tip, every pending billing DM that is
+ *               still true, and (slice P3) the month DMs: the receipt of a
+ *               paid month, "nothing to pay" for the first month in a row
+ *               with no games.
  *
  * Why a Vercel cron and not the Pi scheduler: the Pi stops polling a paused
  * club, and the day 37 DM must go out after the pause. The platform DM
@@ -32,14 +45,22 @@ import { setBillingState } from "./club-billing";
 import { APPROVED_CLUB_WHERE, isClubApproved } from "./club-approval-state";
 import { isBillingEnabled } from "./club-billing-rules";
 import { billingTransitionDue, isBillingDmHour } from "./club-billing-schedule-rules";
-import { flushPendingBillingDms, sendClubFeeTip, sendScheduledBillingDms } from "./club-billing-dms";
-import { flushPendingBillingNotices } from "./club-billing-stripe";
-import { sweepUnwantedMonthInvoices } from "./club-billing-months";
+import { flushPendingBillingDms, sendClubFeeTip, sendMonthDms, sendScheduledBillingDms } from "./club-billing-dms";
+import { flushPendingBillingNotices, syncPaidMonthInvoice } from "./club-billing-stripe";
+import { closeNextDueMonth, openDueMonths, retryFailedMonthInvoices, sweepUnwantedMonthInvoices } from "./club-billing-months";
 import { recordBillingFlagState } from "./club-billing-spells";
 
 export interface BillingCronClubReport {
   orgId: string;
   transition?: string;
+  /** Slice P3: month(s) opened this run. */
+  opened?: number[];
+  /** Slice P3: the month closed this run, "<index>:<outcome>", or why not. */
+  closed?: string;
+  /** Slice P3: the cron's retries, "<index>:d<day>:<outcome>". */
+  retries?: string[];
+  /** Slice P3: the month DMs queued, "<kind>:<index>". */
+  monthDms?: string[];
   dms?: string[];
   feeTip?: string;
   pendingSent?: number;
@@ -96,10 +117,26 @@ export async function runBillingCron(now: Date = new Date()): Promise<BillingCro
           report.transition = r.ok ? `${r.from}->${r.to}` : `${due}:${r.reason}`;
         }
       }
+      // The current month, at any hour (the first one starts when the free
+      // month ends, often in the night).
+      const opened = await openDueMonths(row.orgId, now);
+      if (opened.opened.length > 0) report.opened = opened.opened;
       if (daytime) {
+        // Close BEFORE the DMs: a Stop paying that takes effect at this
+        // close pauses the club, and its "paused" DM goes in the same run.
+        const close = await closeNextDueMonth(row.orgId, now);
+        report.closed =
+          "outcome" in close ? `${close.index}:${close.outcome}${close.stopped ? ":stopped" : ""}` : "error" in close ? `error:${close.error}` : close.skipped;
+        const retries = await retryFailedMonthInvoices(row.orgId, now);
+        if (retries.length > 0) report.retries = retries.map((r) => `${r.index}:d${r.day}:${r.outcome}`);
+        for (const r of retries.filter((x) => x.outcome === "paid")) {
+          await syncPaidMonthInvoice({ orgId: row.orgId, monthId: r.monthId, invoiceId: r.invoiceId, now });
+        }
         report.dms = await sendScheduledBillingDms(row.orgId, now);
         report.feeTip = await sendClubFeeTip(row.orgId, now);
         report.pendingSent = (await flushPendingBillingDms(row.orgId, now)) + (await flushPendingBillingNotices(row.orgId, now));
+        const monthDms = await sendMonthDms(row.orgId, now);
+        if (monthDms.length > 0) report.monthDms = monthDms;
       }
     } catch (err) {
       report.error = err instanceof Error ? err.message : String(err);

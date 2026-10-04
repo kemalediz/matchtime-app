@@ -81,6 +81,9 @@ const h = vi.hoisted(() => {
     paymentNotes: [] as Array<Record<string, unknown>>,
     ops: [] as Array<{ title: string; severity: string }>,
     spells: [] as Array<{ orgId: string; type: string; at: Date }>,
+    locks: new Map<string, Promise<void>>(),
+    receipts: [] as string[],
+    lockKeys: [] as string[],
   };
   const cmp = (row: Record<string, unknown>, where: Record<string, unknown>) =>
     Object.entries(where).every(([k, v]) => {
@@ -159,17 +162,38 @@ const h = vi.hoisted(() => {
     },
     billingEvent: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => state.events.get(where.id) ?? null),
-      findFirst: vi.fn(async ({ where }: { where: { orgId: string; type: string; receivedAt?: { gt: Date }; id?: { not: string } } }) => {
-        return (
-          [...state.events.values()].find(
-            (e) =>
-              e.orgId === where.orgId &&
-              e.type === where.type &&
-              (!where.receivedAt || (e.receivedAt !== undefined && e.receivedAt.getTime() > where.receivedAt.gt.getTime())) &&
-              (!where.id || e.id !== where.id.not),
-          ) ?? null
-        );
-      }),
+      findFirst: vi.fn(
+        async ({
+          where,
+        }: {
+          where: {
+            orgId: string;
+            type: string;
+            receivedAt?: { gt: Date };
+            id?: { not: string };
+            OR?: Array<{ receivedAt: Date | { gt: Date }; id?: { gt: string } }>;
+          };
+        }) => {
+          const at = (e: { receivedAt?: Date }) => e.receivedAt?.getTime() ?? NaN;
+          const orOk = (e: { id: string; receivedAt?: Date }) =>
+            !where.OR ||
+            where.OR.some((w) =>
+              w.receivedAt instanceof Date
+                ? at(e) === w.receivedAt.getTime() && (!w.id || e.id > w.id.gt)
+                : at(e) > w.receivedAt.gt.getTime(),
+            );
+          return (
+            [...state.events.values()].find(
+              (e) =>
+                e.orgId === where.orgId &&
+                e.type === where.type &&
+                (!where.receivedAt || (e.receivedAt !== undefined && e.receivedAt.getTime() > where.receivedAt.gt.getTime())) &&
+                (!where.id || e.id !== where.id.not) &&
+                orOk(e),
+            ) ?? null
+          );
+        },
+      ),
       create: vi.fn(async ({ data }: { data: { id: string; type: string; orgId?: string | null; receivedAt?: Date } }) => {
         if (state.events.has(data.id)) throw Object.assign(new Error("Unique constraint"), { code: "P2002" });
         const row = { id: data.id, type: data.type, orgId: data.orgId ?? null, processedAt: null, error: null, receivedAt: data.receivedAt };
@@ -185,6 +209,28 @@ const h = vi.hoisted(() => {
     user: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => (state.users[where.id] ? { id: where.id, ...state.users[where.id] } : null)),
     },
+    /** An interactive transaction whose `$executeRaw` takes a transaction-
+     *  scoped advisory lock (released when the callback settles), as
+     *  Postgres does: a second taker waits for the first. */
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      let release: () => void = () => undefined;
+      const tx = {
+        $executeRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          const key = String(values[0]);
+          state.lockKeys.push(key);
+          const prev = state.locks.get(key) ?? Promise.resolve();
+          const mine = new Promise<void>((r) => (release = r));
+          state.locks.set(key, prev.then(() => mine));
+          await prev;
+          return 1;
+        }),
+      };
+      try {
+        return await fn(tx);
+      } finally {
+        release();
+      }
+    }),
   };
   return { state, db };
 });
@@ -206,14 +252,19 @@ vi.mock("../club-billing-dms", () => ({
     h.state.paymentNotes.push(a);
     return "pending";
   }),
+  // Slice P3: the receipt after invoice.paid (its own tests: club-billing-p3-dms.test.ts).
+  sendMonthCharged: vi.fn(async (orgId: string, monthId: string) => {
+    h.state.receipts.push(monthId);
+    return "queued";
+  }),
 }));
 vi.mock("../club-billing-month-loader", () => ({ loadClubMonthInput: vi.fn(async () => null) }));
 vi.mock("../club-billing-spells", () => ({
-  recordNotBillable: vi.fn(async (orgId: string, now: Date) => {
-    h.state.spells.push({ orgId, type: "mt.unbilled", at: now });
+  recordSuspended: vi.fn(async (orgId: string, now: Date) => {
+    h.state.spells.push({ orgId, type: "mt.suspended", at: now });
     return true;
   }),
-  closeNotBillableSpell: vi.fn(async () => false),
+  closeNotBillableSpells: vi.fn(async () => 0),
 }));
 vi.mock("../club-billing", async () => {
   const rules = await vi.importActual<typeof import("../club-billing-rules")>("../club-billing-rules");
@@ -344,7 +395,8 @@ beforeEach(() => {
   process.env.NEXTAUTH_URL = "https://mt.test";
   fake = createFakeBillingStripe();
   setBillingStripeForTests(fake);
-  Object.assign(h.state, { months: [], dms: [], stateCalls: [], pending: [], skipped: [], paymentNotes: [], ops: [], spells: [], contact: "user_colin" });
+  Object.assign(h.state, { months: [], dms: [], stateCalls: [], pending: [], skipped: [], paymentNotes: [], ops: [], spells: [], receipts: [], lockKeys: [], contact: "user_colin" });
+  h.state.locks.clear();
   h.state.events.clear();
   h.state.notices.clear();
   setWorld();
@@ -821,7 +873,9 @@ describe("Stop paying and Keep paying (4.2)", () => {
     const inv = await invoicedMonth(1, "failed");
     await fake.payInvoice(inv, { paymentMethodId: "pm_colin" });
     await handleBillingEvent(invoiceEvent("invoice.paid", inv), new Date(M1_END.getTime() + 3 * DAY));
-    expect(h.state.stateCalls.map((c) => c.type)).toEqual(["invoice-paid", "billing-stopped"]);
+    // P3 (P2 review LOW 4): the stop is applied FIRST, so the club is never
+    // moved back on (or told "MatchTime is back") on its way to the pause.
+    expect(h.state.stateCalls.map((c) => c.type)).toEqual(["billing-stopped"]);
     expect(h.state.org!.billingStatus).toBe("paused");
     expect(h.state.billing!.pausedReason).toBe("cancelled");
   });
@@ -888,7 +942,7 @@ describe("plan changes and suspension (2A.6)", () => {
     h.state.months.push({ ...h.state.months[0], id: "cbm_2", index: 2, status: "open", stripeInvoiceId: null, amountPence: null });
     expect(await onClubSuspended(ORG, MID_M1)).toEqual({ waived: 1 });
     // H1: the not-billable spell starts now, so no game while suspended is ever charged.
-    expect(h.state.spells).toEqual([{ orgId: ORG, type: "mt.unbilled", at: MID_M1 }]);
+    expect(h.state.spells).toEqual([{ orgId: ORG, type: "mt.suspended", at: MID_M1 }]);
     expect(h.state.months.map((m) => m.status)).toEqual(["failed", "waived"]);
     expect((await fake.retrieveInvoice(inv))?.status).toBe("open");
   });
@@ -899,5 +953,77 @@ describe("the retired subscription code is gone", () => {
     for (const name of ["openClubPortal", "isClubPortalAvailable", "syncPlanToStripe", "cancelSubscriptionOnSuspend", "sweepOpenRefundIntents", "REFUND_SWEEP_MIN_AGE_MS"]) {
       expect(name in glue, name).toBe(false);
     }
+  });
+});
+
+// ── Slice P3: the four LOW items from the P2 review ─────────────────────
+
+describe("P2 review LOW fixes (slice P3)", () => {
+  const SAME_SECOND = Math.floor(DAYTIME.getTime() / 1000);
+  const sessionA = () => cardSaved("replace-card", "user_olly", { id: "cs_a", created: SAME_SECOND });
+  const sessionB = () => cardSaved("replace-card", "user_pat", { id: "cs_b", created: SAME_SECOND });
+
+  for (const order of ["a-then-b", "b-then-a", "concurrent"] as const) {
+    it(`LOW 1: two card sessions created in the SAME second, ${order}: the higher session id wins, the other card is removed`, async () => {
+      setWorld({ billingStatus: "subscribed" }, withCard());
+      h.state.contact = "user_pat";
+      if (order === "a-then-b") {
+        await handleBillingEvent(sessionA(), DAYTIME);
+        await handleBillingEvent(sessionB(), DAYTIME);
+      } else if (order === "b-then-a") {
+        await handleBillingEvent(sessionB(), DAYTIME);
+        expect(await handleBillingEvent(sessionA(), DAYTIME)).toMatchObject({ action: "ignored", reason: "superseded-session" });
+      } else {
+        await Promise.all([handleBillingEvent(sessionA(), DAYTIME), handleBillingEvent(sessionB(), DAYTIME)]);
+      }
+      expect(h.state.billing).toMatchObject({ stripePaymentMethodId: "pm_pat", cardHolderUserId: "user_pat" });
+      expect(fake.state().detached).toContain("pm_olly");
+      expect(fake.state().detached).not.toContain("pm_pat");
+      // The Customer's default is the winner's card.
+      expect(fake.state().customers["cus_fake_1"]?.defaultPaymentMethod ?? "pm_pat").toBe("pm_pat");
+      // Serialised per club by an advisory lock.
+      expect(h.state.lockKeys.every((k) => k === `club-card-session:${ORG}`)).toBe(true);
+    });
+  }
+
+  it("LOW 3: a suspension records the not-billable marker BEFORE touching Stripe (a Stripe error never loses it)", async () => {
+    setWorld({ billingStatus: "subscribed", approvalStatus: "suspended" }, withCard());
+    vi.spyOn(fake, "expireOpenCheckoutSessions").mockRejectedValueOnce(new Error("Stripe is down"));
+    await expect(onClubSuspended(ORG, MID_M1)).rejects.toThrow("Stripe is down");
+    expect(h.state.spells).toEqual([{ orgId: ORG, type: "mt.suspended", at: MID_M1 }]);
+  });
+
+  it("LOW 4: paused for a failed payment with Stop paying due: the paid invoice moves it to paused (cancelled), never 'MatchTime is back'", async () => {
+    setWorld({ billingStatus: "paused" }, withCard({ pausedReason: "payment-failed", cancelAtPeriodEnd: true, currentPeriodEnd: M1_END }));
+    const inv = await invoicedMonth(1, "failed");
+    await fake.payInvoice(inv, { paymentMethodId: "pm_colin" });
+    await handleBillingEvent(invoiceEvent("invoice.paid", inv), new Date(M1_END.getTime() + 9 * DAY));
+    expect(h.state.stateCalls.map((c) => c.type)).toEqual(["billing-stopped"]);
+    expect(h.state.org!.billingStatus).toBe("paused");
+    expect(h.state.billing!.pausedReason).toBe("cancelled");
+    expect(h.state.pending.filter((p) => p.kind === "resumed")).toEqual([]);
+    expect(h.state.dms.filter((d) => d.kind === "resumed")).toEqual([]);
+    // The money WAS taken: the receipt still goes.
+    expect(h.state.receipts).toEqual(["cbm_1"]);
+  });
+
+  it("LOW 4: voided while past due with Stop paying due: straight to paused (cancelled), never back to subscribed first", async () => {
+    setWorld({ billingStatus: "past_due" }, withCard({ cancelAtPeriodEnd: true, currentPeriodEnd: M1_END }));
+    const inv = await invoicedMonth(1, "failed");
+    await fake.voidInvoice(inv);
+    await handleBillingEvent(invoiceEvent("invoice.voided", inv), new Date(M1_END.getTime() + 2 * DAY));
+    expect(h.state.stateCalls.map((c) => c.type)).toEqual(["billing-stopped"]);
+    expect(h.state.org!.billingStatus).toBe("paused");
+    expect(h.state.pending.filter((p) => p.kind === "resumed")).toEqual([]);
+  });
+
+  it("LOW 4: no stop pending: a paid invoice still resumes as before, and the receipt is sent", async () => {
+    setWorld({ billingStatus: "paused" }, withCard({ pausedReason: "payment-failed" }));
+    const inv = await invoicedMonth(1, "failed");
+    await fake.payInvoice(inv, { paymentMethodId: "pm_colin" });
+    await handleBillingEvent(invoiceEvent("invoice.paid", inv), new Date(M1_END.getTime() + 9 * DAY));
+    expect(h.state.stateCalls.map((c) => c.type)).toEqual(["invoice-paid"]);
+    expect(h.state.org!.billingStatus).toBe("subscribed");
+    expect(h.state.receipts).toEqual(["cbm_1"]);
   });
 });

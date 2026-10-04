@@ -227,6 +227,16 @@
  *     badge's rules, an unknown name). CHANGED, on purpose: bare help
  *     (R143, R148 bare / admin) lists the new badges topic.
  *
+ *   - 2026-10-04, club fee billing slice P3 (charged by games played):
+ *     ADDED R191 (the month's receipt, the first month with no games, Keep
+ *     paying, the payment failed, bank check and paused DMs naming the
+ *     month and its amount). CHANGED, on purpose: R188 (the club fee tip
+ *     and the "you're live" tip: only the games played, up to the monthly
+ *     price, at most {perGame} a game), R190 (card added: nothing taken, the
+ *     first or next charge date; "paid now" retired: saving a card never
+ *     charges; billed again: "only the games played, up to"). No other case
+ *     changed.
+ *
  *   - 2026-10-01, club fee billing slice B3 (Stripe): ADDED R190 (the
  *     billing page's notices after a card action; the "card added",
  *     "card replaced", "resumed" and "billed again after Free" DMs).
@@ -395,6 +405,12 @@ import {
   cardAddedText,
   cardReplacedText,
   clubFeeTipText,
+  keepPayingText,
+  monthChargedText,
+  monthFreeText,
+  paymentActionText,
+  paymentFailedText,
+  pausedText,
   planBilledText,
   resumedText,
 } from "../../club-billing-view";
@@ -1275,16 +1291,34 @@ function cases(lang: Lang): Case[] {
       .join("\n"),
   );
   const cardAdded = { name: "Colin", club: "Riverside FC", pricePence: 999, link: "https://matchtime.ai/r/abc" };
-  add("R190 billing DM / card added, free month", cardAddedText(lang, { ...cardAdded, firstPaymentOn: billView.trialEndsAt, resumed: false }));
-  add("R190 billing DM / card added, paid now", cardAddedText(lang, { ...cardAdded, firstPaymentOn: null, resumed: false }));
-  add("R190 billing DM / card added, back on after a pause", cardAddedText(lang, { ...cardAdded, firstPaymentOn: null, resumed: true }));
-  add("R190 billing DM / card added, no name", cardAddedText(lang, { ...cardAdded, name: null, firstPaymentOn: null, resumed: false }));
+  const firstChargeOn = new Date("2026-12-01T00:00:00Z");
+  add("R190 billing DM / card added, free month", cardAddedText(lang, { ...cardAdded, firstChargeOn, first: true, resumed: false }));
+  add("R190 billing DM / card added, a month already charged", cardAddedText(lang, { ...cardAdded, firstChargeOn, first: false, resumed: false }));
+  add("R190 billing DM / card added, back on after a pause", cardAddedText(lang, { ...cardAdded, firstChargeOn, first: false, resumed: true }));
+  add("R190 billing DM / card added, no name", cardAddedText(lang, { ...cardAdded, name: null, firstChargeOn, first: true, resumed: false }));
   add("R190 billing DM / card replaced", cardReplacedText(lang, { name: "Colin", newName: "Pat", club: "Riverside FC" }));
   add("R190 billing DM / resumed", resumedText(lang, { club: "Riverside FC" }));
   add(
     "R190 billing DM / billed again after Free",
     planBilledText(lang, { name: "Colin", club: "Riverside FC", pricePence: 999, graceEndsAt: billView.graceEndsAt, link: "https://matchtime.ai/r/abc" }),
   );
+  // Slice P3 (2026-10-04, games played): the month's receipt, the first
+  // month with no games, Keep paying, and the payment DMs naming the month.
+  const month1 = { startsAt: new Date("2026-11-01T14:00:00Z"), endsAt: new Date("2026-12-01T00:00:00Z") };
+  const p3 = { name: "Colin", club: "Riverside FC", link: "https://matchtime.ai/r/abc" };
+  add("R191 billing DM / month charged, 4 of 5", monthChargedText(lang, { ...p3, ...month1, played: 4, scheduled: 5, amountPence: 799, pricePence: 999, last4: "4242", ownCard: true }));
+  add("R191 billing DM / month charged, all played", monthChargedText(lang, { ...p3, ...month1, played: 4, scheduled: 4, amountPence: 999, pricePence: 999, last4: "4242", ownCard: true }));
+  add("R191 billing DM / month charged, someone else's card", monthChargedText(lang, { ...p3, ...month1, played: 3, scheduled: 4, amountPence: 749, pricePence: 999, last4: "1881", ownCard: false }));
+  add("R191 billing DM / month free", monthFreeText(lang, { name: "Colin", club: "Riverside FC", ...month1 }));
+  add("R191 billing DM / keep paying, undone", keepPayingText(lang, { ...p3, pricePence: 999, nextChargeOn: firstChargeOn, restarted: false }));
+  add("R191 billing DM / keep paying, started again", keepPayingText(lang, { ...p3, pricePence: 999, nextChargeOn: firstChargeOn, restarted: true }));
+  add("R191 billing DM / payment failed", paymentFailedText(lang, { ...p3, ...month1, amountPence: 749, ownCard: true }));
+  add(
+    "R191 billing DM / bank check, someone else's card",
+    paymentActionText(lang, { ...p3, ...month1, amountPence: 749, link: "https://invoice.stripe.com/i/x", ownCard: false, billingLink: p3.link }),
+  );
+  add("R191 billing DM / paused, payment failed", pausedText(lang, { ...p3, amountPence: 749, reason: "payment-failed" }));
+  add("R191 billing DM / paused, stopped paying", pausedText(lang, { ...p3, amountPence: 999, reason: "cancelled" }));
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));

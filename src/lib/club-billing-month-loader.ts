@@ -17,7 +17,9 @@ import {
   BILLING_ON_EVENT_TYPE,
   PAUSED_EVENT_TYPE,
   RESUMED_EVENT_TYPE,
+  SUSPENDED_EVENT_TYPE,
   UNBILLED_EVENT_TYPE,
+  UNSUSPENDED_EVENT_TYPE,
   notChargedSpansFrom,
   type CountClubMonthInput,
   type CycleActivity,
@@ -102,7 +104,12 @@ export async function loadClubMonthInput(
   const events = await client.billingEvent.findMany({
     where: {
       OR: [
-        { orgId, type: { in: [PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE, UNBILLED_EVENT_TYPE, BILLED_EVENT_TYPE] } },
+        {
+          orgId,
+          type: {
+            in: [PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE, UNBILLED_EVENT_TYPE, BILLED_EVENT_TYPE, SUSPENDED_EVENT_TYPE, UNSUSPENDED_EVENT_TYPE],
+          },
+        },
         { orgId: null, type: { in: [BILLING_OFF_EVENT_TYPE, BILLING_ON_EVENT_TYPE] } },
       ],
       receivedAt: { lt: month.endsAt },

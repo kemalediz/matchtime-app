@@ -14,9 +14,12 @@
  *   sweepUnwantedMonthInvoices  the hourly run's safety net for the same
  *   applyMonthInvoice      the billing webhook's paid / failed / void
  *   payUnpaidMonths        a new card pays what is unpaid at once
+ *   retryFailedMonthInvoices  slice P3: the cron's own retries of a failed
+ *                          month's invoice, days 1, 3 and 5 (configurable)
  *
- * The cron that calls the open and close steps is slice P3; nothing here
- * runs on its own. Nothing here sends a DM (P3).
+ * The hourly cron (club-billing-scheduler.ts, slice P3) calls the open,
+ * close and retry steps; nothing here runs on its own. Nothing here sends a
+ * DM (club-billing-dms.ts does).
  *
  * ── Money safety ─────────────────────────────────────────────────────
  *   - BILLING_ENABLED off: no month opens or closes, nothing is charged.
@@ -54,9 +57,9 @@ import {
   type CycleGame,
 } from "./club-billing-cycle-rules";
 import { isBillingEnabled, planPricePence } from "./club-billing-rules";
-import { isBillingDmHour } from "./club-billing-schedule-rules";
+import { cronRetriesEnabled, cronRetryDayDue, isBillingDmHour } from "./club-billing-schedule-rules";
 import { formatLondon } from "./london-time";
-import { closeNotBillableSpell } from "./club-billing-spells";
+import { closeNotBillableSpells } from "./club-billing-spells";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { billingStripeConfig, getBillingStripe, type BillingInvoice, type BillingStripe } from "./stripe-billing";
 
@@ -152,7 +155,7 @@ export async function openDueMonths(orgId: string, now: Date = new Date()): Prom
 
   // Billable now: a not-billable spell still open (a suspension lifted by
   // hand) ends here, so no game before this moment is ever charged (H1).
-  await closeNotBillableSpell(orgId, now);
+  await closeNotBillableSpells(orgId, now);
   const last = await db.clubBillingMonth.findFirst({ where: { orgId }, orderBy: { index: "desc" }, select: { index: true } });
   const due = monthsToOpen(b.trialEndsAt, last?.index ?? 0, now, { stopAt: b.cancelAtPeriodEnd ? b.currentPeriodEnd : null });
   if (due.length === 0) return { opened: [] };
@@ -756,4 +759,89 @@ export async function payUnpaidMonths(orgId: string, paymentMethodId: string): P
     }
   }
   return paid;
+}
+
+// ── Slice P3: the cron's own retries of a failed month (5.3) ────────────
+
+/** One `BillingEvent` per retry made, id "mt_invoice_retry_<month>_d<day>":
+ *  the claim (two cron runs never both retry a day) and the record. */
+export const INVOICE_RETRY_EVENT_TYPE = "mt.invoice-retry";
+
+export interface MonthRetry {
+  monthId: string;
+  index: number;
+  invoiceId: string;
+  day: number;
+  outcome: "paid" | "declined" | "not-open" | "mismatch" | "error";
+}
+
+/**
+ * The hourly cron's retries of a FAILED month's invoice (plan 5.3), for a
+ * Stripe account whose automatic retries do not cover one-off invoices:
+ * `invoices.pay` on the card on file on days 1, 3 and 5 after the month's
+ * first attempt (its close), in the daytime only, once per day (claimed),
+ * only the latest due day after an outage. Off with BILLING_CRON_RETRIES=0.
+ *
+ * Never for a club that must not be charged (flag off, Free, exempt,
+ * suspended, not approved), a paused club, or one with no card; never an
+ * invoice that is not open or whose amount due is not the month's amount.
+ * A paid retry is reported back to the caller, which applies it at once
+ * (the webhook would too: whichever is second changes nothing).
+ */
+export async function retryFailedMonthInvoices(orgId: string, now: Date = new Date()): Promise<MonthRetry[]> {
+  if (!isBillingEnabled() || !cronRetriesEnabled() || !isBillingDmHour(now)) return [];
+  const club = await loadClub(orgId);
+  if (waiveReasonFor(club) || !club?.clubBilling || club.billingStatus === "paused") return [];
+  const paymentMethodId = club.clubBilling.stripePaymentMethodId;
+  if (!paymentMethodId) return [];
+  const months = await db.clubBillingMonth.findMany({
+    where: { orgId, status: "failed", stripeInvoiceId: { not: null }, closedAt: { not: null } },
+    select: { id: true, index: true, stripeInvoiceId: true, amountPence: true, closedAt: true },
+  });
+  if (months.length === 0) return [];
+  const stripe = getBillingStripe();
+  if (!stripe) return [];
+  const out: MonthRetry[] = [];
+  for (const m of months) {
+    const prefix = `mt_invoice_retry_${m.id}_d`;
+    const tried = await db.billingEvent.findMany({ where: { orgId, type: INVOICE_RETRY_EVENT_TYPE }, select: { id: true } });
+    const done = tried.filter((e) => e.id.startsWith(prefix)).map((e) => Number(e.id.slice(prefix.length)));
+    const day = cronRetryDayDue(m.closedAt!, now, done);
+    if (day === null) continue;
+    // THE CLAIM: one row per month and day.
+    try {
+      await db.billingEvent.create({ data: { id: `${prefix}${day}`, type: INVOICE_RETRY_EVENT_TYPE, orgId, receivedAt: now, processedAt: now } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2002") continue; // another run has it
+      throw err;
+    }
+    const base = { monthId: m.id, index: m.index, invoiceId: m.stripeInvoiceId!, day };
+    try {
+      const inv = await stripe.retrieveInvoice(m.stripeInvoiceId!);
+      if (!inv || inv.status !== "open") {
+        out.push({ ...base, outcome: "not-open" });
+        continue;
+      }
+      if (inv.amountDuePence !== m.amountPence) {
+        await critical(
+          { orgId, id: m.id },
+          now,
+          "Club fee retry refused: amount due is not the month's amount",
+          `Invoice ${inv.id} (month ${m.index}) has ${inv.amountDuePence ?? "?"}p due but the month is ${m.amountPence ?? "?"}p. MatchTime did not retry it.`,
+        );
+        out.push({ ...base, outcome: "mismatch" });
+        continue;
+      }
+      // The club again, the moment before the money moves.
+      if (await unbillableNow({ orgId })) continue;
+      const r = await stripe.payInvoice(inv.id, { paymentMethodId });
+      const outcome = r.invoice.status === "paid" ? "paid" : "declined";
+      console.log(`[club-billing-months] ${orgId}: month ${m.index} retry day ${day}: ${outcome}`);
+      out.push({ ...base, outcome });
+    } catch (err) {
+      console.error(`[club-billing-months] ${orgId}: month ${m.index} retry day ${day} failed:`, err);
+      out.push({ ...base, outcome: "error" });
+    }
+  }
+  return out;
 }

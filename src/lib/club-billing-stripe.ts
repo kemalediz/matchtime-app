@@ -86,11 +86,11 @@ import {
   voidUnpaidMonthInvoices,
   waiveOpenMonths,
 } from "./club-billing-months";
-import { recordNotBillable } from "./club-billing-spells";
-import { cardAddedText, cardReplacedText, planBilledText, resumedText } from "./club-billing-view";
+import { recordSuspended } from "./club-billing-spells";
+import { cardAddedText, cardReplacedText, keepPayingText, planBilledText, resumedText } from "./club-billing-view";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isBillingDmHour } from "./club-billing-schedule-rules";
-import { notePaymentProblem } from "./club-billing-dms";
+import { notePaymentProblem, sendMonthCharged } from "./club-billing-dms";
 import {
   billingStripeConfig,
   buildCardSetupCheckoutParams,
@@ -328,6 +328,9 @@ export async function keepPaying(args: ActionArgs): Promise<{ ok: true } | { ok:
   if ((org.billingStatus === "subscribed" || org.billingStatus === "past_due") && billing.cancelAtPeriodEnd) {
     await db.clubBilling.updateMany({ where: { orgId: args.orgId }, data: { cancelAtPeriodEnd: false } });
     console.log(`[club-billing-stripe] ${args.orgId}: Keep paying; Stop paying undone`);
+    // Once per stop date: pressing Stop and Keep again in the same month
+    // never repeats it.
+    await keepPayingDm(args.orgId, `undo:${billing.currentPeriodEnd?.toISOString() ?? "none"}`, now);
     return { ok: true };
   }
   if (org.billingStatus === "paused" && billing.pausedReason === "cancelled") {
@@ -337,9 +340,28 @@ export async function keepPaying(args: ActionArgs): Promise<{ ok: true } | { ok:
     const moved = await setBillingState(args.orgId, { type: "card-added" }, now);
     if (!moved.ok) return { ok: false, reason: "not-billable" };
     console.log(`[club-billing-stripe] ${args.orgId}: Start again after Stop paying; billing resumes`);
+    // Once per pause it ends.
+    await keepPayingDm(args.orgId, `restart:${billing.pausedAt?.toISOString() ?? now.toISOString()}`, now);
     return { ok: true };
   }
   return { ok: false, reason: "not-stopping" };
+}
+
+/**
+ * The Keep paying DM (slice P3) to the billing contact: noted PENDING and
+ * sent at once in the daytime, else by the hourly cron's 10:00 run, which
+ * re-checks it is still true (`flushPendingBillingNotices`). Once per
+ * `cycleKey`. Never throws into the action: the action has already done
+ * its work, and the cron sends what is left.
+ */
+async function keepPayingDm(orgId: string, cycleKey: string, now: Date): Promise<void> {
+  if (!isBillingEnabled()) return;
+  try {
+    await notePendingBillingNotice(orgId, "keep-paying", cycleKey, now);
+    await flushPendingBillingNotices(orgId, now);
+  } catch (err) {
+    console.error(`[club-billing-stripe] ${orgId}: Keep paying DM not sent yet (the cron retries):`, err);
+  }
 }
 
 // ── Plan changes, suspend ───────────────────────────────────────────────
@@ -381,11 +403,13 @@ export async function onPlanChanged(orgId: string, now: Date = new Date()): Prom
 export async function onClubSuspended(orgId: string, now: Date = new Date()): Promise<{ waived: number }> {
   const billing = await loadBilling(orgId);
   if (!billing) return { waived: 0 };
+  // H1: the suspension's spell starts now; no month opens while it lasts,
+  // and no game inside it is ever charged. Written FIRST (slice P3, P2
+  // review LOW 3), before any Stripe call, so a Stripe error can never
+  // leave a suspended club without its marker.
+  await recordSuspended(orgId, now);
   const stripe = getBillingStripe();
   if (stripe && billing.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
-  // H1: the not-billable spell starts now; no month opens while it lasts,
-  // and no game inside it is ever charged.
-  await recordNotBillable(orgId, now);
   const waived = await waiveOpenMonths(orgId, "suspended", now);
   if (waived > 0) console.log(`[club-billing-stripe] ${orgId}: suspended; ${waived} open month(s) waived`);
   return { waived };
@@ -404,6 +428,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 function nextChargeOn(trialEndsAt: Date, now: Date): Date {
   return monthBounds(trialEndsAt, Math.max(1, monthIndexAt(trialEndsAt, now))).endsAt;
+}
+
+/** Has any month of the club been charged (an invoice made)? The card
+ *  added DM then says "The next charge", else "The first charge". */
+async function hasChargedMonth(orgId: string): Promise<boolean> {
+  const m = await db.clubBillingMonth.findFirst({ where: { orgId, stripeInvoiceId: { not: null } }, select: { id: true } });
+  return !!m;
 }
 
 /**
@@ -435,10 +466,12 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
   const contact = await loadBillingContactUserId(orgId);
   let sent = 0;
   for (const p of pending) {
-    // Only one "resumed" or "plan-billed" can be current; every "card
-    // replaced" is about a different card, so none supersedes another.
+    // Only one "resumed", "plan-billed" or "keep-paying" can be current;
+    // every "card replaced" is about a different card, so none supersedes
+    // another.
     const newer =
-      (p.kind === "resumed" || p.kind === "plan-billed") && pending.some((q) => q.kind === p.kind && q.createdAt > p.createdAt);
+      (p.kind === "resumed" || p.kind === "plan-billed" || p.kind === "keep-paying") &&
+      pending.some((q) => q.kind === p.kind && q.createdAt > p.createdAt);
     let why: string | null =
       now.getTime() - p.createdAt.getTime() > PENDING_NOTICE_MAX_AGE_MS ? "expired" : newer ? "superseded" : !org ? "no-contact" : null;
     let send: (() => Promise<string>) | null = null;
@@ -488,7 +521,8 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
           else {
             const resumed = !!billing!.resumedAt && billing!.resumedAt.getTime() >= p.createdAt.getTime() - DAY_MS;
             const link = await billingLink(holder!, orgId);
-            const firstPaymentOn = nextChargeOn(billing!.trialEndsAt, now);
+            const firstChargeOn = nextChargeOn(billing!.trialEndsAt, now);
+            const first = !(await hasChargedMonth(orgId));
             send = () =>
               queueBillingDm({
                 orgId,
@@ -500,8 +534,41 @@ export async function flushPendingBillingNotices(orgId: string, now: Date = new 
                     name,
                     club: org.name,
                     pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
-                    firstPaymentOn,
+                    firstChargeOn,
+                    first,
                     resumed,
+                    link,
+                  }),
+              });
+          }
+          break;
+        }
+        case "keep-paying": {
+          // cycleKey "undo:<stop date>" (Stop paying undone: still billed,
+          // no stop pending) or "restart:<pause>" (billing started again
+          // after the stop: serving). To the billing contact.
+          const restarted = p.cycleKey.startsWith("restart:");
+          const ok = restarted
+            ? org.billingStatus === "subscribed" && org.approvalStatus !== "suspended"
+            : (org.billingStatus === "subscribed" || org.billingStatus === "past_due") && !!billing && !billing.cancelAtPeriodEnd;
+          if (!contact) why = "no-contact";
+          else if (!ok || !billing || !billable(org)) why = "not-current";
+          else {
+            const link = await billingLink(contact, orgId);
+            const nextChargeOnDate = nextChargeOn(billing.trialEndsAt, now);
+            send = () =>
+              queueBillingDm({
+                orgId,
+                kind: "keep-paying",
+                cycleKey: p.cycleKey,
+                userId: contact,
+                text: ({ name }) =>
+                  keepPayingText(org.language, {
+                    name,
+                    club: org.name,
+                    pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
+                    nextChargeOn: nextChargeOnDate,
+                    restarted,
                     link,
                   }),
               });
@@ -647,6 +714,31 @@ export async function handleBillingEvent(event: Stripe.Event, now: Date = new Da
   }
 }
 
+/** The month's receipt (slice P3); a failure is logged, never thrown into
+ *  the webhook: the hourly cron's daytime run sends what is left. */
+async function receipt(orgId: string, monthId: string, now: Date): Promise<void> {
+  try {
+    await sendMonthCharged(orgId, monthId, now);
+  } catch (err) {
+    console.error(`[billing-webhook] ${orgId}: receipt for month ${monthId} not sent yet (the cron retries):`, err);
+  }
+}
+
+/**
+ * Apply a month's invoice as Stripe holds it NOW (slice P3): the same path
+ * as the billing webhook's invoice events, for the hourly cron after its
+ * own retry took the money, so the club moves back on and the receipt goes
+ * without waiting for the webhook. Idempotent with the webhook (whichever
+ * comes second changes nothing).
+ */
+export async function syncPaidMonthInvoice(args: { orgId: string; monthId: string; invoiceId: string; now?: Date }): Promise<BillingEventResult> {
+  return onInvoiceEvent(
+    "invoice.paid",
+    { id: args.invoiceId, metadata: { orgId: args.orgId, purpose: "club-fee", monthId: args.monthId } },
+    args.now ?? new Date(),
+  );
+}
+
 function requireStripe(): BillingStripe {
   const stripe = getBillingStripe();
   if (!stripe) throw new Error("[billing-webhook] Stripe is not set up (no STRIPE_SECRET_KEY): cannot re-fetch the object");
@@ -706,26 +798,37 @@ async function onInvoiceEvent(type: string, obj: Record<string, unknown>, now: D
       }
       return { action: "month-paid", orgId };
     }
+    // L2: a Stop paying waiting for this last charge takes effect now, and
+    // FIRST (slice P3, P2 review LOW 4): a club that is stopping goes
+    // straight to paused (cancelled), never back on (and never told
+    // "MatchTime is back") on its way there.
+    const stopped = await applyStopIfDue(orgId, now);
     const billing = await loadBilling(orgId);
-    const owing = org.billingStatus === "past_due" || (org.billingStatus === "paused" && billing?.pausedReason === "payment-failed");
-    if (owing && (await unpaidMonthIds(orgId, { except: monthId })).length === 0) {
+    const fresh2 = await loadOrg(orgId);
+    const owing =
+      !!fresh2 && (fresh2.billingStatus === "past_due" || (fresh2.billingStatus === "paused" && billing?.pausedReason === "payment-failed"));
+    if (!stopped && owing && (await unpaidMonthIds(orgId, { except: monthId })).length === 0) {
       await setBillingState(orgId, { type: "invoice-paid" }, now, { noticeOnResume: isBillingEnabled() ? "resumed" : undefined });
       await flushPendingBillingNotices(orgId, now);
     }
-    // L2: a Stop paying waiting for this last charge takes effect now.
-    await applyStopIfDue(orgId, now);
+    // Slice P3: the receipt, now that the money is taken. Once per month
+    // (claimed); at night the cron's 10:00 run sends it. Never throws.
+    await receipt(orgId, monthId, now);
     return { action: "month-paid", orgId };
   }
 
   if (fresh.status === "void" || fresh.status === "uncollectible") {
     const r = await applyMonthInvoice({ orgId, monthId, invoice: fresh, kind: "void", now });
     if (r === "not-found" || r === "mismatch") return { action: `month-${r}`, orgId };
-    // M3: forgiven. A club owing only this invoice is no longer owing.
-    if (org && billable(org) && (await unpaidMonthIds(orgId)).length === 0) {
+    // A stop waiting for this month takes effect FIRST (slice P3, P2 review
+    // LOW 4), so a stopping club is never moved back on on its way to the
+    // pause. Otherwise (M3): forgiven, and a club owing only this invoice is
+    // no longer owing.
+    const stopped = org && billable(org) ? await applyStopIfDue(orgId, now) : false;
+    if (!stopped && org && billable(org) && (await unpaidMonthIds(orgId)).length === 0) {
       const moved = await setBillingState(orgId, { type: "unpaid-cleared" }, now, { noticeOnResume: isBillingEnabled() ? "resumed" : undefined });
       if (moved.ok) await flushPendingBillingNotices(orgId, now);
     }
-    if (org && billable(org)) await applyStopIfDue(orgId, now);
     return { action: "month-void", orgId };
   }
 
@@ -803,16 +906,56 @@ async function onCardSaved(
     return ignored("not-billable", orgId);
   }
 
+  // Slice P3 (P2 review LOW 1): every card session of one club is applied
+  // UNDER ONE LOCK (a transaction-scoped advisory lock per club), so two
+  // sessions delivered at the same moment are applied one after the other,
+  // and the second always decides on what the first left.
+  return withCardSessionLock(orgId, () => applyCardSession(session, orgId, action, payer, card, now));
+}
+
+/** How long a card session may hold its club's lock (Stripe calls inside). */
+const CARD_SESSION_LOCK_TIMEOUT_MS = 30_000;
+
+async function withCardSessionLock<T>(orgId: string, fn: () => Promise<T>): Promise<T> {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`club-card-session:${orgId}`}))`;
+      return fn();
+    },
+    { timeout: CARD_SESSION_LOCK_TIMEOUT_MS, maxWait: CARD_SESSION_LOCK_TIMEOUT_MS },
+  );
+}
+
+async function applyCardSession(
+  session: Stripe.Checkout.Session,
+  orgId: string,
+  action: "add-card" | "replace-card",
+  payer: string,
+  card: CardDetails,
+  now: Date,
+): Promise<BillingEventResult> {
+  const stripe = requireStripe();
+  // Read fresh, under the lock: a session applied a moment ago is seen.
+  const billing = await loadBilling(orgId);
+  const org = await loadOrg(orgId);
+  if (!billing?.stripeCustomerId || !org) return ignored("no-billing", orgId);
+
   // M1 (P2 review): ORDER. Each completed session is recorded with the time
   // it was CREATED; a session older than one already applied is a late
   // retry and must never overwrite the newer card (or wipe its payer's
-  // details): its own card is detached instead. Recorded first, then
-  // re-checked, so two deliveries racing each other converge on the newer.
+  // details): its own card is detached instead. Two sessions created in the
+  // SAME second are ordered by their session id (slice P3, LOW 1), so the
+  // same one wins whichever is delivered first.
   const sessionAt = typeof session.created === "number" ? new Date(session.created * 1000) : now;
   const markerId = `mt_card_session_${session.id}`;
   const superseded = async () =>
     db.billingEvent.findFirst({
-      where: { orgId, type: CARD_SESSION_EVENT_TYPE, receivedAt: { gt: sessionAt }, id: { not: markerId } },
+      where: {
+        orgId,
+        type: CARD_SESSION_EVENT_TYPE,
+        id: { not: markerId },
+        OR: [{ receivedAt: { gt: sessionAt } }, { receivedAt: sessionAt, id: { gt: markerId } }],
+      },
       select: { id: true },
     });
   if (!(await superseded())) {
@@ -894,8 +1037,8 @@ async function onCardSaved(
     } else {
       const after = await loadBilling(orgId);
       const link = await billingLink(payer, orgId);
-      const sessionAt = typeof session.created === "number" ? new Date(session.created * 1000) : now;
       const wasResumed = resumed || (!!after?.resumedAt && after.resumedAt >= sessionAt);
+      const first = !(await hasChargedMonth(orgId));
       await queueBillingDm({
         orgId,
         kind: "card-added",
@@ -906,7 +1049,8 @@ async function onCardSaved(
             name,
             club: org.name,
             pricePence: planPricePence(org.billingPlan, org.billingPricePence) ?? 0,
-            firstPaymentOn: nextChargeOn(billing.trialEndsAt, now),
+            firstChargeOn: nextChargeOn(billing.trialEndsAt, now),
+            first,
             resumed: wasResumed,
             link,
           }),

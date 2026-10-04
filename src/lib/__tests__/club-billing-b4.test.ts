@@ -52,9 +52,11 @@ const h = vi.hoisted(() => {
     flagStates: [] as boolean[],
     pendingFlushes: [] as string[],
     tip: {
-      pricePence: 999, perSide: 5, players: 10, games: 4, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false,
+      pricePence: 999, perSide: 5, players: 10, games: 4, perGamePence: 250, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false,
     } as Record<string, unknown> | null,
     jobSeq: 0,
+    /** Slice P3: the billing months the payment DMs name (by invoice id). */
+    months: [] as Array<{ id: string; orgId: string; index: number; startsAt: Date; endsAt: Date; amountPence: number | null; status: string; stripeInvoiceId: string | null }>,
   };
   const key = (orgId: string, kind: string, cycleKey: string) => `${orgId}|${kind}|${cycleKey}`;
   const orgView = (c: Club) => ({
@@ -88,6 +90,20 @@ const h = vi.hoisted(() => {
         }
         return null;
       }),
+    },
+    clubBillingMonth: {
+      findFirst: vi.fn(async ({ where }: { where: { orgId: string; stripeInvoiceId?: string; status?: { in: string[] } } }) => {
+        const rows = state.months
+          .filter(
+            (m) =>
+              m.orgId === where.orgId &&
+              (where.stripeInvoiceId === undefined || m.stripeInvoiceId === where.stripeInvoiceId) &&
+              (!where.status || where.status.in.includes(m.status)),
+          )
+          .sort((a, b) => b.index - a.index);
+        return rows[0] ? { ...rows[0] } : null;
+      }),
+      findMany: vi.fn(async () => []),
     },
     billingNotice: {
       findFirst: vi.fn(async ({ where }: { where: { orgId: string; kind: string; cycleKey: string } }) =>
@@ -195,12 +211,17 @@ vi.mock("../club-billing-months", () => ({
     h.state.refundSweeps++;
     return { voided: 0, failed: 0 };
   }),
+  // Slice P3: the month steps (their own tests: club-billing-p3-cron.test.ts).
+  openDueMonths: vi.fn(async () => ({ opened: [] })),
+  closeNextDueMonth: vi.fn(async () => ({ skipped: "none" })),
+  retryFailedMonthInvoices: vi.fn(async () => []),
 }));
 vi.mock("../club-billing-stripe", () => ({
   flushPendingBillingNotices: vi.fn(async (orgId: string) => {
     h.state.pendingFlushes.push(orgId);
     return 0;
   }),
+  syncPaidMonthInvoice: vi.fn(async () => ({ action: "month-paid", orgId: null })),
 }));
 vi.mock("../club-billing", async () => {
   const rules = await import("../club-billing-rules");
@@ -318,7 +339,8 @@ beforeEach(() => {
   h.state.refundSweeps = 0;
   h.state.flagStates = [];
   h.state.pendingFlushes.length = 0;
-  h.state.tip = { pricePence: 999, perSide: 5, players: 10, games: 4, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false };
+  h.state.months.length = 0;
+  h.state.tip = { pricePence: 999, perSide: 5, players: 10, games: 4, perGamePence: 250, sharePence: 25, feePence: 800, feePlusPence: 825, feeSource: "example", split: false };
 });
 
 // ── The cron: day boundaries and once-only ─────────────────────────────
@@ -385,7 +407,8 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     expect(d28).toHaveLength(1);
     expect(d28[0].text).toBe(
       "Hi Cole, a quick reminder: Riverside FC's free month ends on Sat 31 Oct. Add a card to keep MatchTime running in the Riverside FC WhatsApp group: " +
-        `https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}`,
+        `https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}\n` +
+        "You only pay for the games you play, up to £9.99 a month, and nothing is taken when you add the card.",
     );
   });
 
@@ -462,7 +485,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     await runBillingCron(new Date("2026-12-09T03:00:00Z"));
     expect(dmsOf()).toEqual([]);
     await runBillingCron(new Date("2026-12-09T10:00:00Z"));
-    expect(dmsOf("paused")[0].text).toContain("the MatchTime plan for Riverside FC has ended, so MatchTime is now paused");
+    expect(dmsOf("paused")[0].text).toContain("you stopped paying for MatchTime for Riverside FC, so it is now paused");
   });
 
   it("removed from the group (slice B5): paused with no DM, ever", async () => {
@@ -633,7 +656,9 @@ describe("onBillingContactChanged: the 'payer changed' DM from setPaymentHolder"
     const dm = dmsOf("payer-changed")[0];
     expect(dm.userId).toBe("u_cole");
     expect(dm.cycleKey).toBe("u_cole");
-    expect(dm.text).toContain("Hi Cole, you're now the money collector for Riverside FC, so you look after MatchTime's £9.99 a month for the group. Add a card before Sat 31 Oct to keep it running:");
+    expect(dm.text).toContain(
+      "Hi Cole, you're now the money collector for Riverside FC, so you look after MatchTime's club fee for the Riverside FC WhatsApp group: only the games played, up to £9.99 a month. Add a card before Sat 31 Oct to keep it running:",
+    );
     expect(dm.text).toContain("*25p a player per game*");
   });
 
@@ -719,11 +744,26 @@ describe("onBillingContactChanged: the 'payer changed' DM from setPaymentHolder"
 
 describe("notePaymentProblem + flush: payment failed and 3DS DMs", () => {
   const FAILED_AT = new Date("2026-12-01T11:00:00Z");
-  const pastDue = (over: Partial<NonNullable<Club["billing"]>> = {}) =>
-    club(
+  const pastDue = (over: Partial<NonNullable<Club["billing"]>> = {}) => {
+    // Slice P3: each invoice charges one billing month, which the DM names
+    // (1 Nov to 30 Nov, 3 of 4 games played: GBP 7.49).
+    for (const [i, inv] of ["in_1", "in_2", "in_3"].entries()) {
+      h.state.months.push({
+        id: `cbm_${i + 1}`,
+        orgId: "org_1",
+        index: i + 1,
+        startsAt: new Date("2026-11-01T14:00:00Z"),
+        endsAt: new Date("2026-12-01T00:00:00Z"),
+        amountPence: 749,
+        status: "failed",
+        stripeInvoiceId: inv,
+      });
+    }
+    return club(
       { billingStatus: "past_due", paymentHolderId: "u_cole" },
       { cardHolderUserId: "u_cole", stripePaymentMethodId: "pm_cole", paymentFailedAt: FAILED_AT, graceEndsAt: new Date(FAILED_AT.getTime() + 7 * DAY), ...over },
     );
+  };
 
   it("payment failed: held 30 minutes (a 3DS event for the same invoice would replace it), then one DM to the contact", async () => {
     pastDue();
@@ -738,7 +778,7 @@ describe("notePaymentProblem + flush: payment failed and 3DS DMs", () => {
     expect(dm).toHaveLength(1);
     expect(dm[0].cycleKey).toBe("in_1");
     expect(dm[0].text).toBe(
-      "Hi Cole, this month's £9.99 for Riverside FC didn't go through. Stripe will try again over the next few days, and MatchTime keeps running meanwhile. " +
+      "Hi Cole, the £7.49 for Riverside FC's games between 1 Nov and 30 Nov didn't go through. It will be tried again over the next few days, and MatchTime keeps running meanwhile. " +
         `To update the card: https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}`,
     );
   });
@@ -758,7 +798,7 @@ describe("notePaymentProblem + flush: payment failed and 3DS DMs", () => {
     await notePaymentProblem({ orgId: "org_1", invoiceId: "in_1", kind: "payment-action", hostedUrl: "https://invoice.stripe.com/i/in_1", now: new Date(FAILED_AT.getTime() + MIN) });
     expect(dmsOf("payment-action")).toHaveLength(1);
     expect(dmsOf("payment-action")[0].text).toBe(
-      "Hi Cole, your bank wants you to confirm this month's £9.99 for Riverside FC before it can go through. Please confirm it here: https://invoice.stripe.com/i/in_1\nMatchTime keeps running meanwhile.",
+      "Hi Cole, your bank wants you to confirm the £7.49 for Riverside FC's games between 1 Nov and 30 Nov before it can go through. Please confirm it here: https://invoice.stripe.com/i/in_1\nMatchTime keeps running meanwhile.",
     );
     await flushPendingBillingDms("org_1", new Date(FAILED_AT.getTime() + 2 * HOUR));
     expect(dmsOf("payment-failed")).toEqual([]);
@@ -771,7 +811,7 @@ describe("notePaymentProblem + flush: payment failed and 3DS DMs", () => {
     const dm = dmsOf("payment-action")[0];
     expect(dm.userId).toBe("u_cole");
     expect(dm.text).toBe(
-      "Hi Cole, the card on file for Riverside FC needs the bank to confirm this month's £9.99 before it can go through. " +
+      "Hi Cole, the card on file for Riverside FC needs the bank to confirm the £7.49 for the games between 1 Nov and 30 Nov before it can go through. " +
         "You can confirm and pay it here: https://invoice.stripe.com/i/in_3\n" +
         `Or put your own card on instead: https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}\n` +
         "MatchTime keeps running meanwhile.",
