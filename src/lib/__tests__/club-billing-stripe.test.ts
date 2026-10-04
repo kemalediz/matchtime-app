@@ -538,6 +538,60 @@ describe("webhook: a card saved (checkout.session.completed, setup mode)", () =>
     expect(moneyCalls()).toEqual([]);
   });
 
+  // Test mode, 2026-10-05: a setup-mode Checkout returned
+  // customer_details.address = null, so billingCountry was never set, every
+  // club was flagged "Check VAT country" and the invoice PDF had no "Bill to".
+  describe("the payer's billing address (customer_details.address can be null in setup mode)", () => {
+    const GB_ADDR = { country: "GB", line1: "1 Pitch Lane", city: "Sutton", postal_code: "SM1 1AA" };
+
+    it("customer_details.address null: the address comes from the saved card's billing details; country set, no VAT check; the Customer gets it", async () => {
+      setWorld({}, { stripeCustomerId: "cus_fake_1" });
+      const e = cardSaved("add-card", "user_colin", { customer_details: { email: "colin@example.test", name: "Colin", address: null } });
+      fake.putSetupIntent("seti_user_colin", { paymentMethodId: "pm_colin", brand: "visa", last4: "4242", country: "GB", billingAddress: GB_ADDR });
+      await handleBillingEvent(e, DAYTIME);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", cardCountry: "GB", vatCountryCheck: false });
+      expect(calls("updateCustomer")).toEqual([{ customerId: "cus_fake_1", address: GB_ADDR }]);
+    });
+
+    it("customer_details.address present, the card's empty: customer_details is used (the other way round)", async () => {
+      setWorld({}, { stripeCustomerId: "cus_fake_1" });
+      await handleBillingEvent(cardSaved("add-card"), DAYTIME);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", vatCountryCheck: false });
+      expect(calls("updateCustomer")).toEqual([{ customerId: "cus_fake_1", address: { country: "GB", line1: "1 Road" } }]);
+    });
+
+    it("a GB address with a card issued abroad still flags the VAT check", async () => {
+      setWorld({}, { stripeCustomerId: "cus_fake_1" });
+      const e = cardSaved("add-card", "user_colin", { customer_details: { email: "c@example.test", name: "Colin", address: null } });
+      fake.putSetupIntent("seti_user_colin", { paymentMethodId: "pm_colin", brand: "visa", last4: "4242", country: "US", billingAddress: GB_ADDR });
+      await handleBillingEvent(e, DAYTIME);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", cardCountry: "US", vatCountryCheck: true });
+    });
+
+    it("a NEW payer with no address anywhere never inherits the old payer's country", async () => {
+      setWorld({ billingStatus: "subscribed" }, withCard({ billingCountry: "GB", cardCountry: "GB" }));
+      h.state.contact = "user_pat";
+      const e = cardSaved("replace-card", "user_pat", { customer_details: { email: "pat@example.test", name: "Pat", address: null } });
+      await handleBillingEvent(e, DAYTIME);
+      expect(h.state.billing).toMatchObject({ cardHolderUserId: "user_pat", billingCountry: null, vatCountryCheck: true });
+    });
+
+    it("a NEW payer: the reset keeps the VAT number they just gave at Checkout, then their address goes back on the Customer", async () => {
+      setWorld({ billingStatus: "subscribed" }, withCard());
+      h.state.contact = "user_pat";
+      const e = cardSaved("replace-card", "user_pat", {
+        customer_details: { email: "pat@example.test", name: "Pat FC Ltd", address: null, tax_ids: [{ type: "gb_vat", value: "GB123456789" }] },
+      });
+      fake.putSetupIntent("seti_user_pat", { paymentMethodId: "pm_pat", brand: "visa", last4: "1881", country: "GB", billingAddress: GB_ADDR });
+      await handleBillingEvent(e, DAYTIME);
+      expect(calls("resetCustomerDetails")).toEqual([{ customerId: "cus_fake_1", name: "Billing Sevens", keepTaxIds: ["GB123456789"] }]);
+      const order = fake.state().calls.map((c) => c.method).filter((m) => ["resetCustomerDetails", "setDefaultPaymentMethod", "updateCustomer"].includes(m));
+      expect(order).toEqual(["resetCustomerDetails", "setDefaultPaymentMethod", "updateCustomer"]);
+      expect(calls("updateCustomer")).toEqual([{ customerId: "cus_fake_1", address: GB_ADDR }]);
+      expect(h.state.billing).toMatchObject({ billingCountry: "GB", vatCountryCheck: false });
+    });
+  });
+
   it("a re-delivered event is answered as a duplicate: one card, one DM", async () => {
     setWorld({}, { stripeCustomerId: "cus_fake_1" });
     const e = cardSaved("add-card");
@@ -934,6 +988,14 @@ describe("plan changes and suspension (2A.6)", () => {
     setWorld({ billingStatus: "subscribed", billingPlan: "custom", billingPricePence: 500 }, withCard());
     expect(await onPlanChanged(ORG, MID_M1)).toEqual({ action: "none" });
     expect(fake.state().calls.map((c) => c.method)).toEqual(["expireOpenCheckoutSessions"]);
+  });
+
+  it("billed again after Free with a card on file: the current month opens at once, so the page's next charge date is current (no month before now)", async () => {
+    setWorld({ billingStatus: "subscribed" }, withCard({ currentPeriodEnd: TRIAL_ENDS }));
+    expect(await onPlanChanged(ORG, MID_M1)).toEqual({ action: "none" });
+    expect(h.state.months.map((m) => ({ index: m.index, status: m.status }))).toEqual([{ index: 1, status: "open" }]);
+    expect(h.state.billing!.currentPeriodEnd).toEqual(M1_END);
+    expect(moneyCalls()).toEqual([]);
   });
 
   it("suspended: the open month waived, open sessions expired; earlier unpaid invoices left for the owner", async () => {

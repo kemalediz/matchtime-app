@@ -545,6 +545,7 @@ overdue"**, not "a Stripe subscription is active".
 | `paused` (removed) | MatchTime re-added | `subscribed` when a card is on file and no club fee invoice is unpaid; `trial` while the free month runs; else `paused` (no-card or payment-failed) | resume when serving again |
 | any | Kemal sets plan Free | `exempt` | open month waived; unpaid club fee invoices voided; resume if paused |
 | `exempt`, Free, free month already had | Kemal sets Standard or Custom | `trial` while the original `trialEndsAt` is ahead, else `grace` with 7 days from now | as built (B3) |
+| `exempt`, Free, a card still on file | Kemal sets Standard or Custom | `subscribed` at once (in or after the free month; the current month opens), never trial, grace or paused for no card; `paused` (`cancelled`) when the payer had pressed Stop paying. Also `trial-ended` and the no-card `grace-ended` with a card on file go to `subscribed` | test mode fix (2026-10-05) |
 | any billed | Kemal suspends | unchanged | open month waived; no months while suspended |
 
 Events that disappear with the subscription: `subscription-ended` (replaced by the month
@@ -779,8 +780,10 @@ before anything ever went live.
 - **Business details and invoice settings:** Cressoft's legal name, registered address and
   **GB VAT number** as the account tax ID, shown on invoices and receipts (as before).
 - **Automatic retries for one-off invoices** (Settings, Billing, Revenue recovery): on,
-  within one week, to match our 7 day grace. If the account offers retries for
-  subscriptions only, leave it and rely on the cron's retries (5.4).
+  every retry within 7 days to match our 7 day grace (e.g. 3 retries at days 1, 3 and 5),
+  and after the last retry **leave the invoice open**. Confirmed in test mode (2026-10-05)
+  that they apply to one-off invoices, so they are the ONE retry mechanism by default and
+  the cron's own retries are off (`BILLING_CRON_RETRIES` unset; 16.1 steps 5 and 6).
 - **Customer emails:** successful payment receipts and failed payment emails on; "send
   finalised invoices" on, so each payer gets their VAT invoice.
 - **Customer Portal: not needed.** Change card is setup mode (as "Use my card instead"
@@ -1298,8 +1301,8 @@ slice. Unit and Playwright suites only; Stripe test mode by hand before rollout.
 
 On a Preview deployment with `sk_test` keys (the Preview setup is in PR #184's runbook):
 add a card with `4242 4242 4242 4242` (nothing charged); run the cron with `x-test-now` at
-a month close and see the invoice, its PDF (legal name, address, VAT number, "VAT (20%,
-inclusive)", the description with the games count) and the receipt email; repeat with a
+a month close and see the invoice, its PDF (legal name, address, VAT number, "VAT - GB (20%
+incl. on £x)", the payer's "Bill to", the description with the games count) and the receipt email; repeat with a
 declining card (`4000 0000 0000 0341`) and watch the retries on the account (this is where
 "does the account retry one-off invoices" is answered); a card that needs a bank check
 off-session (`4000 0027 6000 3184`) for the 3DS DM; Change card, then pay an open invoice
@@ -1365,8 +1368,8 @@ under 5.2 and 5.4. Recommend not merging it as it is; P4 carries its Preview set
 | `AI_DAILY_CAP_DISABLED` | emergency override only | must be absent in production |
 | `STRIPE_AI_TOPUP_PRICE_ID` | slice T1 only | `price_...`, the £5 top-up (9.1) |
 | `BILLING_STRIPE_FAKE` | test only | `1` under `MT_TEST_MODE` for Playwright |
-| `BILLING_CRON_RETRIES` | Vercel (optional) | ON unless `0`: the hourly cron retries a failed month's invoice on days 1, 3 and 5 (slice P3). Set `0` once test mode shows the account's own retries cover one-off invoices |
-| `BILLING_STRIPE_RETRIES` | Vercel (optional) | `1` only when test mode showed Stripe's own automatic retries cover one-off invoices (slice P4). With it, or with `BILLING_CRON_RETRIES` on, the payment failed DM and the billing page say "it will be tried again"; with neither, they say how to pay now (16.1 step 6) |
+| `BILLING_STRIPE_RETRIES` | Vercel (optional) | ON unless `0`: Stripe's own automatic retries (Revenue recovery) retry a failed month's invoice; confirmed in test mode (2026-10-05) to cover one-off invoices. Leave unset. With it on, the payment failed DM and the billing page say "it will be tried again"; with no retries at all, they say how to pay now (16.1 step 6) |
+| `BILLING_CRON_RETRIES` | Vercel (optional) | OFF unless `1`: the hourly cron retries a failed month's invoice itself on days 1, 3 and 5 (slice P3). Only ONE retry mechanism may run: set `1` only together with `BILLING_STRIPE_RETRIES=0` and Stripe's retries switched off |
 
 Constants, not env: trial 30 days, grace 7, reminders days 21 and 28, the billing link TTL
 9 days, the close delay 6 hours, the Stripe minimum 30p, all in the rules files.
@@ -1487,8 +1490,12 @@ a real test account; the code works either way as described):
 1. Checkout `mode: "setup"` saves the card for later off-session use: the SetupIntent's
    `usage` is `off_session` and an `invoices.pay` a month later succeeds without the customer
    present (card `4242 4242 4242 4242`).
-2. Whether Checkout accepts `tax_id_collection` in setup mode. P2 does not send it; if Stripe
-   accepts it, it is one line in `buildCardSetupCheckoutParams`.
+2. Whether Checkout accepts `tax_id_collection` in setup mode. ANSWERED in test mode
+   (2026-10-05): only together with `customer_update[name]=auto` and `customer_update[address]=auto`.
+   All three are now sent (with `billing_address_collection: required`); without
+   `customer_update`, a setup session returned `customer_details.address` null, so no billing
+   country was stored, every club was flagged "Check VAT country" and the invoice had no "Bill to".
+   The webhook also falls back to the saved card's `billing_details.address`.
 3. Whether the account's automatic retries (Settings, Billing, Revenue recovery) apply to
    one-off invoices created with `collection_method: "charge_automatically"`. Decline with
    `4000 0000 0000 0341`, watch for retry attempts over the next days. If they do not, P3 adds
@@ -1498,7 +1505,7 @@ a real test account; the code works either way as described):
    `quantity`, `tax_rates: [STRIPE_CLUB_TAX_RATE_ID]`, `invoice`, `metadata`. With the Tax Rate
    created as `percentage: 20, inclusive: true, country: GB`, an item of 799: confirm on the
    draft `total = 799`, `amount_due = 799`, `tax = 133` (799 x 20/120, rounded), and the PDF
-   line "VAT (20% inclusive)". Then the same with an EXCLUSIVE test rate set in
+   line "VAT - GB (20% incl. on £7.99)". Then the same with an EXCLUSIVE test rate set in
    `STRIPE_CLUB_TAX_RATE_ID`: the close must refuse before any invoice (the rate check).
    Also confirm whether a draft's `amount_due` already reflects a customer credit balance (if it
    only applies at finalisation, the second `amount_due` check before paying catches it).
@@ -1526,7 +1533,8 @@ is paid again on the card on file on days 1, 3 and 5 after its close, daytime on
 month and day (`BillingEvent` `mt_invoice_retry_<month>_d<day>`), only the latest due day after an
 outage, never for a club that is paused, not billable or has no card, never when the invoice is
 not open or its amount due is not the month's amount. A paid retry is applied at once through
-the webhook's own path (`syncPaidMonthInvoice`). `BILLING_CRON_RETRIES=0` switches them off.
+the webhook's own path (`syncPaidMonthInvoice`). OFF by default since 2026-10-05 (Stripe's own
+retries cover one-off invoices and are the one mechanism); `BILLING_CRON_RETRIES=1` switches them on.
 
 **DMs** (all to the billing contact, platform DM, claimed once in `BillingNotice`, 10:00 to
 20:00 London only, never the platform owner):
@@ -1602,7 +1610,8 @@ copy. `charge.refunded` is still not mapped to `refundedPence`.
   card is the contact's own, otherwise "You can see the month's games and charge on your billing
   page"; card added no longer promises Stripe's emails ("You can see each charge and its receipt on
   your billing page"); payment failed says "It will be tried again over the next few days" only
-  when `billingRetriesOn()` (the cron's retries, or `BILLING_STRIPE_RETRIES=1`), otherwise "To pay it
+  when `billingRetriesOn()` (Stripe's retries, `BILLING_STRIPE_RETRIES` on unless `0`, or the cron's,
+  `BILLING_CRON_RETRIES=1`), otherwise "To pay it
   now, update the card and pay here"; the paused DM gives the total owed across unpaid months and
   how many ("the £15.48 owed for 2 months of {club}'s games").
 - **Public copy** (its own commit, to ship at go-live): the landing pricing ("Up to £9.99 a month
@@ -1811,19 +1820,24 @@ Open https://dashboard.stripe.com and switch to **Test mode** (the toggle at the
      email at Checkout in 16.2.
 5. **Retries for one-off invoices.** Settings > Billing > **Revenue recovery** > Retries
    (https://dashboard.stripe.com/test/settings/billing/automatic, the "Manage failed payments" part).
-   - If there is a retry schedule for **one-off invoices** (not only subscriptions): switch it on
-     and keep every retry within **7 days** (our grace week), for example 1, 3 and 5 days.
-   - If it only mentions subscriptions, leave it: our hourly cron retries instead (on by default).
-   - Which one wins is decided by a real decline in 16.2, check 5.
+   Confirmed in test mode (2026-10-05): this account's retries apply to one-off invoices, so they
+   are the ONE retry mechanism (our cron's own retries are off by default).
+   - Switch retries on and set the schedule so **every retry lands within 7 days** of the failed
+     charge (our grace week), for example **3 retries at days 1, 3 and 5**.
+   - **After the last retry: leave the invoice open** (do not mark it uncollectible or void it,
+     do not cancel anything). Our 7 day grace ends on its own and pauses the club; the invoice
+     stays payable, so "Update card and pay" on the billing page still pays it and switches
+     MatchTime back on.
 6. **Retries in our app, and what the DMs say.** Two switches, both in Vercel later:
 
-   | What 16.2 check 5 showed | `BILLING_CRON_RETRIES` | `BILLING_STRIPE_RETRIES` | The DM and the page say |
+   | Retries | `BILLING_STRIPE_RETRIES` | `BILLING_CRON_RETRIES` | The DM and the page say |
    |---|---|---|---|
-   | Stripe did NOT schedule another attempt (default case) | leave unset (on) | leave unset | "It will be tried again over the next few days" (our cron, days 1, 3, 5) |
-   | Stripe DID schedule another attempt | `0` | `1` | "It will be tried again" (Stripe's schedule) |
-   | You want no retries at all | `0` | leave unset | "To pay it now, update the card and pay here" |
+   | Stripe's own, days 1, 3, 5 (the default, confirmed in test mode) | leave unset (on) | leave unset (off) | "It will be tried again over the next few days" |
+   | Our cron instead (only if Stripe's retries are switched off) | `0` | `1` | "It will be tried again over the next few days" (our cron, days 1, 3, 5) |
+   | No retries at all (Stripe's switched off too) | `0` | leave unset (off) | "To pay it now, update the card and pay here" |
 
-   Never leave both retry sources on when Stripe retries too: the card would be tried twice as often.
+   Only ONE retry mechanism may run: never `BILLING_CRON_RETRIES=1` while Stripe retries too, or the
+   card is tried twice as often.
 7. **The billing webhook (Your account).** Developers > **Webhooks**
    (https://dashboard.stripe.com/test/webhooks, on newer dashboards Workbench > Webhooks) >
    **+ Add endpoint** (or **Add destination**):
@@ -1900,10 +1914,13 @@ matchtime.ai, so the billing DMs are only written to the local database (`status
    `node --env-file=.env --import tsx scripts/billing-local-test.ts status`: `billingStatus: subscribed`,
    and the "card added" DM text (between 20:00 and 10:00 London a billing DM waits for the next
    daytime cron run, so it appears after curl 1 or curl 2 instead).
-2. **VAT number at Checkout (13.3 point 2), optional.** `stripe checkout sessions create --mode=setup --currency=gbp --customer=cus_... --success-url=http://localhost:3000 -d "tax_id_collection[enabled]=true"`.
-   An error means setup mode cannot collect it (business payers then send their VAT number and you
-   add it to the Customer). Success means it is one line in `buildCardSetupCheckoutParams`; tell
-   Claude.
+2. **Address and VAT number at Checkout (13.3 point 2).** Answered on 2026-10-05: Checkout now asks
+   for the billing address and an optional VAT number (`tax_id_collection` with `customer_update`
+   name and address "auto"). Add a card again on a fresh club with a UK address and a test VAT
+   number (`GB123456789`). Expected: `status` shows `billingCountry: 'GB'` and
+   `vatCountryCheck: false` (UK card `4242...` is GB); in Stripe the Customer has the payer's
+   name, the address and the VAT number. With a card issued abroad (Stripe's US test card
+   `4000 0084 0000 0000`) the owner's /admin/clubs shows "Check VAT country".
 3. **Count, invoice, VAT, receipt (13.3 points 4 and 6).**
    `... billing-local-test.ts games` (seeds month 1: 4 Tuesdays played, 1 cancelled, expected
    £7.99), then `... billing-local-test.ts times` and run its **curl 1** (opens month 1) and
@@ -1912,9 +1929,10 @@ matchtime.ai, so the billing DMs are only written to the local database (`status
      799. The receipt DM text: "Billing Test FC played 4 of 5 games between ... so £7.99 was charged
      to your card ending 4242 (VAT included; a full month is £9.99). Stripe has emailed you the
      receipt."
-   - Stripe (test) > Invoices > the newest: total **£7.99**, tax **£1.33**, the line "VAT (20%
-     inclusive)", description "MatchTime club fee, {dates}: 4 of 5 games played". Download the PDF:
-     legal name, address, VAT number, footer.
+   - Stripe (test) > Invoices > the newest: total **£7.99**, tax **£1.33**, the line
+     "VAT - GB (20% incl. on £7.99)", description "MatchTime club fee, {dates}: 4 of 5 games
+     played". Download the PDF: legal name, address, VAT number, footer, and **Bill to** with the
+     payer's name and the address typed at Checkout.
    - Your inbox: Stripe's receipt and the invoice email.
    - `stripe invoices retrieve in_...`: `"total": 799`, `"amount_paid": 799`, and the VAT of 133
      (in `total_taxes` on recent API versions, `tax` on older ones).
@@ -1937,11 +1955,10 @@ matchtime.ai, so the billing DMs are only written to the local database (`status
    `past_due`; the payment failed DM; the collector's page "The £7.99 for {dates} didn't go through.
    It will be tried again over the next few days. MatchTime stops on {date} if it can't be taken."
    and **Update card and pay**; the owner sees the banner on /admin naming the month and £7.99.
-   **Now decide the retries:** open the invoice in Stripe (test). If it shows a **next payment
-   attempt** date (or `stripe invoices retrieve in_...` has a non-null `next_payment_attempt`), Stripe
-   retries one-off invoices: use the second row of the table in 16.1 step 6. If it is empty, use
-   the first row. (The cron's own retries on days 1, 3 and 5 are proven by the unit tests; they
-   cannot be watched here, see the next point.)
+   **Check Stripe's retry:** open the invoice in Stripe (test). It shows a **next payment attempt**
+   date (`stripe invoices retrieve in_...` has a non-null `next_payment_attempt`) within 7 days:
+   Stripe's own retries are the one mechanism (the default row of the table in 16.1 step 6, both
+   variables unset). (The cron's own retries, off by default, are proven by the unit tests.)
    Then run the "Retry day 1" curl from `times`. On this Mac the grace week was counted from today's
    real date while the cron's clock is pinned a month later, so this run **pauses** the club:
    `status` shows `paused` and the paused DM "we couldn't take the £7.99 for Billing Test FC, so
@@ -1949,8 +1966,8 @@ matchtime.ai, so the billing DMs are only written to the local database (`status
    **Update card and pay** with `4242 4242 4242 4242`: the invoice is paid on the new card at once,
    `invoice.paid` arrives, the club is `subscribed` again with the "MatchTime is back on" DM, and
    the receipt DM is written.
-6. **Payments with no retries say how to pay now.** Stop Terminal C, add `BILLING_CRON_RETRIES=0` to
-   `.env.billing-local` (and no `BILLING_STRIPE_RETRIES`), re-source, restart, repeat check 5 up to
+6. **Payments with no retries say how to pay now.** Stop Terminal C, add `BILLING_STRIPE_RETRIES=0` to
+   `.env.billing-local` (and no `BILLING_CRON_RETRIES`), re-source, restart, repeat check 5 up to
    the decline: the DM now says "MatchTime keeps running for now. To pay it now, update the card and
    pay here". Take the line out again afterwards unless you chose that row.
 7. **A bank check (13.3 point 5).**
@@ -1962,7 +1979,8 @@ matchtime.ai, so the billing DMs are only written to the local database (`status
      the check: `invoice.paid`, `subscribed`.
 8. **Change card, Stop paying, Keep paying.** On the collector's page: **Change card** with `5555 5555
    5555 4444` ("Card mastercard ending 4444"). The page uses the real clock, so on this Mac the club
-   is still in its free month: **Stop paying** removes the card and says "Your card has been removed
+   is still in its free month: **Stop paying** first asks "Stop paying for MatchTime?" (Go back changes
+   nothing); **Yes, stop paying** removes the card and says "Your card has been removed
    and nothing has been charged. The free month carries on until it ends." Add a card again
    afterwards. Stop paying after the free month (billing ends with the current month, which is
    charged as usual; **Keep paying** undoes it or starts again) is covered by the Playwright suite
@@ -1970,8 +1988,11 @@ matchtime.ai, so the billing DMs are only written to the local database (`status
 9. **Free voids, uncollectible is recorded (13.3 points 7 and 8).** With a month failed (check 5),
    the owner's /admin/clubs link > Plan **Free** > Save: the invoice is **voided** in Stripe, Terminal
    A shows `invoice.voided` 200, `status` shows the month `void`. On another failed month, in Stripe
-   open the invoice > **Mark uncollectible**: `invoice.marked_uncollectible` 200, month `void`, the
-   club back to `subscribed` if nothing else is unpaid.
+   open the invoice > **Mark uncollectible**: `invoice.marked_uncollectible` 200, month `void`
+   (reason `uncollectible-in-stripe`; a voided one says `voided-in-stripe`), the club back to
+   `subscribed` if nothing else is unpaid. Then **Standard** again on the club with its card still
+   on file: it goes straight to `subscribed` (never trial, grace or "paused, no card"), no "add a
+   card" DM, and /admin/clubs shows "The card on file is billed again".
 10. **Tidy up.** `dropdb matchtime_billing`, stop Terminals A and C. Test mode objects can stay.
 
 ### 16.3 Live mode
@@ -1999,7 +2020,9 @@ matchtime.ai, so the billing DMs are only written to the local database (`status
    - `STRIPE_CLUB_PRODUCT_ID` = live `prod_...`
    - `STRIPE_CLUB_TAX_RATE_ID` = live `txr_...`
    - `STRIPE_BILLING_WEBHOOK_SECRET` = live `whsec_...` of the billing endpoint
-   - `BILLING_CRON_RETRIES` and `BILLING_STRIPE_RETRIES` as the table in 16.1 step 6 decided
+   - `BILLING_STRIPE_RETRIES` and `BILLING_CRON_RETRIES`: leave both unset (Stripe's own retries,
+     the default row of the table in 16.1 step 6), and set the live Revenue recovery retries the
+     same way as test (all within 7 days, invoice left open after the last)
    - Remove `STRIPE_CLUB_PRICE_ID` and `STRIPE_CLUB_PORTAL_CONFIG_ID` if they exist (no longer read).
    - Check `AI_DAILY_CAP_DISABLED` is **not** there (`vercel env ls production`).
    - Leave `BILLING_ENABLED` alone for now.

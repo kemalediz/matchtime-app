@@ -26,7 +26,8 @@
  *               club per run, and two runs never both charge it);
  *             - slice P3: the cron's own retries of a failed month's
  *               invoice, days 1, 3 and 5 (BILLING_CRON_RETRIES, default
- *               on); a paid retry is applied at once;
+ *               OFF since Stripe's own retries cover one-off invoices); a
+ *               paid retry is applied at once;
  *             - the billing contact's day 21, 28, 30 or "paused" DM, the
  *               admins' club fee tip, every pending billing DM that is
  *               still true, and (slice P3) the month DMs: the receipt of a

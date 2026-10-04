@@ -249,6 +249,10 @@
  *     card points to the billing page instead of claiming Stripe emailed
  *     the recipient). No other case changed.
  *
+ *   - 2026-10-05, club fee billing test mode fixes: ADDED R193 (the Stop
+ *     paying confirmation on the billing page: what stopping means inside
+ *     and after the free month, Yes and Go back). No other case changed.
+ *
  *   - 2026-10-01, club fee billing slice B3 (Stripe): ADDED R190 (the
  *     billing page's notices after a card action; the "card added",
  *     "card replaced", "resumed" and "billed again after Free" DMs).
@@ -1388,6 +1392,15 @@ function cases(lang: Lang): Case[] {
   add("R192 billing DM / payment failed, no retries", paymentFailedText(lang, { ...p3, ...month1, amountPence: 749, ownCard: true, retrying: false }));
   add("R192 billing DM / payment failed, no retries, someone else's card", paymentFailedText(lang, { ...p3, ...month1, amountPence: 749, ownCard: false, retrying: false }));
   add("R192 billing DM / paused, two unpaid months", pausedText(lang, { ...p3, amountPence: 1548, unpaidMonths: 2, reason: "payment-failed" }));
+  add(
+    "R193 billing page / Stop paying confirmation",
+    [
+      sj.billing_stop_confirm_title,
+      sj.billing_stop_confirm_month({ date: "Tue 1 Dec" }),
+      sj.billing_stop_confirm_free({ date: "Sat 31 Oct" }),
+      `[${sj.billing_btn_stop_confirm_yes}] [${sj.billing_btn_stop_confirm_no}]`,
+    ].join("\n"),
+  );
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));

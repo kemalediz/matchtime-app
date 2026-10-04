@@ -92,6 +92,7 @@ import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isBillingDmHour } from "./club-billing-schedule-rules";
 import { notePaymentProblem, sendMonthCharged } from "./club-billing-dms";
 import {
+  addressParamOf,
   billingStripeConfig,
   buildCardSetupCheckoutParams,
   getBillingStripe,
@@ -378,6 +379,8 @@ export type PlanChangeResult =
  *     is voided (forgiven), plan 2A.6;
  *   - Standard or Custom: nothing in Stripe. The month close charges the
  *     LOWER of the price when the month opened and the price at the close.
+ *     A club now "subscribed" (billed again with its card on file) has its
+ *     current month opened at once.
  * Running it again is harmless.
  */
 export async function onPlanChanged(orgId: string, now: Date = new Date()): Promise<PlanChangeResult> {
@@ -385,7 +388,15 @@ export async function onPlanChanged(orgId: string, now: Date = new Date()): Prom
   const billing = await loadBilling(orgId);
   const stripe = getBillingStripe();
   if (stripe && billing?.stripeCustomerId) await stripe.expireOpenCheckoutSessions(billing.stripeCustomerId);
-  if (!org || (org.billingPlan !== "free" && org.billingStatus !== "exempt")) return { action: "none" };
+  if (!org) return { action: "none" };
+  if (org.billingPlan !== "free" && org.billingStatus !== "exempt") {
+    // Billed again with the card on file (test mode fix, 2026-10-05): open
+    // the CURRENT month now rather than at the next hourly run, so the page
+    // shows this month's charge date, not the one from before Free. Never
+    // an earlier month (openDueMonths), and nothing is charged by opening.
+    if (org.billingStatus === "subscribed" && billable(org)) await openDueMonths(orgId, now);
+    return { action: "none" };
+  }
   const waived = await waiveOpenMonths(orgId, "free-plan", now);
   const v = await voidUnpaidMonthInvoices(orgId, now, "free-plan");
   console.log(`[club-billing-stripe] ${orgId}: plan Free; ${waived} open month(s) waived, ${v.voided} unpaid invoice(s) voided`);
@@ -980,16 +991,27 @@ async function applyCardSession(
   // Read the OLD card and holder BEFORE anything changes in Stripe.
   const oldPm = billing.stripePaymentMethodId;
   const oldHolder = billing.cardHolderUserId;
-  if (oldHolder !== payer) await stripe.resetCustomerDetails({ customerId: billing.stripeCustomerId, name: org.name });
+  const newPayer = oldHolder !== payer;
+  // Checkout (customer_update "auto") has already written this payer's name,
+  // address and any VAT number onto the Customer. A NEW payer's reset wipes
+  // the old payer's details but spares the VAT numbers given in THIS
+  // session; the name, email and address are put back just below.
+  const keepTaxIds = (session.customer_details?.tax_ids ?? []).map((t) => t.value).filter((v): v is string => !!v);
+  if (newPayer) await stripe.resetCustomerDetails({ customerId: billing.stripeCustomerId, name: org.name, keepTaxIds });
   await stripe.setDefaultPaymentMethod({
     customerId: billing.stripeCustomerId,
     paymentMethodId: card.paymentMethodId,
     email: session.customer_details?.email ?? null,
     name: session.customer_details?.name ?? null,
   });
-  const address = session.customer_details?.address;
-  if (address?.country) await stripe.updateCustomer({ customerId: billing.stripeCustomerId, address: address as Stripe.AddressParam });
-  const billingCountry = address?.country ?? billing.billingCountry;
+  // The payer's address: Checkout's customer_details, else the saved card's
+  // billing details (setup mode can return customer_details.address null;
+  // test mode, 2026-10-05). Either way the Customer ends with it, so the
+  // invoice PDF's "Bill to" is filled.
+  const address = addressParamOf(session.customer_details?.address) ?? card.billingAddress ?? null;
+  if (address) await stripe.updateCustomer({ customerId: billing.stripeCustomerId, address });
+  // A new payer never inherits the old payer's country.
+  const billingCountry = address?.country ?? (newPayer ? null : billing.billingCountry);
   await db.clubBilling.updateMany({
     where: { orgId },
     data: { ...cardFields(card, billingCountry), billingCountry, cardHolderUserId: payer },

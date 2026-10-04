@@ -87,15 +87,22 @@ function billingPatch(
     patch.pausedReason = null;
     // Slice P2: billing starts again after Stop paying (Keep paying, or a
     // new card): that stop is over. Any other resume keeps a pending stop.
-    if (fromReason === "cancelled") patch.cancelAtPeriodEnd = false;
+    // Into "exempt" (plan Free) the stop is REMEMBERED instead: the pause
+    // reason is cleared, so `cancelAtPeriodEnd` is what tells "plan-billed"
+    // later that the payer had stopped (test mode fix, 2026-10-05).
+    if (fromReason === "cancelled") patch.cancelAtPeriodEnd = t.to === "exempt";
   }
-  if (from === "exempt" && (t.to === "trial" || t.to === "grace")) {
+  if (from === "exempt" && t.to !== "exempt") {
     // Billed again after Free ("plan-billed", slice B3): nothing from an
     // earlier billed spell may linger.
     patch.paymentFailedAt = null;
-    patch.pausedAt = null;
-    patch.pausedReason = null;
+    if (t.to !== "paused") {
+      patch.pausedAt = null;
+      patch.pausedReason = null;
+    }
     if (t.to === "trial") patch.graceEndsAt = null;
+    // Back to subscribed with the card on file: nothing is stopped.
+    if (t.to === "subscribed") patch.cancelAtPeriodEnd = false;
   }
   if (t.to === "subscribed") {
     // Paid (or a card is on): no grace is running, no failure is open.
@@ -154,12 +161,35 @@ async function applyBillingEventTx(
   const org = orgs[0];
   if (!org) return { ok: false, reason: "not-found" };
   const billings = await tx.$queryRaw<
-    Array<{ trialEndsAt: Date; graceEndsAt: Date | null; pausedReason: string | null }>
-  >`SELECT "trialEndsAt", "graceEndsAt", "pausedReason" FROM "ClubBilling" WHERE "orgId" = ${orgId} FOR UPDATE`;
+    Array<{
+      trialEndsAt: Date;
+      graceEndsAt: Date | null;
+      pausedReason: string | null;
+      stripePaymentMethodId?: string | null;
+      cancelAtPeriodEnd?: boolean | null;
+    }>
+  >`SELECT "trialEndsAt", "graceEndsAt", "pausedReason", "stripePaymentMethodId", "cancelAtPeriodEnd" FROM "ClubBilling" WHERE "orgId" = ${orgId} FOR UPDATE`;
+  const row = billings[0] ?? null;
 
   const from = org.billingStatus;
   const t = nextBillingState(
-    { approvedAt: org.approvedAt, billingStatus: from, billingPlan: org.billingPlan, billing: billings[0] ?? null },
+    {
+      approvedAt: org.approvedAt,
+      billingStatus: from,
+      billingPlan: org.billingPlan,
+      // A card on file is the Customer's saved default (`stripePaymentMethodId`);
+      // the transitions out of exempt, trial and grace bill it instead of
+      // asking for one (test mode fix, 2026-10-05).
+      billing: row
+        ? {
+            trialEndsAt: row.trialEndsAt,
+            graceEndsAt: row.graceEndsAt,
+            pausedReason: row.pausedReason,
+            hasCard: !!row.stripePaymentMethodId,
+            stopped: !!row.cancelAtPeriodEnd,
+          }
+        : null,
+    },
     event,
     now,
   );
@@ -336,7 +366,10 @@ export type SetClubPlanResult =
       /** Set when leaving Free billed the club again (its free month was
        *  already used): "trial" while that month is still running, else
        *  "grace" with a fresh 7 days. Slice B3. */
-      billedAgain: "trial" | "grace" | null;
+      /** Billed again after Free: "subscribed" (a card on file), "paused"
+       *  (a card on file but the payer had stopped paying), else "trial" or
+       *  "grace" (no card). */
+      billedAgain: "trial" | "grace" | "subscribed" | "paused" | null;
     }
   | { ok: false; reason: "not-found" | "not-self-join" };
 
@@ -407,10 +440,10 @@ export async function setClubPlan(
       // written first, so the CHECK constraints hold at every statement).
       // `nextBillingState` refuses it with the flag off, for a club never
       // trialled (Start free month is its way in) and on Free.
-      let billedAgain: "trial" | "grace" | null = null;
+      let billedAgain: "trial" | "grace" | "subscribed" | "paused" | null = null;
       if (choice.plan !== "free" && status === "exempt") {
         const moved = await applyBillingEventTx(tx, orgId, { type: "plan-billed" }, now);
-        if (moved.ok && (moved.to === "trial" || moved.to === "grace")) {
+        if (moved.ok && (moved.to === "trial" || moved.to === "grace" || moved.to === "subscribed" || moved.to === "paused")) {
           status = moved.to;
           billedAgain = moved.to;
           if (moved.to === "grace") {

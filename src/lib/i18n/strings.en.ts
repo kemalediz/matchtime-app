@@ -2414,7 +2414,8 @@ export const en = {
   billing_state_paid_with_other: (p: { holder: string; rest: string }): string =>
     `Paid with ${p.holder}'s card until you put yours on. ${p.rest}`,
   /** `what`: the unpaid month ("for 1 Nov to 30 Nov") or months; `retrying`
-   *  only when retries are switched on (BILLING_CRON_RETRIES or Stripe's). */
+   *  only when retries are switched on (Stripe's own, BILLING_STRIPE_RETRIES
+   *  on by default, or the cron's, BILLING_CRON_RETRIES=1). */
   billing_state_past_due: (p: { amount: string; from: string; to: string; months: number; retrying: boolean; date: string }): string =>
     (p.amount
       ? p.months > 1
@@ -2503,6 +2504,17 @@ export const en = {
   billing_btn_remove_mine: "Remove my card",
   billing_btn_stop_paying: "Stop paying",
   billing_btn_keep_paying: "Keep paying",
+  // Stop paying asks first (test mode fix, 2026-10-05). No dashes.
+  billing_stop_confirm_title: "Stop paying for MatchTime?",
+  /** After the free month: billing ends with the current month (`date`,
+   *  the day it is charged), then the club is paused. */
+  billing_stop_confirm_month: (p: { date: string }): string =>
+    `Billing ends on ${p.date}, after this month is charged for its games. Then MatchTime pauses in the group until someone starts paying again.`,
+  /** Inside the free month: the card is removed at once. */
+  billing_stop_confirm_free: (p: { date: string }): string =>
+    `Your card will be removed now and nothing is charged. The free month carries on until ${p.date}; after that a card is needed to keep MatchTime running.`,
+  billing_btn_stop_confirm_yes: "Yes, stop paying",
+  billing_btn_stop_confirm_no: "Go back",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",

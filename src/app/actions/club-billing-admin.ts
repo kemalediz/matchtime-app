@@ -15,7 +15,8 @@
  * price change needs nothing in Stripe (each month close charges the lower
  * of the price when the month opened and the price at the close). A club
  * billed again after Free with its free month used up gets one DM to its
- * billing contact asking for a card.
+ * billing contact asking for a card, unless a card is on file: then that
+ * card is billed and nobody is asked.
  *
  * "use server" modules may export async functions only.
  */
@@ -90,6 +91,10 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
     message += " The free month was already used, so the club has 7 days to add a card.";
   } else if (r.billedAgain === "trial") {
     message += " The club is back in its free month.";
+  } else if (r.billedAgain === "subscribed") {
+    message += " The card on file is billed again; nobody is asked for a card.";
+  } else if (r.billedAgain === "paused") {
+    message += " The payer had stopped paying, so it stays paused until they press Keep paying.";
   }
   return { ok: true, message };
 }

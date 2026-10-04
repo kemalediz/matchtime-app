@@ -75,6 +75,57 @@ describe("Free, then back to Standard or Custom (the B2 gap): the 'plan-billed' 
     expect(t?.graceEndsAt).toBeUndefined();
   });
 
+  // Test mode, 2026-10-05: a club with a card on file set Free and back to
+  // Standard went trial, then grace, then paused for "no card" while its
+  // card sat on file. A card on file means it is billed with that card.
+  describe("with a card on file (Free never removes the card already on file)", () => {
+    const carded = (over: Partial<NonNullable<BillingClub["billing"]>> = {}) =>
+      club({ billing: { trialEndsAt: TRIAL_ENDS, graceEndsAt: null, pausedReason: null, hasCard: true, ...over } });
+
+    it("free month used up: straight to SUBSCRIBED, no grace, no 'no card' pause", () => {
+      const now = new Date(TRIAL_ENDS.getTime() + 20 * DAY);
+      const t = nextBillingState(carded(), { type: "plan-billed" }, now, ON);
+      expect(t).toMatchObject({ to: "subscribed", pausedReason: null, resumes: false });
+      expect(t?.graceEndsAt).toBeUndefined();
+    });
+
+    it("free month still running: SUBSCRIBED with the card kept (a card in the free month is 'subscribed'; month 1 still starts when the free month ends)", () => {
+      const now = new Date(APPROVED.getTime() + 10 * DAY);
+      expect(nextBillingState(carded(), { type: "plan-billed" }, now, ON)).toMatchObject({ to: "subscribed" });
+    });
+
+    it("the payer had pressed Stop paying: back to paused (cancelled), so the card is never charged again without Keep paying", () => {
+      const now = new Date(TRIAL_ENDS.getTime() + 20 * DAY);
+      expect(nextBillingState(carded({ stopped: true }), { type: "plan-billed" }, now, ON)).toMatchObject({ to: "paused", pausedReason: "cancelled" });
+    });
+
+    it("flag off or plan still Free: nothing changes, card or not", () => {
+      const now = new Date(TRIAL_ENDS.getTime() + 20 * DAY);
+      expect(nextBillingState(carded(), { type: "plan-billed" }, now, OFF)).toBeNull();
+      expect(nextBillingState({ ...carded(), billingPlan: "free" }, { type: "plan-billed" }, now, ON)).toBeNull();
+    });
+
+    it("trial-ended with a card on file goes to SUBSCRIBED, never grace", () => {
+      const t = nextBillingState({ ...carded(), billingStatus: "trial" }, { type: "trial-ended" }, TRIAL_ENDS, ON);
+      expect(t).toMatchObject({ to: "subscribed" });
+      expect(t?.graceEndsAt).toBeUndefined();
+    });
+
+    it("grace-ended with a card on file goes to SUBSCRIBED, never paused for 'no card'", () => {
+      const graceEndsAt = new Date(TRIAL_ENDS.getTime() + 7 * DAY);
+      const t = nextBillingState({ ...carded({ graceEndsAt }), billingStatus: "grace" }, { type: "grace-ended" }, graceEndsAt, ON);
+      expect(t).toMatchObject({ to: "subscribed" });
+    });
+
+    it("a payment grace (past due) still pauses at its end, card or not", () => {
+      const graceEndsAt = new Date(TRIAL_ENDS.getTime() + 7 * DAY);
+      expect(nextBillingState({ ...carded({ graceEndsAt }), billingStatus: "past_due" }, { type: "grace-ended" }, graceEndsAt, ON)).toMatchObject({
+        to: "paused",
+        pausedReason: "payment-failed",
+      });
+    });
+  });
+
   it("never trialled (no ClubBilling row): stays exempt, 'Start free month' is the way in", () => {
     expect(nextBillingState(club({ billing: null }), { type: "plan-billed" }, APPROVED, ON)).toBeNull();
   });

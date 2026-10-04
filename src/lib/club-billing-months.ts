@@ -705,7 +705,9 @@ export async function applyMonthInvoice(args: {
       ? { status: "paid", paidAt: args.now }
       : args.kind === "failed"
         ? { status: "failed" }
-        : { status: "void", reason: "voided-in-stripe" };
+        : // Which one Stripe did, so the owner can tell a forgiven invoice
+          // from one written off (test mode, 2026-10-05).
+          { status: "void", reason: args.invoice.status === "uncollectible" ? "uncollectible-in-stripe" : "voided-in-stripe" };
   const { count } = await db.clubBillingMonth.updateMany({
     where: { id: m.id, status: { in: from[args.kind] } },
     data: { ...data, stripeInvoiceId: args.invoice.id, ...(m.closedAt ? {} : { closedAt: args.now }), updatedAt: args.now },
@@ -780,7 +782,8 @@ export interface MonthRetry {
  * Stripe account whose automatic retries do not cover one-off invoices:
  * `invoices.pay` on the card on file on days 1, 3 and 5 after the month's
  * first attempt (its close), in the daytime only, once per day (claimed),
- * only the latest due day after an outage. Off with BILLING_CRON_RETRIES=0.
+ * only the latest due day after an outage. OFF by default (Stripe's own
+ * retries are the one mechanism, 2026-10-05); on with BILLING_CRON_RETRIES=1.
  *
  * Never for a club that must not be charged (flag off, Free, exempt,
  * suspended, not approved), a paused club, or one with no card; never an

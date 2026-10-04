@@ -202,6 +202,10 @@ test("1. a PLAYER money collector adds a card: setup mode, the webhook, subscrib
     client_reference_id: ORG,
     currency: "gbp",
     billing_address_collection: "required",
+    // Test mode 2026-10-05: without these the setup session returns no
+    // address, and Stripe takes tax_id_collection only with both "auto".
+    customer_update: { name: "auto", address: "auto" },
+    tax_id_collection: { enabled: true },
     metadata: { orgId: ORG, payerUserId: USER.colin, purpose: "club-fee", action: "add-card" },
     setup_intent_data: { metadata: { orgId: ORG, payerUserId: USER.colin, purpose: "club-fee", action: "add-card" } },
   });
@@ -251,7 +255,16 @@ test("1. a PLAYER money collector adds a card: setup mode, the webhook, subscrib
 
 test("2. Stop paying inside the free month: the card is removed, back in the free month; a card added again", async ({ page, request }) => {
   await signInAs(page, USER.colin, `/billing/${ORG}`);
+  // Stop paying asks first; "Go back" changes nothing.
   await page.getByTestId("billing-btn-stop-paying").click();
+  await expect(page.getByTestId("billing-stop-confirm")).toContainText("Stop paying for MatchTime?");
+  await expect(page.getByTestId("billing-stop-confirm")).toContainText("Your card will be removed now and nothing is charged.");
+  await page.getByTestId("billing-stop-cancel").click();
+  await expect(page.getByTestId("billing-stop-confirm")).toHaveCount(0);
+  expect(stripeState().detached).not.toContain("pm_e2e_colin");
+  expect(await status()).toBe("subscribed");
+  await page.getByTestId("billing-btn-stop-paying").click();
+  await page.getByTestId("billing-btn-stop-paying-confirm").click();
   await expect(page.getByTestId("billing-notice")).toHaveText(
     "Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.",
     { timeout: 30_000 },
@@ -410,6 +423,10 @@ test("5. a month's invoice fails: past due, Update card and pay, then paid: subs
 test("6. Stop paying after the free month: billing ends with the current month; Keep paying undoes it", async ({ page }) => {
   await signInAs(page, USER.colin, `/billing/${ORG}`);
   await page.getByTestId("billing-btn-stop-paying").click();
+  await expect(page.getByTestId("billing-stop-confirm")).toContainText("after this month is charged for its games. Then MatchTime pauses in the group");
+  // Nothing has changed until "Yes, stop paying".
+  expect((await billingRow())!.cancelAtPeriodEnd).toBe(false);
+  await page.getByTestId("billing-btn-stop-paying-confirm").click();
   await expect(page.getByTestId("billing-notice")).toHaveText(
     "Done. Billing ends when this month ends: this month is charged for its games as usual, then nothing more. MatchTime keeps running until then.",
     { timeout: 30_000 },

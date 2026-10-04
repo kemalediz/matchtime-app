@@ -117,7 +117,20 @@ export interface BillingClub {
   billingStatus: string;
   billingPlan: string;
   /** The ClubBilling row, or null when the club never had a free month. */
-  billing: { trialEndsAt: Date; graceEndsAt: Date | null; pausedReason: string | null } | null;
+  billing: {
+    trialEndsAt: Date;
+    graceEndsAt: Date | null;
+    pausedReason: string | null;
+    /**
+     * A card is on file (`stripePaymentMethodId`: the Customer's saved
+     * default, which a Free spell does not remove). Test mode, 2026-10-05: a
+     * club with a card set Free and back went trial, grace, then paused for
+     * "no card". With a card it is billed with that card instead.
+     */
+    hasCard?: boolean;
+    /** The payer pressed Stop paying (`cancelAtPeriodEnd`). */
+    stopped?: boolean;
+  } | null;
 }
 
 export type BillingEventInput =
@@ -170,6 +183,8 @@ export type BillingEventInput =
    * Free and back would otherwise stay exempt for ever, because "Start free
    * month" refuses a second free month). Back to "trial" while the original
    * free month is still running, else "grace" with a fresh 7 days from now.
+   * With a card on file: "subscribed" at once (or paused "cancelled" when
+   * the payer had pressed Stop paying).
    */
   | { type: "plan-billed" };
 
@@ -238,10 +253,14 @@ export function nextBillingState(
 
     case "trial-ended":
       if (from !== "trial" || !b || now < b.trialEndsAt) return null;
+      // A card on file: billed with it, never a "no card" grace.
+      if (b.hasCard) return to("subscribed", from);
       return to("grace", from, { graceEndsAt: graceEndsFrom(b.trialEndsAt) });
 
     case "grace-ended":
       if (!b?.graceEndsAt || now < b.graceEndsAt) return null;
+      // The "no card" grace ends with a card on file: billed with it.
+      if (from === "grace" && b.hasCard) return to("subscribed", from);
       if (from === "grace") return to("paused", from, { pausedReason: "no-card" });
       if (from === "past_due") return to("paused", from, { pausedReason: "payment-failed" });
       return null;
@@ -311,6 +330,16 @@ export function nextBillingState(
       if (from !== "exempt" || !b) return null;
       if (club.billingPlan === "free") return null;
       if (!isBillingEnabled(env)) return null;
+      if (b.hasCard) {
+        // The payer had stopped paying: still stopped. "Keep paying" (Start
+        // again) is their way back; the card is never charged without it.
+        if (b.stopped) return to("paused", from, { pausedReason: "cancelled" });
+        // Billed with the card on file at once, in or after the free month
+        // (a card in the free month is "subscribed", as after Add a card;
+        // month 1 still starts when the free month ends). Never asked for a
+        // card it already has.
+        return to("subscribed", from);
+      }
       if (now < b.trialEndsAt) return to("trial", from);
       return to("grace", from, { graceEndsAt: graceEndsFrom(now) });
 

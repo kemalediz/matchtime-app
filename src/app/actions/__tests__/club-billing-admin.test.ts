@@ -139,6 +139,19 @@ describe("setClubPlanAction", () => {
     expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The club is back in its free month.");
   });
 
+  it("billed again with a card on file: billed with that card, nobody asked for a card", async () => {
+    h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "subscribed", resumed: false, billedAgain: "subscribed" });
+    const r = await setClubPlanAction("org1", "standard");
+    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The card on file is billed again; nobody is asked for a card.");
+    expect(r.message).not.toMatch(/add a card/);
+  });
+
+  it("billed again after the payer had stopped paying: still stopped until they press Keep paying", async () => {
+    h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "paused", resumed: false, billedAgain: "paused" });
+    const r = await setClubPlanAction("org1", "standard");
+    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The payer had stopped paying, so it stays paused until they press Keep paying.");
+  });
+
   it("Sutton FC's shape is refused by the writer", async () => {
     h.setClubPlan.mockResolvedValue({ ok: false, reason: "not-self-join" });
     expect(await setClubPlanAction("org-sutton", "standard")).toEqual({

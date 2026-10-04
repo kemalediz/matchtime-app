@@ -443,6 +443,45 @@ function club(over: Partial<BillingViewClub> = {}): BillingViewClub {
   };
 }
 
+describe("billingPageView: Stop paying asks first (a confirmation step, test mode 2026-10-05)", () => {
+  const paying = () =>
+    club({ status: "subscribed", billing: { ...club().billing!, cardHolderUserId: "colin", cardBrand: "visa", cardLast4: "4242", currentPeriodEnd: PERIOD_END } });
+
+  it("after the free month: what stopping means, with the date billing ends, and Yes and Go back (EN and TR, no dashes)", () => {
+    const now = new Date(TRIAL_END.getTime() + 5 * 24 * 60 * 60 * 1000);
+    const en = billingPageView("en", paying(), "contact", "colin", null, { now });
+    expect(en.buttons.map((b) => b.key)).toContain("stop-paying");
+    expect(en.stopConfirm).toEqual({
+      title: "Stop paying for MatchTime?",
+      text: "Billing ends on Tue 1 Dec, after this month is charged for its games. Then MatchTime pauses in the group until someone starts paying again.",
+      yes: "Yes, stop paying",
+      no: "Go back",
+    });
+    const tr = billingPageView("tr", paying(), "contact", "colin", null, { now });
+    expect(tr.stopConfirm).toEqual({
+      title: "MatchTime için ödemeyi durdurmak istiyor musunuz?",
+      text: expect.stringContaining("bu ay oynanan maçlar için ücret alındıktan sonra sona erer"),
+      yes: "Evet, ödemeyi durdur",
+      no: "Geri dön",
+    });
+    for (const v of [en, tr]) expect(JSON.stringify(v.stopConfirm)).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  it("inside the free month: the card is removed now and nothing is charged", () => {
+    const now = new Date(TRIAL_END.getTime() - 5 * 24 * 60 * 60 * 1000);
+    const en = billingPageView("en", paying(), "contact", "colin", null, { now });
+    expect(en.stopConfirm?.text).toBe(
+      "Your card will be removed now and nothing is charged. The free month carries on until Sat 31 Oct; after that a card is needed to keep MatchTime running.",
+    );
+    const tr = billingPageView("tr", paying(), "contact", "colin", null, { now });
+    expect(tr.stopConfirm?.text).toContain("Kartınız şimdi kaldırılır");
+  });
+
+  it("no Stop paying button, no confirmation", () => {
+    expect(billingPageView("en", club(), "contact", "colin", null).stopConfirm).toBeNull();
+  });
+});
+
 describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   const tip = tipFor({ playersPerTeam: 7, feePerPlayer: 7 });
 

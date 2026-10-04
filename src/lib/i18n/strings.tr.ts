@@ -1976,6 +1976,13 @@ export const tr: Strings = {
   billing_btn_remove_mine: "Kartımı kaldır",
   billing_btn_stop_paying: "Ödemeyi durdur",
   billing_btn_keep_paying: "Ödemeye devam et",
+  billing_stop_confirm_title: "MatchTime için ödemeyi durdurmak istiyor musunuz?",
+  billing_stop_confirm_month: (p) =>
+    `Ödeme ${p.date} tarihinde, bu ay oynanan maçlar için ücret alındıktan sonra sona erer. Sonra MatchTime, biri yeniden ödemeye başlayana kadar grupta durur.`,
+  billing_stop_confirm_free: (p) =>
+    `Kartınız şimdi kaldırılır ve hiçbir ücret alınmaz. Ücretsiz ay ${p.date} tarihine kadar devam eder; sonrasında MatchTime'ın çalışmaya devam etmesi için kart gerekir.`,
+  billing_btn_stop_confirm_yes: "Evet, ödemeyi durdur",
+  billing_btn_stop_confirm_no: "Geri dön",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
