@@ -23,7 +23,8 @@ import { DecideButtons, LeaveButton, TurnOffButton } from "./club-buttons";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
-import { moneyLabel } from "@/lib/club-billing-view";
+import { moneyLabel, ownerLastMonthLabel, ownerThisMonthLabel } from "@/lib/club-billing-view";
+import { loadCurrentMonth, loadPastMonths, loadUnpaidSummary } from "@/lib/club-billing-month-summary";
 
 /**
  * /admin/clubs: the platform owner's decisions on self-join clubs (slice 7).
@@ -85,7 +86,8 @@ const STATUS_LABEL: Record<string, string> = {
 function planLabel(plan: string, pricePence: number | null): string {
   if (plan === "free") return "Free";
   const p = planPricePence(plan, pricePence);
-  return plan === "custom" ? `Custom ${p ? moneyLabel(p) : ""}` : "Standard £9.99";
+  // Slice P4 (games played): the plan's price is a monthly MAXIMUM.
+  return plan === "custom" ? `Custom, up to ${p ? moneyLabel(p) : ""}` : "Standard, up to £9.99";
 }
 
 type LiveClub = {
@@ -97,7 +99,30 @@ type LiveClub = {
   clubBilling: { vatCountryCheck: boolean } | null;
   spend30: number;
   billing: Awaited<ReturnType<typeof loadClubBillingSnapshot>>;
+  months: ClubMonths;
 };
+
+/** Slice P4 (plan 8.3): the club's open month so far, its last closed
+ *  month and what is unpaid. Nothing for an exempt club. */
+type ClubMonths = {
+  thisMonth: { played: number; scheduled: number; amountPence: number } | null;
+  lastMonth: { status: string; amountPence: number | null } | null;
+  unpaidPence: number;
+};
+
+async function loadClubMonths(o: { id: string; billingStatus: string; billingPlan: string; billingPricePence: number | null }, now: Date): Promise<ClubMonths> {
+  if (o.billingStatus === "exempt") return { thisMonth: null, lastMonth: null, unpaidPence: 0 };
+  const [current, past, unpaid] = await Promise.all([
+    loadCurrentMonth(o.id, now, { plan: o.billingPlan, pricePence: o.billingPricePence }),
+    loadPastMonths(o.id, { role: "owner-view", userId: "", cardHolderUserId: null }, 1),
+    loadUnpaidSummary(o.id),
+  ]);
+  return {
+    thisMonth: current ? { played: current.played, scheduled: current.scheduled, amountPence: current.soFarPence } : null,
+    lastMonth: past[0] ? { status: past[0].status, amountPence: past[0].amountPence } : null,
+    unpaidPence: unpaid?.totalPence ?? 0,
+  };
+}
 
 /**
  * One live club's club fee: plan, state, the date that matters, card on
@@ -114,7 +139,9 @@ function BillingRow({ c, billingOn }: { c: LiveClub; billingOn: boolean }) {
       : (status === "grace" || status === "past_due") && cb?.graceEndsAt
         ? `Stops ${when(cb.graceEndsAt)} without payment`
         : status === "subscribed" && cb?.currentPeriodEnd
-          ? `Next payment ${when(cb.currentPeriodEnd)}`
+          ? cb.cancelAtPeriodEnd
+            ? `Stops paying ${when(cb.currentPeriodEnd)}`
+            : `Next charge ${when(cb.currentPeriodEnd)}`
           : null;
   const who = !b?.contact
     ? "No billing contact"
@@ -131,6 +158,17 @@ function BillingRow({ c, billingOn }: { c: LiveClub; billingOn: boolean }) {
           {status !== "exempt" && ` Card on file: ${cb?.cardHolderUserId || cb?.cardLast4 ? "yes" : "no"}.`}
           {c.clubBilling?.vatCountryCheck && <strong className="text-amber-700"> Check VAT country.</strong>}
         </dd>
+        {status !== "exempt" && (
+          <>
+            <dt className="text-slate-500">This month</dt>
+            <dd data-testid="club-billing-this-month">{ownerThisMonthLabel(c.months.thisMonth)}</dd>
+            <dt className="text-slate-500">Last month</dt>
+            <dd data-testid="club-billing-last-month">
+              {ownerLastMonthLabel(c.months.lastMonth)}
+              {c.months.unpaidPence > 0 && <strong className="text-amber-700"> Unpaid: {moneyLabel(c.months.unpaidPence)}.</strong>}
+            </dd>
+          </>
+        )}
         <dt className="text-slate-500">Who pays</dt>
         <dd>{who}</dd>
         <dt className="text-slate-500">AI, last 30 days</dt>
@@ -244,16 +282,24 @@ export default async function ClubsPage() {
   const live = await Promise.all(
     liveOrgs.map(async (o) => {
       const cap = newClubDmCap(o, now);
-      const [dmsToday, ai, billing] = await Promise.all([
+      const [dmsToday, ai, billing, months] = await Promise.all([
         cap !== null ? countOrgDmsSince(o.id, midnight) : Promise.resolve(null),
         getAiBudgetStatus(o.id, now),
         loadClubBillingSnapshot(o.id),
+        loadClubMonths(o, now),
       ]);
-      return { ...o, cap, dmsToday, ai, newClub: cap !== null, billing, spend30: spend30Of.get(o.id) ?? 0 };
+      return { ...o, cap, dmsToday, ai, newClub: cap !== null, billing, months, spend30: spend30Of.get(o.id) ?? 0 };
     }),
   );
   const totals = billingTotals(
-    liveOrgs.map((o) => ({ status: o.billingStatus, plan: o.billingPlan, pricePence: o.billingPricePence })),
+    live.map((c) => ({
+      status: c.billing?.status ?? c.billingStatus,
+      cardOnFile: !!(c.billing?.billing?.cardHolderUserId || c.billing?.billing?.cardLast4),
+      vatCheck: !!c.clubBilling?.vatCountryCheck,
+      thisMonthPence: c.months.thisMonth?.amountPence ?? null,
+      lastMonth: c.months.lastMonth,
+      unpaidPence: c.months.unpaidPence,
+    })),
   );
 
   const leaveJobs = unsolicited.length
@@ -380,8 +426,10 @@ export default async function ClubsPage() {
         )}
         {live.length > 0 && (
           <p data-testid="billing-totals" className="mt-3 text-sm text-slate-600">
-            Club fees: {totals.paying} paying, {moneyLabel(totals.monthlyPence)} a month at current prices.{" "}
-            {totals.trial} in their free month, {totals.grace} in grace, {totals.pastDue} past due, {totals.paused} paused.
+            Club fees: {totals.withCard} with a card. Charged last month: {moneyLabel(totals.lastMonthChargedPence)}. This month so
+            far: {moneyLabel(totals.thisMonthPence)}. Failed or unpaid: {totals.unpaidClubs}
+            {totals.unpaidClubs > 0 ? ` (${moneyLabel(totals.unpaidPence)})` : ""}. {totals.trial} in their free month, {totals.grace} in
+            grace, {totals.pastDue} past due, {totals.paused} paused. Check VAT country: {totals.vatCheck}.
             {!billingOn && " Billing is switched off (BILLING_ENABLED): nobody is billed or paused."}
           </p>
         )}

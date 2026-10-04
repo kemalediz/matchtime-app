@@ -586,29 +586,98 @@ export function startTrialRefusal(
 // ── The owner page's totals line (slice B2, 8.3 point 3) ────────────────
 
 export interface BillingTotals {
-  /** Clubs with a card paying now ("subscribed"). */
-  paying: number;
-  /** What the paying clubs pay a month at their current prices. */
-  monthlyPence: number;
+  /** Billed clubs with a card on file. */
+  withCard: number;
+  /** The sum of each club's last closed month, where it was paid. */
+  lastMonthChargedPence: number;
+  /** The sum of each club's open month so far (what it would charge if
+   *  it closed now). */
+  thisMonthPence: number;
+  /** Clubs with a club fee month failed or still being taken, and the total. */
+  unpaidClubs: number;
+  unpaidPence: number;
+  /** Clubs flagged "Check VAT country". */
+  vatCheck: number;
   trial: number;
   grace: number;
   pastDue: number;
   paused: number;
 }
 
-/** Read from our tables; Stripe's dashboard stays the money record. */
-export function billingTotals(rows: Array<{ status: string; plan: string; pricePence: number | null }>): BillingTotals {
-  const totals: BillingTotals = { paying: 0, monthlyPence: 0, trial: 0, grace: 0, pastDue: 0, paused: 0 };
+/** One live club's row for the totals (slice P4, games played). */
+export interface BillingTotalsRow {
+  status: string;
+  cardOnFile: boolean;
+  vatCheck: boolean;
+  /** The open month so far, in pence (0 when nothing would be charged),
+   *  or null when no month is open. */
+  thisMonthPence: number | null;
+  /** The club's last closed month. */
+  lastMonth: { status: string; amountPence: number | null } | null;
+  /** The total of its failed or still-being-taken months. */
+  unpaidPence: number;
+}
+
+/**
+ * The /admin/clubs totals line (8.3). Read from our tables; Stripe's
+ * dashboard stays the money record. "Last month" is each club's own last
+ * closed month (clubs' months start on different days), counted only when
+ * it was paid.
+ */
+export function billingTotals(rows: BillingTotalsRow[]): BillingTotals {
+  const totals: BillingTotals = {
+    withCard: 0,
+    lastMonthChargedPence: 0,
+    thisMonthPence: 0,
+    unpaidClubs: 0,
+    unpaidPence: 0,
+    vatCheck: 0,
+    trial: 0,
+    grace: 0,
+    pastDue: 0,
+    paused: 0,
+  };
   for (const r of rows) {
-    if (r.status === "subscribed") {
-      totals.paying++;
-      totals.monthlyPence += planPricePence(r.plan, r.pricePence) ?? 0;
-    } else if (r.status === "trial") totals.trial++;
+    if (r.status === "exempt") continue;
+    if (r.cardOnFile) totals.withCard++;
+    if (r.vatCheck) totals.vatCheck++;
+    totals.thisMonthPence += r.thisMonthPence ?? 0;
+    if (r.lastMonth?.status === "paid") totals.lastMonthChargedPence += r.lastMonth.amountPence ?? 0;
+    if (r.unpaidPence > 0) {
+      totals.unpaidClubs++;
+      totals.unpaidPence += r.unpaidPence;
+    }
+    if (r.status === "trial") totals.trial++;
     else if (r.status === "grace") totals.grace++;
     else if (r.status === "past_due") totals.pastDue++;
     else if (r.status === "paused") totals.paused++;
   }
   return totals;
+}
+
+/**
+ * May this viewer open a month's Stripe receipt from the billing page
+ * (slice P4)? A receipt is Stripe's hosted invoice page, which shows the
+ * payer's name, email and billing address. So: only the billing contact,
+ * only while the card on file is their own, only for a PAID month with an
+ * invoice, and only for months whose invoice was made since that card went
+ * on (`invoicedAt`, the month's close, against `cardSince`, the latest
+ * applied card session; null when none is recorded). The invoice carries
+ * the payer details of the moment it was made, so a month invoiced while an
+ * earlier collector paid is listed without its receipt, even when the new
+ * card paid it.
+ */
+export function receiptAllowed(p: {
+  role: string;
+  ownCard: boolean;
+  status: string;
+  hasInvoice: boolean;
+  invoicedAt: Date | null;
+  cardSince: Date | null;
+}): boolean {
+  if (p.role !== "contact" || !p.ownCard) return false;
+  if (p.status !== "paid" || !p.hasInvoice || !p.invoicedAt) return false;
+  return p.cardSince === null || p.invoicedAt.getTime() >= p.cardSince.getTime();
 }
 
 // ── Slice B3: Stripe (section 5.4) ─────────────────────────────────────

@@ -12,6 +12,9 @@ export interface BillingCardData {
   openLabel: string;
   chooseCollectorLabel: string | null;
   billingPath: string;
+  /** Slice P4: this month so far, and the last closed month. */
+  month?: string | null;
+  lastMonth?: string | null;
 }
 
 /**
@@ -31,6 +34,12 @@ export function BillingSettingsCard({ data, collectorAnchor }: { data: BillingCa
         {data.lines.map((l) => (
           <p key={l}>{l}</p>
         ))}
+        {data.month && (
+          <p data-testid="settings-billing-month" className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-blue-900">
+            {data.month}
+          </p>
+        )}
+        {data.lastMonth && <p data-testid="settings-billing-last-month">{data.lastMonth}</p>}
         <p className="text-slate-500">{data.who}</p>
         <p className="text-slate-500">{data.cardOnFile}</p>
         {data.tip && (

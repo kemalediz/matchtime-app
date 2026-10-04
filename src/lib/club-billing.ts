@@ -50,6 +50,7 @@ import {
 } from "./club-billing-rules";
 import { bannerText, billingCardView, type BillingCardView } from "./club-billing-view";
 import { BILLED_EVENT_TYPE, PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE, UNBILLED_EVENT_TYPE } from "./club-billing-cycle-rules";
+import { loadMonthsSummary, loadUnpaidSummary } from "./club-billing-month-summary";
 
 /**
  * Is the club this match belongs to paused for the club fee? For the Pi
@@ -670,7 +671,19 @@ export async function loadBillingCard(
   if (!(opts.flagOn ?? isBillingEnabled())) return null;
   const snapshot = await loadClubBillingSnapshot(orgId);
   if (!snapshot || snapshot.status === "exempt") return null;
-  const view = billingCardView(snapshot.language, snapshot, await loadClubFeeTip(orgId));
+  const now = new Date();
+  // Slice P4: this month so far and the last closed month (no receipts:
+  // the card is the admins' read-only view).
+  const months = await loadMonthsSummary(orgId, {
+    now,
+    plan: snapshot.plan,
+    pricePence: snapshot.pricePence,
+    role: "viewer",
+    viewerUserId: "",
+    cardHolderUserId: null,
+    take: 1,
+  });
+  const view = billingCardView(snapshot.language, snapshot, await loadClubFeeTip(orgId), { now, months });
   return view ? { ...view, billingPath: `/billing/${orgId}` } : null;
 }
 
@@ -691,6 +704,8 @@ export async function loadBillingBanner(orgId: string, opts: { flagOn?: boolean 
     trialEndsAt: org.clubBilling?.trialEndsAt ?? null,
     graceEndsAt: org.clubBilling?.graceEndsAt ?? null,
     pausedReason: org.clubBilling?.pausedReason ?? null,
+    // Slice P4: the past due banner names the unpaid month and its amount.
+    unpaid: org.billingStatus === "past_due" ? await loadUnpaidSummary(orgId) : null,
   });
 }
 

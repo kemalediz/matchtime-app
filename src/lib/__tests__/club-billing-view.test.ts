@@ -184,9 +184,9 @@ function state(over: Partial<BillingStateInput> = {}): BillingStateInput {
 
 describe("billingStateLines (8.1)", () => {
   it("trial", () => {
-    expect(billingStateLines("en", state())).toEqual(["Free month until Sat 31 Oct. Then £9.99 a month for the whole group."]);
-    expect(billingStateLines("tr", state())).toEqual(["Ücretsiz ay 31 Ekim Cumartesi tarihine kadar. Sonrasında tüm grup için aylık £9.99."]);
-    expect(billingStateLines("en", state({ plan: "custom", pricePence: 500 }))[0]).toContain("Then £5 a month");
+    expect(billingStateLines("en", state())).toEqual(["Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
+    expect(billingStateLines("tr", state())).toEqual(["Ücretsiz ay 31 Ekim Cumartesi tarihine kadar. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99."]);
+    expect(billingStateLines("en", state({ plan: "custom", pricePence: 500 }))[0]).toContain("up to £5 a month");
   });
 
   it("grace and past due name the stop date; paused says the data is kept", () => {
@@ -196,7 +196,7 @@ describe("billingStateLines (8.1)", () => {
     // A grace with no stored end falls back to the trial end + 7 days.
     expect(billingStateLines("en", state({ status: "grace" }))[0]).toContain("Sat 7 Nov");
     expect(billingStateLines("en", state({ status: "past_due", graceEndsAt: GRACE_END }))[0]).toBe(
-      "Last payment didn't go through. Stripe is retrying. MatchTime stops on Sat 7 Nov if it can't be taken.",
+      "The last payment didn't go through. It will be tried again over the next few days. MatchTime stops on Sat 7 Nov if it can't be taken.",
     );
     expect(billingStateLines("en", state({ status: "paused" }))).toEqual([
       "MatchTime is paused. All the data is kept. Add a card to switch it back on.",
@@ -212,10 +212,13 @@ describe("billingStateLines (8.1)", () => {
       cardHolderUserId: "u1",
       cardHolderName: "Colin",
     });
-    expect(billingStateLines("en", own)).toEqual(["£9.99 a month. Next payment Tue 1 Dec.", "Card Visa ending 4242."]);
+    expect(billingStateLines("en", own)).toEqual([
+      "Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+      "Card Visa ending 4242.",
+    ]);
     // An admin who reads only never sees the brand and last four.
     expect(billingStateLines("en", { ...own, role: "viewer", viewerUserId: "admin" })).toEqual([
-      "£9.99 a month. Next payment Tue 1 Dec.",
+      "Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
     ]);
   });
 
@@ -225,13 +228,15 @@ describe("billingStateLines (8.1)", () => {
         "en",
         state({ status: "subscribed", currentPeriodEnd: PERIOD_END, cardHolderUserId: "old", cardHolderName: "Elvin" }),
       ),
-    ).toEqual(["£9.99 a month, paid with Elvin's card until you put yours on. Next payment Tue 1 Dec."]);
+    ).toEqual([
+      "Paid with Elvin's card until you put yours on. Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.",
+    ]);
   });
 
-  it("subscribed and cancelled: Ends on", () => {
+  it("subscribed and stopping: billing ends with this month", () => {
     expect(
       billingStateLines("en", state({ status: "subscribed", currentPeriodEnd: PERIOD_END, cancelAtPeriodEnd: true, cardHolderUserId: "u1" })),
-    ).toEqual(["£9.99 a month. Ends on Tue 1 Dec."]);
+    ).toEqual(["Billing ends on Tue 1 Dec, after this month is charged for its games."]);
   });
 
   it("every line, every state, both languages: no dashes, no undefined or null", () => {
@@ -320,7 +325,7 @@ describe("bannerText (8.2): grace, past due and paused only", () => {
       "The free month has ended. Add a card before Sat 7 Nov to keep MatchTime running.",
     );
     expect(bannerText("en", { status: "past_due", trialEndsAt: TRIAL_END, graceEndsAt: GRACE_END })).toBe(
-      "This month's club fee didn't go through. MatchTime stops on Sat 7 Nov if it can't be taken.",
+      "The last club fee payment didn't go through. MatchTime stops on Sat 7 Nov if it can't be taken.",
     );
     expect(bannerText("en", { status: "paused", trialEndsAt: TRIAL_END, graceEndsAt: null })).toBe(
       "MatchTime is paused for this club. Add a card to switch it back on.",
@@ -444,7 +449,7 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   it("the contact: the state, the tip and Add a card (live since B3, no 'soon' line)", () => {
     const v = billingPageView("en", club(), "contact", "colin", tip);
     expect(v.exempt).toBeNull();
-    expect(v.lines).toEqual(["Free month until Sat 31 Oct. Then £9.99 a month for the whole group."]);
+    expect(v.lines).toEqual(["Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
     expect(v.buttons).toEqual([{ key: "add-card", label: "Add a card" }]);
     expect(v).not.toHaveProperty("soon");
     expect(v.tip).toContain("*20p a player per game*");
@@ -495,7 +500,7 @@ describe("billingCardView: the /admin/settings card (8.1)", () => {
     const v = billingCardView("en", club(), tipFor())!;
     expect(v).toMatchObject({
       title: "Club fee",
-      lines: ["Free month until Sat 31 Oct. Then £9.99 a month for the whole group."],
+      lines: ["Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."],
       who: "Colin looks after the card.",
       cardOnFile: "Card on file: no.",
       openLabel: "Open billing",

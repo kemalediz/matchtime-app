@@ -237,6 +237,18 @@
  *     charges; billed again: "only the games played, up to"). No other case
  *     changed.
  *
+ *   - 2026-10-04, club fee billing slice P4 (games played, the pages):
+ *     ADDED R192 (the billing page's month box, past months and game
+ *     lines; the past due and paused state lines and banners naming the
+ *     unpaid month or the total of several; the payment failed DM when no
+ *     retries are on; the paused DM for two unpaid months). CHANGED, on
+ *     purpose: R189 (no flat fee left: "Then £9.99 a month", "£9.99 a
+ *     month. Next payment", "Ends on" and "This month's club fee" are
+ *     gone), R190 (card added: each receipt is on the billing page, no
+ *     promise that Stripe emails it), R191 (the receipt for someone else's
+ *     card points to the billing page instead of claiming Stripe emailed
+ *     the recipient). No other case changed.
+ *
  *   - 2026-10-01, club fee billing slice B3 (Stripe): ADDED R190 (the
  *     billing page's notices after a card action; the "card added",
  *     "card replaced", "resumed" and "billed again after Free" DMs).
@@ -402,6 +414,9 @@ import {
   bannerText,
   billingNoticeText,
   billingStateLines,
+  gameLine,
+  monthBoxText,
+  pastMonthLine,
   cardAddedText,
   cardReplacedText,
   clubFeeTipText,
@@ -1312,13 +1327,67 @@ function cases(lang: Lang): Case[] {
   add("R191 billing DM / month free", monthFreeText(lang, { name: "Colin", club: "Riverside FC", ...month1 }));
   add("R191 billing DM / keep paying, undone", keepPayingText(lang, { ...p3, pricePence: 999, nextChargeOn: firstChargeOn, restarted: false }));
   add("R191 billing DM / keep paying, started again", keepPayingText(lang, { ...p3, pricePence: 999, nextChargeOn: firstChargeOn, restarted: true }));
-  add("R191 billing DM / payment failed", paymentFailedText(lang, { ...p3, ...month1, amountPence: 749, ownCard: true }));
+  add("R191 billing DM / payment failed", paymentFailedText(lang, { ...p3, ...month1, amountPence: 749, ownCard: true, retrying: true }));
   add(
     "R191 billing DM / bank check, someone else's card",
     paymentActionText(lang, { ...p3, ...month1, amountPence: 749, link: "https://invoice.stripe.com/i/x", ownCard: false, billingLink: p3.link }),
   );
   add("R191 billing DM / paused, payment failed", pausedText(lang, { ...p3, amountPence: 749, reason: "payment-failed" }));
   add("R191 billing DM / paused, stopped paying", pausedText(lang, { ...p3, amountPence: 999, reason: "cancelled" }));
+
+  // Slice P4 (2026-10-04, games played): the billing page's month box and
+  // past months, the state lines and banners naming the unpaid month, and
+  // the P3 review fixes (no retries: pay now; the total of unpaid months).
+  add(
+    "R192 billing page / this month box",
+    [
+      monthBoxText(lang, { ...month1, played: 2, scheduled: 4, upcoming: 2, pricePence: 999 }),
+      monthBoxText(lang, { ...month1, played: 3, scheduled: 5, upcoming: 1, pricePence: 999 }),
+      monthBoxText(lang, { ...month1, played: 4, scheduled: 5, upcoming: 0, pricePence: 999 }),
+      monthBoxText(lang, { ...month1, played: 0, scheduled: 4, upcoming: 4, pricePence: 999 }),
+      monthBoxText(lang, { ...month1, played: 0, scheduled: 0, upcoming: 0, pricePence: 999 }),
+    ].join("\n"),
+  );
+  add(
+    "R192 billing page / past months and games",
+    [
+      ...(["paid", "invoiced", "failed", "void", "no-card", "closing"] as const).map((status) =>
+        pastMonthLine(lang, { ...month1, status, played: 4, scheduled: 5, amountPence: 799 }),
+      ),
+      pastMonthLine(lang, { ...month1, status: "no-games", played: 0, scheduled: 4, amountPence: null }),
+      pastMonthLine(lang, { ...month1, status: "below-minimum", played: 1, scheduled: 10, amountPence: null }),
+      pastMonthLine(lang, { ...month1, status: "waived", played: null, scheduled: null, amountPence: null }),
+      ...(["played", "cancelled", "nobody-in", "paused", "no-match", "not-completed", "upcoming"] as const).map((outcome) =>
+        gameLine(lang, { kickoff: new Date("2026-11-03T20:00:00Z"), outcome }),
+      ),
+      `[${sj.billing_past_months}] [${sj.billing_see_games}] [${sj.billing_receipt}]`,
+    ].join("\n"),
+  );
+  const unpaid1 = { totalPence: 749, count: 1, ...month1 };
+  const unpaid2 = { totalPence: 1548, count: 2, ...month1 };
+  const p4View = { ...billView, graceEndsAt: new Date("2026-12-08T10:00:00Z"), currentPeriodEnd: new Date("2026-12-01T00:00:00Z") };
+  add(
+    "R192 billing page / state lines, games played",
+    [
+      ...billingStateLines(lang, { ...p4View, status: "subscribed", trialEndsAt: month1.startsAt, now: new Date("2026-10-20T12:00:00Z") }),
+      ...billingStateLines(lang, { ...p4View, status: "past_due", unpaid: unpaid1, retrying: false }),
+      ...billingStateLines(lang, { ...p4View, status: "past_due", unpaid: unpaid2, retrying: true }),
+      ...billingStateLines(lang, { ...p4View, status: "paused", pausedReason: "payment-failed", unpaid: unpaid2 }),
+      ...billingStateLines(lang, { ...p4View, status: "paused", pausedReason: "cancelled" }),
+    ].join("\n"),
+  );
+  add(
+    "R192 billing banner, games played",
+    [
+      bannerText(lang, { status: "past_due", trialEndsAt: billView.trialEndsAt, graceEndsAt: p4View.graceEndsAt, unpaid: unpaid1 }),
+      bannerText(lang, { status: "past_due", trialEndsAt: billView.trialEndsAt, graceEndsAt: p4View.graceEndsAt, unpaid: unpaid2 }),
+      bannerText(lang, { status: "paused", trialEndsAt: billView.trialEndsAt, graceEndsAt: null, pausedReason: "payment-failed" }),
+      bannerText(lang, { status: "paused", trialEndsAt: billView.trialEndsAt, graceEndsAt: null, pausedReason: "cancelled" }),
+    ].join("\n"),
+  );
+  add("R192 billing DM / payment failed, no retries", paymentFailedText(lang, { ...p3, ...month1, amountPence: 749, ownCard: true, retrying: false }));
+  add("R192 billing DM / payment failed, no retries, someone else's card", paymentFailedText(lang, { ...p3, ...month1, amountPence: 749, ownCard: false, retrying: false }));
+  add("R192 billing DM / paused, two unpaid months", pausedText(lang, { ...p3, amountPence: 1548, unpaidMonths: 2, reason: "payment-failed" }));
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));

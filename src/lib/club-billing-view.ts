@@ -15,8 +15,9 @@
  */
 import { t } from "./i18n/t";
 import { dayLabel, dayMonthShortLabel } from "./i18n/dates";
-import { monthBounds } from "./club-billing-cycle-rules";
+import { monthBounds, monthFee } from "./club-billing-cycle-rules";
 import type { Lang } from "./i18n/lang";
+import type { MonthsSummary } from "./club-billing-month-summary";
 import {
   GRACE_DAYS,
   STANDARD_PRICE_PENCE,
@@ -87,6 +88,29 @@ export interface BillingStateInput {
   /** Why a paused club is paused (slice B5: "removed" asks for MatchTime
    *  to be added back to the group, not for a card). */
   pausedReason?: string | null;
+  /** Slice P4: the moment the page is drawn (pure: never read from the
+   *  clock here). Inside the free month a saved card reads "Nothing is
+   *  taken until ...". Without it the free month is never assumed. */
+  now?: Date | null;
+  /** Slice P4: what is unpaid (failed or still being taken months): their
+   *  total, how many, and the latest one's dates. */
+  unpaid?: UnpaidSummary | null;
+  /** Slice P4: retries are switched on (`billingRetriesOn`). Default on. */
+  retrying?: boolean;
+}
+
+/** The club's unpaid club fee months, as the page and the banner name them. */
+export interface UnpaidSummary {
+  totalPence: number;
+  count: number;
+  /** The latest unpaid month. */
+  startsAt: Date;
+  endsAt: Date;
+}
+
+function unpaidParams(lang: LangIn, u: UnpaidSummary | null | undefined): { amount: string; from: string; to: string; months: number } {
+  if (!u || u.count < 1 || u.totalPence <= 0) return { amount: "", from: "", to: "", months: 0 };
+  return { amount: moneyLabel(u.totalPence), ...monthRangeLabels(lang, u), months: u.count };
 }
 
 function graceDate(v: { trialEndsAt: Date | null; graceEndsAt: Date | null }): Date | null {
@@ -112,28 +136,124 @@ export function billingStateLines(lang: LangIn, v: BillingStateInput): string[] 
   const s = t(lang);
   const date = (d: Date | null) => (d ? dayLabel(lang, d) : "");
   const price = priceOf(v);
-  const next = v.currentPeriodEnd ?? v.trialEndsAt;
+  // The first charge after the free month: the morning after month 1 ends
+  // (plan 2A.1). Later on, the end of the current month (`currentPeriodEnd`
+  // mirrors it, P2).
+  const firstCharge = v.trialEndsAt ? monthBounds(v.trialEndsAt, 1).endsAt : null;
+  const next = v.currentPeriodEnd ?? firstCharge;
+  const retrying = v.retrying ?? true;
   switch (v.status) {
     case "trial":
       return [s.billing_state_trial({ date: date(v.trialEndsAt), price })];
     case "grace":
       return [s.billing_state_grace({ date: date(graceDate(v)) })];
     case "past_due":
-      return [s.billing_state_past_due({ date: date(graceDate(v)) })];
+      return [s.billing_state_past_due({ ...unpaidParams(lang, v.unpaid), retrying, date: date(graceDate(v)) })];
     case "paused":
-      return [v.pausedReason === "removed" ? s.billing_state_paused_removed : s.billing_state_paused];
-    case "subscribed": {
-      if (v.cancelAtPeriodEnd) return [s.billing_state_subscribed_ending({ price, date: date(next) })];
-      if (v.role === "contact" && !ownCard(v)) {
-        return [s.billing_state_paid_with_other({ price, holder: v.cardHolderName ?? "", date: date(next) })];
+      if (v.pausedReason === "removed") return [s.billing_state_paused_removed];
+      if (v.pausedReason === "payment-failed") {
+        const u = unpaidParams(lang, v.unpaid);
+        return [s.billing_state_paused_unpaid({ amount: u.amount, months: u.months })];
       }
-      const lines = [s.billing_state_subscribed({ price, date: date(next) })];
+      if (v.pausedReason === "cancelled") return [s.billing_state_paused_stopped];
+      return [s.billing_state_paused];
+    case "subscribed": {
+      if (v.cancelAtPeriodEnd) return [s.billing_state_subscribed_ending({ date: date(next) })];
+      const inFreeMonth = !!(v.now && v.trialEndsAt && v.now.getTime() < v.trialEndsAt.getTime());
+      const main = inFreeMonth ? s.billing_state_card_saved({ date: date(firstCharge) }) : s.billing_state_subscribed({ price, date: date(next) });
+      if (v.role === "contact" && !ownCard(v)) {
+        const rest = inFreeMonth ? s.billing_state_nothing_until({ date: date(firstCharge) }) : main;
+        return [s.billing_state_paid_with_other({ holder: v.cardHolderName ?? "", rest })];
+      }
+      const lines = [main];
       const mine = v.cardHolderUserId !== null && v.cardHolderUserId === v.viewerUserId;
       if (mine && v.cardBrand && v.cardLast4) lines.push(s.billing_state_card({ brand: v.cardBrand, last4: v.cardLast4 }));
       return lines;
     }
     default:
       return [];
+  }
+}
+
+// ── Slice P4: the month box, past months, and the owner's columns ──────
+
+/** The fee for `played` of `scheduled` at `pricePence`, as words: the
+ *  amount, or "nothing" when no charge would be made (none played, none
+ *  scheduled, or under Stripe's 30p minimum). */
+function feeWords(lang: LangIn, pricePence: number, played: number, scheduled: number): string {
+  const f = monthFee({ priceAtStartPence: pricePence, played, scheduled });
+  return f.charge ? moneyLabel(f.amountPence) : t(lang).billing_nothing;
+}
+
+/** This month so far, as the billing page and the settings card show it
+ *  (plan 8.1). `pricePence` is the month's maximum (the lower of the price
+ *  when it opened and now). Charged on the morning after it ends. */
+export function monthBoxText(
+  lang: LangIn,
+  m: { startsAt: Date; endsAt: Date; played: number; scheduled: number; upcoming: number; pricePence: number },
+): string {
+  return t(lang).billing_month_box({
+    ...monthRangeLabels(lang, m),
+    played: m.played,
+    scheduled: m.scheduled,
+    upcoming: m.upcoming,
+    amount: feeWords(lang, m.pricePence, m.played, m.scheduled),
+    max: feeWords(lang, m.pricePence, Math.min(m.scheduled, m.played + m.upcoming), m.scheduled),
+    date: dayLabel(lang, m.endsAt),
+  });
+}
+
+/** One closed month on the billing page: "1 Nov to 30 Nov: 4 of 5 games,
+ *  £7.99 paid", "no games, nothing to pay" (plan 8.1). */
+export function pastMonthLine(
+  lang: LangIn,
+  m: { startsAt: Date; endsAt: Date; status: string; played: number | null; scheduled: number | null; amountPence: number | null },
+): string {
+  const s = t(lang);
+  const counted = m.played !== null && m.scheduled !== null && m.scheduled > 0 && m.status !== "waived";
+  return s.billing_month_line({
+    ...monthRangeLabels(lang, m),
+    status: m.status,
+    games: counted ? s.billing_month_games({ played: m.played!, scheduled: m.scheduled! }) : "",
+    amount: m.amountPence !== null ? moneyLabel(m.amountPence) : "",
+  });
+}
+
+/** One game of a month, behind "See games": its day and why it was or was
+ *  not played (never who played). */
+export function gameLine(lang: LangIn, g: { kickoff: Date; outcome: string }): string {
+  return `${dayLabel(lang, g.kickoff)}: ${t(lang).billing_game_outcome({ outcome: g.outcome })}`;
+}
+
+/** /admin/clubs (English, the platform owner's page): this month so far. */
+export function ownerThisMonthLabel(m: { played: number; scheduled: number; amountPence: number } | null): string {
+  if (!m) return "no month open";
+  return `${m.played} of ${m.scheduled} so far, ${m.amountPence > 0 ? moneyLabel(m.amountPence) : "nothing yet"}`;
+}
+
+/** /admin/clubs: the club's last closed month. */
+export function ownerLastMonthLabel(m: { status: string; amountPence: number | null } | null): string {
+  if (!m) return "none yet";
+  const amount = m.amountPence !== null ? moneyLabel(m.amountPence) : "";
+  switch (m.status) {
+    case "paid":
+      return `${amount} paid`;
+    case "failed":
+      return `${amount} failed`;
+    case "invoiced":
+      return `${amount} being taken`;
+    case "void":
+      return `${amount} voided`;
+    case "no-games":
+      return "no games";
+    case "below-minimum":
+      return "under 30p, not charged";
+    case "no-card":
+      return "not charged, no card";
+    case "waived":
+      return "waived";
+    default:
+      return "closing";
   }
 }
 
@@ -190,14 +310,19 @@ export function billingButtons(v: BillingStateInput): BillingButton[] {
 /** The admin banner (8.2): grace, past due and paused only. */
 export function bannerText(
   lang: LangIn,
-  v: { status: string; trialEndsAt: Date | null; graceEndsAt: Date | null; pausedReason?: string | null },
+  v: { status: string; trialEndsAt: Date | null; graceEndsAt: Date | null; pausedReason?: string | null; unpaid?: UnpaidSummary | null },
 ): string | null {
   const s = t(lang);
   const d = graceDate(v);
   const date = d ? dayLabel(lang, d) : "";
   if (v.status === "grace") return s.billing_banner_grace({ date });
-  if (v.status === "past_due") return s.billing_banner_past_due({ date });
-  if (v.status === "paused") return v.pausedReason === "removed" ? s.billing_banner_paused_removed : s.billing_banner_paused;
+  if (v.status === "past_due") return s.billing_banner_past_due({ ...unpaidParams(lang, v.unpaid), date });
+  if (v.status === "paused") {
+    if (v.pausedReason === "removed") return s.billing_banner_paused_removed;
+    if (v.pausedReason === "payment-failed") return s.billing_banner_paused_unpaid;
+    if (v.pausedReason === "cancelled") return s.billing_banner_paused_stopped;
+    return s.billing_banner_paused;
+  }
   return null;
 }
 
@@ -238,10 +363,48 @@ export interface BillingPageView {
   holderNote: string | null;
   buttons: Array<{ key: BillingButton; label: string }>;
   tip: string | null;
+  /** Slice P4: this month so far (8.1), or null. */
+  monthBox: string | null;
+  /** Slice P4: the closed months, newest first. */
+  pastTitle: string;
+  past: PastMonthView[];
+  seeGamesLabel: string;
+  receiptLabel: string;
 }
 
-function stateInput(c: BillingViewClub, viewerUserId: string, role: BillingAccessRole): BillingStateInput {
+/** One closed month on the page: its line, its games, and (for the payer,
+ *  their own card's months only) the receipt link. */
+export interface PastMonthView {
+  id: string;
+  line: string;
+  games: string[];
+  receiptHref: string | null;
+}
+
+/** The months part of the page or the card, in words. */
+function monthsView(lang: LangIn, orgId: string, m: MonthsSummary | null | undefined): { monthBox: string | null; past: PastMonthView[] } {
+  if (!m) return { monthBox: null, past: [] };
   return {
+    monthBox: m.current ? monthBoxText(lang, m.current) : null,
+    past: m.past.map((pm) => ({
+      id: pm.id,
+      line: pastMonthLine(lang, pm),
+      games: pm.games.map((g) => gameLine(lang, g)),
+      receiptHref: pm.receipt ? `/billing/${orgId}/receipt/${pm.id}` : null,
+    })),
+  };
+}
+
+function stateInput(
+  c: BillingViewClub,
+  viewerUserId: string,
+  role: BillingAccessRole,
+  extra: { now?: Date | null; months?: MonthsSummary | null } = {},
+): BillingStateInput {
+  return {
+    now: extra.now ?? null,
+    unpaid: extra.months?.unpaid ?? null,
+    retrying: extra.months?.retrying ?? true,
     pausedReason: c.billing?.pausedReason ?? null,
     status: c.status,
     plan: c.plan,
@@ -289,16 +452,26 @@ export function billingPageView(
   role: BillingAccessRole,
   viewerUserId: string,
   tip: ClubFeeTip | null,
+  extra: { now?: Date | null; months?: MonthsSummary | null; orgId?: string } = {},
 ): BillingPageView {
   const s = t(lang);
-  const base = { title: s.billing_page_title, club: c.club };
+  const base = {
+    title: s.billing_page_title,
+    club: c.club,
+    pastTitle: s.billing_past_months,
+    seeGamesLabel: s.billing_see_games,
+    receiptLabel: s.billing_receipt,
+  };
   if (role === "exempt-owner") {
-    return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], tip: null };
+    return { ...base, exempt: s.billing_exempt({ club: c.club }), lines: [], who: null, holderNote: null, buttons: [], tip: null, monthBox: null, past: [] };
   }
-  const v = stateInput(c, viewerUserId, role);
+  const v = stateInput(c, viewerUserId, role, extra);
   const buttons = billingButtons(v).map((key) => ({ key, label: BUTTON_LABEL[key](s) }));
+  // An old card holder sees only their own note and button.
+  const months = role === "card-holder" ? { monthBox: null, past: [] } : monthsView(lang, extra.orgId ?? "", extra.months);
   return {
     ...base,
+    ...months,
     exempt: null,
     lines: role === "card-holder" ? [] : billingStateLines(lang, v),
     who: role === "viewer" ? whoPaysLine(lang, c) : null,
@@ -318,6 +491,9 @@ export interface BillingCardView {
   openLabel: string;
   /** Set when no money collector is chosen. */
   chooseCollectorLabel: string | null;
+  /** Slice P4: this month so far, and the last closed month. */
+  month: string | null;
+  lastMonth: string | null;
 }
 
 /**
@@ -326,12 +502,20 @@ export interface BillingCardView {
  * on file yes or no, the tip, and the link to the billing page. Null for
  * an exempt club: Sutton FC sees nothing new.
  */
-export function billingCardView(lang: LangIn, c: BillingViewClub, tip: ClubFeeTip | null): BillingCardView | null {
+export function billingCardView(
+  lang: LangIn,
+  c: BillingViewClub,
+  tip: ClubFeeTip | null,
+  extra: { now?: Date | null; months?: MonthsSummary | null } = {},
+): BillingCardView | null {
   if (c.status === "exempt") return null;
   const s = t(lang);
+  const months = monthsView(lang, "", extra.months);
   return {
     title: s.billing_page_title,
-    lines: billingStateLines(lang, stateInput(c, "", "viewer")),
+    lines: billingStateLines(lang, stateInput(c, "", "viewer", extra)),
+    month: months.monthBox,
+    lastMonth: months.past[0]?.line ?? null,
     who: whoPaysLine(lang, c),
     cardOnFile: s.billing_card_on_file({ yes: !!c.billing?.cardHolderUserId || !!c.billing?.cardLast4 }),
     tip: tip ? clubFeeTipText(lang, tip) : null,
@@ -490,9 +674,24 @@ export function trialEndedText(
  *  taken (the unpaid month's charge); read only for "payment-failed". */
 export function pausedText(
   lang: LangIn,
-  p: { name: string | null; club: string; amountPence: number; reason: "no-card" | "payment-failed" | "cancelled"; link: string },
+  p: {
+    name: string | null;
+    club: string;
+    /** The TOTAL unpaid across `unpaidMonths` months (slice P4). */
+    amountPence: number;
+    unpaidMonths?: number;
+    reason: "no-card" | "payment-failed" | "cancelled";
+    link: string;
+  },
 ): string {
-  return t(lang).billing_dm_paused({ name: p.name, club: p.club, amount: moneyLabel(p.amountPence), link: p.link, kind: p.reason });
+  return t(lang).billing_dm_paused({
+    name: p.name,
+    club: p.club,
+    amount: moneyLabel(p.amountPence),
+    months: p.unpaidMonths ?? 1,
+    link: p.link,
+    kind: p.reason,
+  });
 }
 
 /** A billing month's first and last day, as a DM names them: "1 Nov" and
@@ -509,7 +708,18 @@ export function monthRangeLabels(lang: LangIn, m: { startsAt: Date; endsAt: Date
  *  failing card is somebody else's (a collector change in progress). */
 export function paymentFailedText(
   lang: LangIn,
-  p: { name: string | null; club: string; amountPence: number; startsAt: Date; endsAt: Date; link: string; ownCard: boolean },
+  p: {
+    name: string | null;
+    club: string;
+    amountPence: number;
+    startsAt: Date;
+    endsAt: Date;
+    link: string;
+    ownCard: boolean;
+    /** Retries are on (`billingRetriesOn`): "It will be tried again".
+     *  Off: nothing tries again, so the DM says how to pay now. */
+    retrying: boolean;
+  },
 ): string {
   return t(lang).billing_dm_payment_failed({
     name: p.name,
@@ -518,6 +728,7 @@ export function paymentFailedText(
     ...monthRangeLabels(lang, p),
     link: p.link,
     ownCard: p.ownCard,
+    retrying: p.retrying,
   });
 }
 

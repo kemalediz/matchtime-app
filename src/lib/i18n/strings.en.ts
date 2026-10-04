@@ -2396,17 +2396,98 @@ export const en = {
     (p.split ? `, to add to each player's share of the pitch cost.` : `, so a ${p.fee} game could be charged at *${p.feePlus}*.`),
   billing_page_title: "Club fee",
   billing_state_trial: (p: { date: string; price: string }): string =>
-    `Free month until ${p.date}. Then ${p.price} a month for the whole group.`,
+    `Free month until ${p.date}. After that you only pay for the games you play, up to ${p.price} a month for the whole group.`,
   billing_state_grace: (p: { date: string }): string =>
     `The free month has ended. MatchTime stops on ${p.date} unless a card is added.`,
-  billing_state_subscribed: (p: { price: string; date: string }): string => `${p.price} a month. Next payment ${p.date}.`,
-  billing_state_subscribed_ending: (p: { price: string; date: string }): string => `${p.price} a month. Ends on ${p.date}.`,
+  /** Slice P4 (games played): no flat fee. `date` is the next charge, the
+   *  morning after the current billing month ends. */
+  billing_state_subscribed: (p: { price: string; date: string }): string =>
+    `Only the games played are charged, up to ${p.price} a month. Next charge ${p.date}.`,
+  /** A card saved inside the free month: nothing is taken until the first
+   *  month after it has been charged for its games. */
+  billing_state_card_saved: (p: { date: string }): string => `Card saved. Nothing is taken until ${p.date}.`,
+  billing_state_nothing_until: (p: { date: string }): string => `Nothing is taken until ${p.date}.`,
+  billing_state_subscribed_ending: (p: { date: string }): string =>
+    `Billing ends on ${p.date}, after this month is charged for its games.`,
   billing_state_card: (p: { brand: string; last4: string }): string => `Card ${p.brand} ending ${p.last4}.`,
-  billing_state_paid_with_other: (p: { price: string; holder: string; date: string }): string =>
-    `${p.price} a month, paid with ${p.holder}'s card until you put yours on. Next payment ${p.date}.`,
-  billing_state_past_due: (p: { date: string }): string =>
-    `Last payment didn't go through. Stripe is retrying. MatchTime stops on ${p.date} if it can't be taken.`,
+  /** `rest` is the line that follows: the free month's or the monthly one. */
+  billing_state_paid_with_other: (p: { holder: string; rest: string }): string =>
+    `Paid with ${p.holder}'s card until you put yours on. ${p.rest}`,
+  /** `what`: the unpaid month ("for 1 Nov to 30 Nov") or months; `retrying`
+   *  only when retries are switched on (BILLING_CRON_RETRIES or Stripe's). */
+  billing_state_past_due: (p: { amount: string; from: string; to: string; months: number; retrying: boolean; date: string }): string =>
+    (p.amount
+      ? p.months > 1
+        ? `The ${p.amount} for ${p.months} months of games didn't go through. `
+        : `The ${p.amount} for ${p.from} to ${p.to} didn't go through. `
+      : `The last payment didn't go through. `) +
+    (p.retrying ? `It will be tried again over the next few days. ` : `Update the card and pay it to keep MatchTime running. `) +
+    `MatchTime stops on ${p.date} if it can't be taken.`,
   billing_state_paused: "MatchTime is paused. All the data is kept. Add a card to switch it back on.",
+  billing_state_paused_unpaid: (p: { amount: string; months: number }): string =>
+    `MatchTime is paused because ` +
+    (p.amount ? (p.months > 1 ? `${p.amount} for ${p.months} months of games is unpaid. ` : `${p.amount} is unpaid. `) : `a payment is unpaid. `) +
+    `All the data is kept. Update the card and pay to switch it back on.`,
+  billing_state_paused_stopped: "Billing was stopped, so MatchTime is paused. All the data is kept. Press Keep paying to switch it back on.",
+  // Slice P4: the billing page's month box and past months (plan 8.1).
+  /** `amount` and `max` are "nothing" when no charge would be made. */
+  billing_month_box: (p: {
+    from: string;
+    to: string;
+    played: number;
+    scheduled: number;
+    upcoming: number;
+    amount: string;
+    max: string;
+    date: string;
+  }): string =>
+    p.scheduled === 0
+      ? `This month (${p.from} to ${p.to}): no games so far, so nothing to pay.`
+      : p.upcoming > 0
+        ? `This month (${p.from} to ${p.to}): ${p.played} of ${p.scheduled} ${p.scheduled === 1 ? "game" : "games"} played so far, ${p.upcoming} still to come. ` +
+          `So far that's ${p.amount}; if every game still to come is played it's ${p.max}. Charged on ${p.date}.`
+        : `This month (${p.from} to ${p.to}): ${p.played} of ${p.scheduled} ${p.scheduled === 1 ? "game" : "games"} played. That's ${p.amount}, charged on ${p.date}.`,
+  billing_nothing: "nothing",
+  billing_past_months: "Past months",
+  billing_see_games: "See games",
+  billing_receipt: "Receipt",
+  /** One past month. `games` is "4 of 5 games", or "" for a month with none. */
+  billing_month_line: (p: { from: string; to: string; status: string; games: string; amount: string }): string => {
+    const head = `${p.from} to ${p.to}: `;
+    const g = p.games ? `${p.games}, ` : "";
+    switch (p.status) {
+      case "paid":
+        return `${head}${g}${p.amount} paid`;
+      case "invoiced":
+        return `${head}${g}${p.amount} being taken`;
+      case "failed":
+        return `${head}${g}${p.amount} not paid yet`;
+      case "void":
+        return `${head}${g}${p.amount} cancelled, nothing to pay`;
+      case "no-games":
+        return `${head}no games, nothing to pay`;
+      case "below-minimum":
+        return `${head}${g}under 30p, so nothing to pay`;
+      case "no-card":
+        return `${head}${g}not charged (no card on file)`;
+      case "waived":
+        return `${head}nothing to pay`;
+      default:
+        return `${head}being worked out`;
+    }
+  },
+  billing_month_games: (p: { played: number; scheduled: number }): string =>
+    `${p.played} of ${p.scheduled} ${p.scheduled === 1 ? "game" : "games"}`,
+  billing_game_outcome: (p: { outcome: string }): string =>
+    ({
+      played: "played",
+      cancelled: "cancelled",
+      "nobody-in": "nobody said IN",
+      paused: "MatchTime was paused",
+      "no-match": "no match",
+      "not-completed": "not played",
+      upcoming: "still to come",
+    })[p.outcome] ?? "not played",
   billing_state_paused_removed:
     "MatchTime was removed from the club's WhatsApp group, so it is paused. All the data is kept. To carry on, add MatchTime back to the group.",
   billing_card_holder_note: (p: { club: string; contact: string }): string =>
@@ -2427,9 +2508,17 @@ export const en = {
   billing_choose_collector: "Choose a money collector",
   billing_banner_grace: (p: { date: string }): string =>
     `The free month has ended. Add a card before ${p.date} to keep MatchTime running.`,
-  billing_banner_past_due: (p: { date: string }): string =>
-    `This month's club fee didn't go through. MatchTime stops on ${p.date} if it can't be taken.`,
+  /** Slice P4: the unpaid month and its amount, or the total of several. */
+  billing_banner_past_due: (p: { amount: string; from: string; to: string; months: number; date: string }): string =>
+    (p.amount
+      ? p.months > 1
+        ? `${p.amount} of club fees for ${p.months} months didn't go through. `
+        : `The club fee for ${p.from} to ${p.to} (${p.amount}) didn't go through. `
+      : `The last club fee payment didn't go through. `) + `MatchTime stops on ${p.date} if it can't be taken.`,
   billing_banner_paused: "MatchTime is paused for this club. Add a card to switch it back on.",
+  billing_banner_paused_unpaid: "MatchTime is paused for this club because a club fee payment is unpaid. It can be paid on the billing page.",
+  billing_banner_paused_stopped:
+    "MatchTime is paused for this club because billing was stopped. Keep paying on the billing page switches it back on.",
   billing_banner_paused_removed:
     "MatchTime was removed from this club's WhatsApp group, so it is paused. Add it back to the group to carry on.",
   billing_banner_link: "See billing",
@@ -2465,7 +2554,7 @@ export const en = {
       ? `MatchTime is back on for ${p.club} and picks things up again in the group within a few minutes. Anyone who said IN while it was paused should say it again. `
       : `MatchTime keeps running in the ${p.club} WhatsApp group. `) +
     `Nothing has been taken: after each month I count the games played and charge only for those, up to ${p.price}. ` +
-    `${p.first ? "The first" : "The next"} charge is on ${p.date}, and Stripe emails you each receipt. To change your card or stop: ${p.link}`,
+    `${p.first ? "The first" : "The next"} charge is on ${p.date}. You can see each charge and its receipt on your billing page, and change your card or stop there: ${p.link}`,
   billing_dm_card_replaced: (p: { name: string | null; newName: string; club: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.newName} now pays the MatchTime fee for ${p.club}. Your card has been removed and won't be charged for it again.`,
   billing_dm_resumed: (p: { club: string }): string =>
@@ -2505,9 +2594,19 @@ export const en = {
     "Tip: if someone else collects the match fees, make them the money collector in Settings and they'll look after the card instead.",
   /** `amount`: what could not be taken (the unpaid month's charge). The
    *  last sentence says what switches MatchTime back on for that reason. */
-  billing_dm_paused: (p: { name: string | null; club: string; amount: string; link: string; kind: "no-card" | "payment-failed" | "cancelled" }): string =>
+  /** `months`: how many unpaid months `amount` (their total) covers. */
+  billing_dm_paused: (p: {
+    name: string | null;
+    club: string;
+    amount: string;
+    months: number;
+    link: string;
+    kind: "no-card" | "payment-failed" | "cancelled";
+  }): string =>
     (p.kind === "payment-failed"
-      ? `Hi${p.name ? ` ${p.name}` : ""}, we couldn't take the ${p.amount} for ${p.club}, so MatchTime is now paused. `
+      ? p.months > 1
+        ? `Hi${p.name ? ` ${p.name}` : ""}, we couldn't take the ${p.amount} owed for ${p.months} months of ${p.club}'s games, so MatchTime is now paused. `
+        : `Hi${p.name ? ` ${p.name}` : ""}, we couldn't take the ${p.amount} for ${p.club}, so MatchTime is now paused. `
       : p.kind === "cancelled"
         ? `Hi${p.name ? ` ${p.name}` : ""}, you stopped paying for MatchTime for ${p.club}, so it is now paused. The last month was charged only for the games played, as usual. `
         : `Hi${p.name ? ` ${p.name}` : ""}, MatchTime is now paused for ${p.club}. `) +
@@ -2520,10 +2619,24 @@ export const en = {
         : `To switch MatchTime back on, add a card here and it restarts within a few minutes: ${p.link}`),
   /** Slice P3: a month's charge did not go through. `from` and `to` are
    *  the month's first and last day. */
-  billing_dm_payment_failed: (p: { name: string | null; club: string; amount: string; from: string; to: string; link: string; ownCard: boolean }): string =>
+  /** `retrying`: retries are switched on (the cron's, or Stripe's own).
+   *  Without them nothing tries again, so the DM says how to pay now. */
+  billing_dm_payment_failed: (p: {
+    name: string | null;
+    club: string;
+    amount: string;
+    from: string;
+    to: string;
+    link: string;
+    ownCard: boolean;
+    retrying: boolean;
+  }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, the ${p.amount} for ${p.club}'s games between ${p.from} and ${p.to} didn't go through. ` +
-    `It will be tried again over the next few days, and MatchTime keeps running meanwhile. ` +
-    (p.ownCard ? `To update the card: ${p.link}` : `To put your own card on instead: ${p.link}`),
+    (p.retrying
+      ? `It will be tried again over the next few days, and MatchTime keeps running meanwhile. ` +
+        (p.ownCard ? `To update the card: ${p.link}` : `To put your own card on instead: ${p.link}`)
+      : `MatchTime keeps running for now. ` +
+        (p.ownCard ? `To pay it now, update the card and pay here: ${p.link}` : `To pay it now with your own card instead: ${p.link}`)),
   billing_dm_payment_action: (p: { name: string | null; club: string; amount: string; from: string; to: string; link: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, your bank wants you to confirm the ${p.amount} for ${p.club}'s games between ${p.from} and ${p.to} before it can go through. ` +
     `Please confirm it here: ${p.link}\nMatchTime keeps running meanwhile.`,
@@ -2581,7 +2694,10 @@ export const en = {
     ` between ${p.from} and ${p.to}, so ${p.amount} was charged to ` +
     (p.ownCard ? "your card" : "the card on file") +
     (p.last4 ? ` ending ${p.last4}` : "") +
-    ` (VAT included; a full month is ${p.price}). Stripe has emailed you the receipt. Details: ${p.link}`,
+    ` (VAT included; a full month is ${p.price}). ` +
+    (p.ownCard
+      ? `Stripe has emailed you the receipt. Details: ${p.link}`
+      : `You can see the month's games and charge on your billing page: ${p.link}`),
   /** A month that played no games: nothing charged. Only the FIRST such
    *  month in a row is told (a summer break sends one). */
   billing_dm_month_free: (p: { name: string | null; club: string; from: string; to: string }): string =>

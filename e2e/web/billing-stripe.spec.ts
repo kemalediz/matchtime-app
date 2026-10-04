@@ -274,7 +274,7 @@ test("2. Stop paying inside the free month: the card is removed, back in the fre
 test("3. a new collector puts their own card on: setup mode, the old card removed, its holder told once", async ({ page, context, request }) => {
   await testDb().run(`UPDATE "Organisation" SET "paymentHolderId"=$2 WHERE id=$1`, [ORG, USER.pat]);
   await signInAs(page, USER.pat, `/billing/${ORG}`);
-  await expect(page.getByTestId("billing-state")).toContainText("paid with Colin Sevens's card until you put yours on", { timeout: 30_000 });
+  await expect(page.getByTestId("billing-state")).toContainText("Paid with Colin Sevens's card until you put yours on", { timeout: 30_000 });
   await expect(page.getByTestId("billing-page")).not.toContainText("4242");
   await page.getByTestId("billing-btn-use-mine").click();
   await page.waitForURL(/fake_checkout=cs_fake_/, { timeout: 30_000 });
