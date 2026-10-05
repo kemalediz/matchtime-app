@@ -264,6 +264,7 @@
  *     card and pay" (it now retries the unpaid invoice). No other case
  *     changed.
  */
+import { composeSetupDm } from "../../setup-learning/dm";
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
 import { periodKey } from "../../pipeline/stats-period";
@@ -1833,6 +1834,64 @@ function cases(lang: Lang): Case[] {
     ),
   );
 
+  // F3, learned setup (2026-10-05): the organiser's one DM, three shapes.
+  const learnedDm = (applied: Parameters<typeof composeSetupDm>[0]["applied"], rest: Partial<Parameters<typeof composeSetupDm>[0]> = {}) =>
+    composeSetupDm({
+      lang,
+      group: "Thursday Ladies 5s",
+      applied,
+      suggestions: [],
+      noted: [],
+      scheduleUrl: "https://matchtime.ai/r/sched",
+      settingsUrl: "https://matchtime.ai/r/settings",
+      ...rest,
+    });
+  add(
+    "LRN1 composeSetupDm / every setting switched, a kickoff time worth a check",
+    learnedDm(
+      [
+        { key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u1" },
+        { key: "organiserPicks", from: "first-come", to: "organiser", evidence: ["Drop me a message"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u2" },
+        { key: "dropOutDeadline", from: null, to: { day: 1, time: "21:00" }, evidence: ["Drop out by Monday 9pm"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u3" },
+        { key: "listPublish", from: null, to: { day: 2, time: "20:00" }, evidence: ["Final list goes up Tuesday at 8pm"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u4" },
+        { key: "paymentTracking", from: false, to: true, evidence: ["sent £6"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u5" },
+      ],
+      {
+        suggestions: [
+          { key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: [] },
+          { key: "weeklyGameDay", current: "4", detected: "3", evidence: [] },
+          { key: "venue", current: "Hackney Marshes", detected: "Mabley Green", evidence: [] },
+          { key: "format", current: "5", detected: "6", evidence: [] },
+          { key: "language", current: "en", detected: "tr", evidence: [] },
+        ],
+      },
+    ),
+  );
+  add(
+    "LRN2 composeSetupDm / a monthly list noted, nothing switched",
+    learnedDm([], {
+      group: "Old Boys Monday",
+      noted: [
+        {
+          key: "monthlyList",
+          prepayForMonth: true,
+          payAsYouGoFillIns: true,
+          creditForMissedGames: true,
+          confidence: "high",
+          evidence: [],
+          heldPaymentTracking: true,
+        },
+      ],
+    }),
+  );
+  add(
+    "LRN3 composeSetupDm / one setting, a group with no name",
+    learnedDm(
+      [{ key: "rollingSquad", from: false, to: true, evidence: [], undoneAt: null, undoUrl: "https://matchtime.ai/r/u1" }],
+      { group: null },
+    ),
+  );
+
   return c;
 }
 
@@ -1913,6 +1972,8 @@ const MIGRATED_ROWS = [
   "UNP1 ", "UNP2 ",
   // badge announcements (2026-10-01)
   "BDG1 ",
+  // learned setup (2026-10-05)
+  "LRN1 ", "LRN2 ", "LRN3 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

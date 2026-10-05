@@ -467,6 +467,8 @@ export async function decideClub(
         if (count !== 1) throw new DecisionRaceLost();
         if (link) {
           await tx.clubConnect.updateMany({ where: { id: link.id, status: "group_linked" }, data: { status: "closed" } });
+          // F3: a rejected club's chat is never read; delete it now.
+          await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ${link.id}`;
         }
         return {
           result: {

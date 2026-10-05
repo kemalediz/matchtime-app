@@ -430,6 +430,13 @@ model Organisation {
   /// Monthly price in pence when billingPlan = "custom" (100 to 999). NULL otherwise.
   billingPricePence Int?
 
+  /// ─── Learned setup, F3 (2026-10-05) ───────────────────────────────
+  /// The settings the organiser has saved on /admin/settings (the keys of
+  /// `setWeeklyRoutine`, `setOrgFeature` and `setOrgLanguage`, plus any
+  /// learned setting they undid). The learned setup never changes a key
+  /// listed here. May hold duplicates; readers treat it as a set.
+  settingsSetByOrganiser String[] @default([])
+
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
@@ -440,6 +447,7 @@ model Organisation {
   windowVerdicts     WindowVerdict[]
   badgeAnnouncements BadgeAnnouncement[]
   clubBilling        ClubBilling?
+  setupLearning      ClubSetupLearning?
   billingNotices     BillingNotice[]
   billingMonths      ClubBillingMonth[]
 
@@ -2031,6 +2039,11 @@ model ClubConnect {
   ownerDmQueuedAt DateTime?
   /// MatchTime was removed from the group while pending.
   botRemovedAt    DateTime?
+  /// F3 (2026-10-05): the chat history WhatsApp shared when MatchTime was
+  /// added (HistoryMessage[], oldest first), kept ONLY until the learned
+  /// setup has read it once after approval, then set back to NULL. Also
+  /// cleared when the club is rejected. NULL = none captured.
+  capturedHistory Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2118,4 +2131,46 @@ model PlatformJob {
   @@index([status, sendAfter])
   @@index([purpose, refId])
   @@index([kind, groupId])
+}
+
+/// F3, LEARNED SETUP (2026-10-05). Once per club, right after a self-join
+/// club is approved, MatchTime reads the chat history WhatsApp shared when
+/// it joined (ClubConnect.capturedHistory) with ONE cheap model call, works
+/// out how the group runs, applies the matching settings and DMs the
+/// organiser what it set. This row is the record: what was detected, what
+/// was applied (each with its chat evidence and an undo), what was only
+/// suggested, the patterns noted, and what the call cost. orgId is unique,
+/// which is what makes it once per club. See src/lib/setup-learning/.
+model ClubSetupLearning {
+  id           String       @id @default(cuid())
+  orgId        String       @unique
+  org          Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// "running" | "deferred" | "applied" | "nothing" | "skipped" | "failed"
+  status       String       @default("running")
+  /// Why it was skipped, deferred or failed: "no-history" | "too-short" |
+  /// "not-a-game-group" | "ai-cap" | "model-error" | "no-organiser".
+  reason       String?
+  attempts     Int          @default(1)
+  messageCount Int          @default(0)
+  authorCount  Int          @default(0)
+  /// The normalised model answer (evidence quotes verified against the chat).
+  detected     Json?
+  /// [{ key, from, to, evidence[], undoneAt? }]
+  applied      Json?
+  /// [{ key, current, detected, evidence[] }]: the weekly game and the
+  /// language, which the organiser set on the website and are never changed.
+  suggestions  Json?
+  /// [{ key: "monthlyList", ... }]: patterns MatchTime has no setting for yet.
+  noted        Json?
+  /// [{ key, reason }]: detected but left alone, and why.
+  kept         Json?
+  model        String?
+  inputTokens  Int?
+  outputTokens Int?
+  costUsd      Float?
+  dmQueuedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([status])
 }

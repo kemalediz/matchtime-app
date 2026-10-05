@@ -2971,4 +2971,77 @@ export const en = {
     "The money collector looks after the card, or the owner when there is no money collector. Saving a card takes no money. Admins can see this page but can't change the card.",
   info_bill_past_title: "Past months",
   info_bill_past_body: "Each finished month with what was charged. See games lists the month's games and whether each one counted.",
+  // ── F3, learned setup (2026-10-05): the organiser's one DM and the
+  //    /admin/settings panel. See src/lib/setup-learning/. No dashes. ──
+  /** Opens the DM when at least one setting was switched. */
+  sj_dm_setup_intro: (p: { group: string | null }): string =>
+    `I read the recent messages ${p.group ? `in "${p.group}"` : "in your group"} to see how it runs, and set MatchTime up the same way.`,
+  /** Opens the DM when nothing was switched but something is worth a look. */
+  sj_dm_setup_intro_nothing: (p: { group: string | null }): string =>
+    `I read the recent messages ${p.group ? `in "${p.group}"` : "in your group"} to see how it runs. I didn't change any settings, but a few things are worth a look.`,
+  /** One switched setting, in the DM and on the settings page. `day` and
+   *  `time` are used by the two deadlines only. */
+  setup_applied_line: (p: {
+    key: "rollingSquad" | "organiserPicks" | "dropOutDeadline" | "listPublish" | "paymentTracking";
+    day: string;
+    time: string;
+  }): string =>
+    p.key === "rollingSquad"
+      ? `*Rolling squad is on:* whoever played last time is in next time, unless they say OUT.`
+      : p.key === "organiserPicks"
+        ? `*Organisers pick who fills an open place:* MatchTime asks you first, and only offers the place to the waiting list if nobody picks in time.`
+        : p.key === "dropOutDeadline"
+          ? `*Drop-out deadline:* ${p.day} ${p.time}. MatchTime reminds the group before it.`
+          : p.key === "listPublish"
+            ? `*Final list:* posted in the group on ${p.day} at ${p.time}.`
+            : `*Payment tracking is on:* MatchTime keeps track of who has paid and sends a friendly reminder to anyone who hasn't.`,
+  sj_dm_setup_from: (p: { quote: string }): string => `From messages like: "${p.quote}"`,
+  sj_dm_setup_undo: (p: { url: string }): string => `Undo or change: ${p.url}`,
+  sj_dm_setup_check_head: "Worth a check (I changed nothing here):",
+  /** A difference between the chat and what the organiser entered.
+   *  `current` and `detected` arrive already worded (a day name, a
+   *  time, a venue, a number a side, a language name). */
+  setup_suggestion_line: (p: {
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language";
+    current: string;
+    detected: string;
+  }): string =>
+    p.key === "weeklyGameDay"
+      ? `The chat talks about games on ${p.detected}; your weekly game is on ${p.current}.`
+      : p.key === "weeklyGameTime"
+        ? `The chat says kickoff is at ${p.detected}; your weekly game is set for ${p.current}.`
+        : p.key === "venue"
+          ? `The chat names ${p.detected} as the pitch; your weekly game says ${p.current}.`
+          : p.key === "format"
+            ? `The chat talks about ${p.detected} a side; your weekly game is ${p.current} a side.`
+            : `The chat is mostly in ${p.detected}; MatchTime speaks ${p.current} in this group.`,
+  sj_dm_setup_check_link: (p: { url: string }): string => `Change it here: ${p.url}`,
+  /** The monthly list pattern, in words: what was seen of it. */
+  setup_monthly_pattern: (p: { prepay: boolean; payg: boolean; credits: boolean }): string => {
+    const parts = [
+      p.prepay ? "regulars sign up and pay for the month" : "regulars sign up for the month",
+      ...(p.payg ? ["others pay as they go to fill spaces"] : []),
+      ...(p.credits ? ["a game a regular misses becomes credit"] : []),
+    ];
+    return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+  },
+  sj_dm_setup_monthly: (p: { pattern: string; heldPaymentTracking: boolean }): string =>
+    `📋 I also noticed a monthly list: ${p.pattern}. MatchTime can't run a monthly list yet, so nothing changed for it` +
+    (p.heldPaymentTracking ? `, and I left payment tracking off because it works game by game` : ``) +
+    `. We've made a note of it.`,
+  sj_dm_setup_outro: (p: { url: string }): string =>
+    `Everything is on your settings page, with the chat messages behind each one: ${p.url}`,
+  setup_monthly_label: "Monthly list",
+  /** A language's name in this table's language; `key` is the code. */
+  setup_lang_name: (p: { key: string }): string => (p.key === "tr" ? "Turkish" : "English"),
+  settings_learned_title: "Set up from your group chat",
+  settings_learned_lead:
+    "MatchTime read the messages WhatsApp shared when it joined your group and set these up to match. Undo any of them in one tap.",
+  settings_learned_undo: "Undo",
+  settings_learned_undone: "Undone",
+  settings_learned_changed_since: "Changed since",
+  settings_learned_undo_failed: "Couldn't undo that",
+  settings_learned_from: "From messages like",
+  settings_learned_check_head: "Worth a check (nothing changed)",
+  settings_learned_noted_head: "Noticed, no setting for it yet",
 };

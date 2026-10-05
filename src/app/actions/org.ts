@@ -342,7 +342,8 @@ export async function setOrgFeature(
 
   await db.organisation.update({
     where: { id: orgId },
-    data: { [column]: enabled },
+    // F3: the organiser's own choice; the learned setup never overrides it.
+    data: { [column]: enabled, settingsSetByOrganiser: { push: feature } },
   });
   if (announcing) {
     await Promise.resolve(announcePaymentsLiveIfJustLive(orgId, { wasLive })).catch((err) =>
@@ -411,7 +412,7 @@ export async function setOrgLanguage(orgId: string, language: string) {
 
   await db.organisation.update({
     where: { id: orgId },
-    data: { language: code },
+    data: { language: code, settingsSetByOrganiser: { push: "language" } },
   });
   revalidatePath("/admin/settings");
   return { language: code };
@@ -493,9 +494,17 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
   } as const;
   // A patch with only `adminChannel` writes nothing here; the row is read
   // so the answer has the same shape either way.
+  // F3: the keys the organiser saved; the learned setup never overrides them.
+  const setKeys = Object.keys(patch ?? {}).filter((k) =>
+    ["rollingSquad", "benchPickMode", "benchPickFallback", "dropOutDeadline", "listPublish"].includes(k),
+  );
   const row =
     Object.keys(data).length > 0
-      ? await db.organisation.update({ where: { id: orgId }, data, select })
+      ? await db.organisation.update({
+          where: { id: orgId },
+          data: { ...data, ...(setKeys.length > 0 ? { settingsSetByOrganiser: { push: setKeys } } : {}) },
+          select,
+        })
       : await db.organisation.findUniqueOrThrow({ where: { id: orgId }, select });
   const saved: { adminChannel?: SaveAdminChannelResult } = {};
   if (adminChannel) saved.adminChannel = await saveAdminChannelChoice(orgId, adminChannel.mode, adminChannel.userId);

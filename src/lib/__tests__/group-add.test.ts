@@ -286,6 +286,38 @@ describe("an add by someone else", () => {
   });
 });
 
+describe("F3: the chat is kept for the learned setup", () => {
+  const CHAT = [
+    { author: "Ali", text: "same lot as last week", timestamp: "2026-09-28T10:00:00Z" },
+    { author: "Ben", text: "can't make it", timestamp: "2026-09-28T10:05:00Z" },
+  ];
+  it("the link stores the chat WhatsApp shared on the connect request", async () => {
+    await add({ enrichmentHistory: CHAT });
+    const upd = dbMock.clubConnect.updateMany.mock.calls[0][0];
+    expect(upd.data.capturedHistory).toEqual([
+      { author: "Ali", authorPhone: null, text: "same lot as last week", timestamp: "2026-09-28T10:00:00Z" },
+      { author: "Ben", authorPhone: null, text: "can't make it", timestamp: "2026-09-28T10:05:00Z" },
+    ]);
+  });
+  it("no chat: nothing stored", async () => {
+    await add({ enrichmentHistory: [] });
+    expect(dbMock.clubConnect.updateMany.mock.calls[0][0].data.capturedHistory).toBeUndefined();
+  });
+  it("a re-add carrying chat fills it in only when none is stored yet", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali" });
+    await add({ enrichmentHistory: CHAT });
+    const sql = (dbMock.$executeRaw.mock.calls[0][0] as TemplateStringsArray).join("?");
+    expect(sql).toContain(`SET "capturedHistory" =`);
+    expect(sql).toContain(`AND "capturedHistory" IS NULL`);
+  });
+  it("removed from the group while pending: the chat is deleted with the link", async () => {
+    dbMock.clubConnect.findMany.mockResolvedValue([{ id: "cc-ali", orgId: "org-riverside" }]);
+    await handleBotRemoved(GROUP, NOW);
+    const sqls = dbMock.$executeRaw.mock.calls.map((c) => (c[0] as TemplateStringsArray).join("?"));
+    expect(sqls).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ?`);
+  });
+});
+
 describe("idempotency and races", () => {
   it("a re-add of a group already linked and waiting: nothing new (no second owner DM)", async () => {
     dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali" });
