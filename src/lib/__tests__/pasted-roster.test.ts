@@ -546,3 +546,212 @@ describe("clampRosterDerivedWrites — the write-level clamp", () => {
     expect(twice.registerFor).toEqual(once.registerFor);
   });
 });
+
+/**
+ * 2026-10-05, monthly squad plan slice 1 (section 0, fact 2).
+ *
+ * `RESERVE_HEADER` only knew Reserves / Subs / Standby. Any other header
+ * was skipped and the numbered lines under it were pushed onto the
+ * PLAYING entries, so "1. Paulo" under "Paid but can't play" became a
+ * fifteenth playing name. Fixed for every club, not only monthly ones.
+ * Made-up names throughout.
+ */
+describe("a section that is not the playing list is never read as playing names", () => {
+  const SQUAD = ["Marco", "Gary", "JB", "Clive", "Tom", "Vikram"];
+  const squadLines = SQUAD.map((n, i) => `${i + 1}. ${n}`).join("\n");
+  const CANT_PLAY = `List for October:\n\n${squadLines}\n\nPaid but can't play\n1. Paulo\n2. Kai`;
+
+  it("'Paid but can't play' names never reach entries or names", () => {
+    const r = parsePastedRoster(CANT_PLAY)!;
+    expect(r.names).toEqual(SQUAD);
+    expect(r.entries.map((e) => e.name)).toEqual(SQUAD);
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo", "Kai"]);
+    expect(r.reserves).toEqual([]);
+  });
+
+  it.each([
+    ["Paid but can't play"],
+    ["Paid but can’t play:"],
+    ["Can't play"],
+    ["Out:"],
+    ["Injured"],
+    ["Unavailable"],
+    ["Gelemeyenler"],
+    ["Ödedi gelemiyor"],
+  ])("header %s", (header) => {
+    const r = parsePastedRoster(`${squadLines}\n\n${header}\n1. Paulo\n2. Kai`)!;
+    expect(r.names).toEqual(SQUAD);
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo", "Kai"]);
+  });
+
+  it("a can't-play header ends the playing list even when the numbering carries on", () => {
+    const r = parsePastedRoster(`${squadLines}\n\nCan't play\n7. Paulo\n8. Kai`)!;
+    expect(r.names).toEqual(SQUAD);
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo", "Kai"]);
+  });
+
+  it("a can't-play name is NOT registered from a paste that restates the squad", () => {
+    // Before the fix: of record, additions ["Paulo", "Kai"] — two players
+    // who said they cannot play, registered IN.
+    const r = reconcilePastedRoster(parsePastedRoster(CANT_PLAY), SQUAD);
+    expect(r.ofRecord).toBe(true);
+    expect(r.additions).toEqual([]);
+  });
+
+  it("MatchTime's own waiting list, forwarded, is not read as playing names", () => {
+    const body = `*Confirmed (6/6):*\n${squadLines}\n\n*Waiting list (2):*\n1. Paulo\n2. Kai`;
+    const r = parsePastedRoster(body)!;
+    expect(r.names).toEqual(SQUAD);
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo", "Kai"]);
+    expect(reconcilePastedRoster(r, SQUAD).additions).toEqual([]);
+  });
+
+  it("any header under which the numbering STARTS AGAIN ends the playing list", () => {
+    const r = parsePastedRoster(`${squadLines}\n\nMaybes\n1. Paulo\n2. Kai`)!;
+    expect(r.names).toEqual(SQUAD);
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo", "Kai"]);
+  });
+
+  it("a section after Reserves is not read as reserves either", () => {
+    const r = parsePastedRoster(
+      `${squadLines}\n\nReserves:\n1. Theo\n2. Rafi\n\nPaid but can't play\n1. Paulo`,
+    )!;
+    expect(r.names).toEqual(SQUAD);
+    expect(r.reserves.map((e) => e.name)).toEqual(["Theo", "Rafi"]);
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo"]);
+  });
+
+  it("Reserves after a can't-play section are still reserves", () => {
+    const r = parsePastedRoster(
+      `${squadLines}\n\nCan't play\n1. Paulo\n\nReserves:\n1. Theo\n2. Rafi`,
+    )!;
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo"]);
+    expect(r.reserves.map((e) => e.name)).toEqual(["Theo", "Rafi"]);
+  });
+
+  it("the message is still list-shaped when most of it sits under the header", () => {
+    expect(isPastedRoster("1. Marco\n2. Gary\n\nPaid but can't play\n1. Paulo\n2. Kai")).toBe(true);
+  });
+
+  it("the clamp still treats a can't-play name as a name from the list", () => {
+    const out = clampRosterDerivedWrites({
+      body: CANT_PLAY,
+      senderNames: ["Zed"],
+      registerAttendance: null,
+      registerFor: [
+        { name: "Paulo", action: "IN" },
+        { name: "Marco", action: "IN" },
+      ],
+    });
+    expect(out.droppedNames).toEqual(["Paulo", "Marco"]);
+    expect(out.registerFor).toBeNull();
+    expect(rosterMentions(parsePastedRoster(CANT_PLAY)!, "Kai")).toBe(true);
+  });
+});
+
+describe("what the section fix does NOT change (existing clubs)", () => {
+  it("the real pastes parse exactly as before, with nothing set apart", () => {
+    for (const body of [REAL_20260611, REAL_20260607, REAL_20260610]) {
+      const r = parsePastedRoster(body)!;
+      expect(r.notPlaying).toEqual([]);
+      expect(r.reserves).toEqual([]);
+    }
+    expect(parsePastedRoster(REAL_20260611)!.names).toHaveLength(14);
+    expect(parsePastedRoster(REAL_20260610)!.entries).toHaveLength(14);
+    expect(parsePastedRoster(REAL_20260607)!.names).toEqual([
+      "Ehtisham",
+      "Amir",
+      "Martin",
+      "Adam",
+      "Mo",
+    ]);
+  });
+
+  it("a line of prose in the middle of a list whose numbering CARRIES ON changes nothing", () => {
+    // A forward of MatchTime's roster with the new names under a remark.
+    // The numbering continues (5 after 4), so it is still one list, and
+    // the appended names still register (S26).
+    const body = "1. Kemal\n2. Elvin\n3. Sait\n4. Mustafa\n\nalso adding these two\n5. Zair Malik\n6. Wasim Akhtar";
+    const r = parsePastedRoster(body)!;
+    expect(r.names).toEqual(["Kemal", "Elvin", "Sait", "Mustafa", "Zair Malik", "Wasim Akhtar"]);
+    expect(r.notPlaying).toEqual([]);
+    const rec = reconcilePastedRoster(r, ["Kemal Ediz", "Elvin Aliyev", "Sait Demir", "Mustafa Kaya"]);
+    expect(rec.additions).toEqual(["Zair Malik", "Wasim Akhtar"]);
+  });
+
+  it("'can't make it' typed ABOVE a pasted squad is the sender talking, not a header", () => {
+    for (const lead of ["Can't make it", "can't play", "Out", "injured"]) {
+      const r = parsePastedRoster(`${lead}\n\n1. Adam\n2. Amir\n3. Martin\n4. Mo`)!;
+      expect(r.names).toEqual(["Adam", "Amir", "Martin", "Mo"]);
+      expect(r.notPlaying).toEqual([]);
+    }
+  });
+
+  it("a sentence that merely contains the words is not a header", () => {
+    const body =
+      "1. Adam\n2. Amir\n3. Martin\n4. Mo\n\nI'm out next week lads\n5. Talha\n6. Arjun";
+    const r = parsePastedRoster(body)!;
+    expect(r.names).toEqual(["Adam", "Amir", "Martin", "Mo", "Talha", "Arjun"]);
+    expect(r.notPlaying).toEqual([]);
+  });
+
+  it("prose AFTER the list, with no list under it, changes nothing", () => {
+    const body = "1. Adam\n2. Amir\n3. Martin\n4. Mo\n\nWe need 2 more. Reply IN to grab a spot.";
+    const r = parsePastedRoster(body)!;
+    expect(r.names).toEqual(["Adam", "Amir", "Martin", "Mo"]);
+    expect(r.notPlaying).toEqual([]);
+  });
+
+  it("numbering that starts again with NO header between is still one list", () => {
+    const r = parsePastedRoster("1. Adam\n2. Amir\n3. Martin\n\n1. Mo\n2. Talha")!;
+    expect(r.names).toEqual(["Adam", "Amir", "Martin", "Mo", "Talha"]);
+    expect(r.notPlaying).toEqual([]);
+  });
+
+  it("a bulleted list under a remark is still one list", () => {
+    const r = parsePastedRoster("- Adam\n- Amir\n- Martin\nand\n- Mo")!;
+    expect(r.names).toEqual(["Adam", "Amir", "Martin", "Mo"]);
+    expect(r.notPlaying).toEqual([]);
+  });
+
+  it("the Reserves block behaves exactly as before", () => {
+    const r = parsePastedRoster("1. Adam\n2. Amir\n3. Martin\n4. Mo\n\nReserves:\n1. Talha\n2. Arjun")!;
+    expect(r.names).toEqual(["Adam", "Amir", "Martin", "Mo"]);
+    expect(r.reserves.map((e) => e.name)).toEqual(["Talha", "Arjun"]);
+    expect(r.notPlaying).toEqual([]);
+  });
+
+  it("the fix can only REMOVE playing names: entries are always a prefix of the old reading", () => {
+    // The OLD reading, rebuilt without the old code: take every line that
+    // is neither a list line, a blank nor a Reserves header out of the
+    // message. With no header left to end the playing list, the parser
+    // reads it the way it did before 2026-10-05.
+    const oldReading = (body: string) =>
+      parsePastedRoster(
+        body
+          .split("\n")
+          .filter((l) => /^\s*(\d|[-*•]\s)/.test(l) || /^\s*reserves:?\s*$/i.test(l) || !l.trim())
+          .join("\n"),
+      )!;
+    const bodies = [
+      REAL_20260611,
+      REAL_20260610,
+      "1. Marco\n2. Gary\n3. JB\n\nPaid but can't play\n1. Paulo\n2. Kai",
+      "1. Marco\n2. Gary\n3. JB\n\nMaybes\n1. Paulo\n\nOut\n1. Kai",
+      "Team A\n1. Marco\n2. Gary\n3. JB\nTeam B\n1. Paulo\n2. Kai\n3. Finn",
+      "1. Marco\n2. Gary\n3. JB\n\nReserves:\n1. Theo\n\nInjured\n1. Kai\n2. Finn",
+      "1. Marco\n2. Gary\n\nalso\n3. JB\n4. Clive",
+    ];
+    for (const body of bodies) {
+      const now = parsePastedRoster(body)!;
+      const before = oldReading(body);
+      const names = (es: { name: string }[]) => es.map((e) => e.name);
+      expect(names(before.entries).slice(0, now.entries.length)).toEqual(names(now.entries));
+      expect(names(before.reserves).slice(0, now.reserves.length)).toEqual(names(now.reserves));
+      // Nothing is lost from the message either: every line is still seen.
+      expect(now.entries.length + now.reserves.length + now.notPlaying.length).toBe(
+        before.entries.length + before.reserves.length,
+      );
+    }
+  });
+});
