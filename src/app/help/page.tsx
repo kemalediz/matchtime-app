@@ -11,9 +11,9 @@ export default function HelpLandingPage() {
         MatchTime runs your group&apos;s weekly match from WhatsApp. It
         tracks who&apos;s in, runs the bench, chases when you&apos;re short,
         balances the teams when you ask and collects ratings after the game.
-        It costs £9.99 a month for the whole group, not per player, and your
-        first month is free. Add it to your group, and if you don&apos;t like
-        it, remove it.
+        It costs up to £9.99 a month for the whole group, not per player, and
+        you only pay for the weeks you play. Your first month is free. Add it
+        to your group, and if you don&apos;t like it, remove it.
       </p>
       <p>Two guides, depending on your role in the group:</p>
 
