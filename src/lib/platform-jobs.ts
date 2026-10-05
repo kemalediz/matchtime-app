@@ -60,7 +60,9 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
 /** DM purposes anything may queue, subject to the recipient rule above. */
 /** "billing": club fee DMs to the billing contact or card holder (club fee
  *  billing, slice B3), queued only by `queueBillingDm` in club-billing.ts. */
-export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision", "billing"] as const;
+/** "setup-learned" (F3, 2026-10-05): the organiser's one DM about the
+ *  settings MatchTime set up from the group chat (src/lib/setup-learning). */
+export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision", "billing", "setup-learned"] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
 /** DM purposes only `queueOwnerDm` may write. */

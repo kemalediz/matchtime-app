@@ -1,0 +1,166 @@
+{
+ "name": "turkish",
+ "teaches": "A Turkish group whose squad carries over ('kadro geçen haftakiyle aynı, olmayan yazsın') and whose players confirm paying ('ödedim'). The DM goes out in Turkish.",
+ "groupSubject": "Cuma Halısaha",
+ "language": "tr",
+ "weeklyGame": {
+  "dayOfWeek": 5,
+  "time": "21:00",
+  "venue": "Halısaha Kartal",
+  "playersPerSide": 7
+ },
+ "expect": {
+  "regularGame": true,
+  "squad": "rolling",
+  "payments": "players_confirm_paying",
+  "applied": [
+   "rollingSquad",
+   "paymentTracking"
+  ],
+  "noted": [],
+  "suggestions": [],
+  "dm": true
+ },
+ "history": [
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kadro geçen haftakiyle aynı, olmayan yazsın",
+   "timestamp": "2026-09-09T09:00:00.000Z"
+  },
+  {
+   "author": "Burak Demir",
+   "text": "Bu hafta gelemiyorum abi, kusura bakmayın",
+   "timestamp": "2026-09-09T10:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Tamam Burak, yerine birini bulalım",
+   "timestamp": "2026-09-09T10:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Akşam 9'da Halısaha Kartal'da görüşürüz",
+   "timestamp": "2026-09-11T17:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kişi başı 150 TL, IBAN grupta",
+   "timestamp": "2026-09-12T09:00:00.000Z"
+  },
+  {
+   "author": "Mert Kaya",
+   "text": "Ödedim",
+   "timestamp": "2026-09-12T09:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Gönderdim abi",
+   "timestamp": "2026-09-12T10:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kadro geçen haftakiyle aynı, olmayan yazsın",
+   "timestamp": "2026-09-16T09:00:00.000Z"
+  },
+  {
+   "author": "Burak Demir",
+   "text": "Bu hafta gelemiyorum abi, kusura bakmayın",
+   "timestamp": "2026-09-16T10:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Tamam Burak, yerine birini bulalım",
+   "timestamp": "2026-09-16T10:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Akşam 9'da Halısaha Kartal'da görüşürüz",
+   "timestamp": "2026-09-18T17:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kişi başı 150 TL, IBAN grupta",
+   "timestamp": "2026-09-19T09:00:00.000Z"
+  },
+  {
+   "author": "Mert Kaya",
+   "text": "Ödedim",
+   "timestamp": "2026-09-19T09:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Gönderdim abi",
+   "timestamp": "2026-09-19T10:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kadro geçen haftakiyle aynı, olmayan yazsın",
+   "timestamp": "2026-09-23T09:00:00.000Z"
+  },
+  {
+   "author": "Burak Demir",
+   "text": "Bu hafta gelemiyorum abi, kusura bakmayın",
+   "timestamp": "2026-09-23T10:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Tamam Burak, yerine birini bulalım",
+   "timestamp": "2026-09-23T10:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Akşam 9'da Halısaha Kartal'da görüşürüz",
+   "timestamp": "2026-09-25T17:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kişi başı 150 TL, IBAN grupta",
+   "timestamp": "2026-09-26T09:00:00.000Z"
+  },
+  {
+   "author": "Mert Kaya",
+   "text": "Ödedim",
+   "timestamp": "2026-09-26T09:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Gönderdim abi",
+   "timestamp": "2026-09-26T10:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kadro geçen haftakiyle aynı, olmayan yazsın",
+   "timestamp": "2026-09-30T09:00:00.000Z"
+  },
+  {
+   "author": "Burak Demir",
+   "text": "Bu hafta gelemiyorum abi, kusura bakmayın",
+   "timestamp": "2026-09-30T10:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Tamam Burak, yerine birini bulalım",
+   "timestamp": "2026-09-30T10:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Akşam 9'da Halısaha Kartal'da görüşürüz",
+   "timestamp": "2026-10-02T17:00:00.000Z"
+  },
+  {
+   "author": "Erdem Yılmaz",
+   "text": "Kişi başı 150 TL, IBAN grupta",
+   "timestamp": "2026-10-03T09:00:00.000Z"
+  },
+  {
+   "author": "Mert Kaya",
+   "text": "Ödedim",
+   "timestamp": "2026-10-03T09:30:00.000Z"
+  },
+  {
+   "author": "Can Aksoy",
+   "text": "Gönderdim abi",
+   "timestamp": "2026-10-03T10:00:00.000Z"
+  }
+ ]
+}

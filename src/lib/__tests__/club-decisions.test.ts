@@ -380,6 +380,9 @@ describe("decideClub: reject", () => {
     );
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
     expect(importMock).not.toHaveBeenCalled();
+    // F3: a rejected club's chat is never read; it is deleted at the decision.
+    const sqls = dbMock.$executeRaw.mock.calls.map((c) => (c[0] as unknown as TemplateStringsArray).join("?"));
+    expect(sqls).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ?`);
   });
 });
 

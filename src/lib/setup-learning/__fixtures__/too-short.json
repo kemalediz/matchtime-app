@@ -1,0 +1,46 @@
+{
+ "name": "too-short",
+ "teaches": "Five messages: too short to read, so nothing is read and nothing changes, even with a clear signal in it.",
+ "groupSubject": "Tiny Group",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 2,
+  "time": "20:00",
+  "venue": "Somewhere",
+  "playersPerSide": 5
+ },
+ "expect": {
+  "skipped": "too-short",
+  "applied": [],
+  "noted": [],
+  "suggestions": [],
+  "dm": false
+ },
+ "history": [
+  {
+   "author": "Amy Lee",
+   "text": "Hi all",
+   "timestamp": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "author": "Bea Fox",
+   "text": "in",
+   "timestamp": "2026-10-01T09:05:00.000Z"
+  },
+  {
+   "author": "Cat Roe",
+   "text": "in",
+   "timestamp": "2026-10-01T09:06:00.000Z"
+  },
+  {
+   "author": "Amy Lee",
+   "text": "Same team as before, shout if not",
+   "timestamp": "2026-10-01T09:10:00.000Z"
+  },
+  {
+   "author": "Bea Fox",
+   "text": "great",
+   "timestamp": "2026-10-01T09:20:00.000Z"
+  }
+ ]
+}

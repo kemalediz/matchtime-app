@@ -1,0 +1,196 @@
+{
+ "name": "deadlines",
+ "teaches": "Weekly deadlines with a day and a time ('drop out by Monday 9pm', 'final list goes up Tuesday at 8pm'), players confirming payment, and a kickoff time different from the organiser's entry.",
+ "groupSubject": "Thursday Ladies 5s",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 4,
+  "time": "19:00",
+  "venue": "Hackney Marshes",
+  "playersPerSide": 5
+ },
+ "expect": {
+  "regularGame": true,
+  "dropOutDeadline": {
+   "day": 1,
+   "time": "21:00"
+  },
+  "listPublished": {
+   "day": 2,
+   "time": "20:00"
+  },
+  "payments": "players_confirm_paying",
+  "applied": [
+   "dropOutDeadline",
+   "listPublish",
+   "paymentTracking"
+  ],
+  "noted": [],
+  "suggestions": [
+   "weeklyGameTime"
+  ],
+  "dm": true
+ },
+ "history": [
+  {
+   "author": "Gemma Lowe",
+   "text": "Drop out by Monday 9pm at the latest or you still pay",
+   "timestamp": "2026-09-07T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "IN",
+   "timestamp": "2026-09-07T11:00:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "in",
+   "timestamp": "2026-09-07T11:05:00.000Z"
+  },
+  {
+   "author": "Zoe Turner",
+   "text": "in please",
+   "timestamp": "2026-09-07T12:00:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "Final list goes up Tuesday at 8pm. Kickoff Thursday 8pm at Hackney Marshes",
+   "timestamp": "2026-09-08T19:05:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "£6 each please to the usual account",
+   "timestamp": "2026-09-11T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "paid",
+   "timestamp": "2026-09-11T08:30:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "sent £6",
+   "timestamp": "2026-09-11T09:15:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "Drop out by Monday 9pm at the latest or you still pay",
+   "timestamp": "2026-09-14T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "IN",
+   "timestamp": "2026-09-14T11:00:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "in",
+   "timestamp": "2026-09-14T11:05:00.000Z"
+  },
+  {
+   "author": "Zoe Turner",
+   "text": "in please",
+   "timestamp": "2026-09-14T12:00:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "Final list goes up Tuesday at 8pm. Kickoff Thursday 8pm at Hackney Marshes",
+   "timestamp": "2026-09-15T19:05:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "£6 each please to the usual account",
+   "timestamp": "2026-09-18T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "paid",
+   "timestamp": "2026-09-18T08:30:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "sent £6",
+   "timestamp": "2026-09-18T09:15:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "Drop out by Monday 9pm at the latest or you still pay",
+   "timestamp": "2026-09-21T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "IN",
+   "timestamp": "2026-09-21T11:00:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "in",
+   "timestamp": "2026-09-21T11:05:00.000Z"
+  },
+  {
+   "author": "Zoe Turner",
+   "text": "in please",
+   "timestamp": "2026-09-21T12:00:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "Final list goes up Tuesday at 8pm. Kickoff Thursday 8pm at Hackney Marshes",
+   "timestamp": "2026-09-22T19:05:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "£6 each please to the usual account",
+   "timestamp": "2026-09-25T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "paid",
+   "timestamp": "2026-09-25T08:30:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "sent £6",
+   "timestamp": "2026-09-25T09:15:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "Drop out by Monday 9pm at the latest or you still pay",
+   "timestamp": "2026-09-28T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "IN",
+   "timestamp": "2026-09-28T11:00:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "in",
+   "timestamp": "2026-09-28T11:05:00.000Z"
+  },
+  {
+   "author": "Zoe Turner",
+   "text": "in please",
+   "timestamp": "2026-09-28T12:00:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "Final list goes up Tuesday at 8pm. Kickoff Thursday 8pm at Hackney Marshes",
+   "timestamp": "2026-09-29T19:05:00.000Z"
+  },
+  {
+   "author": "Gemma Lowe",
+   "text": "£6 each please to the usual account",
+   "timestamp": "2026-10-02T08:00:00.000Z"
+  },
+  {
+   "author": "Priya Shah",
+   "text": "paid",
+   "timestamp": "2026-10-02T08:30:00.000Z"
+  },
+  {
+   "author": "Hannah Kerr",
+   "text": "sent £6",
+   "timestamp": "2026-10-02T09:15:00.000Z"
+  }
+ ]
+}

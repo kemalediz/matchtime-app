@@ -120,7 +120,16 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
 
   // 2. A re-add of a group already linked and waiting.
   const existing = await db.clubConnect.findFirst({ where: LINKED_AND_WAITING(groupId), select: { id: true } });
-  if (existing) return { kind: "already-linked", connectId: existing.id };
+  if (existing) {
+    // F3: a re-add may carry the chat the first add could not fetch. It
+    // never replaces chat already stored.
+    const late = coerceHistoryMessages(input.enrichmentHistory);
+    if (late.length > 0) {
+      await db.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = ${JSON.stringify(late)}::jsonb
+        WHERE "id" = ${existing.id} AND "capturedHistory" IS NULL`;
+    }
+    return { kind: "already-linked", connectId: existing.id };
+  }
 
   // 3. Which request, if any (plan 2.3).
   const ev = addEvidenceFrom(input);
@@ -202,6 +211,9 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
           adderMatch: decision.adderMatch,
           participants: snapshot.length > 0 ? (snapshot.map((p) => ({ ...p })) as unknown as object) : undefined,
           detectedLang: detected.lang,
+          // F3: the chat, kept until the learned setup has read it once
+          // after approval (or the club is rejected). See setup-learning/.
+          capturedHistory: history.length > 0 ? (history as unknown as object) : undefined,
           linkedAt: now,
           botRemovedAt: null,
         },
@@ -346,6 +358,8 @@ export async function handleBotRemoved(
         where: { id: l.id, botRemovedAt: null },
         data: { botRemovedAt: now },
       });
+      // F3: the chat goes with the link; a re-add brings it again.
+      await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ${l.id}`;
       return count === 1 && (await returnPendingClubToDraft(l.orgId, tx));
     });
     if (moved) returnedToDraft++;

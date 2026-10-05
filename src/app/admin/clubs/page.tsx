@@ -20,6 +20,7 @@ import { londonDay, getAiBudgetStatus } from "@/lib/ai-budget";
 import { NEW_CLUB_DM_WINDOW_DAYS, newClubDmCap } from "@/lib/club-decision-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
+import { ownerLearningSummary } from "@/lib/setup-learning/owner-summary";
 import { notFound, redirect } from "next/navigation";
 import { DecideButtons, LeaveButton, TurnOffButton } from "./club-buttons";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
@@ -251,6 +252,19 @@ export default async function ClubsPage() {
           billingPlan: true,
           billingPricePence: true,
           clubBilling: { select: { vatCountryCheck: true } },
+          setupLearning: {
+            select: {
+              status: true,
+              reason: true,
+              messageCount: true,
+              applied: true,
+              suggestions: true,
+              noted: true,
+              kept: true,
+              costUsd: true,
+              dmQueuedAt: true,
+            },
+          },
         },
       }),
       db.organisation.findMany({
@@ -444,12 +458,28 @@ export default async function ClubsPage() {
                   {c.ai.capped ? " (capped)" : ""}.{!c.whatsappBotEnabled && " Muted."}
                 </p>
                 <BillingRow c={c} billingOn={billingOn} lang={lang} />
+                {(() => {
+                  const l = ownerLearningSummary(c.setupLearning);
+                  return (
+                    <div data-testid="club-learned-setup" className="mt-2 text-sm text-slate-600">
+                      <p>Learned setup: {l.line}</p>
+                      {l.monthly && <p data-testid="club-learned-monthly">{l.monthly}</p>}
+                    </div>
+                  );
+                })()}
                 <div className="mt-3">
                   <TurnOffButton orgId={c.id} club={c.name} />
                 </div>
               </li>
             ))}
           </ul>
+        )}
+        {live.length > 0 && (
+          <p data-testid="learned-setup-totals" className="mt-3 text-sm text-slate-600">
+            Learned setup: {live.filter((c) => c.setupLearning?.status === "applied" || c.setupLearning?.status === "nothing").length}{" "}
+            of {live.length} clubs read; a monthly list seen in{" "}
+            {live.filter((c) => Array.isArray(c.setupLearning?.noted) && (c.setupLearning?.noted as unknown[]).length > 0).length}.
+          </p>
         )}
         {live.length > 0 && (
           <p data-testid="billing-totals" className="mt-3 text-sm text-slate-600">

@@ -1,0 +1,203 @@
+{
+ "name": "first-come",
+ "teaches": "Players sign up each week with IN and the first to reply get the places. MatchTime's defaults already work this way: nothing to change, no DM.",
+ "groupSubject": "Saturday Morning Footy",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 6,
+  "time": "10:00",
+  "venue": "Wandsworth Common",
+  "playersPerSide": 8
+ },
+ "expect": {
+  "regularGame": true,
+  "squad": "sign_up_each_week",
+  "openPlaces": "first_to_ask",
+  "applied": [],
+  "noted": [],
+  "suggestions": [],
+  "dm": false
+ },
+ "history": [
+  {
+   "author": "Marcus Webb",
+   "text": "Saturday 10am at Wandsworth Common, first 16 names in get a game",
+   "timestamp": "2026-09-09T08:00:00.000Z"
+  },
+  {
+   "author": "Ali Khan",
+   "text": "IN",
+   "timestamp": "2026-09-09T08:10:00.000Z"
+  },
+  {
+   "author": "Ben Fox",
+   "text": "in",
+   "timestamp": "2026-09-09T08:15:00.000Z"
+  },
+  {
+   "author": "Chris Dunn",
+   "text": "In 👍",
+   "timestamp": "2026-09-09T08:20:00.000Z"
+  },
+  {
+   "author": "Dan Moss",
+   "text": "in for Saturday",
+   "timestamp": "2026-09-09T08:25:00.000Z"
+  },
+  {
+   "author": "Eddie Lam",
+   "text": "IN",
+   "timestamp": "2026-09-09T08:30:00.000Z"
+  },
+  {
+   "author": "Femi Ade",
+   "text": "me in",
+   "timestamp": "2026-09-09T08:35:00.000Z"
+  },
+  {
+   "author": "George Hill",
+   "text": "in",
+   "timestamp": "2026-09-09T08:40:00.000Z"
+  },
+  {
+   "author": "Marcus Webb",
+   "text": "List filling up fast, whoever's quickest gets in",
+   "timestamp": "2026-09-09T13:00:00.000Z"
+  },
+  {
+   "author": "Marcus Webb",
+   "text": "Saturday 10am at Wandsworth Common, first 16 names in get a game",
+   "timestamp": "2026-09-16T08:00:00.000Z"
+  },
+  {
+   "author": "Ali Khan",
+   "text": "IN",
+   "timestamp": "2026-09-16T08:10:00.000Z"
+  },
+  {
+   "author": "Ben Fox",
+   "text": "in",
+   "timestamp": "2026-09-16T08:15:00.000Z"
+  },
+  {
+   "author": "Chris Dunn",
+   "text": "In 👍",
+   "timestamp": "2026-09-16T08:20:00.000Z"
+  },
+  {
+   "author": "Dan Moss",
+   "text": "in for Saturday",
+   "timestamp": "2026-09-16T08:25:00.000Z"
+  },
+  {
+   "author": "Eddie Lam",
+   "text": "IN",
+   "timestamp": "2026-09-16T08:30:00.000Z"
+  },
+  {
+   "author": "Femi Ade",
+   "text": "me in",
+   "timestamp": "2026-09-16T08:35:00.000Z"
+  },
+  {
+   "author": "George Hill",
+   "text": "in",
+   "timestamp": "2026-09-16T08:40:00.000Z"
+  },
+  {
+   "author": "Marcus Webb",
+   "text": "List filling up fast, whoever's quickest gets in",
+   "timestamp": "2026-09-16T13:00:00.000Z"
+  },
+  {
+   "author": "Marcus Webb",
+   "text": "Saturday 10am at Wandsworth Common, first 16 names in get a game",
+   "timestamp": "2026-09-23T08:00:00.000Z"
+  },
+  {
+   "author": "Ali Khan",
+   "text": "IN",
+   "timestamp": "2026-09-23T08:10:00.000Z"
+  },
+  {
+   "author": "Ben Fox",
+   "text": "in",
+   "timestamp": "2026-09-23T08:15:00.000Z"
+  },
+  {
+   "author": "Chris Dunn",
+   "text": "In 👍",
+   "timestamp": "2026-09-23T08:20:00.000Z"
+  },
+  {
+   "author": "Dan Moss",
+   "text": "in for Saturday",
+   "timestamp": "2026-09-23T08:25:00.000Z"
+  },
+  {
+   "author": "Eddie Lam",
+   "text": "IN",
+   "timestamp": "2026-09-23T08:30:00.000Z"
+  },
+  {
+   "author": "Femi Ade",
+   "text": "me in",
+   "timestamp": "2026-09-23T08:35:00.000Z"
+  },
+  {
+   "author": "George Hill",
+   "text": "in",
+   "timestamp": "2026-09-23T08:40:00.000Z"
+  },
+  {
+   "author": "Marcus Webb",
+   "text": "List filling up fast, whoever's quickest gets in",
+   "timestamp": "2026-09-23T13:00:00.000Z"
+  },
+  {
+   "author": "Marcus Webb",
+   "text": "Saturday 10am at Wandsworth Common, first 16 names in get a game",
+   "timestamp": "2026-09-30T08:00:00.000Z"
+  },
+  {
+   "author": "Ali Khan",
+   "text": "IN",
+   "timestamp": "2026-09-30T08:10:00.000Z"
+  },
+  {
+   "author": "Ben Fox",
+   "text": "in",
+   "timestamp": "2026-09-30T08:15:00.000Z"
+  },
+  {
+   "author": "Chris Dunn",
+   "text": "In 👍",
+   "timestamp": "2026-09-30T08:20:00.000Z"
+  },
+  {
+   "author": "Dan Moss",
+   "text": "in for Saturday",
+   "timestamp": "2026-09-30T08:25:00.000Z"
+  },
+  {
+   "author": "Eddie Lam",
+   "text": "IN",
+   "timestamp": "2026-09-30T08:30:00.000Z"
+  },
+  {
+   "author": "Femi Ade",
+   "text": "me in",
+   "timestamp": "2026-09-30T08:35:00.000Z"
+  },
+  {
+   "author": "George Hill",
+   "text": "in",
+   "timestamp": "2026-09-30T08:40:00.000Z"
+  },
+  {
+   "author": "Marcus Webb",
+   "text": "List filling up fast, whoever's quickest gets in",
+   "timestamp": "2026-09-30T13:00:00.000Z"
+  }
+ ]
+}

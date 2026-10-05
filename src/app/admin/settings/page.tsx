@@ -15,6 +15,7 @@ import { PickModeRows } from "@/components/settings/pick-mode-rows";
 import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
 import { SectionInfo } from "@/components/info/section-info";
 import { FEATURE_INFO } from "@/lib/info-copy";
+import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
 
 type FeatureKey = ToggleableKey;
 
@@ -253,6 +254,9 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {/* F3: what MatchTime set up from the group chat (nothing for a club never read). */}
+      {org.inviteCode && <LearnedSetupPanel orgId={org.id} language={org.language} />}
+
       {/* General */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">

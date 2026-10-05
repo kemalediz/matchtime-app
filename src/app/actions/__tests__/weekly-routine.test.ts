@@ -60,7 +60,7 @@ describe("setWeeklyRoutine", () => {
     const res = await setWeeklyRoutine("org-fnf", { rollingSquad: true });
     expect(requireOrgAdmin).toHaveBeenCalledWith("u-hamzah", "org-fnf");
     expect(orgUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "org-fnf" }, data: { rollingSquadEnabled: true } }),
+      expect.objectContaining({ where: { id: "org-fnf" }, data: { rollingSquadEnabled: true, settingsSetByOrganiser: { push: ["rollingSquad"] } } }),
     );
     expect(res).toMatchObject({ rollingSquad: true });
   });
@@ -94,7 +94,14 @@ describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
     expect(orgUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "org-fnf" },
-        data: { dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00", listPublishDay: 2, listPublishTime: "20:00" },
+        data: {
+          dropOutDeadlineDay: 1,
+          dropOutDeadlineTime: "21:00",
+          listPublishDay: 2,
+          listPublishTime: "20:00",
+          // F3: the organiser saved these; the learned setup never overrides them.
+          settingsSetByOrganiser: { push: ["dropOutDeadline", "listPublish"] },
+        },
       }),
     );
     expect(activityFindMany).toHaveBeenCalledWith(
@@ -132,7 +139,9 @@ describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
     orgFindUnique.mockResolvedValue({ ...UNSET_ROW, dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00" });
     const res = await setWeeklyRoutine("org-fnf", { dropOutDeadline: null });
     expect(orgUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { dropOutDeadlineDay: null, dropOutDeadlineTime: null } }),
+      expect.objectContaining({
+        data: { dropOutDeadlineDay: null, dropOutDeadlineTime: null, settingsSetByOrganiser: { push: ["dropOutDeadline"] } },
+      }),
     );
     expect(res).toMatchObject({ dropOutDeadline: null });
   });
@@ -195,13 +204,13 @@ describe("setWeeklyRoutine: slice 2b, who fills an open place", () => {
       ...data,
     }));
     const res = await setWeeklyRoutine("org-fnf", { benchPickMode: "organiser" });
-    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { benchPickMode: "organiser" } }));
+    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { benchPickMode: "organiser", settingsSetByOrganiser: { push: ["benchPickMode"] } } }));
     expect(res).toMatchObject({ ok: true, benchPickMode: "organiser", benchPickFallback: "bench-offer" });
   });
 
   it("sets the fallback to leave the place open", async () => {
     await setWeeklyRoutine("org-fnf", { benchPickFallback: "leave-empty" });
-    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { benchPickFallback: "leave-empty" } }));
+    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { benchPickFallback: "leave-empty", settingsSetByOrganiser: { push: ["benchPickFallback"] } } }));
   });
 
   it("refuses a value that is not one of the choices, nothing written", async () => {

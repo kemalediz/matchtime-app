@@ -849,6 +849,29 @@ const SAMPLES: SampleArgs = {
   info_bill_card_body: null,
   info_bill_past_title: null,
   info_bill_past_body: null,
+  // F3, learned setup (2026-10-05).
+  sj_dm_setup_intro: { group: "Old Boys Monday" },
+  sj_dm_setup_intro_nothing: { group: "Old Boys Monday" },
+  setup_applied_line: { key: "dropOutDeadline", day: "Mondayz", time: "21:05" },
+  sj_dm_setup_from: { quote: "same squad as last week" },
+  sj_dm_setup_undo: { url: "https://matchtime.ai/r/undo1" },
+  sj_dm_setup_check_head: null,
+  setup_suggestion_line: { key: "venue", current: "Goals Wimbledon", detected: "Powerleague Mill Hill" },
+  sj_dm_setup_check_link: { url: "https://matchtime.ai/r/game1" },
+  setup_monthly_pattern: { prepay: true, payg: true, credits: true },
+  sj_dm_setup_monthly: { pattern: "regulars pay monthly", heldPaymentTracking: true },
+  sj_dm_setup_outro: { url: "https://matchtime.ai/r/settings1" },
+  setup_monthly_label: null,
+  setup_lang_name: { key: "tr" },
+  settings_learned_title: null,
+  settings_learned_lead: null,
+  settings_learned_undo: null,
+  settings_learned_undone: null,
+  settings_learned_changed_since: null,
+  settings_learned_undo_failed: null,
+  settings_learned_from: null,
+  settings_learned_check_head: null,
+  settings_learned_noted_head: null,
 };
 
 /** Render an entry with its sample arguments. */
@@ -978,7 +1001,7 @@ describe("string tables: hygiene", () => {
   // help, the setup DMs and the join DM.
   it("no onboarding, help or organiser-setup entry carries an em or en dash, in any language", () => {
     const onboarding = KEYS.filter((k) =>
-      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled|admin_group_|settings_admin_channel_)/.test(String(k)),
+      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled|admin_group_|settings_admin_channel_|setup_|settings_learned_)/.test(String(k)),
     );
     expect(onboarding.length).toBeGreaterThan(40);
     for (const lang of LANGS) {

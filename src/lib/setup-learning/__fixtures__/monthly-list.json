@@ -1,0 +1,495 @@
+{
+ "name": "monthly-list",
+ "teaches": "Anonymised from a real group (every name fake, phone numbers and bank details removed): a monthly list where regulars sign up and prepay the month, PAYG players fill spaces, and 'paid but can't play' becomes credit. Noted, never applied; payment tracking held off.",
+ "groupSubject": "Old Boys Monday",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 1,
+  "time": "20:00",
+  "venue": "Ewell Sports Centre",
+  "playersPerSide": 8
+ },
+ "expect": {
+  "regularGame": true,
+  "monthlyList": "monthly_list",
+  "payments": "players_confirm_paying",
+  "applied": [],
+  "noted": [
+   "monthlyList"
+  ],
+  "suggestions": [],
+  "dm": true
+ },
+ "history": [
+  {
+   "author": "Marco Bellini",
+   "text": "Account details in group description lads",
+   "timestamp": "2026-09-28T20:57:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "Great game btw",
+   "timestamp": "2026-09-28T20:58:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "Hi all, brilliant game",
+   "timestamp": "2026-09-28T20:58:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Yes thanks for coming lads 👌 good game that was!",
+   "timestamp": "2026-09-28T21:52:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "definitely, thanks for adding me, is it ok if we add Leo, my son, to the group as well?",
+   "timestamp": "2026-09-28T21:54:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "I wouldn’t Tom if I’m honest, a lot of adult humor and banter in here lol. Wait till he’s 18. Plus, it’s traditionally a vet’s Monday night friendly with a couple younger add ons here and there 😆",
+   "timestamp": "2026-09-28T22:06:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "totally understand and it makes sense, thanks for the clarification @Gary Holt 👍",
+   "timestamp": "2026-09-28T22:09:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "@Tom Archer @Rafi @~Rob \n\nThanks again for coming gents. Please could you transfer £8 each to Marco, details in the group description",
+   "timestamp": "2026-09-29T06:53:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "paid already for myself and Leo. thanks",
+   "timestamp": "2026-09-29T06:54:00.000Z"
+  },
+  {
+   "author": "Lewis",
+   "text": "paid!",
+   "timestamp": "2026-09-29T08:35:00.000Z"
+  },
+  {
+   "author": "Rafi",
+   "text": "i’ve paid as well👍",
+   "timestamp": "2026-09-30T09:18:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Thanks gents, and thanks for coming along as well, really good game",
+   "timestamp": "2026-09-30T09:27:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "@Marco Bellini what’s the deal for next month? And how many are paying for the month?",
+   "timestamp": "2026-09-30T09:28:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "4 Mondays next month , we are one Monday in credit so let’s see numbers then I can tell u cost \n\n1.Marco",
+   "timestamp": "2026-09-30T09:59:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Ok cool\n\nNew chaps - we normally have the majority of us pay monthly, so Marco can secure the venue. I think we prob have 1 or 2 spaces in case you did fancy it weekly! \n\nSo we’ll let the regulars slap their names down first, then let you know. But if you want to just stay PAYG and come any time you can make it, that’s also fine 👌",
+   "timestamp": "2026-09-30T10:01:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "List for October:\n\n1. Marco\n2. ⁠Gary\n3. ⁠JB\n4. ⁠….",
+   "timestamp": "2026-09-30T10:01:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "List for October:\n\n1. Marco\n2. ⁠Gary\n3. ⁠JB\n4. Clive",
+   "timestamp": "2026-09-30T10:01:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "you can write my name down as a regular, will try to come as much as possible, happy to pay the monthly share",
+   "timestamp": "2026-09-30T10:03:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "Add yourself to list mate we are happy to have u",
+   "timestamp": "2026-09-30T10:04:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom",
+   "timestamp": "2026-09-30T10:04:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo",
+   "timestamp": "2026-09-30T10:10:00.000Z"
+  },
+  {
+   "author": "Danny",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo \n7. Danny",
+   "timestamp": "2026-09-30T10:14:00.000Z"
+  },
+  {
+   "author": "Pete",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo \n7. Danny\n8. Simon (PAYG 5th only)",
+   "timestamp": "2026-09-30T10:22:00.000Z"
+  },
+  {
+   "author": "Ash",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo \n7. Danny\n8. Simon (PAYG 5th only)\n9. ⁠Mick",
+   "timestamp": "2026-09-30T13:28:00.000Z"
+  },
+  {
+   "author": "Clive",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo \n7. Danny\n8. Simon (PAYG 5th only)\n9. ⁠Mick\n10. ⁠Wes",
+   "timestamp": "2026-09-30T13:42:00.000Z"
+  },
+  {
+   "author": "Neil",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo \n7. Danny\n8. Simon (PAYG 5th only)\n9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny",
+   "timestamp": "2026-09-30T13:52:00.000Z"
+  },
+  {
+   "author": "Neil",
+   "text": "@zed how are you man ?",
+   "timestamp": "2026-09-30T13:54:00.000Z"
+  },
+  {
+   "author": "Jamie",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo \n7. Danny\n8. Simon (PAYG 5th only)\n9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo",
+   "timestamp": "2026-09-30T14:08:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "Ok lads verdict is in we just waiting on 2 more and we are at £22.50 for 4 games next month , please do all payment by latest Friday as I need to pay invoice",
+   "timestamp": "2026-09-30T14:28:00.000Z"
+  },
+  {
+   "author": "Neil",
+   "text": "22.5 for ones in credit",
+   "timestamp": "2026-09-30T14:29:00.000Z"
+  },
+  {
+   "author": "Callum",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n5. Tom\n6. ⁠Paulo \n7. Danny\n8. Simon (PAYG 5th only)\n9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai",
+   "timestamp": "2026-09-30T14:30:00.000Z"
+  },
+  {
+   "author": "Callum",
+   "text": "I can’t make the next two Mondays as working away",
+   "timestamp": "2026-09-30T14:30:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "Yes £30 for newbies",
+   "timestamp": "2026-09-30T14:33:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "If u can do your sub then I can take out of following  month",
+   "timestamp": "2026-09-30T14:34:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "So next month u will be 3 games in credit",
+   "timestamp": "2026-09-30T14:34:00.000Z"
+  },
+  {
+   "author": "Danny",
+   "text": "Paid @Marco Bellini",
+   "timestamp": "2026-09-30T19:24:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n 5. Tom\n 6. ⁠Paulo \n 7. Danny\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-09-30T21:07:00.000Z"
+  },
+  {
+   "author": "Ravi",
+   "text": "Is that Leo's son ?",
+   "timestamp": "2026-10-01T07:40:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "No",
+   "timestamp": "2026-10-01T07:40:00.000Z"
+  },
+  {
+   "author": "Danny",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n 5. Tom\n 6. ⁠Paulo \n 7. Danny(paid)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-01T07:41:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "Hi Marco, just realised we are abroad during half term for 2 weeks at the end of October, so seems like can only play 2 matches, i can still pay for the whole month, no probs",
+   "timestamp": "2026-10-01T07:57:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "If u pay for the month u will have 2 weeks credit following month , we do credits in arrears … so anything u miss before u get after , its easier to calculate venue cost to each person that way",
+   "timestamp": "2026-10-01T07:58:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "you seem like a decent accountant, @Marco Bellini , this must be challenging for you, keeping track of everything",
+   "timestamp": "2026-10-01T07:59:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "It has its ups and downs mate , usually ends up ok lol",
+   "timestamp": "2026-10-01T08:00:00.000Z"
+  },
+  {
+   "author": "Ravi",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n 5. Tom\n 6. ⁠Paulo (paid 22.50)\n 7. Danny(paid)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-01T08:46:00.000Z"
+  },
+  {
+   "author": "Danny",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary\n3.⁠ ⁠⁠JB\n4.⁠ ⁠Clive\n 5. Tom\n 6. ⁠Paulo (paid 22.50)\n 7. Danny(paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-01T09:24:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive\n 5. Tom\n 6. ⁠Paulo (Paid 22.50)\n 7. Bojan (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-01T19:17:00.000Z"
+  },
+  {
+   "author": "Ash",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive\n 5. Tom\n 6. ⁠Paulo (Paid 22.50)\n 7. Bojan (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-02T06:36:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "Lads please don’t forget to do your payments",
+   "timestamp": "2026-10-02T14:57:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "Missing 4",
+   "timestamp": "2026-10-02T14:57:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive\n 5. Tom (Paid 30)\n 6. ⁠Paulo (Paid 22.50)\n 7. Bojan (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-02T14:57:00.000Z"
+  },
+  {
+   "author": "Clive",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive\n 5. Tom (Paid 30)\n 6. ⁠Paulo (Paid 22.50)\n 7. Bojan (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-02T15:55:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "Put paid on my name too please, it doesn't work for me",
+   "timestamp": "2026-10-02T16:03:00.000Z"
+  },
+  {
+   "author": "Clive",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Paulo (Paid 22.50)\n 7. Bojan (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny\n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-02T16:04:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "Thank you",
+   "timestamp": "2026-10-02T16:04:00.000Z"
+  },
+  {
+   "author": "Neil",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Paulo (Paid 22.50)\n 7. Bojan (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-02T16:06:00.000Z"
+  },
+  {
+   "author": "Danny",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Paulo (Paid 22.50)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-02T17:44:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "7v7 this week? 😮",
+   "timestamp": "2026-10-02T17:47:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Need 8v8..!",
+   "timestamp": "2026-10-02T17:53:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "If You had 8v8 you would've said you want 9v9",
+   "timestamp": "2026-10-02T17:57:00.000Z"
+  },
+  {
+   "author": "Jamie",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Paulo (Paid 22.50)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Kai\n14. Nico ( paid )",
+   "timestamp": "2026-10-02T18:18:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Mo is backkkkk",
+   "timestamp": "2026-10-02T18:21:00.000Z"
+  },
+  {
+   "author": "Ravi",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Kai\n14. Nico ( paid )\n\nPaid but can't play\n1. Paulo",
+   "timestamp": "2026-10-03T09:31:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "🫠🫠",
+   "timestamp": "2026-10-03T09:31:00.000Z"
+  },
+  {
+   "author": "Ravi",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Vikram (PAYG)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Kai\n14. Nico ( paid )\n\nPaid but can't play\n1. Paulo",
+   "timestamp": "2026-10-03T09:42:00.000Z"
+  },
+  {
+   "author": "Callum",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Vikram (PAYG)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Sam\n14. Nico ( paid )\n\nPaid but can't play\n1. Paulo\n2. ⁠Kai",
+   "timestamp": "2026-10-03T11:33:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "i think we need 2 more players for tomorrow, right?",
+   "timestamp": "2026-10-04T09:41:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "Leo can come like last week, if needed",
+   "timestamp": "2026-10-04T09:41:00.000Z"
+  },
+  {
+   "author": "Marco Bellini",
+   "text": "If you bring your son I will bring mine so perfect",
+   "timestamp": "2026-10-04T09:42:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "deal",
+   "timestamp": "2026-10-04T09:43:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "List for October:\n\n1.⁠ ⁠Marco\n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Vikram (PAYG)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Sam\n14. \n\nPaid but can't play\n1. Paulo\n2. ⁠Kai",
+   "timestamp": "2026-10-04T11:06:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Anyone free tomoz PAYG?",
+   "timestamp": "2026-10-04T11:18:00.000Z"
+  },
+  {
+   "author": "Kev",
+   "text": "I’m out think I may of broke my toe yesterday",
+   "timestamp": "2026-10-04T11:53:00.000Z"
+  },
+  {
+   "author": "Clive",
+   "text": "To be honest I think I’ve done the same",
+   "timestamp": "2026-10-04T12:32:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "😒",
+   "timestamp": "2026-10-04T12:33:00.000Z"
+  },
+  {
+   "author": "Clive",
+   "text": "Will see what it feels like tomorrow morning and if not better I’ll take my name off the list",
+   "timestamp": "2026-10-04T12:33:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "Leo has twisted his ankle in today's league match, he says he will wait and see tomorrow but unlikely, so assume he is out too",
+   "timestamp": "2026-10-04T13:58:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "And here goes no game",
+   "timestamp": "2026-10-04T14:01:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "i can find players",
+   "timestamp": "2026-10-04T14:01:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "from other groups",
+   "timestamp": "2026-10-04T14:01:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "do you want me to?",
+   "timestamp": "2026-10-04T14:01:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "Yeah, I think that be best",
+   "timestamp": "2026-10-04T14:01:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "@~JT @~Rob fancy a game Monday?",
+   "timestamp": "2026-10-04T14:20:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "Alfie from another group is coming",
+   "timestamp": "2026-10-04T16:16:00.000Z"
+  },
+  {
+   "author": "Tom Archer",
+   "text": "can i add him to this group so it is easy to manage venue?",
+   "timestamp": "2026-10-04T16:19:00.000Z"
+  },
+  {
+   "author": "Lewis",
+   "text": "Sorry busy Monday!",
+   "timestamp": "2026-10-04T16:24:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "List for October:\n\n1.⁠ ⁠Marco (Bossman) \n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Vikram (PAYG)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Sam (PAYG)\n14. Alfie (PAYG)\n\nPaid but can't play\n1. Paulo\n2. ⁠Kai\n3. ⁠Finn",
+   "timestamp": "2026-10-05T07:21:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "This list correct?",
+   "timestamp": "2026-10-05T07:21:00.000Z"
+  },
+  {
+   "author": "Owen",
+   "text": "List for October:\n\n1.⁠ ⁠Marco (Bossman) \n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Vikram (PAYG)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10. ⁠Wes (paid £22.50)\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Sam (PAYG)\n14. Alfie (PAYG)\n\nPaid but can't play\n1. Paulo\n2. ⁠Kai\n3. ⁠Finn\n4. Nico",
+   "timestamp": "2026-10-05T07:21:00.000Z"
+  },
+  {
+   "author": "Clive",
+   "text": "Yeah definitely out for tonight",
+   "timestamp": "2026-10-05T08:04:00.000Z"
+  },
+  {
+   "author": "Clive",
+   "text": "List for October:\n\n1.⁠ ⁠Marco (Bossman) \n2.⁠ ⁠⁠Gary (Paid £22.50)\n3.⁠ ⁠⁠JB (Paid £22.50)\n4.⁠ ⁠Clive (paid pensioners rate)\n 5. Tom (Paid 30)\n 6. ⁠Vikram (PAYG)\n 7. BoJan😁 (paid 22.50)\n 8. Simon (PAYG 5th only)\n 9. ⁠Mick (paid £22.50)\n10.\n11. ⁠Sunny paid \n12. ⁠Mo (paid)\n13. ⁠Sam (PAYG)\n14. Alfie (PAYG)\n\nPaid but can't play\n1. Paulo\n2. ⁠Kai\n3. ⁠Finn\n4. Nico\n5. ⁠⁠Wes",
+   "timestamp": "2026-10-05T08:05:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Welcome to the group Theo",
+   "timestamp": "2026-10-05T09:48:00.000Z"
+  },
+  {
+   "author": "Gary Holt",
+   "text": "Theo can’t play this eve, but interested in future games PAYG",
+   "timestamp": "2026-10-05T09:48:00.000Z"
+  },
+  {
+   "author": "Neil",
+   "text": "Unlucky man get better soon got no one to nutmeg for now",
+   "timestamp": "2026-10-05T11:06:00.000Z"
+  }
+ ]
+}

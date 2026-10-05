@@ -2335,6 +2335,59 @@ export const tr: Strings = {
     "Kartla para toplayan kişi ilgilenir, para toplayan kişi yoksa kulüp sahibi. Kart kaydetmek para almaz. Yöneticiler bu sayfayı görebilir ama kartı değiştiremez.",
   info_bill_past_title: "Geçmiş aylar",
   info_bill_past_body: "Biten her ay ve alınan ücret. \"Maçları gör\" ayın maçlarını ve her birinin sayılıp sayılmadığını listeler.",
+  sj_dm_setup_intro: (p) =>
+    `${p.group ? `"${p.group}" grubundaki` : "Grubunuzdaki"} son mesajları okuyup grubun nasıl işlediğine baktım ve MatchTime'ı aynı şekilde kurdum.`,
+  sj_dm_setup_intro_nothing: (p) =>
+    `${p.group ? `"${p.group}" grubundaki` : "Grubunuzdaki"} son mesajları okuyup grubun nasıl işlediğine baktım. Hiçbir ayarı değiştirmedim, ama göz atmaya değer birkaç şey var.`,
+  setup_applied_line: (p) =>
+    p.key === "rollingSquad"
+      ? `*Kadro devam ediyor:* geçen maçta oynayan herkes, YOKUM demedikçe bir sonrakinde de oynar.`
+      : p.key === "organiserPicks"
+        ? `*Boşalan yeri organizatörler seçiyor:* MatchTime önce size sorar; zamanında kimse seçmezse yeri yedek listesine sunar.`
+        : p.key === "dropOutDeadline"
+          ? `*Son çıkış saati:* ${p.day} ${p.time}. MatchTime bundan önce gruba hatırlatır.`
+          : p.key === "listPublish"
+            ? `*Son liste:* ${p.day} ${p.time} saatinde gruba gönderilir.`
+            : `*Ödeme takibi açık:* MatchTime kimin ödediğini takip eder ve ödemeyenlere nazikçe hatırlatır.`,
+  sj_dm_setup_from: (p) => `Şu tür mesajlardan: "${p.quote}"`,
+  sj_dm_setup_undo: (p) => `Geri almak ya da değiştirmek için: ${p.url}`,
+  sj_dm_setup_check_head: "Kontrol etmeye değer (burada hiçbir şeyi değiştirmedim):",
+  setup_suggestion_line: (p) =>
+    p.key === "weeklyGameDay"
+      ? `Sohbette maçlar ${p.detected} günü geçiyor; haftalık maçınız ise ${p.current} günü.`
+      : p.key === "weeklyGameTime"
+        ? `Sohbete göre maç saati ${p.detected}; haftalık maçınız ise ${p.current} olarak ayarlı.`
+        : p.key === "venue"
+          ? `Sohbette saha olarak ${p.detected} geçiyor; haftalık maçınızda ise ${p.current} yazıyor.`
+          : p.key === "format"
+            ? `Sohbette takım başına ${p.detected} kişiden söz ediliyor; haftalık maçınız ise takım başına ${p.current} kişi.`
+            : `Sohbet çoğunlukla ${p.detected}; MatchTime bu grupta ${p.current} konuşuyor.`,
+  sj_dm_setup_check_link: (p) => `Buradan değiştirebilirsiniz: ${p.url}`,
+  setup_monthly_pattern: (p) => {
+    const parts = [
+      p.prepay ? "düzenli oyuncular aya yazılıp ayın ücretini peşin ödüyor" : "düzenli oyuncular aya yazılıyor",
+      ...(p.payg ? ["diğerleri boşlukları maç başı ödeyerek dolduruyor"] : []),
+      ...(p.credits ? ["düzenli bir oyuncunun kaçırdığı maç alacak olarak kalıyor"] : []),
+    ];
+    return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ve ${parts[parts.length - 1]}` : parts[0];
+  },
+  sj_dm_setup_monthly: (p) =>
+    `📋 Ayrıca aylık bir liste olduğunu fark ettim: ${p.pattern}. MatchTime aylık listeyi henüz yönetemiyor, bu yüzden bunun için hiçbir şey değişmedi` +
+    (p.heldPaymentTracking ? ` ve ödeme takibini kapalı bıraktım, çünkü maç maç çalışıyor` : ``) +
+    `. Bunu not ettik.`,
+  sj_dm_setup_outro: (p) => `Hepsi, her birinin dayandığı sohbet mesajlarıyla birlikte ayarlar sayfanızda: ${p.url}`,
+  setup_monthly_label: "Aylık liste",
+  setup_lang_name: (p) => (p.key === "tr" ? "Türkçe" : "İngilizce"),
+  settings_learned_title: "Grup sohbetinizden kurulanlar",
+  settings_learned_lead:
+    "MatchTime, gruba katıldığında WhatsApp'ın paylaştığı mesajları okudu ve bunları grubunuza uygun şekilde kurdu. Her birini tek dokunuşla geri alabilirsiniz.",
+  settings_learned_undo: "Geri al",
+  settings_learned_undone: "Geri alındı",
+  settings_learned_changed_since: "Sonradan değiştirildi",
+  settings_learned_undo_failed: "Geri alınamadı",
+  settings_learned_from: "Şu tür mesajlardan",
+  settings_learned_check_head: "Kontrol etmeye değer (hiçbir şey değişmedi)",
+  settings_learned_noted_head: "Fark edildi, henüz bir ayarı yok",
 };
 
 /**

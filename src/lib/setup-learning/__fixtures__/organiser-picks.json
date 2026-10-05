@@ -1,0 +1,154 @@
+{
+ "name": "organiser-picks",
+ "teaches": "Organisers decide who plays: players ask the organiser for a spot, the organiser announces the team and picks replacements from the reserves.",
+ "groupSubject": "Wednesday 7s",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 3,
+  "time": "20:00",
+  "venue": "Powerleague Mill Hill",
+  "playersPerSide": 7
+ },
+ "expect": {
+  "regularGame": true,
+  "openPlaces": "organisers_pick",
+  "applied": [
+   "organiserPicks"
+  ],
+  "noted": [],
+  "suggestions": [],
+  "dm": true
+ },
+ "history": [
+  {
+   "author": "Callum Reid",
+   "text": "Wednesday 8pm at Powerleague Mill Hill. Drop me a message if you fancy a game and I'll sort the team",
+   "timestamp": "2026-09-06T17:00:00.000Z"
+  },
+  {
+   "author": "Tariq Aziz",
+   "text": "Any space this week Callum?",
+   "timestamp": "2026-09-06T17:20:00.000Z"
+  },
+  {
+   "author": "Nathan Cole",
+   "text": "Can I play if there's room?",
+   "timestamp": "2026-09-06T17:40:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me. Rest on the reserve list",
+   "timestamp": "2026-09-07T18:00:00.000Z"
+  },
+  {
+   "author": "Ollie Shaw",
+   "text": "Cheers mate",
+   "timestamp": "2026-09-07T18:10:00.000Z"
+  },
+  {
+   "author": "Jamal Price",
+   "text": "Running 5 mins late lads",
+   "timestamp": "2026-09-09T15:00:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "Wednesday 8pm at Powerleague Mill Hill. Drop me a message if you fancy a game and I'll sort the team",
+   "timestamp": "2026-09-13T17:00:00.000Z"
+  },
+  {
+   "author": "Tariq Aziz",
+   "text": "Any space this week Callum?",
+   "timestamp": "2026-09-13T17:20:00.000Z"
+  },
+  {
+   "author": "Nathan Cole",
+   "text": "Can I play if there's room?",
+   "timestamp": "2026-09-13T17:40:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me. Rest on the reserve list",
+   "timestamp": "2026-09-14T18:00:00.000Z"
+  },
+  {
+   "author": "Ollie Shaw",
+   "text": "Cheers mate",
+   "timestamp": "2026-09-14T18:10:00.000Z"
+  },
+  {
+   "author": "Jamal Price",
+   "text": "Running 5 mins late lads",
+   "timestamp": "2026-09-16T15:00:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "Wednesday 8pm at Powerleague Mill Hill. Drop me a message if you fancy a game and I'll sort the team",
+   "timestamp": "2026-09-20T17:00:00.000Z"
+  },
+  {
+   "author": "Tariq Aziz",
+   "text": "Any space this week Callum?",
+   "timestamp": "2026-09-20T17:20:00.000Z"
+  },
+  {
+   "author": "Nathan Cole",
+   "text": "Can I play if there's room?",
+   "timestamp": "2026-09-20T17:40:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me. Rest on the reserve list",
+   "timestamp": "2026-09-21T18:00:00.000Z"
+  },
+  {
+   "author": "Ollie Shaw",
+   "text": "Cheers mate",
+   "timestamp": "2026-09-21T18:10:00.000Z"
+  },
+  {
+   "author": "Jamal Price",
+   "text": "Running 5 mins late lads",
+   "timestamp": "2026-09-23T15:00:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "Wednesday 8pm at Powerleague Mill Hill. Drop me a message if you fancy a game and I'll sort the team",
+   "timestamp": "2026-09-27T17:00:00.000Z"
+  },
+  {
+   "author": "Tariq Aziz",
+   "text": "Any space this week Callum?",
+   "timestamp": "2026-09-27T17:20:00.000Z"
+  },
+  {
+   "author": "Nathan Cole",
+   "text": "Can I play if there's room?",
+   "timestamp": "2026-09-27T17:40:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me. Rest on the reserve list",
+   "timestamp": "2026-09-28T18:00:00.000Z"
+  },
+  {
+   "author": "Ollie Shaw",
+   "text": "Cheers mate",
+   "timestamp": "2026-09-28T18:10:00.000Z"
+  },
+  {
+   "author": "Rhys Evans",
+   "text": "Can't do tomorrow, sorry",
+   "timestamp": "2026-09-29T11:00:00.000Z"
+  },
+  {
+   "author": "Callum Reid",
+   "text": "No problem, I'll pick someone off the reserve list",
+   "timestamp": "2026-09-29T11:30:00.000Z"
+  },
+  {
+   "author": "Jamal Price",
+   "text": "Running 5 mins late lads",
+   "timestamp": "2026-09-30T15:00:00.000Z"
+  }
+ ]
+}

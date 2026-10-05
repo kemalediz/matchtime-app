@@ -1,0 +1,20 @@
+{
+ "name": "empty",
+ "teaches": "No history captured: nothing is read, no model call, no change, no DM.",
+ "groupSubject": "New Group",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 2,
+  "time": "20:00",
+  "venue": "Somewhere",
+  "playersPerSide": 5
+ },
+ "expect": {
+  "skipped": "no-history",
+  "applied": [],
+  "noted": [],
+  "suggestions": [],
+  "dm": false
+ },
+ "history": []
+}
