@@ -7,7 +7,8 @@
  *   per switched setting: what it does now, one chat quote, its undo link
  *   "worth a check": the weekly game or language the chat disagrees with,
  *     changed nowhere, with a link to change it
- *   the monthly list, when seen: noted, nothing changed for it
+ *   the monthly list, when seen: noted, nothing changed for it, and the
+ *     monthly squad mode is coming (the organiser will be told)
  *   outro: the settings page, where every item and its evidence lives
  */
 import { t } from "../i18n/t";

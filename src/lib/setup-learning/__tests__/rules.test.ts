@@ -12,7 +12,7 @@ import {
   verifyEvidence,
   type OrgSettingsState,
 } from "../rules";
-import { blankAnswer, loadFixture, STUB_ANSWERS } from "./stubs";
+import { blankAnswer, loadFixture, OBSERVED_ANSWERS, STUB_ANSWERS } from "./stubs";
 
 const DEFAULTS: OrgSettingsState = {
   rollingSquadEnabled: false,
@@ -68,9 +68,31 @@ describe("verifyEvidence: only quotes that are really in the chat", () => {
     const bank = [{ author: "G", text: "pay to 12345678 sort 001122", timestamp: "2026-10-01T10:00:00Z" }];
     expect(verifyEvidence(["pay to 12345678"], bank)).toEqual([]);
   });
-  it("at most two, no duplicates, nothing that is not a string", () => {
-    const many = [{ author: "G", text: "a b c d e f g h", timestamp: "2026-10-01T10:00:00Z" }];
-    expect(verifyEvidence(["a b c", "A B C", 7, "d e f", "f g h"], many)).toEqual(["a b c", "d e f"]);
+  const at = (text: string, day: number) => ({ author: "G", text, timestamp: `2026-10-0${day}T10:00:00Z` });
+  it("at most two, and nothing that is not a string", () => {
+    const three = [at("a b c", 1), at("d e f", 2), at("f g h", 3)];
+    expect(verifyEvidence(["a b c", 7, "d e f", "f g h"], three)).toEqual(["a b c", "d e f"]);
+  });
+  it("each kept quote stands for a DIFFERENT message: two quotes out of one message count once", () => {
+    expect(verifyEvidence(["a b c", "d e f"], [at("a b c d e f g h", 1)])).toEqual(["a b c"]);
+  });
+  it("the same sentence posted again another week is a second message, so it may be quoted twice", () => {
+    expect(verifyEvidence(["same again", "Same again"], [at("same again lads", 1), at("same again lads", 8)])).toEqual([
+      "same again",
+      "Same again",
+    ]);
+    expect(verifyEvidence(["same again", "same again"], [at("same again lads", 1)])).toEqual(["same again"]);
+  });
+  it("two quotes that could share a message are spread over two when the chat allows it", () => {
+    // "paid" is in both messages, "paid mate" only in one.
+    expect(verifyEvidence(["paid mate", "paid"], [at("paid", 1), at("paid mate", 2)])).toEqual(["paid mate", "paid"]);
+    expect(verifyEvidence(["paid", "paid mate"], [at("paid mate", 1), at("paid", 2)])).toEqual(["paid", "paid mate"]);
+  });
+  it("a summary the model wrote itself is dropped, so the first quote kept is one the chat really has", () => {
+    const fx = loadFixture("turkish");
+    expect(
+      verifyEvidence(["Same squad repeated every week across 4 weeks", "Kadro geçen haftakiyle aynı, olmayan yazsın"], fx.history),
+    ).toEqual(["Kadro geçen haftakiyle aynı, olmayan yazsın"]);
   });
 });
 
@@ -115,7 +137,13 @@ describe("planSetup: each signal and the setting it drives", () => {
   it("rolling squad: switches rolling squad on, with its quote", () => {
     const p = planFor("rolling");
     expect(p.applied).toEqual([
-      { key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week, let me know if you can't do Tuesday"], undoneAt: null },
+      {
+        key: "rollingSquad",
+        from: false,
+        to: true,
+        evidence: ["Same lot as last week, let me know if you can't do Tuesday", "Usual crew this week too, only message if you're dropping out"],
+        undoneAt: null,
+      },
     ]);
     expect(p.data).toEqual({ rollingSquadEnabled: true });
     expect(p.suggestions).toEqual([]);
@@ -166,6 +194,75 @@ describe("planSetup: each signal and the setting it drives", () => {
   });
 });
 
+describe("planSetup: two quotes from two messages, or the setting is left alone", () => {
+  const one = (extra: Record<string, unknown>) => ({ ...blankAnswer(), ...extra });
+  it("high confidence on ONE quote switches nothing, and says why", () => {
+    const p = planFor("rolling", {}, one({ squad: { answer: "rolling", confidence: "high", evidence: ["Usual crew this week too"] } }));
+    expect(p.applied).toEqual([]);
+    expect(p.kept).toEqual([{ key: "rollingSquad", reason: "thin-evidence" }]);
+    expect(planIsWorthTelling(p)).toBe(false);
+  });
+  it("two quotes cut from the SAME message are one message: nothing switched", () => {
+    const p = planFor(
+      "rolling",
+      {},
+      one({ squad: { answer: "rolling", confidence: "high", evidence: ["Usual crew this week too", "only message if you're dropping out"] } }),
+    );
+    expect(p.applied).toEqual([]);
+    expect(p.kept).toEqual([{ key: "rollingSquad", reason: "thin-evidence" }]);
+  });
+  it("one deadline quote is not enough either; the same sentence from two weeks is", () => {
+    const q = "Drop out by Monday 9pm at the latest";
+    const thin = planFor("deadlines", {}, one({ drop_out_deadline: { day: "monday", time: "21:00", confidence: "high", evidence: [q] } }));
+    expect(thin.applied).toEqual([]);
+    expect(thin.kept).toEqual([{ key: "dropOutDeadline", reason: "thin-evidence" }]);
+    const two = planFor("deadlines", {}, one({ drop_out_deadline: { day: "monday", time: "21:00", confidence: "high", evidence: [q, q] } }));
+    expect(two.applied.map((a) => a.key)).toEqual(["dropOutDeadline"]);
+  });
+  it("a suggestion (never a change) still needs only one quote", () => {
+    const p = planFor(
+      "deadlines",
+      {},
+      one({ weekly_game: { day: "thursday", time: "20:00", venue: "", players_per_side: 0, confidence: "high", evidence: ["Kickoff Thursday 8pm"] } }),
+    );
+    expect(p.suggestions.map((s) => s.key)).toEqual(["weeklyGameTime"]);
+  });
+});
+
+describe("planSetup: the wrong answers of the first live check (2026-10-05) no longer change a club", () => {
+  it("turkish: 'let's find someone for his place' on one quote does NOT switch organisers pick; the model's own summary is not evidence", () => {
+    const p = planFor("turkish", {}, OBSERVED_ANSWERS.turkish);
+    expect(p.applied.map((a) => a.key)).not.toContain("organiserPicks");
+    expect(p.kept).toContainEqual({ key: "organiserPicks", reason: "thin-evidence" });
+    // The summary is gone, which leaves that answer one real quote: held back too.
+    expect(p.kept).toContainEqual({ key: "rollingSquad", reason: "thin-evidence" });
+    expect(p.applied.map((a) => a.key)).toEqual(["paymentTracking"]);
+    expect(JSON.stringify(p)).not.toContain("Same squad repeated");
+  });
+  it("monthly list seen with high confidence: NOTHING is switched, whatever else the model claims", () => {
+    const p = planFor("monthly-list", {}, OBSERVED_ANSWERS["monthly-list"]);
+    expect(p.applied).toEqual([]);
+    expect(p.data).toEqual({});
+    expect(p.noted.map((n) => n.key)).toEqual(["monthlyList"]);
+    expect(p.kept).toEqual([
+      { key: "rollingSquad", reason: "monthly-list" },
+      { key: "organiserPicks", reason: "monthly-list" },
+      { key: "paymentTracking", reason: "monthly-list" },
+    ]);
+  });
+  it("a monthly list at medium confidence still only holds payment tracking", () => {
+    const a = OBSERVED_ANSWERS["monthly-list"];
+    const p = planFor("monthly-list", {}, { ...a, monthly_list: { ...(a.monthly_list as object), confidence: "medium" } });
+    expect(p.applied.map((x) => x.key)).toEqual(["rollingSquad", "organiserPicks"]);
+    expect(p.kept).toEqual([{ key: "paymentTracking", reason: "monthly-list" }]);
+  });
+  it("rolling (shape guessed, see stubs): an organiser asking who can cover does not switch organisers pick", () => {
+    const p = planFor("rolling", {}, OBSERVED_ANSWERS.rolling);
+    expect(p.applied.map((a) => a.key)).toEqual(["rollingSquad"]);
+    expect(p.kept).toEqual([{ key: "organiserPicks", reason: "thin-evidence" }]);
+  });
+});
+
 describe("planSetup: what is never changed", () => {
   it("a setting the organiser saved on the website is left alone, even at its default", () => {
     const p = planFor("rolling", { settingsSetByOrganiser: ["rollingSquad"] });
@@ -195,7 +292,7 @@ describe("planSetup: what is never changed", () => {
   it("a deadline the settings page would refuse (after 21:30) is kept with the reason", () => {
     const ans = {
       ...STUB_ANSWERS.deadlines,
-      drop_out_deadline: { day: "monday", time: "23:00", confidence: "high", evidence: ["Drop out by Monday 9pm at the latest"] },
+      drop_out_deadline: { day: "monday", time: "23:00", confidence: "high", evidence: ["Drop out by Monday 9pm at the latest", "Drop out by Monday 9pm at the latest"] },
     };
     const p = planFor("deadlines", {}, ans);
     expect(p.kept).toContainEqual({ key: "dropOutDeadline", reason: "invalid:outside-hours" });
@@ -204,7 +301,7 @@ describe("planSetup: what is never changed", () => {
   it("a deadline on match day after kickoff is refused", () => {
     const ans = {
       ...STUB_ANSWERS.deadlines,
-      list_published: { day: "thursday", time: "20:00", confidence: "high", evidence: ["Final list goes up Tuesday at 8pm"] },
+      list_published: { day: "thursday", time: "20:00", confidence: "high", evidence: ["Final list goes up Tuesday at 8pm", "Final list goes up Tuesday at 8pm"] },
     };
     const p = planFor("deadlines", {}, ans);
     expect(p.kept).toContainEqual({ key: "listPublish", reason: "invalid:after-kickoff" });

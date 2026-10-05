@@ -1,11 +1,20 @@
 /**
- * F3, LEARNED SETUP: THE ONE LIVE CHECK (2026-10-05). NOT RUN YET.
+ * F3, LEARNED SETUP: THE LIVE CHECK. EVERY RUN NEEDS KEMAL'S APPROVAL.
  *
- * A new prompt, so per CLAUDE.md it needs Kemal's approval for ONE live
- * check before SETUP_LEARNING_ENABLED is switched on. The unit tests stub
- * the model; they prove the wiring and the rules, not that Haiku reads a
- * real chat the way the fixtures expect. This does: each fixture ONCE,
- * through the exact prompt, schema, parser and planner production uses.
+ *   Run 1, 2026-10-05: 6 calls, $0.0437, 3 of 6 fixtures FAILED (rolling,
+ *     turkish, monthly-list). Haiku said "high" on single remarks, wrote
+ *     its own summary as evidence, and read a monthly-list group as a
+ *     rolling squad. The prompt was rewritten and `rules.ts` now needs two
+ *     quotes from two messages, and switches nothing for a monthly list.
+ *   Run 2: NOT RUN YET. It must be the full six fixtures, not only the
+ *     three that failed: the prompt was rewritten as a whole, so the three
+ *     that passed can regress (CLAUDE.md, the prompt rewrite rule).
+ *
+ * A new or rewritten prompt needs ONE approved live check before
+ * SETUP_LEARNING_ENABLED is switched on. The unit tests stub the model;
+ * they prove the wiring and the rules, not that Haiku reads a real chat
+ * the way the fixtures expect. This does: each fixture ONCE, through the
+ * exact prompt, schema, parser and planner production uses.
  *
  *   # Free: what the run WOULD send and cost, no model call.
  *   node --env-file=.env ./node_modules/.bin/tsx scripts/live-check-setup-learning.ts --estimate
@@ -19,12 +28,18 @@
  * Six fixtures make a call (rolling, organiser-picks, deadlines, first-come,
  * turkish, monthly-list); empty and too-short are gated before the model
  * and make none, which the run also shows. Spends the DEV key only and
- * refuses without it; stops at MAX_USD. Touches no database, sends
- * nothing, writes nothing. Reports the number of model calls, the tokens
- * and the cost, and for each fixture what was detected against what the
- * fixture expects, the plan, and the DM it would send.
+ * refuses without it; stops at MAX_USD. Touches no database and sends
+ * nothing. Reports the number of model calls, the tokens and the cost,
+ * and for each fixture the raw answer, every answer after the quote check
+ * (so a dropped quote is visible), the plan, what was left alone and why,
+ * and the DM it would send, against what the fixture expects.
+ *
+ * The whole run is also SAVED as JSON (raw answers included) to OUT, or
+ * to a file in the temp directory whose path is printed at the end: run
+ * 1's raw output was not kept, and a failure cannot be traced without it.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, costOf, estimateTokens, extractJson } from "../src/lib/pipeline/llm.ts";
@@ -141,6 +156,7 @@ async function main() {
   let inTotal = 0;
   let outTotal = 0;
   const failures: string[] = [];
+  const record: Array<Record<string, unknown>> = [];
 
   for (const name of names) {
     const fx = load(name);
@@ -175,8 +191,20 @@ async function main() {
     if (!detection) {
       console.log("  FAIL: not an object");
       failures.push(name);
+      record.push({ fixture: name, raw: resp.text, misses: ["not an object"] });
       continue;
     }
+    // Every answer AFTER the quote check: what the planner really saw.
+    const checked = {
+      squad: detection.squad,
+      openPlaces: detection.openPlaces,
+      dropOutDeadline: detection.dropOutDeadline,
+      listPublished: detection.listPublished,
+      payments: detection.payments,
+      monthlyList: detection.monthlyList,
+      weeklyGame: detection.weeklyGame,
+    };
+    for (const [k, v] of Object.entries(checked)) console.log(`  checked ${k}: ${JSON.stringify(v)}`);
     const plan = planSetup({
       detection,
       org: { ...DEFAULTS, language: fx.language },
@@ -213,7 +241,12 @@ async function main() {
     }
     console.log(misses.length === 0 ? "  PASS" : `  FAIL\n    ${misses.join("\n    ")}`);
     if (misses.length > 0) failures.push(name);
+    record.push({ fixture: name, usage: resp.usage, costUsd: resp.costUsd, raw: resp.text, checked, plan, expect: fx.expect, misses });
   }
+
+  const out = process.env.OUT?.trim() || path.join(os.tmpdir(), `live-check-setup-learning-${Date.now()}.json`);
+  writeFileSync(out, JSON.stringify({ model: SETUP_LEARNING_MODEL, calls, spent, inTotal, outTotal, failures, fixtures: record }, null, 2));
+  console.log(`\nSaved (raw answers included): ${out}`);
 
   console.log(
     `\nModel calls: ${calls}. Tokens: ${inTotal} in, ${outTotal} out. Cost: $${spent.toFixed(4)}.` +

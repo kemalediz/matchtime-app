@@ -31,7 +31,12 @@ const APPROVED = "2026-10-05T09:00:00Z";
 
 const ROLLING_ANSWER = {
   regular_game: true,
-  squad: { answer: "rolling", confidence: "high", evidence: ["Same lot as last week, let me know if you can't do Tuesday"] },
+  // Two quotes from two messages: one is not enough to switch a setting.
+  squad: {
+    answer: "rolling",
+    confidence: "high",
+    evidence: ["Same lot as last week, let me know if you can't do Tuesday", "Usual crew this week too, only message if you're dropping out"],
+  },
   open_places: { answer: "unclear", confidence: "low", evidence: [] },
   drop_out_deadline: { day: "none", time: "none", confidence: "low", evidence: [] },
   list_published: { day: "none", time: "none", confidence: "low", evidence: [] },

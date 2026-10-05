@@ -2372,9 +2372,9 @@ export const tr: Strings = {
     return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ve ${parts[parts.length - 1]}` : parts[0];
   },
   sj_dm_setup_monthly: (p) =>
-    `📋 Ayrıca aylık bir liste olduğunu fark ettim: ${p.pattern}. MatchTime aylık listeyi henüz yönetemiyor, bu yüzden bunun için hiçbir şey değişmedi` +
+    `📋 Ayrıca aylık bir liste olduğunu fark ettim: ${p.pattern}. MatchTime'ın aylık kadro modu yolda, açabileceğiniz zaman size haber vereceğiz. O zamana kadar bunun için hiçbir şey değişmedi` +
     (p.heldPaymentTracking ? ` ve ödeme takibini kapalı bıraktım, çünkü maç maç çalışıyor` : ``) +
-    `. Bunu not ettik.`,
+    `.`,
   sj_dm_setup_outro: (p) => `Hepsi, her birinin dayandığı sohbet mesajlarıyla birlikte ayarlar sayfanızda: ${p.url}`,
   setup_monthly_label: "Aylık liste",
   setup_lang_name: (p) => (p.key === "tr" ? "Türkçe" : "İngilizce"),

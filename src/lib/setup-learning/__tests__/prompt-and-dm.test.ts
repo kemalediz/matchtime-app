@@ -7,7 +7,7 @@ import { estimateTokens, MIN_CACHEABLE_TOKENS, shouldCachePrompt } from "../../p
 import { SETUP_LEARNING_MODEL, SETUP_LEARNING_SCHEMA, SETUP_LEARNING_SYSTEM_PROMPT } from "../prompt";
 import { composeSetupDm } from "../dm";
 import { parseDetection, planSetup, type OrgSettingsState } from "../rules";
-import { FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
+import { blankAnswer, FIXTURE_NAMES, loadFixture, OBSERVED_ANSWERS, STUB_ANSWERS } from "./stubs";
 
 describe("the prompt", () => {
   it("is Haiku, and is deliberately NOT cached: under Haiku's cacheable minimum, so no 2x cache write for a once-per-club call", () => {
@@ -26,6 +26,17 @@ describe("the prompt", () => {
     for (const f of fields) {
       expect(SETUP_LEARNING_SYSTEM_PROMPT.match(new RegExp(`\\d\\. ${f}:`, "g")) ?? [], f).toHaveLength(1);
     }
+  });
+
+  it("says, for each habit it can switch on, what does NOT count", () => {
+    // Questions 2 to 7: squad, open places, the two deadlines, payments, the monthly list.
+    expect(SETUP_LEARNING_SYSTEM_PROMPT.match(/Does not count/g) ?? []).toHaveLength(6);
+  });
+
+  it("asks for two excerpts from two different messages before \"high\", and for excerpts, never summaries", () => {
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain("two different messages");
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toMatch(/different days or by different people/);
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toMatch(/summary/);
   });
 
   it("has no nullable type anywhere in the schema (the API rejects them at request time)", () => {
@@ -55,11 +66,11 @@ const DEFAULTS: OrgSettingsState = {
   settingsSetByOrganiser: [],
 };
 
-function dmFor(name: (typeof FIXTURE_NAMES)[number], lang?: string): string {
+function dmFor(name: (typeof FIXTURE_NAMES)[number], lang?: string, answer?: Record<string, unknown>): string {
   const fx = loadFixture(name);
   const language = lang ?? fx.language;
   const plan = planSetup({
-    detection: parseDetection(STUB_ANSWERS[name], fx.history)!,
+    detection: parseDetection(answer ?? STUB_ANSWERS[name], fx.history)!,
     org: { ...DEFAULTS, language },
     weeklyGame: fx.weeklyGame,
     activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
@@ -113,12 +124,35 @@ describe("the organiser's DM", () => {
     expect(dmFor("monthly-list")).toBe(
       `I read the recent messages in "Old Boys Monday" to see how it runs. I didn't change any settings, but a few things are worth a look.\n\n` +
         `📋 I also noticed a monthly list: regulars sign up and pay for the month, others pay as they go to fill spaces and a game a regular misses becomes credit. ` +
-        `MatchTime can't run a monthly list yet, so nothing changed for it, and I left payment tracking off because it works game by game. We've made a note of it.\n\n` +
+        `MatchTime's monthly squad mode is coming, and we'll tell you when you can switch it on. ` +
+        `Until then nothing changed for it, and I left payment tracking off because it works game by game.\n\n` +
         `Everything is on your settings page, with the chat messages behind each one: https://mt.link/settings`,
     );
     expect(dmFor("monthly-list", "tr")).toContain(
-      `📋 Ayrıca aylık bir liste olduğunu fark ettim: düzenli oyuncular aya yazılıp ayın ücretini peşin ödüyor, diğerleri boşlukları maç başı ödeyerek dolduruyor ve düzenli bir oyuncunun kaçırdığı maç alacak olarak kalıyor.`,
+      `📋 Ayrıca aylık bir liste olduğunu fark ettim: düzenli oyuncular aya yazılıp ayın ücretini peşin ödüyor, diğerleri boşlukları maç başı ödeyerek dolduruyor ve düzenli bir oyuncunun kaçırdığı maç alacak olarak kalıyor. ` +
+        `MatchTime'ın aylık kadro modu yolda, açabileceğiniz zaman size haber vereceğiz. ` +
+        `O zamana kadar bunun için hiçbir şey değişmedi ve ödeme takibini kapalı bıraktım, çünkü maç maç çalışıyor.\n\n`,
     );
+    for (const lang of ["en", "tr"]) {
+      expect(dmFor("monthly-list", lang)).not.toMatch(/can't run a monthly list|henüz yönetemiyor/);
+    }
+  });
+
+  it("the monthly-list group of the first live check gets the same DM: nothing switched, no stray quote", () => {
+    const dm = dmFor("monthly-list", "en", OBSERVED_ANSWERS["monthly-list"]);
+    expect(dm).toBe(dmFor("monthly-list"));
+    expect(dm).not.toContain("✅");
+    expect(dm).not.toMatch(/ends up ok/i);
+  });
+
+  it("the quote shown is the first one that is really in the chat, never the model's own summary", () => {
+    const kadro = "Kadro geçen haftakiyle aynı, olmayan yazsın";
+    const dm = dmFor("turkish", "tr", {
+      ...blankAnswer(),
+      squad: { answer: "rolling", confidence: "high", evidence: ["Same squad repeated every week across 4 weeks", kadro, kadro] },
+    });
+    expect(dm).toContain(`Şu tür mesajlardan: "${kadro}"`);
+    expect(dm).not.toContain("Same squad repeated");
   });
 
   it("no DM in any fixture, in either language, carries an em or en dash", () => {

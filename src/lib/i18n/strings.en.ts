@@ -3026,9 +3026,9 @@ export const en = {
     return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
   },
   sj_dm_setup_monthly: (p: { pattern: string; heldPaymentTracking: boolean }): string =>
-    `📋 I also noticed a monthly list: ${p.pattern}. MatchTime can't run a monthly list yet, so nothing changed for it` +
+    `📋 I also noticed a monthly list: ${p.pattern}. MatchTime's monthly squad mode is coming, and we'll tell you when you can switch it on. Until then nothing changed for it` +
     (p.heldPaymentTracking ? `, and I left payment tracking off because it works game by game` : ``) +
-    `. We've made a note of it.`,
+    `.`,
   sj_dm_setup_outro: (p: { url: string }): string =>
     `Everything is on your settings page, with the chat messages behind each one: ${p.url}`,
   setup_monthly_label: "Monthly list",
