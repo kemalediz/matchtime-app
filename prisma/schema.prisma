@@ -121,6 +121,8 @@ model User {
   rosterSurveyDMs         RosterSurveyDM[]
   rosterSurveyResponses   RosterSurveyResponse[]
   tentativeAvailabilities TentativeAvailability[]
+  squadMonthMemberships   SquadMonthMember[]
+  squadCredits            SquadCredit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -437,6 +439,28 @@ model Organisation {
   /// listed here. May hold duplicates; readers treat it as a set.
   settingsSetByOrganiser String[] @default([])
 
+  /// ─── Monthly squad (2026-10-05, slice 2) ──────────────────────────
+  /// Plan: MDs/monthly-squad-plan-2026-10-05.md, section 3.
+  /// How the club's squad works: "weekly" (today, the default for every
+  /// club, Sutton FC included) or "monthly" (regulars commit and pay for
+  /// the month, PAYG players fill the gaps). Switched on /admin/settings
+  /// by an OWNER or ADMIN (D6), never automatically. Read through
+  /// `OrgFeatures.squadMode`; "monthly" also reads the rolling squad as
+  /// off. CHECK constraint: prisma/sql/monthly-squad-check.sql.
+  squadMode                String  @default("weekly")
+  /// Default PAYG price per game, in pence (800 = £8). NULL = not set.
+  paygPricePence           Int?
+  /// "List for <Month>" is posted this many days before the month's first
+  /// game (slice 3 reads it; nothing posts in slice 2).
+  monthListOpensDaysBefore Int     @default(7)
+  /// Which misses earn a paid regular a credit (D2): "any-miss" (default),
+  /// "filled-only" or "none".
+  monthCreditRule          String  @default("any-miss")
+  /// The collector's own free text, shown with the month's amounts
+  /// ("bank details are in the group description"). MatchTime never asks
+  /// for account numbers and never reads this as anything but text.
+  paymentInstructions      String?
+
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
@@ -450,6 +474,8 @@ model Organisation {
   setupLearning      ClubSetupLearning?
   billingNotices     BillingNotice[]
   billingMonths      ClubBillingMonth[]
+  squadMonths        SquadMonth[]
+  squadCredits       SquadCredit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -725,6 +751,7 @@ model Activity {
   matches         Match[]
   playerPositions PlayerActivityPosition[]
   blockBookings   BlockBooking[]
+  squadMonths     SquadMonth[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2173,4 +2200,152 @@ model ClubSetupLearning {
   updatedAt    DateTime     @updatedAt
 
   @@index([status])
+}
+
+/**
+ * ─── Monthly squad (2026-10-05, slice 2) ───────────────────────────────
+ * Plan: MDs/monthly-squad-plan-2026-10-05.md, sections 3 and 4.5.
+ * Three tables, all empty until a club with `squadMode = "monthly"`
+ * opens a month. Slice 2 only writes them from /admin/months (an
+ * organiser starting the current month); nothing is posted to WhatsApp.
+ * Every write goes through src/lib/squad-month.ts.
+ * One row per club fixture (the Activity, one weekly game) per calendar
+ * month. `monthStart` is the London 1st of the month as a DATE.
+ */
+model SquadMonth {
+  id                     String       @id @default(cuid())
+  orgId                  String
+  org                    Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  activityId             String
+  activity               Activity     @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  monthStart             DateTime     @db.Date
+  /// "open" (sign-up) | "priced" (amounts posted) | "running" | "closed".
+  /// A month an organiser starts part-way through is "running" at once.
+  status                 String       @default("open")
+  /// The month's games of this fixture, played ones included.
+  gamesScheduled         Int          @default(0)
+  /// Set by the organiser (D1). NULL until priced.
+  sharePerGamePence      Int?
+  concessionPerGamePence Int?
+  /// NULL = newcomers pay the standard share.
+  newcomerPerGamePence   Int?
+  /// Optional bookkeeping, per game.
+  venueCostPence         Int?
+  payByAt                DateTime?
+  /// Idempotency claims, compare-and-set (like `Match.rollingSeededAt`).
+  listOpenedAt           DateTime?
+  pricedAt               DateTime?
+  closedAt               DateTime?
+  summarySentAt          DateTime?
+
+  /// ─── Starting part-way through a month (plan 4.5) ───────────────
+  /// When an organiser opened this month after it had begun, seeding it
+  /// from their own list. NULL for a month MatchTime opened itself.
+  startedMidMonthAt      DateTime?
+  startedByUserId        String?
+  /// Games of this month already played when it was started here. They
+  /// count as played for every regular seeded then: no credit, no
+  /// absence, and MatchTime may hold no Match row for them at all.
+  gamesPlayedBeforeStart Int       @default(0)
+
+  members        SquadMonthMember[]
+  creditsEarned  SquadCredit[]      @relation("SquadCreditEarnedMonth")
+  creditsApplied SquadCredit[]      @relation("SquadCreditAppliedMonth")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, activityId, monthStart])
+  @@index([status])
+}
+
+/// One row per person per month.
+model SquadMonthMember {
+  id             String     @id @default(cuid())
+  monthId        String
+  month          SquadMonth @relation(fields: [monthId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "regular" | "payg".
+  kind           String     @default("regular")
+  /// "standard" | "concession" (regulars only).
+  tier           String     @default("standard")
+  /// The list number, stable for the month. NULL for a PAYG player with
+  /// no slot of their own.
+  slot           Int?
+  /// "PAYG 5th only": the dated matches this PAYG player is in for.
+  paygMatchIds   String[]   @default([])
+  /// Weeks a regular has said ahead of time they will miss.
+  absentMatchIds String[]   @default([])
+  /// Games this person pays for: the whole month, or what was left of it
+  /// when they joined. A regular seeded at a mid-month start covers the
+  /// whole month (the games already played count as played).
+  gamesCovered   Int        @default(0)
+  /// Credits used against this month, in games.
+  creditsApplied Int        @default(0)
+  /// share x (gamesCovered - creditsApplied). NULL while no share is set.
+  amountDuePence Int?
+
+  /// "Says paid" (D3): a claim, never a confirmation.
+  paidClaimedAt          DateTime?
+  /// "list" | "dm" | "page" | "other-player" | "organiser".
+  paidClaimSource        String?
+  paidClaimedAmountPence Int?
+  /// Confirmed: by the collector or an admin, or by Stripe (slice 7).
+  paidAt                 DateTime?
+  paidAmountPence        Int?
+  paidConfirmedByUserId  String?
+  /// "bank" | "card" | "cash". NULL = not recorded.
+  paymentMethod          String?
+  stripeSessionId        String?
+
+  /// How the row came to be: "seed-list" | "seed-tick" (a mid-month
+  /// start), later "paste" | "reply" | "page" | "admin".
+  source        String    @default("admin")
+  joinedAt      DateTime  @default(now())
+  leftAt        DateTime?
+  /// Recorded only: MatchTime moves no money for a bank transfer.
+  refundedPence Int       @default(0)
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([monthId, userId])
+  @@index([userId])
+}
+
+/// The credits ledger: one row per credit, counted in GAMES (a credit is
+/// worth the share of the month it is used in). Never deleted: a wrong
+/// credit is voided, like `AttendanceEvent` is append-only.
+model SquadCredit {
+  id     String       @id @default(cuid())
+  orgId  String
+  org    Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId String
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  games  Int          @default(1)
+  /// "missed" | "cancelled-week" | "left-mid-month" | "manual" |
+  /// "carried-in" (the organiser told us, at a mid-month start, that this
+  /// regular came into the month with it).
+  reason String
+
+  earnedMonthId  String?
+  earnedMonth    SquadMonth? @relation("SquadCreditEarnedMonth", fields: [earnedMonthId], references: [id], onDelete: SetNull)
+  /// The match missed or cancelled. No foreign key: the ledger outlives it.
+  earnedMatchId  String?
+  /// NULL until used.
+  appliedMonthId String?
+  appliedMonth   SquadMonth? @relation("SquadCreditAppliedMonth", fields: [appliedMonthId], references: [id], onDelete: SetNull)
+  appliedAt      DateTime?
+
+  voidedAt    DateTime?
+  voidedById  String?
+  createdById String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId, userId])
+  @@index([earnedMonthId])
+  @@index([appliedMonthId])
 }

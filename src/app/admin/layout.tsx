@@ -7,6 +7,7 @@ import { loadBillingBanner } from "@/lib/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { t } from "@/lib/i18n/t";
 import { OrgLangProvider } from "@/components/info/org-lang";
+import { normaliseSquadMode } from "@/lib/squad-month-rules";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -41,7 +42,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <h1 className="text-2xl font-bold text-slate-800">Admin</h1>
         <p className="text-sm text-slate-500 mt-1">{membership.org.name}</p>
       </div>
-      <AdminSubnav />
+      {/* The Months tab exists only for a club on a monthly squad (slice 2). */}
+      <AdminSubnav
+        monthsLabel={
+          normaliseSquadMode(membership.org.squadMode) === "monthly" ? t(membership.org.language).mth_nav : undefined
+        }
+      />
       <div className="mt-6">
         {/* The club's language for the client pages' ⓘ popups (F1). */}
         <OrgLangProvider lang={membership.org.language}>{children}</OrgLangProvider>

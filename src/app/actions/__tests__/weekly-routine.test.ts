@@ -65,6 +65,23 @@ describe("setWeeklyRoutine", () => {
     expect(res).toMatchObject({ rollingSquad: true });
   });
 
+  // Monthly squad (2026-10-05, slice 2): the month replaces the rolling
+  // squad, so it cannot be turned back on while the club is monthly.
+  it("refuses to turn the rolling squad on for a monthly club", async () => {
+    orgFindUnique.mockResolvedValue({ ...UNSET_ROW, squadMode: "monthly" });
+    await expect(setWeeklyRoutine("org-vets", { rollingSquad: true })).rejects.toThrow(/monthly/i);
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("a monthly club can still turn it off, and a weekly club is never asked", async () => {
+    orgFindUnique.mockResolvedValue({ ...UNSET_ROW, squadMode: "monthly" });
+    await setWeeklyRoutine("org-vets", { rollingSquad: false });
+    expect(orgUpdate).toHaveBeenCalledTimes(1);
+    orgFindUnique.mockClear();
+    await setWeeklyRoutine("org-vets", { benchPickMode: "organiser" });
+    expect(orgFindUnique).not.toHaveBeenCalled();
+  });
+
   it("refuses a non-admin", async () => {
     requireOrgAdmin.mockRejectedValue(new Error("Admin access required"));
     await expect(setWeeklyRoutine("org-fnf", { rollingSquad: true })).rejects.toThrow("Admin access required");

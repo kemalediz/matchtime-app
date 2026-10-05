@@ -3044,4 +3044,149 @@ export const en = {
   settings_learned_from: "From messages like",
   settings_learned_check_head: "Worth a check (nothing changed)",
   settings_learned_noted_head: "Noticed, no setting for it yet",
+  // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────
+  // MDs/monthly-squad-plan-2026-10-05.md, sections 9.1, 9.2 and 4.5.
+  // The "Monthly squad" section of /admin/settings (msq_) and the
+  // /admin/months page (mth_). Organiser pages only: nothing here is ever
+  // posted in a group. No em or en dashes, in either language.
+  msq_section_title: "Monthly squad",
+  msq_section_lead:
+    "For groups where the regulars sign up and pay for the whole month, and pay-as-you-go (PAYG) players fill the gaps. It stays off until you switch it on.",
+  msq_mode_label: "How your squad works",
+  msq_mode_blurb: "Weekly is how MatchTime works today. Monthly is for a list that runs for the whole month.",
+  msq_mode_weekly: "Weekly (who said IN)",
+  msq_mode_monthly: "Monthly (regulars pay for the month)",
+  msq_rolling_note: "Rolling squad is switched off while your squad is monthly: the month's regulars take its place.",
+  msq_status_note:
+    "MatchTime does not post the monthly list in your group yet. You can already keep this month's list on the Months page.",
+  msq_months_link: "Open the Months page",
+  msq_payg_label: "PAYG price per game (£)",
+  msq_payg_blurb: "What a pay-as-you-go player pays for one game. Leave it empty if you don't have a set price.",
+  msq_opens_label: "List opens",
+  msq_opens_blurb: "How many days before the month's first game next month's list opens.",
+  msq_opens_unit: "days before the first game",
+  msq_credit_label: "Credits",
+  msq_credit_blurb: "When a regular who has paid misses a game, do they get a game off next month?",
+  msq_credit_any: "Every game a paid regular misses",
+  msq_credit_filled: "Only when their place is filled",
+  msq_credit_none: "No credits",
+  msq_instructions_label: "Payment instructions",
+  msq_instructions_blurb: "Your own words on how to pay, shown to players with the amount they owe. Optional.",
+  msq_instructions_placeholder: "Bank details are in the group description.",
+  msq_save: "Save",
+  msq_saved: "Saved",
+  msq_switched_monthly: "Monthly squad is on. Rolling squad is off.",
+  msq_switched_weekly: "Back to a weekly squad",
+  msq_err_price: "Enter a price like 8 or 7.50, up to £100.",
+  msq_err_days: "Enter a whole number of days from 1 to 28.",
+  msq_err_long: "Keep the payment instructions under 500 characters.",
+
+  mth_nav: "Months",
+  mth_page_title: "Months",
+  mth_page_lead: "The month's list for your monthly squad: regulars, PAYG players, who has paid and credits.",
+  mth_no_fixture: "Your club has no active game yet. Add one under Activities first.",
+  mth_no_players: "Your club has no players yet. They appear here once they are on your Players page.",
+  mth_fixture_games: (p: { games: number; played: number }): string =>
+    `Games this month: ${p.games}. Already played: ${p.played}.`,
+  mth_empty_title: (p: { month: string }): string => `${p.month} hasn't been started yet`,
+  mth_empty_body:
+    "You can start it now, even part-way through the month. Paste your current list or tick the players, say who has paid, and add any credits they came into the month with. Games already played count as played for the regulars on the list.",
+  mth_paste_label: "Paste your current list",
+  mth_paste_hint:
+    "Copy this month's list from your group and paste it here. MatchTime ticks the players for you, with their paid marks and PAYG. Nothing is saved until you start the month.",
+  mth_paste_button: "Read the list",
+  mth_paste_read: (p: { count: number }): string =>
+    `Players read from your list: ${p.count}. Check them below before you start the month.`,
+  mth_paste_unmatched: (p: { names: string }): string =>
+    `Not matched to a player: ${p.names}. Tick them below yourself, or add them on your Players page first.`,
+  mth_paste_month: "This list is headed with a different month. Check that it is this month's list.",
+  mth_paste_not_list: "That doesn't look like a list. Paste the whole numbered list from your group.",
+  mth_games_label: "Games this month",
+  mth_played_label: "Already played",
+  mth_share_label: "Regular's share per game (£)",
+  mth_share_hint: "Optional. With it, MatchTime works out what each regular owes for the month.",
+  mth_col_in: "On the list",
+  mth_col_slot: "No.",
+  mth_col_player: "Player",
+  mth_col_type: "Type",
+  mth_col_paid: "Paid?",
+  mth_col_amount: "Amount paid (£)",
+  mth_col_credits: "Credits carried in",
+  mth_col_games: "Games",
+  mth_col_credits_used: "Credits used",
+  mth_col_due: "Due",
+  mth_kind_regular: "Regular",
+  mth_kind_payg: "PAYG",
+  mth_paid_none: "Not paid",
+  mth_paid_claimed: "Says paid",
+  mth_paid_confirmed: "Paid, confirmed",
+  mth_due_unknown: "Not set",
+  mth_selected_count: (p: { regulars: number; payg: number }): string => `On the list: ${p.regulars} regulars, ${p.payg} PAYG`,
+  mth_nothing_posts: "Starting the month posts nothing in your group.",
+  mth_start_button: (p: { month: string }): string => `Start ${p.month}`,
+  mth_started: (p: { month: string }): string => `${p.month} is started`,
+  mth_status: (p: { status: string }): string =>
+    p.status === "open" ? "Sign-up open" : p.status === "priced" ? "Priced" : p.status === "closed" ? "Closed" : "Running",
+  mth_started_mid: (p: { played: number }): string =>
+    `Started part-way through the month. Games already played then: ${p.played}.`,
+  mth_share_line: (p: { amount: string }): string => `Share per game: ${p.amount}`,
+  mth_no_share: "No share per game is set yet, so the amounts due are not worked out.",
+  mth_paid_amount: (p: { state: string; amount: string }): string => `${p.state} (${p.amount})`,
+  mth_start_error: (p: { key: string }): string =>
+    p.key === "no-players"
+      ? "Tick at least one player."
+      : p.key === "bad-games"
+        ? "Check the number of games. The games already played can't be more than the games this month."
+        : p.key === "bad-share"
+          ? "Enter the share as an amount, like 7.50."
+          : p.key === "bad-amount"
+            ? "Check the amounts paid. Use amounts like 30 or 22.50."
+            : p.key === "bad-credits"
+              ? "Credits carried in can't be more than the games this month."
+              : p.key === "already-started"
+                ? "This month has already been started. Reload the page to see it."
+                : p.key === "not-monthly"
+                  ? "Monthly squad is switched off for your club."
+                  : "Couldn't start the month. Please try again.",
+
+  info_st_monthly_title: "Monthly squad",
+  info_st_monthly_body:
+    "For groups where the regulars sign up and pay for the whole month, and other players pay as they go to fill the gaps. It is off until you switch it on, and nothing changes for your group until then.\n\n" +
+    "With it on, a Months page appears in your admin pages. That is where you keep the month's list: who is a regular, who has paid, and any credits.",
+  info_msq_mode_title: "How your squad works",
+  info_msq_mode_body:
+    "Weekly: each game's squad is whoever said IN that week. This is how MatchTime works unless you change it.\n\n" +
+    "Monthly: regulars are in every game of the month and pay once for the month. Pay-as-you-go players take the free places and pay per game. Rolling squad is switched off while this is on, because the month's regulars take its place.",
+  info_msq_payg_title: "PAYG price per game",
+  info_msq_payg_body:
+    "What a pay-as-you-go player pays for one game, for example £8. Regulars don't pay this. They pay their share for the month.",
+  info_msq_opens_title: "List opens",
+  info_msq_opens_body:
+    "How many days before the month's first game next month's list opens, with this month's regulars already on it. 7 days suits most groups.",
+  info_msq_credit_title: "Credits",
+  info_msq_credit_body:
+    "A credit is one game off next month's payment. Choose when a regular who has paid earns one: for every game they miss, only when someone else took their place, or never. Credits are counted in games, not pounds.",
+  info_msq_instructions_title: "Payment instructions",
+  info_msq_instructions_body:
+    "Your own words on how to pay, shown to players next to the amount they owe. For example: bank details are in the group description.\n\n" +
+    "MatchTime never asks for bank account numbers. This is only the text you write here.",
+  info_mth_page_title: "Months",
+  info_mth_page_body:
+    "One list a month for each weekly game. Regulars are in every game of the month and pay once. Pay-as-you-go players take the free places and pay per game.\n\n" +
+    "You only see this page while Monthly squad is switched on in Settings.",
+  info_mth_start_title: "Starting part-way through a month",
+  info_mth_start_body:
+    "You don't have to wait for the 1st. Tick who is on this month's list, say who has paid and how much, and add any credits they came into the month with.\n\n" +
+    "Games already played this month count as played for the regulars you tick, so nobody gets a credit for them. Starting posts nothing in your group.",
+  info_mth_paste_title: "Pasting your list",
+  info_mth_paste_body:
+    "Paste the list as your group writes it: numbered names, (paid) or (Paid £22.50), (PAYG), and a \"Paid but can't play\" section. A paid mark is read as \"Says paid\", never as confirmed.\n\n" +
+    "Names are matched to your players. A name that fits nobody, or more than one player, is left for you to tick.",
+  info_mth_paid_title: "Paid?",
+  info_mth_paid_body:
+    "Not paid: nothing is recorded. Says paid: the player says they have paid, but nobody has checked. Paid, confirmed: you know the money arrived.\n\n" +
+    "Only choose confirmed for payments you have seen.",
+  info_mth_credits_title: "Credits carried in",
+  info_mth_credits_body:
+    "Games of credit a regular brought into this month, for example for a game they paid for and missed last month. One credit is one game off. At £7.50 a game, one credit makes a 4 game month £22.50 instead of £30.",
 };

@@ -317,6 +317,8 @@ async function loadFeaturesViaSql(ctx: PipelineContext, orgId: string): Promise<
     benchPickMode: row.benchPickMode === "organiser" ? "organiser" : "first-come",
     // Not read by the answer engine; the column default.
     badgeAnnouncements: true,
+    // Not read by the answer engine; the column default (monthly squad, slice 2).
+    squadMode: "weekly",
   };
 }
 

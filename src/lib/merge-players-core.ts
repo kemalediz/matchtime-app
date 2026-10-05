@@ -23,6 +23,7 @@
 type TxClient = any;
 
 import { recordAttendanceEvent } from "./attendance-events";
+import { repointSquadMonthRows } from "./squad-month";
 
 /**
  * `Membership.matchRating`'s schema default, and Elo's genuine "no
@@ -283,6 +284,11 @@ export async function mergePlayersCore(
     if (exists) await tx.playerActivityPosition.delete({ where: { id: pp.id } });
     else await tx.playerActivityPosition.update({ where: { id: pp.id }, data: { userId: keepUserId } });
   }
+
+  // 7b. Monthly squad (2026-10-05): the month rows and the credits ledger
+  //     reference "User" ON DELETE CASCADE, so they are moved before the
+  //     dropped row goes or they would go with it.
+  await repointSquadMonthRows(tx, keepUserId, dropUserId);
 
   // 8. AnalyzedMessage.
   await tx.analyzedMessage.updateMany({
