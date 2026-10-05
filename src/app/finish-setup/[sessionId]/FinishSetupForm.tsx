@@ -19,6 +19,8 @@ import type {
   CapturedSchedule,
 } from "@/lib/onboarding-enrichment-reconcile";
 import { applyEnrichment } from "@/app/actions/finish-setup";
+import { SectionInfo } from "@/components/info/section-info";
+import { confidenceBadge, displayEvidence } from "@/lib/info-copy";
 
 interface Props {
   sessionId: string;
@@ -26,6 +28,9 @@ interface Props {
   unresolved: { name: string | null; userId: string }[];
   schedule: CapturedSchedule;
   positions: string[];
+  /** The club's language: the ⓘ popups, the confidence badge and the
+   *  evidence note follow it (F1). The rest of this page is English. */
+  lang?: string | null;
 }
 
 interface RosterRow {
@@ -41,12 +46,6 @@ const NONE = "__none__";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-function confidenceBadge(c: number): { label: string; cls: string } {
-  if (c >= 0.66) return { label: "high", cls: "bg-green-50 text-green-700 border-green-200" };
-  if (c >= 0.33) return { label: "med", cls: "bg-amber-50 text-amber-700 border-amber-200" };
-  return { label: "low", cls: "bg-red-50 text-red-700 border-red-200" };
-}
-
 function clampSeed(raw: string): number | null {
   if (raw.trim() === "") return null;
   const n = Number(raw);
@@ -54,7 +53,7 @@ function clampSeed(raw: string): number | null {
   return Math.max(1, Math.min(10, Math.round(n)));
 }
 
-export function FinishSetupForm({ sessionId, roster, unresolved, schedule, positions }: Props) {
+export function FinishSetupForm({ sessionId, roster, unresolved, schedule, positions, lang = "en" }: Props) {
   const [rows, setRows] = useState<RosterRow[]>(() =>
     roster.map((r) => ({
       matchedUserId: r.matchedUserId,
@@ -148,14 +147,16 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
 
       {/* ── Players ── */}
       <section className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <h2 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
           Proposed players
+          <SectionInfo k="fs_players" lang={lang} />
         </h2>
         {rows.length === 0 ? (
           <p className="text-sm text-slate-400">No players were proposed from the chat.</p>
         ) : (
           rows.map((r, i) => {
-            const badge = confidenceBadge(r.confidence);
+            const badge = confidenceBadge(r.confidence, lang);
+            const evidence = displayEvidence(r.evidence, lang);
             return (
               <div
                 key={`${r.matchedUserId ?? "x"}-${i}`}
@@ -163,21 +164,26 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-medium text-slate-800">{r.name}</p>
-                  <span
-                    className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold ${badge.cls}`}
-                  >
-                    {badge.label}
+                  <span className="inline-flex shrink-0 items-center gap-1">
+                    <span
+                      data-testid="confidence-badge"
+                      data-level={badge.level}
+                      className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold ${badge.cls}`}
+                    >
+                      {badge.label}
+                    </span>
+                    {i === 0 && <SectionInfo k="fs_confidence" lang={lang} />}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label
-                      htmlFor={`pos-${i}`}
-                      className="block text-xs font-medium text-slate-500 mb-1"
-                    >
-                      Position
-                    </label>
+                    <div className="flex items-center gap-1 mb-1">
+                      <label htmlFor={`pos-${i}`} className="block text-xs font-medium text-slate-500">
+                        Position
+                      </label>
+                      {i === 0 && <SectionInfo k="fs_position" lang={lang} />}
+                    </div>
                     <select
                       id={`pos-${i}`}
                       value={r.position ?? NONE}
@@ -195,12 +201,12 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
                     </select>
                   </div>
                   <div>
-                    <label
-                      htmlFor={`seed-${i}`}
-                      className="block text-xs font-medium text-slate-500 mb-1"
-                    >
-                      Seed rating
-                    </label>
+                    <div className="flex items-center gap-1 mb-1">
+                      <label htmlFor={`seed-${i}`} className="block text-xs font-medium text-slate-500">
+                        Seed rating
+                      </label>
+                      {i === 0 && <SectionInfo k="fs_seed" lang={lang} />}
+                    </div>
                     <input
                       id={`seed-${i}`}
                       aria-label={`Seed rating for ${r.name}`}
@@ -219,9 +225,10 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
                   </div>
                 </div>
 
-                {r.evidence && (
-                  <p className="text-xs italic text-slate-400 line-clamp-2">{r.evidence}</p>
-                )}
+                <div className="flex items-start gap-1">
+                  <p data-testid="evidence" className="text-xs italic text-slate-400 line-clamp-2">{evidence}</p>
+                  {i === 0 && <SectionInfo k="fs_evidence" lang={lang} />}
+                </div>
               </div>
             );
           })
@@ -231,11 +238,12 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
       {/* ── Missing phones ── */}
       {unresolved.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <h2 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Add missing phone numbers
+            <SectionInfo k="fs_phones" lang={lang} />
           </h2>
           <p className="text-xs text-slate-400 -mt-1">
-            These members have no phone yet — add one so they get match notifications.
+            These members have no phone yet. Add one so they get match notifications.
           </p>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
             {unresolved.map((m) => {
@@ -275,8 +283,9 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
 
       {/* ── Schedule / format ── */}
       <section className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <h2 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
           Schedule &amp; format
+          <SectionInfo k="fs_schedule" lang={lang} />
         </h2>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>

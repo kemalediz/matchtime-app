@@ -9,6 +9,8 @@ import {
   generateMatchesForActivity,
 } from "@/app/actions/activities";
 import { DAYS_OF_WEEK } from "@/lib/constants";
+import { SectionInfo } from "@/components/info/section-info";
+import { useOrgLang } from "@/components/info/org-lang";
 
 interface Sport {
   id: string;
@@ -35,6 +37,7 @@ interface Activity {
 }
 
 export default function ActivitiesPage() {
+  const lang = useOrgLang();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [sports, setSports] = useState<Sport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,7 +157,10 @@ export default function ActivitiesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-800">Activities</h2>
+        <h2 className="flex items-center gap-1 text-lg font-semibold text-slate-800">
+          Activities
+          <SectionInfo k="act_page" lang={lang} />
+        </h2>
         <button
           onClick={() => setDialogOpen(true)}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
@@ -182,12 +188,14 @@ export default function ActivitiesPage() {
                   >
                     {a.isActive ? "Active" : "Inactive"}
                   </span>
+                  <SectionInfo k="act_active" lang={lang} />
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
                   {DAYS_OF_WEEK[a.dayOfWeek]}s at {a.time} · {a.venue}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="flex flex-wrap items-center gap-1 text-xs text-slate-400 mt-0.5">
                   {a.sport.name} · {a.matchDurationMins}min · Sign-ups close {a.deadlineHours}h before
+                  <SectionInfo k="act_deadline" lang={lang} />
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -198,6 +206,7 @@ export default function ActivitiesPage() {
                   <Zap className="w-3.5 h-3.5" />
                   Generate match
                 </button>
+                <SectionInfo k="act_generate" lang={lang} />
                 <button
                   onClick={() => openEdit(a)}
                   className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium"

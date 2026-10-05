@@ -30,7 +30,8 @@ import {
 import { groupSyncAdminWarning } from "@/lib/group-membership-gate";
 import { t } from "@/lib/i18n/t";
 import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
-import { ProvisionalPlayersBanner, ClubRatingCell, DuplicateSuggestionsBanner } from "./player-row-bits";
+import { ProvisionalPlayersBanner, ClubRatingCell, DuplicateSuggestionsBanner, PlayersInfoLegend } from "./player-row-bits";
+import { SectionInfo } from "@/components/info/section-info";
 import type { DuplicateSuggestion } from "@/lib/placeholder-link-rules";
 
 interface Player {
@@ -307,7 +308,10 @@ export default function PlayersPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-slate-800">Players ({players.length})</h2>
+          <h2 className="flex items-center gap-1 text-lg font-semibold text-slate-800">
+            Players ({players.length})
+            <SectionInfo k="pl_list" lang={lang} />
+          </h2>
           <label className="inline-flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
             <input
               type="checkbox"
@@ -377,7 +381,10 @@ export default function PlayersPage() {
 
       {showAdd && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
-          <p className="text-sm font-medium text-slate-800 mb-3">Add a player</p>
+          <p className="flex items-center gap-1 text-sm font-medium text-slate-800 mb-3">
+            Add a player
+            <SectionInfo k="pl_add" lang={lang} />
+          </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <input
               value={addName}
@@ -424,6 +431,8 @@ export default function PlayersPage() {
         starting skill score (1 to 10) used by the team-balancer until they&apos;ve
         accumulated enough peer ratings from completed matches.
       </p>
+
+      <PlayersInfoLegend lang={lang} />
 
       <ProvisionalPlayersBanner
         names={provisionalPlayers.map((p) => p.name).filter((n): n is string => Boolean(n))}

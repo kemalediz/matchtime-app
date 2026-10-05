@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ProvisionalPlayersBanner, ClubRatingCell } from "../player-row-bits";
+import { ProvisionalPlayersBanner, ClubRatingCell, DuplicateSuggestionsBanner, PlayersInfoLegend } from "../player-row-bits";
 
 /** Visible text with tags stripped and entities decoded. */
 function text(html: string): string {
@@ -82,5 +82,34 @@ describe("ClubRatingCell", () => {
     expect(rated).toContain("2 puanlanmış maç");
     const empty = text(renderToStaticMarkup(createElement(ClubRatingCell, { rating: null, ratedGames: 0, lang: "tr" })));
     expect(empty).toContain("Henüz puan yok");
+  });
+});
+
+// F1 (2026-10-05): the organiser ⓘ buttons on /admin/players.
+describe("players page info buttons", () => {
+  it("the new-players banner explains itself", () => {
+    const html = renderToStaticMarkup(createElement(ProvisionalPlayersBanner, { names: ["Hamzah"], lang: "en" }));
+    expect(html).toContain('data-testid="info-pl_new"');
+    expect(html).toContain('aria-label="What is New players?"');
+  });
+
+  it("the legend carries one ⓘ per column and row control, in the club's language", () => {
+    const html = renderToStaticMarkup(createElement(PlayersInfoLegend, { lang: "en" }));
+    for (const k of ["pl_seed", "pl_club_rating", "pl_aliases", "pl_merge", "pl_role"]) {
+      expect(html, k).toContain(`data-testid="info-${k}"`);
+    }
+    const trHtml = renderToStaticMarkup(createElement(PlayersInfoLegend, { lang: "tr" }));
+    expect(trHtml).toContain('aria-label="Kulüp puanı nedir?"');
+  });
+
+  it("the possible-duplicates banner explains itself", () => {
+    const html = renderToStaticMarkup(
+      createElement(DuplicateSuggestionsBanner, {
+        suggestions: [{ placeholderId: "p", placeholderName: "Mo", keepId: "k", keepName: "Mohammed" }],
+        lang: "en",
+        onMerge: () => {},
+      } as unknown as Parameters<typeof DuplicateSuggestionsBanner>[0]),
+    );
+    expect(html).toContain('data-testid="info-pl_duplicates"');
   });
 });

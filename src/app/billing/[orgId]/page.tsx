@@ -13,6 +13,8 @@ import {
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { WaText } from "@/components/billing/wa-text";
 import { loadMonthsSummary } from "@/lib/club-billing-month-summary";
+import { SectionInfo } from "@/components/info/section-info";
+import { infoCopy } from "@/lib/info-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -136,7 +138,11 @@ export default async function BillingPage({
       <div className="mx-auto w-full max-w-md">
         <div className="text-center mb-5">
           <p className="text-xs uppercase tracking-wider text-slate-400">{v.club}</p>
-          <h1 className="text-xl font-bold text-slate-900 mt-1">{v.title}</h1>
+          <h1 className="text-xl font-bold text-slate-900 mt-1 inline-flex items-center gap-1">
+            {v.title}
+            {/* F1: how the fee works. Not for an exempt club, which has none. */}
+            {!v.exempt && <SectionInfo k="bill_page" lang={snapshot.language} />}
+          </h1>
         </div>
 
         {notice && role !== "exempt-owner" && (
@@ -203,6 +209,13 @@ export default async function BillingPage({
               )}
             </div>
           )}
+          {/* F1: who looks after the card, for every role but an exempt club. */}
+          {!v.exempt && (
+            <p className="flex items-center gap-1 text-xs text-slate-500">
+              {infoCopy(snapshot.language, "bill_card").title}
+              <SectionInfo k="bill_card" lang={snapshot.language} />
+            </p>
+          )}
           {confirmingStop && v.stopConfirm && (
             <div data-testid="billing-stop-confirm" role="alertdialog" aria-labelledby="billing-stop-confirm-title" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 space-y-2">
               <p id="billing-stop-confirm-title" className="font-semibold">
@@ -233,7 +246,10 @@ export default async function BillingPage({
 
         {v.past.length > 0 && (
           <section data-testid="billing-past" className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm text-sm text-slate-700">
-            <h2 className="font-semibold text-slate-900 mb-2">{v.pastTitle}</h2>
+            <h2 className="font-semibold text-slate-900 mb-2 flex items-center gap-1">
+              {v.pastTitle}
+              <SectionInfo k="bill_past" lang={snapshot.language} />
+            </h2>
             <ul className="space-y-2">
               {v.past.map((m) => (
                 <li key={m.id} data-testid="billing-past-month" data-month={m.id}>

@@ -21,6 +21,7 @@ import { loadLatestConnect, matchtimeWaNumber } from "@/lib/club-connect";
 import { connectPrefill, deriveConnectCard, formatPhoneForDisplay, waMeLink } from "@/lib/club-connect-rules";
 import { ConnectButton } from "./connect-button";
 import { CardRefresher } from "./card-refresher";
+import { SectionInfo } from "@/components/info/section-info";
 
 export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId: string }) {
   if (!(await selfJoinEnabledForRequest())) return null;
@@ -62,7 +63,10 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
       lang={org.language}
       className={`rounded-xl border p-5 shadow-sm space-y-3 ${tone}`}
     >
-      <h2 className="font-semibold text-slate-800">{s.sj_card_title}</h2>
+      <div className="flex items-center gap-1">
+        <h2 className="font-semibold text-slate-800">{s.sj_card_title}</h2>
+        <SectionInfo k="dash_connect" lang={org.language} />
+      </div>
 
       {card.kind === "draft" && (
         <>

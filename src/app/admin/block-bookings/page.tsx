@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CalendarRange, Plus, ListChecks } from "lucide-react";
 import { formatLondon } from "@/lib/london-time";
 import { BlockActions } from "./block-actions";
+import { SectionInfo } from "@/components/info/section-info";
 
 /**
  * Block bookings — the club's real venue booking shape: N consecutive
@@ -40,7 +41,10 @@ export default async function BlockBookingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Block bookings</h2>
+          <h2 className="flex items-center gap-1 text-lg font-semibold text-slate-800">
+            Block bookings
+            <SectionInfo k="bb_page" lang={membership.org.language} />
+          </h2>
           <p className="text-sm text-slate-500 mt-1">
             A block creates every match of the venue booking up front. The bot
             still only ever posts about the next match that&apos;s on.

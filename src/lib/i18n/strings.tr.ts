@@ -2111,6 +2111,230 @@ export const tr: Strings = {
       : `tamam: MatchTime ${p.club} WhatsApp grubunda çalışmaya devam ediyor ve ödeme sürüyor. Önceden olduğu gibi her ay`) +
     ` yalnızca oynanan maçlar için, en fazla ${p.price}, ay bittikten sonraki sabah ücret alınır; sonraki ödeme ${p.date} tarihinde. ` +
     `Kartınızı değiştirmek ya da durdurmak için: ${p.link}`,
+
+  // ── Organizatör bilgi düğmeleri (F1, 2026-10-05) ─────────────────────
+  // Organizatör sayfalarındaki ⓘ açılır pencereleri. Her biri bir çift:
+  // `info_<anahtar>_title` ve `info_<anahtar>_body`. Tire yok, sade dil,
+  // yalnızca kodun gerçekten yaptığı şeyler.
+
+  info_open: (p) => `${p.title} nedir?`,
+  info_close: "Kapat",
+
+  fs_conf_high: "Emin",
+  fs_conf_med: "Büyük ihtimalle",
+  fs_conf_low: "Tahmin: lütfen kontrol edin",
+  fs_evidence_none: "Sohbette bu oyuncuyla ilgili bir şey yok, bu yüzden nötr bir başlangıç noktası belirledim.",
+
+  info_fs_players_title: "Önerilen oyuncular",
+  info_fs_players_body:
+    "MatchTime'ın grubunuzun sohbet geçmişinde oynadığını gördüğü herkes, tahmini bir mevki ve başlangıç puanıyla. Kontrol edin, yanlış olanı değiştirin, sonra \"Apply & finish setup\" düğmesine basın. Uygulayana kadar hiçbir şey kaydedilmez.",
+  info_fs_confidence_title: "MatchTime ne kadar emin",
+  info_fs_confidence_body:
+    "Sohbetin MatchTime'a bu oyuncunun mevkii ve başlangıç puanı hakkında ne kadar bilgi verdiği. Emin: sohbette çok ipucu var. Büyük ihtimalle: biraz ipucu var. Tahmin: lütfen kontrol edin: sohbette çok az şey var ya da hiç yok, bu bir başlangıç tahmini.\n\n" +
+    "Bu, oyuncu hakkında bir yargı değildir. Tahmin, mevkii ve puanı sizin kontrol etmeniz gerektiği anlamına gelir.",
+  info_fs_position_title: "Mevki",
+  info_fs_position_body:
+    "Bu oyuncunun genelde oynadığı yer. MatchTime takımları kurarken her iki takıma dengeli bir karışım vermek için mevkileri kullanır. Emin değilseniz \"None\" seçin; sonra Oyuncular sayfasından ayarlayabilirsiniz.",
+  info_fs_seed_title: "Başlangıç puanı",
+  info_fs_seed_body:
+    "Bu oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Oyuncular maçlardan sonra birbirine puan vermeye başlayana kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez.",
+  info_fs_evidence_title: "MatchTime bunu neden tahmin etti",
+  info_fs_evidence_body:
+    "Tahminin dayandığı sohbet mesajı ya da özeti, böylece siz de değerlendirebilirsiniz. Bunu yalnızca yöneticiler görür.",
+  info_fs_phones_title: "Eksik telefon numaraları",
+  info_fs_phones_body:
+    "MatchTime'ın telefon numarasını bilmediği grup üyeleri. Puanlama bağlantısı ve hatırlatma gibi özel mesajları alabilmeleri için ülke koduyla başlayan bir numara ekleyin (örneğin +90). İstediğinizi boş bırakabilirsiniz.",
+  info_fs_schedule_title: "Program ve format",
+  info_fs_schedule_body:
+    "MatchTime'ın sohbetten okuduğu haftalık maçınız. Uyguladığınızda haftalık maçınızın günü, başlama saati ve sahası ayarlanır. Takım başına oyuncu sayısı bir sonraki maçınızın büyüklüğünü belirler.",
+
+  info_dash_players_title: "Oyuncular",
+  info_dash_players_body: "MatchTime'da kulübünüzdeki herkes. Ayrılan oyuncular sayılmaz. Görmek ve düzenlemek için dokunun.",
+  info_dash_activities_title: "Etkinlikler",
+  info_dash_activities_body:
+    "Düzenli haftalık maçlarınız, örneğin Salı 7'ye 7. MatchTime her aktif etkinliğin bir sonraki maçını kendisi ekler. Yönetmek için dokunun.",
+  info_dash_upcoming_title: "Yaklaşan",
+  info_dash_upcoming_body: "Henüz oynanmamış maçlar, takımları kurulmuş olanlar da dahil.",
+  info_dash_completed_title: "Tamamlanan",
+  info_dash_completed_body:
+    "MatchTime kulübünüzü yönetmeye başladığından beri oynanan maçlar. Önceden içe aktarılan eski maçlar sayılmaz.",
+  info_dash_ratings_title: "Puanlama durumu",
+  info_dash_ratings_body:
+    "Son maçınızdan sonra kimlerin takım arkadaşlarına puan verdiği. MatchTime oynayan her oyuncuya özel bir puanlama bağlantısı gönderir; yedek listesindekiler sayılmaz. Bekleyenler henüz puan vermedi.",
+  info_dash_connect_title: "MatchTime'ı bağlamak",
+  info_dash_connect_body:
+    "MatchTime'ı WhatsApp grubunuza eklemenin adımları: kodu telefonunuzdan gönderin, MatchTime'ı gruba ekleyin, sonra kulübünüzü kontrol ederiz, genelde bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır.",
+
+  info_pl_list_title: "Oyuncular",
+  info_pl_list_body:
+    "Kulübünüzdeki herkes. Değiştirmek için bir isme ya da telefon numarasına dokunun. Ayrılan oyuncuları görmek için \"Include former members\" kutusunu işaretleyin; geçmişleri saklanır.",
+  info_pl_add_title: "Oyuncu ekle",
+  info_pl_add_body:
+    "Grupta henüz yazmamış birini ekleyin. Telefon numarasıyla MatchTime ona özel mesaj atabilir ve onu grupta tanıyabilir. Numara MatchTime'da zaten varsa, iki kez eklenmez, o oyuncu kullanılır.",
+  info_pl_seed_title: "Başlangıç puanı",
+  info_pl_seed_body:
+    "Bir oyuncu için bu kulüpteki başlangıç puanınız, 1 ile 10 arası. Oyuncular maçlardan sonra birbirine puan verene kadar takımlar buna göre dengelenir; sonra gerçek puanlar yavaş yavaş yerini alır. Oyuncular bunu hiç görmez ve aynı kişinin başka bir kulüpteki başlangıç puanı ayrıdır.",
+  info_pl_club_rating_title: "Kulüp puanı",
+  info_pl_club_rating_body:
+    "Bu kulübün oyuncularının maçlardan sonra verdiği puanların ortalaması, oyuncunun kendi sayfasında gördüğü sayının aynısı. Biri puan verene kadar Henüz puan yok yazar.",
+  info_pl_aliases_title: "Takma adlar",
+  info_pl_aliases_body:
+    "MatchTime'ın grupta bu oyuncu olarak tanıması gereken diğer adlar, örneğin bir lakap ya da WhatsApp adı. Biri \"Mo varım\" yazdığında işe yarar. Kaldırmak için takma ada dokunun.",
+  info_pl_merge_title: "Birleştir",
+  info_pl_merge_body:
+    "Bir kişinin iki satırı olduğunda \"Merge\" düğmesini kullanın, örneğin biri adıyla, biri telefonla eklenmişse. Kalacak satırı seçin: katılımları, puanları ve mesajları ona taşınır, diğer satır silinir. Bu geri alınamaz.",
+  info_pl_duplicates_title: "Olası çift kayıtlar",
+  info_pl_duplicates_body:
+    "Biri adıyla eklendi, örneğin başka bir oyuncu onun geleceğini yazdığında, ve telefon numarası olan bir üyenin adı da ona benziyor. Aynı kişiyse, yalnızca adı olan satırı telefonlu üyeye katmak için Birleştir'e dokunun.",
+  info_pl_new_title: "Yeni oyuncular",
+  info_pl_new_body:
+    "MatchTime, grupta yazan kişileri kendisi ekler. Telefonlarını, mevkilerini ve başlangıç puanlarını kontrol edin, sonra \"Confirm\" düğmesine dokunun. Oyuncu değilse \"Remove\" düğmesine dokunun; geçmişleri saklanır.",
+  info_pl_role_title: "Rol",
+  info_pl_role_body: "Yöneticiler bu yönetim sayfalarını açabilir ve kulübü yönetebilir. Oyuncular yalnızca kendi sayfalarını görür.",
+
+  info_st_general_title: "Genel",
+  info_st_general_body: "Kulübünüzün MatchTime'daki adı ve web adresi. Buradan değiştirilemez.",
+  info_st_team_names_title: "Takım adları",
+  info_st_team_names_body:
+    "Takım listelerinde, skor mesajlarında ve maç sayfalarında iki tarafın adı. Varsayılan adı kullanmak için kutuyu boş bırakın.",
+  info_st_language_title: "Bot dili",
+  info_st_language_body:
+    "MatchTime'ın grubunuzda ve oyuncularınıza özel mesajlarda yazdığı dil. Henüz çevrilmemiş mesajlar İngilizce gönderilir.",
+  info_st_invite_title: "Davet bağlantısı",
+  info_st_invite_body:
+    "Birinin MatchTime web sitesinde kulübünüze katılabilmesi için bu bağlantıyı gönderin. WhatsApp grubunuzda yazanlar kendiliğinden eklenir, bu yüzden çoğu oyuncunun buna ihtiyacı yoktur.",
+  info_st_features_title: "Bot özellikleri",
+  info_st_features_body:
+    "Her düğme MatchTime'ın bir bölümünü kulübünüz için açar ya da kapatır, böylece yalnızca istediğinizi kullanırsınız. Değişikliklerin gruba ulaşması birkaç dakika sürebilir.",
+  info_st_weekly_title: "Haftalık düzen",
+  info_st_weekly_body:
+    "Grubunuzun haftasının nasıl işlediği: kadronun devam edip etmediği, açılan yeri kimin doldurduğu, haftalık son saatler ve MatchTime'ın yöneticilere yönelik mesajları nereye gönderdiği.",
+  info_st_billing_title: "Kulüp ücreti",
+  info_st_billing_body:
+    "MatchTime'ın kulübünüze maliyeti. Her ay yalnızca oynanan maçlar için ücret alınır, aylık üst sınırı asla geçmez, ödeme ay bittikten sonraki sabah alınır.\n\n" +
+    "Kartla fatura sayfasında para toplayan kişi ilgilenir; para toplayan kişi yoksa kart kulüp sahibinden istenir. Diğer yöneticiler görebilir ama kartı değiştiremez.",
+  info_st_collector_title: "Para toplayan kişi",
+  info_st_collector_body:
+    "Maç ücretlerini toplayan üye. Her maçtan sonra MatchTime ona her oyuncunun ne kadar ödeyeceğini sorar, kendisine doğrudan yapılan ödemeleri o onaylar ve kartla yapılan ödemeler onun banka hesabına gider. MatchTime'ın kulüp ücreti için kartla da o ilgilenir. Yalnızca telefon numarası olan üyeler listelenir.",
+  info_st_bank_title: "Para toplayan kişinin bankası",
+  info_st_bank_body:
+    "Kartla ve Pay by Bank ile yapılan ödemeler Stripe üzerinden para toplayan kişinin kendi banka hesabına gider. Bir kez bağlayın: Stripe birkaç kimlik bilgisi ve banka hesabını ister.\n\n" +
+    "\"Manage bank / payouts\" ödemeleri görmek için Stripe'ı açar. \"Start over\" bu Stripe hesabının MatchTime'daki bağlantısını kaldırır, böylece başka bir hesap bağlayabilirsiniz; daha önce alınmış ödemeler etkilenmez.",
+  info_st_whatsapp_title: "WhatsApp botu",
+  info_st_whatsapp_body:
+    "MatchTime'ın WhatsApp grubunuz için açık olup olmadığı ve hangi gruba bağlı olduğu. Bunu MatchTime yönetir, buradan değiştirilemez.",
+
+  info_feat_attendance_title: "Katılım takibi",
+  info_feat_attendance_body:
+    "MatchTime grupta VARIM ve YOKUM mesajlarını okur, bir sonraki maçın kadro listesini tutar, güncellemeler paylaşır ve kadro eksikse oyuncu arar. Grubunuz yalnızca puanlama ya da Man of the Match istiyorsa kapatın.",
+  info_feat_bench_title: "Yedek listesi",
+  info_feat_bench_body:
+    "Kadro dolunca fazladan VARIM diyenler yedek listesine girer. Biri çıkarsa yer yedek listesine geçer: onlara sunulur ya da Haftalık düzen altında bunu seçtiyseniz bir organizatör seçer.",
+  info_feat_teams_title: "Takım kurma",
+  info_feat_teams_body:
+    "MatchTime'dan grupta takımları kurmasını isteyin ya da bir maçın takım sayfasında \"Generate teams\" düğmesine basın. Kadroyu kulüp puanlarına ve mevkilere göre iki dengeli takıma böler ve maçtan sonra skoru sorar.",
+  info_feat_mom_title: "Man of the Match (maçın adamı)",
+  info_feat_mom_body: "Her maçtan sonra MatchTime grupta Man of the Match oylaması başlatır ve kazananı duyurur.",
+  info_feat_rating_title: "Oyuncu puanları",
+  info_feat_rating_body:
+    "Her maçtan sonra MatchTime, oynayan ve telefon numarası olan her oyuncuya diğerlerine puan vermesi için özel bir bağlantı gönderir. Bu puanlar her oyuncunun kulüp puanını ekler ve takımları dengelemeye yardım eder.",
+  info_feat_reminders_title: "Kişisel hatırlatmalar",
+  info_feat_reminders_body:
+    "Oyuncular MatchTime'ı etiketleyip hatırlatma isteyebilir, örneğin \"pazartesi bana hatırlat\", ve MatchTime o zaman onlara özel mesaj gönderir.",
+  info_feat_stats_title: "İstatistik cevapları",
+  info_feat_stats_body:
+    "Oyuncular MatchTime'ı etiketleyip grubun geçmişi hakkında soru sorabilir, örneğin en çok kim oynadı ya da geçmiş Man of the Match kazananları, ve MatchTime grupta cevaplar.",
+  info_feat_pay_tracking_title: "Ödeme takibi",
+  info_feat_pay_tracking_body: "MatchTime her maç için kimin ödediğini takip eder ve ödemeyenlere hatırlatır.",
+  info_feat_pay_collect_title: "Maç ücretlerini topla",
+  info_feat_pay_collect_body:
+    "Her maçtan sonra MatchTime para toplayan kişiye her oyuncunun ne kadar ödeyeceğini sorar, sonra her oyuncuya ödeme için özel bir bağlantı gönderir. Kartla yapılan ödemeler para toplayan kişinin bankasına gider; banka aşağıdan bağlanmalıdır.",
+  info_feat_pay_bank_title: "Pay by Bank (bankadan ödeme)",
+  info_feat_pay_bank_body: "Oyuncular doğrudan banka uygulamalarından öder. En ucuz ödeme yoludur.",
+  info_feat_pay_card_title: "Kart ve Apple Pay",
+  info_feat_pay_card_body: "Oyuncular kart, Apple Pay ya da Google Pay ile öder. Stripe her ödemeden küçük bir ücret alır.",
+  info_feat_pay_direct_title: "Organizatöre doğrudan ödeme",
+  info_feat_pay_direct_body:
+    "Oyuncular para toplayan kişiye nakit ya da havaleyle ödediklerini söyleyebilir. Para toplayan kişi bunu onaylar. Ücret alınmaz.",
+  info_feat_badges_title: "Rozet duyuruları",
+  info_feat_badges_body:
+    "Her maçtan iki gün sonra MatchTime oyuncuların kazandığı yeni rozetleri grupta paylaşır. Kapatırsanız grupta rozetlerle ilgili hiçbir şey paylaşılmaz.",
+
+  info_act_page_title: "Etkinlikler",
+  info_act_page_body:
+    "Etkinlik, düzenli haftalık maçlarınızdan biridir: günü, başlama saati, sahası ve formatı. MatchTime her gece her aktif etkinliğin bir sonraki maçını kendisi ekler.",
+  info_act_generate_title: "Maç ekle",
+  info_act_generate_body:
+    "Gece çalışmasını beklemeden bu etkinliğin bir sonraki maçını hemen ekler. Aynı güne ikinci bir maç eklemez.",
+  info_act_active_title: "Aktif ya da pasif",
+  info_act_active_body:
+    "Aktif etkinliklerin maçları kendiliğinden eklenir. Yeni maçları durdurmak için \"Deactivate\" düğmesine basın; önceden eklenmiş maçlar ve geçmişleri kalır.",
+  info_act_deadline_title: "Kayıtların kapanması",
+  info_act_deadline_body:
+    "MatchTime'ın maçtan kaç saat önce oyuncu aramayı bıraktığı. Oyuncular maç başlayana kadar VARIM ya da YOKUM diyebilir.",
+
+  info_bb_page_title: "Toplu rezervasyonlar",
+  info_bb_page_body:
+    "Toplu rezervasyon sahayı kiralama şeklinize uyar: peşin ödenmiş bir dizi haftalık maç, örneğin 10 salı. Bu maçların hepsini tek seferde ekler. MatchTime yine yalnızca bir sonraki maç hakkında paylaşım yapar.\n\n" +
+    "\"Cancel remaining\" bu rezervasyonun gelecekteki maçlarını grupta paylaşım yapmadan iptal eder. \"Restore cancelled\" onları yine sessizce geri getirir. \"Delete block\" boş gelecek maçları kaldırır; oynanmış maçlar ve verisi olan her şey saklanır.",
+  info_bulk_page_title: "Toplu iptal ya da geri alma",
+  info_bulk_page_body:
+    "Tatiller ve hatalar için. Tarihleri seçin, listeyi kontrol edin, sonra onaylayın. Duyuru kutusunu işaretlemezseniz iptal grupta hiçbir şey paylaşmaz. Geri alma her zaman sessizdir.",
+
+  info_cancel_title: "Maçı iptal et",
+  info_cancel_body:
+    "Bir maç oynanmayacaksa bunu kullanın. MatchTime grupta tek bir iptal mesajı paylaşır ve bu maç için başka hiçbir şey göndermez: hatırlatma, puanlama ya da Man of the Match olmaz. İptal edilen bir maç \"Bulk cancel / restore\" sayfasından geri getirilebilir.",
+  info_switch_title: "Formatı değiştir",
+  info_switch_body:
+    "Format bir haftalığına değiştiğinde bunu kullanın, örneğin 7'ye 7'den 5'e 5'e. Maç diğer etkinliğe geçer, yeni sayının üstündekiler yedek listesine girer ve MatchTime yeni kadroyu grupta paylaşır. Yalnızca aynı spordan, farklı büyüklükteki etkinlikler sunulur.",
+  info_teams_page_title: "Takım yönetimi",
+  info_teams_page_body:
+    "\"Generate teams\" onaylı oyuncuları kulüp puanlarına ve mevkilere göre iki dengeli takıma böler. \"Regenerate\" yeni takımlar yapar. Yer değiştirmek için iki oyuncuya dokunun ya da düğmelerle bir oyuncuyu diğer takıma geçirin veya takımdan çıkarın. \"Swap colours\" takımları korur, adlarını değiştirir.",
+  info_teams_unassigned_title: "Takımı olmayanlar",
+  info_teams_unassigned_body: "Henüz bir takımda olmayan onaylı oyuncular, örneğin son anda gelen bir yedek. Her birini bir takıma koyun.",
+  info_teams_bench_title: "Yedek listesi",
+  info_teams_bench_body: "Yer bekleyen oyuncular. Birini yukarı almak onu bu maç için onaylar ve seçtiğiniz takıma koyar.",
+  info_teams_publish_title: "Takımları yayınla",
+  info_teams_publish_body: "Bu takımları maç için kesinleşmiş olarak işaretler. Sonrasında da oyuncuların yerini değiştirebilirsiniz.",
+  info_teams_score_title: "Maç skoru",
+  info_teams_score_body:
+    "Maç bitince son skoru girin. Kaydetmek maçı oynanmış olarak işaretler ve takımlardaki her oyuncunun Elo'sunu günceller; Elo, bu kulüpte sonuçlara dayalı bir güç puanıdır.",
+
+  info_clubs_waiting_title: "Sizi bekleyenler",
+  info_clubs_waiting_body:
+    "MatchTime'ı gruplarına ekleyip kararınızı bekleyen kulüpler. Siz karar verene kadar MatchTime orada sessiz kalır. \"Approve\" onu açar, grupta merhaba der ve organizatöre mesaj atar. \"Reject\" gruptan çıkar ve organizatöre tek bir nazik mesaj gönderir.",
+  info_clubs_live_title: "Aktif kulüpler",
+  info_clubs_live_body:
+    "Kendileri katılan ve sizin onayladığınız kulüpler. Yeni kulüplerin ilk günlerinde günlük sınırları daha sıkıdır. \"Turn off\" MatchTime'ın gruptan çıkıp sessiz kalmasını sağlar; kimseye mesaj gönderilmez.",
+  info_clubs_fee_title: "Kulüp ücreti",
+  info_clubs_fee_body:
+    "Kulübün planı ve fatura durumu, bu ay ve geçen ay, kimin ödediği ve son 30 gündeki yapay zeka maliyeti. \"Plan\" aylık üst sınırı belirler. \"Start free month\" bir kulübün alabileceği tek ücretsiz ayı başlatır.",
+  info_clubs_unsolicited_title: "MatchTime'ı kimsenin istemediği gruplar",
+  info_clubs_unsolicited_body:
+    "Birinin MatchTime'ı kodsuz eklediği gruplar. MatchTime orada sessiz kalır ve 48 saat sonra kendisi çıkar; hemen çıkmak için \"Leave\" düğmesine basın. Gruptaki kimseye mesaj gönderilmez.",
+  info_clubs_rejected_title: "Reddedilenler",
+  info_clubs_rejected_body: "Reddettiğiniz kulüpler, en yenisi önce. MatchTime gruplarından çıktı.",
+  info_clubs_suspended_title: "Kapatılanlar",
+  info_clubs_suspended_body: "Kapattığınız aktif kulüpler, en yenisi önce. MatchTime gruplarından çıktı ve orada sessiz.",
+  info_clubs_limits_title: "Bugünkü site sınırları",
+  info_clubs_limits_body:
+    "Tüm sitenin bugün kullandığı kayıt kodu, yeni kulüp ve grup bağlantısı sayısı, günlük sınırlarla birlikte. Londra saatiyle gece yarısı sıfırlanır.",
+
+  info_health_status_title: "Şu anki durum",
+  info_health_status_body:
+    "MatchTime'ın açık olduğu her kulüp için bir kart. \"All good\": açık bir sorun yok. \"Worth a look\": açık bir uyarı var. \"Needs attention\": ciddi bir sorun açık. Son satır, o kulübün botunun en son ne zaman haber verdiğini gösterir.",
+  info_health_alerts_title: "Son uyarılar",
+  info_health_alerts_body:
+    "Son 30 günde işaretlenen her şey. \"Still happening\": son kontrolde yine görüldü. \"Cleared\": durdu. \"One-off\": süren bir kontrol değil, tek bir olay. Buradaki hiçbir şey telefonunuza ya da e-postanıza gönderilmez.",
+
+  info_bill_page_title: "Kulüp ücreti nasıl işler",
+  info_bill_page_body:
+    "MatchTime kulübünüzden ayda bir kez, yönettiği maçlar için ücret alır, aylık üst sınırı asla geçmez. İptal edilen maçlar ve kimsenin oynamadığı haftalar ücretsizdir. Ödeme ay bittikten sonraki sabah alınır, KDV dahildir.",
+  info_bill_card_title: "Kartla kim ilgilenir",
+  info_bill_card_body:
+    "Kartla para toplayan kişi ilgilenir, para toplayan kişi yoksa kulüp sahibi. Kart kaydetmek para almaz. Yöneticiler bu sayfayı görebilir ama kartı değiştiremez.",
+  info_bill_past_title: "Geçmiş aylar",
+  info_bill_past_body: "Biten her ay ve alınan ücret. \"Maçları gör\" ayın maçlarını ve her birinin sayılıp sayılmadığını listeler.",
 };
 
 /**

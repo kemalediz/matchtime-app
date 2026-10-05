@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { isSuperadmin } from "@/lib/org";
+import { getUserOrg, isSuperadmin } from "@/lib/org";
+import { SectionInfo } from "@/components/info/section-info";
 import { formatLondon } from "@/lib/london-time";
 import { alertKindLabel, clubStatus, isActiveAlert, type ClubStatus } from "@/lib/ops-alerts";
 import { notFound, redirect } from "next/navigation";
@@ -44,6 +45,8 @@ export default async function HealthPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   if (!(await isSuperadmin(session.user.id))) notFound();
+  // The ⓘ copy follows the owner's own club, English when there is none.
+  const lang = (await getUserOrg(session.user.id))?.org.language ?? null;
 
   const since = windowStart();
   const [clubs, alerts, openConditions] = await Promise.all([
@@ -104,9 +107,12 @@ export default async function HealthPage() {
       </div>
 
       <section aria-labelledby="current-status">
-        <h3 id="current-status" className="text-sm font-semibold text-slate-700 mb-3">
-          Current status
-        </h3>
+        <div className="flex items-center gap-1 mb-3">
+          <h3 id="current-status" className="text-sm font-semibold text-slate-700">
+            Current status
+          </h3>
+          <SectionInfo k="health_status" lang={lang} />
+        </div>
         {summary.length === 0 ? (
           <p className="text-sm text-slate-500">No club has the WhatsApp bot switched on.</p>
         ) : (
@@ -146,9 +152,12 @@ export default async function HealthPage() {
       </section>
 
       <section aria-labelledby="recent-alerts">
-        <h3 id="recent-alerts" className="text-sm font-semibold text-slate-700 mb-3">
-          Recent alerts
-        </h3>
+        <div className="flex items-center gap-1 mb-3">
+          <h3 id="recent-alerts" className="text-sm font-semibold text-slate-700">
+            Recent alerts
+          </h3>
+          <SectionInfo k="health_alerts" lang={lang} />
+        </div>
         {alerts.length === 0 ? (
           <p className="text-sm text-slate-500">Nothing has been flagged in the last {WINDOW_DAYS} days.</p>
         ) : (

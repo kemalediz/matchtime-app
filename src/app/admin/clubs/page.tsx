@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { isSuperadmin } from "@/lib/org";
+import { getUserOrg, isSuperadmin } from "@/lib/org";
+import { SectionInfo } from "@/components/info/section-info";
+import type { InfoKey } from "@/lib/info-copy";
 import { formatLondon } from "@/lib/london-time";
 import {
   APPROVED_CLUB_WHERE,
@@ -55,12 +57,30 @@ function usd(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-function Section({ id, title, lead, children }: { id: string; title: string; lead?: string; children: React.ReactNode }) {
+function Section({
+  id,
+  title,
+  lead,
+  info,
+  lang,
+  children,
+}: {
+  id: string;
+  title: string;
+  lead?: string;
+  /** The section's ⓘ (F1), in the owner's own club's language. */
+  info?: InfoKey;
+  lang?: string | null;
+  children: React.ReactNode;
+}) {
   return (
     <section aria-labelledby={id} data-testid={`section-${id}`}>
-      <h3 id={id} className="text-sm font-semibold text-slate-700">
-        {title}
-      </h3>
+      <div className="flex items-center gap-1">
+        <h3 id={id} className="text-sm font-semibold text-slate-700">
+          {title}
+        </h3>
+        {info && <SectionInfo k={info} lang={lang} />}
+      </div>
       {lead && <p className="mt-0.5 mb-3 text-xs text-slate-500">{lead}</p>}
       <div className={lead ? "" : "mt-3"}>{children}</div>
     </section>
@@ -129,7 +149,7 @@ async function loadClubMonths(o: { id: string; billingStatus: string; billingPla
  * file, who pays, its AI spend over 30 days, and the owner's controls.
  * Nothing here messages anyone.
  */
-function BillingRow({ c, billingOn }: { c: LiveClub; billingOn: boolean }) {
+function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; lang: string | null }) {
   const b = c.billing;
   const status = b?.status ?? c.billingStatus;
   const cb = b?.billing ?? null;
@@ -152,7 +172,10 @@ function BillingRow({ c, billingOn }: { c: LiveClub; billingOn: boolean }) {
   return (
     <div data-testid="club-billing" className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">
       <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[8rem_1fr]">
-        <dt className="text-slate-500">Club fee</dt>
+        <dt className="flex items-center gap-1 text-slate-500">
+          Club fee
+          <SectionInfo k="clubs_fee" lang={lang} />
+        </dt>
         <dd data-testid="club-billing-summary">
           {planLabel(c.billingPlan, c.billingPricePence)}. {STATUS_LABEL[status] ?? status}.{date ? ` ${date}.` : ""}
           {status !== "exempt" && ` Card on file: ${cb?.cardHolderUserId || cb?.cardLast4 ? "yes" : "no"}.`}
@@ -186,6 +209,8 @@ export default async function ClubsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   if (!(await isSuperadmin(session.user.id))) notFound();
+  // The ⓘ copy follows the owner's own club, English when there is none.
+  const lang = (await getUserOrg(session.user.id))?.org.language ?? null;
 
   const now = new Date();
   const midnight = londonMidnight(now);
@@ -327,7 +352,7 @@ export default async function ClubsPage() {
         )}
       </div>
 
-      <Section id="waiting" title="Waiting for you" lead="Oldest first. MatchTime is silent in these groups until you decide.">
+      <Section id="waiting" info="clubs_waiting" lang={lang} title="Waiting for you" lead="Oldest first. MatchTime is silent in these groups until you decide.">
         {waitingRows.length === 0 ? (
           <Empty>No club is waiting.</Empty>
         ) : (
@@ -393,6 +418,8 @@ export default async function ClubsPage() {
 
       <Section
         id="live"
+        info="clubs_live"
+        lang={lang}
         title="Live clubs that joined themselves"
         lead={`New clubs get ${NEW_CLUB_DM_WINDOW_DAYS} days of tighter limits from the day you approve them.`}
       >
@@ -416,7 +443,7 @@ export default async function ClubsPage() {
                   {usd(c.ai.capUsd)}
                   {c.ai.capped ? " (capped)" : ""}.{!c.whatsappBotEnabled && " Muted."}
                 </p>
-                <BillingRow c={c} billingOn={billingOn} />
+                <BillingRow c={c} billingOn={billingOn} lang={lang} />
                 <div className="mt-3">
                   <TurnOffButton orgId={c.id} club={c.name} />
                 </div>
@@ -435,7 +462,7 @@ export default async function ClubsPage() {
         )}
       </Section>
 
-      <Section id="unsolicited" title="Groups nobody asked MatchTime into" lead="Silent. MatchTime leaves these by itself after 48 hours.">
+      <Section id="unsolicited" info="clubs_unsolicited" lang={lang} title="Groups nobody asked MatchTime into" lead="Silent. MatchTime leaves these by itself after 48 hours.">
         {unsolicited.length === 0 ? (
           <Empty>None.</Empty>
         ) : (
@@ -468,7 +495,7 @@ export default async function ClubsPage() {
       </Section>
 
       <div className="grid gap-6 sm:grid-cols-2">
-        <Section id="rejected" title="Rejected">
+        <Section id="rejected" info="clubs_rejected" lang={lang} title="Rejected">
           {rejectedOrgs.length === 0 ? (
             <Empty>None.</Empty>
           ) : (
@@ -481,7 +508,7 @@ export default async function ClubsPage() {
             </ul>
           )}
         </Section>
-        <Section id="suspended" title="Turned off">
+        <Section id="suspended" info="clubs_suspended" lang={lang} title="Turned off">
           {suspendedOrgs.length === 0 ? (
             <Empty>None.</Empty>
           ) : (
@@ -496,7 +523,7 @@ export default async function ClubsPage() {
         </Section>
       </div>
 
-      <Section id="limits" title="Today's site limits" lead="London day. They reset at midnight.">
+      <Section id="limits" info="clubs_limits" lang={lang} title="Today's site limits" lead="London day. They reset at midnight.">
         <ul className="grid gap-2 text-sm text-slate-700 sm:grid-cols-3" data-testid="site-limits">
           <li className="rounded-lg border border-slate-200 bg-white p-3">
             Sign-up codes: {signupCodes} of {SITE_SIGNUP_CODES_PER_DAY}

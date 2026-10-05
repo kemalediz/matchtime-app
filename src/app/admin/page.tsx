@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Users, Calendar, Clock, CheckCircle, ChevronRight, Star } from "lucide-react";
 import { format } from "date-fns";
 import { ClubConnectCard } from "@/components/club-connect/club-connect-card";
+import { SectionInfo } from "@/components/info/section-info";
 
 const TILE = {
   blue: "bg-blue-50 text-blue-700 border-blue-200",
@@ -22,6 +23,7 @@ export default async function AdminDashboardPage() {
   if (!membership) redirect("/create-org");
 
   const orgId = membership.orgId;
+  const lang = membership.org.language;
 
   const [playerCount, activeActivities, upcomingMatches, completedMatches, latestMatch] = await Promise.all([
     db.membership.count({ where: { orgId, leftAt: null } }),
@@ -71,24 +73,39 @@ export default async function AdminDashboardPage() {
           is the club's OWNER, and the club came through self-join. */}
       <ClubConnectCard orgId={orgId} userId={session.user.id} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Link href="/admin/players" className={`p-5 rounded-xl border ${TILE.purple} hover:shadow-md transition-shadow`}>
-          <div className="flex items-center gap-2 opacity-75">
-            <Users className="w-4 h-4" />
-            <p className="text-xs font-medium uppercase tracking-wider">Players</p>
-          </div>
-          <p className="text-3xl font-bold mt-2">{playerCount}</p>
-        </Link>
-        <Link href="/admin/activities" className={`p-5 rounded-xl border ${TILE.blue} hover:shadow-md transition-shadow`}>
-          <div className="flex items-center gap-2 opacity-75">
-            <Calendar className="w-4 h-4" />
-            <p className="text-xs font-medium uppercase tracking-wider">Activities</p>
-          </div>
-          <p className="text-3xl font-bold mt-2">{activeActivities}</p>
-        </Link>
+        {/* The ⓘ sits beside the tile's link, not inside it: a button
+            inside an <a> is invalid and would navigate on tap. */}
+        <div className="relative">
+          <Link href="/admin/players" className={`block h-full p-5 rounded-xl border ${TILE.purple} hover:shadow-md transition-shadow`}>
+            <div className="flex items-center gap-2 opacity-75">
+              <Users className="w-4 h-4" />
+              <p className="text-xs font-medium uppercase tracking-wider">Players</p>
+            </div>
+            <p className="text-3xl font-bold mt-2">{playerCount}</p>
+          </Link>
+          <span className="absolute top-3 right-3">
+            <SectionInfo k="dash_players" lang={lang} />
+          </span>
+        </div>
+        <div className="relative">
+          <Link href="/admin/activities" className={`block h-full p-5 rounded-xl border ${TILE.blue} hover:shadow-md transition-shadow`}>
+            <div className="flex items-center gap-2 opacity-75">
+              <Calendar className="w-4 h-4" />
+              <p className="text-xs font-medium uppercase tracking-wider">Activities</p>
+            </div>
+            <p className="text-3xl font-bold mt-2">{activeActivities}</p>
+          </Link>
+          <span className="absolute top-3 right-3">
+            <SectionInfo k="dash_activities" lang={lang} />
+          </span>
+        </div>
         <div className={`p-5 rounded-xl border ${TILE.amber}`}>
           <div className="flex items-center gap-2 opacity-75">
             <Clock className="w-4 h-4" />
             <p className="text-xs font-medium uppercase tracking-wider">Upcoming</p>
+            <span className="ml-auto">
+              <SectionInfo k="dash_upcoming" lang={lang} />
+            </span>
           </div>
           <p className="text-3xl font-bold mt-2">{upcomingMatches}</p>
         </div>
@@ -96,6 +113,9 @@ export default async function AdminDashboardPage() {
           <div className="flex items-center gap-2 opacity-75">
             <CheckCircle className="w-4 h-4" />
             <p className="text-xs font-medium uppercase tracking-wider">Completed</p>
+            <span className="ml-auto">
+              <SectionInfo k="dash_completed" lang={lang} />
+            </span>
           </div>
           <p className="text-3xl font-bold mt-2">{completedMatches}</p>
         </div>
@@ -107,6 +127,7 @@ export default async function AdminDashboardPage() {
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-amber-500" />
               <h2 className="font-semibold text-slate-800">Rating progress</h2>
+              <SectionInfo k="dash_ratings" lang={lang} />
               <span className="text-sm text-slate-500">
                 · {ratingProgress.match.activity.name}, {format(ratingProgress.match.date, "EEE d MMM")}
               </span>
