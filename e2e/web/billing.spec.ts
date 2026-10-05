@@ -155,6 +155,20 @@ test.describe("/billing/[orgId] per role", () => {
     expect(new URL(page.url()).pathname).not.toMatch(/^\/admin/);
   });
 
+  test("F1: the billing page's ⓘ explain the fee, the card and past months", async ({ page }) => {
+    await signInAs(page, USER.colin, `/billing/${ORG}`);
+    await page.waitForURL(`**/billing/${ORG}`);
+    await expect(page.getByTestId("info-bill_page")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("info-bill_card")).toBeVisible();
+    await page.getByTestId("info-bill_page").click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByRole("heading", { name: "How the club fee works" })).toBeVisible();
+    await expect(sheet).toContainText("never more than the monthly maximum");
+    expect(await sheet.innerText()).not.toMatch(DASH);
+    await sheet.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
   test("the owner reads only when a collector is set: who pays, no buttons", async ({ page }) => {
     await signInAs(page, USER.owner, `/billing/${ORG}`);
     await expect(page.getByTestId("billing-page")).toHaveAttribute("data-role", "viewer", { timeout: 30_000 });
@@ -240,6 +254,15 @@ test.describe("/admin/settings billing card and the banner", () => {
     expect(await card.innerText()).not.toMatch(DASH);
     // No banner during the free month.
     await expect(page.getByTestId("billing-banner")).toHaveCount(0);
+  });
+
+  test("F1: the settings billing card has its ⓘ", async ({ page }) => {
+    await signInAs(page, USER.admin, "/admin/settings");
+    await page.waitForURL("**/admin/settings");
+    const card = page.getByTestId("settings-billing-card");
+    await card.getByTestId("info-st_billing").click({ timeout: 30_000 });
+    await expect(page.getByRole("dialog")).toContainText("only the games played are charged");
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   });
 
   test("no collector: the owner fallback line", async ({ page }) => {

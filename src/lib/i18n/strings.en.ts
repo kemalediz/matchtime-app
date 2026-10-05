@@ -2731,4 +2731,244 @@ export const en = {
       : `done: MatchTime keeps running in the ${p.club} WhatsApp group and billing carries on. As before, each month`) +
     ` is charged only for the games played, up to ${p.price}, the morning after it ends; the next charge is on ${p.date}. ` +
     `To change your card or stop: ${p.link}`,
+
+  // ── Organiser info buttons (F1, 2026-10-05) ─────────────────────────
+  // The ⓘ popups on every organiser page. Each popup is a pair:
+  // `info_<key>_title` and `info_<key>_body`, read by
+  // `src/components/info/section-info.tsx`. A body may hold several
+  // paragraphs separated by a blank line. New copy, house style: no em or
+  // en dashes, plain words, and only what the code actually does.
+
+  /** The trigger's accessible name. */
+  info_open: (p: { title: string }): string => `What is ${p.title}?`,
+  info_close: "Close",
+
+  // /finish-setup: the confidence badge and the "nothing in the chat" note.
+  fs_conf_high: "Confident",
+  fs_conf_med: "Fairly sure",
+  fs_conf_low: "Guess: please check",
+  /** Shown instead of the analyser's "No clear signal in chat, defaulting
+   *  to neutral" (display side only, no prompt change). */
+  fs_evidence_none: "Nothing in the chat about this player, so I've set a neutral starting point.",
+
+  info_fs_players_title: "Proposed players",
+  info_fs_players_body:
+    "Everyone MatchTime found playing in your group's chat history, each with a guessed position and seed rating. Check them, change anything that's wrong, then press Apply. Nothing is saved until you apply.",
+  info_fs_confidence_title: "How sure MatchTime is",
+  info_fs_confidence_body:
+    "How much the chat told MatchTime about this player's position and seed rating. Confident: the chat said a lot. Fairly sure: some clues. Guess: please check: little or nothing in the chat, so it's a starting guess.\n\n" +
+    "It is not a judgement of the player. A guess just means you should check the position and rating yourself.",
+  info_fs_position_title: "Position",
+  info_fs_position_body:
+    "Where this player usually plays. MatchTime uses positions to give both teams a fair mix when it makes teams. Pick None if you're not sure; you can set it later on the Players page.",
+  info_fs_seed_title: "Seed rating",
+  info_fs_seed_body:
+    "Your starting score for this player at this club, from 1 to 10. Teams are balanced on it until players start rating each other after matches; then the real ratings take over bit by bit. Players never see it.",
+  info_fs_evidence_title: "Why MatchTime guessed this",
+  info_fs_evidence_body:
+    "The message or summary from your chat that the guess is based on, so you can judge it. Only admins see it.",
+  info_fs_phones_title: "Missing phone numbers",
+  info_fs_phones_body:
+    "Group members MatchTime has no phone number for. Add one, starting with the country code (for example +44), so they get private messages like rating links and reminders. You can leave any blank.",
+  info_fs_schedule_title: "Schedule and format",
+  info_fs_schedule_body:
+    "Your weekly game as MatchTime read it from the chat. Applying sets the day, kick-off time and venue of your weekly game. Players per side sets the size of your next match.",
+
+  // /admin dashboard
+  info_dash_players_title: "Players",
+  info_dash_players_body: "Everyone in your club on MatchTime. Players who have left are not counted. Tap to see and edit them.",
+  info_dash_activities_title: "Activities",
+  info_dash_activities_body:
+    "Your regular weekly games, for example Tuesday 7-a-side. MatchTime creates the next match for each active one by itself. Tap to manage them.",
+  info_dash_upcoming_title: "Upcoming",
+  info_dash_upcoming_body: "Matches not played yet, including ones whose teams are already made.",
+  info_dash_completed_title: "Completed",
+  info_dash_completed_body:
+    "Matches played since MatchTime started running your club. Past matches imported from before are not counted.",
+  info_dash_ratings_title: "Rating progress",
+  info_dash_ratings_body:
+    "Who has rated their teammates after your last match. MatchTime sends each player who played a private rating link; players on the bench are not counted. Pending players haven't rated yet.",
+  info_dash_connect_title: "Connecting MatchTime",
+  info_dash_connect_body:
+    "The steps to get MatchTime into your WhatsApp group: send the code from your phone, add MatchTime to the group, then we check your club, usually within a day. MatchTime stays quiet in the group until your club is approved.",
+
+  // /admin/players
+  info_pl_list_title: "Players",
+  info_pl_list_body:
+    "Everyone in your club. Tap a name or a phone number to change it. Tick Include former members to see players who left; their history is kept.",
+  info_pl_add_title: "Add a player",
+  info_pl_add_body:
+    "Add someone who hasn't posted in the group yet. With a phone number MatchTime can message them privately and recognise them in the group. If the number is already on MatchTime, that player is reused rather than added twice.",
+  info_pl_seed_title: "Seed rating",
+  info_pl_seed_body:
+    "Your starting score for a player at this club, from 1 to 10. Teams are balanced on it until players rate each other after matches; then the real ratings take over bit by bit. Players never see it, and another club's seed for the same person is separate.",
+  info_pl_club_rating_title: "Club rating",
+  info_pl_club_rating_body:
+    "The average of the ratings this club's players have given them after matches, the same number they see on their own page. It shows Not rated yet until someone rates them.",
+  info_pl_aliases_title: "Aliases",
+  info_pl_aliases_body:
+    "Other names MatchTime should recognise as this player in the group, like a nickname or their WhatsApp name. It helps when someone writes \"Mo is in\". Tap an alias to remove it.",
+  info_pl_merge_title: "Merge",
+  info_pl_merge_body:
+    "Use Merge when one person has two rows, for example one added by name and one with a phone. Pick the row to keep: their attendance, ratings and messages move to it and the other row is deleted. This can't be undone.",
+  info_pl_duplicates_title: "Possible duplicates",
+  info_pl_duplicates_body:
+    "Someone was added by name, for example when another player wrote that they're in, and a member with a phone number has a matching name. If they're the same person, tap Merge to fold the name-only row into the member with the phone.",
+  info_pl_new_title: "New players",
+  info_pl_new_body:
+    "MatchTime adds people by itself when they post in the group. Check their phone, position and seed rating, then tap Confirm. Tap Remove if they're not a player; their history is kept.",
+  info_pl_role_title: "Role",
+  info_pl_role_body: "Admins can open these admin pages and manage the club. Players only see their own pages.",
+
+  // /admin/settings
+  info_st_general_title: "General",
+  info_st_general_body: "Your club's name and web address on MatchTime. They can't be changed here.",
+  info_st_team_names_title: "Team names",
+  info_st_team_names_body:
+    "What the two sides are called in team sheets, score messages and match pages. Leave a box empty to use the default name.",
+  info_st_language_title: "Bot language",
+  info_st_language_body:
+    "The language MatchTime writes in, in your group and in private messages to your players. Messages that haven't been translated yet are sent in English.",
+  info_st_invite_title: "Invite link",
+  info_st_invite_body:
+    "Send this link to someone so they can join your club on the MatchTime website. People who post in your WhatsApp group are added by themselves, so most players don't need it.",
+  info_st_features_title: "Bot features",
+  info_st_features_body:
+    "Each switch turns one part of MatchTime on or off for your club, so you run only what you want. Changes can take a few minutes to reach the group.",
+  info_st_weekly_title: "Weekly routine",
+  info_st_weekly_body:
+    "How your group's week runs: whether the squad carries over, who fills an open place, the weekly deadlines and where MatchTime sends messages meant for admins.",
+  info_st_billing_title: "Club fee",
+  info_st_billing_body:
+    "What MatchTime costs your club. Each month only the games played are charged, never more than the monthly maximum, the morning after the month ends.\n\n" +
+    "The money collector looks after the card on the billing page; with no money collector, the owner is asked. Other admins can see it but not change the card.",
+  info_st_collector_title: "Money collector",
+  info_st_collector_body:
+    "The member who collects match fees. After each match MatchTime asks them how much each player owes, they confirm payments made to them directly, and card payments go to their bank. They also look after the card for MatchTime's club fee. Only members with a phone number are listed.",
+  info_st_bank_title: "Money collector's bank",
+  info_st_bank_body:
+    "Card and Pay by Bank payments go to the money collector's own bank account through Stripe. Connect it once: Stripe asks for a few identity details and the bank account.\n\n" +
+    "Manage bank / payouts opens Stripe to see payouts. Start over unlinks this Stripe account in MatchTime so you can connect another; payments already taken are not affected.",
+  info_st_whatsapp_title: "WhatsApp bot",
+  info_st_whatsapp_body:
+    "Whether MatchTime is switched on for your WhatsApp group, and which group it is linked to. This is managed by MatchTime and can't be changed here.",
+
+  // /admin/settings: one popup per feature switch
+  info_feat_attendance_title: "Attendance tracking",
+  info_feat_attendance_body:
+    "MatchTime reads IN and OUT in the group, keeps the squad list for the next match, posts updates and chases for players when the squad is short. Turn it off if your group only wants ratings or Man of the Match.",
+  info_feat_bench_title: "Bench management",
+  info_feat_bench_body:
+    "When the squad is full, extra INs go on the bench. If someone drops out, the place goes to the bench: offered to them, or picked by an organiser if you chose that under Weekly routine.",
+  info_feat_teams_title: "Team generation",
+  info_feat_teams_body:
+    "Ask MatchTime in the group to make the teams, or press Generate teams on a match. It splits the squad into two even sides using club ratings and positions, and asks for the final score after the match.",
+  info_feat_mom_title: "Man of the Match",
+  info_feat_mom_body: "After each match MatchTime posts a Man of the Match vote in the group and announces the winner.",
+  info_feat_rating_title: "Player ratings",
+  info_feat_rating_body:
+    "After each match MatchTime sends every player who played, and has a phone number, a private link to rate the others. The ratings make up each player's club rating and help balance the teams.",
+  info_feat_reminders_title: "Personal reminders",
+  info_feat_reminders_body:
+    "Players can tag MatchTime and ask for a reminder, for example \"remind me Monday\", and MatchTime sends them a private message then.",
+  info_feat_stats_title: "Stats answers",
+  info_feat_stats_body:
+    "Players can tag MatchTime with questions about the group's history, like who has played the most or past Man of the Match winners, and it answers in the group.",
+  info_feat_pay_tracking_title: "Payment tracking",
+  info_feat_pay_tracking_body: "MatchTime keeps track of who has paid for each match and reminds the people who haven't.",
+  info_feat_pay_collect_title: "Collect match fees",
+  info_feat_pay_collect_body:
+    "After each match MatchTime asks the money collector how much each player owes, then sends each player a private link to pay. Card payments go to the money collector's bank, which needs connecting below.",
+  info_feat_pay_bank_title: "Pay by Bank",
+  info_feat_pay_bank_body: "Players pay straight from their banking app. It is the cheapest way to pay.",
+  info_feat_pay_card_title: "Card and Apple Pay",
+  info_feat_pay_card_body: "Players pay by card, Apple Pay or Google Pay. Stripe takes a small fee from each payment.",
+  info_feat_pay_direct_title: "Pay organiser directly",
+  info_feat_pay_direct_body:
+    "Players can say they paid the money collector in cash or by bank transfer. The money collector confirms it. There is no fee.",
+  info_feat_badges_title: "Badge announcements",
+  info_feat_badges_body:
+    "Two days after each match MatchTime posts the new badges players earned in the group. Turn it off and nothing about badges is posted in the group.",
+
+  // /admin/activities
+  info_act_page_title: "Activities",
+  info_act_page_body:
+    "An activity is one of your regular weekly games: its day, kick-off time, venue and format. MatchTime creates the next match for every active activity by itself each night.",
+  info_act_generate_title: "Generate match",
+  info_act_generate_body:
+    "Creates the next match for this activity now, instead of waiting for the nightly run. It won't create a second match on the same day.",
+  info_act_active_title: "Active or inactive",
+  info_act_active_body:
+    "Active activities get their matches created by themselves. Deactivate one to stop new matches; matches already created and their history stay.",
+  info_act_deadline_title: "Sign-ups close",
+  info_act_deadline_body:
+    "How many hours before kick-off MatchTime stops chasing for players. Players can still say IN or OUT right up to kick-off.",
+
+  // /admin/block-bookings and /admin/matches/bulk
+  info_bb_page_title: "Block bookings",
+  info_bb_page_body:
+    "A block booking matches how you book the pitch: a run of weekly games paid up front, for example 10 Tuesdays. It creates all those matches at once. MatchTime still only posts about the next match.\n\n" +
+    "Cancel remaining cancels the block's future matches without posting in the group. Restore cancelled brings them back, also silently. Delete block removes the empty future matches; played matches and anything with data are kept.",
+  info_bulk_page_title: "Bulk cancel or restore",
+  info_bulk_page_body:
+    "For holidays and mistakes. Pick the dates, check the list, then confirm. Cancelling posts nothing in the group unless you tick the announce box. Restoring is always silent.",
+
+  // /admin/matches/[matchId]
+  info_cancel_title: "Cancel match",
+  info_cancel_body:
+    "Use this when a match won't happen. MatchTime posts one cancellation message in the group and nothing else for this match: no reminders, no ratings, no Man of the Match. A cancelled match can be brought back from Bulk cancel or restore.",
+  info_switch_title: "Switch format",
+  info_switch_body:
+    "Use this when the format changes for one week, for example 7-a-side to 5-a-side. The match moves to the other activity, anyone over the new size goes to the bench, and MatchTime posts the new line-up in the group. Only activities of the same sport with a different size are offered.",
+  info_teams_page_title: "Team management",
+  info_teams_page_body:
+    "Generate teams splits the confirmed players into two even sides using club ratings and positions. Regenerate makes fresh teams. Tap two players to swap them, or use the buttons to move a player to the other side or take them off. Swap colours keeps the teams and swaps their names.",
+  info_teams_unassigned_title: "Not on a team",
+  info_teams_unassigned_body: "Confirmed players who aren't on a team yet, for example a late replacement. Put each one on a side.",
+  info_teams_bench_title: "Bench",
+  info_teams_bench_body: "Players waiting for a place. Moving one up confirms them for this match and puts them on the side you pick.",
+  info_teams_publish_title: "Publish teams",
+  info_teams_publish_body: "Marks these teams as final for the match. You can still swap players afterwards.",
+  info_teams_score_title: "Match score",
+  info_teams_score_body:
+    "Enter the final score once the match is over. Saving marks the match as played and updates the Elo of each player on the teams, a strength score at this club based on results.",
+
+  // /admin/clubs (platform owner only)
+  info_clubs_waiting_title: "Waiting for you",
+  info_clubs_waiting_body:
+    "Clubs that added MatchTime to their group and are waiting for your decision. MatchTime stays silent there until you decide. Approve switches it on, says hello in the group and messages the organiser. Reject leaves the group and sends the organiser one polite message.",
+  info_clubs_live_title: "Live clubs",
+  info_clubs_live_body:
+    "Clubs that joined by themselves and that you approved. New clubs have tighter daily limits for their first days. Turn off makes MatchTime leave the group and go silent; nobody is messaged.",
+  info_clubs_fee_title: "Club fee",
+  info_clubs_fee_body:
+    "The club's plan and billing state, this month and last month, who pays, and its AI cost over the last 30 days. Plan sets the monthly maximum. Start free month starts the one free month a club gets.",
+  info_clubs_unsolicited_title: "Groups nobody asked MatchTime into",
+  info_clubs_unsolicited_body:
+    "Groups someone added MatchTime to without a code. MatchTime stays silent there and leaves by itself after 48 hours, or press Leave to go now. Nobody in the group is messaged.",
+  info_clubs_rejected_title: "Rejected",
+  info_clubs_rejected_body: "Clubs you rejected, newest first. MatchTime left their groups.",
+  info_clubs_suspended_title: "Turned off",
+  info_clubs_suspended_body: "Live clubs you turned off, newest first. MatchTime left their groups and is silent there.",
+  info_clubs_limits_title: "Today's site limits",
+  info_clubs_limits_body:
+    "How many sign-up codes, new clubs and group connections the whole site has used today, against the daily caps. They reset at midnight, London time.",
+
+  // /admin/health (platform owner only)
+  info_health_status_title: "Current status",
+  info_health_status_body:
+    "One card per club with MatchTime switched on. All good: nothing open. Worth a look: a warning is open. Needs attention: something serious is open. The last line says when that club's bot last checked in.",
+  info_health_alerts_title: "Recent alerts",
+  info_health_alerts_body:
+    "Everything flagged in the last 30 days. Still happening: seen again at the latest check. Cleared: it stopped. One-off: a single event rather than an ongoing check. Nothing here is sent to your phone or email.",
+
+  // /billing/[orgId]
+  info_bill_page_title: "How the club fee works",
+  info_bill_page_body:
+    "MatchTime charges your club once a month for the games it ran, never more than the monthly maximum. Cancelled games and weeks nobody played are free. The charge is taken the morning after the month ends, VAT included.",
+  info_bill_card_title: "Who looks after the card",
+  info_bill_card_body:
+    "The money collector looks after the card, or the owner when there is no money collector. Saving a card takes no money. Admins can see this page but can't change the card.",
+  info_bill_past_title: "Past months",
+  info_bill_past_body: "Each finished month with what was charged. See games lists the month's games and whether each one counted.",
 };

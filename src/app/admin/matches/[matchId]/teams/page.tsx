@@ -15,6 +15,8 @@ import {
   publishTeams,
 } from "@/app/actions/teams";
 import { updateMatchScore } from "@/app/actions/matches";
+import { SectionInfo } from "@/components/info/section-info";
+import { useOrgLang } from "@/components/info/org-lang";
 
 interface Player {
   id: string;
@@ -30,6 +32,7 @@ interface TeamAssignment {
 }
 
 export default function TeamManagementPage() {
+  const lang = useOrgLang();
   const { matchId } = useParams<{ matchId: string }>();
   const [match, setMatch] = useState<{
     status: string;
@@ -184,7 +187,10 @@ export default function TeamManagementPage() {
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold text-slate-800">Team management</h1>
+        <h1 className="flex items-center gap-1 text-2xl font-bold text-slate-800">
+          Team management
+          <SectionInfo k="teams_page" lang={lang} />
+        </h1>
         <div className="flex items-center gap-2">
           <a
             href={`/admin/matches/${matchId}/switch-format`}
@@ -192,6 +198,7 @@ export default function TeamManagementPage() {
           >
             Switch format
           </a>
+          <SectionInfo k="switch" lang={lang} />
           {match.status !== "COMPLETED" && match.status !== "CANCELLED" && (
             <a
               href={`/admin/matches/${matchId}/cancel`}
@@ -200,6 +207,7 @@ export default function TeamManagementPage() {
               Cancel match
             </a>
           )}
+          {match.status !== "COMPLETED" && match.status !== "CANCELLED" && <SectionInfo k="cancel" lang={lang} />}
           <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 capitalize">
             {match.status.replace(/_/g, " ").toLowerCase()}
           </span>
@@ -251,6 +259,7 @@ export default function TeamManagementPage() {
               <p className="text-sm font-medium text-amber-800 mb-3 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" />
                 {unassigned.length} confirmed player{unassigned.length === 1 ? "" : "s"} not on a team
+                <SectionInfo k="teams_unassigned" lang={lang} />
               </p>
               <ul className="space-y-2">
                 {unassigned.map((u) => (
@@ -277,8 +286,9 @@ export default function TeamManagementPage() {
           {/* Bench — promote a standby player straight into a team */}
           {benchPlayers.length > 0 && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-              <p className="text-sm font-medium text-slate-700 mb-3">
-                🪑 Bench ({benchPlayers.length}) — move up into the squad
+              <p className="flex items-center gap-1 text-sm font-medium text-slate-700 mb-3">
+                🪑 Bench ({benchPlayers.length}): move up into the squad
+                <SectionInfo k="teams_bench" lang={lang} />
               </p>
               <ul className="space-y-2">
                 {benchPlayers.map((u) => (
@@ -326,6 +336,11 @@ export default function TeamManagementPage() {
                 Publish teams
               </button>
             )}
+            {match.status === "TEAMS_GENERATED" && (
+              <span className="self-center">
+                <SectionInfo k="teams_publish" lang={lang} />
+              </span>
+            )}
           </div>
         </>
       )}
@@ -334,7 +349,10 @@ export default function TeamManagementPage() {
       {(match.status === "TEAMS_PUBLISHED" || match.status === "COMPLETED") && (
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
           <div className="px-6 py-4 border-b border-slate-100">
-            <h2 className="font-semibold text-slate-800">Match score</h2>
+            <h2 className="flex items-center gap-1 font-semibold text-slate-800">
+              Match score
+              <SectionInfo k="teams_score" lang={lang} />
+            </h2>
           </div>
           <div className="p-6 flex flex-wrap items-center gap-5">
             <div className="flex items-center gap-3">

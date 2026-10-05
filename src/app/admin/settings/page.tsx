@@ -13,6 +13,8 @@ import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
 import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
 import { PickModeRows } from "@/components/settings/pick-mode-rows";
 import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
+import { SectionInfo } from "@/components/info/section-info";
+import { FEATURE_INFO } from "@/lib/info-copy";
 
 type FeatureKey = ToggleableKey;
 
@@ -256,6 +258,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Settings className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">General</h2>
+          <SectionInfo k="st_general" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <div>
@@ -288,6 +291,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Shirt className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">Team names</h2>
+          <SectionInfo k="st_team_names" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <p className="text-sm text-slate-500">
@@ -339,6 +343,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Languages className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">Bot language</h2>
+          <SectionInfo k="st_language" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <p className="text-sm text-slate-500">
@@ -366,6 +371,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <LinkIcon className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">Invite link</h2>
+          <SectionInfo k="st_invite" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <p className="text-sm text-slate-500">
@@ -393,6 +399,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <SlidersHorizontal className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">Bot features</h2>
+          <SectionInfo k="st_features" lang={org.language} />
         </div>
         <div className="p-6">
           <p className="text-sm text-slate-500 mb-4">
@@ -410,9 +417,10 @@ export default function SettingsPage() {
                   className="flex items-center justify-between gap-4 py-3"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800">
-                      {m.label}
-                    </p>
+                    <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
+                      <span>{m.label}</span>
+                      <SectionInfo k={FEATURE_INFO[key]} lang={org.language} />
+                    </div>
                     <p className="text-xs text-slate-500">{m.blurb}</p>
                   </div>
                   <button
@@ -444,7 +452,10 @@ export default function SettingsPage() {
               return (
                 <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-badge-announcements">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800">{s.badges_feature_label}</p>
+                    <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
+                      {s.badges_feature_label}
+                      <SectionInfo k={FEATURE_INFO.badgeAnnouncements} lang={org.language} />
+                    </div>
                     <p className="text-xs text-slate-500">{s.badges_feature_blurb}</p>
                   </div>
                   <button
@@ -481,6 +492,7 @@ export default function SettingsPage() {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
               <Repeat className="w-4 h-4 text-slate-500" />
               <h2 className="font-semibold text-slate-800">{s.wr_section_title}</h2>
+              <SectionInfo k="st_weekly" lang={org.language} />
             </div>
             <div className="p-6">
               <p className="text-sm text-slate-500 mb-4">{s.wr_section_lead}</p>
@@ -538,7 +550,7 @@ export default function SettingsPage() {
           the collector picker below, which only exists while payment
           collection is on. */}
       {org.billing && (
-        <BillingSettingsCard data={org.billing} collectorAnchor={org.features?.paymentCollection ? "#payments" : null} />
+        <BillingSettingsCard data={org.billing} lang={org.language} collectorAnchor={org.features?.paymentCollection ? "#payments" : null} />
       )}
 
       {/* Payments — Connect bank */}
@@ -547,13 +559,15 @@ export default function SettingsPage() {
           <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
             <Landmark className="w-4 h-4 text-slate-500" />
             <h2 className="font-semibold text-slate-800">Money collector&apos;s bank</h2>
+          <SectionInfo k="st_bank" lang={org.language} />
           </div>
           <div className="p-6 space-y-4">
             {/* Who collects the money */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Money collector
-              </label>
+              <div className="flex items-center gap-1 mb-1.5">
+                <label className="block text-sm font-medium text-slate-700">Money collector</label>
+                <SectionInfo k="st_collector" lang={org.language} />
+              </div>
               <select
                 value={org.paymentHolderId ?? ""}
                 onChange={(e) => changeHolder(e.target.value)}
@@ -647,6 +661,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">WhatsApp bot</h2>
+          <SectionInfo k="st_whatsapp" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <span

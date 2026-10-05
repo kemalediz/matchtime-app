@@ -88,7 +88,10 @@ export default async function FinishSetupPage({
     (onb.unresolvedMembers as unknown as { name: string | null; userId: string }[] | null) ?? [];
   const schedule = (onb.capturedSchedule as unknown as CapturedSchedule | null) ?? {};
 
-  const sport = await db.sport.findFirst({ where: { orgId: onb.orgId } });
+  const [sport, org] = await Promise.all([
+    db.sport.findFirst({ where: { orgId: onb.orgId } }),
+    db.organisation.findUnique({ where: { id: onb.orgId }, select: { language: true } }),
+  ]);
   const positions = sport?.positions ?? [];
 
   return (
@@ -98,6 +101,7 @@ export default async function FinishSetupPage({
       unresolved={unresolved}
       schedule={schedule}
       positions={positions}
+      lang={org?.language ?? null}
     />
   );
 }

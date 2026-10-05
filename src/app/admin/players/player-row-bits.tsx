@@ -8,6 +8,7 @@
  */
 import { Sparkles, GitMerge } from "lucide-react";
 import { t } from "@/lib/i18n/t";
+import { SectionInfo } from "@/components/info/section-info";
 import type { Lang } from "@/lib/i18n/lang";
 import type { DuplicateSuggestion } from "@/lib/placeholder-link-rules";
 
@@ -37,6 +38,7 @@ export function ProvisionalPlayersBanner({
       <div className="flex items-center gap-2 mb-2">
         <Sparkles className="w-4 h-4 text-amber-600" />
         <p className="font-semibold text-amber-900">{s.admin_players_new_heading({ count: n })}</p>
+        <SectionInfo k="pl_new" lang={lang} />
       </div>
       <p className="text-sm text-amber-800">{s.admin_players_new_body({ names })}</p>
     </div>
@@ -95,6 +97,7 @@ export function DuplicateSuggestionsBanner({
       <div className="flex items-center gap-2 mb-2">
         <GitMerge className="w-4 h-4 text-blue-600" />
         <p className="font-semibold text-blue-900">{s.admin_players_duplicates_heading}</p>
+        <SectionInfo k="pl_duplicates" lang={lang} />
       </div>
       <ul className="space-y-2">
         {suggestions.map((d) => {
@@ -113,6 +116,31 @@ export function DuplicateSuggestionsBanner({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * F1 (2026-10-05): one ⓘ per column and per row control, in a line under
+ * the page's lead so it shows at every width (the column headers are
+ * hidden on a phone).
+ */
+export function PlayersInfoLegend({ lang }: { lang: Lang }) {
+  const items = [
+    { k: "pl_seed", title: t(lang).info_pl_seed_title },
+    { k: "pl_club_rating", title: t(lang).info_pl_club_rating_title },
+    { k: "pl_aliases", title: t(lang).info_pl_aliases_title },
+    { k: "pl_merge", title: t(lang).info_pl_merge_title },
+    { k: "pl_role", title: t(lang).info_pl_role_title },
+  ] as const;
+  return (
+    <div data-testid="players-info-legend" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+      {items.map((it) => (
+        <span key={it.k} className="inline-flex items-center gap-1">
+          {it.title}
+          <SectionInfo k={it.k} lang={lang} />
+        </span>
+      ))}
     </div>
   );
 }

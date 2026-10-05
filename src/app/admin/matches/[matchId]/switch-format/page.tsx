@@ -5,6 +5,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRightLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { SectionInfo } from "@/components/info/section-info";
+import { useOrgLang } from "@/components/info/org-lang";
 import { switchMatchFormat } from "@/app/actions/matches";
 
 interface Sport {
@@ -30,6 +32,7 @@ interface MatchDetail {
 }
 
 export default function SwitchFormatPage() {
+  const lang = useOrgLang();
   const { matchId } = useParams<{ matchId: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -101,6 +104,7 @@ export default function SwitchFormatPage() {
         <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
           <ArrowRightLeft className="w-5 h-5 text-slate-500" />
           Switch match format
+          <SectionInfo k="switch" lang={lang} />
         </h2>
       </div>
 

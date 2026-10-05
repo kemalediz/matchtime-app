@@ -64,7 +64,9 @@ test("mobile render + edit seed + add phone + apply writes to the DB", async ({ 
   await expect(page.getByText("scored twice in the chat")).toBeVisible();
 
   // Edit Pat's seed rating 7 → 9.
-  const seedInput = page.getByLabel(/seed rating/i).first();
+  // A spinbutton, not getByLabel: the ⓘ beside the field (F1) is named
+  // "What is Seed rating?" too.
+  const seedInput = page.getByRole("spinbutton", { name: /seed rating/i }).first();
   await seedInput.fill("9");
   await page.keyboard.press("Tab");
 

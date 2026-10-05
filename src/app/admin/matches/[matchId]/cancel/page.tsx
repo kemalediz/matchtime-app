@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { SectionInfo } from "@/components/info/section-info";
+import { useOrgLang } from "@/components/info/org-lang";
 import { cancelMatch } from "@/app/actions/matches";
 import { format } from "date-fns";
 
@@ -18,6 +20,7 @@ interface MatchDetail {
 }
 
 export default function CancelMatchPage() {
+  const lang = useOrgLang();
   const { matchId } = useParams<{ matchId: string }>();
   const router = useRouter();
   const [match, setMatch] = useState<MatchDetail | null>(null);
@@ -58,6 +61,7 @@ export default function CancelMatchPage() {
         <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
           <XCircle className="w-5 h-5 text-red-500" />
           Cancel match
+          <SectionInfo k="cancel" lang={lang} />
         </h2>
       </div>
 
