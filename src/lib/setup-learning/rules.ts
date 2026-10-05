@@ -13,22 +13,31 @@
  *   2. The model's answer is parsed defensively (`parseDetection`). Every
  *      evidence quote is checked against the chat, character for
  *      character after normalising spaces and case; a quote that is not in
- *      the chat is dropped, and an answer left with no quote counts as not
- *      shown. Quotes with long digit runs (account numbers) are dropped.
- *   3. Only a HIGH-confidence answer with a verified quote changes a
- *      setting (`planSetup`), and only when the setting is still at its
- *      default and the organiser has not saved it on /admin/settings
- *      (`settingsSetByOrganiser`). Anything else is recorded as `kept`,
- *      with the reason.
+ *      the chat is dropped (so is a summary the model wrote itself), and
+ *      an answer left with no quote counts as not shown. Quotes with long
+ *      digit runs (account numbers) are dropped. Each quote kept stands
+ *      for a DIFFERENT message of the chat.
+ *   3. Only a HIGH-confidence answer with TWO verified quotes, from two
+ *      different messages, changes a setting (`planSetup`), and only when
+ *      the setting is still at its default and the organiser has not saved
+ *      it on /admin/settings (`settingsSetByOrganiser`). Anything else is
+ *      recorded as `kept`, with the reason ("thin-evidence" for one
+ *      quote). The first live check (2026-10-05) switched "organisers
+ *      pick" on for a group on one line, "let's find someone for his
+ *      place": one message is a moment, two are a habit.
  *   4. The weekly game (day, time, venue, size) and the language were
  *      entered by the organiser when the club was created on the website,
  *      so they are NEVER changed: when the chat clearly says something
  *      different, it becomes a SUGGESTION in the DM with a link.
  *   5. A monthly list (regulars prepay the month, PAYG fill-ins, credits
- *      for missed games) has no setting yet: it is NOTED, shown in the DM
- *      and on /admin/settings and /admin/clubs, and it holds payment
- *      tracking off, because tracking works game by game and would chase
- *      players who paid for the month.
+ *      for missed games) has no setting yet (the monthly squad mode is
+ *      being built): it is NOTED, shown in the DM and on /admin/settings
+ *      and /admin/clubs. Seen with HIGH confidence it switches NOTHING on:
+ *      a group that runs by the month is not run by the weekly settings,
+ *      and the same live check switched rolling squad and organisers pick
+ *      on for one. At medium confidence it still holds payment tracking
+ *      off, because tracking works game by game and would chase players
+ *      who paid for the month.
  */
 import type { HistoryMessage } from "../onboarding-enrichment-reconcile";
 import { formatLondon } from "../london-time";
@@ -164,27 +173,49 @@ export function normaliseForMatch(s: string): string {
     .toLowerCase();
 }
 
+/** A setting is switched only on this many quotes, each from its own message. */
+export const MIN_QUOTES_TO_APPLY = 2;
+/** At most this many quotes are kept for one answer. */
+const MAX_QUOTES = 2;
+
 /**
- * The quotes that really are in the chat, at most two. A quote is kept
- * when, normalised, it is a substring of one normalised message. Quotes
- * with six or more digits in a row are dropped whatever they match: they
- * are account numbers or phone numbers, and they never go in a DM.
+ * The quotes that really are in the chat, at most two, in the model's
+ * order, EACH STANDING FOR A DIFFERENT MESSAGE. A quote is kept when,
+ * normalised, it is a substring of a normalised message that no quote
+ * kept before it stands for. So two quotes cut from one message count
+ * once, and the same sentence posted again another week may be quoted
+ * twice: it is a second message. The length of the result is therefore
+ * the number of separate messages behind an answer, which is what
+ * `planSetup` counts. Quotes with six or more digits in a row are dropped
+ * whatever they match: they are account numbers or phone numbers, and
+ * they never go in a DM.
  */
 export function verifyEvidence(raw: unknown, history: HistoryMessage[]): string[] {
   if (!Array.isArray(raw)) return [];
   const haystack = history.map((m) => normaliseForMatch(m.text));
-  const out: string[] = [];
+  const kept: Array<{ quote: string; in: number[]; at: number }> = [];
+  const taken = () => new Set(kept.map((k) => k.at));
   for (const q of raw) {
     if (typeof q !== "string") continue;
     const quote = q.replace(/\s+/g, " ").trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
     if (quote.length < 3 || quote.length > MAX_QUOTE_CHARS) continue;
     if (/\d{6,}/.test(quote.replace(/[\s-]/g, ""))) continue;
     const n = normaliseForMatch(quote);
-    if (!haystack.some((h) => h.includes(n))) continue;
-    if (!out.some((o) => normaliseForMatch(o) === n)) out.push(quote);
-    if (out.length === 2) break;
+    const found = haystack.flatMap((h, i) => (h.includes(n) ? [i] : []));
+    if (found.length === 0) continue;
+    let at = found.find((i) => !taken().has(i));
+    if (at === undefined) {
+      // Every message with this quote already stands for an earlier one:
+      // move that earlier quote to another of its messages if it has one.
+      const holder = kept.find((k) => found.includes(k.at) && k.in.some((i) => !taken().has(i)));
+      if (!holder) continue;
+      at = holder.at;
+      holder.at = holder.in.find((i) => !taken().has(i))!;
+    }
+    kept.push({ quote, in: found, at });
+    if (kept.length === MAX_QUOTES) break;
   }
-  return out;
+  return kept.map((k) => k.quote);
 }
 
 function pick<A extends string>(v: unknown, allowed: readonly A[], fallback: A): A {
@@ -343,6 +374,8 @@ export type KeptReason =
   | "already"
   | "not-default"
   | "monthly-list"
+  /** High confidence, but fewer than MIN_QUOTES_TO_APPLY messages behind it. */
+  | "thin-evidence"
   | `invalid:${WeeklyDeadlineError}`;
 export interface KeptItem {
   key: LearnedKey;
@@ -368,8 +401,13 @@ export interface SetupPlan {
   data: SetupData;
 }
 
+/** Enough to SUGGEST or note: high confidence and a quote from the chat. */
 function shown(a: { confidence: Confidence; evidence: string[] }): boolean {
   return a.confidence === "high" && a.evidence.length > 0;
+}
+/** Enough to CHANGE a setting: also two quotes, each from its own message. */
+function proven(a: { confidence: Confidence; evidence: string[] }): boolean {
+  return shown(a) && a.evidence.length >= MIN_QUOTES_TO_APPLY;
 }
 
 export function currentValue(key: LearnedKey, org: OrgSettingsState): SettingValue {
@@ -446,9 +484,11 @@ export function planSetup(args: {
 
   const organiserSet = new Set(org.settingsSetByOrganiser);
 
-  // Monthly list: noted, never applied. It holds payment tracking off.
+  // Monthly list: noted, never applied. Seen with high confidence it
+  // switches nothing on at all; otherwise it holds payment tracking off.
   const monthly = d.monthlyList.answer === "monthly_list" && d.monthlyList.confidence !== "low";
-  const paymentsShown = d.payments.answer === "players_confirm_paying" && shown(d.payments);
+  const monthlyHoldsAll = monthly && d.monthlyList.confidence === "high";
+  const paymentsProven = d.payments.answer === "players_confirm_paying" && proven(d.payments);
   if (monthly) {
     plan.noted.push({
       key: "monthlyList",
@@ -457,35 +497,26 @@ export function planSetup(args: {
       creditForMissedGames: d.monthlyList.creditForMissedGames,
       confidence: d.monthlyList.confidence,
       evidence: d.monthlyList.evidence,
-      heldPaymentTracking: paymentsShown,
+      heldPaymentTracking: paymentsProven,
     });
   }
 
   const candidates: Array<{ key: LearnedKey; to: SettingValue; evidence: string[] }> = [];
-  if (d.squad.answer === "rolling" && shown(d.squad)) {
-    candidates.push({ key: "rollingSquad", to: true, evidence: d.squad.evidence });
+  const consider = (key: LearnedKey, to: SettingValue, a: { confidence: Confidence; evidence: string[] }) => {
+    if (!shown(a)) return;
+    if (!proven(a)) plan.kept.push({ key, reason: "thin-evidence" });
+    else if (monthlyHoldsAll || (monthly && key === "paymentTracking")) plan.kept.push({ key, reason: "monthly-list" });
+    else candidates.push({ key, to, evidence: a.evidence });
+  };
+  if (d.squad.answer === "rolling") consider("rollingSquad", true, d.squad);
+  if (d.openPlaces.answer === "organisers_pick") consider("organiserPicks", "organiser", d.openPlaces);
+  if (d.dropOutDeadline.day !== null && d.dropOutDeadline.time !== null) {
+    consider("dropOutDeadline", { day: d.dropOutDeadline.day, time: d.dropOutDeadline.time }, d.dropOutDeadline);
   }
-  if (d.openPlaces.answer === "organisers_pick" && shown(d.openPlaces)) {
-    candidates.push({ key: "organiserPicks", to: "organiser", evidence: d.openPlaces.evidence });
+  if (d.listPublished.day !== null && d.listPublished.time !== null) {
+    consider("listPublish", { day: d.listPublished.day, time: d.listPublished.time }, d.listPublished);
   }
-  if (shown(d.dropOutDeadline)) {
-    candidates.push({
-      key: "dropOutDeadline",
-      to: { day: d.dropOutDeadline.day!, time: d.dropOutDeadline.time! },
-      evidence: d.dropOutDeadline.evidence,
-    });
-  }
-  if (shown(d.listPublished)) {
-    candidates.push({
-      key: "listPublish",
-      to: { day: d.listPublished.day!, time: d.listPublished.time! },
-      evidence: d.listPublished.evidence,
-    });
-  }
-  if (paymentsShown) {
-    if (monthly) plan.kept.push({ key: "paymentTracking", reason: "monthly-list" });
-    else candidates.push({ key: "paymentTracking", to: true, evidence: d.payments.evidence });
-  }
+  if (d.payments.answer === "players_confirm_paying") consider("paymentTracking", true, d.payments);
 
   const accepted: typeof candidates = [];
   for (const c of candidates) {
