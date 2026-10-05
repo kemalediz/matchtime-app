@@ -83,6 +83,7 @@ const FEATURES_ON: OrgFeatures = {
   rollingSquad: false,
   benchPickMode: "first-come",
   badgeAnnouncements: true,
+  squadMode: "weekly",
 };
 
 /** A model that answers from a table keyed on the message body, and

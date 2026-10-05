@@ -23,6 +23,7 @@ import { db } from "./db";
 import type { FeatureKey } from "./org-features-meta";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { normaliseBenchPickMode, type BenchPickMode } from "./squad-capacity";
+import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
 
 export { FEATURE_META } from "./org-features-meta";
 export type { FeatureKey, ToggleableKey } from "./org-features-meta";
@@ -72,6 +73,13 @@ export interface OrgFeatures {
    *  Not in `FEATURE_META` (which also drives the in-group setup menu);
    *  it has its own row on /admin/settings. */
   badgeAnnouncements: boolean;
+  /** How the squad works (2026-10-05, `Organisation.squadMode`, monthly
+   *  squad slice 2): "weekly" (today, every existing club) or "monthly"
+   *  (regulars pay for the month, PAYG players fill the gaps). Anything
+   *  the code does not recognise reads as "weekly". Not in `FEATURE_META`;
+   *  it has its own section on /admin/settings. Slice 2: nothing but the
+   *  settings page and /admin/months reads it yet. */
+  squadMode: SquadMode;
 }
 
 
@@ -91,6 +99,7 @@ const ALL_OFF: OrgFeatures = {
   rollingSquad: false,
   benchPickMode: "first-come",
   badgeAnnouncements: false,
+  squadMode: "weekly",
 };
 
 function fromRow(row: {
@@ -109,6 +118,7 @@ function fromRow(row: {
   rollingSquadEnabled: boolean;
   benchPickMode?: string | null;
   featureBadgeAnnouncements?: boolean | null;
+  squadMode?: string | null;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -127,6 +137,8 @@ function fromRow(row: {
     benchPickMode: normaliseBenchPickMode(row.benchPickMode),
     // Absent (an older caller's select): the column default, ON.
     badgeAnnouncements: row.featureBadgeAnnouncements ?? true,
+    // Absent or unrecognised: weekly, today's behaviour.
+    squadMode: normaliseSquadMode(row.squadMode),
   };
 }
 
@@ -146,6 +158,7 @@ const SELECT = {
   rollingSquadEnabled: true,
   benchPickMode: true,
   featureBadgeAnnouncements: true,
+  squadMode: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {

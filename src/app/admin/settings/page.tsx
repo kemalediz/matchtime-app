@@ -16,6 +16,7 @@ import { BillingSettingsCard, type BillingCardData } from "@/components/settings
 import { SectionInfo } from "@/components/info/section-info";
 import { FEATURE_INFO } from "@/lib/info-copy";
 import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
+import { MonthlySquadSection, type MonthlySquadData } from "@/components/settings/monthly-squad-section";
 
 type FeatureKey = ToggleableKey;
 
@@ -51,6 +52,8 @@ interface OrgData {
   /** Club fee billing (slice B2): null or absent with billing off and for
    *  an exempt club, so nothing new shows. */
   billing?: BillingCardData | null;
+  /** "Monthly squad" (2026-10-05). Admins only; "weekly" unless switched on. */
+  monthlySquad?: MonthlySquadData;
 }
 
 export default function SettingsPage() {
@@ -491,6 +494,7 @@ export default function SettingsPage() {
       {(() => {
         const s = t(org.language);
         const on = org.weeklyRoutine?.rollingSquad ?? false;
+        const monthly = org.monthlySquad?.squadMode === "monthly";
         return (
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="weekly-routine">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
@@ -501,7 +505,10 @@ export default function SettingsPage() {
             <div className="p-6">
               <p className="text-sm text-slate-500 mb-4">{s.wr_section_lead}</p>
               <div className="divide-y divide-slate-100">
-                <div className="flex items-center justify-between gap-4 py-3">
+                {/* A monthly club has no rolling squad: the month's regulars
+                    take its place (monthly squad, slice 2). */}
+                {!monthly && (
+                <div className="flex items-center justify-between gap-4 py-3" data-testid="wr-rolling">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
                       {s.wr_rolling_label}
@@ -528,6 +535,7 @@ export default function SettingsPage() {
                     />
                   </button>
                 </div>
+                )}
                 {/* Organiser pick (slice 2b): who fills an open place. */}
                 <PickModeRows
                   orgId={org.id}
@@ -549,6 +557,22 @@ export default function SettingsPage() {
           </section>
         );
       })()}
+
+      {/* Monthly squad (2026-10-05, slice 2). Admins only (the API sends
+          `monthlySquad` to nobody else). Off by default: a weekly club
+          sees the one switch. */}
+      {org.monthlySquad && (
+        <MonthlySquadSection
+          orgId={org.id}
+          language={org.language}
+          initial={org.monthlySquad}
+          onSaved={({ rollingSquad, ...monthlySquad }) =>
+            setOrg((prev) =>
+              prev ? { ...prev, monthlySquad, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad } } : prev,
+            )
+          }
+        />
+      )}
 
       {/* Club fee billing (slice B2). "Choose a money collector" points at
           the collector picker below, which only exists while payment

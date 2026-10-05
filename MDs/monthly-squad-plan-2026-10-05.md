@@ -2,6 +2,11 @@
 
 Design only. 2026-10-05. No code, schema or production row is changed by this PR.
 
+**Status, 2026-10-05.** Kemal accepted all six recommendations (D1 to D6, section 13). Slice 2
+is built (schema, settings, the month page, and starting a month part-way through, section
+4.5). Kemal also asked not to wait for November, so the slice order changed: see "Timing" below
+and the order at the top of section 12.
+
 Written for the "Vets MNF" prospect group (Monday night 7-a-side, about 14 players) after
 Kemal joined it. Everything here is a per-club setting that is OFF by default, so Sutton FC
 and every other club behave exactly as they do today.
@@ -66,9 +71,17 @@ call per paste. No live-LLM run is needed for any slice.
 **Club fee:** unchanged. It is still charged by games played. On the pricing screen the club
 fee tip says it monthly: "add about 80p to each regular's month".
 
-**Timing.** November 2026 has five Mondays (2, 9, 16, 23 and 30). That makes it a good first
-month, but its list goes out around 26 October. So slices 1 to 4 must be live by about 24
-October, slice 5 by 2 November, and slice 6 by 1 December.
+**Timing (changed 2026-10-05: start this week, not in November).** A club can open the
+CURRENT month part-way through (section 4.5), so the order is now:
+
+1. **Slices 1 and 2 now.** The organiser switches the mode on, opens October on `/admin/months`
+   and seeds it from his own list.
+2. **Slice 5 next (the weekly flow),** so the club can run the rest of October: the Mondays of
+   12, 19 and 26 October.
+3. **Slices 3 and 4 after that,** for the November sign-up. November 2026 has five Mondays
+   (2, 9, 16, 23 and 30) and its list goes out around 26 October, so both must be live by
+   about 24 October.
+4. **Slice 6 by 1 December** (credits and month close). Slice 7 stays optional.
 
 **Decisions for Kemal:** six, in section 13, each with a recommendation.
 
@@ -207,6 +220,8 @@ All additive. No existing column changes meaning.
 | `venueCostPence` | Optional bookkeeping, for the suggestion and the summary. |
 | `payByAt` | The payment deadline. |
 | `listOpenedAt`, `pricedAt`, `closedAt`, `summarySentAt` | Idempotency claims, compare-and-set like `rollingSeededAt`. |
+| `startedMidMonthAt`, `startedByUserId` | Set when an organiser opened the month after it had begun (4.5). Null for a month MatchTime opened itself. |
+| `gamesPlayedBeforeStart` | Games of the month already played when it was started here. They count as played for every regular seeded then (4.5). |
 
 **`SquadMonthMember`**: one row per person per month.
 
@@ -225,13 +240,14 @@ All additive. No existing column changes meaning.
 | `paidAt`, `paidAmountPence`, `paidConfirmedByUserId`, `paymentMethod` | Confirmed: by the collector, or by Stripe (`"bank"`, `"card"` or `"cash"`). |
 | `stripeSessionId` | Slice 7. |
 | `joinedAt`, `leftAt`, `refundedPence`, `note` | Mid-month changes. A refund is recorded only; MatchTime moves no money for a bank transfer. |
+| `source` | How the row came to be: `"seed-list"` or `"seed-tick"` (a mid-month start, 4.5), later `"paste"`, `"reply"`, `"page"`, `"admin"`. |
 
 **`SquadCredit`**: the credits ledger, one row per game of credit.
 
 | Column | Meaning |
 |---|---|
 | `orgId`, `userId`, `games` (usually 1) | |
-| `reason` | `"missed"`, `"cancelled-week"`, `"left-mid-month"` or `"manual"` |
+| `reason` | `"missed"`, `"cancelled-week"`, `"left-mid-month"`, `"manual"` or `"carried-in"` (4.5) |
 | `earnedMonthId`, `earnedMatchId` | Where it came from. |
 | `appliedMonthId`, `appliedAt` | Null until used. |
 | `voidedAt`, `voidedById`, `createdById` | An admin can void a wrong credit. Rows are never deleted, like `AttendanceEvent`. |
@@ -399,6 +415,56 @@ Credits used this month: 10 games.
 - **"In arrears":** credits earned after next month was priced apply to the month after next.
   Absences declared before pricing count straight away, which matches Sam's "anything you miss
   before you get after".
+
+### 4.5 Starting part-way through a month (added 2026-10-05, built in slice 2)
+
+Kemal: "I don't want to wait until November, can we start this week?" So a club does not have
+to begin on the 1st. An organiser opens the CURRENT month on `/admin/months` and tells
+MatchTime where things stand. Nothing is posted in the group.
+
+- **What the organiser gives:**
+  - who the regulars are, and who is PAYG;
+  - who has paid, and how much;
+  - credits carried into the month (games);
+  - optionally the share per game, so MatchTime can work out what each regular owes.
+- **Two ways in, one action** (`startCurrentMonth`, admin only, a monthly club only). Both are
+  on the page and can be mixed:
+  - **pasting the current list** (`source = "seed-list"`). `readMonthList` reads it with the
+    slice 1 reader (`parseMonthlyList`) and `draftSeedFromList` (`squad-month-rules.ts`)
+    matches its names to the club's players: the whole name, then a known alias, then the
+    leading name. The page ticks those players for the organiser to check. A name that fits
+    nobody, or more than one player, is listed for him to tick himself; MatchTime never guesses
+    between two players. Reading a list saves nothing.
+  - **ticking players** (`source = "seed-tick"`).
+- **"Paid but can't play" names are paid regulars** who are out this week. They are seeded as
+  regulars with "says paid" and no slot of their own on that list, so they take the lowest free
+  number. Reserves are not members of the month.
+- **The month is `running` at once.** Sign-up and pricing happened outside MatchTime, so
+  `listOpenedAt` and `pricedAt` stay empty and `startedMidMonthAt` is set.
+- **Games already played count as played for the regulars on the list.**
+  - The month's games are counted from the calendar (the fixture's weekday in that month), not
+    from Match rows: a club new to MatchTime has no Match row for a game it played before it
+    joined. October 2026 is 4 Mondays, with 1 played by Tuesday 6 October.
+  - `gamesScheduled` is the whole month and `gamesPlayedBeforeStart` the part already played.
+    The organiser can correct both (a week that was cancelled, for example).
+  - A regular's `gamesCovered` is the whole month. Nobody gets a credit or an absence for a
+    game played before the start. A regular who did miss one is given a credit by hand in
+    slice 6 ("Add credit").
+- **Paid state keeps the honesty rule (D3).**
+  - "Says paid" is a claim (`paidClaimedAt`) and never sets `paidAt`. A paid mark read from a
+    pasted list is only ever "says paid".
+  - "Paid, confirmed" is the organiser's own word on the page: it sets `paidAt` and
+    `paidConfirmedByUserId`.
+- **Credits carried in were already taken off what the regular paid,** so they are applied to
+  this month (`creditsApplied`) and written to the ledger as used: one `SquadCredit` a game,
+  reason `"carried-in"`, `appliedMonthId` = this month.
+- **PAYG players owe nothing for the month.** They pay game by game (5.6).
+- **Slot numbers:** a number written on a pasted list is kept. Ticked players are numbered in
+  the order shown, regulars first.
+- **Started once.** The unique key (club, fixture, month) makes a second press, or a second
+  organiser pressing at the same moment, a refusal.
+- **What it does not do yet:** the weekly flow for the rest of the month is slice 5. Until
+  then the month is a record the organiser keeps on the page.
 
 ---
 
@@ -768,6 +834,15 @@ Reached from any payment or sign-up DM and from "my month" in a DM. It shows:
 
 ## 12. Slices (one PR each, smallest first)
 
+**Build order (changed 2026-10-05):** 1, 2, **5**, 3, 4, 6, then 7 if wanted. Slice 5 moved
+ahead of 3 and 4 so that a club that starts part-way through October (4.5) can run the rest of
+the month. Slices 3 and 4 follow for the November sign-up. The slice numbers below are
+unchanged, so earlier references still hold. Two things slice 5 can no longer assume:
+
+- a `running` month may have no price (`sharePerGamePence` null) and no `pricedAt`, so the
+  first seeding of a mid-month start is triggered by the start, not by pricing;
+- "says paid" may come only from the organiser's seed, because the paid-claim paths are slice 4.
+
 Every slice:
 - follows red, green, refactor;
 - adds English and Turkish copy together;
@@ -798,6 +873,8 @@ Every slice:
   - `/admin/months` read-only skeleton;
   - the server actions, admin only;
   - no scheduler work.
+  - added 2026-10-05: starting the current month part-way through (4.5), by pasting the
+    group's list (read by the slice 1 reader) or by ticking players.
 - **Unit tests:**
   - setting validation;
   - only admins can change it;

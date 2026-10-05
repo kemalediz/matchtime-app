@@ -2388,6 +2388,148 @@ export const tr: Strings = {
   settings_learned_from: "Şu tür mesajlardan",
   settings_learned_check_head: "Kontrol etmeye değer (hiçbir şey değişmedi)",
   settings_learned_noted_head: "Fark edildi, henüz bir ayarı yok",
+  // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
+  // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
+  msq_section_title: "Aylık kadro",
+  msq_section_lead:
+    "Daimi oyuncuların aya yazılıp tüm ay için ödediği, boş yerleri maç başı ödeyen (PAYG) oyuncuların doldurduğu gruplar için. Siz açana kadar kapalı kalır.",
+  msq_mode_label: "Kadronuz nasıl oluşuyor",
+  msq_mode_blurb: "Haftalık, MatchTime'ın bugünkü çalışma şeklidir. Aylık, tüm ay süren bir liste içindir.",
+  msq_mode_weekly: "Haftalık (VARIM diyenler)",
+  msq_mode_monthly: "Aylık (daimi oyuncular ay için öder)",
+  msq_rolling_note: "Kadronuz aylıkken \"Kadro devam eder\" kapalıdır: onun yerini ayın daimi oyuncuları alır.",
+  msq_status_note:
+    "MatchTime aylık listeyi henüz grubunuzda paylaşmıyor. Bu ayın listesini şimdiden Aylar sayfasında tutabilirsiniz.",
+  msq_months_link: "Aylar sayfasını aç",
+  msq_payg_label: "Maç başı ücret, PAYG (£)",
+  msq_payg_blurb: "Maç başı ödeyen bir oyuncunun tek maç için ödediği tutar. Sabit bir ücretiniz yoksa boş bırakın.",
+  msq_opens_label: "Liste açılışı",
+  msq_opens_blurb: "Gelecek ayın listesi, ayın ilk maçından kaç gün önce açılsın.",
+  msq_opens_unit: "gün, ilk maçtan önce",
+  msq_credit_label: "Krediler",
+  msq_credit_blurb: "Ödemesini yapmış bir daimi oyuncu bir maçı kaçırırsa gelecek ay bir maç düşülsün mü?",
+  msq_credit_any: "Ödemiş daimi oyuncunun kaçırdığı her maç",
+  msq_credit_filled: "Yalnızca yeri doldurulduğunda",
+  msq_credit_none: "Kredi yok",
+  msq_instructions_label: "Ödeme talimatı",
+  msq_instructions_blurb: "Nasıl ödeneceğini anlatan kendi cümleleriniz. Oyunculara borçlarıyla birlikte gösterilir. İsteğe bağlı.",
+  msq_instructions_placeholder: "Banka bilgileri grup açıklamasında.",
+  msq_save: "Kaydet",
+  msq_saved: "Kaydedildi",
+  msq_switched_monthly: "Aylık kadro açık. \"Kadro devam eder\" kapalı.",
+  msq_switched_weekly: "Haftalık kadroya dönüldü",
+  msq_err_price: "8 veya 7.50 gibi bir ücret girin, en fazla £100.",
+  msq_err_days: "1 ile 28 arasında tam bir gün sayısı girin.",
+  msq_err_long: "Ödeme talimatı 500 karakteri geçmesin.",
+
+  mth_nav: "Aylar",
+  mth_page_title: "Aylar",
+  mth_page_lead: "Aylık kadronuzun listesi: daimi oyuncular, maç başı ödeyenler, kimin ödediği ve krediler.",
+  mth_no_fixture: "Kulübünüzün henüz etkin bir maçı yok. Önce Activities sayfasından bir tane ekleyin.",
+  mth_no_players: "Kulübünüzde henüz oyuncu yok. Players sayfanıza eklendiklerinde burada görünürler.",
+  mth_fixture_games: (p: { games: number; played: number }): string =>
+    `Bu ayki maç sayısı: ${p.games}. Oynanan: ${p.played}.`,
+  mth_empty_title: (p: { month: string }): string => `${p.month} henüz başlatılmadı`,
+  mth_empty_body:
+    "Ayın ortasında bile şimdi başlatabilirsiniz. Güncel listenizi yapıştırın ya da oyuncuları işaretleyin, kimin ödediğini belirtin ve aya getirdikleri kredileri ekleyin. Oynanmış maçlar, listedeki daimi oyuncular için oynanmış sayılır.",
+  mth_paste_label: "Güncel listenizi yapıştırın",
+  mth_paste_hint:
+    "Bu ayın listesini grubunuzdan kopyalayıp buraya yapıştırın. MatchTime oyuncuları, ödeme işaretleri ve PAYG ile birlikte sizin için işaretler. Ayı başlatana kadar hiçbir şey kaydedilmez.",
+  mth_paste_button: "Listeyi oku",
+  mth_paste_read: (p: { count: number }): string =>
+    `Listenizden okunan oyuncu sayısı: ${p.count}. Ayı başlatmadan önce aşağıda kontrol edin.`,
+  mth_paste_unmatched: (p: { names: string }): string =>
+    `Bir oyuncuyla eşleşmeyenler: ${p.names}. Onları aşağıda kendiniz işaretleyin ya da önce Players sayfanıza ekleyin.`,
+  mth_paste_month: "Bu listenin başlığında başka bir ay yazıyor. Bu ayın listesi olduğunu kontrol edin.",
+  mth_paste_not_list: "Bu bir listeye benzemiyor. Grubunuzdaki numaralı listenin tamamını yapıştırın.",
+  mth_games_label: "Bu ayki maç sayısı",
+  mth_played_label: "Oynanan maç",
+  mth_share_label: "Daimi oyuncunun maç başı payı (£)",
+  mth_share_hint: "İsteğe bağlı. Girerseniz MatchTime her daimi oyuncunun ay için borcunu hesaplar.",
+  mth_col_in: "Listede",
+  mth_col_slot: "Sıra",
+  mth_col_player: "Oyuncu",
+  mth_col_type: "Tür",
+  mth_col_paid: "Ödedi mi?",
+  mth_col_amount: "Ödenen tutar (£)",
+  mth_col_credits: "Aya getirilen kredi",
+  mth_col_games: "Maç",
+  mth_col_credits_used: "Kullanılan kredi",
+  mth_col_due: "Borç",
+  mth_kind_regular: "Daimi",
+  mth_kind_payg: "Maç başı (PAYG)",
+  mth_paid_none: "Ödemedi",
+  mth_paid_claimed: "Ödedim diyor",
+  mth_paid_confirmed: "Ödedi, onaylandı",
+  mth_due_unknown: "Belirlenmedi",
+  mth_selected_count: (p: { regulars: number; payg: number }): string => `Listede: ${p.regulars} daimi, ${p.payg} maç başı`,
+  mth_nothing_posts: "Ayı başlatmak grubunuza hiçbir mesaj göndermez.",
+  mth_start_button: (p: { month: string }): string => `${p.month} ayını başlat`,
+  mth_started: (p: { month: string }): string => `${p.month} başlatıldı`,
+  mth_status: (p: { status: string }): string =>
+    p.status === "open" ? "Kayıt açık" : p.status === "priced" ? "Ücret belirlendi" : p.status === "closed" ? "Kapandı" : "Sürüyor",
+  mth_started_mid: (p: { played: number }): string =>
+    `Ay ortasında başlatıldı. O sırada oynanmış maç sayısı: ${p.played}.`,
+  mth_share_line: (p: { amount: string }): string => `Maç başı pay: ${p.amount}`,
+  mth_no_share: "Maç başı pay henüz girilmedi, bu yüzden borçlar hesaplanmadı.",
+  mth_paid_amount: (p: { state: string; amount: string }): string => `${p.state}: ${p.amount}`,
+  mth_start_error: (p: { key: string }): string =>
+    p.key === "no-players"
+      ? "En az bir oyuncu işaretleyin."
+      : p.key === "bad-games"
+        ? "Maç sayılarını kontrol edin. Oynanan maç, bu ayki maç sayısından fazla olamaz."
+        : p.key === "bad-share"
+          ? "Payı 7.50 gibi bir tutar olarak girin."
+          : p.key === "bad-amount"
+            ? "Ödenen tutarları kontrol edin. 30 veya 22.50 gibi tutarlar girin."
+            : p.key === "bad-credits"
+              ? "Aya getirilen kredi, bu ayki maç sayısından fazla olamaz."
+              : p.key === "already-started"
+                ? "Bu ay zaten başlatılmış. Görmek için sayfayı yenileyin."
+                : p.key === "not-monthly"
+                  ? "Kulübünüz için aylık kadro kapalı."
+                  : "Ay başlatılamadı. Lütfen tekrar deneyin.",
+
+  info_st_monthly_title: "Aylık kadro",
+  info_st_monthly_body:
+    "Daimi oyuncuların aya yazılıp tüm ay için ödediği, diğer oyuncuların boş yerleri maç başı ödeyerek doldurduğu gruplar için. Siz açana kadar kapalıdır ve o zamana kadar grubunuz için hiçbir şey değişmez.\n\n" +
+    "Açıkken yönetici sayfalarınızda Aylar sayfası görünür. Ayın listesini orada tutarsınız: kim daimi, kim ödedi ve krediler.",
+  info_msq_mode_title: "Kadronuz nasıl oluşuyor",
+  info_msq_mode_body:
+    "Haftalık: her maçın kadrosu o hafta VARIM diyenlerden oluşur. Siz değiştirmedikçe MatchTime böyle çalışır.\n\n" +
+    "Aylık: daimi oyuncular ayın her maçında kadrodadır ve ay için bir kez öder. Maç başı ödeyenler boş yerleri alır ve maç başına öder. Bu açıkken \"Kadro devam eder\" kapalıdır, çünkü onun yerini ayın daimi oyuncuları alır.",
+  info_msq_payg_title: "Maç başı ücret (PAYG)",
+  info_msq_payg_body:
+    "Maç başı ödeyen bir oyuncunun tek maç için ödediği tutar, örneğin £8. Daimi oyuncular bunu ödemez. Onlar ay için kendi paylarını öder.",
+  info_msq_opens_title: "Liste açılışı",
+  info_msq_opens_body:
+    "Gelecek ayın listesinin, ayın ilk maçından kaç gün önce açılacağı. Bu ayın daimi oyuncuları listede hazır gelir. Çoğu grup için 7 gün uygundur.",
+  info_msq_credit_title: "Krediler",
+  info_msq_credit_body:
+    "Bir kredi, gelecek ayın ödemesinden bir maç düşülmesi demektir. Ödemesini yapmış bir daimi oyuncunun ne zaman kredi kazanacağını seçin: kaçırdığı her maçta, yalnızca yerini başkası aldığında ya da hiç. Krediler pound ile değil, maç sayısıyla tutulur.",
+  info_msq_instructions_title: "Ödeme talimatı",
+  info_msq_instructions_body:
+    "Nasıl ödeneceğini anlatan kendi cümleleriniz. Oyunculara borçlarının yanında gösterilir. Örneğin: banka bilgileri grup açıklamasında.\n\n" +
+    "MatchTime asla banka hesap numarası istemez. Bu yalnızca sizin buraya yazdığınız metindir.",
+  info_mth_page_title: "Aylar",
+  info_mth_page_body:
+    "Her haftalık maç için ayda bir liste. Daimi oyuncular ayın her maçında kadrodadır ve bir kez öder. Maç başı ödeyenler boş yerleri alır ve maç başına öder.\n\n" +
+    "Bu sayfayı yalnızca Ayarlar'da Aylık kadro açıkken görürsünüz.",
+  info_mth_start_title: "Ayı ortasından başlatmak",
+  info_mth_start_body:
+    "Ayın 1'ini beklemeniz gerekmez. Bu ayın listesinde kim varsa işaretleyin, kimin ne kadar ödediğini belirtin ve aya getirdikleri kredileri ekleyin.\n\n" +
+    "Bu ay oynanmış maçlar, işaretlediğiniz daimi oyuncular için oynanmış sayılır, yani o maçlar için kimse kredi almaz. Ayı başlatmak grubunuza hiçbir mesaj göndermez.",
+  info_mth_paste_title: "Listenizi yapıştırmak",
+  info_mth_paste_body:
+    "Listeyi grubunuzun yazdığı gibi yapıştırın: numaralı isimler, (ödedi) ya da (Paid £22.50), (PAYG) ve \"ödedi gelemiyor\" bölümü. Ödeme işareti \"Ödedim diyor\" olarak okunur, asla onaylanmış sayılmaz.\n\n" +
+    "İsimler oyuncularınızla eşleştirilir. Kimseye uymayan ya da birden fazla oyuncuya uyan bir isim, sizin işaretlemeniz için bırakılır.",
+  info_mth_paid_title: "Ödedi mi?",
+  info_mth_paid_body:
+    "Ödemedi: hiçbir şey kaydedilmez. Ödedim diyor: oyuncu ödediğini söylüyor ama kimse kontrol etmedi. Ödedi, onaylandı: paranın geldiğini biliyorsunuz.\n\n" +
+    "Onaylandı seçeneğini yalnızca gördüğünüz ödemeler için kullanın.",
+  info_mth_credits_title: "Aya getirilen kredi",
+  info_mth_credits_body:
+    "Bir daimi oyuncunun bu aya getirdiği kredi, maç sayısı olarak. Örneğin geçen ay parasını ödeyip kaçırdığı bir maç için. Bir kredi bir maç düşer. Maç başı £7.50 ise bir kredi, 4 maçlık ayı £30 yerine £22.50 yapar.",
 };
 
 /**

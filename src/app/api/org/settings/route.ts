@@ -8,6 +8,7 @@ import { seesAdminFields } from "@/lib/admin-view";
 import { weeklyDeadlinesView } from "@/lib/weekly-deadlines-settings";
 import { loadBillingCard } from "@/lib/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
+import { normaliseCreditRule, normaliseSquadMode } from "@/lib/squad-month-rules";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -110,5 +111,14 @@ export async function GET() {
       benchPickFallback: normaliseBenchPickFallback(org.benchPickFallback),
     },
     billing,
+    // "Monthly squad" (2026-10-05, slice 2). "weekly" for every club that
+    // has not switched it on, so the section shows its one switch only.
+    monthlySquad: {
+      squadMode: normaliseSquadMode(org.squadMode),
+      paygPricePence: org.paygPricePence,
+      monthListOpensDaysBefore: org.monthListOpensDaysBefore,
+      monthCreditRule: normaliseCreditRule(org.monthCreditRule),
+      paymentInstructions: org.paymentInstructions,
+    },
   });
 }

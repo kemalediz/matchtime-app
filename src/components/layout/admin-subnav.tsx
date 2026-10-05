@@ -24,7 +24,12 @@ const OWNER_TABS = [
   { label: "Health", href: "/admin/health" },
 ];
 
-export function AdminSubnav() {
+/**
+ * `monthsLabel`: the "Months" tab, in the club's language. The admin
+ * layout passes it ONLY for a club on a monthly squad (monthly squad,
+ * slice 2); every other club's tabs are exactly what they were.
+ */
+export function AdminSubnav({ monthsLabel }: { monthsLabel?: string } = {}) {
   const pathname = usePathname();
   // Live count of unresolved attendance messages — the whole point of
   // #1 is that silent drops are impossible to MISS, so the badge sits
@@ -57,7 +62,11 @@ export function AdminSubnav() {
 
   return (
     <nav className="flex gap-1 p-1 bg-slate-100 rounded-lg max-w-full overflow-x-auto">
-      {(owner ? [...TABS, ...OWNER_TABS] : TABS).map((t) => {
+      {[
+        // "Months" sits just before Settings, for a monthly club only.
+        ...(monthsLabel ? [...TABS.slice(0, -1), { label: monthsLabel, href: "/admin/months" }, ...TABS.slice(-1)] : TABS),
+        ...(owner ? OWNER_TABS : []),
+      ].map((t) => {
         const active =
           t.href === "/admin"
             ? pathname === "/admin"

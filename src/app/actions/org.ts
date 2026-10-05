@@ -19,6 +19,7 @@ import {
   type WeeklyDeadlinesPatch,
 } from "@/lib/weekly-deadlines-settings";
 import { saveAdminChannelChoice, type SaveAdminChannelResult } from "@/lib/admin-channel";
+import { normaliseSquadMode } from "@/lib/squad-month-rules";
 
 /**
  * Today's club creation (/create-org with SELF_JOIN_ENABLED off).
@@ -454,6 +455,16 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
   const data: { rollingSquadEnabled?: boolean; benchPickMode?: string; benchPickFallback?: string } & WeeklyDeadlinesData = {};
   if (patch && "rollingSquad" in patch) {
     if (typeof patch.rollingSquad !== "boolean") throw new Error("rollingSquad must be true or false");
+    // Monthly squad (2026-10-05): the month replaces the rolling squad, so
+    // it cannot be turned on while the club is monthly. The settings page
+    // hides the switch; this is the backstop. Read only when turning it ON,
+    // so no other patch, and no weekly club's switch-off, costs a query.
+    if (patch.rollingSquad) {
+      const mode = await db.organisation.findUnique({ where: { id: orgId }, select: { squadMode: true } });
+      if (normaliseSquadMode(mode?.squadMode) === "monthly") {
+        throw new Error("The rolling squad is off while the club runs a monthly squad");
+      }
+    }
     data.rollingSquadEnabled = patch.rollingSquad;
   }
   if (patch && "benchPickMode" in patch) {

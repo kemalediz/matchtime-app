@@ -119,6 +119,8 @@ function makeTx(args: {
     moMVote: relation(),
     teamAssignment: relation(),
     playerActivityPosition: relation(),
+    squadMonthMember: relation(),
+    squadCredit: relation(),
     analyzedMessage: relation(),
     ratingAdjustment: relation(),
     rosterSurveyDM: relation(),

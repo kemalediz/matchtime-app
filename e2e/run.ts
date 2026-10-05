@@ -330,6 +330,11 @@ async function runSuite(): Promise<number> {
     // amount is never under Stripe's 30p, and a charged month names its invoice.
     console.log("[e2e] arming the club-billing-month CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "club-billing-month-check.sql"));
+    // And the monthly squad's (slice 2): a squad mode is one of two, a
+    // credit rule one of three, a month starts on the 1st and is in one of
+    // four states, and no count is ever negative.
+    console.log("[e2e] arming the monthly-squad CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "monthly-squad-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {
