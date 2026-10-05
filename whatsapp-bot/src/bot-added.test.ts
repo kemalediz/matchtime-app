@@ -493,3 +493,89 @@ describe("sweepForMissedSelfAdds: the reconnect sweep (plan 8)", () => {
     expect(postBotAdded).not.toHaveBeenCalled();
   });
 });
+
+// ── F2 (2026-10-05): a re-add to a group the Pi still lists as a club ──
+//
+// The Pi's monitored set is rebuilt only by an /orgs refresh (at `ready`,
+// every 5 minutes, and when a setup completes). A club deleted or unlinked
+// on the server stays in it until then, and a self-add to a monitored group
+// used to stop at "already-monitored" without telling the server. So
+// re-adding MatchTime right after deleting the club did nothing (the
+// Hamzah demo, "MT Test", 2026-09-30). Now the Pi re-checks with the
+// server once before deciding.
+
+describe("handleGroupJoinForSelfAdd: a stale club in the Pi's list (F2)", () => {
+  it("a club deleted on the server but still listed: one refresh, then the add reaches the server (self-join links it)", async () => {
+    const silent = new Set<string>();
+    const postBotAdded = vi.fn(async () => ({ introText: null, selfJoin: "linked", silent: true }));
+    const { d, monitored, sendMessage } = deps({ postBotAdded, addSilentGroup: (g) => void silent.add(g) });
+    monitored.add(GID); // the Pi still thinks this is a club
+    const recheck = vi.fn(async (g: string) => {
+      // the refresh rebuilds the sets from /orgs, which no longer lists it
+      monitored.delete(g);
+    });
+    d.recheckMonitoredGroup = recheck;
+    const out = await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: [LID], author: "447700900001@c.us" });
+    expect(recheck).toHaveBeenCalledTimes(1);
+    expect(recheck).toHaveBeenCalledWith(GID);
+    expect(postBotAdded).toHaveBeenCalledWith(expect.objectContaining({ groupId: GID, addedByPhone: "447700900001" }));
+    expect(out).toEqual({ kind: "silent", reason: "no-intro" });
+    expect(silent.has(GID)).toBe(true);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("with self-join off, the server's intro is posted after the refresh (the in-group setup starts)", async () => {
+    const { d, monitored, onboarding, sendMessage } = deps();
+    monitored.add(GID);
+    d.recheckMonitoredGroup = async (g) => void monitored.delete(g);
+    const out = await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: [PN] });
+    expect(out.kind).toBe("posted");
+    expect(sendMessage).toHaveBeenCalledWith(GID, "👋 Merhaba");
+    expect(monitored.has(GID)).toBe(true);
+    expect(onboarding.has(GID)).toBe(true);
+  });
+
+  it("Sutton FC: a live club stays listed after the refresh, so nothing reaches the server", async () => {
+    const { d, monitored, postBotAdded, sendMessage } = deps();
+    monitored.add(GID);
+    const recheck = vi.fn(async () => undefined); // /orgs still lists it
+    d.recheckMonitoredGroup = recheck;
+    const out = await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: [PN] });
+    expect(recheck).toHaveBeenCalledTimes(1);
+    expect(out.kind).toBe("already-monitored");
+    expect(postBotAdded).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(monitored.has(GID)).toBe(true);
+  });
+
+  it("a refresh that throws keeps the group monitored and decides exactly as before", async () => {
+    const { d, monitored, postBotAdded } = deps();
+    monitored.add(GID);
+    d.recheckMonitoredGroup = async () => {
+      throw new Error("ECONNRESET");
+    };
+    const out = await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: [PN] });
+    expect(out.kind).toBe("already-monitored");
+    expect(postBotAdded).not.toHaveBeenCalled();
+    expect(monitored.has(GID)).toBe(true);
+  });
+
+  it("a group the Pi does not monitor never triggers the extra refresh", async () => {
+    const { d } = deps();
+    const recheck = vi.fn(async () => undefined);
+    d.recheckMonitoredGroup = recheck;
+    await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: [PN] });
+    await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: ["447700900002@c.us"] });
+    expect(recheck).not.toHaveBeenCalled();
+  });
+
+  it("a human joining a monitored group never triggers the extra refresh", async () => {
+    const { d, monitored } = deps();
+    monitored.add(GID);
+    const recheck = vi.fn(async () => undefined);
+    d.recheckMonitoredGroup = recheck;
+    const out = await handleGroupJoinForSelfAdd(d, { chatId: GID, recipientIds: ["447700900002@c.us"] });
+    expect(out.kind).toBe("not-self-add");
+    expect(recheck).not.toHaveBeenCalled();
+  });
+});

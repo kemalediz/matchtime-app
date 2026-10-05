@@ -8,6 +8,12 @@ import {
   startOrgRefreshTimer,
   stopOrgRefreshTimer,
   _test_resetOrgRefresh,
+  requestStaleGroupRecheck,
+  STALE_RECHECK_GROUP_COOLDOWN_MS,
+  STALE_RECHECK_MAX_PER_WINDOW,
+  STALE_RECHECK_WINDOW_MS,
+  STALE_RECHECK_TIMEOUT_MS,
+  isOrgsResponseBody,
 } from "./org-refresh.js";
 
 describe("parseOrgSnapshot", () => {
@@ -214,5 +220,116 @@ describe("parseOrgSnapshot: admin groups (slice 2a)", () => {
     expect(diff.changed).toBe(true);
     expect(describeOrgSnapshotDiff(diff)).toBe("+admin-group hq@g.us");
     expect(describeOrgSnapshotDiff(diffOrgSnapshot(after, before))).toBe("-admin-group hq@g.us");
+  });
+});
+
+// ── F2 (2026-10-05): the one refresh before a self-add decision ───────
+
+describe("requestStaleGroupRecheck: one rate-limited refresh before deciding a re-add", () => {
+  beforeEach(() => _test_resetOrgRefresh());
+
+  it("runs one refresh, with a reason naming the group", async () => {
+    const fn = vi.fn(async () => undefined);
+    setOrgRefresher(fn);
+    await expect(requestStaleGroupRecheck("g1@g.us", 0)).resolves.toBe("refreshed");
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn.mock.calls[0][0]).toContain("g1@g.us");
+  });
+
+  it("the same group again within the cooldown: no second refresh (repeated adds)", async () => {
+    const fn = vi.fn(async () => undefined);
+    setOrgRefresher(fn);
+    await requestStaleGroupRecheck("g1@g.us", 0);
+    await expect(requestStaleGroupRecheck("g1@g.us", STALE_RECHECK_GROUP_COOLDOWN_MS - 1)).resolves.toBe("rate-limited");
+    expect(fn).toHaveBeenCalledTimes(1);
+    await expect(requestStaleGroupRecheck("g1@g.us", STALE_RECHECK_GROUP_COOLDOWN_MS + 1)).resolves.toBe("refreshed");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("many groups at once (a reconnect replaying adds): capped per window, no refresh storm", async () => {
+    const fn = vi.fn(async () => undefined);
+    setOrgRefresher(fn);
+    const outcomes: string[] = [];
+    for (let i = 0; i < STALE_RECHECK_MAX_PER_WINDOW + 5; i++) {
+      outcomes.push(await requestStaleGroupRecheck(`g${i}@g.us`, i));
+    }
+    expect(fn).toHaveBeenCalledTimes(STALE_RECHECK_MAX_PER_WINDOW);
+    expect(outcomes.filter((o) => o === "rate-limited")).toHaveLength(5);
+    // the window rolls on
+    await expect(requestStaleGroupRecheck("late@g.us", STALE_RECHECK_WINDOW_MS + 100)).resolves.toBe("refreshed");
+  });
+
+  it("concurrent re-adds share one refresh", async () => {
+    let release: () => void = () => undefined;
+    const fn = vi.fn(() => new Promise<void>((r) => (release = r)));
+    setOrgRefresher(fn);
+    const a = requestStaleGroupRecheck("a@g.us", 0);
+    const b = requestStaleGroupRecheck("b@g.us", 0);
+    await Promise.resolve();
+    release();
+    await Promise.all([a, b]);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not trust a refresh already in flight (it may predate the delete): waits, then runs a fresh one", async () => {
+    const releases: Array<() => void> = [];
+    const fn = vi.fn(() => new Promise<void>((r) => releases.push(r)));
+    setOrgRefresher(fn);
+    const periodic = requestOrgRefresh("periodic");
+    const recheck = requestStaleGroupRecheck("g1@g.us", 0);
+    expect(fn).toHaveBeenCalledTimes(1);
+    releases[0]();
+    await periodic;
+    await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(2));
+    releases[1]();
+    await expect(recheck).resolves.toBe("refreshed");
+  });
+
+  it("a failing refresh is reported, never thrown", async () => {
+    setOrgRefresher(async () => {
+      throw new Error("ECONNRESET");
+    });
+    await expect(requestStaleGroupRecheck("g1@g.us", 0)).resolves.toBe("failed");
+  });
+
+  it("a refresh that hangs gives up after the timeout, so the join handler is never stuck", async () => {
+    vi.useFakeTimers();
+    try {
+      setOrgRefresher(() => new Promise<void>(() => undefined));
+      const p = requestStaleGroupRecheck("g1@g.us", 0);
+      await vi.advanceTimersByTimeAsync(STALE_RECHECK_TIMEOUT_MS + 1);
+      await expect(p).resolves.toBe("timed-out");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("no refresher registered (before `ready`): nothing to do", async () => {
+    await expect(requestStaleGroupRecheck("g1@g.us", 0)).resolves.toBe("no-refresher");
+  });
+});
+
+describe("isOrgsResponseBody: a 200 without an org list is a failed refresh, not an empty one", () => {
+  it("accepts a body with an orgs array (even an empty one)", () => {
+    expect(isOrgsResponseBody({ orgs: [] })).toBe(true);
+    expect(isOrgsResponseBody({ orgs: [{ name: "Sutton FC", whatsappGroupId: "a@g.us" }] })).toBe(true);
+  });
+  it("rejects anything else, so the old list is kept (Sutton FC never drops off on a bad body)", () => {
+    expect(isOrgsResponseBody(null)).toBe(false);
+    expect(isOrgsResponseBody({})).toBe(false);
+    expect(isOrgsResponseBody({ orgs: "x" })).toBe(false);
+    expect(isOrgsResponseBody({ error: "Unauthorized" })).toBe(false);
+    expect(isOrgsResponseBody("<html>")).toBe(false);
+  });
+});
+
+describe("index.ts wiring (F2)", () => {
+  it("the group-join handler passes the rate-limited re-check, and a non-list /orgs body throws before any set changes", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+    expect(src).toContain("recheckMonitoredGroup: (gid) => requestStaleGroupRecheck(gid)");
+    const guard = src.indexOf("if (!isOrgsResponseBody(data)) throw");
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(src.indexOf("currentSnapshot = next;"));
   });
 });

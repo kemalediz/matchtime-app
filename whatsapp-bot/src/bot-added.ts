@@ -85,6 +85,15 @@ export interface BotAddedDeps {
    *  for approval, a group nobody asked MatchTime into). Treat the group as
    *  silent now, not at the next /orgs refresh. */
   addSilentGroup?: (gid: string) => void;
+  /**
+   * F2 (2026-10-05): the bot was added to a group it MONITORS. Re-read the
+   * server's /orgs once (rate-limited, `requestStaleGroupRecheck` in
+   * org-refresh.ts) so a club deleted or unlinked since the last refresh
+   * is no longer treated as a club. The handler re-reads
+   * `isMonitoredGroup` afterwards. Optional: absent, a monitored group is
+   * left alone exactly as before.
+   */
+  recheckMonitoredGroup?: (gid: string) => Promise<unknown>;
   resolveSelfIds: () => Promise<string[]>;
   readGroupSnapshot: (gid: string, selfIds: string[]) => Promise<GroupSnapshot>;
   /** Recent messages, oldest first, already shaped for the server; [] on failure. */
@@ -144,7 +153,26 @@ export async function handleGroupJoinForSelfAdd(
       `author=${notification.author ?? "?"}`,
   );
   if (!isSelfAdd(recipients, selfIds)) return { kind: "not-self-add" };
-  if (deps.isMonitoredGroup(gid)) return { kind: "already-monitored" };
+  if (deps.isMonitoredGroup(gid)) {
+    // F2: the monitored set is only as fresh as the last /orgs refresh, so
+    // a club deleted or unlinked a minute ago is still "a club" here. Ask
+    // the server once before deciding. A live club (Sutton FC) is still
+    // listed afterwards and stops here as before; a failed or skipped
+    // refresh changes no set, so it stops here as before too.
+    if (!deps.recheckMonitoredGroup) return { kind: "already-monitored" };
+    log(`[bot-added] ${gid}: re-added to a group listed as a club; re-checking the club list with the server`);
+    let recheck: unknown;
+    try {
+      recheck = await deps.recheckMonitoredGroup(gid);
+    } catch (err) {
+      recheck = `threw: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    if (deps.isMonitoredGroup(gid)) {
+      log(`[bot-added] ${gid}: still a club after the re-check (${String(recheck ?? "done")}); nothing to do`);
+      return { kind: "already-monitored" };
+    }
+    log(`[bot-added] ${gid}: no longer a club after the re-check; handling it as a new add`);
+  }
 
   log(`[bot-added] self-add detected in ${gid} (author=${notification.author ?? "?"})`);
 

@@ -53,6 +53,17 @@ export interface OrgSnapshot {
   adminGroups: Array<{ groupId: string; orgId: string }>;
 }
 
+/**
+ * Is this a real `/api/whatsapp/orgs` answer? The server always sends an
+ * `orgs` array (empty when there are none). A 200 without one (a proxy
+ * page, an error object) is a FAILED refresh: the caller throws and the
+ * Pi keeps its old list, rather than parsing it as "no clubs" and dropping
+ * every live group (Sutton FC's included) from monitoring.
+ */
+export function isOrgsResponseBody(data: unknown): boolean {
+  return !!data && typeof data === "object" && Array.isArray((data as { orgs?: unknown }).orgs);
+}
+
 /** Read the `/api/whatsapp/orgs` body defensively into a snapshot. */
 export function parseOrgSnapshot(data: unknown): OrgSnapshot {
   const d = (data ?? {}) as {
@@ -200,6 +211,98 @@ export function requestOrgRefresh(reason: string): Promise<void> {
   return inFlight;
 }
 
+// ── F2 (2026-10-05): one refresh before deciding a re-add ──────────────
+//
+// The monitored set is rebuilt only by a refresh, so a club deleted or
+// unlinked on the server stays "a club" on the Pi for up to
+// REFRESH_INTERVAL_MS, and a self-add to it used to stop at
+// "already-monitored" without telling the server. The self-add path now
+// asks for one refresh first (bot-added.ts, `recheckMonitoredGroup`),
+// gated here so that repeated adds or a reconnect replaying many adds can
+// never turn into a refresh storm:
+//   - a group is re-checked at most once per STALE_RECHECK_GROUP_COOLDOWN_MS;
+//   - at most STALE_RECHECK_MAX_PER_WINDOW re-checks start per
+//     STALE_RECHECK_WINDOW_MS, whatever the groups;
+//   - concurrent re-checks share one refresh;
+//   - a re-check gives up after STALE_RECHECK_TIMEOUT_MS (fetch has no
+//     timeout of its own), so a group join is never stuck behind it.
+// A failed or timed-out refresh changes nothing: refreshOrgs (index.ts)
+// throws before it touches any set, so the old list stands.
+
+export const STALE_RECHECK_GROUP_COOLDOWN_MS = 60 * 1000;
+export const STALE_RECHECK_WINDOW_MS = 60 * 1000;
+export const STALE_RECHECK_MAX_PER_WINDOW = 3;
+export const STALE_RECHECK_TIMEOUT_MS = 10 * 1000;
+
+export type StaleRecheckOutcome = "refreshed" | "failed" | "timed-out" | "rate-limited" | "no-refresher";
+
+const recheckedAt = new Map<string, number>();
+let recheckStarts: number[] = [];
+/** The one re-check refresh in flight, shared by concurrent re-adds. */
+let recheckInFlight: Promise<"refreshed" | "failed"> | null = null;
+
+/** Run the refresher once, reporting failure instead of swallowing it. */
+function runRefreshReporting(reason: string): Promise<"refreshed" | "failed"> {
+  // A refresh already in flight may have read /orgs BEFORE the delete
+  // that makes this re-check necessary: wait it out, then start a fresh one.
+  const before = inFlight ?? Promise.resolve();
+  return before.then(async () => {
+    if (!refresher) return "failed" as const;
+    if (inFlight) {
+      // Someone started another refresh after ours was requested: it is
+      // fresh enough. Share it.
+      await inFlight;
+      return "refreshed" as const;
+    }
+    let failed = false;
+    const fn = refresher;
+    inFlight = fn(reason)
+      .catch((err) => {
+        failed = true;
+        console.error(`[org-refresh] refresh (${reason}) failed:`, err instanceof Error ? err.message : err);
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+    await inFlight;
+    return failed ? ("failed" as const) : ("refreshed" as const);
+  });
+}
+
+/**
+ * The Pi was just added to `groupId`, which it lists as a club: re-read
+ * /orgs once, within the limits above, before the caller decides. Never
+ * throws. The caller re-reads its own sets afterwards; this only reports
+ * what happened, for the log.
+ */
+export async function requestStaleGroupRecheck(groupId: string, now: number = Date.now()): Promise<StaleRecheckOutcome> {
+  if (!refresher) return "no-refresher";
+  if (!recheckInFlight) {
+    const last = recheckedAt.get(groupId);
+    if (last !== undefined && now - last < STALE_RECHECK_GROUP_COOLDOWN_MS) return "rate-limited";
+    recheckStarts = recheckStarts.filter((t) => now - t < STALE_RECHECK_WINDOW_MS);
+    if (recheckStarts.length >= STALE_RECHECK_MAX_PER_WINDOW) return "rate-limited";
+    recheckStarts.push(now);
+    recheckedAt.set(groupId, now);
+    for (const [g, t] of recheckedAt) if (now - t >= STALE_RECHECK_GROUP_COOLDOWN_MS) recheckedAt.delete(g);
+    recheckInFlight = runRefreshReporting(`stale check: MatchTime re-added to listed club group ${groupId}`).finally(() => {
+      recheckInFlight = null;
+    });
+  } else {
+    recheckedAt.set(groupId, now);
+  }
+  const shared = recheckInFlight;
+  let t: NodeJS.Timeout | undefined;
+  const timeout = new Promise<"timed-out">((resolve) => {
+    t = setTimeout(() => resolve("timed-out"), STALE_RECHECK_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([shared, timeout]);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /** One interval, ever (a repeat `ready` must not double it). */
 export function startOrgRefreshTimer(intervalMs: number = REFRESH_INTERVAL_MS): void {
   if (timer) return;
@@ -220,4 +323,7 @@ export function _test_resetOrgRefresh(): void {
   stopOrgRefreshTimer();
   refresher = null;
   inFlight = null;
+  recheckedAt.clear();
+  recheckStarts = [];
+  recheckInFlight = null;
 }
