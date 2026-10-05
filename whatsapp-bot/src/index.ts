@@ -33,6 +33,8 @@ import {
   diffOrgSnapshot,
   parseOrgSnapshot,
   setOrgRefresher,
+  requestStaleGroupRecheck,
+  isOrgsResponseBody,
   startOrgRefreshTimer,
   stopOrgRefreshTimer,
   type OrgConfig,
@@ -152,6 +154,9 @@ async function main() {
 
   async function refreshOrgs(reason: string): Promise<OrgSnapshot> {
     const data = await getEnabledOrgs();
+    // A 200 that is not a club list is a FAILED refresh: throw before any
+    // set is touched, so the old list (Sutton FC's group included) stands.
+    if (!isOrgsResponseBody(data)) throw new Error("GET /api/whatsapp/orgs: no org list in the response");
     const next = parseOrgSnapshot(data);
     const diff = diffOrgSnapshot(currentSnapshot, next);
     currentSnapshot = next;
@@ -927,6 +932,10 @@ async function main() {
           addOnboardingGroup,
           isSilentGroup,
           addSilentGroup,
+          // F2: a re-add to a group still listed as a club re-reads /orgs
+          // once (rate-limited) before deciding, so a club deleted or
+          // unlinked since the last refresh is handled as a new add.
+          recheckMonitoredGroup: (gid) => requestStaleGroupRecheck(gid),
           resolveSelfIds: () => driver.selfIds(),
           readGroupSnapshot: (gid, selfIds) => driver.groupSnapshot(gid, selfIds),
           fetchHistory: collectHistoryForServer,
