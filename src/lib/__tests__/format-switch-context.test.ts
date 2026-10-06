@@ -57,7 +57,7 @@ describe("format-switch facts in the Match Context", () => {
     expect(block).toContain("✅ VIABLE");
     expect(block).toContain("Bench on switch (2, this exact list, this exact order): Mauricio, Ersin");
     expect(block).toContain(
-      'If we don\'t find 2 more, we could switch to 5-a-side (10 players) — ' +
+      'If we don\'t find 2 more, we could switch to 5-a-side (10 players): ' +
         'Mauricio + Ersin go on the bench. Admins can rebook and flip it in the portal.',
     );
   });

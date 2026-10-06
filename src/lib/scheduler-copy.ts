@@ -137,8 +137,10 @@ export function buildSquadFullEveningPost(
     activityName: string;
     confirmedCount: number;
     maxPlayers: number;
-    /** `buildSquadRosterBlock`'s output for this match. */
-    rosterBlock: string;
+    /** `buildSquadRosterBlock`'s output for this match. Null when the
+     *  group was shown this same squad in the last three hours
+     *  (`roster-shown.ts`): the lead and the bench ask still go out. */
+    rosterBlock: string | null;
     /** BENCH rows on this match. Decides both blocks below. */
     benchCount: number;
     /** `buildSquadCompleteBenchInvite()`, or null when the org's bench
@@ -154,9 +156,8 @@ export function buildSquadFullEveningPost(
       confirmed: args.confirmedCount,
       maxPlayers: args.maxPlayers,
     }),
-    ``,
-    args.rosterBlock,
   ];
+  if (args.rosterBlock) lines.push(``, args.rosterBlock);
   if (args.benchCount === 0) {
     lines.push(``, s.bench_header({ count: 0 }), s.roster_nobody_yet);
   }
@@ -212,14 +213,15 @@ export function buildMatchDayLockedPost(
     activityName: string;
     venue: string;
     timeLabel: string;
-    rosterBlock: string;
+    /** Null when this same squad was shown in the last three hours. */
+    rosterBlock: string | null;
   } & WithLang,
 ): string {
   const s = t(args.lang);
   const intro =
     `${s.match_day_header({ timeLabel: args.timeLabel, activityName: args.activityName, venue: args.venue })}\n\n` +
     s.match_day_locked_line;
-  return `${intro}\n\n${args.rosterBlock}`;
+  return args.rosterBlock ? `${intro}\n\n${args.rosterBlock}` : intro;
 }
 
 /**
@@ -460,9 +462,18 @@ export function buildRollingDeadlineLine(args: { deadline: string } & WithLang):
  * day, hence "today".
  */
 export function buildDropOutReminderPost(
-  args: { activityName: string; whenLabel: string; time: string; rosterBlock: string } & WithLang,
+  args: {
+    activityName: string;
+    whenLabel: string;
+    time: string;
+    /** Null when this same squad was shown in the last three hours: the
+     *  reminder goes out on its own. */
+    rosterBlock: string | null;
+  } & WithLang,
 ): string {
-  return t(args.lang).dropout_reminder_post(args);
+  return t(args.lang)
+    .dropout_reminder_post({ ...args, rosterBlock: args.rosterBlock ?? "" })
+    .trimEnd();
 }
 
 /**

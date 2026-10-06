@@ -107,7 +107,7 @@ export const en = {
   squad_status_lead: (p: { withBench: boolean; confirmed: number; maxPlayers: number; need: number }): string => {
     const count = `*${p.confirmed}/${p.maxPlayers}*`;
     return (
-      `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and bench" : ""} — ` +
+      `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and bench" : ""}: ` +
       (p.need > 0 ? `${count}, need *${p.need} more* 🙏` : `${count} ✅ full squad.`)
     );
   },
@@ -543,7 +543,7 @@ export const en = {
   format_switch_proposal: (p: { shortBy: number; formatName: string; total: number; confirmed: number; benched: string[] }): string => {
     const lead =
       `If we don't find ${p.shortBy} more, we could switch to ` +
-      `${p.formatName} (${p.total} players) — `;
+      `${p.formatName} (${p.total} players): `;
     const tail = " Admins can rebook and flip it in the portal.";
     return p.benched.length === 0
       ? `${lead}all ${p.confirmed} of you still play, nobody goes on the bench.${tail}`
@@ -748,7 +748,7 @@ export const en = {
 
   recruit_failed: "Couldn't do that right now.",
   recruit_invited: (p: { invited: number; matchName: string; need: number | null }): string =>
-    `📣 On it — DM'd ${p.invited} recent player${p.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${p.matchName}*${p.need ? ` (${p.need} spot${p.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`,
+    `📣 On it, DM'd ${p.invited} recent player${p.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${p.matchName}*${p.need ? ` (${p.need} spot${p.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`,
   recruit_already_pinged: (p: { matchName: string }): string =>
     `Already pinged the recent players for *${p.matchName}* — just waiting on their replies. 🙏`,
   recruit_nobody_new: (p: { matchName: string }): string =>

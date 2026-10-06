@@ -109,7 +109,7 @@ describe("buildFormatSwitchFacts", () => {
     expect(fact.fills).toBe(true);
     expect(fact.benched).toEqual(["Mauricio", "Ersin"]);
     expect(fact.proposal).toBe(
-      "If we don't find 2 more, we could switch to 5-a-side (10 players) — " +
+      "If we don't find 2 more, we could switch to 5-a-side (10 players): " +
         "Mauricio + Ersin go on the bench. Admins can rebook and flip it in the portal.",
     );
   });
@@ -134,7 +134,7 @@ describe("buildFormatSwitchFacts", () => {
     expect(fact.fills).toBe(true);
     expect(fact.benched).toEqual([]);
     expect(fact.proposal).toBe(
-      "If we don't find 4 more, we could switch to 5-a-side (10 players) — " +
+      "If we don't find 4 more, we could switch to 5-a-side (10 players): " +
         "all 10 of you still play, nobody goes on the bench. " +
         "Admins can rebook and flip it in the portal.",
     );
@@ -214,7 +214,7 @@ describe("renderFormatSwitchContext (what the model is handed)", () => {
     expect(block).toContain("Mauricio, Ersin");
     expect(block).toContain("VERBATIM");
     expect(block).toContain(
-      "If we don't find 2 more, we could switch to 5-a-side (10 players) — " +
+      "If we don't find 2 more, we could switch to 5-a-side (10 players): " +
         "Mauricio + Ersin go on the bench. Admins can rebook and flip it in the portal.",
     );
     // Nobody else from the squad is offered up as bench material.

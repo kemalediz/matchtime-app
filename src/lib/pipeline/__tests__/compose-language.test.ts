@@ -39,7 +39,7 @@ describe("compose(): an English world is untouched", () => {
   it("squad status, teams and slot-opened read exactly as before", () => {
     const short = world({ confirmed: ELEVEN, bench: ["erdal"] });
     expect(say(short, { kind: "squad_status", messageId: null })[0]).toMatch(
-      /^📋 Based on all the messages I've picked up, here's the latest squad and bench — \*11\/14\*, need \*3 more\* 🙏\n\n\*Playing:\*\n1\. Kemal Ediz/,
+      /^📋 Based on all the messages I've picked up, here's the latest squad and bench: \*11\/14\*, need \*3 more\* 🙏\n\n\*Playing:\*\n1\. Kemal Ediz/,
     );
     const thirteen = world({ confirmed: FOURTEEN.slice(0, 13) });
     expect(say(thirteen, { kind: "slot_opened", messageId: "m", outNames: ["Wasim Akhtar"] })[0]).toBe(

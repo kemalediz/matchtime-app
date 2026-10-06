@@ -59,6 +59,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
 import { badgeLedgerOf, claimBadgePost } from "@/lib/badge-announcement-scheduler";
+import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
@@ -161,11 +162,39 @@ async function fetchRecentGroupTexts(orgId: string, now: Date): Promise<RecentOu
   }
 }
 
+/** Server-side bookkeeping never reaches the Pi: the badges ledger and
+ *  the roster-shown marker. */
 function withoutBadgeLedger(instr: DueInstruction): DueInstruction {
-  if (instr.kind !== "group-message" || !("badgeLedger" in instr)) return instr;
+  if (instr.kind !== "group-message" || !("badgeLedger" in instr || "rosterShown" in instr)) return instr;
   const rest = { ...instr };
   delete rest.badgeLedger;
+  delete rest.rosterShown;
   return rest;
+}
+
+/**
+ * A scheduled post that carries the squad roster leaves a marker, so the
+ * next one does not list the same squad again inside three hours
+ * (`src/lib/roster-shown.ts`, 2026-10-06). Written once the post is
+ * claimed, i.e. when it is really going out. Best effort: a failure here
+ * costs a repeated roster at worst, never the post.
+ */
+async function recordRosterShown(instr: Claimable, now: Date): Promise<void> {
+  const mark = (instr as { rosterShown?: { fingerprint?: unknown } }).rosterShown;
+  const matchId = (instr as { matchId?: unknown }).matchId;
+  if (!mark || typeof mark.fingerprint !== "string" || typeof matchId !== "string") return;
+  try {
+    await db.sentNotification.create({
+      data: {
+        key: rosterShownKey(matchId, mark.fingerprint, now),
+        kind: ROSTER_SHOWN_KIND,
+        matchId,
+        createdAt: now,
+      },
+    });
+  } catch (err) {
+    console.error(`[due-posts] could not record the roster as shown for ${instr.key}:`, err);
+  }
 }
 
 export async function GET(request: Request) {
@@ -343,6 +372,7 @@ export async function GET(request: Request) {
           targetUser: instr.targetUser,
         },
       });
+      await recordRosterShown(instr, now);
     },
     onBreak: ({ count, cap }) => {
       console.error(
