@@ -199,6 +199,22 @@ export const tr: Strings = {
       `diğerleri yedekte kalır. 🙏`
     );
   },
+  bench_offer_group_post_many: (p) => {
+    const claim = p.reactions
+      ? "Birini almak için buraya 👍 verin ya da *VARIM* yazın."
+      : "Birini almak için buraya *VARIM* yazmanız yeterli.";
+    return (
+      `🎟 ${p.count} yer açıldı: ${p.context}. *İlk sahiplenenler oynar.*\n` +
+      p.details.map((d) => `${d}\n`).join("") +
+      `\n` +
+      `${p.tagList}\n\n` +
+      `${claim} Acele yok, süre sınırı yok; yerler önce yazanların olur, ` +
+      `yer kalmazsa diğerleri yedekte kalır. 🙏`
+    );
+  },
+
+  bench_offer_slot_detail: (p) => `• *${p.teamLabel}* takımında, ${p.replacingName} yerine`,
+  bench_offer_slot_detail_plain: (p) => `• ${p.teamLabel} takımında, ${p.replacingName} yerine`,
 
   // ── row 81: the bench offer's context clause ─────────────────────
 
@@ -1206,6 +1222,18 @@ export const tr: Strings = {
     );
   },
 
+  dm_bench_offer_many: (p) => {
+    const claim = p.reactions
+      ? "Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz."
+      : "Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver.";
+    return (
+      `👋 ${p.firstName ? `${p.firstName}, ${p.count}` : `${p.count}`} yer açıldı: ${p.context}. Yedekte olduğun için sana da yazıyorum.\n` +
+      p.details.map((d) => `${d}\n`).join("") +
+      `\n` +
+      `Birini ister misin? ${claim} İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏`
+    );
+  },
+
   dm_bench_unclear: (p) =>
     `${p.day ? `${p.day} günkü` : "Bu akşamki"} boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏`,
 
@@ -1816,6 +1844,11 @@ export const tr: Strings = {
   pick_none_ack: "Tamam, yeri boş bırakıyorum. Maç sayfasından yine yedek listesinden seçebilirsiniz.",
   pick_fallback_offered: (p) =>
     `*${p.activityName}* için kimse seçim yapmadı, bu yüzden yeri yedek listesine açtım: ilk VARIM diyen alır.`,
+  pick_fallback_offered_many: (p) =>
+    p.stillOpen === 0
+      ? `*${p.activityName}* için kimse seçim yapmadı, bu yüzden ${p.offered} boş yeri yedek listesine açtım: VARIM diyen bir yer alır.`
+      : `*${p.activityName}* için kimse seçim yapmadı, bu yüzden yedek listesine ${p.offered} yer açtım (bekleyen her kişiye bir yer): ` +
+        `VARIM diyen bir yer alır. ${p.stillOpen} yer daha boş.`,
   pick_fallback_left: (p) =>
     `*${p.activityName}* için kimse seçim yapmadı, yer boş kalıyor. Kadro ${p.confirmed}/${p.maxPlayers}.`,
   onb_weekly_routine_tip:

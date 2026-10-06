@@ -370,6 +370,7 @@ import {
   buildBenchIntroLine,
   buildBenchOfferDm,
   buildBenchOfferGroupPost,
+  buildBenchOfferSlotDetail,
   buildFullSquadBenchInvite,
 } from "../../bench-offer-copy";
 import {
@@ -1034,6 +1035,18 @@ function cases(lang: Lang): Case[] {
     add(`R56 benchClaimPhrasingExample / ${tag}`, benchClaimPhrasingExample({ mentionReactions }));
   }
   add("R85 buildBenchOfferDm / no first name", buildBenchOfferDm({ firstName: "", context: lang === "en" ? "on Red for Tuesday 7-a-side tonight" : ctxFixture.plain, lang }));
+  // Several slots opened together (2026-10-06): one post and one DM for all of them.
+  for (const mentionReactions of [true, false]) {
+    const tag = mentionReactions ? "with reactions" : "reactions off";
+    add(`R52b buildBenchOfferGroupPost / several slots / ${tag}`, buildBenchOfferGroupPost({ count: 3, context: ctxFixtureBefore.group, tagList: "@447700900001 @447700900002", mentionReactions, lang }));
+    add(`R85b buildBenchOfferDm / several slots / ${tag}`, buildBenchOfferDm({ count: 3, firstName: "Erdal", context: ctxFixtureBefore.plain, mentionReactions, lang }));
+  }
+  add("R85b buildBenchOfferDm / several slots / no first name, match day", buildBenchOfferDm({ count: 2, firstName: "", context: ctxFixture.plain, lang }));
+  // Two drops announced together, teams published: each slot keeps its team and replaced player.
+  const slotRed = buildBenchOfferSlotDetail({ teamLabel: redLabel, replacingName: "Sait Demir", lang });
+  const slotUnnamed = buildBenchOfferSlotDetail({ teamLabel: redLabel, replacingName: null, lang });
+  add("R52c buildBenchOfferGroupPost / several slots with team detail", buildBenchOfferGroupPost({ count: 2, context: ctxFixture.group, details: [slotRed.group, slotUnnamed.group], tagList: "@447700900001 @447700900002", lang }));
+  add("R85c buildBenchOfferDm / several slots with team detail", buildBenchOfferDm({ count: 2, firstName: "Erdal", context: ctxFixture.plain, details: [slotRed.plain, slotUnnamed.plain], lang }));
 
   // ── 1.1 rating-progress-answer.ts ───────────────────────────────────
   add("R59 formatRatingProgressReply / not ok, no reason", formatRatingProgressReply({ ok: false }, lang));
@@ -1778,6 +1791,14 @@ function cases(lang: Lang): Case[] {
       wr.pick_none_ack,
       wr.pick_fallback_offered({ activityName: "Friday 9-a-side" }),
       wr.pick_fallback_left({ activityName: "Friday 9-a-side", confirmed: 17, maxPlayers: 18 }),
+    ].join("\n"),
+  );
+  add(
+    "OPK5b pick_fallback_offered_many (P11, several places)",
+    [
+      wr.pick_fallback_offered_many({ activityName: "Friday 9-a-side", offered: 3, stillOpen: 0 }),
+      wr.pick_fallback_offered_many({ activityName: "Friday 9-a-side", offered: 2, stillOpen: 14 }),
+      wr.pick_fallback_offered_many({ activityName: "Friday 9-a-side", offered: 1, stillOpen: 1 }),
     ].join("\n"),
   );
   add("OPK6 slot_opened_organiser (P13)", wr.slot_opened_organiser({ kickoffLabel: lang === "tr" ? "Cum 20:30" : "Fri 20:30" }));

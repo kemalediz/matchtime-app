@@ -197,6 +197,31 @@ export const en = {
       `and everyone else stays on the bench. 🙏`
     );
   },
+  /** The same post when SEVERAL slots opened at once (an organiser-pick
+   *  club's fallback, a monthly club's open places): one post for all of
+   *  them, never one each (2026-10-06). `count` is 2 or more. `details`
+   *  is one `bench_offer_slot_detail` line per slot that has a team and
+   *  a replaced player to name, and empty when none has. */
+  bench_offer_group_post_many: (p: { count: number; context: string; details: string[]; tagList: string; reactions: boolean }): string => {
+    const claim = p.reactions
+      ? "React 👍 here or reply *IN* to take one."
+      : "Just reply *IN* here to take one.";
+    return (
+      `🎟 ${p.count} slots just opened ${p.context}. *First to claim them play.*\n` +
+      p.details.map((d) => `${d}\n`).join("") +
+      `\n` +
+      `${p.tagList}\n\n` +
+      `${claim} No rush and no timeout, the slots go to whoever replies first ` +
+      `and anyone who misses out stays on the bench. 🙏`
+    );
+  },
+
+  /** One line per slot under the several-slots post: which team the
+   *  place is on and who it replaces. `_plain` is the DM's twin. */
+  bench_offer_slot_detail: (p: { teamLabel: string; replacingName: string }): string =>
+    `• on *${p.teamLabel}*, replacing ${p.replacingName}`,
+  bench_offer_slot_detail_plain: (p: { teamLabel: string; replacingName: string }): string =>
+    `• on ${p.teamLabel}, replacing ${p.replacingName}`,
 
   // ── row 81: the bench offer's context clause (scheduler-copy.ts) ──
   //   `_plain` twins are for the DM (row 85), which stays English in
@@ -1349,6 +1374,23 @@ export const en = {
     );
   },
 
+  /** Row 85 when SEVERAL slots opened at once: one DM for all of them
+   *  (2026-10-06). `count` is 2 or more; `details` as in
+   *  `bench_offer_group_post_many`, from `bench_offer_slot_detail_plain`. */
+  dm_bench_offer_many: (p: { count: number; firstName: string; context: string; details: string[]; reactions: boolean }): string => {
+    const hi = p.firstName ? ` ${p.firstName}` : "";
+    const claim = p.reactions
+      ? "Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there."
+      : "Reply *YES* here, or *IN* on the message I tagged you in, in the group.";
+    return (
+      `👋 Hi${hi}, ${p.count} slots just opened ${p.context} and you're on the bench.\n` +
+      p.details.map((d) => `${d}\n`).join("") +
+      `\n` +
+      `Want one? ${claim} First to claim plays. No timeout, and if you're ` +
+      `not free no worries, you stay on the bench. 🙏`
+    );
+  },
+
   /** Row 103: the bench DM's one clarification. `day` as in the row 81
    *  context clause: null on match day ("tonight"), else "Tue 6 Oct". */
   dm_bench_unclear: (p: { day: string | null }): string =>
@@ -2263,6 +2305,21 @@ export const en = {
   /** P11 */
   pick_fallback_offered: (p: { activityName: string }): string =>
     `Nobody picked for *${p.activityName}*, so I've offered the place to the waiting list: the first to say IN gets it.`,
+  /** P11 when more than one place is offered, or fewer places are offered
+   *  than are open because fewer people are waiting (2026-10-06).
+   *  `offered` is how many went to the waiting list, `stillOpen` how many
+   *  places nobody is waiting for. */
+  pick_fallback_offered_many: (p: { activityName: string; offered: number; stillOpen: number }): string => {
+    if (p.stillOpen === 0) {
+      return `Nobody picked for *${p.activityName}*, so I've offered the ${p.offered} open places to the waiting list: whoever says IN gets one.`;
+    }
+    const offered = p.offered === 1 ? "1 place" : `${p.offered} places`;
+    const left = p.stillOpen === 1 ? "1 more place is" : `${p.stillOpen} more places are`;
+    return (
+      `Nobody picked for *${p.activityName}*, so I've offered ${offered} to the waiting list, one for each person waiting: ` +
+      `whoever says IN gets one. ${left} still open.`
+    );
+  },
   /** P12 */
   pick_fallback_left: (p: { activityName: string; confirmed: number; maxPlayers: number }): string =>
     `Nobody picked for *${p.activityName}*, so the place stays open. Squad ${p.confirmed}/${p.maxPlayers}.`,
