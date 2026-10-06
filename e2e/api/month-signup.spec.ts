@@ -26,9 +26,12 @@
  *      member's paste that shows the same list;
  *   7. a club on WEEKLY mode is untouched; a muted club and a dormant
  *      club open nothing; a Turkish club's list is Turkish;
- *   8. a day later sign-up ends: the month is "running", the regulars are
- *      on the first game and the WEEK's list is posted; a late
- *      "IN FOR <MONTH>" still joins and goes onto that game.
+ *   8. two days before the first game sign-up ends: the month is
+ *      "running", the regulars are on the first game and the WEEK's list
+ *      is posted. Until kick-off "IN FOR <MONTH>" and a pasted "List for
+ *      <Month>" from a newcomer still join the MONTH (never game one as a
+ *      one-off), and MatchTime's own sign-up list pasted back is never
+ *      read as the week's list.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -61,13 +64,18 @@ const CUR = londonMonthStart(new Date());
 const NEXT = nextMonthStart(CUR);
 /** The fixture's weekday: Monday. */
 const WEEKDAY = 1;
-const KICKOFFS = monthKickoffs(NEXT, WEEKDAY, "20:00");
+/** The fixture's dates in the month. The LAST one is cancelled before the
+ *  list opens: it is not a game anybody signs up or pays for. */
+const CALENDAR = monthKickoffs(NEXT, WEEKDAY, "20:00");
+const CANCELLED = CALENDAR[CALENDAR.length - 1];
+const KICKOFFS = CALENDAR.slice(0, -1);
 const FIRST = KICKOFFS[0];
 const DAYS = KICKOFFS.map((k) => Number(formatInTimeZone(k, LONDON, "d")));
 const MONTH_NAME = formatInTimeZone(FIRST, LONDON, "MMMM");
 const PREV_NAME = formatInTimeZone(new Date(`${CUR}T12:00:00.000Z`), LONDON, "MMMM");
 /** 7 days before the first game, 10:00 London. */
 const OPENS = listOpensAt(FIRST, 7);
+/** Two days before the first game. */
 const ENDS = signupEndsAt(new Date(OPENS.getTime() + 5 * 60_000), FIRST);
 const after = (mins: number) => new Date(OPENS.getTime() + mins * 60_000);
 
@@ -83,6 +91,7 @@ const P = {
   gone: { id: "e2e-su-gone", name: "Gone Away", phone: "+447700930009" },
   off: { id: "e2e-su-off", name: "Taken Off", phone: "+447700930010" },
   ayse: { id: "e2e-su-ayse", name: "Ayşe Kaya", phone: "+447700930011" },
+  ned: { id: "e2e-su-ned", name: "Ned Flynn", phone: "+447700930012" },
 } as const;
 type Person = (typeof P)[keyof typeof P];
 const digits = (phone: string) => phone.replace(/^\+/, "");
@@ -158,9 +167,11 @@ const members = async (db: TestDb, org = ORG) =>
   );
 const memberOf = async (db: TestDb, who: Person) => (await members(db)).find((m) => m.userId === who.id);
 
+/** The org's matches, the cancelled week left out. */
 const matchesOf = (db: TestDb, org = ORG) =>
   db.all<{ id: string; date: Date; maxPlayers: number }>(
-    `SELECT m.id, m.date, m."maxPlayers" FROM "Match" m JOIN "Activity" a ON a.id = m."activityId" WHERE a."orgId" = $1 ORDER BY m.date`,
+    `SELECT m.id, m.date, m."maxPlayers" FROM "Match" m JOIN "Activity" a ON a.id = m."activityId"
+      WHERE a."orgId" = $1 AND m.status <> 'CANCELLED' ORDER BY m.date`,
     [org],
   );
 
@@ -243,10 +254,16 @@ test.beforeAll(async () => {
   const db = testDb();
   await club(db, { org: ORG, group: GROUP, act: ACT, sport: "e2e-su-sport", name: "Vets MNF" });
   await person(db, ORG, P.rob, "OWNER");
-  for (const p of [P.alex, P.bilal, P.chris, P.dan, P.eve, P.will, P.omar, P.gone, P.off]) await person(db, ORG, p);
+  for (const p of [P.alex, P.bilal, P.chris, P.dan, P.eve, P.will, P.omar, P.gone, P.off, P.ned]) await person(db, ORG, p);
   // "Gone Away" has left the group since.
   await db.run(`UPDATE "Membership" SET "leftAt" = now() WHERE "userId" = $1`, [P.gone.id]);
   await currentMonth(db);
+  // The organiser cancelled the month's last week before the list opened.
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
+     VALUES ('e2e-su-cancelled', $1, $2, 4, 'CANCELLED', $2, now())`,
+    [ACT, CANCELLED.toISOString()],
+  );
 
   await club(db, { org: ORG2, group: GROUP2, act: ACT2, sport: "e2e-su-sport-tr", name: "Pazartesi Halısaha", language: "tr" });
   await person(db, ORG2, P.ayse, "OWNER");
@@ -281,7 +298,7 @@ test("2. when it is due: the month's matches exist, the month is created ONCE, t
   expect(month).toMatchObject({ status: "open", gamesScheduled: KICKOFFS.length, activityId: ACT });
   expect(await db.count(`SELECT COUNT(*) FROM "SquadMonth" WHERE "orgId" = $1 AND "monthStart" = $2::date`, [ORG, NEXT])).toBe(1);
 
-  // Every game of the month, at its London kick-off, at the format's size.
+  // Every game of the month (not the cancelled week), at its London kick-off, at the format's size.
   const games = await matchesOf(db);
   expect(games.map((g) => new Date(g.date).toISOString())).toEqual(KICKOFFS.map((k) => k.toISOString()));
   expect(games.every((g) => g.maxPlayers === 4)).toBe(true);
@@ -379,7 +396,12 @@ test("5. door 2: PAYG with dates, OUT and back IN; a sentence about the month is
   expect(await memberOf(db, P.chris)).toMatchObject({ kind: "regular", slot: 3, out: false });
 
   // A bare "IN" counts as a reply to the month's list (when the Pi forwards the quoted message).
-  const quoted = await say(request, P.bilal, "IN", GROUP, `📋 List for ${MONTH_NAME}\n\n1. Alex Carter\n2.`);
+  // A reply to the WEEK's list, or to a list somebody typed, is not one.
+  for (const notTheSignupList of [`📋 List for ${MONTH_NAME}: Mon 2, 20:00\n\n1. Alex Carter\n2.`, `List for ${MONTH_NAME}\n1. Alex Carter\n2.`]) {
+    expect((await say(request, P.bilal, "IN", GROUP, notTheSignupList)).intent).not.toBe("month_signup");
+    expect(await memberOf(db, P.bilal)).toMatchObject({ out: true });
+  }
+  const quoted = await say(request, P.bilal, "IN", GROUP, `${header}\n\n1. Alex Carter\n2.`);
   expect(quoted).toMatchObject({ handledBy: "fast-path", intent: "month_signup", react: "✅" });
   expect(await memberOf(db, P.bilal)).toMatchObject({ kind: "regular", slot: 2, out: false });
 });
@@ -409,12 +431,17 @@ test("6. the list is re-posted when it has changed, once, and not after a paste 
   // Posted once: the next poll has nothing.
   expect(listPosts(await poll(request, after(41)))).toEqual([]);
 
-  // Chris drops out for the month, then pastes MatchTime's own post back
-  // with his line blanked: the group has now seen the list as it stands.
+  // A copy with Chris's own line blanked does NOT take him off the month:
+  // it may be an old copy, or one somebody else edited.
   await ageListPosts(db);
-  const pasted = await say(request, P.chris, text.replace("3. Chris Bell", "3."));
-  expect(pasted).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list", react: "✅" });
+  const blanked = await say(request, P.chris, text.replace("3. Chris Bell", "3."));
+  expect(blanked).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list", react: null });
+  expect(await memberOf(db, P.chris)).toMatchObject({ kind: "regular", slot: 3, out: false });
+  // He says so, and then pastes the list as it now stands: the group has seen it.
+  expect(await say(request, P.chris, `OUT FOR ${MONTH_NAME.toUpperCase()}`)).toMatchObject({ intent: "month_signup", react: "✅" });
   expect(await memberOf(db, P.chris)).toMatchObject({ out: true });
+  const pasted = await say(request, P.chris, text.replace("3. Chris Bell", "3."));
+  expect(pasted).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list" });
   expect(listPosts(await poll(request, after(120)))).toEqual([]);
   expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE kind = 'signup-list-seen' AND key LIKE $1`, [`org-${ORG}:msu:list:%`])).toBe(1);
 });
@@ -457,7 +484,9 @@ test("7. a WEEKLY club is untouched; a muted club and a dormant club open nothin
   expect(tr).toHaveLength(1);
   const lines = tr[0].text!.split("\n");
   const trMonth = formatInTimeZone(FIRST, LONDON, "MMMM", { locale: (await import("date-fns/locale")).tr });
-  expect(lines[0]).toBe(`📋 ${trMonth} listesi (${DAYS.length} Pazartesi: ${DAYS.join(", ")})`);
+  // (This club cancelled nothing: every date of the month is a game.)
+  const allDays = CALENDAR.map((k) => Number(formatInTimeZone(k, LONDON, "d")));
+  expect(lines[0]).toBe(`📋 ${trMonth} listesi (${allDays.length} Pazartesi: ${allDays.join(", ")})`);
   expect(lines.slice(2, 6)).toEqual(["1.", "2.", "3.", "4."]);
   expect(tr[0].text).not.toContain("ayının daimi oyuncuları");
   expect(tr[0].text).not.toMatch(/[—–]/);
@@ -467,7 +496,7 @@ test("7. a WEEKLY club is untouched; a muted club and a dormant club open nothin
   expect((await members(db, ORG2)).map((m) => [m.userId, m.kind, m.slot])).toEqual([[P.ayse.id, "regular", 1]]);
 });
 
-test("8. a day later sign-up ends: the month runs, the regulars are on the first game, and a late IN FOR still joins", async ({ request, db }) => {
+test("8. two days before the first game sign-up ends: the month runs, and until kick-off people still join the MONTH", async ({ request, db }) => {
   const games = await matchesOf(db);
   const month = (await monthOf(db))!;
 
@@ -509,6 +538,27 @@ test("8. a day later sign-up ends: the month runs, the regulars are on the first
   expect(dan).toMatchObject({ handledBy: "fast-path", intent: "month_signup" });
   expect(await memberOf(db, P.dan)).toMatchObject({ out: true });
   expect((await squad()).find((r) => r.userId === P.dan.id)).toMatchObject({ status: "DROPPED" });
+
+  // A NEWCOMER pastes "List for <Month>" with his name on it. He joins the
+  // MONTH as a regular (and so goes on game one as one), not game one as
+  // a pay-as-you-go one-off.
+  const ned = await say(request, P.ned, [`List for ${MONTH_NAME}`, "1. Alex Carter", "2. Bilal Aydin", "3. Will Frost", "4. Ned"].join("\n"));
+  expect(ned).toMatchObject({ handledBy: "fast-path", intent: "month_signup_list", react: "✅" });
+  expect(await memberOf(db, P.ned)).toMatchObject({ kind: "regular", slot: 4, out: false, source: "paste", gamesCovered: KICKOFFS.length });
+  expect((await squad()).find((r) => r.userId === P.ned.id)).toEqual({ userId: P.ned.id, status: "CONFIRMED", position: 4, paymentMethod: "monthly" });
+
+  // MatchTime's own SIGN-UP list, pasted back now, is the month's list and
+  // never the week's: Omar (PAYG, numbered on it) is not put on game one,
+  // and nobody's week changes.
+  const before = await squad();
+  const own = await say(
+    request,
+    P.eve,
+    [header, "", "1. Alex Carter", "2. Bilal Aydin", "3.", "4. Dan Price", `5. Omar Khan (PAYG ${DAYS[1]}, ${DAYS[2]})`, "", ...footer(true)].join("\n"),
+  );
+  expect(own.intent).toBe("month_signup_list");
+  expect(await squad()).toEqual(before);
+  expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [games[0].id, P.omar.id])).toBe(0);
 
   // A closed month takes no sign-up at all.
   await db.run(`UPDATE "SquadMonth" SET status = 'closed' WHERE id = $1`, [month.id]);

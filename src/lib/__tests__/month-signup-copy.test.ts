@@ -7,7 +7,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseMonthlyList } from "@/lib/monthly-list";
-import { buildSignupListPost, paygMark, signupPasteResidual } from "@/lib/month-signup-copy";
+import { buildSignupListPost, isMonthLevelList, paygMark, quotedSignupMonth, signupPasteResidual } from "@/lib/month-signup-copy";
+import { buildWeekListPost } from "@/lib/monthly-week-copy";
 import { monthKickoffs, readSignupMessage, type SignupList } from "@/lib/month-signup-rules";
 
 const kickoffs = monthKickoffs("2026-11-01", 1, "20:00");
@@ -106,5 +107,39 @@ describe("the sign-up list post", () => {
   it("the PAYG mark", () => {
     expect(paygMark([])).toBe("(PAYG)");
     expect(paygMark([9])).toBe("(PAYG 9)");
+  });
+});
+
+describe("is it MatchTime's own MONTH list?", () => {
+  const week = buildWeekListPost({
+    list: { slots: [{ slot: 1, userId: "alex", name: "Alex Carter", mark: "paid" }], paidCantPlay: [], cantPlay: [], reserves: [], open: 1 },
+    matchDate: kickoffs[0],
+    paygPricePence: 800,
+    lang: "en",
+  });
+
+  it("the sign-up list is, in both languages, with or without the emoji, with words typed above it", () => {
+    for (const lang of ["en", "tr"]) {
+      const text = buildSignupListPost({ list, ...facts, lang });
+      expect(isMonthLevelList(text), lang).toBe(true);
+      expect(isMonthLevelList(text.replace("📋 ", "")), lang).toBe(true);
+      expect(isMonthLevelList(`here you go lads\n${text}`), lang).toBe(true);
+    }
+  });
+
+  it("a list the group typed itself, and the WEEK's list, are not", () => {
+    expect(isMonthLevelList("List for November:\n1. Alex\n2. Bilal (paid)")).toBe(false);
+    expect(isMonthLevelList("Kasım listesi\n1. Alex")).toBe(false);
+    expect(isMonthLevelList(week)).toBe(false);
+  });
+
+  it("a bare IN counts for the month ONLY as a reply to the sign-up list, never to the week's list", () => {
+    expect(quotedSignupMonth(buildSignupListPost({ list, ...facts, lang: "en" }))).toBe(11);
+    expect(quotedSignupMonth(buildSignupListPost({ list, ...facts, lang: "tr" }))).toBe(11);
+    // "📋 List for November: Mon 2 Nov, 20:00" is this week's game.
+    expect(quotedSignupMonth(week)).toBeNull();
+    expect(quotedSignupMonth("List for November\n1. Alex")).toBeNull();
+    expect(quotedSignupMonth("see you in November")).toBeNull();
+    expect(quotedSignupMonth(null)).toBeNull();
   });
 });

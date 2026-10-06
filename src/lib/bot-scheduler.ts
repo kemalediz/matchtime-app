@@ -454,6 +454,9 @@ export async function computeDuePosts(
   /** A monthly club's running months, when the caller (the due-posts
    *  route's sweep) has just read them. Null or omitted: read here. */
   preloadedMonths: RunningMonth[] | null = null,
+  /** A monthly club's live months (sign-up, slice 3), when the due-posts
+   *  route's sweep has just read them. Null or omitted: read here. */
+  preloadedLiveMonths: import("./month-signup").SignupMonth[] | null = null,
 ): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
@@ -788,7 +791,7 @@ export async function computeDuePosts(
   if (features.squadMode === "monthly") {
     try {
       const { signupListPosts } = await import("./month-signup");
-      const signup = await signupListPosts(org.id, now);
+      const signup = await signupListPosts(org.id, now, preloadedLiveMonths);
       signupMonths = signup.months;
       for (const p of signup.posts) out.push({ kind: "group-message", key: p.key, text: p.text });
     } catch (err) {

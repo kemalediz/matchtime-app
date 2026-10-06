@@ -267,8 +267,9 @@ export async function GET(request: Request) {
   // day, BEFORE the weekly sweep, so a month whose sign-up has just ended
   // is seeded in this same poll. A club on "weekly" returns after one
   // read. A side effect, so never in preview mode; it never throws.
+  let liveMonths: Awaited<ReturnType<typeof sweepMonthSignups>> = null;
   if (!previewOnly) {
-    await sweepMonthSignups(org.id, nowOverride ?? new Date());
+    liveMonths = await sweepMonthSignups(org.id, nowOverride ?? new Date());
   }
   if (!previewOnly) {
     try {
@@ -286,7 +287,8 @@ export async function GET(request: Request) {
   // The sweep's running months are handed on, so a monthly club's month is
   // read once per poll. Null (a weekly club, preview mode, a failed sweep):
   // `computeDuePosts` reads what it needs itself.
-  const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths);
+  // So are the sign-up's live months (slice 3): one read per poll.
+  const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths);
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
   }

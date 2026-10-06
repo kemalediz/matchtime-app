@@ -1116,13 +1116,14 @@ doors, the list post), `month-signup-copy.ts` (English and Turkish), the player'
 - **The three doors.** All end in `applySignup`, under the club-month's lock:
   1. a pasted list (`handleSignupPaste`), with slice 5's rules: a name is matched by whole
      name, alias or leading name; no player is ever created; only the SENDER'S own line is
-     applied (their name in a numbered line is IN, PAYG when marked, with its dates; their own
-     number left blank is OUT); a list with no month in its title needs 60% of its names on
-     the month. Names written in for somebody else are left alone and the sender is told by
+     applied (their name in a numbered line is IN, PAYG when marked, with its dates); a paste
+     never takes anybody OFF the month, the sender included; a list with no month in its
+     title needs 60% of its names on the month. Names written in for somebody else are left alone and the sender is told by
      DM, once a day;
   2. a typed message in a fixed vocabulary (`readSignupMessage`): "IN FOR NOVEMBER", "OUT FOR
      NOVEMBER", "PAYG FOR NOVEMBER 9th and 23rd", "Kasım varım", "Kasım yokum". The whole
-     message must be the phrase. A plain "IN" is this week's game, as before;
+     message must be the full phrase with the month's full name ("Jan payg" signs nobody
+     up). A plain "IN" is this week's game, as before;
   3. the player's page, `/month` (linked from the list post; sign-in is the usual one).
 - **The cap.** Regular places are the format's squad size. The next person WAITS: they are
   stored as a PAYG player with a note (so the weekly flow offers them open places and never
@@ -1137,20 +1138,22 @@ doors, the list post), `month-signup-copy.ts` (English and Turkish), the player'
 
 **Where it differs from the plan above, or where the plan said nothing:**
 
-1. **When sign-up ends (the plan gave no moment).** A day after the list opens, never later
-   than a day before the first game. The list post says so ("Names in by Tue 27 Oct, 10:00").
-   At that moment the month goes `running` and slice 5 takes it: the regulars are put on the
-   first game and the WEEK's list is posted. Without this a month nobody priced would have
-   stayed in sign-up and played its first game as a weekly club. Slice 4 prices a month in
-   either state.
-2. **After sign-up ends, until the month's first game,** "IN FOR NOVEMBER", the page and the
-   organiser's buttons still work, and the change is put on the week's match too (through the
-   ordinary attendance path). From the first kick-off only the organiser changes the month.
-   Joining a month under way by message is slice 6.
+1. **When sign-up ends (the plan gave no moment).** Two days before the month's first game
+   (changed after review: it was a day after the list opened). The list post says so ("Names
+   in by Sat 31 Oct, 20:00"). At that moment the month goes `running` and slice 5 takes it:
+   the regulars are put on the first game and the WEEK's list is posted. Without this a month
+   nobody priced would have stayed in sign-up and played its first game as a weekly club.
+2. **After sign-up ends, until the month's first game,** people still join the MONTH: by
+   "IN FOR NOVEMBER", the page, the organiser's buttons, and a pasted "List for November"
+   from somebody who is not on the month with their own name on it (a regular, or PAYG if
+   their line says so, subject to the cap; never game one as a one-off). The change is put
+   on the week's match too. From the first kick-off only the organiser changes the month.
 3. **Door 2 (6.2 says "a reply to the list post").** The Pi does not forward which message a
    reply quotes. The server reads a bare "IN" as a sign-up only when the batch carries the
    quoted text (`quotedBody`), which no Pi build sends yet. Until one does, the typed
-   "IN FOR NOVEMBER" is the second door, and the list post tells people to type that.
+   "IN FOR NOVEMBER" is the second door, and the list post tells people to type that. The
+   rule for when a Pi does (`quotedSignupMonth`, tested): only a reply to MatchTime's own
+   SIGN-UP list counts. A bare "IN" quoting the week's list is this week's game.
 4. **D4 during sign-up.** The plan lets a paste change somebody else's line; slice 5's review
    narrowed adding to the sender alone, and sign-up follows it. Nobody is taken OFF by a
    paste either, except the sender. An organiser adds or removes on the page.
@@ -1160,7 +1163,15 @@ doors, the list post), `month-signup-copy.ts` (English and Turkish), the player'
    23)"), so the regular places stay visible. People waiting are under "Reserves".
 7. **The cold announcement.** A match of a month in sign-up is not announced the weekly way
    ("Say IN to join, first 14 play") beside the month's list.
-8. **Not built here:** paid marks from a pasted sign-up list (they are read and handed to
+8. **MatchTime's own sign-up list is never read as the week's list.** Known by its title
+   line ("List for November (5 Mondays: ...)"). Pasted back after sign-up has ended, it
+   cannot put the PAYG players numbered on it onto game one.
+9. **The month's games are its matches that are not cancelled.** A week cancelled before the
+   list opened is not in the list's header, and is not a game anybody is charged for, carried
+   over or joining later.
+10. **One read of the month per poll.** The sweep reads the club's live months once and
+   hands them to the posts.
+11. **Not built here:** paid marks from a pasted sign-up list (they are read and handed to
    slice 4), and the "set the price" notice (slice 4).
 
 ### Slice 6: credits ledger, cancelled weeks, month close (about 2 days)

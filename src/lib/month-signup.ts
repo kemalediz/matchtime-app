@@ -44,6 +44,7 @@ import {
   buildSignupUnknownDaysDm,
   buildSignupWaitingAdminNotice,
   buildSignupWaitingDm,
+  quotedSignupMonth,
   signupPasteResidual,
 } from "./month-signup-copy";
 import {
@@ -125,13 +126,15 @@ export interface SignupMonth {
   /** Sign-up is open: the month's status is "open". */
   open: boolean;
   listOpenedAt: Date | null;
-  /** The month's games on the fixture's weekday, from the calendar. */
+  /** The month's games: its matches that are not cancelled (the calendar
+   *  only while none exists). */
   kickoffs: Date[];
   firstKickoff: Date;
   /** When sign-up ends. Null for a month with no sign-up (started part-way). */
   endsAt: Date | null;
   /** The regular places: the format's squad size. */
   maxRegulars: number;
+  fixture: RecurringFixtureKey;
   /** The month's matches that exist and are not cancelled, by London day. */
   matches: Array<MonthMatchDay & { date: Date; status: string }>;
   /** Everybody on the month who is still in the club, OUT ones included. */
@@ -195,8 +198,7 @@ function loadMonthRow(monthId: string) {
 
 async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
   const monthStart = row.monthStart.toISOString().slice(0, 10);
-  const kickoffs = monthKickoffs(monthStart, row.activity.dayOfWeek, row.activity.time);
-  if (kickoffs.length === 0) return null;
+  const calendar = monthKickoffs(monthStart, row.activity.dayOfWeek, row.activity.time);
   const fixture = { orgId: row.orgId, venue: row.activity.venue, dayOfWeek: row.activity.dayOfWeek };
   const ids = row.members.map((m) => m.userId);
   const [matches, here] = await Promise.all([
@@ -206,6 +208,12 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
       : db.membership.findMany({ where: { orgId: row.orgId, userId: { in: ids }, leftAt: null, user: { isActive: true } }, select: { userId: true } }),
   ]);
   const inClub = new Set(here.map((h) => h.userId));
+  // THE MONTH'S GAMES are the matches that exist and are not cancelled: a
+  // week cancelled before the list opened is not a game anybody is asked
+  // to sign up or pay for, carried over or joining later. (The calendar
+  // only while no match exists yet.)
+  const kickoffs = matches.length > 0 ? matches.map((m) => m.date) : calendar;
+  if (kickoffs.length === 0) return null;
   return {
     id: row.id,
     orgId: row.orgId,
@@ -220,6 +228,7 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
     firstKickoff: kickoffs[0],
     endsAt: row.listOpenedAt ? signupEndsAt(row.listOpenedAt, kickoffs[0]) : null,
     maxRegulars: row.activity.sport.playersPerTeam * 2,
+    fixture,
     matches,
     // Somebody who has left the group is not on the list. Their row stays
     // (it may know of money); it is simply not read here.
@@ -251,11 +260,19 @@ export async function loadSignupMonth(monthId: string): Promise<SignupMonth | nu
 }
 
 /**
- * The months of a club that somebody can still JOIN: this London month or
- * the next, not closed, and its first game not kicked off yet. At most a
- * handful of rows. The caller has already checked the club is monthly.
+ * The months of a club that somebody can still JOIN: not closed, and its
+ * first game not kicked off yet. The caller has checked the club is monthly.
  */
 export async function loadJoinableMonths(orgId: string, now: Date = new Date()): Promise<SignupMonth[]> {
+  return (await loadLiveMonths(orgId, now)).filter((m) => now.getTime() < m.firstKickoff.getTime());
+}
+
+/**
+ * This London month's and the next's months of a club that are not closed.
+ * ONE read per poll: the sweep loads them and hands them to the posts
+ * (`computeDuePosts`), so an open month costs the poll no second read.
+ */
+export async function loadLiveMonths(orgId: string, now: Date = new Date()): Promise<SignupMonth[]> {
   const current = londonMonthStart(now);
   const rows = await db.squadMonth.findMany({
     where: {
@@ -269,7 +286,7 @@ export async function loadJoinableMonths(orgId: string, now: Date = new Date()):
   const out: SignupMonth[] = [];
   for (const row of rows) {
     const m = await toSignupMonth(row);
-    if (m && now.getTime() < m.firstKickoff.getTime()) out.push(m);
+    if (m) out.push(m);
   }
   return out;
 }
@@ -442,21 +459,17 @@ async function openMonthList(args: {
 }
 
 /**
- * Sign-up has ended for these months: they go "running", and from the
- * next poll the weekly flow (slice 5) seeds, lists and credits them. A
- * compare-and-set on the status, so two polls flip a month once.
+ * Sign-up has ended for these months (two days before their first game):
+ * they go "running", and from the next poll the weekly flow (slice 5)
+ * seeds, lists and credits them. A compare-and-set on the status, so two
+ * polls flip a month once. `months`: the club's live months, when the
+ * caller has just read them.
  */
-export async function advanceSignupMonths(orgId: string, now: Date = new Date()): Promise<string[]> {
-  const open = await db.squadMonth.findMany({
-    where: { orgId, status: "open", listOpenedAt: { not: null } },
-    select: { id: true, monthStart: true, listOpenedAt: true, activity: { select: { dayOfWeek: true, time: true } } },
-  });
+export async function advanceSignupMonths(orgId: string, now: Date = new Date(), months?: SignupMonth[]): Promise<string[]> {
+  const open = (months ?? (await loadLiveMonths(orgId, now))).filter((m) => m.open && m.endsAt);
   const ended: string[] = [];
   for (const m of open) {
-    const first = firstKickoffOf(m.monthStart.toISOString().slice(0, 10), m.activity.dayOfWeek, m.activity.time);
-    // A fixture whose time can no longer be read: end sign-up rather than
-    // leave the month open for ever.
-    if (first && now.getTime() < signupEndsAt(m.listOpenedAt!, first).getTime()) continue;
+    if (now.getTime() < m.endsAt!.getTime()) continue;
     const res = await db.squadMonth.updateMany({ where: { id: m.id, status: "open" }, data: { status: "running" } });
     if (res.count > 0) ended.push(m.id);
   }
@@ -466,19 +479,27 @@ export async function advanceSignupMonths(orgId: string, now: Date = new Date())
 /**
  * The due-posts poll's one call for the sign-up, BEFORE the weekly sweep
  * (so a month whose sign-up has just ended is seeded in the same poll).
- * A club on "weekly" returns after one read. Never throws.
+ * A club on "weekly" returns null after one read. Never throws.
+ *
+ * Returns the club's live months, read ONCE, for the rest of the poll
+ * (`computeDuePosts` posts from these same rows). Null: a weekly club, or
+ * a failure (the posts then read what they need themselves).
  */
-export async function sweepMonthSignups(orgId: string, now: Date = new Date()): Promise<void> {
+export async function sweepMonthSignups(orgId: string, now: Date = new Date()): Promise<SignupMonth[] | null> {
   try {
     const org = await db.organisation.findUnique({
       where: { id: orgId },
       select: { squadMode: true, approvalStatus: true, dormantAt: true, billingStatus: true },
     });
-    if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return;
-    await openDueMonthLists(orgId, now);
-    await advanceSignupMonths(orgId, now);
+    if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return null;
+    const opened = await openDueMonthLists(orgId, now);
+    let months = await loadLiveMonths(orgId, now);
+    void opened;
+    if ((await advanceSignupMonths(orgId, now, months)).length > 0) months = await loadLiveMonths(orgId, now);
+    return months;
   } catch (err) {
     console.error(`[month-signup] sweep for ${orgId} failed (the next poll retries):`, err);
+    return null;
   }
 }
 
@@ -525,6 +546,9 @@ export async function applySignup(args: {
   });
   if (!member) return { ok: false, error: "not-a-member" };
 
+  // The games still to be played: what a regular who joins now covers.
+  // The same count the carried-over regulars were given when it is the
+  // whole month (cancelled weeks are not in it for anybody).
   const gamesLeft = month.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
   const decision = await db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
@@ -786,11 +810,21 @@ export async function handleSignupPaste(args: {
   sender: { userId: string | null; name: string | null };
   senderWhatsAppName?: string | null;
   needHeader: boolean;
+  /**
+   * A WEEK's list is live for this club and this paste may be it. Then it
+   * is the month's business only when it signs up a NEWCOMER: its title
+   * names a month that can still be joined, the sender's own name is on it
+   * and they are not on that month. (They join the MONTH, as a regular or
+   * PAYG as their line says, and never slip onto game one as a one-off.)
+   * Anybody already on the month writing on the week's list is the week's.
+   */
+  newcomerOnly?: boolean;
   now?: Date;
 }): Promise<SignupPasteResult | null> {
   const now = args.now ?? new Date();
   const list = parseMonthlyList(args.body);
   if (!list) return null;
+  if (args.newcomerOnly && (!list.month || !args.sender.userId)) return null;
   if (!(await isLiveMonthlyClub(args.orgId))) return null;
   const months = await loadJoinableMonths(args.orgId, now);
   if (months.length === 0) return null;
@@ -801,6 +835,7 @@ export async function handleSignupPaste(args: {
   for (const m of months) {
     // With no month in the title, only a month still in sign-up.
     if (!list.month && !m.open) continue;
+    if (args.newcomerOnly && (m.open || m.members.some((x) => x.userId === args.sender.userId && !x.out))) continue;
     const o = reconcileSignupPaste({
       list,
       members: m.members,
@@ -817,6 +852,7 @@ export async function handleSignupPaste(args: {
     }
   }
   if (!month || !outcome) return null;
+  if (args.newcomerOnly && !outcome.self) return null;
 
   const applied: string[] = [];
   let changed = false;
@@ -911,8 +947,10 @@ export async function handleSignupMessage(args: {
 }): Promise<SignupMessageResult | null> {
   const now = args.now ?? new Date();
   if (!args.sender.userId) return null;
-  const quotedList = args.quotedBody ? parseMonthlyList(args.quotedBody) : null;
-  const quotedMonth = quotedList?.month?.month ?? null;
+  // THE QUOTED-REPLY RULE (`quotedSignupMonth`): only a reply to
+  // MatchTime's own SIGN-UP list. A bare "IN" quoting the week's list is
+  // this week's game.
+  const quotedMonth = quotedSignupMonth(args.quotedBody);
   const ask = readSignupMessage(args.body, { quoted: quotedMonth !== null });
   if (!ask) return null;
   const wanted = ask.month ?? quotedMonth;
@@ -962,22 +1000,19 @@ export async function recordSignupListShown(
 export async function signupListPosts(
   orgId: string,
   now: Date,
+  /** The club's live months, when the poll's sweep has just read them. */
+  preloaded?: SignupMonth[] | null,
 ): Promise<{
   posts: Array<{ key: string; text: string }>;
   /** Every month of the club in sign-up, for the scheduler: a match of one
    *  is not announced the weekly way while its list is open. */
   months: Array<{ id: string; monthStart: string; fixture: RecurringFixtureKey }>;
 }> {
-  const open = await db.squadMonth.findMany({ where: { orgId, status: "open", listOpenedAt: { not: null } }, select: MONTH_SELECT });
+  const open = (preloaded ?? (await loadLiveMonths(orgId, now))).filter((m) => m.open && m.listOpenedAt);
   const out: Array<{ key: string; text: string }> = [];
-  const months = open.map((row) => ({
-    id: row.id,
-    monthStart: row.monthStart.toISOString().slice(0, 10),
-    fixture: { orgId, venue: row.activity.venue, dayOfWeek: row.activity.dayOfWeek },
-  }));
-  for (const row of open) {
-    const month = await toSignupMonth(row);
-    if (!month?.endsAt) continue;
+  const months = open.map((m) => ({ id: m.id, monthStart: m.monthStart, fixture: m.fixture }));
+  for (const month of open) {
+    if (!month.endsAt) continue;
     const { text, hash } = renderSignupList(month);
     const prefix = signupListKeyPrefix(orgId, month.id);
     const shown = await db.sentNotification.findMany({

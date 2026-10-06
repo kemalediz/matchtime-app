@@ -1705,7 +1705,7 @@ async function handleAnalyzeRequest(request: Request) {
   //   It says nothing in the group: a ✅ on a message that was read.
   const monthSignup = org.squadMode === "monthly" ? await import("@/lib/month-signup") : null;
   /** Read `m` as a pasted sign-up list. True when it was one (and is claimed). */
-  const trySignupPaste = async (m: InboundMessage, needHeader: boolean): Promise<boolean> => {
+  const trySignupPaste = async (m: InboundMessage, needHeader: boolean, newcomerOnly = false): Promise<boolean> => {
     if (!monthSignup) return false;
     const sender = senderById.get(m.waMessageId)!;
     let res: Awaited<ReturnType<typeof monthSignup.handleSignupPaste>> = null;
@@ -1717,6 +1717,7 @@ async function handleAnalyzeRequest(request: Request) {
         sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
         senderWhatsAppName: m.authorName ?? null,
         needHeader,
+        newcomerOnly,
       });
     } catch (err) {
       // Left for section 4 and the pipeline, as if this block were not here.
@@ -1737,10 +1738,31 @@ async function handleAnalyzeRequest(request: Request) {
     });
     return true;
   };
+  // TWO THINGS ARE THE MONTH'S BEFORE THE WEEK'S READER (3b) SEES A PASTE:
+  //   - MatchTime's OWN month list (the sign-up list, known by its title
+  //     line), pasted back at any time. It is a list of the MONTH: it must
+  //     never change who plays this week, so it never reaches 3b. It is
+  //     read for the month, or not at all;
+  //   - a list headed with a month that can still be joined, pasted by
+  //     somebody who is NOT on that month, with their own name on it. They
+  //     are signing up for the MONTH (a regular, or PAYG if their line
+  //     says so, subject to the cap), and must not slip onto game one as
+  //     a one-off instead.
+  if (monthSignup) {
+    const { isMonthLevelList } = await import("@/lib/month-signup-copy");
+    for (const m of fresh) {
+      if (fastPathHandledIds.has(m.waMessageId)) continue;
+      if (isMonthLevelList(m.body)) {
+        if (!(await trySignupPaste(m, false))) monthlyNotSquadList.add(m.waMessageId);
+      } else {
+        await trySignupPaste(m, false, true);
+      }
+    }
+  }
   if (org.squadMode === "monthly" && nextMatchForReply) {
     const { handleMonthlyPaste } = await import("@/lib/monthly-paste");
     for (const m of fresh) {
-      if (fastPathHandledIds.has(m.waMessageId)) continue;
+      if (fastPathHandledIds.has(m.waMessageId) || monthlyNotSquadList.has(m.waMessageId)) continue;
       const sender = senderById.get(m.waMessageId)!;
       let res: Awaited<ReturnType<typeof handleMonthlyPaste>> = null;
       try {

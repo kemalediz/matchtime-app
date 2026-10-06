@@ -71,14 +71,12 @@ describe("when the list opens", () => {
 
 describe("when sign-up ends", () => {
   const first = new Date("2026-11-02T20:00:00.000Z");
-  it("a day after the list opened", () => {
-    expect(signupEndsAt(new Date("2026-10-26T10:00:00.000Z"), first).toISOString()).toBe("2026-10-27T10:00:00.000Z");
-  });
-  it("never later than a day before the first game", () => {
-    expect(signupEndsAt(new Date("2026-11-01T10:00:00.000Z"), first).toISOString()).toBe("2026-11-01T20:00:00.000Z");
+  it("two days before the first game, however early the list opened", () => {
+    expect(signupEndsAt(new Date("2026-10-26T10:00:00.000Z"), first).toISOString()).toBe("2026-10-31T20:00:00.000Z");
+    expect(signupEndsAt(new Date("2026-10-12T10:00:00.000Z"), first).toISOString()).toBe("2026-10-31T20:00:00.000Z");
   });
   it("and never less than two hours after a list that opened late", () => {
-    expect(signupEndsAt(new Date("2026-11-02T10:00:00.000Z"), first).toISOString()).toBe("2026-11-02T12:00:00.000Z");
+    expect(signupEndsAt(new Date("2026-11-01T10:00:00.000Z"), first).toISOString()).toBe("2026-11-01T12:00:00.000Z");
   });
 });
 
@@ -119,12 +117,12 @@ describe("the words of a sign-up message", () => {
   it("English, naming the month", () => {
     expect(plain("IN FOR NOVEMBER")).toEqual({ choice: "in", month: 11, days: [] });
     expect(plain("I'm in for November")).toEqual({ choice: "in", month: 11, days: [] });
-    expect(plain("count me in for nov!")).toEqual({ choice: "in", month: 11, days: [] });
+    expect(plain("count me in for November!")).toEqual({ choice: "in", month: 11, days: [] });
     expect(plain("Out for November")).toEqual({ choice: "out", month: 11, days: [] });
     expect(plain("not in for November")).toEqual({ choice: "out", month: 11, days: [] });
     expect(plain("PAYG for November")).toEqual({ choice: "payg", month: 11, days: [] });
-    expect(plain("PAYG November 9th and 23rd only")).toEqual({ choice: "payg", month: 11, days: [9, 23] });
-    expect(plain("PAYG 9th, 23rd November")).toEqual({ choice: "payg", month: 11, days: [9, 23] });
+    expect(plain("PAYG for November 9th and 23rd only")).toEqual({ choice: "payg", month: 11, days: [9, 23] });
+    expect(plain("PAYG 9th, 23rd for November")).toEqual({ choice: "payg", month: 11, days: [9, 23] });
   });
 
   it("Turkish, naming the month", () => {
@@ -132,7 +130,13 @@ describe("the words of a sign-up message", () => {
     expect(plain("Kasım için varım")).toEqual({ choice: "in", month: 11, days: [] });
     expect(plain("Kasım'da yokum")).toEqual({ choice: "out", month: 11, days: [] });
     expect(plain("KASIM YOKUM")).toEqual({ choice: "out", month: 11, days: [] });
-    expect(plain("Kasım PAYG 9 ve 23")).toEqual({ choice: "payg", month: 11, days: [9, 23] });
+    expect(plain("Kasım için PAYG 9 ve 23")).toEqual({ choice: "payg", month: 11, days: [9, 23] });
+  });
+
+  it("only the full form with the month's full name: an abbreviation or a clipped phrase signs nobody up", () => {
+    for (const t of ["Jan payg", "payg Jan", "in for Nov", "out for Dec", "Nov in", "PAYG November", "November PAYG", "Kasım PAYG", "in November", "PAYG for Nov 9th", "in for Sept"]) {
+      expect(plain(t), t).toBeNull();
+    }
   });
 
   it("a plain IN is this week's game, never the month", () => {
@@ -328,9 +332,9 @@ describe("a pasted sign-up list", () => {
     expect(out.notAdded).toEqual([]);
   });
 
-  it("the sender blanking their own line, and being nowhere else on it, is OUT", () => {
+  it("a copy with the sender's own number blank does NOT take them off: only OUT FOR or the page does", () => {
     const out = run("List for November\n1. Alex\n2.\n3.", { senderUserId: "bilal", senderNames: ["Bilal Aydin"] });
-    expect(out.self).toEqual({ choice: "out", days: [] });
+    expect(out.self).toBeNull();
   });
 
   it("somebody else's blanked line is left alone", () => {

@@ -87,16 +87,19 @@ export function listOpenDue(p: { now: Date; opensAt: Date; firstKickoff: Date })
   return t >= p.opensAt.getTime() && t < p.firstKickoff.getTime() && isDaytime(p.now);
 }
 
+/** Names are in two days before the month's first game. */
+export const SIGNUP_ENDS_BEFORE_MS = 2 * DAY_MS;
+
 /**
- * When sign-up ends: a day after the list opened, never later than a day
- * before the first game, and never less than two hours after a list that
- * opened late. From this moment the weekly flow runs the month, and the
- * list MatchTime posts is the week's.
+ * When sign-up ends: two days before the month's first game, and never
+ * less than two hours after a list that opened late. The list post says
+ * so. From this moment the weekly flow runs the month, and the list
+ * MatchTime posts is the week's; "IN FOR <MONTH>", a pasted "List for
+ * <Month>" and the page still sign a player up for the MONTH until the
+ * first game kicks off.
  */
 export function signupEndsAt(listOpenedAt: Date, firstKickoff: Date): Date {
-  const aDayLater = listOpenedAt.getTime() + DAY_MS;
-  const aDayBefore = firstKickoff.getTime() - DAY_MS;
-  return new Date(Math.max(listOpenedAt.getTime() + 2 * HOUR_MS, Math.min(aDayLater, aDayBefore)));
+  return new Date(Math.max(listOpenedAt.getTime() + 2 * HOUR_MS, firstKickoff.getTime() - SIGNUP_ENDS_BEFORE_MS));
 }
 
 // ── Who is carried over (plan 4.1) ─────────────────────────────────────
@@ -151,19 +154,11 @@ const TR_LOCATIVE = /^(.+?)(?:da|de|ta|te)$/;
 const DAY_TOKEN = /^(\d{1,2})(?:st|nd|rd|th)?$/;
 const DAY_JOINER = new Set(["and", "ve"]);
 
-/** Whole messages only, after the month is `M` and a run of days is `D`. */
+/** Whole messages only, after the month is `M` and a run of days is `D`.
+ *  The FULL form: "for <month>" in English, the month then the word in
+ *  Turkish. "Jan payg" and "PAYG November" are not it. */
 const WITH_MONTH: Record<SignupChoice, ReadonlySet<string>> = {
-  in: new Set([
-    "in for M",
-    "im in for M",
-    "i m in for M",
-    "i am in for M",
-    "count me in for M",
-    "M varim",
-    "M icin varim",
-    "M ayi icin varim",
-    "M ben varim",
-  ]),
+  in: new Set(["in for M", "im in for M", "i m in for M", "i am in for M", "count me in for M", "M varim", "M icin varim", "M ayi icin varim"]),
   out: new Set([
     "out for M",
     "im out for M",
@@ -176,22 +171,12 @@ const WITH_MONTH: Record<SignupChoice, ReadonlySet<string>> = {
     "M yokum",
     "M icin yokum",
     "M ayi icin yokum",
-    "M ben yokum",
   ]),
-  payg: new Set([
-    "payg for M",
-    "payg M",
-    "M payg",
-    "M icin payg",
-    "payg for M D",
-    "payg M D",
-    "payg D M",
-    "payg D for M",
-    "M payg D",
-    "M icin payg D",
-    "M D payg",
-  ]),
+  payg: new Set(["payg for M", "payg for M D", "payg D for M", "M icin payg", "M icin payg D"]),
 };
+
+/** A month's short name is not enough to sign anybody up for it. */
+const MONTH_ABBREVIATIONS = new Set(["jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"]);
 
 /** The bare words, read only for a reply to the list itself. */
 const BARE: Record<SignupChoice, ReadonlySet<string>> = {
@@ -203,9 +188,9 @@ const BARE: Record<SignupChoice, ReadonlySet<string>> = {
 /**
  * Is this message a sign-up for a month, in the fixed vocabulary?
  *
- * The WHOLE message must be one of the phrases: "IN FOR NOVEMBER",
- * "I'm out for November", "PAYG November 9th and 23rd", "Kasım varım",
- * "Kasım'da yokum". A sentence that merely mentions the month ("who is in
+ * The WHOLE message must be one of the phrases, with the month's full
+ * name: "IN FOR NOVEMBER", "I'm out for November", "PAYG for November 9th
+ * and 23rd", "Kasım varım", "Kasım'da yokum". A sentence that merely mentions the month ("who is in
  * for November?") is not one, and a plain "IN" is this week's game, as it
  * always was (plan 4.1).
  *
@@ -226,7 +211,7 @@ export function readSignupMessage(text: string | null | undefined, opts: { quote
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i];
     // "may" is also a word; nothing in this vocabulary uses it as one.
-    const month = monthOfWord(tok) ?? monthOfWord(TR_LOCATIVE.exec(tok)?.[1] ?? "");
+    const month = MONTH_ABBREVIATIONS.has(tok) ? null : (monthOfWord(tok) ?? monthOfWord(TR_LOCATIVE.exec(tok)?.[1] ?? ""));
     if (month !== null) {
       months.push(month);
       out.push("M");
@@ -438,8 +423,8 @@ function makeResolver(roster: SignupRosterMember[], known: ReadonlySet<string>):
  *    `needHeader`: a week's list is live for this club, and a headerless
  *    list is that one).
  *  - THE SENDER'S OWN LINE is the only one a paste changes: their name in
- *    a numbered line is IN (PAYG when marked, with its dates); their own
- *    number left blank, with them nowhere else on the paste, is OUT.
+ *    a numbered line is IN (PAYG when marked, with its dates). A paste
+ *    never takes anybody OFF the month, the sender included.
  *  - NOBODY ELSE is added, taken off or created. A club player written in
  *    by somebody else, a name nobody has and a name two players have are
  *    reported (`notAdded`). A name missing from the paste changes nothing:
@@ -527,12 +512,9 @@ export function reconcileSignupPaste(args: {
     }
   }
 
-  // Their own number left blank, and they are nowhere else on the paste.
-  const mine = senderUserId ? memberOf.get(senderUserId) : undefined;
-  if (!self && senderUserId && mine && mine.slot != null && !onPaste.has(senderUserId) && !selfLine) {
-    if (list.slots.some((e) => !e.name && e.slot === mine.slot)) self = { choice: "out", days: [] };
-  }
-
+  // A copy with the sender's own number blank, and their name nowhere on
+  // it, takes NOBODY off: it may be an old copy, or one somebody else
+  // edited. Only "OUT FOR <MONTH>" or the page takes a player off a month.
   return { thisList: true, self, notAdded, paidClaims };
 }
 

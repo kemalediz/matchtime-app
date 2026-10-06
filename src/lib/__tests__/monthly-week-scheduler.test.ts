@@ -225,7 +225,11 @@ function setWorld(
     findMany: async (args: unknown) => {
       // Slice 3 reads the club's months in SIGN-UP ("open") once per poll,
       // for a monthly club only. The month in this world is a running one.
-      if ((args as { where?: { status?: unknown } }).where?.status === "open") {
+      // Slice 3 reads the club's live months (`status: { in: [...] }`) once
+      // per poll, for a monthly club only. The month in this world is a
+      // running one, read by the weekly flow (`status: "running"`).
+      const status = (args as { where?: { status?: unknown } }).where?.status;
+      if (status && typeof status === "object") {
         signupReads();
         return opts.signupMonth ? [opts.signupMonth] : [];
       }
@@ -797,6 +801,17 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     expect(out.some((i) => i.key.includes(":msu:"))).toBe(false);
   });
 
+  it("the months the poll's sweep already read are not read again", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: true, signupMonth: signupMonth() });
+    const { loadLiveMonths } = await import("@/lib/month-signup");
+    const live = await loadLiveMonths(ORG.id, TUE_0930);
+    signupReads.mockClear();
+    const res = await computeDuePosts(GROUP, TUE_0930, { adminGroup: false }, null, live);
+    expect(signupReads).not.toHaveBeenCalled();
+    expect(res!.instructions.filter((i) => i.key.startsWith(PREFIX))).toHaveLength(1);
+  });
+
   it("MONTHLY, no month in sign-up: one read, no list, and the announcement as before", async () => {
     const m = novMatch();
     setWorld(m, { monthly: true });
@@ -817,7 +832,8 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     // Not the weekly list's key namespace.
     expect(post.key).not.toContain("month-list");
     expect(post.text.split("\n").slice(0, 6)).toEqual([
-      "📋 List for November (5 Mondays: 2, 9, 16, 23, 30)",
+      // The month's games are its matches: this world has one.
+      "📋 List for November (1 Monday: 2)",
       "",
       "1. Alex",
       "2. Bilal",
@@ -825,7 +841,7 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
       "4. Dave",
     ]);
     expect(post.text).toContain("Regulars from October are on already. Not in for November? Say *OUT FOR NOVEMBER*.");
-    expect(post.text).toContain("Names in by Tue 27 Oct, 10:00.");
+    expect(post.text).toContain("Names in by Sat 31 Oct, 20:00.");
   });
 
   it("MONTHLY, sign-up open: the match is NOT announced the weekly way beside the list", async () => {
@@ -858,8 +874,9 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     setWorld(m, { monthly: true, signupMonth: signupMonth() });
     // Mon 26 Oct, 23:00 London.
     expect((await instructions(new Date("2026-10-26T23:00:00.000Z"))).some((i) => i.key.startsWith(PREFIX))).toBe(false);
-    // Tue 27 Oct, 10:00 London: sign-up ends on the dot.
-    expect((await instructions(new Date("2026-10-27T10:00:00.000Z"))).some((i) => i.key.startsWith(PREFIX))).toBe(false);
+    // Sat 31 Oct, 20:00 London, two days before the first game: sign-up ends on the dot.
+    expect((await instructions(new Date("2026-10-31T19:59:00.000Z"))).some((i) => i.key.startsWith(PREFIX))).toBe(true);
+    expect((await instructions(new Date("2026-10-31T20:00:00.000Z"))).some((i) => i.key.startsWith(PREFIX))).toBe(false);
   });
 
   it("a club with attendance switched off gets no sign-up list", async () => {

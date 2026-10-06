@@ -16,7 +16,8 @@ import { dayCommaTimeLabel, monthNameLabel, weekdayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { formatLondon } from "./london-time";
-import { isMonthListHeader } from "./monthly-list";
+import { LANGS } from "./i18n/lang";
+import { isMonthListHeader, parseMonthlyList } from "./monthly-list";
 import { readListLine } from "./pasted-roster";
 import type { SignupList } from "./month-signup-rules";
 
@@ -155,6 +156,66 @@ function isOwnFooterLine(line: string, lang: LangArg): boolean {
   if (shapes.some(matches)) return true;
   for (let day = 1; day <= 31; day++) if (line === s.msu_list_payg({ day })) return true;
   return false;
+}
+
+/** The title lines of MatchTime's own MONTH lists, as shapes (the fixed
+ *  words around the variable parts), in every language. Slice 4 adds the
+ *  priced list's title here. */
+function monthListTitleShapes(): RegExp[] {
+  const SENTINEL = "\u0000";
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return LANGS.flatMap((lang) => {
+    const s = t(lang);
+    return [
+      s.msu_list_header({ month: SENTINEL, games: 2, weekday: SENTINEL, days: SENTINEL }),
+      s.msu_list_header({ month: SENTINEL, games: 1, weekday: SENTINEL, days: SENTINEL }),
+    ].map(
+      (shape) =>
+        new RegExp(
+          `^${shape
+            .replace(/^[^\p{L}\u0000]+/u, "")
+            .replace(/\d+/g, SENTINEL)
+            .split(SENTINEL)
+            .map(esc)
+            .join(".+")}$`,
+          "iu",
+        ),
+    );
+  });
+}
+
+/** The title line of one of MatchTime's own month lists in this text, or null. */
+function monthListTitle(body: string | null | undefined): string | null {
+  const shapes = monthListTitleShapes();
+  for (const raw of (body ?? "").split(/\r?\n/)) {
+    const line = raw.trim().replace(/^\P{L}+/u, "");
+    if (line !== "" && shapes.some((re) => re.test(line))) return raw.trim();
+  }
+  return null;
+}
+
+/**
+ * Is this pasted message one of MatchTime's own MONTH lists, going by its
+ * title line ("List for November (5 Mondays: 2, 9, ...)")? Such a list is
+ * the month's, not this week's game: a member who pastes one back must
+ * never change who plays this week by doing so, so it never reaches the
+ * week's reader. A list the group typed itself ("List for November:") and
+ * the week's own post ("List for November: Mon 2 Nov, 20:00") are not one.
+ */
+export function isMonthLevelList(body: string | null | undefined): boolean {
+  return monthListTitle(body) !== null;
+}
+
+/**
+ * THE QUOTED-REPLY RULE. A bare "IN" (or "OUT", "PAYG 9th") counts as a
+ * sign-up for a month ONLY when the message it replies to is MatchTime's
+ * own sign-up list, and then for that list's month (1 to 12). A reply to
+ * the WEEK's list, to a list the group typed, or to anything else returns
+ * null: that "IN" is this week's game, exactly as it always was.
+ */
+export function quotedSignupMonth(quotedBody: string | null | undefined): number | null {
+  if (!monthListTitle(quotedBody)) return null;
+  return parseMonthlyList(quotedBody)?.month?.month ?? null;
 }
 
 /** To somebody who asked for a regular place when every one was taken. */
