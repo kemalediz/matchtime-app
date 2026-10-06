@@ -68,3 +68,9 @@ $2/day for the first 30 days after approval, $1.50/day after (Sutton override 1.
 - **Double squad post fixed** (#204): timed posts skip the roster if the same squad was posted in the last 3 hours; the morning chase is skipped after a recent recruit ack.
 - **Open question for Kemal:** remove the remaining em dashes from about 84 fixed group strings and from the composer's English output (applyHouseStyle), code-only.
 - **Known gaps:** a bare "IN" replying to the month list needs a Pi change (quotedBody); Tailscale on this Mac could not see the Pi on 2026-10-06 (reconnect before the next Pi deploy).
+
+## Update, 2026-10-06 (afternoon)
+
+- **F3 learned setup is ON** (`SETUP_LEARNING_ENABLED=1` in Vercel production, set 2026-10-06 after Kemal approved the Turkish DM wording). Second live check passed 5 of 6; #206 then made "organisers pick" a suggestion only, and all six pass in the offline replay.
+- **Long dashes removed** from everything MatchTime says (#207), Pi deployed at `b36de13` on 2026-10-06 13:19. One string still has a dash: `dm_fee_confirm_prompt`, which is part of the AI's instructions and needs an approved paid check to change.
+- Tailscale on this Mac sees the Pi again.
