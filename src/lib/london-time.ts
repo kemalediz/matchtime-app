@@ -56,10 +56,13 @@ export function nextLondonKickoff(now: Date, dayOfWeek: number, time: string): D
   let daysUntil = dayOfWeek - londonWeekday;
   if (daysUntil <= 0) daysUntil += 7;
 
-  // Anchor at midnight London time of the target day; the helper turns
-  // the wall clock into a UTC instant.
-  const todayLondonMidnight = londonWallClockToUtc(now, "00:00");
-  const anchor = new Date(todayLondonMidnight.getTime() + daysUntil * 24 * 60 * 60 * 1000);
+  // Anchor inside the target London day; the helper turns the wall clock
+  // into a UTC instant. Counted from NOON, not midnight: across the
+  // autumn clock change a London day is 25 hours, so whole 24-hour days
+  // from midnight stop at 23:00 the evening before and the match landed
+  // a day early. From noon the count is at most an hour out either way.
+  const todayLondonNoon = londonWallClockToUtc(now, "12:00");
+  const anchor = new Date(todayLondonNoon.getTime() + daysUntil * 24 * 60 * 60 * 1000);
   return londonWallClockToUtc(anchor, time);
 }
 
