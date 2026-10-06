@@ -17,6 +17,8 @@ import { resolveTeamLabels } from "@/lib/team-labels";
 import { format } from "date-fns";
 import { formatLondon } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
+import { t } from "@/lib/i18n/t";
+import { buildWeekList } from "@/lib/monthly-week-rules";
 
 export default async function MatchDetailPage({
   params,
@@ -70,8 +72,20 @@ export default async function MatchDetailPage({
   // to see who's paid (instead of only via the post-match DM link).
   const orgPay = await db.organisation.findUnique({
     where: { id: match.activity.orgId },
-    select: { paymentCollectionEnabled: true, paymentHolderId: true, rollingSquadEnabled: true, benchPickMode: true },
+    select: { paymentCollectionEnabled: true, paymentHolderId: true, rollingSquadEnabled: true, benchPickMode: true, squadMode: true },
   });
+
+  // MONTHLY SQUAD (slice 6, plan 9.2): for a match of a running month the
+  // page shows the month's list for this game: who is a regular (and has
+  // paid), who pays per game, and who has paid but can't play. A club on
+  // "weekly" (Sutton FC and every club before this) makes no query here
+  // and renders exactly what it did.
+  const monthlyWeek =
+    orgPay?.squadMode === "monthly"
+      ? await import("@/lib/monthly-week").then((m) => m.loadMonthlyWeek(matchId)).catch(() => null)
+      : null;
+  const monthList = monthlyWeek ? buildWeekList({ members: monthlyWeek.members, rows: monthlyWeek.rows, maxPlayers: monthlyWeek.maxPlayers }) : null;
+  const ms = t(match.activity.org.language);
 
   // Organiser pick (slice 2b, plan 2.13): admins of such a club see the
   // waiting list with position and club rating (the number players see,
@@ -322,6 +336,53 @@ export default async function MatchDetailPage({
             redLabel={redLabel}
             yellowLabel={yellowLabel}
           />
+        </section>
+      )}
+
+      {/* The month's list for this game (monthly squad only) */}
+      {monthList && (
+        <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="monthly-week-panel">
+          <div className="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-800">{ms.mwp_title}</h2>
+            {monthList.open > 0 && (
+              <span className="text-sm text-slate-500" data-testid="monthly-open">
+                {ms.mwp_open({ open: monthList.open })}
+              </span>
+            )}
+          </div>
+          <div className="p-6 space-y-4">
+            <ol className="space-y-1 text-sm text-slate-700">
+              {monthList.slots.map((slot) => (
+                <li key={slot.slot} className="flex items-center gap-2" data-testid="monthly-slot" data-slot={slot.slot}>
+                  <span className="w-6 text-right text-slate-400">{slot.slot}.</span>
+                  <span className="font-medium text-slate-800">{slot.name}</span>
+                  {slot.userId && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        slot.mark === "payg" ? "bg-blue-50 text-blue-700" : slot.mark === "paid" ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-600"
+                      }`}
+                      data-testid="monthly-tag"
+                      data-tag={slot.mark ?? "monthly"}
+                    >
+                      {slot.mark === "payg" ? ms.mwp_tag_payg : slot.mark === "paid" ? ms.mwp_tag_paid : ms.mwp_tag_monthly}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+            {monthList.paidCantPlay.length > 0 && (
+              <div data-testid="monthly-cant-paid">
+                <h3 className="text-sm font-semibold text-slate-800">{ms.mwp_cant_paid}</h3>
+                <p className="text-sm text-slate-600">{monthList.paidCantPlay.map((p) => p.name).join(", ")}</p>
+              </div>
+            )}
+            {monthList.cantPlay.length > 0 && (
+              <div data-testid="monthly-cant">
+                <h3 className="text-sm font-semibold text-slate-800">{ms.mwp_cant}</h3>
+                <p className="text-sm text-slate-600">{monthList.cantPlay.map((p) => p.name).join(", ")}</p>
+              </div>
+            )}
+          </div>
         </section>
       )}
 

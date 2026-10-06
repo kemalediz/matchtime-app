@@ -20,6 +20,13 @@ and where it differs from sections 4.1 and 6.2, is in "Slice 3 as built" at the 
 "Slice 4 as built" at the end of section 12. No model call was added: a player's "paid" for
 the month is read from a fixed vocabulary, not by the per-match claim's classifier.
 
+**Status, 2026-10-06 (slice 6).** Slice 6 (the credits ledger, cancelled weeks, joining and
+leaving part-way, a share changed after payments, refunds, the month close and its summary) is
+built, with the two things slice 5 left out: the player's away weeks and the match page's
+labels. See "Slice 6 as built" at the end of section 12. It adds two nullable columns
+(`SquadCredit.note` and `voidNote`, migration `20261006200000_squad_credit_notes`, NOT applied
+by the PR). No model call was added and nothing needs a Pi deploy.
+
 Written for the "Vets MNF" prospect group (Monday night 7-a-side, about 14 players) after
 Kemal joined it. Everything here is a per-club setting that is OFF by default, so Sutton FC
 and every other club behave exactly as they do today.
@@ -1293,6 +1300,117 @@ route and `admin-group.ts`. Monthly clubs only; a weekly club makes no query on 
   - the summary numbers against a worked month;
   - a credit earned after the next month was priced lands in the month after.
 - **Playwright:** add and void a credit; the month summary page matches the fixture.
+
+#### Slice 6 as built (2026-10-06)
+
+Code: `month-close-rules.ts` (pure rules), `month-close.ts` (the database side),
+`month-close-copy.ts` (English and Turkish), the actions in `app/actions/month-close.ts`, the
+ledger page `/admin/months/credits`, the money controls and `?month=` on `/admin/months`, the
+away weeks, the balance and "join for the rest" on `/month`, the month's labels on
+`/matches/[matchId]`, and guarded branches in `monthly-week.ts`, `bot-scheduler.ts`,
+`month-signup.ts`, `month-payment.ts`, the due-posts route and the cancel and restore actions.
+Every branch is behind `squadMode = "monthly"`; a weekly club makes no query in any of them.
+
+- **The ledger (`/admin/months/credits`).** Every credit by player: why (missed, called off,
+  left part-way, carried in, added by an organiser with their words) and where it stands
+  (available, used for a month, removed with the reason, refunded, taken back). "Add credit"
+  (1 to 10 games, one row a game) and "Remove credit" each need a reason of 3 to 200
+  characters. Nothing is deleted. A credit that has come off a month cannot be removed. The
+  form sends a token per press, so a double click writes the credit once.
+- **A cancelled week.** Worked out from the state as it is (`decideCancelledWeekCredits`),
+  under the month's lock and the club's credit lock: by the cancel and restore actions at
+  once, and by the hourly sweep as the safety net. One "cancelled-week" credit for every
+  regular charged for that game (on the month, in the group, a regular before the game and
+  before it was called off). Cancelling again, a retry and two polls at once write one credit.
+  Restoring the game takes it back; cancelling it again writes it again; a credit an organiser
+  removed is never written again. A "missed" credit for the same game is replaced, never added
+  to. The cancellation's own announcement carries the line ("Regulars get 1 game credit for
+  it."): one post per event.
+- **Leaving part-way.** A regular who has paid (or says so) and is one no longer (taken off
+  the month, moved to PAYG, or gone from the group) is owed one game for every game of the
+  month still to play when they left, less any game they already hold a credit for
+  ("left-mid-month", written once). The Months page lists them with what they are owed, at the
+  share of that month and their tier. When they left of their own accord the organisers are
+  told once. MatchTime refunds nobody and sends the leaver nothing. Their row, their payment
+  and every credit stay. If they come back, the unused ones are taken back.
+- **Refunds.** The collector (and only the collector) records the TOTAL given back to one
+  person for a month. For a leaver it settles the credits they hold: voided, marked "refunded",
+  never written again. For a regular who is still playing it only records the amount.
+- **A share changed after somebody paid.** The price form still refuses it ("locked"). Under
+  it is "Change the share after payments", which needs a tick. Every regular's amount is worked
+  out again; credits are untouched; NOBODY'S PAYMENT CHANGES. A regular who has paid is shown
+  as "owes £x more" or "£x to give back" on the Months page, on their own page and in the
+  summary, and the organisers are told once who that is. The group gets the priced list again
+  (the existing one post per price). Saving the same share again does nothing.
+- **Joining part-way.** "IN FOR OCTOBER" (the full phrase) or a button on `/month`, in a month
+  that is running with a game still to play: a regular from the next game, charged for the
+  games left, subject to the cap. They are told the games and the amount by DM (the page says
+  it instead when they joined there) and the organisers are told once. Out and pay-as-you-go
+  in a month under way stay the organiser's, and so does a pasted list.
+- **Credits applied exactly once, in arrears.** Pricing spends credits under the club's lock
+  with `appliedMonthId IS NULL` in the update (slice 4). New here: once a month's amounts have
+  been posted, saving the price again never pulls in a credit earned since
+  (`creditInArrears`). It waits for the month after.
+- **The month close.** The morning after the month's last game, from 08:00 London, in waking
+  hours. The bookkeeping is brought up to date one last time, then `closedAt` is the claim (a
+  compare-and-set on the status), so a month closes once and one summary goes out: who paid
+  and confirmed, who says paid, who has not, who owes more or is owed back, the PAYG games
+  (total, paid, who to chase and for which date), leavers owed, credits carried on and credits
+  used. The same lines are on the Months page for a closed month, and `?month=YYYY-MM-01`
+  (the "Earlier" link) shows an earlier month.
+- **Away weeks (`/month`, "Games I can't make").** A regular ticks the games they will miss.
+  It writes `absentMatchIds` and runs the weekly flow's own sync, so the club's credit rule
+  applies at once and unticking takes the credit back. A game with no match row yet (a month
+  started part-way has one for the next game only) gets its row when it is ticked, made the
+  way a month's list makes them, and silent.
+- **The match page.** For a match of a running month: each player's label ("Monthly, paid",
+  "Monthly", "PAYG"), "Paid but can't play", "Can't play" and the places open.
+
+**Where it differs from the plan above, or where the plan said nothing:**
+
+1. **A cancelled week and somebody who has NOT paid yet (section 7 says "every paid
+   regular").** Somebody who has paid, or says so, keeps the credit for a later month. Somebody
+   who has not paid gets the same credit, used against THIS month at once, so they are asked
+   for one game less. Otherwise an unpaid regular would be charged for a game that is not
+   played. Restoring the game puts it back; if they have paid in between, it shows as "owes
+   more". This is the one place a sweep changes an amount, and only for a game an organiser
+   called off or restored.
+2. **A new column (the brief said only if unavoidable).** A reason typed by an organiser needs
+   somewhere to live: `SquadCredit.note` and `SquadCredit.voidNote`, both nullable, with a
+   length CHECK. The SQL is `prisma/migrations/20261006200000_squad_credit_notes/migration.sql`.
+3. **A closed month and the scheduler (the plan did not see it).** A month closes the morning
+   after its last game, while that game's after-match posts are still due. So the scheduler is
+   handed the months closed in the last two weeks too (`loadSchedulerMonths`, flagged
+   `closed`): its played games get no payment poll. `loadMonthlyWeek` answers null for a closed
+   month, so nothing in the weekly flow writes for it.
+4. **"Freezes the month's numbers" (4.4).** The members, the games and the credits earned.
+   The collector can still confirm (or undo) a payment on a closed month, because money does
+   arrive late. A player's own "paid" is no longer read for a closed month.
+5. **Joining by message replaces slice 3's "a started month is never joined through a sign-up
+   door".** That line now holds for everything except the typed "IN FOR <MONTH>" and the page.
+6. **Slice 3 and 4's row for somebody moved off the regulars.** A CONFIRMED payment now keeps
+   what the row knows of it (games covered, credits, amount) when the player is moved to
+   PAYG. Before, those were zeroed. What they are owed is worked out from it.
+7. **An organiser's own removal sends no "is owed" notice.** The Months page shows it, like
+   every other button there. Only somebody who left the group by themselves triggers one.
+8. **The leaver's notice and the summary use the admin channel.** With "each-admin" that is a
+   DM to each organiser; with an admin group it is one post there.
+9. **"Absences declared before pricing count straight away" (4.4) is still not so.** Slice 4's
+   rule stands: a credit for a game still to come is not spent until the game has been played.
+10. **Gaps left open:**
+    - a leaver who has NOT paid is owed nothing and is shown nothing ("played 2, never paid"
+      is not worked out);
+    - what a leaver is owed is valued at the month's CURRENT share, so if the share was
+      changed after they paid the collector types the real amount;
+    - a pay-as-you-go total counts every non-monthly CONFIRMED row of the month's played
+      games at the match fee (else the club's PAYG price). A player somebody else paid for
+      (`paidViaUserId`) is counted as their own row;
+    - a mid-month joiner gets the amount by DM once. The pay-by reminders may be past, so
+      nothing chases them; they are on the Months page and in the summary;
+    - a regular removing themselves ("OUT FOR OCTOBER") in a month under way is still the
+      organiser's to do;
+    - the cancelled-week line is added to the single and the bulk cancel announcements. A
+      bulk cancel that is not announced writes the credits and says nothing, as before.
 
 ### Slice 7 (optional): card payment for the month (about 2 days)
 

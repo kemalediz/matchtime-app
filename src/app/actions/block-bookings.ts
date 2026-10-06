@@ -296,8 +296,24 @@ export async function bulkCancelMatches(input: {
   // group's language.
   const org = await db.organisation.findUnique({
     where: { id: orgIds[0] },
-    select: { language: true },
+    select: { language: true, squadMode: true },
   });
+  // MONTHLY SQUAD (slice 6): each called-off game of a month credits the
+  // regulars charged for it. A club on "weekly" makes no query here and
+  // its announcement is unchanged (`creditLine` stays empty). The credits
+  // are written whether or not the batch is announced.
+  let creditLine = "";
+  if (org?.squadMode === "monthly" && cancellable.length > 0) {
+    const { afterMatchesCancelled } = await import("@/lib/month-close");
+    const { creditedGames } = await afterMatchesCancelled(
+      orgIds[0],
+      cancellable.map((m) => m.id),
+    );
+    if (creditedGames > 0) {
+      const { buildCancelCreditLine } = await import("@/lib/month-close-copy");
+      creditLine = `\n${buildCancelCreditLine({ count: creditedGames, lang: org.language })}`;
+    }
+  }
   const announcement = buildBulkCancelAnnouncement({
     activityName: cancellable[0]?.activity.name ?? "",
     dates: cancellable.map((m) => m.date),
@@ -306,7 +322,7 @@ export async function bulkCancelMatches(input: {
   });
   if (announcement !== null) {
     await db.botJob.create({
-      data: { orgId: orgIds[0], kind: "group", text: announcement },
+      data: { orgId: orgIds[0], kind: "group", text: announcement + creditLine },
     });
   }
 
@@ -339,7 +355,7 @@ export async function bulkRestoreMatches(input: {
       date: true,
       status: true,
       isHistorical: true,
-      activity: { select: { orgId: true } },
+      activity: { select: { orgId: true, org: { select: { squadMode: true } } } },
     },
   });
   if (matches.length === 0) throw new Error("Matches not found");
@@ -359,6 +375,12 @@ export async function bulkRestoreMatches(input: {
       where: { id: { in: restorable.map((m) => m.id) } },
       data: { status: "UPCOMING" },
     });
+    // MONTHLY SQUAD (slice 6): a game that is on again takes its
+    // "cancelled week" credit back. Nothing for a club on "weekly".
+    if (matches[0].activity.org.squadMode === "monthly") {
+      const { afterMatchesCancelled } = await import("@/lib/month-close");
+      await afterMatchesCancelled(orgIds[0], []);
+    }
   }
 
   revalidatePath("/admin/block-bookings");

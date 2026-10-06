@@ -675,3 +675,15 @@ export function monthGames(p: { calendar: Date[]; matches: Array<{ date: Date; c
 export function monthStarted(p: { firstKickoff: Date; startedMidMonthAt: Date | null; now: Date }): boolean {
   return p.startedMidMonthAt !== null || p.now.getTime() >= p.firstKickoff.getTime();
 }
+
+/**
+ * Slice 6 (plan section 7, "Joining mid-month"): may a player's own
+ * choice change a month that has STARTED? Only to join it: "in", typed in
+ * the group ("IN FOR OCTOBER") or pressed on their page, while the month
+ * is running and a game is still to be played. They become a regular from
+ * the next game and are charged for the games left. Anything else in a
+ * started month (out, pay-as-you-go, a pasted list) is the organiser's.
+ */
+export function mayJoinStartedMonth(p: { choice: SignupChoice; source: string; gamesLeft: number; running: boolean }): boolean {
+  return p.choice === "in" && (p.source === "reply" || p.source === "page") && p.running && p.gamesLeft > 0;
+}

@@ -2723,6 +2723,140 @@ export const tr: Strings = {
   mmp_not_priced: "Fiyat henüz belirlenmedi.",
   mmp_btn_paid: "Ödedim",
   mmp_paid_state: (p) => (p.kind === "confirmed" ? "Ödendi, onaylandı." : "Ödediğini söyledin. Para gelince onaylanır."),
+
+  // ── Aylık kadro, 6. dilim (2026-10-06): krediler, iptal edilen haftalar,
+  // ay ortasında katılma ve ayrılma, ödemelerden sonra değişen pay, iadeler,
+  // ayın kapanışı ──────────────────────────────────────────────────────
+  mcl_cancel_credit: (p) =>
+    p.count === 1 ? "Daimi oyunculara 1 maç kredisi yazıldı." : `Daimi oyunculara iptal edilen ${p.count} maçın her biri için bir maç kredisi yazıldı.`,
+  mcl_sum_head: (p) => `📒 ${p.month} özeti (${p.games} maç oynandı)`,
+  mcl_sum_regulars: (p) => `Daimi oyuncu: ${p.count}. Ödedi ve onaylandı: ${p.confirmed} (${p.total}).`,
+  mcl_sum_claimed: (p) => `Ödediğini söylüyor, onaylanmadı: ${p.count} (${p.names}).`,
+  mcl_sum_unpaid: (p) => `Ödemedi: ${p.count} (${p.names}).`,
+  mcl_sum_owes_more: (p) => `Ödemiş olup şimdi eksiği olanlar: ${p.names}.`,
+  mcl_sum_owed_back: (p) => `Ödemiş olup geri alacağı olanlar: ${p.names}.`,
+  mcl_sum_payg: (p) => `Maç başı (PAYG): ${p.games} maç oynandı, ${p.total} (${p.paid} ödendi).`,
+  mcl_sum_payg_chase: (p) => `Maç başı ödemesi beklenenler: ${p.count} (${p.names}).`,
+  mcl_sum_payg_none: "Maç başı (PAYG): oynanan maç yok.",
+  mcl_sum_leavers: (p) => `Ay ortasında ayrılan ve alacaklı olanlar: ${p.names}.`,
+  mcl_sum_owed_games: (p) => `${p.name} ${p.games} maç`,
+  mcl_sum_carried: (p) => `Sonraki bir aya devreden krediler: ${p.games} maç (${p.names}).`,
+  mcl_sum_carried_none: "Sonraki bir aya devreden kredi yok.",
+  mcl_sum_used: (p) => `Bu ay kullanılan krediler: ${p.games} maç.`,
+  mcl_sum_page: (p) => `Ayın tamamı: ${p.link}`,
+  mcl_leaver_notice: (p) =>
+    `📒 ${p.name} ödeme yaptıktan sonra ${p.month} listesinden ayrıldı. Alacağı: ${p.games} maç${p.amount ? ` (${p.amount})` : ""}.\n` +
+    `MatchTime kimseye iade yapmaz. Parayı kendi yönteminizle geri verin, sonra buradan kaydedin: ${p.link}`,
+  mcl_share_head: (p) => `📋 ${p.month}: maç başı pay artık ${p.share}.`,
+  mcl_share_owes: (p) => `Ödemiş olup şimdi eksiği olanlar: ${p.names}.`,
+  mcl_share_back: (p) => `Ödemiş olup şimdi geri alacağı olanlar: ${p.names}.`,
+  mcl_share_none: "Ödeme yapmış kimse etkilenmedi.",
+  mcl_share_foot: (p) => `Kimsenin ödemesi değiştirilmedi. Farkı kendi yönteminizle kapatın: ${p.link}`,
+  mcl_midjoin_dm: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}${p.month} ayının kalanı için listedesin: ${p.games} maç` +
+    (p.amount
+      ? `, ${p.amount}. Ödemeyi havale ile yap${p.collector ? ` (parayı toplayan: ${p.collector})` : ""}, sonra bana "ödedim" yaz.`
+      : ". Fiyat ayrıca bildirilecek."),
+  mcl_midjoin_admin: (p) => `📋 ${p.name}, ${p.month} ayına ortasında katıldı: ${p.games} maç${p.amount ? `, ödeyeceği ${p.amount}` : ""}. ${p.link}`,
+
+  mth_bal_owes: (p) => `${p.amount} eksik`,
+  mth_bal_back: (p) => `${p.amount} geri verilecek`,
+  mth_refunded: (p) => `${p.amount} iade edildi`,
+  mth_leavers_title: "Ay ortasında ayrılanlar",
+  mth_leavers_lead: "Ödeme yapmış ama artık ayın listesinde olmayan daimi oyuncular. MatchTime kimseye iade yapmaz: parayı kendi yönteminizle geri verin, sonra kaydedin.",
+  mth_leaver_owed: (p) => `Alacağı: ${p.games} maç${p.amount ? ` (${p.amount})` : ""}`,
+  mth_leaver_settled: "Alacağı yok",
+  mth_refund_label: "İade edilen (£)",
+  mth_refund_btn: "İadeyi kaydet",
+  mth_refund_error: "İade kaydedilemedi. Tutarı kontrol edip yeniden deneyin.",
+  mth_refund_collector_only: "İadeyi yalnızca parayı toplayan kişi kaydeder.",
+  mth_share_change_title: "Ödemelerden sonra payı değiştir",
+  mth_share_change_lead:
+    "Ödeme yapanlar var. Payı şimdi değiştirirseniz kimsenin ödemesine dokunulmaz: ödeme yapmış her daimi oyuncunun eksiği ya da geri alacağı gösterilir, farkı siz kapatırsınız.",
+  mth_share_change_ack: "Yapılmış ödemelerin olduğu gibi kalacağını anlıyorum.",
+  mth_share_change_btn: "Payı değiştir",
+  mth_summary_title: "Ay özeti",
+  mth_credits_link: "Kredi defteri",
+  mth_earlier: (p) => `Önceki ay: ${p.month}`,
+  mth_back_current: "Bu aya dön",
+  mth_viewing_past: (p) => `Şu an ${p.month} ayına bakıyorsunuz.`,
+
+  mcr_title: "Krediler",
+  mcr_lead: "Daimi oyuncularınızın elindeki ve kullandığı her maç kredisi. Bir kredi, sonraki bir ayın tutarından düşülen bir maçtır.",
+  mcr_back: "Aylara dön",
+  mcr_add_title: "Kredi ekle",
+  mcr_add_player: "Oyuncu",
+  mcr_add_games: "Maç sayısı",
+  mcr_add_reason: "Neden",
+  mcr_add_reason_hint: "Örneğin: 5 Ekim maçını kaçırdı, burada başlamadan önce",
+  mcr_add_btn: "Krediyi ekle",
+  mcr_error: (p) =>
+    p.key === "bad-reason"
+      ? "3 ile 200 karakter arasında bir neden yazın."
+      : p.key === "bad-games"
+        ? "Maç sayısı 1 ile 10 arasında bir tam sayı olmalı."
+        : p.key === "not-a-member"
+          ? "Kulübünüzden bir oyuncu seçin."
+          : p.key === "used"
+            ? "Bu kredi bir ayın tutarından düşülmüş, bu yüzden kaldırılamaz."
+            : "Kaydedilemedi. Sayfayı yenileyip yeniden deneyin.",
+  mcr_empty: "Henüz kredi yok.",
+  mcr_available: (p) => `Kullanılabilir: ${p.games} maç`,
+  mcr_col_date: "Tarih",
+  mcr_col_reason: "Neden",
+  mcr_col_state: "Durumu",
+  mcr_reason: (p) => {
+    const on = p.day ? ` (${p.day})` : "";
+    return p.kind === "missed"
+      ? `Ödedi, oynayamadı${on}`
+      : p.kind === "cancelled-week"
+        ? `Maç iptal edildi${on}`
+        : p.kind === "left-mid-month"
+          ? `Ay ortasında ayrıldı${on}`
+          : p.kind === "carried-in"
+            ? `Aya başlarken devredildi${on}`
+            : `Organizatör ekledi${on}`;
+  },
+  mcr_state: (p) =>
+    p.status === "used"
+      ? `Kullanıldı${p.detail ? `: ${p.detail}` : ""}`
+      : p.status === "removed"
+        ? `Organizatör kaldırdı${p.detail ? ` (${p.detail})` : ""}`
+        : p.status === "refunded"
+          ? `İade edildi${p.detail ? ` (${p.detail})` : ""}`
+          : p.status === "taken-back"
+            ? `Geri alındı${p.detail ? ` (${p.detail})` : ""}: oyuncu yine de oynadı ya da maç yeniden yapıldı`
+            : `Kullanılabilir${p.detail ? ` (${p.detail})` : ""}`,
+  mcr_remove_btn: "Krediyi kaldır",
+  mcr_remove_reason: "Neden kaldırıyorsunuz?",
+  mcr_remove_confirm: "Kaldır",
+  mcr_cancel: "Vazgeç",
+  info_mcr_title: "Krediler",
+  info_mcr_body:
+    "Bir kredi bir maçtır. Daimi oyuncu, parasını ödeyip oynayamadığında ya da bir maç iptal edildiğinde bir kredi kazanır. Kredi, sonraki bir ayın tutarından en eskisi önce olacak şekilde düşülür.\n\n" +
+    "Kredi ekle, MatchTime'ın görmediği durumlar içindir; örneğin burada başlamadan önce kaçırılan bir maç. Krediyi kaldır, yanlış bir krediyi geri alır. İkisi de bir neden ister. Hiçbir şey silinmez: kaldırılan kredi listede durur, kullanılmış bir kredi ise kaldırılamaz.",
+
+  mmp_away_title: "Gelemeyeceğim maçlar",
+  mmp_away_lead: (p) =>
+    p.kind === "none"
+      ? "Kaçıracağın maçları işaretle. O maçlarda yerin başkasına önerilir."
+      : "Kaçıracağın maçları işaretle. O maçlarda yerin başkasına önerilir; parasını ödeyip kaçırdığın maç, sonraki bir ayın tutarından düşülen bir kredi olur.",
+  mmp_away_save: "Kaydet",
+  mmp_away_saved: "Kaydedildi.",
+  mmp_away_seeded: (p) => `${p.day}: kadro açıklandı. Grupta ya da maç sayfasında YOKUM de.`,
+  mmp_away_none: "Bu ay işaretlenecek maç kalmadı.",
+  mmp_join_rest: (p) => `Ay başladı. Kalanı için yine de katılabilirsin: ${p.games} maç${p.amount ? `, ${p.amount}` : ""}.`,
+  mmp_btn_join_rest: "Ayın kalanına katıl",
+  mmp_bal_owes: (p) => `Sen ödedikten sonra senden istenen tutar arttı: ${p.amount} daha ödemen gerekiyor.`,
+  mmp_bal_back: (p) => `Sen ödedikten sonra senden istenen tutar azaldı: ${p.amount} geri alacağın var. Parayı toplayan kişi halleder.`,
+
+  mwp_title: "Bu ayın listesi",
+  mwp_tag_paid: "Aylık, ödedi",
+  mwp_tag_monthly: "Aylık",
+  mwp_tag_payg: "Maç başı",
+  mwp_cant_paid: "Ödedi ama gelemiyor",
+  mwp_cant: "Gelemiyor",
+  mwp_open: (p) => `${p.open} boş yer`,
 };
 
 /**

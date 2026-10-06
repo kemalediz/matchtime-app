@@ -62,3 +62,14 @@ ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_reason_check"
 ALTER TABLE "SquadCredit" DROP CONSTRAINT IF EXISTS "SquadCredit_games_check";
 ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_games_check"
   CHECK ("games" >= 1);
+
+-- Slice 6 (2026-10-06): an organiser's words on a credit are short.
+-- Applied to production by
+-- prisma/migrations/20261006200000_squad_credit_notes/migration.sql.
+ALTER TABLE "SquadCredit" DROP CONSTRAINT IF EXISTS "SquadCredit_note_check";
+ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_note_check"
+  CHECK ("note" IS NULL OR char_length("note") BETWEEN 1 AND 200);
+
+ALTER TABLE "SquadCredit" DROP CONSTRAINT IF EXISTS "SquadCredit_voidNote_check";
+ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_voidNote_check"
+  CHECK ("voidNote" IS NULL OR char_length("voidNote") BETWEEN 1 AND 200);

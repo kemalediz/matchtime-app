@@ -167,6 +167,16 @@ export function planPricing(p: { members: PricingMember[]; credits: UsableCredit
   return rows;
 }
 
+/**
+ * "In arrears" (plan 4.4, slice 6): once a month's amounts have been
+ * posted, a credit earned after that is for the month AFTER. `pricedAt`
+ * is when the month was first priced; null (not priced yet) holds nothing
+ * back.
+ */
+export function creditInArrears(credit: { createdAt: Date }, pricedAt: Date | null): boolean {
+  return pricedAt !== null && credit.createdAt.getTime() >= pricedAt.getTime();
+}
+
 /** Once anybody on the month has paid, or says so, the share is locked
  *  (plan section 7, "Venue price change"). The pay-by date can still move. */
 export function priceLocked(members: PricingMember[]): boolean {

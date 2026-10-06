@@ -68,6 +68,7 @@ import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { sweepMonthSignups } from "@/lib/month-signup";
 import { sweepMonthPayments } from "@/lib/month-payment";
+import { sweepMonthClose } from "@/lib/month-close";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
@@ -312,6 +313,20 @@ export async function GET(request: Request) {
     } catch (err) {
       console.error(`[due-posts] org ${org.id}: monthly squad sweep failed:`, err);
     }
+  }
+
+  // MONTHLY SQUAD (slice 6, 2026-10-06): called-off games credit the
+  // regulars, a regular who paid and left is shown as owed, and a month is
+  // closed (with its summary to the organisers) the morning after its
+  // last game. At most once a London hour per club. Only for a club the
+  // sign-up sweep has just found to be monthly and operational
+  // (`liveMonths` is null for a weekly club, which makes no query here);
+  // a side effect, so never in preview mode; it never throws. AFTER the
+  // weekly sweep, so a month closes on bookkeeping that is up to date.
+  if (!previewOnly && liveMonths) {
+    const closedNow = await sweepMonthClose(org.id, nowOverride ?? new Date());
+    // A month that has just closed must not reach the posts as a live one.
+    if (closedNow.length > 0) liveMonths = liveMonths.filter((m) => !closedNow.includes(m.id));
   }
 
   // Slice 2a: what this Pi can do. Only a Pi that says "admin-group" is

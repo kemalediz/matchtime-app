@@ -86,6 +86,7 @@ import {
   isMonthlyRow,
   loadPaygPool,
   loadRunningMonths,
+  loadSchedulerMonths,
   monthForMatch,
   weekListKeyPrefix,
   weekMembers,
@@ -778,7 +779,10 @@ export async function computeDuePosts(
   let runningMonths: Awaited<ReturnType<typeof loadRunningMonths>> = [];
   if (features.squadMode === "monthly") {
     try {
-      runningMonths = preloadedMonths ?? (await loadRunningMonths(org.id));
+      // Slice 6: with the months closed lately, so the after-match gates
+      // of a month's last game (no payment poll, no "how much each?")
+      // outlive the close the morning after it.
+      runningMonths = preloadedMonths ?? (await loadSchedulerMonths(org.id, now));
     } catch (err) {
       console.error(`[scheduler] org ${org.id}: the running months could not be read; no posts on this poll:`, err);
       await recordOpsEvent({
@@ -831,7 +835,11 @@ export async function computeDuePosts(
   }
 
   for (const m of matches) {
-    const month = runningMonths.length > 0 ? monthForMatch(runningMonths, m) : null;
+    const found = runningMonths.length > 0 ? monthForMatch(runningMonths, m) : null;
+    // A CLOSED month (slice 6) still answers for its played games, so they
+    // get no payment poll after the close. It is never the month of a game
+    // still to be played: nothing in the weekly flow runs for it any more.
+    const month = found?.closed && (m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED") && m.date.getTime() > now.getTime() ? null : found;
     // A match of a month still in SIGN-UP (slice 3): no regulars are on it
     // yet and no week's list is posted, but it is a monthly match all the
     // same, so it is not announced or chased the weekly way.
