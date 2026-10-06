@@ -75,6 +75,8 @@ function stubModel(table: Record<string, unknown>, opts: { throwOn?: string } = 
 interface Recorder {
   /** Every "which team won?" the batch asked the apply layer to remember. */
   asked: Array<{ matchId: string; first: number; second: number; askerUserId: string | null }>;
+  /** Matches whose one bare swap the batch recorded as used. */
+  swapped: string[];
   recorded: Array<{ matchId: string; red: number; yellow: number; previous?: { red: number; yellow: number } }>;
   /** One entry per Elo reconcile, holding the match it was asked about. */
   elo: string[];
@@ -91,8 +93,10 @@ function recorder(
   const recorded: Recorder["recorded"] = [];
   const elo: string[] = [];
   const asked: Recorder["asked"] = [];
+  const swapped: string[] = [];
   return {
     asked,
+    swapped,
     recorded,
     elo,
     deps: {
@@ -107,6 +111,9 @@ function recorder(
       },
       recordScoreAsk: async (a) => {
         asked.push(a);
+      },
+      recordScoreSwap: async (matchId) => {
+        swapped.push(matchId);
       },
       ...over,
     },
@@ -343,6 +350,75 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
     const out = [...res.outcomes.values()][0];
     expect(out.action).toBe("score");
     expect(out.reply).toBe("Corrected 👍 It was Red 9 - 6 Yellow. Now *Yellow* won 9 - 6 against Red.");
+  });
+
+  it('third review: two tagged "wrong way round" in one batch swap ONCE, and the use is recorded', async () => {
+    const A = "@Match Time wrong way round";
+    const B = "@Match Time wrong way round!";
+    const SWAP = { hasScore: false, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "", loser: "", correction: true, swapped: true, otherGame: false };
+    const { model } = stubModel({ [A]: SWAP, [B]: SWAP });
+    const r = recorder(
+      model,
+      playedWorld({
+        completedMatch: { id: "done-1", redScore: 9, yellowScore: 6, participantUserIds: PLAYED.map((k) => `u-${k}`) },
+      }),
+    );
+    const res = await run({
+      messages: [
+        msg({ waMessageId: "a", body: A, tagged: true }),
+        msg({ waMessageId: "b", body: B, tagged: true, senderUserId: "u-elvin", senderName: fullName("elvin"), authorName: fullName("elvin") }),
+      ],
+      model,
+      deps: r.deps,
+    });
+    expect(r.recorded).toEqual([{ matchId: "done-1", red: 6, yellow: 9, previous: { red: 9, yellow: 6 } }]);
+    expect(r.swapped).toEqual(["done-1"]);
+    expect(res.outcomes.get("a")?.reply).toMatch(/^Corrected/);
+    expect(res.outcomes.get("b")?.reply).toMatch(/^That match is already recorded: \*Yellow\* won 9 - 6/);
+  });
+
+  it("third review: a swap whose score write FAILED does not use up the match's one swap", async () => {
+    const A = "@Match Time wrong way round";
+    const { model } = stubModel({
+      [A]: { hasScore: false, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "", loser: "", correction: true, swapped: true, otherGame: false },
+    });
+    const r = recorder(
+      model,
+      playedWorld({
+        completedMatch: { id: "done-1", redScore: 9, yellowScore: 6, participantUserIds: PLAYED.map((k) => `u-${k}`) },
+      }),
+      {
+        recordScore: async () => {
+          throw new Error("deadlock detected");
+        },
+      },
+    );
+    await run({ messages: [msg({ body: A, tagged: true })], model, deps: r.deps });
+    expect(r.swapped).toEqual([]);
+  });
+
+  it('third review: "10-7" then "9-7" in one batch stores ONE question and sends one reply', async () => {
+    const { model } = stubModel({ "10-7": { first: 10, second: 7 }, "9-7": { first: 9, second: 7 } });
+    const r = recorder(model, playedWorld());
+    const res = await run({
+      messages: [msg({ waMessageId: "a", body: "10-7" }), msg({ waMessageId: "b", body: "9-7" })],
+      model,
+      deps: r.deps,
+    });
+    expect(r.asked).toEqual([{ matchId: "done-1", first: 9, second: 7, askerUserId: "u-kemal" }]);
+    expect(res.outcomes.get("a")?.reply).toBeNull();
+    expect(res.outcomes.get("b")?.reply).toMatch(/^9 - 7: which team won\?/);
+  });
+
+  it("third review: numbers the text does not contain are not a score", async () => {
+    const BODY = "good game lads, same time next week 21:30";
+    const { model } = stubModel({
+      [BODY]: { hasScore: true, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "", loser: "", correction: false, swapped: false, otherGame: false },
+    });
+    const r = recorder(model, playedWorld());
+    await run({ messages: [msg({ body: BODY })], model, deps: r.deps });
+    expect(r.recorded).toEqual([]);
+    expect(r.asked).toEqual([]);
   });
 
   it("H2: the same correction WITHOUT a tag changes nothing and says nothing", async () => {

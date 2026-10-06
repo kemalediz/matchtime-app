@@ -23,14 +23,14 @@
  * bot saying what is already recorded, or nothing. Not the wording of a
  * team field: "Yellows" and "yellows" are the same answer.
  *
- * COST. 44 cases x 1 call on claude-sonnet-5, thinking off. About 1,900
+ * COST. 47 cases x 1 call on claude-sonnet-5, thinking off. About 1,900
  * input tokens (a ~4,000 character prompt, the schema, a short message)
- * and about 90 output tokens each: roughly $0.0045 a call, about $0.20
+ * and about 90 output tokens each: roughly $0.0045 a call, about $0.21
  * for the pass. The real total is printed.
  *
  *   ROUTER=1 also asks the real ROUTER (claude-haiku-4-5, prompt
  *   unchanged by this work) where it sends each message, one batch per
- *   case: 44 more calls, about $0.004 each, about $0.18 more ($0.38 in
+ *   case: 47 more calls, about $0.004 each, about $0.19 more ($0.40 in
  *   all). Worth one pass, because a message only reaches the extractor
  *   if the router calls it `score`, and nothing has ever measured that
  *   for "no it was 9-7", "wrong way round, yellows won" or the Turkish
@@ -53,7 +53,7 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
-import { isScoreAnswer, scoreAnswerSide } from "../src/lib/pipeline/score-ask.ts";
+import { isScoreAnswer, scoreAnswerSide, scorePairAnswerSide } from "../src/lib/pipeline/score-ask.ts";
 import {
   SCORE_LIVE_CASES,
   describeOutcome,
@@ -105,7 +105,8 @@ async function main() {
       const isAnswer =
         !!c.pending &&
         !c.recorded &&
-        scoreAnswerSide(c.body, c.labels ?? ["Red", "Yellow"]) !== null &&
+        (scoreAnswerSide(c.body, c.labels ?? ["Red", "Yellow"]) !== null ||
+          scorePairAnswerSide(c.body, c.pending, c.labels ?? ["Red", "Yellow"]) !== null) &&
         isScoreAnswer({
           body: c.body,
           tagged: c.tagged ?? false,

@@ -110,6 +110,13 @@ export interface ScoreApplyDeps {
    * Optional so a caller with nowhere to keep it (a harness) still
    * works; the question is then simply not answerable by one word.
    */
+  /**
+   * Record that this match's ONE bare "wrong way round" has been used
+   * (`pipeline/score-ask.ts`, `SCORE_SWAP_KIND`), so a second one does
+   * not flip the result back. Called after a swap's score has landed.
+   * Idempotent. Optional for the same reason `recordScoreAsk` is.
+   */
+  recordScoreSwap?: (matchId: string) => Promise<void>;
   recordScoreAsk?: (args: {
     matchId: string;
     first: number;

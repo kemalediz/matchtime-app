@@ -150,6 +150,16 @@ describe("the score apply deps", () => {
     expect(f.notifications).toHaveLength(1);
   });
 
+  it("records that a match's one bare swap is used, once, and a result does not clear it", async () => {
+    const f = fresh();
+    const deps = buildScoreApplyDeps({ db: f.db });
+    await deps.recordScoreSwap!("m1");
+    await deps.recordScoreSwap!("m1"); // a retry is not a unique-key failure
+    expect(f.notifications).toEqual([{ key: "m1:score-swap", kind: "score-swap", matchId: "m1" }]);
+    await deps.recordScore({ matchId: "m1", red: 3, yellow: 5 });
+    expect(f.notifications).toHaveLength(1);
+  });
+
   it("recording a result closes the question", async () => {
     const f = fresh();
     const deps = buildScoreApplyDeps({ db: f.db });

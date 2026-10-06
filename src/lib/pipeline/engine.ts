@@ -78,7 +78,14 @@ import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { namesTheBench } from "./bench-words";
 import { isRawDigitName, resolvePerson } from "./identity";
 import { planResultsQuestion } from "./results-answer";
-import { isScoreAnswer, isScoreAskOpen, messageHasScoreline, samePair } from "./score-ask";
+import {
+  isScoreAnswer,
+  isScoreAskOpen,
+  messageStatesScore,
+  samePair,
+  scoreAnswerSide,
+  scorePairAnswerSide,
+} from "./score-ask";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { resolveScoreResult, resolveWinnerSide } from "./score-teams";
 import { planStatsQuestion } from "./stats-answer";
@@ -272,6 +279,11 @@ export function decide(input: EngineInput): EngineResult {
   const degradations: Degradation[] = [];
   /** One "who is that?" per batch at most (see `ask_who_mentioned`). */
   let askedWhoMentioned = false;
+  /** Matches whose recorded result a message in THIS batch has already
+   *  corrected. A second correction of the same match in one batch is
+   *  not applied (third review of PR #214, item 3): two people saying
+   *  "wrong way round" at once must not flip it there and back. */
+  const scoreCorrectedInBatch = new Set<string>();
   /** Did anything change the squad? Drives the single status post. */
   let squadChanged = false;
   /**
@@ -2287,17 +2299,21 @@ export function decide(input: EngineInput): EngineResult {
       // ("yellows won", "wrong way round"). Null is not zero, and no
       // branch below writes a score from one.
       //
-      // AND THE MODEL'S WORD FOR IT IS NOT ENOUGH (second review, M1).
-      // `hasScore: true` with two zeros is what a model that ignores the
-      // instruction sends for "good game lads", and it was recorded 0-0.
-      // The TEXT has to contain two numbers (`messageHasScoreline`), or
-      // the message has no score whatever the facts say.
+      // AND THE MODEL'S WORD FOR IT IS NOT ENOUGH. `hasScore: true`
+      // with two zeros is what a model that ignores the instruction
+      // sends for "good game lads", and it was recorded 0-0. Asking only
+      // that the text contain two numbers was not enough either: "same
+      // time next week 21:30" has two, and the zeros went through
+      // (third review, item 1). The extractor's two numbers have to BE
+      // numbers the sender wrote, each its own (`messageStatesScore`),
+      // or the message has no score whatever the facts say.
       const factsHaveNumbers = facts.first !== null && facts.second !== null;
-      const hasNumbers = factsHaveNumbers && messageHasScoreline(msg.body);
+      const hasNumbers =
+        factsHaveNumbers && messageStatesScore(msg.body, facts.first as number, facts.second as number);
       if (factsHaveNumbers && !hasNumbers) {
         out.reasons.push(
-          `the extractor reported ${facts.first}-${facts.second} and the message contains no two numbers; ` +
-            `treated as having no score`,
+          `the extractor reported ${facts.first}-${facts.second} and the message does not contain those two ` +
+            `numbers; treated as having no score`,
         );
       }
       let first: number | null = null;
@@ -2407,6 +2423,7 @@ export function decide(input: EngineInput): EngineResult {
 
         // What does the correction say the result IS?
         let next: { red: number; yellow: number } | null = null;
+        let bareSwap = false;
         if (resolution) {
           if (resolution.kind === "ask") {
             // "No it was 9-7", and nothing says whose 9. NO QUESTION: a
@@ -2434,7 +2451,16 @@ export function decide(input: EngineInput): EngineResult {
           }
           if (side) next = side === "RED" ? { red: hi, yellow: lo } : { red: lo, yellow: hi };
           else if (facts.swapped === true && !(facts.winner ?? "").trim() && !(facts.loser ?? "").trim()) {
+            // A BARE swap names no winner, so a second one only flips
+            // the result back. Honoured once per match; after that the
+            // sender is told to say the score and who won.
+            if (completed.swapUsed) {
+              out.reasons.push(`${already}; a bare "wrong way round" has already been used for this match`);
+              hint();
+              return;
+            }
             next = { red: recorded.yellow, yellow: recorded.red };
+            bareSwap = true;
           } else {
             out.reasons.push("numberless correction that names no team this match has");
             hint();
@@ -2446,14 +2472,26 @@ export function decide(input: EngineInput): EngineResult {
           out.reasons.push(`${already}; this is the same result, nothing to change`);
           return;
         }
+        // ONE CORRECTION PER MATCH PER BATCH: the first that changes
+        // anything. A second, different one in the same few minutes is
+        // two people disagreeing, and the bot does not pick between
+        // them by arrival order twice over.
+        if (scoreCorrectedInBatch.has(completed.id)) {
+          out.reasons.push(`${already}, corrected a moment ago in this batch; a second correction is not applied`);
+          hint();
+          return;
+        }
+        scoreCorrectedInBatch.add(completed.id);
         completed.redScore = next.red;
         completed.yellowScore = next.yellow;
+        if (bareSwap) completed.swapUsed = true;
         emit({
           kind: "score",
           matchId: completed.id,
           red: next.red,
           yellow: next.yellow,
           previous: recorded,
+          ...(bareSwap ? { bareSwap: true as const } : {}),
           sourceMessageId: msg.id,
           reason: `recorded result ${recorded.red}-${recorded.yellow} corrected by a participant or admin`,
         });
@@ -2493,6 +2531,34 @@ export function decide(input: EngineInput): EngineResult {
           ? completed.pendingScore
           : null;
 
+      /** May this sender answer the open question at all (`score-ask.ts`:
+       *  a tag, or the asker or an identified admin within thirty
+       *  minutes)? WHAT counts as an answer is decided from the text,
+       *  separately, below. */
+      const answerQualifies =
+        !!pending &&
+        isScoreAnswer({
+          body: msg.body,
+          tagged: msg.tagged,
+          senderUserId: msg.senderUserId ?? null,
+          senderIsAdmin,
+          ask: pending,
+          now: input.now,
+        });
+      /** Take back every question this batch has asked about this match
+       *  and not yet had answered: its write and its words. */
+      const withdrawQuestions = () => {
+        for (let i = writes.length - 1; i >= 0; i--) {
+          const wr = writes[i];
+          if (wr.kind !== "score_ask" || wr.matchId !== completed.id) continue;
+          writes.splice(i, 1);
+          for (let j = speech.length - 1; j >= 0; j--) {
+            const sp = speech[j];
+            if (sp.kind === "score_ask_team" && sp.messageId === wr.sourceMessageId) speech.splice(j, 1);
+          }
+        }
+      };
+
       let result: { red: number; yellow: number } | null = null;
       if (resolution) {
         if (resolution.kind === "ask") {
@@ -2502,9 +2568,24 @@ export function decide(input: EngineInput): EngineResult {
           const a = first as number;
           const b2 = second as number;
           if (pending && samePair(pending, { first: a, second: b2 })) {
-            out.reasons.push(`${a}-${b2}: already asked which team won; not asking again`);
-            return;
-          }
+            // The pair that is being asked about, restated with ONE team
+            // and nothing else ("Yellow 7-10", "10-7 yellow"), from
+            // somebody who could have answered with the bare name: that
+            // is the answer, not a second bare scoreline.
+            const restated = answerQualifies ? scorePairAnswerSide(msg.body, pending, labels) : null;
+            if (restated) {
+              const hi = Math.max(pending.first, pending.second);
+              const lo = Math.min(pending.first, pending.second);
+              result = restated === "RED" ? { red: hi, yellow: lo } : { red: lo, yellow: hi };
+            } else {
+              out.reasons.push(`${a}-${b2}: already asked which team won; not asking again`);
+              return;
+            }
+          } else {
+          // ONE QUESTION PER MATCH PER BATCH: the last scoreline wins.
+          // "10-6", "10-7", "10-7" from three people in one window (the
+          // 2 June log) is one question, not three.
+          withdrawQuestions();
           out.reasons.push(`cannot tell whose number is whose (${resolution.why}); asked which team won ${a}-${b2}`);
           emit({
             kind: "score_ask",
@@ -2523,26 +2604,25 @@ export function decide(input: EngineInput): EngineResult {
           };
           speech.push({ kind: "score_ask_team", messageId: msg.id, first: a, second: b2 });
           return;
+          }
+        } else {
+          result = resolution;
         }
-        result = resolution;
       } else {
         // NO NUMBERS. The only thing it can be is the answer to the
         // open question, under the narrow rule in `score-ask.ts`: it
         // tags the bot, or it is from whoever posted the scoreline (or
         // an identified admin) within thirty minutes. The winner takes
         // the bigger number.
-        const side =
-          pending &&
-          isScoreAnswer({
-            body: msg.body,
-            tagged: msg.tagged,
-            senderUserId: msg.senderUserId ?? null,
-            senderIsAdmin,
-            ask: pending,
-            now: input.now,
-          })
-            ? resolveWinnerSide({ facts, labels, senderTeam })
-            : null;
+        //
+        // AND THE BODY ITSELF MUST BE A BARE TEAM ANSWER, read here in
+        // code (`scoreAnswerSide`), which is also where the side comes
+        // from. The model's `winner` is not consulted: the asker's
+        // "yellow bibs stink mate ... reds deserved it anyway" came back
+        // with winner "reds" and recorded a result (third review,
+        // item 2). Who sent a message was never evidence of what it
+        // says.
+        const side = answerQualifies ? scoreAnswerSide(msg.body, labels) : null;
         if (pending && side) {
           const hi = Math.max(pending.first, pending.second);
           const lo = Math.min(pending.first, pending.second);
@@ -2568,15 +2648,7 @@ export function decide(input: EngineInput): EngineResult {
       // said anything. The question is withdrawn: not stored, not
       // asked. Otherwise the group gets "which team won?" and "Got it"
       // together, and a question outlives its own answer.
-      for (let i = writes.length - 1; i >= 0; i--) {
-        const wr = writes[i];
-        if (wr.kind !== "score_ask" || wr.matchId !== completed.id) continue;
-        writes.splice(i, 1);
-        for (let j = speech.length - 1; j >= 0; j--) {
-          const sp = speech[j];
-          if (sp.kind === "score_ask_team" && sp.messageId === wr.sourceMessageId) speech.splice(j, 1);
-        }
-      }
+      withdrawQuestions();
       emit({
         kind: "score",
         matchId: completed.id,

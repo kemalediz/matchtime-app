@@ -19,7 +19,7 @@ import { getOrgFeatures } from "../org-features";
 import { loadReclaimUserIds } from "../squad-reclaim";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { resolveTeamLabels } from "../team-labels";
-import { SCORE_ASK_KIND, parseScoreAskKey } from "./score-ask";
+import { SCORE_ASK_KIND, parseScoreAskKey, scoreSwapKey } from "./score-ask";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
@@ -208,6 +208,13 @@ export async function loadSquadState(
         })
       : null;
   const scoreAsk = scoreAskRow ? parseScoreAskKey(scoreAskRow.key) : null;
+  // Has this match's one bare "wrong way round" been used? Only asked
+  // for a match that has a result: there is nothing to swap otherwise.
+  const swapUsed =
+    !!completed &&
+    completed.redScore !== null &&
+    completed.yellowScore !== null &&
+    (await db.sentNotification.count({ where: { key: scoreSwapKey(completed.id) } })) > 0;
   // Another match of the club with a result, kicked off inside the
   // correction window. See `SquadState.completedMatch.earlierRecentResult`.
   const earlierRecentResult =
@@ -286,6 +293,7 @@ export async function loadSquadState(
               }
             : {}),
           earlierRecentResult,
+          ...(swapUsed ? { swapUsed: true } : {}),
         }
       : null,
     lastBotPost: lastBotJob?.text ?? null,

@@ -147,3 +147,71 @@ export function messageHasScoreline(body: string): boolean {
   const text = (body ?? "").replace(/@\S+/g, " ");
   return (text.match(/\d+/g) ?? []).length >= 2;
 }
+
+/** The whole numbers written in a message, in order, with @-mentions
+ *  removed first (WhatsApp writes a mention of a person as their phone
+ *  number, and of the bot as "@Match Time"). */
+function numbersIn(body: string): number[] {
+  const text = (body ?? "").replace(/@\s*match\s*time\b/giu, " ").replace(/@\S+/g, " ");
+  return (text.match(/\d+/g) ?? []).map((d) => Number.parseInt(d, 10));
+}
+
+/**
+ * Does the TEXT state this score: is `first` one of its numbers and
+ * `second` ANOTHER? (Third review, item 1.)
+ *
+ * `messageHasScoreline` only asked for two numbers, any two, so "see you
+ * at 21:30" passed and the model's 0-0, or 3-3, was recorded. The
+ * extractor's two numbers have to be numbers the sender wrote, each its
+ * own: "3-3" needs two threes, and "21:30" supplies neither a 0 nor a
+ * second 0. Anything else is a message with no score, whatever the
+ * model returned.
+ */
+export function messageStatesScore(body: string, first: number, second: number): boolean {
+  const found = numbersIn(body);
+  const i = found.indexOf(first);
+  if (i === -1) return false;
+  found.splice(i, 1);
+  return found.includes(second);
+}
+
+/**
+ * THE OPEN QUESTION, ANSWERED BY RESTATING IT (third review, item 2):
+ * "Yellow 7-10", "10-7 yellow". The message is the pair that was asked
+ * about, in either order, plus ONE team of the match and nothing else.
+ * After "which team won?", the team named is the winner.
+ *
+ * Narrow on purpose: exactly those two numbers and no others, no
+ * question mark, and what is left once the numbers are taken out must
+ * be a bare team answer by `scoreAnswerSide`'s own rule. "yellow were
+ * 7-10 down at one point" is a sentence, not an answer.
+ */
+export function scorePairAnswerSide(
+  body: string,
+  pair: { first: number; second: number },
+  labels: readonly [string, string],
+): TeamSide | null {
+  if (/[?¿]/.test(body ?? "")) return null;
+  const found = numbersIn(body);
+  if (found.length !== 2 || !samePair(pair, { first: found[0], second: found[1] })) return null;
+  const rest = (body ?? "")
+    .replace(/@\s*match\s*time\b/giu, " ")
+    .replace(/@\S+/g, " ")
+    .replace(/\d+/g, " ")
+    .replace(/[-:\/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return scoreAnswerSide(rest, labels);
+}
+
+/**
+ * A BARE "WRONG WAY ROUND" IS HONOURED ONCE PER MATCH (third review,
+ * item 3). It names no winner, so two of them flip the result there and
+ * back, each with a cheerful "Corrected". One `SentNotification` row per
+ * match records that it has been used; after that the sender is told to
+ * say the score and the team that won. Never cleared: once is once.
+ */
+export const SCORE_SWAP_KIND = "score-swap";
+export function scoreSwapKey(matchId: string): string {
+  return `${matchId}:${SCORE_SWAP_KIND}`;
+}

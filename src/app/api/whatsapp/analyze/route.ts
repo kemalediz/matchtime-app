@@ -167,7 +167,7 @@ import {
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
 import { loadOpenQuestion, loadOpenScoreAsk, loadOpenStatsClarifications } from "@/lib/pipeline/load-awaiting-answer";
-import { isScoreAnswer, scoreAnswerSide } from "@/lib/pipeline/score-ask";
+import { isScoreAnswer, scoreAnswerSide, scorePairAnswerSide } from "@/lib/pipeline/score-ask";
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -2075,7 +2075,10 @@ async function handleAnalyzeRequest(request: Request) {
     for (const m of fresh) {
       const senderUserId = senderById.get(m.waMessageId)?.userId ?? null;
       if (
-        scoreAnswerSide(pipelineBody(m), openScoreAsk.labels) !== null &&
+        // A bare team name, or the asked-about pair restated with one
+        // team ("Yellow 7-10"): the two shapes the engine accepts.
+        (scoreAnswerSide(pipelineBody(m), openScoreAsk.labels) !== null ||
+          scorePairAnswerSide(pipelineBody(m), openScoreAsk, openScoreAsk.labels) !== null) &&
         isScoreAnswer({
           body: pipelineBody(m),
           tagged: messageTagsBot(m),

@@ -111,6 +111,10 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
         }
         return { count: before - notifications.length };
       },
+      async upsert({ where, create }: { where: { key: string }; create: { key: string; kind: string; matchId: string } }) {
+        if (!notifications.some((n) => n.key === where.key)) notifications.push({ ...create });
+        return create;
+      },
       async create({ data }: { data: { key: string; kind: string; matchId: string; targetUser?: string | null } }) {
         if (notifications.some((n) => n.key === data.key)) throw new Error("Unique constraint failed on key");
         notifications.push({ ...data });

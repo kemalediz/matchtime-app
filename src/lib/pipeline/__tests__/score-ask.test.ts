@@ -9,6 +9,8 @@ import {
   isScoreAnswer,
   isScoreAskOpen,
   messageHasScoreline,
+  messageStatesScore,
+  scorePairAnswerSide,
   parseScoreAskKey,
   samePair,
   scoreAnswerRef,
@@ -142,4 +144,62 @@ describe("does the TEXT have a scoreline? (M1)", () => {
     "no: %s",
     (body) => expect(messageHasScoreline(body)).toBe(false),
   );
+});
+
+describe("the extractor's numbers must be numbers the sender wrote (third review, item 1)", () => {
+  it.each([
+    ["5-3 to Yellows", 5, 3],
+    ["final score was 8 8", 8, 8],
+    ["9:6 sarı", 9, 6],
+    ["10 - 7", 10, 7],
+    ["5 3", 5, 3],
+    ["5/3", 5, 3],
+    ["0-0", 0, 0],
+    ["it was 6-6 until 15 minutes then suddenly it turned to 9-6 to yellows", 9, 6],
+    ["we won 05-03", 5, 3],
+    ["@447700900123 10-7 to red @Match Time", 10, 7],
+  ] as const)("%s states %i-%i", (body, first, second) => {
+    expect(messageStatesScore(body, first, second)).toBe(true);
+  });
+
+  it.each([
+    ["good game lads, same time next week 21:30", 0, 0],
+    ["see you at 21:30", 3, 3],
+    ["great 7 a side tonight, 14 turned up", 0, 0],
+    ["we had 3 subs", 3, 3],
+    ["9 of us turned up", 9, 6],
+    ["good game lads", 0, 0],
+    ["@447700900123 @447700900456 good game", 0, 0],
+    ["@Match Time that's wrong, look again at 21:30", 0, 0],
+    ["10-7", 1, 0],
+  ] as const)("%s does NOT state %i-%i", (body, first, second) => {
+    expect(messageStatesScore(body, first, second)).toBe(false);
+  });
+});
+
+describe("the open question, answered by restating it (third review, item 2)", () => {
+  const pair = { first: 10, second: 7 };
+
+  it.each([
+    ["Yellow 10-7", "YELLOW"],
+    ["Yellow 7-10", "YELLOW"],
+    ["10-7 yellow", "YELLOW"],
+    ["7 - 10 reds", "RED"],
+    ["@Match Time 10:7 red", "RED"],
+    ["10-7 to the yellows", "YELLOW"],
+  ] as const)("%s -> %s", (body, side) => {
+    expect(scorePairAnswerSide(body, pair, EN)).toBe(side);
+  });
+
+  it.each([
+    "10-7", // no team
+    "Yellow 9-7", // another pair
+    "Yellow 10-7-3", // a third number
+    "yellow were 7-10 down at one point you know", // a sentence
+    "Yellow 10-7?", // a question
+    "Yellow Red 10-7", // two teams
+    "Arsenal 10-7",
+  ])("not an answer: %s", (body) => {
+    expect(scorePairAnswerSide(body, pair, EN)).toBeNull();
+  });
 });

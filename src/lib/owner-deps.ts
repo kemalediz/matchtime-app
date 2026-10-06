@@ -45,7 +45,7 @@
 import { db as defaultDb } from "./db";
 import type { ScoreApplyDeps } from "./score-engine";
 import { reconcileMatchElo, setMatchScore } from "./match-elo";
-import { SCORE_ASK_KIND, scoreAskKey } from "./pipeline/score-ask";
+import { SCORE_ASK_KIND, SCORE_SWAP_KIND, scoreAskKey, scoreSwapKey } from "./pipeline/score-ask";
 import type { AdminOpsApplyDeps, PaidState } from "./admin-ops-engine";
 import type { TeamOpsApplyDeps } from "./team-ops-engine";
 import type { TeamClearDeps } from "./team-clear";
@@ -85,6 +85,16 @@ export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
       });
       // (`setMatchScore` also closes any "which team won?" the bot had
       // open for this match, in the same transaction, for every writer.)
+    },
+
+    async recordScoreSwap(matchId) {
+      // One row per match, for good. `upsert` so a second call (a retry,
+      // or two batches racing) is not a unique-key failure.
+      await db.sentNotification.upsert({
+        where: { key: scoreSwapKey(matchId) },
+        create: { key: scoreSwapKey(matchId), kind: SCORE_SWAP_KIND, matchId },
+        update: {},
+      });
     },
 
     async recordScoreAsk({ matchId, first, second, askerUserId }) {

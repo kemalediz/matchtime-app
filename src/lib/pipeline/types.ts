@@ -764,6 +764,10 @@ export interface SquadState {
      * one, so it is answered and not recorded against the latest.
      */
     earlierRecentResult?: boolean;
+    /** A bare "wrong way round" (no winner named) has already swapped
+     *  this match's result once. A second one is not honoured: it would
+     *  only flip it back (`score-ask.ts`, `SCORE_SWAP_KIND`). */
+    swapUsed?: boolean;
   } | null;
   /** MatchTime's own most recent post in the group, verbatim. A known
    *  object, not a guess: it is how a bare "Confirmed" resolves. */
@@ -1100,6 +1104,9 @@ export type ProposedWrite =
       /** Set on a CORRECTION: the result this one replaces. The apply
        *  layer refuses if the match no longer reads it. */
       previous?: { red: number; yellow: number };
+      /** The correction was a bare "wrong way round". The apply layer
+       *  records that the match's one swap has been used. */
+      bareSwap?: true;
       sourceMessageId: string;
       reason: string;
     }

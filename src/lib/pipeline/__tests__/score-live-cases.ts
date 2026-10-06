@@ -131,8 +131,11 @@ export const SCORE_LIVE_CASES: ScoreLiveCase[] = [
 
   // ── The one-word answer to the bot's question (item 4) ─────────────
   { id: "A1", why: "a bare team name answering 'which team won?'", body: "Yellow", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "Yellow" }), expect: { red: 7, yellow: 10 }, noModelInProduction: true },
-  { id: "A2", why: "the answer as a short sentence, from the person who posted the scoreline", body: "reds won mate", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: { red: 10, yellow: 7 } },
-  { id: "A3", why: "M2: the same words from ANOTHER player, untagged, complete nothing", body: "reds won mate", sender: "yellow", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: "silent", anyRoute: true },
+  { id: "A2", why: "the answer as two words, from the person who posted the scoreline", body: "reds won", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: { red: 10, yellow: 7 }, noModelInProduction: true },
+  { id: "A3", why: "M2: the same words from ANOTHER player, untagged, complete nothing", body: "reds won", sender: "yellow", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: "silent", anyRoute: true },
+  { id: "A5", why: "third review: the asker's CHATTER that names a winner completes nothing, whatever the model reports", body: "yellow bibs stink mate, reds deserved it anyway", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: "silent", anyRoute: true },
+  { id: "A6", why: "third review: the pair restated with one team is the answer", body: "Yellow 7-10", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: n(7, 10, { firstTeam: "Yellow" }), expect: { red: 7, yellow: 10 } },
+  { id: "M1", why: "third review: numbers that are not a score (a kickoff time) must not be recorded, whatever comes back", body: "good game lads, same time next week 21:30", lastBotPost: ASK_SCORE, facts: none(), expect: "silent", anyRoute: true },
   { id: "A4", why: "M2: a question mark is not an answer", body: "Yellow?", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "Yellow" }), expect: "silent", anyRoute: true },
 
   // ── Turkish ────────────────────────────────────────────────────────

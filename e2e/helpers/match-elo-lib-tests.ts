@@ -208,6 +208,18 @@ async function main() {
       assert.equal(after.completedMatch?.pendingScore, undefined);
       assert.equal(after.completedMatch?.redScore, 6);
       ok("setMatchScore deletes the question in the same transaction, for every writer");
+
+      // The one bare "wrong way round" per match: recorded once, read by
+      // the state loader, and NOT cleared by a later score.
+      assert.equal(after.completedMatch?.swapUsed, undefined);
+      assert.ok(deps.recordScoreSwap);
+      await deps.recordScoreSwap(M3);
+      await deps.recordScoreSwap(M3); // idempotent on the unique key
+      assert.equal(await db.sentNotification.count({ where: { matchId: M3, kind: "score-swap" } }), 1);
+      assert.equal((await loadSquadState(ORG_ID, new Date())).completedMatch?.swapUsed, true);
+      await setMatchScore({ matchId: M3, red: 10, yellow: 6 });
+      assert.equal((await loadSquadState(ORG_ID, new Date())).completedMatch?.swapUsed, true);
+      ok("a used bare swap is stored once, read by the state loader, and survives a later score");
     }
 
     // ── THE MIGRATION FILE ITSELF, run as written ────────────────────

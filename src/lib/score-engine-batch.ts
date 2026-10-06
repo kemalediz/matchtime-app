@@ -515,6 +515,22 @@ export async function runScoreBatch(args: {
     }
   }
 
+  // A bare "wrong way round" that landed: its one use is recorded, so a
+  // second one cannot flip the result back. If the record fails the
+  // swap still stands and is still announced; the cost is that one more
+  // bare swap would be honoured, and that is said on the operator note.
+  for (const a of applied) {
+    if (!a.ok || !a.write.bareSwap || !deps.recordScoreSwap) continue;
+    try {
+      await deps.recordScoreSwap(a.write.matchId);
+    } catch (err) {
+      degradations.push(
+        `${SCORE_APPLY_DEGRADED_PREFIX} ${a.write.sourceMessageId}: the result was swapped, and that this ` +
+          `match's one bare swap is used could not be recorded (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+  }
+
   // The questions. A failure here must not swallow the question itself:
   // the group still hears it, the answer just cannot be completed by one
   // word, and that is said on the operator note.
