@@ -2759,6 +2759,13 @@ export const tr: Strings = {
       : ". Fiyat ayrıca bildirilecek."),
   mcl_midjoin_admin: (p) => `📋 ${p.name}, ${p.month} ayına ortasında katıldı: ${p.games} maç${p.amount ? `, ödeyeceği ${p.amount}` : ""}. ${p.link}`,
 
+  mpy_reply_closed: (p) => `${p.month} ayı kapandı, bu yüzden kimseyi işaretlemedim. Geç gelen ödemeyi buradan onaylayın: ${p.link}`,
+  mth_refund_too_much: "İade, oyuncunun o ay için ödediğinden fazla olamaz.",
+  mcp_title: "Onaylanacak ödemeler",
+  mcp_lead: "Bu kulübün parasını siz topluyorsunuz. Ödeme gelince onaylayın, para geri verdiğinizde iadeyi kaydedin. MatchTime hiçbir parayı aktarmaz.",
+  mcp_link: "Ödemeleri onayla, iadeleri kaydet",
+  mcp_none: "Burada gösterilecek bir ay yok.",
+  mmp_club_pick: "Kulüplerin:",
   mth_bal_owes: (p) => `${p.amount} eksik`,
   mth_bal_back: (p) => `${p.amount} geri verilecek`,
   mth_refunded: (p) => `${p.amount} iade edildi`,

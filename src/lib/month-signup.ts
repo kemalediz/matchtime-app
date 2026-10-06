@@ -617,7 +617,7 @@ export async function applySignup(args: {
     await lockMonth(tx, month.id);
     const rows = await tx.squadMonthMember.findMany({
       where: { monthId: month.id },
-      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true },
+      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true, gamesCovered: true },
     });
     const view = (r: (typeof rows)[number]): SignupMember => ({
       userId: r.userId,
@@ -686,8 +686,10 @@ export async function applySignup(args: {
           // of it when they stop being a regular (slice 6: leaving never
           // destroys a money record; what they are owed is worked out
           // from it). Anybody else owes nothing for the month any more.
+          // And somebody who PAID for this month, left and is back keeps
+          // the games they paid for: never overwritten with the games left.
           ...(regular
-            ? wasRegular
+            ? wasRegular || ((mine.paidAt || mine.paidClaimedAt) && mine.gamesCovered > 0)
               ? {}
               : { gamesCovered: gamesLeft, joinedAt: now }
             : mine.paidAt

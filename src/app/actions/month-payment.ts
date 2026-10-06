@@ -15,7 +15,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { londonDateTimeToUtc } from "@/lib/london-time";
-import { claimMonthPaid, confirmMonthPaid, priceMonth, unconfirmMonthPaid, type ConfirmPaidError, type PriceMonthError } from "@/lib/month-payment";
+import { claimMonthPaid, confirmMonthPaid, mayConfirmPayments, priceMonth, unconfirmMonthPaid, type ConfirmPaidError, type PriceMonthError } from "@/lib/month-payment";
 import { parsePounds } from "@/lib/squad-month-rules";
 
 async function requireAdmin(orgId: string): Promise<string> {
@@ -23,6 +23,20 @@ async function requireAdmin(orgId: string): Promise<string> {
   if (!session?.user?.id) throw new Error("Not authenticated");
   const { requireOrgAdmin } = await import("@/lib/org");
   await requireOrgAdmin(session.user.id, orgId);
+  return session.user.id;
+}
+
+/**
+ * The club's money collector OR an organiser (slice 6): the collector need
+ * not be an OWNER or ADMIN to confirm a payment. WHO may actually confirm
+ * is still decided by `mayConfirmPayments` in the library (D3): the
+ * collector, and with none set the owner and admins.
+ */
+async function requireCollectorOrAdmin(orgId: string): Promise<string> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const { isOrgAdmin } = await import("@/lib/org");
+  if (!(await isOrgAdmin(session.user.id, orgId)) && !(await mayConfirmPayments(orgId, session.user.id))) throw new Error("Not allowed");
   return session.user.id;
 }
 
@@ -74,11 +88,14 @@ export async function setMonthPaid(
   userId: string,
   paid: boolean,
 ): Promise<{ ok: true; changed: boolean } | { ok: false; error: ConfirmPaidError }> {
-  const actorUserId = await requireAdmin(orgId);
+  const actorUserId = await requireCollectorOrAdmin(orgId);
   const res = paid
     ? await confirmMonthPaid({ orgId, monthId, userId, actorUserId })
     : await unconfirmMonthPaid({ orgId, monthId, userId, actorUserId });
-  if (res.ok) revalidatePath("/admin/months");
+  if (res.ok) {
+    revalidatePath("/admin/months");
+    revalidatePath("/month/collect");
+  }
   return res;
 }
 

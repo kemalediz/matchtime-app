@@ -3504,6 +3504,14 @@ export const en = {
   mcl_midjoin_admin: (p: { name: string; month: string; games: number; amount: string | null; link: string }): string =>
     `📋 ${p.name} joined ${p.month} part-way: ${p.games} ${p.games === 1 ? "game" : "games"}${p.amount ? `, ${p.amount} to pay` : ""}. ${p.link}`,
 
+  mpy_reply_closed: (p: { month: string; link: string }): string =>
+    `${p.month} is closed, so I marked nobody. Confirm a payment that arrived late here: ${p.link}`,
+  mth_refund_too_much: "A refund cannot be more than they paid for the month.",
+  mcp_title: "Payments to confirm",
+  mcp_lead: "You collect the money for this club. Confirm a payment when it arrives, and record a refund when you have given money back. MatchTime moves no money.",
+  mcp_link: "Confirm payments and record refunds",
+  mcp_none: "No month to show here.",
+  mmp_club_pick: "Your clubs:",
   mth_bal_owes: (p: { amount: string }): string => `owes ${p.amount} more`,
   mth_bal_back: (p: { amount: string }): string => `${p.amount} to give back`,
   mth_refunded: (p: { amount: string }): string => `Refunded ${p.amount}`,

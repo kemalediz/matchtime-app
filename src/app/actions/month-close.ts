@@ -16,7 +16,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { getUserOrg } from "@/lib/org";
+import { db } from "@/lib/db";
 import {
   addManualCredit,
   changeShareAfterPaid,
@@ -70,11 +70,17 @@ export async function recordMonthRefund(
   userId: string,
   amount: string,
 ): Promise<{ ok: true; settledCredits: number } | { ok: false; error: RefundError }> {
-  const actorUserId = await requireAdmin(orgId);
+  // The collector need not be an organiser. `recordRefund` decides who may.
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const actorUserId = session.user.id;
   const pence = parsePounds(amount);
   if (pence === null) return { ok: false, error: "bad-amount" };
   const res = await recordRefund({ orgId, monthId, userId, amountPence: pence, actorUserId });
-  if (res.ok) revalidatePath("/admin/months");
+  if (res.ok) {
+    revalidatePath("/admin/months");
+    revalidatePath("/month/collect");
+  }
   return res;
 }
 
@@ -102,9 +108,13 @@ export async function saveAwayWeeks(
 ): Promise<{ ok: true; changed: boolean } | { ok: false; error: AwayError }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
-  const membership = await getUserOrg(session.user.id);
-  if (!membership || typeof monthId !== "string") return { ok: false, error: "not-found" };
-  const res = await setAwayWeeks({ orgId: membership.orgId, monthId, userId: session.user.id, days: Array.isArray(days) ? days.slice(0, 12) : [] });
+  if (typeof monthId !== "string") return { ok: false, error: "not-found" };
+  // The club is the MONTH's, not "the club this browser is on": a player in
+  // two clubs ticks the month they are looking at. `setAwayWeeks` refuses
+  // anybody who is not a regular of that month and in that club.
+  const month = await db.squadMonth.findUnique({ where: { id: monthId }, select: { orgId: true } });
+  if (!month) return { ok: false, error: "not-found" };
+  const res = await setAwayWeeks({ orgId: month.orgId, monthId, userId: session.user.id, days: Array.isArray(days) ? days.slice(0, 12) : [] });
   revalidatePath("/month");
   return res.ok ? { ok: true, changed: res.changed } : res;
 }

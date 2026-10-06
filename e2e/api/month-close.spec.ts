@@ -179,7 +179,7 @@ async function game(db: TestDb, id: string, act: string, kickoff: Date) {
 }
 
 const setStatus = (db: TestDb, id: string, status: string) =>
-  db.run(`UPDATE "Match" SET status = $2::"MatchStatus", "updatedAt" = now() WHERE id = $1`, [id, status]);
+  db.run(`UPDATE "Match" SET status = $2::"MatchStatus", "updatedAt" = $3 WHERE id = $1`, [id, status, new Date().toISOString()]);
 
 test.beforeAll(async () => {
   resetDb();
@@ -348,6 +348,27 @@ test("3. a regular who paid and left is owed the games left: the organisers are 
   await poll(request, after(16));
   expect(live(await credits(db), "left-mid-month")).toHaveLength(expected.length);
   expect((await dms(db, P.rob)).filter((d) => d.text.includes("has left"))).toHaveLength(1);
+
+  // ONE LIVE CREDIT PER PLAYER PER GAME. Leaving does not take him off a
+  // squad he was on, so an organiser now drops him from the next game. He
+  // already holds that game's credit (he left): no "missed" one beside it.
+  await db.run(
+    `WITH a AS (
+       INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "paymentMethod", "updatedAt")
+       VALUES ('e2e-mc-att-dev-next', $1, $2, 'DROPPED', 4, 'monthly', now()) RETURNING "matchId", "userId", status, position
+     )
+     INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "toStatus", "toPosition", cause, "actorKind")
+     SELECT 'e2e-mc-ev-dev-next', "matchId", "userId", $3, status, position, 'test-fixture', 'system' FROM a`,
+    [matchId(1), P.dev.id, ORG],
+  );
+  await poll(request, after(16, 20));
+  await poll(request, after(16, 40));
+  const forNext = (await credits(db)).filter((c) => c.userId === P.dev.id && c.earnedMatchId === matchId(1) && c.voidedAt === null);
+  expect(forNext.map((c) => c.reason)).toEqual(["left-mid-month"]);
+  // The database refuses a second one outright, whoever writes it.
+  await expect(
+    db.run(`INSERT INTO "SquadCredit" (id, "orgId", "userId", games, reason, "earnedMatchId") VALUES ('e2e-mc-dup', $1, $2, 1, 'missed', $3)`, [ORG, P.dev.id, matchId(1)]),
+  ).rejects.toThrow(/SquadCredit_one_live_per_game/);
 });
 
 test("4. \"IN FOR <MONTH>\" after the month has started joins it for the games left", async ({ request, db }) => {
@@ -377,7 +398,9 @@ test("4. \"IN FOR <MONTH>\" after the month has started joins it for the games l
   expect(await dms(db, P.tom)).toHaveLength(1);
 
   // The game was called off BEFORE he joined: his games were counted
-  // without it, so he gets no credit for it.
+  // without it, so he gets no credit for it. When it was called off is on
+  // record: touching the cancelled match's row afterwards changes nothing.
+  await db.run(`UPDATE "Match" SET "updatedAt" = $2 WHERE id = $1`, [matchId(OFF), new Date(Date.now() + 60_000).toISOString()]);
   await poll(request, after(17));
   expect((await credits(db)).filter((c) => c.userId === P.tom.id)).toEqual([]);
   expect(await member(db, P.tom)).toMatchObject({ creditsApplied: 0, amountDuePence: SHARE * left });
@@ -478,6 +501,37 @@ test("6. a closed month is frozen, and its last game still gets no payment poll"
   expect(instructions.filter((i) => monthMatches.some((id) => i.key.startsWith(`${id}:payment-poll`)))).toEqual([]);
 });
 
+test("6b. a \"PAID ALL\" for the closed month's last list is answered, and marks nobody", async ({ request, db }) => {
+  // Bilal's claim was on the collector's daily list while the month ran.
+  expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE $1`, [`org-${ORG}:mpy:digest:${MONTH}:%`])).toBeGreaterThan(0);
+  const res = await request.post("/api/whatsapp/dm-reply", {
+    headers: KEY,
+    data: { phone: digits(P.rob.phone), body: "PAID ALL", waMessageId: msgId(), authorName: P.rob.name },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  expect(((await res.json()) as { handled?: string }).handled).toBe("month-paid-closed");
+  const answer = (await dms(db, P.rob)).at(-1)!.text;
+  expect(answer.startsWith(`${MONTH_NAME} is closed, so I marked nobody. Confirm a payment that arrived late here: http`)).toBe(true);
+  expect(answer).toContain(`/month/collect?month=${NEXT}`);
+  // Nobody was confirmed by it, in this month or any other.
+  expect(await db.count(`SELECT COUNT(*) FROM "SquadMonthMember" m JOIN "SquadMonth" s ON s.id = m."monthId" WHERE s."orgId" = $1 AND m."userId" = $2 AND m."paidAt" IS NOT NULL`, [ORG, P.bilal.id])).toBe(0);
+});
+
+test("6c. a summary that did not go out after the close is sent by a later sweep, never lost", async ({ request, db }) => {
+  // As if the send had failed after the month was closed: the summary's
+  // own claim is released, and the queued messages never existed.
+  await db.run(`DELETE FROM "SentNotification" WHERE key = $1`, [`org-${ORG}:mcl:summary:${MONTH}`]);
+  await db.run(`DELETE FROM "BotJob" WHERE "orgId" = $1 AND text LIKE $2`, [ORG, `📒 ${MONTH_NAME} summary (%`]);
+  expect(await summaries(db, P.rob)).toEqual([]);
+  await poll(request, closing(16));
+  expect(await summaries(db, P.rob)).toHaveLength(1);
+  expect(await summaries(db, P.adam)).toHaveLength(1);
+  // And once it has gone, not again.
+  await poll(request, closing(17));
+  expect(await summaries(db, P.rob)).toHaveLength(1);
+  expect((await db.one<{ status: string }>(`SELECT status FROM "SquadMonth" WHERE id = $1`, [MONTH]))!.status).toBe("closed");
+});
+
 test("7. nothing dated before a mid-month start is touched, and a dormant club is left alone", async ({ request, db }) => {
   // The first Wednesday is BEFORE the month started here; the third is after.
   await setStatus(db, match2Id(0), "CANCELLED");
@@ -497,6 +551,33 @@ test("7. nothing dated before a mid-month start is touched, and a dormant club i
   await poll(request, at(W[1], -1, "12:05"), GROUP2);
   now = await credits(db, ORG2);
   expect(live(now, "cancelled-week").map((c) => c.earnedMatchId).sort()).toEqual([match2Id(2), match2Id(3)]);
+
+  // A RESTORED game whose credit was already used against ANOTHER month:
+  // the credit is taken back there and that month asks for one game more.
+  // Never silently kept, and the payment itself is not touched.
+  const LATER = "e2e-mc2-later";
+  await db.run(
+    `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "sharePerGamePence", "pricedAt", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4::date, 'open', 4, 500, $5, $5, now())`,
+    [LATER, ORG2, ACT2, nextMonthStart(NEXT), new Date().toISOString()],
+  );
+  await db.run(
+    `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", "creditsApplied", "amountDuePence", "paidAt", "paidAmountPence",
+                                     "paidConfirmedByUserId", source, "updatedAt")
+     VALUES ('e2e-mc2-later-wes', $1, $2, 'regular', 1, 4, 1, 1500, $3, 1500, $2, 'carry-over', now())`,
+    [LATER, P.wes.id, new Date().toISOString()],
+  );
+  await db.run(`UPDATE "SquadCredit" SET "appliedMonthId" = $1, "appliedAt" = $4 WHERE "orgId" = $2 AND "earnedMatchId" = $3`, [LATER, ORG2, match2Id(2), new Date().toISOString()]);
+  await setStatus(db, match2Id(2), "UPCOMING");
+  await poll(request, at(W[1], -1, "13:05"), GROUP2);
+  const spent = (await credits(db, ORG2)).find((c) => c.earnedMatchId === match2Id(2))!;
+  expect(spent.voidedAt).not.toBeNull();
+  const later = await db.one<{ creditsApplied: number; amountDuePence: number; paidAmountPence: number; paidAt: Date | null }>(
+    `SELECT "creditsApplied", "amountDuePence", "paidAmountPence", "paidAt" FROM "SquadMonthMember" WHERE id = 'e2e-mc2-later-wes'`,
+  );
+  // He paid £15 for three games; he is now asked for four: owes £5 more.
+  expect(later).toMatchObject({ creditsApplied: 0, amountDuePence: 2000, paidAmountPence: 1500 });
+  expect(later!.paidAt).not.toBeNull();
 });
 
 test("8. WEEKLY: the fixture club (Sutton FC's shape) is untouched by any of it", async ({ request, db }) => {

@@ -24,8 +24,8 @@ the month is read from a fixed vocabulary, not by the per-match claim's classifi
 leaving part-way, a share changed after payments, refunds, the month close and its summary) is
 built, with the two things slice 5 left out: the player's away weeks and the match page's
 labels. See "Slice 6 as built" at the end of section 12. It adds two nullable columns
-(`SquadCredit.note` and `voidNote`, migration `20261006200000_squad_credit_notes`, NOT applied
-by the PR). No model call was added and nothing needs a Pi deploy.
+(`SquadCredit.note` and `voidNote`) and one partial unique index, migration
+`20261006200000_squad_credit_notes`, NOT applied by the PR. No model call was added and nothing needs a Pi deploy.
 
 Written for the "Vets MNF" prospect group (Monday night 7-a-side, about 14 players) after
 Kemal joined it. Everything here is a per-club setting that is OFF by default, so Sutton FC
@@ -1411,6 +1411,40 @@ Every branch is behind `squadMode = "monthly"`; a weekly club makes no query in 
       organiser's to do;
     - the cancelled-week line is added to the single and the bulk cancel announcements. A
       bulk cancel that is not announced writes the credits and says nothing, as before.
+
+**Changed after review (2026-10-06, same PR).** Where these differ from the notes above, these
+stand.
+
+- **One live credit per player per game, whatever the reason.** A paid regular who left the
+  group (and so holds a "left-mid-month" credit for a game) and was then dropped from that
+  game's squad could be credited twice, because the weekly sync only looked at "missed"
+  credits. Now every writer decides on ALL the game's live credits, under the club's credit
+  lock (the weekly sync takes it too), and a partial unique index
+  (`SquadCredit_one_live_per_game`, in the same migration file) is the backstop.
+- **A refund is never more than the person paid** for that month, and with no payment
+  recorded nothing can be refunded.
+- **The collector need not be an organiser.** "Confirm paid" and "Record refund" accept the
+  collector or an organiser (who may actually confirm is still D3: the collector, and with
+  none set the owner and admins). A collector who is not an admin has their own page,
+  `/month/collect`, linked from `/month`.
+- **The summary is never lost.** It has a claim of its own, taken before the send and released
+  if the send fails or reaches nobody; a later sweep sends it, for three days after the close.
+- **Somebody who paid, left and rejoins the same month** keeps the games they paid for (never
+  overwritten with the games left). What they owe or are owed shows as the balance: if the
+  money was refunded, they are shown as owing it again.
+- **A late joiner's amount is in arrears too** (`settleMemberAmount`): a credit earned after
+  the month's amounts were posted is for the month after.
+- **A restored game whose credit was already used against another month** is taken back
+  there: the credit is voided and that month asks for one game more ("owes more" if they have
+  paid). A closed month is left as it is.
+- **When a game was called off is written down once** (a record per match, from the match
+  row as the cancellation left it, dropped on restore), so nothing that touches the row later
+  can make a later joiner look as if they were there. No new column.
+- **A "PAID ..." for a closed month's last digest is answered**: "October is closed, so I
+  marked nobody. Confirm a payment that arrived late here: link". Nobody is marked, in that
+  month or any other.
+- **A player in two clubs picks the club** on `/month` (`?club=`, with the list of their
+  monthly clubs), and away weeks are saved against the month's own club.
 
 ### Slice 7 (optional): card payment for the month (about 2 days)
 

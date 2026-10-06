@@ -98,6 +98,10 @@ export interface CancelledWeekPlan {
   voidIds: string[];
   /** Of `voidIds`, the ones that had come off this month's amount. */
   release: Array<{ creditId: string; userId: string }>;
+  /** The game is on again, but its credit was already used against
+   *  ANOTHER month: it is taken back there (that month asks for one game
+   *  more, shown as "owes more" if they have paid), never silently kept. */
+  releaseElsewhere: Array<{ creditId: string; userId: string; monthId: string }>;
 }
 
 /**
@@ -130,7 +134,7 @@ export function decideCancelledWeekCredits(p: {
   /** Every credit earned on this match, any reason, voided ones included. */
   existing: MatchCredit[];
 }): CancelledWeekPlan {
-  const plan: CancelledWeekPlan = { create: [], voidMissedIds: [], voidIds: [], release: [] };
+  const plan: CancelledWeekPlan = { create: [], voidMissedIds: [], voidIds: [], release: [], releaseElsewhere: [] };
   const here = p.members.filter((m) => m.regular && m.inClub);
   const mine = (userId: string, reason: string) => p.existing.filter((c) => c.userId === userId && c.reason === reason);
 
@@ -138,8 +142,11 @@ export function decideCancelledWeekCredits(p: {
     const hereIds = new Set(here.map((m) => m.userId));
     for (const c of p.existing) {
       if (c.reason !== "cancelled-week" || c.voidedAt !== null || !hereIds.has(c.userId)) continue;
-      // Used against another month already: that money is settled.
-      if (c.appliedMonthId !== null && c.appliedMonthId !== p.monthId) continue;
+      // Used against another month already: handed back there.
+      if (c.appliedMonthId !== null && c.appliedMonthId !== p.monthId) {
+        plan.releaseElsewhere.push({ creditId: c.id, userId: c.userId, monthId: c.appliedMonthId });
+        continue;
+      }
       plan.voidIds.push(c.id);
       if (c.appliedMonthId === p.monthId) plan.release.push({ creditId: c.id, userId: c.userId });
     }
@@ -155,6 +162,9 @@ export function decideCancelledWeekCredits(p: {
     const spent = missed.some((c) => c.appliedMonthId !== null);
     const live = cancelled.some((c) => c.voidedAt === null);
     const removedByOrganiser = cancelled.some((c) => c.voidedById !== null);
+    // ONE live credit per player per game, whatever the reason: somebody
+    // who left and came back may still hold a "left-mid-month" one for it.
+    if (p.existing.some((c) => c.userId === m.userId && c.voidedAt === null && c.reason !== "missed" && c.reason !== "cancelled-week")) continue;
     if (live || spent) {
       // One game, one credit: an unspent "missed" one beside it goes.
       if (live) plan.voidMissedIds.push(...missed.filter((c) => c.appliedMonthId === null && c.createdById === null).map((c) => c.id));
@@ -233,6 +243,40 @@ export function leaverOwedPence(p: { games: number; tier: string; sharePence: nu
   if (p.sharePence == null) return null;
   const share = p.tier === "concession" && p.concessionPence != null ? p.concessionPence : p.sharePence;
   return share * Math.max(0, p.games);
+}
+
+/** A refund is never more than what the person paid for that month, and
+ *  with no payment recorded there is nothing to refund. */
+export function refundAllowed(p: { amountPence: unknown; paidPence: number | null }): boolean {
+  const a = p.amountPence;
+  if (!(typeof a === "number" && Number.isInteger(a) && a >= 0)) return false;
+  return a <= (p.paidPence ?? 0);
+}
+
+/** A reply counts against a digest for two days (slice 4's window). */
+const CLOSED_REPLY_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+
+/**
+ * Is the collector's "PAID ..." an answer to the last digest of a month
+ * that has since CLOSED? Then it is answered ("October is closed; confirm
+ * on the Months page"), never ignored and never applied to another month.
+ * Yes when that digest is still in its two days, and either the reply
+ * names that month, or names none and no live month has a newer digest. A
+ * number that was not on that digest's list is somebody's own message.
+ */
+export function closedDigestReply(p: {
+  reply: { kind: "all" | "none" | "numbers"; numbers?: number[]; month?: number };
+  closed: { monthNumber: number; digestAt: Date; listedSlots: number[] };
+  /** The newest digest of a live month this sender may confirm for. */
+  liveDigestAt: Date | null;
+  now: Date;
+}): boolean {
+  if (p.now.getTime() - p.closed.digestAt.getTime() > CLOSED_REPLY_WINDOW_MS) return false;
+  if (p.reply.month != null) {
+    if (p.reply.month !== p.closed.monthNumber) return false;
+  } else if (p.liveDigestAt && p.liveDigestAt.getTime() > p.closed.digestAt.getTime()) return false;
+  if (p.reply.kind === "numbers") return (p.reply.numbers ?? []).some((n) => p.closed.listedSlots.includes(n));
+  return true;
 }
 
 // ── A share changed after somebody paid (plan section 7) ───────────────

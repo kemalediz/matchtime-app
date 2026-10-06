@@ -11,7 +11,22 @@
 --     when removing one, or "refunded" when the collector recorded a refund.
 --   * Two CHECK constraints: each is NULL or 1 to 200 characters (the same
 --     DDL as prisma/sql/monthly-squad-check.sql).
--- Both are NULL on every existing row, so the constraints cannot fail.
+--   * One partial UNIQUE index, "SquadCredit_one_live_per_game", on
+--     ("orgId", "userId", "earnedMatchId") WHERE "voidedAt" IS NULL AND
+--     "earnedMatchId" IS NOT NULL: a player holds at most ONE live credit
+--     for one game, whatever the reason (missed, called off, left
+--     part-way). The code decides this under the club's advisory lock; the
+--     index is the backstop. Credits tied to no game (manual, carried in,
+--     a leaver's games with no match row yet) are not covered by it.
+--     Additive. It FAILS, and the whole file rolls back, if two live
+--     credits for one player and game already exist. CHECK FIRST (expect
+--     no rows):
+--       SELECT "orgId", "userId", "earnedMatchId", count(*) FROM "SquadCredit"
+--        WHERE "voidedAt" IS NULL AND "earnedMatchId" IS NOT NULL
+--        GROUP BY 1, 2, 3 HAVING count(*) > 1;
+--     If it returns rows, void the extra credit of each pair by hand
+--     (set "voidedAt") before applying.
+-- Both columns are NULL on every existing row, so the constraints cannot fail.
 -- Nothing reads either column unless the club is on "monthly", and only an
 -- OWNER or ADMIN (or the money collector, for a refund) writes them.
 --
@@ -25,6 +40,7 @@
 --   SET LOCAL lock_timeout = '5s';
 --   ALTER TABLE "SquadCredit" DROP CONSTRAINT IF EXISTS "SquadCredit_note_check";
 --   ALTER TABLE "SquadCredit" DROP CONSTRAINT IF EXISTS "SquadCredit_voidNote_check";
+--   DROP INDEX IF EXISTS "SquadCredit_one_live_per_game";
 --   ALTER TABLE "SquadCredit" DROP COLUMN IF EXISTS "note";
 --   ALTER TABLE "SquadCredit" DROP COLUMN IF EXISTS "voidNote";
 --   COMMIT;
@@ -47,5 +63,9 @@ ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_note_check"
 ALTER TABLE "SquadCredit" DROP CONSTRAINT IF EXISTS "SquadCredit_voidNote_check";
 ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_voidNote_check"
   CHECK ("voidNote" IS NULL OR char_length("voidNote") BETWEEN 1 AND 200);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "SquadCredit_one_live_per_game"
+  ON "SquadCredit" ("orgId", "userId", "earnedMatchId")
+  WHERE "voidedAt" IS NULL AND "earnedMatchId" IS NOT NULL;
 
 COMMIT;

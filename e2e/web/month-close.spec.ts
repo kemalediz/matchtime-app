@@ -485,6 +485,13 @@ test("6. a regular who paid and is taken off the month is owed: shown to the col
   await signInAs(page, P.rob.id, "/admin/months");
   const mine = card(page, ACT).locator(`[data-testid="month-leaver"][data-user="${P.dev.id}"]`);
   await expect(mine.getByTestId("refund-amount")).toHaveValue((SHARE * N / 100).toFixed(2));
+  // More than he paid is refused, and nothing is recorded.
+  await mine.getByTestId("refund-amount").fill(((SHARE * N) / 100 + 1).toFixed(2));
+  await mine.getByTestId("refund-save").click();
+  await expect(page.getByText("A refund cannot be more than they paid for the month.")).toBeVisible();
+  expect((await member(db, P.dev))!.refundedPence).toBe(0);
+  expect(liveOf(await credits(db, P.dev))).toHaveLength(N);
+  await mine.getByTestId("refund-amount").fill((SHARE * N / 100).toFixed(2));
   await mine.getByTestId("refund-save").click();
   await expect(mine.getByTestId("leaver-owed")).toHaveText("Nothing owed");
   await expect(mine.getByTestId("leaver-refunded")).toHaveText(`Refunded ${pounds(SHARE * N)}`);
@@ -501,6 +508,21 @@ test("6. a regular who paid and is taken off the month is owed: shown to the col
   await poll(request, new Date());
   expect(liveOf(await credits(db, P.dev))).toEqual([]);
   expect((await dms(db, P.rob)).filter((d) => d.text.includes("has left"))).toEqual([]);
+
+  // HE COMES BACK to the same month. The games he PAID for are kept (never
+  // overwritten with the games left), and since the money went back to
+  // him, he is shown as owing it again.
+  await signInAs(page, P.adam.id, "/admin/months");
+  const add = card(page, ACT).getByTestId("member-add");
+  await add.getByTestId("member-add-select").selectOption(P.dev.id);
+  await add.getByTestId("member-add-regular").click();
+  await expect(row(page, ACT, P.dev)).toBeVisible({ timeout: 30_000 });
+  const back = (await member(db, P.dev))!;
+  expect(back).toMatchObject({ kind: "regular", gamesCovered: N, amountDuePence: SHARE * N, paidAmountPence: SHARE * N, refundedPence: SHARE * N });
+  expect(back.leftAt).toBeNull();
+  expect(back.paidAt).not.toBeNull();
+  await expect(row(page, ACT, P.dev).getByTestId("member-balance")).toHaveText(`owes ${pounds(SHARE * N)} more`);
+  await expect(card(page, ACT).locator(`[data-testid="month-leaver"][data-user="${P.dev.id}"]`)).toHaveCount(0);
 });
 
 test("7. a share changed after payments: nobody's payment changes, and the difference is shown", async ({ page, db }) => {
@@ -594,6 +616,9 @@ test("8. a closed month: its summary, reached from Earlier, and a late payment i
 });
 
 test("9. a player joins a month under way from their page", async ({ page, db }) => {
+  // A credit of his earned AFTER this month's amounts were posted: in
+  // arrears, so it is not taken off what he is asked for now.
+  await db.run(`INSERT INTO "SquadCredit" (id, "orgId", "userId", games, reason) VALUES ('e2e-mcw-credit-tom', $1, $2, 1, 'manual')`, [ORG, P.tom.id]);
   await signInAs(page, P.tom.id, "/month");
   const mine = page.locator(`[data-testid="month-signup"][data-month="${MONTH}"]`);
   await expect(mine.getByTestId("month-join-rest")).toContainText(`The month is under way. You can still join for the rest of it: ${N - 1} games.`, { timeout: 30_000 });
@@ -606,6 +631,85 @@ test("9. a player joins a month under way from their page", async ({ page, db })
   // The page said it, so he gets no DM; the organisers are told once.
   expect(await dms(db, P.tom)).toEqual([]);
   expect((await dms(db, P.rob)).filter((d) => d.text.startsWith(`📋 ${P.tom.name} joined ${MONTH_NAME} part-way: ${N - 1} games, ${pounds(700 * (N - 1))} to pay.`))).toHaveLength(1);
+  expect((await credits(db, P.tom)).map((c) => c.appliedMonthId)).toEqual([null]);
+});
+
+test("9b. the collector need not be an organiser: their own page confirms a payment", async ({ page, db }) => {
+  // Omar, a player, collects the money now.
+  await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2 WHERE id = $1`, [ORG, P.omar.id]);
+  await signInAs(page, P.omar.id, "/month");
+  await page.getByTestId("month-collect-link").click();
+  await expect(page.getByTestId("collect-page")).toBeVisible({ timeout: 30_000 });
+  const carl = page.locator(`[data-testid="collect-month"][data-month="${MONTH}"] [data-testid="collect-member"][data-user="${P.carl.id}"]`);
+  await carl.getByTestId("paid-confirm").click();
+  await expect(carl.locator("[data-paid]")).toHaveAttribute("data-paid", "confirmed");
+  const row = await db.one<{ paidAt: Date | null; by: string | null }>(
+    `SELECT "paidAt", "paidConfirmedByUserId" AS by FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`,
+    [MONTH, P.carl.id],
+  );
+  expect(row!.paidAt).not.toBeNull();
+  expect(row!.by).toBe(P.omar.id);
+  // The admin pages are still not his.
+  await page.goto("/admin/months");
+  await expect(page.getByTestId("months-page")).toHaveCount(0);
+
+  // An organiser who is NOT the collector has no collector's page, and a
+  // plain player has neither.
+  await signInAs(page, P.adam.id);
+  expect((await page.goto("/month/collect"))?.status()).toBe(404);
+  await signInAs(page, P.alex.id, "/month");
+  await expect(page.getByTestId("month-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("month-collect-link")).toHaveCount(0);
+  expect((await page.goto("/month/collect"))?.status()).toBe(404);
+  await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2 WHERE id = $1`, [ORG, P.rob.id]);
+});
+
+test("9c. a player in two clubs picks the club, and the away weeks go to that club's month", async ({ page, db }) => {
+  // Alex is also a regular of a second monthly club.
+  const ORG_B = "e2e-mcw-orgb";
+  const MONTH_B = "e2e-mcw-monthb";
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "squadMode", "adminChannelMode", language, "updatedAt")
+     VALUES ($1, 'Thursday Club', $1, $2, 'e2e-monthclose-web-b@g.us', true, 'monthly', 'each-admin', 'en', now())`,
+    [ORG_B, `${ORG_B}-invite`],
+  );
+  await db.run(
+    `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt")
+     VALUES ('e2e-mcw-sportb', $1, 'Basketball', 3, ARRAY['G','F'], ARRAY['Red','Yellow'], now())`,
+    [ORG_B],
+  );
+  await db.run(
+    `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt")
+     VALUES ('e2e-mcw-actb', $1, 'e2e-mcw-sportb', 'Thursday 5-a-side', 4, '19:00', 'The Cage', 5, now())`,
+    [ORG_B],
+  );
+  await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ('mem-b-alex', $1, $2, 'PLAYER')`, [P.alex.id, ORG_B]);
+  const T = monthKickoffs(NEXT, 4, "19:00");
+  await db.run(
+    `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "startedMidMonthAt", "createdAt", "updatedAt")
+     VALUES ($1, $2, 'e2e-mcw-actb', $3::date, 'running', $4, $5, $5, now())`,
+    [MONTH_B, ORG_B, NEXT, T.length, new Date(Date.now() - 60 * 60 * 1000).toISOString()],
+  );
+  await db.run(
+    `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", source, "joinedAt", "updatedAt")
+     VALUES ('e2e-mcw-monthb-alex', $1, $2, 'regular', 1, $3, 'seed-tick', now() - interval '2 days', now())`,
+    [MONTH_B, P.alex.id, T.length],
+  );
+
+  await signInAs(page, P.alex.id, `/month?club=${ORG}`);
+  await expect(page.getByTestId("month-clubs")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("month-club-current")).toHaveText("Vets MNF");
+  const before = (await member(db, P.alex))!.absentMatchIds;
+  await page.getByTestId("month-club-link").filter({ hasText: "Thursday Club" }).click();
+  await expect(page.getByTestId("month-club-current")).toHaveText("Thursday Club");
+  const away = page.locator(`[data-testid="month-away"][data-month="${MONTH_B}"]`);
+  await away.getByTestId(`month-away-${dayOf(T[0])}`).check();
+  await away.getByTestId("month-away-save").click();
+  await expect(away.getByTestId("month-away-note")).toHaveText("Saved.");
+  // The Thursday club's month has it; the Monday club's is untouched.
+  const there = await db.one<{ absentMatchIds: string[] }>(`SELECT "absentMatchIds" FROM "SquadMonthMember" WHERE id = 'e2e-mcw-monthb-alex'`);
+  expect(there!.absentMatchIds).toHaveLength(1);
+  expect((await member(db, P.alex))!.absentMatchIds).toEqual(before);
 });
 
 test("10. WEEKLY: the fixture club has no credits, no months and no sweep", async ({ db }) => {

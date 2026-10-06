@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getUserOrg } from "@/lib/org";
@@ -8,6 +9,7 @@ import { pounds } from "@/lib/month-payment-copy";
 import { gameDaysLabel } from "@/lib/month-signup-copy";
 import { hasStarted, loadLiveMonths } from "@/lib/month-signup";
 import { loadAwayView, loadMonthMoney } from "@/lib/month-close";
+import { mayConfirmPayments } from "@/lib/month-payment";
 import { mayJoinStartedMonth } from "@/lib/month-signup-rules";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { AwayWeeksCard } from "./away-card";
@@ -37,12 +39,25 @@ import { MonthSignupCard } from "./signup-card";
  */
 export const dynamic = "force-dynamic";
 
-export default async function MonthPage() {
+export default async function MonthPage({ searchParams }: { searchParams: Promise<{ club?: string | string[] }> }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login?callbackUrl=/month");
-  const membership = await getUserOrg(session.user.id);
+  // A player in more than one club PICKS the club (`?club=`): the page
+  // lists their monthly clubs when there are several. Otherwise the club
+  // the rest of the site is on.
+  const asked = (await searchParams)?.club;
+  const club = typeof asked === "string" ? asked : null;
+  const membership = club
+    ? await db.membership.findFirst({ where: { userId: session.user.id, orgId: club, leftAt: null }, include: { org: true } })
+    : await getUserOrg(session.user.id);
   if (!membership) redirect("/");
   if (normaliseSquadMode(membership.org.squadMode) !== "monthly") notFound();
+  const myClubs = await db.membership.findMany({
+    where: { userId: session.user.id, leftAt: null, org: { squadMode: "monthly" } },
+    select: { orgId: true, org: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const canCollect = await mayConfirmPayments(membership.orgId, session.user.id);
 
   const lang = membership.org.language;
   const s = t(lang);
@@ -70,6 +85,29 @@ export default async function MonthPage() {
     <div className="min-h-screen bg-slate-50 px-4 py-8" data-testid="month-page">
       <div className="mx-auto max-w-md space-y-4">
         <p className="text-sm font-medium text-slate-500">{membership.org.name}</p>
+        {myClubs.length > 1 && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600" data-testid="month-clubs">
+            {s.mmp_club_pick}
+            {myClubs.map((c) =>
+              c.orgId === membership.orgId ? (
+                <span key={c.orgId} className="font-medium text-slate-900" data-testid="month-club-current">
+                  {c.org.name}
+                </span>
+              ) : (
+                <Link key={c.orgId} href={`/month?club=${c.orgId}`} className="text-blue-700 hover:underline" data-testid="month-club-link">
+                  {c.org.name}
+                </Link>
+              ),
+            )}
+          </p>
+        )}
+        {canCollect && (
+          <p className="text-sm">
+            <Link href={`/month/collect${club ? `?club=${club}` : ""}`} className="text-blue-700 hover:underline" data-testid="month-collect-link">
+              {s.mcp_link}
+            </Link>
+          </p>
+        )}
         {months.length === 0 && (
           <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600" data-testid="month-none">
             {s.mmp_none}

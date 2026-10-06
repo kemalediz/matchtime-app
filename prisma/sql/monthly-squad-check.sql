@@ -73,3 +73,10 @@ ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_note_check"
 ALTER TABLE "SquadCredit" DROP CONSTRAINT IF EXISTS "SquadCredit_voidNote_check";
 ALTER TABLE "SquadCredit" ADD CONSTRAINT "SquadCredit_voidNote_check"
   CHECK ("voidNote" IS NULL OR char_length("voidNote") BETWEEN 1 AND 200);
+
+-- Slice 6, review round 1: at most ONE live credit per player per game,
+-- whatever the reason. A partial index, which the Prisma schema cannot
+-- express, so it lives here (db push may drop it; this file puts it back).
+CREATE UNIQUE INDEX IF NOT EXISTS "SquadCredit_one_live_per_game"
+  ON "SquadCredit" ("orgId", "userId", "earnedMatchId")
+  WHERE "voidedAt" IS NULL AND "earnedMatchId" IS NOT NULL;

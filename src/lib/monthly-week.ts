@@ -661,13 +661,22 @@ export async function syncMonthlyWeek(
 
   return db.$transaction(async (tx) => {
     await lockWeek(tx, matchId);
-    const [fresh, existing] = await Promise.all([
+    // Slice 6: every writer of a club's credits takes this lock (pricing,
+    // a called-off game, a leaver), so "one live credit per player per
+    // game" is decided on rows nobody else is writing. The same key as
+    // `lockClubCredits` in month-payment.ts.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`squad-credits:${week.orgId}`}))`;
+    const [fresh, allCredits] = await Promise.all([
       tx.attendance.findMany({ where: { matchId }, select: { userId: true, status: true, position: true } }),
       tx.squadCredit.findMany({
-        where: { orgId: week.orgId, earnedMatchId: matchId, reason: "missed" },
-        select: { id: true, userId: true, voidedAt: true, voidedById: true, appliedMonthId: true, createdById: true },
+        where: { orgId: week.orgId, earnedMatchId: matchId },
+        select: { id: true, userId: true, reason: true, voidedAt: true, voidedById: true, appliedMonthId: true, createdById: true },
       }),
     ]);
+    const existing = allCredits.filter((c) => c.reason === "missed");
+    // A live credit for this game for ANOTHER reason (called off, left
+    // part-way): one game is one credit, so no "missed" one beside it.
+    const creditedElsewhere = new Set(allCredits.filter((c) => c.reason !== "missed" && c.voidedAt === null).map((c) => c.userId));
     // `filled-only` fills vacated places in the order they were vacated,
     // so it needs when each player went out: their last move to DROPPED.
     const outAt = new Map<string, Date>();
@@ -694,6 +703,7 @@ export async function syncMonthlyWeek(
       rows,
       maxPlayers: week.maxPlayers,
       existing,
+      creditedElsewhere,
     });
     if (create.length > 0) {
       await tx.squadCredit.createMany({

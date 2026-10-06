@@ -44,6 +44,7 @@ import { buildLeaverNotice, buildMidMonthJoinDm, buildMidMonthJoinNotice, buildM
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import {
   REFUNDED_NOTE,
+  refundAllowed,
   awayEditable,
   cleanCreditNote,
   creditState,
@@ -503,8 +504,16 @@ export async function reconcileCancelledWeeks(orgId: string, now: Date = new Dat
       select: { earnedMatchId: true },
     });
     const credited = new Set(credits.map((c) => c.earnedMatchId));
-    // Only a game that is off, or one that still carries such a credit.
-    for (const match of mine.filter((m) => m.status === "CANCELLED" || credited.has(m.id))) {
+    // A game that is on again but still has its "called off at" record:
+    // the record is dropped, so cancelling again starts a new one.
+    const live = mine.filter((m) => m.status !== "CANCELLED");
+    const marked = new Set(
+      live.length === 0
+        ? []
+        : (await db.sentNotification.findMany({ where: { key: { in: live.map((m) => cancelledAtKey(orgId, m.id)) } }, select: { key: true } })).map((r) => r.key),
+    );
+    // Only a game that is off, or one that still carries such a credit or record.
+    for (const match of mine.filter((m) => m.status === "CANCELLED" || credited.has(m.id) || marked.has(cancelledAtKey(orgId, m.id)))) {
       const res = await reconcileCancelledMatch(month, match.id, now);
       created += res.created;
       voided += res.voided;
@@ -514,7 +523,7 @@ export async function reconcileCancelledWeeks(orgId: string, now: Date = new Dat
 }
 
 async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: Date): Promise<{ created: number; voided: number }> {
-  return db.$transaction(async (tx) => {
+  const res = await db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
     await lockClubCredits(tx, month.orgId);
     // Everything is read again under the locks: what was loaded outside
@@ -526,18 +535,30 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
         where: { monthId: month.id },
         select: { id: true, userId: true, kind: true, tier: true, leftAt: true, joinedAt: true, paidAt: true, paidClaimedAt: true, gamesCovered: true, creditsApplied: true },
       }),
+      // Every credit earned on this game, WHATEVER the reason: one live
+      // credit per player per game.
       tx.squadCredit.findMany({
-        where: { orgId: month.orgId, earnedMatchId: matchId, reason: { in: ["missed", "cancelled-week"] } },
-        select: { id: true, userId: true, reason: true, voidedAt: true, voidedById: true, appliedMonthId: true, createdById: true, createdAt: true },
+        where: { orgId: month.orgId, earnedMatchId: matchId },
+        select: { id: true, userId: true, reason: true, voidedAt: true, voidedById: true, appliedMonthId: true, createdById: true },
       }),
     ]);
-    if (!match || !state || state.status === "closed") return { created: 0, voided: 0 };
-    // WHEN IT WAS CALLED OFF, as nearly as we know: when its standing
-    // credits were first written, else when the match row last changed
-    // (the cancellation itself). Somebody who joined the month after that
-    // had their games counted without it.
-    const standing = existing.filter((c) => c.reason === "cancelled-week" && c.voidedAt === null).map((c) => c.createdAt.getTime());
-    const cancelledAt = match.status === "CANCELLED" ? new Date(standing.length > 0 ? Math.min(...standing) : match.updatedAt.getTime()) : null;
+    if (!match || !state || state.status === "closed") return { created: 0, voided: 0, elsewhere: [] };
+    // WHEN IT WAS CALLED OFF, written down ONCE (the first time it is seen
+    // cancelled, from the match row as the cancellation left it) and read
+    // from that record ever after, so nothing that touches the match row
+    // later can move it. Somebody who joined the month after that had
+    // their games counted without this one. Dropped when the game is
+    // restored, so cancelling again records the new moment.
+    const markKey = cancelledAtKey(month.orgId, matchId);
+    let cancelledAt: Date | null = null;
+    if (match.status === "CANCELLED") {
+      const mark =
+        (await tx.sentNotification.findUnique({ where: { key: markKey }, select: { createdAt: true } })) ??
+        (await tx.sentNotification.create({ data: { key: markKey, kind: "month-cancelled-at", createdAt: match.updatedAt }, select: { createdAt: true } }));
+      cancelledAt = mark.createdAt;
+    } else {
+      await tx.sentNotification.deleteMany({ where: { key: markKey } });
+    }
     const inClub = new Set(
       rows.length === 0
         ? []
@@ -615,7 +636,52 @@ async function reconcileCancelledMatch(month: CloseMonth, matchId: string, now: 
         await tx.squadMonthMember.update({ where: { id: r.id }, data: { creditsApplied, amountDuePence: amountAfter(r, creditsApplied) } });
       }
     }
-    return { created: plan.create.length, voided: plan.voidIds.length };
+    return { created: plan.create.length, voided: plan.voidIds.length, elsewhere: plan.releaseElsewhere };
+  });
+  // A restored game whose credit had already come off ANOTHER month: taken
+  // back there, each in a transaction of its own under THAT month's lock
+  // (never two months' locks at once).
+  for (const rel of res.elsewhere) {
+    try {
+      await releaseSpentCredit(month.orgId, rel, now);
+    } catch (err) {
+      console.error(`[month-close] taking credit ${rel.creditId} back from month ${rel.monthId} failed (the hourly sweep retries):`, err);
+    }
+  }
+  return { created: res.created, voided: res.voided };
+}
+
+/** Where the moment a game was called off is kept: one row per match. */
+const cancelledAtKey = (orgId: string, matchId: string): string => `${closeKeyPrefix(orgId)}cancelled-at:${matchId}`;
+
+/**
+ * A "cancelled-week" credit that was used against a month, for a game
+ * that is on again: the credit is voided and that month asks its holder
+ * for one game more. For somebody who has paid that month it shows as
+ * "owes more" (`paidBalancePence`); nobody's payment is touched. A CLOSED
+ * month is frozen and is left as it is.
+ */
+async function releaseSpentCredit(orgId: string, rel: { creditId: string; userId: string; monthId: string }, now: Date): Promise<void> {
+  await db.$transaction(async (tx) => {
+    await lockMonth(tx, rel.monthId);
+    await lockClubCredits(tx, orgId);
+    const [credit, state, row] = await Promise.all([
+      tx.squadCredit.findFirst({ where: { id: rel.creditId, orgId, voidedAt: null, appliedMonthId: rel.monthId }, select: { id: true } }),
+      tx.squadMonth.findFirst({ where: { id: rel.monthId, orgId }, select: { status: true, sharePerGamePence: true, concessionPerGamePence: true } }),
+      tx.squadMonthMember.findUnique({
+        where: { monthId_userId: { monthId: rel.monthId, userId: rel.userId } },
+        select: { id: true, tier: true, kind: true, gamesCovered: true, creditsApplied: true },
+      }),
+    ]);
+    if (!credit || !state || state.status === "closed") return;
+    await tx.squadCredit.update({ where: { id: credit.id }, data: { voidedAt: now } });
+    if (!row || row.creditsApplied < 1) return;
+    const creditsApplied = row.creditsApplied - 1;
+    const share = shareFor(state, row.tier);
+    await tx.squadMonthMember.update({
+      where: { id: row.id },
+      data: { creditsApplied, ...(row.kind === "regular" && share != null ? { amountDuePence: share * Math.max(0, row.gamesCovered - creditsApplied) } : {}) },
+    });
   });
 }
 
@@ -772,11 +838,16 @@ export async function tellMidMonthJoin(args: { orgId: string; monthId: string; u
       leftAt: true,
       gamesCovered: true,
       amountDuePence: true,
+      paidAt: true,
+      paidClaimedAt: true,
       user: { select: { name: true, phoneNumber: true } },
       month: { select: { monthStart: true, org: { select: { language: true, squadMode: true, paymentHolderId: true } } } },
     },
   });
   if (!row || row.kind !== "regular" || row.leftAt !== null || normaliseSquadMode(row.month.org.squadMode) !== "monthly") return;
+  // Somebody who had paid and is back keeps what they paid for: there is
+  // no new amount to tell them, and the Months page shows where they stand.
+  if (row.paidAt || row.paidClaimedAt) return;
   const monthStart = row.month.monthStart.toISOString().slice(0, 10);
   const lang = row.month.org.language;
   const facts = { name: row.user.name, monthDate: monthDateOf(monthStart), games: row.gamesCovered, amountDuePence: row.amountDuePence, lang };
@@ -798,7 +869,7 @@ export async function tellMidMonthJoin(args: { orgId: string; monthId: string; u
 
 // ── Refunds (plan section 7) ───────────────────────────────────────────
 
-export type RefundError = "not-monthly" | "not-collector" | "not-found" | "bad-amount";
+export type RefundError = "not-monthly" | "not-collector" | "not-found" | "bad-amount" | "too-much";
 
 /**
  * The collector records that they gave money back: the TOTAL refunded to
@@ -825,9 +896,13 @@ export async function recordRefund(args: {
     await lockClubCredits(tx, args.orgId);
     const row = await tx.squadMonthMember.findFirst({
       where: { monthId: args.monthId, userId: args.userId, month: { orgId: args.orgId } },
-      select: { id: true, kind: true, leftAt: true, paidAt: true, paidClaimedAt: true },
+      select: { id: true, kind: true, leftAt: true, paidAt: true, paidClaimedAt: true, paidAmountPence: true, paidClaimedAmountPence: true, amountDuePence: true },
     });
     if (!row) return { ok: false as const, error: "not-found" as const };
+    // Never more than they paid for this month: what was confirmed, else
+    // what they said they paid (else what they were asked for then).
+    const paidPence = row.paidAt ? (row.paidAmountPence ?? row.amountDuePence) : row.paidClaimedAt ? (row.paidClaimedAmountPence ?? row.amountDuePence) : null;
+    if (!refundAllowed({ amountPence: amount, paidPence })) return { ok: false as const, error: "too-much" as const };
     await tx.squadMonthMember.update({ where: { id: row.id }, data: { refundedPence: amount } });
     const membership = await tx.membership.findFirst({ where: { orgId: args.orgId, userId: args.userId }, select: { leftAt: true, user: { select: { isActive: true } } } });
     const leaver = isLeaver({
@@ -1101,23 +1176,60 @@ export async function closeDueMonths(orgId: string, now: Date = new Date(), prel
       const claim = await db.squadMonth.updateMany({ where: { id: month.id, status: "running", closedAt: null }, data: { status: "closed", closedAt: now } });
       if (claim.count === 0) continue;
       closed.push(month.id);
-      const [fresh] = await loadCloseMonths(orgId, [month.id]);
-      if (!fresh) continue;
-      const summary = await loadMonthSummary(fresh, now);
-      const path = `/admin/months?month=${fresh.monthStart}`;
-      await sendAdminNotice({
-        orgId,
-        now,
-        nextPath: path,
-        text: (link) => buildMonthSummaryNotice({ summary, monthDate: monthDateOf(fresh.monthStart), link: link || appUrl(path), lang: fresh.language }),
-      });
-      console.log(`[month-close] closed ${fresh.monthStart} for ${orgId}/${fresh.activityId}`);
+      console.log(`[month-close] closed ${month.monthStart} for ${orgId}/${month.activityId}`);
     } catch (err) {
       // One month's failure must not stop the others.
       console.error(`[month-close] closing ${month.id} failed:`, err);
     }
   }
+  // The summary has a claim of ITS OWN, so one that failed to send after
+  // the close is sent by a later sweep and is never lost.
+  await sendDueCloseSummaries(orgId, now);
   return closed;
+}
+
+/** How long after a close its summary is still worth sending. */
+const SUMMARY_RETRY_DAYS = 3;
+const summaryKey = (orgId: string, monthId: string): string => `${closeKeyPrefix(orgId)}summary:${monthId}`;
+
+/**
+ * Send the summary of every month closed lately that has not had one.
+ * Once per month: the key is claimed first (so two sweeps send one), and
+ * RELEASED if the send fails or reaches nobody, so the next sweep tries
+ * again, for three days.
+ */
+export async function sendDueCloseSummaries(orgId: string, now: Date = new Date()): Promise<number> {
+  const months = await db.squadMonth.findMany({
+    where: { orgId, status: "closed", closedAt: { gte: new Date(now.getTime() - SUMMARY_RETRY_DAYS * DAY_MS) } },
+    select: { id: true },
+  });
+  if (months.length === 0) return 0;
+  const done = new Set(
+    (await db.sentNotification.findMany({ where: { key: { in: months.map((m) => summaryKey(orgId, m.id)) } }, select: { key: true } })).map((r) => r.key),
+  );
+  let sent = 0;
+  for (const m of months) {
+    const key = summaryKey(orgId, m.id);
+    if (done.has(key) || !(await claimOnce(key, "admin-notice"))) continue;
+    try {
+      const [fresh] = await loadCloseMonths(orgId, [m.id]);
+      if (!fresh) throw new Error("the month could not be read");
+      const summary = await loadMonthSummary(fresh, now);
+      const path = `/admin/months?month=${fresh.monthStart}`;
+      const res = await sendAdminNotice({
+        orgId,
+        now,
+        nextPath: path,
+        text: (link) => buildMonthSummaryNotice({ summary, monthDate: monthDateOf(fresh.monthStart), link: link || appUrl(path), lang: fresh.language }),
+      });
+      if (res.queued === 0) throw new Error("nobody to send it to");
+      sent++;
+    } catch (err) {
+      await db.sentNotification.deleteMany({ where: { key } }).catch(() => {});
+      console.error(`[month-close] the summary of ${m.id} was not sent (the next sweep retries):`, err);
+    }
+  }
+  return sent;
 }
 
 /** True once per club per London hour. A read first, so a poll that is
@@ -1152,7 +1264,11 @@ export async function sweepMonthClose(orgId: string, now: Date = new Date()): Pr
     });
     if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return [];
     const months = await loadCloseMonths(orgId);
-    if (months.length === 0) return [];
+    if (months.length === 0) {
+      // Nothing open, but a summary may still be owed for a month just closed.
+      await sendDueCloseSummaries(orgId, now);
+      return [];
+    }
     await reconcileCancelledWeeks(orgId, now, months);
     await reconcileLeavers(orgId, now, months);
     return await closeDueMonths(orgId, now, months);

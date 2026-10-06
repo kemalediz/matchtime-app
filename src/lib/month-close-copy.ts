@@ -142,3 +142,12 @@ export function buildMidMonthJoinNotice(p: { name: string | null; monthDate: Dat
     link: p.link,
   });
 }
+
+/** To the collector, in answer to a "PAID ..." that was for a month that
+ *  has closed: nobody is marked, and where a late payment is confirmed. */
+export function buildClosedMonthReply(p: { monthDate: Date; link: string; lang?: LangArg }): string {
+  return t(p.lang).mpy_reply_closed({ month: monthNameLabel(p.lang, p.monthDate), link: p.link });
+}
+
+/** The collector's own page (they need not be an organiser). */
+export const COLLECT_PAGE_PATH = "/month/collect";

@@ -2353,6 +2353,9 @@ model SquadCredit {
 
   createdAt DateTime @default(now())
 
+  // Also, in SQL only (prisma/sql/monthly-squad-check.sql): a partial
+  // UNIQUE index, "SquadCredit_one_live_per_game", on (orgId, userId,
+  // earnedMatchId) WHERE voidedAt IS NULL AND earnedMatchId IS NOT NULL.
   @@index([orgId, userId])
   @@index([earnedMonthId])
   @@index([appliedMonthId])

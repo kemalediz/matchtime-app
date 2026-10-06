@@ -29,7 +29,7 @@ export function RefundForm(props: { orgId: string; monthId: string; userId: stri
     setSaving(true);
     try {
       const res = await recordMonthRefund(props.orgId, props.monthId, props.userId, amount);
-      if (!res.ok) toast.error(res.error === "not-collector" ? s.mth_refund_collector_only : s.mth_refund_error);
+      if (!res.ok) toast.error(res.error === "not-collector" ? s.mth_refund_collector_only : res.error === "too-much" ? s.mth_refund_too_much : s.mth_refund_error);
       router.refresh();
     } catch {
       toast.error(s.mth_refund_error);

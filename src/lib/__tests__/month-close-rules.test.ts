@@ -91,7 +91,7 @@ describe("a cancelled week", () => {
     ]);
     // A second run (a retry, another poll, cancelling again): nothing more.
     const existing = [credit("c1", "alex", "cancelled-week"), credit("c2", "bilal", "cancelled-week")];
-    expect(decide({ members, existing })).toEqual({ create: [], voidMissedIds: [], voidIds: [], release: [] });
+    expect(decide({ members, existing })).toEqual({ create: [], voidMissedIds: [], voidIds: [], release: [], releaseElsewhere: [] });
   });
 
   it("a regular who has not paid yet has it taken off this month at once", () => {
@@ -122,7 +122,7 @@ describe("a cancelled week", () => {
 
   it("leaves a missed credit that was already used, and writes no second credit", () => {
     const res = decide({ members: [member("alex")], existing: [credit("m1", "alex", "missed", { appliedMonthId: "m-nov" })] });
-    expect(res).toEqual({ create: [], voidMissedIds: [], voidIds: [], release: [] });
+    expect(res).toEqual({ create: [], voidMissedIds: [], voidIds: [], release: [], releaseElsewhere: [] });
   });
 
   it("never writes again a credit an organiser removed", () => {
@@ -375,5 +375,85 @@ describe("joining a month that has started", () => {
     expect(mayJoinStartedMonth({ ...ok, source: "paste" })).toBe(false);
     expect(mayJoinStartedMonth({ ...ok, gamesLeft: 0 })).toBe(false);
     expect(mayJoinStartedMonth({ ...ok, running: false })).toBe(false);
+  });
+});
+
+// ── Review round 1 (2026-10-06) ────────────────────────────────────────
+import { decideMissedCredits } from "../monthly-week-rules";
+import { refundAllowed, closedDigestReply } from "../month-close-rules";
+
+describe("one live credit per player per game, whatever the reason", () => {
+  const wk = (userId: string, o: Record<string, unknown> = {}) => ({ userId, name: userId, kind: "regular" as const, slot: 1, paid: "confirmed" as const, absent: false, paygDated: false, left: false, ...o });
+
+  it("a missed credit is not written beside another live credit for the same game", () => {
+    // Jake paid, left the group (he holds a left-mid-month credit for this
+    // game), and the organiser then drops him from the seeded game.
+    const args = {
+      rule: "any-miss" as const,
+      members: [wk("jake", { left: true })],
+      rows: [{ userId: "jake", name: "jake", status: "DROPPED" as const, position: 1 }],
+      maxPlayers: 6,
+      existing: [],
+    };
+    expect(decideMissedCredits(args).create).toEqual(["jake"]);
+    expect(decideMissedCredits({ ...args, creditedElsewhere: new Set(["jake"]) }).create).toEqual([]);
+  });
+
+  it("a cancelled-week credit is not written beside a live left-mid-month credit for the same game", () => {
+    const res = decideCancelledWeekCredits({
+      cancelled: true,
+      matchDate: GAME,
+      monthId: MONTH,
+      members: [member("jake")],
+      existing: [credit("l1", "jake", "left-mid-month")],
+    });
+    expect(res.create).toEqual([]);
+  });
+});
+
+describe("a restored game whose credit was already used against another month", () => {
+  it("is handed back for that month to take off again, not silently kept", () => {
+    const res = decideCancelledWeekCredits({
+      cancelled: false,
+      matchDate: GAME,
+      monthId: MONTH,
+      members: [member("alex")],
+      existing: [credit("c1", "alex", "cancelled-week", { appliedMonthId: "m-nov" })],
+    });
+    expect(res.voidIds).toEqual([]);
+    expect(res.releaseElsewhere).toEqual([{ creditId: "c1", userId: "alex", monthId: "m-nov" }]);
+  });
+});
+
+describe("a refund", () => {
+  it("is never more than what was paid", () => {
+    expect(refundAllowed({ amountPence: 3000, paidPence: 3000 })).toBe(true);
+    expect(refundAllowed({ amountPence: 0, paidPence: 3000 })).toBe(true);
+    expect(refundAllowed({ amountPence: 3001, paidPence: 3000 })).toBe(false);
+    expect(refundAllowed({ amountPence: -1, paidPence: 3000 })).toBe(false);
+    expect(refundAllowed({ amountPence: 1.5, paidPence: 3000 })).toBe(false);
+  });
+  it("with no payment recorded, nothing can be refunded", () => {
+    expect(refundAllowed({ amountPence: 100, paidPence: null })).toBe(false);
+    expect(refundAllowed({ amountPence: 0, paidPence: null })).toBe(true);
+  });
+});
+
+describe("a reply to a closed month's digest", () => {
+  const digestAt = at("2026-10-27", "10:00");
+  const base = { reply: { kind: "all" as const }, closed: { monthNumber: 10, digestAt, listedSlots: [1, 3] }, liveDigestAt: null, now: at("2026-10-27", "18:00") };
+  it("is answered when that digest is the newest, or the reply names the month", () => {
+    expect(closedDigestReply(base)).toBe(true);
+    expect(closedDigestReply({ ...base, liveDigestAt: at("2026-10-27", "09:00") })).toBe(true);
+    expect(closedDigestReply({ ...base, liveDigestAt: at("2026-10-27", "11:00"), reply: { kind: "all", month: 10 } })).toBe(true);
+  });
+  it("is not when a live month's digest is newer, the reply names another month, or it is out of date", () => {
+    expect(closedDigestReply({ ...base, liveDigestAt: at("2026-10-27", "11:00") })).toBe(false);
+    expect(closedDigestReply({ ...base, reply: { kind: "all", month: 11 } })).toBe(false);
+    expect(closedDigestReply({ ...base, now: at("2026-10-30", "18:00") })).toBe(false);
+  });
+  it("a number that was not on that list is somebody's own message", () => {
+    expect(closedDigestReply({ ...base, reply: { kind: "numbers", numbers: [3] } })).toBe(true);
+    expect(closedDigestReply({ ...base, reply: { kind: "numbers", numbers: [8] } })).toBe(false);
   });
 });
