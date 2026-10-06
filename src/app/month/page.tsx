@@ -2,9 +2,11 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getUserOrg } from "@/lib/org";
 import { t } from "@/lib/i18n/t";
-import { monthNameLabel } from "@/lib/i18n/dates";
+import { dayCommaTimeLabel, monthNameLabel } from "@/lib/i18n/dates";
+import { db } from "@/lib/db";
+import { pounds } from "@/lib/month-payment-copy";
 import { gameDaysLabel } from "@/lib/month-signup-copy";
-import { loadJoinableMonths } from "@/lib/month-signup";
+import { loadLiveMonths } from "@/lib/month-signup";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { MonthSignupCard } from "./signup-card";
 
@@ -17,8 +19,13 @@ import { MonthSignupCard } from "./signup-card";
  *
  * Any signed-in player of a club whose `squadMode` is "monthly". A WEEKLY
  * club (every club before this, Sutton FC included) gets a 404: the page
- * does not exist for it. It shows the months somebody can still join: not
- * closed, and the first game not kicked off yet.
+ * does not exist for it. It shows this month and the next while they are
+ * not closed. The three choices are offered until a month's first game
+ * kicks off; after that only the organiser changes who is on it.
+ *
+ * Slice 4: a regular also sees what they owe for the month, how it was
+ * worked out, the club's own payment instructions and an "I've paid"
+ * button. That button records a CLAIM; only the collector confirms.
  */
 export const dynamic = "force-dynamic";
 
@@ -31,7 +38,12 @@ export default async function MonthPage() {
 
   const lang = membership.org.language;
   const s = t(lang);
-  const months = await loadJoinableMonths(membership.orgId);
+  const now = new Date();
+  const months = await loadLiveMonths(membership.orgId, now);
+  const collector = membership.org.paymentHolderId
+    ? await db.user.findUnique({ where: { id: membership.org.paymentHolderId }, select: { name: true } })
+    : null;
+  const collectorFirst = collector?.name?.trim().split(/\s+/)[0] || null;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8" data-testid="month-page">
@@ -58,6 +70,21 @@ export default async function MonthPage() {
               slot={me && outcome === "regular" ? me.slot : null}
               myDays={myDays}
               locked={!!me && !me.out && me.paid !== "none"}
+              joinable={now.getTime() < m.firstKickoff.getTime()}
+              money={
+                me && outcome === "regular"
+                  ? {
+                      due:
+                        me.amountDuePence != null
+                          ? s.mmp_due({ amount: pounds(me.amountDuePence), games: me.gamesCovered, credits: me.creditsApplied })
+                          : s.mmp_not_priced,
+                      payBy: m.payByAt && me.amountDuePence != null ? s.mmp_payby({ when: dayCommaTimeLabel(lang, m.payByAt), collector: collectorFirst }) : null,
+                      instructions: me.amountDuePence != null ? membership.org.paymentInstructions : null,
+                      paid: me.paid,
+                      canClaim: me.paid === "none" && (me.amountDuePence ?? 0) > 0,
+                    }
+                  : null
+              }
             />
           );
         })}

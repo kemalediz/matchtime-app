@@ -16,6 +16,10 @@ and where it differs from sections 4.1 and 6.2, is in "Slice 3 as built" at the 
 12. Replying IN to the list post as a WhatsApp quoted reply needs a Pi change; the typed
 "IN FOR NOVEMBER" works without one.
 
+**Status, 2026-10-06 (later still).** Slice 4 (price, payments and reminders) is built. See
+"Slice 4 as built" at the end of section 12. No model call was added: a player's "paid" for
+the month is read from a fixed vocabulary, not by the per-match claim's classifier.
+
 Written for the "Vets MNF" prospect group (Monday night 7-a-side, about 14 players) after
 Kemal joined it. Everything here is a per-club setting that is OFF by default, so Sutton FC
 and every other club behave exactly as they do today.
@@ -1178,6 +1182,81 @@ doors, the list post), `month-signup-copy.ts` (English and Turkish), the player'
    hands them to the posts.
 11. **Not built here:** paid marks from a pasted sign-up list (they are read and handed to
    slice 4), and the "set the price" notice (slice 4).
+
+#### Slice 4 as built (2026-10-06)
+
+Code: `month-payment-rules.ts` (pure rules), `month-payment.ts` (pricing, claims, confirming,
+the sweeps and the posts), `month-payment-copy.ts` (English and Turkish), the price form and
+the "Confirm paid" button on `/admin/months`, the amount and "I've paid" on `/month`, and
+guarded branches in `bot-scheduler.ts`, the due-posts route, the dm-reply route, the analyze
+route and `admin-group.ts`. Monthly clubs only; a weekly club makes no query on any of them.
+
+- **"Set the price".** When sign-up ends (or every regular place is taken) and no price is
+  set, the organisers are told once, with the page link and the club fee tip in month terms.
+- **Pricing (D1).** The organiser types the share per game, an optional concession share and
+  venue cost, and the pay-by date (default: three days before the first game, 21:00). The
+  suggestion is venue cost over the regulars, rounded up to 50p. Each regular's amount is
+  `share x (games - credits)`. Credits are taken oldest first, never below zero, and only for
+  a game that has been PLAYED (or a credit tied to no game): a credit for a game still to come
+  can be taken back if the regular plays after all, so it is never spent in advance. Under the
+  club-month's advisory lock; saving the same price twice changes nothing.
+- **The price lock.** Once anybody has paid or says so, the share cannot change. The pay-by
+  date and the venue cost still can. A regular who has paid is never re-priced.
+- **The priced list.** One group post per price, in the group's own format. Each regular's
+  amount is in brackets ("1. Alex Carter (£37.50)"), which the list reader ignores, so a
+  member can add "(paid)" and paste it back. Regulars only.
+- **"Says paid" (D3)** comes from a "(paid)" mark on a pasted list (the payer's own or one
+  somebody else wrote), a "paid" DM, and the "I've paid" button. All set `paidClaimedAt` and
+  nothing else.
+- **Confirmed** is the collector's alone: the "Confirm paid" button on `/admin/months` (shown
+  to nobody else), or their reply to the daily digest. The month's `paidAt` is written in one
+  function (`writeConfirmed`), pinned by `month-paid-claim-never-sets-paid-at.test.ts`. With
+  no collector set, the club's owner and admins confirm.
+- **The digest and the reply.** Once a London day from 10:00, while a claim waits: "3 say
+  they've paid for November: 1. Alex £37.50 ... Reply PAID ALL, or PAID and the numbers that
+  arrived (PAID 1 3), or PAID NONE." The numbers are the players' numbers on the month's
+  list, so nothing has to be remembered between the digest and the reply.
+- **Reminders.** In the last 24 hours before the pay-by date: the count in the group, once,
+  and a DM to each regular who has not paid (amount, credits taken off, the club's own
+  payment instructions, "reply paid"). A second DM on the deadline day, at least six hours
+  after the first. After the pay-by date: the summary to the organisers, once, and one DM a
+  day for three days to anybody still unpaid, then silence. Never 22:00 to 07:59, never the
+  collector, never somebody who says they have paid. Each has its own key
+  (`org-<orgId>:mpy:...`) and is claimed when handed out, so none is sent twice.
+- **Bank transfer only (D5).** No message for the month carries a link to pay. The club's
+  free-text payment instructions are shown as written, on one line in the group post.
+
+**Where it differs from the plan above, or where the plan said nothing:**
+
+1. **The "paid" DM does not go through the per-match classifier (4.3 said it would).** The
+   brief for this slice was no new model calls. A regular with one month to pay for and no
+   per-match fee owed is read from a fixed vocabulary ("paid", "I've paid", "paid £37.50",
+   "sent", "ödedim"). Anything else falls through to today's per-match path, unchanged. A
+   looser reading ("sorted that for you mate") would need that classifier, which is more
+   model calls: Kemal's call.
+2. **The collector's reply needs the word PAID** ("PAID ALL", "PAID 1 3", "PAID NONE"; Turkish
+   "ÖDENDİ ..."). The plan had a bare "ALL" or numbers. A bare number is how an organiser
+   picks a waiting player, and a stray "ok" must never confirm money.
+3. **"ALL" only confirms what the last digest showed.** A claim made after the digest was
+   sent is not confirmed by it. A number that is not one of the digest's claims confirms
+   nobody at all. A reply counts for two days.
+4. **A decline is recorded.** After "PAID NONE" those claims are not put to the collector
+   again (the page still shows them), and those players are reminded like anybody unpaid. If
+   the player says "paid" again, it goes back in front of the collector.
+5. **The status `priced` is not used.** Pricing sets `pricedAt` and the amounts; the month's
+   status stays `open` until sign-up ends and is `running` after. A month can be priced in
+   either state, and so can a month the organiser started part-way through.
+6. **MatchTime's own month lists are never read as the week's list.** A member who pastes the
+   sign-up list or the priced list back (to add "(paid)") cannot change who plays this week
+   by it: such a paste is read for its paid marks, and for the sender's own sign-up while
+   the month can still be joined. Known by the title line MatchTime writes.
+7. **A regular who joins or leaves a priced month** is settled at once: a new regular gets
+   their amount; one who is a regular no longer (and has not paid) owes nothing, and the
+   credits pricing took for them go back to the ledger.
+8. **Not built here:** changing the share after somebody has paid ("owes £x more", plan
+   section 7), a refund, and the pay-by reminders for a month with no pay-by date (a month
+   started part-way through that was never priced). The collector's reply in an admin GROUP
+   uses the same function as the DM but has no end-to-end test yet.
 
 ### Slice 6: credits ledger, cancelled weeks, month close (about 2 days)
 

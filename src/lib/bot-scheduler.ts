@@ -805,13 +805,28 @@ export async function computeDuePosts(
   // query here. A failure costs this one post, never the poll.
   let signupMonths: Array<{ id: string; monthStart: string; fixture: { orgId: string; venue: string; dayOfWeek: number } }> = [];
   if (features.squadMode === "monthly") {
+    // The club's live months: the sweep's, else ONE read here for both
+    // the sign-up list and the payment posts.
+    let liveMonths = preloadedLiveMonths;
     try {
-      const { signupListPosts } = await import("./month-signup");
-      const signup = await signupListPosts(org.id, now, preloadedLiveMonths);
+      const { signupListPosts, loadLiveMonths } = await import("./month-signup");
+      liveMonths ??= await loadLiveMonths(org.id, now);
+      const signup = await signupListPosts(org.id, now, liveMonths);
       signupMonths = signup.months;
       for (const p of signup.posts) out.push({ kind: "group-message", key: p.key, text: p.text });
     } catch (err) {
       console.error(`[scheduler] org ${org.id}: the sign-up list could not be computed on this poll:`, err);
+    }
+    // Slice 4 (plan 4.2 and 4.3): the priced list (one post per price), the
+    // group's count a day before the pay-by date, and a DM to each regular
+    // who has not paid. Keys are `org-<id>:mpy:`; each is claimed when it
+    // is handed out, so none is sent twice. Bank transfer only: nothing
+    // here is a pay link. A club on "weekly" never reaches this.
+    try {
+      const { monthPaymentPosts } = await import("./month-payment");
+      out.push(...(await monthPaymentPosts(org.id, now, liveMonths)));
+    } catch (err) {
+      console.error(`[scheduler] org ${org.id}: the month's payment posts could not be computed on this poll:`, err);
     }
   }
 

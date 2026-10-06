@@ -76,6 +76,14 @@
  *     on "monthly"; the only non-additive line in either `.snap` diff is
  *     the case count.
  *
+ *   - Deliberate additions (2026-10-06, monthly squad slice 4): rows
+ *     MPY1 to MPY8, the month's price and payments (the priced list, the
+ *     count and the reminder DMs before the pay-by date, the answer to a
+ *     "paid", the organisers' "set the price", the collector's digest and
+ *     the answers to their reply, and the summary after the pay-by date).
+ *     All NEW copy, sent only to a club on "monthly"; the only
+ *     non-additive line in either `.snap` diff is the case count.
+ *
  *   - Deliberate additions AND one deliberate CHANGE (2026-09-19, slice
  *     6 of MDs/club-scoped-ratings-design-2026-09-18.md). The additions
  *     are rows R144 to R146, the first WEB copy in the table: the club
@@ -371,6 +379,17 @@ import {
   buildSignupWaitingDm,
 } from "../../month-signup-copy";
 import { monthKickoffs } from "../../month-signup-rules";
+import {
+  buildClaimsDigest,
+  buildCollectorReplyAnswer,
+  buildGroupPayReminder,
+  buildMonthFeeTip,
+  buildPaidClaimAckDm,
+  buildPayBySummary,
+  buildPayReminderDm,
+  buildPriceAskNotice,
+  buildPricedListPost,
+} from "../../month-payment-copy";
 import { formatRatingProgressReply } from "../../rating-progress-answer";
 import { buildMomAnnouncement } from "../../mom-announcement";
 import { buildBadgeAnnouncementPost } from "../../badge-announcements";
@@ -2038,6 +2057,84 @@ function cases(lang: Lang): Case[] {
   add("MSU5 buildSignupLockedDm", buildSignupLockedDm({ monthDate: msuFacts.kickoffs[0], lang }));
   add("MSU6 buildSignupUnknownDaysDm", buildSignupUnknownDaysDm({ days: [10, 11], kickoffs: msuFacts.kickoffs, lang }));
 
+  // ── MPY: monthly squad, slice 4 (2026-10-06), price and payments ───
+  //   NEW copy, a deliberate addition: plan sections 4.2 and 4.3. Sent
+  //   only for a club on "monthly". Bank transfer only: no link to pay.
+  const mpyPayBy = new Date("2026-10-30T21:00:00.000Z");
+  const mpyMonth = msuFacts.kickoffs[0];
+  add(
+    "MPY1 buildPricedListPost",
+    buildPricedListPost({
+      list: msuList,
+      lines: new Map([
+        ["u-alex", { amountDuePence: 3750, paid: "claimed" as const, paidPence: null }],
+        ["u-chris", { amountDuePence: 3000, paid: "none" as const, paidPence: null }],
+      ]),
+      kickoffs: msuFacts.kickoffs,
+      sharePence: 750,
+      payByAt: mpyPayBy,
+      collectorName: "Sam Collector",
+      instructions: "Bank details are in the group description.",
+      lang,
+    }),
+  );
+  add("MPY2 buildGroupPayReminder", buildGroupPayReminder({ count: 4, monthDate: mpyMonth, payByAt: mpyPayBy, lang }));
+  for (const kind of ["r1", "r2", "late"] as const) {
+    add(
+      `MPY3 buildPayReminderDm / ${kind}`,
+      buildPayReminderDm({
+        kind,
+        name: "Bilal Aydin",
+        monthDate: mpyMonth,
+        amountDuePence: 3000,
+        games: 5,
+        credits: 1,
+        payByAt: mpyPayBy,
+        collectorName: "Sam Collector",
+        instructions: "Bank details are in the group description.",
+        lang,
+      }),
+    );
+  }
+  add("MPY4 buildPaidClaimAckDm", buildPaidClaimAckDm({ name: "Bilal Aydin", amountPence: 3000, monthDate: mpyMonth, collectorName: "Sam Collector", lang }));
+  add(
+    "MPY5 buildPriceAskNotice / with the club fee tip",
+    buildPriceAskNotice({
+      monthDate: mpyMonth,
+      regulars: 12,
+      payg: 2,
+      link: "https://matchtime.ai/admin/months",
+      tip: buildMonthFeeTip({ pricePence: 999, regulars: 12, games: 5, perGamePence: 20, perMonthPence: 100, lang }),
+      lang,
+    }),
+  );
+  add(
+    "MPY6 buildClaimsDigest",
+    buildClaimsDigest({
+      claims: [
+        { slot: 1, name: "Alex Carter", amountPence: 3750 },
+        { slot: 7, name: "Carl Young", amountPence: 2500 },
+      ],
+      monthDate: mpyMonth,
+      lang,
+    }),
+  );
+  add("MPY7 buildCollectorReplyAnswer / confirmed", buildCollectorReplyAnswer({ kind: "confirmed", names: ["Alex Carter", "Carl Young"], monthDate: mpyMonth, lang }));
+  add("MPY7 buildCollectorReplyAnswer / declined", buildCollectorReplyAnswer({ kind: "declined", names: ["Alex Carter"], monthDate: mpyMonth, lang }));
+  add("MPY7 buildCollectorReplyAnswer / a number that is not a claim", buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [9], monthDate: mpyMonth, lang }));
+  add("MPY7 buildCollectorReplyAnswer / nothing waiting", buildCollectorReplyAnswer({ kind: "nothing", lang }));
+  add(
+    "MPY8 buildPayBySummary",
+    buildPayBySummary({
+      monthDate: mpyMonth,
+      confirmed: { count: 11, totalPence: 28250 },
+      claimed: ["Jake"],
+      unpaid: [],
+      venue: { duePence: 45000, venuePence: 48000 },
+      lang,
+    }),
+  );
+
   return c;
 }
 
@@ -2122,6 +2219,8 @@ const MIGRATED_ROWS = [
   "LRN1 ", "LRN2 ", "LRN3 ",
   // Monthly squad, slice 3: the month's sign-up.
   "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ", "MSU7 ",
+  // Monthly squad, slice 4: price, payments and reminders.
+  "MPY1 ", "MPY2 ", "MPY3 ", "MPY4 ", "MPY5 ", "MPY6 ", "MPY7 ", "MPY8 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

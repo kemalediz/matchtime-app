@@ -30,6 +30,8 @@ import { resolveSenderUserIds } from "./admin-group-link";
 import { handlePickReply } from "./organiser-pick";
 import { PICK_RACE_WINDOW_MS } from "./organiser-pick-rules";
 import { isBillingPaused } from "./club-billing-rules";
+import { handleCollectorPaidReply } from "./month-payment";
+import { readCollectorReply } from "./month-payment-rules";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -72,6 +74,16 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // off. (The Pi should not forward from a paused club's admin group at
   // all: it is listed silent. This is the server's own refusal.)
   if (isBillingPaused(org)) return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
+
+  // MONTHLY SQUAD (slice 4): the collector answering the claims digest in
+  // the admin group ("PAID ALL", "PAID 1 3", "PAID NONE"). Read only when
+  // the text is exactly that (a pure check, no query), so every other
+  // message in the group goes on as before. Deterministic, no model.
+  if (readCollectorReply(msg.text)) {
+    const senders = await resolveSenderUserIds({ phones: [msg.senderPhone, msg.senderAltPhone], lid: msg.senderLid ?? null });
+    const paid = await handleCollectorPaidReply({ text: msg.text, waMessageId: msg.messageId ?? null, senderUserIds: senders, orgId: org.id, now });
+    if (paid) return { handled: true, orgId: org.id, outcome: paid.handled, replyText: paid.replyText || null };
+  }
 
   // Nothing open (or just filled, for the "Already filled" answer): the
   // group is the admins' own conversation, and it stays theirs.

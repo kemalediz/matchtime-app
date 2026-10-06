@@ -9,6 +9,11 @@ import { loadMonthPage, type MonthFixtureView, type MonthMemberView } from "@/li
 import { nextMonthStart } from "@/lib/month-signup-rules";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { AddMember, MemberActions } from "./member-actions";
+import { PaidButton, PriceForm } from "./price-form";
+import { planPricePence } from "@/lib/club-billing-rules";
+import { mayConfirmPayments } from "@/lib/month-payment";
+import { buildMonthFeeTip } from "@/lib/month-payment-copy";
+import { monthFeeShare } from "@/lib/month-payment-rules";
 import { StartMonthForm } from "./start-month-form";
 
 /**
@@ -50,6 +55,16 @@ export default async function MonthsPage() {
   const nextMonth = monthYearLabel(lang, new Date(`${nextStart}T12:00:00.000Z`));
   const nextFixtures = (await loadMonthPage(membership.orgId, now, nextStart)).fixtures.filter((f) => f.month);
   const orgId = membership.orgId;
+  // Slice 4. Only the club's money collector confirms a payment (D3).
+  const canConfirm = await mayConfirmPayments(orgId, session.user.id);
+  const clubFeePence = membership.org.billingStatus === "exempt" ? null : planPricePence(membership.org.billingPlan, membership.org.billingPricePence);
+  /** The club fee in month terms, under the price form (plan 4.2). */
+  const feeTipFor = (f: MonthFixtureView): string | null => {
+    const regulars = f.month?.members.filter((m) => m.kind === "regular").length ?? 0;
+    const games = f.month?.gamesScheduled ?? 0;
+    const fee = monthFeeShare({ pricePence: clubFeePence, regulars, games });
+    return fee && clubFeePence ? buildMonthFeeTip({ pricePence: clubFeePence, regulars, games, ...fee, lang }) : null;
+  };
 
   const kindCell = (m: MonthMemberView): string =>
     m.waiting
@@ -127,7 +142,23 @@ export default async function MonthsPage() {
             {signupLines(f)}
             <p className="text-sm text-slate-600" data-testid="month-share">
               {mo.sharePerGamePence != null ? s.mth_share_line({ amount: moneyLabel(mo.sharePerGamePence) }) : s.mth_no_share}
+              {mo.payByAt && <span data-testid="month-payby"> {s.mth_payby_line({ when: dayCommaTimeLabel(lang, new Date(mo.payByAt)) })}</span>}
             </p>
+            {mo.status !== "closed" && (
+              <PriceForm
+                orgId={orgId}
+                monthId={mo.id}
+                lang={lang}
+                sharePence={mo.sharePerGamePence}
+                concessionPence={mo.concessionPerGamePence}
+                venuePence={mo.venueCostPence}
+                payBy={mo.payByDefault}
+                regulars={mo.members.filter((m) => m.kind === "regular").length}
+                priced={mo.priced}
+                locked={mo.priced && mo.priceLocked}
+                feeTip={feeTipFor(f)}
+              />
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="month-members">
                 <thead>
@@ -159,6 +190,11 @@ export default async function MonthsPage() {
                         {paidCell(m)}
                       </td>
                       <td className="py-2">
+                        {canConfirm && m.kind === "regular" && mo.status !== "closed" && (
+                          <div className="mb-1.5">
+                            <PaidButton orgId={orgId} monthId={mo.id} userId={m.userId} lang={lang} confirmed={m.paid === "confirmed"} />
+                          </div>
+                        )}
                         {mo.status !== "closed" && (
                           <MemberActions orgId={orgId} monthId={mo.id} userId={m.userId} lang={lang} now={m.waiting ? "waiting" : m.kind} />
                         )}

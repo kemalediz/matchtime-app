@@ -14,6 +14,7 @@
  */
 import { db } from "./db";
 import { formatLondon } from "./london-time";
+import { defaultPayBy } from "./month-payment-rules";
 import { WAITING_NOTE, firstKickoffOf, signupEndsAt } from "./month-signup-rules";
 import { parseMonthlyList } from "./monthly-list";
 import {
@@ -260,6 +261,15 @@ export interface MonthFixtureView {
     signupEndsAt: string | null;
     /** The regular places: the format's squad size. */
     maxRegulars: number;
+    /** Slice 4: the price, when one is set. `payByAt` is an ISO instant. */
+    concessionPerGamePence: number | null;
+    venueCostPence: number | null;
+    payByAt: string | null;
+    priced: boolean;
+    /** Somebody has paid or says so: the share can no longer change. */
+    priceLocked: boolean;
+    /** The pay-by date the form offers, as London "YYYY-MM-DDTHH:mm". */
+    payByDefault: string;
     members: MonthMemberView[];
   } | null;
 }
@@ -302,6 +312,10 @@ export async function loadMonthPage(
         gamesScheduled: true,
         gamesPlayedBeforeStart: true,
         sharePerGamePence: true,
+        concessionPerGamePence: true,
+        venueCostPence: true,
+        payByAt: true,
+        pricedAt: true,
         startedMidMonthAt: true,
         listOpenedAt: true,
         members: {
@@ -361,6 +375,12 @@ export async function loadMonthPage(
         startedMidMonth: m.startedMidMonthAt !== null,
         signupEndsAt: m.listOpenedAt && first ? signupEndsAt(m.listOpenedAt, first).toISOString() : null,
         maxRegulars: a.sport.playersPerTeam * 2,
+        concessionPerGamePence: m.concessionPerGamePence,
+        venueCostPence: m.venueCostPence,
+        payByAt: m.payByAt ? m.payByAt.toISOString() : null,
+        priced: m.pricedAt !== null,
+        priceLocked: shown.some((r) => r.kind === "regular" && (r.paidAt !== null || r.paidClaimedAt !== null)),
+        payByDefault: formatLondon(m.payByAt ?? defaultPayBy(first ?? now, now), "yyyy-MM-dd'T'HH:mm"),
         members: shown.map((r) => ({
           waiting: r.kind === "payg" && r.note === WAITING_NOTE,
           paygDays: r.paygMatchIds

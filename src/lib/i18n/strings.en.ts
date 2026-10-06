@@ -3344,4 +3344,120 @@ export const en = {
   mmp_closed: "Sign-up for this month has ended. Ask an organiser to change your place.",
   mmp_locked: "You have said you paid for this month, so your place is not changed here. Ask an organiser.",
   mmp_error: "That could not be saved. Try again.",
+
+  // ── Monthly squad, slice 4 (2026-10-06): price, payments, reminders ─
+  // MDs/monthly-squad-plan-2026-10-05.md, sections 4.2 and 4.3. Only ever
+  // sent for a club on "monthly". Bank transfer only (D5): MatchTime never
+  // asks for or shows account numbers; `instructions` is the club's own
+  // free text. "Says paid" is a claim; only the collector confirms (D3).
+  // The priced list reads back through `monthly-list.ts` (an amount in
+  // brackets is ignored by the reader; "(paid £37.50)" is a paid mark).
+  // No em or en dashes, in either language.
+  /** `share` is "£7.50", `when` the pay-by date, `collector` a first name or null. */
+  mpy_priced_header: (p: { month: string; share: string; when: string; collector: string | null }): string =>
+    `📋 List for ${p.month}: ${p.share} a game, pay ${p.collector ?? "the collector"} by ${p.when}`,
+  /** `full` is what a regular with no credit pays: "£37.50". */
+  mpy_priced_sub: (p: { games: number; full: string }): string =>
+    `(${p.games} ${p.games === 1 ? "game" : "games"} = ${p.full}. Credits are already taken off.)`,
+  mpy_list_paid_amount: (p: { amount: string }): string => `(paid ${p.amount})`,
+  /** The club's own payment instructions, on one line. */
+  mpy_priced_instructions: (p: { text: string }): string => `Payment: ${p.text}`,
+  mpy_priced_how: 'Paid? Add (paid) after your name and paste the list, or DM me "paid".',
+  /** 24 hours before the pay-by date: the count only, as the collector does. */
+  mpy_group_reminder: (p: { count: number; month: string; when: string }): string =>
+    `💷 ${p.count} still to pay for ${p.month}, by ${p.when}.`,
+  /** To one unpaid regular. `kind`: "r1" a day before, "r2" on the day, "late" after it. */
+  mpy_dm_reminder: (p: {
+    kind: string;
+    firstName: string | null;
+    month: string;
+    amount: string;
+    games: number;
+    credits: number;
+    when: string;
+    collector: string | null;
+    instructions: string | null;
+  }): string =>
+    `👋 ${p.firstName ?? "there"}, ` +
+    (p.kind === "late"
+      ? `${p.amount} for ${p.month} was due by ${p.when}, and I have no payment noted for you.`
+      : p.kind === "r2"
+        ? `a reminder: ${p.amount} for ${p.month} is due today, by ${p.when}.`
+        : `your place for ${p.month} is ${p.amount}, to pay by ${p.when}.`) +
+    ` That is ${p.games} ${p.games === 1 ? "game" : "games"}${p.credits > 0 ? `, with ${p.credits} ${p.credits === 1 ? "credit" : "credits"} taken off` : ""}.` +
+    ` Please pay ${p.collector ?? "the collector"} by bank transfer.` +
+    (p.instructions ? `\n\n${p.instructions}` : "") +
+    `\n\nReply *paid* when you have.`,
+  /** To a player who said "paid". A claim, never a confirmation. */
+  mpy_dm_claim_ack: (p: { firstName: string | null; amount: string | null; month: string; collector: string | null }): string =>
+    `✅ ${p.firstName ?? "Thanks"}, noted: you say you have paid${p.amount ? ` ${p.amount}` : ""} for ${p.month}. ` +
+    `${p.collector ?? "The collector"} will confirm when it arrives.`,
+  /** To the organisers when sign-up ends (or the places fill): set the price. */
+  mpy_admin_price_ask: (p: { month: string; regulars: number; payg: number; link: string; tip: string | null }): string =>
+    `📋 ${p.month} list: ${p.regulars} ${p.regulars === 1 ? "regular" : "regulars"}, ${p.payg} PAYG so far. Set the price: ${p.link}` +
+    (p.tip ? `\n\n${p.tip}` : ""),
+  /** The club fee, in month terms. Amounts are labels: "£9.99", "20p", "£1". */
+  mpy_fee_tip: (p: { price: string; regulars: number; games: number; perGame: string; perMonth: string }): string =>
+    `MatchTime charges the club up to ${p.price} a month, only for games played. For ${p.regulars} regulars and ${p.games} games, ` +
+    `adding ${p.perGame} a game (${p.perMonth} for the month) to each regular's share covers it.`,
+  /** To the collector, once a day while claims wait. `lines` are "1. Alex £37.50". */
+  mpy_digest: (p: { count: number; month: string; lines: string[] }): string =>
+    `💷 ${p.count} ${p.count === 1 ? "says" : "say"} they've paid for ${p.month}:\n${p.lines.join("\n")}\n\n` +
+    `Reply *PAID ALL*, or *PAID* and the numbers that arrived (PAID 1 3), or *PAID NONE*.`,
+  mpy_reply_confirmed: (p: { month: string; names: string[] }): string => `✅ Marked as paid for ${p.month}: ${p.names.join(", ")}.`,
+  mpy_reply_declined: (p: { month: string; names: string[] }): string =>
+    `Noted: nothing has arrived yet for ${p.month} from ${p.names.join(", ")}. I won't ask about these again. Confirm them on the Months page when the money arrives.`,
+  /** `numbers` is "9" or "7, 9". */
+  mpy_reply_unknown: (p: { numbers: string; month: string }): string =>
+    `I have no "says paid" at number ${p.numbers} on the ${p.month} list, so I marked nobody. Reply *PAID* and the numbers from my last message.`,
+  mpy_reply_no_digest: "Nothing is waiting for your word right now. You can confirm payments on the Months page.",
+  /** After the pay-by date, to the organisers. */
+  mpy_summary_head: (p: { month: string }): string => `📒 ${p.month}: the pay-by date has passed.`,
+  mpy_summary_confirmed: (p: { count: number; total: string }): string => `Paid and confirmed: ${p.count} (${p.total}).`,
+  /** `names` is a list, or the word for nobody. */
+  mpy_summary_claimed: (p: { count: number; names: string }): string => `Says paid, not confirmed: ${p.count} (${p.names}).`,
+  mpy_summary_unpaid: (p: { count: number; names: string }): string => `Not paid: ${p.count} (${p.names}).`,
+  mpy_summary_venue: (p: { due: string; venue: string }): string => `The month's shares come to ${p.due} against a venue cost of ${p.venue}.`,
+  mpy_none: "nobody",
+
+  // /admin/months, pricing and confirming (organiser page).
+  mth_price_title: "Price for the month",
+  mth_price_share: "Share per game (£)",
+  mth_price_concession: "Concession share per game (£), optional",
+  mth_price_venue: "Venue cost per game (£), optional",
+  mth_price_payby: "Pay by (London time)",
+  mth_price_suggest: (p: { amount: string }): string => `Suggested: ${p.amount} a game (the venue cost over your regulars, rounded up to 50p).`,
+  mth_price_save: "Set the price",
+  mth_price_update: "Update the price",
+  mth_price_posts: "MatchTime posts the priced list in your group, and reminds regulars who have not paid before the pay-by date.",
+  mth_price_locked: "Somebody has paid, or says so, so the share is locked. You can still move the pay-by date.",
+  mth_price_error: (p: { key: string }): string =>
+    p.key === "bad-share"
+      ? "Enter the share per game as a price like 7.50, up to £100."
+      : p.key === "bad-concession"
+        ? "Enter the concession share as a price no higher than the share."
+        : p.key === "bad-venue"
+          ? "Enter the venue cost per game as a price like 90."
+          : p.key === "bad-pay-by"
+            ? "Choose a pay-by date and time that is still ahead."
+            : p.key === "locked"
+              ? "Somebody has paid, so the share cannot be changed."
+              : "The price could not be saved. Reload the page and try again.",
+  mth_payby_line: (p: { when: string }): string => `Pay by ${p.when}.`,
+  mth_confirm: "Confirm paid",
+  mth_unconfirm: "Undo",
+  mth_confirm_error: (p: { key: string }): string =>
+    p.key === "not-collector" ? "Only the club's money collector confirms payments." : "That could not be saved. Reload the page and try again.",
+  info_mth_price_title: "Price for the month",
+  info_mth_price_body:
+    "You set the share per game. Each regular owes the share times the games in the month, minus any credits from games they paid for and missed. A concession share is optional.\n\nMatchTime posts the priced list, takes \"paid\" from players as a claim, and reminds regulars who have not paid before the pay-by date. Only the money collector confirms a payment. Payment is by bank transfer: MatchTime never sees the money.",
+
+  // /month, the player's amount.
+  mmp_due: (p: { amount: string; games: number; credits: number }): string =>
+    `${p.amount} for ${p.games} ${p.games === 1 ? "game" : "games"}${p.credits > 0 ? `, with ${p.credits} ${p.credits === 1 ? "credit" : "credits"} taken off` : ""}.`,
+  mmp_payby: (p: { when: string; collector: string | null }): string => `Pay ${p.collector ?? "the collector"} by bank transfer by ${p.when}.`,
+  mmp_not_priced: "The price is not set yet.",
+  mmp_btn_paid: "I've paid",
+  mmp_paid_state: (p: { kind: string }): string =>
+    p.kind === "confirmed" ? "Paid, confirmed." : "You have said you paid. The collector confirms when it arrives.",
 };
