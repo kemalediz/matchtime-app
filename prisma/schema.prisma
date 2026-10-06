@@ -2342,9 +2342,20 @@ model SquadCredit {
   voidedAt    DateTime?
   voidedById  String?
   createdById String?
+  /// Slice 6: the organiser's own words for a credit added by hand
+  /// ("missed 5 Oct, before we started here"). NULL for every credit
+  /// MatchTime wrote itself.
+  note        String?
+  /// Slice 6: why an organiser removed it, or "refunded" when the
+  /// collector recorded a refund. NULL while the credit stands, and for a
+  /// credit MatchTime took back itself.
+  voidNote    String?
 
   createdAt DateTime @default(now())
 
+  // Also, in SQL only (prisma/sql/monthly-squad-check.sql): a partial
+  // UNIQUE index, "SquadCredit_one_live_per_game", on (orgId, userId,
+  // earnedMatchId) WHERE voidedAt IS NULL AND earnedMatchId IS NOT NULL.
   @@index([orgId, userId])
   @@index([earnedMonthId])
   @@index([appliedMonthId])

@@ -58,6 +58,7 @@ import {
   monthStarted,
   listOpenDue,
   listOpensAt,
+  mayJoinStartedMonth,
   monthKickoffs,
   nextMonthStart,
   planCarryOver,
@@ -594,24 +595,29 @@ export async function applySignup(args: {
   const now = args.now ?? new Date();
   const month = await loadSignupMonth(args.monthId);
   if (!month || month.status === "closed") return { ok: false, error: month ? "closed" : "not-found" };
+  // The games still to be played: what a regular who joins now covers.
+  // The same count the carried-over regulars were given when it is the
+  // whole month (cancelled weeks are not in it for anybody).
+  const gamesLeft = month.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
   // A month that has started (its first game has kicked off, or the
-  // organiser started it part-way) is the organiser's alone to change.
-  if (!args.byOrganiser && hasStarted(month, now)) return { ok: false, error: "closed" };
+  // organiser started it part-way) is the organiser's to change, with ONE
+  // exception (slice 6, plan section 7 "Joining mid-month"): a player may
+  // still JOIN it for the games that are left, by "IN FOR <MONTH>" or on
+  // their page. Going out, or to pay-as-you-go, stays the organiser's.
+  const started = hasStarted(month, now);
+  const joinsRest = started && !args.byOrganiser && mayJoinStartedMonth({ choice: args.choice, source: args.source, gamesLeft, running: !month.open });
+  if (!args.byOrganiser && started && !joinsRest) return { ok: false, error: "closed" };
   const member = await db.membership.findFirst({
     where: { orgId: month.orgId, userId: args.userId, leftAt: null, user: { isActive: true } },
     select: { user: { select: { name: true, phoneNumber: true } } },
   });
   if (!member) return { ok: false, error: "not-a-member" };
 
-  // The games still to be played: what a regular who joins now covers.
-  // The same count the carried-over regulars were given when it is the
-  // whole month (cancelled weeks are not in it for anybody).
-  const gamesLeft = month.kickoffs.filter((k) => k.getTime() > now.getTime()).length;
   const decision = await db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
     const rows = await tx.squadMonthMember.findMany({
       where: { monthId: month.id },
-      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true },
+      select: { id: true, userId: true, kind: true, slot: true, note: true, leftAt: true, paidAt: true, paidClaimedAt: true, paygMatchIds: true, gamesCovered: true },
     });
     const view = (r: (typeof rows)[number]): SignupMember => ({
       userId: r.userId,
@@ -673,9 +679,22 @@ export async function applySignup(args: {
         where: { id: mine.id },
         data: {
           ...data,
-          // A new regular covers the games still to play. A regular who
-          // stays one keeps what they had.
-          ...(regular ? (wasRegular ? {} : { gamesCovered: gamesLeft }) : { gamesCovered: 0, creditsApplied: 0, amountDuePence: null }),
+          // A new regular covers the games still to play, from now
+          // (`joinedAt`: a game before it is not one they are charged
+          // for, slice 6). A regular who stays one keeps what they had.
+          // Somebody whose payment is CONFIRMED keeps what the row knows
+          // of it when they stop being a regular (slice 6: leaving never
+          // destroys a money record; what they are owed is worked out
+          // from it). Anybody else owes nothing for the month any more.
+          // And somebody who PAID for this month, left and is back keeps
+          // the games they paid for: never overwritten with the games left.
+          ...(regular
+            ? wasRegular || ((mine.paidAt || mine.paidClaimedAt) && mine.gamesCovered > 0)
+              ? {}
+              : { gamesCovered: gamesLeft, joinedAt: now }
+            : mine.paidAt
+              ? {}
+              : { gamesCovered: 0, creditsApplied: 0, amountDuePence: null }),
         },
       });
     }
@@ -711,6 +730,18 @@ export async function applySignup(args: {
       console.error("[month-signup] DM failed:", err);
     }
   };
+
+  // Slice 6: somebody who joined a month already under way is told the
+  // games left and what to pay, and so are the organisers, once each. The
+  // pay-by reminders may be long past, so this DM carries the amount.
+  if (joinsRest && decision.kind === "write" && decision.outcome === "regular") {
+    try {
+      const { tellMidMonthJoin } = await import("./month-close");
+      await tellMidMonthJoin({ orgId: month.orgId, monthId: month.id, userId: args.userId, viaPage: args.source === "page", now });
+    } catch (err) {
+      console.error(`[month-signup] telling ${args.userId} about joining ${month.id} part-way failed:`, err);
+    }
+  }
 
   if (decision.kind === "locked") {
     await tell(`locked:${month.id}:${args.userId}:${day}`, buildSignupLockedDm({ monthDate: month.firstKickoff, lang: month.language }));
@@ -1067,7 +1098,13 @@ export async function handleSignupMessage(args: {
   const wanted = ask.month ?? quotedMonth;
   if (wanted === null) return null;
   if (!(await isLiveMonthlyClub(args.orgId))) return null;
-  const month = (await loadJoinableMonths(args.orgId, now)).find((m) => m.monthNumber === wanted);
+  const live = await loadLiveMonths(args.orgId, now);
+  const month =
+    live.find((m) => m.monthNumber === wanted && !hasStarted(m, now)) ??
+    // Slice 6: a month already under way can still be JOINED for the games
+    // left, and only by the full phrase that names it ("IN FOR OCTOBER").
+    // A bare "IN" is this week's game, whatever it quotes.
+    (ask.choice === "in" && ask.month !== null ? live.find((m) => m.monthNumber === wanted && !m.open && hasStarted(m, now)) : undefined);
   if (!month) return null;
   const res = await applySignup({
     monthId: month.id,

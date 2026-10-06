@@ -69,6 +69,18 @@ export async function setMonthMember(
     actorUserId: session.user.id,
     byOrganiser: true,
   });
+  // Slice 6: a regular who had paid and is taken off the month (or moved
+  // to PAYG) is owed the games left, and one who is back is not. Worked
+  // out at once, so the page shows it (and so sends the organisers no
+  // message about their own change); the hourly sweep does the same.
+  if (res.ok && res.changed) {
+    try {
+      const { reconcileLeavers } = await import("@/lib/month-close");
+      await reconcileLeavers(orgId, new Date(), undefined, { notify: false });
+    } catch (err) {
+      console.error(`[month-signup] working out what a leaver of ${monthId} is owed failed (the hourly sweep retries):`, err);
+    }
+  }
   revalidatePath("/admin/months");
   return res;
 }

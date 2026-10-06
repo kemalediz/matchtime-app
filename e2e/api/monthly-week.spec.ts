@@ -1000,9 +1000,15 @@ test.describe("regulars have priority at the seed", () => {
     // him: leaving never voids one.
     await db.run(`UPDATE "Membership" SET "leftAt" = now() WHERE "userId" = $1 AND "orgId" = $2`, [R.wes.id, ORG3]);
     await poll(request, at(11), GROUP3);
-    expect(await credits(db, ORG3)).toEqual([
+    const afterLeaving = await credits(db, ORG3);
+    expect(afterLeaving.filter((c) => c.reason === "missed")).toEqual([
       { userId: R.wes.id, reason: "missed", games: 1, earnedMatchId: MATCH3, earnedMonthId: "e2e-mw3-month", voided: false },
     ]);
+    // Slice 6: he paid and left, so he is also owed the games still to be
+    // played (never this one twice: he holds its credit already). Nothing
+    // else is written for anybody.
+    const owed = afterLeaving.filter((c) => c.reason !== "missed");
+    expect(owed.every((c) => c.userId === R.wes.id && c.reason === "left-mid-month" && c.earnedMatchId !== MATCH3 && !c.voided)).toBe(true);
 
     // F: Vic is moved to PAYG for the month. The game has not been played,
     // so his row is no longer "paid for by the month" (he gets the pay

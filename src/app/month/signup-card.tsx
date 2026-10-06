@@ -26,8 +26,12 @@ export function MonthSignupCard(props: {
   locked: boolean;
   /** The month's first game has not kicked off: the choices are offered. */
   joinable: boolean;
-  /** Slice 4, for a regular: what they owe, already in words. */
-  money: { due: string; payBy: string | null; instructions: string | null; paid: string; canClaim: boolean } | null;
+  /** Slice 6: the month is under way and can still be joined for the
+   *  games left. The sentence that says so, or null. */
+  joinRest: string | null;
+  /** Slice 4, for a regular: what they owe, already in words. Slice 6:
+   *  `balance` is what a share changed after they paid leaves out. */
+  money: { due: string; payBy: string | null; instructions: string | null; paid: string; canClaim: boolean; balance: string | null } | null;
 }) {
   const s = t(props.lang);
   const router = useRouter();
@@ -89,6 +93,11 @@ export function MonthSignupCard(props: {
               {s.mmp_paid_state({ kind: props.money.paid })}
             </p>
           )}
+          {props.money.balance && (
+            <p className="font-medium text-amber-700" data-testid="month-balance">
+              {props.money.balance}
+            </p>
+          )}
           {props.money.canClaim && (
             <button type="button" className={`${button} bg-green-600 text-white`} disabled={saving} onClick={sayPaid} data-testid="month-paid">
               {s.mmp_btn_paid}
@@ -96,7 +105,14 @@ export function MonthSignupCard(props: {
           )}
         </div>
       )}
-      {!props.joinable ? (
+      {props.joinRest ? (
+        <div className="space-y-2" data-testid="month-join-rest">
+          <p className="text-sm text-slate-600">{props.joinRest}</p>
+          <button type="button" className={`${button} bg-slate-900 text-white`} disabled={saving} onClick={() => choose("in")} data-testid="month-join-rest-btn">
+            {s.mmp_btn_join_rest}
+          </button>
+        </div>
+      ) : !props.joinable ? (
         <p className="text-sm text-slate-600" data-testid="month-closed">
           {s.mmp_closed}
         </p>

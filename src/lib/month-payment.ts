@@ -66,6 +66,7 @@ import {
   monthFeeShare,
   planPricing,
   priceLocked,
+  creditInArrears,
   readCollectorReply,
   readPaidMessage,
   validatePricing,
@@ -75,6 +76,8 @@ import {
   type RemindersSent,
   type SentDigest,
 } from "./month-payment-rules";
+import { COLLECT_PAGE_PATH, buildClosedMonthReply } from "./month-close-copy";
+import { closedDigestReply } from "./month-close-rules";
 import { loadLiveMonths, lockMonth, type SignupMonth } from "./month-signup";
 import { WAITING_NOTE, buildSignupList, isDaytime, SIGNUP_REPOST_FLOOR_MS } from "./month-signup-rules";
 import { weekListHash } from "./monthly-week-rules";
@@ -108,7 +111,7 @@ async function claimOnce(key: string, kind: string): Promise<boolean> {
 /** One spender of a club's credits at a time. A credit belongs to a
  *  player in a CLUB, not to a month: two fixtures priced at the same
  *  moment must not both spend it. Taken after the month's own lock. */
-async function lockClubCredits(tx: Tx, orgId: string): Promise<void> {
+export async function lockClubCredits(tx: Tx, orgId: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`squad-credits:${orgId}`}))`;
 }
 
@@ -175,12 +178,22 @@ const pricingMember = (r: MemberRow, inClub: ReadonlySet<string>): PricingMember
  * or carried credit). A credit for a game still to come can be taken back
  * if the regular plays after all, so it is never spent in advance.
  */
-async function usableCredits(tx: Tx, orgId: string, userIds: string[], now: Date) {
+async function usableCredits(
+  tx: Tx,
+  orgId: string,
+  userIds: string[],
+  now: Date,
+  /** Slice 6, "in arrears" (plan 4.4): when the month was first priced.
+   *  A credit earned after that is for the month after (`creditInArrears`).
+   *  Null: the first pricing, which takes every usable credit. */
+  pricedAt: Date | null = null,
+) {
   if (userIds.length === 0) return [];
-  const credits = await tx.squadCredit.findMany({
+  const all = await tx.squadCredit.findMany({
     where: { orgId, userId: { in: userIds }, voidedAt: null, appliedMonthId: null },
     select: { id: true, userId: true, createdAt: true, earnedMatchId: true },
   });
+  const credits = all.filter((c) => !creditInArrears(c, pricedAt));
   const matchIds = [...new Set(credits.map((c) => c.earnedMatchId).filter((id): id is string => id !== null))];
   const played = new Set(
     matchIds.length === 0
@@ -246,7 +259,15 @@ export async function priceMonth(args: {
     const shareChanges = current?.sharePerGamePence !== args.input.sharePence || (current?.concessionPerGamePence ?? null) !== args.input.concessionPence;
     if (current?.pricedAt && shareChanges && priceLocked(members)) return { ok: false as const, error: "locked" as const };
 
-    const credits = await usableCredits(tx, args.orgId, members.filter((m) => m.kind === "regular" && !m.out && !m.waiting).map((m) => m.userId), now);
+    const credits = await usableCredits(
+      tx,
+      args.orgId,
+      members.filter((m) => m.kind === "regular" && !m.out && !m.waiting).map((m) => m.userId),
+      now,
+      // Saving the price again (a new pay-by date, say) never pulls in a
+      // credit earned since the amounts were first posted.
+      current?.pricedAt ?? null,
+    );
     const plan = planPricing({ members, credits, sharePence: args.input.sharePence, concessionPence: args.input.concessionPence });
     for (const row of plan) {
       if (row.creditIds.length > 0) {
@@ -294,7 +315,7 @@ export async function settleMemberAmount(monthId: string, userId: string, now: D
     await lockMonth(tx, monthId);
     const month = await tx.squadMonth.findUnique({
       where: { id: monthId },
-      select: { orgId: true, sharePerGamePence: true, concessionPerGamePence: true },
+      select: { orgId: true, sharePerGamePence: true, concessionPerGamePence: true, pricedAt: true },
     });
     const row = await tx.squadMonthMember.findUnique({ where: { monthId_userId: { monthId, userId } }, select: MEMBER_FIELDS });
     if (!month || !row || month.sharePerGamePence == null) return;
@@ -302,7 +323,9 @@ export async function settleMemberAmount(monthId: string, userId: string, now: D
     const member = pricingMember(row, await inClubOf(tx, month.orgId, [userId]));
     if (member.kind === "regular" && !member.out && !member.waiting) {
       if (member.paid !== "none") return;
-      const credits = await usableCredits(tx, month.orgId, [userId], now);
+      // In arrears here too: a credit earned after this month's amounts
+      // were posted is for the month after, for a late joiner as for anybody.
+      const credits = await usableCredits(tx, month.orgId, [userId], now, month.pricedAt);
       const [plan] = planPricing({ members: [member], credits, sharePence: month.sharePerGamePence, concessionPence: month.concessionPerGamePence });
       if (!plan) return;
       if (plan.creditIds.length > 0) {
@@ -386,7 +409,9 @@ async function writeConfirmed(
   if (userIds.length === 0) return [];
   return db.$transaction(async (tx) => {
     await lockMonth(tx, monthId);
-    const month = await tx.squadMonth.findFirst({ where: { id: monthId, orgId, status: { not: "closed" } }, select: { id: true } });
+    // A closed month too (slice 6): its numbers are frozen, but the
+    // collector still records money that arrives late.
+    const month = await tx.squadMonth.findFirst({ where: { id: monthId, orgId }, select: { id: true } });
     if (!month) return [];
     const rows = await tx.squadMonthMember.findMany({
       where: {
@@ -420,7 +445,6 @@ export async function confirmMonthPaid(args: {
   if (!(await mayConfirmPayments(args.orgId, args.actorUserId))) return { ok: false, error: "not-collector" };
   const month = await db.squadMonth.findFirst({ where: { id: args.monthId, orgId: args.orgId }, select: { status: true, org: { select: { squadMode: true } } } });
   if (!month || normaliseSquadMode(month.org.squadMode) !== "monthly") return { ok: false, error: "not-found" };
-  if (month.status === "closed") return { ok: false, error: "closed" };
   const done = await writeConfirmed(args.orgId, args.monthId, [args.userId], args.actorUserId, args.now ?? new Date());
   return { ok: true, changed: done.length > 0 };
 }
@@ -435,7 +459,7 @@ export async function unconfirmMonthPaid(args: {
 }): Promise<{ ok: true; changed: boolean } | { ok: false; error: ConfirmPaidError }> {
   if (!(await mayConfirmPayments(args.orgId, args.actorUserId))) return { ok: false, error: "not-collector" };
   const res = await db.squadMonthMember.updateMany({
-    where: { monthId: args.monthId, userId: args.userId, paidAt: { not: null }, stripeSessionId: null, month: { orgId: args.orgId, status: { not: "closed" } } },
+    where: { monthId: args.monthId, userId: args.userId, paidAt: { not: null }, stripeSessionId: null, month: { orgId: args.orgId } },
     data: { paidAt: null, paidAmountPence: null, paidConfirmedByUserId: null, paymentMethod: null },
   });
   return { ok: true, changed: res.count > 0 };
@@ -611,8 +635,10 @@ export async function handleCollectorPaidReply(input: {
   });
   // Every month this sender may confirm for that has had a digest.
   const out: Array<{ month: SignupMonth; actorUserId: string; digest: SentDigest; lang: string | null }> = [];
+  const confirmers: Array<{ orgId: string; lang: string | null }> = [];
   for (const m of memberships) {
     if (!(await mayConfirmPayments(m.orgId, m.userId))) continue;
+    confirmers.push({ orgId: m.orgId, lang: m.org.language });
     for (const month of await loadLiveMonths(m.orgId, now)) {
       const digest = await latestDigest(m.orgId, month.id);
       if (digest) out.push({ month, actorUserId: m.userId, digest, lang: m.org.language });
@@ -622,6 +648,17 @@ export async function handleCollectorPaidReply(input: {
   // one whose digest is the newest: that is the message being answered.
   const named = reply.month != null ? out.filter((o) => o.month.monthNumber === reply.month) : out;
   const best = [...named].sort((a, b) => b.digest.at.getTime() - a.digest.at.getTime())[0] ?? null;
+  // Slice 6: the digest being answered may be a month's LAST one, and the
+  // month has closed since. It is answered, never ignored and never
+  // applied to another month.
+  const closedAnswer = await closedMonthAnswer({
+    reply,
+    confirmers: confirmers,
+    liveDigestAt: best?.digest.at ?? null,
+    waMessageId: input.waMessageId,
+    now,
+  });
+  if (closedAnswer) return closedAnswer;
   // Nobody who may confirm, or no digest ever sent: not a reply to one.
   if (!best) return null;
   const { month, actorUserId, lang } = best;
@@ -679,6 +716,57 @@ export async function handleCollectorPaidReply(input: {
     buildCollectorReplyAnswer({ kind: "confirmed", names: done.map((u) => nameOf.get(u) ?? ""), monthDate: month.firstKickoff, lang }),
     "month-paid-confirmed",
   );
+}
+
+/**
+ * Slice 6. Is this "PAID ..." an answer to the last digest of a month
+ * that has CLOSED since (`closedDigestReply`)? Then nobody is marked (a
+ * closed month's payments are confirmed on the page) and the collector is
+ * told so, with the link. Null: not that, and the reply goes on as before.
+ */
+async function closedMonthAnswer(args: {
+  reply: NonNullable<ReturnType<typeof readCollectorReply>>;
+  confirmers: Array<{ orgId: string; lang: string | null }>;
+  liveDigestAt: Date | null;
+  waMessageId: string | null;
+  now: Date;
+}): Promise<{ handled: string; orgId: string; replyText: string } | null> {
+  if (args.confirmers.length === 0) return null;
+  const months = await db.squadMonth.findMany({
+    where: { orgId: { in: args.confirmers.map((c) => c.orgId) }, status: "closed", closedAt: { gte: new Date(args.now.getTime() - DIGEST_REPLY_WINDOW_MS) } },
+    select: { id: true, orgId: true, monthStart: true },
+  });
+  let best: { orgId: string; monthStart: string; at: Date } | null = null;
+  for (const m of months) {
+    const digest = await latestDigest(m.orgId, m.id);
+    if (!digest) continue;
+    const listed =
+      digest.userIds.length === 0
+        ? []
+        : await db.squadMonthMember.findMany({ where: { monthId: m.id, userId: { in: digest.userIds } }, select: { slot: true } });
+    const monthStart = m.monthStart.toISOString().slice(0, 10);
+    const answers = closedDigestReply({
+      reply: args.reply,
+      closed: { monthNumber: Number(monthStart.slice(5, 7)), digestAt: digest.at, listedSlots: listed.map((r) => r.slot).filter((s): s is number => s != null) },
+      liveDigestAt: args.liveDigestAt,
+      now: args.now,
+    });
+    if (answers && (!best || digest.at.getTime() > best.at.getTime())) best = { orgId: m.orgId, monthStart, at: digest.at };
+  }
+  if (!best) return null;
+  if (args.waMessageId && !(await claimOnce(`${paymentKeyPrefix(best.orgId)}reply:${args.waMessageId}`, "month-pay-reply"))) {
+    return { handled: "month-paid-duplicate", orgId: best.orgId, replyText: "" };
+  }
+  const path = `${COLLECT_PAGE_PATH}?month=${best.monthStart}`;
+  return {
+    handled: "month-paid-closed",
+    orgId: best.orgId,
+    replyText: buildClosedMonthReply({
+      monthDate: new Date(`${best.monthStart}T12:00:00.000Z`),
+      link: appUrl(path),
+      lang: args.confirmers.find((c) => c.orgId === best!.orgId)?.lang,
+    }),
+  };
 }
 
 /**

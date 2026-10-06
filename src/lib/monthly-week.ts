@@ -96,7 +96,29 @@ export interface RunningMonth {
      *  still a member of the month for the credits they earned. */
     left: boolean;
   }>;
+  /** Slice 6: the month has been CLOSED (its numbers are frozen). Only
+   *  `loadSchedulerMonths` ever returns one, for the scheduler's gates on
+   *  the games already played. `loadMonthlyWeek` answers null for it, so
+   *  nothing in the weekly flow writes for a closed month. */
+  closed?: boolean;
 }
+
+/** How long after a month is closed the scheduler still needs to know its
+ *  played games were a month's (no payment poll, no "how much each?" to
+ *  the collector). Longer than the scheduler looks back at a played match. */
+const CLOSED_MONTH_GATE_DAYS = 14;
+
+/**
+ * Slice 6: a club's running months AND the ones closed in the last two
+ * weeks (flagged `closed`). For the scheduler only: a month is closed the
+ * morning after its last game, while that game's after-match posts are
+ * still due, and those must go on treating it as a month's game.
+ */
+export async function loadSchedulerMonths(orgId: string, now: Date = new Date()): Promise<RunningMonth[]> {
+  return loadMonthsWhere(orgId, { OR: [{ status: "running" }, closedLately(now)] });
+}
+
+const closedLately = (now: Date) => ({ status: "closed", closedAt: { gte: new Date(now.getTime() - CLOSED_MONTH_GATE_DAYS * DAY_MS) } });
 
 /**
  * Every RUNNING month of a club, members included. Read only.
@@ -105,10 +127,17 @@ export interface RunningMonth {
  * stay a member of the month, so no credit they earned is ever taken back.
  */
 export async function loadRunningMonths(orgId: string): Promise<RunningMonth[]> {
+  return loadMonthsWhere(orgId, { status: "running" });
+}
+
+type MonthStatusWhere = { status: string; closedAt?: { gte: Date } } | { OR: Array<{ status: string; closedAt?: { gte: Date } }> };
+
+async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<RunningMonth[]> {
   const months = await db.squadMonth.findMany({
-    where: { orgId, status: "running" },
+    where: { orgId, ...where },
     select: {
       id: true,
+      status: true,
       monthStart: true,
       createdAt: true,
       startedMidMonthAt: true,
@@ -147,6 +176,7 @@ export async function loadRunningMonths(orgId: string): Promise<RunningMonth[]> 
     createdAt: m.createdAt,
     startsAt: m.startedMidMonthAt ?? londonDateTimeToUtc(m.monthStart.toISOString().slice(0, 10), "00:00"),
     fixture: m.activity,
+    ...(m.status === "closed" ? { closed: true } : {}),
     members: m.members.map((r) => ({
       left: !here.has(r.userId),
       userId: r.userId,
@@ -249,7 +279,9 @@ export async function loadMonthlyWeek(
   });
   if (!match || normaliseSquadMode(match.activity.org.squadMode) !== "monthly") return null;
   const month = monthForMatch(preloaded ?? (await loadRunningMonths(match.activity.orgId)), match);
-  if (!month) return null;
+  // A closed month (slice 6) is frozen: nothing in the weekly flow reads
+  // or writes it as a running one.
+  if (!month || month.closed) return null;
   return {
     matchId: match.id,
     orgId: match.activity.orgId,
@@ -629,13 +661,22 @@ export async function syncMonthlyWeek(
 
   return db.$transaction(async (tx) => {
     await lockWeek(tx, matchId);
-    const [fresh, existing] = await Promise.all([
+    // Slice 6: every writer of a club's credits takes this lock (pricing,
+    // a called-off game, a leaver), so "one live credit per player per
+    // game" is decided on rows nobody else is writing. The same key as
+    // `lockClubCredits` in month-payment.ts.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`squad-credits:${week.orgId}`}))`;
+    const [fresh, allCredits] = await Promise.all([
       tx.attendance.findMany({ where: { matchId }, select: { userId: true, status: true, position: true } }),
       tx.squadCredit.findMany({
-        where: { orgId: week.orgId, earnedMatchId: matchId, reason: "missed" },
-        select: { id: true, userId: true, voidedAt: true, voidedById: true, appliedMonthId: true, createdById: true },
+        where: { orgId: week.orgId, earnedMatchId: matchId },
+        select: { id: true, userId: true, reason: true, voidedAt: true, voidedById: true, appliedMonthId: true, createdById: true },
       }),
     ]);
+    const existing = allCredits.filter((c) => c.reason === "missed");
+    // A live credit for this game for ANOTHER reason (called off, left
+    // part-way): one game is one credit, so no "missed" one beside it.
+    const creditedElsewhere = new Set(allCredits.filter((c) => c.reason !== "missed" && c.voidedAt === null).map((c) => c.userId));
     // `filled-only` fills vacated places in the order they were vacated,
     // so it needs when each player went out: their last move to DROPPED.
     const outAt = new Map<string, Date>();
@@ -662,6 +703,7 @@ export async function syncMonthlyWeek(
       rows,
       maxPlayers: week.maxPlayers,
       existing,
+      creditedElsewhere,
     });
     if (create.length > 0) {
       await tx.squadCredit.createMany({
@@ -955,7 +997,7 @@ export async function sweepMonthlyWeeks(orgId: string, now: Date = new Date()): 
   // Read ONCE for the whole poll: the seed, every sync and the posts
   // (`computeDuePosts` takes these same rows) all use them.
   const months = await loadRunningMonths(orgId);
-  if (months.length === 0) return months;
+  if (months.length === 0) return withRecentlyClosed(orgId, months, now);
 
   await seedDueMonthlySquads(now, orgId, months);
 
@@ -977,7 +1019,16 @@ export async function sweepMonthlyWeeks(orgId: string, now: Date = new Date()): 
     await syncMonthlyWeek(m.id, now, months);
     if ((LIVE as readonly string[]).includes(m.status)) await ensureOpenPlaceOffers(m.id, now, months);
   }
-  return months;
+  return withRecentlyClosed(orgId, months, now);
+}
+
+/** The months handed on to `computeDuePosts`: the running ones, plus the
+ *  ones closed lately (slice 6), which the scheduler's after-match gates
+ *  still need. Nothing above this line ever sees a closed month. */
+async function withRecentlyClosed(orgId: string, running: RunningMonth[], now: Date): Promise<RunningMonth[]> {
+  // One small read: the closed months alone (most polls find none).
+  const closed = await loadMonthsWhere(orgId, closedLately(now));
+  return closed.length === 0 ? running : [...running, ...closed];
 }
 
 /** True once per club per London hour (the first poll of the hour). */

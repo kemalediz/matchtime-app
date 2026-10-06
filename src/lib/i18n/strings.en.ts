@@ -3465,4 +3465,151 @@ export const en = {
   mmp_btn_paid: "I've paid",
   mmp_paid_state: (p: { kind: string }): string =>
     p.kind === "confirmed" ? "Paid, confirmed." : "You have said you paid. The collector confirms when it arrives.",
+
+  // ── Monthly squad, slice 6 (2026-10-06): credits, cancelled weeks, joining
+  // and leaving part-way, a share changed after payments, refunds, the
+  // month close. MDs/monthly-squad-plan-2026-10-05.md, 4.4, 5.2, 7 and 9.
+  mcl_cancel_credit: (p: { count: number }): string =>
+    p.count === 1 ? "Regulars get 1 game credit for it." : `Regulars get a game credit for each of the ${p.count} games.`,
+  mcl_sum_head: (p: { month: string; games: number }): string =>
+    `📒 ${p.month} summary (${p.games} ${p.games === 1 ? "game" : "games"} played)`,
+  mcl_sum_regulars: (p: { count: number; confirmed: number; total: string }): string =>
+    `Regulars: ${p.count}. Paid and confirmed: ${p.confirmed} (${p.total}).`,
+  mcl_sum_claimed: (p: { count: number; names: string }): string => `Says paid, not confirmed: ${p.count} (${p.names}).`,
+  mcl_sum_unpaid: (p: { count: number; names: string }): string => `Not paid: ${p.count} (${p.names}).`,
+  mcl_sum_owes_more: (p: { names: string }): string => `Paid, and owe more now: ${p.names}.`,
+  mcl_sum_owed_back: (p: { names: string }): string => `Paid, with money to come back: ${p.names}.`,
+  mcl_sum_payg: (p: { games: number; total: string; paid: number }): string =>
+    `PAYG: ${p.games} ${p.games === 1 ? "game" : "games"} played, ${p.total} (${p.paid} paid).`,
+  mcl_sum_payg_chase: (p: { count: number; names: string }): string => `PAYG still to chase: ${p.count} (${p.names}).`,
+  mcl_sum_payg_none: "PAYG: no games played.",
+  mcl_sum_leavers: (p: { names: string }): string => `Left part-way and owed: ${p.names}.`,
+  mcl_sum_owed_games: (p: { name: string; games: number }): string => `${p.name} ${p.games} ${p.games === 1 ? "game" : "games"}`,
+  mcl_sum_carried: (p: { games: number; names: string }): string =>
+    `Credits carried to a later month: ${p.games} ${p.games === 1 ? "game" : "games"} (${p.names}).`,
+  mcl_sum_carried_none: "Credits carried to a later month: none.",
+  mcl_sum_used: (p: { games: number }): string => `Credits used this month: ${p.games} ${p.games === 1 ? "game" : "games"}.`,
+  mcl_sum_page: (p: { link: string }): string => `The full month: ${p.link}`,
+  mcl_leaver_notice: (p: { name: string; month: string; games: number; amount: string | null; link: string }): string =>
+    `📒 ${p.name} has left ${p.month}'s list after paying. Owed: ${p.games} ${p.games === 1 ? "game" : "games"}${p.amount ? ` (${p.amount})` : ""}.\n` +
+    `MatchTime refunds nobody. Give it back your own way, then record it here: ${p.link}`,
+  mcl_share_head: (p: { month: string; share: string }): string => `📋 ${p.month}: the share is now ${p.share} a game.`,
+  mcl_share_owes: (p: { names: string }): string => `Paid already and now owe more: ${p.names}.`,
+  mcl_share_back: (p: { names: string }): string => `Paid already and now have money to come back: ${p.names}.`,
+  mcl_share_none: "Nobody who has paid is affected.",
+  mcl_share_foot: (p: { link: string }): string => `Nobody's payment was changed. Settle the difference your own way: ${p.link}`,
+  mcl_midjoin_dm: (p: { firstName: string | null; month: string; games: number; amount: string | null; collector: string | null }): string =>
+    `👋 ${p.firstName ? `${p.firstName}, you` : "You"} are in for the rest of ${p.month}: ${p.games} ${p.games === 1 ? "game" : "games"}` +
+    (p.amount ? `, ${p.amount}. Pay ${p.collector ?? "the collector"} by bank transfer, then DM me "paid".` : ". The price follows."),
+  mcl_midjoin_admin: (p: { name: string; month: string; games: number; amount: string | null; link: string }): string =>
+    `📋 ${p.name} joined ${p.month} part-way: ${p.games} ${p.games === 1 ? "game" : "games"}${p.amount ? `, ${p.amount} to pay` : ""}. ${p.link}`,
+
+  mpy_reply_closed: (p: { month: string; link: string }): string =>
+    `${p.month} is closed, so I marked nobody. Confirm a payment that arrived late here: ${p.link}`,
+  mth_refund_too_much: "A refund cannot be more than they paid for the month.",
+  mcp_title: "Payments to confirm",
+  mcp_lead: "You collect the money for this club. Confirm a payment when it arrives, and record a refund when you have given money back. MatchTime moves no money.",
+  mcp_link: "Confirm payments and record refunds",
+  mcp_none: "No month to show here.",
+  mmp_club_pick: "Your clubs:",
+  mth_bal_owes: (p: { amount: string }): string => `owes ${p.amount} more`,
+  mth_bal_back: (p: { amount: string }): string => `${p.amount} to give back`,
+  mth_refunded: (p: { amount: string }): string => `Refunded ${p.amount}`,
+  mth_leavers_title: "Left part-way through",
+  mth_leavers_lead: "Regulars who paid and are no longer on the month. MatchTime refunds nobody: give the money back your own way, then record it.",
+  mth_leaver_owed: (p: { games: number; amount: string | null }): string =>
+    `Owed: ${p.games} ${p.games === 1 ? "game" : "games"}${p.amount ? ` (${p.amount})` : ""}`,
+  mth_leaver_settled: "Nothing owed",
+  mth_refund_label: "Refunded (£)",
+  mth_refund_btn: "Record refund",
+  mth_refund_error: "That refund could not be recorded. Check the amount and try again.",
+  mth_refund_collector_only: "Only the money collector records a refund.",
+  mth_share_change_title: "Change the share after payments",
+  mth_share_change_lead:
+    "Somebody has already paid. If you change the share now, nobody's payment is touched: each paid regular is shown as owing the difference, or having it to come back, for you to settle.",
+  mth_share_change_ack: "I understand that payments already made stay as they are.",
+  mth_share_change_btn: "Change the share",
+  mth_summary_title: "Month summary",
+  mth_credits_link: "Credits ledger",
+  mth_earlier: (p: { month: string }): string => `Earlier: ${p.month}`,
+  mth_back_current: "Back to this month",
+  mth_viewing_past: (p: { month: string }): string => `You are looking at ${p.month}.`,
+
+  mcr_title: "Credits",
+  mcr_lead: "Every game of credit your regulars hold or have used. A credit is one game off a later month.",
+  mcr_back: "Back to Months",
+  mcr_add_title: "Add credit",
+  mcr_add_player: "Player",
+  mcr_add_games: "Games",
+  mcr_add_reason: "Reason",
+  mcr_add_reason_hint: "For example: missed 5 Oct, before we started here",
+  mcr_add_btn: "Add credit",
+  mcr_error: (p: { key: string }): string =>
+    p.key === "bad-reason"
+      ? "Give a reason of 3 to 200 characters."
+      : p.key === "bad-games"
+        ? "Games must be a whole number from 1 to 10."
+        : p.key === "not-a-member"
+          ? "Pick a player of your club."
+          : p.key === "used"
+            ? "That credit has already been used against a month, so it cannot be removed."
+            : "That could not be saved. Reload the page and try again.",
+  mcr_empty: "No credits yet.",
+  mcr_available: (p: { games: number }): string => `${p.games} ${p.games === 1 ? "game" : "games"} available`,
+  mcr_col_date: "Date",
+  mcr_col_reason: "Why",
+  mcr_col_state: "Where it stands",
+  mcr_reason: (p: { kind: string; day: string | null }): string => {
+    const on = p.day ? ` (${p.day})` : "";
+    return p.kind === "missed"
+      ? `Paid, could not play${on}`
+      : p.kind === "cancelled-week"
+        ? `Game called off${on}`
+        : p.kind === "left-mid-month"
+          ? `Left part-way${on}`
+          : p.kind === "carried-in"
+            ? `Carried in at the start${on}`
+            : `Added by an organiser${on}`;
+  },
+  mcr_state: (p: { status: string; detail: string | null }): string =>
+    p.status === "used"
+      ? `Used${p.detail ? ` for ${p.detail}` : ""}`
+      : p.status === "removed"
+        ? `Removed by an organiser${p.detail ? ` (${p.detail})` : ""}`
+        : p.status === "refunded"
+          ? `Refunded${p.detail ? ` (${p.detail})` : ""}`
+          : p.status === "taken-back"
+            ? `Taken back${p.detail ? ` (${p.detail})` : ""}: they played after all, or the game was back on`
+            : `Available${p.detail ? ` (${p.detail})` : ""}`,
+  mcr_remove_btn: "Remove credit",
+  mcr_remove_reason: "Why are you removing it?",
+  mcr_remove_confirm: "Remove",
+  mcr_cancel: "Cancel",
+  info_mcr_title: "Credits",
+  info_mcr_body:
+    "A credit is one game. A regular earns one when they have paid and cannot play, or when a game is called off. It comes off a later month's amount, oldest first.\n\n" +
+    "Add credit is for something MatchTime did not see, such as a game missed before you started here. Remove credit takes back a wrong one. Both ask for a reason. Nothing is deleted: a removed credit stays in the list, and one already used cannot be removed.",
+
+  mmp_away_title: "Games I can't make",
+  mmp_away_lead: (p: { kind: string }): string =>
+    p.kind === "none"
+      ? "Tick the games you will miss. Your place is offered to somebody else for those games."
+      : "Tick the games you will miss. Your place is offered to somebody else for those games, and a game you paid for and miss is a credit off a later month.",
+  mmp_away_save: "Save",
+  mmp_away_saved: "Saved.",
+  mmp_away_seeded: (p: { day: string }): string => `${p.day}: the squad is out already. Say OUT in the group, or on the game's page.`,
+  mmp_away_none: "No games left to tick this month.",
+  mmp_join_rest: (p: { games: number; amount: string | null }): string =>
+    `The month is under way. You can still join for the rest of it: ${p.games} ${p.games === 1 ? "game" : "games"}${p.amount ? `, ${p.amount}` : ""}.`,
+  mmp_btn_join_rest: "Join for the rest of the month",
+  mmp_bal_owes: (p: { amount: string }): string => `What you are asked for went up after you paid: ${p.amount} more to pay.`,
+  mmp_bal_back: (p: { amount: string }): string => `What you are asked for went down after you paid: ${p.amount} is yours to come back. The collector settles it.`,
+
+  mwp_title: "This month's list",
+  mwp_tag_paid: "Monthly, paid",
+  mwp_tag_monthly: "Monthly",
+  mwp_tag_payg: "PAYG",
+  mwp_cant_paid: "Paid but can't play",
+  mwp_cant: "Can't play",
+  mwp_open: (p: { open: number }): string => `${p.open} ${p.open === 1 ? "place" : "places"} open`,
 };

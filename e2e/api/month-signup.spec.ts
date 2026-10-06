@@ -567,7 +567,7 @@ test("8. two days before the first game sign-up ends: the month runs, and until 
   expect(await memberOf(db, P.eve)).toMatchObject({ kind: "payg", note: "waiting for a regular place" });
 });
 
-test("9. a month STARTED PART-WAY is not in sign-up: a pasted week's list and IN FOR do not sign anybody up for it", async ({ request, db }) => {
+test("9. a month STARTED PART-WAY is not in sign-up: a pasted week's list signs nobody up for it, and IN FOR joins it for the games left", async ({ request, db }) => {
   // A second fixture-less world: a club whose organiser started this month
   // part-way. MatchTime holds one match of it (the next game), and none
   // of the games played before.
@@ -604,13 +604,27 @@ test("9. a month STARTED PART-WAY is not in sign-up: a pasted week's list and IN
   }
   const onMonth = () => db.count(`SELECT COUNT(*) FROM "SquadMonthMember" WHERE "monthId" = 'e2e-su-mid-month'`);
 
-  // "IN FOR <this month>": the month has started, so this is not a sign-up.
-  const typed = await say(request, neo as unknown as Person, `IN FOR ${monthName.toUpperCase()}`, GROUP3);
-  expect(typed.intent).not.toBe("month_signup");
   // The week's list, headed with the month, with his name on it: the
   // WEEK's reader has it. He is not signed up for the month, nor put on a
   // waiting list for it.
   const pasted = await say(request, neo as unknown as Person, [`List for ${monthName}`, "1. Rhys Regular", "2. Sol Second", "3. Neo"].join("\n"), GROUP3);
   expect(pasted.intent).not.toBe("month_signup_list");
   expect(await onMonth()).toBe(2);
+  // OUT and PAYG for a month under way stay the organiser's.
+  expect((await say(request, reg as unknown as Person, `OUT FOR ${monthName.toUpperCase()}`, GROUP3)).intent).not.toBe("month_signup");
+  expect((await say(request, neo as unknown as Person, `PAYG FOR ${monthName.toUpperCase()}`, GROUP3)).intent).not.toBe("month_signup");
+  expect(await onMonth()).toBe(2);
+
+  // SLICE 6 (plan section 7, "Joining mid-month"): "IN FOR <this month>"
+  // in a month under way JOINS it for the games that are left. He is a
+  // regular from the next game, charged for those games only.
+  const typed = await say(request, neo as unknown as Person, `IN FOR ${monthName.toUpperCase()}`, GROUP3);
+  expect(typed.intent).toBe("month_signup");
+  const left = monthKickoffs(monthStart, weekday, "20:00").filter((k) => k.getTime() > Date.now()).length;
+  const joined = await db.one<{ kind: string; slot: number | null; gamesCovered: number; leftAt: Date | null }>(
+    `SELECT kind, slot, "gamesCovered", "leftAt" FROM "SquadMonthMember" WHERE "monthId" = 'e2e-su-mid-month' AND "userId" = $1`,
+    [neo.id],
+  );
+  expect(joined).toEqual({ kind: "regular", slot: 3, gamesCovered: left, leftAt: null });
+  expect(left).toBeGreaterThan(0);
 });

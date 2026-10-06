@@ -359,6 +359,10 @@ export function decideMissedCredits(args: {
   rows: WeekRow[];
   maxPlayers: number;
   existing: MissedCreditRow[];
+  /** Slice 6: players who already hold a LIVE credit for this game for
+   *  another reason (it was called off, or they left part-way). One game
+   *  is one credit: no "missed" credit is written beside it. */
+  creditedElsewhere?: ReadonlySet<string>;
 }): { create: string[]; voidIds: string[] } {
   const rowOf = new Map(args.rows.map((r) => [r.userId, r]));
   const regulars = args.members.filter((m) => m.kind === "regular");
@@ -401,6 +405,7 @@ export function decideMissedCredits(args: {
     const mine = args.existing.filter((e) => e.userId === userId);
     if (mine.some((e) => e.voidedAt === null)) continue;
     if (mine.some((e) => e.voidedById !== null)) continue;
+    if (args.creditedElsewhere?.has(userId)) continue;
     create.push(userId);
   }
   // A credit is taken back ONLY from a regular who is still in the group

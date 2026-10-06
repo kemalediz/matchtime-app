@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getUserOrg, isOrgAdmin } from "@/lib/org";
@@ -6,7 +7,13 @@ import { t } from "@/lib/i18n/t";
 import { dayCommaTimeLabel, monthYearLabel } from "@/lib/i18n/dates";
 import { moneyLabel } from "@/lib/club-billing-view";
 import { loadMonthPage, type MonthFixtureView, type MonthMemberView } from "@/lib/squad-month";
-import { nextMonthStart } from "@/lib/month-signup-rules";
+import { nextMonthStart, previousMonthStart } from "@/lib/month-signup-rules";
+import { db } from "@/lib/db";
+import { loadMonthMoney, loadMonthSummaryById, type MonthMoney } from "@/lib/month-close";
+import { buildMonthSummaryLines } from "@/lib/month-close-copy";
+import { pounds } from "@/lib/month-payment-copy";
+import { monthStartToDate } from "@/lib/squad-month-rules";
+import { RefundForm, ShareChangeForm } from "./money-forms";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { AddMember, MemberActions } from "./member-actions";
 import { PaidButton, PriceForm } from "./price-form";
@@ -34,10 +41,16 @@ import { StartMonthForm } from "./start-month-form";
  * shows who has signed up, who is PAYG and who is waiting for a regular
  * place, with the organiser's buttons for each. Next month appears here
  * as soon as its list is open.
+ *
+ * Slice 6: beside the table, what a share changed after payments leaves
+ * each paid regular owing or owed, who left part-way and what they are
+ * owed (with the collector's "Record refund"), a closed month's summary,
+ * a link to the credits ledger, and `?month=YYYY-MM-01` for an earlier
+ * month. Nothing here moves money.
  */
 export const dynamic = "force-dynamic";
 
-export default async function MonthsPage() {
+export default async function MonthsPage({ searchParams }: { searchParams: Promise<{ month?: string | string[] }> }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const membership = await getUserOrg(session.user.id);
@@ -48,13 +61,35 @@ export default async function MonthsPage() {
   const lang = membership.org.language;
   const s = t(lang);
   const now = new Date();
-  const data = await loadMonthPage(membership.orgId, now);
+  const orgId = membership.orgId;
+  // Slice 6: `?month=2026-09-01` shows an earlier month (read from the
+  // address, so it must be a real month start or it is ignored).
+  const asked = (await searchParams)?.month;
+  const askedStart = typeof asked === "string" && /^\d{4}-\d{2}-01$/.test(asked) ? asked : null;
+  const current = await loadMonthPage(orgId, now);
+  const past = askedStart !== null && askedStart < current.monthStart;
+  const data = past ? await loadMonthPage(orgId, now, askedStart) : current;
   const month = monthYearLabel(lang, new Date(`${data.monthStart}T12:00:00.000Z`));
   // Next month, once MatchTime has opened its list (slice 3).
   const nextStart = nextMonthStart(data.monthStart);
   const nextMonth = monthYearLabel(lang, new Date(`${nextStart}T12:00:00.000Z`));
-  const nextFixtures = (await loadMonthPage(membership.orgId, now, nextStart)).fixtures.filter((f) => f.month);
-  const orgId = membership.orgId;
+  const nextFixtures = past ? [] : (await loadMonthPage(orgId, now, nextStart)).fixtures.filter((f) => f.month);
+  // The month before the one shown, when the club has one: a link to it.
+  const earlierStart = previousMonthStart(data.monthStart);
+  const hasEarlier = (await db.squadMonth.findFirst({ where: { orgId, monthStart: monthStartToDate(earlierStart) }, select: { id: true } })) !== null;
+  // Slice 6: balances, leavers and refunds for every month on the page,
+  // and the summary of each one that is closed.
+  const shown = [...data.fixtures, ...nextFixtures].flatMap((f) => (f.month ? [f.month] : []));
+  const money = await loadMonthMoney(
+    orgId,
+    shown.map((m) => m.id),
+  );
+  const summaries = new Map<string, string[]>();
+  for (const m of shown.filter((x) => x.status === "closed")) {
+    const res = await loadMonthSummaryById(orgId, m.id, now);
+    if (res) summaries.set(m.id, buildMonthSummaryLines({ summary: res.summary, monthDate: new Date(`${res.monthStart}T12:00:00.000Z`), lang }));
+  }
+  const noMoney: MonthMoney = { balances: {}, refunded: {}, leavers: [] };
   // Slice 4. Only the club's money collector confirms a payment (D3).
   const canConfirm = await mayConfirmPayments(orgId, session.user.id);
   const clubFeePence = membership.org.billingStatus === "exempt" ? null : planPricePence(membership.org.billingPlan, membership.org.billingPricePence);
@@ -103,9 +138,14 @@ export default async function MonthsPage() {
     const state = m.paid === "confirmed" ? s.mth_paid_confirmed : m.paid === "claimed" ? s.mth_paid_claimed : s.mth_paid_none;
     return m.paid !== "none" && m.paidPence != null ? s.mth_paid_amount({ state, amount: moneyLabel(m.paidPence) }) : state;
   };
+  /** Slice 6: what a paid regular owes, or is owed, since the share changed. */
+  const balanceText = (pence: number | undefined): string | null =>
+    !pence ? null : pence > 0 ? s.mth_bal_owes({ amount: pounds(pence) }) : s.mth_bal_back({ amount: pounds(-pence) });
 
   const card = (f: MonthFixtureView, label: string, next: boolean) => {
     const mo = f.month;
+    const cash = (mo && money[mo.id]) || noMoney;
+    const summary = mo ? summaries.get(mo.id) : undefined;
     return (
       <section
         key={`${next ? "next" : "this"}-${f.activityId}`}
@@ -159,6 +199,19 @@ export default async function MonthsPage() {
                 feeTip={feeTipFor(f)}
               />
             )}
+            {mo.status !== "closed" && mo.priced && mo.priceLocked && (
+              <ShareChangeForm orgId={orgId} monthId={mo.id} lang={lang} sharePence={mo.sharePerGamePence} concessionPence={mo.concessionPerGamePence} />
+            )}
+            {summary && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-1" data-testid="month-summary">
+                <h4 className="text-sm font-semibold text-slate-800">{s.mth_summary_title}</h4>
+                {summary.map((line, i) => (
+                  <p key={i} className="text-sm text-slate-700" data-testid="month-summary-line">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="month-members">
                 <thead>
@@ -188,11 +241,27 @@ export default async function MonthsPage() {
                       </td>
                       <td className="py-2 pr-3 text-slate-600" data-paid={m.kind === "payg" ? "" : m.paid}>
                         {paidCell(m)}
+                        {m.kind === "regular" && balanceText(cash.balances[m.userId]) && (
+                          <span className="block text-xs font-medium text-amber-700" data-testid="member-balance">
+                            {balanceText(cash.balances[m.userId])}
+                          </span>
+                        )}
+                        {m.kind === "regular" && cash.refunded[m.userId] > 0 && (
+                          <span className="block text-xs text-slate-500" data-testid="member-refunded">
+                            {s.mth_refunded({ amount: pounds(cash.refunded[m.userId]) })}
+                          </span>
+                        )}
                       </td>
                       <td className="py-2">
-                        {canConfirm && m.kind === "regular" && mo.status !== "closed" && (
+                        {/* The collector confirms on a closed month too: money that arrives late. */}
+                        {canConfirm && m.kind === "regular" && (
                           <div className="mb-1.5">
                             <PaidButton orgId={orgId} monthId={mo.id} userId={m.userId} lang={lang} confirmed={m.paid === "confirmed"} />
+                          </div>
+                        )}
+                        {canConfirm && m.kind === "regular" && (cash.balances[m.userId] ?? 0) < 0 && (
+                          <div className="mb-1.5">
+                            <RefundForm orgId={orgId} monthId={mo.id} userId={m.userId} lang={lang} suggestedPence={-cash.balances[m.userId] + (cash.refunded[m.userId] ?? 0)} />
                           </div>
                         )}
                         {mo.status !== "closed" && (
@@ -204,6 +273,30 @@ export default async function MonthsPage() {
                 </tbody>
               </table>
             </div>
+            {cash.leavers.length > 0 && (
+              <div className="space-y-2" data-testid="month-leavers">
+                <h4 className="text-sm font-semibold text-slate-800">{s.mth_leavers_title}</h4>
+                <p className="text-xs text-slate-500 max-w-2xl">{s.mth_leavers_lead}</p>
+                <ul className="space-y-1.5">
+                  {cash.leavers.map((l) => (
+                    <li key={l.userId} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-700" data-testid="month-leaver" data-user={l.userId}>
+                      <span className="font-medium text-slate-800">{l.name}</span>
+                      <span data-testid="leaver-owed">
+                        {l.owedGames > 0 ? s.mth_leaver_owed({ games: l.owedGames, amount: l.owedPence != null ? pounds(l.owedPence) : null }) : s.mth_leaver_settled}
+                      </span>
+                      {l.refundedPence > 0 && (
+                        <span className="text-slate-500" data-testid="leaver-refunded">
+                          {s.mth_refunded({ amount: pounds(l.refundedPence) })}
+                        </span>
+                      )}
+                      {canConfirm && l.owedGames > 0 && (
+                        <RefundForm orgId={orgId} monthId={mo.id} userId={l.userId} lang={lang} suggestedPence={l.owedPence} />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {mo.status !== "closed" && (
               <AddMember
                 orgId={orgId}
@@ -222,7 +315,7 @@ export default async function MonthsPage() {
               </h4>
               <p className="text-sm text-slate-500 mt-1 max-w-2xl">{s.mth_empty_body}</p>
             </div>
-            {data.players.length === 0 ? (
+            {past ? null : data.players.length === 0 ? (
               <p className="text-sm text-slate-500">{s.mth_no_players}</p>
             ) : (
               <StartMonthForm
@@ -249,6 +342,26 @@ export default async function MonthsPage() {
           <SectionInfo k="mth_page" lang={lang} />
         </h2>
         <p className="text-sm text-slate-500 mt-1">{s.mth_page_lead}</p>
+        <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <Link href="/admin/months/credits" className="text-blue-700 hover:underline" data-testid="months-credits-link">
+            {s.mth_credits_link}
+          </Link>
+          {hasEarlier && (
+            <Link href={`/admin/months?month=${earlierStart}`} className="text-blue-700 hover:underline" data-testid="months-earlier-link">
+              {s.mth_earlier({ month: monthYearLabel(lang, new Date(`${earlierStart}T12:00:00.000Z`)) })}
+            </Link>
+          )}
+          {past && (
+            <Link href="/admin/months" className="text-blue-700 hover:underline" data-testid="months-current-link">
+              {s.mth_back_current}
+            </Link>
+          )}
+        </p>
+        {past && (
+          <p className="mt-1 text-sm text-slate-600" data-testid="months-viewing-past">
+            {s.mth_viewing_past({ month })}
+          </p>
+        )}
       </div>
 
       {data.fixtures.length === 0 && (
@@ -257,7 +370,7 @@ export default async function MonthsPage() {
         </p>
       )}
 
-      {data.fixtures.map((f) => card(f, month, false))}
+      {(past ? data.fixtures.filter((f) => f.month) : data.fixtures).map((f) => card(f, month, false))}
 
       {nextFixtures.length > 0 && (
         <div className="space-y-3" data-testid="next-month">

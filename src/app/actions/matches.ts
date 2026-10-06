@@ -182,7 +182,7 @@ export async function cancelMatch(matchId: string) {
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true, name: true, org: { select: { language: true } } } } },
+    include: { activity: { select: { orgId: true, name: true, org: { select: { language: true, squadMode: true } } } } },
   });
   if (!match) throw new Error("Match not found");
   if (match.status === "CANCELLED") return; // idempotent
@@ -195,15 +195,32 @@ export async function cancelMatch(matchId: string) {
     data: { status: "CANCELLED" },
   });
 
+  // MONTHLY SQUAD (slice 6, plan section 7 "A cancelled week"): for a club
+  // on "monthly" whose month this game is in, every regular charged for it
+  // gets one game of credit, and the announcement says so in the SAME
+  // message (one post per event). A club on "weekly" (Sutton FC and every
+  // club before this) makes no query here and its announcement is byte for
+  // byte what it was: `creditLine` stays empty.
+  let creditLine = "";
+  if (match.activity.org?.squadMode === "monthly") {
+    const { afterMatchesCancelled } = await import("@/lib/month-close");
+    const { creditedGames } = await afterMatchesCancelled(match.activity.orgId, [matchId]);
+    if (creditedGames > 0) {
+      const { buildCancelCreditLine } = await import("@/lib/month-close-copy");
+      creditLine = `\n${buildCancelCreditLine({ count: 1, lang: normaliseLang(match.activity.org?.language) })}`;
+    }
+  }
+
   await db.botJob.create({
     data: {
       orgId: match.activity.orgId,
       kind: "group",
-      text: buildMatchCancelledAnnouncement({
-        activityName: match.activity.name,
-        whenLabel: dayTimeLabel(normaliseLang(match.activity.org?.language), match.date),
-        lang: normaliseLang(match.activity.org?.language),
-      }),
+      text:
+        buildMatchCancelledAnnouncement({
+          activityName: match.activity.name,
+          whenLabel: dayTimeLabel(normaliseLang(match.activity.org?.language), match.date),
+          lang: normaliseLang(match.activity.org?.language),
+        }) + creditLine,
     },
   });
 
