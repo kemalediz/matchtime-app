@@ -65,6 +65,7 @@ import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { sweepMonthlyWeeks } from "@/lib/monthly-week";
+import { sweepMonthSignups } from "@/lib/month-signup";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
@@ -261,6 +262,14 @@ export async function GET(request: Request) {
   // preview mode; its own try/catch, so it can never cost the group its
   // posts.
   let runningMonths: Awaited<ReturnType<typeof sweepMonthlyWeeks>> = null;
+  // MONTHLY SQUAD (slice 3, 2026-10-06): open a month's list when it is
+  // due (N days before its first game), and end a sign-up that has run its
+  // day, BEFORE the weekly sweep, so a month whose sign-up has just ended
+  // is seeded in this same poll. A club on "weekly" returns after one
+  // read. A side effect, so never in preview mode; it never throws.
+  if (!previewOnly) {
+    await sweepMonthSignups(org.id, nowOverride ?? new Date());
+  }
   if (!previewOnly) {
     try {
       runningMonths = await sweepMonthlyWeeks(org.id, nowOverride ?? new Date());

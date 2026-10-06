@@ -186,6 +186,7 @@ interface Shown {
 }
 
 const monthReads = vi.fn();
+const signupReads = vi.fn();
 const opsAlerts: Array<Record<string, unknown>> = [];
 
 function setWorld(
@@ -201,11 +202,14 @@ function setWorld(
     poolLines?: Date[];
     /** The first fee question's row, as the ack left it. */
     feeAsk?: { waMessageId: string | null; createdAt: Date } | null;
+    /** A month of the club still in sign-up (slice 3). */
+    signupMonth?: Record<string, unknown>;
   },
 ) {
   for (const k of Object.keys(overrides)) delete overrides[k];
   features.squadMode = opts.monthly ? "monthly" : undefined;
   monthReads.mockClear();
+  signupReads.mockClear();
   overrides.organisation = {
     findFirst: async () => ({ ...ORG, paygPricePence: opts.paygPricePence === undefined ? 800 : opts.paygPricePence }),
   };
@@ -218,7 +222,13 @@ function setWorld(
   };
   overrides.match = { findMany: async () => [m] };
   overrides.squadMonth = {
-    findMany: async () => {
+    findMany: async (args: unknown) => {
+      // Slice 3 reads the club's months in SIGN-UP ("open") once per poll,
+      // for a monthly club only. The month in this world is a running one.
+      if ((args as { where?: { status?: unknown } }).where?.status === "open") {
+        signupReads();
+        return opts.signupMonth ? [opts.signupMonth] : [];
+      }
       monthReads();
       if (opts.monthsThrow) throw new Error("the database hiccuped");
       return [monthRow()];
@@ -741,5 +751,125 @@ describe("MONTHLY: review fixes", () => {
     expect(res!.instructions).toEqual([]);
     expect(opsAlerts).toHaveLength(1);
     expect(opsAlerts[0]).toMatchObject({ orgId: ORG.id, kind: "monthly-squad" });
+  });
+});
+
+// ── Slice 3 (2026-10-06): the month's sign-up list ──────────────────────
+describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
+  /** Mon 2 Nov 2026, 20:00 London (GMT). */
+  const NOV_KICKOFF = new Date("2026-11-02T20:00:00.000Z");
+  /** Tue 27 Oct 2026, 09:30 London: inside the announcement window. */
+  const TUE_0930 = new Date("2026-10-27T09:30:00.000Z");
+  const OPENED = new Date("2026-10-26T10:00:00.000Z");
+  const novMatch = () => match({ id: "m-mon-2-nov", date: NOV_KICKOFF, attendances: [], rollingSeededAt: null });
+  const signupMonth = () => ({
+    id: "month-nov",
+    orgId: ORG.id,
+    activityId: "mon-7",
+    monthStart: new Date("2026-11-01T00:00:00.000Z"),
+    status: "open",
+    listOpenedAt: OPENED,
+    activity: { name: "Monday 7-a-side", venue: "Goals", dayOfWeek: 1, time: "20:00", sport: { playersPerTeam: 3 } },
+    org: { language: "en" },
+    members: MEMBERS.map((mm) => ({
+      userId: mm.userId,
+      kind: "regular",
+      tier: "standard",
+      slot: mm.slot,
+      note: null,
+      leftAt: null,
+      source: "carry-over",
+      paidAt: null,
+      paidClaimedAt: null,
+      paygMatchIds: [],
+      user: { name: mm.name },
+    })),
+  });
+  const PREFIX = `org-${ORG.id}:msu:list:month-nov:`;
+
+  it("WEEKLY: no sign-up month is ever read, and the cold announcement still goes out", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: false });
+    const out = await instructions(TUE_0930);
+    expect(signupReads).not.toHaveBeenCalled();
+    expect(monthReads).not.toHaveBeenCalled();
+    expect(out.some((i) => i.key === `${m.id}:announce-match`)).toBe(true);
+    expect(out.some((i) => i.key.includes(":msu:"))).toBe(false);
+  });
+
+  it("MONTHLY, no month in sign-up: one read, no list, and the announcement as before", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: true });
+    const out = await instructions(TUE_0930);
+    expect(signupReads).toHaveBeenCalledTimes(1);
+    expect(out.some((i) => i.key.includes(":msu:"))).toBe(false);
+  });
+
+  it("MONTHLY, sign-up open: the list is posted once, under its own key, with the regulars carried over", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: true, signupMonth: signupMonth() });
+    const out = await instructions(TUE_0930);
+    const posts = out.filter((i) => i.key.startsWith(PREFIX));
+    expect(posts).toHaveLength(1);
+    const post = posts[0] as { kind: string; key: string; text: string; matchId?: string };
+    expect(post.kind).toBe("group-message");
+    expect(post.key.endsWith(":0")).toBe(true);
+    // Not the weekly list's key namespace.
+    expect(post.key).not.toContain("month-list");
+    expect(post.text.split("\n").slice(0, 6)).toEqual([
+      "📋 List for November (5 Mondays: 2, 9, 16, 23, 30)",
+      "",
+      "1. Alex",
+      "2. Bilal",
+      "3. Chris",
+      "4. Dave",
+    ]);
+    expect(post.text).toContain("Regulars from October are on already. Not in for November? Say *OUT FOR NOVEMBER*.");
+    expect(post.text).toContain("Names in by Tue 27 Oct, 10:00.");
+  });
+
+  it("MONTHLY, sign-up open: the match is NOT announced the weekly way beside the list", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: true, signupMonth: signupMonth() });
+    const out = await instructions(TUE_0930);
+    expect(out.some((i) => i.key === `${m.id}:announce-match`)).toBe(false);
+  });
+
+  it("the list the group has already seen is not posted again; a changed one waits out the 30 minutes", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: true, signupMonth: signupMonth() });
+    const first = (await instructions(TUE_0930)).find((i) => i.key.startsWith(PREFIX))!;
+    const hash = first.key.slice(PREFIX.length).split(":")[0];
+    const seen = (minsAgo: number, h = hash): Shown => ({ key: `${PREFIX}${h}:0`, kind: "group-message", createdAt: new Date(TUE_0930.getTime() - minsAgo * 60_000) });
+
+    setWorld(m, { monthly: true, signupMonth: signupMonth(), shown: [seen(120)] });
+    expect((await instructions(TUE_0930)).some((i) => i.key.startsWith(PREFIX))).toBe(false);
+
+    setWorld(m, { monthly: true, signupMonth: signupMonth(), shown: [seen(10, "0000000000000000")] });
+    expect((await instructions(TUE_0930)).some((i) => i.key.startsWith(PREFIX))).toBe(false);
+
+    setWorld(m, { monthly: true, signupMonth: signupMonth(), shown: [seen(31, "0000000000000000")] });
+    const again = (await instructions(TUE_0930)).filter((i) => i.key.startsWith(PREFIX));
+    expect(again.map((i) => i.key)).toEqual([`${PREFIX}${hash}:1`]);
+  });
+
+  it("never at night, and never once sign-up has ended", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: true, signupMonth: signupMonth() });
+    // Mon 26 Oct, 23:00 London.
+    expect((await instructions(new Date("2026-10-26T23:00:00.000Z"))).some((i) => i.key.startsWith(PREFIX))).toBe(false);
+    // Tue 27 Oct, 10:00 London: sign-up ends on the dot.
+    expect((await instructions(new Date("2026-10-27T10:00:00.000Z"))).some((i) => i.key.startsWith(PREFIX))).toBe(false);
+  });
+
+  it("a club with attendance switched off gets no sign-up list", async () => {
+    const m = novMatch();
+    setWorld(m, { monthly: true, signupMonth: signupMonth() });
+    features.attendance = false;
+    try {
+      expect((await instructions(TUE_0930)).some((i) => i.key.startsWith(PREFIX))).toBe(false);
+    } finally {
+      features.attendance = true;
+    }
   });
 });

@@ -11,6 +11,11 @@ and the order at the top of section 12.
 What was built, and where it differs from the text below, is in "Slice 5 as built" at the end
 of section 12. Nothing in it needs a Pi deploy.
 
+**Status, 2026-10-06 (later).** Slice 3 (the month opens, sign-up) is built. What was built,
+and where it differs from sections 4.1 and 6.2, is in "Slice 3 as built" at the end of section
+12. Replying IN to the list post as a WhatsApp quoted reply needs a Pi change; the typed
+"IN FOR NOVEMBER" works without one.
+
 Written for the "Vets MNF" prospect group (Monday night 7-a-side, about 14 players) after
 Kemal joined it. Everything here is a per-club setting that is OFF by default, so Sutton FC
 and every other club behave exactly as they do today.
@@ -1089,6 +1094,74 @@ they differ.
   surname alone is not enough.
 - **Bench by choice** is read from the attendance log's note, which is one shared constant
   (`EXPLICIT_BENCH_NOTE`) with a test that fails if it changes. There is no structured field.
+
+#### Slice 3 as built (2026-10-06)
+
+Code: `month-signup-rules.ts` (pure rules), `month-signup.ts` (opening, the lock, the three
+doors, the list post), `month-signup-copy.ts` (English and Turkish), the player's page
+`/month`, the organiser's buttons on `/admin/months`, and guarded branches in
+`bot-scheduler.ts`, the analyze route and the due-posts route. Every branch is behind
+`squadMode = "monthly"`; a weekly club makes no query in any of them.
+
+- **Opening.** On the due-posts poll, from 10:00 London on the day N days before the month's
+  first game (`monthListOpensDaysBefore`), in waking hours only: the month's matches are
+  created (deduped by slot, like the weekly cron), the month is created `open`, and this
+  month's regulars are carried over in slot order, renumbered from 1. One month per recurring
+  fixture (two formats of the same weekly game share one list). The unique key and an advisory
+  lock make two polls at the same moment open one month.
+- **The list post.** Keys are `org-<orgId>:msu:list:<monthId>:<hash>:<n>` (the weekly list's are
+  `<matchId>:month-list:`). Posted when it differs from the list the group last saw, at most
+  every 30 minutes, 08:00 to 21:59 London, and never after sign-up has ended. A member's paste
+  that shows the same list counts as seen.
+- **The three doors.** All end in `applySignup`, under the club-month's lock:
+  1. a pasted list (`handleSignupPaste`), with slice 5's rules: a name is matched by whole
+     name, alias or leading name; no player is ever created; only the SENDER'S own line is
+     applied (their name in a numbered line is IN, PAYG when marked, with its dates; their own
+     number left blank is OUT); a list with no month in its title needs 60% of its names on
+     the month. Names written in for somebody else are left alone and the sender is told by
+     DM, once a day;
+  2. a typed message in a fixed vocabulary (`readSignupMessage`): "IN FOR NOVEMBER", "OUT FOR
+     NOVEMBER", "PAYG FOR NOVEMBER 9th and 23rd", "Kasım varım", "Kasım yokum". The whole
+     message must be the phrase. A plain "IN" is this week's game, as before;
+  3. the player's page, `/month` (linked from the list post; sign-in is the usual one).
+- **The cap.** Regular places are the format's squad size. The next person WAITS: they are
+  stored as a PAYG player with a note (so the weekly flow offers them open places and never
+  charges them for the month), told by DM, and the organisers are told once a month. An
+  organiser can make them a regular on `/admin/months`, past the cap.
+- **The organiser's buttons** on `/admin/months`: make regular, move to PAYG, remove for the
+  month, add a player. Next month appears on the page as soon as its list is open.
+- **No row is ever deleted.** OUT (and "remove") set `leftAt` and keep everything the row
+  knows. A member who has left the group is not listed and holds no number; their row stays.
+- **Somebody who says they have paid is not moved by their own message, paste or page.** Only
+  an organiser changes their place. (No paid mark is written in this slice.)
+
+**Where it differs from the plan above, or where the plan said nothing:**
+
+1. **When sign-up ends (the plan gave no moment).** A day after the list opens, never later
+   than a day before the first game. The list post says so ("Names in by Tue 27 Oct, 10:00").
+   At that moment the month goes `running` and slice 5 takes it: the regulars are put on the
+   first game and the WEEK's list is posted. Without this a month nobody priced would have
+   stayed in sign-up and played its first game as a weekly club. Slice 4 prices a month in
+   either state.
+2. **After sign-up ends, until the month's first game,** "IN FOR NOVEMBER", the page and the
+   organiser's buttons still work, and the change is put on the week's match too (through the
+   ordinary attendance path). From the first kick-off only the organiser changes the month.
+   Joining a month under way by message is slice 6.
+3. **Door 2 (6.2 says "a reply to the list post").** The Pi does not forward which message a
+   reply quotes. The server reads a bare "IN" as a sign-up only when the batch carries the
+   quoted text (`quotedBody`), which no Pi build sends yet. Until one does, the typed
+   "IN FOR NOVEMBER" is the second door, and the list post tells people to type that.
+4. **D4 during sign-up.** The plan lets a paste change somebody else's line; slice 5's review
+   narrowed adding to the sender alone, and sign-up follows it. Nobody is taken OFF by a
+   paste either, except the sender. An organiser adds or removes on the page.
+5. **"Anyone who has already said they are out for next month" (4.1).** There is nowhere to
+   record that before the month exists. OUT works from the moment the list is open.
+6. **PAYG players on the list.** Numbered on after the regular places ("15. Omar (PAYG 9,
+   23)"), so the regular places stay visible. People waiting are under "Reserves".
+7. **The cold announcement.** A match of a month in sign-up is not announced the weekly way
+   ("Say IN to join, first 14 play") beside the month's list.
+8. **Not built here:** paid marks from a pasted sign-up list (they are read and handed to
+   slice 4), and the "set the price" notice (slice 4).
 
 ### Slice 6: credits ledger, cancelled weeks, month close (about 2 days)
 

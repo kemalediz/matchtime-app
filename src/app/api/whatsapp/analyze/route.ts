@@ -380,6 +380,11 @@ interface InboundMessage {
   /** `phone` (2026-09-30): the phone behind a LID mention, when the Pi
    *  was told it. An entry carries a name, a phone, or both. */
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  /** The text of the message this one REPLIES to (a WhatsApp quoted
+   *  reply), when the Pi forwards it. No Pi build sends it yet (monthly
+   *  squad, slice 3): until one does, a bare "IN" in reply to the month's
+   *  list is read as it always was, and only "IN FOR NOVEMBER" signs up. */
+  quotedBody?: string | null;
   /** Did this message @-mention the bot's own JID? Computed on the Pi
    *  (only it knows the bot's selfId) and forwarded as a structured
    *  signal. PRIMARY input to the @Match Time interaction-contract gate;
@@ -1682,6 +1687,56 @@ async function handleAnalyzeRequest(request: Request) {
   /** Monthly club, running month: list-shaped messages that are not the
    *  month's squad list. Section 4 registers nobody from them. */
   const monthlyNotSquadList = new Set<string>();
+  //
+  // ── 3b-bis. THE MONTH'S SIGN-UP (slice 3, 2026-10-06) ────────────────
+  //
+  //   Plan sections 4.1 and 6.2. Same place, same guards, same club gate
+  //   as 3b (`squadMode === "monthly"` only; a weekly club runs none of
+  //   it and makes no query), and no model:
+  //     - a pasted list that is the list of a month people can still join
+  //       ("List for November", pasted in October) is read by name
+  //       (`lib/month-signup.ts`). It changes the SENDER'S own line only,
+  //       and never creates a player. The week's list (3b) is tried
+  //       first: with a week live, a list with no month in its title is
+  //       the week's, never the sign-up list;
+  //     - "IN FOR NOVEMBER", "OUT FOR NOVEMBER", "PAYG FOR NOVEMBER 9th",
+  //       "Kasım varım": the whole message, in a fixed vocabulary. A
+  //       plain "IN" is this week's game, exactly as before.
+  //   It says nothing in the group: a ✅ on a message that was read.
+  const monthSignup = org.squadMode === "monthly" ? await import("@/lib/month-signup") : null;
+  /** Read `m` as a pasted sign-up list. True when it was one (and is claimed). */
+  const trySignupPaste = async (m: InboundMessage, needHeader: boolean): Promise<boolean> => {
+    if (!monthSignup) return false;
+    const sender = senderById.get(m.waMessageId)!;
+    let res: Awaited<ReturnType<typeof monthSignup.handleSignupPaste>> = null;
+    try {
+      res = await monthSignup.handleSignupPaste({
+        orgId: org.id,
+        body: m.body,
+        waMessageId: m.waMessageId,
+        sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
+        senderWhatsAppName: m.authorName ?? null,
+        needHeader,
+      });
+    } catch (err) {
+      // Left for section 4 and the pipeline, as if this block were not here.
+      console.error(`[analyze] sign-up paste ${m.waMessageId} failed:`, err);
+    }
+    if (!res) return false;
+    const notes = [
+      res.applied.length > 0 ? `applied [${res.applied.join(", ")}]` : "restates the list, nothing changed",
+      res.notAdded.length > 0 ? `not added [${res.notAdded.map((i) => `${i.name}: ${i.reason}`).join(", ")}]` : "",
+    ].filter(Boolean);
+    await claimFastPath(m, res.residual ? { consumed: m.body, residual: res.residual } : null, {
+      handledBy: "fast-path",
+      intent: "month_signup_list",
+      action: res.applied.length > 0 ? `month-signup:${res.applied.length}` : "none",
+      reasoning: `month sign-up list, read by name: ${notes.join("; ")}`,
+      react: res.changed ? "✅" : null,
+      reply: null,
+    });
+    return true;
+  };
   if (org.squadMode === "monthly" && nextMatchForReply) {
     const { handleMonthlyPaste } = await import("@/lib/monthly-paste");
     for (const m of fresh) {
@@ -1705,6 +1760,10 @@ async function handleAnalyzeRequest(request: Request) {
       }
       if (!res) continue;
       if ("notThisList" in res) {
+        // Not the WEEK's list. It may be the sign-up list of a month people
+        // can still join ("List for November", pasted in October): a week
+        // is live, so only with that month in its title.
+        if (await trySignupPaste(m, true)) continue;
         // A numbered list that is not this month's squad list ("Kit for
         // Monday", next month's header). Nothing is read from it here, and
         // section 4 below must not register its lines either.
@@ -1723,6 +1782,37 @@ async function handleAnalyzeRequest(request: Request) {
         action: res.applied.length > 0 ? `monthly-list:${res.applied.length}` : "none",
         reasoning: `monthly list, read by name: ${notes.join("; ")}`,
         react: res.changed && res.failures.length === 0 ? "✅" : null,
+        reply: null,
+      });
+    }
+  }
+  if (monthSignup) {
+    for (const m of fresh) {
+      if (fastPathHandledIds.has(m.waMessageId)) continue;
+      // A list no week's list took (no running month for the next match):
+      // the sign-up list, with its month in the title or without.
+      if (!monthlyNotSquadList.has(m.waMessageId) && (await trySignupPaste(m, false))) continue;
+      const sender = senderById.get(m.waMessageId)!;
+      let res: Awaited<ReturnType<typeof monthSignup.handleSignupMessage>> = null;
+      try {
+        res = await monthSignup.handleSignupMessage({
+          orgId: org.id,
+          body: m.body,
+          quotedBody: typeof m.quotedBody === "string" ? m.quotedBody : null,
+          sender: { userId: sender.userId },
+        });
+      } catch (err) {
+        console.error(`[analyze] month sign-up ${m.waMessageId} failed:`, err);
+      }
+      if (!res) continue;
+      await claimFastPath(m, null, {
+        handledBy: "fast-path",
+        intent: "month_signup",
+        action: res.changed ? `month-signup:${res.outcome}` : "none",
+        reasoning: res.locked
+          ? `month sign-up (${res.choice}): not changed, the player says they have paid; they are told by DM`
+          : `month sign-up (${res.choice}), fixed vocabulary: ${res.changed ? `now ${res.outcome}` : `already ${res.outcome}`}`,
+        react: res.locked ? null : "✅",
         reply: null,
       });
     }

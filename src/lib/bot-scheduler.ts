@@ -88,6 +88,7 @@ import {
   type WeekStatus,
 } from "./monthly-week-rules";
 import { buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./monthly-week-copy";
+import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
   buildAskScorePost,
@@ -776,8 +777,34 @@ export async function computeDuePosts(
     }
   }
 
+  // MONTHLY SQUAD (slice 3, 2026-10-06): the month's SIGN-UP list, for a
+  // month that is "open" (MDs/monthly-squad-plan-2026-10-05.md, 4.1). One
+  // message per month, when the list differs from the one the group last
+  // saw, at most every 30 minutes, 08:00 to 21:59 London
+  // (`decideSignupListPost`). Its keys are `org-<id>:msu:list:`, never the
+  // weekly list's `<matchId>:month-list:`. A club on "weekly" makes no
+  // query here. A failure costs this one post, never the poll.
+  let signupMonths: Array<{ id: string; monthStart: string; fixture: { orgId: string; venue: string; dayOfWeek: number } }> = [];
+  if (features.squadMode === "monthly") {
+    try {
+      const { signupListPosts } = await import("./month-signup");
+      const signup = await signupListPosts(org.id, now);
+      signupMonths = signup.months;
+      for (const p of signup.posts) out.push({ kind: "group-message", key: p.key, text: p.text });
+    } catch (err) {
+      console.error(`[scheduler] org ${org.id}: the sign-up list could not be computed on this poll:`, err);
+    }
+  }
+
   for (const m of matches) {
     const month = runningMonths.length > 0 ? monthForMatch(runningMonths, m) : null;
+    // A match of a month still in SIGN-UP (slice 3): no regulars are on it
+    // yet and no week's list is posted, but it is a monthly match all the
+    // same, so it is not announced or chased the weekly way.
+    const signupMonth =
+      !month && signupMonths.length > 0
+        ? (signupMonths.find((x) => x.monthStart === londonMonthStart(m.date) && isSameRecurringFixture(x.fixture, m.activity)) ?? null)
+        : null;
     const monthly: MonthlyMatchContext | null = month
       ? {
           monthId: month.id,
@@ -785,7 +812,9 @@ export async function computeDuePosts(
           members: weekMembers(month, m.id),
           paygPricePence: org.paygPricePence ?? null,
         }
-      : null;
+      : signupMonth
+        ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
+        : null;
     await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly);
   }
 
@@ -838,6 +867,8 @@ export async function computeDuePosts(
     if (seg.startsWith("recruit-chase")) return "attendance";
     // The month's list (slice 5) is the squad, so it follows attendance.
     if (seg.startsWith("month-list")) return "attendance";
+    // So is the month's sign-up list (slice 3).
+    if (seg.startsWith("msu:list")) return "attendance";
     if (seg.startsWith("bench-prompt")) return "bench";
     if (seg.startsWith("mom-")) return "momVoting";
     if (seg.startsWith("badges")) return "badgeAnnouncements";
@@ -877,6 +908,9 @@ type MatchWithIncludes = Awaited<ReturnType<typeof getMatchesForScheduler>>[numb
  */
 interface MonthlyMatchContext {
   monthId: string;
+  /** The month is still in sign-up (slice 3): its list is the sign-up
+   *  list, and the cold "say IN" announcement must not go out beside it. */
+  signup?: boolean;
   /** The month's regulars have been put onto this match. */
   seeded: boolean;
   members: WeekMember[];
@@ -1135,7 +1169,11 @@ async function computeForMatch(
       hoursUntilMatch > 24 &&
       inAnnounceWindow &&
       isNextUpcoming &&
-      squadEmpty
+      squadEmpty &&
+      // MONTHLY SQUAD (slice 3): not for a match of a month in sign-up.
+      // "Say IN to join, first 14 play" beside the month's list would ask
+      // the regulars to sign up twice. Undefined for every weekly club.
+      !monthly?.signup
     ) {
       out.push({
         kind: "group-message",
