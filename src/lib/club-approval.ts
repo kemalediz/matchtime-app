@@ -516,6 +516,16 @@ export async function decideClub(
       await tx.botJob.create({
         data: { orgId, kind: "group", text: t(org.language).sj_group_hello({ organiser: firstName(organiser?.name) }) },
       });
+      // The hello IS this group's introduction. Claim the scheduler's
+      // older one-time intro (bot-scheduler.ts, key `org-<id>:bot-intro`)
+      // here, or it would follow the hello on the same poll: a club made
+      // through the create-org form always has an active activity. The
+      // in-group setup does the same (onboarding-conversation.ts).
+      await tx.sentNotification.upsert({
+        where: { key: `org-${orgId}:bot-intro` },
+        create: { key: `org-${orgId}:bot-intro`, kind: "bot-intro" },
+        update: {},
+      });
       return {
         result: {
           ok: true,

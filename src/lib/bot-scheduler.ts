@@ -511,9 +511,15 @@ export async function computeDuePosts(
   // Fires once per org, the first time the org has at least one active
   // activity AND the bot is enabled. Explains what MatchTime is and how
   // the flow works so group members aren't confused by bot posts.
+  //
+  // Never for a club approved through self-join (`approvedAt` set): its
+  // introduction is the group hello `decideClub` queues, which also
+  // claims this key. The `approvedAt` check covers a club approved
+  // before that claim existed. It can only ever remove a send, so a club
+  // that predates self-join (Sutton FC) is exactly as it was.
   {
     const introKey = `org-${org.id}:bot-intro`;
-    if (!sentKeys.has(introKey)) {
+    if (!org.approvedAt && !sentKeys.has(introKey)) {
       const hasActiveActivity = await db.activity.count({
         where: { orgId: org.id, isActive: true },
       });
