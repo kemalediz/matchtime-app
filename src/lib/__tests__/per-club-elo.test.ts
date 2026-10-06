@@ -62,6 +62,7 @@ function fakeWorld(args: {
 
   const db = {
     $queryRaw: async () => [],
+    sentNotification: { deleteMany: async () => ({ count: 0 }) },
     match: {
       update: async (a: { where: { id: string }; data: Record<string, unknown> }) => {
         matchUpdates.push(a);

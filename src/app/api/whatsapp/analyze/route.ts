@@ -167,6 +167,7 @@ import {
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
 import { loadOpenQuestion, loadOpenScoreAsk, loadOpenStatsClarifications } from "@/lib/pipeline/load-awaiting-answer";
+import { isScoreAnswer, scoreAnswerSide } from "@/lib/pipeline/score-ask";
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -2055,6 +2056,39 @@ async function handleAnalyzeRequest(request: Request) {
           return [];
         })
       : [];
+  // THE ANSWERS TO MATCHTIME'S OPEN "WHICH TEAM WON?" (2026-10-07).
+  // Decided HERE, deterministically, before any model is asked and
+  // whether or not one answers: a bare team name that tags the bot, or
+  // comes from whoever posted the scoreline or an identified admin
+  // within thirty minutes (`isScoreAnswer`, `score-ask.ts`). One indexed
+  // read, null on almost every batch; a failed read only means a
+  // one-word answer is not picked up, and the full result still is.
+  const openScoreAsk =
+    fresh.length > 0
+      ? await loadOpenScoreAsk(org.id).catch((err) => {
+          console.error("[analyze] open score question read failed:", err);
+          return null;
+        })
+      : null;
+  const scoreAnswerIds = new Set<string>();
+  if (openScoreAsk) {
+    for (const m of fresh) {
+      const senderUserId = senderById.get(m.waMessageId)?.userId ?? null;
+      if (
+        scoreAnswerSide(pipelineBody(m), openScoreAsk.labels) !== null &&
+        isScoreAnswer({
+          body: pipelineBody(m),
+          tagged: messageTagsBot(m),
+          senderUserId,
+          senderIsAdmin: !!senderUserId && openScoreAsk.adminUserIds.includes(senderUserId),
+          ask: openScoreAsk,
+          now: new Date(),
+        })
+      ) {
+        scoreAnswerIds.add(m.waMessageId);
+      }
+    }
+  }
   const gate =
     fresh.length > 0 && routerIsNeeded()
       ? await gateBatch(
@@ -2081,14 +2115,9 @@ async function handleAnalyzeRequest(request: Request) {
           {
             awaiting: await loadOpenQuestion(org.id),
             clarifications: statsClarifications,
-            // "Which team won?" (2026-10-07): while MatchTime is waiting
-            // for that, a bare team name is the answer. One indexed read,
-            // null on almost every batch; a failed read only means the
-            // one-word answer is not rescued.
-            scoreAsk: await loadOpenScoreAsk(org.id).catch((err) => {
-              console.error("[analyze] open score question read failed:", err);
-              return null;
-            }),
+            // "Which team won?" (2026-10-07): the messages in this batch
+            // that answer it, decided here from who sent each one.
+            scoreAnswerIds,
             // At the daily AI cap: floor only, no router call.
             capped: aiCapped,
           },

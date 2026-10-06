@@ -525,6 +525,11 @@ export const en = {
   score_recorded_hint: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
     `That match is already recorded: ${resultEn(p)}. ` +
     `If that is wrong, tell me "no, it was" with the right score and the team that won.`,
+  /** Told who won, not the score. Tagged messages only. */
+  score_ask_score: "What was the final score? Tell me both numbers and the team that won.",
+  /** A score saved on the dashboard for a match with no teams set. */
+  score_elo_no_teams_note:
+    "Score saved. No teams are set for this match, so no Elo was applied. If teams are added later, save the score again to apply it.",
   score_which_match: (p: { kickoffLabel: string }): string =>
     `I can't tell which match that corrects. For ${p.kickoffLabel}, just tell me the score and the team that won. ` +
     `An admin can change an earlier result on its match page.`,

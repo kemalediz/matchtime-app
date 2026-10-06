@@ -83,23 +83,22 @@ export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
         yellow,
         ...(previous ? { expectPrevious: previous } : {}),
       });
-      // A result is in, so any "which team won?" the bot had open for
-      // this match is answered or overtaken. Best effort: a row left
-      // behind is ignored once it is a day old, and the engine closes
-      // the question in its own projection either way.
-      try {
-        await db.sentNotification.deleteMany({ where: { kind: SCORE_ASK_KIND, matchId } });
-      } catch (err) {
-        console.error("[owner-deps] could not clear the open score question:", err);
-      }
+      // (`setMatchScore` also closes any "which team won?" the bot had
+      // open for this match, in the same transaction, for every writer.)
     },
 
-    async recordScoreAsk({ matchId, first, second }) {
-      // One open question per match. The key carries the numbers
-      // (`score-ask.ts`), so replacing the pair is delete-then-create.
+    async recordScoreAsk({ matchId, first, second, askerUserId }) {
+      // One open question per match. The key carries the numbers and
+      // `targetUser` who posted the scoreline (`score-ask.ts`), so
+      // replacing the pair is delete-then-create.
       await db.sentNotification.deleteMany({ where: { kind: SCORE_ASK_KIND, matchId } });
       await db.sentNotification.create({
-        data: { key: scoreAskKey(matchId, first, second), kind: SCORE_ASK_KIND, matchId },
+        data: {
+          key: scoreAskKey(matchId, first, second),
+          kind: SCORE_ASK_KIND,
+          matchId,
+          targetUser: askerUserId,
+        },
       });
     },
 

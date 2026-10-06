@@ -66,6 +66,21 @@ describe("the prepared live check for the score extractor", () => {
     },
   );
 
+  it("the second review's rules are in the plan: an untagged correction changes nothing, a tagged one does", () => {
+    const byId = Object.fromEntries(SCORE_LIVE_CASES.map((c) => [c.id, c]));
+    expect(byId.C4).toMatchObject({ expect: "silent" });
+    expect(byId.C4.tagged ?? false).toBe(false);
+    expect(byId.C5).toMatchObject({ expect: "silent" });
+    expect(byId.I2.tagged).toBe(true);
+    expect(byId.I2.expect).toEqual({ red: 6, yellow: 9 });
+    // No case expects a question about a match that has a result.
+    for (const c of SCORE_LIVE_CASES) if (c.recorded) expect(c.expect, c.id).not.toBe("ask");
+    // No recorded result is changed by an untagged message.
+    for (const c of SCORE_LIVE_CASES) {
+      if (c.recorded && !(c.tagged ?? false)) expect(c.expect, c.id).toBe("silent");
+    }
+  });
+
   it("NO case can be satisfied by recording 0-0", () => {
     for (const c of SCORE_LIVE_CASES) {
       if (typeof c.expect === "string") continue;

@@ -9,6 +9,9 @@
  * became team-aware (Sutton FC, 2026-10-06: "9-6 to yellows" recorded as
  * Red 9, Yellow 6), and again after the review of PR #214 (no numbers is
  * not 0-0, a lone team name is not a winner, a tag is not a correction).
+ * The second review changed CODE rules only (a recorded result changes
+ * only for a TAGGED correction; the open question takes a narrow
+ * answer), so the prompt is as it was and the expected outcomes moved.
  * A rewrite widens the regression risk, so the check covers every
  * behaviour the old prompt handled (the club's own history of result
  * messages) as well as the new ones. The cases, and what each is there
@@ -20,18 +23,19 @@
  * bot saying what is already recorded, or nothing. Not the wording of a
  * team field: "Yellows" and "yellows" are the same answer.
  *
- * COST. 38 cases x 1 call on claude-sonnet-5, thinking off. About 1,900
+ * COST. 44 cases x 1 call on claude-sonnet-5, thinking off. About 1,900
  * input tokens (a ~4,000 character prompt, the schema, a short message)
- * and about 90 output tokens each: roughly $0.0045 a call, about $0.17
+ * and about 90 output tokens each: roughly $0.0045 a call, about $0.20
  * for the pass. The real total is printed.
  *
  *   ROUTER=1 also asks the real ROUTER (claude-haiku-4-5, prompt
  *   unchanged by this work) where it sends each message, one batch per
- *   case: 38 more calls, about $0.004 each, about $0.15 more ($0.32 in
+ *   case: 44 more calls, about $0.004 each, about $0.18 more ($0.38 in
  *   all). Worth one pass, because a message only reaches the extractor
  *   if the router calls it `score`, and nothing has ever measured that
  *   for "no it was 9-7", "wrong way round, yellows won" or the Turkish
- *   forms. Where a question is open, the router is told so, as it is in
+ *   forms. Where a question is open and the message qualifies as its
+ *   answer (`isScoreAnswer`), the router is handed its id, as it is in
  *   production.
  *
  * WHAT ONE PASS CANNOT PROVE. An occasional miss (a case the model gets
@@ -49,6 +53,7 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
+import { isScoreAnswer, scoreAnswerSide } from "../src/lib/pipeline/score-ask.ts";
 import {
   SCORE_LIVE_CASES,
   describeOutcome,
@@ -93,8 +98,27 @@ async function main() {
 
     let route = "";
     if (withRouter) {
+      // As the analyze route does: decide, without a model, whether
+      // this message answers the open question, and hand the router
+      // its id if so.
+      const senderUserId = c.sender === "yellow" ? "u-najib" : "u-kemal";
+      const isAnswer =
+        !!c.pending &&
+        !c.recorded &&
+        scoreAnswerSide(c.body, c.labels ?? ["Red", "Yellow"]) !== null &&
+        isScoreAnswer({
+          body: c.body,
+          tagged: c.tagged ?? false,
+          senderUserId,
+          senderIsAdmin: c.sender !== "yellow",
+          ask: {
+            askedAt: new Date(Date.now() - 60_000),
+            askerUserId: c.pending.askedBy === "yellow" ? "u-najib" : "u-kemal",
+          },
+          now: new Date(),
+        });
       const rr = await routeBatch(model, [{ id: c.id, authorName: author, body: c.body }], {
-        scoreAsk: c.pending ? { labels: c.labels ?? ["Red", "Yellow"] } : null,
+        scoreAnswerIds: new Set(isAnswer ? [c.id] : []),
       });
       calls++;
       usd += rr.usage?.costUsd ?? 0;

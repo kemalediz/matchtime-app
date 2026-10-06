@@ -266,6 +266,8 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
     if (elo.status === "legacy_left") {
       console.warn(`[updateMatchScore] match ${matchId}: Elo not recalculated. ${elo.detail}`);
       eloNote = t(normaliseLang(match.activity.org?.language)).score_elo_left_note;
+    } else if (elo.status === "no_teams") {
+      eloNote = t(normaliseLang(match.activity.org?.language)).score_elo_no_teams_note;
     }
   } catch (err) {
     console.error("Elo update failed (match will still be COMPLETED):", err);

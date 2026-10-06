@@ -36,7 +36,7 @@ export type ScoreCaseOutcome =
   /** The bot asks which team won. */
   | "ask"
   /** The bot says what is recorded (and how to correct it, or that an
-   *  admin can). Nothing is written. */
+   *  admin can), or asks for the score. Nothing is written. */
   | "told"
   /** Nothing written, nothing said. */
   | "silent";
@@ -56,8 +56,10 @@ export interface ScoreLiveCase {
   lastBotPost?: string;
   /** The result already recorded for the match, if any. */
   recorded?: { red: number; yellow: number };
-  /** A scoreline the bot has asked about and is waiting on. */
-  pending?: { first: number; second: number };
+  /** A scoreline the bot has asked about and is waiting on, a minute
+   *  ago. `askedBy` is who posted it (default "red", i.e. the sender of
+   *  a default case, so an untagged answer from them counts). */
+  pending?: { first: number; second: number; askedBy?: "red" | "yellow" };
   /** A correct extraction. `first`/`second` null when the message has no
    *  scoreline. Team wording may differ live ("Yellows" for "yellows"). */
   facts: Omit<ScoreFacts, "kind">;
@@ -109,14 +111,18 @@ export const SCORE_LIVE_CASES: ScoreLiveCase[] = [
   { id: "L2", why: "a lone name beside the HIGHER number is that team's win", body: "yellow 9-6", facts: n(9, 6, { firstTeam: "yellow" }), expect: { red: 6, yellow: 9 } },
 
   // ── Corrections ────────────────────────────────────────────────────
-  { id: "C1", why: "a correction with no team is asked about", body: "no it was 9-7", recorded: R96, lastBotPost: WRONG_ACK, facts: n(9, 7, { correction: true }), expect: "ask" },
+  { id: "C1", why: "a TAGGED correction with no team is told how to correct it: no question about a recorded match", body: "@Match Time no it was 9-7", tagged: true, recorded: R96, lastBotPost: WRONG_ACK, facts: n(9, 7, { correction: true }), expect: "told" },
+  { id: "C4", why: "H2: an UNTAGGED correction changes nothing and says nothing, even from an admin", body: "no Yellow 9 - 6 Red", recorded: R96, lastBotPost: WRONG_ACK, facts: n(9, 6, { firstTeam: "Yellow", secondTeam: "Red", correction: true }), expect: "silent", anyRoute: true },
+  { id: "C5", why: "H2: 'no, reds won 3-1' about another club's match, untagged: nothing", body: "no, reds won 3-1", sender: "yellow", recorded: R96, facts: n(3, 1, { winner: "reds", correction: true }), expect: "silent", anyRoute: true },
   { id: "C2", why: "a correcting draw", body: "@Match Time wrong, it finished 9-9", tagged: true, recorded: R96, lastBotPost: WRONG_ACK, facts: n(9, 9, { correction: true }), expect: { red: 9, yellow: 9 } },
   { id: "C3", why: "a first report is NOT a correction even right after the bot asked", body: "9-6 to yellows", lastBotPost: ASK_SCORE, facts: n(9, 6, { winner: "yellows" }), expect: { red: 6, yellow: 9 } },
 
   // ── A correction with NO NUMBERS (item 3) ──────────────────────────
   { id: "X1", why: "numberless correction naming the winner swaps the recorded result", body: "@Match Time wrong way round, yellows won", tagged: true, recorded: R96, lastBotPost: WRONG_ACK, facts: none({ correction: true, swapped: true, winner: "yellows" }), expect: { red: 6, yellow: 9 } },
-  { id: "X2", why: "the same, with nobody named", body: "other way round", recorded: R96, lastBotPost: WRONG_ACK, facts: none({ correction: true, swapped: true }), expect: { red: 6, yellow: 9 } },
+  { id: "X2", why: "the same, with nobody named", body: "@Match Time other way round", tagged: true, recorded: R96, lastBotPost: WRONG_ACK, facts: none({ correction: true, swapped: true }), expect: { red: 6, yellow: 9 } },
   { id: "X3", why: "NO NUMBERS IS NOT 0-0: a numberless message on an unscored match writes nothing", body: "yellows won", lastBotPost: ASK_SCORE, facts: none({ winner: "yellows" }), expect: "silent", anyRoute: true },
+  { id: "X4", why: "told who won and not the score, tagged, nothing recorded: asked for the score", body: "@Match Time yellows won", tagged: true, lastBotPost: ASK_SCORE, facts: none({ winner: "yellows" }), expect: "told", anyRoute: true },
+  { id: "X5", why: "M1: no numbers in the text means no score, whatever the model returns (it must not come back as 0-0)", body: "good game lads, well played", lastBotPost: ASK_SCORE, facts: none(), expect: "silent", anyRoute: true },
 
   // ── A tag is not a correction; another game is not this one (item 6)
   { id: "G1", why: "a tagged score that is not a correction never replaces the record", body: "@Match Time it was 9-2 to yellow", tagged: true, sender: "yellow", recorded: R96, facts: n(9, 2, { winner: "yellow" }), expect: "told" },
@@ -125,7 +131,9 @@ export const SCORE_LIVE_CASES: ScoreLiveCase[] = [
 
   // ── The one-word answer to the bot's question (item 4) ─────────────
   { id: "A1", why: "a bare team name answering 'which team won?'", body: "Yellow", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "Yellow" }), expect: { red: 7, yellow: 10 }, noModelInProduction: true },
-  { id: "A2", why: "the answer as a short sentence", body: "reds won mate", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: { red: 10, yellow: 7 } },
+  { id: "A2", why: "the answer as a short sentence, from the person who posted the scoreline", body: "reds won mate", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: { red: 10, yellow: 7 } },
+  { id: "A3", why: "M2: the same words from ANOTHER player, untagged, complete nothing", body: "reds won mate", sender: "yellow", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "reds" }), expect: "silent", anyRoute: true },
+  { id: "A4", why: "M2: a question mark is not an answer", body: "Yellow?", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "Yellow" }), expect: "silent", anyRoute: true },
 
   // ── Turkish ────────────────────────────────────────────────────────
   { id: "T1", why: "Turkish: winner named", body: "sarılar 9-6 kazandı", labels: TR, facts: n(9, 6, { winner: "sarılar" }), expect: { red: 6, yellow: 9 } },
@@ -158,7 +166,14 @@ function caseWorld(c: ScoreLiveCase): SquadState {
       redScore: c.recorded?.red ?? null,
       yellowScore: c.recorded?.yellow ?? null,
       ...(c.pending
-        ? { pendingScore: { ...c.pending, askedAt: new Date(NOW.getTime() - 60_000).toISOString() } }
+        ? {
+            pendingScore: {
+              first: c.pending.first,
+              second: c.pending.second,
+              askedAt: new Date(NOW.getTime() - 60_000).toISOString(),
+              askerUserId: c.pending.askedBy === "yellow" ? "u-najib" : "u-kemal",
+            },
+          }
         : {}),
     },
   });
@@ -189,7 +204,11 @@ export function runScoreCase(c: ScoreLiveCase, facts: ScoreFacts): ScoreCaseOutc
   if (r.speech.some((s) => s.kind === "score_ask_team")) return "ask";
   if (
     r.speech.some(
-      (s) => s.kind === "score_recorded_hint" || s.kind === "score_already_recorded" || s.kind === "score_which_match",
+      (s) =>
+        s.kind === "score_recorded_hint" ||
+        s.kind === "score_already_recorded" ||
+        s.kind === "score_which_match" ||
+        s.kind === "score_ask_score",
     )
   ) {
     return "told";

@@ -279,3 +279,28 @@ describe("who won, when the message has no numbers (review items 3 and 4)", () =
     expect(side({ winner: "us" })).toBeNull();
   });
 });
+
+describe("an outcome word and a position that disagree (second review)", () => {
+  it('"Red 9-6, yellows won": one names Red beside the higher number, the other says Yellow won: ask', () => {
+    expect(resolve(facts(9, 6, { firstTeam: "Red", winner: "yellows" }))).toEqual({ kind: "ask", why: "conflict" });
+    expect(resolve(facts(6, 9, { secondTeam: "Reds", loser: "red" }))).toEqual({ kind: "ask", why: "conflict" });
+  });
+
+  it("the SAME team named twice is not a disagreement", () => {
+    // "5-3 to Yellows", with "Yellows" also reported beside the 3.
+    expect(resolve(facts(5, 3, { winner: "Yellows", secondTeam: "Yellows" }))).toEqual({
+      kind: "resolved",
+      red: 3,
+      yellow: 5,
+    });
+  });
+
+  it("the OTHER team beside the LOWER number agrees with the winner", () => {
+    // "Reds 3-5 to yellows"
+    expect(resolve(facts(3, 5, { firstTeam: "Reds", winner: "yellows" }))).toEqual({
+      kind: "resolved",
+      red: 3,
+      yellow: 5,
+    });
+  });
+});

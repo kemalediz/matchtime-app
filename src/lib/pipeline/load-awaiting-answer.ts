@@ -132,24 +132,38 @@ export async function loadOpenStatsClarifications(
 /**
  * The "which team won?" question MatchTime has open for this club, if
  * any (2026-10-07, `score-ask.ts`): the scoreline, when it was asked,
- * and the team names of the match it is about. One indexed read, null on
- * almost every batch. The router uses it to let a bare team name through
- * as the answer; the engine reads the same row through `load-state.ts`.
+ * who posted it, the team names of the match it is about, and the
+ * club's admins (who may answer for the sender). One indexed read, null
+ * on almost every batch; the admins are read only when a question
+ * exists. The analyze route uses it to decide which messages are
+ * answers; the engine reads the same row through `load-state.ts`.
+ *
+ * A QUESTION IS ONLY EVER VALID FOR A MATCH WITH NO RESULT. A row for a
+ * match that has one is not returned, whoever left it there.
  */
 export async function loadOpenScoreAsk(
   orgId: string,
   now: Date = new Date(),
-): Promise<{ matchId: string; first: number; second: number; askedAt: Date; labels: [string, string] } | null> {
+): Promise<{
+  matchId: string;
+  first: number;
+  second: number;
+  askedAt: Date;
+  askerUserId: string | null;
+  labels: [string, string];
+  adminUserIds: string[];
+} | null> {
   const row = await db.sentNotification.findFirst({
     where: {
       kind: SCORE_ASK_KIND,
       createdAt: { gte: new Date(now.getTime() - SCORE_ASK_TTL_MS) },
-      match: { activity: { orgId } },
+      match: { activity: { orgId }, redScore: null, yellowScore: null },
     },
     orderBy: { createdAt: "desc" },
     select: {
       key: true,
       createdAt: true,
+      targetUser: true,
       match: {
         select: {
           teamLabels: true,
@@ -165,14 +179,20 @@ export async function loadOpenScoreAsk(
   });
   const parsed = row ? parseScoreAskKey(row.key) : null;
   if (!row || !parsed || !row.match) return null;
+  const admins = await db.membership.findMany({
+    where: { orgId, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
+    select: { userId: true },
+  });
   return {
     ...parsed,
     askedAt: row.createdAt,
+    askerUserId: row.targetUser ?? null,
     labels: resolveTeamLabels(
       { teamLabels: row.match.teamLabels },
       { teamLabels: row.match.activity.org.teamLabels },
       row.match.activity.sport,
       row.match.activity.org.language,
     ),
+    adminUserIds: admins.map((a) => a.userId),
   };
 }

@@ -686,6 +686,10 @@ export function compose(result: EngineResult): ComposedOutput {
         break;
       }
 
+      case "score_ask_score":
+        utterances.push({ messageId: sp.messageId, text: s.score_ask_score });
+        break;
+
       case "score_which_match":
         utterances.push({
           messageId: sp.messageId,

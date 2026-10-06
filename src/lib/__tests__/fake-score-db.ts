@@ -34,6 +34,9 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
    *  "rating:<userId>". For the tests about ORDER; everything else
    *  asserts on state. */
   const log: string[] = [];
+  /** `SentNotification`, as far as the score writers touch it: the
+   *  open "which team won?" question (`pipeline/score-ask.ts`). */
+  const notifications: Array<{ key: string; kind: string; matchId: string | null; targetUser?: string | null }> = [];
   /** A clock that only moves forward, for `updatedAt`. */
   let tick = Math.max(...[...matches.values()].map((m) => m.updatedAt!.getTime()), 0);
 
@@ -56,6 +59,7 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
       // All or nothing, like the real thing.
       const snapM = new Map([...matches].map(([k, v]) => [k, structuredClone(v)]));
       const snapR = new Map(ratings);
+      const snapN = notifications.map((n) => ({ ...n }));
       try {
         return await arg(db);
       } catch (err) {
@@ -63,6 +67,7 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
         for (const [k, v] of snapM) matches.set(k, v);
         ratings.clear();
         for (const [k, v] of snapR) ratings.set(k, v);
+        notifications.splice(0, notifications.length, ...snapN);
         throw err;
       }
     },
@@ -98,6 +103,20 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
         return null;
       },
     },
+    sentNotification: {
+      async deleteMany({ where }: { where: { kind: string; matchId: string } }) {
+        const before = notifications.length;
+        for (let i = notifications.length - 1; i >= 0; i--) {
+          if (notifications[i].kind === where.kind && notifications[i].matchId === where.matchId) notifications.splice(i, 1);
+        }
+        return { count: before - notifications.length };
+      },
+      async create({ data }: { data: { key: string; kind: string; matchId: string; targetUser?: string | null } }) {
+        if (notifications.some((n) => n.key === data.key)) throw new Error("Unique constraint failed on key");
+        notifications.push({ ...data });
+        return data;
+      },
+    },
     membership: {
       async findMany({ where }: { where: { userId: { in: string[] } } }) {
         return where.userId.in
@@ -122,5 +141,5 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
       },
     },
   };
-  return { db: db as never, matches, ratings, log };
+  return { db: db as never, matches, ratings, log, notifications };
 }

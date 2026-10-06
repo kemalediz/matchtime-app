@@ -541,9 +541,11 @@ export interface ScoreFacts {
   /** The team a word says LOST ("reds lost 6-9", "kaybettik"). */
   loser?: string;
   /** The message says a result already given or recorded was WRONG and
-   *  gives the right one ("no, it was...", "yanlış, ..."). The ONLY
-   *  thing that lets a message change a recorded result; a tag alone
-   *  does not (review item 6). */
+   *  gives the right one ("no, it was...", "yanlış, ..."). NECESSARY to
+   *  change a recorded result and NOT SUFFICIENT: the message must also
+   *  tag the bot (`handleScore`). A flag from a model, on an untagged
+   *  message, changes nothing: "no, reds won 3-1" about another club's
+   *  match was flagged and overwrote a result (second review, H2). */
   correction?: boolean;
   /** The message says the result has the teams the wrong way round
    *  ("wrong way round", "tam tersi"). A correction that needs no
@@ -693,8 +695,9 @@ export interface SquadState {
    * recent ENDED row, so it walks BACK past a scored match to an older
    * unscored one. This does not: it takes the most recent ended match
    * whatever its score, and `handleScore` changes a result that is
-   * already recorded only for a correction addressed to the bot, from
-   * an admin or a player, within the correction window (2026-10-07). Owning less on purpose — a score landing
+   * already recorded only for a message that TAGS the bot AND is a
+   * correction, from an identified admin or player of that match,
+   * within the correction window (2026-10-07). Owning less on purpose — a score landing
    * on a match two weeks older than the one the group is talking about
    * is a worse outcome than nobody recording it.
    *
@@ -747,11 +750,13 @@ export interface SquadState {
     /**
      * A SCORELINE THE BOT HAS ASKED ABOUT and not yet had an answer to
      * ("10 - 7: which team won?"), so a following "Yellow" can complete
-     * it (review of PR #214, item 4). One per match: a different pair
-     * replaces it, and recording any result clears it. Loaded from the
-     * `SentNotification` row `score-ask.ts` describes.
+     * it. ONLY EVER SET FOR A MATCH WITH NO RECORDED RESULT: the loader
+     * drops it otherwise and the engine ignores it otherwise. One per
+     * match: a different pair replaces it, and any recorded result
+     * clears it. `askerUserId` is who posted the scoreline, when known.
+     * Who may answer, and for how long, is `score-ask.ts`.
      */
-    pendingScore?: { first: number; second: number; askedAt: string };
+    pendingScore?: { first: number; second: number; askedAt: string; askerUserId: string | null };
     /**
      * Another match of the club, with a recorded result, kicked off
      * inside the correction window. When the LATEST match has no result
@@ -1108,6 +1113,8 @@ export type ProposedWrite =
       matchId: string;
       first: number;
       second: number;
+      /** Who posted the scoreline, or null when WhatsApp did not say. */
+      askerUserId: string | null;
       sourceMessageId: string;
       reason: string;
     }
@@ -1345,6 +1352,9 @@ export type SpeechIntent =
    *  earlier one inside the window does: the bot cannot tell which match
    *  it corrects, and says so. */
   | { kind: "score_which_match"; messageId: string }
+  /** The bot was told who won and not the score ("@Match Time yellows
+   *  won"), with nothing recorded and no question open: it asks. */
+  | { kind: "score_ask_score"; messageId: string }
   | { kind: "payment_ack"; messageId: string; payerName: string; count: number }
   /** `whenLabel` is the RESOLVED time ("Mon 8 Sep at 18:00"). The
    *  composer must never echo the raw phrase back at a player as if it

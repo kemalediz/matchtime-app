@@ -74,7 +74,7 @@ function stubModel(table: Record<string, unknown>, opts: { throwOn?: string } = 
 
 interface Recorder {
   /** Every "which team won?" the batch asked the apply layer to remember. */
-  asked: Array<{ matchId: string; first: number; second: number }>;
+  asked: Array<{ matchId: string; first: number; second: number; askerUserId: string | null }>;
   recorded: Array<{ matchId: string; red: number; yellow: number; previous?: { red: number; yellow: number } }>;
   /** One entry per Elo reconcile, holding the match it was asked about. */
   elo: string[];
@@ -313,6 +313,7 @@ describe("a result reported in the group is recorded", () => {
 describe("the 2026-10-06 incident, end to end through the batch", () => {
   const TO_YELLOWS = "it was 6-6 until 15 minutes then suddenly it turned to 9-6 to yellows";
   const FIX = "@Match Time no Yellow 9 - 6 Red";
+  const UNTAGGED_FIX = "no Yellow 9 - 6 Red";
   const FIX_FACTS = { first: 9, second: 6, firstTeam: "Yellow", secondTeam: "Red", correction: true };
 
   it('"9-6 to yellows" is recorded Red 6, Yellow 9, and the reply names the winner', async () => {
@@ -342,6 +343,25 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
     const out = [...res.outcomes.values()][0];
     expect(out.action).toBe("score");
     expect(out.reply).toBe("Corrected 👍 It was Red 9 - 6 Yellow. Now *Yellow* won 9 - 6 against Red.");
+  });
+
+  it("H2: the same correction WITHOUT a tag changes nothing and says nothing", async () => {
+    const { model } = stubModel({ [UNTAGGED_FIX]: FIX_FACTS });
+    const r = recorder(
+      model,
+      playedWorld({
+        completedMatch: {
+          id: "done-1",
+          redScore: 9,
+          yellowScore: 6,
+          participantUserIds: PLAYED.map((k) => `u-${k}`),
+        },
+      }),
+    );
+    const res = await run({ messages: [msg({ body: UNTAGGED_FIX })], model, deps: r.deps });
+    expect(r.recorded).toEqual([]);
+    expect(r.elo).toEqual([]);
+    expect([...res.outcomes.values()][0].reply).toBeNull();
   });
 
   it("says NOTHING if the match changed under the correction, and reports it", async () => {
@@ -375,7 +395,7 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
     const res = await run({ messages: [msg({ body: "10-7" })], model, deps: r.deps });
     expect(r.recorded).toEqual([]);
     expect(r.elo).toEqual([]);
-    expect(r.asked).toEqual([{ matchId: "done-1", first: 10, second: 7 }]);
+    expect(r.asked).toEqual([{ matchId: "done-1", first: 10, second: 7, askerUserId: "u-kemal" }]);
     const out = [...res.outcomes.values()][0];
     expect(out.action).toBe("reply");
     expect(out.reply).toBe("10 - 7: which team won? Reply with the winning team: Red or Yellow.");
@@ -392,7 +412,12 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
         completedMatch: {
           id: "done-1",
           participantUserIds: PLAYED.map((k) => `u-${k}`),
-          pendingScore: { first: 10, second: 7, askedAt: new Date(NOW.getTime() - 60_000).toISOString() },
+          pendingScore: {
+            first: 10,
+            second: 7,
+            askedAt: new Date(NOW.getTime() - 60_000).toISOString(),
+            askerUserId: "u-kemal",
+          },
         },
       }),
     );
@@ -401,6 +426,83 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
     expect(res.cost.calls).toBe(0);
     expect(r.recorded).toEqual([{ matchId: "done-1", red: 7, yellow: 10 }]);
     expect([...res.outcomes.values()][0].reply).toBe("Got it 👍 *Yellow* won 10 - 7 against Red. Recorded.");
+  });
+
+  it("a bare team name from somebody ELSE is not read as the answer, and records nothing (M2)", async () => {
+    // Not the person who posted the scoreline, not an admin, no tag. It
+    // goes to the model like any other message, and the engine refuses
+    // to complete the question with it whatever the model says.
+    const { model, calls } = stubModel({
+      Yellow: { hasScore: false, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "Yellow", loser: "", correction: false, swapped: false, otherGame: false },
+    });
+    const r = recorder(
+      model,
+      playedWorld({
+        completedMatch: {
+          id: "done-1",
+          participantUserIds: PLAYED.map((k) => `u-${k}`),
+          pendingScore: { first: 10, second: 7, askedAt: new Date(NOW.getTime() - 60_000).toISOString(), askerUserId: "u-kemal" },
+        },
+      }),
+    );
+    const res = await run({
+      messages: [msg({ body: "Yellow", senderUserId: "u-sait", senderName: fullName("sait"), authorName: fullName("sait") })],
+      model,
+      deps: r.deps,
+    });
+    expect(calls).toHaveLength(1);
+    expect(r.recorded).toEqual([]);
+    expect([...res.outcomes.values()][0].reply).toBeNull();
+  });
+
+  it("H1: a question left on a match that HAS a result is not read, and a bare team name changes nothing", async () => {
+    const { model } = stubModel({
+      Yellow: { hasScore: false, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "Yellow", loser: "", correction: false, swapped: false, otherGame: false },
+    });
+    const r = recorder(
+      model,
+      playedWorld({
+        completedMatch: {
+          id: "done-1",
+          redScore: 10,
+          yellowScore: 6,
+          participantUserIds: PLAYED.map((k) => `u-${k}`),
+          pendingScore: { first: 10, second: 7, askedAt: new Date(NOW.getTime() - 60_000).toISOString(), askerUserId: "u-kemal" },
+        },
+      }),
+    );
+    await run({ messages: [msg({ body: "Yellow" }), msg({ waMessageId: "t", body: "Yellow", tagged: true })], model, deps: r.deps });
+    expect(r.recorded).toEqual([]);
+    expect(r.asked).toEqual([]);
+  });
+
+  it('H1: "10-7" and "10-7 to reds" in ONE batch: the result is recorded, no question is asked or stored', async () => {
+    const { model } = stubModel({
+      "10-7": { first: 10, second: 7 },
+      "10-7 to reds": { first: 10, second: 7, winner: "reds" },
+    });
+    const r = recorder(model, playedWorld());
+    const res = await run({
+      messages: [
+        msg({ waMessageId: "a", body: "10-7", senderUserId: "u-elvin", senderName: fullName("elvin"), authorName: fullName("elvin") }),
+        msg({ waMessageId: "b", body: "10-7 to reds" }),
+      ],
+      model,
+      deps: r.deps,
+    });
+    expect(r.recorded).toEqual([{ matchId: "done-1", red: 10, yellow: 7 }]);
+    expect(r.asked).toEqual([]);
+    expect(res.outcomes.get("a")?.reply).toBeNull();
+    expect(res.outcomes.get("b")?.reply).toBe("Got it 👍 *Red* won 10 - 7 against Yellow. Recorded.");
+  });
+
+  it("M1: hasScore true with zeros for a message with no numbers is NOT recorded as 0-0", async () => {
+    const { model } = stubModel({
+      "good game lads": { hasScore: true, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "", loser: "", correction: false, swapped: false, otherGame: false },
+    });
+    const r = recorder(model, playedWorld());
+    await run({ messages: [msg({ body: "good game lads" })], model, deps: r.deps });
+    expect(r.recorded).toEqual([]);
   });
 
   it("with no question open, a bare team name is read by the model as usual and records nothing", async () => {

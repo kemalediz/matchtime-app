@@ -280,6 +280,19 @@ export function resolveScoreResult(args: {
   if (redSays.size > 1) return { kind: "ask", why: "conflict" };
   if (redSays.size === 1) {
     const red = [...redSays][0];
+    // A LONE name beside one number is too weak to decide a result, but
+    // not too weak to CONTRADICT one: "Red 9-6, yellows won" names Red
+    // beside the higher number and says Yellow won. Ask. (The same team
+    // named twice, "5-3 to Yellows" with "Yellows" also reported beside
+    // the 3, is one statement and an accident of word order, and the
+    // other team beside the LOWER number simply agrees.)
+    if (!bothLabelled && (has(facts.firstTeam) || has(facts.secondTeam))) {
+      const isFirst = has(facts.firstTeam);
+      const side = resolveTeamRef(isFirst ? facts.firstTeam : facts.secondTeam, labels, senderTeam);
+      const besideHigher = (isFirst ? first : second) === hi;
+      const winnerSide: TeamSide = red === hi ? "RED" : "YELLOW";
+      if (side && besideHigher && side !== winnerSide) return { kind: "ask", why: "conflict" };
+    }
     return { kind: "resolved", red, yellow: red === first ? second : first };
   }
 

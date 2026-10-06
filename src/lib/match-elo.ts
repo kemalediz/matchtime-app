@@ -107,6 +107,7 @@
 import { db as defaultDb } from "./db";
 import { computeEloDeltas, invertEloDeltas, type PlayerEloInput } from "./elo";
 import { MEMBERSHIP_ELO_DEFAULT } from "./membership-elo";
+import { SCORE_ASK_KIND } from "./pipeline/score-ask";
 
 type Db = typeof defaultDb;
 // The interactive-transaction client. Structural, so a unit test can
@@ -129,8 +130,13 @@ export interface EloApplied {
         asOf?: string;
       })
     | null;
-  /** The score was changed by something that does not keep this record. */
+  /** The score was changed by something that does not keep this record,
+   *  or the record could not be read. Either way what the ratings carry
+   *  for this match is unknown, and they are left alone. */
   outOfStep?: true;
+  /** A value found in the column that this file could not read, kept
+   *  as it was found. Always with `outOfStep`. */
+  unreadable?: unknown;
 }
 
 const isScore = (v: unknown): v is Score =>
@@ -165,7 +171,28 @@ export function parseEloApplied(raw: unknown): EloApplied | null {
     };
   }
   if (r.outOfStep === true) out.outOfStep = true;
+  if (r.unreadable !== undefined) out.unreadable = r.unreadable;
   return out;
+}
+
+/**
+ * The column, told apart three ways. NULL is "no record" (an older
+ * match, or one never scored). A value this file cannot read is NOT
+ * that: treating it as legacy would stamp over it and then "recover"
+ * points on the strength of nothing. It is out of step, and loudly.
+ */
+function readRecord(
+  raw: unknown,
+  matchId: string,
+): { kind: "none" } | { kind: "ok"; record: EloApplied } | { kind: "unreadable"; raw: unknown } {
+  if (raw === null || raw === undefined) return { kind: "none" };
+  const record = parseEloApplied(raw);
+  if (record) return { kind: "ok", record };
+  console.error(
+    `[match-elo] match ${matchId}: UNREADABLE Match.eloApplied (${JSON.stringify(raw)?.slice(0, 300)}). ` +
+      `Treated as out of step: its ratings will be left alone.`,
+  );
+  return { kind: "unreadable", raw };
 }
 
 /** Thrown by `setMatchScore` when `expectPrevious` no longer matches:
@@ -230,9 +257,12 @@ export async function setMatchScore(args: {
     }
 
     const target: Score = { red, yellow };
-    const record = parseEloApplied(row.eloApplied);
+    const read = readRecord(row.eloApplied, matchId);
+    const record = read.kind === "ok" ? read.record : null;
     let next: EloApplied;
-    if (!record) {
+    if (read.kind === "unreadable") {
+      next = { target, applied: null, outOfStep: true, unreadable: read.raw };
+    } else if (!record) {
       next = previous
         ? // LEGACY: scored before the column, points added and not stored.
           {
@@ -251,13 +281,25 @@ export async function setMatchScore(args: {
       // is not, something else changed it and the record no longer
       // describes the ratings.
       const outOfStep = record.outOfStep === true || !same(previous, record.target);
-      next = { target, applied: record.applied, ...(outOfStep ? { outOfStep: true as const } : {}) };
+      next = {
+        target,
+        applied: record.applied,
+        ...(outOfStep ? { outOfStep: true as const } : {}),
+        ...(record.unreadable !== undefined ? { unreadable: record.unreadable } : {}),
+      };
     }
 
     await tx.match.update({
       where: { id: matchId },
       data: { redScore: red, yellowScore: yellow, status: "COMPLETED", eloApplied: next },
     });
+    // THE MATCH HAS A RESULT, so any "which team won?" the bot had open
+    // for it is over (`pipeline/score-ask.ts`). Here, in the same
+    // transaction, and not in the bot's own deps: the dashboard, the
+    // legacy score route and a script all come through this function,
+    // and a question that outlives its result is how a bare "Yellow"
+    // came to overwrite one (second review, H1).
+    await tx.sentNotification.deleteMany({ where: { kind: SCORE_ASK_KIND, matchId } });
     return { previous, changed: !same(previous, target) };
   });
 }
@@ -271,6 +313,12 @@ export type ReconcileStatus =
   | "applied"
   /** A changed result: the old points taken back, the new added. */
   | "corrected"
+  /** The match has no team sheet (not both sides), so there is nobody
+   *  to add points to. NOT recorded as applied: once teams exist, the
+   *  next reconcile applies the result. Nothing triggers that by itself
+   *  (teams cannot be generated for a completed match); saving the
+   *  score again does. */
+  | "no_teams"
   /** The ratings could NOT be brought into line and were LEFT AS THEY
    *  WERE: an older match whose points could not be recovered, or a
    *  score changed by something that does not keep the record. */
@@ -310,17 +358,33 @@ export async function reconcileMatchElo(args: { db?: Db; matchId: string }): Pro
     const orgId: string = match.activity.orgId;
     const score: Score = { red: match.redScore, yellow: match.yellowScore };
     const assignments = match.teamAssignments as Array<{ userId: string; team: "RED" | "YELLOW" }>;
-    const record = parseEloApplied(match.eloApplied);
+    const read = readRecord(match.eloApplied, matchId);
+    if (read.kind === "unreadable") {
+      await tx.match.update({
+        where: { id: matchId },
+        data: { eloApplied: { target: score, applied: null, outOfStep: true, unreadable: read.raw } },
+      });
+      return {
+        status: "legacy_left",
+        moved: 0,
+        detail: "the stored Elo record for this match could not be read, so what the ratings carry for it is unknown. Ratings left as they were.",
+      };
+    }
 
-    // LEGACY and untouched: scored by code that added the points itself.
-    // Nothing here has changed the score, so there is nothing to do.
-    if (!record) return { status: "unchanged", moved: 0 };
+    // LEGACY and untouched: a match that has a score and NO record was
+    // scored before the column existed, by code that added the points
+    // itself. Nothing here has changed the score, so there is nothing to
+    // do, and above all nothing to add a second time.
+    if (read.kind === "none") return { status: "unchanged", moved: 0 };
+    const record = read.record;
 
     if (record.outOfStep || !same(score, record.target)) {
       const detail =
-        `the score was changed outside MatchTime's score writer (the record expects ` +
-        `${record.target.red}-${record.target.yellow}, the match reads ${score.red}-${score.yellow}), so what the ` +
-        `ratings carry for this match is unknown. Ratings left as they were.`;
+        record.unreadable !== undefined
+          ? "the stored Elo record for this match could not be read, so what the ratings carry for it is unknown. Ratings left as they were."
+          : `the score was changed outside MatchTime's score writer (the record expects ` +
+            `${record.target.red}-${record.target.yellow}, the match reads ${score.red}-${score.yellow}), so what the ` +
+            `ratings carry for this match is unknown. Ratings left as they were.`;
       if (!record.outOfStep) {
         await tx.match.update({ where: { id: matchId }, data: { eloApplied: { ...record, outOfStep: true } } });
       }
@@ -399,8 +463,14 @@ export async function reconcileMatchElo(args: { db?: Db; matchId: string }): Pro
       // persist a change (`membership-elo.ts`).
       matchRating: rating.get(a.userId) ?? MEMBERSHIP_ELO_DEFAULT,
     }));
+    // NO TEAM SHEET YET (not both sides): nobody to add points to. The
+    // first version stored that as "applied, with no deltas", after
+    // which every later reconcile said "unchanged" and the result was
+    // never applied even once teams existed. It stays PENDING instead.
+    const hasBothSides =
+      assignments.some((a) => a.team === "RED") && assignments.some((a) => a.team === "YELLOW");
     const written: Array<{ userId: string; delta: number }> = [];
-    for (const d of computeEloDeltas(inputs, score.red, score.yellow)) {
+    for (const d of hasBothSides ? computeEloDeltas(inputs, score.red, score.yellow) : []) {
       if (!rating.has(d.userId)) continue;
       written.push({ userId: d.userId, delta: d.delta });
       net.set(d.userId, (net.get(d.userId) ?? 0) + d.delta);
@@ -416,9 +486,9 @@ export async function reconcileMatchElo(args: { db?: Db; matchId: string }): Pro
       });
     }
 
-    const next: EloApplied = { target: score, applied: { ...score, deltas: written } };
+    const next: EloApplied = { target: score, applied: hasBothSides ? { ...score, deltas: written } : null };
     await tx.match.update({ where: { id: matchId }, data: { eloApplied: next } });
-    const status: ReconcileStatus = record.applied ? "corrected" : "applied";
+    const status: ReconcileStatus = !hasBothSides ? "no_teams" : record.applied ? "corrected" : "applied";
     return { status, moved: written.length, ...(notes.length ? { detail: notes.join(" ") } : {}) };
   }, RECONCILE_TX);
 }

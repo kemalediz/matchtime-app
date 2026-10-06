@@ -68,10 +68,18 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
     // outcome signal, so ratings stay neutral by design.
     if (match.redScore !== null && match.yellowScore !== null) {
       try {
-        // Through the one writer (lib/match-elo.ts, 2026-10-07). It
-        // adds this result's points only if they have not been added
-        // already, and stores them, so reaching this branch for a match
-        // that some other path scored can no longer count it twice.
+        // Through the one writer (lib/match-elo.ts, 2026-10-07), which
+        // decides from the match's stored record:
+        //   - a score this codebase wrote and has not applied yet (a
+        //     pending record): the points are added now, once, and stored;
+        //   - already applied: nothing;
+        //   - NO record at all (the column is empty): the match was
+        //     scored by something that keeps no record (the code before
+        //     2026-10-07, or a script), which added the points itself.
+        //     NOTHING is added here, so it cannot be counted twice. If
+        //     such a writer did not in fact apply the Elo, saving the
+        //     score again on the dashboard does not apply it either:
+        //     that match's ratings are a manual job.
         await reconcileMatchElo({ matchId: match.id });
       } catch (err) {
         console.error("[match-completion] Elo update failed:", err);

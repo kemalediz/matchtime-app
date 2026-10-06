@@ -1,10 +1,13 @@
 /**
- * While MatchTime is waiting to hear which team won, a bare team name
- * reaches the score route (review of PR #214, item 4).
+ * The answers to MatchTime's open "which team won?" reach the score
+ * route, whatever the router did (second review of PR #214, M2).
  *
- * To a router that does not know a question is open, "Yellow" is
- * chatter. Without this the bot asked a question nobody could answer in
- * one word, and the result was never recorded.
+ * WHICH messages are answers is decided by the caller, before any model
+ * is asked, from who sent each message, whether it tags the bot and how
+ * long ago the question was asked (`isScoreAnswer`, tested in
+ * `score-ask.test.ts`). The router is handed the ids. So these tests are
+ * about one thing: an id on that list ends up on `score` on EVERY path a
+ * batch can take, including the ones where the model said nothing.
  */
 import { describe, it, expect } from "vitest";
 import { routeBatch } from "../router";
@@ -27,50 +30,82 @@ function modelSaying(route: Route): PipelineModel {
     },
   };
 }
+const brokenModel: PipelineModel = {
+  name: "broken",
+  async complete() {
+    throw new Error("529 Overloaded");
+  },
+};
+const neverCalled: PipelineModel = {
+  name: "never",
+  async complete() {
+    throw new Error("the model must not be called");
+  },
+};
 
-const OPEN = { labels: ["Red", "Yellow"] as const };
-const one = (body: string) => [{ id: "m1", authorName: "Elvin", body }];
+const batch = [
+  { id: "m1", authorName: "Elvin", body: "Yellow" },
+  { id: "m2", authorName: "Sait", body: "Yellow" },
+];
+const ANSWERS = new Set(["m1"]);
+const routeOf = (res: { routes: Array<{ messageId: string; route: string }> }, id: string) =>
+  res.routes.find((r) => r.messageId === id)?.route;
 
-describe("the answer to 'which team won?' is routed to score", () => {
-  it.each(["Yellow", "yellows won", "to the reds", "@Match Time red"])("%s", async (body) => {
-    const res = await routeBatch(modelSaying("none"), one(body), { floor: false, scoreAsk: OPEN });
-    expect(res.routes[0]).toMatchObject({ route: "score", source: "awaiting", overrodeRoute: "none" });
-  });
-
-  it("from whatever the model called it, not only from none", async () => {
-    const res = await routeBatch(modelSaying("balancer"), one("Yellow"), { floor: false, scoreAsk: OPEN });
-    expect(res.routes[0]).toMatchObject({ route: "score", overrodeRoute: "balancer" });
-  });
-
-  it("uses the names of the match the question is about", async () => {
-    const lions = { labels: ["Lions", "Tigers"] as const };
-    const hit = await routeBatch(modelSaying("none"), one("Tigers"), { floor: false, scoreAsk: lions });
-    expect(hit.routes[0].route).toBe("score");
-    const miss = await routeBatch(modelSaying("none"), one("Yellow"), { floor: false, scoreAsk: lions });
-    expect(miss.routes[0].route).toBe("none");
-  });
-
-  it("leaves everything else exactly where the model put it", async () => {
-    for (const body of ["good game lads", "put me on Yellow for next week", "yellow were robbed tonight honestly", "Reda"]) {
-      const res = await routeBatch(modelSaying("none"), one(body), { floor: false, scoreAsk: OPEN });
-      expect(res.routes[0].route, body).toBe("none");
+describe("an answer to 'which team won?' is routed to score", () => {
+  it("from whatever the model called it, and ONLY the ids the caller named", async () => {
+    for (const said of ["none", "balancer", "self_att"] as Route[]) {
+      const res = await routeBatch(modelSaying(said), batch, { floor: false, scoreAnswerIds: ANSWERS });
+      expect(routeOf(res, "m1")).toBe("score");
+      // The same word from somebody whose message is not an answer is
+      // left exactly where the model put it.
+      expect(routeOf(res, "m2")).toBe(said);
     }
   });
 
-  it("does nothing at all when no question is open", async () => {
-    const res = await routeBatch(modelSaying("none"), one("Yellow"), { floor: false });
-    expect(res.routes[0].route).toBe("none");
-    const explicit = await routeBatch(modelSaying("none"), one("Yellow"), { floor: false, scoreAsk: null });
-    expect(explicit.routes[0].route).toBe("none");
+  it("records what it overrode", async () => {
+    const res = await routeBatch(modelSaying("none"), batch, { floor: false, scoreAnswerIds: ANSWERS });
+    expect(res.routes.find((r) => r.messageId === "m1")).toMatchObject({
+      route: "score",
+      source: "awaiting",
+      overrodeRoute: "none",
+    });
+    expect(res.degradations.map((d) => d.detail).join(" ")).toMatch(/none → score/);
   });
 
-  it("the gate passes the open question through, so the answer is not skipped as banter", async () => {
-    const g = await gateBatch([{ waMessageId: "m1", authorName: "Elvin", body: "Yellow" } as never], {
-      model: modelSaying("none"),
-      floor: false,
-      scoreAsk: OPEN,
-    });
-    expect(g.skipped).toEqual([]);
-    expect(g.routes[0]).toMatchObject({ route: "score" });
+  it("when the router call FAILS, the answer is not lost with it", async () => {
+    const res = await routeBatch(brokenModel, batch, { floor: false, scoreAnswerIds: ANSWERS });
+    expect(routeOf(res, "m1")).toBe("score");
+    expect(routeOf(res, "m2")).toBe("unsure"); // the ordinary fallback
+  });
+
+  it("at the daily AI cap, with no model call at all", async () => {
+    const res = await routeBatch(neverCalled, batch, { capped: true, scoreAnswerIds: ANSWERS });
+    expect(routeOf(res, "m1")).toBe("score");
+    expect(routeOf(res, "m2")).toBe("none");
+  });
+
+  it("does nothing at all when no message is an answer", async () => {
+    for (const opts of [{}, { scoreAnswerIds: new Set<string>() }]) {
+      const res = await routeBatch(modelSaying("none"), batch, { floor: false, ...opts });
+      expect(res.routes.map((r) => r.route)).toEqual(["none", "none"]);
+    }
+  });
+
+  it("the gate passes the ids through, so the answer is not skipped as banter", async () => {
+    const g = await gateBatch(
+      batch.map((m) => ({ waMessageId: m.id, authorName: m.authorName, body: m.body }) as never),
+      { model: modelSaying("none"), floor: false, scoreAnswerIds: ANSWERS },
+    );
+    expect(g.skipped).toEqual(["m2"]);
+    expect(g.routes.find((r) => r.messageId === "m1")).toMatchObject({ route: "score" });
+  });
+
+  it("...and at the cap", async () => {
+    const g = await gateBatch(
+      batch.map((m) => ({ waMessageId: m.id, authorName: m.authorName, body: m.body }) as never),
+      { model: neverCalled, capped: true, scoreAnswerIds: ANSWERS },
+    );
+    expect(g.routes.find((r) => r.messageId === "m1")).toMatchObject({ route: "score" });
+    expect(g.skipped).not.toContain("m1");
   });
 });

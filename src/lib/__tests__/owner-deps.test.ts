@@ -133,6 +133,31 @@ describe("the score apply deps", () => {
     expect(Object.fromEntries(f.ratings)).toEqual({ u1: 1200, u2: 1300 });
   });
 
+  it("remembers the question: one row per match, the numbers in the key, the asker beside it", async () => {
+    const f = fresh();
+    const deps = buildScoreApplyDeps({ db: f.db });
+    await deps.recordScoreAsk!({ matchId: "m1", first: 10, second: 7, askerUserId: "u1" });
+    expect(f.notifications).toEqual([
+      { key: "m1:score-ask:10-7", kind: "score-ask", matchId: "m1", targetUser: "u1" },
+    ]);
+    // A different scoreline REPLACES it; an unidentified sender is null.
+    await deps.recordScoreAsk!({ matchId: "m1", first: 10, second: 6, askerUserId: null });
+    expect(f.notifications).toEqual([
+      { key: "m1:score-ask:10-6", kind: "score-ask", matchId: "m1", targetUser: null },
+    ]);
+    // Asking the same thing twice is not a unique-key failure.
+    await deps.recordScoreAsk!({ matchId: "m1", first: 10, second: 6, askerUserId: "u2" });
+    expect(f.notifications).toHaveLength(1);
+  });
+
+  it("recording a result closes the question", async () => {
+    const f = fresh();
+    const deps = buildScoreApplyDeps({ db: f.db });
+    await deps.recordScoreAsk!({ matchId: "m1", first: 10, second: 7, askerUserId: "u1" });
+    await deps.recordScore({ matchId: "m1", red: 10, yellow: 7 });
+    expect(f.notifications).toEqual([]);
+  });
+
   it("moves no Elo at all for a match that has gone", async () => {
     const f = fresh();
     const deps = buildScoreApplyDeps({ db: f.db });

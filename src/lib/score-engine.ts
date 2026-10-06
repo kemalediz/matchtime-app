@@ -110,7 +110,13 @@ export interface ScoreApplyDeps {
    * Optional so a caller with nowhere to keep it (a harness) still
    * works; the question is then simply not answerable by one word.
    */
-  recordScoreAsk?: (args: { matchId: string; first: number; second: number }) => Promise<void>;
+  recordScoreAsk?: (args: {
+    matchId: string;
+    first: number;
+    second: number;
+    /** Who posted the scoreline, or null when WhatsApp did not say. */
+    askerUserId: string | null;
+  }) => Promise<void>;
 }
 
 export interface ScoreWriteResult {

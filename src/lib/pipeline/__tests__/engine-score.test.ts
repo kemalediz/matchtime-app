@@ -18,7 +18,8 @@
 import { describe, it, expect } from "vitest";
 import { decide, SCORE_CORRECTION_WINDOW_MS } from "../engine";
 import { compose } from "../compose";
-import { SCORE_ASK_TTL_MS } from "../score-ask";
+import { parseFacts } from "../extractors";
+import { SCORE_ANSWER_UNTAGGED_MS, SCORE_ASK_TTL_MS } from "../score-ask";
 import type { ScoreFacts, SquadState } from "../types";
 import { NOW, msg, world } from "./helpers";
 
@@ -187,42 +188,92 @@ describe("two different numbers and nobody named: it asks, it does not guess", (
   });
 });
 
-describe("the question is asked ONCE, and its answer completes the result (review item 4)", () => {
-  const asked = (over: Partial<Completed> = {}) =>
+describe("the question is asked ONCE, and a NARROW answer completes the result", () => {
+  // Second review of PR #214, H1 and M2. The question used to stay open
+  // for a day and take a bare team name from anybody, which is how a
+  // conversation about bibs hours later could record a result.
+  const MIN = 60_000;
+  const asked = (agoMs = MIN, over: Partial<Completed> = {}) =>
     played({
-      pendingScore: { first: 10, second: 7, askedAt: new Date(NOW.getTime() - 60_000).toISOString() },
+      pendingScore: {
+        first: 10,
+        second: 7,
+        askedAt: new Date(NOW.getTime() - agoMs).toISOString(),
+        askerUserId: "u-elvin",
+      },
       ...over,
     });
+  const answer = (from: string | null, o: { tagged?: boolean; body?: string } = {}) => ({
+    from,
+    tagged: o.tagged ?? false,
+    body: o.body ?? "Yellow",
+    route: "score" as const,
+    facts: noNumbers({ winner: "Yellow" }),
+  });
 
-  it('"Yellow" after the question records Yellow 10, Red 7', () => {
-    const { writes, replies, r } = run(asked(), {
-      from: "elvin",
-      body: "Yellow",
-      route: "score",
-      facts: noNumbers({ winner: "Yellow" }),
-    });
+  it("the question records who posted the scoreline", () => {
+    const { asks } = run(played(), { from: "elvin", body: "10-7", route: "score", facts: score(10, 7) });
+    expect(asks).toEqual([expect.objectContaining({ first: 10, second: 7, askerUserId: "u-elvin" })]);
+  });
+
+  it('"Yellow" from the person who posted the scoreline records Yellow 10, Red 7', () => {
+    const { writes, replies, r } = run(asked(), answer("elvin"));
     expect(writes).toEqual([expect.objectContaining({ matchId: "done-1", red: 7, yellow: 10 })]);
     expect(replies).toEqual(["Got it 👍 *Yellow* won 10 - 7 against Red. Recorded."]);
     expect(r.nextState.completedMatch?.pendingScore).toBeUndefined();
   });
 
-  it('"reds won" records Red 10, Yellow 7', () => {
-    const { writes } = run(asked(), {
-      from: "kemal",
-      body: "reds won",
-      route: "score",
-      facts: noNumbers({ winner: "reds" }),
+  it("an admin may answer for them, untagged", () => {
+    expect(run(asked(), answer("kemal")).writes[0]).toMatchObject({ red: 7, yellow: 10 });
+  });
+
+  it("ANOTHER player's bare team name is not an answer", () => {
+    const { writes, replies } = run(asked(), answer("sait"));
+    expect(writes).toHaveLength(0);
+    expect(replies).toEqual([]);
+  });
+
+  it("...unless they tag the bot", () => {
+    expect(run(asked(), answer("sait", { tagged: true, body: "@Match Time Yellow" })).writes[0]).toMatchObject({
+      red: 7,
+      yellow: 10,
     });
-    expect(writes[0]).toMatchObject({ red: 10, yellow: 7 });
+  });
+
+  it("untagged, the answer is good for 30 minutes", () => {
+    expect(run(asked(SCORE_ANSWER_UNTAGGED_MS - MIN), answer("elvin")).writes).toHaveLength(1);
+    expect(run(asked(SCORE_ANSWER_UNTAGGED_MS + MIN), answer("elvin")).writes).toHaveLength(0);
+    expect(run(asked(SCORE_ANSWER_UNTAGGED_MS + MIN), answer("kemal")).writes).toHaveLength(0);
+  });
+
+  it("tagged, for as long as the question is open: two hours", () => {
+    const tagged = { tagged: true, body: "@Match Time Yellow" };
+    expect(SCORE_ASK_TTL_MS).toBe(2 * HOURS);
+    expect(run(asked(SCORE_ASK_TTL_MS - MIN), answer("elvin", tagged)).writes).toHaveLength(1);
+    expect(run(asked(SCORE_ASK_TTL_MS + MIN), answer("elvin", tagged)).writes).toHaveLength(0);
+  });
+
+  it('"Yellow?" is a question, not an answer', () => {
+    expect(run(asked(), answer("elvin", { body: "Yellow?" })).writes).toHaveLength(0);
+    expect(run(asked(), answer("kemal", { tagged: true, body: "@Match Time yellow??" })).writes).toHaveLength(0);
+  });
+
+  it("a sender WhatsApp did not identify can answer only by tagging the bot", () => {
+    expect(run(asked(), answer(null)).writes).toHaveLength(0);
+    expect(run(asked(), answer(null, { tagged: true, body: "@Match Time Yellow" })).writes).toHaveLength(1);
+  });
+
+  it("somebody who may not report a result cannot answer, tagged or not", () => {
+    expect(run(asked(), answer("zair", { tagged: true, body: "@Match Time Yellow" })).writes).toHaveLength(0);
+  });
+
+  it("an answer that names nobody we know records nothing", () => {
+    const { writes } = run(asked(), { from: "elvin", body: "Arsenal", route: "score", facts: noNumbers({ winner: "Arsenal" }) });
+    expect(writes).toHaveLength(0);
   });
 
   it("the same scoreline again is not asked about again", () => {
-    const { writes, asks, replies, reasons } = run(asked(), {
-      from: "sait",
-      body: "7-10",
-      route: "score",
-      facts: score(7, 10),
-    });
+    const { writes, asks, replies, reasons } = run(asked(), { from: "sait", body: "7-10", route: "score", facts: score(7, 10) });
     expect(writes).toHaveLength(0);
     expect(asks).toHaveLength(0);
     expect(replies).toEqual([]);
@@ -241,73 +292,99 @@ describe("the question is asked ONCE, and its answer completes the result (revie
 
   it("a DIFFERENT scoreline replaces the one being asked about", () => {
     const { asks, replies } = run(asked(), { from: "sait", body: "10-6", route: "score", facts: score(10, 6) });
-    expect(asks).toEqual([expect.objectContaining({ first: 10, second: 6 })]);
+    expect(asks).toEqual([expect.objectContaining({ first: 10, second: 6, askerUserId: "u-sait" })]);
     expect(replies[0]).toMatch(/^10 - 6: which team won\?/);
   });
 
-  it("an answer from somebody who may not report a result records nothing", () => {
-    const { writes, replies } = run(asked(), {
-      from: "zair",
-      body: "Yellow",
-      route: "score",
-      facts: noNumbers({ winner: "Yellow" }),
-    });
-    expect(writes).toHaveLength(0);
-    expect(replies).toEqual([]);
-  });
-
-  it("an answer that names nobody we know records nothing", () => {
-    const { writes } = run(asked(), {
-      from: "kemal",
-      body: "Arsenal",
-      route: "score",
-      facts: noNumbers({ winner: "Arsenal" }),
-    });
-    expect(writes).toHaveLength(0);
-  });
-
-  it("a question older than a day is no longer open", () => {
-    const stale = played({
-      pendingScore: { first: 10, second: 7, askedAt: new Date(NOW.getTime() - SCORE_ASK_TTL_MS - 1).toISOString() },
-    });
-    const { writes } = run(stale, { from: "kemal", body: "Yellow", route: "score", facts: noNumbers({ winner: "Yellow" }) });
-    expect(writes).toHaveLength(0);
-  });
-
   it("a full result while a question is open records it and closes the question", () => {
-    const { writes, r } = run(asked(), {
-      from: "kemal",
-      body: "10-7 to reds",
-      route: "score",
-      facts: score(10, 7, { winner: "reds" }),
-    });
+    const { writes, r } = run(asked(), { from: "kemal", body: "10-7 to reds", route: "score", facts: score(10, 7, { winner: "reds" }) });
     expect(writes[0]).toMatchObject({ red: 10, yellow: 7 });
     expect(r.nextState.completedMatch?.pendingScore).toBeUndefined();
   });
-});
 
-describe("a message with no numbers never becomes a score (review item 3)", () => {
-  it("writes nothing and says nothing when there is no question open", () => {
-    for (const facts of [noNumbers(), noNumbers({ winner: "yellows" }), noNumbers({ correction: true })]) {
-      const { writes, asks, replies, r } = run(played(), {
-        from: "kemal",
-        tagged: true,
-        body: "@Match Time yellows",
-        route: "score",
-        facts,
-      });
+  it('H1: "10-7" then "10-7 to reds" in ONE batch: the result, and no question asked or stored', () => {
+    const { writes, asks, replies, r } = run(
+      played(),
+      { from: "sait", body: "10-7", route: "score", facts: score(10, 7) },
+      { from: "kemal", body: "10-7 to reds", route: "score", facts: score(10, 7, { winner: "reds" }) },
+    );
+    expect(writes).toEqual([expect.objectContaining({ red: 10, yellow: 7 })]);
+    expect(asks).toEqual([]);
+    expect(replies).toEqual(["Got it 👍 *Red* won 10 - 7 against Yellow. Recorded."]);
+    expect(r.nextState.completedMatch?.pendingScore).toBeUndefined();
+  });
+
+  it("H1: a question is NEVER valid for a match that has a result", () => {
+    // A row left behind by anything at all. The bare "Yellow" used to
+    // complete it as a "correction" and overwrite the recorded result.
+    const stale = asked(MIN, { redScore: 10, yellowScore: 6, status: "COMPLETED" });
+    for (const m of [answer("elvin"), answer("kemal"), answer("kemal", { tagged: true, body: "@Match Time Yellow" })]) {
+      const { writes, asks } = run(stale, m);
       expect(writes).toHaveLength(0);
       expect(asks).toHaveLength(0);
-      expect(replies).toEqual([]);
+    }
+  });
+});
+
+describe("a message with no numbers never becomes a score", () => {
+  it("writes nothing when there is no question open", () => {
+    for (const facts of [noNumbers(), noNumbers({ winner: "yellows" }), noNumbers({ correction: true })]) {
+      const { writes, asks, r } = run(played(), { from: "kemal", body: "yellows", route: "score", facts });
+      expect(writes).toHaveLength(0);
+      expect(asks).toHaveLength(0);
       expect(r.nextState.completedMatch).toMatchObject({ redScore: null, yellowScore: null });
     }
   });
 
-  it("never 0-0, even when the model is told there is no score and sends zeros anyway", () => {
-    // What the parser hands the engine for hasScore false is nulls. This
-    // pins the engine's half: nulls write nothing.
-    const { r } = run(played(), { from: "kemal", body: "good game", route: "score", facts: noNumbers() });
-    expect(r.writes).toHaveLength(0);
+  it('"@Match Time yellows won" with nothing recorded and no question open is asked for the score', () => {
+    const { writes, replies } = run(played(), {
+      from: "kemal",
+      tagged: true,
+      body: "@Match Time yellows won",
+      route: "score",
+      facts: noNumbers({ winner: "yellows" }),
+    });
+    expect(writes).toHaveLength(0);
+    expect(replies).toEqual(["What was the final score? Tell me both numbers and the team that won."]);
+  });
+
+  it("...and untagged it is left alone", () => {
+    const { replies } = run(played(), { from: "kemal", body: "yellows won", route: "score", facts: noNumbers({ winner: "yellows" }) });
+    expect(replies).toEqual([]);
+  });
+
+  // M1. `hasScore: true` with zeros is what a model that ignores the
+  // instruction sends for a message with no scoreline. The flag is not
+  // trusted: the MESSAGE has to contain two numbers.
+  const through = (body: string, wire: Record<string, unknown>, tagged = false) => {
+    const { facts } = parseFacts(
+      "score",
+      JSON.stringify({ firstTeam: "", secondTeam: "", winner: "", loser: "", correction: false, swapped: false, otherGame: false, ...wire }),
+      "wa-1",
+    );
+    return run(played(), { from: "kemal", tagged, body, route: "score", facts });
+  };
+
+  it("M1: never 0-0 from a message with no numbers, even when the model says hasScore true and sends zeros", () => {
+    for (const body of ["good game lads", "yellows won", "@Match Time what a match"]) {
+      const { writes, r } = through(body, { hasScore: true, first: 0, second: 0 });
+      expect(writes, body).toHaveLength(0);
+      expect(r.nextState.completedMatch).toMatchObject({ redScore: null, yellowScore: null });
+    }
+  });
+
+  it("M1: nor any other score the text does not contain", () => {
+    expect(through("yellows battered them", { hasScore: true, first: 5, second: 0, winner: "yellows" }).writes).toHaveLength(0);
+    // One number is not a scoreline.
+    expect(through("yellows got 9", { hasScore: true, first: 9, second: 0, winner: "yellows" }).writes).toHaveLength(0);
+    // A phone number in a mention is not a score.
+    expect(through("@447700900123 @447700900456 good game", { hasScore: true, first: 0, second: 0 }).writes).toHaveLength(0);
+  });
+
+  it('M1: a real "0-0" is still a draw', () => {
+    const { writes, replies } = through("0-0, dreadful", { hasScore: true, first: 0, second: 0 });
+    expect(writes[0]).toMatchObject({ red: 0, yellow: 0 });
+    expect(replies).toEqual(["Got it 👍 a draw, Red 0 - 0 Yellow. Recorded."]);
   });
 });
 
@@ -329,14 +406,35 @@ describe("the incident, message 2: correcting a recorded result", () => {
     expect(replies).toEqual(["Corrected 👍 It was Red 9 - 6 Yellow. Now *Yellow* won 9 - 6 against Red."]);
   });
 
-  it("a player from the match may correct it too, and needs no tag", () => {
+  it("a player from the match may correct it too, by tagging the bot", () => {
     const { writes } = run(wrong(), {
       from: "wasim",
-      body: "no it was 9-6 to yellow",
+      tagged: true,
+      body: "@Match Time no it was 9-6 to yellow",
       route: "score",
       facts: score(9, 6, { winner: "yellow", correction: true }),
     });
     expect(writes[0]).toMatchObject({ red: 6, yellow: 9, previous: { red: 9, yellow: 6 } });
+  });
+
+  it("H2: WITHOUT a tag a correction changes nothing and says nothing, whoever sends it", () => {
+    // "no, reds won 3-1" about Liverpool, from a player, was flagged a
+    // correction and overwrote the club's result. A flag from a model is
+    // not enough to change a record; the sender has to address the bot.
+    for (const from of ["kemal", "wasim", "zair", null]) {
+      for (const facts of [
+        score(3, 1, { winner: "reds", correction: true }),
+        fix,
+        noNumbers({ correction: true, swapped: true }),
+        noNumbers({ correction: true, winner: "yellows" }),
+        score(9, 7, { correction: true }),
+      ]) {
+        const { writes, asks, replies } = run(wrong(), { from, body: "no, reds won 3-1", route: "score", facts });
+        expect(writes).toHaveLength(0);
+        expect(asks).toHaveLength(0);
+        expect(replies).toEqual([]);
+      }
+    }
   });
 
   it("repeating the recorded result changes nothing and says nothing", () => {
@@ -397,8 +495,10 @@ describe("the incident, message 2: correcting a recorded result", () => {
     expect(SCORE_CORRECTION_WINDOW_MS).toBe(48 * HOURS);
   });
 
-  it("a correction that does not say which team is asked about, and the question is remembered", () => {
-    const { writes, asks, replies } = run(wrong(), {
+  it("a correction that does not say which team is told how to correct it: NO question about a recorded match", () => {
+    // It used to ask "9 - 7: which team won?", and a bare "Red" from
+    // anybody then overwrote the result (H2, the two-step variant).
+    const { writes, asks, replies, r } = run(wrong(), {
       from: "kemal",
       tagged: true,
       body: "@Match Time no it was 9-7",
@@ -406,22 +506,9 @@ describe("the incident, message 2: correcting a recorded result", () => {
       facts: score(9, 7, { correction: true }),
     });
     expect(writes).toHaveLength(0);
-    expect(asks).toEqual([expect.objectContaining({ first: 9, second: 7 })]);
-    expect(replies[0]).toMatch(/^9 - 7: which team won\?/);
-  });
-
-  it('...and "Yellow" then completes the correction', () => {
-    const state = wrong({
-      pendingScore: { first: 9, second: 7, askedAt: new Date(NOW.getTime() - 60_000).toISOString() },
-    });
-    const { writes, replies } = run(state, {
-      from: "kemal",
-      body: "Yellow",
-      route: "score",
-      facts: noNumbers({ winner: "Yellow" }),
-    });
-    expect(writes[0]).toMatchObject({ red: 7, yellow: 9, previous: { red: 9, yellow: 6 } });
-    expect(replies).toEqual(["Corrected 👍 It was Red 9 - 6 Yellow. Now *Yellow* won 9 - 7 against Red."]);
+    expect(asks).toHaveLength(0);
+    expect(replies).toEqual([RECORDED_9_6_HINT]);
+    expect(r.nextState.completedMatch?.pendingScore).toBeUndefined();
   });
 
   it("a correcting DRAW needs no team", () => {
@@ -448,93 +535,78 @@ describe("the incident, message 2: correcting a recorded result", () => {
   });
 });
 
-describe('"wrong way round": a correction with no numbers (review item 3)', () => {
+describe('"wrong way round": a tagged correction with no numbers', () => {
   const wrong = (over: Partial<Completed> = {}) => played({ redScore: 9, yellowScore: 6, status: "COMPLETED", ...over });
+  const tagged = (body: string, facts: ScoreFacts, from: string | null = "kemal") => ({
+    from,
+    tagged: true,
+    body: `@Match Time ${body}`,
+    route: "score" as const,
+    facts,
+  });
 
   it('"@Match Time wrong way round, yellows won" swaps the recorded result to Yellow', () => {
-    const { writes, replies } = run(wrong(), {
-      from: "kemal",
-      tagged: true,
-      body: "@Match Time wrong way round, yellows won",
-      route: "score",
-      facts: noNumbers({ correction: true, swapped: true, winner: "yellows" }),
-    });
+    const { writes, replies } = run(
+      wrong(),
+      tagged("wrong way round, yellows won", noNumbers({ correction: true, swapped: true, winner: "yellows" })),
+    );
     expect(writes).toEqual([expect.objectContaining({ red: 6, yellow: 9, previous: { red: 9, yellow: 6 } })]);
     expect(replies).toEqual(["Corrected 👍 It was Red 9 - 6 Yellow. Now *Yellow* won 9 - 6 against Red."]);
   });
 
   it('"other way round", naming nobody, swaps it', () => {
-    const { writes } = run(wrong(), {
-      from: "wasim",
-      body: "other way round",
-      route: "score",
-      facts: noNumbers({ correction: true, swapped: true }),
-    });
+    const { writes } = run(wrong(), tagged("other way round", noNumbers({ correction: true, swapped: true }), "wasim"));
     expect(writes[0]).toMatchObject({ red: 6, yellow: 9, previous: { red: 9, yellow: 6 } });
   });
 
   it('"no, yellows won" without the word swapped is the same correction', () => {
-    const { writes } = run(wrong(), {
-      from: "kemal",
-      body: "no, yellows won",
-      route: "score",
-      facts: noNumbers({ correction: true, winner: "yellows" }),
-    });
+    const { writes } = run(wrong(), tagged("no, yellows won", noNumbers({ correction: true, winner: "yellows" })));
     expect(writes[0]).toMatchObject({ red: 6, yellow: 9 });
   });
 
-  it('"wrong way round, reds won" when Red is already recorded as the winner changes nothing', () => {
-    // The winner named is the winner recorded. Swapping would make the
-    // message's own words false.
-    const { writes, replies, reasons } = run(wrong(), {
-      from: "kemal",
-      tagged: true,
-      body: "@Match Time wrong way round, reds won",
-      route: "score",
-      facts: noNumbers({ correction: true, swapped: true, winner: "reds" }),
+  it("M4: a question left open never supplies the numbers for a swap", () => {
+    const withStale = wrong({
+      pendingScore: { first: 12, second: 3, askedAt: new Date(NOW.getTime() - 60_000).toISOString(), askerUserId: "u-kemal" },
     });
+    const { writes } = run(withStale, tagged("no, yellows won", noNumbers({ correction: true, winner: "yellows" })));
+    expect(writes).toEqual([expect.objectContaining({ red: 6, yellow: 9 })]);
+  });
+
+  it('"wrong way round, reds won" when Red is already recorded as the winner changes nothing', () => {
+    const { writes, replies, reasons } = run(
+      wrong(),
+      tagged("wrong way round, reds won", noNumbers({ correction: true, swapped: true, winner: "reds" })),
+    );
     expect(writes).toHaveLength(0);
     expect(replies).toEqual([]);
     expect(reasons).toMatch(/same result/);
   });
 
   it("a numberless correction the bot cannot read is answered with what is recorded and how to correct it", () => {
-    for (const facts of [
-      noNumbers({ correction: true }),
-      noNumbers({ correction: true, winner: "Arsenal" }),
-    ]) {
-      const { writes, replies } = run(wrong(), { from: "kemal", tagged: true, body: "@Match Time wrong", route: "score", facts });
+    for (const facts of [noNumbers({ correction: true }), noNumbers({ correction: true, winner: "Arsenal" })]) {
+      const { writes, replies } = run(wrong(), tagged("wrong", facts));
       expect(writes).toHaveLength(0);
       expect(replies).toEqual([RECORDED_9_6_HINT]);
     }
   });
 
   it("a recorded DRAW cannot be swapped: it is answered, not changed", () => {
-    const { writes, replies } = run(wrong({ redScore: 7, yellowScore: 7 }), {
-      from: "kemal",
-      tagged: true,
-      body: "@Match Time wrong, yellows won",
-      route: "score",
-      facts: noNumbers({ correction: true, winner: "yellows" }),
-    });
+    const { writes, replies } = run(
+      wrong({ redScore: 7, yellowScore: 7 }),
+      tagged("wrong, yellows won", noNumbers({ correction: true, winner: "yellows" })),
+    );
     expect(writes).toHaveLength(0);
     expect(replies[0]).toMatch(/^That match is already recorded: a draw, Red 7 - 7 Yellow\. If that is wrong/);
   });
 
   it("is refused for somebody who may not correct, like any correction", () => {
-    const { writes, replies } = run(wrong(), {
-      from: "zair",
-      tagged: true,
-      body: "@Match Time wrong way round",
-      route: "score",
-      facts: noNumbers({ correction: true, swapped: true }),
-    });
+    const { writes, replies } = run(wrong(), tagged("wrong way round", noNumbers({ correction: true, swapped: true }), "zair"));
     expect(writes).toHaveLength(0);
     expect(replies).toEqual([RECORDED_9_6_ADMIN]);
   });
 });
 
-describe("a tag is not a correction (review item 6)", () => {
+describe("a tag is not a correction, and no tag means no reply (M3)", () => {
   const recorded = (over: Partial<Completed> = {}) => played({ redScore: 9, yellowScore: 6, status: "COMPLETED", ...over });
 
   it("a tagged score that is NOT a correction never replaces the recorded result", () => {
@@ -575,21 +647,29 @@ describe("a tag is not a correction (review item 6)", () => {
     expect(replies).toEqual([]);
   });
 
-  it("an untagged score message that is not a correction still changes nothing and says nothing", () => {
-    const { writes, replies, reasons } = run(recorded(), {
-      from: "kemal",
-      body: "9-2 to yellows, what a night",
-      route: "score",
-      facts: score(9, 2, { winner: "yellows" }),
-    });
-    expect(writes).toHaveLength(0);
-    expect(replies).toEqual([]);
-    expect(reasons).toMatch(/already recorded 9-6/);
+  it("M3: once a result is recorded, NOTHING untagged gets a reply", () => {
+    // Every "already recorded" reply this PR added, sent without a tag.
+    const cases: Array<[string | null, ScoreFacts, Partial<Completed>]> = [
+      ["kemal", score(9, 2, { winner: "yellows" }), {}], // not a correction
+      ["zair", score(9, 6, { winner: "yellow", correction: true }), {}], // may not correct
+      [null, score(9, 6, { winner: "yellow", correction: true }), {}], // unidentified
+      ["kemal", score(9, 6, { winner: "yellow", correction: true }), { kickoffAt: new Date(NOW.getTime() - 60 * HOURS).toISOString() }], // too late
+      ["kemal", noNumbers({ correction: true }), {}], // unreadable correction
+      ["kemal", noNumbers({ winner: "yellows" }), {}], // a bare claim
+    ];
+    for (const [from, facts, over] of cases) {
+      const { writes, asks, replies } = run(recorded(over), { from, body: "9-2 to yellows", route: "score", facts });
+      expect(writes).toHaveLength(0);
+      expect(asks).toHaveLength(0);
+      expect(replies).toEqual([]);
+    }
   });
 });
 
-describe("two matches inside 48 hours (review item 6)", () => {
-  it('"no, it was 9-6 to yellow" is NOT recorded against a newer match that has no result yet', () => {
+describe("two matches inside 48 hours", () => {
+  const corr = score(9, 6, { winner: "yellow", correction: true });
+
+  it('"@Match Time no it was 9-6 to yellow" is NOT recorded against a newer match that has no result yet', () => {
     // Monday's match is recorded. Tuesday's has just been played and has
     // no result. The correction is about Monday, and the engine only
     // ever holds the latest match.
@@ -598,12 +678,23 @@ describe("two matches inside 48 hours (review item 6)", () => {
       tagged: true,
       body: "@Match Time no it was 9-6 to yellow",
       route: "score",
-      facts: score(9, 6, { winner: "yellow", correction: true }),
+      facts: corr,
     });
     expect(writes).toHaveLength(0);
     expect(replies).toEqual([
       "I can't tell which match that corrects. For Tue 21:30, just tell me the score and the team that won. An admin can change an earlier result on its match page.",
     ]);
+  });
+
+  it("M3: untagged, the same message is not recorded and gets no reply", () => {
+    const { writes, replies } = run(played({ earlierRecentResult: true }), {
+      from: "kemal",
+      body: "no it was 9-6 to yellow",
+      route: "score",
+      facts: corr,
+    });
+    expect(writes).toHaveLength(0);
+    expect(replies).toEqual([]);
   });
 
   it("a plain first report still lands on the newer match", () => {
@@ -616,7 +707,7 @@ describe("two matches inside 48 hours (review item 6)", () => {
     expect(writes[0]).toMatchObject({ matchId: "done-1", red: 6, yellow: 9 });
   });
 
-  it('with no other recent result, "no, it was 10-7 to red" on an unscored match is simply its result', () => {
+  it('with no other recent result, "no it was 10-7 to red" on an unscored match is simply its result', () => {
     // Two players disagreeing about tonight's score before anything is
     // recorded. There is nothing else it could be correcting.
     const { writes } = run(played(), {

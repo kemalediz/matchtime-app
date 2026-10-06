@@ -455,6 +455,9 @@ export const tr: Strings = {
   score_recorded_hint: (p) =>
     `Bu maçın sonucu zaten kayıtlı: ${resultTr(p)}. ` +
     `Yanlışsa "hayır" diye başlayıp doğru skoru ve kazanan takımı yazın.`,
+  score_ask_score: "Maç kaç kaç bitti? İki sayıyı ve kazanan takımı yazın.",
+  score_elo_no_teams_note:
+    "Skor kaydedildi. Bu maç için takım belirlenmediğinden Elo uygulanmadı. Takımlar sonradan eklenirse Elo'nun uygulanması için skoru yeniden kaydedin.",
   score_which_match: (p) =>
     `Bunun hangi maçı düzelttiğini anlayamadım. ${p.kickoffLabel} için skoru ve kazanan takımı yazmanız yeterli. ` +
     `Daha önceki bir sonucu bir yönetici o maçın sayfasından değiştirebilir.`,

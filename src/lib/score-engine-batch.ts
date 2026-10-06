@@ -146,7 +146,7 @@ import {
   type ScoreApplyDeps,
 } from "./score-engine";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
-import { isScoreAskOpen, scoreAnswerRef } from "./pipeline/score-ask";
+import { isScoreAnswer, isScoreAskOpen, scoreAnswerRef } from "./pipeline/score-ask";
 import { resolveTeamRef } from "./pipeline/score-teams";
 
 export { SCORE_APPLY_DEGRADED_PREFIX, SCORE_HANDLED_BY };
@@ -298,15 +298,33 @@ export async function runScoreBatch(args: {
   // the text, and the extractor is not called: paying a model to read
   // one word would also be trusting it with the one decision this route
   // keeps in code, whose team is whose.
+  //
+  // NARROW, and the same rule everywhere (`isScoreAnswer`): the match
+  // has NO result, the question is open, and the message tags the bot or
+  // comes from whoever posted the scoreline or an identified admin
+  // within thirty minutes. The engine applies the rule again before
+  // anything is written; this only decides who reads the message.
   const playedMatch = state.completedMatch;
+  const unscored = !!playedMatch && playedMatch.redScore === null && playedMatch.yellowScore === null;
   const openAsk =
-    playedMatch?.pendingScore && isScoreAskOpen(playedMatch.pendingScore.askedAt, now)
+    unscored && playedMatch?.pendingScore && isScoreAskOpen(playedMatch.pendingScore.askedAt, now)
       ? playedMatch.pendingScore
       : null;
   const askLabels = playedMatch?.teamLabels ?? state.teamLabels;
   const toExtract: ScoreBatchMessage[] = [];
   for (const m of candidates) {
-    const ref = openAsk ? scoreAnswerRef(m.body) : null;
+    const ref =
+      openAsk &&
+      isScoreAnswer({
+        body: m.body,
+        tagged: m.tagged,
+        senderUserId: m.senderUserId,
+        senderIsAdmin: !!m.senderUserId && !!state.roster.find((r) => r.userId === m.senderUserId)?.isAdmin,
+        ask: openAsk,
+        now,
+      })
+        ? scoreAnswerRef(m.body)
+        : null;
     if (ref && resolveTeamRef(ref, askLabels, null)) {
       factsById.set(m.waMessageId, { kind: "score", first: null, second: null, winner: ref });
     } else {
@@ -503,7 +521,12 @@ export async function runScoreBatch(args: {
   for (const a of askWrites) {
     if (!deps.recordScoreAsk) continue;
     try {
-      await deps.recordScoreAsk({ matchId: a.matchId, first: a.first, second: a.second });
+      await deps.recordScoreAsk({
+        matchId: a.matchId,
+        first: a.first,
+        second: a.second,
+        askerUserId: a.askerUserId,
+      });
     } catch (err) {
       degradations.push(
         `${SCORE_APPLY_DEGRADED_PREFIX} ${a.sourceMessageId}: the question about ${a.first}-${a.second} ` +

@@ -170,6 +170,8 @@ const SAMPLES: SampleArgs = {
   score_already_recorded: { redLabel: "Kırmızı", red: 4, yellow: 4, yellowLabel: "Sarı" },
   score_recorded_hint: { redLabel: "Kırmızı", red: 9, yellow: 6, yellowLabel: "Sarı" },
   score_which_match: { kickoffLabel: "Sal 21:30" },
+  score_ask_score: null,
+  score_elo_no_teams_note: null,
   score_elo_left_note: null,
   payment_ack: { firstName: "Sait", count: 3 },
   payments_live_announcement: { collector: "Kemal", card: true, bank: true, direct: true },

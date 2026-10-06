@@ -73,7 +73,6 @@
  *      trusted. Same one-directional shape as the floor, different
  *      trigger. See `awaiting-answer.ts`.
  */
-import { scoreAnswerSide } from "./score-ask";
 import { messageTagsBot } from "../interaction-contract";
 import {
   clarificationSubject,
@@ -655,19 +654,53 @@ export interface RouteBatchOptions {
    */
   clarifications?: StatsClarification[];
   /**
-   * MATCHTIME HAS ASKED WHICH TEAM WON A SCORELINE and is waiting
-   * (2026-10-07, `score-ask.ts`). The team names of that match. While it
-   * is set, a message that is nothing but one of those names ("Yellow",
-   * "reds won") is the answer and goes to `score`, whatever the model
-   * called it: a bare team name is chatter to a router that does not
-   * know a question is open. Null almost always.
+   * MESSAGES THAT ANSWER MATCHTIME'S OPEN "WHICH TEAM WON?" (2026-10-07,
+   * `score-ask.ts`). Decided by the CALLER, deterministically, from who
+   * sent each message, whether it tags the bot and how long ago the
+   * question was asked (`isScoreAnswer`); the router is only told the
+   * ids. Each goes to `score` whatever the model called it, AND when the
+   * model was not asked or did not answer: a failed router call must not
+   * lose the answer to a question the bot itself asked. Empty almost
+   * always.
    */
-  scoreAsk?: { labels: readonly [string, string] } | null;
+  scoreAnswerIds?: ReadonlySet<string>;
   /**
    * The club is at its daily AI cap: route with the floor alone and make
    * no model call. See `ai-budget.ts`.
    */
   capped?: boolean;
+}
+
+/**
+ * The answers to MatchTime's open "which team won?" go to `score`.
+ * Applied to EVERY way a batch can be routed (model, floor, fallback,
+ * capped), because which messages qualify was decided before the router
+ * ran and does not depend on it. See `RouteBatchOptions.scoreAnswerIds`.
+ */
+function withScoreAnswers(
+  routes: RoutedMessage[],
+  opts: RouteBatchOptions,
+  degradations: Degradation[],
+): RoutedMessage[] {
+  const ids = opts.scoreAnswerIds;
+  if (!ids || ids.size === 0) return routes;
+  return routes.map((r) => {
+    if (r.route === "score" || !ids.has(r.messageId)) return r;
+    degradations.push(
+      degradation(
+        "router",
+        r.messageId,
+        `MatchTime asked which team won a scoreline and this answers it; ${r.route} → score so the ` +
+          `answer reaches the question it answers`,
+      ),
+    );
+    return {
+      ...r,
+      route: "score" as const,
+      source: "awaiting" as const,
+      overrodeRoute: r.overrodeRoute ?? r.route,
+    };
+  });
 }
 
 /** The routes a batch gets when the model may not be asked: the floor's
@@ -687,6 +720,19 @@ export async function routeBatch(
   model: PipelineModel,
   messages: RouterMessage[],
   opts: RouteBatchOptions = {},
+): Promise<RouterResult> {
+  // Whatever happened inside (the model answered, the floor did, the
+  // call failed, the club is at its cap), the answers to MatchTime's
+  // own open question go to `score`. One place, after every return.
+  const res = await routeBatchInner(model, messages, opts);
+  const degradations = [...res.degradations];
+  return { ...res, routes: withScoreAnswers(res.routes, opts, degradations), degradations };
+}
+
+async function routeBatchInner(
+  model: PipelineModel,
+  messages: RouterMessage[],
+  opts: RouteBatchOptions,
 ): Promise<RouterResult> {
   if (messages.length === 0) return { routes: [], degradations: [] };
 
@@ -894,36 +940,7 @@ export async function routeBatch(
           };
         });
 
-  // ── AND WHILE MATCHTIME IS WAITING TO HEAR WHICH TEAM WON ──────────
-  //
-  // The same shape again (2026-10-07). It fires only on a message that
-  // `scoreAnswerSide` reads as a team of THAT match and nothing else, so
-  // "put me on Yellow" and "yellow were robbed tonight" are untouched.
-  // No model is asked: the score runner reads the answer the same way.
-  const scoreAsk = opts.scoreAsk ?? null;
-  const routesOut = !scoreAsk
-    ? finalRoutes
-    : finalRoutes.map((r) => {
-        if (r.route === "score" || r.source === "fallback") return r;
-        const m = byId.get(r.messageId);
-        if (!m || scoreAnswerSide(m.body, scoreAsk.labels) === null) return r;
-        result.degradations.push(
-          degradation(
-            "router",
-            r.messageId,
-            `MatchTime asked which team won a scoreline and this names one; ${r.route} → score so the ` +
-              `answer reaches the question it answers`,
-          ),
-        );
-        return {
-          ...r,
-          route: "score" as const,
-          source: "awaiting" as const,
-          overrodeRoute: r.overrodeRoute ?? r.route,
-        };
-      });
-
-  return { routes: routesOut, degradations: result.degradations, usage };
+  return { routes: finalRoutes, degradations: result.degradations, usage };
 }
 
 /** Convenience for callers that do not inject a model. */

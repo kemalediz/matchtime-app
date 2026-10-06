@@ -130,4 +130,17 @@ describe("updateMatchScore and the club's Elo", () => {
     expect((await updateMatchScore("m1", { redScore: 9, yellowScore: 6 })).eloNote).toBeNull();
     expect((await updateMatchScore("m1", { redScore: 6, yellowScore: 9 })).eloNote).toBeNull();
   });
+
+  it("a save on the dashboard closes a 'which team won?' the bot had open for the match (H1)", async () => {
+    state.fake!.notifications.push({ key: "m1:score-ask:10-7", kind: "score-ask", matchId: "m1", targetUser: "r1" });
+    await updateMatchScore("m1", { redScore: 10, yellowScore: 6 });
+    expect(state.fake!.notifications).toEqual([]);
+  });
+
+  it("a match with no teams: the score is saved and the admin is told no Elo was applied", async () => {
+    state.fake = fakeScoreDb({ matches: [match({ teams: [] })], ratings: { ...START } });
+    const res = await updateMatchScore("m1", { redScore: 3, yellowScore: 1 });
+    expect(res.eloNote).toMatch(/^Score saved\. No teams are set for this match/);
+    expect(ratingsNow()).toEqual(START);
+  });
 });

@@ -234,7 +234,7 @@ describe("the edges", () => {
   it("a match with no teams records the score and moves nobody", async () => {
     const f = fakeDb({ matches: [unscored({ teams: [] })], ratings: { ...START } });
     const res = await score(f.db, 5, 3);
-    expect(res).toMatchObject({ status: "applied", moved: 0 });
+    expect(res).toMatchObject({ status: "no_teams", moved: 0 });
     expect(Object.fromEntries(f.ratings)).toEqual(START);
     expect(f.matches.get("m1")).toMatchObject({ redScore: 5, yellowScore: 3 });
   });
@@ -377,5 +377,108 @@ describe("a score changed by something that does not keep the record (review ite
     // And it stays flagged rather than quietly "healing" on the next save.
     expect((await score(f.db, 8, 9)).status).toBe("legacy_left");
     expect(Object.fromEntries(f.ratings)).toEqual(stacked);
+  });
+});
+
+// ── Second review of PR #214 ───────────────────────────────────────────
+
+describe("a score recorded before the team sheet exists is PENDING, not applied", () => {
+  it("adds nothing, says so, and applies the result once teams exist and the score is saved again", async () => {
+    const f = fakeDb({ matches: [unscored({ teams: [] })], ratings: { ...START } });
+    const first = await score(f.db, 9, 6);
+    expect(first).toMatchObject({ status: "no_teams", moved: 0 });
+    expect(Object.fromEntries(f.ratings)).toEqual(START);
+    // NOT stored as applied: that is what made a later reconcile say
+    // "unchanged" for ever.
+    expect(parseEloApplied(f.matches.get("m1")!.eloApplied)).toEqual({ target: { red: 9, yellow: 6 }, applied: null });
+
+    f.matches.get("m1")!.teams = TEAMS; // teams added later
+    const again = await score(f.db, 9, 6); // the admin saves the score again
+    expect(again).toMatchObject({ status: "applied", moved: 6 });
+    expect(Object.fromEntries(f.ratings)).toEqual(expectedAfter(START, 9, 6));
+  });
+
+  it("a reconcile alone is enough once teams exist", async () => {
+    const f = fakeDb({ matches: [unscored({ teams: [] })], ratings: { ...START } });
+    await score(f.db, 9, 6);
+    f.matches.get("m1")!.teams = TEAMS;
+    expect((await reconcileMatchElo({ db: f.db, matchId: "m1" })).status).toBe("applied");
+    expect(Object.fromEntries(f.ratings)).toEqual(expectedAfter(START, 9, 6));
+  });
+
+  it("a team sheet that has gone: the old points come back off and the match is pending again", async () => {
+    const f = fakeDb({ matches: [unscored()], ratings: { ...START } });
+    await score(f.db, 9, 6);
+    f.matches.get("m1")!.teams = [];
+    const res = await score(f.db, 6, 9);
+    expect(res.status).toBe("no_teams");
+    expect(Object.fromEntries(f.ratings)).toEqual(START);
+    expect(parseEloApplied(f.matches.get("m1")!.eloApplied)?.applied).toBeNull();
+  });
+});
+
+describe("an unreadable record is OUT OF STEP: never legacy, never stamped over in silence", () => {
+  const junk = { red: 9, yellow: 6, deltas: [] }; // the FIRST shape this column ever had
+
+  it("says so loudly, leaves every rating alone, and keeps what it could not read", async () => {
+    const carried = expectedAfter(START, 9, 6);
+    const errors: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void errors.push(a.join(" "));
+    try {
+      const f = fakeDb({
+        matches: [unscored({ status: "COMPLETED", redScore: 9, yellowScore: 6, eloApplied: junk })],
+        ratings: { ...carried },
+      });
+      const res = await score(f.db, 6, 9);
+      expect(res.status).toBe("legacy_left");
+      expect(res.detail).toMatch(/could not be read/);
+      expect(Object.fromEntries(f.ratings)).toEqual(carried);
+      expect(f.matches.get("m1")).toMatchObject({ redScore: 6, yellowScore: 9 });
+      const kept = f.matches.get("m1")!.eloApplied as Record<string, unknown>;
+      expect(kept.outOfStep).toBe(true);
+      expect(kept.unreadable).toEqual(junk);
+      expect(errors.join("\n")).toMatch(/match m1.*unreadable/i);
+      // And it stays that way.
+      expect((await score(f.db, 7, 9)).status).toBe("legacy_left");
+      expect(Object.fromEntries(f.ratings)).toEqual(carried);
+    } finally {
+      console.error = orig;
+    }
+  });
+
+  it("a reconcile on its own does not treat it as an untouched legacy match", async () => {
+    const f = fakeDb({
+      matches: [unscored({ status: "COMPLETED", redScore: 9, yellowScore: 6, eloApplied: "nonsense" })],
+      ratings: { ...START },
+    });
+    const orig = console.error;
+    console.error = () => {};
+    try {
+      expect((await reconcileMatchElo({ db: f.db, matchId: "m1" })).status).toBe("legacy_left");
+    } finally {
+      console.error = orig;
+    }
+    expect(Object.fromEntries(f.ratings)).toEqual(START);
+  });
+});
+
+describe("every score writer closes the open 'which team won?' question", () => {
+  it("setMatchScore deletes it in the same transaction as the score", async () => {
+    const f = fakeDb({ matches: [unscored()], ratings: { ...START } });
+    f.notifications.push({ key: "m1:score-ask:10-7", kind: "score-ask", matchId: "m1" });
+    f.notifications.push({ key: "m2:score-ask:3-1", kind: "score-ask", matchId: "m2" });
+    f.notifications.push({ key: "m1:badges", kind: "badges", matchId: "m1" });
+    await setMatchScore({ db: f.db, matchId: "m1", red: 10, yellow: 7 });
+    expect(f.notifications.map((n) => n.key).sort()).toEqual(["m1:badges", "m2:score-ask:3-1"]);
+  });
+
+  it("a refused write deletes nothing", async () => {
+    const f = fakeDb({ matches: [unscored({ redScore: 4, yellowScore: 4, status: "COMPLETED" })], ratings: { ...START } });
+    f.notifications.push({ key: "m1:score-ask:10-7", kind: "score-ask", matchId: "m1" });
+    await expect(
+      setMatchScore({ db: f.db, matchId: "m1", red: 1, yellow: 0, expectPrevious: { red: 9, yellow: 6 } }),
+    ).rejects.toBeInstanceOf(ScoreMovedError);
+    expect(f.notifications).toHaveLength(1);
   });
 });

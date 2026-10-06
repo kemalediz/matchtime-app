@@ -196,14 +196,17 @@ export async function loadSquadState(
     : [];
 
   // The scoreline MatchTime has asked about for the played match, if any
-  // (`score-ask.ts`). One row per match at most; the newest wins.
-  const scoreAskRow = completed
-    ? await db.sentNotification.findFirst({
-        where: { kind: SCORE_ASK_KIND, matchId: completed.id },
-        orderBy: { createdAt: "desc" },
-        select: { key: true, createdAt: true },
-      })
-    : null;
+  // (`score-ask.ts`). One row per match at most; the newest wins. ONLY
+  // for a match with no result: a question about a match that has one
+  // is not a question any more, whoever left the row there.
+  const scoreAskRow =
+    completed && completed.redScore === null && completed.yellowScore === null
+      ? await db.sentNotification.findFirst({
+          where: { kind: SCORE_ASK_KIND, matchId: completed.id },
+          orderBy: { createdAt: "desc" },
+          select: { key: true, createdAt: true, targetUser: true },
+        })
+      : null;
   const scoreAsk = scoreAskRow ? parseScoreAskKey(scoreAskRow.key) : null;
   // Another match of the club with a result, kicked off inside the
   // correction window. See `SquadState.completedMatch.earlierRecentResult`.
@@ -278,6 +281,7 @@ export async function loadSquadState(
                   first: scoreAsk.first,
                   second: scoreAsk.second,
                   askedAt: scoreAskRow.createdAt.toISOString(),
+                  askerUserId: scoreAskRow.targetUser ?? null,
                 },
               }
             : {}),

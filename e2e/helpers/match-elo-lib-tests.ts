@@ -165,33 +165,134 @@ async function main() {
       const deps = buildScoreApplyDeps();
       assert.ok(deps.recordScoreAsk, "the production deps can remember a question");
 
-      await deps.recordScoreAsk({ matchId: M3, first: 10, second: 7 });
+      await deps.recordScoreAsk({ matchId: M3, first: 10, second: 7, askerUserId: U.player });
       const open = await loadOpenScoreAsk(ORG_ID);
       assert.equal(open?.matchId, M3);
       assert.deepEqual([open?.first, open?.second], [10, 7]);
+      assert.equal(open?.askerUserId, U.player);
       assert.equal(open?.labels.length, 2);
+      assert.ok(open?.adminUserIds.includes(U.admin), "the club's admins come with the question");
+      assert.ok(!open?.adminUserIds.includes(U.player));
       const state = await loadSquadState(ORG_ID, new Date());
       assert.equal(state.completedMatch?.id, M3, "the state loader holds the same match");
-      assert.deepEqual(
-        [state.completedMatch?.pendingScore?.first, state.completedMatch?.pendingScore?.second],
-        [10, 7],
-      );
+      assert.deepEqual(state.completedMatch?.pendingScore && {
+        first: state.completedMatch.pendingScore.first,
+        second: state.completedMatch.pendingScore.second,
+        askerUserId: state.completedMatch.pendingScore.askerUserId,
+      }, { first: 10, second: 7, askerUserId: U.player });
       assert.equal(state.completedMatch?.teams?.length, 4);
       assert.ok(state.completedMatch?.kickoffAt);
-      ok("a question is stored and read back by both loaders");
+      ok("a question is stored with its asker and read back by both loaders");
 
-      await deps.recordScoreAsk({ matchId: M3, first: 10, second: 6 });
+      await deps.recordScoreAsk({ matchId: M3, first: 10, second: 6, askerUserId: null });
       const replaced = await loadOpenScoreAsk(ORG_ID);
-      assert.deepEqual([replaced?.first, replaced?.second], [10, 6]);
+      assert.deepEqual([replaced?.first, replaced?.second, replaced?.askerUserId], [10, 6, null]);
       assert.equal(await db.sentNotification.count({ where: { matchId: M3, kind: "score-ask" } }), 1);
       ok("a different scoreline replaces it: one open question per match");
 
-      await deps.recordScore({ matchId: M3, red: 6, yellow: 10 });
+      // A QUESTION IS NEVER VALID FOR A MATCH WITH A RESULT. Put a result
+      // on the match BEHIND the writer's back (raw SQL, so nothing clears
+      // the row) and both loaders must stop returning it.
+      await db.$executeRaw`UPDATE "Match" SET "redScore" = 1, "yellowScore" = 0 WHERE id = ${M3}`;
+      assert.equal(await db.sentNotification.count({ where: { matchId: M3, kind: "score-ask" } }), 1);
+      assert.equal(await loadOpenScoreAsk(ORG_ID), null);
+      assert.equal((await loadSquadState(ORG_ID, new Date())).completedMatch?.pendingScore, undefined);
+      ok("a row left on a match that has a result is returned by neither loader");
+      await db.$executeRaw`UPDATE "Match" SET "redScore" = NULL, "yellowScore" = NULL WHERE id = ${M3}`;
+
+      // EVERY writer closes it, because the clear is inside setMatchScore.
+      await setMatchScore({ matchId: M3, red: 6, yellow: 10 }); // what the dashboard and the legacy route call
+      assert.equal(await db.sentNotification.count({ where: { matchId: M3, kind: "score-ask" } }), 0);
       assert.equal(await loadOpenScoreAsk(ORG_ID), null);
       const after = await loadSquadState(ORG_ID, new Date());
       assert.equal(after.completedMatch?.pendingScore, undefined);
       assert.equal(after.completedMatch?.redScore, 6);
-      ok("recording a result clears the question");
+      ok("setMatchScore deletes the question in the same transaction, for every writer");
+    }
+
+    // ── THE MIGRATION FILE ITSELF, run as written ────────────────────
+    //
+    // It backfills one real match by id. The fixture below is that
+    // match's shape (the id, Red 6 Yellow 9, fourteen players), the
+    // statements are read from the file, and what they leave in the
+    // column is read back through the code that will read it in
+    // production.
+    {
+      const REAL = "cmtbro2ct0006tt9kxjbbr0ce";
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const sql = fs.readFileSync(
+        path.join(process.cwd(), "prisma/migrations/20261007090000_match_elo_applied/migration.sql"),
+        "utf8",
+      );
+      const statements = sql
+        .split("\n")
+        .filter((l) => !l.trim().startsWith("--"))
+        .join("\n")
+        .split(";")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      assert.deepEqual(
+        statements.map((x) => x.split(/\s+/).slice(0, 2).join(" ").toUpperCase()),
+        ["BEGIN", "SET LOCAL", "ALTER TABLE", "UPDATE \"MATCH\"", "COMMIT"],
+        "the file is one transaction with a transaction-local lock timeout, one ALTER and one UPDATE",
+      );
+
+      const extra = Array.from({ length: 14 }, (_, i) => `${P}-u${i}`);
+      try {
+        await db.user.createMany({ data: extra.map((id) => ({ id, name: id, email: `${id}@e2e.test` })) });
+        await db.match.create({
+          data: {
+            id: REAL,
+            activityId: ACTIVITY_ID,
+            date: new Date("2026-10-06T19:30:00Z"),
+            maxPlayers: 14,
+            status: "COMPLETED",
+            attendanceDeadline: new Date("2026-10-06T19:30:00Z"),
+            redScore: 6,
+            yellowScore: 9,
+            teamAssignments: {
+              create: extra.map((userId, i) => ({ userId, team: i < 7 ? ("RED" as const) : ("YELLOW" as const) })),
+            },
+          },
+        });
+        await db.$transaction(async (tx) => {
+          for (const st of statements) {
+            if (/^(BEGIN|COMMIT)$/i.test(st)) continue; // Prisma owns the transaction
+            await tx.$executeRawUnsafe(st);
+          }
+        });
+        const row = await db.match.findUnique({ where: { id: REAL }, select: { eloApplied: true } });
+        const rec = parseEloApplied(row?.eloApplied);
+        assert.ok(rec, "the backfilled value is readable by parseEloApplied");
+        assert.deepEqual(rec?.target, { red: 6, yellow: 9 });
+        assert.equal(rec?.applied?.red, 6);
+        assert.equal(rec?.applied?.yellow, 9);
+        assert.equal(rec?.outOfStep, undefined);
+        assert.equal(rec?.applied?.deltas?.length, 14);
+        assert.deepEqual(
+          [...new Set(rec?.applied?.deltas?.map((d) => d.delta))].sort((x, y) => x - y),
+          [-27, 27],
+        );
+        for (const d of rec?.applied?.deltas ?? []) {
+          assert.equal(d.delta, extra.indexOf(d.userId) < 7 ? -27 : 27, `${d.userId} has its side's points`);
+        }
+        // In step: a reconcile does nothing, so nothing is double counted.
+        assert.equal((await reconcileMatchElo({ matchId: REAL })).status, "unchanged");
+        // And running the file twice changes nothing (the guard on NULL).
+        await db.$transaction(async (tx) => {
+          for (const st of statements) {
+            if (/^(BEGIN|COMMIT)$/i.test(st)) continue;
+            await tx.$executeRawUnsafe(st);
+          }
+        });
+        const again = await db.match.findUnique({ where: { id: REAL }, select: { eloApplied: true } });
+        assert.deepEqual(again?.eloApplied, row?.eloApplied);
+        ok("the migration file, run as written, leaves a record the code reads and treats as in step");
+      } finally {
+        await db.match.deleteMany({ where: { id: REAL } });
+        await db.user.deleteMany({ where: { id: { in: extra } } });
+      }
     }
 
     console.log(`OK: ${n} match-elo checks against Postgres`);
