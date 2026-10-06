@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { activitySchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
+import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
 
 export async function createActivity(formData: {
   orgId: string;
@@ -99,23 +100,17 @@ export async function generateMatchesForActivity(activityId: string) {
 
   await requireOrgAdmin(session.user.id, activity.orgId);
 
-  const now = new Date();
-  const currentDay = now.getDay();
-  let daysUntil = activity.dayOfWeek - currentDay;
-  if (daysUntil <= 0) daysUntil += 7;
+  // `activity.time` is a London wall clock. The same helper as the
+  // nightly cron: `setHours()` on the server clock (UTC on Vercel) put
+  // every British Summer Time match an hour late.
+  const matchDate = nextLondonKickoff(new Date(), activity.dayOfWeek, activity.time);
 
-  const matchDate = new Date(now);
-  matchDate.setDate(now.getDate() + daysUntil);
-  const [hours, minutes] = activity.time.split(":").map(Number);
-  matchDate.setHours(hours, minutes, 0, 0);
-
-  const startOfDay = new Date(matchDate);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(matchDate);
-  endOfDay.setHours(23, 59, 59, 999);
+  // One match per activity per London day.
+  const startOfDay = londonWallClockToUtc(matchDate, "00:00");
+  const endOfDay = londonWallClockToUtc(new Date(matchDate.getTime() + 24 * 60 * 60 * 1000), "00:00");
 
   const existing = await db.match.findFirst({
-    where: { activityId, date: { gte: startOfDay, lte: endOfDay } },
+    where: { activityId, date: { gte: startOfDay, lt: endOfDay } },
   });
   if (existing) throw new Error("Match already exists for this date");
 

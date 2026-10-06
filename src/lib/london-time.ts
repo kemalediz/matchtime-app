@@ -41,6 +41,29 @@ export function londonWallClockToUtc(anchor: Date, time: string): Date {
 }
 
 /**
+ * The next kickoff of a weekly game: the UTC instant of London wall
+ * clock `time` on the next `dayOfWeek` (0=Sun..6=Sat) strictly after
+ * today's London date. On the game's own weekday that is a week away.
+ *
+ * The one place an `Activity` (weekday + "HH:mm") becomes a `Match.date`
+ * for the coming week: the nightly generate-matches cron and the admin
+ * "Generate match" button both call it. The weekday is read in London,
+ * not from `Date#getDay()` (server time, UTC on Vercel), so a call just
+ * after London midnight cannot land on the wrong day.
+ */
+export function nextLondonKickoff(now: Date, dayOfWeek: number, time: string): Date {
+  const londonWeekday = Number(formatLondon(now, "i")) % 7; // Mon=1..Sun=7 → JS Sun=0..Sat=6
+  let daysUntil = dayOfWeek - londonWeekday;
+  if (daysUntil <= 0) daysUntil += 7;
+
+  // Anchor at midnight London time of the target day; the helper turns
+  // the wall clock into a UTC instant.
+  const todayLondonMidnight = londonWallClockToUtc(now, "00:00");
+  const anchor = new Date(todayLondonMidnight.getTime() + daysUntil * 24 * 60 * 60 * 1000);
+  return londonWallClockToUtc(anchor, time);
+}
+
+/**
  * Format a Date for display in London time.
  *
  * `locale` (optional, 2026-09-17) picks the day and month NAMES for a
