@@ -3031,8 +3031,11 @@ export const en = {
     ];
     return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
   },
+  /** A SUGGESTION only: the learned setup never switches monthly squad
+   *  on. "Monthly squad" is `msq_section_title`, the section's name on
+   *  /admin/settings (a test keeps the two the same). */
   sj_dm_setup_monthly: (p: { pattern: string; heldPaymentTracking: boolean }): string =>
-    `📋 I also noticed a monthly list: ${p.pattern}. MatchTime's monthly squad mode is coming, and we'll tell you when you can switch it on. Until then nothing changed for it` +
+    `📋 I also noticed a monthly list: ${p.pattern}. MatchTime has a monthly squad mode for groups like this. I haven't switched it on: you can do that in Settings, under Monthly squad, if you want it. Until you do, nothing changed for it` +
     (p.heldPaymentTracking ? `, and I left payment tracking off because it works game by game` : ``) +
     `.`,
   sj_dm_setup_outro: (p: { url: string }): string =>

@@ -9,8 +9,9 @@
  *     changed nowhere, with a link to change it; then "organisers pick",
  *     which is never switched from the chat (rules.ts, rule 4): what it
  *     looks like, one chat quote, and a link to the setting
- *   the monthly list, when seen: noted, nothing changed for it, and the
- *     monthly squad mode is coming (the organiser will be told)
+ *   the monthly list, when seen: noted, nothing changed for it, and a
+ *     pointer to Monthly squad in Settings, which only the organiser
+ *     ever switches on
  *   outro: the settings page, where every item and its evidence lives
  */
 import { t } from "../i18n/t";

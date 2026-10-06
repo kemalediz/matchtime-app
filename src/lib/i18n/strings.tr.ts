@@ -2375,7 +2375,7 @@ export const tr: Strings = {
     return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ve ${parts[parts.length - 1]}` : parts[0];
   },
   sj_dm_setup_monthly: (p) =>
-    `📋 Ayrıca aylık bir liste olduğunu fark ettim: ${p.pattern}. MatchTime'ın aylık kadro modu yolda, açabileceğiniz zaman size haber vereceğiz. O zamana kadar bunun için hiçbir şey değişmedi` +
+    `📋 Ayrıca aylık bir liste olduğunu fark ettim: ${p.pattern}. MatchTime'ın böyle gruplar için aylık kadro modu var. Ben açmadım: isterseniz Ayarlar'da, Aylık kadro bölümünden açabilirsiniz. Siz açana kadar bunun için hiçbir şey değişmedi` +
     (p.heldPaymentTracking ? ` ve ödeme takibini kapalı bıraktım, çünkü maç maç çalışıyor` : ``) +
     `.`,
   sj_dm_setup_outro: (p) => `Hepsi, her birinin dayandığı sohbet mesajlarıyla birlikte ayarlar sayfanızda: ${p.url}`,
