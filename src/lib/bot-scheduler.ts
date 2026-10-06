@@ -58,6 +58,7 @@ import {
   buildBenchIntroLine,
   buildSquadCompleteBenchInvite,
 } from "./bench-offer-copy";
+import { leadOffer, untoldOffers, type OfferStamp } from "./bench-offer-batch";
 import { buildRatePromoPost, buildMatchDayChaseFallback, teamSheetNames } from "./group-copy";
 import { dayCommaTimeLabel, dayLabel, dayTimeLabel, longDayTimeLabel, weekdayLabel, weekdayTimeLabel } from "./i18n/dates";
 import {
@@ -1903,8 +1904,8 @@ async function computeForMatch(
   //   (👍 on the group post / reply IN there / YES to the DM) wins it
   //   — see resolveBenchSlotClaim. NOBODY is ever eliminated, no
   //   per-person timers, nothing fires overnight. One group post +
-  //   one DM per bencher per offer, both offer-keyed so they send
-  //   exactly once.
+  //   one DM per bencher for the offers not yet announced, both
+  //   offer-keyed so they send exactly once.
   if (m.benchSlotOffers.length > 0) {
     // Daytime gate: never ping anyone about a slot overnight. A drop
     // at 00:24 just waits — the offer stays open (no waMessageId yet)
@@ -1995,29 +1996,53 @@ async function computeForMatch(
           }
         }
       }
-      for (const offer of m.benchSlotOffers) {
-        if (benchAtt.length === 0) continue; // no bench — chase covers it
-
-        // Context: which team / who they'd replace, if teams exist.
-        let team: { teamLabel: string; replacingName: string | null } | null = null;
-        if (offer.replacingUserId) {
-          const repl = m.attendances.find((a) => a.userId === offer.replacingUserId)?.user;
-          const ta = m.teamAssignments.find((t) => t.userId === offer.replacingUserId);
-          if (repl && ta) {
-            const labels = resolveTeamLabels(m, activity.org, sport, lang);
-            team = { teamLabel: ta.team === "RED" ? labels[0] : labels[1], replacingName: repl.name };
-          }
+      // ONE ANNOUNCEMENT FOR ALL THE PLACES NOT YET ANNOUNCED (2026-10-06).
+      // Each open offer is one claimable place, but several can open
+      // together (an organiser-pick club's fallback, a monthly club's
+      // open places). They go out as ONE group post and ONE DM per
+      // bencher, saying how many, keyed on the newest of them
+      // (`bench-offer-batch.ts`). A single drop is one offer, so its
+      // post, its DMs and their keys are exactly what they always were.
+      // With no bench there is nobody to tell: the chase covers it.
+      if (benchAtt.length > 0) {
+        const open = m.benchSlotOffers;
+        const groupTold = (offerId: string) => sentKeys.has(`offer-${offerId}`);
+        const dmTold = (userId: string) => (offerId: string) => sentKeys.has(`offer-${offerId}:dm:${userId}`);
+        const anyoneUntold = (closed: OfferStamp[]) =>
+          untoldOffers(open, closed, groupTold).length > 0 ||
+          benchAtt.some((a) => untoldOffers(open, closed, dmTold(a.userId)).length > 0);
+        // An announcement may have been keyed on an offer that has since
+        // been taken, so before sending anything read the match's closed
+        // offers too. Skipped on every poll where the open offers alone
+        // show that everybody has been told.
+        let closedOffers: OfferStamp[] = [];
+        if (anyoneUntold(closedOffers)) {
+          closedOffers = await db.benchSlotOffer.findMany({
+            where: { matchId, resolvedAt: { not: null } },
+            select: { id: true, createdAt: true },
+          });
         }
-        // "tonight" only when the match is today in London; the match day
-        // otherwise (2026-10-03: a Saturday offer for a Tuesday match said
-        // "tonight").
-        const { group: ctx, plain: ctxPlain } = buildBenchOfferContext({
-          activityName: activity.name,
-          team,
-          matchDate: m.date,
-          now,
-          lang,
-        });
+
+        /** What one announcement of `untold` says and is keyed on. */
+        const describe = (untold: typeof open) => {
+          const lead = leadOffer(untold)!;
+          // Which team and who they would replace: only for a single
+          // slot, and only if teams exist.
+          let team: { teamLabel: string; replacingName: string | null } | null = null;
+          if (untold.length === 1 && lead.replacingUserId) {
+            const repl = m.attendances.find((a) => a.userId === lead.replacingUserId)?.user;
+            const ta = m.teamAssignments.find((t) => t.userId === lead.replacingUserId);
+            if (repl && ta) {
+              const labels = resolveTeamLabels(m, activity.org, sport, lang);
+              team = { teamLabel: ta.team === "RED" ? labels[0] : labels[1], replacingName: repl.name };
+            }
+          }
+          // "tonight" only when the match is today in London; the match day
+          // otherwise (2026-10-03: a Saturday offer for a Tuesday match said
+          // "tonight").
+          const { group, plain } = buildBenchOfferContext({ activityName: activity.name, team, matchDate: m.date, now, lang });
+          return { lead, count: untold.length, group, plain };
+        };
 
         const mentions = benchAtt.map((a) => a.user.phoneNumber!.replace(/^\+/, ""));
         const tagList = mentions.map((p) => `@${p}`).join(" ");
@@ -2027,36 +2052,38 @@ async function computeForMatch(
         // it). kind:"bench-prompt" so the bot ACKs with waMessageId.
         // The post itself no longer ASKS for a 👍 while
         // BENCH_PROMPT_MENTION_REACTIONS is false (inbound reactions are
-        // dead on the Pi) — the mapping stays wired so an unprompted one
+        // dead on the Pi); the mapping stays wired so an unprompted one
         // still lands the moment forwarding is repaired.
-        const groupKey = `offer-${offer.id}`;
-        if (!sentKeys.has(groupKey)) {
+        const groupUntold = untoldOffers(open, closedOffers, groupTold);
+        if (groupUntold.length > 0) {
+          const d = describe(groupUntold);
           out.push({
             kind: "bench-prompt",
-            key: groupKey,
+            key: `offer-${d.lead.id}`,
             matchId,
             // userId unused by the offer model but the union requires
             // it; pass the first bencher purely to satisfy the type.
             userId: benchAtt[0].userId,
             phone: mentions[0],
-            text: buildBenchOfferGroupPost({ context: ctx, tagList, lang }),
+            text: buildBenchOfferGroupPost({ context: d.group, tagList, count: d.count, lang }),
           });
         }
 
         // Personal DM to each bencher (they often mute the group
         // thinking they're not playing). Per-(offer,user) key.
         for (const a of benchAtt) {
-          const dmKey = `offer-${offer.id}:dm:${a.userId}`;
-          if (sentKeys.has(dmKey)) continue;
+          const untold = untoldOffers(open, closedOffers, dmTold(a.userId));
+          if (untold.length === 0) continue;
+          const d = describe(untold);
           const first = a.user.name ? a.user.name.split(" ")[0] : "";
           out.push({
             kind: "dm",
-            key: dmKey,
+            key: `offer-${d.lead.id}:dm:${a.userId}`,
             matchId,
             phone: a.user.phoneNumber!.replace(/^\+/, ""),
             targetUser: a.userId,
-            // `ctxPlain` is already in `lang` (buildBenchOfferContext).
-            text: buildBenchOfferDm({ firstName: first, context: ctxPlain, lang }),
+            // `d.plain` is already in `lang` (buildBenchOfferContext).
+            text: buildBenchOfferDm({ firstName: first, context: d.plain, count: d.count, lang }),
           });
         }
       }

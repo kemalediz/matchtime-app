@@ -59,6 +59,7 @@ import {
   type PickCandidate,
   type PickListRow,
   type PickReason,
+  fallbackOfferCount,
 } from "./organiser-pick-rules";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
@@ -389,10 +390,12 @@ async function namesOf(userIds: string[]): Promise<Map<string, string>> {
 
 /**
  * D5, nobody picked in time. "bench-offer" (the default): one
- * BenchSlotOffer per free place, and from there the existing first-come
- * machinery runs unchanged (group post tagging the waiting list, a DM to
- * each, first IN wins; `canTakeFreePlace` allows it because an offer is
- * open). "leave-empty", or nobody left on the list: the place stays open.
+ * BenchSlotOffer per free place SOMEBODY IS WAITING FOR
+ * (`fallbackOfferCount`), and from there the existing first-come
+ * machinery runs unchanged (ONE group post tagging the waiting list and
+ * ONE DM to each, however many places; first IN wins; `canTakeFreePlace`
+ * allows it because an offer is open). "leave-empty", or nobody left on
+ * the list: the place stays open.
  */
 async function runFallback(
   org: PickOrg,
@@ -408,10 +411,12 @@ async function runFallback(
   if (offer) {
     const stillOut = new Set(world.dropped);
     const vacated = round.vacatedByUserIds.filter((id) => stillOut.has(id)).slice(round.pickedUserIds.length);
-    for (let i = 0; i < openPlaces; i++) {
+    const offers = fallbackOfferCount(openPlaces, world.waiting.length);
+    for (let i = 0; i < offers; i++) {
       await db.benchSlotOffer.create({ data: { matchId: world.id, replacingUserId: vacated[i] ?? null } });
     }
-    await sendAdminNotice({ orgId: org.id, now, text: s.pick_fallback_offered({ activityName: world.activityName }) });
+    const said = offers > 1 ? s.pick_fallback_offered_many : s.pick_fallback_offered;
+    await sendAdminNotice({ orgId: org.id, now, text: said({ activityName: world.activityName }) });
   } else {
     await sendAdminNotice({
       orgId: org.id,

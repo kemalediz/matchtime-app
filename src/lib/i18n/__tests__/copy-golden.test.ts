@@ -1034,6 +1034,13 @@ function cases(lang: Lang): Case[] {
     add(`R56 benchClaimPhrasingExample / ${tag}`, benchClaimPhrasingExample({ mentionReactions }));
   }
   add("R85 buildBenchOfferDm / no first name", buildBenchOfferDm({ firstName: "", context: lang === "en" ? "on Red for Tuesday 7-a-side tonight" : ctxFixture.plain, lang }));
+  // Several slots opened together (2026-10-06): one post and one DM for all of them.
+  for (const mentionReactions of [true, false]) {
+    const tag = mentionReactions ? "with reactions" : "reactions off";
+    add(`R52b buildBenchOfferGroupPost / several slots / ${tag}`, buildBenchOfferGroupPost({ count: 3, context: ctxFixtureBefore.group, tagList: "@447700900001 @447700900002", mentionReactions, lang }));
+    add(`R85b buildBenchOfferDm / several slots / ${tag}`, buildBenchOfferDm({ count: 3, firstName: "Erdal", context: ctxFixtureBefore.plain, mentionReactions, lang }));
+  }
+  add("R85b buildBenchOfferDm / several slots / no first name, match day", buildBenchOfferDm({ count: 2, firstName: "", context: ctxFixture.plain, lang }));
 
   // ── 1.1 rating-progress-answer.ts ───────────────────────────────────
   add("R59 formatRatingProgressReply / not ok, no reason", formatRatingProgressReply({ ok: false }, lang));
@@ -1780,6 +1787,7 @@ function cases(lang: Lang): Case[] {
       wr.pick_fallback_left({ activityName: "Friday 9-a-side", confirmed: 17, maxPlayers: 18 }),
     ].join("\n"),
   );
+  add("OPK5b pick_fallback_offered_many (P11, several places)", wr.pick_fallback_offered_many({ activityName: "Friday 9-a-side" }));
   add("OPK6 slot_opened_organiser (P13)", wr.slot_opened_organiser({ kickoffLabel: lang === "tr" ? "Cum 20:30" : "Fri 20:30" }));
   add("OPK7 onb_weekly_routine_tip (D7)", wr.onb_weekly_routine_tip);
   add(

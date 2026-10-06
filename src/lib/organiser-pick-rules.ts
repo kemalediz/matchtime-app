@@ -80,6 +80,17 @@ export type RoundDecision =
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
+ * How many offers the fallback opens: one per free place, but never more
+ * than there are people waiting. A new club's first week can have sixteen
+ * places free and two people on the list: the two can take a place each,
+ * and an offer nobody is there to take would only keep the match in
+ * "an offer is running" for no reason (2026-10-06).
+ */
+export function fallbackOfferCount(openPlaces: number, waiting: number): number {
+  return Math.max(0, Math.min(openPlaces, waiting));
+}
+
+/**
  * Should a pick round open for this match now (plan 2.7)? All of:
  * a free place, somebody waiting, the club's drop-out deadline passed (or
  * none set), London 08:00 to 21:59, no fallback offer running, and either

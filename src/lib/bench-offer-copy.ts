@@ -97,6 +97,10 @@ interface ReactionGate {
 }
 
 export interface BenchOfferGroupCopy extends ReactionGate {
+  /** How many slots this one post announces. Absent or 1: the single
+   *  slot post, byte for byte as it always was. 2 or more: the same
+   *  post in the plural, for places that opened together (2026-10-06). */
+  count?: number;
   /** Already-formatted context, e.g.
    *  "on *Reds* (replacing Ehtisham Ekin) for *Tuesday 7-a-side* tonight". */
   context: string;
@@ -107,10 +111,15 @@ export interface BenchOfferGroupCopy extends ReactionGate {
 /** The group post that offers an open slot to the whole bench at once. */
 export function buildBenchOfferGroupPost(c: BenchOfferGroupCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
+  if ((c.count ?? 1) > 1) {
+    return t(c.lang).bench_offer_group_post_many({ count: c.count!, context: c.context, tagList: c.tagList, reactions });
+  }
   return t(c.lang).bench_offer_group_post({ context: c.context, tagList: c.tagList, reactions });
 }
 
 export interface BenchOfferDmCopy extends ReactionGate {
+  /** How many slots this one DM is about; as `BenchOfferGroupCopy.count`. */
+  count?: number;
   /** First name, or "" when we have no name on record. */
   firstName: string;
   /** Plain-text context (no WhatsApp bold), e.g.
@@ -123,6 +132,9 @@ export interface BenchOfferDmCopy extends ReactionGate {
  *  thinking they are not playing, so the DM carries the same offer. */
 export function buildBenchOfferDm(c: BenchOfferDmCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
+  if ((c.count ?? 1) > 1) {
+    return t(c.lang).dm_bench_offer_many({ count: c.count!, firstName: c.firstName, context: c.context, reactions });
+  }
   return t(c.lang).dm_bench_offer({ firstName: c.firstName, context: c.context, reactions });
 }
 

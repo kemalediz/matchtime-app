@@ -197,6 +197,20 @@ export const en = {
       `and everyone else stays on the bench. 🙏`
     );
   },
+  /** The same post when SEVERAL slots opened at once (an organiser-pick
+   *  club's fallback, a monthly club's open places): one post for all of
+   *  them, never one each (2026-10-06). `count` is 2 or more. */
+  bench_offer_group_post_many: (p: { count: number; context: string; tagList: string; reactions: boolean }): string => {
+    const claim = p.reactions
+      ? "React 👍 here or reply *IN* to take one."
+      : "Just reply *IN* here to take one.";
+    return (
+      `🎟 ${p.count} slots just opened ${p.context}. *First to claim them play.*\n\n` +
+      `${p.tagList}\n\n` +
+      `${claim} No rush and no timeout, the slots go to whoever replies first ` +
+      `and anyone who misses out stays on the bench. 🙏`
+    );
+  },
 
   // ── row 81: the bench offer's context clause (scheduler-copy.ts) ──
   //   `_plain` twins are for the DM (row 85), which stays English in
@@ -1349,6 +1363,20 @@ export const en = {
     );
   },
 
+  /** Row 85 when SEVERAL slots opened at once: one DM for all of them
+   *  (2026-10-06). `count` is 2 or more. */
+  dm_bench_offer_many: (p: { count: number; firstName: string; context: string; reactions: boolean }): string => {
+    const hi = p.firstName ? ` ${p.firstName}` : "";
+    const claim = p.reactions
+      ? "Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there."
+      : "Reply *YES* here, or *IN* on the message I tagged you in, in the group.";
+    return (
+      `👋 Hi${hi}, ${p.count} slots just opened ${p.context} and you're on the bench.\n\n` +
+      `Want one? ${claim} First to claim plays. No timeout, and if you're ` +
+      `not free no worries, you stay on the bench. 🙏`
+    );
+  },
+
   /** Row 103: the bench DM's one clarification. `day` as in the row 81
    *  context clause: null on match day ("tonight"), else "Tue 6 Oct". */
   dm_bench_unclear: (p: { day: string | null }): string =>
@@ -2263,6 +2291,9 @@ export const en = {
   /** P11 */
   pick_fallback_offered: (p: { activityName: string }): string =>
     `Nobody picked for *${p.activityName}*, so I've offered the place to the waiting list: the first to say IN gets it.`,
+  /** P11 when more than one place is offered (2026-10-06). */
+  pick_fallback_offered_many: (p: { activityName: string }): string =>
+    `Nobody picked for *${p.activityName}*, so I've offered the open places to the waiting list: whoever says IN gets one.`,
   /** P12 */
   pick_fallback_left: (p: { activityName: string; confirmed: number; maxPlayers: number }): string =>
     `Nobody picked for *${p.activityName}*, so the place stays open. Squad ${p.confirmed}/${p.maxPlayers}.`,

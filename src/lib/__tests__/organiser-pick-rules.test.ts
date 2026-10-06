@@ -9,6 +9,7 @@ import {
   buildPickListChanged,
   buildPickMessage,
   decidePickRound,
+  fallbackOfferCount,
   parsePickReply,
   pickFallbackAt,
   positionLabel,
@@ -17,6 +18,21 @@ import {
 import { LATE_MESSAGE_AFTER_MS } from "../late-message";
 
 const H = 3600_000;
+
+describe("fallbackOfferCount (D5, 2026-10-06)", () => {
+  it("one offer per free place when enough people are waiting", () => {
+    expect(fallbackOfferCount(1, 5)).toBe(1);
+    expect(fallbackOfferCount(3, 3)).toBe(3);
+  });
+  it("never more offers than people waiting: sixteen places and two waiting is two", () => {
+    expect(fallbackOfferCount(16, 2)).toBe(2);
+  });
+  it("nothing to offer, or nobody to offer it to", () => {
+    expect(fallbackOfferCount(0, 4)).toBe(0);
+    expect(fallbackOfferCount(4, 0)).toBe(0);
+    expect(fallbackOfferCount(-1, 4)).toBe(0);
+  });
+});
 
 describe("pickFallbackAt (D5)", () => {
   const kickoff = new Date("2026-10-09T19:30:00Z"); // Friday 20:30 London

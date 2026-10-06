@@ -417,3 +417,91 @@ test("slice 3: no pick round before the drop-out deadline; the summary IS the fi
   );
   expect((await poll(request, G, "2027-01-11T21:30:00.000Z")).filter((i) => i.kind === "admin-group-message")).toEqual([]);
 });
+
+test("nobody picks with SEVERAL places open: one offer per waiting player, announced once (2026-10-06)", async ({ request, db }) => {
+  // A new club's first week: one of five in, two on the waiting list.
+  const O = "e2e-op-many-org";
+  const G = "e2e-op-many-group@g.us";
+  const H = "120363777000000033@g.us";
+  const M = "e2e-op-many-match";
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "whatsappGroupId", "whatsappBotEnabled", "benchPickMode",
+       "adminChannelMode", "adminGroupId", "updatedAt")
+     VALUES ($1, 'New FNF', 'e2e-op-many', 'e2e-op-many-invite', $2, true, 'organiser', 'admin-group', $3, now())`,
+    [O, G, H],
+  );
+  await db.run(
+    `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt")
+     VALUES ('e2e-op-many-sport', $1, 'Football 5-a-side', 5, ARRAY['GK'], ARRAY['Red','Yellow'], now())`,
+    [O],
+  );
+  await db.run(
+    `INSERT INTO "Activity" (id, "orgId", "sportId", name, "dayOfWeek", time, venue, "deadlineHours", "updatedAt")
+     VALUES ('e2e-op-many-act', $1, 'e2e-op-many-sport', 'Friday 5-a-side', 5, '20:30', 'Goals', 1, now())`,
+    [O],
+  );
+  const people = [
+    ["e2e-op-many-owner", "Olly Owner", "+447700942001", "OWNER", "CONFIRMED"],
+    ["e2e-op-many-a", "Ann Able", "+447700942002", "PLAYER", "BENCH"],
+    ["e2e-op-many-b", "Ben Best", "+447700942003", "PLAYER", "BENCH"],
+  ] as const;
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
+     VALUES ($1, 'e2e-op-many-act', $2, 5, 'UPCOMING', $3, now())`,
+    [M, KICKOFF.toISOString(), new Date(KICKOFF.getTime() - 3600_000).toISOString()],
+  );
+  for (const [i, [id, name, phone, role, status]] of people.entries()) {
+    await db.run(`INSERT INTO "User" (id, email, name, "phoneNumber", "updatedAt") VALUES ($1, $2, $3, $4, now())`, [id, `${id}@e2e.test`, name, phone]);
+    await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role) VALUES ($1, $2, $3, $4)`, [`${id}-mem`, id, O, role]);
+    await db.run(
+      `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt") VALUES ($1, $2, $3, $4::"AttendanceStatus", $5, now())`,
+      [`${id}-att`, M, id, status, i + 1],
+    );
+  }
+
+  // Wednesday noon: the admins are asked. Nobody answers.
+  const asked = (await poll(request, G, WED_NOON)).filter((i) => i.kind === "admin-group-message");
+  expect(asked).toHaveLength(1);
+  expect(asked[0].text).toContain("There are 4 places open in *Friday 5-a-side*");
+
+  // Thursday, past the fallback time, and the next few polls after it.
+  const polls = [
+    "2027-01-14T12:30:00.000Z",
+    "2027-01-14T12:30:30.000Z",
+    "2027-01-14T12:31:00.000Z",
+    "2027-01-14T12:36:00.000Z",
+    "2027-01-14T12:42:00.000Z",
+  ];
+  const sent: Array<{ kind: string; text?: string; phone?: string }> = [];
+  for (const at of polls) sent.push(...(await poll(request, G, at)));
+
+  // Four places, two people waiting: two offers, not four.
+  const offers = await db.all<{ id: string }>(`SELECT id FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [M]);
+  expect(offers).toHaveLength(2);
+  expect(sent.filter((i) => i.kind === "admin-group-message").map((i) => i.text)).toEqual([
+    "Nobody picked for *Friday 5-a-side*, so I've offered the open places to the waiting list: whoever says IN gets one.",
+  ]);
+
+  // The group is told ONCE, and each waiting player is told ONCE.
+  const groupPosts = sent.filter((i) => i.kind === "bench-prompt");
+  expect(groupPosts.map((i) => i.text)).toEqual([
+    "🎟 2 slots just opened for *Friday 5-a-side* on Fri 15 Jan. *First to claim them play.*\n\n" +
+      "@447700942002 @447700942003\n\n" +
+      "Just reply *IN* here to take one. No rush and no timeout, the slots go to whoever replies first " +
+      "and anyone who misses out stays on the bench. 🙏",
+  ]);
+  const dms = sent.filter((i) => i.kind === "dm" && /just opened/.test(i.text ?? ""));
+  expect(dms.map((i) => i.phone).sort()).toEqual(["447700942002", "447700942003"]);
+  expect(dms[0].text).toContain("2 slots just opened for Friday 5-a-side on Fri 15 Jan and you're on the bench.");
+
+  // Both waiting players can still take a place each.
+  for (const [n, phone] of ["447700942002", "447700942003"].entries()) {
+    await post(request, "/api/whatsapp/dm-reply", { phone, body: "YES", waMessageId: `e2e-op-many-claim-${n}` });
+  }
+  const status = await db.all<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 ORDER BY position`, [M]);
+  expect(status.map((s) => s.status)).toEqual(["CONFIRMED", "CONFIRMED", "CONFIRMED"]);
+  expect(await db.all(`SELECT id FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [M])).toEqual([]);
+  // And nothing announces the taken places again.
+  const after = await poll(request, G, "2027-01-14T12:50:00.000Z");
+  expect(after.filter((i) => i.kind === "bench-prompt" || /just opened/.test(i.text ?? ""))).toEqual([]);
+});
