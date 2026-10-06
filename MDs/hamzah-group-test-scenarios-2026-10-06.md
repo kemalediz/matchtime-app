@@ -91,7 +91,7 @@ Open Settings from the link in your "you're live" DM (it opens the right club). 
 | Bot features | Collect match fees (Stripe) | Leave OFF |
 | Weekly routine | Rolling squad | On |
 | Weekly routine | Who fills an open place | "First to say IN" to begin with. Scenario 19 changes it to "The organisers pick" |
-| Weekly routine | If nobody picks in time | "Leave it open" for this test (see Known gaps, item 1) |
+| Weekly routine | If nobody picks in time | "Leave it open" for scenarios 19 to 22. "Offer it to the waiting list" is safe to try too since the fix of 6 Oct: one post and one DM per waiting player, however many places are open |
 | Weekly routine | Drop-out deadline, List published | Leave empty. Scenario 10 sets them |
 | Weekly routine | Admin messages go to | "Admin WhatsApp group", linked in scenario 5 |
 
@@ -128,7 +128,7 @@ For the real Friday group the deadlines would be Monday 21:00 and Tuesday 20:00.
   - In MT Test: a message starting "👋 Hi everyone, I'm *MatchTime*. <Your first name> has set me up to run this group's games." It lists who's in, the bench, reminders, fair teams, ratings, stats and match fees, and ends "Anything else, tag me: *@Match Time help*".
   - DM: "Good news: MT Test FC is live. I've said hello in "MT Test"." with three links (your weekly game, starting ratings, Settings), then "Your first month is free." and a club fee tip.
   - The card on the admin page reads: "You're live. MatchTime said hello in "MT Test"."
-  - You may also get a second group message starting "👋 Hi all, MatchTime bot is live for this group." See Known gaps, item 2.
+  - Exactly one introduction. A second message starting "👋 Hi all, MatchTime bot is live for this group." would be a bug (fixed on 6 Oct).
   Pass if: the hello names you, and the DM carries three working links that open the test club.
 
 - [ ] **3. Learned setup**
@@ -365,7 +365,7 @@ These are not Friday features, but they will appear during the week:
 
 | What | When it fires | Can it be brought forward safely? |
 |---|---|---|
-| First match is created | Overnight run, 01:00 UK time (midnight after 25 October), for the next Friday that is not today | No. Do not use the "Generate match" button, see Known gaps, item 3 |
+| First match is created | Overnight run, 01:00 UK time (midnight after 25 October), for the next Friday that is not today | Yes. The "Generate match" button on the Activities page creates it at once (its summer time fault was fixed on 6 Oct) |
 | Opening announcement (8) | 09:00 to 12:59, more than 24 hours before kickoff, squad empty | No |
 | Learned setup (3) | Checked every 15 minutes for 3 days after approval. DM only 10:00 to 20:00 | No |
 | Drop-out reminder (10, 17) | 3 hours before the deadline, never before 09:00 | Yes. Set the deadline to today, a little ahead. It is then due at once. The deadline must be 10:00 or later |
@@ -390,9 +390,9 @@ What the AI allowance does if reached: a plain IN or OUT is still recorded, ques
 
 ## 6. Known gaps that are not test failures
 
-1. **"Offer it to the waiting list" with many open places.** When nobody picks in time, that option opens one offer for EVERY open place. With 16 places open and one person waiting, the group gets the same "A slot just opened" post many times (three every five minutes) and the waiting player gets a DM for each. In this test keep the setting on "Leave it open". Only try the other option with exactly one place open. Reported as a finding for the real group.
-2. **Two introductions after approval.** The code queues the hello and also the older one time introduction ("👋 Hi all, MatchTime bot is live for this group.") for the same moment. Reported as a finding.
-3. **"Generate match" button on the Activities page.** Until the clocks change on 25 October it creates the match one hour late. Use the overnight run.
+1. **"Offer it to the waiting list" with many open places.** Fixed on 6 Oct. When nobody picks in time, MatchTime now opens one offer per person waiting, and sends ONE "slots just opened" post and one DM per waiting player. The admin group is told how many were offered and how many places are still open. Once those offers are taken, the club is back on "The organisers pick".
+2. **Two introductions after approval.** Fixed on 6 Oct. A newly approved club gets only the hello.
+3. **"Generate match" button on the Activities page.** Fixed on 6 Oct. It used to create the match one hour late in summer time.
 4. **A thumbs up does not claim a bench place.** MatchTime asks for a reply "IN", because it cannot read reactions at the moment.
 5. **Two admins picking at the same instant, and a second player being told "someone got there first".** Both need a squad with exactly one place open, which is not practical with three phones. Both are covered by automated tests.
 6. **The first week of a rolling squad is built by hand.** MatchTime has no earlier match to copy, so week one needs INs or picks. It rolls from week two.
@@ -455,9 +455,6 @@ Do not use "Turn off" on the Clubs page for cleanup: MatchTime leaves MT Test wh
 1. What chat WhatsApp hands over when MatchTime is added back to MT Test, so which of the three outcomes in scenario 3 you get.
 2. Whether MatchTime is in your admin group today.
 3. What a plain "IN" does in the hours after approval, before the first match exists. Wait for the match.
-4. That both introductions in Known gaps item 2 really arrive. Traced in the code, not seen live.
-5. That "Generate match" is one hour out. Traced in the code, not run.
-6. The repeated posts in Known gaps item 1. Traced in the code, not run.
 7. That "Delete forever" completes for a club that has used every new feature. The database rules were read, the delete was not run.
 8. What a number reply does when the waiting list has changed since the last pick message. Use names.
 9. Whether a second late drop-out by the same player in the same week is reported again (scenarios 18 and 21 may or may not produce the line).
