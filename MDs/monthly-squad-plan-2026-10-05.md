@@ -1446,6 +1446,17 @@ stand.
 - **A player in two clubs picks the club** on `/month` (`?club=`, with the list of their
   monthly clubs), and away weeks are saved against the month's own club.
 
+#### Found by the manual test script (2026-10-06, PR "monthly squad findings")
+
+- **"paid" by DM in a month started part-way.** Such a month has amounts (the organiser gave
+  a share) but no `pricedAt`, by design (4.5). The "paid" DM asked for `pricedAt`, so a regular
+  of that month, and anybody who joined it and was told to DM "paid", was ignored. The DM now
+  reads a month that is priced OR was started part-way with a share. Nothing else changed its
+  meaning of "priced": the share lock, the priced list, the reminders, the pay-by summary and
+  "in arrears" still read `pricedAt` alone, so a part-way month still gets none of them until
+  the organiser saves a price with a pay-by date on `/admin/months`. A claim is still only
+  "says paid" (D3).
+
 ### Slice 7 (optional): card payment for the month (about 2 days)
 
 - **What:**

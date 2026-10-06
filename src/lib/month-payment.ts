@@ -474,6 +474,18 @@ const digestItemPrefix = (orgId: string, monthId: string, day: string) => `${pay
 // ── A player's "paid" DM ───────────────────────────────────────────────
 
 /**
+ * A month whose regulars have been told an amount, so "paid" can be about
+ * it. Either MatchTime priced it (`pricedAt`), or the organiser started it
+ * part-way WITH a share per game (plan 4.5): that month is never "priced"
+ * here (no pay-by date, no priced list, no reminders), but every regular
+ * on it has an amount and the join DM asks them to DM "paid".
+ * Used ONLY to decide whose "paid" DM is a claim for the month. It is not
+ * a second meaning of "priced": the share lock, the priced list, the
+ * reminders and the pay-by summary all still read `pricedAt` alone.
+ */
+const MONTH_HAS_AMOUNTS = [{ pricedAt: { not: null } }, { startedMidMonthAt: { not: null }, sharePerGamePence: { not: null } }];
+
+/**
  * A player DMs "paid" (the fixed vocabulary of `readPaidMessage`; no
  * model). Engages only when they are a regular with ONE month to pay for
  * and owe no released per-match fee (that "Paid" is today's per-match
@@ -497,7 +509,7 @@ export async function handlePlayerPaidDm(input: {
       leftAt: null,
       paidAt: null,
       amountDuePence: { gt: 0 },
-      month: { status: { in: ["open", "priced", "running"] }, pricedAt: { not: null }, org: { squadMode: "monthly" } },
+      month: { status: { in: ["open", "priced", "running"] }, org: { squadMode: "monthly" }, OR: MONTH_HAS_AMOUNTS },
     },
     select: {
       monthId: true,
