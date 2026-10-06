@@ -555,6 +555,67 @@ describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {
   });
 });
 
+describe("WEEKLY DEADLINE POSTS: not beside the month's list (found by the manual test script, 2026-10-06)", () => {
+  // A club that set both weekly deadlines (drop-out Sunday 18:00, the list
+  // Monday 10:00) and then went monthly. Plan section 8 lists what a
+  // monthly club's group gets: the month's list, never a weekly roster.
+  const DEADLINES = { dropOutDeadlineDay: 0, dropOutDeadlineTime: "18:00", listPublishDay: 1, listPublishTime: "10:00" };
+  const withDeadlines = (m: ReturnType<typeof match>) => {
+    Object.assign(m.activity.org, DEADLINES);
+    return m;
+  };
+  /** Sun 11 Oct 2026, 15:30 London: inside the three hours before the deadline. */
+  const SUN_REMINDER = new Date("2026-10-11T14:30:00.000Z");
+  /** Mon 12 Oct 2026, 10:05 London: the list's publish time has passed. */
+  const MON_PUBLISH = new Date("2026-10-12T09:05:00.000Z");
+  /** Wed 14 Oct 2026, 10:05 London: two days after the game. */
+  const WED_UNPAID = new Date("2026-10-14T09:05:00.000Z");
+  const weeklyRows = () => REGULARS.map((n, i) => att(n, i, { paymentMethod: null }));
+  /** Played, with two per-game players: Omar has paid, Will has not. */
+  const played = (regulars: ReturnType<typeof att>[]) => ({
+    status: "COMPLETED",
+    attendances: [...regulars, att("Omar", 4, { paymentMethod: null, paidAt: new Date("2026-10-13T09:00:00.000Z") }), att("Will", 5, { paymentMethod: null })],
+  });
+
+  it("WEEKLY: all three still go out, exactly as before", async () => {
+    const m = withDeadlines(match({ attendances: weeklyRows(), rollingSeededAt: null }));
+    setWorld(m, { monthly: false });
+    expect((await instructions(SUN_REMINDER)).filter((i) => i.key === `${m.id}:dropout-reminder`)).toHaveLength(1);
+    expect((await instructions(MON_PUBLISH)).filter((i) => i.key === `${m.id}:list-published`)).toHaveLength(1);
+    const done = withDeadlines(match({ ...played(weeklyRows()), rollingSeededAt: null }));
+    setWorld(done, { monthly: false });
+    expect((await instructions(WED_UNPAID)).filter((i) => i.key === `${done.id}:unpaid-group`)).toHaveLength(1);
+  });
+
+  it("MONTHLY: no drop-out reminder with the weekly roster", async () => {
+    const m = withDeadlines(match());
+    setWorld(m, { monthly: true });
+    expect((await instructions(SUN_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(false);
+  });
+
+  it("MONTHLY: no 'List published' roster; the match-morning month list is the list", async () => {
+    const m = withDeadlines(match());
+    setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${weekListHash(listText(m))}:0`, kind: "group-message", createdAt: THU_10AM }] });
+    const out = await instructions(MON_PUBLISH);
+    expect(out.some((i) => i.key === `${m.id}:list-published`)).toBe(false);
+    expect(out.filter((i) => i.key.startsWith(`${m.id}:month-list:`))).toHaveLength(1);
+  });
+
+  it("MONTHLY: no 'tick the payment poll' reminder, because a month's game has no payment poll", async () => {
+    const m = withDeadlines(match(played(REGULARS.map((n, i) => att(n, i)))));
+    setWorld(m, { monthly: true });
+    expect((await instructions(WED_UNPAID)).some((i) => i.key === `${m.id}:unpaid-group`)).toBe(false);
+  });
+
+  it("MONTHLY, a game from before the month started here: the weekly posts, as for the poll and the fee", async () => {
+    monthStartedAt = new Date("2026-10-13T09:00:00.000Z");
+    const m = withDeadlines(match({ attendances: weeklyRows(), rollingSeededAt: null }));
+    setWorld(m, { monthly: true });
+    expect((await instructions(SUN_REMINDER)).filter((i) => i.key === `${m.id}:dropout-reminder`)).toHaveLength(1);
+    expect((await instructions(MON_PUBLISH)).filter((i) => i.key === `${m.id}:list-published`)).toHaveLength(1);
+  });
+});
+
 describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
   /** When Bilal dropped and the offer for his place was opened. */
   const DROPPED_AT = new Date(THU_10AM.getTime() - 3 * 60 * 1000);
@@ -848,6 +909,23 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     setWorld(m, { monthly: true, signupMonth: signupMonth() });
     const out = await instructions(TUE_0930);
     expect(out.some((i) => i.key === `${m.id}:announce-match`)).toBe(false);
+  });
+
+  it("MONTHLY, sign-up open: no weekly drop-out reminder or 'List published' for its match either", async () => {
+    // Drop-out Thursday 18:00, the list Friday 10:00, for Monday's game.
+    const deadlines = { dropOutDeadlineDay: 4, dropOutDeadlineTime: "18:00", listPublishDay: 5, listPublishTime: "10:00" };
+    /** Thu 29 Oct 2026, 15:30 London, and Fri 30 Oct, 10:05 (GMT). */
+    const THU_REMINDER = new Date("2026-10-29T15:30:00.000Z");
+    const FRI_PUBLISH = new Date("2026-10-30T10:05:00.000Z");
+    const m = novMatch();
+    Object.assign(m.activity.org, deadlines);
+    // The weekly shape of the same week: both go out.
+    setWorld(m, { monthly: false });
+    expect((await instructions(THU_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(true);
+    expect((await instructions(FRI_PUBLISH)).some((i) => i.key === `${m.id}:list-published`)).toBe(true);
+    setWorld(m, { monthly: true, signupMonth: signupMonth() });
+    expect((await instructions(THU_REMINDER)).some((i) => i.key === `${m.id}:dropout-reminder`)).toBe(false);
+    expect((await instructions(FRI_PUBLISH)).some((i) => i.key === `${m.id}:list-published`)).toBe(false);
   });
 
   it("the list the group has already seen is not posted again; a changed one waits out the 30 minutes", async () => {

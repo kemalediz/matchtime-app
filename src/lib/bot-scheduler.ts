@@ -1576,7 +1576,14 @@ async function computeForMatch(
   //    Both use the next-upcoming gate, so next week's match never posts
   //    while this week's is still live. A club without the settings
   //    (Sutton FC) resolves both to null and gets neither.
-  {
+  //    MONTHLY SQUAD (2026-10-06): not for a match of a month (running or
+  //    in sign-up). Both posts carry the weekly roster, and the squad of a
+  //    month's game is the month's list (block 2-monthly, and on match
+  //    morning), so a club that kept its weekly deadlines when it went
+  //    monthly would get two differently shaped lists. The same reason
+  //    the 17:00 post and "Squad complete" do not fire. `monthly` is null
+  //    for every match of a weekly club.
+  if (!monthly) {
     const isLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
     const weekly = weeklyDeadlinesFor(m.date, activity.org);
     const reminderKey = `${matchId}:dropout-reminder`;
@@ -2353,9 +2360,14 @@ async function computeForMatch(
   //    named list (U1) is a separate notice, `unpaid-list.ts`.
   //    `hasWeeklyRhythm` is false for a club without both deadlines, so
   //    Sutton FC gets nothing new: its tail stays on the 17:00 post.
+  //    MONTHLY SQUAD (2026-10-06): not for a match of a month. The words
+  //    send people to "the payment poll", and a month's game has none
+  //    (6a above). Its per-game players have their pay link and the daily
+  //    pay chase, and the organisers their unpaid list (`unpaid-list.ts`).
   {
     const key = `${matchId}:unpaid-group`;
     if (
+      !monthly &&
       m.status === "COMPLETED" &&
       m.postMatchEndFlow !== false &&
       activity.org?.paymentTrackingEnabled &&

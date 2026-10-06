@@ -1457,6 +1457,16 @@ stand.
   the organiser saves a price with a pay-by date on `/admin/months`. A claim is still only
   "says paid" (D3).
 
+- **The weekly deadline posts in a monthly month.** A club that kept its weekly drop-out
+  deadline and list time when it went monthly got the drop-out reminder (with the weekly
+  roster) and "List published" beside the month's list. Neither fires for a match of a month
+  now (running or in sign-up), for the reason the 17:00 post and "Squad complete" do not
+  (slice 5, point 3). The stand-alone "payments still pending, tick the payment poll" reminder
+  does not fire either: a month's game has no payment poll. Unchanged: the organisers' summary
+  when the drop-out deadline passes (admin channel only, and its numbers are right for a
+  month's game) and the organisers' unpaid list (per-game players only). A game from before
+  the month started here keeps the weekly posts.
+
 ### Slice 7 (optional): card payment for the month (about 2 days)
 
 - **What:**
