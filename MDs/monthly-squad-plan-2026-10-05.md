@@ -1074,6 +1074,22 @@ they differ.
 - **No longer a regular.** A player moved off the month's regulars loses the "paid for by the
   month" mark on games not yet played, so they get the pay link and the pay page again.
 
+**Changed after the third review (2026-10-06, same PR).**
+
+- **The collector's reply to an unstaged PAYG fee question** stages the price only for the
+  explicit yes, within 15 minutes of the question, with no other DM from MatchTime to the
+  collector in between, and never when the question is known not to have sent (the Pi acked it
+  with no message id) or the collector has already said no. A "no" is recorded and final: the
+  price is never staged again for that match and the question is not re-asked. The collector
+  then sets a fee by typing an amount, as in a weekly club.
+- **Before the seed**, the sender's own in or out is applied only when the paste is about next
+  week: not when its title names the game just played, and not when it is that game's list
+  with nothing changed but paid marks.
+- **Adding yourself under another name** needs your first name (or whole name) on the line. A
+  surname alone is not enough.
+- **Bench by choice** is read from the attendance log's note, which is one shared constant
+  (`EXPLICIT_BENCH_NOTE`) with a test that fails if it changes. There is no structured field.
+
 ### Slice 6: credits ledger, cancelled weeks, month close (about 2 days)
 
 - **What:**

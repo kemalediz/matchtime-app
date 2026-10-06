@@ -2264,8 +2264,9 @@ async function computeForMatch(
     // A weekly club always uses the first key, as before.
     let key = `${matchId}:fee-ask`;
     if (paygFeeToConfirm !== null && sentKeys.has(key)) {
-      const again = feeAskKeys(matchId).again;
-      const first = sentKeys.has(again)
+      const { again, declined } = feeAskKeys(matchId);
+      // Never after the collector said no: the fee is theirs to type.
+      const first = sentKeys.has(again) || sentKeys.has(declined)
         ? null
         : await db.sentNotification.findUnique({ where: { key }, select: { waMessageId: true, createdAt: true } });
       if (first && !first.waMessageId && now.getTime() - first.createdAt.getTime() >= FEE_REASK_AFTER_MS) key = again;

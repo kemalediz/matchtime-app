@@ -1099,5 +1099,89 @@ test.describe("after a game: the collector's reply, and the hourly sweep", () =>
     expect(await credits(db, ORG4)).toEqual([
       { userId: S.sid.id, reason: "missed", games: 1, earnedMatchId: MATCH4, earnedMonthId: "e2e-mw4-month", voided: false },
     ]);
+    // The hourly keys do not pile up: only the current hour's is kept.
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE $1`, [`org-${ORG4}:monthly-played-sweep:%`])).toBe(1);
+  });
+});
+
+test.describe("round 3: the collector's answer to the PAYG fee question", () => {
+  const ORG5 = "e2e-mw5-org";
+  const GROUP5 = "e2e-monthly-fee@g.us";
+  const MATCH5 = "e2e-mw5-match";
+  const PLAYED = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const T = {
+    cal: { id: "e2e-mw5-cal", name: "Col Marsh", phone: "+447700924001" },
+    rae: { id: "e2e-mw5-rae", name: "Ray Holt", phone: "+447700924002" },
+    pip: { id: "e2e-mw5-pip", name: "Pat Nunn", phone: "+447700924003" },
+  } as const;
+  const state = (db: TestDb) =>
+    db.one<{ fee: number | null; pending: number | null; released: boolean }>(
+      `SELECT "feePerPlayer" AS fee, "feePendingConfirm" AS pending, ("paymentLinksReleasedAt" IS NOT NULL) AS released FROM "Match" WHERE id = $1`,
+      [MATCH5],
+    );
+  const NOTHING = { fee: null, pending: null, released: false };
+
+  test.beforeAll(async () => {
+    const db = testDb();
+    await club(db, { org: ORG5, group: GROUP5, act: "e2e-mw5-act", sport: "e2e-mw5-sport", name: "Fee Club", collector: T.cal.id });
+    await person(db, ORG5, T.cal, "OWNER");
+    for (const p of [T.rae, T.pip]) await person(db, ORG5, p);
+    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true WHERE id = $1`, [ORG5, T.cal.id]);
+    await fixture(db, MATCH5, "e2e-mw5-act", PLAYED, "COMPLETED");
+    await attend(db, ORG5, MATCH5, T.rae.id, "CONFIRMED", 1);
+    await attend(db, ORG5, MATCH5, T.pip.id, "CONFIRMED", 2);
+    await month(db, { id: "e2e-mw5-month", org: ORG5, act: "e2e-mw5-act" }, [{ p: T.rae, slot: 1, paid: true }], `${formatInTimeZone(PLAYED, LONDON, "yyyy-MM")}-01`);
+  });
+
+  test("a question that failed to send is never confirmed by a yes; a no is final; an 'ok' later releases nothing; an amount sets the fee", async ({
+    request,
+    db,
+  }) => {
+    const dm = async (body: string) => {
+      const res = await request.post("/api/whatsapp/dm-reply", {
+        headers: KEY,
+        data: { phone: T.cal.phone, body, waMessageId: msgId(), authorName: null },
+      });
+      expect(res.status(), await res.text()).toBe(200);
+    };
+    const ack = async (key: string, waMessageId?: string) => {
+      const res = await request.post("/api/whatsapp/ack", {
+        headers: KEY,
+        data: { key, kind: "dm", matchId: MATCH5, ...(waMessageId ? { waMessageId } : {}) },
+      });
+      expect(res.status(), await res.text()).toBe(200);
+    };
+    const first = `${MATCH5}:fee-ask`;
+    const start = new Date();
+    expect((await poll(request, start, GROUP5)).some((i) => i.key === first)).toBe(true);
+
+    // 1. The DM FAILED to send (the Pi acks it with no message id). Col has
+    //    never seen "£8 each?", so his "yes" (to whatever) confirms nothing.
+    await ack(first);
+    await dm("yes");
+    expect(await state(db)).toEqual(NOTHING);
+
+    // 2. Asked once more half an hour later; this one is sent, and staged.
+    await db.run(`UPDATE "SentNotification" SET "createdAt" = $2 WHERE key = $1`, [first, new Date(Date.now() - 40 * 60 * 1000).toISOString()]);
+    const again = (await poll(request, new Date(), GROUP5)).filter((i) => i.key.includes(":fee-ask"));
+    expect(again.map((i) => i.key)).toEqual([`${first}:again`]);
+    await ack(`${first}:again`, "e2e-mw5-wa");
+    expect(await state(db)).toEqual({ fee: null, pending: 8, released: false });
+
+    // 3. He says NO. The amount is cleared, and the no is remembered.
+    await dm("no");
+    expect(await state(db)).toEqual(NOTHING);
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`${first}:declined`])).toBe(1);
+
+    // 4. Any later DM, an "ok", a "yes", a thumbs-up: nothing is staged
+    //    again and no pay link goes out. He is not asked again either.
+    for (const body of ["ok", "yes", "sure", "👍"]) await dm(body);
+    expect(await state(db)).toEqual(NOTHING);
+    expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND phone = $2`, [ORG5, digits(T.pip.phone)])).toBe(0);
+    expect((await poll(request, new Date(Date.now() + 2 * 60 * 60 * 1000), GROUP5)).some((i) => i.key.includes(":fee-ask"))).toBe(false);
+
+    // 5. The fee is his to set by typing an amount, as in a weekly club.
+    await dm("£7");
+    expect(await state(db)).toEqual({ fee: null, pending: 7, released: false });
   });
 });

@@ -63,6 +63,21 @@ export type AttendanceStatusLike = AttendanceStatus | null;
  * slot" and "the player said IN" can both end in CONFIRMED and are not
  * the same event.
  */
+/**
+ * The note `registerAttendance` writes on a BENCH row a HUMAN asked for
+ * ("put me on the bench"), as opposed to "the squad was full".
+ *
+ * Notes are otherwise never parsed. THIS ONE IS READ: the monthly squad
+ * (`loadChoseBench` in monthly-week.ts) uses it to tell a regular who
+ * chose the bench from one who was left without a place, which decides the
+ * seed's priority and a credit. There is no structured field for it on
+ * `AttendanceEvent`, so the text is this one constant, shared by the
+ * writer and the reader, and pinned by
+ * `__tests__/monthly-week-bench-note.test.ts`. Events already in the
+ * database carry this exact text: do not reword it.
+ */
+export const EXPLICIT_BENCH_NOTE = "explicit bench request";
+
 export const ATTENDANCE_EVENT_CAUSES = [
   /** The player's own claim or withdrawal — a group message, a DM, or
    *  the web app. `actorUserId` is the player themselves. */

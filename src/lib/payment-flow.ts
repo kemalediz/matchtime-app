@@ -26,7 +26,7 @@ import { decideCheckoutEvent } from "./payment-outcome";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
-import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, stagePaygFeeIfAsked } from "./monthly-week";
+import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, recordPaygFeeDeclined, stagePaygFeeForReply } from "./monthly-week";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -435,9 +435,18 @@ export async function handleCollectorFeeReply(
       // no message id). Their reply is to that question, so the PAYG price
       // is staged now and a yes confirms it, instead of being dropped.
       // Null for every weekly club and every match with no such question.
+      // ONLY for the explicit yes of the question's own menu, right after
+      // the question, with no other DM from MatchTime in between, never
+      // after a "no" and never for a question known not to have sent
+      // (`mayStagePaygFeeOnReply`). Anything else stages nothing: an "ok"
+      // meant for another message must never release pay links.
       let pending = m?.feePendingConfirm ?? null;
       if (m && pending == null && m.feePerPlayer == null) {
-        pending = await stagePaygFeeIfAsked(m.id).catch(() => null);
+        pending = await stagePaygFeeForReply({
+          matchId: m.id,
+          collectorUserId: userId,
+          reply: anchoredFeeReply(text, normaliseLang(m.activity.org.language)),
+        }).catch(() => null);
       }
       return m
         ? {
@@ -478,6 +487,9 @@ export async function handleCollectorFeeReply(
     },
     cancel: async (matchId) => {
       await db.match.update({ where: { id: matchId }, data: { feePendingConfirm: null } });
+      // Monthly squad: the "no" is remembered, so the PAYG price is never
+      // staged again for this match. Nothing for a weekly club.
+      await recordPaygFeeDeclined(matchId).catch((err) => console.error("[fee-confirm] recording the decline failed:", err));
     },
     stage: async (matchId, perPlayer) => {
       await db.match.update({

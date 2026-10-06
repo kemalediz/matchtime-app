@@ -2,6 +2,7 @@ import { db } from "./db";
 import { requestBenchConfirmationOnDrop, queueSlotEmojiRefresh } from "./bot-scheduler";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 import {
+  EXPLICIT_BENCH_NOTE,
   UNATTRIBUTED_ATTENDANCE_CONTEXT,
   recordAttendanceEvent,
   type AttendanceEventContext,
@@ -300,7 +301,7 @@ export async function registerAttendance(
           eventContext.note ??
           (row.status === "BENCH"
             ? options?.benchIntent === "explicit"
-              ? "explicit bench request"
+              ? EXPLICIT_BENCH_NOTE
               : heldForOrganisers
                 ? ORGANISER_PICK_BENCH_NOTE
                 : "squad full — no slot to give"

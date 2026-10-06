@@ -14,7 +14,7 @@
  * included) never reaches any of it.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
-import type { MonthlyList, MonthlyListEntry } from "./monthly-list";
+import { isMonthListHeader, type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { candidatesFor, nameKey, type MonthCreditRule } from "./squad-month-rules";
 
 export type WeekPaid = "none" | "claimed" | "confirmed";
@@ -671,6 +671,12 @@ export function reconcileMonthPaste(args: {
   /** What the sender is called: their club name and their WhatsApp name. */
   senderNames?: Array<string | null | undefined>;
   senderIsAdmin: boolean;
+  /** Before the seed only: may the sender's OWN in or out be applied to
+   *  this (next) week? False when the paste is the list of the game just
+   *  played (its title names that date, or it is that game's list with
+   *  nothing changed but paid marks): the line was about that game, and
+   *  only paid marks are read. Default true. */
+  selfBeforeSeed?: boolean;
 }): { actions: PasteAction[]; ignored: PasteIgnored[]; notAdded: PasteNotAdded[]; otherMonth: boolean; notThisList: boolean } {
   const { list, members, rows, senderUserId, senderIsAdmin } = args;
   const nothing = { actions: [], ignored: [], notAdded: [] };
@@ -720,11 +726,12 @@ export function reconcileMonthPaste(args: {
   // Gary"). Narrow on purpose, so it can never act on the wrong person:
   // the sender is a known club player, is not on the paste and not on the
   // match, the paste has exactly ONE line that matches nobody, and that
-  // line shares a whole word with the sender's club name or WhatsApp name.
+  // line carries the sender's FIRST name (of their club name or of their
+  // WhatsApp name) as a whole word, or is their whole name. A surname
+  // alone is not enough: brothers share one.
   const senderRowNow = senderUserId ? rowOf.get(senderUserId) : undefined;
-  const senderWords = new Set(
-    (args.senderNames ?? []).flatMap((n) => nameKey(n).split(" ")).filter((w) => w.length >= 2),
-  );
+  const senderKeys = (args.senderNames ?? []).map((n) => nameKey(n)).filter(Boolean);
+  const senderWords = new Set(senderKeys.map((k) => k.split(" ")[0]).filter((w) => w.length >= 2));
   const unknownLines = slotLines.filter((x) => x.r.kind === "none");
   const selfLine =
     senderUserId &&
@@ -733,9 +740,10 @@ export function reconcileMonthPaste(args: {
     senderRowNow?.status !== "CONFIRMED" &&
     senderRowNow?.status !== "BENCH" &&
     unknownLines.length === 1 &&
-    nameKey(unknownLines[0].e.name)
-      .split(" ")
-      .some((w) => senderWords.has(w))
+    (senderKeys.includes(nameKey(unknownLines[0].e.name)) ||
+      nameKey(unknownLines[0].e.name)
+        .split(" ")
+        .some((w) => senderWords.has(w)))
       ? unknownLines[0].e
       : null;
 
@@ -802,7 +810,7 @@ export function reconcileMonthPaste(args: {
     return {
       actions: actions.filter((a) => {
         if (a.kind === "paid-claim") return true;
-        if (!a.self) return false;
+        if (!a.self || args.selfBeforeSeed === false) return false;
         // A regular who is not away is put in by the seed anyway.
         const m = memberOf.get(a.userId);
         return !(a.kind === "in" && m?.kind === "regular" && !m.absent);
@@ -852,4 +860,57 @@ export function pasteShowsSameList(args: { list: MonthlyList; week: WeekList; ro
   if (pastedOut.size !== oursOut.size) return false;
   for (const u of oursOut) if (!pastedOut.has(u)) return false;
   return true;
+}
+
+/**
+ * Which week a pasted list's TITLE says it is about, when it says: the
+ * title line of MatchTime's own post carries the match date ("List for
+ * October: Mon 12 Oct, 20:00"). Only the title line is read, and only a
+ * number that stands alone in it, so a slot number or a paid amount is
+ * never taken for a day. Null when the title names neither day (the
+ * group's own "List for October:" has none).
+ */
+export function pasteWeekHint(body: string, days: { upcomingDay: number; previousDay: number | null }): "upcoming" | "previous" | null {
+  const title = body.split(/\r?\n/).find((line) => isMonthListHeader(line));
+  if (!title) return null;
+  const numbers = new Set((title.match(/(?<![\d:.£₺])\b\d{1,2}\b(?![:.\d])/g) ?? []).map(Number));
+  if (numbers.has(days.upcomingDay)) return "upcoming";
+  if (days.previousDay !== null && numbers.has(days.previousDay)) return "previous";
+  return null;
+}
+
+// ── The collector's reply to an unstaged fee question ──────────────────
+
+/** "A short window right after the ask." */
+export const FEE_REPLY_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * The collector DMed MatchTime while a monthly match has a PAYG fee
+ * question out whose amount was never staged (its ack was lost). May
+ * their reply stage the PAYG price, so that it then confirms it?
+ *
+ * ONLY when every one of these holds. Anything else does nothing, and the
+ * collector sets a fee by typing an amount, as in the weekly flow.
+ *
+ *   - the reply is the explicit yes of the fee question's own menu (the
+ *     whole-body allowlist, `anchoredFeeReply`). An amount is not this
+ *     path's business: the weekly path stages the amount they typed;
+ *   - the question was handed to the Pi (`askedAt`), and is not known to
+ *     have FAILED (`unsent`: the Pi acked it with no message id);
+ *   - the collector has not already declined it;
+ *   - the yes comes within `FEE_REPLY_WINDOW_MS` of the question, and
+ *     MatchTime has sent the collector no other DM since, so the yes
+ *     cannot be an answer to something else.
+ */
+export function mayStagePaygFeeOnReply(p: {
+  reply: "yes" | "no" | null;
+  askedAt: Date | null;
+  unsent: boolean;
+  declined: boolean;
+  otherDmSinceAsk: boolean;
+  now: Date;
+}): boolean {
+  if (p.reply !== "yes" || !p.askedAt || p.unsent || p.declined || p.otherDmSinceAsk) return false;
+  const age = p.now.getTime() - p.askedAt.getTime();
+  return age >= 0 && age <= FEE_REPLY_WINDOW_MS;
 }

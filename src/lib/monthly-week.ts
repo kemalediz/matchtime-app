@@ -30,7 +30,7 @@
  * `loadMonthlyWeek` before anything is written.
  */
 import { db } from "./db";
-import { recordAttendanceEvent } from "./attendance-events";
+import { EXPLICIT_BENCH_NOTE, recordAttendanceEvent } from "./attendance-events";
 import { isClubOperational, servingClubWhere } from "./club-approval-state";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
@@ -45,6 +45,7 @@ import {
   decideMissedCredits,
   decideMonthlySeed,
   decideSlotFor,
+  mayStagePaygFeeOnReply,
   paygPoolOfferAllowed,
   selectPaygPool,
   weekListHash,
@@ -280,9 +281,6 @@ type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 async function lockWeek(tx: Tx, matchId: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`monthly-week:${matchId}`}))`;
 }
-
-/** `registerAttendance`'s note on a bench row a HUMAN asked for. */
-const EXPLICIT_BENCH_NOTE = "explicit bench request";
 
 /**
  * Who is on this match's waiting list because they ASKED to be. The state
@@ -803,9 +801,15 @@ export async function ensureOpenPlaceOffers(matchId: string, now: Date = new Dat
   });
 }
 
-/** The fee question's key, and its one re-ask. */
-export function feeAskKeys(matchId: string): { first: string; again: string } {
-  return { first: `${matchId}:fee-ask`, again: `${matchId}:fee-ask:again` };
+/** The fee question's key, its one re-ask, and the collector's "no". */
+export function feeAskKeys(matchId: string): { first: string; again: string; declined: string } {
+  return { first: `${matchId}:fee-ask`, again: `${matchId}:fee-ask:again`, declined: `${matchId}:fee-ask:declined` };
+}
+
+/** The marker for a fee question the Pi acked with NO message id: it did
+ *  not send. Keyed on the question's own key. */
+function unsentKey(askKey: string): string {
+  return `${askKey}:unsent`;
 }
 
 /** The match a fee-question key belongs to, or null for any other key. */
@@ -819,18 +823,21 @@ export function matchOfFeeAskKey(key: string): string | null {
 /**
  * Stage the club's PAYG price as the amount awaiting the collector's yes.
  * A weekly club, a match with no running month, a club with no PAYG
- * price, and a match that already has a fee or a pending amount: nothing.
+ * price, a match that already has a fee or a pending amount, and a
+ * question the collector has DECLINED: nothing. After a "no" the PAYG
+ * price is never staged again for that match by anything; the collector
+ * sets a fee by typing an amount, exactly as in the weekly flow.
  *
- * WHEN it may be called is the whole point (review item 6 and D):
+ * WHEN it may be called is the whole point (review items 6, D and round 3):
  *
  *   - `stagePaygFeeOnAck`: the Pi acked the fee question AS SENT. The Pi
  *     acks a FAILED DM too, so that the queue moves on
  *     (whatsapp-bot/src/scheduler.ts, the `catch` around `sendDirectText`),
- *     but only a sent message carries its `waMessageId`. No id, no stage.
- *   - `stagePaygFeeIfAsked`: the collector REPLIED to MatchTime while the
- *     question was out but its ack never staged the amount (the ack was
- *     lost, or carried no id). Their yes then confirms the PAYG price
- *     instead of being dropped.
+ *     but only a sent message carries its `waMessageId`. No id: nothing is
+ *     staged, and the question is marked unsent.
+ *   - `stagePaygFeeForReply`: the collector answered with the explicit yes
+ *     right after a question whose ack never arrived. See
+ *     `mayStagePaygFeeOnReply` for the (narrow) conditions.
  *
  * This is the weekly flow's own order. There, `feePendingConfirm` is only
  * ever written by `stage` in `payment-flow.ts` (`runCollectorFeeReply` →
@@ -840,6 +847,8 @@ export function matchOfFeeAskKey(key: string): string | null {
 async function stagePaygFee(matchId: string): Promise<number | null> {
   const week = await loadMonthlyWeek(matchId);
   if (!week || week.paygPricePence == null) return null;
+  const declined = await db.sentNotification.findUnique({ where: { key: feeAskKeys(matchId).declined }, select: { id: true } });
+  if (declined) return null;
   const amount = week.paygPricePence / 100;
   const res = await db.match.updateMany({
     where: { id: matchId, feePerPlayer: null, feePendingConfirm: null },
@@ -850,16 +859,76 @@ async function stagePaygFee(matchId: string): Promise<number | null> {
 
 export async function stagePaygFeeOnAck(key: string, waMessageId: string | null | undefined): Promise<boolean> {
   const matchId = matchOfFeeAskKey(key);
-  if (!matchId || !waMessageId) return false;
+  if (!matchId) return false;
+  if (!waMessageId) {
+    // It did not send. Remember that, so no later reply from the collector
+    // can confirm a price they were never shown. (Monthly matches only.)
+    if (await loadMonthlyWeek(matchId)) {
+      await db.sentNotification
+        .create({ data: { key: unsentKey(key), kind: "fee-ask-unsent", matchId } })
+        .catch(() => {});
+    }
+    return false;
+  }
   return (await stagePaygFee(matchId)) !== null;
 }
 
-/** For the collector's reply: the amount now pending, or null. */
-export async function stagePaygFeeIfAsked(matchId: string): Promise<number | null> {
-  const keys = feeAskKeys(matchId);
-  const asked = await db.sentNotification.findFirst({ where: { key: { in: [keys.first, keys.again] } }, select: { id: true } });
-  if (!asked) return null;
-  return stagePaygFee(matchId);
+/**
+ * The collector DMed MatchTime: may their reply stage the PAYG price of a
+ * question whose ack never came? Loads the facts `mayStagePaygFeeOnReply`
+ * decides on; returns the amount now pending, or null (nothing done).
+ */
+export async function stagePaygFeeForReply(args: {
+  matchId: string;
+  collectorUserId: string;
+  /** The reply as the fee question's own allowlist reads it. */
+  reply: "yes" | "no" | null;
+  now?: Date;
+}): Promise<number | null> {
+  if (args.reply !== "yes") return null;
+  const now = args.now ?? new Date();
+  const keys = feeAskKeys(args.matchId);
+  const rows = await db.sentNotification.findMany({
+    where: { key: { in: [keys.first, keys.again, keys.declined, unsentKey(keys.first), unsentKey(keys.again)] } },
+    select: { key: true, createdAt: true },
+  });
+  const has = (key: string) => rows.find((r) => r.key === key) ?? null;
+  // The question that is out: the re-ask when there was one.
+  const asked = has(keys.again) ?? has(keys.first);
+  let otherDmSinceAsk = false;
+  if (asked) {
+    const collector = await db.user.findUnique({ where: { id: args.collectorUserId }, select: { phoneNumber: true } });
+    const phone = collector?.phoneNumber?.replace(/^\+/, "") ?? null;
+    const [scheduled, queued] = await Promise.all([
+      db.sentNotification.count({
+        where: { kind: "dm", targetUser: args.collectorUserId, createdAt: { gt: asked.createdAt }, key: { notIn: [keys.first, keys.again] } },
+      }),
+      phone ? db.botJob.count({ where: { kind: "dm", phone, createdAt: { gt: asked.createdAt } } }) : Promise.resolve(0),
+    ]);
+    otherDmSinceAsk = scheduled + queued > 0;
+  }
+  const allowed = mayStagePaygFeeOnReply({
+    reply: args.reply,
+    askedAt: asked?.createdAt ?? null,
+    unsent: asked ? has(unsentKey(asked.key)) !== null : false,
+    declined: has(keys.declined) !== null,
+    otherDmSinceAsk,
+    now,
+  });
+  return allowed ? stagePaygFee(args.matchId) : null;
+}
+
+/**
+ * The collector answered "no" to a monthly match's fee question. Recorded
+ * (a SentNotification row; there is no column for it), so the PAYG price
+ * is never staged again for this match and the question is not re-asked.
+ * Nothing for a weekly club or a match with no running month.
+ */
+export async function recordPaygFeeDeclined(matchId: string): Promise<void> {
+  if (!(await loadMonthlyWeek(matchId))) return;
+  await db.sentNotification
+    .create({ data: { key: feeAskKeys(matchId).declined, kind: "fee-ask-declined", matchId } })
+    .catch(() => {});
 }
 
 // ── The poll's sweep ───────────────────────────────────────────────────
@@ -914,9 +983,18 @@ export async function sweepMonthlyWeeks(orgId: string, now: Date = new Date()): 
 /** True once per club per London hour (the first poll of the hour). */
 async function claimHourlySweep(orgId: string, now: Date): Promise<boolean> {
   try {
-    await db.sentNotification.create({
-      data: { key: `org-${orgId}:monthly-played-sweep:${formatLondon(now, "yyyy-MM-dd'T'HH")}`, kind: "monthly-sweep" },
-    });
+    const prefix = `org-${orgId}:monthly-played-sweep:`;
+    const key = `${prefix}${formatLondon(now, "yyyy-MM-dd'T'HH")}`;
+    await db.sentNotification.create({ data: { key, kind: "monthly-sweep" } });
+    // Only the current hour's row is ever needed, and the scheduler loads
+    // every `org-<id>:` key on each poll: drop the earlier ones, and the
+    // paste notes' once-a-day keys after a week.
+    await db.sentNotification.deleteMany({ where: { key: { startsWith: prefix, not: key } } }).catch(() => {});
+    await db.sentNotification
+      .deleteMany({
+        where: { key: { startsWith: `org-${orgId}:month-paste-` }, createdAt: { lt: new Date(Date.now() - 7 * DAY_MS) } },
+      })
+      .catch(() => {});
     return true;
   } catch {
     return false;

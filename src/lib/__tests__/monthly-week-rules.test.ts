@@ -6,13 +6,16 @@
 import { describe, it, expect } from "vitest";
 import { parseMonthlyList } from "../monthly-list";
 import {
+  FEE_REPLY_WINDOW_MS,
   LIST_REPOST_FLOOR_MS,
   buildWeekList,
   decideListPost,
   decideMissedCredits,
   decideMonthlySeed,
   decideSlotFor,
+  mayStagePaygFeeOnReply,
   pasteShowsSameList,
+  pasteWeekHint,
   paygPoolOfferAllowed,
   planOpenPlaceOffers,
   reconcileMonthPaste,
@@ -672,6 +675,29 @@ describe("round 2 of the review", () => {
       expect(b.actions).toEqual([{ kind: "in", userId: "u-gary", name: "Gaz H", self: true, slot: 3 }]);
     });
 
+    it("round 3: the line must carry the sender's FIRST name (or whole name); a surname alone is not enough", () => {
+      const surname = reconcileMonthPaste({ ...base, list: paste(LIST.replace("X", "Holt")), senderUserId: "u-gary", senderNames: ["Gary Holt"] });
+      expect(surname.actions).toEqual([]);
+      expect(surname.notAdded).toEqual([{ name: "Holt", reason: "unknown" }]);
+      const other = reconcileMonthPaste({ ...base, list: paste(LIST.replace("X", "Dave Holt")), senderUserId: "u-gary", senderNames: ["Gary Holt"] });
+      expect(other.actions).toEqual([]);
+      const first = reconcileMonthPaste({ ...base, list: paste(LIST.replace("X", "Gary H")), senderUserId: "u-gary", senderNames: ["Gary Holt"] });
+      expect(first.actions).toEqual([{ kind: "in", userId: "u-gary", name: "Gary H", self: true, slot: 3 }]);
+    });
+
+    it("round 3: before the seed, a re-paste of the game just played does not carry the sender's own line into next week", () => {
+      const pre = { ...base, rows: [], seeded: false, selfBeforeSeed: false };
+      const out = reconcileMonthPaste({
+        ...pre,
+        list: paste("List for October:\n1.\n2. Bilal (paid)\n\nPaid but can't play\n1. Alex"),
+        senderUserId: "u-alex",
+        senderNames: ["Alex"],
+        members: [reg(1, "Alex"), reg(2, "Bilal", { paid: "none" }), payg("Omar")],
+      });
+      // Only the paid mark is read.
+      expect(out.actions).toEqual([{ kind: "paid-claim", userId: "u-bilal", name: "Bilal", self: false, amountPence: null }]);
+    });
+
     it("no shared word, two new lines, or a sender already on the list: nobody is registered, and the line is reported", () => {
       const noWord = reconcileMonthPaste({ ...base, list: paste(LIST.replace("X", "Gaz")), senderUserId: "u-gary", senderNames: ["Gary Holt"] });
       expect(noWord.actions).toEqual([]);
@@ -699,6 +725,53 @@ describe("round 2 of the review", () => {
       // A PAYG player writes himself in.
       const inn = reconcileMonthPaste({ ...pre, list: paste("List for October:\n1. Alex\n2. Bilal\n3. Omar (PAYG)"), senderUserId: "u-omar", senderNames: ["Omar Khan"] });
       expect(inn.actions).toEqual([{ kind: "in", userId: "u-omar", name: "Omar", self: true, slot: 3 }]);
+    });
+  });
+});
+
+describe("round 3 of the review", () => {
+  describe("which week a pasted list is about (its title line)", () => {
+    const days = { upcomingDay: 19, previousDay: 12 };
+    it("reads the day in the title line", () => {
+      expect(pasteWeekHint("📋 List for October: Mon 19 Oct, 20:00\n1. Alex", days)).toBe("upcoming");
+      expect(pasteWeekHint("📋 List for October: Mon 12 Oct, 20:00\n1. Alex", days)).toBe("previous");
+      expect(pasteWeekHint("📋 Ekim listesi: 12 Ekim Pazartesi 20:00\n1. Alex", days)).toBe("previous");
+    });
+    it("says nothing for a title with no day, and never reads a slot number or a price as a day", () => {
+      expect(pasteWeekHint("List for October:\n12. Alex\n19. Bilal (Paid £19)", days)).toBeNull();
+      expect(pasteWeekHint("1. Alex\n2. Bilal\n3. Chris\n4. Dave", days)).toBeNull();
+    });
+  });
+
+  describe("the collector's yes to a fee question that was never staged", () => {
+    const NOW = new Date("2026-10-12T21:10:00.000Z");
+    const ok = {
+      reply: "yes" as const,
+      askedAt: new Date(NOW.getTime() - 5 * 60 * 1000),
+      unsent: false,
+      declined: false,
+      otherDmSinceAsk: false,
+      now: NOW,
+    };
+    it("stages only an explicit yes, right after a question that was claimed and not known to have failed", () => {
+      expect(mayStagePaygFeeOnReply(ok)).toBe(true);
+    });
+    it("never after the collector declined", () => {
+      expect(mayStagePaygFeeOnReply({ ...ok, declined: true })).toBe(false);
+    });
+    it("never when the question is known not to have been sent", () => {
+      expect(mayStagePaygFeeOnReply({ ...ok, unsent: true })).toBe(false);
+    });
+    it("never when no question was asked, or it was asked a while ago", () => {
+      expect(mayStagePaygFeeOnReply({ ...ok, askedAt: null })).toBe(false);
+      expect(mayStagePaygFeeOnReply({ ...ok, askedAt: new Date(NOW.getTime() - FEE_REPLY_WINDOW_MS - 1000) })).toBe(false);
+      expect(mayStagePaygFeeOnReply({ ...ok, askedAt: new Date(NOW.getTime() - FEE_REPLY_WINDOW_MS) })).toBe(true);
+    });
+    it("never when MatchTime has DMed the collector something else since: the yes may be for that", () => {
+      expect(mayStagePaygFeeOnReply({ ...ok, otherDmSinceAsk: true })).toBe(false);
+    });
+    it("never for anything that is not the explicit yes (a no, chatter, an amount: the weekly path stages an amount)", () => {
+      for (const reply of ["no", null] as const) expect(mayStagePaygFeeOnReply({ ...ok, reply })).toBe(false);
     });
   });
 });

@@ -42,6 +42,7 @@ import {
 import {
   buildWeekList,
   pasteShowsSameList,
+  pasteWeekHint,
   reconcileMonthPaste,
   weekListHash,
   type PasteIgnored,
@@ -140,6 +141,38 @@ export async function handleMonthlyPaste(args: {
   const senderRole = sender.userId ? memberships.find((m) => m.user.id === sender.userId)?.role : null;
   const senderIsAdmin = senderRole === "OWNER" || senderRole === "ADMIN";
 
+  // BEFORE THE SEED the sender's own line counts for next week only when
+  // the paste is ABOUT next week. Straight after a game people re-paste
+  // that game's list to add "(paid)": its title names that date, or it is
+  // that game's list with nothing changed but paid marks. Such a paste
+  // only records paid marks.
+  let selfBeforeSeed = true;
+  if (!week.seeded) {
+    const played = await db.match.findMany({
+      where: { activity: { orgId }, status: "COMPLETED", isHistorical: false, date: { lt: week.matchDate } },
+      orderBy: { date: "desc" },
+      select: { id: true },
+      take: 3,
+    });
+    let previous: Awaited<ReturnType<typeof loadMonthlyWeek>> = null;
+    for (const p of played) {
+      const w = await loadMonthlyWeek(p.id);
+      if (w && w.monthId === week.monthId) {
+        previous = w;
+        break;
+      }
+    }
+    const hint = pasteWeekHint(args.body, {
+      upcomingDay: Number(formatLondon(week.matchDate, "d")),
+      previousDay: previous ? Number(formatLondon(previous.matchDate, "d")) : null,
+    });
+    if (hint === "previous") selfBeforeSeed = false;
+    else if (hint === null && previous) {
+      const last = buildWeekList({ members: previous.members, rows: previous.rows, maxPlayers: previous.maxPlayers });
+      selfBeforeSeed = !pasteShowsSameList({ list, week: last, roster });
+    }
+  }
+
   const outcome = reconcileMonthPaste({
     list,
     members: week.members,
@@ -153,6 +186,7 @@ export async function handleMonthlyPaste(args: {
     senderUserId: sender.userId,
     senderNames: [sender.name, args.senderWhatsAppName],
     senderIsAdmin,
+    selfBeforeSeed,
   });
 
   const phoneOf = new Map(memberships.map((m) => [m.user.id, m.user.phoneNumber]));

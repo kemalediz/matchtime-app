@@ -684,6 +684,9 @@ describe("MONTHLY: round 2 of the review", () => {
     setWorld(m, { monthly: true, sent: [key], feeAsk: asked(31, null) });
     const again = (await instructions(AFTER_MATCH)).filter((i) => i.key.includes("fee-ask"));
     expect(again.map((i) => [i.key, (i as { text: string }).text])).toEqual([[`${key}:again`, prompt]]);
+    // Never after the collector said no: the fee is then his to type.
+    setWorld(m, { monthly: true, sent: [key, `${key}:declined`], feeAsk: asked(300, null) });
+    expect((await instructions(AFTER_MATCH)).some((i) => i.key.includes("fee-ask"))).toBe(false);
     // And never a third time.
     setWorld(m, { monthly: true, sent: [key, `${key}:again`], feeAsk: asked(300, null) });
     expect((await instructions(AFTER_MATCH)).some((i) => i.key.includes("fee-ask"))).toBe(false);
