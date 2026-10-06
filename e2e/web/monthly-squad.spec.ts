@@ -403,9 +403,23 @@ test("an admin starts the month part-way through by ticking players", async ({ p
     { userId: U.rater, games: 1, reason: "carried-in", appliedMonthId: month!.id, applied: true, createdById: U.collector },
   ]);
 
-  // Starting the month queued nothing for WhatsApp, and touched no match.
+  // Starting the month queued nothing for WhatsApp.
   expect(await outbound()).toBe(before);
-  expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "paymentMethod" = 'monthly'`)).toBe(0);
+  // Since slice 5, starting a month also puts its regulars on the next
+  // match WHEN THAT IS DUE: from 08:00 London the morning after the
+  // previous game (the fixture's was yesterday at 20:00). So how many rows
+  // are marked "paid for by the month" depends on the hour this runs, and
+  // is not asserted (the seed is covered in api/monthly-week.spec.ts).
+  // What holds at ANY hour: only a REGULAR of the month is ever marked.
+  expect(
+    await db.count(
+      `SELECT COUNT(*) FROM "Attendance" a
+        WHERE a."paymentMethod" = 'monthly'
+          AND NOT EXISTS (SELECT 1 FROM "SquadMonthMember" m
+                           WHERE m."monthId" = $1 AND m."userId" = a."userId" AND m.kind = 'regular' AND m."leftAt" IS NULL)`,
+      [month!.id],
+    ),
+  ).toBe(0);
 
   // It is still there after a reload, and cannot be started twice.
   await page.reload();
