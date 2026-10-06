@@ -99,6 +99,19 @@ test.beforeAll(async () => {
     );
     await db.run(`INSERT INTO "Membership" (id,"userId","orgId",role) VALUES ($1,$2,$3,'OWNER')`, [`${user}-mem`, user, orgId]);
   }
+  // Riverside has its weekly game, as every club made through the
+  // create-org form does. An active activity is what arms the scheduler's
+  // older one-time intro, so the hello test below must have one.
+  await db.run(
+    `INSERT INTO "Sport" (id,"orgId",name,preset,"playersPerTeam",positions,"teamLabels","updatedAt")
+     VALUES ('e2e-sj7-sport',$1,'Football 5-a-side','football-5aside',5,'{GK,DEF,MID,FWD}','{Red,Yellow}',now())`,
+    [EN_ORG],
+  );
+  await db.run(
+    `INSERT INTO "Activity" (id,"orgId","sportId",name,"dayOfWeek",time,venue,"updatedAt")
+     VALUES ('e2e-sj7-activity',$1,'e2e-sj7-sport','Tuesday 5s',2,'20:00','Riverside Arena',now())`,
+    [EN_ORG],
+  );
   // Ali tapped "Add MatchTime to WhatsApp" a minute ago: a live connect code.
   // Ayşe and Hal already sent their connect DMs.
   await db.run(
@@ -237,11 +250,25 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   expect(groupPosts[0].text).toBe(hello("en")({ organiser: "Ali" }));
   expect(groupPosts[0].text).toContain("Ali has set me up to run this group's games.");
   expect(instructions[0]).toBe(groupPosts[0]);
+  // One introduction, not two: the approval claimed the scheduler's
+  // one-time intro, although the club has an active activity.
+  expect(instructions.map((i: { key?: string }) => i.key)).not.toContain(`org-${EN_ORG}:bot-intro`);
+  expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1 AND kind = 'bot-intro'`, [`org-${EN_ORG}:bot-intro`])).toBe(1);
 
   // 6. The platform channel hands the Pi the organiser's DM and the ack.
   const { jobs } = await (await request.get("/api/whatsapp/platform-jobs", { headers: ON })).json();
   const purposes = jobs.map((j: { purpose?: string }) => j.purpose);
   expect(purposes).toEqual(expect.arrayContaining(["organiser-decision", "owner-ack"]));
+});
+
+test("a club approved before the claim existed still gets no second introduction", async ({ request, db }) => {
+  // The state of a club approved before the fix whose old intro never
+  // went out: approved through self-join, an active activity, no claim.
+  await db.run(`DELETE FROM "SentNotification" WHERE key = $1`, [`org-${EN_ORG}:bot-intro`]);
+  const poll = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(EN_GROUP)}`, { headers: PI });
+  expect(poll.status()).toBe(200);
+  const { instructions } = await poll.json();
+  expect(instructions.map((i: { key?: string }) => i.key)).not.toContain(`org-${EN_ORG}:bot-intro`);
 });
 
 test("the same APPROVE forwarded twice acks once; a new APPROVE says it was already approved", async ({ request, db }) => {

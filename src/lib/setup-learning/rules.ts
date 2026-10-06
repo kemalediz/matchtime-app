@@ -40,9 +40,10 @@
  *      so they are NEVER changed: when the chat clearly says something
  *      different, it becomes a SUGGESTION in the DM with a link.
  *   6. A monthly list (regulars prepay the month, PAYG fill-ins, credits
- *      for missed games) has no setting yet (the monthly squad mode is
- *      being built): it is NOTED, shown in the DM and on /admin/settings
- *      and /admin/clubs. Seen with HIGH confidence it switches NOTHING on:
+ *      for missed games) is never switched from the chat (Monthly squad
+ *      in Settings is the organiser's own choice; the DM points at it):
+ *      it is NOTED, shown in the DM and on /admin/settings and
+ *      /admin/clubs. Seen with HIGH confidence it switches NOTHING on:
  *      a group that runs by the month is not run by the weekly settings,
  *      and the same live check switched rolling squad and organisers pick
  *      on for one. At medium confidence it still holds payment tracking

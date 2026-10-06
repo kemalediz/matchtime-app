@@ -29,6 +29,7 @@ const dbMock = vi.hoisted(() => {
     unsolicitedGroup: { findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
     user: { findUnique: vi.fn(), findFirst: vi.fn() },
     botJob: { create: vi.fn() },
+    sentNotification: { upsert: vi.fn() },
     platformJob: { findFirst: vi.fn(), create: vi.fn() },
     $executeRaw: vi.fn(),
     $transaction: vi.fn(),
@@ -224,6 +225,24 @@ describe("decideClub: approve", () => {
       { userId: "u-ali", orgId: "org-riverside", nextPath: "/admin/settings" },
     ]);
     expect(anthropicCalls.n).toBe(0);
+  });
+
+  // The hello IS this group's introduction. Without the claim the scheduler's
+  // older one-time intro (key `org-<id>:bot-intro`) would follow it on the
+  // same poll: a create-org club always has an active activity.
+  it("claims the scheduler's one-time intro, in the approval's own transaction", async () => {
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    expect(dbMock.sentNotification.upsert).toHaveBeenCalledTimes(1);
+    expect(dbMock.sentNotification.upsert).toHaveBeenCalledWith({
+      where: { key: "org-org-riverside:bot-intro" },
+      create: { key: "org-org-riverside:bot-intro", kind: "bot-intro" },
+      update: {},
+    });
+  });
+
+  it("a rejection claims nothing", async () => {
+    await decideClub("org-riverside", "reject", "u-kemal", { now: NOW });
+    expect(dbMock.sentNotification.upsert).not.toHaveBeenCalled();
   });
 
   it("speaks Turkish to a Turkish club", async () => {

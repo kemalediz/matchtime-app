@@ -2,6 +2,8 @@
  * F3, learned setup: the prompt's shape and size, and the organiser's DM
  * in English and Turkish. No model.
  */
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { estimateTokens, MIN_CACHEABLE_TOKENS, shouldCachePrompt } from "../../pipeline/llm";
 import { SETUP_LEARNING_MODEL, SETUP_LEARNING_SCHEMA, SETUP_LEARNING_SYSTEM_PROMPT } from "../prompt";
@@ -171,17 +173,35 @@ describe("the organiser's DM", () => {
     expect(dmFor("monthly-list")).toBe(
       `I read the recent messages in "Old Boys Monday" to see how it runs. I didn't change any settings, but a few things are worth a look.\n\n` +
         `📋 I also noticed a monthly list: regulars sign up and pay for the month, others pay as they go to fill spaces and a game a regular misses becomes credit. ` +
-        `MatchTime's monthly squad mode is coming, and we'll tell you when you can switch it on. ` +
-        `Until then nothing changed for it, and I left payment tracking off because it works game by game.\n\n` +
+        `MatchTime has a monthly squad mode for groups like this. I haven't switched it on: you can do that in Settings, under Monthly squad, if you want it. ` +
+        `Until you do, nothing changed for it, and I left payment tracking off because it works game by game.\n\n` +
         `Everything is on your settings page, with the chat messages behind each one: https://mt.link/settings`,
     );
     expect(dmFor("monthly-list", "tr")).toContain(
       `📋 Ayrıca aylık bir liste olduğunu fark ettim: düzenli oyuncular aya yazılıp ayın ücretini peşin ödüyor, diğerleri boşlukları maç başı ödeyerek dolduruyor ve düzenli bir oyuncunun kaçırdığı maç alacak olarak kalıyor. ` +
-        `MatchTime'ın aylık kadro modu yolda, açabileceğiniz zaman size haber vereceğiz. ` +
-        `O zamana kadar bunun için hiçbir şey değişmedi ve ödeme takibini kapalı bıraktım, çünkü maç maç çalışıyor.\n\n`,
+        `MatchTime'ın böyle gruplar için aylık kadro modu var. Ben açmadım: isterseniz Ayarlar'da, Aylık kadro bölümünden açabilirsiniz. ` +
+        `Siz açana kadar bunun için hiçbir şey değişmedi ve ödeme takibini kapalı bıraktım, çünkü maç maç çalışıyor.\n\n`,
     );
+    // Monthly squad is live (2026-10-05): the DM points at the setting,
+    // by the name the settings page gives it, and no longer says "coming".
+    expect(dmFor("monthly-list")).toContain(`under ${t("en").msq_section_title},`);
+    expect(dmFor("monthly-list", "tr")).toContain(`${t("tr").msq_section_title} bölümünden`);
+    for (const lang of ["en", "tr"]) {
+      expect(dmFor("monthly-list", lang)).not.toMatch(/is coming|we'll tell you|yolda|haber vereceğiz/);
+    }
     for (const lang of ["en", "tr"]) {
       expect(dmFor("monthly-list", lang)).not.toMatch(/can't run a monthly list|henüz yönetemiyor/);
+    }
+  });
+
+  // The DM only SUGGESTS monthly squad. Nothing in the learned setup may
+  // ever write the club's squad mode: that switch is the organiser's.
+  it("no learned-setup code touches squadMode", () => {
+    const dir = path.join(__dirname, "..");
+    const sources = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+    expect(sources.length).toBeGreaterThan(4);
+    for (const f of sources) {
+      expect(readFileSync(path.join(dir, f), "utf8"), f).not.toMatch(/squadMode/);
     }
   });
 

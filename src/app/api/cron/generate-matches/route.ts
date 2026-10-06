@@ -21,7 +21,7 @@
  */
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { londonWallClockToUtc, formatLondon } from "@/lib/london-time";
+import { nextLondonKickoff } from "@/lib/london-time";
 import { hasMatchForSlot } from "@/lib/match-slot";
 import { partitionGeneratable } from "@/lib/org-lifecycle";
 
@@ -78,21 +78,10 @@ export async function GET(request: Request) {
   let created = 0;
 
   for (const activity of activities) {
-    // Find the London-local calendar day of the next occurrence of the
-    // activity's weekday. `Date#getDay()` returns the weekday in local
-    // server time — on Vercel that's UTC, which for most of the year
-    // disagrees with London for 0-1 hours per day. Safest to read the
-    // weekday directly via Intl so near-midnight edge cases don't slip.
-    const now = new Date();
-    const londonWeekday = Number(formatLondon(now, "i")) % 7; // Mon=1..Sun=7 → 0..6; convert to JS Sun=0..Sat=6
-    let daysUntil = activity.dayOfWeek - londonWeekday;
-    if (daysUntil <= 0) daysUntil += 7;
-
-    // Anchor at midnight London time of the target day — fromZonedTime
-    // inside the helper handles the wall-clock → UTC translation.
-    const todayLondonMidnight = londonWallClockToUtc(now, "00:00");
-    const anchor = new Date(todayLondonMidnight.getTime() + daysUntil * 24 * 60 * 60 * 1000);
-    const matchDate = londonWallClockToUtc(anchor, activity.time);
+    // The next occurrence of the activity's weekday at its London wall
+    // clock, as a UTC instant. Shared with the admin "Generate match"
+    // button (see `nextLondonKickoff`).
+    const matchDate = nextLondonKickoff(new Date(), activity.dayOfWeek, activity.time);
 
     // Dedupe window: ±12h around the intended match time — enough to
     // catch a pre-existing record even if the prior run used a slightly
