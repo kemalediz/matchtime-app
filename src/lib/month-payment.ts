@@ -57,6 +57,7 @@ import {
 import {
   claimsDigestDue,
   decideCollectorReply,
+  priceAskDue,
   duePaymentReminder,
   groupReminderDue,
   monthFeeShare,
@@ -69,6 +70,7 @@ import {
   type PricingInput,
   type PricingMember,
   type RemindersSent,
+  type SentDigest,
 } from "./month-payment-rules";
 import { loadLiveMonths, lockMonth, type SignupMonth } from "./month-signup";
 import { WAITING_NOTE, buildSignupList, isDaytime, SIGNUP_REPOST_FLOOR_MS } from "./month-signup-rules";
@@ -98,6 +100,13 @@ async function claimOnce(key: string, kind: string): Promise<boolean> {
     if (isUniqueViolation(err)) return false;
     throw err;
   }
+}
+
+/** One spender of a club's credits at a time. A credit belongs to a
+ *  player in a CLUB, not to a month: two fixtures priced at the same
+ *  moment must not both spend it. Taken after the month's own lock. */
+async function lockClubCredits(tx: Tx, orgId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`squad-credits:${orgId}`}))`;
 }
 
 // ── Who confirms (D3) ──────────────────────────────────────────────────
@@ -221,8 +230,12 @@ export async function priceMonth(args: {
 
   return db.$transaction(async (tx) => {
     await lockMonth(tx, month.id);
+    await lockClubCredits(tx, args.orgId);
     const [current, rows] = await Promise.all([
-      tx.squadMonth.findUnique({ where: { id: month.id }, select: { sharePerGamePence: true, concessionPerGamePence: true, pricedAt: true } }),
+      tx.squadMonth.findUnique({
+        where: { id: month.id },
+        select: { sharePerGamePence: true, concessionPerGamePence: true, pricedAt: true, payByAt: true },
+      }),
       tx.squadMonthMember.findMany({ where: { monthId: month.id }, select: MEMBER_FIELDS }),
     ]);
     const inClub = await inClubOf(tx, args.orgId, rows.map((r) => r.userId));
@@ -253,6 +266,9 @@ export async function priceMonth(args: {
         venueCostPence: args.input.venueCostPence,
         payByAt: args.input.payByAt,
         pricedAt: current?.pricedAt ?? now,
+        // A pay-by date moved (it is always ahead of now): the summary
+        // that follows it is due again, once, after the new date.
+        ...(current?.payByAt?.getTime() !== args.input.payByAt.getTime() ? { summarySentAt: null } : {}),
       },
     });
     return { ok: true as const };
@@ -261,11 +277,14 @@ export async function priceMonth(args: {
 
 /**
  * One member's amount, after their place on a PRICED month changed
- * (`applySignup`). A regular who has not paid gets their amount, with
- * their usable credits. Somebody who is a regular no longer, and has not
- * paid, owes nothing: the credits pricing took for them go back to the
- * ledger (never the ones the organiser said they came into the month
- * with). Somebody who has paid or says so is left exactly as they are.
+ * (`applySignup`).
+ *  - A regular who has not paid gets their amount, with their usable
+ *    credits. One who has paid, or says so, is left exactly as they are.
+ *  - Somebody who is a regular NO LONGER (moved to PAYG, taken off) owes
+ *    nothing for the month: the credits pricing took for them go back to
+ *    the ledger, whether or not they had said "paid" (never the ones the
+ *    organiser said they came into the month with). Only a CONFIRMED
+ *    payment keeps its credits spent: that money was paid net of them.
  */
 export async function settleMemberAmount(monthId: string, userId: string, now: Date = new Date()): Promise<void> {
   await db.$transaction(async (tx) => {
@@ -276,9 +295,10 @@ export async function settleMemberAmount(monthId: string, userId: string, now: D
     });
     const row = await tx.squadMonthMember.findUnique({ where: { monthId_userId: { monthId, userId } }, select: MEMBER_FIELDS });
     if (!month || !row || month.sharePerGamePence == null) return;
-    if (row.paidAt || row.paidClaimedAt) return;
+    await lockClubCredits(tx, month.orgId);
     const member = pricingMember(row, await inClubOf(tx, month.orgId, [userId]));
     if (member.kind === "regular" && !member.out && !member.waiting) {
+      if (member.paid !== "none") return;
       const credits = await usableCredits(tx, month.orgId, [userId], now);
       const [plan] = planPricing({ members: [member], credits, sharePence: month.sharePerGamePence, concessionPence: month.concessionPerGamePence });
       if (!plan) return;
@@ -291,6 +311,7 @@ export async function settleMemberAmount(monthId: string, userId: string, now: D
       await tx.squadMonthMember.update({ where: { id: row.id }, data: { creditsApplied: plan.creditsApplied, amountDuePence: plan.amountDuePence } });
       return;
     }
+    if (row.paidAt) return;
     const released = await tx.squadCredit.updateMany({
       where: { orgId: month.orgId, userId, appliedMonthId: monthId, voidedAt: null, reason: { not: "carried-in" } },
       data: { appliedMonthId: null, appliedAt: null },
@@ -310,6 +331,13 @@ export type PaidClaimSource = "list" | "dm" | "page" | "other-player";
  * Record that a regular SAYS they have paid. A claim: `paidAt` is not
  * touched, and a row that already says paid (or is confirmed) is left
  * alone. True when this call made the claim.
+ *
+ * ONE EXCEPTION, and it is still only a claim: when the collector has
+ * answered "not arrived" to their earlier claim and they say "paid"
+ * again, this is a NEW claim. It gets a new time and the decline is
+ * dropped, so it has to appear on a NEW digest before anybody can
+ * confirm it. (A reply to the old digest can never reach it: the claim is
+ * newer than that digest.)
  */
 export async function claimMonthPaid(args: {
   monthId: string;
@@ -318,33 +346,54 @@ export async function claimMonthPaid(args: {
   amountPence?: number | null;
   now?: Date;
 }): Promise<boolean> {
-  const res = await db.squadMonthMember.updateMany({
-    where: {
-      monthId: args.monthId,
-      userId: args.userId,
-      kind: "regular",
-      leftAt: null,
-      paidAt: null,
-      paidClaimedAt: null,
-      month: { status: { not: "closed" }, org: { squadMode: "monthly" } },
-    },
-    data: { paidClaimedAt: args.now ?? new Date(), paidClaimSource: args.source, paidClaimedAmountPence: args.amountPence ?? null },
-  });
-  return res.count > 0;
+  const now = args.now ?? new Date();
+  const base = {
+    monthId: args.monthId,
+    userId: args.userId,
+    kind: "regular",
+    leftAt: null,
+    paidAt: null,
+    month: { status: { not: "closed" }, org: { squadMode: "monthly" } },
+  };
+  const data = { paidClaimedAt: now, paidClaimSource: args.source, paidClaimedAmountPence: args.amountPence ?? null };
+  const fresh = await db.squadMonthMember.updateMany({ where: { ...base, paidClaimedAt: null }, data });
+  if (fresh.count > 0) return true;
+  // Already says paid. Was that claim declined?
+  const month = await db.squadMonth.findUnique({ where: { id: args.monthId }, select: { orgId: true } });
+  if (!month) return false;
+  const dropped = await db.sentNotification.deleteMany({ where: { key: declinedKey(month.orgId, args.monthId, args.userId) } });
+  if (!dropped || dropped.count === 0) return false;
+  const again = await db.squadMonthMember.updateMany({ where: { ...base, paidClaimedAt: { not: null } }, data });
+  return again.count > 0;
 }
 
 export type ConfirmPaidError = "not-found" | "not-collector" | "closed";
 
 /** THE ONE PLACE `paidAt` IS WRITTEN for a month. The caller has decided
  *  who is asking; this checks only the month and the row. */
-async function writeConfirmed(orgId: string, monthId: string, userIds: string[], actorUserId: string, now: Date): Promise<string[]> {
+async function writeConfirmed(
+  orgId: string,
+  monthId: string,
+  userIds: string[],
+  actorUserId: string,
+  now: Date,
+  /** A reply to a digest: only a claim made before that digest was sent. */
+  claimedBefore?: Date,
+): Promise<string[]> {
   if (userIds.length === 0) return [];
   return db.$transaction(async (tx) => {
     await lockMonth(tx, monthId);
     const month = await tx.squadMonth.findFirst({ where: { id: monthId, orgId, status: { not: "closed" } }, select: { id: true } });
     if (!month) return [];
     const rows = await tx.squadMonthMember.findMany({
-      where: { monthId, userId: { in: userIds }, kind: "regular", leftAt: null, paidAt: null },
+      where: {
+        monthId,
+        userId: { in: userIds },
+        kind: "regular",
+        leftAt: null,
+        paidAt: null,
+        ...(claimedBefore ? { paidClaimedAt: { lte: claimedBefore } } : {}),
+      },
       select: { id: true, userId: true, amountDuePence: true, paidClaimedAmountPence: true },
     });
     for (const r of rows) {
@@ -391,6 +440,8 @@ export async function unconfirmMonthPaid(args: {
 
 const declinedKey = (orgId: string, monthId: string, userId: string) => `${paymentKeyPrefix(orgId)}declined:${monthId}:${userId}`;
 const digestPrefix = (orgId: string, monthId: string) => `${paymentKeyPrefix(orgId)}digest:${monthId}:`;
+/** One row per claim a digest LISTED: `...:digest-item:<monthId>:<day>:<userId>`. */
+const digestItemPrefix = (orgId: string, monthId: string, day: string) => `${paymentKeyPrefix(orgId)}digest-item:${monthId}:${day}:`;
 
 // ── A player's "paid" DM ───────────────────────────────────────────────
 
@@ -443,9 +494,9 @@ export async function handlePlayerPaidDm(input: {
 
   const row = owed[0];
   const { orgId } = row.month;
+  // Saying it again after the collector said "not arrived" is a new claim
+  // (`claimMonthPaid`): it goes on a new digest before it can be confirmed.
   const claimed = await claimMonthPaid({ monthId: row.monthId, userId: input.userId, source: "dm", amountPence: read.amountPence, now });
-  // Saying it again after the collector said "not arrived" puts it back in front of them.
-  await db.sentNotification.deleteMany({ where: { key: declinedKey(orgId, row.monthId, input.userId) } }).catch(() => {});
 
   const day = formatLondon(now, "yyyy-MM-dd");
   if (await claimOnce(`${paymentKeyPrefix(orgId)}claim-ack:${row.monthId}:${input.userId}:${day}`, "month-pay-dm")) {
@@ -499,13 +550,21 @@ async function waitingClaims(month: SignupMonth): Promise<WaitingRow[]> {
     .sort((a, b) => (a.slot ?? 999) - (b.slot ?? 999));
 }
 
-async function latestDigestAt(orgId: string, monthId: string): Promise<Date | null> {
+/** The last digest sent for a month: when, and exactly whose claims it
+ *  listed (the rows written when it was sent). Null: none was sent. */
+async function latestDigest(orgId: string, monthId: string): Promise<SentDigest | null> {
+  const prefix = digestPrefix(orgId, monthId);
   const row = await db.sentNotification.findFirst({
-    where: { key: { startsWith: digestPrefix(orgId, monthId) } },
+    where: { key: { startsWith: prefix } },
     orderBy: { createdAt: "desc" },
-    select: { createdAt: true },
+    select: { key: true, createdAt: true },
   });
-  return row?.createdAt ?? null;
+  if (!row) return null;
+  const items = await db.sentNotification.findMany({
+    where: { key: { startsWith: digestItemPrefix(orgId, monthId, row.key.slice(prefix.length)) } },
+    select: { targetUser: true },
+  });
+  return { at: row.createdAt, userIds: items.map((i) => i.targetUser).filter((u): u is string => !!u) };
 }
 
 /**
@@ -513,12 +572,16 @@ async function latestDigestAt(orgId: string, monthId: string): Promise<Date | nu
  * (`readCollectorReply`: the word PAID is required; a stray "ok" or a
  * bare number is never read). Null when the text is not that, or the
  * sender may not confirm for any monthly club: the message then goes on
- * exactly as before, and nothing has been read or written for it.
+ * exactly as before, and nothing has been written for it. The same when
+ * no digest is outstanding (none sent in the last two days), or when none
+ * of the numbers is on it: "paid 8" from an organiser who is also a
+ * player is their own message, not an answer to anything.
  *
- * Only claims the LAST digest showed are touched, a number that is not
- * one of them confirms nothing, and a "NONE" is recorded: those claims
- * are not put to the collector again (the Months page still shows them).
- * One WhatsApp message is applied once.
+ * Only claims the LAST digest LISTED are touched (the rows recorded when
+ * it was sent), and only while they are those same claims; a number that
+ * is not one of them confirms nothing; and a "NONE" is recorded: those
+ * claims are not put to the collector again (the Months page still shows
+ * them). One WhatsApp message is applied once.
  */
 export async function handleCollectorPaidReply(input: {
   text: string;
@@ -543,34 +606,33 @@ export async function handleCollectorPaidReply(input: {
     select: { userId: true, orgId: true, org: { select: { language: true } } },
   });
   // The month whose digest is the newest: that is the message being answered.
-  let best: { month: SignupMonth; actorUserId: string; digestAt: Date | null; lang: string | null } | null = null;
-  let mayConfirmSomewhere: { orgId: string; lang: string | null } | null = null;
+  let best: { month: SignupMonth; actorUserId: string; digest: SentDigest; lang: string | null } | null = null;
   for (const m of memberships) {
     if (!(await mayConfirmPayments(m.orgId, m.userId))) continue;
-    mayConfirmSomewhere ??= { orgId: m.orgId, lang: m.org.language };
     for (const month of await loadLiveMonths(m.orgId, now)) {
-      const digestAt = await latestDigestAt(m.orgId, month.id);
-      if (!digestAt) continue;
-      if (!best || (best.digestAt?.getTime() ?? 0) < digestAt.getTime()) best = { month, actorUserId: m.userId, digestAt, lang: m.org.language };
+      const digest = await latestDigest(m.orgId, month.id);
+      if (!digest) continue;
+      if (!best || best.digest.at.getTime() < digest.at.getTime()) best = { month, actorUserId: m.userId, digest, lang: m.org.language };
     }
   }
-  if (!mayConfirmSomewhere) return null;
-  if (!best) {
-    return { handled: "month-paid-nothing", orgId: mayConfirmSomewhere.orgId, replyText: buildCollectorReplyAnswer({ kind: "nothing", lang: mayConfirmSomewhere.lang }) };
-  }
+  // Nobody who may confirm, or no digest ever sent: not a reply to one.
+  if (!best) return null;
   const { month, actorUserId, lang } = best;
+
+  const claims = await waitingClaims(month);
+  const decision = decideCollectorReply({ reply, claims, digest: best.digest, now });
+  // No digest outstanding, or none of the numbers is on it: this is
+  // somebody's own message ("paid 8"), and it goes on untouched.
+  if (decision.kind === "not-a-reply") return null;
 
   // Applied once per WhatsApp message (the Pi retries).
   if (input.waMessageId && !(await claimOnce(`${paymentKeyPrefix(month.orgId)}reply:${input.waMessageId}`, "month-pay-reply"))) {
     return { handled: "month-paid-duplicate", orgId: month.orgId, replyText: "" };
   }
-
-  const claims = await waitingClaims(month);
-  const decision = decideCollectorReply({ reply, claims, digestAt: best.digestAt, now });
   const nameOf = new Map(claims.map((c) => [c.userId, c.name]));
   const answer = (text: string, handled: string) => ({ handled, orgId: month.orgId, replyText: text });
 
-  if (decision.kind === "no-digest" || decision.kind === "nothing-waiting") {
+  if (decision.kind === "nothing-waiting") {
     return answer(buildCollectorReplyAnswer({ kind: "nothing", lang }), "month-paid-nothing");
   }
   if (decision.kind === "unknown-numbers") {
@@ -585,7 +647,8 @@ export async function handleCollectorPaidReply(input: {
       "month-paid-declined",
     );
   }
-  const done = await writeConfirmed(month.orgId, month.id, decision.userIds, actorUserId, now);
+  // Only claims made BEFORE that digest: a row re-claimed since is not written.
+  const done = await writeConfirmed(month.orgId, month.id, decision.userIds, actorUserId, now, best.digest.at);
   if (done.length === 0) return answer(buildCollectorReplyAnswer({ kind: "nothing", lang }), "month-paid-nothing");
   return answer(
     buildCollectorReplyAnswer({ kind: "confirmed", names: done.map((u) => nameOf.get(u) ?? ""), monthDate: month.firstKickoff, lang }),
@@ -669,9 +732,9 @@ async function priceAsk(
 ): Promise<void> {
   // Only a month MatchTime opened itself, with no price, whose games are
   // still to come.
-  if (!month.listOpenedAt || !month.endsAt || month.pricedAt || now.getTime() >= month.firstKickoff.getTime()) return;
+  if (!month.listOpenedAt || month.pricedAt) return;
   const regulars = activeRegulars(month).length;
-  if (now.getTime() < month.endsAt.getTime() && regulars < month.maxRegulars) return;
+  if (!priceAskDue({ now, listOpenedAt: month.listOpenedAt, firstKickoff: month.firstKickoff, regulars, maxRegulars: month.maxRegulars })) return;
   if (!(await claimOnce(`${paymentKeyPrefix(month.orgId)}price-ask:${month.id}`, "admin-notice"))) return;
   const price = org.billingStatus === "exempt" ? null : planPricePence(org.billingPlan, org.billingPricePence);
   const fee = monthFeeShare({ pricePence: price, regulars, games: month.kickoffs.length });
@@ -703,6 +766,12 @@ async function claimsDigest(month: SignupMonth, collectorId: string | null, now:
   const claims = await waitingClaims(month);
   if (!claimsDigestDue({ now, sentToday, waiting: claims.length })) return;
   if (!(await claimOnce(key, "month-pay-digest"))) return;
+  // EXACTLY what this digest lists, recorded with it: a reply can only
+  // ever confirm these. A claim made a moment later is not among them.
+  await db.sentNotification.createMany({
+    data: claims.map((c) => ({ key: `${digestItemPrefix(month.orgId, month.id, day)}${c.userId}`, kind: "month-pay-digest-item", targetUser: c.userId })),
+    skipDuplicates: true,
+  });
   const text = buildClaimsDigest({ claims: claims.map((c) => ({ slot: c.slot, name: c.name, amountPence: c.amountPence })), monthDate: month.firstKickoff, lang: month.language });
   const collector = collectorId ? await db.user.findUnique({ where: { id: collectorId }, select: { phoneNumber: true } }) : null;
   if (collector?.phoneNumber) {
@@ -786,7 +855,13 @@ export async function monthPaymentPosts(
     (m) => m.pricedAt && m.payByAt && m.sharePerGamePence != null && now.getTime() < m.payByAt.getTime() + (3 + 1) * DAY_MS,
   );
   if (months.length === 0) return [];
-  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { paymentHolderId: true, paymentInstructions: true } });
+  // The club's own state, checked HERE: a dormant or billing-paused club
+  // is reminded of nothing, whoever called.
+  const org = await db.organisation.findUnique({
+    where: { id: orgId },
+    select: { paymentHolderId: true, paymentInstructions: true, squadMode: true, approvalStatus: true, dormantAt: true, billingStatus: true },
+  });
+  if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return [];
   const collector = org?.paymentHolderId ? await db.user.findUnique({ where: { id: org.paymentHolderId }, select: { name: true } }) : null;
   const out: PaymentInstruction[] = [];
 

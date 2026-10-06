@@ -35,7 +35,7 @@ import { ORG_ID, PHONE, U } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { defaultPayBy } from "@/lib/month-payment-rules";
 import { buildClaimsDigest, buildCollectorReplyAnswer, buildPaidClaimAckDm, buildPayBySummary, buildPayReminderDm, pounds } from "@/lib/month-payment-copy";
-import { listOpensAt, monthKickoffs, nextMonthStart, signupEndsAt } from "@/lib/month-signup-rules";
+import { listOpensAt, monthKickoffs, nextMonthStart } from "@/lib/month-signup-rules";
 import { londonMonthStart } from "@/lib/squad-month-rules";
 
 test.describe.configure({ mode: "serial" });
@@ -54,7 +54,9 @@ const N = KICKOFFS.length;
 const FIRST = KICKOFFS[0];
 const MONTH_NAME = formatInTimeZone(FIRST, LONDON, "MMMM");
 const OPENS = listOpensAt(FIRST, 7);
-const ENDS = signupEndsAt(OPENS, FIRST);
+/** A day after the list opened: the organisers are asked for the price.
+ *  (Sign-up itself runs on until two days before the first game.) */
+const ASK = new Date(OPENS.getTime() + 24 * 60 * 60_000);
 /** Three days before the first game, 21:00 London. */
 const PAY_BY = defaultPayBy(FIRST, new Date());
 const PAY_BY_LABEL = formatInTimeZone(PAY_BY, LONDON, "EEE d MMM, HH:mm");
@@ -72,7 +74,7 @@ const P = {
 } as const;
 type Person = (typeof P)[keyof typeof P];
 const digits = (phone: string) => phone.replace(/^\+/, "");
-const DUE = { alex: SHARE * N, bilal: SHARE * (N - 1), carl: 500 * N, dev: SHARE * N };
+const DUE = { alex: SHARE * N, bilal: SHARE * (N - 1), carl: 500 * N, dev: SHARE * (N - 1) };
 
 const KEY = { "x-api-key": E2E.WHATSAPP_API_KEY };
 let seq = 0;
@@ -213,19 +215,22 @@ test.beforeAll(async () => {
   await credit(db, "e2e-mp-credit-played", P.bilal, LAST);
   await credit(db, "e2e-mp-credit-future", P.bilal, matchId(1));
   await credit(db, "e2e-mp-credit-void", P.bilal, null, { voided: true });
+  // Dev has one credit for a game that was played.
+  await credit(db, "e2e-mp-credit-dev", P.dev, LAST);
   // Omar is PAYG: his credit is not the month's to spend.
   await credit(db, "e2e-mp-credit-payg", P.omar, null);
   engineOn({});
 });
 test.afterAll(() => resetDb());
 
-test("1. sign-up ends: the organisers are asked for the price, once, and nothing is priced by itself", async ({ request, db }) => {
-  await poll(request, new Date(ENDS.getTime() + 5 * 60_000));
+test("1. a day after the list opens the organisers are asked for the price, once, and nothing is priced by itself", async ({ request, db }) => {
+  await poll(request, new Date(ASK.getTime() + 5 * 60_000));
   const month = await db.one<{ status: string; pricedAt: Date | null; sharePerGamePence: number | null }>(
     `SELECT status, "pricedAt", "sharePerGamePence" FROM "SquadMonth" WHERE id = $1`,
     [MONTH],
   );
-  expect(month).toEqual({ status: "running", pricedAt: null, sharePerGamePence: null });
+  // Sign-up is still open: it runs until two days before the first game.
+  expect(month).toEqual({ status: "open", pricedAt: null, sharePerGamePence: null });
 
   const asks = (await dms(db, P.rob)).filter((d) => d.text.includes("Set the price"));
   expect(asks).toHaveLength(1);
@@ -234,7 +239,7 @@ test("1. sign-up ends: the organisers are asked for the price, once, and nothing
   expect((await dms(db, P.adam)).filter((d) => d.text.includes("Set the price"))).toHaveLength(1);
   expect(await dms(db, P.alex)).toEqual([]);
 
-  await poll(request, new Date(ENDS.getTime() + 7 * 60_000));
+  await poll(request, new Date(ASK.getTime() + 7 * 60_000));
   expect((await dms(db, P.rob)).filter((d) => d.text.includes("Set the price"))).toHaveLength(1);
   // No amount, no payment post, before a price exists.
   expect((await member(db, P.alex))!.amountDuePence).toBeNull();
@@ -272,6 +277,7 @@ test("2. the organiser sets the price: share x games minus credits, and the pric
   // Only the credit for the game that was played is spent.
   const credits = await db.all<{ id: string; applied: string | null }>(`SELECT id, "appliedMonthId" AS applied FROM "SquadCredit" WHERE "orgId" = $1 ORDER BY id`, [ORG]);
   expect(credits).toEqual([
+    { id: "e2e-mp-credit-dev", applied: MONTH },
     { id: "e2e-mp-credit-future", applied: null },
     { id: "e2e-mp-credit-payg", applied: null },
     { id: "e2e-mp-credit-played", applied: MONTH },
@@ -286,7 +292,7 @@ test("2. the organiser sets the price: share x games minus credits, and the pric
   expect(await member(db, P.bilal)).toMatchObject({ amountDuePence: DUE.bilal, creditsApplied: 1 });
 
   // The priced list, once.
-  const first = money(await poll(request, new Date(ENDS.getTime() + 20 * 60_000)));
+  const first = money(await poll(request, new Date(ASK.getTime() + 20 * 60_000)));
   expect(first).toHaveLength(1);
   expect(first[0].kind).toBe("group-message");
   expect(first[0].key.startsWith(`org-${ORG}:mpy:priced:${MONTH}:`)).toBe(true);
@@ -304,7 +310,7 @@ test("2. the organiser sets the price: share x games minus credits, and the pric
       'Paid? Add (paid) after your name and paste the list, or DM me "paid".',
     ].join("\n"),
   );
-  expect(money(await poll(request, new Date(ENDS.getTime() + 25 * 60_000)))).toEqual([]);
+  expect(money(await poll(request, new Date(ASK.getTime() + 25 * 60_000)))).toEqual([]);
 });
 
 test("3. 'says paid' from the list, a DM and the page: a claim every time, never a confirmation", async ({ page, request, db }) => {
@@ -359,7 +365,7 @@ test("3. 'says paid' from the list, a DM and the page: a claim every time, never
 
 test("4. the collector's digest and reply: never a stray word, never a wrong number; a decline is recorded", async ({ request, db }) => {
   // Before 10:00 nothing; from 10:00 one digest, to the collector alone.
-  const dayAfter = new Date(ENDS.getTime() + 24 * 60 * 60_000);
+  const dayAfter = new Date(ASK.getTime() + 24 * 60 * 60_000);
   await poll(request, new Date(dayAfter.getTime() - 30 * 60_000));
   const digestOf = async () => (await dms(db, P.rob)).filter((d) => d.text.includes("they've paid"));
   expect(await digestOf()).toHaveLength(0);
@@ -410,13 +416,29 @@ test("4. the collector's digest and reply: never a stray word, never a wrong num
   expect(await paidCount(db)).toBe(1);
   expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE kind = 'month-pay-declined' AND key LIKE $1`, [`org-${ORG}:mpy:declined:${MONTH}:%`])).toBe(2);
   expect((await member(db, P.bilal))!.paidClaimedAt).not.toBeNull();
-  const twoDays = new Date(ENDS.getTime() + 48 * 60 * 60_000 + 5 * 60_000);
+  const twoDays = new Date(ASK.getTime() + 48 * 60 * 60_000 + 5 * 60_000);
   await poll(request, twoDays);
   expect(await digestOf()).toHaveLength(1);
 
-  // Bilal says "paid" again: it is put in front of the collector again, alone.
+  // Bilal says "paid" again: a NEW claim, with a new time.
+  const firstClaim = (await member(db, P.bilal))!.paidClaimedAt!;
   await db.run(`DELETE FROM "SentNotification" WHERE key LIKE $1`, [`org-${ORG}:mpy:claim-ack:%`]);
   expect((await dm(request, P.bilal, "paid")).handled).toBe("month-paid-claim");
+  expect(new Date((await member(db, P.bilal))!.paidClaimedAt!).getTime()).toBeGreaterThan(new Date(firstClaim).getTime());
+  // THE REVIEW'S CASE. The collector now sends "PAID ALL" (meaning
+  // somebody else, or the old digest). Bilal was on that digest, but this
+  // claim has not been shown to the collector: NOBODY is confirmed.
+  const stale = await dm(request, P.rob, "PAID ALL");
+  expect(stale.handled).toBe("month-paid-nothing");
+  expect(await paidCount(db)).toBe(1);
+  expect((await member(db, P.bilal))!.paidAt).toBeNull();
+  // And "PAID 2" (his number) is not an answer to that digest at all.
+  expect(((await dm(request, P.rob, "PAID 2")).handled ?? "")).not.toMatch(/^month-paid-(confirmed|declined)/);
+  expect(await paidCount(db)).toBe(1);
+  // An amount is never a list number, whoever sends it.
+  expect(((await dm(request, P.rob, "paid 1.50")).handled ?? "")).not.toMatch(/^month-paid/);
+  expect(await paidCount(db)).toBe(1);
+  // It goes on a new digest first.
   // (Later the same day: no digest had gone out today, there was nothing waiting.)
   await poll(request, new Date(twoDays.getTime() + 60 * 60_000));
   const digests = await digestOf();
@@ -456,7 +478,7 @@ test("5. only the collector confirms on the page; 6. the share is locked once so
   expect(carl!.paidClaimedAt).not.toBeNull();
 });
 
-test("7. reminders: the count and a DM a day before, a second on the day, the summary, then three late chases and silence", async ({ request, db }) => {
+test("7. reminders: the count and a DM a day before, a second on the day, the summary, then three late chases and silence", async ({ page, request, db }) => {
   const HOUR = 60 * 60_000;
   // Carl's claim was answered "not arrived": he is chased again. Dev never said anything.
   const dayBefore = money(await poll(request, new Date(PAY_BY.getTime() - 24 * HOUR + 30 * 60_000)));
@@ -473,7 +495,7 @@ test("7. reminders: the count and a DM a day before, a second on the day, the su
       monthDate: FIRST,
       amountDuePence: DUE.dev,
       games: N,
-      credits: 0,
+      credits: 1,
       payByAt: PAY_BY,
       collectorName: P.rob.name,
       instructions: INSTRUCTIONS,
@@ -522,6 +544,31 @@ test("7. reminders: the count and a DM a day before, a second on the day, the su
 
   // Through all of it the collector was never sent a reminder, and nobody was marked paid by a poll.
   expect(await paidCount(db)).toBe(2);
+
+  // The organiser moves Dev to PAYG. He had said "paid", and one credit
+  // had been taken for him: it goes back to the ledger, and he owes nothing.
+  await signInAs(page, P.adam.id, "/admin/months");
+  const devRow = page.locator(`[data-testid="month-member"][data-user="${P.dev.id}"]`);
+  await expect(devRow).toBeVisible({ timeout: 30_000 });
+  await devRow.getByTestId("member-make-payg").click();
+  await expect(devRow.locator("[data-kind]")).toHaveText("PAYG");
+  expect(await member(db, P.dev)).toMatchObject({ amountDuePence: null, creditsApplied: 0, paidAt: null });
+  expect(await db.one(`SELECT "appliedMonthId" AS applied FROM "SquadCredit" WHERE id = 'e2e-mp-credit-dev'`)).toEqual({ applied: null });
+  // Bilal's payment is confirmed: his credit stays spent.
+  expect(await db.one(`SELECT "appliedMonthId" AS applied FROM "SquadCredit" WHERE id = 'e2e-mp-credit-played'`)).toEqual({ applied: MONTH });
+
+  // The pay-by date is moved after the summary went out: one more summary is due after the new date.
+  const sent = () => db.one<{ sent: boolean }>(`SELECT ("summarySentAt" IS NOT NULL) AS sent FROM "SquadMonth" WHERE id = $1`, [MONTH]);
+  expect(await sent()).toEqual({ sent: true });
+  const form = page.getByTestId("price-form").first();
+  const later = new Date(PAY_BY.getTime() + 24 * HOUR);
+  await form.getByTestId("price-payby").fill(formatInTimeZone(later, LONDON, "yyyy-MM-dd'T'HH:mm"));
+  await form.getByTestId("price-save").click();
+  await expect.poll(async () => (await sent())!.sent).toBe(false);
+  await poll(request, new Date(later.getTime() + 13 * HOUR));
+  await poll(request, new Date(later.getTime() + 14 * HOUR));
+  expect(await sent()).toEqual({ sent: true });
+  expect((await dms(db, P.rob)).filter((d) => d.text.includes("the pay-by date has passed"))).toHaveLength(2);
 });
 
 test("8. a WEEKLY club is untouched: its 'paid' DM, a PAID ALL and its poll are what they were", async ({ request, db }) => {

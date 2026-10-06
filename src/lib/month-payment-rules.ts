@@ -238,6 +238,9 @@ const REPLY_JOINER = new Set(["and", "ve"]);
  * organiser picks a waiting player) is NEVER a confirmation of money.
  */
 export function readCollectorReply(text: string | null | undefined): CollectorReply | null {
+  // An AMOUNT is never a list number: "paid £30" and "paid 22.50" are
+  // somebody saying what they paid, not the collector's reply.
+  if (/[£₺]|\d[.,]\d/.test(text ?? "")) return null;
   const tokens = foldListText(text ?? "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .split(" ")
@@ -270,29 +273,63 @@ export interface WaitingClaim {
 /** A reply counts against a digest for two days. */
 export const DIGEST_REPLY_WINDOW_MS = 2 * DAY_MS;
 
+/** What one digest listed: when it went out and exactly whose claims
+ *  were on it. Recorded when the digest is sent, never worked out later. */
+export interface SentDigest {
+  at: Date;
+  userIds: string[];
+}
+
 export type CollectorDecision =
   | { kind: "confirm"; userIds: string[] }
   | { kind: "decline"; userIds: string[] }
   | { kind: "unknown-numbers"; numbers: number[] }
-  | { kind: "no-digest" }
-  | { kind: "nothing-waiting" };
+  /** A digest is outstanding, but nothing it listed is still waiting. */
+  | { kind: "nothing-waiting" }
+  /** Not an answer to a digest at all: none is outstanding, or none of the
+   *  numbers is on it. The message is somebody's own ("paid 8") and goes
+   *  on as if this had never looked at it. */
+  | { kind: "not-a-reply" };
 
 /**
  * What the collector's reply does. Only ever to claims the LAST DIGEST
- * showed them (made before it was sent): "ALL" can never confirm a claim
- * the collector has not been shown. A number that is not one of those
- * claims confirms nothing at all, so a typo cannot mark the wrong person.
+ * LISTED, and only while they are the same claims:
+ *
+ *  - the claim's user is on that digest's own list (`digest.userIds`). A
+ *    claim that was made just before the digest went out but is not on it
+ *    is not confirmed;
+ *  - AND the claim was made before the digest. Somebody the collector
+ *    answered "not arrived" who says "paid" again has a NEW claim, with a
+ *    new time: it must appear on a new digest before it can be confirmed.
+ *
+ * So "ALL" can never confirm a claim the collector was not shown. A
+ * number that is not one of those claims confirms nothing at all, so a
+ * typo cannot mark the wrong person; and when NONE of the numbers is on
+ * the digest (or no digest is outstanding) it is not a reply at all.
  */
-export function decideCollectorReply(p: { reply: CollectorReply; claims: WaitingClaim[]; digestAt: Date | null; now: Date }): CollectorDecision {
-  if (!p.digestAt || p.now.getTime() - p.digestAt.getTime() > DIGEST_REPLY_WINDOW_MS) return { kind: "no-digest" };
-  const shown = p.claims.filter((c) => c.claimedAt.getTime() <= p.digestAt!.getTime());
+export function decideCollectorReply(p: { reply: CollectorReply; claims: WaitingClaim[]; digest: SentDigest | null; now: Date }): CollectorDecision {
+  const { digest } = p;
+  if (!digest || p.now.getTime() - digest.at.getTime() > DIGEST_REPLY_WINDOW_MS) return { kind: "not-a-reply" };
+  const listed = new Set(digest.userIds);
+  const shown = p.claims.filter((c) => listed.has(c.userId) && c.claimedAt.getTime() <= digest.at.getTime());
+  if (p.reply.kind === "numbers") {
+    const bySlot = new Map(shown.filter((c) => c.slot != null).map((c) => [c.slot as number, c.userId]));
+    const unknown = p.reply.numbers.filter((n) => !bySlot.has(n));
+    if (unknown.length === p.reply.numbers.length) return { kind: "not-a-reply" };
+    if (unknown.length > 0) return { kind: "unknown-numbers", numbers: unknown };
+    return { kind: "confirm", userIds: p.reply.numbers.map((n) => bySlot.get(n)!) };
+  }
   if (shown.length === 0) return { kind: "nothing-waiting" };
-  if (p.reply.kind === "all") return { kind: "confirm", userIds: shown.map((c) => c.userId) };
-  if (p.reply.kind === "none") return { kind: "decline", userIds: shown.map((c) => c.userId) };
-  const bySlot = new Map(shown.filter((c) => c.slot != null).map((c) => [c.slot as number, c.userId]));
-  const unknown = p.reply.numbers.filter((n) => !bySlot.has(n));
-  if (unknown.length > 0) return { kind: "unknown-numbers", numbers: unknown };
-  return { kind: "confirm", userIds: p.reply.numbers.map((n) => bySlot.get(n)!) };
+  return p.reply.kind === "all" ? { kind: "confirm", userIds: shown.map((c) => c.userId) } : { kind: "decline", userIds: shown.map((c) => c.userId) };
+}
+
+/** The organisers are asked for the price a day after the list opens, or
+ *  as soon as every regular place is taken (plan 4.2), and never once the
+ *  month's first game has kicked off. */
+export function priceAskDue(p: { now: Date; listOpenedAt: Date; firstKickoff: Date; regulars: number; maxRegulars: number }): boolean {
+  const t = p.now.getTime();
+  if (t >= p.firstKickoff.getTime()) return false;
+  return t >= p.listOpenedAt.getTime() + DAY_MS || p.regulars >= p.maxRegulars;
 }
 
 // ── Reminders (plan 4.3 and section 8) ─────────────────────────────────

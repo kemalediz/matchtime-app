@@ -1191,8 +1191,9 @@ the "Confirm paid" button on `/admin/months`, the amount and "I've paid" on `/mo
 guarded branches in `bot-scheduler.ts`, the due-posts route, the dm-reply route, the analyze
 route and `admin-group.ts`. Monthly clubs only; a weekly club makes no query on any of them.
 
-- **"Set the price".** When sign-up ends (or every regular place is taken) and no price is
-  set, the organisers are told once, with the page link and the club fee tip in month terms.
+- **"Set the price".** A day after the list opens (or as soon as every regular place is
+  taken), when no price is set, the organisers are told once, with the page link and the
+  club fee tip in month terms. (Sign-up itself runs on until two days before the first game.)
 - **Pricing (D1).** The organiser types the share per game, an optional concession share and
   venue cost, and the pay-by date (default: three days before the first game, 21:00). The
   suggestion is venue cost over the regulars, rounded up to 50p. Each regular's amount is
@@ -1237,12 +1238,17 @@ route and `admin-group.ts`. Monthly clubs only; a weekly club makes no query on 
 2. **The collector's reply needs the word PAID** ("PAID ALL", "PAID 1 3", "PAID NONE"; Turkish
    "ÖDENDİ ..."). The plan had a bare "ALL" or numbers. A bare number is how an organiser
    picks a waiting player, and a stray "ok" must never confirm money.
-3. **"ALL" only confirms what the last digest showed.** A claim made after the digest was
-   sent is not confirmed by it. A number that is not one of the digest's claims confirms
-   nobody at all. A reply counts for two days.
+3. **A reply only ever confirms what the last digest LISTED (tightened after review).** Each
+   digest records exactly whose claims it listed. "ALL" and a number confirm only those, and
+   only while they are the same claims: a claim made after the digest, or just too late to be
+   on it, is not confirmed. A number that is not one of them confirms nobody. A reply counts
+   for two days. With no digest outstanding, or with none of the numbers on it, the message
+   is not read as a reply at all ("paid 8" from an organiser who also plays is their own
+   message), and an amount ("paid £30", "paid 22.50") is never a list number.
 4. **A decline is recorded.** After "PAID NONE" those claims are not put to the collector
    again (the page still shows them), and those players are reminded like anybody unpaid. If
-   the player says "paid" again, it goes back in front of the collector.
+   the player says "paid" again it is a NEW claim with a new time: it has to appear on a new
+   digest before it can be confirmed, so a "PAID ALL" meant for somebody else cannot reach it.
 5. **The status `priced` is not used.** Pricing sets `pricedAt` and the amounts; the month's
    status stays `open` until sign-up ends and is `running` after. A month can be priced in
    either state, and so can a month the organiser started part-way through.
@@ -1251,9 +1257,14 @@ route and `admin-group.ts`. Monthly clubs only; a weekly club makes no query on 
    by it: such a paste is read for its paid marks, and for the sender's own sign-up while
    the month can still be joined. Known by the title line MatchTime writes.
 7. **A regular who joins or leaves a priced month** is settled at once: a new regular gets
-   their amount; one who is a regular no longer (and has not paid) owes nothing, and the
-   credits pricing took for them go back to the ledger.
-8. **Not built here:** changing the share after somebody has paid ("owes £x more", plan
+   their amount; one who is a regular no longer owes nothing, and the credits pricing took
+   for them go back to the ledger, whether or not they had said "paid". Only a confirmed
+   payment keeps its credits spent. Credits are spent under one lock per club, so two
+   fixtures priced at the same moment cannot both spend one.
+8. **Moving the pay-by date after the summary went out** makes one more summary due after
+   the new date. The reminder posts check for themselves that the club is not dormant or
+   paused.
+9. **Not built here:** changing the share after somebody has paid ("owes £x more", plan
    section 7), a refund, and the pay-by reminders for a month with no pay-by date (a month
    started part-way through that was never priced). The collector's reply in an admin GROUP
    uses the same function as the DM but has no end-to-end test yet.

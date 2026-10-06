@@ -14,6 +14,7 @@ import {
   groupReminderDue,
   monthFeeShare,
   planPricing,
+  priceAskDue,
   priceLocked,
   readCollectorReply,
   readPaidMessage,
@@ -202,33 +203,67 @@ describe("the collector's reply to the claims digest", () => {
     }
   });
 
+  it("an AMOUNT is never a list number: a decimal or a pound sign is somebody saying what they paid", () => {
+    for (const t of ["paid 22.50", "paid £5", "PAID £30", "paid 5.00", "paid 37,50", "paid 1 3.50"]) {
+      expect(readCollectorReply(t), t).toBeNull();
+    }
+  });
+
   const digestAt = new Date("2026-10-28T10:00:00.000Z");
   const claims = [
     { userId: "alex", slot: 1, claimedAt: new Date("2026-10-27T18:00:00.000Z") },
     { userId: "bilal", slot: 2, claimedAt: new Date("2026-10-28T09:00:00.000Z") },
+    // Claimed just before the digest went out, but too late to be ON it.
+    { userId: "raced", slot: 5, claimedAt: new Date("2026-10-28T09:59:59.000Z") },
     { userId: "late", slot: 7, claimedAt: new Date("2026-10-28T11:00:00.000Z") },
   ];
-  const base = { claims, digestAt, now: new Date("2026-10-28T12:00:00.000Z") };
+  const digest = { at: digestAt, userIds: ["alex", "bilal", "declined-then-back"] };
+  const base = { claims, digest, now: new Date("2026-10-28T12:00:00.000Z") };
 
-  it("ALL confirms what the digest showed, never a claim made after it", () => {
+  it("ALL confirms exactly what the digest LISTED: not a claim made after it, not one that missed it", () => {
     expect(decideCollectorReply({ ...base, reply: { kind: "all" } })).toEqual({ kind: "confirm", userIds: ["alex", "bilal"] });
+  });
+  it("somebody the collector declined who says 'paid' again is NOT confirmed by a reply to the old digest", () => {
+    // On the old digest's list, but the claim is a new one (a fresh time).
+    const again = [...claims, { userId: "declined-then-back", slot: 3, claimedAt: new Date("2026-10-28T11:30:00.000Z") }];
+    expect(decideCollectorReply({ ...base, claims: again, reply: { kind: "all" } })).toEqual({ kind: "confirm", userIds: ["alex", "bilal"] });
+    expect(decideCollectorReply({ ...base, claims: again, reply: { kind: "numbers", numbers: [1, 3] } })).toEqual({ kind: "unknown-numbers", numbers: [3] });
   });
   it("numbers confirm exactly those, by list number", () => {
     expect(decideCollectorReply({ ...base, reply: { kind: "numbers", numbers: [2] } })).toEqual({ kind: "confirm", userIds: ["bilal"] });
   });
-  it("a number that is not a claim the digest showed confirms NOTHING", () => {
+  it("a number that is not a claim the digest listed confirms NOTHING", () => {
     expect(decideCollectorReply({ ...base, reply: { kind: "numbers", numbers: [1, 9] } })).toEqual({ kind: "unknown-numbers", numbers: [9] });
-    expect(decideCollectorReply({ ...base, reply: { kind: "numbers", numbers: [7] } })).toEqual({ kind: "unknown-numbers", numbers: [7] });
+    expect(decideCollectorReply({ ...base, reply: { kind: "numbers", numbers: [1, 5] } })).toEqual({ kind: "unknown-numbers", numbers: [5] });
   });
-  it("NONE is recorded against what the digest showed", () => {
+  it("numbers with NONE of them on the digest are not a reply to it at all ('paid 8' is somebody's own message)", () => {
+    expect(decideCollectorReply({ ...base, reply: { kind: "numbers", numbers: [8] } })).toEqual({ kind: "not-a-reply" });
+    expect(decideCollectorReply({ ...base, reply: { kind: "numbers", numbers: [7, 30] } })).toEqual({ kind: "not-a-reply" });
+  });
+  it("NONE is recorded against what the digest listed", () => {
     expect(decideCollectorReply({ ...base, reply: { kind: "none" } })).toEqual({ kind: "decline", userIds: ["alex", "bilal"] });
   });
-  it("with no digest sent, or one older than two days, nothing is done", () => {
-    expect(decideCollectorReply({ ...base, digestAt: null, reply: { kind: "all" } })).toEqual({ kind: "no-digest" });
-    expect(decideCollectorReply({ ...base, now: new Date("2026-10-30T10:00:01.000Z"), reply: { kind: "all" } })).toEqual({ kind: "no-digest" });
+  it("with no digest outstanding (none sent, or older than two days) nothing is a reply", () => {
+    expect(decideCollectorReply({ ...base, digest: null, reply: { kind: "all" } })).toEqual({ kind: "not-a-reply" });
+    expect(decideCollectorReply({ ...base, now: new Date("2026-10-30T10:00:01.000Z"), reply: { kind: "all" } })).toEqual({ kind: "not-a-reply" });
+    expect(decideCollectorReply({ ...base, digest: null, reply: { kind: "numbers", numbers: [1] } })).toEqual({ kind: "not-a-reply" });
   });
-  it("nothing waiting: nothing is done", () => {
+  it("a digest outstanding but nothing on it still waiting: said so, nothing done", () => {
     expect(decideCollectorReply({ ...base, claims: [], reply: { kind: "all" } })).toEqual({ kind: "nothing-waiting" });
+  });
+});
+
+describe("when the organisers are asked for the price", () => {
+  const opened = new Date("2026-10-26T10:00:00.000Z");
+  const first = new Date("2026-11-02T20:00:00.000Z");
+  const ask = (iso: string, regulars = 8) => priceAskDue({ now: new Date(iso), listOpenedAt: opened, firstKickoff: first, regulars, maxRegulars: 14 });
+  it("a day after the list opens, or as soon as every regular place is taken", () => {
+    expect(ask("2026-10-27T09:59:00.000Z")).toBe(false);
+    expect(ask("2026-10-27T10:00:00.000Z")).toBe(true);
+    expect(ask("2026-10-26T12:00:00.000Z", 14)).toBe(true);
+  });
+  it("never once the month's first game has kicked off", () => {
+    expect(ask("2026-11-02T20:00:00.000Z")).toBe(false);
   });
 });
 

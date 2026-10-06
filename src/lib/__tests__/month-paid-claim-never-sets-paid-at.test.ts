@@ -61,6 +61,30 @@ describe("a claim never writes paidAt", () => {
     expect(where).toMatchObject({ paidAt: null, paidClaimedAt: null, kind: "regular", leftAt: null });
   });
 
+  it("saying it again: nothing, unless the collector had answered 'not arrived', and then it is a NEW claim with a new time", async () => {
+    // Already claimed, never declined: no second claim.
+    returns.set("squadMonthMember.updateMany", () => ({ count: 0 }));
+    returns.set("squadMonth.findUnique", () => ({ orgId: "org" }));
+    returns.set("sentNotification.deleteMany", () => ({ count: 0 }));
+    expect(await claimMonthPaid({ monthId: "m", userId: "u", source: "dm" })).toBe(false);
+    expect(writes().filter((c) => c.model === "squadMonthMember")).toHaveLength(1);
+
+    // Declined, then "paid" again: the decline is dropped and the claim re-stamped.
+    calls.length = 0;
+    const now = new Date("2026-10-29T11:30:00.000Z");
+    let n = 0;
+    returns.set("squadMonthMember.updateMany", () => ({ count: n++ === 0 ? 0 : 1 }));
+    returns.set("sentNotification.deleteMany", () => ({ count: 1 }));
+    expect(await claimMonthPaid({ monthId: "m", userId: "u", source: "dm", now })).toBe(true);
+    const w = writes();
+    expect(w.map((c) => `${c.model}.${c.method}`)).toEqual(["squadMonthMember.updateMany", "sentNotification.deleteMany", "squadMonthMember.updateMany"]);
+    expect((w[1].args as { where: { key: string } }).where.key).toBe("org-org:mpy:declined:m:u");
+    const again = w[2].args as { where: Record<string, unknown>; data: Record<string, unknown> };
+    expect(again.data.paidClaimedAt).toEqual(now);
+    expect(again.where).toMatchObject({ paidAt: null });
+    for (const c of w) expect(mentionsPaidAt((c.args as { data?: unknown }).data)).toBe(false);
+  });
+
   it("the 'paid' DM, end to end: a claim, an answer, and no paidAt anywhere", async () => {
     returns.set("squadMonthMember.findMany", () => [
       {
@@ -77,15 +101,10 @@ describe("a claim never writes paidAt", () => {
     const res = await handlePlayerPaidDm({ userId: "u", userName: "Alex Carter", text: "paid £37.50", replyPhone: "447700900002" });
     expect(res).toEqual({ handled: "month-paid-claim", monthId: "m", claimed: true });
     const w = writes();
-    // The claim, the dropped decline marker, the once-a-day key, the answer.
-    expect(w.map((c) => `${c.model}.${c.method}`)).toEqual([
-      "squadMonthMember.updateMany",
-      "sentNotification.deleteMany",
-      "sentNotification.create",
-      "botJob.create",
-    ]);
+    // The claim, the once-a-day key, the answer.
+    expect(w.map((c) => `${c.model}.${c.method}`)).toEqual(["squadMonthMember.updateMany", "sentNotification.create", "botJob.create"]);
     for (const c of w) expect(mentionsPaidAt((c.args as { data?: unknown }).data), `${c.model}.${c.method}`).toBe(false);
-    const dm = (w[3].args as { data: { text: string } }).data.text;
+    const dm = (w[2].args as { data: { text: string } }).data.text;
     expect(dm).toContain("you say you have paid £37.50 for November");
     expect(dm).toContain("Sam will confirm when it arrives");
   });

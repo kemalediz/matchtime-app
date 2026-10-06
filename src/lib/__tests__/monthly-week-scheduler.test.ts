@@ -944,7 +944,14 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
     };
     overrides.organisation = {
       findFirst: async () => ({ ...ORG }),
-      findUnique: async () => ({ paymentHolderId: "u-sam", paymentInstructions: "Bank details are in the group description." }),
+      findUnique: async () => ({
+        paymentHolderId: "u-sam",
+        paymentInstructions: "Bank details are in the group description.",
+        squadMode: "monthly",
+        approvalStatus: "approved",
+        dormantAt: clubDormant ? new Date("2026-10-01T00:00:00.000Z") : null,
+        billingStatus: "exempt",
+      }),
     };
     overrides.user = {
       findUnique: async () => ({ name: "Sam Collector", phoneNumber: "+447700900999" }),
@@ -953,6 +960,7 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
     };
     return m;
   };
+  let clubDormant = false;
   const at = (iso: string) => new Date(iso);
   const pay = async (iso: string) => (await instructions(at(iso))).filter((i) => i.key.startsWith(P));
 
@@ -1042,6 +1050,16 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
     const three = [...both, ...["2026-10-31", "2026-11-01", "2026-11-02"].flatMap((d) => [late("u-chris", d), late("u-dave", d)])];
     expect(await dms("2026-11-02T15:00:00.000Z", three)).toEqual([]);
     expect(await dms("2026-11-03T10:00:00.000Z", three)).toEqual([]);
+  });
+
+  it("a dormant club is reminded of nothing: the reminders check the club themselves", async () => {
+    world();
+    clubDormant = true;
+    try {
+      expect(await pay("2026-10-29T21:30:00.000Z")).toEqual([]);
+    } finally {
+      clubDormant = false;
+    }
   });
 
   it("somebody the collector said has NOT arrived is chased again", async () => {
