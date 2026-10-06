@@ -7,6 +7,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { sayMonthPaid } from "@/app/actions/month-payment";
 import { signUpForMonth } from "@/app/actions/month-signup";
 import { t } from "@/lib/i18n/t";
 import type { SignupChoice } from "@/lib/month-signup-rules";
@@ -23,6 +24,10 @@ export function MonthSignupCard(props: {
   myDays: number[];
   /** They have said they paid: the place is the organiser's to change. */
   locked: boolean;
+  /** The month's first game has not kicked off: the choices are offered. */
+  joinable: boolean;
+  /** Slice 4, for a regular: what they owe, already in words. */
+  money: { due: string; payBy: string | null; instructions: string | null; paid: string; canClaim: boolean } | null;
 }) {
   const s = t(props.lang);
   const router = useRouter();
@@ -45,6 +50,19 @@ export function MonthSignupCard(props: {
     }
   }
 
+  async function sayPaid() {
+    setSaving(true);
+    setError(null);
+    try {
+      await sayMonthPaid(props.monthId);
+      router.refresh();
+    } catch {
+      setError(s.mmp_error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const button = "h-10 rounded-lg px-3 text-sm font-medium disabled:opacity-40";
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4" data-testid="month-signup" data-month={props.monthId}>
@@ -55,7 +73,34 @@ export function MonthSignupCard(props: {
       <p className="text-sm text-slate-800" data-testid="month-state" data-outcome={props.outcome}>
         {s.mmp_state({ outcome: props.outcome, slot: props.slot, days: props.myDays.length > 0 ? props.myDays.join(", ") : null })}
       </p>
-      {props.locked ? (
+      {props.money && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5 text-sm text-slate-700" data-testid="month-money">
+          <p className="font-medium text-slate-900" data-testid="month-due">
+            {props.money.due}
+          </p>
+          {props.money.payBy && <p data-testid="month-payby">{props.money.payBy}</p>}
+          {props.money.instructions && (
+            <p className="whitespace-pre-line text-slate-600" data-testid="month-instructions">
+              {props.money.instructions}
+            </p>
+          )}
+          {props.money.paid !== "none" && (
+            <p className="text-slate-600" data-testid="month-paid-state" data-paid={props.money.paid}>
+              {s.mmp_paid_state({ kind: props.money.paid })}
+            </p>
+          )}
+          {props.money.canClaim && (
+            <button type="button" className={`${button} bg-green-600 text-white`} disabled={saving} onClick={sayPaid} data-testid="month-paid">
+              {s.mmp_btn_paid}
+            </button>
+          )}
+        </div>
+      )}
+      {!props.joinable ? (
+        <p className="text-sm text-slate-600" data-testid="month-closed">
+          {s.mmp_closed}
+        </p>
+      ) : props.locked ? (
         <p className="text-sm text-slate-600" data-testid="month-locked">
           {s.mmp_locked}
         </p>

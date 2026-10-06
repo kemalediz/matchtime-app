@@ -204,6 +204,8 @@ function setWorld(
     feeAsk?: { waMessageId: string | null; createdAt: Date } | null;
     /** A month of the club still in sign-up (slice 3). */
     signupMonth?: Record<string, unknown>;
+    /** A month of the club with a price (slice 4). */
+    pricedMonth?: Record<string, unknown>;
   },
 ) {
   for (const k of Object.keys(overrides)) delete overrides[k];
@@ -223,15 +225,13 @@ function setWorld(
   overrides.match = { findMany: async () => [m] };
   overrides.squadMonth = {
     findMany: async (args: unknown) => {
-      // Slice 3 reads the club's months in SIGN-UP ("open") once per poll,
-      // for a monthly club only. The month in this world is a running one.
-      // Slice 3 reads the club's live months (`status: { in: [...] }`) once
-      // per poll, for a monthly club only. The month in this world is a
-      // running one, read by the weekly flow (`status: "running"`).
+      // Slices 3 and 4 read the club's live months (`status: { in: [...] }`)
+      // ONCE per poll, for a monthly club only. The month in this world is
+      // a running one, read by the weekly flow (`status: "running"`).
       const status = (args as { where?: { status?: unknown } }).where?.status;
       if (status && typeof status === "object") {
         signupReads();
-        return opts.signupMonth ? [opts.signupMonth] : [];
+        return [opts.signupMonth, opts.pricedMonth].filter(Boolean);
       }
       monthReads();
       if (opts.monthsThrow) throw new Error("the database hiccuped");
@@ -798,7 +798,7 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     expect(signupReads).not.toHaveBeenCalled();
     expect(monthReads).not.toHaveBeenCalled();
     expect(out.some((i) => i.key === `${m.id}:announce-match`)).toBe(true);
-    expect(out.some((i) => i.key.includes(":msu:"))).toBe(false);
+    expect(out.some((i) => i.key.includes(":msu:") || i.key.includes(":mpy:"))).toBe(false);
   });
 
   it("the months the poll's sweep already read are not read again", async () => {
@@ -887,5 +887,183 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     } finally {
       features.attendance = true;
     }
+  });
+});
+
+// ── Slice 4 (2026-10-06): the month's price, payments and reminders ─────
+describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
+  /** Mon 2 Nov 2026, 20:00 London (GMT). */
+  const NOV_KICKOFF = new Date("2026-11-02T20:00:00.000Z");
+  /** Fri 30 Oct 2026, 21:00 London. */
+  const PAY_BY = new Date("2026-10-30T21:00:00.000Z");
+  const novMatch = () => match({ id: "m-mon-2-nov", date: NOV_KICKOFF, attendances: [], rollingSeededAt: null });
+  const P = `org-${ORG.id}:mpy:`;
+  /** Alex confirmed, Bilal says paid, Chris and Dave owe. Sam (the collector) is a regular too. */
+  const pricedMonth = (over: Record<string, unknown> = {}) => ({
+    id: "month-nov",
+    orgId: ORG.id,
+    activityId: "mon-7",
+    monthStart: new Date("2026-11-01T00:00:00.000Z"),
+    status: "running",
+    listOpenedAt: new Date("2026-10-26T10:00:00.000Z"),
+    sharePerGamePence: 750,
+    concessionPerGamePence: null,
+    venueCostPence: null,
+    payByAt: PAY_BY,
+    pricedAt: new Date("2026-10-27T12:00:00.000Z"),
+    summarySentAt: null,
+    activity: { name: "Monday 7-a-side", venue: "Goals", dayOfWeek: 1, time: "20:00", sport: { playersPerTeam: 3 } },
+    org: { language: "en" },
+    members: [...MEMBERS, { userId: "u-sam", name: "Sam Collector", slot: 5 }].map((mm) => ({
+      userId: mm.userId,
+      kind: "regular",
+      tier: "standard",
+      slot: mm.slot,
+      note: null,
+      leftAt: null,
+      source: "carry-over",
+      paidAt: mm.userId === "u-alex" ? new Date("2026-10-28T09:00:00.000Z") : null,
+      paidClaimedAt: mm.userId === "u-bilal" ? new Date("2026-10-28T09:00:00.000Z") : null,
+      paidAmountPence: mm.userId === "u-alex" ? 3750 : null,
+      paidClaimedAmountPence: null,
+      gamesCovered: 5,
+      creditsApplied: mm.userId === "u-chris" ? 1 : 0,
+      amountDuePence: mm.userId === "u-chris" ? 3000 : 3750,
+      paygMatchIds: [],
+      user: { name: mm.name },
+    })),
+    ...over,
+  });
+  const world = (o: { shown?: Shown[]; month?: Record<string, unknown> } = {}) => {
+    const m = novMatch();
+    setWorld(m, { monthly: true, pricedMonth: o.month ?? pricedMonth(), shown: o.shown });
+    // The month's members are all still in the club, and have phones.
+    overrides.membership = {
+      findMany: async (args: unknown) =>
+        ((args as { where?: { userId?: { in: string[] } } }).where?.userId?.in ?? []).map((userId) => ({ userId })),
+    };
+    overrides.organisation = {
+      findFirst: async () => ({ ...ORG }),
+      findUnique: async () => ({
+        paymentHolderId: "u-sam",
+        paymentInstructions: "Bank details are in the group description.",
+        squadMode: "monthly",
+        approvalStatus: "approved",
+        dormantAt: clubDormant ? new Date("2026-10-01T00:00:00.000Z") : null,
+        billingStatus: "exempt",
+      }),
+    };
+    overrides.user = {
+      findUnique: async () => ({ name: "Sam Collector", phoneNumber: "+447700900999" }),
+      findMany: async (args: unknown) =>
+        ((args as { where: { id: { in: string[] } } }).where.id.in ?? []).map((id) => ({ id, phoneNumber: `+4477009${id.length}${id.charCodeAt(2)}` })),
+    };
+    return m;
+  };
+  let clubDormant = false;
+  const at = (iso: string) => new Date(iso);
+  const pay = async (iso: string) => (await instructions(at(iso))).filter((i) => i.key.startsWith(P));
+
+  it("WEEKLY: nothing of the month's payments is read or sent", async () => {
+    setWorld(novMatch(), { monthly: false });
+    const out = await instructions(at("2026-10-29T21:30:00.000Z"));
+    expect(signupReads).not.toHaveBeenCalled();
+    expect(out.some((i) => i.key.includes(":mpy:"))).toBe(false);
+  });
+
+  it("the priced list is posted once per price: amounts, the pay-by date, the club's own instructions", async () => {
+    world();
+    const out = await pay("2026-10-27T12:30:00.000Z");
+    expect(out).toHaveLength(1);
+    const post = out[0] as { kind: string; key: string; text: string };
+    expect(post.kind).toBe("group-message");
+    expect(post.key.startsWith(`${P}priced:month-nov:`)).toBe(true);
+    expect(post.text).toBe(
+      [
+        "📋 List for November: £7.50 a game, pay Sam by Fri 30 Oct, 21:00",
+        "(5 games = £37.50. Credits are already taken off.)",
+        "",
+        "1. Alex (paid £37.50)",
+        "2. Bilal (paid £37.50)",
+        "3. Chris (£30)",
+        "4. Dave (£37.50)",
+        "5. Sam Collector (£37.50)",
+        "6.",
+        "",
+        "Payment: Bank details are in the group description.",
+        'Paid? Add (paid) after your name and paste the list, or DM me "paid".',
+      ].join("\n"),
+    );
+    // Posted already: not again. (A new price is a new key.)
+    world({ shown: [{ key: post.key, kind: "group-message", createdAt: at("2026-10-27T12:30:00.000Z") }] });
+    expect(await pay("2026-10-27T15:00:00.000Z")).toEqual([]);
+    world({
+      shown: [{ key: post.key, kind: "group-message", createdAt: at("2026-10-27T12:30:00.000Z") }],
+      month: pricedMonth({ payByAt: at("2026-10-31T21:00:00.000Z") }),
+    });
+    const again = await pay("2026-10-27T15:00:00.000Z");
+    expect(again.map((i) => i.kind)).toEqual(["group-message"]);
+    expect(again[0].key).not.toBe(post.key);
+  });
+
+  it("a day before the pay-by date: the count in the group, and a DM to each regular who has not paid", async () => {
+    const seen = [{ key: `${P}priced:month-nov:x`, kind: "group-message", createdAt: at("2026-10-27T12:30:00.000Z") }];
+    world({ shown: seen, month: pricedMonth() });
+    // The priced post for THIS price is not in `shown`, so it is due too; look at the rest.
+    const out = (await pay("2026-10-29T21:30:00.000Z")).filter((i) => !i.key.startsWith(`${P}priced:`));
+    expect(out.map((i) => i.key).sort()).toEqual([`${P}dm:month-nov:u-chris:r1`, `${P}dm:month-nov:u-dave:r1`, `${P}group:month-nov:count`].sort());
+    const group = out.find((i) => i.kind === "group-message") as { text: string };
+    // Chris and Dave. Not Alex (confirmed), not Bilal (says paid), not Sam (the collector).
+    expect(group.text).toBe("💷 2 still to pay for November, by Fri 30 Oct, 21:00.");
+    const chris = out.find((i) => i.key.endsWith("u-chris:r1")) as { kind: string; text: string; targetUser: string };
+    expect(chris.kind).toBe("dm");
+    expect(chris.targetUser).toBe("u-chris");
+    expect(chris.text).toBe(
+      "👋 Chris, your place for November is £30, to pay by Fri 30 Oct, 21:00. That is 5 games, with 1 credit taken off. Please pay Sam by bank transfer.\n\n" +
+        "Bank details are in the group description.\n\nReply *paid* when you have.",
+    );
+    // Never a pay link: bank transfer only (D5).
+    for (const i of out) expect((i as { text: string }).text).not.toMatch(/https?:/);
+  });
+
+  it("nothing before the last 24 hours, and nothing at night", async () => {
+    world();
+    expect((await pay("2026-10-29T20:00:00.000Z")).filter((i) => !i.key.startsWith(`${P}priced:`))).toEqual([]);
+    expect(await pay("2026-10-29T23:00:00.000Z")).toEqual([]);
+  });
+
+  it("each DM once: the second on the deadline day, then one a day for three days, then silence", async () => {
+    const r1 = (u: string) => ({ key: `${P}dm:month-nov:${u}:r1`, kind: "dm", createdAt: at("2026-10-29T21:30:00.000Z") });
+    const sent: Shown[] = [{ key: `${P}group:month-nov:count`, kind: "group-message", createdAt: at("2026-10-29T21:30:00.000Z") }, r1("u-chris"), r1("u-dave")];
+    const dms = async (iso: string, shown: Shown[]) => {
+      world({ shown });
+      return (await pay(iso)).filter((i) => i.kind === "dm").map((i) => i.key).sort();
+    };
+    expect(await dms("2026-10-29T21:45:00.000Z", sent)).toEqual([]);
+    expect(await dms("2026-10-30T08:05:00.000Z", sent)).toEqual([`${P}dm:month-nov:u-chris:r2`, `${P}dm:month-nov:u-dave:r2`]);
+    const r2 = (u: string) => ({ key: `${P}dm:month-nov:${u}:r2`, kind: "dm", createdAt: at("2026-10-30T08:05:00.000Z") });
+    const both = [...sent, r2("u-chris"), r2("u-dave")];
+    expect(await dms("2026-10-30T18:00:00.000Z", both)).toEqual([]);
+    expect(await dms("2026-10-31T10:00:00.000Z", both)).toEqual([`${P}dm:month-nov:u-chris:late:2026-10-31`, `${P}dm:month-nov:u-dave:late:2026-10-31`]);
+    const late = (u: string, day: string) => ({ key: `${P}dm:month-nov:${u}:late:${day}`, kind: "dm", createdAt: at(`${day}T10:00:00.000Z`) });
+    const three = [...both, ...["2026-10-31", "2026-11-01", "2026-11-02"].flatMap((d) => [late("u-chris", d), late("u-dave", d)])];
+    expect(await dms("2026-11-02T15:00:00.000Z", three)).toEqual([]);
+    expect(await dms("2026-11-03T10:00:00.000Z", three)).toEqual([]);
+  });
+
+  it("a dormant club is reminded of nothing: the reminders check the club themselves", async () => {
+    world();
+    clubDormant = true;
+    try {
+      expect(await pay("2026-10-29T21:30:00.000Z")).toEqual([]);
+    } finally {
+      clubDormant = false;
+    }
+  });
+
+  it("somebody the collector said has NOT arrived is chased again", async () => {
+    world({ shown: [{ key: `${P}declined:month-nov:u-bilal`, kind: "month-pay-declined", createdAt: at("2026-10-29T10:00:00.000Z") }] });
+    const out = (await pay("2026-10-29T21:30:00.000Z")).filter((i) => i.kind === "dm").map((i) => i.key);
+    expect(out).toContain(`${P}dm:month-nov:u-bilal:r1`);
   });
 });

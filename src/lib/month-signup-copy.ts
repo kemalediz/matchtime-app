@@ -169,6 +169,9 @@ function monthListTitleShapes(): RegExp[] {
     return [
       s.msu_list_header({ month: SENTINEL, games: 2, weekday: SENTINEL, days: SENTINEL }),
       s.msu_list_header({ month: SENTINEL, games: 1, weekday: SENTINEL, days: SENTINEL }),
+      // Slice 4: the priced list.
+      s.mpy_priced_header({ month: SENTINEL, share: SENTINEL, when: SENTINEL, collector: SENTINEL }),
+      s.mpy_priced_header({ month: SENTINEL, share: SENTINEL, when: SENTINEL, collector: null }),
     ].map(
       (shape) =>
         new RegExp(

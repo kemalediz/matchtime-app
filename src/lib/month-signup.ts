@@ -30,7 +30,6 @@
 import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
 import { appUrl } from "./app-url";
-import { cancelAttendance, registerAttendance } from "./attendance";
 import { isClubOperational } from "./club-approval-state";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { hasMatchForSlot, isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
@@ -142,10 +141,28 @@ export interface SignupMonth {
   /** The month's matches that exist and are not cancelled, by London day. */
   matches: Array<MonthMatchDay & { date: Date; status: string }>;
   /** Everybody on the month who is still in the club, OUT ones included. */
-  members: Array<SignupMember & { tier: string }>;
+  members: Array<SignupMember & SignupMemberMoney>;
+  /** Slice 4. Null until the organiser sets a price. */
+  sharePerGamePence: number | null;
+  concessionPerGamePence: number | null;
+  venueCostPence: number | null;
+  payByAt: Date | null;
+  pricedAt: Date | null;
+  summarySentAt: Date | null;
   /** A day in the month the regulars were carried over from, or null. */
   carriedFrom: Date | null;
   language: string | null;
+}
+
+/** What a member's row knows of money (slice 4). Read only here. */
+export interface SignupMemberMoney {
+  tier: string;
+  gamesCovered: number;
+  creditsApplied: number;
+  amountDuePence: number | null;
+  paidClaimedAt: Date | null;
+  /** What was confirmed, else what was claimed, else null. */
+  paidPence: number | null;
 }
 
 const MONTH_SELECT = {
@@ -156,6 +173,12 @@ const MONTH_SELECT = {
   status: true,
   listOpenedAt: true,
   startedMidMonthAt: true,
+  sharePerGamePence: true,
+  concessionPerGamePence: true,
+  venueCostPence: true,
+  payByAt: true,
+  pricedAt: true,
+  summarySentAt: true,
   activity: {
     select: { name: true, venue: true, dayOfWeek: true, time: true, sport: { select: { playersPerTeam: true } } },
   },
@@ -172,6 +195,11 @@ const MONTH_SELECT = {
       source: true,
       paidAt: true,
       paidClaimedAt: true,
+      paidAmountPence: true,
+      paidClaimedAmountPence: true,
+      gamesCovered: true,
+      creditsApplied: true,
+      amountDuePence: true,
       paygMatchIds: true,
       user: { select: { name: true } },
     },
@@ -255,7 +283,18 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
         out: m.leftAt !== null,
         paid: m.paidAt ? "confirmed" : m.paidClaimedAt ? "claimed" : "none",
         paygMatchIds: m.paygMatchIds,
+        gamesCovered: m.gamesCovered,
+        creditsApplied: m.creditsApplied,
+        amountDuePence: m.amountDuePence,
+        paidClaimedAt: m.paidClaimedAt,
+        paidPence: m.paidAt ? m.paidAmountPence : m.paidClaimedAt ? m.paidClaimedAmountPence : null,
       })),
+    sharePerGamePence: row.sharePerGamePence,
+    concessionPerGamePence: row.concessionPerGamePence,
+    venueCostPence: row.venueCostPence,
+    payByAt: row.payByAt,
+    pricedAt: row.pricedAt,
+    summarySentAt: row.summarySentAt,
     carriedFrom: row.members.some((m) => m.source === "carry-over") ? monthStartToDate(previousMonthStart(monthStart)) : null,
     language: row.org.language,
   };
@@ -645,6 +684,18 @@ export async function applySignup(args: {
 
   if (decision.kind === "none") return { ok: true, changed: false, locked: false, outcome: decision.outcome, unknownDays: [] };
 
+  // Slice 4: in a month that has a price, what this person owes follows
+  // the change at once (a new regular's amount, with their credits; a
+  // regular who is one no longer owes nothing and gets their credits back).
+  if (decision.kind === "write" && month.sharePerGamePence != null) {
+    try {
+      const { settleMemberAmount } = await import("./month-payment");
+      await settleMemberAmount(month.id, args.userId, now);
+    } catch (err) {
+      console.error(`[month-signup] working out what ${args.userId} owes for ${month.id} failed (the organiser can set the price again):`, err);
+    }
+  }
+
   const phone = member.user.phoneNumber?.replace(/^\+/, "") ?? null;
   const sendAfter = adminNoticeSendAfter(now);
   const day = formatLondon(now, "yyyy-MM-dd");
@@ -734,7 +785,11 @@ async function placeOnWeek(p: {
   const { month, userId, now } = p;
   const live = month.matches.filter((m) => (LIVE as readonly string[]).includes(m.status) && m.date.getTime() > now.getTime());
   if (live.length === 0) return;
+  // Loaded here, not at the top: the attendance path reaches the pipeline,
+  // and this module is imported by the admin group's route, which must
+  // import nothing that can call a model (admin-group-no-model test).
   const { loadMonthlyWeek } = await import("./monthly-week");
+  const { cancelAttendance, registerAttendance } = await import("./attendance");
   const self = p.args.actorUserId === userId && !p.args.byOrganiser;
   const event = {
     cause: self ? ("self-attendance" as const) : ("admin-squad-edit" as const),
@@ -847,6 +902,10 @@ export async function handleSignupPaste(args: {
    * Anybody already on the month writing on the week's list is the week's.
    */
   newcomerOnly?: boolean;
+  /** The paste is one of MatchTime's own MONTH lists (the sign-up list or
+   *  the priced list, by its title). Such a list is read for a month that
+   *  is already under way too, but then ONLY for its paid marks. */
+  monthLevel?: boolean;
   now?: Date;
 }): Promise<SignupPasteResult | null> {
   const now = args.now ?? new Date();
@@ -854,13 +913,16 @@ export async function handleSignupPaste(args: {
   if (!list) return null;
   if (args.newcomerOnly && (!list.month || !args.sender.userId)) return null;
   if (!(await isLiveMonthlyClub(args.orgId))) return null;
-  const months = await loadJoinableMonths(args.orgId, now);
+  const months = await loadLiveMonths(args.orgId, now);
   if (months.length === 0) return null;
   const { roster, phoneOf } = await loadRoster(args.orgId);
+  const canJoin = (m: SignupMonth) => !hasStarted(m, now);
 
   let month: SignupMonth | null = null;
   let outcome: ReturnType<typeof reconcileSignupPaste> | null = null;
   for (const m of months) {
+    // A month under way: only MatchTime's own month list, for its paid marks.
+    if (!canJoin(m) && !args.monthLevel) continue;
     // With no month in the title, only a month still in sign-up.
     if (!list.month && !m.open) continue;
     if (args.newcomerOnly && (m.open || m.members.some((x) => x.userId === args.sender.userId && !x.out))) continue;
@@ -884,6 +946,10 @@ export async function handleSignupPaste(args: {
 
   const applied: string[] = [];
   let changed = false;
+  // Once the month's first game has kicked off nobody joins or leaves it
+  // by a paste: the paid marks below are all that is read.
+  const joinable = canJoin(month);
+  if (!joinable) outcome = { ...outcome, self: null, notAdded: [] };
   if (outcome.self && args.sender.userId) {
     const res = await applySignup({
       monthId: month.id,
@@ -899,6 +965,23 @@ export async function handleSignupPaste(args: {
       applied.push(`${res.outcome}:${args.sender.name ?? args.sender.userId}`);
     } else if (res.ok && res.locked) {
       applied.push("locked: says paid");
+    }
+  }
+
+  // Slice 4, D3: a new "(paid)" mark on a regular's line is a CLAIM,
+  // whoever wrote it. It never confirms anything.
+  if (outcome.paidClaims.length > 0) {
+    try {
+      const { claimMonthPaid } = await import("./month-payment");
+      for (const c of outcome.paidClaims) {
+        const claimed = await claimMonthPaid({ monthId: month.id, userId: c.userId, source: c.self ? "list" : "other-player", amountPence: c.amountPence, now });
+        if (claimed) {
+          changed = true;
+          applied.push(`says-paid:${c.name}`);
+        }
+      }
+    } catch (err) {
+      console.error("[month-signup] recording paid marks failed:", err);
     }
   }
 

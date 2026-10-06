@@ -67,6 +67,7 @@ import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
 import { sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { sweepMonthSignups } from "@/lib/month-signup";
+import { sweepMonthPayments } from "@/lib/month-payment";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
@@ -299,6 +300,11 @@ export async function GET(request: Request) {
   let liveMonths: Awaited<ReturnType<typeof sweepMonthSignups>> = null;
   if (!previewOnly) {
     liveMonths = await sweepMonthSignups(org.id, nowOverride ?? new Date());
+    // Slice 4: the "set the price" notice, the collector's daily digest of
+    // "says paid" claims, and the summary after the pay-by date. The same
+    // rules: monthly clubs only, never in preview mode, never throws. It
+    // works on the months the sign-up sweep has just read.
+    await sweepMonthPayments(org.id, nowOverride ?? new Date(), liveMonths);
   }
   if (!previewOnly) {
     try {

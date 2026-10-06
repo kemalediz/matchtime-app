@@ -995,6 +995,12 @@ async function claimHourlySweep(orgId: string, now: Date): Promise<boolean> {
         where: { key: { startsWith: `org-${orgId}:month-paste-` }, createdAt: { lt: new Date(Date.now() - 7 * DAY_MS) } },
       })
       .catch(() => {});
+    // The month's payment keys (slice 4: digests, reminders, replies,
+    // declines) likewise, once their month is behind us. The scheduler
+    // loads every `org-<id>:` key on each poll, so they must not pile up.
+    await db.sentNotification
+      .deleteMany({ where: { key: { startsWith: `org-${orgId}:mpy:` }, createdAt: { lt: new Date(Date.now() - 45 * DAY_MS) } } })
+      .catch(() => {});
     // The sign-up's once-only keys (slice 3: list posts, DMs, notices) are
     // of no use once their month is well under way.
     await db.sentNotification

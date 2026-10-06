@@ -62,6 +62,7 @@ import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
+import { handleCollectorPaidDm, handlePlayerPaidDm } from "@/lib/month-payment";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
@@ -154,6 +155,17 @@ export async function POST(request: Request) {
         : null,
     });
     if (pick) return NextResponse.json({ ok: true, ...pick });
+  }
+
+  // ── Monthly squad (slice 4): the collector answers the claims digest ───
+  //   "PAID ALL", "PAID 1 3", "PAID NONE" (Turkish: "ÖDENDİ ..."). The
+  //   word PAID is required and the whole DM must be the phrase, so a
+  //   stray "ok" or a bare number never confirms money. The text is
+  //   checked first: any other DM costs no query here and carries on
+  //   exactly as before. Deterministic, no model.
+  {
+    const paid = await handleCollectorPaidDm({ phone, senderAltPhone, text, waMessageId });
+    if (paid) return NextResponse.json({ ok: true, ...paid });
   }
 
   // A help request ("help", "help payments", "yardım ödeme") is answered
@@ -519,6 +531,25 @@ export async function POST(request: Request) {
   //   indexed query first), and any verdict but a claim falls through to
   //   the handlers below unchanged. The bench-offer reply stays first; it
   //   resolves its own sender and owns the DM while an offer is open.
+  // MONTHLY SQUAD (slice 4): a regular who owes for the MONTH says "paid".
+  //   A fixed vocabulary, no model. Engages only for somebody with exactly
+  //   one month to pay for and no released per-match fee; anybody else
+  //   falls straight through to the per-match claim below, unchanged. It
+  //   records a CLAIM ("says paid"): only the collector confirms.
+  {
+    const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
+    const monthClaim = await handlePlayerPaidDm({
+      userId: user.id,
+      userName: user.name,
+      text,
+      replyPhone:
+        phoneNoPlus ??
+        (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+        null,
+    });
+    if (monthClaim) return NextResponse.json({ ok: true, ...monthClaim });
+  }
+
   {
     const { handlePaymentClaimDm } = await import("@/lib/payment-claim");
     const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;

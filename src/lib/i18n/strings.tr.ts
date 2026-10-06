@@ -2639,6 +2639,90 @@ export const tr: Strings = {
   mmp_closed: "Bu ayın kaydı bitti. Yerini değiştirmek için bir organizatöre yaz.",
   mmp_locked: "Bu ay için ödediğini söyledin, bu yüzden yerin buradan değişmez. Bir organizatöre yaz.",
   mmp_error: "Kaydedilemedi. Yeniden dene.",
+
+  // ── Aylık kadro, 4. dilim (2026-10-06): fiyat, ödemeler, hatırlatmalar ─
+  // Sadece havale (D5). "Ödedi" bir beyandır; ödemeyi yalnızca parayı
+  // toplayan kişi onaylar (D3).
+  mpy_priced_header: (p) => `📋 ${p.month} listesi: maç başı ${p.share}, son ödeme ${p.when}${p.collector ? ` (${p.collector})` : ""}`,
+  mpy_priced_sub: (p) => `(${p.games} maç = ${p.full}. Krediler düşüldü.)`,
+  mpy_list_paid_amount: (p) => `(ödedi ${p.amount})`,
+  mpy_priced_instructions: (p) => `Ödeme: ${p.text}`,
+  mpy_priced_how: 'Ödedin mi? Adının yanına (ödedi) yazıp listeyi yapıştır ya da bana özelden "ödedim" yaz.',
+  mpy_group_reminder: (p) => `💷 ${p.month} için ${p.count} kişi henüz ödemedi. Son ödeme: ${p.when}.`,
+  mpy_dm_reminder: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}` +
+    (p.kind === "late"
+      ? `${p.month} için ${p.amount} ödemenin son zamanı ${p.when} idi ve senden bir ödeme görünmüyor.`
+      : p.kind === "r2"
+        ? `hatırlatma: ${p.month} için ${p.amount} bugün ödenmeli, son an ${p.when}.`
+        : `${p.month} için yerin ${p.amount}. Son ödeme: ${p.when}.`) +
+    ` Bu ${p.games} maç eder${p.credits > 0 ? `, ${p.credits} kredi düşüldü` : ""}.` +
+    ` Lütfen ${p.collector ?? "parayı toplayan kişiye"} havale ile öde.` +
+    (p.instructions ? `\n\n${p.instructions}` : "") +
+    `\n\nÖdeyince *ödedim* yaz.`,
+  mpy_dm_claim_ack: (p) =>
+    `✅ ${p.firstName ? `${p.firstName}, ` : ""}not aldım: ${p.month} için${p.amount ? ` ${p.amount}` : ""} ödediğini söylüyorsun. ` +
+    `${p.collector ?? "Parayı toplayan kişi"} para gelince onaylayacak.`,
+  mpy_admin_price_ask: (p) =>
+    `📋 ${p.month} listesi: şimdilik ${p.regulars} daimi, ${p.payg} PAYG. Fiyatı belirleyin: ${p.link}` + (p.tip ? `\n\n${p.tip}` : ""),
+  mpy_fee_tip: (p) =>
+    `MatchTime kulüpten ayda en fazla ${p.price} alır, yalnızca oynanan maçlar için. ${p.regulars} daimi oyuncu ve ${p.games} maç için ` +
+    `her daiminin payına maç başı ${p.perGame} (ay için ${p.perMonth}) eklemek bunu karşılar.`,
+  mpy_digest: (p) =>
+    `💷 ${p.month} için ${p.count} kişi ödediğini söylüyor:\n${p.lines.join("\n")}\n\n` +
+    `*ÖDENDİ HEPSİ* yazın, ya da *ÖDENDİ* ve gelenlerin numaralarını (ÖDENDİ 1 3), ya da *ÖDENDİ HİÇBİRİ*.`,
+  mpy_reply_confirmed: (p) => `✅ ${p.month} için ödendi olarak işaretlendi: ${p.names.join(", ")}.`,
+  mpy_reply_declined: (p) =>
+    `Not aldım: ${p.month} için ${p.names.join(", ")} tarafından henüz bir şey gelmedi. Bunları bir daha sormayacağım. Para gelince Aylar sayfasından onaylayın.`,
+  mpy_reply_unknown: (p) =>
+    `${p.month} listesinde ${p.numbers} numarada "ödedi" diyen yok, bu yüzden kimseyi işaretlemedim. *ÖDENDİ* ve son mesajımdaki numaraları yazın.`,
+  mpy_reply_stale: "O liste artık güncel değil, bu yüzden kimseyi işaretlemedim.",
+  mpy_reply_other_month: (p) =>
+    `Bu ${p.month} içindi. ${p.other} için ayı da yazın: *ÖDENDİ ${p.other.toLocaleUpperCase("tr")} HEPSİ* ya da *ÖDENDİ ${p.other.toLocaleUpperCase("tr")}* ve numaralar.`,
+  mpy_reply_no_digest: "Şu an sizden onay bekleyen bir ödeme yok. Ödemeleri Aylar sayfasından onaylayabilirsiniz.",
+  mpy_summary_head: (p) => `📒 ${p.month}: son ödeme zamanı geçti.`,
+  mpy_summary_confirmed: (p) => `Ödedi ve onaylandı: ${p.count} (${p.total}).`,
+  mpy_summary_claimed: (p) => `Ödediğini söylüyor, onaylanmadı: ${p.count} (${p.names}).`,
+  mpy_summary_unpaid: (p) => `Ödemedi: ${p.count} (${p.names}).`,
+  mpy_summary_venue: (p) => `Ayın payları toplam ${p.due}, saha ücreti ${p.venue}.`,
+  mpy_none: "kimse yok",
+
+  mth_price_title: "Ayın fiyatı",
+  mth_price_share: "Maç başı pay (£)",
+  mth_price_concession: "İndirimli maç başı pay (£), isteğe bağlı",
+  mth_price_venue: "Maç başı saha ücreti (£), isteğe bağlı",
+  mth_price_payby: "Son ödeme (Londra saati)",
+  mth_price_suggest: (p) => `Öneri: maç başı ${p.amount} (saha ücreti bölü daimi oyuncu sayısı, 50p'ye yuvarlanmış).`,
+  mth_price_save: "Fiyatı belirle",
+  mth_price_update: "Fiyatı güncelle",
+  mth_price_posts: "MatchTime fiyatlı listeyi grubunuza gönderir ve son ödeme zamanından önce ödemeyen daimi oyunculara hatırlatır.",
+  mth_price_locked: "Biri ödedi ya da ödediğini söylüyor; pay kilitlendi. Son ödeme zamanını yine değiştirebilirsiniz.",
+  mth_price_error: (p) =>
+    p.key === "bad-share"
+      ? "Maç başı payı 7.50 gibi bir fiyat olarak girin, en fazla £100."
+      : p.key === "bad-concession"
+        ? "İndirimli payı, paydan yüksek olmayan bir fiyat olarak girin."
+        : p.key === "bad-venue"
+          ? "Maç başı saha ücretini 90 gibi bir fiyat olarak girin."
+          : p.key === "bad-pay-by"
+            ? "Henüz geçmemiş bir son ödeme tarihi ve saati seçin."
+            : p.key === "locked"
+              ? "Biri ödedi, bu yüzden pay değiştirilemez."
+              : "Fiyat kaydedilemedi. Sayfayı yenileyip yeniden deneyin.",
+  mth_payby_line: (p) => `Son ödeme: ${p.when}.`,
+  mth_confirm: "Ödemeyi onayla",
+  mth_unconfirm: "Geri al",
+  mth_confirm_error: (p) =>
+    p.key === "not-collector" ? "Ödemeleri yalnızca kulübün parayı toplayan kişisi onaylar." : "Kaydedilemedi. Sayfayı yenileyip yeniden deneyin.",
+  info_mth_price_title: "Ayın fiyatı",
+  info_mth_price_body:
+    "Maç başı payı siz belirlersiniz. Her daimi oyuncu, pay çarpı aydaki maç sayısı kadar borçludur; parasını ödeyip kaçırdığı maçların kredileri düşülür. İndirimli pay isteğe bağlıdır.\n\nMatchTime fiyatlı listeyi gönderir, oyuncuların \"ödedim\" demesini beyan olarak alır ve son ödeme zamanından önce ödemeyenlere hatırlatır. Ödemeyi yalnızca parayı toplayan kişi onaylar. Ödeme havaleyledir: MatchTime parayı hiç görmez.",
+
+  mmp_due: (p) => `${p.games} maç için ${p.amount}${p.credits > 0 ? `, ${p.credits} kredi düşüldü` : ""}.`,
+  mmp_payby: (p) => `${p.collector ?? "Parayı toplayan kişiye"} havale ile öde. Son ödeme: ${p.when}.`,
+  mmp_not_priced: "Fiyat henüz belirlenmedi.",
+  mmp_btn_paid: "Ödedim",
+  mmp_paid_state: (p) => (p.kind === "confirmed" ? "Ödendi, onaylandı." : "Ödediğini söyledin. Para gelince onaylanır."),
 };
 
 /**
