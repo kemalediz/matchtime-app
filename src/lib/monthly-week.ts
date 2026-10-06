@@ -995,6 +995,11 @@ async function claimHourlySweep(orgId: string, now: Date): Promise<boolean> {
         where: { key: { startsWith: `org-${orgId}:month-paste-` }, createdAt: { lt: new Date(Date.now() - 7 * DAY_MS) } },
       })
       .catch(() => {});
+    // The sign-up's once-only keys (slice 3: list posts, DMs, notices) are
+    // of no use once their month is well under way.
+    await db.sentNotification
+      .deleteMany({ where: { key: { startsWith: `org-${orgId}:msu:` }, createdAt: { lt: new Date(Date.now() - 45 * DAY_MS) } } })
+      .catch(() => {});
     return true;
   } catch {
     return false;

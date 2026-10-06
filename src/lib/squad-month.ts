@@ -13,6 +13,8 @@
  * before anything is read.
  */
 import { db } from "./db";
+import { formatLondon } from "./london-time";
+import { WAITING_NOTE, firstKickoffOf, signupEndsAt } from "./month-signup-rules";
 import { parseMonthlyList } from "./monthly-list";
 import {
   draftSeedFromList,
@@ -232,6 +234,10 @@ export interface MonthMemberView {
   paid: PaidState;
   /** What was confirmed, or else what was claimed. */
   paidPence: number | null;
+  /** Asked for a regular place when every one was taken (slice 3). */
+  waiting: boolean;
+  /** The days of the month a PAYG player named, in order. */
+  paygDays: number[];
 }
 
 export interface MonthFixtureView {
@@ -249,6 +255,11 @@ export interface MonthFixtureView {
     gamesPlayedBeforeStart: number;
     sharePerGamePence: number | null;
     startedMidMonth: boolean;
+    /** MatchTime opened this month's list itself (slice 3), and when its
+     *  sign-up ends, as an ISO instant. Null for a month started part-way. */
+    signupEndsAt: string | null;
+    /** The regular places: the format's squad size. */
+    maxRegulars: number;
     members: MonthMemberView[];
   } | null;
 }
@@ -267,12 +278,19 @@ export interface MonthPageData {
  * Read only. The caller has already checked the club is monthly and the
  * viewer an admin.
  */
-export async function loadMonthPage(orgId: string, now: Date = new Date()): Promise<MonthPageData> {
-  const monthStart = londonMonthStart(now);
-  const [activities, months, memberships] = await Promise.all([
+export async function loadMonthPage(
+  orgId: string,
+  now: Date = new Date(),
+  /** "2026-11-01": another month than the current one (slice 3 shows the
+   *  next month once its list is open). */
+  forMonthStart?: string,
+): Promise<MonthPageData> {
+  const monthStart = forMonthStart ?? londonMonthStart(now);
+  const monthFrom = monthStartToDate(monthStart);
+  const [activities, months, memberships, matches] = await Promise.all([
     db.activity.findMany({
       where: { orgId, isActive: true },
-      select: { id: true, name: true, dayOfWeek: true, time: true },
+      select: { id: true, name: true, dayOfWeek: true, time: true, sport: { select: { playersPerTeam: true } } },
       orderBy: { createdAt: "asc" },
     }),
     db.squadMonth.findMany({
@@ -285,6 +303,7 @@ export async function loadMonthPage(orgId: string, now: Date = new Date()): Prom
         gamesPlayedBeforeStart: true,
         sharePerGamePence: true,
         startedMidMonthAt: true,
+        listOpenedAt: true,
         members: {
           where: { leftAt: null },
           orderBy: [{ slot: "asc" }, { createdAt: "asc" }],
@@ -293,6 +312,8 @@ export async function loadMonthPage(orgId: string, now: Date = new Date()): Prom
             slot: true,
             kind: true,
             tier: true,
+            note: true,
+            paygMatchIds: true,
             gamesCovered: true,
             creditsApplied: true,
             amountDuePence: true,
@@ -310,11 +331,22 @@ export async function loadMonthPage(orgId: string, now: Date = new Date()): Prom
       select: { user: { select: { id: true, name: true } } },
       orderBy: { user: { name: "asc" } },
     }),
+    // The month's matches, for the days a PAYG player named.
+    db.match.findMany({
+      where: { activity: { orgId }, date: { gte: monthFrom, lt: new Date(monthFrom.getTime() + 32 * 24 * 60 * 60 * 1000) } },
+      select: { id: true, date: true },
+    }),
   ]);
+  const dayOfMatch = new Map(matches.map((x) => [x.id, Number(formatLondon(x.date, "d"))]));
+  // In a month MatchTime opened itself, a member who has left the group is
+  // not on the list (their row stays, with whatever it knows of money).
+  const inClub = new Set(memberships.map((x) => x.user.id));
 
   const fixtures: MonthFixtureView[] = activities.map((a) => {
     const dates = monthFixtureDates(monthStart, a.dayOfWeek);
     const m = months.find((x) => x.activityId === a.id) ?? null;
+    const first = firstKickoffOf(monthStart, a.dayOfWeek, a.time);
+    const shown = m ? m.members.filter((r) => m.listOpenedAt === null || inClub.has(r.userId)) : [];
     return {
       activityId: a.id,
       name: a.name,
@@ -327,7 +359,14 @@ export async function loadMonthPage(orgId: string, now: Date = new Date()): Prom
         gamesPlayedBeforeStart: m.gamesPlayedBeforeStart,
         sharePerGamePence: m.sharePerGamePence,
         startedMidMonth: m.startedMidMonthAt !== null,
-        members: m.members.map((r) => ({
+        signupEndsAt: m.listOpenedAt && first ? signupEndsAt(m.listOpenedAt, first).toISOString() : null,
+        maxRegulars: a.sport.playersPerTeam * 2,
+        members: shown.map((r) => ({
+          waiting: r.kind === "payg" && r.note === WAITING_NOTE,
+          paygDays: r.paygMatchIds
+            .map((id) => dayOfMatch.get(id))
+            .filter((d): d is number => d !== undefined)
+            .sort((x, y) => x - y),
           userId: r.userId,
           name: r.user.name ?? "",
           slot: r.slot,

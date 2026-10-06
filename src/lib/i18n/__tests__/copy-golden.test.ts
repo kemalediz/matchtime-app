@@ -68,6 +68,14 @@
  *     copy). All NEW copy, sent only to a club on "monthly"; the only
  *     non-additive line in either `.snap` diff is the case count.
  *
+ *   - Deliberate additions (2026-10-06, monthly squad slice 3): rows
+ *     MSU1 to MSU6, the month's sign-up (the list as it opens, the DM to
+ *     somebody who has to wait, the organisers' note that the regular
+ *     places are full, and the DMs about a pasted list, a paid member's
+ *     place and a date with no game). All NEW copy, sent only to a club
+ *     on "monthly"; the only non-additive line in either `.snap` diff is
+ *     the case count.
+ *
  *   - Deliberate additions AND one deliberate CHANGE (2026-09-19, slice
  *     6 of MDs/club-scoped-ratings-design-2026-09-18.md). The additions
  *     are rows R144 to R146, the first WEB copy in the table: the club
@@ -353,6 +361,16 @@ import {
   buildPaygPoolGroupPost,
   buildWeekListPost,
 } from "../../monthly-week-copy";
+import {
+  buildSignupListPost,
+  buildSignupLockedDm,
+  buildSignupPasteOthersDm,
+  buildSignupPaygDm,
+  buildSignupUnknownDaysDm,
+  buildSignupWaitingAdminNotice,
+  buildSignupWaitingDm,
+} from "../../month-signup-copy";
+import { monthKickoffs } from "../../month-signup-rules";
 import { formatRatingProgressReply } from "../../rating-progress-answer";
 import { buildMomAnnouncement } from "../../mom-announcement";
 import { buildBadgeAnnouncementPost } from "../../badge-announcements";
@@ -1980,6 +1998,46 @@ function cases(lang: Lang): Case[] {
     buildPasteIgnoredAdminNotice({ actorName: "Alex Carter", names: ["Bilal Aydin", "Chris Bell"], matchDate: mwkMatch, lang }),
   );
 
+  // ── MSU: monthly squad, slice 3 (2026-10-06), the month's sign-up ──
+  //   NEW copy, a deliberate addition: MDs/monthly-squad-plan-2026-10-05.md
+  //   sections 4.1 and 6.2. Sent only for a club on "monthly".
+  const msuFacts = {
+    kickoffs: monthKickoffs("2026-11-01", 1, "20:00"),
+    carriedFrom: new Date("2026-10-15T12:00:00.000Z"),
+    endsAt: new Date("2026-10-27T10:00:00.000Z"),
+  };
+  const msuList = {
+    slots: [
+      { slot: 1, userId: "u-alex", name: "Alex Carter", paid: true },
+      { slot: 2, userId: null, name: "", paid: false },
+      { slot: 3, userId: "u-chris", name: "Chris Bell", paid: false },
+      { slot: 4, userId: null, name: "", paid: false },
+    ],
+    payg: [{ slot: 5, userId: "u-omar", name: "Omar Khan", days: [9, 23] }],
+    waiting: [{ userId: "u-eve", name: "Eve Stone" }],
+    regulars: 2,
+  };
+  add("MSU1 buildSignupListPost / regulars carried over, a PAYG player, one waiting", buildSignupListPost({ list: msuList, ...msuFacts, lang }));
+  add(
+    "MSU1 buildSignupListPost / nobody carried over, an empty list",
+    buildSignupListPost({
+      list: { slots: msuList.slots.map((x) => ({ ...x, userId: null, name: "", paid: false })), payg: [], waiting: [], regulars: 0 },
+      ...msuFacts,
+      carriedFrom: null,
+      lang,
+    }),
+  );
+  add("MSU2 buildSignupWaitingDm", buildSignupWaitingDm({ name: "Eve Stone", monthDate: msuFacts.kickoffs[0], max: 14, lang }));
+  add(
+    "MSU3 buildSignupWaitingAdminNotice",
+    buildSignupWaitingAdminNotice({ name: "Eve Stone", monthDate: msuFacts.kickoffs[0], max: 14, link: "https://matchtime.ai/admin/months", lang }),
+  );
+  add("MSU7 buildSignupPaygDm / with dates", buildSignupPaygDm({ name: "Omar Khan", monthDate: msuFacts.kickoffs[0], days: [9, 23], lang }));
+  add("MSU7 buildSignupPaygDm / no dates", buildSignupPaygDm({ name: "Omar Khan", monthDate: msuFacts.kickoffs[0], days: [], lang }));
+  add("MSU4 buildSignupPasteOthersDm", buildSignupPasteOthersDm({ names: ["Gaz", "Will"], monthDate: msuFacts.kickoffs[0], lang }));
+  add("MSU5 buildSignupLockedDm", buildSignupLockedDm({ monthDate: msuFacts.kickoffs[0], lang }));
+  add("MSU6 buildSignupUnknownDaysDm", buildSignupUnknownDaysDm({ days: [10, 11], kickoffs: msuFacts.kickoffs, lang }));
+
   return c;
 }
 
@@ -2062,6 +2120,8 @@ const MIGRATED_ROWS = [
   "BDG1 ",
   // learned setup (2026-10-05)
   "LRN1 ", "LRN2 ", "LRN3 ",
+  // Monthly squad, slice 3: the month's sign-up.
+  "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ", "MSU7 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

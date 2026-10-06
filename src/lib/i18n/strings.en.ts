@@ -3060,6 +3060,9 @@ export const en = {
   msq_months_link: "Open the Months page",
   msq_payg_label: "PAYG price per game (£)",
   msq_payg_blurb: "What a pay-as-you-go player pays for one game. Leave it empty if you don't have a set price.",
+  /** Slice 3: what switching to monthly makes MatchTime post. */
+  msq_list_note:
+    "MatchTime posts each month's list in your group a few days before its first game (see \"List opens\" below), with this month's regulars already on it.",
   msq_opens_label: "List opens",
   msq_opens_blurb: "How many days before the month's first game next month's list opens.",
   msq_opens_unit: "days before the first game",
@@ -3250,4 +3253,95 @@ export const en = {
   mwk_dm_bumped: (p: { firstName: string | null; activityName: string; when: string }): string =>
     `👋 ${p.firstName ?? "there"}, the regulars who have paid for the month have their places for *${p.activityName}* on ${p.when}, ` +
     `so you are on the waiting list for now. I'll message you if a place opens.`,
+
+  // ── Monthly squad, slice 3 (2026-10-06): the month opens, sign-up ──
+  // MDs/monthly-squad-plan-2026-10-05.md, sections 4.1 and 6.2. Only ever
+  // sent for a club on "monthly". The list is written the way the group
+  // writes it and `monthly-list.ts` reads it back: the header is in that
+  // reader's vocabulary and must stay in it (`month-signup-copy.test.ts`
+  // pins the round trip). The words a member is told to type ("IN FOR
+  // NOVEMBER") are read by `readSignupMessage`, pinned in the same test.
+  // No em or en dashes, in either language.
+  /** `weekday` is "Monday", `days` the dates of the games: "2, 9, 16". */
+  msu_list_header: (p: { month: string; games: number; weekday: string; days: string }): string =>
+    `📋 List for ${p.month} (${p.games} ${p.weekday}${p.games === 1 ? "" : "s"}: ${p.days})`,
+  /** `prev` is the month the regulars are carried over from. */
+  msu_list_carried: (p: { prev: string }): string => `Regulars from ${p.prev} are on already.`,
+  msu_list_out: (p: { month: string }): string => `Not in for ${p.month}? Say *OUT FOR ${p.month.toUpperCase()}*.`,
+  msu_list_join: (p: { month: string }): string =>
+    `Want a place for ${p.month}? Copy the list and add your name, or say *IN FOR ${p.month.toUpperCase()}*.`,
+  /** `day` is the date of one of the month's games, as an example. */
+  msu_list_payg: (p: { day: number }): string => `Playing some weeks only? Add your name with (PAYG), or (PAYG ${p.day} only).`,
+  msu_list_link: (p: { url: string }): string => `Or sign up here: ${p.url}`,
+  /** `when` is when sign-up ends: "Tue 27 Oct, 10:00". */
+  msu_list_deadline: (p: { when: string }): string => `Names in by ${p.when}. Price and payment details follow once numbers are in.`,
+  /** To somebody who asked for a regular place when every one was taken. */
+  msu_dm_waiting: (p: { firstName: string | null; month: string; max: number }): string =>
+    `👋 ${p.firstName ?? "there"}, all ${p.max} regular places for ${p.month} are taken, so you are waiting for one. ` +
+    `The organisers have been told. You can still play pay-as-you-go when a place opens.`,
+  /** To somebody who signed up as pay-as-you-go: what that means, and what
+   *  happens next. `days` is the dates they named ("9, 23"), or null. */
+  msu_dm_payg: (p: { firstName: string | null; month: string; days: string | null }): string =>
+    `👋 ${p.firstName ?? "there"}, you are down as pay-as-you-go for ${p.month}${p.days ? `, for the games on ${p.days}` : ""}. ` +
+    `You pay per game, only for the games you play. ` +
+    (p.days ? `You are on the list for those dates. ` : "") +
+    `When a place opens on another week I will message you, and the first to say *IN* gets it.`,
+  /** To the organisers, once a month: the regular places are full. */
+  msu_admin_waiting: (p: { name: string; month: string; max: number; link: string }): string =>
+    `📋 ${p.month} list: all ${p.max} regular places are taken and ${p.name} has asked for one, so they are waiting. ` +
+    `To make them a regular anyway, open Months: ${p.link}`,
+  /** To the member whose pasted list had other people's names added. */
+  msu_dm_paste_others: (p: { names: string[]; month: string }): string =>
+    `📋 I read the list you pasted for ${p.month}. A pasted list only signs up the person who pastes it, so I left ${p.names.join(", ")} as they were. ` +
+    `They can say *IN FOR ${p.month.toUpperCase()}* themselves, or an organiser can add them on the Months page.`,
+  /** To a member who says they have paid and then asks to change their place. */
+  msu_dm_locked: (p: { month: string }): string =>
+    `📋 You have told me you paid for ${p.month}, so I have not changed your place. Ask an organiser if it needs changing.`,
+  /** To a PAYG player who named a date with no game. `days` and `games` are lists of dates. */
+  msu_dm_unknown_days: (p: { days: string; month: string; games: string }): string =>
+    `📋 There is no game on ${p.days} ${p.month}. The games are on ${p.games}. Say the dates again and I will put them right.`,
+
+  // /admin/months, the sign-up card (organiser page).
+  mth_signup_open: (p: { when: string }): string =>
+    `Sign-up is open until ${p.when}. The list is posted in your group, and names come in by pasted list, by message or on the sign-up page.`,
+  mth_signup_ended: "Sign-up has ended. The weekly list runs this month now. You can still change who is on it here.",
+  mth_signup_counts: (p: { regulars: number; max: number; payg: number; waiting: number }): string =>
+    `Regulars: ${p.regulars} of ${p.max}. PAYG: ${p.payg}. Waiting for a regular place: ${p.waiting}.`,
+  mth_kind_waiting: "Waiting for a regular place",
+  mth_payg_days: (p: { days: string }): string => `PAYG on ${p.days}`,
+  mth_act_regular: "Make regular",
+  mth_act_payg: "Move to PAYG",
+  mth_act_remove: "Remove for the month",
+  mth_act_error: "That could not be saved. Reload the page and try again.",
+  mth_add_label: "Add a player",
+  mth_add_regular: "Add as regular",
+  mth_add_payg: "Add as PAYG",
+  mth_next_month: (p: { month: string }): string => `Next month: ${p.month}`,
+  info_mth_signup_title: "Sign-up for the month",
+  info_mth_signup_body:
+    "MatchTime posts the list in your group a few days before the first game, with this month's regulars on it. Players join by pasting the list with their name added, by typing IN FOR and the month, or on their sign-up page. A pasted list only signs up the person who pastes it.\n\nWhen every regular place is taken, the next person waits and you are told once. You can make them a regular here. A day after the list goes out, sign-up ends and the weekly list takes over.",
+
+  // /month, the player's own sign-up page.
+  mmp_title: (p: { month: string }): string => `List for ${p.month}`,
+  mmp_games: (p: { games: number; days: string }): string => `${p.games} ${p.games === 1 ? "game" : "games"}: ${p.days}`,
+  mmp_none: "Your club has no monthly list open right now.",
+  mmp_state: (p: { outcome: string; slot: number | null; days: string | null }): string =>
+    p.outcome === "regular"
+      ? `You are in for the month${p.slot != null ? `, number ${p.slot} on the list` : ""}.`
+      : p.outcome === "waiting"
+        ? "Every regular place is taken, so you are waiting for one."
+        : p.outcome === "payg"
+          ? p.days
+            ? `You are pay-as-you-go on ${p.days}.`
+            : "You are pay-as-you-go: you play when a place is open."
+          : p.outcome === "out"
+            ? "You are not on this month's list."
+            : "You are not on this month's list yet.",
+  mmp_btn_in: "I'm in for the month",
+  mmp_btn_payg: "Pay as you go",
+  mmp_btn_out: "Not this month",
+  mmp_payg_pick: "Playing some weeks only? Tick the games you want, or tick none to be asked when a place opens.",
+  mmp_closed: "Sign-up for this month has ended. Ask an organiser to change your place.",
+  mmp_locked: "You have said you paid for this month, so your place is not changed here. Ask an organiser.",
+  mmp_error: "That could not be saved. Try again.",
 };

@@ -19,6 +19,8 @@ import type { Page } from "@playwright/test";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { ACTIVITY_ID, ORG_ID } from "../helpers/constants";
 import { testDb } from "../helpers/test-db";
+import { monthKickoffs } from "@/lib/month-signup-rules";
+import { londonMonthStart } from "@/lib/squad-month-rules";
 
 test.describe.configure({ mode: "serial" });
 
@@ -403,15 +405,75 @@ test("an admin starts the month part-way through by ticking players", async ({ p
     { userId: U.rater, games: 1, reason: "carried-in", appliedMonthId: month!.id, applied: true, createdById: U.collector },
   ]);
 
-  // Starting the month queued nothing for WhatsApp, and touched no match.
+  // Starting the month queued nothing for WhatsApp.
   expect(await outbound()).toBe(before);
-  expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "paymentMethod" = 'monthly'`)).toBe(0);
+  // Since slice 5, starting a month also puts its regulars on the next
+  // match WHEN THAT IS DUE: from 08:00 London the morning after the
+  // previous game (the fixture's was yesterday at 20:00). So how many rows
+  // are marked "paid for by the month" depends on the hour this runs, and
+  // is not asserted (the seed is covered in api/monthly-week.spec.ts).
+  // What holds at ANY hour: only a REGULAR of the month is ever marked.
+  expect(
+    await db.count(
+      `SELECT COUNT(*) FROM "Attendance" a
+        WHERE a."paymentMethod" = 'monthly'
+          AND NOT EXISTS (SELECT 1 FROM "SquadMonthMember" m
+                           WHERE m."monthId" = $1 AND m."userId" = a."userId" AND m.kind = 'regular' AND m."leftAt" IS NULL)`,
+      [month!.id],
+    ),
+  ).toBe(0);
 
   // It is still there after a reload, and cannot be started twice.
   await page.reload();
   await expect(card.getByTestId("month-members")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("start-month-form")).toHaveCount(0);
   expect(await db.count(`SELECT COUNT(*) FROM "SquadMonth"`)).toBe(1);
+});
+
+test("a regular added to a month started part-way is charged for the games LEFT in the month, not for the Match rows that exist", async ({
+  page,
+  db,
+}) => {
+  // The month was started part-way: MatchTime holds ONE match of it still
+  // to play (the next game), whatever the calendar says is left.
+  // The games left: the fixture's Tuesdays still to come this month. (A
+  // Tuesday whose match exists is that match's own kick-off: the fixture
+  // world's "pay" match may have been played earlier today.)
+  const played = await db.all<{ date: Date }>(
+    `SELECT m.date FROM "Match" m JOIN "Activity" a ON a.id = m."activityId" WHERE a."orgId" = $1 AND m.status <> 'CANCELLED'`,
+    [ORG_ID],
+  );
+  const londonDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(d);
+  const calendar = monthKickoffs(londonMonthStart(new Date()), 2, "20:00");
+  const left = calendar
+    .map((k) => played.map((p) => new Date(p.date)).find((d) => londonDay(d) === londonDay(k)) ?? k)
+    .filter((k) => k.getTime() > Date.now()).length;
+  // More than the single Match row MatchTime holds for the rest of the month, whenever the calendar has more.
+  expect(left).toBeLessThanOrEqual(calendar.length);
+  const month = (await db.one<{ id: string }>(`SELECT id FROM "SquadMonth" WHERE "orgId" = $1`, [ORG_ID]))!;
+  const newcomer = (await db.one<{ id: string }>(
+    `SELECT u.id FROM "User" u JOIN "Membership" m ON m."userId" = u.id
+      WHERE m."orgId" = $1 AND m."leftAt" IS NULL AND u."isActive"
+        AND NOT EXISTS (SELECT 1 FROM "SquadMonthMember" x WHERE x."monthId" = $2 AND x."userId" = u.id)
+      ORDER BY u.id LIMIT 1`,
+    [ORG_ID, month.id],
+  ))!;
+  await signInAs(page, U.collector, "/admin/months");
+  const add = page.getByTestId("month-card").getByTestId("member-add");
+  await expect(add).toBeVisible({ timeout: 30_000 });
+  await add.getByTestId("member-add-select").selectOption(newcomer.id);
+  await add.getByTestId("member-add-regular").click();
+  await expect(page.locator(`[data-testid="month-member"][data-user="${newcomer.id}"]`)).toBeVisible();
+  const row = await db.one<{ kind: string; gamesCovered: number }>(
+    `SELECT kind, "gamesCovered" FROM "SquadMonthMember" WHERE "monthId" = $1 AND "userId" = $2`,
+    [month.id, newcomer.id],
+  );
+  expect(row).toEqual({ kind: "regular", gamesCovered: left });
+
+  // A month that has started is not offered for sign-up on the player's page.
+  await signInAs(page, U.player, "/month");
+  await expect(page.getByTestId("month-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("month-in")).toHaveCount(0);
 });
 
 test("a Turkish club reads Turkish, on both pages", async ({ page, db }) => {

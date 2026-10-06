@@ -986,6 +986,47 @@ const SAMPLES: SampleArgs = {
   mwk_admin_paste_ignored: { actor: "Alex", names: ["Bilal", "Chris"], when: "Mon 12 Oct, 20:00" },
   mwk_admin_paste_not_added: { actor: "Alex", names: ["Tariq", "Big O"], when: "Mon 12 Oct, 20:00" },
   mwk_dm_bumped: { firstName: "Zed", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
+  // Monthly squad, slice 3 (2026-10-06): the month opens, sign-up
+  msq_list_note: null,
+  msu_list_header: { month: "MONTHLABEL", games: 5, weekday: "WEEKDAYLABEL", days: "2, 9, 16, 23, 30" },
+  msu_list_carried: { prev: "MONTHLABEL" },
+  msu_list_out: { month: "Monthlabel" },
+  msu_list_join: { month: "Monthlabel" },
+  msu_list_payg: { day: 9 },
+  msu_list_link: { url: "https://matchtime.ai/month" },
+  msu_list_deadline: { when: "Tue 27 Oct, 10:00" },
+  msu_dm_waiting: { firstName: "Zed", month: "MONTHLABEL", max: 14 },
+  msu_dm_payg: { firstName: "Zed", month: "MONTHLABEL", days: "9, 23" },
+  msu_admin_waiting: { name: "Zed Stone", month: "MONTHLABEL", max: 14, link: "https://matchtime.ai/admin/months" },
+  msu_dm_paste_others: { names: ["Gaz", "Tariq"], month: "Monthlabel" },
+  msu_dm_locked: { month: "MONTHLABEL" },
+  msu_dm_unknown_days: { days: "10, 11", month: "MONTHLABEL", games: "2, 9, 16, 23, 30" },
+  mth_signup_open: { when: "Tue 27 Oct, 10:00" },
+  mth_signup_ended: null,
+  mth_signup_counts: { regulars: 12, max: 14, payg: 3, waiting: 1 },
+  mth_kind_waiting: null,
+  mth_payg_days: { days: "9, 23" },
+  mth_act_regular: null,
+  mth_act_payg: null,
+  mth_act_remove: null,
+  mth_act_error: null,
+  mth_add_label: null,
+  mth_add_regular: null,
+  mth_add_payg: null,
+  mth_next_month: { month: "MONTHLABEL" },
+  info_mth_signup_title: null,
+  info_mth_signup_body: null,
+  mmp_title: { month: "MONTHLABEL" },
+  mmp_games: { games: 5, days: "2, 9, 16, 23, 30" },
+  mmp_none: null,
+  mmp_state: { outcome: "regular", slot: 7, days: null },
+  mmp_btn_in: null,
+  mmp_btn_payg: null,
+  mmp_btn_out: null,
+  mmp_payg_pick: null,
+  mmp_closed: null,
+  mmp_locked: null,
+  mmp_error: null,
 };
 
 /** Render an entry with its sample arguments. */
@@ -1115,7 +1156,7 @@ describe("string tables: hygiene", () => {
   // help, the setup DMs and the join DM.
   it("no onboarding, help or organiser-setup entry carries an em or en dash, in any language", () => {
     const onboarding = KEYS.filter((k) =>
-      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled|admin_group_|settings_admin_channel_|setup_|settings_learned_|msq_|mth_|mwk_|info_st_monthly_|info_msq_|info_mth_)/.test(String(k)),
+      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled|admin_group_|settings_admin_channel_|setup_|settings_learned_|msq_|mth_|mwk_|msu_|mmp_|mpy_|info_st_monthly_|info_msq_|info_mth_)/.test(String(k)),
     );
     expect(onboarding.length).toBeGreaterThan(40);
     for (const lang of LANGS) {

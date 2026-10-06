@@ -152,6 +152,15 @@ function fold(s: string): string {
   return normaliseName(s).replace(/ı/g, "i");
 }
 
+/** `fold`, for the sign-up words (`month-signup-rules.ts`): one folding
+ *  for everything that reads a month's name. */
+export const foldListText = fold;
+
+/** The month a folded word names ("november", "nov", "kasim"), 1 to 12, or null. */
+export function monthOfWord(word: string): number | null {
+  return Object.prototype.hasOwnProperty.call(MONTHS, word) ? MONTHS[word] : null;
+}
+
 /** The folded words of a string: letters and digits only. */
 function words(s: string): string[] {
   return fold(s)

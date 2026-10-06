@@ -2401,6 +2401,8 @@ export const tr: Strings = {
   msq_months_link: "Aylar sayfasını aç",
   msq_payg_label: "Maç başı ücret, PAYG (£)",
   msq_payg_blurb: "Maç başı ödeyen bir oyuncunun tek maç için ödediği tutar. Sabit bir ücretiniz yoksa boş bırakın.",
+  msq_list_note:
+    "MatchTime her ayın listesini ilk maçtan birkaç gün önce grubunuza gönderir (aşağıdaki \"Liste açılışı\" ayarı); bu ayın daimi oyuncuları listede hazır gelir.",
   msq_opens_label: "Liste açılışı",
   msq_opens_blurb: "Gelecek ayın listesi, ayın ilk maçından kaç gün önce açılsın.",
   msq_opens_unit: "gün, ilk maçtan önce",
@@ -2565,6 +2567,78 @@ export const tr: Strings = {
   mwk_dm_bumped: (p) =>
     `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* (${p.when}) maçında yerler önce ayı ödeyen daimi oyuncuların, ` +
     `bu yüzden şimdilik yedek listesindesin. Yer açılırsa sana yazarım.`,
+
+  // ── Aylık kadro, 3. dilim (2026-10-06): ay açılır, kayıt ─────────
+  // Başlık `monthly-list.ts` okuyucusunun tanıdığı sözcüklerle yazılır.
+  // Üyeye yazması söylenen sözler ("KASIM VARIM") `readSignupMessage`
+  // tarafından okunur.
+  msu_list_header: (p) => `📋 ${p.month} listesi (${p.games} ${p.weekday}: ${p.days})`,
+  msu_list_carried: (p) => `${p.prev} ayının daimi oyuncuları listede.`,
+  msu_list_out: (p) => `${p.month} ayında yok musun? *${p.month.toLocaleUpperCase("tr")} YOKUM* yaz.`,
+  msu_list_join: (p) =>
+    `${p.month} için yer mi istiyorsun? Listeyi kopyalayıp adını ekle ya da *${p.month.toLocaleUpperCase("tr")} VARIM* yaz.`,
+  msu_list_payg: (p) => `Sadece bazı haftalar mı oynayacaksın? Adını (PAYG) ya da (PAYG ${p.day}) ile ekle.`,
+  msu_list_link: (p) => `Ya da buradan kaydol: ${p.url}`,
+  msu_list_deadline: (p) => `İsimler için son an: ${p.when}. Fiyat ve ödeme bilgisi sayılar netleşince gelir.`,
+  msu_dm_waiting: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}${p.month} için ${p.max} daimi yerin hepsi dolu, bu yüzden bir yer bekliyorsun. ` +
+    `Organizatörlere haber verildi. Yer açıldığında maç başı ödeyerek yine oynayabilirsin.`,
+  msu_dm_payg: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}${p.month} için maç başı ödeyen (PAYG) olarak yazıldın${p.days ? `: ${p.days} tarihli maçlar` : ""}. ` +
+    `Sadece oynadığın maçlar için ödersin. ` +
+    (p.days ? `O tarihlerde listedesin. ` : "") +
+    `Başka bir hafta yer açılırsa sana yazarım; ilk *VARIM* yazan alır.`,
+  msu_admin_waiting: (p) =>
+    `📋 ${p.month} listesi: ${p.max} daimi yerin hepsi dolu ve ${p.name} bir yer istedi, şimdi bekliyor. ` +
+    `Yine de daimi yapmak için Aylar sayfasını açın: ${p.link}`,
+  msu_dm_paste_others: (p) =>
+    `📋 ${p.month} için yapıştırdığın listeyi okudum. Yapıştırılan liste sadece yapıştıran kişiyi kaydeder, bu yüzden ${p.names.join(", ")} için bir şey değiştirmedim. ` +
+    `Kendileri *${p.month.toLocaleUpperCase("tr")} VARIM* yazabilir ya da bir organizatör Aylar sayfasından ekleyebilir.`,
+  msu_dm_locked: (p) =>
+    `📋 ${p.month} için ödediğini söylemiştin, bu yüzden yerini değiştirmedim. Değişmesi gerekiyorsa bir organizatöre yaz.`,
+  msu_dm_unknown_days: (p) =>
+    `📋 ${p.days} ${p.month} tarihinde maç yok. Maç günleri: ${p.games}. Tarihleri yeniden yaz, düzelteyim.`,
+
+  mth_signup_open: (p) =>
+    `Kayıt ${p.when} tarihine kadar açık. Liste grubunuza gönderildi; isimler yapıştırılan listeyle, mesajla ya da kayıt sayfasından gelir.`,
+  mth_signup_ended: "Kayıt bitti. Bu ay artık haftalık liste yürüyor. Listede kimin olduğunu buradan yine değiştirebilirsiniz.",
+  mth_signup_counts: (p) => `Daimi: ${p.regulars} / ${p.max}. PAYG: ${p.payg}. Daimi yer bekleyen: ${p.waiting}.`,
+  mth_kind_waiting: "Daimi yer bekliyor",
+  mth_payg_days: (p) => `PAYG günleri: ${p.days}`,
+  mth_act_regular: "Daimi yap",
+  mth_act_payg: "PAYG'ye al",
+  mth_act_remove: "Bu ay için çıkar",
+  mth_act_error: "Kaydedilemedi. Sayfayı yenileyip yeniden deneyin.",
+  mth_add_label: "Oyuncu ekle",
+  mth_add_regular: "Daimi olarak ekle",
+  mth_add_payg: "PAYG olarak ekle",
+  mth_next_month: (p) => `Gelecek ay: ${p.month}`,
+  info_mth_signup_title: "Ay için kayıt",
+  info_mth_signup_body:
+    "MatchTime ayın listesini ilk maçtan birkaç gün önce grubunuza gönderir; bu ayın daimi oyuncuları listede hazır gelir. Oyuncular listeyi adlarını ekleyip yapıştırarak, ayın adıyla VARIM yazarak ya da kayıt sayfasından katılır. Yapıştırılan liste sadece yapıştıran kişiyi kaydeder.\n\nDaimi yerlerin hepsi dolunca sıradaki kişi bekler ve size bir kez haber verilir. Onu buradan daimi yapabilirsiniz.\n\nListe gönderildikten bir gün sonra kayıt biter ve haftalık liste devreye girer.",
+
+  mmp_title: (p) => `${p.month} listesi`,
+  mmp_games: (p) => `${p.games} maç: ${p.days}`,
+  mmp_none: "Kulübünüzde şu an açık bir aylık liste yok.",
+  mmp_state: (p) =>
+    p.outcome === "regular"
+      ? `Bu ay varsın${p.slot != null ? `, listede ${p.slot} numarasın` : ""}.`
+      : p.outcome === "waiting"
+        ? "Daimi yerlerin hepsi dolu, bir yer bekliyorsun."
+        : p.outcome === "payg"
+          ? p.days
+            ? `Şu günler için maç başı ödüyorsun: ${p.days}.`
+            : "Maç başı ödüyorsun: yer açıldığında oynarsın."
+          : p.outcome === "out"
+            ? "Bu ayın listesinde değilsin."
+            : "Henüz bu ayın listesinde değilsin.",
+  mmp_btn_in: "Bu ay varım",
+  mmp_btn_payg: "Maç başı öde",
+  mmp_btn_out: "Bu ay yokum",
+  mmp_payg_pick: "Sadece bazı haftalar mı? İstediğin maçları işaretle; hiçbirini işaretlemezsen yer açıldığında sana sorulur.",
+  mmp_closed: "Bu ayın kaydı bitti. Yerini değiştirmek için bir organizatöre yaz.",
+  mmp_locked: "Bu ay için ödediğini söyledin, bu yüzden yerin buradan değişmez. Bir organizatöre yaz.",
+  mmp_error: "Kaydedilemedi. Yeniden dene.",
 };
 
 /**
