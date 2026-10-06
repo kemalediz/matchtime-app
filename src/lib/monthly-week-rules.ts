@@ -41,6 +41,9 @@ export interface WeekRow {
   name: string;
   status: WeekStatus;
   position: number;
+  /** When they went out (their last move to DROPPED). Only loaded where
+   *  it decides something: the `filled-only` credit rule. */
+  outAt?: Date | null;
 }
 
 // ── Seeding (plan 5.1) ─────────────────────────────────────────────────
@@ -62,28 +65,36 @@ export const SEED_NOTE_AWAY = "away this week";
 export const SEED_NOTE_NO_PLACE = "regular of the month: no place left";
 export const SEED_NOTE_PAYG = "PAYG for this date";
 
+export const SEED_NOTE_PRIORITY = "the month's regulars have priority: moved to the waiting list";
+export const SEED_NOTE_PROMOTED = "regular of the month: brought in from the waiting list";
+
 /**
  * Who is written onto this week's match from the month.
  *
  *  - every regular, in slot order, at `position = slot`: CONFIRMED while
  *    there is room, the waiting list after that;
+ *  - REGULARS HAVE PRIORITY over anyone who is not a regular. A regular
+ *    has paid for the place, so a non-regular who said IN before the seed
+ *    (`bump`, last in first) goes to the waiting list when the regulars
+ *    need the place, and a regular who was put on the waiting list before
+ *    the seed (`promote`) is brought in;
  *  - a regular who said they are away this week is written OUT, so the
  *    list shows them under "Paid but can't play" from the start;
- *  - a PAYG player only on a date they named;
- *  - anyone who already has a row is NOT touched: an early OUT stays OUT
- *    and an early IN is not duplicated. A regular's existing row is only
- *    marked as paid for by the month (`markMonthly`).
+ *  - a PAYG player only on a date they named, in whatever room is left;
+ *  - a regular's own OUT, and a regular already in, are NOT touched. Any
+ *    regular's existing row is marked as paid for by the month
+ *    (`markMonthly`).
  */
 export function decideMonthlySeed(args: {
   members: WeekMember[];
-  targetRows: Array<{ userId: string; status: string }>;
+  targetRows: Array<{ userId: string; status: string; position?: number }>;
   maxPlayers: number;
-}): { write: MonthlySeedWrite[]; markMonthly: string[] } {
-  const onTarget = new Set(args.targetRows.map((r) => r.userId));
-  let room = Math.max(0, args.maxPlayers - args.targetRows.filter((r) => r.status === "CONFIRMED").length);
+}): { write: MonthlySeedWrite[]; markMonthly: string[]; promote: string[]; bump: string[] } {
+  const rowOf = new Map(args.targetRows.map((r) => [r.userId, r]));
   const bySlot = (a: WeekMember, b: WeekMember): number =>
     (a.slot ?? Number.MAX_SAFE_INTEGER) - (b.slot ?? Number.MAX_SAFE_INTEGER) || a.userId.localeCompare(b.userId);
   const regulars = args.members.filter((m) => m.kind === "regular").sort(bySlot);
+  const regularIds = new Set(regulars.map((m) => m.userId));
   const dated = args.members.filter((m) => m.kind === "payg" && m.paygDated).sort(bySlot);
 
   const taken = new Set<number>(regulars.map((m) => m.slot).filter((s): s is number => s != null));
@@ -94,31 +105,49 @@ export function decideMonthlySeed(args: {
     return next;
   };
 
+  const regularsIn = regulars.filter((m) => rowOf.get(m.userId)?.status === "CONFIRMED").length;
+  /** Non-regulars holding a place, the LAST in first: they are the ones moved. */
+  const others = args.targetRows
+    .filter((r) => r.status === "CONFIRMED" && !regularIds.has(r.userId))
+    .sort((a, b) => (b.position ?? 0) - (a.position ?? 0) || b.userId.localeCompare(a.userId));
+  /** Regulars who want a place: no row yet (and not away), or waiting. */
+  const wanting = regulars.filter((m) => {
+    const row = rowOf.get(m.userId);
+    return row ? row.status === "BENCH" : !m.absent;
+  });
+  const placeable = Math.min(wanting.length, Math.max(0, args.maxPlayers - regularsIn));
+  const free = Math.max(0, args.maxPlayers - regularsIn - others.length);
+  const bump = others.slice(0, Math.max(0, placeable - free)).map((r) => r.userId);
+  let room = Math.max(0, args.maxPlayers - regularsIn - placeable - (others.length - bump.length));
+
   const write: MonthlySeedWrite[] = [];
   const markMonthly: string[] = [];
+  const promote: string[] = [];
+  const placed = new Set(wanting.slice(0, placeable).map((m) => m.userId));
   for (const m of regulars) {
-    if (onTarget.has(m.userId)) {
+    const row = rowOf.get(m.userId);
+    if (row) {
       markMonthly.push(m.userId);
+      if (row.status === "BENCH" && placed.has(m.userId)) promote.push(m.userId);
       continue;
     }
     const position = m.slot ?? freeNumber();
     if (m.absent) {
       write.push({ userId: m.userId, status: "DROPPED", position, monthly: true, note: SEED_NOTE_AWAY });
-    } else if (room > 0) {
-      room--;
+    } else if (placed.has(m.userId)) {
       write.push({ userId: m.userId, status: "CONFIRMED", position, monthly: true, note: SEED_NOTE_REGULAR });
     } else {
       write.push({ userId: m.userId, status: "BENCH", position, monthly: true, note: SEED_NOTE_NO_PLACE });
     }
   }
   for (const m of dated) {
-    if (onTarget.has(m.userId)) continue;
+    if (rowOf.has(m.userId)) continue;
     const position = m.slot != null && !taken.has(m.slot) ? (taken.add(m.slot), m.slot) : freeNumber();
     const status: WeekStatus = room > 0 ? "CONFIRMED" : "BENCH";
     if (room > 0) room--;
     write.push({ userId: m.userId, status, position, monthly: false, note: SEED_NOTE_PAYG });
   }
-  return { write, markMonthly };
+  return { write, markMonthly, promote, bump };
 }
 
 // ── The week's list (plan 5.4) ─────────────────────────────────────────
@@ -283,15 +312,29 @@ export interface MissedCreditRow {
  * Which "missed" credits this match should have, against the ones it has.
  * State-based, so it can be run after every change and on every poll.
  *
+ * A regular MISSES the game when they are not CONFIRMED on it: they
+ * dropped, they said beforehand they are away, or they are on the waiting
+ * list (a regular who paid and was left without a place, for example one
+ * who dropped, came back and found the place taken).
+ *
  *   any-miss      every game a paid (or says-paid) regular misses, a late
  *                 drop included;
- *   filled-only   only while somebody else holds their slot;
+ *   filled-only   only when their place was filled. A regular on the
+ *                 waiting list always counts (the squad is full without
+ *                 them). For regulars who are out, each player who is in
+ *                 and is not a regular fills ONE vacated place, and the
+ *                 places are filled in the order they were vacated: the
+ *                 earliest drop first (`outAt`; an away week declared
+ *                 beforehand counts as earliest), then the lower slot
+ *                 number, then the user id. So with two regulars out and
+ *                 one fill-in, the one who dropped first is credited;
  *   none          never.
  *
  * `create`: regulars who should have a credit and have none. A credit an
  * admin voided is never written again.
  * `voidIds`: credits MatchTime wrote itself that no longer hold (the
- * regular came back), unless they have already been used against a month.
+ * regular is playing after all), unless they have already been used
+ * against a month.
  */
 export function decideMissedCredits(args: {
   rule: MonthCreditRule;
@@ -301,16 +344,34 @@ export function decideMissedCredits(args: {
   existing: MissedCreditRow[];
 }): { create: string[]; voidIds: string[] } {
   const rowOf = new Map(args.rows.map((r) => [r.userId, r]));
-  const list = args.rule === "filled-only" ? buildWeekList(args) : null;
+  const regulars = args.members.filter((m) => m.kind === "regular");
+  const misses = (m: WeekMember): boolean => {
+    const row = rowOf.get(m.userId);
+    return row ? row.status !== "CONFIRMED" : m.absent;
+  };
+
+  // filled-only: whose vacated place counts as filled.
+  const filled = new Set<string>();
+  if (args.rule === "filled-only") {
+    const regularIds = new Set(regulars.map((m) => m.userId));
+    const fillIns = args.rows.filter((r) => r.status === "CONFIRMED" && !regularIds.has(r.userId)).length;
+    const time = (m: WeekMember): number => rowOf.get(m.userId)?.outAt?.getTime() ?? 0;
+    const out = regulars
+      .filter((m) => isOut(m, rowOf.get(m.userId)))
+      .sort(
+        (a, b) =>
+          time(a) - time(b) ||
+          (a.slot ?? Number.MAX_SAFE_INTEGER) - (b.slot ?? Number.MAX_SAFE_INTEGER) ||
+          a.userId.localeCompare(b.userId),
+      );
+    for (const m of out.slice(0, fillIns)) filled.add(m.userId);
+    for (const m of regulars) if (rowOf.get(m.userId)?.status === "BENCH") filled.add(m.userId);
+  }
+
   const entitled = new Set<string>();
-  for (const m of args.members) {
-    if (m.kind !== "regular" || m.paid === "none") continue;
-    if (!isOut(m, rowOf.get(m.userId))) continue;
-    if (args.rule === "none") continue;
-    if (args.rule === "filled-only") {
-      const holder = list!.slots.find((s) => s.slot === m.slot)?.userId ?? null;
-      if (holder === null || holder === m.userId) continue;
-    }
+  for (const m of regulars) {
+    if (m.paid === "none" || !misses(m) || args.rule === "none") continue;
+    if (args.rule === "filled-only" && !filled.has(m.userId)) continue;
     entitled.add(m.userId);
   }
 
@@ -325,6 +386,36 @@ export function decideMissedCredits(args: {
     .filter((e) => e.voidedAt === null && !entitled.has(e.userId) && e.appliedMonthId === null && e.createdById === null)
     .map((e) => e.id);
   return { create, voidIds };
+}
+
+/**
+ * The offers still to open for a match's free places (review item 5): one
+ * per open place, never more than are open, counting the offers already
+ * open. A place a regular vacated is offered in their name first (so the
+ * offer is closed when somebody takes that slot); a place nobody ever
+ * held is offered with no name. Returns the `replacingUserId` of each
+ * offer to create.
+ */
+export function planOpenPlaceOffers(args: {
+  members: WeekMember[];
+  rows: WeekRow[];
+  maxPlayers: number;
+  /** `replacingUserId` of every offer already open. */
+  openOffers: Array<string | null>;
+}): Array<string | null> {
+  const list = buildWeekList(args);
+  const need = list.open - args.openOffers.length;
+  if (need <= 0) return [];
+  const named = new Set(args.openOffers.filter((u): u is string => u !== null));
+  const rowOf = new Map(args.rows.map((r) => [r.userId, r]));
+  const vacated = args.members
+    .filter((m) => m.kind === "regular" && m.slot != null && isOut(m, rowOf.get(m.userId)) && !named.has(m.userId))
+    .filter((m) => !list.slots.find((s) => s.slot === m.slot)?.userId)
+    .sort((a, b) => a.slot! - b.slot!)
+    .map((m) => m.userId);
+  const out: Array<string | null> = [];
+  for (let i = 0; i < need; i++) out.push(vacated[i] ?? null);
+  return out;
 }
 
 // ── The PAYG pool (plan 5.3) ───────────────────────────────────────────
@@ -443,10 +534,9 @@ export interface PasteRosterMember {
 }
 
 export type PasteAction =
-  /** A new name in a numbered slot, or a player coming back. `userId`
-   *  null: a name nobody here has, for the caller to resolve or provision.
-   *  `teachAlias`: the sender wrote themselves under a name we did not know. */
-  | { kind: "in"; userId: string | null; name: string; self: boolean; slot: number | null; teachAlias: string | null }
+  /** A player coming in: the sender adding themselves, or a member of this
+   *  month written into a numbered slot by somebody else. */
+  | { kind: "in"; userId: string; name: string; self: boolean; slot: number | null }
   /** Moved under "Paid but can't play", or their line blanked. */
   | { kind: "out"; userId: string; name: string; self: boolean; via: "cant-play" | "blank" }
   /** A new "(paid)" mark on a regular's line: "says paid", never confirmed. */
@@ -454,17 +544,37 @@ export type PasteAction =
 
 export interface PasteIgnored {
   name: string;
-  /** stale-readd: an old copy re-adding a player who dropped.
+  /** stale-readd: a paste re-adding a player who dropped (only the player
+   *  themselves can come back by paste).
    *  blank-by-other: somebody else's line blanked, by neither them nor an admin.
-   *  ambiguous: the name fits more than one player. */
-  reason: "stale-readd" | "blank-by-other" | "ambiguous";
+   *  old-copy: a change to somebody else's line on a paste that is itself an
+   *  old copy (it would bring back a dropped player), an admin's included. */
+  reason: "stale-readd" | "blank-by-other" | "old-copy";
 }
+
+/** A name in a numbered slot that was NOT registered. A paste never
+ *  creates a player and never guesses one. */
+export interface PasteNotAdded {
+  name: string;
+  /** unknown: no player of this club has that name or alias.
+   *  ambiguous: it fits more than one player.
+   *  not-in-month: a club player who is not on this month's list, written
+   *  in by somebody else (only they can add themselves). */
+  reason: "unknown" | "ambiguous" | "not-in-month";
+}
+
+/** With no month header, this share of a list's names must be players of
+ *  this month's list (or already on the week's match) for it to be read
+ *  as the month's list at all. "Kit for Monday: 1. Bibs 2. Two balls" is
+ *  a numbered list too. */
+export const MIN_LIST_OVERLAP = 0.6;
 
 type Resolved = { kind: "one"; userId: string } | { kind: "none" } | { kind: "ambiguous" };
 
 /** Name to player: the whole name, a known alias, then the leading name
- *  (`candidatesFor`, the mid-month seed's matcher). Two candidates are
- *  narrowed to the ones already part of this week; still two is ambiguous. */
+ *  (`candidatesFor`, the mid-month seed's matcher). Never fuzzy, never a
+ *  prefix. Two candidates are narrowed to the ones already part of this
+ *  week; still two is ambiguous. */
 function makeResolver(roster: PasteRosterMember[], known: ReadonlySet<string>): (name: string) => Resolved {
   const keyed = roster.map((m) => ({ userId: m.userId, key: nameKey(m.name), aliasKeys: (m.aliases ?? []).map(nameKey) }));
   return (name: string): Resolved => {
@@ -484,17 +594,34 @@ function makeResolver(roster: PasteRosterMember[], known: ReadonlySet<string>): 
  * Compare a member's pasted list with this week's state, BY NAME, and say
  * what it changes. Nothing is written here.
  *
- *  - a new name in a numbered slot is in for this week (capacity decides
- *    between a place and the waiting list when it is applied);
+ * IS IT THE MONTH'S LIST AT ALL? Only with the month's header, or when at
+ * least `MIN_LIST_OVERLAP` of its names are this month's players
+ * (`notThisList` otherwise: nothing is read from it).
+ *
+ * WHO CAN BE ADDED. A paste never creates a player and never guesses:
+ *  - the sender may add THEMSELVES (resolved by their own name or alias);
+ *  - anybody may write in a member of THIS MONTH (a PAYG player of the
+ *    month, a regular who has no row yet);
+ *  - any other name (nobody's, two players', or a club player who is not
+ *    on the month's list) is NOT registered and is reported (`notAdded`).
+ *
+ * WHO CAN BE TAKEN OUT, and the old copy.
  *  - a name moved under "Paid but can't play" is out, whoever pasted it
  *    (D4: the caller DMs the player an undo when it was somebody else);
- *  - a blanked line is an OUT only from the player themselves or an
- *    admin. From anyone else it is indistinguishable from an old copy;
- *  - a paste can only move a person FORWARD: it never brings back a
- *    player who dropped (unless they or an admin pasted it) and never
- *    removes a paid mark;
- *  - a name that is simply missing, and reordered numbers, change nothing;
- *  - a paid mark is a claim, whoever wrote it (D3).
+ *  - a blanked line is an OUT only from the player themselves or an admin;
+ *  - a paste NEVER brings back a player who dropped, an admin's included:
+ *    only the player's own paste does. A paste that tries is an OLD COPY,
+ *    and an old copy changes nobody else's line at all, whoever sent it
+ *    (it would undo what happened since). The sender's own line still
+ *    applies;
+ *  - a name that is simply missing, and reordered numbers, change nothing.
+ *
+ * A paid mark is a claim, whoever wrote it (D3), and a missing mark
+ * removes nothing.
+ *
+ * BEFORE THE WEEK IS SEEDED (`seeded: false`, the hours between one game
+ * ending and the regulars being put on the next) only paid marks are
+ * read: nobody is brought in, taken out or marked away.
  */
 export function reconcileMonthPaste(args: {
   list: MonthlyList;
@@ -504,32 +631,47 @@ export function reconcileMonthPaste(args: {
   roster: PasteRosterMember[];
   /** 1 to 12: the month this week's match is in. */
   matchMonth: number;
+  /** The month's regulars are on this match. */
+  seeded: boolean;
   senderUserId: string | null;
   senderIsAdmin: boolean;
-}): { actions: PasteAction[]; ignored: PasteIgnored[]; otherMonth: boolean } {
+}): { actions: PasteAction[]; ignored: PasteIgnored[]; notAdded: PasteNotAdded[]; otherMonth: boolean; notThisList: boolean } {
   const { list, members, rows, senderUserId, senderIsAdmin } = args;
-  if (list.month && list.month.month !== args.matchMonth) return { actions: [], ignored: [], otherMonth: true };
+  const nothing = { actions: [], ignored: [], notAdded: [] };
+  if (list.month && list.month.month !== args.matchMonth) return { ...nothing, otherMonth: true, notThisList: false };
 
   const memberOf = new Map(members.map((m) => [m.userId, m]));
   const rowOf = new Map(rows.map((r) => [r.userId, r]));
   const known = new Set<string>([...memberOf.keys(), ...rowOf.keys()]);
   const resolve = makeResolver(args.roster, known);
-  const week = buildWeekList(args);
 
   const named = (entries: MonthlyListEntry[]) => entries.filter((e) => e.name).map((e) => ({ e, r: resolve(e.name) }));
   const slotLines = named(list.slots);
   const cantLines = named(list.sections.cantPlay);
   const elsewhere = [...named(list.sections.reserves), ...named(list.sections.other)];
+
+  if (!list.month) {
+    const lines = [...slotLines, ...cantLines];
+    const ours = lines.filter((x) => x.r.kind === "one" && known.has(x.r.userId)).length;
+    if (lines.length === 0 || ours / lines.length < MIN_LIST_OVERLAP) return { ...nothing, otherMonth: false, notThisList: true };
+  }
+
   const onPaste = new Set<string>();
   for (const { r } of [...slotLines, ...cantLines, ...elsewhere]) if (r.kind === "one") onPaste.add(r.userId);
+  const week = buildWeekList(args);
+  const isOutNow = (userId: string): boolean => {
+    const row = rowOf.get(userId);
+    const m = memberOf.get(userId);
+    return row ? row.status === "DROPPED" : m?.kind === "regular" && m.absent === true;
+  };
 
-  const senderRow = senderUserId ? rowOf.get(senderUserId) : undefined;
-  const senderPlaying = senderRow?.status === "CONFIRMED" || senderRow?.status === "BENCH";
-  const unknownSlotLines = slotLines.filter((x) => x.r.kind === "none").length;
-  const mayAct = (userId: string): boolean => senderIsAdmin || userId === senderUserId;
+  // An OLD COPY: it has somebody in a numbered slot who has since dropped
+  // (and it is not that player's own paste).
+  const oldCopy = slotLines.some((x) => x.r.kind === "one" && x.r.userId !== senderUserId && isOutNow(x.r.userId));
 
   const actions: PasteAction[] = [];
   const ignored: PasteIgnored[] = [];
+  const notAdded: PasteNotAdded[] = [];
   const handled = new Set<string>();
 
   const claimIfNew = (e: MonthlyListEntry, userId: string): void => {
@@ -539,50 +681,37 @@ export function reconcileMonthPaste(args: {
   };
 
   for (const { e, r } of slotLines) {
-    if (r.kind === "ambiguous") {
-      ignored.push({ name: e.name, reason: "ambiguous" });
-      continue;
-    }
-    if (r.kind === "none") {
-      // The sender writing themselves in under a name we do not know.
-      if (senderUserId && !onPaste.has(senderUserId) && !senderPlaying && unknownSlotLines === 1 && !handled.has(senderUserId)) {
-        handled.add(senderUserId);
-        actions.push({ kind: "in", userId: senderUserId, name: e.name, self: true, slot: e.slot, teachAlias: e.name });
-      } else {
-        actions.push({ kind: "in", userId: null, name: e.name, self: false, slot: e.slot, teachAlias: null });
-      }
+    if (r.kind !== "one") {
+      notAdded.push({ name: e.name, reason: r.kind === "none" ? "unknown" : "ambiguous" });
       continue;
     }
     const userId = r.userId;
     if (handled.has(userId)) continue;
     handled.add(userId);
+    const self = userId === senderUserId;
     const row = rowOf.get(userId);
-    const m = memberOf.get(userId);
-    const out = row ? row.status === "DROPPED" : m?.kind === "regular" && m.absent;
-    if (out) {
-      if (mayAct(userId)) {
-        actions.push({ kind: "in", userId, name: e.name, self: userId === senderUserId, slot: e.slot, teachAlias: null });
-      } else {
-        ignored.push({ name: e.name, reason: "stale-readd" });
-      }
+    if (isOutNow(userId)) {
+      if (self) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
+      else ignored.push({ name: e.name, reason: "stale-readd" });
     } else if (!row) {
-      actions.push({ kind: "in", userId, name: e.name, self: userId === senderUserId, slot: e.slot, teachAlias: null });
+      if (self || memberOf.has(userId)) actions.push({ kind: "in", userId, name: e.name, self, slot: e.slot });
+      else notAdded.push({ name: e.name, reason: "not-in-month" });
     }
     claimIfNew(e, userId);
   }
 
   for (const { e, r } of cantLines) {
-    if (r.kind === "ambiguous") {
-      ignored.push({ name: e.name, reason: "ambiguous" });
-      continue;
-    }
     if (r.kind !== "one" || handled.has(r.userId)) continue;
     const userId = r.userId;
     handled.add(userId);
+    const self = userId === senderUserId;
     const row = rowOf.get(userId);
     const m = memberOf.get(userId);
     const playing = row ? row.status !== "DROPPED" : m?.kind === "regular" && !m.absent;
-    if (playing) actions.push({ kind: "out", userId, name: e.name, self: userId === senderUserId, via: "cant-play" });
+    if (playing) {
+      if (self || !oldCopy) actions.push({ kind: "out", userId, name: e.name, self, via: "cant-play" });
+      else ignored.push({ name: e.name, reason: "old-copy" });
+    }
     claimIfNew(e, userId);
   }
 
@@ -593,14 +722,19 @@ export function reconcileMonthPaste(args: {
     const held = week.slots.find((s) => s.slot === e.slot);
     if (!held?.userId || onPaste.has(held.userId) || handled.has(held.userId)) continue;
     handled.add(held.userId);
-    if (mayAct(held.userId)) {
-      actions.push({ kind: "out", userId: held.userId, name: held.name, self: held.userId === senderUserId, via: "blank" });
+    const self = held.userId === senderUserId;
+    if (self || (senderIsAdmin && !oldCopy)) {
+      actions.push({ kind: "out", userId: held.userId, name: held.name, self, via: "blank" });
     } else {
-      ignored.push({ name: held.name, reason: "blank-by-other" });
+      ignored.push({ name: held.name, reason: senderIsAdmin ? "old-copy" : "blank-by-other" });
     }
   }
 
-  return { actions, ignored, otherMonth: false };
+  // Before the seed the week has no squad to change: paid marks only.
+  if (!args.seeded) {
+    return { actions: actions.filter((a) => a.kind === "paid-claim"), ignored: [], notAdded: [], otherMonth: false, notThisList: false };
+  }
+  return { actions, ignored, notAdded, otherMonth: false, notThisList: false };
 }
 
 /**

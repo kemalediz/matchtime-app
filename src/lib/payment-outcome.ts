@@ -71,6 +71,8 @@ export function decideCheckoutEvent(
 }
 
 export interface PayGuardInput {
+  /** `Attendance.paymentMethod`. "monthly": the month paid for the place. */
+  paymentMethod?: string | null;
   /** Attendance.paidAt — non-null means this player is already settled. */
   paidAt: Date | null;
   /** Attendance.status — CONFIRMED | BENCH | DROPPED. */
@@ -82,6 +84,10 @@ export interface PayGuardInput {
 /** The already-paid sentence, exported so the settle-directly write can
  *  say it when a confirmation lands between its read and its write. */
 export const ALREADY_PAID_REASON = "You're already paid for this match — nothing more to do. Thanks!";
+
+/** A monthly club's regular opening a per-match pay link. */
+export const MONTHLY_PLACE_REASON =
+  "Your place in this match is paid for by the month, so there's nothing to pay here. Speak to the organiser if that's not right.";
 
 /**
  * Why this player may NOT start a payment right now — a short, human
@@ -97,6 +103,10 @@ export const ALREADY_PAID_REASON = "You're already paid for this match — nothi
  */
 export function payBlockedReason(input: PayGuardInput): string | null {
   if (input.paidAt) return ALREADY_PAID_REASON;
+  // Monthly squad (slice 5): a regular's place is paid for by the month.
+  // Paying for it again per match would also overwrite the "monthly" mark
+  // on their row and put them back in the pay chases.
+  if (input.paymentMethod === "monthly") return MONTHLY_PLACE_REASON;
   if (input.matchStatus === "CANCELLED") {
     return "That match was cancelled, so there's nothing to pay.";
   }

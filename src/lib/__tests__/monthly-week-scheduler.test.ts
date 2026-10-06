@@ -158,6 +158,7 @@ function monthRow() {
     id: "month-oct",
     monthStart: new Date("2026-10-01T00:00:00.000Z"),
     createdAt: MONTH_CREATED,
+    startedMidMonthAt: monthStartedAt,
     activity: { orgId: ORG.id, venue: "Goals", dayOfWeek: 1 },
     members: MEMBERS.map((m) => ({
       userId: m.userId,
@@ -172,6 +173,12 @@ function monthRow() {
   };
 }
 
+/** When the organiser started the month here (null: MatchTime opened it). */
+let monthStartedAt: Date | null = null;
+
+/** Regulars who have left the group. */
+const left = new Set<string>();
+
 interface Shown {
   key: string;
   kind: string;
@@ -179,19 +186,37 @@ interface Shown {
 }
 
 const monthReads = vi.fn();
+const opsAlerts: Array<Record<string, unknown>> = [];
 
 function setWorld(
   m: ReturnType<typeof match>,
-  opts: { monthly: boolean; sent?: string[]; shown?: Shown[]; pool?: Array<{ userId: string; name: string; phone: string | null }> },
+  opts: {
+    monthly: boolean;
+    sent?: string[];
+    shown?: Shown[];
+    pool?: Array<{ userId: string; name: string; phone: string | null }>;
+    paygPricePence?: number | null;
+    monthsThrow?: boolean;
+  },
 ) {
   for (const k of Object.keys(overrides)) delete overrides[k];
   features.squadMode = opts.monthly ? "monthly" : undefined;
   monthReads.mockClear();
-  overrides.organisation = { findFirst: async () => ORG };
+  overrides.organisation = {
+    findFirst: async () => ({ ...ORG, paygPricePence: opts.paygPricePence === undefined ? 800 : opts.paygPricePence }),
+  };
+  overrides.opsAlert = {
+    findFirst: async () => null,
+    create: async (a: unknown) => {
+      opsAlerts.push((a as { data: Record<string, unknown> }).data);
+      return {};
+    },
+  };
   overrides.match = { findMany: async () => [m] };
   overrides.squadMonth = {
     findMany: async () => {
       monthReads();
+      if (opts.monthsThrow) throw new Error("the database hiccuped");
       return [monthRow()];
     },
   };
@@ -209,7 +234,7 @@ function setWorld(
     findMany: async (args: unknown) => {
       const where = (args as { where?: { userId?: { in: string[] } } }).where ?? {};
       if (!where.userId) return [];
-      return (opts.pool ?? [])
+      const pool = (opts.pool ?? [])
         .filter((p) => where.userId!.in.includes(p.userId))
         .map((p) => ({
           userId: p.userId,
@@ -217,6 +242,9 @@ function setWorld(
           subMatchInviteDm: true,
           user: { name: p.name, phoneNumber: p.phone, isActive: true },
         }));
+      // The month's members who are still in the group (everyone but `left`).
+      const regulars = MEMBERS.filter((mm) => where.userId!.in.includes(mm.userId) && !left.has(mm.userId)).map((mm) => ({ userId: mm.userId }));
+      return [...pool, ...regulars];
     },
   };
   overrides.attendance = {
@@ -252,6 +280,9 @@ function listText(m: ReturnType<typeof match>): string {
 
 beforeEach(() => {
   composeChaseText.mockClear();
+  left.clear();
+  opsAlerts.length = 0;
+  monthStartedAt = null;
 });
 
 describe("WEEKLY: a club on weekly mode is untouched on every branch slice 5 changed", () => {
@@ -461,18 +492,28 @@ describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {
   });
 
   it("with a PAYG player, the collector is asked to confirm the club's PAYG price for the PAYG players only", async () => {
-    const m = match({
-      attendances: [...REGULARS.map((n, i) => att(n, i)), att("Omar", 4, { paymentMethod: null })],
-      feePendingConfirm: 8,
-    });
+    // Nothing is staged on the match yet: the amount is only staged once
+    // this very question has been SENT (the ack), as the weekly flow only
+    // stages an amount the collector has been shown.
+    const m = match({ attendances: [...REGULARS.map((n, i) => att(n, i)), att("Omar", 4, { paymentMethod: null })] });
+    expect(m.feePendingConfirm).toBeNull();
     setWorld(m, { monthly: true });
     const ask = (await instructions(AFTER_MATCH)).find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
     expect(ask.text).toBe(buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" }));
   });
 
+  it("once the amount is staged (the question was sent), the collector is not asked again", async () => {
+    const m = match({
+      attendances: [...REGULARS.map((n, i) => att(n, i)), att("Omar", 4, { paymentMethod: null })],
+      feePendingConfirm: 8,
+    });
+    setWorld(m, { monthly: true, sent: [`${m.id}:fee-ask`] });
+    expect((await instructions(AFTER_MATCH)).some((i) => i.key === `${m.id}:fee-ask`)).toBe(false);
+  });
+
   it("with a PAYG player and no price set, 'how much?' counts the PAYG players only", async () => {
     const m = match({ attendances: [...REGULARS.map((n, i) => att(n, i)), att("Omar", 4, { paymentMethod: null })] });
-    setWorld(m, { monthly: true });
+    setWorld(m, { monthly: true, paygPricePence: null });
     const ask = (await instructions(AFTER_MATCH)).find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
     expect(ask.text).toBe(
       buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 1, lang: "en" }),
@@ -502,15 +543,22 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     { userId: "u-omar", name: "Omar Khan", phone: "+447700900201" },
     { userId: "u-will", name: "Will Stone", phone: "+447700900202" },
   ];
+  /** The group already saw a list a few minutes ago, so no list post is due
+   *  on this poll (the 30-minute floor). */
+  const listJustPosted = (m: ReturnType<typeof match>): Shown[] => [
+    { key: `${m.id}:month-list:old0000000000000:0`, kind: "group-message", createdAt: new Date(THU_10AM.getTime() - 5 * 60 * 1000) },
+  ];
+  const offerPosts = (out: Awaited<ReturnType<typeof instructions>>, m: ReturnType<typeof match>) =>
+    out.filter((i) => i.key.startsWith("offer-o1") || i.key.startsWith(`${m.id}:payg-pool-dm:`));
 
-  it("nobody waiting: one group line and one DM to each pay-as-you-go player, on the offer's keys", async () => {
+  it("nobody waiting and no list going out: one group line, and one DM to each pay-as-you-go player", async () => {
     const m = dropped();
-    setWorld(m, { monthly: true, pool: POOL });
-    const out = (await instructions(THU_10AM)).filter((i) => i.key.startsWith("offer-o1"));
+    setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m) });
+    const out = offerPosts(await instructions(THU_10AM), m);
     expect(out.map((i) => [i.kind, i.key])).toEqual([
       ["group-message", "offer-o1"],
-      ["dm", "offer-o1:dm:u-omar"],
-      ["dm", "offer-o1:dm:u-will"],
+      ["dm", `${m.id}:payg-pool-dm:u-omar`],
+      ["dm", `${m.id}:payg-pool-dm:u-will`],
     ]);
     expect((out[0] as { text: string }).text).toBe(buildPaygPoolGroupPost({ matchDate: KICKOFF, paygPricePence: 800, lang: "en" }));
     expect(out[1]).toMatchObject({ phone: "447700900201", targetUser: "u-omar" });
@@ -519,24 +567,52 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     );
   });
 
-  it("sent once: nothing again for keys already sent", async () => {
+  it("ONE group post per open place: when the list goes out on the same poll with its 'place open' line, the pool line does not", async () => {
     const m = dropped();
-    setWorld(m, { monthly: true, pool: POOL, sent: ["offer-o1", "offer-o1:dm:u-omar", "offer-o1:dm:u-will"] });
-    expect((await instructions(THU_10AM)).some((i) => i.key.startsWith("offer-o1"))).toBe(false);
+    setWorld(m, { monthly: true, pool: POOL });
+    const out = await instructions(THU_10AM);
+    const list = out.filter((i) => i.key.includes("month-list"));
+    expect(list).toHaveLength(1);
+    expect((list[0] as { text: string }).text).toContain("places open, £8 PAYG: say *IN*");
+    // No second group post for the same place; the DMs still go.
+    expect(offerPosts(out, m).map((i) => [i.kind, i.key])).toEqual([
+      ["dm", `${m.id}:payg-pool-dm:u-omar`],
+      ["dm", `${m.id}:payg-pool-dm:u-will`],
+    ]);
+  });
+
+  it("nor on a later poll, once the group has that list", async () => {
+    const m = dropped();
+    const hash = weekListHash(listText(m));
+    setWorld(m, {
+      monthly: true,
+      pool: POOL,
+      shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date(THU_10AM.getTime() - 60 * 60 * 1000) }],
+      sent: [`${m.id}:payg-pool-dm:u-omar`, `${m.id}:payg-pool-dm:u-will`],
+    });
+    expect(offerPosts(await instructions(THU_10AM), m)).toEqual([]);
+  });
+
+  it("a pool player is DMed at most once per match, however many places open", async () => {
+    const m = dropped();
+    m.benchSlotOffers.push({ id: "o2", replacingUserId: null });
+    setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m), sent: [`${m.id}:payg-pool-dm:u-omar`] });
+    const out = await instructions(THU_10AM);
+    expect(out.filter((i) => i.kind === "dm" && i.key.includes("payg-pool-dm")).map((i) => i.key)).toEqual([`${m.id}:payg-pool-dm:u-will`]);
   });
 
   it("never overnight", async () => {
     const m = dropped();
     setWorld(m, { monthly: true, pool: POOL });
-    expect((await instructions(new Date("2026-10-08T22:30:00.000Z"))).some((i) => i.key.startsWith("offer-o1"))).toBe(false);
+    expect(offerPosts(await instructions(new Date("2026-10-08T22:30:00.000Z")), m)).toEqual([]);
   });
 
   it("an organiser-pick club's pool is not asked", async () => {
     const m = dropped();
-    setWorld(m, { monthly: true, pool: POOL });
+    setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m) });
     features.benchPickMode = "organiser";
     try {
-      expect((await instructions(THU_10AM)).some((i) => i.key.startsWith("offer-o1"))).toBe(false);
+      expect(offerPosts(await instructions(THU_10AM), m)).toEqual([]);
     } finally {
       features.benchPickMode = "first-come";
     }
@@ -546,10 +622,44 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     const m = dropped();
     m.attendances.push(att("Zed", 9, { status: "BENCH", paymentMethod: null }));
     setWorld(m, { monthly: true, pool: POOL });
-    const out = (await instructions(THU_10AM)).filter((i) => i.key.startsWith("offer-o1"));
+    const out = (await instructions(THU_10AM)).filter((i) => i.key.startsWith("offer-o1") || i.key.includes("payg-pool-dm"));
     expect(out.map((i) => [i.kind, i.key])).toEqual([
       ["bench-prompt", "offer-o1"],
       ["dm", "offer-o1:dm:u-zed"],
     ]);
+  });
+});
+
+describe("MONTHLY: review fixes", () => {
+  it("a regular who has left the group frees their slot number and is not on the list", async () => {
+    const m = match();
+    m.attendances = m.attendances.filter((a) => a.userId !== "u-bilal");
+    left.add("u-bilal");
+    setWorld(m, { monthly: true });
+    const text = ((await instructions(THU_10AM)).find((i) => i.key.includes("month-list")) as { text: string }).text;
+    expect(text).toContain("1. Alex (paid)\n2.\n3. Chris");
+    expect(text).not.toContain("Bilal");
+  });
+
+  it("a game played BEFORE the month was started here is not the month's: its poll, its fee question and its chase are the weekly ones", async () => {
+    // The month was started on Tue 13 Oct; this game was Mon 12 Oct.
+    monthStartedAt = new Date("2026-10-13T09:00:00.000Z");
+    const m = match({ attendances: REGULARS.map((n, i) => att(n, i, { paymentMethod: null })), rollingSeededAt: null });
+    setWorld(m, { monthly: true });
+    const out = await instructions(AFTER_MATCH);
+    expect(out.some((i) => i.key === `${m.id}:payment-poll`)).toBe(true);
+    const ask = out.find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
+    expect(ask.text).toBe(buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 4, lang: "en" }));
+    expect(out.some((i) => i.key.includes("month-list"))).toBe(false);
+  });
+
+  it("the month's rows cannot be read: the poll does not throw, posts nothing, and records a health event", async () => {
+    const m = match();
+    setWorld(m, { monthly: true, monthsThrow: true });
+    const res = await computeDuePosts(GROUP, THU_5PM);
+    expect(res).not.toBeNull();
+    expect(res!.instructions).toEqual([]);
+    expect(opsAlerts).toHaveLength(1);
+    expect(opsAlerts[0]).toMatchObject({ orgId: ORG.id, kind: "monthly-squad" });
   });
 });

@@ -136,6 +136,26 @@ export function buildPasteIgnoredAdminNotice(p: { actorName: string | null; name
   });
 }
 
+/** To the organisers, or to the admin who pasted it: names on a pasted
+ *  list that were not added, and how to add a player. */
+export function buildPasteNotAddedNotice(p: { actorName: string | null; names: string[]; matchDate: Date; lang?: LangArg }): string {
+  const s = t(p.lang);
+  return s.mwk_admin_paste_not_added({
+    actor: p.actorName?.trim() || s.unnamed,
+    names: p.names,
+    when: dayCommaTimeLabel(p.lang, p.matchDate),
+  });
+}
+
+/** To a non-regular whose early IN gave way to a regular at the seed. */
+export function buildSeedBumpedDm(p: { name: string | null; activityName: string; matchDate: Date; lang?: LangArg }): string {
+  return t(p.lang).mwk_dm_bumped({
+    firstName: p.name ? p.name.trim().split(/\s+/)[0] || null : null,
+    activityName: p.activityName,
+    when: dayCommaTimeLabel(p.lang, p.matchDate),
+  });
+}
+
 const RESERVE_HEADER = /^\s*(reserves?|subs?|substitutes?|standby|stand-by)\b\s*:?\s*$/i;
 
 /**

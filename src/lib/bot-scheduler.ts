@@ -69,6 +69,7 @@ import {
 } from "./weekly-deadlines";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { summariseUnpaid, unpaidFollowUpDue } from "./unpaid-rules";
+import { recordOpsEvent } from "./ops-alerts";
 import { isMonthlyRow, loadPaygPool, loadRunningMonths, monthForMatch, weekListKeyPrefix, weekMembers } from "./monthly-week";
 import {
   buildWeekList,
@@ -738,7 +739,31 @@ export async function computeDuePosts(
   // running months once per poll. A club on "weekly" (Sutton FC, and every
   // club before this) makes no query here and every match below gets
   // `null`, which is every branch exactly as it was.
-  const runningMonths = features.squadMode === "monthly" ? await loadRunningMonths(org.id) : [];
+  //
+  // If the month's rows cannot be read, a monthly club gets NO posts on
+  // this poll rather than its weekly-shaped ones (a payment poll to the
+  // regulars, a roster beside the list): the next poll retries, and the
+  // failure is recorded on /admin/health. The poll never throws for it.
+  let runningMonths: Awaited<ReturnType<typeof loadRunningMonths>> = [];
+  if (features.squadMode === "monthly") {
+    try {
+      runningMonths = await loadRunningMonths(org.id);
+    } catch (err) {
+      console.error(`[scheduler] org ${org.id}: the running months could not be read; no posts on this poll:`, err);
+      await recordOpsEvent({
+        orgId: org.id,
+        kind: "monthly-squad",
+        severity: "warning",
+        title: "Monthly squad: the month could not be read",
+        detail: `Scheduled posts were skipped for one poll because the club's running month could not be loaded: ${String(
+          (err as Error)?.message ?? err,
+        ).slice(0, 300)}`,
+        dedupeKey: `months-unreadable:${formatLondon(now, "yyyy-MM-dd")}`,
+        now,
+      });
+      return { instructions: [], waGroupId: groupId, orgId: org.id };
+    }
+  }
 
   for (const m of matches) {
     const month = runningMonths.length > 0 ? monthForMatch(runningMonths, m) : null;
@@ -1465,6 +1490,9 @@ async function computeForMatch(
   //    MatchTime does not echo a list straight back). The key carries a
   //    running number so a list that returns to an earlier state (a drop,
   //    then back in) is posted again. Nothing here runs for a weekly club.
+  /** The list the group has (or gets on this poll) already says "N places
+   *  open, say IN": the PAYG pool's own group line would say it twice. */
+  let listAnnouncesOpenPlace = false;
   const monthlyListLive =
     (m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED") &&
     now.getTime() < m.date.getTime();
@@ -1475,8 +1503,9 @@ async function computeForMatch(
       status: a.status as WeekStatus,
       position: a.position,
     }));
+    const weekList = buildWeekList({ members: monthly.members, rows, maxPlayers });
     const text = buildWeekListPost({
-      list: buildWeekList({ members: monthly.members, rows, maxPlayers }),
+      list: weekList,
       matchDate: m.date,
       paygPricePence: monthly.paygPricePence,
       organiserPicks: features.benchPickMode === "organiser",
@@ -1489,11 +1518,12 @@ async function computeForMatch(
       select: { key: true, kind: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     });
+    const lastShownHash = shown[0] ? shown[0].key.slice(prefix.length).split(":")[0] : null;
     const due = decideListPost({
       now,
       matchDate: m.date,
       hash,
-      lastShownHash: shown[0] ? shown[0].key.slice(prefix.length).split(":")[0] : null,
+      lastShownHash,
       lastPostAt: shown.find((r) => r.kind === "group-message")?.createdAt ?? null,
       live: true,
       nextUpcoming: isNextUpcomingForPosting(siblingMatches, m),
@@ -1502,6 +1532,7 @@ async function computeForMatch(
     if (due) {
       out.push({ kind: "group-message", key: `${prefix}${hash}:${shown.length}`, matchId, text });
     }
+    listAnnouncesOpenPlace = weekList.open > 0 && (due !== null || lastShownHash === hash);
   }
 
   // ── 2-bis. Recruit chase-up DMs (2026-08-31) ────────────────────────
@@ -1719,6 +1750,7 @@ async function computeForMatch(
       // MONTHLY SQUAD (slice 5): the PAYG pool, loaded at most once per
       // match per poll and only for a monthly match with nobody waiting.
       let paygPool: PoolCandidate[] | null = null;
+      const paygDmQueued = new Set<string>();
       const nobodyWaiting = !m.attendances.some((a) => a.status === "BENCH");
       for (const offer of m.benchSlotOffers) {
         if (benchAtt.length === 0) {
@@ -1743,8 +1775,14 @@ async function computeForMatch(
               now,
             );
             if (paygPool.length > 0) {
+              // ONE group post per open place (review item 7). When the
+              // list post carries the "place open, say IN" line (it goes
+              // out on this poll, or the group already has it), the pool's
+              // own group line is not sent as well. It is sent only when
+              // the list cannot go out now (the 30-minute floor). The DMs
+              // go either way.
               const groupKey = `offer-${offer.id}`;
-              if (!sentKeys.has(groupKey)) {
+              if (!sentKeys.has(groupKey) && !listAnnouncesOpenPlace) {
                 out.push({
                   kind: "group-message",
                   key: groupKey,
@@ -1753,8 +1791,12 @@ async function computeForMatch(
                 });
               }
               for (const p of paygPool) {
-                const dmKey = `offer-${offer.id}:dm:${p.userId}`;
-                if (sentKeys.has(dmKey)) continue;
+                // Keyed by MATCH and player, not by offer: a pool player
+                // is asked at most once per match, however many places
+                // open (the group line and the list tell them the rest).
+                const dmKey = `${matchId}:payg-pool-dm:${p.userId}`;
+                if (sentKeys.has(dmKey) || paygDmQueued.has(p.userId)) continue;
+                paygDmQueued.add(p.userId);
                 out.push({
                   kind: "dm",
                   key: dmKey,
@@ -2173,22 +2215,26 @@ async function computeForMatch(
   //    paymentCollection for defence in depth.
   //    MONTHLY SQUAD (slice 5, plan 5.6): on a match of a running month
   //    only the per-game players owe a fee, so they are the headcount, and
-  //    with none of them nobody is asked. When the club has a PAYG price,
-  //    the poll's sweep (`sweepMonthlyWeeks`) has staged it as the amount
-  //    to confirm, and the collector is asked to confirm it ("£8 each?",
-  //    the existing confirm prompt) instead of being asked "how much?".
-  //    `monthlyPayers` is null for a weekly club, which leaves the
-  //    condition and the message exactly as they were.
+  //    with none of them nobody is asked. When the club has a PAYG price
+  //    the question is "£8 each for N players, yes?" (the existing confirm
+  //    prompt) instead of "how much?". NOTHING IS STAGED HERE: the amount
+  //    becomes `feePendingConfirm` only when the Pi acks this DM
+  //    (`stagePaygFeeOnAsk`, from /api/whatsapp/ack), because a pending
+  //    amount must mean "the collector has been shown this number", as it
+  //    does in the weekly flow (`stage` in payment-flow.ts runs on the
+  //    collector's own reply). `monthlyPayers` is null for a weekly club,
+  //    which leaves the condition and the message exactly as they were.
   const monthlyPayers = monthly
     ? confirmed.filter((a) => !isMonthlyRow(a) && a.userId !== activity.org?.paymentHolderId).length
     : null;
-  const stagedPaygFee = monthlyPayers !== null && monthlyPayers > 0 && m.feePendingConfirm != null ? m.feePendingConfirm : null;
+  const paygFeeToConfirm = monthly && monthly.paygPricePence != null ? monthly.paygPricePence / 100 : null;
   if (
     m.postMatchEndFlow !== false &&
     activity.org?.paymentCollectionEnabled &&
     activity.org.paymentHolderId &&
     m.feePerPlayer == null &&
-    (m.feePendingConfirm == null ? monthlyPayers !== 0 : stagedPaygFee !== null)
+    m.feePendingConfirm == null &&
+    monthlyPayers !== 0
   ) {
     const endedAt = new Date(m.date.getTime() + activity.matchDurationMins * 60 * 1000);
     const key = `${matchId}:fee-ask`;
@@ -2222,9 +2268,9 @@ async function computeForMatch(
           targetUser: collectorId,
           phone: collectorPhone.replace(/^\+/, ""),
           text:
-            stagedPaygFee !== null
+            paygFeeToConfirm !== null
               ? buildFeeConfirmPrompt({
-                  perPlayer: stagedPaygFee,
+                  perPlayer: paygFeeToConfirm,
                   headcount: monthlyPayers ?? 0,
                   matchName: activity.name,
                   wasTotal: false,
@@ -2854,8 +2900,8 @@ export async function requestBenchConfirmationOnDrop(
     // chase handles it.
     if (match.activity?.org?.squadMode === "monthly") {
       try {
-        const { openPaygPoolOffer } = await import("./monthly-week");
-        await openPaygPoolOffer(matchId, replacingUserId ?? null);
+        const { ensureOpenPlaceOffers } = await import("./monthly-week");
+        await ensureOpenPlaceOffers(matchId);
       } catch (err) {
         console.error(`[scheduler] PAYG pool offer for ${matchId} failed:`, err);
       }

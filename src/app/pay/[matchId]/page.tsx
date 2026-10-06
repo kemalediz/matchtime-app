@@ -49,6 +49,24 @@ export default async function PayPage({
   const first = me?.name?.split(" ")[0] ?? "there";
   const org = match.activity.org;
 
+  // Monthly squad (slice 5): a regular's place is paid for by the month.
+  // No pay buttons, so the "monthly" mark on their row cannot be replaced
+  // by a per-match method (the actions refuse it too, `payBlockedReason`).
+  if (attendance?.paymentMethod === "monthly" && !attendance.paidAt) {
+    return (
+      <Shell>
+        <div className="text-center" data-testid="pay-monthly">
+          <div className="text-5xl mb-3">📋</div>
+          <h1 className="text-xl font-bold text-slate-900">Nothing to pay for this match</h1>
+          <p className="text-sm text-slate-500 mt-2">
+            {first}, your place for {match.activity.name} is paid for by the month. If that&apos;s not right, speak to the
+            organiser.
+          </p>
+        </div>
+      </Shell>
+    );
+  }
+
   // Already paid (or returned from a successful Stripe checkout).
   if (attendance?.paidAt || paid === "1") {
     return (

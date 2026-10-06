@@ -982,6 +982,8 @@ const SAMPLES: SampleArgs = {
   mwk_dm_moved_out: { actor: "Rob", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
   mwk_dm_added: { actor: "Rob", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
   mwk_admin_paste_ignored: { actor: "Alex", names: ["Bilal", "Chris"], when: "Mon 12 Oct, 20:00" },
+  mwk_admin_paste_not_added: { actor: "Alex", names: ["Tariq", "Big O"], when: "Mon 12 Oct, 20:00" },
+  mwk_dm_bumped: { firstName: "Zed", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
 };
 
 /** Render an entry with its sample arguments. */

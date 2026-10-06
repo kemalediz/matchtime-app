@@ -1018,6 +1018,36 @@ branch is behind `squadMode = "monthly"` AND a running month for that match.
 10. **Edited 5.1:** `seedRollingSquad` is not reused; `seedMonthlySquad` is its own function
     with the same claim, because its source is the month's members and not a match.
 
+**Changed after review (2026-10-06, same PR).** Where these differ from the notes above, these
+stand.
+
+- **A paste never creates a player and never guesses one.** Names are matched by exact name,
+  a known alias or the leading name, and by nothing else. The analyze route's own resolver
+  (prefix match, then a provisional member) is not reachable from a monthly paste. A name
+  that matches nobody, matches two players, or is a club player who is not on the month's
+  list is not registered, and the organisers (or the admin who pasted it) get one note a day
+  with the names and how to add a player. The sender can still add themselves.
+- **Is it the month's list at all?** Only with the month header, or when at least 60% of its
+  names are this month's players. "Kit for Monday: 1. Bibs 2. Two balls" is neither.
+- **Coming back.** A paste never brings back a player who dropped, an admin's included. Only
+  the player's own paste does. A paste that tries is an old copy, and an old copy changes
+  nobody else's line, whoever sent it.
+- **Before the seed** (the hours after one game ends) a paste only records paid marks.
+- **Regulars have priority at the seed.** A non-regular who said IN early goes to the waiting
+  list (last in first) with a DM, and a regular who was waiting is brought in.
+- **Credits.** A paid regular who is not CONFIRMED, whether dropped, away or left on the
+  waiting list, has the credit. `filled-only` fills vacated places in the order they were
+  vacated (earliest drop, then lower slot, then user id).
+- **Before the month started here.** A game dated before `startedMidMonthAt` (or the 1st) is
+  not the month's: no credit, no re-marked row, weekly posts.
+- **Every open place is offered**, not only a place somebody drops out of, on each poll. One
+  group post per place: when the list carries the "place open" line, the pool's own line is
+  not sent. A pool player is DMed at most once per match.
+- **The PAYG fee** is staged only when the Pi acks the fee question, never before.
+- **A month started from a pasted list** saves the list's names as aliases of the matched
+  players. A regular who has left the group frees their slot number. The pay page refuses a
+  monthly regular.
+
 ### Slice 6: credits ledger, cancelled weeks, month close (about 2 days)
 
 - **What:**

@@ -62,7 +62,7 @@
  *     commit's `.snap` diff is the case count in the header.
  *
  *   - Deliberate additions (2026-10-06, monthly squad slice 5): rows
- *     MWK1 to MWK5, the weekly flow of a monthly club (the list in the
+ *     MWK1 to MWK7, the weekly flow of a monthly club (the list in the
  *     group's own format, the PAYG pool offer, the undo DM after a paste
  *     changed somebody else's line, and the organisers' note about an old
  *     copy). All NEW copy, sent only to a club on "monthly"; the only
@@ -344,6 +344,8 @@ import {
 } from "../../bench-offer-copy";
 import {
   buildPasteIgnoredAdminNotice,
+  buildPasteNotAddedNotice,
+  buildSeedBumpedDm,
   buildPasteUndoDm,
   buildPaygPoolDm,
   buildPaygPoolGroupPost,
@@ -1963,6 +1965,11 @@ function cases(lang: Lang): Case[] {
       buildPasteUndoDm({ change, actorName: "Rob Hale", activityName: "Monday 7-a-side", matchDate: mwkMatch, lang }),
     );
   }
+  add(
+    "MWK6 buildPasteNotAddedNotice",
+    buildPasteNotAddedNotice({ actorName: "Alex Carter", names: ["Tariq", "Big O"], matchDate: mwkMatch, lang }),
+  );
+  add("MWK7 buildSeedBumpedDm", buildSeedBumpedDm({ name: "Zed Wait", activityName: "Monday 7-a-side", matchDate: mwkMatch, lang }));
   add(
     "MWK5 buildPasteIgnoredAdminNotice",
     buildPasteIgnoredAdminNotice({ actorName: "Alex Carter", names: ["Bilal Aydin", "Chris Bell"], matchDate: mwkMatch, lang }),

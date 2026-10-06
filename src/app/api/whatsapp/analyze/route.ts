@@ -1679,6 +1679,9 @@ async function handleAnalyzeRequest(request: Request) {
   //   IT SAYS NOTHING. A ✅ on a paste that changed something, nothing on
   //   one that only restates the list. The list itself is posted by the
   //   scheduler, and only when it differs from what the group last saw.
+  /** Monthly club, running month: list-shaped messages that are not the
+   *  month's squad list. Section 4 registers nobody from them. */
+  const monthlyNotSquadList = new Set<string>();
   if (org.squadMode === "monthly" && nextMatchForReply) {
     const { handleMonthlyPaste } = await import("@/lib/monthly-paste");
     for (const m of fresh) {
@@ -1694,16 +1697,23 @@ async function handleAnalyzeRequest(request: Request) {
           waMessageId: m.waMessageId,
           sentAt: Number.isNaN(sentAt.getTime()) ? undefined : sentAt,
           sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
-          resolveByName: (name) => resolveOrProvisionByName(org.id, name),
         });
       } catch (err) {
         // Left for section 4 and the pipeline, as if this block were not here.
         console.error(`[analyze] monthly paste ${m.waMessageId} failed:`, err);
       }
       if (!res) continue;
+      if ("notThisList" in res) {
+        // A numbered list that is not this month's squad list ("Kit for
+        // Monday", next month's header). Nothing is read from it here, and
+        // section 4 below must not register its lines either.
+        monthlyNotSquadList.add(m.waMessageId);
+        continue;
+      }
       const notes = [
         res.applied.length > 0 ? `applied [${res.applied.join(", ")}]` : "restates the list, nothing changed",
         res.ignored.length > 0 ? `left alone [${res.ignored.map((i) => `${i.name}: ${i.reason}`).join(", ")}]` : "",
+        res.notAdded.length > 0 ? `not added [${res.notAdded.map((i) => `${i.name}: ${i.reason}`).join(", ")}]` : "",
         res.failures.length > 0 ? `FAILED for [${res.failures.join(", ")}]` : "",
       ].filter(Boolean);
       await claimFastPath(m, res.residual ? { consumed: m.body, residual: res.residual } : null, {
@@ -1743,6 +1753,21 @@ async function handleAnalyzeRequest(request: Request) {
       // and peeling the message is the defect this section's header is
       // about. This one only says "the list has been dealt with".
       pastedRosterIds.add(m.waMessageId);
+
+      // MONTHLY SQUAD (slice 5): in a running month a pasted list never
+      // creates a player. A list the monthly reader refused (not this
+      // month's squad list) registers nobody here either, whatever its
+      // shape. Empty for every weekly club.
+      if (decision.kind === "of_record" && monthlyNotSquadList.has(m.waMessageId)) {
+        pastedRosterReports.set(m.waMessageId, {
+          handledBy: "fast-path",
+          action: "none",
+          reasoning: "pasted list in a monthly club's running month that is not the month's list: nobody registered",
+          react: null,
+          reply: null,
+        });
+        continue;
+      }
 
       if (decision.kind === "not_of_record") {
         console.warn(

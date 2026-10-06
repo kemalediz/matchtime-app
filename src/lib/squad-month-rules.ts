@@ -200,6 +200,19 @@ export interface SeedRowInput {
   paidAmountPence?: number | null;
   /** Games of credit this regular came into the month with (already taken off what they paid). */
   creditsCarriedIn?: number;
+  /** From a pasted list only: the name as the list writes it ("Big Al").
+   *  Saved as an alias of the player, so the group's later pastes of the
+   *  same list resolve to them by name. */
+  listName?: string | null;
+}
+
+/** A name on a list is short. Longer is not a name. */
+export const LIST_NAME_MAX = 80;
+
+export interface PlannedAlias {
+  userId: string;
+  /** As written, trimmed. The writer normalises it for the alias table. */
+  alias: string;
 }
 
 export interface MonthSeedInput {
@@ -286,7 +299,7 @@ export function planMonthSeed(
   input: MonthSeedInput,
   ctx: { memberUserIds: ReadonlySet<string>; actorUserId: string; now: Date },
 ):
-  | { ok: true; month: PlannedMonth; members: PlannedMember[]; credits: PlannedCredit[] }
+  | { ok: true; month: PlannedMonth; members: PlannedMember[]; credits: PlannedCredit[]; aliases: PlannedAlias[] }
   | { ok: false; error: MonthSeedError; userId?: string } {
   if (typeof input?.activityId !== "string" || input.activityId === "") return { ok: false, error: "bad-fixture" };
   const { gamesScheduled, gamesPlayed } = input;
@@ -307,6 +320,7 @@ export function planMonthSeed(
     if (r.tier !== undefined && !(MEMBER_TIERS as readonly unknown[]).includes(r.tier)) return { ok: false, error: "bad-row", userId };
     if (r.paid !== undefined && !(SEED_PAID_STATES as readonly unknown[]).includes(r.paid)) return { ok: false, error: "bad-row", userId };
     if (r.slot != null && !(isWholeNumber(r.slot) && r.slot >= 1 && r.slot <= 99)) return { ok: false, error: "bad-row", userId };
+    if (r.listName != null && (typeof r.listName !== "string" || r.listName.length > LIST_NAME_MAX)) return { ok: false, error: "bad-row", userId };
     if (seen.has(userId)) return { ok: false, error: "duplicate-player", userId };
     seen.add(userId);
     if (!ctx.memberUserIds.has(userId)) return { ok: false, error: "not-a-member", userId };
@@ -389,6 +403,14 @@ export function planMonthSeed(
     },
     members,
     credits,
+    // Only a month started from a pasted list teaches names.
+    aliases:
+      input.source === "seed-list"
+        ? rows.flatMap((r) => {
+            const alias = (r.listName ?? "").trim();
+            return alias ? [{ userId: r.userId, alias }] : [];
+          })
+        : [],
   };
 }
 
@@ -426,6 +448,8 @@ export interface SeedRosterMember {
 
 export interface SeedDraftRow extends SeedRowInput {
   name: string;
+  /** The name as the list writes it. */
+  listName: string;
   tier: MemberTier;
   slot: number | null;
   paid: SeedPaid;
@@ -503,6 +527,7 @@ export function draftSeedFromList(
     rows.push({
       userId,
       name: nameOf.get(userId) ?? "",
+      listName: e.name.trim(),
       kind,
       tier: kind === "regular" && e.marks?.tier === "concession" ? "concession" : "standard",
       slot,

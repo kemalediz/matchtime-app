@@ -14,6 +14,7 @@ import {
   decideSlotFor,
   pasteShowsSameList,
   paygPoolOfferAllowed,
+  planOpenPlaceOffers,
   reconcileMonthPaste,
   selectPaygPool,
   weekListHash,
@@ -60,6 +61,8 @@ describe("decideMonthlySeed", () => {
       { userId: "u-dave", status: "CONFIRMED", position: 4, monthly: true, note: "regular of the month" },
     ]);
     expect(d.markMonthly).toEqual([]);
+    expect(d.promote).toEqual([]);
+    expect(d.bump).toEqual([]);
   });
 
   it("a dated PAYG player is in for their date only, and pays per game", () => {
@@ -95,13 +98,56 @@ describe("decideMonthlySeed", () => {
   });
 
   it("regulars beyond the places go to the waiting list, in slot order", () => {
-    const d = decideMonthlySeed({ members: MEMBERS, targetRows: [{ userId: "u-zed", status: "CONFIRMED" }], maxPlayers: 3 });
+    const d = decideMonthlySeed({ members: MEMBERS, targetRows: [], maxPlayers: 3 });
     expect(d.write.map((w) => [w.userId, w.status])).toEqual([
       ["u-alex", "CONFIRMED"],
       ["u-bilal", "CONFIRMED"],
-      ["u-chris", "BENCH"],
+      ["u-chris", "CONFIRMED"],
       ["u-dave", "BENCH"],
     ]);
+  });
+
+  it("regulars have priority: a non-regular who said IN early gives the place up, last in first", () => {
+    const d = decideMonthlySeed({
+      members: MEMBERS,
+      targetRows: [
+        { userId: "u-zed", status: "CONFIRMED", position: 1 },
+        { userId: "u-yan", status: "CONFIRMED", position: 2 },
+      ],
+      maxPlayers: 5,
+    });
+    // Four regulars and five places: one of the two early INs stays.
+    expect(d.write.map((w) => [w.userId, w.status])).toEqual([
+      ["u-alex", "CONFIRMED"],
+      ["u-bilal", "CONFIRMED"],
+      ["u-chris", "CONFIRMED"],
+      ["u-dave", "CONFIRMED"],
+    ]);
+    expect(d.bump).toEqual(["u-yan"]);
+  });
+
+  it("nobody is moved while there is room for everyone", () => {
+    const d = decideMonthlySeed({ members: MEMBERS, targetRows: [{ userId: "u-zed", status: "CONFIRMED", position: 1 }], maxPlayers: 5 });
+    expect(d.bump).toEqual([]);
+  });
+
+  it("a regular who was put on the waiting list before the seed is brought in, ahead of a non-regular", () => {
+    const d = decideMonthlySeed({
+      members: MEMBERS,
+      targetRows: [
+        { userId: "u-zed", status: "CONFIRMED", position: 1 },
+        { userId: "u-alex", status: "BENCH", position: 2 },
+      ],
+      maxPlayers: 4,
+    });
+    expect(d.promote).toEqual(["u-alex"]);
+    expect(d.bump).toEqual(["u-zed"]);
+    expect(d.write.map((w) => [w.userId, w.status])).toEqual([
+      ["u-bilal", "CONFIRMED"],
+      ["u-chris", "CONFIRMED"],
+      ["u-dave", "CONFIRMED"],
+    ]);
+    expect(d.markMonthly).toEqual(["u-alex"]);
   });
 
   it("seeding twice writes nothing the second time", () => {
@@ -238,6 +284,42 @@ describe("decideMissedCredits", () => {
     expect(decideMissedCredits({ ...base, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [] });
   });
 
+  it("a paid regular left on the waiting list misses the game through no choice of their own: credited", () => {
+    const benched = [row("Alex", "CONFIRMED", 1), row("Bilal", "BENCH", 2), row("Omar", "CONFIRMED", 3)];
+    for (const rule of ["any-miss", "filled-only"] as const) {
+      expect(decideMissedCredits({ ...base, rows: benched, rule }).create).toEqual(["u-bilal"]);
+    }
+    expect(decideMissedCredits({ ...base, rows: benched, rule: "none" }).create).toEqual([]);
+  });
+
+  it("a regular who drops, comes back and is benched behind the fill-in keeps the credit", () => {
+    const existing = [{ id: "c1", userId: "u-bilal", voidedAt: null, voidedById: null, appliedMonthId: null, createdById: null }];
+    const benched = [row("Alex", "CONFIRMED", 1), row("Bilal", "BENCH", 9), row("Omar", "CONFIRMED", 2)];
+    expect(decideMissedCredits({ ...base, rows: benched, rule: "any-miss", existing })).toEqual({ create: [], voidIds: [] });
+  });
+
+  it("filled-only with two out and one fill-in: the place of whoever dropped FIRST is the one filled", () => {
+    const at = (iso: string) => new Date(iso);
+    const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris"), reg(4, "Dave")];
+    const two = [
+      row("Alex", "CONFIRMED", 1),
+      // Chris (slot 3) dropped before Bilal (slot 2).
+      { ...row("Bilal", "DROPPED", 2), outAt: at("2026-10-08T12:00:00Z") },
+      { ...row("Chris", "DROPPED", 3), outAt: at("2026-10-08T09:00:00Z") },
+      row("Dave", "CONFIRMED", 4),
+      row("Omar", "CONFIRMED", 2),
+    ];
+    expect(decideMissedCredits({ ...base, members, rows: two, rule: "filled-only" }).create).toEqual(["u-chris"]);
+    // A second fill-in fills the other.
+    expect(decideMissedCredits({ ...base, members, rows: [...two, row("Will", "CONFIRMED", 3)], rule: "filled-only" }).create).toEqual([
+      "u-bilal",
+      "u-chris",
+    ]);
+    // Same moment: the lower slot number, then the user id.
+    const tie = two.map((r) => ("outAt" in r ? { ...r, outAt: at("2026-10-08T09:00:00Z") } : r));
+    expect(decideMissedCredits({ ...base, members, rows: tie, rule: "filled-only" }).create).toEqual(["u-bilal"]);
+  });
+
   it("a PAYG player who drops earns nothing", () => {
     const members = [...MEMBERS, payg("Omar")];
     const r = [...rows, row("Omar", "DROPPED", 5)];
@@ -330,114 +412,142 @@ describe("decideListPost", () => {
 });
 
 describe("reconcileMonthPaste (plan 6.2, a running month)", () => {
-  const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris", { paid: "none" }), reg(4, "Dave")];
+  const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris", { paid: "none" }), reg(4, "Dave"), payg("Omar")];
   const rows = [row("Alex", "CONFIRMED", 1), row("Bilal", "CONFIRMED", 2), row("Chris", "CONFIRMED", 3), row("Dave", "CONFIRMED", 4)];
   const roster = [
-    ...members.map((m) => ({ userId: m.userId, name: m.name, aliases: [] as string[] })),
-    { userId: "u-omar", name: "Omar Khan", aliases: [] },
+    ...members.map((m) => ({ userId: m.userId, name: m.userId === "u-omar" ? "Omar Khan" : m.name, aliases: [] as string[] })),
     { userId: "u-rob", name: "Rob Admin", aliases: [] },
+    { userId: "u-tom", name: "Tom Reed", aliases: ["tommo"] },
     { userId: "u-sam1", name: "Sam One", aliases: [] },
     { userId: "u-sam2", name: "Sam Two", aliases: [] },
   ];
-  const base = { members, rows, maxPlayers: 6, roster, matchMonth: 10 };
+  const base = { members, rows, maxPlayers: 6, roster, matchMonth: 10, seeded: true };
   const paste = (text: string) => parseMonthlyList(text)!;
   const LIST = ["List for October:", "1. Alex (paid)", "2. Bilal (paid)", "3. Chris", "4. Dave (paid)", "5.", "6."].join("\n");
+  const run = (text: string, senderUserId: string | null, over: Partial<typeof base> & { senderIsAdmin?: boolean } = {}) =>
+    reconcileMonthPaste({ ...base, list: paste(text), senderUserId, senderIsAdmin: false, ...over });
 
   it("a paste that restates the list changes nothing", () => {
-    const r = reconcileMonthPaste({ ...base, list: paste(LIST), senderUserId: "u-alex", senderIsAdmin: false });
+    const r = run(LIST, "u-alex");
+    expect(r).toMatchObject({ actions: [], ignored: [], notAdded: [], otherMonth: false, notThisList: false });
+  });
+
+  it("a member adds their own name: in for this week (any club member may add THEMSELVES)", () => {
+    expect(run(LIST.replace("5.", "5. Omar (PAYG)"), "u-omar").actions).toEqual([{ kind: "in", userId: "u-omar", name: "Omar", self: true, slot: 5 }]);
+    expect(run(LIST.replace("5.", "5. Tommo"), "u-tom").actions).toEqual([{ kind: "in", userId: "u-tom", name: "Tommo", self: true, slot: 5 }]);
+  });
+
+  it("somebody else may add a member of THIS MONTH (a PAYG player of the month)", () => {
+    expect(run(LIST.replace("5.", "5. Omar (PAYG)"), "u-alex").actions).toEqual([{ kind: "in", userId: "u-omar", name: "Omar", self: false, slot: 5 }]);
+  });
+
+  it("somebody else can NOT add a club player who is not in the month: not registered, reported", () => {
+    const r = run(LIST.replace("5.", "5. Tom Reed"), "u-alex");
     expect(r.actions).toEqual([]);
-    expect(r.ignored).toEqual([]);
+    expect(r.notAdded).toEqual([{ name: "Tom Reed", reason: "not-in-month" }]);
   });
 
-  it("a member adds their own name: in for this week", () => {
-    const text = LIST.replace("5.", "5. Omar (PAYG)");
-    const r = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-omar", senderIsAdmin: false });
-    expect(r.actions).toEqual([{ kind: "in", userId: "u-omar", name: "Omar", self: true, slot: 5, teachAlias: null }]);
+  it("a name nobody has is NEVER registered and never becomes the sender: reported", () => {
+    // Sender on the list.
+    const a = run(LIST.replace("5.", "5. Tariq"), "u-alex");
+    expect(a.actions).toEqual([]);
+    expect(a.notAdded).toEqual([{ name: "Tariq", reason: "unknown" }]);
+    // Sender NOT on the list and not playing: still not them, and no alias.
+    const b = run(LIST.replace("5.", "5. Big O"), "u-omar");
+    expect(b.actions).toEqual([]);
+    expect(b.notAdded).toEqual([{ name: "Big O", reason: "unknown" }]);
   });
 
-  it("an unknown name added by a sender who is not on the list is the sender, and teaches the alias", () => {
-    const text = LIST.replace("5.", "5. Big O");
-    const r = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-omar", senderIsAdmin: false });
-    expect(r.actions).toEqual([{ kind: "in", userId: "u-omar", name: "Big O", self: true, slot: 5, teachAlias: "Big O" }]);
-  });
-
-  it("an unknown name added by somebody already on the list is a new person, for the route to resolve", () => {
-    const text = LIST.replace("5.", "5. Tariq");
-    const r = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-alex", senderIsAdmin: false });
-    expect(r.actions).toEqual([{ kind: "in", userId: null, name: "Tariq", self: false, slot: 5, teachAlias: null }]);
-  });
-
-  it("a name that fits two players is skipped, never guessed", () => {
-    const text = LIST.replace("5.", "5. Sam");
-    const r = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-alex", senderIsAdmin: false });
+  it("a name that fits two players is never guessed: reported", () => {
+    const r = run(LIST.replace("5.", "5. Sam"), "u-alex");
     expect(r.actions).toEqual([]);
-    expect(r.ignored).toEqual([{ name: "Sam", reason: "ambiguous" }]);
+    expect(r.notAdded).toEqual([{ name: "Sam", reason: "ambiguous" }]);
+  });
+
+  it("with no month header, a list that is not mostly this month's players is not the month's list at all", () => {
+    const kit = ["Kit for Monday", "1. Bibs", "2. Two balls", "3. Cones", "4. Pump"].join("\n");
+    const r = run(kit, "u-alex");
+    expect(r.notThisList).toBe(true);
+    expect(r.actions).toEqual([]);
+    expect(r.notAdded).toEqual([]);
+    // Three of five names are this month's players (60%): it is the list.
+    const headerless = ["1. Alex", "2. Bilal", "3. Chris", "4. Bibs", "5. Cones"].join("\n");
+    expect(run(headerless, "u-alex").notThisList).toBe(false);
+    // Two of five: it is not.
+    expect(run(["1. Alex", "2. Bilal", "3. Balls", "4. Bibs", "5. Cones"].join("\n"), "u-alex").notThisList).toBe(true);
+    // With the month header it is the list, whatever is on it.
+    expect(run(["List for October", "1. Bibs", "2. Cones"].join("\n"), "u-alex").notThisList).toBe(false);
   });
 
   it("D4: moving somebody else under 'Paid but can't play' is applied, and flagged as not their own doing", () => {
     const text = ["List for October:", "1. Alex (paid)", "2.", "3. Chris", "4. Dave (paid)", "", "Paid but can't play", "1. Bilal"].join("\n");
-    const r = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-alex", senderIsAdmin: false });
-    expect(r.actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: false, via: "cant-play" }]);
-  });
-
-  it("moving yourself there is your own OUT", () => {
-    const text = ["List for October:", "1. Alex (paid)", "2.", "3. Chris", "4. Dave (paid)", "", "Paid but can't play", "1. Bilal"].join("\n");
-    const r = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-bilal", senderIsAdmin: false });
-    expect(r.actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: true, via: "cant-play" }]);
+    expect(run(text, "u-alex").actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: false, via: "cant-play" }]);
+    expect(run(text, "u-bilal").actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: true, via: "cant-play" }]);
   });
 
   it("a blanked line is an OUT only from the player or an admin; from anyone else it is an old copy", () => {
     const text = LIST.replace("2. Bilal (paid)", "2.");
-    const own = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-bilal", senderIsAdmin: false });
-    expect(own.actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: true, via: "blank" }]);
-    const admin = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-rob", senderIsAdmin: true });
-    expect(admin.actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: false, via: "blank" }]);
-    const other = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-alex", senderIsAdmin: false });
+    expect(run(text, "u-bilal").actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: true, via: "blank" }]);
+    expect(run(text, "u-rob", { senderIsAdmin: true }).actions).toEqual([{ kind: "out", userId: "u-bilal", name: "Bilal", self: false, via: "blank" }]);
+    const other = run(text, "u-alex");
     expect(other.actions).toEqual([]);
     expect(other.ignored).toEqual([{ name: "Bilal", reason: "blank-by-other" }]);
   });
 
   it("a name simply missing is ignored", () => {
-    const text = ["List for October:", "1. Alex (paid)", "3. Chris", "4. Dave (paid)"].join("\n");
-    const r = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-alex", senderIsAdmin: false });
-    expect(r.actions).toEqual([]);
+    expect(run(["List for October:", "1. Alex (paid)", "3. Chris", "4. Dave (paid)"].join("\n"), "u-alex").actions).toEqual([]);
   });
 
-  it("an old copy cannot bring back a player who dropped; the player or an admin can", () => {
+  it("a paste never brings back a player who dropped, not even an admin's; only the player's own", () => {
     const dropped = rows.map((r) => (r.userId === "u-bilal" ? { ...r, status: "DROPPED" as const } : r));
-    const args = { ...base, rows: dropped, list: paste(LIST) };
-    const stale = reconcileMonthPaste({ ...args, senderUserId: "u-alex", senderIsAdmin: false });
+    const stale = run(LIST, "u-alex", { rows: dropped });
     expect(stale.actions).toEqual([]);
     expect(stale.ignored).toEqual([{ name: "Bilal", reason: "stale-readd" }]);
-    const own = reconcileMonthPaste({ ...args, senderUserId: "u-bilal", senderIsAdmin: false });
-    expect(own.actions).toEqual([{ kind: "in", userId: "u-bilal", name: "Bilal", self: true, slot: 2, teachAlias: null }]);
-    const admin = reconcileMonthPaste({ ...args, senderUserId: "u-rob", senderIsAdmin: true });
-    expect(admin.actions).toEqual([{ kind: "in", userId: "u-bilal", name: "Bilal", self: false, slot: 2, teachAlias: null }]);
+    const admin = run(LIST, "u-rob", { rows: dropped, senderIsAdmin: true });
+    expect(admin.actions).toEqual([]);
+    expect(admin.ignored).toEqual([{ name: "Bilal", reason: "stale-readd" }]);
+    expect(run(LIST, "u-bilal", { rows: dropped }).actions).toEqual([{ kind: "in", userId: "u-bilal", name: "Bilal", self: true, slot: 2 }]);
+  });
+
+  it("an OLD copy from an admin has no admin powers: it re-adds nobody and blanks nobody out", () => {
+    // Bilal has dropped and Omar took slot 2. The admin pastes yesterday's
+    // list: Bilal back in 2, and slot 4 (Dave) blank.
+    const now = [row("Alex", "CONFIRMED", 1), row("Bilal", "DROPPED", 2), row("Omar", "CONFIRMED", 2), row("Chris", "CONFIRMED", 3), row("Dave", "CONFIRMED", 4)];
+    const old = ["List for October:", "1. Alex (paid)", "2. Bilal (paid)", "3. Chris", "4."].join("\n");
+    const r = run(old, "u-rob", { rows: now, senderIsAdmin: true });
+    expect(r.actions).toEqual([]);
+    expect(r.ignored).toEqual([
+      { name: "Bilal", reason: "stale-readd" },
+      { name: "Dave", reason: "old-copy" },
+    ]);
+    // And it does not move anybody else under can't play either.
+    const old2 = [old, "", "Paid but can't play", "1. Dave"].join("\n");
+    expect(run(old2, "u-rob", { rows: now, senderIsAdmin: true }).actions).toEqual([]);
   });
 
   it("D3: a new paid mark is a claim, whoever wrote it, and a missing mark removes nothing", () => {
     const text = LIST.replace("3. Chris", "3. Chris (Paid £22.50)").replace("1. Alex (paid)", "1. Alex");
-    const own = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-chris", senderIsAdmin: false });
-    expect(own.actions).toEqual([{ kind: "paid-claim", userId: "u-chris", name: "Chris", self: true, amountPence: 2250 }]);
-    const other = reconcileMonthPaste({ ...base, list: paste(text), senderUserId: "u-alex", senderIsAdmin: false });
-    expect(other.actions).toEqual([{ kind: "paid-claim", userId: "u-chris", name: "Chris", self: false, amountPence: 2250 }]);
+    expect(run(text, "u-chris").actions).toEqual([{ kind: "paid-claim", userId: "u-chris", name: "Chris", self: true, amountPence: 2250 }]);
+    expect(run(text, "u-alex").actions).toEqual([{ kind: "paid-claim", userId: "u-chris", name: "Chris", self: false, amountPence: 2250 }]);
   });
 
   it("a paid mark on a PAYG line is not a claim for the month", () => {
-    const m = [...members, payg("Omar")];
     const r2 = [...rows, row("Omar", "CONFIRMED", 5)];
-    const text = LIST.replace("5.", "5. Omar (PAYG, paid £8)");
-    const r = reconcileMonthPaste({ ...base, members: m, rows: r2, list: paste(text), senderUserId: "u-omar", senderIsAdmin: false });
-    expect(r.actions).toEqual([]);
+    expect(run(LIST.replace("5.", "5. Omar (PAYG, paid £8)"), "u-omar", { rows: r2 }).actions).toEqual([]);
+  });
+
+  it("BEFORE the week is seeded a paste only records paid marks: nobody in, nobody out, nobody away", () => {
+    // The week after: no rows yet. The paste lists everyone, moves Dave
+    // out, adds Omar and marks Chris paid.
+    const text = ["List for October:", "1. Alex (paid)", "2. Bilal (paid)", "3. Chris (paid)", "4.", "5. Omar (PAYG)", "", "Paid but can't play", "1. Dave"].join("\n");
+    const r = run(text, "u-rob", { rows: [], seeded: false, senderIsAdmin: true });
+    expect(r.actions).toEqual([{ kind: "paid-claim", userId: "u-chris", name: "Chris", self: false, amountPence: null }]);
+    expect(r.ignored).toEqual([]);
+    expect(r.notAdded).toEqual([]);
   });
 
   it("a list for another month is not this month's list", () => {
-    const r = reconcileMonthPaste({
-      ...base,
-      list: paste(LIST.replace("October", "November").replace("5.", "5. Omar")),
-      senderUserId: "u-omar",
-      senderIsAdmin: false,
-    });
+    const r = run(LIST.replace("October", "November").replace("5.", "5. Omar"), "u-omar");
     expect(r.otherMonth).toBe(true);
     expect(r.actions).toEqual([]);
   });
@@ -448,5 +558,20 @@ describe("reconcileMonthPaste (plan 6.2, a running month)", () => {
     expect(pasteShowsSameList({ list: paste(LIST.replace("1. Alex (paid)", "1. Alex")), week: list, roster })).toBe(true);
     expect(pasteShowsSameList({ list: paste(LIST.replace("2. Bilal (paid)", "2.")), week: list, roster })).toBe(false);
     expect(pasteShowsSameList({ list: paste(LIST.replace("5.", "5. Omar")), week: list, roster })).toBe(false);
+  });
+});
+
+describe("a regular who has left the group, and open places", () => {
+  it("planOpenPlaceOffers: one offer per open place, naming the vacated slots first, never more than are open", () => {
+    const members = [reg(1, "Alex"), reg(2, "Bilal"), reg(3, "Chris")];
+    const rows = [row("Alex", "CONFIRMED", 1), row("Bilal", "DROPPED", 2), row("Chris", "CONFIRMED", 3)];
+    // 5 places, 2 in: 3 open. Bilal's slot is vacated; two were never held.
+    expect(planOpenPlaceOffers({ members, rows, maxPlayers: 5, openOffers: [] })).toEqual(["u-bilal", null, null]);
+    // One is already on offer for Bilal, one unnamed: one more.
+    expect(planOpenPlaceOffers({ members, rows, maxPlayers: 5, openOffers: ["u-bilal", null] })).toEqual([null]);
+    // Enough already.
+    expect(planOpenPlaceOffers({ members, rows, maxPlayers: 5, openOffers: [null, null, null] })).toEqual([]);
+    // Full squad.
+    expect(planOpenPlaceOffers({ members, rows, maxPlayers: 2, openOffers: [] })).toEqual([]);
   });
 });

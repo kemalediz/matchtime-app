@@ -32,12 +32,16 @@
 import { db } from "./db";
 import { recordAttendanceEvent } from "./attendance-events";
 import { isClubOperational, servingClubWhere } from "./club-approval-state";
+import { londonDateTimeToUtc } from "./london-time";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
-import { ROLLING_LOOKBACK_DAYS, pickSeedSource, rollingSeedDue } from "./rolling-squad-rules";
-import { buildWeekListPost } from "./monthly-week-copy";
+import { ROLLING_LOOKBACK_DAYS, adminNoticeSendAfter, pickSeedSource, rollingSeedDue } from "./rolling-squad-rules";
+import { buildSeedBumpedDm, buildWeekListPost } from "./monthly-week-copy";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 import {
+  SEED_NOTE_PRIORITY,
+  SEED_NOTE_PROMOTED,
   buildWeekList,
+  planOpenPlaceOffers,
   decideMissedCredits,
   decideMonthlySeed,
   decideSlotFor,
@@ -73,6 +77,11 @@ export interface RunningMonth {
   /** "2026-10-01". */
   monthStart: string;
   createdAt: Date;
+  /** Nothing dated before this is the month's business: when the organiser
+   *  started the month here (plan 4.5), else the London 1st. A game played
+   *  before a mid-month start keeps its per-match payments, earns no
+   *  credit and changes no post. */
+  startsAt: Date;
   fixture: RecurringFixtureKey;
   members: Array<{
     userId: string;
@@ -85,7 +94,12 @@ export interface RunningMonth {
   }>;
 }
 
-/** Every RUNNING month of a club, members included. Read only. */
+/**
+ * Every RUNNING month of a club, members included. Read only.
+ * A member who has left the group or been deactivated is not a member of
+ * the week: their slot number is free and they are not seeded, listed or
+ * credited.
+ */
 export async function loadRunningMonths(orgId: string): Promise<RunningMonth[]> {
   const months = await db.squadMonth.findMany({
     where: { orgId, status: "running" },
@@ -93,6 +107,7 @@ export async function loadRunningMonths(orgId: string): Promise<RunningMonth[]> 
       id: true,
       monthStart: true,
       createdAt: true,
+      startedMidMonthAt: true,
       activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
       members: {
         where: { leftAt: null },
@@ -110,12 +125,25 @@ export async function loadRunningMonths(orgId: string): Promise<RunningMonth[]> 
       },
     },
   });
+  if (months.length === 0) return [];
+  const memberIds = [...new Set(months.flatMap((m) => m.members.map((r) => r.userId)))];
+  const here = new Set(
+    memberIds.length === 0
+      ? []
+      : (
+          await db.membership.findMany({
+            where: { orgId, userId: { in: memberIds }, leftAt: null, user: { isActive: true } },
+            select: { userId: true },
+          })
+        ).map((r) => r.userId),
+  );
   return months.map((m) => ({
     id: m.id,
     monthStart: m.monthStart.toISOString().slice(0, 10),
     createdAt: m.createdAt,
+    startsAt: m.startedMidMonthAt ?? londonDateTimeToUtc(m.monthStart.toISOString().slice(0, 10), "00:00"),
     fixture: m.activity,
-    members: m.members.map((r) => ({
+    members: m.members.filter((r) => here.has(r.userId)).map((r) => ({
       userId: r.userId,
       name: r.user.name ?? "",
       kind: r.kind === "payg" ? "payg" : "regular",
@@ -128,14 +156,22 @@ export async function loadRunningMonths(orgId: string): Promise<RunningMonth[]> 
 }
 
 /** The running month a match belongs to: the same weekly fixture (not the
- *  same Activity: a format switch re-points a match), and the London
- *  month the match is played in. */
+ *  same Activity: a format switch re-points a match), the London month
+ *  the match is played in, and NOT a game dated before the month was
+ *  started here (`startsAt`). */
 export function monthForMatch(
   months: RunningMonth[],
   match: { date: Date; activity: RecurringFixtureKey },
 ): RunningMonth | null {
   const monthStart = londonMonthStart(match.date);
-  return months.find((m) => m.monthStart === monthStart && isSameRecurringFixture(m.fixture, match.activity)) ?? null;
+  return (
+    months.find(
+      (m) =>
+        m.monthStart === monthStart &&
+        match.date.getTime() >= m.startsAt.getTime() &&
+        isSameRecurringFixture(m.fixture, match.activity),
+    ) ?? null
+  );
 }
 
 /** A month's members as one match sees them. */
@@ -253,12 +289,7 @@ export async function seedMonthlySquad(args: {
   const week = await loadMonthlyWeek(args.matchId);
   if (!week) return { seeded: false, written: 0 };
 
-  const memberships = await db.membership.findMany({
-    where: { orgId: week.orgId, userId: { in: week.members.map((m) => m.userId) }, leftAt: null, user: { isActive: true } },
-    select: { userId: true },
-  });
-  const here = new Set(memberships.map((m) => m.userId));
-  const members = week.members.filter((m) => here.has(m.userId));
+  const members = week.members;
 
   return db.$transaction(async (tx) => {
     const claim = await tx.match.updateMany({
@@ -272,9 +303,55 @@ export async function seedMonthlySquad(args: {
 
     const targetRows = await tx.attendance.findMany({
       where: { matchId: week.matchId },
-      select: { userId: true, status: true },
+      select: { id: true, userId: true, status: true, position: true },
     });
-    const { write, markMonthly } = decideMonthlySeed({ members, targetRows, maxPlayers: week.maxPlayers });
+    const { write, markMonthly, promote, bump } = decideMonthlySeed({ members, targetRows, maxPlayers: week.maxPlayers });
+    const event = (note: string) => ({
+      cause: "monthly-squad" as const,
+      actorKind: args.actor.kind,
+      actorUserId: args.actor.kind === "admin" ? args.actor.userId : null,
+      sourceRef: week.monthId,
+      note,
+    });
+    // REGULARS HAVE PRIORITY (review item 3). A non-regular who said IN
+    // before the seed gives the place up to a regular who paid for it, and
+    // is told; a regular who was waiting is brought in.
+    for (const userId of bump) {
+      const row = targetRows.find((r) => r.userId === userId)!;
+      await tx.attendance.update({ where: { id: row.id }, data: { status: "BENCH" } });
+      await recordAttendanceEvent(
+        tx,
+        { matchId: week.matchId, userId, orgId: week.orgId, fromStatus: "CONFIRMED", toStatus: "BENCH", fromPosition: row.position, toPosition: row.position },
+        event(SEED_NOTE_PRIORITY),
+      );
+    }
+    for (const userId of promote) {
+      const row = targetRows.find((r) => r.userId === userId)!;
+      const slot = members.find((m) => m.userId === userId)?.slot ?? row.position;
+      await tx.attendance.update({ where: { id: row.id }, data: { status: "CONFIRMED", position: slot } });
+      await recordAttendanceEvent(
+        tx,
+        { matchId: week.matchId, userId, orgId: week.orgId, fromStatus: "BENCH", toStatus: "CONFIRMED", fromPosition: row.position, toPosition: slot },
+        event(SEED_NOTE_PROMOTED),
+      );
+    }
+    if (bump.length > 0) {
+      const users = await tx.user.findMany({ where: { id: { in: bump } }, select: { name: true, phoneNumber: true } });
+      const sendAfter = adminNoticeSendAfter(now);
+      for (const u of users) {
+        if (!u.phoneNumber) continue;
+        await tx.botJob.create({
+          data: {
+            orgId: week.orgId,
+            kind: "dm",
+            phone: u.phoneNumber.replace(/^\+/, ""),
+            text: buildSeedBumpedDm({ name: u.name, activityName: week.activityName, matchDate: week.matchDate, lang: week.language }),
+            // Never between 22:00 and 07:59 London: held until 08:00.
+            ...(sendAfter ? { sendAfter } : {}),
+          },
+        });
+      }
+    }
     if (write.length > 0) {
       await tx.attendance.createMany({
         data: write.map((w) => ({
@@ -298,13 +375,7 @@ export async function seedMonthlySquad(args: {
             fromPosition: null,
             toPosition: w.position,
           },
-          {
-            cause: "monthly-squad",
-            actorKind: args.actor.kind,
-            actorUserId: args.actor.kind === "admin" ? args.actor.userId : null,
-            sourceRef: week.monthId,
-            note: w.note,
-          },
+          event(w.note),
         );
       }
     }
@@ -444,9 +515,24 @@ export async function takeMonthlySlot(matchId: string, userId: string): Promise<
         },
       );
     }
-    if (decision.vacatedByUserId) {
+    // A place has been taken, so there may be one offer too many. Offers
+    // beyond the places still free are closed as claimed by this player:
+    // first the one opened in the name of the regular whose slot they
+    // took, then one for a place nobody had held, then the oldest. (A
+    // regular coming back to their own slot has had their own offer closed
+    // by `registerAttendance` already, and nothing more is closed here.)
+    const openOffers = await tx.benchSlotOffer.findMany({
+      where: { matchId, resolvedAt: null },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, replacingUserId: true },
+    });
+    const placesFree = Math.max(0, week.maxPlayers - rows.filter((r) => r.status === "CONFIRMED").length);
+    const rank = (o: { replacingUserId: string | null }): number =>
+      decision.vacatedByUserId && o.replacingUserId === decision.vacatedByUserId ? 0 : o.replacingUserId === null ? 1 : 2;
+    const surplus = [...openOffers].sort((a, b) => rank(a) - rank(b)).slice(0, Math.max(0, openOffers.length - placesFree));
+    if (surplus.length > 0) {
       await tx.benchSlotOffer.updateMany({
-        where: { matchId, replacingUserId: decision.vacatedByUserId, resolvedAt: null },
+        where: { id: { in: surplus.map((o) => o.id) }, resolvedAt: null },
         data: { resolvedAt: new Date(), claimedByUserId: userId, outcome: "claimed" },
       });
     }
@@ -485,7 +571,24 @@ export async function syncMonthlyWeek(matchId: string, now: Date = new Date()): 
         select: { id: true, userId: true, voidedAt: true, voidedById: true, appliedMonthId: true, createdById: true },
       }),
     ]);
-    const rows: WeekRow[] = fresh.map((a) => ({ userId: a.userId, name: "", status: a.status as WeekStatus, position: a.position }));
+    // `filled-only` fills vacated places in the order they were vacated,
+    // so it needs when each player went out: their last move to DROPPED.
+    const outAt = new Map<string, Date>();
+    if (week.creditRule === "filled-only") {
+      const drops = await tx.attendanceEvent.findMany({
+        where: { matchId, toStatus: "DROPPED" },
+        select: { userId: true, at: true },
+        orderBy: { at: "asc" },
+      });
+      for (const d of drops) outAt.set(d.userId, d.at);
+    }
+    const rows: WeekRow[] = fresh.map((a) => ({
+      userId: a.userId,
+      name: "",
+      status: a.status as WeekStatus,
+      position: a.position,
+      outAt: outAt.get(a.userId) ?? null,
+    }));
     const { create, voidIds } = decideMissedCredits({
       rule: week.creditRule,
       members: week.members,
@@ -585,25 +688,68 @@ export async function loadPaygPool(
 }
 
 /**
- * A confirmed player dropped and NOBODY is on the waiting list. On a
- * monthly match the place then goes to the PAYG pool, through the same
- * `BenchSlotOffer` the bench uses: one offer per open slot, so one group
- * line and one DM per pool player (`bot-scheduler.ts`, section 3).
- * Called by `requestBenchConfirmationOnDrop` for a monthly club only.
- * Opens nothing for an organiser-pick club, with anyone waiting, with an
- * empty pool, or once the match has kicked off.
+ * Open an offer for every free place of a monthly match that has none
+ * (review item 5): a place a regular vacated, and a place nobody ever
+ * held (a regular seeded away, fewer regulars than places). Through the
+ * same `BenchSlotOffer` the bench uses, so `bot-scheduler.ts` section 3
+ * sends it: to the waiting list when there is one, else to the PAYG pool.
+ *
+ * Idempotent: `planOpenPlaceOffers` never plans more offers than there are
+ * free places, counting the ones already open. An offer is closed when
+ * its place is taken (`takeMonthlySlot`, a bench claim, the squad filling)
+ * or the match kicks off, so a place is offered once.
+ *
+ * Opens nothing for an organiser-pick club (the admins pick), for a match
+ * that is not seeded yet, has kicked off or is over, or when there is
+ * nobody to ask (no waiting list and an empty pool).
+ * Called after a drop with nobody waiting, and on every poll's sweep.
  */
-export async function openPaygPoolOffer(matchId: string, replacingUserId: string | null, now: Date = new Date()): Promise<boolean> {
+export async function ensureOpenPlaceOffers(matchId: string, now: Date = new Date()): Promise<number> {
   const week = await loadMonthlyWeek(matchId);
-  if (!week || !(LIVE as readonly string[]).includes(week.matchStatus)) return false;
-  if (week.matchDate.getTime() <= now.getTime()) return false;
+  if (!week || !week.seeded || !(LIVE as readonly string[]).includes(week.matchStatus)) return 0;
+  if (week.matchDate.getTime() <= now.getTime()) return 0;
+  if (week.pickMode === "organiser") return 0;
+  const open = await db.benchSlotOffer.findMany({ where: { matchId, resolvedAt: null }, select: { replacingUserId: true } });
+  const plan = planOpenPlaceOffers({
+    members: week.members,
+    rows: week.rows,
+    maxPlayers: week.maxPlayers,
+    openOffers: open.map((o) => o.replacingUserId),
+  });
+  if (plan.length === 0) return 0;
   const benchCount = week.rows.filter((r) => r.status === "BENCH").length;
-  const pool = await loadPaygPool(week, now);
-  if (!paygPoolOfferAllowed({ pickMode: week.pickMode, benchCount, poolSize: pool.length })) return false;
-  const existing = await db.benchSlotOffer.findFirst({ where: { matchId, resolvedAt: null, replacingUserId } });
-  if (existing) return false;
-  await db.benchSlotOffer.create({ data: { matchId, replacingUserId } });
-  return true;
+  if (benchCount === 0 && !paygPoolOfferAllowed({ pickMode: week.pickMode, benchCount, poolSize: (await loadPaygPool(week, now)).length })) {
+    return 0;
+  }
+  await db.benchSlotOffer.createMany({ data: plan.map((replacingUserId) => ({ matchId, replacingUserId })) });
+  return plan.length;
+}
+
+/**
+ * The collector has been SENT the fee question for a monthly match (the
+ * Pi acked `<matchId>:fee-ask`): only now is the club's PAYG price staged
+ * as the amount awaiting their yes (review item 6).
+ *
+ * This is the weekly flow's own order. There, `feePendingConfirm` is only
+ * ever written by `stage` in `payment-flow.ts` (`runCollectorFeeReply` →
+ * `stageNow`), which runs when the collector REPLIES to the fee question
+ * with an amount, and the same reply carries the confirm prompt. So a
+ * pending amount always means "the collector has been shown this number
+ * and asked yes or no". Staging it before the DM went out would let any
+ * earlier "yes" from the collector release pay links at a price they had
+ * never been shown.
+ *
+ * A weekly club, a match with no running month, a club with no PAYG
+ * price, and a match that already has a fee or a pending amount: nothing.
+ */
+export async function stagePaygFeeOnAsk(matchId: string): Promise<boolean> {
+  const week = await loadMonthlyWeek(matchId);
+  if (!week || week.paygPricePence == null) return false;
+  const res = await db.match.updateMany({
+    where: { id: matchId, feePerPlayer: null, feePendingConfirm: null },
+    data: { feePendingConfirm: week.paygPricePence / 100 },
+  });
+  return res.count > 0;
 }
 
 // ── The poll's sweep ───────────────────────────────────────────────────
@@ -613,25 +759,18 @@ export async function openPaygPoolOffer(matchId: string, replacingUserId: string
  * monthly club only (a weekly club returns after one read):
  *   - seed any due match (so a mid-month start shows up on the next poll,
  *     not the next cron);
- *   - `syncMonthlyWeek` for each live match of a running month, the safety
- *     net for a change that did not come through the attendance path (an
- *     admin screen, a merge);
- *   - stage the club's PAYG price as the fee to confirm once a match has
- *     ended, so the collector is asked "£8 each?" instead of "how much?"
- *     (plan 5.6). Only before the fee question has been sent.
+ *   - `syncMonthlyWeek` for every match of a running month, live or
+ *     played, back to the day the month started here: the safety net for
+ *     a change that did not come through the attendance path (an admin
+ *     taking a no-show off after the game, a merge). A game dated before
+ *     the month started here is not the month's and is never touched;
+ *   - `ensureOpenPlaceOffers` for each live match, so a place that was
+ *     free from the start is offered too.
  */
 export async function sweepMonthlyWeeks(orgId: string, now: Date = new Date()): Promise<void> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: {
-      squadMode: true,
-      approvalStatus: true,
-      dormantAt: true,
-      billingStatus: true,
-      paygPricePence: true,
-      paymentCollectionEnabled: true,
-      paymentHolderId: true,
-    },
+    select: { squadMode: true, approvalStatus: true, dormantAt: true, billingStatus: true },
   });
   if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return;
   const months = await loadRunningMonths(orgId);
@@ -639,55 +778,19 @@ export async function sweepMonthlyWeeks(orgId: string, now: Date = new Date()): 
 
   await seedDueMonthlySquads(now, orgId);
 
+  const since = new Date(Math.min(...months.map((m) => m.startsAt.getTime())));
   const matches = await db.match.findMany({
     where: {
       activity: { orgId },
       isHistorical: false,
-      OR: [{ status: { in: [...LIVE] } }, { status: "COMPLETED", date: { gte: new Date(now.getTime() - 7 * DAY_MS) } }],
+      OR: [{ status: { in: [...LIVE] } }, { status: "COMPLETED", date: { gte: since } }],
     },
-    select: {
-      id: true,
-      date: true,
-      status: true,
-      feePerPlayer: true,
-      feePendingConfirm: true,
-      postMatchEndFlow: true,
-      activity: { select: { orgId: true, venue: true, dayOfWeek: true, matchDurationMins: true } },
-    },
+    select: { id: true, date: true, status: true, activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
   });
   for (const m of matches) {
     if (!monthForMatch(months, m)) continue;
     await syncMonthlyWeek(m.id, now);
-
-    const endedAt = new Date(m.date.getTime() + m.activity.matchDurationMins * 60 * 1000);
-    if (
-      org.paygPricePence != null &&
-      org.paymentCollectionEnabled &&
-      org.paymentHolderId &&
-      m.postMatchEndFlow !== false &&
-      m.feePerPlayer == null &&
-      m.feePendingConfirm == null &&
-      now.getTime() >= endedAt.getTime()
-    ) {
-      const [asked, payers] = await Promise.all([
-        db.sentNotification.findUnique({ where: { key: `${m.id}:fee-ask` }, select: { id: true } }),
-        db.attendance.count({
-          where: {
-            matchId: m.id,
-            status: "CONFIRMED",
-            userId: { not: org.paymentHolderId },
-            OR: [{ paymentMethod: null }, { paymentMethod: { not: MONTHLY_PAYMENT_METHOD } }],
-          },
-        }),
-      ]);
-      // Nobody played per game: there is no fee to ask about.
-      if (!asked && payers > 0) {
-        await db.match.updateMany({
-          where: { id: m.id, feePerPlayer: null, feePendingConfirm: null },
-          data: { feePendingConfirm: org.paygPricePence / 100 },
-        });
-      }
-    }
+    if ((LIVE as readonly string[]).includes(m.status)) await ensureOpenPlaceOffers(m.id, now);
   }
 }
 

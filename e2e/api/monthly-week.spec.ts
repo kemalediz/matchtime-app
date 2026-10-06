@@ -43,7 +43,7 @@ import { engineOn, selfIn, selfOut } from "../helpers/stub";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { MATCH, NAME, ORG_ID, PHONE, U, londonAt } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
-import { buildPasteUndoDm, buildPaygPoolDm, buildPaygPoolGroupPost } from "@/lib/monthly-week-copy";
+import { buildPasteUndoDm, buildPaygPoolDm, buildPaygPoolGroupPost, buildSeedBumpedDm } from "@/lib/monthly-week-copy";
 import { buildFeeConfirmPrompt } from "@/lib/dm-copy";
 
 test.describe.configure({ mode: "serial" });
@@ -231,11 +231,24 @@ async function club(
   );
 }
 
-async function fixture(db: TestDb, id: string, activityId: string, date: Date, status: string, postMatchEndFlow = true) {
+async function fixture(db: TestDb, id: string, activityId: string, date: Date, status: string, postMatchEndFlow = true, maxPlayers = 5) {
   await db.run(
     `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "postMatchEndFlow", "updatedAt")
-     VALUES ($1, $2, $3, 5, $4::"MatchStatus", $5, $6, now())`,
-    [id, activityId, date.toISOString(), status, new Date(date.getTime() - 5 * 60 * 60 * 1000).toISOString(), postMatchEndFlow],
+     VALUES ($1, $2, $3, $7, $4::"MatchStatus", $5, $6, now())`,
+    [id, activityId, date.toISOString(), status, new Date(date.getTime() - 5 * 60 * 60 * 1000).toISOString(), postMatchEndFlow, maxPlayers],
+  );
+}
+
+/** An attendance row with its event, in one statement (one transaction). */
+async function attend(db: TestDb, orgId: string, matchId: string, userId: string, status: string, position: number) {
+  await db.run(
+    `WITH a AS (
+       INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt")
+       VALUES ($1, $2, $3, $4::"AttendanceStatus", $5, now()) RETURNING "matchId", "userId", status, position
+     )
+     INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "toStatus", "toPosition", cause, "actorKind")
+     SELECT $6, "matchId", "userId", $7, status, position, 'test-fixture', 'system' FROM a`,
+    [`att-${matchId}-${userId}`, matchId, userId, status, position, `ev-${matchId}-${userId}`, orgId],
   );
 }
 
@@ -279,15 +292,11 @@ test.beforeAll(async () => {
 
   // Last week's game: Will played per game (so he is in the PAYG pool).
   await fixture(db, LAST_WEEK, ACT, londonAt(-4, 20, 0), "COMPLETED", false);
-  await db.run(
-    `WITH a AS (
-       INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt")
-       VALUES ('e2e-mw-att-will', $1, $2, 'CONFIRMED', 1, now()) RETURNING "matchId", "userId"
-     )
-     INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "toStatus", "toPosition", cause, "actorKind")
-     SELECT 'e2e-mw-ev-will', "matchId", "userId", $3, 'CONFIRMED', 1, 'test-fixture', 'system' FROM a`,
-    [LAST_WEEK, P.will.id, ORG],
-  );
+  await attend(db, ORG, LAST_WEEK, P.will.id, "CONFIRMED", 1);
+  // That game was played BEFORE the month was started here (two days ago):
+  // it is not the month's. Alex played it per game and Dave missed it.
+  await attend(db, ORG, LAST_WEEK, P.alex.id, "CONFIRMED", 2);
+  await attend(db, ORG, LAST_WEEK, P.dave.id, "DROPPED", 3);
   await fixture(db, MATCH_ID, ACT, KICKOFF, "UPCOMING");
 
   await month(db, { id: MONTH, org: ORG, act: ACT }, [
@@ -349,10 +358,38 @@ test("1. the regulars are put on the week's match, once, and the list is posted 
   // The weekly-shaped posts are not sent alongside it.
   expect(first.some((i) => i.key.includes("announce-match") || i.key.includes("evening-update"))).toBe(false);
 
-  // A second poll: nothing seeded twice, nothing posted twice.
+  // A place is open from the start (5 places, 4 regulars): it is offered
+  // too, not only a place somebody drops out of. The list carries the
+  // "1 place open" line, so there is no second group post for it; each
+  // pay-as-you-go player gets one DM (Omar: PAYG this month; Will: played
+  // per game last week; Tom has never played and is not asked).
+  expect(await offers(db)).toEqual([{ id: expect.any(String), replacingUserId: null, claimedByUserId: null, open: true, outcome: null }]);
+  expect(first.filter((i) => i.key.startsWith("offer-"))).toEqual([]);
+  const poolDms = first.filter((i) => i.key.startsWith(`${MATCH_ID}:payg-pool-dm:`));
+  expect(poolDms.map((i) => [i.kind, i.key, i.phone])).toEqual([
+    ["dm", `${MATCH_ID}:payg-pool-dm:${P.omar.id}`, digits(P.omar.phone)],
+    ["dm", `${MATCH_ID}:payg-pool-dm:${P.will.id}`, digits(P.will.phone)],
+  ]);
+  expect(poolDms[0].text).toBe(
+    buildPaygPoolDm({ name: P.omar.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, paygPricePence: 800, lang: "en" }),
+  );
+
+  // LAST WEEK'S GAME, played before the month was started here, is not
+  // touched: Alex's per-match row is not re-marked, and Dave's miss earns
+  // no credit.
+  expect(await rows(db, LAST_WEEK)).toEqual([
+    { userId: P.will.id, status: "CONFIRMED", position: 1, paymentMethod: null },
+    { userId: P.alex.id, status: "CONFIRMED", position: 2, paymentMethod: null },
+    { userId: P.dave.id, status: "DROPPED", position: 3, paymentMethod: null },
+  ]);
+  expect(await credits(db)).toEqual([]);
+
+  // A second poll: nothing seeded twice, nothing posted or offered twice.
   const second = await poll(request, at(10, 40));
   expect(listPosts(second)).toEqual([]);
+  expect(second.filter((i) => i.key.includes("payg-pool-dm") || i.key.startsWith("offer-"))).toEqual([]);
   expect(await rows(db)).toHaveLength(4);
+  expect(await offers(db)).toHaveLength(1);
 });
 
 test("2. a regular drops: paid but can't play, a credit, and the place goes to the PAYG pool", async ({ request, db }) => {
@@ -365,27 +402,19 @@ test("2. a regular drops: paid but can't play, a credit, and the place goes to t
     { userId: P.bilal.id, reason: "missed", games: 1, earnedMatchId: MATCH_ID, earnedMonthId: MONTH, voided: false },
   ]);
 
-  // Nobody is waiting, so the offer is for the PAYG pool.
-  expect(await offers(db)).toEqual([
-    { id: expect.any(String), replacingUserId: P.bilal.id, claimedByUserId: null, open: true, outcome: null },
+  // Nobody is waiting, so his place is on offer to the PAYG pool as well:
+  // one offer per open place.
+  expect((await offers(db)).map((o) => [o.replacingUserId, o.open])).toEqual([
+    [null, true],
+    [P.bilal.id, true],
   ]);
 
   const polled = await poll(request, at(11, 30));
-  const offerId = (await offers(db))[0].id;
-  const offer = polled.filter((i) => i.key.startsWith(`offer-${offerId}`));
-  // ONE announcement for the slot, and a DM to each pay-as-you-go player:
-  // Omar (PAYG this month) and Will (played per game last week). Tom has
-  // never played and is not asked.
-  expect(offer.map((i) => [i.kind, i.key])).toEqual([
-    ["group-message", `offer-${offerId}`],
-    ["dm", `offer-${offerId}:dm:${P.omar.id}`],
-    ["dm", `offer-${offerId}:dm:${P.will.id}`],
-  ]);
-  expect(offer[0].text).toBe(buildPaygPoolGroupPost({ matchDate: KICKOFF, paygPricePence: 800, lang: "en" }));
-  expect(offer[1].phone).toBe(digits(P.omar.phone));
-  expect(offer[1].text).toBe(
-    buildPaygPoolDm({ name: P.omar.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, paygPricePence: 800, lang: "en" }),
-  );
+  // ONE group post for it: the re-posted list says "2 places open, say
+  // IN", so the pool's own line is not sent as well. And nobody is DMed
+  // twice for the same match.
+  expect(polled.filter((i) => i.key.startsWith("offer-") || i.key.includes("payg-pool-dm"))).toEqual([]);
+  expect(buildPaygPoolGroupPost({ matchDate: KICKOFF, paygPricePence: 800, lang: "en" })).toContain("1 place open");
 
   // The drop itself is acknowledged with a react and no words; the
   // changed list reaches the group exactly once, on this poll.
@@ -411,7 +440,7 @@ test("2. a regular drops: paid but can't play, a credit, and the place goes to t
   // Nothing again on the next poll.
   const again = await poll(request, at(11, 40));
   expect(listPosts(again)).toEqual([]);
-  expect(again.some((i) => i.key.startsWith(`offer-${offerId}`))).toBe(false);
+  expect(again.some((i) => i.key.startsWith("offer-"))).toBe(false);
 });
 
 test("3. a PAYG player takes it: the vacated slot number, the offer closed, the list re-posted once", async ({ request, db }) => {
@@ -425,8 +454,11 @@ test("3. a PAYG player takes it: the vacated slot number, the offer closed, the 
     [MATCH_ID, P.omar.id],
   );
   expect(took).toEqual({ cause: "monthly-squad", note: `took slot 2, vacated by ${P.bilal.id}` });
-  expect(await offers(db)).toEqual([
-    { id: expect.any(String), replacingUserId: P.bilal.id, claimedByUserId: P.omar.id, open: false, outcome: "claimed" },
+  // The offer for Bilal's slot is closed as claimed by Omar; the place
+  // that was free from the start is still on offer.
+  expect((await offers(db)).map((o) => [o.replacingUserId, o.open, o.claimedByUserId])).toEqual([
+    [null, true, null],
+    [P.bilal.id, false, P.omar.id],
   ]);
   // Bilal still misses the game: the credit stands.
   expect((await credits(db)).filter((c) => !c.voided)).toHaveLength(1);
@@ -644,12 +676,61 @@ test("7. D3: a (paid) mark on a pasted list is a claim, never a confirmation", a
   expect(await paid()).toEqual({ claimed: true, source: "other-player", pence: 2250, confirmed: false });
 });
 
-test("a list for another month, and a message that is not a list, are not read as this month's list", async ({ request, db }) => {
-  const before = await rows(db);
+test("a paste NEVER creates a player: an unknown name, a club player not in the month, and a list of something else", async ({ request, db }) => {
+  const users = () => db.count(`SELECT COUNT(*) FROM "User"`);
+  const before = { rows: await rows(db), users: await users() };
+  const notes = () =>
+    db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND phone = $2 AND text LIKE '%I added nobody%' ORDER BY "createdAt"`, [
+      ORG,
+      digits(P.rob.phone),
+    ]);
+  const current = ["Alex Carter (paid)", "Omar Khan (PAYG)", "Chris Bell (paid)", "Dave Stone (paid)"];
+
+  // 1. A name nobody has, and a club player who is not on the month's
+  //    list (Will), written in by somebody else: neither is registered,
+  //    nobody is created, and the organisers get ONE note with the names.
+  const res = await say(request, P.alex, listText([...current, "Tariq", "Will Frost"], ["Bilal Aydin"]));
+  expect(res).toMatchObject({ handledBy: "fast-path", intent: "monthly_list", react: null, reply: null });
+  expect(await rows(db)).toEqual(before.rows);
+  expect(await users()).toBe(before.users);
+  expect((await notes()).map((n) => n.text)).toEqual([
+    `📋 ${P.alex.name} pasted the list for ${WHEN} with Tariq, Will Frost on it. I could not match that to a player on this month's list, ` +
+      "so I added nobody. A player can say *IN* in the group themselves, or you can add them on the match page.",
+  ]);
+  // The same names again today: no second note. Will is told nothing.
+  await say(request, P.tom, listText([...current, "Tariq", "Will Frost"], ["Bilal Aydin"]));
+  expect(await notes()).toHaveLength(1);
+  expect(await dms(db, P.will)).toEqual([]);
+
+  // 2. A numbered list of something else, with no month header: not the
+  //    month's list at all. (This is the one that used to create four
+  //    players called Bibs, Two balls, Cones and Pump.)
+  const kit = await say(request, P.alex, ["Kit for Monday", "1. Bibs", "2. Two balls", "3. Cones", "4. Pump"].join("\n"));
+  expect(kit.intent).not.toBe("monthly_list");
+  expect(await rows(db)).toEqual(before.rows);
+  expect(await users()).toBe(before.users);
+
+  // 3. Another month's header over the CURRENT squad in order, with a new
+  //    name appended: the shape the weekly pasted-roster rule registers
+  //    from. In a running month it registers nobody and creates nobody.
   const other = MONTH_NAME === "November" ? "December" : "November";
-  const res = await say(request, P.will, listText(["Alex Carter", "Will Frost", "Chris Bell", "Dave Stone"], [], `List for ${other}:`));
-  expect(res.intent).not.toBe("monthly_list");
+  const squad = (await rows(db)).filter((r) => r.status === "CONFIRMED").sort((a, b) => a.position - b.position);
+  const names = squad.map((r) => Object.values(P).find((p) => p.id === r.userId)!.name);
+  const next = await say(request, P.alex, listText([...names, "Ghost Player"], [], `List for ${other}:`));
+  expect(next.intent).not.toBe("monthly_list");
+  expect(await rows(db)).toEqual(before.rows);
+  expect(await users()).toBe(before.users);
+  expect(await db.count(`SELECT COUNT(*) FROM "User" WHERE name IN ('Ghost Player', 'Bibs', 'Tariq')`)).toBe(0);
+});
+
+test("an OLD copy from an admin has no admin powers", async ({ request, db }) => {
+  // Rob pastes the day-one list: Bilal back in slot 2, and slot 4 blank.
+  const before = await rows(db);
+  const res = await say(request, P.rob, listText(["Alex Carter (paid)", "Bilal Aydin (paid)", "Chris Bell", null]));
+  expect(res).toMatchObject({ intent: "monthly_list", react: null });
   expect(await rows(db)).toEqual(before);
+  expect((await rowOf(db, P.bilal))?.status).toBe("DROPPED");
+  expect((await rowOf(db, P.dave))?.status).toBe("CONFIRMED");
 });
 
 test("8. after the match: no payment poll, and the PAYG price is confirmed for the PAYG players only", async ({ request, db }) => {
@@ -664,11 +745,23 @@ test("8. after the match: no payment poll, and the PAYG price is confirmed for t
   expect(ask[0].text).toBe(
     buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" }),
   );
-  const m = await db.one<{ pending: number | null; fee: number | null }>(
-    `SELECT "feePendingConfirm" AS pending, "feePerPlayer" AS fee FROM "Match" WHERE id = $1`,
-    [MATCH_ID],
-  );
-  expect(m).toEqual({ pending: 8, fee: null });
+  const fee = () =>
+    db.one<{ pending: number | null; fee: number | null }>(
+      `SELECT "feePendingConfirm" AS pending, "feePerPlayer" AS fee FROM "Match" WHERE id = $1`,
+      [MATCH_ID],
+    );
+  // NOT staged yet: the DM has been handed to the Pi, not sent. A "yes"
+  // from the collector now would confirm nothing.
+  expect(await fee()).toEqual({ pending: null, fee: null });
+  // The Pi acks the DM: only now is £8 the amount awaiting his yes.
+  const ack = await request.post("/api/whatsapp/ack", {
+    headers: KEY,
+    data: { key: `${MATCH_ID}:fee-ask`, kind: "dm", matchId: MATCH_ID, waMessageId: "e2e-mw-wa-fee" },
+  });
+  expect(ack.status(), await ack.text()).toBe(200);
+  expect(await fee()).toEqual({ pending: 8, fee: null });
+  // And he is not asked a second time.
+  expect((await poll(request, new Date(after.getTime() + 10 * 60 * 1000))).some((i) => i.key === `${MATCH_ID}:fee-ask`)).toBe(false);
   // No list is posted for a match that has kicked off.
   expect(listPosts(polled)).toEqual([]);
 });
@@ -729,8 +822,26 @@ test.describe("10. guards, and Turkish", () => {
     await fixture(db, MATCH2, "e2e-mw2-act", KICKOFF, "UPCOMING");
     await month(db, { id: "e2e-mw2-month", org: ORG2, act: "e2e-mw2-act" }, [
       { p: Q.ayse, slot: 1, paid: true },
-      { p: Q.burak, slot: 2, paid: true },
+      { p: Q.burak, slot: 2 },
     ]);
+  });
+
+  test("BEFORE the week is seeded a paste only records paid marks: nobody in, nobody out, nobody away, no DM", async ({ request, db }) => {
+    // The hours between one game ending and the regulars being put on the
+    // next: the match has no rows yet. The paste moves Burak out and marks
+    // him paid.
+    const body = [`${MONTH_NAME} list`, "1. Ayşe Demir", "2.", "", "Paid but can't play", "1. Burak Kaya (paid)"].join("\n");
+    const res = await say(request, Q.ayse as unknown as Person, body, { groupId: GROUP2 });
+    expect(res).toMatchObject({ intent: "monthly_list", react: "✅", reply: null });
+    expect(await rows(db, MATCH2)).toEqual([]);
+    const burak = await db.one<{ claimed: boolean; source: string | null; confirmed: boolean; away: string[] }>(
+      `SELECT ("paidClaimedAt" IS NOT NULL) AS claimed, "paidClaimSource" AS source, ("paidAt" IS NOT NULL) AS confirmed,
+              "absentMatchIds" AS away FROM "SquadMonthMember" WHERE "monthId" = 'e2e-mw2-month' AND "userId" = $1`,
+      [Q.burak.id],
+    );
+    expect(burak).toEqual({ claimed: true, source: "other-player", confirmed: false, away: [] });
+    expect(await dms(db, Q.burak as unknown as Person, ORG2)).toEqual([]);
+    expect(await credits(db, ORG2)).toEqual([]);
     await db.run(`UPDATE "Organisation" SET "dormantAt" = now() WHERE id = $1`, [ORG2]);
   });
 
@@ -803,5 +914,60 @@ test.describe("10. guards, and Turkish", () => {
     expect((await dms(db, Q.burak as unknown as Person, ORG2)).map((d) => d.text)).toEqual([
       buildPasteUndoDm({ change: "out-paid", actorName: Q.ayse.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "tr" }),
     ]);
+  });
+});
+
+test.describe("regulars have priority at the seed", () => {
+  const ORG3 = "e2e-mw3-org";
+  const GROUP3 = "e2e-monthly-small@g.us";
+  const MATCH3 = "e2e-mw3-match";
+  const R = {
+    una: { id: "e2e-mw3-una", name: "Una Reid", phone: "+447700922001" },
+    vic: { id: "e2e-mw3-vic", name: "Vic Shaw", phone: "+447700922002" },
+    wes: { id: "e2e-mw3-wes", name: "Wes Tate", phone: "+447700922003" },
+    ned: { id: "e2e-mw3-ned", name: "Ned Early", phone: "+447700922004" },
+  } as const;
+
+  test("an early IN from a non-regular gives way (with a DM), and a paid regular left without a place is credited", async ({
+    request,
+    db,
+  }) => {
+    await club(db, { org: ORG3, group: GROUP3, act: "e2e-mw3-act", sport: "e2e-mw3-sport", name: "Small Sided" });
+    await person(db, ORG3, R.una, "OWNER");
+    for (const p of [R.vic, R.wes, R.ned]) await person(db, ORG3, p);
+    // Two places, three paid regulars, and Ned (not a regular) already IN.
+    await fixture(db, MATCH3, "e2e-mw3-act", KICKOFF, "UPCOMING", true, 2);
+    await attend(db, ORG3, MATCH3, R.ned.id, "CONFIRMED", 1);
+    await month(db, { id: "e2e-mw3-month", org: ORG3, act: "e2e-mw3-act" }, [
+      { p: R.una, slot: 1, paid: true },
+      { p: R.vic, slot: 2, paid: true },
+      { p: R.wes, slot: 3, paid: true },
+    ]);
+
+    const polled = await poll(request, at(10), GROUP3);
+
+    expect((await rows(db, MATCH3)).map((r) => [r.userId, r.status, r.position])).toEqual([
+      [R.ned.id, "BENCH", 1],
+      [R.una.id, "CONFIRMED", 1],
+      [R.vic.id, "CONFIRMED", 2],
+      [R.wes.id, "BENCH", 3],
+    ]);
+    // Ned is told why.
+    expect((await dms(db, R.ned as unknown as Person, ORG3)).map((d) => d.text)).toEqual([
+      buildSeedBumpedDm({ name: R.ned.name, activityName: "Monday 7-a-side", matchDate: KICKOFF, lang: "en" }),
+    ]);
+    const ev = await db.one<{ cause: string; note: string }>(
+      `SELECT cause, note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND "toStatus" = 'BENCH'`,
+      [MATCH3, R.ned.id],
+    );
+    expect(ev).toEqual({ cause: "monthly-squad", note: "the month's regulars have priority: moved to the waiting list" });
+
+    // Wes paid for the month and has no place through no choice of his own.
+    expect(await credits(db, ORG3)).toEqual([
+      { userId: R.wes.id, reason: "missed", games: 1, earnedMatchId: MATCH3, earnedMonthId: "e2e-mw3-month", voided: false },
+    ]);
+    const list = listPosts(polled, MATCH3);
+    expect(list).toHaveLength(1);
+    expect(list[0].text).toContain("1. Una Reid (paid)\n2. Vic Shaw (paid)\n\nReserves\n1. Ned Early\n2. Wes Tate");
   });
 });

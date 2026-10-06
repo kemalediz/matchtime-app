@@ -6,6 +6,8 @@ import { describe, it, expect } from "vitest";
 import { parseMonthlyList } from "../monthly-list";
 import {
   buildPasteIgnoredAdminNotice,
+  buildPasteNotAddedNotice,
+  buildSeedBumpedDm,
   buildPasteUndoDm,
   buildPaygPoolDm,
   buildPaygPoolGroupPost,
@@ -195,5 +197,29 @@ describe("pasteResidual: what a member typed around the list", () => {
   it("what the member typed above or below the list is kept, in order", () => {
     const body = "can't make it lads, someone take my spot\nList for October:\n1. Alex\n2.\n3. Chris\nsee you next week";
     expect(pasteResidual(body, ctx)).toBe("can't make it lads, someone take my spot\nsee you next week");
+  });
+});
+
+describe("review fixes: the two new messages", () => {
+  it("a non-regular moved to the waiting list when the regulars are put on the match", () => {
+    expect(buildSeedBumpedDm({ name: "Zed Wait", activityName: "Monday 7-a-side", matchDate: MATCH, lang: "en" })).toBe(
+      "👋 Zed, the regulars who have paid for the month have their places for *Monday 7-a-side* on Mon 12 Oct, 20:00, " +
+        "so you are on the waiting list for now. I'll message you if a place opens.",
+    );
+    expect(buildSeedBumpedDm({ name: null, activityName: "Pazartesi 7'ye 7", matchDate: MATCH, lang: "tr" })).toBe(
+      "👋 *Pazartesi 7'ye 7* (12 Ekim Pazartesi 20:00) maçında yerler önce ayı ödeyen daimi oyuncuların, " +
+        "bu yüzden şimdilik yedek listesindesin. Yer açılırsa sana yazarım.",
+    );
+  });
+
+  it("names on a pasted list that were not added, with how to add them", () => {
+    expect(buildPasteNotAddedNotice({ actorName: "Alex Carter", names: ["Tariq", "Big O"], matchDate: MATCH, lang: "en" })).toBe(
+      "📋 Alex Carter pasted the list for Mon 12 Oct, 20:00 with Tariq, Big O on it. I could not match that to a player on this month's list, " +
+        "so I added nobody. A player can say *IN* in the group themselves, or you can add them on the match page.",
+    );
+    const tr = buildPasteNotAddedNotice({ actorName: "Alex Carter", names: ["Tariq"], matchDate: MATCH, lang: "tr" });
+    expect(tr).toContain("Tariq");
+    expect(tr).toContain("*VARIM*");
+    expect(tr).not.toMatch(/[—–]/);
   });
 });

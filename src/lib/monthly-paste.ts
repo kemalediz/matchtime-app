@@ -31,12 +31,14 @@ import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import { formatLondon } from "./london-time";
 import { parseMonthlyList } from "./monthly-list";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek } from "./monthly-week";
-import { buildPasteIgnoredAdminNotice, buildPasteUndoDm, pasteResidual } from "./monthly-week-copy";
+import { buildPasteIgnoredAdminNotice, buildPasteNotAddedNotice, buildPasteUndoDm, pasteResidual } from "./monthly-week-copy";
 import {
   buildWeekList,
   pasteShowsSameList,
   reconcileMonthPaste,
+  weekListHash,
   type PasteIgnored,
+  type PasteNotAdded,
   type PasteRosterMember,
 } from "./monthly-week-rules";
 
@@ -45,24 +47,57 @@ export interface MonthlyPasteResult {
   changed: boolean;
   /** What was applied, for the AnalyzedMessage row. Never parsed. */
   applied: string[];
-  /** Lines left alone on purpose (an old copy, an ambiguous name). */
+  /** Lines left alone on purpose (an old copy). */
   ignored: PasteIgnored[];
-  /** Names whose write failed or that could not be resolved. */
+  /** Names in numbered slots that were NOT registered: nobody's name, two
+   *  players' name, or a club player who is not on the month's list. */
+  notAdded: PasteNotAdded[];
+  /** Names whose write failed. */
   failures: string[];
   /** Whatever the member typed around the list ("can't make it lads"),
    *  for the rest of the pipeline. "" when the message was only a list. */
   residual: string;
 }
 
-/** `UserAlias.alias` is stored normalised, as the analyze route reads it. */
-function aliasKey(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+/**
+ * A list-shaped message in a monthly club's running month that is NOT the
+ * month's list (another month's header, or a numbered list of something
+ * else: "Kit for Monday: 1. Bibs 2. Two balls"). Nothing is read from it,
+ * and the caller must not let any other path register its lines either.
+ */
+export interface NotThisMonthsList {
+  notThisList: true;
 }
 
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "P2002";
+}
+
+/** Claim a once-only key. False when it was already claimed. */
+async function claimOnce(key: string, kind: string, matchId: string | null): Promise<boolean> {
+  try {
+    await db.sentNotification.create({ data: { key, kind, ...(matchId ? { matchId } : {}) } });
+    return true;
+  } catch (err) {
+    if (isUniqueViolation(err)) return false;
+    throw err;
+  }
+}
+
+/**
+ * Apply a member's pasted list to this week's match.
+ *
+ * NEVER creates a player and never guesses one: names are matched by the
+ * pure resolver in `reconcileMonthPaste` (whole name, a known alias, the
+ * leading name) and by nothing else. The analyze route's own resolver,
+ * which matches by prefix and provisions a new member for a name it does
+ * not know, is deliberately not reachable from here: it turned "Kit for
+ * Monday / 1. Bibs / 2. Two balls" into players (review, 2026-10-06).
+ *
+ * Returns null when there is nothing monthly about this message (not
+ * list-shaped, a weekly club, no running month for the match), and
+ * `{ notThisList: true }` when it is a list but not this month's.
+ */
 export async function handleMonthlyPaste(args: {
   orgId: string;
   matchId: string;
@@ -71,11 +106,8 @@ export async function handleMonthlyPaste(args: {
   /** When the member sent it (the original WhatsApp time). */
   sentAt?: Date;
   sender: { userId: string | null; name: string | null };
-  /** The analyze route's own name resolver (exact, first name, alias,
-   *  then a provisional member). Used only for a name nobody here has. */
-  resolveByName: (name: string) => Promise<{ userId: string; name: string | null } | null>;
   now?: Date;
-}): Promise<MonthlyPasteResult | null> {
+}): Promise<MonthlyPasteResult | NotThisMonthsList | null> {
   const { orgId, matchId, sender } = args;
   const now = args.now ?? new Date();
   const list = parseMonthlyList(args.body);
@@ -105,37 +137,35 @@ export async function handleMonthlyPaste(args: {
     maxPlayers: week.maxPlayers,
     roster,
     matchMonth: Number(formatLondon(week.matchDate, "M")),
+    // Before the regulars are on the match (the hours after one game ends)
+    // a paste only records paid marks.
+    seeded: week.seeded,
     senderUserId: sender.userId,
     senderIsAdmin,
   });
   // "List for November" pasted in October is next month's sign-up
-  // (slice 3), not this week's list.
-  if (outcome.otherMonth) return null;
+  // (slice 3); a numbered list of something else is not a squad list.
+  if (outcome.otherMonth || outcome.notThisList) return { notThisList: true };
 
   const phoneOf = new Map(memberships.map((m) => [m.user.id, m.user.phoneNumber]));
   const memberOf = new Map(week.members.map((m) => [m.userId, m]));
   const rowOf = new Map(week.rows.map((r) => [r.userId, r]));
   const sendAfter = adminNoticeSendAfter(now);
-  /** D4: tell the player whose line somebody else changed. */
+  const dm = (phone: string, text: string) =>
+    db.botJob.create({
+      // Never between 22:00 and 07:59 London: held until 08:00.
+      data: { orgId, kind: "dm", phone: phone.replace(/^\+/, ""), text, ...(sendAfter ? { sendAfter } : {}) },
+    });
+  /** D4: tell the player whose line somebody else changed. Once per paste
+   *  and player, so a retried batch cannot send it twice. */
   const undoDm = async (userId: string, change: "out-paid" | "out" | "in"): Promise<void> => {
     const phone = phoneOf.get(userId);
     if (!phone) return;
-    await db.botJob.create({
-      data: {
-        orgId,
-        kind: "dm",
-        phone: phone.replace(/^\+/, ""),
-        text: buildPasteUndoDm({
-          change,
-          actorName: sender.name,
-          activityName: week.activityName,
-          matchDate: week.matchDate,
-          lang: week.language,
-        }),
-        // Never between 22:00 and 07:59 London: held until 08:00.
-        ...(sendAfter ? { sendAfter } : {}),
-      },
-    });
+    if (!(await claimOnce(`${matchId}:paste-undo:${args.waMessageId}:${userId}`, "paste-undo-dm", matchId))) return;
+    await dm(
+      phone,
+      buildPasteUndoDm({ change, actorName: sender.name, activityName: week.activityName, matchDate: week.matchDate, lang: week.language }),
+    );
   };
 
   const applied: string[] = [];
@@ -143,43 +173,32 @@ export async function handleMonthlyPaste(args: {
   for (const a of outcome.actions) {
     try {
       if (a.kind === "in") {
-        const target = a.userId ? { userId: a.userId } : await args.resolveByName(a.name);
-        if (!target) {
-          failures.push(a.name);
-          continue;
-        }
-        if (a.teachAlias) {
-          const alias = aliasKey(a.teachAlias);
-          if (alias.length >= 2) {
-            await db.userAlias
-              .create({ data: { orgId, userId: target.userId, alias, source: "auto-detect" } })
-              // Somebody already has that alias: leave it with them.
-              .catch(() => {});
-          }
-        }
-        const self = target.userId === sender.userId;
-        const res = await registerAttendance(target.userId, matchId, {
-          promoteFromBench: self,
+        const before = rowOf.get(a.userId)?.status ?? null;
+        const res = await registerAttendance(a.userId, matchId, {
+          promoteFromBench: a.self,
           event: {
             cause: "pasted-roster",
-            actorKind: self ? "player" : "member",
+            actorKind: a.self ? "player" : "member",
             actorUserId: sender.userId ?? null,
             sourceRef: args.waMessageId,
             note: "written into a numbered slot on a pasted monthly list",
           },
         });
+        // Nothing changed (they were in already): nothing to say or undo.
+        if (res.status === before) continue;
         applied.push(`in:${a.name}${res.status === "BENCH" ? " (waiting list)" : ""}`);
-        if (!self) await undoDm(target.userId, "in");
+        if (!a.self) await undoDm(a.userId, "in");
       } else if (a.kind === "out") {
-        const self = a.userId === sender.userId;
         const member = memberOf.get(a.userId);
-        if (rowOf.has(a.userId)) {
+        const row = rowOf.get(a.userId);
+        if (row) {
+          if (row.status === "DROPPED") continue;
           await cancelAttendance(
             a.userId,
             matchId,
             {
               cause: "pasted-roster",
-              actorKind: self ? "player" : "member",
+              actorKind: a.self ? "player" : "member",
               actorUserId: sender.userId ?? null,
               sourceRef: args.waMessageId,
               note:
@@ -190,14 +209,15 @@ export async function handleMonthlyPaste(args: {
             { occurredAt: args.sentAt },
           );
         } else {
-          // A regular with no row yet (the week is not seeded): away.
-          await db.squadMonthMember.updateMany({
+          // A regular of a seeded week with no row of their own: away.
+          const res = await db.squadMonthMember.updateMany({
             where: { monthId: week.monthId, userId: a.userId, NOT: { absentMatchIds: { has: matchId } } },
             data: { absentMatchIds: { push: matchId } },
           });
+          if (res.count === 0) continue;
         }
         applied.push(`out:${a.name}`);
-        if (!self) await undoDm(a.userId, member?.kind === "regular" && member.paid !== "none" ? "out-paid" : "out");
+        if (!a.self) await undoDm(a.userId, member?.kind === "regular" && member.paid !== "none" ? "out-paid" : "out");
       } else {
         // D3. A claim, never a confirmation: `paidAt` is not touched, and
         // a row that already says paid (or is confirmed) is left alone.
@@ -205,7 +225,7 @@ export async function handleMonthlyPaste(args: {
           where: { monthId: week.monthId, userId: a.userId, paidAt: null, paidClaimedAt: null },
           data: {
             paidClaimedAt: now,
-            paidClaimSource: a.userId === sender.userId ? "list" : "other-player",
+            paidClaimSource: a.self ? "list" : "other-player",
             paidClaimedAmountPence: a.amountPence,
           },
         });
@@ -221,27 +241,43 @@ export async function handleMonthlyPaste(args: {
   // already run the sync for the rest.
   await syncMonthlyWeek(matchId, now).catch((err) => console.error("[monthly-paste] sync failed:", err));
 
+  const day = formatLondon(now, "yyyy-MM-dd");
   // An old copy was pasted: one line to the organisers, at most once a
   // London day per club.
-  const stale = outcome.ignored.filter((i) => i.reason === "stale-readd" || i.reason === "blank-by-other");
-  if (stale.length > 0) {
+  if (outcome.ignored.length > 0) {
     try {
-      await db.sentNotification.create({
-        data: { key: `org-${orgId}:month-paste-ignored:${formatLondon(now, "yyyy-MM-dd")}`, kind: "admin-notice" },
-      });
-      await sendAdminNotice({
-        orgId,
-        now,
-        text: buildPasteIgnoredAdminNotice({
-          actorName: sender.name,
-          names: stale.map((i) => i.name),
-          matchDate: week.matchDate,
-          lang: week.language,
-        }),
-      });
-    } catch {
-      // Already told today (the unique key), or the notice could not be
-      // queued. Either way the paste itself has been dealt with.
+      if (await claimOnce(`org-${orgId}:month-paste-ignored:${day}`, "admin-notice", null)) {
+        await sendAdminNotice({
+          orgId,
+          now,
+          text: buildPasteIgnoredAdminNotice({
+            actorName: sender.name,
+            names: outcome.ignored.map((i) => i.name),
+            matchDate: week.matchDate,
+            lang: week.language,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error("[monthly-paste] old-copy notice failed:", err);
+    }
+  }
+
+  // Names that were not added: the admin who pasted them is told, else the
+  // organisers, with how to add a player. Once a day for the same names
+  // (this group re-pastes its list all day long).
+  if (outcome.notAdded.length > 0) {
+    try {
+      const names = [...new Set(outcome.notAdded.map((n) => n.name))];
+      const key = `org-${orgId}:month-paste-not-added:${day}:${weekListHash(names.map((n) => n.toLowerCase()).sort().join("|"))}`;
+      if (await claimOnce(key, "admin-notice", null)) {
+        const text = buildPasteNotAddedNotice({ actorName: sender.name, names, matchDate: week.matchDate, lang: week.language });
+        const own = senderIsAdmin && sender.userId ? phoneOf.get(sender.userId) : null;
+        if (own) await dm(own, text);
+        else await sendAdminNotice({ orgId, now, text });
+      }
+    } catch (err) {
+      console.error("[monthly-paste] not-added notice failed:", err);
     }
   }
 
@@ -250,7 +286,7 @@ export async function handleMonthlyPaste(args: {
   // back (plan 5.4: "no re-post after a member's paste that matches").
   try {
     const after = await loadMonthlyWeek(matchId);
-    if (after) {
+    if (after?.seeded) {
       const weekList = buildWeekList({ members: after.members, rows: after.rows, maxPlayers: after.maxPlayers });
       if (pasteShowsSameList({ list, week: weekList, roster })) {
         await recordWeekListShown(matchId, renderWeekList(after).hash, "month-list-seen");
@@ -264,6 +300,7 @@ export async function handleMonthlyPaste(args: {
     changed: applied.length > 0,
     applied,
     ignored: outcome.ignored,
+    notAdded: outcome.notAdded,
     failures,
     residual: pasteResidual(args.body, { lang: week.language, maxPlayers: week.maxPlayers, paygPricePence: week.paygPricePence }),
   };

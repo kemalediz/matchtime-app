@@ -2553,6 +2553,12 @@ export const tr: Strings = {
     `📋 ${p.actor}, ${p.when} maçı için listenin eski bir kopyasını yapıştırdı. ${p.names.join(", ")} için bir şey değiştirmedim: ` +
     `yapıştırılan liste, çıkan bir oyuncuyu geri getiremez ya da satırını boşaltarak başkasını çıkaramaz. ` +
     `Değişiklik doğruysa oyuncu kendisi yazabilir ya da siz maç sayfasından yapabilirsiniz.`,
+  mwk_admin_paste_not_added: (p) =>
+    `📋 ${p.actor}, ${p.when} maçı için içinde ${p.names.join(", ")} olan bir liste yapıştırdı. Bunu bu ayın listesindeki bir oyuncuyla eşleştiremedim, ` +
+    `bu yüzden kimseyi eklemedim. Oyuncu grupta kendisi *VARIM* yazabilir ya da siz maç sayfasından ekleyebilirsiniz.`,
+  mwk_dm_bumped: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* (${p.when}) maçında yerler önce ayı ödeyen daimi oyuncuların, ` +
+    `bu yüzden şimdilik yedek listesindesin. Yer açılırsa sana yazarım.`,
 };
 
 /**

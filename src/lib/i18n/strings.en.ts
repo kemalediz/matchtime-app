@@ -3230,4 +3230,15 @@ export const en = {
     `📋 ${p.actor} pasted an older copy of the list for ${p.when}. I left ${p.names.join(", ")} as they were: ` +
     `a pasted list cannot bring back a player who dropped out, or take out somebody else by blanking their line. ` +
     `If the change is right, the player can say so, or you can make it on the match page.`,
+  /** To the organisers (or the admin who pasted it): names on a pasted
+   *  list that match no player of the month. A paste never creates a
+   *  player and never guesses one. */
+  mwk_admin_paste_not_added: (p: { actor: string; names: string[]; when: string }): string =>
+    `📋 ${p.actor} pasted the list for ${p.when} with ${p.names.join(", ")} on it. I could not match that to a player on this month's list, ` +
+    `so I added nobody. A player can say *IN* in the group themselves, or you can add them on the match page.`,
+  /** To a non-regular who said IN before the month's regulars were put on
+   *  the match, and whose place a regular has taken. */
+  mwk_dm_bumped: (p: { firstName: string | null; activityName: string; when: string }): string =>
+    `👋 ${p.firstName ?? "there"}, the regulars who have paid for the month have their places for *${p.activityName}* on ${p.when}, ` +
+    `so you are on the waiting list for now. I'll message you if a place opens.`,
 };

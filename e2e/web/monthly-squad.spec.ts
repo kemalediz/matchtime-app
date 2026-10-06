@@ -264,6 +264,20 @@ test("an admin starts the month by pasting the group's list: paid marks are only
   expect(of(U.rater)).toMatchObject({ kind: "regular", slot: 2, claimed: true, paidClaimedAmountPence: null });
   expect(of(U.bench)).toMatchObject({ kind: "payg", slot: 3, claimed: false });
   expect(of(U.third)).toMatchObject({ kind: "regular", slot: 4, claimed: true });
+  // The names the list used are saved as aliases of the players they were
+  // matched to, so the group's later pastes of this list resolve by name
+  // (a paste is matched by exact name or alias, never by guess). "Patso"
+  // was Pat's alias already and stays his, once.
+  const aliases = await db.all<{ alias: string; userId: string }>(
+    `SELECT alias, "userId" FROM "UserAlias" WHERE "orgId" = $1 ORDER BY alias`,
+    [ORG_ID],
+  );
+  expect(aliases).toEqual([
+    { alias: "ben", userId: U.bench },
+    { alias: "patso", userId: U.player },
+    { alias: "riley", userId: U.rater },
+    { alias: "tom", userId: U.third },
+  ]);
   expect(await outbound()).toBe(before);
 
   await wipeMonths();

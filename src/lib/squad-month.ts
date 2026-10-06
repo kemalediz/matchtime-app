@@ -90,11 +90,44 @@ export async function startMonth(
       }
       return month.id;
     });
+    await saveListAliases(orgId, plan.aliases);
     return { ok: true, monthId };
   } catch (err) {
     // The unique (orgId, activityId, monthStart): somebody else got there first.
     if (isUniqueViolation(err)) return { ok: false, error: "already-started" };
     throw err;
+  }
+}
+
+/**
+ * The names a pasted list used for the players the organiser matched them
+ * to, saved as aliases ("Big Al" is Alex Carter). The group pastes that
+ * same list all month, and a paste is matched by exact name or alias only,
+ * never by guess, so without this a nickname on the list would match
+ * nobody, and a first name would stop matching the day a namesake joins.
+ * Skipped when it is the player's own full name, and when another player
+ * already has that alias (it is left with them).
+ * Best effort: a failure here never undoes the month that was started.
+ */
+async function saveListAliases(orgId: string, aliases: Array<{ userId: string; alias: string }>): Promise<void> {
+  if (aliases.length === 0) return;
+  try {
+    const key = (s: string) => s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const users = await db.user.findMany({ where: { id: { in: aliases.map((a) => a.userId) } }, select: { id: true, name: true } });
+    const nameOf = new Map(users.map((u) => [u.id, key(u.name ?? "")]));
+    for (const a of aliases) {
+      const alias = key(a.alias);
+      const own = nameOf.get(a.userId) ?? "";
+      // Their own full name needs no alias. A leading name ("Omar" for
+      // Omar Khan) does: it is unique today, and the alias keeps it theirs
+      // if a second Omar joins the club.
+      if (alias.length < 2 || alias === own) continue;
+      const taken = await db.userAlias.findUnique({ where: { orgId_alias: { orgId, alias } }, select: { id: true } });
+      if (taken) continue;
+      await db.userAlias.create({ data: { orgId, userId: a.userId, alias, source: "auto-detect" } }).catch(() => {});
+    }
+  } catch (err) {
+    console.error(`[squad-month] saving the list's names as aliases for ${orgId} failed:`, err);
   }
 }
 
