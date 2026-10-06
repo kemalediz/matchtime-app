@@ -103,6 +103,13 @@ import { answerScopedQuestion } from "@/lib/dm-qa";
 // outgoing reply whatever composed it — it was never about the model.
 import { enforceProximity } from "@/lib/message-analyzer";
 import {
+  RECRUIT_ACK_KIND,
+  ROSTER_SHOWN_KIND,
+  recruitAckKey,
+  rosterShownKey,
+  squadFingerprint,
+} from "@/lib/roster-shown";
+import {
   composeSquadStateReply,
   skipsSquadComposition,
   buildRecruitAckReply,
@@ -3375,6 +3382,33 @@ async function handleAnalyzeRequest(request: Request) {
             .recordWeekListShown(nextMatchForReply.id, monthlyList.hash, "group-message")
             .catch((err) => console.error("[analyze] could not record the monthly list as shown:", err));
         }
+        // The group is about to see the squad, so the scheduler must not
+        // list the same one again inside three hours (2026-10-06, Sutton
+        // FC: this reply at 07:28, then the same thirteen names from the
+        // morning chase at 08:00). The scheduler's only memory is the
+        // rows in `SentNotification`, and this reply used to leave none.
+        // Only for the roster itself: the team sheet and a monthly club's
+        // list are different posts. Best effort, like the row above.
+        if (composedIdx.length > 0 && !truth.teams && !monthlyList) {
+          const shownAt = new Date();
+          await db.sentNotification
+            .create({
+              data: {
+                key: rosterShownKey(
+                  nextMatchForReply.id,
+                  squadFingerprint({
+                    confirmedUserIds: finalAtt.filter((a) => a.status === "CONFIRMED").map((a) => a.userId),
+                    benchUserIds: finalAtt.filter((a) => a.status === "BENCH").map((a) => a.userId),
+                    maxPlayers: nextMatchForReply.maxPlayers,
+                  }),
+                  shownAt,
+                ),
+                kind: ROSTER_SHOWN_KIND,
+                matchId: nextMatchForReply.id,
+              },
+            })
+            .catch((err) => console.error("[analyze] could not record the roster as shown:", err));
+        }
         // MatchTime posts ONE squad status per batch. Every composed
         // reply now renders the same post, so the earlier ones would be
         // literal duplicates — silence them, keeping the last (the
@@ -3437,6 +3471,22 @@ async function handleAnalyzeRequest(request: Request) {
       // squad, the features and the match at once, and the DM admin path
       // (`dm-reply/route.ts`) prints the same string.
       const recruitReply = buildRecruitAckReply(r, org.language);
+      // The group is being told the recruit DMs went out for this many
+      // open places. The match-day morning chase asks for the same
+      // places, so it stays quiet for three hours unless the need
+      // changes (`roster-shown.ts`, 2026-10-06). Only when DMs were
+      // really queued: the other three replies ask nobody for anything.
+      if (r.ok && (r.invited ?? 0) > 0 && r.matchId && typeof r.need === "number") {
+        await db.sentNotification
+          .create({
+            data: {
+              key: recruitAckKey(r.matchId, r.need, new Date()),
+              kind: RECRUIT_ACK_KIND,
+              matchId: r.matchId,
+            },
+          })
+          .catch((err) => console.error("[analyze] could not record the recruit ack:", err));
+      }
 
       const idx = results.findIndex((x) => x.waMessageId === recruitMsg.waMessageId);
       if (idx >= 0) {

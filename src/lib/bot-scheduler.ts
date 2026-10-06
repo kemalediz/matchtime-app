@@ -68,6 +68,17 @@ import {
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
 import { normaliseLang, type Lang } from "./i18n/lang";
+import {
+  RECRUIT_ACK_KIND,
+  ROSTER_QUIET_MS,
+  ROSTER_SHOWN_KIND,
+  hasRosterBlock,
+  recruitAckRecently,
+  rosterShownRecently,
+  squadFingerprint,
+  stripRosterBlock,
+  type QuietMarkerRow,
+} from "./roster-shown";
 import { summariseUnpaid, unpaidFollowUpDue } from "./unpaid-rules";
 import { recordOpsEvent } from "./ops-alerts";
 import {
@@ -184,6 +195,11 @@ export type DueInstruction =
        *  rows /api/whatsapp/due-posts writes in the same transaction as
        *  the claim. Server-side; stripped before the Pi sees it. */
       badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
+      /** Set when this post carries the squad roster (`roster-shown.ts`):
+       *  /api/whatsapp/due-posts records it when it hands the post out,
+       *  so the next scheduled post does not list the same squad again.
+       *  Server-side; stripped before the Pi sees it. */
+      rosterShown?: { fingerprint: string };
     }
   | {
       kind: "group-poll";
@@ -1019,6 +1035,55 @@ async function computeForMatch(
   const maxPlayers = m.maxPlayers;
   const need = Math.max(0, maxPlayers - confirmed.length);
 
+  // ── THE SAME SQUAD IS NOT LISTED TWICE (2026-10-06) ──────────────────
+  //   Sutton FC, Tue 6 Oct: the analyze reply posted the squad at 07:28
+  //   and the morning chase posted the same thirteen names at 08:00. See
+  //   `roster-shown.ts` for the markers. Read lazily and at most once per
+  //   match per poll, and only by a post that is actually due.
+  //   FAILS OPEN: if the read throws, nothing was "shown" and every post
+  //   goes out with its roster, exactly as before this existed.
+  const squadKey = squadFingerprint({
+    confirmedUserIds: confirmed.map((a) => a.userId),
+    benchUserIds: bench.map((a) => a.userId),
+    maxPlayers,
+  });
+  /** What a post that DOES carry the roster hands to the dispatcher. */
+  const rosterMark = { fingerprint: squadKey };
+  let quietRows: Promise<QuietMarkerRow[]> | undefined;
+  const loadQuietRows = (): Promise<QuietMarkerRow[]> =>
+    (quietRows ??= db.sentNotification
+      .findMany({
+        where: {
+          matchId: m.id,
+          kind: { in: [ROSTER_SHOWN_KIND, RECRUIT_ACK_KIND] },
+          createdAt: { gte: new Date(now.getTime() - ROSTER_QUIET_MS) },
+        },
+        select: { key: true, kind: true, createdAt: true },
+      })
+      .catch((err) => {
+        console.error(`[scheduler] could not read the roster-shown markers for match ${m.id}:`, err);
+        return [];
+      }));
+  /** Was this exact squad posted to the group in the last three hours? */
+  const rosterJustShown = async (): Promise<boolean> =>
+    rosterShownRecently(await loadQuietRows(), { matchId: m.id, fingerprint: squadKey, now });
+  /**
+   * A composed chase, minus its roster when the group has just seen it.
+   * The composer always ends on the roster (its prompt says so, and no
+   * prompt is changed for this), so the block is cut from the text it
+   * returns: the need, the kickoff and the format-switch line stay.
+   */
+  async function chaseText(
+    kind: ChaseKind,
+    staticFallback: () => string,
+  ): Promise<{ text: string; rosterShown?: { fingerprint: string } }> {
+    const text = await composeOrFallback(kind, staticFallback);
+    if (!hasRosterBlock(text)) return { text };
+    if (!(await rosterJustShown())) return { text, rosterShown: rosterMark };
+    // A text that was nothing but a roster: the fixed copy's lead instead.
+    return { text: stripRosterBlock(text) || stripRosterBlock(staticFallback()) };
+  }
+
   // ── 1. Announce the match ─────────────────────────────────────────────
   //     Two gates beyond "this match exists":
   //
@@ -1239,6 +1304,8 @@ async function computeForMatch(
 
       let text: string | null = null;
       let mentions: string[] | undefined;
+      /** Set by a branch whose text carries the roster. */
+      let showsRoster = false;
 
       if (isMatchDay && teamsReady) {
         // 2-pre. Match day with teams generated → SHOW THE TEAM
@@ -1282,11 +1349,12 @@ async function computeForMatch(
         // generation so the next 17:00-window tick can show the
         // lineup. Most ticks happen every 5 min so nudge is acted on
         // quickly.
+        showsRoster = !(await rosterJustShown());
         text = buildMatchDayLockedPost({
           activityName: activity.name,
           venue: activity.venue,
           timeLabel: format(m.date, "HH:mm"),
-          rosterBlock,
+          rosterBlock: showsRoster ? rosterBlock : null,
           lang,
         });
       } else if (beforeDeadline && need > 0) {
@@ -1311,7 +1379,7 @@ async function computeForMatch(
         // post-processors, whatever the note that used to be here
         // claimed. The reply path composes its roster from the rows
         // (§10 step 4); this one still asks the model for it.
-        const chaseText = await composeOrFallback("daily-in-list", () => {
+        const chase = await chaseText("daily-in-list", () => {
           // Static fallback mirrors the LLM template — count + roster
           // INCLUDING the bench (bench shows in every squad display,
           // all orgs — Kemal 2026-06-12). buildSquadRosterBlock already
@@ -1328,8 +1396,9 @@ async function computeForMatch(
             lang,
           });
         });
+        showsRoster = chase.rosterShown != null;
         // Rolling squad (R2): the drop-out deadline, while it is ahead.
-        const body = rollingDeadlineLine ? `${chaseText}\n\n${rollingDeadlineLine}` : chaseText;
+        const body = rollingDeadlineLine ? `${chase.text}\n\n${rollingDeadlineLine}` : chase.text;
         text = unpaidTail ? `${body}\n\n${unpaidTail.text}` : body;
         mentions = unpaidTail?.mentions;
       } else if (beforeDeadline && need === 0) {
@@ -1381,11 +1450,12 @@ async function computeForMatch(
           squadLocked != null && londonDateKey(squadLocked.createdAt) === dayKey;
 
         if (!announcedToday) {
+          showsRoster = !(await rosterJustShown());
           const squadPost = buildSquadFullEveningPost({
             activityName: activity.name,
             confirmedCount: confirmed.length,
             maxPlayers,
-            rosterBlock,
+            rosterBlock: showsRoster ? rosterBlock : null,
             benchCount: bench.length,
             // The approved words, shared with the squad-complete post so
             // the promise cannot drift. Only with the bench feature on:
@@ -1415,6 +1485,7 @@ async function computeForMatch(
           matchId,
           text,
           mentions,
+          ...(showsRoster ? { rosterShown: rosterMark } : {}),
         });
       }
     }
@@ -1452,6 +1523,7 @@ async function computeForMatch(
       listPublishDue(now, weekly.listPublish, m.date);
     if (isLive && (reminderDue || listDue) && isNextUpcomingForPosting(siblingMatches, m)) {
       if (reminderDue) {
+        const showsRoster = !(await rosterJustShown());
         out.push({
           kind: "group-message",
           key: reminderKey,
@@ -1460,14 +1532,17 @@ async function computeForMatch(
             activityName: activity.name,
             whenLabel: dayTimeLabel(lang, m.date),
             time: format(weekly.dropOut!, "HH:mm"),
-            rosterBlock: buildSquadRosterBlock({
-              confirmed: confirmed.map((a) => a.user),
-              bench: bench.map((a) => a.user),
-              maxPlayers,
-              lang,
-            }),
+            rosterBlock: showsRoster
+              ? buildSquadRosterBlock({
+                  confirmed: confirmed.map((a) => a.user),
+                  bench: bench.map((a) => a.user),
+                  maxPlayers,
+                  lang,
+                })
+              : null,
             lang,
           }),
+          ...(showsRoster ? { rosterShown: rosterMark } : {}),
         });
       }
       if (listDue) {
@@ -1484,6 +1559,9 @@ async function computeForMatch(
             maxPlayers,
             lang,
           }),
+          // The final list is the whole post, so it always goes out in
+          // full; it counts as a roster shown for whatever follows it.
+          rosterShown: rosterMark,
         });
       }
     }
@@ -2036,15 +2114,22 @@ async function computeForMatch(
         short &&
         inLive &&
         isMatchDay &&
-        inMorningWindow
+        inMorningWindow &&
+        // 2026-10-06: the group was told "On it, DM'd N recent players"
+        // for this same need in the last three hours, so a second ask
+        // for the same place says nothing new. The key is NOT claimed:
+        // every later poll in this window asks again, and the chase goes
+        // out if the need has changed by then (a different need is a
+        // different marker).
+        !recruitAckRecently(await loadQuietRows(), { matchId, need, now })
       ) {
-        const text = await composeOrFallback(
+        const chase = await chaseText(
           "match-day-morning",
           // No "Morning all": the slot is 8-9am but the post can land
           // late (see buildMatchDayChaseFallback's docblock).
           () => buildMatchDayChaseFallback({ need, activityName: activity.name, lang }),
         );
-        out.push({ kind: "group-message", key, matchId, text });
+        out.push({ kind: "group-message", key, matchId, ...chase });
       }
     }
 
@@ -2058,7 +2143,7 @@ async function computeForMatch(
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        const text = await composeOrFallback("chase-pre-kickoff", () =>
+        const chase = await chaseText("chase-pre-kickoff", () =>
           buildChasePreKickoffFallback({
             need,
             activityName: activity.name,
@@ -2066,7 +2151,7 @@ async function computeForMatch(
             lang,
           }),
         );
-        out.push({ kind: "group-message", key, matchId, text });
+        out.push({ kind: "group-message", key, matchId, ...chase });
       }
     }
   }
@@ -2086,7 +2171,7 @@ async function computeForMatch(
       hoursUntilMatch > 0.5 &&
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
-      const text = await composeOrFallback("pre-kickoff-short", () =>
+      const chase = await chaseText("pre-kickoff-short", () =>
         buildPreKickoffShortFallback({
           timeLabel: format(m.date, "HH:mm"),
           venue: activity.venue,
@@ -2096,7 +2181,7 @@ async function computeForMatch(
           lang,
         }),
       );
-      out.push({ kind: "group-message", key, matchId, text });
+      out.push({ kind: "group-message", key, matchId, ...chase });
     }
   }
 
