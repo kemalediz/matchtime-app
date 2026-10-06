@@ -3000,13 +3000,17 @@ export const en = {
   sj_dm_setup_check_head: "Worth a check (I changed nothing here):",
   /** A difference between the chat and what the organiser entered.
    *  `current` and `detected` arrive already worded (a day name, a
-   *  time, a venue, a number a side, a language name). */
+   *  time, a venue, a number a side, a language name). "organiserPicks"
+   *  is the one habit MatchTime never switches on from the chat: it asks.
+   *  The quoted name is wr_pick_organiser, the option on /admin/settings. */
   setup_suggestion_line: (p: {
-    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language";
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
     current: string;
     detected: string;
   }): string =>
-    p.key === "weeklyGameDay"
+    p.key === "organiserPicks"
+      ? `It looks like the organisers choose who fills an open place. If that's right, switch on "The organisers pick".`
+      : p.key === "weeklyGameDay"
       ? `The chat talks about games on ${p.detected}; your weekly game is on ${p.current}.`
       : p.key === "weeklyGameTime"
         ? `The chat says kickoff is at ${p.detected}; your weekly game is set for ${p.current}.`
@@ -3016,6 +3020,8 @@ export const en = {
             ? `The chat talks about ${p.detected} a side; your weekly game is ${p.current} a side.`
             : `The chat is mostly in ${p.detected}; MatchTime speaks ${p.current} in this group.`,
   sj_dm_setup_check_link: (p: { url: string }): string => `Change it here: ${p.url}`,
+  /** Under the "organisers pick" suggestion: the link to the setting. */
+  sj_dm_setup_pick_link: (p: { url: string }): string => `Switch it on here: ${p.url}`,
   /** The monthly list pattern, in words: what was seen of it. */
   setup_monthly_pattern: (p: { prepay: boolean; payg: boolean; credits: boolean }): string => {
     const parts = [
@@ -3043,6 +3049,8 @@ export const en = {
   settings_learned_undo_failed: "Couldn't undo that",
   settings_learned_from: "From messages like",
   settings_learned_check_head: "Worth a check (nothing changed)",
+  /** Under the "organisers pick" suggestion on /admin/settings: jumps to the setting. */
+  settings_learned_open_setting: "Go to the setting",
   settings_learned_noted_head: "Noticed, no setting for it yet",
   // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────
   // MDs/monthly-squad-plan-2026-10-05.md, sections 9.1, 9.2 and 4.5.

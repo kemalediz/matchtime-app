@@ -1899,6 +1899,7 @@ function cases(lang: Lang): Case[] {
       noted: [],
       scheduleUrl: "https://matchtime.ai/r/sched",
       settingsUrl: "https://matchtime.ai/r/settings",
+      organiserPicksUrl: "https://matchtime.ai/r/pick",
       ...rest,
     });
   add(
@@ -1906,7 +1907,6 @@ function cases(lang: Lang): Case[] {
     learnedDm(
       [
         { key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u1" },
-        { key: "organiserPicks", from: "first-come", to: "organiser", evidence: ["Drop me a message"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u2" },
         { key: "dropOutDeadline", from: null, to: { day: 1, time: "21:00" }, evidence: ["Drop out by Monday 9pm"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u3" },
         { key: "listPublish", from: null, to: { day: 2, time: "20:00" }, evidence: ["Final list goes up Tuesday at 8pm"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u4" },
         { key: "paymentTracking", from: false, to: true, evidence: ["sent £6"], undoneAt: null, undoUrl: "https://matchtime.ai/r/u5" },
@@ -1918,6 +1918,8 @@ function cases(lang: Lang): Case[] {
           { key: "venue", current: "Hackney Marshes", detected: "Mabley Green", evidence: [] },
           { key: "format", current: "5", detected: "6", evidence: [] },
           { key: "language", current: "en", detected: "tr", evidence: [] },
+          // Never switched from the chat (2026-10-06): asked, with a quote and its own link.
+          { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["Drop me a message", "I'll pick someone"] },
         ],
       },
     ),

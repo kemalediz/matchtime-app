@@ -1,6 +1,6 @@
 {
  "name": "rolling",
- "teaches": "A squad that carries over: nobody says IN, the organiser posts 'same lot as last week', people only say when they cannot make it.",
+ "teaches": "A squad that carries over: nobody says IN, the organiser posts 'same lot as last week', people only say when they cannot make it. The organiser sorting ONE replacement ('anyone got a mate who can cover?') is not a standing habit of organisers picking, but the model reads it as one (both live checks), so that suggestion is tolerated here: a suggestion changes nothing.",
  "groupSubject": "Tuesday Night 6s",
  "language": "en",
  "weeklyGame": {
@@ -17,6 +17,9 @@
   ],
   "noted": [],
   "suggestions": [],
+  "mayAlsoSuggest": [
+   "organiserPicks"
+  ],
   "dm": true
  },
  "history": [

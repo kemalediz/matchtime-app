@@ -25,11 +25,21 @@
  *      quote). The first live check (2026-10-05) switched "organisers
  *      pick" on for a group on one line, "let's find someone for his
  *      place": one message is a moment, two are a habit.
- *   4. The weekly game (day, time, venue, size) and the language were
+ *   4. WHO FILLS AN OPEN PLACE IS NEVER SWITCHED (2026-10-06). "Organisers
+ *      pick" changes who gets a place, so it is the most consequential
+ *      setting here, and it is the one the model over-reads: the second
+ *      live check gave it "high" with two real quotes from two messages
+ *      ("anyone got a mate who can cover?", "Sorted, thanks Dev") for an
+ *      organiser who had sorted ONE replacement. Two quotes cannot tell a
+ *      standing habit from that. So the same evidence that would have
+ *      switched it now makes a SUGGESTION: the organiser is asked, shown
+ *      the messages and given a link to the setting. Rolling squad, the
+ *      two deadlines and payment tracking are still switched under rule 3.
+ *   5. The weekly game (day, time, venue, size) and the language were
  *      entered by the organiser when the club was created on the website,
  *      so they are NEVER changed: when the chat clearly says something
  *      different, it becomes a SUGGESTION in the DM with a link.
- *   5. A monthly list (regulars prepay the month, PAYG fill-ins, credits
+ *   6. A monthly list (regulars prepay the month, PAYG fill-ins, credits
  *      for missed games) has no setting yet (the monthly squad mode is
  *      being built): it is NOTED, shown in the DM and on /admin/settings
  *      and /admin/clubs. Seen with HIGH confidence it switches NOTHING on:
@@ -311,7 +321,10 @@ export function parseDetection(raw: unknown, history: HistoryMessage[]): Detecti
 
 // ── 4. What to change, suggest and note ────────────────────────────────
 
-/** The settings the learned setup may switch. */
+/** The settings the learned setup knows. Every one but SUGGEST_ONLY may be
+ *  switched; a key stays here when it is only suggested because `kept`
+ *  still names it, and a row written before 2026-10-06 may hold it as
+ *  switched (and must stay undoable). */
 export const LEARNED_KEYS = ["rollingSquad", "organiserPicks", "dropOutDeadline", "listPublish", "paymentTracking"] as const;
 export type LearnedKey = (typeof LEARNED_KEYS)[number];
 
@@ -325,7 +338,10 @@ export const ORGANISER_SET_KEY: Record<LearnedKey, string> = {
   paymentTracking: "paymentTracking",
 };
 
-export const SUGGESTION_KEYS = ["weeklyGameDay", "weeklyGameTime", "venue", "format", "language"] as const;
+/** Never switched from the chat, whatever the evidence: suggested instead (rule 4). */
+export const SUGGEST_ONLY: ReadonlySet<LearnedKey> = new Set<LearnedKey>(["organiserPicks"]);
+
+export const SUGGESTION_KEYS = ["weeklyGameDay", "weeklyGameTime", "venue", "format", "language", "organiserPicks"] as const;
 export type SuggestionKey = (typeof SUGGESTION_KEYS)[number];
 
 export interface OrgSettingsState {
@@ -353,7 +369,8 @@ export interface AppliedItem {
 }
 export interface Suggestion {
   key: SuggestionKey;
-  /** What the club has now (day index as a string, time, venue, size, language code). */
+  /** What the club has now (day index as a string, time, venue, size,
+   *  language code, or the pick mode for "organiserPicks"). */
   current: string;
   /** What the chat shows. */
   detected: string;
@@ -559,10 +576,17 @@ export function planSetup(args: {
     }
   }
 
+  // Who fills an open place: asked, never switched (rule 4). It goes
+  // last among the suggestions, which is where the DM shows it.
+  const asked: Suggestion[] = [];
   for (const c of accepted) {
     const err = rejected.get(c.key);
     if (err) {
       plan.kept.push({ key: c.key, reason: `invalid:${err}` });
+      continue;
+    }
+    if (SUGGEST_ONLY.has(c.key)) {
+      asked.push({ key: "organiserPicks", current: String(currentValue(c.key, org)), detected: String(c.to), evidence: c.evidence });
       continue;
     }
     plan.applied.push({ key: c.key, from: currentValue(c.key, org), to: c.to, evidence: c.evidence, undoneAt: null });
@@ -595,6 +619,7 @@ export function planSetup(args: {
   if (cl && cl.confident && cl.lang !== org.language && !organiserSet.has("language")) {
     plan.suggestions.push({ key: "language", current: org.language, detected: cl.lang, evidence: [] });
   }
+  plan.suggestions.push(...asked);
   return plan;
 }
 

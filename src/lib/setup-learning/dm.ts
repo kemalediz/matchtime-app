@@ -6,7 +6,9 @@
  *   intro (what MatchTime did)
  *   per switched setting: what it does now, one chat quote, its undo link
  *   "worth a check": the weekly game or language the chat disagrees with,
- *     changed nowhere, with a link to change it
+ *     changed nowhere, with a link to change it; then "organisers pick",
+ *     which is never switched from the chat (rules.ts, rule 4): what it
+ *     looks like, one chat quote, and a link to the setting
  *   the monthly list, when seen: noted, nothing changed for it, and the
  *     monthly squad mode is coming (the organiser will be told)
  *   outro: the settings page, where every item and its evidence lives
@@ -56,6 +58,9 @@ export interface SetupDmInput {
   scheduleUrl: string;
   /** /admin/settings, highlighting the learned panel. */
   settingsUrl: string;
+  /** /admin/settings, at the "organisers pick" suggestion, which leads to
+   *  the setting. Used only when that suggestion is in `suggestions`. */
+  organiserPicksUrl: string;
 }
 
 export function composeSetupDm(p: SetupDmInput): string {
@@ -72,9 +77,19 @@ export function composeSetupDm(p: SetupDmInput): string {
 
   if (p.suggestions.length > 0) {
     const lines = [s.sj_dm_setup_check_head];
-    for (const sg of p.suggestions) lines.push(`🔎 ${suggestionLine(p.lang, sg)}`);
-    const gameKeys = p.suggestions.some((sg) => sg.key !== "language");
-    lines.push(s.sj_dm_setup_check_link({ url: gameKeys ? p.scheduleUrl : p.settingsUrl }));
+    // What the organiser entered and the chat disagrees with: one link for all of it.
+    const entered = p.suggestions.filter((sg) => sg.key !== "organiserPicks");
+    for (const sg of entered) lines.push(`🔎 ${suggestionLine(p.lang, sg)}`);
+    if (entered.length > 0) {
+      const gameKeys = entered.some((sg) => sg.key !== "language");
+      lines.push(s.sj_dm_setup_check_link({ url: gameKeys ? p.scheduleUrl : p.settingsUrl }));
+    }
+    // Organisers pick: asked, with a quote and its own link to the setting.
+    for (const sg of p.suggestions.filter((x) => x.key === "organiserPicks")) {
+      lines.push(`🔎 ${suggestionLine(p.lang, sg)}`);
+      if (sg.evidence[0]) lines.push(s.sj_dm_setup_from({ quote: sg.evidence[0] }));
+      lines.push(s.sj_dm_setup_pick_link({ url: p.organiserPicksUrl }));
+    }
     blocks.push(lines.join("\n"));
   }
 

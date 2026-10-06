@@ -858,6 +858,7 @@ const SAMPLES: SampleArgs = {
   sj_dm_setup_check_head: null,
   setup_suggestion_line: { key: "venue", current: "Goals Wimbledon", detected: "Powerleague Mill Hill" },
   sj_dm_setup_check_link: { url: "https://matchtime.ai/r/game1" },
+  sj_dm_setup_pick_link: { url: "https://matchtime.ai/r/pick1" },
   setup_monthly_pattern: { prepay: true, payg: true, credits: true },
   sj_dm_setup_monthly: { pattern: "regulars pay monthly", heldPaymentTracking: true },
   sj_dm_setup_outro: { url: "https://matchtime.ai/r/settings1" },
@@ -871,6 +872,7 @@ const SAMPLES: SampleArgs = {
   settings_learned_undo_failed: null,
   settings_learned_from: null,
   settings_learned_check_head: null,
+  settings_learned_open_setting: null,
   settings_learned_noted_head: null,
   // Monthly squad (2026-10-05, slice 2)
   msq_section_title: null,

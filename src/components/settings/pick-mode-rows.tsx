@@ -51,7 +51,7 @@ export function PickModeRows(props: {
 
   return (
     <>
-      <div className="py-3" data-testid="wr-pick">
+      <div id="wr-pick" className="py-3 scroll-mt-6" data-testid="wr-pick">
         <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
           {s.wr_pick_label}
           <InfoButton title={s.wr_pick_label}>

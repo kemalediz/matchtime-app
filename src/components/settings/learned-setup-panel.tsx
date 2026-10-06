@@ -5,7 +5,9 @@
  *
  * What MatchTime switched on from the chat WhatsApp shared when it joined,
  * each with the chat evidence and a one-tap Undo; what it only suggests
- * (the weekly game, the language: changed nowhere); and the patterns it
+ * (the weekly game, the language, and "organisers pick", which is never
+ * switched from the chat and is shown with its evidence and a way to the
+ * setting: changed nowhere); and the patterns it
  * noticed but has no setting for (a monthly list). Renders nothing for a
  * club that was never read. The organiser's DM links here with
  * `?learned=<key>#learned-setup`, and that item is highlighted.
@@ -125,9 +127,28 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
           <div data-testid="learned-suggestions">
             <h3 className="text-sm font-medium text-slate-700">{s.settings_learned_check_head}</h3>
             <ul className="mt-1 list-disc pl-5 text-sm text-slate-600 space-y-1">
-              {view.suggestions.map((sg) => (
-                <li key={sg.key}>{suggestionLine(lang, sg)}</li>
-              ))}
+              {view.suggestions.map((sg) =>
+                sg.key === "organiserPicks" ? (
+                  <li
+                    key={sg.key}
+                    id={`learned-${sg.key}`}
+                    data-testid={`learned-suggestion-${sg.key}`}
+                    className={highlight === sg.key ? "rounded-lg ring-2 ring-amber-300 bg-amber-50 px-2 py-1" : undefined}
+                  >
+                    {suggestionLine(lang, sg)}
+                    {sg.evidence.length > 0 && (
+                      <span className="block text-slate-500">
+                        {s.settings_learned_from}: {sg.evidence.map((q) => `"${q}"`).join(", ")}
+                      </span>
+                    )}
+                    <a href="#wr-pick" className="block font-medium text-slate-700 underline">
+                      {s.settings_learned_open_setting}
+                    </a>
+                  </li>
+                ) : (
+                  <li key={sg.key}>{suggestionLine(lang, sg)}</li>
+                ),
+              )}
             </ul>
           </div>
         )}

@@ -1,6 +1,6 @@
 {
  "name": "organiser-picks",
- "teaches": "Organisers decide who plays: players ask the organiser for a spot, the organiser announces the team and picks replacements from the reserves.",
+ "teaches": "Organisers decide who plays: players ask the organiser for a spot, the organiser announces the team and picks replacements from the reserves. Who fills an open place is never switched from the chat: it is suggested to the organiser, with the messages behind it.",
  "groupSubject": "Wednesday 7s",
  "language": "en",
  "weeklyGame": {
@@ -12,11 +12,11 @@
  "expect": {
   "regularGame": true,
   "openPlaces": "organisers_pick",
-  "applied": [
+  "applied": [],
+  "noted": [],
+  "suggestions": [
    "organiserPicks"
   ],
-  "noted": [],
-  "suggestions": [],
   "dm": true
  },
  "history": [

@@ -353,6 +353,10 @@ async function queueSetupDm(args: {
     noted: plan.noted,
     scheduleUrl: await link("/admin/activities"),
     settingsUrl: await link("/admin/settings#learned-setup"),
+    // Minted only when it is used: the "organisers pick" suggestion, highlighted, with its way to the setting.
+    organiserPicksUrl: plan.suggestions.some((sg) => sg.key === "organiserPicks")
+      ? await link("/admin/settings?learned=organiserPicks#learned-setup")
+      : "",
   });
   try {
     await queuePlatformDm({ phone: connect.phone, text, purpose: SETUP_DM_PURPOSE, refId, sendAfter: billingDmSendAfter(now) });

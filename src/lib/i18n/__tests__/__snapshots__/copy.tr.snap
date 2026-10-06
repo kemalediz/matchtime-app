@@ -3685,10 +3685,6 @@ Hepinizin eline sağlık! 👏
 Şu tür mesajlardan: "Same lot as last week"
 Geri almak ya da değiştirmek için: https://matchtime.ai/r/u1
 
-✅ *Boşalan yeri organizatörler seçiyor:* MatchTime önce size sorar; zamanında kimse seçmezse yeri yedek listesine sunar.
-Şu tür mesajlardan: "Drop me a message"
-Geri almak ya da değiştirmek için: https://matchtime.ai/r/u2
-
 ✅ *Son çıkış saati:* Pazartesi 21:00. MatchTime bundan önce gruba hatırlatır.
 Şu tür mesajlardan: "Drop out by Monday 9pm"
 Geri almak ya da değiştirmek için: https://matchtime.ai/r/u3
@@ -3708,6 +3704,9 @@ Kontrol etmeye değer (burada hiçbir şeyi değiştirmedim):
 🔎 Sohbette takım başına 6 kişiden söz ediliyor; haftalık maçınız ise takım başına 5 kişi.
 🔎 Sohbet çoğunlukla Türkçe; MatchTime bu grupta İngilizce konuşuyor.
 Buradan değiştirebilirsiniz: https://matchtime.ai/r/sched
+🔎 Görünüşe göre boşalan yeri kimin dolduracağını organizatörler seçiyor. Öyleyse "Organizatörler seçer" ayarını açın.
+Şu tür mesajlardan: "Drop me a message"
+Buradan açabilirsiniz: https://matchtime.ai/r/pick
 
 Hepsi, her birinin dayandığı sohbet mesajlarıyla birlikte ayarlar sayfanızda: https://matchtime.ai/r/settings
 
