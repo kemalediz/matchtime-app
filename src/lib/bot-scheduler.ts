@@ -55,6 +55,7 @@ import { computeBadgeAnnouncements } from "./badge-announcement-scheduler";
 import {
   buildBenchOfferGroupPost,
   buildBenchOfferDm,
+  buildBenchOfferSlotDetail,
   buildBenchIntroLine,
   buildSquadCompleteBenchInvite,
 } from "./bench-offer-copy";
@@ -2023,25 +2024,47 @@ async function computeForMatch(
           });
         }
 
+        /** Which team a slot is on and who it replaces, when teams exist. */
+        const teamOf = (o: (typeof open)[number]): { teamLabel: string; replacingName: string | null } | null => {
+          if (!o.replacingUserId) return null;
+          const repl = m.attendances.find((a) => a.userId === o.replacingUserId)?.user;
+          const ta = m.teamAssignments.find((t) => t.userId === o.replacingUserId);
+          if (!repl || !ta) return null;
+          const labels = resolveTeamLabels(m, activity.org, sport, lang);
+          return { teamLabel: ta.team === "RED" ? labels[0] : labels[1], replacingName: repl.name };
+        };
+
         /** What one announcement of `untold` says and is keyed on. */
         const describe = (untold: typeof open) => {
           const lead = leadOffer(untold)!;
-          // Which team and who they would replace: only for a single
-          // slot, and only if teams exist.
-          let team: { teamLabel: string; replacingName: string | null } | null = null;
-          if (untold.length === 1 && lead.replacingUserId) {
-            const repl = m.attendances.find((a) => a.userId === lead.replacingUserId)?.user;
-            const ta = m.teamAssignments.find((t) => t.userId === lead.replacingUserId);
-            if (repl && ta) {
-              const labels = resolveTeamLabels(m, activity.org, sport, lang);
-              team = { teamLabel: ta.team === "RED" ? labels[0] : labels[1], replacingName: repl.name };
-            }
-          }
+          const single = untold.length === 1;
+          // A single slot names its team and replaced player inside the
+          // sentence, as it always has. Several slots get one line each
+          // under the headline, for the slots that have a team to name.
+          const details = single
+            ? []
+            : untold.flatMap((o) => {
+                const team = teamOf(o);
+                return team ? [buildBenchOfferSlotDetail({ ...team, lang })] : [];
+              });
           // "tonight" only when the match is today in London; the match day
           // otherwise (2026-10-03: a Saturday offer for a Tuesday match said
           // "tonight").
-          const { group, plain } = buildBenchOfferContext({ activityName: activity.name, team, matchDate: m.date, now, lang });
-          return { lead, count: untold.length, group, plain };
+          const { group, plain } = buildBenchOfferContext({
+            activityName: activity.name,
+            team: single ? teamOf(lead) : null,
+            matchDate: m.date,
+            now,
+            lang,
+          });
+          return {
+            lead,
+            count: untold.length,
+            group,
+            plain,
+            groupDetails: details.map((d) => d.group),
+            plainDetails: details.map((d) => d.plain),
+          };
         };
 
         const mentions = benchAtt.map((a) => a.user.phoneNumber!.replace(/^\+/, ""));
@@ -2065,7 +2088,7 @@ async function computeForMatch(
             // it; pass the first bencher purely to satisfy the type.
             userId: benchAtt[0].userId,
             phone: mentions[0],
-            text: buildBenchOfferGroupPost({ context: d.group, tagList, count: d.count, lang }),
+            text: buildBenchOfferGroupPost({ context: d.group, tagList, count: d.count, details: d.groupDetails, lang }),
           });
         }
 
@@ -2083,7 +2106,7 @@ async function computeForMatch(
             phone: a.user.phoneNumber!.replace(/^\+/, ""),
             targetUser: a.userId,
             // `d.plain` is already in `lang` (buildBenchOfferContext).
-            text: buildBenchOfferDm({ firstName: first, context: d.plain, count: d.count, lang }),
+            text: buildBenchOfferDm({ firstName: first, context: d.plain, count: d.count, details: d.plainDetails, lang }),
           });
         }
       }

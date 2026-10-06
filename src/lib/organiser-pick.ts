@@ -59,6 +59,7 @@ import {
   type PickCandidate,
   type PickListRow,
   type PickReason,
+  buildPickFallbackOffered,
   fallbackOfferCount,
 } from "./organiser-pick-rules";
 
@@ -412,11 +413,16 @@ async function runFallback(
     const stillOut = new Set(world.dropped);
     const vacated = round.vacatedByUserIds.filter((id) => stillOut.has(id)).slice(round.pickedUserIds.length);
     const offers = fallbackOfferCount(openPlaces, world.waiting.length);
-    for (let i = 0; i < offers; i++) {
-      await db.benchSlotOffer.create({ data: { matchId: world.id, replacingUserId: vacated[i] ?? null } });
-    }
-    const said = offers > 1 ? s.pick_fallback_offered_many : s.pick_fallback_offered;
-    await sendAdminNotice({ orgId: org.id, now, text: said({ activityName: world.activityName }) });
+    // ONE statement, so the offers appear together: a poll landing between
+    // two separate inserts would announce "1 slot" and then the rest.
+    await db.benchSlotOffer.createMany({
+      data: Array.from({ length: offers }, (_, i) => ({ matchId: world.id, replacingUserId: vacated[i] ?? null })),
+    });
+    await sendAdminNotice({
+      orgId: org.id,
+      now,
+      text: buildPickFallbackOffered({ lang: org.language, activityName: world.activityName, offered: offers, openPlaces }),
+    });
   } else {
     await sendAdminNotice({
       orgId: org.id,

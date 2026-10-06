@@ -91,6 +91,26 @@ export function fallbackOfferCount(openPlaces: number, waiting: number): number 
 }
 
 /**
+ * P11: what the admins are told when the fallback offers places to the
+ * waiting list. One place offered and none left over: the sentence it has
+ * always been. Otherwise it says how many places were offered and, when
+ * fewer people are waiting than places are open, how many are still open.
+ */
+export function buildPickFallbackOffered(p: {
+  lang: string | null | undefined;
+  activityName: string;
+  /** Offers opened (`fallbackOfferCount`). */
+  offered: number;
+  /** Free places before the offers were opened. */
+  openPlaces: number;
+}): string {
+  const s = t(p.lang);
+  const stillOpen = Math.max(0, p.openPlaces - p.offered);
+  if (p.offered <= 1 && stillOpen === 0) return s.pick_fallback_offered({ activityName: p.activityName });
+  return s.pick_fallback_offered_many({ activityName: p.activityName, offered: p.offered, stillOpen });
+}
+
+/**
  * Should a pick round open for this match now (plan 2.7)? All of:
  * a free place, somebody waiting, the club's drop-out deadline passed (or
  * none set), London 08:00 to 21:59, no fallback offer running, and either

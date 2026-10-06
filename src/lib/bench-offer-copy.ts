@@ -101,6 +101,10 @@ export interface BenchOfferGroupCopy extends ReactionGate {
    *  slot post, byte for byte as it always was. 2 or more: the same
    *  post in the plural, for places that opened together (2026-10-06). */
   count?: number;
+  /** With `count` of 2 or more: one line per slot that has a team and a
+   *  replaced player to name (`buildBenchOfferSlotDetail().group`).
+   *  Empty or absent when no slot has. */
+  details?: string[];
   /** Already-formatted context, e.g.
    *  "on *Reds* (replacing Ehtisham Ekin) for *Tuesday 7-a-side* tonight". */
   context: string;
@@ -112,7 +116,13 @@ export interface BenchOfferGroupCopy extends ReactionGate {
 export function buildBenchOfferGroupPost(c: BenchOfferGroupCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
   if ((c.count ?? 1) > 1) {
-    return t(c.lang).bench_offer_group_post_many({ count: c.count!, context: c.context, tagList: c.tagList, reactions });
+    return t(c.lang).bench_offer_group_post_many({
+      count: c.count!,
+      context: c.context,
+      details: c.details ?? [],
+      tagList: c.tagList,
+      reactions,
+    });
   }
   return t(c.lang).bench_offer_group_post({ context: c.context, tagList: c.tagList, reactions });
 }
@@ -120,6 +130,8 @@ export function buildBenchOfferGroupPost(c: BenchOfferGroupCopy): string {
 export interface BenchOfferDmCopy extends ReactionGate {
   /** How many slots this one DM is about; as `BenchOfferGroupCopy.count`. */
   count?: number;
+  /** As `BenchOfferGroupCopy.details`, from `.plain`. */
+  details?: string[];
   /** First name, or "" when we have no name on record. */
   firstName: string;
   /** Plain-text context (no WhatsApp bold), e.g.
@@ -128,12 +140,32 @@ export interface BenchOfferDmCopy extends ReactionGate {
   context: string;
 }
 
+/**
+ * One slot's line under the several-slots post and DM: which team the
+ * place is on and who it replaces. The single-slot post carries the same
+ * two facts inside its context clause (`buildBenchOfferContext`).
+ */
+export function buildBenchOfferSlotDetail(c: {
+  teamLabel: string;
+  replacingName: string | null;
+  lang?: Lang | string | null;
+}): { group: string; plain: string } {
+  const p = { teamLabel: c.teamLabel, replacingName: c.replacingName ?? "?" };
+  return { group: t(c.lang).bench_offer_slot_detail(p), plain: t(c.lang).bench_offer_slot_detail_plain(p) };
+}
+
 /** The 1:1 nudge to each bencher. Benchers routinely mute the group
  *  thinking they are not playing, so the DM carries the same offer. */
 export function buildBenchOfferDm(c: BenchOfferDmCopy): string {
   const reactions = c.mentionReactions ?? BENCH_PROMPT_MENTION_REACTIONS;
   if ((c.count ?? 1) > 1) {
-    return t(c.lang).dm_bench_offer_many({ count: c.count!, firstName: c.firstName, context: c.context, reactions });
+    return t(c.lang).dm_bench_offer_many({
+      count: c.count!,
+      firstName: c.firstName,
+      context: c.context,
+      details: c.details ?? [],
+      reactions,
+    });
   }
   return t(c.lang).dm_bench_offer({ firstName: c.firstName, context: c.context, reactions });
 }

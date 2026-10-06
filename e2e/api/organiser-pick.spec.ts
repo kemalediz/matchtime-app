@@ -478,8 +478,13 @@ test("nobody picks with SEVERAL places open: one offer per waiting player, annou
   // Four places, two people waiting: two offers, not four.
   const offers = await db.all<{ id: string }>(`SELECT id FROM "BenchSlotOffer" WHERE "matchId" = $1 AND "resolvedAt" IS NULL`, [M]);
   expect(offers).toHaveLength(2);
+  // Opened in ONE statement, so no poll can ever see only some of them.
+  const stamps = await db.all<{ createdAt: Date }>(`SELECT DISTINCT "createdAt" FROM "BenchSlotOffer" WHERE "matchId" = $1`, [M]);
+  expect(stamps).toHaveLength(1);
+  // The admins are told how many were offered and how many are still open.
   expect(sent.filter((i) => i.kind === "admin-group-message").map((i) => i.text)).toEqual([
-    "Nobody picked for *Friday 5-a-side*, so I've offered the open places to the waiting list: whoever says IN gets one.",
+    "Nobody picked for *Friday 5-a-side*, so I've offered 2 places to the waiting list, one for each person waiting: " +
+      "whoever says IN gets one. 2 more places are still open.",
   ]);
 
   // The group is told ONCE, and each waiting player is told ONCE.

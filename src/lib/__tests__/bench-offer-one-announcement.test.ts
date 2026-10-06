@@ -291,3 +291,143 @@ describe("an ordinary single drop is untouched", () => {
     ]);
   });
 });
+
+/**
+ * SUTTON FC'S SHAPE: first come, teams published, and each offer says
+ * whose place it is. Two players dropping overnight on match day wait
+ * for the 08:00 gate together, so they go out as one post, and that post
+ * must still say which team each place is on and who it replaces.
+ */
+describe("Sutton's shape: first come, teams published, a replaced player", () => {
+  /** Tue 6 Oct 2026, 07:59 London: still inside the overnight quiet. */
+  const BEFORE_8AM = new Date("2026-10-06T06:59:00.000Z");
+  /** Tue 6 Oct 2026, 08:00 London. */
+  const AT_8AM = new Date("2026-10-06T07:00:20.000Z");
+  /** 00:24 and 03:10 London, the night before the match. */
+  const DROP_1 = new Date("2026-10-05T23:24:00.000Z");
+  const DROP_2 = new Date("2026-10-06T02:10:00.000Z");
+  const TAGS = "@447700900020 @447700900021";
+
+  /** Player 4 (Red) and Player 10 (Yellow) have dropped; teams are out. */
+  function sutton(offers: Offer[]) {
+    const m = match(offers);
+    m.attendances[3].status = "DROPPED";
+    m.attendances[9].status = "DROPPED";
+    m.teamAssignments = [
+      { id: "ta-3", userId: "u3", team: "RED", user: { id: "u3", name: "Player 4" } },
+      { id: "ta-9", userId: "u9", team: "YELLOW", user: { id: "u9", name: "Player 10" } },
+    ];
+    return m;
+  }
+  const firstCome = async <T>(run: () => Promise<T>): Promise<T> => {
+    features.benchPickMode = "first-come";
+    try {
+      return await run();
+    } finally {
+      features.benchPickMode = "organiser";
+    }
+  };
+
+  it("ONE drop: the key and every byte are what main sent", async () => {
+    setWorld(sutton([{ id: "o1", replacingUserId: "u3", createdAt: DROP_1 }]));
+    const out = await firstCome(() => offerPosts(AT_8AM));
+    expect(out.map((i) => [i.kind, i.key, i.text])).toEqual([
+      [
+        "bench-prompt",
+        "offer-o1",
+        "🎟 A slot just opened on *Red* (replacing Player 4) for *Tuesday 7-a-side* tonight. *First to claim it plays.*\n\n" +
+          `${TAGS}\n\n` +
+          "Just reply *IN* here to take it. No rush and no timeout, whoever is free first gets it " +
+          "and everyone else stays on the bench. 🙏",
+      ],
+      [
+        "dm",
+        "offer-o1:dm:u20",
+        "👋 Hi Ozgur, a slot just opened on Red (replacing Player 4) for Tuesday 7-a-side tonight and you're on the bench.\n\n" +
+          "Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. " +
+          "No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+      ],
+      [
+        "dm",
+        "offer-o1:dm:u21",
+        "👋 Hi Wasim, a slot just opened on Red (replacing Player 4) for Tuesday 7-a-side tonight and you're on the bench.\n\n" +
+          "Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. " +
+          "No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+      ],
+    ]);
+  });
+
+  it("TWO drops overnight: nothing before 08:00, then ONE post that still names each team and replaced player", async () => {
+    const offers = [
+      { id: "o1", replacingUserId: "u3", createdAt: DROP_1 },
+      { id: "o2", replacingUserId: "u9", createdAt: DROP_2 },
+    ];
+    setWorld(sutton(offers));
+    expect(await firstCome(() => offerPosts(BEFORE_8AM))).toEqual([]);
+    const out = await firstCome(() => offerPosts(AT_8AM));
+    expect(shape(out)).toEqual([
+      ["bench-prompt", "offer-o2"],
+      ["dm", "offer-o2:dm:u20"],
+      ["dm", "offer-o2:dm:u21"],
+    ]);
+    expect(out[0].text).toBe(
+      "🎟 2 slots just opened for *Tuesday 7-a-side* tonight. *First to claim them play.*\n" +
+        "• on *Red*, replacing Player 4\n" +
+        "• on *Yellow*, replacing Player 10\n\n" +
+        `${TAGS}\n\n` +
+        "Just reply *IN* here to take one. No rush and no timeout, the slots go to whoever replies first " +
+        "and anyone who misses out stays on the bench. 🙏",
+    );
+    expect(out[1].text).toBe(
+      "👋 Hi Ozgur, 2 slots just opened for Tuesday 7-a-side tonight and you're on the bench.\n" +
+        "• on Red, replacing Player 4\n" +
+        "• on Yellow, replacing Player 10\n\n" +
+        "Want one? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. " +
+        "No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+    );
+  });
+
+  it("a slot with no team to name adds no line; the others keep theirs", async () => {
+    setWorld(
+      sutton([
+        { id: "o1", replacingUserId: "u3", createdAt: DROP_1 },
+        { id: "o2", replacingUserId: null, createdAt: DROP_2 },
+      ]),
+    );
+    const out = await firstCome(() => offerPosts(AT_8AM));
+    expect(out[0].text).toContain(
+      "🎟 2 slots just opened for *Tuesday 7-a-side* tonight. *First to claim them play.*\n• on *Red*, replacing Player 4\n\n@",
+    );
+  });
+
+  it("in Turkish", async () => {
+    features.language = "tr";
+    try {
+      setWorld(
+        sutton([
+          { id: "o1", replacingUserId: "u3", createdAt: DROP_1 },
+          { id: "o2", replacingUserId: "u9", createdAt: DROP_2 },
+        ]),
+      );
+      const out = await firstCome(() => offerPosts(AT_8AM));
+      expect(out[0].text).toBe(
+        "🎟 2 yer açıldı: bu akşamki *Tuesday 7-a-side* için. *İlk sahiplenenler oynar.*\n" +
+          "• *Kırmızı* takımında, Player 4 yerine\n" +
+          "• *Sarı* takımında, Player 10 yerine\n\n" +
+          `${TAGS}\n\n` +
+          "Birini almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; yerler önce yazanların olur, " +
+          "yer kalmazsa diğerleri yedekte kalır. 🙏",
+      );
+      expect(out[1].text).toBe(
+        "👋 Ozgur, 2 yer açıldı: bu akşamki Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.\n" +
+          "• Kırmızı takımında, Player 4 yerine\n" +
+          "• Sarı takımında, Player 10 yerine\n\n" +
+          "Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. " +
+          "İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏",
+      );
+      for (const i of out) expect(i.text).not.toMatch(/[–—]/);
+    } finally {
+      features.language = "en";
+    }
+  });
+});

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   PICK_LATE_REPLY_MS,
   buildPickListChanged,
+  buildPickFallbackOffered,
   buildPickMessage,
   decidePickRound,
   fallbackOfferCount,
@@ -31,6 +32,41 @@ describe("fallbackOfferCount (D5, 2026-10-06)", () => {
     expect(fallbackOfferCount(0, 4)).toBe(0);
     expect(fallbackOfferCount(4, 0)).toBe(0);
     expect(fallbackOfferCount(-1, 4)).toBe(0);
+  });
+});
+
+describe("buildPickFallbackOffered (P11, 2026-10-06)", () => {
+  const base = { lang: "en", activityName: "Friday 9-a-side" };
+  it("one place, one offer: the sentence it has always been", () => {
+    expect(buildPickFallbackOffered({ ...base, offered: 1, openPlaces: 1 })).toBe(
+      "Nobody picked for *Friday 9-a-side*, so I've offered the place to the waiting list: the first to say IN gets it.",
+    );
+  });
+  it("every open place offered", () => {
+    expect(buildPickFallbackOffered({ ...base, offered: 3, openPlaces: 3 })).toBe(
+      "Nobody picked for *Friday 9-a-side*, so I've offered the 3 open places to the waiting list: whoever says IN gets one.",
+    );
+  });
+  it("CAPPED: sixteen places and two waiting says two were offered and fourteen are still open", () => {
+    expect(buildPickFallbackOffered({ ...base, offered: 2, openPlaces: 16 })).toBe(
+      "Nobody picked for *Friday 9-a-side*, so I've offered 2 places to the waiting list, one for each person waiting: " +
+        "whoever says IN gets one. 14 more places are still open.",
+    );
+  });
+  it("capped to one offer, one place left over", () => {
+    expect(buildPickFallbackOffered({ ...base, offered: 1, openPlaces: 2 })).toBe(
+      "Nobody picked for *Friday 9-a-side*, so I've offered 1 place to the waiting list, one for each person waiting: " +
+        "whoever says IN gets one. 1 more place is still open.",
+    );
+  });
+  it("in Turkish", () => {
+    expect(buildPickFallbackOffered({ ...base, lang: "tr", offered: 3, openPlaces: 3 })).toBe(
+      "*Friday 9-a-side* için kimse seçim yapmadı, bu yüzden 3 boş yeri yedek listesine açtım: VARIM diyen bir yer alır.",
+    );
+    expect(buildPickFallbackOffered({ ...base, lang: "tr", offered: 2, openPlaces: 16 })).toBe(
+      "*Friday 9-a-side* için kimse seçim yapmadı, bu yüzden yedek listesine 2 yer açtım (bekleyen her kişiye bir yer): " +
+        "VARIM diyen bir yer alır. 14 yer daha boş.",
+    );
   });
 });
 
