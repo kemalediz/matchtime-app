@@ -166,3 +166,19 @@ describe("ownerLearningSummary (/admin/clubs)", () => {
     ).toBe("Chat not read: too-short (5 messages). Nothing changed.");
   });
 });
+
+describe("the heading over the noted patterns (found by the manual test script, 2026-10-06)", () => {
+  // The only pattern that is ever noted is the monthly list
+  // (`NotedPattern.key`), and Monthly squad IS a setting now (Settings,
+  // Monthly squad). The heading must not say there is none. It says what
+  // is true of anything noted: MatchTime saw it and switched nothing.
+  it("does not claim there is no setting, in English or Turkish", async () => {
+    const { en } = await import("@/lib/i18n/strings.en");
+    const { tr } = await import("@/lib/i18n/strings.tr");
+    expect(en.settings_learned_noted_head).toBe("Noticed, left for you to decide");
+    expect(tr.settings_learned_noted_head).toBe("Fark edildi, karar sizde");
+    expect(en.settings_learned_noted_head).not.toMatch(/no setting/i);
+    expect(tr.settings_learned_noted_head).not.toMatch(/ayarı yok/i);
+    for (const head of [en.settings_learned_noted_head, tr.settings_learned_noted_head]) expect(head).not.toMatch(/[\u2013\u2014]/);
+  });
+});
