@@ -480,6 +480,45 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
     expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${hash}:1`]);
   });
 
+  it("match morning: the list a reply showed at 07:30 is not posted again at 08:00 (2026-10-06)", async () => {
+    const m = match();
+    const hash = weekListHash(listText(m));
+    // Mon 12 Oct, 07:30 London: "who's in?" was answered with the list
+    // (`recordWeekListShown`, kind "group-message").
+    const shown = [
+      { key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date("2026-10-07T09:00:00.000Z") },
+      { key: `${m.id}:month-list:${hash}:1`, kind: "group-message", createdAt: new Date("2026-10-12T06:30:00.000Z") },
+    ];
+    setWorld(m, { monthly: true, shown });
+    const lists = async (iso: string) => (await instructions(new Date(iso))).filter((i) => i.key.includes("month-list")).map((i) => i.key);
+    expect(await lists("2026-10-12T07:00:00.000Z")).toEqual([]); // 08:00
+    expect(await lists("2026-10-12T09:29:00.000Z")).toEqual([]); // 10:29, still inside three hours
+    // Three hours after it was shown it is no longer a repeat.
+    expect(await lists("2026-10-12T09:31:00.000Z")).toEqual([`${m.id}:month-list:${hash}:2`]); // 10:31
+  });
+
+  it("match morning: nor straight after a member pasted the same list", async () => {
+    const m = match();
+    const hash = weekListHash(listText(m));
+    setWorld(m, {
+      monthly: true,
+      shown: [
+        { key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date("2026-10-07T09:00:00.000Z") },
+        { key: `${m.id}:month-list:${hash}:1`, kind: "month-list-seen", createdAt: new Date("2026-10-12T06:50:00.000Z") },
+      ],
+    });
+    expect((await instructions(new Date("2026-10-12T07:00:00.000Z"))).some((i) => i.key.includes("month-list"))).toBe(false);
+  });
+
+  it("match morning: a list that CHANGED after the 07:30 reply is posted at 08:00", async () => {
+    const m = match();
+    const before = weekListHash(listText(m));
+    m.attendances[1] = att("Bilal", 1, { status: "DROPPED" });
+    setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${before}:0`, kind: "group-message", createdAt: new Date("2026-10-12T06:30:00.000Z") }] });
+    const posts = (await instructions(new Date("2026-10-12T07:00:00.000Z"))).filter((i) => i.key.includes("month-list"));
+    expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${weekListHash(listText(m))}:1`]);
+  });
+
   it("with the attendance feature off, no list", async () => {
     const m = match();
     setWorld(m, { monthly: true });

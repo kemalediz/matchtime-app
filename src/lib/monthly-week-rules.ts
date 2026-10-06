@@ -515,7 +515,12 @@ const MORNING_UNTIL_HOUR = 12;
  *
  *   "change"   the list differs from the one the group last saw (a post of
  *              ours, or a member's paste that matched our state);
- *   "morning"  match morning, 08:00 to 11:59 London, once, whatever else;
+ *   "morning"  match morning, 08:00 to 11:59 London, once, whatever else,
+ *              EXCEPT when the group saw this same list a moment ago
+ *              (`sameListShownRecently`): somebody asked "who's in?" at
+ *              07:30 and got it, so 08:00 would repeat it. It is held, not
+ *              dropped: a later poll that morning posts it once the three
+ *              hours are up;
  *   null       nothing to post.
  *
  * Never between 22:00 and 07:59 London, never within 30 minutes of the
@@ -534,6 +539,11 @@ export function decideListPost(p: {
   live: boolean;
   nextUpcoming: boolean;
   teamsOut: boolean;
+  /** The group saw the list with `lastShownHash` inside the quiet window
+   *  the weekly roster uses (`shownInQuietWindow`, roster-shown.ts: three
+   *  hours): a post or a reply of ours, or a member's paste of it. Only
+   *  the morning post reads it; a CHANGED list is posted regardless. */
+  sameListShownRecently?: boolean;
 }): "change" | "morning" | null {
   if (!p.live || !p.nextUpcoming || p.teamsOut) return null;
   if (p.now.getTime() >= p.matchDate.getTime()) return null;
@@ -546,6 +556,7 @@ export function decideListPost(p: {
   if (formatLondon(p.now, "yyyy-MM-dd") !== matchDay || hour >= MORNING_UNTIL_HOUR) return null;
   const morningStart = londonDateTimeToUtc(matchDay, "08:00");
   if (p.lastPostAt && p.lastPostAt.getTime() >= morningStart.getTime()) return null;
+  if (p.sameListShownRecently) return null;
   return "morning";
 }
 

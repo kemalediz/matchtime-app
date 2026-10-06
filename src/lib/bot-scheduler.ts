@@ -75,6 +75,7 @@ import {
   hasRosterBlock,
   recruitAckRecently,
   rosterShownRecently,
+  shownInQuietWindow,
   squadFingerprint,
   stripRosterBlock,
   type QuietMarkerRow,
@@ -1650,7 +1651,8 @@ async function computeForMatch(
   //    are on it: ONE message in the group's own format ("List for
   //    October", numbered slots, paid marks, "Paid but can't play"),
   //    posted when the list differs from the one the group last saw, and
-  //    once on match morning. `decideListPost` holds the limits: never
+  //    once on match morning (held while the group has seen this same
+  //    list in the last three hours). `decideListPost` holds the limits: never
   //    within 30 minutes of the last list post, never 22:00 to 07:59
   //    London, never once the teams are out, only for the fixture's next
   //    match. "The one the group last saw" is the newest
@@ -1700,6 +1702,10 @@ async function computeForMatch(
       live: true,
       nextUpcoming: isNextUpcomingForPosting(siblingMatches, m),
       teamsOut: m.teamAssignments.length > 0,
+      // The rule the weekly roster got in PR #204, on the list's own rows:
+      // the same list is not shown twice inside three hours, so a "who's
+      // in?" answered at 07:30 is not followed by the same list at 08:00.
+      sameListShownRecently: lastShownHash === hash && shownInQuietWindow(shown[0]?.createdAt, now),
     });
     if (due) {
       out.push({ kind: "group-message", key: `${prefix}${hash}:${shown.length}`, matchId, text });

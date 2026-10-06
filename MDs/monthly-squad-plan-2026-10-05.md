@@ -1467,6 +1467,13 @@ stand.
   month's game) and the organisers' unpaid list (per-game players only). A game from before
   the month started here keeps the weekly posts.
 
+- **The match-morning list is not a repeat.** "Always on match morning" (5.4) posted the list
+  at 08:00 even when somebody had asked "who's in?" at 07:30 and been given the same list. It
+  is now held while the group has seen that same list in the last three hours (a post or
+  reply of ours, or a member's paste of it): the rule the weekly roster got in PR #204
+  (`roster-shown.ts`), read off the list's own rows. Held, not dropped: a later poll before
+  12:00 posts it. A list that has changed is posted as before.
+
 ### Slice 7 (optional): card payment for the month (about 2 days)
 
 - **What:**
