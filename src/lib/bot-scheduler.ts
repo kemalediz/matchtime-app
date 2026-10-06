@@ -75,6 +75,7 @@ import {
   hasRosterBlock,
   recruitAckRecently,
   rosterShownRecently,
+  shownInQuietWindow,
   squadFingerprint,
   stripRosterBlock,
   type QuietMarkerRow,
@@ -1576,7 +1577,14 @@ async function computeForMatch(
   //    Both use the next-upcoming gate, so next week's match never posts
   //    while this week's is still live. A club without the settings
   //    (Sutton FC) resolves both to null and gets neither.
-  {
+  //    MONTHLY SQUAD (2026-10-06): not for a match of a month (running or
+  //    in sign-up). Both posts carry the weekly roster, and the squad of a
+  //    month's game is the month's list (block 2-monthly, and on match
+  //    morning), so a club that kept its weekly deadlines when it went
+  //    monthly would get two differently shaped lists. The same reason
+  //    the 17:00 post and "Squad complete" do not fire. `monthly` is null
+  //    for every match of a weekly club.
+  if (!monthly) {
     const isLive = m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED";
     const weekly = weeklyDeadlinesFor(m.date, activity.org);
     const reminderKey = `${matchId}:dropout-reminder`;
@@ -1643,7 +1651,8 @@ async function computeForMatch(
   //    are on it: ONE message in the group's own format ("List for
   //    October", numbered slots, paid marks, "Paid but can't play"),
   //    posted when the list differs from the one the group last saw, and
-  //    once on match morning. `decideListPost` holds the limits: never
+  //    once on match morning (held while the group has seen this same
+  //    list in the last three hours). `decideListPost` holds the limits: never
   //    within 30 minutes of the last list post, never 22:00 to 07:59
   //    London, never once the teams are out, only for the fixture's next
   //    match. "The one the group last saw" is the newest
@@ -1693,6 +1702,10 @@ async function computeForMatch(
       live: true,
       nextUpcoming: isNextUpcomingForPosting(siblingMatches, m),
       teamsOut: m.teamAssignments.length > 0,
+      // The rule the weekly roster got in PR #204, on the list's own rows:
+      // the same list is not shown twice inside three hours, so a "who's
+      // in?" answered at 07:30 is not followed by the same list at 08:00.
+      sameListShownRecently: lastShownHash === hash && shownInQuietWindow(shown[0]?.createdAt, now),
     });
     if (due) {
       out.push({ kind: "group-message", key: `${prefix}${hash}:${shown.length}`, matchId, text });
@@ -2353,9 +2366,14 @@ async function computeForMatch(
   //    named list (U1) is a separate notice, `unpaid-list.ts`.
   //    `hasWeeklyRhythm` is false for a club without both deadlines, so
   //    Sutton FC gets nothing new: its tail stays on the 17:00 post.
+  //    MONTHLY SQUAD (2026-10-06): not for a match of a month. The words
+  //    send people to "the payment poll", and a month's game has none
+  //    (6a above). Its per-game players have their pay link and the daily
+  //    pay chase, and the organisers their unpaid list (`unpaid-list.ts`).
   {
     const key = `${matchId}:unpaid-group`;
     if (
+      !monthly &&
       m.status === "COMPLETED" &&
       m.postMatchEndFlow !== false &&
       activity.org?.paymentTrackingEnabled &&

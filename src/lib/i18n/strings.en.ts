@@ -3054,7 +3054,10 @@ export const en = {
   settings_learned_check_head: "Worth a check (nothing changed)",
   /** Under the "organisers pick" suggestion on /admin/settings: jumps to the setting. */
   settings_learned_open_setting: "Go to the setting",
-  settings_learned_noted_head: "Noticed, no setting for it yet",
+  /** Over the patterns the chat showed that MatchTime switched nothing
+   *  for. Today that is only the monthly list, which HAS a setting
+   *  (Settings, Monthly squad), so this must not say there is none. */
+  settings_learned_noted_head: "Noticed, left for you to decide",
   // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────
   // MDs/monthly-squad-plan-2026-10-05.md, sections 9.1, 9.2 and 4.5.
   // The "Monthly squad" section of /admin/settings (msq_) and the

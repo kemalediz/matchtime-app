@@ -2391,7 +2391,7 @@ export const tr: Strings = {
   settings_learned_from: "Şu tür mesajlardan",
   settings_learned_check_head: "Kontrol etmeye değer (hiçbir şey değişmedi)",
   settings_learned_open_setting: "Ayara git",
-  settings_learned_noted_head: "Fark edildi, henüz bir ayarı yok",
+  settings_learned_noted_head: "Fark edildi, karar sizde",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
   msq_section_title: "Aylık kadro",

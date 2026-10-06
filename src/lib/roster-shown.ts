@@ -48,6 +48,14 @@ export const RECRUIT_ACK_KIND = "recruit-ack";
 /** How long a posted roster (or recruit ack) keeps the next one quiet. */
 export const ROSTER_QUIET_MS = 3 * 60 * 60 * 1000;
 
+/** Is `at` inside the quiet window before `now`? The one test of "shown
+ *  a moment ago", for the weekly roster's markers below and for a monthly
+ *  club's list rows (`<matchId>:month-list:<hash>:<n>`, which carry their
+ *  own hash and time, so they need no second marker). */
+export function shownInQuietWindow(at: Date | null | undefined, now: Date): boolean {
+  return !!at && at.getTime() >= now.getTime() - ROSTER_QUIET_MS;
+}
+
 /** The fields the checks read off a `SentNotification` row. */
 export interface QuietMarkerRow {
   key: string;
@@ -88,7 +96,7 @@ function markerValue(row: QuietMarkerRow, matchId: string, kind: string, now: Da
   if (row.kind !== kind) return null;
   const prefix = `${matchId}:${kind}:`;
   if (!row.key.startsWith(prefix)) return null;
-  if (!row.createdAt || row.createdAt.getTime() < now.getTime() - ROSTER_QUIET_MS) return null;
+  if (!shownInQuietWindow(row.createdAt, now)) return null;
   return row.key.slice(prefix.length).split(":")[0] || null;
 }
 

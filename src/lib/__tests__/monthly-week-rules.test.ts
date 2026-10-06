@@ -401,6 +401,18 @@ describe("decideListPost", () => {
     expect(decideListPost({ ...same, lastPostAt: at("2026-10-12T07:10:00.000Z"), now: at("2026-10-12T08:30:00.000Z") })).toBeNull();
   });
 
+  it("match morning: not when the group saw this same list in the last three hours (2026-10-06)", () => {
+    // Somebody asked "who's in?" at 07:30 and got the list. At 08:00 the
+    // same list is not posted again. The rule PR #204 gave the weekly
+    // roster: the same squad is not shown twice inside three hours.
+    const same = { ...base, lastShownHash: "h2", lastPostAt: at("2026-10-12T06:30:00.000Z") }; // 07:30 BST
+    expect(decideListPost({ ...same, now: at("2026-10-12T07:00:00.000Z"), sameListShownRecently: true })).toBeNull(); // 08:00 BST
+    // Three hours on it is no longer a repeat: the morning post goes out.
+    expect(decideListPost({ ...same, now: at("2026-10-12T09:31:00.000Z"), sameListShownRecently: false })).toBe("morning");
+    // A list that has CHANGED since is posted whatever was shown before.
+    expect(decideListPost({ ...same, hash: "h3", now: at("2026-10-12T07:00:00.000Z"), sameListShownRecently: false })).toBe("change");
+  });
+
   it("not once the teams are out, not for a match that is over, not for next week's match", () => {
     const now = at("2026-10-08T10:00:00.000Z");
     expect(decideListPost({ ...base, now, teamsOut: true })).toBeNull();

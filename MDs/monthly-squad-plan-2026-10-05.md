@@ -1446,6 +1446,34 @@ stand.
 - **A player in two clubs picks the club** on `/month` (`?club=`, with the list of their
   monthly clubs), and away weeks are saved against the month's own club.
 
+#### Found by the manual test script (2026-10-06, PR "monthly squad findings")
+
+- **"paid" by DM in a month started part-way.** Such a month has amounts (the organiser gave
+  a share) but no `pricedAt`, by design (4.5). The "paid" DM asked for `pricedAt`, so a regular
+  of that month, and anybody who joined it and was told to DM "paid", was ignored. The DM now
+  reads a month that is priced OR was started part-way with a share. Nothing else changed its
+  meaning of "priced": the share lock, the priced list, the reminders, the pay-by summary and
+  "in arrears" still read `pricedAt` alone, so a part-way month still gets none of them until
+  the organiser saves a price with a pay-by date on `/admin/months`. A claim is still only
+  "says paid" (D3).
+
+- **The weekly deadline posts in a monthly month.** A club that kept its weekly drop-out
+  deadline and list time when it went monthly got the drop-out reminder (with the weekly
+  roster) and "List published" beside the month's list. Neither fires for a match of a month
+  now (running or in sign-up), for the reason the 17:00 post and "Squad complete" do not
+  (slice 5, point 3). The stand-alone "payments still pending, tick the payment poll" reminder
+  does not fire either: a month's game has no payment poll. Unchanged: the organisers' summary
+  when the drop-out deadline passes (admin channel only, and its numbers are right for a
+  month's game) and the organisers' unpaid list (per-game players only). A game from before
+  the month started here keeps the weekly posts.
+
+- **The match-morning list is not a repeat.** "Always on match morning" (5.4) posted the list
+  at 08:00 even when somebody had asked "who's in?" at 07:30 and been given the same list. It
+  is now held while the group has seen that same list in the last three hours (a post or
+  reply of ours, or a member's paste of it): the rule the weekly roster got in PR #204
+  (`roster-shown.ts`), read off the list's own rows. Held, not dropped: a later poll before
+  12:00 posts it. A list that has changed is posted as before.
+
 ### Slice 7 (optional): card payment for the month (about 2 days)
 
 - **What:**

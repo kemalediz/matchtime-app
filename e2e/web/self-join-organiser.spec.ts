@@ -316,6 +316,35 @@ test("flag ON: the /onboarding wizard is closed and sends the organiser to the s
   await expect(page.getByRole("heading", { name: "Set up your club" })).toBeVisible();
 });
 
+test("the sidebar's \"Create new organisation\" link: the setup form with the flag ON, the wizard with it OFF", async ({ page, context, db }) => {
+  // The link's href is /onboarding. With self-join on, the wizard's last
+  // step (`createOrgFromWizard`) refuses, so the link must never leave
+  // anybody IN the wizard: the /onboarding layout sends them on to the
+  // setup form before any of it renders, on a click as on a typed URL.
+  const org = (await db.one<{ name: string }>(
+    `SELECT o.name FROM "Organisation" o JOIN "Membership" m ON m."orgId" = o.id WHERE m."userId" = $1 LIMIT 1`,
+    [U.admin],
+  ))!;
+  const openLink = async () => {
+    await signInAs(page, U.admin, "/admin");
+    await page.waitForURL("**/admin");
+    await page.getByRole("button", { name: new RegExp(org.name) }).first().click();
+    await page.getByRole("link", { name: "Create new organisation" }).click();
+  };
+
+  await flag(context, true);
+  await openLink();
+  await page.waitForURL("**/create-org");
+  await expect(page.getByRole("heading", { name: "Set up your club" })).toBeVisible();
+  // Nothing of the wizard is on the page.
+  await expect(page.getByText("Already running a WhatsApp group?")).toHaveCount(0);
+
+  await flag(context, false);
+  await openLink();
+  await page.waitForURL("**/onboarding");
+  await expect(page).toHaveURL(/\/onboarding$/);
+});
+
 test("signed in, not the organiser: another club's admin never sees the number or the card", async ({ page, context }) => {
   await flag(context, true);
   await signInAs(page, U.admin, "/admin");

@@ -62,6 +62,8 @@ test("the DM's link highlights the item; Undo puts it back in one tap", async ({
   await expect(page.getByTestId("learned-noted")).toContainText(
     "Monthly list: regulars sign up and pay for the month and others pay as they go to fill spaces.",
   );
+  // Monthly squad is a setting now, so the heading no longer says there is none.
+  await expect(page.getByTestId("learned-noted").getByRole("heading")).toHaveText("Noticed, left for you to decide");
 
   // Who fills an open place is never switched from the chat: it is asked,
   // with the messages behind it and a way straight to the setting.
