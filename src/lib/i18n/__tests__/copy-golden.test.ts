@@ -62,7 +62,7 @@
  *     commit's `.snap` diff is the case count in the header.
  *
  *   - Deliberate additions (2026-10-06, monthly squad slice 5): rows
- *     MWK1 to MWK7, the weekly flow of a monthly club (the list in the
+ *     MWK1 to MWK9, the weekly flow of a monthly club (the list in the
  *     group's own format, the PAYG pool offer, the undo DM after a paste
  *     changed somebody else's line, and the organisers' note about an old
  *     copy). All NEW copy, sent only to a club on "monthly"; the only
@@ -345,6 +345,8 @@ import {
 import {
   buildPasteIgnoredAdminNotice,
   buildPasteNotAddedNotice,
+  buildPasteSenderNotListDm,
+  buildPasteSenderNotMatchedDm,
   buildSeedBumpedDm,
   buildPasteUndoDm,
   buildPaygPoolDm,
@@ -1955,6 +1957,9 @@ function cases(lang: Lang): Case[] {
   );
   add("MWK2 buildPaygPoolGroupPost / with a price", buildPaygPoolGroupPost({ matchDate: mwkMatch, paygPricePence: 800, lang }));
   add("MWK2 buildPaygPoolGroupPost / no price", buildPaygPoolGroupPost({ matchDate: mwkMatch, paygPricePence: null, lang }));
+  add("MWK2 buildPaygPoolGroupPost / two places", buildPaygPoolGroupPost({ open: 2, matchDate: mwkMatch, paygPricePence: 800, lang }));
+  add("MWK8 buildPasteSenderNotMatchedDm", buildPasteSenderNotMatchedDm({ names: ["Gaz"], lang }));
+  add("MWK9 buildPasteSenderNotListDm", buildPasteSenderNotListDm({ matchDate: mwkMatch, lang }));
   add(
     "MWK3 buildPaygPoolDm",
     buildPaygPoolDm({ name: "Omar Khan", activityName: "Monday 7-a-side", matchDate: mwkMatch, paygPricePence: 800, lang }),

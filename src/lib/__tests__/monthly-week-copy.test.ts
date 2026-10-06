@@ -7,6 +7,8 @@ import { parseMonthlyList } from "../monthly-list";
 import {
   buildPasteIgnoredAdminNotice,
   buildPasteNotAddedNotice,
+  buildPasteSenderNotListDm,
+  buildPasteSenderNotMatchedDm,
   buildSeedBumpedDm,
   buildPasteUndoDm,
   buildPaygPoolDm,
@@ -120,8 +122,24 @@ describe("the PAYG pool offer and the paste DMs", () => {
       "🎟 1 place open for *Mon 12 Oct, 20:00*, £8 PAYG. First to say *IN* gets it.",
     );
     expect(buildPaygPoolGroupPost({ matchDate: MATCH, paygPricePence: null, lang: "tr" })).toBe(
-      "🎟 *12 Ekim Pazartesi 20:00* maçında 1 yer açıldı. İlk *VARIM* yazan alır.",
+      "🎟 *12 Ekim Pazartesi 20:00* maçında 1 yer açık. İlk *VARIM* yazan alır.",
     );
+    // One line covers every open place.
+    expect(buildPaygPoolGroupPost({ open: 2, matchDate: MATCH, paygPricePence: 800, lang: "en" })).toBe(
+      "🎟 2 places open for *Mon 12 Oct, 20:00*, £8 PAYG. First to say *IN* gets one.",
+    );
+    expect(buildPaygPoolGroupPost({ open: 2, matchDate: MATCH, paygPricePence: 800, lang: "tr" })).toBe(
+      "🎟 *12 Ekim Pazartesi 20:00* maçında 2 yer açık, maç başı £8 (PAYG). İlk *VARIM* yazan alır.",
+    );
+    expect(buildPasteSenderNotMatchedDm({ names: ["Gaz"], lang: "en" })).toBe(
+      "📋 I couldn't match Gaz on the list you pasted to a player, so I added nobody. " +
+        "To play, say *IN* in the group yourself, or ask an organiser to add them.",
+    );
+    expect(buildPasteSenderNotListDm({ matchDate: MATCH, lang: "en" })).toBe(
+      "📋 I couldn't read the list you posted as the squad list for October, so I changed nothing. " +
+        'If it was the squad list, paste it with its title line ("List for October").',
+    );
+    expect(buildPasteSenderNotListDm({ matchDate: MATCH, lang: "tr" })).toContain('("Ekim listesi")');
     expect(buildPaygPoolDm({ name: "Omar Khan", activityName: "Monday 7-a-side", matchDate: MATCH, paygPricePence: 800, lang: "en" })).toBe(
       "👋 Omar, a place has opened for *Monday 7-a-side* on Mon 12 Oct, 20:00, £8 pay-as-you-go.\n\n" +
         "Want it? Reply *IN*. The first to say so plays. Not this time? No need to reply.",

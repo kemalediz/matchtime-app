@@ -26,7 +26,7 @@ import { decideCheckoutEvent } from "./payment-outcome";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
-import { MONTHLY_PAYMENT_METHOD, isMonthlyRow } from "./monthly-week";
+import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, stagePaygFeeIfAsked } from "./monthly-week";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -430,11 +430,20 @@ export async function handleCollectorFeeReply(
     pendingMatch: async () => {
       const m = await findCollectorPendingMatch(userId);
       feeOrgId = m?.activity.orgId ?? null;
+      // Monthly squad (slice 5): the collector was asked "£8 each, yes?"
+      // but the amount was never staged (the Pi's ack was lost, or carried
+      // no message id). Their reply is to that question, so the PAYG price
+      // is staged now and a yes confirms it, instead of being dropped.
+      // Null for every weekly club and every match with no such question.
+      let pending = m?.feePendingConfirm ?? null;
+      if (m && pending == null && m.feePerPlayer == null) {
+        pending = await stagePaygFeeIfAsked(m.id).catch(() => null);
+      }
       return m
         ? {
             id: m.id,
             name: m.activity.name,
-            feePendingConfirm: m.feePendingConfirm,
+            feePendingConfirm: pending,
             lang: normaliseLang(m.activity.org.language),
           }
         : null;

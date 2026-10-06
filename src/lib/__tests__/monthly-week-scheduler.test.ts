@@ -121,7 +121,7 @@ function match(over: Record<string, unknown> = {}) {
     attendances: REGULARS.map((n, i) => att(n, i)),
     teamAssignments: [] as unknown[],
     benchConfirmations: [] as unknown[],
-    benchSlotOffers: [] as Array<{ id: string; replacingUserId: string | null }>,
+    benchSlotOffers: [] as Array<{ id: string; replacingUserId: string | null; createdAt: Date }>,
     paymentCredits: [] as unknown[],
     activity: {
       id: "mon-7",
@@ -197,6 +197,10 @@ function setWorld(
     pool?: Array<{ userId: string; name: string; phone: string | null }>;
     paygPricePence?: number | null;
     monthsThrow?: boolean;
+    /** Pool group lines already sent for the match. */
+    poolLines?: Date[];
+    /** The first fee question's row, as the ack left it. */
+    feeAsk?: { waMessageId: string | null; createdAt: Date } | null;
   },
 ) {
   for (const k of Object.keys(overrides)) delete overrides[k];
@@ -223,12 +227,16 @@ function setWorld(
   overrides.sentNotification = {
     findMany: async (args: unknown) => {
       const where = (args as { where?: { kind?: string; key?: { startsWith?: string } } }).where ?? {};
+      if (where.key?.startsWith?.includes("payg-pool-line")) {
+        return [...(opts.poolLines ?? [])].sort((a, b) => b.getTime() - a.getTime()).map((createdAt) => ({ createdAt }));
+      }
       if (where.key?.startsWith) {
         return [...(opts.shown ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       }
       if (where.kind) return [];
       return (opts.sent ?? []).map((key) => ({ key }));
     },
+    findUnique: async () => opts.feeAsk ?? null,
   };
   overrides.membership = {
     findMany: async (args: unknown) => {
@@ -534,8 +542,10 @@ describe("MONTHLY: what a running month switches off (plan 5.4, 5.6)", () => {
 });
 
 describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
+  /** When Bilal dropped and the offer for his place was opened. */
+  const DROPPED_AT = new Date(THU_10AM.getTime() - 3 * 60 * 1000);
   const dropped = () => {
-    const m = match({ benchSlotOffers: [{ id: "o1", replacingUserId: "u-bilal" }] });
+    const m = match({ benchSlotOffers: [{ id: "o1", replacingUserId: "u-bilal", createdAt: DROPPED_AT }] });
     m.attendances[1].status = "DROPPED";
     return m;
   };
@@ -543,59 +553,82 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     { userId: "u-omar", name: "Omar Khan", phone: "+447700900201" },
     { userId: "u-will", name: "Will Stone", phone: "+447700900202" },
   ];
-  /** The group already saw a list a few minutes ago, so no list post is due
-   *  on this poll (the 30-minute floor). */
+  /** The group saw a list a few minutes BEFORE the drop, so no list post
+   *  is due on this poll (the 30-minute floor) and that list did not
+   *  announce this place. */
   const listJustPosted = (m: ReturnType<typeof match>): Shown[] => [
     { key: `${m.id}:month-list:old0000000000000:0`, kind: "group-message", createdAt: new Date(THU_10AM.getTime() - 5 * 60 * 1000) },
   ];
-  const offerPosts = (out: Awaited<ReturnType<typeof instructions>>, m: ReturnType<typeof match>) =>
-    out.filter((i) => i.key.startsWith("offer-o1") || i.key.startsWith(`${m.id}:payg-pool-dm:`));
+  const poolPosts = (out: Awaited<ReturnType<typeof instructions>>, m: ReturnType<typeof match>) =>
+    out.filter((i) => i.key.startsWith("offer-") || i.key.startsWith(`${m.id}:payg-pool-`));
 
   it("nobody waiting and no list going out: one group line, and one DM to each pay-as-you-go player", async () => {
     const m = dropped();
     setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m) });
-    const out = offerPosts(await instructions(THU_10AM), m);
+    const out = poolPosts(await instructions(THU_10AM), m);
     expect(out.map((i) => [i.kind, i.key])).toEqual([
-      ["group-message", "offer-o1"],
+      ["group-message", `${m.id}:payg-pool-line:3:0`],
       ["dm", `${m.id}:payg-pool-dm:u-omar`],
       ["dm", `${m.id}:payg-pool-dm:u-will`],
     ]);
-    expect((out[0] as { text: string }).text).toBe(buildPaygPoolGroupPost({ matchDate: KICKOFF, paygPricePence: 800, lang: "en" }));
+    // Three places are free (two from the start, one dropped): one line says so.
+    expect((out[0] as { text: string }).text).toBe("🎟 3 places open for *Mon 12 Oct, 20:00*, £8 PAYG. First to say *IN* gets one.");
     expect(out[1]).toMatchObject({ phone: "447700900201", targetUser: "u-omar" });
     expect((out[1] as { text: string }).text).toBe(
       buildPaygPoolDm({ name: "Omar Khan", activityName: "Monday 7-a-side", matchDate: KICKOFF, paygPricePence: 800, lang: "en" }),
     );
   });
 
-  it("ONE group post per open place: when the list goes out on the same poll with its 'place open' line, the pool line does not", async () => {
+  it("SEVERAL offers held back by the list's floor go out as ONE line, never one each", async () => {
+    const m = dropped();
+    m.benchSlotOffers.push({ id: "o2", replacingUserId: null, createdAt: DROPPED_AT }, { id: "o3", replacingUserId: null, createdAt: DROPPED_AT });
+    setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m) });
+    const lines = poolPosts(await instructions(THU_10AM), m).filter((i) => i.kind === "group-message");
+    expect(lines.map((i) => i.key)).toEqual([`${m.id}:payg-pool-line:3:0`]);
+  });
+
+  it("when the list goes out on the same poll with its 'places open' line, the pool line does not", async () => {
     const m = dropped();
     setWorld(m, { monthly: true, pool: POOL });
     const out = await instructions(THU_10AM);
     const list = out.filter((i) => i.key.includes("month-list"));
     expect(list).toHaveLength(1);
     expect((list[0] as { text: string }).text).toContain("places open, £8 PAYG: say *IN*");
-    // No second group post for the same place; the DMs still go.
-    expect(offerPosts(out, m).map((i) => [i.kind, i.key])).toEqual([
+    expect(poolPosts(out, m).map((i) => [i.kind, i.key])).toEqual([
       ["dm", `${m.id}:payg-pool-dm:u-omar`],
       ["dm", `${m.id}:payg-pool-dm:u-will`],
     ]);
   });
 
-  it("nor on a later poll, once the group has that list", async () => {
+  it("an offer the list has ALREADY announced never posts later, even when a newer list is held by the floor", async () => {
+    // The list went out AFTER the offer was opened (it carried the open
+    // line). Now the list has changed again but is inside its 30 minutes.
     const m = dropped();
-    const hash = weekListHash(listText(m));
     setWorld(m, {
       monthly: true,
       pool: POOL,
-      shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date(THU_10AM.getTime() - 60 * 60 * 1000) }],
+      shown: [{ key: `${m.id}:month-list:old0000000000000:0`, kind: "group-message", createdAt: new Date(DROPPED_AT.getTime() + 60 * 1000) }],
       sent: [`${m.id}:payg-pool-dm:u-omar`, `${m.id}:payg-pool-dm:u-will`],
     });
-    expect(offerPosts(await instructions(THU_10AM), m)).toEqual([]);
+    const out = await instructions(THU_10AM);
+    expect(out.some((i) => i.key.includes("month-list"))).toBe(false);
+    expect(poolPosts(out, m)).toEqual([]);
+  });
+
+  it("nor again once a pool line has told the group; a place opened AFTER it gets one more line", async () => {
+    const m = dropped();
+    const told = new Date(DROPPED_AT.getTime() + 60 * 1000);
+    const sent = [`${m.id}:payg-pool-dm:u-omar`, `${m.id}:payg-pool-dm:u-will`];
+    setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m), poolLines: [told], sent });
+    expect(poolPosts(await instructions(THU_10AM), m)).toEqual([]);
+    m.benchSlotOffers.push({ id: "o2", replacingUserId: null, createdAt: new Date(told.getTime() + 60 * 1000) });
+    setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m), poolLines: [told], sent });
+    expect(poolPosts(await instructions(THU_10AM), m).map((i) => i.key)).toEqual([`${m.id}:payg-pool-line:3:1`]);
   });
 
   it("a pool player is DMed at most once per match, however many places open", async () => {
     const m = dropped();
-    m.benchSlotOffers.push({ id: "o2", replacingUserId: null });
+    m.benchSlotOffers.push({ id: "o2", replacingUserId: null, createdAt: DROPPED_AT });
     setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m), sent: [`${m.id}:payg-pool-dm:u-omar`] });
     const out = await instructions(THU_10AM);
     expect(out.filter((i) => i.kind === "dm" && i.key.includes("payg-pool-dm")).map((i) => i.key)).toEqual([`${m.id}:payg-pool-dm:u-will`]);
@@ -604,7 +637,7 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
   it("never overnight", async () => {
     const m = dropped();
     setWorld(m, { monthly: true, pool: POOL });
-    expect(offerPosts(await instructions(new Date("2026-10-08T22:30:00.000Z")), m)).toEqual([]);
+    expect(poolPosts(await instructions(new Date("2026-10-08T22:30:00.000Z")), m)).toEqual([]);
   });
 
   it("an organiser-pick club's pool is not asked", async () => {
@@ -612,7 +645,7 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     setWorld(m, { monthly: true, pool: POOL, shown: listJustPosted(m) });
     features.benchPickMode = "organiser";
     try {
-      expect(offerPosts(await instructions(THU_10AM), m)).toEqual([]);
+      expect(poolPosts(await instructions(THU_10AM), m)).toEqual([]);
     } finally {
       features.benchPickMode = "first-come";
     }
@@ -622,11 +655,55 @@ describe("MONTHLY: the PAYG pool offer (plan 5.3)", () => {
     const m = dropped();
     m.attendances.push(att("Zed", 9, { status: "BENCH", paymentMethod: null }));
     setWorld(m, { monthly: true, pool: POOL });
-    const out = (await instructions(THU_10AM)).filter((i) => i.key.startsWith("offer-o1") || i.key.includes("payg-pool-dm"));
-    expect(out.map((i) => [i.kind, i.key])).toEqual([
+    expect(poolPosts(await instructions(THU_10AM), m).map((i) => [i.kind, i.key])).toEqual([
       ["bench-prompt", "offer-o1"],
       ["dm", "offer-o1:dm:u-zed"],
     ]);
+  });
+});
+
+describe("MONTHLY: round 2 of the review", () => {
+  const withPayg = (over: Record<string, unknown> = {}) =>
+    match({ attendances: [...REGULARS.map((n, i) => att(n, i)), att("Omar", 4, { paymentMethod: null })], ...over });
+  const prompt = buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" });
+
+  it("D: the fee question is asked ONCE MORE when its first send reported no message id and 30 minutes have passed", async () => {
+    const m = withPayg();
+    const key = `${m.id}:fee-ask`;
+    const asked = (minutesAgo: number, waMessageId: string | null) => ({
+      waMessageId,
+      createdAt: new Date(AFTER_MATCH.getTime() - minutesAgo * 60 * 1000),
+    });
+    // Too soon.
+    setWorld(m, { monthly: true, sent: [key], feeAsk: asked(10, null) });
+    expect((await instructions(AFTER_MATCH)).some((i) => i.key.includes("fee-ask"))).toBe(false);
+    // It was sent (the ack carried an id): never asked again, whatever the collector answered.
+    setWorld(m, { monthly: true, sent: [key], feeAsk: asked(120, "wa-1") });
+    expect((await instructions(AFTER_MATCH)).some((i) => i.key.includes("fee-ask"))).toBe(false);
+    // Not sent, and half an hour on: once more, on its own key.
+    setWorld(m, { monthly: true, sent: [key], feeAsk: asked(31, null) });
+    const again = (await instructions(AFTER_MATCH)).filter((i) => i.key.includes("fee-ask"));
+    expect(again.map((i) => [i.key, (i as { text: string }).text])).toEqual([[`${key}:again`, prompt]]);
+    // And never a third time.
+    setWorld(m, { monthly: true, sent: [key, `${key}:again`], feeAsk: asked(300, null) });
+    expect((await instructions(AFTER_MATCH)).some((i) => i.key.includes("fee-ask"))).toBe(false);
+  });
+
+  it("D: a WEEKLY club's fee question is never asked twice", async () => {
+    const m = match({ attendances: REGULARS.map((n, i) => att(n, i, { paymentMethod: null })), rollingSeededAt: null });
+    setWorld(m, { monthly: false, sent: [`${m.id}:fee-ask`], feeAsk: { waMessageId: null, createdAt: new Date(AFTER_MATCH.getTime() - 3 * 60 * 60 * 1000) } });
+    expect((await instructions(AFTER_MATCH)).some((i) => i.key.includes("fee-ask"))).toBe(false);
+  });
+
+  it("E: the running months the poll's sweep already read are not read again", async () => {
+    const m = match();
+    setWorld(m, { monthly: true });
+    const { loadRunningMonths } = await import("@/lib/monthly-week");
+    const months = await loadRunningMonths(ORG.id);
+    monthReads.mockClear();
+    const res = await computeDuePosts(GROUP, THU_10AM, { adminGroup: false }, months);
+    expect(monthReads).not.toHaveBeenCalled();
+    expect(res!.instructions.some((i) => i.key.includes("month-list"))).toBe(true);
   });
 });
 

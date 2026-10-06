@@ -3211,8 +3211,17 @@ export const en = {
   mwk_list_open_organiser: (p: { open: number }): string =>
     `${p.open} ${p.open === 1 ? "place" : "places"} open. Say *IN* to go on the waiting list, and the organisers will pick who plays.`,
   /** A place opened and nobody is waiting: one line in the group. */
-  mwk_pool_group: (p: { when: string; price: string | null }): string =>
-    `🎟 1 place open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. First to say *IN* gets it.`,
+  mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
+    `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +
+    `First to say *IN* ${p.open === 1 ? "gets it" : "gets one"}.`,
+  /** To the member who pasted a list with a name that matched nobody. */
+  mwk_dm_sender_not_matched: (p: { names: string[] }): string =>
+    `📋 I couldn't match ${p.names.join(", ")} on the list you pasted to a player, so I added nobody. ` +
+    `To play, say *IN* in the group yourself, or ask an organiser to add them.`,
+  /** To a member of the month whose numbered list was not read as the squad list. */
+  mwk_dm_sender_not_list: (p: { month: string }): string =>
+    `📋 I couldn't read the list you posted as the squad list for ${p.month}, so I changed nothing. ` +
+    `If it was the squad list, paste it with its title line ("List for ${p.month}").`,
   /** The same offer, by DM, to each pay-as-you-go player. */
   mwk_pool_dm: (p: { firstName: string | null; activityName: string; when: string; price: string | null }): string =>
     `👋 ${p.firstName ?? "there"}, a place has opened for *${p.activityName}* on ${p.when}${p.price ? `, ${p.price} pay-as-you-go` : ""}.\n\n` +

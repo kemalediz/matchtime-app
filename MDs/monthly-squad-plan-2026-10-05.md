@@ -1048,6 +1048,32 @@ stand.
   players. A regular who has left the group frees their slot number. The pay page refuses a
   monthly regular.
 
+**Changed after the second review (2026-10-06, same PR).** These replace the lines above where
+they differ.
+
+- **Leaving the group never voids a credit.** A regular who leaves stays a member of the
+  month (flagged as left): not seeded, not listed, slot number free, but every credit they
+  earned stays owed. A credit is only taken back from a regular who is still in the group and
+  is playing after all.
+- **One pool line per match per poll**, covering every open place ("2 places open"), and only
+  for a place the group has not been told about: an offer opened after the last list post and
+  the last pool line.
+- **A paste that matched nobody is not swallowed.** The sender gets one DM a day saying what
+  was not matched. A line that shares a word with the sender's own name, when they are not
+  on the list and it is the only unmatched line, is the sender adding themselves. A member of
+  the month whose headerless list was not read is told to paste it with its title line.
+  Before the seed, the sender's own in or out is kept (an early IN, or an away week).
+- **The PAYG fee** is staged only by an ack that carries the sent message's id (the Pi acks a
+  failed DM with none). With no such ack after 30 minutes the question is asked once more. A
+  collector's reply to an unstaged question stages the PAYG price and then confirms it.
+- **Cost.** The running months are read once per poll, and played games are swept at most
+  once an hour per club (the games still to play, every poll).
+- **The seed's two exceptions.** A regular who asked for the bench (read from the attendance
+  log) is not brought in over anybody and is not credited for that week. An organiser who is
+  IN and not on the month's list is never moved to the waiting list.
+- **No longer a regular.** A player moved off the month's regulars loses the "paid for by the
+  month" mark on games not yet played, so they get the pay link and the pay page again.
+
 ### Slice 6: credits ledger, cancelled weeks, month close (about 2 days)
 
 - **What:**

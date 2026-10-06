@@ -257,12 +257,13 @@ async function month(
   db: TestDb,
   o: { id: string; org: string; act: string },
   members: Array<{ p: { id: string }; kind?: "regular" | "payg"; slot: number | null; paid?: boolean }>,
+  monthStart = MONTH_START,
 ) {
   await db.run(
     `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "gamesPlayedBeforeStart",
                                "startedMidMonthAt", "createdAt", "updatedAt")
      VALUES ($1, $2, $3, $4::date, 'running', 4, 1, now() - interval '2 days', now() - interval '2 days', now())`,
-    [o.id, o.org, o.act, MONTH_START],
+    [o.id, o.org, o.act, monthStart],
   );
   for (const m of members) {
     await db.run(
@@ -413,8 +414,8 @@ test("2. a regular drops: paid but can't play, a credit, and the place goes to t
   // ONE group post for it: the re-posted list says "2 places open, say
   // IN", so the pool's own line is not sent as well. And nobody is DMed
   // twice for the same match.
-  expect(polled.filter((i) => i.key.startsWith("offer-") || i.key.includes("payg-pool-dm"))).toEqual([]);
-  expect(buildPaygPoolGroupPost({ matchDate: KICKOFF, paygPricePence: 800, lang: "en" })).toContain("1 place open");
+  expect(polled.filter((i) => i.key.startsWith("offer-") || i.key.includes("payg-pool-"))).toEqual([]);
+  expect(buildPaygPoolGroupPost({ open: 2, matchDate: KICKOFF, paygPricePence: 800, lang: "en" })).toContain("2 places open");
 
   // The drop itself is acknowledged with a react and no words; the
   // changed list reaches the group exactly once, on this poll.
@@ -440,7 +441,7 @@ test("2. a regular drops: paid but can't play, a credit, and the place goes to t
   // Nothing again on the next poll.
   const again = await poll(request, at(11, 40));
   expect(listPosts(again)).toEqual([]);
-  expect(again.some((i) => i.key.startsWith("offer-"))).toBe(false);
+  expect(again.some((i) => i.key.startsWith("offer-") || i.key.includes("payg-pool-"))).toBe(false);
 });
 
 test("3. a PAYG player takes it: the vacated slot number, the offer closed, the list re-posted once", async ({ request, db }) => {
@@ -697,6 +698,12 @@ test("a paste NEVER creates a player: an unknown name, a club player not in the 
     `📋 ${P.alex.name} pasted the list for ${WHEN} with Tariq, Will Frost on it. I could not match that to a player on this month's list, ` +
       "so I added nobody. A player can say *IN* in the group themselves, or you can add them on the match page.",
   ]);
+  // Nothing is said in the group, but the sender is not left guessing:
+  // one DM saying what was not matched and what to do.
+  expect((await dms(db, P.alex)).map((d) => d.text)).toEqual([
+    "📋 I couldn't match Tariq, Will Frost on the list you pasted to a player, so I added nobody. " +
+      "To play, say *IN* in the group yourself, or ask an organiser to add them.",
+  ]);
   // The same names again today: no second note. Will is told nothing.
   await say(request, P.tom, listText([...current, "Tariq", "Will Frost"], ["Bilal Aydin"]));
   expect(await notes()).toHaveLength(1);
@@ -709,6 +716,12 @@ test("a paste NEVER creates a player: an unknown name, a club player not in the 
   expect(kit.intent).not.toBe("monthly_list");
   expect(await rows(db)).toEqual(before.rows);
   expect(await users()).toBe(before.users);
+  // Alex is on the month's list, so in case he meant the squad list he is
+  // told (once a day) how to make it readable.
+  expect((await dms(db, P.alex)).map((d) => d.text)[1]).toBe(
+    `📋 I couldn't read the list you posted as the squad list for ${MONTH_NAME}, so I changed nothing. ` +
+      `If it was the squad list, paste it with its title line ("List for ${MONTH_NAME}").`,
+  );
 
   // 3. Another month's header over the CURRENT squad in order, with a new
   //    name appended: the shape the weekly pasted-roster rule registers
@@ -753,15 +766,28 @@ test("8. after the match: no payment poll, and the PAYG price is confirmed for t
   // NOT staged yet: the DM has been handed to the Pi, not sent. A "yes"
   // from the collector now would confirm nothing.
   expect(await fee()).toEqual({ pending: null, fee: null });
-  // The Pi acks the DM: only now is £8 the amount awaiting his yes.
-  const ack = await request.post("/api/whatsapp/ack", {
-    headers: KEY,
-    data: { key: `${MATCH_ID}:fee-ask`, kind: "dm", matchId: MATCH_ID, waMessageId: "e2e-mw-wa-fee" },
-  });
-  expect(ack.status(), await ack.text()).toBe(200);
+  const ack = async (key: string, waMessageId?: string) => {
+    const res = await request.post("/api/whatsapp/ack", {
+      headers: KEY,
+      data: { key, kind: "dm", matchId: MATCH_ID, ...(waMessageId ? { waMessageId } : {}) },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+  };
+  // The Pi acks a DM that FAILED to send as well, with no message id (so
+  // its queue moves on). That is not "sent": still nothing staged.
+  await ack(`${MATCH_ID}:fee-ask`);
+  expect(await fee()).toEqual({ pending: null, fee: null });
+  // (The claim row carries the wall clock; put it on this test's clock.)
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = $2 WHERE key = $1`, [`${MATCH_ID}:fee-ask`, after.toISOString()]);
+  expect((await poll(request, new Date(after.getTime() + 10 * 60 * 1000))).some((i) => i.key.includes(":fee-ask"))).toBe(false);
+  // Half an hour on with no sent-ack: asked once more, on its own key.
+  const reask = (await poll(request, new Date(after.getTime() + 40 * 60 * 1000))).filter((i) => i.key.includes(":fee-ask"));
+  expect(reask.map((i) => [i.key, i.text])).toEqual([[`${MATCH_ID}:fee-ask:again`, ask[0].text]]);
+  // This one is sent (the ack carries its id): only now is £8 the amount
+  // awaiting his yes. And he is never asked a third time.
+  await ack(`${MATCH_ID}:fee-ask:again`, "e2e-mw-wa-fee");
   expect(await fee()).toEqual({ pending: 8, fee: null });
-  // And he is not asked a second time.
-  expect((await poll(request, new Date(after.getTime() + 10 * 60 * 1000))).some((i) => i.key === `${MATCH_ID}:fee-ask`)).toBe(false);
+  expect((await poll(request, new Date(after.getTime() + 120 * 60 * 1000))).some((i) => i.key.includes(":fee-ask"))).toBe(false);
   // No list is posted for a match that has kicked off.
   expect(listPosts(polled)).toEqual([]);
 });
@@ -969,5 +995,109 @@ test.describe("regulars have priority at the seed", () => {
     const list = listPosts(polled, MATCH3);
     expect(list).toHaveLength(1);
     expect(list[0].text).toContain("1. Una Reid (paid)\n2. Vic Shaw (paid)\n\nReserves\n1. Ned Early\n2. Wes Tate");
+
+    // A: Wes then LEAVES the group. The credit he earned is still owed to
+    // him: leaving never voids one.
+    await db.run(`UPDATE "Membership" SET "leftAt" = now() WHERE "userId" = $1 AND "orgId" = $2`, [R.wes.id, ORG3]);
+    await poll(request, at(11), GROUP3);
+    expect(await credits(db, ORG3)).toEqual([
+      { userId: R.wes.id, reason: "missed", games: 1, earnedMatchId: MATCH3, earnedMonthId: "e2e-mw3-month", voided: false },
+    ]);
+
+    // F: Vic is moved to PAYG for the month. The game has not been played,
+    // so his row is no longer "paid for by the month" (he gets the pay
+    // link, and the pay page is open to him).
+    expect((await rows(db, MATCH3)).find((r) => r.userId === R.vic.id)?.paymentMethod).toBe("monthly");
+    await db.run(`UPDATE "SquadMonthMember" SET kind = 'payg', "gamesCovered" = 0 WHERE "monthId" = 'e2e-mw3-month' AND "userId" = $1`, [R.vic.id]);
+    await poll(request, at(11, 10), GROUP3);
+    expect((await rows(db, MATCH3)).find((r) => r.userId === R.vic.id)?.paymentMethod).toBeNull();
+    // Una, still a regular, keeps hers.
+    expect((await rows(db, MATCH3)).find((r) => r.userId === R.una.id)?.paymentMethod).toBe("monthly");
+  });
+});
+
+test.describe("after a game: the collector's reply, and the hourly sweep", () => {
+  const ORG4 = "e2e-mw4-org";
+  const GROUP4 = "e2e-monthly-played@g.us";
+  const MATCH4 = "e2e-mw4-match";
+  const PLAYED = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const NOW = new Date();
+  const S = {
+    cal: { id: "e2e-mw4-cal", name: "Cal Banks", phone: "+447700923001" },
+    rae: { id: "e2e-mw4-rae", name: "Rae Mills", phone: "+447700923002" },
+    sid: { id: "e2e-mw4-sid", name: "Sid Lowe", phone: "+447700923003" },
+    pip: { id: "e2e-mw4-pip", name: "Pip Nash", phone: "+447700923004" },
+  } as const;
+  const payLinks = (db: TestDb, who: { phone: string }) =>
+    db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2`, [ORG4, digits(who.phone)]);
+
+  test.beforeAll(async () => {
+    const db = testDb();
+    await club(db, { org: ORG4, group: GROUP4, act: "e2e-mw4-act", sport: "e2e-mw4-sport", name: "Played", collector: S.cal.id });
+    await person(db, ORG4, S.cal, "OWNER");
+    for (const p of [S.rae, S.sid, S.pip]) await person(db, ORG4, p);
+    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true WHERE id = $1`, [ORG4, S.cal.id]);
+    await fixture(db, MATCH4, "e2e-mw4-act", PLAYED, "COMPLETED");
+    await attend(db, ORG4, MATCH4, S.rae.id, "CONFIRMED", 1);
+    await attend(db, ORG4, MATCH4, S.sid.id, "CONFIRMED", 2);
+    await attend(db, ORG4, MATCH4, S.pip.id, "CONFIRMED", 3);
+    await month(
+      db,
+      { id: "e2e-mw4-month", org: ORG4, act: "e2e-mw4-act" },
+      [
+        { p: S.rae, slot: 1, paid: true },
+        { p: S.sid, slot: 2, paid: true },
+      ],
+      `${formatInTimeZone(PLAYED, LONDON, "yyyy-MM")}-01`,
+    );
+  });
+
+  test("the collector's YES to a fee question whose ack never came is not dropped: PAYG price confirmed, link to the PAYG player only", async ({
+    request,
+    db,
+  }) => {
+    const polled = await poll(request, NOW, GROUP4);
+    const ask = polled.filter((i) => i.key === `${MATCH4}:fee-ask`);
+    expect(ask).toHaveLength(1);
+    expect(ask[0].text).toBe(buildFeeConfirmPrompt({ perPlayer: 8, headcount: 1, matchName: "Monday 7-a-side", wasTotal: false, lang: "en" }));
+    // The regulars' rows are the month's.
+    expect((await rows(db, MATCH4)).map((r) => [r.userId, r.paymentMethod])).toEqual([
+      [S.rae.id, "monthly"],
+      [S.sid.id, "monthly"],
+      [S.pip.id, null],
+    ]);
+    // No ack ever arrives. Cal answers the question he was sent.
+    const res = await request.post("/api/whatsapp/dm-reply", {
+      headers: KEY,
+      data: { phone: S.cal.phone, body: "yes", waMessageId: msgId(), authorName: null },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const m = await db.one<{ fee: number | null; pending: number | null; released: boolean }>(
+      `SELECT "feePerPlayer" AS fee, "feePendingConfirm" AS pending, ("paymentLinksReleasedAt" IS NOT NULL) AS released FROM "Match" WHERE id = $1`,
+      [MATCH4],
+    );
+    expect(m).toEqual({ fee: 8, pending: null, released: true });
+    // A pay link for the per-game player, and never for a regular.
+    expect(await payLinks(db, S.pip)).toBe(1);
+    expect(await payLinks(db, S.rae)).toBe(0);
+    expect(await payLinks(db, S.sid)).toBe(0);
+  });
+
+  test("a played game is swept at most once an hour: a change to it is credited on the next hour's poll", async ({ request, db }) => {
+    // An admin takes Sid (a paid regular) off the game he did not turn up to.
+    await db.run(
+      `WITH a AS (UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2 RETURNING "matchId", "userId", position)
+       INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "toPosition", cause, "actorKind")
+       SELECT 'e2e-mw4-ev-sid-out', "matchId", "userId", $3, 'CONFIRMED', 'DROPPED', position, 'test-fixture', 'system' FROM a`,
+      [MATCH4, S.sid.id, ORG4],
+    );
+    // The same hour as the first poll: the played game is not swept again.
+    await poll(request, NOW, GROUP4);
+    expect(await credits(db, ORG4)).toEqual([]);
+    // The next hour: it is, and the miss is credited.
+    await poll(request, new Date(NOW.getTime() + 61 * 60 * 1000), GROUP4);
+    expect(await credits(db, ORG4)).toEqual([
+      { userId: S.sid.id, reason: "missed", games: 1, earnedMatchId: MATCH4, earnedMonthId: "e2e-mw4-month", voided: false },
+    ]);
   });
 });

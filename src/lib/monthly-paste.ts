@@ -31,7 +31,14 @@ import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import { formatLondon } from "./london-time";
 import { parseMonthlyList } from "./monthly-list";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek } from "./monthly-week";
-import { buildPasteIgnoredAdminNotice, buildPasteNotAddedNotice, buildPasteUndoDm, pasteResidual } from "./monthly-week-copy";
+import {
+  buildPasteIgnoredAdminNotice,
+  buildPasteNotAddedNotice,
+  buildPasteSenderNotListDm,
+  buildPasteSenderNotMatchedDm,
+  buildPasteUndoDm,
+  pasteResidual,
+} from "./monthly-week-copy";
 import {
   buildWeekList,
   pasteShowsSameList,
@@ -106,6 +113,9 @@ export async function handleMonthlyPaste(args: {
   /** When the member sent it (the original WhatsApp time). */
   sentAt?: Date;
   sender: { userId: string | null; name: string | null };
+  /** The sender's WhatsApp name, beside their club name: a line they add
+   *  for themselves may be written under either. */
+  senderWhatsAppName?: string | null;
   now?: Date;
 }): Promise<MonthlyPasteResult | NotThisMonthsList | null> {
   const { orgId, matchId, sender } = args;
@@ -141,21 +151,43 @@ export async function handleMonthlyPaste(args: {
     // a paste only records paid marks.
     seeded: week.seeded,
     senderUserId: sender.userId,
+    senderNames: [sender.name, args.senderWhatsAppName],
     senderIsAdmin,
   });
-  // "List for November" pasted in October is next month's sign-up
-  // (slice 3); a numbered list of something else is not a squad list.
-  if (outcome.otherMonth || outcome.notThisList) return { notThisList: true };
 
   const phoneOf = new Map(memberships.map((m) => [m.user.id, m.user.phoneNumber]));
   const memberOf = new Map(week.members.map((m) => [m.userId, m]));
   const rowOf = new Map(week.rows.map((r) => [r.userId, r]));
   const sendAfter = adminNoticeSendAfter(now);
+  const day = formatLondon(now, "yyyy-MM-dd");
   const dm = (phone: string, text: string) =>
     db.botJob.create({
       // Never between 22:00 and 07:59 London: held until 08:00.
       data: { orgId, kind: "dm", phone: phone.replace(/^\+/, ""), text, ...(sendAfter ? { sendAfter } : {}) },
     });
+  /** A DM to the SENDER about their own paste, at most once a day per
+   *  kind: nothing is said in the group, but nothing is swallowed either. */
+  const tellSender = async (kind: "not-matched" | "not-list", text: string): Promise<void> => {
+    const phone = sender.userId ? phoneOf.get(sender.userId) : null;
+    if (!sender.userId || !phone) return;
+    try {
+      if (await claimOnce(`org-${orgId}:month-paste-sender:${kind}:${day}:${sender.userId}`, "paste-sender-dm", null)) await dm(phone, text);
+    } catch (err) {
+      console.error("[monthly-paste] sender DM failed:", err);
+    }
+  };
+
+  // "List for November" pasted in October is next month's sign-up
+  // (slice 3); a numbered list of something else is not a squad list.
+  if (outcome.otherMonth || outcome.notThisList) {
+    // A member of the month whose headerless list was not read may have
+    // meant the squad list: they are told how to make it readable.
+    const m = sender.userId ? memberOf.get(sender.userId) : undefined;
+    if (outcome.notThisList && m && !m.left) {
+      await tellSender("not-list", buildPasteSenderNotListDm({ matchDate: week.matchDate, lang: week.language }));
+    }
+    return { notThisList: true };
+  }
   /** D4: tell the player whose line somebody else changed. Once per paste
    *  and player, so a retried batch cannot send it twice. */
   const undoDm = async (userId: string, change: "out-paid" | "out" | "in"): Promise<void> => {
@@ -241,7 +273,6 @@ export async function handleMonthlyPaste(args: {
   // already run the sync for the rest.
   await syncMonthlyWeek(matchId, now).catch((err) => console.error("[monthly-paste] sync failed:", err));
 
-  const day = formatLondon(now, "yyyy-MM-dd");
   // An old copy was pasted: one line to the organisers, at most once a
   // London day per club.
   if (outcome.ignored.length > 0) {
@@ -275,6 +306,10 @@ export async function handleMonthlyPaste(args: {
         const own = senderIsAdmin && sender.userId ? phoneOf.get(sender.userId) : null;
         if (own) await dm(own, text);
         else await sendAdminNotice({ orgId, now, text });
+      }
+      // And the sender is told too (an admin has just had the note).
+      if (!senderIsAdmin) {
+        await tellSender("not-matched", buildPasteSenderNotMatchedDm({ names, lang: week.language }));
       }
     } catch (err) {
       console.error("[monthly-paste] not-added notice failed:", err);

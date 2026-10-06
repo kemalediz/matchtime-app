@@ -36,7 +36,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { planAckSideEffects } from "@/lib/dispatch-claim";
 import { parsePlatformJobKey, recordPlatformJobOutcome } from "@/lib/platform-jobs";
-import { stagePaygFeeOnAsk } from "@/lib/monthly-week";
+import { stagePaygFeeOnAck } from "@/lib/monthly-week";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -107,11 +107,11 @@ export async function POST(request: Request) {
   // question for this match, so (for a monthly club with a PAYG price, and
   // nobody else) that price becomes the amount awaiting their yes. Not
   // before: see `stagePaygFeeOnAsk`. A released claim never gets here.
-  if (key.endsWith(":fee-ask")) {
-    await stagePaygFeeOnAsk(key.slice(0, -":fee-ask".length)).catch((err) =>
-      console.error(`[ack] staging the PAYG fee for ${key} failed:`, err),
-    );
-  }
+  // ONLY for an ack that carries the sent message's id: the Pi acks a DM
+  // that FAILED to send as well (so the queue moves on), without one.
+  await stagePaygFeeOnAck(key, waMessageId).catch((err: unknown) =>
+    console.error(`[ack] staging the PAYG fee for ${key} failed:`, err),
+  );
 
   for (const effect of planAckSideEffects(key)) {
     switch (effect.type) {

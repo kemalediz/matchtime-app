@@ -86,8 +86,29 @@ export function buildWeekListPost(p: {
 }
 
 /** A place opened and nobody is waiting: the one group line (plan 5.3). */
-export function buildPaygPoolGroupPost(p: { matchDate: Date; paygPricePence: number | null | undefined; lang?: LangArg }): string {
-  return t(p.lang).mwk_pool_group({ when: dayCommaTimeLabel(p.lang, p.matchDate), price: paygPriceLabel(p.paygPricePence) });
+export function buildPaygPoolGroupPost(p: {
+  /** How many places are open. One line covers them all. Default 1. */
+  open?: number;
+  matchDate: Date;
+  paygPricePence: number | null | undefined;
+  lang?: LangArg;
+}): string {
+  return t(p.lang).mwk_pool_group({
+    open: Math.max(1, p.open ?? 1),
+    when: dayCommaTimeLabel(p.lang, p.matchDate),
+    price: paygPriceLabel(p.paygPricePence),
+  });
+}
+
+/** To the sender: names on the list they pasted that matched nobody. */
+export function buildPasteSenderNotMatchedDm(p: { names: string[]; lang?: LangArg }): string {
+  return t(p.lang).mwk_dm_sender_not_matched({ names: p.names });
+}
+
+/** To a member of the month whose numbered list was not read as the
+ *  month's list (no title line, and mostly not this month's players). */
+export function buildPasteSenderNotListDm(p: { matchDate: Date; lang?: LangArg }): string {
+  return t(p.lang).mwk_dm_sender_not_list({ month: monthNameLabel(p.lang, p.matchDate) });
 }
 
 /** The same offer by DM, to each pay-as-you-go player. */

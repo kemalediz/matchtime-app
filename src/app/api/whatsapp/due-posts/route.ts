@@ -260,9 +260,10 @@ export async function GET(request: Request) {
   // so the list is posted in this same poll. A side effect, so never in
   // preview mode; its own try/catch, so it can never cost the group its
   // posts.
+  let runningMonths: Awaited<ReturnType<typeof sweepMonthlyWeeks>> = null;
   if (!previewOnly) {
     try {
-      await sweepMonthlyWeeks(org.id, nowOverride ?? new Date());
+      runningMonths = await sweepMonthlyWeeks(org.id, nowOverride ?? new Date());
     } catch (err) {
       console.error(`[due-posts] org ${org.id}: monthly squad sweep failed:`, err);
     }
@@ -273,7 +274,10 @@ export async function GET(request: Request) {
   // back to the owner by DM (src/lib/admin-channel.ts).
   const piCaps = parsePiCaps(request.headers.get(PI_CAPS_HEADER));
 
-  const result = await computeDuePosts(groupId, nowOverride, piCaps);
+  // The sweep's running months are handed on, so a monthly club's month is
+  // read once per poll. Null (a weekly club, preview mode, a failed sweep):
+  // `computeDuePosts` reads what it needs itself.
+  const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths);
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
   }

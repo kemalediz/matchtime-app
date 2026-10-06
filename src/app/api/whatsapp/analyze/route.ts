@@ -1697,6 +1697,7 @@ async function handleAnalyzeRequest(request: Request) {
           waMessageId: m.waMessageId,
           sentAt: Number.isNaN(sentAt.getTime()) ? undefined : sentAt,
           sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
+          senderWhatsAppName: m.authorName ?? null,
         });
       } catch (err) {
         // Left for section 4 and the pipeline, as if this block were not here.

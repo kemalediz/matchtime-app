@@ -70,12 +70,20 @@ import {
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { summariseUnpaid, unpaidFollowUpDue } from "./unpaid-rules";
 import { recordOpsEvent } from "./ops-alerts";
-import { isMonthlyRow, loadPaygPool, loadRunningMonths, monthForMatch, weekListKeyPrefix, weekMembers } from "./monthly-week";
+import {
+  feeAskKeys,
+  isMonthlyRow,
+  loadPaygPool,
+  loadRunningMonths,
+  monthForMatch,
+  weekListKeyPrefix,
+  weekMembers,
+  type RunningMonth,
+} from "./monthly-week";
 import {
   buildWeekList,
   decideListPost,
   weekListHash,
-  type PoolCandidate,
   type WeekMember,
   type WeekStatus,
 } from "./monthly-week-rules";
@@ -442,6 +450,9 @@ export async function computeDuePosts(
    *  older Pi sends nothing: no admin-group posts are emitted for it, and
    *  admin notices fall back to the owner by DM. */
   piCaps: PiCaps = { adminGroup: false },
+  /** A monthly club's running months, when the caller (the due-posts
+   *  route's sweep) has just read them. Null or omitted: read here. */
+  preloadedMonths: RunningMonth[] | null = null,
 ): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
@@ -747,7 +758,7 @@ export async function computeDuePosts(
   let runningMonths: Awaited<ReturnType<typeof loadRunningMonths>> = [];
   if (features.squadMode === "monthly") {
     try {
-      runningMonths = await loadRunningMonths(org.id);
+      runningMonths = preloadedMonths ?? (await loadRunningMonths(org.id));
     } catch (err) {
       console.error(`[scheduler] org ${org.id}: the running months could not be read; no posts on this poll:`, err);
       await recordOpsEvent({
@@ -871,6 +882,9 @@ interface MonthlyMatchContext {
   members: WeekMember[];
   paygPricePence: number | null;
 }
+
+/** How long the PAYG fee question waits for a sent-ack before one re-ask. */
+const FEE_REASK_AFTER_MS = 30 * 60 * 1000;
 
 /** What a scheduled admin notice needs: the Pi's capabilities and the
  *  club's admin channel, loaded lazily once per poll (slice 2a). */
@@ -1490,9 +1504,12 @@ async function computeForMatch(
   //    MatchTime does not echo a list straight back). The key carries a
   //    running number so a list that returns to an earlier state (a drop,
   //    then back in) is posted again. Nothing here runs for a weekly club.
-  /** The list the group has (or gets on this poll) already says "N places
-   *  open, say IN": the PAYG pool's own group line would say it twice. */
-  let listAnnouncesOpenPlace = false;
+  /** For the PAYG pool's group line (section 3): the list going out on
+   *  this poll already says "N places open, say IN"; when MatchTime last
+   *  posted a list for this match; and how many places are open now. */
+  let listGoesOutWithOpenLine = false;
+  let lastListPostAt: Date | null = null;
+  let openPlaces = 0;
   const monthlyListLive =
     (m.status === "UPCOMING" || m.status === "TEAMS_GENERATED" || m.status === "TEAMS_PUBLISHED") &&
     now.getTime() < m.date.getTime();
@@ -1532,7 +1549,9 @@ async function computeForMatch(
     if (due) {
       out.push({ kind: "group-message", key: `${prefix}${hash}:${shown.length}`, matchId, text });
     }
-    listAnnouncesOpenPlace = weekList.open > 0 && (due !== null || lastShownHash === hash);
+    openPlaces = weekList.open;
+    listGoesOutWithOpenLine = weekList.open > 0 && due !== null;
+    lastListPostAt = shown.find((r) => r.kind === "group-message")?.createdAt ?? null;
   }
 
   // ── 2-bis. Recruit chase-up DMs (2026-08-31) ────────────────────────
@@ -1747,75 +1766,76 @@ async function computeForMatch(
       const benchAtt = m.attendances.filter(
         (a) => a.status === "BENCH" && a.user.phoneNumber && !benchOptedOut.has(a.userId),
       );
-      // MONTHLY SQUAD (slice 5): the PAYG pool, loaded at most once per
-      // match per poll and only for a monthly match with nobody waiting.
-      let paygPool: PoolCandidate[] | null = null;
-      const paygDmQueued = new Set<string>();
+      // MONTHLY SQUAD (slice 5, plan 5.3): bench first, THEN the PAYG
+      // pool. With nobody waiting, a monthly match's open places are
+      // offered to its pay-as-you-go players. A weekly club skips this
+      // block: for it the chase covers a drop with no bench, as before.
       const nobodyWaiting = !m.attendances.some((a) => a.status === "BENCH");
-      for (const offer of m.benchSlotOffers) {
-        if (benchAtt.length === 0) {
-          // No bench. For a weekly club the chase covers it, as before.
-          // MONTHLY SQUAD (slice 5, plan 5.3): bench first, THEN the PAYG
-          // pool. The offer `openPaygPoolOffer` opened goes out as one
-          // group line and one DM to each pay-as-you-go player, on the
-          // same offer keys the bench uses, so each is sent exactly once.
-          // The first to say IN takes the place and its slot number.
-          if (monthly && nobodyWaiting && features.benchPickMode !== "organiser") {
-            paygPool ??= await loadPaygPool(
-              {
-                orgId: activity.orgId,
-                members: monthly.members,
-                rows: m.attendances.map((a) => ({
-                  userId: a.userId,
-                  name: a.user.name ?? "",
-                  status: a.status as WeekStatus,
-                  position: a.position,
-                })),
-              },
-              now,
-            );
-            if (paygPool.length > 0) {
-              // ONE group post per open place (review item 7). When the
-              // list post carries the "place open, say IN" line (it goes
-              // out on this poll, or the group already has it), the pool's
-              // own group line is not sent as well. It is sent only when
-              // the list cannot go out now (the 30-minute floor). The DMs
-              // go either way.
-              const groupKey = `offer-${offer.id}`;
-              if (!sentKeys.has(groupKey) && !listAnnouncesOpenPlace) {
-                out.push({
-                  kind: "group-message",
-                  key: groupKey,
-                  matchId,
-                  text: buildPaygPoolGroupPost({ matchDate: m.date, paygPricePence: monthly.paygPricePence, lang }),
-                });
-              }
-              for (const p of paygPool) {
-                // Keyed by MATCH and player, not by offer: a pool player
-                // is asked at most once per match, however many places
-                // open (the group line and the list tell them the rest).
-                const dmKey = `${matchId}:payg-pool-dm:${p.userId}`;
-                if (sentKeys.has(dmKey) || paygDmQueued.has(p.userId)) continue;
-                paygDmQueued.add(p.userId);
-                out.push({
-                  kind: "dm",
-                  key: dmKey,
-                  matchId,
-                  phone: p.phoneNumber!.replace(/^\+/, ""),
-                  targetUser: p.userId,
-                  text: buildPaygPoolDm({
-                    name: p.name,
-                    activityName: activity.name,
-                    matchDate: m.date,
-                    paygPricePence: monthly.paygPricePence,
-                    lang,
-                  }),
-                });
-              }
-            }
+      if (monthly?.seeded && nobodyWaiting && benchAtt.length === 0 && features.benchPickMode !== "organiser") {
+        const paygPool = await loadPaygPool(
+          {
+            orgId: activity.orgId,
+            members: monthly.members,
+            rows: m.attendances.map((a) => ({
+              userId: a.userId,
+              name: a.user.name ?? "",
+              status: a.status as WeekStatus,
+              position: a.position,
+            })),
+          },
+          now,
+        );
+        if (paygPool.length > 0) {
+          // AT MOST ONE GROUP LINE PER MATCH PER POLL, covering every open
+          // place ("2 places open"), and only for places the group has not
+          // been told about: an offer opened AFTER the last list post and
+          // the last pool line. Told by time, not by a per-offer key, so
+          // offers the list announced never post later, and several offers
+          // held back by the list's 30-minute floor post as one line.
+          // Nothing when the list goes out on this poll with its own
+          // "places open" line. The key carries the open count and a
+          // running number, like the list's.
+          const linePrefix = `${matchId}:payg-pool-line:`;
+          const lines = await db.sentNotification.findMany({
+            where: { matchId, key: { startsWith: linePrefix } },
+            select: { createdAt: true },
+            orderBy: { createdAt: "desc" },
+          });
+          const toldAt = Math.max(lastListPostAt?.getTime() ?? 0, lines[0]?.createdAt.getTime() ?? 0);
+          const untold = m.benchSlotOffers.some((o) => o.createdAt.getTime() > toldAt);
+          const open = Math.max(openPlaces, 1);
+          if (untold && !listGoesOutWithOpenLine) {
+            out.push({
+              kind: "group-message",
+              key: `${linePrefix}${open}:${lines.length}`,
+              matchId,
+              text: buildPaygPoolGroupPost({ open, matchDate: m.date, paygPricePence: monthly.paygPricePence, lang }),
+            });
           }
-          continue;
+          // One DM per pool player per MATCH, however many places open
+          // (the group line and the list tell them the rest).
+          for (const p of paygPool) {
+            const dmKey = `${matchId}:payg-pool-dm:${p.userId}`;
+            if (sentKeys.has(dmKey)) continue;
+            out.push({
+              kind: "dm",
+              key: dmKey,
+              matchId,
+              phone: p.phoneNumber!.replace(/^\+/, ""),
+              targetUser: p.userId,
+              text: buildPaygPoolDm({
+                name: p.name,
+                activityName: activity.name,
+                matchDate: m.date,
+                paygPricePence: monthly.paygPricePence,
+                lang,
+              }),
+            });
+          }
         }
+      }
+      for (const offer of m.benchSlotOffers) {
+        if (benchAtt.length === 0) continue; // no bench — chase covers it
 
         // Context: which team / who they'd replace, if teams exist.
         let team: { teamLabel: string; replacingName: string | null } | null = null;
@@ -2237,7 +2257,19 @@ async function computeForMatch(
     monthlyPayers !== 0
   ) {
     const endedAt = new Date(m.date.getTime() + activity.matchDurationMins * 60 * 1000);
-    const key = `${matchId}:fee-ask`;
+    // MONTHLY SQUAD: the PAYG fee question is asked ONCE MORE when its
+    // first send never reported a message id (the DM failed, or the ack
+    // was lost) and half an hour has passed: until one is sent, the amount
+    // is not staged and the collector's yes would have nothing to confirm.
+    // A weekly club always uses the first key, as before.
+    let key = `${matchId}:fee-ask`;
+    if (paygFeeToConfirm !== null && sentKeys.has(key)) {
+      const again = feeAskKeys(matchId).again;
+      const first = sentKeys.has(again)
+        ? null
+        : await db.sentNotification.findUnique({ where: { key }, select: { waMessageId: true, createdAt: true } });
+      if (first && !first.waMessageId && now.getTime() - first.createdAt.getTime() >= FEE_REASK_AFTER_MS) key = again;
+    }
     // The age bound is the same explicit deadline the payment poll now
     // carries: asking a collector for a fee is only useful while the
     // match is recent (POST_MATCH_END_FLOW_MAX_AGE_DAYS).

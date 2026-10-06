@@ -2539,7 +2539,13 @@ export const tr: Strings = {
   mwk_list_reserves: "Yedekler",
   mwk_list_open: (p) => `${p.open} yer boş${p.price ? `, maç başı ${p.price} (PAYG)` : ""}: almak için *VARIM* yazın.`,
   mwk_list_open_organiser: (p) => `${p.open} yer boş. Yedek listesine girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`,
-  mwk_pool_group: (p) => `🎟 *${p.when}* maçında 1 yer açıldı${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
+  mwk_pool_group: (p) => `🎟 *${p.when}* maçında ${p.open} yer açık${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
+  mwk_dm_sender_not_matched: (p) =>
+    `📋 Yapıştırdığın listedeki ${p.names.join(", ")} adını bir oyuncuyla eşleştiremedim, bu yüzden kimseyi eklemedim. ` +
+    `Oynamak için grupta kendin *VARIM* yaz ya da bir organizatörden eklemesini iste.`,
+  mwk_dm_sender_not_list: (p) =>
+    `📋 Gönderdiğin listeyi ${p.month} kadro listesi olarak okuyamadım, bu yüzden bir şey değiştirmedim. ` +
+    `Kadro listesiyse başlık satırıyla yapıştır ("${p.month} listesi").`,
   mwk_pool_dm: (p) =>
     `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* için bir yer açıldı: ${p.when}${p.price ? `, maç başı ${p.price}` : ""}.\n\n` +
     `İster misin? *VARIM* yaz. İlk yazan oynar. Bu sefer olmuyorsa cevap yazmana gerek yok.`,
