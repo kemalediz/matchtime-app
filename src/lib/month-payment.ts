@@ -49,12 +49,15 @@ import {
   buildMonthFeeTip,
   buildPaidClaimAckDm,
   buildPayBySummary,
+  buildOtherMonthHint,
   buildPayReminderDm,
   buildPriceAskNotice,
   buildPricedListPost,
+  buildStaleReplyAnswer,
   type PricedLine,
 } from "./month-payment-copy";
 import {
+  DIGEST_REPLY_WINDOW_MS,
   claimsDigestDue,
   decideCollectorReply,
   priceAskDue,
@@ -440,8 +443,9 @@ export async function unconfirmMonthPaid(args: {
 
 const declinedKey = (orgId: string, monthId: string, userId: string) => `${paymentKeyPrefix(orgId)}declined:${monthId}:${userId}`;
 const digestPrefix = (orgId: string, monthId: string) => `${paymentKeyPrefix(orgId)}digest:${monthId}:`;
-/** One row per claim a digest LISTED: `...:digest-item:<monthId>:<day>:<userId>`. */
-const digestItemPrefix = (orgId: string, monthId: string, day: string) => `${paymentKeyPrefix(orgId)}digest-item:${monthId}:${day}:`;
+/** One row per claim a digest LISTED: `...:digest-item:<monthId>:<digest id>#<userId>`.
+ *  The "#" ends the digest's id, so one digest's rows are never another's. */
+const digestItemPrefix = (orgId: string, monthId: string, day: string) => `${paymentKeyPrefix(orgId)}digest-item:${monthId}:${day}#`;
 
 // ── A player's "paid" DM ───────────────────────────────────────────────
 
@@ -605,24 +609,27 @@ export async function handleCollectorPaidReply(input: {
     },
     select: { userId: true, orgId: true, org: { select: { language: true } } },
   });
-  // The month whose digest is the newest: that is the message being answered.
-  let best: { month: SignupMonth; actorUserId: string; digest: SentDigest; lang: string | null } | null = null;
+  // Every month this sender may confirm for that has had a digest.
+  const out: Array<{ month: SignupMonth; actorUserId: string; digest: SentDigest; lang: string | null }> = [];
   for (const m of memberships) {
     if (!(await mayConfirmPayments(m.orgId, m.userId))) continue;
     for (const month of await loadLiveMonths(m.orgId, now)) {
       const digest = await latestDigest(m.orgId, month.id);
-      if (!digest) continue;
-      if (!best || best.digest.at.getTime() < digest.at.getTime()) best = { month, actorUserId: m.userId, digest, lang: m.org.language };
+      if (digest) out.push({ month, actorUserId: m.userId, digest, lang: m.org.language });
     }
   }
+  // WHICH MONTH. The one the reply names ("PAID NOVEMBER ALL"); else the
+  // one whose digest is the newest: that is the message being answered.
+  const named = reply.month != null ? out.filter((o) => o.month.monthNumber === reply.month) : out;
+  const best = [...named].sort((a, b) => b.digest.at.getTime() - a.digest.at.getTime())[0] ?? null;
   // Nobody who may confirm, or no digest ever sent: not a reply to one.
   if (!best) return null;
   const { month, actorUserId, lang } = best;
 
   const claims = await waitingClaims(month);
   const decision = decideCollectorReply({ reply, claims, digest: best.digest, now });
-  // No digest outstanding, or none of the numbers is on it: this is
-  // somebody's own message ("paid 8"), and it goes on untouched.
+  // No digest was ever answerable by this, or none of the numbers is on
+  // it: somebody's own message ("paid 8"), and it goes on untouched.
   if (decision.kind === "not-a-reply") return null;
 
   // Applied once per WhatsApp message (the Pi retries).
@@ -630,8 +637,26 @@ export async function handleCollectorPaidReply(input: {
     return { handled: "month-paid-duplicate", orgId: month.orgId, replyText: "" };
   }
   const nameOf = new Map(claims.map((c) => [c.userId, c.name]));
-  const answer = (text: string, handled: string) => ({ handled, orgId: month.orgId, replyText: text });
+  // Another month with claims out on a digest of its own: the answer says
+  // which month this was for, and how to answer the other.
+  let hint = "";
+  for (const o of out) {
+    if (o.month.id === month.id || now.getTime() - o.digest.at.getTime() > DIGEST_REPLY_WINDOW_MS) continue;
+    const listed = new Set(o.digest.userIds);
+    if ((await waitingClaims(o.month)).some((c) => listed.has(c.userId))) {
+      hint = `\n\n${buildOtherMonthHint({ monthDate: month.firstKickoff, otherDate: o.month.firstKickoff, lang })}`;
+      break;
+    }
+  }
+  const answer = (text: string, handled: string) => ({ handled, orgId: month.orgId, replyText: `${text}${hint}` });
 
+  if (decision.kind === "stale") {
+    // Out of date: nobody is marked. The collector gets the list as it
+    // stands now, sent and recorded as a digest of its own, so the next
+    // reply answers THAT.
+    const current = claims.length > 0 ? await sendDigestNow(month, claims, now, `${formatLondon(now, "yyyy-MM-dd")}:again:${input.waMessageId ?? now.getTime()}`) : null;
+    return answer(buildStaleReplyAnswer({ current, lang }), "month-paid-stale");
+  }
   if (decision.kind === "nothing-waiting") {
     return answer(buildCollectorReplyAnswer({ kind: "nothing", lang }), "month-paid-nothing");
   }
@@ -654,6 +679,23 @@ export async function handleCollectorPaidReply(input: {
     buildCollectorReplyAnswer({ kind: "confirmed", names: done.map((u) => nameOf.get(u) ?? ""), monthDate: month.firstKickoff, lang }),
     "month-paid-confirmed",
   );
+}
+
+/**
+ * Record a digest (its key, then exactly the claims it lists) and return
+ * its text. The caller sends it. Null when that digest id was already
+ * recorded (another poll, or a retry).
+ */
+async function sendDigestNow(month: SignupMonth, claims: WaitingRow[], now: Date, id: string): Promise<string | null> {
+  void now;
+  if (!(await claimOnce(`${digestPrefix(month.orgId, month.id)}${id}`, "month-pay-digest"))) return null;
+  // EXACTLY what this digest lists, recorded with it: a reply can only
+  // ever confirm these. A claim made a moment later is not among them.
+  await db.sentNotification.createMany({
+    data: claims.map((c) => ({ key: `${digestItemPrefix(month.orgId, month.id, id)}${c.userId}`, kind: "month-pay-digest-item", targetUser: c.userId })),
+    skipDuplicates: true,
+  });
+  return buildClaimsDigest({ claims: claims.map((c) => ({ slot: c.slot, name: c.name, amountPence: c.amountPence })), monthDate: month.firstKickoff, lang: month.language });
 }
 
 /** The DM door: the sender is resolved by PHONE only, and the answer goes
@@ -765,14 +807,8 @@ async function claimsDigest(month: SignupMonth, collectorId: string | null, now:
   if (sentToday) return;
   const claims = await waitingClaims(month);
   if (!claimsDigestDue({ now, sentToday, waiting: claims.length })) return;
-  if (!(await claimOnce(key, "month-pay-digest"))) return;
-  // EXACTLY what this digest lists, recorded with it: a reply can only
-  // ever confirm these. A claim made a moment later is not among them.
-  await db.sentNotification.createMany({
-    data: claims.map((c) => ({ key: `${digestItemPrefix(month.orgId, month.id, day)}${c.userId}`, kind: "month-pay-digest-item", targetUser: c.userId })),
-    skipDuplicates: true,
-  });
-  const text = buildClaimsDigest({ claims: claims.map((c) => ({ slot: c.slot, name: c.name, amountPence: c.amountPence })), monthDate: month.firstKickoff, lang: month.language });
+  const text = await sendDigestNow(month, claims, now, day);
+  if (!text) return;
   const collector = collectorId ? await db.user.findUnique({ where: { id: collectorId }, select: { phoneNumber: true } }) : null;
   if (collector?.phoneNumber) {
     await db.botJob.create({ data: { orgId: month.orgId, kind: "dm", phone: collector.phoneNumber.replace(/^\+/, ""), text } });
@@ -822,6 +858,9 @@ export function renderPricedList(month: SignupMonth, facts: { collectorName: str
     list: buildSignupList({ members: month.members, maxRegulars: month.maxRegulars, matches: month.matches }),
     lines,
     kickoffs: month.kickoffs,
+    // What a regular in for the whole month is charged for, so the line in
+    // brackets always agrees with the amounts under it.
+    games: Math.max(0, ...activeRegulars(month).map((m) => m.gamesCovered)) || month.kickoffs.length,
     sharePence: month.sharePerGamePence,
     payByAt: month.payByAt,
     collectorName: facts.collectorName,

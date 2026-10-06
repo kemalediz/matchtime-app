@@ -1264,7 +1264,15 @@ route and `admin-group.ts`. Monthly clubs only; a weekly club makes no query on 
 8. **Moving the pay-by date after the summary went out** makes one more summary due after
    the new date. The reminder posts check for themselves that the club is not dormant or
    paused.
-9. **Not built here:** changing the share after somebody has paid ("owes £x more", plan
+9. **A reply more than two days after its digest** marks nobody and is answered: "That list
+   is out of date", with the current list (recorded as a digest of its own, so the next reply
+   answers that one).
+10. **Two months with a list out at once.** A reply answers the newest list, the answer says
+   which month it was for, and how to answer the other: "PAID DECEMBER ALL" (the month can
+   be named after the word PAID).
+11. **The line "(N games = £X)"** is the games a regular in for the whole month is charged
+   for, so it always agrees with the amounts under it.
+12. **Not built here:** changing the share after somebody has paid ("owes £x more", plan
    section 7), a refund, and the pay-by reminders for a month with no pay-by date (a month
    started part-way through that was never priced). The collector's reply in an admin GROUP
    uses the same function as the DM but has no end-to-end test yet.

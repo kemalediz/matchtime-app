@@ -449,6 +449,21 @@ test("4. the collector's digest and reply: never a stray word, never a wrong num
   expect((await member(db, P.bilal))!.paidAt).not.toBeNull();
   expect((await member(db, P.carl))!.paidAt).toBeNull();
   expect(await paidCount(db)).toBe(2);
+
+  // A reply to a list that is MORE THAN TWO DAYS OLD marks nobody, and is
+  // not met with silence: the collector is told, and sent the current list.
+  await db.run(`DELETE FROM "SentNotification" WHERE key LIKE $1`, [`org-${ORG}:mpy:claim-ack:%`]);
+  expect((await dm(request, P.carl, "paid")).handled).toBe("month-paid-claim");
+  await db.run(`UPDATE "SentNotification" SET "createdAt" = "createdAt" - interval '3 days' WHERE key LIKE $1`, [`org-${ORG}:mpy:digest:%`]);
+  const old = await dm(request, P.rob, "PAID ALL");
+  expect(old.handled).toBe("month-paid-stale");
+  expect(await paidCount(db)).toBe(2);
+  expect(await lastDm(db, P.rob)).toBe(
+    `That list is out of date, so I marked nobody.\n\n${buildClaimsDigest({ claims: [{ slot: 3, name: P.carl.name, amountPence: DUE.carl }], monthDate: FIRST, lang: "en" })}`,
+  );
+  // The current list is now the one a reply answers: "PAID NONE" for Carl.
+  expect((await dm(request, P.rob, "PAID NONE")).handled).toBe("month-paid-declined");
+  expect(await paidCount(db)).toBe(2);
 });
 
 test("5. only the collector confirms on the page; 6. the share is locked once somebody has paid", async ({ page, db }) => {
@@ -474,7 +489,7 @@ test("5. only the collector confirms on the page; 6. the share is locked once so
   await row(P.carl).getByTestId("paid-undo").click();
   await expect(row(P.carl).locator("[data-paid]")).toContainText("Says paid");
   const carl = await member(db, P.carl);
-  expect(carl).toMatchObject({ paidAt: null, paidConfirmedByUserId: null, paidClaimSource: "page" });
+  expect(carl).toMatchObject({ paidAt: null, paidConfirmedByUserId: null, paidClaimSource: "dm" });
   expect(carl!.paidClaimedAt).not.toBeNull();
 });
 

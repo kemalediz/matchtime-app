@@ -6,7 +6,7 @@ import { dayCommaTimeLabel, monthNameLabel } from "@/lib/i18n/dates";
 import { db } from "@/lib/db";
 import { pounds } from "@/lib/month-payment-copy";
 import { gameDaysLabel } from "@/lib/month-signup-copy";
-import { loadLiveMonths } from "@/lib/month-signup";
+import { hasStarted, loadLiveMonths } from "@/lib/month-signup";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { MonthSignupCard } from "./signup-card";
 
@@ -70,7 +70,7 @@ export default async function MonthPage() {
               slot={me && outcome === "regular" ? me.slot : null}
               myDays={myDays}
               locked={!!me && !me.out && me.paid !== "none"}
-              joinable={now.getTime() < m.firstKickoff.getTime()}
+              joinable={!hasStarted(m, now)}
               money={
                 me && outcome === "regular"
                   ? {

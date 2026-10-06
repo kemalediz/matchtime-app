@@ -916,7 +916,7 @@ export async function handleSignupPaste(args: {
   const months = await loadLiveMonths(args.orgId, now);
   if (months.length === 0) return null;
   const { roster, phoneOf } = await loadRoster(args.orgId);
-  const canJoin = (m: SignupMonth) => now.getTime() < m.firstKickoff.getTime();
+  const canJoin = (m: SignupMonth) => !hasStarted(m, now);
 
   let month: SignupMonth | null = null;
   let outcome: ReturnType<typeof reconcileSignupPaste> | null = null;

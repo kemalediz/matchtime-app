@@ -981,8 +981,7 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
     expect(post.text).toBe(
       [
         "📋 List for November: £7.50 a game, pay Sam by Fri 30 Oct, 21:00",
-        // The month's games are its matches, and this world has one.
-        "(1 game = £7.50. Credits are already taken off.)",
+        "(5 games = £37.50. Credits are already taken off.)",
         "",
         "1. Alex (paid £37.50)",
         "2. Bilal (paid £37.50)",

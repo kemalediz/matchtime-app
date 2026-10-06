@@ -1052,6 +1052,8 @@ const SAMPLES: SampleArgs = {
   mpy_reply_confirmed: { month: "MONTHLABEL", names: ["Alex", "Bilal"] },
   mpy_reply_declined: { month: "MONTHLABEL", names: ["Alex", "Bilal"] },
   mpy_reply_unknown: { numbers: "7, 9", month: "MONTHLABEL" },
+  mpy_reply_stale: null,
+  mpy_reply_other_month: { month: "Monthlabel", other: "Othermonth" },
   mpy_reply_no_digest: null,
   mpy_summary_head: { month: "MONTHLABEL" },
   mpy_summary_confirmed: { count: 11, total: "£282.50" },

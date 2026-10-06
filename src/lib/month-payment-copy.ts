@@ -53,6 +53,10 @@ export function buildPricedListPost(p: {
   /** By user id: every regular on the list. */
   lines: ReadonlyMap<string, PricedLine>;
   kickoffs: Date[];
+  /** The games a regular who is in for the whole month is charged for.
+   *  Default: the month's games. Given so the line in brackets always
+   *  agrees with the amounts below it. */
+  games?: number;
   sharePence: number;
   payByAt: Date;
   collectorName: string | null;
@@ -68,7 +72,7 @@ export function buildPricedListPost(p: {
       when: dayCommaTimeLabel(p.lang, p.payByAt),
       collector: firstNameOf(p.collectorName),
     }),
-    s.mpy_priced_sub({ games: p.kickoffs.length, full: pounds(p.sharePence * p.kickoffs.length) }),
+    s.mpy_priced_sub({ games: p.games ?? p.kickoffs.length, full: pounds(p.sharePence * (p.games ?? p.kickoffs.length)) }),
     "",
   ];
   for (const slot of p.list.slots) {
@@ -189,6 +193,19 @@ export function buildCollectorReplyAnswer(
   const month = monthNameLabel(p.lang, p.monthDate);
   if (p.kind === "unknown-numbers") return s.mpy_reply_unknown({ numbers: p.numbers.join(", "), month });
   return p.kind === "confirmed" ? s.mpy_reply_confirmed({ month, names: p.names }) : s.mpy_reply_declined({ month, names: p.names });
+}
+
+/** A reply to a digest that is out of date: said so, then the current
+ *  digest (or that nothing is waiting). */
+export function buildStaleReplyAnswer(p: { current: string | null; lang?: LangArg }): string {
+  const s = t(p.lang);
+  return `${s.mpy_reply_stale}\n\n${p.current ?? s.mpy_reply_no_digest}`;
+}
+
+/** Added to an answer when another month has a list out too: which month
+ *  this was for, and how to answer the other. */
+export function buildOtherMonthHint(p: { monthDate: Date; otherDate: Date; lang?: LangArg }): string {
+  return t(p.lang).mpy_reply_other_month({ month: monthNameLabel(p.lang, p.monthDate), other: monthNameLabel(p.lang, p.otherDate) });
 }
 
 /** After the pay-by date, to the organisers: who paid, who says so, who has not. */

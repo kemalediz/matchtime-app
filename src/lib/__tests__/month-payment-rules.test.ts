@@ -243,10 +243,26 @@ describe("the collector's reply to the claims digest", () => {
   it("NONE is recorded against what the digest listed", () => {
     expect(decideCollectorReply({ ...base, reply: { kind: "none" } })).toEqual({ kind: "decline", userIds: ["alex", "bilal"] });
   });
-  it("with no digest outstanding (none sent, or older than two days) nothing is a reply", () => {
+  it("with no digest ever sent nothing is a reply", () => {
     expect(decideCollectorReply({ ...base, digest: null, reply: { kind: "all" } })).toEqual({ kind: "not-a-reply" });
-    expect(decideCollectorReply({ ...base, now: new Date("2026-10-30T10:00:01.000Z"), reply: { kind: "all" } })).toEqual({ kind: "not-a-reply" });
     expect(decideCollectorReply({ ...base, digest: null, reply: { kind: "numbers", numbers: [1] } })).toEqual({ kind: "not-a-reply" });
+  });
+  it("a reply more than two days after the digest marks NOBODY, and is answered: that list is out of date", () => {
+    const late = new Date("2026-10-30T10:00:01.000Z");
+    expect(decideCollectorReply({ ...base, now: late, reply: { kind: "all" } })).toEqual({ kind: "stale" });
+    expect(decideCollectorReply({ ...base, now: late, reply: { kind: "none" } })).toEqual({ kind: "stale" });
+    expect(decideCollectorReply({ ...base, now: late, reply: { kind: "numbers", numbers: [1] } })).toEqual({ kind: "stale" });
+    // A number that was never on that list is still not a reply to it.
+    expect(decideCollectorReply({ ...base, now: late, reply: { kind: "numbers", numbers: [8] } })).toEqual({ kind: "not-a-reply" });
+  });
+  it("the month can be named, for a collector with two lists out: PAID NOVEMBER ALL, ÖDENDİ KASIM 1 3", () => {
+    expect(readCollectorReply("PAID NOVEMBER ALL")).toEqual({ kind: "all", month: 11 });
+    expect(readCollectorReply("paid nov 1 3")).toEqual({ kind: "numbers", numbers: [1, 3], month: 11 });
+    expect(readCollectorReply("Ödendi Kasım hiçbiri")).toEqual({ kind: "none", month: 11 });
+    // Without a month it is as it was, and a month alone is nothing.
+    expect(readCollectorReply("PAID ALL")).toEqual({ kind: "all" });
+    expect(readCollectorReply("paid november")).toBeNull();
+    expect(readCollectorReply("paid for november")).toBeNull();
   });
   it("a digest outstanding but nothing on it still waiting: said so, nothing done", () => {
     expect(decideCollectorReply({ ...base, claims: [], reply: { kind: "all" } })).toEqual({ kind: "nothing-waiting" });

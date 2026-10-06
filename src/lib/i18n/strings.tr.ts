@@ -2676,6 +2676,9 @@ export const tr: Strings = {
     `Not aldım: ${p.month} için ${p.names.join(", ")} tarafından henüz bir şey gelmedi. Bunları bir daha sormayacağım. Para gelince Aylar sayfasından onaylayın.`,
   mpy_reply_unknown: (p) =>
     `${p.month} listesinde ${p.numbers} numarada "ödedi" diyen yok, bu yüzden kimseyi işaretlemedim. *ÖDENDİ* ve son mesajımdaki numaraları yazın.`,
+  mpy_reply_stale: "O liste artık güncel değil, bu yüzden kimseyi işaretlemedim.",
+  mpy_reply_other_month: (p) =>
+    `Bu ${p.month} içindi. ${p.other} için ayı da yazın: *ÖDENDİ ${p.other.toLocaleUpperCase("tr")} HEPSİ* ya da *ÖDENDİ ${p.other.toLocaleUpperCase("tr")}* ve numaralar.`,
   mpy_reply_no_digest: "Şu an sizden onay bekleyen bir ödeme yok. Ödemeleri Aylar sayfasından onaylayabilirsiniz.",
   mpy_summary_head: (p) => `📒 ${p.month}: son ödeme zamanı geçti.`,
   mpy_summary_confirmed: (p) => `Ödedi ve onaylandı: ${p.count} (${p.total}).`,

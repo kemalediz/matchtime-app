@@ -3410,6 +3410,11 @@ export const en = {
   /** `numbers` is "9" or "7, 9". */
   mpy_reply_unknown: (p: { numbers: string; month: string }): string =>
     `I have no "says paid" at number ${p.numbers} on the ${p.month} list, so I marked nobody. Reply *PAID* and the numbers from my last message.`,
+  /** A reply to a digest more than two days old. The current list follows it. */
+  mpy_reply_stale: "That list is out of date, so I marked nobody.",
+  /** After a reply, when ANOTHER month has a list out too. */
+  mpy_reply_other_month: (p: { month: string; other: string }): string =>
+    `That was for ${p.month}. For ${p.other}, name the month: *PAID ${p.other.toUpperCase()} ALL*, or *PAID ${p.other.toUpperCase()}* and the numbers.`,
   mpy_reply_no_digest: "Nothing is waiting for your word right now. You can confirm payments on the Months page.",
   /** After the pay-by date, to the organisers. */
   mpy_summary_head: (p: { month: string }): string => `📒 ${p.month}: the pay-by date has passed.`,

@@ -19,7 +19,7 @@
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { isDaytime } from "./month-signup-rules";
-import { foldListText } from "./monthly-list";
+import { foldListText, monthOfWord } from "./monthly-list";
 import { MAX_PER_GAME_PENCE } from "./squad-month-rules";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -221,7 +221,9 @@ export function readPaidMessage(text: string | null | undefined): { amountPence:
 
 // ── The collector's reply (plan 4.3, D3) ───────────────────────────────
 
-export type CollectorReply = { kind: "all" } | { kind: "none" } | { kind: "numbers"; numbers: number[] };
+/** `month` (1 to 12) only when the reply names one: "PAID NOVEMBER ALL",
+ *  for a collector with two months' lists out at once. */
+export type CollectorReply = ({ kind: "all" } | { kind: "none" } | { kind: "numbers"; numbers: number[] }) & { month?: number };
 
 const REPLY_VERB = new Set(["paid", "odendi"]);
 const REPLY_ALL = new Set(["all", "hepsi", "tumu"]);
@@ -246,9 +248,14 @@ export function readCollectorReply(text: string | null | undefined): CollectorRe
     .split(" ")
     .filter(Boolean);
   if (tokens.length < 2 || tokens.length > 40 || !REPLY_VERB.has(tokens[0])) return null;
-  const rest = tokens.slice(1);
-  if (rest.length === 1 && REPLY_ALL.has(rest[0])) return { kind: "all" };
-  if (rest.length === 1 && REPLY_NONE.has(rest[0])) return { kind: "none" };
+  let rest = tokens.slice(1);
+  // An optional month straight after the word: "PAID NOVEMBER ALL".
+  const named = monthOfWord(rest[0]);
+  const month = named !== null && rest.length > 1 ? { month: named } : {};
+  if (named !== null) rest = rest.slice(1);
+  if (rest.length === 0) return null;
+  if (rest.length === 1 && REPLY_ALL.has(rest[0])) return { kind: "all", ...month };
+  if (rest.length === 1 && REPLY_NONE.has(rest[0])) return { kind: "none", ...month };
   const numbers: number[] = [];
   for (let i = 0; i < rest.length; i++) {
     const tok = rest[i];
@@ -260,7 +267,7 @@ export function readCollectorReply(text: string | null | undefined): CollectorRe
       return null;
     }
   }
-  return numbers.length > 0 ? { kind: "numbers", numbers: [...new Set(numbers)] } : null;
+  return numbers.length > 0 ? { kind: "numbers", numbers: [...new Set(numbers)], ...month } : null;
 }
 
 export interface WaitingClaim {
@@ -286,6 +293,10 @@ export type CollectorDecision =
   | { kind: "unknown-numbers"; numbers: number[] }
   /** A digest is outstanding, but nothing it listed is still waiting. */
   | { kind: "nothing-waiting" }
+  /** It answers a digest that is more than two days old. Nobody is
+   *  marked; the collector is told the list is out of date and shown the
+   *  current one. */
+  | { kind: "stale" }
   /** Not an answer to a digest at all: none is outstanding, or none of the
    *  numbers is on it. The message is somebody's own ("paid 8") and goes
    *  on as if this had never looked at it. */
@@ -309,8 +320,15 @@ export type CollectorDecision =
  */
 export function decideCollectorReply(p: { reply: CollectorReply; claims: WaitingClaim[]; digest: SentDigest | null; now: Date }): CollectorDecision {
   const { digest } = p;
-  if (!digest || p.now.getTime() - digest.at.getTime() > DIGEST_REPLY_WINDOW_MS) return { kind: "not-a-reply" };
+  if (!digest) return { kind: "not-a-reply" };
   const listed = new Set(digest.userIds);
+  if (p.now.getTime() - digest.at.getTime() > DIGEST_REPLY_WINDOW_MS) {
+    // Out of date. Still only "a reply" when it could have been one: ALL
+    // or NONE, or a number that was on that list.
+    if (p.reply.kind !== "numbers") return { kind: "stale" };
+    const slots = new Set(p.claims.filter((c) => listed.has(c.userId) && c.slot != null).map((c) => c.slot as number));
+    return p.reply.numbers.some((n) => slots.has(n)) ? { kind: "stale" } : { kind: "not-a-reply" };
+  }
   const shown = p.claims.filter((c) => listed.has(c.userId) && c.claimedAt.getTime() <= digest.at.getTime());
   if (p.reply.kind === "numbers") {
     const bySlot = new Map(shown.filter((c) => c.slot != null).map((c) => [c.slot as number, c.userId]));

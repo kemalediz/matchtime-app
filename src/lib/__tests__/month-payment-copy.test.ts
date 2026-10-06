@@ -11,6 +11,8 @@ import {
   buildClaimsDigest,
   buildCollectorReplyAnswer,
   buildGroupPayReminder,
+  buildOtherMonthHint,
+  buildStaleReplyAnswer,
   buildPaidClaimAckDm,
   buildPayBySummary,
   buildPayReminderDm,
@@ -66,6 +68,12 @@ describe("the priced list", () => {
     expect(text.split("\n")[0]).toBe("📋 Kasım listesi: maç başı £7.50, son ödeme 30 Ekim Cuma 21:00 (Sam)");
     expect(text).toContain("2. Bilal Aydin (ödedi £30)");
     expect(text).toContain('bana özelden "ödedim" yaz');
+  });
+
+  it("the games in brackets are the games the regulars are charged for, so it always agrees with the amounts", () => {
+    // A month started part-way, typed in as 4 games by the organiser.
+    const text = buildPricedListPost({ list, lines, kickoffs, games: 4, sharePence: 750, payByAt, collectorName: null, instructions: null, lang: "en" });
+    expect(text.split("\n")[1]).toBe("(4 games = £30. Credits are already taken off.)");
   });
 
   it("no instructions: no payment line; instructions over several lines sit on one", () => {
@@ -200,6 +208,20 @@ describe("the rest", () => {
     expect(buildCollectorReplyAnswer({ kind: "unknown-numbers", numbers: [9], monthDate: kickoffs[0], lang: "en" })).toContain("number 9 on the November list, so I marked nobody");
     expect(buildCollectorReplyAnswer({ kind: "nothing", lang: "en" })).toContain("Nothing is waiting");
   });
+
+  it("a reply to an out-of-date list is told so, with the current one", () => {
+    expect(buildStaleReplyAnswer({ current: "CURRENT DIGEST", lang: "en" })).toBe("That list is out of date, so I marked nobody.\n\nCURRENT DIGEST");
+    expect(buildStaleReplyAnswer({ current: null, lang: "en" })).toContain("Nothing is waiting");
+  });
+
+  for (const lang of ["en", "tr"]) {
+    it(`with two months out, the hint names both, and the reply it gives is one that is read (${lang})`, () => {
+      const hint = buildOtherMonthHint({ monthDate: kickoffs[0], otherDate: new Date("2026-12-07T20:00:00.000Z"), lang });
+      const told = [...hint.matchAll(/\*([^*]+)\*/g)].map((m) => m[1]);
+      expect(readCollectorReply(told[0])).toEqual({ kind: "all", month: 12 });
+      expect(readCollectorReply(`${told[1]} 1 3`)).toEqual({ kind: "numbers", numbers: [1, 3], month: 12 });
+    });
+  }
 
   it("the summary after the pay-by date", () => {
     expect(
