@@ -120,6 +120,16 @@ function capTr(s: string): string {
 }
 
 /** "*A*", "*A* ve *B*", "*A*, *B* ve *C*": kalın isimler, grup mesajı için. */
+/** Tek sonuç, kazanan önce: "*Sarı* 9 - 6 kazandı, rakip Kırmızı" ya da
+ *  "berabere, Kırmızı 7 - 7 Sarı". Üç skor yanıtı da bunu kullanır.
+ *  Takım adına ek getirilmez (ünlü uyumu her ada uymaz). */
+function resultTr(p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string {
+  if (p.red === p.yellow) return `berabere, ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}`;
+  return p.red > p.yellow
+    ? `*${p.redLabel}* ${p.red} - ${p.yellow} kazandı, rakip ${p.yellowLabel}`
+    : `*${p.yellowLabel}* ${p.yellow} - ${p.red} kazandı, rakip ${p.redLabel}`;
+}
+
 function boldNamesTr(names: string[]): string {
   const b = names.map((n) => `*${n}*`);
   return b.length <= 1 ? (b[0] ?? "") : `${b.slice(0, -1).join(", ")} ve ${b[b.length - 1]}`;
@@ -435,7 +445,14 @@ export const tr: Strings = {
   // ── rows 32 to 42: the acks ────────────────────────────────────────
 
   teams_not_generated: "Takımlar henüz kurulmadı, *@Match Time takımları kur* yazın, hallederim.",
-  score_ack: (p) => `Tamam 👍 ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}, kaydettim.`,
+  score_ack: (p) => `Tamam 👍 ${resultTr(p)}. Kaydettim.`,
+  score_corrected: (p) =>
+    `Düzelttim 👍 Önceki kayıt ${p.redLabel} ${p.oldRed} - ${p.oldYellow} ${p.yellowLabel} idi. Şimdi ${resultTr(p)}.`,
+  score_ask_team: (p) =>
+    `${p.first} - ${p.second} hangi takımın lehine, ${p.redLabel} mı ${p.yellowLabel} mı? ` +
+    `Şöyle yazın: "${p.yellowLabel} ${p.first} - ${p.second} kazandı".`,
+  score_already_recorded: (p) =>
+    `Bu maçın sonucu zaten kayıtlı: ${resultTr(p)}. Bir yönetici maç sayfasından değiştirebilir.`,
   payments_live_announcement: (p) => {
     const who = p.collector ?? "organizatör";
     const lines = [

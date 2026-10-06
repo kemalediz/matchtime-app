@@ -152,6 +152,8 @@ export function world(opts: WorldOpts = {}): SquadState {
           redScore: null,
           yellowScore: null,
           participantUserIds: [],
+          // Two hours before `NOW`: inside the score correction window.
+          kickoffAt: "2026-09-01T16:00:00.000Z",
           ...opts.completedMatch,
         }
       : null,

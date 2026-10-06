@@ -37,9 +37,11 @@ describe("S17 · a score from an UNRESOLVED sender is still recorded", () => {
       messages: [
         msg({
           from: null,
-          body: "we won 5-3",
+          body: "5-3 to reds",
           route: "score",
-          facts: { kind: "score", first: 5, second: 3 },
+          // An unknown sender's "we won" cannot be read (whose side?),
+          // so since 2026-10-07 this case names the team.
+          facts: { kind: "score", first: 5, second: 3, winner: "reds" },
         }),
       ],
     });

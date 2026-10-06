@@ -499,11 +499,44 @@ export interface TeamFacts {
   pairings: string[][];
 }
 
+/**
+ * WHAT A RESULT MESSAGE SAYS (rewritten 2026-10-07).
+ *
+ * Until then this was two numbers "in the order the teams are named"
+ * and nothing about WHICH team, and the engine put the first on Red.
+ * Sutton FC, 6 October 2026: "9-6 to yellows" was recorded Red 9,
+ * Yellow 6. Every "N-M to Yellows" the club had ever typed was exposed
+ * to the same thing.
+ *
+ * The facts now carry whatever the message says about whose number is
+ * whose, VERBATIM, and code maps that onto Red and Yellow from the
+ * club's own team names (`score-teams.ts`). The model never decides
+ * which side is Red: it does not know what the club calls its teams,
+ * and a club can rename them.
+ *
+ * A team reference is the word as written ("yellows", "Sarılar",
+ * "Lions"), or one of the two fixed tokens "us" (the sender's own side:
+ * "we won", "kazandık") and "them". Empty when the message does not say.
+ */
 export interface ScoreFacts {
   kind: "score";
-  /** In the order the two teams appear in the match context. */
+  /** The two numbers, in the order they are written. */
   first: number;
   second: number;
+  /** The team the message attaches to the FIRST number itself
+   *  ("Yellow 9 - 6 Red", "kırmızı 6 sarı 9"). */
+  firstTeam?: string;
+  /** Likewise for the SECOND number. */
+  secondTeam?: string;
+  /** The team the message says WON, or that the score is "to"
+   *  ("9-6 to yellows", "sarılar 9-6 kazandı", "we won 5-3"). */
+  winner?: string;
+  /** The team the message says LOST ("reds lost 6-9", "kaybettik"). */
+  loser?: string;
+  /** The message says an earlier result was WRONG and gives the right
+   *  one ("no, it was...", "yanlış, ..."). Lets an untagged message
+   *  change a recorded result; see `handleScore`. */
+  correction?: boolean;
 }
 
 export interface AdminFacts {
@@ -644,8 +677,9 @@ export interface SquadState {
    * `redScore: null, yellowScore: null` in SQL and then takes the most
    * recent ENDED row, so it walks BACK past a scored match to an older
    * unscored one. This does not: it takes the most recent ended match
-   * whatever its score, and `handleScore` refuses to overwrite a result
-   * that is already recorded. Owning less on purpose — a score landing
+   * whatever its score, and `handleScore` changes a result that is
+   * already recorded only for a correction addressed to the bot, from
+   * an admin or a player, within the correction window (2026-10-07). Owning less on purpose — a score landing
    * on a match two weeks older than the one the group is talking about
    * is a worse outcome than nobody recording it.
    *
@@ -677,6 +711,24 @@ export interface SquadState {
     redScore: number | null;
     yellowScore: number | null;
     participantUserIds: string[];
+    /**
+     * THREE FACTS ABOUT THE PLAYED MATCH ITSELF (2026-10-07), all
+     * optional so an older fixture still type-checks, each with a
+     * fallback that owns LESS rather than more:
+     *
+     * `kickoffAt` (ISO): when it kicked off. A recorded result can be
+     * corrected in the group for `SCORE_CORRECTION_WINDOW_MS` after
+     * that. Absent means the window is treated as closed.
+     */
+    kickoffAt?: string;
+    /** THIS match's two display names, [red, yellow]. `state.teamLabels`
+     *  belongs to the UPCOMING match, which may carry different per-match
+     *  names. Absent falls back to `state.teamLabels`. */
+    teamLabels?: [string, string];
+    /** Who was on which side, so "we won 5-3" can be read from the
+     *  sender's team. Absent or empty means "we" cannot be resolved and
+     *  the bot asks. */
+    teams?: Array<{ userId: string; team: "RED" | "YELLOW" }>;
   } | null;
   /** MatchTime's own most recent post in the group, verbatim. A known
    *  object, not a guess: it is how a bare "Confirmed" resolves. */
@@ -1010,6 +1062,9 @@ export type ProposedWrite =
       matchId: string;
       red: number;
       yellow: number;
+      /** Set on a CORRECTION: the result this one replaces. The apply
+       *  layer refuses if the match no longer reads it. */
+      previous?: { red: number; yellow: number };
       sourceMessageId: string;
       reason: string;
     }
@@ -1222,6 +1277,22 @@ export type SpeechIntent =
    */
   | { kind: "teams_not_generated"; messageId: string }
   | { kind: "score_ack"; messageId: string; red: number; yellow: number }
+  /** A recorded result was changed: says the old one and the new one. */
+  | {
+      kind: "score_corrected";
+      messageId: string;
+      oldRed: number;
+      oldYellow: number;
+      red: number;
+      yellow: number;
+    }
+  /** Two different numbers and no way to tell whose is whose. Asks,
+   *  rather than guessing (the 2026-10-06 incident was a guess). */
+  | { kind: "score_ask_team"; messageId: string; first: number; second: number }
+  /** A different result for a match that already has one, from somebody
+   *  who may not change it or after the window. Says what is recorded
+   *  and where an admin changes it. */
+  | { kind: "score_already_recorded"; messageId: string; red: number; yellow: number }
   | { kind: "payment_ack"; messageId: string; payerName: string; count: number }
   /** `whenLabel` is the RESOLVED time ("Mon 8 Sep at 18:00"). The
    *  composer must never echo the raw phrase back at a player as if it

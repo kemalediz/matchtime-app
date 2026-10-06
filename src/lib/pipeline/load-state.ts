@@ -150,8 +150,12 @@ export async function loadSquadState(
       isHistorical: true,
       redScore: true,
       yellowScore: true,
-      activity: { select: { matchDurationMins: true } },
+      // For the score route (2026-10-07): the played match's OWN team
+      // names and who was on which side. See `SquadState.completedMatch`.
+      teamLabels: true,
+      activity: { select: { matchDurationMins: true, sport: { select: { teamLabels: true } } } },
       attendances: { where: { status: "CONFIRMED" }, select: { userId: true } },
+      teamAssignments: { select: { userId: true, team: true }, orderBy: { id: "asc" } },
     },
     orderBy: { date: "desc" },
     take: 10,
@@ -233,6 +237,17 @@ export async function loadSquadState(
           redScore: completed.redScore,
           yellowScore: completed.yellowScore,
           participantUserIds: completed.attendances.map((a) => a.userId),
+          kickoffAt: completed.date.toISOString(),
+          teamLabels: resolveTeamLabels(
+            { teamLabels: completed.teamLabels },
+            org ? { teamLabels: org.teamLabels } : null,
+            completed.activity.sport,
+            lang,
+          ),
+          teams: completed.teamAssignments.map((t) => ({
+            userId: t.userId,
+            team: t.team as "RED" | "YELLOW",
+          })),
         }
       : null,
     lastBotPost: lastBotJob?.text ?? null,

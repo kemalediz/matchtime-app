@@ -829,6 +829,16 @@ model Match {
   attendanceDeadline DateTime
   redScore           Int?
   yellowScore        Int?
+  /// WHAT THE ELO PASS DID FOR THIS MATCH (2026-10-07), so a changed
+  /// score can be undone exactly. Shape, owned by `lib/match-elo.ts`:
+  ///   { red, yellow, deltas: [{ userId, delta }] | null }
+  /// `red`/`yellow` are the score the club's ratings currently REFLECT
+  /// for this match, and `deltas` are the points actually written to
+  /// each membership for it. `deltas: null` marks a match scored before
+  /// this column existed: its ratings reflect that score but what was
+  /// written is unknown. NULL (the column) means no Elo has been applied
+  /// for this match at all.
+  eloApplied         Json?
   /// When false, the bot skips match-end postings (payment poll, rating-link DMs,
   /// MoM announcement, rating-reminder DMs) for this specific match. Useful for
   /// the first match after launch while the rating UI is still maturing.

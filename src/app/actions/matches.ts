@@ -11,8 +11,7 @@ import { formatLondon } from "@/lib/london-time";
 import { buildFormatSwitchAnnouncement, buildMatchCancelledAnnouncement } from "@/lib/group-copy";
 import { dayTimeLabel } from "@/lib/i18n/dates";
 import { normaliseLang } from "@/lib/i18n/lang";
-import { computeEloDeltas } from "@/lib/elo";
-import { applyMembershipEloDeltas, loadMembershipEloInputs } from "@/lib/membership-elo";
+import { reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
 import {
   planFormatSwitchSchedule,
   renderKickoffMoveLine,
@@ -243,62 +242,55 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
 
   const parsed = matchScoreSchema.parse(formData);
 
-  // Pull the team assignments so we can compute Elo deltas alongside
-  // the update that persists the score. The ratings themselves come
-  // from this club's memberships at apply time, not from the user.
-  const before = await db.match.findUnique({
-    where: { id: matchId },
-    include: {
-      teamAssignments: { select: { userId: true, team: true } },
-    },
+  // THE SCORE, THEN THE ELO IT IMPLIES (2026-10-07). Two steps on
+  // purpose, both in `lib/match-elo.ts`: the score is the fact and must
+  // land even if the Elo pass fails. `reconcileMatchElo` takes back the
+  // points the previous result added before adding this one's, and does
+  // nothing when the score has not changed. Until today this action
+  // added the entered result's points on every save: a corrected score
+  // left the ratings carrying both results, and saving twice added the
+  // same result twice (`__tests__/update-match-score-elo.test.ts`).
+  const { previous } = await setMatchScore({
+    matchId,
+    red: parsed.redScore,
+    yellow: parsed.yellowScore,
   });
 
-  const updated = await db.match.update({
-    where: { id: matchId },
-    data: {
-      redScore: parsed.redScore,
-      yellowScore: parsed.yellowScore,
-      status: "COMPLETED",
-    },
-    include: {
-      activity: true,
-      attendances: {
-        where: { status: "CONFIRMED" },
-        include: { user: { select: { email: true, name: true } } },
-      },
-    },
-  });
-
-  // Apply Elo updates — only to players who were in teamAssignments, not
-  // generic attendees (in case teams were generated but some players never
-  // assigned). Fails open: log and continue if something's off.
   try {
-    if (before?.teamAssignments?.length) {
-      // The club is the one already authorised against a few lines up,
-      // so an admin at one club can never move another club's Elo.
-      const orgId = match.activity.orgId;
-      const { inputs } = await loadMembershipEloInputs({
-        orgId,
-        assignments: before.teamAssignments,
-      });
-      const deltas = computeEloDeltas(inputs, parsed.redScore, parsed.yellowScore);
-      await applyMembershipEloDeltas({ orgId, deltas });
+    const elo = await reconcileMatchElo({ matchId });
+    if (elo.status === "legacy_left") {
+      console.warn(`[updateMatchScore] match ${matchId}: Elo not recalculated. ${elo.detail}`);
     }
   } catch (err) {
     console.error("Elo update failed (match will still be COMPLETED):", err);
   }
 
-  const players = updated.attendances.map((a) => ({
-    email: a.user.email,
-    name: a.user.name,
-  }));
-
-  sendRatingEmails(
-    matchId,
-    updated.activity.name,
-    formatLondon(updated.date, "EEEE, d MMMM yyyy"),
-    players
-  ).catch((err) => console.error("Failed to send rating emails:", err));
+  // The "rate the match" email goes out when the match first gets a
+  // result. A correction is not a new match to rate.
+  if (!previous) {
+    const updated = await db.match.findUnique({
+      where: { id: matchId },
+      include: {
+        activity: true,
+        attendances: {
+          where: { status: "CONFIRMED" },
+          include: { user: { select: { email: true, name: true } } },
+        },
+      },
+    });
+    if (updated) {
+      const players = updated.attendances.map((a) => ({
+        email: a.user.email,
+        name: a.user.name,
+      }));
+      sendRatingEmails(
+        matchId,
+        updated.activity.name,
+        formatLondon(updated.date, "EEEE, d MMMM yyyy"),
+        players
+      ).catch((err) => console.error("Failed to send rating emails:", err));
+    }
+  }
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath("/matches");

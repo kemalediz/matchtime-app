@@ -330,7 +330,47 @@ The message may be in ENGLISH or TURKISH. Report the same facts either way:
   "Ali ile Can'ı değiştir"           -> swap (swaps empty when no side is named)
 When the sender refers to themselves in Turkish ("beni", "bana", "ben"), write "me".`,
 
-  score: `You read ONE message reporting a football result and return the two numbers, in the order the teams are named in the message. first = the first team mentioned, second = the other. Nothing else.`,
+  score: `You read ONE message from a football group's WhatsApp chat that reports the result of the group's own match, and you report what it SAYS. You report facts about the text. You never decide which team is which or what gets recorded: code does that, from the club's records.
+
+WHAT YOU ARE SHOWN
+Up to three blocks. RECENT CHAT and MATCHTIME'S LAST POST are context only: use them to understand THE MESSAGE, never take a score from them. THE MESSAGE is the one you report on, with the name of the person who typed it: the sender.
+
+WHAT YOU RETURN
+first, second
+The two numbers of the FINAL result, in the order they are written. When the message tells a story with several scorelines ("it was 6-6 then it turned to 9-6"), the final one is the result.
+
+A TEAM REFERENCE is the team's name exactly as the message writes it ("yellows", "Reds", "Sarılar", "the Lions"). For the sender's own side ("we", "us", "biz", a verb like "kazandık") write "us"; for the side they played against write "them". Leave a team field "" when the message does not say. Never fill one in by guessing, and never work out the other team's name yourself.
+
+firstTeam, secondTeam
+Only when the message gives EACH number its own team: firstTeam is the team written with the first number, secondTeam with the second. "Yellow 9 - 6 Red" is firstTeam "Yellow", secondTeam "Red". Otherwise both are "".
+
+winner
+The team the message says WON, or that the score is "to" or "for". One team name on its own beside a scoreline ("9-6 yellow", "yellow 9-6") is the winner. "" for a draw, and "" when the message does not say.
+
+loser
+The team the message says LOST. "" when it does not say.
+
+correction
+true only when the message says an earlier result was WRONG and gives the right one ("no, it was...", "that is wrong, it finished...", "yanlış", "hayır ... olacak"). A first report is false, however it is worded.
+
+EXAMPLES, English and Turkish
+A winner named:
+  "5-3 to Yellows" / "sarılar 5-3 kazandı" -> first 5, second 3, winner "Yellows" / "sarılar"
+  "4-6 to Yellows" -> first 4, second 6, winner "Yellows"
+  "6-5 Yellow wins" / "6-5 sarı" -> first 6, second 5, winner "Yellow" / "sarı"
+  "it was 6-6 until 15 minutes then suddenly it turned to 9-6 to yellows" -> first 9, second 6, winner "yellows"
+A team beside each number:
+  "Yellow 9 - 6 Red" -> first 9, second 6, firstTeam "Yellow", secondTeam "Red"
+  "kırmızı 6 sarı 9" -> first 6, second 9, firstTeam "kırmızı", secondTeam "sarı"
+The sender's own side:
+  "we won 5-3" / "5-3 kazandık" -> first 5, second 3, winner "us"
+  "lost 3-5" / "3-5 kaybettik" -> first 3, second 5, loser "us"
+  "reds battered us 7-2" -> first 7, second 2, winner "reds", loser "us"
+No team at all:
+  "10-7" / "final score was 8-8" / "7-7 berabere" -> the two numbers, every team field ""
+A correction:
+  "no Yellow 9 - 6 Red" / "yanlış, kırmızı 6 sarı 9" -> correction true, with the numbers and teams as above
+  "no it was 9-7" -> first 9, second 7, correction true, every team field ""`,
 
   admin: `You read ONE instruction to the bot and report what it says.
 
@@ -480,10 +520,23 @@ const TEAMS_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+// Team-aware since 2026-10-07 (see `ScoreFacts`). The four team fields
+// are VERBATIM text, or "us" / "them", or "": "" is the schema's
+// stand-in for "not said", as elsewhere in this file, because the API
+// rejects a nullable type at request time. No field admits a decision:
+// which side is Red is code's, in `score-teams.ts`.
 const SCORE_SCHEMA = {
   type: "object",
-  properties: { first: { type: "number" }, second: { type: "number" } },
-  required: ["first", "second"],
+  properties: {
+    first: { type: "number" },
+    second: { type: "number" },
+    firstTeam: { type: "string" },
+    secondTeam: { type: "string" },
+    winner: { type: "string" },
+    loser: { type: "string" },
+    correction: { type: "boolean" },
+  },
+  required: ["first", "second", "firstTeam", "secondTeam", "winner", "loser", "correction"],
   additionalProperties: false,
 } as const;
 
@@ -755,7 +808,24 @@ export function parseFacts(
         bad(`score extractor returned non-numeric values`);
         return { facts: { kind: "none" }, degradations };
       }
+      // The team fields are optional on the FACTS: "" (not said) is
+      // dropped, so "the message named no team" is one shape whether
+      // the model sent "" or an older stub sent nothing. Clipped, since
+      // they are free text on their way to a trace row.
+      const team = (v: unknown): string | undefined => {
+        const t = str(v).trim().slice(0, 60);
+        return t ? t : undefined;
+      };
       const facts: ScoreFacts = { kind: "score", first, second };
+      const firstTeam = team(raw.firstTeam);
+      const secondTeam = team(raw.secondTeam);
+      const winner = team(raw.winner);
+      const loser = team(raw.loser);
+      if (firstTeam) facts.firstTeam = firstTeam;
+      if (secondTeam) facts.secondTeam = secondTeam;
+      if (winner) facts.winner = winner;
+      if (loser) facts.loser = loser;
+      if (raw.correction === true) facts.correction = true;
       return { facts, degradations };
     }
 

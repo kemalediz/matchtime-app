@@ -358,6 +358,10 @@ export async function loadStateViaSql(grp: SimGroup): Promise<SquadState> {
           redScore: completed[0].redScore,
           yellowScore: completed[0].yellowScore,
           participantUserIds: participants.map((p) => p.userId),
+          // The score correction window is measured from this. The
+          // match's own team names and sides are not loaded here: the
+          // engine falls back to `teamLabels` above and asks on "we won".
+          kickoffAt: new Date(completed[0].date).toISOString(),
         }
       : null,
     payments: null,

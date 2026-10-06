@@ -860,6 +860,11 @@ function cases(lang: Lang): Case[] {
   add("R33b ask_who_mentioned", say(short, { kind: "ask_who_mentioned", messageId: MSG }));
 
   add("R34 score_ack", say(full, { kind: "score_ack", messageId: MSG, red: 3, yellow: 1 }));
+  add("R34 score_ack / yellow won", say(full, { kind: "score_ack", messageId: MSG, red: 6, yellow: 9 }));
+  add("R34 score_ack / draw", say(full, { kind: "score_ack", messageId: MSG, red: 7, yellow: 7 }));
+  add("R34b score_corrected", say(full, { kind: "score_corrected", messageId: MSG, oldRed: 9, oldYellow: 6, red: 6, yellow: 9 }));
+  add("R34c score_ask_team", say(full, { kind: "score_ask_team", messageId: MSG, first: 10, second: 7 }));
+  add("R34d score_already_recorded", say(full, { kind: "score_already_recorded", messageId: MSG, red: 9, yellow: 6 }));
   add("R35 payment_ack / one", say(full, { kind: "payment_ack", messageId: MSG, payerName: "Sait Demir", count: 1 }));
   add("R35 payment_ack / three", say(full, { kind: "payment_ack", messageId: MSG, payerName: "Sait Demir", count: 3 }));
   add("R36 reminder_ack / resolved", say(full, { kind: "reminder_ack", messageId: MSG, phrase: "thursday", whenLabel: "Thu 10 Sep at 09:00" }));

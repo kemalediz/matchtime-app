@@ -1901,7 +1901,7 @@ describe("S17 · score", () => {
           from: "kemal",
           body: "Red won 5-3",
           route: "score",
-          facts: { kind: "score", first: 5, second: 3 },
+          facts: { kind: "score", first: 5, second: 3, winner: "Red" },
         }),
       ],
     });

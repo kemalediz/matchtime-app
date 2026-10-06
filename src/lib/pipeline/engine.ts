@@ -78,6 +78,7 @@ import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { namesTheBench } from "./bench-words";
 import { isRawDigitName, resolvePerson } from "./identity";
 import { planResultsQuestion } from "./results-answer";
+import { resolveScoreResult } from "./score-teams";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
 import type {
@@ -177,6 +178,17 @@ export function isFloorExempt(
 
 /** Scores are clamped, never trusted (§9 "value clamps" — survives). */
 const MAX_SCORE = 99;
+
+/**
+ * How long after KICKOFF a recorded result can be corrected from the
+ * group (2026-10-07). After it, the bot points at the match page.
+ *
+ * 48 hours: long enough for "hang on, that's the wrong way round" the
+ * next morning, short enough that the result is settled before the
+ * badges post (18:00 two days after the match) and long before the next
+ * weekly game, whose own result becomes the "last played" match anyway.
+ */
+export const SCORE_CORRECTION_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /**
  * The shipped reminder window, reproduced from `route.ts:3938-3947`.
@@ -2243,8 +2255,9 @@ export function decide(input: EngineInput): EngineResult {
       //
       // The blast radius is bounded on all sides: the message must be in
       // the org's own monitored group, the target must be a match that
-      // has already been played, and `handleScore` refuses to overwrite
-      // a result that is already recorded — so the worst case is one
+      // has already been played, and an unresolved sender can never
+      // change a result that is already recorded (the correction branch
+      // below requires an identified admin or player) — so the worst case is one
       // wrong number on one match, correctable in the dashboard, against
       // the certainty of losing every score reported from an @lid.
       const senderUnresolved = !msg.senderUserId;
@@ -2257,25 +2270,140 @@ export function decide(input: EngineInput): EngineResult {
         // §9 authorisation — survives untouched. Nothing about the
         // model's competence changes who may report a result.
         out.reasons.push("score reported by someone who neither played nor is an admin");
-        return;
+        // They still write nothing, ever. The one thing that changed
+        // (2026-10-07): if a result is ALREADY recorded and they
+        // addressed the bot about it, the branch below tells them so
+        // instead of leaving them in silence.
+        if (completed.redScore === null || completed.yellowScore === null) return;
       }
-      if (completed.redScore !== null || completed.yellowScore !== null) {
-        // The shipped path only ever looks for an UNSCORED completed
-        // match (`route.ts` filters on redScore/yellowScore null). Without
-        // that, any later message the router calls `score` rewrites a
-        // settled result — and in step 6 it would re-run the Elo deltas.
-        out.reasons.push(
-          `the last completed match already recorded ` +
-            `${completed.redScore}-${completed.yellowScore}; not overwriting it`,
-        );
-        return;
-      }
-      const red = clampScore(facts.first);
-      const yellow = clampScore(facts.second);
-      if (red === null || yellow === null) {
+      // ── WHOSE NUMBER IS WHOSE (2026-10-07) ─────────────────────────
+      //
+      // Until now: `red = first, yellow = second`, unconditionally. The
+      // extractor carried no team, so "9-6 to yellows" was recorded
+      // Red 9, Yellow 6 (Sutton FC, 2026-10-06) and announced as such.
+      // The facts now say what the message says about teams, verbatim,
+      // and `score-teams.ts` maps that onto this match's two sides. When
+      // nothing says, the bot ASKS: see that file for why Red-first was
+      // never a convention.
+      const first = clampScore(facts.first);
+      const second = clampScore(facts.second);
+      if (first === null || second === null) {
         degrade(`score out of range: ${facts.first}-${facts.second}`);
         return;
       }
+      const senderTeam =
+        (msg.senderUserId && completed.teams?.find((t) => t.userId === msg.senderUserId)?.team) || null;
+      const resolution = resolveScoreResult({
+        facts: { ...facts, first, second },
+        labels: completed.teamLabels ?? state.teamLabels,
+        senderTeam,
+      });
+
+      const recorded =
+        completed.redScore !== null && completed.yellowScore !== null
+          ? { red: completed.redScore, yellow: completed.yellowScore }
+          : null;
+
+      // ── A RESULT IS ALREADY RECORDED ───────────────────────────────
+      //
+      // The shipped path only ever looked for an UNSCORED match, and
+      // this engine refused every later `score` message outright: "any
+      // later message the router calls `score` rewrites a settled
+      // result". That guard stays for exactly the messages it was
+      // written for, and no longer swallows a correction: on 2026-10-06
+      // an admin's "@Match Time no Yellow 9 - 6 Red", a minute after the
+      // wrong result, got no write and no reply.
+      //
+      // WHAT CAN CHANGE A RECORDED RESULT: a message ADDRESSED to it,
+      // meaning it tags the bot or the extractor reports it as an
+      // explicit correction ("no, it was..."). "Replies to the bot's
+      // confirmation" would be a third signal and is not available: the
+      // engine is not told what a message quotes. Everything else the
+      // router calls `score` once a result is in ("remember when we lost
+      // 9-2") is left exactly as before: no write, no reply.
+      //
+      // WHO, AND UNTIL WHEN: the people who may report a result (an
+      // admin, or somebody who played), identified, within
+      // `SCORE_CORRECTION_WINDOW_MS` of kickoff. An UNRESOLVED sender
+      // may report a first result because losing it is the worse
+      // failure; that argument does not reach a result that exists, so
+      // they may not change one. "The person who reported it" is not a
+      // separate rule: the reporter is not stored, and whoever it was
+      // either played, or is an admin, or was unresolved.
+      if (recorded) {
+        const addressed = msg.tagged || facts.correction === true;
+        if (!addressed) {
+          out.reasons.push(
+            `the last completed match already recorded ${recorded.red}-${recorded.yellow}; ` +
+              `this message neither tags the bot nor says it is a correction, so it changes nothing`,
+          );
+          return;
+        }
+        if (
+          resolution.kind === "resolved" &&
+          resolution.red === recorded.red &&
+          resolution.yellow === recorded.yellow
+        ) {
+          out.reasons.push(
+            `the last completed match already recorded ${recorded.red}-${recorded.yellow}; ` +
+              `this is the same result, nothing to change`,
+          );
+          return;
+        }
+        const kickoff = completed.kickoffAt ? Date.parse(completed.kickoffAt) : NaN;
+        const inWindow =
+          Number.isFinite(kickoff) && input.now.getTime() - kickoff <= SCORE_CORRECTION_WINDOW_MS;
+        const mayCorrect = !senderUnresolved && (senderIsAdmin || played);
+        if (!mayCorrect || !inWindow) {
+          out.reasons.push(
+            `the last completed match already recorded ${recorded.red}-${recorded.yellow}; not changed: ` +
+              (!mayCorrect
+                ? "the sender is not an identified admin or player of that match"
+                : "the correction window has closed"),
+          );
+          speech.push({
+            kind: "score_already_recorded",
+            messageId: msg.id,
+            red: recorded.red,
+            yellow: recorded.yellow,
+          });
+          return;
+        }
+        if (resolution.kind === "ask") {
+          out.reasons.push(`correction not applied: cannot tell whose number is whose (${resolution.why})`);
+          speech.push({ kind: "score_ask_team", messageId: msg.id, first, second });
+          return;
+        }
+        completed.redScore = resolution.red;
+        completed.yellowScore = resolution.yellow;
+        emit({
+          kind: "score",
+          matchId: completed.id,
+          red: resolution.red,
+          yellow: resolution.yellow,
+          previous: recorded,
+          sourceMessageId: msg.id,
+          reason: `recorded result ${recorded.red}-${recorded.yellow} corrected by a participant or admin`,
+        });
+        speech.push({
+          kind: "score_corrected",
+          messageId: msg.id,
+          oldRed: recorded.red,
+          oldYellow: recorded.yellow,
+          red: resolution.red,
+          yellow: resolution.yellow,
+        });
+        out.react = "👍";
+        return;
+      }
+
+      // ── THE FIRST RESULT FOR THE MATCH ─────────────────────────────
+      if (resolution.kind === "ask") {
+        out.reasons.push(`score not recorded: cannot tell whose number is whose (${resolution.why}); asked`);
+        speech.push({ kind: "score_ask_team", messageId: msg.id, first, second });
+        return;
+      }
+      const { red, yellow } = resolution;
       completed.redScore = red;
       completed.yellowScore = yellow;
       emit({

@@ -1,4 +1,10 @@
 /**
+ * SPENT. Applied to production on the night of 6 October 2026 (candidate
+ * [0]: Red +24, Yellow -24 taken back, then the right result applied).
+ * It refuses to run again: the match no longer reads Red 9, Yellow 6.
+ * Kept as the record of what was done. Any later change to a score goes
+ * through `src/lib/match-elo.ts`, which stores the points it writes.
+ *
  * One-off: Sutton Football Club, Tuesday 6 October 2026.
  *
  * The group was told "9-6 to yellows". The score extractor returned the

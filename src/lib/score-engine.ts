@@ -34,8 +34,16 @@
  * whether a recorded score may be overwritten: all of that is
  * `engine.ts`'s `handleScore`, and none of it is re-litigated here.
  * Every branch below is a mechanical translation of a field the engine
- * already set. `computeEloDeltas` is imported from `elo.ts` — pure, and
- * already the only implementation of that arithmetic in the codebase.
+ * already set.
+ *
+ * ── A CHANGED SCORE (2026-10-07) ─────────────────────────────────────
+ * The engine may now propose a score for a match that already has one
+ * (a correction, with `previous` set). The Elo half is therefore no
+ * longer "add this result's points": it is `reconcileElo`, which makes
+ * the ratings agree with the match's score, taking the old result's
+ * points back first and doing nothing when they already agree
+ * (`lib/match-elo.ts`). The arithmetic moved there with it, so this
+ * file no longer calls `computeEloDeltas` itself.
  *
  * It imports neither `db` nor Prisma; its dependencies are injected,
  * which is what makes the seam unit-testable without a database, and a
@@ -43,7 +51,6 @@
  * saying so is worth nothing (four seatbelts were found dead on
  * 2026-08-31, all with comments claiming they worked).
  */
-import { computeEloDeltas, type EloDelta, type PlayerEloInput } from "./elo";
 import type { ProposedWrite } from "./pipeline/types";
 
 export type EngineScoreWrite = Extract<ProposedWrite, { kind: "score" }>;
@@ -77,22 +84,24 @@ export const SCORE_HANDLED_BY = "score-engine";
 
 export interface ScoreApplyDeps {
   /** `Match.redScore` / `yellowScore` / `status = COMPLETED`, in one
-   *  update. The ONE way a score is written on this path. */
-  recordScore: (args: { matchId: string; red: number; yellow: number }) => Promise<void>;
-  /** Every `TeamAssignment` on the match, with the player's current
-   *  `matchRating` AT THAT MATCH'S CLUB. Empty is a legitimate answer:
-   *  a match whose teams were never generated has no Elo to compute. */
-  loadEloInputs: (matchId: string) => Promise<PlayerEloInput[]>;
-  /** Persist the computed deltas. One transaction, as
-   *  `route.ts:3526-3530` does it.
+   *  update. The ONE way a score is written on this path.
    *
-   *  `matchId` is here and not inferred because since 2026-09-19 the
-   *  Elo lives on `Membership`, so a write needs a club as well as a
-   *  player. The match is the only thing that knows which club, and the
-   *  caller has it in hand. Passing it beats the implementation
-   *  remembering the org from the preceding `loadEloInputs` call, which
-   *  would make two independent methods secretly ordered. */
-  applyEloDeltas: (matchId: string, deltas: EloDelta[]) => Promise<void>;
+   *  `previous` is set on a CORRECTION: the result the engine decided
+   *  against. The implementation must refuse (throw) if the match no
+   *  longer reads that, so two corrections racing cannot both land. */
+  recordScore: (args: {
+    matchId: string;
+    red: number;
+    yellow: number;
+    previous?: { red: number; yellow: number };
+  }) => Promise<void>;
+  /** Make the club's ratings agree with the match's score: take back
+   *  what the previous result added, add this one's, exactly once.
+   *  `moved` 0 is a legitimate answer: a match whose teams were never
+   *  generated has no Elo to compute. `left` is set when the ratings
+   *  could NOT be brought into line and were left alone (an older match
+   *  whose points were never stored); it is a sentence for a person. */
+  reconcileElo: (matchId: string) => Promise<{ moved: number; left?: string }>;
 }
 
 export interface ScoreWriteResult {
@@ -114,9 +123,9 @@ export interface ScoreWriteResult {
  *
  * Sequential rather than `Promise.all`, and that is not caution: two
  * score writes in one batch would be two messages about the SAME match
- * (the engine only ever proposes one per match, because it refuses to
- * overwrite a result once its projection has recorded one), and racing
- * two updates to one row for no gain is how the second one wins by
+ * (a result and its correction, since 2026-10-07; the second carries the
+ * first as `previous`), and they have to land in the order they were
+ * said. Racing two updates to one row is how the wrong one wins by
  * accident.
  */
 export async function applyScoreWrites(args: {
@@ -128,7 +137,12 @@ export async function applyScoreWrites(args: {
 
   for (const write of writes) {
     try {
-      await deps.recordScore({ matchId: write.matchId, red: write.red, yellow: write.yellow });
+      await deps.recordScore({
+        matchId: write.matchId,
+        red: write.red,
+        yellow: write.yellow,
+        ...(write.previous ? { previous: write.previous } : {}),
+      });
     } catch (err) {
       // The score itself failed. Nothing derived from it should run, and
       // the caller must not compose "recorded" over a write that threw —
@@ -147,12 +161,9 @@ export async function applyScoreWrites(args: {
     let eloApplied = 0;
     let eloError: string | undefined;
     try {
-      const inputs = await deps.loadEloInputs(write.matchId);
-      const deltas = computeEloDeltas(inputs, write.red, write.yellow);
-      if (deltas.length > 0) {
-        await deps.applyEloDeltas(write.matchId, deltas);
-        eloApplied = deltas.length;
-      }
+      const elo = await deps.reconcileElo(write.matchId);
+      eloApplied = elo.moved;
+      if (elo.left) eloError = elo.left;
     } catch (err) {
       eloError = err instanceof Error ? err.message : String(err);
       console.error("[score-engine] Elo update after a recorded score failed:", err);

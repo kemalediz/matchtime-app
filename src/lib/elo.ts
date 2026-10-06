@@ -157,7 +157,10 @@ export function invertEloDeltas(
   const bound = Math.ceil(kFactor(redScore, yellowScore)) + 1;
   const solutions: Array<{ red: number; yellow: number }> = [];
   for (let red = -bound; red <= bound; red++) {
-    for (let yellow = -bound; yellow <= bound; yellow++) {
+    // Yellow's delta is the rounding of the NEGATIVE of the number Red's
+    // is the rounding of, so it is within one of `-red`. Searching only
+    // there is exhaustive and keeps this linear in the bound.
+    for (let yellow = -red - 1; yellow <= -red + 1; yellow++) {
       const before = playersAfter.map((p) =>
         unwrittenUserIds.has(p.userId)
           ? p

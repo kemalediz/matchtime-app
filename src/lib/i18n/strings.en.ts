@@ -82,6 +82,15 @@ function resultsWhenEn(p: StatsPeriod): string {
 }
 
 /** "*A*", "*A* and *B*", "*A*, *B* and *C*": names in bold, for a group post. */
+/** One result, winner first: "*Yellow* won 9 - 6 against Red", or
+ *  "a draw, Red 7 - 7 Yellow". Shared by the three score replies. */
+function resultEn(p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string {
+  if (p.red === p.yellow) return `a draw, ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}`;
+  return p.red > p.yellow
+    ? `*${p.redLabel}* won ${p.red} - ${p.yellow} against ${p.yellowLabel}`
+    : `*${p.yellowLabel}* won ${p.yellow} - ${p.red} against ${p.redLabel}`;
+}
+
 function boldNamesEn(names: string[]): string {
   const b = names.map((n) => `*${n}*`);
   return b.length <= 1 ? (b[0] ?? "") : `${b.slice(0, -1).join(", ")} and ${b[b.length - 1]}`;
@@ -489,8 +498,26 @@ export const en = {
   // ── rows 32 to 42: the acks (compose.ts) ───────────────────────────
 
   teams_not_generated: "No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.",
+  // THE SCORE REPLIES (rewritten 2026-10-07). The result is stated
+  // WINNER FIRST, by name, so the group can check it at a glance: "Got it
+  // 👍 Red 9 - 6 Yellow, recorded." was read as fine on 2026-10-06 when
+  // Yellow had won. `resultEn` is the one place the wording lives.
   score_ack: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
-    `Got it 👍 ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}, recorded.`,
+    `Got it 👍 ${resultEn(p)}. Recorded.`,
+  score_corrected: (p: {
+    redLabel: string;
+    yellowLabel: string;
+    oldRed: number;
+    oldYellow: number;
+    red: number;
+    yellow: number;
+  }): string =>
+    `Corrected 👍 It was ${p.redLabel} ${p.oldRed} - ${p.oldYellow} ${p.yellowLabel}. Now ${resultEn(p)}.`,
+  score_ask_team: (p: { first: number; second: number; redLabel: string; yellowLabel: string }): string =>
+    `${p.first} - ${p.second} to which team, ${p.redLabel} or ${p.yellowLabel}? ` +
+    `Tell me like this: "${p.first} - ${p.second} to ${p.yellowLabel}".`,
+  score_already_recorded: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
+    `That match is already recorded: ${resultEn(p)}. An admin can change it on the match page.`,
   /** ONE group post when payment collection goes live (2026-09-30,
    *  `payments-live-announce.ts`). Follows the club's pay methods;
    *  `collector` is the collector's first name, or null. */

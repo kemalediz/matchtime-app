@@ -52,16 +52,35 @@ function fakeWorld(args: {
   const userUpdates: unknown[] = [];
   const matchUpdates: unknown[] = [];
 
+  // The match row, as far as a score write reads and writes it. Since
+  // 2026-10-07 the score and the Elo go through `lib/match-elo.ts`,
+  // which reads the match (score, stored Elo record, team sheet, club)
+  // inside a transaction. The fake grew that surface and nothing else:
+  // the assertions below are unchanged.
+  const matchRow: Record<string, { redScore: number | null; yellowScore: number | null; eloApplied: unknown }> = {};
+  const rowFor = (id: string) => (matchRow[id] ??= { redScore: null, yellowScore: null, eloApplied: null });
+
   const db = {
+    $queryRaw: async () => [],
     match: {
-      update: async (a: unknown) => {
+      update: async (a: { where: { id: string }; data: Record<string, unknown> }) => {
         matchUpdates.push(a);
+        Object.assign(rowFor(a.where.id), a.data);
         return {};
       },
       findUnique: async (a: { where: { id: string } }) => {
         const orgId = orgByMatch[a.where.id];
-        return orgId ? { activity: { orgId } } : null;
+        if (!orgId) return null;
+        return {
+          date: new Date("2026-09-20T19:30:00Z"),
+          ...rowFor(a.where.id),
+          activity: { orgId },
+          teamAssignments: assignments
+            .filter((x) => x.matchId === a.where.id)
+            .map((x) => ({ userId: x.userId, team: x.team })),
+        };
       },
+      findFirst: async () => null,
     },
     teamAssignment: {
       findMany: async (a: { where: { matchId: string } }) =>
@@ -76,12 +95,15 @@ function fakeWorld(args: {
           .map((m) => ({ userId: m.userId, matchRating: m.matchRating })),
       updateMany: async (a: {
         where: { userId: string; orgId: string };
-        data: { matchRating: number };
+        data: { matchRating: number | { increment?: number; decrement?: number } };
       }) => {
         const hits = memberships.filter(
           (m) => m.userId === a.where.userId && m.orgId === a.where.orgId,
         );
-        for (const m of hits) m.matchRating = a.data.matchRating;
+        const r = a.data.matchRating;
+        for (const m of hits) {
+          m.matchRating = typeof r === "number" ? r : m.matchRating + (r.increment ?? 0) - (r.decrement ?? 0);
+        }
         return { count: hits.length };
       },
     },
@@ -95,7 +117,8 @@ function fakeWorld(args: {
     },
     // Real Prisma defers these; executing eagerly is close enough for a
     // test whose assertions are on the resulting rows.
-    $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+    $transaction: async (ops: Promise<unknown>[] | ((tx: unknown) => Promise<unknown>)) =>
+      typeof ops === "function" ? ops(db) : Promise.all(ops),
   };
 
   const ratingOf = (userId: string, orgId: string) =>
