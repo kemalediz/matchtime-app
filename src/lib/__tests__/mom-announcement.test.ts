@@ -39,9 +39,9 @@ describe("buildMomAnnouncement", () => {
       ],
     });
     expect(text).toBe(
-      "🏆 *Man of the Match — Tuesday 7-a-side*\n\n" +
+      "🏆 *Man of the Match: Tuesday 7-a-side*\n\n" +
         "Congrats *Alice* (3/4 votes) 🎉\n\n" +
-        "Votes:\n• Alice — 3\n• Bob — 1\n\n" +
+        "Votes:\n• Alice (3)\n• Bob (1)\n\n" +
         "Your trophy awaits next match.",
     );
   });
@@ -68,7 +68,7 @@ describe("buildMomAnnouncement", () => {
       ],
     });
     expect(text).toContain("Shared between *Alice & Bob* (2 votes each, 5 total) 🎉");
-    expect(text).toContain("Votes:\n• Alice — 2\n• Bob — 2\n• Cara — 1");
+    expect(text).toContain("Votes:\n• Alice (2)\n• Bob (2)\n• Cara (1)");
     expect(text).not.toContain("drink");
     expect(text.endsWith("Your trophy awaits next match.")).toBe(true);
   });

@@ -74,7 +74,7 @@ export default function RatePlayersPage() {
       if (res && res.skipped > 0) {
         toast.success(
           `Ratings submitted for ${res.saved} player${res.saved === 1 ? "" : "s"}. ` +
-            `${res.skipped} player${res.skipped === 1 ? " was" : "s were"} removed since you opened this page — refresh to rate ${res.skipped === 1 ? "them" : "the rest"}.`,
+            `${res.skipped} player${res.skipped === 1 ? " was" : "s were"} removed since you opened this page. Refresh to rate ${res.skipped === 1 ? "them" : "the rest"}.`,
         );
       } else {
         toast.success("Ratings submitted! Thanks for voting.");

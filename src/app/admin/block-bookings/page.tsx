@@ -138,7 +138,7 @@ export default async function BlockBookingsPage() {
                       <Link
                         key={m.id}
                         href={`/matches/${m.id}`}
-                        title={`${formatLondon(m.date, "EEEE d MMMM yyyy, HH:mm")} — ${m.status}`}
+                        title={`${formatLondon(m.date, "EEEE d MMMM yyyy, HH:mm")}, ${m.status}`}
                         className={`px-2 py-1 rounded-md border text-xs font-medium ${style}`}
                       >
                         {formatLondon(m.date, "d MMM")}

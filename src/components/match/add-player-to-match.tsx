@@ -71,7 +71,7 @@ export function AddPlayerToMatch({
       }
       toast.success(
         res.ratingDmSent
-          ? "Added — rating link sent to them"
+          ? "Added, rating link sent to them"
           : res.created
             ? "Player created & added"
             : "Added to match",
@@ -104,7 +104,7 @@ export function AddPlayerToMatch({
       {selected ? (
         <div className="inline-flex items-center gap-2 px-3 h-11 rounded-lg bg-white border border-blue-300 text-slate-800 text-sm">
           <span className="font-medium">{selected.name}</span>
-          {!selected.hasPhone && <span className="text-xs text-amber-600">(no phone — no link)</span>}
+          {!selected.hasPhone && <span className="text-xs text-amber-600">(no phone, no link)</span>}
           <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-700">
             <X className="w-4 h-4" />
           </button>
@@ -152,7 +152,7 @@ export function AddPlayerToMatch({
             className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white font-mono text-sm text-slate-800"
           />
           <p className="mt-1 text-xs text-amber-700">
-            No match for &ldquo;{query.trim()}&rdquo; — this creates a new player (default rating 6).
+            No match for &ldquo;{query.trim()}&rdquo;, so this creates a new player (default rating 6).
           </p>
         </div>
       )}

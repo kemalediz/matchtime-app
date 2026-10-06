@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       const lines = [
         `👋 *${displayName}* left *${org.name}*'s WhatsApp group${wasAdmin ? " (was an admin)" : ""}.`,
         ``,
-        `They've been marked inactive on the roster. History is preserved — ratings and attendance stay attributed.`,
+        `They've been marked inactive on the roster. History is preserved: ratings and attendance stay attributed.`,
         ``,
         `If this was a mistake, re-add them to the group and I'll re-activate them automatically.`,
       ];

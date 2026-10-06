@@ -122,7 +122,7 @@ export default function OnboardingWizard() {
         active.map((p) => p.name),
       );
       if (!result) {
-        toast.error("Analysis failed — you can still continue with defaults.");
+        toast.error("Analysis failed, but you can still continue with defaults.");
         setAnalysisSkipped(true);
       } else {
         setAnalysis(result);
@@ -332,7 +332,7 @@ function UploadStep({ busy, onFile }: { busy: boolean; onFile: (f: File) => void
           <>
             <Upload className="w-8 h-8 text-slate-400 mx-auto mb-3" />
             <p className="font-medium text-slate-700">Click to choose a .txt file</p>
-            <p className="text-xs text-slate-500 mt-1">Up to 5MB — 2 years of chat fits easily</p>
+            <p className="text-xs text-slate-500 mt-1">Up to 5MB (2 years of chat fits easily)</p>
           </>
         )}
       </label>
@@ -473,7 +473,7 @@ function PlayersStep(props: {
                 {p.isLikelyMe && (
                   <span
                     className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200 whitespace-nowrap"
-                    title="This looks like you. Excluded by default — toggle ✓ if you also play."
+                    title="This looks like you. Excluded by default. Toggle ✓ if you also play."
                   >
                     you
                   </span>
@@ -577,7 +577,7 @@ function InsightsStep(props: {
             Let MatchTime read your chat
           </h2>
           <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
-            Optional — analyses the messages to suggest each player&apos;s
+            Optional. Analyses the messages to suggest each player&apos;s
             position and skill rating, plus your likely match day/time/venue.
             Takes ~15-30 seconds. You can edit everything after.
           </p>
@@ -636,21 +636,21 @@ function InsightsStep(props: {
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Day</p>
               <p className="font-medium">
-                {schedule.dayOfWeek != null ? days[schedule.dayOfWeek] : "—"}
+                {schedule.dayOfWeek != null ? days[schedule.dayOfWeek] : "-"}
               </p>
             </div>
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Kickoff</p>
-              <p className="font-medium">{schedule.time ?? "—"}</p>
+              <p className="font-medium">{schedule.time ?? "-"}</p>
             </div>
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Venue</p>
-              <p className="font-medium truncate">{schedule.venue ?? "—"}</p>
+              <p className="font-medium truncate">{schedule.venue ?? "-"}</p>
             </div>
           </div>
         ) : (
           <p className="text-sm text-slate-500">
-            No clear match pattern detected — set manually on the next step.
+            No clear match pattern detected. Set it manually on the next step.
           </p>
         )}
       </div>
@@ -674,7 +674,7 @@ function InsightsStep(props: {
           onChange={(e) => setPaymentHolderName(e.target.value)}
           className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">— Not set (nobody excluded) —</option>
+          <option value="">Not set (nobody excluded)</option>
           {players
             .filter((p) => !p.excluded && p.name.trim())
             .map((p) => (
@@ -876,7 +876,7 @@ function ConfirmStep(props: {
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
         <Line label="Organisation" value={orgName} />
-        <Line label="Activity" value={`${activity.name} — ${days[activity.dayOfWeek]} ${activity.time}`} />
+        <Line label="Activity" value={`${activity.name}, ${days[activity.dayOfWeek]} ${activity.time}`} />
         <Line label="Venue" value={activity.venue} />
         <Line label="Players" value={`${players.length} (${withPhone} with phone)`} />
       </div>
@@ -884,7 +884,7 @@ function ConfirmStep(props: {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-900">
         <p className="font-medium mb-1">You can change everything after this.</p>
         <p className="text-blue-800/80">
-          Venue, schedule, player phones, seed ratings — all editable from
+          Venue, schedule, player phones, seed ratings: all editable from
           your admin panel. Hitting Create just sets up the scaffolding so
           your next match can be scheduled.
         </p>
@@ -904,7 +904,7 @@ function Line({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-slate-900">{value || "—"}</span>
+      <span className="font-medium text-slate-900">{value || "-"}</span>
     </div>
   );
 }

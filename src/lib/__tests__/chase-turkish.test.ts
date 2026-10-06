@@ -214,14 +214,23 @@ describe("house style: no dashes in a Turkish chase", () => {
     expect(tr).toBe("Kadro durumu, 3 kişi eksiğiz, yazın.\n\n*8 Eylül Salı oynayanlar:*\n1. Kemal Ediz");
   });
 
-  it("leaves English output alone", async () => {
-    reply("Squad update — need 3 more.\n\n*Playing Tue 8 Sept:*\n1. Kemal Ediz");
+  // Until 2026-10-06 English was left alone. Kemal: "remove long dashes".
+  it("turns the model's em and en dashes into commas for English too", async () => {
+    reply("Squad update — need 3 more – reply IN.\n\n*Playing Tue 8 Sept:*\n1. Kemal Ediz");
     const en = await composeChaseFromMatch({ kind: "daily-in-list", orgName: "Sutton FC", match: MATCH, lang: "en" });
-    expect(en).toBe("Squad update — need 3 more.\n\n*Playing Tue 8 Sept:*\n1. Kemal Ediz");
+    expect(en).toBe("Squad update, need 3 more, reply IN.\n\n*Playing Tue 8 Sept:*\n1. Kemal Ediz");
   });
 
-  it("applyHouseStyle is a no-op for English and for dash-free Turkish", () => {
-    expect(applyHouseStyle("a — b", "en")).toBe("a — b");
+  it("an English chase with no dash is byte for byte what the model wrote", async () => {
+    const text = "🗓 *Tuesday 7-a-side*: need *3 more*, kickoff 21:30.\n\n*Playing Tue 8 Sept:*\n1. Kemal Ediz\n2. 🥁";
+    reply(text);
+    const en = await composeChaseFromMatch({ kind: "daily-in-list", orgName: "Sutton FC", match: MATCH, lang: "en" });
+    expect(en).toBe(text);
+  });
+
+  it("applyHouseStyle strips dashes in both languages and leaves dash-free text alone", () => {
+    expect(applyHouseStyle("a — b", "en")).toBe("a, b");
+    expect(applyHouseStyle("a, b", "en")).toBe("a, b");
     expect(applyHouseStyle("a, b", "tr")).toBe("a, b");
     expect(applyHouseStyle("a — b", "tr")).toBe("a, b");
     expect(applyHouseStyle("a—b", "tr")).toBe("a, b");

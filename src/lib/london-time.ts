@@ -30,7 +30,7 @@ export function londonWallClockToUtc(anchor: Date, time: string): Date {
   const h = Number(hStr);
   const m = Number(mStr);
   if (!Number.isFinite(h) || !Number.isFinite(m)) {
-    throw new Error(`Bad time "${time}" — expected HH:mm`);
+    throw new Error(`Bad time "${time}", expected HH:mm`);
   }
   // Pull the calendar day in London (handles pre/post DST transitions).
   const y = Number(formatInTimeZone(anchor, LONDON, "yyyy"));
@@ -65,10 +65,10 @@ export function formatLondon(d: Date, pattern: string, locale?: Locale): string 
  */
 export function londonDateTimeToUtc(date: string, time: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error(`Bad date "${date}" — expected YYYY-MM-DD`);
+    throw new Error(`Bad date "${date}", expected YYYY-MM-DD`);
   }
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
-    throw new Error(`Bad time "${time}" — expected HH:mm`);
+    throw new Error(`Bad time "${time}", expected HH:mm`);
   }
   const utc = fromZonedTime(`${date}T${time}:00`, LONDON);
   if (Number.isNaN(utc.getTime())) {

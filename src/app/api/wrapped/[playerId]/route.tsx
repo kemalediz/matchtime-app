@@ -92,7 +92,7 @@ export async function GET(
         >
           <div style={{ display: "flex", fontSize: 28, color: "#93c5fd" }}>AVERAGE RATING</div>
           <div style={{ display: "flex", fontSize: 150, fontWeight: 800, lineHeight: 1 }}>
-            {s.avgRating?.toFixed(1) ?? "—"}
+            {s.avgRating?.toFixed(1) ?? "-"}
           </div>
           {vs !== null && (
             <div
@@ -115,13 +115,13 @@ export async function GET(
           {s.tracksResults ? (
             <Stat big={`${s.record.w}-${s.record.d}-${s.record.l}`} label="W-D-L" />
           ) : (
-            <Stat big={s.bestGame ? s.bestGame.avg.toFixed(1) : "—"} label="⭐ Best game" />
+            <Stat big={s.bestGame ? s.bestGame.avg.toFixed(1) : "-"} label="⭐ Best game" />
           )}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", marginTop: 48, flex: 1, justifyContent: "flex-end" }}>
           <div style={{ display: "flex", fontSize: 32, color: "#cbd5e1" }}>
-            {formLabel} · last 5: {s.form.last5Avg?.toFixed(1) ?? "—"}
+            {formLabel} · last 5: {s.form.last5Avg?.toFixed(1) ?? "-"}
           </div>
           {topBadge && (
             <div style={{ display: "flex", fontSize: 38, fontWeight: 700, marginTop: 12 }}>
@@ -130,7 +130,7 @@ export async function GET(
           )}
           {s.bestGame && (
             <div style={{ display: "flex", fontSize: 28, color: "#93c5fd", marginTop: 12 }}>
-              Best game: {s.bestGame.label} — {s.bestGame.avg.toFixed(1)} ⭐
+              Best game: {s.bestGame.label}, {s.bestGame.avg.toFixed(1)} ⭐
             </div>
           )}
         </div>

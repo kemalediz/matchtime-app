@@ -94,7 +94,7 @@ export default function UnresolvedPage() {
         </h2>
         <p className="text-sm text-slate-500 mt-1 max-w-2xl">
           These are join / drop messages the bot received but couldn&apos;t match to a
-          player — usually a WhatsApp display name that&apos;s ambiguous or new
+          player, usually a WhatsApp display name that&apos;s ambiguous or new
           (e.g. &quot;ba&quot; could be Baki <em>or</em> Başar). Nothing was changed for
           these. Link each name to the right player: that creates a permanent
           alias so it always resolves from now on, and optionally applies the
@@ -139,7 +139,7 @@ export default function UnresolvedPage() {
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center">
           <Check className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
           <p className="text-emerald-800 font-medium">
-            All clear — every attendance message resolved to a player.
+            All clear: every attendance message resolved to a player.
           </p>
         </div>
       ) : (
@@ -229,7 +229,7 @@ export default function UnresolvedPage() {
                   disabled={busy === g.key || !pick[g.key]}
                   onClick={() => handleAssign(g, false)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-700 text-sm font-medium"
-                  title="Only create the alias — don't change attendance now"
+                  title="Only create the alias, don't change attendance now"
                 >
                   Link only
                 </button>

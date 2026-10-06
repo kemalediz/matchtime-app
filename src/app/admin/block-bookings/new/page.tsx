@@ -40,7 +40,7 @@ export default async function NewBlockBookingPage() {
         </Link>
         <h2 className="text-lg font-semibold text-slate-800">New block booking</h2>
         <p className="text-sm text-slate-500 mt-1">
-          All matches are created up front. Nothing is posted to the group —
+          All matches are created up front. Nothing is posted to the group:
           the bot keeps announcing only the next match that&apos;s on.
         </p>
       </div>

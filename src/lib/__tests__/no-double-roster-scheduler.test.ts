@@ -291,7 +291,7 @@ describe("every other scheduled post that carries the roster", () => {
     const m = match();
     setWorld(m, [rosterMarker(m, new Date(MON_5PM.getTime() - 60 * 60_000))]);
     const post = find(await posts(MON_5PM), ":evening-update:");
-    expect(post?.text).toBe("🗓 *Tuesday 7-a-side* — need *1 more*.");
+    expect(post?.text).toBe("🗓 *Tuesday 7-a-side*: need *1 more*.");
     expect(post?.rosterShown).toBeUndefined();
   });
 

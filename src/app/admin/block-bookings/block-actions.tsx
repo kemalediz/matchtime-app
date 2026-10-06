@@ -66,7 +66,7 @@ export function BlockActions({
       } else {
         const res = await deleteBlockBooking(blockId);
         toast.success(
-          `Block deleted — ${res.deletedMatches} empty matches removed, ${res.detachedMatches} kept (history).`,
+          `Block deleted: ${res.deletedMatches} empty matches removed, ${res.detachedMatches} kept (history).`,
         );
       }
       router.refresh();

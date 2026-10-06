@@ -86,7 +86,7 @@ export default async function StatsPage() {
 
       {playerStats.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">
-          No stats yet — come back after your first completed match.
+          No stats yet. Come back after your first completed match.
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
@@ -106,7 +106,7 @@ export default async function StatsPage() {
               </div>
               <div className="text-right">
                 <p className="text-xl font-bold text-slate-800">
-                  {player.avgRating != null ? player.avgRating.toFixed(1) : "—"}
+                  {player.avgRating != null ? player.avgRating.toFixed(1) : "-"}
                 </p>
                 <p className="text-xs text-slate-500 flex items-center justify-end gap-1 mt-0.5">
                   <Star className="w-3 h-3" /> {player.momVotes} MoM
@@ -124,7 +124,7 @@ export default async function StatsPage() {
       {inactive.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-slate-600">
-            Not ranked — no game in {RANKED_TABLE_INACTIVE_AFTER_MONTHS} months (
+            Not ranked: no game in {RANKED_TABLE_INACTIVE_AFTER_MONTHS} months (
             {inactive.length})
           </h3>
           <p className="mt-1 text-xs text-slate-400">
@@ -148,7 +148,7 @@ export default async function StatsPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-semibold text-slate-400">
-                      {player.avgRating != null ? player.avgRating.toFixed(1) : "—"}
+                      {player.avgRating != null ? player.avgRating.toFixed(1) : "-"}
                     </p>
                     <p className="text-xs text-slate-400 flex items-center justify-end gap-1 mt-0.5">
                       <Star className="w-3 h-3" /> {player.momVotes} MoM

@@ -23,7 +23,7 @@ describe("formatTeamsPost", () => {
     });
 
     // Header line with kickoff + venue.
-    expect(post).toContain("⚽ *Teams for tonight* — 20:00 at Sim Arena");
+    expect(post).toContain("⚽ *Teams for tonight*: 20:00 at Sim Arena");
     // Both labels, bolded.
     expect(post).toContain("*Red*:");
     expect(post).toContain("*Yellow*:");
@@ -63,7 +63,7 @@ describe("formatTeamsPost", () => {
     });
 
     const expected =
-      "⚽ *Teams for tonight* — 20:00 at Sim Arena\n\n" +
+      "⚽ *Teams for tonight*: 20:00 at Sim Arena\n\n" +
       "*Red*:\n1. Alice\n2. Bob\n\n" +
       "*Yellow*:\n1. Carol\n2. Dave\n\n" +
       "Objections? Reply `@Match Time swap X with Y` and an admin will confirm.";

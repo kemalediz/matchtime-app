@@ -298,7 +298,7 @@ export function FinishSetupForm({ sessionId, roster, unresolved, schedule, posit
               onChange={(e) => setDayOfWeek(e.target.value)}
               className="w-full h-11 px-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">—</option>
+              <option value="">-</option>
               {DAYS.map((d, idx) => (
                 <option key={d} value={String(idx)}>
                   {d}

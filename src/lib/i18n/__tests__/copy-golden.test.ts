@@ -286,6 +286,20 @@
  *     (PR #181 review fix 2): R189's "Update card" button reads "Update
  *     card and pay" (it now retries the unpaid invoice). No other case
  *     changed.
+ *
+ *   - A deliberate CHANGE across the whole English document (2026-10-06,
+ *     Kemal: "remove long dashes"). Every em and en dash used as
+ *     punctuation in the English table was rewritten as a comma, a
+ *     colon, a full stop or brackets, sentence by sentence ("🗓 *X* —
+ *     need *1 more*." is now "🗓 *X*: need *1 more*."), and the name
+ *     placeholder for a player with no name became "?". 144 lines of
+ *     `copy.en.snap` changed and every one of them lost a dash; one line
+ *     of `copy.tr.snap` changed (the same placeholder). No case was added
+ *     or removed. The dashes that REMAIN in both documents are prompt
+ *     text, not messages (the fee-confirm question the fee-reply model is
+ *     shown, the bench phrasing example, the format-switch facts block);
+ *     `src/lib/__tests__/no-long-dashes.test.ts` is the guard and lists
+ *     them.
  */
 import { composeSetupDm } from "../../setup-learning/dm";
 import { describe, it, expect } from "vitest";

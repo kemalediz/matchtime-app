@@ -89,7 +89,7 @@ export default function BulkRatingsPage() {
     const num = parseInt(raw, 10);
     if (isNaN(num) || num < 1 || num > 10) {
       setStates((s) => ({ ...s, [userId]: "error" }));
-      setErrors((e) => ({ ...e, [userId]: "Must be an integer 1–10" }));
+      setErrors((e) => ({ ...e, [userId]: "Must be an integer 1 to 10" }));
       return;
     }
     const existing = players.find((p) => p.id === userId)?.seedRating;
@@ -149,7 +149,7 @@ export default function BulkRatingsPage() {
           </button>
         </div>
         <p className="text-sm text-slate-500 mt-1">
-          1–10 scale. Autosaves 1.2s after you stop typing, or on blur.
+          1 to 10 scale. Autosaves 1.2s after you stop typing, or on blur.
         </p>
         <p className="text-sm text-slate-500 mt-1">
           {t(lang).rating_seed_club_hint}
@@ -279,7 +279,7 @@ function InfoModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="p-6 space-y-4 text-sm text-slate-600">
           <p>
-            <span className="font-medium text-slate-800">Seed rating (1–10):</span>{" "}
+            <span className="font-medium text-slate-800">Seed rating (1 to 10):</span>{" "}
             your guess at a player&apos;s skill. Used by the team-balancing algorithm
             until they&apos;ve collected at least 3 peer ratings from completed matches.
             It is your club&apos;s number: the same player at another club has their
@@ -293,13 +293,13 @@ function InfoModal({ onClose }: { onClose: () => void }) {
           </p>
           <p>
             <span className="font-medium text-slate-800">Peer rating:</span>{" "}
-            after every match, teammates score each other 1–10. The rolling average
+            after every match, teammates score each other 1 to 10. The rolling average
             of the last 60 ratings replaces the seed once enough data arrives.
           </p>
           <p>
             <span className="font-medium text-slate-800">Match rating (Elo):</span>{" "}
             a hidden 1000-scale rating that updates after every match with a recorded
-            score. Winners climb, losers drop — bigger margins cause bigger swings.
+            score. Winners climb, losers drop, and bigger margins cause bigger swings.
             Blended 50/50 with peer rating so both &quot;teammate perception&quot; and
             &quot;team actually won&quot; shape the balancer input.
           </p>
@@ -313,7 +313,7 @@ function InfoModal({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <p className="text-xs text-slate-500">
-            Narrow band (6–8) is normal for amateur peer ratings — the balancer
+            Narrow band (6 to 8) is normal for amateur peer ratings. The balancer
             picks up 0.5-point gaps via snake draft + hill-climb optimisation.
           </p>
         </div>

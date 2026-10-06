@@ -60,6 +60,7 @@
  * change that is already deleting the largest artefact in the codebase,
  * and a diff nobody can read is how a deletion hides a mistake.
  */
+import { applyHouseStyle } from "./house-style";
 import Anthropic from "@anthropic-ai/sdk";
 import { appendFileSync, readFileSync } from "node:fs";
 import { db } from "./db";
@@ -907,22 +908,13 @@ function fixUtcTime(text: string, matchDate: Date): string {
 }
 
 /**
- * The Turkish table's house style has no em or en dashes, and the model
- * keeps writing them however firmly the tail asks (measured 2026-09-17:
- * 5 of 25 Turkish chases carried one). A dash between two clauses reads
- * as a comma in Turkish, so it becomes one, and markdown `**bold**` (which
- * WhatsApp renders with its asterisks showing) becomes `*bold*`. English
- * output is untouched (the English club's copy has always carried them).
+ * The house style for a model-composed message: no em or en dashes in
+ * any language, and (Turkish) markdown `**bold**` turned into WhatsApp
+ * `*bold*`. MOVED to `./house-style` (2026-10-06), which is pure, and
+ * re-exported here so every existing import keeps working. Until that
+ * date English output was left untouched; Kemal: "remove long dashes".
  */
-export function applyHouseStyle(text: string, lang?: Lang | string | null): string {
-  if (normaliseLang(lang) === "en") return text;
-  return text
-    // Markdown bold is not WhatsApp bold: `**x**` shows its asterisks.
-    .replace(/\*\*([^*\n]+?)\*\*/g, "*$1*")
-    .replace(/\s*[—–]\s*/g, ", ")
-    .replace(/,\s*,/g, ",")
-    .replace(/\s+,/g, ",");
-}
+export { applyHouseStyle } from "./house-style";
 
 /** The roster header the server would hand the model for this kickoff,
  *  right now, in this language. Exported for the dry-run harness, which

@@ -75,7 +75,7 @@ export default async function PayPage({
           <div className="text-5xl mb-3">✅</div>
           <h1 className="text-xl font-bold text-slate-900">You&apos;re all paid</h1>
           <p className="text-sm text-slate-500 mt-2">
-            Thanks {first} — your fee for {match.activity.name} is settled.
+            Thanks {first}, your fee for {match.activity.name} is settled.
           </p>
         </div>
       </Shell>
@@ -107,7 +107,7 @@ export default async function PayPage({
         <div className="text-center">
           <h1 className="text-xl font-bold text-slate-900">No fee set yet</h1>
           <p className="text-sm text-slate-500 mt-2">
-            The organiser hasn&apos;t set the fee for {match.activity.name} yet — check back shortly.
+            The organiser hasn&apos;t set the fee for {match.activity.name} yet. Check back shortly.
           </p>
         </div>
       </Shell>

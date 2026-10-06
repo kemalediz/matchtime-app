@@ -67,8 +67,8 @@ export function BulkConfirmForm({
         toast.success(
           `${res.cancelled} matches cancelled` +
             (res.announced
-              ? " — one announcement queued for the group."
-              : " — silently, no group message."),
+              ? ", one announcement queued for the group."
+              : " silently, no group message."),
         );
       } else {
         const res = await bulkRestoreMatches({ matchIds: ids });
@@ -88,7 +88,7 @@ export function BulkConfirmForm({
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
       <div className="px-6 py-4">
         <p className="font-medium text-slate-800">
-          {matches.length} match{matches.length === 1 ? "" : "es"} found —{" "}
+          {matches.length} match{matches.length === 1 ? "" : "es"} found,{" "}
           {checked.size} selected
         </p>
       </div>
@@ -132,7 +132,7 @@ export function BulkConfirmForm({
             />
             Announce to the group (one summary message).{" "}
             <span className="text-slate-400">
-              Off = completely silent — nothing is posted.
+              Off = completely silent, nothing is posted.
             </span>
           </label>
         )}

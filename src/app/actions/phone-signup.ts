@@ -145,7 +145,7 @@ export async function verifyPhoneSignup(args: {
     where: { phone: digits, usedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
   });
-  if (!otp) return { ok: false, error: "Code expired — request a new one" };
+  if (!otp) return { ok: false, error: "Code expired, request a new one" };
 
   if (otp.attempts >= MAX_ATTEMPTS) {
     return { ok: false, error: "Too many wrong attempts. Request a new code." };

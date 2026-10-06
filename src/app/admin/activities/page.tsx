@@ -386,7 +386,7 @@ export default function ActivitiesPage() {
               </Field>
               <p className="text-xs text-slate-400">
                 Changing the day/time affects future matches generated for this
-                activity. Matches already created keep their existing date — edit
+                activity. Matches already created keep their existing date, so edit
                 or cancel those individually if needed.
               </p>
               <button

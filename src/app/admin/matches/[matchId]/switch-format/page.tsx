@@ -129,7 +129,7 @@ export default function SwitchFormatPage() {
               onChange={(e) => setTargetId(e.target.value)}
               className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">— pick a format —</option>
+              <option value="">Pick a format</option>
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} · {c.sport.name} · {c.sport.playersPerTeam * 2} players

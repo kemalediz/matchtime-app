@@ -141,7 +141,7 @@ export default function BulkPhonesPage() {
         </h2>
         <p className="text-sm text-slate-500 mt-1">
           {withPhone} of {players.length} players have a phone number.
-          Tab to move between rows — autosaves 1.5s after you stop typing, or on blur.
+          Tab to move between rows. Autosaves 1.5s after you stop typing, or on blur.
         </p>
       </div>
 

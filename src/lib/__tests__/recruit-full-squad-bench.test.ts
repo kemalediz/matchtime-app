@@ -168,7 +168,7 @@ describe("inviteRecentPlayers — a full squad with the BENCH feature OFF", () =
 
     expect(res.ok).toBe(true);
     expect(res.reason).toBe(
-      "The squad for *Tuesday 7-a-side* is already full — no open spots to recruit for.",
+      "The squad for *Tuesday 7-a-side* is already full, so there are no open spots to recruit for.",
     );
     expect(botJobCreate).not.toHaveBeenCalled();
   });

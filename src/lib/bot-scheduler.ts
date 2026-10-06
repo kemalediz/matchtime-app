@@ -565,7 +565,7 @@ export async function computeDuePosts(
             nextPath: "/admin/players",
             text: (link, audience) =>
               audience === "dm"
-                ? `✨ *New players to review* — ${count} auto-added after posting in the group:\n\n` +
+                ? `✨ *New players to review*: ${count} auto-added after posting in the group:\n\n` +
                   `${names}${more}\n\n` +
                   `Tap to review and set phone/position/rating, or remove:\n${link}\n\n` +
                   `Or open: ${appUrl("/admin/players")}`
@@ -2097,7 +2097,7 @@ async function computeForMatch(
               nextPath: `/admin/matches/${matchId}/switch-format`,
               text: (signInUrl, audience) =>
                 audience === "dm"
-                  ? `⚠️ *Low numbers* — ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
+                  ? `⚠️ *Low numbers*: ${confirmed.length}/${maxPlayers} confirmed for *${activity.name}* tomorrow.\n\n` +
                     `Switch to *${candidate.sport.name}* (${candidate.sport.playersPerTeam * 2} players) before the deadline?\n\n` +
                     `Tap to open the admin panel (auto signs you in):\n${signInUrl}\n\n` +
                     `Or open: ${appUrl(`/admin/matches/${matchId}/switch-format`)}`
@@ -2140,7 +2140,7 @@ async function computeForMatch(
               nextPath: `/admin/matches/${matchId}/cancel`,
               text: (signInUrl, audience) =>
                 audience === "dm"
-                  ? `🚨 *Match in trouble* — only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
+                  ? `🚨 *Match in trouble*: only *${confirmed.length}* confirmed for *${activity.name}* tomorrow, below the minimum to play (${minViable}).\n\n` +
                     `Cancel and refund the booking?\n\n` +
                     `Tap to open the cancel page:\n${signInUrl}\n\n` +
                     `Or open: ${appUrl(`/admin/matches/${matchId}/cancel`)}`
@@ -2896,10 +2896,10 @@ async function computeForMatch(
             where: { id: { in: votes.map((v) => v.playerId) } },
             select: { id: true, name: true },
           });
-          const nameById = new Map(allUsers.map((u) => [u.id, u.name ?? "—"]));
+          const nameById = new Map(allUsers.map((u) => [u.id, u.name ?? "?"]));
           const tally = votes
             .map((v) => ({
-              name: nameById.get(v.playerId) ?? "—",
+              name: nameById.get(v.playerId) ?? "?",
               votes: v._count.playerId,
             }))
             .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));

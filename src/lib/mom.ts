@@ -36,7 +36,7 @@ export async function getMomSummaries(
     where: { id: { in: playerIds } },
     select: { id: true, name: true },
   });
-  const nameById = new Map(users.map((u) => [u.id, u.name ?? "—"]));
+  const nameById = new Map(users.map((u) => [u.id, u.name ?? "?"]));
 
   // Group rows by matchId.
   const byMatch = new Map<
@@ -47,7 +47,7 @@ export async function getMomSummaries(
     const arr = byMatch.get(r.matchId) ?? [];
     arr.push({
       playerId: r.playerId,
-      name: nameById.get(r.playerId) ?? "—",
+      name: nameById.get(r.playerId) ?? "?",
       votes: r._count.playerId,
     });
     byMatch.set(r.matchId, arr);

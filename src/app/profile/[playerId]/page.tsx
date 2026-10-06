@@ -54,7 +54,7 @@ export default function PlayerProfilePage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Tile icon={<Calendar className="w-4 h-4" />} label="Matches" value={stats.matchesPlayed} color="blue" />
-        <Tile icon={<Star className="w-4 h-4" />} label="Avg rating" value={stats.avgRating != null ? stats.avgRating.toFixed(1) : "—"} color="green" />
+        <Tile icon={<Star className="w-4 h-4" />} label="Avg rating" value={stats.avgRating != null ? stats.avgRating.toFixed(1) : "-"} color="green" />
         <Tile icon={<Trophy className="w-4 h-4" />} label="MoM" value={stats.momCount} color="amber" />
         <Tile icon={<TrendingUp className="w-4 h-4" />} label="Attendance" value={`${stats.attendanceRate}%`} color="purple" />
       </div>

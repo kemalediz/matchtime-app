@@ -60,7 +60,7 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
   // basketball one by accident.
   if (newActivity.sport.name.split(" ")[0] !== match.activity.sport.name.split(" ")[0]) {
     throw new Error(
-      `Can't switch from ${match.activity.sport.name} to ${newActivity.sport.name} — different sports`,
+      `Can't switch from ${match.activity.sport.name} to ${newActivity.sport.name}: they are different sports`,
     );
   }
 

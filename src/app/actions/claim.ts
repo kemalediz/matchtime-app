@@ -82,7 +82,7 @@ export async function startClaimAccount(
     phone: digits,
     purpose: "otp",
     text:
-      `🔐 *MatchTime — Claim your account*\n\n` +
+      `🔐 *MatchTime: claim your account*\n\n` +
       `Your verification code: *${code}*\n\n` +
       `It expires in 10 minutes. If you didn't request this, just ignore this message.`,
   });
@@ -110,7 +110,7 @@ export async function verifyClaimAccount(args: {
     where: { phone: digits, usedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
   });
-  if (!otp) return { ok: false, error: "Code expired — request a new one" };
+  if (!otp) return { ok: false, error: "Code expired, request a new one" };
 
   if (otp.attempts >= MAX_ATTEMPTS) {
     return { ok: false, error: "Too many wrong attempts. Request a new code." };

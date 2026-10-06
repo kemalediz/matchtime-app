@@ -15,10 +15,12 @@
  *      `untranslated()` wrapper is gone and must not come back: an
  *      entry moved into the table is translated in the same PR), and no
  *      Turkish entry renders to the English text;
- *   3. hygiene: no entry renders to an empty string; no Turkish entry
- *      contains an em dash or an en dash (house style; the English
- *      table is NOT held to that rule, existing English copy uses em
- *      dashes and moves in byte for byte, the golden snapshot decides);
+ *   3. hygiene: no entry renders to an empty string; no entry in any
+ *      language contains an em dash or an en dash (house style; the
+ *      English table has been held to it since 2026-10-06, and
+ *      `src/lib/__tests__/no-long-dashes.test.ts` checks every branch
+ *      of every entry from the source, with the one prompt-bound
+ *      exception it lists);
  *      no entry opens with a time-of-day greeting, in either language,
  *      and no entry carries a send-time stamp ("5pm update", "17:00
  *      güncellemesi"); every parameterised entry uses each argument
@@ -1299,10 +1301,10 @@ describe("string tables: hygiene", () => {
 
   // 2026-09-30, Kemal's second setup on "MT Test": the completion post
   // and the how-to still read "squad — no need to type anyone in",
-  // "availability — no need to tag me". The ENGLISH table is not held to
-  // the dash rule in general (it moved in byte for byte), but everything
-  // a new club reads while setting up, and every organiser DM about it,
-  // is: the setup questions and acks, the completion posts, the how-to,
+  // "availability — no need to tag me". The whole English table has been
+  // held to the dash rule since 2026-10-06 (see the next-but-one test);
+  // this one came first and names what a new club reads while setting
+  // up, and every organiser DM about it: the setup questions and acks, the completion posts, the how-to,
   // help, the setup DMs and the join DM.
   it("no onboarding, help or organiser-setup entry carries an em or en dash, in any language", () => {
     const onboarding = KEYS.filter((k) =>
@@ -1324,9 +1326,19 @@ describe("string tables: hygiene", () => {
     }
   });
 
-  it("no Turkish entry contains an em dash or an en dash", () => {
-    for (const key of KEYS) {
-      expect(render(tr, key), `tr.${key}`).not.toMatch(/[—–]/);
+  // Kemal, 2026-10-06: "remove long dashes". English joined Turkish
+  // under the rule. The one entry left out is prompt text: the fee-reply
+  // model is shown `dm_fee_confirm_prompt` inside its prompt, and a
+  // prompt change needs a paid live check nobody has approved.
+  // `src/lib/__tests__/no-long-dashes.test.ts` checks every branch from
+  // the source; this checks what each entry renders to.
+  it("no entry in any language contains an em dash or an en dash", () => {
+    const promptBound = new Set(["en.dm_fee_confirm_prompt"]);
+    for (const lang of LANGS) {
+      for (const key of KEYS) {
+        if (promptBound.has(`${lang}.${String(key)}`)) continue;
+        expect(render(TABLES[lang], key), `${lang}.${String(key)}`).not.toMatch(/[—–]/);
+      }
     }
   });
 

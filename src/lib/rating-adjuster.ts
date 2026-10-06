@@ -20,6 +20,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MAX_TOKENS_CEILING } from "./message-analyzer";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { stripLongDashes } from "./house-style";
 
 // `claude-sonnet-4-5` here was inherited from the deleted
 // `analyzeBatch`, not chosen (`MDs/llm-spend-september-2026.md` §4).
@@ -239,7 +240,7 @@ function normaliseAdjustments(
 
     const reason =
       typeof r.reason === "string" && r.reason.trim()
-        ? r.reason.trim().slice(0, 200)
+        ? stripLongDashes(r.reason.trim().slice(0, 200))
         : "No tonight-specific signal";
 
     out.set(playerId, { playerId, delta, reason, confidence });

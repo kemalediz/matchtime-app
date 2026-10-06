@@ -51,13 +51,13 @@ describe("the policy constants", () => {
 describe("the copy is unchanged from the fast path it replaces", () => {
   it("addresses the player by first name and carries the link", () => {
     const text = composeStatsBlastDm("Kemal Ediz", "https://mt.link/abc");
-    expect(text).toContain("Hi Kemal —");
+    expect(text).toContain("Hi Kemal,");
     expect(text).toContain("https://mt.link/abc");
     expect(text).toContain("doesn't expire");
   });
 
   it("falls back to 'there' for a member with no name on record", () => {
-    expect(composeStatsBlastDm(null, "https://mt.link/abc")).toContain("Hi there —");
+    expect(composeStatsBlastDm(null, "https://mt.link/abc")).toContain("Hi there,");
   });
 
   it("counts the DMs in the group reply, singular and plural", () => {

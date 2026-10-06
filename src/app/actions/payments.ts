@@ -150,7 +150,7 @@ export async function setPaymentHolder(
   });
   if (!membership) throw new Error("That person isn't a member of this group");
   if (!membership.user.phoneNumber) {
-    throw new Error("That person has no phone number on file — they can't receive collection messages");
+    throw new Error("That person has no phone number on file, so they can't receive collection messages");
   }
 
   await db.organisation.update({ where: { id: orgId }, data: { paymentHolderId: userId } });
@@ -217,7 +217,7 @@ export async function payByMethod(
     applicationFeePence: platformFeePence(base, method as PayMethod, qty),
     method,
     quantity: qty,
-    description: `${match.activity.name} — match fee${qty > 1 ? ` (${qty} players)` : ""}`,
+    description: `${match.activity.name}, match fee${qty > 1 ? ` (${qty} players)` : ""}`,
     payerDescription,
     metadata: { matchId, userId, quantity: String(qty), orgId: org.id },
     successPath: `/pay/${matchId}?paid=1`,

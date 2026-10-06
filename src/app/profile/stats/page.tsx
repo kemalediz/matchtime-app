@@ -113,7 +113,7 @@ export default async function MyStatsPage() {
               </div>
               <div>
                 <p className="text-2xl font-extrabold text-slate-900">
-                  {allClubs.overallAvg !== null ? allClubs.overallAvg.toFixed(1) : "—"}
+                  {allClubs.overallAvg !== null ? allClubs.overallAvg.toFixed(1) : "-"}
                 </p>
                 <p className="text-[11px] text-slate-500">{s.rating_overall_label}</p>
               </div>
@@ -131,7 +131,7 @@ export default async function MyStatsPage() {
                     <span>{c.games} games</span>
                     {c.momCount > 0 && <span>{c.momCount}🏆</span>}
                     <span className="font-semibold text-slate-700">
-                      {c.avgRating !== null ? c.avgRating.toFixed(1) : "—"}
+                      {c.avgRating !== null ? c.avgRating.toFixed(1) : "-"}
                     </span>
                   </span>
                 </div>
@@ -164,7 +164,7 @@ export default async function MyStatsPage() {
         {/* Headline tiles */}
         <div className="grid grid-cols-2 gap-3 mt-3">
           <Tile
-            big={myClubRating.rating !== null ? myClubRating.rating.toFixed(1) : "—"}
+            big={myClubRating.rating !== null ? myClubRating.rating.toFixed(1) : "-"}
             label={s.rating_club_tile}
             sub={
               // `hasOwnNumber`, not `peerCount === 0`: the same fact as
@@ -194,13 +194,13 @@ export default async function MyStatsPage() {
           {stats.tracksResults ? (
             <Tile
               big={`${stats.record.w}-${stats.record.d}-${stats.record.l}`}
-              label="W–D–L"
+              label="W-D-L"
               sub={`GD ${stats.goalDiff >= 0 ? "+" : ""}${stats.goalDiff}`}
               tone="slate"
             />
           ) : (
             <Tile
-              big={stats.bestGame ? stats.bestGame.avg.toFixed(1) : "—"}
+              big={stats.bestGame ? stats.bestGame.avg.toFixed(1) : "-"}
               label="Best game"
               sub={stats.bestGame ? stats.bestGame.label : undefined}
               tone="slate"
@@ -232,7 +232,7 @@ export default async function MyStatsPage() {
           </div>
           <div className="text-right">
             <div className="text-2xl font-bold text-slate-900">
-              {stats.form.last5Avg?.toFixed(1) ?? "—"}
+              {stats.form.last5Avg?.toFixed(1) ?? "-"}
             </div>
             <div className="text-[11px] text-slate-400">last 5 games</div>
           </div>
@@ -246,7 +246,7 @@ export default async function MyStatsPage() {
               <p>
                 After every match, your teammates rate each player out of 10. The blue line is
                 your average rating per game; the dashed grey line is the whole squad&apos;s average
-                that game — so you can see when you played above or below the group.
+                that game, so you can see when you played above or below the group.
               </p>
               <p>👑 marks games where you won Man of the Match. Tap any point to see that game&apos;s score, your rating, and how many people rated you.</p>
             </InfoButton>
@@ -303,7 +303,7 @@ export default async function MyStatsPage() {
               <div className="text-sm font-semibold text-slate-800">Rivalries</div>
               <InfoButton title="Rivalries">
                 <p>
-                  The flip side of chemistry — how you do against people on the <b>opposing</b>{" "}
+                  The flip side of chemistry: how you do against people on the <b>opposing</b>{" "}
                   team.
                 </p>
                 <p>
@@ -371,7 +371,7 @@ export default async function MyStatsPage() {
                           Giving it a position would invent a standing the
                           player hasn't played for, the same objection
                           that ruled out decaying the rating. */}
-                      {r.rank ?? "–"}
+                      {r.rank ?? "-"}
                     </span>
                     <span
                       className={`flex-1 text-sm truncate ${
@@ -507,7 +507,7 @@ export default async function MyStatsPage() {
 
         {stats.bestGame && (
           <p className="mt-4 text-center text-xs text-slate-400">
-            Best game: {stats.bestGame.label} — averaged {stats.bestGame.avg.toFixed(1)} ⭐
+            Best game: {stats.bestGame.label}, averaged {stats.bestGame.avg.toFixed(1)} ⭐
           </p>
         )}
       </div>
