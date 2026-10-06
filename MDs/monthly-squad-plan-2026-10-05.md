@@ -7,6 +7,10 @@ is built (schema, settings, the month page, and starting a month part-way throug
 4.5). Kemal also asked not to wait for November, so the slice order changed: see "Timing" below
 and the order at the top of section 12.
 
+**Status, 2026-10-06.** Slice 5 (the weekly flow) is built, ahead of slices 3 and 4 as planned.
+What was built, and where it differs from the text below, is in "Slice 5 as built" at the end
+of section 12. Nothing in it needs a Pi deploy.
+
 Written for the "Vets MNF" prospect group (Monday night 7-a-side, about 14 players) after
 Kemal joined it. Everything here is a per-club setting that is OFF by default, so Sutton FC
 and every other club behave exactly as they do today.
@@ -953,6 +957,66 @@ Every slice:
   - organiser-pick mode still takes precedence.
 - **Playwright:** the match page shows "Paid but can't play" and PAYG labels; the member page
   away-week ticks.
+
+#### Slice 5 as built (2026-10-06)
+
+Code: `monthly-week-rules.ts` (pure rules), `monthly-week.ts` (seeding, slots, credits, the
+PAYG offer), `monthly-week-copy.ts` (English and Turkish), `monthly-paste.ts` (a member's
+pasted list), and guarded branches in `attendance.ts`, `bench-confirmation.ts`,
+`squad-announce.ts`, `bot-scheduler.ts`, `payment-flow.ts`, `payment-claim.ts`,
+`unpaid-list.ts`, the analyze route, the due-posts route and the complete-matches cron. Every
+branch is behind `squadMode = "monthly"` AND a running month for that match.
+
+- **Seeding.** `Match.rollingSeededAt` is the claim, as planned. A match is seeded at once when
+  its fixture has no played match behind it (a mid-month start), otherwise from 08:00 London
+  the morning after the previous game. It runs on the cron, on every poll, and right after the
+  organiser starts the month. A regular's row carries `paymentMethod = "monthly"` and
+  `position` = their slot number.
+- **Slots.** `Attendance.position` is the slot. Whoever comes in takes the lowest free number
+  (a regular takes their own while it is free), written with a `monthly-squad` event.
+- **Credits.** Reconciled from state after every change and on every poll, not written once on
+  the OUT: a paid (or says-paid) regular who is out has one "missed" credit, and it is voided
+  if they come back. `filled-only` writes it while somebody else holds their slot. A credit an
+  admin voided is never written again.
+- **The list post.** Keys are `<matchId>:month-list:<hash>:<n>`. The newest such row is "what
+  the group last saw": a post of ours, a reply that carried the list, or a member's paste that
+  showed the same list (kind `month-list-seen`, which does not count towards the 30 minutes).
+  Slice 3's sign-up list must use a different key prefix.
+
+**Where it differs from the plan above, or where the plan was wrong:**
+
+1. **A blanked line (6.2).** The table says a blanked line is an OUT, and also that a missing
+   name is ignored and a paste may only move a person forward. A blank line on an old copy looks
+   exactly like a deliberate one, so a blank line is an OUT only when the player themselves or
+   an admin pasted it. From anyone else it is ignored and counted as an old copy. Moving a name
+   under "Paid but can't play" is applied whoever pasted it (D4).
+2. **"Paid but can't play" and unpaid regulars.** A regular who has not paid and is out is
+   listed under a second header, "Can't play". The list never calls somebody paid who is not.
+3. **The 17:00 post and "Squad complete" (not in the plan).** Both would post a second,
+   weekly-shaped roster beside the list, so neither fires for a match of a running month. The
+   match-day line-ups still do. Scheduled chases use the fixed text (no composer call).
+4. **A squad asked for in the group (not in the plan).** "Who's in?" is answered with the
+   month's list instead of the weekly roster, and counts as the list having been shown.
+5. **The PAYG offer (5.3).** It reuses the `BenchSlotOffer` and its keys, but not the recruit DM
+   builder: the offer needs the price, so it has its own two strings. The group line tags
+   nobody. With somebody on the waiting list who never answers, the pool is NOT asked: the
+   plan only covers an empty bench.
+6. **The payment poll (5.6).** Skipped as planned. A consequence the plan does not state: a
+   monthly club that only has payment tracking (the poll) has no per-match way for a PAYG
+   player to pay. It needs payment collection (pay links or "paid the collector") switched on.
+7. **The PAYG fee (5.6).** After the match the collector is asked to confirm the club's PAYG
+   price for the per-game players only ("£8 each for 2 players?", the existing confirm prompt).
+   With no PAYG player on the match nobody is asked.
+8. **The analyze route (6.2).** The paste is not a terminal branch. It claims the list as a
+   clause (`claimFastPath`): a message that is only a list never reaches a model, and anything
+   typed around the list still goes to the router and the attendance engine. A late paste is
+   held out with the other late messages and changes nothing.
+9. **Not built here:** the member page (away weeks, 9.3) and the match-page labels, which the
+   slice list above names. `absentMatchIds` is honoured everywhere (seeded OUT, listed, credited)
+   but nothing writes it yet except a paste that moves a regular out of a week that is not
+   seeded. A "(paid)" mark on a PAYG line is ignored until slice 4.
+10. **Edited 5.1:** `seedRollingSquad` is not reused; `seedMonthlySquad` is its own function
+    with the same claim, because its source is the month's members and not a match.
 
 ### Slice 6: credits ledger, cancelled weeks, month close (about 2 days)
 

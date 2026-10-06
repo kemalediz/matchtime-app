@@ -61,6 +61,13 @@
  *     the roster check-in invite). The only non-additive line in that
  *     commit's `.snap` diff is the case count in the header.
  *
+ *   - Deliberate additions (2026-10-06, monthly squad slice 5): rows
+ *     MWK1 to MWK5, the weekly flow of a monthly club (the list in the
+ *     group's own format, the PAYG pool offer, the undo DM after a paste
+ *     changed somebody else's line, and the organisers' note about an old
+ *     copy). All NEW copy, sent only to a club on "monthly"; the only
+ *     non-additive line in either `.snap` diff is the case count.
+ *
  *   - Deliberate additions AND one deliberate CHANGE (2026-09-19, slice
  *     6 of MDs/club-scoped-ratings-design-2026-09-18.md). The additions
  *     are rows R144 to R146, the first WEB copy in the table: the club
@@ -335,6 +342,13 @@ import {
   buildBenchOfferGroupPost,
   buildFullSquadBenchInvite,
 } from "../../bench-offer-copy";
+import {
+  buildPasteIgnoredAdminNotice,
+  buildPasteUndoDm,
+  buildPaygPoolDm,
+  buildPaygPoolGroupPost,
+  buildWeekListPost,
+} from "../../monthly-week-copy";
 import { formatRatingProgressReply } from "../../rating-progress-answer";
 import { buildMomAnnouncement } from "../../mom-announcement";
 import { buildBadgeAnnouncementPost } from "../../badge-announcements";
@@ -1890,6 +1904,68 @@ function cases(lang: Lang): Case[] {
       [{ key: "rollingSquad", from: false, to: true, evidence: [], undoneAt: null, undoUrl: "https://matchtime.ai/r/u1" }],
       { group: null },
     ),
+  );
+
+  // ── MWK: monthly squad, slice 5 (2026-10-06), the weekly flow ─────
+  //   NEW copy, a deliberate addition: MDs/monthly-squad-plan-2026-10-05.md
+  //   sections 5.3, 5.4 and 6.2. Sent only for a club on "monthly" with a
+  //   running month. No existing English case changed.
+  const mwkMatch = new Date("2026-10-12T19:00:00.000Z"); // Mon 12 Oct 2026, 20:00 London
+  const mwkList = {
+    slots: [
+      { slot: 1, userId: "a", name: "Alex Carter", mark: "paid" as const },
+      { slot: 2, userId: "b", name: "Bilal Aydin", mark: "paid" as const },
+      { slot: 3, userId: "o", name: "Omar Khan", mark: "payg" as const },
+      { slot: 4, userId: null, name: "", mark: null },
+      { slot: 5, userId: "j", name: "Jake Moss", mark: null },
+    ],
+    paidCantPlay: [
+      { userId: "s", name: "Sam Dean" },
+      { userId: "l", name: "Joel Park" },
+    ],
+    cantPlay: [{ userId: "c", name: "Chris Bell" }],
+    reserves: [{ userId: "z", name: "Zed Wait" }],
+    open: 1,
+  };
+  add("MWK1 buildWeekListPost / a week with a drop, a fill-in and a place open", buildWeekListPost({ list: mwkList, matchDate: mwkMatch, paygPricePence: 800, lang }));
+  add(
+    "MWK1 buildWeekListPost / full, nobody out",
+    buildWeekListPost({
+      list: { ...mwkList, slots: mwkList.slots.filter((x) => x.userId), paidCantPlay: [], cantPlay: [], reserves: [], open: 0 },
+      matchDate: mwkMatch,
+      paygPricePence: 800,
+      lang,
+    }),
+  );
+  add(
+    "MWK1 buildWeekListPost / two places, no PAYG price set",
+    buildWeekListPost({ list: { ...mwkList, paidCantPlay: [], cantPlay: [], reserves: [], open: 2 }, matchDate: mwkMatch, paygPricePence: null, lang }),
+  );
+  add(
+    "MWK1 buildWeekListPost / organisers pick",
+    buildWeekListPost({
+      list: { ...mwkList, paidCantPlay: [], cantPlay: [], reserves: [], open: 1 },
+      matchDate: mwkMatch,
+      paygPricePence: 750,
+      organiserPicks: true,
+      lang,
+    }),
+  );
+  add("MWK2 buildPaygPoolGroupPost / with a price", buildPaygPoolGroupPost({ matchDate: mwkMatch, paygPricePence: 800, lang }));
+  add("MWK2 buildPaygPoolGroupPost / no price", buildPaygPoolGroupPost({ matchDate: mwkMatch, paygPricePence: null, lang }));
+  add(
+    "MWK3 buildPaygPoolDm",
+    buildPaygPoolDm({ name: "Omar Khan", activityName: "Monday 7-a-side", matchDate: mwkMatch, paygPricePence: 800, lang }),
+  );
+  for (const change of ["out-paid", "out", "in"] as const) {
+    add(
+      `MWK4 buildPasteUndoDm / ${change}`,
+      buildPasteUndoDm({ change, actorName: "Rob Hale", activityName: "Monday 7-a-side", matchDate: mwkMatch, lang }),
+    );
+  }
+  add(
+    "MWK5 buildPasteIgnoredAdminNotice",
+    buildPasteIgnoredAdminNotice({ actorName: "Alex Carter", names: ["Bilal Aydin", "Chris Bell"], matchDate: mwkMatch, lang }),
   );
 
   return c;

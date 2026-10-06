@@ -107,7 +107,7 @@ export async function registerAttendance(
   const eventContext = options.event ?? UNATTRIBUTED_ATTENDANCE_CONTEXT;
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true, org: { select: { benchPickMode: true } } } } },
+    include: { activity: { select: { orgId: true, org: { select: { benchPickMode: true, squadMode: true } } } } },
   });
   if (!match) throw new Error("Match not found");
 
@@ -414,6 +414,17 @@ export async function registerAttendance(
     await queueSlotEmojiRefresh(matchId);
   }
 
+  // MONTHLY SQUAD (slice 5, 2026-10-06). For a club on "monthly" only:
+  // a player who has just come in takes their slot number on the month's
+  // list (a fill-in takes the one a regular vacated), and the month's
+  // credits are brought in line (a regular who comes back loses the
+  // credit for the game they are now playing). Skipped, with no query,
+  // for every club on "weekly". Never throws.
+  if (match.activity.org?.squadMode === "monthly") {
+    const { afterMonthlyAttendanceChange } = await import("./monthly-week");
+    await afterMonthlyAttendanceChange(matchId, userId, status === "CONFIRMED" && existing?.status !== "CONFIRMED");
+  }
+
   // The moment this confirm completes the squad, announce it with the
   // full line-up. Idempotent + atomic — safe to call from every
   // confirm path (plain IN, bench promotion, third-party registerFor);
@@ -471,6 +482,7 @@ export async function cancelAttendance(
               dropOutDeadlineDay: true,
               dropOutDeadlineTime: true,
               benchPickMode: true,
+              squadMode: true,
             },
           },
         },
@@ -562,6 +574,15 @@ export async function cancelAttendance(
     // every confirmed player's IN message shows their NEW slot emoji.
     // Idempotent and bounded; bot picks them up on its next 5-min tick.
     await queueSlotEmojiRefresh(matchId);
+  }
+
+  // MONTHLY SQUAD (slice 5, 2026-10-06). For a club on "monthly" only: a
+  // paid regular who drops is "Paid but can't play", and by the club's
+  // credit rule earns a game of credit. Skipped, with no query, for every
+  // club on "weekly". Never throws.
+  if (match.activity.org?.squadMode === "monthly") {
+    const { afterMonthlyAttendanceChange } = await import("./monthly-week");
+    await afterMonthlyAttendanceChange(matchId, userId, false);
   }
 
   // With organiser pick on (slice 2b) and somebody waiting, the late drop

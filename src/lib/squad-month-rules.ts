@@ -441,14 +441,14 @@ export interface SeedDraftUnmatched {
 }
 
 /** A name folded for matching: `normaliseName`, then emoji and punctuation out. */
-function nameKey(s: string | null | undefined): string {
+export function nameKey(s: string | null | undefined): string {
   return normaliseName(s ?? "")
     .replace(/[^\p{L}\p{N}\s'-]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function candidatesFor(key: string, roster: Array<{ userId: string; key: string; aliasKeys: string[] }>): string[] {
+export function candidatesFor(key: string, roster: Array<{ userId: string; key: string; aliasKeys: string[] }>): string[] {
   const exact = roster.filter((m) => m.key === key);
   if (exact.length > 0) return exact.map((m) => m.userId);
   const alias = roster.filter((m) => m.aliasKeys.includes(key));

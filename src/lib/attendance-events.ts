@@ -87,6 +87,12 @@ export const ATTENDANCE_EVENT_CAUSES = [
    *  (actorKind `scheduler`), or by an admin's "Carry over last squad"
    *  button (actorKind `admin`). `sourceRef` is the source match id. */
   "rolling-squad",
+  /** Monthly squad (2026-10-06, slice 5): the month's regulars (and that
+   *  date's PAYG players) were put onto the week's match (actorKind
+   *  `scheduler`), or a player who came in took a slot number on the
+   *  month's list (actorKind `system`, status unchanged, `toPosition` the
+   *  slot). `sourceRef` is the SquadMonth id. */
+  "monthly-squad",
   /** Organiser pick (2026-10-01, slice 2b): an admin brought a player in
    *  from the waiting list, by a reply in the admin channel or the match
    *  page's "Bring in" (actorKind `admin`, `actorUserId` the admin).

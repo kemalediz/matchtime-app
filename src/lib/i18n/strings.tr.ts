@@ -2398,8 +2398,6 @@ export const tr: Strings = {
   msq_mode_weekly: "Haftalık (VARIM diyenler)",
   msq_mode_monthly: "Aylık (daimi oyuncular ay için öder)",
   msq_rolling_note: "Kadronuz aylıkken \"Kadro devam eder\" kapalıdır: onun yerini ayın daimi oyuncuları alır.",
-  msq_status_note:
-    "MatchTime aylık listeyi henüz grubunuzda paylaşmıyor. Bu ayın listesini şimdiden Aylar sayfasında tutabilirsiniz.",
   msq_months_link: "Aylar sayfasını aç",
   msq_payg_label: "Maç başı ücret, PAYG (£)",
   msq_payg_blurb: "Maç başı ödeyen bir oyuncunun tek maç için ödediği tutar. Sabit bir ücretiniz yoksa boş bırakın.",
@@ -2530,6 +2528,31 @@ export const tr: Strings = {
   info_mth_credits_title: "Aya getirilen kredi",
   info_mth_credits_body:
     "Bir daimi oyuncunun bu aya getirdiği kredi, maç sayısı olarak. Örneğin geçen ay parasını ödeyip kaçırdığı bir maç için. Bir kredi bir maç düşer. Maç başı £7.50 ise bir kredi, 4 maçlık ayı £30 yerine £22.50 yapar.",
+
+  // ── Aylık kadro, 5. dilim (2026-10-06): haftalık akış ────────────
+  // Başlık ve üç bölüm adı `monthly-list.ts` okuyucusunun tanıdığı
+  // sözcüklerle yazılır: üye listeyi kopyalayıp geri yapıştırabilsin.
+  mwk_list_header: (p) => `📋 ${p.month} listesi: ${p.when}`,
+  mwk_list_paid: "(ödedi)",
+  mwk_list_cant_play_paid: "Ödedi gelemiyor",
+  mwk_list_cant_play: "Gelemeyenler",
+  mwk_list_reserves: "Yedekler",
+  mwk_list_open: (p) => `${p.open} yer boş${p.price ? `, maç başı ${p.price} (PAYG)` : ""}: almak için *VARIM* yazın.`,
+  mwk_list_open_organiser: (p) => `${p.open} yer boş. Yedek listesine girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`,
+  mwk_pool_group: (p) => `🎟 *${p.when}* maçında 1 yer açıldı${p.price ? `, maç başı ${p.price} (PAYG)` : ""}. İlk *VARIM* yazan alır.`,
+  mwk_pool_dm: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* için bir yer açıldı: ${p.when}${p.price ? `, maç başı ${p.price}` : ""}.\n\n` +
+    `İster misin? *VARIM* yaz. İlk yazan oynar. Bu sefer olmuyorsa cevap yazmana gerek yok.`,
+  mwk_dm_moved_out_paid: (p) =>
+    `📋 ${p.actor} seni *${p.activityName}* (${p.when}) için "Ödedi gelemiyor" bölümüne aldı.\n\nYanlış mı? *VARIM* yaz, seni geri alayım.`,
+  mwk_dm_moved_out: (p) =>
+    `📋 ${p.actor} seni *${p.activityName}* (${p.when}) listesinden çıkardı.\n\nYanlış mı? *VARIM* yaz, seni geri alayım.`,
+  mwk_dm_added: (p) =>
+    `📋 ${p.actor} seni *${p.activityName}* (${p.when}) listesine ekledi.\n\nYanlış mı? *YOKUM* yaz, seni çıkarayım.`,
+  mwk_admin_paste_ignored: (p) =>
+    `📋 ${p.actor}, ${p.when} maçı için listenin eski bir kopyasını yapıştırdı. ${p.names.join(", ")} için bir şey değiştirmedim: ` +
+    `yapıştırılan liste, çıkan bir oyuncuyu geri getiremez ya da satırını boşaltarak başkasını çıkaramaz. ` +
+    `Değişiklik doğruysa oyuncu kendisi yazabilir ya da siz maç sayfasından yapabilirsiniz.`,
 };
 
 /**

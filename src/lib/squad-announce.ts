@@ -27,7 +27,7 @@ export async function announceSquadFullIfJustFilled(
     where: { id: matchId },
     include: {
       // `org.language`: the words and the date label are the group's.
-      activity: { select: { name: true, orgId: true, org: { select: { language: true } } } },
+      activity: { select: { name: true, orgId: true, org: { select: { language: true, squadMode: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: { user: { select: { name: true } } },
@@ -62,6 +62,16 @@ export async function announceSquadFullIfJustFilled(
   // a format switch deletes every assignment, and the squad that fills
   // again afterwards should still get its announcement.
   if (m.teamAssignments.length > 0) return;
+
+  // MONTHLY SQUAD (slice 5, 2026-10-06): a monthly club with a running
+  // month reads its squad from the month's list, which is posted (and
+  // re-posted when it changes) by the scheduler. A second, differently
+  // shaped roster the moment the last place is taken would be the noise
+  // that list replaces. A weekly club makes no query here.
+  if (m.activity.org?.squadMode === "monthly") {
+    const { loadMonthlyWeek } = await import("./monthly-week");
+    if (await loadMonthlyWeek(matchId).catch(() => null)) return;
+  }
 
   const key = `${matchId}:squad-locked`;
   // Atomic claim of the announcement — first writer wins.

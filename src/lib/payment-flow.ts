@@ -26,6 +26,7 @@ import { decideCheckoutEvent } from "./payment-outcome";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
+import { MONTHLY_PAYMENT_METHOD, isMonthlyRow } from "./monthly-week";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -58,6 +59,10 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
   let queued = 0;
   for (const a of match.attendances) {
     if (a.user.id === collectorId) continue; // collector collects, doesn't pay
+    // Monthly squad (slice 5, plan 5.6): a regular's place is paid for by
+    // the month, so they never get a per-match pay link. No club on
+    // "weekly" has such a row.
+    if (isMonthlyRow(a)) continue;
     if (!a.user.phoneNumber) continue;
     const token = signMagicLinkToken({
       userId: a.user.id,
@@ -436,7 +441,15 @@ export async function handleCollectorFeeReply(
     },
     headcount: (matchId) =>
       db.attendance.count({
-        where: { matchId, status: "CONFIRMED", userId: { not: userId } },
+        // Monthly squad (slice 5): a regular's row is paid for by the
+        // month and is not part of the per-match headcount. No club on
+        // "weekly" has such a row, so its count is what it always was.
+        where: {
+          matchId,
+          status: "CONFIRMED",
+          userId: { not: userId },
+          OR: [{ paymentMethod: null }, { paymentMethod: { not: MONTHLY_PAYMENT_METHOD } }],
+        },
       }),
     judge: (reply, amount, matchName, lang) =>
       feeOrgId

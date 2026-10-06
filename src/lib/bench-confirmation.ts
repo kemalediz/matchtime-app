@@ -47,7 +47,11 @@ export async function resolveBenchConfirmation(args: {
   // Claimant must currently be ON the bench for this match.
   const att = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
-    select: { status: true, position: true, match: { select: { activity: { select: { orgId: true } } } } },
+    select: {
+      status: true,
+      position: true,
+      match: { select: { activity: { select: { orgId: true, org: { select: { squadMode: true } } } } } },
+    },
   });
   if (!att || att.status !== "BENCH") {
     return { kind: "ignored", reason: "claimant-not-on-bench" };
@@ -132,6 +136,14 @@ export async function resolveBenchConfirmation(args: {
     );
     return { seat: mine, sheetExists: hasSheet };
   });
+
+  // MONTHLY SQUAD (slice 5, 2026-10-06): on a monthly club the claimant
+  // takes the vacated slot NUMBER on the month's list, and the credits
+  // are brought in line. No query for a weekly club.
+  if (att.match.activity.org?.squadMode === "monthly") {
+    const { afterMonthlyAttendanceChange } = await import("./monthly-week");
+    await afterMonthlyAttendanceChange(matchId, userId, true);
+  }
 
   // If this claim completes the squad, fire the full-line-up
   // announcement (in addition to the "X grabbed the slot" line

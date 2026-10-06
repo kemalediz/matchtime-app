@@ -157,6 +157,12 @@ export function monthYearLabel(lang: Lang | string | null | undefined, d: Date):
   return label(lang, d, { en: "MMMM yyyy", tr: "MMMM yyyy" });
 }
 
+/** The month's name alone: "October" / "Ekim". The monthly list's header
+ *  ("List for October", "Ekim listesi"), which the list reader reads back. */
+export function monthNameLabel(lang: Lang | string | null | undefined, d: Date): string {
+  return label(lang, d, { en: "MMMM", tr: "MMMM" });
+}
+
 /**
  * A player's last appearance on the stats page: "7 Jul 2026" /
  * "7 Temmuz 2026". The English one is `formatLastPlayed` in

@@ -125,7 +125,6 @@ export function MonthlySquadSection(props: {
               <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900 space-y-1" data-testid="msq-notes">
                 <p>{s.msq_rolling_note}</p>
                 <p>
-                  {s.msq_status_note}{" "}
                   <Link href="/admin/months" className="font-medium underline" data-testid="msq-months-link">
                     {s.msq_months_link}
                   </Link>

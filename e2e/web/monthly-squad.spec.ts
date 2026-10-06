@@ -91,6 +91,10 @@ test("an owner switches it on: rolling squad goes off, the settings save and sur
 
   await page.getByTestId("msq-mode").selectOption("monthly");
   await expect(page.getByTestId("msq-notes")).toContainText("Rolling squad is switched off while your squad is monthly");
+  // Slice 5 posts the list in the group, so the "does not post the monthly
+  // list in your group yet" note is gone; the link to the page stays.
+  await expect(page.getByTestId("msq-notes")).not.toContainText("does not post");
+  await expect(page.getByTestId("msq-months-link")).toBeVisible();
   await expect
     .poll(async () =>
       db.one<{ squadMode: string; rollingSquadEnabled: boolean }>(
