@@ -59,3 +59,12 @@ $2/day for the first 30 days after approval, $1.50/day after (Sutton override 1.
 - Self-join plan: `MDs/self-join-and-approval-plan-2026-09-28.md`
 - Findings backlog: `MDs/findings.md` (F3 entry can be removed once F3 is switched on)
 - Memory index: `~/.claude/projects/-Users-kemal-Projects-Cressoft-Sports-matchtime/memory/MEMORY.md`
+
+## Update, 2026-10-06
+
+- **Monthly squad mode is complete and live** (off unless a club switches to monthly): slices 1 #199, 2 #200, 5 #201, 3 #202, 4 #203, 6 #205. Plan with "as built" and "Changed after review" blocks: `MDs/monthly-squad-plan-2026-10-05.md`. Each money slice took 2 to 4 adversarial review rounds; every round found real bugs. Only optional slice 7 (card payment for the month) is not built. After any `prisma db push`, re-run `prisma/sql/monthly-squad-check.sql` (it restores the partial unique index and CHECKs).
+- **Vets MNF go-live needs:** Davide or Shane to sign up on matchtime.ai and add MatchTime to the group, Kemal's approval, then Settings > Monthly squad > Monthly, and paste the October list on the Months page.
+- **F3 learned setup:** first live check (2026-10-05, $0.044) failed 3 of 6; prompt rewritten and two-quote guard added in #198 (merged, flag still off). A second approved run is needed before switching on (`scripts/live-check-setup-learning.ts --approved`, about $0.05).
+- **Double squad post fixed** (#204): timed posts skip the roster if the same squad was posted in the last 3 hours; the morning chase is skipped after a recent recruit ack.
+- **Open question for Kemal:** remove the remaining em dashes from about 84 fixed group strings and from the composer's English output (applyHouseStyle), code-only.
+- **Known gaps:** a bare "IN" replying to the month list needs a Pi change (quotedBody); Tailscale on this Mac could not see the Pi on 2026-10-06 (reconnect before the next Pi deploy).
