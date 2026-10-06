@@ -102,6 +102,15 @@ export interface ScoreApplyDeps {
    *  could NOT be brought into line and were left alone (an older match
    *  whose points were never stored); it is a sentence for a person. */
   reconcileElo: (matchId: string) => Promise<{ moved: number; left?: string }>;
+  /**
+   * Remember that the bot asked which team won `first`-`second` for
+   * this match, so a following "Yellow" can complete it
+   * (`pipeline/score-ask.ts`). One open question per match: a new one
+   * replaces the old. `recordScore` is expected to clear it.
+   * Optional so a caller with nowhere to keep it (a harness) still
+   * works; the question is then simply not answerable by one word.
+   */
+  recordScoreAsk?: (args: { matchId: string; first: number; second: number }) => Promise<void>;
 }
 
 export interface ScoreWriteResult {

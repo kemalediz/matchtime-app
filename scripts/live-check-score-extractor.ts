@@ -5,34 +5,39 @@
  *     KEMAL'S APPROVAL FOR THIS SPECIFIC RUN (CLAUDE.md, 2026-09-19).
  *     It was written on 2026-10-07 and NOT run.
  *
- * WHY. The score extractor prompt was rewritten whole when it became
- * team-aware (Sutton FC, 2026-10-06: "9-6 to yellows" recorded as Red 9,
- * Yellow 6). A rewrite widens the regression risk, so the check covers
- * every behaviour the old prompt handled (the club's own history of
- * result messages) as well as the new ones. The cases, and what each is
- * there to prove, are in `src/lib/pipeline/score-live-cases.ts`.
+ * WHY. The score extractor prompt was rewritten whole, twice: when it
+ * became team-aware (Sutton FC, 2026-10-06: "9-6 to yellows" recorded as
+ * Red 9, Yellow 6), and again after the review of PR #214 (no numbers is
+ * not 0-0, a lone team name is not a winner, a tag is not a correction).
+ * A rewrite widens the regression risk, so the check covers every
+ * behaviour the old prompt handled (the club's own history of result
+ * messages) as well as the new ones. The cases, and what each is there
+ * to prove, are in `src/lib/pipeline/__tests__/score-live-cases.ts`.
  *
- * WHAT IT GRADES. The OUTCOME: the extracted facts are passed through
- * the real team resolver (`score-teams.ts`) and must land on the stated
- * result, or on "ask". Not the exact wording of a team field: "Yellows"
- * and "yellows" are the same answer. Plus the `correction` flag.
+ * WHAT IT GRADES. The OUTCOME. The extracted facts go through the real
+ * engine over the case's world (`runScoreCase`) and must produce what
+ * the case says: a recorded result, the bot asking which team won, the
+ * bot saying what is already recorded, or nothing. Not the wording of a
+ * team field: "Yellows" and "yellows" are the same answer.
  *
- * COST. 26 cases x 1 call on claude-sonnet-5, thinking off. About 1,500
- * input tokens (a ~2,900 character prompt, the schema, a short message)
- * and about 70 output tokens each: roughly $0.004 a call, about $0.10
+ * COST. 38 cases x 1 call on claude-sonnet-5, thinking off. About 1,900
+ * input tokens (a ~4,000 character prompt, the schema, a short message)
+ * and about 90 output tokens each: roughly $0.0045 a call, about $0.17
  * for the pass. The real total is printed.
  *
  *   ROUTER=1 also asks the real ROUTER (claude-haiku-4-5, prompt
  *   unchanged by this work) where it sends each message, one batch per
- *   case: 26 more calls, about $0.004 each, about $0.10 more. Worth one
- *   pass because a correction only reaches the extractor if the router
- *   calls it `score`, and nothing has ever measured that for "no it was
- *   9-7" or the Turkish forms.
+ *   case: 38 more calls, about $0.004 each, about $0.15 more ($0.32 in
+ *   all). Worth one pass, because a message only reaches the extractor
+ *   if the router calls it `score`, and nothing has ever measured that
+ *   for "no it was 9-7", "wrong way round, yellows won" or the Turkish
+ *   forms. Where a question is open, the router is told so, as it is in
+ *   production.
  *
  * WHAT ONE PASS CANNOT PROVE. An occasional miss (a case the model gets
  * right nine times in ten) can pass once and fail live. It would show up
- * in the group as a question ("9 - 6 to which team?") or a wrong result
- * that the reply states winner first, where it can be corrected.
+ * in the group as a question ("9 - 6: which team won?") or as a result
+ * stated winner first, where it can be corrected.
  *
  * ZERO WRITES, structurally: no database client is imported.
  *
@@ -44,8 +49,11 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
-import { resolveScoreResult } from "../src/lib/pipeline/score-teams.ts";
-import { SCORE_LIVE_CASES } from "../src/lib/pipeline/score-live-cases.ts";
+import {
+  SCORE_LIVE_CASES,
+  describeOutcome,
+  runScoreCase,
+} from "../src/lib/pipeline/__tests__/score-live-cases.ts";
 
 async function main() {
   spendDevApiKeyOrExit("scripts/live-check-score-extractor.ts");
@@ -58,10 +66,10 @@ async function main() {
   let usd = 0;
   let failed = 0;
 
-  // One at a time: 26 calls is seconds, and a serial run keeps the
-  // output in case order.
+  // One at a time: a few dozen calls is seconds, and a serial run keeps
+  // the output in case order.
   for (const c of cases) {
-    const author = "Kemal Ediz";
+    const author = c.sender === "yellow" ? "Najib" : "Kemal Ediz";
     const res = await extractForRoute(model, "score", {
       id: c.id,
       body: c.body,
@@ -78,33 +86,30 @@ async function main() {
     if (res.facts.kind !== "score") {
       problems.push(`extractor returned "${res.facts.kind}" (${res.degradations.map((d) => d.detail).join("; ")})`);
     } else {
-      const r = resolveScoreResult({
-        facts: res.facts,
-        labels: c.labels ?? ["Red", "Yellow"],
-        senderTeam: c.senderTeam ?? null,
-      });
-      got = r.kind === "resolved" ? `Red ${r.red}, Yellow ${r.yellow}` : `ask (${r.why})`;
-      const want = c.expect === "ask" ? "ask" : `Red ${c.expect.red}, Yellow ${c.expect.yellow}`;
-      const outcomeOk =
-        c.expect === "ask" ? r.kind === "ask" : r.kind === "resolved" && r.red === c.expect.red && r.yellow === c.expect.yellow;
-      if (!outcomeOk) problems.push(`wanted ${want}`);
-      if ((res.facts.correction ?? false) !== (c.correction ?? false)) {
-        problems.push(`correction flag ${res.facts.correction ?? false}, wanted ${c.correction ?? false}`);
-      }
+      const outcome = runScoreCase(c, res.facts);
+      got = describeOutcome(outcome);
+      if (JSON.stringify(outcome) !== JSON.stringify(c.expect)) problems.push(`wanted ${describeOutcome(c.expect)}`);
     }
 
     let route = "";
     if (withRouter) {
-      const rr = await routeBatch(model, [{ id: c.id, authorName: author, body: c.body }]);
+      const rr = await routeBatch(model, [{ id: c.id, authorName: author, body: c.body }], {
+        scoreAsk: c.pending ? { labels: c.labels ?? ["Red", "Yellow"] } : null,
+      });
       calls++;
       usd += rr.usage?.costUsd ?? 0;
       const to = rr.routes[0]?.route ?? "?";
       route = `  route=${to}`;
-      if (to !== "score") problems.push(`router sent it to "${to}", so the extractor would never see it`);
+      if (to !== "score" && !c.anyRoute) {
+        problems.push(`router sent it to "${to}", so the score route would never see it`);
+      }
     }
 
     if (problems.length) failed++;
-    console.log(`${problems.length ? "FAIL" : "ok  "} ${c.id.padEnd(4)} ${JSON.stringify(c.body).slice(0, 70).padEnd(72)} -> ${got}${route}`);
+    console.log(
+      `${problems.length ? "FAIL" : "ok  "} ${c.id.padEnd(4)} ${JSON.stringify(c.body).slice(0, 70).padEnd(72)} -> ${got}${route}` +
+        (c.noModelInProduction ? "  (read without the model in production)" : ""),
+    );
     if (res.facts.kind === "score") console.log(`       facts ${JSON.stringify(res.facts)}`);
     for (const p of problems) console.log(`       ${p}  [${c.why}]`);
   }

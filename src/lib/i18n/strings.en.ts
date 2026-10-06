@@ -513,11 +513,25 @@ export const en = {
     yellow: number;
   }): string =>
     `Corrected 👍 It was ${p.redLabel} ${p.oldRed} - ${p.oldYellow} ${p.yellowLabel}. Now ${resultEn(p)}.`,
+  // Names BOTH teams and suggests neither: the first wording ended with
+  // an example that named Yellow as the winner (review of PR #214).
   score_ask_team: (p: { first: number; second: number; redLabel: string; yellowLabel: string }): string =>
-    `${p.first} - ${p.second} to which team, ${p.redLabel} or ${p.yellowLabel}? ` +
-    `Tell me like this: "${p.first} - ${p.second} to ${p.yellowLabel}".`,
+    `${p.first} - ${p.second}: which team won? Reply with the winning team: ${p.redLabel} or ${p.yellowLabel}.`,
+  /** A correction from somebody who may not make one, or too late. */
   score_already_recorded: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
     `That match is already recorded: ${resultEn(p)}. An admin can change it on the match page.`,
+  /** A message to the bot that differs from the record and does not say
+   *  the record is wrong. Says how to correct it; names no team. */
+  score_recorded_hint: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
+    `That match is already recorded: ${resultEn(p)}. ` +
+    `If that is wrong, tell me "no, it was" with the right score and the team that won.`,
+  score_which_match: (p: { kickoffLabel: string }): string =>
+    `I can't tell which match that corrects. For ${p.kickoffLabel}, just tell me the score and the team that won. ` +
+    `An admin can change an earlier result on its match page.`,
+  /** Shown to the admin on the dashboard after saving a score whose Elo
+   *  could not be recalculated (`match-elo.ts`, `legacy_left`). */
+  score_elo_left_note:
+    "Score saved. The Elo ratings were not recalculated for this match, because what was added for its earlier result is not on record. They still reflect the earlier result.",
   /** ONE group post when payment collection goes live (2026-09-30,
    *  `payments-live-announce.ts`). Follows the club's pay methods;
    *  `collector` is the collector's first name, or null. */

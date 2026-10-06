@@ -8,17 +8,18 @@
  * the bodies in the comments are from the club's own history.
  */
 import { describe, it, expect } from "vitest";
-import { resolveScoreResult, resolveTeamRef } from "../score-teams";
+import { resolveScoreResult, resolveTeamRef, resolveWinnerSide } from "../score-teams";
 import type { ScoreFacts } from "../types";
 
 const EN: [string, string] = ["Red", "Yellow"];
 const TR: [string, string] = ["Kırmızı", "Sarı"];
 
-function facts(first: number, second: number, over: Partial<ScoreFacts> = {}): ScoreFacts {
-  return { kind: "score", first, second, ...over };
+type Scored = ScoreFacts & { first: number; second: number };
+function facts(first: number, second: number, over: Partial<ScoreFacts> = {}): Scored {
+  return { kind: "score", ...over, first, second };
 }
 
-const resolve = (f: ScoreFacts, labels: [string, string] = EN, senderTeam: "RED" | "YELLOW" | null = null) =>
+const resolve = (f: Scored, labels: [string, string] = EN, senderTeam: "RED" | "YELLOW" | null = null) =>
   resolveScoreResult({ facts: f, labels, senderTeam });
 
 describe("a team named with the result", () => {
@@ -60,9 +61,36 @@ describe("a team attached to each number", () => {
     });
   });
 
-  it("one label is enough: the other number is the other team's", () => {
+  it("ONE name beside the HIGHER number is that team's win", () => {
+    // "yellow 9-6"
     expect(resolve(facts(9, 6, { firstTeam: "yellow" }))).toEqual({ kind: "resolved", red: 6, yellow: 9 });
-    expect(resolve(facts(9, 6, { secondTeam: "yellow" }))).toEqual({ kind: "resolved", red: 9, yellow: 6 });
+    // "4-6 yellows"
+    expect(resolve(facts(4, 6, { secondTeam: "yellows" }))).toEqual({ kind: "resolved", red: 4, yellow: 6 });
+  });
+
+  it("ONE name beside the LOWER number, and no winning word, is asked about (review item 5)", () => {
+    // "Reds 3-5": the sender's own score first, or a Red win written
+    // loser first? Nobody can tell, so nobody guesses.
+    expect(resolve(facts(3, 5, { firstTeam: "Reds" }))).toEqual({ kind: "ask", why: "lone_lower" });
+    // "9-6 yellow"
+    expect(resolve(facts(9, 6, { secondTeam: "yellow" }))).toEqual({ kind: "ask", why: "lone_lower" });
+  });
+
+  it("a winning word outranks a lone name's position", () => {
+    // "5-3 to Yellows", with the model also reporting that "Yellows" is
+    // written beside the 3. The word "to" is the statement; the position
+    // is an accident of word order.
+    expect(resolve(facts(5, 3, { winner: "Yellows", secondTeam: "Yellows" }))).toEqual({
+      kind: "resolved",
+      red: 3,
+      yellow: 5,
+    });
+    // "Reds 3-5, reds lost"
+    expect(resolve(facts(3, 5, { firstTeam: "Reds", loser: "reds" }))).toEqual({
+      kind: "resolved",
+      red: 3,
+      yellow: 5,
+    });
   });
 });
 
@@ -96,8 +124,24 @@ describe("a club that renamed its teams", () => {
     expect(resolveTeamRef("lion", LIONS, null)).toBe("RED");
   });
 
-  it("still reads the colour, which is what the bibs are", () => {
-    expect(resolveTeamRef("yellows", LIONS, null)).toBe("YELLOW");
+  it("a colour that is neither team's name is nobody's (review item 7)", () => {
+    // Lions and Tigers might wear blue and white. "Yellow" names
+    // neither of them, so it is asked about, never mapped.
+    expect(resolveTeamRef("yellows", LIONS, null)).toBeNull();
+    expect(resolveTeamRef("red", ["Blue", "White"], null)).toBeNull();
+    expect(resolveTeamRef("sarılar", ["Blue", "White"], null)).toBeNull();
+    expect(resolveTeamRef("blues", ["Blue", "White"], null)).toBe("RED");
+    expect(resolveTeamRef("the whites", ["Blue", "White"], null)).toBe("YELLOW");
+    expect(resolve(facts(5, 3, { winner: "yellow" }), ["Blue", "White"])).toEqual({
+      kind: "ask",
+      why: "unknown_team",
+    });
+  });
+
+  it("one side still called by its colour keeps that colour's words", () => {
+    // Only RED was renamed. "sarılar" is still the Yellow side.
+    expect(resolveTeamRef("sarılar", ["Lions", "Yellow"], null)).toBe("YELLOW");
+    expect(resolveTeamRef("reds", ["Lions", "Yellow"], null)).toBeNull();
   });
 
   it("the club's name for a team beats the colour word", () => {
@@ -173,5 +217,65 @@ describe("it asks rather than guesses", () => {
       red: 6,
       yellow: 9,
     });
+  });
+});
+
+describe("whole words with known endings, never prefixes (review item 7)", () => {
+  it("does not resolve a longer word that merely starts with a team name", () => {
+    expect(resolveTeamRef("Reda's team", EN, null)).toBeNull();
+    expect(resolveTeamRef("Reda", EN, null)).toBeNull();
+    expect(resolveTeamRef("Reddy", EN, null)).toBeNull();
+    expect(resolveTeamRef("Redford", EN, null)).toBeNull();
+    expect(resolveTeamRef("yellowish", EN, null)).toBeNull();
+  });
+
+  it("does not resolve a shorter word that a team name merely starts with", () => {
+    expect(resolveTeamRef("yel", EN, null)).toBeNull();
+    expect(resolveTeamRef("re", EN, null)).toBeNull();
+    expect(resolveTeamRef("tig", ["Lions", "Tigers"], null)).toBeNull();
+  });
+
+  it("English plural and possessive", () => {
+    expect(resolveTeamRef("reds", EN, null)).toBe("RED");
+    expect(resolveTeamRef("the Yellows", EN, null)).toBe("YELLOW");
+    expect(resolveTeamRef("yellow's", EN, null)).toBe("YELLOW");
+    expect(resolveTeamRef("yellow team", EN, null)).toBe("YELLOW");
+    expect(resolveTeamRef("tiger", ["Lions", "Tigers"], null)).toBe("YELLOW");
+  });
+
+  it("Turkish endings of any length on the colour words", () => {
+    for (const w of ["kırmızı", "kırmızılar", "kırmızıların", "kırmızıya", "kırmızıdan", "Kırmızı takım", "KIRMIZILAR"]) {
+      expect(resolveTeamRef(w, TR, null), w).toBe("RED");
+    }
+    for (const w of ["sarı", "sarılar", "sarılardan", "sarıların", "sarıya", "sarı takım", "sarı takımı"]) {
+      expect(resolveTeamRef(w, TR, null), w).toBe("YELLOW");
+    }
+  });
+
+  it("Turkish endings on a club's own names: plural freely, a case ending after an apostrophe", () => {
+    const ASLAN: [string, string] = ["Aslan", "Kartal"];
+    expect(resolveTeamRef("Aslanlar", ASLAN, null)).toBe("RED");
+    expect(resolveTeamRef("Kartalların", ASLAN, null)).toBe("YELLOW");
+    expect(resolveTeamRef("Kartal'a", ASLAN, null)).toBe("YELLOW");
+    expect(resolveTeamRef("Aslan'dan", ASLAN, null)).toBe("RED");
+    expect(resolveTeamRef("Aslantürk", ASLAN, null)).toBeNull();
+  });
+});
+
+describe("who won, when the message has no numbers (review items 3 and 4)", () => {
+  const side = (f: Partial<ScoreFacts>, senderTeam: "RED" | "YELLOW" | null = null) =>
+    resolveWinnerSide({ facts: { kind: "score", first: null, second: null, ...f }, labels: EN, senderTeam });
+
+  it("reads a named winner or loser", () => {
+    expect(side({ winner: "yellows" })).toBe("YELLOW");
+    expect(side({ loser: "yellows" })).toBe("RED");
+    expect(side({ winner: "us" }, "RED")).toBe("RED");
+  });
+
+  it("is null when nobody is named, the name is unknown, or the two disagree", () => {
+    expect(side({})).toBeNull();
+    expect(side({ winner: "Arsenal" })).toBeNull();
+    expect(side({ winner: "yellow", loser: "yellows" })).toBeNull();
+    expect(side({ winner: "us" })).toBeNull();
   });
 });

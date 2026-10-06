@@ -449,10 +449,17 @@ export const tr: Strings = {
   score_corrected: (p) =>
     `Düzelttim 👍 Önceki kayıt ${p.redLabel} ${p.oldRed} - ${p.oldYellow} ${p.yellowLabel} idi. Şimdi ${resultTr(p)}.`,
   score_ask_team: (p) =>
-    `${p.first} - ${p.second} hangi takımın lehine, ${p.redLabel} mı ${p.yellowLabel} mı? ` +
-    `Şöyle yazın: "${p.yellowLabel} ${p.first} - ${p.second} kazandı".`,
+    `${p.first} - ${p.second}: hangi takım kazandı? Kazanan takımı yazın: ${p.redLabel} mı, ${p.yellowLabel} mı?`,
   score_already_recorded: (p) =>
     `Bu maçın sonucu zaten kayıtlı: ${resultTr(p)}. Bir yönetici maç sayfasından değiştirebilir.`,
+  score_recorded_hint: (p) =>
+    `Bu maçın sonucu zaten kayıtlı: ${resultTr(p)}. ` +
+    `Yanlışsa "hayır" diye başlayıp doğru skoru ve kazanan takımı yazın.`,
+  score_which_match: (p) =>
+    `Bunun hangi maçı düzelttiğini anlayamadım. ${p.kickoffLabel} için skoru ve kazanan takımı yazmanız yeterli. ` +
+    `Daha önceki bir sonucu bir yönetici o maçın sayfasından değiştirebilir.`,
+  score_elo_left_note:
+    "Skor kaydedildi. Bu maç için Elo puanları yeniden hesaplanmadı, çünkü önceki sonuç için eklenen puanların kaydı yok. Elo hâlâ önceki sonucu yansıtıyor.",
   payments_live_announcement: (p) => {
     const who = p.collector ?? "organizatör";
     const lines = [

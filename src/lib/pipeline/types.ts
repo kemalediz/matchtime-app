@@ -520,23 +520,38 @@ export interface TeamFacts {
  */
 export interface ScoreFacts {
   kind: "score";
-  /** The two numbers, in the order they are written. */
-  first: number;
-  second: number;
-  /** The team the message attaches to the FIRST number itself
-   *  ("Yellow 9 - 6 Red", "kırmızı 6 sarı 9"). */
+  /**
+   * The two numbers, in the order they are written, or NULL WHEN THE
+   * MESSAGE HAS NO SCORELINE ("yellows won", "wrong way round", a bare
+   * "Yellow"). Null is not zero: until the review of PR #214 a message
+   * with no numbers could reach the engine as 0-0 and be recorded.
+   * Nothing may write a score from a null.
+   */
+  first: number | null;
+  second: number | null;
+  /** A team name written directly beside the FIRST number, with no word
+   *  about the outcome ("Yellow 9 - 6 Red", "Reds 3-5"). POSITION only:
+   *  whether a lone name is enough is `score-teams.ts`'s decision. */
   firstTeam?: string;
-  /** Likewise for the SECOND number. */
+  /** Likewise beside the SECOND number. */
   secondTeam?: string;
-  /** The team the message says WON, or that the score is "to"
-   *  ("9-6 to yellows", "sarılar 9-6 kazandı", "we won 5-3"). */
+  /** The team a WORD in the message says won: "9-6 to yellows",
+   *  "sarılar 9-6 kazandı", "we won 5-3". */
   winner?: string;
-  /** The team the message says LOST ("reds lost 6-9", "kaybettik"). */
+  /** The team a word says LOST ("reds lost 6-9", "kaybettik"). */
   loser?: string;
-  /** The message says an earlier result was WRONG and gives the right
-   *  one ("no, it was...", "yanlış, ..."). Lets an untagged message
-   *  change a recorded result; see `handleScore`. */
+  /** The message says a result already given or recorded was WRONG and
+   *  gives the right one ("no, it was...", "yanlış, ..."). The ONLY
+   *  thing that lets a message change a recorded result; a tag alone
+   *  does not (review item 6). */
   correction?: boolean;
+  /** The message says the result has the teams the wrong way round
+   *  ("wrong way round", "tam tersi"). A correction that needs no
+   *  numbers: the recorded result is swapped. */
+  swapped?: boolean;
+  /** The message is explicitly about a DIFFERENT game ("last week we
+   *  lost 9-2"). Never recorded and never answered. */
+  otherGame?: boolean;
 }
 
 export interface AdminFacts {
@@ -729,6 +744,21 @@ export interface SquadState {
      *  sender's team. Absent or empty means "we" cannot be resolved and
      *  the bot asks. */
     teams?: Array<{ userId: string; team: "RED" | "YELLOW" }>;
+    /**
+     * A SCORELINE THE BOT HAS ASKED ABOUT and not yet had an answer to
+     * ("10 - 7: which team won?"), so a following "Yellow" can complete
+     * it (review of PR #214, item 4). One per match: a different pair
+     * replaces it, and recording any result clears it. Loaded from the
+     * `SentNotification` row `score-ask.ts` describes.
+     */
+    pendingScore?: { first: number; second: number; askedAt: string };
+    /**
+     * Another match of the club, with a recorded result, kicked off
+     * inside the correction window. When the LATEST match has no result
+     * yet, a message that says "no, it was..." may be about that earlier
+     * one, so it is answered and not recorded against the latest.
+     */
+    earlierRecentResult?: boolean;
   } | null;
   /** MatchTime's own most recent post in the group, verbatim. A known
    *  object, not a guess: it is how a bare "Confirmed" resolves. */
@@ -1068,6 +1098,19 @@ export type ProposedWrite =
       sourceMessageId: string;
       reason: string;
     }
+  /**
+   * The bot asked which team a scoreline belongs to. Not a score: it
+   * records the QUESTION, so the answer can be read against it
+   * (`score-ask.ts`). Applied by the score route's apply layer only.
+   */
+  | {
+      kind: "score_ask";
+      matchId: string;
+      first: number;
+      second: number;
+      sourceMessageId: string;
+      reason: string;
+    }
   | {
       kind: "payment_credit";
       payerUserId: string;
@@ -1293,6 +1336,15 @@ export type SpeechIntent =
    *  who may not change it or after the window. Says what is recorded
    *  and where an admin changes it. */
   | { kind: "score_already_recorded"; messageId: string; red: number; yellow: number }
+  /** A message addressed to the bot that differs from the recorded
+   *  result and is NOT a correction (or a correction the bot could not
+   *  read). Says what is recorded and how to correct it; changes
+   *  nothing. */
+  | { kind: "score_recorded_hint"; messageId: string; red: number; yellow: number }
+  /** "No, it was..." when the latest match has no result yet and an
+   *  earlier one inside the window does: the bot cannot tell which match
+   *  it corrects, and says so. */
+  | { kind: "score_which_match"; messageId: string }
   | { kind: "payment_ack"; messageId: string; payerName: string; count: number }
   /** `whenLabel` is the RESOLVED time ("Mon 8 Sep at 18:00"). The
    *  composer must never echo the raw phrase back at a player as if it

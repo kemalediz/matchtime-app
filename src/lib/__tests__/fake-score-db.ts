@@ -20,11 +20,22 @@ export interface FakeMatch {
   yellowScore: number | null;
   eloApplied: unknown;
   teams: Array<{ userId: string; team: Team }>;
+  /** Prisma's `@updatedAt`. Defaults to kickoff plus two hours, and is
+   *  bumped by every `match.update`, as the real column is. */
+  updatedAt?: Date;
 }
 
-export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string, number> }) {
-  const matches = new Map(init.matches.map((m) => [m.id, m]));
+export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string, number>; language?: string }) {
+  const matches = new Map(
+    init.matches.map((m) => [m.id, { ...m, updatedAt: m.updatedAt ?? new Date(m.date.getTime() + 2 * 3600_000) }]),
+  );
   const ratings = new Map(Object.entries(init.ratings));
+  /** What was done, in order: "lock:match", "lock:memberships",
+   *  "rating:<userId>". For the tests about ORDER; everything else
+   *  asserts on state. */
+  const log: string[] = [];
+  /** A clock that only moves forward, for `updatedAt`. */
+  let tick = Math.max(...[...matches.values()].map((m) => m.updatedAt!.getTime()), 0);
 
   const view = (m: FakeMatch) => ({
     id: m.id,
@@ -33,7 +44,8 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
     redScore: m.redScore,
     yellowScore: m.yellowScore,
     eloApplied: m.eloApplied,
-    activity: { orgId: m.orgId, name: "Tuesday 7-a-side" },
+    updatedAt: m.updatedAt,
+    activity: { orgId: m.orgId, name: "Tuesday 7-a-side", org: { language: init.language ?? "en" } },
     teamAssignments: m.teams,
     attendances: [],
   });
@@ -54,7 +66,8 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
         throw err;
       }
     },
-    async $queryRaw() {
+    async $queryRaw(strings: TemplateStringsArray) {
+      log.push(strings.join("?").includes('"Membership"') ? "lock:memberships" : "lock:match");
       return [];
     },
     match: {
@@ -64,15 +77,23 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
       },
       async update({ where, data }: { where: { id: string }; data: Partial<FakeMatch> }) {
         const m = matches.get(where.id)!;
-        Object.assign(m, data);
+        tick += 1000;
+        Object.assign(m, data, { updatedAt: new Date(tick) });
         return view(m);
       },
-      async findFirst({ where }: { where: { id: { not: string }; date: { gt: Date } } }) {
+      // "Is there another scored match of this club that is later, by
+      // kickoff or by when it was last written?"
+      async findFirst({
+        where,
+      }: {
+        where: { id: { not: string }; OR: [{ date: { gt: Date } }, { updatedAt: { gt: Date } }] };
+      }) {
         const self = matches.get(where.id.not);
+        const afterKickoff = where.OR[0].date.gt;
+        const afterWrite = where.OR[1].updatedAt.gt;
         for (const m of matches.values()) {
-          if (m.id !== where.id.not && m.orgId === self?.orgId && m.date > where.date.gt && m.redScore !== null) {
-            return { id: m.id };
-          }
+          if (m.id === where.id.not || m.orgId !== self?.orgId || m.redScore === null) continue;
+          if (m.date > afterKickoff || m.updatedAt! > afterWrite) return { id: m.id };
         }
         return null;
       },
@@ -91,6 +112,7 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
         data: { matchRating: number | { increment?: number; decrement?: number } };
       }) {
         if (!ratings.has(where.userId)) return { count: 0 };
+        log.push(`rating:${where.userId}`);
         const r = data.matchRating;
         ratings.set(
           where.userId,
@@ -100,5 +122,5 @@ export function fakeScoreDb(init: { matches: FakeMatch[]; ratings: Record<string
       },
     },
   };
-  return { db: db as never, matches, ratings };
+  return { db: db as never, matches, ratings, log };
 }

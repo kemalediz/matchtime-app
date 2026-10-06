@@ -11,6 +11,7 @@ import { formatLondon } from "@/lib/london-time";
 import { buildFormatSwitchAnnouncement, buildMatchCancelledAnnouncement } from "@/lib/group-copy";
 import { dayTimeLabel } from "@/lib/i18n/dates";
 import { normaliseLang } from "@/lib/i18n/lang";
+import { t } from "@/lib/i18n/t";
 import { reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
 import {
   planFormatSwitchSchedule,
@@ -234,13 +235,17 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: true },
+    include: { activity: { include: { org: { select: { language: true } } } } },
   });
   if (!match) throw new Error("Match not found");
 
   await requireOrgAdmin(session.user.id, match.activity.orgId);
 
   const parsed = matchScoreSchema.parse(formData);
+  /** Set when the score was saved and the Elo could NOT be recalculated
+   *  (`match-elo.ts`, `legacy_left`). Returned so the page can show it:
+   *  a console line is not something an admin ever reads. */
+  let eloNote: string | null = null;
 
   // THE SCORE, THEN THE ELO IT IMPLIES (2026-10-07). Two steps on
   // purpose, both in `lib/match-elo.ts`: the score is the fact and must
@@ -260,6 +265,7 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
     const elo = await reconcileMatchElo({ matchId });
     if (elo.status === "legacy_left") {
       console.warn(`[updateMatchScore] match ${matchId}: Elo not recalculated. ${elo.detail}`);
+      eloNote = t(normaliseLang(match.activity.org?.language)).score_elo_left_note;
     }
   } catch (err) {
     console.error("Elo update failed (match will still be COMPLETED):", err);
@@ -294,6 +300,7 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath("/matches");
+  return { eloNote };
 }
 
 /**

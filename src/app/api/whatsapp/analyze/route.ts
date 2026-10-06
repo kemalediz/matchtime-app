@@ -166,7 +166,7 @@ import {
   buildTeamOpsApplyDeps,
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
-import { loadOpenQuestion, loadOpenStatsClarifications } from "@/lib/pipeline/load-awaiting-answer";
+import { loadOpenQuestion, loadOpenScoreAsk, loadOpenStatsClarifications } from "@/lib/pipeline/load-awaiting-answer";
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -2081,6 +2081,14 @@ async function handleAnalyzeRequest(request: Request) {
           {
             awaiting: await loadOpenQuestion(org.id),
             clarifications: statsClarifications,
+            // "Which team won?" (2026-10-07): while MatchTime is waiting
+            // for that, a bare team name is the answer. One indexed read,
+            // null on almost every batch; a failed read only means the
+            // one-word answer is not rescued.
+            scoreAsk: await loadOpenScoreAsk(org.id).catch((err) => {
+              console.error("[analyze] open score question read failed:", err);
+              return null;
+            }),
             // At the daily AI cap: floor only, no router call.
             capped: aiCapped,
           },

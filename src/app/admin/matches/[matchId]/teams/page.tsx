@@ -140,11 +140,15 @@ export default function TeamManagementPage() {
 
   async function handleScore() {
     try {
-      await updateMatchScore(matchId, {
+      const res = await updateMatchScore(matchId, {
         redScore: parseInt(redScore),
         yellowScore: parseInt(yellowScore),
       });
-      toast.success("Score saved! Match marked as completed.");
+      // The score always lands. When the Elo could not be recalculated
+      // for it (an older match whose points were never stored), say so
+      // here, in the club's language, and leave it up long enough to read.
+      if (res?.eloNote) toast.warning(res.eloNote, { duration: 20_000 });
+      else toast.success("Score saved! Match marked as completed.");
       loadMatch();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");

@@ -73,6 +73,7 @@
  *      trusted. Same one-directional shape as the floor, different
  *      trigger. See `awaiting-answer.ts`.
  */
+import { scoreAnswerSide } from "./score-ask";
 import { messageTagsBot } from "../interaction-contract";
 import {
   clarificationSubject,
@@ -654,6 +655,15 @@ export interface RouteBatchOptions {
    */
   clarifications?: StatsClarification[];
   /**
+   * MATCHTIME HAS ASKED WHICH TEAM WON A SCORELINE and is waiting
+   * (2026-10-07, `score-ask.ts`). The team names of that match. While it
+   * is set, a message that is nothing but one of those names ("Yellow",
+   * "reds won") is the answer and goes to `score`, whatever the model
+   * called it: a bare team name is chatter to a router that does not
+   * know a question is open. Null almost always.
+   */
+  scoreAsk?: { labels: readonly [string, string] } | null;
+  /**
    * The club is at its daily AI cap: route with the floor alone and make
    * no model call. See `ai-budget.ts`.
    */
@@ -884,7 +894,36 @@ export async function routeBatch(
           };
         });
 
-  return { routes: finalRoutes, degradations: result.degradations, usage };
+  // ── AND WHILE MATCHTIME IS WAITING TO HEAR WHICH TEAM WON ──────────
+  //
+  // The same shape again (2026-10-07). It fires only on a message that
+  // `scoreAnswerSide` reads as a team of THAT match and nothing else, so
+  // "put me on Yellow" and "yellow were robbed tonight" are untouched.
+  // No model is asked: the score runner reads the answer the same way.
+  const scoreAsk = opts.scoreAsk ?? null;
+  const routesOut = !scoreAsk
+    ? finalRoutes
+    : finalRoutes.map((r) => {
+        if (r.route === "score" || r.source === "fallback") return r;
+        const m = byId.get(r.messageId);
+        if (!m || scoreAnswerSide(m.body, scoreAsk.labels) === null) return r;
+        result.degradations.push(
+          degradation(
+            "router",
+            r.messageId,
+            `MatchTime asked which team won a scoreline and this names one; ${r.route} → score so the ` +
+              `answer reaches the question it answers`,
+          ),
+        );
+        return {
+          ...r,
+          route: "score" as const,
+          source: "awaiting" as const,
+          overrodeRoute: r.overrodeRoute ?? r.route,
+        };
+      });
+
+  return { routes: routesOut, degradations: result.degradations, usage };
 }
 
 /** Convenience for callers that do not inject a model. */

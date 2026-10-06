@@ -15,6 +15,8 @@
  * READ-ONLY BY CONSTRUCTION: every statement in this file is a
  * `findMany`. The gate never writes.
  */
+import { SCORE_ASK_KIND, SCORE_ASK_TTL_MS, parseScoreAskKey } from "./score-ask";
+import { resolveTeamLabels } from "../team-labels";
 import { db } from "../db";
 import {
   GROUP_QUESTION_TTL_MS,
@@ -125,4 +127,52 @@ export async function loadOpenStatsClarifications(
     select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, createdAt: true },
   });
   return openStatsClarifications(rows, orgId, now);
+}
+
+/**
+ * The "which team won?" question MatchTime has open for this club, if
+ * any (2026-10-07, `score-ask.ts`): the scoreline, when it was asked,
+ * and the team names of the match it is about. One indexed read, null on
+ * almost every batch. The router uses it to let a bare team name through
+ * as the answer; the engine reads the same row through `load-state.ts`.
+ */
+export async function loadOpenScoreAsk(
+  orgId: string,
+  now: Date = new Date(),
+): Promise<{ matchId: string; first: number; second: number; askedAt: Date; labels: [string, string] } | null> {
+  const row = await db.sentNotification.findFirst({
+    where: {
+      kind: SCORE_ASK_KIND,
+      createdAt: { gte: new Date(now.getTime() - SCORE_ASK_TTL_MS) },
+      match: { activity: { orgId } },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      key: true,
+      createdAt: true,
+      match: {
+        select: {
+          teamLabels: true,
+          activity: {
+            select: {
+              sport: { select: { teamLabels: true } },
+              org: { select: { teamLabels: true, language: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  const parsed = row ? parseScoreAskKey(row.key) : null;
+  if (!row || !parsed || !row.match) return null;
+  return {
+    ...parsed,
+    askedAt: row.createdAt,
+    labels: resolveTeamLabels(
+      { teamLabels: row.match.teamLabels },
+      { teamLabels: row.match.activity.org.teamLabels },
+      row.match.activity.sport,
+      row.match.activity.org.language,
+    ),
+  };
 }

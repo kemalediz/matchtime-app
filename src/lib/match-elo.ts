@@ -18,56 +18,95 @@
  * Yellow 6, and putting it right needed a one-off script that worked the
  * points out backwards (`scripts/fix-score-2026-10-06.ts`).
  *
- * ── THE DESIGN ───────────────────────────────────────────────────────
+ * ── THE RECORD ───────────────────────────────────────────────────────
  *
- * `Match.eloApplied` records what the Elo pass did for the match:
+ * `Match.eloApplied`, one JSON value, written ONLY by this file:
  *
- *     { red, yellow, deltas: [{ userId, delta }] | null }
+ *     {
+ *       target:  { red, yellow },            the score THIS FILE last wrote
+ *       applied: { red, yellow, deltas } | null,
+ *       outOfStep?: true
+ *     }
  *
- * `red` / `yellow` are the score the club's ratings currently REFLECT
- * for this match; `deltas` are the points actually written. With that,
- * the Elo is a pure consequence of the score that can be re-derived at
- * any time:
+ * `applied` is what the club's ratings currently carry for this match:
+ * the result, and the points actually written to each membership for
+ * it. `applied: null` means NOTHING has been added yet.
  *
- *   `setMatchScore`     writes the score (the fact).
- *   `reconcileMatchElo` makes the ratings agree with whatever score the
- *                       match now has: take back the stored points, add
- *                       the new result's, store those. Run twice, the
- *                       second run finds the stored score equal to the
- *                       match's and does nothing. That is the whole of
- *                       "exactly once".
+ *   `setMatchScore`     writes the score (the fact) and, IN THE SAME
+ *                       UPDATE, `target`. It never touches a rating.
+ *   `reconcileMatchElo` makes the ratings agree with the score: take
+ *                       back `applied.deltas`, add the new result's,
+ *                       store those as `applied`. When `applied` already
+ *                       is the match's score it does nothing. That is
+ *                       the whole of "exactly once".
  *
  * Two functions and two transactions ON PURPOSE. `score-engine.ts`
  * explains why: a score is a fact the group reported and the Elo is
  * derived from it, so an Elo failure must never roll the score back.
- * Because reconcile works from the stored state and not from anything
- * its caller remembers, a failed reconcile is repaired by the next one.
+ *
+ * ── A FAILED ELO PASS IS "PENDING", AND THAT IS NOT "LEGACY" ─────────
+ *
+ * The first version of this file told the two apart by whether the
+ * column was NULL, and they are both NULL: a first score whose Elo pass
+ * threw (a timeout, a dropped connection) looked exactly like a match
+ * scored before the column existed, so a later correction "took back"
+ * points that had never been added (review of PR #214, item 1: four
+ * players on 1000 ended 949 / 1051 where 974 / 1026 was right).
+ *
+ * Hence `target`, written with the score. From the first score this
+ * file writes, the column is never NULL again:
+ *
+ *   NULL, match has a score       LEGACY. Scored before the column, by
+ *                                 code that added the points and stored
+ *                                 nothing. See below.
+ *   applied null                  PENDING. Reconcile goes FORWARD only.
+ *   applied = the match's score   in step. Reconcile does nothing.
+ *   applied = some other score    a correction. Take back, then add.
  *
  * ── MATCHES SCORED BEFORE THE COLUMN EXISTED ─────────────────────────
  *
- * Their `eloApplied` is NULL although points were added. The two cannot
- * be told apart by looking, so `setMatchScore` settles it at the only
- * moment it is knowable: when it overwrites a score on a match with no
- * record, it stamps `{ red: old, yellow: old, deltas: null }` in the
- * same update. "The ratings reflect the old score; what was written is
- * unknown."
+ * When `setMatchScore` overwrites the score of a match with a NULL
+ * record, it stamps `applied: { red: old, yellow: old, deltas: null,
+ * asOf }`: "the ratings carry the old result; what was written is
+ * unknown; the match row was last written at `asOf`".
  *
- * `reconcileMatchElo` then tries to recover the points with
- * `invertEloDeltas`, and ONLY when no later match of the club has been
- * scored (after one, the ratings have moved again and the answer would
- * be wrong). If it cannot, it LEAVES THE RATINGS ALONE, keeps the stamp
- * and reports `legacy_left`. Stale by one result is recoverable by a
- * person; a second result stacked on the first is the bug this file
- * exists to remove. The inversion can offer two neighbouring answers one
- * point apart (the forward pass rounds); the first is taken and the
- * result says so.
+ * `reconcileMatchElo` can then try to recover the points by inversion
+ * (`invertEloDeltas`), and ONLY when nothing can have moved these
+ * ratings since: no other scored match of the club has a later kickoff
+ * OR was written after `asOf`. `Match.updatedAt` moves on every write to
+ * a match, so "written after" errs towards refusing. Otherwise it LEAVES
+ * THE RATINGS ALONE and reports `legacy_left`. Stale by one result is
+ * recoverable by a person; a second result stacked on the first is the
+ * bug this file exists to remove.
  *
- * Every match scored from now on has its points stored, so none of this
- * paragraph applies to it.
+ * BE HONEST ABOUT WHAT THE INVERSION PROVES: nothing. It always finds an
+ * answer (one, or two a point apart), for any ratings whatever, because
+ * it is solving for the number that makes the forward pass agree with
+ * itself. It cannot tell that the ratings have moved since. The guard
+ * above is the only protection, and what it cannot see is a rating
+ * changed by something that is not a score (a player merge). An earlier
+ * version had a "no consistent answer, refuse" branch and described it
+ * as a safeguard; it could never fire.
+ *
+ * ── A SCORE CHANGED BY SOMETHING ELSE ────────────────────────────────
+ *
+ * If the match's score is not `target` when this file next sees it,
+ * something that does not keep the record changed it: the old code
+ * (between the migration and the deploy), or a script. What that did to
+ * the ratings is unknowable, so the match is marked `outOfStep`, its
+ * ratings are left alone from then on, and every reconcile says so.
+ *
+ * ── LOCKS ────────────────────────────────────────────────────────────
+ *
+ * The match row first, then the memberships involved, in id order, then
+ * ONE write per player with the net change, in the same order. Two
+ * reconciles touching the same players therefore queue instead of
+ * deadlocking, and the ratings read inside the lock are the ratings
+ * written against.
  */
 import { db as defaultDb } from "./db";
-import { computeEloDeltas, invertEloDeltas } from "./elo";
-import { loadMembershipEloInputs } from "./membership-elo";
+import { computeEloDeltas, invertEloDeltas, type PlayerEloInput } from "./elo";
+import { MEMBERSHIP_ELO_DEFAULT } from "./membership-elo";
 
 type Db = typeof defaultDb;
 // The interactive-transaction client. Structural, so a unit test can
@@ -75,35 +114,65 @@ type Db = typeof defaultDb;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Tx = any;
 
+type Score = { red: number; yellow: number };
+
 export interface EloApplied {
-  red: number;
-  yellow: number;
-  /** null: scored before the column existed, points unknown. */
-  deltas: Array<{ userId: string; delta: number }> | null;
+  /** The score this file last wrote to the match. */
+  target: Score;
+  /** What the ratings carry for the match; null when nothing yet. */
+  applied:
+    | (Score & {
+        /** null: scored before the column existed, points unknown. */
+        deltas: Array<{ userId: string; delta: number }> | null;
+        /** Legacy stamp only: when the match row was last written before
+         *  this file first touched it (ISO). */
+        asOf?: string;
+      })
+    | null;
+  /** The score was changed by something that does not keep this record. */
+  outOfStep?: true;
 }
+
+const isScore = (v: unknown): v is Score =>
+  !!v &&
+  typeof v === "object" &&
+  Number.isInteger((v as Score).red) &&
+  Number.isInteger((v as Score).yellow);
 
 /** Read the column defensively: it is JSON, so its shape is a promise
  *  and not a guarantee. Anything unreadable is treated as absent. */
 export function parseEloApplied(raw: unknown): EloApplied | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  if (!Number.isInteger(r.red) || !Number.isInteger(r.yellow)) return null;
-  let deltas: EloApplied["deltas"] = null;
-  if (Array.isArray(r.deltas)) {
-    deltas = [];
-    for (const d of r.deltas as Array<Record<string, unknown>>) {
-      if (!d || typeof d.userId !== "string" || !Number.isInteger(d.delta)) return null;
-      deltas.push({ userId: d.userId, delta: d.delta as number });
+  if (!isScore(r.target)) return null;
+  const out: EloApplied = { target: { red: r.target.red, yellow: r.target.yellow }, applied: null };
+  if (r.applied !== null && r.applied !== undefined) {
+    if (!isScore(r.applied)) return null;
+    const a = r.applied as Score & { deltas?: unknown; asOf?: unknown };
+    let deltas: Array<{ userId: string; delta: number }> | null = null;
+    if (Array.isArray(a.deltas)) {
+      deltas = [];
+      for (const d of a.deltas as Array<Record<string, unknown>>) {
+        if (!d || typeof d.userId !== "string" || !Number.isInteger(d.delta)) return null;
+        deltas.push({ userId: d.userId, delta: d.delta as number });
+      }
     }
+    out.applied = {
+      red: a.red,
+      yellow: a.yellow,
+      deltas,
+      ...(typeof a.asOf === "string" ? { asOf: a.asOf } : {}),
+    };
   }
-  return { red: r.red as number, yellow: r.yellow as number, deltas };
+  if (r.outOfStep === true) out.outOfStep = true;
+  return out;
 }
 
 /** Thrown by `setMatchScore` when `expectPrevious` no longer matches:
  *  somebody else changed the score between the decision and the write. */
 export class ScoreMovedError extends Error {
   constructor(
-    public readonly expected: { red: number; yellow: number },
+    public readonly expected: Score,
     public readonly found: { red: number | null; yellow: number | null },
   ) {
     super(
@@ -112,6 +181,9 @@ export class ScoreMovedError extends Error {
   }
 }
 
+// A correction on a full 7-a-side sheet is a few dozen small statements,
+// one after the other. Prisma's default interactive transaction timeout
+// is 5 seconds, which a cold connection could eat into.
 const RECONCILE_TX = { timeout: 15_000, maxWait: 5_000 };
 
 async function lockMatch(tx: Tx, matchId: string): Promise<void> {
@@ -119,6 +191,9 @@ async function lockMatch(tx: Tx, matchId: string): Promise<void> {
   // one match's score or Elo run one after the other.
   await tx.$queryRaw`SELECT id FROM "Match" WHERE id = ${matchId} FOR UPDATE`;
 }
+
+const same = (a: Score | null, b: Score | null): boolean =>
+  !!a && !!b && a.red === b.red && a.yellow === b.yellow;
 
 /**
  * Write a match's score and mark it COMPLETED. The two move together: a
@@ -135,57 +210,77 @@ export async function setMatchScore(args: {
   matchId: string;
   red: number;
   yellow: number;
-  expectPrevious?: { red: number; yellow: number };
-}): Promise<{ previous: { red: number; yellow: number } | null; changed: boolean }> {
+  expectPrevious?: Score;
+}): Promise<{ previous: Score | null; changed: boolean }> {
   const db = args.db ?? defaultDb;
   const { matchId, red, yellow, expectPrevious } = args;
   return db.$transaction(async (tx: Tx) => {
     await lockMatch(tx, matchId);
     const row = await tx.match.findUnique({
       where: { id: matchId },
-      select: { redScore: true, yellowScore: true, eloApplied: true },
+      select: { redScore: true, yellowScore: true, eloApplied: true, updatedAt: true },
     });
     if (!row) throw new Error(`match ${matchId} not found`);
-    const previous =
+    const previous: Score | null =
       row.redScore !== null && row.yellowScore !== null
         ? { red: row.redScore as number, yellow: row.yellowScore as number }
         : null;
-    if (expectPrevious && (previous?.red !== expectPrevious.red || previous?.yellow !== expectPrevious.yellow)) {
+    if (expectPrevious && !same(previous, expectPrevious)) {
       throw new ScoreMovedError(expectPrevious, { red: row.redScore, yellow: row.yellowScore });
     }
-    // The legacy stamp. See the header: a scored match with no record
-    // had its points added by code that did not store them.
-    const stamp =
-      previous && parseEloApplied(row.eloApplied) === null
-        ? { eloApplied: { red: previous.red, yellow: previous.yellow, deltas: null } }
-        : {};
+
+    const target: Score = { red, yellow };
+    const record = parseEloApplied(row.eloApplied);
+    let next: EloApplied;
+    if (!record) {
+      next = previous
+        ? // LEGACY: scored before the column, points added and not stored.
+          {
+            target,
+            applied: {
+              red: previous.red,
+              yellow: previous.yellow,
+              deltas: null,
+              ...(row.updatedAt instanceof Date ? { asOf: row.updatedAt.toISOString() } : {}),
+            },
+          }
+        : // A FIRST SCORE. Nothing applied yet: pending until reconcile.
+          { target, applied: null };
+    } else {
+      // The score on the row should be what this file last wrote. If it
+      // is not, something else changed it and the record no longer
+      // describes the ratings.
+      const outOfStep = record.outOfStep === true || !same(previous, record.target);
+      next = { target, applied: record.applied, ...(outOfStep ? { outOfStep: true as const } : {}) };
+    }
+
     await tx.match.update({
       where: { id: matchId },
-      data: { redScore: red, yellowScore: yellow, status: "COMPLETED", ...stamp },
+      data: { redScore: red, yellowScore: yellow, status: "COMPLETED", eloApplied: next },
     });
-    return { previous, changed: previous?.red !== red || previous?.yellow !== yellow };
+    return { previous, changed: !same(previous, target) };
   });
 }
 
 export type ReconcileStatus =
   /** The match has no score. Nothing to do. */
   | "no_score"
-  /** The ratings already reflect this score. Nothing written. */
+  /** The ratings already carry this score. Nothing written. */
   | "unchanged"
-  /** First result for the match: its points were added and stored. */
+  /** The result's points were added and stored (nothing to take back). */
   | "applied"
   /** A changed result: the old points taken back, the new added. */
   | "corrected"
-  /** A changed result on a match scored before the points were stored,
-   *  where they could not be recovered. RATINGS LEFT AS THEY WERE. */
+  /** The ratings could NOT be brought into line and were LEFT AS THEY
+   *  WERE: an older match whose points could not be recovered, or a
+   *  score changed by something that does not keep the record. */
   | "legacy_left";
 
 export interface ReconcileResult {
   status: ReconcileStatus;
   /** How many memberships the new result's points were written to. */
   moved: number;
-  /** For a person reading a log. Set for `legacy_left` and for a legacy
-   *  correction that was only known to within one point. */
+  /** For a person reading a log or a note. */
   detail?: string;
 }
 
@@ -213,61 +308,118 @@ export async function reconcileMatchElo(args: { db?: Db; matchId: string }): Pro
       return { status: "no_score", moved: 0 };
     }
     const orgId: string = match.activity.orgId;
-    const red: number = match.redScore;
-    const yellow: number = match.yellowScore;
+    const score: Score = { red: match.redScore, yellow: match.yellowScore };
     const assignments = match.teamAssignments as Array<{ userId: string; team: "RED" | "YELLOW" }>;
-    const applied = parseEloApplied(match.eloApplied);
+    const record = parseEloApplied(match.eloApplied);
 
-    if (applied && applied.red === red && applied.yellow === yellow) {
+    // LEGACY and untouched: scored by code that added the points itself.
+    // Nothing here has changed the score, so there is nothing to do.
+    if (!record) return { status: "unchanged", moved: 0 };
+
+    if (record.outOfStep || !same(score, record.target)) {
+      const detail =
+        `the score was changed outside MatchTime's score writer (the record expects ` +
+        `${record.target.red}-${record.target.yellow}, the match reads ${score.red}-${score.yellow}), so what the ` +
+        `ratings carry for this match is unknown. Ratings left as they were.`;
+      if (!record.outOfStep) {
+        await tx.match.update({ where: { id: matchId }, data: { eloApplied: { ...record, outOfStep: true } } });
+      }
+      console.warn(`[match-elo] match ${matchId}: ${detail}`);
+      return { status: "legacy_left", moved: 0, detail };
+    }
+
+    if (record.applied && same(record.applied, score) ) {
       return { status: "unchanged", moved: 0 };
     }
 
-    let detail: string | undefined;
-    if (applied) {
-      let takeBack = applied.deltas;
-      if (takeBack === null) {
-        // Scored before the points were stored. Recover them or stop.
-        const recovered = await recoverLegacyDeltas(tx, { matchId, orgId, date: match.date, applied, assignments });
+    // ── Lock every membership this will read or write, in id order ───
+    const storedIds = (record.applied?.deltas ?? []).map((d) => d.userId);
+    const userIds = [...new Set([...assignments.map((a) => a.userId), ...storedIds])].sort();
+    if (userIds.length > 0) {
+      await tx.$queryRaw`SELECT id FROM "Membership" WHERE "orgId" = ${orgId} AND "userId" = ANY(${userIds}::text[]) ORDER BY id FOR UPDATE`;
+    }
+    const rows: Array<{ userId: string; matchRating: number }> =
+      userIds.length > 0
+        ? await tx.membership.findMany({
+            where: { orgId, userId: { in: userIds } },
+            select: { userId: true, matchRating: true },
+          })
+        : [];
+    const rating = new Map(rows.map((r) => [r.userId, r.matchRating]));
+
+    // ── What to take back ────────────────────────────────────────────
+    const notes: string[] = [];
+    let takeBack: Array<{ userId: string; delta: number }> = [];
+    if (record.applied) {
+      if (record.applied.deltas === null) {
+        const recovered = await recoverLegacyDeltas(tx, {
+          matchId,
+          orgId,
+          date: match.date,
+          applied: record.applied,
+          assignments,
+          rating,
+        });
         if (recovered.kind === "left") {
           console.warn(`[match-elo] match ${matchId}: ${recovered.detail}`);
           return { status: "legacy_left", moved: 0, detail: recovered.detail };
         }
         takeBack = recovered.deltas;
-        detail = recovered.detail;
-      }
-      for (const d of takeBack) {
-        if (d.delta === 0) continue;
-        await tx.membership.updateMany({
-          where: { userId: d.userId, orgId },
-          data: { matchRating: { decrement: d.delta } },
-        });
+        if (recovered.detail) notes.push(recovered.detail);
+      } else {
+        takeBack = record.applied.deltas;
       }
     }
 
-    // The new result, from the ratings as they now stand.
-    const { inputs } = await loadMembershipEloInputs({ db: tx, orgId, assignments });
-    const deltas = computeEloDeltas(inputs, red, yellow);
-    const written: Array<{ userId: string; delta: number }> = [];
-    for (const d of deltas) {
-      // `updateMany`, as in `membership-elo.ts`: a player with no
-      // membership at this club matches nothing and is not written, and
-      // is therefore not stored as written either.
-      const res = await tx.membership.updateMany({
-        where: { userId: d.userId, orgId },
-        data: { matchRating: { increment: d.delta } },
-      });
-      if (res.count > 0) written.push({ userId: d.userId, delta: d.delta });
+    // Somebody whose points are on the record and who has no membership
+    // here any more: merged into another player, or removed. A merge
+    // keeps the SURVIVOR's rating unless it was still the 1000 default
+    // (`merge-players-core.ts`), so whether these points travelled with
+    // them is not knowable from here. They are left, and it is said.
+    const gone = takeBack.filter((d) => d.delta !== 0 && !rating.has(d.userId));
+    if (gone.length > 0) {
+      notes.push(
+        `${gone.length} player${gone.length === 1 ? "" : "s"} on the stored record no longer ` +
+          `${gone.length === 1 ? "has" : "have"} a membership at this club (${gone.map((d) => d.userId).join(", ")}), ` +
+          `so their old points were not taken back.`,
+      );
     }
-    await tx.match.update({
-      where: { id: matchId },
-      data: { eloApplied: { red, yellow, deltas: written } },
-    });
-    const status: ReconcileStatus = applied ? "corrected" : "applied";
-    return { status, moved: written.length, ...(detail ? { detail } : {}) };
-    // A correction on a full 7-a-side sheet is about thirty small
-    // statements, one after the other. Prisma's default interactive
-    // transaction timeout is 5 seconds, which a cold connection could
-    // eat into; 15 keeps a slow night from leaving the ratings stale.
+
+    // ── The new result, from the ratings with the old points removed ──
+    const net = new Map<string, number>();
+    for (const d of takeBack) {
+      if (!rating.has(d.userId)) continue;
+      rating.set(d.userId, rating.get(d.userId)! - d.delta);
+      net.set(d.userId, (net.get(d.userId) ?? 0) - d.delta);
+    }
+    const inputs: PlayerEloInput[] = assignments.map((a) => ({
+      userId: a.userId,
+      team: a.team,
+      // No membership: no club opinion, which is 1000, and nowhere to
+      // persist a change (`membership-elo.ts`).
+      matchRating: rating.get(a.userId) ?? MEMBERSHIP_ELO_DEFAULT,
+    }));
+    const written: Array<{ userId: string; delta: number }> = [];
+    for (const d of computeEloDeltas(inputs, score.red, score.yellow)) {
+      if (!rating.has(d.userId)) continue;
+      written.push({ userId: d.userId, delta: d.delta });
+      net.set(d.userId, (net.get(d.userId) ?? 0) + d.delta);
+    }
+
+    // ── One write per player, in the order the rows were locked ──────
+    for (const userId of [...net.keys()].sort()) {
+      const by = net.get(userId)!;
+      if (by === 0) continue;
+      await tx.membership.updateMany({
+        where: { userId, orgId },
+        data: { matchRating: { increment: by } },
+      });
+    }
+
+    const next: EloApplied = { target: score, applied: { ...score, deltas: written } };
+    await tx.match.update({ where: { id: matchId }, data: { eloApplied: next } });
+    const status: ReconcileStatus = record.applied ? "corrected" : "applied";
+    return { status, moved: written.length, ...(notes.length ? { detail: notes.join(" ") } : {}) };
   }, RECONCILE_TX);
 }
 
@@ -277,14 +429,15 @@ async function recoverLegacyDeltas(
     matchId: string;
     orgId: string;
     date: Date;
-    applied: EloApplied;
+    applied: NonNullable<EloApplied["applied"]>;
     assignments: Array<{ userId: string; team: "RED" | "YELLOW" }>;
+    rating: Map<string, number>;
   },
 ): Promise<
   | { kind: "recovered"; deltas: Array<{ userId: string; delta: number }>; detail?: string }
   | { kind: "left"; detail: string }
 > {
-  const { matchId, orgId, date, applied, assignments } = args;
+  const { matchId, orgId, date, applied, assignments, rating } = args;
   const was = `${applied.red}-${applied.yellow}`;
   const hasBothSides =
     assignments.some((a) => a.team === "RED") && assignments.some((a) => a.team === "YELLOW");
@@ -292,12 +445,25 @@ async function recoverLegacyDeltas(
   // nothing to take back.
   if (!hasBothSides) return { kind: "recovered", deltas: [] };
 
+  // THE GUARD. Has anything scored since been able to move these
+  // ratings? Kickoff order alone is not enough: an OLDER match can be
+  // scored late. `asOf` is when this match's row was last written before
+  // the edit; without one (an unreadable stamp) nothing is assumed.
+  const asOf = applied.asOf ? new Date(applied.asOf) : null;
+  if (!asOf || Number.isNaN(asOf.getTime())) {
+    return {
+      kind: "left",
+      detail:
+        `scored ${was} before Elo points were stored, and when that score was written is not known, so those ` +
+        `points cannot be recovered safely. Ratings left as they were: they still reflect ${was}.`,
+    };
+  }
   const later = await tx.match.findFirst({
     where: {
       activity: { orgId },
       id: { not: matchId },
-      date: { gt: date },
       redScore: { not: null },
+      OR: [{ date: { gt: date } }, { updatedAt: { gt: asOf } }],
     },
     select: { id: true },
   });
@@ -305,23 +471,27 @@ async function recoverLegacyDeltas(
     return {
       kind: "left",
       detail:
-        `scored ${was} before Elo points were stored, and a later match of the club (${later.id}) has been ` +
-        `scored since, so those points cannot be recovered. Ratings left as they were: they still reflect ${was}.`,
+        `scored ${was} before Elo points were stored, and another match of the club (${later.id}) has been ` +
+        `played or scored since, so those points cannot be recovered. Ratings left as they were: they still reflect ${was}.`,
     };
   }
 
-  const { inputs, unmemberedUserIds } = await loadMembershipEloInputs({ db: tx, orgId, assignments });
-  const candidates = invertEloDeltas(inputs, applied.red, applied.yellow, new Set(unmemberedUserIds));
+  const unwritten = new Set(assignments.filter((a) => !rating.has(a.userId)).map((a) => a.userId));
+  const inputs: PlayerEloInput[] = assignments.map((a) => ({
+    userId: a.userId,
+    team: a.team,
+    matchRating: rating.get(a.userId) ?? MEMBERSHIP_ELO_DEFAULT,
+  }));
+  // Always at least one answer: see the header for why that is not a
+  // safeguard. Defensive only.
+  const candidates = invertEloDeltas(inputs, applied.red, applied.yellow, unwritten);
   if (candidates.length === 0) {
     return {
       kind: "left",
-      detail:
-        `scored ${was} before Elo points were stored, and no set of points is consistent with the ratings ` +
-        `as they stand. Ratings left as they were: they still reflect ${was}.`,
+      detail: `scored ${was} before Elo points were stored, and they could not be recovered. Ratings left as they were: they still reflect ${was}.`,
     };
   }
   const c = candidates[0];
-  const unwritten = new Set(unmemberedUserIds);
   return {
     kind: "recovered",
     deltas: assignments
@@ -330,8 +500,8 @@ async function recoverLegacyDeltas(
     ...(candidates.length > 1
       ? {
           detail:
-            `scored ${was} before Elo points were stored; the points taken back are known to within one ` +
-            `rating point per player (${candidates.length} consistent answers, the first was used).`,
+            `Scored ${was} before Elo points were stored; the points taken back are known to within one ` +
+            `rating point per player.`,
         }
       : {}),
   };

@@ -521,6 +521,9 @@ export interface GateOutcome extends Partitioned {
 
 export interface GateOptions {
   floor?: boolean;
+  /** The open "which team won?" question, passed straight to the
+   *  router. See `RouteBatchOptions.scoreAsk`. */
+  scoreAsk?: { labels: readonly [string, string] } | null;
   /** Injected by tests and by the recall harness. */
   model?: PipelineModel;
   /**
@@ -643,6 +646,7 @@ export async function gateBatch(
       floor,
       awaiting: opts.awaiting ?? null,
       clarifications: opts.clarifications ?? [],
+      scoreAsk: opts.scoreAsk ?? null,
     });
     const p = partition(messages, routed.routes, { floor });
     return {

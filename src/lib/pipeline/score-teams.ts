@@ -15,10 +15,40 @@
  * THE RULE WHEN NOTHING SAYS: ASK. Two different numbers with no team
  * ("10-7") used to be recorded Red first. That is not a convention this
  * product ever told anybody: the bot's own question is "What was the
- * final score?", and of the club's twelve reports before the incident
+ * final score?", and of the club's reports before the incident nearly
  * every one with a winner named the team ("5-4 to Yellows"). A guess
  * that is wrong half the time, announced as "recorded", is worse than
  * one short question. A draw needs no team and is never asked about.
+ *
+ * ── TWO KINDS OF STATEMENT, AND THEY ARE NOT EQUALLY STRONG ──────────
+ * (review of PR #214, item 5)
+ *
+ *   OUTCOME   a word says who won or lost: "to yellows", "yellow wins",
+ *             "kazandı", "we lost". `winner` / `loser`. Strong.
+ *   POSITION  a team name written beside a number, and nothing else.
+ *             `firstTeam` / `secondTeam`.
+ *
+ * BOTH numbers labelled ("Yellow 9 - 6 Red") is strong: it is the
+ * result, spelled out. ONE name beside one number is not. "Reds 3-5" is
+ * as likely the sender's own score first as it is a Red win written
+ * backwards, so a lone name is believed only when it sits beside the
+ * HIGHER number ("yellow 9-6"), and only when no outcome word says
+ * otherwise. Beside the lower number with no such word, the bot asks.
+ * The extractor reports where the name was written; whether that is
+ * enough is decided here, not by the model.
+ *
+ * ── NAMES ARE WHOLE WORDS (item 7) ───────────────────────────────────
+ * A reference names a team when its words ARE the team's words, give or
+ * take an ending this file knows: an English plural or possessive, a
+ * Turkish plural, a Turkish case ending. Never a prefix: "Reda's team",
+ * "Reddy" and "yel" name nobody. See `wordIs`.
+ *
+ * ── COLOURS BELONG TO A SIDE ONLY WHILE IT IS CALLED BY ITS COLOUR ───
+ * "yellows" means the YELLOW side when that side is called Yellow or
+ * Sarı. Once a club calls its sides Blue and White, or Lions and Tigers,
+ * "yellow" is neither team's name and is asked about. (The first version
+ * mapped it anyway, on the theory that the bibs are still yellow. Nobody
+ * knows what colour the Tigers wear.)
  */
 import type { ScoreFacts } from "./types";
 
@@ -30,8 +60,10 @@ export type ScoreResolution =
       kind: "ask";
       /** `no_team`: the message names nobody. `unknown_team`: it names
        *  somebody who is neither side (or "we" from a sender who was on
-       *  neither). `conflict`: it says two things that cannot both hold. */
-      why: "no_team" | "unknown_team" | "conflict";
+       *  neither). `conflict`: it says two things that cannot both hold.
+       *  `lone_lower`: one team name beside the lower number and no word
+       *  saying who won. */
+      why: "no_team" | "unknown_team" | "conflict" | "lone_lower";
     };
 
 const other = (t: TeamSide): TeamSide => (t === "RED" ? "YELLOW" : "RED");
@@ -47,27 +79,96 @@ function fold(s: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-/** Words people put around a team name that are not part of it. */
-const FILLER = /^(the|team|takim)|(team|takim|takimi)$/g;
-
 const SELF = new Set(["us", "we", "our", "ours", "biz", "bizim", "bizimkiler"]);
 const THEM = new Set(["them", "they", "their", "theirs", "onlar", "onlarin"]);
 
-/** The colour each side wears, in both languages the product speaks. */
-const COLOUR: Record<TeamSide, string[]> = {
-  RED: ["red", "kirmizi"],
-  YELLOW: ["yellow", "sari"],
+/** Words people put around a team name that are not part of it. */
+const FILLER = new Set(["the", "team", "side", "lot", "lads", "boys", "takim", "takimi", "takimin"]);
+
+/** Folded. The colour each side is, in both languages the product speaks. */
+const COLOUR: Record<TeamSide, { en: string; tr: string }> = {
+  RED: { en: "red", tr: "kirmizi" },
+  YELLOW: { en: "yellow", tr: "sari" },
 };
 
-/** Does `ref` name `name`? Exact, or one is the other plus a short
- *  ending ("yellows", "sarilar", "lion" for "Lions"). Three letters
- *  minimum, so "a" never matches "Arsenal". */
-function names(ref: string, name: string): boolean {
-  if (!ref || !name) return false;
-  if (ref === name) return true;
-  if (name.length >= 3 && ref.startsWith(name) && ref.length - name.length <= 4) return true;
-  if (ref.length >= 3 && name.startsWith(ref)) return true;
-  return false;
+/** Turkish case endings, folded (so ı and i, ü and u are one). */
+const TR_CASE = new Set([
+  "i", "u", "e", "a", "yi", "yu", "ye", "ya", "in", "un", "nin", "nun",
+  "de", "da", "te", "ta", "den", "dan", "ten", "tan", "le", "la", "yle", "yla",
+]);
+
+/** Is `ending` a Turkish plural, optionally with a case ending after it? */
+function isTurkishPlural(ending: string): boolean {
+  const m = /^l[ae]r(.*)$/.exec(ending);
+  return !!m && (m[1] === "" || TR_CASE.has(m[1]));
+}
+
+/**
+ * Is `word` the name-word `name`, give or take a known ending?
+ *
+ *   exact                         "yellow", "sarı"
+ *   English plural                "yellows", "reds"
+ *   singular of a plural name     "tiger" for "Tigers"
+ *   Turkish plural (+ case)       "sarılar", "Kartalların", "sarılardan"
+ *   anything after an apostrophe  "yellow's", "Kartal'a", "Aslan'dan",
+ *                                 as long as it is one of the above
+ *                                 endings or a Turkish case ending
+ *   a bare Turkish case ending    ONLY on the Turkish colour words
+ *                                 (`trNoun`): "sarıya", "kırmızıdan".
+ *                                 A proper name takes its case ending
+ *                                 after an apostrophe in Turkish, and
+ *                                 allowing it bare is how "Reda" would
+ *                                 become "Red" + "a".
+ */
+function wordIs(rawWord: string, name: string, trNoun: boolean): boolean {
+  if (!name) return false;
+  const cut = rawWord.search(/['’]/);
+  const stem = fold(cut === -1 ? rawWord : rawWord.slice(0, cut));
+  const after = cut === -1 ? "" : fold(rawWord.slice(cut + 1));
+  if (after && !(after === "s" || TR_CASE.has(after) || isTurkishPlural(after))) return false;
+  if (stem === name) return true;
+  if (name.endsWith("s") && stem === name.slice(0, -1) && stem.length >= 3) return true;
+  if (!stem.startsWith(name)) return false;
+  const ending = stem.slice(name.length);
+  if (ending === "s" || ending === "es") return true;
+  if (isTurkishPlural(ending)) return true;
+  return trNoun && TR_CASE.has(ending);
+}
+
+/** The words of a reference or a label, as written, minus filler. */
+function words(s: string): string[] {
+  const all = s.split(/[^\p{L}\p{N}'’]+/u).filter(Boolean);
+  const kept = all.filter((w) => !FILLER.has(fold(w)));
+  return kept;
+}
+
+/**
+ * How well do the reference's words name this label? 2: all of the
+ * label's words, in order. 1: a run of them ("submarines" for "Yellow
+ * Submarines"). 0: no.
+ */
+function labelMatch(ref: string[], label: string): 0 | 1 | 2 {
+  const allWords = label.split(/[^\p{L}\p{N}'’]+/u).filter(Boolean);
+  const stripped = allWords.filter((w) => !FILLER.has(fold(w)));
+  const names = (stripped.length > 0 ? stripped : allWords).map(fold);
+  if (ref.length === 0 || names.length === 0 || ref.length > names.length) return 0;
+  for (let at = 0; at + ref.length <= names.length; at++) {
+    if (ref.every((w, i) => wordIs(w, names[at + i], false))) {
+      return ref.length === names.length ? 2 : 1;
+    }
+  }
+  return 0;
+}
+
+/** Is this side still called by its colour (in either language)? */
+function calledByItsColour(label: string, side: TeamSide): boolean {
+  const f = fold(label);
+  return f === COLOUR[side].en || f === COLOUR[side].tr;
+}
+
+function colourMatch(ref: string[], side: TeamSide): boolean {
+  if (ref.length !== 1) return false;
+  return wordIs(ref[0], COLOUR[side].en, false) || wordIs(ref[0], COLOUR[side].tr, true);
 }
 
 /**
@@ -75,9 +176,8 @@ function names(ref: string, name: string): boolean {
  * could mean both.
  *
  * Order: the sender's own side ("us" / "them"), then the club's names
- * for its teams, then the colour words. A club's own name wins over a
- * colour, so a club that calls a side "Yellow Submarines" is not
- * second-guessed.
+ * for its teams, then the colour words for a side still called by its
+ * colour.
  */
 export function resolveTeamRef(
   ref: string | undefined | null,
@@ -90,30 +190,55 @@ export function resolveTeamRef(
   if (SELF.has(folded)) return senderTeam;
   if (THEM.has(folded)) return senderTeam ? other(senderTeam) : null;
 
-  const bare = folded.replace(FILLER, "") || folded;
-  const red = fold(labels[0]);
-  const yellow = fold(labels[1]);
-  const isRed = names(bare, red) || names(folded, red);
-  const isYellow = names(bare, yellow) || names(folded, yellow);
-  if (isRed !== isYellow) return isRed ? "RED" : "YELLOW";
-  if (isRed && isYellow) return null;
+  const w = words(raw);
+  if (w.length === 0) return null;
 
-  const colourRed = COLOUR.RED.some((c) => names(bare, c));
-  const colourYellow = COLOUR.YELLOW.some((c) => names(bare, c));
-  if (colourRed !== colourYellow) return colourRed ? "RED" : "YELLOW";
+  const red = labelMatch(w, labels[0]);
+  const yellow = labelMatch(w, labels[1]);
+  if (red !== yellow) return red > yellow ? "RED" : "YELLOW";
+  if (red > 0) return null; // both, equally: ambiguous
+
+  const cRed = calledByItsColour(labels[0], "RED") && colourMatch(w, "RED");
+  const cYellow = calledByItsColour(labels[1], "YELLOW") && colourMatch(w, "YELLOW");
+  if (cRed !== cYellow) return cRed ? "RED" : "YELLOW";
   return null;
 }
 
 /**
- * Map the facts onto `{ red, yellow }`.
- *
- * Every statement in the message that names a team is turned into "what
- * would Red's score be if this were true", and the answers must agree.
- * `first` and `second` are taken as given; range checking is the
- * engine's.
+ * Who won, from the OUTCOME words alone (`winner` / `loser`). For a
+ * message with no numbers: an answer to "which team won?", or "wrong
+ * way round, yellows won". null when nobody is named, a name is
+ * nobody's, or the two disagree.
+ */
+export function resolveWinnerSide(args: {
+  facts: ScoreFacts;
+  labels: readonly [string, string];
+  senderTeam: TeamSide | null;
+}): TeamSide | null {
+  const { facts, labels, senderTeam } = args;
+  const says = new Set<TeamSide>();
+  let unknown = false;
+  if ((facts.winner ?? "").trim()) {
+    const s = resolveTeamRef(facts.winner, labels, senderTeam);
+    if (s) says.add(s);
+    else unknown = true;
+  }
+  if ((facts.loser ?? "").trim()) {
+    const s = resolveTeamRef(facts.loser, labels, senderTeam);
+    if (s) says.add(other(s));
+    else unknown = true;
+  }
+  if (unknown || says.size !== 1) return null;
+  return [...says][0];
+}
+
+/**
+ * Map the facts onto `{ red, yellow }`. The caller has checked that the
+ * message HAS two numbers (`first` and `second` are not null) and that
+ * they are in range.
  */
 export function resolveScoreResult(args: {
-  facts: ScoreFacts;
+  facts: ScoreFacts & { first: number; second: number };
   /** The PLAYED match's display names, [red, yellow]. */
   labels: readonly [string, string];
   /** The sender's side in that match, or null. */
@@ -126,13 +251,14 @@ export function resolveScoreResult(args: {
 
   const hi = Math.max(first, second);
   const lo = Math.min(first, second);
+  const has = (v: string | undefined) => !!(v ?? "").trim();
   let named = 0;
   let unknown = 0;
-  /** Red's score according to each statement that resolved. */
+  /** Red's score according to each STRONG statement that resolved. */
   const redSays = new Set<number>();
 
-  const consider = (ref: string | undefined, ifRed: number, ifYellow: number) => {
-    if (!(ref ?? "").trim()) return;
+  const strong = (ref: string | undefined, ifRed: number, ifYellow: number) => {
+    if (!has(ref)) return;
     named++;
     const side = resolveTeamRef(ref, labels, senderTeam);
     if (!side) {
@@ -142,15 +268,35 @@ export function resolveScoreResult(args: {
     redSays.add(side === "RED" ? ifRed : ifYellow);
   };
 
-  consider(facts.firstTeam, first, second); // first is this team's
-  consider(facts.secondTeam, second, first); // second is this team's
-  consider(facts.winner, hi, lo); // this team has the bigger number
-  consider(facts.loser, lo, hi); // this team has the smaller number
+  strong(facts.winner, hi, lo); // this team has the bigger number
+  strong(facts.loser, lo, hi); // this team has the smaller number
+
+  const bothLabelled = has(facts.firstTeam) && has(facts.secondTeam);
+  if (bothLabelled) {
+    strong(facts.firstTeam, first, second); // first is this team's
+    strong(facts.secondTeam, second, first); // second is this team's
+  }
 
   if (redSays.size > 1) return { kind: "ask", why: "conflict" };
   if (redSays.size === 1) {
     const red = [...redSays][0];
     return { kind: "resolved", red, yellow: red === first ? second : first };
   }
-  return { kind: "ask", why: named === 0 ? "no_team" : unknown > 0 ? "unknown_team" : "no_team" };
+
+  // No strong statement resolved. A LONE name beside one number?
+  if (!bothLabelled && (has(facts.firstTeam) || has(facts.secondTeam))) {
+    named++;
+    const isFirst = has(facts.firstTeam);
+    const side = resolveTeamRef(isFirst ? facts.firstTeam : facts.secondTeam, labels, senderTeam);
+    if (!side) {
+      unknown++;
+    } else {
+      const theirs = isFirst ? first : second;
+      if (theirs !== hi) return { kind: "ask", why: "lone_lower" };
+      const red = side === "RED" ? hi : lo;
+      return { kind: "resolved", red, yellow: red === first ? second : first };
+    }
+  }
+
+  return { kind: "ask", why: named > 0 && unknown > 0 ? "unknown_team" : "no_team" };
 }

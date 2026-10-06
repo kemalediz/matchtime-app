@@ -32,7 +32,18 @@ import { createGroup, SimGroup } from "./group";
  *  match's own team names, so the labels can be anything. */
 const score = (first: number, second: number, firstTeam = "bibs", secondTeam = "skins") => ({
   route: "score",
-  facts: { first, second, firstTeam, secondTeam, winner: "", loser: "", correction: false },
+  facts: {
+    hasScore: true,
+    first,
+    second,
+    firstTeam,
+    secondTeam,
+    winner: "",
+    loser: "",
+    correction: false,
+    swapped: false,
+    otherGame: false,
+  },
 });
 
 test.describe.configure({ mode: "serial" });

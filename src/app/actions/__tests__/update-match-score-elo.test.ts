@@ -102,4 +102,32 @@ describe("updateMatchScore and the club's Elo", () => {
     await updateMatchScore("m1", { redScore: 6, yellowScore: 9 });
     expect(sendRatingEmails).toHaveBeenCalledTimes(1);
   });
+
+  it("tells the admin, in the club's language, when the Elo could not be recalculated", async () => {
+    // An older match (points never stored) with a later match scored
+    // since: the old points cannot be recovered, so the ratings are left
+    // alone. That used to be a console line only (review item 2).
+    const carried = expectedAfter(START, 9, 6);
+    const older = match({ redScore: 9, yellowScore: 6 });
+    const later = match({ id: "m2", date: new Date("2026-10-13T19:30:00Z"), redScore: 2, yellowScore: 2 });
+    state.fake = fakeScoreDb({ matches: [older, later], ratings: { ...carried } });
+    const en = await updateMatchScore("m1", { redScore: 6, yellowScore: 9 });
+    expect(en.eloNote).toMatch(/^Score saved\. The Elo ratings were not recalculated/);
+    expect(state.fake.matches.get("m1")).toMatchObject({ redScore: 6, yellowScore: 9 });
+    expect(ratingsNow()).toEqual(carried);
+
+    state.fake = fakeScoreDb({
+      matches: [match({ redScore: 9, yellowScore: 6 }), { ...later }],
+      ratings: { ...carried },
+      language: "tr",
+    });
+    const tr = await updateMatchScore("m1", { redScore: 6, yellowScore: 9 });
+    expect(tr.eloNote).toMatch(/^Skor kaydedildi\. Bu maç için Elo puanları yeniden hesaplanmadı/);
+    expect(`${en.eloNote}${tr.eloNote}`).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  it("says nothing extra on an ordinary save", async () => {
+    expect((await updateMatchScore("m1", { redScore: 9, yellowScore: 6 })).eloNote).toBeNull();
+    expect((await updateMatchScore("m1", { redScore: 6, yellowScore: 9 })).eloNote).toBeNull();
+  });
 });

@@ -677,6 +677,22 @@ export function compose(result: EngineResult): ComposedOutput {
         break;
       }
 
+      case "score_recorded_hint": {
+        const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.score_recorded_hint({ redLabel, red: sp.red, yellow: sp.yellow, yellowLabel }),
+        });
+        break;
+      }
+
+      case "score_which_match":
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.score_which_match({ kickoffLabel: state.completedMatch?.kickoffLabel ?? s.no_match_label }),
+        });
+        break;
+
       case "payment_ack":
         utterances.push({
           messageId: sp.messageId,

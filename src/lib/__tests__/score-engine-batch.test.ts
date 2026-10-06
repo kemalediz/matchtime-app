@@ -73,6 +73,8 @@ function stubModel(table: Record<string, unknown>, opts: { throwOn?: string } = 
 }
 
 interface Recorder {
+  /** Every "which team won?" the batch asked the apply layer to remember. */
+  asked: Array<{ matchId: string; first: number; second: number }>;
   recorded: Array<{ matchId: string; red: number; yellow: number; previous?: { red: number; yellow: number } }>;
   /** One entry per Elo reconcile, holding the match it was asked about. */
   elo: string[];
@@ -88,7 +90,9 @@ function recorder(
 ): Recorder {
   const recorded: Recorder["recorded"] = [];
   const elo: string[] = [];
+  const asked: Recorder["asked"] = [];
   return {
+    asked,
     recorded,
     elo,
     deps: {
@@ -100,6 +104,9 @@ function recorder(
       reconcileElo: async (matchId) => {
         elo.push(matchId);
         return { moved: eloMoved };
+      },
+      recordScoreAsk: async (a) => {
+        asked.push(a);
       },
       ...over,
     },
@@ -362,16 +369,70 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
     expect(res.degradations.join(" ")).toMatch(/reads 8-6/);
   });
 
-  it("a bare scoreline is asked about: a reply, no write, no Elo", async () => {
+  it("a bare scoreline is asked about: a reply, no score, no Elo, and the question is REMEMBERED", async () => {
     const { model } = stubModel({ "10-7": { first: 10, second: 7 } });
     const r = recorder(model, playedWorld());
     const res = await run({ messages: [msg({ body: "10-7" })], model, deps: r.deps });
     expect(r.recorded).toEqual([]);
     expect(r.elo).toEqual([]);
+    expect(r.asked).toEqual([{ matchId: "done-1", first: 10, second: 7 }]);
     const out = [...res.outcomes.values()][0];
     expect(out.action).toBe("reply");
-    expect(out.reply).toMatch(/^10 - 7 to which team, Red or Yellow\?/);
+    expect(out.reply).toBe("10 - 7: which team won? Reply with the winning team: Red or Yellow.");
     expect(res.scoredMatchId).toBeNull();
+  });
+
+  it('"Yellow" in answer to the open question records the result WITHOUT a model call', async () => {
+    // The stub has no entry for "Yellow": a model call would throw, the
+    // extraction would fail and nothing would be owned.
+    const { model, calls } = stubModel({});
+    const r = recorder(
+      model,
+      playedWorld({
+        completedMatch: {
+          id: "done-1",
+          participantUserIds: PLAYED.map((k) => `u-${k}`),
+          pendingScore: { first: 10, second: 7, askedAt: new Date(NOW.getTime() - 60_000).toISOString() },
+        },
+      }),
+    );
+    const res = await run({ messages: [msg({ body: "Yellow" })], model, deps: r.deps });
+    expect(calls).toEqual([]);
+    expect(res.cost.calls).toBe(0);
+    expect(r.recorded).toEqual([{ matchId: "done-1", red: 7, yellow: 10 }]);
+    expect([...res.outcomes.values()][0].reply).toBe("Got it 👍 *Yellow* won 10 - 7 against Red. Recorded.");
+  });
+
+  it("with no question open, a bare team name is read by the model as usual and records nothing", async () => {
+    const { model, calls } = stubModel({
+      Yellow: { hasScore: false, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "Yellow", loser: "", correction: false, swapped: false, otherGame: false },
+    });
+    const r = recorder(model, playedWorld());
+    const res = await run({ messages: [msg({ body: "Yellow" })], model, deps: r.deps });
+    expect(calls).toHaveLength(1);
+    expect(r.recorded).toEqual([]);
+    expect([...res.outcomes.values()][0].reply).toBeNull();
+  });
+
+  it("a message with no numbers is never recorded as 0-0", async () => {
+    const { model } = stubModel({
+      "good game": { hasScore: false, first: 0, second: 0, firstTeam: "", secondTeam: "", winner: "", loser: "", correction: false, swapped: false, otherGame: false },
+    });
+    const r = recorder(model, playedWorld());
+    await run({ messages: [msg({ body: "good game" })], model, deps: r.deps });
+    expect(r.recorded).toEqual([]);
+  });
+
+  it("still asks out loud if remembering the question failed, and reports it", async () => {
+    const { model } = stubModel({ "10-7": { first: 10, second: 7 } });
+    const r = recorder(model, playedWorld(), {
+      recordScoreAsk: async () => {
+        throw new Error("unique violation");
+      },
+    });
+    const res = await run({ messages: [msg({ body: "10-7" })], model, deps: r.deps });
+    expect([...res.outcomes.values()][0].reply).toMatch(/which team won/);
+    expect(res.degradations.join(" ")).toMatch(/could not be remembered.*unique violation/);
   });
 
   it("ratings that had to be left alone are reported to the operator, and the score is still acked", async () => {

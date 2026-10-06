@@ -19,6 +19,8 @@ import { getOrgFeatures } from "../org-features";
 import { loadReclaimUserIds } from "../squad-reclaim";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { resolveTeamLabels } from "../team-labels";
+import { SCORE_ASK_KIND, parseScoreAskKey } from "./score-ask";
+import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
@@ -193,6 +195,28 @@ export async function loadSquadState(
         .filter((id): id is string => !!id)
     : [];
 
+  // The scoreline MatchTime has asked about for the played match, if any
+  // (`score-ask.ts`). One row per match at most; the newest wins.
+  const scoreAskRow = completed
+    ? await db.sentNotification.findFirst({
+        where: { kind: SCORE_ASK_KIND, matchId: completed.id },
+        orderBy: { createdAt: "desc" },
+        select: { key: true, createdAt: true },
+      })
+    : null;
+  const scoreAsk = scoreAskRow ? parseScoreAskKey(scoreAskRow.key) : null;
+  // Another match of the club with a result, kicked off inside the
+  // correction window. See `SquadState.completedMatch.earlierRecentResult`.
+  const earlierRecentResult =
+    !!completed &&
+    completedCandidates.some(
+      (m) =>
+        m.id !== completed.id &&
+        m.redScore !== null &&
+        m.yellowScore !== null &&
+        now.getTime() - m.date.getTime() <= SCORE_CORRECTION_WINDOW_MS,
+    );
+
   const lastBotJob = await db.botJob.findFirst({
     where: { orgId, kind: "group" },
     select: { text: true },
@@ -248,6 +272,16 @@ export async function loadSquadState(
             userId: t.userId,
             team: t.team as "RED" | "YELLOW",
           })),
+          ...(scoreAsk && scoreAskRow
+            ? {
+                pendingScore: {
+                  first: scoreAsk.first,
+                  second: scoreAsk.second,
+                  askedAt: scoreAskRow.createdAt.toISOString(),
+                },
+              }
+            : {}),
+          earlierRecentResult,
         }
       : null,
     lastBotPost: lastBotJob?.text ?? null,

@@ -12,9 +12,12 @@
 -- WHAT APPLYING THIS DOES TO A LIVE DATABASE
 -- ------------------------------------------
 -- Strictly additive.
---   * "Match"."eloApplied" JSONB NULL. Shape:
---       { "red": int, "yellow": int,
---         "deltas": [{ "userId": text, "delta": int }] | null }
+--   * "Match"."eloApplied" JSONB NULL. Shape (src/lib/match-elo.ts):
+--       { "target":  { "red": int, "yellow": int },
+--         "applied": { "red": int, "yellow": int,
+--                      "deltas": [{ "userId": text, "delta": int }] | null,
+--                      "asOf"?: text } | null,
+--         "outOfStep"?: true }
 --     NULL on every existing row. Adding a nullable column with no
 --     default does not rewrite the table.
 --   * ONE row is filled in: the Sutton FC match of 6 October 2026
@@ -29,21 +32,37 @@
 --
 -- MATCHES SCORED BEFORE THIS COLUMN EXISTED
 -- -----------------------------------------
--- They stay NULL and nothing about them changes until somebody edits
--- their score. Then the code stamps { red, yellow, deltas: null } with
--- the OLD score in the same write, meaning "the ratings reflect this
--- score and what was written is unknown", and tries to work the points
--- out backwards. It only does that when no later match of the club has
--- been scored; otherwise it leaves the ratings alone, keeps the stamp,
--- and says so in the log. It never adds a second result's points on top.
+-- They stay NULL, which on a match that has a score MEANS "scored before
+-- this column". Nothing about them changes until somebody edits their
+-- score. Then the code stamps applied = { old score, deltas: null, asOf }
+-- in the same write ("the ratings carry the old result; what was written
+-- is unknown") and tries to work the points out backwards. It only does
+-- that when no other match of the club has a later kickoff or was
+-- written since; otherwise it leaves the ratings alone, keeps the stamp,
+-- and says so (log, and a note on the dashboard). It never adds a second
+-- result's points on top.
 --
--- DEPLOY ORDER: APPLY THIS BEFORE THE CODE THAT READS THE COLUMN.
+-- DEPLOY ORDER: APPLY THIS BEFORE THE CODE THAT READS THE COLUMN, AND
+-- DEPLOY THAT CODE STRAIGHT AFTER.
 -- The old code never mentions the column, so applying first is safe.
 -- The new code selects it on every score write and would fail without it.
 --
+-- THE WINDOW BETWEEN THE TWO. While the OLD code is still serving, an
+-- edit of the 6 October score on the dashboard adds the new result on
+-- top (the old bug) and leaves this file's record saying 6-9. The new
+-- code DETECTS that the first time it touches the match (the score is
+-- not the record's "target"), marks it outOfStep, leaves the ratings
+-- alone and says so; it cannot repair it. So: do not edit that match's
+-- score between applying this and deploying, and check just before the
+-- deploy (expect no rows):
+--   SELECT id FROM "Match"
+--    WHERE "eloApplied" IS NOT NULL
+--      AND (("eloApplied"->'target'->>'red')::int <> "redScore"
+--        OR ("eloApplied"->'target'->>'yellow')::int <> "yellowScore");
+--
 -- Verify after applying:
 --   SELECT count(*) FROM "Match" WHERE "eloApplied" IS NOT NULL;   -- expect 1
---   SELECT jsonb_array_length("eloApplied"->'deltas') FROM "Match"
+--   SELECT jsonb_array_length("eloApplied"->'applied'->'deltas') FROM "Match"
 --    WHERE id = 'cmtbro2ct0006tt9kxjbbr0ce';                       -- expect 14
 --
 -- Rolling back (only before the new code is deployed):
@@ -64,15 +83,18 @@ ALTER TABLE "Match" ADD COLUMN IF NOT EXISTS "eloApplied" JSONB;
 
 UPDATE "Match"
    SET "eloApplied" = jsonb_build_object(
-         'red', 6,
-         'yellow', 9,
-         'deltas', (
-           SELECT jsonb_agg(jsonb_build_object(
-                    'userId', ta."userId",
-                    'delta', CASE WHEN ta."team" = 'RED' THEN -27 ELSE 27 END
-                  ) ORDER BY ta."userId")
-             FROM "TeamAssignment" ta
-            WHERE ta."matchId" = 'cmtbro2ct0006tt9kxjbbr0ce'
+         'target', jsonb_build_object('red', 6, 'yellow', 9),
+         'applied', jsonb_build_object(
+           'red', 6,
+           'yellow', 9,
+           'deltas', (
+             SELECT jsonb_agg(jsonb_build_object(
+                      'userId', ta."userId",
+                      'delta', CASE WHEN ta."team" = 'RED' THEN -27 ELSE 27 END
+                    ) ORDER BY ta."userId")
+               FROM "TeamAssignment" ta
+              WHERE ta."matchId" = 'cmtbro2ct0006tt9kxjbbr0ce'
+           )
          )
        )
  WHERE "id" = 'cmtbro2ct0006tt9kxjbbr0ce'
