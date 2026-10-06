@@ -117,7 +117,7 @@ export const en = {
   // ── row 2: formatTeamsPost (group-copy.ts) ───────────────────────
 
   teams_post_header: (p: { kickoff: string; venue: string }): string =>
-    `⚽ *Teams for tonight* — ${p.kickoff} at ${p.venue}`,
+    `⚽ *Teams for tonight*: ${p.kickoff} at ${p.venue}`,
   teams_post_footer: "Objections? Reply `@Match Time swap X with Y` and an admin will confirm.",
 
   // ── row 2b: replacement_teams_post (pipeline/compose.ts) ─────────
@@ -145,13 +145,13 @@ export const en = {
   }): string => {
     if (p.swaps.length === 1 && p.outNames.length === 1) {
       return (
-        `🔁 *${p.outNames[0]} is out* — *${p.swaps[0].inName}* takes his place ` +
+        `🔁 *${p.outNames[0]} is out*. *${p.swaps[0].inName}* takes his place ` +
         `and his spot in *${p.swaps[0].teamLabel}*.`
       );
     }
     const head =
       p.outNames.length > 0
-        ? `🔁 *${joinList("en", p.outNames)} ${p.outNames.length === 1 ? "is" : "are"} out* — `
+        ? `🔁 *${joinList("en", p.outNames)} ${p.outNames.length === 1 ? "is" : "are"} out*. `
         : "🔁 ";
     return (
       head +
@@ -167,7 +167,7 @@ export const en = {
   // ── row 43: buildSquadCompletePost (group-copy.ts) ───────────────
 
   squad_complete_header: (p: { maxPlayers: number; activityName: string; kickoffLabel: string }): string =>
-    `✅ *Squad complete — ${p.maxPlayers}/${p.maxPlayers}* for *${p.activityName}* on ${p.kickoffLabel} 🙌`,
+    `✅ *Squad complete (${p.maxPlayers}/${p.maxPlayers})* for *${p.activityName}* on ${p.kickoffLabel} 🙌`,
   squad_complete_signoff: "See you all there ⚽",
 
   // ── rows 52, 53, 54: the bench-promotion promise (bench-offer-copy.ts)
@@ -248,7 +248,7 @@ export const en = {
   // ── row 68: buildAnnounceMatchPost (scheduler-copy.ts) ───────────
 
   announce_match: (p: { activityName: string; dateLabel: string; venue: string; maxPlayers: number }): string =>
-    `📅 *${p.activityName}* — *${p.dateLabel}* at ${p.venue}.\n\nSay *IN* to join. First ${p.maxPlayers} confirmed play.`,
+    `📅 *${p.activityName}*: *${p.dateLabel}* at ${p.venue}.\n\nSay *IN* to join. First ${p.maxPlayers} confirmed play.`,
 
   // ── row 71: buildSquadRosterBlock (scheduler-copy.ts) ────────────
 
@@ -269,7 +269,7 @@ export const en = {
   // ── rows 69, 70: the match-day 17:00 posts (scheduler-copy.ts) ───
 
   match_day_header: (p: { timeLabel: string; activityName: string; venue: string }): string =>
-    `⚽ *Tonight at ${p.timeLabel}* — *${p.activityName}* at ${p.venue}`,
+    `⚽ *Tonight at ${p.timeLabel}*: *${p.activityName}* at ${p.venue}`,
   match_day_teams_signoff: "See you tonight 🙌",
   match_day_locked_line:
     "Squad is locked. Say *@Match Time generate the teams* in the chat to lock in tonight's lineup 👇",
@@ -277,19 +277,19 @@ export const en = {
   // ── row 72: buildDailyInListFallback (scheduler-copy.ts) ─────────
 
   daily_in_list_fallback_lead: (p: { activityName: string; need: number }): string =>
-    `🗓 *${p.activityName}* — need *${p.need} more*.`,
+    `🗓 *${p.activityName}*: need *${p.need} more*.`,
 
   // ── row 73: buildUnpaidTailText (scheduler-copy.ts) ──────────────
 
   unpaid_tail: (p: { unpaid: number }): string =>
     p.unpaid === 1
-      ? `💳 1 payment still pending for last week's match — if you've already paid, tick your team in the poll above to clear it 🙏`
-      : `💳 *${p.unpaid}* payments still pending for last week's match — if you've already paid, just tick your team in the poll above to clear it 🙏`,
+      ? `💳 1 payment still pending for last week's match. If you've already paid, tick your team in the poll above to clear it 🙏`
+      : `💳 *${p.unpaid}* payments still pending for last week's match. If you've already paid, just tick your team in the poll above to clear it 🙏`,
 
   // ── row 78: buildPaymentPollQuestion (scheduler-copy.ts) ─────────
 
   payment_poll_question: (p: { activityName: string }): string =>
-    `💳 Payments for *${p.activityName}* — tick when you've paid`,
+    `💳 Payments for *${p.activityName}*: tick when you've paid`,
 
   // ═══════════════════════════════════════════════════════════════════
   // Phase 2, slice 2: the rest of the group-facing deterministic copy.
@@ -339,7 +339,7 @@ export const en = {
   answer_payments_not_tracked: "I don't track payments for this group, so I can't say who's settled up.",
   answer_payments_no_settled: "There's no settled match for me to check payments against yet.",
   answer_payments_no_signal: (p: { kickoffLabel: string }): string =>
-    `No payments have reached me for ${p.kickoffLabel} — that could mean nobody's paid, or that I'm just not seeing them, so I'd rather not put a number on it.`,
+    `No payments have reached me for ${p.kickoffLabel}. That could mean nobody's paid, or that I'm just not seeing them, so I'd rather not put a number on it.`,
   answer_payments_all_settled: (p: { kickoffLabel: string }): string => `💳 All settled for ${p.kickoffLabel} 🙌`,
   answer_payments_unpaid: (p: { unpaid: number; chargeable: number; kickoffLabel: string }): string =>
     `💳 ${p.unpaid} of ${p.chargeable} still to pay for ${p.kickoffLabel}. I don't put names to that in the group.`,
@@ -494,7 +494,7 @@ export const en = {
   },
   payment_ack: (p: { firstName: string; count: number }): string =>
     `Noted 🙌 ${p.firstName} covered ${p.count} ${p.count === 1 ? "player" : "players"}.`,
-  reminder_ack_resolved: (p: { whenLabel: string }): string => `👍 Got it — I'll DM you ${p.whenLabel}.`,
+  reminder_ack_resolved: (p: { whenLabel: string }): string => `👍 Got it, I'll DM you ${p.whenLabel}.`,
   reminder_ack_unresolved: (p: { phrase: string }): string => `Will do 👍 I'll give you a nudge ${p.phrase}.`,
   needs_tag_for_rest: (p: { dropped: string[]; benched: string[] }): string => {
     const parts: string[] = [];
@@ -527,13 +527,13 @@ export const en = {
 
   // ── row 45: buildMomAnnouncement (mom-announcement.ts) ─────────────
 
-  mom_header: (p: { mvpLabel: string; activityName: string }): string => `🏆 *${p.mvpLabel} — ${p.activityName}*`,
+  mom_header: (p: { mvpLabel: string; activityName: string }): string => `🏆 *${p.mvpLabel}: ${p.activityName}*`,
   mom_winner: (p: { name: string; top: number; total: number }): string =>
     `Congrats *${p.name}* (${p.top}/${p.total} vote${p.total === 1 ? "" : "s"}) 🎉`,
   mom_shared: (p: { names: string; top: number; total: number }): string =>
     `Shared between *${p.names}* (${p.top} vote${p.top === 1 ? "" : "s"} each, ${p.total} total) 🎉`,
   mom_votes_header: "Votes:",
-  mom_vote_row: (p: { name: string; votes: number }): string => `• ${p.name} — ${p.votes}`,
+  mom_vote_row: (p: { name: string; votes: number }): string => `• ${p.name} (${p.votes})`,
   mom_trophy_line: "Your trophy awaits next match.",
 
   // ── row 46: the format-switch proposal (format-switch.ts) ──────────
@@ -579,17 +579,17 @@ export const en = {
   // ── row 49: buildBenchClaimAnnouncement (bench-offer-copy.ts) ──────
 
   bench_claim_team: (p: { claimer: string; dropped: string; teamLabel: string }): string =>
-    `🎟 *${p.claimer}* grabbed the slot — taking *${p.dropped}*'s place on *${p.teamLabel}* 🙌\n\n` +
+    `🎟 *${p.claimer}* grabbed the slot, taking *${p.dropped}*'s place on *${p.teamLabel}* 🙌\n\n` +
     `_Say "@Match Time regenerate the teams" if you want to rebalance with the new line-up._`,
   bench_claim_replacing: (p: { claimer: string; dropped: string; confirmed: number; maxPlayers: number }): string =>
-    `✅ *${p.claimer}* is in, replacing *${p.dropped}* — squad *${p.confirmed}/${p.maxPlayers}* 🙌`,
+    `✅ *${p.claimer}* is in, replacing *${p.dropped}*. Squad *${p.confirmed}/${p.maxPlayers}* 🙌`,
   bench_claim_open: (p: { claimer: string; confirmed: number; maxPlayers: number }): string =>
-    `✅ *${p.claimer}* grabbed the open slot — squad *${p.confirmed}/${p.maxPlayers}* 🙌`,
+    `✅ *${p.claimer}* grabbed the open slot. Squad *${p.confirmed}/${p.maxPlayers}* 🙌`,
 
   // ── rows 53, 54, 55: the rest of bench-offer-copy.ts ───────────────
 
   bench_intro_line: (p: { how: string }): string =>
-    `🔁  *Bench promotion* — If someone drops, I tag the bench here and ` +
+    `🔁  *Bench promotion*: If someone drops, I tag the bench here and ` +
     `${p.how}. No timeout, and nobody loses their place for missing it.`,
   full_squad_bench_invite: (p: { matchName: string; confirmed: number; maxPlayers: number; how: string }): string =>
     `*${p.matchName}* is full at ${p.confirmed} of ${p.maxPlayers}, but the bench is open. ` +
@@ -608,18 +608,18 @@ export const en = {
   // ── row 50: planUnresolvedNudge (unresolved-nudge.ts) ──────────────
 
   unresolved_nudge_named: (p: { verb: "join" | "drop out"; pushname: string }): string =>
-    `Heads up — I got a message to *${p.verb}* from *${p.pushname}*, but that name isn't ` +
+    `Heads up: I got a message to *${p.verb}* from *${p.pushname}*, but that name isn't ` +
     `matching anyone on the squad list, so I haven't changed anything yet. ` +
     `Could *${p.pushname}* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏`,
   unresolved_nudge_anonymous: (p: { verb: "join" | "drop out" }): string =>
-    `Heads up — I got a message to *${p.verb}* from someone I don't recognise, ` +
+    `Heads up: I got a message to *${p.verb}* from someone I don't recognise, ` +
     `so I haven't changed anything yet. Could they reply with the name they're ` +
     `registered under, or an admin can link it on the dashboard? 🙏`,
 
   // ── row 51: composeStatsBlastReply (stats-blast.ts) ────────────────
 
   stats_blast_reply: (p: { queued: number }): string =>
-    `📊 Done — DM'd ${p.queued} player${p.queued === 1 ? "" : "s"} their personal stats link. ` +
+    `📊 Done, DM'd ${p.queued} player${p.queued === 1 ? "" : "s"} their personal stats link. ` +
     `They'll arrive over the next few minutes.`,
 
   // ── row 164: buildStatsLinkSentLine (group-copy.ts), 2026-09-23 ─────
@@ -655,7 +655,7 @@ export const en = {
   rating_progress_failed: "Couldn't check that right now.",
   rating_progress_no_match: "There's no recent completed match to check yet.",
   rating_progress_header: (p: { matchName: string; matchWhen: string }): string =>
-    `📋 *${p.matchName}* (${p.matchWhen}) — rating progress:`,
+    `📋 *${p.matchName}* (${p.matchWhen}), rating progress:`,
   rating_progress_rated: (p: { rated: number; confirmed: number }): string => `• Rated: ${p.rated}/${p.confirmed}`,
   rating_progress_mom: (p: { mom: number; confirmed: number }): string => `• Picked MoM: ${p.mom}/${p.confirmed}`,
   rating_progress_still_to_rate: (p: { names: string[] }): string =>
@@ -668,7 +668,7 @@ export const en = {
 
   recruit_no_match: "There's no upcoming match to invite players to.",
   recruit_full_squad: (p: { matchName: string }): string =>
-    `The squad for *${p.matchName}* is already full — no open spots to recruit for.`,
+    `The squad for *${p.matchName}* is already full, so there are no open spots to recruit for.`,
 
   // ── row 63: buildBulkCancelAnnouncement (block-booking.ts) ─────────
 
@@ -676,7 +676,7 @@ export const en = {
     const list = p.dateLabels.map((d) => `• ${d}`).join("\n");
     const plural = p.dateLabels.length === 1 ? "match is" : "matches are";
     return (
-      `❌ *Schedule update* — the following *${p.activityName}* ${plural} OFF:\n\n` +
+      `❌ *Schedule update*: the following *${p.activityName}* ${plural} OFF:\n\n` +
       `${list}\n\n` +
       `See you at the next one! 👋`
     );
@@ -685,29 +685,29 @@ export const en = {
   // ── rows 64, 65: the admin actions (app/actions/matches.ts) ────────
 
   format_switch_header: (p: { sportName: string; maxPlayers: number }): string =>
-    `🔁 *Match switched* — now *${p.sportName}* (${p.maxPlayers} players).`,
+    `🔁 *Match switched*: now *${p.sportName}* (${p.maxPlayers} players).`,
   format_switch_playing_header: (p: { confirmed: number; maxPlayers: number }): string =>
     `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
   format_switch_bench_header: "*Bench:*",
   match_cancelled: (p: { activityName: string; whenLabel: string }): string =>
-    `❌ *Match cancelled* — ${p.activityName} on ${p.whenLabel}.\n\n` +
+    `❌ *Match cancelled*: ${p.activityName} on ${p.whenLabel}.\n\n` +
     `Not enough players this week. See you next week!`,
 
   // ── rows 66, 134: team-ops-engine.ts and the balancer's reasons ────
 
   team_ops_no_match: "No match lined up to build teams for.",
-  balancer_refusal: (p: { reason: string }): string => `Can't build teams right now — ${p.reason}.`,
+  balancer_refusal: (p: { reason: string }): string => `Can't build teams right now: ${p.reason}.`,
   team_gen_reason_not_found: "match not found",
   team_gen_reason_status: (p: { status: string }): string => `match is ${p.status.toLowerCase()}`,
   team_gen_reason_not_enough: (p: { confirmed: number; needed: number }): string =>
-    `not enough confirmed players — ${p.confirmed}/${p.needed}`,
+    `not enough confirmed players (${p.confirmed}/${p.needed})`,
   team_gen_note_including: (p: { names: string[] }): string =>
     `_Including ${p.names.join(", ")} as CONFIRMED per the request._`,
   team_gen_note_pinned: (p: { pinned: string[] }): string => `_Pinned per the request: ${p.pinned.join(", ")}._`,
   team_gen_note_unmatched_includes: (p: { names: string[] }): string =>
-    `_(couldn't find ${p.names.join(", ")} in the roster — ignored)_`,
+    `_(couldn't find ${p.names.join(", ")} in the roster, ignored)_`,
   team_gen_note_unmatched_pins: (p: { names: string[] }): string =>
-    `_(couldn't find ${p.names.join(", ")} for team pinning — ignored)_`,
+    `_(couldn't find ${p.names.join(", ")} for team pinning, ignored)_`,
 
   // ── row R170 (2026-09-29): teams only on request, on match day, and
   //    an admin can clear them. The Sutton FC incident of 24 Sep: a
@@ -735,11 +735,11 @@ export const en = {
       p.credited.length > 0 ? p.credited.join(", ") : `${p.count} payment${p.count === 1 ? "" : "s"}`;
     const tail =
       p.unmatched > 0
-        ? `\n\n_(couldn't find ${p.unmatched} of those names on the squad — ` +
+        ? `\n\n_(couldn't find ${p.unmatched} of those names on the squad, so ` +
           `those were ignored)_`
         : "";
     return (
-      `💳 Got it — credited *${p.payerName}* with ${credited} for *${p.matchName}*. ` +
+      `💳 Got it, credited *${p.payerName}* with ${credited} for *${p.matchName}*. ` +
       `Unpaid: ${p.unpaid}/${p.confirmed}.${tail}`
     );
   },
@@ -750,18 +750,18 @@ export const en = {
   recruit_invited: (p: { invited: number; matchName: string; need: number | null }): string =>
     `📣 On it, DM'd ${p.invited} recent player${p.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${p.matchName}*${p.need ? ` (${p.need} spot${p.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`,
   recruit_already_pinged: (p: { matchName: string }): string =>
-    `Already pinged the recent players for *${p.matchName}* — just waiting on their replies. 🙏`,
+    `Already pinged the recent players for *${p.matchName}*, just waiting on their replies. 🙏`,
   recruit_nobody_new: (p: { matchName: string }): string =>
     `No new players to ask for *${p.matchName}* right now. 👍`,
   swap_deferred: (p: { a: string; b: string }): string =>
-    `Both *${p.a}* and *${p.b}* are already in — nobody's dropped. ` +
+    `Both *${p.a}* and *${p.b}* are already in, nobody's dropped. ` +
     `Teams aren't generated yet; say *@Match Time generate the teams* and I'll build them (then I can put them on opposite sides).`,
   team_swap_done: (p: { a: string; b: string }): string =>
-    `🔁 Swapped *${p.a}* and *${p.b}* — nobody dropped. Updated teams:`,
+    `🔁 Swapped *${p.a}* and *${p.b}*, nobody dropped. Updated teams:`,
   slot_transfer_done: (p: { to: string; from: string; teamLabel: string }): string =>
-    `🔁 *${p.to}* takes *${p.from}*'s place on *${p.teamLabel}* — ` +
-    `same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:`,
-  colour_swap_done: "🎨 Swapped the colours — same teams, sides flipped:",
+    `🔁 *${p.to}* takes *${p.from}*'s place on *${p.teamLabel}*. ` +
+    `Same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:`,
+  colour_swap_done: "🎨 Swapped the colours. Same teams, sides flipped:",
   // A swap MatchTime could not apply (2026-09-17). Before this the owner
   // heard nothing, and the message went on to be read as a drop.
   swap_refused: (p: { a: string; b: string; why: string }): string =>
@@ -783,17 +783,17 @@ export const en = {
 
   // ── row 67: the bot intro (scheduler-copy.ts) ──────────────────────
 
-  intro_opener: "👋 Hi all — MatchTime bot is live for this group.",
+  intro_opener: "👋 Hi all, MatchTime bot is live for this group.",
   intro_what_i_do: "Here's what I do:",
-  intro_attendance: `🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm — no extra messages from me.`,
-  intro_daily: `🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
-  intro_teams: `⚽  *Teams* — Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply \`@Match Time swap X with Y\` and an admin will apply it.`,
+  intro_attendance: `🗓  *Attendance*: Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm, no extra messages from me.`,
+  intro_daily: `🗒  *Daily reminders*: Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
+  intro_teams: `⚽  *Teams*: Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply \`@Match Time swap X with Y\` and an admin will apply it.`,
   intro_rating_bit: "I DM everyone a rating link after each match (no sign-up, just tap)",
-  intro_mom_bit: "vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest)",
-  intro_ratings_line: (p: { bits: string[] }): string => `🏆  *Ratings & MoM* — ${p.bits.join("; ")}.`,
-  intro_reminders: `⏰  *Reminders* — Say "@MatchTime remind me Monday" and I'll DM you then.`,
-  intro_stats: `📊  *Stats* — Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
-  intro_payments: `💳  *Payments* — I auto-post "paid?" polls right after each match.`,
+  intro_mom_bit: "vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest)",
+  intro_ratings_line: (p: { bits: string[] }): string => `🏆  *Ratings & MoM*: ${p.bits.join("; ")}.`,
+  intro_reminders: `⏰  *Reminders*: Say "@MatchTime remind me Monday" and I'll DM you then.`,
+  intro_stats: `📊  *Stats*: Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
+  intro_payments: `💳  *Payments*: I auto-post "paid?" polls right after each match.`,
   intro_closer: "Questions? Just ask here. Let's go.",
 
   // ── rows 74 to 77: the remaining scheduler posts ───────────────────
@@ -801,12 +801,12 @@ export const en = {
   chase_pre_kickoff_fallback: (p: { need: number; activityName: string; timeLabel: string }): string =>
     `⏳ Still *${p.need} short* for *${p.activityName}* at ${p.timeLabel}. Anyone free tonight?`,
   pre_kickoff_short_fallback: (p: { timeLabel: string; venue: string; confirmed: number; maxPlayers: number; need: number }): string =>
-    `⏰ Tonight *${p.timeLabel}* at *${p.venue}* · ${p.confirmed}/${p.maxPlayers} — *still need ${p.need}*, last chance to jump in. 🙏`,
+    `⏰ Tonight *${p.timeLabel}* at *${p.venue}* · ${p.confirmed}/${p.maxPlayers}. *Still need ${p.need}*, last chance to jump in. 🙏`,
   gear_reminder: (p: { timeLabel: string; venue: string }): string =>
-    `⚽ *${p.timeLabel} at ${p.venue}* — see you there!\n\n` +
+    `⚽ *${p.timeLabel} at ${p.venue}*, see you there!\n\n` +
     `Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*, and *spare bibs*.`,
   ask_score: (p: { activityName: string }): string =>
-    `🏁 *${p.activityName}* — hope it was a good one. What was the final score? ` +
+    `🏁 *${p.activityName}*: hope it was a good one. What was the final score? ` +
     `I'll use it to keep next week's teams balanced.`,
 
   // ═══════════════════════════════════════════════════════════════════
@@ -1269,11 +1269,11 @@ export const en = {
 
   /** Row 91: the rating-link DM, the morning after. */
   dm_rating: (p: { activityName: string; dateLabel: string; mvpLabel: string; rateUrl: string; statsUrl: string }): string =>
-    `🏆 *${p.activityName}* — ${p.dateLabel}\n\n` +
+    `🏆 *${p.activityName}*, ${p.dateLabel}\n\n` +
     `Rate your teammates and pick ${p.mvpLabel}. Takes ~1 minute.\n\n` +
     `Your personal link:\n${p.rateUrl}\n\n` +
     `Link expires in 5 days.\n\n` +
-    `📊 Your season stats (ratings, MoM, badges, share card) — any time:\n${p.statsUrl}`,
+    `📊 Your season stats (ratings, MoM, badges, share card), any time:\n${p.statsUrl}`,
 
   /** Row 92: the daily rating reminder, five day-toned variants
    *  (`dayNum` 1 to 5; anything above 4 is the last call). */
@@ -1283,13 +1283,13 @@ export const en = {
     switch (p.dayNum) {
       case 1:
         return (
-          `Hey ${first} 👋 — hope last night's *${p.activityName}* was a good one.\n\n` +
+          `Hey ${first} 👋 Hope last night's *${p.activityName}* was a good one.\n\n` +
           `When you have a sec, tap here to rate your teammates and pick ${p.mvpLabel}. ` +
           `The more of us vote, the better the teams balance next week 🙌${sig}`
         );
       case 2:
         return (
-          `${first}, friendly nudge 🙂 — still waiting on your ratings for *${p.activityName}*.\n\n` +
+          `${first}, friendly nudge 🙂 Still waiting on your ratings for *${p.activityName}*.\n\n` +
           `Literally 30 seconds, promise. Helps everyone get fairer teams next week ⚽${sig}`
         );
       case 3:
@@ -1300,12 +1300,12 @@ export const en = {
         );
       case 4:
         return (
-          `${first} — two days left to rate *${p.activityName}* and lock in ${p.mvpLabel} 🏆\n\n` +
+          `${first}, two days left to rate *${p.activityName}* and lock in ${p.mvpLabel} 🏆\n\n` +
           `30 seconds, then you're done:${sig}`
         );
       default:
         return (
-          `Last call ${first} 🔔 — the rating window for *${p.activityName}* closes tomorrow.\n\n` +
+          `Last call ${first} 🔔 The rating window for *${p.activityName}* closes tomorrow.\n\n` +
           `Drop a rating + ${p.mvpLabel} pick before it shuts. Your voice counts:${sig}`
         );
     }
@@ -1319,7 +1319,7 @@ export const en = {
     `Are you in or out? Just reply *IN* or *OUT* and I'll sort the squad 🙏`,
 
   /** Row 105: the tentative follow-up's one re-ask. */
-  dm_tentative_reask: "No worries — just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏",
+  dm_tentative_reask: "No worries, just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏",
 
   /** Row 102: the tentative follow-up's ack, built from what the write did. */
   dm_tentative_ack: (p: { decision: "in" | "out"; failed: boolean }): string => {
@@ -1408,7 +1408,7 @@ export const en = {
     const { matchName, matchWhen } = p;
     if (p.failed) {
       return (
-        `Sorry, I couldn't update the squad just now. An admin will sort it — ` +
+        `Sorry, I couldn't update the squad just now. An admin will sort it, or ` +
         `try again in a bit if you like 🙏`
       );
     }
@@ -1432,43 +1432,43 @@ export const en = {
   dm_sub_ack: (p: { kind: "opt-out-all" | "opt-out-ratings" | "opt-in-all" | "opt-in-ratings" }): string =>
     ({
       "opt-out-all":
-        'Done — I\'ll only message you about payments from now on. ' +
+        'Done, I\'ll only message you about payments from now on. ' +
         'Text "start messages" anytime to turn the rest back on.',
       "opt-out-ratings":
-        'Done — no more rating or Man-of-the-Match messages from me 👍 ' +
+        'Done, no more rating or Man-of-the-Match messages from me 👍 ' +
         'Text "start ratings" anytime to turn them back on.',
-      "opt-in-all": "Great — you're back on for all my messages 👍",
-      "opt-in-ratings": "Great — I'll send you rating and Man-of-the-Match links again 👍",
+      "opt-in-all": "Great, you're back on for all my messages 👍",
+      "opt-in-ratings": "Great, I'll send you rating and Man-of-the-Match links again 👍",
     })[p.kind],
 
   /** Row 132: the personal reminder a player asked for. */
   dm_reminder: (p: { firstName: string | null; note: string }): string =>
-    `⏰ Reminder, ${p.firstName ?? "there"} — you asked me to nudge you:\n\n` +
+    `⏰ Reminder, ${p.firstName ?? "there"}. You asked me to nudge you:\n\n` +
     `_${p.note}_\n\n` +
     `(reply in the group when you're ready 👍)`,
 
   /** Row 100: the stats-blast DM (the link does not expire). */
   dm_stats_blast: (p: { firstName: string | null; url: string }): string =>
-    `📊 Hi ${p.firstName ?? "there"} — here are your MatchTime stats: your ratings over time, ` +
+    `📊 Hi ${p.firstName ?? "there"}, here are your MatchTime stats: your ratings over time, ` +
     `Man-of-the-Match games, how you stack up against the squad, your badges and a ` +
-    `shareable season card.\n\n${p.url}\n\nKeep this link — it doesn't expire.`,
+    `shareable season card.\n\n${p.url}\n\nKeep this link, it doesn't expire.`,
 
   /** Row 122: the "@Match Time my stats" DM (a 48h link). */
   dm_stats_link: (p: { firstName: string | null; url: string }): string =>
-    `📊 Hey ${p.firstName ?? "there"} — here are your MatchTime stats: ratings over time, your ` +
+    `📊 Hey ${p.firstName ?? "there"}, here are your MatchTime stats: ratings over time, your ` +
     `Man-of-the-Match games, how you compare to the squad, your badges, and a ` +
     `shareable season card.\n\n${p.url}\n\nLink works for 48h.`,
 
   /** Row 111: the DM Q&A's fallback when the model gave nothing usable. */
-  dm_qa_apology: "Sorry, I couldn't work that one out — try asking again? 🙂",
+  dm_qa_apology: "Sorry, I couldn't work that one out. Try asking again? 🙂",
 
   /** Row 88: the fee ask to the money collector at match end. The reply
    *  is parsed by `parseFeeReply` (a £ amount, "each" / "total"). */
   dm_fee_ask: (p: { firstName: string | null; activityName: string; headcount: number }): string =>
-    `💷 ${p.firstName ?? "there"} — how much should each player pay for *${p.activityName}*` +
+    `💷 ${p.firstName ?? "there"}, how much should each player pay for *${p.activityName}*` +
     (p.headcount > 0 ? ` (${p.headcount} played)` : "") +
     `?\n\n` +
-    `Just reply with the amount — e.g. "£8 each" or "£80 total to split". ` +
+    `Just reply with the amount, e.g. "£8 each" or "£80 total to split". ` +
     `I'll confirm, then send everyone their pay link.`,
 
   /** Row 98: the collector's confirm step. `fee` is formatted (`gbp`).
@@ -1488,15 +1488,15 @@ export const en = {
 
   /** Row 96: the collector's ack once the links went out. */
   dm_fee_released: (p: { released: number; fee: string; matchName: string }): string =>
-    `✅ Done — sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*. ` +
+    `✅ Done, sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*. ` +
     `Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
 
   /** Row 97: the collector's ack to a cancel. */
-  dm_fee_cancelled: `No problem — cancelled. Just tell me the amount per player when you're ready.`,
+  dm_fee_cancelled: `No problem, cancelled. Just tell me the amount per player when you're ready.`,
 
   /** Row 95: the pay link to each confirmed player. */
   dm_pay_link: (p: { firstName: string | null; activityName: string; fee: string; url: string }): string =>
-    `💷 ${p.firstName ?? "there"} — match fee for *${p.activityName}* is *${p.fee}*.\n\n` +
+    `💷 ${p.firstName ?? "there"}, match fee for *${p.activityName}* is *${p.fee}*.\n\n` +
     `Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):\n${p.url}\n\n` +
     `You can also pay for anyone you brought along.`,
 
@@ -1506,7 +1506,7 @@ export const en = {
     const opener =
       p.dayNum <= 1 ? `Quick one ${first}` : p.dayNum === 2 ? `${first}, gentle nudge` : `${first}, still owed`;
     return (
-      `💷 ${opener} — your *${p.fee}* for *${p.activityName}* is still outstanding.\n\n` +
+      `💷 ${opener}: your *${p.fee}* for *${p.activityName}* is still outstanding.\n\n` +
       `Pay by bank, card, Apple or Google Pay, or settle directly:\n${p.url}`
     );
   },
@@ -1557,33 +1557,33 @@ export const en = {
   /** Rows 106, 107: the admin recruit-by-DM reply (the failure is
    *  `recruit_failed`, shared with the group reply). */
   dm_admin_recruit_done: (p: { invited: number; matchName: string; matchWhen: string; need: number | null }): string =>
-    `📣 Done — DM'd ${p.invited} recent player${p.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${p.matchName}* on ${p.matchWhen}${p.need ? ` (${p.need} spot${p.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`,
+    `📣 Done, DM'd ${p.invited} recent player${p.invited === 1 ? "" : "s"} who hadn't replied, asking them to fill *${p.matchName}* on ${p.matchWhen}${p.need ? ` (${p.need} spot${p.need === 1 ? "" : "s"} left)` : ""}. I'll add anyone who taps in. 🙏`,
   dm_admin_recruit_nobody_new: (p: { matchName: string }): string =>
-    `Everyone who played recently has already responded to *${p.matchName}* — nobody new to invite. 👍`,
+    `Everyone who played recently has already responded to *${p.matchName}*, so there's nobody new to invite. 👍`,
 
   /** Row 109: the roster check-in's one clarification. The probe is the
    *  message's opening, and the route's one-per-person dedupe query
    *  looks for it (in every language). */
   dm_survey_clarify_probe: (p: { firstName: string | null }): string =>
-    `Sorry ${p.firstName ?? "mate"} — wasn't sure if that was a reply to the roster check-in`,
+    `Sorry ${p.firstName ?? "mate"}, I wasn't sure if that was a reply to the roster check-in`,
   dm_survey_clarify: (p: { firstName: string | null; orgName: string }): string =>
     [
-      `Sorry ${p.firstName ?? "mate"} — wasn't sure if that was a reply to the roster check-in for *${p.orgName}*.`,
+      `Sorry ${p.firstName ?? "mate"}, I wasn't sure if that was a reply to the roster check-in for *${p.orgName}*.`,
       ``,
       `Was your answer:`,
       `• yes / I'm in`,
       `• maybe / sometimes`,
       `• not for now / out`,
       ``,
-      `Quick word back is enough — otherwise no worries, an admin will sort it 🙏`,
+      `Quick word back is enough. Otherwise no worries, an admin will sort it 🙏`,
     ].join("\n"),
 
   /** Row 110: the roster check-in confirmations. */
   dm_survey_confirm: (p: { category: "in" | "maybe" | "out"; firstName: string | null }): string => {
     const firstName = p.firstName ?? "mate";
-    if (p.category === "in") return `Got it ${firstName}, marked you as in 👍 — thanks!`;
+    if (p.category === "in") return `Got it ${firstName}, marked you as in 👍 Thanks!`;
     if (p.category === "maybe") {
-      return `Got it ${firstName}, marked you as maybe 👍 — just say *IN* in the group whenever you want to play that week, no need to confirm in advance.`;
+      return `Got it ${firstName}, marked you as maybe 👍 Just say *IN* in the group whenever you want to play that week, no need to confirm in advance.`;
     }
     return `No worries ${firstName}, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏`;
   },
@@ -1596,12 +1596,12 @@ export const en = {
       ``,
       `This is *Match Time*, the bot that coordinates your *${p.orgName}* WhatsApp group (the Tuesday football one).`,
       ``,
-      `Quick check-in — attendance's been thin lately, so we're asking everyone if they're still up for Tuesday football going forward.`,
+      `Quick check-in: attendance's been thin lately, so we're asking everyone if they're still up for Tuesday football going forward.`,
       ``,
       `Just reply here with a word or two:`,
-      `• "yes" / "I'm in" — keep me on the roster`,
-      `• "maybe" / "depends" — only when I confirm`,
-      `• "not for now" / "out" — step me back`,
+      `• "yes" / "I'm in": keep me on the roster`,
+      `• "maybe" / "depends": only when I confirm`,
+      `• "not for now" / "out": step me back`,
       ``,
       `Whatever you pick stays between you and the group admin. No drama 🙏`,
     ].join("\n"),

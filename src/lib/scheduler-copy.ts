@@ -295,7 +295,7 @@ export function buildBenchOfferContext(
   const dm = s;
   const day = dayUnlessToday(args.lang, args.matchDate, args.now);
   if (args.team) {
-    const p = { teamLabel: args.team.teamLabel, replacingName: args.team.replacingName ?? "—", activityName: args.activityName, day };
+    const p = { teamLabel: args.team.teamLabel, replacingName: args.team.replacingName ?? "?", activityName: args.activityName, day };
     return { group: s.bench_offer_context_team(p), plain: dm.bench_offer_context_team_plain(p) };
   }
   const p = { activityName: args.activityName, day };

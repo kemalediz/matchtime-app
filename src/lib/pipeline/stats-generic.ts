@@ -32,6 +32,7 @@ import { groundingCheck, type GroundingContext } from "./stats-grounding";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
 import type { Lang } from "../i18n/lang";
 import { monthYearLabel } from "../i18n/dates";
+import { stripLongDashes } from "../house-style";
 import type { Member, StatsSnapshot } from "./types";
 
 export const STATS_GENERIC_SYSTEM = `You answer ONE question about a football club's stats, asked in the club's WhatsApp group. You are given TABLES that have already been computed. They are everything you know.
@@ -202,7 +203,9 @@ export async function answerGenericStats(args: {
     return { result: { rejected: `the generic call failed (${(err as Error).message})` }, costUsd, ms, called: true };
   }
   // House style, applied rather than hoped for: no dashes as punctuation.
-  const tidy = text.replace(/\s*[—–]\s*/g, ", ").trim();
+  // The shared pass (`../house-style`), so a score, a link and a
+  // `*bold*` name in the answer all survive it.
+  const tidy = stripLongDashes(text, args.lang).trim();
   const check = groundingCheck({ reply: tidy, question: args.question, grounding: ctx.grounding, roster: args.roster });
   return {
     result: check.ok ? { text: tidy } : { rejected: `grounding check failed: ${check.why}` },

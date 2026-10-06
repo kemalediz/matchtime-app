@@ -98,7 +98,7 @@ We're 14/14 for Tue 21:30 ✅ full squad.
 2. Amir Ahmadi
 
 ### R1 squad_status / teams generated, so the line-ups
-⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam
+⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam
 
 *Red*:
 1. Kemal Ediz
@@ -121,7 +121,7 @@ We're 14/14 for Tue 21:30 ✅ full squad.
 Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
 
 ### R7 answer_squad / teams generated, so the line-ups
-⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam
+⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam
 
 *Red*:
 1. Kemal Ediz
@@ -144,9 +144,9 @@ Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
 Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
 
 ### R2b replacement_teams_post / one swap, the player went out
-🔁 *Wasim is out* — *Najib* takes his place and his spot in *Yellow*.
+🔁 *Wasim is out*. *Najib* takes his place and his spot in *Yellow*.
 
-⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam
+⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam
 
 *Red*:
 1. Kemal Ediz
@@ -171,7 +171,7 @@ Objections? An admin can ask me to regenerate the teams.
 ### R2b replacement_teams_post / one swap, the vacating player was BENCHED, not out
 🔁 *Najib* takes Wasim's spot in *Yellow*.
 
-⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam
+⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam
 
 *Red*:
 1. Kemal Ediz
@@ -299,7 +299,7 @@ I don't track payments for this group, so I can't say who's settled up.
 There's no settled match for me to check payments against yet.
 
 ### R14 answer_payments / no signal
-No payments have reached me for Tue 21:30 — that could mean nobody's paid, or that I'm just not seeing them, so I'd rather not put a number on it.
+No payments have reached me for Tue 21:30. That could mean nobody's paid, or that I'm just not seeing them, so I'd rather not put a number on it.
 
 ### R15 answer_payments / all settled
 💳 All settled for Tue 21:30 🙌
@@ -311,14 +311,14 @@ No payments have reached me for Tue 21:30 — that could mean nobody's paid, or 
 (says nothing)
 
 ### R17 answer_rating_progress / in progress
-📋 *Tuesday 7-a-side* (Tue 8 Sep) — rating progress:
+📋 *Tuesday 7-a-side* (Tue 8 Sep), rating progress:
 • Rated: 9/14
 • Picked MoM: 7/14
 • Still to rate (2): Abid Hussain, Idris Bello
 • Rated but no MoM pick (1): Faris Nasser
 
 ### R17 answer_rating_progress / everyone rated
-📋 *Tuesday 7-a-side* (Tue 8 Sep) — rating progress:
+📋 *Tuesday 7-a-side* (Tue 8 Sep), rating progress:
 • Rated: 14/14
 • Picked MoM: 14/14
 • Everyone's rated ✅
@@ -590,7 +590,7 @@ We're 11 of 14, need 3 more 🙏 If we don't find 3 more, we could switch to 5-a
 We're 11 of 14, need 3 more 🙏 If we don't find 3 more, we could switch to Futsal (11 players): all 11 of you still play, nobody goes on the bench. Admins can rebook and flip it in the portal.
 
 ### R31 teams_post
-⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam
+⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam
 
 *Red*:
 1. Kemal Ediz
@@ -637,7 +637,7 @@ Noted 🙌 Sait covered 1 player.
 Noted 🙌 Sait covered 3 players.
 
 ### R36 reminder_ack / resolved
-👍 Got it — I'll DM you Thu 10 Sep at 09:00.
+👍 Got it, I'll DM you Thu 10 Sep at 09:00.
 
 ### R37 reminder_ack / unresolved
 Will do 👍 I'll give you a nudge when the fixture list is out.
@@ -731,7 +731,7 @@ Cheers Sait, noted.
 Thanks, noted 👍
 
 ### R43 buildSquadCompletePost / no bench, no invite
-✅ *Squad complete — 14/14* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌
+✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌
 
 *Playing:*
 1. Kemal Ediz
@@ -752,7 +752,7 @@ Thanks, noted 👍
 See you all there ⚽
 
 ### R43 buildSquadCompletePost / bench of two, invite
-✅ *Squad complete — 14/14* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌
+✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌
 
 *Playing:*
 1. Kemal Ediz
@@ -798,7 +798,7 @@ Here's how it works:
 • If you haven't paid, I'll send you a reminder.
 
 ### R43 buildSquadCompletePost / unnamed row
-✅ *Squad complete — 3/3* for *Thursday 5-a-side* on Thu 24 Sept 20:00 🙌
+✅ *Squad complete (3/3)* for *Thursday 5-a-side* on Thu 24 Sept 20:00 🙌
 
 *Playing:*
 1. Kemal Ediz
@@ -811,7 +811,7 @@ Here's how it works:
 See you all there ⚽
 
 ### R68 buildAnnounceMatchPost
-📅 *Tuesday 7-a-side* — *Tuesday 8 September at 21:30* at Goals North Cheam.
+📅 *Tuesday 7-a-side*: *Tuesday 8 September at 21:30* at Goals North Cheam.
 
 Say *IN* to join. First 14 confirmed play.
 
@@ -967,7 +967,7 @@ _nobody yet_
 _nobody yet_
 
 ### R69 buildMatchDayTeamsBlock
-⚽ *Tonight at 21:30* — *Tuesday 7-a-side* at Goals North Cheam
+⚽ *Tonight at 21:30*: *Tuesday 7-a-side* at Goals North Cheam
 
 *Red:*
 1. Kemal Ediz
@@ -990,7 +990,7 @@ _nobody yet_
 See you tonight 🙌
 
 ### R69 buildMatchDayTeamsBlock / custom labels, unnamed row
-⚽ *Tonight at 20:00* — *Thursday 5-a-side* at Sim Arena
+⚽ *Tonight at 20:00*: *Thursday 5-a-side* at Sim Arena
 
 *Lions:*
 1. Kemal Ediz
@@ -1003,7 +1003,7 @@ See you tonight 🙌
 See you tonight 🙌
 
 ### R69 buildMatchDayTeamsBlock / a dropped holder is an open slot
-⚽ *Tonight at 21:30* — *Tuesday 7-a-side* at Goals North Cheam
+⚽ *Tonight at 21:30*: *Tuesday 7-a-side* at Goals North Cheam
 
 *Red:*
 1. Kemal Ediz
@@ -1016,7 +1016,7 @@ See you tonight 🙌
 See you tonight 🙌
 
 ### R70 buildMatchDayLockedPost
-⚽ *Tonight at 21:30* — *Tuesday 7-a-side* at Goals North Cheam
+⚽ *Tonight at 21:30*: *Tuesday 7-a-side* at Goals North Cheam
 
 Squad is locked. Say *@Match Time generate the teams* in the chat to lock in tonight's lineup 👇
 
@@ -1040,7 +1040,7 @@ Squad is locked. Say *@Match Time generate the teams* in the chat to lock in ton
 1. Najib Ahmadi
 
 ### R72 buildDailyInListFallback
-🗓 *Tuesday 7-a-side* — need *3 more*.
+🗓 *Tuesday 7-a-side*: need *3 more*.
 
 *Confirmed (11/14):*
 1. Kemal Ediz
@@ -1059,7 +1059,7 @@ Squad is locked. Say *@Match Time generate the teams* in the chat to lock in ton
 1. Erdal Ozkan
 
 ### R72 buildDailyInListFallback / one more
-🗓 *Tuesday 7-a-side* — need *1 more*.
+🗓 *Tuesday 7-a-side*: need *1 more*.
 
 *Confirmed (13/14):*
 1. Kemal Ediz
@@ -1077,10 +1077,10 @@ Squad is locked. Say *@Match Time generate the teams* in the chat to lock in ton
 13. Zair Malik
 
 ### R73 buildUnpaidTailText / one
-💳 1 payment still pending for last week's match — if you've already paid, tick your team in the poll above to clear it 🙏
+💳 1 payment still pending for last week's match. If you've already paid, tick your team in the poll above to clear it 🙏
 
 ### R73 buildUnpaidTailText / four
-💳 *4* payments still pending for last week's match — if you've already paid, just tick your team in the poll above to clear it 🙏
+💳 *4* payments still pending for last week's match. If you've already paid, just tick your team in the poll above to clear it 🙏
 
 ### R81 buildBenchOfferContext / team and replaced player (group)
 on *Red* (replacing Sait Demir) for *Tuesday 7-a-side* tonight
@@ -1089,7 +1089,7 @@ on *Red* (replacing Sait Demir) for *Tuesday 7-a-side* tonight
 on Red (replacing Sait Demir) for Tuesday 7-a-side tonight
 
 ### R81 buildBenchOfferContext / replaced player unnamed (group)
-on *Red* (replacing —) for *Tuesday 7-a-side* tonight
+on *Red* (replacing ?) for *Tuesday 7-a-side* tonight
 
 ### R81 buildBenchOfferContext / fixture only (group)
 for *Tuesday 7-a-side* tonight
@@ -1110,48 +1110,48 @@ for *Tuesday 7-a-side* on Tue 6 Oct
 for Tuesday 7-a-side on Tue 6 Oct
 
 ### R78 buildPaymentPollQuestion
-💳 Payments for *Tuesday 7-a-side* — tick when you've paid
+💳 Payments for *Tuesday 7-a-side*: tick when you've paid
 
 ### R67 buildBotIntro / everything on
-👋 Hi all — MatchTime bot is live for this group.
+👋 Hi all, MatchTime bot is live for this group.
 
 Here's what I do:
 
-🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm — no extra messages from me.
+🗓  *Attendance*: Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm, no extra messages from me.
 
-🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.
+🗒  *Daily reminders*: Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.
 
-🔁  *Bench promotion* — If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
 
-⚽  *Teams* — Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply `@Match Time swap X with Y` and an admin will apply it.
+⚽  *Teams*: Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply `@Match Time swap X with Y` and an admin will apply it.
 
-🏆  *Ratings & MoM* — I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest).
+🏆  *Ratings & MoM*: I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest).
 
-⏰  *Reminders* — Say "@MatchTime remind me Monday" and I'll DM you then.
+⏰  *Reminders*: Say "@MatchTime remind me Monday" and I'll DM you then.
 
-📊  *Stats* — Ask me things like "who got MoM last week?" or "who's our most consistent player?"
+📊  *Stats*: Ask me things like "who got MoM last week?" or "who's our most consistent player?"
 
-💳  *Payments* — I auto-post "paid?" polls right after each match.
+💳  *Payments*: I auto-post "paid?" polls right after each match.
 
 Questions? Just ask here. Let's go.
 
 ### R67 buildBotIntro / attendance only
-👋 Hi all — MatchTime bot is live for this group.
+👋 Hi all, MatchTime bot is live for this group.
 
 Here's what I do:
 
-🗓  *Attendance* — Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm — no extra messages from me.
+🗓  *Attendance*: Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm, no extra messages from me.
 
-🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.
+🗒  *Daily reminders*: Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.
 
 Questions? Just ask here. Let's go.
 
 ### R67 buildBotIntro / ratings and MoM only
-👋 Hi all — MatchTime bot is live for this group.
+👋 Hi all, MatchTime bot is live for this group.
 
 Here's what I do:
 
-🏆  *Ratings & MoM* — I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest).
+🏆  *Ratings & MoM*: I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest).
 
 Questions? Just ask here. Let's go.
 
@@ -1159,29 +1159,29 @@ Questions? Just ask here. Let's go.
 ⏳ Still *2 short* for *Tuesday 7-a-side* at 21:30. Anyone free tonight?
 
 ### R75 buildPreKickoffShortFallback
-⏰ Tonight *21:30* at *Goals North Cheam* · 12/14 — *still need 2*, last chance to jump in. 🙏
+⏰ Tonight *21:30* at *Goals North Cheam* · 12/14. *Still need 2*, last chance to jump in. 🙏
 
 ### R76 buildGearReminder
-⚽ *21:30 at Goals North Cheam* — see you there!
+⚽ *21:30 at Goals North Cheam*, see you there!
 
 Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*, and *spare bibs*.
 
 ### R77 buildAskScorePost
-🏁 *Tuesday 7-a-side* — hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.
+🏁 *Tuesday 7-a-side*: hope it was a good one. What was the final score? I'll use it to keep next week's teams balanced.
 
 ### R49 buildBenchClaimAnnouncement / team and replaced player
-🎟 *Erdal Ozkan* grabbed the slot — taking *Sait Demir*'s place on *Red* 🙌
+🎟 *Erdal Ozkan* grabbed the slot, taking *Sait Demir*'s place on *Red* 🙌
 
 _Say "@Match Time regenerate the teams" if you want to rebalance with the new line-up._
 
 ### R49 buildBenchClaimAnnouncement / replaced player, no team
-✅ *Erdal Ozkan* is in, replacing *Sait Demir* — squad *14/14* 🙌
+✅ *Erdal Ozkan* is in, replacing *Sait Demir*. Squad *14/14* 🙌
 
 ### R49 buildBenchClaimAnnouncement / open slot
-✅ *Erdal Ozkan* grabbed the open slot — squad *13/14* 🙌
+✅ *Erdal Ozkan* grabbed the open slot. Squad *13/14* 🙌
 
 ### R64 buildFormatSwitchAnnouncement / kickoff moved, bench
-🔁 *Match switched* — now *Football 5-a-side* (10 players).
+🔁 *Match switched*: now *Football 5-a-side* (10 players).
 ⏰ *Kickoff moves to 21:15* (was 21:30).
 
 *Playing (10/10):*
@@ -1201,13 +1201,13 @@ _Say "@Match Time regenerate the teams" if you want to rebalance with the new li
 2. Karahan Yildiz
 
 ### R64 buildFormatSwitchAnnouncement / same time, nobody yet
-🔁 *Match switched* — now *Football 5-a-side* (10 players).
+🔁 *Match switched*: now *Football 5-a-side* (10 players).
 
 *Playing (0/10):*
 _nobody yet_
 
 ### R64 buildFormatSwitchAnnouncement / unnamed row
-🔁 *Match switched* — now *Futsal* (10 players).
+🔁 *Match switched*: now *Futsal* (10 players).
 
 *Playing (2/10):*
 1. Kemal Ediz
@@ -1217,7 +1217,7 @@ _nobody yet_
 1. ?
 
 ### R65 buildMatchCancelledAnnouncement
-❌ *Match cancelled* — Tuesday 7-a-side on Tue 22 Sep at 21:30.
+❌ *Match cancelled*: Tuesday 7-a-side on Tue 22 Sep at 21:30.
 
 Not enough players this week. See you next week!
 
@@ -1237,10 +1237,10 @@ There's no upcoming match to invite players to.
 📣 On it, DM'd 3 recent players who hadn't replied, asking them to fill *Tuesday 7-a-side*. I'll add anyone who taps in. 🙏
 
 ### R124 buildRecruitAckReply / full squad, lib reason
-The squad for *Tuesday 7-a-side* is already full — no open spots to recruit for.
+The squad for *Tuesday 7-a-side* is already full, so there are no open spots to recruit for.
 
 ### R125 buildRecruitAckReply / already pinged
-Already pinged the recent players for *Tuesday 7-a-side* — just waiting on their replies. 🙏
+Already pinged the recent players for *Tuesday 7-a-side*, just waiting on their replies. 🙏
 
 ### R126 buildRecruitAckReply / nobody new
 No new players to ask for *Tuesday 7-a-side* right now. 👍
@@ -1256,10 +1256,10 @@ No new players to ask for *Tuesday 7-a-side* right now. 👍
 2. Abid Hussain
 
 ### R128 buildSwapDeferredReply
-Both *Kemal Ediz* and *Sait Demir* are already in — nobody's dropped. Teams aren't generated yet; say *@Match Time generate the teams* and I'll build them (then I can put them on opposite sides).
+Both *Kemal Ediz* and *Sait Demir* are already in, nobody's dropped. Teams aren't generated yet; say *@Match Time generate the teams* and I'll build them (then I can put them on opposite sides).
 
 ### R129 buildTeamSwapReply
-🔁 Swapped *Kemal Ediz* and *Elvin Aliyev* — nobody dropped. Updated teams:
+🔁 Swapped *Kemal Ediz* and *Elvin Aliyev*, nobody dropped. Updated teams:
 
 *Red*
 1. Kemal Ediz
@@ -1271,7 +1271,7 @@ Both *Kemal Ediz* and *Sait Demir* are already in — nobody's dropped. Teams ar
 2. Abid Hussain
 
 ### R130 buildSlotTransferReply
-🔁 *Erdal Ozkan* takes *Sait Demir*'s place on *Red* — same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:
+🔁 *Erdal Ozkan* takes *Sait Demir*'s place on *Red*. Same teams otherwise, nothing regenerated, nobody's attendance changed. Updated teams:
 
 *Red*
 1. Kemal Ediz
@@ -1283,7 +1283,7 @@ Both *Kemal Ediz* and *Sait Demir* are already in — nobody's dropped. Teams ar
 2. Abid Hussain
 
 ### R131 buildColourSwapReply
-🎨 Swapped the colours — same teams, sides flipped:
+🎨 Swapped the colours. Same teams, sides flipped:
 
 *Red*
 1. Kemal Ediz
@@ -1319,7 +1319,7 @@ I haven't swapped *David* and *Elvin Aliyev*. *Elvin Aliyev* isn't in the squad 
 I haven't swapped *David* and *Elvin Aliyev*. *Elvin Aliyev* isn't in the squad and has no team place to hand over. Nothing changed and nobody was dropped.
 
 ### R61 buildRecruitFullSquadRefusal
-The squad for *Tuesday 7-a-side* is already full — no open spots to recruit for.
+The squad for *Tuesday 7-a-side* is already full, so there are no open spots to recruit for.
 
 ### R62 RECRUIT_NO_MATCH_REFUSAL
 There's no upcoming match to invite players to.
@@ -1334,7 +1334,7 @@ match not found
 match is completed
 
 ### R66 balancer reasons / not enough
-not enough confirmed players — 9/14
+not enough confirmed players (9/14)
 
 ### R52 buildBenchOfferGroupPost / reactions off
 🎟 A slot just opened on *Red* (replacing Sait Demir) for *Tuesday 7-a-side* tonight. *First to claim it plays.*
@@ -1349,7 +1349,7 @@ Just reply *IN* here to take it. No rush and no timeout, whoever is free first g
 Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
 
 ### R53 buildBenchIntroLine / reactions off
-🔁  *Bench promotion* — If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
 
 ### R54 buildFullSquadBenchInvite / reactions off
 *Tuesday 7-a-side* is full at 14 of 14, but the bench is open. Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group and the first to reply *IN* takes the slot. 🙏
@@ -1373,7 +1373,7 @@ React 👍 here or reply *IN* to take it. No rush and no timeout, whoever is fre
 Want it? Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there. First to claim plays. No timeout, and if you're not free no worries, you stay on the bench. 🙏
 
 ### R53 buildBenchIntroLine / reactions on
-🔁  *Bench promotion* — If someone drops, I tag the bench here and the first to react 👍 or reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to react 👍 or reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
 
 ### R54 buildFullSquadBenchInvite / reactions on
 *Tuesday 7-a-side* is full at 14 of 14, but the bench is open. Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group and the first to react 👍 or reply *IN* takes the slot. 🙏
@@ -1393,48 +1393,48 @@ Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group.
 Couldn't check that right now.
 
 ### R45 buildMomAnnouncement / single winner
-🏆 *Man of the Match — Tuesday 7-a-side*
+🏆 *Man of the Match: Tuesday 7-a-side*
 
 Congrats *Sait Demir* (6/10 votes) 🎉
 
 Votes:
-• Sait Demir — 6
-• Kemal Ediz — 3
-• Abid Hussain — 1
+• Sait Demir (6)
+• Kemal Ediz (3)
+• Abid Hussain (1)
 
 Your trophy awaits next match.
 
 ### R45 buildMomAnnouncement / shared by two
-🏆 *Man of the Match — Tuesday 7-a-side*
+🏆 *Man of the Match: Tuesday 7-a-side*
 
 Shared between *Sait Demir & Kemal Ediz* (4 votes each, 10 total) 🎉
 
 Votes:
-• Sait Demir — 4
-• Kemal Ediz — 4
-• Abid Hussain — 2
+• Sait Demir (4)
+• Kemal Ediz (4)
+• Abid Hussain (2)
 
 Your trophy awaits next match.
 
 ### R45 buildMomAnnouncement / shared by three
-🏆 *Player of the Match — Thursday 5-a-side*
+🏆 *Player of the Match: Thursday 5-a-side*
 
 Shared between *Sait Demir, Kemal Ediz & Abid Hussain* (1 vote each, 3 total) 🎉
 
 Votes:
-• Sait Demir — 1
-• Kemal Ediz — 1
-• Abid Hussain — 1
+• Sait Demir (1)
+• Kemal Ediz (1)
+• Abid Hussain (1)
 
 Your trophy awaits next match.
 
 ### R45 buildMomAnnouncement / one vote in total
-🏆 *Man of the Match — Tuesday 7-a-side*
+🏆 *Man of the Match: Tuesday 7-a-side*
 
 Congrats *Sait Demir* (1/1 vote) 🎉
 
 Votes:
-• Sait Demir — 1
+• Sait Demir (1)
 
 Your trophy awaits next match.
 
@@ -1511,39 +1511,39 @@ Admins switch by rebooking the venue and flipping the match in the portal; a swi
 ✅ *A player* is IN (replied by DM). Squad *12/14*.
 
 ### R50 planUnresolvedNudge / named, joining
-Heads up — I got a message to *join* from *Tommy T*, but that name isn't matching anyone on the squad list, so I haven't changed anything yet. Could *Tommy T* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
+Heads up: I got a message to *join* from *Tommy T*, but that name isn't matching anyone on the squad list, so I haven't changed anything yet. Could *Tommy T* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
 
 ### R50 planUnresolvedNudge / named, dropping
-Heads up — I got a message to *drop out* from *Tommy T*, but that name isn't matching anyone on the squad list, so I haven't changed anything yet. Could *Tommy T* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
+Heads up: I got a message to *drop out* from *Tommy T*, but that name isn't matching anyone on the squad list, so I haven't changed anything yet. Could *Tommy T* reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
 
 ### R50 planUnresolvedNudge / anonymous, joining
-Heads up — I got a message to *join* from someone I don't recognise, so I haven't changed anything yet. Could they reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
+Heads up: I got a message to *join* from someone I don't recognise, so I haven't changed anything yet. Could they reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
 
 ### R50 planUnresolvedNudge / anonymous, dropping
-Heads up — I got a message to *drop out* from someone I don't recognise, so I haven't changed anything yet. Could they reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
+Heads up: I got a message to *drop out* from someone I don't recognise, so I haven't changed anything yet. Could they reply with the name they're registered under, or an admin can link it on the dashboard? 🙏
 
 ### R44 renderGuestNameAsk / plural, no name
 Nice one 🙌 What are their names? Reply with them and I'll add them to the squad.
 
 ### R100 composeStatsBlastDm / named
-📊 Hi Sait — here are your MatchTime stats: your ratings over time, Man-of-the-Match games, how you stack up against the squad, your badges and a shareable season card.
+📊 Hi Sait, here are your MatchTime stats: your ratings over time, Man-of-the-Match games, how you stack up against the squad, your badges and a shareable season card.
 
 https://mt.example/s/abc
 
-Keep this link — it doesn't expire.
+Keep this link, it doesn't expire.
 
 ### R100 composeStatsBlastDm / no name
-📊 Hi there — here are your MatchTime stats: your ratings over time, Man-of-the-Match games, how you stack up against the squad, your badges and a shareable season card.
+📊 Hi there, here are your MatchTime stats: your ratings over time, Man-of-the-Match games, how you stack up against the squad, your badges and a shareable season card.
 
 https://mt.example/s/abc
 
-Keep this link — it doesn't expire.
+Keep this link, it doesn't expire.
 
 ### R51 composeStatsBlastReply / one
-📊 Done — DM'd 1 player their personal stats link. They'll arrive over the next few minutes.
+📊 Done, DM'd 1 player their personal stats link. They'll arrive over the next few minutes.
 
 ### R51 composeStatsBlastReply / twelve
-📊 Done — DM'd 12 players their personal stats link. They'll arrive over the next few minutes.
+📊 Done, DM'd 12 players their personal stats link. They'll arrive over the next few minutes.
 
 ### R164 buildStatsLinkSentLine / named
 📊 Erdal, I'm sending your stats to you privately by DM.
@@ -1552,14 +1552,14 @@ Keep this link — it doesn't expire.
 📊 I'm sending your stats to you privately by DM.
 
 ### R63 buildBulkCancelAnnouncement / one match
-❌ *Schedule update* — the following *Tuesday 7-a-side* match is OFF:
+❌ *Schedule update*: the following *Tuesday 7-a-side* match is OFF:
 
 • Tue 15 Sep
 
 See you at the next one! 👋
 
 ### R63 buildBulkCancelAnnouncement / two matches
-❌ *Schedule update* — the following *Tuesday 7-a-side* matches are OFF:
+❌ *Schedule update*: the following *Tuesday 7-a-side* matches are OFF:
 
 • Tue 15 Sep
 • Tue 22 Sep
@@ -1585,35 +1585,35 @@ Sorry Sait, I couldn't save that just now, so you're not on the list yet. I coul
 Sorry, I couldn't save that just now, so you're not on the list yet. Please send it again in a minute and I'll sort it 🙏
 
 ### R132 composeReminderDm / named
-⏰ Reminder, Sait — you asked me to nudge you:
+⏰ Reminder, Sait. You asked me to nudge you:
 
 _book the pitch for Thursday_
 
 (reply in the group when you're ready 👍)
 
 ### R132 composeReminderDm / no name
-⏰ Reminder, there — you asked me to nudge you:
+⏰ Reminder, there. You asked me to nudge you:
 
 _book the pitch for Thursday_
 
 (reply in the group when you're ready 👍)
 
 ### R133 composePaymentAck / named
-💳 Got it — credited *Sait Demir* with Abid Hussain, Idris Bello, Faris Nasser for *Tuesday 7-a-side*. Unpaid: 6/14.
+💳 Got it, credited *Sait Demir* with Abid Hussain, Idris Bello, Faris Nasser for *Tuesday 7-a-side*. Unpaid: 6/14.
 
 ### R133 composePaymentAck / count only
-💳 Got it — credited *Sait Demir* with 3 payments for *Tuesday 7-a-side*. Unpaid: 6/14.
+💳 Got it, credited *Sait Demir* with 3 payments for *Tuesday 7-a-side*. Unpaid: 6/14.
 
 ### R133 composePaymentAck / one, some ignored
-💳 Got it — credited *Sait Demir* with Abid Hussain for *Tuesday 7-a-side*. Unpaid: 6/14.
+💳 Got it, credited *Sait Demir* with Abid Hussain for *Tuesday 7-a-side*. Unpaid: 6/14.
 
-_(couldn't find 2 of those names on the squad — those were ignored)_
+_(couldn't find 2 of those names on the squad, so those were ignored)_
 
 ### R134 TEAM_OPS_NO_MATCH_REPLY
 No match lined up to build teams for.
 
 ### R134 composeBalancerRefusal
-Can't build teams right now — not enough confirmed players, 9/14.
+Can't build teams right now: not enough confirmed players, 9/14.
 
 ### R134 composeGenerateTeamsReply / plain
 *Red*:
@@ -1637,9 +1637,9 @@ _Including Erdal Ozkan as CONFIRMED per the request._
 1. Elvin Aliyev
 2. Abid Hussain
 
-_(couldn't find Bob in the roster — ignored)_
+_(couldn't find Bob in the roster, ignored)_
 
-_(couldn't find Jim for team pinning — ignored)_
+_(couldn't find Jim for team pinning, ignored)_
 
 ### R93 buildRecruitInviteDm / reactions off, two spots, link
 👋 Sait, we're putting the squad together for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. 2 spots left.
@@ -1703,19 +1703,19 @@ Sorry, I couldn't update the squad just now. An admin will sort it, try again in
 👍 Noted. You weren't down for *Tuesday 7-a-side* on Tue 8 Sep, 21:30 anyway, so nothing's changed.
 
 ### R101 buildSelfAttendanceAck / failed
-Sorry, I couldn't update the squad just now. An admin will sort it — try again in a bit if you like 🙏
+Sorry, I couldn't update the squad just now. An admin will sort it, or try again in a bit if you like 🙏
 
 ### R99 dmSubAckMessage / opt-out-all
-Done — I'll only message you about payments from now on. Text "start messages" anytime to turn the rest back on.
+Done, I'll only message you about payments from now on. Text "start messages" anytime to turn the rest back on.
 
 ### R99 dmSubAckMessage / opt-out-ratings
-Done — no more rating or Man-of-the-Match messages from me 👍 Text "start ratings" anytime to turn them back on.
+Done, no more rating or Man-of-the-Match messages from me 👍 Text "start ratings" anytime to turn them back on.
 
 ### R99 dmSubAckMessage / opt-in-all
-Great — you're back on for all my messages 👍
+Great, you're back on for all my messages 👍
 
 ### R99 dmSubAckMessage / opt-in-ratings
-Great — I'll send you rating and Man-of-the-Match links again 👍
+Great, I'll send you rating and Man-of-the-Match links again 👍
 
 ### R135 BOT_ADDED_INTRO
 👋 Hi, I'm *MatchTime*. I take care of the weekly admin for football groups, right here in WhatsApp:
@@ -2916,7 +2916,7 @@ Output STRICT JSON only — no markdown, no fences:
 }
 
 ### R91 buildRatingDm
-🏆 *Tuesday 7-a-side* — Tue 8 Sep
+🏆 *Tuesday 7-a-side*, Tue 8 Sep
 
 Rate your teammates and pick Man of the Match. Takes ~1 minute.
 
@@ -2925,17 +2925,17 @@ https://mt.example/s/rate
 
 Link expires in 5 days.
 
-📊 Your season stats (ratings, MoM, badges, share card) — any time:
+📊 Your season stats (ratings, MoM, badges, share card), any time:
 https://mt.example/s/stats
 
 ### R92 buildRatingReminderDm / day 1
-Hey Sait 👋 — hope last night's *Tuesday 7-a-side* was a good one.
+Hey Sait 👋 Hope last night's *Tuesday 7-a-side* was a good one.
 
 When you have a sec, tap here to rate your teammates and pick Man of the Match. The more of us vote, the better the teams balance next week 🙌
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / day 2
-Sait, friendly nudge 🙂 — still waiting on your ratings for *Tuesday 7-a-side*.
+Sait, friendly nudge 🙂 Still waiting on your ratings for *Tuesday 7-a-side*.
 
 Literally 30 seconds, promise. Helps everyone get fairer teams next week ⚽
 https://mt.example/s/rate
@@ -2947,19 +2947,19 @@ Your vote for *Tuesday 7-a-side* actually moves ratings a lot when half the squa
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / day 4
-Sait — two days left to rate *Tuesday 7-a-side* and lock in Man of the Match 🏆
+Sait, two days left to rate *Tuesday 7-a-side* and lock in Man of the Match 🏆
 
 30 seconds, then you're done:
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / day 5
-Last call Sait 🔔 — the rating window for *Tuesday 7-a-side* closes tomorrow.
+Last call Sait 🔔 The rating window for *Tuesday 7-a-side* closes tomorrow.
 
 Drop a rating + Man of the Match pick before it shuts. Your voice counts:
 https://mt.example/s/rate
 
 ### R92 buildRatingReminderDm / no name
-Hey mate 👋 — hope last night's *Tuesday 7-a-side* was a good one.
+Hey mate 👋 Hope last night's *Tuesday 7-a-side* was a good one.
 
 When you have a sec, tap here to rate your teammates and pick Man of the Match. The more of us vote, the better the teams balance next week 🙌
 https://mt.example/s/rate
@@ -2975,35 +2975,35 @@ Hi there 👋 You were a *maybe* for *Tuesday 7-a-side* on Tue 8 Sep at 21:30.
 Are you in or out? Just reply *IN* or *OUT* and I'll sort the squad 🙏
 
 ### R88 buildFeeAskDm / fourteen played
-💷 Kemal — how much should each player pay for *Tuesday 7-a-side* (14 played)?
+💷 Kemal, how much should each player pay for *Tuesday 7-a-side* (14 played)?
 
-Just reply with the amount — e.g. "£8 each" or "£80 total to split". I'll confirm, then send everyone their pay link.
+Just reply with the amount, e.g. "£8 each" or "£80 total to split". I'll confirm, then send everyone their pay link.
 
 ### R88 buildFeeAskDm / nobody, no name
-💷 there — how much should each player pay for *Tuesday 7-a-side*?
+💷 there, how much should each player pay for *Tuesday 7-a-side*?
 
-Just reply with the amount — e.g. "£8 each" or "£80 total to split". I'll confirm, then send everyone their pay link.
+Just reply with the amount, e.g. "£8 each" or "£80 total to split". I'll confirm, then send everyone their pay link.
 
 ### R89 buildPayChaseDm / day 1
-💷 Quick one Sait — your *£8.50* for *Tuesday 7-a-side* is still outstanding.
+💷 Quick one Sait: your *£8.50* for *Tuesday 7-a-side* is still outstanding.
 
 Pay by bank, card, Apple or Google Pay, or settle directly:
 https://mt.example/s/pay
 
 ### R89 buildPayChaseDm / day 2
-💷 Sait, gentle nudge — your *£8.50* for *Tuesday 7-a-side* is still outstanding.
+💷 Sait, gentle nudge: your *£8.50* for *Tuesday 7-a-side* is still outstanding.
 
 Pay by bank, card, Apple or Google Pay, or settle directly:
 https://mt.example/s/pay
 
 ### R89 buildPayChaseDm / day 3
-💷 Sait, still owed — your *£8.50* for *Tuesday 7-a-side* is still outstanding.
+💷 Sait, still owed: your *£8.50* for *Tuesday 7-a-side* is still outstanding.
 
 Pay by bank, card, Apple or Google Pay, or settle directly:
 https://mt.example/s/pay
 
 ### R89 buildPayChaseDm / no name, whole pounds
-💷 Quick one there — your *£8* for *Tuesday 7-a-side* is still outstanding.
+💷 Quick one there: your *£8* for *Tuesday 7-a-side* is still outstanding.
 
 Pay by bank, card, Apple or Google Pay, or settle directly:
 https://mt.example/s/pay
@@ -3061,7 +3061,7 @@ Thanks! So the organiser gets the right amount to confirm, open your pay link, s
 https://mt.example/s/pay
 
 ### R95 buildPayLinkDm
-💷 Sait — match fee for *Tuesday 7-a-side* is *£8*.
+💷 Sait, match fee for *Tuesday 7-a-side* is *£8*.
 
 Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):
 https://mt.example/s/pay
@@ -3069,7 +3069,7 @@ https://mt.example/s/pay
 You can also pay for anyone you brought along.
 
 ### R95 buildPayLinkDm / no name, pence
-💷 there — match fee for *Tuesday 7-a-side* is *£7.50*.
+💷 there, match fee for *Tuesday 7-a-side* is *£7.50*.
 
 Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):
 https://mt.example/s/pay
@@ -3077,13 +3077,13 @@ https://mt.example/s/pay
 You can also pay for anyone you brought along.
 
 ### R96 buildFeeReleasedAck / one
-✅ Done — sent 1 pay link at *£8* each for *Tuesday 7-a-side*. Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.
+✅ Done, sent 1 pay link at *£8* each for *Tuesday 7-a-side*. Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.
 
 ### R96 buildFeeReleasedAck / thirteen
-✅ Done — sent 13 pay links at *£8.50* each for *Tuesday 7-a-side*. Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.
+✅ Done, sent 13 pay links at *£8.50* each for *Tuesday 7-a-side*. Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.
 
 ### R97 buildFeeCancelledAck
-No problem — cancelled. Just tell me the amount per player when you're ready.
+No problem, cancelled. Just tell me the amount per player when you're ready.
 
 ### R98 buildFeeConfirmPrompt / per player
 Got it — *£8* per player for *Tuesday 7-a-side*, 13 players to charge.
@@ -3127,41 +3127,41 @@ Ah, someone just grabbed that one first. You're still first in line on the bench
 ✅ You got it, you're in for Tue 6 Oct! ⚽
 
 ### R105 buildTentativeReask
-No worries — just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏
+No worries, just reply *IN* if you can play or *OUT* if you can't, and I'll update the squad 🙏
 
 ### R106 buildAdminRecruitDmReply / invited three, two spots
-📣 Done — DM'd 3 recent players who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30 (2 spots left). I'll add anyone who taps in. 🙏
+📣 Done, DM'd 3 recent players who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30 (2 spots left). I'll add anyone who taps in. 🙏
 
 ### R106 buildAdminRecruitDmReply / invited one, one spot
-📣 Done — DM'd 1 recent player who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30 (1 spot left). I'll add anyone who taps in. 🙏
+📣 Done, DM'd 1 recent player who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30 (1 spot left). I'll add anyone who taps in. 🙏
 
 ### R106 buildAdminRecruitDmReply / invited, need unknown
-📣 Done — DM'd 2 recent players who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30. I'll add anyone who taps in. 🙏
+📣 Done, DM'd 2 recent players who hadn't replied, asking them to fill *Tuesday 7-a-side* on Tue 8 Sep, 21:30. I'll add anyone who taps in. 🙏
 
 ### R107 buildAdminRecruitDmReply / nobody new
-Everyone who played recently has already responded to *Tuesday 7-a-side* — nobody new to invite. 👍
+Everyone who played recently has already responded to *Tuesday 7-a-side*, so there's nobody new to invite. 👍
 
 ### R108 buildAdminRecruitDmReply / not ok, no reason
 Couldn't do that right now.
 
 ### R109 buildRosterSurveyClarification
-Sorry Sait — wasn't sure if that was a reply to the roster check-in for *Sutton FC*.
+Sorry Sait, I wasn't sure if that was a reply to the roster check-in for *Sutton FC*.
 
 Was your answer:
 • yes / I'm in
 • maybe / sometimes
 • not for now / out
 
-Quick word back is enough — otherwise no worries, an admin will sort it 🙏
+Quick word back is enough. Otherwise no worries, an admin will sort it 🙏
 
 ### R109 rosterSurveyClarificationProbe
-Sorry Sait — wasn't sure if that was a reply to the roster check-in
+Sorry Sait, I wasn't sure if that was a reply to the roster check-in
 
 ### R110 buildRosterSurveyConfirmation / in
-Got it Sait, marked you as in 👍 — thanks!
+Got it Sait, marked you as in 👍 Thanks!
 
 ### R110 buildRosterSurveyConfirmation / maybe
-Got it Sait, marked you as maybe 👍 — just say *IN* in the group whenever you want to play that week, no need to confirm in advance.
+Got it Sait, marked you as maybe 👍 Just say *IN* in the group whenever you want to play that week, no need to confirm in advance.
 
 ### R110 buildRosterSurveyConfirmation / out
 No worries Sait, noted you're stepping back. The admins will tidy up the roster at the end of the week. If you change your mind before then, just message back here 🙏
@@ -3171,27 +3171,27 @@ Hey Sait 👋
 
 This is *Match Time*, the bot that coordinates your *Sutton FC* WhatsApp group (the Tuesday football one).
 
-Quick check-in — attendance's been thin lately, so we're asking everyone if they're still up for Tuesday football going forward.
+Quick check-in: attendance's been thin lately, so we're asking everyone if they're still up for Tuesday football going forward.
 
 Just reply here with a word or two:
-• "yes" / "I'm in" — keep me on the roster
-• "maybe" / "depends" — only when I confirm
-• "not for now" / "out" — step me back
+• "yes" / "I'm in": keep me on the roster
+• "maybe" / "depends": only when I confirm
+• "not for now" / "out": step me back
 
 Whatever you pick stays between you and the group admin. No drama 🙏
 
 ### R111 buildDmQaApology
-Sorry, I couldn't work that one out — try asking again? 🙂
+Sorry, I couldn't work that one out. Try asking again? 🙂
 
 ### R122 buildStatsLinkDm / named
-📊 Hey Sait — here are your MatchTime stats: ratings over time, your Man-of-the-Match games, how you compare to the squad, your badges, and a shareable season card.
+📊 Hey Sait, here are your MatchTime stats: ratings over time, your Man-of-the-Match games, how you compare to the squad, your badges, and a shareable season card.
 
 https://mt.example/s/stats
 
 Link works for 48h.
 
 ### R122 buildStatsLinkDm / no name
-📊 Hey there — here are your MatchTime stats: ratings over time, your Man-of-the-Match games, how you compare to the squad, your badges, and a shareable season card.
+📊 Hey there, here are your MatchTime stats: ratings over time, your Man-of-the-Match games, how you compare to the squad, your badges, and a shareable season card.
 
 https://mt.example/s/stats
 
@@ -3330,25 +3330,25 @@ The squad is full. Say *IN* to go on the waiting list.
 Drop-out deadline: *Thursday 15:30*. Until then, you're in unless you say *OUT*.
 
 ### RSQ3 buildBotIntro / rolling squad
-👋 Hi all — MatchTime bot is live for this group.
+👋 Hi all, MatchTime bot is live for this group.
 
 Here's what I do:
 
 🔁 *Rolling squad*: if you played last time, you're in next time too. Say *OUT* if you can't make it, before the drop-out deadline.
 
-🗒  *Daily reminders* — Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.
+🗒  *Daily reminders*: Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.
 
-🔁  *Bench promotion* — If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
+🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
 
-⚽  *Teams* — Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply `@Match Time swap X with Y` and an admin will apply it.
+⚽  *Teams*: Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply `@Match Time swap X with Y` and an admin will apply it.
 
-🏆  *Ratings & MoM* — I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post — winner announced once everyone's voted (or 5 days after the match at the latest).
+🏆  *Ratings & MoM*: I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest).
 
-⏰  *Reminders* — Say "@MatchTime remind me Monday" and I'll DM you then.
+⏰  *Reminders*: Say "@MatchTime remind me Monday" and I'll DM you then.
 
-📊  *Stats* — Ask me things like "who got MoM last week?" or "who's our most consistent player?"
+📊  *Stats*: Ask me things like "who got MoM last week?" or "who's our most consistent player?"
 
-💳  *Payments* — I auto-post "paid?" polls right after each match.
+💳  *Payments*: I auto-post "paid?" polls right after each match.
 
 Questions? Just ask here. Let's go.
 

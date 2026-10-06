@@ -40,8 +40,9 @@ describe("composeScopedAnswer", () => {
         "Answer per your rules.",
       ].join("\n"),
     );
-    // The English answer is trimmed and otherwise untouched (dash kept).
-    expect(out).toEqual({ answer: "Tuesday at 21:30 — see you there", truncated: false });
+    // The English answer is trimmed and has its long dash replaced
+    // (2026-10-06, "remove long dashes"); nothing else changes.
+    expect(out).toEqual({ answer: "Tuesday at 21:30, see you there", truncated: false });
   });
 
   it("Turkish: the language line rides in the user turn; the system prompt is the same", async () => {

@@ -42,7 +42,7 @@ export function DormancyButton({
     start(async () => {
       try {
         await reactivateOrganisation(orgId);
-        toast.success(`"${orgName}" is active again — fixtures resume tonight`);
+        toast.success(`"${orgName}" is active again, fixtures resume tonight`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Couldn't reactivate");
       }
@@ -54,7 +54,7 @@ export function DormancyButton({
     start(async () => {
       try {
         await markOrganisationDormant(orgId, orgSlug);
-        toast.success(`"${orgName}" marked dormant — no more fixtures will be created`);
+        toast.success(`"${orgName}" marked dormant, no more fixtures will be created`);
         setOpen(false);
         setTyped("");
       } catch (err) {
@@ -69,7 +69,7 @@ export function DormancyButton({
         type="button"
         onClick={onWake}
         disabled={pending}
-        title="Bring this organisation back — fixtures start generating again"
+        title="Bring this organisation back: fixtures start generating again"
         className="px-3 py-2 rounded-lg border border-emerald-200 bg-white hover:bg-emerald-50 text-emerald-700 text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
       >
         {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sun className="w-4 h-4" />}
@@ -83,7 +83,7 @@ export function DormancyButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="Mark this organisation dormant — stops fixture generation, keeps the data"
+        title="Mark this organisation dormant: stops fixture generation, keeps the data"
         className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium inline-flex items-center gap-1.5"
       >
         <Moon className="w-4 h-4" />
@@ -123,7 +123,7 @@ export function DormancyButton({
               <p>
                 This is <span className="font-medium">not</span> the way to quiet
                 the bot for a live club. To mute a club that is still playing,
-                turn the WhatsApp bot off in settings — their fixtures keep
+                turn the WhatsApp bot off in settings: their fixtures keep
                 being created, which is what you want.
               </p>
               <p>

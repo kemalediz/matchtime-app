@@ -66,7 +66,7 @@ export default async function RosterSurveyDetailPage({
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-lg font-semibold text-slate-800">
-              Roster check-in — {format(survey.createdAt, "EEE d MMM yyyy")}
+              Roster check-in, {format(survey.createdAt, "EEE d MMM yyyy")}
             </h2>
             <p className="text-sm text-slate-500 mt-1">
               {survey.org.name} · {survey.dms.length} member

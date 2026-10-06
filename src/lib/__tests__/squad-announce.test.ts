@@ -3,7 +3,7 @@
  *
  * WHY THIS TEST EXISTS (2026-09-16, Sutton FC, live): the bot posted
  *
- *   ✅ *Squad complete — 14/14* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌
+ *   ✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌
  *
  * with the line-up, and then the OWNER had to post "can we have more
  * players for bench please?" himself. His words: "i shouldn't be asking
@@ -70,7 +70,7 @@ const ROSTER = NAMES.map((n, i) => `${i + 1}. ${n}`).join("\n");
 
 /** The post as it was before this change, byte for byte. */
 const TODAY =
-  `✅ *Squad complete — 14/14* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
+  `✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
   `*Playing:*\n${ROSTER}\n\nSee you all there ⚽`;
 
 const INVITE_NO_REACTIONS =
@@ -105,7 +105,7 @@ describe("announceSquadFullIfJustFilled: bench feature OFF", () => {
     getOrgFeatures.mockResolvedValue(features(false));
     await announceSquadFullIfJustFilled("m1");
     expect(await postedText()).toBe(
-      `✅ *Squad complete — 14/14* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
+      `✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
         `*Playing:*\n${ROSTER}\n\n*Bench (1):*\n1. Najib Ahmadi\n\nSee you all there ⚽`,
     );
   });
@@ -145,7 +145,7 @@ describe("announceSquadFullIfJustFilled: bench feature ON", () => {
     getOrgFeatures.mockResolvedValue(features(true));
     await announceSquadFullIfJustFilled("m1");
     expect(await postedText()).toBe(
-      `✅ *Squad complete — 14/14* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
+      `✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
         `*Playing:*\n${ROSTER}\n\n*Bench (2):*\n1. Najib Ahmadi\n2. Mojib Sadat\n\n` +
         `See you all there ⚽\n\n${INVITE_NO_REACTIONS}`,
     );

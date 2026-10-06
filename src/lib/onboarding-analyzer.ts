@@ -22,6 +22,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ParsedChat } from "./whatsapp-parser";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { stripLongDashes } from "./house-style";
 
 // Onboarding is a one-shot per org — a few cents vs pennies difference
 // is worth paying for noticeably better player-evidence quality. Using
@@ -220,7 +221,7 @@ function normaliseAnalysis(rawText: string, args: AnalyzeArgs): OnboardingAnalys
   const paymentHolder = {
     name: phName && phCandidates.has(phName.toLowerCase()) ? phName : null,
     evidence:
-      typeof ph.evidence === "string" && ph.evidence.trim() ? ph.evidence.trim().slice(0, 200) : null,
+      typeof ph.evidence === "string" && ph.evidence.trim() ? stripLongDashes(ph.evidence.trim().slice(0, 200)) : null,
     confidence:
       typeof ph.confidence === "number" ? Math.max(0, Math.min(1, ph.confidence)) : 0,
   };
@@ -246,7 +247,7 @@ function normaliseAnalysis(rawText: string, args: AnalyzeArgs): OnboardingAnalys
           ? Math.round(po.seedRating)
           : null;
       const evidence =
-        typeof po.evidence === "string" ? po.evidence.slice(0, 200) : "";
+        typeof po.evidence === "string" ? stripLongDashes(po.evidence.slice(0, 200)) : "";
       const confidence =
         typeof po.confidence === "number"
           ? Math.max(0, Math.min(1, po.confidence))
@@ -264,7 +265,7 @@ function normaliseAnalysis(rawText: string, args: AnalyzeArgs): OnboardingAnalys
         name: n,
         position: null,
         seedRating: null,
-        evidence: "No clear signal in chat — defaulting to neutral",
+        evidence: "No clear signal in chat, defaulting to neutral",
         confidence: 0,
       });
     }

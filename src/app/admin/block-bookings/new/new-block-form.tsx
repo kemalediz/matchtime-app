@@ -84,7 +84,7 @@ export function NewBlockForm({ activities }: { activities: ActivityOption[] }) {
     try {
       const res = await createBlockBooking(buildInput());
       toast.success(
-        `Block created — ${res.created} matches generated` +
+        `Block created: ${res.created} matches generated` +
           (res.adopted > 0 ? `, ${res.adopted} existing adopted` : "") +
           ". Nothing was posted to the group.",
       );
@@ -121,7 +121,7 @@ export function NewBlockForm({ activities }: { activities: ActivityOption[] }) {
           </select>
           {activity && !activity.isActive && (
             <p className="text-xs text-amber-600 mt-1">
-              This activity is paused — that&apos;s fine: the weekly
+              This activity is paused. That&apos;s fine: the weekly
               auto-generator skips it and this block becomes the schedule.
             </p>
           )}
@@ -250,7 +250,7 @@ export function NewBlockForm({ activities }: { activities: ActivityOption[] }) {
             </h3>
             <p className="text-sm text-slate-500 mt-1">
               Kick-off {preview.time} London time · {preview.maxPlayers} players
-              max. Check the UTC column across any clock change — each date is
+              max. Check the UTC column across any clock change: each date is
               resolved individually.
             </p>
           </div>
@@ -276,7 +276,7 @@ export function NewBlockForm({ activities }: { activities: ActivityOption[] }) {
                     <td className="py-2">
                       {r.alreadyExists ? (
                         <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
-                          exists — will be adopted
+                          exists, will be adopted
                         </span>
                       ) : (
                         <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">

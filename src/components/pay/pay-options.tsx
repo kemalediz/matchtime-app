@@ -21,7 +21,7 @@ export function PayOptions({ matchId, prices }: { matchId: string; prices: Metho
     try {
       if (p.method === "direct") {
         await payDirect(matchId, qty);
-        toast.success("Told the organiser — they'll confirm when it lands.");
+        toast.success("Told the organiser, they'll confirm when it lands.");
         location.reload();
         return;
       }

@@ -139,7 +139,7 @@ export default function BulkPositionsPage() {
           Override player positions
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Positions are per activity. Toggle a chip to add or remove — autosaves.
+          Positions are per activity. Toggle a chip to add or remove (autosaves).
         </p>
       </div>
 

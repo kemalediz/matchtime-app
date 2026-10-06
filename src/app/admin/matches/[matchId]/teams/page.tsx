@@ -88,7 +88,7 @@ export default function TeamManagementPage() {
   async function handleSwapColours() {
     try {
       await swapTeamColours(matchId);
-      toast.success("Colours swapped — same teams");
+      toast.success("Colours swapped, same teams");
       loadMatch();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
@@ -366,7 +366,7 @@ export default function TeamManagementPage() {
                 className="w-20 h-11 text-center text-lg font-bold rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <span className="text-xl font-bold text-slate-300">–</span>
+            <span className="text-xl font-bold text-slate-300">-</span>
             <div className="flex items-center gap-3">
               <span className="h-4 w-4 rounded-full bg-amber-400" />
               <span className="font-medium text-slate-700">{yellowLabel}</span>

@@ -105,10 +105,10 @@ export function generateBlockOccurrences(spec: BlockSpec): BlockOccurrence[] {
   const { startDate, endDate, count, dayOfWeek, time, deadlineHours } = spec;
 
   if (!DATE_RE.test(startDate)) {
-    throw new Error(`Bad startDate "${startDate}" — expected YYYY-MM-DD`);
+    throw new Error(`Bad startDate "${startDate}", expected YYYY-MM-DD`);
   }
   if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
-    throw new Error(`Bad dayOfWeek ${dayOfWeek} — expected 0 (Sun) … 6 (Sat)`);
+    throw new Error(`Bad dayOfWeek ${dayOfWeek}, expected 0 (Sun) … 6 (Sat)`);
   }
   const hasEnd = endDate !== undefined;
   const hasCount = count !== undefined;
@@ -117,7 +117,7 @@ export function generateBlockOccurrences(spec: BlockSpec): BlockOccurrence[] {
   }
   if (hasEnd) {
     if (!DATE_RE.test(endDate!)) {
-      throw new Error(`Bad endDate "${endDate}" — expected YYYY-MM-DD`);
+      throw new Error(`Bad endDate "${endDate}", expected YYYY-MM-DD`);
     }
     if (endDate! < startDate) {
       throw new Error("endDate is before startDate");
@@ -140,7 +140,7 @@ export function generateBlockOccurrences(spec: BlockSpec): BlockOccurrence[] {
     if (hasCount && out.length >= count!) break;
     if (out.length >= MAX_BLOCK_MATCHES) {
       throw new Error(
-        `Block would exceed ${MAX_BLOCK_MATCHES} matches — narrow the date range`,
+        `Block would exceed ${MAX_BLOCK_MATCHES} matches, narrow the date range`,
       );
     }
     // londonDateTimeToUtc validates the "HH:mm" and is DST-safe PER DATE.

@@ -172,7 +172,7 @@ export default function ProfilePage() {
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <h2 className="text-lg font-semibold text-slate-800 mb-1">Your positions</h2>
           <p className="text-sm text-slate-500 mb-4">
-            Positions are per activity — set the roles you&apos;re willing to play for each.
+            Positions are per activity. Set the roles you&apos;re willing to play for each.
           </p>
           <div className="space-y-4">
             {activeAPs.map((ap) => {
@@ -209,7 +209,7 @@ export default function ProfilePage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatTile icon={<Calendar className="w-4 h-4" />} label="Matches" value={stats.matchesPlayed} color="blue" />
-        <StatTile icon={<Star className="w-4 h-4" />} label="Avg rating" value={stats.avgRating != null ? stats.avgRating.toFixed(1) : "—"} color="green" />
+        <StatTile icon={<Star className="w-4 h-4" />} label="Avg rating" value={stats.avgRating != null ? stats.avgRating.toFixed(1) : "-"} color="green" />
         <StatTile icon={<Trophy className="w-4 h-4" />} label="MoM" value={stats.momCount} color="amber" />
         <StatTile icon={<TrendingUp className="w-4 h-4" />} label="Attendance" value={`${stats.attendanceRate}%`} color="purple" />
       </div>

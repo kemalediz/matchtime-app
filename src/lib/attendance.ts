@@ -165,7 +165,7 @@ export async function registerAttendance(
       });
       if (inFlight) {
         throw new Error(
-          `Previous match (${inFlight.date.toISOString().slice(0, 10)}) hasn't been completed yet — can't register for the next one yet.`,
+          `Previous match (${inFlight.date.toISOString().slice(0, 10)}) hasn't been completed yet, so you can't register for the next one yet.`,
         );
       }
     }
@@ -304,7 +304,7 @@ export async function registerAttendance(
               ? EXPLICIT_BENCH_NOTE
               : heldForOrganisers
                 ? ORGANISER_PICK_BENCH_NOTE
-                : "squad full — no slot to give"
+                : "squad full, no slot to give"
             : promotedFromBench
               ? "bench player claimed a free slot"
               : null),

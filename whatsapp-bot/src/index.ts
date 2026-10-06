@@ -548,7 +548,7 @@ async function main() {
               await driver.replyTo(
                 msg,
                 "Hey 👋 I can only read text replies for the check-in. Could you type a quick word or two?\n\n" +
-                  "• \"yes\" / \"I'm in\" — keep me on the roster\n" +
+                  "• \"yes\" / \"I'm in\": keep me on the roster\n" +
                   "• \"maybe\" / \"depends\"\n" +
                   "• \"not for now\" / \"out\"",
               );

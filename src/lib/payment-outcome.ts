@@ -83,7 +83,7 @@ export interface PayGuardInput {
 
 /** The already-paid sentence, exported so the settle-directly write can
  *  say it when a confirmation lands between its read and its write. */
-export const ALREADY_PAID_REASON = "You're already paid for this match — nothing more to do. Thanks!";
+export const ALREADY_PAID_REASON = "You're already paid for this match, nothing more to do. Thanks!";
 
 /** A monthly club's regular opening a per-match pay link. */
 export const MONTHLY_PLACE_REASON =

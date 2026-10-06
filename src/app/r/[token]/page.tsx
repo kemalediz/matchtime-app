@@ -60,7 +60,7 @@ export default function MagicLinkLandingPage() {
         }
         if (cancelled) return;
         if (realToken === token) {
-          setError("This link isn't valid any more — it may have expired or already been used.");
+          setError("This link isn't valid any more. It may have expired or already been used.");
           setState("error");
           return;
         }
@@ -89,7 +89,7 @@ export default function MagicLinkLandingPage() {
 
       if (result?.error || !result?.ok) {
         setError(
-          "This link isn't valid any more — it may have expired or already been used.",
+          "This link isn't valid any more. It may have expired or already been used.",
         );
         setState("error");
         return;
@@ -133,7 +133,7 @@ export default function MagicLinkLandingPage() {
         )}
 
         {state === "ok" && (
-          <p className="text-sm text-slate-500 mt-4">Signed in — redirecting…</p>
+          <p className="text-sm text-slate-500 mt-4">Signed in, redirecting…</p>
         )}
 
         {state === "error" && (

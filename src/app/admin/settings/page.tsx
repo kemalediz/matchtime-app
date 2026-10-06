@@ -80,7 +80,7 @@ export default function SettingsPage() {
             setOrg((prev) =>
               prev ? { ...prev, stripeChargesEnabled: chargesEnabled, stripeConnected: true } : prev,
             );
-            if (chargesEnabled) toast.success("Bank connected — ready to take payments");
+            if (chargesEnabled) toast.success("Bank connected, ready to take payments");
           } catch {
             /* non-fatal — the "Refresh status" button is the fallback */
           }
@@ -215,7 +215,7 @@ export default function SettingsPage() {
     try {
       const { chargesEnabled } = await refreshCollectorStatus(org.id);
       setOrg((prev) => (prev ? { ...prev, stripeChargesEnabled: chargesEnabled, stripeConnected: true } : prev));
-      toast.success(chargesEnabled ? "Bank connected — ready to take payments" : "Onboarding not finished yet");
+      toast.success(chargesEnabled ? "Bank connected, ready to take payments" : "Onboarding not finished yet");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't refresh");
     }
@@ -234,7 +234,7 @@ export default function SettingsPage() {
     if (!org) return;
     if (
       !confirm(
-        "Disconnect the current Stripe account so you can connect a fresh one?\n\nThis only clears the link in MatchTime — it won't affect any payments already taken. You'll need to complete bank setup again.",
+        "Disconnect the current Stripe account so you can connect a fresh one?\n\nThis only clears the link in MatchTime. It won't affect any payments already taken. You'll need to complete bank setup again.",
       )
     )
       return;
@@ -242,7 +242,7 @@ export default function SettingsPage() {
     try {
       await resetCollectorConnect(org.id);
       setOrg((prev) => (prev ? { ...prev, stripeConnected: false, stripeChargesEnabled: false } : prev));
-      toast.success("Disconnected — tap “Connect bank” to set up a fresh account");
+      toast.success("Disconnected. Tap “Connect bank” to set up a fresh account");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't reset");
     } finally {
@@ -411,7 +411,7 @@ export default function SettingsPage() {
         <div className="p-6">
           <p className="text-sm text-slate-500 mb-4">
             Turn individual capabilities on or off. A group can run just the
-            bits it wants — e.g. only Man of the Match and player ratings.
+            bits it wants, e.g. only Man of the Match and player ratings.
             Changes take effect on the bot&apos;s next cycle.
           </p>
           <div className="divide-y divide-slate-100">
@@ -622,20 +622,20 @@ export default function SettingsPage() {
 
             <p className="text-sm text-slate-500">
               Card payments go straight to the money collector&apos;s bank
-              (via Stripe). Connect it once — Stripe handles the rest. (&ldquo;Pay
+              (via Stripe). Connect it once and Stripe handles the rest. (&ldquo;Pay
               directly&rdquo; needs no bank.)
             </p>
             {!org.stripeChargesEnabled && (
               <p className="text-xs text-slate-400">
                 Stripe will ask you to confirm a few identity details and add your bank
-                account — choose <span className="font-medium text-slate-500">Individual</span>{" "}
+                account. Choose <span className="font-medium text-slate-500">Individual</span>{" "}
                 when asked; the business details are already filled in for you. Takes ~2 minutes.
               </p>
             )}
             {org.stripeChargesEnabled ? (
               <div className="flex flex-wrap items-center gap-3">
                 <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4" /> Bank connected — ready to take payments
+                  <CheckCircle2 className="w-4 h-4" /> Bank connected, ready to take payments
                 </div>
                 <button
                   onClick={manageBank}

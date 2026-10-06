@@ -72,13 +72,13 @@ function CustomTooltip({
       </div>
       <div className="mt-1 space-y-0.5">
         <div className="text-blue-600 font-medium">
-          You: {p.myAvg?.toFixed(1) ?? "—"}
+          You: {p.myAvg?.toFixed(1) ?? "-"}
           <span className="text-slate-400 font-normal">
             {" "}
             · rated by {p.raterCount} {p.raterCount === 1 ? "player" : "players"}
           </span>
         </div>
-        <div className="text-slate-500">Squad avg: {p.fieldAvg?.toFixed(1) ?? "—"}</div>
+        <div className="text-slate-500">Squad avg: {p.fieldAvg?.toFixed(1) ?? "-"}</div>
         {p.result && (
           <div className="text-slate-600">
             {RESULT_LABEL[p.result]} {p.scoreLine ?? ""}
@@ -93,7 +93,7 @@ export function RatingTimeline({ data }: { data: TimelinePointDTO[] }) {
   if (data.length === 0) {
     return (
       <div className="text-sm text-slate-400 text-center py-10">
-        No rated games yet — your timeline fills in after your first rated match.
+        No rated games yet. Your timeline fills in after your first rated match.
       </div>
     );
   }

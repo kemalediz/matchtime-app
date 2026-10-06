@@ -53,7 +53,7 @@ describe("composeSquadStateReply — with a team sheet, the composed post IS the
   it("the `[SQUAD]` marker expands to the line-ups, never to fourteen names", () => {
     const out = composeSquadStateReply(SQUAD_POST_MARKER, { ...base, teams: TEAMS });
     expect(out.composed).toBe(true);
-    expect(out.text).toContain("⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam");
+    expect(out.text).toContain("⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam");
     expect(out.text).toContain("*Red*:");
     expect(out.text).toContain("*Yellow*:");
     expect(out.text).not.toContain("*Playing:*");
@@ -190,7 +190,7 @@ describe("announceSquadFullIfJustFilled — silent once a sheet exists", () => {
     await announceSquadFullIfJustFilled("m1");
     expect(created).toHaveLength(1);
     const text = (created[0] as { data: { text: string } }).data.text;
-    expect(text).toContain("✅ *Squad complete — 14/14*");
+    expect(text).toContain("✅ *Squad complete (14/14)*");
     expect(text).toContain("*Playing:*");
     expect(text).toContain("1. Kemal Ediz");
   });

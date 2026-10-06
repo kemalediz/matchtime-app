@@ -387,12 +387,12 @@ describe("the roster clarification probe is the message's own opening", () => {
       });
     }
   }
-  it("the English probe is byte for byte the old prefix", () => {
+  it("the English probe is the clarification's own opening sentence", () => {
     expect(rosterSurveyClarificationProbe("Sait", "en")).toBe(
-      "Sorry Sait — wasn't sure if that was a reply to the roster check-in",
+      "Sorry Sait, I wasn't sure if that was a reply to the roster check-in",
     );
     expect(rosterSurveyClarificationProbe(null, "en")).toBe(
-      "Sorry mate — wasn't sure if that was a reply to the roster check-in",
+      "Sorry mate, I wasn't sure if that was a reply to the roster check-in",
     );
   });
 });

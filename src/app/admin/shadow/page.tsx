@@ -108,15 +108,15 @@ export default async function ShadowDashboardPage() {
         <h1 className="text-2xl font-bold text-slate-900">Window verdicts</h1>
         <p className="text-sm text-slate-600 mt-1">
           Window-level verdicts recorded alongside the live per-message ones. No attendance is
-          written from this path — it is a read-only comparison view.
+          written from this path: it is a read-only comparison view.
         </p>
       </div>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">The shadow window-analyzer is retired. This page shows historical runs.</p>
         <p className="mt-1">
-          It ran on every batch from 29 May to 31 Aug 2026 — a second, uncached Sonnet call per
-          batch, roughly 30% of the analyzer bill — and was switched off on 31 Aug without a
+          It ran on every batch from 29 May to 31 Aug 2026 (a second, uncached Sonnet call per
+          batch, roughly 30% of the analyzer bill) and was switched off on 31 Aug without a
           decision ever having been taken from it. On 6 Sep 2026 it was deleted outright: it
           compared the new pipeline against the old mega-prompt, and the mega-prompt is gone, so
           there is nothing left on the other side of the diff.
@@ -156,11 +156,11 @@ export default async function ShadowDashboardPage() {
               <div className="px-4 py-2 border-b border-slate-200 bg-slate-50 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-slate-700">
-                    {format(v.windowStart, "EEE d MMM HH:mm")}–{format(v.windowEnd, "HH:mm")}
+                    {format(v.windowStart, "EEE d MMM HH:mm")} to {format(v.windowEnd, "HH:mm")}
                   </span>
                   <span className="text-slate-500">({formatDistanceToNow(v.createdAt, { addSuffix: true })})</span>
                   <span className="text-slate-500">{v.modelMs}ms</span>
-                  <span className="text-slate-500">${v.costUsd?.toFixed(4) ?? "—"}</span>
+                  <span className="text-slate-500">${v.costUsd?.toFixed(4) ?? "-"}</span>
                   <AgreementBadge agreement={agreement} />
                 </div>
                 <div className="text-slate-400 font-mono">{v.batchHash.slice(0, 8)}</div>
@@ -181,7 +181,7 @@ export default async function ShadowDashboardPage() {
                           <span className="font-medium">{c.targetName}</span>
                           {c.swapWithName ? <span className="text-slate-500"> ↔ {c.swapWithName}</span> : null}
                           {typeof c.scoreRed === "number" && typeof c.scoreYellow === "number" ? (
-                            <span className="text-slate-500"> ({c.scoreRed}–{c.scoreYellow})</span>
+                            <span className="text-slate-500"> ({c.scoreRed}-{c.scoreYellow})</span>
                           ) : null}
                           <div className="text-slate-500 ml-1">{c.reason}</div>
                         </li>
@@ -214,7 +214,7 @@ export default async function ShadowDashboardPage() {
                           <div className="mt-1">
                             {am ? (
                               <>
-                                <span className="font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">{am.intent ?? "—"}</span>{" "}
+                                <span className="font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">{am.intent ?? "-"}</span>{" "}
                                 {am.action && <span className="text-slate-500">act: {am.action}</span>}
                               </>
                             ) : (

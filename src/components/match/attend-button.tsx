@@ -69,7 +69,7 @@ export function AttendButton({
     return (
       <button
         disabled
-        title="Earlier match hasn't been completed yet — registrations re-open after."
+        title="Earlier match hasn't been completed yet. Registrations re-open after."
         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-400 font-medium cursor-not-allowed"
       >
         <Clock className="w-4 h-4" />

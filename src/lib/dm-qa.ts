@@ -26,7 +26,7 @@ import { loadPlayerSeasonStats } from "./player-stats";
 import { buildDmQaApology } from "./dm-copy";
 import { dayOfMonthLabel, dayTimeLabel, timeLabel, weekdayLabel } from "./i18n/dates";
 import { normaliseLang, type Lang } from "./i18n/lang";
-import { applyHouseStyle } from "./message-analyzer";
+import { applyHouseStyle } from "./house-style";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 import { isAiBudgetExceeded, withOrgAiBudget } from "@/lib/ai-budget";
 
@@ -381,8 +381,10 @@ export type DmQaCall = (system: string, user: string) => Promise<{ text: string 
  * The system prompt stays English and identical for every club. A
  * non-English org gets a LANGUAGE LINE in the user turn (the chase's
  * pattern, design section 4.3), and its answer is passed through
- * `applyHouseStyle` (no dashes, WhatsApp bold). The English prompt and
- * the English answer are byte for byte what they were.
+ * `applyHouseStyle` (no dashes, WhatsApp bold). The English prompt is
+ * byte for byte what it was; the English ANSWER has its em and en dashes
+ * replaced by the same pass (2026-10-06, "remove long dashes") and is
+ * otherwise untouched.
  */
 export async function composeScopedAnswer(args: {
   context: string;
@@ -417,19 +419,20 @@ export async function composeScopedAnswer(args: {
   // Degrade to the apology we already send when there's no text at all.
   if (resp.truncated) return { answer: APOLOGY, truncated: true };
   // No text block at all is the apology, exactly as before this was
-  // extracted; the house-style pass is a no-op for English.
+  // extracted; the house-style pass only changes an answer with a dash.
   const answer = resp.text !== null ? tidyAnswer(resp.text.trim(), args.lang) : APOLOGY;
   return { answer, truncated: false };
 }
 
 /**
- * The non-English answer's clean-up: the house-style pass, and a
- * fabricated next turn cut off (the Turkish dry run of 2026-09-17 caught
- * the model appending "User: ..." to one answer in thirty). English is
- * returned untouched, as it always was.
+ * The answer's clean-up. Every language gets the house-style pass (no em
+ * or en dashes). A non-English answer also has a fabricated next turn
+ * cut off (the Turkish dry run of 2026-09-17 caught the model appending
+ * "User: ..." to one answer in thirty; 0 of 30 English ones did it, so
+ * the English answer is not cut).
  */
 function tidyAnswer(text: string, lang: Lang): string {
-  if (lang === "en") return text;
+  if (lang === "en") return applyHouseStyle(text, lang);
   const cut = text
     // a fabricated next turn
     .split(/\n+\s*(?:User|Kullanıcı|Oyuncu|Player)\s*:/u)[0]

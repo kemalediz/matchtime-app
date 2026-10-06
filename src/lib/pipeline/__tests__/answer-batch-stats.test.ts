@@ -225,6 +225,17 @@ describe("the grounded generic path", () => {
     expect(calls.filter((c) => c.startsWith("stats-generic"))).toHaveLength(1);
   });
 
+  // House style (2026-10-06, "remove long dashes"): the model's answer
+  // goes through the shared pass, and the 8.1 and the name survive it.
+  it("a grounded reply written with long dashes is posted without them", async () => {
+    const { model } = stubModel({
+      [Q]: FACTS,
+      [`stats-generic|QUESTION: ${Q}`]: { answer: "*Mustafa Kaya* — tops the ratings – on 8.1." },
+    });
+    const { res } = await run({ messages: [msg({ body: Q })], model });
+    expect(res.outcomes.get("wa-1")?.reply).toBe("*Mustafa Kaya*: tops the ratings, on 8.1.");
+  });
+
   it("an ungrounded reply is replaced by the safe line: our error, never the user's", async () => {
     const { model } = stubModel({
       [Q]: FACTS,

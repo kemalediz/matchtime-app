@@ -238,7 +238,7 @@ export default async function DashboardPage() {
           </div>
           <div className="flex gap-1.5 flex-wrap mt-2">
             {myPositions.length === 0 ? (
-              <span className="text-sm opacity-60">—</span>
+              <span className="text-sm opacity-60">-</span>
             ) : (
               myPositions.map((p) => (
                 <span key={p} className="inline-flex px-2 py-0.5 rounded-md bg-white/70 text-xs font-semibold">
@@ -254,7 +254,7 @@ export default async function DashboardPage() {
             <p className="text-xs font-medium uppercase tracking-wider">{s.rating_club_tile}</p>
           </div>
           <p className="text-3xl font-bold mt-2">
-            {myRating.rating !== null ? myRating.rating.toFixed(1) : "\u2014"}
+            {myRating.rating !== null ? myRating.rating.toFixed(1) : "-"}
           </p>
           <p className="text-[11px] opacity-70 mt-0.5">{ratingSubLine}</p>
         </div>

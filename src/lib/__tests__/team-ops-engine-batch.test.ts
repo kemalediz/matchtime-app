@@ -334,11 +334,11 @@ describe("the shipped sentences are reproduced, not re-invented", () => {
     const { model } = stubModel({ [GEN]: teamsFacts() });
     const r = recorder(model, squadWorld(), {}, {
       ok: false,
-      reason: "not enough confirmed players — 9/14",
+      reason: "not enough confirmed players (9/14)",
     });
     const res = await run({ messages: [msg({ body: GEN })], deps: r.deps });
     const out = [...res.outcomes.values()][0];
-    expect(out.reply).toBe("Can't build teams right now — not enough confirmed players — 9/14.");
+    expect(out.reply).toBe("Can't build teams right now: not enough confirmed players (9/14).");
     expect(out.react).toBe("🤔");
     expect(out.teamsGenerated).toBe(false);
     // NOT a failure: the group got a reason, which is the whole
@@ -359,8 +359,8 @@ describe("the shipped sentences are reproduced, not re-invented", () => {
       "_Pinned per the request: Kemal Ediz → RED._\n\n" +
         "_Including Ibrahim Khan, Ehtisham Ul Haq as CONFIRMED per the request._\n\n" +
         "POST" +
-        "\n\n_(couldn't find Dave in the roster — ignored)_" +
-        "\n\n_(couldn't find Bazza for team pinning — ignored)_",
+        "\n\n_(couldn't find Dave in the roster, ignored)_" +
+        "\n\n_(couldn't find Bazza for team pinning, ignored)_",
     );
   });
 
@@ -375,7 +375,7 @@ describe("the shipped sentences are reproduced, not re-invented", () => {
       }),
     ).toBe("POST");
     expect(composeBalancerRefusal("match is completed")).toBe(
-      "Can't build teams right now — match is completed.",
+      "Can't build teams right now: match is completed.",
     );
   });
 });
@@ -404,7 +404,7 @@ describe("named players are force-confirmed, pinned and paired", () => {
     const res = await run({ messages: [msg({ body: INC })], deps: r.deps });
     expect(r.confirmed).toEqual([]);
     expect([...res.outcomes.values()][0].reply).toBe(
-      `${POST}\n\n_(couldn't find Bazza in the roster — ignored)_`,
+      `${POST}\n\n_(couldn't find Bazza in the roster, ignored)_`,
     );
     // …and the operator hears about it too. A line only the group sees
     // is a line nobody triages.

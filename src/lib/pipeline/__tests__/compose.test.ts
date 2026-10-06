@@ -1029,9 +1029,9 @@ describe("the replacement post says who is out, who is in, and the teams", () =>
     expect(out.utterances).toHaveLength(1);
     expect(out.utterances[0].text).toBe(
       [
-        "🔁 *Wasim is out* — *Shahrokh* takes his place and his spot in *Yellow*.",
+        "🔁 *Wasim is out*. *Shahrokh* takes his place and his spot in *Yellow*.",
         "",
-        "⚽ *Teams for tonight* — Tue 21:30 at Goals North Cheam",
+        "⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam",
         "",
         "*Red*:",
         "1. Kemal Ediz",
@@ -1091,7 +1091,7 @@ describe("the replacement post says who is out, who is in, and the teams", () =>
     expect(out.utterances).toHaveLength(1);
     const text = out.utterances[0].text;
     expect(text.split("\n")[0]).toBe(
-      "🔁 *Kemal and Wasim are out* — *Shahrokh* takes Kemal's spot in *Red*, *Ayoub* takes Wasim's spot in *Yellow*.",
+      "🔁 *Kemal and Wasim are out*. *Shahrokh* takes Kemal's spot in *Red*, *Ayoub* takes Wasim's spot in *Yellow*.",
     );
     expect(text).toContain("1. Shahrokh  (replacing Kemal)");
     expect(text).toContain("7. Ayoub Benali  (replacing Wasim)");
@@ -1165,7 +1165,7 @@ describe("a sheet never lists a player who is not playing (Sutton, 2026-09-29)",
     const { out } = composeFor(at0757(), [hamzahIn()]);
     expect(out.utterances).toHaveLength(1);
     const text = out.utterances[0].text;
-    expect(text).toContain("🔁 *Elnur is out* — *Hamzah* takes his place and his spot in *Red*.");
+    expect(text).toContain("🔁 *Elnur is out*. *Hamzah* takes his place and his spot in *Red*.");
     expect(text).toContain("2. Hamzah  (replacing Elnur)");
     expect(text).toContain("3. (open slot)");
     expect(text).not.toContain("Abid");

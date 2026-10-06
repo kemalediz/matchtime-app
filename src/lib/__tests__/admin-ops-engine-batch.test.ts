@@ -235,7 +235,7 @@ describe("S21 · a bulk payment credit", () => {
     // Every number in the ack is read from what landed: 4 confirmed,
     // nobody paid, one credit of 4 → nothing outstanding.
     expect(out.reply).toBe(
-      "💳 Got it — credited *Amir Ahmadi* with 4 payments for *Tuesday 7-a-side*. Unpaid: 0/4.",
+      "💳 Got it, credited *Amir Ahmadi* with 4 payments for *Tuesday 7-a-side*. Unpaid: 0/4.",
     );
   });
 
@@ -252,7 +252,7 @@ describe("S21 · a bulk payment credit", () => {
     expect(r.marked.map((m) => m.userId).sort()).toEqual(["u-kemal", "u-sait"]);
     expect(r.marked.every((m) => m.payerUserId === "u-amir")).toBe(true);
     expect([...res.outcomes.values()][0].reply).toBe(
-      "💳 Got it — credited *Amir Ahmadi* with Sait Demir, Kemal Ediz for *Tuesday 7-a-side*. " +
+      "💳 Got it, credited *Amir Ahmadi* with Sait Demir, Kemal Ediz for *Tuesday 7-a-side*. " +
         "Unpaid: 2/4.",
     );
   });
@@ -383,7 +383,7 @@ describe("S22 · a personal reminder", () => {
     const out = [...res.outcomes.values()][0];
     expect(out.intent).toBe("reminder_request");
     expect(out.react).toBe("⏰");
-    expect(out.reply).toBe("👍 Got it — I'll DM you Wed 2 Sep at 18:00.");
+    expect(out.reply).toBe("👍 Got it, I'll DM you Wed 2 Sep at 18:00.");
   });
 
   it("hands the message back when the sender muted reminder DMs", async () => {
