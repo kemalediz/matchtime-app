@@ -30,6 +30,8 @@ interface RowState {
   /** From a pasted list only: the number as written, and a concession hint. */
   slot: number | null;
   tier: MemberTier;
+  /** From a pasted list only: the name as the list writes it. */
+  listName?: string;
 }
 
 const BLANK: RowState = { on: false, kind: "regular", paid: "none", amount: "", credits: "", slot: null, tier: "standard" };
@@ -80,6 +82,7 @@ export function StartMonthForm(props: {
           credits: "",
           slot: r.slot,
           tier: r.tier,
+          listName: r.listName,
         };
       }
       setRows(next);
@@ -116,7 +119,7 @@ export function StartMonthForm(props: {
       const r = row(p.userId);
       if (!r.on) continue;
       if (r.kind === "payg") {
-        seedRows.push({ userId: p.userId, kind: "payg", slot: r.slot });
+        seedRows.push({ userId: p.userId, kind: "payg", slot: r.slot, listName: r.listName });
         continue;
       }
       const amount = r.amount.trim() === "" ? null : parsePounds(r.amount);
@@ -131,6 +134,7 @@ export function StartMonthForm(props: {
         paid: r.paid,
         paidAmountPence: r.paid === "none" ? null : amount,
         creditsCarriedIn: credits,
+        listName: r.listName,
       });
     }
     if (seedRows.length === 0) return setError(s.mth_start_error({ key: "no-players" }));

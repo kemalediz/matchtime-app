@@ -273,6 +273,9 @@ export async function handlePaymentClaimDm(input: {
           paidAt: null,
           // Pay links go to the CONFIRMED squad only (releaseMatchPayments).
           status: "CONFIRMED",
+          // Monthly squad (slice 5): a regular's row is paid for by the
+          // month and owes nothing per match. No weekly club has one.
+          OR: [{ paymentMethod: null }, { paymentMethod: { not: "monthly" } }],
           match: {
             isHistorical: false,
             status: { not: "CANCELLED" },

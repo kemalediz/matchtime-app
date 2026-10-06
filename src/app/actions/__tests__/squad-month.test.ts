@@ -311,10 +311,10 @@ describe("readMonthList: a pasted list becomes a draft, and writes nothing", () 
     if (!res.ok) throw new Error(res.error);
     expect(res.monthMismatch).toBe(false);
     expect(res.rows).toEqual([
-      { userId: "u-alex", name: "Alex Carter", kind: "regular", tier: "standard", slot: 1, paid: "claimed", paidAmountPence: 3000 },
-      { userId: "u-bilal", name: "Bilal Khan", kind: "regular", tier: "standard", slot: 2, paid: "claimed", paidAmountPence: null },
-      { userId: "u-omar", name: "Omar One", kind: "payg", tier: "standard", slot: 3, paid: "none", paidAmountPence: null },
-      { userId: "u-sam", name: "Sam Hill", kind: "regular", tier: "standard", slot: null, paid: "claimed", paidAmountPence: null },
+      { userId: "u-alex", name: "Alex Carter", listName: "Alex", kind: "regular", tier: "standard", slot: 1, paid: "claimed", paidAmountPence: 3000 },
+      { userId: "u-bilal", name: "Bilal Khan", listName: "Bilal", kind: "regular", tier: "standard", slot: 2, paid: "claimed", paidAmountPence: null },
+      { userId: "u-omar", name: "Omar One", listName: "Omar", kind: "payg", tier: "standard", slot: 3, paid: "none", paidAmountPence: null },
+      { userId: "u-sam", name: "Sam Hill", listName: "Sammy", kind: "regular", tier: "standard", slot: null, paid: "claimed", paidAmountPence: null },
     ]);
     expect(res.unmatched).toEqual([{ slot: 5, name: "Zed", kind: "regular", reason: "unknown", candidates: [] }]);
     expect(aliasFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { orgId: "org-vets" } }));

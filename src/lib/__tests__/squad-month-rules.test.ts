@@ -439,12 +439,12 @@ describe("draftSeedFromList: the slice 1 reader's output becomes a draft the org
   it("matches names to the club's players and keeps slot numbers as written", () => {
     const d = draftSeedFromList(LIST, ROSTER, { month: 10 });
     expect(d.rows).toEqual([
-      { userId: "u-alex", name: "Alex Carter", kind: "regular", tier: "standard", slot: 1, paid: "claimed", paidAmountPence: 3000 },
-      { userId: "u-bilal", name: "Bilal Khan", kind: "regular", tier: "standard", slot: 2, paid: "claimed", paidAmountPence: null },
-      { userId: "u-carl", name: "Carl Reyes", kind: "regular", tier: "concession", slot: 3, paid: "none", paidAmountPence: null },
-      { userId: "u-dev", name: "Dev😁 Patel", kind: "regular", tier: "standard", slot: 6, paid: "none", paidAmountPence: null },
+      { userId: "u-alex", name: "Alex Carter", listName: "Alex", kind: "regular", tier: "standard", slot: 1, paid: "claimed", paidAmountPence: 3000 },
+      { userId: "u-bilal", name: "Bilal Khan", listName: "bilal khan", kind: "regular", tier: "standard", slot: 2, paid: "claimed", paidAmountPence: null },
+      { userId: "u-carl", name: "Carl Reyes", listName: "Carl", kind: "regular", tier: "concession", slot: 3, paid: "none", paidAmountPence: null },
+      { userId: "u-dev", name: "Dev😁 Patel", listName: "Dev", kind: "regular", tier: "standard", slot: 6, paid: "none", paidAmountPence: null },
       // "Paid but can't play" is a paid regular with no slot of their own this week.
-      { userId: "u-sam", name: "Sam Hill", kind: "regular", tier: "standard", slot: null, paid: "claimed", paidAmountPence: 2250 },
+      { userId: "u-sam", name: "Sam Hill", listName: "Sammy", kind: "regular", tier: "standard", slot: null, paid: "claimed", paidAmountPence: 2250 },
     ]);
   });
 
@@ -523,5 +523,56 @@ describe("draftSeedFromList: the slice 1 reader's output becomes a draft the org
       ["u-sam", 4],
     ]);
     expect(r.members.every((m) => m.paidAt === null)).toBe(true);
+  });
+});
+
+describe("a month started from a pasted list teaches the names on it (review, 2026-10-06)", () => {
+  const ROSTER = [
+    { userId: "u-alex", name: "Alex Carter" },
+    { userId: "u-sam", name: "Sam Hill", aliases: ["Sammy"] },
+    { userId: "u-omar", name: "Omar Khan" },
+  ];
+  const mark = { paid: false, paidAmountPence: null, tier: null, payg: false, paygDates: [] };
+
+  it("the draft keeps the name as the list writes it", () => {
+    const d = draftSeedFromList(
+      { month: { month: 10 }, slots: [{ slot: 1, name: "Alex", marks: mark }, { slot: 2, name: "Sammy", marks: mark }] },
+      ROSTER,
+      { month: 10 },
+    );
+    expect(d.rows.map((r) => [r.userId, r.listName])).toEqual([
+      ["u-alex", "Alex"],
+      ["u-sam", "Sammy"],
+    ]);
+  });
+
+  it("planMonthSeed returns the list names as aliases to save, one per player, and none for a ticked start", () => {
+    const base = {
+      activityId: "act-mnf",
+      gamesScheduled: 4,
+      gamesPlayed: 1,
+      rows: [
+        { userId: "u-alex", kind: "regular" as const, listName: "  Big Al " },
+        { userId: "u-omar", kind: "payg" as const, listName: "Omar" },
+        { userId: "u-sam", kind: "regular" as const },
+      ],
+    };
+    const ctx = { memberUserIds: new Set(["u-alex", "u-omar", "u-sam"]), actorUserId: "u-sam", now: new Date("2026-10-06T09:00:00Z") };
+    const fromList = planMonthSeed({ ...base, source: "seed-list" }, ctx);
+    expect(fromList.ok && fromList.aliases).toEqual([
+      { userId: "u-alex", alias: "Big Al" },
+      { userId: "u-omar", alias: "Omar" },
+    ]);
+    const ticked = planMonthSeed({ ...base, source: "seed-tick" }, ctx);
+    expect(ticked.ok && ticked.aliases).toEqual([]);
+  });
+
+  it("a list name that is not a short plain name is refused", () => {
+    const ctx = { memberUserIds: new Set(["u-alex"]), actorUserId: "u-alex", now: new Date("2026-10-06T09:00:00Z") };
+    const r = planMonthSeed(
+      { activityId: "a", gamesScheduled: 4, gamesPlayed: 0, source: "seed-list", rows: [{ userId: "u-alex", kind: "regular", listName: "x".repeat(81) }] },
+      ctx,
+    );
+    expect(r).toMatchObject({ ok: false, error: "bad-row" });
   });
 });

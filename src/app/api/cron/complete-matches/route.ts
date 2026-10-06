@@ -24,6 +24,7 @@
 import { NextResponse } from "next/server";
 import { completeFinishedMatches } from "@/lib/match-completion";
 import { seedDueRollingSquads } from "@/lib/rolling-squad";
+import { seedDueMonthlySquads } from "@/lib/monthly-week";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -50,5 +51,15 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error("[complete-matches] rolling-squad seeding failed:", err);
   }
-  return NextResponse.json({ ok: true, completed, rollingSeeded });
+  // Monthly squad (slice 5): a monthly club's regulars are put onto the
+  // next match of a running month, on the rolling squad's clock. Server
+  // side, so it does not depend on the Pi being up. Clubs on "weekly" are
+  // not in its query.
+  let monthlySeeded = 0;
+  try {
+    monthlySeeded = (await seedDueMonthlySquads(now)).seeded;
+  } catch (err) {
+    console.error("[complete-matches] monthly-squad seeding failed:", err);
+  }
+  return NextResponse.json({ ok: true, completed, rollingSeeded, monthlySeeded });
 }

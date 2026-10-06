@@ -485,7 +485,9 @@ async function handleAnalyzeRequest(request: Request) {
     where: { whatsappGroupId: body.groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
     // `language`: the squad post composed from the rows below speaks
     // the group's language (Phase 2 of the multi-language design).
-    select: { id: true, name: true, language: true },
+    // `squadMode` (monthly squad, slice 5): read once here so a club on
+    // "weekly" never runs a monthly query below.
+    select: { id: true, name: true, language: true, squadMode: true },
   });
   if (!org) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
@@ -1644,6 +1646,88 @@ async function handleAnalyzeRequest(request: Request) {
   //   the sender), which is the same shape as PR #33's "a recruit ask
   //   alongside a drop must do BOTH". Only one of them ever SPEAKS:
   //   whoever owns the message in the loop below.
+  // ── 3b. A MONTHLY CLUB'S PASTED LIST (slice 5, 2026-10-06) ──────────
+  //
+  //   MDs/monthly-squad-plan-2026-10-05.md, section 6.2. A group that
+  //   runs on a monthly list changes it by re-pasting it, and section 4
+  //   below registers nobody from those pastes on purpose (it needs the
+  //   squad restated as an exact prefix, and this group changes slots in
+  //   the middle). So for a club on "monthly" with a RUNNING month, a
+  //   list-shaped message is read here first, by the slice 1 reader, and
+  //   reconciled BY NAME (`lib/monthly-paste.ts`): no model reads it.
+  //
+  //   ONLY for `squadMode === "monthly"`: a weekly club (Sutton FC, and
+  //   every club before this) skips the whole block with no query, and
+  //   section 4 sees its pastes exactly as before.
+  //   `handleMonthlyPaste` returns null for a message that is not this
+  //   month's list (not list-shaped, no running month for the match, or
+  //   another month's header), and section 4 then decides, as before.
+  //
+  //   WHERE IT SITS, and what that keeps (the terminal-branch bug class):
+  //     - after the club lookup, so a muted or billing-paused club never
+  //       gets here;
+  //     - after the late-message hold-out: a late paste is not in `fresh`
+  //       during the peels, so it changes nothing;
+  //     - it calls no model, so the daily AI cap neither stops it nor is
+  //       spent by it;
+  //     - it claims the LIST through `claimFastPath`, not the message:
+  //       whatever the member typed around the list ("can't make it
+  //       lads") is the residual, and the router and the attendance
+  //       engine still see it. A message that was only a list is fully
+  //       handled here, which also saves today's model call per paste.
+  //
+  //   IT SAYS NOTHING. A ✅ on a paste that changed something, nothing on
+  //   one that only restates the list. The list itself is posted by the
+  //   scheduler, and only when it differs from what the group last saw.
+  /** Monthly club, running month: list-shaped messages that are not the
+   *  month's squad list. Section 4 registers nobody from them. */
+  const monthlyNotSquadList = new Set<string>();
+  if (org.squadMode === "monthly" && nextMatchForReply) {
+    const { handleMonthlyPaste } = await import("@/lib/monthly-paste");
+    for (const m of fresh) {
+      if (fastPathHandledIds.has(m.waMessageId)) continue;
+      const sender = senderById.get(m.waMessageId)!;
+      let res: Awaited<ReturnType<typeof handleMonthlyPaste>> = null;
+      try {
+        const sentAt = new Date(m.timestamp);
+        res = await handleMonthlyPaste({
+          orgId: org.id,
+          matchId: nextMatchForReply.id,
+          body: m.body,
+          waMessageId: m.waMessageId,
+          sentAt: Number.isNaN(sentAt.getTime()) ? undefined : sentAt,
+          sender: { userId: sender.userId, name: sender.name ?? m.authorName ?? null },
+          senderWhatsAppName: m.authorName ?? null,
+        });
+      } catch (err) {
+        // Left for section 4 and the pipeline, as if this block were not here.
+        console.error(`[analyze] monthly paste ${m.waMessageId} failed:`, err);
+      }
+      if (!res) continue;
+      if ("notThisList" in res) {
+        // A numbered list that is not this month's squad list ("Kit for
+        // Monday", next month's header). Nothing is read from it here, and
+        // section 4 below must not register its lines either.
+        monthlyNotSquadList.add(m.waMessageId);
+        continue;
+      }
+      const notes = [
+        res.applied.length > 0 ? `applied [${res.applied.join(", ")}]` : "restates the list, nothing changed",
+        res.ignored.length > 0 ? `left alone [${res.ignored.map((i) => `${i.name}: ${i.reason}`).join(", ")}]` : "",
+        res.notAdded.length > 0 ? `not added [${res.notAdded.map((i) => `${i.name}: ${i.reason}`).join(", ")}]` : "",
+        res.failures.length > 0 ? `FAILED for [${res.failures.join(", ")}]` : "",
+      ].filter(Boolean);
+      await claimFastPath(m, res.residual ? { consumed: m.body, residual: res.residual } : null, {
+        handledBy: res.failures.length > 0 ? "error" : "fast-path",
+        intent: "monthly_list",
+        action: res.applied.length > 0 ? `monthly-list:${res.applied.length}` : "none",
+        reasoning: `monthly list, read by name: ${notes.join("; ")}`,
+        react: res.changed && res.failures.length === 0 ? "✅" : null,
+        reply: null,
+      });
+    }
+  }
+
   const pastedRosterIds = new Set<string>();
   const pastedRosterReports = new Map<
     string,
@@ -1670,6 +1754,21 @@ async function handleAnalyzeRequest(request: Request) {
       // and peeling the message is the defect this section's header is
       // about. This one only says "the list has been dealt with".
       pastedRosterIds.add(m.waMessageId);
+
+      // MONTHLY SQUAD (slice 5): in a running month a pasted list never
+      // creates a player. A list the monthly reader refused (not this
+      // month's squad list) registers nobody here either, whatever its
+      // shape. Empty for every weekly club.
+      if (decision.kind === "of_record" && monthlyNotSquadList.has(m.waMessageId)) {
+        pastedRosterReports.set(m.waMessageId, {
+          handledBy: "fast-path",
+          action: "none",
+          reasoning: "pasted list in a monthly club's running month that is not the month's list: nobody registered",
+          react: null,
+          reply: null,
+        });
+        continue;
+      }
 
       if (decision.kind === "not_of_record") {
         console.warn(
@@ -3244,12 +3343,37 @@ async function handleAnalyzeRequest(request: Request) {
                 }
               : null,
         };
+        // MONTHLY SQUAD (slice 5, 2026-10-06): for a club on "monthly"
+        // whose match belongs to a running month, the squad IS the
+        // month's list. A reply that would carry the weekly-shaped squad
+        // post carries that list instead, in the group's own format
+        // (`currentWeekListPost`; null once the teams are out, when the
+        // team sheet above is the answer). The TRIGGER is unchanged: the
+        // same replies are recognised by `composeSquadStateReply`, and a
+        // lead it keeps is kept. A weekly club makes no query here.
+        const monthlyList =
+          org.squadMode === "monthly" && sheetRows.length === 0
+            ? await (await import("@/lib/monthly-week")).currentWeekListPost(nextMatchForReply.id).catch(() => null)
+            : null;
+        const weeklyPost = monthlyList ? composeSquadStateReply(SQUAD_POST_MARKER, truth, org.language).text : null;
         const composedIdx: number[] = [];
         for (const i of candidates) {
           const out = composeSquadStateReply(results[i].reply!, truth, org.language);
           if (!out.composed) continue;
-          results[i].reply = out.text;
+          let text = out.text;
+          if (monthlyList && weeklyPost) {
+            if (text === weeklyPost) text = monthlyList.text;
+            else if (text.endsWith(`\n\n${weeklyPost}`)) text = `${text.slice(0, -weeklyPost.length)}${monthlyList.text}`;
+          }
+          results[i].reply = text;
           composedIdx.push(i);
+        }
+        // The group is about to see this list, so the scheduler must not
+        // post the same one again (and its 30-minute floor counts from now).
+        if (monthlyList && composedIdx.length > 0) {
+          await (await import("@/lib/monthly-week"))
+            .recordWeekListShown(nextMatchForReply.id, monthlyList.hash, "group-message")
+            .catch((err) => console.error("[analyze] could not record the monthly list as shown:", err));
         }
         // MatchTime posts ONE squad status per batch. Every composed
         // reply now renders the same post, so the earlier ones would be

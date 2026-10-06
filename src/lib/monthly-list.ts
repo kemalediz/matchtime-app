@@ -199,6 +199,13 @@ function readMonthHeader(line: string): MonthlyListMonth | null {
   return { month: chosen.month, year: yearWord ? Number(yearWord) : null };
 }
 
+/** Is this line a month list's header ("List for October", "Ekim
+ *  listesi")? For telling the list's own title from what a member typed
+ *  around it. */
+export function isMonthListHeader(line: string): boolean {
+  return readMonthHeader(line) !== null;
+}
+
 // ── Marks ─────────────────────────────────────────────────────────────
 
 /** "22.50", "22,5", "30" as pence. */

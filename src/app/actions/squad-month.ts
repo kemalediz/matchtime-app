@@ -97,7 +97,18 @@ export async function startCurrentMonth(
 ): Promise<{ ok: true; monthId: string } | { ok: false; error: StartMonthError }> {
   const userId = await requireAdmin(orgId);
   const res = await startMonth(orgId, userId, input, new Date());
-  if (res.ok) revalidatePath("/admin/months");
+  if (res.ok) {
+    // Slice 5: the regulars go onto the next match straight away, so the
+    // organiser sees the week's squad without waiting for the next poll.
+    // The poll and the cron do the same, so a failure here costs nothing.
+    try {
+      const { seedDueMonthlySquads } = await import("@/lib/monthly-week");
+      await seedDueMonthlySquads(new Date(), orgId);
+    } catch (err) {
+      console.error(`[squad-month] seeding after a mid-month start for ${orgId} failed (the poll retries):`, err);
+    }
+    revalidatePath("/admin/months");
+  }
   return res;
 }
 

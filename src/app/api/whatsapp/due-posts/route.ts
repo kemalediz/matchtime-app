@@ -64,6 +64,7 @@ import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
+import { sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
@@ -251,12 +252,32 @@ export async function GET(request: Request) {
     }
   }
 
+  // MONTHLY SQUAD (slice 5, 2026-10-06): for a club on "monthly" with a
+  // running month, put the regulars onto the next match when that is due
+  // (so a mid-month start shows on the next poll), bring the credits in
+  // line with who is out, and stage the PAYG price as the fee to confirm.
+  // A club on "weekly" (Sutton FC) returns after one read. BEFORE compute,
+  // so the list is posted in this same poll. A side effect, so never in
+  // preview mode; its own try/catch, so it can never cost the group its
+  // posts.
+  let runningMonths: Awaited<ReturnType<typeof sweepMonthlyWeeks>> = null;
+  if (!previewOnly) {
+    try {
+      runningMonths = await sweepMonthlyWeeks(org.id, nowOverride ?? new Date());
+    } catch (err) {
+      console.error(`[due-posts] org ${org.id}: monthly squad sweep failed:`, err);
+    }
+  }
+
   // Slice 2a: what this Pi can do. Only a Pi that says "admin-group" is
   // ever handed an admin-group post; for any other, admin notices fall
   // back to the owner by DM (src/lib/admin-channel.ts).
   const piCaps = parsePiCaps(request.headers.get(PI_CAPS_HEADER));
 
-  const result = await computeDuePosts(groupId, nowOverride, piCaps);
+  // The sweep's running months are handed on, so a monthly club's month is
+  // read once per poll. Null (a weekly club, preview mode, a failed sweep):
+  // `computeDuePosts` reads what it needs itself.
+  const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths);
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
   }

@@ -46,6 +46,8 @@ export default async function CollectPage({
   const collectorId = match.activity.org.paymentHolderId;
   const rows = match.attendances
     .filter((a) => a.userId !== collectorId)
+    // Monthly squad (slice 5): a regular's place is paid for by the month.
+    .filter((a) => a.paymentMethod !== "monthly")
     .map((a) => ({
     userId: a.userId,
     name: a.user.name ?? "Player",

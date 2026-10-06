@@ -63,6 +63,21 @@ export type AttendanceStatusLike = AttendanceStatus | null;
  * slot" and "the player said IN" can both end in CONFIRMED and are not
  * the same event.
  */
+/**
+ * The note `registerAttendance` writes on a BENCH row a HUMAN asked for
+ * ("put me on the bench"), as opposed to "the squad was full".
+ *
+ * Notes are otherwise never parsed. THIS ONE IS READ: the monthly squad
+ * (`loadChoseBench` in monthly-week.ts) uses it to tell a regular who
+ * chose the bench from one who was left without a place, which decides the
+ * seed's priority and a credit. There is no structured field for it on
+ * `AttendanceEvent`, so the text is this one constant, shared by the
+ * writer and the reader, and pinned by
+ * `__tests__/monthly-week-bench-note.test.ts`. Events already in the
+ * database carry this exact text: do not reword it.
+ */
+export const EXPLICIT_BENCH_NOTE = "explicit bench request";
+
 export const ATTENDANCE_EVENT_CAUSES = [
   /** The player's own claim or withdrawal — a group message, a DM, or
    *  the web app. `actorUserId` is the player themselves. */
@@ -87,6 +102,12 @@ export const ATTENDANCE_EVENT_CAUSES = [
    *  (actorKind `scheduler`), or by an admin's "Carry over last squad"
    *  button (actorKind `admin`). `sourceRef` is the source match id. */
   "rolling-squad",
+  /** Monthly squad (2026-10-06, slice 5): the month's regulars (and that
+   *  date's PAYG players) were put onto the week's match (actorKind
+   *  `scheduler`), or a player who came in took a slot number on the
+   *  month's list (actorKind `system`, status unchanged, `toPosition` the
+   *  slot). `sourceRef` is the SquadMonth id. */
+  "monthly-squad",
   /** Organiser pick (2026-10-01, slice 2b): an admin brought a player in
    *  from the waiting list, by a reply in the admin channel or the match
    *  page's "Bring in" (actorKind `admin`, `actorUserId` the admin).

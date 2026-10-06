@@ -21,7 +21,7 @@
  * tests.
  */
 import { describe, it, expect } from "vitest";
-import { decideCheckoutEvent, payBlockedReason } from "@/lib/payment-outcome";
+import { MONTHLY_PLACE_REASON, decideCheckoutEvent, payBlockedReason } from "@/lib/payment-outcome";
 
 describe("decideCheckoutEvent — only genuinely-settled money marks a player paid", () => {
   it("card checkout completes already paid → mark paid (the live happy path)", () => {
@@ -119,5 +119,19 @@ describe("payBlockedReason — who may start a payment", () => {
       matchStatus: "CANCELLED",
     });
     expect(reason!.toLowerCase()).toContain("already");
+  });
+});
+
+describe("payBlockedReason: a monthly regular (monthly squad, slice 5)", () => {
+  const ok = { paidAt: null, attendanceStatus: "CONFIRMED", matchStatus: "COMPLETED" };
+  it("a place paid for by the month cannot be paid for again per match", () => {
+    expect(payBlockedReason({ ...ok, paymentMethod: "monthly" })).toBe(MONTHLY_PLACE_REASON);
+    expect(MONTHLY_PLACE_REASON).toMatch(/paid for by the month/);
+    expect(MONTHLY_PLACE_REASON).not.toMatch(/[—–]/);
+  });
+  it("every other method, and none, is not blocked by it", () => {
+    for (const paymentMethod of [null, undefined, "card", "direct", "pay_by_bank"]) {
+      expect(payBlockedReason({ ...ok, paymentMethod })).toBeNull();
+    }
   });
 });

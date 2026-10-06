@@ -880,7 +880,6 @@ const SAMPLES: SampleArgs = {
   msq_mode_weekly: null,
   msq_mode_monthly: null,
   msq_rolling_note: null,
-  msq_status_note: null,
   msq_months_link: null,
   msq_payg_label: null,
   msq_payg_blurb: null,
@@ -969,6 +968,24 @@ const SAMPLES: SampleArgs = {
   info_mth_paid_body: null,
   info_mth_credits_title: null,
   info_mth_credits_body: null,
+  // Monthly squad, slice 5 (2026-10-06): the weekly flow
+  mwk_list_header: { month: "October", when: "Mon 12 Oct, 20:00" },
+  mwk_list_paid: null,
+  mwk_list_cant_play_paid: null,
+  mwk_list_cant_play: null,
+  mwk_list_reserves: null,
+  mwk_list_open: { open: 3, price: "£8" },
+  mwk_list_open_organiser: { open: 3 },
+  mwk_pool_group: { open: 3, when: "Mon 12 Oct, 20:00", price: "£8" },
+  mwk_dm_sender_not_matched: { names: ["Gaz", "Tariq"] },
+  mwk_dm_sender_not_list: { month: "October" },
+  mwk_pool_dm: { firstName: "Omar", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00", price: "£8" },
+  mwk_dm_moved_out_paid: { actor: "Rob", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
+  mwk_dm_moved_out: { actor: "Rob", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
+  mwk_dm_added: { actor: "Rob", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
+  mwk_admin_paste_ignored: { actor: "Alex", names: ["Bilal", "Chris"], when: "Mon 12 Oct, 20:00" },
+  mwk_admin_paste_not_added: { actor: "Alex", names: ["Tariq", "Big O"], when: "Mon 12 Oct, 20:00" },
+  mwk_dm_bumped: { firstName: "Zed", activityName: "Monday 7-a-side", when: "Mon 12 Oct, 20:00" },
 };
 
 /** Render an entry with its sample arguments. */
@@ -1098,7 +1115,7 @@ describe("string tables: hygiene", () => {
   // help, the setup DMs and the join DM.
   it("no onboarding, help or organiser-setup entry carries an em or en dash, in any language", () => {
     const onboarding = KEYS.filter((k) =>
-      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled|admin_group_|settings_admin_channel_|setup_|settings_learned_|msq_|mth_|info_st_monthly_|info_msq_|info_mth_)/.test(String(k)),
+      /^(onb|dm_admin_join|sj_dm|sj_group_hello|request_not_handled|admin_group_|settings_admin_channel_|setup_|settings_learned_|msq_|mth_|mwk_|info_st_monthly_|info_msq_|info_mth_)/.test(String(k)),
     );
     expect(onboarding.length).toBeGreaterThan(40);
     for (const lang of LANGS) {

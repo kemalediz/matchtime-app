@@ -3057,8 +3057,6 @@ export const en = {
   msq_mode_weekly: "Weekly (who said IN)",
   msq_mode_monthly: "Monthly (regulars pay for the month)",
   msq_rolling_note: "Rolling squad is switched off while your squad is monthly: the month's regulars take its place.",
-  msq_status_note:
-    "MatchTime does not post the monthly list in your group yet. You can already keep this month's list on the Months page.",
   msq_months_link: "Open the Months page",
   msq_payg_label: "PAYG price per game (£)",
   msq_payg_blurb: "What a pay-as-you-go player pays for one game. Leave it empty if you don't have a set price.",
@@ -3189,4 +3187,67 @@ export const en = {
   info_mth_credits_title: "Credits carried in",
   info_mth_credits_body:
     "Games of credit a regular brought into this month, for example for a game they paid for and missed last month. One credit is one game off. At £7.50 a game, one credit makes a 4 game month £22.50 instead of £30.",
+
+  // ── Monthly squad, slice 5 (2026-10-06): the weekly flow ─────────
+  // MDs/monthly-squad-plan-2026-10-05.md, sections 5.3, 5.4 and 6.2.
+  // Only ever sent for a club on "monthly" with a running month. The
+  // list is written the way the group writes it, so a member can copy
+  // it, change a line and paste it back, and `monthly-list.ts` reads it:
+  // the header and the three section titles are in that reader's
+  // vocabulary and must stay in it (`monthly-week-copy.test.ts` pins the
+  // round trip). No em or en dashes, in either language.
+  /** `month` is the month's name, `when` the match ("Mon 12 Oct, 20:00"). */
+  mwk_list_header: (p: { month: string; when: string }): string => `📋 List for ${p.month}: ${p.when}`,
+  /** After a regular who has paid, or says so (decision D3). */
+  mwk_list_paid: "(paid)",
+  mwk_list_cant_play_paid: "Paid but can't play",
+  /** Regulars who are out and have NOT paid: never listed as paid. */
+  mwk_list_cant_play: "Can't play",
+  mwk_list_reserves: "Reserves",
+  /** Under the list while places are free. `price` is "£8", or null. */
+  mwk_list_open: (p: { open: number; price: string | null }): string =>
+    `${p.open} ${p.open === 1 ? "place" : "places"} open${p.price ? `, ${p.price} PAYG` : ""}: say *IN* to take ${p.open === 1 ? "it" : "one"}.`,
+  /** The same, for a club whose organisers pick who fills a place. */
+  mwk_list_open_organiser: (p: { open: number }): string =>
+    `${p.open} ${p.open === 1 ? "place" : "places"} open. Say *IN* to go on the waiting list, and the organisers will pick who plays.`,
+  /** A place opened and nobody is waiting: one line in the group. */
+  mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
+    `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +
+    `First to say *IN* ${p.open === 1 ? "gets it" : "gets one"}.`,
+  /** To the member who pasted a list with a name that matched nobody. */
+  mwk_dm_sender_not_matched: (p: { names: string[] }): string =>
+    `📋 I couldn't match ${p.names.join(", ")} on the list you pasted to a player, so I added nobody. ` +
+    `To play, say *IN* in the group yourself, or ask an organiser to add them.`,
+  /** To a member of the month whose numbered list was not read as the squad list. */
+  mwk_dm_sender_not_list: (p: { month: string }): string =>
+    `📋 I couldn't read the list you posted as the squad list for ${p.month}, so I changed nothing. ` +
+    `If it was the squad list, paste it with its title line ("List for ${p.month}").`,
+  /** The same offer, by DM, to each pay-as-you-go player. */
+  mwk_pool_dm: (p: { firstName: string | null; activityName: string; when: string; price: string | null }): string =>
+    `👋 ${p.firstName ?? "there"}, a place has opened for *${p.activityName}* on ${p.when}${p.price ? `, ${p.price} pay-as-you-go` : ""}.\n\n` +
+    `Want it? Reply *IN*. The first to say so plays. Not this time? No need to reply.`,
+  /** D4: somebody else's pasted list moved this player out. The undo. */
+  mwk_dm_moved_out_paid: (p: { actor: string; activityName: string; when: string }): string =>
+    `📋 ${p.actor} moved you to "Paid but can't play" for *${p.activityName}* on ${p.when}.\n\nWrong? Reply *IN* and I'll put you back.`,
+  mwk_dm_moved_out: (p: { actor: string; activityName: string; when: string }): string =>
+    `📋 ${p.actor} took you off the list for *${p.activityName}* on ${p.when}.\n\nWrong? Reply *IN* and I'll put you back.`,
+  /** D4: somebody else's pasted list added this player. The undo. */
+  mwk_dm_added: (p: { actor: string; activityName: string; when: string }): string =>
+    `📋 ${p.actor} added you to the list for *${p.activityName}* on ${p.when}.\n\nWrong? Reply *OUT* and I'll take you off.`,
+  /** To the organisers, at most once a day: an old copy was pasted. */
+  mwk_admin_paste_ignored: (p: { actor: string; names: string[]; when: string }): string =>
+    `📋 ${p.actor} pasted an older copy of the list for ${p.when}. I left ${p.names.join(", ")} as they were: ` +
+    `a pasted list cannot bring back a player who dropped out, or take out somebody else by blanking their line. ` +
+    `If the change is right, the player can say so, or you can make it on the match page.`,
+  /** To the organisers (or the admin who pasted it): names on a pasted
+   *  list that match no player of the month. A paste never creates a
+   *  player and never guesses one. */
+  mwk_admin_paste_not_added: (p: { actor: string; names: string[]; when: string }): string =>
+    `📋 ${p.actor} pasted the list for ${p.when} with ${p.names.join(", ")} on it. I could not match that to a player on this month's list, ` +
+    `so I added nobody. A player can say *IN* in the group themselves, or you can add them on the match page.`,
+  /** To a non-regular who said IN before the month's regulars were put on
+   *  the match, and whose place a regular has taken. */
+  mwk_dm_bumped: (p: { firstName: string | null; activityName: string; when: string }): string =>
+    `👋 ${p.firstName ?? "there"}, the regulars who have paid for the month have their places for *${p.activityName}* on ${p.when}, ` +
+    `so you are on the waiting list for now. I'll message you if a place opens.`,
 };
