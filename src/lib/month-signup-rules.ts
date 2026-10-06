@@ -637,3 +637,41 @@ export function decideSignupListPost(p: {
   if (p.lastPostAt && p.now.getTime() - p.lastPostAt.getTime() < SIGNUP_REPOST_FLOOR_MS) return false;
   return p.hash !== p.lastShownHash;
 }
+
+// ── The month's games, and whether it has started ──────────────────────
+
+/**
+ * The month's games, as kick-offs in order: THE FIXTURE'S CALENDAR for
+ * the month, minus the weeks whose match exists and is cancelled.
+ *
+ * Never "the Match rows that exist": only a month MatchTime opened itself
+ * has a row for every game. A month an organiser started part-way through
+ * (plan 4.5) has a row for the next game alone, and a club new to
+ * MatchTime has none for the games it played before it joined. Counting
+ * rows would charge a regular added to such a month for one game.
+ *
+ * A calendar day whose match exists and is live is that match's own
+ * kick-off (a format may play at its own time).
+ */
+export function monthGames(p: { calendar: Date[]; matches: Array<{ date: Date; cancelled: boolean }> }): Date[] {
+  const day = (d: Date) => formatLondon(d, "yyyy-MM-dd");
+  const out: Date[] = [];
+  for (const kickoff of p.calendar) {
+    const onDay = p.matches.filter((m) => day(m.date) === day(kickoff));
+    const live = onDay.find((m) => !m.cancelled);
+    if (live) out.push(live.date);
+    else if (onDay.length === 0) out.push(kickoff);
+    // Otherwise every match of that day is cancelled: not a game.
+  }
+  return out;
+}
+
+/**
+ * Has the month started? Its first game has kicked off, OR an organiser
+ * started it part-way through. A month that has started is never joined
+ * through a sign-up door, and a pasted "List for <Month>" in it is the
+ * WEEK's list: only the organiser changes who is on the month.
+ */
+export function monthStarted(p: { firstKickoff: Date; startedMidMonthAt: Date | null; now: Date }): boolean {
+  return p.startedMidMonthAt !== null || p.now.getTime() >= p.firstKickoff.getTime();
+}

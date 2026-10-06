@@ -566,3 +566,51 @@ test("8. two days before the first game sign-up ends: the month runs, and until 
   expect(late.intent).not.toBe("month_signup");
   expect(await memberOf(db, P.eve)).toMatchObject({ kind: "payg", note: "waiting for a regular place" });
 });
+
+test("9. a month STARTED PART-WAY is not in sign-up: a pasted week's list and IN FOR do not sign anybody up for it", async ({ request, db }) => {
+  // A second fixture-less world: a club whose organiser started this month
+  // part-way. MatchTime holds one match of it (the next game), and none
+  // of the games played before.
+  const ORG3 = "e2e-su-org-mid";
+  const GROUP3 = "e2e-signup-mid@g.us";
+  const ACT3 = "e2e-su-act-mid";
+  await club(db, { org: ORG3, group: GROUP3, act: ACT3, sport: "e2e-su-sport-mid", name: "Midmonth FC" });
+  const reg = { id: "e2e-su-mid-reg", name: "Rhys Regular", phone: "+447700930021" };
+  const reg2 = { id: "e2e-su-mid-reg2", name: "Sol Second", phone: "+447700930023" };
+  const neo = { id: "e2e-su-mid-neo", name: "Neo Newcomer", phone: "+447700930022" };
+  for (const p of [reg, reg2, neo]) await person(db, ORG3, p);
+  const next = new Date(Date.now() + 3 * 24 * 60 * 60_000);
+  const monthStart = `${formatInTimeZone(next, LONDON, "yyyy-MM")}-01`;
+  const monthName = formatInTimeZone(next, LONDON, "MMMM");
+  const weekday = Number(formatInTimeZone(next, LONDON, "i")) % 7;
+  await db.run(`UPDATE "Activity" SET "dayOfWeek" = $2 WHERE id = $1`, [ACT3, weekday]);
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt")
+     VALUES ('e2e-su-mid-match', $1, $2, 4, 'UPCOMING', $2, now())`,
+    [ACT3, next.toISOString()],
+  );
+  await db.run(
+    `INSERT INTO "SquadMonth" (id, "orgId", "activityId", "monthStart", status, "gamesScheduled", "gamesPlayedBeforeStart",
+                               "startedMidMonthAt", "createdAt", "updatedAt")
+     VALUES ('e2e-su-mid-month', $1, $2, $3::date, 'running', 4, 0, now() - interval '1 hour', now() - interval '1 hour', now())`,
+    [ORG3, ACT3, monthStart],
+  );
+  for (const [i, p] of [reg, reg2].entries()) {
+    await db.run(
+      `INSERT INTO "SquadMonthMember" (id, "monthId", "userId", kind, slot, "gamesCovered", source, "updatedAt")
+       VALUES ($1, 'e2e-su-mid-month', $2, 'regular', $3, 4, 'seed-tick', now())`,
+      [`e2e-su-mid-${p.id}`, p.id, i + 1],
+    );
+  }
+  const onMonth = () => db.count(`SELECT COUNT(*) FROM "SquadMonthMember" WHERE "monthId" = 'e2e-su-mid-month'`);
+
+  // "IN FOR <this month>": the month has started, so this is not a sign-up.
+  const typed = await say(request, neo as unknown as Person, `IN FOR ${monthName.toUpperCase()}`, GROUP3);
+  expect(typed.intent).not.toBe("month_signup");
+  // The week's list, headed with the month, with his name on it: the
+  // WEEK's reader has it. He is not signed up for the month, nor put on a
+  // waiting list for it.
+  const pasted = await say(request, neo as unknown as Person, [`List for ${monthName}`, "1. Rhys Regular", "2. Sol Second", "3. Neo"].join("\n"), GROUP3);
+  expect(pasted.intent).not.toBe("month_signup_list");
+  expect(await onMonth()).toBe(2);
+});

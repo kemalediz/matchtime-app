@@ -41,6 +41,7 @@ import {
   buildSignupListPost,
   buildSignupLockedDm,
   buildSignupPasteOthersDm,
+  buildSignupPaygDm,
   buildSignupUnknownDaysDm,
   buildSignupWaitingAdminNotice,
   buildSignupWaitingDm,
@@ -54,6 +55,8 @@ import {
   decideSignupListPost,
   firstKickoffOf,
   isDaytime,
+  monthGames,
+  monthStarted,
   listOpenDue,
   listOpensAt,
   monthKickoffs,
@@ -126,9 +129,10 @@ export interface SignupMonth {
   /** Sign-up is open: the month's status is "open". */
   open: boolean;
   listOpenedAt: Date | null;
-  /** The month's games: its matches that are not cancelled (the calendar
-   *  only while none exists). */
+  /** The month's games: the fixture's calendar minus the cancelled weeks. */
   kickoffs: Date[];
+  /** An organiser started this month part-way through (plan 4.5). */
+  startedMidMonth: boolean;
   firstKickoff: Date;
   /** When sign-up ends. Null for a month with no sign-up (started part-way). */
   endsAt: Date | null;
@@ -151,6 +155,7 @@ const MONTH_SELECT = {
   monthStart: true,
   status: true,
   listOpenedAt: true,
+  startedMidMonthAt: true,
   activity: {
     select: { name: true, venue: true, dayOfWeek: true, time: true, sport: { select: { playersPerTeam: true } } },
   },
@@ -173,8 +178,8 @@ const MONTH_SELECT = {
   },
 } as const;
 
-/** The matches of one fixture in one London month, cancelled ones left out. */
-async function loadMonthMatches(
+/** The matches of one fixture in one London month, cancelled ones flagged. */
+async function loadAllMonthMatches(
   client: Pick<Tx, "match">,
   fixture: RecurringFixtureKey,
   monthStart: string,
@@ -182,13 +187,18 @@ async function loadMonthMatches(
   const from = londonDateTimeToUtc(monthStart, "00:00");
   const to = londonDateTimeToUtc(nextMonthStart(monthStart), "00:00");
   const rows = await client.match.findMany({
-    where: { activity: { orgId: fixture.orgId }, isHistorical: false, status: { not: "CANCELLED" }, date: { gte: from, lt: to } },
+    where: { activity: { orgId: fixture.orgId }, isHistorical: false, date: { gte: from, lt: to } },
     select: { id: true, date: true, status: true, activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
     orderBy: { date: "asc" },
   });
   return rows
     .filter((m) => isSameRecurringFixture(m.activity, fixture))
     .map((m) => ({ matchId: m.id, day: Number(formatLondon(m.date, "d")), date: m.date, status: m.status }));
+}
+
+/** The same, cancelled ones left out. */
+async function loadMonthMatches(client: Pick<Tx, "match">, fixture: RecurringFixtureKey, monthStart: string) {
+  return (await loadAllMonthMatches(client, fixture, monthStart)).filter((m) => m.status !== "CANCELLED");
 }
 
 type MonthRow = NonNullable<Awaited<ReturnType<typeof loadMonthRow>>>;
@@ -201,18 +211,18 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
   const calendar = monthKickoffs(monthStart, row.activity.dayOfWeek, row.activity.time);
   const fixture = { orgId: row.orgId, venue: row.activity.venue, dayOfWeek: row.activity.dayOfWeek };
   const ids = row.members.map((m) => m.userId);
-  const [matches, here] = await Promise.all([
-    loadMonthMatches(db, fixture, monthStart),
+  const [allMatches, here] = await Promise.all([
+    loadAllMonthMatches(db, fixture, monthStart),
     ids.length === 0
       ? Promise.resolve([])
       : db.membership.findMany({ where: { orgId: row.orgId, userId: { in: ids }, leftAt: null, user: { isActive: true } }, select: { userId: true } }),
   ]);
   const inClub = new Set(here.map((h) => h.userId));
-  // THE MONTH'S GAMES are the matches that exist and are not cancelled: a
-  // week cancelled before the list opened is not a game anybody is asked
-  // to sign up or pay for, carried over or joining later. (The calendar
-  // only while no match exists yet.)
-  const kickoffs = matches.length > 0 ? matches.map((m) => m.date) : calendar;
+  const matches = allMatches.filter((m) => m.status !== "CANCELLED");
+  // THE MONTH'S GAMES: the fixture's calendar minus the cancelled weeks
+  // (`monthGames`), never the Match rows that happen to exist. A month
+  // started part-way has one row; it is still a four-game month.
+  const kickoffs = monthGames({ calendar, matches: allMatches.map((m) => ({ date: m.date, cancelled: m.status === "CANCELLED" })) });
   if (kickoffs.length === 0) return null;
   return {
     id: row.id,
@@ -224,6 +234,7 @@ async function toSignupMonth(row: MonthRow): Promise<SignupMonth | null> {
     status: row.status,
     open: row.status === "open",
     listOpenedAt: row.listOpenedAt,
+    startedMidMonth: row.startedMidMonthAt !== null,
     kickoffs,
     firstKickoff: kickoffs[0],
     endsAt: row.listOpenedAt ? signupEndsAt(row.listOpenedAt, kickoffs[0]) : null,
@@ -259,12 +270,17 @@ export async function loadSignupMonth(monthId: string): Promise<SignupMonth | nu
   return toSignupMonth(row);
 }
 
+/** Has this month started (`monthStarted`)? Then no sign-up door joins it. */
+export function hasStarted(m: Pick<SignupMonth, "firstKickoff" | "startedMidMonth">, now: Date): boolean {
+  return monthStarted({ firstKickoff: m.firstKickoff, startedMidMonthAt: m.startedMidMonth ? m.firstKickoff : null, now });
+}
+
 /**
  * The months of a club that somebody can still JOIN: not closed, and its
  * first game not kicked off yet. The caller has checked the club is monthly.
  */
 export async function loadJoinableMonths(orgId: string, now: Date = new Date()): Promise<SignupMonth[]> {
-  return (await loadLiveMonths(orgId, now)).filter((m) => now.getTime() < m.firstKickoff.getTime());
+  return (await loadLiveMonths(orgId, now)).filter((m) => !hasStarted(m, now));
 }
 
 /**
@@ -539,7 +555,9 @@ export async function applySignup(args: {
   const now = args.now ?? new Date();
   const month = await loadSignupMonth(args.monthId);
   if (!month || month.status === "closed") return { ok: false, error: month ? "closed" : "not-found" };
-  if (!args.byOrganiser && now.getTime() >= month.firstKickoff.getTime()) return { ok: false, error: "closed" };
+  // A month that has started (its first game has kicked off, or the
+  // organiser started it part-way) is the organiser's alone to change.
+  if (!args.byOrganiser && hasStarted(month, now)) return { ok: false, error: "closed" };
   const member = await db.membership.findFirst({
     where: { orgId: month.orgId, userId: args.userId, leftAt: null, user: { isActive: true } },
     select: { user: { select: { name: true, phoneNumber: true } } },
@@ -673,6 +691,16 @@ export async function applySignup(args: {
     } catch (err) {
       console.error("[month-signup] waiting notice failed:", err);
     }
+  }
+  // A newcomer who signed up from the group and is NOT a regular is told
+  // where they stand and what happens next: waiting (above), or
+  // pay-as-you-go. Once per month.
+  if (decision.outcome === "payg") {
+    const days = month.matches
+      .filter((m) => decision.row.paygMatchIds.includes(m.matchId))
+      .map((m) => m.day)
+      .sort((a, b) => a - b);
+    await tell(`payg-dm:${month.id}:${args.userId}`, buildSignupPaygDm({ name: member.user.name, monthDate: month.firstKickoff, days, lang: month.language }));
   }
   if (decision.unknownDays.length > 0) {
     await tell(

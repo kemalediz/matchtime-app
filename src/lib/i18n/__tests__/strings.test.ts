@@ -996,6 +996,7 @@ const SAMPLES: SampleArgs = {
   msu_list_link: { url: "https://matchtime.ai/month" },
   msu_list_deadline: { when: "Tue 27 Oct, 10:00" },
   msu_dm_waiting: { firstName: "Zed", month: "MONTHLABEL", max: 14 },
+  msu_dm_payg: { firstName: "Zed", month: "MONTHLABEL", days: "9, 23" },
   msu_admin_waiting: { name: "Zed Stone", month: "MONTHLABEL", max: 14, link: "https://matchtime.ai/admin/months" },
   msu_dm_paste_others: { names: ["Gaz", "Tariq"], month: "Monthlabel" },
   msu_dm_locked: { month: "MONTHLABEL" },

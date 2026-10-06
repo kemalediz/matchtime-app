@@ -3279,6 +3279,13 @@ export const en = {
   msu_dm_waiting: (p: { firstName: string | null; month: string; max: number }): string =>
     `👋 ${p.firstName ?? "there"}, all ${p.max} regular places for ${p.month} are taken, so you are waiting for one. ` +
     `The organisers have been told. You can still play pay-as-you-go when a place opens.`,
+  /** To somebody who signed up as pay-as-you-go: what that means, and what
+   *  happens next. `days` is the dates they named ("9, 23"), or null. */
+  msu_dm_payg: (p: { firstName: string | null; month: string; days: string | null }): string =>
+    `👋 ${p.firstName ?? "there"}, you are down as pay-as-you-go for ${p.month}${p.days ? `, for the games on ${p.days}` : ""}. ` +
+    `You pay per game, only for the games you play. ` +
+    (p.days ? `You are on the list for those dates. ` : "") +
+    `When a place opens on another week I will message you, and the first to say *IN* gets it.`,
   /** To the organisers, once a month: the regular places are full. */
   msu_admin_waiting: (p: { name: string; month: string; max: number; link: string }): string =>
     `📋 ${p.month} list: all ${p.max} regular places are taken and ${p.name} has asked for one, so they are waiting. ` +

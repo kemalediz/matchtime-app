@@ -832,8 +832,7 @@ describe("SIGN-UP: the month's list, and a weekly club untouched by it", () => {
     // Not the weekly list's key namespace.
     expect(post.key).not.toContain("month-list");
     expect(post.text.split("\n").slice(0, 6)).toEqual([
-      // The month's games are its matches: this world has one.
-      "📋 List for November (1 Monday: 2)",
+      "📋 List for November (5 Mondays: 2, 9, 16, 23, 30)",
       "",
       "1. Alex",
       "2. Bilal",

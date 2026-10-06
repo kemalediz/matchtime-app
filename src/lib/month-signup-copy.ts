@@ -227,6 +227,15 @@ export function buildSignupWaitingDm(p: { name: string | null; monthDate: Date; 
   });
 }
 
+/** To somebody who signed up as pay-as-you-go: what it means, what happens next. */
+export function buildSignupPaygDm(p: { name: string | null; monthDate: Date; days: number[]; lang?: LangArg }): string {
+  return t(p.lang).msu_dm_payg({
+    firstName: p.name ? p.name.trim().split(/\s+/)[0] || null : null,
+    month: monthNameLabel(p.lang, p.monthDate),
+    days: p.days.length > 0 ? p.days.join(", ") : null,
+  });
+}
+
 /** To the organisers, once a month: the regular places are full. */
 export function buildSignupWaitingAdminNotice(p: { name: string | null; monthDate: Date; max: number; link: string; lang?: LangArg }): string {
   const s = t(p.lang);

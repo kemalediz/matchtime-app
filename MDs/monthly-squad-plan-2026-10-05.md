@@ -1147,7 +1147,8 @@ doors, the list post), `month-signup-copy.ts` (English and Turkish), the player'
    "IN FOR NOVEMBER", the page, the organiser's buttons, and a pasted "List for November"
    from somebody who is not on the month with their own name on it (a regular, or PAYG if
    their line says so, subject to the cap; never game one as a one-off). The change is put
-   on the week's match too. From the first kick-off only the organiser changes the month.
+   on the week's match too. Somebody who ends up waiting or pay-as-you-go is told so by DM,
+   with what happens next. From the first kick-off only the organiser changes the month.
 3. **Door 2 (6.2 says "a reply to the list post").** The Pi does not forward which message a
    reply quotes. The server reads a bare "IN" as a sign-up only when the batch carries the
    quoted text (`quotedBody`), which no Pi build sends yet. Until one does, the typed
@@ -1166,9 +1167,13 @@ doors, the list post), `month-signup-copy.ts` (English and Turkish), the player'
 8. **MatchTime's own sign-up list is never read as the week's list.** Known by its title
    line ("List for November (5 Mondays: ...)"). Pasted back after sign-up has ended, it
    cannot put the PAYG players numbered on it onto game one.
-9. **The month's games are its matches that are not cancelled.** A week cancelled before the
-   list opened is not in the list's header, and is not a game anybody is charged for, carried
-   over or joining later.
+9. **The month's games are the fixture's calendar minus the cancelled weeks** (`monthGames`),
+   never the Match rows that exist: a month started part-way has a row for the next game
+   only. So a regular added to it is charged for every game left, and a week cancelled before
+   the list opened is a game for nobody.
+   **A month has started** when its first calendar game has kicked off, or the organiser
+   started it part-way. A started month is never joined through a sign-up door, and a pasted
+   "List for <Month>" in it is the week's list.
 10. **One read of the month per poll.** The sweep reads the club's live months once and
    hands them to the posts.
 11. **Not built here:** paid marks from a pasted sign-up list (they are read and handed to

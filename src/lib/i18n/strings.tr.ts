@@ -2583,6 +2583,11 @@ export const tr: Strings = {
   msu_dm_waiting: (p) =>
     `👋 ${p.firstName ? `${p.firstName}, ` : ""}${p.month} için ${p.max} daimi yerin hepsi dolu, bu yüzden bir yer bekliyorsun. ` +
     `Organizatörlere haber verildi. Yer açıldığında maç başı ödeyerek yine oynayabilirsin.`,
+  msu_dm_payg: (p) =>
+    `👋 ${p.firstName ? `${p.firstName}, ` : ""}${p.month} için maç başı ödeyen (PAYG) olarak yazıldın${p.days ? `: ${p.days} tarihli maçlar` : ""}. ` +
+    `Sadece oynadığın maçlar için ödersin. ` +
+    (p.days ? `O tarihlerde listedesin. ` : "") +
+    `Başka bir hafta yer açılırsa sana yazarım; ilk *VARIM* yazan alır.`,
   msu_admin_waiting: (p) =>
     `📋 ${p.month} listesi: ${p.max} daimi yerin hepsi dolu ve ${p.name} bir yer istedi, şimdi bekliyor. ` +
     `Yine de daimi yapmak için Aylar sayfasını açın: ${p.link}`,

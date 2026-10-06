@@ -365,6 +365,7 @@ import {
   buildSignupListPost,
   buildSignupLockedDm,
   buildSignupPasteOthersDm,
+  buildSignupPaygDm,
   buildSignupUnknownDaysDm,
   buildSignupWaitingAdminNotice,
   buildSignupWaitingDm,
@@ -2031,6 +2032,8 @@ function cases(lang: Lang): Case[] {
     "MSU3 buildSignupWaitingAdminNotice",
     buildSignupWaitingAdminNotice({ name: "Eve Stone", monthDate: msuFacts.kickoffs[0], max: 14, link: "https://matchtime.ai/admin/months", lang }),
   );
+  add("MSU7 buildSignupPaygDm / with dates", buildSignupPaygDm({ name: "Omar Khan", monthDate: msuFacts.kickoffs[0], days: [9, 23], lang }));
+  add("MSU7 buildSignupPaygDm / no dates", buildSignupPaygDm({ name: "Omar Khan", monthDate: msuFacts.kickoffs[0], days: [], lang }));
   add("MSU4 buildSignupPasteOthersDm", buildSignupPasteOthersDm({ names: ["Gaz", "Will"], monthDate: msuFacts.kickoffs[0], lang }));
   add("MSU5 buildSignupLockedDm", buildSignupLockedDm({ monthDate: msuFacts.kickoffs[0], lang }));
   add("MSU6 buildSignupUnknownDaysDm", buildSignupUnknownDaysDm({ days: [10, 11], kickoffs: msuFacts.kickoffs, lang }));
@@ -2118,7 +2121,7 @@ const MIGRATED_ROWS = [
   // learned setup (2026-10-05)
   "LRN1 ", "LRN2 ", "LRN3 ",
   // Monthly squad, slice 3: the month's sign-up.
-  "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ",
+  "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ", "MSU7 ",
 ];
 
 describe("English copy is byte-identical to the committed snapshot", () => {

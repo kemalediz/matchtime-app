@@ -15,6 +15,9 @@ import {
   firstKickoffOf,
   listOpenDue,
   listOpensAt,
+  monthGames,
+  monthKickoffs,
+  monthStarted,
   nextMonthStart,
   planCarryOver,
   readSignupMessage,
@@ -447,5 +450,80 @@ describe("when the sign-up list is posted", () => {
   it("never once sign-up has ended, or for a month that is not in sign-up", () => {
     expect(decideSignupListPost({ ...base, now: at("2026-10-27T10:00:00.000Z") })).toBe(false);
     expect(decideSignupListPost({ ...base, open: false, now: at("2026-10-26T12:00:00.000Z") })).toBe(false);
+  });
+});
+
+describe("the month's games: the calendar, minus the weeks that are cancelled", () => {
+  const cal = (monthStart: string) => monthKickoffs(monthStart, 1, "20:00");
+  const iso = (ds: Date[]) => ds.map((d) => d.toISOString().slice(0, 10));
+
+  it("a five-Monday month and a four-Monday month, with no Match row at all (a new club)", () => {
+    expect(iso(monthGames({ calendar: cal("2026-11-01"), matches: [] }))).toEqual(["2026-11-02", "2026-11-09", "2026-11-16", "2026-11-23", "2026-11-30"]);
+    expect(monthGames({ calendar: cal("2026-10-01"), matches: [] })).toHaveLength(4);
+  });
+
+  it("a month started PART-WAY has one Match row (the next game): the month is still four games, two of them left", () => {
+    const calendar = cal("2026-10-01"); // 5, 12, 19, 26 October
+    const games = monthGames({ calendar, matches: [{ date: calendar[2], cancelled: false }] });
+    expect(iso(games)).toEqual(["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]);
+    // On Tue 13 Oct the 19th and the 26th are still to play: a regular added now covers 2.
+    const now = new Date("2026-10-13T09:00:00.000Z");
+    expect(games.filter((k) => k.getTime() > now.getTime())).toHaveLength(2);
+    // And the month has started: its first game was on the 5th, whatever rows exist.
+    expect(monthStarted({ firstKickoff: games[0], startedMidMonthAt: null, now })).toBe(true);
+  });
+
+  it("a cancelled week is not a game; a week with no row yet is", () => {
+    const calendar = cal("2026-11-01");
+    const games = monthGames({
+      calendar,
+      matches: [
+        { date: calendar[0], cancelled: false },
+        { date: calendar[3], cancelled: true },
+      ],
+    });
+    expect(iso(games)).toEqual(["2026-11-02", "2026-11-09", "2026-11-16", "2026-11-30"]);
+  });
+
+  it("a match moved within the day (a format's own kick-off time) is that day's game, at its own time", () => {
+    const calendar = cal("2026-11-01");
+    const moved = new Date("2026-11-09T21:15:00.000Z");
+    const games = monthGames({ calendar, matches: [{ date: moved, cancelled: false }] });
+    expect(games[1].toISOString()).toBe(moved.toISOString());
+    expect(games).toHaveLength(5);
+  });
+
+  it("a week cancelled and then booked again counts once", () => {
+    const calendar = cal("2026-11-01");
+    const games = monthGames({ calendar, matches: [{ date: calendar[1], cancelled: true }, { date: calendar[1], cancelled: false }] });
+    expect(games).toHaveLength(5);
+  });
+
+  it("started: the first game has kicked off, OR the organiser started the month part-way", () => {
+    const first = new Date("2026-11-02T20:00:00.000Z");
+    const before = new Date("2026-11-01T12:00:00.000Z");
+    expect(monthStarted({ firstKickoff: first, startedMidMonthAt: null, now: before })).toBe(false);
+    expect(monthStarted({ firstKickoff: first, startedMidMonthAt: null, now: first })).toBe(true);
+    expect(monthStarted({ firstKickoff: first, startedMidMonthAt: before, now: before })).toBe(true);
+  });
+});
+
+describe("a month's name that is also a word", () => {
+  const plain = (text: string) => readSignupMessage(text, { quoted: false });
+  it("the phrase must be the WHOLE message: 'may' and 'march' inside a sentence sign nobody up", () => {
+    for (const t of [
+      "I may be in for the next one",
+      "may be in for November",
+      "in for the march to the pub",
+      "count me in for March madness",
+      "we march in for May day",
+      "in for May I think",
+      "lads, in for May",
+    ]) {
+      expect(plain(t), t).toBeNull();
+    }
+    // The whole message, the full form: it is what it says.
+    expect(plain("in for May")).toEqual({ choice: "in", month: 5, days: [] });
+    expect(plain("Out for March")).toEqual({ choice: "out", month: 3, days: [] });
   });
 });
