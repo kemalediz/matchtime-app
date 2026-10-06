@@ -13,6 +13,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { HistoryMessage } from "../../onboarding-enrichment-reconcile";
+import type { FixtureExpect } from "./grade";
 
 export interface Fixture {
   name: string;
@@ -20,7 +21,7 @@ export interface Fixture {
   groupSubject: string;
   language: string;
   weeklyGame: { dayOfWeek: number; time: string; venue: string; playersPerSide: number };
-  expect: Record<string, unknown> & { applied: string[]; noted: string[]; suggestions: string[]; dm: boolean; skipped?: string };
+  expect: FixtureExpect;
   history: HistoryMessage[];
 }
 

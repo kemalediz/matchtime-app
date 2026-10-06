@@ -26,7 +26,15 @@ test("the DM's link highlights the item; Undo puts it back in one tap", async ({
     [
       ORG_ID,
       JSON.stringify([{ key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"], undoneAt: null }]),
-      JSON.stringify([{ key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: [] }]),
+      JSON.stringify([
+        { key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: [] },
+        {
+          key: "organiserPicks",
+          current: "first-come",
+          detected: "organiser",
+          evidence: ["Drop me a message and I'll sort the team", "I'll pick someone off the reserve list"],
+        },
+      ]),
       JSON.stringify([
         {
           key: "monthlyList",
@@ -54,6 +62,20 @@ test("the DM's link highlights the item; Undo puts it back in one tap", async ({
   await expect(page.getByTestId("learned-noted")).toContainText(
     "Monthly list: regulars sign up and pay for the month and others pay as they go to fill spaces.",
   );
+
+  // Who fills an open place is never switched from the chat: it is asked,
+  // with the messages behind it and a way straight to the setting.
+  const pick = page.getByTestId("learned-suggestion-organiserPicks");
+  await expect(pick).toContainText(
+    'It looks like the organisers choose who fills an open place. If that\'s right, switch on "The organisers pick".',
+  );
+  await expect(pick).toContainText(
+    'From messages like: "Drop me a message and I\'ll sort the team", "I\'ll pick someone off the reserve list"',
+  );
+  await expect(page.getByTestId("learned-item-organiserPicks")).toHaveCount(0);
+  await expect(page.getByTestId("wr-pick-mode")).toHaveValue("first-come");
+  await pick.getByRole("link", { name: "Go to the setting" }).click();
+  await expect(page.getByTestId("wr-pick")).toBeInViewport();
 
   await page.getByTestId("learned-undo-rollingSquad").click();
   await expect

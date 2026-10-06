@@ -148,10 +148,20 @@ describe("planSetup: each signal and the setting it drives", () => {
     expect(p.data).toEqual({ rollingSquadEnabled: true });
     expect(p.suggestions).toEqual([]);
   });
-  it("organisers pick: switches the pick mode to organiser", () => {
+  it("organisers pick: NEVER switched, only suggested, with the two quotes behind it", () => {
     const p = planFor("organiser-picks");
-    expect(p.applied.map((a) => a.key)).toEqual(["organiserPicks"]);
-    expect(p.data).toEqual({ benchPickMode: "organiser" });
+    expect(p.applied).toEqual([]);
+    expect(p.data).toEqual({});
+    expect(p.kept).toEqual([]);
+    expect(p.suggestions).toEqual([
+      {
+        key: "organiserPicks",
+        current: "first-come",
+        detected: "organiser",
+        evidence: ["Drop me a message if you fancy a game and I'll sort the team", "I'll pick someone off the reserve list"],
+      },
+    ]);
+    expect(planIsWorthTelling(p)).toBe(true);
   });
   it("deadlines and payments: both deadlines and payment tracking, and the kickoff time is only suggested", () => {
     const p = planFor("deadlines");
@@ -253,7 +263,8 @@ describe("planSetup: the wrong answers of the first live check (2026-10-05) no l
   it("a monthly list at medium confidence still only holds payment tracking", () => {
     const a = OBSERVED_ANSWERS["monthly-list"];
     const p = planFor("monthly-list", {}, { ...a, monthly_list: { ...(a.monthly_list as object), confidence: "medium" } });
-    expect(p.applied.map((x) => x.key)).toEqual(["rollingSquad", "organiserPicks"]);
+    expect(p.applied.map((x) => x.key)).toEqual(["rollingSquad"]);
+    expect(p.suggestions.map((x) => x.key)).toEqual(["organiserPicks"]);
     expect(p.kept).toEqual([{ key: "paymentTracking", reason: "monthly-list" }]);
   });
   it("rolling (shape guessed, see stubs): an organiser asking who can cover does not switch organisers pick", () => {
@@ -263,14 +274,67 @@ describe("planSetup: the wrong answers of the first live check (2026-10-05) no l
   });
 });
 
+describe("planSetup: who fills an open place is the one setting never switched from the chat", () => {
+  const picks = (confidence: string, evidence: string[]) => ({
+    ...blankAnswer(),
+    open_places: { answer: "organisers_pick", confidence, evidence },
+  });
+  const TWO = ["Drop me a message if you fancy a game and I'll sort the team", "I'll pick someone off the reserve list"];
+  it("high confidence and two quotes from two messages: still not written, whatever the club's settings", () => {
+    for (const org of [{}, { rollingSquadEnabled: true }, { paymentTrackingEnabled: true }]) {
+      const p = planFor("organiser-picks", org, picks("high", TWO));
+      expect(p.applied.map((a) => a.key)).not.toContain("organiserPicks");
+      expect(p.data).not.toHaveProperty("benchPickMode");
+    }
+  });
+  it("the suggestion needs what a change needs: one quote, or medium confidence, suggests nothing", () => {
+    const thin = planFor("organiser-picks", {}, picks("high", TWO.slice(0, 1)));
+    expect(thin.suggestions).toEqual([]);
+    expect(thin.kept).toEqual([{ key: "organiserPicks", reason: "thin-evidence" }]);
+    expect(planIsWorthTelling(thin)).toBe(false);
+    const medium = planFor("organiser-picks", {}, picks("medium", TWO));
+    expect(medium.suggestions).toEqual([]);
+    expect(medium.kept).toEqual([]);
+  });
+  it("it comes after the weekly game suggestions, in the order the DM shows them", () => {
+    const p = planFor("organiser-picks", {}, {
+      ...picks("high", TWO),
+      weekly_game: { day: "wednesday", time: "21:00", venue: "", players_per_side: 0, confidence: "high", evidence: ["Wednesday 8pm at Powerleague Mill Hill"] },
+    });
+    expect(p.suggestions.map((s) => s.key)).toEqual(["weeklyGameTime", "organiserPicks"]);
+  });
+  it("the second live check (2026-10-06): an organiser sorting one replacement, two real quotes, switches nothing", () => {
+    const p = planFor("rolling", {}, {
+      ...STUB_ANSWERS.rolling,
+      open_places: {
+        answer: "organisers_pick",
+        confidence: "high",
+        evidence: ["anyone got a mate who can cover?", "Sorted, thanks Dev. Everyone else as you were"],
+      },
+    });
+    expect(p.applied.map((a) => a.key)).toEqual(["rollingSquad"]);
+    expect(p.data).toEqual({ rollingSquadEnabled: true });
+    expect(p.suggestions.map((s) => s.key)).toEqual(["organiserPicks"]);
+  });
+});
+
 describe("planSetup: what is never changed", () => {
   it("a setting the organiser saved on the website is left alone, even at its default", () => {
     const p = planFor("rolling", { settingsSetByOrganiser: ["rollingSquad"] });
     expect(p.applied).toEqual([]);
     expect(p.kept).toEqual([{ key: "rollingSquad", reason: "organiser-set" }]);
   });
-  it("the pick mode saved by the organiser (benchPickMode) is left alone", () => {
-    expect(planFor("organiser-picks", { settingsSetByOrganiser: ["benchPickMode"] }).applied).toEqual([]);
+  it("the pick mode saved by the organiser (benchPickMode) is not even suggested", () => {
+    const p = planFor("organiser-picks", { settingsSetByOrganiser: ["benchPickMode"] });
+    expect(p.applied).toEqual([]);
+    expect(p.suggestions).toEqual([]);
+    expect(p.kept).toEqual([{ key: "organiserPicks", reason: "organiser-set" }]);
+    expect(planIsWorthTelling(p)).toBe(false);
+  });
+  it("a club where organisers already pick is not told to switch it on", () => {
+    const p = planFor("organiser-picks", { benchPickMode: "organiser" });
+    expect(p.suggestions).toEqual([]);
+    expect(p.kept).toEqual([{ key: "organiserPicks", reason: "already" }]);
   });
   it("a setting already at the target is not re-applied", () => {
     expect(planFor("rolling", { rollingSquadEnabled: true }).kept).toEqual([{ key: "rollingSquad", reason: "already" }]);

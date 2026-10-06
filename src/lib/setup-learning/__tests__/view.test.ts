@@ -101,6 +101,26 @@ describe("undoLearnedSetting: one tap, never over the organiser's own change", (
 });
 
 describe("ownerLearningSummary (/admin/clubs)", () => {
+  it("organisers pick, suggested: the owner sees the chat messages behind it", () => {
+    expect(
+      ownerLearningSummary({
+        status: "nothing",
+        reason: null,
+        messageCount: 26,
+        applied: [],
+        kept: [],
+        suggestions: [
+          { key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: ["Kickoff 8pm"] },
+          { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["I'll sort the team", "I'll pick someone"] },
+        ],
+        noted: [],
+        costUsd: 0.0068,
+        dmQueuedAt: NOW,
+      }).line,
+    ).toBe(
+      `Read 26 messages. Set nothing. Suggested: weeklyGameTime, organiserPicks ("I'll sort the team", "I'll pick someone"). Cost $0.0068. Organiser told.`,
+    );
+  });
   it("states what was read, set, left alone and suggested, the cost and the DM", () => {
     expect(
       ownerLearningSummary({

@@ -6,9 +6,15 @@
  *     its own summary as evidence, and read a monthly-list group as a
  *     rolling squad. The prompt was rewritten and `rules.ts` now needs two
  *     quotes from two messages, and switches nothing for a monthly list.
- *   Run 2: NOT RUN YET. It must be the full six fixtures, not only the
- *     three that failed: the prompt was rewritten as a whole, so the three
- *     that passed can regress (CLAUDE.md, the prompt rewrite rule).
+ *   Run 2, 2026-10-06: 6 calls, $0.0475, 5 of 6 pass. "rolling" FAILED:
+ *     open_places = organisers_pick at "high" on two real quotes from two
+ *     messages (an organiser sorting ONE replacement), so the two-quote
+ *     guard let it be switched. Fixed downstream of the model, prompt
+ *     untouched: who fills an open place is never switched, it is
+ *     suggested (rules.ts, rule 4). That run's six raw answers are kept in
+ *     src/lib/setup-learning/__fixtures__/live-check-run-2.json and
+ *     replayed offline by __tests__/live-replay.test.ts: all six pass, so
+ *     no third paid run was needed for this change.
  *
  * A new or rewritten prompt needs ONE approved live check before
  * SETUP_LEARNING_ENABLED is switched on. The unit tests stub the model;
@@ -55,10 +61,10 @@ import {
   parseDetection,
   planIsWorthTelling,
   planSetup,
-  type Detection,
   type OrgSettingsState,
 } from "../src/lib/setup-learning/rules.ts";
 import { composeSetupDm } from "../src/lib/setup-learning/dm.ts";
+import { gradeFixture, type FixtureExpect } from "../src/lib/setup-learning/__tests__/grade.ts";
 import { detectGroupLang } from "../src/lib/i18n/detect.ts";
 import type { HistoryMessage } from "../src/lib/onboarding-enrichment-reconcile.ts";
 
@@ -72,7 +78,7 @@ interface Fixture {
   groupSubject: string;
   language: string;
   weeklyGame: { dayOfWeek: number; time: string; venue: string; playersPerSide: number };
-  expect: Record<string, unknown> & { applied: string[]; noted: string[]; suggestions: string[]; dm: boolean; skipped?: string };
+  expect: FixtureExpect;
   history: HistoryMessage[];
 }
 
@@ -92,25 +98,6 @@ const DEFAULTS: OrgSettingsState = {
   language: "en",
   settingsSetByOrganiser: [],
 };
-
-/** The detection fields a fixture pins, as "field: expected / got". */
-function grade(fx: Fixture, d: Detection): string[] {
-  const misses: string[] = [];
-  const e = fx.expect;
-  const check = (label: string, want: unknown, got: unknown) => {
-    if (want !== undefined && JSON.stringify(want) !== JSON.stringify(got)) {
-      misses.push(`${label}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
-    }
-  };
-  check("regularGame", e.regularGame, d.regularGame);
-  check("squad", e.squad, d.squad.answer);
-  check("openPlaces", e.openPlaces, d.openPlaces.answer);
-  check("payments", e.payments, d.payments.answer);
-  check("monthlyList", e.monthlyList, d.monthlyList.answer);
-  if (e.dropOutDeadline) check("dropOutDeadline", e.dropOutDeadline, { day: d.dropOutDeadline.day, time: d.dropOutDeadline.time });
-  if (e.listPublished) check("listPublished", e.listPublished, { day: d.listPublished.day, time: d.listPublished.time });
-  return misses;
-}
 
 async function main() {
   const estimateOnly = process.argv.includes("--estimate");
@@ -212,17 +199,8 @@ async function main() {
       activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
       chatLanguage: detectGroupLang({ subject: fx.groupSubject, history: fx.history.map((m) => m.text) }),
     });
-    const misses = grade(fx, detection);
-    const keys = (xs: Array<{ key: string }>) => xs.map((x) => x.key);
-    if (JSON.stringify(keys(plan.applied)) !== JSON.stringify(fx.expect.applied)) {
-      misses.push(`applied: expected ${JSON.stringify(fx.expect.applied)}, got ${JSON.stringify(keys(plan.applied))}`);
-    }
-    if (JSON.stringify(keys(plan.noted)) !== JSON.stringify(fx.expect.noted)) {
-      misses.push(`noted: expected ${JSON.stringify(fx.expect.noted)}, got ${JSON.stringify(keys(plan.noted))}`);
-    }
-    if (JSON.stringify(keys(plan.suggestions)) !== JSON.stringify(fx.expect.suggestions)) {
-      misses.push(`suggestions: expected ${JSON.stringify(fx.expect.suggestions)}, got ${JSON.stringify(keys(plan.suggestions))}`);
-    }
+    // The same grader the offline replay uses (__tests__/live-replay.test.ts).
+    const misses = gradeFixture(fx.expect, detection, plan);
     console.log(`  plan: applied ${JSON.stringify(plan.applied.map((a) => [a.key, a.to, a.evidence]))}`);
     console.log(`        kept ${JSON.stringify(plan.kept)}, suggestions ${JSON.stringify(plan.suggestions)}, noted ${JSON.stringify(plan.noted)}`);
     if (planIsWorthTelling(plan)) {
@@ -234,6 +212,7 @@ async function main() {
         noted: plan.noted,
         scheduleUrl: "https://matchtime.ai/r/schedule",
         settingsUrl: "https://matchtime.ai/r/settings",
+        organiserPicksUrl: "https://matchtime.ai/r/pick",
       });
       console.log(`  DM:\n${dm.replace(/^/gm, "    | ")}`);
     } else {

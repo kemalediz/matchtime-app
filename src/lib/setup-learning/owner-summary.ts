@@ -1,6 +1,7 @@
 /**
  * F3, learned setup: the owner's line on /admin/clubs, pure. What was read,
- * what was switched (and undone), what was only suggested, the monthly
+ * what was switched (and undone), what was only suggested ("organisers
+ * pick" with the chat messages behind it), the monthly
  * list when it was seen (with its evidence: that pattern is the one we
  * are counting), and what the call cost.
  */
@@ -39,7 +40,12 @@ export function ownerLearningSummary(row: LearningRow | null): { line: string; m
       : `Set nothing${row.reason === "not-a-game-group" ? " (not a game group)" : ""}.`,
   );
   if (kept.length > 0) parts.push(`Left alone: ${kept.map((k) => `${k.key} (${k.reason})`).join(", ")}.`);
-  if (suggestions.length > 0) parts.push(`Suggested: ${suggestions.map((s) => s.key).join(", ")}.`);
+  // "Organisers pick" is never switched (rules.ts, rule 4): its evidence is shown, to see how often it is right.
+  const suggested = (s: Suggestion) =>
+    s.key === "organiserPicks" && arr<string>(s.evidence).length > 0
+      ? `${s.key} (${arr<string>(s.evidence).map((q) => `"${q}"`).join(", ")})`
+      : s.key;
+  if (suggestions.length > 0) parts.push(`Suggested: ${suggestions.map(suggested).join(", ")}.`);
   if (row.costUsd != null) parts.push(`Cost $${row.costUsd.toFixed(4)}.`);
   parts.push(row.dmQueuedAt ? "Organiser told." : "No DM.");
   const m = noted.find((n) => n.key === "monthlyList");

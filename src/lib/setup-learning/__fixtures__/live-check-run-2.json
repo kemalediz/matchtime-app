@@ -1,0 +1,362 @@
+{
+  "about": "The RAW model answers of the second approved live check of the learned setup (2026-10-06): six calls, $0.0475, the prompt as it stands in prompt.ts. Copied from the run's saved output so the rules downstream of the model can be replayed offline, with no model call. 'checked' is each answer after the quote check, as that run printed it. The answers quote only the anonymised fixture chats.",
+  "date": "2026-10-06",
+  "model": "claude-haiku-4-5",
+  "calls": 6,
+  "costUsd": 0.0475,
+  "answers": [
+    {
+      "fixture": "rolling",
+      "raw": "{\"regular_game\":true,\"squad\":{\"answer\":\"rolling\",\"confidence\":\"high\",\"evidence\":[\"Same lot as last week, let me know if you can't do Tuesday\",\"Same lot as last week, let me know if you can't do Tuesday\"]},\"open_places\":{\"answer\":\"organisers_pick\",\"confidence\":\"high\",\"evidence\":[\"anyone got a mate who can cover?\",\"Sorted, thanks Dev. Everyone else as you were\"]},\"drop_out_deadline\":{\"day\":\"none\",\"time\":\"none\",\"confidence\":\"high\",\"evidence\":[]},\"list_published\":{\"day\":\"none\",\"time\":\"none\",\"confidence\":\"high\",\"evidence\":[]},\"payments\":{\"answer\":\"no_sign\",\"confidence\":\"high\",\"evidence\":[]},\"monthly_list\":{\"answer\":\"no_sign\",\"prepay_for_month\":false,\"pay_as_you_go_fill_ins\":false,\"credit_for_missed_games\":false,\"confidence\":\"high\",\"evidence\":[]},\"weekly_game\":{\"day\":\"tuesday\",\"time\":\"21:00\",\"venue\":\"Goals North Cheam\",\"players_per_side\":6,\"confidence\":\"high\",\"evidence\":[\"See you at 9 at Goals North Cheam\",\"Tuesday Night 6s\"]}}",
+      "checked": {
+        "squad": {
+          "answer": "rolling",
+          "confidence": "high",
+          "evidence": [
+            "Same lot as last week, let me know if you can't do Tuesday",
+            "Same lot as last week, let me know if you can't do Tuesday"
+          ]
+        },
+        "openPlaces": {
+          "answer": "organisers_pick",
+          "confidence": "high",
+          "evidence": [
+            "anyone got a mate who can cover?",
+            "Sorted, thanks Dev. Everyone else as you were"
+          ]
+        },
+        "dropOutDeadline": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "listPublished": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "payments": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": []
+        },
+        "monthlyList": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": [],
+          "prepayForMonth": false,
+          "payAsYouGoFillIns": false,
+          "creditForMissedGames": false
+        },
+        "weeklyGame": {
+          "day": 2,
+          "time": "21:00",
+          "venue": "Goals North Cheam",
+          "playersPerSide": 6,
+          "confidence": "high",
+          "evidence": [
+            "See you at 9 at Goals North Cheam"
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "organiser-picks",
+      "raw": "{\"regular_game\":true,\"squad\":{\"answer\":\"unclear\",\"confidence\":\"low\",\"evidence\":[\"Drop me a message if you fancy a game and I'll sort the team\",\"Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me\"]},\"open_places\":{\"answer\":\"organisers_pick\",\"confidence\":\"high\",\"evidence\":[\"Drop me a message if you fancy a game and I'll sort the team\",\"I'll pick someone off the reserve list\"]},\"drop_out_deadline\":{\"day\":\"none\",\"time\":\"none\",\"confidence\":\"high\",\"evidence\":[]},\"list_published\":{\"day\":\"monday\",\"time\":\"19:00\",\"confidence\":\"high\",\"evidence\":[\"Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me\"]},\"payments\":{\"answer\":\"no_sign\",\"confidence\":\"high\",\"evidence\":[]},\"monthly_list\":{\"answer\":\"no_sign\",\"prepay_for_month\":false,\"pay_as_you_go_fill_ins\":false,\"credit_for_missed_games\":false,\"confidence\":\"high\",\"evidence\":[]},\"weekly_game\":{\"day\":\"wednesday\",\"time\":\"20:00\",\"venue\":\"Powerleague Mill Hill\",\"players_per_side\":7,\"confidence\":\"high\",\"evidence\":[\"Wednesday 8pm at Powerleague Mill Hill\"]}}",
+      "checked": {
+        "squad": {
+          "answer": "unclear",
+          "confidence": "low",
+          "evidence": []
+        },
+        "openPlaces": {
+          "answer": "organisers_pick",
+          "confidence": "high",
+          "evidence": [
+            "Drop me a message if you fancy a game and I'll sort the team",
+            "I'll pick someone off the reserve list"
+          ]
+        },
+        "dropOutDeadline": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "listPublished": {
+          "day": 1,
+          "time": "19:00",
+          "confidence": "high",
+          "evidence": [
+            "Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me"
+          ]
+        },
+        "payments": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": []
+        },
+        "monthlyList": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": [],
+          "prepayForMonth": false,
+          "payAsYouGoFillIns": false,
+          "creditForMissedGames": false
+        },
+        "weeklyGame": {
+          "day": 3,
+          "time": "20:00",
+          "venue": "Powerleague Mill Hill",
+          "playersPerSide": 7,
+          "confidence": "high",
+          "evidence": [
+            "Wednesday 8pm at Powerleague Mill Hill"
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "deadlines",
+      "raw": "{\"regular_game\":true,\"squad\":{\"answer\":\"sign_up_each_week\",\"confidence\":\"high\",\"evidence\":[\"IN\",\"in please\"]},\"open_places\":{\"answer\":\"unclear\",\"confidence\":\"low\",\"evidence\":[]},\"drop_out_deadline\":{\"day\":\"monday\",\"time\":\"21:00\",\"confidence\":\"high\",\"evidence\":[\"Drop out by Monday 9pm at the latest or you still pay\",\"Drop out by Monday 9pm at the latest or you still pay\"]},\"list_published\":{\"day\":\"tuesday\",\"time\":\"20:00\",\"confidence\":\"high\",\"evidence\":[\"Final list goes up Tuesday at 8pm\",\"Final list goes up Tuesday at 8pm\"]},\"payments\":{\"answer\":\"players_confirm_paying\",\"confidence\":\"high\",\"evidence\":[\"paid\",\"sent £6\"]},\"monthly_list\":{\"answer\":\"no_sign\",\"prepay_for_month\":false,\"pay_as_you_go_fill_ins\":false,\"credit_for_missed_games\":false,\"confidence\":\"high\",\"evidence\":[]},\"weekly_game\":{\"day\":\"thursday\",\"time\":\"20:00\",\"venue\":\"Hackney Marshes\",\"players_per_side\":5,\"confidence\":\"high\",\"evidence\":[\"Kickoff Thursday 8pm at Hackney Marshes\",\"Kickoff Thursday 8pm at Hackney Marshes\"]}}",
+      "checked": {
+        "squad": {
+          "answer": "sign_up_each_week",
+          "confidence": "high",
+          "evidence": [
+            "in please"
+          ]
+        },
+        "openPlaces": {
+          "answer": "unclear",
+          "confidence": "low",
+          "evidence": []
+        },
+        "dropOutDeadline": {
+          "day": 1,
+          "time": "21:00",
+          "confidence": "high",
+          "evidence": [
+            "Drop out by Monday 9pm at the latest or you still pay",
+            "Drop out by Monday 9pm at the latest or you still pay"
+          ]
+        },
+        "listPublished": {
+          "day": 2,
+          "time": "20:00",
+          "confidence": "high",
+          "evidence": [
+            "Final list goes up Tuesday at 8pm",
+            "Final list goes up Tuesday at 8pm"
+          ]
+        },
+        "payments": {
+          "answer": "players_confirm_paying",
+          "confidence": "high",
+          "evidence": [
+            "paid",
+            "sent £6"
+          ]
+        },
+        "monthlyList": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": [],
+          "prepayForMonth": false,
+          "payAsYouGoFillIns": false,
+          "creditForMissedGames": false
+        },
+        "weeklyGame": {
+          "day": 4,
+          "time": "20:00",
+          "venue": "Hackney Marshes",
+          "playersPerSide": 5,
+          "confidence": "high",
+          "evidence": [
+            "Kickoff Thursday 8pm at Hackney Marshes",
+            "Kickoff Thursday 8pm at Hackney Marshes"
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "first-come",
+      "raw": "{\"regular_game\": true, \"squad\": {\"answer\": \"sign_up_each_week\", \"confidence\": \"high\", \"evidence\": [\"IN\", \"in for Saturday\"]}, \"open_places\": {\"answer\": \"first_to_ask\", \"confidence\": \"high\", \"evidence\": [\"first 16 names in get a game\", \"whoever's quickest gets in\"]}, \"drop_out_deadline\": {\"day\": \"none\", \"time\": \"none\", \"confidence\": \"high\", \"evidence\": []}, \"list_published\": {\"day\": \"none\", \"time\": \"none\", \"confidence\": \"high\", \"evidence\": []}, \"payments\": {\"answer\": \"no_sign\", \"confidence\": \"high\", \"evidence\": []}, \"monthly_list\": {\"answer\": \"no_sign\", \"prepay_for_month\": false, \"pay_as_you_go_fill_ins\": false, \"credit_for_missed_games\": false, \"confidence\": \"high\", \"evidence\": []}, \"weekly_game\": {\"day\": \"saturday\", \"time\": \"10:00\", \"venue\": \"Wandsworth Common\", \"players_per_side\": 8, \"confidence\": \"high\", \"evidence\": [\"Saturday 10am at Wandsworth Common, first 16 names in get a game\"]}}",
+      "checked": {
+        "squad": {
+          "answer": "sign_up_each_week",
+          "confidence": "high",
+          "evidence": [
+            "in for Saturday"
+          ]
+        },
+        "openPlaces": {
+          "answer": "first_to_ask",
+          "confidence": "high",
+          "evidence": [
+            "first 16 names in get a game",
+            "whoever's quickest gets in"
+          ]
+        },
+        "dropOutDeadline": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "listPublished": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "payments": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": []
+        },
+        "monthlyList": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": [],
+          "prepayForMonth": false,
+          "payAsYouGoFillIns": false,
+          "creditForMissedGames": false
+        },
+        "weeklyGame": {
+          "day": 6,
+          "time": "10:00",
+          "venue": "Wandsworth Common",
+          "playersPerSide": 8,
+          "confidence": "high",
+          "evidence": [
+            "Saturday 10am at Wandsworth Common, first 16 names in get a game"
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "turkish",
+      "raw": "{\"regular_game\": true, \"squad\": {\"answer\": \"rolling\", \"confidence\": \"high\", \"evidence\": [\"Kadro geçen haftakiyle aynı, olmayan yazsın\", \"Kadro geçen haftakiyle aynı, olmayan yazsın\"]}, \"open_places\": {\"answer\": \"organisers_pick\", \"confidence\": \"medium\", \"evidence\": [\"yerine birini bulalım\"]}, \"drop_out_deadline\": {\"day\": \"none\", \"time\": \"none\", \"confidence\": \"high\", \"evidence\": []}, \"list_published\": {\"day\": \"none\", \"time\": \"none\", \"confidence\": \"high\", \"evidence\": []}, \"payments\": {\"answer\": \"players_confirm_paying\", \"confidence\": \"high\", \"evidence\": [\"Ödedim\", \"Gönderdim abi\"]}, \"monthly_list\": {\"answer\": \"no_sign\", \"prepay_for_month\": false, \"pay_as_you_go_fill_ins\": false, \"credit_for_missed_games\": false, \"confidence\": \"high\", \"evidence\": []}, \"weekly_game\": {\"day\": \"friday\", \"time\": \"21:00\", \"venue\": \"Halısaha Kartal\", \"players_per_side\": 7, \"confidence\": \"high\", \"evidence\": [\"Akşam 9'da Halısaha Kartal'da görüşürüz\"]}}",
+      "checked": {
+        "squad": {
+          "answer": "rolling",
+          "confidence": "high",
+          "evidence": [
+            "Kadro geçen haftakiyle aynı, olmayan yazsın",
+            "Kadro geçen haftakiyle aynı, olmayan yazsın"
+          ]
+        },
+        "openPlaces": {
+          "answer": "organisers_pick",
+          "confidence": "medium",
+          "evidence": [
+            "yerine birini bulalım"
+          ]
+        },
+        "dropOutDeadline": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "listPublished": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "payments": {
+          "answer": "players_confirm_paying",
+          "confidence": "high",
+          "evidence": [
+            "Ödedim",
+            "Gönderdim abi"
+          ]
+        },
+        "monthlyList": {
+          "answer": "no_sign",
+          "confidence": "high",
+          "evidence": [],
+          "prepayForMonth": false,
+          "payAsYouGoFillIns": false,
+          "creditForMissedGames": false
+        },
+        "weeklyGame": {
+          "day": 5,
+          "time": "21:00",
+          "venue": "Halısaha Kartal",
+          "playersPerSide": 7,
+          "confidence": "high",
+          "evidence": [
+            "Akşam 9'da Halısaha Kartal'da görüşürüz"
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "monthly-list",
+      "raw": "{\"regular_game\":true,\"squad\":{\"answer\":\"sign_up_each_week\",\"confidence\":\"high\",\"evidence\":[\"Add yourself to list mate we are happy to have u\",\"List for October: / 1. Marco / 2. Gary / 3. JB / 4. Clive / 5. Tom\"]},\"open_places\":{\"answer\":\"first_to_ask\",\"confidence\":\"medium\",\"evidence\":[\"If You had 8v8 you would've said you want 9v9\",\"Anyone free tomoz PAYG?\"]},\"drop_out_deadline\":{\"day\":\"none\",\"time\":\"none\",\"confidence\":\"high\",\"evidence\":[]},\"list_published\":{\"day\":\"none\",\"time\":\"none\",\"confidence\":\"medium\",\"evidence\":[\"List for October posted multiple days throughout the week\"]},\"payments\":{\"answer\":\"players_confirm_paying\",\"confidence\":\"high\",\"evidence\":[\"paid!\",\"Gary (Paid £22.50)\"]},\"monthly_list\":{\"answer\":\"monthly_list\",\"prepay_for_month\":true,\"pay_as_you_go_fill_ins\":true,\"credit_for_missed_games\":true,\"confidence\":\"high\",\"evidence\":[\"we normally have the majority of us pay monthly, so Marco can secure the venue\",\"If u pay for the month u will have 2 weeks credit following month\"]},\"weekly_game\":{\"day\":\"monday\",\"time\":\"20:00\",\"venue\":\"Ewell Sports Centre\",\"players_per_side\":8,\"confidence\":\"high\",\"evidence\":[\"Need 8v8..!\",\"monday 20:00 at Ewell Sports Centre, 8 a side\"]}}",
+      "checked": {
+        "squad": {
+          "answer": "sign_up_each_week",
+          "confidence": "high",
+          "evidence": [
+            "Add yourself to list mate we are happy to have u"
+          ]
+        },
+        "openPlaces": {
+          "answer": "first_to_ask",
+          "confidence": "medium",
+          "evidence": [
+            "If You had 8v8 you would've said you want 9v9",
+            "Anyone free tomoz PAYG?"
+          ]
+        },
+        "dropOutDeadline": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "listPublished": {
+          "day": null,
+          "time": null,
+          "confidence": "low",
+          "evidence": []
+        },
+        "payments": {
+          "answer": "players_confirm_paying",
+          "confidence": "high",
+          "evidence": [
+            "paid!",
+            "Gary (Paid £22.50)"
+          ]
+        },
+        "monthlyList": {
+          "answer": "monthly_list",
+          "confidence": "high",
+          "evidence": [
+            "we normally have the majority of us pay monthly, so Marco can secure the venue",
+            "If u pay for the month u will have 2 weeks credit following month"
+          ],
+          "prepayForMonth": true,
+          "payAsYouGoFillIns": true,
+          "creditForMissedGames": true
+        },
+        "weeklyGame": {
+          "day": 1,
+          "time": "20:00",
+          "venue": "Ewell Sports Centre",
+          "playersPerSide": 8,
+          "confidence": "high",
+          "evidence": [
+            "Need 8v8..!"
+          ]
+        }
+      }
+    }
+  ]
+}

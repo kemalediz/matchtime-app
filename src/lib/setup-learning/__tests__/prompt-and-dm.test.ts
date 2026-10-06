@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { estimateTokens, MIN_CACHEABLE_TOKENS, shouldCachePrompt } from "../../pipeline/llm";
 import { SETUP_LEARNING_MODEL, SETUP_LEARNING_SCHEMA, SETUP_LEARNING_SYSTEM_PROMPT } from "../prompt";
 import { composeSetupDm } from "../dm";
+import { t } from "../../i18n/t";
 import { parseDetection, planSetup, type OrgSettingsState } from "../rules";
 import { blankAnswer, FIXTURE_NAMES, loadFixture, OBSERVED_ANSWERS, STUB_ANSWERS } from "./stubs";
 
@@ -84,6 +85,7 @@ function dmFor(name: (typeof FIXTURE_NAMES)[number], lang?: string, answer?: Rec
     noted: plan.noted,
     scheduleUrl: "https://mt.link/activities",
     settingsUrl: "https://mt.link/settings",
+    organiserPicksUrl: "https://mt.link/pick",
   });
 }
 
@@ -117,6 +119,51 @@ describe("the organiser's DM", () => {
         `Şu tür mesajlardan: "Ödedim"\n` +
         `Geri almak ya da değiştirmek için: https://mt.link/undo-paymentTracking\n\n` +
         `Hepsi, her birinin dayandığı sohbet mesajlarıyla birlikte ayarlar sayfanızda: https://mt.link/settings`,
+    );
+  });
+
+  it("organisers pick is asked, never announced as done: its own line, one quote, its own link, in English", () => {
+    expect(dmFor("organiser-picks")).toBe(
+      `I read the recent messages in "Wednesday 7s" to see how it runs. I didn't change any settings, but a few things are worth a look.\n\n` +
+        `Worth a check (I changed nothing here):\n` +
+        `🔎 It looks like the organisers choose who fills an open place. If that's right, switch on "The organisers pick".\n` +
+        `From messages like: "Drop me a message if you fancy a game and I'll sort the team"\n` +
+        `Switch it on here: https://mt.link/pick\n\n` +
+        `Everything is on your settings page, with the chat messages behind each one: https://mt.link/settings`,
+    );
+    expect(dmFor("organiser-picks")).not.toContain("✅");
+  });
+
+  it("and in Turkish (a Turkish club whose chat is English also gets the language line, with its own link first)", () => {
+    expect(dmFor("organiser-picks", "tr")).toBe(
+      `"Wednesday 7s" grubundaki son mesajları okuyup grubun nasıl işlediğine baktım. Hiçbir ayarı değiştirmedim, ama göz atmaya değer birkaç şey var.\n\n` +
+        `Kontrol etmeye değer (burada hiçbir şeyi değiştirmedim):\n` +
+        `🔎 Sohbet çoğunlukla İngilizce; MatchTime bu grupta Türkçe konuşuyor.\n` +
+        `Buradan değiştirebilirsiniz: https://mt.link/settings\n` +
+        `🔎 Görünüşe göre boşalan yeri kimin dolduracağını organizatörler seçiyor. Öyleyse "Organizatörler seçer" ayarını açın.\n` +
+        `Şu tür mesajlardan: "Drop me a message if you fancy a game and I'll sort the team"\n` +
+        `Buradan açabilirsiniz: https://mt.link/pick\n\n` +
+        `Hepsi, her birinin dayandığı sohbet mesajlarıyla birlikte ayarlar sayfanızda: https://mt.link/settings`,
+    );
+  });
+
+  it("the names the DM gives the setting are the ones on the settings page", () => {
+    expect(dmFor("organiser-picks")).toContain(`"${t("en").wr_pick_organiser}"`);
+    expect(dmFor("organiser-picks", "tr")).toContain(`"${t("tr").wr_pick_organiser}"`);
+  });
+
+  it("with a weekly game suggestion too: the game lines keep their link, organisers pick comes last with its own", () => {
+    const dm = dmFor("organiser-picks", "en", {
+      ...STUB_ANSWERS["organiser-picks"],
+      weekly_game: { day: "wednesday", time: "21:00", venue: "", players_per_side: 0, confidence: "high", evidence: ["Wednesday 8pm at Powerleague Mill Hill"] },
+    });
+    expect(dm).toContain(
+      `Worth a check (I changed nothing here):\n` +
+        `🔎 The chat says kickoff is at 21:00; your weekly game is set for 20:00.\n` +
+        `Change it here: https://mt.link/activities\n` +
+        `🔎 It looks like the organisers choose who fills an open place. If that's right, switch on "The organisers pick".\n` +
+        `From messages like: "Drop me a message if you fancy a game and I'll sort the team"\n` +
+        `Switch it on here: https://mt.link/pick\n\n`,
     );
   });
 

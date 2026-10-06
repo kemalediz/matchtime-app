@@ -2353,7 +2353,9 @@ export const tr: Strings = {
   sj_dm_setup_undo: (p) => `Geri almak ya da değiştirmek için: ${p.url}`,
   sj_dm_setup_check_head: "Kontrol etmeye değer (burada hiçbir şeyi değiştirmedim):",
   setup_suggestion_line: (p) =>
-    p.key === "weeklyGameDay"
+    p.key === "organiserPicks"
+      ? `Görünüşe göre boşalan yeri kimin dolduracağını organizatörler seçiyor. Öyleyse "Organizatörler seçer" ayarını açın.`
+      : p.key === "weeklyGameDay"
       ? `Sohbette maçlar ${p.detected} günü geçiyor; haftalık maçınız ise ${p.current} günü.`
       : p.key === "weeklyGameTime"
         ? `Sohbete göre maç saati ${p.detected}; haftalık maçınız ise ${p.current} olarak ayarlı.`
@@ -2363,6 +2365,7 @@ export const tr: Strings = {
             ? `Sohbette takım başına ${p.detected} kişiden söz ediliyor; haftalık maçınız ise takım başına ${p.current} kişi.`
             : `Sohbet çoğunlukla ${p.detected}; MatchTime bu grupta ${p.current} konuşuyor.`,
   sj_dm_setup_check_link: (p) => `Buradan değiştirebilirsiniz: ${p.url}`,
+  sj_dm_setup_pick_link: (p) => `Buradan açabilirsiniz: ${p.url}`,
   setup_monthly_pattern: (p) => {
     const parts = [
       p.prepay ? "düzenli oyuncular aya yazılıp ayın ücretini peşin ödüyor" : "düzenli oyuncular aya yazılıyor",
@@ -2387,6 +2390,7 @@ export const tr: Strings = {
   settings_learned_undo_failed: "Geri alınamadı",
   settings_learned_from: "Şu tür mesajlardan",
   settings_learned_check_head: "Kontrol etmeye değer (hiçbir şey değişmedi)",
+  settings_learned_open_setting: "Ayara git",
   settings_learned_noted_head: "Fark edildi, henüz bir ayarı yok",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).

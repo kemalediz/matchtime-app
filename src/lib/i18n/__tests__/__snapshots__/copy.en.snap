@@ -3670,10 +3670,6 @@ I read the recent messages in "Thursday Ladies 5s" to see how it runs, and set M
 From messages like: "Same lot as last week"
 Undo or change: https://matchtime.ai/r/u1
 
-✅ *Organisers pick who fills an open place:* MatchTime asks you first, and only offers the place to the waiting list if nobody picks in time.
-From messages like: "Drop me a message"
-Undo or change: https://matchtime.ai/r/u2
-
 ✅ *Drop-out deadline:* Monday 21:00. MatchTime reminds the group before it.
 From messages like: "Drop out by Monday 9pm"
 Undo or change: https://matchtime.ai/r/u3
@@ -3693,6 +3689,9 @@ Worth a check (I changed nothing here):
 🔎 The chat talks about 6 a side; your weekly game is 5 a side.
 🔎 The chat is mostly in Turkish; MatchTime speaks English in this group.
 Change it here: https://matchtime.ai/r/sched
+🔎 It looks like the organisers choose who fills an open place. If that's right, switch on "The organisers pick".
+From messages like: "Drop me a message"
+Switch it on here: https://matchtime.ai/r/pick
 
 Everything is on your settings page, with the chat messages behind each one: https://matchtime.ai/r/settings
 

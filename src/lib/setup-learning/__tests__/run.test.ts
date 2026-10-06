@@ -253,6 +253,18 @@ describe("learnClubSetup: writes and the DM", () => {
     expect(state.learning!.dmQueuedAt).toEqual(DAYTIME);
   });
 
+  it("organisers pick: NO write to the club, status nothing, and the DM asks with a link to the suggestion", async () => {
+    setup("organiser-picks");
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS["organiser-picks"]) });
+    expect(state.orgUpdates).toEqual([]);
+    expect(state.org!.benchPickMode).toBe("first-come");
+    expect(out).toMatchObject({ kind: "done", status: "nothing", applied: 0, suggestions: 1, dmQueued: true });
+    expect(state.learning).toMatchObject({ status: "nothing", applied: [], suggestions: [{ key: "organiserPicks" }] });
+    expect(dms).toHaveLength(1);
+    expect(dms[0].text).toContain("Switch it on here: https://mt.link/admin/settings?learned=organiserPicks#learned-setup");
+    expect(dms[0].text).not.toContain("✅");
+  });
+
   it("a night run queues the DM for 10:00 London", async () => {
     setup("rolling");
     await learnClubSetup(ORG, { now: NIGHT, model: stub(STUB_ANSWERS.rolling) });
