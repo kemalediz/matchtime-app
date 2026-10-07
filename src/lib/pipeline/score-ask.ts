@@ -215,3 +215,93 @@ export const SCORE_SWAP_KIND = "score-swap";
 export function scoreSwapKey(matchId: string): string {
   return `${matchId}:${SCORE_SWAP_KIND}`;
 }
+
+// ── A TAGGED CORRECTION, RECOGNISED WITHOUT A MODEL ───────────────────
+//
+// The one approved live run of the score check (2026-10-07, 94 calls)
+// passed 45 of 47, and the extractor was right 47 times. The two
+// failures were the ROUTER, whose prompt this work does not touch:
+//
+//   "@Match Time other way round"            -> unsure
+//   "@Match Time yanlış, kırmızı 6 sarı 9"   -> other_att
+//
+// Both then go to the ATTENDANCE extractor, so the correction never
+// happens, and the second hands two colour words to the stage that
+// looks for people. Same remedy as the one-word answer: a fixed
+// vocabulary, read in code before any model runs, and the router is
+// handed the ids (`RouteBatchOptions.scoreCorrectionIds`).
+//
+// THE RULE, all of it:
+//   - the message tags the bot                       (the caller checks)
+//   - the club's latest played match has a recorded result and kicked
+//     off inside the correction window               (the caller checks)
+//   - and the text, mentions removed, is EITHER
+//       a swap phrase, anywhere: "other way round", "wrong way round",
+//       "the other way around", "tam tersi", "tersi";
+//     OR
+//       a correction OPENER, as its first words: "no", "nope", "wrong",
+//       "that's wrong", "that is wrong", "not right", "yanlış", "hayır",
+//       "öyle değil"
+//       TOGETHER WITH a scoreline (two numbers) or one of THAT match's
+//       team names,
+//       AND the sender is not talking about themselves ("no, I'm out",
+//       "no, put me on yellow", "hayır ben yokum"): that is attendance,
+//       whatever else the sentence mentions.
+//
+// It decides the ROUTE and nothing else. Whether the sender may correct
+// a result, and what the correction says, are the engine's, unchanged.
+
+function plainText(body: string): string {
+  return (body ?? "").replace(/@\s*match\s*time\b/giu, " ").replace(/@\S+/g, " ");
+}
+
+/** Lower case, Turkish letters folded, apostrophes dropped, everything
+ *  else that is not a letter or digit turned into a space. */
+function normalise(body: string): string {
+  return plainText(body)
+    .toLocaleLowerCase("tr")
+    .replace(/ı/g, "i")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const SWAP_PHRASE = /(?:^| )(?:other way a?round|wrong way a?round|tam tersi|tersi)(?: |$)/;
+const CORRECTION_OPENER = /^(?:no|nope|wrong|thats wrong|that is wrong|not right|yanlis|hayir|oyle degil)(?: |$)/;
+/** The sender talking about THEMSELVES: attendance, not a result. */
+const FIRST_PERSON = new Set(["i", "im", "ill", "ive", "id", "me", "my", "mine", "ben", "beni", "bana", "benim", "bende"]);
+const FIRST_PERSON_TR_VERB = /(?:yorum|mem|mam|yokum|varim|irim|urum)$/;
+
+/**
+ * The cheap first look, needing no team names: is it worth loading the
+ * match to decide? True for every message `isScoreCorrectionText` could
+ * accept, and for some it will not ("no, I'm out").
+ */
+export function mayBeScoreCorrection(body: string): boolean {
+  const n = normalise(body);
+  return SWAP_PHRASE.test(n) || CORRECTION_OPENER.test(n);
+}
+
+/**
+ * Is this text, on its words alone, a correction of a recorded result?
+ * `labels` are the names of the match that would be corrected.
+ */
+export function isScoreCorrectionText(body: string, labels: readonly [string, string]): boolean {
+  const n = normalise(body);
+  if (!n) return false;
+  if (SWAP_PHRASE.test(n)) return true;
+  if (!CORRECTION_OPENER.test(n)) return false;
+  const tokens = n.split(" ");
+  if (tokens.some((t) => FIRST_PERSON.has(t) || FIRST_PERSON_TR_VERB.test(t))) return false;
+  if (numbersIn(body).length >= 2) return true;
+  // One of the match's team names: single words, and adjacent pairs for
+  // a two-word name.
+  const words = plainText(body).split(/[^\p{L}\p{N}'’]+/u).filter(Boolean);
+  for (let i = 0; i < words.length; i++) {
+    if (resolveTeamRef(words[i], labels, null)) return true;
+    if (i + 1 < words.length && resolveTeamRef(`${words[i]} ${words[i + 1]}`, labels, null)) return true;
+  }
+  return false;
+}

@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import { EXTRACTOR_PROMPTS, factsSchemaFor, parseFacts } from "../extractors";
 import { EXTRACTOR_MODEL, estimateTokens, shouldCachePrompt } from "../llm";
+import { isScoreCorrectionText } from "../score-ask";
 import { SCORE_LIVE_CASES, runScoreCase } from "./score-live-cases";
 
 /** A case's facts as the model would send them: every schema field
@@ -78,6 +79,27 @@ describe("the prepared live check for the score extractor", () => {
     // No recorded result is changed by an untagged message.
     for (const c of SCORE_LIVE_CASES) {
       if (c.recorded && !(c.tagged ?? false)) expect(c.expect, c.id).toBe("silent");
+    }
+  });
+
+  it("the two cases the router lost in the live run are now routed by their words, not by the model", () => {
+    // 2026-10-07, the one approved run: X2 went to `unsure`, T6 to
+    // `other_att`. Every tagged correction of a recorded result in the
+    // plan that is expected to CHANGE the result must be recognised by
+    // `isScoreCorrectionText`, so none of them depends on the router.
+    const byId = Object.fromEntries(SCORE_LIVE_CASES.map((c) => [c.id, c]));
+    for (const id of ["X2", "T6"]) {
+      const c = byId[id];
+      expect(c.tagged && !!c.recorded, id).toBe(true);
+      expect(isScoreCorrectionText(c.body, c.labels ?? ["Red", "Yellow"]), id).toBe(true);
+    }
+    for (const c of SCORE_LIVE_CASES) {
+      if (!c.recorded || !(c.tagged ?? false) || typeof c.expect === "string") continue;
+      expect(isScoreCorrectionText(c.body, c.labels ?? ["Red", "Yellow"]), c.id).toBe(true);
+    }
+    // And it does not reach for the cases that are about something else.
+    for (const id of ["G1", "G2"]) {
+      expect(isScoreCorrectionText(byId[id].body, byId[id].labels ?? ["Red", "Yellow"]), id).toBe(false);
     }
   });
 

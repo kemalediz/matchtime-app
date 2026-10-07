@@ -525,6 +525,9 @@ export interface GateOptions {
    *  decided by the caller and passed straight to the router. See
    *  `RouteBatchOptions.scoreAnswerIds`. */
   scoreAnswerIds?: ReadonlySet<string>;
+  /** Tagged corrections of a recorded result, recognised by their words.
+   *  See `RouteBatchOptions.scoreCorrectionIds`. */
+  scoreCorrectionIds?: ReadonlySet<string>;
   /** Injected by tests and by the recall harness. */
   model?: PipelineModel;
   /**
@@ -631,6 +634,7 @@ export async function gateBatch(
         floor: true,
         capped: true,
         scoreAnswerIds: opts.scoreAnswerIds,
+        scoreCorrectionIds: opts.scoreCorrectionIds,
       });
       return {
         ...partition(messages, routed.routes, { floor: true }),
@@ -652,6 +656,7 @@ export async function gateBatch(
       awaiting: opts.awaiting ?? null,
       clarifications: opts.clarifications ?? [],
       scoreAnswerIds: opts.scoreAnswerIds,
+      scoreCorrectionIds: opts.scoreCorrectionIds,
     });
     const p = partition(messages, routed.routes, { floor });
     return {

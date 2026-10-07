@@ -665,6 +665,15 @@ export interface RouteBatchOptions {
    */
   scoreAnswerIds?: ReadonlySet<string>;
   /**
+   * MESSAGES THAT ARE A TAGGED CORRECTION OF A RECORDED RESULT, by a
+   * fixed vocabulary (`isScoreCorrectionText`, `score-ask.ts`), decided
+   * by the caller before the router runs. The one approved live run had
+   * the model send "@Match Time other way round" to `unsure` and
+   * "@Match Time yanlış, kırmızı 6 sarı 9" to `other_att`; both go to
+   * `score` here, on every path, like `scoreAnswerIds`.
+   */
+  scoreCorrectionIds?: ReadonlySet<string>;
+  /**
    * The club is at its daily AI cap: route with the floor alone and make
    * no model call. See `ai-budget.ts`.
    */
@@ -682,16 +691,22 @@ function withScoreAnswers(
   opts: RouteBatchOptions,
   degradations: Degradation[],
 ): RoutedMessage[] {
-  const ids = opts.scoreAnswerIds;
-  if (!ids || ids.size === 0) return routes;
+  const answers = opts.scoreAnswerIds;
+  const corrections = opts.scoreCorrectionIds;
+  if (!answers?.size && !corrections?.size) return routes;
   return routes.map((r) => {
-    if (r.route === "score" || !ids.has(r.messageId)) return r;
+    const isAnswer = !!answers?.has(r.messageId);
+    const isCorrection = !!corrections?.has(r.messageId);
+    if (r.route === "score" || !(isAnswer || isCorrection)) return r;
     degradations.push(
       degradation(
         "router",
         r.messageId,
-        `MatchTime asked which team won a scoreline and this answers it; ${r.route} → score so the ` +
-          `answer reaches the question it answers`,
+        isAnswer
+          ? `MatchTime asked which team won a scoreline and this answers it; ${r.route} → score so the ` +
+              `answer reaches the question it answers`
+          : `a tagged score correction of a recorded result, by its words; ${r.route} → score so it ` +
+              `reaches the score route and not the attendance extractor`,
       ),
     );
     return {

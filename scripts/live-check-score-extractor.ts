@@ -53,7 +53,12 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
-import { isScoreAnswer, scoreAnswerSide, scorePairAnswerSide } from "../src/lib/pipeline/score-ask.ts";
+import {
+  isScoreAnswer,
+  isScoreCorrectionText,
+  scoreAnswerSide,
+  scorePairAnswerSide,
+} from "../src/lib/pipeline/score-ask.ts";
 import {
   SCORE_LIVE_CASES,
   describeOutcome,
@@ -118,8 +123,17 @@ async function main() {
           },
           now: new Date(),
         });
+      // And, as the analyze route does, whether it is a tagged
+      // correction of a recorded result by its words alone
+      // (`isScoreCorrectionText`). The first run of this script
+      // (2026-10-07, 94 calls, $0.4118, 45 of 47) failed X2 and T6 on
+      // exactly this: the router sent them to `unsure` and `other_att`.
+      // They no longer depend on the router at all.
+      const isCorrection =
+        (c.tagged ?? false) && !!c.recorded && isScoreCorrectionText(c.body, c.labels ?? ["Red", "Yellow"]);
       const rr = await routeBatch(model, [{ id: c.id, authorName: author, body: c.body }], {
         scoreAnswerIds: new Set(isAnswer ? [c.id] : []),
+        scoreCorrectionIds: new Set(isCorrection ? [c.id] : []),
       });
       calls++;
       usd += rr.usage?.costUsd ?? 0;

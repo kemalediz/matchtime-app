@@ -17,6 +17,7 @@
  */
 import { SCORE_ASK_KIND, SCORE_ASK_TTL_MS, parseScoreAskKey } from "./score-ask";
 import { resolveTeamLabels } from "../team-labels";
+import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { db } from "../db";
 import {
   GROUP_QUESTION_TTL_MS,
@@ -194,5 +195,60 @@ export async function loadOpenScoreAsk(
       row.match.activity.org.language,
     ),
     adminUserIds: admins.map((a) => a.userId),
+  };
+}
+
+/**
+ * The match a tagged score correction would correct, if there is one:
+ * the club's latest PLAYED match, when it has a recorded result and
+ * kicked off inside the correction window. Its team names are what
+ * `isScoreCorrectionText` reads a correction against.
+ *
+ * The selection is `load-state.ts`'s for `completedMatch` (the ten most
+ * recent matches that have kicked off, the first whose duration has
+ * passed), so the router override and the engine are talking about the
+ * same match. Called only when a tagged message in the batch already
+ * looks like a correction (`mayBeScoreCorrection`), so almost never.
+ */
+export async function loadScoreCorrectionTarget(
+  orgId: string,
+  now: Date = new Date(),
+): Promise<{ matchId: string; labels: [string, string] } | null> {
+  const candidates = await db.match.findMany({
+    where: {
+      activity: { orgId },
+      status: { in: ["TEAMS_GENERATED", "TEAMS_PUBLISHED", "COMPLETED"] },
+      date: { lte: now },
+    },
+    select: {
+      id: true,
+      date: true,
+      redScore: true,
+      yellowScore: true,
+      teamLabels: true,
+      activity: {
+        select: {
+          matchDurationMins: true,
+          sport: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true, language: true } },
+        },
+      },
+    },
+    orderBy: { date: "desc" },
+    take: 10,
+  });
+  const latest = candidates.find(
+    (m) => m.date.getTime() + m.activity.matchDurationMins * 60 * 1000 <= now.getTime(),
+  );
+  if (!latest || latest.redScore === null || latest.yellowScore === null) return null;
+  if (now.getTime() - latest.date.getTime() > SCORE_CORRECTION_WINDOW_MS) return null;
+  return {
+    matchId: latest.id,
+    labels: resolveTeamLabels(
+      { teamLabels: latest.teamLabels },
+      { teamLabels: latest.activity.org.teamLabels },
+      latest.activity.sport,
+      latest.activity.org.language,
+    ),
   };
 }
